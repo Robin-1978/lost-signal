@@ -7,6 +7,7 @@
 class CampaignPanel {
  public:
   bool init();
+  bool initFromFile(const std::string& path);  // 测试注字体用
   void setVisible(bool v) { visible_ = v; }
   bool visible() const { return visible_; }
   void toggle() { visible_ = !visible_; }
@@ -21,6 +22,10 @@ class CampaignPanel {
     brief_ = brief;
     clue_ = clue;
     fails_ = fails;
+  }
+  void setLastFail(const std::string& why, const std::string& hint) {
+    fail_why_ = why;
+    fail_hint_ = hint;
   }
   void setRunning(bool r, const std::string& label = "") {
     running_ = r;
@@ -38,5 +43,5 @@ class CampaignPanel {
   const std::vector<camp::Level>* ls_{nullptr};
   const camp::CampaignState* st_{nullptr};
   int sel_{1}, fails_{0};
-  std::string story_, brief_, clue_, run_label_, toast_;
+  std::string story_, brief_, clue_, run_label_, toast_, fail_why_, fail_hint_;
 };

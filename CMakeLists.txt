@@ -30,6 +30,10 @@ add_executable(test_campaign tests/test_campaign.cpp)
 target_link_libraries(test_campaign PRIVATE simtask sfml-system)
 add_executable(test_playthrough tests/test_playthrough.cpp)
 target_link_libraries(test_playthrough PRIVATE simtask)
+# 面板渲染回归: 要GL上下文, 无DISPLAY时测试内skip(仍可编译)
+add_executable(test_campaign_panel tests/test_campaign_panel.cpp view/campaign_panel.cpp game/campaign.cpp)
+target_include_directories(test_campaign_panel PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_campaign_panel PRIVATE sfml-graphics sfml-window sfml-system)
 
 # ---- game view (SFML only here) ----
 find_package(SFML 2.5 COMPONENTS graphics window system REQUIRED)

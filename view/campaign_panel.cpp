@@ -3,8 +3,12 @@
 
 bool CampaignPanel::init() {
   // 中文剧情需要CJK字体(DejaVu无CJK字形会显示方框)
-  has_font_ = font_.loadFromFile("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
-  if (!has_font_) has_font_ = font_.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+  if (initFromFile("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")) return true;
+  return initFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+}
+
+bool CampaignPanel::initFromFile(const std::string& path) {
+  has_font_ = font_.loadFromFile(path);
   return has_font_;
 }
 
@@ -96,6 +100,18 @@ void CampaignPanel::draw(sf::RenderTarget& win) {
   for (auto& ln : wrap(std::string("线索: ") + clue_, 11, w - 20)) {
     text(win, ln, x0 + 10, y, 11, sf::Color(255, 200, 120));
     y += 16;
+  }
+  if (!fail_why_.empty()) {
+    y += 4;
+    for (auto& ln : wrap(std::string("上次失败: ") + fail_why_, 11, w - 20)) {
+      text(win, ln, x0 + 10, y, 11, sf::Color(255, 140, 140));
+      y += 16;
+    }
+    if (!fail_hint_.empty())
+      for (auto& ln : wrap(std::string("诊断: ") + fail_hint_, 11, w - 20)) {
+        text(win, ln, x0 + 10, y, 11, sf::Color(255, 170, 120));
+        y += 16;
+      }
   }
   y += 8;
   if (running_)

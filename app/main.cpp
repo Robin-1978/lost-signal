@@ -142,9 +142,10 @@ int main() {
                  l ? l->name : "", l ? l->story_after : "", l ? l->card.title : "",
                  l ? l->card.id : "", l ? l->card.body : "");
       } else {
-        play.applyResult(run_task_id, false);
-        snprintf(b, sizeof b, "L%d 失败:%s. 新线索:%s", run_task_id, m.fail_reason,
-                 camp::clueFor(run_task_id, play.fails(run_task_id)));
+        play.applyResult(run_task_id, false, m.fail_reason);
+        snprintf(b, sizeof b, "L%d 失败:%s. 新线索:%s 诊断:%s", run_task_id, m.fail_reason,
+                 camp::clueFor(run_task_id, play.fails(run_task_id)),
+                 camp::hintFor(m.fail_reason));
       }
       toast = b;
       toast_frames = 900;
@@ -222,9 +223,11 @@ int main() {
     tech.setLoc(sim.odom().driftErr({rx, ry}), sim.lidarNoise(), sim.slip(), sim.scan().n_rays);
     tech.setEvents(sim.events().events());
     // 战役面板只读快照(逻辑全在camp::Play)
-    if (const camp::Level* l = camp::findLevel(play.selected()))
+    if (const camp::Level* l = camp::findLevel(play.selected())) {
       cpanel.setDetail(l->story_before, l->brief, play.clueSelected(),
                        play.fails(play.selected()));
+      cpanel.setLastFail(play.failReason(play.selected()), play.hintSelected());
+    }
     cpanel.setLevels(camp::levels(), play.state(), play.selected());
     char rl[32];
     snprintf(rl, sizeof rl, "L%d", run_task_id);

@@ -83,6 +83,27 @@ int main(){
     REQ(u.getSize() == 2);
     REQ(u[0] == 0x9192 && u[1] == 0x6765);
     printf("[ok] utf8 decode\n"); }
+  // 9. 失败原因: 记录/清空/专属hint全覆盖runner的fail_reason集合
+  { const char* reasons[] = {"collision-blind", "collision", "collision-dyn", "no-path",
+                             "via-missed", "timeout-no-detect", "timeout", "lost-drift"};
+    for (auto r : reasons) REQ(std::strlen(hintFor(r)) > 0);
+    REQ(std::strlen(hintFor("")) == 0 && std::strlen(hintFor(nullptr)) == 0);
+    REQ(std::strlen(hintFor("no-such-reason")) == 0);
+    Play p;
+    p.applyResult(2, false, "collision-blind");
+    REQ(p.fails(2) == 1 && !std::strcmp(p.failReason(2), "collision-blind"));
+    REQ(p.hintSelected() != nullptr);
+    p.select(2);
+    REQ(std::strlen(p.hintSelected()) > 0);
+    p.applyResult(2, true);  // 成功清空失败原因
+    REQ(p.failReason(2)[0] == '\0' && std::strlen(p.hintSelected()) == 0);
+    // 超长原因截断不断裂
+    char big[256];
+    std::memset(big, 'x', sizeof big - 1);
+    big[sizeof big - 1] = '\0';
+    p.applyResult(3, false, big);
+    REQ(std::strlen(p.failReason(3)) == 31);
+    printf("[ok] fail reasons + hints\n"); }
   printf("ALL CAMPAIGN TESTS PASSED\n");
   return 0;
 }
