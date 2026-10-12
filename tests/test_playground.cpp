@@ -48,6 +48,64 @@ int main(){
     s.step({}, 600);
     REQ(s.astar().ok);
     printf("[ok] fog astar pts=%zu\n",s.astar().path.size()); }
+  // 7. 手打可通关: 激光反应+卡住倒车(bot只用teleop四键), S迷宫56s级到达,
+  //    全程无穿墙(guard), 碰撞事件有但被节流(无日志刷屏)
+  { PlaygroundSim s(42); s.setMode(Mode::Teleop);
+    sim::Vec2 goal{17, 10};
+    auto sect = [&](const sim::Scan& sc, int k0, int k1) {
+      double m = 99;
+      for (int k = k0; k <= k1; k++) m = std::min(m, sc.ranges[k % 72]);
+      return m;
+    };
+    auto dist = [&]() {
+      double x, y, th;
+      s.activePose(x, y, th);
+      return std::hypot(x - goal.x, y - goal.y);
+    };
+    int latch = 0, unstick = 0, lastProg = 0;
+    double best = dist();
+    bool reached = false;
+    for (int i = 0; i < 20000; i++) {
+      const sim::Scan& sc = s.scan();
+      double front = std::min(sect(sc, 0, 4), sect(sc, 68, 71));
+      double left = sect(sc, 5, 17), right = sect(sc, 55, 67);
+      TeleopInput in;
+      if (i - lastProg > 1500) { unstick = 250; lastProg = i; }
+      if (dist() < best - 0.3) { best = dist(); lastProg = i; }
+      if (unstick > 0) { unstick--; in.down = true; in.right = true; }
+      else if (latch != 0) {
+        if (latch > 0) in.left = true; else in.right = true;
+        in.up = front > 0.6;
+        if (--latch == 0 || front > 2.0) latch = 0;
+      } else if (front < 0.9) {
+        if (left >= right) { in.left = true; latch = 60; } else { in.right = true; latch = -60; }
+      } else {
+        in.up = true;
+        double x, y, th;
+        s.activePose(x, y, th);
+        double err = std::atan2(goal.y - y, goal.x - x) - th;
+        while (err > M_PI) err -= 2 * M_PI;
+        while (err < -M_PI) err += 2 * M_PI;
+        if (front < 1.6) { if (left >= right) in.left = true; else in.right = true; }
+        else if (err > 0.3) in.left = true;
+        else if (err < -0.3) in.right = true;
+      }
+      s.step(in, 1);
+      double x, y, th;
+      s.activePose(x, y, th);
+      REQ(s.truthMap().isFree(x, y));  // 9000+步顶墙 hammer, 一次也不许穿
+      if (dist() < 0.6) {
+        reached = true;
+        printf("[ok] bot reached at step %d t=%ds\n", i, i / 100);
+        break;
+      }
+    }
+    REQ(reached);
+    int coll = 0;
+    for (auto& e : s.events().events()) if (e.code == sim::EV_COLLISION) coll++;
+    REQ(coll > 0 && s.events().events().size() < 300);
+    printf("[ok] bot collisions=%d total_ev=%zu (throttled)\n", coll, s.events().events().size());
+  }
   printf("ALL PLAYGROUND TESTS PASSED\n");
   return 0;
 }

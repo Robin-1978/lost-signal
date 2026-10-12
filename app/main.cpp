@@ -1,7 +1,7 @@
 // M4: app只做输入+渲染, 仿真全在game/PlaygroundSim(固定步长, headless可测).
-// M5: N战役面板, [/]选关, Enter跑本关(后台线程跑真实run_task, 标准答案loadout).
+// M5: N战役面板, [/]选关, Enter跑本关(标准答案), B反面演示(必败配置看诊断).
 // 按键: 0/1/2/3/4模式 Q/A Kp W/S Ki E/D Kd | Z/X h_w | T/G Y/H U/J DWA
-//       L lidar C slip K kidnap | O雾战 F面板 V跟随 P轨迹 R重置 | N战役 [/]选关 Enter开跑
+//       L lidar C slip K kidnap | O雾战 F面板 V跟随 P轨迹 R重置 | N战役 [/]选关 Enter开跑 B反面演示
 #include "../game/campaign_play.hpp"
 #include "../game/level.hpp"
 #include "../game/playground.hpp"
@@ -127,6 +127,16 @@ int main() {
       for (auto& t : task::allTasks())
         if (t.id == run_task_id) cfg = t;
       task::Loadout lo = camp::suggestedLoadout(run_task_id);
+      run_fut = std::async(std::launch::async, [cfg, lo]() { return task::run_task(cfg, lo); });
+    }
+    // B反面演示: 跑本关的必败配置, 看失败+诊断(同样走结算, 失败数+1线索升级)
+    if (keyEdge(sf::Keyboard::B) && !running && play.canRunSelected()) {
+      running = true;
+      run_task_id = play.selected();
+      task::TaskConfig cfg{0};
+      for (auto& t : task::allTasks())
+        if (t.id == run_task_id) cfg = t;
+      task::Loadout lo = camp::badLoadout(run_task_id);
       run_fut = std::async(std::launch::async, [cfg, lo]() { return task::run_task(cfg, lo); });
     }
     // 后台任务结算(非阻塞轮询): 成功解锁+存档, 失败线索升级

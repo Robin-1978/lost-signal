@@ -98,7 +98,8 @@ Metrics run_task(const TaskConfig& cfg, const Loadout& lo, Recorder* rec, EventL
       m.time_used+=DT;
     }
     m.drift_end=odom.driftErr({bs.x,bs.y});
-    if(m.collisions>cfg.max_collisions){ m.success=false; m.fail_reason="collision"; }
+    // 瞎子撞墙已记collision-blind, 这里只补默认原因, 不覆盖具体原因
+    if(m.collisions>cfg.max_collisions){ m.success=false; if(!m.fail_reason[0]) m.fail_reason="collision"; }
     else if(stopped>=3 && m.min_clear>0.2){ m.success=true; }
     else { m.success=false; m.fail_reason="timeout-no-detect"; }
     finish();

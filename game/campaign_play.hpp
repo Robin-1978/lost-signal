@@ -21,6 +21,26 @@ inline task::Loadout suggestedLoadout(int t) {
   return lo;
 }
 
+// 每关的反面演示loadout(必败, 与各关对比实验同源, 给玩家看失败+诊断用).
+inline task::Loadout badLoadout(int t) {
+  task::Loadout lo;
+  if (t == 1 || t == 3 || t == 5) {
+    lo.use_odom = true;  // 烂胎估计跟随: 漂移跟丢
+    lo.slip_scale = 3.0;
+  } else if (t == 2) {
+    lo.has_lidar = false;  // 瞎子直行: collision-blind
+  } else if (t == 4) {
+    lo.inflation = 1.5;  // 过度膨胀: 封死无路
+  } else if (t == 6) {
+    lo.use_dwa = false;  // 致盲直穿: 被叉车撞
+  } else if (t == 7) {
+    lo.fog = true;  // 开环进雾: 必撞墙
+    lo.unknown_free = true;
+    lo.replan = false;
+  }
+  return lo;
+}
+
 // 失败原因专属hint(run_task的fail_reason直通, 未知原因回空串).
 // 与三级线索正交: tier管"说多细", hint管"往哪看".
 inline const char* hintFor(const char* reason) {

@@ -118,7 +118,7 @@ void CampaignPanel::draw(sf::RenderTarget& win) {
     text(win, std::string("RUNNING ") + run_label_ + " ...", x0 + 10, y, 12,
          sf::Color(255, 220, 80));
   else
-    text(win, "[/]选关  [Enter]跑本关", x0 + 10, y, 12, sf::Color(150, 150, 150));
+    text(win, "[/]选关  [Enter]跑本关  [B]反面演示", x0 + 10, y, 12, sf::Color(150, 150, 150));
   y += 22;
   if (!toast_.empty())
     for (auto& ln : wrap(toast_, 11, w - 20)) {

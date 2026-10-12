@@ -36,6 +36,13 @@ int main(){
   auto cards = c.cards();
   REQ(cards.size() == 7);
   for (size_t i = 0; i < ls.size(); i++) REQ(!std::strcmp(cards[i].id, ls[i].card.id));
+  // 反面演示必败: 每关badLoadout都失败(失败分支UI的数据地基)
+  for (size_t i = 0; i < ts.size(); i++) {
+    Loadout bad = badLoadout(ts[i].id);
+    Metrics b = run_task(ts[i], bad);
+    printf("  [bad L%d] ok=%d why=%s\n", ts[i].id, (int)b.success, b.fail_reason);
+    REQ(!b.success);
+  }
   printf("ALL PLAYTHROUGH TESTS PASSED (7/7 novice full clear)\n");
   return 0;
 }
