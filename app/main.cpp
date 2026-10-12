@@ -71,6 +71,7 @@ int main() {
   };
   CampaignPanel cpanel;
   cpanel.init();
+  cpanel.setVisible(true);  // 开机即显: 战役是主线, 不能藏在N后面等玩家发现
   std::future<task::Metrics> run_fut;
   int run_task_id = 0;
   bool running = false;
@@ -126,7 +127,10 @@ int main() {
       task::TaskConfig cfg{0};
       for (auto& t : task::allTasks())
         if (t.id == run_task_id) cfg = t;
-      task::Loadout lo = camp::suggestedLoadout(run_task_id);
+      // 玩家亲手调的PID/DWA/h_w叠上去: 默认值=答案(行为不变), 调废真失败
+      task::Loadout lo =
+          camp::mergePlayerTuning(camp::suggestedLoadout(run_task_id), sim.pid(),
+                                  sim.dwaWeights(), sim.hw());
       run_fut = std::async(std::launch::async, [cfg, lo]() { return task::run_task(cfg, lo); });
     }
     // B反面演示: 跑本关的必败配置, 看失败+诊断(同样走结算, 失败数+1线索升级)

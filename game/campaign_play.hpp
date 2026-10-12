@@ -1,6 +1,7 @@
 #pragma once
 #include "campaign.hpp"
 #include "task.hpp"
+#include "../core/pid.hpp"
 #include <cstring>
 // M5 glue(Core,无图形): 把clue3变成机器可读的标准答案, 把选关/失败计数/结算收成可测状态机.
 // app只做渲染+后台线程调run_task, 结算逻辑全在这里.
@@ -21,7 +22,20 @@ inline task::Loadout suggestedLoadout(int t) {
   return lo;
 }
 
+// Enter开跑用的最终loadout: 关卡标准答案为底, 叠加玩家在playground亲手调的
+// 三项(PID/DWA/h_w). 默认值与答案一致, 不调参行为不变; 调废了真会失败,
+// 这就是"练的手艺有用"的咬合点. 其余项(lidar/slip/fog/...)归关卡, 不让串台.
+inline task::Loadout mergePlayerTuning(task::Loadout base, const sim::PID& pid,
+                                       const sim::DwaWeights& dwt, double hw) {
+  base.kp = pid.kp();
+  base.ki = pid.ki();
+  base.kd = pid.kd();
+  base.dwa = dwt;
+  base.h_weight = hw;
+  return base;
+}
 // 每关的反面演示loadout(必败, 与各关对比实验同源, 给玩家看失败+诊断用).
+// 注意B反面演示故意不用玩家调参(看标准失败), Enter才叠调参.
 inline task::Loadout badLoadout(int t) {
   task::Loadout lo;
   if (t == 1 || t == 3 || t == 5) {

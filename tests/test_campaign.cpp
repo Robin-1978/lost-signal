@@ -77,6 +77,16 @@ int main(){
     auto f = suggestedLoadout(7);
     REQ(f.fog && f.unknown_free && f.replan);
     printf("[ok] suggested loadouts\n"); }
+  // 8. merge玩家调参: 默认值=答案(行为不变), 只动三项, 关卡项不串台
+  { sim::PID pid(2.0, 0.2, 0.15, 0.6, 2.0);
+    sim::DwaWeights dwt{1.0, 2.0, 0.3};
+    auto m = mergePlayerTuning(suggestedLoadout(6), pid, dwt, 1.5);
+    REQ(m.use_dwa && m.kp == 2.0 && m.dwa.w_clear == 2.0 && m.h_weight == 1.5);
+    sim::PID zero(0, 0, 0, 0.6, 2.0);
+    auto z = mergePlayerTuning(suggestedLoadout(1), zero, dwt, 1.5);
+    REQ(z.kp == 0 && z.ki == 0 && z.kd == 0);
+    REQ(z.has_lidar && !z.use_dwa);  // 关卡项原样保留
+    printf("[ok] merge tuning\n"); }
   // 8. UTF-8回归: SFML2的std::string隐转按ANSI解码, C locale下中文逐字节误读
   // (战役面板tofu根因). 只测纯字符串转换, 不建GL上下文, headless可跑.
   { sf::String u = sf::String::fromUtf8("醒来", "醒来" + 6);

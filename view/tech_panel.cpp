@@ -65,24 +65,25 @@ void TechPanel::draw(sf::RenderWindow& win){
   text(win,"T/G wg  Y/H wc  U/J ws",px0+10,340,11,sf::Color(150,150,150));
   text(win,"0 tele  1 PID  2 Astar  3 DWA  4 Odom  R reset",px0+10,364,11,sf::Color(255,200,100));
   text(win,"L lidar C slip K kidnap O fog P trail",px0+10,380,11,sf::Color(255,200,100));
+  text(win,"N campaign  [/]level  Enter run  B baddemo",px0+10,394,11,sf::Color(255,200,100));
   // Loc
-  text(win,"-- percept/loc --",px0+10,404,12,sf::Color::Green);
+  text(win,"-- percept/loc --",px0+10,420,12,sf::Color::Green);
   snprintf(b,sizeof b,"drift=%.2fm slip=x%.0f nz=%.2f n=%d",drift_,slip_,lidar_noise_,nrays_);
-  text(win,b,px0+10,422,12, drift_>1.0?sf::Color::Red:sf::Color::White);
-  text(win,"cyan=true red=odom",px0+10,440,11,sf::Color(150,150,150));
+  text(win,b,px0+10,438,12, drift_>1.0?sf::Color::Red:sf::Color::White);
+  text(win,"cyan=true red=odom",px0+10,454,11,sf::Color(150,150,150));
   snprintf(b,sizeof b,"dyn nearest=%.2fm",dyn_nearest_);
-  text(win,b,px0+10,456,12, dyn_nearest_<0.8?sf::Color::Red:sf::Color::White);
-  text(win,"tradeoff:",px0+10,482,11,sf::Color::Yellow);
-  text(win,"h_w up: faster, longer path",px0+10,498,11);
-  text(win,"wc up: safer, slower/shy",px0+10,514,11);
-  text(win,"Kd up: less overshoot,",px0+10,530,11);
-  text(win,"  too big: oscillation",px0+10,546,11);
+  text(win,b,px0+10,470,12, dyn_nearest_<0.8?sf::Color::Red:sf::Color::White);
+  text(win,"tradeoff:",px0+10,496,11,sf::Color::Yellow);
+  text(win,"h_w up: faster, longer path",px0+10,512,11);
+  text(win,"wc up: safer, slower/shy",px0+10,528,11);
+  text(win,"Kd up: less overshoot,",px0+10,544,11);
+  text(win,"  too big: oscillation",px0+10,560,11);
   // Events
-  text(win,"-- events --",px0+10,570,12,sf::Color::Green);
+  text(win,"-- events --",px0+10,584,12,sf::Color::Green);
   size_t e0=ev_show_.size()>8?ev_show_.size()-8:0;
   int row=0;
   for(size_t i=e0;i<ev_show_.size();i++,row++){
     snprintf(b,sizeof b,"%.1fs %s %.2f",ev_show_[i].t,sim::ev_name(ev_show_[i].code),ev_show_[i].aux);
-    text(win,b,px0+10,588+row*15,11,sf::Color(255,210,150));
+    text(win,b,px0+10,602+row*15,11,sf::Color(255,210,150));
   }
 }

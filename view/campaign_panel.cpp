@@ -82,6 +82,23 @@ void CampaignPanel::draw(sf::RenderTarget& win) {
     text(win, row, x0 + 10, y, 12, c);
     y += 19;
   }
+  {  // 已获知识卡(重读入口, toast一闪而过, 这里常驻)
+    auto cards = st_->cards();
+    char ch[32];
+    snprintf(ch, sizeof ch, "-- cards %zu/%zu --", cards.size(), ls_->size());
+    text(win, ch, x0 + 10, y, 12, sf::Color(140, 200, 255));
+    y += 20;
+    std::string t;
+    for (size_t i = 0; i < cards.size(); i++) {
+      if (i) t += " / ";
+      t += cards[i].title;
+    }
+    if (t.empty()) t = "(通关掉落, 常驻可查)";
+    for (auto& ln : wrap(t, 11, w - 20)) {
+      text(win, ln, x0 + 10, y, 11, sf::Color(140, 200, 255));
+      y += 16;
+    }
+  }
   y += 6;
   char f[64];
   snprintf(f, sizeof f, "-- briefing (fail %d) --", fails_);
