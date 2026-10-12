@@ -48,7 +48,7 @@ struct Metrics {
   size_t n_events{0};
 };
 sim::GridMap buildTaskMap(MapKind k);
-std::vector<TaskConfig> allTasks(); // 6关MVP链
+std::vector<TaskConfig> allTasks(); // 7关MVP链
 // rec/ev可选: 非空则记录逐步指令与事件(View/测试用, 不影响仿真行为)
 Metrics run_task(const TaskConfig& cfg, const Loadout& lo, sim::Recorder* rec=nullptr, sim::EventLog* ev=nullptr);
 }
