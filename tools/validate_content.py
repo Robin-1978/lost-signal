@@ -454,6 +454,31 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     f"{doc.path}:/garage/{field}: build cost exceeds level budget"
                 )
 
+    # DIY unlock chain: official builds may only use parts the player can own
+    # by then (starting inventory plus component rewards of earlier levels).
+    presentation_by_level = {doc.data["level"]: doc.data for doc in presentations}
+    owned: set[str] = set(campaign.data["starting_inventory"])
+    for level_id in campaign.data["levels"]:
+        presentation = presentation_by_level.get(level_id)
+        if presentation is None:
+            raise ContentError(f"{root / 'presentation'}: missing presentation for '{level_id}'")
+        for field in ("default_build", "recommended_build"):
+            build = presentation["garage"][field]
+            for slot in ("tires", "sensor", "computer"):
+                component_id = build.get(slot)
+                if component_id and component_id not in owned:
+                    raise ContentError(
+                        f"{level_id}:/garage/{field}/{slot}: '{component_id}' "
+                        f"is not owned yet (no earlier reward grants it)"
+                    )
+        for reward in level_by_id[level_id].data.get("rewards", []):
+            if reward in components:
+                owned.add(reward)
+            elif not (reward.startswith("ability.") or reward.startswith("story.")):
+                raise ContentError(
+                    f"{level_id}:/rewards: unknown reward '{reward}'"
+                )
+
     if presentation_levels != set(level_by_id):
         missing = sorted(set(level_by_id) - presentation_levels)
         raise ContentError(

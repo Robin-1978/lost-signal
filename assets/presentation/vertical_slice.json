@@ -13,7 +13,9 @@
         "options": [
           "tires.standard",
           "tires.grip",
-          "tires.eco"
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
         ]
       },
       {

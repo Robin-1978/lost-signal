@@ -15,7 +15,7 @@ int main() {
  CHECK(catalog.campaign().companion_name == "洛一");
  CHECK(catalog.campaign().levels.size() == 5);
  CHECK(catalog.levels().size() == 5);
- CHECK(catalog.components().size() == 8);
+ CHECK(catalog.components().size() == 10);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 1);
  CHECK(catalog.scenes().size() == 1);

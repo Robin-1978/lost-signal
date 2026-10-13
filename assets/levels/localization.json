@@ -40,6 +40,9 @@
   },
   "rewards": [
     "ability.localization",
-    "ability.map"
+    "ability.map",
+    "computer.performance",
+    "tires.sand",
+    "tires.slick"
   ]
 }

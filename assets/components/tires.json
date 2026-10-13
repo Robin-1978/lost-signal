@@ -70,6 +70,52 @@
         "color": "#2A3939",
         "model_3d": "models/robots/ro1/wheel_eco.glb"
       }
+    },
+    {
+      "id": "tires.sand",
+      "title": "沙地宽胎",
+      "description": "松软地面抓地强，硬地费电。",
+      "cost": 3,
+      "behavior": {
+        "slip_scale": 0.3,
+        "brake_decel_mps2": 4.0,
+        "power_scale": 1.3,
+        "friction_mu": 1.0,
+        "rolling_resistance": 0.02
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.24,
+          0.14,
+          0.13
+        ],
+        "color": "#4A3B22",
+        "model_3d": "models/robots/ro1/wheel_grip.glb"
+      }
+    },
+    {
+      "id": "tires.slick",
+      "title": "竞速光头胎",
+      "description": "硬地极速省电，湿滑地面拉胯。",
+      "cost": 2,
+      "behavior": {
+        "slip_scale": 0.8,
+        "brake_decel_mps2": 3.4,
+        "power_scale": 0.7,
+        "friction_mu": 0.65,
+        "rolling_resistance": 0.005
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.2,
+          0.09,
+          0.11
+        ],
+        "color": "#1A1E20",
+        "model_3d": "models/robots/ro1/wheel_eco.glb"
+      }
     }
   ]
 }
