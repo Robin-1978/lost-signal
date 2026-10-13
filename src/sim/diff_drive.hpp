@@ -1,7 +1,7 @@
 #pragma once
 namespace sim {
-// 差速底盘(MVP主力车型): 双轮差速, 可原地转向/倒车.
-// 与Bicycle区别: 无最小转弯半径限制, 但w大了易甩尾——odom滑移噪声会放大.
+// 差速底盘(MVP车型): 双轮差速, 可原地转向/倒车, 无最小转弯半径限制.
+// w 过大易甩尾, 里程计滑移噪声会放大(见 motor_drive 牵引力钳制).
 struct DiffState {
  double x{0}, y{0}, theta{0}, v{0}, w{0};
 };

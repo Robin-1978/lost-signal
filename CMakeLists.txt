@@ -21,7 +21,6 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 add_library(lost_signal_sim STATIC
  src/sim/astar.cpp
- src/sim/bicycle.cpp
  src/sim/diff_drive.cpp
  src/sim/dynamic_obstacle_map.cpp
  src/sim/dwa.cpp

@@ -1,21 +1,12 @@
 #pragma once
 #include "math.hpp"
 #include "grid_map.hpp"
-#include "bicycle.hpp"
 #include "pid.hpp"
 #include <vector>
 #include <cmath>
-// 路径跟随共用逻辑(Core,可测).
-// 关键修正: 自行车最小转弯半径 R=L/tan(delta_max)~2.9m, 不能追最近航点(0.5m间距),
-// 必须用前视Ld纯追踪 + 弯道速度调度, 否则恒速PID必然绕圈/穿墙. 这本身就是教学点.
+// 路径跟随共用逻辑: 前视 Ld 纯追踪 + 弯道速度调度 + 倒车迟滞,
+// 由 guide_step 统一服务差速底盘(输出目标角速度, 不冒充电机 PWM).
 namespace sim {
-struct FollowOut {
- double err{0};
- double steer{0};
- double v{0};
- bool reached{false};
- bool blocked{false};
-};
 // 把idx推过已接近 / 已越过(跑到身后)的航点. 后者治"目标在身后死循环".
 // 开头先做前向重同步: 若窗口内有明显更近的后续点(切弯/跟丢), 直接跳过去, 防止la乱指.
 // 只允许前进(idx只增), 回退靠倒车恢复, 不靠idx回拨.
@@ -147,18 +138,5 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
   tv = sched_v(err, cruise);
  }
  return {err, steer, tv, false};
-}
-// map做碰撞guard.
-inline FollowOut follow_step(const std::vector<Vec2>& path, GuideState& st, Bicycle& bike, BikeState& bs_true,
-                             PID& pid, double ex, double ey, double eth, double Ld, double cruise, double dt,
-                             const GridMap& truth, const GridMap& cost) {
- GuideOut g = guide_step(path, st, ex, ey, eth, pid, Ld, cruise, dt, cost);
- if (g.reached)
-  return {0, 0, 0, true, false};
- BikeState cand = bike.step(bs_true, {g.tv, g.steer}, dt);
- if (!truth.isFree(cand.x, cand.y))
-  return {g.err, g.steer, g.tv, false, true};
- bs_true = cand;
- return {g.err, g.steer, g.tv, false, false};
 }
 } // namespace sim
