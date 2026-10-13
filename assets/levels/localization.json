@@ -17,7 +17,8 @@
     "goal_label": "定位校准台",
     "goal_visual": "calibration_pad",
     "time_limit_s": 80,
-    "max_collisions": 0
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
   },
   "loadout_rules": {
     "budget": 5,
@@ -33,7 +34,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.5,
- "max_localization_error_m": 0.025,
+    "max_localization_error_m": 0.025,
     "fast_time_s": 50,
     "efficient_energy_wh": 14
   },

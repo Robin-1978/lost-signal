@@ -60,7 +60,14 @@ int main() {
  CHECK(presentation.level == "boot");
  CHECK(presentation.default_build.sensor.empty());
  CHECK(presentation.default_build.computer.empty());
+ CHECK(std::abs(presentation.default_build.style - 0.5) < 1e-12);
+ CHECK(catalog.policies().size() == 3);
+ CHECK(std::abs(catalog.policy("policy.careful").style_anchor - 0.0) < 1e-12);
+ CHECK(std::abs(catalog.policy("policy.balanced").style_anchor - 0.5) < 1e-12);
+ CHECK(std::abs(catalog.policy("policy.swift").style_anchor - 1.0) < 1e-12);
  const auto& final_presentation = catalog.presentation_for_level("lost_signal");
+ CHECK(std::abs(final_presentation.recommended_build.style - 0.0) < 1e-12);
+ CHECK(std::abs(final_presentation.default_build.style - 1.0) < 1e-12);
  CHECK(catalog.build_cost(final_presentation.default_build) <= level.budget);
  CHECK(catalog.build_cost(final_presentation.recommended_build) <= level.budget);
  return 0;

@@ -67,17 +67,21 @@ int main() {
   CHECK(std::abs(left - 0.74) < 1e-12);
   CHECK(std::abs(right - 1.26) < 1e-12);
 
+  const sim::WheelPidGains test_gains = sim::tune_wheel_pid(12.0, 54.0, 3.0, 1.2);
+  CHECK(test_gains.kp > 1.0);
+  CHECK(test_gains.kp < 4.0);
   sim::DifferentialMotorDrive motors({
-  0.52, 0.10, 2.4, 4.2, 2048, 1.8, 0.35, 0.01,
-  });
+  0.52, 0.10, 2.4, 4.2, 54.0, 3.0, 24.0, 2.4, 2048, 1.0, 2.0,
+  }, test_gains);
+  const sim::GroundContact test_ground{0.7, 0.01, 4.2};
   sim::DiffState driven;
-  driven = motors.step(driven, {1.0, 0.6}, 0.02);
+  driven = motors.step(driven, {1.0, 0.6}, 0.02, test_ground);
   CHECK(motors.telemetry().left.pwm > 0.0);
   CHECK(motors.telemetry().right.target_mps > motors.telemetry().left.target_mps);
   CHECK(std::abs(motors.telemetry().left.pwm) <= 1.0);
   CHECK(std::abs(motors.telemetry().right.pwm) <= 1.0);
   for (int step = 0; step < 100; ++step) {
-  driven = motors.step(driven, {1.0, 0.6}, 0.02);
+  driven = motors.step(driven, {1.0, 0.6}, 0.02, test_ground);
   }
   CHECK(driven.v > 0.7);
   CHECK(driven.w > 0.2);

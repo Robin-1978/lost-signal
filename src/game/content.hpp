@@ -43,6 +43,10 @@ struct SurfaceDefinition {
     sim::Vec2 min;
     sim::Vec2 max;
     double traction_scale{1.0};
+    std::string material;
+    std::string label;
+    double friction_mu{0.8};
+    double rolling_drag{0.0};
 };
 
 struct ActorDefinition {
@@ -171,6 +175,8 @@ struct ObjectiveDefinition {
  std::string goal_visual;
     double time_limit_s{60.0};
     int max_collisions{0};
+    double arrive_tolerance_m{0.62};
+    double via_radius_m{1.25};
 };
 
 struct LevelDefinition {
@@ -225,9 +231,10 @@ struct RobotSlotDefinition {
 struct MotorDefinition {
  double max_wheel_speed_mps{0.0};
  double max_wheel_accel_mps2{0.0};
- double speed_pid_kp{0.0};
- double speed_pid_ki{0.0};
- double speed_pid_kd{0.0};
+ double stall_force_N{0.0};
+ double free_speed_mps{0.0};
+ double pwm_limit{1.0};
+ double integral_limit{2.0};
 };
 
 struct EncoderDefinition {
@@ -240,7 +247,13 @@ struct RobotDefinition {
  std::string drive_type;
  double wheel_radius_m{0.0};
  double wheel_base_m{0.0};
+ double mass_kg{0.0};
+ double yaw_inertia_kgm2{0.0};
  MotorDefinition motor;
+ double steering_integral_limit{1.2};
+ double energy_base_w{0.0};
+ double energy_per_v_w{0.0};
+ double energy_per_w_w{0.0};
  EncoderDefinition encoder;
  double collision_radius_m{0.0};
  double collision_height_m{0.0};
@@ -253,6 +266,7 @@ struct PolicyDefinition {
     std::string id;
     std::string title;
     std::string description;
+    double style_anchor{0.5};
     Properties behavior;
 };
 
@@ -260,7 +274,7 @@ struct BuildSelection {
     std::string tires;
     std::string sensor;
     std::string computer;
-    std::string policy;
+    double style{0.5};
 };
 
 struct ComponentColumn {

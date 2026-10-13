@@ -17,7 +17,8 @@
     "goal_label": "玻璃门前安全区",
     "goal_visual": "stop_zone",
     "time_limit_s": 60,
-    "max_collisions": 0
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.35
   },
   "loadout_rules": {
     "budget": 5,

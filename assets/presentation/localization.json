@@ -7,20 +7,56 @@
     "heading": "穿过湿滑的维修区",
     "brief": "洛一会用轮子转过的距离估计自己在哪里。选择轮胎，看看打滑怎样让估计位置偏离真实位置。",
     "component_columns": [
-      {"slot": "tires", "title": "驱动轮胎", "options": ["tires.standard", "tires.grip", "tires.eco"]},
-      {"slot": "sensor", "title": "距离雷达", "options": ["sensor.short_fast_lidar", "sensor.standard_lidar", "sensor.long_slow_lidar"]}
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      }
     ],
-    "policy_title": "驾驶倾向",
-    "policies": ["policy.careful", "policy.balanced", "policy.swift"],
-    "default_build": {"tires": "tires.eco", "sensor": "sensor.standard_lidar", "policy": "policy.swift"},
-    "recommended_build": {"tires": "tires.grip", "sensor": "sensor.standard_lidar", "policy": "policy.careful"}
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.standard_lidar",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.standard_lidar",
+      "style": 0.0
+    }
   },
   "prediction": {
     "heading": "轮子打滑后，位置还准吗？",
     "hint": "认知视图中的估计轨迹来自轮速，现场位置来自真实运动。",
     "choices": [
-      {"id": "localization.perfect", "text": "轮速永远等于真实位移", "feedback": "在湿滑地面上，轮子转动并不保证机身移动了同样距离。"},
-      {"id": "localization.drift", "text": "误差会一路累积", "feedback": "记录这个判断。按 Tab 打开认知视图，比较估计位置与真实位置。"}
+      {
+        "id": "localization.perfect",
+        "text": "轮速永远等于真实位移",
+        "feedback": "在湿滑地面上，轮子转动并不保证机身移动了同样距离。"
+      },
+      {
+        "id": "localization.drift",
+        "text": "误差会一路累积",
+        "feedback": "记录这个判断。按 Tab 打开认知视图，比较估计位置与真实位置。"
+      }
     ]
   },
   "running": {

@@ -51,7 +51,8 @@ private:
  void build_running(const game::MissionSimulation* mission);
  void build_debrief(const game::MissionSimulation* mission);
  void cycle_component(const std::string& slot);
- void cycle_policy();
+ void set_style(double style);
+ void update_style_label();
  void update_garage_labels();
  bool is_unlocked(const game::LevelDefinition& level) const;
  std::string next_level_id() const;
@@ -74,7 +75,8 @@ private:
  std::string prediction_choice_;
  std::unordered_set<std::string> completed_levels_;
  std::unordered_map<std::string, tgui::Button::Ptr> slot_buttons_;
- tgui::Button::Ptr policy_button_;
+ tgui::Slider::Ptr style_slider_;
+ tgui::Label::Ptr style_value_;
  tgui::Label::Ptr budget_label_;
  tgui::Label::Ptr running_metrics_;
  tgui::Label::Ptr running_state_;

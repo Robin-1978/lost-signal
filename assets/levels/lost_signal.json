@@ -19,7 +19,9 @@
     "goal_label": "信号塔",
     "goal_visual": "signal_tower",
     "time_limit_s": 150,
-    "max_collisions": 0
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
   },
   "loadout_rules": {
     "budget": 6,

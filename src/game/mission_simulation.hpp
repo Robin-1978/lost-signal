@@ -155,6 +155,8 @@ private:
  double static_clearance(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
  double decision_hz() const;
+ double track_max_age_s() const;
+ sim::GroundContact wheel_ground(sim::Vec2 position) const;
 
  const ContentCatalog& catalog_;
  std::string level_id_;
@@ -165,13 +167,14 @@ private:
  const ComponentDefinition& tires_;
  const ComponentDefinition* sensor_{nullptr};
  const ComponentDefinition* computer_{nullptr};
- const PolicyDefinition& policy_;
+ // Continuous driving style, piecewise-interpolated across the policy anchors.
+ Properties behavior_;
 
  std::unique_ptr<sim::GridMap> truth_map_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<sim::GridMap> planning_map_;
  std::unique_ptr<sim::DiffDrive> drive_;
-  std::unique_ptr<sim::DifferentialMotorDrive> motor_drive_;
+  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::PID> heading_pid_;
  sim::DeadReckon odometry_;
  sim::Rng rng_;

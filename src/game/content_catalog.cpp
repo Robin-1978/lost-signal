@@ -97,7 +97,7 @@ BuildSelection build(const json& value) {
  value.value("tires", std::string{}),
  value.value("sensor", std::string{}),
  value.value("computer", std::string{}),
-        value.at("policy").get<std::string>(),
+        value.at("style").get<double>(),
     };
 }
 
@@ -180,6 +180,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  objective.at("goal_visual").get<std::string>(),
             objective.at("time_limit_s").get<double>(),
             objective.at("max_collisions").get<int>(),
+            objective.at("arrive_tolerance_m").get<double>(),
+            objective.value("via_radius_m", 1.25),
         };
         level.budget = loadout.at("budget").get<int>();
         level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
@@ -211,7 +213,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
         for (const auto& item : value.at("surfaces")) {
             map.surfaces.push_back({
                 item.at("id").get<std::string>(), vec2(item.at("min")), vec2(item.at("max")),
-                item.at("traction_scale").get<double>(),
+                item.at("traction_scale").get<double>(), item.at("material").get<std::string>(),
+                item.at("label").get<std::string>(), item.at("friction_mu").get<double>(),
+                item.at("rolling_drag").get<double>(),
             });
         }
         for (auto it = value.at("markers").begin(); it != value.at("markers").end(); ++it) {
@@ -399,7 +403,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
             for (const auto& item : value.at("policies")) {
                 PolicyDefinition policy{
                     item.at("id").get<std::string>(), item.at("title").get<std::string>(),
-                    item.at("description").get<std::string>(), properties(item.at("behavior")),
+                    item.at("description").get<std::string>(), item.at("style").get<double>(),
+                    properties(item.at("behavior")),
                 };
                 insert_unique(catalog.policies_, std::move(policy), path);
             }
@@ -422,7 +427,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  require_schema_v1(value, path);
  const auto& drive = value.at("drive");
 	 const auto& motor = drive.at("motor");
-	 const auto& speed_pid = motor.at("speed_pid");
+	 const auto& steering = drive.at("steering");
+	 const auto& energy = drive.at("energy");
 	 const auto& encoder = drive.at("encoder");
  const auto& collision = value.at("collision");
  RobotDefinition robot;
@@ -434,10 +440,17 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
 	 robot.motor = {
 	 motor.at("max_wheel_speed_mps").get<double>(),
 	 motor.at("max_wheel_accel_mps2").get<double>(),
-	 speed_pid.at("kp").get<double>(),
-	 speed_pid.at("ki").get<double>(),
-	 speed_pid.at("kd").get<double>(),
+	 motor.at("stall_force_N").get<double>(),
+	 motor.at("free_speed_mps").get<double>(),
+	 motor.at("pwm_limit").get<double>(),
+	 motor.at("integral_limit").get<double>(),
 	 };
+	 robot.mass_kg = drive.at("mass_kg").get<double>();
+	 robot.yaw_inertia_kgm2 = drive.at("yaw_inertia_kgm2").get<double>();
+	 robot.steering_integral_limit = steering.at("integral_limit").get<double>();
+	 robot.energy_base_w = energy.at("base_w").get<double>();
+	 robot.energy_per_v_w = energy.at("per_v_w").get<double>();
+	 robot.energy_per_w_w = energy.at("per_w_w").get<double>();
 	 robot.encoder = {encoder.at("counts_per_revolution").get<int>()};
  robot.collision_radius_m = collision.at("radius_m").get<double>();
  robot.collision_height_m = collision.at("height_m").get<double>();
@@ -710,10 +723,59 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
             throw ContentError("component '" + *id + "' does not belong in slot '" + slot + "'");
         }
     }
-    (void)policy(build.policy);
+    (void)build.tires;
+    if (!(build.style >= 0.0 && build.style <= 1.0)) {
+        throw ContentError("driving style must be within [0, 1]");
+    }
     if (build_cost(build) > level_value.budget) {
         throw ContentError("selected build exceeds level budget");
     }
+}
+
+
+Properties ContentCatalog::style_behavior(double style) const {
+ std::vector<const PolicyDefinition*> anchors;
+ for (const auto& [id, policy] : policies_) {
+ (void)id;
+ anchors.push_back(&policy);
+ }
+ if (anchors.empty()) {
+ throw ContentError("no driving style anchors");
+ }
+ std::sort(anchors.begin(), anchors.end(), [](const PolicyDefinition* left, const PolicyDefinition* right) {
+ return left->style_anchor < right->style_anchor;
+ });
+ const double clamped = std::clamp(style, anchors.front()->style_anchor, anchors.back()->style_anchor);
+ const PolicyDefinition* lower = anchors.front();
+ const PolicyDefinition* upper = anchors.back();
+ for (std::size_t index = 0; index + 1 < anchors.size(); ++index) {
+ if (clamped >= anchors[index]->style_anchor && clamped <= anchors[index + 1]->style_anchor) {
+ lower = anchors[index];
+ upper = anchors[index + 1];
+ break;
+ }
+ }
+ const double span = upper->style_anchor - lower->style_anchor;
+ const double mix = span > 0.0 ? (clamped - lower->style_anchor) / span : 0.0;
+ std::set<std::string> keys;
+ for (const auto& [name, value] : lower->behavior) {
+ (void)value;
+ keys.insert(name);
+ }
+ for (const auto& [name, value] : upper->behavior) {
+ (void)value;
+ keys.insert(name);
+ }
+ Properties result;
+ for (const auto& name : keys) {
+ const auto low = lower->behavior.find(name);
+ const auto high = upper->behavior.find(name);
+ const double low_value = low != lower->behavior.end() ? low->second
+ : high != upper->behavior.end() ? high->second : 0.0;
+ const double high_value = high != upper->behavior.end() ? high->second : low_value;
+ result.emplace(name, low_value + (high_value - low_value) * mix);
+ }
+ return result;
 }
 
 } // namespace game

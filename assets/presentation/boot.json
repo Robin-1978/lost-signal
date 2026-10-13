@@ -7,19 +7,45 @@
     "heading": "让洛一重新站起来",
     "brief": "维修架只恢复了基础运动。选择轮胎，观察指令、加速和制动怎样变成真实运动。",
     "component_columns": [
-      {"slot": "tires", "title": "驱动轮胎", "options": ["tires.standard", "tires.grip", "tires.eco"]}
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      }
     ],
-    "policy_title": "驾驶倾向",
-    "policies": ["policy.careful", "policy.balanced", "policy.swift"],
-    "default_build": {"tires": "tires.standard", "policy": "policy.balanced"},
-    "recommended_build": {"tires": "tires.standard", "policy": "policy.careful"}
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.standard",
+      "style": 0.0
+    }
   },
   "prediction": {
     "heading": "松开动力后会怎样？",
     "hint": "先做预测，再看洛一抵达出口时怎样减速。",
     "choices": [
-      {"id": "boot.stop.instant", "text": "立刻停在原地", "feedback": "轮子和机身都有惯性，速度需要经过一段时间才能降到零。"},
-      {"id": "boot.stop.distance", "text": "继续滑行一小段", "feedback": "记录这个判断。运行时注意洛一何时开始减速，以及不同轮胎的制动差异。"}
+      {
+        "id": "boot.stop.instant",
+        "text": "立刻停在原地",
+        "feedback": "轮子和机身都有惯性，速度需要经过一段时间才能降到零。"
+      },
+      {
+        "id": "boot.stop.distance",
+        "text": "继续滑行一小段",
+        "feedback": "记录这个判断。运行时注意洛一何时开始减速，以及不同轮胎的制动差异。"
+      }
     ]
   },
   "running": {

@@ -7,16 +7,44 @@
       "title": "轻量计算单元",
       "description": "省电，但重新判断移动物体的频率较低。",
       "cost": 1,
- "behavior": {"decision_hz": 2.0, "prediction_horizon_s": 1.2, "power_w": 18.0},
- "visual": {"primitive_2d": "box", "size_m": [0.22, 0.20, 0.10], "color": "#6D8CA3", "model_3d": "models/robots/ro1/compute_light.glb"}
+      "behavior": {
+        "decision_hz": 2.0,
+        "prediction_horizon_s": 1.2,
+        "power_w": 18.0,
+        "track_max_age_s": 1.25
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.22,
+          0.2,
+          0.1
+        ],
+        "color": "#6D8CA3",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
     },
     {
       "id": "computer.performance",
       "title": "性能计算单元",
       "description": "更频繁地更新预测，功耗也更高。",
       "cost": 2,
- "behavior": {"decision_hz": 10.0, "prediction_horizon_s": 3.5, "power_w": 35.0},
- "visual": {"primitive_2d": "box", "size_m": [0.25, 0.22, 0.12], "color": "#9C61F5", "model_3d": "models/robots/ro1/compute_performance.glb"}
+      "behavior": {
+        "decision_hz": 10.0,
+        "prediction_horizon_s": 3.5,
+        "power_w": 35.0,
+        "track_max_age_s": 1.25
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.25,
+          0.22,
+          0.12
+        ],
+        "color": "#9C61F5",
+        "model_3d": "models/robots/ro1/compute_performance.glb"
+      }
     }
   ]
 }

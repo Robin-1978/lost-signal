@@ -17,7 +17,8 @@
     "goal_label": "补给站",
     "goal_visual": "supply_station",
     "time_limit_s": 150,
-    "max_collisions": 0
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
   },
   "loadout_rules": {
     "budget": 6,

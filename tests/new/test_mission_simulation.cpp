@@ -102,6 +102,15 @@ int main() {
  CHECK(default_attempt.result().failure_reason == "collision-dynamic");
  CHECK(default_attempt.result().collisions == 1);
 
+ game::BuildSelection mid_style = build;
+ mid_style.style = 0.37;
+ game::MissionSimulation mid_first(catalog, "lost_signal", mid_style);
+ mid_first.run_to_completion();
+ CHECK(mid_first.result().status == game::MissionStatus::Succeeded);
+ game::MissionSimulation mid_second(catalog, "lost_signal", mid_style);
+ mid_second.run_to_completion();
+ CHECK(std::abs(mid_second.result().time_s - mid_first.result().time_s) < 1e-12);
+
  game::MissionSimulation second(catalog, "lost_signal", build);
  second.run_to_completion();
  CHECK(second.result().status == first.result().status);

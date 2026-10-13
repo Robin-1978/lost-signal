@@ -3,49 +3,230 @@
  "$id": "map.schema.json",
  "type": "object",
  "additionalProperties": false,
- "required": ["schema_version", "id", "scene_3d", "size_m", "grid_resolution_m", "obstacles", "surfaces", "markers", "actors"],
+ "required": [
+  "schema_version",
+  "id",
+  "scene_3d",
+  "size_m",
+  "grid_resolution_m",
+  "obstacles",
+  "surfaces",
+  "markers",
+  "actors"
+ ],
  "properties": {
- "schema_version": {"const": 1},
- "id": {"$ref": "#/$defs/id"},
- "scene_3d": {"$ref": "#/$defs/id"},
- "size_m": {"$ref": "#/$defs/positive_vec2"},
- "grid_resolution_m": {"type": "number", "exclusiveMinimum": 0},
- "obstacles": {"type": "array", "items": {"$ref": "#/$defs/box"}},
- "surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}},
- "markers": {
- "type": "object",
- "minProperties": 1,
- "propertyNames": {"$ref": "#/$defs/id"},
- "additionalProperties": {"$ref": "#/$defs/pose"}
- },
- "actors": {"type": "array", "items": {"$ref": "#/$defs/actor"}}
+  "schema_version": {
+   "const": 1
+  },
+  "id": {
+   "$ref": "#/$defs/id"
+  },
+  "scene_3d": {
+   "$ref": "#/$defs/id"
+  },
+  "size_m": {
+   "$ref": "#/$defs/positive_vec2"
+  },
+  "grid_resolution_m": {
+   "type": "number",
+   "exclusiveMinimum": 0
+  },
+  "obstacles": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/box"
+   }
+  },
+  "surfaces": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/surface"
+   }
+  },
+  "markers": {
+   "type": "object",
+   "minProperties": 1,
+   "propertyNames": {
+    "$ref": "#/$defs/id"
+   },
+   "additionalProperties": {
+    "$ref": "#/$defs/pose"
+   }
+  },
+  "actors": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/actor"
+   }
+  }
  },
  "$defs": {
- "id": {"type": "string", "pattern": "^[a-z0-9_.-]+$"},
- "vec2": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}], "items": false},
- "positive_vec2": {"type": "array", "prefixItems": [{"type": "number", "exclusiveMinimum": 0}, {"type": "number", "exclusiveMinimum": 0}], "items": false},
- "pose": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number"}], "items": false},
- "active": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
- "box": {
- "type": "object", "additionalProperties": false,
- "required": ["id", "type", "min", "max"],
- "properties": {"id": {"$ref": "#/$defs/id"}, "type": {"const": "box"}, "min": {"$ref": "#/$defs/vec2"}, "max": {"$ref": "#/$defs/vec2"}, "active_in": {"$ref": "#/$defs/active"}}
- },
- "surface": {
- "type": "object", "additionalProperties": false,
- "required": ["id", "type", "min", "max", "traction_scale"],
- "properties": {"id": {"$ref": "#/$defs/id"}, "type": {"const": "box"}, "min": {"$ref": "#/$defs/vec2"}, "max": {"$ref": "#/$defs/vec2"}, "traction_scale": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}}
- },
- "actor": {
- "type": "object", "additionalProperties": false,
- "required": ["id", "type", "path", "speed_mps", "radius_m", "active_in"],
- "properties": {
- "id": {"$ref": "#/$defs/id"}, "type": {"const": "patrol"},
- "path": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/vec2"}},
- "speed_mps": {"type": "number", "exclusiveMinimum": 0},
- "radius_m": {"type": "number", "exclusiveMinimum": 0},
- "active_in": {"$ref": "#/$defs/active"}
- }
- }
+  "id": {
+   "type": "string",
+   "pattern": "^[a-z0-9_.-]+$"
+  },
+  "vec2": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "type": "number"
+    },
+    {
+     "type": "number"
+    }
+   ],
+   "items": false
+  },
+  "positive_vec2": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    {
+     "type": "number",
+     "exclusiveMinimum": 0
+    }
+   ],
+   "items": false
+  },
+  "pose": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "type": "number"
+    },
+    {
+     "type": "number"
+    },
+    {
+     "type": "number"
+    }
+   ],
+   "items": false
+  },
+  "active": {
+   "type": "array",
+   "uniqueItems": true,
+   "items": {
+    "$ref": "#/$defs/id"
+   }
+  },
+  "box": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "type",
+    "min",
+    "max"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "type": {
+     "const": "box"
+    },
+    "min": {
+     "$ref": "#/$defs/vec2"
+    },
+    "max": {
+     "$ref": "#/$defs/vec2"
+    },
+    "active_in": {
+     "$ref": "#/$defs/active"
+    }
+   }
+  },
+  "surface": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "type",
+    "min",
+    "max",
+    "traction_scale",
+    "material",
+    "label",
+    "friction_mu",
+    "rolling_drag"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "type": {
+     "const": "box"
+    },
+    "min": {
+     "$ref": "#/$defs/vec2"
+    },
+    "max": {
+     "$ref": "#/$defs/vec2"
+    },
+    "traction_scale": {
+     "type": "number",
+     "exclusiveMinimum": 0,
+     "maximum": 1
+    },
+    "material": {
+     "type": "string",
+     "minLength": 1
+    },
+    "label": {
+     "type": "string",
+     "minLength": 1
+    },
+    "friction_mu": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "rolling_drag": {
+     "type": "number",
+     "minimum": 0
+    }
+   }
+  },
+  "actor": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "type",
+    "path",
+    "speed_mps",
+    "radius_m",
+    "active_in"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "type": {
+     "const": "patrol"
+    },
+    "path": {
+     "type": "array",
+     "minItems": 2,
+     "items": {
+      "$ref": "#/$defs/vec2"
+     }
+    },
+    "speed_mps": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "radius_m": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "active_in": {
+     "$ref": "#/$defs/active"
+    }
+   }
+  }
  }
 }

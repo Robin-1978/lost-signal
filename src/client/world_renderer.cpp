@@ -289,7 +289,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  }
  DrawRectangleRounded({box.x + 10, box.y + 10, 87, 24}, 0.45f, 8, {20, 29, 28, 195});
  DrawCircleV({box.x + 23, box.y + 22}, 4, {104, 198, 184, 220});
- draw_text("湿滑地面", {box.x + 34, box.y + 15}, 12, Fade(kText, 0.78f));
+ draw_text(surface.label, {box.x + 34, box.y + 15}, 12, Fade(kText, 0.78f));
  }
  for (const auto& actor : map.actors) {
  if (!game::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2) continue;
@@ -531,7 +531,7 @@ EndScissorMode();
   draw_text("上层航向 e " + fixed(control.heading_error_rad, 2) + " rad · v "
   + fixed(control.target_v_mps, 2) + " · ω " + fixed(control.target_w_radps, 2),
   {card.x + 15, card.y + 58}, 12, Fade(kText, 0.82f));
-  draw_text("轮速 PID · 编码器闭环", {card.x + 15, card.y + 80}, 11,
+  draw_text("左右轮 · 目标/实测", {card.x + 15, card.y + 80}, 11,
   Fade(kMuted, 0.82f));
   draw_text("L 目标 " + fixed(control.left_target_rpm, 0) + " / 实测 "
   + fixed(control.left_measured_rpm, 0) + " rpm · PWM "

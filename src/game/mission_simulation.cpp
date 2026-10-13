@@ -10,8 +10,6 @@
 namespace game {
 namespace {
 
-constexpr double kGoalToleranceM = 0.62;
-constexpr double kStopZoneToleranceM = 0.35;
 constexpr double kBuiltInDecisionHz = 10.0;
 constexpr double kDynamicTrackMaxAgeS = 1.25;
 
@@ -49,7 +47,7 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
  tires_(catalog_.component(build_.tires)),
  sensor_(build_.sensor.empty() ? nullptr : &catalog_.component(build_.sensor)),
  computer_(build_.computer.empty() ? nullptr : &catalog_.component(build_.computer)),
- policy_(catalog_.policy(build_.policy)),
+ behavior_(catalog_.style_behavior(build_.style)),
  rng_(level_.seed),
  perception_rng_(level_.seed ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
@@ -96,7 +94,7 @@ void MissionSimulation::build_world() {
  }
  }
  collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(sim::kRobotRadius));
- const double requested_clearance = property(policy_.behavior, "safe_clearance_m");
+ const double requested_clearance = property(behavior_, "safe_clearance_m");
  const bool has_dynamic_actors = std::any_of(
  map_definition_.actors.begin(), map_definition_.actors.end(), [&](const auto& actor) {
  return active_in_level(actor.active_in, level_id_);
@@ -106,21 +104,42 @@ void MissionSimulation::build_world() {
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
 
  sim::DiffParams params;
- params.v_max = std::max(1.5, property(policy_.behavior, "cruise_mps") * 1.25);
+ params.v_max = std::max(1.5, property(behavior_, "cruise_mps") * 1.25);
  params.accel_max = property(tires_.behavior, "brake_decel_mps2");
   params.wheel_base = robot_definition_.wheel_base_m;
  drive_ = std::make_unique<sim::DiffDrive>(params);
-  motor_drive_ = std::make_unique<sim::DifferentialMotorDrive>(sim::MotorDriveParams{
+ // Chassis dispatch: drive.type selects the actuator model. Differential drive
+ // is the first implementation; unknown types fail loudly in content, never
+ // silently fall back to another chassis.
+ if (robot_definition_.drive_type != "differential") {
+ throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
+ }
+ const double wheel_mass = std::max(0.5, robot_definition_.mass_kg / 2.0);
+ const sim::WheelPidGains wheel_gains = sim::tune_wheel_pid(wheel_mass,
+  robot_definition_.motor.stall_force_N, robot_definition_.motor.free_speed_mps,
+  0.5 * robot_definition_.motor.max_wheel_speed_mps);
+ chassis_ = std::make_unique<sim::DifferentialMotorDrive>(sim::MotorDriveParams{
   robot_definition_.wheel_base_m,
   robot_definition_.wheel_radius_m,
   robot_definition_.motor.max_wheel_speed_mps,
   std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
+  robot_definition_.motor.stall_force_N,
+  robot_definition_.motor.free_speed_mps,
+  robot_definition_.mass_kg,
+  robot_definition_.yaw_inertia_kgm2,
   robot_definition_.encoder.counts_per_revolution,
-  robot_definition_.motor.speed_pid_kp,
-  robot_definition_.motor.speed_pid_ki,
-  robot_definition_.motor.speed_pid_kd,
-  });
- heading_pid_ = std::make_unique<sim::PID>(2.6, 0.02, 0.14, params.w_max, 1.2);
+  robot_definition_.motor.pwm_limit,
+  robot_definition_.motor.integral_limit,
+ }, wheel_gains);
+ // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
+ // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
+ // the validated RO-1 feel; the integral/derivative ratios are method constants
+ // (slow integrator kills steady-state error, short derivative damps).
+ const double cruise = property(behavior_, "cruise_mps");
+ const double heading_kp = params.w_max
+ / (2.0 * std::max(0.2, cruise) * std::max(0.1, robot_definition_.wheel_base_m));
+ heading_pid_ = std::make_unique<sim::PID>(heading_kp, heading_kp / 125.0,
+  heading_kp * 0.05, params.w_max, robot_definition_.steering_integral_limit);
 
  patrols_.clear();
  patrol_ids_.clear();
@@ -178,7 +197,7 @@ void MissionSimulation::run_to_completion() {
 void MissionSimulation::set_manual_command(double forward, double turn) {
  if (level_.control_mode != "manual_calibration") return;
  manual_control_active_ = true;
- const double cruise = property(policy_.behavior, "cruise_mps");
+ const double cruise = property(behavior_, "cruise_mps");
  manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
  manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * drive_->params().w_max;
 }
@@ -205,15 +224,14 @@ void MissionSimulation::step() {
  const auto goal = as_vec(map_definition_.markers.at(level_.objective.goal));
  if (!level_.objective.via.empty() && !snapshot_.via_reached) {
  const auto via = as_vec(map_definition_.markers.at(level_.objective.via));
- if (distance({snapshot_.robot.x, snapshot_.robot.y}, via) <= 1.25) {
+ if (distance({snapshot_.robot.x, snapshot_.robot.y}, via) <= level_.objective.via_radius_m) {
  snapshot_.via_reached = true;
  result_.via_reached = true;
  record_event("via-reached", level_.objective.via_label + "已取得，继续前往"
  + level_.objective.goal_label + "。");
  }
  }
- const double goal_tolerance = level_.objective.type == "observe_and_stop"
- ? kStopZoneToleranceM : kGoalToleranceM;
+ const double goal_tolerance = level_.objective.arrive_tolerance_m;
  if (distance({snapshot_.robot.x, snapshot_.robot.y}, goal) <= goal_tolerance
  && (level_.objective.type != "observe_and_stop" || snapshot_.static_obstacle_detected)
  && (level_.objective.via.empty() || snapshot_.via_reached)) {
@@ -302,7 +320,7 @@ void MissionSimulation::scan_environment() {
 void MissionSimulation::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
  const auto tracks = dynamic_obstacle_map_.active_tracks(
- snapshot_.time_s, kDynamicTrackMaxAgeS);
+ snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
  if (track.object_id >= patrol_ids_.size()) continue;
  snapshot_.dynamic_obstacles.push_back({
@@ -316,7 +334,7 @@ void MissionSimulation::refresh_dynamic_obstacles() {
 }
 
 sim::Vec2 MissionSimulation::current_navigation_target() {
- const double lookahead = property(policy_.behavior, "lookahead_m");
+ const double lookahead = property(behavior_, "lookahead_m");
  const bool fused_localization = level_.localization_mode == "fused";
  const double nav_x = fused_localization ? snapshot_.robot.x : odometry_.p.x;
  const double nav_y = fused_localization ? snapshot_.robot.y : odometry_.p.y;
@@ -346,8 +364,8 @@ void MissionSimulation::decide_control() {
  const double nav_heading = fused_localization ? snapshot_.robot.theta : odometry_.th;
  const auto route_control = sim::guide_step(
  planned_path_, guide_state_, nav_x, nav_y, nav_heading,
- *heading_pid_, property(policy_.behavior, "lookahead_m"),
- property(policy_.behavior, "cruise_mps"),
+ *heading_pid_, property(behavior_, "lookahead_m"),
+ property(behavior_, "cruise_mps"),
  1.0 / decision_hz(), *planning_map_);
   snapshot_.control.local_target = target;
   snapshot_.control.heading_error_rad = route_control.err;
@@ -361,7 +379,7 @@ void MissionSimulation::decide_control() {
  }
 
  const auto known_tracks = dynamic_obstacle_map_.active_tracks(
- snapshot_.time_s, kDynamicTrackMaxAgeS);
+ snapshot_.time_s, track_max_age_s());
 
  double nearest_actor = std::numeric_limits<double>::infinity();
  for (const auto& track : known_tracks) {
@@ -371,9 +389,9 @@ void MissionSimulation::decide_control() {
  }
  const double prediction_horizon = computer_
  ? property(computer_->behavior, "prediction_horizon_s") : 1.2;
- const double requested_clearance = property(policy_.behavior, "safe_clearance_m");
+ const double requested_clearance = property(behavior_, "safe_clearance_m");
  const double risk_distance = requested_clearance * requested_clearance * 2.5
- + property(policy_.behavior, "cruise_mps") * 0.6 + 0.1;
+ + property(behavior_, "cruise_mps") * 0.6 + 0.1;
  if (known_tracks.empty() || nearest_actor > risk_distance) {
  held_command_ = {route_control.tv, route_control.steer};
  snapshot_.waiting_for_clearance = false;
@@ -383,11 +401,11 @@ void MissionSimulation::decide_control() {
  const double heading_error = sim::heading_err(
  target, snapshot_.robot.x, snapshot_.robot.y, snapshot_.robot.theta);
  const double speed_cap = std::max(
- 0.20, sim::sched_v(heading_error, property(policy_.behavior, "cruise_mps")));
+ 0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps")));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
  const auto predicted_frames = dynamic_obstacle_map_.predict(
- snapshot_.time_s, prediction_horizon, prediction_step_s, kDynamicTrackMaxAgeS);
+ snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto dwa = sim::dwa_compute_trajectory(
  {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta,
 snapshot_.robot.v, snapshot_.robot.w, target, *planning_map_, weights, predicted_frames,
@@ -431,8 +449,9 @@ void MissionSimulation::apply_motion() {
   snapshot_.control.target_v_mps = held_command_.target_v;
   snapshot_.control.target_w_radps = held_command_.target_w;
   const auto before = snapshot_.robot;
-  auto candidate = motor_drive_->step(before, held_command_, fixed_step_s);
-  const auto& motors = motor_drive_->telemetry();
+  auto candidate = chassis_->step(before, held_command_, fixed_step_s,
+   wheel_ground({before.x, before.y}));
+  const auto& motors = chassis_->telemetry();
   snapshot_.control.left_target_mps = motors.left.target_mps;
   snapshot_.control.right_target_mps = motors.right.target_mps;
   snapshot_.control.left_measured_mps = motors.left.measured_mps;
@@ -479,8 +498,9 @@ void MissionSimulation::apply_motion() {
 
  snapshot_.robot = candidate;
  result_.path_length_m += distance({before.x, before.y}, candidate_position);
- const double motor_power = 14.0 + 28.0 * std::abs(candidate.v)
- + 5.0 * std::abs(candidate.w);
+ const double motor_power = robot_definition_.energy_base_w
+ + robot_definition_.energy_per_v_w * std::abs(candidate.v)
+ + robot_definition_.energy_per_w_w * std::abs(candidate.w);
  const double total_power = motor_power * property(tires_.behavior, "power_scale")
  + (sensor_ ? property(sensor_->behavior, "power_w") : 0.0)
  + (computer_ ? property(computer_->behavior, "power_w") : 0.0);
@@ -490,6 +510,9 @@ void MissionSimulation::apply_motion() {
  const double traction = surface_traction(candidate_position);
  if (traction < 1.0) {
  slip /= traction;
+ }
+ if (motors.left.slipping || motors.right.slipping) {
+ slip *= 3.0;
  }
  double encoder_v = 0.0;
  double encoder_w = 0.0;
@@ -605,6 +628,39 @@ void MissionSimulation::record_replay() {
 
 double MissionSimulation::decision_hz() const {
  return computer_ ? property(computer_->behavior, "decision_hz") : kBuiltInDecisionHz;
+}
+
+double MissionSimulation::track_max_age_s() const {
+ // Dynamic-track memory lives on the computer; computer-less levels use the
+ // documented engine default.
+ return computer_ ? property(computer_->behavior, "track_max_age_s")
+ : kDynamicTrackMaxAgeS;
+}
+
+sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
+ // Traction is always tire tread combined with ground material: neither alone
+ // decides grip. mu_ref anchors the product so concrete + standard behaves as
+ // the long-validated reference.
+ constexpr double kMuReference = 0.8;
+ const double tire_mu = property(tires_.behavior, "friction_mu");
+ const double tire_rr = property(tires_.behavior, "rolling_resistance");
+ double ground_mu = 1.0;
+ double ground_rr = 0.0;
+ double traction = 1.0;
+ for (const auto& surface : map_definition_.surfaces) {
+ if (inside(position, surface)) {
+ ground_mu = surface.friction_mu;
+ ground_rr = surface.rolling_drag;
+ traction = surface.traction_scale;
+ break;
+ }
+ }
+ sim::GroundContact contact;
+ contact.mu_eff = tire_mu * ground_mu / kMuReference;
+ contact.rolling_resist = tire_rr + ground_rr;
+ contact.accel_limit_mps2 = std::min(robot_definition_.motor.max_wheel_accel_mps2,
+  property(tires_.behavior, "brake_decel_mps2") * (0.5 + 0.5 * traction));
+ return contact;
 }
 
 } // namespace game

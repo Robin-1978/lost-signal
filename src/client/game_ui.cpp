@@ -95,7 +95,8 @@ void GameUi::rebuild(const game::MissionSimulation* mission) {
  panel_->removeAllWidgets();
  style_panel();
  slot_buttons_.clear();
- policy_button_ = nullptr;
+ style_slider_ = nullptr;
+ style_value_ = nullptr;
  budget_label_ = nullptr;
  running_metrics_ = nullptr;
  running_state_ = nullptr;
@@ -172,13 +173,23 @@ void GameUi::build_garage() {
  y += 91;
  }
  add_label(presentation_->policy_title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
- policy_button_ = add_button("", kMargin, y + 25, kContentWidth, 48);
- policy_button_->onClick([this] { cycle_policy(); });
+ style_slider_ = tgui::Slider::create(0, 100);
+ style_slider_->setPosition(kMargin, y + 28);
+ style_slider_->setSize(kContentWidth, 18);
+ style_slider_->setValue(static_cast<float>(build_.style * 100.0));
+ style_slider_->onValueChange([this](float value) { set_style(static_cast<double>(value) / 100.0); });
+ panel_->add(style_slider_);
+ add_label("温柔", kMargin, y + 50, 80, 11, {132, 139, 135});
+ auto style_mid = add_label("普通", kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ style_mid->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Center);
+ auto style_fast = add_label("激进", kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ style_fast->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Right);
+ style_value_ = add_label("", kMargin, y + 70, kContentWidth, 13, {143, 201, 187});
 
- budget_label_ = add_label("", kMargin, y + 86, kContentWidth, 15, {151, 167, 159}, true);
- auto recommended = add_button("采用稳妥方案", kMargin, y + 122, 148, 42);
+ budget_label_ = add_label("", kMargin, y + 108, kContentWidth, 15, {151, 167, 159}, true);
+ auto recommended = add_button("采用推荐方案", kMargin, y + 144, 148, 42);
  recommended->onClick([this] { use_recommended_build(); });
- auto next = add_button("下一步", kMargin + 164, y + 122, 148, 42, true);
+ auto next = add_button("下一步", kMargin + 164, y + 144, 148, 42, true);
  next->onClick([this] { actions_.open_prediction = true; });
  update_garage_labels();
 }
@@ -386,12 +397,28 @@ void GameUi::cycle_component(const std::string& slot) {
  update_garage_labels();
 }
 
-void GameUi::cycle_policy() {
- const auto found = std::find(presentation_->policies.begin(), presentation_->policies.end(), build_.policy);
- const auto next = found == presentation_->policies.end() || std::next(found) == presentation_->policies.end()
- ? presentation_->policies.begin() : std::next(found);
- if (next != presentation_->policies.end()) build_.policy = *next;
- update_garage_labels();
+void GameUi::set_style(double style) {
+ build_.style = std::clamp(style, 0.0, 1.0);
+ update_style_label();
+}
+
+void GameUi::update_style_label() {
+ if (!style_value_) return;
+ std::vector<const game::PolicyDefinition*> anchors;
+ for (const auto& [id, policy] : catalog_.policies()) {
+ (void)id;
+ anchors.push_back(&policy);
+ }
+ std::sort(anchors.begin(), anchors.end(), [](const game::PolicyDefinition* left,
+  const game::PolicyDefinition* right) { return left->style_anchor < right->style_anchor; });
+ const game::PolicyDefinition* nearest = anchors.front();
+ for (const auto* anchor : anchors) {
+ if (std::abs(build_.style - anchor->style_anchor)
+  < std::abs(build_.style - nearest->style_anchor)) {
+ nearest = anchor;
+ }
+ }
+ style_value_->setText(nearest->title + "  ·  " + nearest->description);
 }
 
 void GameUi::update_garage_labels() {
@@ -399,10 +426,10 @@ void GameUi::update_garage_labels() {
  const auto& item = catalog_.component(selected_id(build_, slot));
  button->setText(item.title + "  ·  " + std::to_string(item.cost) + " 点\n" + item.description);
  }
- if (policy_button_) {
- const auto& item = catalog_.policy(build_.policy);
- policy_button_->setText(item.title + "  ·  " + item.description);
+ if (style_slider_) {
+ style_slider_->setValue(static_cast<float>(build_.style * 100.0));
  }
+ update_style_label();
  if (budget_label_) {
  const int used = catalog_.build_cost(build_);
  const int budget = catalog_.level(presentation_->level).budget;

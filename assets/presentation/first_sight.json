@@ -7,21 +7,61 @@
     "heading": "给洛一装上第一双眼睛",
     "brief": "出口外出现一扇透明门。选择距离雷达，让洛一知道前方并不是空路。",
     "component_columns": [
-      {"slot": "tires", "title": "驱动轮胎", "options": ["tires.standard", "tires.grip", "tires.eco"]},
-      {"slot": "sensor", "title": "距离雷达", "options": ["sensor.short_fast_lidar", "sensor.standard_lidar", "sensor.long_slow_lidar"]}
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      }
     ],
-    "policy_title": "驾驶倾向",
-    "policies": ["policy.careful", "policy.balanced", "policy.swift"],
-    "default_build": {"tires": "tires.eco", "sensor": "sensor.long_slow_lidar", "policy": "policy.swift"},
-    "recommended_build": {"tires": "tires.grip", "sensor": "sensor.short_fast_lidar", "policy": "policy.careful"}
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.long_slow_lidar",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "style": 0.0
+    }
   },
   "prediction": {
     "heading": "怎样更早确认玻璃门？",
     "hint": "量程决定看多远，刷新频率决定多久得到一次新测量。",
     "choices": [
-      {"id": "sight.range", "text": "只要量程最远就行", "feedback": "看得远不等于更新及时；接近障碍时，两次扫描之间的空档也很关键。"},
-      {"id": "sight.refresh", "text": "距离和刷新都要考虑", "feedback": "记录这个判断。运行时观察扫描点何时出现，以及洛一留出了多少制动空间。"},
-      {"id": "sight.map", "text": "地图会自动看见一切", "feedback": "地图只能保存已有信息；传感器负责把当前环境变成测量。"}
+      {
+        "id": "sight.range",
+        "text": "只要量程最远就行",
+        "feedback": "看得远不等于更新及时；接近障碍时，两次扫描之间的空档也很关键。"
+      },
+      {
+        "id": "sight.refresh",
+        "text": "距离和刷新都要考虑",
+        "feedback": "记录这个判断。运行时观察扫描点何时出现，以及洛一留出了多少制动空间。"
+      },
+      {
+        "id": "sight.map",
+        "text": "地图会自动看见一切",
+        "feedback": "地图只能保存已有信息；传感器负责把当前环境变成测量。"
+      }
     ]
   },
   "running": {

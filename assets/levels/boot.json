@@ -15,7 +15,8 @@
     "goal_label": "维修间出口",
     "goal_visual": "exit",
     "time_limit_s": 60,
-    "max_collisions": 0
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
   },
   "loadout_rules": {
     "budget": 4,

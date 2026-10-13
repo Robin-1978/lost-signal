@@ -3,50 +3,145 @@
  "id": "robot.ro1",
  "title": "洛一 / RO-1",
  "coordinates": {
- "units": "meters",
- "forward": "+x",
- "left": "+y",
- "up": "+z",
- "angles": "degrees"
+  "units": "meters",
+  "forward": "+x",
+  "left": "+y",
+  "up": "+z",
+  "angles": "degrees"
  },
  "drive": {
- "type": "differential",
- "wheel_radius_m": 0.1,
+  "type": "differential",
+  "wheel_radius_m": 0.1,
   "wheel_base_m": 0.52,
+  "mass_kg": 24.0,
+  "yaw_inertia_kgm2": 2.4,
   "motor": {
-  "max_wheel_speed_mps": 2.4,
-  "max_wheel_accel_mps2": 6.0,
-  "speed_pid": {"kp": 1.8, "ki": 0.35, "kd": 0.01}
+   "max_wheel_speed_mps": 2.4,
+   "max_wheel_accel_mps2": 6.0,
+   "stall_force_N": 54.0,
+   "free_speed_mps": 3.0,
+   "pwm_limit": 1.0,
+   "integral_limit": 2.0
   },
-  "encoder": {"counts_per_revolution": 2048}
+  "steering": {
+   "integral_limit": 1.2
+  },
+  "energy": {
+   "base_w": 14.0,
+   "per_v_w": 28.0,
+   "per_w_w": 5.0
+  },
+  "encoder": {
+   "counts_per_revolution": 2048
+  }
  },
  "collision": {
- "shape": "cylinder",
- "radius_m": 0.38,
- "height_m": 0.42
+  "shape": "cylinder",
+  "radius_m": 0.38,
+  "height_m": 0.42
  },
  "mounts": [
- {"id": "base", "position_m": [0, 0, 0.18], "rotation_deg": [0, 0, 0]},
- {"id": "wheel_left", "position_m": [0, 0.29, 0.10], "rotation_deg": [90, 0, 0]},
- {"id": "wheel_right", "position_m": [0, -0.29, 0.10], "rotation_deg": [90, 0, 0]},
- {"id": "sensor_top", "position_m": [0.10, 0, 0.34], "rotation_deg": [0, 0, 0]},
- {"id": "compute_rear", "position_m": [-0.18, 0, 0.30], "rotation_deg": [0, 0, 0]}
+  {
+   "id": "base",
+   "position_m": [
+    0,
+    0,
+    0.18
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "wheel_left",
+   "position_m": [
+    0,
+    0.29,
+    0.1
+   ],
+   "rotation_deg": [
+    90,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "wheel_right",
+   "position_m": [
+    0,
+    -0.29,
+    0.1
+   ],
+   "rotation_deg": [
+    90,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "sensor_top",
+   "position_m": [
+    0.1,
+    0,
+    0.34
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "compute_rear",
+   "position_m": [
+    -0.18,
+    0,
+    0.3
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  }
  ],
  "base_parts": [
- {
- "id": "ro1_chassis",
- "mount": "base",
- "visual": {
- "primitive_2d": "box",
- "size_m": [0.70, 0.50, 0.18],
- "color": "#D8ECE8",
- "model_3d": "models/robots/ro1/chassis.glb"
- }
- }
+  {
+   "id": "ro1_chassis",
+   "mount": "base",
+   "visual": {
+    "primitive_2d": "box",
+    "size_m": [
+     0.7,
+     0.5,
+     0.18
+    ],
+    "color": "#D8ECE8",
+    "model_3d": "models/robots/ro1/chassis.glb"
+   }
+  }
  ],
  "slots": [
- {"slot": "tires", "mounts": ["wheel_left", "wheel_right"]},
- {"slot": "sensor", "mounts": ["sensor_top"]},
- {"slot": "computer", "mounts": ["compute_rear"]}
+  {
+   "slot": "tires",
+   "mounts": [
+    "wheel_left",
+    "wheel_right"
+   ]
+  },
+  {
+   "slot": "sensor",
+   "mounts": [
+    "sensor_top"
+   ]
+  },
+  {
+   "slot": "computer",
+   "mounts": [
+    "compute_rear"
+   ]
+  }
  ]
 }

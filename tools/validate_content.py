@@ -342,10 +342,21 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             )
 
     policy_by_id: dict[str, dict[str, Any]] = {}
+    anchors: list[float] = []
     for index, policy in enumerate(policies.data["policies"]):
         policy_id = policy["id"]
         _register(global_ids, policy_id, f"{policies.path}:/policies/{index}/id")
         policy_by_id[policy_id] = policy
+        anchor = policy.get("style")
+        if not isinstance(anchor, (int, float)) or not 0.0 <= anchor <= 1.0:
+            raise ContentError(
+                f"{policies.path}:/policies/{index}/style: style anchor must be within [0, 1]"
+            )
+        anchors.append(float(anchor))
+    if sorted(anchors) != anchors or len(set(anchors)) != len(anchors):
+        raise ContentError(
+            f"{policies.path}:/policies: style anchors must be strictly increasing"
+        )
 
     if sum(1 for doc in presentations if doc.data["is_default"]) != 1:
         raise ContentError(
@@ -416,7 +427,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             cost = 0
-            selected_slots = set(build) - {"policy"}
+            selected_slots = set(build) - {"style"}
             if selected_slots != required_slots:
                 raise ContentError(
                     f"{doc.path}:/garage/{field}: component slots must match level requirements"
@@ -433,9 +444,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                         f"{doc.path}:/garage/{field}/{slot}: component is not offered by its column"
                     )
                 cost += component[1]["cost"]
-            if build["policy"] not in presentation["garage"]["policies"]:
+            style = build.get("style")
+            if not isinstance(style, (int, float)) or not 0.0 <= style <= 1.0:
                 raise ContentError(
-                    f"{doc.path}:/garage/{field}/policy: policy is not offered"
+                    f"{doc.path}:/garage/{field}/style: style must be within [0, 1]"
                 )
             if cost > level.data["loadout_rules"]["budget"]:
                 raise ContentError(
