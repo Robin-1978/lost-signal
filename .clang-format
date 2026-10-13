@@ -1,0 +1,14 @@
+# 仓库 C++ 风格：1 空格缩进，K&R 大括号，左对齐指针/引用。
+# 用法：clang-format-14 -i $(git ls-files 'src/*.cpp' 'src/*.hpp' 'tests/*.cpp')
+BasedOnStyle: LLVM
+IndentWidth: 1
+ContinuationIndentWidth: 2
+ColumnLimit: 110
+PointerAlignment: Left
+ReferenceAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+BreakBeforeBraces: Attach
+IndentCaseLabels: false
+SpaceBeforeParens: ControlStatements
+SortIncludes: false

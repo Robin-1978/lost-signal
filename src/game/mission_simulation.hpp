@@ -118,7 +118,7 @@ struct MissionResult {
 };
 
 class MissionSimulation {
-public:
+ public:
  static constexpr double fixed_step_s = 0.02;
 
  MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build);
@@ -139,7 +139,7 @@ public:
  const std::vector<MissionEvent>& events() const { return events_; }
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
 
-private:
+ private:
  void build_world();
  void plan_route();
  void update_actors();
@@ -174,7 +174,7 @@ private:
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<sim::GridMap> planning_map_;
  std::unique_ptr<sim::DiffDrive> drive_;
-  std::unique_ptr<sim::ChassisModel> chassis_;
+ std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::PID> heading_pid_;
  sim::DeadReckon odometry_;
  sim::Rng rng_;

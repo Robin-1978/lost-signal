@@ -13,25 +13,23 @@ namespace client {
 class SceneRenderer3D;
 
 class WorldRenderer {
-public:
- WorldRenderer(const std::filesystem::path& font_path,
- const std::filesystem::path& assets_root,
- const game::ContentCatalog& catalog);
+ public:
+ WorldRenderer(const std::filesystem::path& font_path, const std::filesystem::path& assets_root,
+               const game::ContentCatalog& catalog);
  ~WorldRenderer();
 
  WorldRenderer(const WorldRenderer&) = delete;
  WorldRenderer& operator=(const WorldRenderer&) = delete;
 
  void draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
- const std::string& chapter_title);
+           const std::string& chapter_title);
  void toggle_analysis_mode() { analysis_mode_ = !analysis_mode_; }
  bool analysis_mode() const { return analysis_mode_; }
 
-private:
+ private:
  Vector2 world_to_screen(sim::Vec2 point) const;
  void draw_text(const std::string& text, Vector2 position, float size, Color color) const;
- void draw_header(const game::MissionSimulation& mission, int width,
- const std::string& chapter_title) const;
+ void draw_header(const game::MissionSimulation& mission, int width, const std::string& chapter_title) const;
  void draw_world(const game::MissionSimulation& mission) const;
  void draw_robot(const game::MissionSimulation& mission) const;
  void draw_telemetry(const game::MissionSimulation& mission, int screen_height) const;

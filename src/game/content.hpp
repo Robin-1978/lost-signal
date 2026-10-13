@@ -26,35 +26,35 @@ struct VisualDefinition {
 };
 
 struct Pose {
-    double x{0.0};
-    double y{0.0};
-    double theta{0.0};
+ double x{0.0};
+ double y{0.0};
+ double theta{0.0};
 };
 
 struct BoxDefinition {
-    std::string id;
-    sim::Vec2 min;
-    sim::Vec2 max;
-    std::vector<std::string> active_in;
+ std::string id;
+ sim::Vec2 min;
+ sim::Vec2 max;
+ std::vector<std::string> active_in;
 };
 
 struct SurfaceDefinition {
-    std::string id;
-    sim::Vec2 min;
-    sim::Vec2 max;
-    double traction_scale{1.0};
-    std::string material;
-    std::string label;
-    double friction_mu{0.8};
-    double rolling_drag{0.0};
+ std::string id;
+ sim::Vec2 min;
+ sim::Vec2 max;
+ double traction_scale{1.0};
+ std::string material;
+ std::string label;
+ double friction_mu{0.8};
+ double rolling_drag{0.0};
 };
 
 struct ActorDefinition {
-    std::string id;
-    std::vector<sim::Vec2> path;
-    double speed_mps{0.0};
-    double radius_m{0.0};
-    std::vector<std::string> active_in;
+ std::string id;
+ std::vector<sim::Vec2> path;
+ double speed_mps{0.0};
+ double radius_m{0.0};
+ std::vector<std::string> active_in;
 };
 
 struct SceneShotDefinition {
@@ -100,13 +100,13 @@ struct SceneLightingDefinition {
  std::array<unsigned char, 4> robot_active_color{30, 220, 190, 255};
  std::array<unsigned char, 4> robot_waiting_color{232, 151, 52, 255};
  std::array<unsigned char, 4> goal_color{40, 220, 210, 255};
-    int shadow_map_resolution{2048};
-    double shadow_extent_m{28.0};
-    double shadow_strength{0.62};
-    double exposure{1.05};
-    double bloom_threshold{0.82};
-    double bloom_strength{0.18};
-    double vignette_strength{0.14};
+ int shadow_map_resolution{2048};
+ double shadow_extent_m{28.0};
+ double shadow_strength{0.62};
+ double exposure{1.05};
+ double bloom_threshold{0.82};
+ double bloom_strength{0.18};
+ double vignette_strength{0.14};
 };
 
 struct SceneFloorDefinition {
@@ -155,59 +155,59 @@ struct SceneDefinition {
 };
 
 struct MapDefinition {
-    std::string id;
+ std::string id;
  std::string scene_3d;
-    sim::Vec2 size_m;
-    double grid_resolution_m{0.5};
-    std::vector<BoxDefinition> obstacles;
-    std::vector<SurfaceDefinition> surfaces;
-    std::unordered_map<std::string, Pose> markers;
-    std::vector<ActorDefinition> actors;
+ sim::Vec2 size_m;
+ double grid_resolution_m{0.5};
+ std::vector<BoxDefinition> obstacles;
+ std::vector<SurfaceDefinition> surfaces;
+ std::unordered_map<std::string, Pose> markers;
+ std::vector<ActorDefinition> actors;
 };
 
 struct ObjectiveDefinition {
-    std::string type;
-    std::string spawn;
-    std::string via;
-    std::string goal;
+ std::string type;
+ std::string spawn;
+ std::string via;
+ std::string goal;
  std::string via_label;
  std::string goal_label;
  std::string goal_visual;
-    double time_limit_s{60.0};
-    int max_collisions{0};
-    double arrive_tolerance_m{0.62};
-    double via_radius_m{1.25};
+ double time_limit_s{60.0};
+ int max_collisions{0};
+ double arrive_tolerance_m{0.62};
+ double via_radius_m{1.25};
 };
 
 struct LevelDefinition {
-    std::string id;
-    int order{0};
-    std::string title;
-    std::string map;
+ std::string id;
+ int order{0};
+ std::string title;
+ std::string map;
  std::string control_mode;
  std::string localization_mode;
-    std::vector<std::string> prerequisites;
-    unsigned seed{0};
-    ObjectiveDefinition objective;
-    int budget{0};
-    std::vector<std::string> required_slots;
-    std::string concept;
-    std::string prediction_prompt;
-    std::string knowledge_card;
-    double safe_min_clearance_m{0.0};
+ std::vector<std::string> prerequisites;
+ unsigned seed{0};
+ ObjectiveDefinition objective;
+ int budget{0};
+ std::vector<std::string> required_slots;
+ std::string concept;
+ std::string prediction_prompt;
+ std::string knowledge_card;
+ double safe_min_clearance_m{0.0};
  double max_localization_error_m{999.0};
-    double fast_time_s{0.0};
-    double efficient_energy_wh{0.0};
-    std::vector<std::string> rewards;
+ double fast_time_s{0.0};
+ double efficient_energy_wh{0.0};
+ std::vector<std::string> rewards;
 };
 
 struct ComponentDefinition {
-    std::string id;
-    std::string slot;
-    std::string title;
-    std::string description;
-    int cost{0};
-    Properties behavior;
+ std::string id;
+ std::string slot;
+ std::string title;
+ std::string description;
+ int cost{0};
+ Properties behavior;
  VisualDefinition visual;
 };
 
@@ -263,56 +263,56 @@ struct RobotDefinition {
 };
 
 struct PolicyDefinition {
-    std::string id;
-    std::string title;
-    std::string description;
-    double style_anchor{0.5};
-    Properties behavior;
+ std::string id;
+ std::string title;
+ std::string description;
+ double style_anchor{0.5};
+ Properties behavior;
 };
 
 struct BuildSelection {
-    std::string tires;
-    std::string sensor;
-    std::string computer;
-    double style{0.5};
+ std::string tires;
+ std::string sensor;
+ std::string computer;
+ double style{0.5};
 };
 
 struct ComponentColumn {
-    std::string slot;
-    std::string title;
-    std::vector<std::string> options;
+ std::string slot;
+ std::string title;
+ std::vector<std::string> options;
 };
 
 struct PredictionChoice {
-    std::string id;
-    std::string text;
-    std::string feedback;
+ std::string id;
+ std::string text;
+ std::string feedback;
 };
 
 struct PresentationDefinition {
-    std::string id;
-    bool is_default{false};
-    std::string level;
-    std::string garage_heading;
-    std::string garage_brief;
-    std::vector<ComponentColumn> component_columns;
-    std::string policy_title;
-    std::vector<std::string> policies;
-    BuildSelection default_build;
-    BuildSelection recommended_build;
-    std::string prediction_heading;
-    std::string prediction_hint;
-    std::vector<PredictionChoice> prediction_choices;
-    std::string running_heading;
-    std::string normal_line;
-    std::string detected_line;
-    std::string success_title;
-    std::string success_summary;
-    std::string failure_summary;
-    std::string evidence_heading;
-    std::string evidence_caption;
-    std::string knowledge_title;
-    std::unordered_map<std::string, std::string> failure_titles;
+ std::string id;
+ bool is_default{false};
+ std::string level;
+ std::string garage_heading;
+ std::string garage_brief;
+ std::vector<ComponentColumn> component_columns;
+ std::string policy_title;
+ std::vector<std::string> policies;
+ BuildSelection default_build;
+ BuildSelection recommended_build;
+ std::string prediction_heading;
+ std::string prediction_hint;
+ std::vector<PredictionChoice> prediction_choices;
+ std::string running_heading;
+ std::string normal_line;
+ std::string detected_line;
+ std::string success_title;
+ std::string success_summary;
+ std::string failure_summary;
+ std::string evidence_heading;
+ std::string evidence_caption;
+ std::string knowledge_title;
+ std::unordered_map<std::string, std::string> failure_titles;
 };
 
 struct StoryBeatDefinition {
@@ -324,16 +324,16 @@ struct StoryBeatDefinition {
 };
 
 struct CampaignDefinition {
-    std::string id;
-    std::string title;
-    std::string content_version;
-    std::string companion_code;
-    std::string companion_name;
+ std::string id;
+ std::string title;
+ std::string content_version;
+ std::string companion_code;
+ std::string companion_name;
  std::string companion_robot;
-    std::string starting_level;
-    std::vector<std::string> levels;
-    std::vector<std::string> starting_inventory;
-    std::vector<std::string> starting_policies;
+ std::string starting_level;
+ std::vector<std::string> levels;
+ std::vector<std::string> starting_inventory;
+ std::vector<std::string> starting_policies;
 };
 
 double property(const Properties& properties, const std::string& name);

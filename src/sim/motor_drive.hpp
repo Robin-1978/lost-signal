@@ -60,8 +60,8 @@ struct WheelPidGains {
  double kd{0.0};
 };
 
-WheelPidGains tune_wheel_pid(double wheel_mass_kg, double stall_force_N,
- double free_speed_mps, double linearize_at_mps);
+WheelPidGains tune_wheel_pid(double wheel_mass_kg, double stall_force_N, double free_speed_mps,
+                             double linearize_at_mps);
 
 // A chassis turns a body twist command into motion. Differential drive is the
 // first implementation; ro1.json drive.type selects it. Unknown types must be
@@ -70,7 +70,7 @@ class ChassisModel {
  public:
  virtual ~ChassisModel() = default;
  virtual DiffState step(const DiffState& state, const DiffCmd& command, double dt,
-  const GroundContact& ground) = 0;
+                        const GroundContact& ground) = 0;
  virtual const MotorDriveTelemetry& telemetry() const = 0;
 };
 
@@ -90,7 +90,7 @@ class DifferentialMotorDrive : public ChassisModel {
 
  void reset();
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
-  const GroundContact& ground) override;
+                const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
  const MotorDriveTelemetry& telemetry() const override { return telemetry_; }
 

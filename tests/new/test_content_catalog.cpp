@@ -3,12 +3,13 @@
 #include <cmath>
 #include <iostream>
 
-#define CHECK(condition) do { \
- if (!(condition)) { \
- std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n"; \
- return 1; \
- } \
-} while (false)
+#define CHECK(condition)                                                                                     \
+ do {                                                                                                        \
+  if (!(condition)) {                                                                                        \
+   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                           \
+   return 1;                                                                                                 \
+  }                                                                                                          \
+ } while (false)
 
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
@@ -25,8 +26,8 @@ int main() {
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
  CHECK(robot.drive_type == "differential");
-  CHECK(std::abs(robot.motor.max_wheel_speed_mps - 2.4) < 1e-9);
-  CHECK(robot.encoder.counts_per_revolution == 2048);
+ CHECK(std::abs(robot.motor.max_wheel_speed_mps - 2.4) < 1e-9);
+ CHECK(robot.encoder.counts_per_revolution == 2048);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
  CHECK(robot.slots.size() == 3);
@@ -53,8 +54,8 @@ int main() {
  CHECK(std::abs(scene.camera.event_shot.fov_degrees - 38.0) < 1e-9);
  CHECK(std::abs(scene.camera.success_shot.goal_focus_weight - 0.52) < 1e-9);
  CHECK(std::abs(scene.effects.prediction_horizon_s - 2.4) < 1e-9);
-    CHECK(scene.lighting.shadow_map_resolution == 2048);
-    CHECK(std::abs(scene.lighting.bloom_strength - 0.2) < 1e-9);
+ CHECK(scene.lighting.shadow_map_resolution == 2048);
+ CHECK(std::abs(scene.lighting.bloom_strength - 0.2) < 1e-9);
 
  const auto& presentation = catalog.default_presentation();
  CHECK(presentation.level == "boot");

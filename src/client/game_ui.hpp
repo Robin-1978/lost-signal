@@ -25,9 +25,9 @@ struct UiActions {
 };
 
 class GameUi {
-public:
+ public:
  GameUi(tgui::BackendGui& gui, const game::ContentCatalog& catalog,
- const game::PresentationDefinition& presentation);
+        const game::PresentationDefinition& presentation);
 
  void set_screen(Screen screen, const game::MissionSimulation* mission = nullptr);
  void resize(int width, int height);
@@ -47,7 +47,7 @@ public:
  void set_inventory(const std::vector<std::string>& component_ids);
  void set_build(const game::BuildSelection& build);
 
-private:
+ private:
  void rebuild(const game::MissionSimulation* mission);
  void build_chapter();
  void build_garage();
@@ -62,10 +62,10 @@ private:
  bool is_unlocked(const game::LevelDefinition& level) const;
  std::string next_level_id() const;
 
- tgui::Label::Ptr add_label(const std::string& text, float x, float y,
- float width, unsigned text_size, tgui::Color color, bool bold = false);
- tgui::Button::Ptr add_button(const std::string& text, float x, float y,
- float width, float height, bool primary = false);
+ tgui::Label::Ptr add_label(const std::string& text, float x, float y, float width, unsigned text_size,
+                            tgui::Color color, bool bold = false);
+ tgui::Button::Ptr add_button(const std::string& text, float x, float y, float width, float height,
+                              bool primary = false);
  void style_panel();
 
  tgui::BackendGui& gui_;

@@ -12,9 +12,8 @@
 namespace client {
 
 class SceneRenderer3D {
-public:
- SceneRenderer3D(const std::filesystem::path& assets_root,
- const game::ContentCatalog& catalog);
+ public:
+ SceneRenderer3D(const std::filesystem::path& assets_root, const game::ContentCatalog& catalog);
  ~SceneRenderer3D();
 
  SceneRenderer3D(const SceneRenderer3D&) = delete;
@@ -23,14 +22,13 @@ public:
  void draw(const game::MissionSimulation& mission, int screen_width, int screen_height);
  const Camera3D& camera() const { return camera_; }
 
-private:
+ private:
  void bind_shader(Model& model) const;
  void ensure_shadow_map(int resolution);
  void ensure_post_targets(int width, int height);
- void render_shadow_map(const game::MissionSimulation& mission,
- const game::SceneDefinition& scene, Vector3 light_direction);
- void render_scene_target(const game::MissionSimulation& mission,
- const game::SceneDefinition& scene);
+ void render_shadow_map(const game::MissionSimulation& mission, const game::SceneDefinition& scene,
+                        Vector3 light_direction);
+ void render_scene_target(const game::MissionSimulation& mission, const game::SceneDefinition& scene);
  void composite_scene(const game::SceneDefinition& scene) const;
  void draw_scene(const game::MissionSimulation& mission) const;
  void draw_floor(const game::MapDefinition& map, const game::SceneDefinition& scene) const;
@@ -39,8 +37,7 @@ private:
  void draw_markers(const game::MissionSimulation& mission) const;
  void draw_robot(const game::MissionSimulation& mission) const;
  void draw_forklift(const game::ActorSnapshot& actor, bool waiting) const;
- void draw_environment(const game::MissionSimulation& mission,
- const game::SceneDefinition& scene) const;
+ void draw_environment(const game::MissionSimulation& mission, const game::SceneDefinition& scene) const;
  void draw_accents(const game::MissionSimulation& mission) const;
  void draw_box(Vector3 position, Vector3 size, float yaw_degrees, Color color) const;
  const Model* model(const std::string& path) const;
