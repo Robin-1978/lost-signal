@@ -58,6 +58,8 @@
 - Python 内容测试：15/15 通过，包括事件镜头权重、17 个 GLB 法线访问器、PNG 尺寸与签名检查，以及缺失纹理、缺失模型、坏场景引用和坏 Prefab 引用的拒绝测试。
 - Python 试玩汇总测试：3/3 通过。
 - 内容 Schema 与跨文件引用：通过，识别 5 个关卡、1 张地图、1 个 3D 场景、1 个机器人装配、8 个组件、3 种策略和 5 份表现配置。
+- 复现命令：`./tools/build.sh --headless --test`（CTest 4/4）；`python3 -m pytest tests/test_content.py tests/test_playtest.py -q`（18 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（72.08 秒成功）与 `--default`（26.2 秒动态碰撞）。
+- P3 事件镜头 SHA 用当前构建复现（需 Xvfb，见 `.github/workflows/build.yml`）：`xvfb-run -a ./build/release/lost_signal --demo --screenshot /tmp/lost-signal.png`，连续两次应等于 P3 基线；P1/P2 为阶段历史记录。
 
 ## 画面验收清单
 
