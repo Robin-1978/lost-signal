@@ -142,6 +142,10 @@
    "mounts": [
     "compute_rear"
    ]
+  },
+  {
+   "slot": "motor",
+   "mounts": []
   }
  ]
 }

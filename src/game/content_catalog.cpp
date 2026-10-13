@@ -94,9 +94,8 @@ Properties properties(const json& value) {
 
 BuildSelection build(const json& value) {
  return {
-   value.value("tires", std::string{}),
-   value.value("sensor", std::string{}),
-   value.value("computer", std::string{}),
+   value.value("tires", std::string{}),    value.value("sensor", std::string{}),
+   value.value("computer", std::string{}), value.value("motor", std::string{}),
    value.at("style").get<double>(),
  };
 }
@@ -690,7 +689,7 @@ const StoryBeatDefinition* ContentCatalog::story_beat(const std::string& level_i
 
 int ContentCatalog::build_cost(const BuildSelection& build) const {
  int result = 0;
- for (const auto* id : {&build.tires, &build.sensor, &build.computer}) {
+ for (const auto* id : {&build.tires, &build.sensor, &build.computer, &build.motor}) {
   if (!id->empty())
    result += component(*id).cost;
  }
@@ -703,6 +702,7 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
    {"tires", &build.tires},
    {"sensor", &build.sensor},
    {"computer", &build.computer},
+   {"motor", &build.motor},
  };
  for (const auto& [slot, id] : selections) {
   const bool required = contains(level_value.required_slots, slot);

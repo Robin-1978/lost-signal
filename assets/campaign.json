@@ -15,12 +15,14 @@
     "first_sight",
     "localization",
     "blocked_route",
-    "lost_signal"
+    "lost_signal",
+    "signal_echo"
   ],
   "starting_inventory": [
     "tires.standard",
     "sensor.standard_lidar",
-    "computer.light"
+    "computer.light",
+    "motor.standard"
   ],
   "starting_policies": [
     "policy.careful",

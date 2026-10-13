@@ -49,6 +49,7 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
       tires_(catalog_.component(build_.tires)),
       sensor_(build_.sensor.empty() ? nullptr : &catalog_.component(build_.sensor)),
       computer_(build_.computer.empty() ? nullptr : &catalog_.component(build_.computer)),
+      motor_(build_.motor.empty() ? nullptr : &catalog_.component(build_.motor)),
       behavior_(catalog_.style_behavior(build_.style)), rng_(level_.seed),
       perception_rng_(level_.seed ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
@@ -114,18 +115,26 @@ void MissionSimulation::build_world() {
  if (robot_definition_.drive_type != "differential") {
   throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
  }
+ // The equipped motor component overrides the robot default; an empty motor
+ // slot (early levels) runs the robot stock motor. New motors stay plug-and-play
+ // because PID gains are derived from these same numbers.
+ const double motor_vmax =
+   motor_ ? property(motor_->behavior, "max_wheel_speed_mps") : robot_definition_.motor.max_wheel_speed_mps;
+ const double motor_stall =
+   motor_ ? property(motor_->behavior, "stall_force_N") : robot_definition_.motor.stall_force_N;
+ const double motor_free =
+   motor_ ? property(motor_->behavior, "free_speed_mps") : robot_definition_.motor.free_speed_mps;
  const double wheel_mass = std::max(0.5, robot_definition_.mass_kg / 2.0);
- const sim::WheelPidGains wheel_gains = sim::tune_wheel_pid(
-   wheel_mass, robot_definition_.motor.stall_force_N, robot_definition_.motor.free_speed_mps,
-   0.5 * robot_definition_.motor.max_wheel_speed_mps);
+ const sim::WheelPidGains wheel_gains =
+   sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax);
  chassis_ = std::make_unique<sim::DifferentialMotorDrive>(
    sim::MotorDriveParams{
      robot_definition_.wheel_base_m,
      robot_definition_.wheel_radius_m,
-     robot_definition_.motor.max_wheel_speed_mps,
+     motor_vmax,
      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
-     robot_definition_.motor.stall_force_N,
-     robot_definition_.motor.free_speed_mps,
+     motor_stall,
+     motor_free,
      robot_definition_.mass_kg,
      robot_definition_.yaw_inertia_kgm2,
      robot_definition_.encoder.counts_per_revolution,
@@ -501,7 +510,8 @@ void MissionSimulation::apply_motion() {
  const double motor_power = robot_definition_.energy_base_w +
                             robot_definition_.energy_per_v_w * std::abs(candidate.v) +
                             robot_definition_.energy_per_w_w * std::abs(candidate.w);
- const double total_power = motor_power * property(tires_.behavior, "power_scale") +
+ const double motor_scale = motor_ ? property(motor_->behavior, "power_scale") : 1.0;
+ const double total_power = motor_power * property(tires_.behavior, "power_scale") * motor_scale +
                             (sensor_ ? property(sensor_->behavior, "power_w") : 0.0) +
                             (computer_ ? property(computer_->behavior, "power_w") : 0.0);
  result_.energy_wh += total_power * fixed_step_s / 3600.0;

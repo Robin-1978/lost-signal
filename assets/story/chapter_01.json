@@ -2,12 +2,68 @@
   "schema_version": 1,
   "id": "story.chapter_01",
   "beats": [
-    {"id": "boot.intro", "level": "boot", "when": "before", "speaker": "系统", "text": "维修间的备用电路恢复了。架台上的 RO-1 仍在等待启动。"},
-    {"id": "boot.awake", "level": "boot", "when": "after", "speaker": "洛一", "text": "运动模块在线。你……能听见我吗？"},
-    {"id": "first_sight.before", "level": "first_sight", "when": "before", "speaker": "洛一", "text": "前方没有记录。我现在只能看见你给出的方向。"},
-    {"id": "localization.before", "level": "localization", "when": "before", "speaker": "洛一", "text": "轮子说我到了，但墙上的标记不在这里。是我记错位置了吗？"},
-    {"id": "blocked.before", "level": "blocked_route", "when": "before", "speaker": "洛一", "text": "旧路线被挡住了。我需要根据现在的地图重新找路。"},
-    {"id": "signal.before", "level": "lost_signal", "when": "before", "speaker": "洛一", "text": "能源模块准备好了。叉车还在巡逻，我会自己判断什么时候通过。"},
-    {"id": "signal.after", "level": "lost_signal", "when": "after", "speaker": "未知信号", "text": "RO-1，如果你收到了这段信号，请不要重启主控。"}
+    {
+      "id": "boot.intro",
+      "level": "boot",
+      "when": "before",
+      "speaker": "系统",
+      "text": "维修间的备用电路恢复了。架台上的 RO-1 仍在等待启动。"
+    },
+    {
+      "id": "boot.awake",
+      "level": "boot",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "运动模块在线。你……能听见我吗？"
+    },
+    {
+      "id": "first_sight.before",
+      "level": "first_sight",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "前方没有记录。我现在只能看见你给出的方向。"
+    },
+    {
+      "id": "localization.before",
+      "level": "localization",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "轮子说我到了，但墙上的标记不在这里。是我记错位置了吗？"
+    },
+    {
+      "id": "blocked.before",
+      "level": "blocked_route",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "旧路线被挡住了。我需要根据现在的地图重新找路。"
+    },
+    {
+      "id": "signal.before",
+      "level": "lost_signal",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "能源模块准备好了。叉车还在巡逻，我会自己判断什么时候通过。"
+    },
+    {
+      "id": "signal.after",
+      "level": "lost_signal",
+      "when": "after",
+      "speaker": "未知信号",
+      "text": "RO-1，如果你收到了这段信号，请不要重启主控。"
+    },
+    {
+      "id": "signal_echo.before",
+      "level": "signal_echo",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "信号塔启动之后，仓库深处传来了另一段回响。洛一：再走一次吧，这次我们换个跑法。"
+    },
+    {
+      "id": "signal_echo.after",
+      "level": "signal_echo",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：同样的叉车，同样的路——不一样的是我们自己。"
+    }
   ]
 }

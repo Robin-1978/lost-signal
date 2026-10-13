@@ -63,9 +63,10 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
   build.tires = entry.value("tires", std::string{});
   build.sensor = entry.value("sensor", std::string{});
   build.computer = entry.value("computer", std::string{});
+  build.motor = entry.value("motor", std::string{});
   build.style = std::clamp(entry.value("style", 0.5), 0.0, 1.0);
   bool known = true;
-  for (const auto* id : {&build.tires, &build.sensor, &build.computer}) {
+  for (const auto* id : {&build.tires, &build.sensor, &build.computer, &build.motor}) {
    if (!id->empty() && !catalog.components().contains(*id))
     known = false;
   }
@@ -133,10 +134,8 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
  json builds = json::object();
  for (const auto& [level_id, build] : last_builds_) {
   builds[level_id] = {
-    {"tires", build.tires},
-    {"sensor", build.sensor},
-    {"computer", build.computer},
-    {"style", build.style},
+    {"tires", build.tires}, {"sensor", build.sensor}, {"computer", build.computer},
+    {"motor", build.motor}, {"style", build.style},
   };
  }
  json scores = json::object();

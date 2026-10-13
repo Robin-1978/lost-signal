@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "signal_echo",
+  "order": 6,
+  "title": "信号回响",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "prerequisites": [
+    "lost_signal"
+  ],
+  "seed": 48,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "robot_bay",
+    "via": "supply_station",
+    "via_label": "能源模块",
+    "goal": "signal_tower",
+    "goal_label": "信号塔",
+    "goal_visual": "signal_tower",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 6,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "dynamic_obstacle_prediction",
+    "prediction_prompt": "同一条叉车通道再走一次，哪里最值得省时间？",
+    "knowledge_card": "同样的路，换一套动力与感知组合，结果完全不同：先看证据，再谈速度。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.3,
+    "fast_time_s": 60.0,
+    "efficient_energy_wh": 1.6
+  },
+  "rewards": [
+    "ability.combo_mastery"
+  ]
+}

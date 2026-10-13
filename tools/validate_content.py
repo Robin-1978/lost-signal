@@ -336,9 +336,9 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{doc.path}:/base_parts/{index}/visual/model_3d: missing model '{model}'"
                 )
-        if slots != {"tires", "sensor", "computer"}:
+        if slots != {"tires", "sensor", "computer", "motor"}:
             raise ContentError(
-                f"{doc.path}:/slots: robot must define tires, sensor and computer slots"
+                f"{doc.path}:/slots: robot must define tires, sensor, computer and motor slots"
             )
 
     policy_by_id: dict[str, dict[str, Any]] = {}
@@ -456,6 +456,13 @@ def load_and_validate(root: Path) -> dict[str, Any]:
 
     # DIY unlock chain: official builds may only use parts the player can own
     # by then (starting inventory plus component rewards of earlier levels).
+    for name, component in components.items():
+        if component[0] == "motor":
+            for key in ("max_wheel_speed_mps", "stall_force_N", "free_speed_mps", "power_scale"):
+                if key not in component[1]["behavior"]:
+                    raise ContentError(
+                        f"components: motor '{name}' misses behavior '{key}'"
+                    )
     presentation_by_level = {doc.data["level"]: doc.data for doc in presentations}
     owned: set[str] = set(campaign.data["starting_inventory"])
     for level_id in campaign.data["levels"]:
@@ -464,7 +471,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(f"{root / 'presentation'}: missing presentation for '{level_id}'")
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
-            for slot in ("tires", "sensor", "computer"):
+            for slot in ("tires", "sensor", "computer", "motor"):
                 component_id = build.get(slot)
                 if component_id and component_id not in owned:
                     raise ContentError(

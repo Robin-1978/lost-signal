@@ -116,7 +116,8 @@
       "speed_mps": 0.55,
       "radius_m": 0.45,
       "active_in": [
-        "lost_signal"
+        "lost_signal",
+        "signal_echo"
       ]
     }
   ]

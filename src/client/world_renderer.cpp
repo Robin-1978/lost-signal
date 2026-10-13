@@ -559,6 +559,8 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
    return mission.build().tires;
   if (slot == "sensor")
    return mission.build().sensor;
+  if (slot == "motor")
+   return mission.build().motor;
   return mission.build().computer;
  };
  const auto mounted_position = [&](const game::MountDefinition& mount) {

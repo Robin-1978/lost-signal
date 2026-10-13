@@ -25,7 +25,8 @@
     "required_slots": [
       "tires",
       "sensor",
-      "computer"
+      "computer",
+      "motor"
     ]
   },
   "teaching": {
@@ -39,6 +40,10 @@
     "efficient_energy_wh": 24
   },
   "rewards": [
-    "ability.path_planning"
+    "ability.path_planning",
+    "motor.torque",
+    "motor.eco",
+    "computer.mid",
+    "sensor.precision_lidar"
   ]
 }

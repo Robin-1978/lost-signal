@@ -45,6 +45,28 @@
         "color": "#9C61F5",
         "model_3d": "models/robots/ro1/compute_performance.glb"
       }
+    },
+    {
+      "id": "computer.mid",
+      "title": "均衡计算单元",
+      "description": "判断更快，功耗适中。",
+      "cost": 2,
+      "behavior": {
+        "decision_hz": 5.0,
+        "prediction_horizon_s": 2.2,
+        "power_w": 26.0,
+        "track_max_age_s": 1.25
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.23,
+          0.21,
+          0.11
+        ],
+        "color": "#4E9A8F",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
     }
   ]
 }

@@ -262,12 +262,13 @@
       "enum": [
        "tires",
        "sensor",
-       "computer"
+       "computer",
+       "motor"
       ]
      },
      "mounts": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "uniqueItems": true,
       "items": {
        "$ref": "#/$defs/id"

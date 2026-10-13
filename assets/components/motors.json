@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "slot": "motor",
+  "components": [
+    {
+      "id": "motor.standard",
+      "title": "标准电机",
+      "description": "均衡的扭矩与极速，适合大多数任务。",
+      "cost": 1,
+      "behavior": {
+        "max_wheel_speed_mps": 2.4,
+        "stall_force_N": 54.0,
+        "free_speed_mps": 3.0,
+        "power_scale": 1.0
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [0.18, 0.16, 0.1],
+        "color": "#6D8CA3",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
+    },
+    {
+      "id": "motor.torque",
+      "title": "扭矩电机",
+      "description": "起步更猛，但极速更低、更耗电。",
+      "cost": 2,
+      "behavior": {
+        "max_wheel_speed_mps": 2.0,
+        "stall_force_N": 75.0,
+        "free_speed_mps": 2.4,
+        "power_scale": 1.25
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [0.2, 0.18, 0.11],
+        "color": "#B85C14",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
+    },
+    {
+      "id": "motor.eco",
+      "title": "高效电机",
+      "description": "省电平顺，爆发力弱。",
+      "cost": 2,
+      "behavior": {
+        "max_wheel_speed_mps": 2.2,
+        "stall_force_N": 48.0,
+        "free_speed_mps": 3.0,
+        "power_scale": 0.75
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [0.17, 0.15, 0.09],
+        "color": "#3F7A5E",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
+    }
+  ]
+}

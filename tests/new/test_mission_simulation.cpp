@@ -92,22 +92,22 @@ int main() {
  // rewards merge idempotently, and last builds survive a save/load roundtrip.
  game::CampaignProgress diy = game::CampaignProgress::load(
    std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
- CHECK(diy.inventory().size() == 3);
+ CHECK(diy.inventory().size() == 4);
  game::MissionSimulation boot_mission(catalog, "boot",
                                       catalog.presentation_for_level("boot").recommended_build);
  boot_mission.run_to_completion();
  CHECK(boot_mission.result().status == game::MissionStatus::Succeeded);
  diy.record_completion("boot", boot_mission.result(), catalog);
- CHECK(diy.inventory().size() == 7);
+ CHECK(diy.inventory().size() == 8);
  diy.record_completion("boot", boot_mission.result(), catalog);
- CHECK(diy.inventory().size() == 7);
+ CHECK(diy.inventory().size() == 8);
  CHECK(diy.last_build("boot") == nullptr);
  game::BuildSelection custom = boot_mission.build();
  custom.style = 0.2;
  diy.record_build("boot", custom);
  diy.save(progress_path, catalog);
  const auto diy_loaded = game::CampaignProgress::load(progress_path, catalog);
- CHECK(diy_loaded.inventory().size() == 7);
+ CHECK(diy_loaded.inventory().size() == 8);
  CHECK(diy_loaded.last_build("boot") != nullptr);
  CHECK(std::abs(diy_loaded.last_build("boot")->style - 0.2) < 1e-12);
  CHECK(diy_loaded.last_build("lost_signal") == nullptr);
@@ -128,6 +128,19 @@ int main() {
  game::MissionSimulation mid_second(catalog, "lost_signal", mid_style);
  mid_second.run_to_completion();
  CHECK(std::abs(mid_second.result().time_s - mid_first.result().time_s) < 1e-12);
+
+ game::BuildSelection torque_build;
+ torque_build.tires = "tires.standard";
+ torque_build.sensor = "sensor.standard_lidar";
+ torque_build.computer = "computer.performance";
+ torque_build.motor = "motor.torque";
+ torque_build.style = 0.0;
+ game::MissionSimulation torque_first(catalog, "lost_signal", torque_build);
+ torque_first.run_to_completion();
+ CHECK(torque_first.result().status == game::MissionStatus::Succeeded);
+ game::MissionSimulation torque_second(catalog, "lost_signal", torque_build);
+ torque_second.run_to_completion();
+ CHECK(std::abs(torque_second.result().time_s - torque_first.result().time_s) < 1e-12);
 
  game::MissionSimulation second(catalog, "lost_signal", build);
  second.run_to_completion();

@@ -167,6 +167,7 @@ class MissionSimulation {
  const ComponentDefinition& tires_;
  const ComponentDefinition* sensor_{nullptr};
  const ComponentDefinition* computer_{nullptr};
+ const ComponentDefinition* motor_{nullptr};
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 

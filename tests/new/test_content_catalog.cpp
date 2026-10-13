@@ -14,14 +14,14 @@
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  CHECK(catalog.campaign().companion_name == "洛一");
- CHECK(catalog.campaign().levels.size() == 5);
- CHECK(catalog.levels().size() == 5);
- CHECK(catalog.components().size() == 10);
+ CHECK(catalog.campaign().levels.size() == 6);
+ CHECK(catalog.levels().size() == 6);
+ CHECK(catalog.components().size() == 15);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 1);
  CHECK(catalog.scenes().size() == 1);
- CHECK(catalog.presentations().size() == 5);
- CHECK(catalog.story_beats().size() == 7);
+ CHECK(catalog.presentations().size() == 6);
+ CHECK(catalog.story_beats().size() == 9);
  CHECK(catalog.campaign().companion_robot == "robot.ro1");
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
@@ -30,7 +30,7 @@ int main() {
  CHECK(robot.encoder.counts_per_revolution == 2048);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
- CHECK(robot.slots.size() == 3);
+ CHECK(robot.slots.size() == 4);
  CHECK(catalog.component("sensor.short_fast_lidar").visual.primitive_2d == "disc");
  CHECK(catalog.component("sensor.short_fast_lidar").visual.model_3d.ends_with("lidar_fast.glb"));
  CHECK(catalog.story_beat("boot", "before") != nullptr);
