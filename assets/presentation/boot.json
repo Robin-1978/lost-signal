@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "id": "presentation.boot",
+  "is_default": true,
+  "level": "boot",
+  "garage": {
+    "heading": "让洛一重新站起来",
+    "brief": "维修架只恢复了基础运动。选择轮胎，观察指令、加速和制动怎样变成真实运动。",
+    "component_columns": [
+      {"slot": "tires", "title": "驱动轮胎", "options": ["tires.standard", "tires.grip", "tires.eco"]}
+    ],
+    "policy_title": "驾驶倾向",
+    "policies": ["policy.careful", "policy.balanced", "policy.swift"],
+    "default_build": {"tires": "tires.standard", "policy": "policy.balanced"},
+    "recommended_build": {"tires": "tires.standard", "policy": "policy.careful"}
+  },
+  "prediction": {
+    "heading": "松开动力后会怎样？",
+    "hint": "先做预测，再看洛一抵达出口时怎样减速。",
+    "choices": [
+      {"id": "boot.stop.instant", "text": "立刻停在原地", "feedback": "轮子和机身都有惯性，速度需要经过一段时间才能降到零。"},
+      {"id": "boot.stop.distance", "text": "继续滑行一小段", "feedback": "记录这个判断。运行时注意洛一何时开始减速，以及不同轮胎的制动差异。"}
+    ]
+  },
+  "running": {
+    "heading": "抵达维修间出口",
+    "normal_line": "洛一：驱动链路在线，正在校准加速和转向。",
+    "detected_line": "洛一：前方状态已确认。"
+  },
+  "debrief": {
+    "success_title": "运动模块恢复",
+    "success_summary": "洛一第一次靠自己的驱动离开了维修架。",
+    "failure_summary": "查看运动记录，调整轮胎或驾驶倾向后再试。",
+    "evidence_heading": "本次运动",
+    "evidence_caption": "速度变化来自电机指令、加速限制和制动能力。",
+    "knowledge_title": "运动与制动",
+    "failure_titles": {
+      "collision-static": "校准失败：碰到了障碍",
+      "timeout": "校准失败：没有抵达出口"
+    }
+  }
+}

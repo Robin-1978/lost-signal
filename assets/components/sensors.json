@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "slot": "sensor",
+  "components": [
+    {
+      "id": "sensor.short_fast_lidar",
+      "title": "近距快扫雷达",
+      "description": "看得近，更新快，适合繁忙的狭窄区域。",
+      "cost": 2,
+ "behavior": {"range_m": 5.0, "rays": 48, "scan_hz": 20.0, "noise_sigma_m": 0.04, "power_w": 18.0},
+ "visual": {"primitive_2d": "disc", "size_m": [0.16, 0.16, 0.10], "color": "#1AEBD1", "model_3d": "models/robots/ro1/lidar_fast.glb"}
+    },
+    {
+      "id": "sensor.standard_lidar",
+      "title": "标准雷达",
+      "description": "距离和刷新速度均衡。",
+      "cost": 1,
+ "behavior": {"range_m": 8.0, "rays": 72, "scan_hz": 10.0, "noise_sigma_m": 0.05, "power_w": 22.0},
+ "visual": {"primitive_2d": "disc", "size_m": [0.18, 0.18, 0.11], "color": "#389EF5", "model_3d": "models/robots/ro1/lidar_standard.glb"}
+    },
+    {
+      "id": "sensor.long_slow_lidar",
+      "title": "远距慢扫雷达",
+      "description": "很早就能看到远处物体，但两次扫描间隔较长。",
+      "cost": 2,
+ "behavior": {"range_m": 12.0, "rays": 72, "scan_hz": 5.0, "noise_sigma_m": 0.08, "power_w": 28.0},
+ "visual": {"primitive_2d": "disc", "size_m": [0.20, 0.20, 0.12], "color": "#F5A52C", "model_3d": "models/robots/ro1/lidar_long.glb"}
+    }
+  ]
+}

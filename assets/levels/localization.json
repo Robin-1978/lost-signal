@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "localization",
+  "order": 3,
+  "title": "我在哪里",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "prerequisites": [
+    "first_sight"
+  ],
+  "seed": 44,
+  "objective": {
+    "type": "reach",
+    "spawn": "workshop_exit",
+    "goal": "calibration_pad",
+    "goal_label": "定位校准台",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 80,
+    "max_collisions": 0
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor"
+    ]
+  },
+  "teaching": {
+    "concept": "odometry_drift",
+    "prediction_prompt": "经过湿滑地面后，地图上的位置还可靠吗？",
+    "knowledge_card": "里程计由轮子运动估计位置；打滑会让估计轨迹逐渐偏离真实轨迹。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.5,
+ "max_localization_error_m": 0.025,
+    "fast_time_s": 50,
+    "efficient_energy_wh": 14
+  },
+  "rewards": [
+    "ability.localization",
+    "ability.map"
+  ]
+}

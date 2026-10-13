@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "presentation.localization",
+  "is_default": false,
+  "level": "localization",
+  "garage": {
+    "heading": "穿过湿滑的维修区",
+    "brief": "洛一会用轮子转过的距离估计自己在哪里。选择轮胎，看看打滑怎样让估计位置偏离真实位置。",
+    "component_columns": [
+      {"slot": "tires", "title": "驱动轮胎", "options": ["tires.standard", "tires.grip", "tires.eco"]},
+      {"slot": "sensor", "title": "距离雷达", "options": ["sensor.short_fast_lidar", "sensor.standard_lidar", "sensor.long_slow_lidar"]}
+    ],
+    "policy_title": "驾驶倾向",
+    "policies": ["policy.careful", "policy.balanced", "policy.swift"],
+    "default_build": {"tires": "tires.eco", "sensor": "sensor.standard_lidar", "policy": "policy.swift"},
+    "recommended_build": {"tires": "tires.grip", "sensor": "sensor.standard_lidar", "policy": "policy.careful"}
+  },
+  "prediction": {
+    "heading": "轮子打滑后，位置还准吗？",
+    "hint": "认知视图中的估计轨迹来自轮速，现场位置来自真实运动。",
+    "choices": [
+      {"id": "localization.perfect", "text": "轮速永远等于真实位移", "feedback": "在湿滑地面上，轮子转动并不保证机身移动了同样距离。"},
+      {"id": "localization.drift", "text": "误差会一路累积", "feedback": "记录这个判断。按 Tab 打开认知视图，比较估计位置与真实位置。"}
+    ]
+  },
+  "running": {
+    "heading": "抵达定位校准台",
+    "normal_line": "洛一：我正在用轮速估计自己的位置。",
+    "detected_line": "洛一：环境测量在线，位置估计仍在更新。"
+  },
+  "debrief": {
+    "success_title": "找到累积的位置误差",
+    "success_summary": "真实轨迹和估计轨迹的差异揭示了里程计漂移。",
+    "failure_summary": "选择抓地更稳的轮胎，或降低速度后再试。",
+    "evidence_heading": "定位证据",
+    "evidence_caption": "复盘中的误差来自轮速里程计与真实位置之差。",
+    "knowledge_title": "定位与漂移",
+    "failure_titles": {
+      "collision-static": "任务失败：位置误差导致碰撞",
+      "timeout": "任务失败：没有抵达校准台"
+    }
+  }
+}

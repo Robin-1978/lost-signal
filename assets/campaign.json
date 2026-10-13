@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "content_version": "mvp-1",
+  "id": "chapter_01_awakening",
+  "title": "第一章：醒来",
+  "companion": {
+    "id": "companion.ro1",
+    "unit_code": "RO-1",
+ "display_name": "洛一",
+ "robot": "robot.ro1"
+  },
+  "starting_level": "boot",
+  "levels": [
+    "boot",
+    "first_sight",
+    "localization",
+    "blocked_route",
+    "lost_signal"
+  ],
+  "starting_inventory": [
+    "tires.standard",
+    "tires.grip",
+    "tires.eco",
+    "sensor.short_fast_lidar",
+    "sensor.standard_lidar",
+    "sensor.long_slow_lidar",
+    "computer.light",
+    "computer.performance"
+  ],
+  "starting_policies": ["policy.careful", "policy.balanced", "policy.swift"]
+}

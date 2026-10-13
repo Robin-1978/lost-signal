@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "lost_signal",
+  "order": 5,
+  "title": "把信号送出去",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "prerequisites": [
+    "blocked_route"
+  ],
+  "seed": 47,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "robot_bay",
+    "via": "supply_station",
+    "via_label": "能源模块",
+    "goal": "signal_tower",
+    "goal_label": "信号塔",
+    "goal_visual": "signal_tower",
+    "time_limit_s": 150,
+    "max_collisions": 0
+  },
+  "loadout_rules": {
+    "budget": 6,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer"
+    ]
+  },
+  "teaching": {
+    "concept": "dynamic_obstacle_prediction",
+    "prediction_prompt": "叉车接近路口时，洛一最需要提前知道什么？",
+    "knowledge_card": "动态物体需要用位置和速度预测未来，而不只是写进静态地图。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.3,
+    "fast_time_s": 95,
+    "efficient_energy_wh": 30
+  },
+  "rewards": [
+    "story.chapter_02_signal"
+  ]
+}

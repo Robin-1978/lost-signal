@@ -1,0 +1,647 @@
+{
+  "schema_version": 1,
+  "id": "scene.research_base",
+  "camera": {
+    "offset_m": [
+      -7.0,
+      -8.1,
+      8.8
+    ],
+    "target_height_m": 0.45,
+    "fov_degrees": 41.0,
+    "focus_weights": {
+      "robot": 0.52,
+      "actor": 0.3,
+      "goal": 0.18
+    },
+    "event_shot": {
+      "offset_m": [
+ -6.7,
+ -7.7,
+ 8.0
+      ],
+      "target_height_m": 0.4,
+      "fov_degrees": 38.0,
+      "focus_weights": {
+        "robot": 0.54,
+        "actor": 0.46,
+        "goal": 0.0
+      }
+    },
+    "success_shot": {
+      "offset_m": [
+        -5.2,
+        -6.0,
+        5.8
+      ],
+      "target_height_m": 0.52,
+      "fov_degrees": 37.0,
+      "focus_weights": {
+        "robot": 0.48,
+        "actor": 0.0,
+        "goal": 0.52
+      }
+    },
+    "transition_s": 0.65
+  },
+  "lighting": {
+    "direction": [
+      -0.48,
+      0.32,
+      -1.0
+    ],
+    "directional_color": "#FFF0D1",
+    "directional_intensity": 1.08,
+    "ambient_color": "#3D4A47",
+    "fog_color": "#090E0D",
+    "fog_start_m": 12.0,
+    "fog_end_m": 31.0,
+    "robot_active_color": "#15947A",
+    "robot_waiting_color": "#B85C14",
+    "goal_color": "#0D8580",
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 27.0,
+    "shadow_strength": 0.62,
+    "exposure": 0.92,
+    "bloom_threshold": 0.78,
+    "bloom_strength": 0.2,
+    "vignette_strength": 0.14
+  },
+  "floor": {
+    "base_color": "#181C1B",
+    "tile_color": "#595A54",
+    "boundary_color": "#2E302E",
+    "tile_size_m": 4.0,
+    "seam_m": 0.015,
+    "color_variation": 9,
+    "boundary_height_m": 0.24,
+    "boundary_width_m": 0.22,
+    "albedo_texture": "textures/environment/concrete_floor.png"
+  },
+  "prefabs": [
+    {
+      "id": "prefab.wall_panel",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/wall_panel.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.rubble_cluster",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/rubble_cluster.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.plant_cluster",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/plant_cluster.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.service_light",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/service_light.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.control_console",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/control_console.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.cable_reel",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/cable_reel.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.maintenance_crates",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/maintenance_crates.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.warning_strip",
+      "parts": [
+        {
+          "model_3d": "models/environment/research_base/warning_strip.glb",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            1,
+            1,
+            1
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "id": "north_wall_01",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        1.8,
+        14.18,
+        0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.86
+      ]
+    },
+    {
+      "id": "north_wall_02",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        5.8,
+        14.18,
+        0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.18
+      ]
+    },
+    {
+      "id": "north_wall_03",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        9.8,
+        14.18,
+        0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.98
+      ]
+    },
+    {
+      "id": "north_wall_04",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        13.8,
+        14.18,
+        0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.28
+      ]
+    },
+    {
+      "id": "north_wall_05",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        17.8,
+        14.18,
+        0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.82
+      ]
+    },
+    {
+      "id": "east_wall_01",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        2.4,
+        0
+      ],
+      "yaw_degrees": 90,
+      "scale": [
+        1.0,
+        1.0,
+        0.72
+      ]
+    },
+    {
+      "id": "east_wall_02",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        6.4,
+        0
+      ],
+      "yaw_degrees": 90,
+      "scale": [
+        1.0,
+        1.0,
+        1.02
+      ]
+    },
+    {
+      "id": "east_wall_03",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        10.4,
+        0
+      ],
+      "yaw_degrees": 90,
+      "scale": [
+        1.0,
+        1.0,
+        0.82
+      ]
+    },
+    {
+      "id": "rubble_01",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        15.2,
+        8.6,
+        0
+      ],
+      "yaw_degrees": 14,
+      "scale": [
+        1.2,
+        1.2,
+        1.0
+      ]
+    },
+    {
+      "id": "rubble_02",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        18.4,
+        8.7,
+        0
+      ],
+      "yaw_degrees": 71,
+      "scale": [
+        0.8,
+        0.8,
+        0.8
+      ]
+    },
+    {
+      "id": "rubble_03",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        15.8,
+        11.5,
+        0
+      ],
+      "yaw_degrees": 103,
+      "scale": [
+        1.0,
+        1.0,
+        1.1
+      ]
+    },
+    {
+      "id": "rubble_04",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        18.6,
+        11.3,
+        0
+      ],
+      "yaw_degrees": 156,
+      "scale": [
+        1.15,
+        1.15,
+        0.9
+      ]
+    },
+    {
+      "id": "plant_01",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        14.8,
+        9.2,
+        0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.2
+      ]
+    },
+    {
+      "id": "plant_02",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        15.2,
+        11.8,
+        0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "id": "plant_03",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        16.1,
+        8.2,
+        0
+      ],
+      "scale": [
+        0.8,
+        0.8,
+        1.0
+      ]
+    },
+    {
+      "id": "plant_04",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        17.3,
+        12.2,
+        0
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.3
+      ]
+    },
+    {
+      "id": "plant_05",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        18.1,
+        8.4,
+        0
+      ],
+      "scale": [
+        0.95,
+        0.95,
+        1.0
+      ]
+    },
+    {
+      "id": "plant_06",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        19.0,
+        10.0,
+        0
+      ],
+      "scale": [
+        1.25,
+        1.25,
+        1.4
+      ]
+    },
+    {
+      "id": "plant_07",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        16.0,
+        10.4,
+        0
+      ],
+      "scale": [
+        0.7,
+        0.7,
+        0.8
+      ]
+    },
+    {
+      "id": "service_light_01",
+      "prefab": "prefab.service_light",
+      "position_m": [
+        15.0,
+        10.7,
+        0
+      ]
+    },
+    {
+      "id": "service_light_02",
+      "prefab": "prefab.service_light",
+      "position_m": [
+        18.8,
+        9.2,
+        0
+      ]
+    },
+    {
+      "id": "console_01",
+      "prefab": "prefab.control_console",
+      "position_m": [
+        3.0,
+        13.55,
+        0
+      ]
+    },
+    {
+      "id": "console_02",
+      "prefab": "prefab.control_console",
+      "position_m": [
+        10.4,
+        13.55,
+        0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "id": "cable_reel_01",
+      "prefab": "prefab.cable_reel",
+      "position_m": [
+        7.45,
+        12.8,
+        0
+      ],
+      "yaw_degrees": 18
+    },
+    {
+      "id": "cable_reel_02",
+      "prefab": "prefab.cable_reel",
+      "position_m": [
+        19.25,
+        3.0,
+        0
+      ],
+      "yaw_degrees": 88,
+      "scale": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    },
+    {
+      "id": "maintenance_crates_01",
+      "prefab": "prefab.maintenance_crates",
+      "position_m": [
+        1.55,
+        12.75,
+        0
+      ],
+      "yaw_degrees": -8
+    },
+    {
+      "id": "maintenance_crates_02",
+      "prefab": "prefab.maintenance_crates",
+      "position_m": [
+        12.5,
+        12.25,
+        0
+      ],
+      "yaw_degrees": 90,
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "id": "forklift_lane_north_01",
+      "prefab": "prefab.warning_strip",
+      "position_m": [
+        15.15,
+        6.85,
+        0
+      ]
+    },
+    {
+      "id": "forklift_lane_north_02",
+      "prefab": "prefab.warning_strip",
+      "position_m": [
+        18.0,
+        6.85,
+        0
+      ]
+    },
+    {
+      "id": "forklift_lane_south_01",
+      "prefab": "prefab.warning_strip",
+      "position_m": [
+        15.15,
+        5.15,
+        0
+      ]
+    },
+    {
+      "id": "forklift_lane_south_02",
+      "prefab": "prefab.warning_strip",
+      "position_m": [
+        18.0,
+        5.15,
+        0
+      ]
+    }
+  ],
+  "effects": {
+    "robot_scale": 1.12,
+    "bob_amplitude_m": 0.016,
+    "bob_frequency_hz": 1.65,
+    "eye_height_m": 0.25,
+    "scan_radius_m": 1.45,
+    "perception_link_height_m": 0.42,
+    "prediction_horizon_s": 2.4,
+    "success_ring_radius_m": 0.78
+  }
+}

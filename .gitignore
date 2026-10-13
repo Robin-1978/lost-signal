@@ -1,2 +1,7 @@
-build/
+/build/
+/builds/
+/exports/
 *.o
+__pycache__/
+*.pyc
+/*.jpeg

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "blocked_route",
+  "order": 4,
+  "title": "门被堵住了",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "prerequisites": [
+    "localization"
+  ],
+  "seed": 45,
+  "objective": {
+    "type": "reach",
+    "spawn": "calibration_pad",
+    "goal": "supply_station",
+    "goal_label": "补给站",
+    "goal_visual": "supply_station",
+    "time_limit_s": 150,
+    "max_collisions": 0
+  },
+  "loadout_rules": {
+    "budget": 6,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer"
+    ]
+  },
+  "teaching": {
+    "concept": "map_and_path_planning",
+    "prediction_prompt": "货架堵住旧路线后，洛一应该继续向前还是重新找路？",
+    "knowledge_card": "地图描述哪里能走，路径规划器在可通行区域中寻找通往目标的路线。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.25,
+    "fast_time_s": 90,
+    "efficient_energy_wh": 24
+  },
+  "rewards": [
+    "ability.path_planning"
+  ]
+}

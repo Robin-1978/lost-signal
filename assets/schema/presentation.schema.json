@@ -1,0 +1,98 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "presentation.schema.json",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["schema_version", "id", "is_default", "level", "garage", "prediction", "running", "debrief"],
+ "properties": {
+ "schema_version": {"const": 1},
+ "id": {"$ref": "#/$defs/id"},
+ "is_default": {"type": "boolean"},
+ "level": {"$ref": "#/$defs/id"},
+ "garage": {
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["heading", "brief", "component_columns", "policy_title", "policies", "default_build", "recommended_build"],
+ "properties": {
+ "heading": {"$ref": "#/$defs/text"},
+ "brief": {"$ref": "#/$defs/text"},
+ "component_columns": {
+ "type": "array", "minItems": 1, "maxItems": 3,
+ "items": {
+ "type": "object", "additionalProperties": false,
+ "required": ["slot", "title", "options"],
+ "properties": {
+ "slot": {"enum": ["tires", "sensor", "computer"]},
+ "title": {"$ref": "#/$defs/text"},
+ "options": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+ }
+ }
+ },
+ "policy_title": {"$ref": "#/$defs/text"},
+ "policies": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+ "default_build": {"$ref": "#/$defs/build"},
+ "recommended_build": {"$ref": "#/$defs/build"}
+ }
+ },
+ "prediction": {
+ "type": "object", "additionalProperties": false,
+ "required": ["heading", "hint", "choices"],
+ "properties": {
+ "heading": {"$ref": "#/$defs/text"},
+ "hint": {"$ref": "#/$defs/text"},
+ "choices": {
+ "type": "array", "minItems": 2,
+ "items": {
+ "type": "object", "additionalProperties": false,
+ "required": ["id", "text", "feedback"],
+ "properties": {
+ "id": {"$ref": "#/$defs/id"},
+ "text": {"$ref": "#/$defs/text"},
+ "feedback": {"$ref": "#/$defs/text"}
+ }
+ }
+ }
+ }
+ },
+ "running": {
+ "type": "object", "additionalProperties": false,
+ "required": ["heading", "normal_line", "detected_line"],
+ "properties": {
+ "heading": {"$ref": "#/$defs/text"},
+ "normal_line": {"$ref": "#/$defs/text"},
+ "detected_line": {"$ref": "#/$defs/text"}
+ }
+ },
+ "debrief": {
+ "type": "object", "additionalProperties": false,
+ "required": ["success_title", "success_summary", "failure_summary", "evidence_heading", "evidence_caption", "knowledge_title", "failure_titles"],
+ "properties": {
+ "success_title": {"$ref": "#/$defs/text"},
+ "success_summary": {"$ref": "#/$defs/text"},
+ "failure_summary": {"$ref": "#/$defs/text"},
+ "evidence_heading": {"$ref": "#/$defs/text"},
+ "evidence_caption": {"$ref": "#/$defs/text"},
+ "knowledge_title": {"$ref": "#/$defs/text"},
+ "failure_titles": {
+ "type": "object", "minProperties": 1,
+ "propertyNames": {"$ref": "#/$defs/id"},
+ "additionalProperties": {"$ref": "#/$defs/text"}
+ }
+ }
+ }
+ },
+ "$defs": {
+ "id": {"type": "string", "pattern": "^[a-z0-9_.-]+$"},
+ "text": {"type": "string", "minLength": 1},
+ "build": {
+ "type": "object", "additionalProperties": false,
+ "required": ["policy"],
+ "properties": {
+ "tires": {"$ref": "#/$defs/id"},
+ "sensor": {"$ref": "#/$defs/id"},
+ "computer": {"$ref": "#/$defs/id"},
+ "policy": {"$ref": "#/$defs/id"}
+ }
+ }
+ }
+}

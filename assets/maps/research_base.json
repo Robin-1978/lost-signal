@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "id": "research_base",
+  "scene_3d": "scene.research_base",
+  "size_m": [
+    20.0,
+    14.0
+  ],
+  "grid_resolution_m": 0.5,
+  "obstacles": [
+    {
+      "id": "west_shelf",
+      "type": "box",
+      "min": [
+        8.0,
+        0.0
+      ],
+      "max": [
+        9.0,
+        11.0
+      ]
+    },
+    {
+      "id": "east_shelf",
+      "type": "box",
+      "min": [
+        12.0,
+        3.0
+      ],
+      "max": [
+        13.0,
+        14.0
+      ]
+    },
+    {
+      "id": "glass_door",
+      "type": "box",
+      "min": [
+        7.0,
+        3.5
+      ],
+      "max": [
+        7.5,
+        4.5
+      ],
+      "active_in": [
+        "first_sight"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "wet_floor",
+      "type": "box",
+      "min": [
+        3.0,
+        5.0
+      ],
+      "max": [
+        7.0,
+        7.0
+      ],
+      "traction_scale": 0.45
+    }
+  ],
+  "markers": {
+    "robot_bay": [
+      1.0,
+      1.0,
+      0.0
+    ],
+    "workshop_exit": [
+      3.5,
+      4.0,
+      0.0
+    ],
+    "glass_door": [
+      6.0,
+      4.0,
+      0.0
+    ],
+    "calibration_pad": [
+      7.0,
+      7.0,
+      0.0
+    ],
+    "supply_station": [
+      10.5,
+      12.5,
+      0.0
+    ],
+    "signal_tower": [
+      17.0,
+      10.0,
+      0.0
+    ]
+  },
+  "actors": [
+    {
+      "id": "forklift_a",
+      "type": "patrol",
+      "path": [
+        [
+          17.5,
+          6.0
+        ],
+        [
+          14.0,
+          6.0
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.45,
+      "active_in": [
+        "lost_signal"
+      ]
+    }
+  ]
+}

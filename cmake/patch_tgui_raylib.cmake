@@ -1,0 +1,18 @@
+if(NOT DEFINED SOURCE_FILE OR NOT EXISTS "${SOURCE_FILE}")
+ message(FATAL_ERROR "TGUI raylib backend source was not found: ${SOURCE_FILE}")
+endif()
+
+file(READ "${SOURCE_FILE}" source_text)
+set(old_text "UnloadFontData(glyphsInfo, static_cast<int>(codePoints.size()));\n#else")
+set(new_text "UnloadFontData(glyphsInfo, glyphCount);\n#else")
+
+string(FIND "${source_text}" "${old_text}" old_position)
+if(NOT old_position EQUAL -1)
+ string(REPLACE "${old_text}" "${new_text}" source_text "${source_text}")
+ file(WRITE "${SOURCE_FILE}" "${source_text}")
+else()
+ string(FIND "${source_text}" "${new_text}" patched_position)
+ if(patched_position EQUAL -1)
+ message(FATAL_ERROR "TGUI raylib compatibility patch no longer matches upstream source")
+ endif()
+endif()

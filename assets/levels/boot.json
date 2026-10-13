@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "boot",
+  "order": 1,
+  "title": "醒来",
+  "map": "research_base",
+  "control_mode": "manual_calibration",
+  "localization_mode": "odometry",
+  "prerequisites": [],
+  "seed": 42,
+  "objective": {
+    "type": "reach",
+    "spawn": "robot_bay",
+    "goal": "workshop_exit",
+    "goal_label": "维修间出口",
+    "goal_visual": "exit",
+    "time_limit_s": 60,
+    "max_collisions": 0
+  },
+  "loadout_rules": {
+    "budget": 4,
+    "required_slots": [
+      "tires"
+    ]
+  },
+  "teaching": {
+    "concept": "motion_and_stopping",
+    "prediction_prompt": "松开前进指令后，洛一会立刻停下吗？",
+    "knowledge_card": "电机指令需要经过加速和制动，机器人不会瞬间改变速度。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.35,
+    "fast_time_s": 25,
+    "efficient_energy_wh": 8
+  },
+  "rewards": [
+    "ability.voice",
+    "ability.basic_motion"
+  ]
+}

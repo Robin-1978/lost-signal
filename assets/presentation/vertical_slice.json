@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "id": "presentation.vertical_slice",
+  "is_default": false,
+  "level": "lost_signal",
+  "garage": {
+    "heading": "为最后一程做准备",
+    "brief": "经停补给站，携带能源模块穿过叉车通道，再启动信号塔。自主算法已经恢复；你决定洛一看多远、多久判断一次，以及如何取舍速度与安全。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.performance"
+        ]
+      }
+    ],
+    "policy_title": "行为倾向",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.long_slow_lidar",
+      "computer": "computer.light",
+      "policy": "policy.swift"
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "policy": "policy.careful"
+    }
+  },
+  "prediction": {
+    "heading": "出发前，先做一个判断",
+    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "choices": [
+      {
+        "id": "distance_only",
+        "text": "它现在离路口还有多远",
+        "feedback": "距离是线索之一；还需要运动方向和速度，才能判断双方会不会同时到达路口。"
+      },
+      {
+        "id": "future_motion",
+        "text": "它接下来会往哪里移动",
+        "feedback": "记录位置与速度后，洛一才能预测未来轨迹是否相交。运行时看看它何时开始等待。"
+      },
+      {
+        "id": "static_map",
+        "text": "把叉车永久写进静态地图",
+        "feedback": "叉车会移动，静态地图只能说明固定障碍，不能表示它下一刻的位置。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "动态通行窗口",
+    "normal_line": "洛一：导航链路稳定，正在接近信号塔。",
+    "detected_line": "洛一：锁定叉车，正在预测它的运动轨迹。"
+  },
+  "debrief": {
+    "success_title": "任务完成：信号塔已启动",
+    "success_summary": "洛一完成了感知、预测、等待和通过。",
+    "failure_summary": "选择右侧证据，现场会跳到对应时刻。",
+    "evidence_heading": "因果证据",
+    "evidence_caption": "这些内容由本次仿真的事件与状态生成。",
+    "knowledge_title": "动态障碍预测",
+    "failure_titles": {
+      "collision-dynamic": "任务失败：洛一与叉车发生碰撞",
+      "collision-static": "任务失败：洛一碰到了固定障碍",
+      "timeout": "任务失败：没有在时限内送达"
+    }
+  }
+}

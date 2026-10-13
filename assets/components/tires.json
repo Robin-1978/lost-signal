@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "slot": "tires",
+  "components": [
+    {
+      "id": "tires.standard",
+      "title": "标准轮胎",
+      "description": "性能均衡，适合干燥地面。",
+      "cost": 1,
+ "behavior": {"slip_scale": 1.0, "brake_decel_mps2": 3.0, "power_scale": 1.0},
+ "visual": {"primitive_2d": "wheel", "size_m": [0.20, 0.10, 0.12], "color": "#202D32", "model_3d": "models/robots/ro1/wheel_standard.glb"}
+    },
+    {
+      "id": "tires.grip",
+      "title": "防滑轮胎",
+      "description": "抓地更稳，制动更短，但更耗电。",
+      "cost": 2,
+ "behavior": {"slip_scale": 0.25, "brake_decel_mps2": 4.2, "power_scale": 1.15},
+ "visual": {"primitive_2d": "wheel", "size_m": [0.22, 0.12, 0.13], "color": "#101C21", "model_3d": "models/robots/ro1/wheel_grip.glb"}
+    },
+    {
+      "id": "tires.eco",
+      "title": "节能轮胎",
+      "description": "滚动阻力低，但湿滑地面上的制动距离更长。",
+      "cost": 1,
+ "behavior": {"slip_scale": 1.5, "brake_decel_mps2": 2.2, "power_scale": 0.8},
+ "visual": {"primitive_2d": "wheel", "size_m": [0.19, 0.08, 0.11], "color": "#2A3939", "model_3d": "models/robots/ro1/wheel_eco.glb"}
+    }
+  ]
+}

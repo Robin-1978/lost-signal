@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "id": "first_sight",
+  "order": 2,
+  "title": "第一次看见",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "prerequisites": [
+    "boot"
+  ],
+  "seed": 43,
+  "objective": {
+    "type": "observe_and_stop",
+    "spawn": "workshop_exit",
+    "goal": "glass_door",
+    "goal_label": "玻璃门前安全区",
+    "goal_visual": "stop_zone",
+    "time_limit_s": 60,
+    "max_collisions": 0
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor"
+    ]
+  },
+  "teaching": {
+    "concept": "distance_sensing",
+    "prediction_prompt": "哪一种雷达能让洛一在玻璃门前及时停下？",
+    "knowledge_card": "探测距离决定何时看见物体，刷新频率决定多久获得一次新测量。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.6,
+    "fast_time_s": 35,
+    "efficient_energy_wh": 10
+  },
+  "rewards": [
+    "ability.distance_sensing"
+  ]
+}

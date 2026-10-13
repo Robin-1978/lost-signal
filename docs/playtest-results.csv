@@ -1,0 +1,1 @@
+participant_id,scope,tested_at,build_version,age_band,robotics_background,first_build,first_result,choice_without_help,failure_explanation,causal_explanation,retried,second_change,recovered_ability,wants_continue,transfer_correct,fun_score,completion_minutes,notes

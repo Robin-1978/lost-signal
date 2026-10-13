@@ -1,0 +1,43 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  headless:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portable C++ core
+        run: >-
+          cmake -S . -B build/headless
+          -DLOST_SIGNAL_BUILD_CLIENT=OFF
+          -DLOST_SIGNAL_BUILD_TESTS=ON
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Build portable C++ core
+        run: cmake --build build/headless --config Release --parallel 2
+      - name: Test portable C++ core
+        run: ctest --test-dir build/headless -C Release --output-on-failure
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install platform development libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libx11-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev xvfb
+      - name: Download dependencies, build and test
+        run: ./tools/build.sh --test
+      - name: Run deterministic mission
+        run: ./build/release/lost_signal_headless --level lost_signal --recommended --json
+      - name: Render a smoke-test frame
+        run: xvfb-run -a ./build/release/lost_signal --demo --screenshot /tmp/lost-signal.png

@@ -1,0 +1,35 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "components.schema.json",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["schema_version", "slot", "components"],
+ "properties": {
+ "schema_version": {"const": 1},
+ "slot": {"enum": ["tires", "sensor", "computer"]},
+ "components": {
+ "type": "array", "minItems": 1,
+ "items": {
+ "type": "object", "additionalProperties": false,
+ "required": ["id", "title", "description", "cost", "behavior", "visual"],
+ "properties": {
+ "id": {"type": "string", "pattern": "^[a-z0-9_.-]+$"},
+ "title": {"type": "string", "minLength": 1},
+ "description": {"type": "string", "minLength": 1},
+ "cost": {"type": "integer", "minimum": 0},
+ "behavior": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}},
+ "visual": {
+ "type": "object", "additionalProperties": false,
+ "required": ["primitive_2d", "size_m", "color", "model_3d"],
+ "properties": {
+ "primitive_2d": {"enum": ["box", "wheel", "disc"]},
+ "size_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+ "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+ "model_3d": {"type": "string", "pattern": "^[a-zA-Z0-9_./-]+\\.glb$"}
+ }
+ }
+ }
+ }
+ }
+ }
+}
