@@ -389,10 +389,16 @@ void GameUi::cycle_component(const std::string& slot) {
  if (column == presentation_->component_columns.end() || column->options.empty()) {
  return;
  }
+ // Empty ownership means "no filtering" (demo/screenshot paths without saves).
+ std::vector<std::string> offered;
+ for (const auto& option : column->options) {
+ if (owned_.empty() || owned_.contains(option)) offered.push_back(option);
+ }
+ if (offered.empty()) return;
  const auto current = selected_id(build_, slot);
- const auto found = std::find(column->options.begin(), column->options.end(), current);
- const auto next = found == column->options.end() || std::next(found) == column->options.end()
- ? column->options.begin() : std::next(found);
+ const auto found = std::find(offered.begin(), offered.end(), current);
+ const auto next = found == offered.end() || std::next(found) == offered.end()
+ ? offered.begin() : std::next(found);
  assign_id(build_, slot, *next);
  update_garage_labels();
 }
@@ -419,6 +425,32 @@ void GameUi::update_style_label() {
  }
  }
  style_value_->setText(nearest->title + "  ·  " + nearest->description);
+}
+
+void GameUi::set_inventory(const std::vector<std::string>& component_ids) {
+ owned_.clear();
+ owned_.insert(component_ids.begin(), component_ids.end());
+ sanitize_build();
+ if (screen_ == Screen::Garage) update_garage_labels();
+}
+
+void GameUi::set_build(const game::BuildSelection& build) {
+ build_ = build;
+ sanitize_build();
+ update_garage_labels();
+}
+
+void GameUi::sanitize_build() {
+ // Selections the player does not own (stale saves, future content) fall back
+ // to the level default, which content validation guarantees to be ownable.
+ if (owned_.empty()) return;
+ for (const auto& slot : {"tires", "sensor", "computer"}) {
+ const auto& current = selected_id(build_, slot);
+ if (!current.empty() && !owned_.contains(current)) {
+ assign_id(build_, slot, selected_id(presentation_->default_build, slot));
+ }
+ }
+ build_.style = std::clamp(build_.style, 0.0, 1.0);
 }
 
 void GameUi::update_garage_labels() {

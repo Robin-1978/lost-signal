@@ -95,6 +95,31 @@ int main() {
  CHECK(loaded_progress.best_scores().at("lost_signal").safe);
  std::filesystem::remove(progress_path);
 
+ // DIY unlock chain: fresh saves start at the starting inventory, component
+ // rewards merge idempotently, and last builds survive a save/load roundtrip.
+ game::CampaignProgress diy = game::CampaignProgress::load(
+ std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
+ CHECK(diy.inventory().size() == 3);
+ game::MissionSimulation boot_mission(
+ catalog, "boot", catalog.presentation_for_level("boot").recommended_build);
+ boot_mission.run_to_completion();
+ CHECK(boot_mission.result().status == game::MissionStatus::Succeeded);
+ diy.record_completion("boot", boot_mission.result(), catalog);
+ CHECK(diy.inventory().size() == 7);
+ diy.record_completion("boot", boot_mission.result(), catalog);
+ CHECK(diy.inventory().size() == 7);
+ CHECK(diy.last_build("boot") == nullptr);
+ game::BuildSelection custom = boot_mission.build();
+ custom.style = 0.2;
+ diy.record_build("boot", custom);
+ diy.save(progress_path, catalog);
+ const auto diy_loaded = game::CampaignProgress::load(progress_path, catalog);
+ CHECK(diy_loaded.inventory().size() == 7);
+ CHECK(diy_loaded.last_build("boot") != nullptr);
+ CHECK(std::abs(diy_loaded.last_build("boot")->style - 0.2) < 1e-12);
+ CHECK(diy_loaded.last_build("lost_signal") == nullptr);
+ std::filesystem::remove(progress_path);
+
  game::MissionSimulation default_attempt(
  catalog, "lost_signal", catalog.presentation_for_level("lost_signal").default_build);
  default_attempt.run_to_completion();

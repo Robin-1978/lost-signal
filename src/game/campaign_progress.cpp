@@ -24,6 +24,7 @@ bool known_level(const ContentCatalog& catalog, const std::string& id) {
 CampaignProgress CampaignProgress::load(
  const std::filesystem::path& path, const ContentCatalog& catalog) {
  CampaignProgress progress;
+ progress.inventory_ = catalog.campaign().starting_inventory;
  if (path.empty() || !std::filesystem::exists(path)) return progress;
 
  std::ifstream input(path);
@@ -44,6 +45,29 @@ CampaignProgress CampaignProgress::load(
  == progress.completed_levels_.end()) {
  progress.completed_levels_.push_back(id);
  }
+ }
+ progress.inventory_ = catalog.campaign().starting_inventory;
+ for (const auto& id : value.value("inventory", std::vector<std::string>{})) {
+ if (catalog.components().contains(id)
+ && std::find(progress.inventory_.begin(), progress.inventory_.end(), id)
+ == progress.inventory_.end()) {
+ progress.inventory_.push_back(id);
+ }
+ }
+ const auto builds = value.value("last_builds", json::object());
+ for (auto it = builds.begin(); it != builds.end(); ++it) {
+ if (!known_level(catalog, it.key()) || !it.value().is_object()) continue;
+ const auto& entry = it.value();
+ BuildSelection build;
+ build.tires = entry.value("tires", std::string{});
+ build.sensor = entry.value("sensor", std::string{});
+ build.computer = entry.value("computer", std::string{});
+ build.style = std::clamp(entry.value("style", 0.5), 0.0, 1.0);
+ bool known = true;
+ for (const auto* id : {&build.tires, &build.sensor, &build.computer}) {
+ if (!id->empty() && !catalog.components().contains(*id)) known = false;
+ }
+ if (known) progress.last_builds_.emplace(it.key(), build);
  }
  const auto scores = value.value("best_scores", json::object());
  for (auto it = scores.begin(); it != scores.end(); ++it) {
@@ -67,6 +91,12 @@ void CampaignProgress::record_completion(
  == completed_levels_.end()) {
  completed_levels_.push_back(level_id);
  }
+ for (const auto& reward : catalog.level(level_id).rewards) {
+ if (catalog.components().contains(reward)
+ && std::find(inventory_.begin(), inventory_.end(), reward) == inventory_.end()) {
+ inventory_.push_back(reward);
+ }
+ }
  const auto& order = catalog.campaign().levels;
  std::sort(completed_levels_.begin(), completed_levels_.end(), [&](const auto& left, const auto& right) {
  return std::find(order.begin(), order.end(), left) < std::find(order.begin(), order.end(), right);
@@ -84,10 +114,28 @@ void CampaignProgress::record_completion(
  }
 }
 
+void CampaignProgress::record_build(const std::string& level_id, const BuildSelection& build) {
+ last_builds_[level_id] = build;
+}
+
+const BuildSelection* CampaignProgress::last_build(const std::string& level_id) const {
+ const auto found = last_builds_.find(level_id);
+ return found == last_builds_.end() ? nullptr : &found->second;
+}
+
 void CampaignProgress::save(
  const std::filesystem::path& path, const ContentCatalog& catalog) const {
  if (path.empty()) return;
  if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+ json builds = json::object();
+ for (const auto& [level_id, build] : last_builds_) {
+ builds[level_id] = {
+ {"tires", build.tires},
+ {"sensor", build.sensor},
+ {"computer", build.computer},
+ {"style", build.style},
+ };
+ }
  json scores = json::object();
  for (const auto& [level_id, score] : best_scores_) {
  scores[level_id] = {
@@ -102,7 +150,8 @@ void CampaignProgress::save(
  {"schema_version", 2},
  {"content_version", catalog.campaign().content_version},
  {"completed_levels", completed_levels_},
- {"inventory", catalog.campaign().starting_inventory},
+ {"inventory", inventory_},
+ {"last_builds", std::move(builds)},
  {"best_scores", std::move(scores)},
  };
 

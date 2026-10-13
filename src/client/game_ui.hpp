@@ -42,6 +42,10 @@ public:
  void select_level(const std::string& level_id);
  void mark_completed(const std::string& level_id);
  void restore_completed(const std::vector<std::string>& level_ids);
+ // DIY garage: owned component ids filter the columns; the last attempted
+ // build is restored when re-entering a level.
+ void set_inventory(const std::vector<std::string>& component_ids);
+ void set_build(const game::BuildSelection& build);
 
 private:
  void rebuild(const game::MissionSimulation* mission);
@@ -54,6 +58,7 @@ private:
  void set_style(double style);
  void update_style_label();
  void update_garage_labels();
+ void sanitize_build();
  bool is_unlocked(const game::LevelDefinition& level) const;
  std::string next_level_id() const;
 
@@ -74,6 +79,7 @@ private:
  int height_{900};
  std::string prediction_choice_;
  std::unordered_set<std::string> completed_levels_;
+ std::unordered_set<std::string> owned_;
  std::unordered_map<std::string, tgui::Button::Ptr> slot_buttons_;
  tgui::Slider::Ptr style_slider_;
  tgui::Label::Ptr style_value_;

@@ -112,6 +112,7 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
  try {
  progress = game::CampaignProgress::load(progress_path, catalog);
  ui.restore_completed(progress.completed_levels());
+ ui.set_inventory(progress.inventory());
  } catch (const std::exception& error) {
  std::cerr << "warning: ignoring unreadable progress: " << error.what() << '\n';
  }
@@ -151,6 +152,7 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
  const auto actions = ui.consume_actions();
  if (!actions.selected_level.empty()) {
  ui.select_level(actions.selected_level);
+ if (const auto* last = progress.last_build(ui.level_id())) ui.set_build(*last);
  mission = std::make_unique<game::MissionSimulation>(
  catalog, ui.level_id(), ui.build());
  ui.set_screen(client::Screen::Garage, mission.get());
@@ -166,6 +168,14 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
  accumulator = 0.0;
  }
  if (actions.launch || actions.retry) {
+ if (persist_progress) {
+ try {
+ progress.record_build(ui.level_id(), ui.build());
+ progress.save(progress_path, catalog);
+ } catch (const std::exception& error) {
+ std::cerr << "warning: could not save progress: " << error.what() << '\n';
+ }
+ }
  mission = std::make_unique<game::MissionSimulation>(catalog, ui.level_id(), ui.build());
  mission->start();
  ui.set_screen(client::Screen::Running, mission.get());
@@ -214,6 +224,7 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
  try {
  progress.record_completion(mission->level().id, mission->result(), catalog);
  progress.save(progress_path, catalog);
+ ui.set_inventory(progress.inventory());
  } catch (const std::exception& error) {
  std::cerr << "warning: could not save progress: " << error.what() << '\n';
  }

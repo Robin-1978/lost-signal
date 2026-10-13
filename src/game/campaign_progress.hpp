@@ -1,5 +1,7 @@
 #pragma once
 
+#include "content.hpp"
+
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -28,6 +30,13 @@ public:
  const ContentCatalog& catalog);
  void save(const std::filesystem::path& path, const ContentCatalog& catalog) const;
 
+ // DIY inventory: owned component ids. Starts at starting_inventory, grows by
+ // component rewards (idempotent). Garage offers level columns ∩ inventory.
+ const std::vector<std::string>& inventory() const { return inventory_; }
+ // Last attempted build per level; restored when re-entering the garage.
+ void record_build(const std::string& level_id, const BuildSelection& build);
+ const BuildSelection* last_build(const std::string& level_id) const;
+
  const std::vector<std::string>& completed_levels() const { return completed_levels_; }
  const std::unordered_map<std::string, BestScore>& best_scores() const {
  return best_scores_;
@@ -35,6 +44,8 @@ public:
 
 private:
  std::vector<std::string> completed_levels_;
+ std::vector<std::string> inventory_;
+ std::unordered_map<std::string, BuildSelection> last_builds_;
  std::unordered_map<std::string, BestScore> best_scores_;
 };
 
