@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "scrub_climb",
+  "order": 14,
+  "title": "履带爬坡",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "long_haul"
+  ],
+  "seed": 163,
+  "objective": {
+    "type": "reach",
+    "spawn": "workshop_exit",
+    "goal": "supply_station",
+    "goal_label": "能源模块",
+    "goal_visual": "supply_station",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "tracked_detour",
+    "prediction_prompt": "履带走窄走廊，打滑和转向哪个先出问题？",
+    "knowledge_card": "履带过窄道：转弯全靠搓，慢一点，里程计才不撒谎。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "fast_time_s": 40.0,
+    "efficient_energy_wh": 0.5
+  },
+  "rewards": [
+    "ability.scrub_climb"
+  ]
+}

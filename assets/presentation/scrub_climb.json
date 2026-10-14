@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "id": "presentation.scrub_climb",
+  "is_default": false,
+  "level": "scrub_climb",
+  "robot": "robot.ro3",
+  "garage": {
+    "heading": "履带再战",
+    "brief": "同一条北上路，换履带车再走一次。转弯即打滑，慢就是稳。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.long_slow_lidar",
+      "motor": "motor.standard",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "motor": "motor.standard",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "履带北上，短板在哪？",
+    "hint": "先做预测。轮式和履带，同一条走廊走出什么不同？",
+    "choices": [
+      {
+        "id": "scrub_climb.link.slip",
+        "text": "转弯会丢定位",
+        "feedback": "如果进弯太急，履带空转，里程计 drift 会先超标。看复盘里的定位误差。"
+      },
+      {
+        "id": "scrub_climb.link.corner",
+        "text": "转弯会浪费时间",
+        "feedback": "如果带着速度进弯，只能绕大圈。看出弯点的轨迹。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "履带北上",
+    "normal_line": "RO-3：双履带在线，正在搓着转向。",
+    "detected_line": "RO-3：前方状态已确认。"
+  },
+  "debrief": {
+    "success_title": "履带登顶",
+    "success_summary": "窄走廊履带通过：慢进弯，定位才保得住。",
+    "failure_summary": "看看是哪一项评分丢了，履带最怕急转弯。",
+    "evidence_heading": "本次驾驶",
+    "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+    "knowledge_title": "滑移转向",
+    "failure_titles": {
+      "collision-static": "履带失败：碰到了障碍",
+      "collision-dynamic": "履带失败：与叉车发生碰撞",
+      "timeout": "履带失败：没有在时限内到达"
+    }
+  }
+}

@@ -23,7 +23,8 @@
     "return_route",
     "track_turn",
     "loose_ground",
-    "long_haul"
+    "long_haul",
+    "scrub_climb"
   ],
   "starting_inventory": [
     "tires.standard",

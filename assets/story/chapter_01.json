@@ -120,6 +120,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：到家了。长途的秘诀就是没有秘诀：匀速。"
+    },
+    {
+      "id": "scrub_climb.before",
+      "level": "scrub_climb",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：北上那条路，让 RO-3 也走一遍。"
+    },
+    {
+      "id": "scrub_climb.after",
+      "level": "scrub_climb",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "RO-3：到了。同一条路，不同的脚，感觉完全不同。"
     }
   ]
 }

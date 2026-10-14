@@ -230,5 +230,22 @@ int main() {
   CHECK(!grit_default.result().safe_score);
   CHECK(grit_default.result().fast_score);
  }
+ // Tracked detour: rushing tracks gets lost into a wall (robust crash-teaching
+ // case, 5/5 over seeds: scrub drift 17 m), careful tracks arrive. This closes
+ // the open need for an honest failure level left by the feedforward session.
+ {
+  const auto& presentation = catalog.presentation_for_level("scrub_climb");
+  CHECK(presentation.robot_id == "robot.ro3");
+  game::MissionSimulation climb(catalog, "scrub_climb", presentation.recommended_build);
+  climb.run_to_completion();
+  CHECK(climb.result().status == game::MissionStatus::Succeeded);
+  CHECK(climb.result().safe_score);
+  CHECK(climb.result().fast_score);
+  CHECK(climb.result().efficient_score);
+  game::MissionSimulation climb_default(catalog, "scrub_climb", presentation.default_build);
+  climb_default.run_to_completion();
+  CHECK(climb_default.result().status == game::MissionStatus::Failed);
+  CHECK(climb_default.result().failure_reason == "collision-static");
+ }
  return 0;
 }
