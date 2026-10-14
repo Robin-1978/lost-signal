@@ -571,8 +571,11 @@ void SceneRenderer3D::draw_scene(const game::MissionSimulation& mission) const {
  const auto& scene = catalog_.scene(map.scene_3d);
  draw_floor(map, scene);
  draw_environment(mission, scene);
- for (const auto& surface : map.surfaces)
+ for (const auto& surface : map.surfaces) {
+  if (!game::active_in_level(surface.active_in, mission.level().id))
+   continue;
   draw_surface(surface);
+ }
  for (const auto& obstacle : map.obstacles) {
   if (game::active_in_level(obstacle.active_in, mission.level().id))
    draw_shelf(obstacle);

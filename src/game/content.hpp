@@ -39,13 +39,25 @@ struct BoxDefinition {
  std::vector<std::string> active_in;
 };
 
+struct SurfaceMaterialDefinition {
+ std::string id;
+ std::string title;
+ std::string description;
+ double friction_mu{1.0};
+ double rolling_drag{0.0};
+ double traction_scale{1.0};
+};
+
 struct SurfaceDefinition {
  std::string id;
  sim::Vec2 min;
  sim::Vec2 max;
- double traction_scale{1.0};
+ // Numbers resolved from the material library at load; rects carry only the
+ // material id. Empty active_in = always on (wet_floor predates the gate).
  std::string material;
+ std::vector<std::string> active_in;
  std::string label;
+ double traction_scale{1.0};
  double friction_mu{0.8};
  double rolling_drag{0.0};
 };

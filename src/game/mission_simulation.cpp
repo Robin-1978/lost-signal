@@ -745,7 +745,7 @@ void MissionSimulation::apply_motion() {
 
 double MissionSimulation::surface_traction(sim::Vec2 position) const {
  for (const auto& surface : map_definition_.surfaces) {
-  if (inside(position, surface)) {
+  if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    return surface.traction_scale;
   }
  }
@@ -896,7 +896,7 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  double ground_rr = 0.0;
  double traction = 1.0;
  for (const auto& surface : map_definition_.surfaces) {
-  if (inside(position, surface)) {
+  if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
    traction = surface.traction_scale;

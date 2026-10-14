@@ -88,6 +88,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     chapters = _read(root / "chapters.json")
     levels = [_read(p) for p in sorted((root / "levels").glob("*.json"))]
     maps = [_read(p) for p in sorted((root / "maps").glob("*.json"))]
+    surface_library = _read(root / "surfaces.json")
     scenes = [_read(p) for p in sorted((root / "scenes").glob("*.json"))]
     component_docs = [
         _read(p)
@@ -116,6 +117,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     _schema(chapters, schema_dir / "chapters.schema.json")
     for doc in levels:
         _schema(doc, schema_dir / "level.schema.json")
+    _schema(surface_library, schema_dir / "surface.schema.json")
     for doc in maps:
         _schema(doc, schema_dir / "map.schema.json")
     for doc in scenes:
@@ -183,6 +185,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(f"{doc.path}:/id: id must match filename")
         map_by_id[map_id] = doc
 
+        materials = {m["id"] for m in surface_library.data["materials"]}
+        for index, rect in enumerate(doc.data["surfaces"]):
+            if rect["material"] not in materials:
+                raise ContentError(f"{doc.path}:/surfaces/{index}: unknown material '{rect['material']}'")
         size = doc.data["size_m"]
         for collection in ("obstacles", "surfaces"):
             for index, box in enumerate(doc.data[collection]):

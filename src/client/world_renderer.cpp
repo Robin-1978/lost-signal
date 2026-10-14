@@ -273,6 +273,8 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
    {map_top_left.x, map_top_left.y, map_bottom_right.x - map_top_left.x, map_bottom_right.y - map_top_left.y},
    5, {67, 65, 57, 210});
  for (const auto& surface : map.surfaces) {
+  if (!game::active_in_level(surface.active_in, mission.level().id))
+   continue;
   const auto top_left = world_to_screen({surface.min.x, surface.max.y});
   const auto bottom_right = world_to_screen({surface.max.x, surface.min.y});
   Rectangle box{top_left.x, top_left.y, bottom_right.x - top_left.x, bottom_right.y - top_left.y};

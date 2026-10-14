@@ -198,6 +198,21 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
+ {
+  const auto path = catalog.root_ / "surfaces.json";
+  const auto value = read_json(path);
+  require_schema_v1(value, path);
+  for (const auto& item : value.at("materials")) {
+   SurfaceMaterialDefinition material;
+   material.id = item.at("id").get<std::string>();
+   material.title = item.at("title").get<std::string>();
+   material.description = item.at("description").get<std::string>();
+   material.friction_mu = item.at("friction_mu").get<double>();
+   material.rolling_drag = item.at("rolling_drag").get<double>();
+   material.traction_scale = item.at("traction_scale").get<double>();
+   insert_unique(catalog.surface_materials_, std::move(material), path);
+  }
+ }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
   const auto value = read_json(path);
   require_schema_v1(value, path);
@@ -215,16 +230,18 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    });
   }
   for (const auto& item : value.at("surfaces")) {
-   map.surfaces.push_back({
-     item.at("id").get<std::string>(),
-     vec2(item.at("min")),
-     vec2(item.at("max")),
-     item.at("traction_scale").get<double>(),
-     item.at("material").get<std::string>(),
-     item.at("label").get<std::string>(),
-     item.at("friction_mu").get<double>(),
-     item.at("rolling_drag").get<double>(),
-   });
+   const auto& material = catalog.surface_material(item.at("material").get<std::string>());
+   SurfaceDefinition surface;
+   surface.id = item.at("id").get<std::string>();
+   surface.min = vec2(item.at("min"));
+   surface.max = vec2(item.at("max"));
+   surface.material = material.id;
+   surface.active_in = item.value("active_in", std::vector<std::string>{});
+   surface.label = item.at("label").get<std::string>();
+   surface.traction_scale = material.traction_scale;
+   surface.friction_mu = material.friction_mu;
+   surface.rolling_drag = material.rolling_drag;
+   map.surfaces.push_back(std::move(surface));
   }
   for (auto it = value.at("markers").begin(); it != value.at("markers").end(); ++it) {
    map.markers.emplace(it.key(), pose(it.value()));
@@ -694,6 +711,14 @@ const PresentationDefinition& ContentCatalog::presentation(const std::string& id
  const auto found = presentations_.find(id);
  if (found == presentations_.end()) {
   throw ContentError("unknown presentation '" + id + "'");
+ }
+ return found->second;
+}
+
+const SurfaceMaterialDefinition& ContentCatalog::surface_material(const std::string& id) const {
+ const auto found = surface_materials_.find(id);
+ if (found == surface_materials_.end()) {
+  throw ContentError("unknown surface material '" + id + "'");
  }
  return found->second;
 }

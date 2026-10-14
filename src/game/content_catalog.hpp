@@ -30,6 +30,7 @@ class ContentCatalog {
 
  const std::unordered_map<std::string, LevelDefinition>& levels() const { return levels_; }
  const std::unordered_map<std::string, ComponentDefinition>& components() const { return components_; }
+ const SurfaceMaterialDefinition& surface_material(const std::string& id) const;
  const std::unordered_map<std::string, PolicyDefinition>& policies() const { return policies_; }
  const std::unordered_map<std::string, RobotDefinition>& robots() const { return robots_; }
  const std::unordered_map<std::string, SceneDefinition>& scenes() const { return scenes_; }
@@ -50,6 +51,7 @@ class ContentCatalog {
  CampaignDefinition campaign_;
  std::unordered_map<std::string, LevelDefinition> levels_;
  std::unordered_map<std::string, MapDefinition> maps_;
+ std::unordered_map<std::string, SurfaceMaterialDefinition> surface_materials_;
  std::unordered_map<std::string, SceneDefinition> scenes_;
  std::unordered_map<std::string, RobotDefinition> robots_;
  std::unordered_map<std::string, ComponentDefinition> components_;

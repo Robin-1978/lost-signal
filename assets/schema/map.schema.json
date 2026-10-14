@@ -148,11 +148,8 @@
     "type",
     "min",
     "max",
-    "traction_scale",
     "material",
-    "label",
-    "friction_mu",
-    "rolling_drag"
+    "label"
    ],
    "properties": {
     "id": {
@@ -167,26 +164,19 @@
     "max": {
      "$ref": "#/$defs/vec2"
     },
-    "traction_scale": {
-     "type": "number",
-     "exclusiveMinimum": 0,
-     "maximum": 1
-    },
     "material": {
      "type": "string",
      "minLength": 1
     },
+    "active_in": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/id"
+     }
+    },
     "label": {
      "type": "string",
      "minLength": 1
-    },
-    "friction_mu": {
-     "type": "number",
-     "exclusiveMinimum": 0
-    },
-    "rolling_drag": {
-     "type": "number",
-     "minimum": 0
     }
    }
   },

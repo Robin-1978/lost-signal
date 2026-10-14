@@ -42,6 +42,11 @@ int main() {
  CHECK(third.drive_type == "tracked");
  CHECK(third.tracked_max_yaw_rate_rads > 0.0);
  CHECK(third.track_length_m > 0.0);
+ // Ground material library: the migrated wet_floor resolves to library
+ // numbers, so this also pins the zero-behavior-change migration.
+ CHECK(catalog.surface_material("standing_water").friction_mu == 0.35);
+ CHECK(catalog.surface_material("standing_water").traction_scale == 0.45);
+ CHECK(catalog.surface_material("paved").traction_scale == 1.0);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
  CHECK(robot.slots.size() == 5);

@@ -60,11 +60,8 @@
         7.0,
         7.0
       ],
-      "traction_scale": 0.45,
       "material": "standing_water",
-      "label": "湿滑地面",
-      "friction_mu": 0.35,
-      "rolling_drag": 0.02
+      "label": "湿滑地面"
     }
   ],
   "markers": {
