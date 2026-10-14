@@ -158,6 +158,7 @@ LEVELS: list[dict] = [
         "story_before": "洛一：从信号塔回标定点，最远的一段路，我们慢慢开。",
         "story_after": "洛一：到家了。长途的秘诀就是没有秘诀：匀速。",
     },
+
     {
         "id": "scrub_climb",
         "template": "reach",
@@ -225,6 +226,9 @@ LEVELS: list[dict] = [
         "story_before": "洛一：北上那条路，让 RO-3 也走一遍。",
         "story_after": "RO-3：到了。同一条路，不同的脚，感觉完全不同。",
     },
+
+
+
 ]
 
 TRIO_COLUMNS = [

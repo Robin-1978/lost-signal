@@ -520,6 +520,10 @@ void MissionSimulation::decide_control() {
  {
   const auto goal = as_vec(map_definition_.markers.at(level_.objective.goal));
   const double dist_goal = distance({nav_x, nav_y}, goal);
+  // Bounded: far exhaustion means the follower lost the path, not that the
+  // goal is near; beelining across the map without waypoints risks walls.
+  // (An unbounded trial stranded swift tracks in a reversing cycle instead
+  // of docking — evidence for curation, not for a longer leash.)
   if (route_control.reached && dist_goal > level_.objective.arrive_tolerance_m && dist_goal < 3.0) {
    const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
    if (!guide_state_.reversing && std::abs(dock_err) > 1.4)
