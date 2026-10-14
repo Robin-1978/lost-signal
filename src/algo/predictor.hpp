@@ -38,6 +38,16 @@ std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput
 // Returns +infinity when there is nothing predicted.
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
                      const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
-                     double ego_radius_m);
+                     double ego_radius_m, double depart_delay_s = 0.0);
+
+// Earliest safe departure: smallest wait d >= 0 such that departing at now+d
+// keeps the whole prediction horizon clear (via predicted_gap with delay).
+// Returns +infinity when no departure within the horizon works. Phase-1a
+// (observe only): the mission records it during waits without acting on it;
+// action waits until the observed error (predicted vs actual release) proves
+// small. Pure function, no behavior by itself.
+double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
+                           const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                           double ego_radius_m, double margin_m);
 
 } // namespace sim

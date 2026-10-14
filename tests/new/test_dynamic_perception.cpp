@@ -125,9 +125,10 @@ int main() {
     {{{4.0, 0.0}, {0.0, 0.0}, 0.5}},
     {{{3.0, 0.0}, {0.0, 0.0}, 0.5}},
   };
-  // Ego advances 1 m/frame from x=0; frame radii 0.5, ego 0.38.
+  // Ego at frame k stands at k m (frame 0 = now at x=0); swept intervals
+  // [0,1]x[5,4] and [1,2]x[4,3] close to 1.0 m center distance at the end.
   const double gap = sim::predicted_gap(path, 0, 10.0, closing, 0.1, 0.38);
-  CHECK(std::abs(gap - (3.0 - 3.0 - 0.5 - 0.38)) < 1e-9);
+  CHECK(std::abs(gap - (1.0 - 0.5 - 0.38)) < 1e-9);
   const std::vector<std::vector<sim::DynState>> leaving = {
     {{{5.0, 5.0}, {0.0, 0.0}, 0.5}},
   };
@@ -140,6 +141,48 @@ int main() {
     {{{2.0, 0.0}, {0.0, 0.0}, 0.5}},
   };
   CHECK(sim::predicted_gap(path, 0, 0.0, incoming, 0.1, 0.38) < 1.2);
+ }
+ // Swept intervals: a fast crosser passing between frames is caught exactly
+ // (endpoints both read ~1.0 m, true minimum 0.1 m). Discrete sampling alone
+ // would report clear; the segment check must not.
+ {
+  const std::vector<sim::Vec2> line{{0.0, 0.0}, {10.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> crossing = {
+    {{{-1.0, 0.1}, {0.0, 0.0}, 0.5}},
+    {{{1.0, 0.1}, {0.0, 0.0}, 0.5}},
+  };
+  const double swept = sim::predicted_gap(line, 0, 0.0, crossing, 0.1, 0.38);
+  CHECK(std::abs(swept - (0.1 - 0.5 - 0.38)) < 1e-9);
+ }
+ // earliest_departure: go-now when clear, positive wait for a passing threat,
+ // infinity when nothing clears in horizon; empty inputs report infinity.
+ // Paths are 2 m / 1 mps = 2 s traversals inside a 4 s horizon, so the
+ // full-trajectory gate (must finish inside the horizon) is satisfiable.
+ {
+  const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::earliest_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5) == 0.0);
+  // Threat parked on the path for the whole horizon: no departure works.
+  // Parked at 1.5 m so the wait position itself (gap 0.72) passes margin —
+  // the infinity comes from the traversal, not from a bad wait spot.
+  const std::vector<std::vector<sim::DynState>> blocked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::earliest_departure(line, 0, 1.0, blocked, 0.1, 0.38, 0.5) ==
+        std::numeric_limits<double>::infinity());
+  // Threat clears after 1 s: must wait, then go.
+  std::vector<std::vector<sim::DynState>> clearing;
+  for (int k = 0; k < 40; ++k) {
+   if (k < 10) {
+    clearing.push_back({{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+   } else {
+    clearing.push_back({{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+   }
+  }
+  const double dep = sim::earliest_departure(line, 0, 1.0, clearing, 0.1, 0.38, 0.5);
+  CHECK(dep > 0.0 && dep < std::numeric_limits<double>::infinity());
+  CHECK(sim::earliest_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5) ==
+        std::numeric_limits<double>::infinity());
+  CHECK(sim::earliest_departure(line, 0, 0.0, open, 0.1, 0.38, 0.5) ==
+        std::numeric_limits<double>::infinity());
  }
  return 0;
 }
