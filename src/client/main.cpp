@@ -26,6 +26,7 @@ struct Options {
  bool demo{false};
  bool analysis_view{false};
  bool chapter_view{false};
+ bool garage_view{false};
  std::string level;
  std::filesystem::path screenshot;
  std::filesystem::path progress_file;
@@ -80,6 +81,8 @@ Options parse_options(int argc, char** argv) {
    options.analysis_view = true;
   else if (argument == "--chapter-view")
    options.chapter_view = true;
+  else if (argument == "--garage-view")
+   options.garage_view = true;
   else if (argument == "--level" && index + 1 < argc)
    options.level = argv[++index];
   else if (argument == "--screenshot" && index + 1 < argc)
@@ -90,7 +93,7 @@ Options parse_options(int argc, char** argv) {
    options.no_save = true;
   else if (argument == "--help" || argument == "-h") {
    std::cout << "Usage: lost_signal [--assets PATH] [--level ID] [--demo]"
-                " [--analysis-view] [--chapter-view]"
+                " [--analysis-view] [--chapter-view] [--garage-view]"
                 " [--screenshot FILE] [--save FILE|--no-save]\n";
    std::exit(0);
   } else
@@ -105,7 +108,7 @@ Options parse_options(int argc, char** argv) {
 int run_client(game::ContentCatalog catalog, const Options& options) {
  SetTraceLogLevel(LOG_ERROR);
  SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
- InitWindow(1440, 900, "失落的信号 / Lost Signal");
+ InitWindow(1440, 900, catalog.tr("app.window_title").c_str());
  SetWindowMinSize(1100, 720);
  SetTargetFPS(60);
 
@@ -146,7 +149,7 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
   double accumulator = 0.0;
   bool screenshot_taken = false;
   int rendered_frames = 0;
-  if ((options.demo || !options.screenshot.empty()) && !options.chapter_view) {
+  if ((options.demo || !options.screenshot.empty()) && !options.chapter_view && !options.garage_view) {
    ui.use_recommended_build();
    mission = std::make_unique<game::MissionSimulation>(catalog, presentation.level, ui.build());
    mission->start();
@@ -332,7 +335,8 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
 
    if (!options.screenshot.empty() && !screenshot_taken &&
        ((options.chapter_view && rendered_frames >= 3) ||
-        (!options.chapter_view &&
+        (options.garage_view && rendered_frames >= 3) ||
+        (!options.chapter_view && !options.garage_view &&
          ((mission->snapshot().actors.empty() && mission->snapshot().time_s >= 2.5) ||
           mission->snapshot().waiting_for_clearance ||
           mission->snapshot().status == game::MissionStatus::Succeeded ||

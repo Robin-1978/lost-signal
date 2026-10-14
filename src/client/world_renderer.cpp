@@ -173,12 +173,13 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
   const auto center = world_to_screen({pose.x, pose.y});
   DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 9.0f, selected ? hot : ghost);
   if (selected) {
-   draw_text(id, {center.x + 12, center.y - 8}, 12, hot);
+   draw_text(id, {center.x + 12, center.y - 8}, 15, hot);
   }
  }
- const std::string status = std::string(editor.dirty() ? "[●] " : "[○] ") + editor.message() +
-                            "  (E 退出 · N 障碍 · B 地面 · M 标记 · Del 删除 · S 存盘)";
- draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 13, Fade(kText, 0.9f));
+ const std::string status =
+   (editor.dirty() ? catalog_.tr("editor.dirty_on") : catalog_.tr("editor.dirty_off")) +
+   editor.message() + catalog_.tr("editor.help");
+ draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 16, Fade(kText, 0.9f));
 }
 
 Vector2 WorldRenderer::world_to_screen(sim::Vec2 point) const {
@@ -251,36 +252,36 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
 }
 
 void WorldRenderer::draw_view_mode() const {
- const std::string text = analysis_mode_ ? "AI 认知视图  ·  Tab 返回现场" : "探索视图  ·  Tab 查看 AI 认知";
- const auto measured = MeasureTextEx(font_, text.c_str(), 13, 0.25f);
+ const std::string text = analysis_mode_ ? catalog_.tr("world.view_cognitive") : catalog_.tr("world.view_explore");
+ const auto measured = MeasureTextEx(font_, text.c_str(), 16, 0.25f);
  const Rectangle pill{21.0f, 70.0f, measured.x + 26.0f, 29.0f};
  DrawRectangleRounded(pill, 0.46f, 10, analysis_mode_ ? Color{24, 61, 64, 235} : Color{16, 20, 19, 205});
- draw_text(text, {pill.x + 13.0f, pill.y + 6.0f}, 13, analysis_mode_ ? kCyan : Fade(kText, 0.82f));
+ draw_text(text, {pill.x + 13.0f, pill.y + 6.0f}, 16, analysis_mode_ ? kCyan : Fade(kText, 0.82f));
 }
 
 void WorldRenderer::draw_header(const game::MissionSimulation& mission, int width,
                                 const std::string& chapter_title) const {
- draw_text(chapter_title + "  /  第一章", {22, 14}, 13, Fade(kMuted, 0.88f));
+ draw_text(chapter_title + "  /  " + catalog_.tr("world.chapter_one"), {22, 14}, 16, Fade(kMuted, 0.88f));
  draw_text(mission.level().title, {21, 35}, 26, kText);
 
  const auto status = mission.snapshot().status;
- const char* text = "等待出发";
+ std::string text = catalog_.tr("world.status_deploy");
  Color color = kAmber;
  if (status == game::MissionStatus::Running) {
-  text = mission.level().control_mode == "manual_calibration" ? "底盘校准由你控制" : "洛一正在自主行动";
+  text = mission.level().control_mode == "manual_calibration" ? catalog_.tr("world.mode_manual") : catalog_.tr("world.mode_auto");
   color = kCyan;
  } else if (status == game::MissionStatus::Succeeded) {
-  text = "信号已经恢复";
+  text = catalog_.tr("world.restored");
   color = kCyan;
  } else if (status == game::MissionStatus::Failed) {
-  text = "行动中断";
+  text = catalog_.tr("world.interrupted");
   color = kDanger;
  }
- const auto measured = MeasureTextEx(font_, text, 14, 0.25f);
+ const auto measured = MeasureTextEx(font_, text.c_str(), 14, 0.25f);
  const Rectangle badge{static_cast<float>(width) - measured.x - 43, 23, measured.x + 25, 31};
  DrawRectangleRounded(badge, 0.45f, 12, {18, 21, 21, 218});
  DrawCircleV({badge.x + 13, badge.y + 15.5f}, 4.0f, color);
- draw_text(text, {badge.x + 23, badge.y + 7}, 14, kText);
+ draw_text(text, {badge.x + 23, badge.y + 7}, 17, kText);
 }
 
 void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
@@ -349,7 +350,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   }
   DrawRectangleRounded({box.x + 10, box.y + 10, 87, 24}, 0.45f, 8, {20, 29, 28, 195});
   DrawCircleV({box.x + 23, box.y + 22}, 4, {104, 198, 184, 220});
-  draw_text(surface.label, {box.x + 34, box.y + 15}, 12, Fade(kText, 0.78f));
+  draw_text(surface.label, {box.x + 34, box.y + 15}, 15, Fade(kText, 0.78f));
  }
  for (const auto& actor : map.actors) {
   if (!game::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2)
@@ -359,7 +360,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const auto middle = lerp(start, end, 0.5f);
   DrawLineEx({start.x, start.y - 38}, {end.x, end.y - 38}, 2.0f, {198, 161, 91, 42});
   DrawLineEx({start.x, start.y + 38}, {end.x, end.y + 38}, 2.0f, {198, 161, 91, 42});
-  draw_text("叉车通道", {middle.x - 35, middle.y + 52}, 14, {198, 181, 137, 62});
+  draw_text(catalog_.tr("world.forklift_lane"), {middle.x - 35, middle.y + 52}, 17, {198, 181, 137, 62});
  }
  const auto& path = mission.planned_path();
  std::size_t route_start = 0;
@@ -488,7 +489,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const auto measured = MeasureTextEx(font_, label.c_str(), 13, 0.25f);
   const Rectangle tag{position.x - measured.x * 0.5f - 9, position.y + 27, measured.x + 18, 24};
   DrawRectangleRounded(tag, 0.42f, 8, {17, 20, 19, 215});
-  draw_text(label, {tag.x + 9, tag.y + 5}, 13, kText);
+  draw_text(label, {tag.x + 9, tag.y + 5}, 16, kText);
  };
  if (!mission.level().objective.via.empty()) {
   draw_marker(mission.level().objective.via, kAmber, mission.level().objective.via_label, false);
@@ -551,11 +552,11 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const auto middle = lerp(robot_position, estimated, 0.52f);
   DrawLineEx(robot_position, estimated, 2.0f, Fade(kDanger, 0.27f));
   DrawCircleV(middle, 5, kDanger);
-  const std::string warning = "路线冲突 · " + fixed(separation, 1) + " 米";
+  const std::string warning = catalog_.trf("world.warn_conflict", {fixed(separation, 1)});
   const auto measured = MeasureTextEx(font_, warning.c_str(), 13, 0.25f);
   const Rectangle tag{estimated.x + radius + 8, estimated.y - radius - 10, measured.x + 18, 27};
   DrawRectangleRounded(tag, 0.38f, 8, {53, 24, 24, 232});
-  draw_text(warning, {tag.x + 9, tag.y + 6}, 13, {255, 191, 178, 255});
+  draw_text(warning, {tag.x + 9, tag.y + 6}, 16, {255, 191, 178, 255});
  }
 
  draw_robot(mission);
@@ -563,7 +564,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
 
  DrawRectangleRounded({viewport_.x + 18, viewport_.y + 17, 321, 29}, 0.48f, 10, {18, 21, 20, 215});
  DrawCircleV({viewport_.x + 33, viewport_.y + 31.5f}, 4, kCyan);
- draw_text("A* 全局路线  ·  DWA 局部轨迹  ·  动态局部图", {viewport_.x + 44, viewport_.y + 23}, 13,
+ draw_text(catalog_.tr("world.legend"), {viewport_.x + 44, viewport_.y + 23}, 16,
            Fade(kText, 0.88f));
 
  const float card_width = 328.0f;
@@ -575,29 +576,28 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  };
  DrawRectangleRounded(card, 0.08f, 10, {14, 18, 19, 235});
  DrawRectangleLinesEx(card, 1.0f, Fade(control.dwa_active ? kAmber : kCyan, 0.34f));
- draw_text("控制诊断", {card.x + 15, card.y + 12}, 15, kText);
+ draw_text(catalog_.tr("world.diag_title"), {card.x + 15, card.y + 12}, 18, kText);
  const std::string planner = control.dwa_active
-                               ? "DWA 活跃 · " + std::to_string(control.dwa_candidates.size()) + " 条候选"
-                               : "DWA 待机 · 跟随 A* 路线";
- draw_text(planner, {card.x + 15, card.y + 36}, 12, control.dwa_active ? kAmber : Fade(kCyan, 0.82f));
- draw_text("上层航向 e " + fixed(control.heading_error_rad, 2) + " rad · v " +
-             fixed(control.target_v_mps, 2) + " · ω " + fixed(control.target_w_radps, 2),
-           {card.x + 15, card.y + 58}, 12, Fade(kText, 0.82f));
+                               ? catalog_.trf("world.dwa_active", {std::to_string(control.dwa_candidates.size())})
+                               : catalog_.tr("world.dwa_idle");
+ draw_text(planner, {card.x + 15, card.y + 36}, 15, control.dwa_active ? kAmber : Fade(kCyan, 0.82f));
+ draw_text(catalog_.trf("world.heading", {fixed(control.heading_error_rad, 2), fixed(control.target_v_mps, 2),
+                                              fixed(control.target_w_radps, 2)}),
+           {card.x + 15, card.y + 58}, 15, Fade(kText, 0.82f));
  const bool ackermann = mission.robot().drive_type == "ackermann";
- draw_text(ackermann ? "驱动轮 · 目标/实测" : "左右轮 · 目标/实测", {card.x + 15, card.y + 80}, 11,
+ draw_text(ackermann ? catalog_.tr("world.wheels_ack") : catalog_.tr("world.wheels_diff"), {card.x + 15, card.y + 80}, 14,
            Fade(kMuted, 0.82f));
- draw_text("L 目标 " + fixed(control.left_target_rpm, 0) + " / 实测 " + fixed(control.left_measured_rpm, 0) +
-             " rpm · PWM " + fixed(control.left_pwm * 100.0, 0) + "%",
-           {card.x + 15, card.y + 99}, 12, Fade(kText, 0.86f));
+ draw_text(catalog_.trf("world.wheel_l", {fixed(control.left_target_rpm, 0), fixed(control.left_measured_rpm, 0),
+                                              fixed(control.left_pwm * 100.0, 0)}),
+           {card.x + 15, card.y + 99}, 15, Fade(kText, 0.86f));
  if (ackermann) {
-  draw_text("舵机 目标 " + fixed(control.steer_target_rad, 2) + " / 实测 " +
-              fixed(control.steer_angle_rad, 2) + " rad · PWM " + fixed(control.steer_pwm * 100.0, 0) + "%",
-            {card.x + 15, card.y + 130}, 12, Fade(kText, 0.86f));
+  draw_text(catalog_.trf("world.wheel_servo", {fixed(control.steer_target_rad, 2), fixed(control.steer_angle_rad, 2),
+                                                   fixed(control.steer_pwm * 100.0, 0)}),
+            {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
  } else {
-  draw_text("R 目标 " + fixed(control.right_target_rpm, 0) + " / 实测 " +
-              fixed(control.right_measured_rpm, 0) + " rpm · PWM " + fixed(control.right_pwm * 100.0, 0) +
-              "%",
-            {card.x + 15, card.y + 130}, 12, Fade(kText, 0.86f));
+  draw_text(catalog_.trf("world.wheel_r", {fixed(control.right_target_rpm, 0), fixed(control.right_measured_rpm, 0),
+                                               fixed(control.right_pwm * 100.0, 0)}),
+            {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
  }
  const auto draw_pwm = [&](float y, double value) {
   const Rectangle track{card.x + 15, y, card.width - 30, 7};
@@ -642,7 +642,7 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
    const float pixels = static_cast<float>(min_radius) * scale_;
    DrawRing(disc, pixels - 1.5f, pixels + 1.5f, 0, 360, 64, Fade(kAmber, 0.40f));
   }
-  draw_text("最小转弯半径 " + fixed(min_radius, 2) + " 米", {center.x + body_radius + 8, center.y - 8}, 12,
+  draw_text(catalog_.trf("world.min_radius", {fixed(min_radius, 2)}), {center.x + body_radius + 8, center.y - 8}, 15,
             Fade(kAmber, 0.85f));
  }
 
@@ -760,23 +760,24 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
             polar(center, body_radius * 0.42f, heading - 2.25f), 2.0f, Fade(kText, 0.25f));
 
  const std::string status =
-   state.waiting_for_clearance ? "我先等它通过" : "前往" + mission.level().objective.goal_label;
+   state.waiting_for_clearance ? catalog_.tr("world.status_waiting")
+                                        : catalog_.trf("world.status_go", {mission.level().objective.goal_label});
  const auto measured = MeasureTextEx(font_, status.c_str(), 13, 0.25f);
  const Rectangle label{center.x - measured.x * 0.5f - 11, center.y + body_radius + 17, measured.x + 22, 28};
  DrawRectangleRounded(label, 0.42f, 9, {21, 25, 23, 235});
  DrawTriangle({center.x - 5, label.y}, {center.x + 5, label.y}, {center.x, label.y - 6}, {21, 25, 23, 235});
- draw_text(status, {label.x + 11, label.y + 6}, 13, kText);
+ draw_text(status, {label.x + 11, label.y + 6}, 16, kText);
 }
 
 void WorldRenderer::draw_telemetry(const game::MissionSimulation& mission, int screen_height) const {
  const float y = std::min(viewport_.y + viewport_.height - 47.0f, static_cast<float>(screen_height) - 52.0f);
- const std::string summary = "已行动 " + fixed(mission.snapshot().time_s, 0) + " 秒" + "   ·   距离 " +
-                             fixed(mission.result().path_length_m, 1) + " 米" + "   ·   电量消耗 " +
-                             fixed(mission.result().energy_wh, 2) + " Wh";
+ const std::string summary = catalog_.trf("world.summary", {fixed(mission.snapshot().time_s, 0),
+                                                                fixed(mission.result().path_length_m, 1),
+                                                                fixed(mission.result().energy_wh, 2)});
  const auto measured = MeasureTextEx(font_, summary.c_str(), 13, 0.25f);
  const Rectangle pill{viewport_.x + 18, y, measured.x + 30, 30};
  DrawRectangleRounded(pill, 0.46f, 10, {17, 20, 19, 220});
- draw_text(summary, {pill.x + 15, pill.y + 7}, 13, Fade(kText, 0.78f));
+ draw_text(summary, {pill.x + 15, pill.y + 7}, 16, Fade(kText, 0.78f));
 }
 
 } // namespace client

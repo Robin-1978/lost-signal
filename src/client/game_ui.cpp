@@ -141,9 +141,9 @@ void GameUi::build_chapter() {
  scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
  add_parent_ = scroll;
- add_label("失落的信号", kMargin, 25, kContentWidth, 14, {107, 190, 176}, true);
+ add_label(catalog_.tr("chapter.game_title"), kMargin, 25, kContentWidth, 14, {107, 190, 176}, true);
  add_label(catalog_.campaign().title, kMargin, 53, kContentWidth, 25, {239, 238, 229}, true);
- add_label("帮助洛一逐步恢复运动、感知、定位与自主导航。", kMargin, 94, kContentWidth, 14, {157, 163, 158});
+ add_label(catalog_.tr("chapter.subtitle"), kMargin, 94, kContentWidth, 14, {157, 163, 158});
 
  float y = 160.0f;
  int shown_chapter = 0;
@@ -158,7 +158,7 @@ void GameUi::build_chapter() {
     }
    }
    const std::string heading =
-     chapter != nullptr ? chapter->title : ("第" + std::to_string(shown_chapter) + "章");
+     chapter != nullptr ? chapter->title : catalog_.trf("chapter.fallback", {std::to_string(shown_chapter)});
    add_label(heading, kMargin, y, kContentWidth, 17, {107, 190, 176}, true);
    y += 30.0f;
   }
@@ -171,8 +171,7 @@ void GameUi::build_chapter() {
   button->onClick([this, level_id] { actions_.selected_level = level_id; });
   y += 54.0f;
  }
- add_label("每一关只开放当前需要的机器人能力。A*、DWA 与 PID 是洛一的内置能力，"
-           "玩家负责理解问题并配置感知、执行与计算资源。",
+ add_label(catalog_.tr("chapter.footer_head") + catalog_.tr("chapter.footer_tail"),
            kMargin, y + 12, kContentWidth, 13, {137, 151, 145});
  if (!add_parent_) {
   return;
@@ -188,8 +187,8 @@ void GameUi::set_screen(Screen screen, const game::MissionSimulation* mission) {
 }
 
 void GameUi::build_garage() {
- add_label("洛一 · 机库配置", kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
- auto chapter_button = add_button("章节路线", kMargin + 216, 16, 96, 30);
+ add_label(catalog_.tr("garage.heading"), kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
+ auto chapter_button = add_button(catalog_.tr("chapter.garage_button"), kMargin + 216, 16, 96, 30);
  chapter_button->onClick([this] { actions_.open_chapter = true; });
  add_label(presentation_->garage_heading, kMargin, 51, kContentWidth, 25, {239, 238, 229}, true);
  add_label(presentation_->garage_brief, kMargin, 94, kContentWidth, 14, {157, 163, 158});
@@ -209,7 +208,8 @@ void GameUi::build_garage() {
    const auto& item = catalog_.component(option);
    const float row = static_cast<float>(index / 3);
    const float col = static_cast<float>(index % 3);
-   auto card = tgui::Button::create(item.title + "\n" + std::to_string(item.cost) + "点");
+   auto card = tgui::Button::create(
+    catalog_.trf("garage.card_cost", {item.title, std::to_string(item.cost)}));
    card->setPosition(kMargin + col * (card_width + kCardGap), y + 24 + row * (kCardHeight + kCardGap));
    card->setSize(card_width, kCardHeight);
    card->setTextSize(13);
@@ -231,23 +231,23 @@ void GameUi::build_garage() {
  style_slider_->setValue(static_cast<float>(build_.style * 100.0));
  style_slider_->onValueChange([this](float value) { set_style(static_cast<double>(value) / 100.0); });
  panel_->add(style_slider_);
- add_label("温柔", kMargin, y + 50, 80, 11, {132, 139, 135});
- auto style_mid = add_label("普通", kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ add_label(catalog_.tr("garage.style_gentle"), kMargin, y + 50, 80, 11, {132, 139, 135});
+ auto style_mid = add_label(catalog_.tr("garage.style_normal"), kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
  style_mid->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Center);
- auto style_fast = add_label("激进", kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ auto style_fast = add_label(catalog_.tr("garage.style_fast"), kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
  style_fast->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Right);
  style_value_ = add_label("", kMargin, y + 70, kContentWidth, 13, {143, 201, 187});
 
  budget_label_ = add_label("", kMargin, y + 108, kContentWidth, 15, {151, 167, 159}, true);
- auto recommended = add_button("采用推荐方案", kMargin, y + 144, 148, 42);
+ auto recommended = add_button(catalog_.tr("garage.use_recommended"), kMargin, y + 144, 148, 42);
  recommended->onClick([this] { use_recommended_build(); });
- auto next = add_button("下一步", kMargin + 164, y + 144, 148, 42, true);
+ auto next = add_button(catalog_.tr("garage.next"), kMargin + 164, y + 144, 148, 42, true);
  next->onClick([this] { actions_.open_prediction = true; });
  update_garage_labels();
 }
 
 void GameUi::build_prediction() {
- add_label("出发前", kMargin, 26, kContentWidth, 14, {107, 190, 176}, true);
+ add_label(catalog_.tr("prediction.departure"), kMargin, 26, kContentWidth, 14, {107, 190, 176}, true);
  add_label(presentation_->prediction_heading, kMargin, 55, kContentWidth, 25, {239, 238, 229}, true);
  add_label(presentation_->prediction_hint, kMargin, 101, kContentWidth, 14, {157, 163, 158});
 
@@ -272,9 +272,9 @@ void GameUi::build_prediction() {
    add_label(found->feedback, kMargin, y + 8, kContentWidth, 14, {143, 201, 187});
   }
  }
- auto back = add_button("返回", kMargin, height_ - 74.0f, 116, 46);
+ auto back = add_button(catalog_.tr("garage.back"), kMargin, height_ - 74.0f, 116, 46);
  back->onClick([this] { actions_.open_garage = true; });
- auto launch = add_button("让洛一出发", kMargin + 132, height_ - 74.0f, 180, 46, true);
+ auto launch = add_button(catalog_.tr("garage.launch"), kMargin + 132, height_ - 74.0f, 180, 46, true);
  launch->setEnabled(!prediction_choice_.empty());
  launch->onClick([this] { actions_.launch = true; });
 }
@@ -292,8 +292,7 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
  objective_card->getRenderer()->setRoundedBorderRadius(12);
  panel_->add(objective_card);
  const auto& level = mission ? mission->level() : catalog_.level(presentation_->level);
- auto chapter = tgui::Label::create("第 " + std::to_string(level.chapter) + "章 · 第 " +
-                                    std::to_string(level.order) + " 关 · " + level.title);
+ auto chapter = tgui::Label::create(catalog_.trf("ui.chapter_row", {std::to_string(level.chapter), std::to_string(level.order), level.title}));
  chapter->setPosition(16, 12);
  chapter->setTextSize(13);
  chapter->getRenderer()->setTextColor({107, 190, 176});
@@ -314,7 +313,7 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
  state_card->getRenderer()->setBorders({0, 0, 0, 3});
  state_card->getRenderer()->setRoundedBorderRadius(12);
  panel_->add(state_card);
- auto live = tgui::Label::create(manual ? "● 实时驾驶" : "● 洛一的决定");
+ auto live = tgui::Label::create(manual ? catalog_.tr("running.live_drive") : catalog_.tr("running.live_decide"));
  live->setPosition(18, 14);
  live->setTextSize(12);
  live->getRenderer()->setTextColor({104, 218, 193});
@@ -336,13 +335,13 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
  card->getRenderer()->setBorders({1});
  card->getRenderer()->setRoundedBorderRadius(12);
  panel_->add(card);
- auto why = tgui::Label::create(manual ? "底盘校准" : "AI 为什么这样做？");
+ auto why = tgui::Label::create(manual ? catalog_.tr("running.manual_title") : catalog_.tr("running.why"));
  why->setPosition(18, 14);
  why->setTextSize(13);
  why->getRenderer()->setTextColor({150, 177, 168});
  why->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
  card->add(why);
- running_metrics_ = tgui::Label::create("正在观察周围环境…");
+ running_metrics_ = tgui::Label::create(catalog_.tr("running.metrics_idle"));
  running_metrics_->setPosition(18, 42);
  running_metrics_->setTextSize(14);
  running_metrics_->setMaximumTextWidth(276);
@@ -356,7 +355,7 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
                            controls_y, 50, 38);
   button->onClick([this, speed = speeds[index]] { actions_.speed = speed; });
  }
- pause_button_ = add_button("暂停", kMargin + 190, controls_y, 122, 38, true);
+ pause_button_ = add_button(catalog_.tr("running.pause"), kMargin + 190, controls_y, 122, 38, true);
  pause_button_->onClick([this] { actions_.toggle_pause = true; });
  if (mission) {
   refresh_running(*mission, false, 1.0);
@@ -369,13 +368,13 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  }
  const auto& result = mission->result();
  const bool succeeded = result.status == game::MissionStatus::Succeeded;
- std::string title = succeeded ? presentation_->success_title : "任务中断";
+ std::string title = succeeded ? presentation_->success_title : catalog_.tr("debrief.interrupted");
  if (!succeeded) {
   const auto found = presentation_->failure_titles.find(result.failure_reason);
   if (found != presentation_->failure_titles.end())
    title = found->second;
  }
- add_label("运行复盘", kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
+ add_label(catalog_.tr("debrief.title"), kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
  add_label(title, kMargin, 51, kContentWidth, 24,
            succeeded ? tgui::Color{105, 235, 193} : tgui::Color{255, 145, 120}, true);
  std::string summary = succeeded ? presentation_->success_summary : presentation_->failure_summary;
@@ -386,20 +385,18 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  }
  add_label(summary, kMargin, 96, kContentWidth, 15, {157, 163, 158});
 
- const auto badge = [](bool earned, const char* label) { return std::string(earned ? "● " : "○ ") + label; };
- add_label(badge(result.safe_score, "安全") + "   " + badge(result.fast_score, "迅速") + "   " +
-             badge(result.efficient_score, "节能"),
+ const auto badge = [&](bool earned, const char* key) {
+   return (earned ? catalog_.tr("debrief.badge_on") : catalog_.tr("debrief.badge_off")) + catalog_.tr(key);
+  };
+ add_label(badge(result.safe_score, "debrief.badge_safe") + "   " + badge(result.fast_score, "debrief.badge_fast") + "   " +
+             badge(result.efficient_score, "debrief.badge_efficient"),
            kMargin, 166, kContentWidth, 17, {220, 222, 216}, true);
- std::string metrics = "用时 " + format_number(result.time_s) +
-                       " 秒\n"
-                       "路程 " +
-                       format_number(result.path_length_m) +
-                       " 米\n"
-                       "能耗 " +
-                       format_number(result.energy_wh, 2) + " Wh\n";
+ std::string metrics = catalog_.trf("debrief.metrics", {format_number(result.time_s),
+                                                             format_number(result.path_length_m),
+                                                             format_number(result.energy_wh, 2)});
  metrics += mission->level().concept == "odometry_drift"
-              ? "定位误差 " + format_number(result.odometry_error_m, 2) + " 米"
-              : "最近净空 " + format_number(result.min_clearance_m, 2) + " 米";
+              ? catalog_.trf("debrief.metrics_odom", {format_number(result.odometry_error_m, 2)})
+              : catalog_.trf("debrief.metrics_clear", {format_number(result.min_clearance_m, 2)});
  add_label(metrics, kMargin, 207, kContentWidth, 16, {182, 190, 186});
 
  add_label(presentation_->evidence_heading, kMargin, 320, kContentWidth, 16, {239, 238, 229}, true);
@@ -416,20 +413,20 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  add_label(mission->level().knowledge_card, kMargin, 532, kContentWidth, 14, {170, 184, 178});
 
  if (succeeded) {
-  auto chapter = add_button("章节路线", kMargin, height_ - 74.0f, 148, 46);
+  auto chapter = add_button(catalog_.tr("debrief.to_chapter"), kMargin, height_ - 74.0f, 148, 46);
   chapter->onClick([this] { actions_.open_chapter = true; });
   const auto next_id = next_level_id();
   auto next =
-    add_button(next_id.empty() ? "查看章节" : "进入下一关", kMargin + 164, height_ - 74.0f, 148, 46, true);
+    add_button(next_id.empty() ? catalog_.tr("debrief.view_chapter") : catalog_.tr("debrief.next_level"), kMargin + 164, height_ - 74.0f, 148, 46, true);
   if (next_id.empty()) {
    next->onClick([this] { actions_.open_chapter = true; });
   } else {
    next->onClick([this, next_id] { actions_.selected_level = next_id; });
   }
  } else {
-  auto garage = add_button("调整配置", kMargin, height_ - 74.0f, 148, 46);
+  auto garage = add_button(catalog_.tr("debrief.to_garage"), kMargin, height_ - 74.0f, 148, 46);
   garage->onClick([this] { actions_.open_garage = true; });
-  auto retry = add_button("再次运行", kMargin + 164, height_ - 74.0f, 148, 46, true);
+  auto retry = add_button(catalog_.tr("debrief.retry"), kMargin + 164, height_ - 74.0f, 148, 46, true);
   retry->onClick([this] { actions_.retry = true; });
  }
 }
@@ -519,7 +516,8 @@ void GameUi::update_garage_labels() {
     look->setBorderColor({64, 69, 67});
     look->setTextColor({225, 224, 215});
    }
-   card.button->setText(item.title + "\n" + std::to_string(item.cost) + "点" + (locked ? "[锁]" : ""));
+   card.button->setText(catalog_.trf("garage.card_cost", {item.title, std::to_string(item.cost)}) +
+                        (locked ? catalog_.tr("garage.card_locked") : ""));
   }
  }
  if (style_slider_) {
@@ -529,7 +527,7 @@ void GameUi::update_garage_labels() {
  if (budget_label_) {
   const int used = catalog_.build_cost(build_);
   const int budget = catalog_.level(presentation_->level).budget;
-  budget_label_->setText("装配预算  " + std::to_string(used) + " / " + std::to_string(budget));
+  budget_label_->setText(catalog_.trf("garage.budget", {std::to_string(used), std::to_string(budget)}));
   budget_label_->getRenderer()->setTextColor(used <= budget ? tgui::Color{147, 190, 185}
                                                             : tgui::Color{255, 130, 112});
  }
@@ -546,48 +544,39 @@ void GameUi::refresh_running(const game::MissionSimulation& mission, bool paused
  }
  std::string explanation;
  if (manual) {
-  explanation = "操作\nW / ↑ 前进，S / ↓ 后退\nA D / ← → 转向\n\n"
-                "观察\n松开按键后，速度不会瞬间归零\n\n"
-                "目标\n把洛一开到发光的出口标记";
+  explanation = catalog_.tr("running.manual_body");
  } else if (state.waiting_for_clearance) {
-  explanation = "看见\n叉车正在穿过前方通道\n\n"
-                "判断\n按现在的速度，双方会在路口相遇\n\n"
-                "动作\n停车，让叉车先通过";
+  explanation = catalog_.tr("running.waiting_body");
  } else if (state.dynamic_object_detected) {
-  explanation = "看见\n叉车进入雷达视野\n\n"
-                "判断\n持续预测它接下来的位置\n\n"
-                "动作\n减速接近，寻找安全窗口";
+  explanation = catalog_.tr("running.dynamic_body");
  } else if (state.static_obstacle_detected) {
-  explanation = "看见\n雷达返回了前方障碍的距离\n\n"
-                "判断\n继续前进会压缩制动空间\n\n"
-                "动作\n控制速度，在安全区内停车";
+  explanation = catalog_.tr("running.static_body");
  } else {
-  explanation = "看见\n前方路线清晰\n\n"
-                "判断\n当前路线可以通行\n\n"
-                "动作\n沿安全路线前往" +
-                mission.level().objective.goal_label;
+  explanation = catalog_.tr("running.clear_head") + mission.level().objective.goal_label;
  }
  if (!mission.level().objective.via.empty()) {
-  explanation += state.via_reached ? "\n\n● " + mission.level().objective.via_label + "已取得 ○ " +
-                                       mission.level().objective.goal_label + "待完成"
-                                   : "\n\n○ 前往" + mission.level().objective.via_label + " ○ " +
-                                       mission.level().objective.goal_label + "待完成";
+  if (state.via_reached)
+   explanation += catalog_.trf("running.via_done", {mission.level().objective.via_label,
+                                                   mission.level().objective.goal_label});
+  else
+   explanation += catalog_.trf("running.via_todo", {mission.level().objective.via_label,
+                                                   mission.level().objective.goal_label});
  }
  running_metrics_->setText(explanation);
  if (running_state_) {
   if (paused)
-   running_state_->setText("行动已暂停");
+   running_state_->setText(catalog_.tr("running.paused"));
   else if (manual)
-   running_state_->setText("由你控制：驶向维修间出口");
+   running_state_->setText(catalog_.tr("running.manual_state"));
   else if (state.waiting_for_clearance)
-   running_state_->setText("停车，让叉车先走");
+   running_state_->setText(catalog_.tr("running.waiting_state"));
   else if (state.dynamic_object_detected || state.static_obstacle_detected) {
    running_state_->setText(presentation_->detected_line);
   } else
    running_state_->setText(presentation_->normal_line);
  }
  if (pause_button_)
-  pause_button_->setText(paused ? "继续" : "暂停");
+  pause_button_->setText(paused ? catalog_.tr("running.resume") : catalog_.tr("running.pause"));
  (void)speed;
 }
 

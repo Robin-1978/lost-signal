@@ -218,7 +218,7 @@ void MapEditor::add_obstacle(double world_x, double world_y) {
  selected_id_ = working_.obstacles.back().id;
  selected_corner_ = -1;
  dirty_ = true;
- message_ = "新建障碍 " + selected_id_ + "（仅本关可见）";
+ message_ = catalog_.tr("editor.new_obstacle") + selected_id_ + catalog_.tr("editor.new_obstacle_local");
 }
 
 void MapEditor::add_surface(double world_x, double world_y) {
@@ -234,7 +234,7 @@ void MapEditor::add_surface(double world_x, double world_y) {
  surface.max = {surface.min.x + 2.0, surface.min.y + 2.0};
  surface.material = paved.id;
  surface.active_in = {level_id_};
- surface.label = "新建铺装";
+ surface.label = catalog_.tr("editor.new_ground_default");
  surface.traction_scale = paved.traction_scale;
  surface.friction_mu = paved.friction_mu;
  surface.rolling_drag = paved.rolling_drag;
@@ -243,7 +243,7 @@ void MapEditor::add_surface(double world_x, double world_y) {
  selected_id_ = working_.surfaces.back().id;
  selected_corner_ = -1;
  dirty_ = true;
- message_ = "新建地面 " + selected_id_ + "（铺装，仅本关可见）";
+ message_ = catalog_.tr("editor.new_ground") + selected_id_ + catalog_.tr("editor.new_ground_paved");
 }
 
 void MapEditor::add_marker(double world_x, double world_y) {
@@ -256,14 +256,14 @@ void MapEditor::add_marker(double world_x, double world_y) {
  selected_id_ = id;
  selected_corner_ = -1;
  dirty_ = true;
- message_ = "新建标记 " + selected_id_;
+ message_ = catalog_.tr("editor.new_marker") + selected_id_;
 }
 
 void MapEditor::remove_selected() {
  if (selected_kind_ == Kind::kObstacle) {
   for (auto it = working_.obstacles.begin(); it != working_.obstacles.end(); ++it) {
    if (it->id == selected_id_) {
-    message_ = "删除障碍 " + selected_id_;
+    message_ = catalog_.tr("editor.delete_obstacle") + selected_id_;
     working_.obstacles.erase(it);
     break;
    }
@@ -271,13 +271,13 @@ void MapEditor::remove_selected() {
  } else if (selected_kind_ == Kind::kSurface) {
   for (auto it = working_.surfaces.begin(); it != working_.surfaces.end(); ++it) {
    if (it->id == selected_id_) {
-    message_ = "删除地面 " + selected_id_;
+    message_ = catalog_.tr("editor.delete_ground") + selected_id_;
     working_.surfaces.erase(it);
     break;
    }
   }
  } else if (selected_kind_ == Kind::kMarker) {
-  message_ = "删除标记 " + selected_id_;
+  message_ = catalog_.tr("editor.delete_marker") + selected_id_;
   working_.markers.erase(selected_id_);
  } else {
   return;
@@ -294,7 +294,7 @@ bool MapEditor::save(const std::string& assets_root) {
  {
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
   if (!file) {
-   message_ = "存盘失败：打不开 " + path;
+   message_ = catalog_.tr("editor.save_fail") + path;
    return false;
   }
   file << text;
@@ -304,11 +304,11 @@ bool MapEditor::save(const std::string& assets_root) {
   // (schema, references, unlock chains). Throws on any breakage.
   game::ContentCatalog::load(assets_root);
  } catch (const std::exception& error) {
-  message_ = std::string("存盘已写但校验失败：") + error.what();
+  message_ = catalog_.tr("editor.save_invalid") + error.what();
   return false;
  }
  dirty_ = false;
- message_ = "已存盘并通过校验：maps/" + working_.id + ".json（重进关卡生效）";
+ message_ = catalog_.trf("editor.saved", {working_.id});
  return true;
 }
 

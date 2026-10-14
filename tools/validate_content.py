@@ -100,6 +100,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     presentations = [_read(p) for p in sorted((root / "presentation").glob("*.json"))]
     robots = [_read(p) for p in sorted((root / "robots").glob("*.json"))]
     abilities = _read(root / "abilities.json")
+    strings = _read(root / "strings.json")
 
     if (
         not levels
@@ -131,6 +132,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     for doc in presentations:
         _schema(doc, schema_dir / "presentation.schema.json")
     _schema(abilities, schema_dir / "abilities.schema.json")
+    _schema(strings, schema_dir / "strings.schema.json")
     for doc in robots:
         for key in (
             "max_wheel_speed_mps",

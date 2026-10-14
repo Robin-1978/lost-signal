@@ -225,6 +225,16 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    insert_unique(catalog.abilities_, std::move(ability), path);
   }
  }
+ {
+  const auto path = catalog.root_ / "strings.json";
+  const auto value = read_json(path);
+  require_schema_v1(value, path);
+  for (const auto& [key, text] : value.at("strings").items()) {
+   if (!catalog.strings_.emplace(key, text.get<std::string>()).second) {
+    throw ContentError(path.string() + ": duplicate string '" + key + "'");
+   }
+  }
+ }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
   const auto value = read_json(path);
   require_schema_v1(value, path);
@@ -723,6 +733,27 @@ const AbilityDefinition& ContentCatalog::ability(const std::string& id) const {
   throw ContentError("unknown ability '" + id + "'");
  }
  return found->second;
+}
+
+const std::string& ContentCatalog::tr(const std::string& key) const {
+ const auto found = strings_.find(key);
+ if (found == strings_.end()) {
+  throw ContentError("unknown UI string '" + key + "'");
+ }
+ return found->second;
+}
+
+std::string ContentCatalog::trf(const std::string& key, const std::vector<std::string>& args) const {
+ std::string out = tr(key);
+ for (std::size_t i = 0; i < args.size(); ++i) {
+  const std::string slot = "{" + std::to_string(i) + "}";
+  std::size_t at = 0;
+  while ((at = out.find(slot, at)) != std::string::npos) {
+   out.replace(at, slot.size(), args[i]);
+   at += args[i].size();
+  }
+ }
+ return out;
 }
 
 const PolicyDefinition& ContentCatalog::policy(const std::string& id) const {
