@@ -30,7 +30,8 @@ add_library(lost_signal_sim STATIC
   src/hw/chassis/motor_drive.cpp
   src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
- src/hw/feedforward.cpp
+ src/algo/state_estimator.cpp
+src/hw/feedforward.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
 )
@@ -203,6 +204,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_feedforward tests/new/test_feedforward.cpp)
  target_link_libraries(test_feedforward PRIVATE lost_signal_sim)
  add_test(NAME feedforward COMMAND test_feedforward)
+
+ add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
+ target_link_libraries(test_state_estimator PRIVATE lost_signal_sim)
+ add_test(NAME state_estimator COMMAND test_state_estimator)
 
  add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
  target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_sim lost_signal_game)
