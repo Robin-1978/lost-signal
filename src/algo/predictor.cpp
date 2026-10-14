@@ -81,6 +81,48 @@ std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput
  return frames;
 }
 
+double timed_gap(const std::vector<TimedPose>& ego,
+                 const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                 double ego_radius_m) {
+ if (ego.empty() || frames.empty()) {
+  return std::numeric_limits<double>::infinity();
+ }
+ const double dt = std::max(1e-6, frame_dt_s);
+ auto ego_at = [&](double t) {
+  if (t <= ego.front().t_s) {
+   return ego.front().p;
+  }
+  for (std::size_t i = 0; i + 1 < ego.size(); ++i) {
+   if (t <= ego[i + 1].t_s) {
+    const double span = ego[i + 1].t_s - ego[i].t_s;
+    const double a = span < 1e-9 ? 0.0 : std::clamp((t - ego[i].t_s) / span, 0.0, 1.0);
+    return Vec2{ego[i].p.x + (ego[i + 1].p.x - ego[i].p.x) * a,
+                ego[i].p.y + (ego[i + 1].p.y - ego[i].p.y) * a};
+   }
+  }
+  return ego.back().p;
+ };
+ double gap = std::numeric_limits<double>::infinity();
+ if (frames.size() == 1) {
+  for (const auto& threat : frames.front()) {
+   const Vec2 e = ego_at(0.0);
+   gap = std::min(gap, std::hypot(threat.p.x - e.x, threat.p.y - e.y) - threat.radius -
+                           ego_radius_m);
+  }
+  return gap;
+ }
+ for (std::size_t k = 0; k + 1 < frames.size(); ++k) {
+  const Vec2 ego0 = ego_at(static_cast<double>(k) * dt);
+  const Vec2 ego1 = ego_at(static_cast<double>(k + 1) * dt);
+  const auto& fa = frames[k];
+  const auto& fb = frames[k + 1];
+  for (std::size_t i = 0; i < fa.size() && i < fb.size(); ++i) {
+   gap = std::min(gap, interval_min_dist(ego0, ego1, fa[i].p, fb[i].p) - fa[i].radius - ego_radius_m);
+  }
+ }
+ return gap;
+}
+
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
                      const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                      double ego_radius_m, double depart_delay_s) {

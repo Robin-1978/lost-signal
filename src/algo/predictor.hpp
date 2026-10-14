@@ -37,6 +37,25 @@ std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput
 // is wait-aware planning (plan §4 item 16), not another bolt-on.
 // Unit tests pin the math meanwhile.
 // Returns +infinity when there is nothing predicted.
+// Timed ego trajectory sample: position at absolute seconds since now, same
+// time base as predict_frames (frame k stands at k*frame_dt_s).
+struct TimedPose {
+ double t_s{0.0};
+ Vec2 p{0.0, 0.0};
+};
+
+// Swept same-time gap between an arbitrary timed ego motion and the threat
+// frames. Generalizes predicted_gap (constant cruise + depart delay) to
+// multi-phase executions: drive, hold at a pocket, rejoin. Ego positions are
+// resampled at frame times, then swept exactly per interval — identical
+// arithmetic to predicted_gap for constant-speed inputs (pinned equal).
+// Coverage is the caller's duty: ego times outside [0, (N-1)*dt] clamp to the
+// ends, so a hold past the last frame would hide behind it; assess-level
+// wrappers must gate horizon coverage first (as assess_departure does).
+double timed_gap(const std::vector<TimedPose>& ego,
+                 const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                 double ego_radius_m);
+
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
                      const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                      double ego_radius_m, double depart_delay_s = 0.0);

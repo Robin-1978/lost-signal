@@ -275,6 +275,16 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        episode）、headon-wait-overrun、对抗偏置、horizon 不足，＋正向锚点
        pocket-positive（立即走间隙 -0.33 必撞，侧向 2 米口袋安全等 2 秒，
        下降汇入全程间隙 0.52 过线）。数据继续积累，行为继续冻结。
+       评估原语 `timed_gap` 已备（定时自车轨迹 vs 威胁帧， constant-speed 与
+       predicted_gap 逐字等价已钉，hold-then-go 口袋雏形已钉）：口袋-等待-汇入
+       三腿评估用它，不用 constant-speed 近似。
+       下一片（空间最小实现，纯函数，不接 mission）：按腿组合 WaitAtPocket
+       可行性——transit 腿复用 A* 路径＋swept 检查＋第 14 项曲率/caps 裁决，
+       落地前 transit 腿保持 Unknown 并指名；wait/rejoin 腿用 timed_gap。
+       Rejoin 不单列实现（pocket 候选第三腿），中断条件＝每周期重算＋腿 verdict
+       翻转（行为层状态机等 gates 全过才写）。
+       0.52 账本：回放未建模轨迹采样/跟踪/预测三误差，该数纯模型内——正向锚点
+       是存在性证明，不是安全声明；扰动联合注入是放行前置 harness 升级。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

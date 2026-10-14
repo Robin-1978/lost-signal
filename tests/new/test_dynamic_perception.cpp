@@ -217,5 +217,36 @@ int main() {
   CHECK(sim::earliest_departure(line, 0, 0.0, open, 0.1, 0.38, 0.5) ==
         std::numeric_limits<double>::infinity());
  }
+ // timed_gap: constant-speed timed input reproduces predicted_gap exactly;
+ // a hold-then-go pattern (pocket miniature) clears what an immediate
+ // departure collides with; empty ego reports infinity.
+ {
+  const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> closing = {
+    {{{5.0, 0.0}, {0.0, 0.0}, 0.5}},
+    {{{4.0, 0.0}, {0.0, 0.0}, 0.5}},
+    {{{3.0, 0.0}, {0.0, 0.0}, 0.5}},
+  };
+  std::vector<sim::TimedPose> constant;
+  for (int k = 0; k < 3; ++k) {
+   constant.push_back({k * 0.1, {10.0 * k * 0.1, 0.0}});
+  }
+  CHECK(std::abs(sim::timed_gap(constant, closing, 0.1, 0.38) -
+                 sim::predicted_gap(path, 0, 10.0, closing, 0.1, 0.38)) < 1e-12);
+  // Threat sits at x=1.5 for 1 s, then leaves; ego holds at x=0 for 1 s
+  // (safe: gap 0.72), then advances. Holding lets the threat clear;
+  // rushing meets it. Pocket pattern in miniature.
+  std::vector<std::vector<sim::DynState>> visiting;
+  for (int k = 0; k < 21; ++k) {
+   visiting.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                              : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  }
+  const std::vector<sim::TimedPose> hold_go{{{0.0, {0.0, 0.0}}, {1.0, {0.0, 0.0}}, {2.0, {1.0, 0.0}}}};
+  const double held = sim::timed_gap(hold_go, visiting, 0.1, 0.38);
+  CHECK(held >= 0.5);
+  const std::vector<sim::TimedPose> rush{{{0.0, {0.0, 0.0}}, {2.0, {2.0, 0.0}}}};
+  CHECK(sim::timed_gap(rush, visiting, 0.1, 0.38) < held);
+  CHECK(sim::timed_gap({}, visiting, 0.1, 0.38) == std::numeric_limits<double>::infinity());
+ }
  return 0;
 }
