@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "long_haul",
+  "order": 13,
+  "title": "长途穿越",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "loose_ground"
+  ],
+  "seed": 127,
+  "objective": {
+    "type": "reach",
+    "spawn": "signal_tower",
+    "goal": "calibration_pad",
+    "goal_label": "标定点",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "long_route_pacing",
+    "prediction_prompt": "横穿整个仓库，速度和电量怎么分配？",
+    "knowledge_card": "长途看配速：匀速比重脚油门更早到，温柔驾驶赢的是全程。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.2,
+    "max_localization_error_m": 0.3,
+    "fast_time_s": 32.0,
+    "efficient_energy_wh": 0.55
+  },
+  "rewards": [
+    "ability.long_haul"
+  ]
+}

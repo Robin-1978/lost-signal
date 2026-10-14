@@ -22,7 +22,8 @@
     "signal_echo",
     "return_route",
     "track_turn",
-    "loose_ground"
+    "loose_ground",
+    "long_haul"
   ],
   "starting_inventory": [
     "tires.standard",

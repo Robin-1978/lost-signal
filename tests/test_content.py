@@ -36,8 +36,8 @@ class ContentValidationTests(unittest.TestCase):
 
     def test_repository_content_is_valid(self) -> None:
         catalog = load_and_validate(self.assets)
-        self.assertEqual(12, len(catalog["levels"]))
-        self.assertEqual(12, len(catalog["presentations"]))
+        self.assertEqual(13, len(catalog["levels"]))
+        self.assertEqual(13, len(catalog["presentations"]))
         self.assertEqual(3, len(catalog["robots"]))
         self.assertEqual(1, len(catalog["scenes"]))
         self.assertEqual("boot", catalog["presentations"]["presentation.boot"]["level"])

@@ -6,6 +6,7 @@
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
+  "chapter": 2,
   "prerequisites": [
     "lost_signal"
   ],
@@ -45,6 +46,5 @@
   },
   "rewards": [
     "ability.combo_mastery"
-  ],
-  "chapter": 2
+  ]
 }
