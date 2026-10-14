@@ -203,6 +203,8 @@ const char* depart_reason_name(DepartReason reason) {
    return "Invalid";
   case DepartReason::kUnassessed:
    return "Unassessed";
+  case DepartReason::kClear:
+   return "Clear";
  }
  return "Invalid";
 }
@@ -250,6 +252,121 @@ Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, 
  return {Feasibility::Verdict::kInfeasible, assessed.reason,
          std::numeric_limits<double>::infinity(),
          predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
+}
+
+namespace {
+
+// Remaining polyline length from start_idx (chaining schedule, not proof).
+double remaining_length(const std::vector<Vec2>& path, std::size_t start_idx) {
+ double length = 0.0;
+ for (std::size_t seg = start_idx; seg + 1 < path.size(); ++seg) {
+  length += std::hypot(path[seg + 1].x - path[seg].x, path[seg + 1].y - path[seg].y);
+ }
+ return length;
+}
+
+} // namespace
+
+LegAssessment assess_transit(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps) {
+ if (path.empty() || cruise_mps <= 0.0) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
+         remaining_length(path, start_idx) / std::max(1e-6, cruise_mps),
+         std::numeric_limits<double>::infinity()};
+}
+
+LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
+                          const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                          double ego_radius_m, double margin_m) {
+ if (frames.empty() || hold_from_s < 0.0 || hold_until_s < hold_from_s) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ const double dt = std::max(1e-6, frame_dt_s);
+ const double horizon =
+   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ if (hold_until_s > horizon + 1e-9) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ const double gap = timed_gap({{hold_from_s, spot}, {hold_until_s, spot}}, frames, dt, ego_radius_m);
+ if (gap >= margin_m) {
+  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, hold_until_s, gap};
+ }
+ return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, hold_until_s, gap};
+}
+
+LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
+                            double depart_delay_s,
+                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                            double ego_radius_m, double margin_m) {
+ if (path.empty() || frames.empty() || cruise_mps <= 0.0 || depart_delay_s < 0.0) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ const double dt = std::max(1e-6, frame_dt_s);
+ const double horizon =
+   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ const double length = remaining_length(path, start_idx);
+ if (depart_delay_s + length / std::max(1e-6, cruise_mps) > horizon + 1e-9) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ const double gap =
+   predicted_gap(path, start_idx, cruise_mps, frames, dt, ego_radius_m, depart_delay_s);
+ if (gap >= margin_m) {
+  return {Feasibility::Verdict::kFeasible, DepartReason::kClear,
+          depart_delay_s + length / std::max(1e-6, cruise_mps), gap};
+ }
+ // Hold-prefix classification: a violation while still parked at the start
+ // means the wait itself kills (WaitUnsafe); otherwise the corridor downstream
+ // is what blocks (BlockedInWindow). The hold interval only, not the whole
+ // window past departure.
+ const Vec2 start = path[std::min(start_idx, path.size() - 1)];
+ const double hold_gap =
+   timed_gap({{0.0, start}, {depart_delay_s, start}}, frames, dt, ego_radius_m);
+ if (hold_gap < margin_m) {
+  return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe,
+          std::numeric_limits<double>::infinity(), gap};
+ }
+ return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow,
+         std::numeric_limits<double>::infinity(), gap};
+}
+
+PocketAssessment assess_pocket_wait(const std::vector<Vec2>& transit_path, std::size_t transit_idx,
+                                    double cruise_mps, double hold_s,
+                                    const std::vector<Vec2>& rejoin_path, std::size_t rejoin_idx,
+                                    const std::vector<std::vector<DynState>>& frames,
+                                    double frame_dt_s, double ego_radius_m, double margin_m) {
+ PocketAssessment out;
+ out.transit = assess_transit(transit_path, transit_idx, cruise_mps);
+ // The pocket is where transit delivers the ego: the transit path end.
+ // Callers align the rejoin path start with it.
+ const Vec2 pocket_pos = transit_path.empty() ? Vec2{0.0, 0.0} : transit_path.back();
+ // Chained schedule (frozen convention): hold starts at the transit nominal
+ // end even while transit is unproven; rejoin departs at hold end.
+ const double transit_end =
+   out.transit.end_s < std::numeric_limits<double>::infinity() ? out.transit.end_s : 0.0;
+ const double hold_end = transit_end + std::max(0.0, hold_s);
+ out.hold = assess_hold(pocket_pos, transit_end, hold_end, frames, frame_dt_s, ego_radius_m,
+                        margin_m);
+ out.rejoin =
+   assess_rejoin(rejoin_path, rejoin_idx, cruise_mps, hold_end, frames, frame_dt_s, ego_radius_m,
+                 margin_m);
+ if (out.transit.verdict == Feasibility::Verdict::kInfeasible ||
+     out.hold.verdict == Feasibility::Verdict::kInfeasible ||
+     out.rejoin.verdict == Feasibility::Verdict::kInfeasible) {
+  out.overall = Feasibility::Verdict::kInfeasible;
+ } else if (out.transit.verdict == Feasibility::Verdict::kUnknown ||
+            out.hold.verdict == Feasibility::Verdict::kUnknown ||
+            out.rejoin.verdict == Feasibility::Verdict::kUnknown) {
+  out.overall = Feasibility::Verdict::kUnknown;
+ } else {
+  out.overall = Feasibility::Verdict::kFeasible;
+ }
+ return out;
 }
 
 DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,

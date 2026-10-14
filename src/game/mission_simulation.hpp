@@ -71,7 +71,8 @@ struct ControlSnapshot {
  std::vector<LocalTrajectorySnapshot> dwa_candidates;
  std::vector<sim::Vec2> dwa_selected;
  // Shadow departure assessment (gate 3): observed only, never acted on.
- // shadow_reason codes sim::DepartReason (0=GoNow..5=Invalid), -1 = unassessed.
+ // shadow_reason codes sim::DepartReason for the departure verdict
+ // (assess_departure never emits kUnassessed/kClear), -1 = unassessed.
  bool shadow_assessed{false};
  double shadow_depart_s{-1.0};
  int shadow_reason{-1};

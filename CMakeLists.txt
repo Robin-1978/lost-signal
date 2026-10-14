@@ -155,6 +155,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_departure_replay PRIVATE lost_signal_sim)
  add_test(NAME departure_replay COMMAND test_departure_replay)
 
+ add_executable(test_phase_legs tests/new/test_phase_legs.cpp)
+ target_link_libraries(test_phase_legs PRIVATE lost_signal_sim)
+ add_test(NAME phase_legs COMMAND test_phase_legs)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(

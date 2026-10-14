@@ -285,6 +285,12 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        翻转（行为层状态机等 gates 全过才写）。
        0.52 账本：回放未建模轨迹采样/跟踪/预测三误差，该数纯模型内——正向锚点
        是存在性证明，不是安全声明；扰动联合注入是放行前置 harness 升级。
+       三腿纯函数已落地（test_phase_legs，mission 不动）：assess_transit
+       （诚实 Unknown＋名义时刻链）、assess_hold（整区间扫掠，零等待退化为点查、
+       超窗 Unknown、先离后返与端点瞬时全捕获）、assess_rejoin（链式 delay、
+       hold 前缀分类 WaitUnsafe/Blocked）；assess_pocket_wait 组合裁决
+       （任一 Infeasible 则 Infeasible、否则任一 Unknown 则 Unknown，三腿诊断全保留）。
+       时间链冻结：后腿起于前腿名义完成、关节瞬时归属两侧（闭区间 min 幂等）。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

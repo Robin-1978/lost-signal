@@ -87,6 +87,7 @@ enum class DepartReason {
  kInvalid,        // degenerate input (empty path/frames, non-positive cruise).
  kUnassessed,     // capability does not exist yet (Phase-2 pocket/rejoin/detour):
                   // honestly Unknown, never borrowed from another cause.
+ kClear,          // a leg checked over its full interval with no violation.
 };
 
 struct DepartureAssessment {
@@ -130,5 +131,58 @@ struct Feasibility {
 Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, std::size_t start_idx,
                             double cruise_mps, const std::vector<std::vector<DynState>>& frames,
                             double frame_dt_s, double ego_radius_m, double margin_m);
+
+// One assessed phase of a WaitAtPocket candidate. end_s chains the schedule:
+// the next leg starts at this leg's nominal (not proven) completion — legs
+// never restart at t = 0. A joint instant belongs to both adjacent legs
+// (closed intervals; min over a shared endpoint is idempotent, so no gap and
+// no double jeopardy in the verdict).
+struct LegAssessment {
+ Feasibility::Verdict verdict{Feasibility::Verdict::kUnknown};
+ DepartReason reason{DepartReason::kUnassessed};
+ double end_s{std::numeric_limits<double>::infinity()};
+ double min_gap_m{std::numeric_limits<double>::infinity()};
+};
+
+// Leg 1 — Transit, current pose to pocket: no arrival proof exists yet (A*
+// path + swept check + item-14 kinematic ruling are the next slice), so this
+// is honestly Unknown. end_s carries the nominal schedule (length/cruise)
+// for chaining only, min_gap stays +infinity (nothing assessed).
+LegAssessment assess_transit(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps);
+
+// Leg 2 — Hold at a spot over [hold_from_s, hold_until_s]: the whole interval
+// is swept, never just the endpoints. Zero-duration (from == until) reduces
+// to a point check. hold_until past the horizon is Unknown (unprovable), a
+// swept spot is Infeasible/WaitUnsafe (staying is what kills).
+LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
+                          const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                          double ego_radius_m, double margin_m);
+
+// Leg 3 — Rejoin from the pocket after depart_delay_s: hold-then-go over the
+// given path via predicted_gap. Coverage gated first (traversal must finish
+// inside the horizon), then the violation is classified: swept hold position
+// means WaitUnsafe, otherwise BlockedInWindow.
+LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
+                            double depart_delay_s,
+                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                            double ego_radius_m, double margin_m);
+
+struct PocketAssessment {
+ LegAssessment transit;
+ LegAssessment hold;
+ LegAssessment rejoin;
+ Feasibility::Verdict overall{Feasibility::Verdict::kUnknown};
+};
+
+// One WaitAtPocket candidate as three chained phases: hold runs
+// [transit_end, transit_end + hold_s], rejoin departs at hold end. Any
+// Infeasible leg refuses the candidate; otherwise any Unknown leg withholds
+// proof; all three leg results are kept — an unassessed transit is never
+// silently dropped when another leg fails.
+PocketAssessment assess_pocket_wait(const std::vector<Vec2>& transit_path, std::size_t transit_idx,
+                                    double cruise_mps, double hold_s,
+                                    const std::vector<Vec2>& rejoin_path, std::size_t rejoin_idx,
+                                    const std::vector<std::vector<DynState>>& frames,
+                                    double frame_dt_s, double ego_radius_m, double margin_m);
 
 } // namespace sim
