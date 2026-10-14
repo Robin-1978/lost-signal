@@ -79,7 +79,7 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  drive.pid_d = drive_pid_.d();
  const double weight = params_.mass_kg * kGravity;
  const WheelContactParams contact{params_.stall_force_N, params_.free_speed_mps,
-                                  std::max(0.0, ground.mu_eff) * weight};
+                                  std::max(0.0, ground.mu_eff) * weight, params_.wheel_equiv_mass_kg};
  const WheelContactResult contact_out = step_driven_wheel(drive_wheel_, state.v, drive.pwm, contact, dt);
  drive_wheel_ = clamp(contact_out.wheel_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  drive.actual_mps = drive_wheel_;

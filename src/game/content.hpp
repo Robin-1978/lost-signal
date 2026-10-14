@@ -243,6 +243,9 @@ struct MotorDefinition {
  double free_speed_mps{0.0};
  double pwm_limit{1.0};
  double integral_limit{2.0};
+ // Per-wheel equivalent translational mass (wheel + tire + reflected rotor).
+ // Hardware data: the contact patch integrates the tread against this.
+ double wheel_equiv_mass_kg{3.0};
 };
 
 struct EncoderDefinition {

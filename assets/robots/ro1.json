@@ -21,7 +21,8 @@
    "stall_force_N": 54.0,
    "free_speed_mps": 3.0,
    "pwm_limit": 1.0,
-   "integral_limit": 2.0
+   "integral_limit": 2.0,
+   "wheel_equiv_mass_kg": 3.0
   },
   "steering": {
    "integral_limit": 1.2

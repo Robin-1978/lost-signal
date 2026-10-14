@@ -23,6 +23,7 @@ struct AckermannParams {
  double pwm_limit{1.0};
  double integral_limit{2.0};
  int encoder_counts_per_revolution{2048};
+ double wheel_equiv_mass_kg{3.0};
 };
 
 // Ackermann chassis: one drive motor (speed PID -> PWM -> DC force, same

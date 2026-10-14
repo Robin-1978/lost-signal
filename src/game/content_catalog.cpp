@@ -437,6 +437,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
     motor.at("max_wheel_speed_mps").get<double>(), motor.at("max_wheel_accel_mps2").get<double>(),
     motor.at("stall_force_N").get<double>(),       motor.at("free_speed_mps").get<double>(),
     motor.at("pwm_limit").get<double>(),           motor.at("integral_limit").get<double>(),
+    motor.at("wheel_equiv_mass_kg").get<double>(),
   };
   robot.mass_kg = drive.at("mass_kg").get<double>();
   robot.yaw_inertia_kgm2 = drive.at("yaw_inertia_kgm2").get<double>();

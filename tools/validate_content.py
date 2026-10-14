@@ -128,6 +128,18 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     for doc in presentations:
         _schema(doc, schema_dir / "presentation.schema.json")
     for doc in robots:
+        for key in (
+            "max_wheel_speed_mps",
+            "max_wheel_accel_mps2",
+            "stall_force_N",
+            "free_speed_mps",
+            "pwm_limit",
+            "integral_limit",
+            "wheel_equiv_mass_kg",
+        ):
+            if key not in doc.data["drive"]["motor"]:
+                raise ContentError(f"{doc.path}:/drive/motor: robot misses '{key}'")
+
         _schema(doc, schema_dir / "robot.schema.json")
 
     for doc in [

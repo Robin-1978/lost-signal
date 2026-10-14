@@ -92,7 +92,8 @@
       "stall_force_N",
       "free_speed_mps",
       "pwm_limit",
-      "integral_limit"
+      "integral_limit",
+      "wheel_equiv_mass_kg"
      ],
      "properties": {
       "max_wheel_speed_mps": {
@@ -117,6 +118,10 @@
        "maximum": 1
       },
       "integral_limit": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "wheel_equiv_mass_kg": {
        "type": "number",
        "exclusiveMinimum": 0
       }
