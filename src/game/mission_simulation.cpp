@@ -2,6 +2,7 @@
 
 #include "algo/astar.hpp"
 #include "hw/chassis/ackermann.hpp"
+#include "hw/chassis/tracked.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -185,6 +186,28 @@ void MissionSimulation::build_world() {
   // for ackermann (see follow.hpp unit contract), capped at steer_max.
   yaw_cap_rads_ = motor_vmax * std::tan(robot_definition_.steering.max_steer_rad) /
                   std::max(0.05, robot_definition_.wheel_base_m);
+ } else if (robot_definition_.drive_type == "tracked") {
+  // Twin tracks share the differential speed loop and yaw-rate output units;
+  // only the yaw authority comes from the vendor spin spec instead of
+  // DiffDrive geometry, because scrub decides what a track can hold.
+  chassis_ = std::make_unique<sim::TrackedDrive>(
+    sim::TrackedParams{
+      robot_definition_.wheel_base_m,
+      robot_definition_.wheel_radius_m,
+      robot_definition_.track_length_m,
+      motor_vmax,
+      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
+      motor_stall,
+      motor_free,
+      robot_definition_.mass_kg,
+      robot_definition_.yaw_inertia_kgm2,
+      robot_definition_.tracked_max_yaw_rate_rads,
+      robot_definition_.motor.pwm_limit,
+      robot_definition_.motor.integral_limit,
+      robot_definition_.encoder.counts_per_revolution,
+    },
+    wheel_gains);
+  yaw_cap_rads_ = robot_definition_.tracked_max_yaw_rate_rads;
  } else {
   throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
  }
@@ -198,8 +221,10 @@ void MissionSimulation::build_world() {
  // PID output units follow the chassis (follow.hpp contract): yaw rate for
  // differential, steer angle for ackermann. Same derivation, capped by what
  // the actuator takes.
+ // Differential and tracked share yaw-rate output units; their caps differ
+ // (geometry vs vendor spin spec) and both already sit in yaw_cap_rads_.
  const double heading_out_lim =
-   robot_definition_.drive_type == "ackermann" ? robot_definition_.steering.max_steer_rad : params.w_max;
+   robot_definition_.drive_type == "ackermann" ? robot_definition_.steering.max_steer_rad : yaw_cap_rads_;
  heading_pid_ = std::make_unique<sim::PID>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
                                            robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;

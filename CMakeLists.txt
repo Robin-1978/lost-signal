@@ -28,6 +28,7 @@ add_library(lost_signal_sim STATIC
  src/algo/grid_map.cpp
   src/algo/predictor.cpp
   src/hw/chassis/motor_drive.cpp
+  src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp

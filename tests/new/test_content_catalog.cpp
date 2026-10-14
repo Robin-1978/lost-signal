@@ -18,7 +18,7 @@ int main() {
  CHECK(catalog.levels().size() == 10);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
- CHECK(catalog.robots().size() == 2);
+ CHECK(catalog.robots().size() == 3);
  CHECK(catalog.scenes().size() == 1);
  CHECK(catalog.presentations().size() == 10);
  CHECK(catalog.story_beats().size() == 15);
@@ -36,6 +36,12 @@ int main() {
  CHECK(second.steering.max_steer_rate_radps > 0.0);
  CHECK(second.steering.servo_response_s > 0.0);
  CHECK(second.motor.wheel_equiv_mass_kg > 0.0);
+ // Third vehicle: tracked twin-drive on the shared contact with a vendor
+ // spin spec. No level assigns it yet; the catalog contract already holds.
+ const auto& third = catalog.robot("robot.ro3");
+ CHECK(third.drive_type == "tracked");
+ CHECK(third.tracked_max_yaw_rate_rads > 0.0);
+ CHECK(third.track_length_m > 0.0);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
  CHECK(robot.slots.size() == 5);

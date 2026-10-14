@@ -62,10 +62,10 @@ struct ServoTelemetry {
  double pid_d{0.0};
 };
 
-// Unified chassis telemetry. differential selects the left/right wheel pair,
-// ackermann selects the drive unit plus the steering servo; the inactive side
-// stays zero. Asking a differential chassis for steer data returns zeros,
-// never plausible-looking fiction.
+// Unified chassis telemetry. differential selects the twin-drive layout (left/right
+// wheels or tracks); ackermann selects the drive unit plus the steering servo
+// and the inactive side stays zero. Asking a twin-drive chassis for steer data
+// returns zeros, never plausible-looking fiction.
 struct ChassisTelemetry {
  bool differential{true};
  WheelMotorTelemetry left;

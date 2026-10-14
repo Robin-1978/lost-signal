@@ -72,7 +72,8 @@
     "type": {
      "enum": [
       "differential",
-      "ackermann"
+      "ackermann",
+      "tracked"
      ]
     },
     "wheel_radius_m": {
@@ -145,6 +146,14 @@
      "exclusiveMinimum": 0
     },
     "yaw_inertia_kgm2": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "track_length_m": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "max_yaw_rate_rads": {
      "type": "number",
      "exclusiveMinimum": 0
     },

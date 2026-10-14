@@ -1,5 +1,6 @@
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/caps.hpp"
+#include "hw/chassis/tracked.hpp"
 #include "algo/follow.hpp"
 #include "algo/pid.hpp"
 
@@ -143,6 +144,45 @@ int main() {
   CHECK(sim::corner_speed_cap(straight, 99, 1.0, 3.0, 2.0) == 1.0);
   CHECK(sim::corner_speed_cap({}, 0, 1.0, 3.0, 2.0) == 1.0);
   CHECK(sim::corner_speed_cap(straight, 0, 0.0, 3.0, 2.0) == 0.0);
+ }
+ // Tracked drive: twin-track layout on the shared contact, scrub-limited
+ // spin, tread-reading encoders, deterministic twin runs.
+ {
+  sim::TrackedParams params;
+  params.mass_kg = 30.0;
+  params.yaw_inertia_kgm2 = 3.0;
+  const sim::WheelPidGains gains = sim::tune_wheel_pid(3.0, params.stall_force_N, params.free_speed_mps, 1.0);
+  sim::TrackedDrive first(params, gains);
+  sim::TrackedDrive second(params, gains);
+  CHECK(first.caps().can_spin);
+  CHECK(first.telemetry().differential);
+  sim::DiffState a;
+  sim::DiffState b;
+  for (int step = 0; step < 100; ++step) {
+   a = first.step(a, {1.0, 0.0}, 0.02, kGround);
+   b = second.step(b, {1.0, 0.0}, 0.02, kGround);
+  }
+  CHECK(std::abs(a.x - b.x) < 1e-12);
+  CHECK(a.v > 0.5);
+  CHECK(std::abs(a.w) < 0.05);
+  // Spin in place (slower than wheels: scrub eats torque).
+  sim::DiffState spun;
+  for (int step = 0; step < 100; ++step) {
+   spun = first.step(spun, {0.0, 1.0}, 0.02, kGround);
+  }
+  CHECK(spun.w > 0.1);
+  CHECK(std::abs(spun.v) < 0.1);
+  CHECK(first.telemetry().steer.angle_rad == 0.0);
+  // Ice: longitudinal breakaway flags slipping on the shared contact.
+  const sim::GroundContact ice{0.05, 0.01, 4.0};
+  sim::TrackedDrive sled(params, gains);
+  sim::DiffState sliding;
+  bool slipped = false;
+  for (int step = 0; step < 200; ++step) {
+   sliding = sled.step(sliding, {2.0, 0.0}, 0.02, ice);
+   slipped = sled.telemetry().left.slipping || sled.telemetry().right.slipping || slipped;
+  }
+  CHECK(slipped);
  }
  return 0;
 }

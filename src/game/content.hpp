@@ -269,6 +269,11 @@ struct RobotDefinition {
  double mass_kg{0.0};
  double yaw_inertia_kgm2{0.0};
  double max_yaw_accel_radps2{8.0};
+ // Tracked spin capability (vendor spec). Only read by tracked robots;
+ // wheeled chassis derive yaw authority from geometry instead.
+ double tracked_max_yaw_rate_rads{1.5};
+ // Track contact length (vendor spec). Only read by tracked robots.
+ double track_length_m{0.7};
  MotorDefinition motor;
  SteeringDefinition steering;
  double energy_base_w{0.0};
