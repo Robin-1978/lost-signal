@@ -200,11 +200,12 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
     `forward(inverse(x))==x` property test（差速精确，阿克曼限 |v|≥0.5，
     超限报 infeasible）＋mission 里程计委托。纯重构，24 行全表零漂移，
     多种子稳定。不碰动力学（前馈仍 parked），不碰规划器。
-15. **灵敏度分析＋标定流程＋sim-to-real 里程碑**（无硬件可做的部分先行）：
-    参数扰动 harness（同一命令，不同参数，轨迹分岔曲线＝现在就能量的“哪个数最要命”），
-    标定流程文档（转向 map、延迟、轮胎三件套怎么测），reality-gap 记录表格式。
-    真车/ROS 桥到来之日，第一个 milestone 是 log-and-compare（同命令喂双边，
-    并排跑，差值曲线即证据表），不是“接上”。
+15. **灵敏度分析＋标定流程＋sim-to-real 里程碑**（进行中）：`docs/sim2real.md`
+    落盘（缺口清单＋log-and-compare 表格式＋标定六步＋真车 profile 模板）；
+    `tools/sensitivity.py` 落地（整份 assets 拷临时目录，逐参数 ±10%，固定种子，
+    输出状态/用时/净空/里程计/能耗分岔表；仿真代码零改动）。样本：
+    motor_trial 对全部 10 个参数 ±10% 纹丝不动（短平关，预期内）；
+    终关全量扰动正在跑，结果回填本条。
 16. **MotionTarget 规划器槽**（横向规划到来时）：`BodyTwist{vx,vy,w}`＋选中轨迹＋
     能力协商（规划器 holonomic ⇄ 底盘 accepts_vy，mission 大声失败兜底），关卡按名
     选规划器（与 `presentation.robot` 同构：内容点名，代码备货）。DWA-lite 首个入槽
