@@ -21,8 +21,7 @@ int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& map = catalog.map("research_base");
  const std::string saved = game::serialize_map_canonical(map);
- const auto path =
-   std::filesystem::path(LOST_SIGNAL_TEST_ASSETS) / "maps" / "research_base.json";
+ const auto path = std::filesystem::path(LOST_SIGNAL_TEST_ASSETS) / "maps" / "research_base.json";
  std::ifstream file(path);
  std::ostringstream on_disk;
  on_disk << file.rdbuf();

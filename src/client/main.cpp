@@ -3,6 +3,9 @@
 
 #include "game/campaign_progress.hpp"
 #include "game/content_catalog.hpp"
+#include "map_editor.hpp"
+
+#include <optional>
 #include "game/mission_simulation.hpp"
 
 #include <TGUI/Backend/raylib.hpp>
@@ -96,7 +99,10 @@ Options parse_options(int argc, char** argv) {
  return options;
 }
 
-int run_client(const game::ContentCatalog& catalog, const Options& options) {
+// The catalog is owned by value so the map editor can reload it after a
+// save: references (ui, renderers) stay bound to this object while missions
+// and the editor are rebuilt from the fresh contents.
+int run_client(game::ContentCatalog catalog, const Options& options) {
  SetTraceLogLevel(LOG_ERROR);
  SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
  InitWindow(1440, 900, "失落的信号 / Lost Signal");
@@ -129,6 +135,7 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
    }
   }
   client::WorldRenderer renderer(font_path, options.assets, catalog);
+  std::optional<client::MapEditor> editor;
   if (options.analysis_view)
    renderer.toggle_analysis_mode();
   auto mission =
@@ -162,6 +169,40 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
     paused = !paused;
    if (IsKeyPressed(KEY_TAB))
     renderer.toggle_analysis_mode();
+   // Map editor (2D analysis layer only): E toggles, left-drag moves the
+   // selection, S saves to disk and reloads the level onto the new map.
+   if (IsKeyPressed(KEY_E) && renderer.analysis_mode()) {
+    if (!editor || editor->level_id() != ui.level_id()) {
+     editor.emplace(catalog, ui.level_id());
+    }
+    editor->toggle();
+   }
+   if (editor && editor->active() && renderer.analysis_mode()) {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+     if (const auto world = renderer.screen_to_world(GetMousePosition())) {
+      editor->press(world->x, world->y);
+     }
+    }
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+     if (const auto world = renderer.screen_to_world(GetMousePosition())) {
+      editor->drag(world->x, world->y);
+     }
+    }
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+     editor->release();
+    }
+    if (IsKeyPressed(KEY_S)) {
+     const auto assets = options.assets.string();
+     if (editor->save(assets)) {
+      const auto kept_build = ui.build();
+      catalog = game::ContentCatalog::load(options.assets);
+      ui.select_level(ui.level_id());
+      ui.set_build(kept_build);
+      mission = std::make_unique<game::MissionSimulation>(catalog, ui.level_id(), ui.build());
+      editor.emplace(catalog, ui.level_id());
+     }
+    }
+   }
    if (IsKeyPressed(KEY_ONE))
     speed = 1.0;
    if (IsKeyPressed(KEY_TWO))
@@ -263,6 +304,9 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
 
    BeginDrawing();
    renderer.draw(*mission, GetScreenWidth(), GetScreenHeight(), catalog.campaign().title);
+   if (editor && editor->active()) {
+    renderer.draw_edit_overlay(*mission, *editor);
+   }
    gui.draw();
    EndDrawing();
    ++rendered_frames;

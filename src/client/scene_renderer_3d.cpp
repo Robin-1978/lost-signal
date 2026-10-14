@@ -697,8 +697,7 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
   const auto base = world(pose);
   DrawCylinderEx({base.x, 0.01f, base.z}, {base.x, 0.05f, base.z}, 0.68f, 0.68f, 40, Fade(kAmber, 0.30f));
   DrawCylinderEx({base.x, 0.055f, base.z}, {base.x, 0.075f, base.z}, 0.60f, 0.60f, 40, kAmber);
-  DrawCylinderEx({base.x, 0.02f, base.z}, {base.x, 1.15f, base.z}, 0.045f, 0.045f, 12,
-                 Fade(kAmber, 0.30f));
+  DrawCylinderEx({base.x, 0.02f, base.z}, {base.x, 1.15f, base.z}, 0.045f, 0.045f, 12, Fade(kAmber, 0.30f));
   DrawModelEx(cube_model_, {base.x, 1.30f, base.z}, {0, 1, 0},
               static_cast<float>(mission.snapshot().time_s * 40.0), {0.16f, 0.16f, 0.16f}, kAmber);
  };

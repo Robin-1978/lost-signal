@@ -81,6 +81,7 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  add_executable(lost_signal
  src/client/main.cpp
  src/client/game_ui.cpp
+ src/client/map_editor.cpp
  src/client/scene_renderer_3d.cpp
  src/client/world_renderer.cpp
  )
@@ -126,6 +127,14 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_chassis tests/new/test_chassis.cpp)
  target_link_libraries(test_chassis PRIVATE lost_signal_sim)
  add_test(NAME chassis COMMAND test_chassis)
+
+ add_executable(test_map_editor tests/new/test_map_editor.cpp src/client/map_editor.cpp)
+ target_link_libraries(test_map_editor PRIVATE lost_signal_game)
+ target_compile_definitions(test_map_editor PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ target_include_directories(test_map_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+ add_test(NAME map_editor COMMAND test_map_editor)
 
  add_executable(test_map_roundtrip tests/new/test_map_roundtrip.cpp)
  target_link_libraries(test_map_roundtrip PRIVATE lost_signal_game)

@@ -123,6 +123,49 @@ WorldRenderer::~WorldRenderer() {
   UnloadFont(font_);
 }
 
+std::optional<sim::Vec2> WorldRenderer::screen_to_world(Vector2 screen) const {
+ if (!drawn_once_ || !analysis_mode_ || scale_ <= 0.0f) {
+  return std::nullopt;
+ }
+ return sim::Vec2{(screen.x - world_origin_.x) / scale_, (world_origin_.y - screen.y) / scale_};
+}
+
+void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, const MapEditor& editor) const {
+ if (!editor.active() || !analysis_mode_) {
+  return;
+ }
+ (void)mission;
+ const auto& working = editor.working();
+ const Color ghost = Fade(kAmber, 0.55f);
+ const Color hot = Fade(kAmber, 0.95f);
+ auto rect_lines = [&](sim::Vec2 min, sim::Vec2 max, Color color) {
+  const auto top_left = world_to_screen({min.x, max.y});
+  const auto bottom_right = world_to_screen({max.x, min.y});
+  DrawRectangleLinesEx({top_left.x, top_left.y, bottom_right.x - top_left.x, bottom_right.y - top_left.y},
+                       2.0f, color);
+ };
+ for (const auto& obstacle : working.obstacles) {
+  const bool selected =
+    editor.selected_kind() == MapEditor::Kind::kObstacle && editor.selected_id() == obstacle.id;
+  rect_lines(obstacle.min, obstacle.max, selected ? hot : ghost);
+ }
+ for (const auto& surface : working.surfaces) {
+  const bool selected =
+    editor.selected_kind() == MapEditor::Kind::kSurface && editor.selected_id() == surface.id;
+  rect_lines(surface.min, surface.max, selected ? hot : Fade(kCyan, 0.45f));
+ }
+ for (const auto& [id, pose] : working.markers) {
+  const bool selected = editor.selected_kind() == MapEditor::Kind::kMarker && editor.selected_id() == id;
+  const auto center = world_to_screen({pose.x, pose.y});
+  DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 9.0f, selected ? hot : ghost);
+  if (selected) {
+   draw_text(id, {center.x + 12, center.y - 8}, 12, hot);
+  }
+ }
+ const std::string status = std::string(editor.dirty() ? "[●] " : "[○] ") + editor.message() + "  (E 退出)";
+ draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 13, Fade(kText, 0.9f));
+}
+
 Vector2 WorldRenderer::world_to_screen(sim::Vec2 point) const {
  return {
    world_origin_.x + static_cast<float>(point.x) * scale_,
@@ -139,6 +182,7 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
  ClearBackground(kVoid);
  DrawRectangleGradientV(0, 0, screen_width, screen_height, {24, 25, 24, 255}, kVoid);
 
+ drawn_once_ = true;
  const float available_width = std::max(320.0f, static_cast<float>(screen_width) - 360.0f);
  viewport_ = {18.0f, 76.0f, available_width - 36.0f,
               std::max(360.0f, static_cast<float>(screen_height) - 104.0f)};

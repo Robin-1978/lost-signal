@@ -2,10 +2,13 @@
 
 #include "game/mission_simulation.hpp"
 
+#include "map_editor.hpp"
+
 #include <raylib.h>
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace client {
@@ -25,6 +28,8 @@ class WorldRenderer {
            const std::string& chapter_title);
  void toggle_analysis_mode() { analysis_mode_ = !analysis_mode_; }
  bool analysis_mode() const { return analysis_mode_; }
+ std::optional<sim::Vec2> screen_to_world(Vector2 screen) const;
+ void draw_edit_overlay(const game::MissionSimulation& mission, const MapEditor& editor) const;
 
  private:
  Vector2 world_to_screen(sim::Vec2 point) const;
@@ -43,6 +48,7 @@ class WorldRenderer {
  Rectangle viewport_{};
  float scale_{1.0f};
  Vector2 world_origin_{};
+ bool drawn_once_{false};
 };
 
 std::filesystem::path find_ui_font(const std::filesystem::path& assets = {});
