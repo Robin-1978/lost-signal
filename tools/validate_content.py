@@ -85,6 +85,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     root = root.resolve()
     schema_dir = root / "schema"
     campaign = _read(root / "campaign.json")
+    chapters = _read(root / "chapters.json")
     levels = [_read(p) for p in sorted((root / "levels").glob("*.json"))]
     maps = [_read(p) for p in sorted((root / "maps").glob("*.json"))]
     scenes = [_read(p) for p in sorted((root / "scenes").glob("*.json"))]
@@ -112,6 +113,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         )
 
     _schema(campaign, schema_dir / "campaign.schema.json")
+    _schema(chapters, schema_dir / "chapters.schema.json")
     for doc in levels:
         _schema(doc, schema_dir / "level.schema.json")
     for doc in maps:
@@ -583,7 +585,11 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         visiting.remove(level_id)
         visited.add(level_id)
 
-    for level_id in level_by_id:
+    chapter_ids = {chapter["id"] for chapter in chapters.data["chapters"]}
+    for level_id, level in level_by_id.items():
+        chapter = level.data.get("chapter", 1)
+        if chapter not in chapter_ids:
+            raise ContentError(f"{level.path}:/chapter: unknown chapter {chapter}")
         visit(level_id)
 
     return {

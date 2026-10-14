@@ -37,6 +37,7 @@ class ContentCatalog {
   return presentations_;
  }
  const std::vector<StoryBeatDefinition>& story_beats() const { return story_beats_; }
+ const std::vector<ChapterDefinition>& chapters() const { return chapters_; }
 
  int build_cost(const BuildSelection& build) const;
  void validate_build(const std::string& level_id, const BuildSelection& build) const;
@@ -55,6 +56,7 @@ class ContentCatalog {
  std::unordered_map<std::string, PolicyDefinition> policies_;
  std::unordered_map<std::string, PresentationDefinition> presentations_;
  std::vector<StoryBeatDefinition> story_beats_;
+ std::vector<ChapterDefinition> chapters_;
  std::string default_presentation_id_;
 };
 

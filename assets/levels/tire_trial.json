@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "tire_trial",
+  "order": 2,
+  "title": "换双鞋",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "chapter": 1,
+  "prerequisites": [
+    "boot"
+  ],
+  "seed": 46,
+  "objective": {
+    "type": "reach",
+    "spawn": "robot_bay",
+    "goal": "workshop_exit",
+    "goal_label": "维修间出口",
+    "goal_visual": "exit",
+    "time_limit_s": 60,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 2,
+    "required_slots": [
+      "tires"
+    ]
+  },
+  "teaching": {
+    "concept": "tires_and_braking",
+    "prediction_prompt": "三种轮胎，刹车距离最短的是哪一种？",
+    "knowledge_card": "花纹与配方决定抓地，抓地决定刹车距离；节能胎滑得更远。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.15,
+    "fast_time_s": 30,
+    "efficient_energy_wh": 8
+  },
+  "rewards": [
+    "ability.tires"
+  ]
+}

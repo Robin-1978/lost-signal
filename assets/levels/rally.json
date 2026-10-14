@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "rally",
+  "order": 5,
+  "title": "集结",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 1,
+  "prerequisites": [
+    "motor_trial"
+  ],
+  "seed": 51,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "calibration_pad",
+    "via": "supply_station",
+    "via_label": "能源模块",
+    "goal": "signal_tower",
+    "goal_label": "信号塔",
+    "goal_visual": "signal_tower",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "combo_easy",
+    "prediction_prompt": "集齐的零件第一次联手，最可能在哪里浪费时间？",
+    "knowledge_card": "感知看见、电机执行、轮胎抓地，三者缺一不可，但都不需要极限。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.2,
+    "fast_time_s": 120,
+    "efficient_energy_wh": 30
+  },
+  "rewards": [
+    "ability.combo"
+  ]
+}

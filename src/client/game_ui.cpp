@@ -153,16 +153,30 @@ void GameUi::build_chapter() {
  add_label("帮助洛一逐步恢复运动、感知、定位与自主导航。", kMargin, 94, kContentWidth, 14, {157, 163, 158});
 
  float y = 160.0f;
+ int shown_chapter = 0;
  for (const auto& level_id : catalog_.campaign().levels) {
   const auto& level = catalog_.level(level_id);
+  if (level.chapter != shown_chapter) {
+   shown_chapter = level.chapter;
+   const game::ChapterDefinition* chapter = nullptr;
+   for (const auto& entry : catalog_.chapters()) {
+    if (entry.id == shown_chapter) {
+     chapter = &entry;
+    }
+   }
+   const std::string heading =
+     chapter != nullptr ? chapter->title : ("第" + std::to_string(shown_chapter) + "章");
+   add_label(heading, kMargin, y, kContentWidth, 17, {107, 190, 176}, true);
+   y += 30.0f;
+  }
   const bool complete = completed_levels_.contains(level_id);
   const bool unlocked = is_unlocked(level);
   const std::string prefix = complete ? "✓ " : unlocked ? "○ " : "— ";
   auto button = add_button(prefix + std::to_string(level.order) + "  " + level.title, kMargin, y,
-                           kContentWidth, 58, level_id == presentation_->level && unlocked);
+                           kContentWidth, 44, level_id == presentation_->level && unlocked);
   button->setEnabled(unlocked);
   button->onClick([this, level_id] { actions_.selected_level = level_id; });
-  y += 70.0f;
+  y += 54.0f;
  }
  add_label("每一关只开放当前需要的机器人能力。A*、DWA 与 PID 是洛一的内置能力，"
            "玩家负责理解问题并配置感知、执行与计算资源。",
@@ -279,7 +293,8 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
  objective_card->getRenderer()->setRoundedBorderRadius(12);
  panel_->add(objective_card);
  const auto& level = mission ? mission->level() : catalog_.level(presentation_->level);
- auto chapter = tgui::Label::create("第一章 · 第 " + std::to_string(level.order) + " 关 · " + level.title);
+ auto chapter = tgui::Label::create("第 " + std::to_string(level.chapter) + "章 · 第 " +
+                                    std::to_string(level.order) + " 关 · " + level.title);
  chapter->setPosition(16, 12);
  chapter->setTextSize(13);
  chapter->getRenderer()->setTextColor({107, 190, 176});

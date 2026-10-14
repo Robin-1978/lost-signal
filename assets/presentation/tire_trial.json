@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "presentation.tire_trial",
+  "is_default": false,
+  "level": "tire_trial",
+  "garage": {
+    "heading": "给洛一换双鞋",
+    "brief": "同一段路，三种轮胎。先猜谁刹得最短，再看洛一用轮子投票。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "谁刹得最短？",
+    "hint": "先做预测。跑完对比用时和能耗，答案写在数据里。",
+    "choices": [
+      {
+        "id": "tire_trial.brake.grip",
+        "text": "防滑胎刹得最短",
+        "feedback": "记下来。看它抵达出口时，制动距离和能耗分别是多少。"
+      },
+      {
+        "id": "tire_trial.brake.eco",
+        "text": "节能胎又快又省",
+        "feedback": "快和省有时候是一对矛盾。看它的制动距离和能耗谁先露馅。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "抵达维修间出口",
+    "normal_line": "洛一：正在体会新轮胎的抓地。",
+    "detected_line": "洛一：前方状态已确认。"
+  },
+  "debrief": {
+    "success_title": "认识了轮胎",
+    "success_summary": "同一段路，不同的鞋，走出不同的成绩。",
+    "failure_summary": "换一双抓地更好的胎，或者开得温柔一点。",
+    "evidence_heading": "本次运动",
+    "evidence_caption": "用时、能耗和净空都来自真实仿真，不是文案。",
+    "knowledge_title": "轮胎与制动",
+    "failure_titles": {
+      "collision-static": "试跑失败：碰到了障碍",
+      "timeout": "试跑失败：没有抵达出口"
+    }
+  }
+}

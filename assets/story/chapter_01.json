@@ -64,6 +64,48 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：同样的叉车，同样的路——不一样的是我们自己。"
+    },
+    {
+      "id": "tire_trial.before",
+      "level": "tire_trial",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "鞋合不合脚，跑起来才知道。你选，我跑。"
+    },
+    {
+      "id": "tire_trial.after",
+      "level": "tire_trial",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "原来抓地是这种感觉——刹车点都不一样了。"
+    },
+    {
+      "id": "motor_trial.before",
+      "level": "motor_trial",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "听说扭矩大的脾气也大。装上试试？"
+    },
+    {
+      "id": "motor_trial.after",
+      "level": "motor_trial",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "有劲是真有劲，费电也是真费电。"
+    },
+    {
+      "id": "rally.before",
+      "level": "rally",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "零件都认全了，咱们走一趟远的。"
+    },
+    {
+      "id": "rally.after",
+      "level": "rally",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "配合的感觉，比单个零件加起来还好。"
     }
   ]
 }

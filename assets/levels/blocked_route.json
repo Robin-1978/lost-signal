@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "blocked_route",
-  "order": 4,
+  "order": 7,
   "title": "门被堵住了",
   "map": "research_base",
   "control_mode": "autonomous",
@@ -42,9 +42,8 @@
   },
   "rewards": [
     "ability.path_planning",
-    "motor.torque",
-    "motor.eco",
     "computer.mid",
     "sensor.precision_lidar"
-  ]
+  ],
+  "chapter": 2
 }

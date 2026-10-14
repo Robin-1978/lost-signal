@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "signal_echo",
-  "order": 6,
+  "order": 9,
   "title": "信号回响",
   "map": "research_base",
   "control_mode": "autonomous",
@@ -45,5 +45,6 @@
   },
   "rewards": [
     "ability.combo_mastery"
-  ]
+  ],
+  "chapter": 2
 }

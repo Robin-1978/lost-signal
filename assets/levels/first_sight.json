@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "id": "first_sight",
-  "order": 2,
+  "order": 3,
   "title": "第一次看见",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "odometry",
   "prerequisites": [
-    "boot"
+    "tire_trial"
   ],
   "seed": 43,
   "objective": {
@@ -39,6 +39,9 @@
   },
   "rewards": [
     "ability.distance_sensing",
-    "imu.basic"
-  ]
+    "imu.basic",
+    "motor.torque",
+    "motor.eco"
+  ],
+  "chapter": 1
 }

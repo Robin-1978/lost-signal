@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "presentation.motor_trial",
+  "is_default": false,
+  "level": "motor_trial",
+  "garage": {
+    "heading": "认识电机",
+    "brief": "扭矩与高效，两种脾气。先猜谁先到、谁更省，再看洛一跑给你看。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "motor": "motor.eco",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.standard",
+      "motor": "motor.torque",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "大力一定赢吗？",
+    "hint": "先做预测。终点看用时，电表看能耗，两者都要看。",
+    "choices": [
+      {
+        "id": "motor_trial.power.torque",
+        "text": "扭矩电机一定最快",
+        "feedback": "大概率没错。再看一眼它的能耗账单。"
+      },
+      {
+        "id": "motor_trial.power.eco",
+        "text": "高效电机综合最好",
+        "feedback": "如果又够快又够省，说明这条路不需要那么多扭矩。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "抵达仓库校准点",
+    "normal_line": "洛一：正在体会新电机的脾气。",
+    "detected_line": "洛一：前方状态已确认。"
+  },
+  "debrief": {
+    "success_title": "认识了电机",
+    "success_summary": "扭矩和效率写在同一张成绩单上，没有免费午餐。",
+    "failure_summary": "换一台电机，或者给预算留一点余量。",
+    "evidence_heading": "本次运动",
+    "evidence_caption": "用时与能耗都来自真实仿真，不是文案。",
+    "knowledge_title": "电机与能耗",
+    "failure_titles": {
+      "collision-static": "试跑失败：碰到了障碍",
+      "timeout": "试跑失败：没有抵达校准点"
+    }
+  }
+}

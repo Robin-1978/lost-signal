@@ -5,12 +5,12 @@
 #include <cmath>
 #include <iostream>
 
-#define CHECK(condition)                                                                \
- do {                                                                                   \
-  if (!(condition)) {                                                                   \
-   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";       \
-   return 1;                                                                            \
-  }                                                                                     \
+#define CHECK(condition)                                                                                     \
+ do {                                                                                                        \
+  if (!(condition)) {                                                                                        \
+   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                           \
+   return 1;                                                                                                 \
+  }                                                                                                          \
  } while (false)
 
 namespace {
@@ -46,9 +46,9 @@ int main() {
  CHECK(robot.mass_kg > 0.0);
  CHECK(robot.yaw_inertia_kgm2 > 0.0);
  const auto params = drive_params(robot);
- const sim::WheelPidGains gains = sim::tune_wheel_pid(
-   robot.mass_kg / 2.0, robot.motor.stall_force_N, robot.motor.free_speed_mps,
-   0.5 * robot.motor.max_wheel_speed_mps);
+ const sim::WheelPidGains gains =
+   sim::tune_wheel_pid(robot.mass_kg / 2.0, robot.motor.stall_force_N, robot.motor.free_speed_mps,
+                       0.5 * robot.motor.max_wheel_speed_mps);
  CHECK(gains.kp > 0.0 && gains.ki > 0.0 && gains.kd >= 0.0);
 
  // Full throttle from standstill: F=ma per wheel pair, within caps.
@@ -91,8 +91,8 @@ int main() {
  {
   sim::MotorDriveParams hot = params;
   hot.stall_force_N = 75.0;
-  const sim::WheelPidGains hot_gains = sim::tune_wheel_pid(
-    robot.mass_kg / 2.0, hot.stall_force_N, hot.free_speed_mps, 0.5 * hot.max_wheel_speed_mps);
+  const sim::WheelPidGains hot_gains = sim::tune_wheel_pid(robot.mass_kg / 2.0, hot.stall_force_N,
+                                                           hot.free_speed_mps, 0.5 * hot.max_wheel_speed_mps);
   sim::DifferentialMotorDrive drive(hot, hot_gains);
   sim::DiffState state;
   bool slipped = false;
@@ -107,8 +107,7 @@ int main() {
  {
   sim::DifferentialMotorDrive drive(params, gains);
   sim::DiffState state;
-  const double quantum = 2.0 * sim::kPi * robot.wheel_radius_m /
-                         robot.encoder.counts_per_revolution / 0.02;
+  const double quantum = 2.0 * sim::kPi * robot.wheel_radius_m / robot.encoder.counts_per_revolution / 0.02;
   for (int i = 0; i < 50; ++i) {
    state = drive.step(state, {1.0, 0.0}, 0.02, kDry);
    const double ratio = drive.telemetry().left.measured_mps / quantum;
@@ -121,8 +120,8 @@ int main() {
   sim::AckermannParams acar;
   acar.wheel_base_m = 2.0;
   acar.mass_kg = 24.0;
-  const sim::WheelPidGains agains = sim::tune_wheel_pid(acar.mass_kg, acar.stall_force_N,
-                                                        acar.free_speed_mps, 1.2);
+  const sim::WheelPidGains agains =
+    sim::tune_wheel_pid(acar.mass_kg, acar.stall_force_N, acar.free_speed_mps, 1.2);
   sim::AckermannDrive car(acar, agains, 8.0);
   sim::DiffState still;
   for (int i = 0; i < 100; ++i) {
@@ -135,8 +134,7 @@ int main() {
    turning = car.step(turning, {1.0, 0.5}, 0.02, kDry);
   }
   CHECK(std::abs(car.steer_angle()) <= acar.max_steer_rad + 1e-9);
-  const double expected_w =
-    turning.v * std::tan(car.steer_angle()) / acar.wheel_base_m;
+  const double expected_w = turning.v * std::tan(car.steer_angle()) / acar.wheel_base_m;
   CHECK(std::abs(turning.w - expected_w) < 1e-9);
  }
  return 0;

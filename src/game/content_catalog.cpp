@@ -158,6 +158,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   LevelDefinition level;
   level.id = value.at("id").get<std::string>();
   level.order = value.at("order").get<int>();
+  level.chapter = value.at("chapter").get<int>();
   level.title = value.at("title").get<std::string>();
   level.map = value.at("map").get<std::string>();
   level.control_mode = value.at("control_mode").get<std::string>();
@@ -559,6 +560,26 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   }
  }
 
+ {
+  const auto chapters_path = catalog.root_ / "chapters.json";
+  const auto chapters_value = read_json(chapters_path);
+  require_schema_v1(chapters_value, chapters_path);
+  std::set<int> chapter_ids;
+  for (const auto& item : chapters_value.at("chapters")) {
+   ChapterDefinition chapter;
+   chapter.id = item.at("id").get<int>();
+   chapter.title = item.at("title").get<std::string>();
+   chapter.blurb = item.at("blurb").get<std::string>();
+   if (!chapter_ids.insert(chapter.id).second) {
+    throw ContentError(chapters_path.string() + ": duplicate chapter id");
+   }
+   catalog.chapters_.push_back(std::move(chapter));
+  }
+  if (catalog.chapters_.empty()) {
+   throw ContentError("at least one chapter is required");
+  }
+ }
+
  if (catalog.default_presentation_id_.empty()) {
   throw ContentError("no default presentation found");
  }
@@ -570,6 +591,12 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   const auto& level = catalog.level(id);
   if (!orders.insert(level.order).second) {
    throw ContentError("duplicate level order");
+  }
+  const bool known_chapter =
+    std::any_of(catalog.chapters_.begin(), catalog.chapters_.end(),
+                [&](const ChapterDefinition& chapter) { return chapter.id == level.chapter; });
+  if (!known_chapter) {
+   throw ContentError("level '" + id + "' references an unknown chapter");
   }
   (void)catalog.map(level.map);
   const auto& map = catalog.map(level.map);

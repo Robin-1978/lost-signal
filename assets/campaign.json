@@ -12,7 +12,10 @@
   "starting_level": "boot",
   "levels": [
     "boot",
+    "tire_trial",
     "first_sight",
+    "motor_trial",
+    "rally",
     "localization",
     "blocked_route",
     "lost_signal",

@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "id": "localization",
-  "order": 3,
+  "order": 6,
   "title": "我在哪里",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "odometry",
   "prerequisites": [
-    "first_sight"
+    "rally"
   ],
   "seed": 44,
   "objective": {
@@ -46,5 +46,6 @@
     "tires.sand",
     "tires.slick",
     "imu.precise"
-  ]
+  ],
+  "chapter": 2
 }

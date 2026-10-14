@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "lost_signal",
-  "order": 5,
+  "order": 8,
   "title": "把信号送出去",
   "map": "research_base",
   "control_mode": "autonomous",
@@ -45,5 +45,6 @@
   },
   "rewards": [
     "story.chapter_02_signal"
-  ]
+  ],
+  "chapter": 2
 }

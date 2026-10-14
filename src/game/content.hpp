@@ -179,9 +179,16 @@ struct ObjectiveDefinition {
  double via_radius_m{1.25};
 };
 
+struct ChapterDefinition {
+ int id{1};
+ std::string title;
+ std::string blurb;
+};
+
 struct LevelDefinition {
  std::string id;
  int order{0};
+ int chapter{1};
  std::string title;
  std::string map;
  std::string control_mode;

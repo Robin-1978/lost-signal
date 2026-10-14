@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "motor_trial",
+  "order": 4,
+  "title": "认识电机",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "chapter": 1,
+  "prerequisites": [
+    "first_sight"
+  ],
+  "seed": 50,
+  "objective": {
+    "type": "reach",
+    "spawn": "workshop_exit",
+    "goal": "calibration_pad",
+    "goal_label": "仓库校准点",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 60,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 3,
+    "required_slots": [
+      "tires",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "motors_and_energy",
+    "prediction_prompt": "扭矩电机一定更快吗？代价是什么？",
+    "knowledge_card": "扭矩换加速，能耗换续航；大力出奇迹，电量先见底。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.15,
+    "fast_time_s": 30,
+    "efficient_energy_wh": 8
+  },
+  "rewards": [
+    "ability.motors"
+  ]
+}
