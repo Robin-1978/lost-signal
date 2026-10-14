@@ -226,9 +226,89 @@ LEVELS: list[dict] = [
         "story_before": "洛一：北上那条路，让 RO-3 也走一遍。",
         "story_after": "RO-3：到了。同一条路，不同的脚，感觉完全不同。",
     },
+    {
+        "id": "sand_track",
+        "template": "reach",
+        "order": 15,
+        "chapter": 2,
+        "title": "沙地履带",
+        "map": "research_base",
+        "prerequisites": ["scrub_climb"],
+        "seed": 233,
+        "robot": "robot.ro3",
+        "spawn": "supply_station",
+        "goal": "signal_tower",
+        "goal_label": "信号塔",
+        "goal_visual": "signal_tower",
+        "time_limit_s": 150,
+        "budget": 6,
+        "required_slots": ["tires", "sensor", "motor"],
+        "columns": "sand",
+        "arrive_tolerance_m": 0.62,
+        "safe_min_clearance_m": 0.15,
+        "fast_time_s": 60.0,
+        "efficient_energy_wh": 0.8,
+        "concept": "sand_scrub",
+        "prediction_prompt": "沙地加履带，打滑乘以打滑等于什么？",
+        "knowledge_card": "复合打滑：沙地吃抓地，履带吃转向，两样叠在一起，温柔是唯一的解。",
+        "default_build": {
+            "tires": "tires.eco",
+            "sensor": "sensor.long_slow_lidar",
+            "motor": "motor.standard",
+            "style": 1.0,
+        },
+        "recommended_build": {
+            "tires": "tires.sand",
+            "sensor": "sensor.short_fast_lidar",
+            "motor": "motor.standard",
+            "style": 0.0,
+        },
+        "rewards": ["ability.sand_track"],
+        "garage_heading": "沙地履带",
+        "garage_brief": "同一条沙地路，换履带车。沙吃抓地，履带吃转向，一起来。",
+        "prediction_heading": "复合打滑，短板在哪？",
+        "prediction_hint": "先做预测。两种打滑叠加，定位会去哪？",
+        "prediction_choices": [
+            {"id": "sand_track.link.compound",
+             "text": "定位会彻底漂掉",
+             "feedback": "如果又滑又搓，里程计最后差几米。看复盘里的定位误差。"},
+            {"id": "sand_track.link.wait",
+             "text": "慢就是快",
+             "feedback": "如果温柔驾驶，时间反而花得少（不迷路）。看用时。"},
+        ],
+        "running_heading": "沙地履带中",
+        "running_normal": "RO-3：沙地行驶中，履带正在打滑。",
+        "running_detected": "RO-3：前方状态已确认。",
+        "debrief_success_title": "复合通过",
+        "debrief_success_summary": "沙加履带都过去了：慢，且温柔。",
+        "debrief_failure_summary": "看看是哪一项评分丢了，复合打滑最怕急。",
+        "debrief_evidence_heading": "本次驾驶",
+        "debrief_evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+        "debrief_knowledge_title": "复合打滑",
+        "debrief_failure_titles": {
+            "collision-static": "履带失败：碰到了障碍",
+            "collision-dynamic": "履带失败：与叉车发生碰撞",
+            "timeout": "履带失败：没有在时限内到达",
+        },
+        "story_before": "洛一：沙地那条路，让 RO-3 也走一遍。",
+        "story_after": "RO-3：到了。沙和履带，我全都要慢。",
+    },
 
 
 
+
+
+
+
+]
+
+SAND_COLUMNS = [
+    {"slot": "tires", "title": "驱动轮胎",
+     "options": ["tires.standard", "tires.grip", "tires.eco", "tires.sand"]},
+    {"slot": "sensor", "title": "距离雷达",
+     "options": ["sensor.short_fast_lidar", "sensor.standard_lidar", "sensor.long_slow_lidar"]},
+    {"slot": "motor", "title": "电机",
+     "options": ["motor.standard", "motor.torque", "motor.eco"]},
 ]
 
 TRIO_COLUMNS = [
@@ -347,7 +427,7 @@ def build_presentation(spec: dict) -> dict:
         "heading": spec["garage_heading"],
         "brief": spec["garage_brief"],
         "component_columns": copy.deepcopy(
-            TRIO_COLUMNS if spec.get("columns") == "trio" else COLUMNS),
+            {"trio": TRIO_COLUMNS, "sand": SAND_COLUMNS}.get(spec.get("columns"), COLUMNS)),
         "policy_title": "驾驶风格",
         "policies": ["policy.careful", "policy.balanced", "policy.swift"],
         "default_build": spec["default_build"],

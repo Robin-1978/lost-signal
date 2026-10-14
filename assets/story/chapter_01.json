@@ -134,6 +134,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "RO-3：到了。同一条路，不同的脚，感觉完全不同。"
+    },
+    {
+      "id": "sand_track.before",
+      "level": "sand_track",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：沙地那条路，让 RO-3 也走一遍。"
+    },
+    {
+      "id": "sand_track.after",
+      "level": "sand_track",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "RO-3：到了。沙和履带，我全都要慢。"
     }
   ]
 }

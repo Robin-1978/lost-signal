@@ -24,7 +24,8 @@
     "track_turn",
     "loose_ground",
     "long_haul",
-    "scrub_climb"
+    "scrub_climb",
+    "sand_track"
   ],
   "starting_inventory": [
     "tires.standard",

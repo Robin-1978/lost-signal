@@ -247,5 +247,21 @@ int main() {
   CHECK(climb_default.result().status == game::MissionStatus::Failed);
   CHECK(climb_default.result().failure_reason == "collision-static");
  }
+ // Sand plus tracks: compound slip (5/5 over seeds both sides). Default gets
+ // lost into timeout, recommended arrives; odometry lies catastrophically
+ // for both, so safe grades contact only here.
+ {
+  const auto& presentation = catalog.presentation_for_level("sand_track");
+  CHECK(presentation.robot_id == "robot.ro3");
+  game::MissionSimulation grit_track(catalog, "sand_track", presentation.recommended_build);
+  grit_track.run_to_completion();
+  CHECK(grit_track.result().status == game::MissionStatus::Succeeded);
+  CHECK(grit_track.result().safe_score);
+  CHECK(grit_track.result().fast_score);
+  CHECK(grit_track.result().efficient_score);
+  game::MissionSimulation grit_track_default(catalog, "sand_track", presentation.default_build);
+  grit_track_default.run_to_completion();
+  CHECK(grit_track_default.result().status != game::MissionStatus::Succeeded);
+ }
  return 0;
 }
