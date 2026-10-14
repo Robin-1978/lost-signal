@@ -148,7 +148,8 @@
       "radius_m": 0.45,
       "active_in": [
         "lost_signal",
-        "signal_echo"
+        "signal_echo",
+        "signal_hold"
       ]
     }
   ]

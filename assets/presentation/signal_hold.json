@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "id": "presentation.signal_hold",
+  "is_default": false,
+  "level": "signal_hold",
+  "garage": {
+    "heading": "等，也是一种跑法",
+    "brief": "同一条叉车通道，这一班叉车会封路数秒。算力拉满也撞不过去的时候，安全地等过去就是最快。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar",
+          "sensor.precision_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "出发前，先做一个判断",
+    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "choices": [
+      {
+        "id": "signal_hold.wait_for_release",
+        "text": "看预测：走廊释放就出发",
+        "feedback": "对。等待是机动，不是发呆：预测、等待、汇入是一整段行为，影子评估会给出最早出发时刻。"
+      },
+      {
+        "id": "signal_hold.wait_forever",
+        "text": "看到叉车就一直等，等它彻底走远",
+        "feedback": "过度等待：走廊一旦可安全通过就该出发，一直等到彻底清空反而更慢。"
+      },
+      {
+        "id": "signal_hold.squeeze_through",
+        "text": "不等，直接蹭过去",
+        "feedback": "默认配置就是这么开的：7 秒长等换成贴身通过，最小间隙 0.15 米，安全分没了。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "守望通道",
+    "normal_line": "洛一：导航链路稳定，正在接近信号塔。",
+    "detected_line": "洛一：锁定叉车，它封住了走廊，停车等待安全窗口。"
+  },
+  "debrief": {
+    "success_title": "任务完成：守望确认",
+    "success_summary": "封路数秒，等过去了，洛一同样送达。",
+    "failure_summary": "选择右侧证据，现场会跳到对应时刻。",
+    "evidence_heading": "因果证据",
+    "evidence_caption": "这些内容由本次仿真的事件与状态生成。",
+    "knowledge_title": "等待即机动",
+    "failure_titles": {
+      "collision-dynamic": "任务失败：洛一与叉车发生碰撞",
+      "collision-static": "任务失败：洛一碰到了固定障碍",
+      "timeout": "任务失败：没有在时限内送达"
+    }
+  }
+}

@@ -27,7 +27,8 @@
     "scrub_climb",
     "sand_track",
     "sand_steer",
-    "wet_scrub"
+    "wet_scrub",
+    "signal_hold"
   ],
   "starting_inventory": [
     "tires.standard",

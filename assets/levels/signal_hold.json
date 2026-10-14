@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "signal_hold",
+  "order": 20,
+  "title": "信号守望",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "signal_echo"
+  ],
+  "seed": 42,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "robot_bay",
+    "via": "supply_station",
+    "via_label": "能源模块",
+    "goal": "signal_tower",
+    "goal_label": "信号塔",
+    "goal_visual": "signal_tower",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 8,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "waiting_as_maneuver",
+    "prediction_prompt": "同一条叉车通道，这一班叉车会封住走廊好几秒：省时间的办法是等，还是蹭？",
+    "knowledge_card": "等待是机动，不是发呆：走廊释放就出发。影子评估记下了每次等待的初值、末值和实际时长，对得上才算数。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.3,
+    "fast_time_s": 100.0,
+    "efficient_energy_wh": 2.5
+  },
+  "rewards": [
+    "ability.signal_hold"
+  ]
+}

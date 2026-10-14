@@ -176,6 +176,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "RO-3：蹭过去了。水里搓履带，慢是唯一的舵。"
+    },
+    {
+      "id": "signal_hold.before",
+      "level": "signal_hold",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：这一班叉车不一样，它会把路封上好几秒。我们不等赢，就只能等着被撞。"
+    },
+    {
+      "id": "signal_hold.after",
+      "level": "signal_hold",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：等过去了。走廊是叉车的，我们借几秒。"
     }
   ]
 }
