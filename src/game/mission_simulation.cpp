@@ -1,6 +1,7 @@
 #include "mission_simulation.hpp"
 
 #include "algo/astar.hpp"
+#include "hw/chassis/ackermann.hpp"  // yaw_for_steer only (kinematics pair, interface use)
 #include "hw/chassis/chassis_factory.hpp"
 #include "algo/slip_detect.hpp"
 
