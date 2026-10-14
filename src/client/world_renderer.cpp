@@ -557,6 +557,24 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  const Color mode = state.waiting_for_clearance ? kAmber : kCyan;
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(state.time_s * 5.5));
  const float body_radius = clampf(static_cast<float>(robot.collision_radius_m) * scale_, 28.0f, 43.0f);
+ if (robot.drive_type == "ackermann") {
+  // Minimum turning circles, tangent to the heading on both sides. A
+  // steering car can never place its center inside these discs — if the
+  // route bends tighter than R, brake early and swing wide.
+  const double min_radius = robot.wheel_base_m / std::tan(robot.steering.max_steer_rad);
+  const double cosine = std::cos(state.robot.theta);
+  const double sine = std::sin(state.robot.theta);
+  for (const double side : {-1.0, 1.0}) {
+   const auto disc = world_to_screen({
+     state.robot.x - sine * side * min_radius,
+     state.robot.y + cosine * side * min_radius,
+   });
+   const float pixels = static_cast<float>(min_radius) * scale_;
+   DrawRing(disc, pixels - 1.5f, pixels + 1.5f, 0, 360, 64, Fade(kAmber, 0.40f));
+  }
+  draw_text("最小转弯半径 " + fixed(min_radius, 2) + " 米", {center.x + body_radius + 8, center.y - 8}, 12,
+            Fade(kAmber, 0.85f));
+ }
 
  const auto find_mount = [&](const std::string& id) -> const game::MountDefinition* {
   const auto found =

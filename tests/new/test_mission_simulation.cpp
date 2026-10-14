@@ -175,5 +175,24 @@ int main() {
  CHECK(std::abs(second.result().time_s - first.result().time_s) < 1e-12);
  CHECK(std::abs(second.result().path_length_m - first.result().path_length_m) < 1e-12);
  CHECK(second.events().size() == first.events().size());
+
+ // Ackermann content car: per-presentation robot, no spin capability, servo
+ // telemetry on the ackermann side, recommended sweep with a safe contrast.
+ {
+  const auto& presentation = catalog.presentation_for_level("return_route");
+  CHECK(presentation.robot_id == "robot.ro2");
+  game::MissionSimulation debut(catalog, "return_route", presentation.recommended_build);
+  CHECK(debut.robot().drive_type == "ackermann");
+  CHECK(!debut.robot().id.empty());
+  debut.run_to_completion();
+  CHECK(debut.result().status == game::MissionStatus::Succeeded);
+  CHECK(debut.result().safe_score);
+  CHECK(std::any_of(debut.replay().begin(), debut.replay().end(),
+                    [](const auto& snapshot) { return snapshot.control.steer_angle_rad != 0.0; }));
+  game::MissionSimulation debut_default(catalog, "return_route", presentation.default_build);
+  debut_default.run_to_completion();
+  CHECK(debut_default.result().status == game::MissionStatus::Succeeded);
+  CHECK(!debut_default.result().safe_score);
+ }
  return 0;
 }

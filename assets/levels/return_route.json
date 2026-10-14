@@ -1,0 +1,49 @@
+{
+ "schema_version": 1,
+ "id": "return_route",
+ "order": 10,
+ "title": "标定新车",
+ "map": "research_base",
+ "control_mode": "autonomous",
+ "localization_mode": "fused",
+ "chapter": 2,
+ "prerequisites": [
+  "signal_echo"
+ ],
+ "seed": 83,
+ "objective": {
+  "type": "deliver_via",
+  "spawn": "robot_bay",
+  "via": "glass_door",
+  "via_label": "玻璃门",
+  "goal": "calibration_pad",
+  "goal_label": "标定点",
+  "goal_visual": "calibration_pad",
+  "time_limit_s": 150,
+  "max_collisions": 0,
+  "arrive_tolerance_m": 1.0,
+  "via_radius_m": 1.25
+ },
+ "loadout_rules": {
+  "budget": 5,
+  "required_slots": [
+   "tires",
+   "sensor",
+   "motor"
+  ]
+ },
+ "teaching": {
+  "concept": "ackermann_debut",
+  "prediction_prompt": "新车不能原地打转，哪里最容易浪费时间？",
+  "knowledge_card": "转向车用方向盘换方向：转弯半径=轴距/tan(转角)，提前量就是它的方向盘。"
+ },
+ "score": {
+  "safe_min_clearance_m": 0.2,
+  "max_localization_error_m": 0.095,
+  "fast_time_s": 9.0,
+  "efficient_energy_wh": 0.2
+ },
+ "rewards": [
+  "ability.ackermann"
+ ]
+}

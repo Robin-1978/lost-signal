@@ -19,7 +19,8 @@
     "localization",
     "blocked_route",
     "lost_signal",
-    "signal_echo"
+    "signal_echo",
+    "return_route"
   ],
   "starting_inventory": [
     "tires.standard",
