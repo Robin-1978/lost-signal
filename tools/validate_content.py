@@ -467,7 +467,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     )
     for name, component in components.items():
         if component[0] == "imu":
-            for key in ("gyro_noise_radps", "gyro_bias_radps", "power_w"):
+            for key in ("gyro_noise_radps", "gyro_bias_radps", "accel_noise_mps2", "power_w"):
                 if key not in component[1]["behavior"]:
                     raise ContentError(
                         f"components: imu '{name}' misses behavior '{key}'"

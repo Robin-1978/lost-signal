@@ -129,6 +129,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_predictor_parity PRIVATE lost_signal_sim)
  add_test(NAME predictor_parity COMMAND test_predictor_parity)
 
+ add_executable(test_slip_detect tests/new/test_slip_detect.cpp)
+ target_link_libraries(test_slip_detect PRIVATE lost_signal_sim)
+ add_test(NAME slip_detect COMMAND test_slip_detect)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(

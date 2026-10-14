@@ -10,7 +10,8 @@
       "behavior": {
         "gyro_noise_radps": 0.035,
         "gyro_bias_radps": 0.02,
-        "power_w": 2.0
+        "power_w": 2.0,
+        "accel_noise_mps2": 0.15
       },
       "visual": {
         "primitive_2d": "box",
@@ -31,7 +32,8 @@
       "behavior": {
         "gyro_noise_radps": 0.005,
         "gyro_bias_radps": 0.002,
-        "power_w": 5.0
+        "power_w": 5.0,
+        "accel_noise_mps2": 0.05
       },
       "visual": {
         "primitive_2d": "box",
