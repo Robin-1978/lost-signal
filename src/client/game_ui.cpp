@@ -104,6 +104,7 @@ void GameUi::rebuild(const game::MissionSimulation* mission) {
  panel_->removeAllWidgets();
  style_panel();
  slot_buttons_.clear();
+ slot_option_labels_.clear();
  style_slider_ = nullptr;
  style_value_ = nullptr;
  budget_label_ = nullptr;
@@ -187,7 +188,8 @@ void GameUi::build_garage() {
   auto button = add_button("", kMargin, y + 25, kContentWidth, 48);
   button->onClick([this, slot = column.slot] { cycle_component(slot); });
   slot_buttons_[column.slot] = button;
-  y += 91;
+  slot_option_labels_[column.slot] = add_label("", kMargin, y + 76, kContentWidth, 11, {132, 139, 135});
+  y += column.options.size() > 3 ? 107 : 91;
  }
  add_label(presentation_->policy_title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
  style_slider_ = tgui::Slider::create(0, 100);
@@ -479,6 +481,23 @@ void GameUi::update_garage_labels() {
  for (const auto& [slot, button] : slot_buttons_) {
   const auto& item = catalog_.component(selected_id(build_, slot));
   button->setText(item.title + "  ·  " + std::to_string(item.cost) + " 点\n" + item.description);
+  const auto label = slot_option_labels_.find(slot);
+  if (label != slot_option_labels_.end()) {
+   const auto column =
+     std::find_if(presentation_->component_columns.begin(), presentation_->component_columns.end(),
+                  [&](const auto& value) { return value.slot == slot; });
+   if (column != presentation_->component_columns.end()) {
+    std::string options;
+    for (const auto& option : column->options) {
+     if (!options.empty())
+      options += " · ";
+     options += catalog_.component(option).title;
+     if (!owned_.empty() && !owned_.contains(option))
+      options += "[未解锁]";
+    }
+    label->second->setText("可选：" + options);
+   }
+  }
  }
  if (style_slider_) {
   style_slider_->setValue(static_cast<float>(build_.style * 100.0));

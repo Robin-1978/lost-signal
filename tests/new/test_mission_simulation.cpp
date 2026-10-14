@@ -92,7 +92,7 @@ int main() {
  // rewards merge idempotently, and last builds survive a save/load roundtrip.
  game::CampaignProgress diy = game::CampaignProgress::load(
    std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
- CHECK(diy.inventory().size() == 4);
+ CHECK(diy.inventory().size() == 6);
  game::MissionSimulation boot_mission(catalog, "boot",
                                       catalog.presentation_for_level("boot").recommended_build);
  boot_mission.run_to_completion();

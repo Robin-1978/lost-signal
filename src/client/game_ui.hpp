@@ -81,6 +81,7 @@ class GameUi {
  std::unordered_set<std::string> completed_levels_;
  std::unordered_set<std::string> owned_;
  std::unordered_map<std::string, tgui::Button::Ptr> slot_buttons_;
+ std::unordered_map<std::string, tgui::Label::Ptr> slot_option_labels_;
  tgui::Slider::Ptr style_slider_;
  tgui::Label::Ptr style_value_;
  tgui::Label::Ptr budget_label_;

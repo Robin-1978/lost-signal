@@ -37,8 +37,6 @@
   "rewards": [
     "ability.voice",
     "ability.basic_motion",
-    "tires.eco",
-    "tires.grip",
     "sensor.short_fast_lidar",
     "sensor.long_slow_lidar"
   ]

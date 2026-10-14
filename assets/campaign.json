@@ -20,6 +20,8 @@
   ],
   "starting_inventory": [
     "tires.standard",
+    "tires.grip",
+    "tires.eco",
     "sensor.standard_lidar",
     "computer.light",
     "motor.standard"
