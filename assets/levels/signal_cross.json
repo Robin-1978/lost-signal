@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "signal_cross",
+  "order": 23,
+  "title": "交叉路口",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "signal_hold"
+  ],
+  "seed": 11,
+  "objective": {
+    "type": "reach",
+    "spawn": "east_gate",
+    "goal": "signal_tower",
+    "goal_label": "信号塔",
+    "goal_visual": "signal_tower",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 8,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "crossing_phase",
+    "prediction_prompt": "南北向的叉车横穿你的去路：它是先过，还是你先过？",
+    "knowledge_card": "交叉路口看相位：叉车从侧面来，creep 蹭不过去，等它过去再进路口。等待发生在路口外，不是路口里。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.3,
+    "fast_time_s": 100.0,
+    "efficient_energy_wh": 2.5
+  },
+  "rewards": [
+    "ability.signal_cross"
+  ]
+}

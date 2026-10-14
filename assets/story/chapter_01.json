@@ -218,6 +218,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：走廊东口，5Hz 没跟上。看得勤，才走得准。"
+    },
+    {
+      "id": "signal_cross.before",
+      "level": "signal_cross",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：这条路和走廊不一样，叉车从侧面来。我们等它过去。"
+    },
+    {
+      "id": "signal_cross.after",
+      "level": "signal_cross",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：过去了。路口是让出来的，不是蹭出来的。"
     }
   ]
 }

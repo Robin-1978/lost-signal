@@ -14,14 +14,14 @@
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  CHECK(catalog.campaign().companion_name == "洛一");
- CHECK(catalog.campaign().levels.size() == 20);
- CHECK(catalog.levels().size() == 20);
+ CHECK(catalog.campaign().levels.size() == 21);
+ CHECK(catalog.levels().size() == 21);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 3);
  CHECK(catalog.scenes().size() == 1);
- CHECK(catalog.presentations().size() == 20);
- CHECK(catalog.story_beats().size() == 31);
+ CHECK(catalog.presentations().size() == 21);
+ CHECK(catalog.story_beats().size() == 33);
  CHECK(catalog.campaign().companion_robot == "robot.ro1");
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
@@ -62,8 +62,10 @@ int main() {
 
  const auto& map = catalog.map(level.map);
  CHECK(map.markers.count("robot_bay") == 1);
+ CHECK(map.markers.count("east_gate") == 1);
  CHECK(map.obstacles.size() == 3);
- CHECK(map.actors.size() == 1);
+ CHECK(map.actors.size() == 2);
+ CHECK(map.actors[1].id == "forklift_b");
  CHECK(map.scene_3d == "scene.research_base");
  const auto& scene = catalog.scene(map.scene_3d);
  CHECK(scene.prefabs.size() == 8);

@@ -30,7 +30,8 @@
     "wet_scrub",
     "signal_hold",
     "long_track",
-    "signal_watch"
+    "signal_watch",
+    "signal_cross"
   ],
   "starting_inventory": [
     "tires.standard",

@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "id": "presentation.signal_cross",
+  "is_default": false,
+  "level": "signal_cross",
+  "garage": {
+    "heading": "过路口",
+    "brief": "南北向叉车横穿去路。和走廊封锁不一样：威胁从侧面来，等的位置和进入的时机都要算。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar",
+          "sensor.precision_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "过路口，先做一个判断",
+    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "choices": [
+      {
+        "id": "signal_cross.phase_first",
+        "text": "看相位：它过去我再进",
+        "feedback": "对。交叉路口是相位问题：等侧面威胁通过，窗口出现再进。"
+      },
+      {
+        "id": "signal_cross.creep_first",
+        "text": "慢慢蹭过去",
+        "feedback": "错：侧面来的叉车不会给你蹭的空间，原地等和蹭都会进它的路线。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "通过交叉路口",
+    "normal_line": "洛一：接近交叉路口，确认侧面动态。",
+    "detected_line": "洛一：锁定侧面叉车，正在预测它的运动轨迹。"
+  },
+  "debrief": {
+    "success_title": "路口通过",
+    "success_summary": "相位算准了：等它过去，再进路口。",
+    "failure_summary": "看看是哪一项评分丢了，交叉路口最怕进得太早。",
+    "evidence_heading": "本次驾驶",
+    "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+    "knowledge_title": "交叉相位",
+    "failure_titles": {
+      "collision-static": "任务失败：碰到了障碍",
+      "collision-dynamic": "任务失败：与侧面叉车发生碰撞",
+      "timeout": "任务失败：没有在时限内送达"
+    }
+  }
+}

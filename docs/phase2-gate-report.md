@@ -100,8 +100,13 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 |---|---|---|---|---|---|
 | lost_signal＋signal_echo（release_error） | 2 关×3 | 72 | 9 | 4 | 0 |
 | signal_hold（accumulation） | 42–47 | 70 | 10 | 8 | 1（仅 seed 42） |
+| signal_cross（Family B，30 种子扫描） | 11–40 | 见正文 | 见正文 | sustained 13/21 | 0（WaitUnsafe 主导，停车点在 swept 区内） |
 | signal_watch（accumulation） | 同走廊×3 | 35 | 5 | 4 | 1（同相位，相关非独立） |
 
+signal_cross 30 种子（default/rec 各 30）：成功 30/30、碰撞 0（否决门过），
+default 格 [24,3][13,0]、recommended [60,19][21,0]，maxwait 4.5/4.7s；
+first-reason WaitUnsafe 66/100（approach 停车点被横扫）、Blocked 15、GoNow 17。
+新 encounter 家族（交叉等待）成立，sus-fin 仍空——内容动不了 DWA 停车点。
 覆盖读数：micro 两格满；sus-inf 在 6/9 种子相位出现；sus-fin＝2 样本、
 同走廊同相位——单相位依赖，Gate B 缺口形状即此。
 
