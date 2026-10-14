@@ -3,12 +3,12 @@
 #include <cmath>
 #include <iostream>
 
-#define CHECK(condition)                                                                \
- do {                                                                                   \
-  if (!(condition)) {                                                                   \
-   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";       \
-   return 1;                                                                            \
-  }                                                                                     \
+#define CHECK(condition)                                                                                     \
+ do {                                                                                                        \
+  if (!(condition)) {                                                                                        \
+   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                           \
+   return 1;                                                                                                 \
+  }                                                                                                          \
  } while (false)
 
 namespace {
@@ -24,8 +24,8 @@ sim::AckermannDrive make_car() {
  params.stall_force_N = 54.0;
  params.free_speed_mps = 3.0;
  params.mass_kg = 24.0;
- const sim::WheelPidGains gains = sim::tune_wheel_pid(params.mass_kg, params.stall_force_N,
-                                                      params.free_speed_mps, 1.2);
+ const sim::WheelPidGains gains =
+   sim::tune_wheel_pid(params.mass_kg, params.stall_force_N, params.free_speed_mps, 1.2);
  return sim::AckermannDrive(params, gains, 8.0);
 }
 

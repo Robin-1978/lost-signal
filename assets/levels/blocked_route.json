@@ -21,12 +21,13 @@
     "arrive_tolerance_m": 0.62
   },
   "loadout_rules": {
-    "budget": 6,
+    "budget": 7,
     "required_slots": [
       "tires",
       "sensor",
       "computer",
-      "motor"
+      "motor",
+      "imu"
     ]
   },
   "teaching": {

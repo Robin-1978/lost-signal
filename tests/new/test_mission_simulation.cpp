@@ -134,6 +134,7 @@ int main() {
  torque_build.sensor = "sensor.standard_lidar";
  torque_build.computer = "computer.performance";
  torque_build.motor = "motor.torque";
+ torque_build.imu = "imu.basic";
  torque_build.style = 0.0;
  game::MissionSimulation torque_first(catalog, "lost_signal", torque_build);
  torque_first.run_to_completion();

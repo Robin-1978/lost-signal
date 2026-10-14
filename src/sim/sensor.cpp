@@ -73,15 +73,26 @@ Scan lidar_scan(const GridMap& map, Vec2 position, double heading, int n_rays, d
 }
 
 void DeadReckon::update(double velocity, double angular_velocity, double dt, Rng& rng, double slip_scale,
-                        double yaw_bias) {
+                        double yaw_bias, bool has_gyro, double gyro_rate, double gyro_sigma) {
  const double distance = velocity * dt;
- const double heading_delta = angular_velocity * dt;
  const double distance_sigma = 0.02 * std::abs(distance) + 0.0005;
- const double heading_sigma = 0.05 * std::abs(heading_delta) + 0.0008;
  const double noisy_distance = distance + rng.gauss(distance_sigma) * slip_scale;
- const double noisy_heading_delta =
-   heading_delta + rng.gauss(heading_sigma) * slip_scale + yaw_bias * distance;
- th += noisy_heading_delta;
+ // Complementary heading, weighted by slip: wheels are excellent on grip and
+ // lie when sliding, the gyro is mediocre everywhere. Trust each source where
+ // it deserves it, like any real fusion filter does with covariances.
+ double gyro_weight = 0.0;
+ if (has_gyro) {
+  gyro_weight = std::clamp((slip_scale - 1.0) * 0.5, 0.0, 0.8);
+ }
+ const double heading_delta = angular_velocity * dt;
+ const double heading_sigma = 0.05 * std::abs(heading_delta) + 0.0008;
+ const double wheel_part = heading_delta + rng.gauss(heading_sigma) * slip_scale + yaw_bias * distance;
+ // Zero weight draws nothing: gyro-less runs reproduce the old stream bit-for-bit.
+ double gyro_part = 0.0;
+ if (gyro_weight > 0.0) {
+  gyro_part = gyro_rate * dt + rng.gauss(gyro_sigma) * std::sqrt(dt);
+ }
+ th += (1.0 - gyro_weight) * wheel_part + gyro_weight * gyro_part;
  p.x += noisy_distance * std::cos(th);
  p.y += noisy_distance * std::sin(th);
 }

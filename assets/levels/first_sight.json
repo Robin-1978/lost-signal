@@ -38,6 +38,7 @@
     "efficient_energy_wh": 10
   },
   "rewards": [
-    "ability.distance_sensing"
+    "ability.distance_sensing",
+    "imu.basic"
   ]
 }

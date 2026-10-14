@@ -48,7 +48,7 @@
     "component_columns": {
      "type": "array",
      "minItems": 1,
-     "maxItems": 4,
+     "maxItems": 5,
      "items": {
       "type": "object",
       "additionalProperties": false,
@@ -63,7 +63,8 @@
          "tires",
          "sensor",
          "computer",
-         "motor"
+         "motor",
+         "imu"
         ]
        },
        "title": {
@@ -235,6 +236,9 @@
      "maximum": 1
     },
     "motor": {
+     "$ref": "#/$defs/id"
+    },
+    "imu": {
      "$ref": "#/$defs/id"
     }
    }

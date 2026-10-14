@@ -24,6 +24,8 @@ std::string selected_id(const game::BuildSelection& build, const std::string& sl
   return build.sensor;
  if (slot == "motor")
   return build.motor;
+ if (slot == "imu")
+  return build.imu;
  return build.computer;
 }
 
@@ -34,6 +36,8 @@ void assign_id(game::BuildSelection& build, const std::string& slot, const std::
   build.sensor = id;
  else if (slot == "motor")
   build.motor = id;
+ else if (slot == "imu")
+  build.imu = id;
  else
   build.computer = id;
 }

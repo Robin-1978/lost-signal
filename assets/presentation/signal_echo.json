@@ -45,6 +45,14 @@
           "motor.torque",
           "motor.eco"
         ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
       }
     ],
     "policy_title": "驾驶风格",
@@ -58,6 +66,7 @@
       "sensor": "sensor.long_slow_lidar",
       "computer": "computer.light",
       "motor": "motor.standard",
+      "imu": "imu.basic",
       "style": 1.0
     },
     "recommended_build": {
@@ -65,6 +74,7 @@
       "sensor": "sensor.standard_lidar",
       "computer": "computer.performance",
       "motor": "motor.standard",
+      "imu": "imu.basic",
       "style": 0.0
     }
   },

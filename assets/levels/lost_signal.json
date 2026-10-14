@@ -24,12 +24,13 @@
     "via_radius_m": 1.25
   },
   "loadout_rules": {
-    "budget": 7,
+    "budget": 8,
     "required_slots": [
       "tires",
       "sensor",
       "computer",
-      "motor"
+      "motor",
+      "imu"
     ]
   },
   "teaching": {

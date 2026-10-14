@@ -17,7 +17,8 @@
     "tires",
     "sensor",
     "computer",
-    "motor"
+    "motor",
+    "imu"
    ]
   },
   "components": {

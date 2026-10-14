@@ -52,6 +52,7 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
       sensor_(build_.sensor.empty() ? nullptr : &catalog_.component(build_.sensor)),
       computer_(build_.computer.empty() ? nullptr : &catalog_.component(build_.computer)),
       motor_(build_.motor.empty() ? nullptr : &catalog_.component(build_.motor)),
+      imu_(build_.imu.empty() ? nullptr : &catalog_.component(build_.imu)),
       behavior_(catalog_.style_behavior(build_.style)), rng_(level_.seed),
       perception_rng_(level_.seed ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
@@ -61,6 +62,7 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
 void MissionSimulation::reset() {
  rng_ = sim::Rng(level_.seed);
  perception_rng_ = sim::Rng(level_.seed ^ 0x9e3779b9U);
+ imu_rng_ = sim::Rng(level_.seed ^ 0x51ed2707U);
  result_ = {};
  snapshot_ = {};
  events_.clear();
@@ -75,6 +77,8 @@ void MissionSimulation::reset() {
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  dynamic_obstacle_map_.clear();
+ // Gyro bias is drawn once per run: constant within the run, new every run.
+ gyro_bias_ = imu_ ? imu_rng_.gauss(property(imu_->behavior, "gyro_bias_radps")) : 0.0;
  build_world();
  plan_route();
 
@@ -562,7 +566,8 @@ void MissionSimulation::apply_motion() {
  const double motor_scale = motor_ ? property(motor_->behavior, "power_scale") : 1.0;
  const double total_power = motor_power * property(tires_.behavior, "power_scale") * motor_scale +
                             (sensor_ ? property(sensor_->behavior, "power_w") : 0.0) +
-                            (computer_ ? property(computer_->behavior, "power_w") : 0.0);
+                            (computer_ ? property(computer_->behavior, "power_w") : 0.0) +
+                            (imu_ ? property(imu_->behavior, "power_w") : 0.0);
  result_.energy_wh += total_power * fixed_step_s / 3600.0;
 
  double slip = property(tires_.behavior, "slip_scale");
@@ -577,7 +582,11 @@ void MissionSimulation::apply_motion() {
  double encoder_w = 0.0;
  sim::DiffDrive::wheelsToTwist(motors.left.measured_mps, motors.right.measured_mps,
                                robot_definition_.wheel_base_m, encoder_v, encoder_w);
- odometry_.update(encoder_v, encoder_w, fixed_step_s, rng_, slip, 0.003 * slip);
+ const double gyro_rate =
+   imu_ ? candidate.w + gyro_bias_ + imu_rng_.gauss(property(imu_->behavior, "gyro_noise_radps")) : 0.0;
+ const double gyro_sigma = imu_ ? property(imu_->behavior, "gyro_noise_radps") : 0.0;
+ odometry_.update(encoder_v, encoder_w, fixed_step_s, rng_, slip, 0.003 * slip, imu_ != nullptr, gyro_rate,
+                  gyro_sigma);
  snapshot_.estimated_position = odometry_.p;
  snapshot_.estimated_heading = odometry_.th;
  result_.odometry_error_m = odometry_.driftErr(candidate_position);

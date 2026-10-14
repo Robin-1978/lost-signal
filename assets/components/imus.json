@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "slot": "imu",
+  "components": [
+    {
+      "id": "imu.basic",
+      "title": "基础 IMU",
+      "description": "陀螺仪辅助航向，打滑时有用，但零偏会累积。",
+      "cost": 1,
+      "behavior": {
+        "gyro_noise_radps": 0.035,
+        "gyro_bias_radps": 0.02,
+        "power_w": 2.0
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.1,
+          0.1,
+          0.05
+        ],
+        "color": "#6D8CA3",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
+    },
+    {
+      "id": "imu.precise",
+      "title": "高精度 IMU",
+      "description": "零偏更小，长距离依然稳。",
+      "cost": 2,
+      "behavior": {
+        "gyro_noise_radps": 0.005,
+        "gyro_bias_radps": 0.002,
+        "power_w": 5.0
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.1,
+          0.1,
+          0.05
+        ],
+        "color": "#9C61F5",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
+    }
+  ]
+}

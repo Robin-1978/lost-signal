@@ -168,6 +168,8 @@ class MissionSimulation {
  const ComponentDefinition* sensor_{nullptr};
  const ComponentDefinition* computer_{nullptr};
  const ComponentDefinition* motor_{nullptr};
+ const ComponentDefinition* imu_{nullptr};
+ double gyro_bias_{0.0};
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 
@@ -181,6 +183,7 @@ class MissionSimulation {
  sim::DeadReckon odometry_;
  sim::Rng rng_;
  sim::Rng perception_rng_;
+ sim::Rng imu_rng_;
  sim::GuideState guide_state_;
  std::vector<sim::Vec2> planned_path_;
  std::vector<sim::Patrol> patrols_;

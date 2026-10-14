@@ -266,7 +266,8 @@
        "tires",
        "sensor",
        "computer",
-       "motor"
+       "motor",
+       "imu"
       ]
      },
      "mounts": {

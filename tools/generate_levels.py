@@ -32,7 +32,7 @@ LEVELS: list[dict] = [
         "prerequisites": ["lost_signal"],
         "seed": 48,
         "time_limit_s": 150,
-        "budget": 6,
+        "budget": 7,
         "arrive_tolerance_m": 0.62,
         "via_radius_m": 1.25,
         "safe_min_clearance_m": 0.3,
@@ -46,6 +46,7 @@ LEVELS: list[dict] = [
             "sensor": "sensor.long_slow_lidar",
             "computer": "computer.light",
             "motor": "motor.standard",
+            "imu": "imu.basic",
             "style": 1.0,
         },
         "recommended_build": {
@@ -53,6 +54,7 @@ LEVELS: list[dict] = [
             "sensor": "sensor.standard_lidar",
             "computer": "computer.performance",
             "motor": "motor.standard",
+            "imu": "imu.basic",
             "style": 0.0,
         },
         "rewards": ["ability.combo_mastery"],
@@ -71,6 +73,8 @@ COLUMNS = [
      "options": ["computer.light", "computer.mid", "computer.performance"]},
     {"slot": "motor", "title": "电机",
      "options": ["motor.standard", "motor.torque", "motor.eco"]},
+    {"slot": "imu", "title": "惯性单元",
+     "options": ["imu.basic", "imu.precise"]},
 ]
 
 
@@ -110,7 +114,7 @@ def build_level(spec: dict) -> dict:
         },
         "loadout_rules": {
             "budget": spec["budget"],
-            "required_slots": ["tires", "sensor", "computer", "motor"],
+            "required_slots": ["tires", "sensor", "computer", "motor", "imu"],
         },
         "teaching": {
             "concept": spec["concept"],

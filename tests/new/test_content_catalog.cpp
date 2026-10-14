@@ -16,7 +16,7 @@ int main() {
  CHECK(catalog.campaign().companion_name == "洛一");
  CHECK(catalog.campaign().levels.size() == 6);
  CHECK(catalog.levels().size() == 6);
- CHECK(catalog.components().size() == 15);
+ CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 1);
  CHECK(catalog.scenes().size() == 1);
@@ -30,7 +30,7 @@ int main() {
  CHECK(robot.encoder.counts_per_revolution == 2048);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
- CHECK(robot.slots.size() == 4);
+ CHECK(robot.slots.size() == 5);
  CHECK(catalog.component("sensor.short_fast_lidar").visual.primitive_2d == "disc");
  CHECK(catalog.component("sensor.short_fast_lidar").visual.model_3d.ends_with("lidar_fast.glb"));
  CHECK(catalog.story_beat("boot", "before") != nullptr);

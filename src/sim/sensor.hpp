@@ -42,7 +42,7 @@ class DeadReckon {
   th = heading;
  }
  void update(double velocity, double angular_velocity, double dt, Rng& rng, double slip_scale = 1.0,
-             double yaw_bias = 0.0);
+             double yaw_bias = 0.0, bool has_gyro = false, double gyro_rate = 0.0, double gyro_sigma = 0.0);
  double driftErr(Vec2 true_position) const;
 };
 

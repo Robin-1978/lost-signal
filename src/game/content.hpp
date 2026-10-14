@@ -275,6 +275,7 @@ struct BuildSelection {
  std::string sensor;
  std::string computer;
  std::string motor;
+ std::string imu;
  double style{0.5};
 };
 
