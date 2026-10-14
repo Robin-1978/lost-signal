@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dynobs.hpp"
+#include "predictor.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -26,6 +27,10 @@ class DynamicObstacleMap {
  void clear();
  void observe(const DynamicObservation& observation, double time_s);
  std::vector<DynamicTrack> active_tracks(double time_s, double max_age_s) const;
+ // Tracker-owned corridor snapshot for the predictor module. Exposed so the
+ // parity test can feed predict_frames directly and prove bit-identity with
+ // the delegating predict() below.
+ std::vector<PredictInput> predict_inputs() const;
  std::vector<std::vector<DynState>> predict(double time_s, double horizon_s, double frame_dt_s,
                                             double max_age_s) const;
 

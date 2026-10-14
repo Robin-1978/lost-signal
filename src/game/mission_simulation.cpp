@@ -464,8 +464,9 @@ void MissionSimulation::decide_control() {
  const double speed_cap = std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps")));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
- // Prediction is a module, not a tracker method: raw tracks in, future
- // frames out. known_tracks (age-advanced, for display) must not feed it.
+ // Predictor module (src/algo/predictor.*) owns future frames; the tracker
+ // owns observations. known_tracks (age-advanced, for display) must not
+ // feed prediction: map.predict() snapshots raw tracker state internally.
  const auto predicted_frames =
    dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto dwa = sim::dwa_compute_trajectory(

@@ -26,6 +26,7 @@ add_library(lost_signal_sim STATIC
  src/algo/dynamic_obstacle_map.cpp
  src/algo/dwa.cpp
  src/algo/grid_map.cpp
+  src/algo/predictor.cpp
   src/hw/chassis/motor_drive.cpp
  src/hw/dynamics/contact.cpp
  src/algo/pid.cpp
@@ -123,6 +124,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_chassis tests/new/test_chassis.cpp)
  target_link_libraries(test_chassis PRIVATE lost_signal_sim)
  add_test(NAME chassis COMMAND test_chassis)
+
+ add_executable(test_predictor_parity tests/new/test_predictor_parity.cpp)
+ target_link_libraries(test_predictor_parity PRIVATE lost_signal_sim)
+ add_test(NAME predictor_parity COMMAND test_predictor_parity)
 
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)

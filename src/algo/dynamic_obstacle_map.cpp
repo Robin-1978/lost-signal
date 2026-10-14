@@ -1,4 +1,5 @@
 #include "dynamic_obstacle_map.hpp"
+#include "predictor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,23 +17,6 @@ Vec2 limited_velocity(Vec2 velocity) {
   return velocity;
  const double scale = kMaxTrackedSpeedMps / speed;
  return {velocity.x * scale, velocity.y * scale};
-}
-
-double reflected_position(double position, double velocity, double time_s, double minimum, double maximum,
-                          bool bounded) {
- if (!bounded || maximum - minimum < 0.05)
-  return position + velocity * time_s;
- double predicted = position + velocity * time_s;
- for (int reflection = 0; reflection < 8; ++reflection) {
-  if (predicted < minimum) {
-   predicted = minimum + (minimum - predicted);
-  } else if (predicted > maximum) {
-   predicted = maximum - (predicted - maximum);
-  } else {
-   break;
-  }
- }
- return std::clamp(predicted, minimum, maximum);
 }
 
 } // namespace
@@ -113,25 +97,25 @@ std::vector<DynamicTrack> DynamicObstacleMap::active_tracks(double time_s, doubl
  return result;
 }
 
+std::vector<PredictInput> DynamicObstacleMap::predict_inputs() const {
+ std::vector<PredictInput> inputs;
+ for (const auto& stored : tracks_) {
+  PredictInput input;
+  input.state = stored.track.state;
+  input.last_observed_s = stored.track.last_observed_s;
+  input.min_observed = stored.min_observed;
+  input.max_observed = stored.max_observed;
+  input.bounded_x = stored.bounded_x;
+  input.bounded_y = stored.bounded_y;
+  inputs.push_back(input);
+ }
+ return inputs;
+}
+
 std::vector<std::vector<DynState>> DynamicObstacleMap::predict(double time_s, double horizon_s,
                                                                double frame_dt_s, double max_age_s) const {
- std::vector<std::vector<DynState>> frames;
- for (double future_s = 0.0; future_s <= horizon_s + 1e-9; future_s += frame_dt_s) {
-  auto& frame = frames.emplace_back();
-  for (const auto& stored : tracks_) {
-   const double age = time_s - stored.track.last_observed_s;
-   if (age < -1e-9 || age > max_age_s)
-    continue;
-   auto predicted = stored.track.state;
-   const double prediction_time = age + future_s;
-   predicted.p.x = reflected_position(predicted.p.x, predicted.v.x, prediction_time, stored.min_observed.x,
-                                      stored.max_observed.x, stored.bounded_x);
-   predicted.p.y = reflected_position(predicted.p.y, predicted.v.y, prediction_time, stored.min_observed.y,
-                                      stored.max_observed.y, stored.bounded_y);
-   frame.push_back(predicted);
-  }
- }
- return frames;
+ // Thin delegation: all future-frame math lives in the predictor module.
+ return predict_frames(predict_inputs(), time_s, horizon_s, frame_dt_s, max_age_s);
 }
 
 } // namespace sim

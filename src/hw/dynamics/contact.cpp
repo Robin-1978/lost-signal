@@ -15,8 +15,7 @@ constexpr double kSlipSpeedFloorMps = 0.3;
 
 WheelContactResult step_driven_wheel(double wheel_mps, double body_mps, double pwm,
                                      const WheelContactParams& params, double dt) {
- const double curve =
-   std::max(0.0, 1.0 - std::abs(wheel_mps) / std::max(0.05, params.free_speed_mps));
+ const double curve = std::max(0.0, 1.0 - std::abs(wheel_mps) / std::max(0.05, params.free_speed_mps));
  const double motor_force = pwm * params.stall_force_N * curve;
  const double denom = std::max(kSlipSpeedFloorMps, std::abs(body_mps));
  const double stiffness = std::max(0.0, params.traction_limit_N) / (kSlipRef * denom);
