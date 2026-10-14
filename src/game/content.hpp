@@ -174,7 +174,9 @@ struct MapDefinition {
  double grid_resolution_m{0.5};
  std::vector<BoxDefinition> obstacles;
  std::vector<SurfaceDefinition> surfaces;
- std::unordered_map<std::string, Pose> markers;
+ // Ordered: the editor saves maps back to JSON, and marker file order must
+ // survive the round trip. Lookups only, never order-dependent logic.
+ std::map<std::string, Pose> markers;
  std::vector<ActorDefinition> actors;
 };
 

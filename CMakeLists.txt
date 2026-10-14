@@ -39,6 +39,7 @@ target_compile_features(lost_signal_sim PUBLIC cxx_std_20)
 add_library(lost_signal_game STATIC
  src/game/campaign_progress.cpp
  src/game/content_catalog.cpp
+ src/game/map_serialize.cpp
  src/game/mission_simulation.cpp
 )
 target_include_directories(lost_signal_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -125,6 +126,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_chassis tests/new/test_chassis.cpp)
  target_link_libraries(test_chassis PRIVATE lost_signal_sim)
  add_test(NAME chassis COMMAND test_chassis)
+
+ add_executable(test_map_roundtrip tests/new/test_map_roundtrip.cpp)
+ target_link_libraries(test_map_roundtrip PRIVATE lost_signal_game)
+ target_compile_definitions(test_map_roundtrip PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME map_roundtrip COMMAND test_map_roundtrip)
 
  add_executable(test_predictor_parity tests/new/test_predictor_parity.cpp)
  target_link_libraries(test_predictor_parity PRIVATE lost_signal_sim)
