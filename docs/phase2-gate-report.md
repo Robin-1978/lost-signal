@@ -44,7 +44,10 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
   shadow 等），是“shadow-vs-实际”偏差，不是纯预测误差；已按入口速度 bin
   记录，不做标定。
 - 多关积累（test_shadow_accumulation，mission 未碰）：signal_hold × 3 种子
-  45 episode，格 [35,5][4,1]——sustained-finite 格首样本（前两关为空集）；
+  45 episode，格 [35,5][4,1]——sustained-finite 格首样本（前两关为空集）。
+  seed 分解（42/43/44）：[12,2][2,1]／[11,3][0,0]／[12,0][2,0]——sustained-finite
+  仅存于 seed 42（策展相位），sustained 格 2/3 种子出现。coverage 读数：micro 两格满、
+  sus-inf △、sus-fin ✗（单样本单 seed）。结论维持样本不足，且明确了缺口形状。
   与 release_error（lost_signal/signal_echo × 3 种子）合计 3 关×3 种子。
   return_route（RO-2）探针零等待，无分布可积累，未纳入（不断言脆弱零）。
 - 仍缺：DRAFT 量化拍板。预算 0 不变，不放行不变。

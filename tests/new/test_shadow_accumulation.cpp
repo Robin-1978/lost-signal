@@ -40,6 +40,7 @@ int main() {
   for (int s = 0; s < 3; ++s) {
    game::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
+   int seed_cells[2][2] = {{0, 0}, {0, 0}};
    for (const auto& episode : mission.shadow_episodes()) {
     ++total_episodes;
     CHECK(episode.start_s <= episode.end_s);
@@ -47,11 +48,17 @@ int main() {
     const int dur = episode.waited_s < 1.0 ? 0 : 1;
     const int fin = episode.first_pred_s == std::numeric_limits<double>::infinity() ? 0 : 1;
     ++cells[dur][fin];
+    ++seed_cells[dur][fin];
     if (fin != 0) {
      finite_err_sum += episode.waited_s - episode.first_pred_s;
      ++finite_n;
     }
    }
+   // Per-seed decomposition (Gate B stability readout): totals hide
+   // lucky-seed dependence — the sustained-finite cell must not rest on
+   // one phase.
+   std::cerr << "  seed+" << s << " [" << seed_cells[0][0] << "," << seed_cells[0][1] << "]["
+             << seed_cells[1][0] << "," << seed_cells[1][1] << "]\n";
   }
   std::cerr << level_id << " cells [micro/sus]x[inf/fin] = [" << cells[0][0] << "," << cells[0][1]
             << "][" << cells[1][0] << "," << cells[1][1] << "]";
