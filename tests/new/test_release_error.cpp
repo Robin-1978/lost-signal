@@ -50,6 +50,8 @@ int main() {
  Bin bins[3];
  int episodes = 0;
  int inf_first = 0;
+ int cells[2][2] = {{0, 0}, {0, 0}};
+ double cell_err[2][2] = {{0.0, 0.0}, {0.0, 0.0}};
  for (const char* level_id : levels) {
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
   uint64_t base = 0;
@@ -62,6 +64,12 @@ int main() {
    mission.run_to_completion();
    for (const auto& episode : mission.shadow_episodes()) {
     ++episodes;
+    const int dur = episode.waited_s < 1.0 ? 0 : 1;
+    const int fin = episode.first_pred_s == std::numeric_limits<double>::infinity() ? 0 : 1;
+    ++cells[dur][fin];
+    if (fin != 0) {
+     cell_err[dur][fin] += episode.waited_s - episode.first_pred_s;
+    }
     if (episode.first_pred_s == std::numeric_limits<double>::infinity()) {
      ++inf_first;
      continue;
@@ -79,6 +87,21 @@ int main() {
  }
  CHECK(episodes > 0);
  const char* names[3] = {"slow(<0.5)", "mid(0.5-1.5)", "fast(>1.5)"};
+ // Micro vs strategic waits: micro (<1 s, DWA creep domain) vs sustained.
+ // Release-error is only meaningful where a prediction actually engaged AND
+ // the wait lasted long enough to matter; micro-waits stay with DWA+creep
+ // (already safe: zero collisions, clearance pinned) and are monitored, not
+ // optimized. Conflating the two cells is what made the first readout
+ // all-negative.
+ std::cerr << "wait cells [micro/sustained]x[inf/finite]: [" << cells[0][0] << "," << cells[0][1]
+           << "][" << cells[1][0] << "," << cells[1][1] << "]\n";
+ for (int dur = 0; dur < 2; ++dur) {
+  for (int fin = 0; fin < 2; ++fin) {
+   if (fin != 0 && cells[dur][fin] > 0) {
+    std::cerr << "cell[" << dur << "][1] err_mean=" << cell_err[dur][fin] / cells[dur][fin] << "\n";
+   }
+  }
+ }
  for (int b = 0; b < 3; ++b) {
   if (bins[b].n == 0) {
    std::cerr << "release-error " << names[b] << ": no finite-first episodes\n";

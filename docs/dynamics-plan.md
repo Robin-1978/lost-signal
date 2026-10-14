@@ -320,6 +320,16 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        估计误差首测（test_estimation_error，零行为改动）：终关近场速度误差
        均值 0.31/max 1.92、位置均值 0.09/max 0.22；当前 30% 扰动≈观测均值，
        max 已钉压力哨兵（0.43 miss）——0.5 门槛覆盖缺口实锤，预算仍未定义。
+       等待分型（test_release_error 2x2）：micro-inf 72／micro-finite 9／
+       sustained-inf 4／sustained-finite 0——内容里不存在持续等待＋预测生效的
+       格子。结论：micro 归 DWA＋creep（已安全，只监视不优化）；Phase-1 行为
+       的标定集在现有内容里是空集——需要能产出持续等待的遭遇（内容任务），
+       不是更多分析。release-error 只在 finite 格有意义，inf 格只计数。
+       Ackermann transit 提案（架构分叉，待中继拍板再实现）：执行模型可全部
+       从现有 JSON＋第 14 项对子导出，无需新数据——曲率上限 κ≤tan(max_steer)/L
+      （RO-2 约 0.99/m），曲率变化率受 servo rate／v 约束，0.5 m/s 以下禁转
+       （policy，非运动学）；A* 折线用 κ 下限圆角 fillet 平滑后对最终曲线重做
+       swept（证据不继承）。拍板即开工，不提前写代码。
        放行误差首测（test_release_error）：85 episode／76 初值 inf，9 有限误差
        全负（DWA 蠕行释放≠shadow 预测——口径已声明为 shadow-vs-实际偏差）；
        顺手修了 episode 漏报（无效 DWA 分支此前不调 update，等待可能无记录）。
