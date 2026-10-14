@@ -553,6 +553,12 @@ void MissionSimulation::decide_control() {
   snapshot_.waiting_for_clearance = false;
   update_shadow_episode();
   snapshot_.control.shadow_assessed = false;
+  snapshot_.control.shadow_pocket_verdict = -1;
+  snapshot_.control.shadow_pocket_feasible = 0;
+  snapshot_.control.shadow_pocket_total = 0;
+  for (int& bin : snapshot_.control.shadow_pocket_reasons) {
+   bin = 0;
+  }
   return;
  }
 
@@ -575,6 +581,12 @@ void MissionSimulation::decide_control() {
   snapshot_.waiting_for_clearance = false;
   update_shadow_episode();
   snapshot_.control.shadow_assessed = false;
+  snapshot_.control.shadow_pocket_verdict = -1;
+  snapshot_.control.shadow_pocket_feasible = 0;
+  snapshot_.control.shadow_pocket_total = 0;
+  for (int& bin : snapshot_.control.shadow_pocket_reasons) {
+   bin = 0;
+  }
   return;
  }
 
@@ -593,12 +605,12 @@ void MissionSimulation::decide_control() {
  // Shadow departure assessment (gate 3): observe only. This block reads
  // tracker state and writes snapshot shadow fields; held_command_ (the actual
  // control output) is untouched by everything in this block.
+ std::vector<sim::Vec2> shadow_remaining{{snapshot_.robot.x, snapshot_.robot.y}};
+ for (std::size_t i = guide_state_.idx; i < planned_path_.size(); ++i) {
+  shadow_remaining.push_back(planned_path_[i]);
+ }
+ const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
  {
-  std::vector<sim::Vec2> shadow_remaining{{snapshot_.robot.x, snapshot_.robot.y}};
-  for (std::size_t i = guide_state_.idx; i < planned_path_.size(); ++i) {
-   shadow_remaining.push_back(planned_path_[i]);
-  }
-  const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
   double shadow_length = 0.0;
   for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
    shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
@@ -616,6 +628,48 @@ void MissionSimulation::decide_control() {
   snapshot_.control.shadow_assessed = true;
   snapshot_.control.shadow_depart_s = assessment.wait_s;
   snapshot_.control.shadow_reason = static_cast<int>(assessment.reason);
+ }
+ // Spatial pocket shadow (Gate B observation): same read-only contract, only
+ // while waiting (last cycle's flag) — bounded cost, and waits are exactly
+ // what Gate B must accumulate. Observation budget (window/offsets/cap), not
+ // tuned: it cannot affect behavior by construction.
+ snapshot_.control.shadow_pocket_verdict = -1;
+ snapshot_.control.shadow_pocket_feasible = 0;
+ snapshot_.control.shadow_pocket_total = 0;
+ for (int& bin : snapshot_.control.shadow_pocket_reasons) {
+  bin = 0;
+ }
+ if (snapshot_.waiting_for_clearance) {
+  sim::PocketSampleParams pocket_params;
+  pocket_params.lateral_offsets_m = {1.5, -1.5};
+  pocket_params.window_m = 6.0;
+  pocket_params.vertex_stride_m = 1.5;
+  pocket_params.min_downstream_m = 3.0;
+  pocket_params.min_pocket_dist_m = 0.3;
+  pocket_params.max_candidates = 12;
+  double shadow_length = 0.0;
+  for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
+   shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
+  }
+  const double pocket_horizon = shadow_length / shadow_cruise + prediction_horizon;
+  const auto pocket_frames = dynamic_obstacle_map_.predict(snapshot_.time_s, pocket_horizon,
+                                                           prediction_step_s, track_max_age_s());
+  const auto search = sim::sample_pockets(
+    *planning_map_, shadow_remaining, {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta,
+    shadow_cruise, yaw_cap_rads_, chassis_->caps().can_spin, prediction_horizon, pocket_params,
+    pocket_frames, prediction_step_s, robot_definition_.collision_radius_m, requested_clearance);
+  int pocket_feasible = 0;
+  for (const auto& candidate : search.candidates) {
+   if (candidate.assessment.overall == sim::Feasibility::Verdict::kFeasible) {
+    ++pocket_feasible;
+   }
+   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.transit.reason)];
+   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.hold.reason)];
+   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.rejoin.reason)];
+  }
+  snapshot_.control.shadow_pocket_verdict = static_cast<int>(search.verdict);
+  snapshot_.control.shadow_pocket_feasible = pocket_feasible;
+  snapshot_.control.shadow_pocket_total = static_cast<int>(search.candidates.size());
  }
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,

@@ -313,6 +313,10 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        联合扰动 harness 已升级真值闭环：估计偏置进估计、自车噪声进真值轨迹
        （规划盲）、同轴重算——首轮分布：pocket 快偏置 0.5006 哨兵、慢偏置 time
        miss、0.1 摆动存活、符号反转等待点真撞。
+       空间 shadow 已挂载（Gate B 观察启动）：仅等待周期、只读、stride 去截断
+       后终关 184 帧 refused 138/incomplete 46/feasible 0，三腿原因
+       WaitUnsafe 1336/HorizonShort 904/Clear 354/Blocked 106；`--seeds 3`
+       与挂载前逐字一致。审计账本见 gate 报告 E 节（本周期中继 0）。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

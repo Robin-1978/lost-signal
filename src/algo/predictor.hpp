@@ -210,6 +210,9 @@ struct PocketSampleParams {
  std::vector<double> lateral_offsets_m{1.0, -1.0};
  // Only vertices within this arc distance from route start are used (m).
  double window_m{10.0};
+ // Minimum arc spacing between sampled vertices (m, 0 = every vertex):
+ // observation-budget diversification, not a safety parameter.
+ double vertex_stride_m{0.0};
  // Merge = first vertex at least this far downstream of the pocket vertex (m).
  double min_downstream_m{3.0};
  // Pockets closer than this to the start are skipped (m): that is WaitInPlace.

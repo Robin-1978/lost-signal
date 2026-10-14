@@ -491,10 +491,15 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
   arc[i] = arc[i - 1] + std::hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
  }
  std::set<std::pair<int, int>> tried;
+ double next_vertex_s = 0.0;
  for (std::size_t i = 0; i < route.size() && !out.truncated; ++i) {
   if (arc[i] > params.window_m + 1e-9) {
    break;
   }
+  if (arc[i] < next_vertex_s - 1e-9) {
+   continue;
+  }
+  next_vertex_s = arc[i] + std::max(0.0, params.vertex_stride_m);
   const Vec2 prev = route[i == 0 ? 0 : i - 1];
   const Vec2 next = route[i + 1 >= route.size() ? route.size() - 1 : i + 1];
   Vec2 dir{next.x - prev.x, next.y - prev.y};

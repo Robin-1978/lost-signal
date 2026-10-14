@@ -69,6 +69,41 @@ int main() {
                    [](const auto& snapshot) { return snapshot.control.shadow_assessed; }));
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "shadow_wait"; }));
+ // Gate-B spatial shadow: pocket sampling ran while waiting (read-only).
+ {
+  int sampled = 0;
+  int feasible = 0;
+  for (const auto& snapshot : first.replay()) {
+   if (snapshot.control.shadow_pocket_total > 0) {
+    ++sampled;
+    feasible += snapshot.control.shadow_pocket_feasible;
+   }
+  }
+  CHECK(sampled > 0);
+  std::cerr << "spatial shadow: " << sampled << " waiting frames sampled, " << feasible
+            << " feasible pocket-frames\n";
+  // Reason bins integrity: every sampled frame accounts 3 leg reasons per
+  // candidate, and the finale distribution is reported (Gate B data quality).
+  int bins[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  for (const auto& snapshot : first.replay()) {
+   if (snapshot.control.shadow_pocket_total > 0) {
+    int sum = 0;
+    for (const int bin : snapshot.control.shadow_pocket_reasons) {
+     CHECK(bin >= 0);
+     sum += bin;
+    }
+    CHECK(sum == 3 * snapshot.control.shadow_pocket_total);
+    for (int r = 0; r < 9; ++r) {
+     bins[r] += snapshot.control.shadow_pocket_reasons[r];
+    }
+   }
+  }
+  std::cerr << "pocket leg reasons:";
+  for (int r = 0; r < 9; ++r) {
+   std::cerr << " " << sim::depart_reason_name(static_cast<sim::DepartReason>(r)) << "=" << bins[r];
+  }
+  std::cerr << "\n";
+ }
  // Shadow data integrity (reviewer step 1): every episode opened is closed by
  // mission end, structured records pair 1:1 with log events, timestamps and
  // reasons are in range. Distribution (reviewer step 2) is reported, not

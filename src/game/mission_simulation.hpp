@@ -76,6 +76,14 @@ struct ControlSnapshot {
  bool shadow_assessed{false};
  double shadow_depart_s{-1.0};
  int shadow_reason{-1};
+ // Spatial pocket shadow (Gate B): last sampling while waiting. verdict codes
+ // sim::SearchVerdict (0=FoundFeasible/1=AllRefused/2=Incomplete), -1 = unsampled.
+ int shadow_pocket_verdict{-1};
+ int shadow_pocket_feasible{0};
+ int shadow_pocket_total{0};
+ // Gate-B reason distribution: counts of the three leg reasons per candidate
+ // (transit+hold+rejoin), bins code sim::DepartReason 0..8. Sum == 3*total.
+ int shadow_pocket_reasons[9]{0, 0, 0, 0, 0, 0, 0, 0, 0};
  double heading_error_rad{0.0};
  double heading_pid_p{0.0};
  double heading_pid_i{0.0};
