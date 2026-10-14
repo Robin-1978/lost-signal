@@ -307,6 +307,12 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        rejoin_end 11.09≤12（转弯＋hold＋汇入全覆盖），Feasible 要求三腿全过——
        名义模型内有效，不继承给扰动场景。主搜索分布 feasible 3/infeasible 4/
        unknown 1（8 上限截断），拒收含 WaitUnsafe 在 lane 上的口袋。
+       门禁审计制已生效（docs/phase2-gate-report.md 首份报告）：逐片自动验证继续，
+       人工只进架构分叉/量化标准/门禁完成/stop-loss；新增测试须映射冻结要求、
+       已发现缺陷或结论级风险，否则进 backlog（防增厚）。
+       联合扰动 harness 已升级真值闭环：估计偏置进估计、自车噪声进真值轨迹
+       （规划盲）、同轴重算——首轮分布：pocket 快偏置 0.5006 哨兵、慢偏置 time
+       miss、0.1 摆动存活、符号反转等待点真撞。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

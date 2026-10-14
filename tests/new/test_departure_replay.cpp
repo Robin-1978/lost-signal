@@ -104,13 +104,18 @@ double measured_gap(sim::Vec2 e0, sim::Vec2 e1, sim::Vec2 t0, sim::Vec2 t1, doub
 }
 
 ReplayResult run_replay(const std::vector<sim::Vec2>& path, sim::Vec2 threat_p0,
-                        sim::Vec2 threat_v_true, sim::Vec2 threat_v_est, double horizon_s) {
+                        sim::Vec2 threat_v_true, sim::Vec2 threat_v_est, double horizon_s,
+                        double noise_amp_m = 0.0) {
  ReplayResult result;
  const int frames = static_cast<int>(horizon_s / kDtS) + 1;
  const double total = poly_length(path);
  double ego_s = 0.0;
  double time_s = 0.0;
  sim::Vec2 threat = threat_p0;
+ // Execution noise: deterministic lateral weave on the TRUE ego positions
+ // only. Planning (remaining path, departure) stays blind to it — exactly
+ // the separation the joint gate requires. Zero by default (nominal runs).
+ auto weave = [&](double t) { return noise_amp_m * std::sin(2.0 * M_PI * t / 2.0); };
  for (int cycle = 0; cycle < 600 && ego_s < total - 1e-9; ++cycle) {
   const auto remaining = path_suffix(path, ego_s);
   std::vector<std::vector<sim::DynState>> predicted;
@@ -124,14 +129,16 @@ ReplayResult run_replay(const std::vector<sim::Vec2>& path, sim::Vec2 threat_p0,
   if (cycle == 0) {
    result.initial_pred_s = dep;
   }
-  const sim::Vec2 ego0 = path_at(path, ego_s);
+  sim::Vec2 ego0 = path_at(path, ego_s);
+  ego0.y += weave(time_s);
   if (dep == 0.0) {
    if (result.depart_s < 0.0) {
     result.depart_s = time_s;
    }
    ego_s = std::min(total, ego_s + kCruiseMps * kDtS);
   }
-  const sim::Vec2 ego1 = path_at(path, ego_s);
+  sim::Vec2 ego1 = path_at(path, ego_s);
+  ego1.y += weave(time_s + kDtS);
   const sim::Vec2 next{threat.x + threat_v_true.x * kDtS, threat.y + threat_v_true.y * kDtS};
   result.min_gap =
     std::min(result.min_gap, measured_gap(ego0, ego1, threat, next, kThreatRadiusM + kEgoRadiusM));
@@ -272,6 +279,42 @@ int main() {
   CHECK(!is_miss(r));
   std::cerr << "pocket-positive: pred=" << r.initial_pred_s << " depart=" << r.depart_s
             << " gap=" << r.min_gap << "\n";
+ }
+ // Pocket joint replay (Gate A): biased estimate and blind execution noise,
+ // truth remeasured on the common axis. Estimator 40% fast departs at 0.2
+ // into the threat's tail and survives on 0.0006 — boundary sentinel, pinned
+ // from both sides so any drift fails loudly instead of silently.
+ {
+  const std::vector<sim::Vec2> pocket{{0.0, 2.0}, {3.0, 2.0}, {3.0, 0.0}, {6.0, 0.0}};
+  const ReplayResult hot = run_replay(pocket, {5.0, 0.0}, {-0.5, 0.0}, {-0.7, 0.0}, 12.0);
+  CHECK(hot.reached);
+  CHECK(hot.min_gap >= kMarginM && hot.min_gap < kMarginM + 0.05);
+  CHECK(!is_miss(hot));
+  std::cerr << "pocket-hot-bias: pred=" << hot.initial_pred_s << " depart=" << hot.depart_s
+            << " gap=" << hot.min_gap << "\n";
+  // Estimator 20% slow: waits out the threat, safe but late (time miss).
+  const ReplayResult late = run_replay(pocket, {5.0, 0.0}, {-0.5, 0.0}, {-0.4, 0.0}, 12.0);
+  CHECK(late.reached);
+  CHECK(late.min_gap >= 0.0);
+  CHECK(is_miss(late));
+  std::cerr << "pocket-late-bias: pred=" << late.initial_pred_s << " depart=" << late.depart_s
+            << " gap=" << late.min_gap << "\n";
+  // Nominal estimate with 0.1 m blind tracking weave: survives, recorded.
+  const ReplayResult wobble = run_replay(pocket, {5.0, 0.0}, {-0.5, 0.0}, {-0.5, 0.0}, 12.0, 0.1);
+  CHECK(wobble.reached);
+  CHECK(wobble.min_gap >= kMarginM);
+  CHECK(!is_miss(wobble));
+  std::cerr << "pocket-weave: pred=" << wobble.initial_pred_s << " depart=" << wobble.depart_s
+            << " gap=" << wobble.min_gap << "\n";
+ }
+ // Hold-unsafe under a sign-flipped estimate: "wait 0.6 then go" meets the
+ // threat driving through the wait spot at t=2. Truth, not estimate, decides.
+ {
+  const ReplayResult hit = run_replay(kStraight, {4.0, 0.0}, {-2.0, 0.0}, {0.5, 0.0}, kHorizonS);
+  CHECK(hit.min_gap < 0.0);
+  CHECK(is_miss(hit));
+  std::cerr << "hold-unsafe-flip: pred=" << hit.initial_pred_s << " depart=" << hit.depart_s
+            << " gap=" << hit.min_gap << "\n";
  }
  // Horizon too short for the whole traversal: open field, still infinity.
  // Unknown is not safe (SOTIF Area 3): no proof fits in the window.
