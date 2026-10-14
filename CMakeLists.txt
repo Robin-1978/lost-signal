@@ -31,6 +31,7 @@ add_library(lost_signal_sim STATIC
   src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
  src/algo/state_estimator.cpp
+ src/algo/pocket_shadow.cpp
 src/hw/feedforward.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
@@ -208,6 +209,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
  target_link_libraries(test_state_estimator PRIVATE lost_signal_sim)
  add_test(NAME state_estimator COMMAND test_state_estimator)
+
+ add_executable(test_ro2_pocket_shadow tests/new/test_ro2_pocket_shadow.cpp)
+ target_link_libraries(test_ro2_pocket_shadow PRIVATE lost_signal_sim)
+ add_test(NAME ro2_pocket_shadow COMMAND test_ro2_pocket_shadow)
 
  add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
  target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_sim lost_signal_game)

@@ -117,7 +117,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
 2. **打滑检测（加速度计接线）**：算法就绪（`SlipDetector`＋单测：静默/锁存/
    单步抗扰/阈值地板）；进游戏接线等第 3 项——已证伪过一条近路：差速编码器
    读的是车体 twist（无胎面状态），打滑不可观，错位采样只会量到积分 jerk。
-   细节见 §5 新教训。履带分支已探（test_slip_shadow，只观测不接线）：状态估计接口先行冻结（test_state_estimator 常驻：6 维＋6x6 协方差＋戳/延迟/源有效＋保旧/匀速外推/拒估 dropout 策略＋未来戳拒收；协方差不增长——增长模型归滤波片，frame/latency/dropout 语义已含，消费者未接线）：差速门守住（终关 0 触发）；履带 upper-bound（真值代 IMU）下指标反直觉——沙地 0 触发（准稳态滑动对加速度差分天然不可见），铺装 long_track 4 触发全在货架拐角 v~0.1 蠕行（量化 chatter，非滑移）。结论：现行阈值同时漏检真滑移、误报蠕行噪声—— redesign 方向是速度级持续量（tread vs 独立体速度），不是调阈值；消费者设计仍是行为门。履带分支已解冻：RO-3 直接量胎面（tread 速度进里程计是设计），差速的不可观论证不适用履带——打滑检测进履带接线是打开的机械片（消费者设计即行为门，另议）。
+   细节见 §5 新教训。履带分支已探（test_slip_shadow，只观测不接线）：状态估计接口先行冻结（test_state_estimator 常驻：6 维＋6x6 协方差＋戳/延迟/源有效＋保旧/匀速外推/拒估 dropout 策略＋未来戳拒收；协方差不增长——增长模型归滤波片，frame/latency/dropout 语义已含，消费者未接线）：RO-2 pocket shadow 已落地（test_ro2_pocket_shadow 常驻，mission 未碰）：assess_transit 预测 vs 生产 AckermannDrive rollout（同 twist 参考经驱动 PID＋接触物理），直道/90°弯均 ObservedDeviated（max 0.34/0.39m——评估版瞬时巡航假设 vs 生产从静止 spool-up 的起步滞后；时长按构造相等，滞后体现在空间上，time_bias=0 已注明）；估计器影子（真值流＋0.05s 延迟经 EstimateHolder，Fresh／trace 0.06／conf 1/1.06 随集记录）。 verdict 词表 Observed*，永不 Feasible/Allowed：差速门守住（终关 0 触发）；履带 upper-bound（真值代 IMU）下指标反直觉——沙地 0 触发（准稳态滑动对加速度差分天然不可见），铺装 long_track 4 触发全在货架拐角 v~0.1 蠕行（量化 chatter，非滑移）。结论：现行阈值同时漏检真滑移、误报蠕行噪声—— redesign 方向是速度级持续量（tread vs 独立体速度），不是调阈值；消费者设计仍是行为门。履带分支已解冻：RO-3 直接量胎面（tread 速度进里程计是设计），差速的不可观论证不适用履带——打滑检测进履带接线是打开的机械片（消费者设计即行为门，另议）。
 3. **四分之一车摩擦**：已试装一次并回退——差速胎面状态＋共享接触钳制后，
    终关推荐 1–2/3 成功、安全分 0–3/5（5 种子门），回响/ localization 对比同步漂移。
    诊断：诊断性恢复旧增益只修好平静关，终关仍坏——病根在胎面物理本身

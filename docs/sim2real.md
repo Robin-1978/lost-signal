@@ -2,6 +2,7 @@
 
 > 状态：接口形状就绪（`ChassisModel`、`LidarBackend`、`BodyTwist` 语义≈ROS Twist），
 > 执行层全空。真车到来之前，本文件是唯一的 sim-to-real 交付物。
+> 纪律句：架构形状接近量产 ≠ 已达到量产证据。sim-to-real 未通过前，只能称为量产形态架构。
 
 ## 1. already 有的缝
 
