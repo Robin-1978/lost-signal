@@ -149,7 +149,8 @@
       "active_in": [
         "lost_signal",
         "signal_echo",
-        "signal_hold"
+        "signal_hold",
+        "signal_watch"
       ]
     }
   ]

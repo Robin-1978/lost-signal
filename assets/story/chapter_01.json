@@ -204,6 +204,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "RO-3：到了。这次没摇摆，看门狗记得住。"
+    },
+    {
+      "id": "signal_watch.before",
+      "level": "signal_watch",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：同一条路，同一班车，换双看得慢的眼睛走一次。"
+    },
+    {
+      "id": "signal_watch.after",
+      "level": "signal_watch",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：走廊东口，5Hz 没跟上。看得勤，才走得准。"
     }
   ]
 }

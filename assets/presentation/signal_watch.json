@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "id": "presentation.signal_watch",
+  "is_default": false,
+  "level": "signal_watch",
+  "garage": {
+    "heading": "换双眼睛再走",
+    "brief": "同一条走廊，同一班叉车，只换雷达。射程翻倍，刷新率砍到四分之一，看看会发生什么。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar",
+          "sensor.precision_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.long_slow_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "出发前，先做一个判断",
+    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "choices": [
+      {
+        "id": "signal_watch.far_first",
+        "text": "看得远更安全",
+        "feedback": "错：12 米射程 5Hz，默认配置在 (17.7, 6.1) 一头撞上叉车。射程只管提前量。"
+      },
+      {
+        "id": "signal_watch.frequent_first",
+        "text": "看得勤更安全",
+        "feedback": "对：5 米射程 20Hz，刷新快才能卡准窗口。推荐配置 91.72 秒拿全分。"
+      },
+      {
+        "id": "signal_watch.both_matter",
+        "text": "射程和刷新率都重要",
+        "feedback": "都重要，但这一关的证据是：射程救不了刷新率——先保刷新，再谈射程。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "瞭望通道",
+    "normal_line": "洛一：导航链路稳定，正在接近信号塔。",
+    "detected_line": "洛一：锁定叉车，正在预测它的运动轨迹。"
+  },
+  "debrief": {
+    "success_title": "任务完成：瞭望确认",
+    "success_summary": "看得勤，走得准，洛一同样送达。",
+    "failure_summary": "选择右侧证据，现场会跳到对应时刻。",
+    "evidence_heading": "因果证据",
+    "evidence_caption": "这些内容由本次仿真的事件与状态生成。",
+    "knowledge_title": "感知刷新率",
+    "failure_titles": {
+      "collision-dynamic": "任务失败：洛一与叉车发生碰撞",
+      "collision-static": "任务失败：洛一碰到了固定障碍",
+      "timeout": "任务失败：没有在时限内送达"
+    }
+  }
+}
