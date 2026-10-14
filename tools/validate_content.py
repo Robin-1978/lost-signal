@@ -136,8 +136,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     # UI string coverage: every tr("key") and namespaced "ns.key" literal in
     # client code must resolve (typos fail here, not on the debrief screen).
     import re as _re
+    from pathlib import Path as _Path
+    _client_dir = _Path(__file__).resolve().parent.parent / "src" / "client"
     used_keys: set[str] = set()
-    for source in sorted((root / ".." / "src" / "client").glob("*.cpp")):
+    for source in sorted(_client_dir.glob("*.cpp")):
         text = source.read_text(encoding="utf-8")
         for match in _re.finditer(r'\btrf?\("([^"]+)"', text):
             used_keys.add(match.group(1))
