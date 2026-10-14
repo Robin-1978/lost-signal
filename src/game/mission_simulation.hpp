@@ -124,7 +124,8 @@ class MissionSimulation {
  public:
  static constexpr double fixed_step_s = 0.02;
 
- MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build);
+ MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
+                   std::optional<uint64_t> seed_override = std::nullopt);
 
  void reset();
  void start();
@@ -135,6 +136,7 @@ class MissionSimulation {
  const LevelDefinition& level() const { return level_; }
  const MapDefinition& map_definition() const { return map_definition_; }
  const BuildSelection& build() const { return build_; }
+ uint64_t effective_seed() const { return seed_override_.value_or(level_.seed); }
  const sim::GridMap& occupancy_map() const { return *truth_map_; }
  const std::vector<sim::Vec2>& planned_path() const { return planned_path_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
@@ -167,6 +169,10 @@ class MissionSimulation {
  const ContentCatalog& catalog_;
  std::string level_id_;
  BuildSelection build_;
+ // Seed override for multi-seed studies. Empty = level JSON seed (the only
+ // seed official baselines ever use). Effective seed fans out to all three
+ // RNG streams with the same xor constants as before.
+ std::optional<uint64_t> seed_override_;
  const LevelDefinition& level_;
  const MapDefinition& map_definition_;
  const RobotDefinition& robot_definition_;

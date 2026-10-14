@@ -44,12 +44,13 @@ const char* mission_status_name(MissionStatus status) {
 }
 
 MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string level_id,
-                                     BuildSelection build)
+                                     BuildSelection build, std::optional<uint64_t> seed_override)
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
-      level_(catalog_.level(level_id_)), map_definition_(catalog_.map(level_.map)),
+      seed_override_(seed_override), level_(catalog_.level(level_id_)),
+      map_definition_(catalog_.map(level_.map)),
       robot_definition_(catalog_.robot(catalog_.campaign().companion_robot)),
-      behavior_(catalog_.style_behavior(build_.style)), rng_(level_.seed),
-      perception_rng_(level_.seed ^ 0x9e3779b9U) {
+      behavior_(catalog_.style_behavior(build_.style)), rng_(effective_seed()),
+      perception_rng_(effective_seed() ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
  for (const auto& [slot, id] : build_.parts) {
   if (!id.empty()) {
@@ -60,9 +61,9 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
 }
 
 void MissionSimulation::reset() {
- rng_ = sim::Rng(level_.seed);
- perception_rng_ = sim::Rng(level_.seed ^ 0x9e3779b9U);
- imu_rng_ = sim::Rng(level_.seed ^ 0x51ed2707U);
+ rng_ = sim::Rng(effective_seed());
+ perception_rng_ = sim::Rng(effective_seed() ^ 0x9e3779b9U);
+ imu_rng_ = sim::Rng(effective_seed() ^ 0x51ed2707U);
  result_ = {};
  snapshot_ = {};
  events_.clear();

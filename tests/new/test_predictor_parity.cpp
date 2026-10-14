@@ -18,7 +18,7 @@
 // multi-target, non-zero age, and stale exclusion. If this test ever flips,
 // the split changed behavior (text-equivalence means nothing here).
 int check_parity(sim::DynamicObstacleMap& map, double time_s, double horizon_s, double frame_dt_s,
-                  double max_age_s) {
+                 double max_age_s) {
  const auto legacy = map.predict(time_s, horizon_s, frame_dt_s, max_age_s);
  const auto modular = sim::predict_frames(map.predict_inputs(), time_s, horizon_s, frame_dt_s, max_age_s);
  CHECK(legacy.size() == modular.size());

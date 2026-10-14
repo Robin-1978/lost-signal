@@ -39,7 +39,11 @@ int main() {
  CHECK(drifting.result().status == game::MissionStatus::Succeeded);
  CHECK(!drifting.result().safe_score);
 
+ // Seed override: same effective seed reproduces bit-identical time; the
+ // override path with the JSON seed equals the default path.
  game::MissionSimulation first(catalog, "lost_signal", build);
+ game::MissionSimulation first_repeat(catalog, "lost_signal", build, first.level().seed);
+ CHECK(first_repeat.effective_seed() == first.effective_seed());
  CHECK(!first.planned_path().empty());
  first.run_to_completion();
  CHECK(first.result().status == game::MissionStatus::Succeeded);
@@ -49,6 +53,8 @@ int main() {
  CHECK(first.result().min_dynamic_clearance_m >= first.level().safe_min_clearance_m);
  CHECK(first.result().astar_expanded > 0);
  CHECK(first.result().local_decisions > 0);
+ first_repeat.run_to_completion();
+ CHECK(first_repeat.result().time_s == first.result().time_s);
  CHECK(first.replay().size() > 10);
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "dynamic-detected"; }));

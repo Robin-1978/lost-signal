@@ -4,13 +4,15 @@
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <iostream>
 #include <string>
 
 namespace {
 
 void usage(const char* executable) {
- std::cout << "Usage: " << executable << " [--assets PATH] [--level ID] [--default|--recommended] [--json]\n";
+ std::cout << "Usage: " << executable
+           << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N] [--json]\n";
 }
 
 } // namespace
@@ -21,6 +23,7 @@ int main(int argc, char** argv) {
   std::string level_id;
   bool recommended = true;
   bool json_output = false;
+  std::optional<uint64_t> seed_override;
   for (int index = 1; index < argc; ++index) {
    const std::string argument = argv[index];
    if (argument == "--assets" && index + 1 < argc) {
@@ -31,6 +34,8 @@ int main(int argc, char** argv) {
     recommended = false;
    } else if (argument == "--recommended") {
     recommended = true;
+   } else if (argument == "--seed" && index + 1 < argc) {
+    seed_override = std::stoull(argv[++index]);
    } else if (argument == "--json") {
     json_output = true;
    } else if (argument == "--help" || argument == "-h") {
@@ -47,13 +52,14 @@ int main(int argc, char** argv) {
   }
   const auto& presentation = catalog.presentation_for_level(level_id);
   const auto build = recommended ? presentation.recommended_build : presentation.default_build;
-  game::MissionSimulation mission(catalog, level_id, build);
+  game::MissionSimulation mission(catalog, level_id, build, seed_override);
   mission.run_to_completion();
   const auto& result = mission.result();
 
   if (json_output) {
    nlohmann::json output = {
      {"level", level_id},
+     {"seed", mission.effective_seed()},
      {"status", game::mission_status_name(result.status)},
      {"failure_reason", result.failure_reason},
      {"time_s", result.time_s},
