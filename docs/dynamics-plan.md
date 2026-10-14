@@ -114,10 +114,13 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
 1. **预测模块独立**（已完成）：`src/algo/predictor.*` 纯函数（走廊反射外推），
    跟踪器只出观测/速度/走廊快照；`test_predictor_parity` 五场景逐字节比对常驻。
    协同转弯预测作为第二个实现待进（Predictor 接口届时再开，单实现不开接口）。
-2. **打滑检测（加速度计接线）**：算法就绪（`SlipDetector`＋单测：静默/锁存/
-   单步抗扰/阈值地板）；进游戏接线等第 3 项——已证伪过一条近路：差速编码器
-   读的是车体 twist（无胎面状态），打滑不可观，错位采样只会量到积分 jerk。
-   细节见 §5 新教训。履带分支已探（test_slip_shadow，只观测不接线）：状态估计接口先行冻结（test_state_estimator 常驻：6 维＋6x6 协方差＋戳/延迟/源有效＋保旧/匀速外推/拒估 dropout 策略＋未来戳拒收；协方差不增长——增长模型归滤波片，frame/latency/dropout 语义已含，消费者未接线）：RO-2 pocket shadow 已落地（test_ro2_pocket_shadow 常驻，mission 未碰）：assess_transit 预测 vs 生产 AckermannDrive rollout（同 twist 参考经驱动 PID＋接触物理），直道/90°弯均 ObservedDeviated（max 0.34/0.39m——评估版瞬时巡航假设 vs 生产从静止 spool-up 的起步滞后；时长按构造相等，滞后体现在空间上，time_bias=0 已注明）；估计器影子（真值流＋0.05s 延迟经 EstimateHolder，Fresh／trace 0.06／conf 1/1.06 随集记录）。 verdict 词表 Observed*，永不 Feasible/Allowed：Estimator replay＋latency 已落地（test_estimator_replay 常驻，mission 未碰）：A. 三源延迟分布（imu p95 5ms／wheel 10ms／laser 80ms，断言排序不设门）；B. 同轨迹×0/20/50/100/200ms→gap 误差 0/1.8/5.4/8.9/17.9cm，单调且为正（stale-ego 偏后、威胁先过—— planner 高估 margin，乐观危险方向；margin 引用此表，本片不定 margin）；C. 末端 dropout×0/50/150/300ms：预算内 Fresh 带残差（50ms→0.06m 诚实成本），超预算 hold/cv 转 PredictedStale（hold 误差≈dropout×速度，CV 贴真值≈0）、flag 拒估。归属结论：0.3s 起步 bias 是驱动 lag，归 planner-margin／执行模型账，不归 estimator：差速门守住（终关 0 触发）；履带 upper-bound（真值代 IMU）下指标反直觉——沙地 0 触发（准稳态滑动对加速度差分天然不可见），铺装 long_track 4 触发全在货架拐角 v~0.1 蠕行（量化 chatter，非滑移）。结论：现行阈值同时漏检真滑移、误报蠕行噪声—— redesign 方向是速度级持续量（tread vs 独立体速度），不是调阈值；消费者设计仍是行为门。履带分支已解冻：RO-3 直接量胎面（tread 速度进里程计是设计），差速的不可观论证不适用履带——打滑检测进履带接线是打开的机械片（消费者设计即行为门，另议）。
+2. **打滑检测（路线已收敛：速度级残差，trigger-count 退役）**：`SlipDetector`（加速度差分）已证伪 parked 作反证据（稳态盲＋蠕行误报，不接线、不调阈值）。已证伪过一条近路：差速编码器读的是车体 twist（无胎面状态），打滑不可观，错位采样只会量到积分 jerk。
+   细节见 §5 新教训。
+    2a. 状态估计接口冻结（test_state_estimator 常驻：6 维＋6x6 协方差＋戳/延迟/源有效＋保旧/匀速外推/拒估 dropout 策略＋未来戳拒收；协方差不增长——增长模型归滤波片，frame/latency/dropout 语义已含，消费者未接线。
+    2b. RO-2 pocket shadow（test_ro2_pocket_shadow 常驻，mission 未碰）：assess_transit 预测 vs 生产 AckermannDrive rollout（同 twist 参考经驱动 PID＋接触物理），直道/90°弯均 ObservedDeviated（max 0.34/0.39m——评估版瞬时巡航假设 vs 生产从静止 spool-up 的起步滞后；时长按构造相等，滞后体现在空间上，time_bias=0 已注明）；估计器影子（真值流＋0.05s 延迟经 EstimateHolder，Fresh／trace 0.06／conf 1/1.06 随集记录）。 verdict 词表 Observed*，永不 Feasible/Allowed。
+    2c. Estimator replay＋latency（test_estimator_replay 常驻，mission 未碰）：A. 三源延迟分布（imu p95 5ms／wheel 10ms／laser 80ms，断言排序不设门）；B. 同轨迹×0/20/50/100/200ms→gap 误差 0/1.8/5.4/8.9/17.9cm，单调且为正（stale-ego 偏后、威胁先过—— planner 高估 margin，乐观危险方向；margin 引用此表，本片不定 margin）；C. 末端 dropout×0/50/150/300ms：预算内 Fresh 带残差（50ms→0.06m 诚实成本），超预算 hold/cv 转 PredictedStale（hold 误差≈dropout×速度，CV 贴真值≈0）、flag 拒估。归属结论：0.3s 起步 bias 是驱动 lag，归 planner-margin／执行模型账，不归 estimator。
+    2d. Slip observer（本轮开工，设计先行不接线）：残差型，输入＝wheel twist − body twist（＋covariance＋latency），输出＝slip_ratio＋confidence，不做 trigger count；低速不可观、stale 降级，静默骗人否决。
+    2e. 履带差速门（test_slip_shadow，只观测不接线）：差速门守住（终关 0 触发）；履带 upper-bound（真值代 IMU）下指标反直觉——沙地 0 触发（准稳态滑动对加速度差分天然不可见），铺装 long_track 4 触发全在货架拐角 v~0.1 蠕行（量化 chatter，非滑移）。结论：现行阈值同时漏检真滑移、误报蠕行噪声—— redesign 方向是速度级持续量（tread vs 独立体速度），不是调阈值；消费者设计仍是行为门。履带分支已解冻：RO-3 直接量胎面（tread 速度进里程计是设计），差速的不可观论证不适用履带——打滑检测进履带接线是打开的机械片（消费者设计即行为门，另议）。
 3. **四分之一车摩擦**：已试装一次并回退——差速胎面状态＋共享接触钳制后，
    终关推荐 1–2/3 成功、安全分 0–3/5（5 种子门），回响/ localization 对比同步漂移。
    诊断：诊断性恢复旧增益只修好平静关，终关仍坏——病根在胎面物理本身
@@ -391,6 +394,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
     完整机制与 target-flap 假说记在此——后续跟随器工作（前视粘滞？）的现成靶子。
 
 19. **控制分层冻结**（架构评审结论）：Mission／Task → Behavior（Proceed／Wait／Pocket／Detour，候选已冻、未接线）→ DWA（局部速度＋碰撞＋短视优化，不管仲裁／等待策略）→ cmd_twist → Kinematics IK（基础能力，常驻）＋ Constraints（caps／authority）→ wheel target → PID（主控）→ Motor。FF-PWM 关闭有证据。并行两条：Safety net（watchdog／spin recovery／docking／倒车 hysteresis，第一性防线，track_turn 91→49 秒是它救的）与离线评估（telemetry／replay／门禁）。IK＋PID 足够的定语：在当前 ODD 与内容分布内；换负载／真车延迟／新底盘另议。sim-to-real 栏是 ❌（无真车），形状像量产不等于量产。
+    不确定性归属（冻结）：DWA 不负责通行权、Behavior 不负责动力学、IK 不负责安全、PID 不负责规划、Estimator 不负责业务判断——每层只暴露＋量化自己名义下的不确定性（执行 lag 归 planner-margin／执行模型账，时间误差归 estimator 账，见 2b/2c），跨层借数即架构违规。队列顺序：slip-observer → Phase-2 接线最后（缺的是 future-state 可信度，不是行为逻辑）。
 
 18. **桌面验收 / 远端 CI / 8 人测试**：需真机、remote、真人。
 
