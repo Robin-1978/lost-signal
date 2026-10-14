@@ -397,6 +397,16 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  for (const auto& actor : map.actors) {
   if (!game::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2)
    continue;
+  if (actor.kind == "wander") {
+   // Pedestrian loop: closed dotted polyline, no lane paint (people walk,
+   // carts keep lanes). Info, not furniture.
+   for (std::size_t i = 0; i < actor.path.size(); ++i) {
+    const auto a = world_to_screen(actor.path[i]);
+    const auto b = world_to_screen(actor.path[(i + 1) % actor.path.size()]);
+    DrawLineEx(a, b, 1.5f, {23, 160, 150, 90});
+   }
+   continue;
+  }
   const auto start = world_to_screen(actor.path.front());
   const auto end = world_to_screen(actor.path.back());
   const auto middle = lerp(start, end, 0.5f);

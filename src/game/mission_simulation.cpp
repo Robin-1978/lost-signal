@@ -211,8 +211,30 @@ void MissionSimulation::build_world() {
  patrol_t0_.clear();
  dormant_patrols_.clear();
  dormant_ids_.clear();
+ wanders_.clear();
+ wander_ids_.clear();
+ wander_t0_.clear();
+ dormant_wanders_.clear();
+ dormant_wander_ids_.clear();
+ actual_pedestrian_.clear();
  for (const auto& actor : map_definition_.actors) {
   if (!active_in_level(actor.active_in, level_id_) || actor.path.size() < 2) {
+   continue;
+  }
+  const bool ped = actor.kind == "wander";
+  if (ped) {
+   sim::Wander wander;
+   for (const auto& point : actor.path) wander.points.push_back(point);
+   wander.speed = actor.speed_mps;
+   wander.radius = actor.radius_m;
+   if (actor.dormant_until_summoned) {
+    dormant_wanders_.push_back(wander);
+    dormant_wander_ids_.push_back(actor.id);
+    continue;
+   }
+   wanders_.push_back(wander);
+   wander_ids_.push_back(actor.id);
+   wander_t0_.push_back(0.0);
    continue;
   }
   const sim::Patrol patrol{actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m};
@@ -330,9 +352,19 @@ void MissionSimulation::step() {
       patrols_.push_back(dormant_patrols_[index]);
       patrol_ids_.push_back(dormant_ids_[index]);
       patrol_t0_.push_back(snapshot_.time_s);
-      actual_actors_.push_back({});
       dormant_patrols_.erase(dormant_patrols_.begin() + (std::ptrdiff_t)index);
       dormant_ids_.erase(dormant_ids_.begin() + (std::ptrdiff_t)index);
+      woke = true;
+      break;
+     }
+    }
+    for (std::size_t index = 0; !woke && index < dormant_wander_ids_.size(); ++index) {
+     if (dormant_wander_ids_[index] == step.summon_actor) {
+      wanders_.push_back(dormant_wanders_[index]);
+      wander_ids_.push_back(dormant_wander_ids_[index]);
+      wander_t0_.push_back(snapshot_.time_s);
+      dormant_wanders_.erase(dormant_wanders_.begin() + (std::ptrdiff_t)index);
+      dormant_wander_ids_.erase(dormant_wander_ids_.begin() + (std::ptrdiff_t)index);
       woke = true;
       break;
      }
@@ -357,7 +389,11 @@ void MissionSimulation::step() {
 }
 
 void MissionSimulation::update_actors() {
+ // Rebuilt every step (agents are few; summoning changes the count mid-run,
+ // so index-stable incremental writes would misalign after a summon).
  snapshot_.actors.clear();
+ actual_actors_.assign(patrols_.size() + wanders_.size(), {});
+ actual_pedestrian_.assign(patrols_.size() + wanders_.size(), false);
  for (std::size_t index = 0; index < patrols_.size(); ++index) {
   actual_actors_[index] =
       sim::patrol_state(patrols_[index], snapshot_.time_s - patrol_t0_[index]);
@@ -367,6 +403,21 @@ void MissionSimulation::update_actors() {
     actual_actors_[index].v,
     actual_actors_[index].radius,
     false,
+    false,
+  });
+ }
+ for (std::size_t w = 0; w < wanders_.size(); ++w) {
+  const std::size_t index = patrols_.size() + w;
+  const auto state = sim::wander_state(wanders_[w], snapshot_.time_s - wander_t0_[w]);
+  actual_actors_[index] = {state.p, state.v, state.radius};
+  actual_pedestrian_[index] = true;
+  snapshot_.actors.push_back({
+    wander_ids_[w],
+    state.p,
+    state.v,
+    state.radius,
+    false,
+    true,
   });
  }
  refresh_dynamic_obstacles();
@@ -824,7 +875,8 @@ void MissionSimulation::apply_motion() {
   finish_failure("collision-static", catalog_.tr("event.collision_static"));
   return;
  }
- for (const auto& actor : actual_actors_) {
+ for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
+  const auto& actor = actual_actors_[index];
   const double clearance =
     distance(candidate_position, actor.p) - actor.radius - robot_definition_.collision_radius_m;
   result_.min_clearance_m = std::min(result_.min_clearance_m, clearance);
@@ -833,6 +885,13 @@ void MissionSimulation::apply_motion() {
    result_.min_dynamic_clearance_time_s = snapshot_.time_s;
    result_.min_dynamic_robot_position = candidate_position;
    result_.min_dynamic_actor_position = actor.p;
+  }
+  const bool ped = index < actual_pedestrian_.size() && actual_pedestrian_[index];
+  if (clearance < 0.0 && ped) {
+   // Social contact: proximity already ate the clearance score above; a
+   // pedestrian never ends the run. Counted as evidence, not failure.
+   ++result_.pedestrian_contacts;
+   continue;
   }
   if (clearance < 0.0) {
    ++result_.collisions;

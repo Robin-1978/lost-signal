@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "big_freight",
+  "order": 25,
+  "title": "大镇货运",
+  "map": "signal_town_big",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 3,
+  "prerequisites": [
+    "town_freight"
+  ],
+  "seed": 21,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "big_gate",
+    "via": "energy_core",
+    "via_label": "能源核心",
+    "goal": "grand_market",
+    "goal_label": "集市货场",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 180,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 8,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "town_big_haul",
+    "prediction_prompt": "大镇三倍大：码头水、主街砂石、货场沙地，两车三行人。行人撞不停你，但蹭近了安全分照样没。",
+    "knowledge_card": "大镇是快与稳的交换：莽法 52 秒、1.2Wh 全赢，但净空只剩 0.2 米——主街会车要 0.6 米（车身 0.45＋余量）。稳法让出 20 秒，换 0.7 米净空和安全分。行人撞不停你，但别往人身上开。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.6,
+    "fast_time_s": 86.0,
+    "efficient_energy_wh": 2.26
+  },
+  "rewards": [
+    "ability.big_freight"
+  ]
+}

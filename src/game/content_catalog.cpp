@@ -302,6 +302,10 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   for (const auto& item : value.at("actors")) {
    ActorDefinition actor;
    actor.id = item.at("id").get<std::string>();
+   actor.kind = item.at("type").get<std::string>();
+   if (actor.kind != "patrol" && actor.kind != "wander") {
+    throw ContentError(path.string() + ": unknown actor kind " + actor.kind);
+   }
    for (const auto& point : item.at("path")) {
     actor.path.push_back(vec2(point));
    }

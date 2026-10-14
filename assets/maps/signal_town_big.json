@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "id": "signal_town_big",
+  "scene_3d": "scene.signal_town_big",
+  "size_m": [
+    48.0,
+    32.0
+  ],
+  "grid_resolution_m": 0.5,
+  "obstacles": [
+    {
+      "id": "big_warehouse_w",
+      "type": "box",
+      "min": [
+        2.0,
+        20.0
+      ],
+      "max": [
+        9.0,
+        29.0
+      ]
+    },
+    {
+      "id": "big_warehouse_mid",
+      "type": "box",
+      "min": [
+        12.0,
+        20.0
+      ],
+      "max": [
+        19.0,
+        29.0
+      ]
+    },
+    {
+      "id": "big_energy_hall",
+      "type": "box",
+      "min": [
+        22.0,
+        20.0
+      ],
+      "max": [
+        29.0,
+        29.0
+      ]
+    },
+    {
+      "id": "big_market_hall",
+      "type": "box",
+      "min": [
+        32.0,
+        20.0
+      ],
+      "max": [
+        39.0,
+        29.0
+      ]
+    },
+    {
+      "id": "big_market_east",
+      "type": "box",
+      "min": [
+        42.0,
+        20.0
+      ],
+      "max": [
+        46.0,
+        29.0
+      ]
+    },
+    {
+      "id": "big_market_mid",
+      "type": "box",
+      "min": [
+        38.0,
+        12.0
+      ],
+      "max": [
+        42.0,
+        16.0
+      ]
+    },
+    {
+      "id": "big_housing_s1",
+      "type": "box",
+      "min": [
+        14.0,
+        3.0
+      ],
+      "max": [
+        21.0,
+        10.0
+      ]
+    },
+    {
+      "id": "big_housing_s2",
+      "type": "box",
+      "min": [
+        24.0,
+        3.0
+      ],
+      "max": [
+        31.0,
+        10.0
+      ]
+    },
+    {
+      "id": "big_dock_office",
+      "type": "box",
+      "min": [
+        2.0,
+        10.0
+      ],
+      "max": [
+        7.0,
+        16.0
+      ]
+    },
+    {
+      "id": "big_kiosk",
+      "type": "box",
+      "min": [
+        34.0,
+        5.0
+      ],
+      "max": [
+        36.0,
+        7.0
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "big_wet_docks",
+      "type": "box",
+      "min": [
+        1.0,
+        4.0
+      ],
+      "max": [
+        9.0,
+        9.0
+      ],
+      "material": "standing_water",
+      "label": "湿滑码头"
+    },
+    {
+      "id": "big_gravel_main",
+      "type": "box",
+      "min": [
+        9.0,
+        16.0
+      ],
+      "max": [
+        39.0,
+        20.0
+      ],
+      "material": "gravel",
+      "label": "砂石主街"
+    },
+    {
+      "id": "big_sand_yard",
+      "type": "box",
+      "min": [
+        38.0,
+        4.0
+      ],
+      "max": [
+        47.0,
+        10.0
+      ],
+      "material": "sand",
+      "label": "沙地货场"
+    }
+  ],
+  "markers": {
+    "big_gate": [
+      1.5,
+      1.5,
+      0.0
+    ],
+    "energy_core": [
+      25.5,
+      18.0,
+      0.0
+    ],
+    "grand_market": [
+      44.0,
+      7.0,
+      0.0
+    ],
+    "plaza": [
+      22.5,
+      13.5,
+      0.0
+    ],
+    "dock_door": [
+      5.0,
+      9.5,
+      0.0
+    ]
+  },
+  "actors": [
+    {
+      "id": "big_cart_a",
+      "type": "patrol",
+      "path": [
+        [
+          9.0,
+          18.0
+        ],
+        [
+          39.0,
+          18.0
+        ]
+      ],
+      "speed_mps": 0.45,
+      "radius_m": 0.45,
+      "active_in": [
+        "big_freight"
+      ]
+    },
+    {
+      "id": "big_cart_b",
+      "type": "patrol",
+      "path": [
+        [
+          44.5,
+          4.0
+        ],
+        [
+          44.5,
+          19.0
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.45,
+      "active_in": [
+        "big_freight"
+      ]
+    },
+    {
+      "id": "big_ped_lane",
+      "type": "wander",
+      "path": [
+        [
+          7.5,
+          12.0
+        ],
+        [
+          11.0,
+          12.0
+        ],
+        [
+          11.0,
+          14.0
+        ],
+        [
+          7.5,
+          14.0
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.25,
+      "active_in": [
+        "big_freight"
+      ]
+    },
+    {
+      "id": "big_ped_plaza",
+      "type": "wander",
+      "path": [
+        [
+          12.0,
+          2.0
+        ],
+        [
+          28.0,
+          2.0
+        ],
+        [
+          28.0,
+          11.0
+        ],
+        [
+          12.0,
+          11.0
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.25,
+      "active_in": [
+        "big_freight"
+      ]
+    },
+    {
+      "id": "big_ped_market",
+      "type": "wander",
+      "path": [
+        [
+          29.5,
+          20.5
+        ],
+        [
+          31.5,
+          20.5
+        ],
+        [
+          31.5,
+          30.5
+        ],
+        [
+          29.5,
+          30.5
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.25,
+      "active_in": [
+        "big_freight"
+      ]
+    }
+  ]
+}

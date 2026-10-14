@@ -600,7 +600,11 @@ void SceneRenderer3D::draw_scene(const game::MissionSimulation& mission) const {
  }
  draw_markers(mission);
  for (const auto& actor : mission.snapshot().actors) {
-  draw_forklift(actor, mission.snapshot().waiting_for_clearance);
+  if (actor.pedestrian) {
+   draw_pedestrian(actor);
+  } else {
+   draw_forklift(actor, mission.snapshot().waiting_for_clearance);
+  }
  }
  draw_robot(mission);
 }
@@ -830,6 +834,19 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
     draw_part(visual, *mount);
   }
  }
+}
+
+// Pedestrian stand-in: two stacked boxes (torso + head), teal so nobody reads
+// it as a vehicle. Proportions scale with the actor's own radius; a proper
+// character model replaces this, never new physics.
+void SceneRenderer3D::draw_pedestrian(const game::ActorSnapshot& actor) const {
+ const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
+ const sim::Vec2 position = actor.position;
+ const float s = static_cast<float>(actor.radius_m) / 0.25f;
+ draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 0.55f * s), {0.34f * s, 0.34f * s, 1.1f * s},
+          yaw, {23, 160, 150, 255});
+ draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 1.28f * s), {0.22f * s, 0.22f * s, 0.26f * s},
+          yaw, {235, 244, 238, 255});
 }
 
 void SceneRenderer3D::draw_forklift(const game::ActorSnapshot& actor, bool waiting) const {

@@ -66,6 +66,10 @@ struct SurfaceDefinition {
 
 struct ActorDefinition {
  std::string id;
+ // Vehicle patrols ping-pong; pedestrian wanders loop. Kind drives collision
+ // semantics (pedestrian contact never fails) and rendering (no forklifts
+ // for people). Parsed strictly; unknown kinds fail loudly.
+ std::string kind{"patrol"};
  std::vector<sim::Vec2> path;
  double speed_mps{0.0};
  double radius_m{0.0};

@@ -115,6 +115,11 @@
       "id": "ability.town_freight",
       "title": "城镇首运",
       "description": "洛一拿下镇子第一单：湿滑、砂石、沙地、巡逻，综合通过。"
+    },
+    {
+      "id": "ability.big_freight",
+      "title": "大镇货运",
+      "description": "洛一跑通大镇：五区三穿，有车有人，综合送达。"
     }
   ]
 }

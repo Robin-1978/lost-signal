@@ -246,6 +246,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：首运拿下。镇长说，以后镇子的货都归我们了。"
+    },
+    {
+      "id": "big_freight.before",
+      "level": "big_freight",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：大镇！五区三街，还有行人。慢慢开，一个一个送。"
+    },
+    {
+      "id": "big_freight.after",
+      "level": "big_freight",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：大镇拿下。行人比叉车讲理——你让它，它也让你。"
     }
   ]
 }

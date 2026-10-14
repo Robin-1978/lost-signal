@@ -196,7 +196,10 @@
           "$ref": "#/$defs/id"
         },
         "type": {
-          "const": "patrol"
+          "enum": [
+            "patrol",
+            "wander"
+          ]
         },
         "path": {
           "type": "array",

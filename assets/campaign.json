@@ -32,7 +32,8 @@
     "long_track",
     "signal_watch",
     "signal_cross",
-    "town_freight"
+    "town_freight",
+    "big_freight"
   ],
   "starting_inventory": [
     "tires.standard",
