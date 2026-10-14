@@ -67,17 +67,8 @@ int main() {
  // without changing physics — time_s bit-identical above is the proof.
  CHECK(std::any_of(first.replay().begin(), first.replay().end(),
                    [](const auto& snapshot) { return snapshot.control.shadow_assessed; }));
- // Shadow-FF (stage 3): computed every step, never actuated. Isolation is
- // structural (dedicated log, no shared structs), verified by the pinned
- // table + multi-seed runs below staying bit-identical.
- {
-  CHECK(!first.ff_log().empty());
-  for (const auto& sample : first.ff_log()) {
-   CHECK(std::isfinite(sample.ff_left) && std::isfinite(sample.ff_right));
-   CHECK(std::abs(sample.ff_left) <= 1.0 + 1e-12 && std::abs(sample.ff_right) <= 1.0 + 1e-12);
-  }
-  std::cerr << "shadow-ff samples=" << first.ff_log().size() << "\n";
- }
+ // (FF shadow log removed with the stage-4 negative verdict: mapping +
+ // sensitivity evidence stays parked in test_feedforward/test_ff_sensitivity.)
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "shadow_wait"; }));
  // Gate-B spatial shadow: pocket sampling ran while waiting (read-only).

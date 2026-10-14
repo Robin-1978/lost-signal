@@ -28,18 +28,6 @@ struct MissionEvent {
  std::string message;
 };
 
-// Stage-3 shadow feedforward sample (compute only, never actuated): candidate
-// PWM per driven unit with saturation flags. Right unit stays 0 for Ackermann
-// (house mirror convention). Stored in a dedicated log, NOT in the snapshot:
-// isolation holds without touching shared replay structs.
-struct ShadowFfSample {
- double time_s{0.0};
- double ff_left{0.0};
- double ff_right{0.0};
- bool sat_left{false};
- bool sat_right{false};
-};
-
 // Gate-3 shadow wait episode (structured): one waiting interval with the
 // first/last departure assessments and the actual waited time. reasons code
 // sim::DepartReason (0=GoNow..5=Invalid). Stored alongside the event log so
@@ -199,7 +187,6 @@ class MissionSimulation {
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
  bool shadow_episode_open() const { return shadow_episode_open_; }
- const std::vector<ShadowFfSample>& ff_log() const { return ff_log_; }
 
  private:
  void build_world();
@@ -273,7 +260,6 @@ class MissionSimulation {
  MissionResult result_;
  std::vector<MissionEvent> events_;
  std::vector<ShadowEpisode> shadow_episodes_;
- std::vector<ShadowFfSample> ff_log_;
  std::vector<MissionSnapshot> replay_;
  sim::DiffCmd held_command_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
