@@ -196,7 +196,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
     跟随器迟滞按差速调参，履带慢动态下不收敛；失败不可复盘解释，否决；
     附带 revert 掉为救它试过的 docking 无界化）。失败模式必须可复盘解释
     （撞墙可，150 秒摇摆不可）。管线缺删除剪枝（只加不减，删靠手＋
-    validator 兜底），记为债。
+    validator 兜底），记为债。积水叙事债（mu 0.31 实为冰面级，“湿滑”改“结冰”或标 gameplay，待内容拍板）。
     第 19 关“履带长途”翻案（watchdog 泄漏积分修后复测：推荐 careful 一次通过 127.78 秒拿全分，默认 swift 仍在货架拐角极限环 150 秒超时——60 秒走 10 米、倒车占两成；“不可复盘”被推翻为“可定位、可教学”，按 scrub_climb 成功/失败级对比收编：默认 0/0/0、推荐 1/1/1；watchdog 修的是 careful 域，swift 域 flap 仍在，记为已知边界）。
     第 20 关“信号瞭望”收官（sensor 单变量对照：同零件同风格同 seed，long_slow 5Hz 在走廊东口 (17.7,6.1) 撞叉车，short_fast 20Hz 同路 91.72 拿全分；默认 status 3 碰撞 0/0/0 vs 推荐 1/1/1，scrub_climb 式成功/失败对比。机制＝感知刷新率（时间型 staleness），非等待时机、非极限环——新问题。教训：射程 12 米救不了 5Hz，看得勤才走得准。）
     因果诚实补丁（评审纠正）：2×2 解耦（零件×风格）证明 careful 与抓地胎各自必要、各自不充分（eco＋careful 挂、grip＋swift 挂、传感器无关）——教学只认组合因果，不认单参数因果；文案已按 2×2 重写。
@@ -401,7 +401,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
     多种子分布全吻合。诊断副产品：边际 LOS 目标抖动 × 倒车迟滞 × 慢打转＝极限环，
     完整机制与 target-flap 假说记在此——后续跟随器工作（前视粘滞？）的现成靶子。
 
-19. **控制分层冻结**（架构评审结论）：Mission／Task → Behavior（Proceed／Wait／Pocket／Detour，候选已冻、未接线）→ DWA（局部速度＋碰撞＋短视优化，不管仲裁／等待策略）→ cmd_twist → Kinematics IK（基础能力，常驻）＋ Constraints（caps／authority）→ wheel target → PID（主控）→ Motor。FF-PWM 关闭有证据。并行两条：Safety net（watchdog／spin recovery／docking／倒车 hysteresis，第一性防线，track_turn 91→49 秒是它救的）与离线评估（telemetry／replay／门禁）。IK＋PID 足够的定语：在当前 ODD 与内容分布内；换负载／真车延迟／新底盘另议。sim-to-real 栏是 ❌（无真车），形状像量产不等于量产。
+19. **控制分层冻结**（架构评审结论）：Mission／Task → Behavior（Proceed／Wait／Pocket／Detour，候选已冻、未接线）→ DWA（局部速度＋碰撞＋短视优化，不管仲裁／等待策略）→ cmd_twist → Kinematics IK（基础能力，常驻）＋ Constraints（caps／authority）→ wheel target → PID（主控）→ Motor。FF-PWM 关闭有证据。并行两条：Safety net（watchdog／spin recovery／docking／倒车 hysteresis，第一性防线，track_turn 91→49 秒是它救的）与离线评估（telemetry／replay／门禁）。IK＋PID 足够的定语：在当前 ODD 与内容分布内；加速度包络是跑车级（上限 3–6 vs 真 AMR 0.3，见 sim2real §2），换负载／真车延迟／新底盘／真加速度体制另议。sim-to-real 栏是 ❌（无真车），形状像量产不等于量产。
     不确定性归属（冻结）：DWA 不负责通行权、Behavior 不负责动力学、IK 不负责安全、PID 不负责规划、Estimator 不负责业务判断——每层只暴露＋量化自己名义下的不确定性（执行 lag 归 planner-margin／执行模型账，时间误差归 estimator 账，见 2b/2c），跨层借数即架构违规。队列顺序：slip-observer → Phase-2 接线最后（缺的是 future-state 可信度，不是行为逻辑）。
 
 18. **桌面验收 / 远端 CI / 8 人测试**：需真机、remote、真人。
