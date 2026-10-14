@@ -1,5 +1,5 @@
 // Abilities registry contract (data layer only; UI display deferred to desktop).
-// Closes the silent-drop hole: 22 ability rewards previously vanished in
+// Closes the silent-drop hole: 23 ability rewards previously vanished in
 // record_completion (only components() were kept). Now registry-gated.
 
 #include "game/campaign_progress.hpp"
@@ -22,7 +22,7 @@
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Registry: 22 abilities, every level-granted ability.* resolves.
- CHECK(catalog.abilities().size() == 22);
+ CHECK(catalog.abilities().size() == 23);
  for (const auto& [level_id, level] : catalog.levels()) {
   for (const auto& reward : level.rewards) {
    if (reward.rfind("ability.", 0) == 0) {

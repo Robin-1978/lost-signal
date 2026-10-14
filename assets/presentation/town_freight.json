@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "id": "presentation.town_freight",
+  "is_default": false,
+  "level": "town_freight",
+  "garage": {
+    "heading": "进镇跑单",
+    "brief": "毕业了，镇子第一单：镇门取货，能源中转经停，送到集市门。两辆车在街上跑，砂石沙地水全有。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar",
+          "sensor.precision_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.long_slow_lidar",
+      "computer": "computer.light",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "首运，怎么跑？",
+    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "choices": [
+      {
+        "id": "town_freight.link.phase",
+        "text": "看相位：巡逻车过去再进街",
+        "feedback": "对：主街是相位问题，等横向巡逻通过再进。看等待事件和最小间隙。"
+      },
+      {
+        "id": "town_freight.link.power",
+        "text": "马力大就能碾过去",
+        "feedback": "错：湿滑加沙地，大马力只会刨坑打滑，看能耗表和里程计。"
+      },
+      {
+        "id": "town_freight.link.static",
+        "text": "把巡逻车记进静态地图",
+        "feedback": "错：巡逻车会动，静态地图只管房子不管车，下一刻位置得靠预测。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "城镇首运",
+    "normal_line": "洛一：进镇了，正在去能源中转。",
+    "detected_line": "洛一：锁定巡逻车，正在预测它的运动轨迹。"
+  },
+  "debrief": {
+    "success_title": "首运送达",
+    "success_summary": "三段路，三种开法，一单送达：镇子欢迎你。",
+    "failure_summary": "看看是哪一项评分丢了，城镇综合题最怕只会一种开法。",
+    "evidence_heading": "本次驾驶",
+    "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+    "knowledge_title": "城镇综合",
+    "failure_titles": {
+      "collision-static": "运送失败：撞上了镇子建筑",
+      "collision-dynamic": "运送失败：与巡逻车发生碰撞",
+      "timeout": "运送失败：没有在时限内送达"
+    }
+  }
+}

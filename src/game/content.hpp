@@ -182,6 +182,18 @@ struct MapDefinition {
  std::vector<ActorDefinition> actors;
 };
 
+struct GoalStep {
+ // Unified arrival logic: every GOAL is a marker plus what happens on arrival.
+ // reach = [complete]; deliver_via/haul = [pickup, complete]; summon and
+ // recharge are further on_arrive actions, same list, no special cases.
+ std::string marker;
+ std::string label;
+ std::string action{"complete"};
+ double radius_m{0.62};
+ std::string summon_actor;
+ double recharge_wh{0.0};
+};
+
 struct ObjectiveDefinition {
  std::string type;
  std::string spawn;
@@ -194,6 +206,9 @@ struct ObjectiveDefinition {
  int max_collisions{0};
  double arrive_tolerance_m{0.62};
  double via_radius_m{1.25};
+ // Derived ordered goals (catalog fills from legacy fields when the JSON has
+ // no explicit "goals"): mission consumes this list, never the legacy fields.
+ std::vector<GoalStep> goals;
 };
 
 struct ChapterDefinition {

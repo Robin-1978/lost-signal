@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "id": "signal_town",
+  "scene_3d": "scene.signal_town",
+  "size_m": [
+    30.0,
+    22.0
+  ],
+  "grid_resolution_m": 0.5,
+  "obstacles": [
+    {
+      "id": "warehouse_nw",
+      "type": "box",
+      "min": [
+        4.0,
+        12.0
+      ],
+      "max": [
+        10.0,
+        18.0
+      ]
+    },
+    {
+      "id": "market_hall_ne",
+      "type": "box",
+      "min": [
+        18.0,
+        12.0
+      ],
+      "max": [
+        24.0,
+        18.0
+      ]
+    },
+    {
+      "id": "housing_s",
+      "type": "box",
+      "min": [
+        12.0,
+        3.0
+      ],
+      "max": [
+        17.0,
+        8.0
+      ]
+    },
+    {
+      "id": "kiosk_se",
+      "type": "box",
+      "min": [
+        22.0,
+        4.0
+      ],
+      "max": [
+        24.0,
+        6.0
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "town_wet_entry",
+      "type": "box",
+      "min": [
+        1.0,
+        6.0
+      ],
+      "max": [
+        4.0,
+        10.0
+      ],
+      "material": "standing_water",
+      "label": "湿滑仓门"
+    },
+    {
+      "id": "town_gravel_main",
+      "type": "box",
+      "min": [
+        10.0,
+        9.0
+      ],
+      "max": [
+        20.0,
+        12.0
+      ],
+      "material": "gravel",
+      "label": "砂石主街"
+    },
+    {
+      "id": "town_sand_approach",
+      "type": "box",
+      "min": [
+        24.0,
+        13.0
+      ],
+      "max": [
+        29.0,
+        20.0
+      ],
+      "material": "sand",
+      "label": "沙地货道"
+    }
+  ],
+  "markers": {
+    "town_gate": [
+      1.5,
+      2.0,
+      0.0
+    ],
+    "freight_yard": [
+      2.0,
+      11.0,
+      0.0
+    ],
+    "energy_hub": [
+      14.0,
+      15.5,
+      0.0
+    ],
+    "market_gate": [
+      27.0,
+      16.0,
+      0.0
+    ],
+    "housing_door": [
+      14.5,
+      9.0,
+      0.0
+    ]
+  },
+  "actors": [
+    {
+      "id": "town_cart_a",
+      "type": "patrol",
+      "path": [
+        [
+          10.0,
+          10.5
+        ],
+        [
+          20.0,
+          10.5
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.45,
+      "active_in": [
+        "town_freight"
+      ]
+    },
+    {
+      "id": "town_cart_b",
+      "type": "patrol",
+      "path": [
+        [
+          25.5,
+          6.0
+        ],
+        [
+          25.5,
+          18.0
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.45,
+      "active_in": [
+        "town_freight"
+      ]
+    }
+  ]
+}

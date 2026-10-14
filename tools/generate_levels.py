@@ -19,7 +19,11 @@ REQUIRE_MAP = {
     "research_base": {
         "markers": ["robot_bay", "supply_station", "signal_tower"],
         "actors": ["forklift_a"],
-    }
+    },
+    "signal_town": {
+        "markers": ["town_gate", "energy_hub", "market_gate"],
+        "actors": ["town_cart_a", "town_cart_b"],
+    },
 }
 
 LEVELS: list[dict] = [
@@ -717,6 +721,81 @@ LEVELS: list[dict] = [
         "story_after": "洛一：过去了。路口是让出来的，不是蹭出来的。",
     },
 
+    {
+        "id": "town_freight",
+        "template": "haul",
+        "order": 24,
+        "chapter": 3,
+        "title": "城镇首运",
+        "map": "signal_town",
+        "prerequisites": ["signal_cross"],
+        "seed": 7,
+        "spawn": "town_gate",
+        "via": "energy_hub",
+        "via_label": "能源中转",
+        "goal": "market_gate",
+        "goal_label": "集市门",
+        "goal_visual": "calibration_pad",
+        "time_limit_s": 180,
+        "budget": 8,
+        "arrive_tolerance_m": 0.62,
+        "via_radius_m": 1.25,
+        "safe_min_clearance_m": 0.3,
+        "fast_time_s": 150.0,
+        "efficient_energy_wh": 3.0,
+        "concept": "town_haul",
+        "prediction_prompt": "新镇子第一单：湿滑仓门、砂石主街、沙地货道，两辆巡逻车横竖穿行。走哪条道，什么时候让？",
+        "knowledge_card": "城镇跑单是综合题：湿滑区提前减速保抓地，主街看巡逻相位等窗口，沙地温柔给油。三段路三种开法，一套莽法全丢分。",
+        "default_build": {
+            "tires": "tires.eco",
+            "sensor": "sensor.long_slow_lidar",
+            "computer": "computer.light",
+            "motor": "motor.standard",
+            "imu": "imu.basic",
+            "style": 1.0,
+        },
+        "recommended_build": {
+            "tires": "tires.grip",
+            "sensor": "sensor.short_fast_lidar",
+            "computer": "computer.performance",
+            "motor": "motor.standard",
+            "imu": "imu.basic",
+            "style": 0.0,
+        },
+        "rewards": ["ability.town_freight"],
+        "garage_heading": "进镇跑单",
+        "garage_brief": "毕业了，镇子第一单：镇门取货，能源中转经停，送到集市门。两辆车在街上跑，砂石沙地水全有。",
+        "prediction_heading": "首运，怎么跑？",
+        "prediction_hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+        "prediction_choices": [
+            {"id": "town_freight.link.phase",
+             "text": "看相位：巡逻车过去再进街",
+             "feedback": "对：主街是相位问题，等横向巡逻通过再进。看等待事件和最小间隙。"},
+            {"id": "town_freight.link.power",
+             "text": "马力大就能碾过去",
+             "feedback": "错：湿滑加沙地，大马力只会刨坑打滑，看能耗表和里程计。"},
+            {"id": "town_freight.link.static",
+             "text": "把巡逻车记进静态地图",
+             "feedback": "错：巡逻车会动，静态地图只管房子不管车，下一刻位置得靠预测。"},
+        ],
+        "running_heading": "城镇首运",
+        "running_normal": "洛一：进镇了，正在去能源中转。",
+        "running_detected": "洛一：锁定巡逻车，正在预测它的运动轨迹。",
+        "debrief_success_title": "首运送达",
+        "debrief_success_summary": "三段路，三种开法，一单送达：镇子欢迎你。",
+        "debrief_failure_summary": "看看是哪一项评分丢了，城镇综合题最怕只会一种开法。",
+        "debrief_evidence_heading": "本次驾驶",
+        "debrief_evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+        "debrief_knowledge_title": "城镇综合",
+        "debrief_failure_titles": {
+            "collision-static": "运送失败：撞上了镇子建筑",
+            "collision-dynamic": "运送失败：与巡逻车发生碰撞",
+            "timeout": "运送失败：没有在时限内送达",
+        },
+        "story_before": "洛一：毕业了！镇子第一单，听说主街上有车，弯道上有沙。慢慢开，准时到。",
+        "story_after": "洛一：首运拿下。镇长说，以后镇子的货都归我们了。",
+    },
+
 ]
 
 SAND_COLUMNS = [
@@ -756,12 +835,14 @@ def check_map(spec: dict) -> None:
     data = json.loads((ROOT / "assets" / "maps" / f"{spec['map']}.json").read_text())
     if spec["template"] == "echo":
         markers = ["robot_bay", "supply_station", "signal_tower"]
+    elif spec["template"] == "haul":
+        markers = [spec["spawn"], spec["via"], spec["goal"]]
     else:
         markers = [spec["spawn"], spec.get("via"), spec["goal"]]
     for marker in markers:
         if marker:
             assert marker in data["markers"], f"map missing marker {marker}"
-    if spec["template"] == "echo":
+    if spec["template"] in ("echo", "haul"):
         need = REQUIRE_MAP[spec["map"]]
         active = {a["id"]: a.get("active_in", []) for a in data.get("actors", [])}
         for actor in need["actors"]:
@@ -782,6 +863,20 @@ def build_objective(spec: dict) -> dict:
             "max_collisions": 0,
             "arrive_tolerance_m": spec["arrive_tolerance_m"],
             "via_radius_m": spec["via_radius_m"],
+        }
+    if spec["template"] == "haul":
+        return {
+            "type": "deliver_via",
+            "spawn": spec["spawn"],
+            "via": spec["via"],
+            "via_label": spec["via_label"],
+            "goal": spec["goal"],
+            "goal_label": spec["goal_label"],
+            "goal_visual": spec.get("goal_visual", "calibration_pad"),
+            "time_limit_s": spec["time_limit_s"],
+            "max_collisions": 0,
+            "arrive_tolerance_m": spec["arrive_tolerance_m"],
+            "via_radius_m": spec.get("via_radius_m", 1.25),
         }
     if spec["template"] == "reach":
         return {
@@ -906,7 +1001,7 @@ def main() -> int:
     changed: list[str] = []
 
     for spec in LEVELS:
-        assert spec["template"] in ("echo", "reach"), spec["template"]
+        assert spec["template"] in ("echo", "reach", "haul"), spec["template"]
         check_map(spec)
         if dump(ROOT / "assets" / "levels" / f"{spec['id']}.json", build_level(spec),
                  args.check):

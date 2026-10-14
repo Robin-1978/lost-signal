@@ -124,6 +124,46 @@
         "via_radius_m": {
           "type": "number",
           "exclusiveMinimum": 0
+        },
+        "goals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "marker",
+              "action"
+            ],
+            "properties": {
+              "marker": {
+                "$ref": "#/$defs/id"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "action": {
+                "enum": [
+                  "pickup",
+                  "complete",
+                  "summon",
+                  "recharge"
+                ]
+              },
+              "radius_m": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "summon_actor": {
+                "$ref": "#/$defs/id"
+              },
+              "recharge_wh": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
         }
       },
       "allOf": [

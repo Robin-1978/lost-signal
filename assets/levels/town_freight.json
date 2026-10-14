@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "town_freight",
+  "order": 24,
+  "title": "城镇首运",
+  "map": "signal_town",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 3,
+  "prerequisites": [
+    "signal_cross"
+  ],
+  "seed": 7,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "town_gate",
+    "via": "energy_hub",
+    "via_label": "能源中转",
+    "goal": "market_gate",
+    "goal_label": "集市门",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 180,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 8,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "town_haul",
+    "prediction_prompt": "新镇子第一单：湿滑仓门、砂石主街、沙地货道，两辆巡逻车横竖穿行。走哪条道，什么时候让？",
+    "knowledge_card": "城镇跑单是综合题：湿滑区提前减速保抓地，主街看巡逻相位等窗口，沙地温柔给油。三段路三种开法，一套莽法全丢分。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.3,
+    "fast_time_s": 150.0,
+    "efficient_energy_wh": 3.0
+  },
+  "rewards": [
+    "ability.town_freight"
+  ]
+}

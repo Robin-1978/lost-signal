@@ -14,14 +14,14 @@
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  CHECK(catalog.campaign().companion_name == "洛一");
- CHECK(catalog.campaign().levels.size() == 21);
- CHECK(catalog.levels().size() == 21);
+ CHECK(catalog.campaign().levels.size() == 22);
+ CHECK(catalog.levels().size() == 22);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 3);
- CHECK(catalog.scenes().size() == 1);
- CHECK(catalog.presentations().size() == 21);
- CHECK(catalog.story_beats().size() == 33);
+ CHECK(catalog.scenes().size() == 2);
+ CHECK(catalog.presentations().size() == 22);
+ CHECK(catalog.story_beats().size() == 35);
  CHECK(catalog.campaign().companion_robot == "robot.ro1");
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);

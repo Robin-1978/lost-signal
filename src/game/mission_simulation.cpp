@@ -287,21 +287,25 @@ void MissionSimulation::step() {
  snapshot_.time_s += fixed_step_s;
  result_.time_s = snapshot_.time_s;
 
- const auto goal = as_vec(map_definition_.markers.at(level_.objective.goal));
- if (!level_.objective.via.empty() && !snapshot_.via_reached) {
-  const auto via = as_vec(map_definition_.markers.at(level_.objective.via));
-  if (distance({snapshot_.robot.x, snapshot_.robot.y}, via) <= level_.objective.via_radius_m) {
-   snapshot_.via_reached = true;
-   result_.via_reached = true;
-   record_event("via-reached",
-                level_.objective.via_label + "已取得，继续前往" + level_.objective.goal_label + "。");
+ const auto& goals = level_.objective.goals;
+ if (snapshot_.goals_reached < goals.size()) {
+  const auto& step = goals[snapshot_.goals_reached];
+  const auto target = as_vec(map_definition_.markers.at(step.marker));
+  if (distance({snapshot_.robot.x, snapshot_.robot.y}, target) <= step.radius_m) {
+   if (step.action == "complete" &&
+       (level_.objective.type != "observe_and_stop" || snapshot_.static_obstacle_detected)) {
+    ++snapshot_.goals_reached;
+    finish_success();
+   } else if (step.action == "pickup") {
+    ++snapshot_.goals_reached;
+    snapshot_.via_reached = true;
+    result_.via_reached = true;
+    const std::string next_label = snapshot_.goals_reached < goals.size()
+                                       ? goals[snapshot_.goals_reached].label
+                                       : level_.objective.goal_label;
+    record_event("via-reached", step.label + "已取得，继续前往" + next_label + "。");
+   }
   }
- }
- const double goal_tolerance = level_.objective.arrive_tolerance_m;
- if (distance({snapshot_.robot.x, snapshot_.robot.y}, goal) <= goal_tolerance &&
-     (level_.objective.type != "observe_and_stop" || snapshot_.static_obstacle_detected) &&
-     (level_.objective.via.empty() || snapshot_.via_reached)) {
-  finish_success();
  }
  if (snapshot_.status == MissionStatus::Running && snapshot_.time_s >= level_.objective.time_limit_s) {
   finish_failure("timeout", "洛一未能在时限内抵达目标。");

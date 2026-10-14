@@ -133,6 +133,9 @@ struct MissionSnapshot {
  bool dynamic_object_detected{false};
  bool waiting_for_clearance{false};
  bool via_reached{false};
+ // Ordered-goals progress: index of the next unreached goal in
+ // objective.goals. via_reached stays synced for legacy UI/headless readers.
+ std::size_t goals_reached{0};
  MissionStatus status{MissionStatus::Ready};
 };
 

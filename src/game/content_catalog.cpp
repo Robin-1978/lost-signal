@@ -185,6 +185,36 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
     objective.at("max_collisions").get<int>(),      objective.at("arrive_tolerance_m").get<double>(),
     objective.value("via_radius_m", 1.25),
   };
+  // Unified goals: explicit list wins; otherwise derive from legacy fields so
+  // reach = [complete] and deliver_via = [pickup, complete]. Same arrivals,
+  // same order, same radii — derivation is behavior-preserving by construction.
+  if (objective.contains("goals")) {
+   for (const auto& entry : objective.at("goals")) {
+    GoalStep step;
+    step.marker = entry.at("marker").get<std::string>();
+    step.label = entry.value("label", std::string{});
+    step.action = entry.value("action", "complete");
+    step.radius_m = entry.value("radius_m", level.objective.arrive_tolerance_m);
+    step.summon_actor = entry.value("summon_actor", std::string{});
+    step.recharge_wh = entry.value("recharge_wh", 0.0);
+    if (step.action != "pickup" && step.action != "complete" && step.action != "summon" &&
+        step.action != "recharge") {
+     throw ContentError(path.string() + ": unknown goal action " + step.action);
+    }
+    level.objective.goals.push_back(std::move(step));
+   }
+   if (level.objective.goals.empty()) {
+    throw ContentError(path.string() + ": empty goals list");
+   }
+  } else if (!level.objective.via.empty()) {
+   level.objective.goals.push_back({level.objective.via, level.objective.via_label, "pickup",
+                                    level.objective.via_radius_m});
+   level.objective.goals.push_back({level.objective.goal, level.objective.goal_label, "complete",
+                                    level.objective.arrive_tolerance_m});
+  } else {
+   level.objective.goals.push_back({level.objective.goal, level.objective.goal_label, "complete",
+                                    level.objective.arrive_tolerance_m});
+  }
   level.budget = loadout.at("budget").get<int>();
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
   level.concept = teaching.at("concept").get<std::string>();

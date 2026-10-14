@@ -232,6 +232,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：过去了。路口是让出来的，不是蹭出来的。"
+    },
+    {
+      "id": "town_freight.before",
+      "level": "town_freight",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：毕业了！镇子第一单，听说主街上有车，弯道上有沙。慢慢开，准时到。"
+    },
+    {
+      "id": "town_freight.after",
+      "level": "town_freight",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "洛一：首运拿下。镇长说，以后镇子的货都归我们了。"
     }
   ]
 }

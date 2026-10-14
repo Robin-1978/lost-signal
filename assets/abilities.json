@@ -110,6 +110,11 @@
       "id": "ability.signal_cross",
       "title": "交叉相位",
       "description": "洛一学会了过路口：等侧面威胁通过，窗口出现再进。"
+    },
+    {
+      "id": "ability.town_freight",
+      "title": "城镇首运",
+      "description": "洛一拿下镇子第一单：湿滑、砂石、沙地、巡逻，综合通过。"
     }
   ]
 }
