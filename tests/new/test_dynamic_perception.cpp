@@ -1,10 +1,10 @@
-#include "sim/dynamic_obstacle_map.hpp"
-#include "sim/hal.hpp"
-#include "sim/diff_drive.hpp"
-#include "sim/dwa.hpp"
-#include "sim/grid_map.hpp"
-#include "sim/motor_drive.hpp"
-#include "sim/sensor.hpp"
+#include "algo/dynamic_obstacle_map.hpp"
+#include "hw/sensors/hal.hpp"
+#include "hw/chassis/diff_drive.hpp"
+#include "algo/dwa.hpp"
+#include "algo/grid_map.hpp"
+#include "hw/chassis/motor_drive.hpp"
+#include "hw/sensors/sensor.hpp"
 
 #include <cmath>
 #include <iostream>

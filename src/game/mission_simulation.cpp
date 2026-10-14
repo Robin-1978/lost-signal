@@ -1,6 +1,6 @@
 #include "mission_simulation.hpp"
 
-#include "sim/astar.hpp"
+#include "algo/astar.hpp"
 
 #include <algorithm>
 #include <cmath>

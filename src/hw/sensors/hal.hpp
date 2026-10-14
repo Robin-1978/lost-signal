@@ -1,7 +1,7 @@
 #pragma once
 
-#include "dynobs.hpp"
-#include "grid_map.hpp"
+#include "algo/dynobs.hpp"
+#include "algo/grid_map.hpp"
 #include "sensor.hpp"
 
 #include <vector>
@@ -16,8 +16,8 @@ namespace sim {
 class LidarBackend {
  public:
  virtual ~LidarBackend() = default;
- virtual Scan scan(Vec2 position, double heading, int rays, double range, double noise_sigma,
-                   Rng& rng, const std::vector<DynState>& dynamic_objects) = 0;
+ virtual Scan scan(Vec2 position, double heading, int rays, double range, double noise_sigma, Rng& rng,
+                   const std::vector<DynState>& dynamic_objects) = 0;
 };
 
 class SimLidar : public LidarBackend {

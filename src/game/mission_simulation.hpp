@@ -1,16 +1,16 @@
 #pragma once
 
 #include "content_catalog.hpp"
-#include "sim/diff_drive.hpp"
-#include "sim/dynamic_obstacle_map.hpp"
-#include "sim/dwa.hpp"
-#include "sim/eventlog.hpp"
-#include "sim/follow.hpp"
-#include "sim/hal.hpp"
-#include "sim/grid_map.hpp"
-#include "sim/motor_drive.hpp"
-#include "sim/pid.hpp"
-#include "sim/sensor.hpp"
+#include "hw/chassis/diff_drive.hpp"
+#include "algo/dynamic_obstacle_map.hpp"
+#include "algo/dwa.hpp"
+#include "algo/eventlog.hpp"
+#include "algo/follow.hpp"
+#include "hw/sensors/hal.hpp"
+#include "algo/grid_map.hpp"
+#include "hw/chassis/motor_drive.hpp"
+#include "algo/pid.hpp"
+#include "hw/sensors/sensor.hpp"
 
 #include <memory>
 #include <optional>

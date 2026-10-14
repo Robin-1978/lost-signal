@@ -91,7 +91,8 @@ assets/models/ 独立的机器人与环境 GLB 模型
 assets/textures/ 项目自有、可重复生成的环境纹理
 assets/robots/ 机器人坐标系、安装点、碰撞体和装配配置
 assets/scenes/ 3D 镜头、阴影、曝光、Bloom、地面、环境 Prefab 与实例配置
-src/sim/ C++20 仿真算法：A*、DWA、PID、电机/PWM、运动学、雷达与动态障碍跟踪
+src/hw/ 硬件模型：底盘执行器、电机/接触动力学、传感器与 HAL 接口
+src/algo/ 算法：A*、DWA、PID、跟随、占据图与动态跟踪
 src/game/ 内容加载、任务仿真、诊断、回放与评分
 src/client/ raylib 3D 探索层、2D 认知层和 TGUI 玩家界面
 tests/new/ 当前 C++ 内容与任务回归测试

@@ -10,7 +10,7 @@
 
 ## 背景
 
-当前动力链（`src/sim/motor_drive.cpp:30-73`）是单差速模型：
+当前动力链（`src/hw/chassis/motor_drive.cpp`）是单差速模型：
 twist → 轮速 → CPR=2048 编码器量化 → 双轮速 PID → PWM → 加速度限幅 → 运动学。
 电机完整，摩擦只有里程计噪声代理（`mission_simulation.cpp:489-499`），惯性只是一阶加速度钳位；
 自行车模型是死代码，履带不存在。同时一批行为参数硬编码在 C++ 里（航向 PID、能耗系数、

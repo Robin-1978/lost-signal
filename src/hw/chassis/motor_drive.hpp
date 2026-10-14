@@ -1,7 +1,7 @@
 #pragma once
 
 #include "diff_drive.hpp"
-#include "pid.hpp"
+#include "algo/pid.hpp"
 
 namespace sim {
 

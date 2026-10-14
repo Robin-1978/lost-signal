@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sim/math.hpp"
+#include "algo/math.hpp"
 
 #include <array>
 #include <filesystem>

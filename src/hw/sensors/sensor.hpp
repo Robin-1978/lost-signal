@@ -1,7 +1,7 @@
 #pragma once
 
-#include "dynobs.hpp"
-#include "grid_map.hpp"
+#include "algo/dynobs.hpp"
+#include "algo/grid_map.hpp"
 
 #include <cstdint>
 #include <random>

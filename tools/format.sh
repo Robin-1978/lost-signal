@@ -25,5 +25,5 @@ EOF
 fi
 
 cd "$project_root"
-git ls-files 'src/*.cpp' 'src/*.hpp' 'tests/*.cpp' | xargs "$formatter" -i
+git ls-files 'src/**/*.cpp' 'src/**/*.hpp' 'src/*.cpp' 'src/*.hpp' 'tests/*.cpp' | xargs "$formatter" -i
 git status -sb

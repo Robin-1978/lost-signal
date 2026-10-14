@@ -1,6 +1,6 @@
 #include "motor_drive.hpp"
 
-#include "math.hpp"
+#include "algo/math.hpp"
 
 #include <algorithm>
 #include <cmath>
