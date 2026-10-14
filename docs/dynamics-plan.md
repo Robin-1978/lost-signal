@@ -264,6 +264,17 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        Wait 1——微等待在两种诊断间闪烁（遭遇几何以 0.1 秒粒度演化），不平均化。
     b. **安全让位**（a 落地后）：采样路径附近空闲格，用第 14 项正逆解验证
        到得了/停得住/并得回，三者全过才列为候选，与原地等/直接走统一评价。
+       接口先行冻结（评审交付物，不接行为）：`LocalCandidate` 五型
+       （Proceed/WaitInPlace/WaitAtPocket/Rejoin/Detour）＋`check_candidate`
+       统一返回 Feasible/Infeasible/Unknown＋原因＋最小间隙证据；时间可判的
+       两型已实现（Proceed 即走now才算过，早走也判 Infeasible 保因），空间三型
+       诚实 Unknown（kUnassessed，不借用他因）。
+       分层归位：DWA 留任局部速度规划＋执行（不动），Phase-2 是行为层候选优选，
+       不是第二个规划器进程。
+       场景矩阵固定（test_departure_replay）：东线类（WaitUnsafe 反例常驻真关
+       episode）、headon-wait-overrun、对抗偏置、horizon 不足，＋正向锚点
+       pocket-positive（立即走间隙 -0.33 必撞，侧向 2 米口袋安全等 2 秒，
+       下降汇入全程间隙 0.52 过线）。数据继续积累，行为继续冻结。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

@@ -159,8 +159,55 @@ const char* depart_reason_name(DepartReason reason) {
    return "HorizonShort";
   case DepartReason::kInvalid:
    return "Invalid";
+  case DepartReason::kUnassessed:
+   return "Unassessed";
  }
  return "Invalid";
+}
+
+Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, std::size_t start_idx,
+                            double cruise_mps, const std::vector<std::vector<DynState>>& frames,
+                            double frame_dt_s, double ego_radius_m, double margin_m) {
+ if (type == LocalCandidate::kWaitAtPocket || type == LocalCandidate::kRejoin ||
+     type == LocalCandidate::kDetour) {
+  // No spatial planner exists yet: Unknown with its own reason, never
+  // borrowed. Phase-2 implements these without touching this contract.
+  return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+ }
+ const DepartureAssessment assessed =
+   assess_departure(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, margin_m);
+ if (type == LocalCandidate::kProceed) {
+  // Proceed means now: any required wait refuses it, but the refusal keeps
+  // its cause (too-early vs blocked vs undecidable).
+  if (assessed.reason == DepartReason::kGoNow) {
+   return {Feasibility::Verdict::kFeasible, DepartReason::kGoNow, 0.0,
+           predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
+  }
+  if (assessed.reason == DepartReason::kHorizonShort || assessed.reason == DepartReason::kInvalid) {
+   return {Feasibility::Verdict::kUnknown, assessed.reason,
+           std::numeric_limits<double>::infinity(),
+           predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
+  }
+  return {Feasibility::Verdict::kInfeasible, assessed.reason,
+          std::numeric_limits<double>::infinity(),
+          predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
+ }
+ // kWaitInPlace: feasible exactly when the time assessment names a departure
+ // (now or later); the waiting spot was already proven inside assess.
+ if (assessed.reason == DepartReason::kGoNow || assessed.reason == DepartReason::kWait) {
+  const double delay = assessed.reason == DepartReason::kGoNow ? 0.0 : assessed.wait_s;
+  return {Feasibility::Verdict::kFeasible, assessed.reason, assessed.wait_s,
+          predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, delay)};
+ }
+ if (assessed.reason == DepartReason::kHorizonShort || assessed.reason == DepartReason::kInvalid) {
+  return {Feasibility::Verdict::kUnknown, assessed.reason,
+          std::numeric_limits<double>::infinity(),
+          predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
+ }
+ return {Feasibility::Verdict::kInfeasible, assessed.reason,
+         std::numeric_limits<double>::infinity(),
+         predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
 }
 
 DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,

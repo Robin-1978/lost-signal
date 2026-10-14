@@ -66,6 +66,8 @@ enum class DepartReason {
  kHorizonShort,   // the horizon cannot even cover the traversal: unknown,
                   // not unsafe (SOTIF Area 3: never file unknown as safe).
  kInvalid,        // degenerate input (empty path/frames, non-positive cruise).
+ kUnassessed,     // capability does not exist yet (Phase-2 pocket/rejoin/detour):
+                  // honestly Unknown, never borrowed from another cause.
 };
 
 struct DepartureAssessment {
@@ -79,5 +81,35 @@ DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t 
                                      double cruise_mps,
                                      const std::vector<std::vector<DynState>>& frames,
                                      double frame_dt_s, double ego_radius_m, double margin_m);
+
+// Phase-2 local-behavior candidates (plan item 16b). The kinds are frozen;
+// only time feasibility is assessable today. Pocket/rejoin/detour need
+// spatial planning that does not exist yet and report Unknown honesty.
+enum class LocalCandidate {
+ kProceed,     // depart now along the remaining path, no waiting.
+ kWaitInPlace, // hold the current spot until the assessed departure, then proceed.
+ kWaitAtPocket,// move aside, wait safe, rejoin. Phase-2 (unassessed).
+ kRejoin,      // rejoin evaluation after a pocket wait. Phase-2 (unassessed).
+ kDetour,      // existing local绕行. Phase-2 (DWA owns execution today).
+};
+
+struct Feasibility {
+ enum class Verdict { kFeasible, kInfeasible, kUnknown };
+ Verdict verdict{Verdict::kUnknown};
+ DepartReason reason{DepartReason::kUnassessed};
+ // Earliest departure when the time assessment produced one, else infinity.
+ double wait_s{std::numeric_limits<double>::infinity()};
+ // Evidence: swept minimum gap of the assessed execution (at wait_s when
+ // known, at departure-now otherwise); +infinity when nothing was assessed.
+ double min_gap_m{std::numeric_limits<double>::infinity()};
+};
+
+// One feasibility gate for every candidate kind: hard constraints first
+// (full-trajectory swept gap, waiting-spot safety, horizon coverage), cost
+// comparison only among feasible candidates (done by the caller, Phase-2).
+// Unknown and Infeasible both refuse release; they differ in owner.
+Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, std::size_t start_idx,
+                            double cruise_mps, const std::vector<std::vector<DynState>>& frames,
+                            double frame_dt_s, double ego_radius_m, double margin_m);
 
 } // namespace sim

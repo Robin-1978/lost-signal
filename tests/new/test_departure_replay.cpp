@@ -1,11 +1,14 @@
-// SIL offline closed-loop replay (gate 2) for earliest_departure.
+// SIL offline closed-loop replay (gate 2) + Phase-2 feasibility interface
+// (candidate kinds frozen, time feasibility assessable, spatial kinds honestly
+// Unknown).
 //
-// Same time axis drives ego and threat: each cycle rebuilds prediction frames
-// from the current threat state (constant-velocity estimate, optionally
-// biased), recomputes t_dep for the remaining path (replan every cycle, never
-// latched), and either holds or advances the ego at cruise. Records the
-// predicted release, the actual departure, and the true minimum gap from
-// ground-truth positions (10x subsampled measurement).
+// Replay: same time axis drives ego and threat along an arbitrary polyline
+// path. Each cycle rebuilds prediction frames from the current threat state
+// (constant-velocity estimate, optionally biased), recomputes t_dep for the
+// remaining suffix (replan every cycle, never latched), and either holds or
+// advances the ego at cruise. Records the predicted release, the actual
+// departure, and the true minimum gap from ground-truth positions (10x
+// subsampled measurement).
 //
 // Miss (quality) vs hard fail (safety) are separate verdicts:
 //   hard fail = collision (min_gap < 0) or goal never reached;
@@ -47,6 +50,46 @@ struct ReplayResult {
  double min_gap{std::numeric_limits<double>::infinity()};
 };
 
+double poly_length(const std::vector<sim::Vec2>& path) {
+ double length = 0.0;
+ for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+  length += std::hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+ }
+ return length;
+}
+
+sim::Vec2 path_at(const std::vector<sim::Vec2>& path, double s) {
+ double walked = 0.0;
+ for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+  const double leg = std::hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+  if (leg < 1e-9) {
+   continue;
+  }
+  if (walked + leg >= s) {
+   const double t = std::clamp((s - walked) / leg, 0.0, 1.0);
+   return {path[i].x + (path[i + 1].x - path[i].x) * t,
+           path[i].y + (path[i + 1].y - path[i].y) * t};
+  }
+  walked += leg;
+ }
+ return path.back();
+}
+
+// Remaining suffix from arc distance s: current position plus every vertex
+// ahead of it.
+std::vector<sim::Vec2> path_suffix(const std::vector<sim::Vec2>& path, double s) {
+ std::vector<sim::Vec2> suffix{path_at(path, s)};
+ double walked = 0.0;
+ for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+  const double leg = std::hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+  walked += leg;
+  if (walked > s + 1e-9) {
+   suffix.push_back(path[i + 1]);
+  }
+ }
+ return suffix;
+}
+
 // True same-time gap between two linearly moving points, densely subsampled
 // measurement (miss <= ~2 cm at these speeds; assertions keep 10x clearance).
 double measured_gap(sim::Vec2 e0, sim::Vec2 e1, sim::Vec2 t0, sim::Vec2 t1, double radii) {
@@ -60,15 +103,16 @@ double measured_gap(sim::Vec2 e0, sim::Vec2 e1, sim::Vec2 t0, sim::Vec2 t1, doub
  return gap;
 }
 
-ReplayResult run_replay(sim::Vec2 threat_p0, sim::Vec2 threat_v_true, sim::Vec2 threat_v_est,
-                        double path_length = 6.0) {
+ReplayResult run_replay(const std::vector<sim::Vec2>& path, sim::Vec2 threat_p0,
+                        sim::Vec2 threat_v_true, sim::Vec2 threat_v_est, double horizon_s) {
  ReplayResult result;
- const int frames = static_cast<int>(kHorizonS / kDtS) + 1;
+ const int frames = static_cast<int>(horizon_s / kDtS) + 1;
+ const double total = poly_length(path);
  double ego_s = 0.0;
  double time_s = 0.0;
  sim::Vec2 threat = threat_p0;
- for (int cycle = 0; cycle < 300 && ego_s < path_length - 1e-9; ++cycle) {
-  const std::vector<sim::Vec2> remaining{{ego_s, 0.0}, {path_length, 0.0}};
+ for (int cycle = 0; cycle < 600 && ego_s < total - 1e-9; ++cycle) {
+  const auto remaining = path_suffix(path, ego_s);
   std::vector<std::vector<sim::DynState>> predicted;
   for (int k = 0; k < frames; ++k) {
    predicted.push_back(
@@ -80,21 +124,21 @@ ReplayResult run_replay(sim::Vec2 threat_p0, sim::Vec2 threat_v_true, sim::Vec2 
   if (cycle == 0) {
    result.initial_pred_s = dep;
   }
-  const sim::Vec2 ego0{ego_s, 0.0};
+  const sim::Vec2 ego0 = path_at(path, ego_s);
   if (dep == 0.0) {
    if (result.depart_s < 0.0) {
     result.depart_s = time_s;
    }
-   ego_s = std::min(path_length, ego_s + kCruiseMps * kDtS);
+   ego_s = std::min(total, ego_s + kCruiseMps * kDtS);
   }
-  const sim::Vec2 ego1{ego_s, 0.0};
+  const sim::Vec2 ego1 = path_at(path, ego_s);
   const sim::Vec2 next{threat.x + threat_v_true.x * kDtS, threat.y + threat_v_true.y * kDtS};
   result.min_gap =
     std::min(result.min_gap, measured_gap(ego0, ego1, threat, next, kThreatRadiusM + kEgoRadiusM));
   threat = next;
   time_s += kDtS;
  }
- result.reached = ego_s >= path_length - 1e-9;
+ result.reached = ego_s >= total - 1e-9;
  return result;
 }
 
@@ -105,19 +149,71 @@ bool is_miss(const ReplayResult& r) {
  if (r.min_gap < kMarginM) {
   return true;
  }
- if (r.depart_s < 0.0 ||
-     std::abs(r.depart_s - r.initial_pred_s) > kMissTimeS + 1e-9) {
+ if (r.depart_s < 0.0 || std::abs(r.depart_s - r.initial_pred_s) > kMissTimeS + 1e-9) {
   return true;
  }
  return false;
 }
 
+const std::vector<sim::Vec2> kStraight{{0.0, 0.0}, {6.0, 0.0}};
+
 } // namespace
 
 int main() {
+ // Feasibility interface: Proceed/WaitInPlace decided by time assessment;
+ // spatial kinds honestly Unknown with their own reason.
+ {
+  const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  const auto go = sim::check_candidate(sim::LocalCandidate::kProceed, line, 0, 1.0, open, 0.1,
+                                       0.38, 0.5);
+  CHECK(go.verdict == sim::Feasibility::Verdict::kFeasible);
+  CHECK(go.reason == sim::DepartReason::kGoNow && go.wait_s == 0.0 && go.min_gap_m >= 0.5);
+  const auto hold =
+    sim::check_candidate(sim::LocalCandidate::kWaitInPlace, line, 0, 1.0, open, 0.1, 0.38, 0.5);
+  CHECK(hold.verdict == sim::Feasibility::Verdict::kFeasible);
+  std::vector<std::vector<sim::DynState>> clearing;
+  for (int k = 0; k < 40; ++k) {
+   clearing.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  }
+  // Clearing corridor: departing now is refused (too early), waiting is feasible.
+  const auto early =
+    sim::check_candidate(sim::LocalCandidate::kProceed, line, 0, 1.0, clearing, 0.1, 0.38, 0.5);
+  CHECK(early.verdict == sim::Feasibility::Verdict::kInfeasible);
+  CHECK(early.reason == sim::DepartReason::kWait);
+  const auto patient = sim::check_candidate(sim::LocalCandidate::kWaitInPlace, line, 0, 1.0,
+                                            clearing, 0.1, 0.38, 0.5);
+  CHECK(patient.verdict == sim::Feasibility::Verdict::kFeasible);
+  CHECK(patient.wait_s > 0.0 && patient.min_gap_m >= 0.5);
+  // Parked threat: both time kinds infeasible, same cause.
+  const std::vector<std::vector<sim::DynState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::check_candidate(sim::LocalCandidate::kProceed, line, 0, 1.0, parked, 0.1, 0.38, 0.5)
+          .verdict == sim::Feasibility::Verdict::kInfeasible);
+  CHECK(sim::check_candidate(sim::LocalCandidate::kWaitInPlace, line, 0, 1.0, parked, 0.1, 0.38,
+                             0.5)
+          .reason == sim::DepartReason::kBlockedInWindow);
+  // Short window on a long path: Unknown, never Infeasible.
+  const std::vector<sim::Vec2> long_line{{0.0, 0.0}, {10.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::check_candidate(sim::LocalCandidate::kProceed, long_line, 0, 1.0, short_open, 0.1,
+                             0.38, 0.5)
+          .verdict == sim::Feasibility::Verdict::kUnknown);
+  // Spatial kinds: Unknown with their own reason, no borrowed verdicts.
+  for (const auto kind :
+       {sim::LocalCandidate::kWaitAtPocket, sim::LocalCandidate::kRejoin, sim::LocalCandidate::kDetour}) {
+   const auto pending = sim::check_candidate(kind, line, 0, 1.0, open, 0.1, 0.38, 0.5);
+   CHECK(pending.verdict == sim::Feasibility::Verdict::kUnknown);
+   CHECK(pending.reason == sim::DepartReason::kUnassessed);
+   CHECK(pending.wait_s == std::numeric_limits<double>::infinity());
+  }
+  // Degenerate input stays Unknown/Invalid, never Feasible.
+  CHECK(sim::check_candidate(sim::LocalCandidate::kProceed, {}, 0, 1.0, open, 0.1, 0.38, 0.5)
+          .reason == sim::DepartReason::kInvalid);
+ }
  // Nominal crosser, perfect estimation: prediction credible, countdown exact.
  {
-  const ReplayResult r = run_replay({3.0, 2.5}, {0.0, -1.0}, {0.0, -1.0});
+  const ReplayResult r = run_replay(kStraight, {3.0, 2.5}, {0.0, -1.0}, {0.0, -1.0}, kHorizonS);
   CHECK(r.reached);
   CHECK(r.initial_pred_s > 0.0 && r.initial_pred_s < std::numeric_limits<double>::infinity());
   CHECK(r.min_gap >= kMarginM);
@@ -129,8 +225,9 @@ int main() {
  // initial prediction overshoots and replanning drifts — a quality miss in
  // the conservative direction, costing time instead of margin.
  {
-  const ReplayResult nominal = run_replay({3.0, 2.5}, {0.0, -1.0}, {0.0, -1.0});
-  const ReplayResult r = run_replay({3.0, 2.5}, {0.0, -1.0}, {0.0, -0.7});
+  const ReplayResult nominal =
+    run_replay(kStraight, {3.0, 2.5}, {0.0, -1.0}, {0.0, -1.0}, kHorizonS);
+  const ReplayResult r = run_replay(kStraight, {3.0, 2.5}, {0.0, -1.0}, {0.0, -0.7}, kHorizonS);
   CHECK(r.reached);
   CHECK(r.min_gap >= 0.0);
   CHECK(is_miss(r));
@@ -143,7 +240,7 @@ int main() {
  // uncertainty needs its own margin budget — exact arithmetic on wrong
  // inputs still misses.
  {
-  const ReplayResult r = run_replay({3.0, 2.5}, {0.0, -1.0}, {0.0, -1.6});
+  const ReplayResult r = run_replay(kStraight, {3.0, 2.5}, {0.0, -1.0}, {0.0, -1.6}, kHorizonS);
   CHECK(r.reached);
   CHECK(r.min_gap >= 0.0);
   CHECK(is_miss(r));
@@ -156,18 +253,32 @@ int main() {
  // the ego. The replay (which waits anyway) gets run over at t=2 s. Waiting
  // here is a Phase-2 (where to wait) problem; Phase-1 must not claim it.
  {
-  const ReplayResult r = run_replay({4.0, 0.0}, {-2.0, 0.0}, {-2.0, 0.0});
+  const ReplayResult r = run_replay(kStraight, {4.0, 0.0}, {-2.0, 0.0}, {-2.0, 0.0}, kHorizonS);
   CHECK(r.initial_pred_s == std::numeric_limits<double>::infinity());
   CHECK(r.min_gap < 0.0);
   CHECK(is_miss(r));
   std::cerr << "headon-wait-overrun: pred=inf gap=" << r.min_gap << "\n";
+ }
+ // Positive lateral scenario (scenario-matrix anchor): the lane ahead is
+ // lethally blocked for an immediate departure (gap -0.33), but the start
+ // pocket sits 2 m off the threat lane, so waiting is safe and the full
+ // traverse-descend-merge executes with margin intact.
+ {
+  const std::vector<sim::Vec2> pocket{{0.0, 2.0}, {3.0, 2.0}, {3.0, 0.0}, {6.0, 0.0}};
+  const ReplayResult r = run_replay(pocket, {5.0, 0.0}, {-0.5, 0.0}, {-0.5, 0.0}, 12.0);
+  CHECK(r.reached);
+  CHECK(r.initial_pred_s > 0.0 && r.initial_pred_s < std::numeric_limits<double>::infinity());
+  CHECK(r.min_gap >= kMarginM);
+  CHECK(!is_miss(r));
+  std::cerr << "pocket-positive: pred=" << r.initial_pred_s << " depart=" << r.depart_s
+            << " gap=" << r.min_gap << "\n";
  }
  // Horizon too short for the whole traversal: open field, still infinity.
  // Unknown is not safe (SOTIF Area 3): no proof fits in the window.
  {
   const std::vector<sim::Vec2> long_path{{0.0, 0.0}, {10.0, 0.0}};
   const std::vector<std::vector<sim::DynState>> open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
-  CHECK(sim::earliest_departure(long_path, 0, 1.0, open, 0.1, kEgoRadiusM, kMarginM) ==
+  CHECK(sim::earliest_departure(long_path, 0, 1.0, open, 0.1, 0.38, 0.5) ==
         std::numeric_limits<double>::infinity());
  }
  std::cerr << "departure replay matrix green\n";
