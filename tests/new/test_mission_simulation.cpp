@@ -1,8 +1,10 @@
 #include "game/campaign_progress.hpp"
 #include "game/content_catalog.hpp"
 #include "game/mission_simulation.hpp"
+#include "algo/predictor.hpp"
 
 #include <cmath>
+#include <limits>
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
@@ -67,6 +69,42 @@ int main() {
                    [](const auto& snapshot) { return snapshot.control.shadow_assessed; }));
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "shadow_wait"; }));
+ // Shadow data integrity (reviewer step 1): every episode opened is closed by
+ // mission end, structured records pair 1:1 with log events, timestamps and
+ // reasons are in range. Distribution (reviewer step 2) is reported, not
+ // averaged away: the finale's micro-waits must show as WaitUnsafe (grazing
+ // geometry), never silently reclassified.
+ {
+  CHECK(!first.shadow_episode_open());
+  const auto& episodes = first.shadow_episodes();
+  std::size_t logged = 0;
+  for (const auto& event : first.events()) {
+   if (event.code == "shadow_wait") {
+    ++logged;
+   }
+  }
+  CHECK(logged == episodes.size());
+  CHECK(!episodes.empty());
+  int counts[6] = {0, 0, 0, 0, 0, 0};
+  for (const auto& episode : episodes) {
+   CHECK(episode.start_s <= episode.end_s);
+   CHECK(episode.waited_s >= 0.0);
+   CHECK(std::abs(episode.waited_s - (episode.end_s - episode.start_s)) < 1e-9);
+   CHECK(episode.first_reason >= 0 && episode.first_reason <= 5);
+   CHECK(episode.last_reason >= 0 && episode.last_reason <= 5);
+   CHECK((episode.first_pred_s >= 0.0 ||
+          episode.first_pred_s == std::numeric_limits<double>::infinity()) &&
+         (episode.last_pred_s >= 0.0 ||
+          episode.last_pred_s == std::numeric_limits<double>::infinity()));
+   ++counts[episode.first_reason];
+   std::cerr << "shadow episode: start=" << episode.start_s << " first=" << episode.first_pred_s
+             << "(" << sim::depart_reason_name(static_cast<sim::DepartReason>(episode.first_reason))
+             << ") last=" << episode.last_pred_s << "("
+             << sim::depart_reason_name(static_cast<sim::DepartReason>(episode.last_reason))
+             << ") waited=" << episode.waited_s << "\n";
+  }
+  CHECK(counts[static_cast<int>(sim::DepartReason::kWaitUnsafe)] > 0);
+ }
  CHECK(std::any_of(first.replay().begin(), first.replay().end(),
                    [](const auto& snapshot) { return !snapshot.dynamic_obstacles.empty(); }));
  CHECK(std::any_of(first.replay().begin(), first.replay().end(), [](const auto& snapshot) {

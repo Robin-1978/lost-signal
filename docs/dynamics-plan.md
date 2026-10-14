@@ -258,6 +258,10 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        inf 带诊断原因（GoNow/Wait/BlockedInWindow/WaitUnsafe/HorizonShort/Invalid，按紧急度排序，
        等待位危险优先）；终关实测 772 帧评估、11 个等待 episode，
        微等待多为 WaitUnsafe（擦身几何）、一次 Wait→GoNow 倒计时。
+       数据积累阶段（评审 order：完整性→分布→误差→标定，不跳步）：
+       episode 已结构化（ShadowEpisode 与事件 1:1 配对、字段范围、时间戳单调
+       全部有断言）；终关分布 first-reason：WaitUnsafe 7、BlockedInWindow 3、
+       Wait 1——微等待在两种诊断间闪烁（遭遇几何以 0.1 秒粒度演化），不平均化。
     b. **安全让位**（a 落地后）：采样路径附近空闲格，用第 14 项正逆解验证
        到得了/停得住/并得回，三者全过才列为候选，与原地等/直接走统一评价。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，

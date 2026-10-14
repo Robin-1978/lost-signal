@@ -875,6 +875,15 @@ void MissionSimulation::update_shadow_episode() {
   shadow_episode_first_reason_ = snapshot_.control.shadow_reason;
  } else if (!snapshot_.waiting_for_clearance && shadow_episode_open_) {
   shadow_episode_open_ = false;
+  ShadowEpisode episode;
+  episode.start_s = shadow_episode_start_s_;
+  episode.first_pred_s = shadow_episode_first_s_;
+  episode.first_reason = shadow_episode_first_reason_;
+  episode.end_s = snapshot_.time_s;
+  episode.last_pred_s = snapshot_.control.shadow_depart_s;
+  episode.last_reason = snapshot_.control.shadow_reason;
+  episode.waited_s = snapshot_.time_s - shadow_episode_start_s_;
+  shadow_episodes_.push_back(episode);
   std::ostringstream shadow;
   shadow << std::fixed << std::setprecision(1) << "影子评估：预测初值" << shadow_episode_first_s_
          << "秒[" << sim::depart_reason_name(static_cast<sim::DepartReason>(shadow_episode_first_reason_))

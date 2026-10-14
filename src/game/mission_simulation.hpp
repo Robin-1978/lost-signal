@@ -28,6 +28,21 @@ struct MissionEvent {
  std::string message;
 };
 
+// Gate-3 shadow wait episode (structured): one waiting interval with the
+// first/last departure assessments and the actual waited time. reasons code
+// sim::DepartReason (0=GoNow..5=Invalid). Stored alongside the event log so
+// integrity (open/close pairing, field ranges) and distribution (counts and
+// durations by reason) are machine-checkable, not parsed from prose.
+struct ShadowEpisode {
+ double start_s{0.0};
+ double first_pred_s{-1.0};
+ int first_reason{-1};
+ double end_s{0.0};
+ double last_pred_s{-1.0};
+ int last_reason{-1};
+ double waited_s{0.0};
+};
+
 struct ActorSnapshot {
  std::string id;
  sim::Vec2 position;
@@ -157,6 +172,8 @@ class MissionSimulation {
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
+ const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
+ bool shadow_episode_open() const { return shadow_episode_open_; }
 
  private:
  void build_world();
@@ -229,6 +246,7 @@ class MissionSimulation {
  MissionSnapshot snapshot_;
  MissionResult result_;
  std::vector<MissionEvent> events_;
+ std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  sim::DiffCmd held_command_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
