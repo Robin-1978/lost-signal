@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "abilities": [
+    {
+      "id": "ability.basic_motion",
+      "title": "基础行走",
+      "description": "洛一学会了前进与转向：动起来是所有任务的开始。"
+    },
+    {
+      "id": "ability.voice",
+      "title": "信号应答",
+      "description": "洛一学会了回应信号塔：听见，再出发。"
+    },
+    {
+      "id": "ability.map",
+      "title": "地图阅读",
+      "description": "洛一学会了看地图：先知道路在哪，再决定怎么走。"
+    },
+    {
+      "id": "ability.tires",
+      "title": "轮胎认知",
+      "description": "洛一学会了分辨轮胎：不同的地面要不同的脚。"
+    },
+    {
+      "id": "ability.motors",
+      "title": "电机认知",
+      "description": "洛一学会了分辨电机：力气和速度不可兼得。"
+    },
+    {
+      "id": "ability.distance_sensing",
+      "title": "距离感知",
+      "description": "洛一学会了看距离：雷达是它的眼睛。"
+    },
+    {
+      "id": "ability.path_planning",
+      "title": "路径规划",
+      "description": "洛一学会了规划路径：绕开障碍，而不是撞开障碍。"
+    },
+    {
+      "id": "ability.localization",
+      "title": "自我定位",
+      "description": "洛一学会了定位自己：知道自己在哪，才能知道要去哪。"
+    },
+    {
+      "id": "ability.terrain",
+      "title": "地形适应",
+      "description": "洛一学会了读地面：铺装、砂石、沙地各有脾气。"
+    },
+    {
+      "id": "ability.combo",
+      "title": "组合驾驶",
+      "description": "洛一学会了组合配置：零件之间要互相配合。"
+    },
+    {
+      "id": "ability.combo_mastery",
+      "title": "组合精通",
+      "description": "洛一精通了组合之道：没有最好的零件，只有最对的搭配。"
+    },
+    {
+      "id": "ability.ackermann",
+      "title": "转向驾驶",
+      "description": "洛一学会了开转向车：有方向盘，没有原地打转，转弯半径摆在那里。"
+    },
+    {
+      "id": "ability.tracked",
+      "title": "履带驾驶",
+      "description": "洛一学会了开履带车：滑移转向，慢动态也有春天。"
+    },
+    {
+      "id": "ability.sand_track",
+      "title": "沙地履带",
+      "description": "洛一学会了在沙地上开履带：打滑迷路时，慢就是快。"
+    },
+    {
+      "id": "ability.sand_steer",
+      "title": "沙地转向",
+      "description": "洛一学会了在沙地上打方向：提前量是方向盘的朋友。"
+    },
+    {
+      "id": "ability.scrub_climb",
+      "title": "打滑脱困",
+      "description": "洛一学会了识别打滑：轮子在转不等于车在走。"
+    },
+    {
+      "id": "ability.long_haul",
+      "title": "长途配速",
+      "description": "洛一学会了长途配速：匀速就是最快，温柔就是节能。"
+    },
+    {
+      "id": "ability.long_track",
+      "title": "慢动态长途",
+      "description": "洛一学会了慢动态长途：看门狗记得住，摇摆进得去也出得来。"
+    },
+    {
+      "id": "ability.wet_scrub",
+      "title": "湿滑应对",
+      "description": "洛一学会了应对湿滑：抓地没了，刹车距离要翻倍。"
+    },
+    {
+      "id": "ability.signal_hold",
+      "title": "等待即机动",
+      "description": "洛一学会了等待：等是机动，不是发呆，走廊释放就出发。"
+    },
+    {
+      "id": "ability.signal_watch",
+      "title": "感知刷新",
+      "description": "洛一学会了看得勤：射程救不了刷新率，先保刷新，再谈射程。"
+    },
+    {
+      "id": "ability.signal_cross",
+      "title": "交叉相位",
+      "description": "洛一学会了过路口：等侧面威胁通过，窗口出现再进。"
+    }
+  ]
+}

@@ -99,6 +99,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     stories = [_read(p) for p in sorted((root / "story").glob("*.json"))]
     presentations = [_read(p) for p in sorted((root / "presentation").glob("*.json"))]
     robots = [_read(p) for p in sorted((root / "robots").glob("*.json"))]
+    abilities = _read(root / "abilities.json")
 
     if (
         not levels
@@ -129,6 +130,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         _schema(doc, schema_dir / "story.schema.json")
     for doc in presentations:
         _schema(doc, schema_dir / "presentation.schema.json")
+    _schema(abilities, schema_dir / "abilities.schema.json")
     for doc in robots:
         for key in (
             "max_wheel_speed_mps",
@@ -307,6 +309,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
 
     components: dict[str, tuple[str, dict[str, Any]]] = {}
     components_by_slot: dict[str, list[dict[str, Any]]] = {}
+    ability_ids: set[str] = set()
+    for index, ability in enumerate(abilities.data["abilities"]):
+        _register(global_ids, ability["id"], f"abilities.json:/abilities/{index}/id")
+        ability_ids.add(ability["id"])
     for doc in component_docs:
         slot = doc.data["slot"]
         components_by_slot.setdefault(slot, [])
@@ -510,7 +516,12 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         for reward in level_by_id[level_id].data.get("rewards", []):
             if reward in components:
                 owned.add(reward)
-            elif not (reward.startswith("ability.") or reward.startswith("story.")):
+            elif reward.startswith("ability."):
+                if reward not in ability_ids:
+                    raise ContentError(
+                        f"{level_id}:/rewards: unknown ability '{reward}'"
+                    )
+            elif not reward.startswith("story."):
                 raise ContentError(
                     f"{level_id}:/rewards: unknown reward '{reward}'"
                 )

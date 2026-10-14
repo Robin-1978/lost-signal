@@ -54,6 +54,12 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
    progress.inventory_.push_back(id);
   }
  }
+ for (const auto& id : value.value("abilities", std::vector<std::string>{})) {
+  if (catalog.abilities().contains(id) &&
+      std::find(progress.abilities_.begin(), progress.abilities_.end(), id) == progress.abilities_.end()) {
+   progress.abilities_.push_back(id);
+  }
+ }
  const auto builds = value.value("last_builds", json::object());
  for (auto it = builds.begin(); it != builds.end(); ++it) {
   if (!known_level(catalog, it.key()) || !it.value().is_object())
@@ -98,9 +104,15 @@ void CampaignProgress::record_completion(const std::string& level_id, const Miss
   completed_levels_.push_back(level_id);
  }
  for (const auto& reward : catalog.level(level_id).rewards) {
-  if (catalog.components().contains(reward) &&
-      std::find(inventory_.begin(), inventory_.end(), reward) == inventory_.end()) {
-   inventory_.push_back(reward);
+  if (catalog.components().contains(reward)) {
+   if (std::find(inventory_.begin(), inventory_.end(), reward) == inventory_.end()) {
+    inventory_.push_back(reward);
+   }
+  } else if (reward.rfind("ability.", 0) == 0) {
+   catalog.ability(reward); // loud on unknown: abilities never vanish silently.
+   if (std::find(abilities_.begin(), abilities_.end(), reward) == abilities_.end()) {
+    abilities_.push_back(reward);
+   }
   }
  }
  const auto& order = catalog.campaign().levels;
@@ -158,6 +170,7 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
    {"content_version", catalog.campaign().content_version},
    {"completed_levels", completed_levels_},
    {"inventory", inventory_},
+   {"abilities", abilities_},
    {"last_builds", std::move(builds)},
    {"best_scores", std::move(scores)},
  };

@@ -30,6 +30,8 @@ class ContentCatalog {
 
  const std::unordered_map<std::string, LevelDefinition>& levels() const { return levels_; }
  const std::unordered_map<std::string, ComponentDefinition>& components() const { return components_; }
+ const std::unordered_map<std::string, AbilityDefinition>& abilities() const { return abilities_; }
+ const AbilityDefinition& ability(const std::string& id) const;
  const SurfaceMaterialDefinition& surface_material(const std::string& id) const;
  const std::unordered_map<std::string, PolicyDefinition>& policies() const { return policies_; }
  const std::unordered_map<std::string, RobotDefinition>& robots() const { return robots_; }
@@ -55,6 +57,7 @@ class ContentCatalog {
  std::unordered_map<std::string, SceneDefinition> scenes_;
  std::unordered_map<std::string, RobotDefinition> robots_;
  std::unordered_map<std::string, ComponentDefinition> components_;
+ std::unordered_map<std::string, AbilityDefinition> abilities_;
  std::unordered_map<std::string, PolicyDefinition> policies_;
  std::unordered_map<std::string, PresentationDefinition> presentations_;
  std::vector<StoryBeatDefinition> story_beats_;

@@ -223,6 +223,12 @@ struct LevelDefinition {
  std::vector<std::string> rewards;
 };
 
+struct AbilityDefinition {
+ std::string id;
+ std::string title;
+ std::string description;
+};
+
 struct ComponentDefinition {
  std::string id;
  std::string slot;

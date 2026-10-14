@@ -213,6 +213,18 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    insert_unique(catalog.surface_materials_, std::move(material), path);
   }
  }
+ {
+  const auto path = catalog.root_ / "abilities.json";
+  const auto value = read_json(path);
+  require_schema_v1(value, path);
+  for (const auto& item : value.at("abilities")) {
+   AbilityDefinition ability;
+   ability.id = item.at("id").get<std::string>();
+   ability.title = item.at("title").get<std::string>();
+   ability.description = item.at("description").get<std::string>();
+   insert_unique(catalog.abilities_, std::move(ability), path);
+  }
+ }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
   const auto value = read_json(path);
   require_schema_v1(value, path);
@@ -696,6 +708,14 @@ const ComponentDefinition& ContentCatalog::component(const std::string& id) cons
  const auto found = components_.find(id);
  if (found == components_.end()) {
   throw ContentError("unknown component '" + id + "'");
+ }
+ return found->second;
+}
+
+const AbilityDefinition& ContentCatalog::ability(const std::string& id) const {
+ const auto found = abilities_.find(id);
+ if (found == abilities_.end()) {
+  throw ContentError("unknown ability '" + id + "'");
  }
  return found->second;
 }
