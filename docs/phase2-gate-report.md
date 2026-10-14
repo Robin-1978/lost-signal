@@ -88,3 +88,36 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 
 中继 0 的含义：本片在冻结约定内（只读观察＋隔离实验证明），无架构分叉、
 无门禁结论变化、无 stop-loss——按约定不打扰评审。
+
+## F. 不确定性证据表 v1（evidence table，不是 budget）
+
+命名纪律：本表无消费者、无 N 阈值，任何 `margin += f(...)` 须在 wiring 时
+推导＋pin——此前它只能叫证据表，更名 budget 的那天就是 Phase-2 接线的那天。
+
+### F1. 等待 episode 分布（departure shadow，关×种子）
+
+| 关 | 种子 | micro-inf | micro-fin | sus-inf | sus-fin |
+|---|---|---|---|---|---|
+| lost_signal＋signal_echo（release_error） | 2 关×3 | 72 | 9 | 4 | 0 |
+| signal_hold（accumulation） | 42–47 | 70 | 10 | 8 | 1（仅 seed 42） |
+| signal_watch（accumulation） | 同走廊×3 | 35 | 5 | 4 | 1（同相位，相关非独立） |
+
+覆盖读数：micro 两格满；sus-inf 在 6/9 种子相位出现；sus-fin＝2 样本、
+同走廊同相位——单相位依赖，Gate B 缺口形状即此。
+
+### F2. 时间误差（replay，同一轨迹×延迟）
+
+latency 0/20/50/100/200ms → gap 误差 0/1.8/5.4/8.9/17.9cm（单调为正：
+planner 高估 margin，乐观危险方向）。dropout 末端窗 0/50/150/300ms：
+预算内 Fresh 带 0.06m 残差；超预算 hold 误差≈dropout×速度、CV≈0、flag 拒估。
+
+### F3. 执行偏差（RO-2 shadow，assess vs 生产 rollout）
+
+直道 max 0.34m／90°弯 0.39m，ObservedDeviated（瞬时巡航 vs 静止 spool-up，
+时长按构造相等，滞后体现在空间）。归属：planner-margin／执行模型账。
+
+### F4. 估计与打滑（filter＋observer，生产流）
+
+filter 合成真值 RMSE 0.029→0.007、3σ 一致 291/300；slip 残差包络：
+铺装/沙地稳态 0.0024/0.0064、搓擦 yaw 0.175、蠕行全拒估。confidence 载体
+（1/(1+trace)）为报告口径，未标定覆盖率——标定待 filter 真流。
