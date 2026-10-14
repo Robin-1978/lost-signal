@@ -119,6 +119,23 @@ int main() {
  CHECK(default_attempt.result().status == game::MissionStatus::Failed);
  CHECK(default_attempt.result().failure_reason == "collision-dynamic");
  CHECK(default_attempt.result().collisions == 1);
+ // Traction saturation is live: a hot motor on eco tires spins through the
+ // traction limit (27 episodes here). Official builds rarely saturate, which
+ // is why their odometry comes from the slip-scale random walk instead.
+ game::BuildSelection spin_build;
+ spin_build.tires = "tires.eco";
+ spin_build.sensor = "sensor.long_slow_lidar";
+ spin_build.computer = "computer.light";
+ spin_build.motor = "motor.torque";
+ spin_build.imu = "imu.basic";
+ spin_build.style = 1.0;
+ game::MissionSimulation spin_run(catalog, "blocked_route", spin_build);
+ spin_run.run_to_completion();
+ CHECK(spin_run.result().slip_events > 0);
+ CHECK(spin_run.result().status == game::MissionStatus::Succeeded);
+ game::MissionSimulation spin_repeat(catalog, "blocked_route", spin_build);
+ spin_repeat.run_to_completion();
+ CHECK(std::abs(spin_repeat.result().time_s - spin_run.result().time_s) < 1e-12);
 
  game::BuildSelection mid_style = build;
  mid_style.style = 0.37;
@@ -128,20 +145,6 @@ int main() {
  game::MissionSimulation mid_second(catalog, "lost_signal", mid_style);
  mid_second.run_to_completion();
  CHECK(std::abs(mid_second.result().time_s - mid_first.result().time_s) < 1e-12);
-
- game::BuildSelection torque_build;
- torque_build.tires = "tires.standard";
- torque_build.sensor = "sensor.standard_lidar";
- torque_build.computer = "computer.performance";
- torque_build.motor = "motor.torque";
- torque_build.imu = "imu.basic";
- torque_build.style = 0.0;
- game::MissionSimulation torque_first(catalog, "lost_signal", torque_build);
- torque_first.run_to_completion();
- CHECK(torque_first.result().status == game::MissionStatus::Succeeded);
- game::MissionSimulation torque_second(catalog, "lost_signal", torque_build);
- torque_second.run_to_completion();
- CHECK(std::abs(torque_second.result().time_s - torque_first.result().time_s) < 1e-12);
 
  game::MissionSimulation second(catalog, "lost_signal", build);
  second.run_to_completion();

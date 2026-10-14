@@ -48,6 +48,7 @@ class AckermannDrive : public ChassisModel {
  PID servo_pid_;
  double delta_rad_{0.0};
  double servo_rate_state_{0.0};
+ double drive_wheel_{0.0};
  ChassisTelemetry telemetry_;
 };
 

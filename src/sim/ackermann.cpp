@@ -34,6 +34,7 @@ void AckermannDrive::reset() {
  servo_pid_.reset();
  delta_rad_ = 0.0;
  servo_rate_state_ = 0.0;
+ drive_wheel_ = 0.0;
  telemetry_ = {};
  telemetry_.differential = false;
 }
@@ -51,8 +52,7 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  auto& servo = telemetry_.steer;
 
  drive.target_mps = clamp(command.target_v, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
- const double actual_drive = state.v;
- drive.measured_mps = encoder_measure(actual_drive, dt);
+ drive.measured_mps = encoder_measure(drive_wheel_, dt);
 
  // Curvature demand from the twist interface, then the servo position loop.
  // P-only by construction: a servo closes its own inner loop, the outer loop
@@ -69,29 +69,28 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  delta_rad_ = clamp(delta_rad_ + servo_rate_state_ * dt, -params_.max_steer_rad, params_.max_steer_rad);
  servo.angle_rad = delta_rad_;
 
- // Drive force: same DC motor physics as a differential wheel, full mass.
+ // Drive unit: same shared contact as differential wheels (tire/ground content
+ // means the same thing on every chassis). The drive wheel owns its speed
+ // state; the body only feels the contact force.
  drive.pwm = drive_pid_.update(drive.target_mps - drive.measured_mps, dt);
  drive.pid_p = drive_pid_.p();
  drive.pid_i = drive_pid_.i();
  drive.pid_d = drive_pid_.d();
- const double curve = std::max(0.0, 1.0 - std::abs(actual_drive) / std::max(0.05, params_.free_speed_mps));
- double force = drive.pwm * params_.stall_force_N * curve;
  const double weight = params_.mass_kg * kGravity;
- const double resist =
-   std::max(0.0, ground.rolling_resist) * weight * std::tanh(actual_drive / kCoulombWidthMps) +
-   kViscousNPerMps * actual_drive;
- force -= resist;
- const bool slipping = std::abs(force) > std::max(0.0, ground.mu_eff) * weight;
- if (slipping) {
-  force = std::copysign(std::max(0.0, ground.mu_eff) * weight, force);
- }
- drive.slipping = slipping;
+ const WheelContactParams contact{params_.stall_force_N, params_.free_speed_mps,
+                                  std::max(0.0, ground.mu_eff) * weight};
+ const WheelContactResult contact_out = step_driven_wheel(drive_wheel_, state.v, drive.pwm, contact, dt);
+ drive_wheel_ = clamp(contact_out.wheel_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
+ drive.actual_mps = drive_wheel_;
+ drive.slipping = contact_out.slipping;
+ const double resist = std::max(0.0, ground.rolling_resist) * weight * std::tanh(state.v / kCoulombWidthMps) +
+                       kViscousNPerMps * state.v;
 
  const double accel_cap = params_.max_drive_accel_mps2;
  DiffState next = state;
- next.v = state.v + clamp((force / std::max(0.5, params_.mass_kg)) * dt, -accel_cap * dt, accel_cap * dt);
+ next.v = state.v + clamp(((contact_out.body_force_N - resist) / std::max(0.5, params_.mass_kg)) * dt,
+                          -accel_cap * dt, accel_cap * dt);
  next.w = next.v * std::tan(delta_rad_) / std::max(0.05, params_.wheel_base_m);
- drive.actual_mps = clamp(next.v, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);

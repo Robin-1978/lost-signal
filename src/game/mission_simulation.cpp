@@ -79,6 +79,7 @@ void MissionSimulation::reset() {
  dynamic_obstacle_map_.clear();
  // Gyro bias is drawn once per run: constant within the run, new every run.
  gyro_bias_ = imu_ ? imu_rng_.gauss(property(imu_->behavior, "gyro_bias_radps")) : 0.0;
+ was_saturated_ = false;
  build_world();
  plan_route();
 
@@ -101,6 +102,7 @@ void MissionSimulation::build_world() {
    truth_map_->addBox(obstacle.min.x, obstacle.min.y, obstacle.max.x, obstacle.max.y);
   }
  }
+ lidar_ = std::make_unique<sim::SimLidar>(*truth_map_);
  collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(sim::kRobotRadius));
  const double requested_clearance = property(behavior_, "safe_clearance_m");
  const bool has_dynamic_actors =
@@ -286,8 +288,8 @@ void MissionSimulation::scan_environment() {
  const sim::Vec2 position{snapshot_.robot.x, snapshot_.robot.y};
  const int rays = static_cast<int>(property(sensor_->behavior, "rays"));
  const double range = property(sensor_->behavior, "range_m");
- const auto scan = sim::lidar_scan(*truth_map_, position, snapshot_.robot.theta, rays, range,
-                                   property(sensor_->behavior, "noise_sigma_m"), rng_, actual_actors_);
+ const auto scan = lidar_->scan(position, snapshot_.robot.theta, rays, range,
+                                property(sensor_->behavior, "noise_sigma_m"), rng_, actual_actors_);
  snapshot_.lidar_hits.clear();
  std::vector<int> dynamic_hit_count(actual_actors_.size(), 0);
  dynamic_centroid_.assign(actual_actors_.size(), {0.0, 0.0});
@@ -461,6 +463,8 @@ void MissionSimulation::decide_control() {
  const double speed_cap = std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps")));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
+ // Prediction is a module, not a tracker method: raw tracks in, future
+ // frames out. known_tracks (age-advanced, for display) must not feed it.
  const auto predicted_frames =
    dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto dwa = sim::dwa_compute_trajectory(
@@ -575,7 +579,15 @@ void MissionSimulation::apply_motion() {
  if (traction < 1.0) {
   slip /= traction;
  }
- if (motors.left.slipping || motors.right.slipping) {
+ // Traction saturation (model-side contact state, like motor force: used for
+ // odometry degradation, never displayed as a sensed reading). Rising edge
+ // counts a slip episode for the debrief.
+ const bool saturated = motors.left.slipping || motors.right.slipping;
+ if (saturated && !was_saturated_) {
+  ++result_.slip_events;
+ }
+ was_saturated_ = saturated;
+ if (saturated) {
   slip *= 3.0;
  }
  double encoder_v = 0.0;

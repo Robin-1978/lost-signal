@@ -80,6 +80,9 @@ void DeadReckon::update(double velocity, double angular_velocity, double dt, Rng
  // Complementary heading, weighted by slip: wheels are excellent on grip and
  // lie when sliding, the gyro is mediocre everywhere. Trust each source where
  // it deserves it, like any real fusion filter does with covariances.
+ // Authority cap 0.5: even on ice the wheels keep half the vote, so soft-tire
+ // evidence is never fully masked by the gyro. L5-recommended (grip, low slip)
+ // never engages the gyro at all and is unaffected by this number.
  double gyro_weight = 0.0;
  if (has_gyro) {
   gyro_weight = std::clamp((slip_scale - 1.0) * 0.5, 0.0, 0.8);

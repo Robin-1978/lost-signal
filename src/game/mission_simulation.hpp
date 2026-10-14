@@ -6,6 +6,7 @@
 #include "sim/dwa.hpp"
 #include "sim/eventlog.hpp"
 #include "sim/follow.hpp"
+#include "sim/hal.hpp"
 #include "sim/grid_map.hpp"
 #include "sim/motor_drive.hpp"
 #include "sim/pid.hpp"
@@ -109,6 +110,7 @@ struct MissionResult {
  sim::Vec2 min_dynamic_actor_position;
  double odometry_error_m{0.0};
  int collisions{0};
+ int slip_events{0};
  int astar_expanded{0};
  int local_decisions{0};
  bool via_reached{false};
@@ -170,10 +172,14 @@ class MissionSimulation {
  const ComponentDefinition* motor_{nullptr};
  const ComponentDefinition* imu_{nullptr};
  double gyro_bias_{0.0};
+ bool was_saturated_{false};
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 
  std::unique_ptr<sim::GridMap> truth_map_;
+ // Sensing goes through the HAL even in simulation: the same call path a
+ // hardware backend will serve. Rebuilt with the world in build_world().
+ std::unique_ptr<sim::LidarBackend> lidar_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<sim::GridMap> planning_map_;
  std::unique_ptr<sim::DiffDrive> drive_;

@@ -53,12 +53,12 @@
 ### 自动验证结果
 
 - 空目录完整图形构建：成功，依赖下载、固定哈希校验、TGUI 补丁、字体打包和链接全部通过。
-- CTest：4/4 通过，覆盖内容加载、任务仿真、动态雷达遮挡与跟踪，以及试玩汇总。
+- CTest：5/5 通过，覆盖内容加载、任务仿真、动态雷达遮挡与跟踪、底盘模型（差速/阿克曼）回归，以及试玩汇总。
 - 版本化 JSON 进度已通过写入、替换和重新加载回归，保存稳定关卡 ID、通关状态和最佳评价；演示与截图模式不会修改玩家存档。
 - Python 内容测试：15/15 通过，包括事件镜头权重、17 个 GLB 法线访问器、PNG 尺寸与签名检查，以及缺失纹理、缺失模型、坏场景引用和坏 Prefab 引用的拒绝测试。
 - Python 试玩汇总测试：3/3 通过。
 - 内容 Schema 与跨文件引用：通过，识别 6 个关卡、1 张地图、1 个 3D 场景、1 个机器人装配、17 个组件、3 种策略和 6 份表现配置。
-- 复现命令：`./tools/build.sh --headless --test`（CTest 4/4）；`python3 -m pytest tests/test_content.py tests/test_playtest.py -q`（18 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（72.08 秒成功）与 `--default`（26.2 秒动态碰撞）。
+- 复现命令：`./tools/build.sh --headless --test`（CTest 5/5）；`python3 -m pytest tests/test_content.py tests/test_playtest.py -q`（18 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（79.62 秒成功）与 `--default`（27.16 秒动态碰撞）。
 - P3 事件镜头 SHA 用当前构建复现（需 Xvfb，见 `.github/workflows/build.yml`）：`xvfb-run -a ./build/release/lost_signal --demo --screenshot /tmp/lost-signal.png`，连续两次应等于 P3 基线；P1/P2 为阶段历史记录。
 
 ## 画面验收清单

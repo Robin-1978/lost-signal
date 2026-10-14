@@ -1,4 +1,5 @@
 #include "sim/dynamic_obstacle_map.hpp"
+#include "sim/hal.hpp"
 #include "sim/diff_drive.hpp"
 #include "sim/dwa.hpp"
 #include "sim/grid_map.hpp"
@@ -32,6 +33,21 @@ int main() {
  CHECK(occluded.hit[0]);
  CHECK(occluded.dynamic_hit[0] == -1);
  CHECK(occluded.ranges[0] < visible.ranges[0]);
+
+ // HAL contract: SimLidar reproduces the direct raycast bit-for-bit.
+ sim::SimLidar hal_lidar(open_map);
+ sim::Rng hal_rng(7);
+ sim::Rng direct_rng(7);
+ (void)direct_rng;
+ sim::Rng open_rng2(7);
+ const auto direct = sim::lidar_scan(open_map, {1.0, 5.0}, 0.0, 4, 10.0, 0.0, open_rng2, forklift);
+ const auto via_hal = hal_lidar.scan({1.0, 5.0}, 0.0, 4, 10.0, 0.0, hal_rng, forklift);
+ CHECK(via_hal.ranges.size() == direct.ranges.size());
+ for (std::size_t i = 0; i < via_hal.ranges.size(); ++i) {
+  CHECK(via_hal.ranges[i] == direct.ranges[i]);
+  CHECK(via_hal.hit[i] == direct.hit[i]);
+  CHECK(via_hal.dynamic_hit[i] == direct.dynamic_hit[i]);
+ }
 
  sim::DynamicObstacleMap dynamic_map;
  dynamic_map.observe({0, {5.0, 5.0}, 0.5}, 0.0);

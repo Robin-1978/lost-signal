@@ -81,6 +81,7 @@ int main(int argc, char** argv) {
       }},
      {"odometry_error_m", result.odometry_error_m},
      {"collisions", result.collisions},
+     {"slip_events", result.slip_events},
      {"astar_expanded", result.astar_expanded},
      {"local_decisions", result.local_decisions},
      {"robot",
