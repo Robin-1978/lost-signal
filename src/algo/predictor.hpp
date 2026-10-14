@@ -192,12 +192,65 @@ struct PocketAssessment {
  LegAssessment hold;
  LegAssessment rejoin;
  Feasibility::Verdict overall{Feasibility::Verdict::kUnknown};
+ // Chain minimum over legs that produced evidence (nominal model only: same
+ // inputs, same arithmetic — not a release license, and never inherited by
+ // perturbed scenarios). +infinity when no leg produced evidence.
+ double chain_min_gap_m{std::numeric_limits<double>::infinity()};
 };
+
+// Pocket candidate sampling (generation layer): lateral offsets off route
+// vertices, snapped to free inflated cells, each paired with a downstream
+// merge vertex and the route suffix from it. Sampling NEVER upgrades a
+// safety verdict: every candidate still goes through the full three-leg
+// assessment, and a missed feasible spot outside the sampled set proves
+// nothing about the space. All budgets are explicit caller inputs (search
+// effort, not physics — nothing to derive, everything to state).
+struct PocketSampleParams {
+ // Lateral offsets to try per route vertex, in order (meters, signed).
+ std::vector<double> lateral_offsets_m{1.0, -1.0};
+ // Only vertices within this arc distance from route start are used (m).
+ double window_m{10.0};
+ // Merge = first vertex at least this far downstream of the pocket vertex (m).
+ double min_downstream_m{3.0};
+ // Pockets closer than this to the start are skipped (m): that is WaitInPlace.
+ double min_pocket_dist_m{0.3};
+ // Hard cap on assessed candidates (deterministic order: route, then offset).
+ int max_candidates{8};
+};
+
+struct PocketCandidate {
+ Vec2 pocket{0.0, 0.0};
+ Vec2 merge{0.0, 0.0};
+ PocketAssessment assessment;
+};
+
+enum class SearchVerdict {
+ kFoundFeasible, // at least one candidate fully proven (evidence attached).
+ kAllRefused,    // every assessed candidate proven Infeasible (reasons kept).
+                 // Says nothing about unsampled space.
+ kIncomplete,    // no proof either way: Unknown legs, truncation, or zero
+                 // candidates sampled. Never file as safe or as infeasible.
+};
+
+struct PocketSearch {
+ std::vector<PocketCandidate> candidates;
+ SearchVerdict verdict{SearchVerdict::kIncomplete};
+ bool truncated{false};
+};
+
+// Generate (bounded, deterministic) + assess (three legs each) + keep every
+// verdict with its reasons. hold_s is the scheduling policy input, identical
+// for all candidates; scheduling optimization is not this slice.
+PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
+                            Vec2 start, double start_theta, double cruise_mps, double yaw_rate_rads,
+                            bool can_spin, double hold_s, const PocketSampleParams& params,
+                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                            double ego_radius_m, double margin_m);
 
 // Pocket candidate with both transits planned: A* from start to pocket and
 // from pocket to the route merge point (on the caller-inflated grid), then
-// the route suffix appended for the rejoin leg. Pocket/merge SAMPLING (which
-// spots to try) is the next slice; this composes assessment for given spots.
+// the route suffix appended for the rejoin leg. Spot selection lives in
+// sample_pockets; this composes assessment for given spots.
 PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
                                     Vec2 pocket, Vec2 merge,
                                     const std::vector<Vec2>& route_suffix, double cruise_mps,

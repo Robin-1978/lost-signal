@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <set>
 
 namespace sim {
 namespace {
@@ -469,6 +470,91 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
   out.overall = Feasibility::Verdict::kUnknown;
  } else {
   out.overall = Feasibility::Verdict::kFeasible;
+ }
+ // Chain minimum over legs that produced evidence (nominal model only).
+ out.chain_min_gap_m = std::min({out.transit.min_gap_m, out.hold.min_gap_m, out.rejoin.min_gap_m});
+ return out;
+}
+
+PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
+                            Vec2 start, double start_theta, double cruise_mps, double yaw_rate_rads,
+                            bool can_spin, double hold_s, const PocketSampleParams& params,
+                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                            double ego_radius_m, double margin_m) {
+ PocketSearch out;
+ if (route.size() < 2 || params.max_candidates <= 0 || params.lateral_offsets_m.empty()) {
+  return out;
+ }
+ // Arc-length table for downstream merge selection.
+ std::vector<double> arc(route.size(), 0.0);
+ for (std::size_t i = 1; i < route.size(); ++i) {
+  arc[i] = arc[i - 1] + std::hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
+ }
+ std::set<std::pair<int, int>> tried;
+ for (std::size_t i = 0; i < route.size() && !out.truncated; ++i) {
+  if (arc[i] > params.window_m + 1e-9) {
+   break;
+  }
+  const Vec2 prev = route[i == 0 ? 0 : i - 1];
+  const Vec2 next = route[i + 1 >= route.size() ? route.size() - 1 : i + 1];
+  Vec2 dir{next.x - prev.x, next.y - prev.y};
+  const double len = std::hypot(dir.x, dir.y);
+  if (len < 1e-9) {
+   continue;
+  }
+  dir = {dir.x / len, dir.y / len};
+  const Vec2 normal{-dir.y, dir.x};
+  for (const double offset : params.lateral_offsets_m) {
+   if (out.truncated) {
+    break;
+   }
+   const Vec2 raw{route[i].x + normal.x * offset, route[i].y + normal.y * offset};
+   const auto cell = inflated_map.worldToGrid(raw.x, raw.y);
+   if (!tried.insert(cell).second || !inflated_map.isFreeCell(cell.first, cell.second)) {
+    continue;
+   }
+   const Vec2 pocket = inflated_map.gridToWorld(cell.first, cell.second);
+   if (std::hypot(pocket.x - start.x, pocket.y - start.y) < params.min_pocket_dist_m) {
+    continue;
+   }
+   std::size_t merge_idx = route.size();
+   for (std::size_t j = i + 1; j < route.size(); ++j) {
+    if (arc[j] - arc[i] >= params.min_downstream_m - 1e-9) {
+     merge_idx = j;
+     break;
+    }
+   }
+   if (merge_idx >= route.size()) {
+    continue;
+   }
+   PocketCandidate candidate;
+   candidate.pocket = pocket;
+   candidate.merge = route[merge_idx];
+   candidate.assessment = assess_pocket_wait(
+     inflated_map, start, start_theta, pocket, route[merge_idx],
+     std::vector<Vec2>(route.begin() + static_cast<std::ptrdiff_t>(merge_idx), route.end()),
+     cruise_mps, yaw_rate_rads, can_spin, hold_s, frames, frame_dt_s, ego_radius_m, margin_m);
+   out.candidates.push_back(std::move(candidate));
+   if (static_cast<int>(out.candidates.size()) >= params.max_candidates) {
+    out.truncated = true;
+   }
+  }
+ }
+ bool any_feasible = false;
+ bool any_unknown = false;
+ for (const auto& candidate : out.candidates) {
+  if (candidate.assessment.overall == Feasibility::Verdict::kFeasible) {
+   any_feasible = true;
+  } else if (candidate.assessment.overall == Feasibility::Verdict::kUnknown) {
+   any_unknown = true;
+  }
+ }
+ if (any_feasible) {
+  out.verdict = SearchVerdict::kFoundFeasible;
+ } else if (out.candidates.empty() || out.truncated || any_unknown) {
+  out.verdict = SearchVerdict::kIncomplete;
+ } else {
+  out.verdict = SearchVerdict::kAllRefused;
  }
  return out;
 }

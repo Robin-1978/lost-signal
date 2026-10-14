@@ -159,6 +159,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_phase_legs PRIVATE lost_signal_sim)
  add_test(NAME phase_legs COMMAND test_phase_legs)
 
+ add_executable(test_pocket_search tests/new/test_pocket_search.cpp)
+ target_link_libraries(test_pocket_search PRIVATE lost_signal_sim)
+ add_test(NAME pocket_search COMMAND test_pocket_search)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(

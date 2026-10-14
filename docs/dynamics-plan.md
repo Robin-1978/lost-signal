@@ -299,6 +299,14 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        组合 assess_pocket_wait 同步 map 化：首个 overall Feasible 的 pocket
        （transit 2.9s 零转弯＋hold 2s＋汇入，gap 0.67）。
        下一片：pocket/merge 采样（候选生成）；平滑＋重检随 Ackermann 曲率模型来。
+       采样已落地（test_pocket_search，mission 不动）：生成/评估/证据三层分离，
+       预算全显式（offsets/window/merge 距/上限，无推导项）； verdict 三态
+       （FoundFeasible/AllRefused/Incomplete——截断与 Unknown 永为 Incomplete，
+       采样 miss 不证伪空间）；拒绝理由全保留。
+       首个 Feasible 复核：chain_gap＝三腿最小（rejoin 段绑定，0.50），
+       rejoin_end 11.09≤12（转弯＋hold＋汇入全覆盖），Feasible 要求三腿全过——
+       名义模型内有效，不继承给扰动场景。主搜索分布 feasible 3/infeasible 4/
+       unknown 1（8 上限截断），拒收含 WaitUnsafe 在 lane 上的口袋。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：
