@@ -1,9 +1,7 @@
 #include "mission_simulation.hpp"
 
 #include "algo/astar.hpp"
-#include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/chassis_factory.hpp"
-#include "hw/chassis/tracked.hpp"
 #include "algo/slip_detect.hpp"
 
 #include <algorithm>
