@@ -34,6 +34,7 @@ add_library(lost_signal_sim STATIC
  src/algo/pocket_shadow.cpp
  src/algo/estimator_replay.cpp
  src/algo/slip_observer.cpp
+ src/algo/estimator_filter.cpp
 src/hw/feedforward.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
@@ -222,6 +223,9 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_slip_observer tests/new/test_slip_observer.cpp)
  target_link_libraries(test_slip_observer PRIVATE lost_signal_sim)
  add_test(NAME slip_observer COMMAND test_slip_observer)
+ add_executable(test_estimator_filter tests/new/test_estimator_filter.cpp)
+ target_link_libraries(test_estimator_filter PRIVATE lost_signal_sim)
+ add_test(NAME estimator_filter COMMAND test_estimator_filter)
 
  add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
  target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_sim lost_signal_game)
