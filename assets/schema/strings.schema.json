@@ -2,13 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "strings",
   "type": "object",
-  "required": ["schema_version", "strings"],
+  "required": [
+    "schema_version",
+    "strings"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {
+      "const": 1
+    },
     "strings": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": {"type": "string", "minLength": 1}
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   },
   "additionalProperties": false

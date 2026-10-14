@@ -208,6 +208,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    material.title = item.at("title").get<std::string>();
    material.description = item.at("description").get<std::string>();
    material.friction_mu = item.at("friction_mu").get<double>();
+   material.texture_albedo = item.value("texture", std::string{});
    material.rolling_drag = item.at("rolling_drag").get<double>();
    material.traction_scale = item.at("traction_scale").get<double>();
    insert_unique(catalog.surface_materials_, std::move(material), path);

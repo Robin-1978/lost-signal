@@ -206,6 +206,24 @@ SceneRenderer3D::SceneRenderer3D(const std::filesystem::path& assets_root,
   (void)id;
   load_model(component.visual.model_3d);
  }
+ for (const auto& [id, material] : catalog_.surface_materials()) {
+  (void)id;
+  if (!material.texture_albedo.empty() && !surface_models_.contains(material.texture_albedo)) {
+   Texture2D texture = LoadTexture((assets_root_ / material.texture_albedo).string().c_str());
+   if (texture.id > 0) {
+    GenTextureMipmaps(&texture);
+    SetTextureFilter(texture, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(texture, TEXTURE_WRAP_REPEAT);
+    Model plane = LoadModelFromMesh(GenMeshPlane(1.0f, 1.0f, 1, 1));
+    plane.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;
+    plane.materials[0].maps[MATERIAL_MAP_METALNESS].value = 0.04f;
+    plane.materials[0].maps[MATERIAL_MAP_ROUGHNESS].value = 0.91f;
+    bind_shader(plane);
+    textures_.emplace(material.texture_albedo, texture);
+    surface_models_.emplace(material.texture_albedo, plane);
+   }
+  }
+ }
  for (const auto& [id, scene] : catalog_.scenes()) {
   (void)id;
   if (!scene.floor.albedo_texture.empty() && !floor_models_.contains(scene.floor.albedo_texture)) {
@@ -676,6 +694,25 @@ void SceneRenderer3D::draw_surface(const game::SurfaceDefinition& surface) const
  const float length = static_cast<float>(surface.max.y - surface.min.y);
  const float center_x = static_cast<float>((surface.min.x + surface.max.x) * 0.5);
  const float center_z = static_cast<float>(-(surface.min.y + surface.max.y) * 0.5);
+ // Material albedo quad (1px = 1 texel per meter tile): the ground reads as
+ // its physics (sand looks sandy) instead of generic teal boxes. Empty
+ // texture falls back to the old patches (same as before).
+ const auto& material = catalog_.surface_material(surface.material);
+ const auto plane = surface_models_.find(material.texture_albedo);
+ if (!material.texture_albedo.empty() && plane != surface_models_.end()) {
+  const int tiles_x = std::max(1, static_cast<int>(std::ceil(width)));
+  const int tiles_z = std::max(1, static_cast<int>(std::ceil(length)));
+  const float cell_w = width / static_cast<float>(tiles_x);
+  const float cell_l = length / static_cast<float>(tiles_z);
+  for (int ix = 0; ix < tiles_x; ++ix) {
+   for (int iz = 0; iz < tiles_z; ++iz) {
+    const float cx = static_cast<float>(surface.min.x) + (static_cast<float>(ix) + 0.5f) * cell_w;
+    const float cz = static_cast<float>(surface.min.y) + (static_cast<float>(iz) + 0.5f) * cell_l;
+    DrawModelEx(plane->second, {cx, 0.006f, -cz}, {0, 1, 0}, 0.0f, {cell_w, 1.0f, cell_l}, WHITE);
+   }
+  }
+  return;
+ }
  for (int patch = 0; patch < 5; ++patch) {
   const float x = center_x + (hash01(patch, 4, 1) - 0.5f) * width * 0.62f;
   const float z = center_z + (hash01(patch, 5, 2) - 0.5f) * length * 0.62f;

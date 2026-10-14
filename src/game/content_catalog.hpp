@@ -38,6 +38,9 @@ class ContentCatalog {
  const std::string& tr(const std::string& key) const;
  std::string trf(const std::string& key, const std::vector<std::string>& args) const;
  const SurfaceMaterialDefinition& surface_material(const std::string& id) const;
+ const std::unordered_map<std::string, SurfaceMaterialDefinition>& surface_materials() const {
+  return surface_materials_;
+ }
  const std::unordered_map<std::string, PolicyDefinition>& policies() const { return policies_; }
  const std::unordered_map<std::string, RobotDefinition>& robots() const { return robots_; }
  const std::unordered_map<std::string, SceneDefinition>& scenes() const { return scenes_; }

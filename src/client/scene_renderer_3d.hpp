@@ -46,6 +46,7 @@ class SceneRenderer3D {
  std::filesystem::path assets_root_;
  std::unordered_map<std::string, Model> models_;
  std::unordered_map<std::string, Model> floor_models_;
+ std::unordered_map<std::string, Model> surface_models_;
  std::unordered_map<std::string, Texture2D> textures_;
  Model cube_model_{};
  Shader shader_{};

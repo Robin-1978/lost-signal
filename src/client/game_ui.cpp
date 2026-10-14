@@ -71,7 +71,7 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
  auto button = tgui::Button::create(text);
  button->setPosition(x, y);
  button->setSize(width, height);
- button->setTextSize(17);
+ button->setTextSize(19);
  auto renderer = button->getRenderer();
  renderer->setRoundedBorderRadius(9);
  renderer->setBorders({primary ? 0.0f : 1.0f});
@@ -187,11 +187,19 @@ void GameUi::set_screen(Screen screen, const game::MissionSimulation* mission) {
 }
 
 void GameUi::build_garage() {
- add_label(catalog_.tr("garage.heading"), kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
+ // Same overflow story as the chapter roster: 5 slots + style + budget never
+ // fit 900px. Scroll it; widgets keep working (ptrs retained, parent only).
+ auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
+ scroll->setPosition(0, 0);
+ scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
+ scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
+ panel_->add(scroll);
+ add_parent_ = scroll;
+ add_label(catalog_.tr("garage.heading"), kMargin, 24, kContentWidth, 16, {107, 190, 176}, true);
  auto chapter_button = add_button(catalog_.tr("chapter.garage_button"), kMargin + 216, 16, 96, 30);
  chapter_button->onClick([this] { actions_.open_chapter = true; });
  add_label(presentation_->garage_heading, kMargin, 51, kContentWidth, 25, {239, 238, 229}, true);
- add_label(presentation_->garage_brief, kMargin, 94, kContentWidth, 14, {157, 163, 158});
+ add_label(presentation_->garage_brief, kMargin, 94, kContentWidth, 16, {157, 163, 158});
 
  float y = 226.0f;
  if (const auto* beat = catalog_.story_beat(presentation_->level, "before")) {
@@ -202,7 +210,7 @@ void GameUi::build_garage() {
  constexpr float kCardHeight = 40.0f;
  const float card_width = (kContentWidth - 2.0f * kCardGap) / 3.0f;
  for (const auto& column : presentation_->component_columns) {
-  add_label(column.title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
+  add_label(column.title, kMargin, y, kContentWidth, 16, {132, 139, 135}, true);
   std::size_t index = 0;
   for (const auto& option : column.options) {
    const auto& item = catalog_.component(option);
@@ -212,11 +220,11 @@ void GameUi::build_garage() {
     catalog_.trf("garage.card_cost", {item.title, std::to_string(item.cost)}));
    card->setPosition(kMargin + col * (card_width + kCardGap), y + 24 + row * (kCardHeight + kCardGap));
    card->setSize(card_width, kCardHeight);
-   card->setTextSize(13);
+   card->setTextSize(15);
    auto look = card->getRenderer();
    look->setRoundedBorderRadius(8);
    look->setBorders({1.0f});
-   panel_->add(card);
+   add_parent_->add(card);
    card->onClick([this, slot = column.slot, id = option] { select_component(slot, id); });
    slot_cards_[column.slot].push_back({option, card});
    ++index;
@@ -230,20 +238,23 @@ void GameUi::build_garage() {
  style_slider_->setSize(kContentWidth, 18);
  style_slider_->setValue(static_cast<float>(build_.style * 100.0));
  style_slider_->onValueChange([this](float value) { set_style(static_cast<double>(value) / 100.0); });
- panel_->add(style_slider_);
- add_label(catalog_.tr("garage.style_gentle"), kMargin, y + 50, 80, 11, {132, 139, 135});
- auto style_mid = add_label(catalog_.tr("garage.style_normal"), kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ add_parent_->add(style_slider_);
+ add_label(catalog_.tr("garage.style_gentle"), kMargin, y + 50, 80, 14, {132, 139, 135});
+ auto style_mid = add_label(catalog_.tr("garage.style_normal"), kMargin, y + 50, kContentWidth, 14, {132, 139, 135});
  style_mid->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Center);
- auto style_fast = add_label(catalog_.tr("garage.style_fast"), kMargin, y + 50, kContentWidth, 11, {132, 139, 135});
+ auto style_fast = add_label(catalog_.tr("garage.style_fast"), kMargin, y + 50, kContentWidth, 14, {132, 139, 135});
  style_fast->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Right);
- style_value_ = add_label("", kMargin, y + 70, kContentWidth, 13, {143, 201, 187});
+ style_value_ = add_label("", kMargin, y + 70, kContentWidth, 15, {143, 201, 187});
 
- budget_label_ = add_label("", kMargin, y + 108, kContentWidth, 15, {151, 167, 159}, true);
+ budget_label_ = add_label("", kMargin, y + 108, kContentWidth, 18, {151, 167, 159}, true);
  auto recommended = add_button(catalog_.tr("garage.use_recommended"), kMargin, y + 144, 148, 42);
  recommended->onClick([this] { use_recommended_build(); });
  auto next = add_button(catalog_.tr("garage.next"), kMargin + 164, y + 144, 148, 42, true);
  next->onClick([this] { actions_.open_prediction = true; });
  update_garage_labels();
+ if (const auto scrollable = std::dynamic_pointer_cast<tgui::ScrollablePanel>(add_parent_)) {
+  scrollable->setContentSize({static_cast<float>(kPanelWidth), y + 200.0f});
+ }
 }
 
 void GameUi::build_prediction() {

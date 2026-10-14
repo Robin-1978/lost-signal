@@ -7,7 +7,8 @@
       "description": "干燥混凝土，基准抓地。仿真里的 1.0 就是它。",
       "friction_mu": 1.0,
       "rolling_drag": 0.0,
-      "traction_scale": 1.0
+      "traction_scale": 1.0,
+      "texture": "textures/environment/concrete_floor.png"
     },
     {
       "id": "gravel",
@@ -15,7 +16,8 @@
       "description": "碎石浮土，抓地打八折，滚阻明显。",
       "friction_mu": 0.7,
       "rolling_drag": 0.015,
-      "traction_scale": 0.8
+      "traction_scale": 0.8,
+      "texture": "textures/environment/gravel_floor.png"
     },
     {
       "id": "sand",
@@ -23,7 +25,8 @@
       "description": "松散细沙，轮胎刨坑，滚阻最大。",
       "friction_mu": 0.55,
       "rolling_drag": 0.03,
-      "traction_scale": 0.65
+      "traction_scale": 0.65,
+      "texture": "textures/environment/sand_floor.png"
     },
     {
       "id": "standing_water",
@@ -31,7 +34,8 @@
       "description": "薄层积水，抓地只剩三成半，经济胎的天敌。",
       "friction_mu": 0.35,
       "rolling_drag": 0.02,
-      "traction_scale": 0.45
+      "traction_scale": 0.45,
+      "texture": "textures/environment/water_floor.png"
     }
   ]
 }

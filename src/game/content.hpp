@@ -43,6 +43,8 @@ struct SurfaceMaterialDefinition {
  std::string id;
  std::string title;
  std::string description;
+ // Albedo texture for ground patches (empty = flat boxes, same as before).
+ std::string texture_albedo;
  double friction_mu{1.0};
  double rolling_drag{0.0};
  double traction_scale{1.0};
