@@ -77,6 +77,11 @@ struct ControlSnapshot {
  double right_speed_pid_p{0.0};
  double right_speed_pid_i{0.0};
  double right_speed_pid_d{0.0};
+ // Ackermann only: drive-unit values mirror into the left_* fields above and
+ // the servo state lands here. Differential leaves these zero (never fiction).
+ double steer_target_rad{0.0};
+ double steer_angle_rad{0.0};
+ double steer_pwm{0.0};
 };
 
 struct MissionSnapshot {
@@ -136,6 +141,8 @@ class MissionSimulation {
  const LevelDefinition& level() const { return level_; }
  const MapDefinition& map_definition() const { return map_definition_; }
  const BuildSelection& build() const { return build_; }
+ const RobotDefinition& robot() const { return robot_definition_; }
+ static const std::string& level_robot_id(const ContentCatalog& catalog, const std::string& level_id);
  uint64_t effective_seed() const { return seed_override_.value_or(level_.seed); }
  const sim::GridMap& occupancy_map() const { return *truth_map_; }
  const std::vector<sim::Vec2>& planned_path() const { return planned_path_; }
@@ -194,6 +201,9 @@ class MissionSimulation {
  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::PID> heading_pid_;
  double heading_kp_{0.0};
+ // Yaw-rate capability used by DWA/manual/clamps. Diff: DiffDrive w_max.
+ // Ackermann: v*tan(steer_max)/base at top drive speed. Hardware, not tuned.
+ double yaw_cap_rads_{2.0};
  sim::DeadReckon odometry_;
  sim::Rng rng_;
  sim::Rng perception_rng_;

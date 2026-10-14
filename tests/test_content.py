@@ -38,7 +38,7 @@ class ContentValidationTests(unittest.TestCase):
         catalog = load_and_validate(self.assets)
         self.assertEqual(9, len(catalog["levels"]))
         self.assertEqual(9, len(catalog["presentations"]))
-        self.assertEqual(1, len(catalog["robots"]))
+        self.assertEqual(2, len(catalog["robots"]))
         self.assertEqual(1, len(catalog["scenes"]))
         self.assertEqual("boot", catalog["presentations"]["presentation.boot"]["level"])
         self.assertEqual("洛一", catalog["campaign"]["companion"]["display_name"])

@@ -18,7 +18,7 @@ int main() {
  CHECK(catalog.levels().size() == 9);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
- CHECK(catalog.robots().size() == 1);
+ CHECK(catalog.robots().size() == 2);
  CHECK(catalog.scenes().size() == 1);
  CHECK(catalog.presentations().size() == 9);
  CHECK(catalog.story_beats().size() == 15);
@@ -28,6 +28,14 @@ int main() {
  CHECK(robot.drive_type == "differential");
  CHECK(std::abs(robot.motor.max_wheel_speed_mps - 2.4) < 1e-9);
  CHECK(robot.encoder.counts_per_revolution == 2048);
+ // Second vehicle: ackermann geometry with honest steering hardware. No
+ // level assigns it yet (slice 2); the catalog contract already holds.
+ const auto& second = catalog.robot("robot.ro2");
+ CHECK(second.drive_type == "ackermann");
+ CHECK(second.steering.max_steer_rad > 0.0);
+ CHECK(second.steering.max_steer_rate_radps > 0.0);
+ CHECK(second.steering.servo_response_s > 0.0);
+ CHECK(second.motor.wheel_equiv_mass_kg > 0.0);
  CHECK(robot.mounts.size() == 5);
  CHECK(robot.base_parts.size() == 1);
  CHECK(robot.slots.size() == 5);

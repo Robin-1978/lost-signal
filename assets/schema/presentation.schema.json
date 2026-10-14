@@ -26,6 +26,9 @@
   "level": {
    "$ref": "#/$defs/id"
   },
+  "robot": {
+   "$ref": "#/$defs/id"
+  },
   "garage": {
    "type": "object",
    "additionalProperties": false,

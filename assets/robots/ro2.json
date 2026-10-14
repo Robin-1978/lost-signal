@@ -1,0 +1,160 @@
+{
+ "schema_version": 1,
+ "id": "robot.ro2",
+ "title": "RO-2",
+ "coordinates": {
+  "units": "meters",
+  "forward": "+x",
+  "left": "+y",
+  "up": "+z",
+  "angles": "degrees"
+ },
+ "drive": {
+  "type": "ackermann",
+  "wheel_radius_m": 0.1,
+  "wheel_base_m": 0.62,
+  "mass_kg": 26.0,
+  "yaw_inertia_kgm2": 2.8,
+  "motor": {
+   "max_wheel_speed_mps": 2.4,
+   "max_wheel_accel_mps2": 6.0,
+   "stall_force_N": 54.0,
+   "free_speed_mps": 3.0,
+   "pwm_limit": 1.0,
+   "integral_limit": 2.0,
+   "wheel_equiv_mass_kg": 3.0
+  },
+  "steering": {
+   "integral_limit": 1.2,
+   "max_steer_rad": 0.55,
+   "max_steer_rate_radps": 2.0,
+   "servo_response_s": 0.35
+  },
+  "energy": {
+   "base_w": 14.0,
+   "per_v_w": 28.0,
+   "per_w_w": 5.0
+  },
+  "encoder": {
+   "counts_per_revolution": 2048
+  },
+  "max_yaw_accel_radps2": 5.0
+ },
+ "collision": {
+  "shape": "cylinder",
+  "radius_m": 0.38,
+  "height_m": 0.42
+ },
+ "mounts": [
+  {
+   "id": "base",
+   "position_m": [
+    0,
+    0,
+    0.18
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "wheel_left",
+   "position_m": [
+    0,
+    0.29,
+    0.1
+   ],
+   "rotation_deg": [
+    90,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "wheel_right",
+   "position_m": [
+    0,
+    -0.29,
+    0.1
+   ],
+   "rotation_deg": [
+    90,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "sensor_top",
+   "position_m": [
+    0.1,
+    0,
+    0.34
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "compute_rear",
+   "position_m": [
+    -0.18,
+    0,
+    0.3
+   ],
+   "rotation_deg": [
+    0,
+    0,
+    0
+   ]
+  }
+ ],
+ "base_parts": [
+  {
+   "id": "ro1_chassis",
+   "mount": "base",
+   "visual": {
+    "primitive_2d": "box",
+    "size_m": [
+     0.7,
+     0.5,
+     0.18
+    ],
+    "color": "#D8ECE8",
+    "model_3d": "models/robots/ro1/chassis.glb"
+   }
+  }
+ ],
+ "slots": [
+  {
+   "slot": "tires",
+   "mounts": [
+    "wheel_left",
+    "wheel_right"
+   ]
+  },
+  {
+   "slot": "sensor",
+   "mounts": [
+    "sensor_top"
+   ]
+  },
+  {
+   "slot": "computer",
+   "mounts": [
+    "compute_rear"
+   ]
+  },
+  {
+   "slot": "motor",
+   "mounts": []
+  },
+  {
+   "slot": "imu",
+   "mounts": []
+  }
+ ]
+}

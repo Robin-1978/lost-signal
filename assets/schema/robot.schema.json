@@ -158,6 +158,18 @@
       "integral_limit": {
        "type": "number",
        "exclusiveMinimum": 0
+      },
+      "max_steer_rad": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "max_steer_rate_radps": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "servo_response_s": {
+       "type": "number",
+       "exclusiveMinimum": 0
       }
      }
     },

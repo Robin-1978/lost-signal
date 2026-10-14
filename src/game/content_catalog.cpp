@@ -442,7 +442,12 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   robot.mass_kg = drive.at("mass_kg").get<double>();
   robot.yaw_inertia_kgm2 = drive.at("yaw_inertia_kgm2").get<double>();
   robot.max_yaw_accel_radps2 = drive.at("max_yaw_accel_radps2").get<double>();
-  robot.steering_integral_limit = steering.at("integral_limit").get<double>();
+  robot.steering = {
+    steering.at("integral_limit").get<double>(),
+    steering.value("max_steer_rad", 0.6),
+    steering.value("max_steer_rate_radps", 2.5),
+    steering.value("servo_response_s", 0.4),
+  };
   robot.energy_base_w = energy.at("base_w").get<double>();
   robot.energy_per_v_w = energy.at("per_v_w").get<double>();
   robot.energy_per_w_w = energy.at("per_w_w").get<double>();
@@ -508,6 +513,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   presentation.id = value.at("id").get<std::string>();
   presentation.is_default = value.at("is_default").get<bool>();
   presentation.level = value.at("level").get<std::string>();
+  presentation.robot_id = value.value("robot", std::string{});
   presentation.garage_heading = garage.at("heading").get<std::string>();
   presentation.garage_brief = garage.at("brief").get<std::string>();
   for (const auto& item : garage.at("component_columns")) {
@@ -619,6 +625,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
  for (const auto& [id, presentation] : catalog.presentations_) {
   (void)catalog.level(presentation.level);
+  if (!presentation.robot_id.empty()) {
+   (void)catalog.robot(presentation.robot_id);
+  }
   catalog.validate_build(presentation.level, presentation.default_build);
   catalog.validate_build(presentation.level, presentation.recommended_build);
  }

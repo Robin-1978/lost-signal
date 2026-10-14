@@ -236,6 +236,14 @@ struct RobotSlotDefinition {
  std::vector<std::string> mounts;
 };
 
+struct SteeringDefinition {
+ double integral_limit{1.2};
+ // Ackermann hardware. Unused by differential cars; required content for
+ // ackermann robots (the servo derivation and yaw capability come from these).
+ double max_steer_rad{0.6};
+ double max_steer_rate_radps{2.5};
+ double servo_response_s{0.4};
+};
 struct MotorDefinition {
  double max_wheel_speed_mps{0.0};
  double max_wheel_accel_mps2{0.0};
@@ -262,7 +270,7 @@ struct RobotDefinition {
  double yaw_inertia_kgm2{0.0};
  double max_yaw_accel_radps2{8.0};
  MotorDefinition motor;
- double steering_integral_limit{1.2};
+ SteeringDefinition steering;
  double energy_base_w{0.0};
  double energy_per_v_w{0.0};
  double energy_per_w_w{0.0};
@@ -311,6 +319,9 @@ struct PresentationDefinition {
  std::string id;
  bool is_default{false};
  std::string level;
+ // Vehicle for this level. Empty = campaign companion (all existing levels).
+ // A non-empty id must name a robot in assets/robots.
+ std::string robot_id;
  std::string garage_heading;
  std::string garage_brief;
  std::vector<ComponentColumn> component_columns;

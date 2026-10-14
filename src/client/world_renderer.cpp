@@ -520,13 +520,22 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  draw_text("上层航向 e " + fixed(control.heading_error_rad, 2) + " rad · v " +
              fixed(control.target_v_mps, 2) + " · ω " + fixed(control.target_w_radps, 2),
            {card.x + 15, card.y + 58}, 12, Fade(kText, 0.82f));
- draw_text("左右轮 · 目标/实测", {card.x + 15, card.y + 80}, 11, Fade(kMuted, 0.82f));
+ const bool ackermann = mission.robot().drive_type == "ackermann";
+ draw_text(ackermann ? "驱动轮 · 目标/实测" : "左右轮 · 目标/实测", {card.x + 15, card.y + 80}, 11,
+           Fade(kMuted, 0.82f));
  draw_text("L 目标 " + fixed(control.left_target_rpm, 0) + " / 实测 " + fixed(control.left_measured_rpm, 0) +
              " rpm · PWM " + fixed(control.left_pwm * 100.0, 0) + "%",
            {card.x + 15, card.y + 99}, 12, Fade(kText, 0.86f));
- draw_text("R 目标 " + fixed(control.right_target_rpm, 0) + " / 实测 " +
-             fixed(control.right_measured_rpm, 0) + " rpm · PWM " + fixed(control.right_pwm * 100.0, 0) + "%",
-           {card.x + 15, card.y + 130}, 12, Fade(kText, 0.86f));
+ if (ackermann) {
+  draw_text("舵机 目标 " + fixed(control.steer_target_rad, 2) + " / 实测 " +
+              fixed(control.steer_angle_rad, 2) + " rad · PWM " + fixed(control.steer_pwm * 100.0, 0) + "%",
+            {card.x + 15, card.y + 130}, 12, Fade(kText, 0.86f));
+ } else {
+  draw_text("R 目标 " + fixed(control.right_target_rpm, 0) + " / 实测 " +
+              fixed(control.right_measured_rpm, 0) + " rpm · PWM " + fixed(control.right_pwm * 100.0, 0) +
+              "%",
+            {card.x + 15, card.y + 130}, 12, Fade(kText, 0.86f));
+ }
  const auto draw_pwm = [&](float y, double value) {
   const Rectangle track{card.x + 15, y, card.width - 30, 7};
   DrawRectangleRounded(track, 0.5f, 6, {38, 43, 42, 230});
@@ -538,12 +547,12 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
            static_cast<int>(y + track.height + 1), Fade(kText, 0.45f));
  };
  draw_pwm(card.y + 117, control.left_pwm);
- draw_pwm(card.y + 148, control.right_pwm);
+ draw_pwm(card.y + 148, ackermann ? control.steer_pwm : control.right_pwm);
 }
 
 void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
- const auto& robot = catalog_.robot(catalog_.campaign().companion_robot);
+ const auto& robot = mission.robot();
  const auto center = world_to_screen({state.robot.x, state.robot.y});
  const Color mode = state.waiting_for_clearance ? kAmber : kCyan;
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(state.time_s * 5.5));

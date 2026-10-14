@@ -490,6 +490,8 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         presentation = presentation_by_level.get(level_id)
         if presentation is None:
             raise ContentError(f"{root / 'presentation'}: missing presentation for '{level_id}'")
+        if presentation.get("robot") and presentation["robot"] not in robot_by_id:
+            raise ContentError(f"{level_id}:/robot: unknown robot '{presentation['robot']}'")
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             for slot in ("tires", "sensor", "computer", "motor", "imu"):

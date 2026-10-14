@@ -717,7 +717,7 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
 void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
- const auto& robot = catalog_.robot(catalog_.campaign().companion_robot);
+ const auto& robot = mission.robot();
  const auto find_mount = [&](const std::string& id) -> const game::MountDefinition* {
   const auto found =
     std::find_if(robot.mounts.begin(), robot.mounts.end(), [&](const auto& mount) { return mount.id == id; });

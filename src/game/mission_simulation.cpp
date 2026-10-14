@@ -1,6 +1,7 @@
 #include "mission_simulation.hpp"
 
 #include "algo/astar.hpp"
+#include "hw/chassis/ackermann.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -43,12 +44,18 @@ const char* mission_status_name(MissionStatus status) {
  return "unknown";
 }
 
+const std::string& MissionSimulation::level_robot_id(const ContentCatalog& catalog,
+                                                     const std::string& level_id) {
+ const std::string& presentation_robot = catalog.presentation_for_level(level_id).robot_id;
+ return presentation_robot.empty() ? catalog.campaign().companion_robot : presentation_robot;
+}
+
 MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string level_id,
                                      BuildSelection build, std::optional<uint64_t> seed_override)
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
       seed_override_(seed_override), level_(catalog_.level(level_id_)),
       map_definition_(catalog_.map(level_.map)),
-      robot_definition_(catalog_.robot(catalog_.campaign().companion_robot)),
+      robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_))),
       behavior_(catalog_.style_behavior(build_.style)), rng_(effective_seed()),
       perception_rng_(effective_seed() ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
@@ -119,12 +126,8 @@ void MissionSimulation::build_world() {
  params.accel_max = spec("tires", "brake_decel_mps2");
  params.wheel_base = robot_definition_.wheel_base_m;
  drive_ = std::make_unique<sim::DiffDrive>(params);
- // Chassis dispatch: drive.type selects the actuator model. Differential drive
- // is the first implementation; unknown types fail loudly in content, never
- // silently fall back to another chassis.
- if (robot_definition_.drive_type != "differential") {
-  throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
- }
+ // Chassis dispatch: drive.type selects the actuator model. Unknown types
+ // fail loudly in content, never silently fall back to another chassis.
  // The equipped motor component overrides the robot default; an empty motor
  // slot (early levels) runs the robot stock motor. New motors stay plug-and-play
  // because PID gains are derived from these same numbers.
@@ -137,30 +140,68 @@ void MissionSimulation::build_world() {
  const double wheel_mass = std::max(0.5, robot_definition_.mass_kg / 2.0);
  const sim::WheelPidGains wheel_gains =
    sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax);
- chassis_ = std::make_unique<sim::DifferentialMotorDrive>(
-   sim::MotorDriveParams{
-     robot_definition_.wheel_base_m,
-     robot_definition_.wheel_radius_m,
-     motor_vmax,
-     std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
-     motor_stall,
-     motor_free,
-     robot_definition_.mass_kg,
-     robot_definition_.yaw_inertia_kgm2,
-     robot_definition_.encoder.counts_per_revolution,
-     robot_definition_.motor.pwm_limit,
-     robot_definition_.motor.integral_limit,
-   },
-   wheel_gains);
+ if (robot_definition_.drive_type == "differential") {
+  chassis_ = std::make_unique<sim::DifferentialMotorDrive>(
+    sim::MotorDriveParams{
+      robot_definition_.wheel_base_m,
+      robot_definition_.wheel_radius_m,
+      motor_vmax,
+      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
+      motor_stall,
+      motor_free,
+      robot_definition_.mass_kg,
+      robot_definition_.yaw_inertia_kgm2,
+      robot_definition_.encoder.counts_per_revolution,
+      robot_definition_.motor.pwm_limit,
+      robot_definition_.motor.integral_limit,
+    },
+    wheel_gains);
+  yaw_cap_rads_ = params.w_max;
+ } else if (robot_definition_.drive_type == "ackermann") {
+  // The drive unit is a wheel: same autotune as a differential wheel. The
+  // servo closes its own inner loop; the outer P only sets angle demand, so
+  // kp = 1/(response * rate) targets the specified first-order settle
+  // (dδ/dt ≈ kp·rate·err ⇒ τ = 1/(kp·rate)). Same rule for every car.
+  const double servo_kp = 1.0 / std::max(0.05, robot_definition_.steering.servo_response_s *
+                                                 robot_definition_.steering.max_steer_rate_radps);
+  chassis_ = std::make_unique<sim::AckermannDrive>(
+    sim::AckermannParams{
+      robot_definition_.wheel_base_m,
+      robot_definition_.wheel_radius_m,
+      robot_definition_.steering.max_steer_rad,
+      robot_definition_.steering.max_steer_rate_radps,
+      robot_definition_.steering.servo_response_s,
+      motor_vmax,
+      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
+      motor_stall,
+      motor_free,
+      robot_definition_.mass_kg,
+      robot_definition_.motor.pwm_limit,
+      robot_definition_.motor.integral_limit,
+      robot_definition_.encoder.counts_per_revolution,
+    },
+    wheel_gains, servo_kp);
+  // Yaw capability at top drive speed; the heading PID outputs steer ANGLE
+  // for ackermann (see follow.hpp unit contract), capped at steer_max.
+  yaw_cap_rads_ = motor_vmax * std::tan(robot_definition_.steering.max_steer_rad) /
+                  std::max(0.05, robot_definition_.wheel_base_m);
+ } else {
+  throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
+ }
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
  // (slow integrator kills steady-state error, short derivative damps).
  const double cruise = property(behavior_, "cruise_mps");
  const double heading_kp =
-   params.w_max / (2.0 * std::max(0.2, cruise) * std::max(0.1, robot_definition_.wheel_base_m));
- heading_pid_ = std::make_unique<sim::PID>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, params.w_max,
-                                           robot_definition_.steering_integral_limit);
+   yaw_cap_rads_ / (2.0 * std::max(0.2, cruise) * std::max(0.1, robot_definition_.wheel_base_m));
+ // PID output units follow the chassis (follow.hpp contract): yaw rate for
+ // differential, steer angle for ackermann. Same derivation, capped by what
+ // the actuator takes.
+ const double heading_out_lim =
+   robot_definition_.drive_type == "ackermann" ? robot_definition_.steering.max_steer_rad : params.w_max;
+ heading_pid_ = std::make_unique<sim::PID>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
+                                           robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;
 
  patrols_.clear();
@@ -222,7 +263,7 @@ void MissionSimulation::set_manual_command(double forward, double turn) {
  manual_control_active_ = true;
  const double cruise = property(behavior_, "cruise_mps");
  manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
- manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * drive_->params().w_max;
+ manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * yaw_cap_rads_;
 }
 
 void MissionSimulation::step() {
@@ -472,7 +513,7 @@ void MissionSimulation::decide_control() {
    dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,
-   target, *planning_map_, weights, predicted_frames, speed_cap, drive_->params().w_max,
+   target, *planning_map_, weights, predicted_frames, speed_cap, yaw_cap_rads_,
    spec("tires", "brake_decel_mps2"), prediction_horizon, prediction_step_s, prediction_step_s,
    requested_clearance, robot_definition_.collision_radius_m, robot_definition_.max_yaw_accel_radps2);
  snapshot_.control.dwa_active = true;
@@ -503,10 +544,9 @@ void MissionSimulation::decide_control() {
   // with the same derived proportional gain (P-only: integrator and derivative
   // states are meaningless at standstill and would wind up or kick).
   constexpr double kCreepSpeedMps = 0.15;
-  const double arbitrated_turn =
-    std::abs(dwa.best.v) < kCreepSpeedMps
-      ? std::clamp(heading_kp_ * heading_error, -drive_->params().w_max, drive_->params().w_max)
-      : dwa.best.w;
+  const double arbitrated_turn = std::abs(dwa.best.v) < kCreepSpeedMps
+                                   ? std::clamp(heading_kp_ * heading_error, -yaw_cap_rads_, yaw_cap_rads_)
+                                   : dwa.best.w;
   held_command_ = {dwa.best.v < 0.0 ? dwa.best.v : std::min(std::max(0.0, route_control.tv), dwa.best.v),
                    arbitrated_turn};
   snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < kCreepSpeedMps;
@@ -525,18 +565,26 @@ void MissionSimulation::apply_motion() {
  const auto before = snapshot_.robot;
  auto candidate = chassis_->step(before, held_command_, fixed_step_s, wheel_ground({before.x, before.y}));
  const auto& motors = chassis_->telemetry();
- snapshot_.control.left_target_mps = motors.left.target_mps;
- snapshot_.control.right_target_mps = motors.right.target_mps;
- snapshot_.control.left_measured_mps = motors.left.measured_mps;
- snapshot_.control.right_measured_mps = motors.right.measured_mps;
- snapshot_.control.left_pwm = motors.left.pwm;
- snapshot_.control.right_pwm = motors.right.pwm;
- snapshot_.control.left_speed_pid_p = motors.left.pid_p;
- snapshot_.control.left_speed_pid_i = motors.left.pid_i;
- snapshot_.control.left_speed_pid_d = motors.left.pid_d;
- snapshot_.control.right_speed_pid_p = motors.right.pid_p;
- snapshot_.control.right_speed_pid_i = motors.right.pid_i;
- snapshot_.control.right_speed_pid_d = motors.right.pid_d;
+ // Telemetry shape follows the chassis (telemetry_.differential selects the
+ // active side). Ackermann mirrors the single drive unit into the left_*
+ // fields and reports the servo below; the right_* fields stay zero rather
+ // than carrying fiction.
+ const auto& drive_unit = motors.differential ? motors.left : motors.drive;
+ snapshot_.control.left_target_mps = drive_unit.target_mps;
+ snapshot_.control.right_target_mps = motors.differential ? motors.right.target_mps : 0.0;
+ snapshot_.control.left_measured_mps = drive_unit.measured_mps;
+ snapshot_.control.right_measured_mps = motors.differential ? motors.right.measured_mps : 0.0;
+ snapshot_.control.left_pwm = drive_unit.pwm;
+ snapshot_.control.right_pwm = motors.differential ? motors.right.pwm : 0.0;
+ snapshot_.control.left_speed_pid_p = drive_unit.pid_p;
+ snapshot_.control.left_speed_pid_i = drive_unit.pid_i;
+ snapshot_.control.left_speed_pid_d = drive_unit.pid_d;
+ snapshot_.control.right_speed_pid_p = motors.differential ? motors.right.pid_p : 0.0;
+ snapshot_.control.right_speed_pid_i = motors.differential ? motors.right.pid_i : 0.0;
+ snapshot_.control.right_speed_pid_d = motors.differential ? motors.right.pid_d : 0.0;
+ snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
+ snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
+ snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
  const double meters_per_revolution = 2.0 * sim::kPi * robot_definition_.wheel_radius_m;
  snapshot_.control.left_target_rpm = snapshot_.control.left_target_mps * 60.0 / meters_per_revolution;
  snapshot_.control.right_target_rpm = snapshot_.control.right_target_mps * 60.0 / meters_per_revolution;
@@ -586,7 +634,8 @@ void MissionSimulation::apply_motion() {
  // Traction saturation (model-side contact state, like motor force: used for
  // odometry degradation, never displayed as a sensed reading). Rising edge
  // counts a slip episode for the debrief.
- const bool saturated = motors.left.slipping || motors.right.slipping;
+ const bool saturated =
+   motors.differential ? (motors.left.slipping || motors.right.slipping) : motors.drive.slipping;
  if (saturated && !was_saturated_) {
   ++result_.slip_events;
  }
@@ -596,8 +645,15 @@ void MissionSimulation::apply_motion() {
  }
  double encoder_v = 0.0;
  double encoder_w = 0.0;
- sim::DiffDrive::wheelsToTwist(motors.left.measured_mps, motors.right.measured_mps,
-                               robot_definition_.wheel_base_m, encoder_v, encoder_w);
+ if (motors.differential) {
+  sim::DiffDrive::wheelsToTwist(motors.left.measured_mps, motors.right.measured_mps,
+                                robot_definition_.wheel_base_m, encoder_v, encoder_w);
+ } else {
+  // Ackermann odometry: drive-wheel speed plus steer geometry. At standstill
+  // the geometry gives zero yaw — a car cannot turn without rolling.
+  encoder_v = motors.drive.measured_mps;
+  encoder_w = encoder_v * std::tan(motors.steer.angle_rad) / std::max(0.05, robot_definition_.wheel_base_m);
+ }
  const double gyro_rate =
    has("imu") ? candidate.w + gyro_bias_ + imu_rng_.gauss(spec("imu", "gyro_noise_radps")) : 0.0;
  const double gyro_sigma = has("imu") ? spec("imu", "gyro_noise_radps") : 0.0;
