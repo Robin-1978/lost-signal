@@ -41,7 +41,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.3,
-    "fast_time_s": 60.0,
+    "fast_time_s": 75.0,
     "efficient_energy_wh": 1.6
   },
   "rewards": [

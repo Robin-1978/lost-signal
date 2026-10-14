@@ -37,7 +37,7 @@
     "knowledge_card": "交叉路口看相位：叉车从侧面来，creep 蹭不过去，等它过去再进路口。等待发生在路口外，不是路口里。"
   },
   "score": {
-    "safe_min_clearance_m": 0.3,
+    "safe_min_clearance_m": 0.6,
     "fast_time_s": 100.0,
     "efficient_energy_wh": 2.5
   },

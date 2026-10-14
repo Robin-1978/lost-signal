@@ -37,7 +37,7 @@
   "score": {
     "safe_min_clearance_m": 0.2,
     "max_localization_error_m": 0.3,
-    "fast_time_s": 27.0,
+    "fast_time_s": 38.0,
     "efficient_energy_wh": 0.48
   },
   "rewards": [
