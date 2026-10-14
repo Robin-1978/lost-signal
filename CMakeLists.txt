@@ -152,6 +152,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_slip_detect PRIVATE lost_signal_sim)
  add_test(NAME slip_detect COMMAND test_slip_detect)
 
+ add_executable(test_slip_shadow tests/new/test_slip_shadow.cpp)
+ target_link_libraries(test_slip_shadow PRIVATE lost_signal_sim lost_signal_game)
+ target_compile_definitions(test_slip_shadow PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME slip_shadow COMMAND test_slip_shadow)
+
  add_executable(test_departure_replay tests/new/test_departure_replay.cpp)
  target_link_libraries(test_departure_replay PRIVATE lost_signal_sim)
  add_test(NAME departure_replay COMMAND test_departure_replay)

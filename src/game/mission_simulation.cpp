@@ -3,6 +3,7 @@
 #include "algo/astar.hpp"
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/tracked.hpp"
+#include "algo/slip_detect.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -99,6 +100,11 @@ void MissionSimulation::reset() {
  snapshot_.status = MissionStatus::Ready;
  odometry_.reset(spawn.x, spawn.y, spawn.theta);
  update_actors();
+ slip_detector_.reset();
+ slip_episode_times_.clear();
+ slip_prev_tread_v_ = 0.0;
+ slip_prev_body_v_ = 0.0;
+ slip_have_prev_ = false;
  record_replay();
 }
 
@@ -763,6 +769,26 @@ void MissionSimulation::apply_motion() {
  snapshot_.control.right_speed_pid_p = motors.differential ? motors.right.pid_p : 0.0;
  snapshot_.control.right_speed_pid_i = motors.differential ? motors.right.pid_i : 0.0;
  snapshot_.control.right_speed_pid_d = motors.differential ? motors.right.pid_d : 0.0;
+ // Shadow slip detection (upper-bound study): TRACKED ONLY. Differential
+ // encoders cannot observe tread (lesson §5: they read body-twist-derived
+ // wheel speeds), so the detector stays off there by design, not omission.
+ // True body accel stands in for the IMU: perfect-IMU upper bound, labeled
+ // as such. Encoder side is real quantized tread telemetry.
+ if (robot_definition_.drive_type == "tracked") {
+  const double tread_v =
+    (snapshot_.control.left_measured_mps + snapshot_.control.right_measured_mps) / 2.0;
+  if (slip_have_prev_) {
+   const double encoder_accel = (tread_v - slip_prev_tread_v_) / fixed_step_s;
+   const double true_accel = (snapshot_.robot.v - slip_prev_body_v_) / fixed_step_s;
+   slip_detector_.step(encoder_accel, true_accel, fixed_step_s);
+   if (slip_detector_.episodes() > static_cast<int>(slip_episode_times_.size())) {
+    slip_episode_times_.push_back(snapshot_.time_s);
+   }
+  }
+  slip_prev_tread_v_ = tread_v;
+  slip_prev_body_v_ = snapshot_.robot.v;
+  slip_have_prev_ = true;
+ }
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;

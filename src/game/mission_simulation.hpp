@@ -8,6 +8,7 @@
 #include "algo/follow.hpp"
 #include "hw/sensors/hal.hpp"
 #include "algo/grid_map.hpp"
+#include "algo/slip_detect.hpp"
 #include "hw/chassis/motor_drive.hpp"
 #include "algo/pid.hpp"
 #include "hw/sensors/sensor.hpp"
@@ -187,6 +188,8 @@ class MissionSimulation {
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
  bool shadow_episode_open() const { return shadow_episode_open_; }
+ int slip_episodes() const { return slip_detector_.episodes(); }
+ const std::vector<double>& slip_episode_times() const { return slip_episode_times_; }
 
  private:
  void build_world();
@@ -261,6 +264,14 @@ class MissionSimulation {
  std::vector<MissionEvent> events_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
+ // Shadow slip instrument (tracked only, see apply_motion): detector state
+ // plus previous-step speeds. Observation only; no consumer yet (consumer
+ // design is a behavior gate, not smuggled in here).
+ sim::SlipDetector slip_detector_;
+ std::vector<double> slip_episode_times_;
+ double slip_prev_tread_v_{0.0};
+ double slip_prev_body_v_{0.0};
+ bool slip_have_prev_{false};
  sim::DiffCmd held_command_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
  // a wait opens, vs the last assessment and the actual waited time when it
