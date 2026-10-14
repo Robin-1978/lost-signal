@@ -145,8 +145,8 @@ void GameUi::build_chapter() {
   look->setBorderColor({0, 0, 0, 0});
   look->setBorders({0});
  }
- scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
- scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
+ scroll->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
+ scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
  add_parent_ = scroll;
  add_label(catalog_.tr("chapter.game_title"), kMargin, 25, kContentWidth, 14, {107, 190, 176}, true);
@@ -207,8 +207,8 @@ void GameUi::build_garage() {
   look->setBorderColor({0, 0, 0, 0});
   look->setBorders({0});
  }
- scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
- scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
+ scroll->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
+ scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
  add_parent_ = scroll;
  add_label(catalog_.tr("garage.heading"), kMargin, 24, kContentWidth, 16, {107, 190, 176}, true);
