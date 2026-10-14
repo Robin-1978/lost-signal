@@ -154,6 +154,39 @@ int main() {
   const double swept = sim::predicted_gap(line, 0, 0.0, crossing, 0.1, 0.38);
   CHECK(std::abs(swept - (0.1 - 0.5 - 0.38)) < 1e-9);
  }
+ // Departure reasons: infinity is three different verdicts with three owners.
+ {
+  const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::assess_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5).reason ==
+        sim::DepartReason::kGoNow);
+  std::vector<std::vector<sim::DynState>> clearing;
+  for (int k = 0; k < 40; ++k) {
+   clearing.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  }
+  const auto wait = sim::assess_departure(line, 0, 1.0, clearing, 0.1, 0.38, 0.5);
+  CHECK(wait.reason == sim::DepartReason::kWait && wait.wait_s > 0.0);
+  // Parked threat, safe waiting spot: genuinely blocked inside the window.
+  const std::vector<std::vector<sim::DynState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::assess_departure(line, 0, 1.0, parked, 0.1, 0.38, 0.5).reason ==
+        sim::DepartReason::kBlockedInWindow);
+  // Threat drives through the waiting spot: staying is what kills (Phase-2).
+  std::vector<std::vector<sim::DynState>> runover;
+  for (int k = 0; k < 51; ++k) {
+   runover.push_back({{{4.0 - 2.0 * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
+  }
+  const std::vector<sim::Vec2> corridor{{0.0, 0.0}, {6.0, 0.0}};
+  CHECK(sim::assess_departure(corridor, 0, 1.0, runover, 0.1, 0.38, 0.5).reason ==
+        sim::DepartReason::kWaitUnsafe);
+  // Open field, traversal longer than the window: unknown, not unsafe.
+  const std::vector<sim::Vec2> long_line{{0.0, 0.0}, {10.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  CHECK(sim::assess_departure(long_line, 0, 1.0, short_open, 0.1, 0.38, 0.5).reason ==
+        sim::DepartReason::kHorizonShort);
+  CHECK(sim::assess_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5).reason ==
+        sim::DepartReason::kInvalid);
+ }
  // earliest_departure: go-now when clear, positive wait for a passing threat,
  // infinity when nothing clears in horizon; empty inputs report infinity.
  // Paths are 2 m / 1 mps = 2 s traversals inside a 4 s horizon, so the

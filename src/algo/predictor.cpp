@@ -141,8 +141,34 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
 double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                            double ego_radius_m, double margin_m) {
+ return assess_departure(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, margin_m)
+   .wait_s;
+}
+
+const char* depart_reason_name(DepartReason reason) {
+ switch (reason) {
+  case DepartReason::kGoNow:
+   return "GoNow";
+  case DepartReason::kWait:
+   return "Wait";
+  case DepartReason::kBlockedInWindow:
+   return "BlockedInWindow";
+  case DepartReason::kWaitUnsafe:
+   return "WaitUnsafe";
+  case DepartReason::kHorizonShort:
+   return "HorizonShort";
+  case DepartReason::kInvalid:
+   return "Invalid";
+ }
+ return "Invalid";
+}
+
+DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,
+                                     double cruise_mps,
+                                     const std::vector<std::vector<DynState>>& frames,
+                                     double frame_dt_s, double ego_radius_m, double margin_m) {
  if (path.empty() || frames.empty() || cruise_mps <= 0.0) {
-  return std::numeric_limits<double>::infinity();
+  return {std::numeric_limits<double>::infinity(), DepartReason::kInvalid};
  }
  const double dt = std::max(1e-6, frame_dt_s);
  // Last frame stands at (N-1)*dt: predict_frames emits future_s = 0..H
@@ -164,10 +190,23 @@ double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, 
   }
   const double gap = predicted_gap(path, start_idx, cruise_mps, frames, dt, ego_radius_m, wait);
   if (gap >= margin_m) {
-   return wait;
+   return {wait, wait <= 1e-9 ? DepartReason::kGoNow : DepartReason::kWait};
   }
  }
- return std::numeric_limits<double>::infinity();
+ // No wait is provably safe. Diagnose why, most urgent first: a swept
+ // waiting spot means standing still is what kills (observable inside the
+ // window regardless of traversal coverage); an uncovered traversal is a
+ // window problem (unknown, not unsafe); otherwise the corridor is genuinely
+ // blocked inside a sufficient window.
+ const Vec2 start = path[std::min(start_idx, path.size() - 1)];
+ const double spot_gap = predicted_gap({start}, 0, 0.0, frames, dt, ego_radius_m, 0.0);
+ if (spot_gap < margin_m) {
+  return {std::numeric_limits<double>::infinity(), DepartReason::kWaitUnsafe};
+ }
+ if (path_length > cruise_mps * horizon + 1e-9) {
+  return {std::numeric_limits<double>::infinity(), DepartReason::kHorizonShort};
+ }
+ return {std::numeric_limits<double>::infinity(), DepartReason::kBlockedInWindow};
 }
 
 } // namespace sim

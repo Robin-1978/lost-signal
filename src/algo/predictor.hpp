@@ -2,6 +2,7 @@
 
 #include "dynobs.hpp"
 
+#include <limits>
 #include <vector>
 
 namespace sim {
@@ -49,5 +50,34 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
 double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                            double ego_radius_m, double margin_m);
+
+// Infinity is not one verdict: callers (and shadow logs) must distinguish
+// why no departure is provable, because each cause belongs to a different
+// owner — window sizing, Phase-2 waiting spots, or a genuinely blocked
+// corridor. kHorizonShort/kWaitUnsafe/kBlockedInWindow are undecidable here,
+// never "unsafe forever".
+enum class DepartReason {
+ kGoNow,          // wait_s == 0: depart now, whole trajectory proven.
+ kWait,           // wait_s > 0: earliest provably safe departure.
+ kBlockedInWindow,// horizon covers the traversal and the waiting spot stays
+                  // safe, yet no wait clears the corridor.
+ kWaitUnsafe,     // the waiting spot itself is swept by a threat within the
+                  // horizon: staying is what kills. Phase-2 territory.
+ kHorizonShort,   // the horizon cannot even cover the traversal: unknown,
+                  // not unsafe (SOTIF Area 3: never file unknown as safe).
+ kInvalid,        // degenerate input (empty path/frames, non-positive cruise).
+};
+
+struct DepartureAssessment {
+ double wait_s{std::numeric_limits<double>::infinity()};
+ DepartReason reason{DepartReason::kInvalid};
+};
+
+const char* depart_reason_name(DepartReason reason);
+
+DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,
+                                     double cruise_mps,
+                                     const std::vector<std::vector<DynState>>& frames,
+                                     double frame_dt_s, double ego_radius_m, double margin_m);
 
 } // namespace sim

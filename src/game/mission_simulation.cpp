@@ -551,6 +551,8 @@ void MissionSimulation::decide_control() {
   held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
                    route_control.steer};
   snapshot_.waiting_for_clearance = false;
+  update_shadow_episode();
+  snapshot_.control.shadow_assessed = false;
   return;
  }
 
@@ -571,6 +573,8 @@ void MissionSimulation::decide_control() {
   held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
                    route_control.steer};
   snapshot_.waiting_for_clearance = false;
+  update_shadow_episode();
+  snapshot_.control.shadow_assessed = false;
   return;
  }
 
@@ -586,6 +590,33 @@ void MissionSimulation::decide_control() {
  // feed prediction: map.predict() snapshots raw tracker state internally.
  const auto predicted_frames =
   dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
+ // Shadow departure assessment (gate 3): observe only. This block reads
+ // tracker state and writes snapshot shadow fields; held_command_ (the actual
+ // control output) is untouched by everything in this block.
+ {
+  std::vector<sim::Vec2> shadow_remaining{{snapshot_.robot.x, snapshot_.robot.y}};
+  for (std::size_t i = guide_state_.idx; i < planned_path_.size(); ++i) {
+   shadow_remaining.push_back(planned_path_[i]);
+  }
+  const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
+  double shadow_length = 0.0;
+  for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
+   shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
+  }
+  // Wait slack = the computer's own prediction horizon (existing content, not
+  // a new knob): waits beyond what the computer predicts are unassessable by
+  // construction (kHorizonShort) — which is itself shadow data.
+  const double shadow_horizon = shadow_length / shadow_cruise + prediction_horizon;
+  const auto shadow_frames = dynamic_obstacle_map_.predict(snapshot_.time_s, shadow_horizon,
+                                                           prediction_step_s, track_max_age_s());
+  const auto assessment = sim::assess_departure(shadow_remaining, 0, shadow_cruise, shadow_frames,
+                                                prediction_step_s,
+                                                robot_definition_.collision_radius_m,
+                                                requested_clearance);
+  snapshot_.control.shadow_assessed = true;
+  snapshot_.control.shadow_depart_s = assessment.wait_s;
+  snapshot_.control.shadow_reason = static_cast<int>(assessment.reason);
+ }
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,
    target, *planning_map_, weights, predicted_frames, speed_cap, yaw_cap_rads_,
@@ -633,6 +664,7 @@ void MissionSimulation::decide_control() {
            << "米），洛一停车等待安全窗口。";
    record_event("waiting", waiting.str(), 2.0);
   }
+  update_shadow_episode();
  }
 }
 
@@ -833,6 +865,24 @@ void MissionSimulation::record_event(std::string code, std::string message, doub
  last_event_code_ = code;
  last_event_time_s_ = snapshot_.time_s;
  events_.push_back({snapshot_.time_s, std::move(code), std::move(message)});
+}
+
+void MissionSimulation::update_shadow_episode() {
+ if (snapshot_.waiting_for_clearance && !shadow_episode_open_) {
+  shadow_episode_open_ = true;
+  shadow_episode_start_s_ = snapshot_.time_s;
+  shadow_episode_first_s_ = snapshot_.control.shadow_depart_s;
+  shadow_episode_first_reason_ = snapshot_.control.shadow_reason;
+ } else if (!snapshot_.waiting_for_clearance && shadow_episode_open_) {
+  shadow_episode_open_ = false;
+  std::ostringstream shadow;
+  shadow << std::fixed << std::setprecision(1) << "影子评估：预测初值" << shadow_episode_first_s_
+         << "秒[" << sim::depart_reason_name(static_cast<sim::DepartReason>(shadow_episode_first_reason_))
+         << "]→末值" << snapshot_.control.shadow_depart_s << "秒["
+         << sim::depart_reason_name(static_cast<sim::DepartReason>(snapshot_.control.shadow_reason))
+         << "]，实际等待" << (snapshot_.time_s - shadow_episode_start_s_) << "秒。";
+  record_event("shadow_wait", shadow.str());
+ }
 }
 
 void MissionSimulation::record_replay() {

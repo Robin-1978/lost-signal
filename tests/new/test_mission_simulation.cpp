@@ -60,6 +60,13 @@ int main() {
                    [](const auto& event) { return event.code == "dynamic-detected"; }));
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "waiting"; }));
+ // Gate-3 shadow isolation: the observer assessed departures during the finale
+ // (snapshot fields populated) and logged wait episodes (first/last/actual)
+ // without changing physics — time_s bit-identical above is the proof.
+ CHECK(std::any_of(first.replay().begin(), first.replay().end(),
+                   [](const auto& snapshot) { return snapshot.control.shadow_assessed; }));
+ CHECK(std::any_of(first.events().begin(), first.events().end(),
+                   [](const auto& event) { return event.code == "shadow_wait"; }));
  CHECK(std::any_of(first.replay().begin(), first.replay().end(),
                    [](const auto& snapshot) { return !snapshot.dynamic_obstacles.empty(); }));
  CHECK(std::any_of(first.replay().begin(), first.replay().end(), [](const auto& snapshot) {

@@ -55,6 +55,11 @@ struct ControlSnapshot {
  sim::Vec2 local_target;
  std::vector<LocalTrajectorySnapshot> dwa_candidates;
  std::vector<sim::Vec2> dwa_selected;
+ // Shadow departure assessment (gate 3): observed only, never acted on.
+ // shadow_reason codes sim::DepartReason (0=GoNow..5=Invalid), -1 = unassessed.
+ bool shadow_assessed{false};
+ double shadow_depart_s{-1.0};
+ int shadow_reason{-1};
  double heading_error_rad{0.0};
  double heading_pid_p{0.0};
  double heading_pid_i{0.0};
@@ -164,6 +169,7 @@ class MissionSimulation {
  void finish_success();
  void finish_failure(std::string reason, std::string message);
  void record_event(std::string code, std::string message, double throttle_s = 0.0);
+ void update_shadow_episode();
  void record_replay();
  double surface_traction(sim::Vec2 position) const;
  double static_clearance(sim::Vec2 position) const;
@@ -225,6 +231,13 @@ class MissionSimulation {
  std::vector<MissionEvent> events_;
  std::vector<MissionSnapshot> replay_;
  sim::DiffCmd held_command_;
+ // Shadow wait episode bookkeeping (gate 3): first predicted departure when
+ // a wait opens, vs the last assessment and the actual waited time when it
+ // closes. Observation only; no control path reads these.
+ bool shadow_episode_open_{false};
+ double shadow_episode_start_s_{0.0};
+ double shadow_episode_first_s_{-1.0};
+ int shadow_episode_first_reason_{-1};
  double next_scan_s_{0.0};
  double next_decision_s_{0.0};
  double next_replay_s_{0.0};
