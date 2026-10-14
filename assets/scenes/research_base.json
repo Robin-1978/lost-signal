@@ -352,8 +352,8 @@
       "id": "rubble_01",
       "prefab": "prefab.rubble_cluster",
       "position_m": [
-        15.2,
-        8.6,
+        12.3,
+        4.0,
         0
       ],
       "yaw_degrees": 14,
@@ -367,8 +367,8 @@
       "id": "rubble_02",
       "prefab": "prefab.rubble_cluster",
       "position_m": [
-        18.4,
-        8.7,
+        12.3,
+        6.5,
         0
       ],
       "yaw_degrees": 71,
@@ -382,8 +382,8 @@
       "id": "rubble_03",
       "prefab": "prefab.rubble_cluster",
       "position_m": [
-        15.8,
-        11.5,
+        12.3,
+        9.0,
         0
       ],
       "yaw_degrees": 103,
@@ -397,8 +397,8 @@
       "id": "rubble_04",
       "prefab": "prefab.rubble_cluster",
       "position_m": [
-        18.6,
-        11.3,
+        12.3,
+        11.5,
         0
       ],
       "yaw_degrees": 156,
@@ -412,8 +412,8 @@
       "id": "plant_01",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        14.8,
-        9.2,
+        8.3,
+        1.0,
         0
       ],
       "scale": [
@@ -426,8 +426,8 @@
       "id": "plant_02",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        15.2,
-        11.8,
+        8.3,
+        2.5,
         0
       ],
       "scale": [
@@ -440,8 +440,8 @@
       "id": "plant_03",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        16.1,
-        8.2,
+        8.3,
+        4.0,
         0
       ],
       "scale": [
@@ -454,8 +454,8 @@
       "id": "plant_04",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        17.3,
-        12.2,
+        8.3,
+        5.5,
         0
       ],
       "scale": [
@@ -468,8 +468,8 @@
       "id": "plant_05",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        18.1,
-        8.4,
+        8.3,
+        7.0,
         0
       ],
       "scale": [
@@ -482,8 +482,8 @@
       "id": "plant_06",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        19.0,
-        10.0,
+        8.3,
+        8.5,
         0
       ],
       "scale": [
@@ -496,8 +496,8 @@
       "id": "plant_07",
       "prefab": "prefab.plant_cluster",
       "position_m": [
-        16.0,
-        10.4,
+        8.3,
+        10.0,
         0
       ],
       "scale": [
@@ -510,8 +510,8 @@
       "id": "service_light_01",
       "prefab": "prefab.service_light",
       "position_m": [
-        15.0,
-        10.7,
+        12.7,
+        5.0,
         0
       ]
     },
@@ -519,8 +519,8 @@
       "id": "service_light_02",
       "prefab": "prefab.service_light",
       "position_m": [
-        18.8,
-        9.2,
+        12.7,
+        10.0,
         0
       ]
     },
@@ -528,8 +528,8 @@
       "id": "console_01",
       "prefab": "prefab.control_console",
       "position_m": [
-        3.0,
-        13.55,
+        12.3,
+        13.5,
         0
       ]
     },
@@ -537,8 +537,8 @@
       "id": "console_02",
       "prefab": "prefab.control_console",
       "position_m": [
-        10.4,
-        13.55,
+        12.7,
+        13.5,
         0
       ],
       "scale": [
@@ -551,8 +551,8 @@
       "id": "cable_reel_01",
       "prefab": "prefab.cable_reel",
       "position_m": [
-        7.45,
-        12.8,
+        8.7,
+        2.5,
         0
       ],
       "yaw_degrees": 18
@@ -561,8 +561,8 @@
       "id": "cable_reel_02",
       "prefab": "prefab.cable_reel",
       "position_m": [
-        19.25,
-        3.0,
+        8.7,
+        9.5,
         0
       ],
       "yaw_degrees": 88,
@@ -576,8 +576,8 @@
       "id": "maintenance_crates_01",
       "prefab": "prefab.maintenance_crates",
       "position_m": [
-        1.55,
-        12.75,
+        8.5,
+        10.7,
         0
       ],
       "yaw_degrees": -8
@@ -636,7 +636,7 @@
   ],
   "effects": {
     "robot_scale": 1.12,
-    "bob_amplitude_m": 0.016,
+    "bob_amplitude_m": 0.0,
     "bob_frequency_hz": 1.65,
     "eye_height_m": 0.25,
     "scan_radius_m": 1.45,

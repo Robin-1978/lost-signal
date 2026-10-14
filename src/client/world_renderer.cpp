@@ -479,9 +479,11 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
    DrawCircleV(position, 4.5f + pulse * 1.5f, color);
    DrawRing(position, 25 + pulse * 5, 26 + pulse * 5, 0, 360, 64, Fade(color, 0.28f));
   } else {
-   DrawRectangleRounded({position.x - 9, position.y - 8, 18, 16}, 0.18f, 4, {170, 115, 54, 255});
-   DrawRectangle(static_cast<int>(position.x - 2), static_cast<int>(position.y - 6), 4, 12,
-                 {237, 188, 83, 255});
+   // Via points are info, not furniture: the robot MUST drive through this
+   // spot (via_radius), so no box may be drawn here — flat ring + label only
+   // (same honesty language as the arrival circle).
+   DrawRing(position, 15, 18, 0, 360, 48, {111, 108, 91, 255});
+   DrawRing(position, 24 + pulse * 4, 25 + pulse * 4, 0, 360, 48, Fade(color, 0.35f));
   }
   const auto measured = MeasureTextEx(font_, label.c_str(), 13, 0.25f);
   const Rectangle tag{position.x - measured.x * 0.5f - 9, position.y + 27, measured.x + 18, 24};
@@ -699,6 +701,21 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
   // subtract their linkage angle the same way. Positive delta (left turn)
   // reads counterclockwise on screen, matching the world turn.
   float angle = static_cast<float>(-state.robot.theta * 180.0 / sim::kPi - part.mount->rotation_deg.z);
+  // Tracked chassis read as continuous pads, not discrete wheels: the tire
+  // visuals at the side mounts are replaced by track-length bands (vendor
+  // track_length_m). Physics still uses the equipped tire; this is display.
+  if (robot.drive_type == "tracked" &&
+      (part.mount->id == "wheel_left" || part.mount->id == "wheel_right")) {
+   const float pad_len = std::max(10.0f, static_cast<float>(robot.track_length_m) * scale_);
+   const float pad_w = std::max(6.0f, 0.16f * scale_);
+   DrawRectanglePro({part_center.x + 3, part_center.y + 4, pad_len + 2, pad_w + 2},
+                    {pad_len * 0.5f, pad_w * 0.5f}, angle, {0, 3, 8, 170});
+   DrawRectanglePro({part_center.x, part_center.y, pad_len, pad_w}, {pad_len * 0.5f, pad_w * 0.5f},
+                    angle, {38, 44, 42, 255});
+   DrawRectanglePro({part_center.x, part_center.y, pad_len * 0.86f, pad_w * 0.42f},
+                    {pad_len * 0.43f, pad_w * 0.21f}, angle, {68, 76, 72, 255});
+   continue;
+  }
   if (part.mount->id == "front_left" || part.mount->id == "front_right") {
    const double steer =
      part.mount->id == "front_left" ? state.control.steer_left_rad : state.control.steer_right_rad;

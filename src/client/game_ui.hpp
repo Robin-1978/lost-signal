@@ -73,6 +73,10 @@ class GameUi {
  const game::ContentCatalog& catalog_;
  const game::PresentationDefinition* presentation_;
  tgui::Panel::Ptr panel_;
+ // Widget parent for add_label/add_button: the plain panel everywhere except
+ // the chapter screen, which hosts 21+ level buttons in a ScrollablePanel
+ // (fixed panel overflowed past 720p once the roster passed ~12 levels).
+ tgui::Panel::Ptr add_parent_;
  game::BuildSelection build_;
  Screen screen_{Screen::Chapter};
  UiActions actions_;

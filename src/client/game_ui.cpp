@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 
 namespace client {
@@ -61,7 +62,7 @@ tgui::Label::Ptr GameUi::add_label(const std::string& text, float x, float y, fl
  if (bold) {
   label->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
  }
- panel_->add(label);
+ add_parent_->add(label);
  return label;
 }
 
@@ -83,12 +84,13 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
  renderer->setBorderColorHover(primary ? tgui::Color{247, 193, 104} : tgui::Color{102, 118, 111});
  renderer->setBorderColorDisabled({42, 47, 45});
  renderer->setTextColorDisabled({91, 98, 94});
- panel_->add(button);
+ add_parent_->add(button);
  return button;
 }
 
 void GameUi::rebuild(const game::MissionSimulation* mission) {
  panel_->removeAllWidgets();
+ add_parent_ = panel_;
  style_panel();
  slot_cards_.clear();
  style_slider_ = nullptr;
@@ -131,6 +133,14 @@ std::string GameUi::next_level_id() const {
 }
 
 void GameUi::build_chapter() {
+ // Level roster lives in a scroll panel: 21 buttons × 54px overflow any fixed
+ // window (720p fit ~12). Scrollbar appears only when content exceeds space.
+ auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
+ scroll->setPosition(0, 0);
+ scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
+ scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
+ panel_->add(scroll);
+ add_parent_ = scroll;
  add_label("失落的信号", kMargin, 25, kContentWidth, 14, {107, 190, 176}, true);
  add_label(catalog_.campaign().title, kMargin, 53, kContentWidth, 25, {239, 238, 229}, true);
  add_label("帮助洛一逐步恢复运动、感知、定位与自主导航。", kMargin, 94, kContentWidth, 14, {157, 163, 158});
@@ -164,6 +174,12 @@ void GameUi::build_chapter() {
  add_label("每一关只开放当前需要的机器人能力。A*、DWA 与 PID 是洛一的内置能力，"
            "玩家负责理解问题并配置感知、执行与计算资源。",
            kMargin, y + 12, kContentWidth, 13, {137, 151, 145});
+ if (!add_parent_) {
+  return;
+ }
+ if (const auto scrollable = std::dynamic_pointer_cast<tgui::ScrollablePanel>(add_parent_)) {
+  scrollable->setContentSize({static_cast<float>(kPanelWidth), y + 60.0f});
+ }
 }
 
 void GameUi::set_screen(Screen screen, const game::MissionSimulation* mission) {
