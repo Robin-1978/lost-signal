@@ -283,7 +283,7 @@ void WorldRenderer::draw_view_mode() const {
 
 void WorldRenderer::draw_header(const game::MissionSimulation& mission, int width,
                                 const std::string& chapter_title) const {
- draw_text(chapter_title + "  /  " + catalog_.tr("world.chapter_one"), {22, 14}, 16, Fade(kMuted, 0.88f));
+ draw_text(chapter_title, {22, 14}, 16, Fade(kMuted, 0.88f));
  draw_text(mission.level().title, {21, 35}, 26, kText);
 
  const auto status = mission.snapshot().status;

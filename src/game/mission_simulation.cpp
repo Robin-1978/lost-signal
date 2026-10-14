@@ -821,7 +821,7 @@ void MissionSimulation::apply_motion() {
 
  if (!collision_map_->isFree(candidate.x, candidate.y)) {
   ++result_.collisions;
-  finish_failure("collision-static", "洛一与固定障碍发生碰撞。");
+  finish_failure("collision-static", catalog_.tr("event.collision_static"));
   return;
  }
  for (const auto& actor : actual_actors_) {
@@ -836,7 +836,7 @@ void MissionSimulation::apply_motion() {
   }
   if (clearance < 0.0) {
    ++result_.collisions;
-   finish_failure("collision-dynamic", "洛一与巡逻叉车发生碰撞。");
+   finish_failure("collision-dynamic", catalog_.tr("event.collision_dynamic"));
    return;
   }
  }
@@ -944,7 +944,8 @@ void MissionSimulation::finish_success() {
                       result_.odometry_error_m <= level_.max_localization_error_m;
  result_.fast_score = result_.time_s <= level_.fast_time_s;
  result_.efficient_score = result_.energy_wh <= level_.efficient_energy_wh;
- record_event("mission-complete", "已抵达" + level_.objective.goal_label + "，任务完成。");
+ record_event("mission-complete",
+              catalog_.trf("event.mission_complete", {level_.objective.goal_label}));
  record_replay();
 }
 
@@ -1004,13 +1005,20 @@ void MissionSimulation::update_shadow_episode() {
   episode.last_reason = snapshot_.control.shadow_reason;
   episode.waited_s = snapshot_.time_s - shadow_episode_start_s_;
   shadow_episodes_.push_back(episode);
-  std::ostringstream shadow;
-  shadow << std::fixed << std::setprecision(1) << "影子评估：预测初值" << shadow_episode_first_s_
-         << "秒[" << sim::depart_reason_name(static_cast<sim::DepartReason>(shadow_episode_first_reason_))
-         << "]→末值" << snapshot_.control.shadow_depart_s << "秒["
-         << sim::depart_reason_name(static_cast<sim::DepartReason>(snapshot_.control.shadow_reason))
-         << "]，实际等待" << (snapshot_.time_s - shadow_episode_start_s_) << "秒。";
-  record_event("shadow_wait", shadow.str());
+  const auto fmt1 = [](double value) {
+   std::ostringstream out;
+   out << std::fixed << std::setprecision(1) << value;
+   return out.str();
+  };
+  record_event("shadow_wait",
+               catalog_.trf("event.shadow_wait",
+                            {fmt1(shadow_episode_first_s_),
+                             sim::depart_reason_name(
+                                 static_cast<sim::DepartReason>(shadow_episode_first_reason_)),
+                             fmt1(snapshot_.control.shadow_depart_s),
+                             sim::depart_reason_name(static_cast<sim::DepartReason>(
+                                 snapshot_.control.shadow_reason)),
+                             fmt1(snapshot_.time_s - shadow_episode_start_s_)}));
  }
 }
 

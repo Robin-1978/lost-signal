@@ -53,7 +53,6 @@
     "world.mode_auto": "洛一正在自主行动",
     "world.restored": "信号已经恢复",
     "world.interrupted": "行动中断",
-    "world.chapter_one": "第一章",
     "world.status_deploy": "等待出发",
     "world.forklift_lane": "叉车通道",
     "world.legend": "A* 全局路线  ·  DWA 局部轨迹  ·  动态局部图",
@@ -106,6 +105,11 @@
     "event.obstacle_detected": "距离雷达发现玻璃门，洛一开始控制停车距离。",
     "event.dynamic_detected": "距离雷达在{0}米发现巡逻叉车，洛一开始预测它的运动。",
     "event.waiting": "预测路径发生冲突（最近{0}米），洛一停车等待安全窗口。",
-    "editor.hint": "E 编辑 · 点选拖动 · S 存盘"
+    "editor.hint": "E 编辑 · 点选拖动 · S 存盘",
+    "event.mission_complete": "已抵达{0}，任务完成。",
+    "event.collision_static": "洛一与固定障碍发生碰撞。",
+    "event.collision_dynamic": "洛一与巡逻叉车发生碰撞。",
+    "event.shadow_wait": "影子评估：预测初值{0}秒[{1}]→末值{2}秒[{3}]，实际等待{4}秒。",
+    "world.section": "第{0}节"
   }
 }

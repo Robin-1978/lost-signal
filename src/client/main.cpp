@@ -325,7 +325,24 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
    }
 
    BeginDrawing();
-   renderer.draw(*mission, GetScreenWidth(), GetScreenHeight(), catalog.campaign().title);
+   // Chapter header follows the level, not the campaign: chapters.json title
+   // by level.chapter plus the level's section number within that chapter.
+   // (It used to print the campaign title for every level, so the town's
+   // third chapter showed up as the first.)
+   std::string chapter_title = catalog.campaign().title;
+   for (const auto& chapter : catalog.chapters()) {
+    if (chapter.id == mission->level().chapter) {
+     chapter_title = chapter.title;
+     break;
+    }
+   }
+   int section = 1;
+   for (const auto& level_id : catalog.campaign().levels) {
+    if (level_id == mission->level().id) break;
+    if (catalog.level(level_id).chapter == mission->level().chapter) ++section;
+   }
+   renderer.draw(*mission, GetScreenWidth(), GetScreenHeight(),
+                 chapter_title + "  /  " + catalog.trf("world.section", {std::to_string(section)}));
    if (editor && editor->active()) {
     renderer.draw_edit_overlay(*mission, *editor);
    }
