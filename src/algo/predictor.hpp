@@ -26,12 +26,16 @@ struct PredictInput {
 std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput>& inputs, double time_s,
                                                   double horizon_s, double frame_dt_s, double max_age_s);
 
-// Veto on predicted contact: hold only when the release maneuver we would
-// actually drive overlaps a predicted threat body within the horizon
-// (gap < 0: physical, zero tunable margin). Unlike a wait gate this never
-// extends waiting on its own: pinned trajectories that thread clear never
-// trigger it. Corridor-mature tracks only (linear extrapolation lies at
-// patrol turnarounds before the first observed reversal).
+// Phase-aware gap acceptance: the minimum predicted separation between the
+// ego vehicle (advancing along its path at speed_mps, holding at the end)
+// and every predicted threat frame, minus radii.
+// PARKED (not wired into arbitration): gates (conjunction, maturity, veto)
+// and scored-waiting all failed the pinned finale — in a two-attractor
+// encounter any wait-timing change flips seeds, and stop-in-place waiting
+// cannot fix graze passes (east measured 8mm center-overlap). Next touchpoint
+// is wait-aware planning (plan §4 item 16), not another bolt-on.
+// Unit tests pin the math meanwhile.
+// Returns +infinity when there is nothing predicted.
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
                      const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                      double ego_radius_m);
