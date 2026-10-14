@@ -163,6 +163,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_pocket_search PRIVATE lost_signal_sim)
  add_test(NAME pocket_search COMMAND test_pocket_search)
 
+ add_executable(test_perturbation tests/new/test_perturbation.cpp)
+ target_link_libraries(test_perturbation PRIVATE lost_signal_sim)
+ add_test(NAME perturbation COMMAND test_perturbation)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(
