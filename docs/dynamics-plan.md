@@ -173,6 +173,20 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
     （localization 线重推＋新失败遭遇＋全表重标定）。
     附带发现 P0 碰撞教学已死——诚实控制下当前遭遇没有 robust 碰撞，缺一个真正的
     失败教学关（open 内容需求）。
+14. **统一运动学接口**（下一步，开工令已下）：每底盘一对正逆解（执行器状态⇄车体
+    twist，同模块前后一致）＋`forward(inverse(x))==x` property test＋mission 委托，
+    工厂构造外零分支。纯重构，全表逐字 diff 即证。价值：chassis 数学以后跑不偏；
+    swerve 地基（到时只填一对函数）；里程计与仿真第一次用同一数学（标定对账点）。
+    不碰动力学（逆运动学≠逆动力学，前馈仍 parked），不碰规划器（DWA 照旧吃 twist）。
+15. **灵敏度分析＋标定流程＋sim-to-real 里程碑**（无硬件可做的部分先行）：
+    参数扰动 harness（同一命令，不同参数，轨迹分岔曲线＝现在就能量的“哪个数最要命”），
+    标定流程文档（转向 map、延迟、轮胎三件套怎么测），reality-gap 记录表格式。
+    真车/ROS 桥到来之日，第一个 milestone 是 log-and-compare（同命令喂双边，
+    并排跑，差值曲线即证据表），不是“接上”。
+16. **MotionTarget 规划器槽**（横向规划到来时）：`BodyTwist{vx,vy,w}`＋选中轨迹＋
+    能力协商（规划器 holonomic ⇄ 底盘 accepts_vy，mission 大声失败兜底），关卡按名
+    选规划器（与 `presentation.robot` 同构：内容点名，代码备货）。DWA-lite 首个入槽
+    （vy=0，non-holonomic）。不提前写代码，设计已冻结在此。
 
 ## 5. 已知教训（新人必读）
 
