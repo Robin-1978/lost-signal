@@ -306,6 +306,16 @@ int main() {
   CHECK(!is_miss(wobble));
   std::cerr << "pocket-weave: pred=" << wobble.initial_pred_s << " depart=" << wobble.depart_s
             << " gap=" << wobble.min_gap << "\n";
+  // Observed-max stress (est-error test: vel_abs_max ~= 1.9 m/s near field):
+  // the margin is eaten with no collision. Amplitude grounded in observation,
+  // verdict still miss — current 0.5 m does not cover observed-max error.
+  const ReplayResult stressed = run_replay(pocket, {5.0, 0.0}, {-0.5, 0.0}, {-2.4, 0.0}, 12.0);
+  CHECK(stressed.reached);
+  CHECK(stressed.min_gap >= 0.0);
+  CHECK(is_miss(stressed));
+  CHECK(stressed.min_gap < kMarginM);
+  std::cerr << "pocket-max-stress: pred=" << stressed.initial_pred_s
+            << " depart=" << stressed.depart_s << " gap=" << stressed.min_gap << "\n";
  }
  // Hold-unsafe under a sign-flipped estimate: "wait 0.6 then go" meets the
  // threat driving through the wait spot at t=2. Truth, not estimate, decides.

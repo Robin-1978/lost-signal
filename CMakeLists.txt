@@ -167,6 +167,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_perturbation PRIVATE lost_signal_sim)
  add_test(NAME perturbation COMMAND test_perturbation)
 
+ add_executable(test_estimation_error tests/new/test_estimation_error.cpp)
+ target_link_libraries(test_estimation_error PRIVATE lost_signal_game)
+ target_compile_definitions(test_estimation_error PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME estimation_error COMMAND test_estimation_error)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(
