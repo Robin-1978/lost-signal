@@ -101,7 +101,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
   终关 5 种子证据（推荐 3/5 成功）是结论门。
 * 地图存盘路：`serialize_map_canonical`＋`test_map_roundtrip` 逐字节一致；
   `MapEditor`（纯逻辑＋单测）＋客户端编辑模式 v1/v2（移动/增删/缩放/存盘 reload 校验）。
-* sim-to-real 地基：`docs/sim2real.md`（缺口/标定/里程碑）＋`tools/sensitivity.py`
+* sim-to-real 地基：`docs/sim2real.md`（缺口/标定/里程碑）＋`tools/sensitivity.py`＋经验接地状态表（文献对照 14 项：IMU 差 1–2 量级、积水实为冰面、叉车慢 2–4 倍为最大三项，record-only 不调参）
   （参数扰动分岔表；标定优先级：制动/堵转/空载/滚阻/转动惯量先测）。
 * 补给标记去实体：经停/补给 0.65 米货箱→地面环＋悬浮块＋光柱（标记是信息不是家具）。
 * 视觉诚实：2D 认知层等半径碰撞环（美术放大它不放大，以环为准）；补给标记由
