@@ -103,8 +103,7 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
 void GameUi::rebuild(const game::MissionSimulation* mission) {
  panel_->removeAllWidgets();
  style_panel();
- slot_buttons_.clear();
- slot_option_labels_.clear();
+ slot_cards_.clear();
  style_slider_ = nullptr;
  style_value_ = nullptr;
  budget_label_ = nullptr;
@@ -183,13 +182,30 @@ void GameUi::build_garage() {
   add_label(beat->speaker + "：" + beat->text, kMargin, 168, kContentWidth, 14, {184, 199, 190});
   y = 248.0f;
  }
+ constexpr float kCardGap = 6.0f;
+ constexpr float kCardHeight = 40.0f;
+ const float card_width = (kContentWidth - 2.0f * kCardGap) / 3.0f;
  for (const auto& column : presentation_->component_columns) {
   add_label(column.title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
-  auto button = add_button("", kMargin, y + 25, kContentWidth, 48);
-  button->onClick([this, slot = column.slot] { cycle_component(slot); });
-  slot_buttons_[column.slot] = button;
-  slot_option_labels_[column.slot] = add_label("", kMargin, y + 76, kContentWidth, 11, {132, 139, 135});
-  y += column.options.size() > 3 ? 107 : 91;
+  std::size_t index = 0;
+  for (const auto& option : column.options) {
+   const auto& item = catalog_.component(option);
+   const float row = static_cast<float>(index / 3);
+   const float col = static_cast<float>(index % 3);
+   auto card = tgui::Button::create(item.title + "\n" + std::to_string(item.cost) + "点");
+   card->setPosition(kMargin + col * (card_width + kCardGap), y + 24 + row * (kCardHeight + kCardGap));
+   card->setSize(card_width, kCardHeight);
+   card->setTextSize(13);
+   auto look = card->getRenderer();
+   look->setRoundedBorderRadius(8);
+   look->setBorders({1.0f});
+   panel_->add(card);
+   card->onClick([this, slot = column.slot, id = option] { select_component(slot, id); });
+   slot_cards_[column.slot].push_back({option, card});
+   ++index;
+  }
+  const float rows = static_cast<float>((column.options.size() + 2) / 3);
+  y += 24 + rows * (kCardHeight + kCardGap) + 10;
  }
  add_label(presentation_->policy_title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
  style_slider_ = tgui::Slider::create(0, 100);
@@ -400,26 +416,12 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  }
 }
 
-void GameUi::cycle_component(const std::string& slot) {
- const auto column =
-   std::find_if(presentation_->component_columns.begin(), presentation_->component_columns.end(),
-                [&](const auto& value) { return value.slot == slot; });
- if (column == presentation_->component_columns.end() || column->options.empty()) {
+void GameUi::select_component(const std::string& slot, const std::string& id) {
+ // Locked options are disabled at the widget level, but this guard keeps
+ // programmatic callers honest too. Empty ownership means no filtering.
+ if (!owned_.empty() && !owned_.contains(id))
   return;
- }
- // Empty ownership means "no filtering" (demo/screenshot paths without saves).
- std::vector<std::string> offered;
- for (const auto& option : column->options) {
-  if (owned_.empty() || owned_.contains(option))
-   offered.push_back(option);
- }
- if (offered.empty())
-  return;
- const auto current = selected_id(build_, slot);
- const auto found = std::find(offered.begin(), offered.end(), current);
- const auto next =
-   found == offered.end() || std::next(found) == offered.end() ? offered.begin() : std::next(found);
- assign_id(build_, slot, *next);
+ assign_id(build_, slot, id);
  update_garage_labels();
 }
 
@@ -478,25 +480,26 @@ void GameUi::sanitize_build() {
 }
 
 void GameUi::update_garage_labels() {
- for (const auto& [slot, button] : slot_buttons_) {
-  const auto& item = catalog_.component(selected_id(build_, slot));
-  button->setText(item.title + "  ·  " + std::to_string(item.cost) + " 点\n" + item.description);
-  const auto label = slot_option_labels_.find(slot);
-  if (label != slot_option_labels_.end()) {
-   const auto column =
-     std::find_if(presentation_->component_columns.begin(), presentation_->component_columns.end(),
-                  [&](const auto& value) { return value.slot == slot; });
-   if (column != presentation_->component_columns.end()) {
-    std::string options;
-    for (const auto& option : column->options) {
-     if (!options.empty())
-      options += " · ";
-     options += catalog_.component(option).title;
-     if (!owned_.empty() && !owned_.contains(option))
-      options += "[未解锁]";
-    }
-    label->second->setText("可选：" + options);
+ for (const auto& [slot, cards] : slot_cards_) {
+  const std::string current = selected_id(build_, slot);
+  for (const auto& card : cards) {
+   const auto& item = catalog_.component(card.id);
+   const bool locked = !owned_.empty() && !owned_.contains(card.id);
+   const bool active = card.id == current;
+   card.button->setEnabled(!locked);
+   auto look = card.button->getRenderer();
+   if (active) {
+    look->setBackgroundColor({52, 61, 57});
+    look->setBackgroundColorHover({58, 68, 63});
+    look->setBorderColor({108, 189, 174});
+    look->setTextColor({235, 244, 238});
+   } else {
+    look->setBackgroundColor({26, 30, 31});
+    look->setBackgroundColorHover({38, 44, 43});
+    look->setBorderColor({64, 69, 67});
+    look->setTextColor({225, 224, 215});
    }
+   card.button->setText(item.title + "\n" + std::to_string(item.cost) + "点" + (locked ? "[锁]" : ""));
   }
  }
  if (style_slider_) {
