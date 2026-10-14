@@ -727,7 +727,7 @@ void MissionSimulation::apply_motion() {
   // Ackermann odometry: drive-wheel speed plus steer geometry. At standstill
   // the geometry gives zero yaw — a car cannot turn without rolling.
   encoder_v = motors.drive.measured_mps;
-  encoder_w = encoder_v * std::tan(motors.steer.angle_rad) / std::max(0.05, robot_definition_.wheel_base_m);
+  encoder_w = sim::yaw_for_steer(encoder_v, motors.steer.angle_rad, robot_definition_.wheel_base_m);
  }
  const double gyro_rate =
    has("imu") ? candidate.w + gyro_bias_ + imu_rng_.gauss(spec("imu", "gyro_noise_radps")) : 0.0;

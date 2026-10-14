@@ -29,6 +29,19 @@ struct AckermannParams {
  double wheel_equiv_mass_kg{3.0};
 };
 
+// Ackermann kinematics pair (uniform per-chassis contract, plan §4 item 14):
+// inverse maps body twist to steer demand, forward maps executed steer back
+// to yaw. Same module, consistent by construction; the property test pins
+// forward(inverse(v, w)) == w wherever the speed floor does not intervene.
+// The 0.5 m/s floor is CONTROL policy (a car cannot turn standing still),
+// not kinematics: below it the pair is intentionally not inverse.
+struct SteerSolution {
+ double delta_rad{0.0};
+ bool feasible{false};
+};
+SteerSolution steer_for_twist(double target_w, double target_v, double wheel_base_m, double max_steer_rad);
+double yaw_for_steer(double body_v, double delta_rad, double wheel_base_m);
+
 // Ackermann chassis: one drive motor (speed PID -> PWM -> DC force, same
 // physics as a differential wheel) plus one steering servo (position P loop ->
 // rate-limited first-order angle). Outputs differ from differential on purpose:

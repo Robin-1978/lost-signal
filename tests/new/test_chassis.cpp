@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <utility>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -195,6 +196,30 @@ int main() {
    slipped = sled.telemetry().left.slipping || sled.telemetry().right.slipping || slipped;
   }
   CHECK(slipped);
+ }
+ // Kinematic pairs are mutual inverses (plan §4 item 14): differential twist
+ // round-trips exactly; ackermann round-trips wherever the standstill floor
+ // does not intervene (documented control policy, not kinematics).
+ {
+  for (const auto [v, w] : {std::make_pair(1.0, 0.0), std::make_pair(1.0, 0.5), std::make_pair(-0.5, -1.2),
+                            std::make_pair(0.0, 0.0)}) {
+   double left = 0.0;
+   double right = 0.0;
+   sim::DiffDrive::twistToWheels(v, w, 0.52, left, right);
+   double back_v = 0.0;
+   double back_w = 0.0;
+   sim::DiffDrive::wheelsToTwist(left, right, 0.52, back_v, back_w);
+   CHECK(std::abs(back_v - v) < 1e-12);
+   CHECK(std::abs(back_w - w) < 1e-12);
+  }
+  for (const auto [v, w] : {std::make_pair(1.0, 0.3), std::make_pair(2.0, -0.4), std::make_pair(0.5, 0.0)}) {
+   const auto solution = sim::steer_for_twist(w, v, 0.62, 0.55);
+   CHECK(solution.feasible);
+   CHECK(std::abs(sim::yaw_for_steer(v, solution.delta_rad, 0.62) - w) < 1e-9);
+  }
+  // Beyond steer limits the demand says infeasible instead of faking it.
+  const auto clamped = sim::steer_for_twist(3.0, 1.0, 0.62, 0.55);
+  CHECK(!clamped.feasible);
  }
  return 0;
 }

@@ -23,6 +23,15 @@ constexpr double kSteerSpeedFloorMps = 0.5;
 
 } // namespace
 
+SteerSolution steer_for_twist(double target_w, double target_v, double wheel_base_m, double max_steer_rad) {
+ const double raw = std::atan2(target_w * wheel_base_m, std::max(std::abs(target_v), kSteerSpeedFloorMps));
+ return {raw, std::abs(raw) <= max_steer_rad};
+}
+
+double yaw_for_steer(double body_v, double delta_rad, double wheel_base_m) {
+ return body_v * std::tan(delta_rad) / std::max(0.05, wheel_base_m);
+}
+
 AckermannDrive::AckermannDrive(AckermannParams params, WheelPidGains drive_gains, double servo_kp)
     : params_(params),
       drive_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit),
@@ -58,8 +67,8 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  // Curvature demand from the twist interface, then the servo position loop.
  // P-only by construction: a servo closes its own inner loop, the outer loop
  // only sets the angle demand.
- const double steer_demand = std::atan2(command.target_w * params_.wheel_base_m,
-                                        std::max(std::abs(drive.target_mps), kSteerSpeedFloorMps));
+ const double steer_demand =
+   steer_for_twist(command.target_w, drive.target_mps, params_.wheel_base_m, params_.max_steer_rad).delta_rad;
  servo.target_rad = clamp(steer_demand, -params_.max_steer_rad, params_.max_steer_rad);
  servo.pwm = servo_pid_.update(servo.target_rad - delta_rad_, dt);
  servo.pid_p = servo_pid_.p();
@@ -112,7 +121,7 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  DiffState next = state;
  next.v = state.v + clamp(((contact_out.body_force_N - resist) / std::max(0.5, params_.mass_kg)) * dt,
                           -accel_cap * dt, accel_cap * dt);
- next.w = next.v * std::tan(delta_rad_) / std::max(0.05, params_.wheel_base_m);
+ next.w = yaw_for_steer(next.v, delta_rad_, params_.wheel_base_m);
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);
