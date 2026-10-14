@@ -28,6 +28,7 @@ class ContentCatalog {
  const PresentationDefinition& default_presentation() const;
  const StoryBeatDefinition* story_beat(const std::string& level_id, const std::string& when) const;
 
+ const std::unordered_map<std::string, MapDefinition>& maps() const { return maps_; }
  const std::unordered_map<std::string, LevelDefinition>& levels() const { return levels_; }
  const std::unordered_map<std::string, ComponentDefinition>& components() const { return components_; }
  const std::unordered_map<std::string, AbilityDefinition>& abilities() const { return abilities_; }

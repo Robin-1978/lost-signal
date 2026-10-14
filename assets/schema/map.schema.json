@@ -215,6 +215,9 @@
         },
         "active_in": {
           "$ref": "#/$defs/active"
+        },
+        "dormant_until_summoned": {
+          "type": "boolean"
         }
       }
     }

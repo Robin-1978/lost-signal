@@ -133,13 +133,15 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         _schema(doc, schema_dir / "presentation.schema.json")
     _schema(abilities, schema_dir / "abilities.schema.json")
     _schema(strings, schema_dir / "strings.schema.json")
-    # UI string coverage: every tr("key") and namespaced "ns.key" literal in
-    # client code must resolve (typos fail here, not on the debrief screen).
+    # String coverage: every tr("key") literal in client AND game code must
+    # resolve (typos fail here, not on the debrief screen). Sim event sentences
+    # live in strings.json too (event.*): player-facing text is content,
+    # never C++ literals. Keys are always full literals, never constructed.
     import re as _re
     from pathlib import Path as _Path
-    _client_dir = _Path(__file__).resolve().parent.parent / "src" / "client"
+    _src_dir = _Path(__file__).resolve().parent.parent / "src"
     used_keys: set[str] = set()
-    for source in sorted(_client_dir.glob("*.cpp")):
+    for source in sorted(_src_dir.glob("client/*.cpp")) + sorted(_src_dir.glob("game/*.cpp")):
         text = source.read_text(encoding="utf-8")
         for match in _re.finditer(r'\btrf?\("([^"]+)"', text):
             used_keys.add(match.group(1))

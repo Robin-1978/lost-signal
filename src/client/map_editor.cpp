@@ -19,6 +19,7 @@ MapEditor::MapEditor(const game::ContentCatalog& catalog, std::string level_id)
     : catalog_(catalog), level_id_(std::move(level_id)) {
  const auto& level = catalog_.level(level_id_);
  working_ = catalog_.map(level.map);
+ message_ = catalog_.tr("editor.hint");
 }
 
 std::string MapEditor::free_id(const std::string& prefix) const {

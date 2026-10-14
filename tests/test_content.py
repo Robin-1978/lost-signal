@@ -36,10 +36,16 @@ class ContentValidationTests(unittest.TestCase):
 
     def test_repository_content_is_valid(self) -> None:
         catalog = load_and_validate(self.assets)
-        self.assertEqual(22, len(catalog["levels"]))
-        self.assertEqual(22, len(catalog["presentations"]))
-        self.assertEqual(3, len(catalog["robots"]))
-        self.assertEqual(2, len(catalog["scenes"]))
+        levels = set(catalog["levels"].keys())
+        self.assertEqual(levels, set(catalog["campaign"]["levels"]))
+        served = {p["level"] for p in catalog["presentations"].values()}
+        self.assertEqual(levels, served)
+        scenes = set(catalog["scenes"].keys())
+        for level in catalog["levels"].values():
+            game_map = catalog["maps"][level["map"]]
+            self.assertIn(game_map["scene_3d"], scenes)
+        robots = set(catalog["robots"].keys())
+        self.assertIn(catalog["campaign"]["companion"]["robot"], robots)
         self.assertEqual("boot", catalog["presentations"]["presentation.boot"]["level"])
         self.assertEqual("洛一", catalog["campaign"]["companion"]["display_name"])
 

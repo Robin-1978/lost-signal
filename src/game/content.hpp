@@ -70,6 +70,10 @@ struct ActorDefinition {
  double speed_mps{0.0};
  double radius_m{0.0};
  std::vector<std::string> active_in;
+ // Summon semantics: dormant actors are invisible and non-collidable until a
+ // "summon" goal names them; their patrol clock starts at summon time, so the
+ // encounter is reproducible from the summon moment, not wall-clock.
+ bool dormant_until_summoned{false};
 };
 
 struct SceneShotDefinition {

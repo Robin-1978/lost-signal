@@ -259,6 +259,14 @@ class MissionSimulation {
  std::vector<sim::Vec2> planned_path_;
  std::vector<sim::Patrol> patrols_;
  std::vector<std::string> patrol_ids_;
+ // Per-patrol clock offset: active-from-start patrols run on wall-clock (0);
+ // summoned patrols run on (now - t0) so the encounter reproduces from the
+ // summon moment. Same index as patrols_.
+ std::vector<double> patrol_t0_;
+ // Dormant until a "summon" goal names them: invisible, non-collidable,
+ // unplannable. Parallel to patrols_ once summoned.
+ std::vector<sim::Patrol> dormant_patrols_;
+ std::vector<std::string> dormant_ids_;
  std::vector<sim::DynState> actual_actors_;
  std::vector<sim::Vec2> dynamic_centroid_;
  std::vector<int> confirm_count_;

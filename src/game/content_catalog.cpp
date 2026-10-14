@@ -308,6 +308,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    actor.speed_mps = item.at("speed_mps").get<double>();
    actor.radius_m = item.at("radius_m").get<double>();
    actor.active_in = item.at("active_in").get<std::vector<std::string>>();
+   actor.dormant_until_summoned = item.value("dormant_until_summoned", false);
    map.actors.push_back(std::move(actor));
   }
   insert_unique(catalog.maps_, std::move(map), path);

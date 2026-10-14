@@ -208,12 +208,22 @@ void MissionSimulation::build_world() {
 
  patrols_.clear();
  patrol_ids_.clear();
+ patrol_t0_.clear();
+ dormant_patrols_.clear();
+ dormant_ids_.clear();
  for (const auto& actor : map_definition_.actors) {
   if (!active_in_level(actor.active_in, level_id_) || actor.path.size() < 2) {
    continue;
   }
-  patrols_.push_back({actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m});
+  const sim::Patrol patrol{actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m};
+  if (actor.dormant_until_summoned) {
+   dormant_patrols_.push_back(patrol);
+   dormant_ids_.push_back(actor.id);
+   continue;
+  }
+  patrols_.push_back(patrol);
   patrol_ids_.push_back(actor.id);
+  patrol_t0_.push_back(0.0);
  }
  actual_actors_.assign(patrols_.size(), {});
 }
@@ -249,7 +259,7 @@ void MissionSimulation::start() {
  }
  snapshot_.status = MissionStatus::Running;
  result_.status = MissionStatus::Running;
- record_event("mission-start", "洛一开始自主执行任务。");
+ record_event("mission-start", catalog_.tr("event.mission_start"));
 }
 
 void MissionSimulation::run_to_completion() {
@@ -303,12 +313,42 @@ void MissionSimulation::step() {
     const std::string next_label = snapshot_.goals_reached < goals.size()
                                        ? goals[snapshot_.goals_reached].label
                                        : level_.objective.goal_label;
-    record_event("via-reached", step.label + "已取得，继续前往" + next_label + "。");
+    record_event("via-reached", catalog_.trf("event.via_reached", {step.label, next_label}));
+   } else if (step.action == "recharge") {
+    // Pass-through goal: top up the battery account, keep driving. Net energy
+    // never goes negative; the top-up amount is content, the accounting here.
+    ++snapshot_.goals_reached;
+    result_.energy_wh = std::max(0.0, result_.energy_wh - step.recharge_wh);
+    record_event("recharged", catalog_.trf("event.recharged", {step.label}));
+   } else if (step.action == "summon") {
+    // Pass-through goal: wake a dormant actor; its clock starts now, so the
+    // encounter reproduces from this moment on every same-seed run.
+    ++snapshot_.goals_reached;
+    bool woke = false;
+    for (std::size_t index = 0; index < dormant_ids_.size(); ++index) {
+     if (dormant_ids_[index] == step.summon_actor) {
+      patrols_.push_back(dormant_patrols_[index]);
+      patrol_ids_.push_back(dormant_ids_[index]);
+      patrol_t0_.push_back(snapshot_.time_s);
+      actual_actors_.push_back({});
+      dormant_patrols_.erase(dormant_patrols_.begin() + (std::ptrdiff_t)index);
+      dormant_ids_.erase(dormant_ids_.begin() + (std::ptrdiff_t)index);
+      woke = true;
+      break;
+     }
+    }
+    // Full-literal trf keys (no dynamic key building): the content gate greps
+    // string literals, constructed keys would slip past it.
+    if (woke) {
+     record_event("summoned", catalog_.trf("event.summoned_ok", {step.label}));
+    } else {
+     record_event("summoned", catalog_.trf("event.summoned_miss", {step.label}));
+    }
    }
   }
  }
  if (snapshot_.status == MissionStatus::Running && snapshot_.time_s >= level_.objective.time_limit_s) {
-  finish_failure("timeout", "洛一未能在时限内抵达目标。");
+  finish_failure("timeout", catalog_.tr("event.timeout_failure"));
  }
  if (snapshot_.time_s + 1e-9 >= next_replay_s_) {
   record_replay();
@@ -319,7 +359,8 @@ void MissionSimulation::step() {
 void MissionSimulation::update_actors() {
  snapshot_.actors.clear();
  for (std::size_t index = 0; index < patrols_.size(); ++index) {
-  actual_actors_[index] = sim::patrol_state(patrols_[index], snapshot_.time_s);
+  actual_actors_[index] =
+      sim::patrol_state(patrols_[index], snapshot_.time_s - patrol_t0_[index]);
   snapshot_.actors.push_back({
     patrol_ids_[index],
     actual_actors_[index].p,
@@ -366,7 +407,7 @@ void MissionSimulation::scan_environment() {
 
  if (first_static_detection && snapshot_.static_obstacle_detected &&
      level_.objective.type == "observe_and_stop") {
-  record_event("obstacle-detected", "距离雷达发现玻璃门，洛一开始控制停车距离。");
+  record_event("obstacle-detected", catalog_.tr("event.obstacle_detected"));
  }
 
  // Observation confirmation: a single scan of hits is only a suspect.
@@ -425,9 +466,9 @@ void MissionSimulation::scan_environment() {
    }
   }
   std::ostringstream detected;
-  detected << std::fixed << std::setprecision(1) << "距离雷达在" << first_range
-           << "米发现巡逻叉车，洛一开始预测它的运动。";
-  record_event("dynamic-detected", detected.str());
+  detected << std::fixed << std::setprecision(1) << first_range;
+  record_event("dynamic-detected",
+               catalog_.trf("event.dynamic_detected", {detected.str()}));
  }
 }
 
@@ -678,9 +719,8 @@ void MissionSimulation::decide_control() {
   held_command_ = {0.0, 0.0};
   if (!snapshot_.waiting_for_clearance) {
    std::ostringstream waiting;
-   waiting << std::fixed << std::setprecision(1) << "预测路径发生冲突（最近" << nearest_actor
-           << "米），洛一停车等待安全窗口。";
-   record_event("waiting", waiting.str());
+   waiting << std::fixed << std::setprecision(1) << nearest_actor;
+   record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}));
   }
   snapshot_.waiting_for_clearance = true;
   shadow_open_speed_ = 0.0;
@@ -706,9 +746,8 @@ void MissionSimulation::decide_control() {
   snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < kCreepSpeedMps;
   if (snapshot_.waiting_for_clearance) {
    std::ostringstream waiting;
-   waiting << std::fixed << std::setprecision(1) << "预测路径发生冲突（最近" << nearest_actor
-           << "米），洛一停车等待安全窗口。";
-   record_event("waiting", waiting.str(), 2.0);
+   waiting << std::fixed << std::setprecision(1) << nearest_actor;
+   record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}), 2.0);
   }
   shadow_open_speed_ = 0.0;
   for (const auto& track : known_tracks) {

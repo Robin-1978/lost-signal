@@ -67,7 +67,7 @@ class MapEditor {
  bool tracking_{false};
  int selected_corner_{-1};
  std::string free_id(const std::string& prefix) const;
- std::string message_{"E 编辑 · 点选拖动 · S 存盘"};
+ std::string message_;
 };
 
 } // namespace client

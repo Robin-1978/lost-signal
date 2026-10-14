@@ -96,6 +96,16 @@
     "garage.stat_sensor": "{0}米{1}Hz",
     "garage.stat_computer": "决策{0}Hz",
     "garage.stat_imu": "陀螺{0}",
-    "garage.card": "{0}\n{1}\n{2}点{3}"
+    "garage.card": "{0}\n{1}\n{2}点{3}",
+    "event.mission_start": "洛一开始自主执行任务。",
+    "event.via_reached": "{0}已取得，继续前往{1}。",
+    "event.recharged": "{0}补能完成，继续行驶。",
+    "event.summoned_ok": "{0}已响应，外出接应。",
+    "event.summoned_miss": "{0}无响应，继续行驶。",
+    "event.timeout_failure": "洛一未能在时限内抵达目标。",
+    "event.obstacle_detected": "距离雷达发现玻璃门，洛一开始控制停车距离。",
+    "event.dynamic_detected": "距离雷达在{0}米发现巡逻叉车，洛一开始预测它的运动。",
+    "event.waiting": "预测路径发生冲突（最近{0}米），洛一停车等待安全窗口。",
+    "editor.hint": "E 编辑 · 点选拖动 · S 存盘"
   }
 }

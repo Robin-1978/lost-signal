@@ -14,14 +14,25 @@
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  CHECK(catalog.campaign().companion_name == "洛一");
- CHECK(catalog.campaign().levels.size() == 22);
- CHECK(catalog.levels().size() == 22);
+ CHECK(!catalog.campaign().levels.empty());
+ CHECK(catalog.levels().size() == catalog.campaign().levels.size());
+ for (const auto& id : catalog.campaign().levels) CHECK(catalog.levels().count(id) == 1);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 3);
- CHECK(catalog.scenes().size() == 2);
- CHECK(catalog.presentations().size() == 22);
- CHECK(catalog.story_beats().size() == 35);
+ for (const auto& [id, map] : catalog.maps()) CHECK(catalog.scenes().count(map.scene_3d) == 1);
+ for (const auto& [id, level] : catalog.levels()) {
+  // 与 catalog 加载门禁同口径:每个关卡恰有一个 presentation 服务
+  // (终关走 default presentation,不猜 id 拼接)。
+  int serving = 0;
+  for (const auto& [pid, presentation] : catalog.presentations()) {
+   (void)pid;
+   if (presentation.level == id) ++serving;
+  }
+  CHECK(serving == 1);
+  CHECK(catalog.maps().count(level.map) == 1);
+ }
+ for (const auto& beat : catalog.story_beats()) CHECK(catalog.levels().count(beat.level) == 1);
  CHECK(catalog.campaign().companion_robot == "robot.ro1");
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
