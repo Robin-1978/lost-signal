@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <utility>
 
 namespace game {
@@ -151,6 +153,7 @@ void MissionSimulation::build_world() {
    params.w_max / (2.0 * std::max(0.2, cruise) * std::max(0.1, robot_definition_.wheel_base_m));
  heading_pid_ = std::make_unique<sim::PID>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, params.w_max,
                                            robot_definition_.steering_integral_limit);
+ heading_kp_ = heading_kp;
 
  patrols_.clear();
  patrol_ids_.clear();
@@ -283,6 +286,7 @@ void MissionSimulation::scan_environment() {
                                    property(sensor_->behavior, "noise_sigma_m"), rng_, actual_actors_);
  snapshot_.lidar_hits.clear();
  std::vector<int> dynamic_hit_count(actual_actors_.size(), 0);
+ dynamic_centroid_.assign(actual_actors_.size(), {0.0, 0.0});
  const bool first_static_detection = !snapshot_.static_obstacle_detected;
  for (int index = 0; index < scan.n_rays; ++index) {
   if (!scan.hit[index]) {
@@ -292,13 +296,16 @@ void MissionSimulation::scan_environment() {
    snapshot_.static_obstacle_detected = true;
   }
   const double angle = snapshot_.robot.theta + (2.0 * sim::kPi * index / scan.n_rays);
-  snapshot_.lidar_hits.push_back({
+  const sim::Vec2 endpoint{
     position.x + std::cos(angle) * scan.ranges[index],
     position.y + std::sin(angle) * scan.ranges[index],
-  });
+  };
+  snapshot_.lidar_hits.push_back(endpoint);
   const int dynamic_index = scan.dynamic_hit[index];
   if (dynamic_index >= 0 && static_cast<std::size_t>(dynamic_index) < actual_actors_.size()) {
    ++dynamic_hit_count[dynamic_index];
+   dynamic_centroid_[dynamic_index].x += endpoint.x;
+   dynamic_centroid_[dynamic_index].y += endpoint.y;
   }
  }
 
@@ -307,16 +314,40 @@ void MissionSimulation::scan_environment() {
   record_event("obstacle-detected", "距离雷达发现玻璃门，洛一开始控制停车距离。");
  }
 
+ // Observation confirmation: a single scan of hits is only a suspect.
+ // A track is born after two consecutive scans see the same actor, and dies
+ // after track_max_age_s without confirmation. First sight is noisy by nature;
+ // persistence is the cheapest honest filter.
  bool first_detection = !snapshot_.dynamic_object_detected;
+ if (confirm_count_.size() != actual_actors_.size()) {
+  confirm_count_.assign(actual_actors_.size(), 0);
+ }
  for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
   if (dynamic_hit_count[index] > 0) {
-   // The ray association above represents clustering. The object detector emits a
-   // noisy center estimate; planners never receive the actor's route or velocity.
-   const double center_noise = property(sensor_->behavior, "noise_sigma_m") /
-                               (3.0 * std::sqrt(static_cast<double>(dynamic_hit_count[index])));
+   ++confirm_count_[index];
+   if (confirm_count_[index] < 2) {
+    continue;
+   }
+  } else {
+   confirm_count_[index] = 0;
+   continue;
+  }
+  {
+   // Honest detector: the center is completed from this scan's own hit
+   // endpoints, never the actor's true position. Only the facing arc is
+   // visible, so its centroid sits ~one radius toward the robot; radial
+   // completion by the (known) radius restores the center to centimeter
+   // accuracy at range. Ray-to-actor association and the radius still come
+   // from the simulator (documented simplifications); route and velocity
+   // are never exposed.
+   const double hits = static_cast<double>(dynamic_hit_count[index]);
+   sim::Vec2 arc{dynamic_centroid_[index].x / hits, dynamic_centroid_[index].y / hits};
+   sim::Vec2 sight{arc.x - position.x, arc.y - position.y};
+   const double sight_len = std::max(1e-6, std::hypot(sight.x, sight.y));
+   const double residual = property(sensor_->behavior, "noise_sigma_m") / (2.0 * std::sqrt(hits));
    const sim::Vec2 measured_center{
-     actual_actors_[index].p.x + perception_rng_.gauss(center_noise),
-     actual_actors_[index].p.y + perception_rng_.gauss(center_noise),
+     arc.x + sight.x / sight_len * actual_actors_[index].radius + perception_rng_.gauss(residual),
+     arc.y + sight.y / sight_len * actual_actors_[index].radius + perception_rng_.gauss(residual),
    };
    dynamic_obstacle_map_.observe(
      {
@@ -330,7 +361,18 @@ void MissionSimulation::scan_environment() {
  }
  refresh_dynamic_obstacles();
  if (first_detection && snapshot_.dynamic_object_detected) {
-  record_event("dynamic-detected", "距离雷达发现巡逻叉车，洛一开始预测它的运动。");
+  double first_range = 0.0;
+  for (const auto& obstacle : snapshot_.dynamic_obstacles) {
+   const double range = std::hypot(obstacle.estimated_position.x - snapshot_.robot.x,
+                                   obstacle.estimated_position.y - snapshot_.robot.y);
+   if (first_range <= 0.0 || range < first_range) {
+    first_range = range;
+   }
+  }
+  std::ostringstream detected;
+  detected << std::fixed << std::setprecision(1) << "距离雷达在" << first_range
+           << "米发现巡逻叉车，洛一开始预测它的运动。";
+  record_event("dynamic-detected", detected.str());
  }
 }
 
@@ -438,23 +480,30 @@ void MissionSimulation::decide_control() {
  if (!dwa.best.valid) {
   held_command_ = {0.0, 0.0};
   if (!snapshot_.waiting_for_clearance) {
-   record_event("waiting", "预测路径发生冲突，洛一停车等待安全窗口。");
+   std::ostringstream waiting;
+   waiting << std::fixed << std::setprecision(1) << "预测路径发生冲突（最近" << nearest_actor
+           << "米），洛一停车等待安全窗口。";
+   record_event("waiting", waiting.str());
   }
   snapshot_.waiting_for_clearance = true;
  } else {
-  // The global route remains responsible for cornering around shelves. DWA
-  // contributes the safe speed and a local avoidance correction; allowing it
-  // to replace the route heading entirely can leave a differential drive
-  // spinning at a concave corner while a patrol is nearby.
-  const double blended_turn =
-    std::abs(dwa.best.v) < 0.15
-      ? std::clamp(2.0 * heading_error, -drive_->params().w_max, drive_->params().w_max)
+  // Arbitration without magic gains: while the avoidance speed is healthy, DWA
+  // owns both speed and turn; at creep speed the robot holds the route heading
+  // with the same derived proportional gain (P-only: integrator and derivative
+  // states are meaningless at standstill and would wind up or kick).
+  constexpr double kCreepSpeedMps = 0.15;
+  const double arbitrated_turn =
+    std::abs(dwa.best.v) < kCreepSpeedMps
+      ? std::clamp(heading_kp_ * heading_error, -drive_->params().w_max, drive_->params().w_max)
       : dwa.best.w;
   held_command_ = {dwa.best.v < 0.0 ? dwa.best.v : std::min(std::max(0.0, route_control.tv), dwa.best.v),
-                   blended_turn};
-  snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < 0.15;
+                   arbitrated_turn};
+  snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < kCreepSpeedMps;
   if (snapshot_.waiting_for_clearance) {
-   record_event("waiting", "预测路径发生冲突，洛一停车等待安全窗口。", 2.0);
+   std::ostringstream waiting;
+   waiting << std::fixed << std::setprecision(1) << "预测路径发生冲突（最近" << nearest_actor
+           << "米），洛一停车等待安全窗口。";
+   record_event("waiting", waiting.str(), 2.0);
   }
  }
 }

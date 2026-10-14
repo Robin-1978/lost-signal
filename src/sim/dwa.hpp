@@ -20,7 +20,7 @@ struct DwaRollout {
  bool collision{false};
 };
 // Differential-drive DWA-lite: 在(v,w)窗口采样, 前向仿真predict_T, 打分.
-// 玩家调 w_goal/w_clear/w_speed 就能看到"冲目标"vs"保安全"vs"求快"的打架。
+// 权重是算法方法常量(随风格档整体缩放清除项), 玩家只选驾驶风格不调权重。
 struct DwaResult {
  DwaCmd best;
  std::vector<Vec2> best_path;

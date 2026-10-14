@@ -69,7 +69,10 @@
    ],
    "properties": {
     "type": {
-     "const": "differential"
+     "enum": [
+      "differential",
+      "ackermann"
+     ]
     },
     "wheel_radius_m": {
      "type": "number",

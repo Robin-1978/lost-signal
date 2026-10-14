@@ -20,6 +20,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nlohmann_json)
 
 add_library(lost_signal_sim STATIC
+ src/sim/ackermann.cpp
  src/sim/astar.cpp
  src/sim/diff_drive.cpp
  src/sim/dynamic_obstacle_map.cpp
@@ -110,6 +111,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_dynamic_perception tests/new/test_dynamic_perception.cpp)
  target_link_libraries(test_dynamic_perception PRIVATE lost_signal_sim)
  add_test(NAME dynamic_perception COMMAND test_dynamic_perception)
+
+ add_executable(test_chassis tests/new/test_chassis.cpp)
+ target_link_libraries(test_chassis PRIVATE lost_signal_sim)
+ add_test(NAME chassis COMMAND test_chassis)
 
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)

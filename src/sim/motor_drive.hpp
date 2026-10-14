@@ -48,6 +48,29 @@ struct MotorDriveTelemetry {
  WheelMotorTelemetry right;
 };
 
+// Steering servo telemetry (ackermann). A servo is position-controlled: the
+// loop output is PWM, the state is the angle, and the rate limit is physics.
+struct ServoTelemetry {
+ double target_rad{0.0};
+ double angle_rad{0.0};
+ double pwm{0.0};
+ double pid_p{0.0};
+ double pid_i{0.0};
+ double pid_d{0.0};
+};
+
+// Unified chassis telemetry. differential selects the left/right wheel pair,
+// ackermann selects the drive unit plus the steering servo; the inactive side
+// stays zero. Asking a differential chassis for steer data returns zeros,
+// never plausible-looking fiction.
+struct ChassisTelemetry {
+ bool differential{true};
+ WheelMotorTelemetry left;
+ WheelMotorTelemetry right;
+ WheelMotorTelemetry drive;
+ ServoTelemetry steer;
+};
+
 // Closed-loop wheel-speed tuning from first principles. The linearized wheel
 // plant dV/dt = (K_lin*u - c*V)/m_w is dominated by inertia, so a conservative
 // PI is placed by bandwidth: Kp = m_w*wc/K_lin, Ki = Kp*wc/30 (slow integrator
@@ -63,15 +86,15 @@ struct WheelPidGains {
 WheelPidGains tune_wheel_pid(double wheel_mass_kg, double stall_force_N, double free_speed_mps,
                              double linearize_at_mps);
 
-// A chassis turns a body twist command into motion. Differential drive is the
-// first implementation; ro1.json drive.type selects it. Unknown types must be
-// rejected by the factory in game code, never stubbed here.
+// A chassis turns a body twist command into motion. Differential drive and
+// ackermann are the implementations; ro1.json drive.type selects one. Unknown
+// types must be rejected by the factory in game code, never stubbed here.
 class ChassisModel {
  public:
  virtual ~ChassisModel() = default;
  virtual DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                         const GroundContact& ground) = 0;
- virtual const MotorDriveTelemetry& telemetry() const = 0;
+ virtual const ChassisTelemetry& telemetry() const = 0;
 };
 
 // Differential drive with per-wheel DC force, Coulomb/viscous resistance,
@@ -92,7 +115,7 @@ class DifferentialMotorDrive : public ChassisModel {
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
- const MotorDriveTelemetry& telemetry() const override { return telemetry_; }
+ const ChassisTelemetry& telemetry() const override { return telemetry_; }
 
  private:
  double encoder_measure(double wheel_mps, double dt) const;
@@ -100,7 +123,7 @@ class DifferentialMotorDrive : public ChassisModel {
  MotorDriveParams params_;
  PID left_pid_;
  PID right_pid_;
- MotorDriveTelemetry telemetry_;
+ ChassisTelemetry telemetry_;
 };
 
 } // namespace sim

@@ -75,8 +75,9 @@ twist → 轮速 → CPR=2048 编码器量化 → 双轮速 PID → PWM → 加�
   twist 进 / 位姿出 / 双执行器遥测（PWM、RPM），与现有快照字段兼容。
 * `DifferentialMotorDrive` 成为该接口的第一个实现；未知 `type` 直接 `ContentError`，
   不写空壳占位。
-* 本期只做：接口接缝 + 死代码处理（`bicycle` 旧演示、`recorder.hpp` 删或标 legacy）
-  + JSON 参数位预留（只加实际读取的字段）。
+* 已实施：`ChassisModel` 接口泛化遥测 + `AckermannDrive`（驱动电机环 + 转向舵机位置环，
+  自行车运动学，原地不打转）+ `test_chassis` 回归；`drive.type` schema 放开枚举。
+  出战线缺第一辆阿克曼内容车（参数+官方配置+重标定），随第二章来；工厂分支与内容同到。
 
 ### 阿克曼底盘（第一章关闭后，第一顺位）
 * JSON：`drive.type="ackermann"` + `steering{delta_max_deg, steer_rate_max_dps,

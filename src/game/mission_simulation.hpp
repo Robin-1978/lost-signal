@@ -177,6 +177,7 @@ class MissionSimulation {
  std::unique_ptr<sim::DiffDrive> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::PID> heading_pid_;
+ double heading_kp_{0.0};
  sim::DeadReckon odometry_;
  sim::Rng rng_;
  sim::Rng perception_rng_;
@@ -185,6 +186,8 @@ class MissionSimulation {
  std::vector<sim::Patrol> patrols_;
  std::vector<std::string> patrol_ids_;
  std::vector<sim::DynState> actual_actors_;
+ std::vector<sim::Vec2> dynamic_centroid_;
+ std::vector<int> confirm_count_;
  sim::DynamicObstacleMap dynamic_obstacle_map_;
 
  MissionSnapshot snapshot_;
