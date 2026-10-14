@@ -193,7 +193,12 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
   steer = -steer_fwd;
  } // 目标在身后:倒车回转
  else {
-  st.reverse_time = 0.0;
+  // Leaky trouble memory, not a latch reset: reverse_time drains at the same
+  // rate it fills, so flapping between reverse and forward (marginal lookahead
+  // flips, slow-spin chassis that cannot damp them) still accumulates toward
+  // the watchdog. The 3 s threshold keeps its meaning: 3 net-seconds of
+  // reversing trouble. A completed spin recovery (above) still clears it.
+  st.reverse_time = std::max(0.0, st.reverse_time - dt);
   steer = steer_fwd;
   tv = sched_v(err, cruise);
  }

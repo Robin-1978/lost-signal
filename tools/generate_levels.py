@@ -159,6 +159,7 @@ LEVELS: list[dict] = [
         "story_after": "洛一：到家了。长途的秘诀就是没有秘诀：匀速。",
     },
 
+
     {
         "id": "scrub_climb",
         "template": "reach",
