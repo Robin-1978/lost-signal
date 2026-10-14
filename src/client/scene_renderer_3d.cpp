@@ -728,6 +728,8 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
    return mission.build().tires;
   if (slot == "sensor")
    return mission.build().sensor;
+  if (slot == "motor")
+   return mission.build().motor;
   return mission.build().computer;
  };
  const auto draw_part = [&](const game::VisualDefinition& visual, const game::MountDefinition& mount) {

@@ -422,11 +422,13 @@ void GameUi::select_component(const std::string& slot, const std::string& id) {
  if (!owned_.empty() && !owned_.contains(id))
   return;
  assign_id(build_, slot, id);
+ actions_.build_changed = true;
  update_garage_labels();
 }
 
 void GameUi::set_style(double style) {
  build_.style = std::clamp(style, 0.0, 1.0);
+ actions_.build_changed = true;
  update_style_label();
 }
 

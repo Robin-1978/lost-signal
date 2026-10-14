@@ -183,6 +183,11 @@ int run_client(const game::ContentCatalog& catalog, const Options& options) {
     ui.set_screen(client::Screen::Prediction, mission.get());
    if (actions.open_chapter)
     ui.set_screen(client::Screen::Chapter, mission.get());
+   // Garage preview follows the assembly: rebuild the render-only mission without
+   // touching widgets (a slider drag emits build_changed every tick).
+   if (actions.build_changed && ui.screen() == client::Screen::Garage) {
+    mission = std::make_unique<game::MissionSimulation>(catalog, ui.level_id(), ui.build());
+   }
    if (actions.open_garage) {
     mission = std::make_unique<game::MissionSimulation>(catalog, ui.level_id(), ui.build());
     ui.set_screen(client::Screen::Garage, mission.get());

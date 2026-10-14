@@ -20,6 +20,7 @@ struct UiActions {
  bool open_garage{false};
  bool open_chapter{false};
  bool toggle_pause{false};
+ bool build_changed{false};
  double speed{0.0};
  std::string selected_level;
 };
