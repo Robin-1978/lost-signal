@@ -103,11 +103,15 @@ inline double sched_v(double err, double cruise) {
 inline double heading_err(Vec2 wp, double ex, double ey, double eth) {
  return wrap_angle(std::atan2(wp.y - ey, wp.x - ex) - eth);
 }
-// 跟随器状态(跨步保持): 航点下标 + 倒车锁存.
+// 跟随器状态(跨步保持): 航点下标 + 倒车锁存 + 倒车计时.
 // 倒车必须带迟滞(1.4进/0.7出): 实测单阈值1.2会在err≈-1.2处正反抖振成极限环.
+// 看门狗: 连续倒车超过 3 秒必定是锁存卡死(目标一直在身后), 切原地转向
+// 面向目标。差速底盘本来就能原地打转, 没必要一直倒车。
 struct GuideState {
  size_t idx{0};
  bool reversing{false};
+ double reverse_time{0.0};
+ bool spinning{false};
 };
 // ex/ey/eth: 用于推进+算err的位姿(真值或odom估计).
 // steer单位由调用方PID的out_lim决定: 自行车=delta_max(rad), 差速=w_max(rad/s).
@@ -129,11 +133,29 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
  else if (st.reversing && std::abs(err) < 0.7)
   st.reversing = false;
  double tv, steer;
+ if (st.spinning) {
+  // 看门狗后的原地转向：转到基本对准目标才退出，否则下一步又会倒车。
+  if (std::abs(err) < 0.5) {
+   st.spinning = false;
+   st.reverse_time = 0.0;
+  } else {
+   return {err, steer_fwd, 0.0, false};
+  }
+ }
  if (st.reversing) {
+  st.reverse_time += dt;
+  if (st.reverse_time > 3.0) {
+   // 看门狗：停倒车，转原地转向模式。
+   st.reversing = false;
+   st.reverse_time = 0.0;
+   st.spinning = true;
+   return {err, steer_fwd, 0.0, false};
+  }
   tv = -0.4;
   steer = -steer_fwd;
  } // 目标在身后:倒车回转
  else {
+  st.reverse_time = 0.0;
   steer = steer_fwd;
   tv = sched_v(err, cruise);
  }
