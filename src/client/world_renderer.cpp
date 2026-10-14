@@ -148,11 +148,25 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
   const bool selected =
     editor.selected_kind() == MapEditor::Kind::kObstacle && editor.selected_id() == obstacle.id;
   rect_lines(obstacle.min, obstacle.max, selected ? hot : ghost);
+  if (selected) {
+   for (int corner = 0; corner < 4; ++corner) {
+    const auto px = world_to_screen({corner == 0 || corner == 3 ? obstacle.min.x : obstacle.max.x,
+                                     corner == 0 || corner == 1 ? obstacle.min.y : obstacle.max.y});
+    DrawRectangleLinesEx({px.x - 5, px.y - 5, 10, 10}, 2.0f, hot);
+   }
+  }
  }
  for (const auto& surface : working.surfaces) {
   const bool selected =
     editor.selected_kind() == MapEditor::Kind::kSurface && editor.selected_id() == surface.id;
   rect_lines(surface.min, surface.max, selected ? hot : Fade(kCyan, 0.45f));
+  if (selected) {
+   for (int corner = 0; corner < 4; ++corner) {
+    const auto px = world_to_screen({corner == 0 || corner == 3 ? surface.min.x : surface.max.x,
+                                     corner == 0 || corner == 1 ? surface.min.y : surface.max.y});
+    DrawRectangleLinesEx({px.x - 5, px.y - 5, 10, 10}, 2.0f, hot);
+   }
+  }
  }
  for (const auto& [id, pose] : working.markers) {
   const bool selected = editor.selected_kind() == MapEditor::Kind::kMarker && editor.selected_id() == id;
@@ -162,7 +176,8 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
    draw_text(id, {center.x + 12, center.y - 8}, 12, hot);
   }
  }
- const std::string status = std::string(editor.dirty() ? "[●] " : "[○] ") + editor.message() + "  (E 退出)";
+ const std::string status = std::string(editor.dirty() ? "[●] " : "[○] ") + editor.message() +
+                            "  (E 退出 · N 障碍 · B 地面 · M 标记 · Del 删除 · S 存盘)";
  draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 13, Fade(kText, 0.9f));
 }
 

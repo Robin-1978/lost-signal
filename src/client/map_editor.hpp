@@ -25,14 +25,26 @@ class MapEditor {
  const std::string& level_id() const { return level_id_; }
  const game::MapDefinition& working() const { return working_; }
  Kind selected_kind() const { return selected_kind_; }
+ // Grabbed box corner 0..3 (min/min, max/min, max/max, min/max), -1 when the
+ // press took the body. Markers have no corners.
+ int selected_corner() const { return selected_corner_; }
  const std::string& selected_id() const { return selected_id_; }
  const std::string& message() const { return message_; }
 
- // Press: pick the nearest editable within kGrabRadiusM. Drag: move the
- // selection by the world-space delta (clamped to map bounds).
+ // Press: corner handles of the current selection first, then the nearest
+ // editable within kGrabRadiusM. Drag: move the selection (or the grabbed
+ // corner) by the world-space delta, clamped to map bounds.
  void press(double world_x, double world_y);
  void drag(double world_x, double world_y);
  void release();
+ // v2: id auto-generated (edit_box/marker/surface_NN, map-local unique);
+ // new physics defaults to active_in=[this level] so other levels cannot
+ // shift under a save. Markers carry no gate (unused markers are inert).
+ // Deleting a level-referenced marker fails at save validation, loudly.
+ void add_obstacle(double world_x, double world_y);
+ void add_surface(double world_x, double world_y);
+ void add_marker(double world_x, double world_y);
+ void remove_selected();
 
  // Serialize the working copy, write the map file, then reload the whole
  // catalog from disk into a temp object as the validity proof. Returns true
@@ -53,6 +65,8 @@ class MapEditor {
  double last_x_{0.0};
  double last_y_{0.0};
  bool tracking_{false};
+ int selected_corner_{-1};
+ std::string free_id(const std::string& prefix) const;
  std::string message_{"E 编辑 · 点选拖动 · S 存盘"};
 };
 

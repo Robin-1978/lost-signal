@@ -59,6 +59,48 @@ int main() {
   editor.drag(10.0, 10.0);
   CHECK(!editor.dirty());
  }
+ // v2: add obstacle/surface/marker with honest defaults (gated to this
+ // level, paved numbers from the library), corner resize with clamps, delete.
+ {
+  client::MapEditor editor(catalog, "boot");
+  editor.toggle();
+  editor.add_obstacle(5.0, 5.0);
+  CHECK(editor.selected_kind() == client::MapEditor::Kind::kObstacle);
+  CHECK(editor.selected_id() == "edit_box_01");
+  CHECK(editor.dirty());
+  const auto& boxes = editor.working().obstacles;
+  const auto& box = boxes.back();
+  CHECK(std::abs(box.max.x - box.min.x - 1.0) < 1e-9);
+  CHECK(box.active_in.size() == 1 && box.active_in[0] == "boot");
+  editor.add_obstacle(6.0, 6.0);
+  CHECK(editor.selected_id() == "edit_box_02");
+  editor.add_surface(10.0, 10.0);
+  CHECK(editor.selected_kind() == client::MapEditor::Kind::kSurface);
+  const auto& ground = editor.working().surfaces.back();
+  CHECK(ground.material == "paved");
+  CHECK(std::abs(ground.friction_mu - 1.0) < 1e-12);
+  CHECK(ground.active_in.size() == 1 && ground.active_in[0] == "boot");
+  editor.add_marker(3.0, 3.0);
+  CHECK(editor.selected_kind() == client::MapEditor::Kind::kMarker);
+  CHECK(editor.working().markers.count(editor.selected_id()) == 1);
+  // Resize the first box by its max/max corner, then delete the marker.
+  editor.press(5.0, 5.0);
+  CHECK(editor.selected_kind() == client::MapEditor::Kind::kObstacle);
+  CHECK(editor.selected_id() == "edit_box_01");
+  editor.press(5.5, 5.5);
+  CHECK(editor.selected_corner() == 2);
+  editor.drag(5.5, 5.5);
+  editor.drag(9.0, 9.0);
+  editor.release();
+  const auto& grown = editor.working().obstacles[editor.working().obstacles.size() - 2];
+  CHECK(std::abs(grown.max.x - 9.0) < 1e-9);
+  CHECK(std::abs(grown.max.y - 9.0) < 1e-9);
+  CHECK(std::abs(grown.min.x - 4.5) < 1e-9);
+  editor.press(3.0, 3.0);
+  CHECK(editor.selected_kind() == client::MapEditor::Kind::kMarker);
+  editor.remove_selected();
+  CHECK(editor.working().markers.count("edit_marker_01") == 0);
+ }
  // Save round trip on a scratch copy: file bytes equal the serializer and
  // the reloaded catalog carries the edit.
  {

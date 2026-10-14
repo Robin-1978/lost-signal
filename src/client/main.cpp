@@ -170,7 +170,8 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
    if (IsKeyPressed(KEY_TAB))
     renderer.toggle_analysis_mode();
    // Map editor (2D analysis layer only): E toggles, left-drag moves the
-   // selection, S saves to disk and reloads the level onto the new map.
+   // selection (corners resize), N/B/M add obstacle/ground/marker at the
+   // cursor, Delete removes, S saves to disk and reloads the level.
    if (IsKeyPressed(KEY_E) && renderer.analysis_mode()) {
     if (!editor || editor->level_id() != ui.level_id()) {
      editor.emplace(catalog, ui.level_id());
@@ -190,6 +191,24 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
     }
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
      editor->release();
+    }
+    if (IsKeyPressed(KEY_N)) {
+     if (const auto world = renderer.screen_to_world(GetMousePosition())) {
+      editor->add_obstacle(world->x, world->y);
+     }
+    }
+    if (IsKeyPressed(KEY_B)) {
+     if (const auto world = renderer.screen_to_world(GetMousePosition())) {
+      editor->add_surface(world->x, world->y);
+     }
+    }
+    if (IsKeyPressed(KEY_M)) {
+     if (const auto world = renderer.screen_to_world(GetMousePosition())) {
+      editor->add_marker(world->x, world->y);
+     }
+    }
+    if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
+     editor->remove_selected();
     }
     if (IsKeyPressed(KEY_S)) {
      const auto assets = options.assets.string();

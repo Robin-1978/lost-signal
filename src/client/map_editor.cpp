@@ -21,7 +21,71 @@ MapEditor::MapEditor(const game::ContentCatalog& catalog, std::string level_id)
  working_ = catalog_.map(level.map);
 }
 
+std::string MapEditor::free_id(const std::string& prefix) const {
+ for (int index = 1;; ++index) {
+  const std::string candidate = prefix + (index < 10 ? "0" : "") + std::to_string(index);
+  bool taken = false;
+  for (const auto& obstacle : working_.obstacles) {
+   taken = taken || obstacle.id == candidate;
+  }
+  for (const auto& surface : working_.surfaces) {
+   taken = taken || surface.id == candidate;
+  }
+  taken = taken || working_.markers.count(candidate) > 0;
+  if (!taken) {
+   return candidate;
+  }
+ }
+}
+
+namespace {
+// Corner order: 0 min/min, 1 max/min, 2 max/max, 3 min/max.
+void corner_of(const sim::Vec2& min, const sim::Vec2& max, int corner, double& x, double& y) {
+ x = (corner == 0 || corner == 3) ? min.x : max.x;
+ y = (corner == 0 || corner == 1) ? min.y : max.y;
+}
+} // namespace
+
 void MapEditor::press(double world_x, double world_y) {
+ // Corner handles of the current selection win over re-picking, so a
+ // selected box can be resized without losing it to a neighbor.
+ selected_corner_ = -1;
+ if (selected_kind_ == Kind::kObstacle || selected_kind_ == Kind::kSurface) {
+  sim::Vec2 min{0.0, 0.0};
+  sim::Vec2 max{0.0, 0.0};
+  bool found = false;
+  if (selected_kind_ == Kind::kObstacle) {
+   for (const auto& obstacle : working_.obstacles) {
+    if (obstacle.id == selected_id_) {
+     min = obstacle.min;
+     max = obstacle.max;
+     found = true;
+    }
+   }
+  } else {
+   for (const auto& surface : working_.surfaces) {
+    if (surface.id == selected_id_) {
+     min = surface.min;
+     max = surface.max;
+     found = true;
+    }
+   }
+  }
+  if (found) {
+   for (int corner = 0; corner < 4; ++corner) {
+    double cx = 0.0;
+    double cy = 0.0;
+    corner_of(min, max, corner, cx, cy);
+    if (distance(world_x, world_y, cx, cy) < kGrabRadiusM) {
+     selected_corner_ = corner;
+     last_x_ = world_x;
+     last_y_ = world_y;
+     tracking_ = true;
+     return;
+    }
+   }
+  }
+ }
  selected_kind_ = Kind::kNone;
  selected_id_.clear();
  double best = kGrabRadiusM;
@@ -70,6 +134,37 @@ void MapEditor::drag(double world_x, double world_y) {
  last_y_ = world_y;
  const double size_x = working_.size_m.x;
  const double size_y = working_.size_m.y;
+ // Corner resize: drag one corner, opposite corner anchored, 0.2 m minimum
+ // edge so the validator (positive area) can never trip on a save.
+ if (selected_corner_ >= 0 && (selected_kind_ == Kind::kObstacle || selected_kind_ == Kind::kSurface)) {
+  auto resize = [&](sim::Vec2& min, sim::Vec2& max) {
+   if (selected_corner_ == 0 || selected_corner_ == 3) {
+    min.x = std::clamp(min.x + dx, 0.0, max.x - 0.2);
+   } else {
+    max.x = std::clamp(max.x + dx, min.x + 0.2, size_x);
+   }
+   if (selected_corner_ == 0 || selected_corner_ == 1) {
+    min.y = std::clamp(min.y + dy, 0.0, max.y - 0.2);
+   } else {
+    max.y = std::clamp(max.y + dy, min.y + 0.2, size_y);
+   }
+   dirty_ = true;
+  };
+  if (selected_kind_ == Kind::kObstacle) {
+   for (auto& obstacle : working_.obstacles) {
+    if (obstacle.id == selected_id_) {
+     resize(obstacle.min, obstacle.max);
+    }
+   }
+  } else {
+   for (auto& surface : working_.surfaces) {
+    if (surface.id == selected_id_) {
+     resize(surface.min, surface.max);
+    }
+   }
+  }
+  return;
+ }
  auto shift_box = [&](sim::Vec2& min, sim::Vec2& max) {
   const double width = max.x - min.x;
   const double height = max.y - min.y;
@@ -104,8 +199,93 @@ void MapEditor::drag(double world_x, double world_y) {
 
 void MapEditor::release() {
  tracking_ = false;
+ selected_corner_ = -1;
  selected_kind_ = Kind::kNone;
  selected_id_.clear();
+}
+
+void MapEditor::add_obstacle(double world_x, double world_y) {
+ game::BoxDefinition obstacle;
+ obstacle.id = free_id("edit_box_");
+ obstacle.min = {world_x - 0.5, world_y - 0.5};
+ obstacle.max = {world_x + 0.5, world_y + 0.5};
+ obstacle.min.x = std::clamp(obstacle.min.x, 0.0, working_.size_m.x - 1.0);
+ obstacle.min.y = std::clamp(obstacle.min.y, 0.0, working_.size_m.y - 1.0);
+ obstacle.max = {obstacle.min.x + 1.0, obstacle.min.y + 1.0};
+ obstacle.active_in = {level_id_};
+ working_.obstacles.push_back(std::move(obstacle));
+ selected_kind_ = Kind::kObstacle;
+ selected_id_ = working_.obstacles.back().id;
+ selected_corner_ = -1;
+ dirty_ = true;
+ message_ = "新建障碍 " + selected_id_ + "（仅本关可见）";
+}
+
+void MapEditor::add_surface(double world_x, double world_y) {
+ // Numbers come from the material library, never literals: the paved default
+ // is behavior-neutral by content, not by a C++ constant.
+ const auto& paved = catalog_.surface_material("paved");
+ game::SurfaceDefinition surface;
+ surface.id = free_id("edit_surface_");
+ surface.min = {world_x - 1.0, world_y - 1.0};
+ surface.max = {world_x + 1.0, world_y + 1.0};
+ surface.min.x = std::clamp(surface.min.x, 0.0, working_.size_m.x - 2.0);
+ surface.min.y = std::clamp(surface.min.y, 0.0, working_.size_m.y - 2.0);
+ surface.max = {surface.min.x + 2.0, surface.min.y + 2.0};
+ surface.material = paved.id;
+ surface.active_in = {level_id_};
+ surface.label = "新建铺装";
+ surface.traction_scale = paved.traction_scale;
+ surface.friction_mu = paved.friction_mu;
+ surface.rolling_drag = paved.rolling_drag;
+ working_.surfaces.push_back(std::move(surface));
+ selected_kind_ = Kind::kSurface;
+ selected_id_ = working_.surfaces.back().id;
+ selected_corner_ = -1;
+ dirty_ = true;
+ message_ = "新建地面 " + selected_id_ + "（铺装，仅本关可见）";
+}
+
+void MapEditor::add_marker(double world_x, double world_y) {
+ const std::string id = free_id("edit_marker_");
+ working_.markers.emplace(id, game::Pose{world_x, world_y, 0.0});
+ auto& pose = working_.markers.at(id);
+ pose.x = std::clamp(pose.x, 0.0, working_.size_m.x);
+ pose.y = std::clamp(pose.y, 0.0, working_.size_m.y);
+ selected_kind_ = Kind::kMarker;
+ selected_id_ = id;
+ selected_corner_ = -1;
+ dirty_ = true;
+ message_ = "新建标记 " + selected_id_;
+}
+
+void MapEditor::remove_selected() {
+ if (selected_kind_ == Kind::kObstacle) {
+  for (auto it = working_.obstacles.begin(); it != working_.obstacles.end(); ++it) {
+   if (it->id == selected_id_) {
+    message_ = "删除障碍 " + selected_id_;
+    working_.obstacles.erase(it);
+    break;
+   }
+  }
+ } else if (selected_kind_ == Kind::kSurface) {
+  for (auto it = working_.surfaces.begin(); it != working_.surfaces.end(); ++it) {
+   if (it->id == selected_id_) {
+    message_ = "删除地面 " + selected_id_;
+    working_.surfaces.erase(it);
+    break;
+   }
+  }
+ } else if (selected_kind_ == Kind::kMarker) {
+  message_ = "删除标记 " + selected_id_;
+  working_.markers.erase(selected_id_);
+ } else {
+  return;
+ }
+ dirty_ = true;
+ selected_kind_ = Kind::kNone;
+ selected_id_.clear();
+ selected_corner_ = -1;
 }
 
 bool MapEditor::save(const std::string& assets_root) {
