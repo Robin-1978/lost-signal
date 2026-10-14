@@ -28,7 +28,7 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 不是标定结论。当前 30% 偏置 ≈ 近场均值；max 哨兵（0.43 miss）继续有效。
 速度分层、样本量、漏检率、误差上界：**仍未定义**。本门维持“标准未定义”。
 
-## B. Shadow—空间观察 — 结论：样本不足（观察仪器已上线，单关数据）
+## B. Shadow—空间观察 — 结论：样本不足（观察仪器已上线，3 关×3 种子的 departure 分布；pocket verdict 分布仍单关）
 
 - 空间 pocket 采样已作为只读观察挂载（仅等待周期，`--seeds 3` 隔离实验证明
   行为零漂移：与挂载前 6 个 run 逐字一致）。
@@ -43,22 +43,26 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
   shadow 预测）。口径声明：该误差混杂预测误差与策略差异（DWA 本来就不按
   shadow 等），是“shadow-vs-实际”偏差，不是纯预测误差；已按入口速度 bin
   记录，不做标定。
+- 多关积累（test_shadow_accumulation，mission 未碰）：signal_hold × 3 种子
+  45 episode，格 [35,5][4,1]——sustained-finite 格首样本（前两关为空集）；
+  与 release_error（lost_signal/signal_echo × 3 种子）合计 3 关×3 种子。
+  return_route（RO-2）探针零等待，无分布可积累，未纳入（不断言脆弱零）。
 - 仍缺：DRAFT 量化拍板。预算 0 不变，不放行不变。
 
 ## C. 行为放行 — 结论：不放行
 
 1. 搜索＋三腿接口冻结 —— ✓（`LocalCandidate`/`check_candidate`/三腿语义）。
-2. 三腿证据完整、缺失不升级 —— △（spin 完整；Ackermann 曲率模型缺失→Unknown，诚实但未闭环）。
+2. 三腿证据完整、缺失不升级 —— ✓（spin 完整；Ackermann 曲率执行评估已落地：A*＋Rmin 圆角＋伺服滞后自行车跟随，扫 SIMULATED 轨迹，kCapsViolated／Unknown 语义冻结；RO-2 pocket shadow 起步滞后 0.34/0.39m ObservedDeviated 在案）。
 3. 联合扰动通过＋裕量依据 —— ✗（A 未定义）。
 4. Shadow—空间观察达量化门槛 —— ✗（B 未定义）。
 5. 行为状态机（中断/重估/失败） —— ✗（未设计，gates 全过才写）。
-6. pinned 回归＋mission 改动授权 —— ✓ 回归（15/15、20/20、79.84），mission 零改动。
+6. pinned 回归＋mission 改动授权 —— ✓ 回归（29/29 CTest、20/20 pytest、79.84/0.620 逐字），mission 零改动（本周期全部纯函数＋测试）。
 六项合取，一票否决 → 不放行。
 
 ## D. 工程完整性
 
 - 范围：纯函数＋测试＋plan/doc；mission 零改动；diff 净增，零删除生产代码。
-- build / test / report：15/15 CTest、20/20 pytest、pinned 表逐字（79.84/0.620）。
+- build / test / report：29/29 CTest、20/20 pytest、pinned 表逐字（79.84/0.620）。
 - Stop-loss：未触发（一票：任一 pinned 翻转即 revert，无需评审）。
 - 新风险→归属：Ackermann 曲率执行模型（架构分叉，待评审讨论后开工）；
   一般性边界探索进 backlog，不自动成为出口门槛。
@@ -75,6 +79,9 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 | 本周期（误差多关多种子＋速度分层） | 1 | 0 | 0 | 0 |
 | 本周期（放行误差＋入口分层，episode 修漏报） | 1 | 0 | 0 | 0 |
 | 本周期（打滑 shadow：履带 upper-bound 阴性） | 1 | 0 | 0 | 0 |
+| 本周期（Ackermann transit 曲率执行＋RO-2 shadow） | 1 | 0 | 0 | 0 |
+| 本周期（estimator contract＋replay/latency＋filter＋chain） | 1 | 0 | 0 | 0 |
+| 本周期（slip residual＋生产流＋激励矩阵＋shadow 多关积累） | 1 | 0 | 0 | 0 |
 
 中继 0 的含义：本片在冻结约定内（只读观察＋隔离实验证明），无架构分叉、
 无门禁结论变化、无 stop-loss——按约定不打扰评审。

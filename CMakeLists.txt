@@ -194,6 +194,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  )
  add_test(NAME release_error COMMAND test_release_error)
 
+ add_executable(test_shadow_accumulation tests/new/test_shadow_accumulation.cpp)
+ target_link_libraries(test_shadow_accumulation PRIVATE lost_signal_game)
+ target_compile_definitions(test_shadow_accumulation PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME shadow_accumulation COMMAND test_shadow_accumulation)
+
  add_executable(test_signal_quality tests/new/test_signal_quality.cpp)
  target_link_libraries(test_signal_quality PRIVATE lost_signal_sim lost_signal_game)
  target_compile_definitions(test_signal_quality PRIVATE
