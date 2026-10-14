@@ -28,7 +28,8 @@
     "sand_track",
     "sand_steer",
     "wet_scrub",
-    "signal_hold"
+    "signal_hold",
+    "long_track"
   ],
   "starting_inventory": [
     "tires.standard",

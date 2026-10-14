@@ -190,6 +190,20 @@
       "when": "after",
       "speaker": "洛一",
       "text": "洛一：等过去了。走廊是叉车的，我们借几秒。"
+    },
+    {
+      "id": "long_track.before",
+      "level": "long_track",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：当年摇摆的那个路口，让 RO-3 再走一次。"
+    },
+    {
+      "id": "long_track.after",
+      "level": "long_track",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "RO-3：到了。这次没摇摆，看门狗记得住。"
     }
   ]
 }
