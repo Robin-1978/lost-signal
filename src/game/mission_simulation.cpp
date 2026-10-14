@@ -662,8 +662,13 @@ void MissionSimulation::decide_control() {
                                                            prediction_step_s, track_max_age_s());
   const auto search = sim::sample_pockets(
     *planning_map_, shadow_remaining, {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta,
-    shadow_cruise, yaw_cap_rads_, chassis_->caps().can_spin, prediction_horizon, pocket_params,
-    pocket_frames, prediction_step_s, robot_definition_.collision_radius_m, requested_clearance);
+    shadow_cruise, sim::ChassisExecCaps{chassis_->caps().can_spin, yaw_cap_rads_,
+                                        robot_definition_.wheel_base_m,
+                                        robot_definition_.steering.max_steer_rad,
+                                        robot_definition_.steering.max_steer_rate_radps,
+                                        robot_definition_.steering.servo_response_s},
+    prediction_horizon, pocket_params, pocket_frames, prediction_step_s,
+    robot_definition_.collision_radius_m, requested_clearance);
   int pocket_feasible = 0;
   for (const auto& candidate : search.candidates) {
    if (candidate.assessment.overall == sim::Feasibility::Verdict::kFeasible) {

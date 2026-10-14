@@ -1,6 +1,7 @@
 #include "predictor.hpp"
 
 #include "algo/astar.hpp"
+#include "algo/math.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +10,145 @@
 #include <set>
 
 namespace sim {
+namespace {
+
+// Arc-fillet smoothing of a polyline corner with radius R: tangent points at
+// distance t = R*tan(phi/2) from the vertex along both legs, joined by a
+// subdivided arc (chords <= 0.1 m: sagitta <= 0.01/(8R) < 0.5 mm for R >= 1 m,
+// stated not hidden). fit=false when any corner needs more tangent than half
+// of either adjacent leg (adjacent fillets never overlap — conservative: a
+// refused corner is a capability verdict upstream, never silently
+// straightened) or the turn is a hairpin. Where a fillet does not fit
+// (tangent longer than half either leg: grid-snap endpoint jogs, short
+// detour legs), the raw vertex is kept with kappa 0 and pursuit plus the
+// swept/static rechecks decide — a geometric pre-refusal there would conflate
+// "corner needs swinging wide" with "corner is untraversable". fit=false
+// only on degenerate input. Sharp corners never get a free pass: deviation
+// is always swept and static-rechecked downstream.
+struct FilletResult {
+  std::vector<Vec2> points;
+  // Signed curvature per point from construction (not estimated): 0 on
+  // straights, +/-1/radius_m on arcs. Exact, so steer demand never drifts
+  // past the cap on floating-point noise.
+  std::vector<double> kappa;
+  bool fits{false};
+};
+
+FilletResult smooth_fillet(const std::vector<Vec2>& route, double radius_m) {
+  FilletResult out;
+  std::vector<Vec2> pts;
+  for (const auto& p : route) {
+    if (pts.empty() || std::hypot(p.x - pts.back().x, p.y - pts.back().y) >= 1e-9) {
+      pts.push_back(p);
+    }
+  }
+  if (pts.size() < 3 || !(radius_m > 1e-9)) {
+    out.points = pts;
+    out.kappa.assign(pts.size(), 0.0);
+    out.fits = pts.size() >= 1;
+    return out;
+  }
+  std::vector<double> legs;
+  for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
+    legs.push_back(std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
+  }
+  out.points.push_back(pts.front());
+  out.kappa.push_back(0.0);
+  for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+    Vec2 d_in{pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y};
+    Vec2 d_out{pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y};
+    const double lin = std::hypot(d_in.x, d_in.y);
+    const double lout = std::hypot(d_out.x, d_out.y);
+    d_in = {d_in.x / lin, d_in.y / lin};
+    d_out = {d_out.x / lout, d_out.y / lout};
+    const double cos_phi = std::clamp(d_in.x * d_out.x + d_in.y * d_out.y, -1.0, 1.0);
+    const double phi = std::acos(cos_phi);
+    if (phi < 1e-6) {
+      out.points.push_back(pts[i]);
+      out.kappa.push_back(0.0);
+      continue;
+    }
+    const double tangent = radius_m * std::tan(phi / 2.0);
+    if (!(tangent <= 0.5 * legs[i - 1]) || !(tangent <= 0.5 * legs[i])) {
+      // No fillet room: keep the raw vertex (kappa 0), let pursuit swing and
+      // the rechecks judge. The vertex stays exactly where A* put it.
+      out.points.push_back(pts[i]);
+      out.kappa.push_back(0.0);
+      continue;
+    }
+    const Vec2 u{-d_in.x, -d_in.y};
+    const Vec2 w = d_out;
+    Vec2 bis{u.x + w.x, u.y + w.y};
+    const double bis_len = std::hypot(bis.x, bis.y);
+    const double sin_half = std::sin(phi / 2.0);
+    if (bis_len < 1e-9 || sin_half < 1e-9) {
+      out.points.clear();
+      out.kappa.clear();
+      out.fits = false;
+      return out;
+    }
+    bis = {bis.x / bis_len, bis.y / bis_len};
+    const Vec2 center{pts[i].x + bis.x * radius_m / sin_half,
+                      pts[i].y + bis.y * radius_m / sin_half};
+    const Vec2 t1{pts[i].x + u.x * tangent, pts[i].y + u.y * tangent};
+    const Vec2 t2{pts[i].x + w.x * tangent, pts[i].y + w.y * tangent};
+    const double cross = d_in.x * d_out.y - d_in.y * d_out.x;
+    const double a0 = std::atan2(t1.y - center.y, t1.x - center.x);
+    double sweep = std::atan2(t2.y - center.y, t2.x - center.x) - a0;
+    while (cross > 0.0 && sweep <= 0.0) {
+      sweep += 2.0 * kPi;
+    }
+    while (cross < 0.0 && sweep >= 0.0) {
+      sweep -= 2.0 * kPi;
+    }
+    const double arc_len = radius_m * std::abs(sweep);
+    const int steps = std::max(2, static_cast<int>(std::ceil(arc_len / 0.1)));
+    const double turn_sign = (cross > 0.0) ? 1.0 : -1.0;
+    out.points.push_back(t1);
+    out.kappa.push_back(0.0);
+    for (int k = 1; k < steps; ++k) {
+      const double a = a0 + sweep * static_cast<double>(k) / static_cast<double>(steps);
+      out.points.push_back({center.x + radius_m * std::cos(a), center.y + radius_m * std::sin(a)});
+      out.kappa.push_back(turn_sign / radius_m);
+    }
+    out.points.push_back(t2);
+    out.kappa.push_back(turn_sign / radius_m);
+  }
+  out.points.push_back(pts.back());
+  out.kappa.push_back(0.0);
+  if (out.points.size() != out.kappa.size()) {
+    out.points.clear();
+    out.kappa.clear();
+    out.fits = false;
+    return out;
+  }
+  out.fits = true;
+  return out;
+}
+
+// Static recheck of an executed trajectory on the caller-inflated grid.
+// The A* contract covers the grid polyline; smoothing and servo lag move the
+// body off it, so the CHECKED samples are rechecked here, not inherited.
+bool path_hits_obstacle(const std::vector<Vec2>& points, const GridMap& inflated_map) {
+  for (const auto& p : points) {
+    if (!inflated_map.isFree(p.x, p.y)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool traj_hits_obstacle(const std::vector<TimedPose>& traj, const GridMap& inflated_map) {
+  for (const auto& s : traj) {
+    if (!inflated_map.isFree(s.p.x, s.p.y)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
 namespace {
 
 // Reflection inside the observed corridor. Unbounded axes (no direction flip
@@ -210,6 +350,8 @@ const char* depart_reason_name(DepartReason reason) {
    return "Clear";
   case DepartReason::kStaticBlocked:
    return "StaticBlocked";
+  case DepartReason::kCapsViolated:
+   return "CapsViolated";
  }
  return "Invalid";
 }
@@ -297,14 +439,91 @@ std::vector<TimedPose> execute_turn_drive_turn(const std::vector<Vec2>& route, d
  return exec;
 }
 
+// Ackermann execution: follow the smoothed (filleted) path at cruise through
+// a servo-lag bicycle sim. Curvature feedforward comes from EXACT construction
+// curvature (kappa parallel to the fillet points), plus identity pursuit of the
+// path tangent (gain 1 = point wheels where the path goes, capped by authority;
+// only the feedforward part can trip the caps verdict). Servo mirrors
+// production structure (ackermann.cpp): P loop on angle error scaled by rate,
+// first-order lag on the rate state, clamps on both.
+// Lag/rate shape the CHECKED trajectory — a slow servo cuts corners wide and
+// the swept + static rechecks see it. Instant-cruise like the spin branch
+// (same approximation level, documented); the 0.5 m/s steer-authority floor
+// never binds because execution never drives slow.
+struct AckermannExec {
+  std::vector<TimedPose> traj;
+  double max_delta{0.0};
+  bool demand_clipped{false};
+};
+
+AckermannExec execute_ackermann(const std::vector<Vec2>& points, const std::vector<double>& kappa,
+                                double start_theta, double cruise_mps, const ChassisExecCaps& caps) {
+  AckermannExec out;
+  constexpr double kSimDtS = 0.02;  // servo-lag resolution (matches physics step; stated).
+  if (points.empty() || points.size() != kappa.size() || !(cruise_mps > 0.0)) {
+    return out;
+  }
+  std::vector<double> arc(points.size(), 0.0);
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    arc[i] = arc[i - 1] + std::hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  const double total = arc.back();
+  // Per-sample tangent (segment direction; last sample reuses its segment).
+  // Demand = curvature feedforward + identity pursuit of the tangent, capped
+  // by steer authority. Gain 1 is the identity map (point wheels where the
+  // path goes), not a tuned gain; only the feedforward part can trip the
+  // caps verdict below. Lag/deviation are CHECKED downstream either way.
+  std::vector<double> tangent(points.size(), 0.0);
+  for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+    tangent[i] = std::atan2(points[i + 1].y - points[i].y, points[i + 1].x - points[i].x);
+  }
+  tangent.back() = points.size() > 1 ? tangent[points.size() - 2] : start_theta;
+  const double kp = 1.0 / std::max(0.05, caps.servo_response_s * caps.max_steer_rate_radps);
+  double theta = start_theta;
+  double delta = 0.0;
+  double rate = 0.0;
+  double t = 0.0;
+  Vec2 pos = points.front();
+  out.traj.push_back({0.0, pos});
+  std::size_t seg = 0;
+  while (t * cruise_mps < total) {
+    const double s = t * cruise_mps;
+    while (seg + 1 < arc.size() && arc[seg + 1] < s) {
+      ++seg;
+    }
+    const std::size_t k0 = std::min(seg, kappa.size() - 1);
+    const double feed = std::atan(caps.wheel_base_m * kappa[k0]);
+    if (std::abs(feed) > caps.max_steer_rad + 1e-9) {
+      out.demand_clipped = true;
+      out.traj.clear();
+      return out;
+    }
+    const double demand =
+      std::clamp(feed + wrap_angle(tangent[k0] - theta), -caps.max_steer_rad, caps.max_steer_rad);
+    const double pwm = std::clamp(kp * (demand - delta), -1.0, 1.0);
+    const double rate_demand =
+      std::clamp(pwm * caps.max_steer_rate_radps, -caps.max_steer_rate_radps, caps.max_steer_rate_radps);
+    const double lag = caps.servo_response_s > 0.0 ? 1.0 - std::exp(-kSimDtS / caps.servo_response_s) : 1.0;
+    rate += (rate_demand - rate) * lag;
+    delta = std::clamp(delta + rate * kSimDtS, -caps.max_steer_rad, caps.max_steer_rad);
+    out.max_delta = std::max(out.max_delta, std::abs(delta));
+    theta += cruise_mps * std::tan(delta) / std::max(0.05, caps.wheel_base_m) * kSimDtS;
+    pos = {pos.x + cruise_mps * std::cos(theta) * kSimDtS,
+           pos.y + cruise_mps * std::sin(theta) * kSimDtS};
+    t += kSimDtS;
+    out.traj.push_back({t, pos});
+  }
+  return out;
+}
+
 LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
-                             double cruise_mps, double yaw_rate_rads, bool can_spin,
+                             double cruise_mps, const ChassisExecCaps& exec,
                              const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                              double ego_radius_m, double margin_m) {
  const LegAssessment invalid{Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
                              std::numeric_limits<double>::infinity(),
                              std::numeric_limits<double>::infinity(), {}};
- if (frames.empty() || cruise_mps <= 0.0 || (can_spin && yaw_rate_rads <= 0.0)) {
+ if (frames.empty() || cruise_mps <= 0.0 || (exec.can_spin && exec.yaw_rate_rads <= 0.0)) {
   return invalid;
  }
  const double dt = std::max(1e-6, frame_dt_s);
@@ -325,31 +544,69 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
   route.insert(route.end(), plan.path.begin(), plan.path.end());
   route.push_back(pocket);
  }
- if (!can_spin) {
-  // No curvature execution model in ChassisCaps yet: Unknown with a nominal
-  // schedule (turn phases excluded — nominal either way).
-  double nominal = 0.0;
-  for (std::size_t i = 0; i + 1 < route.size(); ++i) {
-   nominal += std::hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
+ if (!exec.can_spin) {
+  // Ackermann execution: fillet at Rmin, static-recheck the smoothed path,
+  // servo-lag bicycle follow, static-recheck + sweep the SIMULATED path.
+  if (!(exec.wheel_base_m > 0.0) || !(exec.max_steer_rad > 0.0) ||
+      !(exec.max_steer_rate_radps > 0.0) || !(exec.servo_response_s >= 0.0)) {
+   double nominal = 0.0;
+   for (std::size_t i = 0; i + 1 < route.size(); ++i) {
+    nominal += std::hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
+   }
+   return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
+           nominal / std::max(1e-6, cruise_mps), std::numeric_limits<double>::infinity(), {}};
   }
-  return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
-          nominal / std::max(1e-6, cruise_mps), std::numeric_limits<double>::infinity(), {}};
+  const double r_min = exec.wheel_base_m / std::tan(exec.max_steer_rad);
+  const auto smooth = smooth_fillet(route, r_min);
+  if (!smooth.fits) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+  }
+  if (path_hits_obstacle(smooth.points, inflated_map)) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+  }
+  const auto ack = execute_ackermann(smooth.points, smooth.kappa, start_theta, cruise_mps, exec);
+  if (ack.demand_clipped || ack.traj.empty()) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+  }
+  if (traj_hits_obstacle(ack.traj, inflated_map)) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+           ack.traj};
+  }
+  const double ack_end = ack.traj.back().t_s;
+  if (ack_end > horizon + 1e-9) {
+   return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), ack.traj};
+  }
+  const double ack_gap = timed_gap(ack.traj, frames, dt, ego_radius_m);
+  if (ack_gap >= margin_m) {
+   return {Feasibility::Verdict::kFeasible, DepartReason::kClear, ack_end, ack_gap, ack.traj};
+  }
+  const double ack_spot = timed_gap({{0.0, start}, {horizon, start}}, frames, dt, ego_radius_m);
+  if (ack_spot < margin_m) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, ack_end, ack_gap, ack.traj};
+  }
+  return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, ack_end, ack_gap,
+          ack.traj};
  }
- const auto exec = execute_turn_drive_turn(route, start_theta, cruise_mps, yaw_rate_rads);
- const double end_s = exec.back().t_s;
+ const auto spin_exec = execute_turn_drive_turn(route, start_theta, cruise_mps, exec.yaw_rate_rads);
+ const double end_s = spin_exec.back().t_s;
  if (end_s > horizon + 1e-9) {
   return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), exec};
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), spin_exec};
  }
- const double gap = timed_gap(exec, frames, dt, ego_radius_m);
+ const double gap = timed_gap(spin_exec, frames, dt, ego_radius_m);
  if (gap >= margin_m) {
-  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, end_s, gap, exec};
+  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, end_s, gap, spin_exec};
  }
  const double spot_gap = timed_gap({{0.0, start}, {horizon, start}}, frames, dt, ego_radius_m);
  if (spot_gap < margin_m) {
-  return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, end_s, gap, exec};
+  return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, end_s, gap, spin_exec};
  }
- return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, end_s, gap, exec};
+ return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, end_s, gap, spin_exec};
 }
 
 LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
@@ -413,12 +670,12 @@ LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx
 PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
                                     Vec2 pocket, Vec2 merge,
                                     const std::vector<Vec2>& route_suffix, double cruise_mps,
-                                    double yaw_rate_rads, bool can_spin, double hold_s,
+                                    const ChassisExecCaps& exec, double hold_s,
                                     const std::vector<std::vector<DynState>>& frames,
                                     double frame_dt_s, double ego_radius_m, double margin_m) {
  PocketAssessment out;
- out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, yaw_rate_rads,
-                              can_spin, frames, frame_dt_s, ego_radius_m, margin_m);
+ out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, exec,
+                              frames, frame_dt_s, ego_radius_m, margin_m);
  // Rejoin geometry: A* pocket to merge, then the given route suffix (whose
  // first point the caller aligns with merge). A failed rejoin plan is proven
  // static infeasibility of that leg.
@@ -477,8 +734,8 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
 }
 
 PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
-                            Vec2 start, double start_theta, double cruise_mps, double yaw_rate_rads,
-                            bool can_spin, double hold_s, const PocketSampleParams& params,
+                            Vec2 start, double start_theta, double cruise_mps, const ChassisExecCaps& exec,
+                            double hold_s, const PocketSampleParams& params,
                             const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                             double ego_radius_m, double margin_m) {
  PocketSearch out;
@@ -538,7 +795,7 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
    candidate.assessment = assess_pocket_wait(
      inflated_map, start, start_theta, pocket, route[merge_idx],
      std::vector<Vec2>(route.begin() + static_cast<std::ptrdiff_t>(merge_idx), route.end()),
-     cruise_mps, yaw_rate_rads, can_spin, hold_s, frames, frame_dt_s, ego_radius_m, margin_m);
+     cruise_mps, exec, hold_s, frames, frame_dt_s, ego_radius_m, margin_m);
    out.candidates.push_back(std::move(candidate));
    if (static_cast<int>(out.candidates.size()) >= params.max_candidates) {
     out.truncated = true;

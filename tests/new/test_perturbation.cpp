@@ -49,8 +49,9 @@ const std::vector<sim::Vec2> kSuffix{{6.0, 0.05}};
 
 sim::PocketAssessment pocket(const std::vector<std::vector<sim::DynState>>& frames) {
  sim::GridMap open(100, 100, 0.1);
+ const sim::ChassisExecCaps spin{true, 2.0, 0.0, 0.0, 0.0, 0.0};
  return sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, kSuffix, 1.0,
-                                2.0, true, 2.0, frames, 0.1, 0.38, 0.5);
+                                spin, 2.0, frames, 0.1, 0.38, 0.5);
 }
 
 } // namespace
@@ -117,7 +118,7 @@ int main() {
   prm.max_candidates = 8;
   const std::vector<sim::Vec2> route{{0.05, 2.05}, {2.95, 2.05}, {2.95, 0.05}, {6.05, 0.05}};
   const auto nominal_search =
-    sim::sample_pockets(open, route, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, prm, lane(7.85, -1.0),
+    sim::sample_pockets(open, route, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, prm, lane(7.85, -1.0),
                         0.1, 0.38, 0.5);
   const sim::PocketCandidate* anchor = nullptr;
   for (const auto& candidate : nominal_search.candidates) {
@@ -129,7 +130,7 @@ int main() {
   CHECK(anchor != nullptr);
   CHECK(std::abs(anchor->assessment.chain_min_gap_m - 0.5015) < 1e-3);
   const auto biased_search =
-    sim::sample_pockets(open, route, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, prm, lane(7.85, -0.95),
+    sim::sample_pockets(open, route, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, prm, lane(7.85, -0.95),
                         0.1, 0.38, 0.5);
   const sim::PocketCandidate* same = nullptr;
   for (const auto& candidate : biased_search.candidates) {

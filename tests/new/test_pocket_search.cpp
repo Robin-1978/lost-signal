@@ -50,7 +50,7 @@ int main() {
  {
   sim::GridMap open(100, 100, 0.1);
   const auto search =
-    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, params(), lane_frames(),
+    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, params(), lane_frames(),
                         0.1, 0.38, 0.5);
   CHECK(!search.candidates.empty());
   CHECK(search.candidates.size() <= 8);
@@ -85,7 +85,7 @@ int main() {
  {
   sim::GridMap open(100, 100, 0.1);
   const auto found =
-    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, params(), lane_frames(),
+    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, params(), lane_frames(),
                         0.1, 0.38, 0.5);
   const sim::PocketCandidate* first = nullptr;
   for (const auto& candidate : found.candidates) {
@@ -105,14 +105,14 @@ int main() {
   std::cerr << "audited feasible pocket: chain_gap=" << a.chain_min_gap_m
             << " (rejoin binds), rejoin_end=" << a.rejoin.end_s << "\n";
  }
- // Cap semantics: truncation with no proof is Incomplete, and Unknown legs
- // (Ackermann transit) are never filed as refused.
+ // Cap semantics: truncation with no proof is Incomplete. (Truncation, not
+ // Unknown legs, drives this verdict now that Ackermann transit is real.)
  {
   sim::GridMap open(100, 100, 0.1);
   auto capped = params();
   capped.max_candidates = 2;
   const auto search =
-    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, 2.0, false, 2.0, capped, lane_frames(),
+    sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{false, 0.0, 0.62, 0.55, 2.0, 0.35}, 2.0, capped, lane_frames(),
                         0.1, 0.38, 0.5);
   CHECK(search.candidates.size() == 2);
   CHECK(search.truncated);
@@ -125,7 +125,7 @@ int main() {
   split.addBox(0.9, -1.0, 1.1, 11.0);
   const std::vector<sim::Vec2> west{{0.05, 4.05}, {0.05, 2.05}, {0.05, 0.05}};
   const auto search =
-    sim::sample_pockets(split, west, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, params(), lane_frames(),
+    sim::sample_pockets(split, west, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, params(), lane_frames(),
                         0.1, 0.38, 0.5);
   CHECK(!search.candidates.empty());
   CHECK(search.verdict == S::kAllRefused);
@@ -139,10 +139,10 @@ int main() {
   sim::GridMap open(100, 100, 0.1);
   auto none = params();
   none.max_candidates = 0;
-  CHECK(sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, none,
+  CHECK(sim::sample_pockets(open, kRoute, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, none,
                             lane_frames(), 0.1, 0.38, 0.5)
           .verdict == S::kIncomplete);
-  CHECK(sim::sample_pockets(open, {}, {0.05, 2.05}, 0.0, 1.0, 2.0, true, 2.0, params(),
+  CHECK(sim::sample_pockets(open, {}, {0.05, 2.05}, 0.0, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0, params(),
                             lane_frames(), 0.1, 0.38, 0.5)
           .verdict == S::kIncomplete);
  }

@@ -91,6 +91,10 @@ enum class DepartReason {
  kClear,          // a leg checked over its full interval with no violation.
  kStaticBlocked,  // no static path exists (A* on the inflated grid failed):
                   // geometric infeasibility, proven — not traffic, not unknown.
+ kCapsViolated,   // the geometric path exists but the chassis cannot execute
+                  // it: fillet radius below Rmin, smoothed path clipping an
+                  // obstacle, or steer demand beyond spec. Proven against the
+                  // caller-supplied execution caps — not traffic, not unknown.
 };
 
 struct DepartureAssessment {
@@ -154,19 +158,36 @@ struct LegAssessment {
 // below); the plain-path stub is retired — every transit verdict now names
 // the executed trajectory or exactly why it cannot.
 
+// Execution capability for transit assessment. Spin branch uses can_spin +
+// yaw_rate only; Ackermann branch uses wheel_base/max_steer/max_steer_rate/
+// servo_response (RO-2 JSON values flow here from the mission layer — never
+// defaulted inside the assessment, so an unspecified model stays Unknown
+// instead of silently borrowing another chassis' numbers).
+struct ChassisExecCaps {
+ bool can_spin{true};
+ double yaw_rate_rads{2.0};
+ double wheel_base_m{0.0};
+ double max_steer_rad{0.0};
+ double max_steer_rate_radps{0.0};
+ double servo_response_s{0.0};
+};
+
 // Transit with its own planning: A* on the caller-inflated grid produces the
 // geometric path (static clearance is the generator's contract); the verdict
 // then covers the EXECUTED trajectory, never the grid polyline by proxy:
 // spin-capable chassis execute turn-drive-turn (rotate in place at yaw_rate,
 // drive legs at cruise — the body stays inside its collision ring while
-// spinning), which is swept exactly via timed_gap. Non-spin chassis have no
-// specified curvature execution model in ChassisCaps yet, so they stay
-// Unknown/kUnassessed with a nominal schedule. A* failure is proven static
-// infeasibility (kStaticBlocked), not traffic, not unknown.
+// spinning), which is swept exactly via timed_gap. Ackermann chassis execute
+// arc-fillet smoothing (radius >= L/tan(max_steer)) followed through a
+// servo-lag bicycle sim at cruise; the SIMULATED trajectory (not the fillet
+// reference) is static-rechecked and swept, so smoothing deviations and lag
+// are evidence, not assumptions. Unspecified models stay Unknown/kUnassessed.
+// A* failure is proven static infeasibility (kStaticBlocked), not traffic,
+// not unknown.
 // Evidence: exec_traj holds the checked timed trajectory (empty when nothing
 // was executed-checked).
 LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta,
-                             Vec2 pocket, double cruise_mps, double yaw_rate_rads, bool can_spin,
+                             Vec2 pocket, double cruise_mps, const ChassisExecCaps& exec,
                              const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                              double ego_radius_m, double margin_m);
 
@@ -245,8 +266,8 @@ struct PocketSearch {
 // verdict with its reasons. hold_s is the scheduling policy input, identical
 // for all candidates; scheduling optimization is not this slice.
 PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
-                            Vec2 start, double start_theta, double cruise_mps, double yaw_rate_rads,
-                            bool can_spin, double hold_s, const PocketSampleParams& params,
+                            Vec2 start, double start_theta, double cruise_mps, const ChassisExecCaps& exec,
+                            double hold_s, const PocketSampleParams& params,
                             const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                             double ego_radius_m, double margin_m);
 
@@ -257,7 +278,7 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
 PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
                                     Vec2 pocket, Vec2 merge,
                                     const std::vector<Vec2>& route_suffix, double cruise_mps,
-                                    double yaw_rate_rads, bool can_spin, double hold_s,
+                                    const ChassisExecCaps& exec, double hold_s,
                                     const std::vector<std::vector<DynState>>& frames,
                                     double frame_dt_s, double ego_radius_m, double margin_m);
 

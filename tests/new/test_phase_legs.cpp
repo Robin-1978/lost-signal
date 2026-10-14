@@ -91,27 +91,56 @@ int main() {
   const auto empty40 = parked_frames(40, {50.0, 50.0});
   const auto empty61 = parked_frames(61, {50.0, 50.0});
   // Cell-center to cell-center: A* snaps nothing, no turns, end == drive time.
-  const auto straight = sim::assess_transit(open, {0.05, 0.05}, 0.0, {1.95, 0.05}, 1.0, 2.0, true,
+  const auto straight = sim::assess_transit(open, {0.05, 0.05}, 0.0, {1.95, 0.05}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0},
                                             empty61, 0.1, 0.38, 0.5);
   CHECK(straight.verdict == V::kFeasible && straight.reason == R::kClear);
   CHECK(std::abs(straight.end_s - 1.9) < 0.05);
   // 90-degree transit: the quarter spin is costed (pi/2 / 2 = 0.79 s).
-  const auto turned = sim::assess_transit(open, {0.05, 0.05}, 0.0, {0.05, 1.95}, 1.0, 2.0, true,
+  const auto turned = sim::assess_transit(open, {0.05, 0.05}, 0.0, {0.05, 1.95}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0},
                                           empty61, 0.1, 0.38, 0.5);
   CHECK(turned.verdict == V::kFeasible);
   CHECK(turned.end_s > 1.9 && turned.end_s < 3.0);
   CHECK(!turned.exec_traj.empty());
-  // Same geometry, Ackermann: honestly Unknown (ChassisCaps has no curvature
-  // execution model yet), nominal schedule kept for chaining.
-  const auto ack =
-    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, 2.0, false, empty61, 0.1, 0.38, 0.5);
-  CHECK(ack.verdict == V::kUnknown && ack.reason == R::kUnassessed);
-  CHECK(ack.end_s < std::numeric_limits<double>::infinity());
+  // Ackermann with RO-2 caps: straight corridor assessed for real.
+  const sim::ChassisExecCaps ack_caps{false, 0.0, 0.62, 0.55, 2.0, 0.35};
+  const auto ack_straight =
+    sim::assess_transit(open, {0.05, 0.05}, 0.0, {1.95, 0.05}, 1.0, ack_caps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_straight.verdict == V::kFeasible && ack_straight.reason == R::kClear);
+  CHECK(std::abs(ack_straight.end_s - 1.9) < 0.05);
+  CHECK(!ack_straight.exec_traj.empty());
+  // 90-degree transit: fillet + lag pull-in, deviation checked, still clear.
+  const auto ack_turn =
+    sim::assess_transit(open, {0.05, 0.05}, 0.0, {0.05, 1.95}, 1.0, ack_caps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_turn.verdict == V::kFeasible && ack_turn.reason == R::kClear);
+  CHECK(ack_turn.end_s >= 1.9);
+  // Unspecified model stays Unknown (zeros, not another chassis' numbers).
+  const sim::ChassisExecCaps nocaps{false, 0.0, 0.0, 0.0, 0.0, 0.0};
+  const auto ack_unknown =
+    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, nocaps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_unknown.verdict == V::kUnknown && ack_unknown.reason == R::kUnassessed);
+  CHECK(ack_unknown.end_s < std::numeric_limits<double>::infinity());
+  // Walled-off pocket: static checked before caps, same verdict for both.
+  sim::GridMap ack_walled_map(30, 30, 0.1);
+  ack_walled_map.addBox(0.9, -1.0, 1.1, 3.0);
+  const auto ack_walled =
+    sim::assess_transit(ack_walled_map, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, ack_caps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_walled.verdict == V::kInfeasible && ack_walled.reason == R::kStaticBlocked);
+  // In-bounds U-turn: pursuit loops around facing error, deviation checked.
+  const auto ack_hairpin =
+    sim::assess_transit(open, {1.5, 0.5}, 0.0, {0.5, 0.5}, 1.0, ack_caps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_hairpin.verdict == V::kFeasible && ack_hairpin.reason == R::kClear);
+  // Tight detour corner: swing clips the wall, evidence attached (traj kept).
+  sim::GridMap lwall(30, 30, 0.1);
+  lwall.addBox(0.9, -1.0, 1.1, 1.0);
+  const auto ack_clip =
+    sim::assess_transit(lwall, {0.05, 0.05}, 0.0, {2.05, 0.05}, 1.0, ack_caps, empty61, 0.1, 0.38, 0.5);
+  CHECK(ack_clip.verdict == V::kInfeasible && ack_clip.reason == R::kCapsViolated);
+  CHECK(!ack_clip.exec_traj.empty());
   // Walled-off pocket: proven static infeasibility, not traffic, not unknown.
   sim::GridMap walled(30, 30, 0.1);
   walled.addBox(0.9, -1.0, 1.1, 3.0);
   const auto walled_off =
-    sim::assess_transit(walled, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, 2.0, true, empty61, 0.1, 0.38, 0.5);
+    sim::assess_transit(walled, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, empty61, 0.1, 0.38, 0.5);
   CHECK(walled_off.verdict == V::kInfeasible && walled_off.reason == R::kStaticBlocked);
   // Threat crossing the leg as the ego arrives (spin-up turns put the ego at
   // x=1 near t=1.8; the threat reaches (1,0) at t=1.75): motion meets motion.
@@ -120,14 +149,14 @@ int main() {
    crosser.push_back({{{1.0, 3.5 - 2.0 * k * 0.1}, {0.0, 0.0}, 0.4}});
   }
   const auto hit =
-    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, 2.0, true, crosser, 0.1, 0.38, 0.5);
+    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, crosser, 0.1, 0.38, 0.5);
   CHECK(hit.verdict == V::kInfeasible);
   CHECK(hit.min_gap_m < 0.5);
   // Checked evidence routes around a pillar: exec deviates off the straight line.
   sim::GridMap pillar(30, 30, 0.1);
   pillar.addBox(0.9, -0.1, 1.1, 0.1);
   const auto around =
-    sim::assess_transit(pillar, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, 2.0, true, empty61, 0.1, 0.38, 0.5);
+    sim::assess_transit(pillar, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, empty61, 0.1, 0.38, 0.5);
   CHECK(around.verdict == V::kFeasible);
   double max_dev = 0.0;
   for (const auto& sample : around.exec_traj) {
@@ -136,11 +165,11 @@ int main() {
   CHECK(max_dev > 0.05);
   // Already at the pocket: static spot check, zero execution.
   const auto home =
-    sim::assess_transit(open, {1.0, 1.0}, 0.7, {1.0, 1.0}, 1.0, 2.0, true, empty61, 0.1, 0.38, 0.5);
+    sim::assess_transit(open, {1.0, 1.0}, 0.7, {1.0, 1.0}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, empty61, 0.1, 0.38, 0.5);
   CHECK(home.verdict == V::kFeasible && home.end_s == 0.0);
   // Tight window on the same straight transit: undecidable, not unsafe.
   const auto tight =
-    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, 2.0, true,
+    sim::assess_transit(open, {0.0, 0.0}, 0.0, {2.0, 0.0}, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0},
                         parked_frames(21, {50.0, 50.0}), 0.1, 0.38, 0.5);
   CHECK(tight.verdict == V::kUnknown && tight.reason == R::kHorizonShort);
  }
@@ -155,16 +184,17 @@ int main() {
    frames.push_back({{{7.85 - 1.0 * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
   }
   const std::vector<sim::Vec2> suffix{{6.0, 0.05}};
+  const sim::ChassisExecCaps spin{true, 2.0, 0.0, 0.0, 0.0, 0.0};
   const auto rushed =
-    sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, 2.0,
-                            true, 0.0, frames, 0.1, 0.38, 0.5);
+    sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, spin,
+                            0.0, frames, 0.1, 0.38, 0.5);
   CHECK(rushed.transit.verdict == V::kFeasible);
   CHECK(rushed.hold.verdict == V::kFeasible);
   CHECK(rushed.rejoin.verdict == V::kInfeasible);
   CHECK(rushed.overall == V::kInfeasible);
   const auto patient =
-    sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, 2.0,
-                            true, 2.0, frames, 0.1, 0.38, 0.5);
+    sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, spin,
+                            2.0, frames, 0.1, 0.38, 0.5);
   CHECK(patient.transit.verdict == V::kFeasible);
   CHECK(patient.hold.verdict == V::kFeasible);
   CHECK(patient.rejoin.verdict == V::kFeasible);
@@ -176,17 +206,20 @@ int main() {
   // Threat parked on the pocket: transit drives into it (WaitUnsafe), hold
   // dies too, nothing masked.
   const auto bad_spot = sim::assess_pocket_wait(
-    open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, 2.0, true, 2.0,
+    open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, suffix, 1.0, sim::ChassisExecCaps{true, 2.0, 0.0, 0.0, 0.0, 0.0}, 2.0,
     parked_frames(121, {2.95, 2.05}), 0.1, 0.38, 0.5);
   CHECK(bad_spot.transit.verdict == V::kInfeasible);
   CHECK(bad_spot.hold.verdict == V::kInfeasible);
   CHECK(bad_spot.hold.reason == R::kWaitUnsafe);
   CHECK(bad_spot.overall == V::kInfeasible);
-  // Ackermann transit: whole candidate withholds proof, diagnoses kept.
+  // Ackermann pocket: same wave-through as spin (chain 0.67 ~= 0.67).
   const auto ack = sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05},
-                                          suffix, 1.0, 2.0, false, 2.0, frames, 0.1, 0.38, 0.5);
-  CHECK(ack.transit.verdict == V::kUnknown);
-  CHECK(ack.overall == V::kUnknown);
+                                          suffix, 1.0, sim::ChassisExecCaps{false, 0.0, 0.62, 0.55, 2.0, 0.35}, 2.0, frames, 0.1, 0.38, 0.5);
+  CHECK(ack.transit.verdict == V::kFeasible && ack.transit.reason == R::kClear);
+  CHECK(ack.hold.verdict == V::kFeasible);
+  CHECK(ack.rejoin.verdict == V::kFeasible);
+  CHECK(ack.overall == V::kFeasible);
+  CHECK(ack.chain_min_gap_m >= 0.5);
  }
  std::cerr << "phase legs green\n";
  return 0;
