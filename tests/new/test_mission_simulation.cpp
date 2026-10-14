@@ -194,5 +194,26 @@ int main() {
   CHECK(debut_default.result().status == game::MissionStatus::Succeeded);
   CHECK(!debut_default.result().safe_score);
  }
+ // Tracked content car: twin-track layout, spin capability, scrub-limited
+ // turns. The default build drifts wide (odometry/time/energy all lost);
+ // the recommended build sweeps. Default success also covers the docking
+ // controller: waypoints exhaust before arrival tolerance, the robot used to
+ // park short until timeout.
+ {
+  const auto& presentation = catalog.presentation_for_level("track_turn");
+  CHECK(presentation.robot_id == "robot.ro3");
+  game::MissionSimulation slide(catalog, "track_turn", presentation.recommended_build);
+  CHECK(slide.robot().drive_type == "tracked");
+  slide.run_to_completion();
+  CHECK(slide.result().status == game::MissionStatus::Succeeded);
+  CHECK(slide.result().safe_score);
+  CHECK(slide.result().fast_score);
+  CHECK(slide.result().efficient_score);
+  game::MissionSimulation slide_default(catalog, "track_turn", presentation.default_build);
+  slide_default.run_to_completion();
+  CHECK(slide_default.result().status == game::MissionStatus::Succeeded);
+  CHECK(!slide_default.result().safe_score);
+  CHECK(!slide_default.result().fast_score);
+ }
  return 0;
 }

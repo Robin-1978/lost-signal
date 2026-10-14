@@ -486,22 +486,61 @@ void MissionSimulation::decide_control() {
  ++result_.local_decisions;
  snapshot_.control = {};
  if (guide_state_.idx >= planned_path_.size()) {
-  held_command_ = {0.0, 0.0};
-  return;
+  if (planned_path_.empty()) {
+   held_command_ = {0.0, 0.0};
+   return;
+  }
+  // Docking hold: waypoint bookkeeping exhausted (resync/accept ran ahead of
+  // a lagging chassis) but arrival tolerance unmet — success is measured by
+  // distance, not by idx. Hold the last waypoint so normal tracking (reverse
+  // hysteresis, watchdog, DWA arbitration below) docks the robot instead of
+  // parking short with tv=0 until timeout.
+  guide_state_.idx = planned_path_.size() - 1;
  }
  const auto target = current_navigation_target();
  const bool fused_localization = level_.localization_mode == "fused";
  const double nav_x = fused_localization ? snapshot_.robot.x : odometry_.p.x;
  const double nav_y = fused_localization ? snapshot_.robot.y : odometry_.p.y;
  const double nav_heading = fused_localization ? snapshot_.robot.theta : odometry_.th;
- const auto route_control = sim::guide_step(
-   planned_path_, guide_state_, nav_x, nav_y, nav_heading, *heading_pid_, property(behavior_, "lookahead_m"),
-   property(behavior_, "cruise_mps"), 1.0 / decision_hz(), *planning_map_, chassis_->caps());
+ auto route_control = sim::guide_step(planned_path_, guide_state_, nav_x, nav_y, nav_heading, *heading_pid_,
+                                      property(behavior_, "lookahead_m"), property(behavior_, "cruise_mps"),
+                                      1.0 / decision_hz(), *planning_map_, chassis_->caps());
  snapshot_.control.local_target = target;
  snapshot_.control.heading_error_rad = route_control.err;
  snapshot_.control.heading_pid_p = heading_pid_->p();
  snapshot_.control.heading_pid_i = heading_pid_->i();
  snapshot_.control.heading_pid_d = heading_pid_->d();
+ // Docking controller: guide_step reports reached when waypoint bookkeeping
+ // exhausts (accept/resync ran ahead of a lagging chassis), but mission
+ // success is distance-to-goal. If the goal is still beyond tolerance yet
+ // close, dock with the same PID instead of parking short until timeout.
+ // Structure mirrors guide_step (reverse hysteresis, spin capability branch)
+ // so behavior stays consistent across the tracking/docking seam.
+ {
+  const auto goal = as_vec(map_definition_.markers.at(level_.objective.goal));
+  const double dist_goal = distance({nav_x, nav_y}, goal);
+  if (route_control.reached && dist_goal > level_.objective.arrive_tolerance_m && dist_goal < 3.0) {
+   const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
+   if (!guide_state_.reversing && std::abs(dock_err) > 1.4)
+    guide_state_.reversing = true;
+   else if (guide_state_.reversing && std::abs(dock_err) < 0.7)
+    guide_state_.reversing = false;
+   const double dock_dt = 1.0 / decision_hz();
+   if (!guide_state_.reversing) {
+    route_control.tv = std::min(0.3, dist_goal);
+    route_control.steer = heading_pid_->update(dock_err, dock_dt);
+   } else if (chassis_->caps().can_spin) {
+    guide_state_.reversing = false;
+    route_control.tv = 0.0;
+    route_control.steer = heading_pid_->update(dock_err, dock_dt);
+   } else {
+    route_control.tv = -0.3;
+    route_control.steer = -heading_pid_->update(dock_err, dock_dt);
+   }
+   route_control.err = dock_err;
+   route_control.reached = false;
+  }
+ }
  if (actual_actors_.empty()) {
   const double preview_cap = corner_speed_cap(nav_x, nav_y);
   held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,

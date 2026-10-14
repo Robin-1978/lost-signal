@@ -52,7 +52,7 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  auto& right = telemetry_.right;
 
  DiffDrive::twistToWheels(command.target_v, command.target_w, params_.wheel_base_m, left.target_mps,
-                           right.target_mps);
+                          right.target_mps);
  left.target_mps = clamp(left.target_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  right.target_mps = clamp(right.target_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  // Encoders read tread: when a track breaks away the encoder reports the
@@ -96,7 +96,8 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  const double scrub_coulomb =
    std::max(0.0, ground.mu_eff) * params_.mass_kg * kGravity * std::max(0.1, params_.track_length_m) / 4.0;
  const double torque = (force_right - force_left) * params_.wheel_base_m / 2.0 -
-                       scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) - kYawViscousNmsPerRadps * state.w;
+                       scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) -
+                       kYawViscousNmsPerRadps * state.w;
  const double alpha = torque / std::max(0.05, params_.yaw_inertia_kgm2);
  const double accel = (force_left + force_right) / std::max(0.5, params_.mass_kg);
  const double accel_cap = std::min(params_.max_drive_accel_mps2, std::max(0.5, ground.accel_limit_mps2));

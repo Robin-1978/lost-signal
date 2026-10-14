@@ -20,7 +20,8 @@
     "blocked_route",
     "lost_signal",
     "signal_echo",
-    "return_route"
+    "return_route",
+    "track_turn"
   ],
   "starting_inventory": [
     "tires.standard",
