@@ -114,17 +114,45 @@
   ],
   "base_parts": [
     {
-      "id": "ro1_chassis",
+      "id": "ro3_hull",
       "mount": "base",
       "visual": {
         "primitive_2d": "box",
         "size_m": [
-          0.7,
+          0.62,
           0.5,
           0.18
         ],
         "color": "#D8ECE8",
-        "model_3d": "models/robots/ro1/chassis.glb"
+        "model_3d": "models/robots/ro3/hull.gltf"
+      }
+    },
+    {
+      "id": "ro3_track_left",
+      "mount": "wheel_left",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.7,
+          0.14,
+          0.15
+        ],
+        "color": "#2C302D",
+        "model_3d": "models/robots/ro3/track_pad.gltf"
+      }
+    },
+    {
+      "id": "ro3_track_right",
+      "mount": "wheel_right",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.7,
+          0.14,
+          0.15
+        ],
+        "color": "#2C302D",
+        "model_3d": "models/robots/ro3/track_pad.gltf"
       }
     }
   ],

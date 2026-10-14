@@ -1,0 +1,102 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "robot_simu box author v2"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0
+  }
+ ],
+ "meshes": [
+  {
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2,
+     "material": 0,
+     "mode": 4
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     0.16,
+     0.19,
+     0.18,
+     1.0
+    ],
+    "metallicFactor": 0.1,
+    "roughnessFactor": 0.85
+   }
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "max": [
+    0.35,
+    0.07,
+    0.075
+   ],
+   "min": [
+    -0.35,
+    -0.07,
+    -0.075
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 72
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 648,
+   "uri": "data:application/octet-stream;base64,MzOzPilcj72amZm9MzOzPilcj72amZk9MzOzPilcjz2amZk9MzOzPilcjz2amZm9MzOzvilcjz2amZm9MzOzvilcjz2amZk9MzOzvilcj72amZk9MzOzvilcj72amZm9MzOzvilcjz2amZm9MzOzvilcjz2amZk9MzOzPilcjz2amZk9MzOzPilcjz2amZm9MzOzPilcj72amZm9MzOzPilcj72amZk9MzOzvilcj72amZk9MzOzvilcj72amZm9MzOzvilcj72amZk9MzOzPilcj72amZk9MzOzPilcjz2amZk9MzOzvilcjz2amZk9MzOzvilcjz2amZm9MzOzPilcjz2amZm9MzOzPilcj72amZm9MzOzvilcj72amZm9AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+  }
+ ]
+}

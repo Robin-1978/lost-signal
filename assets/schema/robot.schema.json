@@ -360,7 +360,7 @@
         },
         "model_3d": {
           "type": "string",
-          "pattern": "^[a-zA-Z0-9_./-]+\\.glb$"
+          "pattern": "^[a-zA-Z0-9_./-]+\\.glb$|^[a-zA-Z0-9_./-]+\\.gltf$"
         }
       }
     }
