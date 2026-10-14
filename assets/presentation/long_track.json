@@ -6,7 +6,7 @@
   "robot": "robot.ro3",
   "garage": {
     "heading": "履带跑长途",
-    "brief": "信号塔回标定点，同一条长途，换 RO-3。急脾气会在货架拐角摇摆，稳住才能到。",
+    "brief": "信号塔回标定点，同一条长途，换 RO-3。拐角考的是组合：风格稳＋胎抓地，缺一不可。",
     "component_columns": [
       {
         "slot": "tires",
@@ -60,14 +60,19 @@
     "hint": "先做预测。慢车配长途，是稳还是摇摆？",
     "choices": [
       {
-        "id": "long_track.pace",
-        "text": "慢车匀速能到",
-        "feedback": "推荐配置一次通过：慢加稳，拐角不摇摆。看用时和倒车记录。"
+        "id": "long_track.combo",
+        "text": "careful＋抓地胎能到",
+        "feedback": "对，唯一通关组合：127.78 秒拿全分。缺一件就摇摆或超时。"
       },
       {
-        "id": "long_track.rock",
-        "text": "还会在老地方摇摆",
-        "feedback": "对，默认配置在货架拐角摇了 150 秒：急脾气＋慢动态＋紧拐角＝极限环，超时判负。"
+        "id": "long_track.style_only",
+        "text": "只把风格放稳就行",
+        "feedback": "错：eco 胎配 careful 照样摇 150 秒。胎不行，稳也没用。"
+      },
+      {
+        "id": "long_track.tires_only",
+        "text": "只换抓地胎就行",
+        "feedback": "错：grip 胎配 swift 也过不去。脾气不行，胎再抓也没用。"
       }
     ]
   },

@@ -31,8 +31,8 @@
   },
   "teaching": {
     "concept": "tracked_pacing",
-    "prediction_prompt": "同一条长途，慢车配急脾气：货架拐角那个弯会摇摆吗？",
-    "knowledge_card": "履带拐角不吃急脾气：style 1.0 在货架拐角来回倒车 150 秒（60 秒走 10 米，倒车占两成）；careful 一次通过，证据在轨迹里。"
+    "prediction_prompt": "同一条长途，拐角要什么组合才过得去？",
+    "knowledge_card": "货架拐角：careful＋抓地胎缺一不可——单稳风格（eco＋careful）照样摇 150 秒，单换胎（grip＋swift）也过不去，传感器快慢不影响；2×2 全跑过，证据在轨迹里。"
   },
   "score": {
     "safe_min_clearance_m": 0.0,
