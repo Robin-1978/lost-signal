@@ -711,7 +711,17 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
   if (mission.level().objective.goal_visual == "supply_station") {
    draw_supply(goal->second);
   } else if (mission.level().objective.goal_visual == "signal_tower") {
-   DrawCylinderEx({base.x, 0.0f, base.z}, {base.x, 2.35f, base.z}, 0.34f, 0.16f, 16, {96, 103, 98, 255});
+   // Mast, not a pillar: arrival tolerance (0.62) is smaller than base art +
+   // body art would allow, so the shaft stays slim and the dock boundary is
+   // drawn as a ground ring. Same information-not-furniture rule as supply.
+   DrawCylinderEx({base.x, 0.0f, base.z}, {base.x, 2.35f, base.z}, 0.16f, 0.10f, 16,
+                  {96, 103, 98, 255});
+   // Dock boundary ring draws the actual arrival rule, not a fixed number.
+   const float dock = static_cast<float>(mission.level().objective.arrive_tolerance_m);
+   DrawCylinderEx({base.x, 0.01f, base.z}, {base.x, 0.05f, base.z}, dock, dock, 40,
+                  Fade(kAmber, 0.30f));
+   DrawCylinderEx({base.x, 0.055f, base.z}, {base.x, 0.075f, base.z}, dock - 0.07f, dock - 0.07f, 40,
+                  kAmber);
    DrawCylinderEx({base.x, 0.24f, base.z}, {base.x, 0.34f, base.z}, 0.52f, 0.52f, 20, {65, 70, 67, 255});
    DrawCylinderEx({base.x, 1.62f, base.z}, {base.x, 1.72f, base.z}, 0.28f, 0.28f, 16, {126, 132, 122, 255});
   } else {
