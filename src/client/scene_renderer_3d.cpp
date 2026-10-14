@@ -688,10 +688,19 @@ void SceneRenderer3D::draw_surface(const game::SurfaceDefinition& surface) const
 
 void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const {
  const auto& map = mission.map_definition();
+ // Supply markers are INFORMATION (drive here), not furniture: a solid crate
+ // on the marker forces the robot to drive through box art on collection
+ // (via radius 1.25, arrival 0.62 < crate half-width + body). Flat ring plus
+ // floating cube plus light beam read as a collection zone and never
+ // overlap the car body.
  const auto draw_supply = [&](const game::Pose& pose) {
   const auto base = world(pose);
-  draw_box({base.x, 0.26f, base.z}, {0.65f, 0.50f, 0.65f}, 8.0f, {104, 78, 47, 255});
-  draw_box({base.x, 0.55f, base.z}, {0.34f, 0.13f, 0.34f}, 8.0f, kAmber);
+  DrawCylinderEx({base.x, 0.01f, base.z}, {base.x, 0.05f, base.z}, 0.68f, 0.68f, 40, Fade(kAmber, 0.30f));
+  DrawCylinderEx({base.x, 0.055f, base.z}, {base.x, 0.075f, base.z}, 0.60f, 0.60f, 40, kAmber);
+  DrawCylinderEx({base.x, 0.02f, base.z}, {base.x, 1.15f, base.z}, 0.045f, 0.045f, 12,
+                 Fade(kAmber, 0.30f));
+  DrawModelEx(cube_model_, {base.x, 1.30f, base.z}, {0, 1, 0},
+              static_cast<float>(mission.snapshot().time_s * 40.0), {0.16f, 0.16f, 0.16f}, kAmber);
  };
  if (!mission.level().objective.via.empty()) {
   if (const auto via = map.markers.find(mission.level().objective.via); via != map.markers.end()) {
