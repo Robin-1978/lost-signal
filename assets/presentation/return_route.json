@@ -1,92 +1,92 @@
 {
- "schema_version": 1,
- "id": "presentation.return_route",
- "is_default": false,
- "level": "return_route",
- "robot": "robot.ro2",
- "garage": {
-  "heading": "新车报到",
-  "brief": "RO-2 是转向车：有方向盘，没有原地打转。开到标定点，校准它的转向。",
-  "component_columns": [
-   {
-    "slot": "tires",
-    "title": "驱动轮胎",
-    "options": [
-     "tires.standard",
-     "tires.grip",
-     "tires.eco"
-    ]
-   },
-   {
-    "slot": "sensor",
-    "title": "距离雷达",
-    "options": [
-     "sensor.short_fast_lidar",
-     "sensor.standard_lidar",
-     "sensor.long_slow_lidar"
-    ]
-   },
-   {
-    "slot": "motor",
-    "title": "电机",
-    "options": [
-     "motor.standard",
-     "motor.torque",
-     "motor.eco"
-    ]
-   }
-  ],
-  "policy_title": "驾驶风格",
-  "policies": [
-   "policy.careful",
-   "policy.balanced",
-   "policy.swift"
-  ],
-  "default_build": {
-   "tires": "tires.eco",
-   "sensor": "sensor.long_slow_lidar",
-   "motor": "motor.torque",
-   "style": 1.0
+  "schema_version": 1,
+  "id": "presentation.return_route",
+  "is_default": false,
+  "level": "return_route",
+  "robot": "robot.ro2",
+  "garage": {
+    "heading": "新车报到",
+    "brief": "RO-2 是转向车：有方向盘，没有原地打转。开到标定点，校准它的转向。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "驱动轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "sensor": "sensor.long_slow_lidar",
+      "motor": "motor.torque",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "motor": "motor.standard",
+      "style": 0.0
+    }
   },
-  "recommended_build": {
-   "tires": "tires.grip",
-   "sensor": "sensor.short_fast_lidar",
-   "motor": "motor.standard",
-   "style": 0.0
+  "prediction": {
+    "heading": "第一次开转向车，短板在哪？",
+    "hint": "先做预测。转弯半径摆在那里，看看时间花在了哪里。",
+    "choices": [
+      {
+        "id": "return_route.link.steering",
+        "text": "转弯会浪费时间",
+        "feedback": "如果进弯太晚，转向车只能绕大圈。看转弯处的轨迹。"
+      },
+      {
+        "id": "return_route.link.perception",
+        "text": "感知会拖后腿",
+        "feedback": "如果雷达看得太晚，刹车再好也来不及。看首次发现的时刻。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "把 RO-2 开到标定点",
+    "normal_line": "RO-2：转向系统在线，正在规划大半径转弯。",
+    "detected_line": "RO-2：前方状态已确认。"
+  },
+  "debrief": {
+    "success_title": "新车到家",
+    "success_summary": "转向车到达标定点：提前打方向，就是它的驾驶方式。",
+    "failure_summary": "看看是哪一项评分丢了，转向车最怕进弯太晚。",
+    "evidence_heading": "本次驾驶",
+    "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+    "knowledge_title": "转向几何",
+    "failure_titles": {
+      "collision-static": "返程失败：碰到了障碍",
+      "collision-dynamic": "返程失败：与叉车发生碰撞",
+      "timeout": "返程失败：没有在时限内到达"
+    }
   }
- },
- "prediction": {
-  "heading": "第一次开转向车，短板在哪？",
-  "hint": "先做预测。转弯半径摆在那里，看看时间花在了哪里。",
-  "choices": [
-   {
-    "id": "return_route.link.steering",
-    "text": "转弯会浪费时间",
-    "feedback": "如果进弯太晚，转向车只能绕大圈。看转弯处的轨迹。"
-   },
-   {
-    "id": "return_route.link.perception",
-    "text": "感知会拖后腿",
-    "feedback": "如果雷达看得太晚，刹车再好也来不及。看首次发现的时刻。"
-   }
-  ]
- },
- "running": {
-  "heading": "把 RO-2 开到标定点",
-  "normal_line": "RO-2：转向系统在线，正在规划大半径转弯。",
-  "detected_line": "RO-2：前方状态已确认。"
- },
- "debrief": {
-  "success_title": "新车到家",
-  "success_summary": "转向车到达标定点：提前打方向，就是它的驾驶方式。",
-  "failure_summary": "看看是哪一项评分丢了，转向车最怕进弯太晚。",
-  "evidence_heading": "本次驾驶",
-  "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
-  "knowledge_title": "转向几何",
-  "failure_titles": {
-   "collision-static": "返程失败：碰到了障碍",
-   "collision-dynamic": "返程失败：与叉车发生碰撞",
-   "timeout": "返程失败：没有在时限内到达"
-  }
- }
 }

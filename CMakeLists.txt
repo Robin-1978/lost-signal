@@ -153,5 +153,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_playtest.py -q
  )
  set_tests_properties(playtest_summary PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(
+ NAME content_roundtrip
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_content_roundtrip.py -q
+ )
+ set_tests_properties(content_roundtrip PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
  endif()
 endif()

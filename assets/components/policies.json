@@ -1,38 +1,38 @@
 {
-    "schema_version": 1,
-    "policies": [
-        {
-            "id": "policy.careful",
-            "title": "温柔",
-            "description": "提前减速，保留更大的安全空间。",
-            "style": 0.0,
-            "behavior": {
-                "cruise_mps": 0.75,
-                "safe_clearance_m": 0.95,
-                "lookahead_m": 1.6
-            }
-        },
-        {
-            "id": "policy.balanced",
-            "title": "普通",
-            "description": "在速度和安全空间之间取中间值。",
-            "style": 0.5,
-            "behavior": {
-                "cruise_mps": 1.0,
-                "safe_clearance_m": 0.65,
-                "lookahead_m": 2.0
-            }
-        },
-        {
-            "id": "policy.swift",
-            "title": "激进",
-            "description": "更快抵达，但留给感知和制动的时间更短。",
-            "style": 1.0,
-            "behavior": {
-                "cruise_mps": 1.25,
-                "safe_clearance_m": 0.4,
-                "lookahead_m": 2.3
-            }
-        }
-    ]
+  "schema_version": 1,
+  "policies": [
+    {
+      "id": "policy.careful",
+      "title": "温柔",
+      "description": "提前减速，保留更大的安全空间。",
+      "style": 0.0,
+      "behavior": {
+        "cruise_mps": 0.75,
+        "safe_clearance_m": 0.95,
+        "lookahead_m": 1.6
+      }
+    },
+    {
+      "id": "policy.balanced",
+      "title": "普通",
+      "description": "在速度和安全空间之间取中间值。",
+      "style": 0.5,
+      "behavior": {
+        "cruise_mps": 1.0,
+        "safe_clearance_m": 0.65,
+        "lookahead_m": 2.0
+      }
+    },
+    {
+      "id": "policy.swift",
+      "title": "激进",
+      "description": "更快抵达，但留给感知和制动的时间更短。",
+      "style": 1.0,
+      "behavior": {
+        "cruise_mps": 1.25,
+        "safe_clearance_m": 0.4,
+        "lookahead_m": 2.3
+      }
+    }
+  ]
 }

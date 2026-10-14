@@ -15,7 +15,11 @@
       },
       "visual": {
         "primitive_2d": "box",
-        "size_m": [0.18, 0.16, 0.1],
+        "size_m": [
+          0.18,
+          0.16,
+          0.1
+        ],
         "color": "#6D8CA3",
         "model_3d": "models/robots/ro1/compute_light.glb"
       }
@@ -33,7 +37,11 @@
       },
       "visual": {
         "primitive_2d": "box",
-        "size_m": [0.2, 0.18, 0.11],
+        "size_m": [
+          0.2,
+          0.18,
+          0.11
+        ],
         "color": "#B85C14",
         "model_3d": "models/robots/ro1/compute_light.glb"
       }
@@ -51,7 +59,11 @@
       },
       "visual": {
         "primitive_2d": "box",
-        "size_m": [0.17, 0.15, 0.09],
+        "size_m": [
+          0.17,
+          0.15,
+          0.09
+        ],
         "color": "#3F7A5E",
         "model_3d": "models/robots/ro1/compute_light.glb"
       }

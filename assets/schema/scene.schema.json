@@ -1,173 +1,514 @@
 {
- "$schema": "https://json-schema.org/draft/2020-12/schema",
- "$id": "scene.schema.json",
- "type": "object",
- "additionalProperties": false,
- "required": ["schema_version", "id", "camera", "lighting", "effects", "floor", "prefabs", "instances"],
- "properties": {
- "schema_version": {"const": 1},
- "id": {"$ref": "#/$defs/id"},
- "camera": {"$ref": "#/$defs/camera"},
- "lighting": {"$ref": "#/$defs/lighting"},
- "effects": {"$ref": "#/$defs/effects"},
- "floor": {"$ref": "#/$defs/floor"},
- "prefabs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/prefab"}},
- "instances": {"type": "array", "items": {"$ref": "#/$defs/instance"}}
- },
- "$defs": {
- "id": {"type": "string", "pattern": "^[a-z0-9_.-]+$"},
- "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
- "vec3": {
- "type": "array",
- "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number"}],
- "items": false
- },
- "positive_vec3": {
- "type": "array",
- "prefixItems": [
- {"type": "number", "exclusiveMinimum": 0},
- {"type": "number", "exclusiveMinimum": 0},
- {"type": "number", "exclusiveMinimum": 0}
- ],
- "items": false
- },
- "active": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
- "camera": {
- "type": "object",
- "additionalProperties": false,
- "required": ["offset_m", "target_height_m", "fov_degrees", "focus_weights", "event_shot", "success_shot", "transition_s"],
- "properties": {
- "offset_m": {"$ref": "#/$defs/vec3"},
- "target_height_m": {"type": "number", "minimum": 0},
- "fov_degrees": {"type": "number", "minimum": 20, "maximum": 90},
- "focus_weights": {
- "type": "object",
- "additionalProperties": false,
- "required": ["robot", "actor", "goal"],
- "properties": {
- "robot": {"type": "number", "minimum": 0},
- "actor": {"type": "number", "minimum": 0},
- "goal": {"type": "number", "minimum": 0}
- }
- },
- "event_shot": {"$ref": "#/$defs/shot"},
- "success_shot": {"$ref": "#/$defs/shot"},
- "transition_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 4}
- }
- },
- "shot": {
- "type": "object",
- "additionalProperties": false,
- "required": ["offset_m", "target_height_m", "fov_degrees", "focus_weights"],
- "properties": {
- "offset_m": {"$ref": "#/$defs/vec3"},
- "target_height_m": {"type": "number", "minimum": 0},
- "fov_degrees": {"type": "number", "minimum": 20, "maximum": 90},
- "focus_weights": {
- "type": "object",
- "additionalProperties": false,
- "required": ["robot", "actor", "goal"],
- "properties": {
- "robot": {"type": "number", "minimum": 0},
- "actor": {"type": "number", "minimum": 0},
- "goal": {"type": "number", "minimum": 0}
- }
- }
- }
- },
- "lighting": {
- "type": "object",
- "additionalProperties": false,
-      "required": ["direction", "directional_color", "directional_intensity", "ambient_color", "fog_color", "fog_start_m", "fog_end_m", "robot_active_color", "robot_waiting_color", "goal_color", "shadow_map_resolution", "shadow_extent_m", "shadow_strength", "exposure", "bloom_threshold", "bloom_strength", "vignette_strength"],
- "properties": {
- "direction": {"$ref": "#/$defs/vec3"},
- "directional_color": {"$ref": "#/$defs/color"},
- "directional_intensity": {"type": "number", "minimum": 0},
- "ambient_color": {"$ref": "#/$defs/color"},
- "fog_color": {"$ref": "#/$defs/color"},
- "fog_start_m": {"type": "number", "minimum": 0},
- "fog_end_m": {"type": "number", "exclusiveMinimum": 0},
- "robot_active_color": {"$ref": "#/$defs/color"},
- "robot_waiting_color": {"$ref": "#/$defs/color"},
-        "goal_color": {"$ref": "#/$defs/color"},
-        "shadow_map_resolution": {"enum": [0, 1024, 2048, 4096]},
-        "shadow_extent_m": {"type": "number", "exclusiveMinimum": 0},
-        "shadow_strength": {"type": "number", "minimum": 0, "maximum": 1},
-        "exposure": {"type": "number", "minimum": 0.25, "maximum": 4},
-        "bloom_threshold": {"type": "number", "minimum": 0, "maximum": 4},
-        "bloom_strength": {"type": "number", "minimum": 0, "maximum": 1},
-        "vignette_strength": {"type": "number", "minimum": 0, "maximum": 1}
- }
- },
- "effects": {
- "type": "object",
- "additionalProperties": false,
- "required": ["robot_scale", "bob_amplitude_m", "bob_frequency_hz", "eye_height_m", "scan_radius_m", "perception_link_height_m", "prediction_horizon_s", "success_ring_radius_m"],
- "properties": {
- "robot_scale": {"type": "number", "exclusiveMinimum": 0.5, "maximum": 2},
- "bob_amplitude_m": {"type": "number", "minimum": 0, "maximum": 0.1},
- "bob_frequency_hz": {"type": "number", "minimum": 0, "maximum": 10},
- "eye_height_m": {"type": "number", "minimum": 0, "maximum": 2},
- "scan_radius_m": {"type": "number", "exclusiveMinimum": 0, "maximum": 20},
- "perception_link_height_m": {"type": "number", "minimum": 0, "maximum": 3},
- "prediction_horizon_s": {"type": "number", "minimum": 0, "maximum": 10},
- "success_ring_radius_m": {"type": "number", "exclusiveMinimum": 0, "maximum": 5}
- }
- },
- "floor": {
- "type": "object",
- "additionalProperties": false,
- "required": ["albedo_texture", "base_color", "tile_color", "boundary_color", "tile_size_m", "seam_m", "color_variation", "boundary_height_m", "boundary_width_m"],
- "properties": {
- "albedo_texture": {"type": "string", "minLength": 1},
- "base_color": {"$ref": "#/$defs/color"},
- "tile_color": {"$ref": "#/$defs/color"},
- "boundary_color": {"$ref": "#/$defs/color"},
- "tile_size_m": {"type": "number", "exclusiveMinimum": 0},
- "seam_m": {"type": "number", "minimum": 0},
- "color_variation": {"type": "integer", "minimum": 0, "maximum": 64},
- "boundary_height_m": {"type": "number", "exclusiveMinimum": 0},
- "boundary_width_m": {"type": "number", "exclusiveMinimum": 0}
- }
- },
- "part": {
- "type": "object",
- "additionalProperties": false,
- "required": ["position_m", "size_m", "color"],
- "properties": {
- "primitive": {"enum": ["box", "sphere", "cylinder"]},
- "model_3d": {"type": "string", "minLength": 1},
- "position_m": {"$ref": "#/$defs/vec3"},
- "size_m": {"$ref": "#/$defs/positive_vec3"},
- "yaw_degrees": {"type": "number"},
- "color": {"$ref": "#/$defs/color"}
- },
- "oneOf": [
- {"required": ["primitive"], "not": {"required": ["model_3d"]}},
- {"required": ["model_3d"], "not": {"required": ["primitive"]}}
- ]
- },
- "prefab": {
- "type": "object",
- "additionalProperties": false,
- "required": ["id", "parts"],
- "properties": {
- "id": {"$ref": "#/$defs/id"},
- "parts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/part"}}
- }
- },
- "instance": {
- "type": "object",
- "additionalProperties": false,
- "required": ["id", "prefab", "position_m"],
- "properties": {
- "id": {"$ref": "#/$defs/id"},
- "prefab": {"$ref": "#/$defs/id"},
- "position_m": {"$ref": "#/$defs/vec3"},
- "scale": {"$ref": "#/$defs/positive_vec3"},
- "yaw_degrees": {"type": "number"},
- "active_in": {"$ref": "#/$defs/active"}
- }
- }
- }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scene.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "camera",
+    "lighting",
+    "effects",
+    "floor",
+    "prefabs",
+    "instances"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "camera": {
+      "$ref": "#/$defs/camera"
+    },
+    "lighting": {
+      "$ref": "#/$defs/lighting"
+    },
+    "effects": {
+      "$ref": "#/$defs/effects"
+    },
+    "floor": {
+      "$ref": "#/$defs/floor"
+    },
+    "prefabs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/prefab"
+      }
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/instance"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
+    },
+    "vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false
+    },
+    "positive_vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      ],
+      "items": false
+    },
+    "active": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offset_m",
+        "target_height_m",
+        "fov_degrees",
+        "focus_weights",
+        "event_shot",
+        "success_shot",
+        "transition_s"
+      ],
+      "properties": {
+        "offset_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "target_height_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fov_degrees": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 90
+        },
+        "focus_weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "robot",
+            "actor",
+            "goal"
+          ],
+          "properties": {
+            "robot": {
+              "type": "number",
+              "minimum": 0
+            },
+            "actor": {
+              "type": "number",
+              "minimum": 0
+            },
+            "goal": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "event_shot": {
+          "$ref": "#/$defs/shot"
+        },
+        "success_shot": {
+          "$ref": "#/$defs/shot"
+        },
+        "transition_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 4
+        }
+      }
+    },
+    "shot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offset_m",
+        "target_height_m",
+        "fov_degrees",
+        "focus_weights"
+      ],
+      "properties": {
+        "offset_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "target_height_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fov_degrees": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 90
+        },
+        "focus_weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "robot",
+            "actor",
+            "goal"
+          ],
+          "properties": {
+            "robot": {
+              "type": "number",
+              "minimum": 0
+            },
+            "actor": {
+              "type": "number",
+              "minimum": 0
+            },
+            "goal": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "lighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direction",
+        "directional_color",
+        "directional_intensity",
+        "ambient_color",
+        "fog_color",
+        "fog_start_m",
+        "fog_end_m",
+        "robot_active_color",
+        "robot_waiting_color",
+        "goal_color",
+        "shadow_map_resolution",
+        "shadow_extent_m",
+        "shadow_strength",
+        "exposure",
+        "bloom_threshold",
+        "bloom_strength",
+        "vignette_strength"
+      ],
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/vec3"
+        },
+        "directional_color": {
+          "$ref": "#/$defs/color"
+        },
+        "directional_intensity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ambient_color": {
+          "$ref": "#/$defs/color"
+        },
+        "fog_color": {
+          "$ref": "#/$defs/color"
+        },
+        "fog_start_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fog_end_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "robot_active_color": {
+          "$ref": "#/$defs/color"
+        },
+        "robot_waiting_color": {
+          "$ref": "#/$defs/color"
+        },
+        "goal_color": {
+          "$ref": "#/$defs/color"
+        },
+        "shadow_map_resolution": {
+          "enum": [
+            0,
+            1024,
+            2048,
+            4096
+          ]
+        },
+        "shadow_extent_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "shadow_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "exposure": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4
+        },
+        "bloom_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "bloom_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "vignette_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "robot_scale",
+        "bob_amplitude_m",
+        "bob_frequency_hz",
+        "eye_height_m",
+        "scan_radius_m",
+        "perception_link_height_m",
+        "prediction_horizon_s",
+        "success_ring_radius_m"
+      ],
+      "properties": {
+        "robot_scale": {
+          "type": "number",
+          "exclusiveMinimum": 0.5,
+          "maximum": 2
+        },
+        "bob_amplitude_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.1
+        },
+        "bob_frequency_hz": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "eye_height_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "scan_radius_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 20
+        },
+        "perception_link_height_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "prediction_horizon_s": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "success_ring_radius_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "albedo_texture",
+        "base_color",
+        "tile_color",
+        "boundary_color",
+        "tile_size_m",
+        "seam_m",
+        "color_variation",
+        "boundary_height_m",
+        "boundary_width_m"
+      ],
+      "properties": {
+        "albedo_texture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_color": {
+          "$ref": "#/$defs/color"
+        },
+        "tile_color": {
+          "$ref": "#/$defs/color"
+        },
+        "boundary_color": {
+          "$ref": "#/$defs/color"
+        },
+        "tile_size_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "seam_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "color_variation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "boundary_height_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "boundary_width_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "position_m",
+        "size_m",
+        "color"
+      ],
+      "properties": {
+        "primitive": {
+          "enum": [
+            "box",
+            "sphere",
+            "cylinder"
+          ]
+        },
+        "model_3d": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "size_m": {
+          "$ref": "#/$defs/positive_vec3"
+        },
+        "yaw_degrees": {
+          "type": "number"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "primitive"
+          ],
+          "not": {
+            "required": [
+              "model_3d"
+            ]
+          }
+        },
+        {
+          "required": [
+            "model_3d"
+          ],
+          "not": {
+            "required": [
+              "primitive"
+            ]
+          }
+        }
+      ]
+    },
+    "prefab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "parts"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/part"
+          }
+        }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "prefab",
+        "position_m"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "prefab": {
+          "$ref": "#/$defs/id"
+        },
+        "position_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "scale": {
+          "$ref": "#/$defs/positive_vec3"
+        },
+        "yaw_degrees": {
+          "type": "number"
+        },
+        "active_in": {
+          "$ref": "#/$defs/active"
+        }
+      }
+    }
+  }
 }

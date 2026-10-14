@@ -1,63 +1,63 @@
 {
- "$schema": "https://json-schema.org/draft/2020-12/schema",
- "$id": "surface.schema.json",
- "type": "object",
- "additionalProperties": false,
- "required": [
-  "schema_version",
-  "materials"
- ],
- "properties": {
-  "schema_version": {
-   "const": 1
-  },
-  "materials": {
-   "type": "array",
-   "minItems": 1,
-   "items": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "id",
-     "title",
-     "description",
-     "friction_mu",
-     "rolling_drag",
-     "traction_scale"
-    ],
-    "properties": {
-     "id": {
-      "$ref": "#/$defs/id"
-     },
-     "title": {
-      "type": "string",
-      "minLength": 1
-     },
-     "description": {
-      "type": "string",
-      "minLength": 1
-     },
-     "friction_mu": {
-      "type": "number",
-      "exclusiveMinimum": 0
-     },
-     "rolling_drag": {
-      "type": "number",
-      "minimum": 0
-     },
-     "traction_scale": {
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "maximum": 1
-     }
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "surface.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "materials"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "materials": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "description",
+          "friction_mu",
+          "rolling_drag",
+          "traction_scale"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "friction_mu": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "rolling_drag": {
+            "type": "number",
+            "minimum": 0
+          },
+          "traction_scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
+        }
+      }
     }
-   }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    }
   }
- },
- "$defs": {
-  "id": {
-   "type": "string",
-   "pattern": "^[a-z0-9_.-]+$"
-  }
- }
 }

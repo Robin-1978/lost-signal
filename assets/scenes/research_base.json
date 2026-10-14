@@ -16,9 +16,9 @@
     },
     "event_shot": {
       "offset_m": [
- -6.7,
- -7.7,
- 8.0
+        -6.7,
+        -7.7,
+        8.0
       ],
       "target_height_m": 0.4,
       "fov_degrees": 38.0,

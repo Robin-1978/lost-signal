@@ -1,37 +1,37 @@
 {
- "schema_version": 1,
- "materials": [
-  {
-   "id": "paved",
-   "title": "铺装地面",
-   "description": "干燥混凝土，基准抓地。仿真里的 1.0 就是它。",
-   "friction_mu": 1.0,
-   "rolling_drag": 0.0,
-   "traction_scale": 1.0
-  },
-  {
-   "id": "gravel",
-   "title": "砂石地面",
-   "description": "碎石浮土，抓地打八折，滚阻明显。",
-   "friction_mu": 0.7,
-   "rolling_drag": 0.015,
-   "traction_scale": 0.8
-  },
-  {
-   "id": "sand",
-   "title": "沙地",
-   "description": "松散细沙，轮胎刨坑，滚阻最大。",
-   "friction_mu": 0.55,
-   "rolling_drag": 0.03,
-   "traction_scale": 0.65
-  },
-  {
-   "id": "standing_water",
-   "title": "积水地面",
-   "description": "薄层积水，抓地只剩三成半，经济胎的天敌。",
-   "friction_mu": 0.35,
-   "rolling_drag": 0.02,
-   "traction_scale": 0.45
-  }
- ]
+  "schema_version": 1,
+  "materials": [
+    {
+      "id": "paved",
+      "title": "铺装地面",
+      "description": "干燥混凝土，基准抓地。仿真里的 1.0 就是它。",
+      "friction_mu": 1.0,
+      "rolling_drag": 0.0,
+      "traction_scale": 1.0
+    },
+    {
+      "id": "gravel",
+      "title": "砂石地面",
+      "description": "碎石浮土，抓地打八折，滚阻明显。",
+      "friction_mu": 0.7,
+      "rolling_drag": 0.015,
+      "traction_scale": 0.8
+    },
+    {
+      "id": "sand",
+      "title": "沙地",
+      "description": "松散细沙，轮胎刨坑，滚阻最大。",
+      "friction_mu": 0.55,
+      "rolling_drag": 0.03,
+      "traction_scale": 0.65
+    },
+    {
+      "id": "standing_water",
+      "title": "积水地面",
+      "description": "薄层积水，抓地只剩三成半，经济胎的天敌。",
+      "friction_mu": 0.35,
+      "rolling_drag": 0.02,
+      "traction_scale": 0.45
+    }
+  ]
 }

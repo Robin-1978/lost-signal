@@ -58,7 +58,7 @@
 - Python 内容测试：15/15 通过，包括事件镜头权重、17 个 GLB 法线访问器、PNG 尺寸与签名检查，以及缺失纹理、缺失模型、坏场景引用和坏 Prefab 引用的拒绝测试。
 - Python 试玩汇总测试：3/3 通过。
 - 内容 Schema 与跨文件引用：通过，识别 9 个关卡、1 张地图、1 个 3D 场景、1 个机器人装配、17 个组件、3 种策略和 9 份表现配置。
-- 复现命令：`./tools/build.sh --headless --test`（CTest 8/8）；`python3 -m pytest tests/test_content.py tests/test_playtest.py -q`（18 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（79.84 秒成功）与 `--default`（34.62 秒通过、0.230 米丢安全分）。新关 `return_route`（RO-2 转向车）：推荐 11.92 秒成功、安全达成（迅速待探索），默认 7.38 秒成功但定位误差 0.16 米超 0.095 米限、丢安全分；5 种子下默认 0/5、推荐 5/5 安全，确定性自检全过。
+- 复现命令：`./tools/build.sh --headless --test`（CTest 9/9）；`python3 -m pytest tests/test_content.py tests/test_playtest.py tests/test_content_roundtrip.py -q`（20 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（79.84 秒成功）与 `--default`（34.62 秒通过、0.230 米丢安全分）。新关 `return_route`（RO-2 转向车）：推荐 11.92 秒成功、安全达成（迅速待探索），默认 7.38 秒成功但定位误差 0.16 米超 0.095 米限、丢安全分；5 种子下默认 0/5、推荐 5/5 安全，确定性自检全过。
 - P3 事件镜头 SHA 用当前构建复现（需 Xvfb，见 `.github/workflows/build.yml`）：`xvfb-run -a ./build/release/lost_signal --demo --screenshot /tmp/lost-signal.png`，连续两次应等于 P3 基线；P1/P2 为阶段历史记录。
 
 ## 画面验收清单

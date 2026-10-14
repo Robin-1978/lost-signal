@@ -1,49 +1,49 @@
 {
- "schema_version": 1,
- "id": "track_turn",
- "order": 11,
- "title": "履带急转",
- "map": "research_base",
- "control_mode": "autonomous",
- "localization_mode": "fused",
- "chapter": 2,
- "prerequisites": [
-  "return_route"
- ],
- "seed": 97,
- "objective": {
-  "type": "deliver_via",
-  "spawn": "workshop_exit",
-  "via": "glass_door",
-  "via_label": "玻璃门",
-  "goal": "calibration_pad",
-  "goal_label": "标定点",
-  "goal_visual": "calibration_pad",
-  "time_limit_s": 150,
-  "max_collisions": 0,
-  "arrive_tolerance_m": 0.62,
-  "via_radius_m": 1.25
- },
- "loadout_rules": {
-  "budget": 5,
-  "required_slots": [
-   "tires",
-   "sensor",
-   "motor"
+  "schema_version": 1,
+  "id": "track_turn",
+  "order": 11,
+  "title": "履带急转",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "return_route"
+  ],
+  "seed": 97,
+  "objective": {
+    "type": "deliver_via",
+    "spawn": "workshop_exit",
+    "via": "glass_door",
+    "via_label": "玻璃门",
+    "goal": "calibration_pad",
+    "goal_label": "标定点",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "via_radius_m": 1.25
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "tracked_debut",
+    "prediction_prompt": "履带转弯全靠打滑，哪里最容易丢定位？",
+    "knowledge_card": "履带没有方向盘：两侧速度差搓着地面转向。转得越急，里程计撒谎越狠。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "max_localization_error_m": 2.0,
+    "fast_time_s": 30.0,
+    "efficient_energy_wh": 0.5
+  },
+  "rewards": [
+    "ability.tracked"
   ]
- },
- "teaching": {
-  "concept": "tracked_debut",
-  "prediction_prompt": "履带转弯全靠打滑，哪里最容易丢定位？",
-  "knowledge_card": "履带没有方向盘：两侧速度差搓着地面转向。转得越急，里程计撒谎越狠。"
- },
- "score": {
-  "safe_min_clearance_m": 0.0,
-  "max_localization_error_m": 2.0,
-  "fast_time_s": 30.0,
-  "efficient_energy_wh": 0.5
- },
- "rewards": [
-  "ability.tracked"
- ]
 }
