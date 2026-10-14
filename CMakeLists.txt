@@ -197,6 +197,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_feedforward PRIVATE lost_signal_sim)
  add_test(NAME feedforward COMMAND test_feedforward)
 
+ add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
+ target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_sim lost_signal_game)
+ target_compile_definitions(test_ff_sensitivity PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME ff_sensitivity COMMAND test_ff_sensitivity)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(
