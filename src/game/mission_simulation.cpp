@@ -585,7 +585,7 @@ void MissionSimulation::decide_control() {
  // owns observations. known_tracks (age-advanced, for display) must not
  // feed prediction: map.predict() snapshots raw tracker state internally.
  const auto predicted_frames =
-   dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
+  dynamic_obstacle_map_.predict(snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,
    target, *planning_map_, weights, predicted_frames, speed_cap, yaw_cap_rads_,
