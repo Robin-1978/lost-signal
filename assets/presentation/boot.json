@@ -64,5 +64,9 @@
       "collision-static": "校准失败：碰到了障碍",
       "timeout": "校准失败：没有抵达出口"
     }
-  }
+  },
+  "chassis_options": [
+    "robot.ro1",
+    "robot.ro2"
+  ]
 }

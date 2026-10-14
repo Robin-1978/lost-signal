@@ -47,20 +47,27 @@ const char* mission_status_name(MissionStatus status) {
 }
 
 const std::string& MissionSimulation::level_robot_id(const ContentCatalog& catalog,
-                                                     const std::string& level_id) {
+                                                     const std::string& level_id,
+                                                     const BuildSelection& build) {
+ // Validated player choice wins (validate_build enforces allow-list + unlock);
+ // empty request keeps the presentation default / companion path bit-identical.
+ if (!build.chassis_robot.empty()) {
+  return build.chassis_robot;
+ }
  const std::string& presentation_robot = catalog.presentation_for_level(level_id).robot_id;
  return presentation_robot.empty() ? catalog.campaign().companion_robot : presentation_robot;
 }
 
 MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string level_id,
-                                     BuildSelection build, std::optional<uint64_t> seed_override)
+                                     BuildSelection build, std::optional<uint64_t> seed_override,
+                                     const std::vector<std::string>& owned_abilities)
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
       seed_override_(seed_override), level_(catalog_.level(level_id_)),
       map_definition_(catalog_.map(level_.map)),
-      robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_))),
+      robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_, build_))),
       behavior_(catalog_.style_behavior(build_.style)), rng_(effective_seed()),
       perception_rng_(effective_seed() ^ 0x9e3779b9U) {
- catalog_.validate_build(level_id_, build_);
+ catalog_.validate_build(level_id_, build_, owned_abilities);
  for (const auto& [slot, id] : build_.parts) {
   if (!id.empty()) {
    parts_.emplace(slot, &catalog_.component(id));

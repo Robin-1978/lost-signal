@@ -194,6 +194,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  )
  add_test(NAME release_error COMMAND test_release_error)
 
+ add_executable(test_chassis_choice tests/new/test_chassis_choice.cpp)
+ target_link_libraries(test_chassis_choice PRIVATE lost_signal_game)
+ target_compile_definitions(test_chassis_choice PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME chassis_choice COMMAND test_chassis_choice)
+
  add_executable(test_abilities tests/new/test_abilities.cpp)
  target_link_libraries(test_abilities PRIVATE lost_signal_game)
  target_compile_definitions(test_abilities PRIVATE

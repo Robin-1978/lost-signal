@@ -43,7 +43,8 @@ class ContentCatalog {
  const std::vector<ChapterDefinition>& chapters() const { return chapters_; }
 
  int build_cost(const BuildSelection& build) const;
- void validate_build(const std::string& level_id, const BuildSelection& build) const;
+ void validate_build(const std::string& level_id, const BuildSelection& build,
+                      const std::vector<std::string>& owned_abilities = {}) const;
  // Continuous driving style s in [0, 1], piecewise-linear across the policy
  // anchors sorted by style. Anchor positions reproduce the presets bit-for-bit.
  Properties style_behavior(double style) const;

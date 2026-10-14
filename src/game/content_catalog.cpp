@@ -474,6 +474,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   robot.tracked_max_yaw_rate_rads = drive.value("max_yaw_rate_rads", 1.5);
   robot.track_length_m = drive.value("track_length_m", 0.7);
   robot.track_width_m = drive.value("track_width_m", 0.58);
+  robot.unlock_ability = value.value("unlock_ability", std::string{});
   robot.steering = {
     steering.at("integral_limit").get<double>(),
     steering.value("max_steer_rad", 0.6),
@@ -546,6 +547,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   presentation.is_default = value.at("is_default").get<bool>();
   presentation.level = value.at("level").get<std::string>();
   presentation.robot_id = value.value("robot", std::string{});
+  presentation.chassis_options = value.value("chassis_options", std::vector<std::string>{});
   presentation.garage_heading = garage.at("heading").get<std::string>();
   presentation.garage_brief = garage.at("brief").get<std::string>();
   for (const auto& item : garage.at("component_columns")) {
@@ -659,6 +661,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   (void)catalog.level(presentation.level);
   if (!presentation.robot_id.empty()) {
    (void)catalog.robot(presentation.robot_id);
+  }
+  for (const auto& chassis : presentation.chassis_options) {
+   (void)catalog.robot(chassis);
   }
   catalog.validate_build(presentation.level, presentation.default_build);
   catalog.validate_build(presentation.level, presentation.recommended_build);
@@ -789,8 +794,22 @@ int ContentCatalog::build_cost(const BuildSelection& build) const {
  return result;
 }
 
-void ContentCatalog::validate_build(const std::string& level_id, const BuildSelection& build) const {
+void ContentCatalog::validate_build(const std::string& level_id, const BuildSelection& build,
+                                     const std::vector<std::string>& owned_abilities) const {
  const auto& level_value = level(level_id);
+ if (!build.chassis_robot.empty()) {
+  // Player chassis choice: opt-in per level (absent = fixed, today's path),
+  // robot must exist, unlock gate enforced against caller-held abilities.
+  const auto& options = presentation_for_level(level_id).chassis_options;
+  if (std::find(options.begin(), options.end(), build.chassis_robot) == options.end()) {
+   throw ContentError("chassis '" + build.chassis_robot + "' is not offered for this level");
+  }
+  const auto& unlock = robot(build.chassis_robot).unlock_ability;
+  if (!unlock.empty() && std::find(owned_abilities.begin(), owned_abilities.end(), unlock) ==
+                            owned_abilities.end()) {
+   throw ContentError("chassis '" + build.chassis_robot + "' is locked behind '" + unlock + "'");
+  }
+ }
  for (const auto& slot : level_value.required_slots) {
   if (build.part(slot).empty()) {
    throw ContentError("required slot '" + slot + "' is empty");

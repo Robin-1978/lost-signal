@@ -166,7 +166,8 @@ class MissionSimulation {
  static constexpr double fixed_step_s = 0.02;
 
  MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
-                   std::optional<uint64_t> seed_override = std::nullopt);
+                   std::optional<uint64_t> seed_override = std::nullopt,
+                   const std::vector<std::string>& owned_abilities = {});
 
  void reset();
  void start();
@@ -178,7 +179,8 @@ class MissionSimulation {
  const MapDefinition& map_definition() const { return map_definition_; }
  const BuildSelection& build() const { return build_; }
  const RobotDefinition& robot() const { return robot_definition_; }
- static const std::string& level_robot_id(const ContentCatalog& catalog, const std::string& level_id);
+ static const std::string& level_robot_id(const ContentCatalog& catalog, const std::string& level_id,
+                                            const BuildSelection& build);
  uint64_t effective_seed() const { return seed_override_.value_or(level_.seed); }
  const sim::GridMap& occupancy_map() const { return *truth_map_; }
  const std::vector<sim::Vec2>& planned_path() const { return planned_path_; }

@@ -315,6 +315,10 @@
           }
         }
       }
+    },
+    "unlock_ability": {
+      "type": "string",
+      "pattern": "^ability\\.[a-z_]+$"
     }
   },
   "$defs": {

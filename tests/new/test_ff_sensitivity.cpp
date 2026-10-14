@@ -433,7 +433,7 @@ int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& pres = catalog.presentation_for_level("lost_signal");
  const auto& build = pres.recommended_build;
- const auto& robot = catalog.robot(game::MissionSimulation::level_robot_id(catalog, "lost_signal"));
+ const auto& robot = catalog.robot(game::MissionSimulation::level_robot_id(catalog, "lost_signal", build));
  const std::string motor_id = build.parts.at("motor");
  const std::string tire_id = build.parts.at("tires");
  auto cprop = [&](const std::string& id, const std::string& key) {

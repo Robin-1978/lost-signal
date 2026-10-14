@@ -296,6 +296,10 @@ struct RobotDefinition {
  double track_length_m{0.7};
  // Axle track width (vendor spec). Only read by ackermann robots (linkage).
  double track_width_m{0.58};
+ // Unlock gate for player chassis choice (content data, not code): empty =
+ // starter (always available), otherwise an ability.* id the garage checks.
+ // The mission trusts validated builds; ownership lives at the UI layer.
+ std::string unlock_ability;
  MotorDefinition motor;
  SteeringDefinition steering;
  double energy_base_w{0.0};
@@ -322,6 +326,10 @@ struct BuildSelection {
  // validation, cost, UI, renderers and saves all iterate this map.
  std::map<std::string, std::string> parts;
  double style{0.5};
+ // Player-requested chassis (robot id, empty = presentation default).
+ // Honored only when listed in the level's chassis_options and validated
+ // (ownership checked by the caller holding progress, see validate_build).
+ std::string chassis_robot;
 
  const std::string& part(const std::string& slot) const {
   static const std::string kEmpty;
@@ -349,6 +357,10 @@ struct PresentationDefinition {
  // Vehicle for this level. Empty = campaign companion (all existing levels).
  // A non-empty id must name a robot in assets/robots.
  std::string robot_id;
+ // Player-selectable chassis for this level (opt-in; absent/empty = fixed as
+ // today, zero behavior drift). Entries must name robots; the mission honors
+ // a validated build request, the garage owns the UI, abilities own unlock.
+ std::vector<std::string> chassis_options;
  std::string garage_heading;
  std::string garage_brief;
  std::vector<ComponentColumn> component_columns;

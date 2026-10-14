@@ -333,6 +333,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         robot_id = robot["id"]
         _register(global_ids, robot_id, f"{doc.path}:/id")
         robot_by_id[robot_id] = robot
+        if "unlock_ability" in robot and robot["unlock_ability"] not in ability_ids:
+            raise ContentError(
+                f"{doc.path}:/unlock_ability: unknown ability '{robot['unlock_ability']}'"
+            )
         mount_ids: set[str] = set()
         for index, mount in enumerate(robot["mounts"]):
             if mount["id"] in mount_ids:
@@ -504,6 +508,9 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(f"{root / 'presentation'}: missing presentation for '{level_id}'")
         if presentation.get("robot") and presentation["robot"] not in robot_by_id:
             raise ContentError(f"{level_id}:/robot: unknown robot '{presentation['robot']}'")
+        for chassis in presentation.get("chassis_options", []):
+            if chassis not in robot_by_id:
+                raise ContentError(f"{level_id}:/chassis_options: unknown robot '{chassis}'")
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             for slot in ("tires", "sensor", "computer", "motor", "imu"):

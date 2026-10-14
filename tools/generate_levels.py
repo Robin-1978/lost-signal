@@ -840,6 +840,8 @@ def build_presentation(spec: dict) -> dict:
     }
     if spec.get("robot"):
         doc["robot"] = spec["robot"]
+    if spec.get("chassis_options"):
+        doc["chassis_options"] = list(spec["chassis_options"])
     doc["garage"] = {
         "heading": spec["garage_heading"],
         "brief": spec["garage_brief"],

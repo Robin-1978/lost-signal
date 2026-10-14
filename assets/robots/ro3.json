@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "robot.ro3",
   "title": "RO-3",
+  "unlock_ability": "ability.tracked",
   "coordinates": {
     "units": "meters",
     "forward": "+x",

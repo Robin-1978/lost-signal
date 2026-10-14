@@ -67,12 +67,13 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
   const auto& entry = it.value();
   BuildSelection build;
   for (auto field = entry.begin(); field != entry.end(); ++field) {
-   if (field.key() == "style") {
+   if (field.key() == "style" || field.key() == "chassis") {
     continue;
    }
    build.parts[field.key()] = field.value().get<std::string>();
   }
   build.style = std::clamp(entry.value("style", 0.5), 0.0, 1.0);
+  build.chassis_robot = entry.value("chassis", std::string{});
   bool known = true;
   for (const auto& [slot, id] : build.parts) {
    (void)slot;
@@ -153,6 +154,9 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
    fields[slot] = id;
   }
   fields["style"] = build.style;
+  if (!build.chassis_robot.empty()) {
+   fields["chassis"] = build.chassis_robot;
+  }
   builds[level_id] = std::move(fields);
  }
  json scores = json::object();

@@ -206,6 +206,12 @@
           }
         }
       }
+    },
+    "chassis_options": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      }
     }
   },
   "$defs": {
