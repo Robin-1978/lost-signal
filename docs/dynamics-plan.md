@@ -333,7 +333,7 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        transient＝全表重定基线＋item13 内容协同，非 drop-in；②T_lead 无着落
        （带宽倒数≠有效时延），降级路径＝灵敏度扫描 ±50％ 仿真鲁棒（待做），
        真车辨识仍是最终依据；③积分器证据要重看（pid_i 分布＋跟踪误差＋饱和，
-       单看积分下降不算数）。下一片：shadow-FF（并行算、不执行＋遥测对比）。
+       单看积分下降不算数）。FF 路线阶段 1-3 已落地（20/20、79.84、多种子逐字）：正逆对子补边界（差速极限往返、Ackermann 0.5 地板 intentional 非逆、履带复用即同码）；FF 映射 lead→轮加速度→R→curve→PWM 全钉（手算 8.9544/36）；shadow 每步算、专用 log 不进快照（终关 3992 样本、max 0.748、零饱和，输出逐字一致）。T_lead 取 1/wc（被助闭环自身时间常数，非执行器带宽——模型里无电机滞后），敏感性±50％＋滤波＋离线回放对比是阶段 4。一致性≠有效：scrub 力矩未建模、舵机 P-only、无死区，均已写进 honesty 边界。
        等待分型（test_release_error 2x2）：micro-inf 72／micro-finite 9／
        sustained-inf 4／sustained-finite 0——内容里不存在持续等待＋预测生效的
        格子。结论：micro 归 DWA＋creep（已安全，只监视不优化）；Phase-1 行为

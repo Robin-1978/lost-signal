@@ -30,6 +30,7 @@ add_library(lost_signal_sim STATIC
   src/hw/chassis/motor_drive.cpp
   src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
+ src/hw/feedforward.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
 )
@@ -187,6 +188,14 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME signal_quality COMMAND test_signal_quality)
+
+ add_executable(test_inverse_consistency tests/new/test_inverse_consistency.cpp)
+ target_link_libraries(test_inverse_consistency PRIVATE lost_signal_sim)
+ add_test(NAME inverse_consistency COMMAND test_inverse_consistency)
+
+ add_executable(test_feedforward tests/new/test_feedforward.cpp)
+ target_link_libraries(test_feedforward PRIVATE lost_signal_sim)
+ add_test(NAME feedforward COMMAND test_feedforward)
 
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)

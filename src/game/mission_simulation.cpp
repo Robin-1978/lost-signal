@@ -3,6 +3,7 @@
 #include "algo/astar.hpp"
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/tracked.hpp"
+#include "hw/feedforward.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -738,6 +739,48 @@ void MissionSimulation::decide_control() {
 void MissionSimulation::apply_motion() {
  snapshot_.control.target_v_mps = held_command_.target_v;
  snapshot_.control.target_w_radps = held_command_.target_w;
+ // Shadow-FF (stage 3 of the agreed FF route): compute the candidate
+ // feedforward PWM from the command about to execute and last cycle's
+ // measured speeds, then LOG ONLY. No PID, integral, or PWM path below reads
+ // anything from this block; control-output isolation is by construction
+ // (plus pinned-table + multi-seed proof).
+ {
+  sim::FeedforwardParams ff_params;
+  ff_params.wheel_mass_kg = robot_definition_.motor.wheel_equiv_mass_kg;
+  ff_params.stall_force_N =
+    has("motor") ? spec("motor", "stall_force_N") : robot_definition_.motor.stall_force_N;
+  ff_params.free_speed_mps =
+    has("motor") ? spec("motor", "free_speed_mps") : robot_definition_.motor.free_speed_mps;
+  ff_params.rolling_resist = wheel_ground({snapshot_.robot.x, snapshot_.robot.y}).rolling_resist;
+  const double body_weight_N = robot_definition_.mass_kg * 9.81;
+  const bool twin_unit = robot_definition_.drive_type != "ackermann";
+  ff_params.load_per_unit_N = twin_unit ? body_weight_N / 2.0 : body_weight_N;
+  // Assisted-loop time constant (motor_drive closed-loop wc = 6 rad/s).
+  // NOT actuator bandwidth (no motor lag is modeled): sensitivity-scanned in
+  // stage 4, identified on hardware last.
+  constexpr double kFfLeadTimeS = 1.0 / 6.0;
+  const double measured_left = snapshot_.control.left_measured_mps;
+  const double measured_right = snapshot_.control.right_measured_mps;
+  sim::TwistFeedforward ff{{0.0, false}, {0.0, false}};
+  if (robot_definition_.drive_type == "ackermann") {
+   // Drive-longitudinal only: the steering servo stays P-only (stage boundary).
+   const sim::BodyAccelDes desired =
+     sim::lead_accel(held_command_.target_v, measured_left, 0.0, 0.0, kFfLeadTimeS);
+   ff.left = sim::wheel_feedforward(desired.a_mps2, measured_left, ff_params);
+  } else {
+   double measured_v = 0.0;
+   double measured_w = 0.0;
+   sim::DiffDrive::wheelsToTwist(measured_left, measured_right, robot_definition_.wheel_base_m,
+                                 measured_v, measured_w);
+   const sim::BodyAccelDes desired = sim::lead_accel(held_command_.target_v, measured_v,
+                                                     held_command_.target_w, measured_w,
+                                                     kFfLeadTimeS);
+   ff = sim::twist_feedforward(desired, measured_v, measured_w, robot_definition_.wheel_base_m,
+                               ff_params);
+  }
+  ff_log_.push_back({snapshot_.time_s, ff.left.pwm_ff, ff.right.pwm_ff, ff.left.saturated,
+                     ff.right.saturated});
+ }
  const auto before = snapshot_.robot;
  auto candidate = chassis_->step(before, held_command_, fixed_step_s, wheel_ground({before.x, before.y}));
  const auto& motors = chassis_->telemetry();
