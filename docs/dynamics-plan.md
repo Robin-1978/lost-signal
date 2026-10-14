@@ -251,6 +251,9 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        三态语义 safe/unsafe/unknown（SOTIF Area 3：unknown 不得混入 safe）；
        观察位挂载即 shadow mode（只记不控），门禁一 MIL 纯函数→门禁二 SIL 离线
        闭环回放→门禁三 shadow→最后行为放行。
+       门禁二回放矩阵已钉（test_departure_replay）：nominal 准时出发保 margin、
+       保守偏置安全但 miss（多等）、对抗偏置吃光 margin（miss，无碰撞）、
+       迎面穿等待位初判 inf 且回放验撞——Phase-1 不认领该场景。
     b. **安全让位**（a 落地后）：采样路径附近空闲格，用第 14 项正逆解验证
        到得了/停得住/并得回，三者全过才列为候选，与原地等/直接走统一评价。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，

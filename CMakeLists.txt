@@ -151,6 +151,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_slip_detect PRIVATE lost_signal_sim)
  add_test(NAME slip_detect COMMAND test_slip_detect)
 
+ add_executable(test_departure_replay tests/new/test_departure_replay.cpp)
+ target_link_libraries(test_departure_replay PRIVATE lost_signal_sim)
+ add_test(NAME departure_replay COMMAND test_departure_replay)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(
