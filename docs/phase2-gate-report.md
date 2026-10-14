@@ -89,6 +89,13 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 中继 0 的含义：本片在冻结约定内（只读观察＋隔离实验证明），无架构分叉、
 无门禁结论变化、无 stop-loss——按约定不打扰评审。
 
+## F0. Family C 否决记（signal_pocket，回退完成）
+- 长扫 encounter 下 mission pocket shadow 525 帧 feasible 0，主因 HorizonShort
+  （instrument 窗覆盖不了 transit＋hold＋rejoin 链）；离线存在性（20s 窗、
+  chain 0.62–1.68）与 mission 零可见并存——差的是仪器窗，不是几何。
+  加窗追可见性＝调参观察预算，已禁止。关卡另因对比弱＋文案承诺落空否决，
+  与仪器结论相互独立。sus-fin 仍单相位 2 样本。
+
 ## F. 不确定性证据表 v1（evidence table，不是 budget）
 
 命名纪律：本表无消费者、无 N 阈值，任何 `margin += f(...)` 须在 wiring 时
