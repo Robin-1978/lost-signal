@@ -1,4 +1,5 @@
 #include "ackermann.hpp"
+#include "hw/chassis/chassis_factory.hpp"
 #include "hw/dynamics/contact.hpp"
 
 #include "algo/math.hpp"
@@ -129,3 +130,43 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
 }
 
 } // namespace sim
+
+// Chassis creator for the factory registry (see motor_drive.cpp).
+namespace sim {
+
+BuiltChassis create_ackermann_chassis(const sim::ChassisBuildParams& params,
+                                   const sim::WheelPidGains& gains) {
+  // The drive unit is a wheel: same autotune as a differential wheel. The
+  // servo closes its own inner loop; the outer P only sets angle demand, so
+  // kp = 1/(response * rate) targets the specified first-order settle
+  // (dδ/dt ≈ kp·rate·err ⇒ τ = 1/(kp·rate)). Same rule for every car.
+  const double servo_kp =
+    1.0 / std::max(0.05, params.servo_response_s * params.max_steer_rate_radps);
+  sim::BuiltChassis out;
+  out.model = std::make_unique<sim::AckermannDrive>(
+    sim::AckermannParams{
+      params.wheel_base_m,
+      params.wheel_radius_m,
+      params.track_width_m,
+      params.max_steer_rad,
+      params.max_steer_rate_radps,
+      params.servo_response_s,
+      params.max_wheel_speed_mps,
+      std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
+      params.stall_force_N,
+      params.free_speed_mps,
+      params.mass_kg,
+      params.pwm_limit,
+      params.integral_limit,
+      params.encoder_counts_per_revolution,
+    },
+    gains, servo_kp);
+  // Yaw capability at top drive speed; the heading PID outputs steer ANGLE
+  // for ackermann (see follow.hpp unit contract), capped at steer_max.
+  out.yaw_cap_rads = params.max_wheel_speed_mps * std::tan(params.max_steer_rad) /
+                     std::max(0.05, params.wheel_base_m);
+  return out;
+}
+
+} // namespace sim
+

@@ -1,4 +1,5 @@
 #include "tracked.hpp"
+#include "hw/chassis/chassis_factory.hpp"
 
 #include "algo/math.hpp"
 
@@ -115,3 +116,37 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
 }
 
 } // namespace sim
+
+// Chassis creator for the factory registry (see motor_drive.cpp).
+namespace sim {
+
+BuiltChassis create_tracked_chassis(const sim::ChassisBuildParams& params,
+                                 const sim::WheelPidGains& gains) {
+  // Twin tracks share the differential speed loop and yaw-rate output units;
+  // only the yaw authority comes from the vendor spin spec instead of
+  // DiffDrive geometry, because scrub decides what a track can hold.
+  sim::BuiltChassis out;
+  out.model = std::make_unique<sim::TrackedDrive>(
+    sim::TrackedParams{
+      params.wheel_base_m,
+      params.wheel_radius_m,
+      params.track_length_m,
+      params.max_wheel_speed_mps,
+      std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
+      params.stall_force_N,
+      params.free_speed_mps,
+      params.mass_kg,
+      params.yaw_inertia_kgm2,
+      params.tracked_max_yaw_rate_rads,
+      params.pwm_limit,
+      params.integral_limit,
+      params.encoder_counts_per_revolution,
+      params.wheel_equiv_mass_kg,
+    },
+    gains);
+  out.yaw_cap_rads = params.tracked_max_yaw_rate_rads;
+  return out;
+}
+
+} // namespace sim
+

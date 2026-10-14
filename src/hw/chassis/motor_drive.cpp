@@ -1,4 +1,7 @@
 #include "motor_drive.hpp"
+#include "hw/chassis/chassis_factory.hpp"
+
+#include <memory>
 
 #include "algo/math.hpp"
 
@@ -109,3 +112,32 @@ DiffState DifferentialMotorDrive::step(const DiffState& state, const DiffCmd& co
 }
 
 } // namespace sim
+
+// Chassis creator for the factory registry: new types follow this exact shape
+// (creator beside its implementation + one call line in
+// register_builtin_chassis) instead of extending a switch elsewhere.
+namespace sim {
+
+BuiltChassis create_differential_chassis(const ChassisBuildParams& params, const WheelPidGains& gains) {
+  sim::BuiltChassis out;
+  out.model = std::make_unique<sim::DifferentialMotorDrive>(
+    sim::MotorDriveParams{
+      params.wheel_base_m,
+      params.wheel_radius_m,
+      params.max_wheel_speed_mps,
+      std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
+      params.stall_force_N,
+      params.free_speed_mps,
+      params.mass_kg,
+      params.yaw_inertia_kgm2,
+      params.encoder_counts_per_revolution,
+      params.pwm_limit,
+      params.integral_limit,
+    },
+    gains);
+  out.yaw_cap_rads = params.behavior_w_max;
+  return out;
+}
+
+} // namespace sim
+

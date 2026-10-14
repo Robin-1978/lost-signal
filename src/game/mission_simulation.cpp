@@ -2,6 +2,7 @@
 
 #include "algo/astar.hpp"
 #include "hw/chassis/ackermann.hpp"
+#include "hw/chassis/chassis_factory.hpp"
 #include "hw/chassis/tracked.hpp"
 #include "algo/slip_detect.hpp"
 
@@ -154,77 +155,40 @@ void MissionSimulation::build_world() {
  const double wheel_mass = std::max(0.5, robot_definition_.mass_kg / 2.0);
  const sim::WheelPidGains wheel_gains =
    sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax);
- if (robot_definition_.drive_type == "differential") {
-  chassis_ = std::make_unique<sim::DifferentialMotorDrive>(
-    sim::MotorDriveParams{
-      robot_definition_.wheel_base_m,
-      robot_definition_.wheel_radius_m,
-      motor_vmax,
-      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
-      motor_stall,
-      motor_free,
-      robot_definition_.mass_kg,
-      robot_definition_.yaw_inertia_kgm2,
-      robot_definition_.encoder.counts_per_revolution,
-      robot_definition_.motor.pwm_limit,
-      robot_definition_.motor.integral_limit,
-    },
-    wheel_gains);
-  yaw_cap_rads_ = params.w_max;
- } else if (robot_definition_.drive_type == "ackermann") {
-  // The drive unit is a wheel: same autotune as a differential wheel. The
-  // servo closes its own inner loop; the outer P only sets angle demand, so
-  // kp = 1/(response * rate) targets the specified first-order settle
-  // (dδ/dt ≈ kp·rate·err ⇒ τ = 1/(kp·rate)). Same rule for every car.
-  const double servo_kp = 1.0 / std::max(0.05, robot_definition_.steering.servo_response_s *
-                                                 robot_definition_.steering.max_steer_rate_radps);
-  chassis_ = std::make_unique<sim::AckermannDrive>(
-    sim::AckermannParams{
-      robot_definition_.wheel_base_m,
-      robot_definition_.wheel_radius_m,
-      robot_definition_.track_width_m,
-      robot_definition_.steering.max_steer_rad,
-      robot_definition_.steering.max_steer_rate_radps,
-      robot_definition_.steering.servo_response_s,
-      motor_vmax,
-      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
-      motor_stall,
-      motor_free,
-      robot_definition_.mass_kg,
-      robot_definition_.motor.pwm_limit,
-      robot_definition_.motor.integral_limit,
-      robot_definition_.encoder.counts_per_revolution,
-    },
-    wheel_gains, servo_kp);
-  // Yaw capability at top drive speed; the heading PID outputs steer ANGLE
-  // for ackermann (see follow.hpp unit contract), capped at steer_max.
-  yaw_cap_rads_ = motor_vmax * std::tan(robot_definition_.steering.max_steer_rad) /
-                  std::max(0.05, robot_definition_.wheel_base_m);
- } else if (robot_definition_.drive_type == "tracked") {
-  // Twin tracks share the differential speed loop and yaw-rate output units;
-  // only the yaw authority comes from the vendor spin spec instead of
-  // DiffDrive geometry, because scrub decides what a track can hold.
-  chassis_ = std::make_unique<sim::TrackedDrive>(
-    sim::TrackedParams{
-      robot_definition_.wheel_base_m,
-      robot_definition_.wheel_radius_m,
-      robot_definition_.track_length_m,
-      motor_vmax,
-      std::min(robot_definition_.motor.max_wheel_accel_mps2, params.accel_max),
-      motor_stall,
-      motor_free,
-      robot_definition_.mass_kg,
-      robot_definition_.yaw_inertia_kgm2,
-      robot_definition_.tracked_max_yaw_rate_rads,
-      robot_definition_.motor.pwm_limit,
-      robot_definition_.motor.integral_limit,
-      robot_definition_.encoder.counts_per_revolution,
-    },
-    wheel_gains);
-  yaw_cap_rads_ = robot_definition_.tracked_max_yaw_rate_rads;
- } else {
-  throw ContentError("unsupported drive type '" + robot_definition_.drive_type + "'");
- }
+ // Chassis construction goes through the factory registry (hw/chassis):
+ // new drive.type implementations register themselves; mission only
+ // translates robot JSON + equipped specs into neutral build params.
+ sim::ChassisBuildParams chassis_params;
+ chassis_params.wheel_base_m = robot_definition_.wheel_base_m;
+ chassis_params.wheel_radius_m = robot_definition_.wheel_radius_m;
+ chassis_params.track_width_m = robot_definition_.track_width_m;
+ chassis_params.track_length_m = robot_definition_.track_length_m;
+ chassis_params.max_wheel_speed_mps = motor_vmax;
+ chassis_params.max_wheel_accel_mps2 = robot_definition_.motor.max_wheel_accel_mps2;
+ chassis_params.stall_force_N = motor_stall;
+ chassis_params.free_speed_mps = motor_free;
+ chassis_params.pwm_limit = robot_definition_.motor.pwm_limit;
+ chassis_params.integral_limit = robot_definition_.motor.integral_limit;
+ chassis_params.wheel_equiv_mass_kg = robot_definition_.motor.wheel_equiv_mass_kg;
+ chassis_params.encoder_counts_per_revolution =
+   robot_definition_.encoder.counts_per_revolution;
+ chassis_params.mass_kg = robot_definition_.mass_kg;
+ chassis_params.yaw_inertia_kgm2 = robot_definition_.yaw_inertia_kgm2;
+ chassis_params.max_steer_rad = robot_definition_.steering.max_steer_rad;
+ chassis_params.max_steer_rate_radps = robot_definition_.steering.max_steer_rate_radps;
+ chassis_params.servo_response_s = robot_definition_.steering.servo_response_s;
+ chassis_params.steering_integral_limit = robot_definition_.steering.integral_limit;
+ chassis_params.tracked_max_yaw_rate_rads = robot_definition_.tracked_max_yaw_rate_rads;
+ chassis_params.behavior_w_max = params.w_max;
+ chassis_params.behavior_accel_max = params.accel_max;
+ // Builtin registration is explicit at the composition root (idempotent):
+ // archive linkers drop unreferenced self-registering objects, so static
+ // registrars are platform luck. Custom types: register_creator + JSON type.
+ sim::ChassisFactory::register_builtin_chassis();
+ sim::BuiltChassis built =
+   sim::ChassisFactory::create(robot_definition_.drive_type, chassis_params, wheel_gains);
+ chassis_ = std::move(built.model);
+ yaw_cap_rads_ = built.yaw_cap_rads;
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants

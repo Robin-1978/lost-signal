@@ -28,6 +28,8 @@ add_library(lost_signal_sim STATIC
  src/algo/grid_map.cpp
   src/algo/predictor.cpp
   src/hw/chassis/motor_drive.cpp
+ src/hw/chassis/chassis_factory.cpp
+ src/hw/chassis/chassis_factory.cpp
   src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
  src/algo/state_estimator.cpp
@@ -193,6 +195,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME release_error COMMAND test_release_error)
+
+ add_executable(test_player_pack tests/new/test_player_pack.cpp)
+ target_link_libraries(test_player_pack PRIVATE lost_signal_game)
+ target_compile_definitions(test_player_pack PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME player_pack COMMAND test_player_pack)
 
  add_executable(test_chassis_choice tests/new/test_chassis_choice.cpp)
  target_link_libraries(test_chassis_choice PRIVATE lost_signal_game)
