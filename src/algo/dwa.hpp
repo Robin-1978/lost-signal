@@ -26,14 +26,17 @@ struct DwaResult {
  std::vector<Vec2> best_path;
  std::vector<DwaRollout> rollouts;
 };
+// robot_radius and yaw_accel come from robot JSON through the mission layer;
+// DWA never invents vehicle geometry.
 DwaResult dwa_compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                       DwaWeights wt, double v_max = 2.0, double w_max = 1.5, double accel = 2.0,
-                      double predict_T = 1.5, double dt = 0.1);
+                      double predict_T = 1.5, double dt = 0.1, double robot_radius = 0.38,
+                      double yaw_accel = 8.0);
 // 时变版: dyn按线性外推(p+v*t)参与碰撞检查. 空dyn等价于静态版.
 DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                           DwaWeights wt, const std::vector<DynState>& dyn, double v_max = 2.0,
                           double w_max = 2.0, double accel = 3.0, double predict_T = 2.5, double dt = 0.1,
-                          double safety_margin = 0.0);
+                          double safety_margin = 0.0, double robot_radius = 0.38, double yaw_accel = 8.0);
 
 // Time-indexed actor predictions. Each outer element is a future frame at
 // frame_dt intervals and contains every actor state at that time. This lets a
@@ -43,5 +46,6 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  const std::vector<std::vector<DynState>>& predicted_frames,
                                  double v_max = 2.0, double w_max = 2.0, double accel = 3.0,
                                  double predict_T = 2.5, double dt = 0.1, double frame_dt = 0.1,
-                                 double safety_margin = 0.0);
+                                 double safety_margin = 0.0, double robot_radius = 0.38,
+                                 double yaw_accel = 8.0);
 } // namespace sim

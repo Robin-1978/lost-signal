@@ -33,7 +33,8 @@
   },
   "encoder": {
    "counts_per_revolution": 2048
-  }
+  },
+  "max_yaw_accel_radps2": 8.0
  },
  "collision": {
   "shape": "cylinder",

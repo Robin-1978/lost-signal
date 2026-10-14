@@ -65,7 +65,8 @@
     "motor",
     "steering",
     "energy",
-    "encoder"
+    "encoder",
+    "max_yaw_accel_radps2"
    ],
    "properties": {
     "type": {
@@ -177,6 +178,10 @@
        "minimum": 0
       }
      }
+    },
+    "max_yaw_accel_radps2": {
+     "type": "number",
+     "exclusiveMinimum": 0
     }
    }
   },

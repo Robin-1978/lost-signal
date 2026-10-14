@@ -66,7 +66,7 @@ int main() {
  }
 
  const auto dwa = sim::dwa_compute({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5,
-                                   2.0, 1.5, 0.1);
+                                   2.0, 1.5, 0.1, 0.38, 8.0);
  CHECK(dwa.best.valid);
  CHECK(!dwa.best_path.empty());
  CHECK(dwa.best_path.front().x == 1.0);

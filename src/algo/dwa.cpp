@@ -11,7 +11,7 @@ using DynamicCollision = std::function<bool(double, double, double)>;
 
 DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                   DwaWeights weights, const DynamicCollision& dynamic_collision, double v_max, double w_max,
-                  double accel, double predict_time, double dt) {
+                  double accel, double predict_time, double dt, double yaw_accel) {
  DwaResult output;
  output.best.valid = false;
  output.best.score = -1e18;
@@ -30,7 +30,7 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
    bool collision = false;
    for (double time = 0.0; time < predict_time; time += dt) {
     rollout_v += clamp(velocity - rollout_v, -accel * dt, accel * dt);
-    rollout_w += clamp(angular - rollout_w, -8.0 * dt, 8.0 * dt);
+    rollout_w += clamp(angular - rollout_w, -yaw_accel * dt, yaw_accel * dt);
     x += rollout_v * std::cos(heading) * dt;
     y += rollout_v * std::sin(heading) * dt;
     heading += rollout_w * dt;
@@ -63,34 +63,36 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
 
 DwaResult dwa_compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                       DwaWeights weights, double v_max, double w_max, double accel, double predict_time,
-                      double dt) {
+                      double dt, double robot_radius, double yaw_accel) {
+ (void)robot_radius;
  return compute(
    pos, theta, cur_v, cur_w, goal, map, weights, [](double, double, double) { return false; }, v_max, w_max,
-   accel, predict_time, dt);
+   accel, predict_time, dt, yaw_accel);
 }
 
 DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                           DwaWeights weights, const std::vector<DynState>& actors, double v_max, double w_max,
-                          double accel, double predict_time, double dt, double safety_margin) {
+                          double accel, double predict_time, double dt, double safety_margin,
+                          double robot_radius, double yaw_accel) {
  const auto dynamic_collision = [&](double x, double y, double time) {
   for (const auto& actor : actors) {
    const double px = actor.p.x + actor.v.x * time;
    const double py = actor.p.y + actor.v.y * time;
-   if (std::hypot(x - px, y - py) < actor.radius + kRobotRadius + safety_margin) {
+   if (std::hypot(x - px, y - py) < actor.radius + robot_radius + safety_margin) {
     return true;
    }
   }
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
-                predict_time, dt);
+                predict_time, dt, yaw_accel);
 }
 
 DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
                                  const GridMap& map, DwaWeights weights,
                                  const std::vector<std::vector<DynState>>& predicted_frames, double v_max,
                                  double w_max, double accel, double predict_time, double dt, double frame_dt,
-                                 double safety_margin) {
+                                 double safety_margin, double robot_radius, double yaw_accel) {
  const auto dynamic_collision = [&](double x, double y, double time) {
   if (predicted_frames.empty()) {
    return false;
@@ -98,14 +100,14 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
   const auto frame_index = std::min(predicted_frames.size() - 1,
                                     static_cast<std::size_t>(std::max(0.0, std::floor(time / frame_dt))));
   for (const auto& actor : predicted_frames[frame_index]) {
-   if (std::hypot(x - actor.p.x, y - actor.p.y) < actor.radius + kRobotRadius + safety_margin) {
+   if (std::hypot(x - actor.p.x, y - actor.p.y) < actor.radius + robot_radius + safety_margin) {
     return true;
    }
   }
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
-                predict_time, dt);
+                predict_time, dt, yaw_accel);
 }
 
 } // namespace sim

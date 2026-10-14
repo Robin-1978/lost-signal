@@ -1,4 +1,7 @@
 #include "hw/chassis/ackermann.hpp"
+#include "hw/chassis/caps.hpp"
+#include "algo/follow.hpp"
+#include "algo/pid.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -87,5 +90,39 @@ int main() {
  }
  CHECK(std::abs(a.x - b.x) < 1e-12);
  CHECK(std::abs(a.theta - b.theta) < 1e-12);
+
+ // Capability branching: a spinning chassis recovers by spinning in place,
+ // a non-spinning one keeps reversing (ackermann recovery is steered reverse).
+ {
+  sim::GridMap corridor(200, 200, 0.1);
+  const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
+  sim::PID pid(2.0, 0.0, 0.0, 2.0, 1.0);
+  sim::GuideState spin_state;
+  sim::ChassisCaps spin{true};
+  // Face away from the path: latches reverse first.
+  sim::GuideOut r1 =
+    sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
+  CHECK(r1.tv < 0.0);
+  // Hold the error past the watchdog: spinner switches to spin-in-place.
+  bool spun = false;
+  for (int i = 0; i < 250; ++i) {
+   sim::GuideOut r =
+     sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
+   if (r.tv == 0.0) {
+    spun = true;
+    break;
+   }
+  }
+  CHECK(spun);
+  // Non-spinner never spins: still reversing after the watchdog period.
+  sim::GuideState stiff;
+  sim::PID pid3(2.0, 0.0, 0.0, 2.0, 1.0);
+  sim::ChassisCaps no_spin{false};
+  sim::GuideOut last{0, 0, 0, false};
+  for (int i = 0; i < 250; ++i) {
+   last = sim::guide_step(path, stiff, 0.0, 0.0, 3.14159, pid3, 1.6, 1.0, 0.02, corridor, no_spin);
+  }
+  CHECK(last.tv < 0.0);
+ }
  return 0;
 }

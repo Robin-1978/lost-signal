@@ -38,6 +38,7 @@ class AckermannDrive : public ChassisModel {
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
+ ChassisCaps caps() const override { return {false}; }
  double steer_angle() const { return delta_rad_; }
 
  private:

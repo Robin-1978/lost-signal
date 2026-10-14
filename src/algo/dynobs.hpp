@@ -5,7 +5,8 @@
 // 动障碍(巡逻叉车): a<->b乒乓, 纯时间函数, 确定性可复现.
 // 半径含车体; 碰撞判定时再加机器人半径.
 namespace sim {
-constexpr double kRobotRadius = 0.3;
+// NOTE: vehicle geometry lives in robot JSON (collision_radius_m); do not
+// reintroduce a hardcoded robot radius here.
 struct Patrol {
  Vec2 a{0, 0}, b{0, 0};
  double speed{0.8};

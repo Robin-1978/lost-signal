@@ -103,13 +103,14 @@ void MissionSimulation::build_world() {
   }
  }
  lidar_ = std::make_unique<sim::SimLidar>(*truth_map_);
- collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(sim::kRobotRadius));
+ collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(robot_definition_.collision_radius_m));
  const double requested_clearance = property(behavior_, "safe_clearance_m");
  const bool has_dynamic_actors =
    std::any_of(map_definition_.actors.begin(), map_definition_.actors.end(),
                [&](const auto& actor) { return active_in_level(actor.active_in, level_id_); });
  const double planning_clearance =
-   sim::kRobotRadius + std::clamp(requested_clearance * (has_dynamic_actors ? 0.80 : 0.45), 0.40, 0.75);
+   robot_definition_.collision_radius_m +
+   std::clamp(requested_clearance * (has_dynamic_actors ? 0.80 : 0.45), 0.40, 0.75);
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
 
  sim::DiffParams params;
@@ -428,7 +429,7 @@ void MissionSimulation::decide_control() {
  const double nav_heading = fused_localization ? snapshot_.robot.theta : odometry_.th;
  const auto route_control = sim::guide_step(
    planned_path_, guide_state_, nav_x, nav_y, nav_heading, *heading_pid_, property(behavior_, "lookahead_m"),
-   property(behavior_, "cruise_mps"), 1.0 / decision_hz(), *planning_map_);
+   property(behavior_, "cruise_mps"), 1.0 / decision_hz(), *planning_map_, chassis_->caps());
  snapshot_.control.local_target = target;
  snapshot_.control.heading_error_rad = route_control.err;
  snapshot_.control.heading_pid_p = heading_pid_->p();
@@ -446,7 +447,7 @@ void MissionSimulation::decide_control() {
  for (const auto& track : known_tracks) {
   const auto& actor = track.state;
   nearest_actor = std::min(nearest_actor, distance({snapshot_.robot.x, snapshot_.robot.y}, actor.p) -
-                                            actor.radius - sim::kRobotRadius);
+                                            actor.radius - robot_definition_.collision_radius_m);
  }
  const double prediction_horizon = computer_ ? property(computer_->behavior, "prediction_horizon_s") : 1.2;
  const double requested_clearance = property(behavior_, "safe_clearance_m");
@@ -471,7 +472,7 @@ void MissionSimulation::decide_control() {
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,
    target, *planning_map_, weights, predicted_frames, speed_cap, drive_->params().w_max,
    property(tires_.behavior, "brake_decel_mps2"), prediction_horizon, prediction_step_s, prediction_step_s,
-   requested_clearance);
+   requested_clearance, robot_definition_.collision_radius_m, robot_definition_.max_yaw_accel_radps2);
  snapshot_.control.dwa_active = true;
  snapshot_.control.dwa_selected = dwa.best_path;
  constexpr std::size_t kVisibleDwaCandidates = 24;
@@ -547,7 +548,8 @@ void MissionSimulation::apply_motion() {
   return;
  }
  for (const auto& actor : actual_actors_) {
-  const double clearance = distance(candidate_position, actor.p) - actor.radius - sim::kRobotRadius;
+  const double clearance =
+    distance(candidate_position, actor.p) - actor.radius - robot_definition_.collision_radius_m;
   result_.min_clearance_m = std::min(result_.min_clearance_m, clearance);
   if (clearance < result_.min_dynamic_clearance_m) {
    result_.min_dynamic_clearance_m = clearance;
@@ -623,14 +625,14 @@ double MissionSimulation::surface_traction(sim::Vec2 position) const {
 double MissionSimulation::static_clearance(sim::Vec2 position) const {
  double minimum = std::min({position.x, position.y, map_definition_.size_m.x - position.x,
                             map_definition_.size_m.y - position.y}) -
-                  sim::kRobotRadius;
+                  robot_definition_.collision_radius_m;
  for (const auto& obstacle : map_definition_.obstacles) {
   if (!active_in_level(obstacle.active_in, level_id_)) {
    continue;
   }
   const double dx = std::max({obstacle.min.x - position.x, 0.0, position.x - obstacle.max.x});
   const double dy = std::max({obstacle.min.y - position.y, 0.0, position.y - obstacle.max.y});
-  minimum = std::min(minimum, std::hypot(dx, dy) - sim::kRobotRadius);
+  minimum = std::min(minimum, std::hypot(dx, dy) - robot_definition_.collision_radius_m);
  }
  return std::max(0.0, minimum);
 }

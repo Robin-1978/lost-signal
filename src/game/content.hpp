@@ -256,6 +256,7 @@ struct RobotDefinition {
  double wheel_base_m{0.0};
  double mass_kg{0.0};
  double yaw_inertia_kgm2{0.0};
+ double max_yaw_accel_radps2{8.0};
  MotorDefinition motor;
  double steering_integral_limit{1.2};
  double energy_base_w{0.0};

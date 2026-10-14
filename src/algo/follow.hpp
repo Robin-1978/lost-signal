@@ -2,6 +2,7 @@
 #include "math.hpp"
 #include "grid_map.hpp"
 #include "pid.hpp"
+#include "hw/chassis/caps.hpp"
 #include <vector>
 #include <cmath>
 // 路径跟随共用逻辑: 前视 Ld 纯追踪 + 弯道速度调度 + 倒车迟滞,
@@ -121,7 +122,8 @@ struct GuideOut {
  bool reached{false};
 };
 inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double ex, double ey, double eth,
-                           PID& pid, double Ld, double cruise, double dt, const GridMap& cost) {
+                           PID& pid, double Ld, double cruise, double dt, const GridMap& cost,
+                           const ChassisCaps& caps) {
  advance_wp(path, st.idx, ex, ey, eth, 0.6, Ld);
  if (st.idx >= path.size())
   return {0, 0, 0, true};
@@ -135,6 +137,7 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
  double tv, steer;
  if (st.spinning) {
   // 看门狗后的原地转向：转到基本对准目标才退出，否则下一步又会倒车。
+  // 只有能原地打转的底盘才进得来（见下）。
   if (std::abs(err) < 0.5) {
    st.spinning = false;
    st.reverse_time = 0.0;
@@ -145,11 +148,15 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
  if (st.reversing) {
   st.reverse_time += dt;
   if (st.reverse_time > 3.0) {
-   // 看门狗：停倒车，转原地转向模式。
+   // 看门狗：停倒车。能原地打转就转过去对准；不能的（如阿克曼）
+   // 继续沿倒车恢复（带转向的倒车本就是它的恢复方式），全 K 转弯
+   // 规划是后续工作，这里不假装会。
    st.reversing = false;
    st.reverse_time = 0.0;
-   st.spinning = true;
-   return {err, steer_fwd, 0.0, false};
+   if (caps.can_spin) {
+    st.spinning = true;
+    return {err, steer_fwd, 0.0, false};
+   }
   }
   tv = -0.4;
   steer = -steer_fwd;

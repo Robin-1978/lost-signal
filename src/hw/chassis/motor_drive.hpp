@@ -1,5 +1,7 @@
 #pragma once
 
+#include "caps.hpp"
+
 #include "diff_drive.hpp"
 #include "algo/pid.hpp"
 
@@ -117,6 +119,7 @@ class ChassisModel {
  virtual DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                         const GroundContact& ground) = 0;
  virtual const ChassisTelemetry& telemetry() const = 0;
+ virtual ChassisCaps caps() const = 0;
 };
 
 // Differential drive with per-wheel DC force, Coulomb/viscous resistance,
@@ -138,6 +141,7 @@ class DifferentialMotorDrive : public ChassisModel {
                 const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
+ ChassisCaps caps() const override { return {true}; }
 
  private:
  double encoder_measure(double wheel_mps, double dt) const;
