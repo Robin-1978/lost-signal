@@ -559,6 +559,13 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  const Color mode = state.waiting_for_clearance ? kAmber : kCyan;
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(state.time_s * 5.5));
  const float body_radius = clampf(static_cast<float>(robot.collision_radius_m) * scale_, 28.0f, 43.0f);
+ // Collision truth ring: exact physics radius, no visibility clamp. Body art
+ // is drawn bigger than this (readability), so on close passes art may touch
+ // a box while this ring stays clear — the ring arbitrates, not the art.
+ {
+  const float exact = static_cast<float>(robot.collision_radius_m) * scale_;
+  DrawRing(center, exact - 1.2f, exact + 1.2f, 0, 360, 64, Fade(kText, 0.55f));
+ }
  if (robot.drive_type == "ackermann") {
   // Minimum turning circles, tangent to the heading on both sides. A
   // steering car can never place its center inside these discs — if the

@@ -38,6 +38,22 @@
 * Planner（A*）：单实现，不开接口；RRT/JPS 出现时再开。
 * PID/DWA 内部：单实现方法代码，不开接口。
 
+### 加新底盘检查清单（已走三遍：差速/阿克曼/履带）
+1. `src/hw/chassis/` 新实现 `ChassisModel`（`step`/`telemetry`/`caps`）＋单测
+   （直行/打转能力/打滑 flag/双跑确定性）。遥测能套双驱动布局就套，
+   套不上才加分支——分支按 `drive_type` 显式写，不按能力猜。
+2. 参数进机器人 JSON（硬件数）＋`robot.schema.json`＋loader＋validator；
+   回路增益必须从物理推导，禁止手调 Kp。
+3. `mission_simulation.cpp` 工厂分支＋yaw 上限（DWA/手动/钳制统一走它）＋
+   航向 PID 输出单位（角速度/转角跟底盘走，见 `follow.hpp` 约定）。
+4. 内容车＋关卡（`presentation.robot` 指过去）＋官方双配置＋全表/多种子平衡。
+5. 认知层：非原地打转画转弯圆；控制卡新遥测形状要分支（右栏不许编 fiction）。
+6. 文档三件套：design 公式、validation 基线、plan 台账。
+* 能否 plugin（.so 动态加载）？今天不能，也不需要：底盘是确定性内核，
+  同一二进制跑遍所有主机会省掉 ABI/信任/复现三套麻烦；DIY 玩家通过 JSON
+ （轮胎/电机/材质/关卡）扩展，不碰底盘。等社区出现第四个底盘作者再开
+  registry 接口——接口只在第二个“外部”实现出现时开，本条规则对人也适用。
+
 ## 2. 模块目录（已实施）
 
 ```
