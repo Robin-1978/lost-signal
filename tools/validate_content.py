@@ -133,6 +133,25 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         _schema(doc, schema_dir / "presentation.schema.json")
     _schema(abilities, schema_dir / "abilities.schema.json")
     _schema(strings, schema_dir / "strings.schema.json")
+    # UI string coverage: every tr("key") and namespaced "ns.key" literal in
+    # client code must resolve (typos fail here, not on the debrief screen).
+    import re as _re
+    used_keys: set[str] = set()
+    for source in sorted((root / ".." / "src" / "client").glob("*.cpp")):
+        text = source.read_text(encoding="utf-8")
+        for match in _re.finditer(r'\btrf?\("([^"]+)"', text):
+            used_keys.add(match.group(1))
+        for match in _re.finditer(
+            r'"((?:app|chapter|garage|prediction|running|debrief|world|editor|ui)\.[a-z_]+)"', text
+        ):
+            used_keys.add(match.group(1))
+    string_keys = set(strings.data["strings"])
+    orphan = sorted(used_keys - string_keys)
+    if orphan:
+        raise ContentError(f"strings.json: unknown UI keys {orphan}")
+    unused = sorted(string_keys - used_keys)
+    if unused:
+        raise ContentError(f"strings.json: unused keys {unused}")
     for doc in robots:
         for key in (
             "max_wheel_speed_mps",

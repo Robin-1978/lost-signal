@@ -10,7 +10,6 @@
     "garage.style_gentle": "温柔",
     "garage.style_normal": "普通",
     "garage.style_fast": "激进",
-    "garage.card_cost": "{0}\n{1}点",
     "garage.card_locked": "[锁]",
     "garage.budget": "装配预算  {0} / {1}",
     "garage.use_recommended": "采用推荐方案",
@@ -91,6 +90,12 @@
     "chapter.footer_tail": "玩家负责理解问题并配置感知、执行与计算资源。",
     "editor.new_ground_default": "新建铺装",
     "world.view_cognitive": "AI 认知视图  ·  Tab 返回现场",
-    "world.view_explore": "探索视图  ·  Tab 查看 AI 认知"
+    "world.view_explore": "探索视图  ·  Tab 查看 AI 认知",
+    "garage.stat_tire": "抓地{0}",
+    "garage.stat_motor": "极速{0}",
+    "garage.stat_sensor": "{0}米{1}Hz",
+    "garage.stat_computer": "决策{0}Hz",
+    "garage.stat_imu": "陀螺{0}",
+    "garage.card": "{0}\n{1}\n{2}点{3}"
   }
 }

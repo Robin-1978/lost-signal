@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace client {
@@ -115,12 +116,33 @@ WorldRenderer::WorldRenderer(const std::filesystem::path& font_path, const std::
  }
  if (!owns_font_)
   font_ = GetFontDefault();
+ for (const auto& [id, material] : catalog_.surface_materials()) {
+  (void)id;
+  if (!material.texture_albedo.empty() && !ground_textures_.contains(material.texture_albedo)) {
+   Texture2D tex = LoadTexture((assets_root / material.texture_albedo).string().c_str());
+   if (tex.id > 0) {
+    SetTextureFilter(tex, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(tex, TEXTURE_WRAP_REPEAT);
+    ground_textures_.emplace(material.texture_albedo, tex);
+   }
+  }
+ }
  scene_3d_ = std::make_unique<SceneRenderer3D>(assets_root, catalog);
+ {
+  // Engine sprite (not content): failure here only loses puffs, never blocks.
+  Texture2D puff = LoadTexture((assets_root / "textures/environment/dust_puff.png").string().c_str());
+  if (puff.id > 0) {
+   SetTextureFilter(puff, TEXTURE_FILTER_BILINEAR);
+   dust_sprite_ = puff;
+  }
+ }
 }
 
 WorldRenderer::~WorldRenderer() {
  if (owns_font_)
   UnloadFont(font_);
+ if (dust_sprite_.id > 0)
+  UnloadTexture(dust_sprite_);
 }
 
 std::optional<sim::Vec2> WorldRenderer::screen_to_world(Vector2 screen) const {
@@ -338,6 +360,26 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const auto top_left = world_to_screen({surface.min.x, surface.max.y});
   const auto bottom_right = world_to_screen({surface.max.x, surface.min.y});
   Rectangle box{top_left.x, top_left.y, bottom_right.x - top_left.x, bottom_right.y - top_left.y};
+  // Material albedo tiled under the procedural ellipses: the ground reads as
+  // its physics (sand looks sandy). Missing texture keeps the old look.
+  const auto& material = catalog_.surface_material(surface.material);
+  const auto tile = ground_textures_.find(material.texture_albedo);
+  if (!material.texture_albedo.empty() && tile != ground_textures_.end()) {
+   // Manual tiling (raylib 6 has no DrawTextureTiled): 256px source tiles at
+   // world-meter scale so ground reads at true size, not stretched.
+   const float tile_world_m = 256.0f / 64.0f;
+   const float tile_px = tile_world_m * scale_;
+   const Rectangle source{0.0f, 0.0f, static_cast<float>(tile->second.width),
+                          static_cast<float>(tile->second.height)};
+   for (float ty = box.y; ty < box.y + box.height; ty += tile_px) {
+    for (float tx = box.x; tx < box.x + box.width; tx += tile_px) {
+     const float w = std::min(tile_px, box.x + box.width - tx);
+     const float h = std::min(tile_px, box.y + box.height - ty);
+     const Rectangle src{0.0f, 0.0f, source.width * w / tile_px, source.height * h / tile_px};
+     DrawTexturePro(tile->second, src, {tx, ty, w, h}, {0.0f, 0.0f}, 0.0f, {255, 255, 255, 110});
+    }
+   }
+  }
   for (int index = 0; index < 7; ++index) {
    const float px = box.x + box.width * (0.10f + hash01(index, 7, 1) * 0.80f);
    const float py = box.y + box.height * (0.15f + hash01(index, 9, 2) * 0.70f);
@@ -360,6 +402,26 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const auto middle = lerp(start, end, 0.5f);
   DrawLineEx({start.x, start.y - 38}, {end.x, end.y - 38}, 2.0f, {198, 161, 91, 42});
   DrawLineEx({start.x, start.y + 38}, {end.x, end.y + 38}, 2.0f, {198, 161, 91, 42});
+  // Direction chevrons: flat paint on the lane (info, not furniture), one per
+  // meter, pointing along patrol travel. Static geometry — phase comes from
+  // the moving forklift itself.
+  {
+   const float dx = end.x - start.x;
+   const float dy = end.y - start.y;
+   const float len = std::max(1.0f, std::hypot(dx, dy));
+   const float ux = dx / len;
+   const float uy = dy / len;
+   const float step = scale_;
+   for (float d = step * 0.5f; d < len; d += step) {
+    const float cx = start.x + ux * d;
+    const float cy = start.y + uy * d;
+    const float s = 7.0f;
+    DrawLineEx({cx - ux * s - uy * s * 0.6f, cy - uy * s - ux * s * 0.6f},
+               {cx, cy}, 2.0f, {198, 161, 91, 70});
+    DrawLineEx({cx, cy}, {cx - ux * s + uy * s * 0.6f, cy - uy * s + ux * s * 0.6f}, 2.0f,
+               {198, 161, 91, 70});
+   }
+  }
   draw_text(catalog_.tr("world.forklift_lane"), {middle.x - 35, middle.y + 52}, 17, {198, 181, 137, 62});
  }
  const auto& path = mission.planned_path();
@@ -553,15 +615,15 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   DrawLineEx(robot_position, estimated, 2.0f, Fade(kDanger, 0.27f));
   DrawCircleV(middle, 5, kDanger);
   const std::string warning = catalog_.trf("world.warn_conflict", {fixed(separation, 1)});
-  const auto measured = MeasureTextEx(font_, warning.c_str(), 13, 0.25f);
+  const auto measured = MeasureTextEx(font_, warning.c_str(), 16, 0.25f);
   const Rectangle tag{estimated.x + radius + 8, estimated.y - radius - 10, measured.x + 18, 27};
   DrawRectangleRounded(tag, 0.38f, 8, {53, 24, 24, 232});
   draw_text(warning, {tag.x + 9, tag.y + 6}, 16, {255, 191, 178, 255});
  }
 
+ draw_dust(mission);
  draw_robot(mission);
  EndScissorMode();
-
  DrawRectangleRounded({viewport_.x + 18, viewport_.y + 17, 321, 29}, 0.48f, 10, {18, 21, 20, 215});
  DrawCircleV({viewport_.x + 33, viewport_.y + 31.5f}, 4, kCyan);
  draw_text(catalog_.tr("world.legend"), {viewport_.x + 44, viewport_.y + 23}, 16,
@@ -611,6 +673,62 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  };
  draw_pwm(card.y + 117, control.left_pwm);
  draw_pwm(card.y + 148, ackermann ? control.steer_pwm : control.right_pwm);
+}
+
+void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
+ // Visual only: dust puffs behind the wheels on loose ground. Capped pool,
+ // fading alpha, no physics in or out. Spawn rate follows speed × surface
+ // dust factor (sand 1, gravel 0.5, else 0) — display density, not a model.
+ const auto& state = mission.snapshot();
+ const auto& map = mission.map_definition();
+ double dust_factor = 0.0;
+ for (const auto& surface : map.surfaces) {
+  if (!game::active_in_level(surface.active_in, mission.level().id))
+   continue;
+  if (state.robot.x < surface.min.x || state.robot.x > surface.max.x ||
+      state.robot.y < surface.min.y || state.robot.y > surface.max.y)
+   continue;
+  if (surface.material == "sand")
+   dust_factor = std::max(dust_factor, 1.0);
+  else if (surface.material == "gravel")
+   dust_factor = std::max(dust_factor, 0.5);
+ }
+ const float dt = std::min(0.05f, GetFrameTime());
+ for (auto& puff : dust_) {
+  puff.age_s += dt;
+ }
+ dust_.erase(std::remove_if(dust_.begin(), dust_.end(),
+                            [](const DustPuff& puff) { return puff.age_s >= puff.life_s; }),
+             dust_.end());
+ const double speed = std::hypot(state.robot.v, state.robot.w * 0.5);
+ if (dust_factor > 0.0 && std::abs(speed) > 0.8 && dust_.size() < 60 &&
+     mission.snapshot().status == game::MissionStatus::Running) {
+  static unsigned seed = 0xD05u;
+  seed = seed * 1664525u + 1013904223u;
+  const float jitter = static_cast<float>(seed % 100) / 100.0f - 0.5f;
+  const float back = static_cast<float>(state.robot.theta) + 3.14159265f;
+  DustPuff puff;
+  puff.pos = {state.robot.x + std::cos(back) * 0.45 + jitter * 0.3,
+              state.robot.y + std::sin(back) * 0.45 + jitter * 0.3};
+  puff.life_s = 0.9f;
+  puff.size_px = static_cast<float>((4.0 + dust_factor * 4.0) * scale_ / 64.0);
+  dust_.push_back(puff);
+ }
+ for (const auto& puff : dust_) {
+  const float t = puff.age_s / puff.life_s;
+  const float fade = static_cast<float>((1.0 - t) * 0.55);
+  const float size = puff.size_px * (0.6f + t * 1.6f);
+  const Vector2 center = world_to_screen(puff.pos);
+  if (dust_sprite_.id > 0) {
+   const Rectangle source{0.0f, 0.0f, static_cast<float>(dust_sprite_.width),
+                          static_cast<float>(dust_sprite_.height)};
+   DrawTexturePro(dust_sprite_, source, {center.x, center.y, size * 2.0f, size * 2.0f},
+                  {size, size}, t * 140.0f, {255, 255, 255, static_cast<unsigned char>(fade * 255)});
+  } else {
+   DrawCircleGradient(center, size, Fade({168, 158, 128, 255}, fade),
+                      {168, 158, 128, 0});
+  }
+ }
 }
 
 void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {

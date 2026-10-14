@@ -62,6 +62,11 @@ class GameUi {
  void sanitize_build();
  bool is_unlocked(const game::LevelDefinition& level) const;
  std::string next_level_id() const;
+ // Garage card text (single source for create + refresh): title / slot stat
+ // from component behavior / cost. Stats are content numbers, never invented.
+ std::string card_stat(const std::string& slot, const game::ComponentDefinition& item) const;
+ std::string card_text(const std::string& slot, const game::ComponentDefinition& item,
+                       bool locked) const;
 
  tgui::Label::Ptr add_label(const std::string& text, float x, float y, float width, unsigned text_size,
                             tgui::Color color, bool bold = false);

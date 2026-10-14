@@ -137,6 +137,14 @@ void GameUi::build_chapter() {
  // window (720p fit ~12). Scrollbar appears only when content exceeds space.
  auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
  scroll->setPosition(0, 0);
+ // Transparent like the parent panel: ScrollablePanel defaults to a WHITE
+ // background (shipped regression once — chapter screen went white).
+ {
+  auto look = scroll->getRenderer();
+  look->setBackgroundColor({0, 0, 0, 0});
+  look->setBorderColor({0, 0, 0, 0});
+  look->setBorders({0});
+ }
  scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
  scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
@@ -191,6 +199,14 @@ void GameUi::build_garage() {
  // fit 900px. Scroll it; widgets keep working (ptrs retained, parent only).
  auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
  scroll->setPosition(0, 0);
+ // Transparent like the parent panel: ScrollablePanel defaults to a WHITE
+ // background (shipped regression once — chapter screen went white).
+ {
+  auto look = scroll->getRenderer();
+  look->setBackgroundColor({0, 0, 0, 0});
+  look->setBorderColor({0, 0, 0, 0});
+  look->setBorders({0});
+ }
  scroll->setHorizontalScrollbarPolicy(tgui::Scrollbar::Policy::Never);
  scroll->setVerticalScrollbarPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
@@ -207,7 +223,8 @@ void GameUi::build_garage() {
   y = 248.0f;
  }
  constexpr float kCardGap = 6.0f;
- constexpr float kCardHeight = 40.0f;
+ constexpr float kCardHeight = 56.0f;
+
  const float card_width = (kContentWidth - 2.0f * kCardGap) / 3.0f;
  for (const auto& column : presentation_->component_columns) {
   add_label(column.title, kMargin, y, kContentWidth, 16, {132, 139, 135}, true);
@@ -216,11 +233,11 @@ void GameUi::build_garage() {
    const auto& item = catalog_.component(option);
    const float row = static_cast<float>(index / 3);
    const float col = static_cast<float>(index % 3);
-   auto card = tgui::Button::create(
-    catalog_.trf("garage.card_cost", {item.title, std::to_string(item.cost)}));
+   auto card = tgui::Button::create(" ");
    card->setPosition(kMargin + col * (card_width + kCardGap), y + 24 + row * (kCardHeight + kCardGap));
    card->setSize(card_width, kCardHeight);
-   card->setTextSize(15);
+   card->setTextSize(14);
+   card->setText(card_text(column.slot, item, false));
    auto look = card->getRenderer();
    look->setRoundedBorderRadius(8);
    look->setBorders({1.0f});
@@ -493,6 +510,36 @@ void GameUi::set_build(const game::BuildSelection& build) {
  update_garage_labels();
 }
 
+std::string GameUi::card_stat(const std::string& slot, const game::ComponentDefinition& item) const {
+ const auto& behavior = item.behavior;
+ const auto get = [&](const char* key) {
+  const auto found = behavior.find(key);
+  return found == behavior.end() ? 0.0 : found->second;
+ };
+ // Card line 2: the stat that makes the choice meaningful (content numbers,
+ // never invented): grip mu / top speed / range+rate / decision rate / gyro
+ // noise. Compact units fit 100px cards at 14px (verified by screenshot).
+ if (slot == "tires")
+  return catalog_.trf("garage.stat_tire", {format_number(get("friction_mu"), 1)});
+ if (slot == "motor")
+  return catalog_.trf("garage.stat_motor", {format_number(get("max_wheel_speed_mps"), 1)});
+ if (slot == "sensor")
+  return catalog_.trf("garage.stat_sensor",
+                      {format_number(get("range_m"), 0), format_number(get("scan_hz"), 0)});
+ if (slot == "computer")
+  return catalog_.trf("garage.stat_computer", {format_number(get("decision_hz"), 0)});
+ if (slot == "imu")
+  return catalog_.trf("garage.stat_imu", {format_number(get("gyro_noise_radps"), 3)});
+ return std::string();
+}
+
+std::string GameUi::card_text(const std::string& slot, const game::ComponentDefinition& item,
+                              bool locked) const {
+ return catalog_.trf("garage.card",
+                     {item.title, card_stat(slot, item), std::to_string(item.cost),
+                      locked ? catalog_.tr("garage.card_locked") : ""});
+}
+
 void GameUi::sanitize_build() {
  // Selections the player does not own (stale saves, future content) fall back
  // to the level default, which content validation guarantees to be ownable.
@@ -527,8 +574,7 @@ void GameUi::update_garage_labels() {
     look->setBorderColor({64, 69, 67});
     look->setTextColor({225, 224, 215});
    }
-   card.button->setText(catalog_.trf("garage.card_cost", {item.title, std::to_string(item.cost)}) +
-                        (locked ? catalog_.tr("garage.card_locked") : ""));
+   card.button->setText(card_text(slot, item, locked));
   }
  }
  if (style_slider_) {

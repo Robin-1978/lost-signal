@@ -142,7 +142,7 @@
   ],
   "base_parts": [
     {
-      "id": "ro1_chassis",
+      "id": "ro2_chassis",
       "mount": "base",
       "visual": {
         "primitive_2d": "box",

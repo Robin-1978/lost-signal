@@ -835,23 +835,26 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
 void SceneRenderer3D::draw_forklift(const game::ActorSnapshot& actor, bool waiting) const {
  const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
  const sim::Vec2 position = actor.position;
- draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 0.34f), {1.12f, 0.58f, 0.72f}, yaw,
-          {211, 132, 39, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, -0.18f, 0, 0.72f), {0.48f, 0.48f, 0.58f}, yaw,
-          {48, 59, 57, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f, 0.24f, 0.15f), {0.78f, 0.08f, 0.10f}, yaw,
-          {92, 90, 78, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f, -0.24f, 0.15f), {0.78f, 0.08f, 0.10f}, yaw,
-          {92, 90, 78, 255});
- for (float forward : {-0.33f, 0.33f}) {
-  for (float left : {-0.38f, 0.38f}) {
-   const auto wheel = pose_offset(position, yaw / kRadToDeg, forward, left, 0.19f);
-   draw_box(wheel, {0.24f, 0.28f, 0.13f}, yaw, {24, 27, 25, 255});
+ // Body derives from the actor's own radius (content data), never constants:
+ // reference geometry was authored for r=0.45 and scales linearly.
+ const float s = static_cast<float>(actor.radius_m) / 0.45f;
+ draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 0.34f * s), {1.12f * s, 0.58f * s, 0.72f * s},
+          yaw, {211, 132, 39, 255});
+ draw_box(pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 0.72f * s),
+          {0.48f * s, 0.48f * s, 0.58f * s}, yaw, {48, 59, 57, 255});
+ draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f * s, 0.24f * s, 0.15f * s),
+          {0.78f * s, 0.08f * s, 0.10f * s}, yaw, {92, 90, 78, 255});
+ draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f * s, -0.24f * s, 0.15f * s),
+          {0.78f * s, 0.08f * s, 0.10f * s}, yaw, {92, 90, 78, 255});
+ for (float forward : {-0.33f * s, 0.33f * s}) {
+  for (float left : {-0.38f * s, 0.38f * s}) {
+   const auto wheel = pose_offset(position, yaw / kRadToDeg, forward, left, 0.19f * s);
+   draw_box(wheel, {0.24f * s, 0.28f * s, 0.13f * s}, yaw, {24, 27, 25, 255});
   }
  }
  if (waiting) {
-  const auto beacon = pose_offset(position, yaw / kRadToDeg, -0.18f, 0, 1.0f);
-  DrawSphere(beacon, 0.09f, kDanger);
+  const auto beacon = pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 1.0f * s);
+  DrawSphere(beacon, 0.09f * s, kDanger);
  }
 }
 
