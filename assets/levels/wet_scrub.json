@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "wet_scrub",
+  "order": 19,
+  "title": "湿滑履带",
+  "map": "research_base",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 2,
+  "prerequisites": [
+    "sand_steer"
+  ],
+  "seed": 263,
+  "objective": {
+    "type": "reach",
+    "spawn": "robot_bay",
+    "goal": "glass_door",
+    "goal_label": "玻璃门",
+    "goal_visual": "stop_zone",
+    "time_limit_s": 150,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "wet_scrub",
+    "prediction_prompt": "湿滑加履带，谁先顶不住？",
+    "knowledge_card": "湿滑区里搓履带：水让抓地没了，搓让方向没了，慢是唯一的舵。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.2,
+    "max_localization_error_m": 3.0,
+    "fast_time_s": 40.0,
+    "efficient_energy_wh": 0.5
+  },
+  "rewards": [
+    "ability.wet_scrub"
+  ]
+}

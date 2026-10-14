@@ -148,6 +148,34 @@
       "when": "after",
       "speaker": "洛一",
       "text": "RO-3：到了。沙和履带，我全都要慢。"
+    },
+    {
+      "id": "sand_steer.before",
+      "level": "sand_steer",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：沙地那条路，让 RO-2 也走一遍。"
+    },
+    {
+      "id": "sand_steer.after",
+      "level": "sand_steer",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "RO-2：到了。沙地上，方向盘也要提前打。"
+    },
+    {
+      "id": "wet_scrub.before",
+      "level": "wet_scrub",
+      "when": "before",
+      "speaker": "洛一",
+      "text": "洛一：湿滑区边上，让 RO-3 蹭过去看看。"
+    },
+    {
+      "id": "wet_scrub.after",
+      "level": "wet_scrub",
+      "when": "after",
+      "speaker": "洛一",
+      "text": "RO-3：蹭过去了。水里搓履带，慢是唯一的舵。"
     }
   ]
 }

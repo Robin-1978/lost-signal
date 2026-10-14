@@ -263,5 +263,34 @@ int main() {
   grit_track_default.run_to_completion();
   CHECK(grit_track_default.result().status != game::MissionStatus::Succeeded);
  }
+ // Sand plus steering: grit separates (5/5 over seeds), wide arcs cost time.
+ {
+  const auto& presentation = catalog.presentation_for_level("sand_steer");
+  CHECK(presentation.robot_id == "robot.ro2");
+  game::MissionSimulation sandy(catalog, "sand_steer", presentation.recommended_build);
+  sandy.run_to_completion();
+  CHECK(sandy.result().status == game::MissionStatus::Succeeded);
+  CHECK(sandy.result().safe_score);
+  game::MissionSimulation sandy_default(catalog, "sand_steer", presentation.default_build);
+  sandy_default.run_to_completion();
+  CHECK(sandy_default.result().status == game::MissionStatus::Succeeded);
+  CHECK(!sandy_default.result().safe_score);
+ }
+ // Wet plus tracks: short dry approach, drunk but arriving (deterministic
+ // systematic bias both sides). Recommended sweeps, default loses everything.
+ {
+  const auto& presentation = catalog.presentation_for_level("wet_scrub");
+  CHECK(presentation.robot_id == "robot.ro3");
+  game::MissionSimulation scrub_wet(catalog, "wet_scrub", presentation.recommended_build);
+  scrub_wet.run_to_completion();
+  CHECK(scrub_wet.result().status == game::MissionStatus::Succeeded);
+  CHECK(scrub_wet.result().safe_score);
+  CHECK(scrub_wet.result().fast_score);
+  CHECK(scrub_wet.result().efficient_score);
+  game::MissionSimulation scrub_wet_default(catalog, "wet_scrub", presentation.default_build);
+  scrub_wet_default.run_to_completion();
+  CHECK(scrub_wet_default.result().status == game::MissionStatus::Succeeded);
+  CHECK(!scrub_wet_default.result().safe_score);
+ }
  return 0;
 }
