@@ -21,7 +21,8 @@
     "lost_signal",
     "signal_echo",
     "return_route",
-    "track_turn"
+    "track_turn",
+    "loose_ground"
   ],
   "starting_inventory": [
     "tires.standard",

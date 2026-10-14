@@ -1,0 +1,46 @@
+{
+ "schema_version": 1,
+ "id": "loose_ground",
+ "order": 12,
+ "title": "松软地面",
+ "map": "research_base",
+ "control_mode": "autonomous",
+ "localization_mode": "fused",
+ "chapter": 2,
+ "prerequisites": [
+  "track_turn"
+ ],
+ "seed": 101,
+ "objective": {
+  "type": "reach",
+  "spawn": "supply_station",
+  "goal": "signal_tower",
+  "goal_label": "信号塔",
+  "goal_visual": "signal_tower",
+  "time_limit_s": 150,
+  "max_collisions": 0,
+  "arrive_tolerance_m": 0.62
+ },
+ "loadout_rules": {
+  "budget": 6,
+  "required_slots": [
+   "tires",
+   "sensor",
+   "motor"
+  ]
+ },
+ "teaching": {
+  "concept": "terrain_tires",
+  "prediction_prompt": "砂石加沙地，什么轮胎能过去？",
+  "knowledge_card": "松软地面吃抓地也吃滚阻：沙地胎牺牲速度换牵引，经济胎省电但刨坑。"
+ },
+ "score": {
+  "safe_min_clearance_m": 0.2,
+  "max_localization_error_m": 0.4,
+  "fast_time_s": 25.0,
+  "efficient_energy_wh": 0.45
+ },
+ "rewards": [
+  "ability.terrain"
+ ]
+}

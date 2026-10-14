@@ -1,0 +1,92 @@
+{
+ "schema_version": 1,
+ "id": "presentation.loose_ground",
+ "is_default": false,
+ "level": "loose_ground",
+ "garage": {
+  "heading": "换鞋再出发",
+  "brief": "东边仓库是砂石和沙地。公路胎会刨坑，沙地胎慢但稳。",
+  "component_columns": [
+   {
+    "slot": "tires",
+    "title": "驱动轮胎",
+    "options": [
+     "tires.standard",
+     "tires.grip",
+     "tires.eco",
+     "tires.sand"
+    ]
+   },
+   {
+    "slot": "sensor",
+    "title": "距离雷达",
+    "options": [
+     "sensor.short_fast_lidar",
+     "sensor.standard_lidar",
+     "sensor.long_slow_lidar"
+    ]
+   },
+   {
+    "slot": "motor",
+    "title": "电机",
+    "options": [
+     "motor.standard",
+     "motor.torque",
+     "motor.eco"
+    ]
+   }
+  ],
+  "policy_title": "驾驶风格",
+  "policies": [
+   "policy.careful",
+   "policy.balanced",
+   "policy.swift"
+  ],
+  "default_build": {
+   "tires": "tires.eco",
+   "sensor": "sensor.long_slow_lidar",
+   "motor": "motor.standard",
+   "style": 1.0
+  },
+  "recommended_build": {
+   "tires": "tires.sand",
+   "sensor": "sensor.short_fast_lidar",
+   "motor": "motor.standard",
+   "style": 0.0
+  }
+ },
+ "prediction": {
+  "heading": "松软地面，短板在哪？",
+  "hint": "先做预测。轮胎不对，时间都花在刨坑上。",
+  "choices": [
+   {
+    "id": "loose_ground.link.tires",
+    "text": "轮胎会拖后腿",
+    "feedback": "如果抓地不够，每一步都在打滑。看里程计误差和用时。"
+   },
+   {
+    "id": "loose_ground.link.energy",
+    "text": "能耗会先超标",
+    "feedback": "如果滚阻太大，电机一直在费力。看电表的数字。"
+   }
+  ]
+ },
+ "running": {
+  "heading": "把物资送到信号塔",
+  "normal_line": "洛一：路面松软，正在控制打滑。",
+  "detected_line": "洛一：前方状态已确认。"
+ },
+ "debrief": {
+  "success_title": "涉沙成功",
+  "success_summary": "沙地胎走过了砂石场：慢，但每一步都算数。",
+  "failure_summary": "看看是哪一项评分丢了，松软地面先换胎再谈速度。",
+  "evidence_heading": "本次驾驶",
+  "evidence_caption": "三项评分分别对应安全、迅速与节能，来自真实仿真。",
+  "knowledge_title": "地形与轮胎",
+  "failure_titles": {
+   "collision-static": "运送失败：碰到了障碍",
+   "collision-dynamic": "运送失败：与叉车发生碰撞",
+   "timeout": "运送失败：没有在时限内送达"
+  }
+ }
+}

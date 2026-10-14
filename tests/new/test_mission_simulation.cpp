@@ -215,5 +215,20 @@ int main() {
   CHECK(!slide_default.result().safe_score);
   CHECK(!slide_default.result().fast_score);
  }
+ // Loose ground: sand/gravel materials (library + per-level gate) decide the
+ // race through odometry. Eco/swift loses safe on drift, sand/careful takes
+ // it; speed and thrift go the other way.
+ {
+  const auto& presentation = catalog.presentation_for_level("loose_ground");
+  game::MissionSimulation grit(catalog, "loose_ground", presentation.recommended_build);
+  grit.run_to_completion();
+  CHECK(grit.result().status == game::MissionStatus::Succeeded);
+  CHECK(grit.result().safe_score);
+  game::MissionSimulation grit_default(catalog, "loose_ground", presentation.default_build);
+  grit_default.run_to_completion();
+  CHECK(grit_default.result().status == game::MissionStatus::Succeeded);
+  CHECK(!grit_default.result().safe_score);
+  CHECK(grit_default.result().fast_score);
+ }
  return 0;
 }

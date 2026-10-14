@@ -62,6 +62,40 @@
       ],
       "material": "standing_water",
       "label": "湿滑地面"
+    },
+    {
+      "id": "gravel_yard",
+      "type": "box",
+      "min": [
+        13.5,
+        7.5
+      ],
+      "max": [
+        18.5,
+        12.5
+      ],
+      "material": "gravel",
+      "label": "砂石地面",
+      "active_in": [
+        "loose_ground"
+      ]
+    },
+    {
+      "id": "sand_pit",
+      "type": "box",
+      "min": [
+        13.5,
+        1.0
+      ],
+      "max": [
+        17.5,
+        6.0
+      ],
+      "material": "sand",
+      "label": "沙地",
+      "active_in": [
+        "loose_ground"
+      ]
     }
   ],
   "markers": {
