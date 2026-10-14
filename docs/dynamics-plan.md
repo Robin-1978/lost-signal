@@ -321,6 +321,16 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        估计误差首测（test_estimation_error，零行为改动）：终关近场速度误差
        均值 0.31/max 1.92、位置均值 0.09/max 0.22；当前 30% 扰动≈观测均值，
        max 已钉压力哨兵（0.43 miss）——0.5 门槛覆盖缺口实锤，预算仍未定义。
+       逆解算（FF）上车评估（用户问，结论：公式＋离线可开，实机不行）：
+       信号审计（test_signal_quality，零改动）：执行器侧轮速误差均值 0.011／max
+       0.09（干净——跟踪器的 0.3／1.9 不进 FF，R(v) 用测量轮速）；微分器噪声
+       std 0.27／max 3.79 m/s²，折 PWM 为均值 1％／std 1.5％／max 21％尖峰——
+       FF 必须带滤波，滤波滞后吃 T_lead 增益，净收益待重算。
+       三个上车 blocker 不变且更硬：①全表针尖化（0.5006／0.230／8mm），FF 必改
+       transient＝全表重定基线＋item13 内容协同，非 drop-in；②T_lead 无着落
+       （带宽倒数≠有效时延），降级路径＝灵敏度扫描 ±50％ 仿真鲁棒（待做），
+       真车辨识仍是最终依据；③积分器证据要重看（pid_i 分布＋跟踪误差＋饱和，
+       单看积分下降不算数）。下一片：shadow-FF（并行算、不执行＋遥测对比）。
        等待分型（test_release_error 2x2）：micro-inf 72／micro-finite 9／
        sustained-inf 4／sustained-finite 0——内容里不存在持续等待＋预测生效的
        格子。结论：micro 归 DWA＋creep（已安全，只监视不优化）；Phase-1 行为
