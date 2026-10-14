@@ -101,6 +101,37 @@ inline double sched_v(double err, double cruise) {
   c = 0.1;
  return cruise * c;
 }
+// 弯道预见减速（proper fix：看门狗/倒车恢复是 current fix，只管闯祸之后）。
+// 预览窗口内每个路径转折按横向加速度物理限速：v ≤ √(a_lat·R)，
+// R ≈ L_out/Δ（转出段长度除以转角）。直道（Δ=0）不限速；急弯提前减速，
+// 进弯不再依赖看门狗救场。a_lat 由调用方按轮胎×地面给出（内容），
+// 0.5 半抓地余量是方法常量（留一半抓地给扰动和模型误差）。
+// 距离沿路径累积；转角取前后段方向差，与机器人当前位置无关——
+// 只看“路有多弯”，不看“人偏多少”（后者是 sched_v 的事）。
+inline double corner_speed_cap(const std::vector<Vec2>& path, size_t idx, double cruise, double alat_max,
+                               double preview_m) {
+ if (idx >= path.size() || cruise <= 0.0 || preview_m <= 0.0)
+  return cruise;
+ double cap = cruise;
+ double along = 0.0;
+ for (size_t i = idx + 1; i + 1 < path.size(); ++i) {
+  along += std::hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+  if (along > preview_m)
+   break;
+  const double incoming = std::atan2(path[i].y - path[i - 1].y, path[i].x - path[i - 1].x);
+  const double outgoing = std::atan2(path[i + 1].y - path[i].y, path[i + 1].x - path[i].x);
+  const double turn = std::abs(wrap_angle(outgoing - incoming));
+  if (turn < 1e-6)
+   continue;
+  const double leg = std::hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+  if (leg < 1e-6)
+   continue;
+  const double allowed = std::sqrt(std::max(0.0, alat_max) * leg / turn);
+  if (allowed < cap)
+   cap = allowed;
+ }
+ return std::max(cap, 0.1 * cruise);
+}
 inline double heading_err(Vec2 wp, double ex, double ey, double eth) {
  return wrap_angle(std::atan2(wp.y - ey, wp.x - ex) - eth);
 }

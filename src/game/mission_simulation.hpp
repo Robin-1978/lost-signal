@@ -170,6 +170,7 @@ class MissionSimulation {
  const ComponentDefinition& req(const std::string& slot) const;
  double spec(const std::string& slot, const std::string& key) const;
  double decision_hz() const;
+ double corner_speed_cap(double nav_x, double nav_y) const;
  double track_max_age_s() const;
  sim::GroundContact wheel_ground(sim::Vec2 position) const;
 

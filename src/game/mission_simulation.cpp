@@ -478,7 +478,9 @@ void MissionSimulation::decide_control() {
  snapshot_.control.heading_pid_i = heading_pid_->i();
  snapshot_.control.heading_pid_d = heading_pid_->d();
  if (actual_actors_.empty()) {
-  held_command_ = {route_control.tv, route_control.steer};
+  const double preview_cap = corner_speed_cap(nav_x, nav_y);
+  held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
+                   route_control.steer};
   snapshot_.waiting_for_clearance = false;
   return;
  }
@@ -496,14 +498,18 @@ void MissionSimulation::decide_control() {
  const double risk_distance =
    requested_clearance * requested_clearance * 2.5 + property(behavior_, "cruise_mps") * 0.6 + 0.1;
  if (known_tracks.empty() || nearest_actor > risk_distance) {
-  held_command_ = {route_control.tv, route_control.steer};
+  const double preview_cap = corner_speed_cap(nav_x, nav_y);
+  held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
+                   route_control.steer};
   snapshot_.waiting_for_clearance = false;
   return;
  }
 
  const double heading_error =
    sim::heading_err(target, snapshot_.robot.x, snapshot_.robot.y, snapshot_.robot.theta);
- const double speed_cap = std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps")));
+ const double speed_cap =
+   std::min(std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps"))),
+            corner_speed_cap(nav_x, nav_y));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
  // Predictor module (src/algo/predictor.*) owns future frames; the tracker
@@ -547,7 +553,9 @@ void MissionSimulation::decide_control() {
   const double arbitrated_turn = std::abs(dwa.best.v) < kCreepSpeedMps
                                    ? std::clamp(heading_kp_ * heading_error, -yaw_cap_rads_, yaw_cap_rads_)
                                    : dwa.best.w;
-  held_command_ = {dwa.best.v < 0.0 ? dwa.best.v : std::min(std::max(0.0, route_control.tv), dwa.best.v),
+  held_command_ = {dwa.best.v < 0.0 ? dwa.best.v
+                                    : std::min({std::max(0.0, route_control.tv), dwa.best.v,
+                                                corner_speed_cap(nav_x, nav_y)}),
                    arbitrated_turn};
   snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < kCreepSpeedMps;
   if (snapshot_.waiting_for_clearance) {
@@ -778,6 +786,29 @@ const ComponentDefinition& MissionSimulation::req(const std::string& slot) const
 
 double MissionSimulation::spec(const std::string& slot, const std::string& key) const {
  return property(req(slot).behavior, key);
+}
+
+// Corner preview cap: the tightest bend within braking + reaction preview
+// sets the speed ceiling via lateral physics (see follow.hpp). Grip is the
+// minimum tire×surface mu over the preview — wet pavement ahead slows the
+// car before it arrives, not after it slides.
+double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
+ const double cruise = property(behavior_, "cruise_mps");
+ const double lookahead = property(behavior_, "lookahead_m");
+ const double speed = std::abs(snapshot_.robot.v);
+ const double decel = spec("tires", "brake_decel_mps2");
+ const double preview =
+   std::max(lookahead, speed * speed / (2.0 * std::max(0.5, decel)) + speed * 2.0 / decision_hz());
+ double grip = wheel_ground({nav_x, nav_y}).mu_eff;
+ double along = 0.0;
+ for (size_t i = guide_state_.idx + 1; i < planned_path_.size(); ++i) {
+  along += distance(planned_path_[i], planned_path_[i - 1]);
+  if (along > preview) {
+   break;
+  }
+  grip = std::min(grip, wheel_ground({planned_path_[i].x, planned_path_[i].y}).mu_eff);
+ }
+ return sim::corner_speed_cap(planned_path_, guide_state_.idx, cruise, 0.5 * grip * 9.81, preview);
 }
 
 double MissionSimulation::decision_hz() const {

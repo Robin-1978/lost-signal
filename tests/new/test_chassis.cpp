@@ -124,5 +124,25 @@ int main() {
   }
   CHECK(last.tv < 0.0);
  }
+ // Corner preview: straight path returns cruise; a bend inside the window
+ // caps by lateral physics v <= sqrt(a_lat * leg / turn); a bend beyond the
+ // window changes nothing; degenerate inputs never crash.
+ {
+  const std::vector<sim::Vec2> straight{{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}};
+  CHECK(sim::corner_speed_cap(straight, 0, 1.0, 3.0, 2.0) == 1.0);
+  // 90-degree bend with a 0.3 m exit leg under a_lat 3: sqrt(3*0.3/1.5708).
+  const std::vector<sim::Vec2> bend{{0.0, 0.0}, {1.0, 0.0}, {1.0, 0.3}};
+  const double capped = sim::corner_speed_cap(bend, 0, 1.0, 3.0, 2.0);
+  CHECK(capped < 1.0);
+  CHECK(std::abs(capped - std::sqrt(3.0 * 0.3 / 1.5707963)) < 1e-6);
+  // Same bend beyond the window: cruise untouched.
+  CHECK(sim::corner_speed_cap(bend, 0, 1.0, 3.0, 0.5) == 1.0);
+  // Gentle bend needs no slowdown: 0.2 rad over 2 m at a_lat 3 allows 5.5.
+  const std::vector<sim::Vec2> gentle{{0.0, 0.0}, {2.0, 0.0}, {4.0, 0.4}};
+  CHECK(sim::corner_speed_cap(gentle, 0, 1.0, 3.0, 5.0) == 1.0);
+  CHECK(sim::corner_speed_cap(straight, 99, 1.0, 3.0, 2.0) == 1.0);
+  CHECK(sim::corner_speed_cap({}, 0, 1.0, 3.0, 2.0) == 1.0);
+  CHECK(sim::corner_speed_cap(straight, 0, 0.0, 3.0, 2.0) == 0.0);
+ }
  return 0;
 }
