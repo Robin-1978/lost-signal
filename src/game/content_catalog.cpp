@@ -93,11 +93,17 @@ Properties properties(const json& value) {
 }
 
 BuildSelection build(const json& value) {
- return {
-   value.value("tires", std::string{}),    value.value("sensor", std::string{}),
-   value.value("computer", std::string{}), value.value("motor", std::string{}),
-   value.value("imu", std::string{}),      value.at("style").get<double>(),
- };
+ // Slot names come from the JSON keys themselves: a new hardware slot needs
+ // no loader change (schema constrains the spelling, validator the semantics).
+ BuildSelection selection;
+ for (auto it = value.begin(); it != value.end(); ++it) {
+  if (it.key() == "style") {
+   continue;
+  }
+  selection.parts[it.key()] = it.value().get<std::string>();
+ }
+ selection.style = value.at("style").get<double>();
+ return selection;
 }
 
 template <typename Value>
@@ -717,35 +723,33 @@ const StoryBeatDefinition* ContentCatalog::story_beat(const std::string& level_i
 
 int ContentCatalog::build_cost(const BuildSelection& build) const {
  int result = 0;
- for (const auto* id : {&build.tires, &build.sensor, &build.computer, &build.motor, &build.imu}) {
-  if (!id->empty())
-   result += component(*id).cost;
+ for (const auto& [slot, id] : build.parts) {
+  (void)slot;
+  if (!id.empty())
+   result += component(id).cost;
  }
  return result;
 }
 
 void ContentCatalog::validate_build(const std::string& level_id, const BuildSelection& build) const {
  const auto& level_value = level(level_id);
- const std::pair<const char*, const std::string*> selections[] = {
-   {"tires", &build.tires}, {"sensor", &build.sensor}, {"computer", &build.computer},
-   {"motor", &build.motor}, {"imu", &build.imu},
- };
- for (const auto& [slot, id] : selections) {
-  const bool required = contains(level_value.required_slots, slot);
-  if (id->empty()) {
-   if (required)
-    throw ContentError("required slot '" + std::string(slot) + "' is empty");
-   continue;
-  }
-  if (!required) {
-   throw ContentError("slot '" + std::string(slot) + "' is not enabled for this level");
-  }
-  const auto& selected = component(*id);
-  if (selected.slot != slot) {
-   throw ContentError("component '" + *id + "' does not belong in slot '" + slot + "'");
+ for (const auto& slot : level_value.required_slots) {
+  if (build.part(slot).empty()) {
+   throw ContentError("required slot '" + slot + "' is empty");
   }
  }
- (void)build.tires;
+ for (const auto& [slot, id] : build.parts) {
+  if (id.empty()) {
+   continue;
+  }
+  if (!contains(level_value.required_slots, slot)) {
+   throw ContentError("slot '" + slot + "' is not enabled for this level");
+  }
+  const auto& selected = component(id);
+  if (selected.slot != slot) {
+   throw ContentError("component '" + id + "' does not belong in slot '" + slot + "'");
+  }
+ }
  if (!(build.style >= 0.0 && build.style <= 1.0)) {
   throw ContentError("driving style must be within [0, 1]");
  }

@@ -555,15 +555,7 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
   return found == robot.mounts.end() ? nullptr : &*found;
  };
  const auto component_id = [&](const std::string& slot) -> const std::string& {
-  if (slot == "tires")
-   return mission.build().tires;
-  if (slot == "sensor")
-   return mission.build().sensor;
-  if (slot == "motor")
-   return mission.build().motor;
-  if (slot == "imu")
-   return mission.build().imu;
-  return mission.build().computer;
+  return mission.build().part(slot);
  };
  const auto mounted_position = [&](const game::MountDefinition& mount) {
   const double cosine = std::cos(state.robot.theta);

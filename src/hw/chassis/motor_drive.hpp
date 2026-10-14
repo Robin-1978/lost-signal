@@ -1,6 +1,7 @@
 #pragma once
 
 #include "caps.hpp"
+#include "hw/dynamics/contact.hpp"
 
 #include "diff_drive.hpp"
 #include "algo/pid.hpp"
@@ -72,28 +73,6 @@ struct ChassisTelemetry {
  WheelMotorTelemetry drive;
  ServoTelemetry steer;
 };
-
-// Shared driven-wheel contact (quarter-car-lite), used by every chassis so tire
-// and ground content means the same thing everywhere. The wheel owns a small
-// equivalent mass (rotor + wheel); contact force follows linear-saturated slip
-// s = (v_wheel - v_body) / max(|v_body|, 0.3) with no Pacejka drop
-// (documented simplification). Semi-implicit integration is unconditionally
-// stable at the 0.02 s fixed step. Returns the new tread speed, the force ON
-// THE BODY, the slip ratio, and whether slip left the linear range.
-struct WheelContactParams {
- double stall_force_N{54.0};
- double free_speed_mps{3.0};
- double traction_limit_N{80.0};
- double wheel_equiv_mass_kg{3.0};
-};
-struct WheelContactResult {
- double wheel_mps{0.0};
- double body_force_N{0.0};
- double slip_ratio{0.0};
- bool slipping{false};
-};
-WheelContactResult step_driven_wheel(double wheel_mps, double body_mps, double pwm,
-                                     const WheelContactParams& params, double dt);
 
 // Closed-loop wheel-speed tuning from first principles. The linearized wheel
 // plant dV/dt = (K_lin*u - c*V)/m_w is dominated by inertia, so a conservative

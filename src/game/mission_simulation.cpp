@@ -48,14 +48,14 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
       level_(catalog_.level(level_id_)), map_definition_(catalog_.map(level_.map)),
       robot_definition_(catalog_.robot(catalog_.campaign().companion_robot)),
-      tires_(catalog_.component(build_.tires)),
-      sensor_(build_.sensor.empty() ? nullptr : &catalog_.component(build_.sensor)),
-      computer_(build_.computer.empty() ? nullptr : &catalog_.component(build_.computer)),
-      motor_(build_.motor.empty() ? nullptr : &catalog_.component(build_.motor)),
-      imu_(build_.imu.empty() ? nullptr : &catalog_.component(build_.imu)),
       behavior_(catalog_.style_behavior(build_.style)), rng_(level_.seed),
       perception_rng_(level_.seed ^ 0x9e3779b9U) {
  catalog_.validate_build(level_id_, build_);
+ for (const auto& [slot, id] : build_.parts) {
+  if (!id.empty()) {
+   parts_.emplace(slot, &catalog_.component(id));
+  }
+ }
  reset();
 }
 
@@ -78,7 +78,7 @@ void MissionSimulation::reset() {
  last_event_code_.clear();
  dynamic_obstacle_map_.clear();
  // Gyro bias is drawn once per run: constant within the run, new every run.
- gyro_bias_ = imu_ ? imu_rng_.gauss(property(imu_->behavior, "gyro_bias_radps")) : 0.0;
+ gyro_bias_ = has("imu") ? imu_rng_.gauss(spec("imu", "gyro_bias_radps")) : 0.0;
  was_saturated_ = false;
  build_world();
  plan_route();
@@ -115,7 +115,7 @@ void MissionSimulation::build_world() {
 
  sim::DiffParams params;
  params.v_max = std::max(1.5, property(behavior_, "cruise_mps") * 1.25);
- params.accel_max = property(tires_.behavior, "brake_decel_mps2");
+ params.accel_max = spec("tires", "brake_decel_mps2");
  params.wheel_base = robot_definition_.wheel_base_m;
  drive_ = std::make_unique<sim::DiffDrive>(params);
  // Chassis dispatch: drive.type selects the actuator model. Differential drive
@@ -128,11 +128,11 @@ void MissionSimulation::build_world() {
  // slot (early levels) runs the robot stock motor. New motors stay plug-and-play
  // because PID gains are derived from these same numbers.
  const double motor_vmax =
-   motor_ ? property(motor_->behavior, "max_wheel_speed_mps") : robot_definition_.motor.max_wheel_speed_mps;
+   has("motor") ? spec("motor", "max_wheel_speed_mps") : robot_definition_.motor.max_wheel_speed_mps;
  const double motor_stall =
-   motor_ ? property(motor_->behavior, "stall_force_N") : robot_definition_.motor.stall_force_N;
+   has("motor") ? spec("motor", "stall_force_N") : robot_definition_.motor.stall_force_N;
  const double motor_free =
-   motor_ ? property(motor_->behavior, "free_speed_mps") : robot_definition_.motor.free_speed_mps;
+   has("motor") ? spec("motor", "free_speed_mps") : robot_definition_.motor.free_speed_mps;
  const double wheel_mass = std::max(0.5, robot_definition_.mass_kg / 2.0);
  const sim::WheelPidGains wheel_gains =
    sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax);
@@ -229,9 +229,9 @@ void MissionSimulation::step() {
   return;
  }
  update_actors();
- if (sensor_ && snapshot_.time_s + 1e-9 >= next_scan_s_) {
+ if (has("sensor") && snapshot_.time_s + 1e-9 >= next_scan_s_) {
   scan_environment();
-  next_scan_s_ += 1.0 / property(sensor_->behavior, "scan_hz");
+  next_scan_s_ += 1.0 / spec("sensor", "scan_hz");
  }
  if (manual_control_active_) {
   held_command_ = manual_command_;
@@ -284,13 +284,13 @@ void MissionSimulation::update_actors() {
 }
 
 void MissionSimulation::scan_environment() {
- if (!sensor_)
+ if (!has("sensor"))
   return;
  const sim::Vec2 position{snapshot_.robot.x, snapshot_.robot.y};
- const int rays = static_cast<int>(property(sensor_->behavior, "rays"));
- const double range = property(sensor_->behavior, "range_m");
- const auto scan = lidar_->scan(position, snapshot_.robot.theta, rays, range,
-                                property(sensor_->behavior, "noise_sigma_m"), rng_, actual_actors_);
+ const int rays = static_cast<int>(spec("sensor", "rays"));
+ const double range = spec("sensor", "range_m");
+ const auto scan = lidar_->scan(position, snapshot_.robot.theta, rays, range, spec("sensor", "noise_sigma_m"),
+                                rng_, actual_actors_);
  snapshot_.lidar_hits.clear();
  std::vector<int> dynamic_hit_count(actual_actors_.size(), 0);
  dynamic_centroid_.assign(actual_actors_.size(), {0.0, 0.0});
@@ -351,7 +351,7 @@ void MissionSimulation::scan_environment() {
    sim::Vec2 arc{dynamic_centroid_[index].x / hits, dynamic_centroid_[index].y / hits};
    sim::Vec2 sight{arc.x - position.x, arc.y - position.y};
    const double sight_len = std::max(1e-6, std::hypot(sight.x, sight.y));
-   const double residual = property(sensor_->behavior, "noise_sigma_m") / (2.0 * std::sqrt(hits));
+   const double residual = spec("sensor", "noise_sigma_m") / (2.0 * std::sqrt(hits));
    const sim::Vec2 measured_center{
      arc.x + sight.x / sight_len * actual_actors_[index].radius + perception_rng_.gauss(residual),
      arc.y + sight.y / sight_len * actual_actors_[index].radius + perception_rng_.gauss(residual),
@@ -449,7 +449,7 @@ void MissionSimulation::decide_control() {
   nearest_actor = std::min(nearest_actor, distance({snapshot_.robot.x, snapshot_.robot.y}, actor.p) -
                                             actor.radius - robot_definition_.collision_radius_m);
  }
- const double prediction_horizon = computer_ ? property(computer_->behavior, "prediction_horizon_s") : 1.2;
+ const double prediction_horizon = has("computer") ? spec("computer", "prediction_horizon_s") : 1.2;
  const double requested_clearance = property(behavior_, "safe_clearance_m");
  const double risk_distance =
    requested_clearance * requested_clearance * 2.5 + property(behavior_, "cruise_mps") * 0.6 + 0.1;
@@ -471,7 +471,7 @@ void MissionSimulation::decide_control() {
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,
    target, *planning_map_, weights, predicted_frames, speed_cap, drive_->params().w_max,
-   property(tires_.behavior, "brake_decel_mps2"), prediction_horizon, prediction_step_s, prediction_step_s,
+   spec("tires", "brake_decel_mps2"), prediction_horizon, prediction_step_s, prediction_step_s,
    requested_clearance, robot_definition_.collision_radius_m, robot_definition_.max_yaw_accel_radps2);
  snapshot_.control.dwa_active = true;
  snapshot_.control.dwa_selected = dwa.best_path;
@@ -569,14 +569,14 @@ void MissionSimulation::apply_motion() {
  const double motor_power = robot_definition_.energy_base_w +
                             robot_definition_.energy_per_v_w * std::abs(candidate.v) +
                             robot_definition_.energy_per_w_w * std::abs(candidate.w);
- const double motor_scale = motor_ ? property(motor_->behavior, "power_scale") : 1.0;
- const double total_power = motor_power * property(tires_.behavior, "power_scale") * motor_scale +
-                            (sensor_ ? property(sensor_->behavior, "power_w") : 0.0) +
-                            (computer_ ? property(computer_->behavior, "power_w") : 0.0) +
-                            (imu_ ? property(imu_->behavior, "power_w") : 0.0);
+ const double motor_scale = has("motor") ? spec("motor", "power_scale") : 1.0;
+ const double total_power = motor_power * spec("tires", "power_scale") * motor_scale +
+                            (has("sensor") ? spec("sensor", "power_w") : 0.0) +
+                            (has("computer") ? spec("computer", "power_w") : 0.0) +
+                            (has("imu") ? spec("imu", "power_w") : 0.0);
  result_.energy_wh += total_power * fixed_step_s / 3600.0;
 
- double slip = property(tires_.behavior, "slip_scale");
+ double slip = spec("tires", "slip_scale");
  const double traction = surface_traction(candidate_position);
  if (traction < 1.0) {
   slip /= traction;
@@ -597,9 +597,9 @@ void MissionSimulation::apply_motion() {
  sim::DiffDrive::wheelsToTwist(motors.left.measured_mps, motors.right.measured_mps,
                                robot_definition_.wheel_base_m, encoder_v, encoder_w);
  const double gyro_rate =
-   imu_ ? candidate.w + gyro_bias_ + imu_rng_.gauss(property(imu_->behavior, "gyro_noise_radps")) : 0.0;
- const double gyro_sigma = imu_ ? property(imu_->behavior, "gyro_noise_radps") : 0.0;
- odometry_.update(encoder_v, encoder_w, fixed_step_s, rng_, slip, 0.003 * slip, imu_ != nullptr, gyro_rate,
+   has("imu") ? candidate.w + gyro_bias_ + imu_rng_.gauss(spec("imu", "gyro_noise_radps")) : 0.0;
+ const double gyro_sigma = has("imu") ? spec("imu", "gyro_noise_radps") : 0.0;
+ odometry_.update(encoder_v, encoder_w, fixed_step_s, rng_, slip, 0.003 * slip, has("imu"), gyro_rate,
                   gyro_sigma);
  snapshot_.estimated_position = odometry_.p;
  snapshot_.estimated_heading = odometry_.th;
@@ -706,14 +706,30 @@ void MissionSimulation::record_replay() {
  replay_.push_back(std::move(frame));
 }
 
+bool MissionSimulation::has(const std::string& slot) const {
+ return parts_.find(slot) != parts_.end();
+}
+
+const ComponentDefinition& MissionSimulation::req(const std::string& slot) const {
+ const auto found = parts_.find(slot);
+ if (found == parts_.end()) {
+  throw ContentError("missing required part '" + slot + "'");
+ }
+ return *found->second;
+}
+
+double MissionSimulation::spec(const std::string& slot, const std::string& key) const {
+ return property(req(slot).behavior, key);
+}
+
 double MissionSimulation::decision_hz() const {
- return computer_ ? property(computer_->behavior, "decision_hz") : kBuiltInDecisionHz;
+ return has("computer") ? spec("computer", "decision_hz") : kBuiltInDecisionHz;
 }
 
 double MissionSimulation::track_max_age_s() const {
  // Dynamic-track memory lives on the computer; computer-less levels use the
  // documented engine default.
- return computer_ ? property(computer_->behavior, "track_max_age_s") : kDynamicTrackMaxAgeS;
+ return has("computer") ? spec("computer", "track_max_age_s") : kDynamicTrackMaxAgeS;
 }
 
 sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
@@ -721,8 +737,8 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  // decides grip. mu_ref anchors the product so concrete + standard behaves as
  // the long-validated reference.
  constexpr double kMuReference = 0.8;
- const double tire_mu = property(tires_.behavior, "friction_mu");
- const double tire_rr = property(tires_.behavior, "rolling_resistance");
+ const double tire_mu = spec("tires", "friction_mu");
+ const double tire_rr = spec("tires", "rolling_resistance");
  double ground_mu = 1.0;
  double ground_rr = 0.0;
  double traction = 1.0;
@@ -738,7 +754,7 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  contact.mu_eff = tire_mu * ground_mu / kMuReference;
  contact.rolling_resist = tire_rr + ground_rr;
  contact.accel_limit_mps2 = std::min(robot_definition_.motor.max_wheel_accel_mps2,
-                                     property(tires_.behavior, "brake_decel_mps2") * (0.5 + 0.5 * traction));
+                                     spec("tires", "brake_decel_mps2") * (0.5 + 0.5 * traction));
  return contact;
 }
 

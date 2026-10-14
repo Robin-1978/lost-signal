@@ -18,28 +18,11 @@ std::string format_number(double value, int precision = 1) {
 }
 
 std::string selected_id(const game::BuildSelection& build, const std::string& slot) {
- if (slot == "tires")
-  return build.tires;
- if (slot == "sensor")
-  return build.sensor;
- if (slot == "motor")
-  return build.motor;
- if (slot == "imu")
-  return build.imu;
- return build.computer;
+ return build.part(slot);
 }
 
 void assign_id(game::BuildSelection& build, const std::string& slot, const std::string& id) {
- if (slot == "tires")
-  build.tires = id;
- else if (slot == "sensor")
-  build.sensor = id;
- else if (slot == "motor")
-  build.motor = id;
- else if (slot == "imu")
-  build.imu = id;
- else
-  build.computer = id;
+ build.parts[slot] = id;
 }
 
 } // namespace

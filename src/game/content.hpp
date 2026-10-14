@@ -4,6 +4,7 @@
 
 #include <array>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -279,12 +280,16 @@ struct PolicyDefinition {
 };
 
 struct BuildSelection {
- std::string tires;
- std::string sensor;
- std::string computer;
- std::string motor;
- std::string imu;
+ // slot -> component id. New hardware slots need no C++ changes: loader,
+ // validation, cost, UI, renderers and saves all iterate this map.
+ std::map<std::string, std::string> parts;
  double style{0.5};
+
+ const std::string& part(const std::string& slot) const {
+  static const std::string kEmpty;
+  const auto found = parts.find(slot);
+  return found == parts.end() ? kEmpty : found->second;
+ }
 };
 
 struct ComponentColumn {

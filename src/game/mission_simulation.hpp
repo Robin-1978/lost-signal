@@ -12,6 +12,7 @@
 #include "algo/pid.hpp"
 #include "hw/sensors/sensor.hpp"
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -156,6 +157,9 @@ class MissionSimulation {
  double surface_traction(sim::Vec2 position) const;
  double static_clearance(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
+ bool has(const std::string& slot) const;
+ const ComponentDefinition& req(const std::string& slot) const;
+ double spec(const std::string& slot, const std::string& key) const;
  double decision_hz() const;
  double track_max_age_s() const;
  sim::GroundContact wheel_ground(sim::Vec2 position) const;
@@ -166,11 +170,9 @@ class MissionSimulation {
  const LevelDefinition& level_;
  const MapDefinition& map_definition_;
  const RobotDefinition& robot_definition_;
- const ComponentDefinition& tires_;
- const ComponentDefinition* sensor_{nullptr};
- const ComponentDefinition* computer_{nullptr};
- const ComponentDefinition* motor_{nullptr};
- const ComponentDefinition* imu_{nullptr};
+ // Resolved equipment, keyed by slot name. Anything slot-specific beyond
+ // this point is a layering bug: use has()/req()/spec() instead of members.
+ std::map<std::string, const ComponentDefinition*> parts_;
  double gyro_bias_{0.0};
  bool was_saturated_{false};
  // Continuous driving style, piecewise-interpolated across the policy anchors.

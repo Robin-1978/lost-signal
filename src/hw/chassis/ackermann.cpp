@@ -1,4 +1,5 @@
 #include "ackermann.hpp"
+#include "hw/dynamics/contact.hpp"
 
 #include "algo/math.hpp"
 

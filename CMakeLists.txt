@@ -27,6 +27,7 @@ add_library(lost_signal_sim STATIC
  src/algo/dwa.cpp
  src/algo/grid_map.cpp
   src/hw/chassis/motor_drive.cpp
+ src/hw/dynamics/contact.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
 )

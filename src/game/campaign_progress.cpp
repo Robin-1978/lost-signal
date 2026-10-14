@@ -60,15 +60,17 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
    continue;
   const auto& entry = it.value();
   BuildSelection build;
-  build.tires = entry.value("tires", std::string{});
-  build.sensor = entry.value("sensor", std::string{});
-  build.computer = entry.value("computer", std::string{});
-  build.motor = entry.value("motor", std::string{});
-  build.imu = entry.value("imu", std::string{});
+  for (auto field = entry.begin(); field != entry.end(); ++field) {
+   if (field.key() == "style") {
+    continue;
+   }
+   build.parts[field.key()] = field.value().get<std::string>();
+  }
   build.style = std::clamp(entry.value("style", 0.5), 0.0, 1.0);
   bool known = true;
-  for (const auto* id : {&build.tires, &build.sensor, &build.computer, &build.motor, &build.imu}) {
-   if (!id->empty() && !catalog.components().contains(*id))
+  for (const auto& [slot, id] : build.parts) {
+   (void)slot;
+   if (!id.empty() && !catalog.components().contains(id))
     known = false;
   }
   if (known)
@@ -134,10 +136,12 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
   std::filesystem::create_directories(path.parent_path());
  json builds = json::object();
  for (const auto& [level_id, build] : last_builds_) {
-  builds[level_id] = {
-    {"tires", build.tires}, {"sensor", build.sensor}, {"computer", build.computer},
-    {"motor", build.motor}, {"imu", build.imu},       {"style", build.style},
-  };
+  json fields = json::object();
+  for (const auto& [slot, id] : build.parts) {
+   fields[slot] = id;
+  }
+  fields["style"] = build.style;
+  builds[level_id] = std::move(fields);
  }
  json scores = json::object();
  for (const auto& [level_id, score] : best_scores_) {

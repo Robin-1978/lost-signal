@@ -59,8 +59,8 @@ int main() {
 
  const auto& presentation = catalog.default_presentation();
  CHECK(presentation.level == "boot");
- CHECK(presentation.default_build.sensor.empty());
- CHECK(presentation.default_build.computer.empty());
+ CHECK(presentation.default_build.part("sensor").empty());
+ CHECK(presentation.default_build.part("computer").empty());
  CHECK(std::abs(presentation.default_build.style - 0.5) < 1e-12);
  CHECK(catalog.policies().size() == 3);
  CHECK(std::abs(catalog.policy("policy.careful").style_anchor - 0.0) < 1e-12);

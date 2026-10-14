@@ -724,13 +724,7 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
   return found == robot.mounts.end() ? nullptr : &*found;
  };
  const auto component_id = [&](const std::string& slot) -> const std::string& {
-  if (slot == "tires")
-   return mission.build().tires;
-  if (slot == "sensor")
-   return mission.build().sensor;
-  if (slot == "motor")
-   return mission.build().motor;
-  return mission.build().computer;
+  return mission.build().part(slot);
  };
  const auto draw_part = [&](const game::VisualDefinition& visual, const game::MountDefinition& mount) {
   const Model* loaded = model(visual.model_3d);
@@ -749,8 +743,9 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
   }
   float yaw = static_cast<float>(state.robot.theta) * kRadToDeg;
   if (mount.id == "sensor_top") {
-   if (!mission.build().sensor.empty()) {
-    const double scan_hz = game::property(catalog_.component(mission.build().sensor).behavior, "scan_hz");
+   if (!mission.build().part("sensor").empty()) {
+    const double scan_hz =
+      game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
     yaw += static_cast<float>(std::fmod(state.time_s * scan_hz * 360.0, 360.0));
    }
   }
@@ -876,8 +871,9 @@ void SceneRenderer3D::draw_accents(const game::MissionSimulation& mission) const
    DrawLine3D(trail_start, trail_end, Fade(active_color, 0.20f * movement));
   }
  }
- if (!mission.build().sensor.empty() && state.status == game::MissionStatus::Running) {
-  const double scan_hz = game::property(catalog_.component(mission.build().sensor).behavior, "scan_hz");
+ if (!mission.build().part("sensor").empty() && state.status == game::MissionStatus::Running) {
+  const double scan_hz =
+    game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
   const float angle = static_cast<float>(state.robot.theta + state.time_s * scan_hz * 2.0 * PI);
   const float scan_radius = static_cast<float>(scene.effects.scan_radius_m);
   constexpr float half_width = 0.16f;

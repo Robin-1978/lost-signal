@@ -125,11 +125,11 @@ int main() {
  // Hot motor on a slow brain still crashes: the dynamic-collision path stays
  // covered, and the motor/computer synergy is pinned, not just documented.
  game::BuildSelection hot_build;
- hot_build.tires = "tires.eco";
- hot_build.sensor = "sensor.long_slow_lidar";
- hot_build.computer = "computer.light";
- hot_build.motor = "motor.torque";
- hot_build.imu = "imu.basic";
+ hot_build.parts["tires"] = "tires.eco";
+ hot_build.parts["sensor"] = "sensor.long_slow_lidar";
+ hot_build.parts["computer"] = "computer.light";
+ hot_build.parts["motor"] = "motor.torque";
+ hot_build.parts["imu"] = "imu.basic";
  hot_build.style = 1.0;
  game::MissionSimulation hot_attempt(catalog, "lost_signal", hot_build);
  hot_attempt.run_to_completion();
@@ -140,11 +140,11 @@ int main() {
  // traction limit (27 episodes here). Official builds rarely saturate, which
  // is why their odometry comes from the slip-scale random walk instead.
  game::BuildSelection spin_build;
- spin_build.tires = "tires.eco";
- spin_build.sensor = "sensor.long_slow_lidar";
- spin_build.computer = "computer.light";
- spin_build.motor = "motor.torque";
- spin_build.imu = "imu.basic";
+ spin_build.parts["tires"] = "tires.eco";
+ spin_build.parts["sensor"] = "sensor.long_slow_lidar";
+ spin_build.parts["computer"] = "computer.light";
+ spin_build.parts["motor"] = "motor.torque";
+ spin_build.parts["imu"] = "imu.basic";
  spin_build.style = 1.0;
  game::MissionSimulation spin_run(catalog, "blocked_route", spin_build);
  spin_run.run_to_completion();
