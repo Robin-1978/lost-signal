@@ -104,6 +104,26 @@ int main() {
   CHECK(noisy_transit >= 0.5);
   std::cerr << "joint: refused by rejoin, noisy transit still feasible at " << noisy_transit << "\n";
  }
+ // 4b. FALSE-GO TRIPWIRE (open hole, Gate C must close it): the SAME slow
+ // threat (nominal Infeasible, chain -0.73) with an OPTIMISTIC 60% speedup
+ // bias flips to Feasible (+1.14). The pure assessor is correct given its
+ // inputs — garbage in, verdict out — so no assess-level fix exists: the
+ // defense must live in consumption (estimator confidence gating the verdict,
+ // or margin covering the bias error). If this case ever stops flipping,
+ // something changed the assessor or the anchor — investigate, don't cheer:
+ // the tripwire guards the hole's SHAPE, and closing it belongs to Gate C
+ // wiring design, not to this harness.
+ {
+  const auto nominal_slow = pocket(lane(7.85, -0.7));
+  CHECK(nominal_slow.overall == V::kInfeasible);
+  CHECK(nominal_slow.chain_min_gap_m < 0.0);
+  const auto optimistic = pocket(lane(7.85, -0.7 * 1.6));
+  std::cerr << "false-go: nominal chain=" << nominal_slow.chain_min_gap_m << " -> optimistic chain="
+            << optimistic.chain_min_gap_m << " overall=" << static_cast<int>(optimistic.overall)
+            << "\n";
+  CHECK(optimistic.overall == V::kFeasible);
+  CHECK(optimistic.chain_min_gap_m > 1.0);
+ }
  // 5. Threshold boundary: the sampler's first Feasible pocket sits at chain
  // 0.5015 — a mere 5% velocity bias flips the SAME pocket to 0.3754. Nominal
  // pass at the threshold carries zero robustness; this case stays a boundary
