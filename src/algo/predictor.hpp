@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dynobs.hpp"
+#include "algo/grid_map.hpp"
 
 #include <limits>
 #include <vector>
@@ -88,6 +89,8 @@ enum class DepartReason {
  kUnassessed,     // capability does not exist yet (Phase-2 pocket/rejoin/detour):
                   // honestly Unknown, never borrowed from another cause.
  kClear,          // a leg checked over its full interval with no violation.
+ kStaticBlocked,  // no static path exists (A* on the inflated grid failed):
+                  // geometric infeasibility, proven — not traffic, not unknown.
 };
 
 struct DepartureAssessment {
@@ -142,13 +145,30 @@ struct LegAssessment {
  DepartReason reason{DepartReason::kUnassessed};
  double end_s{std::numeric_limits<double>::infinity()};
  double min_gap_m{std::numeric_limits<double>::infinity()};
+ // The timed trajectory that was actually swept (transit only; empty when
+ // the leg was decided without executing anything).
+ std::vector<TimedPose> exec_traj;
 };
 
-// Leg 1 — Transit, current pose to pocket: no arrival proof exists yet (A*
-// path + swept check + item-14 kinematic ruling are the next slice), so this
-// is honestly Unknown. end_s carries the nominal schedule (length/cruise)
-// for chaining only, min_gap stays +infinity (nothing assessed).
-LegAssessment assess_transit(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps);
+// Leg 1 — Transit assessment with its own planning (map-mediated overload
+// below); the plain-path stub is retired — every transit verdict now names
+// the executed trajectory or exactly why it cannot.
+
+// Transit with its own planning: A* on the caller-inflated grid produces the
+// geometric path (static clearance is the generator's contract); the verdict
+// then covers the EXECUTED trajectory, never the grid polyline by proxy:
+// spin-capable chassis execute turn-drive-turn (rotate in place at yaw_rate,
+// drive legs at cruise — the body stays inside its collision ring while
+// spinning), which is swept exactly via timed_gap. Non-spin chassis have no
+// specified curvature execution model in ChassisCaps yet, so they stay
+// Unknown/kUnassessed with a nominal schedule. A* failure is proven static
+// infeasibility (kStaticBlocked), not traffic, not unknown.
+// Evidence: exec_traj holds the checked timed trajectory (empty when nothing
+// was executed-checked).
+LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta,
+                             Vec2 pocket, double cruise_mps, double yaw_rate_rads, bool can_spin,
+                             const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                             double ego_radius_m, double margin_m);
 
 // Leg 2 — Hold at a spot over [hold_from_s, hold_until_s]: the whole interval
 // is swept, never just the endpoints. Zero-duration (from == until) reduces
@@ -174,14 +194,14 @@ struct PocketAssessment {
  Feasibility::Verdict overall{Feasibility::Verdict::kUnknown};
 };
 
-// One WaitAtPocket candidate as three chained phases: hold runs
-// [transit_end, transit_end + hold_s], rejoin departs at hold end. Any
-// Infeasible leg refuses the candidate; otherwise any Unknown leg withholds
-// proof; all three leg results are kept — an unassessed transit is never
-// silently dropped when another leg fails.
-PocketAssessment assess_pocket_wait(const std::vector<Vec2>& transit_path, std::size_t transit_idx,
-                                    double cruise_mps, double hold_s,
-                                    const std::vector<Vec2>& rejoin_path, std::size_t rejoin_idx,
+// Pocket candidate with both transits planned: A* from start to pocket and
+// from pocket to the route merge point (on the caller-inflated grid), then
+// the route suffix appended for the rejoin leg. Pocket/merge SAMPLING (which
+// spots to try) is the next slice; this composes assessment for given spots.
+PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
+                                    Vec2 pocket, Vec2 merge,
+                                    const std::vector<Vec2>& route_suffix, double cruise_mps,
+                                    double yaw_rate_rads, bool can_spin, double hold_s,
                                     const std::vector<std::vector<DynState>>& frames,
                                     double frame_dt_s, double ego_radius_m, double margin_m);
 

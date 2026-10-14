@@ -1,5 +1,7 @@
 #include "predictor.hpp"
 
+#include "algo/astar.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -205,6 +207,8 @@ const char* depart_reason_name(DepartReason reason) {
    return "Unassessed";
   case DepartReason::kClear:
    return "Clear";
+  case DepartReason::kStaticBlocked:
+   return "StaticBlocked";
  }
  return "Invalid";
 }
@@ -267,14 +271,84 @@ double remaining_length(const std::vector<Vec2>& path, std::size_t start_idx) {
 
 } // namespace
 
-LegAssessment assess_transit(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps) {
- if (path.empty() || cruise_mps <= 0.0) {
-  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+// Turn-drive-turn execution of a geometric polyline: rotate in place at
+// yaw_rate, drive legs at cruise. The checked trajectory is exactly this,
+// never the raw grid polyline by proxy (smoothing, when the Ackermann slice
+// needs it, will likewise rebuild this trajectory before any check).
+std::vector<TimedPose> execute_turn_drive_turn(const std::vector<Vec2>& route, double start_theta,
+                                               double cruise_mps, double yaw_rate_rads) {
+ auto wrap = [](double angle) { return std::atan2(std::sin(angle), std::cos(angle)); };
+ std::vector<TimedPose> exec{{0.0, route.front()}};
+ double time_s = 0.0;
+ double heading = start_theta;
+ for (std::size_t i = 0; i + 1 < route.size(); ++i) {
+  const double leg = std::hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
+  if (leg < 1e-9) {
+   continue;
+  }
+  const double desired = std::atan2(route[i + 1].y - route[i].y, route[i + 1].x - route[i].x);
+  time_s += std::abs(wrap(desired - heading)) / std::max(1e-6, yaw_rate_rads);
+  exec.push_back({time_s, route[i]});
+  heading = desired;
+  time_s += leg / std::max(1e-6, cruise_mps);
+  exec.push_back({time_s, route[i + 1]});
  }
- return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
-         remaining_length(path, start_idx) / std::max(1e-6, cruise_mps),
-         std::numeric_limits<double>::infinity()};
+ return exec;
+}
+
+LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
+                             double cruise_mps, double yaw_rate_rads, bool can_spin,
+                             const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                             double ego_radius_m, double margin_m) {
+ const LegAssessment invalid{Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
+                             std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::infinity(), {}};
+ if (frames.empty() || cruise_mps <= 0.0 || (can_spin && yaw_rate_rads <= 0.0)) {
+  return invalid;
+ }
+ const double dt = std::max(1e-6, frame_dt_s);
+ const double horizon =
+   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ // Geometric path first (A* on the caller-inflated grid); no path is proven
+ // static infeasibility, not traffic, not unknown.
+ std::vector<Vec2> route;
+ if (std::hypot(pocket.x - start.x, pocket.y - start.y) < 1e-9) {
+  route = {start};
+ } else {
+  const auto plan = astar_plan(inflated_map, start, pocket, 1.0);
+  if (!plan.ok || plan.path.empty()) {
+   return {Feasibility::Verdict::kInfeasible, DepartReason::kStaticBlocked,
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+  }
+  route.push_back(start);
+  route.insert(route.end(), plan.path.begin(), plan.path.end());
+  route.push_back(pocket);
+ }
+ if (!can_spin) {
+  // No curvature execution model in ChassisCaps yet: Unknown with a nominal
+  // schedule (turn phases excluded — nominal either way).
+  double nominal = 0.0;
+  for (std::size_t i = 0; i + 1 < route.size(); ++i) {
+   nominal += std::hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
+  }
+  return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
+          nominal / std::max(1e-6, cruise_mps), std::numeric_limits<double>::infinity(), {}};
+ }
+ const auto exec = execute_turn_drive_turn(route, start_theta, cruise_mps, yaw_rate_rads);
+ const double end_s = exec.back().t_s;
+ if (end_s > horizon + 1e-9) {
+  return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
+          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), exec};
+ }
+ const double gap = timed_gap(exec, frames, dt, ego_radius_m);
+ if (gap >= margin_m) {
+  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, end_s, gap, exec};
+ }
+ const double spot_gap = timed_gap({{0.0, start}, {horizon, start}}, frames, dt, ego_radius_m);
+ if (spot_gap < margin_m) {
+  return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, end_s, gap, exec};
+ }
+ return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, end_s, gap, exec};
 }
 
 LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
@@ -335,26 +409,56 @@ LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx
          std::numeric_limits<double>::infinity(), gap};
 }
 
-PocketAssessment assess_pocket_wait(const std::vector<Vec2>& transit_path, std::size_t transit_idx,
-                                    double cruise_mps, double hold_s,
-                                    const std::vector<Vec2>& rejoin_path, std::size_t rejoin_idx,
+PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
+                                    Vec2 pocket, Vec2 merge,
+                                    const std::vector<Vec2>& route_suffix, double cruise_mps,
+                                    double yaw_rate_rads, bool can_spin, double hold_s,
                                     const std::vector<std::vector<DynState>>& frames,
                                     double frame_dt_s, double ego_radius_m, double margin_m) {
  PocketAssessment out;
- out.transit = assess_transit(transit_path, transit_idx, cruise_mps);
- // The pocket is where transit delivers the ego: the transit path end.
- // Callers align the rejoin path start with it.
- const Vec2 pocket_pos = transit_path.empty() ? Vec2{0.0, 0.0} : transit_path.back();
+ out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, yaw_rate_rads,
+                              can_spin, frames, frame_dt_s, ego_radius_m, margin_m);
+ // Rejoin geometry: A* pocket to merge, then the given route suffix (whose
+ // first point the caller aligns with merge). A failed rejoin plan is proven
+ // static infeasibility of that leg.
+ std::vector<Vec2> rejoin_pts;
+ bool rejoin_planned = false;
+ if (std::hypot(merge.x - pocket.x, merge.y - pocket.y) < 1e-9) {
+  rejoin_pts = {pocket};
+  rejoin_pts.insert(rejoin_pts.end(), route_suffix.begin(), route_suffix.end());
+  rejoin_planned = true;
+ } else {
+  const auto plan = astar_plan(inflated_map, pocket, merge, 1.0);
+  if (plan.ok && !plan.path.empty()) {
+   rejoin_pts.push_back(pocket);
+   rejoin_pts.insert(rejoin_pts.end(), plan.path.begin(), plan.path.end());
+   rejoin_pts.push_back(merge);
+   rejoin_pts.insert(rejoin_pts.end(), route_suffix.begin(), route_suffix.end());
+   rejoin_planned = true;
+  }
+ }
  // Chained schedule (frozen convention): hold starts at the transit nominal
- // end even while transit is unproven; rejoin departs at hold end.
- const double transit_end =
-   out.transit.end_s < std::numeric_limits<double>::infinity() ? out.transit.end_s : 0.0;
- const double hold_end = transit_end + std::max(0.0, hold_s);
- out.hold = assess_hold(pocket_pos, transit_end, hold_end, frames, frame_dt_s, ego_radius_m,
-                        margin_m);
- out.rejoin =
-   assess_rejoin(rejoin_path, rejoin_idx, cruise_mps, hold_end, frames, frame_dt_s, ego_radius_m,
-                 margin_m);
+ // end, rejoin departs at hold end. Legs without a schedule (inf end) cannot
+ // chain: hold/rejoin inherit the transit cause as Unknown.
+ if (out.transit.end_s < std::numeric_limits<double>::infinity()) {
+  const double hold_end = out.transit.end_s + std::max(0.0, hold_s);
+  out.hold = assess_hold(pocket, out.transit.end_s, hold_end, frames, frame_dt_s, ego_radius_m,
+                         margin_m);
+  if (!rejoin_planned) {
+   out.rejoin = {Feasibility::Verdict::kInfeasible, DepartReason::kStaticBlocked,
+                 std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+                 {}};
+  } else {
+   out.rejoin = assess_rejoin(rejoin_pts, 0, cruise_mps, hold_end, frames, frame_dt_s,
+                              ego_radius_m, margin_m);
+  }
+ } else {
+  const LegAssessment unchained{Feasibility::Verdict::kUnknown, out.transit.reason,
+                                std::numeric_limits<double>::infinity(),
+                                std::numeric_limits<double>::infinity(), {}};
+  out.hold = unchained;
+  out.rejoin = unchained;
+ }
  if (out.transit.verdict == Feasibility::Verdict::kInfeasible ||
      out.hold.verdict == Feasibility::Verdict::kInfeasible ||
      out.rejoin.verdict == Feasibility::Verdict::kInfeasible) {

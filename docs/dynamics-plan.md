@@ -291,6 +291,14 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        hold 前缀分类 WaitUnsafe/Blocked）；assess_pocket_wait 组合裁决
        （任一 Infeasible 则 Infeasible、否则任一 Unknown 则 Unknown，三腿诊断全保留）。
        时间链冻结：后腿起于前腿名义完成、关节瞬时归属两侧（闭区间 min 幂等）。
+       Transit 纯函数已落地（test_phase_legs，mission 不动）：A* 只产几何路径
+       （调用方膨胀栅格是生成侧契约）；swept 覆盖执行轨迹本身——spin 车走
+       turn-drive-turn（原地转＋直行，格子折线的转弯时间如实计入，曾抓到测试按
+       直线幻想配窗过紧）；Ackermann 无曲率执行模型（caps 未覆盖）诚实 Unknown；
+       A* 无路判 kStaticBlocked（几何已证不可行）；证据带 exec_traj 时间轨迹。
+       组合 assess_pocket_wait 同步 map 化：首个 overall Feasible 的 pocket
+       （transit 2.9s 零转弯＋hold 2s＋汇入，gap 0.67）。
+       下一片：pocket/merge 采样（候选生成）；平滑＋重检随 Ackermann 曲率模型来。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：
