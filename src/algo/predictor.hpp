@@ -26,4 +26,18 @@ struct PredictInput {
 std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput>& inputs, double time_s,
                                                   double horizon_s, double frame_dt_s, double max_age_s);
 
+// Phase-aware gap acceptance: the minimum predicted separation between the
+// ego vehicle (advancing along its path at speed_mps, holding at the end)
+// and every predicted threat frame, minus radii.
+// PARKED (not wired into arbitration): two attempts (raw conjunction gate,
+// then corridor-maturity-gated) both flipped the pinned finale seed — any
+// extra waiting mistimes the encounter, and linear predictions lie at patrol
+// turnarounds until a reversal is observed. Next touchpoint is the MotionTarget
+// planner slot (plan §4 item 16), where gap acceptance belongs with phase-aware
+// entry timing, not as a bolt-on gate. Unit tests pin the math meanwhile.
+// Returns +infinity when there is nothing predicted.
+double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
+                     const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                     double ego_radius_m);
+
 } // namespace sim

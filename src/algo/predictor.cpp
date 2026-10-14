@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <limits>
 
 namespace sim {
 namespace {
@@ -49,6 +51,44 @@ std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput
   }
  }
  return frames;
+}
+
+double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
+                     const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                     double ego_radius_m) {
+ if (path.empty() || frames.empty()) {
+  return std::numeric_limits<double>::infinity();
+ }
+ const double step = std::max(0.0, speed_mps) * std::max(1e-6, frame_dt_s);
+ double gap = std::numeric_limits<double>::infinity();
+ double along = 0.0;
+ std::size_t seg = start_idx;
+ Vec2 ego = path[std::min(start_idx, path.size() - 1)];
+ for (const auto& frame : frames) {
+  along += step;
+  while (seg + 1 < path.size()) {
+   const double leg = std::hypot(path[seg + 1].x - path[seg].x, path[seg + 1].y - path[seg].y);
+   if (along <= leg || leg < 1e-9) {
+    break;
+   }
+   along -= leg;
+   ++seg;
+  }
+  if (seg + 1 < path.size()) {
+   const double leg = std::hypot(path[seg + 1].x - path[seg].x, path[seg + 1].y - path[seg].y);
+   const double t = leg < 1e-9 ? 0.0 : std::clamp(along / leg, 0.0, 1.0);
+   ego = {path[seg].x + (path[seg + 1].x - path[seg].x) * t,
+          path[seg].y + (path[seg + 1].y - path[seg].y) * t};
+  } else {
+   ego = path.back();
+  }
+  for (const auto& threat : frame) {
+   const double clearance =
+     std::hypot(threat.p.x - ego.x, threat.p.y - ego.y) - threat.radius - ego_radius_m;
+   gap = std::min(gap, clearance);
+  }
+ }
+ return gap;
 }
 
 } // namespace sim

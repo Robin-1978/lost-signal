@@ -1,4 +1,5 @@
 #include "algo/dynamic_obstacle_map.hpp"
+#include "algo/predictor.hpp"
 #include "hw/sensors/hal.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "algo/dwa.hpp"
@@ -8,6 +9,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -112,5 +114,32 @@ int main() {
  CHECK(driven.v > 0.7);
  CHECK(driven.w > 0.2);
  CHECK(std::abs(motors.telemetry().left.measured_mps) > 0.5);
+
+ // predicted_gap: head-on approach shrinks to the known minimum, diverging
+ // tracks stay wide, empty inputs report infinity, standing still still
+ // detects an approaching threat.
+ {
+  const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
+  const std::vector<std::vector<sim::DynState>> closing = {
+    {{{5.0, 0.0}, {0.0, 0.0}, 0.5}},
+    {{{4.0, 0.0}, {0.0, 0.0}, 0.5}},
+    {{{3.0, 0.0}, {0.0, 0.0}, 0.5}},
+  };
+  // Ego advances 1 m/frame from x=0; frame radii 0.5, ego 0.38.
+  const double gap = sim::predicted_gap(path, 0, 10.0, closing, 0.1, 0.38);
+  CHECK(std::abs(gap - (3.0 - 3.0 - 0.5 - 0.38)) < 1e-9);
+  const std::vector<std::vector<sim::DynState>> leaving = {
+    {{{5.0, 5.0}, {0.0, 0.0}, 0.5}},
+  };
+  CHECK(sim::predicted_gap(path, 0, 10.0, leaving, 0.1, 0.38) > 4.0);
+  CHECK(sim::predicted_gap({}, 0, 1.0, closing, 0.1, 0.38) ==
+        std::numeric_limits<double>::infinity());
+  CHECK(sim::predicted_gap(path, 0, 1.0, {}, 0.1, 0.38) == std::numeric_limits<double>::infinity());
+  // Standing ego, threat driving at it: still caught.
+  const std::vector<std::vector<sim::DynState>> incoming = {
+    {{{2.0, 0.0}, {0.0, 0.0}, 0.5}},
+  };
+  CHECK(sim::predicted_gap(path, 0, 0.0, incoming, 0.1, 0.38) < 1.2);
+ }
  return 0;
 }
