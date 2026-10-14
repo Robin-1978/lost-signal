@@ -744,7 +744,8 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
   auto position =
     pose_offset({state.robot.x, state.robot.y}, state.robot.theta, static_cast<float>(mount.position_m.x),
                 static_cast<float>(mount.position_m.y), static_cast<float>(mount.position_m.z));
-  if (mount.id != "wheel_left" && mount.id != "wheel_right") {
+  if (mount.id != "wheel_left" && mount.id != "wheel_right" && mount.id != "front_left" &&
+      mount.id != "front_right" && mount.id != "rear_left" && mount.id != "rear_right") {
    const float movement = std::min(1.0f, std::abs(static_cast<float>(state.robot.v)));
    const float phase = static_cast<float>(state.time_s * scene.effects.bob_frequency_hz * 2.0 * PI);
    position.y += std::sin(phase) * movement * static_cast<float>(scene.effects.bob_amplitude_m);
@@ -753,6 +754,13 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
    }
   }
   float yaw = static_cast<float>(state.robot.theta) * kRadToDeg;
+  // Steered wheels (ackermann linkage output): same rotational sense as body
+  // yaw, since both live in world-CCW. Inner/outer already resolved in physics.
+  if (mount.id == "front_left" || mount.id == "front_right") {
+   const double steer = mount.id == "front_left" ? mission.snapshot().control.steer_left_rad
+                                                 : mission.snapshot().control.steer_right_rad;
+   yaw += static_cast<float>(steer) * kRadToDeg;
+  }
   if (mount.id == "sensor_top") {
    if (!mission.build().part("sensor").empty()) {
     const double scan_hz =

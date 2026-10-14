@@ -62,11 +62,9 @@ int main() {
  // Save round trip on a scratch copy: file bytes equal the serializer and
  // the reloaded catalog carries the edit.
  {
-  const auto scratch =
-    std::filesystem::temp_directory_path() / "lost_signal_editor_test";
+  const auto scratch = std::filesystem::temp_directory_path() / "lost_signal_editor_test";
   std::filesystem::remove_all(scratch);
-  std::filesystem::copy(LOST_SIGNAL_TEST_ASSETS, scratch,
-                        std::filesystem::copy_options::recursive);
+  std::filesystem::copy(LOST_SIGNAL_TEST_ASSETS, scratch, std::filesystem::copy_options::recursive);
   auto scratch_catalog = game::ContentCatalog::load(scratch.string());
   client::MapEditor editor(scratch_catalog, "boot");
   editor.toggle();

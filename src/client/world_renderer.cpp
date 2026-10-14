@@ -679,7 +679,16 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  for (const auto& part : parts) {
   const auto& visual = *part.visual;
   const auto part_center = mounted_position(*part.mount);
-  const float angle = static_cast<float>(-state.robot.theta * 180.0 / sim::kPi - part.mount->rotation_deg.z);
+  // Screen frame is y-flipped: world-CCW (theta, delta) renders as screen
+  // rotation -(theta + delta). Body uses -theta; steered front wheels
+  // subtract their linkage angle the same way. Positive delta (left turn)
+  // reads counterclockwise on screen, matching the world turn.
+  float angle = static_cast<float>(-state.robot.theta * 180.0 / sim::kPi - part.mount->rotation_deg.z);
+  if (part.mount->id == "front_left" || part.mount->id == "front_right") {
+   const double steer =
+     part.mount->id == "front_left" ? state.control.steer_left_rad : state.control.steer_right_rad;
+   angle -= static_cast<float>(steer * 180.0 / sim::kPi);
+  }
   const float width = std::max(5.0f, static_cast<float>(visual.size_m.x) * scale_);
   const float height = std::max(5.0f, static_cast<float>(visual.size_m.y) * scale_);
   const Color fill = color(visual);

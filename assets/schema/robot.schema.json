@@ -84,6 +84,10 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "track_width_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "motor": {
           "type": "object",
           "additionalProperties": false,

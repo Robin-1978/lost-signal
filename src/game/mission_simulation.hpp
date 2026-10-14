@@ -82,6 +82,8 @@ struct ControlSnapshot {
  double steer_target_rad{0.0};
  double steer_angle_rad{0.0};
  double steer_pwm{0.0};
+ double steer_left_rad{0.0};
+ double steer_right_rad{0.0};
 };
 
 struct MissionSnapshot {

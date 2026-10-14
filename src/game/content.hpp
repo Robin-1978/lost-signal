@@ -288,6 +288,8 @@ struct RobotDefinition {
  double tracked_max_yaw_rate_rads{1.5};
  // Track contact length (vendor spec). Only read by tracked robots.
  double track_length_m{0.7};
+ // Axle track width (vendor spec). Only read by ackermann robots (linkage).
+ double track_width_m{0.58};
  MotorDefinition motor;
  SteeringDefinition steering;
  double energy_base_w{0.0};

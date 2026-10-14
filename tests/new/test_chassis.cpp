@@ -60,6 +60,18 @@ int main() {
  CHECK(turning.steer_angle() <= 0.6);
  CHECK(pose.w > 0.1);
  CHECK(pose.theta > 0.2);
+ // Linkage output: left turn puts the larger angle on the left wheel, and
+ // both satisfy the Ackermann condition (shared turn center on the rear axle:
+ // L/tan(inner) + T/2 == L/tan(outer) - T/2).
+ {
+  const double left = turning.telemetry().front_left_steer_rad;
+  const double right = turning.telemetry().front_right_steer_rad;
+  CHECK(left > right);
+  CHECK(right > 0.0);
+  const double base = 2.0;
+  const double track = 0.58;
+  CHECK(std::abs(base / std::tan(left) + track / 2.0 - (base / std::tan(right) - track / 2.0)) < 1e-9);
+ }
 
  // Standstill twist: a car cannot spin like a differential drive.
  sim::AckermannDrive parked = make_car();

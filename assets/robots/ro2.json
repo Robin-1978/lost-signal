@@ -38,7 +38,8 @@
     "encoder": {
       "counts_per_revolution": 2048
     },
-    "max_yaw_accel_radps2": 5.0
+    "max_yaw_accel_radps2": 5.0,
+    "track_width_m": 0.58
   },
   "collision": {
     "shape": "cylinder",
@@ -60,9 +61,9 @@
       ]
     },
     {
-      "id": "wheel_left",
+      "id": "front_left",
       "position_m": [
-        0,
+        0.31,
         0.29,
         0.1
       ],
@@ -73,9 +74,35 @@
       ]
     },
     {
-      "id": "wheel_right",
+      "id": "front_right",
       "position_m": [
+        0.31,
+        -0.29,
+        0.1
+      ],
+      "rotation_deg": [
+        90,
         0,
+        0
+      ]
+    },
+    {
+      "id": "rear_left",
+      "position_m": [
+        -0.31,
+        0.29,
+        0.1
+      ],
+      "rotation_deg": [
+        90,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "rear_right",
+      "position_m": [
+        -0.31,
         -0.29,
         0.1
       ],
@@ -132,8 +159,10 @@
     {
       "slot": "tires",
       "mounts": [
-        "wheel_left",
-        "wheel_right"
+        "front_left",
+        "front_right",
+        "rear_left",
+        "rear_right"
       ]
     },
     {

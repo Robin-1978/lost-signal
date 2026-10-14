@@ -12,6 +12,9 @@ namespace sim {
 struct AckermannParams {
  double wheel_base_m{2.0};
  double wheel_radius_m{0.1};
+ // Track width (left-right wheel distance): the linkage input is the single
+ // servo angle, but each front wheel needs its own output angle below.
+ double track_width_m{0.58};
  double max_steer_rad{0.6};
  double max_steer_rate_radps{2.5};
  double servo_response_s{0.4};

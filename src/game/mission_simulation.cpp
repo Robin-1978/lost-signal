@@ -169,6 +169,7 @@ void MissionSimulation::build_world() {
     sim::AckermannParams{
       robot_definition_.wheel_base_m,
       robot_definition_.wheel_radius_m,
+      robot_definition_.track_width_m,
       robot_definition_.steering.max_steer_rad,
       robot_definition_.steering.max_steer_rate_radps,
       robot_definition_.steering.servo_response_s,
@@ -657,6 +658,8 @@ void MissionSimulation::apply_motion() {
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
+ snapshot_.control.steer_left_rad = motors.differential ? 0.0 : motors.front_left_steer_rad;
+ snapshot_.control.steer_right_rad = motors.differential ? 0.0 : motors.front_right_steer_rad;
  const double meters_per_revolution = 2.0 * sim::kPi * robot_definition_.wheel_radius_m;
  snapshot_.control.left_target_rpm = snapshot_.control.left_target_mps * 60.0 / meters_per_revolution;
  snapshot_.control.right_target_rpm = snapshot_.control.right_target_mps * 60.0 / meters_per_revolution;

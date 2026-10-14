@@ -69,6 +69,27 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  servo_rate_state_ += (rate_demand - servo_rate_state_) * lag;
  delta_rad_ = clamp(delta_rad_ + servo_rate_state_ * dt, -params_.max_steer_rad, params_.max_steer_rad);
  servo.angle_rad = delta_rad_;
+ // Linkage output (Ackermann condition): both front wheels share the turn
+ // center on the rear-axle line, so the inner wheel steers more.
+ // R = L/tan(delta); inner = atan(L/(R-T/2)), outer = atan(L/(R+T/2)).
+ // Straight (delta ~ 0) keeps both at the servo angle; the denominator guard
+ // can never trip inside steer limits (R_min >> T/2) but stays for safety.
+ {
+  const double track = std::max(0.05, params_.track_width_m);
+  const double base = std::max(0.05, params_.wheel_base_m);
+  if (std::abs(delta_rad_) < 1e-9) {
+   telemetry_.front_left_steer_rad = delta_rad_;
+   telemetry_.front_right_steer_rad = delta_rad_;
+  } else {
+   const double radius = base / std::tan(delta_rad_);
+   const double inner = std::atan(base / std::max(0.05, std::abs(radius) - track / 2.0));
+   const double outer = std::atan(base / (std::abs(radius) + track / 2.0));
+   const double sign = delta_rad_ > 0.0 ? 1.0 : -1.0;
+   // Positive delta is a left turn: the left wheel is inner.
+   telemetry_.front_left_steer_rad = sign * (delta_rad_ > 0.0 ? inner : outer);
+   telemetry_.front_right_steer_rad = sign * (delta_rad_ > 0.0 ? outer : inner);
+  }
+ }
 
  // Drive unit: same shared contact as differential wheels (tire/ground content
  // means the same thing on every chassis). The drive wheel owns its speed

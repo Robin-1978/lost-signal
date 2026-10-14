@@ -72,6 +72,11 @@ struct ChassisTelemetry {
  WheelMotorTelemetry right;
  WheelMotorTelemetry drive;
  ServoTelemetry steer;
+ // Ackermann linkage output: per-front-wheel angles from the single servo
+ // angle via the Ackermann condition (inner > outer). Other chassis leave
+ // them zero; renderers (not physics) consume them.
+ double front_left_steer_rad{0.0};
+ double front_right_steer_rad{0.0};
 };
 
 // Closed-loop wheel-speed tuning from first principles. The linearized wheel

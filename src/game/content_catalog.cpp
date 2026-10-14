@@ -461,6 +461,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   robot.max_yaw_accel_radps2 = drive.at("max_yaw_accel_radps2").get<double>();
   robot.tracked_max_yaw_rate_rads = drive.value("max_yaw_rate_rads", 1.5);
   robot.track_length_m = drive.value("track_length_m", 0.7);
+  robot.track_width_m = drive.value("track_width_m", 0.58);
   robot.steering = {
     steering.at("integral_limit").get<double>(),
     steering.value("max_steer_rad", 0.6),
