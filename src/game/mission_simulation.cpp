@@ -698,6 +698,13 @@ void MissionSimulation::decide_control() {
    record_event("waiting", waiting.str());
   }
   snapshot_.waiting_for_clearance = true;
+  shadow_open_speed_ = 0.0;
+  for (const auto& track : known_tracks) {
+   shadow_open_speed_ =
+     std::max(shadow_open_speed_, std::hypot(track.state.v.x, track.state.v.y));
+  }
+  shadow_open_nearest_ = nearest_actor;
+  update_shadow_episode();
  } else {
   // Arbitration without magic gains: while the avoidance speed is healthy, DWA
   // owns both speed and turn; at creep speed the robot holds the route heading
@@ -718,6 +725,12 @@ void MissionSimulation::decide_control() {
            << "米），洛一停车等待安全窗口。";
    record_event("waiting", waiting.str(), 2.0);
   }
+  shadow_open_speed_ = 0.0;
+  for (const auto& track : known_tracks) {
+   shadow_open_speed_ =
+     std::max(shadow_open_speed_, std::hypot(track.state.v.x, track.state.v.y));
+  }
+  shadow_open_nearest_ = nearest_actor;
   update_shadow_episode();
  }
 }
@@ -927,12 +940,16 @@ void MissionSimulation::update_shadow_episode() {
   shadow_episode_start_s_ = snapshot_.time_s;
   shadow_episode_first_s_ = snapshot_.control.shadow_depart_s;
   shadow_episode_first_reason_ = snapshot_.control.shadow_reason;
+  shadow_episode_entry_speed_ = shadow_open_speed_;
+  shadow_episode_entry_nearest_ = shadow_open_nearest_;
  } else if (!snapshot_.waiting_for_clearance && shadow_episode_open_) {
   shadow_episode_open_ = false;
   ShadowEpisode episode;
   episode.start_s = shadow_episode_start_s_;
   episode.first_pred_s = shadow_episode_first_s_;
   episode.first_reason = shadow_episode_first_reason_;
+  episode.entry_threat_speed_mps = shadow_episode_entry_speed_;
+  episode.entry_nearest_m = shadow_episode_entry_nearest_;
   episode.end_s = snapshot_.time_s;
   episode.last_pred_s = snapshot_.control.shadow_depart_s;
   episode.last_reason = snapshot_.control.shadow_reason;

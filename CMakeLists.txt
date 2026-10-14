@@ -174,6 +174,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  )
  add_test(NAME estimation_error COMMAND test_estimation_error)
 
+ add_executable(test_release_error tests/new/test_release_error.cpp)
+ target_link_libraries(test_release_error PRIVATE lost_signal_game)
+ target_compile_definitions(test_release_error PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME release_error COMMAND test_release_error)
+
  find_package(Python3 COMPONENTS Interpreter QUIET)
  if(Python3_Interpreter_FOUND)
  execute_process(

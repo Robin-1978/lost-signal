@@ -320,6 +320,9 @@ src/client/       3D 探索层/2D 认知层/TGUI 玩家界面（不动）
        估计误差首测（test_estimation_error，零行为改动）：终关近场速度误差
        均值 0.31/max 1.92、位置均值 0.09/max 0.22；当前 30% 扰动≈观测均值，
        max 已钉压力哨兵（0.43 miss）——0.5 门槛覆盖缺口实锤，预算仍未定义。
+       放行误差首测（test_release_error）：85 episode／76 初值 inf，9 有限误差
+       全负（DWA 蠕行释放≠shadow 预测——口径已声明为 shadow-vs-实际偏差）；
+       顺手修了 episode 漏报（无效 DWA 分支此前不调 update，等待可能无记录）。
     c. **综合＋MotionTarget 槽**（横向规划到来时）：等/哪等/绕行一个评价函数，
        安全硬约束先行；DWA-lite 首个入槽。
     Wait-aware planning 细化（外部评审＋我方证据对齐后冻结，同样不提前写代码）：

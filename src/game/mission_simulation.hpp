@@ -41,6 +41,10 @@ struct ShadowEpisode {
  double last_pred_s{-1.0};
  int last_reason{-1};
  double waited_s{0.0};
+ // Gate-B stratification: fastest known threat and nearest clearance at wait
+ // start (max |v| over active tracks, meters and m/s, -1 = uncaptured).
+ double entry_threat_speed_mps{-1.0};
+ double entry_nearest_m{-1.0};
 };
 
 struct ActorSnapshot {
@@ -265,6 +269,12 @@ class MissionSimulation {
  double shadow_episode_start_s_{0.0};
  double shadow_episode_first_s_{-1.0};
  int shadow_episode_first_reason_{-1};
+ double shadow_episode_entry_speed_{-1.0};
+ double shadow_episode_entry_nearest_{-1.0};
+ // Staging for the next episode open (filled in the DWA branch where tracks
+ // are visible, consumed by update_shadow_episode on the rising edge).
+ double shadow_open_speed_{-1.0};
+ double shadow_open_nearest_{-1.0};
  double next_scan_s_{0.0};
  double next_decision_s_{0.0};
  double next_replay_s_{0.0};

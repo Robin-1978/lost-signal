@@ -131,6 +131,8 @@ int main() {
           episode.first_pred_s == std::numeric_limits<double>::infinity()) &&
          (episode.last_pred_s >= 0.0 ||
           episode.last_pred_s == std::numeric_limits<double>::infinity()));
+   CHECK(std::isfinite(episode.entry_threat_speed_mps) && episode.entry_threat_speed_mps >= 0.0);
+   CHECK(std::isfinite(episode.entry_nearest_m));
    ++counts[episode.first_reason];
    std::cerr << "shadow episode: start=" << episode.start_s << " first=" << episode.first_pred_s
              << "(" << sim::depart_reason_name(static_cast<sim::DepartReason>(episode.first_reason))
