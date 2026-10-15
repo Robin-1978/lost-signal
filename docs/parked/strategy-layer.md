@@ -56,6 +56,10 @@ tracker 去假 trio（slot＋birth、bbox extent、CTRV）的重启触发器见
 * 全表 --seeds 3：cross 净空 0.61→0.93、big 0.20→0.54、watch 默认 1/3→2/3、
   hot 车复活；hold 默认 2/3→1/3 经 30 种子核查为相位彩票（去 governor 17/30，
   接线 14/30，本来就 ~50%，3 种子 2/3 是运气）。
+* 外部评审对照（2026-10，三条全过）：抖动有 0.5s 迟滞（kReleaseClears，
+  test_entry_governor 钉 25 帧才放）；DWA 采样窗即被钳（v_max 就是 clamp 后的
+  speed_cap，采样不出超限轨迹，不存在事后刹不住）；措辞采纳评审版——governor
+  只输出 HOLD_AT＋停止点语义约束，sqrt 钳速是消费侧（mission）的解释，不在行为层。
 * 已知局限：威胁长期 stale 时 governor 静默释放后不再二度咬住（seed 1 实录：
   41s 咬住一次，71s 等到 73.3s 撞）——根子在感知保鲜，不在刹车逻辑，
   这正是 tracker trio 仍 park 的理由，不单开。
