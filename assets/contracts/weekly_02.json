@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "week": 2,
+  "seed": 20261015,
+  "jobs": [
+    {
+      "id": "w02-1",
+      "level": "scrub_climb",
+      "cargo": "parts",
+      "axis": "safe",
+      "rep": 3,
+      "blurb": "把 parts（机器零件）送过scrub_climb。货怕晃，净空就是一切，慢就是快。"
+    },
+    {
+      "id": "w02-2",
+      "level": "lost_signal",
+      "cargo": "water",
+      "axis": "fast",
+      "rep": 2,
+      "blurb": "把 water（净水）送过lost_signal。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
+    },
+    {
+      "id": "w02-3",
+      "level": "long_track",
+      "cargo": "mail",
+      "axis": "efficient",
+      "rep": 4,
+      "blurb": "把 mail（镇民邮件）送过long_track。电要省着花，镇发电站的老王只认能耗账。"
+    },
+    {
+      "id": "w02-4",
+      "level": "motor_trial",
+      "cargo": "medkit",
+      "axis": "safe",
+      "rep": 1,
+      "blurb": "把 medkit（医疗包）送过motor_trial。货怕晃，净空就是一切，慢就是快。"
+    },
+    {
+      "id": "w02-5",
+      "level": "rally",
+      "cargo": "grain",
+      "axis": "fast",
+      "rep": 1,
+      "blurb": "把 grain（种子粮）送过rally。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
+    }
+  ]
+}
