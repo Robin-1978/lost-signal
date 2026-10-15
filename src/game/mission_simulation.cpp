@@ -405,6 +405,9 @@ void MissionSimulation::scan_environment() {
  snapshot_.lidar_hits.clear();
  std::vector<int> dynamic_hit_count(actual_actors_.size(), 0);
  dynamic_centroid_.assign(actual_actors_.size(), {0.0, 0.0});
+ // Parity tracks (read-only): self-built association votes per ray endpoint
+ // against the simulator-fed cheat below. Counting only, never driving.
+ const auto parity_tracks = dynamic_obstacle_map_.active_tracks(snapshot_.time_s, track_max_age_s());
  const bool first_static_detection = !snapshot_.static_obstacle_detected;
  for (int index = 0; index < scan.n_rays; ++index) {
   if (!scan.hit[index]) {
@@ -421,6 +424,20 @@ void MissionSimulation::scan_environment() {
   snapshot_.lidar_hits.push_back(endpoint);
   const int dynamic_index = scan.dynamic_hit[index];
   if (dynamic_index >= 0 && static_cast<std::size_t>(dynamic_index) < actual_actors_.size()) {
+   // Nearest-neighbor self-association: closest live track within the gate.
+   // Gate 1.0m covers one scan period of travel plus estimate lag; anything
+   // farther is a new-track candidate, never a forced match.
+   int self_index = -1;
+   double best = 1.0;
+   for (const auto& track : parity_tracks) {
+    const double dist = distance(endpoint, track.state.p);
+    if (dist < best) {
+     best = dist;
+     self_index = static_cast<int>(track.object_id);
+    }
+   }
+   ++result_.assoc_total;
+   if (self_index == dynamic_index) ++result_.assoc_agree;
    ++dynamic_hit_count[dynamic_index];
    dynamic_centroid_[dynamic_index].x += endpoint.x;
    dynamic_centroid_[dynamic_index].y += endpoint.y;

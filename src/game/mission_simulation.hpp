@@ -160,6 +160,10 @@ struct MissionResult {
  double odometry_error_m{0.0};
  int collisions{0};
  int pedestrian_contacts{0};
+ // Association parity (evidence, not behavior): self-associated ray hits vs
+ // simulator-fed dynamic_hit. Agree count decides whether the cheat can go.
+ long assoc_agree{0};
+ long assoc_total{0};
  int slip_events{0};
  int astar_expanded{0};
  int local_decisions{0};
