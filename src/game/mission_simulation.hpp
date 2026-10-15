@@ -1,6 +1,7 @@
 #pragma once
 
 #include "content_catalog.hpp"
+#include "algo/behavior_registry.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "algo/dynamic_obstacle_map.hpp"
 #include "algo/dwa.hpp"
@@ -274,10 +275,10 @@ class MissionSimulation {
  struct SimAgent {
   std::string id;
   std::string kind{"patrol"};
-  sim::Patrol patrol;
-  sim::Wander wander;
+  // Neutral behavior inputs (translated once from the actor registry entry);
+  // the registry evaluates them, mission never branches on kinds.
+  sim::ActorBehaviorParams behavior;
   bool social{false};
-  std::vector<double> waits;
   std::string visual_model;
   double visual_ref_radius_m{0.45};
   double t0{0.0};

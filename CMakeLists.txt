@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(lost_signal_sim STATIC
  src/hw/chassis/ackermann.cpp
  src/algo/astar.cpp
+ src/algo/behavior_registry.cpp
  src/hw/chassis/diff_drive.cpp
  src/algo/dynamic_obstacle_map.cpp
  src/algo/dwa.cpp
@@ -128,6 +129,17 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_dwell_behavior tests/new/test_dwell_behavior.cpp)
  target_link_libraries(test_dwell_behavior PRIVATE lost_signal_sim)
  add_test(NAME dwell_behavior COMMAND test_dwell_behavior)
+
+ add_executable(test_behavior_registry tests/new/test_behavior_registry.cpp)
+ target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim)
+ add_test(NAME behavior_registry COMMAND test_behavior_registry)
+
+ add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
+ target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)
+ target_compile_definitions(test_summon_recharge PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME summon_recharge COMMAND test_summon_recharge)
 
 
  add_executable(test_model_validation tests/new/test_model_validation.cpp)

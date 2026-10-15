@@ -214,6 +214,33 @@ C5[components/*.json]
 | `src/client` | raylib 世界表现、TGUI 配置与复盘流程 | 判定任务结果 |
 | `tests/new` | 内容加载、推荐/默认配置、确定性与回放回归 | 依赖人工判断画面正确性 |
 
+### 组件化架构（可替换增减）
+
+本仿真的策略：**一切可变能力都是组件**——策略算法、硬件模拟、内容数据走同一套增减协议，
+没有写死的分支。三个 seam 已经落地，一个在建：
+
+| Seam | 位置 | 增一个 | 删一个 |  hires  |
+|---|---|---|---|---|
+| 底盘硬件 | `ChassisFactory`（type 字符串→creator） | 实现 `ChassisModel`＋注册一行＋robot JSON 一行 | 删 creator 行＋JSON（引用处门禁大声失败） | 玩家包 overlay 已证明 |
+| 传感器/执行器 HAL | `SimLidar` 等 HAL 接口（`hal.hpp`：未来 ROS/硬件后端直插） | 实现接口＋构造处切换 | 同上 | `test_dynamic_perception` 的 HAL 一致性契约 |
+| 内容数据 | JSON（关卡/地图/组件/文案/材质/模型） | 加文件（schema＋引用门禁自动覆盖） | 删文件（引用门禁大声失败） | 地图编辑器存回 |
+| Actor 行为 | `BehaviorRegistry`（type 字符串→纯函数求值器） | 纯函数＋注册一行＋map JSON type 枚举一项 | 删注册行（未知 type 构造期抛错） | 本节＋单测 |
+
+增减协议（四条对所有 seam 一样）：
+
+1. **字符串分发，禁止 if/else 链**：新增只加注册，不改分发点；未知字符串构造期抛错，永不静默 fallback。
+2. **纯函数优先**：行为求值器是 `(params, t) -> state` 纯函数（ patrol/wander/dwell 已是）；
+   有状态滤波（track KF）显式持有状态对象，不藏全局。
+3. **中性参数**：registry 只收中性数（`ActorBehaviorParams`），不收 game 类型——
+   `hw` 不依赖 `game`，`algo` 不依赖关卡（照底盘 `ChassisBuildParams` 的规矩）。
+4. **显式注册**：静态自注册已试过并回退（archive linker 会丢未引用目标文件，
+   平台看运气）；加一种＝实现文件＋`register_builtin_*` 里一行。
+
+分层（sim 里不放策略）：`sim/hw` 管世界真值（物理＋传感），`algo` 管纯算法，
+`game` 管装配与裁决，策略行为（wait-spot＋entry-timing＋路权）是 robot 侧独立模块，
+消费 tracks＋地图＋路线、向 DWA 发机动约束（虚拟墙语义）。影子评估保持只观测——
+消费接线是 Phase-1/2 门事项，不在本节施工范围。
+
 ### 运行边界
 
 游戏逻辑和表现位于同一个 C++ 工程和进程，不使用跨语言绑定。`MissionSimulation` 以 0.02 秒固定步长推进并输出只读快照；`SceneRenderer3D`、`WorldRenderer` 和 `GameUi` 读取位置、路线、感知和意图。倍速只改变一帧推进多少个固定步，不改变结果。地图单位统一为米；仿真 XY 平面分别映射到 3D 的 X 和负 Z，仿真 Z 轴映射到 3D 的 Y 轴。

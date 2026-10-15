@@ -1,5 +1,6 @@
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/caps.hpp"
+#include "hw/chassis/chassis_factory.hpp"
 #include "hw/chassis/tracked.hpp"
 #include "algo/follow.hpp"
 #include "algo/pid.hpp"
@@ -220,6 +221,31 @@ int main() {
   // Beyond steer limits the demand says infeasible instead of faking it.
   const auto clamped = sim::steer_for_twist(3.0, 1.0, 0.62, 0.55);
   CHECK(!clamped.feasible);
+ }
+ // Factory contract: every builtin builds, unknown types throw loudly
+ // (content typos die at construction, never silent fallback).
+ {
+  sim::ChassisFactory::register_builtin_chassis();
+  const sim::ChassisBuildParams params;
+  const sim::WheelPidGains gains = sim::tune_wheel_pid(3.0, 54.0, 3.0, 1.0);
+  for (const auto* type : {"differential", "ackermann", "tracked"}) {
+   auto built = sim::ChassisFactory::create(type, params, gains);
+   CHECK(built.model != nullptr);
+  }
+  bool threw = false;
+  try {
+   sim::ChassisFactory::create("hoverboard", params, gains);
+  } catch (const std::runtime_error&) {
+   threw = true;
+  }
+  CHECK(threw);
+  threw = false;
+  try {
+   sim::ChassisFactory::create("Differential", params, gains);
+  } catch (const std::runtime_error&) {
+   threw = true;
+  }
+  CHECK(threw);
  }
  return 0;
 }

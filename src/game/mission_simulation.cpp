@@ -1,6 +1,7 @@
 #include "mission_simulation.hpp"
 
 #include "algo/astar.hpp"
+#include "algo/behavior_registry.hpp"
 #include "hw/chassis/ackermann.hpp"  // yaw_for_steer only (kinematics pair, interface use)
 #include "hw/chassis/chassis_factory.hpp"
 #include "algo/slip_detect.hpp"
@@ -184,6 +185,7 @@ void MissionSimulation::build_world() {
  // archive linkers drop unreferenced self-registering objects, so static
  // registrars are platform luck. Custom types: register_creator + JSON type.
  sim::ChassisFactory::register_builtin_chassis();
+ sim::BehaviorRegistry::register_builtin_behaviors();
  sim::BuiltChassis built =
    sim::ChassisFactory::create(robot_definition_.drive_type, chassis_params, wheel_gains);
  chassis_ = std::move(built.model);
@@ -216,16 +218,13 @@ void MissionSimulation::build_world() {
   agent.id = actor.id;
   agent.kind = actor.kind;
   agent.social = actor.collision_social;
-  agent.waits = actor.waits;
+  agent.behavior.points.clear();
+  for (const auto& point : actor.path) agent.behavior.points.push_back(point);
+  agent.behavior.waits = actor.waits;
+  agent.behavior.speed_mps = actor.speed_mps;
+  agent.behavior.radius_m = actor.radius_m;
   agent.visual_model = actor.visual_model;
   agent.visual_ref_radius_m = actor.visual_ref_radius_m;
-  if (actor.kind == "wander") {
-   for (const auto& point : actor.path) agent.wander.points.push_back(point);
-   agent.wander.speed = actor.speed_mps;
-   agent.wander.radius = actor.radius_m;
-  } else {
-   agent.patrol = {actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m};
-  }
   if (actor.dormant_until_summoned) {
    dormant_agents_.push_back(agent);
   } else {
@@ -368,18 +367,10 @@ void MissionSimulation::update_actors() {
  actual_actors_.assign(agents_.size(), {});
  for (std::size_t index = 0; index < agents_.size(); ++index) {
   const auto& agent = agents_[index];
-  sim::DynState state;
-  if (agent.kind == "dwell") {
-   const sim::Dwell dwell{agent.wander.points, agent.waits, agent.wander.speed,
-                          agent.wander.radius};
-   const auto dwelled = sim::dwell_state(dwell, snapshot_.time_s - agent.t0);
-   state = {dwelled.p, dwelled.v, dwelled.radius};
-  } else if (agent.kind == "wander") {
-   const auto wandered = sim::wander_state(agent.wander, snapshot_.time_s - agent.t0);
-   state = {wandered.p, wandered.v, wandered.radius};
-  } else {
-   state = sim::patrol_state(agent.patrol, snapshot_.time_s - agent.t0);
-  }
+  // Behavior comes from the registry (string-dispatched pure functions);
+  // adding a kind touches the registry, never this loop.
+  const sim::DynState state =
+    sim::BehaviorRegistry::evaluate(agent.kind, agent.behavior, snapshot_.time_s - agent.t0);
   actual_actors_[index] = state;
   snapshot_.actors.push_back({
     agent.id,
