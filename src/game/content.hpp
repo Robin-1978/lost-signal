@@ -66,10 +66,14 @@ struct SurfaceDefinition {
 
 struct ActorDefinition {
  std::string id;
- // Vehicle patrols ping-pong; pedestrian wanders loop. Kind drives collision
- // semantics (pedestrian contact never fails) and rendering (no forklifts
- // for people). Parsed strictly; unknown kinds fail loudly.
+ // Motion pattern (ping-pong patrol vs waypoint-loop wander), collision
+ // semantics (fatal ends the run, social only eats clearance), and visual
+ // (model path + the reference radius it was authored for) are all content:
+ // the framework interprets, never branches on names.
  std::string kind{"patrol"};
+ bool collision_social{false};
+ std::string visual_model;
+ double visual_ref_radius_m{0.45};
  std::vector<sim::Vec2> path;
  double speed_mps{0.0};
  double radius_m{0.0};

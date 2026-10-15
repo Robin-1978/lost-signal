@@ -218,7 +218,12 @@
       "radius_m": 0.45,
       "active_in": [
         "big_freight"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     },
     {
       "id": "big_cart_b",
@@ -237,7 +242,12 @@
       "radius_m": 0.45,
       "active_in": [
         "big_freight"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     },
     {
       "id": "big_ped_lane",
@@ -264,7 +274,12 @@
       "radius_m": 0.25,
       "active_in": [
         "big_freight"
-      ]
+      ],
+      "collision": "social",
+      "visual": {
+        "model": "models/actors/worker.glb",
+        "ref_radius_m": 0.25
+      }
     },
     {
       "id": "big_ped_plaza",
@@ -291,7 +306,12 @@
       "radius_m": 0.25,
       "active_in": [
         "big_freight"
-      ]
+      ],
+      "collision": "social",
+      "visual": {
+        "model": "models/actors/worker.glb",
+        "ref_radius_m": 0.25
+      }
     },
     {
       "id": "big_ped_market",
@@ -318,7 +338,12 @@
       "radius_m": 0.25,
       "active_in": [
         "big_freight"
-      ]
+      ],
+      "collision": "social",
+      "visual": {
+        "model": "models/actors/worker.glb",
+        "ref_radius_m": 0.25
+      }
     }
   ]
 }

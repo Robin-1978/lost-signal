@@ -156,7 +156,12 @@
         "signal_echo",
         "signal_hold",
         "signal_watch"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     },
     {
       "id": "forklift_b",
@@ -175,7 +180,12 @@
       "radius_m": 0.45,
       "active_in": [
         "signal_cross"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     }
   ]
 }

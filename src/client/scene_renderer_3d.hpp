@@ -36,8 +36,7 @@ class SceneRenderer3D {
  void draw_surface(const game::SurfaceDefinition& surface) const;
  void draw_markers(const game::MissionSimulation& mission) const;
  void draw_robot(const game::MissionSimulation& mission) const;
- void draw_forklift(const game::ActorSnapshot& actor, bool waiting) const;
- void draw_pedestrian(const game::ActorSnapshot& actor) const;
+ void draw_actor(const game::ActorSnapshot& actor, bool waiting) const;
  void draw_environment(const game::MissionSimulation& mission, const game::SceneDefinition& scene) const;
  void draw_accents(const game::MissionSimulation& mission) const;
  void draw_box(Vector3 position, Vector3 size, float yaw_degrees, Color color) const;

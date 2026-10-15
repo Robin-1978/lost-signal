@@ -189,7 +189,9 @@
         "path",
         "speed_mps",
         "radius_m",
-        "active_in"
+        "active_in",
+        "collision",
+        "visual"
       ],
       "properties": {
         "id": {
@@ -221,6 +223,30 @@
         },
         "dormant_until_summoned": {
           "type": "boolean"
+        },
+        "collision": {
+          "enum": [
+            "fatal",
+            "social"
+          ]
+        },
+        "visual": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model",
+            "ref_radius_m"
+          ],
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ref_radius_m": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
         }
       }
     }

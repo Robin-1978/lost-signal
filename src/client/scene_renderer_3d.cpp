@@ -202,10 +202,13 @@ SceneRenderer3D::SceneRenderer3D(const std::filesystem::path& assets_root,
   for (const auto& part : robot.base_parts)
    load_model(part.visual.model_3d);
  }
- // Actor kit (content models, code only poses them): forklifts and road
- // workers used to be procedural boxes; the generator owns the look now.
- load_model("models/actors/forklift.glb");
- load_model("models/actors/worker.glb");
+ // Actor visuals come from the map actors' self-descriptions (content names
+ // the model file); code never names one. Everything loads up front so a
+ // missing file fails here at startup, not mid-run on first sighting.
+ for (const auto& [map_id, map_value] : catalog_.maps()) {
+  (void)map_id;
+  for (const auto& actor : map_value.actors) load_model(actor.visual_model);
+ }
  for (const auto& [id, component] : catalog_.components()) {
   (void)id;
   load_model(component.visual.model_3d);
@@ -603,12 +606,9 @@ void SceneRenderer3D::draw_scene(const game::MissionSimulation& mission) const {
    draw_shelf(obstacle);
  }
  draw_markers(mission);
+ (void)scene;
  for (const auto& actor : mission.snapshot().actors) {
-  if (actor.pedestrian) {
-   draw_pedestrian(actor);
-  } else {
-   draw_forklift(actor, mission.snapshot().waiting_for_clearance);
-  }
+  draw_actor(actor, mission.snapshot().waiting_for_clearance);
  }
  draw_robot(mission);
 }
@@ -843,27 +843,17 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
 // Pedestrian stand-in: two stacked boxes (torso + head), teal so nobody reads
 // it as a vehicle. Proportions scale with the actor's own radius; a proper
 // character model replaces this, never new physics.
-void SceneRenderer3D::draw_pedestrian(const game::ActorSnapshot& actor) const {
- // Content model, code only poses it: reference geometry authored for
- // r=0.25, scaled linearly from the actor's own radius (content data).
- const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
+void SceneRenderer3D::draw_actor(const game::ActorSnapshot& actor, bool waiting) const {
+ // One function for every agent: pose the model its registry entry names,
+ // scaled linearly from the reference radius it was authored for (content
+ // data). The waiting beacon stays procedural (it blinks; models don't) and
+ // marks yielding-to-traffic for any agent kind.
  const sim::Vec2 position = actor.position;
- const float s = static_cast<float>(actor.radius_m) / 0.25f;
- if (const Model* worker = model("models/actors/worker.glb")) {
-  DrawModelEx(*worker, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw,
-              {s, s, s}, WHITE);
- }
-}
-
-void SceneRenderer3D::draw_forklift(const game::ActorSnapshot& actor, bool waiting) const {
- // Content model, code only poses it: reference geometry authored for
- // r=0.45, scaled linearly from the actor's own radius (content data).
- // The waiting beacon stays procedural (it blinks; models don't).
+ const float s = static_cast<float>(actor.radius_m) /
+                 std::max(1e-6f, static_cast<float>(actor.visual_ref_radius_m));
  const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
- const sim::Vec2 position = actor.position;
- const float s = static_cast<float>(actor.radius_m) / 0.45f;
- if (const Model* forklift = model("models/actors/forklift.glb")) {
-  DrawModelEx(*forklift, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw,
+ if (const Model* body = model(actor.visual_model)) {
+  DrawModelEx(*body, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw,
               {s, s, s}, WHITE);
  }
  if (waiting) {

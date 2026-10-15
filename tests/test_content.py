@@ -83,6 +83,12 @@ class ContentValidationTests(unittest.TestCase):
                 for part in prefab.get("parts", []):
                     if part.get("model_3d"):
                         referenced.add(part["model_3d"])
+        for map_path in self.assets.glob("maps/*.json"):
+            game_map = json.loads(map_path.read_text(encoding="utf-8"))
+            for actor in game_map.get("actors", []):
+                # Actor self-description: visual model must resolve (the
+                # framework poses it; nothing is hardcoded in C++).
+                referenced.add(actor["visual"]["model"])
         for component_path in self.assets.glob("components/*.json"):
             try:
                 doc = json.loads(component_path.read_text(encoding="utf-8"))

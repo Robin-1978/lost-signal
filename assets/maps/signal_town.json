@@ -146,7 +146,12 @@
       "radius_m": 0.45,
       "active_in": [
         "town_freight"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     },
     {
       "id": "town_cart_b",
@@ -165,7 +170,12 @@
       "radius_m": 0.45,
       "active_in": [
         "town_freight"
-      ]
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "ref_radius_m": 0.45
+      }
     }
   ]
 }

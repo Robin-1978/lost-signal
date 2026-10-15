@@ -313,6 +313,17 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    actor.radius_m = item.at("radius_m").get<double>();
    actor.active_in = item.at("active_in").get<std::vector<std::string>>();
    actor.dormant_until_summoned = item.value("dormant_until_summoned", false);
+   const std::string collision = item.at("collision").get<std::string>();
+   if (collision != "fatal" && collision != "social") {
+    throw ContentError(path.string() + ": unknown actor collision " + collision);
+   }
+   actor.collision_social = (collision == "social");
+   const auto& visual = item.at("visual");
+   actor.visual_model = visual.at("model").get<std::string>();
+   actor.visual_ref_radius_m = visual.at("ref_radius_m").get<double>();
+   if (!std::filesystem::is_regular_file(catalog.root_ / actor.visual_model)) {
+    throw ContentError(path.string() + ": missing actor model '" + actor.visual_model + "'");
+   }
    map.actors.push_back(std::move(actor));
   }
   insert_unique(catalog.maps_, std::move(map), path);

@@ -60,11 +60,19 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   }
   nlohmann::ordered_json item;
   item["id"] = actor.id;
-  item["type"] = "patrol";
+  item["type"] = actor.kind;
   item["path"] = std::move(path);
   item["speed_mps"] = actor.speed_mps;
   item["radius_m"] = actor.radius_m;
   item["active_in"] = strings(actor.active_in);
+  item["collision"] = actor.collision_social ? "social" : "fatal";
+  nlohmann::ordered_json visual;
+  visual["model"] = actor.visual_model;
+  visual["ref_radius_m"] = actor.visual_ref_radius_m;
+  item["visual"] = std::move(visual);
+  if (actor.dormant_until_summoned) {
+   item["dormant_until_summoned"] = true;
+  }
   actors.push_back(std::move(item));
  }
  nlohmann::ordered_json root;

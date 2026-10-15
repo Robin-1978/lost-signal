@@ -206,48 +206,32 @@ void MissionSimulation::build_world() {
                                            robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;
 
- patrols_.clear();
- patrol_ids_.clear();
- patrol_t0_.clear();
- dormant_patrols_.clear();
- dormant_ids_.clear();
- wanders_.clear();
- wander_ids_.clear();
- wander_t0_.clear();
- dormant_wanders_.clear();
- dormant_wander_ids_.clear();
- actual_pedestrian_.clear();
+ agents_.clear();
+ dormant_agents_.clear();
  for (const auto& actor : map_definition_.actors) {
   if (!active_in_level(actor.active_in, level_id_) || actor.path.size() < 2) {
    continue;
   }
-  const bool ped = actor.kind == "wander";
-  if (ped) {
-   sim::Wander wander;
-   for (const auto& point : actor.path) wander.points.push_back(point);
-   wander.speed = actor.speed_mps;
-   wander.radius = actor.radius_m;
-   if (actor.dormant_until_summoned) {
-    dormant_wanders_.push_back(wander);
-    dormant_wander_ids_.push_back(actor.id);
-    continue;
-   }
-   wanders_.push_back(wander);
-   wander_ids_.push_back(actor.id);
-   wander_t0_.push_back(0.0);
-   continue;
+  SimAgent agent;
+  agent.id = actor.id;
+  agent.kind = actor.kind;
+  agent.social = actor.collision_social;
+  agent.visual_model = actor.visual_model;
+  agent.visual_ref_radius_m = actor.visual_ref_radius_m;
+  if (actor.kind == "wander") {
+   for (const auto& point : actor.path) agent.wander.points.push_back(point);
+   agent.wander.speed = actor.speed_mps;
+   agent.wander.radius = actor.radius_m;
+  } else {
+   agent.patrol = {actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m};
   }
-  const sim::Patrol patrol{actor.path.front(), actor.path.back(), actor.speed_mps, actor.radius_m};
   if (actor.dormant_until_summoned) {
-   dormant_patrols_.push_back(patrol);
-   dormant_ids_.push_back(actor.id);
-   continue;
+   dormant_agents_.push_back(agent);
+  } else {
+   agents_.push_back(agent);
   }
-  patrols_.push_back(patrol);
-  patrol_ids_.push_back(actor.id);
-  patrol_t0_.push_back(0.0);
  }
- actual_actors_.assign(patrols_.size(), {});
+ actual_actors_.assign(agents_.size(), {});
 }
 
 void MissionSimulation::plan_route() {
@@ -347,24 +331,12 @@ void MissionSimulation::step() {
     // encounter reproduces from this moment on every same-seed run.
     ++snapshot_.goals_reached;
     bool woke = false;
-    for (std::size_t index = 0; index < dormant_ids_.size(); ++index) {
-     if (dormant_ids_[index] == step.summon_actor) {
-      patrols_.push_back(dormant_patrols_[index]);
-      patrol_ids_.push_back(dormant_ids_[index]);
-      patrol_t0_.push_back(snapshot_.time_s);
-      dormant_patrols_.erase(dormant_patrols_.begin() + (std::ptrdiff_t)index);
-      dormant_ids_.erase(dormant_ids_.begin() + (std::ptrdiff_t)index);
-      woke = true;
-      break;
-     }
-    }
-    for (std::size_t index = 0; !woke && index < dormant_wander_ids_.size(); ++index) {
-     if (dormant_wander_ids_[index] == step.summon_actor) {
-      wanders_.push_back(dormant_wanders_[index]);
-      wander_ids_.push_back(dormant_wander_ids_[index]);
-      wander_t0_.push_back(snapshot_.time_s);
-      dormant_wanders_.erase(dormant_wanders_.begin() + (std::ptrdiff_t)index);
-      dormant_wander_ids_.erase(dormant_wander_ids_.begin() + (std::ptrdiff_t)index);
+    for (std::size_t index = 0; index < dormant_agents_.size(); ++index) {
+     if (dormant_agents_[index].id == step.summon_actor) {
+      SimAgent agent = dormant_agents_[index];
+      agent.t0 = snapshot_.time_s;
+      agents_.push_back(agent);
+      dormant_agents_.erase(dormant_agents_.begin() + (std::ptrdiff_t)index);
       woke = true;
       break;
      }
@@ -392,32 +364,25 @@ void MissionSimulation::update_actors() {
  // Rebuilt every step (agents are few; summoning changes the count mid-run,
  // so index-stable incremental writes would misalign after a summon).
  snapshot_.actors.clear();
- actual_actors_.assign(patrols_.size() + wanders_.size(), {});
- actual_pedestrian_.assign(patrols_.size() + wanders_.size(), false);
- for (std::size_t index = 0; index < patrols_.size(); ++index) {
-  actual_actors_[index] =
-      sim::patrol_state(patrols_[index], snapshot_.time_s - patrol_t0_[index]);
+ actual_actors_.assign(agents_.size(), {});
+ for (std::size_t index = 0; index < agents_.size(); ++index) {
+  const auto& agent = agents_[index];
+  sim::DynState state;
+  if (agent.kind == "wander") {
+   const auto wandered = sim::wander_state(agent.wander, snapshot_.time_s - agent.t0);
+   state = {wandered.p, wandered.v, wandered.radius};
+  } else {
+   state = sim::patrol_state(agent.patrol, snapshot_.time_s - agent.t0);
+  }
+  actual_actors_[index] = state;
   snapshot_.actors.push_back({
-    patrol_ids_[index],
-    actual_actors_[index].p,
-    actual_actors_[index].v,
-    actual_actors_[index].radius,
-    false,
-    false,
-  });
- }
- for (std::size_t w = 0; w < wanders_.size(); ++w) {
-  const std::size_t index = patrols_.size() + w;
-  const auto state = sim::wander_state(wanders_[w], snapshot_.time_s - wander_t0_[w]);
-  actual_actors_[index] = {state.p, state.v, state.radius};
-  actual_pedestrian_[index] = true;
-  snapshot_.actors.push_back({
-    wander_ids_[w],
+    agent.id,
     state.p,
     state.v,
     state.radius,
     false,
-    true,
+    agent.visual_model,
+    agent.visual_ref_radius_m,
   });
  }
  refresh_dynamic_obstacles();
@@ -527,19 +492,13 @@ void MissionSimulation::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
  const auto tracks = dynamic_obstacle_map_.active_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
-  // Tracks are indexed over ALL agents (patrols then wanders); an old guard
-  // dropped every non-patrol track here, so pedestrians were tracked but
-  // never displayed. Map the id back to its agent for name and kind.
-  const bool ped = track.object_id >= patrol_ids_.size();
-  const std::size_t wander_index = ped ? track.object_id - patrol_ids_.size() : 0;
-  if (ped && wander_index >= wander_ids_.size()) continue;
+  if (track.object_id >= agents_.size()) continue;
   snapshot_.dynamic_obstacles.push_back({
-    ped ? wander_ids_[wander_index] : patrol_ids_[track.object_id],
+    agents_[track.object_id].id,
     track.state.p,
     track.state.v,
     track.state.radius,
     track.last_observed_s,
-    ped,
   });
   if (track.object_id < snapshot_.actors.size()) {
    snapshot_.actors[track.object_id].detected = true;
@@ -891,8 +850,8 @@ void MissionSimulation::apply_motion() {
    result_.min_dynamic_robot_position = candidate_position;
    result_.min_dynamic_actor_position = actor.p;
   }
-  const bool ped = index < actual_pedestrian_.size() && actual_pedestrian_[index];
-  if (clearance < 0.0 && ped) {
+  const bool social = index < agents_.size() && agents_[index].social;
+  if (clearance < 0.0 && social) {
    // Social contact: proximity already ate the clearance score above; a
    // pedestrian never ends the run. Counted as evidence, not failure.
    ++result_.pedestrian_contacts;

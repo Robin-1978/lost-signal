@@ -624,22 +624,10 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
                    obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
  };
 
+ // One marker language for every tracked agent (ring + heading + horizon):
+ // size carries the class (pedestrian rings read smaller because their
+ // radii are smaller, content data). No per-kind glyphs in the framework.
  for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
-  if (obstacle.pedestrian) {
-   // Tracked pedestrian: a person, never a forklift. Smaller read than
-   // vehicles (head + hi-vis torso), same alert language (ring + heading).
-   const auto estimated = world_to_screen(shown_at(obstacle));
-   const float prad = clampf(static_cast<float>(obstacle.radius_m) * scale_, 13.0f, 20.0f);
-   const float pangle = static_cast<float>(
-     std::atan2(-obstacle.estimated_velocity.y, obstacle.estimated_velocity.x) * 180.0 / sim::kPi);
-   DrawRing(estimated, prad * 0.96f, prad, 0, 360, 32, Fade(kCyan, 0.72f));
-   DrawRectanglePro({estimated.x, estimated.y + prad * 0.1f, prad * 0.9f, prad * 1.1f},
-                    {prad * 0.45f, prad * 0.55f}, pangle, {232, 122, 31, 255});
-   DrawCircleV(polar(estimated, prad * 0.85f, -pangle * static_cast<float>(sim::kPi) / 180.0f),
-               prad * 0.30f, {235, 228, 210, 255});
-   draw_soft_disc(estimated, prad + 14, kDanger);
-   continue;
-  }
   // Display extrapolation (see shown_at above): the track state goes stale
   // between scans (0.2s at 5Hz reads as teleporting). Propagating by its own
   // velocity to frame time is the optimal display estimate, sim untouched.

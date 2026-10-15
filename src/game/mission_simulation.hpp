@@ -54,9 +54,10 @@ struct ActorSnapshot {
  sim::Vec2 velocity;
  double radius_m{0.0};
  bool detected{false};
- // Renderers draw vehicles and pedestrians differently (no forklifts for
- // people); set from the agent kind, never inferred from size.
- bool pedestrian{false};
+ // Visual self-description copied from the actor registry (content): the
+ // renderer poses this model, never branches on agent kinds.
+ std::string visual_model;
+ double visual_ref_radius_m{0.45};
 };
 
 struct DynamicObstacleSnapshot {
@@ -65,9 +66,6 @@ struct DynamicObstacleSnapshot {
  sim::Vec2 estimated_velocity;
  double radius_m{0.0};
  double last_observed_s{0.0};
- // Display kind from the agent registry (tracked pedestrians draw as people,
- // never forklifts). Set at refresh from actual_kinds_, never inferred.
- bool pedestrian{false};
 };
 
 struct LocalTrajectorySnapshot {
@@ -264,25 +262,23 @@ class MissionSimulation {
  sim::Rng imu_rng_;
  sim::GuideState guide_state_;
  std::vector<sim::Vec2> planned_path_;
- std::vector<sim::Patrol> patrols_;
- std::vector<std::string> patrol_ids_;
- // Per-patrol clock offset: active-from-start patrols run on wall-clock (0);
- // summoned patrols run on (now - t0) so the encounter reproduces from the
- // summon moment. Same index as patrols_.
- std::vector<double> patrol_t0_;
- // Pedestrian wanders: same pattern as patrols (clock offset + dormant
- // summoning). Active agents read patrols-then-wanders; actual_pedestrian_
- // parallels actual_actors_ (true = social agent: eats clearance, never fails).
- std::vector<sim::Wander> wanders_;
- std::vector<std::string> wander_ids_;
- std::vector<double> wander_t0_;
- std::vector<sim::Wander> dormant_wanders_;
- std::vector<std::string> dormant_wander_ids_;
- std::vector<bool> actual_pedestrian_;
- // Dormant until a "summon" goal names them: invisible, non-collidable,
- // unplannable. Parallel to patrols_ once summoned.
- std::vector<sim::Patrol> dormant_patrols_;
- std::vector<std::string> dormant_ids_;
+ // One agent list for every behavior (no per-kind parallel arrays): kind
+ // dispatches ping-pong vs loop evaluation; collision semantics and visuals
+ // ride along from the actor's self-description. Dormant agents wait in
+ // dormant_agents_ (invisible, non-collidable) until a summon goal moves one
+ // here with t0 = now, so the encounter reproduces from that moment.
+ struct SimAgent {
+  std::string id;
+  std::string kind{"patrol"};
+  sim::Patrol patrol;
+  sim::Wander wander;
+  bool social{false};
+  std::string visual_model;
+  double visual_ref_radius_m{0.45};
+  double t0{0.0};
+ };
+ std::vector<SimAgent> agents_;
+ std::vector<SimAgent> dormant_agents_;
  std::vector<sim::DynState> actual_actors_;
  std::vector<sim::Vec2> dynamic_centroid_;
  std::vector<int> confirm_count_;
