@@ -241,6 +241,14 @@ C5[components/*.json]
 消费 tracks＋地图＋路线、向 DWA 发机动约束（虚拟墙语义）。影子评估保持只观测——
 消费接线是 Phase-1/2 门事项，不在本节施工范围。
 
+三层决策（2026-10 定稿，不再讨论形状，只走门）：
+* Mission：全局路线 where（A*，已有，不动）。
+* Behavior：robot 侧独立模块，只输出 HOLD_AT/PROCEED/限速窗，不管 how。
+* Local：DWA/MPC 消费约束做轨迹优化，约束即虚拟墙，不许打分微调。
+安全监视独立于策略（碰撞环最终仲裁）。Phase-1 只观测（Observed* 词表，
+mission/DWA 零消费）；Phase-2 接线等三门（旗舰双关 pinned 绿＋30 种子＋
+速度 RMSE）＋点名，不单开。reactive actors 各需自家门。
+
 ### 运行边界
 
 游戏逻辑和表现位于同一个 C++ 工程和进程，不使用跨语言绑定。`MissionSimulation` 以 0.02 秒固定步长推进并输出只读快照；`SceneRenderer3D`、`WorldRenderer` 和 `GameUi` 读取位置、路线、感知和意图。倍速只改变一帧推进多少个固定步，不改变结果。地图单位统一为米；仿真 XY 平面分别映射到 3D 的 X 和负 Z，仿真 Z 轴映射到 3D 的 Y 轴。

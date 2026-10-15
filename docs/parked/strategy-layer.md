@@ -1,6 +1,6 @@
 # 策略层分叉提案（待批，未接线）
 
-状态：PROPOSAL。Phase-1/2 接线冻结，在用户点名前不施工。
+状态：ACCEPTED-A（2026-10 决策：Phase-1 只观测继续；Phase-2 接线仍冻结，等三门＋点名）。
 tracker 去假 trio（slot＋birth、bbox extent、CTRV）的重启触发器见
 `docs/parked/tracker-defake.md` §5——本提案获批即满足其“策略层立项”半条；
 另半条（可验证需求＋三门同过）在 Phase-1 影子数据出来后才谈。
@@ -48,4 +48,4 @@ tracker 去假 trio（slot＋birth、bbox extent、CTRV）的重启触发器见
 * 放置规则（提案，未施工）：冲突区入口前 (v^2/2a＋1.0m)；
   grip 胎 2.0m/s 巡航＝0.48＋1.0＝1.48m。候选点必须验在廊道外。
 
-请点名 A 或 B。不点名＝冻结维持，本文件保持 PROPOSAL。
+决策记录：A。B 废弃。Phase-2 开门条件不变（三门＋点名）。
