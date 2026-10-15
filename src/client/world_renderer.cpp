@@ -246,6 +246,16 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
    focus.x += 1.2 * std::cos(mission.snapshot().robot.theta);
    focus.y += 1.2 * std::sin(mission.snapshot().robot.theta);
   }
+  // Ease the camera (display only, sim untouched): 5Hz estimate steps no
+  // longer teleport the frame; fast pans still catch up within ~6 frames.
+  if (!focus_init_) {
+   focus_smooth_ = focus;
+   focus_init_ = true;
+  } else {
+   focus_smooth_.x += (focus.x - focus_smooth_.x) * 0.35;
+   focus_smooth_.y += (focus.y - focus_smooth_.y) * 0.35;
+  }
+  focus = focus_smooth_;
   const double visible_width = viewport_.width / scale_;
   const double visible_height = viewport_.height / scale_;
   const double camera_x =
@@ -573,23 +583,32 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
    mission.snapshot().robot.y,
  });
  std::size_t ray_index = 0;
+ (void)ray_index;
  for (const auto& hit : mission.snapshot().lidar_hits) {
-  const std::size_t stride = mission.snapshot().dynamic_object_detected ? 4 : 8;
-  if (ray_index++ % stride != 0)
-   continue;
+  // Every simulated ray is drawn (an old stride drew 1-in-4 and the scan
+  // looked starved). Same data, no decimation: lines faint, hits glowing.
   const auto point = world_to_screen(hit);
-  DrawLineEx(robot_position, point, 1, {82, 222, 199, 24});
-  DrawCircleV(point, 1.5f, {124, 236, 211, 110});
+  DrawLineEx(robot_position, point, 1, {82, 222, 199, 30});
+  DrawCircleV(point, 2.5f, {124, 236, 211, 60});
+  DrawCircleV(point, 1.5f, {150, 245, 225, 190});
  }
 
  for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
-  const auto estimated = world_to_screen(obstacle.estimated_position);
+  // Display extrapolation: the track state goes stale between scans (0.2s at
+  // 5Hz reads as teleporting). Propagating by its own velocity to frame time
+  // is the optimal display estimate, sim untouched. Clamped so a dead track
+  // never sails off on an old velocity.
+  const double stale =
+    std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 0.6);
+  const sim::Vec2 shown{obstacle.estimated_position.x + obstacle.estimated_velocity.x * stale,
+                        obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
+  const auto estimated = world_to_screen(shown);
   const auto position = estimated;
   const float radius = clampf(static_cast<float>(obstacle.radius_m) * scale_, 25.0f, 42.0f);
   const Color alert = kDanger;
   const auto future = world_to_screen({
-    obstacle.estimated_position.x + obstacle.estimated_velocity.x * 2.5,
-    obstacle.estimated_position.y + obstacle.estimated_velocity.y * 2.5,
+    shown.x + obstacle.estimated_velocity.x * 2.5,
+    shown.y + obstacle.estimated_velocity.y * 2.5,
   });
   DrawLineEx(estimated, future, 8, Fade(alert, 0.08f));
   DrawLineEx(estimated, future, 2, Fade(alert, 0.45f));

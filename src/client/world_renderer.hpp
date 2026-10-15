@@ -62,6 +62,10 @@ class WorldRenderer {
  float scale_{1.0f};
  Vector2 world_origin_{};
  bool drawn_once_{false};
+ // Camera focus smoothing (display only): at 5Hz the raw estimate steps and
+ // the whole frame shudders. Exponential ease toward the target each frame.
+ sim::Vec2 focus_smooth_{0.0, 0.0};
+ bool focus_init_{false};
 };
 
 std::filesystem::path find_ui_font(const std::filesystem::path& assets = {});
