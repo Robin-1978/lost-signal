@@ -4,6 +4,7 @@
 // the board UI, not here.
 #include "game/campaign_progress.hpp"
 #include "game/content_catalog.hpp"
+#include "game/mission_simulation.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -56,6 +57,23 @@ int main() {
  const auto legacy = game::CampaignProgress::load(legacy_path, catalog);
  CHECK(legacy.reputation() == 0);
  CHECK(legacy.claimed_contracts().empty());
+ // Earn hook: completing the job's level with its axis scored claims rep
+ // once; missing the axis pays nothing; replays never double-pay.
+ {
+  game::CampaignProgress earn;
+  game::MissionResult fast_run;
+  fast_run.fast_score = true;
+  earn.record_completion("signal_cross", fast_run, catalog);
+  CHECK(earn.reputation() == 4); // w01-3 fast job.
+  earn.record_completion("signal_cross", fast_run, catalog);
+  CHECK(earn.reputation() == 4);
+  game::MissionResult slow_run;
+  slow_run.safe_score = true; // fast axis missed: no pay.
+  earn.record_completion("signal_cross", slow_run, catalog);
+  CHECK(earn.reputation() == 4);
+  // C++ catalog carries the same board the validator gates.
+  CHECK(catalog.contracts().size() == 5);
+ }
  std::cout << "contract rep green\n";
  return 0;
 }

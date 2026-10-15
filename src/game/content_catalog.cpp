@@ -266,6 +266,29 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    }
   }
  }
+ for (const auto& path : json_files(catalog.root_ / "contracts")) {
+  const auto value = read_json(path);
+  require_schema_v1(value, path);
+  for (const auto& item : value.at("jobs")) {
+   ContractJob job;
+   job.id = item.at("id").get<std::string>();
+   job.level = item.at("level").get<std::string>();
+   job.cargo = item.at("cargo").get<std::string>();
+   job.axis = item.at("axis").get<std::string>();
+   job.rep = item.at("rep").get<int>();
+   job.blurb = item.at("blurb").get<std::string>();
+   // Unknown levels fail loudly here (validator pins the same rule in Python).
+   if (catalog.levels_.find(job.level) == catalog.levels_.end()) {
+    throw ContentError(path.string() + ": unknown contract level '" + job.level + "'");
+   }
+   for (const auto& known : catalog.contracts_) {
+    if (known.id == job.id) {
+     throw ContentError(path.string() + ": duplicate contract job '" + job.id + "'");
+    }
+   }
+   catalog.contracts_.push_back(std::move(job));
+  }
+ }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
   const auto value = read_json(path);
   require_schema_v1(value, path);

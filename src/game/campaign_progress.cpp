@@ -132,12 +132,24 @@ void CampaignProgress::record_completion(const std::string& level_id, const Miss
  auto& score = best_scores_[level_id];
  score.safe = score.safe || result.safe_score;
  score.fast = score.fast || result.fast_score;
- score.efficient = score.efficient || result.efficient_score;
- if (score.best_time_s <= 0.0 || result.time_s < score.best_time_s) {
+ score.efficient = score.efficient || result.efficient_score; if (score.best_time_s <= 0.0 || result.time_s < score.best_time_s) {
   score.best_time_s = result.time_s;
  }
  if (score.best_energy_wh <= 0.0 || result.energy_wh < score.best_energy_wh) {
   score.best_energy_wh = result.energy_wh;
+ }
+ // Contract earn: a job on this level pays once when its axis scores.
+ // Idempotent via the claim ledger (replays and re-rides never double-pay).
+ for (const auto& job : catalog.contracts()) {
+  if (job.level != level_id) {
+   continue;
+  }
+  const bool axis_hit = (job.axis == "fast" && result.fast_score) ||
+                        (job.axis == "efficient" && result.efficient_score) ||
+                        (job.axis == "safe" && result.safe_score);
+  if (axis_hit) {
+   claim_contract(job.id, job.rep);
+  }
  }
 }
 

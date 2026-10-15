@@ -259,6 +259,18 @@ struct AbilityDefinition {
  std::string description;
 };
 
+// Contract board job (content, weekly board files): a level ridden for a
+// cargo on one score axis. The earn rule lives in record_completion
+// (axis flag achieved -> claim once); the board UI spends reputation later.
+struct ContractJob {
+ std::string id;
+ std::string level;
+ std::string cargo;
+ std::string axis; // fast / efficient / safe, matches MissionResult *score.
+ int rep{1};
+ std::string blurb;
+};
+
 struct ComponentDefinition {
  std::string id;
  std::string slot;
