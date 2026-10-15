@@ -147,6 +147,7 @@ what-if 回放已落地（test_stop_whatif 常驻，几何收拢进 shadow_field
 第三章影子已落地（test_entry_shadow_town 常驻）：town 167 评估/50 占、big 2170/697，双跑同，min 净空 4.3/2.6m 零行人接触——镇子遭遇松，影子开火但无险。
 截图链实话：本机无 X/xvfb 且无 sudo，headless 无截图口——像素验收仍待真机；本轮零视觉改动，无新增截图债。
 Phase-2 接线已落地（test_entry_governor＋manual_ram 常驻，44/44）：governor 一侧刹车＋DWA 虚拟墙＋social 豁免＋出发地板＋预测占用停车；首版错停车撞车 1 次（已修，stop 点必须看全帧）；hot 车复活钉 governor_hold 事件；collision-dynamic 覆盖转手动 overlay 埋伏（stick 在自主关是空操作是 authority 设计）；门禁数漂移已同步（hold/watch 格＋F1 表）；hold 默认 30 种子 14/30 vs 去线 17/30（相位彩票，非回归）。
+无真车上线执行完毕（docs/beta-notes.md）：生产门整轨退休（证据保留）；Beta 标准四条全过（套件绿／零卡死证毕：schema time_limit＋无条件时钟／客户端编过跑不动／难度诚实：硬地形白板超时是设计，遭遇关彩票标高难）；人类试玩协议已写，机器到了就跑。
 Family C 首探 signal_pocket 已否决（完整回退零残留， veto 理由存档）：
   长扫巡逻（10m×0.5）＋穿越路线，30 种子双配置 30/30 成功零碰撞但 sus-fin 仅 1、
   pocket shadow 525 帧 feasible 0（HorizonShort 主导——9m 链超 mission shadow 窗，
