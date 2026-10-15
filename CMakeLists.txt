@@ -141,6 +141,7 @@ if(LOST_SIGNAL_BUILD_TESTS)
 
  add_executable(test_entry_shadow_field tests/new/test_entry_shadow_field.cpp)
  target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_game)
+ target_include_directories(test_entry_shadow_field PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  target_compile_definitions(test_entry_shadow_field PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -152,6 +153,14 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME stop_line_study COMMAND test_stop_line_study)
+
+ add_executable(test_stop_whatif tests/new/test_stop_whatif.cpp)
+ target_link_libraries(test_stop_whatif PRIVATE lost_signal_game)
+ target_compile_definitions(test_stop_whatif PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ target_include_directories(test_stop_whatif PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(NAME stop_whatif COMMAND test_stop_whatif)
 
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
  target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)

@@ -5,9 +5,8 @@
 // DWA consume nothing — this test only reads snapshots. If the window check
 // is the right medicine for flagship myopia, Occupied episodes must precede
 // close encounters and flip to Clear as the threat passes.
-#include "algo/entry_shadow.hpp"
 #include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "tests/new/shadow_field_helpers.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -33,27 +32,6 @@ struct ShadowStream {
   double min_clear_margin_s{1e9};
 };
 
-// Ray-ray conflict: ego forward ray vs threat velocity ray, clamped to
-// lookaheads. Parallel/degenrate -> midpoint fallback. Pure geometry on
-// snapshot data; no content invented.
-sim::Vec2 conflict_center(sim::Vec2 ego, sim::Vec2 ego_dir, sim::Vec2 threat, sim::Vec2 threat_vel) {
-  const double tv = std::hypot(threat_vel.x, threat_vel.y);
-  sim::Vec2 center{(ego.x + threat.x) * 0.5, (ego.y + threat.y) * 0.5};
-  if (tv < 1e-6) return center;
-  const sim::Vec2 v{threat_vel.x / tv, threat_vel.y / tv};
-  const double denom = ego_dir.x * v.y - ego_dir.y * v.x;
-  if (std::abs(denom) < 1e-6) return center;
-  const double dx = threat.x - ego.x;
-  const double dy = threat.y - ego.y;
-  const double t = (dx * v.y - dy * v.x) / denom;
-  const double s = (dx * ego_dir.y - dy * ego_dir.x) / denom;
-  const double tc = std::max(0.0, std::min(t, 10.0));
-  const double sc = std::max(0.0, std::min(s, 10.0));
-  center = {(ego.x + ego_dir.x * tc + threat.x + v.x * sc) * 0.5,
-            (ego.y + ego_dir.y * tc + threat.y + v.y * sc) * 0.5};
-  return center;
-}
-
 ShadowStream run_shadow(game::MissionSimulation& mission) {
   ShadowStream stream;
   mission.start();
@@ -64,26 +42,13 @@ ShadowStream run_shadow(game::MissionSimulation& mission) {
     const auto& snap = mission.snapshot();
     const double ego_speed = std::abs(snap.robot.v);
     const sim::Vec2 ego{snap.robot.x, snap.robot.y};
-    const sim::Vec2 dir{std::cos(snap.robot.theta), std::sin(snap.robot.theta)};
     for (const auto& track : snap.dynamic_obstacles) {
       const double age = snap.time_s - track.last_observed_s;
-      if (age < 0.0 || age > sim::kEntryStaleBudgetS) continue;
       const sim::Vec2 tp{track.estimated_position.x, track.estimated_position.y};
       const sim::Vec2 tv{track.estimated_velocity.x, track.estimated_velocity.y};
-      const auto center = conflict_center(ego, dir, tp, tv);
-      const double half = 0.45 + track.radius_m + 0.2;
-      if (std::hypot(center.x - ego.x, center.y - ego.y) > 10.0) continue;
-      sim::WindowThreat threat;
-      threat.valid = true;
-      threat.dist_to_zone_m = std::hypot(tp.x - center.x, tp.y - center.y) - half;
-      const double tvn = std::hypot(tv.x, tv.y);
-      const double toward = (tv.x * (center.x - tp.x) + tv.y * (center.y - tp.y)) /
-                            std::max(1e-6, std::hypot(center.x - tp.x, center.y - tp.y));
-      threat.speed_mps = (toward > 0.0) ? tvn : 0.0;
-      threat.age_s = age;
-      const double ego_dist = std::max(0.0, std::hypot(center.x - ego.x, center.y - ego.y) - half);
-      const auto a =
-        sim::assess_entry_window(ego_dist, ego_speed, half, threat, sim::kEntryStaleBudgetS);
+      const auto a = field::assess_pose_vs_track(ego, snap.robot.theta, ego_speed, tp, tv,
+                                                 track.radius_m, age);
+      if (!a.assessed) continue;
       ++stream.assessed;
       if (a.verdict == sim::EntryVerdict::kObservedClear) {
         ++stream.clear;
