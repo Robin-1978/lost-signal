@@ -240,8 +240,14 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
   sim::Vec2 focus{mission.snapshot().robot.x, mission.snapshot().robot.y};
   if (!mission.snapshot().dynamic_obstacles.empty()) {
    const auto& detected = mission.snapshot().dynamic_obstacles.front();
-   focus.x = mission.snapshot().robot.x * 0.58 + detected.estimated_position.x * 0.42;
-   focus.y = mission.snapshot().robot.y * 0.58 + detected.estimated_position.y * 0.42 + 0.80;
+   focus_hold_.x = mission.snapshot().robot.x * 0.58 + detected.estimated_position.x * 0.42;
+   focus_hold_.y = mission.snapshot().robot.y * 0.58 + detected.estimated_position.y * 0.42 + 0.80;
+   // Hysteresis on track birth/death (display only): hold the last threat
+   // blend a second past loss so the frame doesn't snap on flicker.
+   focus_hold_until_ = mission.snapshot().time_s + 1.0;
+  }
+  if (mission.snapshot().time_s <= focus_hold_until_) {
+   focus = focus_hold_;
   } else {
    focus.x += 1.2 * std::cos(mission.snapshot().robot.theta);
    focus.y += 1.2 * std::sin(mission.snapshot().robot.theta);
@@ -584,6 +590,17 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  });
  std::size_t ray_index = 0;
  (void)ray_index;
+ // Scan-phase sweep (display only): our lidar is a body-fixed full-ring
+ // snapshot (solid-state style, not a rotating mirror), so the fan itself
+ // never rotates. This faint hand marks WHEN scans fire, nothing more.
+ if (!mission.build().part("sensor").empty()) {
+  const double sweep_hz =
+    game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
+  const double phase = std::fmod(mission.snapshot().time_s * sweep_hz, 1.0) * 2.0 * sim::kPi;
+  const Vector2 hand{robot_position.x + static_cast<float>(std::cos(phase)) * 70.0f,
+                     robot_position.y - static_cast<float>(std::sin(phase)) * 70.0f};
+  DrawLineEx(robot_position, hand, 2, {82, 222, 199, 46});
+ }
  for (const auto& hit : mission.snapshot().lidar_hits) {
   // Every simulated ray is drawn (an old stride drew 1-in-4 and the scan
   // looked starved). Same data, no decimation: lines faint, hits glowing.
@@ -593,15 +610,40 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   DrawCircleV(point, 1.5f, {150, 245, 225, 190});
  }
 
- for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
-  // Display extrapolation: the track state goes stale between scans (0.2s at
-  // 5Hz reads as teleporting). Propagating by its own velocity to frame time
-  // is the optimal display estimate, sim untouched. Clamped so a dead track
-  // never sails off on an old velocity.
+ // Display extrapolation shared by vehicle and pedestrian markers: propagate
+ // the track by its own velocity to frame time (sim untouched). Clamped to
+ // one scan period — never sail on a dead track's old velocity.
+ const double scan_hz = mission.build().part("sensor").empty()
+                            ? 5.0
+                            : game::property(catalog_.component(mission.build().part("sensor")).behavior,
+                                             "scan_hz");
+ const auto shown_at = [&](const game::DynamicObstacleSnapshot& obstacle) {
   const double stale =
-    std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 0.6);
-  const sim::Vec2 shown{obstacle.estimated_position.x + obstacle.estimated_velocity.x * stale,
-                        obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
+    std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 1.0 / scan_hz);
+  return sim::Vec2{obstacle.estimated_position.x + obstacle.estimated_velocity.x * stale,
+                   obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
+ };
+
+ for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
+  if (obstacle.pedestrian) {
+   // Tracked pedestrian: a person, never a forklift. Smaller read than
+   // vehicles (head + hi-vis torso), same alert language (ring + heading).
+   const auto estimated = world_to_screen(shown_at(obstacle));
+   const float prad = clampf(static_cast<float>(obstacle.radius_m) * scale_, 13.0f, 20.0f);
+   const float pangle = static_cast<float>(
+     std::atan2(-obstacle.estimated_velocity.y, obstacle.estimated_velocity.x) * 180.0 / sim::kPi);
+   DrawRing(estimated, prad * 0.96f, prad, 0, 360, 32, Fade(kCyan, 0.72f));
+   DrawRectanglePro({estimated.x, estimated.y + prad * 0.1f, prad * 0.9f, prad * 1.1f},
+                    {prad * 0.45f, prad * 0.55f}, pangle, {232, 122, 31, 255});
+   DrawCircleV(polar(estimated, prad * 0.85f, -pangle * static_cast<float>(sim::kPi) / 180.0f),
+               prad * 0.30f, {235, 228, 210, 255});
+   draw_soft_disc(estimated, prad + 14, kDanger);
+   continue;
+  }
+  // Display extrapolation (see shown_at above): the track state goes stale
+  // between scans (0.2s at 5Hz reads as teleporting). Propagating by its own
+  // velocity to frame time is the optimal display estimate, sim untouched.
+  const sim::Vec2 shown = shown_at(obstacle);
   const auto estimated = world_to_screen(shown);
   const auto position = estimated;
   const float radius = clampf(static_cast<float>(obstacle.radius_m) * scale_, 25.0f, 42.0f);

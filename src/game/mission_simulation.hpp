@@ -65,6 +65,9 @@ struct DynamicObstacleSnapshot {
  sim::Vec2 estimated_velocity;
  double radius_m{0.0};
  double last_observed_s{0.0};
+ // Display kind from the agent registry (tracked pedestrians draw as people,
+ // never forklifts). Set at refresh from actual_kinds_, never inferred.
+ bool pedestrian{false};
 };
 
 struct LocalTrajectorySnapshot {

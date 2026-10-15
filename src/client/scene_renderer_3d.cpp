@@ -202,6 +202,10 @@ SceneRenderer3D::SceneRenderer3D(const std::filesystem::path& assets_root,
   for (const auto& part : robot.base_parts)
    load_model(part.visual.model_3d);
  }
+ // Actor kit (content models, code only poses them): forklifts and road
+ // workers used to be procedural boxes; the generator owns the look now.
+ load_model("models/actors/forklift.glb");
+ load_model("models/actors/worker.glb");
  for (const auto& [id, component] : catalog_.components()) {
   (void)id;
   load_model(component.visual.model_3d);
@@ -840,34 +844,27 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
 // it as a vehicle. Proportions scale with the actor's own radius; a proper
 // character model replaces this, never new physics.
 void SceneRenderer3D::draw_pedestrian(const game::ActorSnapshot& actor) const {
+ // Content model, code only poses it: reference geometry authored for
+ // r=0.25, scaled linearly from the actor's own radius (content data).
  const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
  const sim::Vec2 position = actor.position;
  const float s = static_cast<float>(actor.radius_m) / 0.25f;
- draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 0.55f * s), {0.34f * s, 0.34f * s, 1.1f * s},
-          yaw, {23, 160, 150, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 1.28f * s), {0.22f * s, 0.22f * s, 0.26f * s},
-          yaw, {235, 244, 238, 255});
+ if (const Model* worker = model("models/actors/worker.glb")) {
+  DrawModelEx(*worker, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw,
+              {s, s, s}, WHITE);
+ }
 }
 
 void SceneRenderer3D::draw_forklift(const game::ActorSnapshot& actor, bool waiting) const {
+ // Content model, code only poses it: reference geometry authored for
+ // r=0.45, scaled linearly from the actor's own radius (content data).
+ // The waiting beacon stays procedural (it blinks; models don't).
  const float yaw = static_cast<float>(std::atan2(actor.velocity.y, actor.velocity.x)) * kRadToDeg;
  const sim::Vec2 position = actor.position;
- // Body derives from the actor's own radius (content data), never constants:
- // reference geometry was authored for r=0.45 and scales linearly.
  const float s = static_cast<float>(actor.radius_m) / 0.45f;
- draw_box(pose_offset(position, yaw / kRadToDeg, 0, 0, 0.34f * s), {1.12f * s, 0.58f * s, 0.72f * s},
-          yaw, {211, 132, 39, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 0.72f * s),
-          {0.48f * s, 0.48f * s, 0.58f * s}, yaw, {48, 59, 57, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f * s, 0.24f * s, 0.15f * s),
-          {0.78f * s, 0.08f * s, 0.10f * s}, yaw, {92, 90, 78, 255});
- draw_box(pose_offset(position, yaw / kRadToDeg, 0.58f * s, -0.24f * s, 0.15f * s),
-          {0.78f * s, 0.08f * s, 0.10f * s}, yaw, {92, 90, 78, 255});
- for (float forward : {-0.33f * s, 0.33f * s}) {
-  for (float left : {-0.38f * s, 0.38f * s}) {
-   const auto wheel = pose_offset(position, yaw / kRadToDeg, forward, left, 0.19f * s);
-   draw_box(wheel, {0.24f * s, 0.28f * s, 0.13f * s}, yaw, {24, 27, 25, 255});
-  }
+ if (const Model* forklift = model("models/actors/forklift.glb")) {
+  DrawModelEx(*forklift, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw,
+              {s, s, s}, WHITE);
  }
  if (waiting) {
   const auto beacon = pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 1.0f * s);

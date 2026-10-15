@@ -67,7 +67,38 @@ class ContentValidationTests(unittest.TestCase):
                     normal = document["accessors"][primitive["attributes"]["NORMAL"]]
                     self.assertEqual(position["count"], normal["count"], path)
             model_count += 1
-        self.assertEqual(17, model_count)
+        # No absolute count: the kit grows with content. The pin is coverage:
+        # every model referenced by robots/scenes/components resolves, and
+        # every shipped glb above passed POSITION/NORMAL validation.
+        referenced: set[str] = set()
+        for robot_path in self.assets.glob("robots/*.json"):
+            robot = json.loads(robot_path.read_text(encoding="utf-8"))
+            for part in robot.get("base_parts", []):
+                model = (part.get("visual") or {}).get("model_3d")
+                if model:
+                    referenced.add(model)
+        for scene_path in self.assets.glob("scenes/*.json"):
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            for prefab in scene.get("prefabs", []):
+                for part in prefab.get("parts", []):
+                    if part.get("model_3d"):
+                        referenced.add(part["model_3d"])
+        for component_path in self.assets.glob("components/*.json"):
+            try:
+                doc = json.loads(component_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            items = doc if isinstance(doc, list) else doc.get("components", [])
+            for item in items if isinstance(items, list) else []:
+                model = ((item.get("visual") or {}).get("model_3d")
+                         if isinstance(item, dict) else None)
+                if model:
+                    referenced.add(model)
+        # Actor kit is code-loaded, not JSON-referenced: pin its contract.
+        referenced.update(["models/actors/forklift.glb", "models/actors/worker.glb"])
+        self.assertTrue(referenced)
+        for model in sorted(referenced):
+            self.assertTrue((self.assets / model).exists(), model)
 
     def test_floor_texture_is_packaged(self) -> None:
         texture = self.assets / "textures/environment/concrete_floor.png"

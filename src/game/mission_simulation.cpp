@@ -527,14 +527,19 @@ void MissionSimulation::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
  const auto tracks = dynamic_obstacle_map_.active_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
-  if (track.object_id >= patrol_ids_.size())
-   continue;
+  // Tracks are indexed over ALL agents (patrols then wanders); an old guard
+  // dropped every non-patrol track here, so pedestrians were tracked but
+  // never displayed. Map the id back to its agent for name and kind.
+  const bool ped = track.object_id >= patrol_ids_.size();
+  const std::size_t wander_index = ped ? track.object_id - patrol_ids_.size() : 0;
+  if (ped && wander_index >= wander_ids_.size()) continue;
   snapshot_.dynamic_obstacles.push_back({
-    patrol_ids_[track.object_id],
+    ped ? wander_ids_[wander_index] : patrol_ids_[track.object_id],
     track.state.p,
     track.state.v,
     track.state.radius,
     track.last_observed_s,
+    ped,
   });
   if (track.object_id < snapshot_.actors.size()) {
    snapshot_.actors[track.object_id].detected = true;

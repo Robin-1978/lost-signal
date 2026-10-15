@@ -66,6 +66,9 @@ class WorldRenderer {
  // the whole frame shudders. Exponential ease toward the target each frame.
  sim::Vec2 focus_smooth_{0.0, 0.0};
  bool focus_init_{false};
+ // Threat-blend hold for focus hysteresis (display only, mission-time based).
+ sim::Vec2 focus_hold_{0.0, 0.0};
+ double focus_hold_until_{-1.0};
 };
 
 std::filesystem::path find_ui_font(const std::filesystem::path& assets = {});
