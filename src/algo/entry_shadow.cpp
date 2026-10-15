@@ -51,7 +51,10 @@ EntryWindowAssessment assess_entry_window(double ego_dist_m, double ego_speed_mp
     out.threat_enter_s = kInf;
     out.threat_exit_s = kInf;
   }
-  const bool disjoint = (out.threat_exit_s <= out.ego_enter_s) || (out.threat_enter_s >= out.ego_exit_s);
+  // Touching counts as occupied (conservative, exact): with a zero-length
+  // zone the shared instant is the same time AND place; with a real zone the
+  // measure-zero graze buys nothing and costs a convention. Strict < only.
+  const bool disjoint = (out.threat_exit_s < out.ego_enter_s) || (out.threat_enter_s > out.ego_exit_s);
   if (disjoint) {
     // Margin = closest approach of the two intervals (both orders handled).
     const double gap_after = out.threat_enter_s - out.ego_exit_s;

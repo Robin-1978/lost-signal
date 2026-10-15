@@ -24,8 +24,8 @@ namespace sim {
 // Phase-2 stays frozen until its three doors pass (see parked/strategy-layer).
 
 enum class EntryVerdict {
-  kObservedClear,    // threat window and ego window disjoint (margin reported).
-  kObservedOccupied, // windows overlap: ego would share the zone with threat.
+  kObservedClear,    // threat window and ego window strictly disjoint.
+  kObservedOccupied, // windows overlap or touch: touching is sharing.
   kObservedUncertain // no assessment possible (invalid/stale threat input).
 };
 

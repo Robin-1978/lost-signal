@@ -183,6 +183,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_entry_governor PRIVATE lost_signal_sim)
  add_test(NAME entry_governor COMMAND test_entry_governor)
 
+ add_executable(test_algo_invariants tests/new/test_algo_invariants.cpp)
+ target_link_libraries(test_algo_invariants PRIVATE lost_signal_sim)
+ add_test(NAME algo_invariants COMMAND test_algo_invariants)
+
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
  target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)
  target_compile_definitions(test_summon_recharge PRIVATE
