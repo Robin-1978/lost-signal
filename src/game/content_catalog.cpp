@@ -326,7 +326,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    ActorDefinition actor;
    actor.id = item.at("id").get<std::string>();
    actor.kind = item.at("type").get<std::string>();
-   if (actor.kind != "patrol" && actor.kind != "wander" && actor.kind != "dwell") {
+   if (actor.kind != "patrol" && actor.kind != "wander" && actor.kind != "dwell" &&
+       actor.kind != "seeded-wander") {
     throw ContentError(path.string() + ": unknown actor kind " + actor.kind);
    }
    for (const auto& point : item.at("path")) {

@@ -224,6 +224,9 @@ void MissionSimulation::build_world() {
   agent.behavior.waits = actor.waits;
   agent.behavior.speed_mps = actor.speed_mps;
   agent.behavior.radius_m = actor.radius_m;
+  // Phase seed rides free on the id hash (no content edits): wander ignores
+  // it, seeded-wander desynchronizes shared loops with it.
+  agent.behavior.seed = sim::hash_actor_id(actor.id);
   agent.visual_model = actor.visual_model;
   agent.visual_ref_radius_m = actor.visual_ref_radius_m;
   if (actor.dormant_until_summoned) {

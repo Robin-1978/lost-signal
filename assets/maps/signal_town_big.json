@@ -251,7 +251,7 @@
     },
     {
       "id": "big_ped_lane",
-      "type": "wander",
+      "type": "seeded-wander",
       "path": [
         [
           7.5,
@@ -321,7 +321,7 @@
     },
     {
       "id": "big_ped_market",
-      "type": "wander",
+      "type": "seeded-wander",
       "path": [
         [
           29.5,

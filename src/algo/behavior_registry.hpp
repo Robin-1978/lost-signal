@@ -2,6 +2,7 @@
 
 #include "algo/dynobs.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -30,7 +31,21 @@ struct ActorBehaviorParams {
  std::vector<double> waits;
  double speed_mps{0.5};
  double radius_m{0.25};
+ // Seeded-wander phase (FNV-1a of the actor id, set by the caller):
+ // wander ignores it, seeded-wander rotates/reverses the loop with it.
+ std::uint64_t seed{0};
 };
+
+// Deterministic id hash (content addressing without content edits:
+// distinct walkers desynchronize for free, same id replays bit-identical).
+inline std::uint64_t hash_actor_id(const std::string& id) {
+ std::uint64_t hash = 1469598103934665603ull;
+ for (const char c : id) {
+  hash ^= static_cast<unsigned char>(c);
+  hash *= 1099511628211ull;
+ }
+ return hash;
+}
 
 using BehaviorEvaluator = std::function<DynState(const ActorBehaviorParams&, double)>;
 

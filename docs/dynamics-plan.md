@@ -146,6 +146,7 @@ what-if 回放已落地（test_stop_whatif 常驻，几何收拢进 shadow_field
 决策记录（2026-10）：策略走 A（Phase-1 只观测继续，Phase-2 仍冻等三门）；三层 Mission/Behavior/Local 定稿进 design.md，不再讨论形状只走门。
 第三章影子已落地（test_entry_shadow_town 常驻）：town 167 评估/50 占、big 2170/697，双跑同，min 净空 4.3/2.6m 零行人接触——镇子遭遇松，影子开火但无险。
 截图链实话：本机无 X/xvfb 且无 sudo，headless 无截图口——像素验收仍待真机；本轮零视觉改动，无新增截图债。
+seeded-wander 已落地（test_behavior_registry 钉旋转/反向/相异/退化）：同环按 id 哈希失相，零内容改动（种子坐 id 上）；big 双行人翻用，big 全表仅漂移（成功率不动，净空同带）；lead 明确不开——语义未定义＋天然带玩家耦合，进 reactive 门排队，不单设计。
 Phase-2 接线已落地（test_entry_governor＋manual_ram 常驻，44/44）：governor 一侧刹车＋DWA 虚拟墙＋social 豁免＋出发地板＋预测占用停车；首版错停车撞车 1 次（已修，stop 点必须看全帧）；hot 车复活钉 governor_hold 事件；collision-dynamic 覆盖转手动 overlay 埋伏（stick 在自主关是空操作是 authority 设计）；门禁数漂移已同步（hold/watch 格＋F1 表）；hold 默认 30 种子 14/30 vs 去线 17/30（相位彩票，非回归）。
 无真车上线执行完毕（docs/beta-notes.md）：生产门整轨退休（证据保留）；Beta 标准四条全过（套件绿／零卡死证毕：schema time_limit＋无条件时钟／客户端编过跑不动／难度诚实：硬地形白板超时是设计，遭遇关彩票标高难）；人类试玩协议已写，机器到了就跑。
 Family C 首探 signal_pocket 已否决（完整回退零残留， veto 理由存档）：

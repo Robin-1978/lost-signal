@@ -2,6 +2,7 @@
 #include "math.hpp"
 #include <vector>
 #include <cmath>
+#include <cstdint>
 // 动障碍(巡逻叉车): a<->b乒乓, 纯时间函数, 确定性可复现.
 // 半径含车体; 碰撞判定时再加机器人半径.
 namespace sim {
@@ -67,6 +68,34 @@ inline WanderState wander_state(const Wander& w, double t) {
  s.p = w.points.front();
  s.v = {0, 0};
  return s;
+}
+// Seeded wander: the same closed loop, rotated by seed (start offset) with
+// direction from a seed bit. Pure time function, zero reactivity: the same
+// (points, seed, t) replays bit-identically, while distinct seeds
+// desynchronize walkers that share one authored loop (town pedestrians).
+// Degenerate inputs behave exactly like wander_state.
+struct SeededWander {
+ std::vector<Vec2> points;
+ std::uint64_t seed{0};
+ double speed{0.5};
+ double radius{0.25};
+};
+inline WanderState seeded_wander_state(const SeededWander& w, double t) {
+ Wander loop;
+ loop.speed = w.speed;
+ loop.radius = w.radius;
+ if (w.points.size() >= 2) {
+  const std::size_t n = w.points.size();
+  const std::size_t off = static_cast<std::size_t>(w.seed % n);
+  const bool reverse = ((w.seed >> 5) & 1u) != 0u;
+  loop.points.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+   loop.points.push_back(reverse ? w.points[(off + n - i) % n] : w.points[(off + i) % n]);
+  }
+ } else if (!w.points.empty()) {
+  loop.points = w.points;
+ }
+ return wander_state(loop, t);
 }
 // t时刻状态(含解析速度, DWA做线性外推)
 inline DynState patrol_state(const Patrol& pt, double t) {

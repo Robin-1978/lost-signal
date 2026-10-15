@@ -201,7 +201,8 @@
           "enum": [
             "patrol",
             "wander",
-            "dwell"
+            "dwell",
+            "seeded-wander"
           ]
         },
         "path": {
