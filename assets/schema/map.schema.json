@@ -200,7 +200,8 @@
         "type": {
           "enum": [
             "patrol",
-            "wander"
+            "wander",
+            "dwell"
           ]
         },
         "path": {
@@ -246,6 +247,13 @@
               "type": "number",
               "exclusiveMinimum": 0
             }
+          }
+        },
+        "waits": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
           }
         }
       }

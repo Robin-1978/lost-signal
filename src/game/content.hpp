@@ -72,6 +72,7 @@ struct ActorDefinition {
  // the framework interprets, never branches on names.
  std::string kind{"patrol"};
  bool collision_social{false};
+ std::vector<double> waits;
  std::string visual_model;
  double visual_ref_radius_m{0.45};
  std::vector<sim::Vec2> path;

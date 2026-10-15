@@ -125,6 +125,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_dynamic_perception PRIVATE lost_signal_sim)
  add_test(NAME dynamic_perception COMMAND test_dynamic_perception)
 
+ add_executable(test_dwell_behavior tests/new/test_dwell_behavior.cpp)
+ target_link_libraries(test_dwell_behavior PRIVATE lost_signal_sim)
+ add_test(NAME dwell_behavior COMMAND test_dwell_behavior)
+
  add_executable(test_model_validation tests/new/test_model_validation.cpp)
  target_link_libraries(test_model_validation PRIVATE lost_signal_game)
  target_compile_definitions(test_model_validation PRIVATE

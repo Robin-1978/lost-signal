@@ -283,7 +283,7 @@
     },
     {
       "id": "big_ped_plaza",
-      "type": "wander",
+      "type": "dwell",
       "path": [
         [
           12.0,
@@ -311,7 +311,13 @@
       "visual": {
         "model": "models/actors/worker.glb",
         "ref_radius_m": 0.25
-      }
+      },
+      "waits": [
+        0.0,
+        0.0,
+        4.0,
+        4.0
+      ]
     },
     {
       "id": "big_ped_market",

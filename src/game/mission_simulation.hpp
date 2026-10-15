@@ -273,6 +273,7 @@ class MissionSimulation {
   sim::Patrol patrol;
   sim::Wander wander;
   bool social{false};
+  std::vector<double> waits;
   std::string visual_model;
   double visual_ref_radius_m{0.45};
   double t0{0.0};

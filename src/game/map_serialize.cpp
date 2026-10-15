@@ -73,6 +73,9 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   if (actor.dormant_until_summoned) {
    item["dormant_until_summoned"] = true;
   }
+  if (!actor.waits.empty()) {
+   item["waits"] = actor.waits;
+  }
   actors.push_back(std::move(item));
  }
  nlohmann::ordered_json root;

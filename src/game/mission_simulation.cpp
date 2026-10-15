@@ -216,6 +216,7 @@ void MissionSimulation::build_world() {
   agent.id = actor.id;
   agent.kind = actor.kind;
   agent.social = actor.collision_social;
+  agent.waits = actor.waits;
   agent.visual_model = actor.visual_model;
   agent.visual_ref_radius_m = actor.visual_ref_radius_m;
   if (actor.kind == "wander") {
@@ -368,7 +369,12 @@ void MissionSimulation::update_actors() {
  for (std::size_t index = 0; index < agents_.size(); ++index) {
   const auto& agent = agents_[index];
   sim::DynState state;
-  if (agent.kind == "wander") {
+  if (agent.kind == "dwell") {
+   const sim::Dwell dwell{agent.wander.points, agent.waits, agent.wander.speed,
+                          agent.wander.radius};
+   const auto dwelled = sim::dwell_state(dwell, snapshot_.time_s - agent.t0);
+   state = {dwelled.p, dwelled.v, dwelled.radius};
+  } else if (agent.kind == "wander") {
    const auto wandered = sim::wander_state(agent.wander, snapshot_.time_s - agent.t0);
    state = {wandered.p, wandered.v, wandered.radius};
   } else {
