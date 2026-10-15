@@ -139,6 +139,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_entry_shadow PRIVATE lost_signal_sim)
  add_test(NAME entry_shadow COMMAND test_entry_shadow)
 
+ add_executable(test_entry_shadow_field tests/new/test_entry_shadow_field.cpp)
+ target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_game)
+ target_compile_definitions(test_entry_shadow_field PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME entry_shadow_field COMMAND test_entry_shadow_field)
+
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
  target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)
  target_compile_definitions(test_summon_recharge PRIVATE
