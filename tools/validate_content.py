@@ -97,6 +97,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     ]
     policies = _read(root / "components" / "policies.json")
     stories = [_read(p) for p in sorted((root / "story").glob("*.json"))]
+    contracts = [_read(p) for p in sorted((root / "contracts").glob("*.json"))]
     presentations = [_read(p) for p in sorted((root / "presentation").glob("*.json"))]
     robots = [_read(p) for p in sorted((root / "robots").glob("*.json"))]
     abilities = _read(root / "abilities.json")
@@ -129,6 +130,8 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     _schema(policies, schema_dir / "policies.schema.json")
     for doc in stories:
         _schema(doc, schema_dir / "story.schema.json")
+    for doc in contracts:
+        _schema(doc, schema_dir / "contract.schema.json")
     for doc in presentations:
         _schema(doc, schema_dir / "presentation.schema.json")
     _schema(abilities, schema_dir / "abilities.schema.json")
@@ -572,6 +575,13 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{doc.path}:/beats/{index}/level: unknown level '{beat['level']}'"
                 )
+    for doc in contracts:
+        for index, job in enumerate(doc.data["jobs"]):
+            _register(global_ids, job["id"], f"{doc.path}:/jobs/{index}/id")
+            if job["level"] not in level_by_id:
+                raise ContentError(
+                    f"{doc.path}:/jobs/{index}/level: unknown level '{job['level']}'"
+                )
 
     campaign_levels = campaign.data["levels"]
     if set(campaign_levels) != set(level_by_id):
@@ -665,6 +675,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         "presentations": presentation_by_id,
         "robots": robot_by_id,
         "stories": [doc.data for doc in stories],
+        "contracts": [doc.data for doc in contracts],
     }
 
 
