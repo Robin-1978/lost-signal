@@ -71,8 +71,13 @@ int main() {
   slow_run.safe_score = true; // fast axis missed: no pay.
   earn.record_completion("signal_cross", slow_run, catalog);
   CHECK(earn.reputation() == 4);
-  // C++ catalog carries the same board the validator gates.
-  CHECK(catalog.contracts().size() == 5);
+  // C++ catalog carries every board the validator gates (relational pin:
+  // job count grows with content, never an absolute number here).
+  CHECK(!catalog.contracts().empty());
+  for (const auto& job : catalog.contracts()) {
+   CHECK(catalog.levels().count(job.level) == 1);
+   CHECK(!job.id.empty() && job.rep >= 1);
+  }
  }
  std::cout << "contract rep green\n";
  return 0;

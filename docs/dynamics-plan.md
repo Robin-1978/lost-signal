@@ -143,6 +143,9 @@ entry 影子实地回放已落地（test_entry_shadow_field 常驻，mission/DWA
 what-if 回放已落地（test_stop_whatif 常驻，几何收拢进 shadow_field_helpers）：hold 1313 Occupied 步中同速后退只转 236（18%）——停止线价值在停住等相位，不在位置本身；field 回放几何统一零漂移。
 悬赏板第一刀已落地（tests/test_contracts.py 常驻，零 C++/零 strings 键）：tools/generate_contracts.py 种子派单（cargo×fast/efficient/safe，全周轮换，rep 1+(order-1)//6 全关封顶 5）＋contract.schema＋validator 引用门禁＋--check CI；文案 inline（strings 零闲置门禁，UI 落地时再经 tr）；reputation 账本已落地（test_contract_rep 常驻）：claim 幂等＋spend 守底＋存盘 roundtrip＋老存档零兼容；earn 接线已落地（record_completion 按轴自动 claim，重跑不复付）：C++ catalog 载 contracts（未知关卡/重单大声失败）＋test_contract_rep 钉 w01-3 fast 4 点。board UI 与 reputation→解锁消费仍待桌面。
 全表复验（8 刀后）：level_report --seeds 3 与 registry 基线逐字同——策略/悬赏/progress 全零仿真漂移。
+决策记录（2026-10）：策略走 A（Phase-1 只观测继续，Phase-2 仍冻等三门）；三层 Mission/Behavior/Local 定稿进 design.md，不再讨论形状只走门。
+第三章影子已落地（test_entry_shadow_town 常驻）：town 167 评估/50 占、big 2170/697，双跑同，min 净空 4.3/2.6m 零行人接触——镇子遭遇松，影子开火但无险。
+截图链实话：本机无 X/xvfb 且无 sudo，headless 无截图口——像素验收仍待真机；本轮零视觉改动，无新增截图债。
 Family C 首探 signal_pocket 已否决（完整回退零残留， veto 理由存档）：
   长扫巡逻（10m×0.5）＋穿越路线，30 种子双配置 30/30 成功零碰撞但 sus-fin 仅 1、
   pocket shadow 525 帧 feasible 0（HorizonShort 主导——9m 链超 mission shadow 窗，
