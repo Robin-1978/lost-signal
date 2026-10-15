@@ -60,6 +60,14 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
    progress.abilities_.push_back(id);
   }
  }
+ // Additive ledger: old saves without these keys load at zero/empty.
+ progress.reputation_ = std::max(0, value.value("reputation", 0));
+ for (const auto& id : value.value("claimed_contracts", std::vector<std::string>{})) {
+  if (!id.empty() && std::find(progress.claimed_contracts_.begin(), progress.claimed_contracts_.end(),
+                               id) == progress.claimed_contracts_.end()) {
+   progress.claimed_contracts_.push_back(id);
+  }
+ }
  const auto builds = value.value("last_builds", json::object());
  for (auto it = builds.begin(); it != builds.end(); ++it) {
   if (!known_level(catalog, it.key()) || !it.value().is_object())
@@ -137,6 +145,23 @@ void CampaignProgress::record_build(const std::string& level_id, const BuildSele
  last_builds_[level_id] = build;
 }
 
+bool CampaignProgress::claim_contract(const std::string& job_id, int rep) {
+ if (job_id.empty() || rep <= 0) return false;
+ if (std::find(claimed_contracts_.begin(), claimed_contracts_.end(), job_id) !=
+     claimed_contracts_.end()) {
+  return false;
+ }
+ claimed_contracts_.push_back(job_id);
+ reputation_ += rep;
+ return true;
+}
+
+bool CampaignProgress::spend_reputation(int amount) {
+ if (amount <= 0 || amount > reputation_) return false;
+ reputation_ -= amount;
+ return true;
+}
+
 const BuildSelection* CampaignProgress::last_build(const std::string& level_id) const {
  const auto found = last_builds_.find(level_id);
  return found == last_builds_.end() ? nullptr : &found->second;
@@ -177,6 +202,8 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
    {"abilities", abilities_},
    {"last_builds", std::move(builds)},
    {"best_scores", std::move(scores)},
+   {"reputation", reputation_},
+   {"claimed_contracts", claimed_contracts_},
  };
 
  auto temporary = path;

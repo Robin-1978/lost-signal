@@ -262,6 +262,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  )
  add_test(NAME abilities COMMAND test_abilities)
 
+ add_executable(test_contract_rep tests/new/test_contract_rep.cpp)
+ target_link_libraries(test_contract_rep PRIVATE lost_signal_game)
+ target_compile_definitions(test_contract_rep PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME contract_rep COMMAND test_contract_rep)
+
  add_executable(test_signal_cross tests/new/test_signal_cross.cpp)
  target_link_libraries(test_signal_cross PRIVATE lost_signal_game)
  target_compile_definitions(test_signal_cross PRIVATE
