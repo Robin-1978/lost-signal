@@ -23,6 +23,7 @@ add_library(lost_signal_sim STATIC
  src/hw/chassis/ackermann.cpp
  src/algo/astar.cpp
  src/algo/behavior_registry.cpp
+ src/algo/entry_shadow.cpp
  src/hw/chassis/diff_drive.cpp
  src/algo/dynamic_obstacle_map.cpp
  src/algo/dwa.cpp
@@ -133,6 +134,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_behavior_registry tests/new/test_behavior_registry.cpp)
  target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim)
  add_test(NAME behavior_registry COMMAND test_behavior_registry)
+
+ add_executable(test_entry_shadow tests/new/test_entry_shadow.cpp)
+ target_link_libraries(test_entry_shadow PRIVATE lost_signal_sim)
+ add_test(NAME entry_shadow COMMAND test_entry_shadow)
 
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
  target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)
