@@ -110,6 +110,7 @@
     "event.collision_static": "洛一与固定障碍发生碰撞。",
     "event.collision_dynamic": "洛一与巡逻叉车发生碰撞。",
     "event.shadow_wait": "影子评估：预测初值{0}秒[{1}]→末值{2}秒[{3}]，实际等待{4}秒。",
-    "world.section": "第{0}节"
+    "world.section": "第{0}节",
+    "event.governor_hold": "行为层发出停车约束，洛一在停止线前等待窗口。"
   }
 }

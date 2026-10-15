@@ -24,6 +24,7 @@ add_library(lost_signal_sim STATIC
  src/algo/astar.cpp
  src/algo/behavior_registry.cpp
  src/algo/entry_shadow.cpp
+ src/algo/entry_governor.cpp
  src/hw/chassis/diff_drive.cpp
  src/algo/dynamic_obstacle_map.cpp
  src/algo/dwa.cpp
@@ -169,6 +170,18 @@ if(LOST_SIGNAL_BUILD_TESTS)
  )
  target_include_directories(test_entry_shadow_town PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  add_test(NAME entry_shadow_town COMMAND test_entry_shadow_town)
+
+ add_executable(test_manual_ram tests/new/test_manual_ram.cpp)
+ target_link_libraries(test_manual_ram PRIVATE lost_signal_game)
+ target_compile_definitions(test_manual_ram PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ target_include_directories(test_manual_ram PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(NAME manual_ram COMMAND test_manual_ram)
+
+ add_executable(test_entry_governor tests/new/test_entry_governor.cpp)
+ target_link_libraries(test_entry_governor PRIVATE lost_signal_sim)
+ add_test(NAME entry_governor COMMAND test_entry_governor)
 
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
  target_link_libraries(test_summon_recharge PRIVATE lost_signal_game)

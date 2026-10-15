@@ -33,14 +33,15 @@ struct LevelPlan {
 
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
- // Pinned distributions (fixed seeds, deterministic). signal_hold over
- // 6 seeds: sustained-finite still rests on seed 42 alone ([12,2][2,1] vs
- // [11,3][0,0] / [12,0][2,0] / [11,0][0,0] / [9,5][1,0] / [15,0][3,0]).
- // signal_watch duplicates the corridor ([35,5][4,1] on 3 seeds, sus-fin on
- // seed+0 again) — same encounter phase, correlated coverage, stated.
+ // Pinned distributions (fixed seeds, deterministic). Phase-2 governor
+ // consolidated the waits (pre-Phase-2 baseline was [70,10][8,1] /
+ // [35,5][4,1]: fewer dithering micro episodes, longer sustained holds —
+ // the intended strategy effect, recorded here and in the gate report).
+ // Sustained-finite survives (the precious cell). signal_watch duplicates
+ // the corridor — same encounter phase, correlated coverage, stated.
  const LevelPlan plans[2] = {
-   {"signal_hold", 6, {{70, 10}, {8, 1}}},
-   {"signal_watch", 3, {{35, 5}, {4, 1}}},
+   {"signal_hold", 6, {{51, 16}, {15, 1}}},
+   {"signal_watch", 3, {{28, 11}, {7, 0}}},
  };
  int total_episodes = 0;
  int total_sustained_finite = 0;

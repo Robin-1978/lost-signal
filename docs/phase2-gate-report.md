@@ -121,9 +121,11 @@ lost_signal＋signal_echo × 3 种子＝6 run，共 3747 样本，成功失败�
 | 关 | 种子 | micro-inf | micro-fin | sus-inf | sus-fin |
 |---|---|---|---|---|---|
 | lost_signal＋signal_echo（release_error） | 2 关×3 | 72 | 9 | 4 | 0 |
-| signal_hold（accumulation） | 42–47 | 70 | 10 | 8 | 1（仅 seed 42） |
+''| signal_hold（accumulation） | 42–47 | 70 | 10 | 8 | 1（仅 seed 42） |
+| signal_hold（Phase-2 接线后） | 同种子 | 51 | 16 | 15 | 1（保持） |
 | signal_cross（Family B，30 种子扫描） | 11–40 | 见正文 | 见正文 | sustained 13/21 | 0（WaitUnsafe 主导，停车点在 swept 区内） |
 | signal_watch（accumulation） | 同走廊×3 | 35 | 5 | 4 | 1（同相位，相关非独立） |
+| signal_watch（Phase-2 接线后） | 同种子 | 28 | 11 | 7 | 0（sus-fin 样本回到 hold 单点） |
 
 signal_cross 30 种子（default/rec 各 30）：成功 30/30、碰撞 0（否决门过），
 default 格 [24,3][13,0]、recommended [60,19][21,0]，maxwait 4.5/4.7s；

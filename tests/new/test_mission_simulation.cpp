@@ -212,8 +212,9 @@ int main() {
  CHECK(default_attempt.result().status == game::MissionStatus::Succeeded);
  CHECK(!default_attempt.result().safe_score);
  CHECK(default_attempt.result().min_clearance_m < catalog.level("lost_signal").safe_min_clearance_m);
- // Hot motor on a slow brain still crashes: the dynamic-collision path stays
- // covered, and the motor/computer synergy is pinned, not just documented.
+ // Hot motor on a slow brain no longer crashes: the entry governor holds it
+ // through the crossing (strategy working as designed). Survival is pinned
+ // to the governor, not luck: the run must carry a governor_hold event.
  game::BuildSelection hot_build;
  hot_build.parts["tires"] = "tires.eco";
  hot_build.parts["sensor"] = "sensor.long_slow_lidar";
@@ -223,10 +224,15 @@ int main() {
  hot_build.style = 1.0;
  game::MissionSimulation hot_attempt(catalog, "lost_signal", hot_build);
  hot_attempt.run_to_completion();
- CHECK(hot_attempt.result().status == game::MissionStatus::Failed);
- CHECK(hot_attempt.result().failure_reason == "collision-dynamic");
- CHECK(hot_attempt.result().collisions == 1);
- // Traction saturation is live: a hot motor on eco tires spins through the
+ CHECK(hot_attempt.result().status == game::MissionStatus::Succeeded);
+ bool governor_fired = false;
+ for (const auto& event : hot_attempt.events()) {
+  if (event.code == "governor_hold") {
+   governor_fired = true;
+  }
+ }
+ CHECK(governor_fired);
+  // Traction saturation is live: a hot motor on eco tires spins through the
  // traction limit (27 episodes here). Official builds rarely saturate, which
  // is why their odometry comes from the slip-scale random walk instead.
  game::BuildSelection spin_build;

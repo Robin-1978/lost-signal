@@ -95,6 +95,7 @@ void MissionSimulation::reset() {
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  dynamic_obstacle_map_.clear();
+ governor_state_ = {};
  // Gyro bias is drawn once per run: constant within the run, new every run.
  gyro_bias_ = has("imu") ? imu_rng_.gauss(spec("imu", "gyro_bias_radps")) : 0.0;
  was_saturated_ = false;
@@ -609,6 +610,9 @@ void MissionSimulation::decide_control() {
   for (int& bin : snapshot_.control.shadow_pocket_reasons) {
    bin = 0;
   }
+  const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
+  snapshot_.control.governor_hold = governor_idle.hold_active;
+  snapshot_.control.governor_stop = governor_idle.stop_point;
   return;
  }
 
@@ -620,6 +624,8 @@ void MissionSimulation::decide_control() {
   nearest_actor = std::min(nearest_actor, distance({snapshot_.robot.x, snapshot_.robot.y}, actor.p) -
                                             actor.radius - robot_definition_.collision_radius_m);
  }
+
+
  const double prediction_horizon = has("computer") ? spec("computer", "prediction_horizon_s") : 1.2;
  const double requested_clearance = property(behavior_, "safe_clearance_m");
  const double risk_distance =
@@ -637,12 +643,15 @@ void MissionSimulation::decide_control() {
   for (int& bin : snapshot_.control.shadow_pocket_reasons) {
    bin = 0;
   }
+  const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
+  snapshot_.control.governor_hold = governor_idle.hold_active;
+  snapshot_.control.governor_stop = governor_idle.stop_point;
   return;
  }
 
  const double heading_error =
    sim::heading_err(target, snapshot_.robot.x, snapshot_.robot.y, snapshot_.robot.theta);
- const double speed_cap =
+ double speed_cap =
    std::min(std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps"))),
             corner_speed_cap(nav_x, nav_y));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
@@ -725,6 +734,112 @@ void MissionSimulation::decide_control() {
   snapshot_.control.shadow_pocket_verdict = static_cast<int>(search.verdict);
   snapshot_.control.shadow_pocket_feasible = pocket_feasible;
   snapshot_.control.shadow_pocket_total = static_cast<int>(search.candidates.size());
+ }
+ // Entry governor (Phase-2, Behavior one-sided brake): fresh fatal tracks
+ // feed the window shadow; Occupied engages HOLD_AT now, sustained Clear or
+ // prolonged silence releases. Social tracks never govern (proximity already
+ // eats clearance for them, contact never fails — holding would be pure
+ // loss). Stopped ego is assessed at a 0.5 m/s departure floor
+ // (conservative: slower than any cruise, so the window is pessimistic).
+ // Stop geometry uses PREDICTED threat occupancy (all forecast frames), not
+ // current positions: parking next to the incoming threat's future path is
+ // how the first wiring collided on signal_hold (39.4s hold -> rammed while
+ // stopped). The stop point must clear the whole swept band.
+ sim::GovernorOutput governor_out;
+ {
+  const sim::Vec2 ego{snapshot_.robot.x, snapshot_.robot.y};
+  const sim::Vec2 dir{std::cos(snapshot_.robot.theta), std::sin(snapshot_.robot.theta)};
+  const double ego_speed = std::abs(snapshot_.robot.v);
+  const double assess_speed = ego_speed >= 0.15 ? ego_speed : 0.5;
+  sim::GovernorInput governor_input;
+  for (const auto& track : known_tracks) {
+   if (track.object_id >= agents_.size() || agents_[track.object_id].social) {
+    continue;
+   }
+   const double age = snapshot_.time_s - track.last_observed_s;
+   if (age < 0.0 || age > sim::kEntryStaleBudgetS) {
+    continue;
+   }
+   const sim::Vec2 tp{track.state.p.x, track.state.p.y};
+   const sim::Vec2 tv{track.state.v.x, track.state.v.y};
+   const auto center = sim::governor_conflict_center(ego, dir, tp, tv);
+   if (std::hypot(center.x - ego.x, center.y - ego.y) > 10.0) {
+    continue;
+   }
+   const double half = 0.45 + track.state.radius + 0.2;
+   sim::WindowThreat threat;
+   threat.valid = true;
+   threat.dist_to_zone_m = std::hypot(tp.x - center.x, tp.y - center.y) - half;
+   const double to_center =
+     std::max(1e-6, std::hypot(center.x - tp.x, center.y - tp.y));
+   const double toward =
+     (tv.x * (center.x - tp.x) + tv.y * (center.y - tp.y)) / to_center;
+   threat.speed_mps = (toward > 0.0) ? std::hypot(tv.x, tv.y) : 0.0;
+   threat.age_s = age;
+   const double ego_dist = std::max(0.0, std::hypot(center.x - ego.x, center.y - ego.y) - half);
+   const auto assessment =
+     sim::assess_entry_window(ego_dist, assess_speed, half, threat, sim::kEntryStaleBudgetS);
+   if (assessment.verdict == sim::EntryVerdict::kObservedOccupied) {
+    governor_input.occupied_fresh = true;
+   } else if (assessment.verdict == sim::EntryVerdict::kObservedClear) {
+    governor_input.clear_fresh = true;
+   }
+  }
+  if (governor_input.occupied_fresh) {
+   governor_input.clear_fresh = false; // occupied wins mixed frames.
+  }
+  // Corridor entry against every forecast frame: the first remaining-route
+  // point inside any predicted swept disc, walked back brake + margin.
+  if (governor_input.occupied_fresh || governor_input.clear_fresh) {
+   auto near_predicted = [&](sim::Vec2 p) {
+    for (const auto& frame : predicted_frames) {
+     for (const auto& future : frame) {
+      if (std::hypot(p.x - future.p.x, p.y - future.p.y) < 0.9) {
+       return true;
+      }
+     }
+    }
+    return false;
+   };
+   std::size_t entry = shadow_remaining.size();
+   for (std::size_t i = 0; i < shadow_remaining.size(); ++i) {
+    if (near_predicted(shadow_remaining[i])) {
+     entry = i;
+     break;
+    }
+   }
+   if (entry < shadow_remaining.size()) {
+    const double cruise = property(behavior_, "cruise_mps");
+    const double brake = spec("tires", "brake_decel_mps2");
+    const double need = cruise * cruise / (2.0 * brake) + 1.0;
+    double walked = 0.0;
+    std::size_t stop = entry;
+    while (stop > 0 && walked < need) {
+     walked += std::hypot(shadow_remaining[stop].x - shadow_remaining[stop - 1].x,
+                          shadow_remaining[stop].y - shadow_remaining[stop - 1].y);
+     --stop;
+    }
+    governor_input.stop_point = shadow_remaining[stop];
+    governor_input.stop_valid = true;
+   }
+  }
+  const bool was_hold = governor_state_.hold_active;
+  governor_out = sim::govern_entry(governor_state_, governor_input);
+  snapshot_.control.governor_hold = governor_out.hold_active;
+  snapshot_.control.governor_stop = governor_out.stop_point;
+  if (governor_out.hold_active && !was_hold) {
+   record_event("governor_hold", catalog_.tr("event.governor_hold"));
+  }
+ }
+ // Virtual wall (Phase-2 consumption): while the governor holds, cap speed
+ // by stopping physics to the stop point. DWA still owns steering and the
+ // release decision; this clamp only withholds speed, never commands it.
+ if (governor_out.hold_active && governor_out.stop_valid) {
+  const double brake = spec("tires", "brake_decel_mps2");
+  const double dist = std::hypot(snapshot_.robot.x - governor_out.stop_point.x,
+                                 snapshot_.robot.y - governor_out.stop_point.y);
+  const double v_allow = dist <= 0.05 ? 0.0 : std::sqrt(2.0 * brake * dist);
+  speed_cap = std::min(speed_cap, v_allow);
  }
  const auto dwa = sim::dwa_compute_trajectory(
    {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.theta, snapshot_.robot.v, snapshot_.robot.w,

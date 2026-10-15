@@ -2,6 +2,8 @@
 
 #include "content_catalog.hpp"
 #include "algo/behavior_registry.hpp"
+#include "algo/entry_governor.hpp"
+#include "algo/entry_shadow.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "algo/dynamic_obstacle_map.hpp"
 #include "algo/dwa.hpp"
@@ -91,6 +93,10 @@ struct ControlSnapshot {
  int shadow_pocket_verdict{-1};
  int shadow_pocket_feasible{0};
  int shadow_pocket_total{0};
+ // Entry governor (Phase-2, Behavior one-sided brake): hold flag + stop
+ // point issued this step. Absent hold means DWA decides, never "go".
+ bool governor_hold{false};
+ sim::Vec2 governor_stop{0, 0};
  // Gate-B reason distribution: counts of the three leg reasons per candidate
  // (transit+hold+rejoin), bins code sim::DepartReason 0..8. Sum == 3*total.
  int shadow_pocket_reasons[10]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -317,6 +323,9 @@ class MissionSimulation {
  // are visible, consumed by update_shadow_episode on the rising edge).
  double shadow_open_speed_{-1.0};
  double shadow_open_nearest_{-1.0};
+ // Entry governor state (Phase-2 Behavior brake): hysteresis lives here,
+ // reset every run like every other per-run state below.
+ sim::GovernorState governor_state_;
  double next_scan_s_{0.0};
  double next_decision_s_{0.0};
  double next_replay_s_{0.0};
