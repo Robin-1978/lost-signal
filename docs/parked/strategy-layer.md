@@ -35,4 +35,13 @@ tracker 去假 trio（slot＋birth、bbox extent、CTRV）的重启触发器见
 * A：按 §2–§3 立项，先 Phase-1 影子（只加观测代码＋单测＋门报告）。
 * B：继续 park，策略需求等真车/真日志到了再谈；仿真侧只保留 record-only。
 
+## 5. 停止线放置实测（test_stop_line_study，observe-only）
+
+* signal_cross/recommended：14 等全在廊道外（干净）。
+* signal_hold/watch/recommended：各 490 等，其中 25 步（5%）停在
+  swept 廊道内（威胁路径 ±0.9m）。pocket 判断在实数上成立，但只是小分量——
+  主矛盾仍是进入时机（窗口相位），停止线是次矛盾。
+* 放置规则（提案，未施工）：冲突区入口前 (v^2/2a＋1.0m)；
+  grip 胎 2.0m/s 巡航＝0.48＋1.0＝1.48m。候选点必须验在廊道外。
+
 请点名 A 或 B。不点名＝冻结维持，本文件保持 PROPOSAL。

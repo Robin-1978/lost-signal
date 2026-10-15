@@ -139,6 +139,7 @@ Gate 定量 DRAFT 已落稿待签（docs/gate-thresholds-draft.md）：A1 九网
 * 行为注册表已落地（test_behavior_registry＋test_summon_recharge 常驻，mission 改线全表确定性通过）：patrol/wander/dwell 纯求值器＋字符串分发＋未知 type 构造期抛错；SimAgent 改中性 params（mission 零 if/else）；factory 补未知类型契约；summon/recharge overlay 端到端；--seeds 3 全确定性通过。
 Phase-1 entry 影子已落地（test_entry_shadow 常驻，mission 未碰）：assess_entry_window 纯窗口相位比较＋快慢自车同几何分离（Clear vs Occupied，近视反例钉死）＋无数据/超 0.30s 一律 Uncertain（永不清零默认 go）；真车 blocker 解除，改网查文献 record-only（MPU-9250／TB3／RPLidar A2 系入 sim2real 表，零调参）。
 entry 影子实地回放已落地（test_entry_shadow_field 常驻，mission/DWA 零消费只读快照）：signal_cross/recommended 全程 758 次评估（clear 524／occupied 233／uncertain 1），occupied 2.92s 首现、3.52s 翻 Clear，min 动态净空 0.98m 零碰撞——窗口先占后让与实际放行同形； verdict 流双跑逐字同。
+停止线实测已落地（test_stop_line_study 常驻，零消费）：cross 等 14 步全干净 vs hold/watch 各 490 等中 25 步（5%）停 swept 廊道内——pocket 判断实锤但小分量，主矛盾是进入时机；放置规则 v^2/2a＋1.0m 已入策略提案 §5。
 Family C 首探 signal_pocket 已否决（完整回退零残留， veto 理由存档）：
   长扫巡逻（10m×0.5）＋穿越路线，30 种子双配置 30/30 成功零碰撞但 sus-fin 仅 1、
   pocket shadow 525 帧 feasible 0（HorizonShort 主导——9m 链超 mission shadow 窗，
