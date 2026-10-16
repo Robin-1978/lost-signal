@@ -8,9 +8,9 @@
 // Counts would enshrine chatter; the redesign (velocity-level sustained
 // metric) is backlog with this evidence attached.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <iostream>
 
@@ -23,11 +23,11 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Differential gate: detector stays off (lesson §5: tread unobservable).
  {
   const auto& pres = catalog.presentation_for_level("lost_signal");
-  game::MissionSimulation mission(catalog, "lost_signal", pres.recommended_build);
+  mission::MissionSimulation mission(catalog, "lost_signal", pres.recommended_build);
   mission.run_to_completion();
   CHECK(mission.slip_episodes() == 0);
   CHECK(mission.slip_episode_times().empty());
@@ -36,7 +36,7 @@ int main() {
  const char* tracked[] = {"long_track", "sand_track"};
  for (const char* level : tracked) {
   const auto& pres = catalog.presentation_for_level(level);
-  game::MissionSimulation mission(catalog, level, pres.recommended_build);
+  mission::MissionSimulation mission(catalog, level, pres.recommended_build);
   mission.run_to_completion();
   CHECK(mission.slip_episode_times().size() == static_cast<std::size_t>(mission.slip_episodes()));
   std::cerr << level << ": slip_episodes=" << mission.slip_episodes();

@@ -1,5 +1,5 @@
-#include "game/content_catalog.hpp"
-#include "game/physics_scene.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/physics_scene.hpp"
 #include "physics/physics_world.hpp"
 
 #include <algorithm>
@@ -16,13 +16,13 @@
 
 int main() {
  CHECK(sim::physics::bullet_physics_available());
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& level = catalog.level("slope_launch");
  const auto& map = catalog.map(level.map);
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
  std::vector<sim::HeightPatch> patches;
  for (const auto& patch : map.terrain) {
- if (game::active_in_level(patch.active_in, level.id)) {
+ if (mission::active_in_level(patch.active_in, level.id)) {
  patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m, patch.grade_x,
  patch.grade_y, patch.roughness});
  }
@@ -37,7 +37,7 @@ int main() {
  sim::ChassisCaps chassis_caps;
  chassis_caps.geometry.support_width_m = robot.track_width_m;
  chassis_caps.geometry.support_length_m = std::max(robot.wheel_base_m, robot.collision_radius_m * 1.8);
- game::PhysicsScene physics(map, level, robot, chassis_caps, terrain,
+ mission::PhysicsScene physics(map, level, robot, chassis_caps, terrain,
  {spawn.x, spawn.y}, spawn.theta, mass,
  center_height);
  CHECK(std::string(physics.backend_name()) == "bullet");
@@ -67,7 +67,7 @@ int main() {
  actuation.left.longitudinal_force_N = 35.0;
  actuation.right.longitudinal_force_N = 35.0;
  sim::GroundContact ground;
- game::RigidVehicleState current;
+ mission::RigidVehicleState current;
  for (int step = 0; step < 100; ++step) {
  current = physics.step(actuation, ground, 0.02);
  }

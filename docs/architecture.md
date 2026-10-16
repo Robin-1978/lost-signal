@@ -44,17 +44,19 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 
 `src/hw/` models chassis capabilities, inverse kinematics, actuators, motor response, contacts, encoders, LiDAR, and IMU observations. A chassis declares its command space and limits. Algorithms consume the common contracts rather than depending on a graphical representation.
 
-Sensors carry sequence, sample time, delivery time, frame ID, and validity. Noise and latency affect observations. World truth remains inside physics and scenario ownership.
+Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
 
 ### Algorithms
 
-`src/algo/` implements grid planning, Hybrid A*, DWA-style local evaluation, holonomic local control, path following, dynamic prediction, state estimation, terrain cost, and PID control. The stack uses SI units and explicit configuration.
+`src/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
+
+The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy layer. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets, while `lost_signal_stack` is their small aggregate target.
 
 The planning pipeline produces a feasible body command. The selected chassis converts that command into wheel speed and steering targets. Motor controllers compare targets with quantized feedback and apply actuation to physics.
 
 ### Mission systems
 
-`src/game/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
+`src/mission/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
 
 The field operator, autonomous robot, dynamic actors, weather, and events remain part of one simulation world. Expedition mode reuses the same sensing, planning, control, and physics path as authored missions.
 
@@ -74,11 +76,13 @@ The most important extension boundaries are:
 
 - `ContentCatalog` for validated, localized data;
 - `IPhysicsWorld` for rigid-body execution and raycasts;
-- `IPathPlanner` for global planning;
+- `IGlobalPlanner` for global planning;
 - `IHighLevelPolicy` for behavior selection;
 - `ChassisModel` plus `ChassisCaps` for feasible motion and actuator telemetry;
 - LSRI v1 ports, sensor packets, transform frames, lifecycle, and watchdog semantics;
 - immutable snapshots for rendering, replay, and external observation.
+
+The [autonomy extension guide](extending-autonomy.md) documents the global-planner v1 request/result contract, registry, directory boundaries, and a complete provider example.
 
 These are useful sim-to-real seams because a hardware adapter can replace actuation and observation while keeping high-level logic testable. The seams do not eliminate the need for calibration, timing, safety, and hardware evidence.
 
@@ -86,7 +90,42 @@ These are useful sim-to-real seams because a hardware adapter can replace actuat
 
 Frames follow the familiar `map → odom → base_footprint → base_link → sensor/wheel link` structure. This aligns with [ROS REP-105](https://www.ros.org/reps/rep-0105.html). Geometry, time, angles, velocity, and acceleration use SI units and conventions consistent with [ROS REP-103](https://www.ros.org/reps/rep-0103.html).
 
-The simulation advances at a fixed step. Sensor sampling and delivery are separate events, allowing different rates and latency. Determinism requires the same content, configuration, seed, backend, and build assumptions; cross-backend numeric identity is not promised.
+The simulation advances at a fixed step. Sensors have independent sample rates and declared latency. The current in-process provider delivers each generated packet immediately; a real-time or transport provider may schedule delivery from the same metadata. Determinism requires the same content, configuration, seed, backend, and build assumptions; cross-backend numeric identity is not promised.
+
+## Scheduling and concurrency
+
+The current simulator uses one fixed-step, single-threaded scheduler. This is deliberate: identical inputs produce an inspectable execution order, and tests can advance simulated time without depending on host CPU timing. A 20 ms tick does not run every algorithm once. Each subsystem has its own cadence or trigger:
+
+| Work | Current trigger |
+|---|---|
+| Dynamic world and physics | every 20 ms tick (50 Hz) |
+| Encoder and IMU simulation, state-estimator prediction | every 20 ms tick (50 Hz) |
+| LiDAR simulation, LiDAR perception, track update | configured LiDAR `scan_hz` |
+| High-level policy, local planning, and control | compute component `decision_hz` |
+| Global planning | mission start, goal change, or expedition-route change |
+| Replay sample | every 40 ms |
+
+Within one due tick, the scheduler updates dynamic actors, captures and processes a due LiDAR scan, runs a due autonomy decision, applies the held command to the chassis and physics, then generates encoder and IMU observations for the resulting motion. A command is therefore held between decision events. Global planning is event driven rather than part of the frame loop.
+
+The in-process LSRI provider publishes and reads through a mutex-protected bounded queue on that same thread. The provider also accepts concurrent platform producers, so later sensor I/O threads do not require a new algorithm API. Sensor packets still carry independent sample times, sequence numbers, frames, and latency metadata; independent metadata does not imply one operating-system thread per sensor.
+
+LSRI does not require this execution model. A hardware provider or out-of-process bridge may receive LiDAR, IMU, and encoder data concurrently and place validated packets in the bounded observation queue. Autonomy must consume timestamped observations and publish expiring commands without sharing mutable mission or simulator state.
+
+If parallel execution is added, the deterministic scheduler remains the reference model. Parallel workers should operate on immutable, timestamped input snapshots and commit outputs at explicit scheduler boundaries. Queue limits, deadlines, stale-data policy, and command expiry belong in the runtime contract; thread ownership stays in the provider or executor. This keeps algorithms portable between deterministic simulation and asynchronous hardware without making their interfaces depend on a particular thread model.
+
+Three execution modes can therefore share the same module contracts:
+
+| Mode | Execution | Transport | Intended use |
+|---|---|---|---|
+| Deterministic | one fixed-step thread | in-process LSRI | tests, replay, teaching, reproducible experiments |
+| Concurrent | sensor I/O threads plus an autonomy worker pool | in-process bounded mailboxes | real-time desktop simulation and embedded computers |
+| Distributed | supervised platform, autonomy, and presentation processes | an IPC, shared-memory, or network LSRI provider | hardware deployment and fault isolation |
+
+The concurrent mode should not create one permanent thread for every algorithm. Sensor drivers are naturally asynchronous; estimation and perception can run when observations arrive; global planning belongs on a cancellable low-frequency worker; and control needs a periodic deadline with the newest valid state snapshot. A small executor can map those logical tasks to a bounded worker pool.
+
+The distributed mode needs more than a socket. Before it is considered implemented, LSRI needs a canonical wire encoding, schema compatibility tests, clock-domain conversion, bounded transport queues, peer health and restart behavior, and end-to-end watchdog tests. High-bandwidth scans may use a shared-memory ring while commands use a small reliable channel, but both must preserve the same message semantics.
+
+To move algorithms safely between these modes, each module should own its mutable state and exchange immutable messages. Planned extension contracts are `ISensorSource`, `IEstimator`, `IPerceptionStage`, `ILocalPlanner`, and `IController`, following the existing `IGlobalPlanner` pattern only when a second real implementation justifies the boundary. Each task declaration will name its trigger, input age limit, deadline, queue policy, and failure fallback. Physics remains single-writer authority and publishes timestamped world snapshots to simulated sensor jobs; algorithm workers never read mutable physics or mission state directly.
 
 ## Content and algorithm integrity
 

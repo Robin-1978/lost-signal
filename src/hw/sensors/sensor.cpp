@@ -8,7 +8,7 @@
 namespace sim {
 namespace {
 
-double ray_circle_distance(Vec2 origin, double direction_x, double direction_y, const DynState& object,
+double ray_circle_distance(Vec2 origin, double direction_x, double direction_y, const DynamicObjectState& object,
                            double max_range) {
  const double offset_x = object.p.x - origin.x;
  const double offset_y = object.p.y - origin.y;
@@ -64,7 +64,7 @@ Scan apply_lidar_noise(Scan ideal_scan, double noise_std, Rng& rng) {
 }
 
 Scan lidar_raycast(const GridMap& map, Vec2 position, double heading, int n_rays,
- double max_range, const std::vector<DynState>& dynamic_objects) {
+ double max_range, const std::vector<DynamicObjectState>& dynamic_objects) {
  if (n_rays <= 0 || max_range <= 0.0) {
   throw std::invalid_argument("invalid lidar raycast configuration");
  }
@@ -116,7 +116,7 @@ Scan lidar_raycast(const GridMap& map, Vec2 position, double heading, int n_rays
 }
 
 Scan lidar_scan(const GridMap& map, Vec2 position, double heading, int n_rays, double max_range,
- double noise_std, Rng& rng, const std::vector<DynState>& dynamic_objects) {
+ double noise_std, Rng& rng, const std::vector<DynamicObjectState>& dynamic_objects) {
  return apply_lidar_noise(
   lidar_raycast(map, position, heading, n_rays, max_range, dynamic_objects), noise_std, rng);
 }

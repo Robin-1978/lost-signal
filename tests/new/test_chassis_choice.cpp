@@ -3,9 +3,9 @@
 // gates, validated builds honored by the mission. boot opts in [ro1, ro2]
 // (RO-2 verified to complete it below); all other levels stay fixed.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 #include "physics/physics_world.hpp"
 
 #include <algorithm>
@@ -38,7 +38,7 @@ bool throws_like(const std::string& text) {
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Registry/options content: boot exposes the differential, Ackermann and
  // both common holonomic chassis; Ackermann keeps its progression gate.
  {
@@ -54,20 +54,20 @@ int main() {
  }
  // Default path bit-identical: empty request keeps presentation/companion.
  {
-  game::MissionSimulation mission(catalog, "boot",
+  mission::MissionSimulation mission(catalog, "boot",
                                   catalog.presentation_for_level("boot").recommended_build);
   CHECK(mission.robot().drive_type == "differential");
   mission.run_to_completion();
-  CHECK(mission.result().status == game::MissionStatus::Succeeded);
+  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  }
  // Positive: RO-2 on boot with the ability owned (verified combo, pinned).
  {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
-  game::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.ackermann"});
+  mission::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.ackermann"});
   CHECK(mission.robot().drive_type == "ackermann");
   mission.run_to_completion();
-  CHECK(mission.result().status == game::MissionStatus::Succeeded);
+  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
   CHECK(mission.result().time_s < 10.0);
  }
  // Locked without the ability.
@@ -75,7 +75,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
   try {
-   game::MissionSimulation mission(catalog, "boot", build, 1u);
+   mission::MissionSimulation mission(catalog, "boot", build, 1u);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("ability.ackermann"));
@@ -86,7 +86,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro3";
   try {
-   game::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.tracked"});
+   mission::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.tracked"});
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("not offered"));
@@ -97,7 +97,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.nope";
   try {
-   game::MissionSimulation mission(catalog, "boot", build, 1u);
+   mission::MissionSimulation mission(catalog, "boot", build, 1u);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(true);
@@ -108,7 +108,7 @@ int main() {
   auto build = catalog.presentation_for_level("lost_signal").recommended_build;
   build.chassis_robot = "robot.ro1";
   try {
-   game::MissionSimulation mission(catalog, "lost_signal", build);
+   mission::MissionSimulation mission(catalog, "lost_signal", build);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("not offered"));
@@ -116,14 +116,14 @@ int main() {
  }
  // last_builds persist the chassis choice across save/load.
  {
-  game::CampaignProgress progress;
+  mission::CampaignProgress progress;
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
   progress.record_build("boot", build);
  const auto save_path =
  std::filesystem::temp_directory_path() / "lost_signal_progress_chassis.json";
   progress.save(save_path, catalog);
-  const auto loaded = game::CampaignProgress::load(save_path, catalog);
+  const auto loaded = mission::CampaignProgress::load(save_path, catalog);
   const auto* back = loaded.last_build("boot");
   CHECK(back != nullptr);
   CHECK(back->chassis_robot == "robot.ro2");
@@ -131,18 +131,18 @@ int main() {
  // The two holonomic chassis are selectable content and complete a real
  // playable level through the full planner/controller/chassis chain. A
  // Bullet build repeats the same proof with rigid-body pose authority.
- std::vector<game::PhysicsMode> physics_modes{game::PhysicsMode::Domain};
+ std::vector<mission::PhysicsMode> physics_modes{mission::PhysicsMode::Domain};
  if (sim::physics::bullet_physics_available()) {
- physics_modes.push_back(game::PhysicsMode::Bullet);
+ physics_modes.push_back(mission::PhysicsMode::Bullet);
  }
  for (const auto physics_mode : physics_modes) {
  for (const auto* robot_id : {"robot.ro4", "robot.ro5"}) {
  auto build = catalog.presentation_for_level("boot").recommended_build;
  build.chassis_robot = robot_id;
- game::MissionSimulation mission(catalog, "boot", build, 1u, {},
- game::ComponentRegistry::builtins(), {}, physics_mode);
+ mission::MissionSimulation mission(catalog, "boot", build, 1u, {},
+ mission::ComponentRegistry::builtins(), {}, physics_mode);
  mission.run_to_completion();
- CHECK(mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  CHECK(mission.physics_mode() == physics_mode);
  if (std::string(robot_id) == "robot.ro4") {
  CHECK(std::any_of(mission.replay().begin(), mission.replay().end(), [](const auto& frame) {

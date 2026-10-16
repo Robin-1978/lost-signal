@@ -25,7 +25,7 @@ flowchart LR
 
 The autonomy port reads observations and writes motion commands. The platform port publishes observations and consumes commands. Neither port exposes world truth, Bullet bodies, game state, UI types, ROS messages, or transport handles.
 
-The game owns both ends of an in-process channel because simulation and autonomy run in one process. A physical deployment gives the platform end to a native driver. A bridge is just another platform adapter.
+The simulator owns both ends of an in-process channel because simulation and autonomy currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives the platform end to a native driver. A bridge is just another platform adapter.
 
 ## Required conventions
 
@@ -100,6 +100,8 @@ The shipped provider is `channel.in-process`. `ReplayDriver` publishes ordered r
 
 Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v1 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
 
+The provider boundary permits multi-threaded and multi-process execution, but v1 ships only the in-process provider. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
+
 ## Optional ROS 2 bridge
 
 ROS 2 is an adapter target, not the project runtime. A bridge may translate:
@@ -114,7 +116,7 @@ ROS 2 is an adapter target, not the project runtime. A bridge may translate:
 | Steering motion | an Ackermann command adapter |
 | Actuator state/command | ros2_control state and command interfaces |
 
-The bridge owns QoS, executors, discovery, DDS, and ROS lifecycle mapping. None of those types enter `lost_signal_sim` or `lost_signal_game`. Another bridge can target a serial protocol, CAN gateway, Zenoh, shared memory, or a classroom microcontroller without changing autonomy.
+The bridge owns QoS, executors, discovery, DDS, and ROS lifecycle mapping. None of those types enter `lost_signal_stack` or `lost_signal_mission`. Another bridge can target a serial protocol, CAN gateway, Zenoh, shared memory, or a classroom microcontroller without changing autonomy.
 
 ## Current evidence and limit
 

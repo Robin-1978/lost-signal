@@ -3,7 +3,7 @@
 #include "diff_drive.hpp"
 #include "motor_drive.hpp"
 #include "hw/dynamics/contact.hpp"
-#include "algo/pid.hpp"
+#include "autonomy/control/pid.hpp"
 
 namespace sim {
 

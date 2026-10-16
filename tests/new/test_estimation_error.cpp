@@ -4,9 +4,9 @@
 // Evidence only — no bounds asserted (bounds would BE calibration, which is
 // a separate, risk-decided slice). Deterministic: same seed, same numbers.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -73,7 +73,7 @@ int speed_bin(double speed_mps) {
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Multi-level, multi-seed accumulation (level.seed+0..2, mirroring
  // level_report --seeds): estimation evidence across encounters, not one
  // pinned trajectory. Exact values legitimately vary by seed (different
@@ -87,11 +87,11 @@ int main() {
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
   uint64_t base = 0;
   {
-   game::MissionSimulation probe(catalog, level_id, build);
+   mission::MissionSimulation probe(catalog, level_id, build);
    base = probe.level().seed;
   }
   for (int s = 0; s < 3; ++s) {
-   game::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
+   mission::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
    ++runs;
    std::cerr << level_id << " seed+" << s << " status=" << static_cast<int>(mission.result().status)

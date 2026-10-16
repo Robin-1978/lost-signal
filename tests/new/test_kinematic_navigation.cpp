@@ -1,5 +1,5 @@
-#include "algo/ackermann_local.hpp"
-#include "algo/hybrid_astar.hpp"
+#include "autonomy/planning/local/ackermann_local.hpp"
+#include "autonomy/planning/global/hybrid_astar.hpp"
 #include "hw/chassis/holonomic.hpp"
 
 #include <cmath>

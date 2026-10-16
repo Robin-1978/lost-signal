@@ -3,7 +3,7 @@
 // diagnoses. Transit has no arrival proof yet (honest Unknown); hold and
 // rejoin are fully assessed. Mission stays untouched.
 
-#include "algo/predictor.hpp"
+#include "autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -24,8 +24,8 @@ namespace {
 using V = sim::Feasibility::Verdict;
 using R = sim::DepartReason;
 
-std::vector<std::vector<sim::DynState>> parked_frames(int n, sim::Vec2 p, double r = 0.4) {
- return std::vector<std::vector<sim::DynState>>(static_cast<std::size_t>(n), {{{p.x, p.y}, {0, 0}, r}});
+std::vector<std::vector<sim::DynamicObjectState>> parked_frames(int n, sim::Vec2 p, double r = 0.4) {
+ return std::vector<std::vector<sim::DynamicObjectState>>(static_cast<std::size_t>(n), {{{p.x, p.y}, {0, 0}, r}});
 }
 
 } // namespace
@@ -51,18 +51,18 @@ int main() {
   const auto beyond = sim::assess_hold({0.0, 0.0}, 0.0, 5.0, parked, 0.1, 0.38, 0.5);
   CHECK(beyond.verdict == V::kUnknown && beyond.reason == R::kHorizonShort);
   // Threat leaves, then returns mid-hold: the return is caught.
-  std::vector<std::vector<sim::DynState>> visit;
+  std::vector<std::vector<sim::DynamicObjectState>> visit;
   for (int k = 0; k < 21; ++k) {
    const bool present = k < 5 || k >= 15;
-   visit.push_back(present ? std::vector<sim::DynState>{{{0.0, 0.0}, {0.0, 0.0}, 0.4}}
-                           : std::vector<sim::DynState>{{{9.0, 9.0}, {0.0, 0.0}, 0.4}});
+   visit.push_back(present ? std::vector<sim::DynamicObjectState>{{{0.0, 0.0}, {0.0, 0.0}, 0.4}}
+                           : std::vector<sim::DynamicObjectState>{{{9.0, 9.0}, {0.0, 0.0}, 0.4}});
   }
   // Threat leaves, then returns mid-hold: the hold starts after the first
   // visit (t=0.6), so only the return can refuse it — and it does.
   const auto returned = sim::assess_hold({0.0, 0.0}, 0.6, 2.0, visit, 0.1, 0.38, 0.5);
   CHECK(returned.verdict == V::kInfeasible && returned.reason == R::kWaitUnsafe);
   // Threat exactly at the spot at the hold-end instant: caught (joints are closed).
-  std::vector<std::vector<sim::DynState>> arrive;
+  std::vector<std::vector<sim::DynamicObjectState>> arrive;
   for (int k = 0; k < 21; ++k) {
    arrive.push_back({{{9.0 - 9.0 * k * 0.1 / 2.0}, {0.0, 0.0}, 0.4}});
   }
@@ -145,7 +145,7 @@ int main() {
   CHECK(walled_off.verdict == V::kInfeasible && walled_off.reason == R::kStaticBlocked);
   // Threat crossing the leg as the ego arrives (spin-up turns put the ego at
   // x=1 near t=1.8; the threat reaches (1,0) at t=1.75): motion meets motion.
-  std::vector<std::vector<sim::DynState>> crosser;
+  std::vector<std::vector<sim::DynamicObjectState>> crosser;
   for (int k = 0; k < 61; ++k) {
    crosser.push_back({{{1.0, 3.5 - 2.0 * k * 0.1}, {0.0, 0.0}, 0.4}});
   }
@@ -180,7 +180,7 @@ int main() {
  // Identical geometry — only the chained delay differs.
  {
   sim::GridMap open(100, 100, 0.1);
-  std::vector<std::vector<sim::DynState>> frames;
+  std::vector<std::vector<sim::DynamicObjectState>> frames;
   for (int k = 0; k < 121; ++k) {
    frames.push_back({{{7.85 - 1.0 * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
   }

@@ -1,12 +1,12 @@
 #include "game_ui.hpp"
 #include "world_renderer.hpp"
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
 #include "map_editor.hpp"
 
 #include <optional>
-#include "game/mission_simulation.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <TGUI/Backend/raylib.hpp>
 #include <TGUI/TGUI.hpp>
@@ -34,7 +34,7 @@ struct Options {
  double screenshot_time_s{-1.0};
  std::filesystem::path progress_file;
  bool no_save{false};
- game::PhysicsMode physics_mode{game::PhysicsMode::Bullet};
+ mission::PhysicsMode physics_mode{mission::PhysicsMode::Bullet};
 };
 
 std::filesystem::path default_progress_path() {
@@ -100,7 +100,7 @@ Options parse_options(int argc, char** argv) {
   else if (argument == "--no-save")
    options.no_save = true;
  else if (argument == "--physics" && index + 1 < argc)
- options.physics_mode = game::parse_physics_mode(argv[++index]);
+ options.physics_mode = mission::parse_physics_mode(argv[++index]);
   else if (argument == "--help" || argument == "-h") {
  std::cout << "Usage: lost_signal [--assets PATH] [--language en|zh-CN] [--level ID] [--demo]"
                 " [--analysis-view] [--chapter-view] [--garage-view]"
@@ -120,7 +120,7 @@ Options parse_options(int argc, char** argv) {
 // The catalog is owned by value so the map editor can reload it after a
 // save: references (ui, renderers) stay bound to this object while missions
 // and the editor are rebuilt from the fresh contents.
-int run_client(game::ContentCatalog catalog, const Options& options) {
+int run_client(mission::ContentCatalog catalog, const Options& options) {
  SetTraceLogLevel(LOG_ERROR);
  SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
  InitWindow(1440, 900, catalog.tr("app.window_title").c_str());
@@ -146,10 +146,10 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
   client::GameUi ui(gui, catalog, presentation);
   const bool persist_progress = !options.no_save && !options.demo && options.screenshot.empty();
   const auto progress_path = options.progress_file.empty() ? default_progress_path() : options.progress_file;
-  game::CampaignProgress progress;
+  mission::CampaignProgress progress;
   if (persist_progress) {
    try {
-    progress = game::CampaignProgress::load(progress_path, catalog);
+    progress = mission::CampaignProgress::load(progress_path, catalog);
     ui.restore_completed(progress.completed_levels());
     ui.set_inventory(progress.inventory());
  ui.set_abilities(progress.abilities());
@@ -162,10 +162,10 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
   std::optional<client::MapEditor> editor;
   if (options.analysis_view)
    renderer.toggle_analysis_mode();
- const auto make_mission = [&](const std::string& level, const game::BuildSelection& build) {
- auto created = std::make_unique<game::MissionSimulation>(catalog, level, build, std::nullopt,
- progress.abilities(), game::ComponentRegistry::builtins(),
- std::shared_ptr<const game::IPathPlanner>{}, options.physics_mode,
+ const auto make_mission = [&](const std::string& level, const mission::BuildSelection& build) {
+ auto created = std::make_unique<mission::MissionSimulation>(catalog, level, build, std::nullopt,
+ progress.abilities(), mission::ComponentRegistry::builtins(),
+ std::shared_ptr<const autonomy::IGlobalPlanner>{}, options.physics_mode,
  std::shared_ptr<sim::IHighLevelPolicy>{},
  ui.endless_mode() ? std::string{} : ui.contract_id());
  created->set_endless_mode(ui.endless_mode());
@@ -298,7 +298,7 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
      const auto assets = options.assets.string();
      if (editor->save(assets)) {
       const auto kept_build = ui.build();
- catalog = game::ContentCatalog::load(options.assets, catalog.locale());
+ catalog = mission::ContentCatalog::load(options.assets, catalog.locale());
       ui.select_level(ui.level_id());
       ui.set_build(kept_build);
  mission = make_mission(ui.level_id(), ui.build());
@@ -422,19 +422,19 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
  (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1.0 : 0.0);
  mission->set_field_operator_command(world_x, world_y);
  if (IsKeyPressed(KEY_F))
- mission->issue_field_intent(game::FieldIntentKind::Follow);
+ mission->issue_field_intent(mission::FieldIntentKind::Follow);
  if (IsKeyPressed(KEY_G)) {
  if (const auto target = renderer.screen_to_world(GetMousePosition()))
- mission->issue_field_intent(game::FieldIntentKind::GoTo, *target);
+ mission->issue_field_intent(mission::FieldIntentKind::GoTo, *target);
  }
  if (IsKeyPressed(KEY_Q)) {
  if (const auto target = renderer.screen_to_world(GetMousePosition()))
- mission->issue_field_intent(game::FieldIntentKind::Search, *target);
+ mission->issue_field_intent(mission::FieldIntentKind::Search, *target);
  }
  if (IsKeyPressed(KEY_X))
- mission->issue_field_intent(game::FieldIntentKind::Wait);
+ mission->issue_field_intent(mission::FieldIntentKind::Wait);
  if (IsKeyPressed(KEY_R))
- mission->issue_field_intent(game::FieldIntentKind::Return);
+ mission->issue_field_intent(mission::FieldIntentKind::Return);
  } else if (ui.screen() == client::Screen::Running &&
  mission->level().control_mode == "manual_calibration" &&
  !options.demo && options.screenshot.empty()) {
@@ -446,28 +446,28 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
    }
 
    if (ui.screen() == client::Screen::Running && !paused &&
-       mission->snapshot().status == game::MissionStatus::Running) {
+       mission->snapshot().status == mission::MissionStatus::Running) {
     if (!options.screenshot.empty()) {
      // Automated art checks advance by a fixed number of simulation ticks per frame so
      // screenshots are byte-for-byte reproducible on different machines.
-     for (int step = 0; step < 12 && mission->snapshot().status == game::MissionStatus::Running; ++step) {
+     for (int step = 0; step < 12 && mission->snapshot().status == mission::MissionStatus::Running; ++step) {
       mission->step();
      }
     } else {
      accumulator += std::min(0.1, static_cast<double>(GetFrameTime())) * speed;
      int steps = 0;
-     while (accumulator >= game::MissionSimulation::fixed_step_s && steps < 80) {
+     while (accumulator >= mission::MissionSimulation::fixed_step_s && steps < 80) {
       mission->step();
-      accumulator -= game::MissionSimulation::fixed_step_s;
+      accumulator -= mission::MissionSimulation::fixed_step_s;
       ++steps;
      }
     }
    }
    if (ui.screen() == client::Screen::Running) {
     ui.refresh_running(*mission, paused, speed);
-    if (mission->snapshot().status == game::MissionStatus::Succeeded ||
-        mission->snapshot().status == game::MissionStatus::Failed) {
-     if (mission->snapshot().status == game::MissionStatus::Succeeded) {
+    if (mission->snapshot().status == mission::MissionStatus::Succeeded ||
+        mission->snapshot().status == mission::MissionStatus::Failed) {
+     if (mission->snapshot().status == mission::MissionStatus::Succeeded) {
       ui.mark_completed(mission->level().id);
       if (persist_progress) {
        try {
@@ -524,8 +524,8 @@ int run_client(game::ContentCatalog catalog, const Options& options) {
    EndDrawing();
    ++rendered_frames;
 
-   const bool terminal = mission->snapshot().status == game::MissionStatus::Succeeded ||
-                         mission->snapshot().status == game::MissionStatus::Failed;
+   const bool terminal = mission->snapshot().status == mission::MissionStatus::Succeeded ||
+                         mission->snapshot().status == mission::MissionStatus::Failed;
    const bool target_frame = options.screenshot_time_s >= 0.0
                                ? mission->snapshot().time_s >= options.screenshot_time_s || terminal
                                : (mission->snapshot().actors.empty() && mission->snapshot().time_s >= 2.5) ||
@@ -560,7 +560,7 @@ int main(int argc, char** argv) {
  try {
   auto options = parse_options(argc, argv);
   options.assets = find_assets(argv[0], options.assets);
- const auto catalog = game::ContentCatalog::load(options.assets, options.language);
+ const auto catalog = mission::ContentCatalog::load(options.assets, options.language);
   return run_client(catalog, options);
  } catch (const std::exception& error) {
   std::cerr << "error: " << error.what() << '\n';

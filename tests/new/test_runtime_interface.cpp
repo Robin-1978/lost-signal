@@ -1,10 +1,12 @@
 #include "runtime/replay_driver.hpp"
 #include "runtime/runtime_channel.hpp"
 
+#include <atomic>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #define CHECK(condition)                                                                                     \
@@ -39,6 +41,16 @@ sim::ObservationFrame encoder_frame(double time_s, std::uint64_t sequence,
  frame.encoders.emplace();
  frame.encoders->linear_velocity_mps = 0.5;
  frame.encoders->header = {time_s, sequence, "base_link", 0.0, 1, std::move(source)};
+ return frame;
+}
+
+sim::ObservationFrame imu_frame(double time_s, std::uint64_t sequence,
+ std::string source = "test.imu") {
+ sim::ObservationFrame frame;
+ frame.time_s = time_s;
+ frame.imu.emplace();
+ frame.imu->yaw_rate_radps = 0.1;
+ frame.imu->header = {time_s, sequence, "imu_link", 0.0, 1, std::move(source)};
  return frame;
 }
 
@@ -149,6 +161,43 @@ int main() {
  CHECK(queue_channel->health().dropped_observations == 1);
  const auto oldest_remaining = queue_channel->autonomy().read_observation();
  CHECK(oldest_remaining && std::abs(oldest_remaining->time_s - 0.1) < 1e-12);
+
+ // A real platform commonly has independent sensor I/O threads. The
+ // in-process provider is the reference transport for that execution mode:
+ // multiple producers may publish concurrently without corrupting per-source
+ // ordering or the bounded mailbox.
+ auto concurrent_config = config();
+ concurrent_config.observation_queue_capacity = 512;
+ auto concurrent_channel = make_in_process_channel(concurrent_config);
+ concurrent_channel->configure();
+ concurrent_channel->activate();
+ std::atomic<bool> start_producers{false};
+ std::atomic<bool> producers_ok{true};
+ const auto publish_sensor = [&](const std::string& source, double time_offset_s, bool publish_imu) {
+ while (!start_producers.load(std::memory_order_acquire))
+ std::this_thread::yield();
+ for (std::uint64_t sequence = 0; sequence < 128; ++sequence) {
+ const double time_s = time_offset_s + static_cast<double>(sequence) * 0.01;
+ auto observation = publish_imu ? imu_frame(time_s, sequence, source)
+ : encoder_frame(time_s, sequence, source);
+ if (!concurrent_channel->platform().publish_observation(
+ std::move(observation))) {
+ producers_ok.store(false, std::memory_order_release);
+ }
+ }
+ };
+ std::thread encoder_producer(publish_sensor, "concurrent.encoder", 10.0, false);
+ std::thread imu_producer(publish_sensor, "concurrent.imu", 20.0, true);
+ start_producers.store(true, std::memory_order_release);
+ encoder_producer.join();
+ imu_producer.join();
+ CHECK(producers_ok.load(std::memory_order_acquire));
+ std::size_t concurrent_frames = 0;
+ while (concurrent_channel->autonomy().read_observation())
+ ++concurrent_frames;
+ CHECK(concurrent_frames == 256);
+ CHECK(concurrent_channel->health().dropped_observations == 0);
+ CHECK(concurrent_channel->health().rejected_observations == 0);
 
  std::vector<sim::ObservationFrame> replay_frames;
  replay_frames.push_back(encoder_frame(0.0, 0, "replay.encoder"));

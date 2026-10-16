@@ -6,9 +6,9 @@
 // (RO-2) was probed and produces zero waits — excluded, not pinned zero.
 // Read-only accessors only.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <iostream>
 #include <limits>
@@ -31,7 +31,7 @@ struct LevelPlan {
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Counts are diagnostic rather than golden values: perception and tracking
  // changes legitimately split or merge adjacent wait episodes. The stable
  // contract is that both levels produce valid waits and the accumulated set
@@ -47,14 +47,14 @@ int main() {
   const auto build = catalog.presentation_for_level(plan.id).recommended_build;
   uint64_t base = 0;
   {
-   game::MissionSimulation probe(catalog, plan.id, build);
+   mission::MissionSimulation probe(catalog, plan.id, build);
    base = probe.level().seed;
   }
   int cells[2][2] = {{0, 0}, {0, 0}};
   double finite_err_sum = 0.0;
   int finite_n = 0;
   for (int s = 0; s < plan.seeds; ++s) {
-   game::MissionSimulation mission(catalog, plan.id, build, base + static_cast<uint64_t>(s));
+   mission::MissionSimulation mission(catalog, plan.id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
    int seed_cells[2][2] = {{0, 0}, {0, 0}};
    for (const auto& episode : mission.shadow_episodes()) {

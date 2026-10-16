@@ -5,8 +5,8 @@
 // collision-dynamic is the human hand. Park on the patrol segment and let
 // ping-pong deliver the mover; the governor must never fire here (manual
 // bypasses decide_control: the driver outranks strategy by construction).
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -126,11 +126,11 @@ int main() {
   CHECK(static_cast<bool>(out));
   out << text;
  }
- const auto catalog = game::ContentCatalog::load(overlay.string());
- game::BuildSelection build;
+ const auto catalog = mission::ContentCatalog::load(overlay.string());
+ mission::BuildSelection build;
  build.parts["tires"] = "tires.standard";
  build.style = 0.0;
- game::MissionSimulation ram(catalog, "test_ram", build, 7u);
+ mission::MissionSimulation ram(catalog, "test_ram", build, 7u);
  ram.start();
  // Drive at the patrol segment and stop on it (0.8 m < 0.9 m capture):
  // ping-pong guarantees the mover comes through. No parking precision
@@ -141,7 +141,7 @@ int main() {
  };
  bool parked = false;
  int steps = 0;
- while (ram.snapshot().status == game::MissionStatus::Running && steps < 6000) {
+ while (ram.snapshot().status == mission::MissionStatus::Running && steps < 6000) {
   const auto& snap = ram.snapshot();
   if (dist_to_seg(snap.robot.x, snap.robot.y) < 0.8) {
    parked = true;
@@ -158,7 +158,7 @@ int main() {
  }
  std::cerr << "ram: parked=" << parked << " steps=" << steps << "\n";
  CHECK(parked);
- CHECK(ram.result().status == game::MissionStatus::Failed);
+ CHECK(ram.result().status == mission::MissionStatus::Failed);
  CHECK(ram.result().failure_reason == "collision-dynamic");
  CHECK(ram.result().collisions >= 1);
  for (const auto& event : ram.events()) {

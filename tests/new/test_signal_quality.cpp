@@ -4,9 +4,9 @@
 // of measured vs true, mapped through wheel_equiv_mass/stall_force into PWM
 // authority fraction. Evidence for the FF gate, not a standard.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 #include "hw/chassis/diff_drive.hpp"
 
 #include <algorithm>
@@ -23,9 +23,9 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto build = catalog.presentation_for_level("lost_signal").recommended_build;
- game::MissionSimulation mission(catalog, "lost_signal", build);
+ mission::MissionSimulation mission(catalog, "lost_signal", build);
  CHECK(mission.robot().drive_type == "differential");
  mission.run_to_completion();
  const double base = mission.robot().wheel_base_m;

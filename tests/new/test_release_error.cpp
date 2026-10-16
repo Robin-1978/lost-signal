@@ -5,9 +5,9 @@
 // speed at wait start. Episodes opening with inf prediction carry no error
 // (unassessable start) and are counted separately. Evidence only.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -46,7 +46,7 @@ struct Bin {
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const char* levels[2] = {"lost_signal", "signal_echo"};
  Bin bins[3];
  int episodes = 0;
@@ -57,11 +57,11 @@ int main() {
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
   uint64_t base = 0;
   {
-   game::MissionSimulation probe(catalog, level_id, build);
+   mission::MissionSimulation probe(catalog, level_id, build);
    base = probe.level().seed;
   }
   for (int s = 0; s < 3; ++s) {
-   game::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
+   mission::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
    for (const auto& episode : mission.shadow_episodes()) {
     ++episodes;

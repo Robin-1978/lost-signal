@@ -1,5 +1,5 @@
-#include "game/systems/world_activity_system.hpp"
-#include "game/content.hpp"
+#include "mission/systems/world_activity_system.hpp"
+#include "mission/content.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -13,11 +13,11 @@
  } while (false)
 
 int main() {
- game::WorldActivitySystem first;
- game::WorldActivitySystem second;
- game::MapDefinition map;
- map.markers.emplace("a", game::Pose{10.0, 4.0, 0.0});
- map.markers.emplace("b", game::Pose{16.0, 8.0, 0.0});
+ mission::WorldActivitySystem first;
+ mission::WorldActivitySystem second;
+ mission::MapDefinition map;
+ map.markers.emplace("a", mission::Pose{10.0, 4.0, 0.0});
+ map.markers.emplace("b", mission::Pose{16.0, 8.0, 0.0});
  first.reset(20261016);
  second.reset(20261016);
 
@@ -34,7 +34,7 @@ int main() {
  CHECK(first.state().local_time_hours >= 0.0 && first.state().local_time_hours < 24.0);
  CHECK(first.state().daylight >= 0.0 && first.state().daylight <= 1.0);
  for (const auto& transition : a)
- changes += transition.kind == game::WorldActivityTransitionKind::WeatherChanged ? 1 : 0;
+ changes += transition.kind == mission::WorldActivityTransitionKind::WeatherChanged ? 1 : 0;
  became_wet = became_wet || first.state().wetness > 0.05;
  }
  CHECK(changes >= 2);
@@ -48,19 +48,19 @@ int main() {
  const auto transitions = first.update(time_s, 0.02, map, incident_position, 0.0);
  for (const auto& transition : transitions)
  resolved = resolved ||
- transition.kind == game::WorldActivityTransitionKind::IncidentResolved;
+ transition.kind == mission::WorldActivityTransitionKind::IncidentResolved;
  }
  CHECK(resolved);
  CHECK(!first.state().incident.active);
  CHECK(first.state().incident.completed_count == 1);
- CHECK(std::string(game::weather_kind_id(game::WeatherKind::Drizzle)) == "drizzle");
- CHECK(std::string(game::world_incident_kind_id(game::WorldIncidentKind::FallenCargo)) ==
+ CHECK(std::string(mission::weather_kind_id(mission::WeatherKind::Drizzle)) == "drizzle");
+ CHECK(std::string(mission::world_incident_kind_id(mission::WorldIncidentKind::FallenCargo)) ==
  "fallen-cargo");
 
  // A restored regional session must continue the same weather/event stream
  // even though the new MissionSimulation clock starts again at zero.
- game::WorldActivitySystem uninterrupted;
- game::WorldActivitySystem resumed;
+ mission::WorldActivitySystem uninterrupted;
+ mission::WorldActivitySystem resumed;
  uninterrupted.reset(778899);
  for (int tick = 1; tick <= 3250; ++tick)
  uninterrupted.update(tick * 0.02, 0.02, map, {1.0, 1.0}, 0.5);

@@ -3,7 +3,7 @@
 // measurements (RMSE), stay consistent (3-sigma), grow covariance in
 // dropout and shrink it on update, refuse bad inputs, wrap yaw.
 
-#include "algo/estimator_filter.hpp"
+#include "autonomy/localization/estimator_filter.hpp"
 
 #include <algorithm>
 #include <cmath>

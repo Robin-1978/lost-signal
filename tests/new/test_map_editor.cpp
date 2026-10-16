@@ -1,7 +1,7 @@
 #include "client/map_editor.hpp"
 
-#include "game/content_catalog.hpp"
-#include "game/map_serialize.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/map_serialize.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -18,7 +18,7 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Select nearest: marker wins over farther box centers.
  {
   client::MapEditor editor(catalog, "boot");
@@ -161,7 +161,7 @@ int main() {
  if (error)
  std::cerr << "copy fixture: " << error.message() << '\n';
  CHECK(!error);
-  auto scratch_catalog = game::ContentCatalog::load(scratch.string());
+  auto scratch_catalog = mission::ContentCatalog::load(scratch.string());
   client::MapEditor editor(scratch_catalog, "boot");
   editor.toggle();
   editor.press(1.0, 1.0);
@@ -179,8 +179,8 @@ int main() {
   std::ostringstream on_disk;
   on_disk << file.rdbuf();
  file.close();
-  const auto reloaded = game::ContentCatalog::load(scratch.string());
-  CHECK(on_disk.str() == game::serialize_map_canonical(reloaded.map("research_base")));
+  const auto reloaded = mission::ContentCatalog::load(scratch.string());
+  CHECK(on_disk.str() == mission::serialize_map_canonical(reloaded.map("research_base")));
   const auto moved = reloaded.map("research_base").markers.find("robot_bay");
   CHECK(moved != reloaded.map("research_base").markers.end());
   CHECK(std::abs(moved->second.x - 2.0) < 1e-9);

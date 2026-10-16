@@ -1,7 +1,7 @@
 #include "world_renderer.hpp"
 
 #include "scene_renderer_3d.hpp"
-#include "game/content.hpp"
+#include "mission/content.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -120,7 +120,7 @@ std::filesystem::path find_ui_font(const std::filesystem::path& assets) {
 }
 
 WorldRenderer::WorldRenderer(const std::filesystem::path& font_path, const std::filesystem::path& assets_root,
-                             const game::ContentCatalog& catalog)
+                             const mission::ContentCatalog& catalog)
     : catalog_(catalog) {
  if (!font_path.empty()) {
   std::string glyph_text = "失落的信号第一章醒来洛一机库配置自主执行中任务完成"
@@ -209,7 +209,7 @@ std::optional<std::string> WorldRenderer::garage_slot_at(Vector2 screen) const {
  return std::nullopt;
 }
 
-void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, const MapEditor& editor) const {
+void WorldRenderer::draw_edit_overlay(const mission::MissionSimulation& mission, const MapEditor& editor) const {
  if (!editor.active()) {
   return;
  }
@@ -217,7 +217,7 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
  const Color ghost = Fade(kAmber, 0.55f);
  const Color hot = Fade(kAmber, 0.95f);
  if (!analysis_mode_) {
- const auto height_at = [](const game::TerrainPatchDefinition& patch, double x, double y) {
+ const auto height_at = [](const mission::TerrainPatchDefinition& patch, double x, double y) {
  return patch.base_height_m + patch.grade_x * (x - patch.min.x) +
  patch.grade_y * (y - patch.min.y);
  };
@@ -354,7 +354,7 @@ void WorldRenderer::draw_text(const std::string& text, Vector2 position, float s
  DrawTextEx(font_, text.c_str(), position, size, 0.25f, color);
 }
 
-void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
+void WorldRenderer::draw(const mission::MissionSimulation& mission, int screen_width, int screen_height,
  const std::string& chapter_title, bool assembly_view) {
  ClearBackground(kVoid);
  DrawRectangleGradientV(0, 0, screen_width, screen_height, {24, 25, 24, 255}, kVoid);
@@ -380,7 +380,7 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
  garage_hotspots_.clear();
 
  const auto map_size = mission.map_definition().size_m;
- const bool active = mission.snapshot().status == game::MissionStatus::Running;
+ const bool active = mission.snapshot().status == mission::MissionStatus::Running;
  if (active) {
   scale_ = clampf(std::min(viewport_.width / 12.2f, viewport_.height / 8.3f), 50.0f, 92.0f);
   sim::Vec2 focus{mission.snapshot().robot.x, mission.snapshot().robot.y};
@@ -439,7 +439,7 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
  draw_view_mode();
 }
 
-void WorldRenderer::draw_garage_overlay(const game::MissionSimulation& mission) {
+void WorldRenderer::draw_garage_overlay(const mission::MissionSimulation& mission) {
  garage_hotspots_.clear();
  const auto& robot = mission.robot();
  const auto& presentation = catalog_.presentation_for_level(mission.level().id);
@@ -456,7 +456,7 @@ void WorldRenderer::draw_garage_overlay(const game::MissionSimulation& mission) 
  [&](const auto& candidate) { return candidate.slot == column.slot; });
  if (slot == robot.slots.end())
  continue;
- game::Vec3 local{};
+ mission::Vec3 local{};
  std::size_t mount_count = 0;
  for (const auto& mount_id : slot->mounts) {
  const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
@@ -529,7 +529,7 @@ void WorldRenderer::draw_view_mode() const {
  draw_text(text, {pill.x + 13.0f, pill.y + 6.0f}, 16, analysis_mode_ ? kCyan : Fade(kText, 0.82f));
 }
 
-void WorldRenderer::draw_header(const game::MissionSimulation& mission, int width,
+void WorldRenderer::draw_header(const mission::MissionSimulation& mission, int width,
                                 const std::string& chapter_title) const {
  draw_text(chapter_title, {22, 14}, 16, Fade(kMuted, 0.88f));
  draw_text(mission.level().title, {21, 35}, 26, kText);
@@ -537,17 +537,17 @@ void WorldRenderer::draw_header(const game::MissionSimulation& mission, int widt
  const auto status = mission.snapshot().status;
  std::string text = catalog_.tr("world.status_deploy");
  Color color = kAmber;
- if (status == game::MissionStatus::Running) {
+ if (status == mission::MissionStatus::Running) {
  text = mission.endless_mode()
  ? catalog_.tr("world.mode_field")
  : (mission.level().control_mode == "manual_calibration"
  ? catalog_.tr("world.mode_manual")
  : catalog_.tr("world.mode_auto"));
   color = kCyan;
- } else if (status == game::MissionStatus::Succeeded) {
+ } else if (status == mission::MissionStatus::Succeeded) {
   text = catalog_.tr("world.restored");
   color = kCyan;
- } else if (status == game::MissionStatus::Failed) {
+ } else if (status == mission::MissionStatus::Failed) {
   text = catalog_.tr("world.interrupted");
   color = kDanger;
  }
@@ -558,7 +558,7 @@ void WorldRenderer::draw_header(const game::MissionSimulation& mission, int widt
  draw_text(text, {badge.x + 23, badge.y + 7}, 17, kText);
 }
 
-void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_world(const mission::MissionSimulation& mission) const {
  DrawRectangleRounded({viewport_.x - 5, viewport_.y - 5, viewport_.width + 10, viewport_.height + 10}, 0.012f,
                       8, {13, 15, 15, 255});
  DrawRectangleGradientV(static_cast<int>(viewport_.x), static_cast<int>(viewport_.y),
@@ -619,7 +619,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
    {map_top_left.x, map_top_left.y, map_bottom_right.x - map_top_left.x, map_bottom_right.y - map_top_left.y},
    5, {67, 65, 57, 210});
  for (const auto& surface : map.surfaces) {
-  if (!game::active_in_level(surface.active_in, mission.level().id))
+  if (!mission::active_in_level(surface.active_in, mission.level().id))
    continue;
   const auto top_left = world_to_screen({surface.min.x, surface.max.y});
   const auto bottom_right = world_to_screen({surface.max.x, surface.min.y});
@@ -662,7 +662,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  draw_terrain_layer(mission);
 
  for (const auto& actor : map.actors) {
-  if (!game::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2)
+  if (!mission::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2)
    continue;
   if (actor.kind != "patrol") {
    // Looping behaviors (wander, dwell): closed dotted polyline, no lane
@@ -764,7 +764,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  }
 
  for (const auto& obstacle : map.obstacles) {
-  if (!game::active_in_level(obstacle.active_in, mission.level().id))
+  if (!mission::active_in_level(obstacle.active_in, mission.level().id))
    continue;
   const auto top_left = world_to_screen({obstacle.min.x, obstacle.max.y});
   const auto bottom_right = world_to_screen({obstacle.max.x, obstacle.min.y});
@@ -838,41 +838,41 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  if (incident.active) {
  std::string label;
  switch (incident.kind) {
- case game::WorldIncidentKind::RoadClosure:
+ case mission::WorldIncidentKind::RoadClosure:
  label = catalog_.tr("incident.road_closure");
  break;
- case game::WorldIncidentKind::FallenCargo:
+ case mission::WorldIncidentKind::FallenCargo:
  label = catalog_.tr("incident.fallen_cargo");
  break;
- case game::WorldIncidentKind::PowerFault:
+ case mission::WorldIncidentKind::PowerFault:
  label = catalog_.tr("incident.power_fault");
  break;
  }
  draw_marker_at(incident.position, kDanger, label, false);
  }
  const auto& intent = mission.field_intent();
- if (intent.active && intent.kind != game::FieldIntentKind::Follow &&
- intent.kind != game::FieldIntentKind::Wait) {
- const Color command_color = intent.acknowledgement == game::FieldIntentAcknowledgement::Rejected
+ if (intent.active && intent.kind != mission::FieldIntentKind::Follow &&
+ intent.kind != mission::FieldIntentKind::Wait) {
+ const Color command_color = intent.acknowledgement == mission::FieldIntentAcknowledgement::Rejected
  ? kDanger
- : (intent.kind == game::FieldIntentKind::Search ? kAmber : kCyan);
+ : (intent.kind == mission::FieldIntentKind::Search ? kAmber : kCyan);
  std::string label;
  switch (intent.kind) {
- case game::FieldIntentKind::GoTo:
+ case mission::FieldIntentKind::GoTo:
  label = catalog_.tr("field.intent.go_to");
  break;
- case game::FieldIntentKind::Search:
+ case mission::FieldIntentKind::Search:
  label = catalog_.tr("field.intent.search");
  break;
- case game::FieldIntentKind::Return:
+ case mission::FieldIntentKind::Return:
  label = catalog_.tr("field.intent.return");
  break;
- case game::FieldIntentKind::Follow:
- case game::FieldIntentKind::Wait:
+ case mission::FieldIntentKind::Follow:
+ case mission::FieldIntentKind::Wait:
  break;
  }
  draw_marker_at(intent.target, command_color, label,
- intent.kind == game::FieldIntentKind::Search);
+ intent.kind == mission::FieldIntentKind::Search);
  }
  const auto& dispatch = mission.field_dispatch();
  if (dispatch.active) {
@@ -905,7 +905,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  // never rotates. This faint hand marks WHEN scans fire, nothing more.
  if (!mission.build().part("sensor").empty()) {
   const double sweep_hz =
-    game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
+    mission::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
   const double phase = std::fmod(mission.snapshot().time_s * sweep_hz, 1.0) * 2.0 * sim::kPi;
   const Vector2 hand{robot_position.x + static_cast<float>(std::cos(phase)) * 70.0f,
                      robot_position.y - static_cast<float>(std::sin(phase)) * 70.0f};
@@ -926,8 +926,8 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  const double scan_hz =
    mission.build().part("sensor").empty()
      ? 5.0
-     : game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
- const auto shown_at = [&](const game::DynamicObstacleSnapshot& obstacle) {
+     : mission::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
+ const auto shown_at = [&](const mission::DynamicObstacleSnapshot& obstacle) {
   const double stale = std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 1.0 / scan_hz);
   return sim::Vec2{obstacle.estimated_position.x + obstacle.estimated_velocity.x * stale,
                    obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
@@ -1066,7 +1066,7 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  draw_pwm(card.y + 148, has_steering_servo ? control.steer_pwm : control.right_pwm);
 }
 
-void WorldRenderer::draw_field_operator(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_field_operator(const mission::MissionSimulation& mission) const {
  if (!mission.endless_mode())
  return;
  const auto& field_operator = mission.field_operator();
@@ -1096,7 +1096,7 @@ void WorldRenderer::draw_field_operator(const game::MissionSimulation& mission) 
  DrawRing(center, radius * 0.88f, radius * 0.96f, 0, 360, 36, Fade(kAmber, 0.82f));
 
  const auto& intent = mission.field_intent();
- if (intent.active && intent.kind == game::FieldIntentKind::Follow) {
+ if (intent.active && intent.kind == mission::FieldIntentKind::Follow) {
  const auto robot = world_to_screen({mission.snapshot().robot.x, mission.snapshot().robot.y});
  for (int segment = 0; segment < 12; segment += 2) {
  DrawLineEx(lerp(robot, center, static_cast<float>(segment) / 12.0f),
@@ -1106,7 +1106,7 @@ void WorldRenderer::draw_field_operator(const game::MissionSimulation& mission) 
  }
 }
 
-void WorldRenderer::draw_terrain_layer(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_terrain_layer(const mission::MissionSimulation& mission) const {
  const auto& grid = mission.navigation_map();
  const auto& terrain = mission.terrain_model();
  const auto& path = mission.planned_path();
@@ -1247,7 +1247,7 @@ void WorldRenderer::draw_terrain_layer(const game::MissionSimulation& mission) c
  }
 }
 
-void WorldRenderer::draw_terrain_layer_panel(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_terrain_layer_panel(const mission::MissionSimulation& mission) const {
  const char* labels[] = {"world.layer_elevation", "world.layer_slope", "world.layer_risk",
  "world.layer_cost"};
  const float panel_width = std::min(510.0f, std::max(300.0f, viewport_.width - 370.0f));
@@ -1300,7 +1300,7 @@ void WorldRenderer::draw_terrain_layer_panel(const game::MissionSimulation& miss
  Fade(kText, 0.84f));
 }
 
-void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_dust(const mission::MissionSimulation& mission) const {
  // Visual only: dust puffs behind the wheels on loose ground. Capped pool,
  // fading alpha, no physics in or out. Spawn rate follows speed × surface
  // dust factor (sand 1, gravel 0.5, else 0) — display density, not a model.
@@ -1308,7 +1308,7 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
  const auto& map = mission.map_definition();
  double dust_factor = 0.0;
  for (const auto& surface : map.surfaces) {
-  if (!game::active_in_level(surface.active_in, mission.level().id))
+  if (!mission::active_in_level(surface.active_in, mission.level().id))
    continue;
   if (state.robot.x < surface.min.x || state.robot.x > surface.max.x || state.robot.y < surface.min.y ||
       state.robot.y > surface.max.y)
@@ -1327,7 +1327,7 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
    dust_.end());
  const double speed = std::hypot(state.robot.v, state.robot.w * 0.5);
  if (dust_factor > 0.0 && std::abs(speed) > 0.8 && dust_.size() < 60 &&
-     mission.snapshot().status == game::MissionStatus::Running) {
+     mission.snapshot().status == mission::MissionStatus::Running) {
   static unsigned seed = 0xD05u;
   seed = seed * 1664525u + 1013904223u;
   const float jitter = static_cast<float>(seed % 100) / 100.0f - 0.5f;
@@ -1355,7 +1355,7 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
  }
 }
 
-void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
+void WorldRenderer::draw_robot(const mission::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& robot = mission.robot();
  const auto center = world_to_screen({state.robot.x, state.robot.y});
@@ -1388,7 +1388,7 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
             {center.x + body_radius + 8, center.y - 8}, 15, Fade(kAmber, 0.85f));
  }
 
- const auto find_mount = [&](const std::string& id) -> const game::MountDefinition* {
+ const auto find_mount = [&](const std::string& id) -> const mission::MountDefinition* {
   const auto found =
     std::find_if(robot.mounts.begin(), robot.mounts.end(), [&](const auto& mount) { return mount.id == id; });
   return found == robot.mounts.end() ? nullptr : &*found;
@@ -1396,7 +1396,7 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  const auto component_id = [&](const std::string& slot) -> const std::string& {
   return mission.build().part(slot);
  };
- const auto mounted_position = [&](const game::MountDefinition& mount) {
+ const auto mounted_position = [&](const mission::MountDefinition& mount) {
   const double cosine = std::cos(state.robot.theta);
   const double sine = std::sin(state.robot.theta);
   return world_to_screen({
@@ -1404,13 +1404,13 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
     state.robot.y + sine * mount.position_m.x + cosine * mount.position_m.y,
   });
  };
- const auto color = [](const game::VisualDefinition& visual) {
+ const auto color = [](const mission::VisualDefinition& visual) {
   return Color{visual.color[0], visual.color[1], visual.color[2], visual.color[3]};
  };
 
  struct RenderPart {
-  const game::VisualDefinition* visual;
-  const game::MountDefinition* mount;
+  const mission::VisualDefinition* visual;
+  const mission::MountDefinition* mount;
  };
  std::vector<RenderPart> parts;
  for (const auto& part : robot.base_parts) {
@@ -1501,7 +1501,7 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  draw_text(status, {label.x + 11, label.y + 6}, 16, kText);
 }
 
-void WorldRenderer::draw_telemetry(const game::MissionSimulation& mission, int screen_height) const {
+void WorldRenderer::draw_telemetry(const mission::MissionSimulation& mission, int screen_height) const {
  const float y = std::min(viewport_.y + viewport_.height - 47.0f, static_cast<float>(screen_height) - 52.0f);
  const std::string summary = catalog_.trf("world.summary", {fixed(mission.snapshot().time_s, 0),
                                                             fixed(mission.result().path_length_m, 1),

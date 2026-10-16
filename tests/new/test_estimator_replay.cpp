@@ -3,7 +3,7 @@
 // B: same trajectory x {0,20,50,100,200ms} -> gap-error table (margin evidence).
 // C: dropout x {0,50,100,300ms} x policies -> status/confidence/position error.
 
-#include "algo/estimator_replay.hpp"
+#include "autonomy/localization/estimator_replay.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -60,7 +60,7 @@ int main() {
     for (int k = 0; k <= 200; ++k) {
       ego.push_back({k * 0.02, {k * 0.02 * 1.0, 0.0}});
     }
-    std::vector<std::vector<sim::DynState>> frames;
+    std::vector<std::vector<sim::DynamicObjectState>> frames;
     for (int f = 0; f <= 60; ++f) {
       const double t = f * 0.1;
       frames.push_back({{{3.0, -4.0 + 2.0 * t}, {0.0, 2.0}, 0.4}});

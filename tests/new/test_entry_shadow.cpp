@@ -1,4 +1,4 @@
-#include "algo/entry_shadow.hpp"
+#include "autonomy/planning/validation/entry_shadow.hpp"
 
 #include <cmath>
 #include <iostream>

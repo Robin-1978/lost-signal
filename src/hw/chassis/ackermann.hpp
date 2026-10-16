@@ -2,7 +2,7 @@
 
 #include "diff_drive.hpp"
 #include "motor_drive.hpp"
-#include "algo/pid.hpp"
+#include "autonomy/control/pid.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -2,7 +2,7 @@
 // full three-leg assessment per candidate, every verdict kept with reasons.
 // Sampling never upgrades conclusions; truncation and Unknown are Incomplete.
 
-#include "algo/predictor.hpp"
+#include "autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,8 +34,8 @@ sim::PocketSampleParams params() {
  return p;
 }
 
-std::vector<std::vector<sim::DynState>> lane_frames() {
- std::vector<std::vector<sim::DynState>> frames;
+std::vector<std::vector<sim::DynamicObjectState>> lane_frames() {
+ std::vector<std::vector<sim::DynamicObjectState>> frames;
  for (int k = 0; k < 121; ++k) {
   frames.push_back({{{7.85 - 1.0 * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
  }

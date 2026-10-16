@@ -28,8 +28,8 @@ For the graphical client, install the platform packages listed in the README and
 ## Where changes belong
 
 - `src/hw/`: chassis, actuator, contact, sensor, and hardware-abstraction behavior
-- `src/algo/`: estimation, planning, prediction, following, and control
-- `src/game/`: mission state, content loading, telemetry, replay, and scoring
+- `src/autonomy/`: localization, mapping, perception, behavior, global/local planning, and control
+- `src/mission/`: mission state, content loading, telemetry, replay, and scoring
 - `src/physics/`: physics interfaces and backends
 - `src/client/`: rendering and interactive UI
 - `assets/`: data-driven content and player-facing source text
@@ -37,7 +37,7 @@ For the graphical client, install the platform packages listed in the README and
 - `tests/new/`: C++ behavioral and integration tests
 - `tools/`: build, generation, and validation utilities
 
-See [docs/diy.md](docs/diy.md) before adding a mission, component, robot, or content pack.
+See [docs/diy.md](docs/diy.md) before adding a mission, component, robot, or content pack. See [docs/extending-autonomy.md](docs/extending-autonomy.md) before adding or replacing a planner.
 
 ## Language and locale rules
 

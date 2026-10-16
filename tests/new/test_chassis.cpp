@@ -2,8 +2,8 @@
 #include "hw/chassis/caps.hpp"
 #include "hw/chassis/chassis_factory.hpp"
 #include "hw/chassis/tracked.hpp"
-#include "algo/follow.hpp"
-#include "algo/pid.hpp"
+#include "autonomy/control/follow.hpp"
+#include "autonomy/control/pid.hpp"
 
 #include <cmath>
 #include <iostream>

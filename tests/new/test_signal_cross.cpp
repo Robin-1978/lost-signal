@@ -6,9 +6,9 @@
 // be the fix, which is Phase-2). This level adds encounter diversity, not
 // sus-fin coverage — stated, not oversold.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <iostream>
 #include <limits>
@@ -22,16 +22,16 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& pres = catalog.presentation_for_level("signal_cross");
  for (int b = 0; b < 2; ++b) {
   const auto build = b == 0 ? pres.default_build : pres.recommended_build;
   int coll = 0, succeeded = 0;
   int cells[2][2] = {{0, 0}, {0, 0}};
   for (int s = 0; s < 5; ++s) {
-   game::MissionSimulation mission(catalog, "signal_cross", build, 11u + static_cast<uint64_t>(s));
+   mission::MissionSimulation mission(catalog, "signal_cross", build, 11u + static_cast<uint64_t>(s));
    mission.run_to_completion();
-   if (mission.result().status == game::MissionStatus::Succeeded) {
+   if (mission.result().status == mission::MissionStatus::Succeeded) {
     ++succeeded;
    }
  if (mission.result().failure_reason.find("collision") != std::string::npos) {

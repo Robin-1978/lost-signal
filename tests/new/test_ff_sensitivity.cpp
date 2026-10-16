@@ -8,11 +8,11 @@
 // encoder, wheel force, body integration, ground combine, surface box test.
 // A parity failure stops this file (investigate, never loosen silently).
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
-#include "algo/math.hpp"
-#include "algo/pid.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
+#include "core/math.hpp"
+#include "autonomy/control/pid.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/feedforward.hpp"
@@ -187,12 +187,12 @@ struct TraceFrame {
  double y{0.0};
 };
 
-double mprop(const game::ContentCatalog& catalog, const std::string& component,
+double mprop(const mission::ContentCatalog& catalog, const std::string& component,
              const std::string& key) {
  return catalog.components().at(component).behavior.at(key);
 }
 
-MirrorGround ground_at(const game::ContentCatalog& catalog, const std::string& level_id,
+MirrorGround ground_at(const mission::ContentCatalog& catalog, const std::string& level_id,
                        const std::string& tire_id, sim::Vec2 pos, double motor_max_accel) {
  const double tire_mu = mprop(catalog, tire_id, "friction_mu");
  const double tire_rr = mprop(catalog, tire_id, "rolling_resistance");
@@ -201,7 +201,7 @@ MirrorGround ground_at(const game::ContentCatalog& catalog, const std::string& l
  double ground_rr = 0.0;
  double traction = 1.0;
  for (const auto& surface : catalog.map("research_base").surfaces) {
-  if (game::active_in_level(surface.active_in, level_id) &&
+  if (mission::active_in_level(surface.active_in, level_id) &&
       box_inside(pos, surface.min, surface.max)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
@@ -431,10 +431,10 @@ double direct_parity(const sim::MotorDriveParams& params, const sim::WheelPidGai
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& pres = catalog.presentation_for_level("lost_signal");
  const auto& build = pres.recommended_build;
- const auto& robot = catalog.robot(game::MissionSimulation::level_robot_id(catalog, "lost_signal", build));
+ const auto& robot = catalog.robot(mission::MissionSimulation::level_robot_id(catalog, "lost_signal", build));
  const std::string motor_id = build.parts.at("motor");
  const std::string tire_id = build.parts.at("tires");
  auto cprop = [&](const std::string& id, const std::string& key) {
@@ -464,15 +464,15 @@ int main() {
  ff_base.load_per_unit_N = robot.mass_kg * 9.81 / 2.0;
 
  // Recorded traces: full pinned finale run.
- game::MissionSimulation mission(catalog, "lost_signal", build);
+ mission::MissionSimulation mission(catalog, "lost_signal", build);
  mission.run_to_completion();
- if (mission.result().status != game::MissionStatus::Succeeded) {
+ if (mission.result().status != mission::MissionStatus::Succeeded) {
  std::cerr << "recording mission failed: reason=" << mission.result().failure_reason
  << " time=" << mission.result().time_s
  << " collisions=" << mission.result().collisions
  << " clearance=" << mission.result().min_dynamic_clearance_m << '\n';
  }
- CHECK(mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  std::vector<TraceFrame> frames;
  std::vector<MirrorGround> grounds;
  for (const auto& snapshot : mission.replay()) {

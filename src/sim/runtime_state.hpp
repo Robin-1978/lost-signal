@@ -1,6 +1,6 @@
 #pragma once
 
-#include "algo/dynobs.hpp"
+#include "autonomy/perception/dynamic_object.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "hw/sensors/sensor.hpp"
 
@@ -11,7 +11,7 @@ namespace sim {
 
 struct WorldTruth {
  DiffState robot;
- std::vector<DynState> dynamic_objects;
+ std::vector<DynamicObjectState> dynamic_objects;
 };
 
 struct EncoderObservation {

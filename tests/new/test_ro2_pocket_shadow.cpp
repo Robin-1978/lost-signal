@@ -8,10 +8,10 @@
 // Estimator shadow: ground-truth stream (latency 0.05 s) through
 // EstimateHolder; the episode records status/age/trace + reporting confidence.
 
-#include "algo/pocket_shadow.hpp"
-#include "algo/predictor.hpp"
-#include "algo/state_estimator.hpp"
-#include "algo/math.hpp"
+#include "autonomy/planning/local/pocket_shadow.hpp"
+#include "autonomy/planning/local/predictor.hpp"
+#include "autonomy/localization/state_estimator.hpp"
+#include "core/math.hpp"
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/motor_drive.hpp"
 
@@ -58,8 +58,8 @@ sim::AckermannDrive make_ro2() {
   return sim::AckermannDrive(params, gains, servo_kp);
 }
 
-std::vector<std::vector<sim::DynState>> empty_frames(std::size_t n) {
-  return std::vector<std::vector<sim::DynState>>(n, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+std::vector<std::vector<sim::DynamicObjectState>> empty_frames(std::size_t n) {
+  return std::vector<std::vector<sim::DynamicObjectState>>(n, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
 }
 
 // Twist sequence from a timed position reference (finite difference).

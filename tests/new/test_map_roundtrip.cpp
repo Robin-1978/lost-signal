@@ -1,5 +1,5 @@
-#include "game/content_catalog.hpp"
-#include "game/map_serialize.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/map_serialize.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -20,9 +20,9 @@
 int main() {
 	// The editor writes source-language content. Default-locale overlays are
 	// for presentation and must not leak into authoring round trips.
-	const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "zh-CN");
+	const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "zh-CN");
  const auto& map = catalog.map("research_base");
- const std::string saved = game::serialize_map_canonical(map);
+ const std::string saved = mission::serialize_map_canonical(map);
  const auto path = std::filesystem::path(LOST_SIGNAL_TEST_ASSETS) / "maps" / "research_base.json";
  std::ifstream file(path);
  std::ostringstream on_disk;

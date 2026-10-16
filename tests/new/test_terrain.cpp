@@ -1,6 +1,6 @@
-#include "algo/astar.hpp"
-#include "algo/grid_map.hpp"
-#include "algo/terrain.hpp"
+#include "autonomy/planning/global/astar.hpp"
+#include "autonomy/mapping/grid_map.hpp"
+#include "autonomy/mapping/terrain.hpp"
 
 #include <cmath>
 #include <iostream>

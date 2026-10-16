@@ -120,18 +120,20 @@ These interfaces create a useful path toward ROS 2 adapters, calibration, log re
 
 ```text
 assets/ Missions, maps, scenes, robots, components, locales, and schemas
+src/core/ Dependency-light shared primitives
 src/hw/ Chassis, motor/contact, sensor, and hardware-abstraction models
-src/algo/ Planning, estimation, prediction, following, and control
-src/game/ Content loading, mission simulation, telemetry, replay, and scoring
+src/autonomy/ Localization, mapping, perception, behavior, planning, and control
+src/mission/ Content loading, mission simulation, world actors, progression, and scoring
 src/physics/ Bullet adapter, physics ports, transforms, and regression backend
 src/runtime/ Versioned robot I/O contracts, provider registry, watchdog, and replay driver
+src/app/ Headless application entry point
 src/client/ raylib field/AI rendering and TGUI player interface
 tests/new/ C++ content, algorithm, physics, and mission regression tests
 docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts
 ```
 
-Start with the [creative direction](docs/creative-direction.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [runtime interface](docs/runtime-interface.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
+Start with the [creative direction](docs/creative-direction.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
 
 ## License
 

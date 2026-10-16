@@ -2,7 +2,7 @@
 // honesty boundaries (future stamps refused, staleness flagged not hidden,
 // covariance never grown here). No producers/consumers exist yet by design.
 
-#include "algo/state_estimator.hpp"
+#include "autonomy/localization/state_estimator.hpp"
 
 #include <cmath>
 #include <iostream>

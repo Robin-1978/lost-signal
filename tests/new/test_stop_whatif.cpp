@@ -5,7 +5,7 @@
 // candidate. Question answered with numbers: how many Occupied steps would
 // have been Clear, and how does the margin distribution move? The mission
 // is only ever read, never steered.
-#include "game/content_catalog.hpp"
+#include "mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <algorithm>
@@ -54,7 +54,7 @@ struct WhatIf {
   bool finished{false};
 };
 
-WhatIf run_whatif(const game::ContentCatalog& catalog, const std::string& level_id,
+WhatIf run_whatif(const mission::ContentCatalog& catalog, const std::string& level_id,
                   sim::Vec2& candidate_out) {
   WhatIf out;
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
@@ -70,12 +70,12 @@ WhatIf run_whatif(const game::ContentCatalog& catalog, const std::string& level_
     std::cerr << "no threat corridors for " << level_id << "\n";
     std::abort();
   }
-  game::MissionSimulation mission(catalog, level_id, build);
+  mission::MissionSimulation mission(catalog, level_id, build);
   std::vector<RecordedStep> stream;
   std::vector<sim::Vec2> trail;
   mission.start();
   int steps = 0;
-  while (mission.snapshot().status == game::MissionStatus::Running && steps < 60000) {
+  while (mission.snapshot().status == mission::MissionStatus::Running && steps < 60000) {
     mission.step();
     ++steps;
     const auto& snap = mission.snapshot();
@@ -95,7 +95,7 @@ WhatIf run_whatif(const game::ContentCatalog& catalog, const std::string& level_
       stream.push_back(rec);
     }
   }
-  out.finished = mission.snapshot().status == game::MissionStatus::Succeeded;
+  out.finished = mission.snapshot().status == mission::MissionStatus::Succeeded;
   out.steps = static_cast<long>(stream.size());
   // Candidate: trail back (brake + margin) from first corridor entry.
   auto nearest_corridor = [&](sim::Vec2 p) {
@@ -152,7 +152,7 @@ WhatIf run_whatif(const game::ContentCatalog& catalog, const std::string& level_
 } // namespace
 
 int main() {
-  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   sim::Vec2 candidate{0, 0};
   const auto r1 = run_whatif(catalog, "signal_hold", candidate);
   std::cerr << "hold: steps=" << r1.steps << " actual_occupied=" << r1.actual_occupied

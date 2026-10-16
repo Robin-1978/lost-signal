@@ -1,7 +1,7 @@
-#include "game/content_catalog.hpp"
-#include "game/campaign_progress.hpp"
-#include "game/mission_simulation.hpp"
-#include "game/systems/field_operator_system.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/mission_simulation.hpp"
+#include "mission/systems/field_operator_system.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -24,14 +24,14 @@ bool near(sim::Vec2 first, sim::Vec2 second, double tolerance = 1e-9) {
 } // namespace
 
 int main() {
- game::MapDefinition test_map;
+ mission::MapDefinition test_map;
  test_map.size_m = {10.0, 8.0};
  test_map.obstacles.push_back({"wall", {4.0, 2.0}, {5.0, 6.0}, {}});
 
  // The operator state is deterministic, normalized for diagonal input and
  // collides with authored level geometry rather than walking through it.
- game::FieldOperatorSystem first;
- game::FieldOperatorSystem repeat;
+ mission::FieldOperatorSystem first;
+ mission::FieldOperatorSystem repeat;
  first.reset(test_map, {1.0, 1.0}, "field_test");
  repeat.reset(test_map, {1.0, 1.0}, "field_test");
  CHECK(near(first.state().position, repeat.state().position));
@@ -46,44 +46,44 @@ int main() {
  CHECK(near(first.state().position, repeat.state().position));
  CHECK(first.state().moving);
  CHECK(std::abs(std::hypot(first.state().velocity.x, first.state().velocity.y) -
- game::FieldOperatorSystem::walk_speed_mps) < 1e-9);
+ mission::FieldOperatorSystem::walk_speed_mps) < 1e-9);
 
  // All five intentions form one revisioned command stream. Only target-based
  // commands require a world point, and acknowledgements apply to the matching
  // revision so stale planner results cannot confirm a newer command.
- CHECK(first.issue_intent(game::FieldIntentKind::Follow));
+ CHECK(first.issue_intent(mission::FieldIntentKind::Follow));
  CHECK(first.intent().revision == 1);
- CHECK(first.intent().acknowledgement == game::FieldIntentAcknowledgement::Pending);
+ CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Pending);
  CHECK(near(first.intent().target, first.state().position));
  first.acknowledge(0, true);
- CHECK(first.intent().acknowledgement == game::FieldIntentAcknowledgement::Pending);
+ CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Pending);
  first.acknowledge(1, true);
- CHECK(first.intent().acknowledgement == game::FieldIntentAcknowledgement::Accepted);
- CHECK(!first.issue_intent(game::FieldIntentKind::GoTo));
+ CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Accepted);
+ CHECK(!first.issue_intent(mission::FieldIntentKind::GoTo));
  CHECK(first.intent().revision == 1);
- CHECK(first.issue_intent(game::FieldIntentKind::GoTo, sim::Vec2{7.0, 1.0}));
+ CHECK(first.issue_intent(mission::FieldIntentKind::GoTo, sim::Vec2{7.0, 1.0}));
  CHECK(first.intent().revision == 2);
- CHECK(first.issue_intent(game::FieldIntentKind::Search, sim::Vec2{7.0, 7.0}));
+ CHECK(first.issue_intent(mission::FieldIntentKind::Search, sim::Vec2{7.0, 7.0}));
  CHECK(first.intent().revision == 3);
- CHECK(first.issue_intent(game::FieldIntentKind::Wait));
+ CHECK(first.issue_intent(mission::FieldIntentKind::Wait));
  CHECK(first.intent().revision == 4);
- CHECK(first.issue_intent(game::FieldIntentKind::Return));
+ CHECK(first.issue_intent(mission::FieldIntentKind::Return));
  CHECK(first.intent().revision == 5);
  CHECK(near(first.intent().target, first.state().home_position));
 
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto build = catalog.presentation_for_level("boot").recommended_build;
 
  // Story/garage missions reject field controls. Expedition mode accepts them
  // and turns each intention into a route through the existing planner.
- game::MissionSimulation story(catalog, "boot", build);
+ mission::MissionSimulation story(catalog, "boot", build);
  CHECK(!story.set_field_operator_command(1.0, 0.0));
- CHECK(!story.issue_field_intent(game::FieldIntentKind::Follow));
+ CHECK(!story.issue_field_intent(mission::FieldIntentKind::Follow));
 
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command
  // must then produce a real route and autonomous Bullet motion.
- game::MissionSimulation control_guard(catalog, "boot", build);
+ mission::MissionSimulation control_guard(catalog, "boot", build);
  control_guard.set_endless_mode(true);
  control_guard.start();
  control_guard.set_manual_command(1.0, 1.0);
@@ -91,14 +91,14 @@ int main() {
  control_guard.step();
  CHECK(control_guard.planned_path().empty());
  CHECK(control_guard.result().path_length_m < 1e-3);
- CHECK(control_guard.issue_field_intent(game::FieldIntentKind::GoTo,
+ CHECK(control_guard.issue_field_intent(mission::FieldIntentKind::GoTo,
  sim::Vec2{6.0, 4.0}));
  CHECK(!control_guard.planned_path().empty());
  for (int step = 0; step < 150; ++step)
  control_guard.step();
  CHECK(control_guard.result().path_length_m > 0.05);
 
- game::MissionSimulation expedition(catalog, "boot", build);
+ mission::MissionSimulation expedition(catalog, "boot", build);
  expedition.set_endless_mode(true);
  expedition.start();
  CHECK(expedition.set_field_operator_command(1.0, 0.0));
@@ -108,54 +108,54 @@ int main() {
  CHECK(expedition.field_operator().position.x >
  expedition.field_operator().home_position.x + 1.0);
 
- CHECK(expedition.issue_field_intent(game::FieldIntentKind::Follow));
+ CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Follow));
  CHECK(!expedition.planned_path().empty());
  CHECK(expedition.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
 
- CHECK(expedition.issue_field_intent(game::FieldIntentKind::GoTo, sim::Vec2{6.0, 4.0}));
+ CHECK(expedition.issue_field_intent(mission::FieldIntentKind::GoTo, sim::Vec2{6.0, 4.0}));
  CHECK(!expedition.planned_path().empty());
  CHECK(expedition.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
 
- CHECK(expedition.issue_field_intent(game::FieldIntentKind::Search, sim::Vec2{7.0, 7.0}));
+ CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Search, sim::Vec2{7.0, 7.0}));
  CHECK(!expedition.planned_path().empty());
  CHECK(expedition.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
 
- CHECK(expedition.issue_field_intent(game::FieldIntentKind::Wait));
+ CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Wait));
  CHECK(expedition.planned_path().empty());
  CHECK(expedition.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
 
- CHECK(expedition.issue_field_intent(game::FieldIntentKind::Return));
+ CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Return));
  CHECK(!expedition.planned_path().empty());
  CHECK(expedition.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
 
  // The world save carries the human position and revisioned companion intent.
  // Restoring on the same level re-plans that intent from the fresh robot pose.
  const auto save_path = std::filesystem::temp_directory_path() /
  "lost-signal-field-expedition-test.json";
- game::CampaignProgress progress;
+ mission::CampaignProgress progress;
  progress.set_field_expedition(expedition.field_expedition_checkpoint());
  progress.save(save_path, catalog);
- const auto loaded = game::CampaignProgress::load(save_path, catalog);
+ const auto loaded = mission::CampaignProgress::load(save_path, catalog);
  CHECK(loaded.field_expedition().has_value());
  CHECK(loaded.field_expedition()->level_id == "boot");
  CHECK(near(loaded.field_expedition()->field_operator.position,
  expedition.field_operator().position));
- CHECK(loaded.field_expedition()->intent.kind == game::FieldIntentKind::Return);
+ CHECK(loaded.field_expedition()->intent.kind == mission::FieldIntentKind::Return);
  CHECK(loaded.field_expedition()->intent.revision == expedition.field_intent().revision);
 
- game::MissionSimulation resumed(catalog, "boot", build);
+ mission::MissionSimulation resumed(catalog, "boot", build);
  resumed.set_endless_mode(true);
  resumed.restore_field_expedition(*loaded.field_expedition());
  resumed.start();
  CHECK(near(resumed.field_operator().position, expedition.field_operator().position));
- CHECK(resumed.field_intent().kind == game::FieldIntentKind::Return);
+ CHECK(resumed.field_intent().kind == mission::FieldIntentKind::Return);
  CHECK(resumed.field_intent().acknowledgement ==
- game::FieldIntentAcknowledgement::Accepted);
+ mission::FieldIntentAcknowledgement::Accepted);
  CHECK(!resumed.planned_path().empty());
  std::filesystem::remove(save_path);
 

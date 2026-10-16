@@ -3,7 +3,7 @@
 // shadow has never looked at. Same reader as the cross/hold replays, new
 // ground: verdict streams + determinism per level. Pins stay structural
 // (assessed>0, replay-identical); the distributions are evidence, not gates.
-#include "game/content_catalog.hpp"
+#include "mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <cmath>
@@ -28,11 +28,11 @@ struct TownStream {
   long uncertain{0};
 };
 
-TownStream run_level(game::MissionSimulation& mission) {
+TownStream run_level(mission::MissionSimulation& mission) {
   TownStream stream;
   mission.start();
   int steps = 0;
-  while (mission.snapshot().status == game::MissionStatus::Running && steps < 60000) {
+  while (mission.snapshot().status == mission::MissionStatus::Running && steps < 60000) {
     mission.step();
     ++steps;
     const auto& snap = mission.snapshot();
@@ -57,10 +57,10 @@ TownStream run_level(game::MissionSimulation& mission) {
 } // namespace
 
 int main() {
-  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   for (const auto* level : {"town_freight", "big_freight"}) {
     const auto build = catalog.presentation_for_level(level).recommended_build;
-    game::MissionSimulation first(catalog, level, build);
+    mission::MissionSimulation first(catalog, level, build);
     const auto s1 = run_level(first);
     std::cerr << level << ": status=" << static_cast<int>(first.snapshot().status)
               << " assessed=" << s1.assessed << " clear=" << s1.clear << " occupied=" << s1.occupied
@@ -68,7 +68,7 @@ int main() {
               << " min_dyn_clear=" << first.result().min_dynamic_clearance_m
               << " ped_contacts=" << first.result().pedestrian_contacts << "\n";
     CHECK(s1.assessed > 0);
-    game::MissionSimulation second(catalog, level, build);
+    mission::MissionSimulation second(catalog, level, build);
     const auto s2 = run_level(second);
     CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
           s2.uncertain == s1.uncertain);

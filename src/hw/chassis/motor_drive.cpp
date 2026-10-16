@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "algo/math.hpp"
+#include "core/math.hpp"
 
 #include <algorithm>
 #include <cmath>

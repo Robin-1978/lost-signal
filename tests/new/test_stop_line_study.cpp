@@ -5,8 +5,8 @@
 // showed clean waiting (14 steps, 0 inside) — the pathology is
 // level-dependent, so this harness reports per-level instead of asserting
 // one shape. Nothing consumes the result.
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -40,7 +40,7 @@ struct LevelStudy {
   bool finished{false};
 };
 
-LevelStudy run_level(const game::ContentCatalog& catalog, const std::string& level_id) {
+LevelStudy run_level(const mission::ContentCatalog& catalog, const std::string& level_id) {
   LevelStudy out;
   out.level = level_id;
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
@@ -52,10 +52,10 @@ LevelStudy run_level(const game::ContentCatalog& catalog, const std::string& lev
       std::find(actor.active_in.begin(), actor.active_in.end(), level_id) != actor.active_in.end();
     if (active && actor.path.size() >= 2) corridors.push_back(actor.path);
   }
-  game::MissionSimulation mission(catalog, level_id, build);
+  mission::MissionSimulation mission(catalog, level_id, build);
   mission.start();
   int steps = 0;
-  while (mission.snapshot().status == game::MissionStatus::Running && steps < 60000) {
+  while (mission.snapshot().status == mission::MissionStatus::Running && steps < 60000) {
     mission.step();
     ++steps;
     const auto& snap = mission.snapshot();
@@ -72,14 +72,14 @@ LevelStudy run_level(const game::ContentCatalog& catalog, const std::string& lev
       }
     }
   }
-  out.finished = mission.snapshot().status == game::MissionStatus::Succeeded;
+  out.finished = mission.snapshot().status == mission::MissionStatus::Succeeded;
   return out;
 }
 
 } // namespace
 
 int main() {
-  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   const std::vector<std::string> levels = {"signal_cross", "signal_hold", "signal_watch"};
   std::vector<LevelStudy> first_pass;
   for (const auto& level : levels) {

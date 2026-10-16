@@ -1,5 +1,5 @@
-#include "algo/dynobs.hpp"
-#include "algo/entry_shadow.hpp"
+#include "mission/world/actor_motion.hpp"
+#include "autonomy/planning/validation/entry_shadow.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -19,47 +19,47 @@ int main() {
   const std::vector<sim::Vec2> rect{{0, 0}, {4, 0}, {4, 3}, {0, 3}};
   // Wander: constant speed everywhere, exact period closure.
   {
-    sim::Wander w{rect, 1.0, 0.25};
+    mission::Wander w{rect, 1.0, 0.25};
     for (const double t : {0.5, 1.7, 5.2, 13.9}) {
-      const auto s = sim::wander_state(w, t);
+      const auto s = mission::wander_state(w, t);
       CHECK(std::abs(std::hypot(s.v.x, s.v.y) - 1.0) < 1e-9);
       CHECK(s.radius == 0.25);
     }
-    const auto p0 = sim::wander_state(w, 0.0);
+    const auto p0 = mission::wander_state(w, 0.0);
     for (const double t : {14.0, 28.0, 140.0}) {
-      const auto s = sim::wander_state(w, t);
+      const auto s = mission::wander_state(w, t);
       CHECK(std::abs(s.p.x - p0.p.x) < 1e-9 && std::abs(s.p.y - p0.p.y) < 1e-9);
     }
   }
   // Patrol: mirror symmetry about the far end, velocity flips.
   {
-    sim::Patrol pt{{0, 0}, {4, 0}, 2.0, 0.45};
-    const auto there = sim::patrol_state(pt, 1.0);
-    const auto back = sim::patrol_state(pt, 3.0);
+    mission::Patrol pt{{0, 0}, {4, 0}, 2.0, 0.45};
+    const auto there = mission::patrol_state(pt, 1.0);
+    const auto back = mission::patrol_state(pt, 3.0);
     CHECK(there.p.x == 2.0 && back.p.x == 2.0);
     CHECK(there.v.x == 2.0 && back.v.x == -2.0);
-    const auto start = sim::patrol_state(pt, 0.0);
-    const auto period = sim::patrol_state(pt, 4.0);
+    const auto start = mission::patrol_state(pt, 0.0);
+    const auto period = mission::patrol_state(pt, 4.0);
     CHECK(start.p.x == period.p.x && start.p.y == period.p.y);
   }
   // Dwell: cycle = legs + waits; mid-wait velocity is exactly zero.
   {
-    sim::Dwell d{rect, {2.0, 0.0, 0.0, 0.0}, 1.0, 0.25};
-    const auto mid = sim::dwell_state(d, 1.0);
+    mission::Dwell d{rect, {2.0, 0.0, 0.0, 0.0}, 1.0, 0.25};
+    const auto mid = mission::dwell_state(d, 1.0);
     CHECK(mid.p.x == 0.0 && mid.p.y == 0.0);
     CHECK(mid.v.x == 0.0 && mid.v.y == 0.0);
-    const auto p0 = sim::dwell_state(d, 0.0);
-    const auto cycled = sim::dwell_state(d, 16.0); // 14 m legs + 2 s wait.
+    const auto p0 = mission::dwell_state(d, 0.0);
+    const auto cycled = mission::dwell_state(d, 16.0); // 14 m legs + 2 s wait.
     CHECK(std::abs(cycled.p.x - p0.p.x) < 1e-9 && std::abs(cycled.p.y - p0.p.y) < 1e-9);
   }
   // Seeded: rotation/reversal preserve the loop (same period closes).
   {
     for (const std::uint64_t seed : {0u, 1u, 7u, 33u, 1000u}) {
-      sim::SeededWander w{rect, seed, 1.0, 0.25};
-      const auto p0 = sim::seeded_wander_state(w, 0.0);
-      const auto cycled = sim::seeded_wander_state(w, 14.0);
+      mission::SeededWander w{rect, seed, 1.0, 0.25};
+      const auto p0 = mission::seeded_wander_state(w, 0.0);
+      const auto cycled = mission::seeded_wander_state(w, 14.0);
       CHECK(std::abs(cycled.p.x - p0.p.x) < 1e-9 && std::abs(cycled.p.y - p0.p.y) < 1e-9);
-      const auto mid = sim::seeded_wander_state(w, 5.0);
+      const auto mid = mission::seeded_wander_state(w, 5.0);
       CHECK(std::abs(std::hypot(mid.v.x, mid.v.y) - 1.0) < 1e-9);
     }
   }

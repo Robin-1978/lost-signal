@@ -1,4 +1,4 @@
-#include "game/content_catalog.hpp"
+#include "mission/content_catalog.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -12,14 +12,14 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  CHECK(catalog.locale() == "en");
  CHECK(catalog.campaign().title == "Lost Signal");
  CHECK(catalog.campaign().companion_name == "RO-1");
  CHECK(catalog.tr("app.window_title") == "Lost Signal");
  CHECK(catalog.supported_locales().size() == 2);
 
- const auto source_catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "zh-CN");
+ const auto source_catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "zh-CN");
  CHECK(source_catalog.locale() == "zh-CN");
  CHECK(source_catalog.campaign().title == "\u5931\u843d\u7684\u4fe1\u53f7");
  CHECK(source_catalog.campaign().companion_name == "\u6d1b\u4e00");
@@ -51,8 +51,8 @@ int main() {
 
  bool rejected_unknown_locale = false;
  try {
-  (void)game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "not-a-locale");
- } catch (const game::ContentError&) {
+  (void)mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "not-a-locale");
+ } catch (const mission::ContentError&) {
   rejected_unknown_locale = true;
  }
  CHECK(rejected_unknown_locale);

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "algo/dynobs.hpp"
-#include "algo/grid_map.hpp"
+#include "autonomy/perception/dynamic_object.hpp"
+#include "autonomy/mapping/grid_map.hpp"
 #include "sensor.hpp"
 
 #include <vector>
@@ -16,14 +16,14 @@ class LidarBackend {
  public:
  virtual ~LidarBackend() = default;
  virtual Scan scan(Vec2 position, double heading, int rays, double range,
-                   const std::vector<DynState>& dynamic_objects) = 0;
+                   const std::vector<DynamicObjectState>& dynamic_objects) = 0;
 };
 
 class SimLidar : public LidarBackend {
  public:
  explicit SimLidar(const GridMap& map) : map_(map) {}
  Scan scan(Vec2 position, double heading, int rays, double range,
-           const std::vector<DynState>& dynamic_objects) override {
+           const std::vector<DynamicObjectState>& dynamic_objects) override {
   return lidar_raycast(map_, position, heading, rays, range, dynamic_objects);
  }
 

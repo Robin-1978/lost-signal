@@ -17,7 +17,7 @@
 // A run can be safe yet a miss (conservative bias costs time); a miss is a
 // prediction-quality verdict, not a crash report.
 
-#include "algo/predictor.hpp"
+#include "autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -122,7 +122,7 @@ ReplayResult run_replay(const std::vector<sim::Vec2>& path, sim::Vec2 threat_p0,
  };
  for (int cycle = 0; cycle < 600 && ego_s < total - 1e-9; ++cycle) {
   const auto remaining = path_suffix(path, ego_s);
-  std::vector<std::vector<sim::DynState>> predicted;
+  std::vector<std::vector<sim::DynamicObjectState>> predicted;
   for (int k = 0; k < frames; ++k) {
    predicted.push_back(
      {{{threat.x + threat_v_est.x * k * kDtS, threat.y + threat_v_est.y * k * kDtS}, {0.0, 0.0},
@@ -175,7 +175,7 @@ int main() {
  // spatial kinds honestly Unknown with their own reason.
  {
   const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   const auto go = sim::check_candidate(sim::LocalCandidate::kProceed, line, 0, 1.0, open, 0.1,
                                        0.38, 0.5);
   CHECK(go.verdict == sim::Feasibility::Verdict::kFeasible);
@@ -183,10 +183,10 @@ int main() {
   const auto hold =
     sim::check_candidate(sim::LocalCandidate::kWaitInPlace, line, 0, 1.0, open, 0.1, 0.38, 0.5);
   CHECK(hold.verdict == sim::Feasibility::Verdict::kFeasible);
-  std::vector<std::vector<sim::DynState>> clearing;
+  std::vector<std::vector<sim::DynamicObjectState>> clearing;
   for (int k = 0; k < 40; ++k) {
-   clearing.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
-                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+   clearing.push_back(k < 10 ? std::vector<sim::DynamicObjectState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                             : std::vector<sim::DynamicObjectState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   }
   // Clearing corridor: departing now is refused (too early), waiting is feasible.
   const auto early =
@@ -198,7 +198,7 @@ int main() {
   CHECK(patient.verdict == sim::Feasibility::Verdict::kFeasible);
   CHECK(patient.wait_s > 0.0 && patient.min_gap_m >= 0.5);
   // Parked threat: both time kinds infeasible, same cause.
-  const std::vector<std::vector<sim::DynState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::check_candidate(sim::LocalCandidate::kProceed, line, 0, 1.0, parked, 0.1, 0.38, 0.5)
           .verdict == sim::Feasibility::Verdict::kInfeasible);
   CHECK(sim::check_candidate(sim::LocalCandidate::kWaitInPlace, line, 0, 1.0, parked, 0.1, 0.38,
@@ -206,7 +206,7 @@ int main() {
           .reason == sim::DepartReason::kBlockedInWindow);
   // Short window on a long path: Unknown, never Infeasible.
   const std::vector<sim::Vec2> long_line{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::check_candidate(sim::LocalCandidate::kProceed, long_line, 0, 1.0, short_open, 0.1,
                              0.38, 0.5)
           .verdict == sim::Feasibility::Verdict::kUnknown);
@@ -334,7 +334,7 @@ int main() {
  // Unknown is not safe (SOTIF Area 3): no proof fits in the window.
  {
   const std::vector<sim::Vec2> long_path{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::earliest_departure(long_path, 0, 1.0, open, 0.1, 0.38, 0.5) ==
         std::numeric_limits<double>::infinity());
  }

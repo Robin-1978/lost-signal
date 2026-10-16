@@ -1,7 +1,7 @@
-#include "algo/high_level_policy.hpp"
-#include "game/component_registry.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "autonomy/behavior/high_level_policy.hpp"
+#include "mission/component_registry.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <iostream>
 
@@ -68,12 +68,12 @@ int main() {
  CHECK(baseline->name() == "route-baseline");
  CHECK(baseline->decide(observation).mode == sim::StrategyMode::FollowRoute);
 
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& presentation = catalog.presentation_for_level("boot");
  auto hold = std::make_shared<HoldPolicy>();
- game::MissionSimulation mission(catalog, "boot", presentation.recommended_build,
- std::nullopt, std::vector<std::string>{}, game::ComponentRegistry::builtins(),
- std::shared_ptr<const game::IPathPlanner>{}, game::PhysicsMode::Bullet, hold);
+ mission::MissionSimulation mission(catalog, "boot", presentation.recommended_build,
+ std::nullopt, std::vector<std::string>{}, mission::ComponentRegistry::builtins(),
+ std::shared_ptr<const autonomy::IGlobalPlanner>{}, mission::PhysicsMode::Bullet, hold);
  const auto start = mission.snapshot().robot;
  mission.start();
  for (int step = 0; step < 30; ++step)

@@ -6,7 +6,7 @@
 // Passing here would still not bound real-world error (margin calibration is
 // a later, separate slice); failing here blocks release discussion.
 
-#include "algo/predictor.hpp"
+#include "autonomy/planning/local/predictor.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -26,8 +26,8 @@ namespace {
 using V = sim::Feasibility::Verdict;
 using R = sim::DepartReason;
 
-std::vector<std::vector<sim::DynState>> lane(double x0, double v, int n = 121) {
- std::vector<std::vector<sim::DynState>> frames;
+std::vector<std::vector<sim::DynamicObjectState>> lane(double x0, double v, int n = 121) {
+ std::vector<std::vector<sim::DynamicObjectState>> frames;
  for (int k = 0; k < n; ++k) {
   frames.push_back({{{x0 + v * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
  }
@@ -47,7 +47,7 @@ std::vector<sim::TimedPose> noisy_exec(const std::vector<sim::TimedPose>& exec, 
 
 const std::vector<sim::Vec2> kSuffix{{6.0, 0.05}};
 
-sim::PocketAssessment pocket(const std::vector<std::vector<sim::DynState>>& frames) {
+sim::PocketAssessment pocket(const std::vector<std::vector<sim::DynamicObjectState>>& frames) {
  sim::GridMap open(100, 100, 0.1);
  const sim::ChassisExecCaps spin{true, 2.0, 0.0, 0.0, 0.0, 0.0};
  return sim::assess_pocket_wait(open, {0.05, 2.05}, 0.0, {2.95, 2.05}, {2.95, 0.05}, kSuffix, 1.0,
@@ -170,8 +170,8 @@ int main() {
  // is GoNow — one frame flips the verdict, so window sizing is evidence too.
  {
   const std::vector<sim::Vec2> path{{0.0, 0.0}, {4.0, 0.0}};
-  const auto short_open = std::vector<std::vector<sim::DynState>>(40, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
-  const auto long_open = std::vector<std::vector<sim::DynState>>(41, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  const auto short_open = std::vector<std::vector<sim::DynamicObjectState>>(40, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  const auto long_open = std::vector<std::vector<sim::DynamicObjectState>>(41, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::assess_departure(path, 0, 1.0, short_open, 0.1, 0.38, 0.5).reason == R::kHorizonShort);
   CHECK(sim::assess_departure(path, 0, 1.0, long_open, 0.1, 0.38, 0.5).reason == R::kGoNow);
  }

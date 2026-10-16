@@ -1,7 +1,7 @@
 #include "map_editor.hpp"
 
-#include "game/content_catalog.hpp"
-#include "game/map_serialize.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/map_serialize.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +16,7 @@ double distance(double ax, double ay, double bx, double by) {
 
 } // namespace
 
-MapEditor::MapEditor(const game::ContentCatalog& catalog, std::string level_id)
+MapEditor::MapEditor(const mission::ContentCatalog& catalog, std::string level_id)
     : catalog_(catalog), level_id_(std::move(level_id)) {
  const auto& level = catalog_.level(level_id_);
  working_ = catalog_.map(level.map);
@@ -222,7 +222,7 @@ void MapEditor::release() {
 }
 
 void MapEditor::add_obstacle(double world_x, double world_y) {
- game::BoxDefinition obstacle;
+ mission::BoxDefinition obstacle;
  obstacle.id = free_id("edit_box_");
  obstacle.min = {world_x - 0.5, world_y - 0.5};
  obstacle.max = {world_x + 0.5, world_y + 0.5};
@@ -242,7 +242,7 @@ void MapEditor::add_surface(double world_x, double world_y) {
  // Numbers come from the material library, never literals: the paved default
  // is behavior-neutral by content, not by a C++ constant.
  const auto& paved = catalog_.surface_material("paved");
- game::SurfaceDefinition surface;
+ mission::SurfaceDefinition surface;
  surface.id = free_id("edit_surface_");
  surface.min = {world_x - 1.0, world_y - 1.0};
  surface.max = {world_x + 1.0, world_y + 1.0};
@@ -265,7 +265,7 @@ void MapEditor::add_surface(double world_x, double world_y) {
 
 void MapEditor::add_marker(double world_x, double world_y) {
  const std::string id = free_id("edit_marker_");
- working_.markers.emplace(id, game::Pose{world_x, world_y, 0.0});
+ working_.markers.emplace(id, mission::Pose{world_x, world_y, 0.0});
  auto& pose = working_.markers.at(id);
  pose.x = std::clamp(pose.x, 0.0, working_.size_m.x);
  pose.y = std::clamp(pose.y, 0.0, working_.size_m.y);
@@ -277,9 +277,9 @@ void MapEditor::add_marker(double world_x, double world_y) {
 }
 
 namespace {
-game::TerrainPatchDefinition terrain_patch(const std::string& id, double world_x, double world_y,
- const game::MapDefinition& map, const std::string& level_id, bool ramp) {
- game::TerrainPatchDefinition patch;
+mission::TerrainPatchDefinition terrain_patch(const std::string& id, double world_x, double world_y,
+ const mission::MapDefinition& map, const std::string& level_id, bool ramp) {
+ mission::TerrainPatchDefinition patch;
  patch.id = id;
  patch.min = {world_x - 2.0, world_y - 1.0};
  patch.min.x = std::clamp(patch.min.x, 0.0, std::max(0.0, map.size_m.x - 4.0));
@@ -414,7 +414,7 @@ void MapEditor::remove_selected() {
 }
 
 bool MapEditor::save(const std::string& assets_root) {
- const std::string text = game::serialize_map_canonical(working_);
+ const std::string text = mission::serialize_map_canonical(working_);
  const std::string path = assets_root + "/maps/" + working_.id + ".json";
  {
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
@@ -427,7 +427,7 @@ bool MapEditor::save(const std::string& assets_root) {
  try {
   // Validity proof: a full catalog reload parses + validates everything
   // (schema, references, unlock chains). Throws on any breakage.
-  game::ContentCatalog::load(assets_root);
+  mission::ContentCatalog::load(assets_root);
  } catch (const std::exception& error) {
   message_ = catalog_.tr("editor.save_invalid") + error.what();
   return false;

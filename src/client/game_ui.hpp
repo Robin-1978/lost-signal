@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <TGUI/TGUI.hpp>
 
@@ -31,20 +31,20 @@ struct UiActions {
 
 class GameUi {
  public:
- GameUi(tgui::BackendGui& gui, const game::ContentCatalog& catalog,
-        const game::PresentationDefinition& presentation);
+ GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
+        const mission::PresentationDefinition& presentation);
 
- void set_screen(Screen screen, const game::MissionSimulation* mission = nullptr);
+ void set_screen(Screen screen, const mission::MissionSimulation* mission = nullptr);
  void resize(int width, int height);
- void refresh_running(const game::MissionSimulation& mission, bool paused, double speed);
- void refresh_debrief(const game::MissionSimulation& mission);
+ void refresh_running(const mission::MissionSimulation& mission, bool paused, double speed);
+ void refresh_debrief(const mission::MissionSimulation& mission);
  UiActions consume_actions();
 
  Screen screen() const { return screen_; }
- const game::BuildSelection& build() const { return build_; }
+ const mission::BuildSelection& build() const { return build_; }
  bool build_within_budget() const;
  bool endless_mode() const { return endless_mode_; }
- const game::PresentationDefinition& presentation() const { return *presentation_; }
+ const mission::PresentationDefinition& presentation() const { return *presentation_; }
  const std::string& level_id() const { return presentation_->level; }
  const std::string& contract_id() const { return active_contract_id_; }
  void use_recommended_build();
@@ -57,27 +57,27 @@ class GameUi {
  void set_inventory(const std::vector<std::string>& component_ids);
  void set_abilities(const std::vector<std::string>& ability_ids);
  void set_contract_status(int reputation, const std::vector<std::string>& claimed_contracts);
- void set_build(const game::BuildSelection& build);
+ void set_build(const mission::BuildSelection& build);
 
  private:
- void rebuild(const game::MissionSimulation* mission);
+ void rebuild(const mission::MissionSimulation* mission);
  void build_chapter();
  void build_garage();
  void build_prediction();
- void build_running(const game::MissionSimulation* mission);
- void build_debrief(const game::MissionSimulation* mission);
+ void build_running(const mission::MissionSimulation* mission);
+ void build_debrief(const mission::MissionSimulation* mission);
  void select_component(const std::string& slot, const std::string& id);
  void select_chassis(const std::string& robot_id);
  void set_style(double style);
  void update_style_label();
  void update_garage_labels();
  void sanitize_build();
- bool is_unlocked(const game::LevelDefinition& level) const;
+ bool is_unlocked(const mission::LevelDefinition& level) const;
  std::string next_level_id() const;
  // Garage card text (single source for create + refresh): title / slot stat
  // from component behavior / cost. Stats are content numbers, never invented.
- std::string card_stat(const std::string& slot, const game::ComponentDefinition& item) const;
- std::string card_text(const std::string& slot, const game::ComponentDefinition& item, bool locked) const;
+ std::string card_stat(const std::string& slot, const mission::ComponentDefinition& item) const;
+ std::string card_text(const std::string& slot, const mission::ComponentDefinition& item, bool locked) const;
 
  tgui::Label::Ptr add_label(const std::string& text, float x, float y, float width, unsigned text_size,
                             tgui::Color color, bool bold = false);
@@ -86,14 +86,14 @@ class GameUi {
  void style_panel();
 
  tgui::BackendGui& gui_;
- const game::ContentCatalog& catalog_;
- const game::PresentationDefinition* presentation_;
+ const mission::ContentCatalog& catalog_;
+ const mission::PresentationDefinition* presentation_;
  tgui::Panel::Ptr panel_;
  // Widget parent for add_label/add_button: the plain panel everywhere except
  // the chapter screen, which hosts 21+ level buttons in a ScrollablePanel
  // (fixed panel overflowed past 720p once the roster passed ~12 levels).
  tgui::Panel::Ptr add_parent_;
- game::BuildSelection build_;
+ mission::BuildSelection build_;
  Screen screen_{Screen::Chapter};
  UiActions actions_;
  int width_{1440};
@@ -126,8 +126,8 @@ class GameUi {
  tgui::Label::Ptr replay_cause_;
  tgui::Label::Ptr replay_evidence_;
  tgui::Label::Ptr comparison_label_;
- std::unordered_map<std::string, game::MissionResult> previous_results_;
- std::optional<game::MissionResult> comparison_result_;
+ std::unordered_map<std::string, mission::MissionResult> previous_results_;
+ std::optional<mission::MissionResult> comparison_result_;
 };
 
 } // namespace client

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "algo/dynamic_obstacle_map.hpp"
+#include "autonomy/perception/dynamic_obstacle_map.hpp"
 #include "hal.hpp"
 #include "sim/runtime_state.hpp"
 

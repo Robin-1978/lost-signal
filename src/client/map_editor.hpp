@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game/content.hpp"
-#include "game/content_catalog.hpp"
+#include "mission/content.hpp"
+#include "mission/content_catalog.hpp"
 
 #include <string>
 
@@ -15,13 +15,13 @@ class MapEditor {
  public:
  enum class Kind { kNone, kMarker, kObstacle, kSurface, kTerrain };
 
- explicit MapEditor(const game::ContentCatalog& catalog, std::string level_id);
+ explicit MapEditor(const mission::ContentCatalog& catalog, std::string level_id);
 
  bool active() const { return active_; }
  void toggle() { active_ = !active_; }
  bool dirty() const { return dirty_; }
  const std::string& level_id() const { return level_id_; }
- const game::MapDefinition& working() const { return working_; }
+ const mission::MapDefinition& working() const { return working_; }
  Kind selected_kind() const { return selected_kind_; }
  // Grabbed box corner 0..3 (min/min, max/min, max/max, min/max), -1 when the
  // press took the body. Markers have no corners.
@@ -59,9 +59,9 @@ class MapEditor {
  private:
  static constexpr double kGrabRadiusM = 0.35;
 
- const game::ContentCatalog& catalog_;
+ const mission::ContentCatalog& catalog_;
  std::string level_id_;
- game::MapDefinition working_;
+ mission::MapDefinition working_;
  bool active_{false};
  bool dirty_{false};
  Kind selected_kind_{Kind::kNone};

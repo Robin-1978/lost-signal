@@ -2,9 +2,9 @@
 // Closes the silent-drop hole: 23 ability rewards previously vanished in
 // record_completion (only components() were kept). Now registry-gated.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <cstdio>
 #include <filesystem>
@@ -20,7 +20,7 @@
  } while (false)
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  // Registry: every level-granted ability.* resolves (no absolute count: the
  // registry grows with content, the loop below is the pin, not the number).
  CHECK(!catalog.abilities().empty());
@@ -35,9 +35,9 @@ int main() {
  CHECK(catalog.ability("ability.signal_cross").title.size() > 0);
  // Completion records abilities (idempotent) and they survive save/load.
  {
-  game::CampaignProgress progress;
+  mission::CampaignProgress progress;
   CHECK(progress.abilities().empty());
-  game::MissionResult done;
+  mission::MissionResult done;
   done.safe_score = true;
   progress.record_completion("signal_cross", done, catalog);
   CHECK(progress.abilities().size() == 1);
@@ -49,7 +49,7 @@ int main() {
  const auto save_path =
  std::filesystem::temp_directory_path() / "lost_signal_progress_abilities.json";
   progress.save(save_path, catalog);
-  const auto loaded = game::CampaignProgress::load(save_path, catalog);
+  const auto loaded = mission::CampaignProgress::load(save_path, catalog);
   CHECK(loaded.abilities().size() == 2);
   CHECK(loaded.abilities().front() == "ability.signal_cross");
   // Old saves without the key load with empty abilities (additive format).
@@ -59,7 +59,7 @@ int main() {
    std::ofstream out(legacy_path, std::ios::trunc);
    out << "{\"schema_version\": 2, \"completed_levels\": [], \"inventory\": []}\n";
   }
-  const auto legacy = game::CampaignProgress::load(legacy_path, catalog);
+  const auto legacy = mission::CampaignProgress::load(legacy_path, catalog);
   CHECK(legacy.abilities().empty());
  }
  std::cerr << "abilities registry green\n";

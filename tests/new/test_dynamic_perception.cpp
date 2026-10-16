@@ -1,9 +1,9 @@
-#include "algo/dynamic_obstacle_map.hpp"
-#include "algo/predictor.hpp"
+#include "autonomy/perception/dynamic_obstacle_map.hpp"
+#include "autonomy/planning/local/predictor.hpp"
 #include "hw/sensors/hal.hpp"
 #include "hw/chassis/diff_drive.hpp"
-#include "algo/dwa.hpp"
-#include "algo/grid_map.hpp"
+#include "autonomy/planning/local/dwa.hpp"
+#include "autonomy/mapping/grid_map.hpp"
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/sensors/sensor.hpp"
 #include "hw/sensors/sensor_system.hpp"
@@ -32,7 +32,7 @@ int main() {
  CHECK(std::abs(portable_gaussian.gauss(0.25) - 0.20011167700651958) < 1e-12);
 
  sim::GridMap open_map(200, 100, 0.1);
- const std::vector<sim::DynState> forklift{{{5.0, 5.0}, {0.5, 0.0}, 0.5}};
+ const std::vector<sim::DynamicObjectState> forklift{{{5.0, 5.0}, {0.5, 0.0}, 0.5}};
  sim::Rng open_rng(7);
  const auto visible = sim::lidar_scan(open_map, {1.0, 5.0}, 0.0, 4, 10.0, 0.0, open_rng, forklift);
  CHECK(visible.hit[0]);
@@ -196,7 +196,7 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  // detects an approaching threat.
  {
   const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> closing = {
+  const std::vector<std::vector<sim::DynamicObjectState>> closing = {
     {{{5.0, 0.0}, {0.0, 0.0}, 0.5}},
     {{{4.0, 0.0}, {0.0, 0.0}, 0.5}},
     {{{3.0, 0.0}, {0.0, 0.0}, 0.5}},
@@ -205,14 +205,14 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
   // [0,1]x[5,4] and [1,2]x[4,3] close to 1.0 m center distance at the end.
   const double gap = sim::predicted_gap(path, 0, 10.0, closing, 0.1, 0.38);
   CHECK(std::abs(gap - (1.0 - 0.5 - 0.38)) < 1e-9);
-  const std::vector<std::vector<sim::DynState>> leaving = {
+  const std::vector<std::vector<sim::DynamicObjectState>> leaving = {
     {{{5.0, 5.0}, {0.0, 0.0}, 0.5}},
   };
   CHECK(sim::predicted_gap(path, 0, 10.0, leaving, 0.1, 0.38) > 4.0);
   CHECK(sim::predicted_gap({}, 0, 1.0, closing, 0.1, 0.38) == std::numeric_limits<double>::infinity());
   CHECK(sim::predicted_gap(path, 0, 1.0, {}, 0.1, 0.38) == std::numeric_limits<double>::infinity());
   // Standing ego, threat driving at it: still caught.
-  const std::vector<std::vector<sim::DynState>> incoming = {
+  const std::vector<std::vector<sim::DynamicObjectState>> incoming = {
     {{{2.0, 0.0}, {0.0, 0.0}, 0.5}},
   };
   CHECK(sim::predicted_gap(path, 0, 0.0, incoming, 0.1, 0.38) < 1.2);
@@ -222,7 +222,7 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  // would report clear; the segment check must not.
  {
   const std::vector<sim::Vec2> line{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> crossing = {
+  const std::vector<std::vector<sim::DynamicObjectState>> crossing = {
     {{{-1.0, 0.1}, {0.0, 0.0}, 0.5}},
     {{{1.0, 0.1}, {0.0, 0.0}, 0.5}},
   };
@@ -232,21 +232,21 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  // Departure reasons: infinity is three different verdicts with three owners.
  {
   const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::assess_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5).reason == sim::DepartReason::kGoNow);
-  std::vector<std::vector<sim::DynState>> clearing;
+  std::vector<std::vector<sim::DynamicObjectState>> clearing;
   for (int k = 0; k < 40; ++k) {
-   clearing.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
-                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+   clearing.push_back(k < 10 ? std::vector<sim::DynamicObjectState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                             : std::vector<sim::DynamicObjectState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   }
   const auto wait = sim::assess_departure(line, 0, 1.0, clearing, 0.1, 0.38, 0.5);
   CHECK(wait.reason == sim::DepartReason::kWait && wait.wait_s > 0.0);
   // Parked threat, safe waiting spot: genuinely blocked inside the window.
-  const std::vector<std::vector<sim::DynState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> parked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::assess_departure(line, 0, 1.0, parked, 0.1, 0.38, 0.5).reason ==
         sim::DepartReason::kBlockedInWindow);
   // Threat drives through the waiting spot: staying is what kills (Phase-2).
-  std::vector<std::vector<sim::DynState>> runover;
+  std::vector<std::vector<sim::DynamicObjectState>> runover;
   for (int k = 0; k < 51; ++k) {
    runover.push_back({{{4.0 - 2.0 * k * 0.1, 0.0}, {0.0, 0.0}, 0.4}});
   }
@@ -255,7 +255,7 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
         sim::DepartReason::kWaitUnsafe);
   // Open field, traversal longer than the window: unknown, not unsafe.
   const std::vector<sim::Vec2> long_line{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::assess_departure(long_line, 0, 1.0, short_open, 0.1, 0.38, 0.5).reason ==
         sim::DepartReason::kHorizonShort);
   CHECK(sim::assess_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5).reason == sim::DepartReason::kInvalid);
@@ -266,16 +266,16 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  // full-trajectory gate (must finish inside the horizon) is satisfiable.
  {
   const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::earliest_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5) == 0.0);
   // Threat parked on the path for the whole horizon: no departure works.
   // Parked at 1.5 m so the wait position itself (gap 0.72) passes margin —
   // the infinity comes from the traversal, not from a bad wait spot.
-  const std::vector<std::vector<sim::DynState>> blocked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
+  const std::vector<std::vector<sim::DynamicObjectState>> blocked(40, {{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::earliest_departure(line, 0, 1.0, blocked, 0.1, 0.38, 0.5) ==
         std::numeric_limits<double>::infinity());
   // Threat clears after 1 s: must wait, then go.
-  std::vector<std::vector<sim::DynState>> clearing;
+  std::vector<std::vector<sim::DynamicObjectState>> clearing;
   for (int k = 0; k < 40; ++k) {
    if (k < 10) {
     clearing.push_back({{{1.5, 0.0}, {0.0, 0.0}, 0.4}});
@@ -294,7 +294,7 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  // departure collides with; empty ego reports infinity.
  {
   const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
-  const std::vector<std::vector<sim::DynState>> closing = {
+  const std::vector<std::vector<sim::DynamicObjectState>> closing = {
     {{{5.0, 0.0}, {0.0, 0.0}, 0.5}},
     {{{4.0, 0.0}, {0.0, 0.0}, 0.5}},
     {{{3.0, 0.0}, {0.0, 0.0}, 0.5}},
@@ -308,10 +308,10 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
   // Threat sits at x=1.5 for 1 s, then leaves; ego holds at x=0 for 1 s
   // (safe: gap 0.72), then advances. Holding lets the threat clear;
   // rushing meets it. Pocket pattern in miniature.
-  std::vector<std::vector<sim::DynState>> visiting;
+  std::vector<std::vector<sim::DynamicObjectState>> visiting;
   for (int k = 0; k < 21; ++k) {
-   visiting.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
-                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+   visiting.push_back(k < 10 ? std::vector<sim::DynamicObjectState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
+                             : std::vector<sim::DynamicObjectState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   }
   const std::vector<sim::TimedPose> hold_go{{{0.0, {0.0, 0.0}}, {1.0, {0.0, 0.0}}, {2.0, {1.0, 0.0}}}};
   const double held = sim::timed_gap(hold_go, visiting, 0.1, 0.38);

@@ -3,7 +3,7 @@
 // (wheel 1.5 vs body 0.8) reads 0.467 Observable here; the creep corner
 // it false-alarmed on (0.1 m/s) refuses as Unobservable.
 
-#include "algo/slip_observer.hpp"
+#include "autonomy/localization/slip_observer.hpp"
 
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/motor_drive.hpp"

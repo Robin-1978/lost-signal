@@ -5,7 +5,7 @@
 // DWA consume nothing — this test only reads snapshots. If the window check
 // is the right medicine for flagship myopia, Occupied episodes must precede
 // close encounters and flip to Clear as the threat passes.
-#include "game/content_catalog.hpp"
+#include "mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <cmath>
@@ -32,11 +32,11 @@ struct ShadowStream {
   double min_clear_margin_s{1e9};
 };
 
-ShadowStream run_shadow(game::MissionSimulation& mission) {
+ShadowStream run_shadow(mission::MissionSimulation& mission) {
   ShadowStream stream;
   mission.start();
   int steps = 0;
-  while (mission.snapshot().status == game::MissionStatus::Running && steps < 30000) {
+  while (mission.snapshot().status == mission::MissionStatus::Running && steps < 30000) {
     mission.step();
     ++steps;
     const auto& snap = mission.snapshot();
@@ -70,11 +70,11 @@ ShadowStream run_shadow(game::MissionSimulation& mission) {
 } // namespace
 
 int main() {
-  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   const auto build = catalog.presentation_for_level("signal_cross").recommended_build;
-  game::MissionSimulation first(catalog, "signal_cross", build);
+  mission::MissionSimulation first(catalog, "signal_cross", build);
   const auto s1 = run_shadow(first);
-  CHECK(first.snapshot().status == game::MissionStatus::Succeeded);
+  CHECK(first.snapshot().status == mission::MissionStatus::Succeeded);
   std::cerr << "assessed=" << s1.assessed << " clear=" << s1.clear << " occupied=" << s1.occupied
             << " uncertain=" << s1.uncertain << " first_occ=" << s1.first_occupied_s
             << " last_occ=" << s1.last_occupied_s
@@ -86,7 +86,7 @@ int main() {
   CHECK(s1.assessed > 0);
   CHECK(s1.occupied > 0);
   // Determinism: same content/seed replays the identical verdict stream.
-  game::MissionSimulation second(catalog, "signal_cross", build);
+  mission::MissionSimulation second(catalog, "signal_cross", build);
   const auto s2 = run_shadow(second);
   CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
         s2.uncertain == s1.uncertain);

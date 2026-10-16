@@ -6,9 +6,9 @@
 // (factory seams documented in docs/diy.md) — hardware is data, algorithms
 // are code, and this test pins exactly that boundary.
 
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -64,16 +64,16 @@ int main() {
   CHECK(static_cast<bool>(out));
   out << kPlayerTire;
  }
- const auto catalog = game::ContentCatalog::load(overlay.string());
+ const auto catalog = mission::ContentCatalog::load(overlay.string());
  // The player tire is a first-class component (loader + validator accept it).
  CHECK(catalog.components().count("tires.player_pro") == 1);
  CHECK(catalog.component("tires.player_pro").slot == "tires");
  // It passes the garage gate (budget/cost/slots) and drives a mission.
  auto build = catalog.presentation_for_level("boot").recommended_build;
  build.parts["tires"] = "tires.player_pro";
- game::MissionSimulation mission(catalog, "boot", build);
+ mission::MissionSimulation mission(catalog, "boot", build);
  mission.run_to_completion();
- CHECK(mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  std::cerr << "player pack green (tire drives boot to completion)\n";
  return 0;
 }

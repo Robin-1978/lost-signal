@@ -1,5 +1,5 @@
-#include "game/component_registry.hpp"
-#include "game/content_catalog.hpp"
+#include "mission/component_registry.hpp"
+#include "mission/content_catalog.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -74,8 +74,8 @@ void write_file(const fs::path& path, const char* contents) {
 } // namespace
 
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
- game::BuildSelection all;
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ mission::BuildSelection all;
  all.parts = {
    {"tires", "tires.standard"},
    {"sensor", "sensor.standard_lidar"},
@@ -83,7 +83,7 @@ int main() {
    {"motor", "motor.standard"},
    {"imu", "imu.basic"},
  };
- const auto resolved = game::ComponentRegistry::builtins().resolve(catalog, all);
+ const auto resolved = mission::ComponentRegistry::builtins().resolve(catalog, all);
  CHECK(resolved.has("tires"));
  CHECK(resolved.tires().brake_decel_mps2 == 3.0);
  CHECK(resolved.lidar() && resolved.lidar()->rays == 72);
@@ -92,7 +92,7 @@ int main() {
  CHECK(resolved.motor() && resolved.motor()->stall_force_N == 54.0);
  CHECK(resolved.imu() && resolved.imu()->gyro_bias_radps == 0.02);
  CHECK(resolved.imu()->accel_noise_mps2 == 0.15);
- CHECK(game::ComponentRegistry::builtins().supported_slots().size() == 5);
+ CHECK(mission::ComponentRegistry::builtins().supported_slots().size() == 5);
 
  const fs::path overlay = fs::temp_directory_path() / "lost_signal_component_registry";
  std::error_code error;
@@ -103,30 +103,30 @@ int main() {
  CHECK(!error);
  write_file(overlay / "components" / "broken_registry_test.json", kBrokenTire);
  write_file(overlay / "components" / "payload_registry_test.json", kPayload);
- const auto extended_catalog = game::ContentCatalog::load(overlay.string());
+ const auto extended_catalog = mission::ContentCatalog::load(overlay.string());
 
- game::BuildSelection broken;
+ mission::BuildSelection broken;
  broken.parts["tires"] = "tires.broken_registry_test";
  bool threw = false;
  try {
-  (void)game::ComponentRegistry::builtins().resolve(extended_catalog, broken);
- } catch (const game::ContentError&) {
+  (void)mission::ComponentRegistry::builtins().resolve(extended_catalog, broken);
+ } catch (const mission::ContentError&) {
   threw = true;
  }
  CHECK(threw);
 
- game::BuildSelection payload;
+ mission::BuildSelection payload;
  payload.parts["payload"] = "payload.cooler";
  threw = false;
  try {
-  (void)game::ComponentRegistry::builtins().resolve(extended_catalog, payload);
- } catch (const game::ContentError&) {
+  (void)mission::ComponentRegistry::builtins().resolve(extended_catalog, payload);
+ } catch (const mission::ContentError&) {
   threw = true;
  }
  CHECK(threw);
 
- game::ComponentRegistry extension_registry = game::ComponentRegistry::with_builtins();
- extension_registry.register_slot("payload", [](const game::ComponentDefinition& definition) {
+ mission::ComponentRegistry extension_registry = mission::ComponentRegistry::with_builtins();
+ extension_registry.register_slot("payload", [](const mission::ComponentDefinition& definition) {
   return PayloadSpec{definition.behavior.at("capacity_kg")};
  });
  const auto custom = extension_registry.resolve(extended_catalog, payload);
@@ -138,7 +138,7 @@ int main() {
 
  threw = false;
  try {
-  extension_registry.register_slot("payload", [](const game::ComponentDefinition& definition) {
+  extension_registry.register_slot("payload", [](const mission::ComponentDefinition& definition) {
    return PayloadSpec{definition.behavior.at("capacity_kg")};
   });
  } catch (const std::runtime_error&) {

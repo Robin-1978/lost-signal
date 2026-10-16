@@ -2,9 +2,9 @@
 // a dormant actor wakes on a summon goal (miss branch would say otherwise)
 // and a recharge goal tops the battery account. The overlay copies the
 // shipped tree, adds one map + level + presentation, and runs headless.
-#include "game/campaign_progress.hpp"
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/campaign_progress.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -139,7 +139,7 @@ int main() {
   CHECK(static_cast<bool>(out));
   out << text;
  }
- const auto catalog = game::ContentCatalog::load(overlay.string());
+ const auto catalog = mission::ContentCatalog::load(overlay.string());
  // Explicit goals parse (summon + recharge + complete, in order).
  const auto& objective = catalog.level("test_summon").objective;
  CHECK(objective.goals.size() == 3);
@@ -151,12 +151,12 @@ int main() {
 
  // Tires only (like boot): stock motor drives, no sensor needed —
  // summon/recharge/complete are positional goals, not perception ones.
- game::BuildSelection build;
+ mission::BuildSelection build;
  build.parts["tires"] = "tires.standard";
  build.style = 0.0;
- game::MissionSimulation mission(catalog, "test_summon", build, 7u);
+ mission::MissionSimulation mission(catalog, "test_summon", build, 7u);
  mission.run_to_completion();
- CHECK(mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  bool summoned = false, recharged = false;
  for (const auto& event : mission.events()) {
   if (event.code == "summoned") {

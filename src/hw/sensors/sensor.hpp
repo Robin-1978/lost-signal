@@ -1,7 +1,7 @@
 #pragma once
 
-#include "algo/dynobs.hpp"
-#include "algo/grid_map.hpp"
+#include "autonomy/perception/dynamic_object.hpp"
+#include "autonomy/mapping/grid_map.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -124,11 +124,11 @@ Scan apply_lidar_noise(Scan ideal_scan, double noise_std, Rng& rng);
 // Ideal deterministic geometry query. Static occupancy and moving collision
 // circles participate in the same nearest-hit and occlusion test.
 Scan lidar_raycast(const GridMap& map, Vec2 position, double heading, int n_rays,
- double max_range, const std::vector<DynState>& dynamic_objects = {});
+ double max_range, const std::vector<DynamicObjectState>& dynamic_objects = {});
 
 // Compatibility helper for callers that need an immediately-noised scan.
 Scan lidar_scan(const GridMap& map, Vec2 position, double heading, int n_rays, double max_range,
-                double noise_std, Rng& rng, const std::vector<DynState>& dynamic_objects = {});
+                double noise_std, Rng& rng, const std::vector<DynamicObjectState>& dynamic_objects = {});
 
 class DeadReckon {
  public:

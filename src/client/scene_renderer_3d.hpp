@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game/content_catalog.hpp"
-#include "game/mission_simulation.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/mission_simulation.hpp"
 
 #include <raylib.h>
 
@@ -14,13 +14,13 @@ namespace client {
 
 class SceneRenderer3D {
  public:
- SceneRenderer3D(const std::filesystem::path& assets_root, const game::ContentCatalog& catalog);
+ SceneRenderer3D(const std::filesystem::path& assets_root, const mission::ContentCatalog& catalog);
  ~SceneRenderer3D();
 
  SceneRenderer3D(const SceneRenderer3D&) = delete;
  SceneRenderer3D& operator=(const SceneRenderer3D&) = delete;
 
- void draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
+ void draw(const mission::MissionSimulation& mission, int screen_width, int screen_height,
  Rectangle input_viewport, bool assembly_view = false);
  const Camera3D& camera() const { return camera_; }
  std::optional<sim::Vec2> screen_to_ground(Vector2 screen) const;
@@ -29,27 +29,27 @@ class SceneRenderer3D {
  void bind_shader(Model& model) const;
  void ensure_shadow_map(int resolution);
  void ensure_post_targets(int width, int height);
- void render_shadow_map(const game::MissionSimulation& mission, const game::SceneDefinition& scene,
+ void render_shadow_map(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene,
                         Vector3 light_direction);
- void render_scene_target(const game::MissionSimulation& mission, const game::SceneDefinition& scene);
- void composite_scene(const game::SceneDefinition& scene) const;
- void draw_scene(const game::MissionSimulation& mission) const;
- void draw_floor(const game::MapDefinition& map, const game::SceneDefinition& scene) const;
- void draw_terrain(const game::MissionSimulation& mission) const;
- void draw_shelf(const game::BoxDefinition& obstacle) const;
- void draw_surface(const game::MissionSimulation& mission, const game::SurfaceDefinition& surface) const;
- void draw_markers(const game::MissionSimulation& mission) const;
- void draw_field_operator(const game::MissionSimulation& mission) const;
- void draw_robot(const game::MissionSimulation& mission) const;
- void draw_actor(const game::ActorSnapshot& actor, bool waiting) const;
- void draw_environment(const game::MissionSimulation& mission, const game::SceneDefinition& scene) const;
- void draw_accents(const game::MissionSimulation& mission) const;
- void draw_motion_effects(const game::MissionSimulation& mission) const;
- void draw_risk_effects(const game::MissionSimulation& mission) const;
+ void render_scene_target(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene);
+ void composite_scene(const mission::SceneDefinition& scene) const;
+ void draw_scene(const mission::MissionSimulation& mission) const;
+ void draw_floor(const mission::MapDefinition& map, const mission::SceneDefinition& scene) const;
+ void draw_terrain(const mission::MissionSimulation& mission) const;
+ void draw_shelf(const mission::BoxDefinition& obstacle) const;
+ void draw_surface(const mission::MissionSimulation& mission, const mission::SurfaceDefinition& surface) const;
+ void draw_markers(const mission::MissionSimulation& mission) const;
+ void draw_field_operator(const mission::MissionSimulation& mission) const;
+ void draw_robot(const mission::MissionSimulation& mission) const;
+ void draw_actor(const mission::ActorSnapshot& actor, bool waiting) const;
+ void draw_environment(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene) const;
+ void draw_accents(const mission::MissionSimulation& mission) const;
+ void draw_motion_effects(const mission::MissionSimulation& mission) const;
+ void draw_risk_effects(const mission::MissionSimulation& mission) const;
  void draw_box(Vector3 position, Vector3 size, float yaw_degrees, Color color) const;
  const Model* model(const std::string& path) const;
 
- const game::ContentCatalog& catalog_;
+ const mission::ContentCatalog& catalog_;
  std::filesystem::path assets_root_;
  std::unordered_map<std::string, Model> models_;
  std::unordered_map<std::string, Model> floor_models_;

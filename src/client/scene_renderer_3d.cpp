@@ -27,11 +27,11 @@ Vector3 world(sim::Vec2 point, float height = 0.0f) {
  return {static_cast<float>(point.x), height, static_cast<float>(-point.y)};
 }
 
-Vector3 world(const game::Pose& pose, float height = 0.0f) {
+Vector3 world(const mission::Pose& pose, float height = 0.0f) {
  return {static_cast<float>(pose.x), height, static_cast<float>(-pose.y)};
 }
 
-Vector3 world(const game::Vec3& point) {
+Vector3 world(const mission::Vec3& point) {
  return {static_cast<float>(point.x), static_cast<float>(point.z), static_cast<float>(-point.y)};
 }
 
@@ -54,7 +54,7 @@ Vector3 shader_color(const std::array<unsigned char, 4>& value, double intensity
  return {value[0] * scale, value[1] * scale, value[2] * scale};
 }
 
-game::Vec3 rotate_offset(const game::Vec3& value, double yaw_degrees) {
+mission::Vec3 rotate_offset(const mission::Vec3& value, double yaw_degrees) {
  const double radians = yaw_degrees / kRadToDeg;
  const double cosine = std::cos(radians);
  const double sine = std::sin(radians);
@@ -89,10 +89,10 @@ void draw_ground_ribbon(Vector3 from, Vector3 to, float width, Color tint) {
  DrawTriangle3D(from_right, to_right, to_left, tint);
 }
 
-sim::TerrainSample terrain_at(const game::MissionSimulation& mission, sim::Vec2 position) {
+sim::TerrainSample terrain_at(const mission::MissionSimulation& mission, sim::Vec2 position) {
  for (auto patch = mission.map_definition().terrain.rbegin();
       patch != mission.map_definition().terrain.rend(); ++patch) {
-  if (!game::active_in_level(patch->active_in, mission.level().id) || position.x < patch->min.x ||
+  if (!mission::active_in_level(patch->active_in, mission.level().id) || position.x < patch->min.x ||
       position.x >= patch->max.x || position.y < patch->min.y || position.y >= patch->max.y) {
    continue;
   }
@@ -107,10 +107,10 @@ sim::TerrainSample terrain_at(const game::MissionSimulation& mission, sim::Vec2 
  return {};
 }
 
-const game::SurfaceDefinition* surface_at(const game::MissionSimulation& mission, sim::Vec2 position) {
+const mission::SurfaceDefinition* surface_at(const mission::MissionSimulation& mission, sim::Vec2 position) {
  for (auto surface = mission.map_definition().surfaces.rbegin();
       surface != mission.map_definition().surfaces.rend(); ++surface) {
-  if (game::active_in_level(surface->active_in, mission.level().id) && position.x >= surface->min.x &&
+  if (mission::active_in_level(surface->active_in, mission.level().id) && position.x >= surface->min.x &&
       position.x < surface->max.x && position.y >= surface->min.y && position.y < surface->max.y) {
    return &*surface;
   }
@@ -207,7 +207,7 @@ void draw_render_texture(const RenderTexture2D& target, float width, float heigh
 } // namespace
 
 SceneRenderer3D::SceneRenderer3D(const std::filesystem::path& assets_root,
-                                 const game::ContentCatalog& catalog)
+                                 const mission::ContentCatalog& catalog)
     : catalog_(catalog), assets_root_(assets_root) {
  const auto vertex = assets_root_ / "shaders/scene_lighting.vs";
  const auto fragment = assets_root_ / "shaders/scene_lighting.fs";
@@ -454,7 +454,7 @@ void SceneRenderer3D::draw_box(Vector3 position, Vector3 size, float yaw_degrees
  DrawModelEx(cube_model_, position, {0, 1, 0}, yaw_degrees, size, color);
 }
 
-void SceneRenderer3D::draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
+void SceneRenderer3D::draw(const mission::MissionSimulation& mission, int screen_width, int screen_height,
  Rectangle input_viewport, bool assembly_view) {
  input_viewport_ = input_viewport;
  const auto& state = mission.snapshot();
@@ -466,9 +466,9 @@ void SceneRenderer3D::draw(const game::MissionSimulation& mission, int screen_wi
  if (const auto* active = mission.active_goal())
  goal = mission.map_definition().markers.find(active->marker);
  const bool success_shot =
-   state.status == game::MissionStatus::Succeeded && goal != mission.map_definition().markers.end();
+   state.status == mission::MissionStatus::Succeeded && goal != mission.map_definition().markers.end();
  const bool event_shot = !success_shot && actor != state.actors.end() && state.dynamic_object_detected;
- const game::SceneShotDefinition* shot = assembly_view
+ const mission::SceneShotDefinition* shot = assembly_view
  ? nullptr
  : (success_shot ? &scene.camera.success_shot
  : (event_shot ? &scene.camera.event_shot : nullptr));
@@ -637,8 +637,8 @@ void SceneRenderer3D::draw(const game::MissionSimulation& mission, int screen_wi
  }
 }
 
-void SceneRenderer3D::render_shadow_map(const game::MissionSimulation& mission,
-                                        const game::SceneDefinition& scene, Vector3 light_direction) {
+void SceneRenderer3D::render_shadow_map(const mission::MissionSimulation& mission,
+                                        const mission::SceneDefinition& scene, Vector3 light_direction) {
  const auto& map = mission.map_definition();
  const Vector3 center{static_cast<float>(map.size_m.x * 0.5), 0.35f, static_cast<float>(-map.size_m.y * 0.5)};
  Camera3D light_camera{};
@@ -669,8 +669,8 @@ void SceneRenderer3D::render_shadow_map(const game::MissionSimulation& mission,
  SetShaderValueMatrix(shader_, light_view_projection_loc_, light_view_projection);
 }
 
-void SceneRenderer3D::render_scene_target(const game::MissionSimulation& mission,
-                                          const game::SceneDefinition& scene) {
+void SceneRenderer3D::render_scene_target(const mission::MissionSimulation& mission,
+                                          const mission::SceneDefinition& scene) {
  if (shadow_map_.id > 0) {
   const int shadow_texture_slot = 10;
   rlActiveTextureSlot(10);
@@ -704,7 +704,7 @@ void SceneRenderer3D::render_scene_target(const game::MissionSimulation& mission
  }
 }
 
-void SceneRenderer3D::composite_scene(const game::SceneDefinition& scene) const {
+void SceneRenderer3D::composite_scene(const mission::SceneDefinition& scene) const {
  const float bloom_strength = static_cast<float>(scene.lighting.bloom_strength);
  if (bloom_strength > 0.001f) {
   const float bloom_threshold = static_cast<float>(scene.lighting.bloom_threshold);
@@ -759,19 +759,19 @@ void SceneRenderer3D::composite_scene(const game::SceneDefinition& scene) const 
  EndShaderMode();
 }
 
-void SceneRenderer3D::draw_scene(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_scene(const mission::MissionSimulation& mission) const {
  const auto& map = mission.map_definition();
  const auto& scene = catalog_.scene(map.scene_3d);
  draw_floor(map, scene);
  draw_terrain(mission);
  draw_environment(mission, scene);
  for (const auto& surface : map.surfaces) {
-  if (!game::active_in_level(surface.active_in, mission.level().id))
+  if (!mission::active_in_level(surface.active_in, mission.level().id))
    continue;
   draw_surface(mission, surface);
  }
  for (const auto& obstacle : map.obstacles) {
-  if (game::active_in_level(obstacle.active_in, mission.level().id))
+  if (mission::active_in_level(obstacle.active_in, mission.level().id))
    draw_shelf(obstacle);
  }
  draw_markers(mission);
@@ -783,7 +783,7 @@ void SceneRenderer3D::draw_scene(const game::MissionSimulation& mission) const {
  draw_robot(mission);
 }
 
-void SceneRenderer3D::draw_floor(const game::MapDefinition& map, const game::SceneDefinition& scene) const {
+void SceneRenderer3D::draw_floor(const mission::MapDefinition& map, const mission::SceneDefinition& scene) const {
  const float width = static_cast<float>(map.size_m.x);
  const float length = static_cast<float>(map.size_m.y);
  DrawPlane({width * 0.5f, -0.08f, -length * 0.5f}, {width + 10.0f, length + 10.0f},
@@ -830,9 +830,9 @@ void SceneRenderer3D::draw_floor(const game::MapDefinition& map, const game::Sce
           0, boundary);
 }
 
-void SceneRenderer3D::draw_terrain(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_terrain(const mission::MissionSimulation& mission) const {
  for (const auto& patch : mission.map_definition().terrain) {
-  if (!game::active_in_level(patch.active_in, mission.level().id)) {
+  if (!mission::active_in_level(patch.active_in, mission.level().id)) {
    continue;
   }
  const float width = static_cast<float>(patch.max.x - patch.min.x);
@@ -917,7 +917,7 @@ void SceneRenderer3D::draw_terrain(const game::MissionSimulation& mission) const
  }
 }
 
-void SceneRenderer3D::draw_shelf(const game::BoxDefinition& obstacle) const {
+void SceneRenderer3D::draw_shelf(const mission::BoxDefinition& obstacle) const {
  const float min_x = static_cast<float>(obstacle.min.x);
  const float max_x = static_cast<float>(obstacle.max.x);
  const float min_z = static_cast<float>(-obstacle.max.y);
@@ -954,8 +954,8 @@ void SceneRenderer3D::draw_shelf(const game::BoxDefinition& obstacle) const {
  }
 }
 
-void SceneRenderer3D::draw_surface(const game::MissionSimulation& mission,
-                                   const game::SurfaceDefinition& surface) const {
+void SceneRenderer3D::draw_surface(const mission::MissionSimulation& mission,
+                                   const mission::SurfaceDefinition& surface) const {
  const float width = static_cast<float>(surface.max.x - surface.min.x);
  const float length = static_cast<float>(surface.max.y - surface.min.y);
  const float center_x = static_cast<float>((surface.min.x + surface.max.x) * 0.5);
@@ -1031,14 +1031,14 @@ void SceneRenderer3D::draw_surface(const game::MissionSimulation& mission,
  }
 }
 
-void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_markers(const mission::MissionSimulation& mission) const {
  const auto& map = mission.map_definition();
  // Supply markers are INFORMATION (drive here), not furniture: a solid crate
  // on the marker forces the robot to drive through box art on collection
  // (via radius 1.25, arrival 0.62 < crate half-width + body). Flat ring plus
  // floating cube plus light beam read as a collection zone and never
  // overlap the car body.
- const auto draw_supply = [&](const game::Pose& pose) {
+ const auto draw_supply = [&](const mission::Pose& pose) {
   const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
   DrawCylinderEx({base.x, base.y + 0.01f, base.z}, {base.x, base.y + 0.05f, base.z}, 0.68f, 0.68f, 40,
                  Fade(kAmber, 0.30f));
@@ -1063,11 +1063,11 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
  DrawSphere({base.x + offset, base.y + 0.34f, base.z - 0.52f},
  0.045f + 0.008f * pulse, kDanger);
  }
- if (incident.kind == game::WorldIncidentKind::RoadClosure) {
+ if (incident.kind == mission::WorldIncidentKind::RoadClosure) {
  draw_box({base.x, base.y + 0.32f, base.z}, {1.35f, 0.42f, 0.24f}, 12.0f,
  {207, 90, 55, 255});
  draw_box({base.x, base.y + 0.55f, base.z}, {1.05f, 0.09f, 0.12f}, 12.0f, kAmber);
- } else if (incident.kind == game::WorldIncidentKind::FallenCargo) {
+ } else if (incident.kind == mission::WorldIncidentKind::FallenCargo) {
  draw_box({base.x - 0.22f, base.y + 0.20f, base.z}, {0.48f, 0.40f, 0.50f}, -18.0f,
  {164, 116, 64, 255});
  draw_box({base.x + 0.25f, base.y + 0.15f, base.z + 0.16f}, {0.40f, 0.30f, 0.38f}, 24.0f,
@@ -1079,21 +1079,21 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
  }
  }
  const auto& intent = mission.field_intent();
- if (intent.active && intent.kind != game::FieldIntentKind::Follow &&
- intent.kind != game::FieldIntentKind::Wait) {
+ if (intent.active && intent.kind != mission::FieldIntentKind::Follow &&
+ intent.kind != mission::FieldIntentKind::Wait) {
  const auto base = world(intent.target,
  static_cast<float>(terrain_at(mission, intent.target).height_m));
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.8));
- const Color intent_color = intent.acknowledgement == game::FieldIntentAcknowledgement::Rejected
+ const Color intent_color = intent.acknowledgement == mission::FieldIntentAcknowledgement::Rejected
  ? kDanger
- : (intent.kind == game::FieldIntentKind::Search ? kAmber : kCyan);
+ : (intent.kind == mission::FieldIntentKind::Search ? kAmber : kCyan);
  DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z},
  {base.x, base.y + 0.075f, base.z},
  0.74f + pulse * 0.08f, 0.74f + pulse * 0.08f, 48, intent_color);
  DrawCylinderEx({base.x, base.y + 0.02f, base.z},
  {base.x, base.y + 0.045f, base.z}, 0.58f, 0.58f, 40,
  Fade(intent_color, 0.30f));
- if (intent.kind == game::FieldIntentKind::Search) {
+ if (intent.kind == mission::FieldIntentKind::Search) {
  DrawCylinderWiresEx({base.x, base.y + 0.025f, base.z},
  {base.x, base.y + 0.055f, base.z}, 1.10f + pulse * 0.24f,
  1.10f + pulse * 0.24f, 48, Fade(intent_color, 0.55f));
@@ -1102,7 +1102,7 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
  const auto& dispatch = mission.field_dispatch();
  if (!dispatch.active)
  return;
- const game::Pose target{dispatch.target.x, dispatch.target.y, 0.0};
+ const mission::Pose target{dispatch.target.x, dispatch.target.y, 0.0};
  const auto base = world(
  target, static_cast<float>(terrain_at(mission, dispatch.target).height_m));
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0));
@@ -1165,7 +1165,7 @@ void SceneRenderer3D::draw_markers(const game::MissionSimulation& mission) const
  }
 }
 
-void SceneRenderer3D::draw_field_operator(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_field_operator(const mission::MissionSimulation& mission) const {
  if (!mission.endless_mode())
  return;
  const auto& field_operator = mission.field_operator();
@@ -1201,7 +1201,7 @@ void SceneRenderer3D::draw_field_operator(const game::MissionSimulation& mission
  0.34f, 0.34f, 28, Fade(kAmber, 0.72f));
 
  const auto& intent = mission.field_intent();
- if (intent.active && intent.kind == game::FieldIntentKind::Follow) {
+ if (intent.active && intent.kind == mission::FieldIntentKind::Follow) {
  const auto robot = world(sim::Vec2{mission.snapshot().robot.x, mission.snapshot().robot.y},
  static_cast<float>(mission.snapshot().robot_height_m * 0.32));
  const auto person = pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.20f, ground);
@@ -1214,7 +1214,7 @@ void SceneRenderer3D::draw_field_operator(const game::MissionSimulation& mission
  }
 }
 
-void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_robot(const mission::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
  const auto& robot = mission.robot();
@@ -1222,7 +1222,7 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
  const Quaternion body_rotation =
    QuaternionFromEuler(static_cast<float>(state.robot_roll_rad), static_cast<float>(state.robot.theta),
                        static_cast<float>(-state.robot_pitch_rad));
- const auto find_mount = [&](const std::string& id) -> const game::MountDefinition* {
+ const auto find_mount = [&](const std::string& id) -> const mission::MountDefinition* {
   const auto found =
     std::find_if(robot.mounts.begin(), robot.mounts.end(), [&](const auto& mount) { return mount.id == id; });
   return found == robot.mounts.end() ? nullptr : &*found;
@@ -1230,7 +1230,7 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
  const auto component_id = [&](const std::string& slot) -> const std::string& {
   return mission.build().part(slot);
  };
- const auto draw_part = [&](const game::VisualDefinition& visual, const game::MountDefinition& mount) {
+ const auto draw_part = [&](const mission::VisualDefinition& visual, const mission::MountDefinition& mount) {
   const Model* loaded = model(visual.model_3d);
   if (!loaded)
    return;
@@ -1260,7 +1260,7 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
   if (mount.id == "sensor_top") {
    if (!mission.build().part("sensor").empty()) {
     const double scan_hz =
-      game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
+      mission::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
     const float scan_angle = static_cast<float>(std::fmod(state.time_s * scan_hz * 2.0 * PI, 2.0 * PI));
     part_rotation = QuaternionMultiply(body_rotation, QuaternionFromEuler(0.0f, scan_angle, 0.0f));
    }
@@ -1291,7 +1291,7 @@ void SceneRenderer3D::draw_robot(const game::MissionSimulation& mission) const {
 // Pedestrian stand-in: two stacked boxes (torso + head), teal so nobody reads
 // it as a vehicle. Proportions scale with the actor's own radius; a proper
 // character model replaces this, never new physics.
-void SceneRenderer3D::draw_actor(const game::ActorSnapshot& actor, bool waiting) const {
+void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiting) const {
  // One function for every agent: pose the model its registry entry names,
  // scaled linearly from the reference radius it was authored for (content
  // data). The waiting beacon stays procedural (it blinks; models don't) and
@@ -1309,27 +1309,27 @@ void SceneRenderer3D::draw_actor(const game::ActorSnapshot& actor, bool waiting)
  }
 }
 
-void SceneRenderer3D::draw_environment(const game::MissionSimulation& mission,
-                                       const game::SceneDefinition& scene) const {
+void SceneRenderer3D::draw_environment(const mission::MissionSimulation& mission,
+                                       const mission::SceneDefinition& scene) const {
  for (const auto& instance : scene.instances) {
-  if (!game::active_in_level(instance.active_in, mission.level().id))
+  if (!mission::active_in_level(instance.active_in, mission.level().id))
    continue;
   const auto prefab = scene.prefabs.find(instance.prefab);
   if (prefab == scene.prefabs.end())
    continue;
   for (const auto& part : prefab->second.parts) {
-   const game::Vec3 scaled_offset{
+   const mission::Vec3 scaled_offset{
      part.position_m.x * instance.scale.x,
      part.position_m.y * instance.scale.y,
      part.position_m.z * instance.scale.z,
    };
    const auto offset = rotate_offset(scaled_offset, instance.yaw_degrees);
-   const game::Vec3 position{
+   const mission::Vec3 position{
      instance.position_m.x + offset.x,
      instance.position_m.y + offset.y,
      instance.position_m.z + offset.z,
    };
-   const game::Vec3 size{
+   const mission::Vec3 size{
      part.size_m.x * instance.scale.x,
      part.size_m.y * instance.scale.y,
      part.size_m.z * instance.scale.z,
@@ -1348,8 +1348,8 @@ void SceneRenderer3D::draw_environment(const game::MissionSimulation& mission,
     const float radius = static_cast<float>((size.x + size.y + size.z) / 3.0);
     DrawSphere(world(position), radius, tint);
    } else if (part.primitive == "cylinder") {
-    const auto base = world(game::Vec3{position.x, position.y, position.z - size.z * 0.5});
-    const auto top = world(game::Vec3{position.x, position.y, position.z + size.z * 0.5});
+    const auto base = world(mission::Vec3{position.x, position.y, position.z - size.z * 0.5});
+    const auto top = world(mission::Vec3{position.x, position.y, position.z + size.z * 0.5});
     const float planar_scale = static_cast<float>((instance.scale.x + instance.scale.y) * 0.5);
     DrawCylinderEx(base, top, static_cast<float>(part.size_m.x) * planar_scale,
                    static_cast<float>(part.size_m.y) * planar_scale, 8, tint);
@@ -1378,13 +1378,13 @@ void SceneRenderer3D::draw_environment(const game::MissionSimulation& mission,
  }
 }
 
-void SceneRenderer3D::draw_motion_effects(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_motion_effects(const mission::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
  const double oldest_time = state.time_s - scene.effects.trail_duration_s;
  const float half_track = static_cast<float>(mission.robot().wheel_base_m * 0.42);
- const game::MissionSnapshot* previous = nullptr;
- std::vector<const game::MissionSnapshot*> particle_frames;
+ const mission::MissionSnapshot* previous = nullptr;
+ std::vector<const mission::MissionSnapshot*> particle_frames;
 
  for (const auto& frame : mission.replay()) {
   if (frame.time_s + 1e-9 < oldest_time || frame.time_s > state.time_s + 1e-9) {
@@ -1423,7 +1423,7 @@ void SceneRenderer3D::draw_motion_effects(const game::MissionSimulation& mission
  for (std::size_t index = 0; index < particle_frames.size(); index += stride) {
   const auto& frame = *particle_frames[index];
   const auto* surface = surface_at(mission, {frame.robot.x, frame.robot.y});
-  const game::SurfaceMaterialDefinition* material =
+  const mission::SurfaceMaterialDefinition* material =
     surface ? &catalog_.surface_material(surface->material) : nullptr;
   const bool skid_smoke = frame.traction_saturated && (!material || material->drive_effect == "none");
   if (!skid_smoke && (!material || material->drive_effect == "none")) {
@@ -1461,7 +1461,7 @@ void SceneRenderer3D::draw_motion_effects(const game::MissionSimulation& mission
  }
 }
 
-void SceneRenderer3D::draw_risk_effects(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_risk_effects(const mission::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
  const float ground = static_cast<float>(state.robot_height_m - mission.robot().collision_height_m * 0.5);
@@ -1491,7 +1491,7 @@ void SceneRenderer3D::draw_risk_effects(const game::MissionSimulation& mission) 
   }
  }
 
- if (state.status == game::MissionStatus::Failed) {
+ if (state.status == mission::MissionStatus::Failed) {
   for (int ray = 0; ray < 8; ++ray) {
    const float angle = ray * 2.0f * PI / 8.0f;
  const float length = 0.18f + 0.16f * (ray % 3);
@@ -1502,7 +1502,7 @@ void SceneRenderer3D::draw_risk_effects(const game::MissionSimulation& mission) 
  }
 }
 
-void SceneRenderer3D::draw_accents(const game::MissionSimulation& mission) const {
+void SceneRenderer3D::draw_accents(const mission::MissionSimulation& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
  const Color active_color = color(scene.lighting.robot_active_color);
@@ -1533,7 +1533,7 @@ void SceneRenderer3D::draw_accents(const game::MissionSimulation& mission) const
      0.04f, kAmber);
   }
  }
- if (state.status == game::MissionStatus::Succeeded) {
+ if (state.status == mission::MissionStatus::Succeeded) {
  for (float side : {-0.13f, 0.13f}) {
  const auto lamp = pose_offset({state.robot.x, state.robot.y}, state.robot.theta, -0.29f, side,
  0.24f, ground_height);

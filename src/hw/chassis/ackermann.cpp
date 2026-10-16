@@ -2,7 +2,7 @@
 #include "hw/chassis/chassis_factory.hpp"
 #include "hw/dynamics/contact.hpp"
 
-#include "algo/math.hpp"
+#include "core/math.hpp"
 
 #include <algorithm>
 #include <cmath>

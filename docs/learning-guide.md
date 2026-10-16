@@ -98,7 +98,7 @@ A class or club can assign pairs: one learner runs the experiment while the othe
 
 ## From the screen to the source
 
-Start with `assets/levels/` for the mission question and thresholds, then read `assets/presentation/` for its player-facing structure. `src/game/mission_simulation.cpp` composes the loop; extracted systems live in `src/game/systems/`. Planning and estimation are under `src/algo/`, chassis and sensors under `src/hw/`, and physics under `src/physics/`.
+Start with `assets/levels/` for the mission question and thresholds, then read `assets/presentation/` for its player-facing structure. `src/mission/mission_simulation.cpp` composes the loop; extracted systems live in `src/mission/systems/`. Global and local planning, localization, mapping, perception, behavior, and control have separate directories under `src/autonomy/`. Chassis and sensors live under `src/hw/`, and physics lives under `src/physics/`.
 
 Run a deterministic mission without a window when comparing code changes:
 

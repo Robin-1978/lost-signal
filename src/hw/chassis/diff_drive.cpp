@@ -1,5 +1,5 @@
 #include "diff_drive.hpp"
-#include "algo/math.hpp"
+#include "core/math.hpp"
 namespace sim {
 DiffState DiffDrive::step(const DiffState& s, const DiffCmd& cmd, double dt) {
  DiffState n = s;

@@ -1,5 +1,5 @@
 #include "game_ui.hpp"
-#include "game/campaign_progress.hpp"
+#include "mission/campaign_progress.hpp"
 
 #include <algorithm>
 #include <iomanip>
@@ -24,15 +24,15 @@ std::string format_delta(double value, int precision = 1) {
  return (value > 0.0 ? "+" : "") + format_number(value, precision);
 }
 
-std::string selected_id(const game::BuildSelection& build, const std::string& slot) {
+std::string selected_id(const mission::BuildSelection& build, const std::string& slot) {
  return build.part(slot);
 }
 
-void assign_id(game::BuildSelection& build, const std::string& slot, const std::string& id) {
+void assign_id(mission::BuildSelection& build, const std::string& slot, const std::string& id) {
  build.parts[slot] = id;
 }
 
-std::string field_kind_label(const game::ContentCatalog& catalog, const std::string& kind) {
+std::string field_kind_label(const mission::ContentCatalog& catalog, const std::string& kind) {
  if (kind == "delivery")
  return catalog.tr("field.kind.delivery");
  if (kind == "assist")
@@ -40,8 +40,8 @@ std::string field_kind_label(const game::ContentCatalog& catalog, const std::str
  return catalog.tr("field.kind.survey");
 }
 
-std::string field_step_label(const game::ContentCatalog& catalog,
- const game::FieldDispatchState& dispatch) {
+std::string field_step_label(const mission::ContentCatalog& catalog,
+ const mission::FieldDispatchState& dispatch) {
  if (dispatch.kind == "delivery") {
  if (dispatch.stage == 0)
  return catalog.tr("field.step.pickup");
@@ -52,39 +52,39 @@ std::string field_step_label(const game::ContentCatalog& catalog,
  return catalog.tr("field.step.survey");
 }
 
-std::string field_intent_label(const game::ContentCatalog& catalog,
- game::FieldIntentKind kind) {
+std::string field_intent_label(const mission::ContentCatalog& catalog,
+ mission::FieldIntentKind kind) {
  switch (kind) {
- case game::FieldIntentKind::Follow:
+ case mission::FieldIntentKind::Follow:
  return catalog.tr("field.intent.follow");
- case game::FieldIntentKind::GoTo:
+ case mission::FieldIntentKind::GoTo:
  return catalog.tr("field.intent.go_to");
- case game::FieldIntentKind::Search:
+ case mission::FieldIntentKind::Search:
  return catalog.tr("field.intent.search");
- case game::FieldIntentKind::Wait:
+ case mission::FieldIntentKind::Wait:
  return catalog.tr("field.intent.wait");
- case game::FieldIntentKind::Return:
+ case mission::FieldIntentKind::Return:
  return catalog.tr("field.intent.return");
  }
  return catalog.tr("field.intent.wait");
 }
 
-std::string field_ack_label(const game::ContentCatalog& catalog,
- game::FieldIntentAcknowledgement acknowledgement) {
+std::string field_ack_label(const mission::ContentCatalog& catalog,
+ mission::FieldIntentAcknowledgement acknowledgement) {
  switch (acknowledgement) {
- case game::FieldIntentAcknowledgement::Pending:
+ case mission::FieldIntentAcknowledgement::Pending:
  return catalog.tr("field.ack.pending");
- case game::FieldIntentAcknowledgement::Accepted:
+ case mission::FieldIntentAcknowledgement::Accepted:
  return catalog.tr("field.ack.accepted");
- case game::FieldIntentAcknowledgement::Rejected:
+ case mission::FieldIntentAcknowledgement::Rejected:
  return catalog.tr("field.ack.rejected");
- case game::FieldIntentAcknowledgement::Idle:
+ case mission::FieldIntentAcknowledgement::Idle:
  break;
  }
  return catalog.tr("field.ack.idle");
 }
 
-std::string contract_axis_label(const game::ContentCatalog& catalog, const std::string& axis) {
+std::string contract_axis_label(const mission::ContentCatalog& catalog, const std::string& axis) {
  if (axis == "fast")
  return catalog.tr("contract.axis.fast");
  if (axis == "efficient")
@@ -92,28 +92,28 @@ std::string contract_axis_label(const game::ContentCatalog& catalog, const std::
  return catalog.tr("contract.axis.safe");
 }
 
-std::string weather_label(const game::ContentCatalog& catalog, game::WeatherKind weather) {
+std::string weather_label(const mission::ContentCatalog& catalog, mission::WeatherKind weather) {
  switch (weather) {
- case game::WeatherKind::Clear:
+ case mission::WeatherKind::Clear:
  return catalog.tr("weather.clear");
- case game::WeatherKind::Overcast:
+ case mission::WeatherKind::Overcast:
  return catalog.tr("weather.overcast");
- case game::WeatherKind::Drizzle:
+ case mission::WeatherKind::Drizzle:
  return catalog.tr("weather.drizzle");
- case game::WeatherKind::Fog:
+ case mission::WeatherKind::Fog:
  return catalog.tr("weather.fog");
  }
  return catalog.tr("weather.clear");
 }
 
-std::string incident_label(const game::ContentCatalog& catalog,
- game::WorldIncidentKind incident) {
+std::string incident_label(const mission::ContentCatalog& catalog,
+ mission::WorldIncidentKind incident) {
  switch (incident) {
- case game::WorldIncidentKind::RoadClosure:
+ case mission::WorldIncidentKind::RoadClosure:
  return catalog.tr("incident.road_closure");
- case game::WorldIncidentKind::FallenCargo:
+ case mission::WorldIncidentKind::FallenCargo:
  return catalog.tr("incident.fallen_cargo");
- case game::WorldIncidentKind::PowerFault:
+ case mission::WorldIncidentKind::PowerFault:
  return catalog.tr("incident.power_fault");
  }
  return catalog.tr("incident.road_closure");
@@ -129,8 +129,8 @@ std::string field_time(double hours) {
 
 } // namespace
 
-GameUi::GameUi(tgui::BackendGui& gui, const game::ContentCatalog& catalog,
-               const game::PresentationDefinition& presentation)
+GameUi::GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
+               const mission::PresentationDefinition& presentation)
     : gui_(gui), catalog_(catalog), presentation_(&presentation), build_(presentation.default_build) {
  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
  [&](const auto& job) { return job.level == presentation_->level; });
@@ -193,7 +193,7 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
  return button;
 }
 
-void GameUi::rebuild(const game::MissionSimulation* mission) {
+void GameUi::rebuild(const mission::MissionSimulation* mission) {
  panel_->removeAllWidgets();
  add_parent_ = panel_;
  style_panel();
@@ -232,7 +232,7 @@ void GameUi::rebuild(const game::MissionSimulation* mission) {
  }
 }
 
-bool GameUi::is_unlocked(const game::LevelDefinition& level) const {
+bool GameUi::is_unlocked(const mission::LevelDefinition& level) const {
  return std::all_of(level.prerequisites.begin(), level.prerequisites.end(),
                     [this](const auto& id) { return completed_levels_.contains(id); });
 }
@@ -277,7 +277,7 @@ void GameUi::build_chapter() {
   const auto& level = catalog_.level(level_id);
   if (level.chapter != shown_chapter) {
    shown_chapter = level.chapter;
-   const game::ChapterDefinition* chapter = nullptr;
+   const mission::ChapterDefinition* chapter = nullptr;
    for (const auto& entry : catalog_.chapters()) {
     if (entry.id == shown_chapter) {
      chapter = &entry;
@@ -320,12 +320,12 @@ void GameUi::build_chapter() {
  }
 }
 
-void GameUi::set_screen(Screen screen, const game::MissionSimulation* mission) {
+void GameUi::set_screen(Screen screen, const mission::MissionSimulation* mission) {
  if (screen == Screen::Debrief && mission) {
  const auto previous = previous_results_.find(mission->level().id);
  comparison_result_ = previous == previous_results_.end()
- ? std::optional<game::MissionResult>{}
- : std::optional<game::MissionResult>{previous->second};
+ ? std::optional<mission::MissionResult>{}
+ : std::optional<mission::MissionResult>{previous->second};
  previous_results_[mission->level().id] = mission->result();
  } else if (screen != Screen::Debrief) {
  comparison_result_.reset();
@@ -504,7 +504,7 @@ void GameUi::build_prediction() {
  launch->onClick([this] { actions_.launch = true; });
 }
 
-void GameUi::build_running(const game::MissionSimulation* mission) {
+void GameUi::build_running(const mission::MissionSimulation* mission) {
  auto panel_renderer = panel_->getRenderer();
  panel_renderer->setBackgroundColor({0, 0, 0, 0});
  panel_renderer->setBorders({0});
@@ -606,7 +606,7 @@ void GameUi::build_running(const game::MissionSimulation* mission) {
  }
 }
 
-void GameUi::build_debrief(const game::MissionSimulation* mission) {
+void GameUi::build_debrief(const mission::MissionSimulation* mission) {
  if (!mission) {
   return;
  }
@@ -624,7 +624,7 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  add_parent_ = scroll;
 
  const auto& result = mission->result();
- const bool succeeded = result.status == game::MissionStatus::Succeeded;
+ const bool succeeded = result.status == mission::MissionStatus::Succeeded;
  std::string title = succeeded ? presentation_->success_title : catalog_.tr("debrief.interrupted");
  if (!succeeded) {
   const auto found = presentation_->failure_titles.find(result.failure_reason);
@@ -708,7 +708,7 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  refresh_debrief(*mission);
 }
 
-void GameUi::refresh_debrief(const game::MissionSimulation& mission) {
+void GameUi::refresh_debrief(const mission::MissionSimulation& mission) {
  if (!replay_slider_ || !replay_value_ || !replay_cause_ || !replay_evidence_) {
   return;
  }
@@ -737,7 +737,7 @@ void GameUi::refresh_debrief(const game::MissionSimulation& mission) {
                                                               format_number(mission.result().energy_wh, 2)}));
  }
 
- std::vector<const game::MissionEvent*> visible_events;
+ std::vector<const mission::MissionEvent*> visible_events;
  for (const auto& event : mission.events()) {
   if (event.time_s <= state.time_s + 1e-9) {
    visible_events.push_back(&event);
@@ -809,16 +809,16 @@ bool GameUi::build_within_budget() const {
 void GameUi::update_style_label() {
  if (!style_value_)
   return;
- std::vector<const game::PolicyDefinition*> anchors;
+ std::vector<const mission::PolicyDefinition*> anchors;
  for (const auto& [id, policy] : catalog_.policies()) {
   (void)id;
   anchors.push_back(&policy);
  }
  std::sort(anchors.begin(), anchors.end(),
-           [](const game::PolicyDefinition* left, const game::PolicyDefinition* right) {
+           [](const mission::PolicyDefinition* left, const mission::PolicyDefinition* right) {
             return left->style_anchor < right->style_anchor;
            });
- const game::PolicyDefinition* nearest = anchors.front();
+ const mission::PolicyDefinition* nearest = anchors.front();
  for (const auto* anchor : anchors) {
   if (std::abs(build_.style - anchor->style_anchor) < std::abs(build_.style - nearest->style_anchor)) {
    nearest = anchor;
@@ -853,13 +853,13 @@ void GameUi::set_contract_status(int reputation,
  rebuild(nullptr);
 }
 
-void GameUi::set_build(const game::BuildSelection& build) {
+void GameUi::set_build(const mission::BuildSelection& build) {
  build_ = build;
  sanitize_build();
  update_garage_labels();
 }
 
-std::string GameUi::card_stat(const std::string& slot, const game::ComponentDefinition& item) const {
+std::string GameUi::card_stat(const std::string& slot, const mission::ComponentDefinition& item) const {
  const auto& behavior = item.behavior;
  const auto get = [&](const char* key) {
   const auto found = behavior.find(key);
@@ -882,7 +882,7 @@ std::string GameUi::card_stat(const std::string& slot, const game::ComponentDefi
  return std::string();
 }
 
-std::string GameUi::card_text(const std::string& slot, const game::ComponentDefinition& item,
+std::string GameUi::card_text(const std::string& slot, const mission::ComponentDefinition& item,
                               bool locked) const {
  return catalog_.trf("garage.card", {item.title, card_stat(slot, item), std::to_string(item.cost),
                                      locked ? catalog_.tr("garage.card_locked") : ""});
@@ -942,7 +942,7 @@ void GameUi::update_garage_labels() {
    const auto& item = catalog_.component(card.id);
    const bool locked = !owned_.empty() && !owned_.contains(card.id);
    const bool active = card.id == current;
- card.button->setEnabled(!locked || reputation_ >= game::component_reputation_cost(item));
+ card.button->setEnabled(!locked || reputation_ >= mission::component_reputation_cost(item));
    auto look = card.button->getRenderer();
    if (active) {
     look->setBackgroundColor({52, 61, 57});
@@ -958,7 +958,7 @@ void GameUi::update_garage_labels() {
  card.button->setText(locked
  ? catalog_.trf("garage.card_reputation",
  {item.title, card_stat(slot, item),
- std::to_string(game::component_reputation_cost(item))})
+ std::to_string(mission::component_reputation_cost(item))})
  : card_text(slot, item, false));
   }
  }
@@ -978,7 +978,7 @@ void GameUi::update_garage_labels() {
  }
 }
 
-void GameUi::refresh_running(const game::MissionSimulation& mission, bool paused, double speed) {
+void GameUi::refresh_running(const mission::MissionSimulation& mission, bool paused, double speed) {
  if (!running_metrics_)
   return;
  const auto& state = mission.snapshot();

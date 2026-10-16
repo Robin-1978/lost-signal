@@ -1,4 +1,4 @@
-#include "game/content_catalog.hpp"
+#include "mission/content_catalog.hpp"
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/motor_drive.hpp"
 
@@ -15,7 +15,7 @@
 
 namespace {
 
-sim::MotorDriveParams drive_params(const game::RobotDefinition& robot) {
+sim::MotorDriveParams drive_params(const mission::RobotDefinition& robot) {
  sim::MotorDriveParams params;
  params.wheel_base_m = robot.wheel_base_m;
  params.wheel_radius_m = robot.wheel_radius_m;
@@ -40,7 +40,7 @@ const sim::GroundContact kIce{0.1, 0.005, 6.0};
 // robots and retuned numbers stay covered. Levels are validated separately;
 // this test proves the model itself is sane before any level runs.
 int main() {
- const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
  CHECK(robot.drive_type == "differential");
  CHECK(robot.mass_kg > 0.0);
