@@ -57,7 +57,7 @@ int main() {
  CHECK(!buyer.purchase_component("motor.torque", catalog));
  CHECK(buyer.reputation() == 2);
  // Round-trip through the save file.
- const fs::path save_path = "/tmp/opencode/progress_rep.json";
+ const fs::path save_path = fs::temp_directory_path() / "lost_signal_progress_rep.json";
  progress.save(save_path, catalog);
  auto loaded = game::CampaignProgress::load(save_path, catalog);
  CHECK(loaded.reputation() == 3);
@@ -67,7 +67,8 @@ int main() {
  CHECK(loaded.regional_world()->state.weather == game::WeatherKind::Clear);
  CHECK(!loaded.claim_contract("w01-1", 2)); // still claimed after load.
  // Old saves without the keys load at zero (additive format).
- const fs::path legacy_path = "/tmp/opencode/progress_rep_legacy.json";
+ const fs::path legacy_path =
+ fs::temp_directory_path() / "lost_signal_progress_rep_legacy.json";
  {
   std::ofstream out(legacy_path, std::ios::trunc);
   out << "{\"schema_version\": 2, \"completed_levels\": [], \"inventory\": []}\n";

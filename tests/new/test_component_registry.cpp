@@ -94,7 +94,7 @@ int main() {
  CHECK(resolved.imu()->accel_noise_mps2 == 0.15);
  CHECK(game::ComponentRegistry::builtins().supported_slots().size() == 5);
 
- const fs::path overlay = "/tmp/lost_signal_component_registry";
+ const fs::path overlay = fs::temp_directory_path() / "lost_signal_component_registry";
  std::error_code error;
  fs::remove_all(overlay, error);
  error.clear();

@@ -120,7 +120,8 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
   progress.record_build("boot", build);
-  const std::filesystem::path save_path = "/tmp/opencode/progress_chassis.json";
+ const auto save_path =
+ std::filesystem::temp_directory_path() / "lost_signal_progress_chassis.json";
   progress.save(save_path, catalog);
   const auto loaded = game::CampaignProgress::load(save_path, catalog);
   const auto* back = loaded.last_build("boot");

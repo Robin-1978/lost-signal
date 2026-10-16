@@ -78,7 +78,7 @@ const char kRamLevel[] = R"({
 })";
 
 int main() {
- const fs::path overlay = "/tmp/opencode/ram_assets";
+ const fs::path overlay = fs::temp_directory_path() / "lost_signal_ram_assets";
  std::error_code error;
  fs::remove_all(overlay, error);
  fs::copy(LOST_SIGNAL_TEST_ASSETS, overlay,

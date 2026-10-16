@@ -152,8 +152,15 @@ int main() {
  // the reloaded catalog carries marker and terrain edits.
  {
   const auto scratch = std::filesystem::temp_directory_path() / "lost_signal_editor_test";
-  std::filesystem::remove_all(scratch);
-  std::filesystem::copy(LOST_SIGNAL_TEST_ASSETS, scratch, std::filesystem::copy_options::recursive);
+ std::error_code error;
+ std::filesystem::remove_all(scratch, error);
+ CHECK(!error);
+ std::filesystem::copy(LOST_SIGNAL_TEST_ASSETS, scratch,
+ std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+ error);
+ if (error)
+ std::cerr << "copy fixture: " << error.message() << '\n';
+ CHECK(!error);
   auto scratch_catalog = game::ContentCatalog::load(scratch.string());
   client::MapEditor editor(scratch_catalog, "boot");
   editor.toggle();
@@ -184,7 +191,8 @@ int main() {
  CHECK(std::abs(terrain[0].grade_y - 0.35) < 1e-9);
  CHECK(std::abs(terrain[0].roughness - 0.09) < 1e-9);
  CHECK(terrain[0].active_in.size() == 1 && terrain[0].active_in[0] == "boot");
-  std::filesystem::remove_all(scratch);
+ std::filesystem::remove_all(scratch, error);
+ CHECK(!error);
  }
  std::cout << "map editor ok\n";
  return 0;

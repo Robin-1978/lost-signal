@@ -13,7 +13,7 @@ option(LOST_SIGNAL_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehav
 
 add_library(lost_signal_project_options INTERFACE)
 if(MSVC)
- target_compile_options(lost_signal_project_options INTERFACE /W4 /permissive-)
+ target_compile_options(lost_signal_project_options INTERFACE /W4 /permissive- /utf-8)
  if(LOST_SIGNAL_WARNINGS_AS_ERRORS)
  target_compile_options(lost_signal_project_options INTERFACE /WX)
  endif()

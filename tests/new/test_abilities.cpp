@@ -46,13 +46,15 @@ int main() {
   CHECK(progress.abilities().size() == 1);
   progress.record_completion("signal_hold", done, catalog);
   CHECK(progress.abilities().size() == 2);
-  const std::filesystem::path save_path = "/tmp/opencode/progress_abilities.json";
+ const auto save_path =
+ std::filesystem::temp_directory_path() / "lost_signal_progress_abilities.json";
   progress.save(save_path, catalog);
   const auto loaded = game::CampaignProgress::load(save_path, catalog);
   CHECK(loaded.abilities().size() == 2);
   CHECK(loaded.abilities().front() == "ability.signal_cross");
   // Old saves without the key load with empty abilities (additive format).
-  const std::filesystem::path legacy_path = "/tmp/opencode/progress_legacy.json";
+ const auto legacy_path =
+ std::filesystem::temp_directory_path() / "lost_signal_progress_abilities_legacy.json";
   {
    std::ofstream out(legacy_path, std::ios::trunc);
    out << "{\"schema_version\": 2, \"completed_levels\": [], \"inventory\": []}\n";

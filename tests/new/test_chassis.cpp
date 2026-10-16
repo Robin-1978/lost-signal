@@ -227,7 +227,7 @@ int main() {
  // round-trips exactly; ackermann round-trips wherever the standstill floor
  // does not intervene (documented control policy, not kinematics).
  {
-  for (const auto [v, w] : {std::make_pair(1.0, 0.0), std::make_pair(1.0, 0.5), std::make_pair(-0.5, -1.2),
+  for (const auto& [v, w] : {std::make_pair(1.0, 0.0), std::make_pair(1.0, 0.5), std::make_pair(-0.5, -1.2),
                             std::make_pair(0.0, 0.0)}) {
    double left = 0.0;
    double right = 0.0;
@@ -238,7 +238,7 @@ int main() {
    CHECK(std::abs(back_v - v) < 1e-12);
    CHECK(std::abs(back_w - w) < 1e-12);
   }
-  for (const auto [v, w] : {std::make_pair(1.0, 0.3), std::make_pair(2.0, -0.4), std::make_pair(0.5, 0.0)}) {
+  for (const auto& [v, w] : {std::make_pair(1.0, 0.3), std::make_pair(2.0, -0.4), std::make_pair(0.5, 0.0)}) {
    const auto solution = sim::steer_for_twist(w, v, 0.62, 0.55);
    CHECK(solution.feasible);
    CHECK(std::abs(sim::yaw_for_steer(v, solution.delta_rad, 0.62) - w) < 1e-9);

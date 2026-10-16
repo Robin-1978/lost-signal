@@ -53,7 +53,7 @@ const char kPlayerTire[] = R"({
 
 int main() {
  // Overlay: copy the shipped tree once (player packs are additive).
- const fs::path overlay = "/tmp/opencode/player_pack_assets";
+ const fs::path overlay = fs::temp_directory_path() / "lost_signal_player_pack_assets";
  std::error_code error;
  fs::remove_all(overlay, error);
  fs::copy(LOST_SIGNAL_TEST_ASSETS, overlay,

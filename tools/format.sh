@@ -18,8 +18,8 @@ if test -z "$formatter"; then
 No clang-format found. Install one of:
   sudo apt-get install clang-format-14
 or unpack a single binary without root:
-  apt-get download clang-format-14 && dpkg-deb -x clang-format-*.deb /tmp/opencode/cf14
-  export PATH="/tmp/opencode/cf14/usr/bin:$PATH"
+ apt-get download clang-format-14 && dpkg-deb -x clang-format-*.deb /tmp/lost-signal-cf14
+ export PATH="/tmp/lost-signal-cf14/usr/bin:$PATH"
 EOF
   exit 1
 fi
