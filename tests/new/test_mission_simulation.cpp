@@ -92,10 +92,29 @@ int main() {
   game::MissionSimulation chapter_mission(catalog, level_id, level_presentation.recommended_build);
   chapter_mission.run_to_completion();
  if (chapter_mission.result().status != game::MissionStatus::Succeeded) {
+ const auto& snapshot = chapter_mission.snapshot();
  std::cerr << "recommended build failed: level=" << level_id
  << " reason=" << chapter_mission.result().failure_reason
  << " time=" << chapter_mission.result().time_s
- << " collisions=" << chapter_mission.result().collisions << '\n';
+ << " collisions=" << chapter_mission.result().collisions
+ << " robot=(" << snapshot.robot.x << ',' << snapshot.robot.y << ',' << snapshot.robot.theta << ')'
+ << " goals=" << snapshot.goals_reached << '/' << chapter_mission.level().objective.goals.size()
+ << " waiting=" << snapshot.waiting_for_clearance
+ << " governor=" << snapshot.control.governor_hold
+ << " target=(" << snapshot.control.local_target.x << ',' << snapshot.control.local_target.y << ')'
+ << " tracks=" << snapshot.dynamic_obstacles.size() << '\n';
+ for (const auto& actor : snapshot.actors) {
+ std::cerr << " actor " << actor.id << "=(" << actor.position.x << ',' << actor.position.y
+ << ") velocity=(" << actor.velocity.x << ',' << actor.velocity.y << ") detected="
+ << actor.detected << '\n';
+ }
+ const auto event_begin = chapter_mission.events().size() > 12
+ ? chapter_mission.events().size() - 12
+ : std::size_t{0};
+ for (std::size_t index = event_begin; index < chapter_mission.events().size(); ++index) {
+ const auto& event = chapter_mission.events()[index];
+ std::cerr << " event " << event.time_s << ' ' << event.code << '\n';
+ }
  }
   CHECK(chapter_mission.result().status == game::MissionStatus::Succeeded);
  }
@@ -116,6 +135,13 @@ int main() {
  CHECK(localized.result().max_odometry_error_m < drifting.result().max_odometry_error_m);
  CHECK(!drifting.result().safe_score);
  CHECK(drifting.result().max_odometry_error_m > drifting.level().max_localization_error_m);
+ if (!localized.result().safe_score) {
+ std::cerr << "localized safe score failed: collisions=" << localized.result().collisions
+ << " clearance=" << localized.result().scored_clearance_m
+ << " required_clearance=" << localized.level().safe_min_clearance_m
+ << " max_error=" << localized.result().max_odometry_error_m
+ << " max_error_limit=" << localized.level().max_localization_error_m << '\n';
+ }
  CHECK(localized.result().safe_score);
  CHECK(localized.result().max_odometry_error_m < localized.level().max_localization_error_m);
  }
