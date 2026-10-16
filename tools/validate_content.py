@@ -464,6 +464,11 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         for column_index, column in enumerate(
             presentation["garage"]["component_columns"]
         ):
+            if not column.get("player_choice", True) and len(column["options"]) != 1:
+                raise ContentError(
+                    f"{doc.path}:/garage/component_columns/{column_index}: "
+                    "a fixed column must offer exactly one component"
+                )
             for option_index, component_id in enumerate(column["options"]):
                 component = components.get(component_id)
                 if component is None:
@@ -494,6 +499,12 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 global_ids,
                 choice["id"],
                 f"{doc.path}:/prediction/choices/{choice_index}/id",
+            )
+        goal_lines = presentation["running"].get("goal_lines", [])
+        if goal_lines and len(goal_lines) != len(level.data["objective"]["goals"]) + 1:
+            raise ContentError(
+                f"{doc.path}:/running/goal_lines: expected one line for every "
+                "goal index plus the completed state"
             )
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]

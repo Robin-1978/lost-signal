@@ -64,8 +64,8 @@
   },
   "teaching": {
     "concept": "dynamic_obstacle_prediction",
-    "prediction_prompt": "叉车接近路口时，洛一最需要提前知道什么？",
-    "knowledge_card": "动态物体需要用位置和速度预测未来，而不只是写进静态地图。"
+    "prediction_prompt": "叉车接近盲区路口时，什么证据能够判断双方是否会同时进入？",
+    "knowledge_card": "当前距离只描述“现在”。安全进入需要把动态目标的位置和速度投影到未来，再检查它与机器人计划路径在时间上是否重叠。"
   },
   "score": {
     "safe_min_clearance_m": 0.6,

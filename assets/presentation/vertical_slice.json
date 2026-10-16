@@ -4,19 +4,16 @@
   "is_default": false,
   "level": "lost_signal",
   "garage": {
-    "heading": "为最后一程做准备",
-    "brief": "取出能源模块后，东区交通会恢复。洛一必须绕过货架、在动态路口停稳观察，再穿过叉车通道启动山谷信号塔。",
+    "heading": "点亮山谷信号塔",
+    "brief": "山谷信号塔已经熄灭。洛一必须先取回能源模块；这也会唤醒东区叉车，因此它还要在盲区路口判断何时能够安全通过。",
     "component_columns": [
       {
         "slot": "tires",
         "title": "轮胎",
         "options": [
-          "tires.standard",
-          "tires.grip",
-          "tires.eco",
-          "tires.sand",
-          "tires.slick"
-        ]
+          "tires.grip"
+        ],
+        "player_choice": false
       },
       {
         "slot": "sensor",
@@ -41,18 +38,17 @@
         "slot": "motor",
         "title": "电机",
         "options": [
-          "motor.standard",
-          "motor.torque",
-          "motor.eco"
-        ]
+          "motor.standard"
+        ],
+        "player_choice": false
       },
       {
         "slot": "imu",
         "title": "惯性单元",
         "options": [
-          "imu.basic",
-          "imu.precise"
-        ]
+          "imu.basic"
+        ],
+        "player_choice": false
       }
     ],
     "policy_title": "驾驶风格",
@@ -62,10 +58,10 @@
       "policy.swift"
     ],
     "default_build": {
-      "tires": "tires.eco",
-      "sensor": "sensor.long_slow_lidar",
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
       "computer": "computer.light",
-      "style": 1.0,
+      "style": 0.0,
       "motor": "motor.standard",
       "imu": "imu.basic"
     },
@@ -79,35 +75,42 @@
     }
   },
   "prediction": {
-    "heading": "出发前，先做一个判断",
-    "hint": "先记录你的预测。它不影响评分，运行后可以用现场证据验证。",
+    "heading": "什么证据应该决定洛一何时驶入盲区路口？",
+    "hint": "先选出你认为最重要的证据。运行结束后，再用记录下来的现场信息检验它。",
     "choices": [
       {
         "id": "distance_only",
-        "text": "它现在离路口还有多远",
-        "feedback": "距离是线索之一；还需要运动方向和速度，才能判断双方会不会同时到达路口。"
+        "text": "叉车此刻离路口的距离",
+        "feedback": "当前距离无法说明双方会不会同时进入路口；同样的距离配上不同的速度和方向，会得到不同结果。"
       },
       {
         "id": "future_motion",
-        "text": "它接下来会往哪里移动",
-        "feedback": "记录位置与速度后，洛一才能预测未来轨迹是否相交。运行时看看它何时开始等待。"
+        "text": "根据位置、方向和速度预测双方是否会同时到达",
+        "feedback": "这次运行支持了这项判断：洛一把目标运动投影到未来，再检查它和自身路径何时重叠。"
       },
       {
         "id": "static_map",
-        "text": "把叉车永久写进静态地图",
-        "feedback": "叉车会移动，静态地图只能说明固定障碍，不能表示它下一刻的位置。"
+        "text": "静态地图中是否永久占用了这条通道",
+        "feedback": "静态地图适合固定货架和墙体；叉车会移动，永久占用会失去“什么时候可以通过”的信息。"
       }
     ]
   },
   "running": {
-    "heading": "最后一程 · 恢复山谷信号",
-    "normal_line": "洛一：正在执行能源取件、路口观察与信号塔启动流程。",
-    "detected_line": "洛一：锁定叉车，正在预测它的运动轨迹。"
+    "heading": "发送信号 · 让山谷重新上线",
+    "normal_line": "洛一：自主执行能源取件、路口观察与信号塔启动。",
+    "detected_line": "洛一：叉车轨迹已建立，正在预测路口时间冲突。",
+    "goal_lines": [
+      "洛一：信号塔仍然熄灭。正在规划能源模块取件路线。",
+      "洛一：能源模块已固定。正在唤醒东区设备。",
+      "洛一：东区交通已经恢复。前往盲区观察点。",
+      "洛一：观察完成。只有预测路径清空后才会进入路口。",
+      "洛一：信号塔已上线。"
+    ]
   },
   "debrief": {
     "success_title": "任务完成：信号塔已启动",
-    "success_summary": "洛一完成了感知、预测、等待和通过。",
-    "failure_summary": "选择右侧证据，现场会跳到对应时刻。",
+    "success_summary": "洛一先观察叉车的运动，再预测路径冲突，等待安全窗口，最后恢复了山谷信号。",
+    "failure_summary": "拖动因果回放，找到最早改变结果的观察或决策，再只调整一个变量重试。",
     "evidence_heading": "因果证据",
     "evidence_caption": "这些内容由本次仿真的事件与状态生成。",
     "knowledge_title": "动态障碍预测",

@@ -8,7 +8,7 @@
     "/objective/goals/1/label": "East-District Traffic Restart",
     "/objective/goals/2/label": "Dynamic Intersection Observation Point",
     "/objective/goals/3/label": "Lan Valley Signal Tower",
-    "/teaching/prediction_prompt": "When the forklift approaches the intersection, what does RO-1 need to know in advance?",
-    "/teaching/knowledge_card": "A moving object must be projected forward from its position and velocity, rather than stored only in a static map."
+    "/teaching/prediction_prompt": "At a blind crossing, what evidence tells RO-1 whether both paths will be occupied at the same time?",
+    "/teaching/knowledge_card": "Current distance describes only now. Safe entry projects a moving track forward from position and velocity, then checks its time overlap with the robot’s planned path."
   }
 }

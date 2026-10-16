@@ -12,9 +12,35 @@ The first public release should let a new player give RO-1 a high-level intentio
 
 The campaign remains deterministic and fully usable without a language model. New sensors, general scenario overlays, full SLAM, VLA, multi-process transport, HIL, and native robot drivers remain outside this release path until a concrete learning or deployment case requires them.
 
+## Content formats beyond point-to-point delivery
+
+The runtime should support different kinds of play rather than reskinning every lesson as a trip from A to B. Each format must give autonomy a different question to solve while the player continues to choose intent, equipment, priorities, or constraints instead of steering the robot through the answer.
+
+| Format | Example experience | Player decisions | Autonomy and physics lesson |
+|---|---|---|---|
+| Collection and route ordering | **Orchard Scramble:** recover fallen apples across a muddy hillside before weather closes in | harvest zone, chassis, tires, collection priority, safety/time preference | multi-goal ordering, terrain cost, feasible motion, traction, payload growth, rollover and fruit-integrity tradeoffs |
+| Search and discovery | **Firefly Survey:** locate intermittent signal nodes in fog | search boundary, sensor package, coverage preference, return reserve | coverage planning, observation range, uncertainty, map discovery, energy-aware return |
+| Herding and flow | **Runaway Carts:** guide autonomous carts through gates without entering their predicted paths | gate order, waiting zones, traffic priority | multi-agent prediction, temporal reservations, safe gaps, deadlock recovery |
+| Construction and verification | **Bridge the Washout:** place a limited set of ramps or supports, then dispatch RO-1 | where to spend construction pieces, chassis and load | traversability, slope and clearance, route feasibility, experiment/retry |
+| Recovery under constraints | **Floodplain Rescue:** collect scattered power cells and serve stranded equipment | task priority, energy reserve, route risk | scheduling, recharging, wet traction, payload and time windows |
+| Comparative challenge | **Robot Field Day:** run one seeded course with different chassis or planners | comparison pair and metric target | feasible-motion contracts, algorithm comparison, regression evidence |
+
+The first prototype after the release foundation should be **Orchard Scramble**. It reuses existing terrain, chassis, tires, payload, planning, deterministic seeds, and scoring, so it tests the flexibility of the framework without using a new sensor or a large subsystem as a substitute for game design.
+
+Its core loop is:
+
+1. Inspect a seeded orchard with apples distributed across paved rows, mud, side slopes, and a narrow ridge.
+2. Choose a chassis/build and a collection priority such as safest fruit, fastest basket, or lowest energy.
+3. Dispatch the autonomous robot; it selects the visit order and feasible local motion.
+4. Watch the carried mass and center of gravity change after each pickup.
+5. Debrief fruit integrity, apples collected, route time, energy, slip, and rollover margin.
+6. Retry the same seed with one changed variable or compare another chassis through the run-artifact tooling.
+
+Apples are physical mission items with deterministic pickup radii and payload effects. Their score responds to measured impact, roll, and acceleration; decorative animation does not alter the result. The mode earns inclusion only if at least two builds produce visibly different, explainable strategies on the same seed.
+
 ## Stage 1 — Design and implement the flagship encounter
 
-Status: **in progress**
+Status: **complete**
 
 `lost_signal` is the content target. Its learning question is:
 
@@ -67,6 +93,12 @@ AI View answers “what evidence caused it?” with the same event IDs and measu
 - At least one controlled alternative produces a different, explainable observation or decision without relying on random timing.
 - Success, dynamic collision, static collision, and timeout have specific debrief paths.
 - Content, locale, headless, and mission regression checks pass.
+
+Acceptance evidence on the Bullet backend is deterministic for seed 47. The recommended performance
+computer finishes in 89.18 s with zero collisions and 0.984 m dynamic clearance. The otherwise identical
+light-computer build finishes in 86.18 s with zero collisions but only 0.464 m clearance, below the 0.6 m
+safe-score threshold. This gives the player a controlled comparison in which one relevant variable changes
+the safety margin without turning the lesson into an arbitrary failure.
 
 ## Stage 2 — Make decision evidence a shared runtime contract
 

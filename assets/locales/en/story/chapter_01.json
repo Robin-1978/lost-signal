@@ -12,7 +12,7 @@
     "/beats/4/speaker": "RO-1",
     "/beats/4/text": "The old route is blocked. I need to plan a new path from the map as it is now.",
     "/beats/5/speaker": "RO-1",
-    "/beats/5/text": "The power module is ready. The forklift is still patrolling; I’ll decide when it is safe to cross.",
+    "/beats/5/text": "The relay is still sending a faint handshake. Connecting its power module will wake the east depot too; I’ll judge the forklift crossing myself.",
     "/beats/6/speaker": "Unknown Signal",
     "/beats/6/text": "RO-1, if you receive this transmission, do not reboot the main controller.",
     "/beats/7/speaker": "RO-1",

@@ -428,6 +428,7 @@ struct ComponentColumn {
  std::string slot;
  std::string title;
  std::vector<std::string> options;
+ bool player_choice{true};
 };
 
 struct PredictionChoice {
@@ -460,6 +461,9 @@ struct PresentationDefinition {
  std::string running_heading;
  std::string normal_line;
  std::string detected_line;
+ // Optional authored line for each ordered-goal index. This lets a multi-beat
+ // mission describe its current intent without teaching the UI mission ids.
+ std::vector<std::string> goal_lines;
  std::string success_title;
  std::string success_summary;
  std::string failure_summary;

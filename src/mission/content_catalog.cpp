@@ -773,6 +773,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
      item.at("slot").get<std::string>(),
      item.at("title").get<std::string>(),
      item.at("options").get<std::vector<std::string>>(),
+ item.value("player_choice", true),
    });
   }
   presentation.policy_title = garage.at("policy_title").get<std::string>();
@@ -791,6 +792,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   presentation.running_heading = running.at("heading").get<std::string>();
   presentation.normal_line = running.at("normal_line").get<std::string>();
   presentation.detected_line = running.at("detected_line").get<std::string>();
+ presentation.goal_lines = running.value("goal_lines", std::vector<std::string>{});
   presentation.success_title = debrief.at("success_title").get<std::string>();
   presentation.success_summary = debrief.at("success_summary").get<std::string>();
   presentation.failure_summary = debrief.at("failure_summary").get<std::string>();

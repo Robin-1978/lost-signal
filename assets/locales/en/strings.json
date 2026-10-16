@@ -60,6 +60,8 @@
     "/strings/debrief.metrics": "Time {0} s\nDistance {1} m\nEnergy {2} Wh\n",
     "/strings/debrief.metrics_odom": "Localization error {0} m",
     "/strings/debrief.metrics_clear": "Nearest clearance {0} m",
+    "/strings/debrief.prediction_title": "Your Pre-run Prediction",
+    "/strings/debrief.prediction_missing": "No pre-run prediction was recorded for this run.",
     "/strings/debrief.replay_title": "Causal Replay · Drag the Timeline",
     "/strings/debrief.replay_time": "{0} s / {1} s",
     "/strings/debrief.cause_rollover": "Cross-slope {0}° → gravity line nearing support boundary\nRollover risk {1}% → lower the center of mass or choose a gentler slope",

@@ -182,6 +182,19 @@ int main() {
                    [](const auto& event) { return event.code == "dynamic-detected"; }));
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "waiting"; }));
+ // The authored finale is a real three-beat sequence: collect power, wake
+ // traffic, inspect the blind crossing, then restore the relay.
+ const auto event_index = [&](const char* code) {
+ return std::find_if(first.events().begin(), first.events().end(),
+ [code](const auto& event) { return event.code == code; }) - first.events().begin();
+ };
+ const auto pickup_index = event_index("via-reached");
+ const auto traffic_index = event_index("summoned");
+ const auto inspect_index = event_index("inspection-complete");
+ const auto complete_index = event_index("mission-complete");
+ CHECK(pickup_index < traffic_index);
+ CHECK(traffic_index < inspect_index);
+ CHECK(inspect_index < complete_index);
  // Gate-3 shadow isolation: the observer assessed departures during the finale
  // (snapshot fields populated) and logged wait episodes (first/last/actual)
  // without changing physics — time_s bit-identical above is the proof.
@@ -323,19 +336,20 @@ int main() {
  std::filesystem::remove(progress_path);
  }
 
- // The aggressive slow-decision default is now a visible counterexample:
- // rolling LiDAR plus a short horizon cannot resolve the crossing in time.
- // The recommended fast-decision build above succeeds with safe clearance.
+ // One controlled change creates the flagship comparison: both builds use
+ // the same hardware and careful policy except for the computer. The light
+ // computer completes the encounter, but its shorter prediction horizon
+ // passes much closer to the forklift and misses the safe-clearance badge.
  {
  mission::MissionSimulation default_attempt(catalog, "lost_signal",
                                          catalog.presentation_for_level("lost_signal").default_build);
  default_attempt.run_to_completion();
- CHECK(default_attempt.result().status == mission::MissionStatus::Failed);
- CHECK(default_attempt.result().failure_reason == "collision-dynamic");
+ CHECK(default_attempt.result().status == mission::MissionStatus::Succeeded);
  CHECK(!default_attempt.result().safe_score);
  CHECK(default_attempt.result().min_dynamic_clearance_m < catalog.level("lost_signal").safe_min_clearance_m);
- // More motor cannot compensate for a slow sensor and short prediction
- // horizon. The actor is observed, but the aggressive build reacts too late.
+ CHECK(default_attempt.result().min_dynamic_clearance_m < first.result().min_dynamic_clearance_m);
+ // More motor still cannot compensate for slow sensing, a short prediction
+ // horizon, and an aggressive policy. It arrives, but with almost no margin.
  mission::BuildSelection hot_build;
  hot_build.parts["tires"] = "tires.eco";
  hot_build.parts["sensor"] = "sensor.long_slow_lidar";
@@ -345,8 +359,8 @@ int main() {
  hot_build.style = 1.0;
  mission::MissionSimulation hot_attempt(catalog, "lost_signal", hot_build);
  hot_attempt.run_to_completion();
- CHECK(hot_attempt.result().status == mission::MissionStatus::Failed);
- CHECK(hot_attempt.result().failure_reason == "collision-dynamic");
+ CHECK(hot_attempt.result().status == mission::MissionStatus::Succeeded);
+ CHECK(!hot_attempt.result().safe_score);
  bool actor_detected = false;
  for (const auto& event : hot_attempt.events()) {
   if (event.code == "dynamic-detected") {
@@ -354,7 +368,8 @@ int main() {
   }
  }
  CHECK(actor_detected);
- CHECK(hot_attempt.result().collisions == 1);
+ CHECK(hot_attempt.result().collisions == 0);
+ CHECK(hot_attempt.result().min_dynamic_clearance_m < 0.05);
  }
  // Traction saturation is live: a hot motor on eco tires spins through the
  // traction limit (27 episodes here). Official builds rarely saturate, which

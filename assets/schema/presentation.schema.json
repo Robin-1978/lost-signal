@@ -75,6 +75,9 @@
                 "items": {
                   "$ref": "#/$defs/id"
                 }
+              },
+              "player_choice": {
+                "type": "boolean"
               }
             }
           }
@@ -156,6 +159,12 @@
         },
         "detected_line": {
           "$ref": "#/$defs/text"
+        },
+        "goal_lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
         }
       }
     },

@@ -160,7 +160,17 @@ int main() {
  CHECK(std::abs(catalog.policy("policy.swift").style_anchor - 1.0) < 1e-12);
  const auto& final_presentation = catalog.presentation_for_level("lost_signal");
  CHECK(std::abs(final_presentation.recommended_build.style - 0.0) < 1e-12);
- CHECK(std::abs(final_presentation.default_build.style - 1.0) < 1e-12);
+ CHECK(std::abs(final_presentation.default_build.style - 0.0) < 1e-12);
+ CHECK(final_presentation.default_build.part("sensor") ==
+ final_presentation.recommended_build.part("sensor"));
+ CHECK(final_presentation.default_build.part("computer") == "computer.light");
+ CHECK(final_presentation.recommended_build.part("computer") == "computer.performance");
+ CHECK(final_presentation.goal_lines.size() == level.objective.goals.size() + 1);
+ CHECK(!final_presentation.component_columns.front().player_choice);
+ CHECK(final_presentation.component_columns[1].player_choice);
+ CHECK(final_presentation.component_columns[2].player_choice);
+ CHECK(!final_presentation.component_columns[3].player_choice);
+ CHECK(!final_presentation.component_columns[4].player_choice);
  CHECK(catalog.build_cost(final_presentation.default_build) <= level.budget);
  CHECK(catalog.build_cost(final_presentation.recommended_build) <= level.budget);
  int mainline = 0;

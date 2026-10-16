@@ -402,6 +402,8 @@ void GameUi::build_garage() {
 
  const float card_width = (kContentWidth - 2.0f * kCardGap) / 3.0f;
  for (const auto& column : presentation_->component_columns) {
+ if (!column.player_choice)
+ continue;
   add_label(column.title, kMargin, y, kContentWidth, 16, {132, 139, 135}, true);
   std::size_t index = 0;
   for (const auto& option : column.options) {
@@ -488,14 +490,6 @@ void GameUi::build_prediction() {
    button->getRenderer()->setBorderColor({108, 189, 174});
   }
   y += 72;
- }
- if (!prediction_choice_.empty()) {
-  const auto found =
-    std::find_if(presentation_->prediction_choices.begin(), presentation_->prediction_choices.end(),
-                 [&](const auto& value) { return value.id == prediction_choice_; });
-  if (found != presentation_->prediction_choices.end()) {
-   add_label(found->feedback, kMargin, y + 8, kContentWidth, 14, {143, 201, 187});
-  }
  }
  auto back = add_button(catalog_.tr("garage.back"), kMargin, height_ - 74.0f, 116, 46);
  back->onClick([this] { actions_.open_garage = true; });
@@ -613,7 +607,7 @@ void GameUi::build_debrief(const mission::MissionSimulation* mission) {
  auto scroll = tgui::ScrollablePanel::create(
    {static_cast<float>(kPanelWidth), std::max(1.0f, static_cast<float>(height_) - 88.0f)});
  scroll->setPosition(0, 0);
- scroll->setContentSize({static_cast<float>(kPanelWidth), 760.0f});
+ scroll->setContentSize({static_cast<float>(kPanelWidth), 900.0f});
  scroll->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
  scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  auto scroll_renderer = scroll->getRenderer();
@@ -657,6 +651,19 @@ void GameUi::build_debrief(const mission::MissionSimulation* mission) {
               : catalog_.trf("debrief.metrics_clear", {format_number(result.scored_clearance_m, 2)});
  add_label(metrics, kMargin, 207, kContentWidth, 16, {182, 190, 186});
 
+ add_label(catalog_.tr("debrief.prediction_title"), kMargin, 267, kContentWidth, 15,
+ {107, 190, 176}, true);
+ const auto prediction =
+ std::find_if(presentation_->prediction_choices.begin(), presentation_->prediction_choices.end(),
+ [&](const auto& value) { return value.id == prediction_choice_; });
+ if (prediction != presentation_->prediction_choices.end()) {
+ add_label(prediction->text + "\n" + prediction->feedback, kMargin, 293, kContentWidth, 14,
+ {170, 184, 178});
+ } else {
+ add_label(catalog_.tr("debrief.prediction_missing"), kMargin, 293, kContentWidth, 14,
+ {132, 145, 139});
+ }
+
  if (comparison_result_) {
  const auto& previous = *comparison_result_;
  comparison_label_ = add_label(
@@ -664,27 +671,27 @@ void GameUi::build_debrief(const mission::MissionSimulation* mission) {
  {format_delta(result.time_s - previous.time_s),
  format_delta(result.energy_wh - previous.energy_wh, 2),
  format_delta(result.scored_clearance_m - previous.scored_clearance_m, 2)}),
- kMargin, 267, kContentWidth, 14, {232, 185, 103}, true);
+ kMargin, 389, kContentWidth, 14, {232, 185, 103}, true);
  } else {
- comparison_label_ = add_label(catalog_.tr("debrief.comparison_first"), kMargin, 267,
+ comparison_label_ = add_label(catalog_.tr("debrief.comparison_first"), kMargin, 389,
  kContentWidth, 14, {132, 145, 139});
  }
 
- add_label(catalog_.tr("debrief.replay_title"), kMargin, 320, kContentWidth, 16, {239, 238, 229}, true);
+ add_label(catalog_.tr("debrief.replay_title"), kMargin, 438, kContentWidth, 16, {239, 238, 229}, true);
  replay_slider_ = tgui::Slider::create(0.0f, static_cast<float>(std::max(0.05, result.time_s)));
- replay_slider_->setPosition(kMargin, 352);
+ replay_slider_->setPosition(kMargin, 470);
  replay_slider_->setSize(kContentWidth, 18);
  replay_slider_->setValue(static_cast<float>(mission->snapshot().time_s));
  replay_slider_->onValueChange([this](float value) { actions_.replay_time_s = static_cast<double>(value); });
  add_parent_->add(replay_slider_);
- replay_value_ = add_label("", kMargin, 376, kContentWidth, 14, {143, 201, 187}, true);
- replay_cause_ = add_label("", kMargin, 404, kContentWidth, 14, {194, 199, 194});
+ replay_value_ = add_label("", kMargin, 494, kContentWidth, 14, {143, 201, 187}, true);
+ replay_cause_ = add_label("", kMargin, 522, kContentWidth, 14, {194, 199, 194});
 
- add_label(presentation_->evidence_heading, kMargin, 498, kContentWidth, 16, {239, 238, 229}, true);
- replay_evidence_ = add_label("", kMargin, 528, kContentWidth, 14, {151, 170, 163});
+ add_label(presentation_->evidence_heading, kMargin, 616, kContentWidth, 16, {239, 238, 229}, true);
+ replay_evidence_ = add_label("", kMargin, 646, kContentWidth, 14, {151, 170, 163});
 
- add_label(presentation_->knowledge_title, kMargin, 646, kContentWidth, 16, {107, 190, 176}, true);
- add_label(mission->level().knowledge_card, kMargin, 676, kContentWidth, 14, {170, 184, 178});
+ add_label(presentation_->knowledge_title, kMargin, 770, kContentWidth, 16, {107, 190, 176}, true);
+ add_label(mission->level().knowledge_card, kMargin, 800, kContentWidth, 14, {170, 184, 178});
 
  add_parent_ = panel_;
  if (succeeded) {
@@ -1071,8 +1078,10 @@ void GameUi::refresh_running(const mission::MissionSimulation& mission, bool pau
    running_state_->setText(catalog_.tr("running.waiting_state"));
   else if (state.dynamic_object_detected || state.static_obstacle_detected) {
    running_state_->setText(presentation_->detected_line);
-  } else
-   running_state_->setText(presentation_->normal_line);
+ } else if (state.goals_reached < presentation_->goal_lines.size()) {
+ running_state_->setText(presentation_->goal_lines[state.goals_reached]);
+ } else
+ running_state_->setText(presentation_->normal_line);
  }
  if (pause_button_)
   pause_button_->setText(paused ? catalog_.tr("running.resume") : catalog_.tr("running.pause"));
