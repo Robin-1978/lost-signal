@@ -35,7 +35,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.5,
-    "max_localization_error_m": 0.1,
+    "max_localization_error_m": 0.12,
     "fast_time_s": 50,
     "efficient_energy_wh": 14
   },

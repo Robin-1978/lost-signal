@@ -207,7 +207,7 @@
     },
     {
       "id": "forklift_finale",
-      "type": "patrol",
+      "type": "dwell",
       "path": [
         [
           17.5,
@@ -229,7 +229,11 @@
         "kind": "vehicle",
         "ref_radius_m": 0.45
       },
-      "dormant_until_summoned": true
+      "dormant_until_summoned": true,
+      "waits": [
+        0.0,
+        4.0
+      ]
     }
   ]
 }

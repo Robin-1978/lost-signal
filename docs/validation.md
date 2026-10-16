@@ -82,7 +82,7 @@ Results for the initial public `main` release candidate, tested on Linux x86_64 
 - Headless build and CTest: passed; 54/54 tests
 - Graphical build and CTest: passed; 54/54 tests
 - Graphical smoke run: passed under Xvfb
-- Recommended `lost_signal` mission: succeeded with seed 47 on Bullet in 162.42 simulated seconds, with zero collisions
+- Recommended `lost_signal` mission: succeeded with seed 47 on Bullet in 136.20 simulated seconds, with zero collisions
 - Sanitizers: passed locally; 54/54 tests under AddressSanitizer and UndefinedBehaviorSanitizer
 - Physical hardware: not tested
 

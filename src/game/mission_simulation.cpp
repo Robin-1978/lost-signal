@@ -1887,6 +1887,8 @@ double MissionSimulation::static_clearance(sim::Vec2 position) const {
 
 void MissionSimulation::finish_success() {
  held_command_ = {};
+ snapshot_.waiting_for_clearance = false;
+ update_shadow_episode();
  snapshot_.status = MissionStatus::Succeeded;
  snapshot_.robot.v = 0.0;
  snapshot_.robot.w = 0.0;
