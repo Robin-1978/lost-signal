@@ -4,7 +4,36 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  content:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate content and locales
+        run: |
+          python3 tools/validate_content.py
+          python3 tools/validate_locales.py
+      - name: Test authored content contracts
+        run: |
+          python3 tests/test_content.py
+          python3 tests/test_content_roundtrip.py
+          python3 tests/test_contracts.py
+      - name: Verify generated data and audio
+        run: |
+          python3 tools/generate_levels.py --check
+          python3 tools/generate_contracts.py --week 1 --check
+          python3 tools/generate_audio.py --check
+      - name: Verify generated models and textures
+        run: |
+          python3 tools/generate_robot_models.py
+          python3 tools/generate_actor_models.py
+          python3 tools/generate_environment_models.py
+          python3 tools/generate_textures.py
+          git diff --exit-code -- assets/models assets/textures
+
   sanitizer:
     runs-on: ubuntu-24.04
     steps:
@@ -54,8 +83,6 @@ jobs:
             libxinerama-dev xvfb
       - name: Download dependencies, build and test
         run: ./tools/build.sh --test
- - name: Verify generated encounter audio
- run: python3 tools/generate_audio.py --check
       - name: Run deterministic mission
         run: ./build/release/lost_signal_headless --level lost_signal --recommended --json
       - name: Render a smoke-test frame

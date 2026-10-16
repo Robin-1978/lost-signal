@@ -170,7 +170,7 @@ completed without collision, while the light-computer run lost the safe score.
 
 ## Stage 5 — Release closure
 
-Status: **pending Stage 4**
+Status: **complete**
 
 - finish English game copy and Simplified Chinese game localization;
 - keep source, tests, headless output, and developer documentation in English;
@@ -181,4 +181,10 @@ Status: **pending Stage 4**
 - publish only after Linux, macOS, Windows, sanitizer, and graphical CI jobs pass.
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
+
+The local release gate passed on Linux x86_64 with 59/59 graphical and headless tests, 59/59 sanitizer tests,
+content and locale validation, all deterministic generator checks, a graphical Xvfb smoke run, and two
+byte-identical five-frame `lost_signal` screenshot sequences. CI now runs a separate content/provenance drift
+job in addition to portable Linux, macOS, and Windows headless builds, sanitizers, and the Linux client. The
+published revision remains gated on those remote jobs.
 

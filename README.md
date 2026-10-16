@@ -110,6 +110,8 @@ The compact [Lost Signal Runtime Interface](docs/runtime-interface.md) connects 
 
 The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, source IDs, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
 
+Maps are 2.5D: terrain patches define height, two-axis grade, and roughness, while surface definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The current LiDAR is a mounted single-plane scanner that raycasts that world, so terrain, static geometry, and moving actors occlude and return measurements according to their 3D poses.
+
 Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include motion distortion, estimated-motion deskew, first-return intensity, bias, white noise, quantization, and missing returns. The IMU models bias, random walk, and angular-velocity and acceleration noise. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 
 The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. Bullet is the authoritative and default rigid-body backend in both graphical and headless runs. A deterministic planar backend remains available for focused regression tests and algorithm comparison.
