@@ -24,6 +24,63 @@ std::string format_delta(double value, int precision = 1) {
  return (value > 0.0 ? "+" : "") + format_number(value, precision);
 }
 
+std::string evidence_value(double value, const std::string& unit, int precision = 1) {
+ return std::isfinite(value) ? format_number(value, precision) + unit : "—";
+}
+
+std::string decision_reason(const mission::ContentCatalog& catalog,
+ const mission::DecisionEvidence& decision) {
+ if (decision.reason_code == "mission-start")
+ return catalog.tr("decision.reason.mission-start");
+ if (decision.reason_code == "no-route")
+ return catalog.tr("decision.reason.no-route");
+ if (decision.reason_code == "strategy-hold")
+ return catalog.tr("decision.reason.strategy-hold");
+ if (decision.reason_code == "route-clear")
+ return catalog.tr("decision.reason.route-clear");
+ if (decision.reason_code == "no-dynamic-track")
+ return catalog.tr("decision.reason.no-dynamic-track");
+ if (decision.reason_code == "dynamic-track-clear")
+ return catalog.tr("decision.reason.dynamic-track-clear");
+ if (decision.reason_code == "no-safe-local-trajectory")
+ return catalog.tr("decision.reason.no-safe-local-trajectory");
+ if (decision.reason_code == "entry-window-occupied")
+ return catalog.tr("decision.reason.entry-window-occupied");
+ if (decision.reason_code == "predicted-path-conflict")
+ return catalog.tr("decision.reason.predicted-path-conflict");
+ if (decision.reason_code == "safe-local-trajectory")
+ return catalog.tr("decision.reason.safe-local-trajectory");
+ return catalog.tr("decision.reason.unassessed");
+}
+
+std::string decision_action(const mission::ContentCatalog& catalog,
+ const mission::DecisionEvidence& decision) {
+ if (decision.action_code == "plan-route")
+ return catalog.tr("decision.action.plan-route");
+ if (decision.action_code == "follow-route")
+ return catalog.tr("decision.action.follow-route");
+ if (decision.action_code == "avoid")
+ return catalog.tr("decision.action.avoid");
+ if (decision.action_code == "wait")
+ return catalog.tr("decision.action.wait");
+ if (decision.action_code == "minimum-risk-escape")
+ return catalog.tr("decision.action.minimum-risk-escape");
+ return catalog.tr("decision.action.idle");
+}
+
+std::vector<std::string> decision_arguments(const mission::ContentCatalog& catalog,
+ const mission::DecisionEvidence& decision) {
+ return {
+ std::to_string(decision.observation_refs.size()),
+ evidence_value(decision.observation_time_s, " s"),
+ evidence_value(decision.measured_separation_m, " m"),
+ evidence_value(decision.prediction_horizon_s, " s"),
+ evidence_value(decision.predicted_separation_m, " m"),
+ decision_reason(catalog, decision),
+ decision_action(catalog, decision),
+ };
+}
+
 std::string selected_id(const mission::BuildSelection& build, const std::string& slot) {
  return build.part(slot);
 }
@@ -732,9 +789,9 @@ void GameUi::refresh_debrief(const mission::MissionSimulation& mission) {
  } else if (state.traction_saturated) {
   replay_cause_->setText(catalog_.trf(
     "debrief.cause_traction", {format_number(grade_degrees), format_number(std::abs(state.robot.v))}));
- } else if (state.waiting_for_clearance) {
-  replay_cause_->setText(
-    catalog_.trf("debrief.cause_waiting", {std::to_string(state.dynamic_obstacles.size())}));
+ } else if (state.decision.sequence > 0 && !state.decision.observation_refs.empty()) {
+ replay_cause_->setText(catalog_.trf("debrief.cause_decision",
+ decision_arguments(catalog_, state.decision)));
  } else if (std::abs(grade_degrees) >= 1.0 || std::abs(cross_degrees) >= 1.0) {
   replay_cause_->setText(
     catalog_.trf("debrief.cause_slope", {format_number(grade_degrees), format_number(cross_degrees),
@@ -752,6 +809,12 @@ void GameUi::refresh_debrief(const mission::MissionSimulation& mission) {
  }
  const std::size_t first = visible_events.size() > 4 ? visible_events.size() - 4 : 0;
  std::ostringstream evidence;
+ if (state.decision.sequence > 0) {
+ evidence << catalog_.trf("debrief.decision_record",
+ {std::to_string(state.decision.sequence), decision_reason(catalog_, state.decision),
+ decision_action(catalog_, state.decision), state.decision.outcome_code})
+ << '\n';
+ }
  for (std::size_t index = first; index < visible_events.size(); ++index) {
   evidence << std::fixed << std::setprecision(1) << visible_events[index]->time_s << "s "
            << visible_events[index]->message << '\n';
@@ -1037,10 +1100,8 @@ void GameUi::refresh_running(const mission::MissionSimulation& mission, bool pau
  } else if (state.traction_saturated) {
   explanation = catalog_.trf("running.traction_body",
                              {format_number(grade_degrees), format_number(std::abs(state.robot.v))});
- } else if (state.waiting_for_clearance) {
-  explanation = catalog_.tr("running.waiting_body");
- } else if (state.dynamic_object_detected) {
-  explanation = catalog_.tr("running.dynamic_body");
+ } else if (state.decision.sequence > 0 && !state.decision.observation_refs.empty()) {
+ explanation = catalog_.trf("running.decision_body", decision_arguments(catalog_, state.decision));
  } else if (state.static_obstacle_detected) {
   explanation = catalog_.tr("running.static_body");
  } else if (slope_active) {
@@ -1074,9 +1135,11 @@ void GameUi::refresh_running(const mission::MissionSimulation& mission, bool pau
  : catalog_.tr("running.endless_state_auto")));
  } else if (manual)
  running_state_->setText(catalog_.tr("running.manual_state"));
-  else if (state.waiting_for_clearance)
-   running_state_->setText(catalog_.tr("running.waiting_state"));
-  else if (state.dynamic_object_detected || state.static_obstacle_detected) {
+ else if (state.decision.sequence > 0 && state.decision.action_code != "follow-route" &&
+ state.decision.action_code != "plan-route")
+ running_state_->setText(catalog_.trf("running.decision_state",
+ {decision_action(catalog_, state.decision)}));
+ else if (state.dynamic_object_detected || state.static_obstacle_detected) {
    running_state_->setText(presentation_->detected_line);
  } else if (state.goals_reached < presentation_->goal_lines.size()) {
  running_state_->setText(presentation_->goal_lines[state.goals_reached]);

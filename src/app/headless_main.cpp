@@ -201,6 +201,7 @@ int main(int argc, char** argv) {
  }},
      {"via_reached", result.via_reached},
      {"events", nlohmann::json::array()},
+ {"decisions", nlohmann::json::array()},
      {"scores",
       {
         {"safe", result.safe_score},
@@ -215,6 +216,25 @@ int main(int argc, char** argv) {
       {"message", event.message},
     });
    }
+ for (const auto& decision : mission.decisions()) {
+ output["decisions"].push_back({
+ {"sequence", decision.sequence},
+ {"decision_time_s", decision.decision_time_s},
+ {"end_time_s", decision.end_time_s},
+ {"observation_time_s", decision.observation_time_s},
+ {"observation_refs", decision.observation_refs},
+ {"prediction_horizon_s", decision.prediction_horizon_s},
+ {"measured_separation_m", decision.measured_separation_m},
+ {"predicted_separation_m", decision.predicted_separation_m},
+ {"constraint", decision.constraint_code},
+ {"reason", decision.reason_code},
+ {"action", decision.action_code},
+ {"target_speed_mps", decision.target_speed_mps},
+ {"target_yaw_rate_radps", decision.target_yaw_rate_radps},
+ {"outcome", decision.outcome_code},
+ {"superseded_by", decision.superseded_by},
+ });
+ }
    std::cout << output.dump(2) << '\n';
   } else {
    std::cout << "[" << level_id << "] " << mission::mission_status_name(result.status)

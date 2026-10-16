@@ -78,6 +78,50 @@ std::string fixed(double value, int precision = 1) {
  return output.str();
 }
 
+std::string evidence_value(double value, const std::string& unit, int precision = 1) {
+ return std::isfinite(value) ? fixed(value, precision) + unit : "—";
+}
+
+std::string decision_reason(const mission::ContentCatalog& catalog,
+ const mission::DecisionEvidence& decision) {
+ if (decision.reason_code == "mission-start")
+ return catalog.tr("decision.reason.mission-start");
+ if (decision.reason_code == "no-route")
+ return catalog.tr("decision.reason.no-route");
+ if (decision.reason_code == "strategy-hold")
+ return catalog.tr("decision.reason.strategy-hold");
+ if (decision.reason_code == "route-clear")
+ return catalog.tr("decision.reason.route-clear");
+ if (decision.reason_code == "no-dynamic-track")
+ return catalog.tr("decision.reason.no-dynamic-track");
+ if (decision.reason_code == "dynamic-track-clear")
+ return catalog.tr("decision.reason.dynamic-track-clear");
+ if (decision.reason_code == "no-safe-local-trajectory")
+ return catalog.tr("decision.reason.no-safe-local-trajectory");
+ if (decision.reason_code == "entry-window-occupied")
+ return catalog.tr("decision.reason.entry-window-occupied");
+ if (decision.reason_code == "predicted-path-conflict")
+ return catalog.tr("decision.reason.predicted-path-conflict");
+ if (decision.reason_code == "safe-local-trajectory")
+ return catalog.tr("decision.reason.safe-local-trajectory");
+ return catalog.tr("decision.reason.unassessed");
+}
+
+std::string decision_action(const mission::ContentCatalog& catalog,
+ const mission::DecisionEvidence& decision) {
+ if (decision.action_code == "plan-route")
+ return catalog.tr("decision.action.plan-route");
+ if (decision.action_code == "follow-route")
+ return catalog.tr("decision.action.follow-route");
+ if (decision.action_code == "avoid")
+ return catalog.tr("decision.action.avoid");
+ if (decision.action_code == "wait")
+ return catalog.tr("decision.action.wait");
+ if (decision.action_code == "minimum-risk-escape")
+ return catalog.tr("decision.action.minimum-risk-escape");
+ return catalog.tr("decision.action.idle");
+}
+
 float distance(Vector2 a, Vector2 b) {
  const float dx = a.x - b.x;
  const float dy = a.y - b.y;
@@ -1022,7 +1066,7 @@ void WorldRenderer::draw_world(const mission::MissionSimulation& mission) const 
    viewport_.x + viewport_.width - card_width - 18.0f,
    viewport_.y + 17.0f,
    card_width,
-   174.0f,
+ 248.0f,
  };
  DrawRectangleRounded(card, 0.08f, 10, {14, 18, 19, 235});
  DrawRectangleLinesEx(card, 1.0f, Fade(control.dwa_active ? kAmber : kCyan, 0.34f));
@@ -1064,6 +1108,22 @@ void WorldRenderer::draw_world(const mission::MissionSimulation& mission) const 
  };
  draw_pwm(card.y + 117, control.left_pwm);
  draw_pwm(card.y + 148, has_steering_servo ? control.steer_pwm : control.right_pwm);
+ const auto& decision = mission.snapshot().decision;
+ if (decision.sequence > 0) {
+ DrawLineEx({card.x + 15, card.y + 169}, {card.x + card.width - 15, card.y + 169}, 1.0f,
+ Fade(kMuted, 0.24f));
+ draw_text(catalog_.trf("world.decision_summary",
+ {std::to_string(decision.sequence),
+ decision_reason(catalog_, decision), decision_action(catalog_, decision)}),
+ {card.x + 15, card.y + 179}, 15, decision.action_code == "wait" ? kAmber : Fade(kCyan, 0.88f));
+ draw_text(catalog_.trf("world.decision_evidence",
+ {std::to_string(decision.observation_refs.size()),
+ evidence_value(decision.observation_time_s, " s"),
+ evidence_value(decision.measured_separation_m, " m"),
+ evidence_value(decision.prediction_horizon_s, " s"),
+ evidence_value(decision.predicted_separation_m, " m")}),
+ {card.x + 15, card.y + 202}, 13, Fade(kText, 0.72f));
+ }
 }
 
 void WorldRenderer::draw_field_operator(const mission::MissionSimulation& mission) const {

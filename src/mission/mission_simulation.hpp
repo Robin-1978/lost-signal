@@ -34,6 +34,7 @@
 
 #include <map>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -56,6 +57,28 @@ struct MissionEvent {
  double time_s{0.0};
  std::string code;
  std::string message;
+};
+
+// One compact, presentation-neutral explanation of an autonomy decision.
+// Stable codes are localized by clients and serialized verbatim by headless
+// tools. Non-finite measurements mean that evidence was unavailable;
+// algorithms never manufacture a measurement for presentation.
+struct DecisionEvidence {
+ std::uint64_t sequence{0};
+ double decision_time_s{0.0};
+ double end_time_s{-1.0};
+ double observation_time_s{std::numeric_limits<double>::quiet_NaN()};
+ std::vector<std::string> observation_refs;
+ double prediction_horizon_s{0.0};
+ double measured_separation_m{std::numeric_limits<double>::quiet_NaN()};
+ double predicted_separation_m{std::numeric_limits<double>::quiet_NaN()};
+ std::string constraint_code{"none"};
+ std::string reason_code{"unassessed"};
+ std::string action_code{"idle"};
+ double target_speed_mps{0.0};
+ double target_yaw_rate_radps{0.0};
+ std::string outcome_code{"active"};
+ std::uint64_t superseded_by{0};
 };
 
 // Gate-3 shadow wait episode (structured): one waiting interval with the
@@ -206,6 +229,7 @@ struct MissionSnapshot {
  WorldActivityState world_activity;
  sim::StrategyDecision strategy;
  std::string strategy_policy{"route-baseline"};
+ DecisionEvidence decision;
 };
 
 struct MissionResult {
@@ -325,6 +349,7 @@ class MissionSimulation {
  const MissionSnapshot& snapshot() const { return snapshot_; }
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
+ const std::vector<DecisionEvidence>& decisions() const { return decisions_; }
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
  void seek_replay(double time_s);
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
@@ -356,6 +381,8 @@ class MissionSimulation {
  void finish_success();
  void finish_failure(std::string reason, std::string message);
  void record_event(std::string code, std::string message, double throttle_s = 0.0);
+ void publish_decision(DecisionEvidence decision);
+ void close_decision(std::string outcome_code);
  void update_shadow_episode();
  void record_replay();
  double surface_traction(sim::Vec2 position) const;
@@ -458,6 +485,7 @@ class MissionSimulation {
  MissionSnapshot snapshot_;
  MissionResult result_;
  std::vector<MissionEvent> events_;
+ std::vector<DecisionEvidence> decisions_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  // Shadow slip instrument (tracked only, see apply_motion): detector state
@@ -495,6 +523,7 @@ class MissionSimulation {
  std::uint64_t motion_sequence_{0};
  std::uint64_t imu_sequence_{0};
  std::uint64_t command_sequence_{0};
+ std::uint64_t decision_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;
 };

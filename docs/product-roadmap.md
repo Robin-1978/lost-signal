@@ -102,7 +102,7 @@ the safety margin without turning the lesson into an arbitrary failure.
 
 ## Stage 2 — Make decision evidence a shared runtime contract
 
-Status: **pending Stage 1**
+Status: **complete**
 
 Introduce a compact, structured decision record produced by autonomy and mission systems rather than inferred by UI code. A record contains:
 
@@ -116,6 +116,11 @@ Introduce a compact, structured decision record produced by autonomy and mission
 The field cue, AI View, debrief, headless JSON, and tests consume this same record. Localized prose maps from stable reason codes; algorithms do not emit presentation sentences. Replay seeking must reproduce the record visible at that simulation time.
 
 The gate is a deterministic `lost_signal` run whose observation → prediction → constraint → action → outcome chain is identical in the graphical client, headless result, and regression assertions.
+
+The implemented contract records compact decision transitions rather than every controller tick. The
+recommended seed-47 run currently produces 72 records for 892 local-planning cycles. Replay snapshots carry
+the record active at that simulation time; headless JSON emits the closed transition chain; live field copy,
+AI View, debrief, and regression tests read the same fields and localize only stable reason/action codes.
 
 ## Stage 3 — Build the state-driven audiovisual vertical slice
 

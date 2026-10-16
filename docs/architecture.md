@@ -60,6 +60,14 @@ The planning pipeline produces a feasible body command. The selected chassis con
 
 The field operator, autonomous robot, dynamic actors, weather, and events remain part of one simulation world. Expedition mode reuses the same sensing, planning, control, and physics path as authored missions.
 
+`DecisionEvidence` is the shared explanation boundary. The mission coordinator assembles it only from the
+estimator timestamp, anonymous tracker references, prediction horizon, measured and projected separation,
+active constraint, selected command, and planner outcome. A new record opens when the constraint, reason,
+or action changes; the preceding record closes as `superseded` and names the next sequence. Mission
+termination closes the final record. The current record is copied into every immutable replay snapshot,
+while the compact transition history is emitted by headless runs. Player prose is a locale mapping over
+stable codes, so the field view, AI view, debrief, replay, and tests cannot invent separate explanations.
+
 ### Physics
 
 `IPhysicsWorld` is the backend boundary. Bullet is the production and default backend. A deterministic planar backend supports regression and focused algorithm tests. Bullet-shadow mode can compare integration paths without giving the shadow backend authority over gameplay.
@@ -80,6 +88,7 @@ The most important extension boundaries are:
 - `IHighLevelPolicy` for behavior selection;
 - `ChassisModel` plus `ChassisCaps` for feasible motion and actuator telemetry;
 - LSRI v1 ports, sensor packets, transform frames, lifecycle, and watchdog semantics;
+- `DecisionEvidence` for observation-to-action explanations and deterministic decision transitions;
 - immutable snapshots for rendering, replay, and external observation.
 
 The [autonomy extension guide](extending-autonomy.md) documents the global-planner v1 request/result contract, registry, directory boundaries, and a complete provider example.

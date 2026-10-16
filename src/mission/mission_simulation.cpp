@@ -186,6 +186,7 @@ void MissionSimulation::reset() {
  high_level_policy_->reset(effective_seed() ^ 0x1f83d9abU);
  snapshot_.strategy_policy = high_level_policy_->name();
  events_.clear();
+ decisions_.clear();
  replay_.clear();
  shadow_episodes_.clear();
  shadow_episode_open_ = false;
@@ -207,6 +208,7 @@ void MissionSimulation::reset() {
  motion_sequence_ = 0;
  imu_sequence_ = 0;
  command_sequence_ = 0;
+ decision_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  governor_state_ = {};
@@ -552,6 +554,12 @@ void MissionSimulation::start() {
  runtime_channel_->activate();
  snapshot_.status = MissionStatus::Running;
  result_.status = MissionStatus::Running;
+ DecisionEvidence initial_decision;
+ initial_decision.observation_time_s = snapshot_.time_s;
+ initial_decision.constraint_code = "none";
+ initial_decision.reason_code = "mission-start";
+ initial_decision.action_code = "plan-route";
+ publish_decision(std::move(initial_decision));
  if (endless_mode_)
  refresh_endless_route();
  record_event(endless_mode_ ? "field-session-start" : "mission-start",
@@ -1077,6 +1085,12 @@ void MissionSimulation::decide_control() {
  if (control_system_->path_index() >= planned_path_.size()) {
   if (planned_path_.empty()) {
    held_command_ = {0.0, 0.0};
+ DecisionEvidence decision;
+ decision.observation_time_s = snapshot_.time_s;
+ decision.constraint_code = "route";
+ decision.reason_code = "no-route";
+ decision.action_code = "wait";
+ publish_decision(std::move(decision));
    return;
   }
   // Docking hold: waypoint bookkeeping exhausted (resync/accept ran ahead of
@@ -1091,6 +1105,23 @@ void MissionSimulation::decide_control() {
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
+ const auto publish = [&](std::string constraint_code, std::string reason_code,
+ std::string action_code, double observation_time_s,
+ std::vector<std::string> observation_refs, double prediction_horizon_s,
+ double measured_separation_m, double predicted_separation_m) {
+ DecisionEvidence decision;
+ decision.observation_time_s = observation_time_s;
+ decision.observation_refs = std::move(observation_refs);
+ decision.prediction_horizon_s = prediction_horizon_s;
+ decision.measured_separation_m = measured_separation_m;
+ decision.predicted_separation_m = predicted_separation_m;
+ decision.constraint_code = std::move(constraint_code);
+ decision.reason_code = std::move(reason_code);
+ decision.action_code = std::move(action_code);
+ decision.target_speed_mps = held_command_.target_v;
+ decision.target_yaw_rate_radps = held_command_.target_w;
+ publish_decision(std::move(decision));
+ };
  sim::StrategyObservation strategy_observation;
  strategy_observation.stamp_s = estimate.timestamp_s;
  strategy_observation.ego = estimate;
@@ -1198,11 +1229,14 @@ void MissionSimulation::decide_control() {
   }
  }
  route_control.tv *= snapshot_.strategy.applied.speed_scale;
+ const double unavailable = std::numeric_limits<double>::quiet_NaN();
  if (snapshot_.strategy.applied.mode == sim::StrategyMode::Hold) {
  held_command_ = {};
  snapshot_.waiting_for_clearance = true;
  snapshot_.control.local_target = target;
  snapshot_.control.heading_error_rad = route_control.err;
+ publish("high-level-intent", "strategy-hold", "wait", estimate.timestamp_s, {}, unavailable,
+ unavailable, unavailable);
  update_shadow_episode();
  return;
  }
@@ -1222,11 +1256,22 @@ void MissionSimulation::decide_control() {
   const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
   snapshot_.control.governor_hold = governor_idle.hold_active;
   snapshot_.control.governor_stop = governor_idle.stop_point;
+ publish("none", "route-clear", "follow-route", estimate.timestamp_s, {}, unavailable, unavailable,
+ unavailable);
   return;
  }
 
  const auto known_tracks =
    sensor_system_->dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
+
+ std::vector<std::string> observation_refs;
+ double observation_time_s = std::numeric_limits<double>::quiet_NaN();
+ observation_refs.reserve(known_tracks.size());
+ for (const auto& track : known_tracks) {
+ observation_refs.push_back("track." + std::to_string(track.object_id));
+ if (!std::isfinite(observation_time_s) || track.last_observed_s > observation_time_s)
+ observation_time_s = track.last_observed_s;
+ }
 
  double nearest_actor = std::numeric_limits<double>::infinity();
  for (const auto& track : known_tracks) {
@@ -1266,6 +1311,9 @@ void MissionSimulation::decide_control() {
   const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
   snapshot_.control.governor_hold = governor_idle.hold_active;
   snapshot_.control.governor_stop = governor_idle.stop_point;
+ publish("none", known_tracks.empty() ? "no-dynamic-track" : "dynamic-track-clear", "follow-route",
+ observation_time_s, std::move(observation_refs), prediction_horizon,
+ std::isfinite(nearest_actor) ? nearest_actor : unavailable, unavailable);
   return;
  }
 
@@ -1504,6 +1552,16 @@ void MissionSimulation::decide_control() {
  }
  snapshot_.control.dwa_active = true;
  snapshot_.control.dwa_selected = dwa.best_path;
+ double predicted_separation_m = std::numeric_limits<double>::quiet_NaN();
+ for (std::size_t frame_index = 0;
+ frame_index < predicted_frames.size() && frame_index < dwa.best_path.size(); ++frame_index) {
+ for (const auto& future : predicted_frames[frame_index]) {
+ const double separation = distance(dwa.best_path[frame_index], future.p) - future.radius -
+ robot_definition_.collision_radius_m;
+ if (!std::isfinite(predicted_separation_m) || separation < predicted_separation_m)
+ predicted_separation_m = separation;
+ }
+ }
  constexpr std::size_t kVisibleDwaCandidates = 24;
  const std::size_t candidate_stride =
    std::max<std::size_t>(1, (dwa.rollouts.size() + kVisibleDwaCandidates - 1) / kVisibleDwaCandidates);
@@ -1592,6 +1650,19 @@ void MissionSimulation::decide_control() {
   shadow_open_nearest_ = nearest_actor;
   update_shadow_episode();
  }
+ const bool minimum_risk_escape = !dwa.best.valid &&
+ (std::abs(held_command_.target_v) > 1e-9 || std::abs(held_command_.target_w) > 1e-9);
+ const std::string action_code = minimum_risk_escape
+ ? "minimum-risk-escape"
+ : (snapshot_.waiting_for_clearance ? "wait" : (dwa.best.valid ? "avoid" : "wait"));
+ const std::string reason_code = !dwa.best.valid
+ ? "no-safe-local-trajectory"
+ : (governor_out.hold_active
+ ? "entry-window-occupied"
+ : (snapshot_.waiting_for_clearance ? "predicted-path-conflict" : "safe-local-trajectory"));
+ publish(reason_code == "safe-local-trajectory" ? "none" : "dynamic-clearance", reason_code,
+ action_code, observation_time_s, std::move(observation_refs), prediction_horizon,
+ std::isfinite(nearest_actor) ? nearest_actor : unavailable, predicted_separation_m);
 }
 
 void MissionSimulation::apply_motion() {
@@ -1983,6 +2054,7 @@ void MissionSimulation::finish_success() {
  }
  result_.fast_score = result_.time_s <= level_.fast_time_s;
  result_.efficient_score = result_.energy_wh <= level_.efficient_energy_wh;
+ close_decision("mission-succeeded");
  record_event("mission-complete", catalog_.trf("event.mission_complete", {level_.objective.goal_label}));
  record_replay();
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
@@ -2019,6 +2091,7 @@ void MissionSimulation::finish_failure(std::string reason, std::string message) 
  result_.safe_score = false;
  result_.fast_score = false;
  result_.efficient_score = false;
+ close_decision("mission-failed");
  record_event(result_.failure_reason, std::move(message));
  record_replay();
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
@@ -2033,6 +2106,46 @@ void MissionSimulation::record_event(std::string code, std::string message, doub
  last_event_code_ = code;
  last_event_time_s_ = snapshot_.time_s;
  events_.push_back({snapshot_.time_s, std::move(code), std::move(message)});
+}
+
+void MissionSimulation::publish_decision(DecisionEvidence decision) {
+ const auto same_decision = [&] {
+ if (decisions_.empty())
+ return false;
+ const auto& previous = decisions_.back();
+ return previous.constraint_code == decision.constraint_code &&
+ previous.reason_code == decision.reason_code && previous.action_code == decision.action_code &&
+ previous.outcome_code == "active";
+ }();
+
+ decision.outcome_code = "active";
+ decision.end_time_s = -1.0;
+ decision.superseded_by = 0;
+ if (same_decision) {
+ decision.sequence = decisions_.back().sequence;
+ decision.decision_time_s = decisions_.back().decision_time_s;
+ decisions_.back() = decision;
+ } else {
+ const std::uint64_t next_sequence = ++decision_sequence_;
+ if (!decisions_.empty() && decisions_.back().outcome_code == "active") {
+ decisions_.back().end_time_s = snapshot_.time_s;
+ decisions_.back().outcome_code = "superseded";
+ decisions_.back().superseded_by = next_sequence;
+ }
+ decision.sequence = next_sequence;
+ decision.decision_time_s = snapshot_.time_s;
+ decisions_.push_back(decision);
+ }
+ snapshot_.decision = decision;
+}
+
+void MissionSimulation::close_decision(std::string outcome_code) {
+ if (decisions_.empty())
+ return;
+ decisions_.back().end_time_s = snapshot_.time_s;
+ decisions_.back().outcome_code = std::move(outcome_code);
+ decisions_.back().superseded_by = 0;
+ snapshot_.decision = decisions_.back();
 }
 
 void MissionSimulation::update_shadow_episode() {

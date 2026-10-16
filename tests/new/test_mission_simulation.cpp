@@ -182,6 +182,41 @@ int main() {
                    [](const auto& event) { return event.code == "dynamic-detected"; }));
  CHECK(std::any_of(first.events().begin(), first.events().end(),
                    [](const auto& event) { return event.code == "waiting"; }));
+ // Decision evidence is the shared runtime contract used by live UI, replay,
+ // headless output, and tests. It records transitions rather than every 10 Hz
+ // controller tick, keeps tracker references anonymous, and closes the chain.
+ CHECK(!first.decisions().empty());
+ CHECK(first.decisions().size() < static_cast<std::size_t>(first.result().local_decisions));
+ for (std::size_t index = 0; index < first.decisions().size(); ++index) {
+ const auto& decision = first.decisions()[index];
+ CHECK(decision.sequence == index + 1);
+ CHECK(decision.decision_time_s <= decision.end_time_s);
+ if (index + 1 < first.decisions().size()) {
+ CHECK(decision.outcome_code == "superseded");
+ CHECK(decision.superseded_by == first.decisions()[index + 1].sequence);
+ } else {
+ CHECK(decision.outcome_code == "mission-succeeded");
+ CHECK(decision.superseded_by == 0);
+ }
+ for (const auto& reference : decision.observation_refs) {
+ CHECK(reference.starts_with("track."));
+ CHECK(reference.find("forklift") == std::string::npos);
+ }
+ }
+ const auto explained_wait = std::find_if(first.decisions().begin(), first.decisions().end(),
+ [](const auto& decision) {
+ return decision.action_code == "wait" && !decision.observation_refs.empty() &&
+ decision.constraint_code == "dynamic-clearance";
+ });
+ CHECK(explained_wait != first.decisions().end());
+ CHECK(std::isfinite(explained_wait->observation_time_s));
+ CHECK(std::isfinite(explained_wait->measured_separation_m));
+ CHECK(explained_wait->prediction_horizon_s > 0.0);
+ CHECK(explained_wait->observation_time_s <= explained_wait->end_time_s + 1e-9);
+ CHECK(std::any_of(first.replay().begin(), first.replay().end(),
+ [sequence = explained_wait->sequence](const auto& snapshot) {
+ return snapshot.decision.sequence == sequence && snapshot.decision.action_code == "wait";
+ }));
  // The authored finale is a real three-beat sequence: collect power, wake
  // traffic, inspect the blind crossing, then restore the relay.
  const auto event_index = [&](const char* code) {
@@ -409,6 +444,14 @@ int main() {
  CHECK(std::abs(second.result().time_s - first.result().time_s) < 1e-12);
  CHECK(std::abs(second.result().path_length_m - first.result().path_length_m) < 1e-12);
  CHECK(second.events().size() == first.events().size());
+ CHECK(second.decisions().size() == first.decisions().size());
+ for (std::size_t index = 0; index < first.decisions().size(); ++index) {
+ CHECK(second.decisions()[index].sequence == first.decisions()[index].sequence);
+ CHECK(second.decisions()[index].decision_time_s == first.decisions()[index].decision_time_s);
+ CHECK(second.decisions()[index].reason_code == first.decisions()[index].reason_code);
+ CHECK(second.decisions()[index].action_code == first.decisions()[index].action_code);
+ CHECK(second.decisions()[index].outcome_code == first.decisions()[index].outcome_code);
+ }
  }
 
  // Ackermann content car: per-presentation robot, no spin capability and
