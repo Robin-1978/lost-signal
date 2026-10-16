@@ -100,3 +100,30 @@ For the first public alpha, quality comes from a coherent vertical slice rather 
 6. Invite learning feedback with a focused issue template.
 
 Audio, more characters, broader accessibility, controller support, packaged binaries, and real-hardware adapters can follow without weakening the first release.
+
+## After the public alpha
+
+The next milestone should deepen one complete learning encounter rather than broaden the technology list.
+
+### 1. An explainable flagship encounter
+
+Polish `lost_signal` as a short three-beat experience: approach an occluded work area, observe and yield to moving traffic, then restore the signal tower. Give the depot its own readable landmarks, environmental motion, state lighting, sound cues, and payoff. Every cue must come from simulation state.
+
+The field view should make RO-1's situation legible before the player opens a panel. The AI view and debrief should then show one structured evidence chain from observation, through prediction and constraint, to action and outcome. The same reason codes and measurements must feed player text, headless output, and regression tests; the UI should not infer a different explanation from a few final-state flags.
+
+### 2. A small experiment record
+
+Before adding a general experiment framework, define one versioned run artifact containing the source revision, content hash, backend and platform, mission and condition IDs, seed, selected hardware, algorithm IDs, configuration identity, metrics, and causal events. Keep the interactive timeline, LSRI observation replay, and a reproducible run artifact as separate concepts.
+
+A small comparison tool may then evaluate like-for-like alternatives with declared tolerances. Global planners compare with global planners, local planners with local planners, and different chassis retain their own feasible-motion constraints.
+
+### 3. Reusable conditions and deterministic faults
+
+When at least two lessons need the same objective under different conditions, introduce a lightweight scenario overlay for actors, surfaces, visibility, and fault profiles. Do not build a general scenario language first. Fault injection belongs at the platform/runtime boundary so delay, loss, reordering, stale timestamps, actuator lag, and saturation pass through the same LSRI validation and remain seeded and reproducible.
+
+### 4. Admit new technology only through a learning question
+
+- Add a sensor only when it creates a distinct observation problem that the player can predict, see, and explain.
+- Use the existing observed-grid work for a map-building lesson before attempting full SLAM. Add SLAM only when an unknown-map mission needs pose uncertainty, map uncertainty, relocalization, and loop closure.
+- Treat a local language model as an optional evidence-grounded tutor or high-level policy experiment. The deterministic campaign must run without it. Model output must never bypass the existing policy safety shield, planner, controller, or command watchdog. A text model endpoint is not a VLA stack; a future VLA experiment also needs calibrated, timestamped visual observations, a bounded high-level action vocabulary, recorded evaluation cases, and explicit latency and failure handling.
+- Add multi-process transport, HIL, or a native robot driver when a concrete deployment requires it; LSRI semantics remain the stable boundary.
