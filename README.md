@@ -116,7 +116,7 @@ Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include mot
 
 The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. Bullet is the authoritative and default rigid-body backend in both graphical and headless runs. A deterministic planar backend remains available for focused regression tests and algorithm comparison.
 
-These interfaces create a useful path toward ROS 2 adapters, calibration, log replay, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md) and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
+These interfaces create a useful path toward ROS 2 adapters, calibration, log replay, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
 
 ## Repository map
 
@@ -135,7 +135,7 @@ docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts
 ```
 
-Start with the [creative direction](docs/creative-direction.md), [product roadmap](docs/product-roadmap.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), [Run Artifact](docs/run-artifacts.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
+Start with the [creative direction](docs/creative-direction.md), [product roadmap](docs/product-roadmap.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), [platform-fidelity design](docs/platform-fidelity.md), [verification strategy](docs/verification-strategy.md), [Run Artifact](docs/run-artifacts.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
 
 ## License
 

@@ -118,6 +118,11 @@ ROS 2 is an adapter target, not the project runtime. A bridge may translate:
 
 The bridge owns QoS, executors, discovery, DDS, and ROS lifecycle mapping. None of those types enter `lost_signal_stack` or `lost_signal_mission`. Another bridge can target a serial protocol, CAN gateway, Zenoh, shared memory, or a classroom microcontroller without changing autonomy.
 
+LSRI's motion command stops at the chassis-intent boundary. A platform provider may satisfy a wheel-velocity or
+steering-position target through native position, velocity, torque/current, voltage, or duty-cycle interfaces, but
+it must declare the selected controller and units rather than reinterpret a motion field. The planned capability
+and feedback model is documented in [platform fidelity and hardware adaptation](platform-fidelity.md).
+
 ## Current evidence and limit
 
 The production mission loop now sends LiDAR, encoder, IMU, and localization observations through LSRI and sends every autonomous chassis command through its watchdog-protected command path. Interface tests cover lifecycle, capability validation, sequence rejection, bounded queues, timeout stops, all three command spaces, provider registration, and replay delivery.

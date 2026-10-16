@@ -503,7 +503,7 @@ void MissionSimulation::build_world() {
 }
 
 void MissionSimulation::plan_route() {
- planned_path_.clear();
+ planned_route_.clear();
  route_feasible_ = true;
  if (snapshot_.status == MissionStatus::Ready)
  result_.astar_expanded = 0;
@@ -540,7 +540,7 @@ void MissionSimulation::plan_route() {
  route_feasible_ = false;
  return;
  }
- planned_path_ = std::move(plan.path);
+ planned_route_ = std::move(plan.path);
  control_system_->reset();
 }
 
@@ -574,7 +574,7 @@ void MissionSimulation::set_endless_mode(bool enabled) {
  return;
  endless_mode_ = enabled;
  if (enabled) {
- planned_path_.clear();
+ planned_route_.clear();
  route_feasible_ = true;
  held_command_ = {};
  manual_command_ = {};
@@ -1008,8 +1008,8 @@ sim::Vec2 MissionSimulation::current_navigation_target() {
  ? as_vec(map_definition_.markers.at(active->marker))
  : as_vec(map_definition_.markers.at(level_.objective.goal));
  }
- return control_system_->navigation_target(planned_path_, estimate, lookahead, *planning_map_,
- fallback);
+ return control_system_->navigation_target(
+ planned_route_, estimate, lookahead, *planning_map_, fallback);
 }
 
 void MissionSimulation::refresh_endless_route() {
@@ -1052,7 +1052,7 @@ void MissionSimulation::refresh_endless_route() {
  if (target_key == endless_target_key_)
  return;
  endless_target_key_ = target_key;
- planned_path_.clear();
+ planned_route_.clear();
  control_system_->reset();
  held_command_ = {};
  route_feasible_ = true;
@@ -1073,8 +1073,9 @@ void MissionSimulation::refresh_endless_route() {
  [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
  result_.astar_expanded += plan.expanded;
  route_feasible_ = plan.ok;
- if (plan.ok)
- planned_path_ = std::move(plan.path);
+ if (plan.ok) {
+ planned_route_ = std::move(plan.path);
+ }
  if (explicit_intent)
  field_operator_system_.acknowledge(field_intent.revision, plan.ok);
 }
@@ -1082,8 +1083,8 @@ void MissionSimulation::refresh_endless_route() {
 void MissionSimulation::decide_control() {
  ++result_.local_decisions;
  snapshot_.control = {};
- if (control_system_->path_index() >= planned_path_.size()) {
-  if (planned_path_.empty()) {
+ if (control_system_->path_index() >= planned_route_.size()) {
+ if (planned_route_.empty()) {
    held_command_ = {0.0, 0.0};
  DecisionEvidence decision;
  decision.observation_time_s = snapshot_.time_s;
@@ -1098,7 +1099,7 @@ void MissionSimulation::decide_control() {
   // distance, not by idx. Hold the last waypoint so normal tracking (reverse
   // hysteresis, watchdog, DWA arbitration below) docks the robot instead of
   // parking short with tv=0 until timeout.
-  control_system_->set_path_index(planned_path_.size() - 1);
+ control_system_->set_path_index(planned_route_.size() - 1);
  }
  auto target = current_navigation_target();
  const auto& estimate = estimation_system_.state();
@@ -1174,7 +1175,7 @@ void MissionSimulation::decide_control() {
  const double chassis_cruise = property(behavior_, "cruise_mps") *
  (physics_mode_ == PhysicsMode::Bullet ? chassis_caps_.rigid_body_cruise_scale : 1.0);
  auto route_control = control_system_->follow_route(
- planned_path_, estimate, property(behavior_, "lookahead_m"), chassis_cruise,
+ planned_route_, estimate, property(behavior_, "lookahead_m"), chassis_cruise,
  1.0 / decision_hz(), *planning_map_, chassis_caps_);
  if (snapshot_.strategy.applied.has_subgoal) {
  const double target_distance = distance({nav_x, nav_y}, target);
@@ -1332,8 +1333,8 @@ void MissionSimulation::decide_control() {
  // tracker state and writes snapshot shadow fields; held_command_ (the actual
  // control output) is untouched by everything in this block.
  std::vector<sim::Vec2> shadow_remaining{{nav_x, nav_y}};
- for (std::size_t i = control_system_->path_index(); i < planned_path_.size(); ++i) {
-  shadow_remaining.push_back(planned_path_[i]);
+ for (std::size_t i = control_system_->path_index(); i < planned_route_.size(); ++i) {
+ shadow_remaining.push_back(planned_route_[i].position);
  }
  const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
  {
@@ -1529,6 +1530,8 @@ void MissionSimulation::decide_control() {
  local_config.max_steer_rate_radps = chassis_caps_.geometry.max_steer_rate_radps;
  local_config.max_accel_mps2 = resolved_build_.tires().brake_decel_mps2;
  local_config.max_speed_mps = speed_cap;
+ local_config.preferred_direction =
+ control_system_->travel_direction(planned_route_);
  local_config.predict_time_s = prediction_horizon;
  local_config.dt_s = prediction_step_s;
  local_config.frame_dt_s = prediction_step_s;
@@ -2240,24 +2243,22 @@ double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
- for (size_t i = control_system_->path_index() + 1; i < planned_path_.size(); ++i) {
-  along += distance(planned_path_[i], planned_path_[i - 1]);
+ for (size_t i = control_system_->path_index() + 1; i < planned_route_.size(); ++i) {
+ along += distance(planned_route_[i].position, planned_route_[i - 1].position);
   if (along > preview) {
    break;
   }
-  grip = std::min(grip, wheel_ground({planned_path_[i].x, planned_path_[i].y}).mu_eff);
- const double route_heading = i + 1 < planned_path_.size()
- ? std::atan2(planned_path_[i + 1].y - planned_path_[i].y,
- planned_path_[i + 1].x - planned_path_[i].x)
- : snapshot_.robot.theta;
- const double cross_grade = sim::lateral_grade(terrain_.sample(planned_path_[i]), route_heading);
+ grip = std::min(grip, wheel_ground(planned_route_[i].position).mu_eff);
+ const double route_heading = planned_route_[i].heading_rad;
+ const double cross_grade =
+ sim::lateral_grade(terrain_.sample(planned_route_[i].position), route_heading);
  const double surface_angle = std::atan(std::abs(cross_grade));
  const double rollover_margin = 9.81 * std::cos(surface_angle) * std::tan(static_limit) -
  9.81 * std::sin(surface_angle);
  lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_path_, control_system_->path_index(), cruise, lateral_accel_limit,
+ return sim::corner_speed_cap(planned_route_, control_system_->path_index(), cruise, lateral_accel_limit,
                               preview);
 }
 

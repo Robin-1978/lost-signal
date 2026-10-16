@@ -83,10 +83,10 @@ int main() {
  << " distance=" << autonomous.field_dispatch().distance_m
  << " robot=(" << autonomous.snapshot().robot.x << ',' << autonomous.snapshot().robot.y
  << ") incident=" << autonomous.world_activity().incident.marker_id
- << " route_points=" << autonomous.planned_path().size() << '\n';
+ << " route_points=" << autonomous.planned_route().size() << '\n';
  }
  CHECK(autonomous.field_dispatch().completed_count >= 1);
- CHECK(!autonomous.planned_path().empty() || autonomous.field_dispatch().completed_count > 0);
+ CHECK(!autonomous.planned_route().empty() || autonomous.field_dispatch().completed_count > 0);
  CHECK(std::any_of(autonomous.events().begin(), autonomous.events().end(),
  [](const auto& event) { return event.code == "field-dispatch-opened"; }));
  }
@@ -160,7 +160,7 @@ int main() {
  mission::MissionSimulation first(catalog, "lost_signal", build);
  mission::MissionSimulation first_repeat(catalog, "lost_signal", build, first.level().seed);
  CHECK(first_repeat.effective_seed() == first.effective_seed());
- CHECK(!first.planned_path().empty());
+ CHECK(!first.planned_route().empty());
  first.run_to_completion();
  CHECK(first.result().status == mission::MissionStatus::Succeeded);
  CHECK(first.result().via_reached);
@@ -553,7 +553,7 @@ int main() {
  CHECK(!grit_track_default.result().efficient_score);
  }
  // Sand plus steering: Hybrid A* and the grip build complete safely; the
- // low-grip aggressive build cuts into fixed geometry.
+ // low-grip aggressive build accumulates enough tracking error to time out.
  {
   const auto& presentation = catalog.presentation_for_level("sand_steer");
   CHECK(presentation.robot_id == "robot.ro2");
@@ -564,7 +564,7 @@ int main() {
   mission::MissionSimulation sandy_default(catalog, "sand_steer", presentation.default_build);
   sandy_default.run_to_completion();
  CHECK(sandy_default.result().status == mission::MissionStatus::Failed);
- CHECK(sandy_default.result().failure_reason == "collision-static");
+ CHECK(sandy_default.result().failure_reason == "timeout");
  }
  // Wet plus tracks: the careful build sweeps; the low-grip default accumulates
  // enough dead-reckoning error to hit a fixed obstacle.

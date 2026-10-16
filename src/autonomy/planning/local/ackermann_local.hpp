@@ -1,6 +1,7 @@
 #pragma once
 
 #include "autonomy/planning/local/dwa.hpp"
+#include "autonomy/planning/path.hpp"
 
 namespace sim {
 
@@ -10,6 +11,8 @@ struct AckermannLocalConfig {
  double max_steer_rate_radps{2.0};
  double max_accel_mps2{3.0};
  double max_speed_mps{2.0};
+ double max_reverse_speed_mps{0.25};
+ TravelDirection preferred_direction{TravelDirection::Unspecified};
  double predict_time_s{2.0};
  double dt_s{0.1};
  double frame_dt_s{0.1};

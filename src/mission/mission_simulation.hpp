@@ -346,7 +346,7 @@ class MissionSimulation {
  }
  std::vector<std::string> frame_ids() const { return frame_tree_.frame_ids(); }
  double frame_timestamp_s() const { return estimation_system_.state().timestamp_s; }
- const std::vector<sim::Vec2>& planned_path() const { return planned_path_; }
+ const std::vector<sim::RoutePoint>& planned_route() const { return planned_route_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
@@ -462,7 +462,7 @@ class MissionSimulation {
  FieldDispatchSystem field_dispatch_system_;
  FieldOperatorSystem field_operator_system_;
  WorldActivitySystem world_activity_system_;
- std::vector<sim::Vec2> planned_path_;
+ std::vector<sim::RoutePoint> planned_route_;
  bool route_feasible_{true};
  // Persistent expedition mode: the same world, sensors and Bullet contacts
  // keep stepping without goal, timeout or collision termination. The player

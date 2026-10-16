@@ -1,7 +1,7 @@
 // RO-2 pocket shadow (observation only, mission untouched).
 // Predicted: assess_transit with RO-2 caps (fillet + servo-lag bicycle at
-// instant cruise). Actual: production AckermannDrive rollout following twist
-// derived from the predicted trajectory (finite-difference v/w), through
+// instant cruise). Actual: production AckermannDrive rollout following speed
+// and steering-angle commands derived from the predicted trajectory, through
 // drive PID + shared contact physics. The deviation measures exactly the
 // documented approximation (instant cruise, no slip) — model-consistency
 // evidence, never a release license.
@@ -62,8 +62,8 @@ std::vector<std::vector<sim::DynamicObjectState>> empty_frames(std::size_t n) {
   return std::vector<std::vector<sim::DynamicObjectState>>(n, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
 }
 
-// Twist sequence from a timed position reference (finite difference).
-std::vector<sim::DiffCmd> derive_twist(const std::vector<sim::TimedPose>& ref) {
+// Steering-angle sequence from a timed position reference (finite difference).
+std::vector<sim::DiffCmd> derive_commands(const std::vector<sim::TimedPose>& ref) {
   std::vector<sim::DiffCmd> cmds;
   if (ref.size() < 2) {
     return cmds;
@@ -77,8 +77,10 @@ std::vector<sim::DiffCmd> derive_twist(const std::vector<sim::TimedPose>& ref) {
     const double dt = std::max(1e-6, ref[i + 1].t_s - ref[i].t_s);
     const double dist = std::hypot(ref[i + 1].p.x - ref[i].p.x, ref[i + 1].p.y - ref[i].p.y);
     const double v = dist / dt;
-    const double w = sim::wrap_angle(heading[i + 1] - heading[i]) / dt;
-    cmds.push_back({v, w});
+ const double yaw_rate = sim::wrap_angle(heading[i + 1] - heading[i]) / dt;
+ const double steer = sim::steer_for_twist(yaw_rate, v, kRo2.wheel_base_m,
+ kRo2.max_steer_rad).delta_rad;
+ cmds.push_back({v, steer});
   }
   return cmds;
 }
@@ -94,7 +96,7 @@ std::vector<sim::TimedPose> roll_production(const std::vector<sim::TimedPose>& r
   sim::DiffState state{start.x, start.y, start_theta, 0.0, 0.0};
   const sim::GroundContact ground{0.7, 0.01, 6.0};
   actual.push_back({0.0, {state.x, state.y}});
-  const auto cmds = derive_twist(ref);
+ const auto cmds = derive_commands(ref);
   double t = 0.0;
   for (const auto& cmd : cmds) {
     state = car.step(state, cmd, kDt, ground);

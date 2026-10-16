@@ -48,25 +48,27 @@ Color safety_color(double value, unsigned char alpha = 176) {
  return mix(kAmber, kDanger, (t - 0.58f) / 0.42f, alpha);
 }
 
-double route_heading_at(const std::vector<sim::Vec2>& path, sim::Vec2 point, double fallback) {
+double route_heading_at(const std::vector<sim::RoutePoint>& path, sim::Vec2 point, double fallback) {
  double best_distance_sq = std::numeric_limits<double>::infinity();
  double best_heading = fallback;
  for (std::size_t index = 1; index < path.size(); ++index) {
- const double dx = path[index].x - path[index - 1].x;
- const double dy = path[index].y - path[index - 1].y;
+ const double dx = path[index].position.x - path[index - 1].position.x;
+ const double dy = path[index].position.y - path[index - 1].position.y;
  const double length_sq = dx * dx + dy * dy;
  if (length_sq < 1e-12)
  continue;
  const double projection = std::clamp(
- ((point.x - path[index - 1].x) * dx + (point.y - path[index - 1].y) * dy) / length_sq, 0.0,
+ ((point.x - path[index - 1].position.x) * dx +
+ (point.y - path[index - 1].position.y) * dy) /
+ length_sq, 0.0,
  1.0);
- const double nearest_x = path[index - 1].x + dx * projection;
- const double nearest_y = path[index - 1].y + dy * projection;
+ const double nearest_x = path[index - 1].position.x + dx * projection;
+ const double nearest_y = path[index - 1].position.y + dy * projection;
  const double distance_sq = (point.x - nearest_x) * (point.x - nearest_x) +
  (point.y - nearest_y) * (point.y - nearest_y);
  if (distance_sq < best_distance_sq) {
  best_distance_sq = distance_sq;
- best_heading = std::atan2(dy, dx);
+ best_heading = path[index].heading_rad;
  }
  }
  return best_heading;
@@ -745,12 +747,12 @@ void WorldRenderer::draw_world(const mission::MissionSimulation& mission) const 
   }
   draw_text(catalog_.tr("world.forklift_lane"), {middle.x - 35, middle.y + 52}, 17, {198, 181, 137, 62});
  }
- const auto& path = mission.planned_path();
+ const auto& path = mission.planned_route();
  std::size_t route_start = 0;
  double route_distance = 1.0e12;
  for (std::size_t index = 0; index < path.size(); ++index) {
-  const double dx = path[index].x - mission.snapshot().robot.x;
-  const double dy = path[index].y - mission.snapshot().robot.y;
+ const double dx = path[index].position.x - mission.snapshot().robot.x;
+ const double dy = path[index].position.y - mission.snapshot().robot.y;
   const double candidate = dx * dx + dy * dy;
   if (candidate < route_distance) {
    route_distance = candidate;
@@ -758,8 +760,8 @@ void WorldRenderer::draw_world(const mission::MissionSimulation& mission) const 
   }
  }
  for (std::size_t index = std::max<std::size_t>(1, route_start + 1); index < path.size(); ++index) {
-  const auto from = world_to_screen(path[index - 1]);
-  const auto to = world_to_screen(path[index]);
+ const auto from = world_to_screen(path[index - 1].position);
+ const auto to = world_to_screen(path[index].position);
   DrawLineEx(from, to, 6.0f, {4, 10, 10, 38});
   DrawLineEx(from, to, 2.2f, Fade(kRoute, 0.42f));
   if ((index - route_start) % 8 == 0) {
@@ -1169,7 +1171,7 @@ void WorldRenderer::draw_field_operator(const mission::MissionSimulation& missio
 void WorldRenderer::draw_terrain_layer(const mission::MissionSimulation& mission) const {
  const auto& grid = mission.navigation_map();
  const auto& terrain = mission.terrain_model();
- const auto& path = mission.planned_path();
+ const auto& path = mission.planned_route();
  const double resolution = grid.res();
  double minimum_height = std::numeric_limits<double>::infinity();
  double maximum_height = -std::numeric_limits<double>::infinity();

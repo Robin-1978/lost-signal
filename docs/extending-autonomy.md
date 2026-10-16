@@ -10,7 +10,7 @@ Lost Signal keeps algorithm extension inside a small, middleware-neutral C++ sta
 | `autonomy/mapping/` | static and observed spatial models | occupancy and terrain cost |
 | `autonomy/perception/` | track dynamic objects | neutral object states and tracks |
 | `autonomy/behavior/` | select intent and apply behavior constraints | route intent, hold, or subgoal |
-| `autonomy/planning/global/` | find a map-scale route | path |
+| `autonomy/planning/global/` | find a map-scale route | typed route points |
 | `autonomy/planning/local/` | choose feasible short-horizon motion | velocity, yaw-rate, or steering candidate |
 | `autonomy/planning/validation/` | assess planned motion without taking control | evidence and diagnostics |
 | `autonomy/control/` | track the selected path or motion target | body or actuator target |
@@ -27,7 +27,7 @@ This organization follows two useful industry patterns while remaining smaller t
 
 Lost Signal adopts the boundaries and narrow interfaces. It does not adopt their middleware, process model, package count, or deployment machinery.
 
-## Global planner API v1
+## Global planner API v2
 
 `IGlobalPlanner` is the extension boundary for map-scale planning. A planner receives a `GlobalPlannerRequest` containing only:
 
@@ -35,9 +35,22 @@ Lost Signal adopts the boundaries and narrow interfaces. It does not adopt their
 - start and goal poses;
 - the traversal-cost function used by the current robot and terrain.
 
-It returns an owned `GlobalPlan`: success, path, expanded-node count, and an English diagnostic. It cannot access mission progression, renderer state, Bullet bodies, future actor truth, or actuator internals.
+It returns an owned `GlobalPlan`: success, a route, expanded-node count, and an English diagnostic. Every
+`RoutePoint` contains position, nominal body heading, and the forward or reverse direction used to arrive at that point.
+The first point uses `Unspecified`; every later point must name a direction. `GlobalPlanningSystem` rejects a
+successful result that violates this contract. The planner cannot access mission progression, renderer state,
+Bullet bodies, future actor truth, or actuator internals.
 
-The API version is `kGlobalPlannerApiMajor == 1`. This is a source-level C++ contract. It is not a stable shared-library ABI across compilers. The registry provides deterministic in-process selection; loading untrusted shared libraries at runtime is outside v1.
+The API version is `kGlobalPlannerApiMajor == 2`. This is a source-level C++ contract. It is not a stable
+shared-library ABI across compilers. Lost Signal is under active development, so unreleased API versions are replaced
+directly rather than preserved through compatibility shims. The registry provides deterministic in-process
+selection; loading untrusted shared libraries at runtime is outside v2.
+
+The built-in planners share this result contract without sharing an algorithm. Grid A* searches an eight-connected
+2D cost map, emits forward segments, and derives the nominal body heading from the route tangent. Its final point
+inherits the incoming grid edge heading; it does not claim to satisfy `goal.heading_rad`. Hybrid A* searches position,
+heading, and gear under Ackermann curvature constraints. Its exact terminal anchor inherits the final searched
+state's heading and gear rather than replacing them with an unearned requested goal heading.
 
 ## Add a planner
 
@@ -56,8 +69,13 @@ class ThetaStarPlanner final : public autonomy::IGlobalPlanner {
  autonomy::GlobalPlan plan(
  const autonomy::GlobalPlannerRequest& request) const override {
  // Read request.map, request.start, request.goal, and
- // request.traversal_cost. Return owned path and diagnostics.
- return {{}, 0, false, "not-implemented"};
+ // request.traversal_cost. Return owned typed route points and diagnostics.
+ return {{
+ {request.start.position, request.start.heading_rad,
+ sim::TravelDirection::Unspecified},
+ {request.goal.position, request.goal.heading_rad,
+ sim::TravelDirection::Forward},
+ }, 1, true, {}};
  }
 };
 ```

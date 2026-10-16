@@ -44,7 +44,7 @@ int main() {
  // states. These cases used to read path[idx] before checking the bound.
  {
   sim::GridMap open(20, 20, 0.1);
-  std::vector<sim::Vec2> empty;
+ std::vector<sim::RoutePoint> empty;
   std::size_t empty_index = 0;
   sim::advance_wp(empty, empty_index, 0.0, 0.0, 0.0, 0.6, 1.0);
   CHECK(empty_index == 0);
@@ -56,10 +56,41 @@ int main() {
     sim::guide_step(empty, empty_state, 0.0, 0.0, 0.0, empty_pid, 1.0, 1.0, 0.02, open, sim::ChassisCaps{})
       .reached);
 
-  const std::vector<sim::Vec2> finished{{0.0, 0.0}};
+ const std::vector<sim::RoutePoint> finished{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified}};
   std::size_t terminal_index = finished.size();
   sim::advance_wp(finished, terminal_index, 0.0, 0.0, 0.0, 0.6, 1.0);
   CHECK(terminal_index == finished.size());
+ }
+
+ // Typed car paths preserve gear and keep lookahead on the current side of a
+ // forward/reverse cusp. Reverse steering follows signed bicycle kinematics.
+ {
+ sim::GridMap route_map(200, 200, 0.1);
+ const std::vector<sim::RoutePoint> cusp_path{
+ {{5.0, 5.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{6.0, 5.0}, 0.0, sim::TravelDirection::Forward},
+ {{7.0, 5.0}, 0.0, sim::TravelDirection::Forward},
+ {{6.0, 5.0}, 0.0, sim::TravelDirection::Reverse},
+ };
+ std::size_t route_index = 0;
+ auto section_end = sim::path_direction_section_end(cusp_path, route_index);
+ sim::advance_wp_until(cusp_path, route_index, section_end, 5.0, 5.0, 0.0, 0.55);
+ section_end = sim::path_direction_section_end(cusp_path, route_index);
+ const auto target =
+ sim::lookahead_pt_until(cusp_path, route_index, section_end, 5.0, 5.0, 10.0, route_map);
+ CHECK(target.x == 7.0 && target.y == 5.0);
+
+ const std::vector<sim::RoutePoint> reverse_path{
+ {{5.0, 5.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{3.0, 6.0}, 0.0, sim::TravelDirection::Reverse},
+ };
+ sim::GuideState reverse_state;
+ const auto reverse = sim::ackermann_guide_step(
+ reverse_path, reverse_state, 5.0, 5.0, 0.0, 2.0, 0.6,
+ 1.0, 1.0, 0.02, route_map);
+ CHECK(reverse.tv < 0.0);
+ CHECK(reverse.steer > 0.0);
  }
 
  // Straight: drive reaches target, steering stays centered.
@@ -74,7 +105,8 @@ int main() {
  CHECK(!car.telemetry().differential);
  CHECK(std::abs(car.telemetry().drive.pwm) <= 1.0);
 
- // Turn: steering takes an angle, yaw follows bicycle kinematics, limits hold.
+ // Turn: the SteeringAngle command reaches the servo unchanged, yaw follows
+ // bicycle kinematics, and limits hold.
  sim::AckermannDrive turning = make_car();
  sim::DiffState pose;
  for (int step = 0; step < 200; ++step) {
@@ -82,6 +114,7 @@ int main() {
  }
  CHECK(turning.steer_angle() > 0.1);
  CHECK(turning.steer_angle() <= 0.6);
+ CHECK(std::abs(turning.telemetry().steer.target_rad - 0.5) < 1e-12);
  CHECK(pose.w > 0.1);
  CHECK(pose.theta > 0.2);
  // Linkage output: left turn puts the larger angle on the left wheel, and
@@ -133,7 +166,9 @@ int main() {
  // a non-spinning one keeps reversing (ackermann recovery is steered reverse).
  {
   sim::GridMap corridor(200, 200, 0.1);
-  const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
+ const std::vector<sim::RoutePoint> path{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{10.0, 0.0}, 0.0, sim::TravelDirection::Forward}};
   sim::PID pid(2.0, 0.0, 0.0, 2.0, 1.0);
   sim::GuideState spin_state;
  sim::ChassisCaps spin;
@@ -168,17 +203,26 @@ int main() {
  // caps by lateral physics v <= sqrt(a_lat * leg / turn); a bend beyond the
  // window changes nothing; degenerate inputs never crash.
  {
-  const std::vector<sim::Vec2> straight{{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}};
+ const std::vector<sim::RoutePoint> straight{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{5.0, 0.0}, 0.0, sim::TravelDirection::Forward},
+ {{10.0, 0.0}, 0.0, sim::TravelDirection::Forward}};
   CHECK(sim::corner_speed_cap(straight, 0, 1.0, 3.0, 2.0) == 1.0);
   // 90-degree bend with a 0.3 m exit leg under a_lat 3: sqrt(3*0.3/1.5708).
-  const std::vector<sim::Vec2> bend{{0.0, 0.0}, {1.0, 0.0}, {1.0, 0.3}};
+ const std::vector<sim::RoutePoint> bend{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{1.0, 0.0}, 0.0, sim::TravelDirection::Forward},
+ {{1.0, 0.3}, sim::kPi * 0.5, sim::TravelDirection::Forward}};
   const double capped = sim::corner_speed_cap(bend, 0, 1.0, 3.0, 2.0);
   CHECK(capped < 1.0);
   CHECK(std::abs(capped - std::sqrt(3.0 * 0.3 / 1.5707963)) < 1e-6);
   // Same bend beyond the window: cruise untouched.
   CHECK(sim::corner_speed_cap(bend, 0, 1.0, 3.0, 0.5) == 1.0);
   // Gentle bend needs no slowdown: 0.2 rad over 2 m at a_lat 3 allows 5.5.
-  const std::vector<sim::Vec2> gentle{{0.0, 0.0}, {2.0, 0.0}, {4.0, 0.4}};
+ const std::vector<sim::RoutePoint> gentle{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{2.0, 0.0}, 0.0, sim::TravelDirection::Forward},
+ {{4.0, 0.4}, std::atan2(0.4, 2.0), sim::TravelDirection::Forward}};
   CHECK(sim::corner_speed_cap(gentle, 0, 1.0, 3.0, 5.0) == 1.0);
   CHECK(sim::corner_speed_cap(straight, 99, 1.0, 3.0, 2.0) == 1.0);
   CHECK(sim::corner_speed_cap({}, 0, 1.0, 3.0, 2.0) == 1.0);

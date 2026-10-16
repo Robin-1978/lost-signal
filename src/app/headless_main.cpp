@@ -239,7 +239,7 @@ int main(int argc, char** argv) {
  {"autonomous", mission.endless_mode()},
  {"dispatch_active", mission.field_dispatch().active},
  {"dispatch_completed", mission.field_dispatch().completed_count},
- {"route_points", mission.planned_path().size()},
+ {"route_points", mission.planned_route().size()},
  {"field_operator", {
  {"x", mission.field_operator().position.x},
  {"y", mission.field_operator().position.y},

@@ -38,6 +38,23 @@ Its core loop is:
 
 Apples are physical mission items with deterministic pickup radii and payload effects. Their score responds to measured impact, roll, and acceleration; decorative animation does not alter the result. The mode earns inclusion only if at least two builds produce visibly different, explainable strategies on the same seed.
 
+## Post-alpha work order
+
+The next work keeps product design ahead of technology expansion:
+
+1. **Orchard gameplay prototype:** prove multi-goal ordering, terrain choice, payload growth, and a useful comparison with simple authored geometry.
+2. **Orchard visual and audio pass:** after the loop is stable, build the distinctive orchard, materials, fruit feedback, weather, particles, landmarks, and state-driven sound around real simulation events.
+3. **Measured platform-fidelity slice:** use one planar LiDAR and one low-speed robot target to exercise the calibrated profile and actuator-provider design in [platform fidelity](platform-fidelity.md).
+4. **Broader sensors and autonomy:** add multi-line or solid-state LiDAR, SLAM, or VLA only when an authored learning question needs that observation or decision capability.
+
+Each step receives its own acceptance gate before the next begins. Sensor count and algorithm count are not
+substitutes for a refined, explainable experience.
+
+The [verification strategy](verification-strategy.md) is a continuous gate across all four steps. Contract
+correctness, mathematical invariants, independent oracles, deterministic system evidence, fault boundaries, and
+physical validation are accumulated in that order. An algorithm or interface correction may change an unreleased
+scenario outcome; the project keeps the correct model and then updates the lesson or content expectation.
+
 ## Stage 1 — Design and implement the flagship encounter
 
 Status: **complete**

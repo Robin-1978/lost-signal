@@ -1,11 +1,12 @@
 #pragma once
 #include "autonomy/mapping/grid_map.hpp"
+#include "autonomy/planning/path.hpp"
 
 #include <functional>
 #include <vector>
 namespace sim {
 struct AStarResult {
- std::vector<Vec2> path;
+ std::vector<RoutePoint> path;
  int expanded{0};
  bool ok{false};
 };

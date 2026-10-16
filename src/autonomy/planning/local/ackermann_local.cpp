@@ -25,8 +25,11 @@ DwaResult ackermann_local_compute(Vec2 position, double heading_rad, double curr
  return false;
  };
 
- for (double target_speed = -0.5; target_speed <= config.max_speed_mps + 1e-9;
+ const double reverse_limit = std::min(config.max_speed_mps, config.max_reverse_speed_mps);
+ for (double target_speed = -reverse_limit; target_speed <= config.max_speed_mps + 1e-9;
  target_speed += 0.25) {
+ if (config.preferred_direction == TravelDirection::Reverse && target_speed > 1e-9)
+ continue;
  if (std::abs(target_speed - current_speed_mps) >
  config.max_accel_mps2 * config.predict_time_s) {
  continue;
@@ -64,10 +67,16 @@ DwaResult ackermann_local_compute(Vec2 position, double heading_rad, double curr
  }
  const double goal_score = -std::hypot(goal.x - x, goal.y - y);
  const double goal_heading = std::atan2(goal.y - y, goal.x - x);
- const double heading_score = std::cos(wrap_angle(goal_heading - heading));
+ const bool moving_in_reverse = target_speed < -1e-9 ||
+ (std::abs(target_speed) <= 1e-9 && current_speed_mps < 0.0);
+ const double motion_heading = wrap_angle(heading + (moving_in_reverse ? kPi : 0.0));
+ const double heading_score = std::cos(wrap_angle(goal_heading - motion_heading));
  const double clearance_score = collision ? free_time : config.predict_time_s + 1.0;
+ const double progress_speed = config.preferred_direction == TravelDirection::Reverse
+ ? -target_speed
+ : target_speed;
  const double score = weights.w_goal * (goal_score + 0.7 * heading_score) +
- weights.w_clear * clearance_score + weights.w_speed * target_speed -
+ weights.w_clear * clearance_score + weights.w_speed * progress_speed -
  0.04 * std::abs(target_steer) - 0.02 * std::abs(target_steer - current_steer_rad);
  DwaCmd command{target_speed, target_steer, !collision, score};
  output.rollouts.push_back({command, points, collision});

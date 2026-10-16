@@ -69,12 +69,13 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  drive.target_mps = clamp(command.target_v, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  drive.measured_mps = encoder_measure(drive_wheel_, dt);
 
- // Curvature demand from the twist interface, then the servo position loop.
- // P-only by construction: a servo closes its own inner loop, the outer loop
- // only sets the angle demand.
- const double steer_demand =
-   steer_for_twist(command.target_w, drive.target_mps, params_.wheel_base_m, params_.max_steer_rad).delta_rad;
- servo.target_rad = clamp(steer_demand, -params_.max_steer_rad, params_.max_steer_rad);
+ // Ackermann's declared command space is SteeringAngle, so target_w carries
+ // the equivalent front-wheel angle at this internal compatibility boundary.
+ // Converting it from yaw rate here would change the command's meaning after
+ // LSRI validation and would make low-speed simulation disagree with a real
+ // position-controlled steering drive. The P-only outer loop sets that angle;
+ // a provider may map it to a servo's native position/current/PWM cascade.
+ servo.target_rad = clamp(command.target_w, -params_.max_steer_rad, params_.max_steer_rad);
  servo.pwm = servo_pid_.update(servo.target_rad - delta_rad_, dt);
  servo.pid_p = servo_pid_.p();
  const double rate_demand = clamp(servo.pwm * params_.max_steer_rate_radps, -params_.max_steer_rate_radps,

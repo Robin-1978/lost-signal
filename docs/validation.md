@@ -1,6 +1,8 @@
 # Validation guide
 
-Lost Signal treats a release as a reproducible set of source, content, and behavior checks. A green test suite supports the declared simulation scope; it does not certify physical-robot safety or sim-to-real accuracy.
+Lost Signal treats a release as a reproducible set of source, content, and behavior checks. A green test suite supports the declared simulation scope; it does not certify physical-robot safety or sim-to-real accuracy. The
+[verification strategy](verification-strategy.md) defines the contract, invariant, independent-oracle, deterministic,
+fault, and physical evidence required for stronger claims.
 
 ## Build profiles
 

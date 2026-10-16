@@ -75,7 +75,9 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  }
  ++result.expanded;
  const double goal_distance = std::hypot(goal.x - current.x, goal.y - current.y);
- if (goal_distance <= config.goal_position_tolerance_m &&
+ const bool exact_stationary_goal = node_index == 0 && goal_distance <= 1e-9;
+ if ((node_index != 0 || exact_stationary_goal) &&
+ goal_distance <= config.goal_position_tolerance_m &&
  std::abs(wrap_angle(goal_heading_rad - current.heading)) <= config.goal_heading_tolerance_rad) {
  goal_node = node_index;
  break;
@@ -138,12 +140,34 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  if (goal_node < 0)
  return result;
  result.ok = true;
- result.path.push_back(goal);
+ std::vector<Node> route_nodes;
  for (int index = goal_node; index >= 0; index = nodes[static_cast<std::size_t>(index)].parent) {
- const auto& node = nodes[static_cast<std::size_t>(index)];
- result.path.push_back({node.x, node.y});
+ route_nodes.push_back(nodes[static_cast<std::size_t>(index)]);
  }
- std::reverse(result.path.begin(), result.path.end());
+ std::reverse(route_nodes.begin(), route_nodes.end());
+ result.path.reserve(route_nodes.size() + 1);
+ for (std::size_t index = 0; index < route_nodes.size(); ++index) {
+ const auto& node = route_nodes[index];
+ result.path.push_back({
+ {node.x, node.y},
+ node.heading,
+ index == 0 ? TravelDirection::Unspecified
+ : (node.direction < 0 ? TravelDirection::Reverse : TravelDirection::Forward),
+ });
+ }
+ // Keep an exact endpoint for waypoint composition. The terminal anchor
+ // inherits the final searched state's body heading and gear; it must not
+ // invent the requested yaw as if the search had reached it exactly.
+ const TravelDirection terminal_direction = route_nodes.size() > 1
+ ? (route_nodes.back().direction < 0 ? TravelDirection::Reverse : TravelDirection::Forward)
+ : TravelDirection::Unspecified;
+ const double terminal_distance =
+ std::hypot(goal.x - route_nodes.back().x, goal.y - route_nodes.back().y);
+ if (terminal_distance > 1e-9) {
+ result.path.push_back({goal, route_nodes.back().heading, terminal_direction});
+ } else {
+ result.path.back().position = goal;
+ }
  return result;
 }
 

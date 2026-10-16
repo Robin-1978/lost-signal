@@ -58,9 +58,21 @@ body-class reflectivities are not calibrated material optics.
 
 `src/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
 
+Global planners share a canonical `RoutePoint` result rather than a geometry-only polyline. Position, nominal body heading,
+and arrival direction remain one value from planning through control. Grid A* still performs an eight-connected 2D
+search and emits forward segments; its heading is the geometric route tangent and its final point inherits the
+incoming edge heading. Hybrid A* remains the Ackermann default and preserves its searched heading and gear, including
+at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cusp instead of inferring gear from point geometry.
+
 The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy layer. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets, while `lost_signal_stack` is their small aggregate target.
 
 The planning pipeline produces a feasible body command. The selected chassis converts that command into wheel speed and steering targets. Motor controllers compare targets with quantized feedback and apply actuation to physics.
+
+For Ackermann platforms, the command is an equivalent front-wheel steering angle from the local planner through
+LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physical motor type, native drive command
+mode, controller placement, and mechanical load are separate platform concerns. The
+[platform-fidelity design](platform-fidelity.md) defines how a future native or HIL provider declares those
+capabilities without exposing PWM or device protocols to autonomy.
 
 ### Mission systems
 

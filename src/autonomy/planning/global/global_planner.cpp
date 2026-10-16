@@ -12,6 +12,21 @@ GlobalPlan adapt_plan(sim::AStarResult result) {
  return {std::move(result.path), result.expanded, result.ok, result.ok ? "" : "no-path"};
 }
 
+bool valid_route(const std::vector<sim::RoutePoint>& path) {
+ if (path.empty() || path.front().arrival_direction != sim::TravelDirection::Unspecified)
+ return false;
+ for (std::size_t index = 0; index < path.size(); ++index) {
+ const auto& point = path[index];
+ if (!std::isfinite(point.position.x) || !std::isfinite(point.position.y) ||
+ !std::isfinite(point.heading_rad)) {
+ return false;
+ }
+ if (index > 0 && point.arrival_direction == sim::TravelDirection::Unspecified)
+ return false;
+ }
+ return true;
+}
+
 } // namespace
 
 GlobalPlan AStarGlobalPlanner::plan(const GlobalPlannerRequest& request) const {
@@ -110,9 +125,16 @@ GlobalPlan GlobalPlanningSystem::plan(const sim::GridMap& map,
  result.diagnostic = segment.diagnostic.empty() ? "no-path" : std::move(segment.diagnostic);
  return result;
  }
- if (!result.path.empty() && !segment.path.empty() &&
- std::hypot(result.path.back().x - segment.path.front().x,
- result.path.back().y - segment.path.front().y) < 1e-9) {
+ if (!valid_route(segment.path)) {
+ result.ok = false;
+ result.path.clear();
+ result.diagnostic = "invalid-route-contract";
+ return result;
+ }
+ const bool remove_join = !result.path.empty() && !segment.path.empty() &&
+ std::hypot(result.path.back().position.x - segment.path.front().position.x,
+ result.path.back().position.y - segment.path.front().position.y) < 1e-9;
+ if (remove_join) {
  segment.path.erase(segment.path.begin());
  }
  result.path.insert(result.path.end(), segment.path.begin(), segment.path.end());

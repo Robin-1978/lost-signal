@@ -89,11 +89,11 @@ int main() {
  control_guard.set_manual_command(1.0, 1.0);
  for (int step = 0; step < 25; ++step)
  control_guard.step();
- CHECK(control_guard.planned_path().empty());
+ CHECK(control_guard.planned_route().empty());
  CHECK(control_guard.result().path_length_m < 1e-3);
  CHECK(control_guard.issue_field_intent(mission::FieldIntentKind::GoTo,
  sim::Vec2{6.0, 4.0}));
- CHECK(!control_guard.planned_path().empty());
+ CHECK(!control_guard.planned_route().empty());
  for (int step = 0; step < 150; ++step)
  control_guard.step();
  CHECK(control_guard.result().path_length_m > 0.05);
@@ -109,27 +109,27 @@ int main() {
  expedition.field_operator().home_position.x + 1.0);
 
  CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Follow));
- CHECK(!expedition.planned_path().empty());
+ CHECK(!expedition.planned_route().empty());
  CHECK(expedition.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
 
  CHECK(expedition.issue_field_intent(mission::FieldIntentKind::GoTo, sim::Vec2{6.0, 4.0}));
- CHECK(!expedition.planned_path().empty());
+ CHECK(!expedition.planned_route().empty());
  CHECK(expedition.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
 
  CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Search, sim::Vec2{7.0, 7.0}));
- CHECK(!expedition.planned_path().empty());
+ CHECK(!expedition.planned_route().empty());
  CHECK(expedition.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
 
  CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Wait));
- CHECK(expedition.planned_path().empty());
+ CHECK(expedition.planned_route().empty());
  CHECK(expedition.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
 
  CHECK(expedition.issue_field_intent(mission::FieldIntentKind::Return));
- CHECK(!expedition.planned_path().empty());
+ CHECK(!expedition.planned_route().empty());
  CHECK(expedition.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
 
@@ -156,7 +156,7 @@ int main() {
  CHECK(resumed.field_intent().kind == mission::FieldIntentKind::Return);
  CHECK(resumed.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Accepted);
- CHECK(!resumed.planned_path().empty());
+ CHECK(!resumed.planned_route().empty());
  std::filesystem::remove(save_path);
 
  return 0;

@@ -38,11 +38,24 @@ AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight
   r.expanded++;
   if (ux == gx && uy == gy) {
    r.ok = true;
+ std::vector<Vec2> positions;
    for (int cur = u; cur != -1; cur = parent[cur]) {
     int cx = cur % W, cy = cur / W;
-    r.path.push_back(cm.gridToWorld(cx, cy));
+ positions.push_back(cm.gridToWorld(cx, cy));
    }
-   std::reverse(r.path.begin(), r.path.end());
+ std::reverse(positions.begin(), positions.end());
+ r.path.reserve(positions.size());
+ for (std::size_t point = 0; point < positions.size(); ++point) {
+ const std::size_t heading_point = point + 1 < positions.size() ? point + 1 : point;
+ const std::size_t previous_point = point > 0 ? point - 1 : point;
+ const Vec2 delta{positions[heading_point].x - positions[previous_point].x,
+ positions[heading_point].y - positions[previous_point].y};
+ const double heading = std::hypot(delta.x, delta.y) > 1e-12
+ ? std::atan2(delta.y, delta.x)
+ : 0.0;
+ r.path.push_back({positions[point], heading,
+ point == 0 ? TravelDirection::Unspecified : TravelDirection::Forward});
+ }
    return r;
   }
   for (int k = 0; k < 8; k++) {

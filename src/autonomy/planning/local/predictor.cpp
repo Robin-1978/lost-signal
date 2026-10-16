@@ -536,7 +536,8 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
            {}};
   }
   route.push_back(start);
-  route.insert(route.end(), plan.path.begin(), plan.path.end());
+ for (const auto& point : plan.path)
+ route.push_back(point.position);
   route.push_back(pocket);
  }
  if (!exec.can_spin) {
@@ -709,7 +710,8 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
   const auto plan = astar_plan(inflated_map, pocket, merge, 1.0);
   if (plan.ok && !plan.path.empty()) {
    rejoin_pts.push_back(pocket);
-   rejoin_pts.insert(rejoin_pts.end(), plan.path.begin(), plan.path.end());
+ for (const auto& point : plan.path)
+ rejoin_pts.push_back(point.position);
    rejoin_pts.push_back(merge);
    rejoin_pts.insert(rejoin_pts.end(), route_suffix.begin(), route_suffix.end());
    rejoin_planned = true;

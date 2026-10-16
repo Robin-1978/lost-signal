@@ -42,6 +42,10 @@ per-material optical properties, and does not produce a multi-line 3D point clou
 reuse the same physics raycast and LSRI timestamp/frame contract when a concrete learning or hardware question
 requires it.
 
+The staged sensor profiles, multi-line and solid-state extension boundary, Ackermann control cascade, and separation
+of physical motor types from actuator command modes are specified in
+[platform fidelity and hardware adaptation](platform-fidelity.md).
+
 ## First hardware milestone: log and compare
 
 The first milestone should not command an unattended robot. It should make simulator and hardware evidence comparable.

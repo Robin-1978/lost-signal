@@ -14,7 +14,7 @@
 
 namespace autonomy {
 
-inline constexpr std::uint32_t kGlobalPlannerApiMajor = 1;
+inline constexpr std::uint32_t kGlobalPlannerApiMajor = 2;
 inline constexpr std::uint32_t kGlobalPlannerApiMinor = 0;
 
 struct PlanningPose {
@@ -30,7 +30,7 @@ struct GlobalPlannerRequest {
 };
 
 struct GlobalPlan {
- std::vector<sim::Vec2> path;
+ std::vector<sim::RoutePoint> path;
  int expanded{0};
  bool ok{false};
  std::string diagnostic;

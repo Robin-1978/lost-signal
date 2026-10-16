@@ -47,7 +47,7 @@ SteerSolution steer_for_twist(double target_w, double target_v, double wheel_bas
 double yaw_for_steer(double body_v, double delta_rad, double wheel_base_m);
 
 // Ackermann chassis: one drive motor (speed PID -> PWM -> DC force, same
-// physics as a differential wheel) plus one steering servo (position P loop ->
+// physics as a differential wheel) plus one steering servo (angle command -> position P loop ->
 // rate-limited first-order angle). Outputs differ from differential on purpose:
 // drive PWM + steer PWM/angle instead of two wheel PWMs. Bicycle kinematics
 // (w = v * tan(delta) / L) means no spinning at standstill.

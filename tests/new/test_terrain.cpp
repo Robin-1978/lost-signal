@@ -53,7 +53,7 @@ int main() {
  CHECK(route.ok);
  bool used_detour = false;
  for (const auto point : route.path) {
-  if (point.y < 1.0 || point.y >= 4.0) {
+ if (point.position.y < 1.0 || point.position.y >= 4.0) {
    used_detour = true;
   }
  }

@@ -9,6 +9,9 @@ struct DiffState {
  double lateral_v{0};
 };
 struct DiffCmd {
+ // Internal compatibility carrier. target_w is yaw rate for YawRate and
+ // HolonomicTwist chassis, and equivalent front-wheel steering angle for a
+ // SteeringAngle chassis. LSRI keeps these meanings in separate named fields.
  double target_v{0}, target_w{0};
  double target_lateral_v{0};
 };
