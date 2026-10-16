@@ -240,6 +240,12 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_compile_definitions(test_mission_simulation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
+ if(MSVC)
+ # This integration test constructs many full simulation worlds in one
+ # function. MSVC reserves their aggregate frame at entry, beyond its 1 MiB
+ # executable default, even though the worlds have disjoint lexical scopes.
+ target_link_options(test_mission_simulation PRIVATE /STACK:8388608)
+ endif()
  add_test(NAME mission_simulation COMMAND test_mission_simulation)
 
  add_executable(test_dynamic_perception tests/new/test_dynamic_perception.cpp)

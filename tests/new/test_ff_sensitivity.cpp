@@ -466,6 +466,12 @@ int main() {
  // Recorded traces: full pinned finale run.
  game::MissionSimulation mission(catalog, "lost_signal", build);
  mission.run_to_completion();
+ if (mission.result().status != game::MissionStatus::Succeeded) {
+ std::cerr << "recording mission failed: reason=" << mission.result().failure_reason
+ << " time=" << mission.result().time_s
+ << " collisions=" << mission.result().collisions
+ << " clearance=" << mission.result().min_dynamic_clearance_m << '\n';
+ }
  CHECK(mission.result().status == game::MissionStatus::Succeeded);
  std::vector<TraceFrame> frames;
  std::vector<MirrorGround> grounds;

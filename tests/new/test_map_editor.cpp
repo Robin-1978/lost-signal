@@ -178,6 +178,7 @@ int main() {
   std::ifstream file(map_path);
   std::ostringstream on_disk;
   on_disk << file.rdbuf();
+ file.close();
   const auto reloaded = game::ContentCatalog::load(scratch.string());
   CHECK(on_disk.str() == game::serialize_map_canonical(reloaded.map("research_base")));
   const auto moved = reloaded.map("research_base").markers.find("robot_bay");
