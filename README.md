@@ -12,7 +12,7 @@ The current release is a `v0.1.0-alpha` source preview. The simulation core, Lin
 
 - **Autonomy is the game mechanic.** A*, Hybrid A*, DWA, dynamic-object prediction, kinematic conversion, motor control, and PID feedback determine what RO-1 actually does.
 - **The robot's reasoning is visible.** Switch between the field view and the AI view to inspect LiDAR returns, estimated pose, global paths, local trajectory candidates, terrain costs, wheel targets, encoder feedback, and PWM output from the same simulation snapshot.
-- **Failure produces evidence.** Slippery surfaces, slopes, occlusion, delayed sensors, and moving forklifts create causal events that can be replayed and tested by changing one variable at a time.
+- **Failure produces evidence.** Slippery surfaces, slopes, occlusion, sensor noise, missing returns, and moving forklifts create causal events that can be replayed and tested by changing one variable at a time.
 - **Five chassis families have distinct behavior.** Differential, tracked, Ackermann, swerve, and mecanum drives use their own feasible-motion contracts, controllers, and actuator mappings.
 - **Experiments are reproducible.** Fixed timesteps, seeded scenarios, JSON headless output, schemas, and automated tests support classes, algorithm comparisons, and community contributions.
 - **Content is data-driven.** Missions, maps, scenes, robots, hardware, policies, story beats, presentation, and UI text load from `assets/`.
