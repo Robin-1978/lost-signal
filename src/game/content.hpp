@@ -273,7 +273,7 @@ struct LevelDefinition {
  ObjectiveDefinition objective;
  int budget{0};
  std::vector<std::string> required_slots;
- std::string concept;
+ std::string concept_id;
  std::string prediction_prompt;
  std::string knowledge_card;
  double safe_min_clearance_m{0.0};

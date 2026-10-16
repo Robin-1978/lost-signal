@@ -5,6 +5,7 @@
 
 #include "algo/estimator_filter.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>

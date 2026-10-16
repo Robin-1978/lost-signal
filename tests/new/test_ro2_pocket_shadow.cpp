@@ -15,6 +15,7 @@
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/motor_drive.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>

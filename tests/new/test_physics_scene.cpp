@@ -2,6 +2,7 @@
 #include "game/physics_scene.hpp"
 #include "physics/physics_world.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 

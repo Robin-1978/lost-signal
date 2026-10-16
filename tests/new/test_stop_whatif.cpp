@@ -8,6 +8,7 @@
 #include "game/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>

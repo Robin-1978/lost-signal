@@ -8,6 +8,7 @@
 #include "game/content_catalog.hpp"
 #include "game/mission_simulation.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iostream>

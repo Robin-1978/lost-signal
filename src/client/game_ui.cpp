@@ -652,7 +652,7 @@ void GameUi::build_debrief(const game::MissionSimulation* mission) {
  std::string metrics =
    catalog_.trf("debrief.metrics", {format_number(result.time_s), format_number(result.path_length_m),
                                     format_number(result.energy_wh, 2)});
- metrics += mission->level().concept == "odometry_drift"
+ metrics += mission->level().concept_id == "odometry_drift"
               ? catalog_.trf("debrief.metrics_odom", {format_number(result.max_odometry_error_m, 2)})
               : catalog_.trf("debrief.metrics_clear", {format_number(result.scored_clearance_m, 2)});
  add_label(metrics, kMargin, 207, kContentWidth, 16, {182, 190, 186});

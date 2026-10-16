@@ -19,6 +19,7 @@
 
 #include "algo/predictor.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -42,6 +43,7 @@ constexpr double kEgoRadiusM = 0.38;
 constexpr double kThreatRadiusM = 0.4;
 constexpr double kMarginM = 0.5;
 constexpr double kMissTimeS = 0.5;
+constexpr double kPi = 3.14159265358979323846;
 
 struct ReplayResult {
  bool reached{false};
@@ -115,7 +117,9 @@ ReplayResult run_replay(const std::vector<sim::Vec2>& path, sim::Vec2 threat_p0,
  // Execution noise: deterministic lateral weave on the TRUE ego positions
  // only. Planning (remaining path, departure) stays blind to it — exactly
  // the separation the joint gate requires. Zero by default (nominal runs).
- auto weave = [&](double t) { return noise_amp_m * std::sin(2.0 * M_PI * t / 2.0); };
+ auto weave = [&](double t) {
+ return noise_amp_m * std::sin(2.0 * kPi * t / 2.0);
+ };
  for (int cycle = 0; cycle < 600 && ego_s < total - 1e-9; ++cycle) {
   const auto remaining = path_suffix(path, ego_s);
   std::vector<std::vector<sim::DynState>> predicted;

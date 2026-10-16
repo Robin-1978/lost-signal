@@ -3,6 +3,7 @@
 #include "game/content_catalog.hpp"
 #include "game/map_serialize.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 

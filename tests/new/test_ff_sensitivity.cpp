@@ -17,6 +17,7 @@
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/feedforward.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iostream>

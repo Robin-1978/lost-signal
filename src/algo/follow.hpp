@@ -3,6 +3,7 @@
 #include "grid_map.hpp"
 #include "pid.hpp"
 #include "hw/chassis/caps.hpp"
+#include <algorithm>
 #include <vector>
 #include <cmath>
 // Shared path following: lookahead-Ld pure pursuit, corner speed scheduling, and reverse hysteresis.

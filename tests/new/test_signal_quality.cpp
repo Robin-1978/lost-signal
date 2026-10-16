@@ -9,6 +9,7 @@
 #include "game/mission_simulation.hpp"
 #include "hw/chassis/diff_drive.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>

@@ -1,5 +1,6 @@
 #pragma once
 #include "math.hpp"
+#include <algorithm>
 #include <vector>
 #include <cmath>
 #include <cstdint>

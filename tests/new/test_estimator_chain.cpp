@@ -10,6 +10,7 @@
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/chassis/tracked.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>

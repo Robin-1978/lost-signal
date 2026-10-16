@@ -298,7 +298,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   }
   level.budget = loadout.at("budget").get<int>();
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
-  level.concept = teaching.at("concept").get<std::string>();
+ level.concept_id = teaching.at("concept").get<std::string>();
   level.prediction_prompt = teaching.at("prediction_prompt").get<std::string>();
   level.knowledge_card = teaching.at("knowledge_card").get<std::string>();
   level.safe_min_clearance_m = score.at("safe_min_clearance_m").get<double>();

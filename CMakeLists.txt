@@ -55,6 +55,8 @@ set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
 set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(INSTALL_LIBS OFF CACHE BOOL "" FORCE)
 set(USE_DOUBLE_PRECISION ON CACHE BOOL "" FORCE)
+# Bullet 3.25 declares compatibility with policies older than CMake 4 accepts.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_Declare(
  bullet
  URL https://github.com/bulletphysics/bullet3/archive/refs/tags/3.25.tar.gz
