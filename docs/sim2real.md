@@ -2,7 +2,7 @@
 
 ## Assessment
 
-Lost Signal is **not yet a demonstrated sim-to-real system**. It has an architecture that can support sim-to-real work: SI units, explicit frames, timestamped observations, hardware-like sensor packets, chassis capability contracts, actuator telemetry, a physics boundary, deterministic replay, and headless comparison. No target robot has completed a calibrated closed-loop mission with simulator-to-hardware error measurements, so transfer remains an engineering hypothesis.
+Lost Signal is **not yet a demonstrated sim-to-real system**. It now has a versioned, middleware-neutral [runtime interface](runtime-interface.md) plus SI units, explicit frames, timestamped observations, chassis capability contracts, actuator telemetry, deterministic replay, and headless comparison. No target robot has completed a calibrated closed-loop mission with simulator-to-hardware error measurements, so transfer remains an engineering hypothesis.
 
 That distinction matters. A realistic renderer or a Bullet vehicle does not prove transfer. Evidence begins when the same command and observation contracts run against real hardware and recorded logs can be compared with the simulator.
 
@@ -24,7 +24,7 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 The largest current gaps are measurable:
 
-- no hardware transport or ROS 2 adapter;
+- no native hardware driver or optional middleware bridge;
 - no target robot URDF or calibrated mass, inertia, center of gravity, wheel radius, steering geometry, or actuator curve;
 - no measured command, sensor, network, and clock latency distribution;
 - no real LiDAR, IMU, or encoder logs for bias, covariance, dropout, and motion-distortion fitting;
@@ -50,9 +50,9 @@ Passing this milestone means the simulator predicts selected low-speed behavior 
 
 ## Staged evidence gates
 
-### Gate 1: interface parity
+### Gate 1: LSRI parity
 
-The hardware adapter exposes the same units, frame semantics, timestamps, command limits, and state fields used by simulation. Unit, sign, transform, and stale-data tests pass.
+The hardware adapter implements LSRI v1 with the same units, frame semantics, timestamps, sequence rules, command limits, lifecycle, watchdog, and state fields used by simulation. Unit, sign, transform, stale-data, and conformance tests pass.
 
 ### Gate 2: component identification
 
@@ -72,7 +72,7 @@ Previously unseen routes and perturbations are evaluated. Reports include failur
 
 ## Why the current architecture is useful
 
-The project avoids several common dead ends. Algorithms receive sensor-like observations instead of direct actor truth. Sampling time and delivery time are distinct. Transform frames and sensor extrinsics are explicit. Chassis feasibility reaches both planning and actuation. Headless runs expose stable JSON for comparison. Physics, observation, estimation, autonomy, and presentation have identifiable boundaries.
+The project avoids several common dead ends. Algorithms receive sensor-like observations instead of direct actor truth. Sampling time and delivery time are distinct. Transform frames and sensor extrinsics are explicit. Chassis feasibility reaches both planning and actuation. LSRI rejects incompatible and expired commands. Headless runs expose stable JSON for comparison. Physics, observation, estimation, autonomy, and presentation have identifiable boundaries.
 
 Those properties reduce adapter work and make discrepancies observable. They do not remove the reality gap, but they turn it into a list of measurements rather than a vague promise.
 
@@ -82,7 +82,7 @@ The implementation and roadmap use public conventions and simulator practices as
 
 - [ROS REP-103](https://www.ros.org/reps/rep-0103.html) standardizes SI units and coordinate conventions.
 - [ROS REP-105](https://www.ros.org/reps/rep-0105.html) defines the `map`, `odom`, and `base_link` relationship used by mobile robots.
-- [ros2_control hardware interfaces](https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html) separate command and state interfaces, a useful model for a future adapter.
+- [ros2_control hardware interfaces](https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html) are a useful target for an optional LSRI bridge, not a core dependency.
 - [CARLA sensor reference](https://carla.readthedocs.io/en/latest/ref_sensors/) exposes sensor rate, bias, standard deviation, and seed parameters; Lost Signal follows the same principle of explicit observation configuration.
 - [Gazebo sensor documentation](https://gazebosim.org/docs/harmonic/sensors/) provides a mature comparison point for simulated sensor systems.
 - [Webots tutorials](https://cyberbotics.com/doc/guide/tutorials) demonstrate controller development across simulated robot and sensor interfaces.

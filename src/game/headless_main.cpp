@@ -98,12 +98,25 @@ int main(int argc, char** argv) {
  mission.run_to_completion();
  }
   const auto& result = mission.result();
+ const auto runtime_health = mission.runtime_health();
 
   if (json_output) {
    nlohmann::json output = {
      {"level", level_id},
      {"seed", mission.effective_seed()},
  {"physics_backend", mission.physics_backend_name()},
+ {"runtime",
+ {
+ {"interface", "lsri"},
+ {"api_version", mission.runtime_api_version()},
+ {"provider", mission.runtime_provider_id()},
+ {"state", sim::runtime::lifecycle_state_name(mission.runtime_state())},
+ {"health", sim::runtime::health_level_name(runtime_health.level)},
+ {"dropped_observations", runtime_health.dropped_observations},
+ {"rejected_observations", runtime_health.rejected_observations},
+ {"rejected_commands", runtime_health.rejected_commands},
+ {"watchdog_stops", runtime_health.watchdog_stops},
+ }},
      {"bullet_available", sim::physics::bullet_physics_available()},
      {"status", game::mission_status_name(result.status)},
      {"failure_reason", result.failure_reason},
@@ -209,7 +222,7 @@ int main(int argc, char** argv) {
              << "  path=" << result.path_length_m << "m"
              << "  energy=" << result.energy_wh << "Wh"
              << " clearance=" << result.min_clearance_m << "m"
- << " physics=" << mission.physics_backend_name()
+ << " physics=" << mission.physics_backend_name() << " runtime=" << mission.runtime_provider_id()
              << " z=" << mission.snapshot().robot_height_m << "m"
              << " roll=" << mission.snapshot().robot_roll_rad << "rad"
              << " pitch=" << mission.snapshot().robot_pitch_rad << "rad"

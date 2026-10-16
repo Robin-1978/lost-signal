@@ -301,7 +301,7 @@ sim::Scan PhysicsScene::raycast_lidar(const sim::physics::RigidTransform& world_
  scan.angle_increment_rad = 2.0 * sim::kPi / static_cast<double>(rays);
  scan.scan_period_s = scan_period_s;
  scan.time_increment_s = scan_period_s > 0.0 ? scan_period_s / static_cast<double>(rays) : 0.0;
- scan.header = {timestamp_s, 0, lidar_frame_id_, 0.0};
+ scan.header = {timestamp_s, 0, lidar_frame_id_, 0.0, 1, "sim.physics.lidar"};
  scan.ranges.reserve(static_cast<std::size_t>(rays));
  scan.hit.reserve(static_cast<std::size_t>(rays));
  scan.intensities.reserve(static_cast<std::size_t>(rays));

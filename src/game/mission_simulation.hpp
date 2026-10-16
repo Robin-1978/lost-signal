@@ -30,6 +30,7 @@
 #include "hw/chassis/motor_drive.hpp"
 #include "algo/pid.hpp"
 #include "hw/sensors/sensor.hpp"
+#include "runtime/runtime_channel.hpp"
 
 #include <map>
 #include <cstdint>
@@ -258,7 +259,9 @@ class MissionSimulation {
  std::shared_ptr<const IPathPlanner> path_planner = {},
  PhysicsMode physics_mode = PhysicsMode::Bullet,
  std::shared_ptr<sim::IHighLevelPolicy> high_level_policy = {},
- std::string contract_id = {});
+ std::string contract_id = {},
+ std::string runtime_provider_id = "channel.in-process",
+ sim::runtime::RuntimeRegistry runtime_registry = sim::runtime::RuntimeRegistry::with_builtins());
 
  void reset();
  void start();
@@ -312,6 +315,14 @@ class MissionSimulation {
  int slip_episodes() const { return slip_detector_.episodes(); }
  const std::vector<double>& slip_episode_times() const { return slip_episode_times_; }
  const char* physics_backend_name() const;
+ const std::string& runtime_provider_id() const { return runtime_provider_id_; }
+ std::uint32_t runtime_api_version() const { return sim::runtime::kApiVersion; }
+ sim::runtime::LifecycleState runtime_state() const {
+ return runtime_channel_ ? runtime_channel_->state() : sim::runtime::LifecycleState::Unconfigured;
+ }
+ sim::runtime::RuntimeHealth runtime_health() const {
+ return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
+ }
  const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
  const ContractJob* active_contract() const { return active_contract_; }
  PhysicsMode physics_mode() const { return physics_mode_; }
@@ -355,6 +366,8 @@ class MissionSimulation {
  const RobotDefinition& robot_definition_;
  PhysicsMode requested_physics_mode_{PhysicsMode::Bullet};
  PhysicsMode physics_mode_{PhysicsMode::Bullet};
+ sim::runtime::RuntimeRegistry runtime_registry_;
+ std::string runtime_provider_id_;
  // Content is converted once into validated, unit-bearing runtime contracts.
  // BuildSelection remains the stable map used by saves and player packs.
  ResolvedBuild resolved_build_;
@@ -371,6 +384,7 @@ class MissionSimulation {
  std::unique_ptr<sim::GridMap> planning_map_;
  std::unique_ptr<sim::DiffDrive> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
+ std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
  std::unique_ptr<ControlSystem> control_system_;
  double heading_kp_{0.0};
  // Yaw-rate capability used by DWA/manual/clamps. Diff: DiffDrive w_max.
@@ -463,6 +477,7 @@ class MissionSimulation {
  std::string last_event_code_;
  std::uint64_t motion_sequence_{0};
  std::uint64_t imu_sequence_{0};
+ std::uint64_t command_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;
 };

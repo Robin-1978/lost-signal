@@ -13,6 +13,7 @@ Notable changes to Lost Signal are recorded here. The format follows [Keep a Cha
 - Terrain-aware planning, slope and rollover risk, LiDAR/IMU/encoder observation models, and Bullet-backed vehicle motion.
 - AI inspection layers for elevation, slope, vehicle risk, and final navigation cost.
 - Deterministic headless execution, JSON output, and cross-platform CI.
+- Lost Signal Runtime Interface v1 for versioned, pluggable simulation, replay, native hardware, and optional middleware bridges.
 - Eight main missions, contracts, experiments, story beats, and data-driven presentations.
 
 ### Changed

@@ -12,9 +12,11 @@ graph TD
  D --> E[Chassis-feasible command]
  E --> F[Kinematics and actuator targets]
  F --> G[Motor control and PID]
- G --> H[Bullet or deterministic physics]
+ G --> R[LSRI motion port]
+ R --> H[Bullet or deterministic physics]
  H --> I[LiDAR, IMU, encoders, contacts]
- I --> J[State estimation and tracking]
+ I --> O[LSRI observation port]
+ O --> J[State estimation and tracking]
  J --> C
  J --> K[Immutable simulation snapshot]
  K --> L[3D field view]
@@ -22,9 +24,15 @@ graph TD
  K --> N[Headless JSON and replay]
 ```
 
-The player affects `A`. Autonomous code owns `B` through `G`. Sensors observe `H`, and presentation reads `K` without changing the simulation.
+The player affects `A`. Autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform boundary. Sensors observe `H`, and presentation reads `K` without changing the simulation.
 
 ## Layer responsibilities
+
+### Runtime boundary
+
+The [Lost Signal Runtime Interface](runtime-interface.md) is the middleware-neutral robot boundary. Its autonomy port reads validated observations and writes expiring motion commands. Its platform port is implemented by the in-process simulator today and can be implemented by replay, a native hardware driver, or an optional bridge.
+
+LSRI is a project standard rather than a ROS 2 API. Core libraries contain no ROS, DDS, executor, discovery, or ros2_control dependency. A bridge translates at the edge when integration with that ecosystem is useful.
 
 ### Content
 
@@ -69,7 +77,7 @@ The most important extension boundaries are:
 - `IPathPlanner` for global planning;
 - `IHighLevelPolicy` for behavior selection;
 - `ChassisModel` plus `ChassisCaps` for feasible motion and actuator telemetry;
-- sensor packets and transform frames for observation delivery;
+- LSRI v1 ports, sensor packets, transform frames, lifecycle, and watchdog semantics;
 - immutable snapshots for rendering, replay, and external observation.
 
 These are useful sim-to-real seams because a hardware adapter can replace actuation and observation while keeping high-level logic testable. The seams do not eliminate the need for calibration, timing, safety, and hardware evidence.

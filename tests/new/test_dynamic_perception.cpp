@@ -38,7 +38,7 @@ int main() {
  CHECK(visible.hit[0]);
  CHECK(std::abs(visible.ranges[0] - 3.5) < 1e-9);
  auto ideal = visible;
- ideal.header = {1.25, 9, "lidar_link", 0.02};
+ ideal.header = {1.25, 9, "lidar_link", 0.02, 1, "test.lidar"};
  sim::Rng noise_a(99);
  sim::Rng noise_b(99);
  const auto noisy_a = sim::apply_lidar_noise(ideal, 0.05, noise_a);

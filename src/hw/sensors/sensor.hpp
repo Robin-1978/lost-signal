@@ -43,12 +43,19 @@ struct Rng {
 // Header shared by every simulated or hardware measurement. stamp_s is the
 // acquisition time in the simulation/robot monotonic clock; latency_s is the
 // known delivery delay. sequence is per sensor stream and frame_id names the
-// calibrated TF frame. Transport adapters may map this directly to ROS 2.
+// calibrated TF frame. Optional bridges may translate this contract to ROS 2
+// or another middleware without making that middleware a core dependency.
 struct MeasurementHeader {
  double stamp_s{0.0};
  std::uint64_t sequence{0};
  std::string frame_id;
  double latency_s{0.0};
+ // Version and source identity make the observation contract safe to bridge
+ // across an in-process simulator, native device driver, replay, or IPC.
+ // They trail the legacy fields so existing four-field aggregate initializers
+ // keep their meaning.
+ std::uint32_t schema_version{1};
+ std::string source_id;
 };
 
 struct Scan {

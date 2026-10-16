@@ -132,13 +132,15 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
                                      const ComponentRegistry& component_registry,
  std::shared_ptr<const IPathPlanner> path_planner, PhysicsMode physics_mode,
  std::shared_ptr<sim::IHighLevelPolicy> high_level_policy,
- std::string contract_id)
+ std::string contract_id, std::string runtime_provider_id,
+ sim::runtime::RuntimeRegistry runtime_registry)
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
       seed_override_(seed_override), level_(catalog_.level(level_id_)),
       map_definition_(catalog_.map(level_.map)),
       robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_, build_))),
  requested_physics_mode_(physics_mode),
  physics_mode_(physics_mode == PhysicsMode::Auto ? PhysicsMode::Bullet : physics_mode),
+ runtime_registry_(std::move(runtime_registry)), runtime_provider_id_(std::move(runtime_provider_id)),
       behavior_(catalog_.style_behavior(build_.style)), estimation_system_(effective_seed() ^ 0x6a09e667U),
  planning_system_(path_planner ? path_planner : default_path_planner()),
  custom_path_planner_(static_cast<bool>(path_planner)),
@@ -166,6 +168,9 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
 }
 
 void MissionSimulation::reset() {
+ if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
+ runtime_channel_->deactivate();
+ }
  imu_rng_ = sim::Rng(effective_seed() ^ 0x51ed2707U);
  imu_accel_rng_ = sim::Rng(effective_seed() ^ 0xa54ff53aU);
  imu_bias_walk_rng_ = sim::Rng(effective_seed() ^ 0x3c6ef372U);
@@ -194,6 +199,7 @@ void MissionSimulation::reset() {
  next_replay_s_ = 0.0;
  motion_sequence_ = 0;
  imu_sequence_ = 0;
+ command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  governor_state_ = {};
@@ -404,6 +410,19 @@ void MissionSimulation::build_world() {
  chassis_ = std::move(built.model);
  chassis_caps_ = chassis_->caps();
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
+
+ // LSRI composition root. The mission uses both ends because it contains the
+ // simulator and the autonomy loop in one process. A hardware runner gives
+ // the platform end to a native driver or bridge instead.
+ sim::runtime::RuntimeChannelConfig runtime_config;
+ runtime_config.instance_id = robot_definition_.id;
+ runtime_config.capabilities.chassis = chassis_caps_;
+ runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
+ runtime_config.capabilities.max_lateral_speed_mps =
+ chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
+ runtime_config.maximum_command_ttl_s = 0.25;
+ runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
+ runtime_channel_->configure();
  if (!custom_path_planner_) {
  planning_system_ = PlanningSystem(
  chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle
@@ -520,6 +539,10 @@ void MissionSimulation::start() {
  if (snapshot_.status != MissionStatus::Ready) {
   return;
  }
+ if (!runtime_channel_ || runtime_channel_->state() != sim::runtime::LifecycleState::Inactive) {
+ throw std::logic_error("mission runtime channel is not ready for activation");
+ }
+ runtime_channel_->activate();
  snapshot_.status = MissionStatus::Running;
  result_.status = MissionStatus::Running;
  if (endless_mode_)
@@ -859,13 +882,22 @@ void MissionSimulation::scan_environment() {
  lidar_config.yaw_in_base_rad = mount->rotation_deg.z * sim::kPi / 180.0;
  }
  }
- const auto observation = physics_scene_
+ auto produced_observation = physics_scene_
  ? sensor_system_->capture_lidar(
  truth, snapshot_.time_s, lidar_config,
  physics_scene_->scan_lidar(sensor->rays, lidar_config.range_m,
  estimation_system_.state().position, estimation_system_.state().heading_rad,
  snapshot_.time_s, 1.0 / sensor->scan_hz))
  : sensor_system_->capture_lidar(truth, snapshot_.time_s, lidar_config);
+ if (!runtime_channel_ ||
+ !runtime_channel_->platform().publish_observation(std::move(produced_observation))) {
+ throw std::runtime_error("runtime channel rejected the simulated lidar observation");
+ }
+ const auto delivered_observation = runtime_channel_->autonomy().read_observation();
+ if (!delivered_observation) {
+ throw std::runtime_error("runtime channel did not deliver the simulated lidar observation");
+ }
+ const auto& observation = *delivered_observation;
  if (observation.absolute_pose) {
   estimation_system_.correct(*observation.absolute_pose, observation.time_s);
   snapshot_.estimated_position = estimation_system_.state().position;
@@ -1556,8 +1588,20 @@ void MissionSimulation::decide_control() {
 }
 
 void MissionSimulation::apply_motion() {
- snapshot_.control.target_v_mps = held_command_.target_v;
- snapshot_.control.target_w_radps = held_command_.target_w;
+ if (!runtime_channel_) {
+ throw std::logic_error("mission has no active runtime channel");
+ }
+ const auto runtime_now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
+ const auto outbound_command = sim::runtime::make_motion_command(held_command_, chassis_caps_, runtime_now,
+ command_sequence_++, fixed_step_s * 2.0);
+ if (runtime_channel_->autonomy().write_motion(outbound_command) !=
+ sim::runtime::CommandWriteResult::Accepted) {
+ throw std::runtime_error("runtime channel rejected the autonomous motion command");
+ }
+ const sim::DiffCmd applied_command =
+ sim::runtime::to_diff_command(runtime_channel_->platform().read_motion(runtime_now));
+ snapshot_.control.target_v_mps = applied_command.target_v;
+ snapshot_.control.target_w_radps = applied_command.target_w;
  // NOTE (FF verdict): a shadow feedforward computation lived here in stage 3
  // and was removed when stage 4 measured net-negative tracking benefit with
  // saturation up. The pure mapping (src/hw/feedforward.*) and its evidence
@@ -1565,14 +1609,14 @@ void MissionSimulation::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
- auto domain_candidate = chassis_->step(before, held_command_, fixed_step_s, ground_contact);
+ auto domain_candidate = chassis_->step(before, applied_command, fixed_step_s, ground_contact);
  const auto terrain_before = terrain_.sample({before.x, before.y});
  const double forward_grade = sim::longitudinal_grade(terrain_before, before.theta);
  if (!terrain_.empty()) {
   const double grade_accel = -9.81 * forward_grade / std::sqrt(1.0 + forward_grade * forward_grade);
  domain_candidate.v += grade_accel * fixed_step_s;
-  const bool commanding_uphill = held_command_.target_v * forward_grade > 0.0;
- const bool gravity_reversed_motion = domain_candidate.v * held_command_.target_v < 0.0;
+ const bool commanding_uphill = applied_command.target_v * forward_grade > 0.0;
+ const bool gravity_reversed_motion = domain_candidate.v * applied_command.target_v < 0.0;
   if (commanding_uphill && gravity_reversed_motion && std::abs(before.v) < 0.08) {
  domain_candidate.v = 0.0;
   }
@@ -1824,7 +1868,7 @@ void MissionSimulation::apply_motion() {
  motion_observation.encoders->angular_velocity_radps = encoder_w;
  motion_observation.encoders->slip_scale = slip;
  motion_observation.encoders->header =
- {motion_observation.time_s, motion_sequence_++, "base_link", 0.0};
+ {motion_observation.time_s, motion_sequence_++, "base_link", 0.0, 1, "sim.encoder"};
  if (imu) {
  motion_observation.imu.emplace();
  motion_observation.imu->yaw_rate_radps = gyro_rate;
@@ -1838,14 +1882,23 @@ void MissionSimulation::apply_motion() {
  motion_observation.imu->noise_sigma_radps = gyro_sigma;
  motion_observation.imu->acceleration_noise_sigma_mps2 = imu->accel_noise_mps2;
  motion_observation.imu->header =
- {motion_observation.time_s, imu_sequence_++, "imu_link", 0.0};
+ {motion_observation.time_s, imu_sequence_++, "imu_link", 0.0, 1, "sim.imu"};
  }
- estimation_system_.update(motion_observation, fixed_step_s);
  if (level_.localization_mode == "fused" && sensor_system_) {
   sim::WorldTruth truth;
   truth.robot = candidate;
- const auto pose_observation = sensor_system_->capture_pose(truth, motion_observation.time_s);
-  estimation_system_.correct(pose_observation, motion_observation.time_s);
+ motion_observation.absolute_pose = sensor_system_->capture_pose(truth, motion_observation.time_s);
+ }
+ if (!runtime_channel_->platform().publish_observation(std::move(motion_observation))) {
+ throw std::runtime_error("runtime channel rejected the simulated motion observation");
+ }
+ const auto delivered_motion = runtime_channel_->autonomy().read_observation();
+ if (!delivered_motion) {
+ throw std::runtime_error("runtime channel did not deliver the simulated motion observation");
+ }
+ estimation_system_.update(*delivered_motion, fixed_step_s);
+ if (delivered_motion->absolute_pose) {
+ estimation_system_.correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
  }
  snapshot_.estimated_position = estimation_system_.state().position;
  snapshot_.estimated_heading = estimation_system_.state().heading_rad;
@@ -1925,6 +1978,9 @@ void MissionSimulation::finish_success() {
  result_.efficient_score = result_.energy_wh <= level_.efficient_energy_wh;
  record_event("mission-complete", catalog_.trf("event.mission_complete", {level_.objective.goal_label}));
  record_replay();
+ if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
+ runtime_channel_->deactivate();
+ }
 }
 
 void MissionSimulation::finish_failure(std::string reason, std::string message) {
@@ -1958,6 +2014,9 @@ void MissionSimulation::finish_failure(std::string reason, std::string message) 
  result_.efficient_score = false;
  record_event(result_.failure_reason, std::move(message));
  record_replay();
+ if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
+ runtime_channel_->deactivate();
+ }
 }
 
 void MissionSimulation::record_event(std::string code, std::string message, double throttle_s) {

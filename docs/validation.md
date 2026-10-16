@@ -79,11 +79,11 @@ Results for the initial public `main` release candidate, tested on Linux x86_64 
 - Locale validation: passed; 1,182 entries checked and 1,177 required English translations present
 - Python content, round-trip, contract, and playtest tests: passed
 - Level and contract generator checks: up to date
-- Headless build and CTest: passed; 54/54 tests
-- Graphical build and CTest: passed; 54/54 tests
+- Headless build and CTest: passed; 55/55 tests
+- Graphical build and CTest: passed; 55/55 tests
 - Graphical smoke run: passed under Xvfb
 - Recommended `lost_signal` mission: succeeded with seed 47 on Bullet in 136.20 simulated seconds, with zero collisions
-- Sanitizers: passed locally; 54/54 tests under AddressSanitizer and UndefinedBehaviorSanitizer
+- Sanitizers: passed locally; 55/55 tests under AddressSanitizer and UndefinedBehaviorSanitizer
 - Physical hardware: not tested
 
 ## Limits of the evidence

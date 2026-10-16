@@ -148,7 +148,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
    config.rays, config.range_m, truth.dynamic_objects),
   config.noise, noise_rng_);
  frame.lidar->scan_period_s = 1.0 / config.scan_hz;
- frame.lidar->header = {time_s, lidar_sequence_++, config.frame_id, config.latency_s};
+ frame.lidar->header = {time_s, lidar_sequence_++, config.frame_id, config.latency_s, 1, "sim.lidar"};
  if (include_pose_observation) {
   const double position_sigma = std::max(0.01, config.noise.range_stddev_m * 1.5);
   constexpr double heading_sigma = 0.006;
@@ -160,7 +160,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
     truth.robot.theta + localization_rng_.gauss(heading_sigma),
     position_sigma,
     heading_sigma,
- {time_s, pose_sequence_++, "map", 0.0},
+ {time_s, pose_sequence_++, "map", 0.0, 1, "sim.localization"},
   };
  }
  return frame;
@@ -189,7 +189,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
  frame.lidar_static_reference = raycast_truth.static_environment;
  frame.lidar->scan_period_s = 1.0 / config.scan_hz;
  frame.lidar_static_reference->scan_period_s = 1.0 / config.scan_hz;
- const MeasurementHeader header{time_s, lidar_sequence_++, config.frame_id, config.latency_s};
+ const MeasurementHeader header{time_s, lidar_sequence_++, config.frame_id, config.latency_s, 1, "sim.lidar"};
  frame.lidar->header = header;
  frame.lidar_static_reference->header = header;
  if (include_pose_observation) {
@@ -203,7 +203,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
  truth.robot.theta + localization_rng_.gauss(heading_sigma),
  position_sigma,
  heading_sigma,
- {time_s, pose_sequence_++, "map", 0.0},
+ {time_s, pose_sequence_++, "map", 0.0, 1, "sim.localization"},
  };
  }
  return frame;
@@ -220,7 +220,7 @@ PoseObservation SensorSystem::capture_pose(const WorldTruth& truth, double time_
    truth.robot.theta + localization_rng_.gauss(heading_sigma_rad),
    position_sigma_m,
    heading_sigma_rad,
- {time_s, pose_sequence_++, "map", 0.0},
+ {time_s, pose_sequence_++, "map", 0.0, 1, "sim.localization"},
  };
 }
 

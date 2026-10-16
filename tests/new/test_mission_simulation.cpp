@@ -24,7 +24,11 @@ int main() {
  {
  game::MissionSimulation manual(
  catalog, "boot", catalog.presentation_for_level("boot").recommended_build);
+ CHECK(manual.runtime_provider_id() == "channel.in-process");
+ CHECK(manual.runtime_api_version() == 1);
+ CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Inactive);
  manual.start();
+ CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Active);
  manual.set_manual_command(1.0, 0.0);
  for (int step = 0; step < 50; ++step)
  manual.step();
@@ -117,6 +121,11 @@ int main() {
  }
  }
   CHECK(chapter_mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(chapter_mission.runtime_state() == sim::runtime::LifecycleState::Inactive);
+ CHECK(chapter_mission.runtime_health().level == sim::runtime::HealthLevel::Healthy);
+ CHECK(chapter_mission.runtime_health().dropped_observations == 0);
+ CHECK(chapter_mission.runtime_health().rejected_observations == 0);
+ CHECK(chapter_mission.runtime_health().rejected_commands == 0);
  }
 
  CHECK(sim::physics::bullet_physics_available());

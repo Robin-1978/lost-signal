@@ -100,6 +100,8 @@ add_library(lost_signal_sim STATIC
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
  src/hw/sensors/sensor_system.cpp
+ src/runtime/runtime_channel.cpp
+ src/runtime/replay_driver.cpp
 )
 target_include_directories(lost_signal_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(lost_signal_sim PUBLIC cxx_std_20)
@@ -193,6 +195,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME component_registry COMMAND test_component_registry)
+
+ add_executable(test_runtime_interface tests/new/test_runtime_interface.cpp)
+ target_link_libraries(test_runtime_interface PRIVATE lost_signal_sim)
+ add_test(NAME runtime_interface COMMAND test_runtime_interface)
 
  add_executable(test_field_dispatch tests/new/test_field_dispatch.cpp)
  target_link_libraries(test_field_dispatch PRIVATE lost_signal_game)

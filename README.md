@@ -106,7 +106,9 @@ LOST_SIGNAL_BUILD_DIR=/path/to/lost-signal-build \
 
 ## What is simulated
 
-The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
+The compact [Lost Signal Runtime Interface](docs/runtime-interface.md) connects autonomy to simulation, replay, or future native hardware drivers without depending on ROS 2. Its versioned ports validate capabilities, timestamps, sources, sequences, command expiry, lifecycle, and health. An optional bridge can translate LSRI to ROS 2 or another middleware at the edge.
+
+The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, source IDs, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
 
 Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include motion distortion, estimated-motion deskew, first-return intensity, bias, white noise, quantization, and missing returns. The IMU models bias, random walk, and angular-velocity and acceleration noise. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 
@@ -122,13 +124,14 @@ src/hw/ Chassis, motor/contact, sensor, and hardware-abstraction models
 src/algo/ Planning, estimation, prediction, following, and control
 src/game/ Content loading, mission simulation, telemetry, replay, and scoring
 src/physics/ Bullet adapter, physics ports, transforms, and regression backend
+src/runtime/ Versioned robot I/O contracts, provider registry, watchdog, and replay driver
 src/client/ raylib field/AI rendering and TGUI player interface
 tests/new/ C++ content, algorithm, physics, and mission regression tests
 docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts
 ```
 
-Start with the [creative direction](docs/creative-direction.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
+Start with the [creative direction](docs/creative-direction.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [runtime interface](docs/runtime-interface.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
 
 ## License
 
