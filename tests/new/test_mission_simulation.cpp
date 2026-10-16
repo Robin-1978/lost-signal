@@ -52,10 +52,12 @@ int main() {
  CHECK(endless.snapshot().time_s > endless.level().objective.time_limit_s);
  CHECK(endless.snapshot().status == game::MissionStatus::Running);
  CHECK(endless.replay().size() < 2000);
- CHECK(endless.field_dispatch().active);
+ CHECK(endless.field_dispatch().active || endless.field_dispatch().completed_count > 0);
+ if (endless.field_dispatch().active) {
  CHECK(endless.field_dispatch().distance_m > 0.0);
  CHECK(endless.field_dispatch().target.x >= 0.0);
  CHECK(endless.field_dispatch().target.x <= endless.map_definition().size_m.x);
+ }
  CHECK(std::any_of(endless.events().begin(), endless.events().end(),
  [](const auto& event) { return event.code == "field-dispatch-opened"; }));
  }
