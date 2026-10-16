@@ -64,6 +64,9 @@ python3 tools/generate_audio.py --check
 git diff --check
 ```
 
+Changes to experiment identity or comparison behavior should also run `python3 tests/test_compare_runs.py` and
+the Run Artifact reproduction example in [docs/run-artifacts.md](docs/run-artifacts.md).
+
 A graphical change should also build the graphical client. Add focused tests for algorithms, physics contracts, serialization, content validation, or regressions where an automated check adds real confidence.
 
 ## Pull requests

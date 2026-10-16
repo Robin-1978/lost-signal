@@ -71,6 +71,19 @@ A deterministic release run should also be recorded:
 
 Retain the revision, command, seed, backend, platform, and output when using a run as evidence. A single successful run does not establish a probability of success; multi-seed claims require a declared seed set and aggregate results.
 
+For a versioned, self-identifying result and a strict comparison, use:
+
+```bash
+./build/headless/lost_signal_headless \
+ --level lost_signal --recommended --artifact /tmp/recommended.run.json
+./build/headless/lost_signal_headless \
+ --reproduce /tmp/recommended.run.json --artifact /tmp/reproduced.run.json
+python3 tools/compare_runs.py /tmp/recommended.run.json /tmp/reproduced.run.json
+```
+
+See [Run Artifact v1](run-artifacts.md) for controlled-variable comparison. Artifacts produced from a dirty source
+tree retain `source_dirty: true`; release evidence uses a clean revision.
+
 ## Locale checks
 
 The default `ContentCatalog::load(assets)` must select English. Explicit `zh-CN` loading must select the source Chinese strings. Unsupported locale codes must report an error. Tests compare both catalogs to ensure localization leaves mission IDs, content graph, paths, seeds, physics, scoring, and algorithm configuration unchanged.

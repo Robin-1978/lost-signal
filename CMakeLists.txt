@@ -140,7 +140,29 @@ add_library(lost_signal_mission STATIC
 target_include_directories(lost_signal_mission PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(lost_signal_mission PUBLIC lost_signal_stack nlohmann_json::nlohmann_json)
 
-add_executable(lost_signal_headless src/app/headless_main.cpp)
+set(LOST_SIGNAL_BUILD_INFO_HEADER
+ ${CMAKE_CURRENT_BINARY_DIR}/generated/lost_signal/build_info.hpp)
+add_custom_target(lost_signal_build_info
+ COMMAND ${CMAKE_COMMAND}
+ -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+ -DOUTPUT_FILE=${LOST_SIGNAL_BUILD_INFO_HEADER}
+ -DPROJECT_VERSION_STRING=${PROJECT_VERSION}
+ -DCOMPILER_ID=${CMAKE_CXX_COMPILER_ID}
+ -DCOMPILER_VERSION=${CMAKE_CXX_COMPILER_VERSION}
+ -DSYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+ -DSYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
+ -DBUILD_TYPE=$<CONFIG>
+ -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_build_info.cmake
+ BYPRODUCTS ${LOST_SIGNAL_BUILD_INFO_HEADER}
+ COMMENT "Refreshing source and build identity"
+ VERBATIM)
+
+add_executable(lost_signal_headless
+ src/app/headless_main.cpp
+ src/app/run_artifact.cpp
+)
+add_dependencies(lost_signal_headless lost_signal_build_info)
+target_include_directories(lost_signal_headless PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(lost_signal_headless PRIVATE lost_signal_mission)
 
 if(LOST_SIGNAL_BUILD_CLIENT)
@@ -217,6 +239,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_executable(test_runtime_interface tests/new/test_runtime_interface.cpp)
  target_link_libraries(test_runtime_interface PRIVATE lost_signal_stack Threads::Threads)
  add_test(NAME runtime_interface COMMAND test_runtime_interface)
+
+ add_executable(test_sha256 tests/new/test_sha256.cpp)
+ target_link_libraries(test_sha256 PRIVATE lost_signal_core)
+ add_test(NAME sha256 COMMAND test_sha256)
 
  add_executable(test_global_planner_extension tests/new/test_global_planner_extension.cpp)
  target_link_libraries(test_global_planner_extension PRIVATE lost_signal_autonomy)
@@ -532,5 +558,16 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_content_roundtrip.py -q
  )
  set_tests_properties(content_roundtrip PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(
+ NAME compare_runs
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_runs.py -q
+ )
+ set_tests_properties(compare_runs PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(
+ NAME run_artifact
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_run_artifact.py
+ $<TARGET_FILE:lost_signal_headless> -q
+ )
+ set_tests_properties(run_artifact PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
  endif()
 endif()

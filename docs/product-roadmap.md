@@ -151,13 +151,22 @@ simulation time. The generated WAV set also passes byte-for-byte `--check` repro
 
 ## Stage 4 — Add a minimum reproducible run artifact
 
-Status: **pending Stage 3**
+Status: **complete**
 
 Write one versioned artifact for a completed run. It records source revision, build identity, platform/backend, content hash, mission and condition, seed, hardware selection, algorithm IDs, configuration identity, result metrics, structured decisions, and causal events. Large sensor traces remain external and are referenced by identity when they exist.
 
 Add a small comparison command that rejects incompatible comparisons and reports declared metric differences for like-for-like runs. Interactive UI replay, LSRI observation replay, and the run artifact remain separate formats with separate purposes.
 
 The gate is reproduction of the recommended `lost_signal` result from its manifest plus a clear diff against one controlled alternative.
+
+Run Artifact v1 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
+seed, runtime and physics backends, hardware, algorithm IDs, a canonical configuration digest, metrics, events,
+and the shared decision chain. `--reproduce` rejects incompatible content and restores the declared run.
+`tools/compare_runs.py` verifies both digests, forbids invariant changes, and requires each controlled variable to
+be named. A manifest reproduction matched every reported metric. Changing only
+`hardware.components.computer` from `computer.performance` to `computer.light` changed completion time from
+89.18 s to 86.18 s, energy from 2.209 Wh to 1.747 Wh, and dynamic clearance from 0.984 m to 0.464 m; both runs
+completed without collision, while the light-computer run lost the safe score.
 
 ## Stage 5 — Release closure
 

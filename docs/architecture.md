@@ -46,6 +46,14 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 
 Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
 
+Maps are 2.5D: terrain patches carry base height, two-axis grade, and roughness, while surface materials carry
+friction, rolling drag, traction, and presentation effects. `PhysicsScene` turns that content into 3D collision
+geometry and contact state. The shipped LiDAR is a single-plane scanner mounted in a named 3D frame. In the
+production path it raycasts the 3D physics world against terrain, static geometry, and dynamic actors, includes
+scan-time robot motion, and synthesizes intensity from hit normal, body class, and distance before applying the
+declared bias, noise, quantization, and dropout model. It is not a multi-beam 3D point-cloud sensor, and its three
+body-class reflectivities are not calibrated material optics.
+
 ### Algorithms
 
 `src/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
@@ -77,6 +85,13 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 ### Presentation
 
 `src/client/` renders the field and AI views from the same snapshot. UI state may pause or request an intent, but changing camera or visualization layers cannot affect autonomous output. The headless executable uses the same content and mission core and reports English, machine-readable results.
+
+### Experiment evidence
+
+Run Artifact v1 records build and source identity, a SHA-256 content manifest, comparable run inputs, hardware and
+algorithm IDs, metrics, events, and the structured decision chain. `--reproduce` restores the declared authored
+mission configuration, while `tools/compare_runs.py` rejects undeclared input changes. This compact manifest is
+separate from UI snapshot replay and LSRI observation replay; large sensor traces remain external references.
 
 ## Stable contracts
 

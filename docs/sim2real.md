@@ -34,6 +34,14 @@ The largest current gaps are measurable:
 
 The simulated contact model is intentionally compact. Surface friction and traction create meaningful educational contrasts, but they are not identified Pacejka, terramechanics, or track-soil models. Weather effects also need real measurements before engineering use.
 
+The current LiDAR is a mounted single-plane scan produced by raycasting the 3D physics collision world. It sees
+terrain, static bodies, and dynamic actors; represents scan timing; and produces a synthetic intensity from the
+surface normal, distance, and a coarse terrain/static/actor reflectivity class. That is useful for geometry,
+occlusion, motion distortion, and observation-pipeline tests. It is not a calibrated return model, does not use
+per-material optical properties, and does not produce a multi-line 3D point cloud. A future multi-beam provider can
+reuse the same physics raycast and LSRI timestamp/frame contract when a concrete learning or hardware question
+requires it.
+
 ## First hardware milestone: log and compare
 
 The first milestone should not command an unattended robot. It should make simulator and hardware evidence comparable.

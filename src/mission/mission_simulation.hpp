@@ -38,6 +38,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mission {
@@ -366,6 +367,15 @@ class MissionSimulation {
  return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
  }
  const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
+ std::string_view global_planner_id() const { return planning_system_.planner().id(); }
+ std::string_view local_planner_id() const {
+ switch (chassis_caps_.command_space) {
+ case sim::ChassisCommandSpace::SteeringAngle: return "ackermann-rollout";
+ case sim::ChassisCommandSpace::HolonomicTwist: return "holonomic-rollout";
+ case sim::ChassisCommandSpace::YawRate: return "dwa-yaw-rate";
+ }
+ return "unknown";
+ }
  const ContractJob* active_contract() const { return active_contract_; }
  PhysicsMode physics_mode() const { return physics_mode_; }
  double navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const;

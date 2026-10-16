@@ -1,3 +1,5 @@
+#include "app/run_artifact.hpp"
+#include "core/sha256.hpp"
 #include "mission/content_catalog.hpp"
 #include "mission/mission_simulation.hpp"
 #include "physics/physics_world.hpp"
@@ -6,6 +8,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <iostream>
 #include <string>
@@ -16,7 +19,8 @@ void usage(const char* executable) {
  std::cout << "Usage: " << executable
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
  " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
- " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]\n";
+ " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
+ " [--artifact FILE] [--reproduce FILE]\n";
 }
 
 mission::FieldIntentKind parse_field_intent(const std::string& value) {
@@ -37,6 +41,9 @@ int main(int argc, char** argv) {
   bool recommended = true;
   bool json_output = false;
  bool endless = false;
+ std::filesystem::path artifact_path;
+ std::filesystem::path reproduce_path;
+ bool explicit_run_configuration = false;
  double duration_s = 60.0;
   std::optional<uint64_t> seed_override;
  std::optional<mission::FieldIntentKind> field_intent;
@@ -48,26 +55,39 @@ int main(int argc, char** argv) {
     assets = argv[++index];
    } else if (argument == "--level" && index + 1 < argc) {
     level_id = argv[++index];
+ explicit_run_configuration = true;
    } else if (argument == "--default") {
     recommended = false;
+ explicit_run_configuration = true;
    } else if (argument == "--recommended") {
     recommended = true;
+ explicit_run_configuration = true;
    } else if (argument == "--seed" && index + 1 < argc) {
     seed_override = std::stoull(argv[++index]);
+ explicit_run_configuration = true;
    } else if (argument == "--json") {
     json_output = true;
+ } else if (argument == "--artifact" && index + 1 < argc) {
+ artifact_path = argv[++index];
+ } else if (argument == "--reproduce" && index + 1 < argc) {
+ reproduce_path = argv[++index];
  } else if (argument == "--endless") {
  endless = true;
+ explicit_run_configuration = true;
  } else if (argument == "--duration" && index + 1 < argc) {
  duration_s = std::stod(argv[++index]);
+ explicit_run_configuration = true;
  if (!(duration_s > 0.0))
  throw std::runtime_error("endless duration must be positive");
  } else if (argument == "--intent" && index + 1 < argc) {
  field_intent = parse_field_intent(argv[++index]);
+ explicit_run_configuration = true;
  } else if (argument == "--target" && index + 2 < argc) {
  field_target = sim::Vec2{std::stod(argv[++index]), std::stod(argv[++index])};
+ explicit_run_configuration = true;
  } else if (argument == "--physics" && index + 1 < argc) {
  physics_mode = mission::parse_physics_mode(argv[++index]);
+ explicit_run_configuration = true;
    } else if (argument == "--help" || argument == "-h") {
     usage(argv[0]);
     return 0;
@@ -76,12 +96,48 @@ int main(int argc, char** argv) {
    }
   }
 
-  const auto catalog = mission::ContentCatalog::load(assets);
-  if (level_id.empty()) {
-   level_id = catalog.campaign().starting_level;
-  }
-  const auto& presentation = catalog.presentation_for_level(level_id);
-  const auto build = recommended ? presentation.recommended_build : presentation.default_build;
+ const auto catalog = mission::ContentCatalog::load(assets);
+ mission::BuildSelection build;
+ std::string selection_label = recommended ? "recommended" : "default";
+ if (!reproduce_path.empty()) {
+ if (explicit_run_configuration)
+ throw std::runtime_error("--reproduce cannot be combined with run configuration options");
+ std::ifstream input(reproduce_path);
+ if (!input)
+ throw std::runtime_error("cannot read run artifact: " + reproduce_path.string());
+ nlohmann::json artifact;
+ input >> artifact;
+ if (artifact.value("schema", nlohmann::json{}) !=
+ nlohmann::json{{"name", "lost-signal.run"}, {"version", 1}}) {
+ throw std::runtime_error("--reproduce requires lost-signal.run schema version 1");
+ }
+ const auto& configuration = artifact.at("configuration");
+ const auto& comparable = configuration.at("comparable");
+ if (configuration.at("digest").get<std::string>() != sim::sha256(comparable.dump()))
+ throw std::runtime_error("run artifact configuration digest is invalid");
+ if (comparable.at("content_sha256").get<std::string>() != app::run_content_digest(assets))
+ throw std::runtime_error("run artifact content hash does not match --assets");
+ const auto& experiment = comparable.at("experiment");
+ if (experiment.at("condition_id") != "authored-base" || experiment.at("mode") != "mission")
+ throw std::runtime_error("Run Artifact v1 reproduction supports authored mission runs only");
+ if (std::abs(experiment.at("fixed_step_s").get<double>() - mission::MissionSimulation::fixed_step_s) > 1e-12)
+ throw std::runtime_error("run artifact fixed timestep is incompatible with this build");
+ if (experiment.at("runtime_provider") != "channel.in-process")
+ throw std::runtime_error("run artifact requires an unavailable runtime provider");
+ level_id = experiment.at("mission_id").get<std::string>();
+ seed_override = experiment.at("seed").get<std::uint64_t>();
+ physics_mode = mission::parse_physics_mode(experiment.at("physics_backend").get<std::string>());
+ const auto& hardware = comparable.at("hardware");
+ build.parts = hardware.at("components").get<std::map<std::string, std::string>>();
+ build.style = hardware.at("style").get<double>();
+ build.chassis_robot = hardware.value("requested_chassis", std::string{});
+ selection_label = "reproduced";
+ } else {
+ if (level_id.empty())
+ level_id = catalog.campaign().starting_level;
+ const auto& presentation = catalog.presentation_for_level(level_id);
+ build = recommended ? presentation.recommended_build : presentation.default_build;
+ }
  if (field_intent && !endless)
  throw std::runtime_error("--intent requires --endless");
  mission::MissionSimulation mission(catalog, level_id, build, seed_override, {},
@@ -100,7 +156,7 @@ int main(int argc, char** argv) {
   const auto& result = mission.result();
  const auto runtime_health = mission.runtime_health();
 
-  if (json_output) {
+ if (json_output || !artifact_path.empty()) {
    nlohmann::json output = {
      {"level", level_id},
      {"seed", mission.effective_seed()},
@@ -235,8 +291,22 @@ int main(int argc, char** argv) {
  {"superseded_by", decision.superseded_by},
  });
  }
-   std::cout << output.dump(2) << '\n';
-  } else {
+ if (!artifact_path.empty()) {
+ const auto artifact = app::make_run_artifact(
+ catalog, mission, assets, output, selection_label, duration_s);
+ if (!artifact_path.parent_path().empty())
+ std::filesystem::create_directories(artifact_path.parent_path());
+ std::ofstream artifact_file(artifact_path);
+ if (!artifact_file)
+ throw std::runtime_error("cannot write run artifact: " + artifact_path.string());
+ artifact_file << artifact.dump(2) << '\n';
+ if (!artifact_file)
+ throw std::runtime_error("failed while writing run artifact: " + artifact_path.string());
+ }
+ if (json_output)
+ std::cout << output.dump(2) << '\n';
+ }
+ if (!json_output) {
    std::cout << "[" << level_id << "] " << mission::mission_status_name(result.status)
              << "  time=" << result.time_s << "s"
              << "  path=" << result.path_length_m << "m"
