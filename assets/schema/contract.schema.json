@@ -31,6 +31,9 @@
           "cargo",
           "axis",
           "rep",
+          "mass_kg",
+          "cog_height_m",
+          "fragility",
           "blurb"
         ],
         "properties": {
@@ -62,6 +65,20 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 5
+          },
+          "mass_kg": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "cog_height_m": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 2.0
+          },
+          "fragility": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
           },
           "blurb": {
             "type": "string",

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Full Assembly",
+    "/objective/via_label": "Power Module",
+    "/objective/goal_label": "Signal Tower",
+    "/teaching/prediction_prompt": "When all the recovered parts work together for the first time, where is time most likely to be lost?",
+    "/teaching/knowledge_card": "Sensors observe, motors act, and tires provide traction. All three matter, but none needs to be pushed to an extreme."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Cross the Slippery Service Zone",
+    "/garage/brief": "RO-1 estimates position from wheel rotation. Choose tires, then see how slip changes the estimate.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Inertial Measurement Unit",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "Is Position Still Accurate After the Wheels Slip?",
+    "/prediction/hint": "The estimated path in the AI view comes from wheel motion; the body follows the simulated ground contact.",
+    "/prediction/choices/0/text": "Wheel rotation always matches body travel",
+    "/prediction/choices/0/feedback": "On slippery ground, wheel rotation does not guarantee the same distance the body travels.",
+    "/prediction/choices/1/text": "Position error accumulates along the route",
+    "/prediction/choices/1/feedback": "Record your prediction. Press Tab during the run to compare estimated and actual position in the AI view.",
+    "/running/heading": "Reach the Localization Calibration Pad",
+    "/running/normal_line": "RO-1: I’m estimating my position from wheel motion.",
+    "/running/detected_line": "RO-1: Environment sensing is online; the position estimate keeps updating.",
+    "/debrief/success_title": "Find the Accumulated Position Error",
+    "/debrief/success_summary": "The gap between actual and estimated paths reveals odometry drift.",
+    "/debrief/failure_summary": "Choose tires with better traction, or try again at a lower speed.",
+    "/debrief/evidence_heading": "Position Evidence",
+    "/debrief/evidence_caption": "The debrief error is the difference between wheel odometry and actual position.",
+    "/debrief/knowledge_title": "Localization and Drift",
+    "/debrief/failure_titles/collision-static": "Mission failed: collision after localization drift",
+    "/debrief/failure_titles/timeout": "Mission failed: calibration pad not reached"
+  }
+}

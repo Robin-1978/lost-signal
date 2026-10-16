@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Basic IMU",
+    "/components/0/description": "Gyroscope data helps estimate heading during slip, but bias accumulates over time.",
+    "/components/1/title": "Precision IMU",
+    "/components/1/description": "Lower bias keeps the heading estimate steadier over long distances."
+  }
+}

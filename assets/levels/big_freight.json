@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "big_freight",
-  "order": 25,
+  "order": 10,
   "title": "大镇货运",
   "map": "signal_town_big",
   "control_mode": "autonomous",
   "localization_mode": "fused",
   "chapter": 3,
+  "mode": "contract",
   "prerequisites": [
     "town_freight"
   ],

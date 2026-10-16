@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Steering on Sand",
+    "/garage/brief": "Take an Ackermann chassis over the same sandy route. Sand consumes traction, while steering needs turning radius; both constraints arrive together.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits Steering on Sand?",
+    "/prediction/hint": "Make a prediction. When tires slip, will the steering angle still produce the expected path?",
+    "/prediction/choices/0/text": "Slip and steering limits will compound",
+    "/prediction/choices/0/feedback": "Low traction and a finite turning radius demand gentle control. Compare odometry with the actual path.",
+    "/prediction/choices/1/text": "Turning radius will be the main limit",
+    "/prediction/choices/1/feedback": "Begin the turn too late and RO-2 must take a wider arc. Inspect the path through the bend.",
+    "/running/heading": "Steer Across the Sand",
+    "/running/normal_line": "RO-2: Steering on sand. Starting the turn early.",
+    "/running/detected_line": "RO-2: Route ahead confirmed.",
+    "/debrief/success_title": "Sand Steering Complete",
+    "/debrief/success_summary": "Tire traction and an early turn carried RO-2 through the sand.",
+    "/debrief/failure_summary": "Find which badge was lost. Steering on sand punishes sudden input.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Steering on Sand",
+    "/debrief/failure_titles/collision-static": "Delivery failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Delivery failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Delivery failed: time limit exceeded"
+  }
+}

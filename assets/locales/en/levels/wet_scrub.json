@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Tracks on Wet Ground",
+    "/objective/goal_label": "Glass Door",
+    "/teaching/prediction_prompt": "When wet ground meets skid steering, which limit appears first?",
+    "/teaching/knowledge_card": "Water reduces traction, and skid steering spends traction to change direction. Slow becomes the only reliable rudder."
+  }
+}

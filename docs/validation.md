@@ -1,105 +1,91 @@
-# 《失落的信号》MVP 验证记录
+# Validation guide
 
-> 更新时间：2026-10-14（诚实观测+确认逻辑落地后重标定）
-> 当前阶段：第一章认识五关、第二章真上路四关（含终关后挑战关）、C++ P0 仿真、双层视图、P1 光影、P2 环境层与 P3 角色事件表现已实现，等待桌面交互验收与目标玩家测试
+Lost Signal treats a release as a reproducible set of source, content, and behavior checks. A green test suite supports the declared simulation scope; it does not certify physical-robot safety or sim-to-real accuracy.
 
-## 已验证范围
+## Build profiles
 
-### 开源构建环境
+### Portable headless
 
-- 发行原型使用 C++20、raylib 6.0、TGUI 1.13.0 和 nlohmann/json 3.11.3。
-- `CMakeLists.txt` 使用 `FetchContent` 自动下载并编译固定版本的第三方源码。
-- `tools/build.sh` 在系统 CMake 低于 3.25 时自动下载 CMake 3.31.8；不要求账号、Hub 或许可证激活。
-- `tools/run.sh` 在缺少程序时自动构建，随后启动图形客户端；`--headless` 可运行无窗口版本。
-- 当前 Linux 环境已从空目录自动下载全部依赖，完成图形客户端、headless 程序和测试的编译链接。
-- GitHub Actions 已配置 Ubuntu、macOS 和 Windows 的纯 C++ headless 构建测试，以及 Ubuntu 图形客户端的 Xvfb 冒烟截图。
-- TGUI 1.13.0 的 raylib 6 字体兼容补丁已在首次 `FetchContent` 解压阶段应用；中文字体加载、仿真推进和自动截图均成功。
+```bash
+cmake -S . -B build/headless \
+ -DLOST_SIGNAL_BUILD_CLIENT=OFF \
+ -DLOST_SIGNAL_BUILD_TESTS=ON \
+ -DCMAKE_BUILD_TYPE=Release
+cmake --build build/headless --parallel
+ctest --test-dir build/headless --output-on-failure
+```
 
-### 内容外置
+This profile builds the simulation core and tests without window-system dependencies. CI runs it on Linux, macOS, and Windows.
 
-- 5 个第一章认识任务、4 个第二章挑战任务（含终关后挑战关）、1 张连通基地地图、1 个 3D 场景、1 个机器人装配、17 个硬件组件、3 个驾驶风格锚点和 9 个剧情节点均位于 JSON 文件中。
-- 3D 场景文件配置镜头、方向光、环境光、局部光颜色、雾、地面、8 个环境 Prefab 和 31 个实例；墙板、植物、碎石、服务灯、控制台、电缆卷盘、维护箱和警戒带使用项目自有 GLB，地图仅通过稳定 ID 引用场景。
-- 混凝土地面纹理由 Python 标准库确定性生成，包含细颗粒、污渍与裂纹；纹理路径来自场景 JSON，运行时和内容校验都会拒绝缺失资源。每块地砖采用稳定的色调变化和旋转，降低重复感。
-- 洛一的底盘、轮胎、雷达和计算单元使用 9 个独立的低多边形组合 GLB；安装位姿、2D 表现、3D 模型引用和简化碰撞体均由配置定义。
-- 17 个 GLB 均包含显式顶点法线，已通过 raylib 6.0 `LoadModel` 图形环境加载测试，并在自动截图中完成实际装配绘制。
-- `assets/presentation/*.json` 分别定义各关的机库组件列、默认与推荐组装、预测选项及运行和复盘文案。
-- 章节路线、前置关卡、逐关解锁和目标标记来自内容配置；第一关只启用轮胎槽，第二、三关增加雷达槽，第四、五关才启用计算模块。
-- 15 个剧情节点由 C++ 内容目录加载；每关出发前显示对应对白，最终关成功后显示未知信号作为章节悬念。
-- `ContentCatalog` 直接读取 `assets/`，检查运行时引用并拒绝无效组装。
-- Python JSON Schema 与跨文件校验覆盖重复 ID、坏引用、地图边界、标记和巡逻点、解锁顺序、组件槽位与预算可行性。
-- A*、DWA、航向 PID、左右轮速 PID、编码器、PWM 电机执行器、运动学、传感器和任务结果判定都位于 C++，地图与关卡没有回写到代码。轮距、轮半径、电机极限、编码器 CPR 和轮速 PID 增益位于机器人 JSON。
+### Sanitized core
 
-### P0 仿真闭环
+```bash
+cmake -S . -B build/sanitizer \
+ -DLOST_SIGNAL_BUILD_CLIENT=OFF \
+ -DLOST_SIGNAL_BUILD_TESTS=ON \
+ -DLOST_SIGNAL_ENABLE_SANITIZERS=ON \
+ -DLOST_SIGNAL_WARNINGS_AS_ERRORS=ON \
+ -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/sanitizer --parallel
+ctest --test-dir build/sanitizer --output-on-failure
+```
 
-2026-10-13 使用当前 C++ headless 程序运行：
+The Linux CI job uses AddressSanitizer and UndefinedBehaviorSanitizer.
 
-| 配置 | 结果 | 用时 | 最小动态净空 | 关键行为 |
-|---|---:|---:|---:|---|
-| 防滑胎＋近距快扫雷达＋性能计算单元＋温柔 | 成功 | 79.84 秒 | 0.706 米 | 检测叉车、等待安全窗口、通过、送达 |
-| 节能胎＋远距慢扫雷达＋轻量计算单元＋激进 | 成功但丢安全分 | 34.62 秒 | 0.230 米 | 以 23 厘米通过叉车通道（弯道预见后不再贴身），0.4 米 DWA 余量不够看 |
+### Graphical client
 
-推荐配置产生清楚的检测与等待事件，零碰撞完成运输，并获得安全、迅速、节能三项评价。默认配置以 23 厘米通过、丢掉安全评价；把电机换成扭矩版（大脑还是轻量算力）则在 1.2 秒预测时域内根本停不下来，发生动态碰撞。该结果建立了“险过 → 查看证据 → 改造 → 再试 → 成功”的 P0 因果闭环，碰撞路径由扭矩热机回归覆盖。
+```bash
+./tools/build.sh --test
+```
 
-动态感知链已经过独立回归：静态货架遮挡时不会隔墙检测叉车；只有实际雷达束命中后才建立动态轨迹；速度来自连续带噪观测；DWA 读取动态跟踪层的分帧预测，不读取地图中的叉车巡逻路径。动态物体保持在短时跟踪层，不写入 A* 静态地图，因此不会留下占据鬼影。
+This verifies dependency integration and the client build in addition to the shared core. A virtual display smoke run checks that the client can initialize and execute a demo in CI.
 
-固定时间步为 0.02 秒。相同内容、配置和随机种子产生确定结果，回放以仿真快照与事件生成。每轮编码器（CPR=2048 量化）与陀螺仪（独立随机流、按滑移加权融合）独立采样，无 IMU 的运行与旧随机流逐比特一致。驾驶风格为 s∈[0,1] 无极条（温柔 0 / 普通 0.5 / 激进 1 三锚点分段插值），官方配置落在锚点上；轮速与航向 PID 增益由装配物理参数自适应整定，不再是配置项；动力学含单轮纵向力（电机扭矩曲线）、轮胎×地面综合摩擦与车体惯性。静态净空与动态净空分别记录，并合并为安全评分。图形客户端从同一快照绘制 A* 全局路线、DWA 候选/选中轨迹、动态局部图、雷达命中、左右轮 RPM 和 PWM，不另行判定任务结果。DWA 完整候选扇只用于实时认知层；20 Hz 回放保留选中轨迹和控制量，不重复保存所有候选。
+## Content checks
 
-### 第一章流程
+```bash
+python3 tools/validate_content.py
+python3 tools/validate_locales.py
+python3 tests/test_content.py
+python3 tests/test_content_roundtrip.py
+python3 tests/test_contracts.py
+python3 tools/generate_levels.py --check
+python3 tools/generate_contracts.py --week 1 --check
+```
 
-十七关的推荐配置均使用同一 C++ headless 程序完成：醒来 4.74 秒、换双鞋 4.76 秒、第一次看见 3.10 秒、认识电机 5.72 秒、集结 40.68 秒、我在哪里 5.76 秒、门被堵住了 13.02 秒、把信号送出去 79.84 秒、信号回响 64.58 秒（成功、安全达成，迅速与节能待探索）、标定新车 11.92 秒（RO-2 转向车成功、安全达成，迅速待探索）、履带急转 13.14 秒（RO-3 履带车成功、三项全拿，默认 49.80 秒成功但定位误差 3.80 米超 2.0 米限、丢全部三项；5 种子下默认 0/5、推荐 5/5 安全）、松软地面 31.04 秒（沙地胎成功、安全达成，默认 21.44 秒成功但定位误差 1.10 米超 0.4 米限、丢安全分；5 种子下默认 0/5、推荐 5/5 安全）、长途穿越 39.26 秒（成功、安全达成，默认 26.52 秒成功但定位误差 0.52 米超 0.3 米限、丢安全分；5 种子下默认 0/5、推荐 5/5 安全）、履带爬坡 28.76 秒（RO-3 成功、三项全拿，默认打滑 17 米撞墙失败；5 种子下默认 5/5 失败、推荐 5/5 成功）、沙地履带 45.70 秒（RO-3 成功、三项全拿，默认迷路超时失败；5 种子下默认 5/5 失败、推荐 5/5 成功）、沙地转向 32.92 秒（RO-2 成功、安全达成，默认 21.94 秒成功但里程计 0.41~0.95 超 0.3 米限、丢安全分）、湿滑履带 25.30 秒（RO-3 成功、三项全拿，默认 63.72 秒成功但里程计 5.05~5.23 超 3.0 米限、丢全部三项）。第一关图形客户端改为玩家实时驾驶，headless 使用确定性内置驾驶器进行回归；后四关保持自主执行。第二关必须先由距离雷达产生玻璃门回波，进入安全停车区后才会完成。
+These checks cover JSON Schema, cross-file references, budgets, unlocks, required presentation coverage, source/default locale coverage, placeholders, string-only locale targets, canonical serialization, and generator drift.
 
-第三关的配置差异已经进入评分：节能胎＋激进风格在湿滑区结束时产生 0.086 米定位误差，超过配置中的 0.025 米阈值，能够完成主目标但失去“安全”评价；推荐防滑胎方案的误差为 0.016 米。第四关默认方案的最近净空为 0.074 米，推荐方案为 0.346 米，只有后者达到安全阈值。
+## Behavioral evidence
 
-### 自动验证结果
+C++ tests cover content loading, component registration, field intent, world activity, physics backends, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices.
 
-- 空目录完整图形构建：成功，依赖下载、固定哈希校验、TGUI 补丁、字体打包和链接全部通过。
-- CTest：8/8 通过，覆盖内容加载、任务仿真、动态雷达遮挡与跟踪、底盘模型（差速/阿克曼）回归、预测器差分、打滑检测，以及试玩汇总。
-- 版本化 JSON 进度已通过写入、替换和重新加载回归，保存稳定关卡 ID、通关状态和最佳评价；演示与截图模式不会修改玩家存档。
-- Python 内容测试：15/15 通过，包括事件镜头权重、17 个 GLB 法线访问器、PNG 尺寸与签名检查，以及缺失纹理、缺失模型、坏场景引用和坏 Prefab 引用的拒绝测试。
-- Python 试玩汇总测试：3/3 通过。
-- 内容 Schema 与跨文件引用：通过，识别 9 个关卡、1 张地图、1 个 3D 场景、1 个机器人装配、17 个组件、3 种策略和 9 份表现配置。
-- 复现命令：`./tools/build.sh --headless --test`（CTest 9/9）；`python3 -m pytest tests/test_content.py tests/test_playtest.py tests/test_content_roundtrip.py -q`（20 passed）；`./tools/run.sh --headless --level lost_signal --recommended`（79.84 秒成功）与 `--default`（34.62 秒通过、0.230 米丢安全分）。新关 `return_route`（RO-2 转向车）：推荐 11.92 秒成功、安全达成（迅速待探索），默认 7.38 秒成功但定位误差 0.16 米超 0.095 米限、丢安全分；5 种子下默认 0/5、推荐 5/5 安全，确定性自检全过。
-- P3 事件镜头 SHA 用当前构建复现（需 Xvfb，见 `.github/workflows/build.yml`）：`xvfb-run -a ./build/release/lost_signal --demo --screenshot /tmp/lost-signal.png`，连续两次应等于 P3 基线；P1/P2 为阶段历史记录。
+A deterministic release run should also be recorded:
 
-## 画面验收清单
+```bash
+./build/headless/lost_signal_headless \
+ --level lost_signal --recommended --json
+```
 
-图形客户端已在虚拟显示中完成 1440×900 启动、中文字体、章节路线、底盘校准、仿真推进和自动截图验证。默认探索层使用 raylib 3D 三分之四镜头、JSON 安装点驱动的 GLB 机器人和环境套件、带磨损纹理的混凝土地面、立体货架与叉车、方向光实时投影、半精度 HDR、ACES 色调映射、局部灯光、Bloom 和环境雾；按 `Tab` 切换的认知层另有一圈等半径碰撞环（美术体放大显示时它不放大）：近距离通过货架拐角时车体美术可能碰到箱子像素，但环不碰即物理无穿透。无头全量 24 组官方配置零碰撞；0.02 秒步长、最大 2.4 米/秒下单步 0.05 米，不可能隧穿 0.38 米碰撞半径。经停/补给标记原是 0.65 米实心货箱（路径穿过标记点，必穿箱），已改为地面环＋悬浮块＋光柱的非实体语言；信号塔底座改为桅杆＋实际到达圈，停靠不再埋鼻子。两层都不复制任务判定。见[P3 角色与事件镜头](screenshots/p3-character-event.png)、[P2 环境探索层](screenshots/p2-environment.png)、[P1 光影探索层](screenshots/p1-lighting.png)、[章节路线](screenshots/chapter-route.png)、[底盘校准](screenshots/boot-calibration.png)、[P0 探索层对照](screenshots/p0-running.png)与[AI 认知层截图](screenshots/p0-ai-view.png)；[方向调整前画面](screenshots/p0-before-art-direction.png)与[最早工程界面](screenshots/p0-before-visual-redesign.png)保留用于对照。仍需在桌面会话中检查：
+Retain the revision, command, seed, backend, platform, and output when using a run as evidence. A single successful run does not establish a probability of success; multi-seed claims require a declared seed set and aggregate results.
 
-P1 3D 自动截图 SHA-256：`e34721d8989ad18d5b4bfd33b68b45714d1d24abd1a9844f130dbd5f92a0049c`。软件 OpenGL 虚拟显示连续两次产生相同文件；完整效果截图用时 8.15 秒、峰值内存 263812 KB，1024 阴影并关闭 Bloom 为 6.28 秒、251068 KB，关闭阴影与 Bloom 为 5.24 秒、239936 KB。以上数据用于软件渲染回归对比，不代表独立显卡帧率。
+## Locale checks
 
-P2 环境自动截图 SHA-256：`c8284b8b993107a4c5df0a4302f645065642609a345bc3901172afe052a3da21`。连续两次软件 OpenGL 渲染产生完全相同的 PNG；完整自动截图流程用时 9.48 秒、峰值内存 277712 KB。相较 P1，新增 512×512 地面纹理、4 个环境 GLB 与 10 个场景实例；该数据仍是软件渲染下的完整自动流程，不代表独立显卡帧率。
+The default `ContentCatalog::load(assets)` must select English. Explicit `zh-CN` loading must select the source Chinese strings. Unsupported locale codes must report an error. Tests compare both catalogs to ensure localization leaves mission IDs, content graph, paths, seeds, physics, scoring, and algorithm configuration unchanged.
 
-P3 事件镜头自动截图 SHA-256：`93a9eaa24d412d1c58f509ef1531c51504f1959aba60f87e6259ab721b098270`。连续两次软件 OpenGL 渲染产生完全相同的 PNG；完整自动截图流程用时 13.34 秒、峰值内存 278088 KB。镜头同时保留洛一、叉车、警戒通道和信号塔，叉车不再被前景货架或右侧解释卡遮挡；感知连线和红色预测轨迹读取动态跟踪层。
+## Release record
 
-- 1440×900、1920×1080 和 2560×1440 下，机库主视觉、配置卡、预测问题、现场 HUD 和复盘按钮不遮挡。
-- 中文字体完整显示，长组件说明不会截断关键文字。
-- 防滑胎、节能胎、三种雷达和性能计算单元在机库中的视觉变化清楚可辨。
-- 四个阶段的主操作始终固定，启动、返回和重试无需寻找。
-- 计划路线、叉车位置、机器人意图和回放证据与 headless 结果一致。
-- 暂停、倍速、事件证据和截图模式可用。
+Results for the initial public `main` release candidate, tested on Linux x86_64 on 2026-10-16:
 
-## 8 人目标玩家测试
+- Content validation: passed; 26 levels, 4 maps, 4 scenes, 17 components, 3 policies, 5 robots, and 26 presentations
+- Locale validation: passed; 1,182 entries checked and 1,177 required English translations present
+- Python content, round-trip, contract, and playtest tests: passed
+- Level and contract generator checks: up to date
+- Headless build and CTest: passed; 54/54 tests
+- Graphical build and CTest: passed; 54/54 tests
+- Graphical smoke run: passed under Xvfb
+- Recommended `lost_signal` mission: succeeded with seed 47 on Bullet in 162.42 simulated seconds, with zero collisions
+- Sanitizers: CI after push
+- Physical hardware: not tested
 
-参与者要求：12 岁以上，对机器人或 AI 感兴趣，且没有机器人专业背景。测试者只说明基础鼠标操作，不解释组件正确答案。
+## Limits of the evidence
 
-每位参与者记录：
-
-| 字段 | 记录内容 |
-|---|---|
-| 首次选择 | 轮胎、雷达、计算单元、驾驶风格 |
-| 首次结果 | 成功、碰撞、超时或其他 |
-| 失败解释 | 玩家原话 |
-| 是否主动重试 | 是/否 |
-| 第二次改动 | 改了什么，为什么 |
-| 完成时间 | 从简报到首次成功 |
-| 情感反馈 | 洛一恢复了什么能力，是否愿意继续追查信号 |
-| 乐趣评分 | 1～5 分及原因 |
-
-聚合验收门槛沿用设计文档：情感动机、首次理解、因果理解和主动迭代分别至少 6/8；教学迁移至少 5/8；乐趣信号至少 6/8。执行材料位于 [playtest-guide.md](playtest-guide.md) 和 [playtest-results.csv](playtest-results.csv)。
-
-## 尚未关闭的验证项
-
-- 完成桌面画面和交互验收。
-- 确认远端 Windows/macOS CI 首次运行结果，并在发布阶段增加三平台图形安装包。
-- 执行 8 人目标玩家测试。
-- 根据 8 人测试结果调整两章节奏、引导密度和配置平衡。
+Automated tests demonstrate contracts and regressions represented in the repository. They do not establish gameplay enjoyment, accessibility, GPU compatibility beyond tested environments, numerical identity across every compiler, physical parameter accuracy, or safety for real hardware. Human learning feedback uses the optional protocol in [playtest-guide.md](playtest-guide.md) and is reported separately from automated gates.

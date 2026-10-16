@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Give RO-1 New Shoes",
+    "/garage/brief": "Same road, three tire types. Predict which one stops shortest, then let RO-1 answer with its wheels.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "Who stops shortest?",
+    "/prediction/hint": "Make a prediction. After the run, compare braking, time, and energy in the evidence.",
+    "/prediction/choices/0/text": "Grip tires stop shortest",
+    "/prediction/choices/0/feedback": "Record your prediction. At the exit, compare braking distance and energy use.",
+    "/prediction/choices/1/text": "Efficiency tires are both fastest and most efficient",
+    "/prediction/choices/1/feedback": "Fast and efficient can pull in different directions. Let the braking distance and energy data decide.",
+    "/running/heading": "Reach the Repair-Bay Exit",
+    "/running/normal_line": "RO-1: I can feel the new tires gripping.",
+    "/running/detected_line": "RO-1: Road condition confirmed.",
+    "/debrief/success_title": "Meet the Tires",
+    "/debrief/success_summary": "Same road, different shoes, different result.",
+    "/debrief/failure_summary": "Try a tire with more grip or a gentler driving preference.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Time, energy, and clearance come from the live simulation, not scripted values.",
+    "/debrief/knowledge_title": "Tires and Braking",
+    "/debrief/failure_titles/collision-static": "Trial failed: obstacle collision",
+    "/debrief/failure_titles/timeout": "Trial failed: exit not reached"
+  }
+}

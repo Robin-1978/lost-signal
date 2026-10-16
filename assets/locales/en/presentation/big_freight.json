@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Into the Big Town",
+    "/garage/brief": "The small town is behind you. Pick up at the docks, stop at the energy core, and deliver to the market freight yard. Expect vehicles, pedestrians, and three surface types.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "How Will You Cross the Big Town?",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "Detour around pedestrians",
+    "/prediction/choices/0/feedback": "Correct. Pedestrian contact does not end the mission, but close passes reduce safety. Going around a busy plaza can be faster than squeezing through.",
+    "/prediction/choices/1/text": "More power can push through everything",
+    "/prediction/choices/1/feedback": "More power only digs into the waterlogged docks and sandy freight yard. Check the energy and odometry evidence.",
+    "/prediction/choices/2/text": "Put vehicles and pedestrians in the static map",
+    "/prediction/choices/2/feedback": "Vehicles and pedestrians move. A static map can represent buildings, while prediction estimates where dynamic objects will be next.",
+    "/running/heading": "Big-Town Freight",
+    "/running/normal_line": "RO-1: Entering the big town. Heading for the energy core.",
+    "/running/detected_line": "RO-1: Dynamic object tracked. Predicting its path.",
+    "/debrief/success_title": "Big-Town Delivery Complete",
+    "/debrief/success_summary": "Five districts, three crossings, vehicles, and pedestrians: one complete delivery. The big town welcomes you.",
+    "/debrief/failure_summary": "Find the missing badge. The big-town challenge demands more than one driving approach.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Mixed-Terrain Town Driving",
+    "/debrief/failure_titles/collision-static": "Delivery failed: town-building collision",
+    "/debrief/failure_titles/collision-dynamic": "Delivery failed: patrol-vehicle collision",
+    "/debrief/failure_titles/timeout": "Delivery failed: time limit exceeded"
+  }
+}

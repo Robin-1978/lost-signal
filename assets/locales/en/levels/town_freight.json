@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "First Town Delivery",
+    "/objective/via_label": "Power Transfer Station",
+    "/objective/goal_label": "Market Gate",
+    "/teaching/prediction_prompt": "The first town job crosses a wet depot gate, gravel on Main Street, a sandy freight lane, and two patrol vehicles. Which route will you take, and when will you yield?",
+    "/teaching/knowledge_card": "Town delivery trades speed for stability. An aggressive run wins on time and energy but leaves only 0.35 m clearance—less than the patrol vehicle’s 0.45 m body radius. A steady run trades time for 0.67 m clearance and the safety badge."
+  }
+}

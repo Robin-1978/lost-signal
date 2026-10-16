@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Waiting Is a Maneuver",
+    "/garage/brief": "This forklift blocks the same corridor for several seconds. When more compute cannot create a safe opening, waiting for one is the fastest plan.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Make a Prediction Before Departure",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "Use prediction; depart when the corridor opens",
+    "/prediction/choices/0/feedback": "Correct. Prediction, waiting, and merging are one maneuver. The shadow evaluation estimates the earliest safe departure.",
+    "/prediction/choices/1/text": "Wait until the forklift is completely gone",
+    "/prediction/choices/1/feedback": "That waits too long. Depart as soon as the corridor becomes safely passable; complete clearance wastes time.",
+    "/prediction/choices/2/text": "Do not wait; squeeze past",
+    "/prediction/choices/2/feedback": "The default build replaces a 7 s wait with a close pass, leaving only 0.15 m clearance and losing the safety badge.",
+    "/running/heading": "Hold for the Corridor",
+    "/running/normal_line": "RO-1: Navigation stable. Approaching the signal tower.",
+    "/running/detected_line": "RO-1: Forklift tracked. Corridor blocked; waiting for a safe opening.",
+    "/debrief/success_title": "Mission Complete: Watch Confirmed",
+    "/debrief/success_summary": "The corridor stayed blocked for several seconds; RO-1 waited and still delivered.",
+    "/debrief/failure_summary": "Select evidence on the right to jump the field view to that moment.",
+    "/debrief/evidence_heading": "Causal Evidence",
+    "/debrief/evidence_caption": "These entries come from events and state recorded during this simulation run.",
+    "/debrief/knowledge_title": "Waiting Is a Maneuver",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: forklift collision",
+    "/debrief/failure_titles/collision-static": "Mission failed: fixed-obstacle collision",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

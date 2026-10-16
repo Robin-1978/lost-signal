@@ -3,8 +3,8 @@
 #include <vector>
 #include <cmath>
 #include <cstdint>
-// 动障碍(巡逻叉车): a<->b乒乓, 纯时间函数, 确定性可复现.
-// 半径含车体; 碰撞判定时再加机器人半径.
+// A patrol actor moves between a and b as a pure time function, making it deterministic and reproducible.
+// Its radius covers the actor body; collision checks add the robot radius separately.
 namespace sim {
 // NOTE: vehicle geometry lives in robot JSON (collision_radius_m); do not
 // reintroduce a hardcoded robot radius here.
@@ -97,7 +97,7 @@ inline WanderState seeded_wander_state(const SeededWander& w, double t) {
  }
  return wander_state(loop, t);
 }
-// t时刻状态(含解析速度, DWA做线性外推)
+// State at time t, including analytic velocity for DWA extrapolation.
 inline DynState patrol_state(const Patrol& pt, double t) {
  DynState s;
  s.radius = pt.radius;

@@ -1,47 +1,82 @@
-# DIY 作者手册：玩家自造硬件与内容
+# Content and hardware authoring guide
 
-原则：硬件是数据，算法是代码。`test_player_pack` 把这条边界钉死了——
-第三方轮胎纯 JSON 就能上车完赛；新算法/新底盘类型要 C++，但缝已经开好。
+Lost Signal keeps hardware data and algorithm code separate. Existing component families, robots, missions, maps, and presentations can be extended with JSON. A new motion model or algorithm requires C++ and tests.
 
-## 纯 JSON 可加（无需改代码，门禁全过即合法）
+## JSON extensions
 
-| 加什么 | 文件 | 约束 |
+| Extension | Location | Main checks |
 |---|---|---|
-| 新轮胎/电机/雷达/IMU/算力 | `assets/components/*.json`（新文件，slot 对应） | behavior 数字表齐（门禁按槽位检查键）；cost 进预算 |
-| 整车（已有底盘类型） | `assets/robots/*.json` | `drive.type` 三选一；增益全部自整定，手调 Kp 直接出局 |
-| 新底盘底盘参数 | 同上 | 同上 |
-| 关卡 | 管线 spec（`tools/generate_levels.py` LEVELS 加条目）或手写 JSON（过 schema＋validator） | 对比机制（动态/打滑/长度三选一），否则策展否决 |
-| 地图 actors/markers | `assets/maps/*.json`（add-only＋`active_in` 隔离） | round-trip 门（字母序 markers、canonical 格式） |
-| 能力/奖励 | `assets/abilities.json` | `ability.*` 前缀，大声 resolve |
-| 车库底盘选项 | presentation `chassis_options`（opt-in，缺席＝固定） | robot 须存在；unlock 按 `unlock_ability` |
+| Tire, motor, LiDAR, IMU, computer, or policy | `assets/components/*.json` | required behavior fields, unique ID, cost |
+| Robot using a known chassis family | `assets/robots/*.json` | frames, mounts, collision shape, drive parameters |
+| Mission | `assets/levels/*.json` and `assets/presentation/*.json` | schema, references, budget, learning contrast |
+| Map actors and markers | `assets/maps/*.json` | valid references, canonical round trip |
+| Scene | `assets/scenes/*.json` | valid models, materials, lighting, and camera data |
+| Ability or reward | `assets/abilities.json` | `ability.*` ID and valid unlock chain |
+| Locale | `assets/locales/<locale>/...` | string-only pointers and placeholder parity |
 
-## 必须 C++（缝已开好，按菜谱来）
+Use a stable, lowercase ID and keep player-facing names translatable. Do not encode behavior in a display string.
 
-新 `drive.type`（如 swerve）：实现 `ChassisModel`（`step`/`telemetry`/`caps`，
-遥测填统一 `ChassisTelemetry` 结构）＋ `ChassisBuildParams` 组装 creator
-（放自己 `.cpp`，仿三份现成 creator）＋ `register_builtin_chassis` 加一行
-＋ `CMakeLists.txt` 加文件＋ robot JSON 写新 type。`mission`／工厂零改动。
-静态自注册已否决（archive 链接器丢弃未引用目标文件，实测翻车）——显式一行，
-不要魔法。
+## A new mission
 
-新算法实现（如第二个 Predictor）：接口在第二个实现出现时才开（现行冻结规则），
-在此之前单实现直接写纯函数＋差分测试。
+A mission needs more than a destination. Define one learning question, a visible simulated contrast, a bounded objective, scoring thresholds, a default and recommended build, prediction choices, runtime callouts, and debrief explanations.
 
-## 玩家包工作流（命令）
+Add or update:
 
-```bash
-cp -r assets /tmp/mypack            # 永远 overlay，不改 shipped 文件
-# ... 加你的 JSON ...
-python3 tools/validate_content.py   # 门禁（schema＋unlock 链＋预算）
-python3 tools/generate_levels.py --check   # 管线无漂移
-python3 tests/test_content_roundtrip.py -q # canonical 格式
-./tools/build.sh --headless --test  # 全回归（你的包不能翻 pinned 表）
+1. the level definition in `assets/levels/`;
+2. its map and scene references;
+3. one presentation in `assets/presentation/`;
+4. chapter/campaign placement if it is part of progression;
+5. English locale overlays for every player-facing string;
+6. generator inputs when the file is generated;
+7. focused tests for new behavior or contracts.
+
+Run the mission with multiple seeds before setting score thresholds. Thresholds should describe a repeatable tradeoff, not a single lucky run.
+
+## A new component
+
+Copy the smallest component in the matching slot, give it a unique ID, and provide every behavior property required by that slot. Use measurements or a documented source for physical values. Ensure its cost fits at least one intended mission build.
+
+A component may modify declared behavior parameters. It may not select an algorithm by smuggling a code name into arbitrary content data.
+
+## A new chassis family
+
+Implement `ChassisModel`, including stepping, telemetry, and `ChassisCaps`. Add a `ChassisBuildParams` creator, register it explicitly in `register_builtin_chassis`, add the source to CMake, and define a robot that uses the new `drive.type`.
+
+The capability contract must describe command space, lateral motion, turning constraints, and limits used by planning. Add inverse-consistency, saturation, telemetry, and mission-level tests. The factory should not require mission-specific branches.
+
+## Locales
+
+`assets/locales.json` declares the default, source, and supported locales. A locale file mirrors the source file's relative path and maps JSON Pointers to translated strings:
+
+```json
+{
+ "schema_version": 1,
+ "translations": {
+ "/title": "Example Mission",
+ "/teaching/prediction_prompt": "What will RO-1 observe first?"
+ }
+}
 ```
 
-## 保证与红线
+Preserve placeholders (`{0}`), intended line breaks, units, and technical terms. The locale validator requires full coverage for the default English locale and rejects pointers to non-string values.
 
-- 确定性：同内容＋同配置＋同种子逐比特一致；翻了就是 bug，不是噪声。
-- 诚实物理：按文献/手册填数（见 `sim2real.md` §2）；为过关调数＝调参作弊，
-  门禁直接否决（voucher：Family C signal_pocket否决案）。
-- UI 分支：新遥测形状要在 renderer 加分支（桌面目视验收，headless 断言不到，
-  先声明再合并）。
+## Validation workflow
+
+```bash
+python3 tools/validate_content.py
+python3 tools/validate_locales.py
+python3 tools/generate_levels.py --check
+python3 tools/generate_contracts.py --week 1 --check
+python3 tests/test_content_roundtrip.py
+./tools/build.sh --headless --test
+```
+
+For experimental content, copy `assets/` outside the repository and use it as an overlay or separate pack. Do not edit generated output without updating its generator.
+
+## Integrity rules
+
+- identical content, configuration, seed, and backend should produce the same result;
+- sensor-facing algorithms may not read hidden actor truth;
+- physical values come from a source or measurement, not from tuning solely to pass a mission;
+- new telemetry must be represented in headless or automated checks when practical;
+- third-party assets require source and license records in `docs/asset-provenance.md` or `THIRD_PARTY_NOTICES.md`.

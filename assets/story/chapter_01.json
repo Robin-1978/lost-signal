@@ -132,7 +132,7 @@
       "id": "scrub_climb.after",
       "level": "scrub_climb",
       "when": "after",
-      "speaker": "洛一",
+      "speaker": "RO-3",
       "text": "RO-3：到了。同一条路，不同的脚，感觉完全不同。"
     },
     {
@@ -146,7 +146,7 @@
       "id": "sand_track.after",
       "level": "sand_track",
       "when": "after",
-      "speaker": "洛一",
+      "speaker": "RO-3",
       "text": "RO-3：到了。沙和履带，我全都要慢。"
     },
     {
@@ -160,7 +160,7 @@
       "id": "sand_steer.after",
       "level": "sand_steer",
       "when": "after",
-      "speaker": "洛一",
+      "speaker": "RO-2",
       "text": "RO-2：到了。沙地上，方向盘也要提前打。"
     },
     {
@@ -174,7 +174,7 @@
       "id": "wet_scrub.after",
       "level": "wet_scrub",
       "when": "after",
-      "speaker": "洛一",
+      "speaker": "RO-3",
       "text": "RO-3：蹭过去了。水里搓履带，慢是唯一的舵。"
     },
     {
@@ -202,7 +202,7 @@
       "id": "long_track.after",
       "level": "long_track",
       "when": "after",
-      "speaker": "洛一",
+      "speaker": "RO-3",
       "text": "RO-3：到了。这次没摇摆，看门狗记得住。"
     },
     {

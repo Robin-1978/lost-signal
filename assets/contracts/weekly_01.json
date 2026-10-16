@@ -5,43 +5,58 @@
   "jobs": [
     {
       "id": "w01-1",
-      "level": "motor_trial",
+      "level": "signal_echo",
       "cargo": "mail",
       "axis": "efficient",
-      "rep": 1,
-      "blurb": "把 mail（镇民邮件）送过motor_trial。电要省着花，镇发电站的老王只认能耗账。"
+      "rep": 3,
+      "mass_kg": 4.0,
+      "cog_height_m": 0.38,
+      "fragility": 0.6,
+      "blurb": "把 mail（镇民邮件）送过signal_echo。电要省着花，镇发电站的老王只认能耗账。"
     },
     {
       "id": "w01-2",
-      "level": "signal_echo",
+      "level": "rally",
       "cargo": "medkit",
       "axis": "safe",
       "rep": 2,
-      "blurb": "把 medkit（医疗包）送过signal_echo。货怕晃，净空就是一切，慢就是快。"
+      "mass_kg": 8.0,
+      "cog_height_m": 0.72,
+      "fragility": 0.9,
+      "blurb": "把 medkit（医疗包）送过rally。货怕晃，净空就是一切，慢就是快。"
     },
     {
       "id": "w01-3",
-      "level": "signal_cross",
+      "level": "localization",
       "cargo": "grain",
       "axis": "fast",
-      "rep": 4,
-      "blurb": "把 grain（种子粮）送过signal_cross。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
+      "rep": 1,
+      "mass_kg": 14.0,
+      "cog_height_m": 0.48,
+      "fragility": 0.35,
+      "blurb": "把 grain（种子粮）送过localization。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
     },
     {
       "id": "w01-4",
-      "level": "localization",
+      "level": "signal_cross",
       "cargo": "parts",
       "axis": "efficient",
-      "rep": 1,
-      "blurb": "把 parts（机器零件）送过localization。电要省着花，镇发电站的老王只认能耗账。"
+      "rep": 5,
+      "mass_kg": 22.0,
+      "cog_height_m": 0.52,
+      "fragility": 0.2,
+      "blurb": "把 parts（机器零件）送过signal_cross。电要省着花，镇发电站的老王只认能耗账。"
     },
     {
       "id": "w01-5",
-      "level": "big_freight",
+      "level": "first_sight",
       "cargo": "water",
       "axis": "safe",
-      "rep": 5,
-      "blurb": "把 water（净水）送过big_freight。货怕晃，净空就是一切，慢就是快。"
+      "rep": 1,
+      "mass_kg": 18.0,
+      "cog_height_m": 0.62,
+      "fragility": 0.75,
+      "blurb": "把 water（净水）送过first_sight。货怕晃，净空就是一切，慢就是快。"
     }
   ]
 }

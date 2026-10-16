@@ -26,6 +26,8 @@ void ChassisFactory::register_builtin_chassis() {
  register_creator("differential", create_differential_chassis);
  register_creator("ackermann", create_ackermann_chassis);
  register_creator("tracked", create_tracked_chassis);
+ register_creator("swerve", create_swerve_chassis);
+ register_creator("mecanum", create_mecanum_chassis);
 }
 
 } // namespace sim

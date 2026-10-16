@@ -1,33 +1,29 @@
-# 《失落的信号》P0 试玩执行手册
+# Optional learning playtest
 
-这轮测试验证“观察失败、解释原因、主动改造、再次出发”是否成立。测试对象为 12 岁以上、对机器人或 AI 感兴趣且没有机器人专业背景的玩家。每位玩家单独完成，主持人全程记录，不讲组件答案。
+This lightweight protocol measures whether the opening experience communicates autonomous control and cause-and-effect. It is research input, not a substitute for automated validation.
 
-## 测试前准备
+## Session
 
-1. 使用同一桌面构建和空白存档，记录构建版本。
-2. 确认初始配置为“节能轮胎＋远距慢扫雷达＋轻量计算单元＋激进”。
-3. 告诉玩家：“请帮助洛一把能源模块送到信号塔。界面里的内容都可以自由查看；卡住时可以说出你正在想什么。”
-4. 只解释鼠标点击和回放拖动方式，不解释刷新率、预测范围、制动距离或推荐配置。
+Ask a participant to play from the start without explaining the controls beyond what the game shows. Observe without correcting them unless they cannot proceed.
 
-## 主持流程
+After the opening sequence, ask:
 
-1. 从车库开始计时。记录玩家能否在没有提示的情况下理解插槽、预算和出发入口。
-2. 让玩家自行完成出发前预测。不要评价答案。
-3. 首次运行结束后先保持沉默，观察玩家是否主动点击因果证据、拖动回放或返回改造。
-4. 请玩家用自己的话回答：“洛一为什么会成功或失败？最早从哪里开始出现差异？”原话记入 `failure_explanation`，主持人按是否形成合理因果解释填写 `causal_explanation`。
-5. 如果玩家愿意重试，记录改动和理由。不要要求使用推荐配置；单项改动通关同样有效。
-6. 首次成功后提问：“洛一恢复了什么能力？”原话写入 `recovered_ability`；再问是否愿意继续追查信号及原因。
-7. 给出口头迁移题：“另一个机器人在湿滑地面上能很早看到障碍，但还是停不下来。你会优先检查什么？”回答涉及抓地、制动或速度控制即可记为迁移正确；只回答增加探测距离记为不正确。
-8. 停止计时，记录 1～5 分乐趣评分和玩家原话。
+1. Who controls RO-1 after chassis calibration?
+2. What did you predict before dispatch?
+3. What evidence explained the first success or failure?
+4. Which one variable would you change for another run?
+5. Can you describe the chain from sensor observation to physical action?
 
-主持人只有在玩家连续 90 秒没有任何操作时，才可以使用分级提示：先问“你想验证哪条证据”，再提示可点击右侧证据，最后才说明可返回车库。每次提示都写入 `notes`；接受操作提示后，`choice_without_help` 仍按首次表现记录。
+Record whether the participant distinguishes moving the field engineer from steering RO-1, and whether they use the field view, AI view, and debrief for different questions.
 
-## 记录与汇总
+## Data
 
-每位玩家在 [playtest-results.csv](playtest-results.csv) 中填写一行，`scope` 使用 `p0`。是/否字段建议统一填写“是”或“否”，`completion_minutes` 使用数字。试玩结束后运行：
+Add one anonymized row to `docs/playtest-results.csv`. Do not collect names, contact details, precise birth dates, or other unnecessary personal data. Use consistent boolean values and a numeric completion time.
+
+Summarize the file with:
 
 ```bash
 python3 tools/summarize_playtest.py docs/playtest-results.csv
 ```
 
-P0 阶段门需要 8 份有效记录，并达到设计文档中的情感动机、首次理解、因果理解、主动迭代、教学迁移和乐趣门槛。完整第一章制作后再以 `scope=chapter` 记录 8 人的 30～45 分钟节奏指标。
+Report small samples as observations rather than percentages that imply statistical confidence. Notes should describe the interface or learning issue, not identify the participant.

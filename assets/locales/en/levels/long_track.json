@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Tracked Long Haul",
+    "/objective/goal_label": "Calibration Pad",
+    "/teaching/prediction_prompt": "Which combination can carry a tracked chassis through the corners of the same long route?",
+    "/teaching/knowledge_card": "Tracks are not two exposed wheels. Long contact patches scrub during a turn, and the outer corners sweep wide, so driving preference and traction must work together."
+  }
+}

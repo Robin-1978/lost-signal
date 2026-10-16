@@ -101,8 +101,55 @@ int main() {
   editor.remove_selected();
   CHECK(editor.working().markers.count("edit_marker_01") == 0);
  }
+ // Terrain authoring is data, not a visual-only overlay: ramps and platforms
+ // retain height, gradient, roughness, footprint and level activation.
+ {
+ client::MapEditor editor(catalog, "boot");
+ editor.toggle();
+ editor.add_ramp(4.0, 10.0);
+ CHECK(editor.selected_kind() == client::MapEditor::Kind::kTerrain);
+ CHECK(editor.selected_id() == "edit_ramp_01");
+ CHECK(editor.working().terrain.size() == 1);
+ editor.adjust_selected_height(0.5);
+ editor.adjust_selected_slope(0.1);
+ editor.adjust_selected_roughness(0.07);
+ editor.rotate_selected_terrain();
+ auto& ramp = editor.working().terrain.front();
+ CHECK(std::abs(ramp.base_height_m - 0.5) < 1e-9);
+ CHECK(std::abs(ramp.grade_x) < 1e-9);
+ CHECK(std::abs(ramp.grade_y - 0.3) < 1e-9);
+ CHECK(std::abs(ramp.roughness - 0.07) < 1e-9);
+ CHECK(ramp.active_in.size() == 1 && ramp.active_in[0] == "boot");
+
+ editor.press(4.0, 10.0);
+ editor.drag(4.0, 10.0);
+ editor.drag(5.0, 11.0);
+ editor.release();
+ CHECK(editor.selected_kind() == client::MapEditor::Kind::kTerrain);
+ CHECK(std::abs(ramp.min.x - 3.0) < 1e-9);
+ CHECK(std::abs(ramp.min.y - 10.0) < 1e-9);
+ CHECK(std::abs(ramp.max.x - 7.0) < 1e-9);
+ CHECK(std::abs(ramp.max.y - 12.0) < 1e-9);
+
+ editor.press(7.0, 12.0);
+ CHECK(editor.selected_corner() == 2);
+ editor.drag(7.0, 12.0);
+ editor.drag(7.5, 12.5);
+ editor.release();
+ CHECK(std::abs(ramp.max.x - 7.5) < 1e-9);
+ CHECK(std::abs(ramp.max.y - 12.5) < 1e-9);
+
+ editor.add_platform(12.0, 3.0);
+ CHECK(editor.selected_id() == "edit_platform_01");
+ CHECK(editor.working().terrain.size() == 2);
+ const auto& platform = editor.working().terrain.back();
+ CHECK(std::abs(platform.base_height_m - 0.8) < 1e-9);
+ CHECK(std::abs(platform.grade_x) < 1e-9 && std::abs(platform.grade_y) < 1e-9);
+ editor.remove_selected();
+ CHECK(editor.working().terrain.size() == 1);
+ }
  // Save round trip on a scratch copy: file bytes equal the serializer and
- // the reloaded catalog carries the edit.
+ // the reloaded catalog carries marker and terrain edits.
  {
   const auto scratch = std::filesystem::temp_directory_path() / "lost_signal_editor_test";
   std::filesystem::remove_all(scratch);
@@ -114,6 +161,11 @@ int main() {
   editor.drag(1.0, 1.0);
   editor.drag(2.0, 2.0);
   editor.release();
+ editor.add_ramp(5.0, 10.0);
+ editor.adjust_selected_height(0.4);
+ editor.adjust_selected_slope(0.15);
+ editor.adjust_selected_roughness(0.09);
+ editor.rotate_selected_terrain();
   CHECK(editor.save(scratch.string()));
   const auto map_path = scratch / "maps" / "research_base.json";
   std::ifstream file(map_path);
@@ -124,6 +176,14 @@ int main() {
   const auto moved = reloaded.map("research_base").markers.find("robot_bay");
   CHECK(moved != reloaded.map("research_base").markers.end());
   CHECK(std::abs(moved->second.x - 2.0) < 1e-9);
+ const auto& terrain = reloaded.map("research_base").terrain;
+ CHECK(terrain.size() == 1);
+ CHECK(terrain[0].id == "edit_ramp_01");
+ CHECK(std::abs(terrain[0].base_height_m - 0.4) < 1e-9);
+ CHECK(std::abs(terrain[0].grade_x) < 1e-9);
+ CHECK(std::abs(terrain[0].grade_y - 0.35) < 1e-9);
+ CHECK(std::abs(terrain[0].roughness - 0.09) < 1e-9);
+ CHECK(terrain[0].active_in.size() == 1 && terrain[0].active_in[0] == "boot");
   std::filesystem::remove_all(scratch);
  }
  std::cout << "map editor ok\n";

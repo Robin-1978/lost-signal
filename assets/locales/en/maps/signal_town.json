@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/surfaces/0/label": "Wet Depot Gate",
+    "/surfaces/1/label": "Gravel Main Street",
+    "/surfaces/2/label": "Sandy Freight Lane"
+  }
+}

@@ -38,11 +38,12 @@
     },
     "max_yaw_accel_radps2": 8.0,
     "track_length_m": 0.7,
-    "max_yaw_rate_rads": 1.5
+    "max_yaw_rate_rads": 1.5,
+    "label_key": "garage.drive.tracked"
   },
   "collision": {
     "shape": "cylinder",
-    "radius_m": 0.38,
+    "radius_m": 0.42,
     "height_m": 0.42
   },
   "mounts": [
@@ -57,33 +58,36 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "base_visual_link"
     },
     {
       "id": "wheel_left",
       "position_m": [
         0,
         0.29,
-        0.1
+        0.125
       ],
       "rotation_deg": [
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "left_wheel_link"
     },
     {
       "id": "wheel_right",
       "position_m": [
         0,
         -0.29,
-        0.1
+        0.125
       ],
       "rotation_deg": [
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "right_wheel_link"
     },
     {
       "id": "sensor_top",
@@ -96,7 +100,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "lidar_link"
     },
     {
       "id": "compute_rear",
@@ -109,7 +114,22 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "compute_link"
+    },
+    {
+      "id": "imu_body",
+      "position_m": [
+        0,
+        0,
+        0.24
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "imu_link"
     }
   ],
   "base_parts": [
@@ -124,7 +144,7 @@
           0.18
         ],
         "color": "#D8ECE8",
-        "model_3d": "models/robots/ro3/hull.gltf"
+        "model_3d": "models/robots/ro3/hull.glb"
       }
     },
     {
@@ -138,7 +158,7 @@
           0.15
         ],
         "color": "#2C302D",
-        "model_3d": "models/robots/ro3/track_pad.gltf"
+        "model_3d": "models/robots/ro3/track.glb"
       }
     },
     {
@@ -152,17 +172,14 @@
           0.15
         ],
         "color": "#2C302D",
-        "model_3d": "models/robots/ro3/track_pad.gltf"
+        "model_3d": "models/robots/ro3/track.glb"
       }
     }
   ],
   "slots": [
     {
       "slot": "tires",
-      "mounts": [
-        "wheel_left",
-        "wheel_right"
-      ]
+      "mounts": []
     },
     {
       "slot": "sensor",
@@ -182,7 +199,9 @@
     },
     {
       "slot": "imu",
-      "mounts": []
+      "mounts": [
+        "imu_body"
+      ]
     }
   ]
 }

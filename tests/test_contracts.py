@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""悬赏板独立覆盖：生成器确定性＋关系型 pin（引用必解、无绝对数硬编码）。"""
+"""Contract-board coverage: deterministic generation and relational invariants."""
 
 from __future__ import annotations
 
@@ -21,21 +21,33 @@ class ContractBoardTests(unittest.TestCase):
         first = render(generate_board(week=1, seed=20261015))
         second = render(generate_board(week=1, seed=20261015))
         self.assertEqual(first, second)
-        checked_in = (ROOT / "assets" / "contracts" / "weekly_01.json").read_text(encoding="utf-8")
+        checked_in = (ROOT / "assets" / "contracts" / "weekly_01.json").read_text(
+            encoding="utf-8"
+        )
         self.assertEqual(first, checked_in)
 
     def test_check_mode_passes(self) -> None:
         proc = subprocess.run(
-            [sys.executable, str(ROOT / "tools" / "generate_contracts.py"),
-             "--week", "1", "--check"],
-            capture_output=True, text=True, check=False,
+            [
+                sys.executable,
+                str(ROOT / "tools" / "generate_contracts.py"),
+                "--week",
+                "1",
+                "--check",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_board_pins_are_relational(self) -> None:
         catalog = load_and_validate(ROOT / "assets")
         campaign_levels = set(catalog["campaign"]["levels"])
-        boards = {tuple(sorted(j["level"] for j in b["jobs"])): b for b in catalog["contracts"]}
+        boards = {
+            tuple(sorted(j["level"] for j in b["jobs"])): b
+            for b in catalog["contracts"]
+        }
         self.assertTrue(boards)
         for board in catalog["contracts"]:
             jobs = board["jobs"]

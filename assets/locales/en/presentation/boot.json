@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Get RO-1 Back on Its Wheels",
+    "/garage/brief": "The repair stand restored only basic motion. Choose tires, then observe how commands, acceleration, and braking become physical movement.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "What happens when you release power?",
+    "/prediction/hint": "Predict first, then observe how RO-1 slows as it reaches the exit.",
+    "/prediction/choices/0/text": "Stop immediately",
+    "/prediction/choices/0/feedback": "Both the wheel and the chassis have inertia; speed will take some time to drop to zero.",
+    "/prediction/choices/1/text": "Coast a short distance",
+    "/prediction/choices/1/feedback": "Record that prediction. During the run, watch when RO-1 begins to slow and how each tire changes braking.",
+    "/running/heading": "Reach the repair bay exit",
+    "/running/normal_line": "RO-1: Drive chain online, calibrating acceleration and steering.",
+    "/running/detected_line": "RO-1: Forward status confirmed.",
+    "/debrief/success_title": "Motion module restored",
+    "/debrief/success_summary": "RO-1 leaves the repair stand under its own power for the first time.",
+    "/debrief/failure_summary": "Review the motion record, adjust the tires or driving preference, and try again.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Speed changes come from motor commands, acceleration limits, and braking capability.",
+    "/debrief/knowledge_title": "Motion and Braking",
+    "/debrief/failure_titles/collision-static": "Calibration failed: obstacle collision",
+    "/debrief/failure_titles/timeout": "Calibration failed: exit not reached"
+  }
+}

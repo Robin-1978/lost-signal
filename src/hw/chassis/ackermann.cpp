@@ -38,6 +38,8 @@ AckermannDrive::AckermannDrive(AckermannParams params, WheelPidGains drive_gains
       drive_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit),
       servo_pid_(servo_kp, 0.0, 0.0, 1.0, 0.5) {
  telemetry_.differential = false;
+ telemetry_.steering_servo_present = true;
+ telemetry_.wheel_steer_count = 2;
 }
 
 void AckermannDrive::reset() {
@@ -48,6 +50,8 @@ void AckermannDrive::reset() {
  drive_wheel_ = 0.0;
  telemetry_ = {};
  telemetry_.differential = false;
+ telemetry_.steering_servo_present = true;
+ telemetry_.wheel_steer_count = 2;
 }
 
 double AckermannDrive::encoder_measure(double wheel_mps, double dt) const {
@@ -88,16 +92,16 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
   const double track = std::max(0.05, params_.track_width_m);
   const double base = std::max(0.05, params_.wheel_base_m);
   if (std::abs(delta_rad_) < 1e-9) {
-   telemetry_.front_left_steer_rad = delta_rad_;
-   telemetry_.front_right_steer_rad = delta_rad_;
+ telemetry_.wheel_steer_rad[0] = delta_rad_;
+ telemetry_.wheel_steer_rad[1] = delta_rad_;
   } else {
    const double radius = base / std::tan(delta_rad_);
    const double inner = std::atan(base / std::max(0.05, std::abs(radius) - track / 2.0));
    const double outer = std::atan(base / (std::abs(radius) + track / 2.0));
    const double sign = delta_rad_ > 0.0 ? 1.0 : -1.0;
    // Positive delta is a left turn: the left wheel is inner.
-   telemetry_.front_left_steer_rad = sign * (delta_rad_ > 0.0 ? inner : outer);
-   telemetry_.front_right_steer_rad = sign * (delta_rad_ > 0.0 ? outer : inner);
+ telemetry_.wheel_steer_rad[0] = sign * (delta_rad_ > 0.0 ? inner : outer);
+ telemetry_.wheel_steer_rad[1] = sign * (delta_rad_ > 0.0 ? outer : inner);
   }
  }
 
@@ -117,12 +121,24 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  drive.slipping = contact_out.slipping;
  const double resist = std::max(0.0, ground.rolling_resist) * weight * std::tanh(state.v / kCoulombWidthMps) +
                        kViscousNPerMps * state.v;
+ const double forward_force = contact_out.body_force_N - resist;
+ drive.longitudinal_force_N = forward_force;
 
  const double accel_cap = params_.max_drive_accel_mps2;
  DiffState next = state;
- next.v = state.v + clamp(((contact_out.body_force_N - resist) / std::max(0.5, params_.mass_kg)) * dt,
+ next.v = state.v + clamp((forward_force / std::max(0.5, params_.mass_kg)) * dt,
                           -accel_cap * dt, accel_cap * dt);
  next.w = yaw_for_steer(next.v, delta_rad_, params_.wheel_base_m);
+ telemetry_.desired_yaw_rate_radps = next.w;
+ // The legacy planar result applies bicycle kinematics directly. A rigid
+ // body consumes this moment through its own inertia and contact solver.
+ telemetry_.extra_yaw_torque_Nm =
+ (next.w - state.w) * params_.yaw_inertia_kgm2 / std::max(1e-6, dt);
+ telemetry_.measured_forward_mps = telemetry_.drive.measured_mps;
+ telemetry_.measured_lateral_mps = 0.0;
+ telemetry_.measured_yaw_radps = yaw_for_steer(telemetry_.drive.measured_mps,
+ telemetry_.steer.angle_rad, params_.wheel_base_m);
+ telemetry_.traction_saturated = telemetry_.drive.slipping;
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);
@@ -156,15 +172,12 @@ BuiltChassis create_ackermann_chassis(const sim::ChassisBuildParams& params,
       params.stall_force_N,
       params.free_speed_mps,
       params.mass_kg,
+ params.yaw_inertia_kgm2,
       params.pwm_limit,
       params.integral_limit,
       params.encoder_counts_per_revolution,
     },
     gains, servo_kp);
-  // Yaw capability at top drive speed; the heading PID outputs steer ANGLE
-  // for ackermann (see follow.hpp unit contract), capped at steer_max.
-  out.yaw_cap_rads = params.max_wheel_speed_mps * std::tan(params.max_steer_rad) /
-                     std::max(0.05, params.wheel_base_m);
   return out;
 }
 

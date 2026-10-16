@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace sim {
 
@@ -24,10 +25,15 @@ namespace sim {
 // Every number a chassis implementation needs, resolved by the caller
 // (equipped-component overrides applied upstream, like today).
 struct ChassisBuildParams {
+ struct PassiveCaster {
+ double x_m{0.0};
+ double y_m{0.0};
+ };
   double wheel_base_m{0.5};
   double wheel_radius_m{0.1};
   double track_width_m{0.58};
   double track_length_m{0.7};
+ double collision_radius_m{0.38};
   double max_wheel_speed_mps{2.4};
   double max_wheel_accel_mps2{6.0};
   double stall_force_N{54.0};
@@ -47,11 +53,12 @@ struct ChassisBuildParams {
   // the accel clamp both chassis share with the behavior layer.
   double behavior_w_max{2.0};
   double behavior_accel_max{6.0};
+ double max_yaw_accel_radps2{8.0};
+ std::vector<PassiveCaster> passive_casters;
 };
 
 struct BuiltChassis {
   std::unique_ptr<ChassisModel> model;
-  double yaw_cap_rads{2.0};
 };
 
 using ChassisCreator = std::function<BuiltChassis(const ChassisBuildParams&, const WheelPidGains&)>;
@@ -80,5 +87,9 @@ BuiltChassis create_ackermann_chassis(const ChassisBuildParams& params,
                                       const WheelPidGains& gains);
 BuiltChassis create_tracked_chassis(const ChassisBuildParams& params,
                                     const WheelPidGains& gains);
+BuiltChassis create_swerve_chassis(const ChassisBuildParams& params,
+ const WheelPidGains& gains);
+BuiltChassis create_mecanum_chassis(const ChassisBuildParams& params,
+ const WheelPidGains& gains);
 
 } // namespace sim

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Cross-Slope Delivery",
+    "/objective/via_label": "Antenna Mount",
+    "/objective/goal_label": "Ridge Relay Station",
+    "/objective/goals/0/label": "Antenna Mount",
+    "/objective/goals/1/label": "Cross-Slope Stability Check",
+    "/objective/goals/2/label": "Ridge Relay Station",
+    "/teaching/prediction_prompt": "How will speed amplify rollover risk as high-center-of-mass cargo crosses the damaged side slope?",
+    "/teaching/knowledge_card": "A higher center of mass reduces the static stability margin. More speed increases transient loads from steering and uneven ground."
+  }
+}

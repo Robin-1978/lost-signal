@@ -40,7 +40,7 @@
     "recommended_build": {
       "tires": "tires.standard",
       "motor": "motor.torque",
-      "style": 0.0
+      "style": 1.0
     }
   },
   "prediction": {

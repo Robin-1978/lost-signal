@@ -73,8 +73,14 @@
           "enum": [
             "differential",
             "ackermann",
-            "tracked"
+            "tracked",
+            "swerve",
+            "mecanum"
           ]
+        },
+        "label_key": {
+          "type": "string",
+          "minLength": 1
         },
         "wheel_radius_m": {
           "type": "number",
@@ -257,8 +263,18 @@
           },
           "rotation_deg": {
             "$ref": "#/$defs/vec3"
+          },
+          "frame_id": {
+            "$ref": "#/$defs/id"
           }
         }
+      }
+    },
+    "passive_support_mounts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
       }
     },
     "base_parts": {
@@ -297,13 +313,8 @@
         ],
         "properties": {
           "slot": {
-            "enum": [
-              "tires",
-              "sensor",
-              "computer",
-              "motor",
-              "imu"
-            ]
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]*$"
           },
           "mounts": {
             "type": "array",

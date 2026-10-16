@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/materials/0/title": "Paved Surface",
+    "/materials/0/description": "Dry concrete with baseline traction—the simulation’s 1.0 reference.",
+    "/materials/1/title": "Gravel Surface",
+    "/materials/1/description": "Loose gravel reduces traction to 80% and adds noticeable rolling resistance.",
+    "/materials/2/title": "Sand",
+    "/materials/2/description": "Loose fine sand lets tires dig in and has the highest rolling resistance.",
+    "/materials/3/title": "Standing Water",
+    "/materials/3/description": "A shallow water layer leaves 35% of baseline traction, especially punishing for efficiency tires."
+  }
+}

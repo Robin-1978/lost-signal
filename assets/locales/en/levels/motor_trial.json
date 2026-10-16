@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Meet the Motors",
+    "/objective/goal_label": "Depot Calibration Pad",
+    "/teaching/prediction_prompt": "Does more torque always mean a faster run? What does it cost?",
+    "/teaching/knowledge_card": "Torque buys acceleration, while energy use reduces range. More force can solve one problem and drain the battery sooner."
+  }
+}

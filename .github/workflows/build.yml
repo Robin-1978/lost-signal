@@ -5,6 +5,23 @@ on:
   pull_request:
 
 jobs:
+  sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S . -B build/sanitizer
+          -DLOST_SIGNAL_BUILD_CLIENT=OFF
+          -DLOST_SIGNAL_BUILD_TESTS=ON
+          -DLOST_SIGNAL_ENABLE_SANITIZERS=ON
+          -DLOST_SIGNAL_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build sanitizer targets
+        run: cmake --build build/sanitizer --parallel 2
+      - name: Test with ASan and UBSan
+        run: ctest --test-dir build/sanitizer --output-on-failure
+
   headless:
     strategy:
       fail-fast: false

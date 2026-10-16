@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "id": "motor_trial",
-  "order": 4,
+  "order": 11,
   "title": "认识电机",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "odometry",
-  "chapter": 1,
+  "chapter": 4,
   "prerequisites": [
     "first_sight"
   ],
@@ -35,10 +35,11 @@
   },
   "score": {
     "safe_min_clearance_m": 0.15,
-    "fast_time_s": 30,
-    "efficient_energy_wh": 8
+    "fast_time_s": 4.3,
+    "efficient_energy_wh": 0.05
   },
   "rewards": [
     "ability.motors"
-  ]
+  ],
+  "mode": "experiment"
 }

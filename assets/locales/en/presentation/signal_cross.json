@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Time the Intersection",
+    "/garage/brief": "A north–south forklift crosses RO-1’s route. Unlike a blocked corridor, this threat arrives from the side, so both the waiting point and entry time matter.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Who Should Enter the Intersection First?",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "Read the phase: enter after the forklift passes",
+    "/prediction/choices/0/feedback": "Correct. Wait outside the intersection for the side threat to pass, then enter the opening.",
+    "/prediction/choices/1/text": "Creep through slowly",
+    "/prediction/choices/1/feedback": "The side forklift leaves no room to squeeze past. Creeping or stopping inside the intersection puts RO-1 in its path.",
+    "/running/heading": "Cross the Intersection",
+    "/running/normal_line": "RO-1: Approaching the intersection. Checking side traffic.",
+    "/running/detected_line": "RO-1: Side forklift tracked. Predicting its path.",
+    "/debrief/success_title": "Intersection Clear",
+    "/debrief/success_summary": "The phase was right: wait for the forklift, then enter.",
+    "/debrief/failure_summary": "Find which badge was lost. An intersection punishes an early entry.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Intersection Phase",
+    "/debrief/failure_titles/collision-static": "Mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: side-forklift collision",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

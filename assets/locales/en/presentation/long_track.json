@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Tracks for the Long Haul",
+    "/garage/brief": "Return from the signal tower to the calibration pad with the full tracked assembly. Long contact patches cross rough ground well, but narrow S-bends need room for scrub and corner sweep.",
+    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "What Limits a Tracked Long Haul?",
+    "/prediction/hint": "Make a prediction: will a slow tracked chassis stay stable or begin to oscillate over the long route?",
+    "/prediction/choices/0/text": "Gentle control + high-grip material can finish",
+    "/prediction/choices/0/feedback": "Correct. The tracked assembly, gentle policy, and high-grip material complete the narrow S-shaped route in about 155 s.",
+    "/prediction/choices/1/text": "Gentle control alone is enough",
+    "/prediction/choices/1/feedback": "Lower speed alone cannot remove track scrub or the effect of traction material.",
+    "/prediction/choices/2/text": "High-grip material alone is enough",
+    "/prediction/choices/2/feedback": "Changing material alone cannot remove the corner sweep of long tracks in a tight bend.",
+    "/running/heading": "Tracked Long Haul",
+    "/running/normal_line": "RO-3: Long-haul cruise stable. Tracks holding pace.",
+    "/running/detected_line": "RO-3: Route ahead confirmed.",
+    "/debrief/success_title": "Tracked Long Haul Complete",
+    "/debrief/success_summary": "The same long route, completed steadily on tracks. Slow dynamics can shine.",
+    "/debrief/failure_summary": "Find which badge was lost. Tracked motion punishes an uneven pace.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Low-Speed Pacing",
+    "/debrief/failure_titles/collision-static": "Tracked mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Tracked mission failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Tracked mission failed: time limit exceeded"
+  }
+}

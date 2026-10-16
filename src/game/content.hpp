@@ -48,6 +48,9 @@ struct SurfaceMaterialDefinition {
  double friction_mu{1.0};
  double rolling_drag{0.0};
  double traction_scale{1.0};
+ std::string drive_effect{"none"};
+ std::array<unsigned char, 4> effect_color{255, 255, 255, 255};
+ double effect_intensity{0.0};
 };
 
 struct SurfaceDefinition {
@@ -64,6 +67,17 @@ struct SurfaceDefinition {
  double rolling_drag{0.0};
 };
 
+struct TerrainPatchDefinition {
+ std::string id;
+ sim::Vec2 min;
+ sim::Vec2 max;
+ double base_height_m{0.0};
+ double grade_x{0.0};
+ double grade_y{0.0};
+ double roughness{0.0};
+ std::vector<std::string> active_in;
+};
+
 struct ActorDefinition {
  std::string id;
  // Motion pattern (ping-pong patrol vs waypoint-loop wander), collision
@@ -74,6 +88,10 @@ struct ActorDefinition {
  bool collision_social{false};
  std::vector<double> waits;
  std::string visual_model;
+ // Rendering class is explicit content data. Motion behavior and collision
+ // policy do not imply appearance: a social delivery cart is still a
+ // vehicle, while a fatal moving hazard need not be one.
+ std::string visual_kind{"vehicle"};
  double visual_ref_radius_m{0.45};
  std::vector<sim::Vec2> path;
  double speed_mps{0.0};
@@ -115,6 +133,10 @@ struct SceneEffectsDefinition {
  double perception_link_height_m{0.42};
  double prediction_horizon_s{2.4};
  double success_ring_radius_m{0.72};
+ double trail_duration_s{1.6};
+ int surface_particle_count{18};
+ double surface_particle_scale{1.0};
+ double risk_indicator_radius_m{0.82};
 };
 
 struct SceneLightingDefinition {
@@ -189,6 +211,7 @@ struct MapDefinition {
  double grid_resolution_m{0.5};
  std::vector<BoxDefinition> obstacles;
  std::vector<SurfaceDefinition> surfaces;
+ std::vector<TerrainPatchDefinition> terrain;
  // Ordered: the editor saves maps back to JSON, and marker file order must
  // survive the round trip. Lookups only, never order-dependent logic.
  std::map<std::string, Pose> markers;
@@ -205,6 +228,9 @@ struct GoalStep {
  double radius_m{0.62};
  std::string summon_actor;
  double recharge_wh{0.0};
+ // Optional stopped dwell for inspect actions. The goal system owns the
+ // timer, while mission control only supplies a physically reachable stop.
+ double dwell_s{0.0};
 };
 
 struct ObjectiveDefinition {
@@ -218,6 +244,9 @@ struct ObjectiveDefinition {
  double time_limit_s{60.0};
  int max_collisions{0};
  double arrive_tolerance_m{0.62};
+
+ double max_arrival_speed_mps{999.0};
+
  double via_radius_m{1.25};
  // Derived ordered goals (catalog fills from legacy fields when the JSON has
  // no explicit "goals"): mission consumes this list, never the legacy fields.
@@ -234,6 +263,7 @@ struct LevelDefinition {
  std::string id;
  int order{0};
  int chapter{1};
+ std::string mode{"experiment"};
  std::string title;
  std::string map;
  std::string control_mode;
@@ -247,10 +277,13 @@ struct LevelDefinition {
  std::string prediction_prompt;
  std::string knowledge_card;
  double safe_min_clearance_m{0.0};
+ std::string safe_clearance_scope{"all"};
  double max_localization_error_m{999.0};
  double fast_time_s{0.0};
  double efficient_energy_wh{0.0};
  std::vector<std::string> rewards;
+ double payload_mass_kg{0.0};
+ double payload_cog_height_m{0.0};
 };
 
 struct AbilityDefinition {
@@ -261,13 +294,16 @@ struct AbilityDefinition {
 
 // Contract board job (content, weekly board files): a level ridden for a
 // cargo on one score axis. The earn rule lives in record_completion
-// (axis flag achieved -> claim once); the board UI spends reputation later.
+// (axis flag achieved -> claim once); the garage spends reputation on parts.
 struct ContractJob {
  std::string id;
  std::string level;
  std::string cargo;
  std::string axis; // fast / efficient / safe, matches MissionResult *score.
  int rep{1};
+ double mass_kg{0.0};
+ double cog_height_m{0.0};
+ double fragility{0.0};
  std::string blurb;
 };
 
@@ -285,6 +321,9 @@ struct MountDefinition {
  std::string id;
  Vec3 position_m;
  Vec3 rotation_deg;
+ // Stable robotics frame name. Empty remains supported for player packs and
+ // resolves to <mount-id>_link; official robots publish explicit names.
+ std::string frame_id;
 };
 
 struct RobotPartDefinition {
@@ -326,6 +365,7 @@ struct RobotDefinition {
  std::string id;
  std::string title;
  std::string drive_type;
+ std::string drive_label_key;
  double wheel_radius_m{0.0};
  double wheel_base_m{0.0};
  double mass_kg{0.0};
@@ -351,6 +391,10 @@ struct RobotDefinition {
  double collision_radius_m{0.0};
  double collision_height_m{0.0};
  std::vector<MountDefinition> mounts;
+ // Passive rolling supports belong to the chassis assembly, not to the
+ // powered tire component slot. Their mount order is the telemetry channel
+ // order published by ChassisModel (for RO-1: front caster, rear caster).
+ std::vector<std::string> passive_support_mounts;
  std::vector<RobotPartDefinition> base_parts;
  std::vector<RobotSlotDefinition> slots;
 };

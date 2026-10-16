@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Descent After Rain",
+    "/garage/brief": "A wet slope lengthens braking distance. Choose tires and a driving preference that preserve stopping margin at the bottom.",
+    "/garage/component_columns/0/title": "Slope Tires",
+    "/garage/component_columns/1/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Will RO-1 Stop at the Bottom?",
+    "/prediction/hint": "Compare available traction with the braking distance created by speed.",
+    "/prediction/choices/0/text": "High-grip tires are safer",
+    "/prediction/choices/0/feedback": "More friction delays braking-force saturation and shortens stopping distance.",
+    "/prediction/choices/1/text": "A faster descent saves time",
+    "/prediction/choices/1/feedback": "Braking distance grows with the square of speed. Twice the speed needs about four times the distance at the same traction limit.",
+    "/running/heading": "Descend the Rain-Wet Slope",
+    "/running/normal_line": "RO-1: Logging slope, body attitude, and traction margin.",
+    "/running/detected_line": "RO-1: Slope estimate updated.",
+    "/debrief/success_title": "Wet Descent Complete",
+    "/debrief/success_summary": "The debrief recorded grade, body attitude, slip, and energy throughout the descent.",
+    "/debrief/failure_summary": "Inspect grade, wheel-force saturation, and rollover risk on the timeline, then adjust the build or driving preference.",
+    "/debrief/evidence_heading": "Slope Evidence",
+    "/debrief/evidence_caption": "Longitudinal slope, cross-slope, body attitude, and energy use come from the same fixed-step simulation.",
+    "/debrief/knowledge_title": "Downhill Braking",
+    "/debrief/failure_titles/collision-static": "Descent failed: left the feasible region",
+    "/debrief/failure_titles/collision-dynamic": "Descent failed: moving-object collision",
+    "/debrief/failure_titles/rollover": "Descent failed: rollover",
+    "/debrief/failure_titles/timeout": "Descent failed: time limit exceeded"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "locale overlay",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "translations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "translations": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^/"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "additionalProperties": false
+}

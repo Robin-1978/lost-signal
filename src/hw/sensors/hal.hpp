@@ -8,24 +8,23 @@
 
 namespace sim {
 
-// Hardware abstraction layer, phase A1 (lidar only; encoders/IMU follow).
-// The decision stack consumes sensor data through these interfaces; simulation
-// and real hardware provide different backends. SimLidar must reproduce
-// lidar_scan bit-for-bit (covered by test); a future ROS/hardware backend
-// implements the same interface against device drivers.
+// Simulation geometry backend. It returns an ideal scan; SensorSystem applies
+// the configured observation model afterward. A real device adapter belongs
+// at the timestamped Scan message boundary because it must not accept world
+// truth or receive synthetic noise twice.
 class LidarBackend {
  public:
  virtual ~LidarBackend() = default;
- virtual Scan scan(Vec2 position, double heading, int rays, double range, double noise_sigma, Rng& rng,
+ virtual Scan scan(Vec2 position, double heading, int rays, double range,
                    const std::vector<DynState>& dynamic_objects) = 0;
 };
 
 class SimLidar : public LidarBackend {
  public:
  explicit SimLidar(const GridMap& map) : map_(map) {}
- Scan scan(Vec2 position, double heading, int rays, double range, double noise_sigma, Rng& rng,
+ Scan scan(Vec2 position, double heading, int rays, double range,
            const std::vector<DynState>& dynamic_objects) override {
-  return lidar_scan(map_, position, heading, rays, range, noise_sigma, rng, dynamic_objects);
+  return lidar_raycast(map_, position, heading, rays, range, dynamic_objects);
  }
 
  private:

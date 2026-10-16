@@ -3,9 +3,9 @@
 #include "sensor.hpp"
 #include <vector>
 #include <cmath>
-// 雾战争地图(Core, 无图形): 机器人只知道自己lidar扫过的格子.
-// 关键诚实性: reveal只用Scan测量值march, 永不读真值(连引用都不存, 杜绝偷看).
-// planningGrid(unknown_free): 未知格当空闲(乐观, 敢闯)或当障碍(保守, 绕远/甚至无路).
+// Headless fog-of-war map: the robot knows only cells observed by LiDAR.
+// reveal() marches measured Scan data and never stores or reads world truth.
+// planningGrid() treats unknown cells as free (optimistic) or occupied (conservative).
 namespace sim {
 class FogMap {
  public:
@@ -20,7 +20,7 @@ class FogMap {
    for (double t = res_ * 0.5; t < r - res_ * 0.25; t += res_ * 0.5)
     markFree(pos.x + ca * t, pos.y + sa * t);
    if (s.hit[i])
-    markOcc(pos.x + ca * r, pos.y + sa * r); // 只信命中标志: 噪声沾边的max回波不准画墙
+    markOcc(pos.x + ca * r, pos.y + sa * r); // Only a reported hit may create a wall.
   }
  }
  GridMap planningGrid(bool unknown_free) const {
@@ -51,7 +51,7 @@ class FogMap {
   int gx = (int)std::floor(x / res_), gy = (int)std::floor(y / res_);
   if (gx < 0 || gy < 0 || gx >= w_ || gy >= h_)
    return;
-  seen_[gy * w_ + gx] = 1; // 只标记free, 不覆盖已观测到的占据(端点优先)
+  seen_[gy * w_ + gx] = 1; // Mark free without overwriting an observed occupied endpoint.
   if (occ_[gy * w_ + gx] < 50)
    occ_[gy * w_ + gx] = 0;
  }

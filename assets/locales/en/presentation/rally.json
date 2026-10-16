@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Bring Every System Together",
+    "/garage/brief": "Tires, LiDAR, and motor work together for the first time. No forklift and no extreme constraint—this run is about coordination.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Where Is the Weak Link?",
+    "/prediction/hint": "Make a prediction. After the run, the three badges will reveal which limit mattered.",
+    "/prediction/choices/0/text": "Sensing may become the bottleneck",
+    "/prediction/choices/0/feedback": "If LiDAR sees the obstacle too late, even strong brakes cannot recover the lost distance. Note the first detection time.",
+    "/prediction/choices/1/text": "Energy may miss the target first",
+    "/prediction/choices/1/feedback": "If speed consumes too much power, the efficiency badge falls first. Read the energy meter.",
+    "/running/heading": "Deliver the Power Module to the Signal Tower",
+    "/running/normal_line": "RO-1: All systems online. Coordinating the full run.",
+    "/running/detected_line": "RO-1: Route ahead confirmed.",
+    "/debrief/success_title": "Chapter One Complete",
+    "/debrief/success_summary": "RO-1 recognizes every component and completes its first fully integrated run.",
+    "/debrief/failure_summary": "Find the missing badge, change the part that controls that limit, and try again.",
+    "/debrief/evidence_heading": "Integrated Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "System Coordination",
+    "/debrief/failure_titles/collision-static": "Assembly run failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Assembly run failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Assembly run failed: time limit exceeded"
+  }
+}

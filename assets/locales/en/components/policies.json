@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/policies/0/title": "Gentle",
+    "/policies/0/description": "Slows early to preserve a larger safety margin.",
+    "/policies/1/title": "Standard",
+    "/policies/1/description": "Balances speed with clearance.",
+    "/policies/2/title": "Aggressive",
+    "/policies/2/description": "Arrives sooner but leaves less time for sensing and braking."
+  }
+}

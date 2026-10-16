@@ -4,7 +4,8 @@
 #include <algorithm>
 #include <limits>
 namespace sim {
-AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight) {
+AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight,
+                       const TraversalCost& traversal_cost) {
  AStarResult r;
  auto [sx, sy] = cm.worldToGrid(start.x, start.y);
  auto [gx, gy] = cm.worldToGrid(goal.x, goal.y);
@@ -48,7 +49,13 @@ AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight
    int vx = ux + DX[k], vy = uy + DY[k];
    if (!cm.inside(vx, vy) || !cm.isFreeCell(vx, vy) || closed[idx(vx, vy)])
     continue;
-   double ng = g[u] + C[k] * cm.res();
+   const Vec2 from = cm.gridToWorld(ux, uy);
+   const Vec2 to = cm.gridToWorld(vx, vy);
+   const double multiplier = traversal_cost ? traversal_cost(from, to) : 1.0;
+   if (!(multiplier > 0.0) || !std::isfinite(multiplier)) {
+    continue;
+   }
+   double ng = g[u] + C[k] * cm.res() * multiplier;
    if (ng < g[idx(vx, vy)]) {
     g[idx(vx, vy)] = ng;
     parent[idx(vx, vy)] = u;

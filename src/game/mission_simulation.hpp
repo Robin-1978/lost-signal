@@ -1,15 +1,30 @@
 #pragma once
 
 #include "content_catalog.hpp"
+#include "component_registry.hpp"
+#include "game/systems/control_system.hpp"
+#include "game/systems/field_dispatch_system.hpp"
+#include "game/systems/field_operator_system.hpp"
+#include "game/systems/goal_system.hpp"
+#include "game/systems/planning_system.hpp"
+#include "game/systems/world_activity_system.hpp"
+#include "game/physics_scene.hpp"
 #include "algo/behavior_registry.hpp"
 #include "algo/entry_governor.hpp"
 #include "algo/entry_shadow.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "algo/dynamic_obstacle_map.hpp"
 #include "algo/dwa.hpp"
+#include "algo/ackermann_local.hpp"
+#include "algo/holonomic_local.hpp"
+#include "algo/high_level_policy.hpp"
 #include "algo/eventlog.hpp"
 #include "algo/follow.hpp"
+#include "algo/estimation_system.hpp"
+#include "algo/terrain.hpp"
 #include "hw/sensors/hal.hpp"
+#include "hw/sensors/sensor_system.hpp"
+#include "physics/frame_transform.hpp"
 #include "algo/grid_map.hpp"
 #include "algo/slip_detect.hpp"
 #include "hw/chassis/motor_drive.hpp"
@@ -17,6 +32,7 @@
 #include "hw/sensors/sensor.hpp"
 
 #include <map>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +41,15 @@
 namespace game {
 
 enum class MissionStatus { Ready, Running, Succeeded, Failed };
+
+// Bullet is the production pose integrator and the default. Domain keeps the
+// deterministic 2.5D reference model for explicit comparison, while Shadow
+// runs the same wheel forces through Bullet without letting it drive gameplay.
+// Auto resolves to Bullet because Bullet is a required build dependency.
+enum class PhysicsMode { Domain, BulletShadow, Bullet, Auto };
+
+PhysicsMode parse_physics_mode(const std::string& value);
+const char* physics_mode_name(PhysicsMode mode);
 
 struct MissionEvent {
  double time_s{0.0};
@@ -57,6 +82,11 @@ struct ActorSnapshot {
  sim::Vec2 velocity;
  double radius_m{0.0};
  bool detected{false};
+ std::string visual_kind{"vehicle"};
+ // Stable presentation heading. It follows authored motion and is held at
+ // zero-speed dwells, so renderers never derive yaw from noisy scan-to-scan
+ // velocity estimates.
+ double heading_rad{0.0};
  // Visual self-description copied from the actor registry (content): the
  // renderer poses this model, never branches on agent kinds.
  std::string visual_model;
@@ -69,12 +99,19 @@ struct DynamicObstacleSnapshot {
  sim::Vec2 estimated_velocity;
  double radius_m{0.0};
  double last_observed_s{0.0};
+ std::string visual_kind{"vehicle"};
+ double heading_rad{0.0};
 };
 
 struct LocalTrajectorySnapshot {
  std::vector<sim::Vec2> points;
  bool collision{false};
  double score{0.0};
+};
+
+struct MountActuationSnapshot {
+ std::string mount_id;
+ double yaw_rad{0.0};
 };
 
 struct ControlSnapshot {
@@ -127,8 +164,10 @@ struct ControlSnapshot {
  double steer_target_rad{0.0};
  double steer_angle_rad{0.0};
  double steer_pwm{0.0};
- double steer_left_rad{0.0};
- double steer_right_rad{0.0};
+ bool steering_servo_present{false};
+ // Generic actuator transforms already bound to robot mount ids. Renderers
+ // never branch on chassis type or infer steering from body motion.
+ std::vector<MountActuationSnapshot> mount_actuations;
 };
 
 struct MissionSnapshot {
@@ -148,6 +187,24 @@ struct MissionSnapshot {
  // objective.goals. via_reached stays synced for legacy UI/headless readers.
  std::size_t goals_reached{0};
  MissionStatus status{MissionStatus::Ready};
+ double robot_height_m{0.0};
+ double robot_roll_rad{0.0};
+ double robot_pitch_rad{0.0};
+ double terrain_grade{0.0};
+ double cross_slope{0.0};
+ double rollover_risk{0.0};
+ bool traction_saturated{false};
+ // Bullet-shadow comparison. Zero in Domain mode; in Bullet authority these
+ // describe the live rigid body and shadow_error_* stay zero.
+ double shadow_position_error_m{0.0};
+ double shadow_heading_error_rad{0.0};
+ double shadow_height_error_m{0.0};
+ int rigid_contact_count{0};
+ // Regional conditions are copied into every replay frame. Physics, sensing,
+ // rendering and UI therefore describe the same instant when replay seeks.
+ WorldActivityState world_activity;
+ sim::StrategyDecision strategy;
+ std::string strategy_policy{"route-baseline"};
 };
 
 struct MissionResult {
@@ -157,6 +214,7 @@ struct MissionResult {
  double path_length_m{0.0};
  double energy_wh{0.0};
  double min_clearance_m{999.0};
+ double scored_clearance_m{999.0};
  double min_static_clearance_m{999.0};
  double min_static_clearance_time_s{0.0};
  sim::Vec2 min_static_robot_position;
@@ -165,10 +223,11 @@ struct MissionResult {
  sim::Vec2 min_dynamic_robot_position;
  sim::Vec2 min_dynamic_actor_position;
  double odometry_error_m{0.0};
+ double max_odometry_error_m{0.0};
  int collisions{0};
  int pedestrian_contacts{0};
- // Association parity (evidence, not behavior): self-associated ray hits vs
- // simulator-fed dynamic_hit. Agree count decides whether the cheat can go.
+ // Perception diagnostics compare anonymous tracks with truth after planning;
+ // they never provide identity to the tracker or controller.
  long assoc_agree{0};
  long assoc_total{0};
  int slip_events{0};
@@ -178,6 +237,14 @@ struct MissionResult {
  bool safe_score{false};
  bool fast_score{false};
  bool efficient_score{false};
+ double max_grade{0.0};
+ double max_abs_roll_rad{0.0};
+ double max_rollover_risk{0.0};
+ double max_shadow_position_error_m{0.0};
+ double max_shadow_heading_error_rad{0.0};
+ double max_shadow_height_error_m{0.0};
+ int rigid_contacts{0};
+ double cargo_integrity{1.0};
 };
 
 class MissionSimulation {
@@ -186,31 +253,69 @@ class MissionSimulation {
 
  MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
                    std::optional<uint64_t> seed_override = std::nullopt,
-                   const std::vector<std::string>& owned_abilities = {});
+                   const std::vector<std::string>& owned_abilities = {},
+                   const ComponentRegistry& component_registry = ComponentRegistry::builtins(),
+ std::shared_ptr<const IPathPlanner> path_planner = {},
+ PhysicsMode physics_mode = PhysicsMode::Bullet,
+ std::shared_ptr<sim::IHighLevelPolicy> high_level_policy = {},
+ std::string contract_id = {});
 
  void reset();
  void start();
  void step();
  void run_to_completion();
  void set_manual_command(double forward, double turn);
+ void set_endless_mode(bool enabled);
+ bool endless_mode() const { return endless_mode_; }
+ void restore_endless_world(const WorldActivityCheckpoint& checkpoint);
+ WorldActivityCheckpoint endless_world_checkpoint() const;
+ void restore_field_expedition(const FieldExpeditionCheckpoint& checkpoint);
+ FieldExpeditionCheckpoint field_expedition_checkpoint() const;
+ const FieldDispatchState& field_dispatch() const { return field_dispatch_system_.state(); }
+ const FieldOperatorState& field_operator() const { return field_operator_system_.state(); }
+ const FieldIntentState& field_intent() const { return field_operator_system_.intent(); }
+ bool set_field_operator_command(double world_x, double world_y);
+ bool issue_field_intent(FieldIntentKind kind,
+ std::optional<sim::Vec2> target = std::nullopt);
+ const WorldActivityState& world_activity() const { return snapshot_.world_activity; }
+ const GoalStep* active_goal() const {
+ const auto index = snapshot_.goals_reached;
+ return index < level_.objective.goals.size() ? &level_.objective.goals[index] : nullptr;
+ }
 
  const LevelDefinition& level() const { return level_; }
  const MapDefinition& map_definition() const { return map_definition_; }
  const BuildSelection& build() const { return build_; }
  const RobotDefinition& robot() const { return robot_definition_; }
  static const std::string& level_robot_id(const ContentCatalog& catalog, const std::string& level_id,
-                                            const BuildSelection& build);
+                                          const BuildSelection& build);
  uint64_t effective_seed() const { return seed_override_.value_or(level_.seed); }
  const sim::GridMap& occupancy_map() const { return *truth_map_; }
+ const sim::GridMap& navigation_map() const { return *planning_map_; }
+ const sim::TerrainModel& terrain_model() const { return terrain_; }
+ const sim::TerrainCapability& terrain_capability() const { return terrain_capability_; }
+ const sim::ChassisCaps& chassis_caps() const { return chassis_caps_; }
+ std::optional<sim::physics::RigidTransform> lookup_transform(
+ const std::string& target_frame, const std::string& source_frame) const {
+ return frame_tree_.lookup(target_frame, source_frame);
+ }
+ std::vector<std::string> frame_ids() const { return frame_tree_.frame_ids(); }
+ double frame_timestamp_s() const { return estimation_system_.state().timestamp_s; }
  const std::vector<sim::Vec2>& planned_path() const { return planned_path_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
+ void seek_replay(double time_s);
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
  bool shadow_episode_open() const { return shadow_episode_open_; }
  int slip_episodes() const { return slip_detector_.episodes(); }
  const std::vector<double>& slip_episode_times() const { return slip_episode_times_; }
+ const char* physics_backend_name() const;
+ const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
+ const ContractJob* active_contract() const { return active_contract_; }
+ PhysicsMode physics_mode() const { return physics_mode_; }
+ double navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const;
 
  private:
  void build_world();
@@ -228,13 +333,15 @@ class MissionSimulation {
  double surface_traction(sim::Vec2 position) const;
  double static_clearance(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
- bool has(const std::string& slot) const;
- const ComponentDefinition& req(const std::string& slot) const;
- double spec(const std::string& slot, const std::string& key) const;
  double decision_hz() const;
  double corner_speed_cap(double nav_x, double nav_y) const;
  double track_max_age_s() const;
  sim::GroundContact wheel_ground(sim::Vec2 position) const;
+ void initialize_rigid_physics();
+ void initialize_frame_tree();
+ void update_frame_tree();
+ void apply_goal_stop_constraint();
+ void refresh_endless_route();
 
  const ContentCatalog& catalog_;
  std::string level_id_;
@@ -243,36 +350,58 @@ class MissionSimulation {
  // seed official baselines ever use). Effective seed fans out to all three
  // RNG streams with the same xor constants as before.
  std::optional<uint64_t> seed_override_;
- const LevelDefinition& level_;
+ LevelDefinition level_;
  const MapDefinition& map_definition_;
  const RobotDefinition& robot_definition_;
- // Resolved equipment, keyed by slot name. Anything slot-specific beyond
- // this point is a layering bug: use has()/req()/spec() instead of members.
- std::map<std::string, const ComponentDefinition*> parts_;
+ PhysicsMode requested_physics_mode_{PhysicsMode::Bullet};
+ PhysicsMode physics_mode_{PhysicsMode::Bullet};
+ // Content is converted once into validated, unit-bearing runtime contracts.
+ // BuildSelection remains the stable map used by saves and player packs.
+ ResolvedBuild resolved_build_;
  double gyro_bias_{0.0};
  bool was_saturated_{false};
+ double rigid_rollover_exposure_s_{0.0};
+ double rigid_static_contact_s_{0.0};
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 
  std::unique_ptr<sim::GridMap> truth_map_;
- // Sensing goes through the HAL even in simulation: the same call path a
- // hardware backend will serve. Rebuilt with the world in build_world().
- std::unique_ptr<sim::LidarBackend> lidar_;
+ std::unique_ptr<sim::SensorSystem> sensor_system_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<sim::GridMap> planning_map_;
  std::unique_ptr<sim::DiffDrive> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
- std::unique_ptr<sim::PID> heading_pid_;
+ std::unique_ptr<ControlSystem> control_system_;
  double heading_kp_{0.0};
  // Yaw-rate capability used by DWA/manual/clamps. Diff: DiffDrive w_max.
  // Ackermann: v*tan(steer_max)/base at top drive speed. Hardware, not tuned.
  double yaw_cap_rads_{2.0};
- sim::DeadReckon odometry_;
- sim::Rng rng_;
- sim::Rng perception_rng_;
+ sim::EstimationSystem estimation_system_;
+ sim::physics::FrameTransformTree frame_tree_;
  sim::Rng imu_rng_;
- sim::GuideState guide_state_;
+ sim::Rng imu_accel_rng_;
+ sim::Rng imu_bias_walk_rng_;
+ sim::TerrainModel terrain_;
+ sim::TerrainCapability terrain_capability_;
+ sim::ChassisCaps chassis_caps_;
+ PlanningSystem planning_system_;
+ bool custom_path_planner_{false};
+ std::unique_ptr<PhysicsScene> physics_scene_;
+ bool custom_high_level_policy_{false};
+ std::shared_ptr<sim::IHighLevelPolicy> high_level_policy_;
+ const ContractJob* active_contract_{nullptr};
+ GoalSystem goal_system_;
+ FieldDispatchSystem field_dispatch_system_;
+ FieldOperatorSystem field_operator_system_;
+ WorldActivitySystem world_activity_system_;
  std::vector<sim::Vec2> planned_path_;
+ bool route_feasible_{true};
+ // Persistent expedition mode: the same world, sensors and Bullet contacts
+ // keep stepping without goal, timeout or collision termination. The player
+ // moves the field operator and issues high-level intents; the robot always
+ // drives through the autonomous planning and control stack.
+ bool endless_mode_{false};
+ std::string endless_target_key_{"uninitialized"};
  // One agent list for every behavior (no per-kind parallel arrays): kind
  // dispatches ping-pong vs loop evaluation; collision semantics and visuals
  // ride along from the actor's self-description. Dormant agents wait in
@@ -285,16 +414,15 @@ class MissionSimulation {
   // the registry evaluates them, mission never branches on kinds.
   sim::ActorBehaviorParams behavior;
   bool social{false};
+ std::string visual_kind{"vehicle"};
   std::string visual_model;
   double visual_ref_radius_m{0.45};
+ double display_heading_rad{0.0};
   double t0{0.0};
  };
  std::vector<SimAgent> agents_;
  std::vector<SimAgent> dormant_agents_;
  std::vector<sim::DynState> actual_actors_;
- std::vector<sim::Vec2> dynamic_centroid_;
- std::vector<int> confirm_count_;
- sim::DynamicObstacleMap dynamic_obstacle_map_;
 
  MissionSnapshot snapshot_;
  MissionResult result_;
@@ -317,6 +445,8 @@ class MissionSimulation {
  double shadow_episode_start_s_{0.0};
  double shadow_episode_first_s_{-1.0};
  int shadow_episode_first_reason_{-1};
+ double shadow_episode_last_s_{-1.0};
+ int shadow_episode_last_reason_{-1};
  double shadow_episode_entry_speed_{-1.0};
  double shadow_episode_entry_nearest_{-1.0};
  // Staging for the next episode open (filled in the DWA branch where tracks
@@ -331,6 +461,8 @@ class MissionSimulation {
  double next_replay_s_{0.0};
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;
+ std::uint64_t motion_sequence_{0};
+ std::uint64_t imu_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;
 };

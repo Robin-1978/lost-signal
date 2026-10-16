@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Tracks Head North Again",
+    "/garage/brief": "Take a tracked chassis over the same northbound route. Every turn needs track scrub, so slow becomes stable.",
+    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits the Northbound Tracked Run?",
+    "/prediction/hint": "Make a prediction. How will wheels and tracks differ in the same narrow corridor?",
+    "/prediction/choices/0/text": "Turns will degrade localization",
+    "/prediction/choices/0/feedback": "Enter too sharply and the tracks scrub while odometry keeps integrating. Inspect localization error in the debrief.",
+    "/prediction/choices/1/text": "Turns will waste time",
+    "/prediction/choices/1/feedback": "Carry too much speed into a bend and RO-3 must take a wider arc. Inspect the exit path.",
+    "/running/heading": "Tracked Climb North",
+    "/running/normal_line": "RO-3: Both tracks online. Steering by scrub.",
+    "/running/detected_line": "RO-3: Route ahead confirmed.",
+    "/debrief/success_title": "Tracked Climb Complete",
+    "/debrief/success_summary": "RO-3 cleared the narrow corridor: enter slowly to preserve localization.",
+    "/debrief/failure_summary": "Find which badge was lost. Tracks punish a sharp turn.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Skid Steering",
+    "/debrief/failure_titles/collision-static": "Tracked mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Tracked mission failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Tracked mission failed: time limit exceeded"
+  }
+}

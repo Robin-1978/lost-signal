@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Cross-Slope Delivery",
+    "/garage/brief": "Load the high-center-of-mass antenna, cross the damaged side slope, stop for a stability check, then reach the ridge relay. Speed turns steering and uneven ground into additional rollover load.",
+    "/garage/component_columns/0/title": "Slope Tires",
+    "/garage/component_columns/1/title": "Drive Motor",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "Is There Enough Cross-Slope Stability Margin?",
+    "/prediction/hint": "Center-of-mass height changes the stability boundary on the same slope.",
+    "/prediction/choices/0/text": "Keep speed low and preserve margin",
+    "/prediction/choices/0/feedback": "Center of mass sets the static boundary. Lower speed reduces the extra load from steering and uneven ground.",
+    "/prediction/choices/1/text": "A larger motor will prevent rollover",
+    "/prediction/choices/1/feedback": "A motor changes available drive force, not the rollover boundary. Lowering the center of mass or choosing a gentler slope changes that margin.",
+    "/running/heading": "Deliver Across the Side Slope",
+    "/running/normal_line": "RO-1: The antenna load is reducing my stability margin. Preparing for the mid-slope check.",
+    "/running/detected_line": "RO-1: Cross-slope estimate updated.",
+    "/debrief/success_title": "Cross-Slope Delivery Complete",
+    "/debrief/success_summary": "The debrief shows cross-slope, load motion, and rollover margin throughout the mission.",
+    "/debrief/failure_summary": "Inspect slope, transient load, and rollover risk on the timeline, then adjust the build or driving preference.",
+    "/debrief/evidence_heading": "Stability Evidence",
+    "/debrief/evidence_caption": "Longitudinal slope, cross-slope, body attitude, and energy use come from the same fixed-step simulation.",
+    "/debrief/knowledge_title": "Rollover Margin",
+    "/debrief/failure_titles/collision-static": "Mission failed: left the feasible region",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: moving-object collision",
+    "/debrief/failure_titles/rollover": "Mission failed: rollover",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

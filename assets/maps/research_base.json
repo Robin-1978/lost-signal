@@ -94,7 +94,9 @@
       "material": "sand",
       "label": "沙地",
       "active_in": [
-        "loose_ground"
+        "loose_ground",
+        "sand_track",
+        "sand_steer"
       ]
     }
   ],
@@ -129,6 +131,21 @@
       12.5,
       0.0
     ],
+    "track_calibration": [
+      6.5,
+      7.0,
+      0.0
+    ],
+    "traffic_hold": [
+      14.2,
+      4.7,
+      1.5707963267948966
+    ],
+    "traffic_trigger": [
+      10.5,
+      12.5,
+      0.0
+    ],
     "workshop_exit": [
       3.5,
       4.0,
@@ -152,7 +169,6 @@
       "speed_mps": 0.55,
       "radius_m": 0.45,
       "active_in": [
-        "lost_signal",
         "signal_echo",
         "signal_hold",
         "signal_watch"
@@ -160,6 +176,7 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
     },
@@ -184,8 +201,35 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
+    },
+    {
+      "id": "forklift_finale",
+      "type": "patrol",
+      "path": [
+        [
+          17.5,
+          6.0
+        ],
+        [
+          14.0,
+          6.0
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.45,
+      "active_in": [
+        "lost_signal"
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
+        "ref_radius_m": 0.45
+      },
+      "dormant_until_summoned": true
     }
   ]
 }

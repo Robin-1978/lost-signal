@@ -5,15 +5,17 @@
 #include "hw/chassis/caps.hpp"
 #include <vector>
 #include <cmath>
-// 路径跟随共用逻辑: 前视 Ld 纯追踪 + 弯道速度调度 + 倒车迟滞,
-// 由 guide_step 统一服务差速底盘(输出目标角速度, 不冒充电机 PWM).
+// Shared path following: lookahead-Ld pure pursuit, corner speed scheduling, and reverse hysteresis.
+// guide_step serves differential chassis and outputs target yaw rate, never fake motor PWM.
 namespace sim {
-// 把idx推过已接近 / 已越过(跑到身后)的航点. 后者治"目标在身后死循环".
-// 开头先做前向重同步: 若窗口内有明显更近的后续点(切弯/跟丢), 直接跳过去, 防止la乱指.
-// 只允许前进(idx只增), 回退靠倒车恢复, 不靠idx回拨.
+// Advance idx past waypoints that are reached or already behind the robot, preventing a target-behind loop.
+// First resynchronize forward when a later waypoint in the window is clearly closer after a cut corner or tracking loss.
+// idx only advances; reverse recovery handles backtracking without decrementing it.
 inline void advance_wp(const std::vector<Vec2>& path, size_t& idx, double ex, double ey, double eth,
                        double accept, double Ld) {
  (void)Ld;
+ if (path.empty() || idx >= path.size())
+  return;
  size_t hi = std::min(path.size(), idx + 24);
  size_t best = idx;
  double bd = std::hypot(path[idx].x - ex, path[idx].y - ey);
@@ -25,7 +27,7 @@ inline void advance_wp(const std::vector<Vec2>& path, size_t& idx, double ex, do
   }
  }
  if (best != idx && bd < 1.0)
-  idx = best; // 重同步: 确实在更后面的track上才跳
+  idx = best; // Resynchronize only when the robot is clearly farther along the track.
  while (idx < path.size()) {
   double dx = path[idx].x - ex, dy = path[idx].y - ey;
   double dist = std::hypot(dx, dy);
@@ -33,12 +35,12 @@ inline void advance_wp(const std::vector<Vec2>& path, size_t& idx, double ex, do
   if (dist < accept)
    idx++;
   else if (along < -0.1 && dist < 1.0 && idx + 1 < path.size())
-   idx++; // 已越过(限1m内, 防拐角批量跳点)
+   idx++; // Already passed; the 1 m limit prevents skipping a corner in bulk.
   else
    break;
  }
 }
-// 线段是否全在free区(取costmap=膨胀地图,保净空)
+// Check line of sight in the inflated costmap so clearance is preserved.
 inline bool los_clear(const GridMap& m, Vec2 a, Vec2 b) {
  double d = std::hypot(b.x - a.x, b.y - a.y);
  int n = std::max(1, (int)(d / (m.res() * 0.5)));
@@ -49,13 +51,15 @@ inline bool los_clear(const GridMap& m, Vec2 a, Vec2 b) {
  }
  return true;
 }
-// 前视点三级策略:
-// 1) track上第一个出Ld圆的点(纯追踪正解, 不跳段);
-// 2) 若它无LOS(正入弯), 退回Ld内LOS最远点(贴角慢行);
-// 3) 若Ld内全无LOS, 回退idx附近(含身后)最近有LOS点; 实在没有才用path[idx]兜底.
+// Three-stage lookahead selection:
+// 1) first path point outside the Ld circle, without skipping a segment;
+// 2) if it lacks line of sight at a corner, use the farthest visible point inside Ld;
+// 3) if none inside Ld is visible, search near idx, including behind; fall back to path[idx].
 inline Vec2 lookahead_pt(const std::vector<Vec2>& path, size_t idx, double ex, double ey, double Ld,
                          const GridMap& cost) {
  Vec2 self{ex, ey};
+ if (path.empty())
+  return self;
  if (idx >= path.size())
   return path.back();
  size_t hi = std::min(path.size(), idx + 24);
@@ -63,13 +67,13 @@ inline Vec2 lookahead_pt(const std::vector<Vec2>& path, size_t idx, double ex, d
   if (std::hypot(path[i].x - ex, path[i].y - ey) >= Ld) {
    if (los_clear(cost, self, path[i]))
     return path[i];
-   break; // 出圆但被挡: 转第2级, 不继续往远跳
+   break; // Outside the circle but blocked: use stage 2 instead of jumping farther.
   }
  }
  Vec2 best = path.back();
  bool found = false;
- // 注意: 离机器人欧氏距离沿路径不是单调的(过冲/折返处), 不能见d>Ld就break,
- // 否则会在Ld边界反复横跳. 只看窗口内满足d<=Ld且LOS的最后一点.
+ // Euclidean distance along a path is not monotonic after overshoot or a reversal; do not break at d > Ld.
+ // Doing so oscillates at the Ld boundary. Use the last visible point with d <= Ld in the window.
  for (size_t i = idx; i < hi; i++) {
   double d = std::hypot(path[i].x - ex, path[i].y - ey);
   if (d <= Ld && los_clear(cost, self, path[i])) {
@@ -79,7 +83,7 @@ inline Vec2 lookahead_pt(const std::vector<Vec2>& path, size_t idx, double ex, d
  }
  if (!found) {
   size_t j0 = idx > 4 ? idx - 4 : 0;
-  for (size_t j = idx; j-- > j0;) { // 身后最近有LOS点
+  for (size_t j = idx; j-- > j0;) { // Nearest visible point behind.
    if (los_clear(cost, self, path[j])) {
     best = path[j];
     found = true;
@@ -94,20 +98,20 @@ inline Vec2 lookahead_pt(const std::vector<Vec2>& path, size_t idx, double ex, d
  (void)found;
  return best;
 }
-// err大降速: cos调度,保底10%蠕行(自行车模型v=0无法转向)
+// Reduce speed with cosine error scheduling and retain 10% creep because a bicycle model cannot steer at v=0.
 inline double sched_v(double err, double cruise) {
  double c = std::cos(err);
  if (c < 0.1)
   c = 0.1;
  return cruise * c;
 }
-// 弯道预见减速（proper fix：看门狗/倒车恢复是 current fix，只管闯祸之后）。
-// 预览窗口内每个路径转折按横向加速度物理限速：v ≤ √(a_lat·R)，
-// R ≈ L_out/Δ（转出段长度除以转角）。直道（Δ=0）不限速；急弯提前减速，
-// 进弯不再依赖看门狗救场。a_lat 由调用方按轮胎×地面给出（内容），
-// 0.5 半抓地余量是方法常量（留一半抓地给扰动和模型误差）。
-// 距离沿路径累积；转角取前后段方向差，与机器人当前位置无关——
-// 只看“路有多弯”，不看“人偏多少”（后者是 sched_v 的事）。
+// Anticipatory corner slowdown; watchdog reverse recovery only reacts after tracking trouble.
+// Limit each previewed turn by lateral acceleration: v <= sqrt(a_lat * R),
+// where R ~= L_out / delta. Straight segments are unlimited; sharp turns slow early.
+// a_lat comes from the tire and surface combination supplied by the caller.
+// The 0.5 traction reserve is a method constant for disturbances and model error.
+// Distance accumulates along the path; turn angle comes from adjacent segment headings.
+// This measures path curvature; sched_v separately handles current heading error.
 inline double corner_speed_cap(const std::vector<Vec2>& path, size_t idx, double cruise, double alat_max,
                                double preview_m) {
  if (idx >= path.size() || cruise <= 0.0 || preview_m <= 0.0)
@@ -135,19 +139,19 @@ inline double corner_speed_cap(const std::vector<Vec2>& path, size_t idx, double
 inline double heading_err(Vec2 wp, double ex, double ey, double eth) {
  return wrap_angle(std::atan2(wp.y - ey, wp.x - ex) - eth);
 }
-// 跟随器状态(跨步保持): 航点下标 + 倒车锁存 + 倒车计时.
-// 倒车必须带迟滞(1.4进/0.7出): 实测单阈值1.2会在err≈-1.2处正反抖振成极限环.
-// 看门狗: 连续倒车超过 3 秒必定是锁存卡死(目标一直在身后), 切原地转向
-// 面向目标。差速底盘本来就能原地打转, 没必要一直倒车。
+// Persistent follower state: waypoint index, reverse latch, and reverse timer.
+// Reverse needs hysteresis (enter at 1.4, leave at 0.7); one 1.2 threshold creates a limit cycle near -1.2.
+// After three seconds of continuous reverse, the watchdog treats the target-behind latch as stuck and spins
+// toward the target when the chassis supports in-place rotation.
 struct GuideState {
  size_t idx{0};
  bool reversing{false};
  double reverse_time{0.0};
  bool spinning{false};
 };
-// ex/ey/eth: 用于推进+算err的位姿(真值或odom估计).
-// steer单位由调用方PID的out_lim决定: 自行车=delta_max(rad), 差速=w_max(rad/s).
-// tv: 前进速度(m/s), 倒车恢复时为负.
+// ex/ey/eth: pose used to advance the path and compute error (truth or odometry estimate).
+// steer units follow the caller PID output limit: bicycle delta in rad, differential yaw rate in rad/s.
+// tv: forward speed in m/s, negative during reverse recovery.
 struct GuideOut {
  double err{0}, steer{0}, tv{0};
  bool reached{false};
@@ -167,8 +171,8 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
   st.reversing = false;
  double tv, steer;
  if (st.spinning) {
-  // 看门狗后的原地转向：转到基本对准目标才退出，否则下一步又会倒车。
-  // 只有能原地打转的底盘才进得来（见下）。
+  // After the watchdog, remain in the spin until roughly aligned or the next step would reverse again.
+  // Only a chassis that can spin in place enters this state.
   if (std::abs(err) < 0.5) {
    st.spinning = false;
    st.reverse_time = 0.0;
@@ -179,9 +183,9 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
  if (st.reversing) {
   st.reverse_time += dt;
   if (st.reverse_time > 3.0) {
-   // 看门狗：停倒车。能原地打转就转过去对准；不能的（如阿克曼）
-   // 继续沿倒车恢复（带转向的倒车本就是它的恢复方式），全 K 转弯
-   // 规划是后续工作，这里不假装会。
+   // The watchdog stops reversing and spins when possible. A non-spinning chassis such as Ackermann
+   // continues steering in reverse, its natural recovery. Planning a full K-turn
+   // is future work and is not simulated here.
    st.reversing = false;
    st.reverse_time = 0.0;
    if (caps.can_spin) {
@@ -191,7 +195,7 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
   }
   tv = -0.4;
   steer = -steer_fwd;
- } // 目标在身后:倒车回转
+ } // Target is behind: turn while reversing.
  else {
   // Leaky trouble memory, not a latch reset: reverse_time drains at the same
   // rate it fills, so flapping between reverse and forward (marginal lookahead
@@ -203,5 +207,35 @@ inline GuideOut guide_step(const std::vector<Vec2>& path, GuideState& st, double
   tv = sched_v(err, cruise);
  }
  return {err, steer, tv, false};
+}
+
+// Pure Pursuit for a bicycle/Ackermann chassis. The output is front steering
+// angle; the chassis' steering-servo PID and drive-wheel PID close the two
+// actuator loops. Reverse recovery remains available because a car cannot
+// spin in place.
+inline GuideOut ackermann_guide_step(const std::vector<Vec2>& path, GuideState& st, double ex, double ey,
+ double eth, double wheel_base_m, double max_steer_rad, double Ld,
+ double cruise, double dt, const GridMap& cost) {
+ advance_wp(path, st.idx, ex, ey, eth, 0.6, Ld);
+ if (st.idx >= path.size())
+ return {0, 0, 0, true};
+ const Vec2 target = lookahead_pt(path, st.idx, ex, ey, Ld, cost);
+ const double alpha = heading_err(target, ex, ey, eth);
+ if (!st.reversing && std::abs(alpha) > 1.55)
+ st.reversing = true;
+ else if (st.reversing && std::abs(alpha) < 0.65)
+ st.reversing = false;
+ const double target_distance = std::max(0.15, std::hypot(target.x - ex, target.y - ey));
+ const double pursuit_distance = std::max(0.2, std::min(Ld, target_distance));
+ const double motion_alpha = st.reversing ? wrap_angle(alpha + (alpha > 0.0 ? -kPi : kPi)) : alpha;
+ double steer = std::atan2(2.0 * std::max(0.05, wheel_base_m) * std::sin(motion_alpha),
+ pursuit_distance);
+ steer = clamp(steer, -max_steer_rad, max_steer_rad);
+ if (st.reversing) {
+ st.reverse_time += dt;
+ return {alpha, -steer, -0.4, false};
+ }
+ st.reverse_time = std::max(0.0, st.reverse_time - dt);
+ return {alpha, steer, sched_v(alpha, cruise), false};
 }
 } // namespace sim

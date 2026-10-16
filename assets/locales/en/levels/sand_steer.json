@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Steering on Sand",
+    "/objective/goal_label": "Signal Tower",
+    "/teaching/prediction_prompt": "Will the steering angle still produce the expected turn on sand?",
+    "/teaching/knowledge_card": "On sand, the tires slip before the chassis finishes responding to steering. Both effects demand an earlier turn."
+  }
+}

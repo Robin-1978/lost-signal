@@ -1,11 +1,12 @@
 // Contract reputation ledger (board economy, progress side): claim once,
 // double-claim no-ops, spend never goes negative, save round-trips, old
-// saves load at zero. The earn hook (mission completion -> claim) lands with
-// the board UI, not here.
+// saves load at zero, and reputation buys persistent garage inventory.
 #include "game/campaign_progress.hpp"
 #include "game/content_catalog.hpp"
 #include "game/mission_simulation.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -13,7 +14,7 @@
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
   if (!(condition)) {                                                                                        \
-   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                            \
+   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                           \
    return 1;                                                                                                 \
   }                                                                                                          \
  } while (false)
@@ -35,18 +36,35 @@ int main() {
  CHECK(!progress.claim_contract("w01-2", -1));
  CHECK(progress.claim_contract("w01-2", 3));
  CHECK(progress.reputation() == 5);
+ game::WorldActivitySystem regional_world;
+ regional_world.reset(123456);
+ progress.set_regional_world(regional_world.checkpoint(0.0));
  // Spend guards the floor.
  CHECK(!progress.spend_reputation(6));
  CHECK(progress.reputation() == 5);
  CHECK(!progress.spend_reputation(0));
  CHECK(progress.spend_reputation(2));
  CHECK(progress.reputation() == 3);
+ // Reputation has a concrete garage outlet: buying a component is atomic,
+ // idempotent, and uses the same inventory persisted by the campaign.
+ game::CampaignProgress buyer;
+ CHECK(buyer.claim_contract("shop-fund", 3));
+ CHECK(game::component_reputation_cost(catalog.component("motor.torque")) == 1);
+ CHECK(buyer.purchase_component("motor.torque", catalog));
+ CHECK(buyer.reputation() == 2);
+ CHECK(std::find(buyer.inventory().begin(), buyer.inventory().end(), "motor.torque") !=
+ buyer.inventory().end());
+ CHECK(!buyer.purchase_component("motor.torque", catalog));
+ CHECK(buyer.reputation() == 2);
  // Round-trip through the save file.
  const fs::path save_path = "/tmp/opencode/progress_rep.json";
  progress.save(save_path, catalog);
  auto loaded = game::CampaignProgress::load(save_path, catalog);
  CHECK(loaded.reputation() == 3);
  CHECK(loaded.claimed_contracts().size() == 2);
+ CHECK(loaded.regional_world().has_value());
+ CHECK(!loaded.regional_world()->rng_state.empty());
+ CHECK(loaded.regional_world()->state.weather == game::WeatherKind::Clear);
  CHECK(!loaded.claim_contract("w01-1", 2)); // still claimed after load.
  // Old saves without the keys load at zero (additive format).
  const fs::path legacy_path = "/tmp/opencode/progress_rep_legacy.json";
@@ -60,20 +78,40 @@ int main() {
  // Earn hook: completing the job's level with its axis scored claims rep
  // once; missing the axis pays nothing; replays never double-pay.
  {
+  CHECK(!catalog.contracts().empty());
+  const auto& job = catalog.contracts().front();
+ const auto& base_level = catalog.level(job.level);
+ const auto& contract_presentation = catalog.presentation_for_level(job.level);
+ game::MissionSimulation contracted(catalog, job.level, contract_presentation.recommended_build,
+ std::nullopt, std::vector<std::string>{}, game::ComponentRegistry::builtins(),
+ std::shared_ptr<const game::IPathPlanner>{}, game::PhysicsMode::Bullet,
+ std::shared_ptr<sim::IHighLevelPolicy>{}, job.id);
+ CHECK(contracted.active_contract() != nullptr);
+ CHECK(contracted.active_contract()->id == job.id);
+ CHECK(std::abs(contracted.level().payload_mass_kg -
+ (base_level.payload_mass_kg + job.mass_kg)) < 1e-9);
+  game::CampaignProgress missed;
+  game::MissionResult missed_run;
+  missed.record_completion(job.level, missed_run, catalog);
+  CHECK(missed.reputation() == 0);
+
   game::CampaignProgress earn;
-  game::MissionResult fast_run;
-  fast_run.fast_score = true;
-  earn.record_completion("signal_cross", fast_run, catalog);
-  CHECK(earn.reputation() == 4); // w01-3 fast job.
-  earn.record_completion("signal_cross", fast_run, catalog);
-  CHECK(earn.reputation() == 4);
-  game::MissionResult slow_run;
-  slow_run.safe_score = true; // fast axis missed: no pay.
-  earn.record_completion("signal_cross", slow_run, catalog);
-  CHECK(earn.reputation() == 4);
+  game::MissionResult qualifying_run;
+  if (job.axis == "fast") {
+   qualifying_run.fast_score = true;
+  } else if (job.axis == "safe") {
+   qualifying_run.safe_score = true;
+  } else if (job.axis == "efficient") {
+   qualifying_run.efficient_score = true;
+  } else {
+   CHECK(false);
+  }
+  earn.record_completion(job.level, qualifying_run, catalog);
+  CHECK(earn.reputation() == job.rep);
+  earn.record_completion(job.level, qualifying_run, catalog);
+  CHECK(earn.reputation() == job.rep);
   // C++ catalog carries every board the validator gates (relational pin:
   // job count grows with content, never an absolute number here).
-  CHECK(!catalog.contracts().empty());
   for (const auto& job : catalog.contracts()) {
    CHECK(catalog.levels().count(job.level) == 1);
    CHECK(!job.id.empty() && job.rep >= 1);

@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "signal_echo",
-  "order": 9,
+  "order": 14,
   "title": "信号回响",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "lost_signal"
   ],

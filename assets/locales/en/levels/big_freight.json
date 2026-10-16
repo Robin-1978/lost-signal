@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Big-Town Freight",
+    "/objective/via_label": "Energy Core",
+    "/objective/goal_label": "Market Freight Yard",
+    "/teaching/prediction_prompt": "The town is three times larger: water at the docks, gravel on Main Street, sand in the freight yard, plus two vehicles and three pedestrians. Which build can keep safe clearance through all of it?",
+    "/teaching/knowledge_card": "An aggressive run can finish in 52 s and 1.2 Wh but leaves only 0.2 m clearance. Passing on Main Street needs 0.6 m: a 0.45 m body plus margin. A steady run trades 20 s for 0.7 m clearance and the safety badge. Pedestrian contact does not end the mission, but close passes still reduce safety."
+  }
+}

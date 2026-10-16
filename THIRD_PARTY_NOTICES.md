@@ -3,6 +3,13 @@
 The project downloads the following pinned build dependencies with CMake
 `FetchContent`. They are not relicensed under Apache-2.0.
 
+## Bullet Physics 3.25
+
+- Source: <https://github.com/bulletphysics/bullet3>
+- License: zlib
+- Project: Bullet Continuous Collision Detection and Physics Library
+- Modifications: none
+
 ## raylib 6.0
 
 - Source: <https://github.com/raysan5/raylib>

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "content_version": "mvp-1",
-  "id": "chapter_01_awakening",
-  "title": "第一章：醒来",
+  "content_version": "vertical-slice-2",
+  "id": "lost_signal_campaign",
+  "title": "失落的信号",
   "companion": {
     "id": "companion.ro1",
     "unit_code": "RO-1",
@@ -14,11 +14,16 @@
     "boot",
     "tire_trial",
     "first_sight",
-    "motor_trial",
-    "rally",
+    "slope_launch",
     "localization",
     "blocked_route",
+    "cross_slope",
     "lost_signal",
+    "town_freight",
+    "big_freight",
+    "motor_trial",
+    "rally",
+    "rain_descent",
     "signal_echo",
     "return_route",
     "track_turn",
@@ -31,9 +36,7 @@
     "signal_hold",
     "long_track",
     "signal_watch",
-    "signal_cross",
-    "town_freight",
-    "big_freight"
+    "signal_cross"
   ],
   "starting_inventory": [
     "tires.standard",

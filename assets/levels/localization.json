@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "id": "localization",
-  "order": 6,
+  "order": 5,
   "title": "我在哪里",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "odometry",
   "prerequisites": [
-    "rally"
+    "slope_launch"
   ],
   "seed": 44,
   "objective": {
@@ -35,7 +35,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.5,
-    "max_localization_error_m": 0.025,
+    "max_localization_error_m": 0.1,
     "fast_time_s": 50,
     "efficient_energy_wh": 14
   },
@@ -47,5 +47,6 @@
     "tires.slick",
     "imu.precise"
   ],
-  "chapter": 2
+  "chapter": 2,
+  "mode": "mainline"
 }

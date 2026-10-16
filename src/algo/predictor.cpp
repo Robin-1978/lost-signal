@@ -26,125 +26,124 @@ namespace {
 // only on degenerate input. Sharp corners never get a free pass: deviation
 // is always swept and static-rechecked downstream.
 struct FilletResult {
-  std::vector<Vec2> points;
-  // Signed curvature per point from construction (not estimated): 0 on
-  // straights, +/-1/radius_m on arcs. Exact, so steer demand never drifts
-  // past the cap on floating-point noise.
-  std::vector<double> kappa;
-  bool fits{false};
+ std::vector<Vec2> points;
+ // Signed curvature per point from construction (not estimated): 0 on
+ // straights, +/-1/radius_m on arcs. Exact, so steer demand never drifts
+ // past the cap on floating-point noise.
+ std::vector<double> kappa;
+ bool fits{false};
 };
 
 FilletResult smooth_fillet(const std::vector<Vec2>& route, double radius_m) {
-  FilletResult out;
-  std::vector<Vec2> pts;
-  for (const auto& p : route) {
-    if (pts.empty() || std::hypot(p.x - pts.back().x, p.y - pts.back().y) >= 1e-9) {
-      pts.push_back(p);
-    }
+ FilletResult out;
+ std::vector<Vec2> pts;
+ for (const auto& p : route) {
+  if (pts.empty() || std::hypot(p.x - pts.back().x, p.y - pts.back().y) >= 1e-9) {
+   pts.push_back(p);
   }
-  if (pts.size() < 3 || !(radius_m > 1e-9)) {
-    out.points = pts;
-    out.kappa.assign(pts.size(), 0.0);
-    out.fits = pts.size() >= 1;
-    return out;
-  }
-  std::vector<double> legs;
-  for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
-    legs.push_back(std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
-  }
-  out.points.push_back(pts.front());
-  out.kappa.push_back(0.0);
-  for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
-    Vec2 d_in{pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y};
-    Vec2 d_out{pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y};
-    const double lin = std::hypot(d_in.x, d_in.y);
-    const double lout = std::hypot(d_out.x, d_out.y);
-    d_in = {d_in.x / lin, d_in.y / lin};
-    d_out = {d_out.x / lout, d_out.y / lout};
-    const double cos_phi = std::clamp(d_in.x * d_out.x + d_in.y * d_out.y, -1.0, 1.0);
-    const double phi = std::acos(cos_phi);
-    if (phi < 1e-6) {
-      out.points.push_back(pts[i]);
-      out.kappa.push_back(0.0);
-      continue;
-    }
-    const double tangent = radius_m * std::tan(phi / 2.0);
-    if (!(tangent <= 0.5 * legs[i - 1]) || !(tangent <= 0.5 * legs[i])) {
-      // No fillet room: keep the raw vertex (kappa 0), let pursuit swing and
-      // the rechecks judge. The vertex stays exactly where A* put it.
-      out.points.push_back(pts[i]);
-      out.kappa.push_back(0.0);
-      continue;
-    }
-    const Vec2 u{-d_in.x, -d_in.y};
-    const Vec2 w = d_out;
-    Vec2 bis{u.x + w.x, u.y + w.y};
-    const double bis_len = std::hypot(bis.x, bis.y);
-    const double sin_half = std::sin(phi / 2.0);
-    if (bis_len < 1e-9 || sin_half < 1e-9) {
-      out.points.clear();
-      out.kappa.clear();
-      out.fits = false;
-      return out;
-    }
-    bis = {bis.x / bis_len, bis.y / bis_len};
-    const Vec2 center{pts[i].x + bis.x * radius_m / sin_half,
-                      pts[i].y + bis.y * radius_m / sin_half};
-    const Vec2 t1{pts[i].x + u.x * tangent, pts[i].y + u.y * tangent};
-    const Vec2 t2{pts[i].x + w.x * tangent, pts[i].y + w.y * tangent};
-    const double cross = d_in.x * d_out.y - d_in.y * d_out.x;
-    const double a0 = std::atan2(t1.y - center.y, t1.x - center.x);
-    double sweep = std::atan2(t2.y - center.y, t2.x - center.x) - a0;
-    while (cross > 0.0 && sweep <= 0.0) {
-      sweep += 2.0 * kPi;
-    }
-    while (cross < 0.0 && sweep >= 0.0) {
-      sweep -= 2.0 * kPi;
-    }
-    const double arc_len = radius_m * std::abs(sweep);
-    const int steps = std::max(2, static_cast<int>(std::ceil(arc_len / 0.1)));
-    const double turn_sign = (cross > 0.0) ? 1.0 : -1.0;
-    out.points.push_back(t1);
-    out.kappa.push_back(0.0);
-    for (int k = 1; k < steps; ++k) {
-      const double a = a0 + sweep * static_cast<double>(k) / static_cast<double>(steps);
-      out.points.push_back({center.x + radius_m * std::cos(a), center.y + radius_m * std::sin(a)});
-      out.kappa.push_back(turn_sign / radius_m);
-    }
-    out.points.push_back(t2);
-    out.kappa.push_back(turn_sign / radius_m);
-  }
-  out.points.push_back(pts.back());
-  out.kappa.push_back(0.0);
-  if (out.points.size() != out.kappa.size()) {
-    out.points.clear();
-    out.kappa.clear();
-    out.fits = false;
-    return out;
-  }
-  out.fits = true;
+ }
+ if (pts.size() < 3 || !(radius_m > 1e-9)) {
+  out.points = pts;
+  out.kappa.assign(pts.size(), 0.0);
+  out.fits = pts.size() >= 1;
   return out;
+ }
+ std::vector<double> legs;
+ for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
+  legs.push_back(std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
+ }
+ out.points.push_back(pts.front());
+ out.kappa.push_back(0.0);
+ for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+  Vec2 d_in{pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y};
+  Vec2 d_out{pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y};
+  const double lin = std::hypot(d_in.x, d_in.y);
+  const double lout = std::hypot(d_out.x, d_out.y);
+  d_in = {d_in.x / lin, d_in.y / lin};
+  d_out = {d_out.x / lout, d_out.y / lout};
+  const double cos_phi = std::clamp(d_in.x * d_out.x + d_in.y * d_out.y, -1.0, 1.0);
+  const double phi = std::acos(cos_phi);
+  if (phi < 1e-6) {
+   out.points.push_back(pts[i]);
+   out.kappa.push_back(0.0);
+   continue;
+  }
+  const double tangent = radius_m * std::tan(phi / 2.0);
+  if (!(tangent <= 0.5 * legs[i - 1]) || !(tangent <= 0.5 * legs[i])) {
+   // No fillet room: keep the raw vertex (kappa 0), let pursuit swing and
+   // the rechecks judge. The vertex stays exactly where A* put it.
+   out.points.push_back(pts[i]);
+   out.kappa.push_back(0.0);
+   continue;
+  }
+  const Vec2 u{-d_in.x, -d_in.y};
+  const Vec2 w = d_out;
+  Vec2 bis{u.x + w.x, u.y + w.y};
+  const double bis_len = std::hypot(bis.x, bis.y);
+  const double sin_half = std::sin(phi / 2.0);
+  if (bis_len < 1e-9 || sin_half < 1e-9) {
+   out.points.clear();
+   out.kappa.clear();
+   out.fits = false;
+   return out;
+  }
+  bis = {bis.x / bis_len, bis.y / bis_len};
+  const Vec2 center{pts[i].x + bis.x * radius_m / sin_half, pts[i].y + bis.y * radius_m / sin_half};
+  const Vec2 t1{pts[i].x + u.x * tangent, pts[i].y + u.y * tangent};
+  const Vec2 t2{pts[i].x + w.x * tangent, pts[i].y + w.y * tangent};
+  const double cross = d_in.x * d_out.y - d_in.y * d_out.x;
+  const double a0 = std::atan2(t1.y - center.y, t1.x - center.x);
+  double sweep = std::atan2(t2.y - center.y, t2.x - center.x) - a0;
+  while (cross > 0.0 && sweep <= 0.0) {
+   sweep += 2.0 * kPi;
+  }
+  while (cross < 0.0 && sweep >= 0.0) {
+   sweep -= 2.0 * kPi;
+  }
+  const double arc_len = radius_m * std::abs(sweep);
+  const int steps = std::max(2, static_cast<int>(std::ceil(arc_len / 0.1)));
+  const double turn_sign = (cross > 0.0) ? 1.0 : -1.0;
+  out.points.push_back(t1);
+  out.kappa.push_back(0.0);
+  for (int k = 1; k < steps; ++k) {
+   const double a = a0 + sweep * static_cast<double>(k) / static_cast<double>(steps);
+   out.points.push_back({center.x + radius_m * std::cos(a), center.y + radius_m * std::sin(a)});
+   out.kappa.push_back(turn_sign / radius_m);
+  }
+  out.points.push_back(t2);
+  out.kappa.push_back(turn_sign / radius_m);
+ }
+ out.points.push_back(pts.back());
+ out.kappa.push_back(0.0);
+ if (out.points.size() != out.kappa.size()) {
+  out.points.clear();
+  out.kappa.clear();
+  out.fits = false;
+  return out;
+ }
+ out.fits = true;
+ return out;
 }
 
 // Static recheck of an executed trajectory on the caller-inflated grid.
 // The A* contract covers the grid polyline; smoothing and servo lag move the
 // body off it, so the CHECKED samples are rechecked here, not inherited.
 bool path_hits_obstacle(const std::vector<Vec2>& points, const GridMap& inflated_map) {
-  for (const auto& p : points) {
-    if (!inflated_map.isFree(p.x, p.y)) {
-      return true;
-    }
+ for (const auto& p : points) {
+  if (!inflated_map.isFree(p.x, p.y)) {
+   return true;
   }
-  return false;
+ }
+ return false;
 }
 
 bool traj_hits_obstacle(const std::vector<TimedPose>& traj, const GridMap& inflated_map) {
-  for (const auto& s : traj) {
-    if (!inflated_map.isFree(s.p.x, s.p.y)) {
-      return true;
-    }
+ for (const auto& s : traj) {
+  if (!inflated_map.isFree(s.p.x, s.p.y)) {
+   return true;
   }
-  return false;
+ }
+ return false;
 }
 
 } // namespace
@@ -224,9 +223,8 @@ std::vector<std::vector<DynState>> predict_frames(const std::vector<PredictInput
  return frames;
 }
 
-double timed_gap(const std::vector<TimedPose>& ego,
-                 const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
-                 double ego_radius_m) {
+double timed_gap(const std::vector<TimedPose>& ego, const std::vector<std::vector<DynState>>& frames,
+                 double frame_dt_s, double ego_radius_m) {
  if (ego.empty() || frames.empty()) {
   return std::numeric_limits<double>::infinity();
  }
@@ -249,8 +247,7 @@ double timed_gap(const std::vector<TimedPose>& ego,
  if (frames.size() == 1) {
   for (const auto& threat : frames.front()) {
    const Vec2 e = ego_at(0.0);
-   gap = std::min(gap, std::hypot(threat.p.x - e.x, threat.p.y - e.y) - threat.radius -
-                           ego_radius_m);
+   gap = std::min(gap, std::hypot(threat.p.x - e.x, threat.p.y - e.y) - threat.radius - ego_radius_m);
   }
   return gap;
  }
@@ -267,14 +264,14 @@ double timed_gap(const std::vector<TimedPose>& ego,
 }
 
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
-                     const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
-                     double ego_radius_m, double depart_delay_s) {
+                     const std::vector<std::vector<DynState>>& frames, double frame_dt_s, double ego_radius_m,
+                     double depart_delay_s) {
  if (path.empty() || frames.empty()) {
   return std::numeric_limits<double>::infinity();
  }
  // Ego distance at frame k (absolute time k*dt), departing after the delay.
-// Frame 0 is now: ego sits at start. Fixed from an off-by-one ((k+1)*dt)
-// that compared the threat-now against the ego-in-one-step.
+ // Frame 0 is now: ego sits at start. Fixed from an off-by-one ((k+1)*dt)
+ // that compared the threat-now against the ego-in-one-step.
  const double dt = std::max(1e-6, frame_dt_s);
  const double speed = std::max(0.0, speed_mps);
  const double delay = std::max(0.0, depart_delay_s);
@@ -304,8 +301,8 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
   // Degenerate single frame: point check (segment helper covers it, but be
   // explicit so the intent reads).
   for (const auto& threat : frames.front()) {
-   gap = std::min(gap, std::hypot(threat.p.x - ego_frame(0).x, threat.p.y - ego_frame(0).y) -
-                           threat.radius - ego_radius_m);
+   gap = std::min(gap, std::hypot(threat.p.x - ego_frame(0).x, threat.p.y - ego_frame(0).y) - threat.radius -
+                         ego_radius_m);
   }
   return gap;
  }
@@ -324,34 +321,33 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
 }
 
 double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
-                           const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
-                           double ego_radius_m, double margin_m) {
- return assess_departure(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, margin_m)
-   .wait_s;
+                          const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                          double ego_radius_m, double margin_m) {
+ return assess_departure(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, margin_m).wait_s;
 }
 
 const char* depart_reason_name(DepartReason reason) {
  switch (reason) {
-  case DepartReason::kGoNow:
-   return "GoNow";
-  case DepartReason::kWait:
-   return "Wait";
-  case DepartReason::kBlockedInWindow:
-   return "BlockedInWindow";
-  case DepartReason::kWaitUnsafe:
-   return "WaitUnsafe";
-  case DepartReason::kHorizonShort:
-   return "HorizonShort";
-  case DepartReason::kInvalid:
-   return "Invalid";
-  case DepartReason::kUnassessed:
-   return "Unassessed";
-  case DepartReason::kClear:
-   return "Clear";
-  case DepartReason::kStaticBlocked:
-   return "StaticBlocked";
-  case DepartReason::kCapsViolated:
-   return "CapsViolated";
+ case DepartReason::kGoNow:
+  return "GoNow";
+ case DepartReason::kWait:
+  return "Wait";
+ case DepartReason::kBlockedInWindow:
+  return "BlockedInWindow";
+ case DepartReason::kWaitUnsafe:
+  return "WaitUnsafe";
+ case DepartReason::kHorizonShort:
+  return "HorizonShort";
+ case DepartReason::kInvalid:
+  return "Invalid";
+ case DepartReason::kUnassessed:
+  return "Unassessed";
+ case DepartReason::kClear:
+  return "Clear";
+ case DepartReason::kStaticBlocked:
+  return "StaticBlocked";
+ case DepartReason::kCapsViolated:
+  return "CapsViolated";
  }
  return "Invalid";
 }
@@ -363,8 +359,8 @@ Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, 
      type == LocalCandidate::kDetour) {
   // No spatial planner exists yet: Unknown with its own reason, never
   // borrowed. Phase-2 implements these without touching this contract.
-  return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed, std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::infinity()};
  }
  const DepartureAssessment assessed =
    assess_departure(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, margin_m);
@@ -376,12 +372,10 @@ Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, 
            predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
   }
   if (assessed.reason == DepartReason::kHorizonShort || assessed.reason == DepartReason::kInvalid) {
-   return {Feasibility::Verdict::kUnknown, assessed.reason,
-           std::numeric_limits<double>::infinity(),
+   return {Feasibility::Verdict::kUnknown, assessed.reason, std::numeric_limits<double>::infinity(),
            predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
   }
-  return {Feasibility::Verdict::kInfeasible, assessed.reason,
-          std::numeric_limits<double>::infinity(),
+  return {Feasibility::Verdict::kInfeasible, assessed.reason, std::numeric_limits<double>::infinity(),
           predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
  }
  // kWaitInPlace: feasible exactly when the time assessment names a departure
@@ -392,12 +386,10 @@ Feasibility check_candidate(LocalCandidate type, const std::vector<Vec2>& path, 
           predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, delay)};
  }
  if (assessed.reason == DepartReason::kHorizonShort || assessed.reason == DepartReason::kInvalid) {
-  return {Feasibility::Verdict::kUnknown, assessed.reason,
-          std::numeric_limits<double>::infinity(),
+  return {Feasibility::Verdict::kUnknown, assessed.reason, std::numeric_limits<double>::infinity(),
           predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
  }
- return {Feasibility::Verdict::kInfeasible, assessed.reason,
-         std::numeric_limits<double>::infinity(),
+ return {Feasibility::Verdict::kInfeasible, assessed.reason, std::numeric_limits<double>::infinity(),
          predicted_gap(path, start_idx, cruise_mps, frames, frame_dt_s, ego_radius_m, 0.0)};
 }
 
@@ -451,84 +443,84 @@ std::vector<TimedPose> execute_turn_drive_turn(const std::vector<Vec2>& route, d
 // (same approximation level, documented); the 0.5 m/s steer-authority floor
 // never binds because execution never drives slow.
 struct AckermannExec {
-  std::vector<TimedPose> traj;
-  double max_delta{0.0};
-  bool demand_clipped{false};
+ std::vector<TimedPose> traj;
+ double max_delta{0.0};
+ bool demand_clipped{false};
 };
 
 AckermannExec execute_ackermann(const std::vector<Vec2>& points, const std::vector<double>& kappa,
                                 double start_theta, double cruise_mps, const ChassisExecCaps& caps) {
-  AckermannExec out;
-  constexpr double kSimDtS = 0.02;  // servo-lag resolution (matches physics step; stated).
-  if (points.empty() || points.size() != kappa.size() || !(cruise_mps > 0.0)) {
-    return out;
-  }
-  std::vector<double> arc(points.size(), 0.0);
-  for (std::size_t i = 1; i < points.size(); ++i) {
-    arc[i] = arc[i - 1] + std::hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-  }
-  const double total = arc.back();
-  // Per-sample tangent (segment direction; last sample reuses its segment).
-  // Demand = curvature feedforward + identity pursuit of the tangent, capped
-  // by steer authority. Gain 1 is the identity map (point wheels where the
-  // path goes), not a tuned gain; only the feedforward part can trip the
-  // caps verdict below. Lag/deviation are CHECKED downstream either way.
-  std::vector<double> tangent(points.size(), 0.0);
-  for (std::size_t i = 0; i + 1 < points.size(); ++i) {
-    tangent[i] = std::atan2(points[i + 1].y - points[i].y, points[i + 1].x - points[i].x);
-  }
-  tangent.back() = points.size() > 1 ? tangent[points.size() - 2] : start_theta;
-  const double kp = 1.0 / std::max(0.05, caps.servo_response_s * caps.max_steer_rate_radps);
-  double theta = start_theta;
-  double delta = 0.0;
-  double rate = 0.0;
-  double t = 0.0;
-  Vec2 pos = points.front();
-  out.traj.push_back({0.0, pos});
-  std::size_t seg = 0;
-  while (t * cruise_mps < total) {
-    const double s = t * cruise_mps;
-    while (seg + 1 < arc.size() && arc[seg + 1] < s) {
-      ++seg;
-    }
-    const std::size_t k0 = std::min(seg, kappa.size() - 1);
-    const double feed = std::atan(caps.wheel_base_m * kappa[k0]);
-    if (std::abs(feed) > caps.max_steer_rad + 1e-9) {
-      out.demand_clipped = true;
-      out.traj.clear();
-      return out;
-    }
-    const double demand =
-      std::clamp(feed + wrap_angle(tangent[k0] - theta), -caps.max_steer_rad, caps.max_steer_rad);
-    const double pwm = std::clamp(kp * (demand - delta), -1.0, 1.0);
-    const double rate_demand =
-      std::clamp(pwm * caps.max_steer_rate_radps, -caps.max_steer_rate_radps, caps.max_steer_rate_radps);
-    const double lag = caps.servo_response_s > 0.0 ? 1.0 - std::exp(-kSimDtS / caps.servo_response_s) : 1.0;
-    rate += (rate_demand - rate) * lag;
-    delta = std::clamp(delta + rate * kSimDtS, -caps.max_steer_rad, caps.max_steer_rad);
-    out.max_delta = std::max(out.max_delta, std::abs(delta));
-    theta += cruise_mps * std::tan(delta) / std::max(0.05, caps.wheel_base_m) * kSimDtS;
-    pos = {pos.x + cruise_mps * std::cos(theta) * kSimDtS,
-           pos.y + cruise_mps * std::sin(theta) * kSimDtS};
-    t += kSimDtS;
-    out.traj.push_back({t, pos});
-  }
+ AckermannExec out;
+ constexpr double kSimDtS = 0.02; // servo-lag resolution (matches physics step; stated).
+ if (points.empty() || points.size() != kappa.size() || !(cruise_mps > 0.0)) {
   return out;
+ }
+ std::vector<double> arc(points.size(), 0.0);
+ for (std::size_t i = 1; i < points.size(); ++i) {
+  arc[i] = arc[i - 1] + std::hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+ }
+ const double total = arc.back();
+ // Per-sample tangent (segment direction; last sample reuses its segment).
+ // Demand = curvature feedforward + identity pursuit of the tangent, capped
+ // by steer authority. Gain 1 is the identity map (point wheels where the
+ // path goes), not a tuned gain; only the feedforward part can trip the
+ // caps verdict below. Lag/deviation are CHECKED downstream either way.
+ std::vector<double> tangent(points.size(), 0.0);
+ for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+  tangent[i] = std::atan2(points[i + 1].y - points[i].y, points[i + 1].x - points[i].x);
+ }
+ tangent.back() = points.size() > 1 ? tangent[points.size() - 2] : start_theta;
+ const double kp = 1.0 / std::max(0.05, caps.servo_response_s * caps.max_steer_rate_radps);
+ double theta = start_theta;
+ double delta = 0.0;
+ double rate = 0.0;
+ double t = 0.0;
+ Vec2 pos = points.front();
+ out.traj.push_back({0.0, pos});
+ std::size_t seg = 0;
+ while (t * cruise_mps < total) {
+  const double s = t * cruise_mps;
+  while (seg + 1 < arc.size() && arc[seg + 1] < s) {
+   ++seg;
+  }
+  const std::size_t k0 = std::min(seg, kappa.size() - 1);
+  const double feed = std::atan(caps.wheel_base_m * kappa[k0]);
+  if (std::abs(feed) > caps.max_steer_rad + 1e-9) {
+   out.demand_clipped = true;
+   out.traj.clear();
+   return out;
+  }
+  const double demand =
+    std::clamp(feed + wrap_angle(tangent[k0] - theta), -caps.max_steer_rad, caps.max_steer_rad);
+  const double pwm = std::clamp(kp * (demand - delta), -1.0, 1.0);
+  const double rate_demand =
+    std::clamp(pwm * caps.max_steer_rate_radps, -caps.max_steer_rate_radps, caps.max_steer_rate_radps);
+  const double lag = caps.servo_response_s > 0.0 ? 1.0 - std::exp(-kSimDtS / caps.servo_response_s) : 1.0;
+  rate += (rate_demand - rate) * lag;
+  delta = std::clamp(delta + rate * kSimDtS, -caps.max_steer_rad, caps.max_steer_rad);
+  out.max_delta = std::max(out.max_delta, std::abs(delta));
+  theta += cruise_mps * std::tan(delta) / std::max(0.05, caps.wheel_base_m) * kSimDtS;
+  pos = {pos.x + cruise_mps * std::cos(theta) * kSimDtS, pos.y + cruise_mps * std::sin(theta) * kSimDtS};
+  t += kSimDtS;
+  out.traj.push_back({t, pos});
+ }
+ return out;
 }
 
 LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
                              double cruise_mps, const ChassisExecCaps& exec,
                              const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                              double ego_radius_m, double margin_m) {
- const LegAssessment invalid{Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
+ const LegAssessment invalid{Feasibility::Verdict::kUnknown,
+                             DepartReason::kInvalid,
                              std::numeric_limits<double>::infinity(),
-                             std::numeric_limits<double>::infinity(), {}};
+                             std::numeric_limits<double>::infinity(),
+                             {}};
  if (frames.empty() || cruise_mps <= 0.0 || (exec.can_spin && exec.yaw_rate_rads <= 0.0)) {
   return invalid;
  }
  const double dt = std::max(1e-6, frame_dt_s);
- const double horizon =
-   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ const double horizon = static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
  // Geometric path first (A* on the caller-inflated grid); no path is proven
  // static infeasibility, not traffic, not unknown.
  std::vector<Vec2> route;
@@ -537,8 +529,11 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
  } else {
   const auto plan = astar_plan(inflated_map, start, pocket, 1.0);
   if (!plan.ok || plan.path.empty()) {
-   return {Feasibility::Verdict::kInfeasible, DepartReason::kStaticBlocked,
-           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+   return {Feasibility::Verdict::kInfeasible,
+           DepartReason::kStaticBlocked,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::infinity(),
+           {}};
   }
   route.push_back(start);
   route.insert(route.end(), plan.path.begin(), plan.path.end());
@@ -547,34 +542,45 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
  if (!exec.can_spin) {
   // Ackermann execution: fillet at Rmin, static-recheck the smoothed path,
   // servo-lag bicycle follow, static-recheck + sweep the SIMULATED path.
-  if (!(exec.wheel_base_m > 0.0) || !(exec.max_steer_rad > 0.0) ||
-      !(exec.max_steer_rate_radps > 0.0) || !(exec.servo_response_s >= 0.0)) {
+  if (!(exec.wheel_base_m > 0.0) || !(exec.max_steer_rad > 0.0) || !(exec.max_steer_rate_radps > 0.0) ||
+      !(exec.servo_response_s >= 0.0)) {
    double nominal = 0.0;
    for (std::size_t i = 0; i + 1 < route.size(); ++i) {
     nominal += std::hypot(route[i + 1].x - route[i].x, route[i + 1].y - route[i].y);
    }
-   return {Feasibility::Verdict::kUnknown, DepartReason::kUnassessed,
-           nominal / std::max(1e-6, cruise_mps), std::numeric_limits<double>::infinity(), {}};
+   return {Feasibility::Verdict::kUnknown,
+           DepartReason::kUnassessed,
+           nominal / std::max(1e-6, cruise_mps),
+           std::numeric_limits<double>::infinity(),
+           {}};
   }
   const double r_min = exec.wheel_base_m / std::tan(exec.max_steer_rad);
   const auto smooth = smooth_fillet(route, r_min);
   if (!smooth.fits) {
-   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
-           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+   return {Feasibility::Verdict::kInfeasible,
+           DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::infinity(),
+           {}};
   }
   if (path_hits_obstacle(smooth.points, inflated_map)) {
-   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
-           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+   return {Feasibility::Verdict::kInfeasible,
+           DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::infinity(),
+           {}};
   }
   const auto ack = execute_ackermann(smooth.points, smooth.kappa, start_theta, cruise_mps, exec);
   if (ack.demand_clipped || ack.traj.empty()) {
-   return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
-           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+   return {Feasibility::Verdict::kInfeasible,
+           DepartReason::kCapsViolated,
+           std::numeric_limits<double>::infinity(),
+           std::numeric_limits<double>::infinity(),
+           {}};
   }
   if (traj_hits_obstacle(ack.traj, inflated_map)) {
    return {Feasibility::Verdict::kInfeasible, DepartReason::kCapsViolated,
-           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
-           ack.traj};
+           std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), ack.traj};
   }
   const double ack_end = ack.traj.back().t_s;
   if (ack_end > horizon + 1e-9) {
@@ -589,8 +595,7 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
   if (ack_spot < margin_m) {
    return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, ack_end, ack_gap, ack.traj};
   }
-  return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, ack_end, ack_gap,
-          ack.traj};
+  return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow, ack_end, ack_gap, ack.traj};
  }
  const auto spin_exec = execute_turn_drive_turn(route, start_theta, cruise_mps, exec.yaw_rate_rads);
  const double end_s = spin_exec.back().t_s;
@@ -613,69 +618,84 @@ LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
                           const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                           double ego_radius_m, double margin_m) {
  if (frames.empty() || hold_from_s < 0.0 || hold_until_s < hold_from_s) {
-  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  return {Feasibility::Verdict::kUnknown,
+          DepartReason::kInvalid,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::infinity(),
+          {}};
  }
  const double dt = std::max(1e-6, frame_dt_s);
- const double horizon =
-   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ const double horizon = static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
  if (hold_until_s > horizon + 1e-9) {
-  return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  return {Feasibility::Verdict::kUnknown,
+          DepartReason::kHorizonShort,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::infinity(),
+          {}};
  }
  const double gap = timed_gap({{hold_from_s, spot}, {hold_until_s, spot}}, frames, dt, ego_radius_m);
  if (gap >= margin_m) {
-  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, hold_until_s, gap};
+  return {Feasibility::Verdict::kFeasible, DepartReason::kClear, hold_until_s, gap, {}};
  }
- return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, hold_until_s, gap};
+ return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe, hold_until_s, gap, {}};
 }
 
 LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
-                            double depart_delay_s,
-                            const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
-                            double ego_radius_m, double margin_m) {
+                            double depart_delay_s, const std::vector<std::vector<DynState>>& frames,
+                            double frame_dt_s, double ego_radius_m, double margin_m) {
  if (path.empty() || frames.empty() || cruise_mps <= 0.0 || depart_delay_s < 0.0) {
-  return {Feasibility::Verdict::kUnknown, DepartReason::kInvalid,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  return {Feasibility::Verdict::kUnknown,
+          DepartReason::kInvalid,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::infinity(),
+          {}};
  }
  const double dt = std::max(1e-6, frame_dt_s);
- const double horizon =
-   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ const double horizon = static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
  const double length = remaining_length(path, start_idx);
  if (depart_delay_s + length / std::max(1e-6, cruise_mps) > horizon + 1e-9) {
-  return {Feasibility::Verdict::kUnknown, DepartReason::kHorizonShort,
-          std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  return {Feasibility::Verdict::kUnknown,
+          DepartReason::kHorizonShort,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::infinity(),
+          {}};
  }
- const double gap =
-   predicted_gap(path, start_idx, cruise_mps, frames, dt, ego_radius_m, depart_delay_s);
+ const double gap = predicted_gap(path, start_idx, cruise_mps, frames, dt, ego_radius_m, depart_delay_s);
  if (gap >= margin_m) {
-  return {Feasibility::Verdict::kFeasible, DepartReason::kClear,
-          depart_delay_s + length / std::max(1e-6, cruise_mps), gap};
+  return {Feasibility::Verdict::kFeasible,
+          DepartReason::kClear,
+          depart_delay_s + length / std::max(1e-6, cruise_mps),
+          gap,
+          {}};
  }
  // Hold-prefix classification: a violation while still parked at the start
  // means the wait itself kills (WaitUnsafe); otherwise the corridor downstream
  // is what blocks (BlockedInWindow). The hold interval only, not the whole
  // window past departure.
  const Vec2 start = path[std::min(start_idx, path.size() - 1)];
- const double hold_gap =
-   timed_gap({{0.0, start}, {depart_delay_s, start}}, frames, dt, ego_radius_m);
+ const double hold_gap = timed_gap({{0.0, start}, {depart_delay_s, start}}, frames, dt, ego_radius_m);
  if (hold_gap < margin_m) {
-  return {Feasibility::Verdict::kInfeasible, DepartReason::kWaitUnsafe,
-          std::numeric_limits<double>::infinity(), gap};
+  return {Feasibility::Verdict::kInfeasible,
+          DepartReason::kWaitUnsafe,
+          std::numeric_limits<double>::infinity(),
+          gap,
+          {}};
  }
- return {Feasibility::Verdict::kInfeasible, DepartReason::kBlockedInWindow,
-         std::numeric_limits<double>::infinity(), gap};
+ return {Feasibility::Verdict::kInfeasible,
+         DepartReason::kBlockedInWindow,
+         std::numeric_limits<double>::infinity(),
+         gap,
+         {}};
 }
 
-PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
-                                    Vec2 pocket, Vec2 merge,
-                                    const std::vector<Vec2>& route_suffix, double cruise_mps,
+PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
+                                    Vec2 merge, const std::vector<Vec2>& route_suffix, double cruise_mps,
                                     const ChassisExecCaps& exec, double hold_s,
-                                    const std::vector<std::vector<DynState>>& frames,
-                                    double frame_dt_s, double ego_radius_m, double margin_m) {
+                                    const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                                    double ego_radius_m, double margin_m) {
  PocketAssessment out;
- out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, exec,
-                              frames, frame_dt_s, ego_radius_m, margin_m);
+ out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, exec, frames, frame_dt_s,
+                              ego_radius_m, margin_m);
  // Rejoin geometry: A* pocket to merge, then the given route suffix (whose
  // first point the caller aligns with merge). A failed rejoin plan is proven
  // static infeasibility of that leg.
@@ -700,20 +720,23 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
  // chain: hold/rejoin inherit the transit cause as Unknown.
  if (out.transit.end_s < std::numeric_limits<double>::infinity()) {
   const double hold_end = out.transit.end_s + std::max(0.0, hold_s);
-  out.hold = assess_hold(pocket, out.transit.end_s, hold_end, frames, frame_dt_s, ego_radius_m,
-                         margin_m);
+  out.hold = assess_hold(pocket, out.transit.end_s, hold_end, frames, frame_dt_s, ego_radius_m, margin_m);
   if (!rejoin_planned) {
-   out.rejoin = {Feasibility::Verdict::kInfeasible, DepartReason::kStaticBlocked,
-                 std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+   out.rejoin = {Feasibility::Verdict::kInfeasible,
+                 DepartReason::kStaticBlocked,
+                 std::numeric_limits<double>::infinity(),
+                 std::numeric_limits<double>::infinity(),
                  {}};
   } else {
-   out.rejoin = assess_rejoin(rejoin_pts, 0, cruise_mps, hold_end, frames, frame_dt_s,
-                              ego_radius_m, margin_m);
+   out.rejoin =
+     assess_rejoin(rejoin_pts, 0, cruise_mps, hold_end, frames, frame_dt_s, ego_radius_m, margin_m);
   }
  } else {
-  const LegAssessment unchained{Feasibility::Verdict::kUnknown, out.transit.reason,
+  const LegAssessment unchained{Feasibility::Verdict::kUnknown,
+                                out.transit.reason,
                                 std::numeric_limits<double>::infinity(),
-                                std::numeric_limits<double>::infinity(), {}};
+                                std::numeric_limits<double>::infinity(),
+                                {}};
   out.hold = unchained;
   out.rejoin = unchained;
  }
@@ -733,9 +756,9 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
  return out;
 }
 
-PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
-                            Vec2 start, double start_theta, double cruise_mps, const ChassisExecCaps& exec,
-                            double hold_s, const PocketSampleParams& params,
+PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route, Vec2 start,
+                            double start_theta, double cruise_mps, const ChassisExecCaps& exec, double hold_s,
+                            const PocketSampleParams& params,
                             const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
                             double ego_radius_m, double margin_m) {
  PocketSearch out;
@@ -794,8 +817,8 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
    candidate.merge = route[merge_idx];
    candidate.assessment = assess_pocket_wait(
      inflated_map, start, start_theta, pocket, route[merge_idx],
-     std::vector<Vec2>(route.begin() + static_cast<std::ptrdiff_t>(merge_idx), route.end()),
-     cruise_mps, exec, hold_s, frames, frame_dt_s, ego_radius_m, margin_m);
+     std::vector<Vec2>(route.begin() + static_cast<std::ptrdiff_t>(merge_idx), route.end()), cruise_mps, exec,
+     hold_s, frames, frame_dt_s, ego_radius_m, margin_m);
    out.candidates.push_back(std::move(candidate));
    if (static_cast<int>(out.candidates.size()) >= params.max_candidates) {
     out.truncated = true;
@@ -821,18 +844,16 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
  return out;
 }
 
-DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,
-                                     double cruise_mps,
-                                     const std::vector<std::vector<DynState>>& frames,
-                                     double frame_dt_s, double ego_radius_m, double margin_m) {
+DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
+                                     const std::vector<std::vector<DynState>>& frames, double frame_dt_s,
+                                     double ego_radius_m, double margin_m) {
  if (path.empty() || frames.empty() || cruise_mps <= 0.0) {
   return {std::numeric_limits<double>::infinity(), DepartReason::kInvalid};
  }
  const double dt = std::max(1e-6, frame_dt_s);
  // Last frame stands at (N-1)*dt: predict_frames emits future_s = 0..H
  // inclusive, so N frames cover H = (N-1)*dt seconds of absolute time.
- const double horizon =
-   static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
+ const double horizon = static_cast<double>(frames.size() > 0 ? frames.size() - 1 : 0) * dt;
  // Full-trajectory gate (reviewer requirement): a wait is only feasible if
  // the ego completes its whole remaining path inside the predicted horizon
  // AND the swept gap passes. A wait that merely pushes the collision past

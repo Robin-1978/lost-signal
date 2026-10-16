@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "id": "rally",
-  "order": 5,
+  "order": 12,
   "title": "集结",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 1,
+  "chapter": 4,
   "prerequisites": [
     "motor_trial"
   ],
@@ -44,5 +44,6 @@
   },
   "rewards": [
     "ability.combo"
-  ]
+  ],
+  "mode": "experiment"
 }

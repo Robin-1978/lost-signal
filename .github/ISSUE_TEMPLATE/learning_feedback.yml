@@ -1,0 +1,40 @@
+name: Learning experience feedback
+description: Tell us what was engaging, confusing, or unhelpful for understanding autonomous robotics
+title: "[Learning] "
+labels:
+  - education
+body:
+  - type: dropdown
+    id: audience
+    attributes:
+      label: How did you use Lost Signal?
+      options:
+        - Self-study
+        - Class or club
+        - Robotics coursework
+        - Game experience
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Mission or screen
+      description: For example, First Sight, AI view F2, or the causal debrief.
+    validations:
+      required: true
+  - type: textarea
+    id: understood
+    attributes:
+      label: What did you understand?
+    validations:
+      required: true
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What remained confusing?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What example or evidence would help?

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Standard Tires",
+    "/components/0/description": "Balanced performance on dry ground.",
+    "/components/1/title": "High-Grip Tires",
+    "/components/1/description": "More traction and shorter braking distance, with higher energy use.",
+    "/components/2/title": "Efficiency Tires",
+    "/components/2/description": "Low rolling resistance, but a longer stopping distance on wet ground.",
+    "/components/3/title": "Wide Sand Tires",
+    "/components/3/description": "Strong traction on soft ground, with higher energy use on hard surfaces.",
+    "/components/4/title": "Racing Slicks",
+    "/components/4/description": "Fast and efficient on hard surfaces, with poor grip when wet."
+  }
+}

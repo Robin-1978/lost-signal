@@ -6,7 +6,9 @@
 #include "algo/grid_map.hpp"
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/sensors/sensor.hpp"
+#include "hw/sensors/sensor_system.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -25,31 +27,77 @@ int main() {
  sim::Rng open_rng(7);
  const auto visible = sim::lidar_scan(open_map, {1.0, 5.0}, 0.0, 4, 10.0, 0.0, open_rng, forklift);
  CHECK(visible.hit[0]);
- CHECK(visible.dynamic_hit[0] == 0);
  CHECK(std::abs(visible.ranges[0] - 3.5) < 1e-9);
+ auto ideal = visible;
+ ideal.header = {1.25, 9, "lidar_link", 0.02};
+ sim::Rng noise_a(99);
+ sim::Rng noise_b(99);
+ const auto noisy_a = sim::apply_lidar_noise(ideal, 0.05, noise_a);
+ const auto noisy_b = sim::apply_lidar_noise(ideal, 0.05, noise_b);
+ CHECK(noisy_a.ranges == noisy_b.ranges);
+ CHECK(noisy_a.ranges != ideal.ranges);
+ CHECK(noisy_a.header.stamp_s == ideal.header.stamp_s);
+ CHECK(noisy_a.header.frame_id == ideal.header.frame_id);
+ sim::Rng model_rng(3);
+ const auto quantized = sim::apply_lidar_noise(
+ ideal, sim::LidarNoiseModel{0.0, 0.12, 0.1, 0.0}, model_rng);
+ CHECK(std::abs(quantized.ranges[0] - 3.6) < 1e-12);
+ CHECK(quantized.header.sequence == ideal.header.sequence);
+ const auto dropped = sim::apply_lidar_noise(
+ ideal, sim::LidarNoiseModel{0.0, 0.0, 0.0, 1.0}, model_rng);
+ CHECK(!dropped.hit[0]);
+ CHECK(dropped.ranges[0] == dropped.max_range);
+ CHECK(dropped.intensities[0] == 0.0);
 
  sim::GridMap occluded_map(200, 100, 0.1);
  occluded_map.addBox(3.0, 4.5, 3.5, 5.5);
  sim::Rng occluded_rng(7);
  const auto occluded = sim::lidar_scan(occluded_map, {1.0, 5.0}, 0.0, 4, 10.0, 0.0, occluded_rng, forklift);
  CHECK(occluded.hit[0]);
- CHECK(occluded.dynamic_hit[0] == -1);
  CHECK(occluded.ranges[0] < visible.ranges[0]);
 
  // HAL contract: SimLidar reproduces the direct raycast bit-for-bit.
  sim::SimLidar hal_lidar(open_map);
- sim::Rng hal_rng(7);
- sim::Rng direct_rng(7);
- (void)direct_rng;
  sim::Rng open_rng2(7);
  const auto direct = sim::lidar_scan(open_map, {1.0, 5.0}, 0.0, 4, 10.0, 0.0, open_rng2, forklift);
- const auto via_hal = hal_lidar.scan({1.0, 5.0}, 0.0, 4, 10.0, 0.0, hal_rng, forklift);
+ const auto via_hal = hal_lidar.scan({1.0, 5.0}, 0.0, 4, 10.0, forklift);
  CHECK(via_hal.ranges.size() == direct.ranges.size());
  for (std::size_t i = 0; i < via_hal.ranges.size(); ++i) {
   CHECK(via_hal.ranges[i] == direct.ranges[i]);
   CHECK(via_hal.hit[i] == direct.hit[i]);
-  CHECK(via_hal.dynamic_hit[i] == direct.dynamic_hit[i]);
  }
+
+ // Production perception receives anonymous ranges. Static-map differencing,
+ // clustering and temporal confirmation create the track without truth IDs.
+ sim::SensorSystem sensors(open_map, 7, 11);
+ sim::WorldTruth truth;
+ truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ truth.dynamic_objects = forklift;
+ sim::EstimatedState estimate;
+ estimate.position = {1.0, 5.0};
+ estimate.heading_rad = 0.0;
+ sim::LidarConfig lidar_config;
+ lidar_config.rays = 360;
+ lidar_config.range_m = 10.0;
+ lidar_config.scan_hz = 10.0;
+ const auto first_frame = sensors.capture_lidar(truth, 0.0, lidar_config);
+ CHECK(first_frame.lidar->header.stamp_s == 0.0);
+ CHECK(first_frame.lidar->header.sequence == 0);
+ CHECK(first_frame.lidar->header.frame_id == "lidar_link");
+ CHECK(first_frame.lidar->scan_period_s == 0.1);
+CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal Domain comparison is instantaneous
+CHECK(first_frame.lidar->intensities.size() == first_frame.lidar->ranges.size());
+CHECK(first_frame.lidar->intensities[0] > 0.0);
+ const auto first_perception = sensors.process_lidar(first_frame, estimate, 1.0);
+ CHECK(!first_perception.dynamic_object_detected);
+ const auto second_frame = sensors.capture_lidar(truth, 0.1, lidar_config);
+ CHECK(second_frame.lidar->header.stamp_s == 0.1);
+ CHECK(second_frame.lidar->header.sequence == 1);
+ const auto second_perception = sensors.process_lidar(second_frame, estimate, 1.0);
+ CHECK(second_perception.dynamic_object_detected);
+ const auto anonymous_tracks = sensors.dynamic_obstacles().active_tracks(0.1, 1.0);
+ CHECK(anonymous_tracks.size() == 1);
+ CHECK(std::abs(anonymous_tracks.front().state.p.x - 5.0) < 0.25);
 
  sim::DynamicObstacleMap dynamic_map;
  dynamic_map.observe({0, {5.0, 5.0}, 0.5}, 0.0);
@@ -77,6 +125,16 @@ int main() {
  CHECK(!dwa.rollouts.empty());
  CHECK(dwa.rollouts.front().points.size() > 2);
 
+ const auto cliff_aware = sim::dwa_compute(
+ {1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5,
+ 2.0, 1.5, 0.1, 0.38, 8.0,
+ [](sim::Vec2, sim::Vec2 to) { return to.x < 1.2; });
+ CHECK(cliff_aware.best.valid);
+ for (const auto point : cliff_aware.best_path)
+ CHECK(point.x < 1.2);
+ CHECK(std::any_of(cliff_aware.rollouts.begin(), cliff_aware.rollouts.end(),
+ [](const auto& rollout) { return rollout.collision; }));
+
  double left = 0.0;
  double right = 0.0;
  sim::DiffDrive::twistToWheels(1.0, 1.0, 0.52, left, right);
@@ -99,6 +157,10 @@ int main() {
      2048,
      1.0,
      2.0,
+ 0.5,
+ 0.5,
+ 2.0,
+ {{0.25, 0.0}, {-0.25, 0.0}},
    },
    test_gains);
  const sim::GroundContact test_ground{0.7, 0.01, 4.2};
@@ -106,6 +168,7 @@ int main() {
  driven = motors.step(driven, {1.0, 0.6}, 0.02, test_ground);
  CHECK(motors.telemetry().left.pwm > 0.0);
  CHECK(motors.telemetry().right.target_mps > motors.telemetry().left.target_mps);
+ CHECK(motors.telemetry().passive_caster_steer_count == 2);
  CHECK(std::abs(motors.telemetry().left.pwm) <= 1.0);
  CHECK(std::abs(motors.telemetry().right.pwm) <= 1.0);
  for (int step = 0; step < 100; ++step) {
@@ -113,6 +176,10 @@ int main() {
  }
  CHECK(driven.v > 0.7);
  CHECK(driven.w > 0.2);
+ // Both wheel PIDs saturate equally on the first acceleration frame, so the
+ // caster direction only becomes observable after yaw response develops.
+ CHECK(motors.telemetry().passive_caster_steer_rad[0] > 0.0);
+ CHECK(motors.telemetry().passive_caster_steer_rad[1] < 0.0);
  CHECK(std::abs(motors.telemetry().left.measured_mps) > 0.5);
 
  // predicted_gap: head-on approach shrinks to the known minimum, diverging
@@ -133,8 +200,7 @@ int main() {
     {{{5.0, 5.0}, {0.0, 0.0}, 0.5}},
   };
   CHECK(sim::predicted_gap(path, 0, 10.0, leaving, 0.1, 0.38) > 4.0);
-  CHECK(sim::predicted_gap({}, 0, 1.0, closing, 0.1, 0.38) ==
-        std::numeric_limits<double>::infinity());
+  CHECK(sim::predicted_gap({}, 0, 1.0, closing, 0.1, 0.38) == std::numeric_limits<double>::infinity());
   CHECK(sim::predicted_gap(path, 0, 1.0, {}, 0.1, 0.38) == std::numeric_limits<double>::infinity());
   // Standing ego, threat driving at it: still caught.
   const std::vector<std::vector<sim::DynState>> incoming = {
@@ -158,8 +224,7 @@ int main() {
  {
   const std::vector<sim::Vec2> line{{0.0, 0.0}, {2.0, 0.0}};
   const std::vector<std::vector<sim::DynState>> open(40, {{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
-  CHECK(sim::assess_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5).reason ==
-        sim::DepartReason::kGoNow);
+  CHECK(sim::assess_departure(line, 0, 1.0, open, 0.1, 0.38, 0.5).reason == sim::DepartReason::kGoNow);
   std::vector<std::vector<sim::DynState>> clearing;
   for (int k = 0; k < 40; ++k) {
    clearing.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
@@ -184,8 +249,7 @@ int main() {
   const std::vector<std::vector<sim::DynState>> short_open(21, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
   CHECK(sim::assess_departure(long_line, 0, 1.0, short_open, 0.1, 0.38, 0.5).reason ==
         sim::DepartReason::kHorizonShort);
-  CHECK(sim::assess_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5).reason ==
-        sim::DepartReason::kInvalid);
+  CHECK(sim::assess_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5).reason == sim::DepartReason::kInvalid);
  }
  // earliest_departure: go-now when clear, positive wait for a passing threat,
  // infinity when nothing clears in horizon; empty inputs report infinity.
@@ -212,8 +276,7 @@ int main() {
   }
   const double dep = sim::earliest_departure(line, 0, 1.0, clearing, 0.1, 0.38, 0.5);
   CHECK(dep > 0.0 && dep < std::numeric_limits<double>::infinity());
-  CHECK(sim::earliest_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5) ==
-        std::numeric_limits<double>::infinity());
+  CHECK(sim::earliest_departure({}, 0, 1.0, open, 0.1, 0.38, 0.5) == std::numeric_limits<double>::infinity());
   CHECK(sim::earliest_departure(line, 0, 0.0, open, 0.1, 0.38, 0.5) ==
         std::numeric_limits<double>::infinity());
  }
@@ -239,7 +302,7 @@ int main() {
   std::vector<std::vector<sim::DynState>> visiting;
   for (int k = 0; k < 21; ++k) {
    visiting.push_back(k < 10 ? std::vector<sim::DynState>{{{1.5, 0.0}, {0.0, 0.0}, 0.4}}
-                              : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
+                             : std::vector<sim::DynState>{{{5.0, 5.0}, {0.0, 0.0}, 0.4}});
   }
   const std::vector<sim::TimedPose> hold_go{{{0.0, {0.0, 0.0}}, {1.0, {0.0, 0.0}}, {2.0, {1.0, 0.0}}}};
   const double held = sim::timed_gap(hold_go, visiting, 0.1, 0.38);

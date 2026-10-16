@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/jobs/0/blurb": "Deliver town mail. Conserve power—the operator at the town plant judges this job by energy use.",
+    "/jobs/1/blurb": "Deliver a medical kit. Fragile cargo needs clearance; slow is smooth, and smooth is fast.",
+    "/jobs/2/blurb": "Deliver seed grain. The town needs it quickly, but a collision still costs reputation.",
+    "/jobs/3/blurb": "Deliver machine parts. Conserve power—the operator at the town plant judges this job by energy use.",
+    "/jobs/4/blurb": "Deliver clean water. Fragile cargo needs clearance; slow is smooth, and smooth is fast."
+  }
+}

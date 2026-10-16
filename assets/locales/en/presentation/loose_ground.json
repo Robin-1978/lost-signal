@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Choose Shoes for Loose Ground",
+    "/garage/brief": "The east depot mixes gravel with sand. Road tires dig in; wide sand tires are slower but steadier.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits Motion on Loose Ground?",
+    "/prediction/hint": "Make a prediction. With the wrong tires, time disappears into wheelspin.",
+    "/prediction/choices/0/text": "The tires will hold RO-1 back",
+    "/prediction/choices/0/feedback": "Without enough traction, every step includes slip. Compare odometry error with elapsed time.",
+    "/prediction/choices/1/text": "Energy will exceed the target first",
+    "/prediction/choices/1/feedback": "High rolling resistance keeps the motor working. Read the energy meter.",
+    "/running/heading": "Deliver Supplies to the Signal Tower",
+    "/running/normal_line": "RO-1: Loose surface. Controlling slip.",
+    "/running/detected_line": "RO-1: Route ahead confirmed.",
+    "/debrief/success_title": "Loose-Ground Crossing Complete",
+    "/debrief/success_summary": "Wide sand tires crossed the gravel yard: slower, but every step counted.",
+    "/debrief/failure_summary": "Find which badge was lost. On loose ground, choose traction before chasing speed.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Terrain and Tires",
+    "/debrief/failure_titles/collision-static": "Delivery failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Delivery failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Delivery failed: time limit exceeded"
+  }
+}

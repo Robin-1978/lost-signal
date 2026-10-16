@@ -6,6 +6,10 @@
 #include "diff_drive.hpp"
 #include "algo/pid.hpp"
 
+#include <array>
+#include <cstddef>
+#include <vector>
+
 namespace sim {
 
 // Motor, contact and inertia parameters. All values come from robot/tire JSON;
@@ -23,6 +27,14 @@ struct MotorDriveParams {
  int encoder_counts_per_revolution{2048};
  double pwm_limit{1.0};
  double integral_limit{2.0};
+ double support_width_m{0.5};
+ double support_length_m{0.5};
+ double max_yaw_rate_radps{2.0};
+ struct PassiveCaster {
+ double x_m{0.0};
+ double y_m{0.0};
+ };
+ std::vector<PassiveCaster> passive_casters;
 };
 
 // Per-step ground contact for the driven wheels. The mission combines the tire
@@ -44,6 +56,9 @@ struct WheelMotorTelemetry {
  double pid_i{0.0};
  double pid_d{0.0};
  bool slipping{false};
+ // Signed force delivered by this wheel/track to the chassis after motor
+ // curve, rolling resistance and the tire-ground traction clamp.
+ double longitudinal_force_N{0.0};
 };
 
 struct MotorDriveTelemetry {
@@ -62,21 +77,41 @@ struct ServoTelemetry {
  double pid_d{0.0};
 };
 
-// Unified chassis telemetry. differential selects the twin-drive layout (left/right
-// wheels or tracks); ackermann selects the drive unit plus the steering servo
-// and the inactive side stays zero. Asking a twin-drive chassis for steer data
-// returns zeros, never plausible-looking fiction.
+// Unified chassis telemetry. Each chassis fills only its real actuators:
+// twin-drive uses left/right, Ackermann uses drive+servo, and holonomic
+// chassis use four modules. Inactive channels stay zero.
 struct ChassisTelemetry {
  bool differential{true};
+ bool holonomic{false};
  WheelMotorTelemetry left;
  WheelMotorTelemetry right;
  WheelMotorTelemetry drive;
  ServoTelemetry steer;
- // Ackermann linkage output: per-front-wheel angles from the single servo
- // angle via the Ackermann condition (inner > outer). Other chassis leave
- // them zero; renderers (not physics) consume them.
- double front_left_steer_rad{0.0};
- double front_right_steer_rad{0.0};
+ bool steering_servo_present{false};
+ // Steering actuator output in the robot tire-slot mount order. The chassis
+ // owns these angles; assembly code binds index -> mount id and renderers only
+ // consume the resulting mount transforms. Ackermann fills FL/FR, swerve
+ // fills FL/FR/RL/RR, and fixed-wheel chassis expose zero entries.
+ std::array<double, 4> wheel_steer_rad{};
+ std::size_t wheel_steer_count{0};
+ // Passive swivel angles are a chassis output just like powered steering.
+ // World, TF and render code only bind channel order to authored mounts.
+ std::array<double, 4> passive_caster_steer_rad{};
+ std::size_t passive_caster_steer_count{0};
+ // Extra moment not already produced by applying wheel forces at their
+ // physical contact points. Tracked chassis use it for scrub resistance;
+ // Ackermann uses it for lateral tire response. Differential leaves it zero.
+ double extra_yaw_torque_Nm{0.0};
+ double desired_yaw_rate_radps{0.0};
+ double yaw_rate_tracking_time_s{0.0};
+ // Four-module drive output for swerve/mecanum: FL, FR, RL, RR.
+ std::array<WheelMotorTelemetry, 4> modules;
+ double body_forward_force_N{0.0};
+ double body_lateral_force_N{0.0};
+ double measured_forward_mps{0.0};
+ double measured_lateral_mps{0.0};
+ double measured_yaw_radps{0.0};
+ bool traction_saturated{false};
 };
 
 // Closed-loop wheel-speed tuning from first principles. The linearized wheel
@@ -125,7 +160,13 @@ class DifferentialMotorDrive : public ChassisModel {
                 const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
- ChassisCaps caps() const override { return {true}; }
+ ChassisCaps caps() const override {
+ ChassisCaps output;
+ output.geometry.support_width_m = params_.support_width_m;
+ output.geometry.support_length_m = params_.support_length_m;
+ output.max_yaw_rate_radps = params_.max_yaw_rate_radps;
+ return output;
+ }
 
  private:
  double encoder_measure(double wheel_mps, double dt) const;

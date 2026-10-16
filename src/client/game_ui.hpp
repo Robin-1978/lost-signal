@@ -5,6 +5,7 @@
 
 #include <TGUI/TGUI.hpp>
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -21,8 +22,11 @@ struct UiActions {
  bool open_chapter{false};
  bool toggle_pause{false};
  bool build_changed{false};
+ bool reset_simulation{false};
  double speed{0.0};
  std::string selected_level;
+ std::optional<double> replay_time_s;
+ std::string purchase_component;
 };
 
 class GameUi {
@@ -33,19 +37,26 @@ class GameUi {
  void set_screen(Screen screen, const game::MissionSimulation* mission = nullptr);
  void resize(int width, int height);
  void refresh_running(const game::MissionSimulation& mission, bool paused, double speed);
+ void refresh_debrief(const game::MissionSimulation& mission);
  UiActions consume_actions();
 
  Screen screen() const { return screen_; }
  const game::BuildSelection& build() const { return build_; }
+ bool build_within_budget() const;
+ bool endless_mode() const { return endless_mode_; }
  const game::PresentationDefinition& presentation() const { return *presentation_; }
  const std::string& level_id() const { return presentation_->level; }
+ const std::string& contract_id() const { return active_contract_id_; }
  void use_recommended_build();
+ void cycle_component(const std::string& slot);
  void select_level(const std::string& level_id);
  void mark_completed(const std::string& level_id);
  void restore_completed(const std::vector<std::string>& level_ids);
  // DIY garage: owned component ids filter the columns; the last attempted
  // build is restored when re-entering a level.
  void set_inventory(const std::vector<std::string>& component_ids);
+ void set_abilities(const std::vector<std::string>& ability_ids);
+ void set_contract_status(int reputation, const std::vector<std::string>& claimed_contracts);
  void set_build(const game::BuildSelection& build);
 
  private:
@@ -56,6 +67,7 @@ class GameUi {
  void build_running(const game::MissionSimulation* mission);
  void build_debrief(const game::MissionSimulation* mission);
  void select_component(const std::string& slot, const std::string& id);
+ void select_chassis(const std::string& robot_id);
  void set_style(double style);
  void update_style_label();
  void update_garage_labels();
@@ -65,8 +77,7 @@ class GameUi {
  // Garage card text (single source for create + refresh): title / slot stat
  // from component behavior / cost. Stats are content numbers, never invented.
  std::string card_stat(const std::string& slot, const game::ComponentDefinition& item) const;
- std::string card_text(const std::string& slot, const game::ComponentDefinition& item,
-                       bool locked) const;
+ std::string card_text(const std::string& slot, const game::ComponentDefinition& item, bool locked) const;
 
  tgui::Label::Ptr add_label(const std::string& text, float x, float y, float width, unsigned text_size,
                             tgui::Color color, bool bold = false);
@@ -90,18 +101,33 @@ class GameUi {
  std::string prediction_choice_;
  std::unordered_set<std::string> completed_levels_;
  std::unordered_set<std::string> owned_;
+ std::unordered_set<std::string> owned_abilities_;
+ std::unordered_set<std::string> claimed_contracts_;
+ int reputation_{0};
+ std::string active_contract_id_;
+ bool endless_mode_{false};
  struct SlotCard {
   std::string id;
   tgui::Button::Ptr button;
  };
  std::unordered_map<std::string, std::vector<SlotCard>> slot_cards_;
+ std::vector<SlotCard> chassis_cards_;
  tgui::Slider::Ptr style_slider_;
  tgui::Label::Ptr style_value_;
  tgui::Label::Ptr budget_label_;
+ tgui::Button::Ptr garage_next_button_;
+ tgui::CheckBox::Ptr endless_checkbox_;
  tgui::Label::Ptr running_metrics_;
  tgui::Label::Ptr running_state_;
  tgui::Panel::Ptr running_explanation_card_;
  tgui::Button::Ptr pause_button_;
+ tgui::Slider::Ptr replay_slider_;
+ tgui::Label::Ptr replay_value_;
+ tgui::Label::Ptr replay_cause_;
+ tgui::Label::Ptr replay_evidence_;
+ tgui::Label::Ptr comparison_label_;
+ std::unordered_map<std::string, game::MissionResult> previous_results_;
+ std::optional<game::MissionResult> comparison_result_;
 };
 
 } // namespace client

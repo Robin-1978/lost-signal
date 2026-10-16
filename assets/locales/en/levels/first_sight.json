@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "First Sight",
+    "/objective/goal_label": "Safe Zone Before the Glass Door",
+    "/teaching/prediction_prompt": "Which LiDAR will let RO-1 stop in time before the glass door?",
+    "/teaching/knowledge_card": "Detection range determines when an object is seen, while refresh rate determines how often new measurements are obtained."
+  }
+}

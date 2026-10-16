@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Tracked Climb",
+    "/objective/goal_label": "Power Module",
+    "/teaching/prediction_prompt": "In a narrow corridor, which fails first for a tracked chassis: traction or steering clearance?",
+    "/teaching/knowledge_card": "A tracked chassis turns by scrubbing against the ground. Slow down in narrow spaces so the odometry estimate stays useful."
+  }
+}

@@ -7,15 +7,13 @@
 
 namespace client {
 
-// In-client map editor, v1: select + drag-move + save. Pure world-space
-// logic, no raylib dependency, so unit tests drive it without a window.
-// Dragging the screen Murphy-to-world mapping stays in main.cpp; the
-// renderer draws the overlay from this state (dashed working copy).
-// Only moves exist in v1 (no create/delete/resize): every save keeps all
-// ids, so unlock chains, presentations and replays cannot break by editing.
+// In-client map editor. Pure world-space logic, with no raylib dependency,
+// so unit tests drive it without a window. Screen-to-world picking stays in
+// main.cpp; this model creates, moves, resizes and deletes map primitives.
+// A full catalog reload validates references before a saved edit is accepted.
 class MapEditor {
  public:
- enum class Kind { kNone, kMarker, kObstacle, kSurface };
+ enum class Kind { kNone, kMarker, kObstacle, kSurface, kTerrain };
 
  explicit MapEditor(const game::ContentCatalog& catalog, std::string level_id);
 
@@ -44,6 +42,12 @@ class MapEditor {
  void add_obstacle(double world_x, double world_y);
  void add_surface(double world_x, double world_y);
  void add_marker(double world_x, double world_y);
+ void add_ramp(double world_x, double world_y);
+ void add_platform(double world_x, double world_y);
+ void adjust_selected_height(double delta_m);
+ void adjust_selected_slope(double delta_grade);
+ void adjust_selected_roughness(double delta_m);
+ void rotate_selected_terrain();
  void remove_selected();
 
  // Serialize the working copy, write the map file, then reload the whole

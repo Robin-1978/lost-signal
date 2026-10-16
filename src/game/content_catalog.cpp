@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <set>
@@ -23,6 +24,32 @@ json read_json(const std::filesystem::path& path) {
  } catch (const json::exception& error) {
   throw ContentError(path.string() + ": " + error.what());
  }
+}
+
+json read_localized_json(const std::filesystem::path& path, const std::filesystem::path& root,
+ const std::string& locale) {
+ auto value = read_json(path);
+ const auto localized_path = root / "locales" / locale / std::filesystem::relative(path, root);
+ if (std::filesystem::is_regular_file(localized_path)) {
+ try {
+ const auto overlay = read_json(localized_path);
+ if (overlay.value("schema_version", 0) != 1 || !overlay.at("translations").is_object())
+ throw ContentError(localized_path.string() + ": invalid locale overlay");
+ for (const auto& [pointer_text, translated] : overlay.at("translations").items()) {
+ if (!translated.is_string())
+ throw ContentError(localized_path.string() + ": translation must be a string at " +
+ pointer_text);
+ const json::json_pointer pointer(pointer_text);
+ if (!value.contains(pointer) || !value.at(pointer).is_string())
+ throw ContentError(localized_path.string() + ": translation points to a non-string at " +
+ pointer_text);
+ value.at(pointer) = translated;
+ }
+ } catch (const json::exception& error) {
+ throw ContentError(localized_path.string() + ": cannot apply locale overlay: " + error.what());
+ }
+ }
+ return value;
 }
 
 void require_schema_v1(const json& value, const std::filesystem::path& path) {
@@ -119,6 +146,19 @@ bool contains(const std::vector<std::string>& values, const std::string& value) 
  return std::find(values.begin(), values.end(), value) != values.end();
 }
 
+bool valid_locale_name(const std::string& value) {
+ if (value.empty() || value.front() == '-' || value.back() == '-')
+ return false;
+ bool previous_hyphen = false;
+ for (const unsigned char character : value) {
+ const bool hyphen = character == '-';
+ if ((!std::isalnum(character) && !hyphen) || (hyphen && previous_hyphen))
+ return false;
+ previous_hyphen = hyphen;
+ }
+ return true;
+}
+
 } // namespace
 
 double property(const Properties& properties, const std::string& name) {
@@ -133,12 +173,37 @@ bool active_in_level(const std::vector<std::string>& levels, const std::string& 
  return levels.empty() || contains(levels, level_id);
 }
 
-ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
+ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
+ const std::string& requested_locale) {
  ContentCatalog catalog;
  catalog.root_ = std::filesystem::canonical(assets_root);
 
+ const auto locales_path = catalog.root_ / "locales.json";
+ const auto locales = read_json(locales_path);
+ require_schema_v1(locales, locales_path);
+ catalog.supported_locales_ = locales.at("supported_locales").get<std::vector<std::string>>();
+ if (catalog.supported_locales_.empty())
+ throw ContentError(locales_path.string() + ": supported_locales must not be empty");
+ std::set<std::string> unique_locales;
+ for (const auto& locale : catalog.supported_locales_) {
+ if (!valid_locale_name(locale))
+ throw ContentError(locales_path.string() + ": invalid locale code '" + locale + "'");
+ if (!unique_locales.insert(locale).second)
+ throw ContentError(locales_path.string() + ": duplicate locale code '" + locale + "'");
+ }
+ catalog.locale_ = requested_locale.empty() ? locales.at("default_locale").get<std::string>()
+ : requested_locale;
+ if (!contains(catalog.supported_locales_, catalog.locale_)) {
+ std::ostringstream message;
+ message << "unsupported locale '" << catalog.locale_ << "' (supported:";
+ for (const auto& locale : catalog.supported_locales_)
+ message << ' ' << locale;
+ message << ')';
+ throw ContentError(message.str());
+ }
+
  const auto campaign_path = catalog.root_ / "campaign.json";
- const auto campaign_json = read_json(campaign_path);
+ const auto campaign_json = read_localized_json(campaign_path, catalog.root_, catalog.locale_);
  require_schema_v1(campaign_json, campaign_path);
  const auto& companion = campaign_json.at("companion");
  catalog.campaign_ = {
@@ -155,7 +220,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  };
 
  for (const auto& path : json_files(catalog.root_ / "levels")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   const auto& objective = value.at("objective");
   const auto& loadout = value.at("loadout_rules");
@@ -165,10 +230,14 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   level.id = value.at("id").get<std::string>();
   level.order = value.at("order").get<int>();
   level.chapter = value.at("chapter").get<int>();
+  level.mode = value.value("mode", std::string{"experiment"});
   level.title = value.at("title").get<std::string>();
   level.map = value.at("map").get<std::string>();
   level.control_mode = value.at("control_mode").get<std::string>();
   level.localization_mode = value.at("localization_mode").get<std::string>();
+  if (level.mode != "mainline" && level.mode != "contract" && level.mode != "experiment") {
+   throw ContentError(path.string() + ": unsupported mode");
+  }
   if (level.control_mode != "manual_calibration" && level.control_mode != "autonomous") {
    throw ContentError(path.string() + ": unsupported control_mode");
   }
@@ -183,7 +252,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
     objective.value("via_label", std::string{}),    objective.at("goal_label").get<std::string>(),
     objective.at("goal_visual").get<std::string>(), objective.at("time_limit_s").get<double>(),
     objective.at("max_collisions").get<int>(),      objective.at("arrive_tolerance_m").get<double>(),
-    objective.value("via_radius_m", 1.25),
+    objective.value("max_arrival_speed_mps", 999.0), objective.value("via_radius_m", 1.25), {},
   };
   // Unified goals: explicit list wins; otherwise derive from legacy fields so
   // reach = [complete] and deliver_via = [pickup, complete]. Same arrivals,
@@ -197,23 +266,35 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
     step.radius_m = entry.value("radius_m", level.objective.arrive_tolerance_m);
     step.summon_actor = entry.value("summon_actor", std::string{});
     step.recharge_wh = entry.value("recharge_wh", 0.0);
+ step.dwell_s = entry.value("dwell_s", 0.0);
     if (step.action != "pickup" && step.action != "complete" && step.action != "summon" &&
-        step.action != "recharge") {
+ step.action != "recharge" && step.action != "inspect") {
      throw ContentError(path.string() + ": unknown goal action " + step.action);
     }
+ if (step.action == "inspect" && step.dwell_s <= 0.0) {
+ throw ContentError(path.string() + ": inspect goal requires dwell_s > 0");
+ }
     level.objective.goals.push_back(std::move(step));
    }
    if (level.objective.goals.empty()) {
     throw ContentError(path.string() + ": empty goals list");
    }
   } else if (!level.objective.via.empty()) {
-   level.objective.goals.push_back({level.objective.via, level.objective.via_label, "pickup",
-                                    level.objective.via_radius_m});
-   level.objective.goals.push_back({level.objective.goal, level.objective.goal_label, "complete",
-                                    level.objective.arrive_tolerance_m});
+   level.objective.goals.push_back(
+     {level.objective.via, level.objective.via_label, "pickup", level.objective.via_radius_m, {}, 0.0});
+   level.objective.goals.push_back({level.objective.goal,
+                                    level.objective.goal_label,
+                                    "complete",
+                                    level.objective.arrive_tolerance_m,
+                                    {},
+                                    0.0});
   } else {
-   level.objective.goals.push_back({level.objective.goal, level.objective.goal_label, "complete",
-                                    level.objective.arrive_tolerance_m});
+   level.objective.goals.push_back({level.objective.goal,
+                                    level.objective.goal_label,
+                                    "complete",
+                                    level.objective.arrive_tolerance_m,
+                                    {},
+                                    0.0});
   }
   level.budget = loadout.at("budget").get<int>();
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
@@ -221,16 +302,25 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   level.prediction_prompt = teaching.at("prediction_prompt").get<std::string>();
   level.knowledge_card = teaching.at("knowledge_card").get<std::string>();
   level.safe_min_clearance_m = score.at("safe_min_clearance_m").get<double>();
+  level.safe_clearance_scope = score.value("safe_clearance_scope", "all");
+  if (level.safe_clearance_scope != "all" && level.safe_clearance_scope != "static" &&
+      level.safe_clearance_scope != "dynamic") {
+   throw ContentError(path.string() + ": invalid safe_clearance_scope");
+  }
   level.max_localization_error_m = score.value("max_localization_error_m", 999.0);
   level.fast_time_s = score.at("fast_time_s").get<double>();
   level.efficient_energy_wh = score.at("efficient_energy_wh").get<double>();
   level.rewards = value.at("rewards").get<std::vector<std::string>>();
+  if (const auto payload = value.find("payload"); payload != value.end()) {
+   level.payload_mass_kg = payload->at("mass_kg").get<double>();
+   level.payload_cog_height_m = payload->at("cog_height_m").get<double>();
+  }
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
  {
   const auto path = catalog.root_ / "surfaces.json";
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   for (const auto& item : value.at("materials")) {
    SurfaceMaterialDefinition material;
@@ -241,12 +331,17 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    material.texture_albedo = item.value("texture", std::string{});
    material.rolling_drag = item.at("rolling_drag").get<double>();
    material.traction_scale = item.at("traction_scale").get<double>();
+   if (const auto effect = item.find("drive_effect"); effect != item.end()) {
+    material.drive_effect = effect->at("kind").get<std::string>();
+    material.effect_color = rgba(effect->at("color").get<std::string>());
+    material.effect_intensity = effect->at("intensity").get<double>();
+   }
    insert_unique(catalog.surface_materials_, std::move(material), path);
   }
  }
  {
   const auto path = catalog.root_ / "abilities.json";
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   for (const auto& item : value.at("abilities")) {
    AbilityDefinition ability;
@@ -258,7 +353,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
  {
   const auto path = catalog.root_ / "strings.json";
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   for (const auto& [key, text] : value.at("strings").items()) {
    if (!catalog.strings_.emplace(key, text.get<std::string>()).second) {
@@ -267,7 +362,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   }
  }
  for (const auto& path : json_files(catalog.root_ / "contracts")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   for (const auto& item : value.at("jobs")) {
    ContractJob job;
@@ -276,6 +371,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    job.cargo = item.at("cargo").get<std::string>();
    job.axis = item.at("axis").get<std::string>();
    job.rep = item.at("rep").get<int>();
+ job.mass_kg = item.at("mass_kg").get<double>();
+ job.cog_height_m = item.at("cog_height_m").get<double>();
+ job.fragility = item.at("fragility").get<double>();
    job.blurb = item.at("blurb").get<std::string>();
    // Unknown levels fail loudly here (validator pins the same rule in Python).
    if (catalog.levels_.find(job.level) == catalog.levels_.end()) {
@@ -290,7 +388,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   }
  }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   MapDefinition map;
   map.id = value.at("id").get<std::string>();
@@ -319,6 +417,21 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    surface.rolling_drag = material.rolling_drag;
    map.surfaces.push_back(std::move(surface));
   }
+  for (const auto& item : value.value("terrain", nlohmann::json::array())) {
+   TerrainPatchDefinition patch;
+   patch.id = item.at("id").get<std::string>();
+   patch.min = vec2(item.at("min"));
+   patch.max = vec2(item.at("max"));
+   patch.base_height_m = item.at("base_height_m").get<double>();
+   patch.grade_x = item.at("grade_x").get<double>();
+   patch.grade_y = item.at("grade_y").get<double>();
+   patch.roughness = item.value("roughness", 0.0);
+   patch.active_in = item.value("active_in", std::vector<std::string>{});
+   if (!(patch.min.x < patch.max.x && patch.min.y < patch.max.y)) {
+    throw ContentError(path.string() + ": terrain patch '" + patch.id + "' has an invalid box");
+   }
+   map.terrain.push_back(std::move(patch));
+  }
   for (auto it = value.at("markers").begin(); it != value.at("markers").end(); ++it) {
    map.markers.emplace(it.key(), pose(it.value()));
   }
@@ -345,6 +458,10 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
    actor.collision_social = (collision == "social");
    const auto& visual = item.at("visual");
    actor.visual_model = visual.at("model").get<std::string>();
+ actor.visual_kind = visual.value("kind", std::string{"vehicle"});
+ if (actor.visual_kind != "vehicle" && actor.visual_kind != "pedestrian") {
+  throw ContentError(path.string() + ": unknown actor visual kind " + actor.visual_kind);
+ }
    actor.visual_ref_radius_m = visual.at("ref_radius_m").get<double>();
    if (!std::filesystem::is_regular_file(catalog.root_ / actor.visual_model)) {
     throw ContentError(path.string() + ": missing actor model '" + actor.visual_model + "'");
@@ -355,7 +472,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
 
  for (const auto& path : json_files(catalog.root_ / "scenes")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   const auto& camera = value.at("camera");
   const auto& lighting = value.at("lighting");
@@ -441,6 +558,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
     effects.at("bob_frequency_hz").get<double>(),     effects.at("eye_height_m").get<double>(),
     effects.at("scan_radius_m").get<double>(),        effects.at("perception_link_height_m").get<double>(),
     effects.at("prediction_horizon_s").get<double>(), effects.at("success_ring_radius_m").get<double>(),
+    effects.value("trail_duration_s", 1.6),           effects.value("surface_particle_count", 18),
+    effects.value("surface_particle_scale", 1.0),     effects.value("risk_indicator_radius_m", 0.82),
   };
   scene.floor = {
     floor.at("albedo_texture").get<std::string>(),   rgba(floor.at("base_color").get<std::string>()),
@@ -503,7 +622,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
 
  for (const auto& path : json_files(catalog.root_ / "components")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   if (path.filename() == "policies.json") {
    for (const auto& item : value.at("policies")) {
@@ -530,7 +649,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
 
  for (const auto& path : json_files(catalog.root_ / "robots")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   const auto& drive = value.at("drive");
   const auto& motor = drive.at("motor");
@@ -542,6 +661,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   robot.id = value.at("id").get<std::string>();
   robot.title = value.at("title").get<std::string>();
   robot.drive_type = drive.at("type").get<std::string>();
+ robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
   robot.wheel_radius_m = drive.at("wheel_radius_m").get<double>();
   robot.wheel_base_m = drive.at("wheel_base_m").get<double>();
   robot.motor = {
@@ -570,17 +690,33 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
   robot.collision_radius_m = collision.at("radius_m").get<double>();
   robot.collision_height_m = collision.at("height_m").get<double>();
   std::set<std::string> mount_ids;
+ std::set<std::string> frame_ids;
   for (const auto& item : value.at("mounts")) {
    MountDefinition mount{
      item.at("id").get<std::string>(),
      vec3(item.at("position_m")),
      vec3(item.at("rotation_deg")),
+ item.value("frame_id", item.at("id").get<std::string>() + "_link"),
    };
    if (!mount_ids.insert(mount.id).second) {
     throw ContentError(path.string() + ": duplicate robot mount '" + mount.id + "'");
    }
+ if (!frame_ids.insert(mount.frame_id).second) {
+ throw ContentError(path.string() + ": duplicate robot frame '" + mount.frame_id + "'");
+ }
+ if (mount.frame_id == "map" || mount.frame_id == "odom" ||
+ mount.frame_id == "base_footprint" || mount.frame_id == "base_link") {
+ throw ContentError(path.string() + ": mount frame uses reserved frame '" + mount.frame_id + "'");
+ }
    robot.mounts.push_back(std::move(mount));
   }
+ robot.passive_support_mounts =
+ value.value("passive_support_mounts", std::vector<std::string>{});
+ for (const auto& mount : robot.passive_support_mounts) {
+ if (!mount_ids.count(mount)) {
+ throw ContentError(path.string() + ": passive support references unknown mount '" + mount + "'");
+ }
+ }
   for (const auto& item : value.at("base_parts")) {
    RobotPartDefinition part{
      item.at("id").get<std::string>(),
@@ -618,7 +754,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
  }
 
  for (const auto& path : json_files(catalog.root_ / "presentation")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   const auto& garage = value.at("garage");
   const auto& prediction = value.at("prediction");
@@ -674,7 +810,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
 
  std::set<std::string> story_ids;
  for (const auto& path : json_files(catalog.root_ / "story")) {
-  const auto value = read_json(path);
+  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
   for (const auto& item : value.at("beats")) {
    StoryBeatDefinition beat{
@@ -692,7 +828,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root) {
 
  {
   const auto chapters_path = catalog.root_ / "chapters.json";
-  const auto chapters_value = read_json(chapters_path);
+  const auto chapters_value =
+ read_localized_json(chapters_path, catalog.root_, catalog.locale_);
   require_schema_v1(chapters_value, chapters_path);
   std::set<int> chapter_ids;
   for (const auto& item : chapters_value.at("chapters")) {
@@ -898,7 +1035,7 @@ int ContentCatalog::build_cost(const BuildSelection& build) const {
 }
 
 void ContentCatalog::validate_build(const std::string& level_id, const BuildSelection& build,
-                                     const std::vector<std::string>& owned_abilities) const {
+                                    const std::vector<std::string>& owned_abilities) const {
  const auto& level_value = level(level_id);
  if (!build.chassis_robot.empty()) {
   // Player chassis choice: opt-in per level (absent = fixed, today's path),
@@ -908,8 +1045,8 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
    throw ContentError("chassis '" + build.chassis_robot + "' is not offered for this level");
   }
   const auto& unlock = robot(build.chassis_robot).unlock_ability;
-  if (!unlock.empty() && std::find(owned_abilities.begin(), owned_abilities.end(), unlock) ==
-                            owned_abilities.end()) {
+  if (!unlock.empty() &&
+      std::find(owned_abilities.begin(), owned_abilities.end(), unlock) == owned_abilities.end()) {
    throw ContentError("chassis '" + build.chassis_robot + "' is locked behind '" + unlock + "'");
   }
  }

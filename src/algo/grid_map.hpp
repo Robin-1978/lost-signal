@@ -20,7 +20,7 @@ class GridMap {
   return inside(gx, gy) && data_[gy * w_ + gx] < 50;
  }
  bool isFreeCell(int gx, int gy) const { return inside(gx, gy) && data_[gy * w_ + gx] < 50; }
- // simple box obstacle in world coords, half-open [x0,x1)x[y0,y1): 不多占格子
+ // World-space box with half-open bounds [x0,x1)x[y0,y1), avoiding an extra cell.
  void addBox(double x0, double y0, double x1, double y1) {
   int gx0 = (int)std::floor(x0 / res_), gx1 = (int)std::ceil(x1 / res_);
   int gy0 = (int)std::floor(y0 / res_), gy1 = (int)std::ceil(y1 / res_);

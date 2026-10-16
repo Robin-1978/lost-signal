@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "id": "track_turn",
-  "order": 11,
+  "order": 16,
   "title": "履带急转",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
   "prerequisites": [
     "return_route"
   ],
@@ -40,10 +40,11 @@
   "score": {
     "safe_min_clearance_m": 0.0,
     "max_localization_error_m": 2.0,
-    "fast_time_s": 30.0,
-    "efficient_energy_wh": 0.5
+    "fast_time_s": 13.0,
+    "efficient_energy_wh": 0.18
   },
   "rewards": [
     "ability.tracked"
-  ]
+  ],
+  "mode": "experiment"
 }

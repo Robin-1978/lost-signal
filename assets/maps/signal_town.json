@@ -150,6 +150,7 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
     },
@@ -174,6 +175,7 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
     }

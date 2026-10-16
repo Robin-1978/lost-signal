@@ -13,9 +13,15 @@ class ContentError : public std::runtime_error {
 
 class ContentCatalog {
  public:
- static ContentCatalog load(const std::filesystem::path& assets_root);
+ // An empty locale selects assets/locales.json::default_locale. Locale files
+ // are sparse JSON-pointer string overlays over the shared simulation data, so a
+ // translation cannot silently fork physics or scoring parameters.
+ static ContentCatalog load(const std::filesystem::path& assets_root,
+ const std::string& locale = {});
 
  const std::filesystem::path& root() const { return root_; }
+ const std::string& locale() const { return locale_; }
+ const std::vector<std::string>& supported_locales() const { return supported_locales_; }
  const CampaignDefinition& campaign() const { return campaign_; }
  const LevelDefinition& level(const std::string& id) const;
  const MapDefinition& map(const std::string& id) const;
@@ -61,6 +67,8 @@ class ContentCatalog {
 
  private:
  std::filesystem::path root_;
+ std::string locale_;
+ std::vector<std::string> supported_locales_;
  CampaignDefinition campaign_;
  std::unordered_map<std::string, LevelDefinition> levels_;
  std::unordered_map<std::string, MapDefinition> maps_;

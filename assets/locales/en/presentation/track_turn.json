@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Meet RO-3’s Tracks",
+    "/garage/brief": "RO-3 has no steering angle. A speed difference between its tracks creates skid steering. Enter corners slowly or wheel odometry will drift.",
+    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits the First Tracked Run?",
+    "/prediction/hint": "Make a prediction. A tracked turn requires slip; where will localization lose accuracy?",
+    "/prediction/choices/0/text": "Turns will degrade localization",
+    "/prediction/choices/0/feedback": "Enter too quickly and the tracks scrub while odometry keeps integrating. Inspect localization error in the debrief.",
+    "/prediction/choices/1/text": "Energy will exceed the target first",
+    "/prediction/choices/1/feedback": "Spend too much power chasing speed and the efficiency badge falls first. Read the energy meter.",
+    "/running/heading": "Reach the Calibration Pad",
+    "/running/normal_line": "RO-3: Both tracks online. Scrubbing to steer.",
+    "/running/detected_line": "RO-3: Route ahead confirmed.",
+    "/debrief/success_title": "Tracks Calibrated",
+    "/debrief/success_summary": "RO-3 reached the calibration pad by entering each bend slowly.",
+    "/debrief/failure_summary": "Find which badge was lost. Tracks punish a sharp turn.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Skid Steering",
+    "/debrief/failure_titles/collision-static": "Tracked mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Tracked mission failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Tracked mission failed: time limit exceeded"
+  }
+}

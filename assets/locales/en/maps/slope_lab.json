@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/surfaces/0/label": "Rain-Wet Platform",
+    "/surfaces/1/label": "Rain-Wet Slope"
+  }
+}

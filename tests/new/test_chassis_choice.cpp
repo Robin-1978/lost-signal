@@ -6,10 +6,14 @@
 #include "game/campaign_progress.hpp"
 #include "game/content_catalog.hpp"
 #include "game/mission_simulation.hpp"
+#include "physics/physics_world.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -35,13 +39,16 @@ bool throws_like(const std::string& text) {
 
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
- // Registry/options content: boot offers ro1+ro2, ro2 locked behind its
- // ability, ro1/ro3 starter-or-absent as designed.
+ // Registry/options content: boot exposes the differential, Ackermann and
+ // both common holonomic chassis; Ackermann keeps its progression gate.
  {
   const auto& options = catalog.presentation_for_level("boot").chassis_options;
-  CHECK(options.size() == 2 && options[0] == "robot.ro1" && options[1] == "robot.ro2");
+ CHECK(options.size() == 4 && options[0] == "robot.ro1" && options[1] == "robot.ro2" &&
+ options[2] == "robot.ro4" && options[3] == "robot.ro5");
   CHECK(catalog.robot("robot.ro2").unlock_ability == "ability.ackermann");
   CHECK(catalog.robot("robot.ro3").unlock_ability == "ability.tracked");
+ CHECK(catalog.robot("robot.ro4").drive_type == "swerve");
+ CHECK(catalog.robot("robot.ro5").drive_type == "mecanum");
   CHECK(catalog.robot("robot.ro1").unlock_ability.empty());
   CHECK(catalog.presentation_for_level("lost_signal").chassis_options.empty());
  }
@@ -119,6 +126,31 @@ int main() {
   const auto* back = loaded.last_build("boot");
   CHECK(back != nullptr);
   CHECK(back->chassis_robot == "robot.ro2");
+ }
+ // The two holonomic chassis are selectable content and complete a real
+ // playable level through the full planner/controller/chassis chain. A
+ // Bullet build repeats the same proof with rigid-body pose authority.
+ std::vector<game::PhysicsMode> physics_modes{game::PhysicsMode::Domain};
+ if (sim::physics::bullet_physics_available()) {
+ physics_modes.push_back(game::PhysicsMode::Bullet);
+ }
+ for (const auto physics_mode : physics_modes) {
+ for (const auto* robot_id : {"robot.ro4", "robot.ro5"}) {
+ auto build = catalog.presentation_for_level("boot").recommended_build;
+ build.chassis_robot = robot_id;
+ game::MissionSimulation mission(catalog, "boot", build, 1u, {},
+ game::ComponentRegistry::builtins(), {}, physics_mode);
+ mission.run_to_completion();
+ CHECK(mission.result().status == game::MissionStatus::Succeeded);
+ CHECK(mission.physics_mode() == physics_mode);
+ if (std::string(robot_id) == "robot.ro4") {
+ CHECK(std::any_of(mission.replay().begin(), mission.replay().end(), [](const auto& frame) {
+ return frame.control.mount_actuations.size() == 4 &&
+ std::any_of(frame.control.mount_actuations.begin(), frame.control.mount_actuations.end(),
+ [](const auto& actuation) { return std::abs(actuation.yaw_rad) > 1e-6; });
+ }));
+ }
+ }
  }
  std::cerr << "chassis choice green\n";
  return 0;

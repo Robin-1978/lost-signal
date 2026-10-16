@@ -642,6 +642,10 @@
     "scan_radius_m": 1.45,
     "perception_link_height_m": 0.42,
     "prediction_horizon_s": 2.4,
-    "success_ring_radius_m": 0.78
+    "success_ring_radius_m": 0.78,
+    "trail_duration_s": 1.9,
+    "surface_particle_count": 28,
+    "surface_particle_scale": 1.15,
+    "risk_indicator_radius_m": 0.82
   }
 }

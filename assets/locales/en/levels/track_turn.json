@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Tight Turn on Tracks",
+    "/objective/via_label": "Glass Door",
+    "/objective/goal_label": "Calibration Pad",
+    "/teaching/prediction_prompt": "A tracked chassis turns by slipping. Where will localization lose the most accuracy?",
+    "/teaching/knowledge_card": "Tracks have no steering angle: a speed difference between the sides scrubs the ground to turn. The sharper the turn, the more wheel odometry drifts."
+  }
+}

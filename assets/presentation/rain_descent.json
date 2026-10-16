@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "presentation.rain_descent",
+  "is_default": false,
+  "level": "rain_descent",
+  "garage": {
+    "heading": "雨后下坡",
+    "brief": "湿坡会放大制动距离。选择轮胎和驾驶风格，保留坡底停车余量。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "坡面轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "motor": "motor.standard",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "motor": "motor.standard",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "坡底能停住吗？",
+    "hint": "比较抓地与速度造成的制动距离。",
+    "choices": [
+      {
+        "id": "rain_descent.grip",
+        "text": "抓地胎更稳",
+        "feedback": "有效摩擦提高后，制动饱和更晚，停车距离缩短。"
+      },
+      {
+        "id": "rain_descent.fast",
+        "text": "更快下坡省时间",
+        "feedback": "速度翻倍时制动距离远不止增加一倍。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "雨后下坡",
+    "normal_line": "洛一：坡度姿态与牵引余量正在记录。",
+    "detected_line": "洛一：前方坡面状态已更新。"
+  },
+  "debrief": {
+    "success_title": "雨坡安全抵达",
+    "success_summary": "任务完成，回放已记录坡度、侧倾、打滑和能耗。",
+    "failure_summary": "沿时间轴查看坡度、轮端饱和与侧翻风险，再调整组件或风格。",
+    "evidence_heading": "坡度证据",
+    "evidence_caption": "纵坡、横坡、姿态和能耗来自同一固定步长仿真。",
+    "knowledge_title": "下坡制动",
+    "failure_titles": {
+      "collision-static": "坡度任务失败：越出可行区域",
+      "collision-dynamic": "坡度任务失败：发生动态碰撞",
+      "rollover": "坡度任务失败：发生侧翻",
+      "timeout": "坡度任务失败：未按时到达"
+    }
+  }
+}

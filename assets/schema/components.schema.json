@@ -13,13 +13,8 @@
       "const": 1
     },
     "slot": {
-      "enum": [
-        "tires",
-        "sensor",
-        "computer",
-        "motor",
-        "imu"
-      ]
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]*$"
     },
     "components": {
       "type": "array",

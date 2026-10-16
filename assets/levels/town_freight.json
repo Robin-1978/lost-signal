@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
   "id": "town_freight",
-  "order": 24,
+  "order": 9,
   "title": "城镇首运",
   "map": "signal_town",
   "control_mode": "autonomous",
   "localization_mode": "fused",
   "chapter": 3,
+  "mode": "contract",
   "prerequisites": [
-    "signal_cross"
+    "lost_signal"
   ],
   "seed": 7,
   "objective": {

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Welcome a New Chassis",
+    "/garage/brief": "RO-2 uses Ackermann steering: it steers its front wheels but cannot spin in place. Send it to the calibration pad and observe its turning geometry.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits an Ackermann Chassis?",
+    "/prediction/hint": "Make a prediction. The minimum turning radius is fixed; watch where the run loses time.",
+    "/prediction/choices/0/text": "Late turns will waste time",
+    "/prediction/choices/0/feedback": "Turn too late and the chassis must follow a wide arc. Inspect the path through the corner.",
+    "/prediction/choices/1/text": "Sensing may become the bottleneck",
+    "/prediction/choices/1/feedback": "If LiDAR sees the obstacle too late, even strong brakes cannot recover the lost distance. Note the first detection time.",
+    "/running/heading": "Reach the Calibration Pad",
+    "/running/normal_line": "RO-2: Steering system online. Planning a wide-radius turn.",
+    "/running/detected_line": "RO-2: Route ahead confirmed.",
+    "/debrief/success_title": "New Chassis Calibrated",
+    "/debrief/success_summary": "RO-2 reached the calibration pad by turning early and respecting its steering geometry.",
+    "/debrief/failure_summary": "Find the missing badge. An Ackermann chassis punishes a turn that begins too late.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Ackermann Steering Geometry",
+    "/debrief/failure_titles/collision-static": "Calibration failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Calibration failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Calibration failed: time limit exceeded"
+  }
+}

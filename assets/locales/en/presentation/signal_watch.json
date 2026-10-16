@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Swap Sensors and Try Again",
+    "/garage/brief": "The same corridor and forklift, with only LiDAR changed. Range doubles while refresh rate falls to one quarter; observe what changes.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Make a Prediction Before Departure",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "More range is safer",
+    "/prediction/choices/0/feedback": "Incorrect. With 12 m range at 5 Hz, the default build hits a forklift near (17.7, 6.1). Range only adds look-ahead distance.",
+    "/prediction/choices/1/text": "More frequent measurements are safer",
+    "/prediction/choices/1/feedback": "Correct. At 5 m and 20 Hz, fresh measurements time the opening accurately. The recommended build earns every badge in 91.72 s.",
+    "/prediction/choices/2/text": "Range and refresh rate both matter",
+    "/prediction/choices/2/feedback": "Both matter, but this mission shows that range cannot rescue stale measurements. Preserve refresh rate first, then add range.",
+    "/running/heading": "Lookout Corridor",
+    "/running/normal_line": "RO-1: Navigation stable. Approaching the signal tower.",
+    "/running/detected_line": "RO-1: Forklift tracked. Predicting its path.",
+    "/debrief/success_title": "Mission Complete: Lookout Confirmed",
+    "/debrief/success_summary": "Observe more often, drive more precisely, and RO-1 still delivers.",
+    "/debrief/failure_summary": "Select evidence on the right to jump the field view to that moment.",
+    "/debrief/evidence_heading": "Causal Evidence",
+    "/debrief/evidence_caption": "These entries come from events and state recorded during this simulation run.",
+    "/debrief/knowledge_title": "Sensor Refresh Rate",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: forklift collision",
+    "/debrief/failure_titles/collision-static": "Mission failed: fixed-obstacle collision",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

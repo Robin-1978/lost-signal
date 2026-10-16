@@ -34,8 +34,7 @@ int main() {
    if (mission.result().status == game::MissionStatus::Succeeded) {
     ++succeeded;
    }
-   if (mission.result().failure_reason.find("collision") != std::string::npos ||
-       mission.result().failure_reason.find("碰撞") != std::string::npos) {
+ if (mission.result().failure_reason.find("collision") != std::string::npos) {
     ++coll;
    }
    for (const auto& episode : mission.shadow_episodes()) {

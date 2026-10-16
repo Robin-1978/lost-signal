@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Where Am I?",
+    "/objective/goal_label": "Localization Calibration Pad",
+    "/teaching/prediction_prompt": "After traversing a slick surface, is the position on the map still reliable?",
+    "/teaching/knowledge_card": "Odometry estimates position from wheel motion; slip can cause the estimated trajectory to drift from the true path."
+  }
+}

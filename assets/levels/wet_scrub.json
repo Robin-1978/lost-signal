@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "wet_scrub",
-  "order": 19,
+  "order": 22,
   "title": "湿滑履带",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
-  "chapter": 2,
+  "localization_mode": "odometry",
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "sand_steer"
   ],

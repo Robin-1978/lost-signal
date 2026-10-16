@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Short-Range Fast-Scan LiDAR",
+    "/components/0/description": "Short range and fast updates suit narrow, busy spaces.",
+    "/components/1/title": "Standard LiDAR",
+    "/components/1/description": "Balanced range and refresh rate.",
+    "/components/2/title": "Long-Range Slow-Scan LiDAR",
+    "/components/2/description": "Sees distant objects early, but leaves more time between scans.",
+    "/components/3/title": "Precision LiDAR",
+    "/components/3/description": "Very low measurement noise at a high energy cost."
+  }
+}

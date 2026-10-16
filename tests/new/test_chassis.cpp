@@ -40,6 +40,28 @@ const sim::GroundContact kGround{0.7, 0.01, 4.0};
 } // namespace
 
 int main() {
+ // Path follower boundaries: empty and exhausted paths are valid terminal
+ // states. These cases used to read path[idx] before checking the bound.
+ {
+  sim::GridMap open(20, 20, 0.1);
+  std::vector<sim::Vec2> empty;
+  std::size_t empty_index = 0;
+  sim::advance_wp(empty, empty_index, 0.0, 0.0, 0.0, 0.6, 1.0);
+  CHECK(empty_index == 0);
+  const auto empty_lookahead = sim::lookahead_pt(empty, empty_index, 2.0, 3.0, 1.0, open);
+  CHECK(empty_lookahead.x == 2.0 && empty_lookahead.y == 3.0);
+  sim::GuideState empty_state;
+  sim::PID empty_pid(1.0, 0.0, 0.0, 1.0, 1.0);
+  CHECK(
+    sim::guide_step(empty, empty_state, 0.0, 0.0, 0.0, empty_pid, 1.0, 1.0, 0.02, open, sim::ChassisCaps{})
+      .reached);
+
+  const std::vector<sim::Vec2> finished{{0.0, 0.0}};
+  std::size_t terminal_index = finished.size();
+  sim::advance_wp(finished, terminal_index, 0.0, 0.0, 0.0, 0.6, 1.0);
+  CHECK(terminal_index == finished.size());
+ }
+
  // Straight: drive reaches target, steering stays centered.
  sim::AckermannDrive car = make_car();
  sim::DiffState straight;
@@ -66,8 +88,9 @@ int main() {
  // both satisfy the Ackermann condition (shared turn center on the rear axle:
  // L/tan(inner) + T/2 == L/tan(outer) - T/2).
  {
-  const double left = turning.telemetry().front_left_steer_rad;
-  const double right = turning.telemetry().front_right_steer_rad;
+ CHECK(turning.telemetry().wheel_steer_count == 2);
+ const double left = turning.telemetry().wheel_steer_rad[0];
+ const double right = turning.telemetry().wheel_steer_rad[1];
   CHECK(left > right);
   CHECK(right > 0.0);
   const double base = 2.0;
@@ -113,7 +136,8 @@ int main() {
   const std::vector<sim::Vec2> path{{0.0, 0.0}, {10.0, 0.0}};
   sim::PID pid(2.0, 0.0, 0.0, 2.0, 1.0);
   sim::GuideState spin_state;
-  sim::ChassisCaps spin{true};
+ sim::ChassisCaps spin;
+ spin.can_spin = true;
   // Face away from the path: latches reverse first.
   sim::GuideOut r1 =
     sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
@@ -132,7 +156,8 @@ int main() {
   // Non-spinner never spins: still reversing after the watchdog period.
   sim::GuideState stiff;
   sim::PID pid3(2.0, 0.0, 0.0, 2.0, 1.0);
-  sim::ChassisCaps no_spin{false};
+ sim::ChassisCaps no_spin;
+ no_spin.can_spin = false;
   sim::GuideOut last{0, 0, 0, false};
   for (int i = 0; i < 250; ++i) {
    last = sim::guide_step(path, stiff, 0.0, 0.0, 3.14159, pid3, 1.6, 1.0, 0.02, corridor, no_spin);

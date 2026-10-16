@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Signal Watch",
+    "/objective/via_label": "Power Module",
+    "/objective/goal_label": "Signal Tower",
+    "/teaching/prediction_prompt": "This forklift blocks the same corridor for several seconds. Is it faster to wait or squeeze past?",
+    "/teaching/knowledge_card": "Waiting is a maneuver. Depart as soon as the corridor opens. The shadow evaluation records the first estimate, final estimate, and actual wait; a useful prediction should agree with reality."
+  }
+}

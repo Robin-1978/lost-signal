@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "id": "loose_ground",
-  "order": 12,
+  "order": 17,
   "title": "松软地面",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
-  "chapter": 2,
+  "localization_mode": "odometry",
+  "chapter": 4,
   "prerequisites": [
     "track_turn"
   ],
@@ -42,5 +42,6 @@
   },
   "rewards": [
     "ability.terrain"
-  ]
+  ],
+  "mode": "experiment"
 }

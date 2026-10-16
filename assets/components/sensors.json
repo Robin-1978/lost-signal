@@ -12,6 +12,9 @@
         "rays": 48,
         "scan_hz": 20.0,
         "noise_sigma_m": 0.04,
+        "range_bias_m": 0.0,
+        "range_resolution_m": 0.0,
+        "dropout_probability": 0.0,
         "power_w": 18.0
       },
       "visual": {
@@ -35,6 +38,9 @@
         "rays": 72,
         "scan_hz": 10.0,
         "noise_sigma_m": 0.05,
+        "range_bias_m": 0.0,
+        "range_resolution_m": 0.0,
+        "dropout_probability": 0.0,
         "power_w": 22.0
       },
       "visual": {
@@ -58,6 +64,9 @@
         "rays": 72,
         "scan_hz": 5.0,
         "noise_sigma_m": 0.08,
+        "range_bias_m": 0.0,
+        "range_resolution_m": 0.0,
+        "dropout_probability": 0.0,
         "power_w": 28.0
       },
       "visual": {
@@ -81,6 +90,9 @@
         "rays": 96,
         "scan_hz": 10.0,
         "noise_sigma_m": 0.025,
+        "range_bias_m": 0.0,
+        "range_resolution_m": 0.0,
+        "dropout_probability": 0.0,
         "power_w": 34.0
       },
       "visual": {

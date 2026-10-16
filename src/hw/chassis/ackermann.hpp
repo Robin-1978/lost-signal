@@ -4,6 +4,9 @@
 #include "motor_drive.hpp"
 #include "algo/pid.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace sim {
 
 // Ackermann actuator parameters. Everything comes from robot JSON once
@@ -23,6 +26,7 @@ struct AckermannParams {
  double stall_force_N{54.0};
  double free_speed_mps{3.0};
  double mass_kg{24.0};
+ double yaw_inertia_kgm2{2.4};
  double pwm_limit{1.0};
  double integral_limit{2.0};
  int encoder_counts_per_revolution{2048};
@@ -55,7 +59,24 @@ class AckermannDrive : public ChassisModel {
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
- ChassisCaps caps() const override { return {false}; }
+ ChassisCaps caps() const override {
+ ChassisCaps output;
+ output.can_spin = false;
+ output.command_space = ChassisCommandSpace::SteeringAngle;
+ output.geometry.support_width_m = params_.track_width_m;
+ output.geometry.support_length_m = params_.wheel_base_m;
+ output.geometry.steering_wheel_base_m = params_.wheel_base_m;
+ output.geometry.max_steer_rad = params_.max_steer_rad;
+ output.geometry.max_steer_rate_radps = params_.max_steer_rate_radps;
+ output.geometry.steering_response_s = params_.servo_response_s;
+ output.geometry.minimum_turn_radius_m =
+ params_.wheel_base_m / std::tan(std::max(0.01, params_.max_steer_rad));
+ output.max_yaw_rate_radps = params_.max_drive_speed_mps * std::tan(params_.max_steer_rad) /
+ std::max(0.05, params_.wheel_base_m);
+ output.drive_force_units = 1.0;
+ output.planning_clearance_margin_m = 0.15;
+ return output;
+ }
  double steer_angle() const { return delta_rad_; }
 
  private:

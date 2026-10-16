@@ -13,26 +13,72 @@
 
 int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
- CHECK(catalog.campaign().companion_name == "洛一");
+ CHECK(catalog.locale() == "en");
+ CHECK(catalog.campaign().title == "Lost Signal");
+ CHECK(catalog.campaign().companion_name == "RO-1");
+ CHECK(catalog.tr("app.window_title") == "Lost Signal");
+ CHECK(catalog.supported_locales().size() == 2);
+
+ const auto source_catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "zh-CN");
+ CHECK(source_catalog.locale() == "zh-CN");
+ CHECK(source_catalog.campaign().title == "\u5931\u843d\u7684\u4fe1\u53f7");
+ CHECK(source_catalog.campaign().companion_name == "\u6d1b\u4e00");
+ CHECK(source_catalog.tr("app.window_title") ==
+ "\u5931\u843d\u7684\u4fe1\u53f7 / Lost Signal");
+
+ // A locale overlay may change player-facing strings, but never the content
+ // graph, IDs, paths, physics, scoring, seeds, or algorithm configuration.
+ CHECK(source_catalog.levels().size() == catalog.levels().size());
+ CHECK(source_catalog.maps().size() == catalog.maps().size());
+ CHECK(source_catalog.scenes().size() == catalog.scenes().size());
+ CHECK(source_catalog.components().size() == catalog.components().size());
+ CHECK(source_catalog.robots().size() == catalog.robots().size());
+ CHECK(source_catalog.campaign().levels == catalog.campaign().levels);
+ for (const auto& [id, localized] : catalog.levels()) {
+  const auto& source = source_catalog.level(id);
+  CHECK(localized.id == source.id);
+  CHECK(localized.map == source.map);
+  CHECK(localized.control_mode == source.control_mode);
+  CHECK(localized.localization_mode == source.localization_mode);
+  CHECK(localized.seed == source.seed);
+  CHECK(localized.budget == source.budget);
+  CHECK(localized.objective.time_limit_s == source.objective.time_limit_s);
+  CHECK(localized.objective.max_collisions == source.objective.max_collisions);
+  CHECK(localized.safe_min_clearance_m == source.safe_min_clearance_m);
+  CHECK(localized.fast_time_s == source.fast_time_s);
+  CHECK(localized.efficient_energy_wh == source.efficient_energy_wh);
+ }
+
+ bool rejected_unknown_locale = false;
+ try {
+  (void)game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS, "not-a-locale");
+ } catch (const game::ContentError&) {
+  rejected_unknown_locale = true;
+ }
+ CHECK(rejected_unknown_locale);
  CHECK(!catalog.campaign().levels.empty());
  CHECK(catalog.levels().size() == catalog.campaign().levels.size());
- for (const auto& id : catalog.campaign().levels) CHECK(catalog.levels().count(id) == 1);
+ for (const auto& id : catalog.campaign().levels)
+  CHECK(catalog.levels().count(id) == 1);
  CHECK(catalog.components().size() == 17);
  CHECK(catalog.policies().size() == 3);
- CHECK(catalog.robots().size() == 3);
- for (const auto& [id, map] : catalog.maps()) CHECK(catalog.scenes().count(map.scene_3d) == 1);
+ CHECK(catalog.robots().size() == 5);
+ for (const auto& [id, map] : catalog.maps())
+  CHECK(catalog.scenes().count(map.scene_3d) == 1);
  for (const auto& [id, level] : catalog.levels()) {
-  // 与 catalog 加载门禁同口径:每个关卡恰有一个 presentation 服务
-  // (终关走 default presentation,不猜 id 拼接)。
+ // Use the catalog-loader invariant: every mission has exactly one
+ // presentation (the finale uses the default; IDs are never guessed).
   int serving = 0;
   for (const auto& [pid, presentation] : catalog.presentations()) {
    (void)pid;
-   if (presentation.level == id) ++serving;
+   if (presentation.level == id)
+    ++serving;
   }
   CHECK(serving == 1);
   CHECK(catalog.maps().count(level.map) == 1);
  }
- for (const auto& beat : catalog.story_beats()) CHECK(catalog.levels().count(beat.level) == 1);
+ for (const auto& beat : catalog.story_beats())
+  CHECK(catalog.levels().count(beat.level) == 1);
  CHECK(catalog.campaign().companion_robot == "robot.ro1");
 
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
@@ -51,32 +97,44 @@ int main() {
  // spin spec. No level assigns it yet; the catalog contract already holds.
  const auto& third = catalog.robot("robot.ro3");
  CHECK(third.drive_type == "tracked");
+ CHECK(catalog.robot("robot.ro4").drive_type == "swerve");
+ CHECK(catalog.robot("robot.ro5").drive_type == "mecanum");
  CHECK(third.tracked_max_yaw_rate_rads > 0.0);
  CHECK(third.track_length_m > 0.0);
  // Ground material library: the migrated wet_floor resolves to library
  // numbers, so this also pins the zero-behavior-change migration.
  CHECK(catalog.surface_material("standing_water").friction_mu == 0.35);
  CHECK(catalog.surface_material("standing_water").traction_scale == 0.45);
+ CHECK(catalog.surface_material("standing_water").drive_effect == "spray");
+ CHECK(catalog.surface_material("sand").drive_effect == "dust");
  CHECK(catalog.surface_material("paved").traction_scale == 1.0);
- CHECK(robot.mounts.size() == 5);
- CHECK(robot.base_parts.size() == 1);
+ CHECK(robot.mounts.size() == 8);
+ CHECK(robot.mounts.back().frame_id == "imu_link");
+ CHECK(robot.passive_support_mounts.size() == 2);
+ CHECK(robot.passive_support_mounts.front() == "caster_front");
+ CHECK(robot.base_parts.size() == 3);
  CHECK(robot.slots.size() == 5);
  CHECK(catalog.component("sensor.short_fast_lidar").visual.primitive_2d == "disc");
  CHECK(catalog.component("sensor.short_fast_lidar").visual.model_3d.ends_with("lidar_fast.glb"));
  CHECK(catalog.story_beat("boot", "before") != nullptr);
- CHECK(catalog.story_beat("lost_signal", "after")->speaker == "未知信号");
+ CHECK(catalog.story_beat("lost_signal", "after")->speaker == "Unknown Signal");
 
  const auto& level = catalog.level("lost_signal");
  CHECK(level.objective.via == "supply_station");
  CHECK(level.objective.goal == "signal_tower");
- CHECK(std::abs(level.objective.time_limit_s - 150.0) < 1e-9);
+ CHECK(std::abs(level.objective.time_limit_s - 180.0) < 1e-9);
+ CHECK(level.objective.goals.size() == 4);
+ CHECK(level.objective.goals[2].action == "inspect");
+ CHECK(std::abs(level.objective.goals[2].dwell_s - 1.0) < 1e-9);
 
  const auto& map = catalog.map(level.map);
  CHECK(map.markers.count("robot_bay") == 1);
  CHECK(map.markers.count("east_gate") == 1);
  CHECK(map.obstacles.size() == 3);
- CHECK(map.actors.size() == 2);
+ CHECK(map.actors.size() == 3);
  CHECK(map.actors[1].id == "forklift_b");
+ CHECK(map.actors[2].id == "forklift_finale");
+ CHECK(map.actors[2].dormant_until_summoned);
  CHECK(map.scene_3d == "scene.research_base");
  const auto& scene = catalog.scene(map.scene_3d);
  CHECK(scene.prefabs.size() == 8);
@@ -86,6 +144,8 @@ int main() {
  CHECK(std::abs(scene.camera.event_shot.fov_degrees - 38.0) < 1e-9);
  CHECK(std::abs(scene.camera.success_shot.goal_focus_weight - 0.52) < 1e-9);
  CHECK(std::abs(scene.effects.prediction_horizon_s - 2.4) < 1e-9);
+ CHECK(scene.effects.surface_particle_count == 28);
+ CHECK(std::abs(scene.effects.trail_duration_s - 1.9) < 1e-9);
  CHECK(scene.lighting.shadow_map_resolution == 2048);
  CHECK(std::abs(scene.lighting.bloom_strength - 0.2) < 1e-9);
 
@@ -103,5 +163,17 @@ int main() {
  CHECK(std::abs(final_presentation.default_build.style - 1.0) < 1e-12);
  CHECK(catalog.build_cost(final_presentation.default_build) <= level.budget);
  CHECK(catalog.build_cost(final_presentation.recommended_build) <= level.budget);
+ int mainline = 0;
+ int contracts = 0;
+ int experiments = 0;
+ for (const auto& [id, entry] : catalog.levels()) {
+  (void)id;
+  mainline += entry.mode == "mainline" ? 1 : 0;
+  contracts += entry.mode == "contract" ? 1 : 0;
+  experiments += entry.mode == "experiment" ? 1 : 0;
+ }
+ CHECK(mainline == 8);
+ CHECK(contracts == 2);
+ CHECK(experiments == 16);
  return 0;
 }

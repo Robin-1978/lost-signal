@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Standard Motor",
+    "/components/0/description": "Balanced torque and top speed for most missions.",
+    "/components/1/title": "High-Torque Motor",
+    "/components/1/description": "Stronger starts, with a lower top speed and higher energy use.",
+    "/components/2/title": "Efficient Motor",
+    "/components/2/description": "Smooth and energy-efficient, with less force in reserve."
+  }
+}

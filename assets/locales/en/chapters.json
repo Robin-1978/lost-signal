@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/chapters/0/title": "Chapter 1: Meet RO-1",
+    "/chapters/0/blurb": "Build your first predict–observe–debrief loop through motion, tires, and range sensing.",
+    "/chapters/1/title": "Chapter 2: Across the Mountain",
+    "/chapters/1/blurb": "Ramps, localization, blocked roads, and cross-slope freight converge in the final signal mission.",
+    "/chapters/2/title": "Town Contracts",
+    "/chapters/2/blurb": "After the main story, combine what you learned and pursue safety, speed, or efficiency targets.",
+    "/chapters/3/title": "Robotics Lab",
+    "/chapters/3/blurb": "Compare motors, chassis, terrain, waiting policies, and routes freely without blocking story progress."
+  }
+}

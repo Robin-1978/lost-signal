@@ -53,6 +53,32 @@
           "texture": {
             "type": "string",
             "minLength": 1
+          },
+          "drive_effect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "color",
+              "intensity"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "none",
+                  "dust",
+                  "spray"
+                ]
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              }
+            }
           }
         }
       }
@@ -62,6 +88,10 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9_.-]+$"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
     }
   }
 }

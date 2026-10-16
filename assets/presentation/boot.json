@@ -67,6 +67,8 @@
   },
   "chassis_options": [
     "robot.ro1",
-    "robot.ro2"
+    "robot.ro2",
+    "robot.ro4",
+    "robot.ro5"
   ]
 }

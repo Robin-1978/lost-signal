@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Descent After Rain",
+    "/objective/goal_label": "Slope-Foot Unloading Zone",
+    "/teaching/prediction_prompt": "On a wet descent, which controls stopping distance first: traction or speed?",
+    "/teaching/knowledge_card": "Gravity keeps adding speed downhill. Low-grip tires reach the available braking-force limit sooner."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Calibrate a New Chassis",
+    "/objective/via_label": "Glass Door",
+    "/objective/goal_label": "Calibration Pad",
+    "/teaching/prediction_prompt": "The new chassis cannot turn in place. Where will it lose the most time?",
+    "/teaching/knowledge_card": "An Ackermann chassis steers with its front wheels: turning radius = wheelbase / tan(steering angle). It must begin each turn early."
+  }
+}

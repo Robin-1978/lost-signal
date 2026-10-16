@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <system_error>
 
 namespace game {
@@ -19,7 +20,35 @@ bool known_level(const ContentCatalog& catalog, const std::string& id) {
  return catalog.levels().contains(id);
 }
 
+WeatherKind parse_weather(const std::string& id) {
+ if (id == "clear") return WeatherKind::Clear;
+ if (id == "overcast") return WeatherKind::Overcast;
+ if (id == "drizzle") return WeatherKind::Drizzle;
+ if (id == "fog") return WeatherKind::Fog;
+ throw ContentError("progress: unknown regional weather '" + id + "'");
+}
+
+WorldIncidentKind parse_incident(const std::string& id) {
+ if (id == "road-closure") return WorldIncidentKind::RoadClosure;
+ if (id == "fallen-cargo") return WorldIncidentKind::FallenCargo;
+ if (id == "power-fault") return WorldIncidentKind::PowerFault;
+ throw ContentError("progress: unknown regional incident '" + id + "'");
+}
+
+FieldIntentKind parse_field_intent(const std::string& id) {
+ if (id == "follow") return FieldIntentKind::Follow;
+ if (id == "go_to") return FieldIntentKind::GoTo;
+ if (id == "search") return FieldIntentKind::Search;
+ if (id == "wait") return FieldIntentKind::Wait;
+ if (id == "return") return FieldIntentKind::Return;
+ throw ContentError("progress: unknown field intent '" + id + "'");
+}
+
 } // namespace
+
+int component_reputation_cost(const ComponentDefinition& component) {
+ return std::max(1, (component.cost + 1) / 2);
+}
 
 CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const ContentCatalog& catalog) {
  CampaignProgress progress;
@@ -68,6 +97,38 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
    progress.claimed_contracts_.push_back(id);
   }
  }
+ if (const auto region = value.find("regional_world"); region != value.end() && region->is_object()) {
+ const auto incident = region->value("incident", json::object());
+ WorldActivityCheckpoint checkpoint;
+ checkpoint.state.local_time_hours = region->value("local_time_hours", 7.5);
+ checkpoint.state.daylight = region->value("daylight", 0.35);
+ checkpoint.state.weather = parse_weather(region->value("weather", std::string("clear")));
+ checkpoint.state.wetness = region->value("wetness", 0.0);
+ checkpoint.state.visibility = region->value("visibility", 1.0);
+ checkpoint.state.wind_mps = region->value("wind_mps", 0.0);
+ checkpoint.state.weather_revision = region->value("weather_revision", 0);
+ checkpoint.state.incident.active = incident.value("active", false);
+ checkpoint.state.incident.kind =
+ parse_incident(incident.value("kind", std::string("road-closure")));
+ checkpoint.state.incident.marker_id = incident.value("marker_id", std::string{});
+ checkpoint.state.incident.position = {
+ incident.value("x", 0.0), incident.value("y", 0.0)};
+ checkpoint.state.incident.radius_m = incident.value("radius_m", 0.65);
+ checkpoint.state.incident.opened_at_s = 0.0;
+ checkpoint.state.incident.resolve_progress = incident.value("resolve_progress", 0.0);
+ checkpoint.state.incident.completed_count = incident.value("completed_count", 0);
+ checkpoint.next_weather_delay_s = region->value("next_weather_delay_s", 38.0);
+ checkpoint.next_incident_delay_s = region->value("next_incident_delay_s", 18.0);
+ checkpoint.issued_incidents = region->value("issued_incidents", 0);
+ checkpoint.rng_state = region->value("rng_state", std::string{});
+ try {
+ WorldActivitySystem validator;
+ validator.restore(checkpoint);
+ progress.regional_world_ = std::move(checkpoint);
+ } catch (const std::exception& error) {
+ throw ContentError(path.string() + ": invalid regional_world: " + error.what());
+ }
+ }
  const auto builds = value.value("last_builds", json::object());
  for (auto it = builds.begin(); it != builds.end(); ++it) {
   if (!known_level(catalog, it.key()) || !it.value().is_object())
@@ -102,6 +163,36 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
                                             it.value().value("best_time_s", 0.0),
                                             it.value().value("best_energy_wh", 0.0),
                                           });
+ }
+ if (const auto expedition = value.find("field_expedition");
+ expedition != value.end() && expedition->is_object()) {
+ FieldExpeditionCheckpoint checkpoint;
+ checkpoint.level_id = expedition->value("level_id", std::string{});
+ checkpoint.field_operator.position = {
+ expedition->value("operator_x", 0.0), expedition->value("operator_y", 0.0)};
+ checkpoint.field_operator.home_position = {
+ expedition->value("home_x", 0.0), expedition->value("home_y", 0.0)};
+ checkpoint.field_operator.heading_rad = expedition->value("heading_rad", 0.0);
+ if (const auto intent = expedition->find("intent"); intent != expedition->end() && intent->is_object()) {
+ checkpoint.intent.active = intent->value("active", false);
+ checkpoint.intent.kind = parse_field_intent(intent->value("kind", std::string("wait")));
+ checkpoint.intent.target = {intent->value("target_x", 0.0), intent->value("target_y", 0.0)};
+ checkpoint.intent.revision = intent->value("revision", std::uint64_t{0});
+ checkpoint.intent.acknowledged_revision = intent->value("acknowledged_revision", std::uint64_t{0});
+ checkpoint.intent.acknowledgement = checkpoint.intent.active
+ ? FieldIntentAcknowledgement::Pending
+ : FieldIntentAcknowledgement::Idle;
+ }
+ try {
+ if (!known_level(catalog, checkpoint.level_id))
+ throw std::invalid_argument("unknown expedition level");
+ FieldOperatorSystem validator;
+ const auto& level = catalog.level(checkpoint.level_id);
+ validator.restore(checkpoint, catalog.map(level.map), checkpoint.level_id);
+ progress.field_expedition_ = std::move(checkpoint);
+ } catch (const std::exception& error) {
+ throw ContentError(path.string() + ": invalid field_expedition: " + error.what());
+ }
  }
  return progress;
 }
@@ -174,6 +265,17 @@ bool CampaignProgress::spend_reputation(int amount) {
  return true;
 }
 
+bool CampaignProgress::purchase_component(const std::string& component_id,
+ const ContentCatalog& catalog) {
+ if (std::find(inventory_.begin(), inventory_.end(), component_id) != inventory_.end())
+ return false;
+ const auto& component = catalog.component(component_id);
+ if (!spend_reputation(component_reputation_cost(component)))
+ return false;
+ inventory_.push_back(component_id);
+ return true;
+}
+
 const BuildSelection* CampaignProgress::last_build(const std::string& level_id) const {
  const auto found = last_builds_.find(level_id);
  return found == last_builds_.end() ? nullptr : &found->second;
@@ -217,14 +319,64 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
    {"reputation", reputation_},
    {"claimed_contracts", claimed_contracts_},
  };
+ json document = value;
+ if (regional_world_) {
+ const auto& checkpoint = *regional_world_;
+ const auto& state = checkpoint.state;
+ const auto& incident = state.incident;
+ document["regional_world"] = {
+ {"local_time_hours", state.local_time_hours},
+ {"daylight", state.daylight},
+ {"weather", weather_kind_id(state.weather)},
+ {"wetness", state.wetness},
+ {"visibility", state.visibility},
+ {"wind_mps", state.wind_mps},
+ {"weather_revision", state.weather_revision},
+ {"next_weather_delay_s", checkpoint.next_weather_delay_s},
+ {"next_incident_delay_s", checkpoint.next_incident_delay_s},
+ {"issued_incidents", checkpoint.issued_incidents},
+ {"rng_state", checkpoint.rng_state},
+ {"incident", {
+ {"active", incident.active},
+ {"kind", world_incident_kind_id(incident.kind)},
+ {"marker_id", incident.marker_id},
+ {"x", incident.position.x},
+ {"y", incident.position.y},
+ {"radius_m", incident.radius_m},
+ {"resolve_progress", incident.resolve_progress},
+ {"completed_count", incident.completed_count},
+ }},
+ };
+ }
+ if (field_expedition_) {
+ const auto& checkpoint = *field_expedition_;
+ const auto& field_operator = checkpoint.field_operator;
+ const auto& intent = checkpoint.intent;
+ document["field_expedition"] = {
+ {"level_id", checkpoint.level_id},
+ {"operator_x", field_operator.position.x},
+ {"operator_y", field_operator.position.y},
+ {"home_x", field_operator.home_position.x},
+ {"home_y", field_operator.home_position.y},
+ {"heading_rad", field_operator.heading_rad},
+ {"intent", {
+ {"active", intent.active},
+ {"kind", field_intent_kind_id(intent.kind)},
+ {"target_x", intent.target.x},
+ {"target_y", intent.target.y},
+ {"revision", intent.revision},
+ {"acknowledged_revision", intent.acknowledged_revision},
+ }},
+ };
+ }
 
  auto temporary = path;
  temporary += ".tmp";
  {
-  std::ofstream output(temporary, std::ios::trunc);
-  if (!output)
+ std::ofstream output_file(temporary, std::ios::trunc);
+ if (!output_file)
    throw ContentError("cannot write progress file: " + temporary.string());
-  output << value.dump(2) << '\n';
+ output_file << document.dump(2) << '\n';
  }
  std::error_code error;
  std::filesystem::rename(temporary, path, error);

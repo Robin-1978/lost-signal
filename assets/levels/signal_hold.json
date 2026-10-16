@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "signal_hold",
-  "order": 20,
+  "order": 23,
   "title": "信号守望",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "signal_echo"
   ],

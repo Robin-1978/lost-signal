@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "id": "slope_lab",
+  "scene_3d": "scene.slope_lab",
+  "size_m": [
+    20.0,
+    14.0
+  ],
+  "grid_resolution_m": 0.5,
+  "obstacles": [],
+  "surfaces": [
+    {
+      "id": "descent_wet_highland",
+      "type": "box",
+      "min": [
+        10.0,
+        5.2
+      ],
+      "max": [
+        19.0,
+        8.8
+      ],
+      "material": "standing_water",
+      "active_in": [
+        "rain_descent"
+      ],
+      "label": "雨后高台"
+    },
+    {
+      "id": "descent_wet_ramp",
+      "type": "box",
+      "min": [
+        0.0,
+        5.2
+      ],
+      "max": [
+        10.0,
+        8.8
+      ],
+      "material": "standing_water",
+      "active_in": [
+        "rain_descent"
+      ],
+      "label": "雨后坡面"
+    }
+  ],
+  "terrain": [
+    {
+      "id": "launch_ramp",
+      "type": "height_patch",
+      "min": [
+        4.0,
+        1.0
+      ],
+      "max": [
+        10.0,
+        4.8
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.364,
+      "grade_y": 0.0,
+      "roughness": 0.02,
+      "active_in": [
+        "slope_launch"
+      ]
+    },
+    {
+      "id": "launch_highland",
+      "type": "height_patch",
+      "min": [
+        10.0,
+        1.0
+      ],
+      "max": [
+        19.0,
+        4.8
+      ],
+      "base_height_m": 2.184,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.0,
+      "active_in": [
+        "slope_launch"
+      ]
+    },
+    {
+      "id": "descent_ramp",
+      "type": "height_patch",
+      "min": [
+        0.0,
+        5.2
+      ],
+      "max": [
+        10.0,
+        8.8
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.28,
+      "grade_y": 0.0,
+      "roughness": 0.01,
+      "active_in": [
+        "rain_descent"
+      ]
+    },
+    {
+      "id": "descent_highland",
+      "type": "height_patch",
+      "min": [
+        10.0,
+        5.2
+      ],
+      "max": [
+        19.0,
+        8.8
+      ],
+      "base_height_m": 2.8,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.0,
+      "active_in": [
+        "rain_descent"
+      ]
+    },
+    {
+      "id": "cross_slope_lane",
+      "type": "height_patch",
+      "min": [
+        1.0,
+        9.3
+      ],
+      "max": [
+        19.0,
+        13.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.36,
+      "roughness": 0.065,
+      "active_in": [
+        "cross_slope"
+      ]
+    }
+  ],
+  "markers": {
+    "slope_start": [
+      2.0,
+      2.9,
+      0.0
+    ],
+    "slope_top": [
+      15.0,
+      2.9,
+      0.0
+    ],
+    "descent_start": [
+      15.0,
+      7.0,
+      3.141592653589793
+    ],
+    "descent_end": [
+      2.0,
+      7.0,
+      3.141592653589793
+    ],
+    "cross_start": [
+      2.0,
+      11.1,
+      0.0
+    ],
+    "cross_turn": [
+      8.0,
+      10.7,
+      0.0
+    ],
+    "cross_end": [
+      15.0,
+      11.1,
+      0.0
+    ],
+    "battery_cache": [
+      2.7,
+      2.9,
+      0.0
+    ],
+    "ramp_hold": [
+      7.0,
+      2.9,
+      0.0
+    ],
+    "mast_cradle": [
+      2.8,
+      11.1,
+      0.0
+    ]
+  },
+  "actors": []
+}

@@ -8,7 +8,12 @@
       "friction_mu": 1.0,
       "rolling_drag": 0.0,
       "traction_scale": 1.0,
-      "texture": "textures/environment/concrete_floor.png"
+      "texture": "textures/environment/concrete_floor.png",
+      "drive_effect": {
+        "kind": "none",
+        "color": "#89918B",
+        "intensity": 0.0
+      }
     },
     {
       "id": "gravel",
@@ -17,7 +22,12 @@
       "friction_mu": 0.7,
       "rolling_drag": 0.015,
       "traction_scale": 0.8,
-      "texture": "textures/environment/gravel_floor.png"
+      "texture": "textures/environment/gravel_floor.png",
+      "drive_effect": {
+        "kind": "dust",
+        "color": "#B3A17A",
+        "intensity": 0.75
+      }
     },
     {
       "id": "sand",
@@ -26,7 +36,12 @@
       "friction_mu": 0.55,
       "rolling_drag": 0.03,
       "traction_scale": 0.65,
-      "texture": "textures/environment/sand_floor.png"
+      "texture": "textures/environment/sand_floor.png",
+      "drive_effect": {
+        "kind": "dust",
+        "color": "#D8B978",
+        "intensity": 1.15
+      }
     },
     {
       "id": "standing_water",
@@ -35,7 +50,12 @@
       "friction_mu": 0.35,
       "rolling_drag": 0.02,
       "traction_scale": 0.45,
-      "texture": "textures/environment/water_floor.png"
+      "texture": "textures/environment/water_floor.png",
+      "drive_effect": {
+        "kind": "spray",
+        "color": "#7BCED2",
+        "intensity": 1.0
+      }
     }
   ]
 }

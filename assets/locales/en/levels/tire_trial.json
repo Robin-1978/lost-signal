@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Change Shoes",
+    "/objective/goal_label": "Repair-Bay Exit",
+    "/teaching/prediction_prompt": "Among the three tire types, which has the shortest braking distance?",
+    "/teaching/knowledge_card": "Tread and compound determine traction; traction determines braking distance. Low-rolling-resistance tires slide farther."
+  }
+}

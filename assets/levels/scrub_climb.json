@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "scrub_climb",
-  "order": 14,
+  "order": 19,
   "title": "履带爬坡",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "long_haul"
   ],
@@ -17,7 +18,7 @@
     "goal": "supply_station",
     "goal_label": "能源模块",
     "goal_visual": "supply_station",
-    "time_limit_s": 150,
+    "time_limit_s": 120,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62
   },
@@ -36,8 +37,8 @@
   },
   "score": {
     "safe_min_clearance_m": 0.0,
-    "fast_time_s": 40.0,
-    "efficient_energy_wh": 0.5
+    "fast_time_s": 50.0,
+    "efficient_energy_wh": 0.6
   },
   "rewards": [
     "ability.scrub_climb"

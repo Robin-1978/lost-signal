@@ -8,6 +8,26 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(LOST_SIGNAL_BUILD_CLIENT "Build the raylib + TGUI desktop client" ON)
 option(LOST_SIGNAL_BUILD_TESTS "Build headless tests" ON)
+option(LOST_SIGNAL_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" OFF)
+option(LOST_SIGNAL_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+
+add_library(lost_signal_project_options INTERFACE)
+if(MSVC)
+ target_compile_options(lost_signal_project_options INTERFACE /W4 /permissive-)
+ if(LOST_SIGNAL_WARNINGS_AS_ERRORS)
+ target_compile_options(lost_signal_project_options INTERFACE /WX)
+ endif()
+else()
+ target_compile_options(lost_signal_project_options INTERFACE -Wall -Wextra -Wpedantic)
+ if(LOST_SIGNAL_WARNINGS_AS_ERRORS)
+ target_compile_options(lost_signal_project_options INTERFACE -Werror)
+ endif()
+ if(LOST_SIGNAL_ENABLE_SANITIZERS)
+ target_compile_options(lost_signal_project_options INTERFACE
+ -fsanitize=address,undefined -fno-omit-frame-pointer)
+ target_link_options(lost_signal_project_options INTERFACE -fsanitize=address,undefined)
+ endif()
+endif()
 
 include(FetchContent)
 
@@ -19,39 +39,83 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+add_library(lost_signal_physics STATIC
+ src/physics/frame_transform.cpp
+ src/physics/planar_physics_world.cpp
+)
+target_include_directories(lost_signal_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(lost_signal_physics PUBLIC cxx_std_20)
+target_link_libraries(lost_signal_physics PUBLIC lost_signal_project_options)
+
+set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
+set(BUILD_BULLET3 OFF CACHE BOOL "" FORCE)
+set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
+set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(INSTALL_LIBS OFF CACHE BOOL "" FORCE)
+set(USE_DOUBLE_PRECISION ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+ bullet
+ URL https://github.com/bulletphysics/bullet3/archive/refs/tags/3.25.tar.gz
+ URL_HASH SHA256=c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77
+ DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(bullet)
+target_include_directories(lost_signal_physics SYSTEM PRIVATE ${bullet_SOURCE_DIR}/src)
+target_link_libraries(lost_signal_physics PRIVATE BulletDynamics BulletCollision LinearMath)
+target_sources(lost_signal_physics PRIVATE src/physics/bullet_physics_world.cpp)
+target_compile_definitions(lost_signal_physics PRIVATE BT_USE_DOUBLE_PRECISION)
+
 add_library(lost_signal_sim STATIC
+ src/algo/ackermann_local.cpp
  src/hw/chassis/ackermann.cpp
  src/algo/astar.cpp
+ src/algo/hybrid_astar.cpp
+ src/algo/holonomic_local.cpp
+ src/algo/high_level_policy.cpp
  src/algo/behavior_registry.cpp
  src/algo/entry_shadow.cpp
  src/algo/entry_governor.cpp
+ src/algo/estimation_system.cpp
  src/hw/chassis/diff_drive.cpp
+ src/hw/chassis/holonomic.cpp
  src/algo/dynamic_obstacle_map.cpp
  src/algo/dwa.cpp
  src/algo/grid_map.cpp
-  src/algo/predictor.cpp
-  src/hw/chassis/motor_drive.cpp
+ src/algo/predictor.cpp
+ src/hw/chassis/motor_drive.cpp
  src/hw/chassis/chassis_factory.cpp
- src/hw/chassis/chassis_factory.cpp
-  src/hw/chassis/tracked.cpp
+ src/hw/chassis/tracked.cpp
  src/hw/dynamics/contact.cpp
  src/algo/state_estimator.cpp
+ src/algo/terrain.cpp
  src/algo/pocket_shadow.cpp
  src/algo/estimator_replay.cpp
  src/algo/slip_observer.cpp
  src/algo/estimator_filter.cpp
-src/hw/feedforward.cpp
+ src/hw/feedforward.cpp
  src/algo/pid.cpp
  src/hw/sensors/sensor.cpp
+ src/hw/sensors/sensor_system.cpp
 )
 target_include_directories(lost_signal_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(lost_signal_sim PUBLIC cxx_std_20)
+target_link_libraries(lost_signal_sim PUBLIC lost_signal_project_options lost_signal_physics)
 
 add_library(lost_signal_game STATIC
  src/game/campaign_progress.cpp
+ src/game/component_registry.cpp
  src/game/content_catalog.cpp
  src/game/map_serialize.cpp
+ src/game/physics_scene.cpp
  src/game/mission_simulation.cpp
+ src/game/systems/control_system.cpp
+ src/game/systems/field_dispatch_system.cpp
+	 src/game/systems/field_operator_system.cpp
+ src/game/systems/goal_system.cpp
+ src/game/systems/planning_system.cpp
+ src/game/systems/world_activity_system.cpp
 )
 target_include_directories(lost_signal_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(lost_signal_game PUBLIC lost_signal_sim nlohmann_json::nlohmann_json)
@@ -97,6 +161,10 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  src/client/world_renderer.cpp
  )
  target_link_libraries(lost_signal PRIVATE lost_signal_game raylib TGUI::TGUI)
+ get_target_property(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS raylib INTERFACE_INCLUDE_DIRECTORIES)
+ if(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS)
+ target_include_directories(lost_signal SYSTEM PRIVATE ${LOST_SIGNAL_RAYLIB_INCLUDE_DIRS})
+ endif()
  target_compile_definitions(lost_signal PRIVATE
  LOST_SIGNAL_SOURCE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -116,6 +184,54 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME content_catalog COMMAND test_content_catalog)
+
+ add_executable(test_component_registry tests/new/test_component_registry.cpp)
+ target_link_libraries(test_component_registry PRIVATE lost_signal_game)
+ target_compile_definitions(test_component_registry PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME component_registry COMMAND test_component_registry)
+
+ add_executable(test_field_dispatch tests/new/test_field_dispatch.cpp)
+ target_link_libraries(test_field_dispatch PRIVATE lost_signal_game)
+ add_test(NAME field_dispatch COMMAND test_field_dispatch)
+
+ add_executable(test_world_activity tests/new/test_world_activity.cpp)
+ target_link_libraries(test_world_activity PRIVATE lost_signal_game)
+ add_test(NAME world_activity COMMAND test_world_activity)
+
+ add_executable(test_physics_world tests/new/test_physics_world.cpp)
+ target_link_libraries(test_physics_world PRIVATE lost_signal_physics)
+ add_test(NAME physics_world COMMAND test_physics_world)
+
+ add_executable(test_physics_scene tests/new/test_physics_scene.cpp)
+ target_link_libraries(test_physics_scene PRIVATE lost_signal_game)
+ target_compile_definitions(test_physics_scene PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME physics_scene COMMAND test_physics_scene)
+
+ add_executable(test_terrain tests/new/test_terrain.cpp)
+ target_link_libraries(test_terrain PRIVATE lost_signal_sim)
+ add_test(NAME terrain COMMAND test_terrain)
+
+ add_executable(test_kinematic_navigation tests/new/test_kinematic_navigation.cpp)
+ target_link_libraries(test_kinematic_navigation PRIVATE lost_signal_sim)
+ add_test(NAME kinematic_navigation COMMAND test_kinematic_navigation)
+
+ add_executable(test_high_level_policy tests/new/test_high_level_policy.cpp)
+ target_link_libraries(test_high_level_policy PRIVATE lost_signal_game)
+ target_compile_definitions(test_high_level_policy PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME high_level_policy COMMAND test_high_level_policy)
+
+	 add_executable(test_field_operator tests/new/test_field_operator.cpp)
+	 target_link_libraries(test_field_operator PRIVATE lost_signal_game)
+	 target_compile_definitions(test_field_operator PRIVATE
+	 LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+	 )
+	 add_test(NAME field_operator COMMAND test_field_operator)
 
  add_executable(test_mission_simulation tests/new/test_mission_simulation.cpp)
  target_link_libraries(test_mission_simulation PRIVATE lost_signal_game)
@@ -364,6 +480,11 @@ if(LOST_SIGNAL_BUILD_TESTS)
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_content.py -q
  )
  set_tests_properties(content_schema PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(
+ NAME contract_content
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_contracts.py -q
+ )
+ set_tests_properties(contract_content PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
  endif()
  add_test(
  NAME playtest_summary

@@ -33,9 +33,9 @@
     "knowledge_card": "探测距离决定何时看见物体，刷新频率决定多久获得一次新测量。"
   },
   "score": {
-    "safe_min_clearance_m": 0.6,
-    "fast_time_s": 35,
-    "efficient_energy_wh": 10
+    "safe_min_clearance_m": 0.913,
+    "fast_time_s": 1.98,
+    "efficient_energy_wh": 0.037
   },
   "rewards": [
     "ability.distance_sensing",
@@ -43,5 +43,6 @@
     "motor.torque",
     "motor.eco"
   ],
-  "chapter": 1
+  "chapter": 1,
+  "mode": "mainline"
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""关卡生产管线 v1：模板 + 参数表 -> 关卡/表现/剧情/章节装配。
+"""Build missions, presentation, story, and chapters from content templates.
 
-模板只表达“已验证题型的参数化”（本期仅 combo 回响型），不发明新机制；
-输出文件确定、可 diff；`--check` 用于 CI 门禁。
-地图等共享内容是生成器的输入断言，不是输出（见 REQUIRE_MAP）。
+Templates parameterize already validated mission patterns; they do not invent
+new mechanics. Output is deterministic and reviewable, and ``--check`` is the
+CI gate. Shared maps are validated inputs rather than generated output.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ LEVELS: list[dict] = [
         "map": "research_base",
         "prerequisites": ["lost_signal"],
         "seed": 48,
-        "time_limit_s": 150,
+ "time_limit_s": 150,
         "budget": 7,
         "arrive_tolerance_m": 0.62,
         "via_radius_m": 1.25,
@@ -250,14 +250,14 @@ LEVELS: list[dict] = [
         "goal": "supply_station",
         "goal_label": "能源模块",
         "goal_visual": "supply_station",
-        "time_limit_s": 150,
+ "time_limit_s": 120,
         "budget": 5,
         "required_slots": ["tires", "sensor", "motor"],
         "columns": "trio",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.0,
-        "fast_time_s": 40.0,
-        "efficient_energy_wh": 0.5,
+ "fast_time_s": 50.0,
+ "efficient_energy_wh": 0.6,
         "concept": "tracked_detour",
         "prediction_prompt": "履带走窄走廊，打滑和转向哪个先出问题？",
         "knowledge_card": "履带过窄道：转弯全靠搓，慢一点，里程计才不撒谎。",
@@ -323,8 +323,8 @@ LEVELS: list[dict] = [
         "columns": "sand",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.15,
-        "fast_time_s": 60.0,
-        "efficient_energy_wh": 0.8,
+ "fast_time_s": 75.0,
+ "efficient_energy_wh": 1.0,
         "concept": "sand_scrub",
         "prediction_prompt": "沙地加履带，打滑乘以打滑等于什么？",
         "knowledge_card": "复合打滑：沙地吃抓地，履带吃转向，两样叠在一起，温柔是唯一的解。",
@@ -379,6 +379,7 @@ LEVELS: list[dict] = [
         "chapter": 2,
         "title": "沙地转向",
         "map": "research_base",
+ "localization_mode": "odometry",
         "prerequisites": ["sand_track"],
         "seed": 257,
         "robot": "robot.ro2",
@@ -391,10 +392,10 @@ LEVELS: list[dict] = [
         "required_slots": ["tires", "sensor", "motor"],
         "columns": "sand",
         "arrive_tolerance_m": 1.0,
-        "safe_min_clearance_m": 0.2,
-        "max_localization_error_m": 0.3,
-        "fast_time_s": 38.0,
-        "efficient_energy_wh": 0.65,
+ "safe_min_clearance_m": 0.02,
+ "max_localization_error_m": 0.5,
+ "fast_time_s": 60.0,
+ "efficient_energy_wh": 0.85,
         "concept": "sand_steer",
         "prediction_prompt": "转向车进沙地，方向盘还管用吗？",
         "knowledge_card": "沙地加转向：轮胎先打滑，方向盘后到，两个都要提前量。",
@@ -447,6 +448,7 @@ LEVELS: list[dict] = [
         "chapter": 2,
         "title": "湿滑履带",
         "map": "research_base",
+ "localization_mode": "odometry",
         "prerequisites": ["sand_steer"],
         "seed": 263,
         "robot": "robot.ro3",
@@ -519,21 +521,21 @@ LEVELS: list[dict] = [
         "seed": 127,
         "robot": "robot.ro3",
         "spawn": "signal_tower",
-        "goal": "calibration_pad",
+ "goal": "track_calibration",
         "goal_label": "标定点",
         "goal_visual": "calibration_pad",
-        "time_limit_s": 150,
+ "time_limit_s": 180,
         "budget": 5,
         "required_slots": ["tires", "sensor", "motor"],
         "columns": "trio",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.0,
         "max_localization_error_m": 2.0,
-        "fast_time_s": 140.0,
+ "fast_time_s": 170.0,
         "efficient_energy_wh": 1.7,
         "concept": "tracked_pacing",
         "prediction_prompt": "同一条长途，拐角要什么组合才过得去？",
-        "knowledge_card": "货架拐角：careful＋抓地胎缺一不可——单稳风格（eco＋careful）照样摇 150 秒，单换胎（grip＋swift）也过不去，传感器快慢不影响；2×2 全跑过，证据在轨迹里。",
+ "knowledge_card": "履带不是两只外露车轮：长接地履带转弯会产生搓擦与角点外扫，稳定策略和抓地材料要共同匹配。",
         "default_build": {
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
@@ -548,19 +550,19 @@ LEVELS: list[dict] = [
         },
         "rewards": ["ability.long_track"],
         "garage_heading": "履带跑长途",
-        "garage_brief": "信号塔回标定点，同一条长途，换 RO-3。拐角考的是组合：风格稳＋胎抓地，缺一不可。",
+ "garage_brief": "信号塔回标定点，换上完整履带总成。长接地段通过性高，但狭窄 S 弯需要为搓擦与角点外扫留空间。",
         "prediction_heading": "履带长途，短板在哪？",
         "prediction_hint": "先做预测。慢车配长途，是稳还是摇摆？",
         "prediction_choices": [
             {"id": "long_track.combo",
              "text": "careful＋抓地胎能到",
-             "feedback": "对，唯一通关组合：127.78 秒拿全分。缺一件就摇摆或超时。"},
+ "feedback": "对。完整履带总成配合稳妥策略和抓地材料，约 155 秒完成狭窄 S 形长途。"},
             {"id": "long_track.style_only",
              "text": "只把风格放稳就行",
-             "feedback": "错：eco 胎配 careful 照样摇 150 秒。胎不行，稳也没用。"},
+ "feedback": "只降速仍不能消除履带搓擦和材料抓地差异。"},
             {"id": "long_track.tires_only",
              "text": "只换抓地胎就行",
-             "feedback": "错：grip 胎配 swift 也过不去。脾气不行，胎再抓也没用。"},
+ "feedback": "只换材料仍不能消除长履带在急弯中的角点外扫。"},
         ],
         "running_heading": "履带远征",
         "running_normal": "RO-3：长途巡航中，履带稳定。",
@@ -732,7 +734,7 @@ LEVELS: list[dict] = [
         "chapter": 3,
         "title": "城镇首运",
         "map": "signal_town",
-        "prerequisites": ["signal_cross"],
+ "prerequisites": ["lost_signal"],
         "seed": 7,
         "spawn": "town_gate",
         "via": "energy_hub",
@@ -877,6 +879,24 @@ LEVELS: list[dict] = [
 
 ]
 
+PRODUCT_ORDER = {
+ "town_freight": 9,
+ "big_freight": 10,
+ "signal_echo": 14,
+ "return_route": 15,
+ "track_turn": 16,
+ "loose_ground": 17,
+ "long_haul": 18,
+ "scrub_climb": 19,
+ "sand_track": 20,
+ "sand_steer": 21,
+ "wet_scrub": 22,
+ "signal_hold": 23,
+ "long_track": 24,
+ "signal_watch": 25,
+ "signal_cross": 26,
+}
+
 SAND_COLUMNS = [
     {"slot": "tires", "title": "驱动轮胎",
      "options": ["tires.standard", "tires.grip", "tires.eco", "tires.sand"]},
@@ -972,15 +992,17 @@ def build_objective(spec: dict) -> dict:
 
 
 def build_level(spec: dict) -> dict:
-    return {
+ mode = "contract" if spec["id"] in ("town_freight", "big_freight") else "experiment"
+ return {
         "schema_version": 1,
         "id": spec["id"],
-        "order": spec["order"],
+ "order": PRODUCT_ORDER[spec["id"]],
         "title": spec["title"],
         "map": spec["map"],
         "control_mode": "autonomous",
-        "localization_mode": "fused",
-        "chapter": spec["chapter"],
+ "localization_mode": spec.get("localization_mode", "fused"),
+ "chapter": 3 if mode == "contract" else 4,
+ "mode": mode,
         "prerequisites": spec["prerequisites"],
         "seed": spec["seed"],
         "objective": build_objective(spec),

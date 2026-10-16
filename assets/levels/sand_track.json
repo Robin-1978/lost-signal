@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "sand_track",
-  "order": 15,
+  "order": 20,
   "title": "沙地履带",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "scrub_climb"
   ],
@@ -36,8 +37,8 @@
   },
   "score": {
     "safe_min_clearance_m": 0.15,
-    "fast_time_s": 60.0,
-    "efficient_energy_wh": 0.8
+    "fast_time_s": 75.0,
+    "efficient_energy_wh": 1.0
   },
   "rewards": [
     "ability.sand_track"

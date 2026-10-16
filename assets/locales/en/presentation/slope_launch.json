@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Ramp Assembly",
+    "/garage/brief": "Collect the spare battery, stop on the 20° slope to check traction margin, then deliver the equipment to the communications bridge. Motor, tires, and driving preference determine whether RO-1 can restart.",
+    "/garage/component_columns/0/title": "Slope Tires",
+    "/garage/component_columns/1/title": "Drive Motor",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "Which Motor Can Restart Mid-Slope?",
+    "/prediction/hint": "Judge the available torque first, then consider energy use.",
+    "/prediction/choices/0/text": "The high-torque motor can restart",
+    "/prediction/choices/0/feedback": "Use the debrief to inspect grade and traction saturation, then identify where the margin came from.",
+    "/prediction/choices/1/text": "A higher top speed guarantees a stronger start",
+    "/prediction/choices/1/feedback": "A slope start happens near zero speed. Wheel force matters here; no-load rpm does not.",
+    "/running/heading": "Deliver to the Communications Bridge",
+    "/running/normal_line": "RO-1: Load secured. I’ll stop on the slope, then restart.",
+    "/running/detected_line": "RO-1: Slope estimate updated.",
+    "/debrief/success_title": "Uphill Delivery Complete",
+    "/debrief/success_summary": "The debrief recorded grade, body attitude, slip, and energy use throughout the delivery.",
+    "/debrief/failure_summary": "Inspect grade, wheel-force saturation, and rollover risk on the timeline, then adjust the build or driving preference.",
+    "/debrief/evidence_heading": "Slope Evidence",
+    "/debrief/evidence_caption": "Longitudinal slope, cross-slope, body attitude, and energy use come from the same fixed-step simulation.",
+    "/debrief/knowledge_title": "Traction on a Slope",
+    "/debrief/failure_titles/collision-static": "Ramp mission failed: left the feasible region",
+    "/debrief/failure_titles/collision-dynamic": "Ramp mission failed: moving-object collision",
+    "/debrief/failure_titles/rollover": "Ramp mission failed: rollover",
+    "/debrief/failure_titles/timeout": "Ramp mission failed: time limit exceeded"
+  }
+}

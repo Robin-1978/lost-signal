@@ -351,6 +351,26 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 5
+        },
+        "trail_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        },
+        "surface_particle_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "surface_particle_scale": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "risk_indicator_radius_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3
         }
       }
     },

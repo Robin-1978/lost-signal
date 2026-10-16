@@ -7,7 +7,7 @@
   "control_mode": "autonomous",
   "localization_mode": "fused",
   "prerequisites": [
-    "blocked_route"
+    "cross_slope"
   ],
   "seed": 47,
   "objective": {
@@ -16,12 +16,41 @@
     "via": "supply_station",
     "via_label": "能源模块",
     "goal": "signal_tower",
-    "goal_label": "信号塔",
+    "goal_label": "山谷信号塔",
     "goal_visual": "signal_tower",
-    "time_limit_s": 150,
+    "time_limit_s": 180,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62,
-    "via_radius_m": 1.25
+    "via_radius_m": 1.25,
+    "goals": [
+      {
+        "marker": "supply_station",
+        "label": "能源模块",
+        "action": "pickup",
+        "radius_m": 1.25
+      },
+      {
+        "marker": "traffic_trigger",
+        "label": "东区交通恢复",
+        "action": "summon",
+        "radius_m": 1.25,
+        "summon_actor": "forklift_finale"
+      },
+      {
+        "marker": "traffic_hold",
+        "label": "动态路口观察点",
+        "action": "inspect",
+        "radius_m": 0.78,
+        "dwell_s": 1.0
+      },
+      {
+        "marker": "signal_tower",
+        "label": "山谷信号塔",
+        "action": "complete",
+        "radius_m": 0.62
+      }
+    ],
+    "max_arrival_speed_mps": 0.2
   },
   "loadout_rules": {
     "budget": 8,
@@ -39,12 +68,14 @@
     "knowledge_card": "动态物体需要用位置和速度预测未来，而不只是写进静态地图。"
   },
   "score": {
-    "safe_min_clearance_m": 0.3,
+    "safe_min_clearance_m": 0.6,
+    "safe_clearance_scope": "dynamic",
     "fast_time_s": 95,
     "efficient_energy_wh": 30
   },
   "rewards": [
     "story.chapter_02_signal"
   ],
-  "chapter": 2
+  "chapter": 2,
+  "mode": "mainline"
 }

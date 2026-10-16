@@ -48,6 +48,22 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   }
   surfaces.push_back(std::move(item));
  }
+ nlohmann::ordered_json terrain = nlohmann::ordered_json::array();
+ for (const auto& patch : map.terrain) {
+  nlohmann::ordered_json item;
+  item["id"] = patch.id;
+  item["type"] = "height_patch";
+  item["min"] = vec2(patch.min);
+  item["max"] = vec2(patch.max);
+  item["base_height_m"] = patch.base_height_m;
+  item["grade_x"] = patch.grade_x;
+  item["grade_y"] = patch.grade_y;
+  item["roughness"] = patch.roughness;
+  if (!patch.active_in.empty()) {
+   item["active_in"] = strings(patch.active_in);
+  }
+  terrain.push_back(std::move(item));
+ }
  nlohmann::ordered_json markers = nlohmann::ordered_json::object();
  for (const auto& [id, pose] : map.markers) {
   markers[id] = {pose.x, pose.y, pose.theta};
@@ -68,6 +84,7 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["collision"] = actor.collision_social ? "social" : "fatal";
   nlohmann::ordered_json visual;
   visual["model"] = actor.visual_model;
+ visual["kind"] = actor.visual_kind;
   visual["ref_radius_m"] = actor.visual_ref_radius_m;
   item["visual"] = std::move(visual);
   if (actor.dormant_until_summoned) {
@@ -86,6 +103,9 @@ std::string serialize_map_canonical(const MapDefinition& map) {
  root["grid_resolution_m"] = map.grid_resolution_m;
  root["obstacles"] = std::move(obstacles);
  root["surfaces"] = std::move(surfaces);
+ if (!terrain.empty()) {
+  root["terrain"] = std::move(terrain);
+ }
  root["markers"] = std::move(markers);
  root["actors"] = std::move(actors);
  return root.dump(2, ' ', false) + "\n";

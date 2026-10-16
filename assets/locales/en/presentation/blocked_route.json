@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "A Shelf Blocks the Old Route",
+    "/garage/brief": "The map is back online, and the built-in A* planner can search for a new global route. Choose the tires, sensors, and computer that will execute it.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "What Should RO-1 Do When the Old Route Is Blocked?",
+    "/prediction/hint": "A* searches the map’s drivable space for a route from start to goal.",
+    "/prediction/choices/0/text": "Keep pushing into the shelf",
+    "/prediction/choices/0/feedback": "The controller can execute only feasible motion. A fixed obstacle needs a global route around it.",
+    "/prediction/choices/1/text": "Replan from the current map",
+    "/prediction/choices/1/feedback": "Record your prediction. Press Tab during the run to see the new route bend around the blocked area.",
+    "/prediction/choices/2/text": "Only increase LiDAR range",
+    "/prediction/choices/2/feedback": "Seeing an obstacle does not create a detour by itself. The map and planner determine where RO-1 can go.",
+    "/running/heading": "Reach the Supply Station by a New Route",
+    "/running/normal_line": "RO-1: Global path ready. I’m routing around the blocked corridor.",
+    "/running/detected_line": "RO-1: Environment sensing online. Continuing along the new path.",
+    "/debrief/success_title": "RO-1 Finds Another Way",
+    "/debrief/success_summary": "The map, A* path, and motion controller worked together to complete the detour.",
+    "/debrief/failure_summary": "Open the AI view, compare the planned route with the actual path, then adjust the build.",
+    "/debrief/evidence_heading": "Planning Evidence",
+    "/debrief/evidence_caption": "The embedded A* planner generated these path nodes from the current map.",
+    "/debrief/knowledge_title": "Maps and Path Planning",
+    "/debrief/failure_titles/collision-static": "Mission failed: shelf collision",
+    "/debrief/failure_titles/timeout": "Mission failed: supply station not reached"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Long-Haul Crossing",
+    "/objective/goal_label": "Calibration Pad",
+    "/teaching/prediction_prompt": "How should RO-1 balance speed and energy across the full depot?",
+    "/teaching/knowledge_card": "Long routes reward pacing. A steady speed can arrive sooner than repeated bursts, while gentle control saves energy over the whole run."
+  }
+}

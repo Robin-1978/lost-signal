@@ -18,7 +18,8 @@
     "teaching",
     "score",
     "rewards",
-    "chapter"
+    "chapter",
+    "mode"
   ],
   "properties": {
     "schema_version": {
@@ -49,6 +50,24 @@
         "odometry",
         "fused"
       ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mass_kg",
+        "cog_height_m"
+      ],
+      "properties": {
+        "mass_kg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cog_height_m": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
     },
     "prerequisites": {
       "type": "array",
@@ -148,7 +167,8 @@
                   "pickup",
                   "complete",
                   "summon",
-                  "recharge"
+                  "recharge",
+                  "inspect"
                 ]
               },
               "radius_m": {
@@ -161,9 +181,18 @@
               "recharge_wh": {
                 "type": "number",
                 "exclusiveMinimum": 0
+              },
+              "dwell_s": {
+                "type": "number",
+                "exclusiveMinimum": 0
               }
             }
           }
+        },
+        "max_arrival_speed_mps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional speed limit for completing the final goal zone."
         }
       },
       "allOf": [
@@ -248,6 +277,14 @@
           "type": "number",
           "minimum": 0
         },
+        "safe_clearance_scope": {
+          "type": "string",
+          "enum": [
+            "all",
+            "static",
+            "dynamic"
+          ]
+        },
         "max_localization_error_m": {
           "type": "number",
           "exclusiveMinimum": 0
@@ -273,6 +310,13 @@
     "chapter": {
       "type": "integer",
       "minimum": 1
+    },
+    "mode": {
+      "enum": [
+        "mainline",
+        "contract",
+        "experiment"
+      ]
     }
   },
   "$defs": {

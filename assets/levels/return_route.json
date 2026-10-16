@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "id": "return_route",
-  "order": 10,
+  "order": 15,
   "title": "标定新车",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
   "prerequisites": [
     "signal_echo"
   ],
@@ -39,11 +39,12 @@
   },
   "score": {
     "safe_min_clearance_m": 0.2,
-    "max_localization_error_m": 0.095,
+    "max_localization_error_m": 0.15,
     "fast_time_s": 14.0,
     "efficient_energy_wh": 0.2
   },
   "rewards": [
     "ability.ackermann"
-  ]
+  ],
+  "mode": "experiment"
 }

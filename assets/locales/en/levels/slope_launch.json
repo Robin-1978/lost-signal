@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Ramp Assembly",
+    "/objective/goal_label": "Communications Bridge Staging Point",
+    "/objective/goals/0/label": "Backup Battery Crate",
+    "/objective/goals/1/label": "Mid-Slope Traction Check",
+    "/objective/goals/2/label": "Communications Bridge Staging Point",
+    "/teaching/prediction_prompt": "Which motor can start from rest with cargo on a 20° slope: standard or high-torque?",
+    "/teaching/knowledge_card": "Required traction depends on total mass and slope angle. When torque margin is too small, a higher top speed does not help."
+  }
+}

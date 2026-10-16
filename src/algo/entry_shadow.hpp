@@ -21,7 +21,8 @@ namespace sim {
 // (Clear/Occupied/Uncertain), never Feasible/Allowed. Uncertain is sticky:
 // invalid or stale threat input yields Uncertain, NEVER a default-go Clear.
 // Margins are reported evidence, not gates — nothing releases on them,
-// Phase-2 stays frozen until its three doors pass (see parked/strategy-layer).
+// This remains an observational shadow model. Any authority path requires
+// separate safety, confidence, and parity evidence.
 
 enum class EntryVerdict {
   kObservedClear,    // threat window and ego window strictly disjoint.

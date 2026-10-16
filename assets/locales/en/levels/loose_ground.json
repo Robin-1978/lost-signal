@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Loose Ground",
+    "/objective/goal_label": "Signal Tower",
+    "/teaching/prediction_prompt": "Which tires can cross both gravel and sand?",
+    "/teaching/knowledge_card": "Loose ground demands traction and adds rolling resistance. Sand tires trade speed for grip; efficiency tires save energy on firm ground but dig into soft ground."
+  }
+}

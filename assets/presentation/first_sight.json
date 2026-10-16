@@ -40,7 +40,7 @@
     "recommended_build": {
       "tires": "tires.grip",
       "sensor": "sensor.short_fast_lidar",
-      "style": 0.0
+      "style": 1.0
     }
   },
   "prediction": {

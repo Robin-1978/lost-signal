@@ -35,7 +35,8 @@
     "encoder": {
       "counts_per_revolution": 2048
     },
-    "max_yaw_accel_radps2": 8.0
+    "max_yaw_accel_radps2": 8.0,
+    "label_key": "garage.drive.differential"
   },
   "collision": {
     "shape": "cylinder",
@@ -54,7 +55,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "base_visual_link"
     },
     {
       "id": "wheel_left",
@@ -67,7 +69,8 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "left_wheel_link"
     },
     {
       "id": "wheel_right",
@@ -80,7 +83,36 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "right_wheel_link"
+    },
+    {
+      "id": "caster_front",
+      "position_m": [
+        0.25,
+        0,
+        0.055
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "front_caster_link"
+    },
+    {
+      "id": "caster_rear",
+      "position_m": [
+        -0.25,
+        0,
+        0.055
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "rear_caster_link"
     },
     {
       "id": "sensor_top",
@@ -93,7 +125,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "lidar_link"
     },
     {
       "id": "compute_rear",
@@ -106,8 +139,27 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "compute_link"
+    },
+    {
+      "id": "imu_body",
+      "position_m": [
+        0,
+        0,
+        0.24
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "imu_link"
     }
+  ],
+  "passive_support_mounts": [
+    "caster_front",
+    "caster_rear"
   ],
   "base_parts": [
     {
@@ -122,6 +174,34 @@
         ],
         "color": "#D8ECE8",
         "model_3d": "models/robots/ro1/chassis.glb"
+      }
+    },
+    {
+      "id": "ro1_front_caster",
+      "mount": "caster_front",
+      "visual": {
+        "primitive_2d": "disc",
+        "size_m": [
+          0.11,
+          0.11,
+          0.2
+        ],
+        "color": "#657772",
+        "model_3d": "models/robots/ro1/caster.glb"
+      }
+    },
+    {
+      "id": "ro1_rear_caster",
+      "mount": "caster_rear",
+      "visual": {
+        "primitive_2d": "disc",
+        "size_m": [
+          0.11,
+          0.11,
+          0.2
+        ],
+        "color": "#657772",
+        "model_3d": "models/robots/ro1/caster.glb"
       }
     }
   ],
@@ -151,7 +231,9 @@
     },
     {
       "slot": "imu",
-      "mounts": []
+      "mounts": [
+        "imu_body"
+      ]
     }
   ]
 }

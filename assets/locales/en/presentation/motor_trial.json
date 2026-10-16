@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Meet the Motors",
+    "/garage/brief": "High torque and high efficiency have different personalities. Predict which arrives first and which saves energy, then let RO-1 demonstrate.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Does More Force Always Win?",
+    "/prediction/hint": "Make a prediction. Compare finish time with energy use; both matter.",
+    "/prediction/choices/0/text": "The high-torque motor must be fastest",
+    "/prediction/choices/0/feedback": "Probably—but inspect its energy bill too.",
+    "/prediction/choices/1/text": "The efficient motor is best overall",
+    "/prediction/choices/1/feedback": "If it is fast enough and uses less energy, this route did not need the extra torque.",
+    "/running/heading": "Reach the Depot Calibration Pad",
+    "/running/normal_line": "RO-1: Learning the new motor’s personality.",
+    "/running/detected_line": "RO-1: Route ahead confirmed.",
+    "/debrief/success_title": "Motors Understood",
+    "/debrief/success_summary": "Torque and efficiency share the same scorecard. There is no free lunch.",
+    "/debrief/failure_summary": "Try another motor or leave more room in the build budget.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Time and energy come from the simulation, not flavor text.",
+    "/debrief/knowledge_title": "Motors and Energy",
+    "/debrief/failure_titles/collision-static": "Trial failed: obstacle collision",
+    "/debrief/failure_titles/timeout": "Trial failed: calibration pad not reached"
+  }
+}

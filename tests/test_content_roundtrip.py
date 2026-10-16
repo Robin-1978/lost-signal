@@ -1,8 +1,8 @@
-"""内容 JSON 存盘规范回归：仓库内所有 JSON 必须符合 canonical 格式。
+"""Require every repository JSON file to use the canonical save format.
 
-Canonical = json.dumps(parse(text), indent=2, ensure_ascii=False) + "\\n"。
-编辑器（plan §4 第 7 项）存盘即按此格式写；本测试保证手写 JSON 与工具存盘
-逐字节一致，杜绝整文件重排事故（如 ro1.json 缩进惨案）。
+Canonical = json.dumps(parse(text), indent=2, ensure_ascii=False) + "\\n".
+The editor writes this format. Keeping hand-written content byte-compatible
+with tool output prevents accidental whole-file reformatting.
 """
 
 from __future__ import annotations
@@ -21,18 +21,22 @@ def canonical(text: str) -> str:
 class ContentRoundtripTests(unittest.TestCase):
     def test_every_json_is_canonical(self) -> None:
         files = sorted(ASSETS.rglob("*.json"))
-        self.assertGreater(len(files), 40, "assets 应该有 40+ JSON 文件")
+        self.assertGreater(
+            len(files), 40, "assets should contain more than 40 JSON files"
+        )
         bad = []
         for path in files:
             original = path.read_text(encoding="utf-8")
             if canonical(original) != original:
                 bad.append(str(path.relative_to(ASSETS)))
-        self.assertEqual([], bad, f"非 canonical JSON 文件:\n" + "\n".join(bad))
+        self.assertEqual([], bad, "non-canonical JSON files:\n" + "\n".join(bad))
 
     def test_canonical_is_semantics_preserving(self) -> None:
         for path in sorted(ASSETS.rglob("*.json")):
             original = path.read_text(encoding="utf-8")
-            self.assertEqual(json.loads(original), json.loads(canonical(original)), str(path))
+            self.assertEqual(
+                json.loads(original), json.loads(canonical(original)), str(path)
+            )
 
 
 if __name__ == "__main__":

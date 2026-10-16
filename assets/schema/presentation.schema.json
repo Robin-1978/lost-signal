@@ -51,7 +51,7 @@
         "component_columns": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 5,
+          "maxItems": 12,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -62,13 +62,8 @@
             ],
             "properties": {
               "slot": {
-                "enum": [
-                  "tires",
-                  "sensor",
-                  "computer",
-                  "motor",
-                  "imu"
-                ]
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]*$"
               },
               "title": {
                 "$ref": "#/$defs/text"

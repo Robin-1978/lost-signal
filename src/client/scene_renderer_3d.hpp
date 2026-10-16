@@ -6,6 +6,7 @@
 #include <raylib.h>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -19,8 +20,10 @@ class SceneRenderer3D {
  SceneRenderer3D(const SceneRenderer3D&) = delete;
  SceneRenderer3D& operator=(const SceneRenderer3D&) = delete;
 
- void draw(const game::MissionSimulation& mission, int screen_width, int screen_height);
+ void draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
+ Rectangle input_viewport, bool assembly_view = false);
  const Camera3D& camera() const { return camera_; }
+ std::optional<sim::Vec2> screen_to_ground(Vector2 screen) const;
 
  private:
  void bind_shader(Model& model) const;
@@ -32,13 +35,17 @@ class SceneRenderer3D {
  void composite_scene(const game::SceneDefinition& scene) const;
  void draw_scene(const game::MissionSimulation& mission) const;
  void draw_floor(const game::MapDefinition& map, const game::SceneDefinition& scene) const;
+ void draw_terrain(const game::MissionSimulation& mission) const;
  void draw_shelf(const game::BoxDefinition& obstacle) const;
- void draw_surface(const game::SurfaceDefinition& surface) const;
+ void draw_surface(const game::MissionSimulation& mission, const game::SurfaceDefinition& surface) const;
  void draw_markers(const game::MissionSimulation& mission) const;
+ void draw_field_operator(const game::MissionSimulation& mission) const;
  void draw_robot(const game::MissionSimulation& mission) const;
  void draw_actor(const game::ActorSnapshot& actor, bool waiting) const;
  void draw_environment(const game::MissionSimulation& mission, const game::SceneDefinition& scene) const;
  void draw_accents(const game::MissionSimulation& mission) const;
+ void draw_motion_effects(const game::MissionSimulation& mission) const;
+ void draw_risk_effects(const game::MissionSimulation& mission) const;
  void draw_box(Vector3 position, Vector3 size, float yaw_degrees, Color color) const;
  const Model* model(const std::string& path) const;
 
@@ -60,6 +67,13 @@ class SceneRenderer3D {
  double camera_time_s_{-1.0};
  std::string camera_level_;
  bool camera_initialized_{false};
+ bool camera_assembly_view_{false};
+ Rectangle input_viewport_{};
+ bool manual_camera_{false};
+ Vector3 camera_pan_{};
+ float camera_orbit_yaw_{0.0f};
+ float camera_orbit_pitch_{0.65f};
+ float camera_orbit_distance_{10.0f};
  RenderTexture2D shadow_map_{};
  RenderTexture2D scene_target_{};
  RenderTexture2D bloom_target_a_{};

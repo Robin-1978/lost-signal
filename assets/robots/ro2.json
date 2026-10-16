@@ -40,7 +40,8 @@
       "counts_per_revolution": 2048
     },
     "max_yaw_accel_radps2": 5.0,
-    "track_width_m": 0.58
+    "track_width_m": 0.58,
+    "label_key": "garage.drive.ackermann"
   },
   "collision": {
     "shape": "cylinder",
@@ -59,7 +60,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "base_visual_link"
     },
     {
       "id": "front_left",
@@ -72,7 +74,8 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "front_left_wheel_link"
     },
     {
       "id": "front_right",
@@ -85,7 +88,8 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "front_right_wheel_link"
     },
     {
       "id": "rear_left",
@@ -98,7 +102,8 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "rear_left_wheel_link"
     },
     {
       "id": "rear_right",
@@ -111,7 +116,8 @@
         90,
         0,
         0
-      ]
+      ],
+      "frame_id": "rear_right_wheel_link"
     },
     {
       "id": "sensor_top",
@@ -124,7 +130,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "lidar_link"
     },
     {
       "id": "compute_rear",
@@ -137,7 +144,22 @@
         0,
         0,
         0
-      ]
+      ],
+      "frame_id": "compute_link"
+    },
+    {
+      "id": "imu_body",
+      "position_m": [
+        0,
+        0,
+        0.24
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "imu_link"
     }
   ],
   "base_parts": [
@@ -184,7 +206,9 @@
     },
     {
       "slot": "imu",
-      "mounts": []
+      "mounts": [
+        "imu_body"
+      ]
     }
   ]
 }

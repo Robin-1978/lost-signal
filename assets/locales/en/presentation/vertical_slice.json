@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Prepare for the Final Run",
+    "/garage/brief": "After RO-1 retrieves the power module, east-district traffic resumes. It must route around the shelf, stop and observe at the dynamic intersection, then cross the forklift corridor to activate the Lan Valley signal tower.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Make a Prediction Before Departure",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "How far is the forklift from the intersection?",
+    "/prediction/choices/0/feedback": "Distance is one clue. Direction and speed reveal whether both paths will reach the intersection at the same time.",
+    "/prediction/choices/1/text": "Where will the forklift move next?",
+    "/prediction/choices/1/feedback": "With position and velocity, RO-1 can project the forklift forward and test whether their paths intersect. Watch when it begins to wait.",
+    "/prediction/choices/2/text": "Put the forklift in the static map",
+    "/prediction/choices/2/feedback": "The forklift moves. A static map represents fixed obstacles, not where a moving object will be next.",
+    "/running/heading": "Final Run · Restore the Valley Signal",
+    "/running/normal_line": "RO-1: Retrieving power, observing the intersection, and starting the signal tower.",
+    "/running/detected_line": "RO-1: Forklift tracked. Predicting its path.",
+    "/debrief/success_title": "Mission Complete: Signal Tower Online",
+    "/debrief/success_summary": "RO-1 observed, predicted, waited, and crossed safely.",
+    "/debrief/failure_summary": "Select evidence on the right to jump the field view to that moment.",
+    "/debrief/evidence_heading": "Causal Evidence",
+    "/debrief/evidence_caption": "These entries come from events and state recorded during this simulation run.",
+    "/debrief/knowledge_title": "Dynamic-Object Prediction",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: forklift collision",
+    "/debrief/failure_titles/collision-static": "Mission failed: fixed-obstacle collision",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

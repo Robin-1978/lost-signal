@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "blocked_route",
-  "order": 7,
+  "order": 6,
   "title": "门被堵住了",
   "map": "research_base",
   "control_mode": "autonomous",
@@ -45,5 +45,6 @@
     "computer.mid",
     "sensor.precision_lidar"
   ],
-  "chapter": 2
+  "chapter": 2,
+  "mode": "mainline"
 }

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Take a Long Haul",
+    "/garage/brief": "Travel from the signal tower back to the calibration pad across the full depot. There are no forklifts; this run tests pacing and patience.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "What Limits a Long Haul?",
+    "/prediction/hint": "Make a prediction: will a steady pace or repeated sprints reach the calibration pad first?",
+    "/prediction/choices/0/text": "Pacing decides the result",
+    "/prediction/choices/0/feedback": "Repeated full-throttle bursts can lose both time and energy. Compare the clock with the energy meter.",
+    "/prediction/choices/1/text": "Corners waste the most time",
+    "/prediction/choices/1/feedback": "Enter a corner too late and RO-1 must take a wide arc. Inspect the path through each bend.",
+    "/running/heading": "Return to the Calibration Pad",
+    "/running/normal_line": "RO-1: Long-haul cruise stable. Holding pace.",
+    "/running/detected_line": "RO-1: Route ahead confirmed.",
+    "/debrief/success_title": "Long Haul Complete",
+    "/debrief/success_summary": "Across the depot, steady speed arrives sooner and gentle control saves energy.",
+    "/debrief/failure_summary": "Find which badge was lost. A long haul punishes uneven pacing.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Pacing",
+    "/debrief/failure_titles/collision-static": "Delivery failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Delivery failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Delivery failed: time limit exceeded"
+  }
+}

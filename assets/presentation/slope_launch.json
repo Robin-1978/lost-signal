@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "presentation.slope_launch",
+  "is_default": false,
+  "level": "slope_launch",
+  "garage": {
+    "heading": "坡道集结",
+    "brief": "先取备用电池，在 20° 坡中停稳确认牵引余量，再把物资送上通信桥。电机、轮胎与驾驶风格会决定能否二次起步。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "坡面轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.eco",
+      "motor": "motor.standard",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "motor": "motor.torque",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "谁能坡中起步？",
+    "hint": "先判断扭矩，再看能耗。",
+    "choices": [
+      {
+        "id": "slope_launch.torque",
+        "text": "扭矩电机能起步",
+        "feedback": "看回放中的坡度与牵引饱和，确认余量来自哪里。"
+      },
+      {
+        "id": "slope_launch.speed",
+        "text": "极速高就能起步",
+        "feedback": "坡中起步接近零速，关键是轮端力而非自由转速。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "坡道集结",
+    "normal_line": "洛一：载荷已固定，正在管理坡中停车与二次起步。",
+    "detected_line": "洛一：前方坡面状态已更新。"
+  },
+  "debrief": {
+    "success_title": "物资登坡完成",
+    "success_summary": "任务完成，回放已记录坡度、侧倾、打滑和能耗。",
+    "failure_summary": "沿时间轴查看坡度、轮端饱和与侧翻风险，再调整组件或风格。",
+    "evidence_heading": "坡度证据",
+    "evidence_caption": "纵坡、横坡、姿态和能耗来自同一固定步长仿真。",
+    "knowledge_title": "坡道牵引",
+    "failure_titles": {
+      "collision-static": "坡度任务失败：越出可行区域",
+      "collision-dynamic": "坡度任务失败：发生动态碰撞",
+      "rollover": "坡度任务失败：发生侧翻",
+      "timeout": "坡度任务失败：未按时到达"
+    }
+  }
+}

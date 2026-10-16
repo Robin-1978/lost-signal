@@ -11,7 +11,8 @@ using DynamicCollision = std::function<bool(double, double, double)>;
 
 DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                   DwaWeights weights, const DynamicCollision& dynamic_collision, double v_max, double w_max,
-                  double accel, double predict_time, double dt, double yaw_accel) {
+ double accel, double predict_time, double dt, double yaw_accel,
+ const StaticFeasibility& terrain_feasible) {
  DwaResult output;
  output.best.valid = false;
  output.best.score = -1e18;
@@ -29,13 +30,15 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
    double free_time = predict_time;
    bool collision = false;
    for (double time = 0.0; time < predict_time; time += dt) {
+ const Vec2 previous{x, y};
     rollout_v += clamp(velocity - rollout_v, -accel * dt, accel * dt);
     rollout_w += clamp(angular - rollout_w, -yaw_accel * dt, yaw_accel * dt);
     x += rollout_v * std::cos(heading) * dt;
     y += rollout_v * std::sin(heading) * dt;
     heading += rollout_w * dt;
     points.push_back({x, y});
-    if (!map.isFree(x, y) || dynamic_collision(x, y, time)) {
+ if (!map.isFree(x, y) || dynamic_collision(x, y, time) ||
+ (terrain_feasible && !terrain_feasible(previous, {x, y}))) {
      collision = true;
      free_time = time;
      break;
@@ -63,11 +66,11 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
 
 DwaResult dwa_compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                       DwaWeights weights, double v_max, double w_max, double accel, double predict_time,
-                      double dt, double robot_radius, double yaw_accel) {
+ double dt, double robot_radius, double yaw_accel, StaticFeasibility terrain_feasible) {
  (void)robot_radius;
  return compute(
    pos, theta, cur_v, cur_w, goal, map, weights, [](double, double, double) { return false; }, v_max, w_max,
-   accel, predict_time, dt, yaw_accel);
+ accel, predict_time, dt, yaw_accel, terrain_feasible);
 }
 
 DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
@@ -85,14 +88,15 @@ DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Ve
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
-                predict_time, dt, yaw_accel);
+ predict_time, dt, yaw_accel, {});
 }
 
 DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
                                  const GridMap& map, DwaWeights weights,
                                  const std::vector<std::vector<DynState>>& predicted_frames, double v_max,
                                  double w_max, double accel, double predict_time, double dt, double frame_dt,
-                                 double safety_margin, double robot_radius, double yaw_accel) {
+ double safety_margin, double robot_radius, double yaw_accel,
+ StaticFeasibility terrain_feasible) {
  const auto dynamic_collision = [&](double x, double y, double time) {
   if (predicted_frames.empty()) {
    return false;
@@ -107,7 +111,7 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
-                predict_time, dt, yaw_accel);
+ predict_time, dt, yaw_accel, terrain_feasible);
 }
 
 } // namespace sim

@@ -6,7 +6,7 @@
   "robot": "robot.ro3",
   "garage": {
     "heading": "履带跑长途",
-    "brief": "信号塔回标定点，同一条长途，换 RO-3。拐角考的是组合：风格稳＋胎抓地，缺一不可。",
+    "brief": "信号塔回标定点，换上完整履带总成。长接地段通过性高，但狭窄 S 弯需要为搓擦与角点外扫留空间。",
     "component_columns": [
       {
         "slot": "tires",
@@ -62,17 +62,17 @@
       {
         "id": "long_track.combo",
         "text": "careful＋抓地胎能到",
-        "feedback": "对，唯一通关组合：127.78 秒拿全分。缺一件就摇摆或超时。"
+        "feedback": "对。完整履带总成配合稳妥策略和抓地材料，约 155 秒完成狭窄 S 形长途。"
       },
       {
         "id": "long_track.style_only",
         "text": "只把风格放稳就行",
-        "feedback": "错：eco 胎配 careful 照样摇 150 秒。胎不行，稳也没用。"
+        "feedback": "只降速仍不能消除履带搓擦和材料抓地差异。"
       },
       {
         "id": "long_track.tires_only",
         "text": "只换抓地胎就行",
-        "feedback": "错：grip 胎配 swift 也过不去。脾气不行，胎再抓也没用。"
+        "feedback": "只换材料仍不能消除长履带在急弯中的角点外扫。"
       }
     ]
   },

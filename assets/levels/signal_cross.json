@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "signal_cross",
-  "order": 23,
+  "order": 26,
   "title": "交叉路口",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "signal_hold"
   ],

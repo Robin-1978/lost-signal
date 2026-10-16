@@ -222,6 +222,7 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
     },
@@ -246,6 +247,7 @@
       "collision": "fatal",
       "visual": {
         "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
         "ref_radius_m": 0.45
       }
     },
@@ -278,6 +280,7 @@
       "collision": "social",
       "visual": {
         "model": "models/actors/worker.glb",
+        "kind": "pedestrian",
         "ref_radius_m": 0.25
       }
     },
@@ -310,6 +313,7 @@
       "collision": "social",
       "visual": {
         "model": "models/actors/worker.glb",
+        "kind": "pedestrian",
         "ref_radius_m": 0.25
       },
       "waits": [
@@ -348,6 +352,7 @@
       "collision": "social",
       "visual": {
         "model": "models/actors/worker.glb",
+        "kind": "pedestrian",
         "ref_radius_m": 0.25
       }
     }

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -25,9 +26,50 @@ constexpr Color kDanger{241, 93, 89, 255};
 constexpr Color kViolet{158, 124, 232, 255};
 constexpr Color kText{239, 238, 229, 255};
 constexpr Color kMuted{151, 157, 153, 255};
+constexpr double kRadToDeg = 57.29577951308232;
 
 float clampf(float value, float low, float high) {
  return std::max(low, std::min(value, high));
+}
+
+Color mix(Color from, Color to, float amount, unsigned char alpha = 255) {
+ const float t = clampf(amount, 0.0f, 1.0f);
+ const auto channel = [t](unsigned char a, unsigned char b) {
+ return static_cast<unsigned char>(static_cast<float>(a) + (static_cast<float>(b) - a) * t);
+ };
+ return {channel(from.r, to.r), channel(from.g, to.g), channel(from.b, to.b), alpha};
+}
+
+Color safety_color(double value, unsigned char alpha = 176) {
+ const float t = clampf(static_cast<float>(value), 0.0f, 1.0f);
+ if (t < 0.58f) {
+ return mix(Color{54, 185, 141, 255}, kAmber, t / 0.58f, alpha);
+ }
+ return mix(kAmber, kDanger, (t - 0.58f) / 0.42f, alpha);
+}
+
+double route_heading_at(const std::vector<sim::Vec2>& path, sim::Vec2 point, double fallback) {
+ double best_distance_sq = std::numeric_limits<double>::infinity();
+ double best_heading = fallback;
+ for (std::size_t index = 1; index < path.size(); ++index) {
+ const double dx = path[index].x - path[index - 1].x;
+ const double dy = path[index].y - path[index - 1].y;
+ const double length_sq = dx * dx + dy * dy;
+ if (length_sq < 1e-12)
+ continue;
+ const double projection = std::clamp(
+ ((point.x - path[index - 1].x) * dx + (point.y - path[index - 1].y) * dy) / length_sq, 0.0,
+ 1.0);
+ const double nearest_x = path[index - 1].x + dx * projection;
+ const double nearest_y = path[index - 1].y + dy * projection;
+ const double distance_sq = (point.x - nearest_x) * (point.x - nearest_x) +
+ (point.y - nearest_y) * (point.y - nearest_y);
+ if (distance_sq < best_distance_sq) {
+ best_distance_sq = distance_sq;
+ best_heading = std::atan2(dy, dx);
+ }
+ }
+ return best_heading;
 }
 
 std::string fixed(double value, int precision = 1) {
@@ -146,20 +188,100 @@ WorldRenderer::~WorldRenderer() {
 }
 
 std::optional<sim::Vec2> WorldRenderer::screen_to_world(Vector2 screen) const {
- if (!drawn_once_ || !analysis_mode_ || scale_ <= 0.0f) {
+ if (!drawn_once_) {
   return std::nullopt;
  }
+ if (!analysis_mode_) {
+ return scene_3d_->screen_to_ground(screen);
+ }
+ if (scale_ <= 0.0f)
+ return std::nullopt;
  return sim::Vec2{(screen.x - world_origin_.x) / scale_, (world_origin_.y - screen.y) / scale_};
 }
 
+std::optional<std::string> WorldRenderer::garage_slot_at(Vector2 screen) const {
+ for (const auto& hotspot : garage_hotspots_) {
+ if (CheckCollisionPointCircle(screen, hotspot.center, hotspot.radius) ||
+ CheckCollisionPointRec(screen, hotspot.label)) {
+ return hotspot.slot;
+ }
+ }
+ return std::nullopt;
+}
+
 void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, const MapEditor& editor) const {
- if (!editor.active() || !analysis_mode_) {
+ if (!editor.active()) {
   return;
  }
- (void)mission;
  const auto& working = editor.working();
  const Color ghost = Fade(kAmber, 0.55f);
  const Color hot = Fade(kAmber, 0.95f);
+ if (!analysis_mode_) {
+ const auto height_at = [](const game::TerrainPatchDefinition& patch, double x, double y) {
+ return patch.base_height_m + patch.grade_x * (x - patch.min.x) +
+ patch.grade_y * (y - patch.min.y);
+ };
+ BeginScissorMode(static_cast<int>(viewport_.x), static_cast<int>(viewport_.y),
+ static_cast<int>(viewport_.width), static_cast<int>(viewport_.height));
+ BeginMode3D(scene_3d_->camera());
+ for (const auto& obstacle : working.obstacles) {
+ const bool selected = editor.selected_kind() == MapEditor::Kind::kObstacle &&
+ editor.selected_id() == obstacle.id;
+ const Vector3 center{static_cast<float>((obstacle.min.x + obstacle.max.x) * 0.5), 0.75f,
+ static_cast<float>(-(obstacle.min.y + obstacle.max.y) * 0.5)};
+ const Vector3 size{static_cast<float>(obstacle.max.x - obstacle.min.x), 1.5f,
+ static_cast<float>(obstacle.max.y - obstacle.min.y)};
+ DrawCubeV(center, size, Fade(selected ? hot : ghost, 0.18f));
+ DrawCubeWiresV(center, size, selected ? hot : ghost);
+ }
+ for (const auto& surface : working.surfaces) {
+ const bool selected = editor.selected_kind() == MapEditor::Kind::kSurface &&
+ editor.selected_id() == surface.id;
+ const Vector3 center{static_cast<float>((surface.min.x + surface.max.x) * 0.5), 0.025f,
+ static_cast<float>(-(surface.min.y + surface.max.y) * 0.5)};
+ const Vector3 size{static_cast<float>(surface.max.x - surface.min.x), 0.05f,
+ static_cast<float>(surface.max.y - surface.min.y)};
+ DrawCubeV(center, size, Fade(selected ? hot : kCyan, 0.20f));
+ DrawCubeWiresV(center, size, selected ? hot : Fade(kCyan, 0.65f));
+ }
+ for (const auto& patch : working.terrain) {
+ const bool selected = editor.selected_kind() == MapEditor::Kind::kTerrain &&
+ editor.selected_id() == patch.id;
+ const Color tint = selected ? hot : Color{158, 124, 232, 190};
+ const Vector3 a{static_cast<float>(patch.min.x),
+ static_cast<float>(height_at(patch, patch.min.x, patch.min.y) + 0.025),
+ static_cast<float>(-patch.min.y)};
+ const Vector3 b{static_cast<float>(patch.max.x),
+ static_cast<float>(height_at(patch, patch.max.x, patch.min.y) + 0.025),
+ static_cast<float>(-patch.min.y)};
+ const Vector3 c{static_cast<float>(patch.max.x),
+ static_cast<float>(height_at(patch, patch.max.x, patch.max.y) + 0.025),
+ static_cast<float>(-patch.max.y)};
+ const Vector3 d{static_cast<float>(patch.min.x),
+ static_cast<float>(height_at(patch, patch.min.x, patch.max.y) + 0.025),
+ static_cast<float>(-patch.max.y)};
+ DrawTriangle3D(a, c, b, Fade(tint, 0.23f));
+ DrawTriangle3D(a, d, c, Fade(tint, 0.23f));
+ DrawLine3D(a, b, tint);
+ DrawLine3D(b, c, tint);
+ DrawLine3D(c, d, tint);
+ DrawLine3D(d, a, tint);
+ DrawLine3D(a, c, Fade(tint, 0.7f));
+ }
+ for (const auto& [id, pose] : working.markers) {
+ const bool selected = editor.selected_kind() == MapEditor::Kind::kMarker && editor.selected_id() == id;
+ DrawCylinderWires({static_cast<float>(pose.x), 0.02f, static_cast<float>(-pose.y)},
+ 0.22f, 0.22f, 0.12f, 20, selected ? hot : ghost);
+ }
+ EndMode3D();
+ EndScissorMode();
+ const std::string status =
+ (editor.dirty() ? catalog_.tr("editor.dirty_on") : catalog_.tr("editor.dirty_off")) +
+ editor.message() + catalog_.tr("editor.help");
+ draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 16, Fade(kText, 0.9f));
+ return;
+ }
+ (void)mission;
  auto rect_lines = [&](sim::Vec2 min, sim::Vec2 max, Color color) {
   const auto top_left = world_to_screen({min.x, max.y});
   const auto bottom_right = world_to_screen({max.x, min.y});
@@ -190,6 +312,23 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
    }
   }
  }
+ for (const auto& terrain : working.terrain) {
+ const bool selected =
+ editor.selected_kind() == MapEditor::Kind::kTerrain && editor.selected_id() == terrain.id;
+ rect_lines(terrain.min, terrain.max, selected ? hot : Fade(kViolet, 0.62f));
+ if (selected) {
+ for (int corner = 0; corner < 4; ++corner) {
+ const auto px = world_to_screen({corner == 0 || corner == 3 ? terrain.min.x : terrain.max.x,
+ corner == 0 || corner == 1 ? terrain.min.y : terrain.max.y});
+ DrawRectangleLinesEx({px.x - 5, px.y - 5, 10, 10}, 2.0f, hot);
+ }
+ const auto center = world_to_screen({(terrain.min.x + terrain.max.x) * 0.5,
+ (terrain.min.y + terrain.max.y) * 0.5});
+ draw_text(terrain.id + " h=" + fixed(terrain.base_height_m, 2) + "m slope=" +
+ fixed(std::atan(std::hypot(terrain.grade_x, terrain.grade_y)) * kRadToDeg, 1) + "°",
+ {center.x + 10, center.y - 10}, 14, hot);
+ }
+ }
  for (const auto& [id, pose] : working.markers) {
   const bool selected = editor.selected_kind() == MapEditor::Kind::kMarker && editor.selected_id() == id;
   const auto center = world_to_screen({pose.x, pose.y});
@@ -199,8 +338,8 @@ void WorldRenderer::draw_edit_overlay(const game::MissionSimulation& mission, co
   }
  }
  const std::string status =
-   (editor.dirty() ? catalog_.tr("editor.dirty_on") : catalog_.tr("editor.dirty_off")) +
-   editor.message() + catalog_.tr("editor.help");
+   (editor.dirty() ? catalog_.tr("editor.dirty_on") : catalog_.tr("editor.dirty_off")) + editor.message() +
+   catalog_.tr("editor.help");
  draw_text(status, {viewport_.x + 18, viewport_.y + viewport_.height - 24}, 16, Fade(kText, 0.9f));
 }
 
@@ -216,7 +355,7 @@ void WorldRenderer::draw_text(const std::string& text, Vector2 position, float s
 }
 
 void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_width, int screen_height,
-                         const std::string& chapter_title) {
+ const std::string& chapter_title, bool assembly_view) {
  ClearBackground(kVoid);
  DrawRectangleGradientV(0, 0, screen_width, screen_height, {24, 25, 24, 255}, kVoid);
 
@@ -226,18 +365,29 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
               std::max(360.0f, static_cast<float>(screen_height) - 104.0f)};
 
  if (!analysis_mode_) {
-  scene_3d_->draw(mission, screen_width, screen_height);
+  scene_3d_->draw(mission, screen_width, screen_height,
+ {0.0f, 0.0f, available_width, static_cast<float>(screen_height)}, assembly_view);
   draw_header(mission, static_cast<int>(available_width), chapter_title);
   draw_telemetry(mission, screen_height);
   draw_view_mode();
+ if (assembly_view)
+ draw_garage_overlay(mission);
+ else
+ garage_hotspots_.clear();
   return;
  }
+
+ garage_hotspots_.clear();
 
  const auto map_size = mission.map_definition().size_m;
  const bool active = mission.snapshot().status == game::MissionStatus::Running;
  if (active) {
   scale_ = clampf(std::min(viewport_.width / 12.2f, viewport_.height / 8.3f), 50.0f, 92.0f);
   sim::Vec2 focus{mission.snapshot().robot.x, mission.snapshot().robot.y};
+ if (mission.endless_mode()) {
+ focus.x = mission.snapshot().robot.x * 0.52 + mission.field_operator().position.x * 0.48;
+ focus.y = mission.snapshot().robot.y * 0.52 + mission.field_operator().position.y * 0.48;
+ }
   if (!mission.snapshot().dynamic_obstacles.empty()) {
    const auto& detected = mission.snapshot().dynamic_obstacles.front();
    focus_hold_.x = mission.snapshot().robot.x * 0.58 + detected.estimated_position.x * 0.42;
@@ -248,7 +398,7 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
   }
   if (mission.snapshot().time_s <= focus_hold_until_) {
    focus = focus_hold_;
-  } else {
+ } else if (!mission.endless_mode()) {
    focus.x += 1.2 * std::cos(mission.snapshot().robot.theta);
    focus.y += 1.2 * std::sin(mission.snapshot().robot.theta);
   }
@@ -289,8 +439,90 @@ void WorldRenderer::draw(const game::MissionSimulation& mission, int screen_widt
  draw_view_mode();
 }
 
+void WorldRenderer::draw_garage_overlay(const game::MissionSimulation& mission) {
+ garage_hotspots_.clear();
+ const auto& robot = mission.robot();
+ const auto& presentation = catalog_.presentation_for_level(mission.level().id);
+ const auto& state = mission.snapshot();
+ const double cosine = std::cos(state.robot.theta);
+ const double sine = std::sin(state.robot.theta);
+ const float ground_height =
+ static_cast<float>(state.robot_height_m - robot.collision_height_m * 0.5);
+ const Vector2 mouse = GetMousePosition();
+
+ std::size_t visible_index = 0;
+ for (const auto& column : presentation.component_columns) {
+ const auto slot = std::find_if(robot.slots.begin(), robot.slots.end(),
+ [&](const auto& candidate) { return candidate.slot == column.slot; });
+ if (slot == robot.slots.end())
+ continue;
+ game::Vec3 local{};
+ std::size_t mount_count = 0;
+ for (const auto& mount_id : slot->mounts) {
+ const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& candidate) { return candidate.id == mount_id; });
+ if (mount == robot.mounts.end())
+ continue;
+ local.x += mount->position_m.x;
+ local.y += mount->position_m.y;
+ local.z += mount->position_m.z;
+ ++mount_count;
+ }
+ if (mount_count > 0) {
+ local.x /= static_cast<double>(mount_count);
+ local.y /= static_cast<double>(mount_count);
+ local.z /= static_cast<double>(mount_count);
+ } else {
+ // Motor controllers live inside the chassis and intentionally have no
+ // exposed physical mount. Give the body slot a stable service hatch.
+ local = {0.0, 0.0, 0.16};
+ }
+ const double mount_x = state.robot.x + cosine * local.x - sine * local.y;
+ const double mount_y = state.robot.y + sine * local.x + cosine * local.y;
+ const Vector3 world_mount{static_cast<float>(mount_x), ground_height + static_cast<float>(local.z + 0.05),
+ static_cast<float>(-mount_y)};
+ const Vector2 anchor = GetWorldToScreenEx(world_mount, scene_3d_->camera(),
+ static_cast<int>(viewport_.x + viewport_.width + 18.0f), GetScreenHeight());
+
+ const bool left = visible_index % 2 == 0;
+ const std::size_t row = visible_index / 2;
+ const float card_width = 176.0f;
+ const float card_height = 54.0f;
+ const float card_x = left ? viewport_.x + 22.0f
+ : viewport_.x + viewport_.width - card_width - 22.0f;
+ const float card_y = viewport_.y + 82.0f + static_cast<float>(row) * 92.0f;
+ const Rectangle card{card_x, card_y, card_width, card_height};
+ const bool hovered = CheckCollisionPointCircle(mouse, anchor, 28.0f) ||
+ CheckCollisionPointRec(mouse, card);
+ const Color accent = hovered ? kAmber : kCyan;
+ const Vector2 joint{left ? card.x + card.width : card.x, card.y + card.height * 0.5f};
+ DrawLineEx(anchor, joint, hovered ? 2.5f : 1.5f, Fade(accent, hovered ? 0.90f : 0.55f));
+ DrawCircleV(anchor, hovered ? 14.0f : 11.0f, Fade(accent, 0.16f));
+ DrawCircleLines(static_cast<int>(anchor.x), static_cast<int>(anchor.y), hovered ? 15.0f : 12.0f,
+ accent);
+ DrawCircleV(anchor, 3.5f, accent);
+ DrawRectangleRounded(card, 0.18f, 8, hovered ? Color{35, 49, 46, 244} : Color{15, 21, 21, 226});
+ DrawRectangleRoundedLinesEx(card, 0.18f, 8, hovered ? 2.0f : 1.0f, Fade(accent, 0.78f));
+ draw_text(column.title, {card.x + 12.0f, card.y + 8.0f}, 15, accent);
+ const auto& selected = mission.build().part(column.slot);
+ const std::string installed = selected.empty() ? catalog_.tr("garage.mount_empty")
+ : catalog_.component(selected).title;
+ draw_text(installed, {card.x + 12.0f, card.y + 29.0f}, 14, Fade(kText, 0.86f));
+ garage_hotspots_.push_back({column.slot, anchor, card, 28.0f});
+ ++visible_index;
+ }
+
+ const std::string hint = catalog_.tr("garage.assembly_hint");
+ const auto measured = MeasureTextEx(font_, hint.c_str(), 16, 0.25f);
+ const Rectangle pill{viewport_.x + (viewport_.width - measured.x - 30.0f) * 0.5f,
+ viewport_.y + viewport_.height - 50.0f, measured.x + 30.0f, 32.0f};
+ DrawRectangleRounded(pill, 0.45f, 10, {12, 18, 18, 224});
+ draw_text(hint, {pill.x + 15.0f, pill.y + 7.0f}, 16, Fade(kText, 0.88f));
+}
+
 void WorldRenderer::draw_view_mode() const {
- const std::string text = analysis_mode_ ? catalog_.tr("world.view_cognitive") : catalog_.tr("world.view_explore");
+ const std::string text =
+   analysis_mode_ ? catalog_.tr("world.view_cognitive") : catalog_.tr("world.view_explore");
  const auto measured = MeasureTextEx(font_, text.c_str(), 16, 0.25f);
  const Rectangle pill{21.0f, 70.0f, measured.x + 26.0f, 29.0f};
  DrawRectangleRounded(pill, 0.46f, 10, analysis_mode_ ? Color{24, 61, 64, 235} : Color{16, 20, 19, 205});
@@ -306,7 +538,11 @@ void WorldRenderer::draw_header(const game::MissionSimulation& mission, int widt
  std::string text = catalog_.tr("world.status_deploy");
  Color color = kAmber;
  if (status == game::MissionStatus::Running) {
-  text = mission.level().control_mode == "manual_calibration" ? catalog_.tr("world.mode_manual") : catalog_.tr("world.mode_auto");
+ text = mission.endless_mode()
+ ? catalog_.tr("world.mode_field")
+ : (mission.level().control_mode == "manual_calibration"
+ ? catalog_.tr("world.mode_manual")
+ : catalog_.tr("world.mode_auto"));
   color = kCyan;
  } else if (status == game::MissionStatus::Succeeded) {
   text = catalog_.tr("world.restored");
@@ -361,8 +597,20 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
   draw_soft_disc(world_to_screen(obstacle.estimated_position), scale_ * 2.1f, Color{170, 78, 59, 255});
  }
- if (const auto goal = map.markers.find(mission.level().objective.goal); goal != map.markers.end()) {
-  draw_soft_disc(world_to_screen({goal->second.x, goal->second.y}), scale_ * 1.55f, {63, 159, 148, 255});
+ if (mission.endless_mode()) {
+ draw_soft_disc(world_to_screen(mission.field_operator().position), scale_ * 1.15f,
+ {235, 169, 71, 255});
+ const auto& dispatch = mission.field_dispatch();
+ if (dispatch.active)
+ draw_soft_disc(world_to_screen(dispatch.target), scale_ * 1.55f, {224, 166, 70, 255});
+ const auto& incident = mission.world_activity().incident;
+ if (incident.active)
+ draw_soft_disc(world_to_screen(incident.position), scale_ * 1.75f, {224, 82, 70, 255});
+ } else if (const auto* active = mission.active_goal()) {
+ const auto goal = map.markers.find(active->marker);
+ if (goal != map.markers.end())
+ draw_soft_disc(world_to_screen({goal->second.x, goal->second.y}), scale_ * 1.55f,
+ active->action == "complete" ? Color{63, 159, 148, 255} : Color{224, 166, 70, 255});
  }
 
  const auto map_top_left = world_to_screen({0, map.size_m.y});
@@ -410,6 +658,9 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   DrawCircleV({box.x + 23, box.y + 22}, 4, {104, 198, 184, 220});
   draw_text(surface.label, {box.x + 34, box.y + 15}, 15, Fade(kText, 0.78f));
  }
+
+ draw_terrain_layer(mission);
+
  for (const auto& actor : map.actors) {
   if (!game::active_in_level(actor.active_in, mission.level().id) || actor.path.size() < 2)
    continue;
@@ -442,8 +693,8 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
     const float cx = start.x + ux * d;
     const float cy = start.y + uy * d;
     const float s = 7.0f;
-    DrawLineEx({cx - ux * s - uy * s * 0.6f, cy - uy * s - ux * s * 0.6f},
-               {cx, cy}, 2.0f, {198, 161, 91, 70});
+    DrawLineEx({cx - ux * s - uy * s * 0.6f, cy - uy * s - ux * s * 0.6f}, {cx, cy}, 2.0f,
+               {198, 161, 91, 70});
     DrawLineEx({cx, cy}, {cx - ux * s + uy * s * 0.6f, cy - uy * s + ux * s * 0.6f}, 2.0f,
                {198, 161, 91, 70});
    }
@@ -554,11 +805,9 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  }
 
  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0));
- const auto draw_marker = [&](const std::string& id, Color color, const std::string& label, bool tower) {
-  const auto found = map.markers.find(id);
-  if (found == map.markers.end())
-   return;
-  const auto position = world_to_screen({found->second.x, found->second.y});
+ const auto draw_marker_at = [&](sim::Vec2 world_position, Color color, const std::string& label,
+ bool tower) {
+ const auto position = world_to_screen(world_position);
   draw_soft_disc(position, 46 + pulse * 7, color);
   DrawCircleV({position.x + 5, position.y + 8}, 21, {7, 8, 8, 135});
   DrawCircleV(position, 18, tower ? Color{62, 66, 62, 255} : Color{83, 72, 54, 255});
@@ -579,10 +828,71 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   DrawRectangleRounded(tag, 0.42f, 8, {17, 20, 19, 215});
   draw_text(label, {tag.x + 9, tag.y + 5}, 16, kText);
  };
- if (!mission.level().objective.via.empty()) {
-  draw_marker(mission.level().objective.via, kAmber, mission.level().objective.via_label, false);
+ const auto draw_marker = [&](const std::string& id, Color color, const std::string& label, bool tower) {
+ const auto found = map.markers.find(id);
+ if (found != map.markers.end())
+ draw_marker_at({found->second.x, found->second.y}, color, label, tower);
+ };
+ if (mission.endless_mode()) {
+ const auto& incident = mission.world_activity().incident;
+ if (incident.active) {
+ std::string label;
+ switch (incident.kind) {
+ case game::WorldIncidentKind::RoadClosure:
+ label = catalog_.tr("incident.road_closure");
+ break;
+ case game::WorldIncidentKind::FallenCargo:
+ label = catalog_.tr("incident.fallen_cargo");
+ break;
+ case game::WorldIncidentKind::PowerFault:
+ label = catalog_.tr("incident.power_fault");
+ break;
  }
- draw_marker(mission.level().objective.goal, kCyan, mission.level().objective.goal_label, true);
+ draw_marker_at(incident.position, kDanger, label, false);
+ }
+ const auto& intent = mission.field_intent();
+ if (intent.active && intent.kind != game::FieldIntentKind::Follow &&
+ intent.kind != game::FieldIntentKind::Wait) {
+ const Color command_color = intent.acknowledgement == game::FieldIntentAcknowledgement::Rejected
+ ? kDanger
+ : (intent.kind == game::FieldIntentKind::Search ? kAmber : kCyan);
+ std::string label;
+ switch (intent.kind) {
+ case game::FieldIntentKind::GoTo:
+ label = catalog_.tr("field.intent.go_to");
+ break;
+ case game::FieldIntentKind::Search:
+ label = catalog_.tr("field.intent.search");
+ break;
+ case game::FieldIntentKind::Return:
+ label = catalog_.tr("field.intent.return");
+ break;
+ case game::FieldIntentKind::Follow:
+ case game::FieldIntentKind::Wait:
+ break;
+ }
+ draw_marker_at(intent.target, command_color, label,
+ intent.kind == game::FieldIntentKind::Search);
+ }
+ const auto& dispatch = mission.field_dispatch();
+ if (dispatch.active) {
+ std::string label;
+ if (dispatch.kind == "delivery") {
+ label = dispatch.stage == 0 ? catalog_.tr("field.marker.pickup")
+ : catalog_.tr("field.marker.delivery");
+ } else if (dispatch.kind == "survey") {
+ label = catalog_.tr("field.marker.survey");
+ } else {
+ label = catalog_.tr("field.marker.assist");
+ }
+ draw_marker_at(dispatch.target, kAmber, label, true);
+ }
+ } else {
+ if (const auto* active = mission.active_goal()) {
+ draw_marker(active->marker, active->action == "complete" ? kCyan : kAmber,
+ active->label, active->action == "complete");
+ }
+ }
 
  const auto robot_position = world_to_screen({
    mission.snapshot().robot.x,
@@ -613,20 +923,19 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  // Display extrapolation shared by vehicle and pedestrian markers: propagate
  // the track by its own velocity to frame time (sim untouched). Clamped to
  // one scan period — never sail on a dead track's old velocity.
- const double scan_hz = mission.build().part("sensor").empty()
-                            ? 5.0
-                            : game::property(catalog_.component(mission.build().part("sensor")).behavior,
-                                             "scan_hz");
+ const double scan_hz =
+   mission.build().part("sensor").empty()
+     ? 5.0
+     : game::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
  const auto shown_at = [&](const game::DynamicObstacleSnapshot& obstacle) {
-  const double stale =
-    std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 1.0 / scan_hz);
+  const double stale = std::clamp(mission.snapshot().time_s - obstacle.last_observed_s, 0.0, 1.0 / scan_hz);
   return sim::Vec2{obstacle.estimated_position.x + obstacle.estimated_velocity.x * stale,
                    obstacle.estimated_position.y + obstacle.estimated_velocity.y * stale};
  };
 
- // One marker language for every tracked agent (ring + heading + horizon):
- // size carries the class (pedestrian rings read smaller because their
- // radii are smaller, content data). No per-kind glyphs in the framework.
+ // Tracking/risk graphics stay shared, while content's visual class chooses
+ // the glyph. A pedestrian must remain recognizable as a person even though
+ // LiDAR tracks are anonymous and use the same prediction pipeline.
  for (const auto& obstacle : mission.snapshot().dynamic_obstacles) {
   // Display extrapolation (see shown_at above): the track state goes stale
   // between scans (0.2s at 5Hz reads as teleporting). Propagating by its own
@@ -634,7 +943,10 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   const sim::Vec2 shown = shown_at(obstacle);
   const auto estimated = world_to_screen(shown);
   const auto position = estimated;
-  const float radius = clampf(static_cast<float>(obstacle.radius_m) * scale_, 25.0f, 42.0f);
+ const bool pedestrian = obstacle.visual_kind == "pedestrian";
+ const float radius = pedestrian
+ ? clampf(static_cast<float>(obstacle.radius_m) * scale_, 14.0f, 25.0f)
+ : clampf(static_cast<float>(obstacle.radius_m) * scale_, 25.0f, 42.0f);
   const Color alert = kDanger;
   const auto future = world_to_screen({
     shown.x + obstacle.estimated_velocity.x * 2.5,
@@ -646,28 +958,47 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
   DrawRing(future, radius * 0.76f, radius * 0.81f, 0, 360, 40, Fade(alert, 0.32f));
   DrawRing(estimated, radius * 0.96f, radius, 0, 360, 40, Fade(kCyan, 0.72f));
   draw_soft_disc(position, radius + 22 + pulse * 4, alert);
-  const float actor_angle = static_cast<float>(
-    std::atan2(-obstacle.estimated_velocity.y, obstacle.estimated_velocity.x) * 180.0 / sim::kPi);
+ const float actor_angle = static_cast<float>(-obstacle.heading_rad * 180.0 / sim::kPi);
   const float actor_radians = -actor_angle * static_cast<float>(sim::kPi) / 180.0f;
-  const auto front = polar(position, radius * 0.94f, actor_radians);
-  const auto fork_left = polar(front, radius * 0.37f, actor_radians + 1.5708f);
-  const auto fork_right = polar(front, radius * 0.37f, actor_radians - 1.5708f);
-  const auto fork_left_end = polar(fork_left, radius * 0.82f, actor_radians);
-  const auto fork_right_end = polar(fork_right, radius * 0.82f, actor_radians);
-  DrawLineEx({position.x + 7, position.y + 10}, {front.x + 7, front.y + 10}, radius * 1.35f, {4, 5, 5, 135});
-  DrawRectanglePro({position.x + 6, position.y + 8, radius * 1.75f, radius * 1.22f},
-                   {radius * 0.88f, radius * 0.61f}, actor_angle, {5, 6, 6, 165});
-  DrawRectanglePro({position.x, position.y, radius * 1.70f, radius * 1.16f}, {radius * 0.85f, radius * 0.58f},
-                   actor_angle, {217, 139, 42, 255});
-  DrawRectanglePro({position.x, position.y, radius * 0.76f, radius * 0.86f}, {radius * 0.38f, radius * 0.43f},
-                   actor_angle, {50, 59, 58, 255});
-  DrawRectanglePro({position.x, position.y, radius * 0.49f, radius * 0.60f},
-                   {radius * 0.245f, radius * 0.30f}, actor_angle, {107, 139, 135, 220});
-  DrawLineEx(fork_left, fork_left_end, std::max(3.0f, radius * 0.16f), {83, 82, 72, 255});
-  DrawLineEx(fork_right, fork_right_end, std::max(3.0f, radius * 0.16f), {83, 82, 72, 255});
-  DrawCircleV(polar(position, radius * 0.50f, actor_radians + 1.5708f), radius * 0.13f, {24, 25, 23, 255});
-  DrawCircleV(polar(position, radius * 0.50f, actor_radians - 1.5708f), radius * 0.13f, {24, 25, 23, 255});
-  DrawCircleV(position, 3.0f + pulse * 1.4f, {255, 211, 106, 255});
+ if (pedestrian) {
+ const Color clothes{75, 181, 169, 255};
+ const auto head = polar(position, radius * 0.38f, actor_radians);
+ const auto shoulder = polar(position, radius * 0.08f, actor_radians);
+ const auto left_hand = polar(shoulder, radius * 0.42f, actor_radians + 1.5708f);
+ const auto right_hand = polar(shoulder, radius * 0.42f, actor_radians - 1.5708f);
+ const auto hips = polar(position, radius * 0.34f, actor_radians + static_cast<float>(sim::kPi));
+ const auto left_foot = polar(hips, radius * 0.48f, actor_radians + 2.45f);
+ const auto right_foot = polar(hips, radius * 0.48f, actor_radians - 2.45f);
+ DrawCircleV({position.x + 4.0f, position.y + 6.0f}, radius * 0.42f, {4, 5, 5, 150});
+ DrawLineEx(head, hips, std::max(5.0f, radius * 0.34f), clothes);
+ DrawLineEx(left_hand, right_hand, std::max(3.0f, radius * 0.16f), {136, 218, 200, 255});
+ DrawLineEx(hips, left_foot, std::max(3.0f, radius * 0.15f), {49, 62, 60, 255});
+ DrawLineEx(hips, right_foot, std::max(3.0f, radius * 0.15f), {49, 62, 60, 255});
+ DrawCircleV(head, radius * 0.23f, {224, 185, 151, 255});
+ } else {
+ const auto front = polar(position, radius * 0.94f, actor_radians);
+ const auto fork_left = polar(front, radius * 0.37f, actor_radians + 1.5708f);
+ const auto fork_right = polar(front, radius * 0.37f, actor_radians - 1.5708f);
+ const auto fork_left_end = polar(fork_left, radius * 0.82f, actor_radians);
+ const auto fork_right_end = polar(fork_right, radius * 0.82f, actor_radians);
+ DrawLineEx({position.x + 7, position.y + 10}, {front.x + 7, front.y + 10}, radius * 1.35f,
+ {4, 5, 5, 135});
+ DrawRectanglePro({position.x + 6, position.y + 8, radius * 1.75f, radius * 1.22f},
+ {radius * 0.88f, radius * 0.61f}, actor_angle, {5, 6, 6, 165});
+ DrawRectanglePro({position.x, position.y, radius * 1.70f, radius * 1.16f},
+ {radius * 0.85f, radius * 0.58f}, actor_angle, {217, 139, 42, 255});
+ DrawRectanglePro({position.x, position.y, radius * 0.76f, radius * 0.86f},
+ {radius * 0.38f, radius * 0.43f}, actor_angle, {50, 59, 58, 255});
+ DrawRectanglePro({position.x, position.y, radius * 0.49f, radius * 0.60f},
+ {radius * 0.245f, radius * 0.30f}, actor_angle, {107, 139, 135, 220});
+ DrawLineEx(fork_left, fork_left_end, std::max(3.0f, radius * 0.16f), {83, 82, 72, 255});
+ DrawLineEx(fork_right, fork_right_end, std::max(3.0f, radius * 0.16f), {83, 82, 72, 255});
+ DrawCircleV(polar(position, radius * 0.50f, actor_radians + 1.5708f), radius * 0.13f,
+ {24, 25, 23, 255});
+ DrawCircleV(polar(position, radius * 0.50f, actor_radians - 1.5708f), radius * 0.13f,
+ {24, 25, 23, 255});
+ DrawCircleV(position, 3.0f + pulse * 1.4f, {255, 211, 106, 255});
+ }
   const float separation =
     distance(estimated, robot_position) / scale_ - static_cast<float>(obstacle.radius_m) - 0.38f;
   const auto middle = lerp(robot_position, estimated, 0.52f);
@@ -681,12 +1012,10 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  }
 
  draw_dust(mission);
+ draw_field_operator(mission);
  draw_robot(mission);
  EndScissorMode();
- DrawRectangleRounded({viewport_.x + 18, viewport_.y + 17, 321, 29}, 0.48f, 10, {18, 21, 20, 215});
- DrawCircleV({viewport_.x + 33, viewport_.y + 31.5f}, 4, kCyan);
- draw_text(catalog_.tr("world.legend"), {viewport_.x + 44, viewport_.y + 23}, 16,
-           Fade(kText, 0.88f));
+ draw_terrain_layer_panel(mission);
 
  const float card_width = 328.0f;
  const Rectangle card{
@@ -698,27 +1027,30 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
  DrawRectangleRounded(card, 0.08f, 10, {14, 18, 19, 235});
  DrawRectangleLinesEx(card, 1.0f, Fade(control.dwa_active ? kAmber : kCyan, 0.34f));
  draw_text(catalog_.tr("world.diag_title"), {card.x + 15, card.y + 12}, 18, kText);
- const std::string planner = control.dwa_active
-                               ? catalog_.trf("world.dwa_active", {std::to_string(control.dwa_candidates.size())})
-                               : catalog_.tr("world.dwa_idle");
+ const std::string planner =
+   control.dwa_active ? catalog_.trf("world.dwa_active", {std::to_string(control.dwa_candidates.size())})
+                      : catalog_.tr("world.dwa_idle");
  draw_text(planner, {card.x + 15, card.y + 36}, 15, control.dwa_active ? kAmber : Fade(kCyan, 0.82f));
  draw_text(catalog_.trf("world.heading", {fixed(control.heading_error_rad, 2), fixed(control.target_v_mps, 2),
-                                              fixed(control.target_w_radps, 2)}),
+                                          fixed(control.target_w_radps, 2)}),
            {card.x + 15, card.y + 58}, 15, Fade(kText, 0.82f));
- const bool ackermann = mission.robot().drive_type == "ackermann";
- draw_text(ackermann ? catalog_.tr("world.wheels_ack") : catalog_.tr("world.wheels_diff"), {card.x + 15, card.y + 80}, 14,
-           Fade(kMuted, 0.82f));
- draw_text(catalog_.trf("world.wheel_l", {fixed(control.left_target_rpm, 0), fixed(control.left_measured_rpm, 0),
-                                              fixed(control.left_pwm * 100.0, 0)}),
-           {card.x + 15, card.y + 99}, 15, Fade(kText, 0.86f));
- if (ackermann) {
-  draw_text(catalog_.trf("world.wheel_servo", {fixed(control.steer_target_rad, 2), fixed(control.steer_angle_rad, 2),
-                                                   fixed(control.steer_pwm * 100.0, 0)}),
-            {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
+ const bool has_steering_servo = control.steering_servo_present;
+ draw_text(has_steering_servo ? catalog_.tr("world.wheels_ack") : catalog_.tr("world.wheels_diff"),
+           {card.x + 15, card.y + 80}, 14, Fade(kMuted, 0.82f));
+ draw_text(
+   catalog_.trf("world.wheel_l", {fixed(control.left_target_rpm, 0), fixed(control.left_measured_rpm, 0),
+                                  fixed(control.left_pwm * 100.0, 0)}),
+   {card.x + 15, card.y + 99}, 15, Fade(kText, 0.86f));
+ if (has_steering_servo) {
+  draw_text(
+    catalog_.trf("world.wheel_servo", {fixed(control.steer_target_rad, 2), fixed(control.steer_angle_rad, 2),
+                                       fixed(control.steer_pwm * 100.0, 0)}),
+    {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
  } else {
-  draw_text(catalog_.trf("world.wheel_r", {fixed(control.right_target_rpm, 0), fixed(control.right_measured_rpm, 0),
-                                               fixed(control.right_pwm * 100.0, 0)}),
-            {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
+  draw_text(
+    catalog_.trf("world.wheel_r", {fixed(control.right_target_rpm, 0), fixed(control.right_measured_rpm, 0),
+                                   fixed(control.right_pwm * 100.0, 0)}),
+    {card.x + 15, card.y + 130}, 15, Fade(kText, 0.86f));
  }
  const auto draw_pwm = [&](float y, double value) {
   const Rectangle track{card.x + 15, y, card.width - 30, 7};
@@ -731,7 +1063,241 @@ void WorldRenderer::draw_world(const game::MissionSimulation& mission) const {
            static_cast<int>(y + track.height + 1), Fade(kText, 0.45f));
  };
  draw_pwm(card.y + 117, control.left_pwm);
- draw_pwm(card.y + 148, ackermann ? control.steer_pwm : control.right_pwm);
+ draw_pwm(card.y + 148, has_steering_servo ? control.steer_pwm : control.right_pwm);
+}
+
+void WorldRenderer::draw_field_operator(const game::MissionSimulation& mission) const {
+ if (!mission.endless_mode())
+ return;
+ const auto& field_operator = mission.field_operator();
+ const auto center = world_to_screen(field_operator.position);
+ const float radius = clampf(scale_ * 0.25f, 15.0f, 24.0f);
+ const float heading = static_cast<float>(field_operator.heading_rad);
+ const float stride = field_operator.moving
+ ? std::sin(static_cast<float>(mission.snapshot().time_s * 11.0)) * radius * 0.28f
+ : 0.0f;
+ const Color jacket{230, 151, 57, 255};
+ const Color trousers{48, 64, 66, 255};
+
+ DrawCircleV({center.x + 4.0f, center.y + 6.0f}, radius * 0.72f, {4, 5, 5, 150});
+ draw_soft_disc(center, radius + 15.0f, kAmber);
+ const auto head = polar(center, radius * 0.52f, heading);
+ const auto hips = polar(center, radius * 0.28f, heading + static_cast<float>(sim::kPi));
+ const auto left_hand = polar(center, radius * 0.72f, heading + 1.5708f);
+ const auto right_hand = polar(center, radius * 0.72f, heading - 1.5708f);
+ const auto left_foot = polar(hips, radius * 0.66f + stride, heading + 2.36f);
+ const auto right_foot = polar(hips, radius * 0.66f - stride, heading - 2.36f);
+ DrawLineEx(head, hips, std::max(6.0f, radius * 0.42f), jacket);
+ DrawLineEx(left_hand, right_hand, std::max(3.0f, radius * 0.20f), jacket);
+ DrawLineEx(hips, left_foot, std::max(4.0f, radius * 0.20f), trousers);
+ DrawLineEx(hips, right_foot, std::max(4.0f, radius * 0.20f), trousers);
+ DrawCircleV(head, radius * 0.30f, {225, 185, 148, 255});
+ DrawRing(head, radius * 0.26f, radius * 0.35f, 180, 360, 18, {242, 201, 92, 255});
+ DrawRing(center, radius * 0.88f, radius * 0.96f, 0, 360, 36, Fade(kAmber, 0.82f));
+
+ const auto& intent = mission.field_intent();
+ if (intent.active && intent.kind == game::FieldIntentKind::Follow) {
+ const auto robot = world_to_screen({mission.snapshot().robot.x, mission.snapshot().robot.y});
+ for (int segment = 0; segment < 12; segment += 2) {
+ DrawLineEx(lerp(robot, center, static_cast<float>(segment) / 12.0f),
+ lerp(robot, center, static_cast<float>(segment + 1) / 12.0f), 2.0f,
+ Fade(kCyan, 0.72f));
+ }
+ }
+}
+
+void WorldRenderer::draw_terrain_layer(const game::MissionSimulation& mission) const {
+ const auto& grid = mission.navigation_map();
+ const auto& terrain = mission.terrain_model();
+ const auto& path = mission.planned_path();
+ const double resolution = grid.res();
+ double minimum_height = std::numeric_limits<double>::infinity();
+ double maximum_height = -std::numeric_limits<double>::infinity();
+ for (int gy = 0; gy < grid.h(); ++gy) {
+ for (int gx = 0; gx < grid.w(); ++gx) {
+ const double height = terrain.sample(grid.gridToWorld(gx, gy)).height_m;
+ minimum_height = std::min(minimum_height, height);
+ maximum_height = std::max(maximum_height, height);
+ }
+ }
+ if (!std::isfinite(minimum_height)) {
+ minimum_height = 0.0;
+ maximum_height = 0.0;
+ }
+
+ const auto& robot = mission.robot();
+ const double support_width = mission.chassis_caps().geometry.support_width_m;
+ const double total_mass = robot.mass_kg + mission.level().payload_mass_kg;
+ const double center_height =
+ std::max(0.05, (robot.mass_kg * robot.collision_height_m * 0.5 +
+ mission.level().payload_mass_kg * mission.level().payload_cog_height_m) /
+ std::max(0.5, total_mass));
+ const double preview_speed = std::max(
+ 0.6, std::max(std::abs(mission.snapshot().robot.v), std::abs(mission.snapshot().control.target_v_mps)));
+
+ for (int gy = 0; gy < grid.h(); ++gy) {
+ for (int gx = 0; gx < grid.w(); ++gx) {
+ const sim::Vec2 center = grid.gridToWorld(gx, gy);
+ const auto sample = terrain.sample(center);
+ const double heading = route_heading_at(path, center, mission.snapshot().robot.theta);
+ Color fill{36, 45, 48, 150};
+ bool blocked = !grid.isFreeCell(gx, gy);
+
+ switch (terrain_layer_) {
+ case TerrainLayer::Elevation: {
+ const double range = std::max(0.05, maximum_height - minimum_height);
+ const float height_t = static_cast<float>((sample.height_m - minimum_height) / range);
+ fill = height_t < 0.68f
+ ? mix(Color{31, 55, 89, 255}, Color{71, 204, 191, 255}, height_t / 0.68f, 172)
+ : mix(Color{71, 204, 191, 255}, Color{247, 188, 92, 255}, (height_t - 0.68f) / 0.32f, 172);
+ break;
+ }
+ case TerrainLayer::Slope: {
+ const double slope_degrees = std::atan(std::hypot(sample.grade_x, sample.grade_y)) * kRadToDeg;
+ fill = safety_color(slope_degrees / 35.0, 176);
+ break;
+ }
+ case TerrainLayer::VehicleRisk: {
+ const double cross_grade = sim::lateral_grade(sample, heading);
+ const double bump_accel =
+ sim::roughness_lateral_acceleration(sample.roughness, preview_speed, support_width);
+ const double signed_bump = cross_grade < 0.0 ? -bump_accel : bump_accel;
+ const double risk =
+ sim::dynamic_rollover_risk(cross_grade, signed_bump, support_width, center_height);
+ fill = safety_color(risk, 182);
+ blocked = blocked || risk >= 1.0;
+ break;
+ }
+ case TerrainLayer::FinalCost: {
+ const sim::Vec2 next{center.x + std::cos(heading) * resolution,
+ center.y + std::sin(heading) * resolution};
+ const double cost = mission.navigation_traversal_cost(center, next);
+ blocked = blocked || !grid.isFree(next.x, next.y) || !std::isfinite(cost);
+ fill = blocked ? Color{192, 48, 53, 190} : safety_color((cost - 1.0) / 1.7, 178);
+ break;
+ }
+ }
+ if (blocked)
+ fill = Color{190, 48, 53, 190};
+
+ const auto top_left = world_to_screen({center.x - resolution * 0.5, center.y + resolution * 0.5});
+ const auto bottom_right = world_to_screen({center.x + resolution * 0.5, center.y - resolution * 0.5});
+ const Rectangle cell{top_left.x, top_left.y, bottom_right.x - top_left.x,
+ bottom_right.y - top_left.y};
+ DrawRectangleRec(cell, fill);
+ DrawRectangleLinesEx(cell, 0.45f, {9, 15, 17, 42});
+
+ if (terrain_layer_ == TerrainLayer::Slope && (gx % 3 == 1) && (gy % 3 == 1)) {
+ const double magnitude = std::hypot(sample.grade_x, sample.grade_y);
+ if (magnitude > 0.01) {
+ const sim::Vec2 downhill{-sample.grade_x / magnitude, -sample.grade_y / magnitude};
+ const auto start = world_to_screen({center.x - downhill.x * 0.12, center.y - downhill.y * 0.12});
+ const auto end = world_to_screen({center.x + downhill.x * 0.17, center.y + downhill.y * 0.17});
+ DrawLineEx(start, end, 2.1f, Fade(kText, 0.82f));
+ const Vector2 direction{end.x - start.x, end.y - start.y};
+ const float length = std::max(1.0f, std::hypot(direction.x, direction.y));
+ const Vector2 unit{direction.x / length, direction.y / length};
+ const Vector2 side{-unit.y, unit.x};
+ DrawTriangle(end, {end.x - unit.x * 7.0f + side.x * 4.0f, end.y - unit.y * 7.0f + side.y * 4.0f},
+ {end.x - unit.x * 7.0f - side.x * 4.0f, end.y - unit.y * 7.0f - side.y * 4.0f},
+ Fade(kText, 0.82f));
+ }
+ }
+ if (terrain_layer_ == TerrainLayer::VehicleRisk && (gx % 4 == 2) && (gy % 4 == 2)) {
+ const sim::Vec2 direction{std::cos(heading), std::sin(heading)};
+ DrawLineEx(world_to_screen({center.x - direction.x * 0.13, center.y - direction.y * 0.13}),
+ world_to_screen({center.x + direction.x * 0.13, center.y + direction.y * 0.13}), 1.8f,
+ Fade(kText, 0.68f));
+ }
+ }
+ }
+
+ // Height contours make the ramp readable even when its color changes only
+ // gradually. Red edge segments in the final layer are transitions rejected
+ // by the exact same callback used by global A* and local DWA.
+ for (int gy = 0; gy < grid.h(); ++gy) {
+ for (int gx = 0; gx < grid.w(); ++gx) {
+ const sim::Vec2 center = grid.gridToWorld(gx, gy);
+ const auto current = terrain.sample(center);
+ const auto draw_edge = [&](int nx, int ny, sim::Vec2 edge_a, sim::Vec2 edge_b) {
+ if (!grid.inside(nx, ny))
+ return;
+ const sim::Vec2 neighbor = grid.gridToWorld(nx, ny);
+ const auto adjacent = terrain.sample(neighbor);
+ bool emphasize = false;
+ Color color = Fade(kText, 0.42f);
+ if (terrain_layer_ == TerrainLayer::Elevation) {
+ emphasize = static_cast<int>(std::floor(current.height_m / 0.5 + 1e-6)) !=
+ static_cast<int>(std::floor(adjacent.height_m / 0.5 + 1e-6));
+ } else if (terrain_layer_ == TerrainLayer::FinalCost) {
+ const double outward = mission.navigation_traversal_cost(center, neighbor);
+ const double inward = mission.navigation_traversal_cost(neighbor, center);
+ emphasize = !std::isfinite(outward) && !std::isfinite(inward);
+ color = kDanger;
+ }
+ if (emphasize)
+ DrawLineEx(world_to_screen(edge_a), world_to_screen(edge_b),
+ terrain_layer_ == TerrainLayer::FinalCost ? 3.0f : 1.7f, Fade(color, 0.92f));
+ };
+ draw_edge(gx + 1, gy, {center.x + resolution * 0.5, center.y - resolution * 0.5},
+ {center.x + resolution * 0.5, center.y + resolution * 0.5});
+ draw_edge(gx, gy + 1, {center.x - resolution * 0.5, center.y + resolution * 0.5},
+ {center.x + resolution * 0.5, center.y + resolution * 0.5});
+ }
+ }
+}
+
+void WorldRenderer::draw_terrain_layer_panel(const game::MissionSimulation& mission) const {
+ const char* labels[] = {"world.layer_elevation", "world.layer_slope", "world.layer_risk",
+ "world.layer_cost"};
+ const float panel_width = std::min(510.0f, std::max(300.0f, viewport_.width - 370.0f));
+ const Rectangle panel{viewport_.x + 18.0f, viewport_.y + 17.0f, panel_width, 68.0f};
+ DrawRectangleRounded(panel, 0.12f, 10, {14, 18, 19, 238});
+ DrawRectangleLinesEx(panel, 1.0f, Fade(kCyan, 0.25f));
+ const float chip_width = (panel.width - 16.0f) / 4.0f;
+ for (int index = 0; index < 4; ++index) {
+ const bool active = index == static_cast<int>(terrain_layer_);
+ const Rectangle chip{panel.x + 8.0f + chip_width * index, panel.y + 7.0f, chip_width - 4.0f, 25.0f};
+ DrawRectangleRounded(chip, 0.42f, 8, active ? Color{28, 76, 72, 245} : Color{27, 31, 31, 218});
+ if (active)
+ DrawRectangleLinesEx(chip, 1.0f, Fade(kCyan, 0.72f));
+ draw_text(catalog_.tr(labels[index]), {chip.x + 8.0f, chip.y + 5.0f}, panel.width < 400.0f ? 12 : 14,
+ active ? kCyan : Fade(kMuted, 0.88f));
+ }
+
+ std::string detail;
+ if (terrain_layer_ == TerrainLayer::Elevation) {
+ double min_height = std::numeric_limits<double>::infinity();
+ double max_height = -std::numeric_limits<double>::infinity();
+ const auto& grid = mission.navigation_map();
+ for (int gy = 0; gy < grid.h(); ++gy) {
+ for (int gx = 0; gx < grid.w(); ++gx) {
+ const double height = mission.terrain_model().sample(grid.gridToWorld(gx, gy)).height_m;
+ min_height = std::min(min_height, height);
+ max_height = std::max(max_height, height);
+ }
+ }
+ detail = catalog_.trf("world.layer_elevation_detail", {fixed(min_height, 1), fixed(max_height, 1)});
+ } else if (terrain_layer_ == TerrainLayer::Slope) {
+ detail = catalog_.tr("world.layer_slope_detail");
+ } else if (terrain_layer_ == TerrainLayer::VehicleRisk) {
+ detail = catalog_.tr("world.layer_risk_detail");
+ } else {
+ detail = catalog_.tr("world.layer_cost_detail");
+ }
+ const float gradient_x = panel.x + 12.0f;
+ const float gradient_y = panel.y + 45.0f;
+ if (terrain_layer_ == TerrainLayer::Elevation) {
+ DrawRectangleGradientH(static_cast<int>(gradient_x), static_cast<int>(gradient_y), 92, 7,
+ Color{31, 55, 89, 255}, Color{247, 188, 92, 255});
+ } else {
+ DrawRectangleGradientH(static_cast<int>(gradient_x), static_cast<int>(gradient_y), 46, 7,
+ Color{54, 185, 141, 255}, kAmber);
+ DrawRectangleGradientH(static_cast<int>(gradient_x + 46.0f), static_cast<int>(gradient_y), 46, 7,
+ kAmber, kDanger);
+ }
+ draw_text(detail, {panel.x + 113.0f, panel.y + 39.0f}, panel.width < 400.0f ? 11 : 14,
+ Fade(kText, 0.84f));
 }
 
 void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
@@ -744,8 +1310,8 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
  for (const auto& surface : map.surfaces) {
   if (!game::active_in_level(surface.active_in, mission.level().id))
    continue;
-  if (state.robot.x < surface.min.x || state.robot.x > surface.max.x ||
-      state.robot.y < surface.min.y || state.robot.y > surface.max.y)
+  if (state.robot.x < surface.min.x || state.robot.x > surface.max.x || state.robot.y < surface.min.y ||
+      state.robot.y > surface.max.y)
    continue;
   if (surface.material == "sand")
    dust_factor = std::max(dust_factor, 1.0);
@@ -756,9 +1322,9 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
  for (auto& puff : dust_) {
   puff.age_s += dt;
  }
- dust_.erase(std::remove_if(dust_.begin(), dust_.end(),
-                            [](const DustPuff& puff) { return puff.age_s >= puff.life_s; }),
-             dust_.end());
+ dust_.erase(
+   std::remove_if(dust_.begin(), dust_.end(), [](const DustPuff& puff) { return puff.age_s >= puff.life_s; }),
+   dust_.end());
  const double speed = std::hypot(state.robot.v, state.robot.w * 0.5);
  if (dust_factor > 0.0 && std::abs(speed) > 0.8 && dust_.size() < 60 &&
      mission.snapshot().status == game::MissionStatus::Running) {
@@ -781,11 +1347,10 @@ void WorldRenderer::draw_dust(const game::MissionSimulation& mission) const {
   if (dust_sprite_.id > 0) {
    const Rectangle source{0.0f, 0.0f, static_cast<float>(dust_sprite_.width),
                           static_cast<float>(dust_sprite_.height)};
-   DrawTexturePro(dust_sprite_, source, {center.x, center.y, size * 2.0f, size * 2.0f},
-                  {size, size}, t * 140.0f, {255, 255, 255, static_cast<unsigned char>(fade * 255)});
+   DrawTexturePro(dust_sprite_, source, {center.x, center.y, size * 2.0f, size * 2.0f}, {size, size},
+                  t * 140.0f, {255, 255, 255, static_cast<unsigned char>(fade * 255)});
   } else {
-   DrawCircleGradient(center, size, Fade({168, 158, 128, 255}, fade),
-                      {168, 158, 128, 0});
+   DrawCircleGradient(center, size, Fade({168, 158, 128, 255}, fade), {168, 158, 128, 0});
   }
  }
 }
@@ -804,11 +1369,11 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
   const float exact = static_cast<float>(robot.collision_radius_m) * scale_;
   DrawRing(center, exact - 1.2f, exact + 1.2f, 0, 360, 64, Fade(kText, 0.55f));
  }
- if (robot.drive_type == "ackermann") {
+ const double min_radius = mission.chassis_caps().geometry.minimum_turn_radius_m;
+ if (min_radius > 0.0) {
   // Minimum turning circles, tangent to the heading on both sides. A
   // steering car can never place its center inside these discs — if the
   // route bends tighter than R, brake early and swing wide.
-  const double min_radius = robot.wheel_base_m / std::tan(robot.steering.max_steer_rad);
   const double cosine = std::cos(state.robot.theta);
   const double sine = std::sin(state.robot.theta);
   for (const double side : {-1.0, 1.0}) {
@@ -819,8 +1384,8 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
    const float pixels = static_cast<float>(min_radius) * scale_;
    DrawRing(disc, pixels - 1.5f, pixels + 1.5f, 0, 360, 64, Fade(kAmber, 0.40f));
   }
-  draw_text(catalog_.trf("world.min_radius", {fixed(min_radius, 2)}), {center.x + body_radius + 8, center.y - 8}, 15,
-            Fade(kAmber, 0.85f));
+  draw_text(catalog_.trf("world.min_radius", {fixed(min_radius, 2)}),
+            {center.x + body_radius + 8, center.y - 8}, 15, Fade(kAmber, 0.85f));
  }
 
  const auto find_mount = [&](const std::string& id) -> const game::MountDefinition* {
@@ -858,8 +1423,12 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
    continue;
   const auto& visual = catalog_.component(id).visual;
   for (const auto& mount_id : slot.mounts) {
-   if (const auto* mount = find_mount(mount_id))
+ const bool mount_has_base_part = std::any_of(robot.base_parts.begin(), robot.base_parts.end(),
+ [&](const auto& part) { return part.mount == mount_id; });
+ if (!mount_has_base_part) {
+ if (const auto* mount = find_mount(mount_id))
     parts.push_back({&visual, mount});
+ }
   }
  }
  std::sort(parts.begin(), parts.end(), [](const auto& left, const auto& right) {
@@ -878,25 +1447,11 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
   // subtract their linkage angle the same way. Positive delta (left turn)
   // reads counterclockwise on screen, matching the world turn.
   float angle = static_cast<float>(-state.robot.theta * 180.0 / sim::kPi - part.mount->rotation_deg.z);
-  // Tracked chassis read as continuous pads, not discrete wheels: the tire
-  // visuals at the side mounts are replaced by track-length bands (vendor
-  // track_length_m). Physics still uses the equipped tire; this is display.
-  if (robot.drive_type == "tracked" &&
-      (part.mount->id == "wheel_left" || part.mount->id == "wheel_right")) {
-   const float pad_len = std::max(10.0f, static_cast<float>(robot.track_length_m) * scale_);
-   const float pad_w = std::max(6.0f, 0.16f * scale_);
-   DrawRectanglePro({part_center.x + 3, part_center.y + 4, pad_len + 2, pad_w + 2},
-                    {pad_len * 0.5f, pad_w * 0.5f}, angle, {0, 3, 8, 170});
-   DrawRectanglePro({part_center.x, part_center.y, pad_len, pad_w}, {pad_len * 0.5f, pad_w * 0.5f},
-                    angle, {38, 44, 42, 255});
-   DrawRectanglePro({part_center.x, part_center.y, pad_len * 0.86f, pad_w * 0.42f},
-                    {pad_len * 0.43f, pad_w * 0.21f}, angle, {68, 76, 72, 255});
-   continue;
-  }
-  if (part.mount->id == "front_left" || part.mount->id == "front_right") {
-   const double steer =
-     part.mount->id == "front_left" ? state.control.steer_left_rad : state.control.steer_right_rad;
-   angle -= static_cast<float>(steer * 180.0 / sim::kPi);
+ const auto actuation = std::find_if(state.control.mount_actuations.begin(),
+ state.control.mount_actuations.end(),
+ [&](const auto& candidate) { return candidate.mount_id == part.mount->id; });
+ if (actuation != state.control.mount_actuations.end()) {
+ angle -= static_cast<float>(actuation->yaw_rad * 180.0 / sim::kPi);
   }
   const float width = std::max(5.0f, static_cast<float>(visual.size_m.x) * scale_);
   const float height = std::max(5.0f, static_cast<float>(visual.size_m.y) * scale_);
@@ -936,9 +1491,9 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
  DrawLineEx(polar(center, body_radius * 0.42f, heading + 2.25f),
             polar(center, body_radius * 0.42f, heading - 2.25f), 2.0f, Fade(kText, 0.25f));
 
- const std::string status =
-   state.waiting_for_clearance ? catalog_.tr("world.status_waiting")
-                                        : catalog_.trf("world.status_go", {mission.level().objective.goal_label});
+ const std::string status = state.waiting_for_clearance
+                              ? catalog_.tr("world.status_waiting")
+                              : catalog_.trf("world.status_go", {mission.level().objective.goal_label});
  const auto measured = MeasureTextEx(font_, status.c_str(), 13, 0.25f);
  const Rectangle label{center.x - measured.x * 0.5f - 11, center.y + body_radius + 17, measured.x + 22, 28};
  DrawRectangleRounded(label, 0.42f, 9, {21, 25, 23, 235});
@@ -949,12 +1504,33 @@ void WorldRenderer::draw_robot(const game::MissionSimulation& mission) const {
 void WorldRenderer::draw_telemetry(const game::MissionSimulation& mission, int screen_height) const {
  const float y = std::min(viewport_.y + viewport_.height - 47.0f, static_cast<float>(screen_height) - 52.0f);
  const std::string summary = catalog_.trf("world.summary", {fixed(mission.snapshot().time_s, 0),
-                                                                fixed(mission.result().path_length_m, 1),
-                                                                fixed(mission.result().energy_wh, 2)});
+                                                            fixed(mission.result().path_length_m, 1),
+                                                            fixed(mission.result().energy_wh, 2)});
  const auto measured = MeasureTextEx(font_, summary.c_str(), 13, 0.25f);
  const Rectangle pill{viewport_.x + 18, y, measured.x + 30, 30};
  DrawRectangleRounded(pill, 0.46f, 10, {17, 20, 19, 220});
  draw_text(summary, {pill.x + 15, pill.y + 7}, 16, Fade(kText, 0.78f));
+ if (analysis_mode_) {
+  const auto& state = mission.snapshot();
+  const std::string terrain =
+    catalog_.trf("world.terrain_summary",
+                 {fixed(std::atan(state.terrain_grade) * kRadToDeg, 1),
+                  fixed(std::atan(state.cross_slope) * kRadToDeg, 1), fixed(state.rollover_risk * 100.0, 0)});
+  const auto terrain_measured = MeasureTextEx(font_, terrain.c_str(), 13, 0.25f);
+  const Rectangle terrain_pill{viewport_.x + 18, y - 36.0f, terrain_measured.x + 30, 30};
+  DrawRectangleRounded(terrain_pill, 0.46f, 10, {17, 20, 19, 220});
+  draw_text(terrain, {terrain_pill.x + 15, terrain_pill.y + 7}, 16,
+            mission.snapshot().rollover_risk >= 0.75 ? kDanger : Fade(kText, 0.78f));
+ const std::string strategy = catalog_.trf("world.strategy_summary",
+ {state.strategy_policy, fixed(state.strategy.applied.speed_scale * 100.0, 0),
+ state.strategy.overridden ? catalog_.tr("world.strategy_guarded")
+ : catalog_.tr("world.strategy_clean")});
+ const auto strategy_measured = MeasureTextEx(font_, strategy.c_str(), 13, 0.25f);
+ const Rectangle strategy_pill{viewport_.x + 18, y - 72.0f, strategy_measured.x + 30, 30};
+ DrawRectangleRounded(strategy_pill, 0.46f, 10, {17, 20, 19, 220});
+ draw_text(strategy, {strategy_pill.x + 15, strategy_pill.y + 7}, 16,
+ state.strategy.overridden ? kAmber : Fade(kText, 0.78f));
+ }
 }
 
 } // namespace client

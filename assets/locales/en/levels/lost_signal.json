@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Send the Signal",
+    "/objective/via_label": "Power Module",
+    "/objective/goal_label": "Lan Valley Signal Tower",
+    "/objective/goals/0/label": "Power Module",
+    "/objective/goals/1/label": "East-District Traffic Restart",
+    "/objective/goals/2/label": "Dynamic Intersection Observation Point",
+    "/objective/goals/3/label": "Lan Valley Signal Tower",
+    "/teaching/prediction_prompt": "When the forklift approaches the intersection, what does RO-1 need to know in advance?",
+    "/teaching/knowledge_card": "A moving object must be projected forward from its position and velocity, rather than stored only in a static map."
+  }
+}

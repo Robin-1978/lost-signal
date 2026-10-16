@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""悬赏板（contract board）周单生成器：种子进，同一周单出。
+"""Generate a deterministic weekly contract board from a seed.
 
-纯内容工具：从已有关卡池里按周种子轮换派单（cargo×考核轴），rep 赏格
-按关卡 order 定档。确定性是门：--check 逐字节比对落盘文件，CI 常驻。
-reputation→解锁是下一刀（碰 campaign_progress），本刀只出单子。
-文案 inline 在单子里（follow 教学文本先例）：strings.json 零闲置门禁
-要求每个键都被 C++ 字面量引用，纯内容文本走不进去，UI 落地时再经 tr()。
+This content-only tool rotates existing missions by cargo and scoring axis.
+Reputation rewards scale with mission order. ``--check`` compares generated
+bytes with the committed files so CI can enforce reproducibility.
 """
 
 from __future__ import annotations
@@ -28,6 +26,13 @@ CARGO_NAME = {
     "medkit": " medkit（医疗包）",
     "water": " water（净水）",
 }
+CARGO_PHYSICS = {
+ "grain": {"mass_kg": 14.0, "cog_height_m": 0.48, "fragility": 0.35},
+ "mail": {"mass_kg": 4.0, "cog_height_m": 0.38, "fragility": 0.60},
+ "parts": {"mass_kg": 22.0, "cog_height_m": 0.52, "fragility": 0.20},
+ "medkit": {"mass_kg": 8.0, "cog_height_m": 0.72, "fragility": 0.90},
+ "water": {"mass_kg": 18.0, "cog_height_m": 0.62, "fragility": 0.75},
+}
 AXES = ["fast", "efficient", "safe"]
 AXIS_BLURB = {
     "fast": "镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。",
@@ -38,7 +43,7 @@ JOBS_PER_WEEK = 5
 
 
 def job_pool() -> list[dict]:
-    """派单池：跳过 boot 教学关（order<=2），其余全可派。"""
+    """Return contract candidates, excluding the opening tutorial."""
     pool = []
     for path in sorted((ASSETS / "levels").glob("*.json")):
         level = json.loads(path.read_text(encoding="utf-8"))
@@ -48,7 +53,7 @@ def job_pool() -> list[dict]:
 
 
 def rep_for_order(order: int) -> int:
-    """赏格定档：1 + (order-1)//6，全关封顶 5。内容规则，改了要改单测。"""
+    """Scale reputation by mission order, capped by the current content set."""
     return 1 + (order - 1) // 6
 
 
@@ -69,6 +74,7 @@ def generate_board(week: int, seed: int) -> dict:
                 "cargo": cargo,
                 "axis": axis,
                 "rep": rep_for_order(level["order"]),
+ **CARGO_PHYSICS[cargo],
                 "blurb": f"把{CARGO_NAME[cargo]}送过{level['id']}。{AXIS_BLURB[axis]}",
             }
         )

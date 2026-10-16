@@ -43,6 +43,12 @@
         "$ref": "#/$defs/surface"
       }
     },
+    "terrain": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/terrain"
+      }
+    },
     "markers": {
       "type": "object",
       "minProperties": 1,
@@ -180,6 +186,56 @@
         }
       }
     },
+    "terrain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "min",
+        "max",
+        "base_height_m",
+        "grade_x",
+        "grade_y",
+        "roughness"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "height_patch"
+        },
+        "min": {
+          "$ref": "#/$defs/vec2"
+        },
+        "max": {
+          "$ref": "#/$defs/vec2"
+        },
+        "base_height_m": {
+          "type": "number"
+        },
+        "grade_x": {
+          "type": "number",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "grade_y": {
+          "type": "number",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "roughness": {
+          "type": "number",
+          "description": "Terrain height-disturbance amplitude in meters.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "active_in": {
+          "$ref": "#/$defs/active"
+        }
+      }
+    },
     "actor": {
       "type": "object",
       "additionalProperties": false,
@@ -243,6 +299,12 @@
             "model": {
               "type": "string",
               "minLength": 1
+            },
+            "kind": {
+              "enum": [
+                "vehicle",
+                "pedestrian"
+              ]
             },
             "ref_radius_m": {
               "type": "number",

@@ -44,12 +44,12 @@ class PlaytestSummaryTests(unittest.TestCase):
         return {
             "participant_id": f"P{index:02d}",
             "scope": scope,
-            "choice_without_help": "是",
+            "choice_without_help": "yes",
             "causal_explanation": "yes",
             "retried": "1",
-            "recovered_ability": "能预测移动叉车",
+            "recovered_ability": "can predict a moving forklift",
             "wants_continue": "true",
-            "transfer_correct": "通过",
+            "transfer_correct": "pass",
             "completion_minutes": "12",
         }
 
@@ -57,14 +57,14 @@ class PlaytestSummaryTests(unittest.TestCase):
         rows = [self.passing_row(index) for index in range(1, 9)]
         report, passed = summarize(read_records(self.write(rows)))
         self.assertTrue(passed)
-        self.assertIn("情感动机：8/8", report)
-        self.assertIn("P0 阶段门：通过", report)
+        self.assertIn("Emotional motivation: 8/8", report)
+        self.assertIn("P0 gate: pass", report)
 
     def test_incomplete_sample_cannot_pass(self) -> None:
         rows = [self.passing_row(index) for index in range(1, 8)]
         report, passed = summarize(read_records(self.write(rows)))
         self.assertFalse(passed)
-        self.assertIn("有效样本：7/8", report)
+        self.assertIn("Valid P0 sample: 7/8", report)
 
     def test_chapter_pace_is_reported(self) -> None:
         rows = [self.passing_row(index) for index in range(1, 9)]
@@ -74,7 +74,7 @@ class PlaytestSummaryTests(unittest.TestCase):
             rows.append(row)
         report, passed = summarize(read_records(self.write(rows)))
         self.assertTrue(passed)
-        self.assertIn("章节节奏：中位数", report)
+        self.assertIn("Chapter pace: median", report)
 
 
 if __name__ == "__main__":

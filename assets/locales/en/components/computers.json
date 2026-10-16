@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Lightweight Computer",
+    "/components/0/description": "Energy‑efficient, but re‑evaluates moving objects less frequently.",
+    "/components/1/title": "Performance Computer",
+    "/components/1/description": "Updates predictions more often at higher power cost.",
+    "/components/2/title": "Balanced Computer",
+    "/components/2/description": "Faster evaluation with moderate power usage."
+  }
+}

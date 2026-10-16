@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "presentation.cross_slope",
+  "is_default": false,
+  "level": "cross_slope",
+  "garage": {
+    "heading": "横坡货运",
+    "brief": "装载高重心天线，经过破损横坡并在中段停稳检查，最后送到山脊中继站。速度过高会让可见的侧倾逐步失稳。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "坡面轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.slick"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "motor": "motor.torque",
+      "style": 1.0
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "motor": "motor.torque",
+      "style": 0.0
+    }
+  },
+  "prediction": {
+    "heading": "横坡余量够吗？",
+    "hint": "重心高度会改变同一坡面的稳定边界。",
+    "choices": [
+      {
+        "id": "cross_slope.slow",
+        "text": "低速并保留余量",
+        "feedback": "静态边界由重心决定，低速还能减少转向和扰动带来的附加载荷。"
+      },
+      {
+        "id": "cross_slope.power",
+        "text": "换大电机解决侧翻",
+        "feedback": "电机改变牵引力，不能降低货物重心。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "横坡货运",
+    "normal_line": "洛一：天线侧倾正在压缩稳定余量，准备中段检查。",
+    "detected_line": "洛一：前方坡面状态已更新。"
+  },
+  "debrief": {
+    "success_title": "横坡货物送达",
+    "success_summary": "任务完成；回放已标出横坡、起伏附加载荷与侧翻余量。",
+    "failure_summary": "沿时间轴查看坡度、轮端饱和与侧翻风险，再调整组件或风格。",
+    "evidence_heading": "坡度证据",
+    "evidence_caption": "纵坡、横坡、姿态和能耗来自同一固定步长仿真。",
+    "knowledge_title": "侧翻边界",
+    "failure_titles": {
+      "collision-static": "坡度任务失败：越出可行区域",
+      "collision-dynamic": "坡度任务失败：发生动态碰撞",
+      "rollover": "坡度任务失败：发生侧翻",
+      "timeout": "坡度任务失败：未按时到达"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Give RO-1 Its First Pair of Eyes",
+    "/garage/brief": "A transparent door stands beyond the exit. Choose a LiDAR so RO-1 can discover that the route is not empty.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/policy_title": "Driving style",
+    "/prediction/heading": "What Reveals the Glass Door Sooner?",
+    "/prediction/hint": "Range determines how far you see; refresh rate determines how often you get new measurements.",
+    "/prediction/choices/0/text": "Maximum range is all that matters",
+    "/prediction/choices/0/feedback": "Seeing far isn’t enough—timely updates matter. When you’re close to an obstacle, the gap between scans is critical.",
+    "/prediction/choices/1/text": "Range and refresh rate both matter",
+    "/prediction/choices/1/feedback": "Record your prediction. During the run, watch when scan points appear and how much braking room RO-1 keeps.",
+    "/prediction/choices/2/text": "The map already sees everything",
+    "/prediction/choices/2/feedback": "The map stores prior knowledge; sensors turn the current environment into measurements.",
+    "/running/heading": "Stop Safely Before the Glass Door",
+    "/running/normal_line": "RO-1: The LiDAR is scanning. I’ll park in the safe zone.",
+    "/running/detected_line": "RO-1: Echoes are steady ahead; I’m controlling braking now.",
+    "/debrief/success_title": "RO-1 Sees Its First Obstacle",
+    "/debrief/success_summary": "A range measurement turns the transparent glass door into evidence RO-1 can act on.",
+    "/debrief/failure_summary": "Compare range, refresh rate, and braking distance, then choose again.",
+    "/debrief/evidence_heading": "Sensor Evidence",
+    "/debrief/evidence_caption": "The scan points and stopping position both come from this run.",
+    "/debrief/knowledge_title": "Range Perception",
+    "/debrief/failure_titles/collision-static": "Mission failed: glass-door collision",
+    "/debrief/failure_titles/timeout": "Mission failed: perception test incomplete"
+  }
+}

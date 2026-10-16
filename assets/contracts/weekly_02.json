@@ -5,11 +5,14 @@
   "jobs": [
     {
       "id": "w02-1",
-      "level": "scrub_climb",
+      "level": "motor_trial",
       "cargo": "parts",
       "axis": "safe",
-      "rep": 3,
-      "blurb": "把 parts（机器零件）送过scrub_climb。货怕晃，净空就是一切，慢就是快。"
+      "rep": 2,
+      "mass_kg": 22.0,
+      "cog_height_m": 0.52,
+      "fragility": 0.2,
+      "blurb": "把 parts（机器零件）送过motor_trial。货怕晃，净空就是一切，慢就是快。"
     },
     {
       "id": "w02-2",
@@ -17,31 +20,43 @@
       "cargo": "water",
       "axis": "fast",
       "rep": 2,
+      "mass_kg": 18.0,
+      "cog_height_m": 0.62,
+      "fragility": 0.75,
       "blurb": "把 water（净水）送过lost_signal。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
     },
     {
       "id": "w02-3",
-      "level": "long_track",
+      "level": "scrub_climb",
       "cargo": "mail",
       "axis": "efficient",
       "rep": 4,
-      "blurb": "把 mail（镇民邮件）送过long_track。电要省着花，镇发电站的老王只认能耗账。"
+      "mass_kg": 4.0,
+      "cog_height_m": 0.38,
+      "fragility": 0.6,
+      "blurb": "把 mail（镇民邮件）送过scrub_climb。电要省着花，镇发电站的老王只认能耗账。"
     },
     {
       "id": "w02-4",
-      "level": "motor_trial",
+      "level": "long_track",
       "cargo": "medkit",
       "axis": "safe",
-      "rep": 1,
-      "blurb": "把 medkit（医疗包）送过motor_trial。货怕晃，净空就是一切，慢就是快。"
+      "rep": 4,
+      "mass_kg": 8.0,
+      "cog_height_m": 0.72,
+      "fragility": 0.9,
+      "blurb": "把 medkit（医疗包）送过long_track。货怕晃，净空就是一切，慢就是快。"
     },
     {
       "id": "w02-5",
-      "level": "rally",
+      "level": "wet_scrub",
       "cargo": "grain",
       "axis": "fast",
-      "rep": 1,
-      "blurb": "把 grain（种子粮）送过rally。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
+      "rep": 4,
+      "mass_kg": 14.0,
+      "cog_height_m": 0.48,
+      "fragility": 0.35,
+      "blurb": "把 grain（种子粮）送过wet_scrub。镇上等着用，越快越好——但别撞，撞了这单 reputation 照扣。"
     }
   ]
 }

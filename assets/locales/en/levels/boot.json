@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Wake Up",
+    "/objective/goal_label": "Repair-Bay Exit",
+    "/teaching/prediction_prompt": "Will RO-1 stop immediately after you release the forward command?",
+    "/teaching/knowledge_card": "Motor commands must accelerate and brake; the robot won’t change speed instantaneously."
+  }
+}

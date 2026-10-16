@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Tracks on Sand",
+    "/garage/brief": "Take a tracked chassis over the same sandy route. Sand consumes traction, while skid steering consumes more traction to turn; both effects arrive together.",
+    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Where Does Compound Slip Hurt First?",
+    "/prediction/hint": "Make a prediction. When loose-ground slip and track scrub combine, what happens to localization?",
+    "/prediction/choices/0/text": "Localization will drift badly",
+    "/prediction/choices/0/feedback": "Slip plus scrub can leave wheel odometry wrong by meters. Inspect localization error in the debrief.",
+    "/prediction/choices/1/text": "Slow becomes fast",
+    "/prediction/choices/1/feedback": "Gentle control can finish sooner by avoiding large localization errors. Compare elapsed time.",
+    "/running/heading": "Cross the Sand on Tracks",
+    "/running/normal_line": "RO-3: Crossing sand. Tracks are slipping.",
+    "/running/detected_line": "RO-3: Route ahead confirmed.",
+    "/debrief/success_title": "Compound-Slip Crossing Complete",
+    "/debrief/success_summary": "Sand and tracks together, crossed with slow and gentle control.",
+    "/debrief/failure_summary": "Find which badge was lost. Compound slip punishes sudden input.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Compound Slip",
+    "/debrief/failure_titles/collision-static": "Tracked mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Tracked mission failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Tracked mission failed: time limit exceeded"
+  }
+}

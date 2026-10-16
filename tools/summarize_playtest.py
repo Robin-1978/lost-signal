@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 
-YES = {"1", "true", "yes", "y", "是", "通过"}
+YES = {"1", "true", "yes", "y", "pass"}
 
 
 @dataclass(frozen=True)
@@ -23,17 +23,17 @@ class Metric:
 
 METRICS = (
     Metric(
-        "情感动机",
+        "Emotional motivation",
         6,
         lambda row: (
             bool(row["recovered_ability"].strip()) and truth(row["wants_continue"])
         ),
     ),
-    Metric("首次理解", 6, lambda row: truth(row["choice_without_help"])),
-    Metric("因果理解", 6, lambda row: truth(row["causal_explanation"])),
-    Metric("主动迭代", 6, lambda row: truth(row["retried"])),
-    Metric("教学迁移", 5, lambda row: truth(row["transfer_correct"])),
-    Metric("乐趣信号", 6, lambda row: truth(row["wants_continue"])),
+    Metric("Initial understanding", 6, lambda row: truth(row["choice_without_help"])),
+    Metric("Causal understanding", 6, lambda row: truth(row["causal_explanation"])),
+    Metric("Active iteration", 6, lambda row: truth(row["retried"])),
+    Metric("Learning transfer", 5, lambda row: truth(row["transfer_correct"])),
+    Metric("Enjoyment signal", 6, lambda row: truth(row["wants_continue"])),
 )
 
 
@@ -96,14 +96,14 @@ def completion_times(rows: Iterable[dict[str, str]]) -> list[float]:
 def summarize(rows: list[dict[str, str]]) -> tuple[str, bool]:
     p0 = [row for row in rows if row["scope"].strip().lower() == "p0"]
     chapter = [row for row in rows if row["scope"].strip().lower() == "chapter"]
-    lines = ["# 《失落的信号》试玩门槛", "", f"P0 有效样本：{len(p0)}/8", ""]
+    lines = ["# Lost Signal playtest gate", "", f"Valid P0 sample: {len(p0)}/8", ""]
     p0_passed = len(p0) >= 8
     for metric in METRICS:
         passed = sum(1 for row in p0 if metric.matches(row))
         met = len(p0) >= 8 and passed >= metric.threshold
         p0_passed = p0_passed and met
         lines.append(
-            f"- {'通过' if met else '未通过'}　{metric.name}：{passed}/{len(p0)}（门槛 {metric.threshold}/8）"
+            f"- {'Pass' if met else 'Fail'} — {metric.name}: {passed}/{len(p0)} (threshold {metric.threshold}/8)"
         )
 
     p0_times = completion_times(p0)
@@ -111,22 +111,24 @@ def summarize(rows: list[dict[str, str]]) -> tuple[str, bool]:
         lines.extend(
             (
                 "",
-                f"P0 完成时间中位数：{statistics.median(p0_times):.1f} 分钟（仅记录，不作为第一章节奏门槛）",
+                f"Median P0 completion: {statistics.median(p0_times):.1f} minutes (reported only; not a chapter gate)",
             )
         )
 
-    lines.extend(("", f"第一章有效样本：{len(chapter)}/8"))
+    lines.extend(("", f"Valid chapter sample: {len(chapter)}/8"))
     chapter_times = completion_times(chapter)
     if len(chapter) >= 8 and len(chapter_times) == len(chapter):
         median = statistics.median(chapter_times)
         pace_passed = 30 <= median <= 45
         lines.append(
-            f"- {'通过' if pace_passed else '未通过'}　章节节奏：中位数 {median:.1f} 分钟（门槛 30～45 分钟）"
+            f"- {'Pass' if pace_passed else 'Fail'} — Chapter pace: median {median:.1f} minutes (threshold 30–45)"
         )
     else:
-        lines.append("- 待验证　章节节奏：完整第一章制作后记录 8 名玩家的完成时间")
+        lines.append(
+            "- Pending — Chapter pace requires completion times from 8 players"
+        )
 
-    lines.extend(("", "P0 阶段门：" + ("通过" if p0_passed else "尚未通过")))
+    lines.extend(("", "P0 gate: " + ("pass" if p0_passed else "not passed")))
     return "\n".join(lines) + "\n", p0_passed
 
 

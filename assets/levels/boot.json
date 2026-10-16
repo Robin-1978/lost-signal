@@ -40,5 +40,6 @@
     "sensor.short_fast_lidar",
     "sensor.long_slow_lidar"
   ],
-  "chapter": 1
+  "chapter": 1,
+  "mode": "mainline"
 }

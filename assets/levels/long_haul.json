@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "long_haul",
-  "order": 13,
+  "order": 18,
   "title": "长途穿越",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "loose_ground"
   ],

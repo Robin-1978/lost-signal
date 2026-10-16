@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Try the Same Route Another Way",
+    "/garage/brief": "The same forklift corridor, now with a tighter budget. RO-1 has proved the route; this time, test a different motor and sensing combination.",
+    "/garage/component_columns/0/title": "Drive Tires",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "IMU",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "Make a Prediction Before Departure",
+    "/prediction/hint": "Record a prediction. It does not affect the score; the run will give you evidence to test it.",
+    "/prediction/choices/0/text": "More motor force always means a faster run",
+    "/prediction/choices/0/feedback": "Motor and computer must work together. High torque with slow prediction updates can increase collision risk; inspect the waiting events.",
+    "/prediction/choices/1/text": "An efficient build can still arrive on time",
+    "/prediction/choices/1/feedback": "An efficient motor and tires save energy. Test whether they can preserve the safety badge too.",
+    "/prediction/choices/2/text": "Put the forklift in the static map",
+    "/prediction/choices/2/feedback": "The forklift moves. A static map represents fixed obstacles, not where a moving object will be next.",
+    "/running/heading": "Echo Corridor",
+    "/running/normal_line": "RO-1: Navigation stable. Approaching the signal tower.",
+    "/running/detected_line": "RO-1: Forklift tracked. Predicting its path.",
+    "/debrief/success_title": "Mission Complete: Echo Confirmed",
+    "/debrief/success_summary": "Same road, different build, and RO-1 still delivered.",
+    "/debrief/failure_summary": "Select evidence on the right to jump the field view to that moment.",
+    "/debrief/evidence_heading": "Causal Evidence",
+    "/debrief/evidence_caption": "These entries come from events and state recorded during this simulation run.",
+    "/debrief/knowledge_title": "Motor and Sensing Combination",
+    "/debrief/failure_titles/collision-dynamic": "Mission failed: forklift collision",
+    "/debrief/failure_titles/collision-static": "Mission failed: fixed-obstacle collision",
+    "/debrief/failure_titles/timeout": "Mission failed: time limit exceeded"
+  }
+}

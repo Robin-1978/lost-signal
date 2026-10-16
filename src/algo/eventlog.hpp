@@ -1,19 +1,19 @@
 #pragma once
 #include <vector>
 #include <cstdint>
-// 事件日志(Core, 无图形): 失败诊断的数据地基.
-// runner和app playground共用; TechPanel只读展示. 时间+编码+辅助值, 同码节流.
+// Headless event log: the evidence layer for failure diagnosis.
+// Runners and the client share it; UI panels only read it. Equal codes are rate-limited.
 namespace sim {
 enum EvCode : uint8_t {
- EV_COLLISION = 0, // 撞静态墙(含瞎走)
- EV_DYN_HIT,       // 撞动障碍
- EV_DYN_NEAR,      // 与动障碍净距离<0.8(惊险会车)
- EV_DRIFT_HIGH,    // odom漂移>1m
- EV_DWA_STOP,      // DWA无可行指令, 原地停车
- EV_VIA,           // 经过经停点
- EV_REACHED,       // 到达目标
- EV_NO_PATH,       // A*无解
- EV_LOST,          // 走完未到(漂移跟丢等)
+ EV_COLLISION = 0, // Static collision, including blind motion.
+ EV_DYN_HIT,       // Dynamic-actor collision.
+ EV_DYN_NEAR,      // Clearance to a dynamic actor fell below 0.8 m.
+ EV_DRIFT_HIGH,    // Odometry drift exceeded 1 m.
+ EV_DWA_STOP,      // No feasible DWA command; stop in place.
+ EV_VIA,           // Passed a waypoint.
+ EV_REACHED,       // Reached the goal.
+ EV_NO_PATH,       // A* found no path.
+ EV_LOST,          // Route ended without arrival, for example after drift.
  EV_COUNT
 };
 inline const char* ev_name(uint8_t c) {
@@ -33,7 +33,7 @@ class EventLog {
   for (auto& x : last_)
    x = -1e9;
  }
- // 同码min_gap秒内只记一次(防刷屏), 返回是否记入
+ // Record a code at most once per min_gap seconds. Return whether it was kept.
  bool log(double t, uint8_t code, float aux = 0, double min_gap = 2.0) {
   if (code >= EV_COUNT)
    return false;

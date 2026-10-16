@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "id": "long_track",
-  "order": 21,
+  "order": 24,
   "title": "履带长途",
   "map": "research_base",
   "control_mode": "autonomous",
   "localization_mode": "fused",
-  "chapter": 2,
+  "chapter": 4,
+  "mode": "experiment",
   "prerequisites": [
     "long_haul"
   ],
@@ -14,10 +15,10 @@
   "objective": {
     "type": "reach",
     "spawn": "signal_tower",
-    "goal": "calibration_pad",
+    "goal": "track_calibration",
     "goal_label": "标定点",
     "goal_visual": "calibration_pad",
-    "time_limit_s": 150,
+    "time_limit_s": 180,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62
   },
@@ -32,12 +33,12 @@
   "teaching": {
     "concept": "tracked_pacing",
     "prediction_prompt": "同一条长途，拐角要什么组合才过得去？",
-    "knowledge_card": "货架拐角：careful＋抓地胎缺一不可——单稳风格（eco＋careful）照样摇 150 秒，单换胎（grip＋swift）也过不去，传感器快慢不影响；2×2 全跑过，证据在轨迹里。"
+    "knowledge_card": "履带不是两只外露车轮：长接地履带转弯会产生搓擦与角点外扫，稳定策略和抓地材料要共同匹配。"
   },
   "score": {
     "safe_min_clearance_m": 0.0,
     "max_localization_error_m": 2.0,
-    "fast_time_s": 140.0,
+    "fast_time_s": 170.0,
     "efficient_energy_wh": 1.7
   },
   "rewards": [

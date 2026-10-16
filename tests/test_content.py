@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import shutil
 import struct
@@ -47,7 +46,29 @@ class ContentValidationTests(unittest.TestCase):
         robots = set(catalog["robots"].keys())
         self.assertIn(catalog["campaign"]["companion"]["robot"], robots)
         self.assertEqual("boot", catalog["presentations"]["presentation.boot"]["level"])
-        self.assertEqual("洛一", catalog["campaign"]["companion"]["display_name"])
+        self.assertEqual(
+            "\u6d1b\u4e00", catalog["campaign"]["companion"]["display_name"]
+        )
+
+    def test_v1_content_without_effect_extensions_remains_valid(self) -> None:
+        def remove_surface_effects(doc) -> None:
+            for material in doc["materials"]:
+                material.pop("drive_effect", None)
+
+        def remove_scene_effects(doc) -> None:
+            for key in (
+                "trail_duration_s",
+                "surface_particle_count",
+                "surface_particle_scale",
+                "risk_indicator_radius_m",
+            ):
+                doc["effects"].pop(key, None)
+
+        self.edit("surfaces.json", remove_surface_effects)
+        for scene_path in self.assets.glob("scenes/*.json"):
+            relative = scene_path.relative_to(self.assets).as_posix()
+            self.edit(relative, remove_scene_effects)
+        load_and_validate(self.assets)
 
     def test_glb_meshes_have_vertex_normals(self) -> None:
         model_count = 0
@@ -96,8 +117,11 @@ class ContentValidationTests(unittest.TestCase):
                 continue
             items = doc if isinstance(doc, list) else doc.get("components", [])
             for item in items if isinstance(items, list) else []:
-                model = ((item.get("visual") or {}).get("model_3d")
-                         if isinstance(item, dict) else None)
+                model = (
+                    (item.get("visual") or {}).get("model_3d")
+                    if isinstance(item, dict)
+                    else None
+                )
                 if model:
                     referenced.add(model)
         # Actor kit is code-loaded, not JSON-referenced: pin its contract.
@@ -179,8 +203,7 @@ class ContentValidationTests(unittest.TestCase):
 
     def test_rejects_duplicate_component_id(self) -> None:
         def duplicate(doc):
-            item = copy.deepcopy(doc["components"][0])
-            doc["components"].append(item)
+            doc["components"][1]["id"] = doc["components"][0]["id"]
 
         self.edit("components/tires.json", duplicate)
         with self.assertRaisesRegex(ContentError, "duplicate id"):

@@ -12,6 +12,8 @@ from typing import Any, Iterable
 
 from jsonschema import Draft202012Validator
 
+from validate_locales import validate_locales
+
 
 class ContentError(RuntimeError):
     pass
@@ -83,6 +85,7 @@ def _register(ids: dict[str, str], object_id: str, location: str) -> None:
 
 def load_and_validate(root: Path) -> dict[str, Any]:
     root = root.resolve()
+    validate_locales(root)
     schema_dir = root / "schema"
     campaign = _read(root / "campaign.json")
     chapters = _read(root / "chapters.json")
@@ -152,6 +155,12 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             r'"((?:app|chapter|garage|prediction|running|debrief|world|editor|ui)\.[a-z_]+)"', text
         ):
             used_keys.add(match.group(1))
+    # Data-driven labels are references too. Keeping them in content removes UI
+    # chassis-type branches, so the validator must account for them explicitly.
+    for robot in robots:
+        label_key = robot.data["drive"].get("label_key")
+        if label_key:
+            used_keys.add(label_key)
     string_keys = set(strings.data["strings"])
     orphan = sorted(used_keys - string_keys)
     if orphan:
@@ -171,7 +180,6 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         ):
             if key not in doc.data["drive"]["motor"]:
                 raise ContentError(f"{doc.path}:/drive/motor: robot misses '{key}'")
-
         _schema(doc, schema_dir / "robot.schema.json")
 
     for doc in [
@@ -398,6 +406,11 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(
                 f"{doc.path}:/slots: robot must define tires, sensor, computer, motor and imu slots"
             )
+        for index, mount in enumerate(robot.get("passive_support_mounts", [])):
+            if mount not in mount_ids:
+                raise ContentError(
+                    f"{doc.path}:/passive_support_mounts/{index}: unknown mount '{mount}'"
+                )
 
     policy_by_id: dict[str, dict[str, Any]] = {}
     anchors: list[float] = []

@@ -99,6 +99,12 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  const double torque = (force_right - force_left) * params_.wheel_base_m / 2.0 -
                        scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) -
                        kYawViscousNmsPerRadps * state.w;
+ left.longitudinal_force_N = force_left;
+ right.longitudinal_force_N = force_right;
+ telemetry_.extra_yaw_torque_Nm = -scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) -
+ kYawViscousNmsPerRadps * state.w;
+ telemetry_.desired_yaw_rate_radps = command.target_w;
+ telemetry_.yaw_rate_tracking_time_s = 0.35;
  const double alpha = torque / std::max(0.05, params_.yaw_inertia_kgm2);
  const double accel = (force_left + force_right) / std::max(0.5, params_.mass_kg);
  const double accel_cap = std::min(params_.max_drive_accel_mps2, std::max(0.5, ground.accel_limit_mps2));
@@ -109,6 +115,10 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  left.actual_mps = clamp(left.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  right.actual_mps = clamp(right.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  DiffDrive::wheelsToTwist(left.actual_mps, right.actual_mps, params_.wheel_base_m, next.v, next.w);
+ DiffDrive::wheelsToTwist(left.measured_mps, right.measured_mps, params_.wheel_base_m,
+ telemetry_.measured_forward_mps, telemetry_.measured_yaw_radps);
+ telemetry_.measured_lateral_mps = 0.0;
+ telemetry_.traction_saturated = left.slipping || right.slipping;
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);
@@ -142,9 +152,9 @@ BuiltChassis create_tracked_chassis(const sim::ChassisBuildParams& params,
       params.integral_limit,
       params.encoder_counts_per_revolution,
       params.wheel_equiv_mass_kg,
+ params.track_width_m,
     },
     gains);
-  out.yaw_cap_rads = params.tracked_max_yaw_rate_rads;
   return out;
 }
 

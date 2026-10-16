@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible runtime, content, algorithm, or build problem
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for the report. Do not include secrets, private paths, or an undisclosed security vulnerability.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: For example, v0.1.0-alpha or a Git commit hash.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, compiler, GPU, and graphical or headless build.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include the shortest steps, mission, build, seed, and command.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or other evidence
+      description: Paste text logs after removing personal information.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find the same problem.
+          required: true
+        - label: This is not a security vulnerability that should be reported privately.
+          required: true

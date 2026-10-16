@@ -32,12 +32,17 @@ WheelPidGains tune_wheel_pid(double wheel_mass_kg, double stall_force_N, double 
 
 DifferentialMotorDrive::DifferentialMotorDrive(MotorDriveParams params, WheelPidGains gains)
     : params_(params), left_pid_(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit),
-      right_pid_(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit) {}
+ right_pid_(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit) {
+ telemetry_.passive_caster_steer_count = std::min<std::size_t>(
+ params_.passive_casters.size(), telemetry_.passive_caster_steer_rad.size());
+}
 
 void DifferentialMotorDrive::reset() {
  left_pid_.reset();
  right_pid_.reset();
  telemetry_ = {};
+ telemetry_.passive_caster_steer_count = std::min<std::size_t>(
+ params_.passive_casters.size(), telemetry_.passive_caster_steer_rad.size());
 }
 
 double DifferentialMotorDrive::encoder_measure(double wheel_mps, double dt) const {
@@ -74,7 +79,6 @@ DiffState DifferentialMotorDrive::step(const DiffState& state, const DiffCmd& co
  const double weight_per_wheel = params_.mass_kg * kGravity / 2.0;
  const double traction_limit = std::max(0.0, ground.mu_eff) * weight_per_wheel;
  const double resist_coeff = std::max(0.0, ground.rolling_resist);
- const double wheel_mass = std::max(0.5, params_.mass_kg / 2.0);
  auto wheel_force = [&](double pwm, double wheel_mps, WheelMotorTelemetry& telemetry) {
   const double curve = std::max(0.0, 1.0 - std::abs(wheel_mps) / std::max(0.05, params_.free_speed_mps));
   double force = pwm * params_.stall_force_N * curve;
@@ -89,6 +93,10 @@ DiffState DifferentialMotorDrive::step(const DiffState& state, const DiffCmd& co
  };
  const double force_left = wheel_force(telemetry_.left.pwm, actual_left, telemetry_.left);
  const double force_right = wheel_force(telemetry_.right.pwm, actual_right, telemetry_.right);
+ telemetry_.left.longitudinal_force_N = force_left;
+ telemetry_.right.longitudinal_force_N = force_right;
+ telemetry_.extra_yaw_torque_Nm = 0.0;
+ telemetry_.desired_yaw_rate_radps = command.target_w;
 
  const double accel = (force_left + force_right) / std::max(0.5, params_.mass_kg);
  const double alpha =
@@ -105,6 +113,29 @@ DiffState DifferentialMotorDrive::step(const DiffState& state, const DiffCmd& co
    clamp(telemetry_.right.actual_mps, -params_.max_wheel_speed_mps, params_.max_wheel_speed_mps);
  DiffDrive::wheelsToTwist(telemetry_.left.actual_mps, telemetry_.right.actual_mps, params_.wheel_base_m,
                           next.v, next.w);
+ DiffDrive::wheelsToTwist(telemetry_.left.measured_mps, telemetry_.right.measured_mps,
+ params_.wheel_base_m, telemetry_.measured_forward_mps,
+ telemetry_.measured_yaw_radps);
+ telemetry_.measured_lateral_mps = 0.0;
+ telemetry_.traction_saturated = telemetry_.left.slipping || telemetry_.right.slipping;
+ telemetry_.passive_caster_steer_count = std::min<std::size_t>(
+ params_.passive_casters.size(), telemetry_.passive_caster_steer_rad.size());
+ for (std::size_t index = 0; index < telemetry_.passive_caster_steer_count; ++index) {
+ const auto& caster = params_.passive_casters[index];
+ const double local_forward = next.v - next.w * caster.y_m;
+ const double local_left = next.lateral_v + next.w * caster.x_m;
+ if (std::hypot(local_forward, local_left) < 0.015)
+ continue;
+ double angle = std::atan2(local_left, local_forward);
+ // A passive wheel rolls in either direction, so choose the equivalent
+ // orientation within +/-90 degrees. This avoids a 180-degree visual snap
+ // when RO-1 reverses while preserving the real swivel during a spin.
+ if (angle > kPi * 0.5)
+ angle -= kPi;
+ else if (angle < -kPi * 0.5)
+ angle += kPi;
+ telemetry_.passive_caster_steer_rad[index] = angle;
+ }
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);
@@ -119,25 +150,33 @@ DiffState DifferentialMotorDrive::step(const DiffState& state, const DiffCmd& co
 namespace sim {
 
 BuiltChassis create_differential_chassis(const ChassisBuildParams& params, const WheelPidGains& gains) {
-  sim::BuiltChassis out;
-  out.model = std::make_unique<sim::DifferentialMotorDrive>(
-    sim::MotorDriveParams{
-      params.wheel_base_m,
-      params.wheel_radius_m,
-      params.max_wheel_speed_mps,
-      std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
-      params.stall_force_N,
-      params.free_speed_mps,
-      params.mass_kg,
-      params.yaw_inertia_kgm2,
-      params.encoder_counts_per_revolution,
-      params.pwm_limit,
-      params.integral_limit,
-    },
-    gains);
-  out.yaw_cap_rads = params.behavior_w_max;
-  return out;
+ sim::BuiltChassis out;
+ out.model = std::make_unique<sim::DifferentialMotorDrive>(
+   sim::MotorDriveParams{
+     params.wheel_base_m,
+     params.wheel_radius_m,
+     params.max_wheel_speed_mps,
+     std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
+     params.stall_force_N,
+     params.free_speed_mps,
+     params.mass_kg,
+     params.yaw_inertia_kgm2,
+     params.encoder_counts_per_revolution,
+     params.pwm_limit,
+     params.integral_limit,
+ params.track_width_m,
+ std::max(params.wheel_base_m, params.collision_radius_m * 1.8),
+ params.behavior_w_max,
+ [&params] {
+ std::vector<sim::MotorDriveParams::PassiveCaster> result;
+ result.reserve(params.passive_casters.size());
+ for (const auto& caster : params.passive_casters)
+ result.push_back({caster.x_m, caster.y_m});
+ return result;
+ }(),
+   },
+   gains);
+ return out;
 }
 
 } // namespace sim
-

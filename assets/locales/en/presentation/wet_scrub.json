@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Tracks on Wet Ground",
+    "/garage/brief": "Take a tracked chassis from the repair bay to the glass door along the wet edge. Water reduces traction, track scrub spends more, and gentle control becomes essential.",
+    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/1/title": "LiDAR",
+    "/garage/component_columns/2/title": "Drive Motor",
+    "/garage/policy_title": "Driving Preference",
+    "/prediction/heading": "What Limits Tracks on Wet Ground?",
+    "/prediction/hint": "Make a prediction. When water slip meets track scrub, what degrades localization first?",
+    "/prediction/choices/0/text": "Both slip effects will compound",
+    "/prediction/choices/0/feedback": "Wet-ground slip plus scrub can leave odometry wrong by meters. Inspect localization error in the debrief.",
+    "/prediction/choices/1/text": "Slow control is enough to finish",
+    "/prediction/choices/1/feedback": "If gentle control succeeds, the limiting factor was ground contact rather than motor force. Compare the evidence.",
+    "/running/heading": "Cross the Wet Edge on Tracks",
+    "/running/normal_line": "RO-3: Crossing the edge of the wet zone.",
+    "/running/detected_line": "RO-3: Route ahead confirmed.",
+    "/debrief/success_title": "Wet Tracked Crossing Complete",
+    "/debrief/success_summary": "Water and tracks together, crossed slowly. Speed became RO-3’s only rudder.",
+    "/debrief/failure_summary": "Find which badge was lost. Wet tracks punish sudden steering.",
+    "/debrief/evidence_heading": "This Run",
+    "/debrief/evidence_caption": "Safety, speed, and efficiency are scored separately from this simulation run.",
+    "/debrief/knowledge_title": "Wet-Ground Skid Steering",
+    "/debrief/failure_titles/collision-static": "Tracked mission failed: obstacle collision",
+    "/debrief/failure_titles/collision-dynamic": "Tracked mission failed: forklift collision",
+    "/debrief/failure_titles/timeout": "Tracked mission failed: time limit exceeded"
+  }
+}

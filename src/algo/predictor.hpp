@@ -117,7 +117,7 @@ enum class LocalCandidate {
  kWaitInPlace, // hold the current spot until the assessed departure, then proceed.
  kWaitAtPocket,// move aside, wait safe, rejoin. Phase-2 (unassessed).
  kRejoin,      // rejoin evaluation after a pocket wait. Phase-2 (unassessed).
- kDetour,      // existing local绕行. Phase-2 (DWA owns execution today).
+ kDetour,      // Existing local detour; DWA owns execution today.
 };
 
 struct Feasibility {
