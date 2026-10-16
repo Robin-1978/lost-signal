@@ -1,3 +1,4 @@
+#include "audio_director.hpp"
 #include "game_ui.hpp"
 #include "world_renderer.hpp"
 
@@ -34,6 +35,7 @@ struct Options {
  double screenshot_time_s{-1.0};
  std::filesystem::path progress_file;
  bool no_save{false};
+ bool mute{false};
  mission::PhysicsMode physics_mode{mission::PhysicsMode::Bullet};
 };
 
@@ -99,12 +101,14 @@ Options parse_options(int argc, char** argv) {
    options.progress_file = argv[++index];
   else if (argument == "--no-save")
    options.no_save = true;
+ else if (argument == "--mute")
+ options.mute = true;
  else if (argument == "--physics" && index + 1 < argc)
  options.physics_mode = mission::parse_physics_mode(argv[++index]);
   else if (argument == "--help" || argument == "-h") {
  std::cout << "Usage: lost_signal [--assets PATH] [--language en|zh-CN] [--level ID] [--demo]"
                 " [--analysis-view] [--chapter-view] [--garage-view]"
- " [--screenshot FILE] [--screenshot-time SECONDS] [--save FILE|--no-save]"
+ " [--screenshot FILE] [--screenshot-time SECONDS] [--save FILE|--no-save] [--mute]"
  " [--physics domain|shadow|bullet|auto]\n";
    std::exit(0);
   } else
@@ -159,6 +163,8 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
    }
   }
   client::WorldRenderer renderer(font_path, options.assets, catalog);
+ client::AudioDirector audio(options.assets,
+ !options.mute && !options.demo && options.screenshot.empty());
   std::optional<client::MapEditor> editor;
   if (options.analysis_view)
    renderer.toggle_analysis_mode();
@@ -464,6 +470,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
     }
    }
    if (ui.screen() == client::Screen::Running) {
+ audio.update(*mission);
     ui.refresh_running(*mission, paused, speed);
     if (mission->snapshot().status == mission::MissionStatus::Succeeded ||
         mission->snapshot().status == mission::MissionStatus::Failed) {

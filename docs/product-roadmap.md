@@ -124,7 +124,7 @@ AI View, debrief, and regression tests read the same fields and localize only st
 
 ## Stage 3 — Build the state-driven audiovisual vertical slice
 
-Status: **pending Stage 2**
+Status: **complete**
 
 Improve the research-base scene after the encounter and evidence timing are stable:
 
@@ -136,6 +136,18 @@ Improve the research-base scene after the encounter and evidence timing are stab
 - keep meshes low-poly, particle pools bounded, audio optional, and all graphics absent from headless loading.
 
 The gate is a deterministic screenshot sequence at the preparation, conflict, wait, crossing, and success moments, plus a graphical smoke test with no missing assets or shader warnings. Each visible or audible event must name the state that drives it.
+
+The vertical slice now keeps its encounter landmarks physically present while their state changes. The power
+module disappears from its cradle after `goals_reached` advances; the observation pocket changes from active to
+complete from that same ordered-goal state; and the signal tower remains dark until `MissionStatus::Succeeded`,
+then emits a cyan pulse and expanding signal rings. The forklift beacon reads actor velocity, detection, and
+`waiting_for_clearance`; RO-1 lamps read that same wait state; tire marks and bounded dust, spray, and skid smoke
+read replayed motion, surface, and traction state. The graphical-only audio director consumes `MissionEvent` and
+`DecisionEvidence` transitions for pickup, traffic warning, wait, clear, collision, and restoration cues. `--mute`,
+demo, screenshots, and every headless target avoid audio initialization.
+
+The local gate passed with byte-identical 1440×900 images from two runs at 2.0, 23.7, 25.0, 26.5, and terminal
+simulation time. The generated WAV set also passes byte-for-byte `--check` reproduction.
 
 ## Stage 4 — Add a minimum reproducible run artifact
 

@@ -67,6 +67,7 @@ python3 tools/validate_content.py
 python3 tools/validate_locales.py
 python3 tools/generate_levels.py --check
 python3 tools/generate_contracts.py --week 1 --check
+python3 tools/generate_audio.py --check
 python3 tests/test_content_roundtrip.py
 ./tools/build.sh --headless --test
 ```

@@ -174,6 +174,7 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  FetchContent_MakeAvailable(tgui)
 
  add_executable(lost_signal
+ src/client/audio_director.cpp
  src/client/main.cpp
  src/client/game_ui.cpp
  src/client/map_editor.cpp

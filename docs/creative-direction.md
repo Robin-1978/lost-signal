@@ -99,7 +99,7 @@ For the first public alpha, quality comes from a coherent vertical slice rather 
 5. Publish honest architecture and sim-to-real boundaries.
 6. Invite learning feedback with a focused issue template.
 
-Audio, more characters, broader accessibility, controller support, packaged binaries, and real-hardware adapters can follow without weakening the first release.
+More characters, a broader soundtrack, broader accessibility, controller support, packaged binaries, and real-hardware adapters can follow without weakening the first release.
 
 ## After the public alpha
 

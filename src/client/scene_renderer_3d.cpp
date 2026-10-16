@@ -608,7 +608,14 @@ void SceneRenderer3D::draw(const mission::MissionSimulation& mission, int screen
   if (goal != mission.map_definition().markers.end()) {
    signal_light = world(goal->second, 1.6f);
   }
-  const Vector3 signal_color = shader_color(scene.lighting.goal_color);
+ double signal_intensity = 1.0;
+ if (mission.level().objective.goal_visual == "signal_tower") {
+ const bool powered = state.status == mission::MissionStatus::Succeeded;
+ signal_intensity = powered
+ ? 1.15 + 0.18 * std::sin(state.time_s * 5.4)
+ : 0.06;
+ }
+ const Vector3 signal_color = shader_color(scene.lighting.goal_color, signal_intensity);
   SetShaderValue(shader_, point_light_0_position_loc_, &robot_light, SHADER_UNIFORM_VEC3);
   SetShaderValue(shader_, point_light_0_color_loc_, &robot_color, SHADER_UNIFORM_VEC3);
   SetShaderValue(shader_, point_light_1_position_loc_, &signal_light, SHADER_UNIFORM_VEC3);
@@ -777,7 +784,7 @@ void SceneRenderer3D::draw_scene(const mission::MissionSimulation& mission) cons
  draw_markers(mission);
  (void)scene;
  for (const auto& actor : mission.snapshot().actors) {
-  draw_actor(actor, mission.snapshot().waiting_for_clearance);
+ draw_actor(actor, mission.snapshot().waiting_for_clearance, mission.snapshot().time_s);
  }
  draw_field_operator(mission);
  draw_robot(mission);
@@ -1049,6 +1056,81 @@ void SceneRenderer3D::draw_markers(const mission::MissionSimulation& mission) co
   DrawModelEx(cube_model_, {base.x, base.y + 1.30f, base.z}, {0, 1, 0},
               static_cast<float>(mission.snapshot().time_s * 40.0), {0.16f, 0.16f, 0.16f}, kAmber);
  };
+ const auto draw_power_cradle = [&](const mission::Pose& pose, bool module_present, bool active) {
+ const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+ const Color accent = active ? kAmber : (module_present ? Color{128, 105, 61, 255} : kCyan);
+ DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.12f, base.z},
+ 0.52f, 0.44f, 20, {45, 52, 50, 255});
+ DrawCylinderWiresEx({base.x, base.y + 0.12f, base.z}, {base.x, base.y + 0.16f, base.z},
+ 0.45f, 0.45f, 24, Fade(accent, 0.88f));
+ for (int arm = 0; arm < 3; ++arm) {
+ const float angle = static_cast<float>(arm) * 2.0f * PI / 3.0f;
+ const Vector3 foot{base.x + std::cos(angle) * 0.34f, base.y + 0.14f,
+ base.z + std::sin(angle) * 0.34f};
+ const Vector3 shoulder{base.x + std::cos(angle) * 0.22f, base.y + 0.48f,
+ base.z + std::sin(angle) * 0.22f};
+ DrawCylinderEx(foot, shoulder, 0.035f, 0.025f, 8, {91, 98, 92, 255});
+ }
+ if (module_present) {
+ const float hover = active ? 0.52f + 0.025f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0))
+ : 0.48f;
+ DrawModelEx(cube_model_, {base.x, base.y + hover, base.z}, {0, 1, 0},
+ active ? static_cast<float>(mission.snapshot().time_s * 34.0) : 45.0f,
+ {0.20f, 0.20f, 0.20f}, accent);
+ } else {
+ DrawSphere({base.x, base.y + 0.18f, base.z}, 0.045f, Fade(kCyan, 0.72f));
+ }
+ if (active)
+ draw_supply(pose);
+ };
+ const auto draw_observation_point = [&](const mission::Pose& pose, bool active, bool complete) {
+ const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+ const Color accent = active ? kAmber : (complete ? kCyan : Color{90, 98, 94, 255});
+ for (float side : {-0.42f, 0.42f}) {
+ DrawCylinderEx({base.x + side, base.y + 0.02f, base.z},
+ {base.x + side, base.y + 0.52f, base.z}, 0.045f, 0.035f, 10,
+ {66, 72, 69, 255});
+ DrawSphere({base.x + side, base.y + 0.56f, base.z}, 0.07f, accent);
+ }
+ DrawLine3D({base.x - 0.34f, base.y + 0.035f, base.z - 0.34f},
+ {base.x, base.y + 0.035f, base.z}, Fade(accent, 0.86f));
+ DrawLine3D({base.x, base.y + 0.035f, base.z},
+ {base.x - 0.34f, base.y + 0.035f, base.z + 0.34f}, Fade(accent, 0.86f));
+ if (active) {
+ const float pulse = 0.62f + 0.08f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.0));
+ DrawCylinderWiresEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.05f, base.z},
+ pulse, pulse, 36, Fade(kAmber, 0.72f));
+ }
+ };
+ const auto draw_signal_tower = [&](const mission::Pose& pose, bool active, bool powered) {
+ const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+ const float pulse = powered
+ ? 0.72f + 0.28f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.4))
+ : 0.18f;
+ const Color signal = powered ? kCyan : Color{61, 70, 67, 255};
+ DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.24f, base.z},
+ 0.52f, 0.46f, 20, {54, 60, 58, 255});
+ DrawCylinderEx({base.x, base.y + 0.22f, base.z}, {base.x, base.y + 2.70f, base.z},
+ 0.13f, 0.07f, 16, {92, 101, 96, 255});
+ for (float height : {1.25f, 1.85f, 2.42f}) {
+ DrawCylinderEx({base.x - 0.34f, base.y + height, base.z},
+ {base.x + 0.34f, base.y + height, base.z}, 0.025f, 0.025f, 8,
+ {112, 120, 113, 255});
+ DrawSphere({base.x, base.y + height, base.z}, 0.055f, Fade(signal, pulse));
+ }
+ DrawSphere({base.x, base.y + 2.78f, base.z}, powered ? 0.11f + 0.025f * pulse : 0.075f,
+ Fade(signal, powered ? pulse : 0.72f));
+ const float dock = static_cast<float>(mission.level().objective.arrive_tolerance_m);
+ DrawCylinderWiresEx({base.x, base.y + 0.015f, base.z}, {base.x, base.y + 0.045f, base.z},
+ dock, dock, 40, Fade(active ? kAmber : signal, 0.74f));
+ if (powered) {
+ for (int ring = 0; ring < 3; ++ring) {
+ const float phase = std::fmod(static_cast<float>(mission.snapshot().time_s * 0.55) + ring / 3.0f, 1.0f);
+ DrawCircle3D({base.x, base.y + 2.78f, base.z}, 0.18f + phase * 0.92f,
+ {1, 0, 0}, 90.0f, Fade(kCyan, 0.38f * (1.0f - phase)));
+ }
+ }
+ };
  if (mission.endless_mode()) {
  const auto& incident = mission.world_activity().incident;
  if (incident.active) {
@@ -1123,11 +1205,26 @@ void SceneRenderer3D::draw_markers(const mission::MissionSimulation& mission) co
  return;
  }
  const auto* active = mission.active_goal();
+ const std::size_t active_index = mission.snapshot().goals_reached;
+ for (std::size_t index = 0; index < mission.level().objective.goals.size(); ++index) {
+ const auto& step = mission.level().objective.goals[index];
+ const auto marker = map.markers.find(step.marker);
+ if (marker == map.markers.end())
+ continue;
+ const bool is_active = index == active_index;
+ const bool complete = index < active_index;
+ if (step.action == "pickup")
+ draw_power_cradle(marker->second, !complete, is_active);
+ else if (step.action == "inspect")
+ draw_observation_point(marker->second, is_active, complete);
+ else if (step.action == "complete" && mission.level().objective.goal_visual == "signal_tower")
+ draw_signal_tower(marker->second, is_active,
+ complete || mission.snapshot().status == mission::MissionStatus::Succeeded);
+ }
  if (!active)
  return;
  if (const auto goal = map.markers.find(active->marker); goal != map.markers.end()) {
  if (active->action == "pickup") {
- draw_supply(goal->second);
  return;
  }
   const auto base =
@@ -1135,21 +1232,7 @@ void SceneRenderer3D::draw_markers(const mission::MissionSimulation& mission) co
  if (active->action == "complete" && mission.level().objective.goal_visual == "supply_station") {
    draw_supply(goal->second);
  } else if (active->action == "complete" && mission.level().objective.goal_visual == "signal_tower") {
-   // Mast, not a pillar: arrival tolerance (0.62) is smaller than base art +
-   // body art would allow, so the shaft stays slim and the dock boundary is
-   // drawn as a ground ring. Same information-not-furniture rule as supply.
-   DrawCylinderEx({base.x, base.y, base.z}, {base.x, base.y + 2.35f, base.z}, 0.16f, 0.10f, 16,
-                  {96, 103, 98, 255});
-   // Dock boundary ring draws the actual arrival rule, not a fixed number.
-   const float dock = static_cast<float>(mission.level().objective.arrive_tolerance_m);
-   DrawCylinderEx({base.x, base.y + 0.01f, base.z}, {base.x, base.y + 0.05f, base.z}, dock, dock, 40,
-                  Fade(kAmber, 0.30f));
-   DrawCylinderEx({base.x, base.y + 0.055f, base.z}, {base.x, base.y + 0.075f, base.z}, dock - 0.07f,
-                  dock - 0.07f, 40, kAmber);
-   DrawCylinderEx({base.x, base.y + 0.24f, base.z}, {base.x, base.y + 0.34f, base.z}, 0.52f, 0.52f, 20,
-                  {65, 70, 67, 255});
-   DrawCylinderEx({base.x, base.y + 1.62f, base.z}, {base.x, base.y + 1.72f, base.z}, 0.28f, 0.28f, 16,
-                  {126, 132, 122, 255});
+ return;
   } else {
  const Color marker = active->action != "complete" || mission.level().objective.goal_visual == "stop_zone"
  ? kAmber
@@ -1291,7 +1374,7 @@ void SceneRenderer3D::draw_robot(const mission::MissionSimulation& mission) cons
 // Pedestrian stand-in: two stacked boxes (torso + head), teal so nobody reads
 // it as a vehicle. Proportions scale with the actor's own radius; a proper
 // character model replaces this, never new physics.
-void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiting) const {
+void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiting, double time_s) const {
  // One function for every agent: pose the model its registry entry names,
  // scaled linearly from the reference radius it was authored for (content
  // data). The waiting beacon stays procedural (it blinks; models don't) and
@@ -1303,9 +1386,16 @@ void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiti
  if (const Model* body = model(actor.visual_model)) {
   DrawModelEx(*body, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw, {s, s, s}, WHITE);
  }
- if (waiting) {
+ const bool beacon_active = actor.visual_kind == "vehicle" &&
+ std::hypot(actor.velocity.x, actor.velocity.y) > 0.05;
+ if (beacon_active) {
   const auto beacon = pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 1.0f * s);
-  DrawSphere(beacon, 0.09f * s, kDanger);
+ const float pulse = 0.72f + 0.28f * std::sin(static_cast<float>(actor.position.x * 0.7 +
+ actor.position.y * 0.9 + time_s * 8.0));
+ const Color beacon_color = waiting ? kDanger : kAmber;
+ DrawSphere(beacon, (0.065f + 0.018f * pulse) * s, Fade(beacon_color, pulse));
+ if (actor.detected)
+ DrawSphereWires(beacon, 0.13f * s, 6, 10, Fade(beacon_color, 0.42f * pulse));
  }
 }
 

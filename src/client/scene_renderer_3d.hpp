@@ -41,7 +41,7 @@ class SceneRenderer3D {
  void draw_markers(const mission::MissionSimulation& mission) const;
  void draw_field_operator(const mission::MissionSimulation& mission) const;
  void draw_robot(const mission::MissionSimulation& mission) const;
- void draw_actor(const mission::ActorSnapshot& actor, bool waiting) const;
+ void draw_actor(const mission::ActorSnapshot& actor, bool waiting, double time_s) const;
  void draw_environment(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene) const;
  void draw_accents(const mission::MissionSimulation& mission) const;
  void draw_motion_effects(const mission::MissionSimulation& mission) const;

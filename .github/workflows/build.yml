@@ -54,6 +54,8 @@ jobs:
             libxinerama-dev xvfb
       - name: Download dependencies, build and test
         run: ./tools/build.sh --test
+ - name: Verify generated encounter audio
+ run: python3 tools/generate_audio.py --check
       - name: Run deterministic mission
         run: ./build/release/lost_signal_headless --level lost_signal --recommended --json
       - name: Render a smoke-test frame

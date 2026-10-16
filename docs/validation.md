@@ -50,9 +50,13 @@ python3 tests/test_content_roundtrip.py
 python3 tests/test_contracts.py
 python3 tools/generate_levels.py --check
 python3 tools/generate_contracts.py --week 1 --check
+python3 tools/generate_audio.py --check
 ```
 
-These checks cover JSON Schema, cross-file references, budgets, unlocks, required presentation coverage, source/default locale coverage, placeholders, string-only locale targets, canonical serialization, and generator drift.
+These checks cover JSON Schema, cross-file references, budgets, unlocks, required presentation coverage, source/default locale coverage, placeholders, string-only locale targets, canonical serialization, and generator drift, including byte-identical generated sound cues.
+
+The graphical executable accepts `--mute`. Demo and screenshot automation disable audio automatically, and the
+headless target does not compile or link the client audio director.
 
 ## Behavioral evidence
 

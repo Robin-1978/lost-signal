@@ -12,6 +12,7 @@ The following assets are produced by project source and generators and are relea
 | Dynamic actor models | `assets/models/actors/` | `python3 tools/generate_actor_models.py` |
 | Environment models | `assets/models/environment/` | `python3 tools/generate_environment_models.py` |
 | Environment textures | `assets/textures/environment/` | `python3 tools/generate_textures.py` |
+| Encounter sound cues | `assets/audio/` | `python3 tools/generate_audio.py` |
 | Missions and presentations | `assets/levels/`, `assets/presentation/` | `python3 tools/generate_levels.py` |
 | Weekly contracts | `assets/contracts/` | `python3 tools/generate_contracts.py --week 1` |
 
