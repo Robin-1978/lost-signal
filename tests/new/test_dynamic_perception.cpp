@@ -22,6 +22,15 @@
  } while (false)
 
 int main() {
+ // The engine and transforms are pinned together: these values must stay
+ // stable when a seeded experiment moves between standard libraries.
+ sim::Rng portable_uniform(12345);
+ CHECK(std::abs(portable_uniform.uniform01() - 0.89015471328273787) < 1e-15);
+ CHECK(std::abs(portable_uniform.uniform01() - 0.13070729405534817) < 1e-15);
+ sim::Rng portable_gaussian(12345);
+ CHECK(std::abs(portable_gaussian.gauss() - 0.59509116615656177) < 1e-12);
+ CHECK(std::abs(portable_gaussian.gauss(0.25) - 0.20011167700651958) < 1e-12);
+
  sim::GridMap open_map(200, 100, 0.1);
  const std::vector<sim::DynState> forklift{{{5.0, 5.0}, {0.5, 0.0}, 0.5}};
  sim::Rng open_rng(7);

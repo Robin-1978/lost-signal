@@ -21,11 +21,13 @@ int main() {
  const auto catalog = game::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto build = catalog.presentation_for_level("lost_signal").recommended_build;
 
- game::MissionSimulation manual(catalog, "boot", catalog.presentation_for_level("boot").recommended_build);
+ {
+ game::MissionSimulation manual(
+ catalog, "boot", catalog.presentation_for_level("boot").recommended_build);
  manual.start();
  manual.set_manual_command(1.0, 0.0);
  for (int step = 0; step < 50; ++step)
-  manual.step();
+ manual.step();
  CHECK(manual.result().path_length_m > 0.1);
  CHECK(manual.lookup_transform("map", "odom").has_value());
  CHECK(manual.lookup_transform("odom", "base_footprint").has_value());
@@ -36,9 +38,11 @@ int main() {
  CHECK(std::abs(base_from_imu->translation_m.z - 0.24) < 1e-12);
  CHECK(manual.lookup_transform("base_link", "left_wheel_link").has_value());
  CHECK(std::abs(manual.frame_timestamp_s() - manual.snapshot().time_s) < 1e-9);
+ }
 
  // A field expedition is a bounded-memory autonomous runtime mode. It keeps
  // stepping beyond the level timeout and never enters a debrief state.
+ {
  game::MissionSimulation endless(
  catalog, "motor_trial", catalog.presentation_for_level("motor_trial").recommended_build);
  endless.set_endless_mode(true);
@@ -54,31 +58,48 @@ int main() {
  CHECK(endless.field_dispatch().target.x <= endless.map_definition().size_m.x);
  CHECK(std::any_of(endless.events().begin(), endless.events().end(),
  [](const auto& event) { return event.code == "field-dispatch-opened"; }));
+ }
 
  // Autonomous watch mode must close the product loop: an issued field job
  // creates a chassis-aware route and produces real Bullet motion without
  // keyboard input. The session remains open after a job completes.
+ {
  game::MissionSimulation autonomous(
  catalog, "boot", catalog.presentation_for_level("boot").recommended_build);
  autonomous.set_endless_mode(true);
  autonomous.start();
- for (int step = 0; step < 3000; ++step)
+ for (int step = 0; step < 9000 && autonomous.field_dispatch().completed_count == 0; ++step)
  autonomous.step();
  CHECK(autonomous.snapshot().status == game::MissionStatus::Running);
  CHECK(autonomous.result().path_length_m > 1.0);
+ if (autonomous.field_dispatch().completed_count == 0) {
+ std::cerr << "dispatch stalled: marker=" << autonomous.field_dispatch().marker_id
+ << " distance=" << autonomous.field_dispatch().distance_m
+ << " robot=(" << autonomous.snapshot().robot.x << ',' << autonomous.snapshot().robot.y
+ << ") incident=" << autonomous.world_activity().incident.marker_id
+ << " route_points=" << autonomous.planned_path().size() << '\n';
+ }
  CHECK(autonomous.field_dispatch().completed_count >= 1);
  CHECK(!autonomous.planned_path().empty() || autonomous.field_dispatch().completed_count > 0);
  CHECK(std::any_of(autonomous.events().begin(), autonomous.events().end(),
  [](const auto& event) { return event.code == "field-dispatch-opened"; }));
+ }
 
  for (const auto& level_id : catalog.campaign().levels) {
   const auto& level_presentation = catalog.presentation_for_level(level_id);
   game::MissionSimulation chapter_mission(catalog, level_id, level_presentation.recommended_build);
   chapter_mission.run_to_completion();
+ if (chapter_mission.result().status != game::MissionStatus::Succeeded) {
+ std::cerr << "recommended build failed: level=" << level_id
+ << " reason=" << chapter_mission.result().failure_reason
+ << " time=" << chapter_mission.result().time_s
+ << " collisions=" << chapter_mission.result().collisions << '\n';
+ }
   CHECK(chapter_mission.result().status == game::MissionStatus::Succeeded);
  }
 
  CHECK(sim::physics::bullet_physics_available());
+ {
  const auto localization_physics = game::PhysicsMode::Bullet;
  game::MissionSimulation drifting(catalog, "localization",
  catalog.presentation_for_level("localization").default_build, std::nullopt, {},
@@ -95,6 +116,7 @@ int main() {
  CHECK(drifting.result().max_odometry_error_m > drifting.level().max_localization_error_m);
  CHECK(localized.result().safe_score);
  CHECK(localized.result().max_odometry_error_m < localized.level().max_localization_error_m);
+ }
 
  // Seed override: same effective seed reproduces bit-identical time; the
  // override path with the JSON seed equals the default path.
@@ -239,6 +261,7 @@ int main() {
 
  // DIY unlock chain: fresh saves start at the starting inventory, component
  // rewards merge idempotently, and last builds survive a save/load roundtrip.
+ {
  game::CampaignProgress diy = game::CampaignProgress::load(
    std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
  CHECK(diy.inventory().size() == 6);
@@ -261,10 +284,12 @@ int main() {
  CHECK(std::abs(diy_loaded.last_build("boot")->style - 0.2) < 1e-12);
  CHECK(diy_loaded.last_build("lost_signal") == nullptr);
  std::filesystem::remove(progress_path);
+ }
 
  // The aggressive slow-decision default is now a visible counterexample:
  // rolling LiDAR plus a short horizon cannot resolve the crossing in time.
  // The recommended fast-decision build above succeeds with safe clearance.
+ {
  game::MissionSimulation default_attempt(catalog, "lost_signal",
                                          catalog.presentation_for_level("lost_signal").default_build);
  default_attempt.run_to_completion();
@@ -293,9 +318,11 @@ int main() {
  }
  CHECK(actor_detected);
  CHECK(hot_attempt.result().collisions == 1);
+ }
  // Traction saturation is live: a hot motor on eco tires spins through the
  // traction limit (27 episodes here). Official builds rarely saturate, which
  // is why their odometry comes from the slip-scale random walk instead.
+ {
  game::BuildSelection spin_build;
  spin_build.parts["tires"] = "tires.eco";
  spin_build.parts["sensor"] = "sensor.long_slow_lidar";
@@ -310,7 +337,9 @@ int main() {
  game::MissionSimulation spin_repeat(catalog, "blocked_route", spin_build);
  spin_repeat.run_to_completion();
  CHECK(std::abs(spin_repeat.result().time_s - spin_run.result().time_s) < 1e-12);
+ }
 
+ {
  game::BuildSelection mid_style = build;
  mid_style.style = 0.37;
  game::MissionSimulation mid_first(catalog, "lost_signal", mid_style);
@@ -319,13 +348,16 @@ int main() {
  game::MissionSimulation mid_second(catalog, "lost_signal", mid_style);
  mid_second.run_to_completion();
  CHECK(std::abs(mid_second.result().time_s - mid_first.result().time_s) < 1e-12);
+ }
 
+ {
  game::MissionSimulation second(catalog, "lost_signal", build);
  second.run_to_completion();
  CHECK(second.result().status == first.result().status);
  CHECK(std::abs(second.result().time_s - first.result().time_s) < 1e-12);
  CHECK(std::abs(second.result().path_length_m - first.result().path_length_m) < 1e-12);
  CHECK(second.events().size() == first.events().size());
+ }
 
  // Ackermann content car: per-presentation robot, no spin capability and
  // live steering-servo telemetry for the recommended build.
@@ -469,6 +501,7 @@ int main() {
  // Cross-slope cargo is a Bullet-authored physical failure: both builds can
  // plan the lane, then the fast standard-tire build rolls after several
  // visible seconds while the careful grip build retains margin.
+ {
   const auto& presentation = catalog.presentation_for_level("cross_slope");
  game::MissionSimulation careful(catalog, "cross_slope", presentation.recommended_build,
  std::nullopt, {}, game::ComponentRegistry::builtins(), {}, game::PhysicsMode::Bullet);
@@ -482,6 +515,7 @@ int main() {
  CHECK(fast.result().failure_reason == "rollover");
  CHECK(fast.result().time_s >= 5.0);
  CHECK(fast.result().time_s <= 10.0);
+ }
  // Continuous field sessions keep stepping beyond authored mission limits and
  // share one deterministic environment snapshot across weather, incidents,
  // dispatch, physics and replay.

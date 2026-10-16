@@ -27,6 +27,13 @@ double distance(sim::Vec2 a, sim::Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
 }
 
+bool dispatch_has_priority(const FieldDispatchState& dispatch,
+ const WorldIncidentState& incident) {
+ if (!dispatch.active)
+ return false;
+ return !incident.active || dispatch.opened_at_s <= incident.opened_at_s;
+}
+
 bool inside(sim::Vec2 point, const SurfaceDefinition& box) {
  return point.x >= box.min.x && point.x < box.max.x && point.y >= box.min.y && point.y < box.max.y;
 }
@@ -943,10 +950,11 @@ sim::Vec2 MissionSimulation::current_navigation_target() {
  const auto& field_intent = field_operator_system_.intent();
  if (endless_mode_ && field_intent.active) {
  fallback = field_intent.target;
+ } else if (endless_mode_ &&
+ dispatch_has_priority(field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
+ fallback = field_dispatch_system_.state().target;
  } else if (endless_mode_ && snapshot_.world_activity.incident.active) {
  fallback = snapshot_.world_activity.incident.position;
- } else if (endless_mode_ && field_dispatch_system_.state().active) {
- fallback = field_dispatch_system_.state().target;
  } else {
  const GoalStep* active = active_goal();
  fallback = active
@@ -984,14 +992,15 @@ void MissionSimulation::refresh_endless_route() {
  target_key += ":" + std::to_string(static_cast<long long>(std::llround(target.x * 2.0))) +
  ":" + std::to_string(static_cast<long long>(std::llround(target.y * 2.0)));
  }
+ } else if (dispatch_has_priority(
+ field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
+ const auto& dispatch = field_dispatch_system_.state();
+ target_key = "dispatch:" + dispatch.marker_id + ":" + std::to_string(dispatch.stage);
+ target = dispatch.target;
  } else if (snapshot_.world_activity.incident.active) {
  const auto& incident = snapshot_.world_activity.incident;
  target_key = "incident:" + incident.marker_id + ":" + world_incident_kind_id(incident.kind);
  target = incident.position;
- } else if (field_dispatch_system_.state().active) {
- const auto& dispatch = field_dispatch_system_.state();
- target_key = "dispatch:" + dispatch.marker_id + ":" + std::to_string(dispatch.stage);
- target = dispatch.target;
  }
  if (target_key == endless_target_key_)
  return;

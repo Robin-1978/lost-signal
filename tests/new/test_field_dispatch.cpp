@@ -24,6 +24,7 @@ int main() {
  CHECK(opened.size() == 1);
  CHECK(opened.front().kind == game::FieldDispatchTransitionKind::Opened);
  CHECK(system.state().kind == "survey");
+ CHECK(system.state().marker_id == "b");
  const auto first_target = system.state().target;
  const auto completed = system.update(2.8, 0.8, map, first_target, 0.0);
  CHECK(completed.size() == 1);
@@ -34,11 +35,13 @@ int main() {
  CHECK(delivery_opened.size() == 1);
  CHECK(system.state().kind == "delivery");
  CHECK(system.state().stage == 0);
+ CHECK(system.state().marker_id == "c");
  const auto pickup = system.state().target;
  const auto picked_up = system.update(9.6, 0.8, map, pickup, 0.0);
  CHECK(picked_up.size() == 1);
  CHECK(picked_up.front().kind == game::FieldDispatchTransitionKind::PickedUp);
  CHECK(system.state().stage == 1);
+ CHECK(system.state().marker_id == "b");
  CHECK(system.state().target.x != pickup.x || system.state().target.y != pickup.y);
  const auto dropoff = system.state().target;
  const auto delivered = system.update(10.4, 0.8, map, dropoff, 0.0);

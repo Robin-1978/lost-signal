@@ -14,6 +14,23 @@ double distance(sim::Vec2 a, sim::Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
 }
 
+std::size_t portable_index(std::mt19937& rng, std::size_t size) {
+ // Lemire's multiply-high rejection sampler fixes the mapping from mt19937
+ // outputs to an index. std::uniform_int_distribution is allowed to consume
+ // the engine differently in libc++, libstdc++, and MSVC's library.
+ const auto bound = static_cast<std::uint32_t>(size);
+ std::uint64_t product = static_cast<std::uint64_t>(rng()) * bound;
+ std::uint32_t low = static_cast<std::uint32_t>(product);
+ if (low < bound) {
+ const std::uint32_t threshold = static_cast<std::uint32_t>(-bound) % bound;
+ while (low < threshold) {
+ product = static_cast<std::uint64_t>(rng()) * bound;
+ low = static_cast<std::uint32_t>(product);
+ }
+ }
+ return static_cast<std::size_t>(product >> 32U);
+}
+
 } // namespace
 
 void FieldDispatchSystem::reset(std::uint64_t seed) {
@@ -102,8 +119,7 @@ bool FieldDispatchSystem::choose_target(const MapDefinition& map, sim::Vec2 robo
  }
  if (candidates.empty())
  return false;
- std::uniform_int_distribution<std::size_t> pick(0, candidates.size() - 1);
- const auto& selected = candidates[pick(rng_)];
+ const auto& selected = candidates[portable_index(rng_, candidates.size())];
  state_.marker_id = selected.first;
  state_.target = {selected.second.x, selected.second.y};
  return true;

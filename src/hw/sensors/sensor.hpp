@@ -3,6 +3,7 @@
 #include "algo/dynobs.hpp"
 #include "algo/grid_map.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <random>
 #include <string>
@@ -14,11 +15,28 @@ struct Rng {
  std::mt19937 gen;
  explicit Rng(uint32_t seed = 12345) : gen(seed) {}
  double gauss(double standard_deviation = 1.0) {
-  std::normal_distribution<double> distribution(0.0, standard_deviation);
-  return distribution(gen);
+ // Marsaglia's polar transform over our fixed uniform mapping preserves the
+ // established simulation sequence and makes it independent of the standard
+ // library's normal_distribution implementation.
+ double x = 0.0;
+ double y = 0.0;
+ double radius_squared = 0.0;
+ do {
+ x = 2.0 * uniform01() - 1.0;
+ y = 2.0 * uniform01() - 1.0;
+ radius_squared = x * x + y * y;
+ } while (radius_squared > 1.0 || radius_squared == 0.0);
+ const double scale = std::sqrt(-2.0 * std::log(radius_squared) / radius_squared);
+ const double standard_normal = y * scale;
+ return standard_normal * standard_deviation;
  }
  double uniform01() {
-  return std::generate_canonical<double, 53>(gen);
+ // Two engine outputs fill a 64-bit fraction in a documented order. This is
+ // the established project sequence without relying on generate_canonical.
+ constexpr double range = 4294967296.0;
+ const double low = static_cast<double>(gen());
+ const double high = static_cast<double>(gen());
+ return (low + high * range) / (range * range);
  }
 };
 
