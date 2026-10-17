@@ -21,7 +21,7 @@ int main() {
  "steel", {0.0, 0.0}, {2.0, 2.0}, "steel_deck", {"ramp-test"}, "Steel",
  });
  source.terrain.push_back({
- "ramp", {0.0, 0.0}, {2.0, 1.0}, 0.2, 0.25, -0.10, 0.0, {"ramp-test"},
+ "ramp", {0.0, 0.0}, {2.0, 1.0}, 0.2, 0.25, -0.10, 0.04, {"ramp-test"},
  });
  source.terrain.push_back({
  "inactive-ramp", {0.0, 0.0}, {2.0, 1.0}, 9.0, 0.0, 0.0, 0.0, {"other-level"},
@@ -40,7 +40,8 @@ int main() {
  const auto cell = sim::runtime::world_to_grid(*map.grid, {0.75, 0.25});
  CHECK(cell);
  const auto centre = sim::runtime::grid_cell_center(*map.grid, *cell);
- const double expected_height = 0.2 + 0.25 * centre.x - 0.10 * centre.y;
+ const double expected_height = mission::terrain_patch_height(
+ source.terrain.front(), centre.x, centre.y);
  const auto index = static_cast<std::size_t>(cell->y) * map.grid->width + cell->x;
  CHECK(std::abs(map.grid->elevation_m[index] - expected_height) < 1e-6);
  CHECK(map.grid->surface_classes[map.grid->surface_class[index]] == "steel_deck");

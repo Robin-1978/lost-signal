@@ -497,6 +497,26 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     throw ContentError(path.string() + ": environment timeline must start at 0 s");
    }
   }
+ if (const auto maneuvers = value.find("maneuvers"); maneuvers != value.end()) {
+ std::set<std::string> ids;
+ for (const auto& item : *maneuvers) {
+ ManeuverDefinition maneuver{
+ item.at("id").get<std::string>(),
+ item.at("title").get<std::string>(),
+ item.at("description").get<std::string>(),
+ item.at("spawn").get<std::string>(),
+ item.at("goal").get<std::string>(),
+ item.at("control").get<std::string>(),
+ item.at("metrics").get<std::vector<std::string>>(),
+ };
+ if (!ids.insert(maneuver.id).second ||
+ (maneuver.control != "manual" && maneuver.control != "autonomous") ||
+ maneuver.metrics.empty()) {
+ throw ContentError(path.string() + ": invalid maneuver '" + maneuver.id + "'");
+ }
+ level.maneuvers.push_back(std::move(maneuver));
+ }
+ }
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
@@ -1449,6 +1469,12 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
       (!level.objective.via.empty() && !map.markers.count(level.objective.via))) {
    throw ContentError("level '" + id + "' references an unknown map marker");
   }
+ for (const auto& maneuver : level.maneuvers) {
+ if (!map.markers.count(maneuver.spawn) || !map.markers.count(maneuver.goal)) {
+ throw ContentError("level '" + id + "' maneuver '" + maneuver.id +
+ "' references an unknown map marker");
+ }
+ }
  }
  if (experience_ids.size() != catalog.levels_.size()) {
   throw ContentError("guided levels and playgrounds must list every level exactly once");

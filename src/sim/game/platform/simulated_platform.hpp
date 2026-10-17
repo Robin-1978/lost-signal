@@ -11,6 +11,7 @@
 
 #include <map>
 #include <memory>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,7 @@ struct RigidVehicleState {
 // actuator feedback crosses this boundary before the next control update.
 class SimulatedPlatform {
  public:
+ using GroundContactResolver = std::function<::sim::GroundContact(::sim::Vec2)>;
  SimulatedPlatform(const MapDefinition& map, const LevelDefinition& level, const RobotDefinition& robot,
  const ::sim::ChassisCaps& chassis_caps, const ::sim::TerrainModel& terrain,
  ::sim::Vec2 spawn, double spawn_heading_rad,
@@ -94,6 +96,8 @@ class SimulatedPlatform {
  std::vector<std::string> frame_ids() const { return frames_.frame_ids(); }
  RigidVehicleState step(const ::sim::ChassisTelemetry& actuation, const ::sim::GroundContact& ground,
  double fixed_dt_s);
+ RigidVehicleState step(const ::sim::ChassisTelemetry& actuation,
+ const GroundContactResolver& ground_at, double fixed_dt_s);
  void update_load(double total_mass_kg, double center_height_m, double yaw_inertia_kgm2);
  RigidVehicleState state() const;
  ::sim::ChassisActuatorFeedback actuator_feedback() const;

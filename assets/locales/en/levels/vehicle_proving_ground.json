@@ -4,6 +4,22 @@
     "/title": "Vehicle Proving Ground",
     "/objective/goal_label": "Proving-Ground Finish",
     "/teaching/prediction_prompt": "How will chassis, tires, motor, computer, and sensors change the result on the same proving route?",
-    "/teaching/knowledge_card": "Manual input takes over immediately; click the ground to let the complete autonomy stack plan and drive. Multiple surfaces and 2.5D terrain come from map data."
+    "/teaching/knowledge_card": "Manual input takes over immediately; click the ground to let the complete autonomy stack plan and drive. Multiple surfaces and 2.5D terrain come from map data.",
+    "/maneuvers/0/title": "Dry braking",
+    "/maneuvers/0/description": "Accelerate from a fixed start and stop at the dry-pavement line.",
+    "/maneuvers/1/title": "Wet braking",
+    "/maneuvers/1/description": "Repeat the same stop on the low-grip standing-water pad.",
+    "/maneuvers/2/title": "Constant-radius turn",
+    "/maneuvers/2/description": "Compare geometric and measured radius through the handling entry.",
+    "/maneuvers/3/title": "Steering step and slalom",
+    "/maneuvers/3/description": "Pass three offset barriers while observing steering tracking and slip.",
+    "/maneuvers/4/title": "Grade climb",
+    "/maneuvers/4/description": "Drive from ramp foot to highland while measuring grade, speed, and slip.",
+    "/maneuvers/5/title": "Cross-slope traverse",
+    "/maneuvers/5/description": "Cross the banked lane while observing roll, support, and rollover risk.",
+    "/maneuvers/6/title": "Rough-road pass",
+    "/maneuvers/6/description": "Cross deterministic 25 mm relief while recording contact and body attitude.",
+    "/maneuvers/7/title": "LiDAR observation station",
+    "/maneuvers/7/description": "Rotate manually beside calibration targets to compare 1-line and 16-line returns."
   }
 }

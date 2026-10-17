@@ -41,5 +41,107 @@
     "fast_time_s": 150.0,
     "efficient_energy_wh": 5.0
   },
-  "rewards": []
+  "rewards": [],
+  "maneuvers": [
+    {
+      "id": "dry_braking",
+      "title": "干地制动",
+      "description": "从相同起点自动加速并在干燥标线处停车。",
+      "spawn": "dry_braking_start",
+      "goal": "dry_braking_finish",
+      "control": "autonomous",
+      "metrics": [
+        "stop_distance",
+        "stop_time",
+        "slip"
+      ]
+    },
+    {
+      "id": "wet_braking",
+      "title": "湿地制动",
+      "description": "在积水低附着区域重复相同停车任务。",
+      "spawn": "wet_braking_start",
+      "goal": "wet_braking_finish",
+      "control": "autonomous",
+      "metrics": [
+        "stop_distance",
+        "stop_time",
+        "slip"
+      ]
+    },
+    {
+      "id": "constant_radius",
+      "title": "定半径转弯",
+      "description": "沿处理区的固定转弯入口比较几何半径与实测半径。",
+      "spawn": "turn_entry",
+      "goal": "turn_exit",
+      "control": "autonomous",
+      "metrics": [
+        "turn_radius",
+        "steering_tracking",
+        "slip"
+      ]
+    },
+    {
+      "id": "slalom",
+      "title": "转向阶跃与绕桩",
+      "description": "穿过三座错列障碍，观察转向跟随、路径和侧滑。",
+      "spawn": "slalom_start",
+      "goal": "slalom_finish",
+      "control": "autonomous",
+      "metrics": [
+        "steering_tracking",
+        "slip"
+      ]
+    },
+    {
+      "id": "grade_climb",
+      "title": "纵坡爬升",
+      "description": "从坡脚驶到高台，测量坡度、速度和打滑。",
+      "spawn": "ramp_start",
+      "goal": "ramp_top",
+      "control": "autonomous",
+      "metrics": [
+        "grade",
+        "slip"
+      ]
+    },
+    {
+      "id": "cross_slope",
+      "title": "横坡穿越",
+      "description": "横穿倾斜路面，观察侧倾、支撑和侧翻风险。",
+      "spawn": "cross_slope_start",
+      "goal": "cross_slope_target",
+      "control": "autonomous",
+      "metrics": [
+        "cross_slope",
+        "rollover_risk",
+        "slip"
+      ]
+    },
+    {
+      "id": "rough_road",
+      "title": "坑洼路面",
+      "description": "通过 25 mm 确定性起伏，记录轮地接触和车身姿态。",
+      "spawn": "rough_start",
+      "goal": "rough_target",
+      "control": "autonomous",
+      "metrics": [
+        "rough_contact",
+        "rollover_risk",
+        "slip"
+      ]
+    },
+    {
+      "id": "lidar_station",
+      "title": "LiDAR 观测位",
+      "description": "在标定目标旁人工旋转车辆，比较单线和 16 线回波。",
+      "spawn": "lidar_station",
+      "goal": "lidar_station_goal",
+      "control": "manual",
+      "metrics": [
+        "lidar_returns"
+      ]
+    }
+  ]
 }

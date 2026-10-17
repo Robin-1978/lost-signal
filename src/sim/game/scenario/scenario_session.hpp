@@ -428,6 +428,8 @@ class ScenarioSession {
    sim::runtime::RuntimeRegistry runtime_registry = sim::runtime::RuntimeRegistry::with_builtins());
 
  void reset();
+ bool activate_maneuver(const std::string& maneuver_id);
+ const std::string& active_maneuver_id() const { return active_maneuver_id_; }
  void start();
  void step();
  void run_to_completion();
@@ -704,6 +706,7 @@ class ScenarioSession {
  std::uint64_t command_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;
+ std::string active_maneuver_id_;
 };
 
 const char* mission_status_name(MissionStatus status);

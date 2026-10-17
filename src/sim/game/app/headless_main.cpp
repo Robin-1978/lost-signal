@@ -20,6 +20,7 @@ void usage(const char* executable) {
  std::cout << "Usage: " << executable
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
  " [--chassis ROBOT_ID] [--component SLOT=ID] [--task-policy TASK_POLICY_ID]"
+ " [--maneuver ID]"
  " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
  " [--artifact FILE] [--reproduce FILE]\n";
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
  std::string requested_chassis;
  std::map<std::string, std::string> component_overrides;
  std::string requested_task_policy;
+ std::string requested_maneuver;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
  mission::PhysicsMode physics_mode = mission::PhysicsMode::Bullet;
@@ -82,6 +84,9 @@ int main(int argc, char** argv) {
  explicit_run_configuration = true;
  } else if (argument == "--task-policy" && index + 1 < argc) {
  requested_task_policy = argv[++index];
+ explicit_run_configuration = true;
+ } else if (argument == "--maneuver" && index + 1 < argc) {
+ requested_maneuver = argv[++index];
  explicit_run_configuration = true;
    } else if (argument == "--json") {
     json_output = true;
@@ -166,6 +171,10 @@ int main(int argc, char** argv) {
  }
  if (field_intent && !endless)
  throw std::runtime_error("--intent requires --endless");
+ if (!requested_maneuver.empty() && endless)
+ throw std::runtime_error("--maneuver cannot be combined with --endless");
+ if (!requested_maneuver.empty() && !artifact_path.empty())
+ throw std::runtime_error("maneuver artifacts require a future explicit artifact schema field");
  mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
  if (endless) {
@@ -177,6 +186,8 @@ int main(int argc, char** argv) {
  for (int step = 0; step < steps; ++step)
  mission.step();
  } else {
+ if (!requested_maneuver.empty() && !mission.activate_maneuver(requested_maneuver))
+ throw std::runtime_error("unknown or unavailable maneuver: " + requested_maneuver);
  mission.run_to_completion();
  }
   const auto& result = mission.result();
@@ -189,6 +200,7 @@ int main(int argc, char** argv) {
  if (json_output || !artifact_path.empty()) {
    nlohmann::json output = {
      {"level", level_id},
+ {"maneuver", mission.active_maneuver_id()},
      {"seed", mission.effective_seed()},
  {"physics_backend", mission.physics_backend_name()},
  {"runtime",

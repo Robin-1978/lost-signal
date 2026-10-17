@@ -161,7 +161,8 @@ to work when no road graph is present.
 - checksum, truncated-file, unsupported-version, and path-escape rejection;
 - world/cell conversion at rotated and negative origins and all map boundaries;
 - monotonic revision and publication-time rejection;
-- authored ramp export matches `TerrainModel` height at every tested cell centre;
+- authored ramp and rough-relief export use the same authoritative height function as the Bullet mesh at every
+ tested cell centre;
 - SLAM 2D snapshots remain valid with all 2.5D layers absent;
 - new static revisions trigger replan while local dynamic clearing never changes the static revision;
 - documented bridge tests state whether ROS image/YAML, OccupancyGrid, point cloud, or HD-map conversions are

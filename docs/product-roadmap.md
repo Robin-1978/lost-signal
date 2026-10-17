@@ -69,7 +69,10 @@ The active implementation order is:
 Current status: stages 1--4 are complete for the published, unloaded RO-1 `typical` envelope. The 16-line LiDAR and
 RO-2 articulated `typical` gates are also complete. The independent Vehicle Proving Ground is implemented as an
 always-available engineering space with open loadout selection, direct driving, and click-to-drive autonomy. It does
-not satisfy the polished-playground gate: it still needs explicit measurement evidence and repeatable maneuvers.
+not satisfy the polished-playground gate because it remains an engineering instrument rather than a playful loop.
+Its live/debrief evidence, eight data-authored repeatable maneuvers, and headless `--maneuver` selection are complete.
+RO-2 now has an independent LSRI service-brake path, and editor saves atomically publish an LSRM package containing
+occupancy, exact authored 2.5D elevation (including deterministic rough relief), surface classes, and semantic places.
 The completion claims exclude the open split-friction, identified combined-slip, dynamic-rollover, systematic
 payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
 
@@ -94,14 +97,14 @@ payload-sweep, and hardware-identification envelopes listed in `reference-platfo
 
 The next concrete work packages are:
 
-1. Turn the Vehicle Proving Ground into measurable evidence. Add data-authored repeatable maneuvers and label live
+1. **Implemented:** turn the Vehicle Proving Ground into measurable evidence. Data-authored repeatable maneuvers label live
  and debrief measurements for speed, stopping distance and time, commanded and measured steering, inner/outer
  steering-angle difference, measured turn radius, grade, slip, and active LiDAR profile. Keep simulator truth and
  onboard-observable estimates visibly distinct.
-2. Add an optional service-brake actuator for the high-speed RO-2 profile through the existing ROBOT/LSRI/SIM
+2. **Implemented:** add an optional service-brake actuator for the high-speed RO-2 profile through the existing ROBOT/LSRI/SIM
  boundary. Verify apply/release response, torque sign and saturation, tire-limited stopping, split grip, and grade
  hold independently before using it in a lesson. Parking brake and ABS remain separate capabilities.
-3. Extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
+3. **Implemented:** extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
  semantic markers, and test routes consumed by simulation. Validate lossless reload and world/grid transforms.
 4. Promote RO-3 tracked, RO-4 swerve, and RO-5 mecanum from teaching proxies to independent physical reference
  platforms. Each receives its own articulated/support model and acceptance matrix for loads, straight/reverse

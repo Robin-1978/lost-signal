@@ -341,8 +341,9 @@ results do not validate their physical models.
 RO-2 is a 26 kg, rear-driven, four-wheel platform with two physical front steering knuckles. Its deployable ROBOT
 controller converts one equivalent centre angle into different inner and outer angles that share a rear-axle ICR,
 converts body speed into different rear-wheel targets in a turn, and closes the rear velocity and steering
-position/velocity loops from physical joint feedback. Four normalized-duty commands cross LSRI. SIM alone converts
-those commands to motor and servo torque, advances Bullet joints/contact, and publishes the resulting feedback.
+position/velocity loops from physical joint feedback. Four normalized-duty commands and two independently typed
+normalized service-brake commands cross LSRI. SIM alone converts those commands to motor, servo, and opposing brake
+torque, advances Bullet joints/contact, and publishes the resulting feedback.
 
 The deterministic acceptance executable checks:
 
@@ -355,7 +356,7 @@ The deterministic acceptance executable checks:
   grade boundary, four-wheel cross-slope support, and travel over 25 mm deterministic roughness;
 - the optional high-speed gearset exceeds the standard profile on a supported straight run and stops within a
  bounded multiple of the independent peak electrical-braking energy limit;
-- four-channel capability validation and safe-zero output after command expiry.
+- six-channel capability validation; command expiry produces safe-zero drive/steer and fail-safe brake requests.
 
 The steering angles are an equivalent steer-by-wire Ackermann linkage. A rack and tie rods are not represented as
 additional rigid bodies. The current geometry, mass, armature inertia, torque, friction, and compliance values are

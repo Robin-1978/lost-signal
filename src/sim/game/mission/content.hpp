@@ -3,6 +3,8 @@
 #include "robot/core/math.hpp"
 
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -83,6 +85,25 @@ struct TerrainPatchDefinition {
  double roughness{0.0};
  std::vector<std::string> active_in;
 };
+
+// Authoritative authored height used by Bullet mesh generation and Robot Map
+// export. Keeping one function prevents the physical world and 2.5D map from
+// disagreeing about deterministic rough relief.
+inline double terrain_patch_height(const TerrainPatchDefinition& patch,
+ double x, double y) {
+ const double plane = patch.base_height_m + patch.grade_x * (x - patch.min.x) +
+ patch.grade_y * (y - patch.min.y);
+ if (patch.roughness <= 0.0)
+ return plane;
+ const double width = std::max(0.1, patch.max.x - patch.min.x);
+ const double depth = std::max(0.1, patch.max.y - patch.min.y);
+ const double u = std::clamp((x - patch.min.x) / width, 0.0, 1.0);
+ const double v = std::clamp((y - patch.min.y) / depth, 0.0, 1.0);
+ const double edge_fade = std::sin(sim::kPi * u) * std::sin(sim::kPi * v);
+ const double wave = std::sin(2.0 * sim::kPi * (x - patch.min.x) / 1.35) *
+ std::sin(2.0 * sim::kPi * (y - patch.min.y) / 0.95);
+ return plane + patch.roughness * edge_fade * wave;
+}
 
 struct ActorDefinition {
  std::string id;
@@ -336,6 +357,18 @@ struct EnvironmentKeyframeDefinition {
  std::unordered_map<std::string, double> material_grip;
 };
 
+struct ManeuverDefinition {
+ std::string id;
+ std::string title;
+ std::string description;
+ std::string spawn;
+ std::string goal;
+ // manual leaves authority with the operator; autonomous executes the same
+ // deployable planning/control stack used by click-to-drive.
+ std::string control{"autonomous"};
+ std::vector<std::string> metrics;
+};
+
 struct ChapterDefinition {
  int id{1};
  std::string title;
@@ -375,6 +408,7 @@ struct LevelDefinition {
  double payload_mass_kg{0.0};
  double payload_cog_height_m{0.0};
  std::vector<EnvironmentKeyframeDefinition> environment_keyframes;
+ std::vector<ManeuverDefinition> maneuvers;
 };
 
 struct AbilityDefinition {

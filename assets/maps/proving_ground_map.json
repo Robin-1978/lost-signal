@@ -255,6 +255,66 @@
       44.0,
       29.0,
       0.0
+    ],
+    "dry_braking_start": [
+      3.0,
+      6.0,
+      0.0
+    ],
+    "dry_braking_finish": [
+      11.5,
+      6.0,
+      0.0
+    ],
+    "wet_braking_start": [
+      3.8,
+      13.0,
+      0.0
+    ],
+    "wet_braking_finish": [
+      11.0,
+      13.0,
+      0.0
+    ],
+    "turn_entry": [
+      20.0,
+      18.0,
+      0.0
+    ],
+    "turn_exit": [
+      27.5,
+      18.0,
+      0.0
+    ],
+    "slalom_start": [
+      28.0,
+      4.0,
+      0.0
+    ],
+    "slalom_finish": [
+      42.0,
+      8.5,
+      0.0
+    ],
+    "cross_slope_start": [
+      28.5,
+      24.0,
+      0.0
+    ],
+    "rough_start": [
+      40.5,
+      24.0,
+      0.0
+    ],
+    "lidar_station": [
+      24.0,
+      28.5,
+      0.0
+    ],
+    "lidar_station_goal": [
+      25.0,
+      28.5,
+      0.0
     ]
   },
   "actors": []

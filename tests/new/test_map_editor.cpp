@@ -2,6 +2,7 @@
 
 #include "sim/game/mission/content_catalog.hpp"
 #include "sim/game/mission/map_serialize.hpp"
+#include "robot/map_io/robot_map_package.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -192,6 +193,22 @@ int main() {
  CHECK(std::abs(terrain[0].grade_y - 0.35) < 1e-9);
  CHECK(std::abs(terrain[0].roughness - 0.09) < 1e-9);
  CHECK(terrain[0].active_in.size() == 1 && terrain[0].active_in[0] == "boot");
+ const auto package_path = scratch / "robot_maps" / "research_base__boot.lsmap";
+ const auto robot_map = sim::map_io::load_robot_map_package(package_path);
+ CHECK(robot_map.map_id == "research_base/boot");
+ CHECK(robot_map.revision == 1);
+ CHECK(robot_map.grid);
+ const auto ramp_cell = sim::runtime::world_to_grid(*robot_map.grid, {5.0, 10.0});
+ CHECK(ramp_cell);
+ const auto ramp_center = sim::runtime::grid_cell_center(*robot_map.grid, *ramp_cell);
+ const auto ramp_index = static_cast<std::size_t>(ramp_cell->y) *
+ robot_map.grid->width + ramp_cell->x;
+ CHECK(std::abs(robot_map.grid->elevation_m[ramp_index] -
+ mission::terrain_patch_height(terrain.front(), ramp_center.x, ramp_center.y)) < 1e-6);
+ CHECK(!robot_map.grid->surface_class.empty());
+ CHECK(!robot_map.places.empty());
+ CHECK(editor.save(scratch.string()));
+ CHECK(sim::map_io::load_robot_map_package(package_path).revision == 2);
  std::filesystem::remove_all(scratch, error);
  CHECK(!error);
  }

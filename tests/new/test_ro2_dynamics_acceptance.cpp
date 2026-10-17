@@ -55,6 +55,14 @@ double load_on(const sim::platform::RigidVehicleState& state,
  return found == state.ground_contact_loads.end() ? 0.0 : found->normal_force_N;
 }
 
+double tangent_force_on(const sim::platform::RigidVehicleState& state,
+ std::string_view link) {
+ const auto found = std::find_if(state.ground_contact_loads.begin(),
+ state.ground_contact_loads.end(),
+ [&](const auto& value) { return value.link == link; });
+ return found == state.ground_contact_loads.end() ? 0.0 : found->tangent_force_N;
+}
+
 sim::ChassisCaps caps_for(const mission::RobotDefinition& robot) {
  sim::ChassisCaps caps;
  caps.can_spin = false;
@@ -433,6 +441,39 @@ const auto initial = platform.state();
  REQUIRE(wet_brake[0] > dry_brake[0] * 1.15);
  REQUIRE(wet_brake[1] > dry_brake[1] + 0.05);
  REQUIRE(wet_brake[2] > dry_brake[2]);
+
+ // Each articulated wheel resolves contact at its own world position. A
+ // left/right split-friction stop must therefore create a yaw response even
+ // though both brake actuators receive the same request.
+ {
+ sim::platform::SimulatedPlatform platform(map, level, robot, caps, terrain,
+ spawn, 0.0, robot.mass_kg, robot.center_of_mass_height_m,
+ robot.yaw_inertia_kgm2);
+ Rig rig(robot);
+ auto state = platform.state();
+ for (int step = 0; step < 180; ++step) {
+ const auto actuation = rig.step(platform, state.planar, {1.5, 0.0}, dry);
+ state = platform.step(actuation, dry, kStepS);
+ }
+ const double heading_before = state.planar.theta;
+ const sim::GroundContact split_low{0.10, 0.01, 6.0, 40000.0, 1000.0};
+ double peak_rear_force_delta_N = 0.0;
+ for (int step = 0; step < 160; ++step) {
+ const auto actuation = rig.step(platform, state.planar, {0.0, 0.0}, dry);
+ state = platform.step(actuation,
+ [&](sim::Vec2 contact_position) {
+ return contact_position.y >= state.planar.y ? dry : split_low;
+ }, kStepS);
+ peak_rear_force_delta_N = std::max(peak_rear_force_delta_N,
+ std::abs(tangent_force_on(state, "rear_left_wheel_link") -
+ tangent_force_on(state, "rear_right_wheel_link")));
+ }
+ std::cerr << "RO2 split brake yaw="
+ << sim::wrap_angle(state.planar.theta - heading_before)
+ << " v=" << state.planar.v << " force_delta=" << peak_rear_force_delta_N << '\n';
+ REQUIRE(peak_rear_force_delta_N > 5.0);
+ REQUIRE(std::abs(state.planar.v) < 0.25);
+ }
 
  // Halving the public physics step must converge to the same straight-line
  // solution; this catches a controller that only works at one frame rate.

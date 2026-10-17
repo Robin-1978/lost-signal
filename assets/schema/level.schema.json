@@ -415,6 +415,67 @@
     },
     "environment": {
       "$ref": "#/$defs/environment"
+    },
+    "maneuvers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "description",
+          "spawn",
+          "goal",
+          "control",
+          "metrics"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "spawn": {
+            "$ref": "#/$defs/id"
+          },
+          "goal": {
+            "$ref": "#/$defs/id"
+          },
+          "control": {
+            "enum": [
+              "manual",
+              "autonomous"
+            ]
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "stop_distance",
+                "stop_time",
+                "turn_radius",
+                "steering_tracking",
+                "grade",
+                "cross_slope",
+                "rollover_risk",
+                "rough_contact",
+                "slip",
+                "lidar_returns"
+              ]
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

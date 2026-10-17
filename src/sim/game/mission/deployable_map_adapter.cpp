@@ -71,8 +71,7 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  if (!active(patch->active_in, level_id) || !contains(centre, patch->min, patch->max))
  continue;
  grid.elevation_m[index] = static_cast<float>(
- patch->base_height_m + patch->grade_x * (centre.x - patch->min.x) +
- patch->grade_y * (centre.y - patch->min.y));
+ terrain_patch_height(*patch, centre.x, centre.y));
  break;
  }
  }

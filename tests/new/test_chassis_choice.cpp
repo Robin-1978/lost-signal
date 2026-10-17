@@ -89,6 +89,8 @@ int main() {
   CHECK(level.mode == "playground");
  CHECK(level.control_mode == "operator_drive");
  CHECK(level.loadout_access == "open");
+ CHECK(level.maneuvers.size() == 8);
+ CHECK(level.maneuvers.front().id == "dry_braking");
   CHECK(presentation.robot_id == "robot.ro2");
  CHECK(presentation.chassis_options.size() == 5);
  CHECK(presentation.component_columns.size() == 5);
@@ -103,6 +105,14 @@ int main() {
   mission::ScenarioSession mission(catalog, "vehicle_proving_ground",
                                    presentation.recommended_build, 1u);
   CHECK(mission.robot().drive_type == "ackermann");
+ CHECK(mission.activate_maneuver("dry_braking"));
+ CHECK(mission.active_maneuver_id() == "dry_braking");
+ CHECK(mission.snapshot().status == mission::MissionStatus::Running);
+ CHECK(!mission.manual_control_active());
+ const auto& maneuver_spawn = mission.map_definition().markers.at("dry_braking_start");
+ CHECK(std::abs(mission.snapshot().robot.x - maneuver_spawn.x) < 1e-12);
+ CHECK(std::abs(mission.snapshot().robot.y - maneuver_spawn.y) < 1e-12);
+ CHECK(!mission.activate_maneuver("not-a-maneuver"));
  }
  // Not offered on a fixed campaign level, even with its ability.
  {

@@ -13,22 +13,6 @@ namespace {
 
 constexpr double kGravityMps2 = 9.81;
 
-double patch_height(const TerrainPatchDefinition& patch, double x, double y) {
- const double plane = patch.base_height_m + patch.grade_x * (x - patch.min.x) +
- patch.grade_y * (y - patch.min.y);
- if (patch.roughness <= 0.0) {
- return plane;
- }
- const double width = std::max(0.1, patch.max.x - patch.min.x);
- const double depth = std::max(0.1, patch.max.y - patch.min.y);
- const double u = std::clamp((x - patch.min.x) / width, 0.0, 1.0);
- const double v = std::clamp((y - patch.min.y) / depth, 0.0, 1.0);
- const double edge_fade = std::sin(::sim::kPi * u) * std::sin(::sim::kPi * v);
- const double wave = std::sin(2.0 * ::sim::kPi * (x - patch.min.x) / 1.35) *
- std::sin(2.0 * ::sim::kPi * (y - patch.min.y) / 0.95);
- return plane + patch.roughness * edge_fade * wave;
-}
-
 bool same(::sim::physics::BodyHandle a, ::sim::physics::BodyHandle b) {
  return a && b && a == b;
 }
@@ -392,7 +376,7 @@ const char* SimulatedPlatform::backend_name() const {
  const double wy = patch.min.y + (patch.max.y - patch.min.y) * static_cast<double>(y) / ny;
  for (int x = 0; x <= nx; ++x) {
  const double wx = patch.min.x + (patch.max.x - patch.min.x) * static_cast<double>(x) / nx;
- body.mesh_vertices_m.push_back({wx, wy, patch_height(patch, wx, wy)});
+ body.mesh_vertices_m.push_back({wx, wy, terrain_patch_height(patch, wx, wy)});
  }
  }
  auto vertex = [nx](int x, int y) {
@@ -410,9 +394,10 @@ const char* SimulatedPlatform::backend_name() const {
 
  // Close the perimeter down to the base plane. This makes elevated patches
  // real platforms with retaining walls instead of infinitely thin carpets.
- const double bottom_z = std::min(-0.10, std::min({patch_height(patch, patch.min.x, patch.min.y),
- patch_height(patch, patch.max.x, patch.min.y), patch_height(patch, patch.max.x, patch.max.y),
- patch_height(patch, patch.min.x, patch.max.y)}) - 0.10);
+ const double bottom_z = std::min(-0.10, std::min({terrain_patch_height(patch, patch.min.x, patch.min.y),
+ terrain_patch_height(patch, patch.max.x, patch.min.y),
+ terrain_patch_height(patch, patch.max.x, patch.max.y),
+ terrain_patch_height(patch, patch.min.x, patch.max.y)}) - 0.10);
  const std::uint32_t bottom_start = static_cast<std::uint32_t>(body.mesh_vertices_m.size());
  body.mesh_vertices_m.insert(body.mesh_vertices_m.end(), {
  {patch.min.x, patch.min.y, bottom_z},
@@ -443,10 +428,10 @@ const char* SimulatedPlatform::backend_name() const {
  other.min.y <= patch.min.y + 1e-6 && other.max.y >= patch.max.y - 1e-6;
  if (!adjacent)
  continue;
- const double a_delta = std::abs(patch_height(patch, corners[side].x, corners[side].y) -
- patch_height(other, corners[side].x, corners[side].y));
- const double b_delta = std::abs(patch_height(patch, corners[next].x, corners[next].y) -
- patch_height(other, corners[next].x, corners[next].y));
+ const double a_delta = std::abs(terrain_patch_height(patch, corners[side].x, corners[side].y) -
+ terrain_patch_height(other, corners[side].x, corners[side].y));
+ const double b_delta = std::abs(terrain_patch_height(patch, corners[next].x, corners[next].y) -
+ terrain_patch_height(other, corners[next].x, corners[next].y));
  if (a_delta < 0.05 && b_delta < 0.05)
  return true;
  }
@@ -846,6 +831,13 @@ void SimulatedPlatform::update_dynamic_frames(const ::sim::physics::BodyState& b
 
 RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuation,
  const ::sim::GroundContact& ground, double fixed_dt_s) {
+ return step(actuation, [ground](::sim::Vec2) { return ground; }, fixed_dt_s);
+}
+
+RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuation,
+ const GroundContactResolver& ground_at, double fixed_dt_s) {
+ if (!ground_at)
+ throw std::invalid_argument("platform ground-contact resolver is empty");
  const auto before = world_->state(robot_body_);
  const auto angles = ::sim::physics::euler_from_quaternion(before.rotation);
  const double yaw = angles.z;
@@ -855,12 +847,14 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  double lateral_force_N = 0.0;
  double contact_yaw_torque_Nm = 0.0;
  if (articulated_) {
- const double mu_scale = std::clamp(ground.mu_eff, 0.0, 2.0);
  for (const auto body : robot_bodies_) {
  const auto material = robot_contact_materials_.find(body.value);
  if (material == robot_contact_materials_.end())
  continue;
  const auto tire = tire_contacts_.find(body.value);
+ const auto body_state = world_->state(body);
+ const auto ground = ground_at({body_state.position_m.x, body_state.position_m.y});
+ const double mu_scale = std::clamp(ground.mu_eff, 0.0, 2.0);
  if (tire != tire_contacts_.end()) {
  tire_contact_->apply(*world_, body, tire->second, {
  mu_scale,
@@ -939,6 +933,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  }
  return output;
  }
+ const auto ground = ground_at({before.position_m.x, before.position_m.y});
  if (actuation.holonomic) {
  forward_force_N = actuation.body_forward_force_N;
  lateral_force_N = actuation.body_lateral_force_N;

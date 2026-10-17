@@ -174,6 +174,35 @@ ScenarioSession::ScenarioSession(
  reset();
 }
 
+bool ScenarioSession::activate_maneuver(const std::string& maneuver_id) {
+ const auto found = std::find_if(level_.maneuvers.begin(), level_.maneuvers.end(),
+ [&](const ManeuverDefinition& value) { return value.id == maneuver_id; });
+ if (found == level_.maneuvers.end() || endless_mode_ ||
+ level_.control_mode != "operator_drive") {
+ return false;
+ }
+ active_maneuver_id_ = found->id;
+ level_.objective.spawn = found->spawn;
+ level_.objective.goal = found->goal;
+ level_.objective.goal_label = found->title;
+ level_.objective.goals.clear();
+ GoalStep finish;
+ finish.id = found->goal;
+ finish.marker = found->goal;
+ finish.label = found->title;
+ finish.action = "complete";
+ finish.radius_m = level_.objective.arrive_tolerance_m;
+ level_.objective.goals.push_back(std::move(finish));
+ reset();
+ start();
+ if (found->control == "autonomous") {
+ const auto& target = map_definition_.markers.at(found->goal);
+ if (!issue_field_intent(FieldIntentKind::GoTo, sim::Vec2{target.x, target.y}))
+ throw std::logic_error("autonomous maneuver could not issue its goal intent");
+ }
+ return true;
+}
+
 void ScenarioSession::reset() {
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
   runtime_channel_->deactivate();
@@ -1904,7 +1933,8 @@ void ScenarioSession::apply_motion() {
  sim::platform::RigidVehicleState rigid_state;
  bool have_rigid_state = false;
  if (platform_) {
-  rigid_state = platform_->step(motors, ground_contact, fixed_step_s);
+ rigid_state = platform_->step(motors,
+ [this](sim::Vec2 position) { return wheel_ground(position); }, fixed_step_s);
   have_rigid_state = true;
   snapshot_.rigid_contact_count = rigid_state.contact_count;
   snapshot_.ground_contact_links = rigid_state.ground_contact_links;
