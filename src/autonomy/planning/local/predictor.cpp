@@ -202,29 +202,38 @@ double interval_min_dist(Vec2 a0, Vec2 a1, Vec2 b0, Vec2 b1) {
 
 } // namespace
 
-std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs, double time_s,
-                                                  double horizon_s, double frame_dt_s, double max_age_s) {
+std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs,
+                                                            double time_s, double horizon_s,
+                                                            double frame_dt_s, double max_age_s) {
  std::vector<std::vector<DynamicObjectState>> frames;
+ auto predict_mode = [](const PredictInput& input, Vec2 velocity, double prediction_time) {
+  auto predicted = input.state;
+  predicted.v = velocity;
+  predicted.p.x = reflected_position(predicted.p.x, velocity.x, prediction_time, input.min_observed.x,
+                                     input.max_observed.x, input.bounded_x);
+  predicted.p.y = reflected_position(predicted.p.y, velocity.y, prediction_time, input.min_observed.y,
+                                     input.max_observed.y, input.bounded_y);
+  return predicted;
+ };
  for (double future_s = 0.0; future_s <= horizon_s + 1e-9; future_s += frame_dt_s) {
   auto& frame = frames.emplace_back();
   for (const auto& input : inputs) {
    const double age = time_s - input.last_observed_s;
    if (age < -1e-9 || age > max_age_s)
     continue;
-   auto predicted = input.state;
    const double prediction_time = age + future_s;
-   predicted.p.x = reflected_position(predicted.p.x, predicted.v.x, prediction_time, input.min_observed.x,
-                                      input.max_observed.x, input.bounded_x);
-   predicted.p.y = reflected_position(predicted.p.y, predicted.v.y, prediction_time, input.min_observed.y,
-                                      input.max_observed.y, input.bounded_y);
-   frame.push_back(predicted);
+   frame.push_back(predict_mode(input, input.state.v, prediction_time));
+   if (input.alternate_velocity_valid) {
+    frame.push_back(predict_mode(input, input.alternate_velocity, prediction_time));
+   }
   }
  }
  return frames;
 }
 
-double timed_gap(const std::vector<TimedPose>& ego, const std::vector<std::vector<DynamicObjectState>>& frames,
-                 double frame_dt_s, double ego_radius_m) {
+double timed_gap(const std::vector<TimedPose>& ego,
+                 const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
+                 double ego_radius_m) {
  if (ego.empty() || frames.empty()) {
   return std::numeric_limits<double>::infinity();
  }
@@ -264,8 +273,8 @@ double timed_gap(const std::vector<TimedPose>& ego, const std::vector<std::vecto
 }
 
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
-                     const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s, double ego_radius_m,
-                     double depart_delay_s) {
+                     const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
+                     double ego_radius_m, double depart_delay_s) {
  if (path.empty() || frames.empty()) {
   return std::numeric_limits<double>::infinity();
  }
@@ -536,8 +545,8 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
            {}};
   }
   route.push_back(start);
- for (const auto& point : plan.path)
- route.push_back(point.position);
+  for (const auto& point : plan.path)
+   route.push_back(point.position);
   route.push_back(pocket);
  }
  if (!exec.can_spin) {
@@ -692,8 +701,8 @@ LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx
 PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
                                     Vec2 merge, const std::vector<Vec2>& route_suffix, double cruise_mps,
                                     const ChassisExecCaps& exec, double hold_s,
-                                    const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
-                                    double ego_radius_m, double margin_m) {
+                                    const std::vector<std::vector<DynamicObjectState>>& frames,
+                                    double frame_dt_s, double ego_radius_m, double margin_m) {
  PocketAssessment out;
  out.transit = assess_transit(inflated_map, start, start_theta, pocket, cruise_mps, exec, frames, frame_dt_s,
                               ego_radius_m, margin_m);
@@ -710,8 +719,8 @@ PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, dou
   const auto plan = astar_plan(inflated_map, pocket, merge, 1.0);
   if (plan.ok && !plan.path.empty()) {
    rejoin_pts.push_back(pocket);
- for (const auto& point : plan.path)
- rejoin_pts.push_back(point.position);
+   for (const auto& point : plan.path)
+    rejoin_pts.push_back(point.position);
    rejoin_pts.push_back(merge);
    rejoin_pts.insert(rejoin_pts.end(), route_suffix.begin(), route_suffix.end());
    rejoin_planned = true;
@@ -847,8 +856,8 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
 }
 
 DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
-                                     const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
-                                     double ego_radius_m, double margin_m) {
+                                     const std::vector<std::vector<DynamicObjectState>>& frames,
+                                     double frame_dt_s, double ego_radius_m, double margin_m) {
  if (path.empty() || frames.empty() || cruise_mps <= 0.0) {
   return {std::numeric_limits<double>::infinity(), DepartReason::kInvalid};
  }

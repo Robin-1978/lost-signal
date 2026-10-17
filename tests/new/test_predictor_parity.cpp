@@ -53,8 +53,10 @@ int main() {
   CHECK(check_parity(map, 0.4, 1.0, 0.1, 1.0) == 0);
   for (const auto& frame : map.predict(0.4, 1.0, 0.1, 1.0)) {
    CHECK(frame.size() == 1);
-   CHECK(frame[0].p.x >= 5.0 - 1e-9);
-   CHECK(frame[0].p.x <= 5.2 + 1e-9);
+   for (const auto& hypothesis : frame) {
+    CHECK(hypothesis.p.x >= 5.0 - 1e-9);
+    CHECK(hypothesis.p.x <= 5.2 + 1e-9);
+   }
   }
  }
  // C: multi-target with different velocities and radii.

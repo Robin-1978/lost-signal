@@ -48,12 +48,10 @@ int main() {
  CHECK(noisy_a.header.stamp_s == ideal.header.stamp_s);
  CHECK(noisy_a.header.frame_id == ideal.header.frame_id);
  sim::Rng model_rng(3);
- const auto quantized = sim::apply_lidar_noise(
- ideal, sim::LidarNoiseModel{0.0, 0.12, 0.1, 0.0}, model_rng);
+ const auto quantized = sim::apply_lidar_noise(ideal, sim::LidarNoiseModel{0.0, 0.12, 0.1, 0.0}, model_rng);
  CHECK(std::abs(quantized.ranges[0] - 3.6) < 1e-12);
  CHECK(quantized.header.sequence == ideal.header.sequence);
- const auto dropped = sim::apply_lidar_noise(
- ideal, sim::LidarNoiseModel{0.0, 0.0, 0.0, 1.0}, model_rng);
+ const auto dropped = sim::apply_lidar_noise(ideal, sim::LidarNoiseModel{0.0, 0.0, 0.0, 1.0}, model_rng);
  CHECK(!dropped.hit[0]);
  CHECK(dropped.ranges[0] == dropped.max_range);
  CHECK(dropped.intensities[0] == 0.0);
@@ -101,6 +99,22 @@ int main() {
  CHECK(imu_a.yaw_rate_radps == imu_b.yaw_rate_radps);
  CHECK(imu_a.forward_acceleration_mps2 == imu_b.forward_acceleration_mps2);
  CHECK(imu_a.header.latency_s == 0.004);
+ // Independent profile oracle: with identical RNG draws and zero white
+ // noise, fixed bias scales exactly with the configured standard deviation.
+ // This compares device outputs on the same truth trace instead of comparing
+ // two closed-loop missions that follow different paths.
+ sim::SensorSystem basic_imu(open_map, 73, 11);
+ sim::SensorSystem precise_imu(open_map, 73, 11);
+ const sim::ImuConfig basic_bias{0.0, 0.005, 0.0, 0.0, "imu_link", 0.0};
+ const sim::ImuConfig precise_bias{0.0, 0.001, 0.0, 0.0, "imu_link", 0.0};
+ const auto basic_sample = basic_imu.capture_imu(imu_truth, 1.0, 0.02, basic_bias);
+ const auto precise_sample = precise_imu.capture_imu(imu_truth, 1.0, 0.02, precise_bias);
+ CHECK(std::abs((basic_sample.roll_rate_radps - imu_truth.roll_rate_radps) -
+                5.0 * (precise_sample.roll_rate_radps - imu_truth.roll_rate_radps)) < 1e-15);
+ CHECK(std::abs((basic_sample.pitch_rate_radps - imu_truth.pitch_rate_radps) -
+                5.0 * (precise_sample.pitch_rate_radps - imu_truth.pitch_rate_radps)) < 1e-15);
+ CHECK(std::abs((basic_sample.yaw_rate_radps - imu_truth.yaw_rate_radps) -
+                5.0 * (precise_sample.yaw_rate_radps - imu_truth.yaw_rate_radps)) < 1e-15);
  sim::WorldTruth truth;
  truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
  truth.dynamic_objects = forklift;
@@ -117,9 +131,9 @@ int main() {
  CHECK(first_frame.lidar->header.sequence == 0);
  CHECK(first_frame.lidar->header.frame_id == "lidar_link");
  CHECK(first_frame.lidar->scan_period_s == 0.1);
-CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal Domain comparison is instantaneous
-CHECK(first_frame.lidar->intensities.size() == first_frame.lidar->ranges.size());
-CHECK(first_frame.lidar->intensities[0] > 0.0);
+ CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal Domain comparison is instantaneous
+ CHECK(first_frame.lidar->intensities.size() == first_frame.lidar->ranges.size());
+ CHECK(first_frame.lidar->intensities[0] > 0.0);
  sim::SensorSystem near_field_sensors(open_map, 7, 11);
  sim::WorldTruth near_field_truth = truth;
  near_field_truth.dynamic_objects = {{{1.3, 5.0}, {}, 0.1}};
@@ -156,6 +170,43 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
   CHECK(frame[0].p.x <= 5.2 + 1e-9);
  }
 
+ // A learned shuttle corridor remains occupied during endpoint dwell. The
+ // public track correctly reports near-zero current velocity, while the
+ // forecast covers the plausible reflected return instead of declaring the
+ // whole crossing clear.
+ sim::DynamicObstacleMap shuttle;
+ shuttle.observe({7, {0.0, 0.0}, 0.4}, 0.0);
+ shuttle.observe({7, {1.0, 0.0}, 0.4}, 1.0);
+ shuttle.observe({7, {1.0, 0.0}, 0.4}, 1.21);
+ shuttle.observe({7, {0.79, 0.0}, 0.4}, 1.42); // reversal learns x bounds
+ shuttle.observe({7, {0.0, 0.0}, 0.4}, 2.21);
+ shuttle.observe({7, {0.0, 0.0}, 0.4}, 2.42);
+ shuttle.observe({7, {0.0, 0.0}, 0.4}, 2.63);
+ shuttle.observe({7, {0.0, 0.0}, 0.4}, 2.84);
+ const auto stopped_track = shuttle.active_tracks(2.84, 1.0);
+ CHECK(stopped_track.size() == 1);
+ CHECK(std::abs(stopped_track.front().state.v.x) < 0.10);
+ const auto dwell_forecast = shuttle.predict(2.84, 1.0, 0.1, 1.0);
+ CHECK(dwell_forecast.size() == 11);
+ CHECK(dwell_forecast.front().front().p.x < 1e-9);
+ CHECK(dwell_forecast[5].front().p.x > 0.3);
+
+ // Even without a learned reversal boundary (for example after track
+ // fragmentation), endpoint dwell keeps continuation and reversal modes.
+ sim::DynamicObstacleMap fragmented;
+ fragmented.observe({9, {0.0, 0.0}, 0.4}, 0.0);
+ fragmented.observe({9, {1.0, 0.0}, 0.4}, 1.0);
+ fragmented.observe({9, {1.0, 0.0}, 0.4}, 1.21);
+ fragmented.observe({9, {1.0, 0.0}, 0.4}, 1.42);
+ fragmented.observe({9, {1.0, 0.0}, 0.4}, 1.63);
+ const auto ambiguous = fragmented.predict(1.63, 1.0, 0.1, 1.0);
+ CHECK(ambiguous.front().size() == 2);
+ CHECK(ambiguous.back()[0].p.x > 1.5);
+ CHECK(ambiguous.back()[1].p.x < 0.5);
+ const auto nominal = fragmented.predict_nominal(1.63, 1.0, 0.1, 1.0);
+ CHECK(nominal.front().size() == 1);
+ CHECK(nominal.back().front().p.x > 1.5);
+
  const auto dwa = sim::dwa_compute({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5,
                                    2.0, 1.5, 0.1, 0.38, 8.0);
  CHECK(dwa.best.valid);
@@ -166,15 +217,38 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  CHECK(!dwa.rollouts.empty());
  CHECK(dwa.rollouts.front().points.size() > 2);
 
- const auto cliff_aware = sim::dwa_compute(
- {1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5,
- 2.0, 1.5, 0.1, 0.38, 8.0,
- [](sim::Vec2, sim::Vec2 to) { return to.x < 1.2; });
+ const auto cliff_aware =
+   sim::dwa_compute({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5, 2.0, 1.5, 0.1,
+                    0.38, 8.0, [](sim::Vec2, sim::Vec2 to) { return to.x < 1.2; });
  CHECK(cliff_aware.best.valid);
  for (const auto point : cliff_aware.best_path)
- CHECK(point.x < 1.2);
+  CHECK(point.x < 1.2);
  CHECK(std::any_of(cliff_aware.rollouts.begin(), cliff_aware.rollouts.end(),
- [](const auto& rollout) { return rollout.collision; }));
+                   [](const auto& rollout) { return rollout.collision; }));
+
+ // Behavior can forbid reversing after it commits to a mapped crossing;
+ // DWA still samples and collision-checks the remaining forward window.
+ const auto committed =
+   sim::dwa_compute_trajectory({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, {}, 1.5, 1.5,
+                               2.0, 1.5, 0.1, 0.1, 0.0, 0.38, 8.0, {}, 0.0);
+ CHECK(committed.best.valid);
+ CHECK(committed.best.v >= 0.0);
+ CHECK(std::all_of(committed.rollouts.begin(), committed.rollouts.end(),
+                   [](const auto& rollout) { return rollout.command.v >= 0.0; }));
+
+ // A soft-margin incursion admits an escape rollout only when separation
+ // grows; stopping inside the margin must not be the planner's sole answer.
+ const std::vector<std::vector<sim::DynamicObjectState>> close_behind(16, {{{0.1, 2.0}, {0.0, 0.0}, 0.4}});
+ const auto escaping =
+   sim::dwa_compute_trajectory({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, close_behind,
+                               1.5, 1.5, 2.0, 1.5, 0.1, 0.1, 0.5, 0.38, 8.0, {}, 0.0);
+ CHECK(escaping.best.valid);
+ CHECK(escaping.best.v > 0.0);
+ const auto low_speed_crossing =
+   sim::dwa_compute_trajectory({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, {}, 0.20,
+                               1.5, 2.0, 1.5, 0.1, 0.1, 0.5, 0.38, 8.0, {}, 0.0);
+ CHECK(low_speed_crossing.best.valid);
+ CHECK(std::abs(low_speed_crossing.best.v - 0.20) < 1e-12);
 
  double left = 0.0;
  double right = 0.0;

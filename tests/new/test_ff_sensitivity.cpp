@@ -74,9 +74,10 @@ struct MirrorLoop {
  double ff_r{0.0};
 
  explicit MirrorLoop(sim::MotorDriveParams p, sim::WheelPidGains gains)
-     : params(p),
-       left_pid(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit),
-       right_pid(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit) {}
+     : params(p), left_pid(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit,
+                           sim::AntiWindupMode::ConditionalIntegration),
+       right_pid(gains.kp, gains.ki, gains.kd, params.pwm_limit, params.integral_limit,
+                 sim::AntiWindupMode::ConditionalIntegration) {}
 
  double encoder(double wheel_mps, double dt) const {
   const double circ = 2.0 * sim::kPi * params.wheel_radius_m;
@@ -113,8 +114,7 @@ struct MirrorLoop {
   for (int side = 0; side < 2; ++side) {
    const double pwm = side == 0 ? total_l : total_r;
    const double wheel = side == 0 ? actual_l : actual_r;
-   const double curve =
-     std::max(0.0, 1.0 - std::abs(wheel) / std::max(0.05, params.free_speed_mps));
+   const double curve = std::max(0.0, 1.0 - std::abs(wheel) / std::max(0.05, params.free_speed_mps));
    double force = pwm * params.stall_force_N * curve;
    force -= rr * weight * std::tanh(wheel / kCoulombWidthMps) + kViscousNPerMps * wheel;
    if (std::abs(force) > traction) {
@@ -127,8 +127,8 @@ struct MirrorLoop {
    }
   }
   const double accel = (force_l + force_r) / std::max(0.5, params.mass_kg);
-  const double alpha = (force_r - force_l) * params.wheel_base_m / 2.0 /
-                       std::max(0.05, params.yaw_inertia_kgm2);
+  const double alpha =
+    (force_r - force_l) * params.wheel_base_m / 2.0 / std::max(0.05, params.yaw_inertia_kgm2);
   const double cap = std::min(params.max_wheel_accel_mps2, std::max(0.5, ground.accel_limit));
   v = v + std::clamp(accel * dt, -cap * dt, cap * dt);
   w = w + alpha * dt;
@@ -156,8 +156,8 @@ struct Metrics {
  double prev_pwm_l{0.0};
  double prev_pwm_r{0.0};
  double sum_sq_dpwm{0.0};
- void observe(double err_l, double err_r, double pwm_l, double pwm_r, double idi_l, double idi_r,
-              double ff_l, double ff_r) {
+ void observe(double err_l, double err_r, double pwm_l, double pwm_r, double idi_l, double idi_r, double ff_l,
+              double ff_r) {
   ++n;
   sum_sq_err += err_l * err_l + err_r * err_r;
   max_err = std::max({max_err, std::abs(err_l), std::abs(err_r)});
@@ -168,8 +168,7 @@ struct Metrics {
   sum_sq_pidi += idi_l * idi_l + idi_r * idi_r;
   sum_sq_ff += ff_l * ff_l + ff_r * ff_r;
   sum_sq_dff += (ff_l - prev_ff_l) * (ff_l - prev_ff_l) + (ff_r - prev_ff_r) * (ff_r - prev_ff_r);
-  sum_sq_dpwm += (pwm_l - prev_pwm_l) * (pwm_l - prev_pwm_l) +
-                 (pwm_r - prev_pwm_r) * (pwm_r - prev_pwm_r);
+  sum_sq_dpwm += (pwm_l - prev_pwm_l) * (pwm_l - prev_pwm_l) + (pwm_r - prev_pwm_r) * (pwm_r - prev_pwm_r);
   prev_ff_l = ff_l;
   prev_ff_r = ff_r;
   prev_pwm_l = pwm_l;
@@ -187,8 +186,7 @@ struct TraceFrame {
  double y{0.0};
 };
 
-double mprop(const mission::ContentCatalog& catalog, const std::string& component,
-             const std::string& key) {
+double mprop(const mission::ContentCatalog& catalog, const std::string& component, const std::string& key) {
  return catalog.components().at(component).behavior.at(key);
 }
 
@@ -201,8 +199,7 @@ MirrorGround ground_at(const mission::ContentCatalog& catalog, const std::string
  double ground_rr = 0.0;
  double traction = 1.0;
  for (const auto& surface : catalog.map("research_base").surfaces) {
-  if (mission::active_in_level(surface.active_in, level_id) &&
-      box_inside(pos, surface.min, surface.max)) {
+  if (mission::active_in_level(surface.active_in, level_id) && box_inside(pos, surface.min, surface.max)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
    traction = surface.traction_scale;
@@ -235,8 +232,8 @@ struct RunMetrics {
 // measurement only (PID always sees raw encoders, as deployed).
 RunMetrics run_trace(const std::vector<TraceFrame>& frames, sim::MotorDriveParams params,
                      sim::WheelPidGains gains, const std::vector<MirrorGround>& grounds,
-                     const sim::FeedforwardParams& ff_base, double wheel_base_m, double t_scale,
-                     double tau_s, bool want_ff, double* parity_maxdiff = nullptr) {
+                     const sim::FeedforwardParams& ff_base, double wheel_base_m, double t_scale, double tau_s,
+                     bool want_ff, double* parity_maxdiff = nullptr) {
  MirrorLoop loop(params, gains);
  Metrics m;
  const double t_lead = kBaseLeadTimeS * t_scale;
@@ -274,14 +271,13 @@ RunMetrics run_trace(const std::vector<TraceFrame>& frames, sim::MotorDriveParam
   }
   loop.step(frame.target_l, frame.target_r, grounds[i], dt, ff_l, ff_r);
   if (parity_maxdiff && !want_ff) {
-   const double diff =
-     std::max(std::abs(loop.meas_l - frame.meas_l), std::abs(loop.meas_r - frame.meas_r));
+   const double diff = std::max(std::abs(loop.meas_l - frame.meas_l), std::abs(loop.meas_r - frame.meas_r));
    *parity_maxdiff = std::max(*parity_maxdiff, diff);
   }
-  m.observe(loop.meas_l - frame.target_l, loop.meas_r - frame.target_r, loop.pwm_l, loop.pwm_r,
-            loop.pid_i_l, loop.pid_i_r, ff_l, ff_r);
-  if (!std::isfinite(loop.meas_l) || !std::isfinite(loop.meas_r) ||
-      std::abs(loop.pwm_l) > 1.0 + 1e-12 || std::abs(loop.pwm_r) > 1.0 + 1e-12) {
+  m.observe(loop.meas_l - frame.target_l, loop.meas_r - frame.target_r, loop.pwm_l, loop.pwm_r, loop.pid_i_l,
+            loop.pid_i_r, ff_l, ff_r);
+  if (!std::isfinite(loop.meas_l) || !std::isfinite(loop.meas_r) || std::abs(loop.pwm_l) > 1.0 + 1e-12 ||
+      std::abs(loop.pwm_r) > 1.0 + 1e-12) {
    ++m.bad;
   }
  }
@@ -310,10 +306,9 @@ struct StepMeta {
 // with overshoot/settling. Plant params may mismatch the FF model (load
 // change); gains and FF stay nominal — exactly the real-world case.
 RunMetrics run_steps(const std::vector<std::pair<double, double>>& targets, double dt,
-                     sim::MotorDriveParams params, sim::WheelPidGains gains,
-                     const MirrorGround& ground, const sim::FeedforwardParams& ff_base,
-                     double wheel_base_m, double t_scale, double tau_s, bool want_ff,
-                     const StepMeta& meta = {}) {
+                     sim::MotorDriveParams params, sim::WheelPidGains gains, const MirrorGround& ground,
+                     const sim::FeedforwardParams& ff_base, double wheel_base_m, double t_scale, double tau_s,
+                     bool want_ff, const StepMeta& meta = {}) {
  MirrorLoop loop(params, gains);
  Metrics m;
  double overshoot = 0.0;
@@ -340,17 +335,16 @@ RunMetrics run_steps(const std::vector<std::pair<double, double>>& targets, doub
    ff_r = ff.right.pwm_ff;
   }
   loop.step(tL, tR, ground, dt, ff_l, ff_r);
-  m.observe(loop.meas_l - tL, loop.meas_r - tR, loop.pwm_l, loop.pwm_r, loop.pid_i_l, loop.pid_i_r,
-            ff_l, ff_r);
-  if (!std::isfinite(loop.meas_l) || !std::isfinite(loop.meas_r) ||
-      std::abs(loop.pwm_l) > 1.0 + 1e-12 || std::abs(loop.pwm_r) > 1.0 + 1e-12) {
+  m.observe(loop.meas_l - tL, loop.meas_r - tR, loop.pwm_l, loop.pwm_r, loop.pid_i_l, loop.pid_i_r, ff_l,
+            ff_r);
+  if (!std::isfinite(loop.meas_l) || !std::isfinite(loop.meas_r) || std::abs(loop.pwm_l) > 1.0 + 1e-12 ||
+      std::abs(loop.pwm_r) > 1.0 + 1e-12) {
    ++m.bad;
   }
   if (meta.active && t >= meta.step_time) {
    overshoot = std::max({overshoot, loop.meas_l - meta.final_l, loop.meas_r - meta.final_r,
                          meta.final_l - loop.meas_l, meta.final_r - loop.meas_r});
-   if (std::abs(loop.meas_l - meta.final_l) > meta.band ||
-       std::abs(loop.meas_r - meta.final_r) > meta.band) {
+   if (std::abs(loop.meas_l - meta.final_l) > meta.band || std::abs(loop.meas_r - meta.final_r) > meta.band) {
     settle = t;
    }
   }
@@ -418,11 +412,11 @@ double direct_parity(const sim::MotorDriveParams& params, const sim::WheelPidGai
   state = out;
   const auto& telemetry = truth.telemetry();
   mirror.step(wl, wr, mirror_ground, dt, 0.0, 0.0);
-  worst = std::max({worst, std::abs(out.v - mirror.v), std::abs(out.w - mirror.w),
-                    std::abs(telemetry.left.measured_mps - mirror.meas_l),
-                    std::abs(telemetry.right.measured_mps - mirror.meas_r),
-                    std::abs(telemetry.left.pwm - mirror.pwm_l),
-                    std::abs(telemetry.right.pwm - mirror.pwm_r)});
+  worst =
+    std::max({worst, std::abs(out.v - mirror.v), std::abs(out.w - mirror.w),
+              std::abs(telemetry.left.measured_mps - mirror.meas_l),
+              std::abs(telemetry.right.measured_mps - mirror.meas_r),
+              std::abs(telemetry.left.pwm - mirror.pwm_l), std::abs(telemetry.right.pwm - mirror.pwm_r)});
  }
  std::cerr << "direct parity maxdiff=" << worst << "\n";
  return worst;
@@ -445,8 +439,7 @@ int main() {
  params.wheel_base_m = robot.wheel_base_m;
  params.wheel_radius_m = robot.wheel_radius_m;
  params.max_wheel_speed_mps = cprop(motor_id, "max_wheel_speed_mps");
- params.max_wheel_accel_mps2 =
-   std::min(robot.motor.max_wheel_accel_mps2, cprop(tire_id, "brake_decel_mps2"));
+ params.max_wheel_accel_mps2 = std::min(robot.motor.max_wheel_accel_mps2, cprop(tire_id, "brake_decel_mps2"));
  params.stall_force_N = cprop(motor_id, "stall_force_N");
  params.free_speed_mps = cprop(motor_id, "free_speed_mps");
  params.mass_kg = robot.mass_kg;
@@ -455,8 +448,8 @@ int main() {
  params.pwm_limit = robot.motor.pwm_limit;
  params.integral_limit = robot.motor.integral_limit;
  const double wheel_mass = std::max(0.5, robot.mass_kg / 2.0);
- const sim::WheelPidGains gains = sim::tune_wheel_pid(wheel_mass, params.stall_force_N,
-                                                      params.free_speed_mps, 0.5 * params.max_wheel_speed_mps);
+ const sim::WheelPidGains gains = sim::tune_wheel_pid(wheel_mass, params.stall_force_N, params.free_speed_mps,
+                                                      0.5 * params.max_wheel_speed_mps);
  sim::FeedforwardParams ff_base;
  ff_base.wheel_mass_kg = robot.motor.wheel_equiv_mass_kg;
  ff_base.stall_force_N = params.stall_force_N;
@@ -467,10 +460,9 @@ int main() {
  mission::MissionSimulation mission(catalog, "lost_signal", build);
  mission.run_to_completion();
  if (mission.result().status != mission::MissionStatus::Succeeded) {
- std::cerr << "recording mission failed: reason=" << mission.result().failure_reason
- << " time=" << mission.result().time_s
- << " collisions=" << mission.result().collisions
- << " clearance=" << mission.result().min_dynamic_clearance_m << '\n';
+  std::cerr << "recording mission failed: reason=" << mission.result().failure_reason
+            << " time=" << mission.result().time_s << " collisions=" << mission.result().collisions
+            << " clearance=" << mission.result().min_dynamic_clearance_m << '\n';
  }
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  std::vector<TraceFrame> frames;
@@ -485,8 +477,8 @@ int main() {
   frame.x = snapshot.robot.x;
   frame.y = snapshot.robot.y;
   frames.push_back(frame);
-  grounds.push_back(ground_at(catalog, "lost_signal", tire_id, {frame.x, frame.y},
-                              robot.motor.max_wheel_accel_mps2));
+  grounds.push_back(
+    ground_at(catalog, "lost_signal", tire_id, {frame.x, frame.y}, robot.motor.max_wheel_accel_mps2));
  }
  CHECK(frames.size() > 100);
 
@@ -533,8 +525,8 @@ int main() {
  for (const double t_scale : t_scales) {
   RunMetrics raw_metrics{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   for (const double tau : taus) {
-   const RunMetrics m = run_trace(frames, params, gains, grounds, ff_base, robot.wheel_base_m,
-                                  t_scale, tau, true);
+   const RunMetrics m =
+     run_trace(frames, params, gains, grounds, ff_base, robot.wheel_base_m, t_scale, tau, true);
    char tag[64];
    std::snprintf(tag, sizeof(tag), "replay ff T=%.2f tau=%.2f", t_scale, tau);
    print_metrics(tag, m);
@@ -600,8 +592,8 @@ int main() {
   for (const double tau : taus) {
    const bool want_ff = true;
    for (const auto& step : cases) {
-    const RunMetrics m = run_steps(step.targets, kDt, params, gains, nominal, ff_base,
-                                   robot.wheel_base_m, t_scale, tau, want_ff, step.meta);
+    const RunMetrics m = run_steps(step.targets, kDt, params, gains, nominal, ff_base, robot.wheel_base_m,
+                                   t_scale, tau, want_ff, step.meta);
     char tag[80];
     std::snprintf(tag, sizeof(tag), "step %s ff T=%.2f tau=%.2f", step.name, t_scale, tau);
     print_metrics(tag, m);
@@ -618,9 +610,8 @@ int main() {
  }
  // PID-only step references (same scenarios, no FF).
  for (const auto& step : cases) {
-  const RunMetrics m =
-    run_steps(step.targets, kDt, params, gains, nominal, ff_base, robot.wheel_base_m, 1.0, 0.0,
-              false, step.meta);
+  const RunMetrics m = run_steps(step.targets, kDt, params, gains, nominal, ff_base, robot.wheel_base_m, 1.0,
+                                 0.0, false, step.meta);
   char tag[80];
   std::snprintf(tag, sizeof(tag), "step %s pid-only", step.name);
   print_metrics(tag, m);

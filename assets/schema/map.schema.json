@@ -49,6 +49,12 @@
         "$ref": "#/$defs/terrain"
       }
     },
+    "conflict_zones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict_zone"
+      }
+    },
     "markers": {
       "type": "object",
       "minProperties": 1,
@@ -230,6 +236,40 @@
           "description": "Terrain height-disturbance amplitude in meters.",
           "minimum": 0,
           "maximum": 1
+        },
+        "active_in": {
+          "$ref": "#/$defs/active"
+        }
+      }
+    },
+    "conflict_zone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "min",
+        "max",
+        "authority"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "box"
+        },
+        "min": {
+          "$ref": "#/$defs/vec2"
+        },
+        "max": {
+          "$ref": "#/$defs/vec2"
+        },
+        "authority": {
+          "enum": [
+            "shadow",
+            "control"
+          ]
         },
         "active_in": {
           "$ref": "#/$defs/active"

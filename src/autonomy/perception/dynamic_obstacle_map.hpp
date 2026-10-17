@@ -31,8 +31,13 @@ class DynamicObstacleMap {
  // parity test can feed predict_frames directly and prove bit-identity with
  // the delegating predict() below.
  std::vector<PredictInput> predict_inputs() const;
+ // Conservative view retains every intent hypothesis for behavior release;
+ // nominal view keeps only the measured/primary mode for short-horizon
+ // motion planning after behavior has committed.
  std::vector<std::vector<DynamicObjectState>> predict(double time_s, double horizon_s, double frame_dt_s,
-                                            double max_age_s) const;
+                                                      double max_age_s) const;
+ std::vector<std::vector<DynamicObjectState>> predict_nominal(double time_s, double horizon_s,
+                                                              double frame_dt_s, double max_age_s) const;
 
  private:
  struct TrackState {
@@ -40,6 +45,13 @@ class DynamicObstacleMap {
   Vec2 velocity_anchor_position;
   double velocity_anchor_time_s{0.0};
   bool velocity_initialized{false};
+  // Last resolved motion before a periodic target pauses at a learned
+  // corridor endpoint. The public track still reports the measured stop;
+  // only prediction uses this motion hypothesis to cover the return trip.
+  Vec2 last_motion_velocity;
+  bool motion_velocity_initialized{false};
+  bool intent_ambiguous{false};
+  int decisive_motion_samples{0};
   Vec2 min_observed;
   Vec2 max_observed;
   bool bounded_x{false};

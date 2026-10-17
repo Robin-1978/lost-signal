@@ -244,6 +244,21 @@ struct SceneDefinition {
  std::vector<SceneInstanceDefinition> instances;
 };
 
+// Authored map semantics for a region where independently moving traffic can
+// conflict with the robot route. The behavior layer derives route entry,
+// stop, and exit points from this box; actor paths and collision truth never
+// enter autonomy.
+struct ConflictZoneDefinition {
+ std::string id;
+ sim::Vec2 min;
+ sim::Vec2 max;
+ // "shadow" evaluates semantics without constraining motion; "control" is
+ // reserved for zones whose executable crossing trajectory has passed the
+ // mission-level safety gate.
+ std::string authority{"shadow"};
+ std::vector<std::string> active_in;
+};
+
 struct MapDefinition {
  std::string id;
  std::string scene_3d;
@@ -252,6 +267,7 @@ struct MapDefinition {
  std::vector<BoxDefinition> obstacles;
  std::vector<SurfaceDefinition> surfaces;
  std::vector<TerrainPatchDefinition> terrain;
+ std::vector<ConflictZoneDefinition> conflict_zones;
  // Ordered: the editor saves maps back to JSON, and marker file order must
  // survive the round trip. Lookups only, never order-dependent logic.
  std::map<std::string, Pose> markers;

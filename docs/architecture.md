@@ -78,6 +78,16 @@ capabilities without exposing PWM or device protocols to autonomy.
 
 `src/mission/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
 
+Task orchestration is moving toward a small data-driven Behavior Graph, while continuous commitments use focused
+deterministic state machines. The project does not embed a general-purpose behavior-tree runtime. The detailed
+contract and the incremental decomposition of the current composition root are recorded in
+[Behavior architecture](behavior-architecture.md).
+
+Conflict-zone content carries `shadow` or `control` authority. Shadow evaluation can compare a route-level
+hypothesis without changing commands. Control authority is allowed only after the behavior validator and local
+planner share the same time-parameterized executable trajectory; a constant-speed global-route check cannot grant
+authority over a DWA trajectory with different timing.
+
 The field operator, autonomous robot, dynamic actors, weather, and events remain part of one simulation world. Expedition mode reuses the same sensing, planning, control, and physics path as authored missions.
 
 `DecisionEvidence` is the shared explanation boundary. The mission coordinator assembles it only from the

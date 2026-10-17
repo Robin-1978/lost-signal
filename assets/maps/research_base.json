@@ -100,6 +100,27 @@
       ]
     }
   ],
+  "conflict_zones": [
+    {
+      "id": "forklift_crossing",
+      "type": "box",
+      "min": [
+        13.0,
+        5.55
+      ],
+      "max": [
+        18.0,
+        7.05
+      ],
+      "authority": "shadow",
+      "active_in": [
+        "lost_signal",
+        "signal_echo",
+        "signal_hold",
+        "signal_watch"
+      ]
+    }
+  ],
   "markers": {
     "calibration_pad": [
       6.5,

@@ -64,6 +64,19 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   }
   terrain.push_back(std::move(item));
  }
+ nlohmann::ordered_json conflict_zones = nlohmann::ordered_json::array();
+ for (const auto& zone : map.conflict_zones) {
+  nlohmann::ordered_json item;
+  item["id"] = zone.id;
+  item["type"] = "box";
+  item["min"] = vec2(zone.min);
+  item["max"] = vec2(zone.max);
+  item["authority"] = zone.authority;
+  if (!zone.active_in.empty()) {
+   item["active_in"] = strings(zone.active_in);
+  }
+  conflict_zones.push_back(std::move(item));
+ }
  nlohmann::ordered_json markers = nlohmann::ordered_json::object();
  for (const auto& [id, pose] : map.markers) {
   markers[id] = {pose.x, pose.y, pose.theta};
@@ -84,7 +97,7 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["collision"] = actor.collision_social ? "social" : "fatal";
   nlohmann::ordered_json visual;
   visual["model"] = actor.visual_model;
- visual["kind"] = actor.visual_kind;
+  visual["kind"] = actor.visual_kind;
   visual["ref_radius_m"] = actor.visual_ref_radius_m;
   item["visual"] = std::move(visual);
   if (actor.dormant_until_summoned) {
@@ -105,6 +118,9 @@ std::string serialize_map_canonical(const MapDefinition& map) {
  root["surfaces"] = std::move(surfaces);
  if (!terrain.empty()) {
   root["terrain"] = std::move(terrain);
+ }
+ if (!conflict_zones.empty()) {
+  root["conflict_zones"] = std::move(conflict_zones);
  }
  root["markers"] = std::move(markers);
  root["actors"] = std::move(actors);

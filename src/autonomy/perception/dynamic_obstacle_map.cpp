@@ -10,6 +10,11 @@ namespace {
 constexpr double kVelocityWindowS = 0.20;
 constexpr double kVelocityBlend = 0.55;
 constexpr double kMaxTrackedSpeedMps = 3.0;
+constexpr double kReliableMotionSpeedMps = 0.25;
+constexpr double kMotionMemoryBlend = 0.20;
+constexpr double kIntentAmbiguousBelowMps = 0.40;
+constexpr double kIntentDecisiveAboveMps = 0.48;
+constexpr int kIntentDecisiveSamples = 2;
 
 Vec2 limited_velocity(Vec2 velocity) {
  const double speed = std::hypot(velocity.x, velocity.y);
@@ -55,6 +60,33 @@ void DynamicObstacleMap::observe(const DynamicObservation& observation, double t
     (observation.position.x - track.velocity_anchor_position.x) / velocity_dt,
     (observation.position.y - track.velocity_anchor_position.y) / velocity_dt,
   });
+  const double measured_speed = std::hypot(measured_velocity.x, measured_velocity.y);
+  if (measured_speed >= kReliableMotionSpeedMps) {
+   if (!track.motion_velocity_initialized || track.last_motion_velocity.x * measured_velocity.x +
+                                                 track.last_motion_velocity.y * measured_velocity.y <
+                                               0.0) {
+    track.last_motion_velocity = measured_velocity;
+    track.motion_velocity_initialized = true;
+   } else {
+    track.last_motion_velocity = {
+      track.last_motion_velocity.x * (1.0 - kMotionMemoryBlend) + measured_velocity.x * kMotionMemoryBlend,
+      track.last_motion_velocity.y * (1.0 - kMotionMemoryBlend) + measured_velocity.y * kMotionMemoryBlend,
+    };
+   }
+  }
+  if (track.motion_velocity_initialized && measured_speed < kIntentAmbiguousBelowMps) {
+   track.intent_ambiguous = true;
+   track.decisive_motion_samples = 0;
+  } else if (track.intent_ambiguous) {
+   if (measured_speed >= kIntentDecisiveAboveMps) {
+    if (++track.decisive_motion_samples >= kIntentDecisiveSamples) {
+     track.intent_ambiguous = false;
+     track.decisive_motion_samples = 0;
+    }
+   } else {
+    track.decisive_motion_samples = 0;
+   }
+  }
   if (track.velocity_initialized) {
    const double direction_agreement =
      track.track.state.v.x * measured_velocity.x + track.track.state.v.y * measured_velocity.y;
@@ -102,6 +134,17 @@ std::vector<PredictInput> DynamicObstacleMap::predict_inputs() const {
  for (const auto& stored : tracks_) {
   PredictInput input;
   input.state = stored.track.state;
+  // Deceleration or a stop makes continuation and reversal both valid until
+  // two decisive motion samples resolve intent. Hysteresis prevents one noisy
+  // scan from granting a crossing release during endpoint dwell.
+  if (stored.motion_velocity_initialized && stored.intent_ambiguous) {
+   input.state.v = stored.last_motion_velocity;
+   input.alternate_velocity = {
+     -stored.last_motion_velocity.x,
+     -stored.last_motion_velocity.y,
+   };
+   input.alternate_velocity_valid = true;
+  }
   input.last_observed_s = stored.track.last_observed_s;
   input.min_observed = stored.min_observed;
   input.max_observed = stored.max_observed;
@@ -112,10 +155,20 @@ std::vector<PredictInput> DynamicObstacleMap::predict_inputs() const {
  return inputs;
 }
 
-std::vector<std::vector<DynamicObjectState>> DynamicObstacleMap::predict(double time_s, double horizon_s,
-                                                               double frame_dt_s, double max_age_s) const {
+std::vector<std::vector<DynamicObjectState>>
+DynamicObstacleMap::predict(double time_s, double horizon_s, double frame_dt_s, double max_age_s) const {
  // Thin delegation: all future-frame math lives in the predictor module.
  return predict_frames(predict_inputs(), time_s, horizon_s, frame_dt_s, max_age_s);
+}
+
+std::vector<std::vector<DynamicObjectState>> DynamicObstacleMap::predict_nominal(double time_s,
+                                                                                 double horizon_s,
+                                                                                 double frame_dt_s,
+                                                                                 double max_age_s) const {
+ auto inputs = predict_inputs();
+ for (auto& input : inputs)
+  input.alternate_velocity_valid = false;
+ return predict_frames(inputs, time_s, horizon_s, frame_dt_s, max_age_s);
 }
 
 } // namespace sim

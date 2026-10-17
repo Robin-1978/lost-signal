@@ -22,8 +22,9 @@ struct DwaRollout {
  std::vector<Vec2> points;
  bool collision{false};
 };
-// Differential-drive DWA-lite: sample the (v,w) window, simulate forward for predict_T, and score each candidate.
-// Weights are method constants; the player selects a driving style rather than tuning individual weights.
+// Differential-drive DWA-lite: sample the (v,w) window, simulate forward for predict_T, and score each
+// candidate. Weights are method constants; the player selects a driving style rather than tuning individual
+// weights.
 struct DwaResult {
  DwaCmd best;
  std::vector<Vec2> best_path;
@@ -34,8 +35,9 @@ struct DwaResult {
 DwaResult dwa_compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                       DwaWeights wt, double v_max = 2.0, double w_max = 1.5, double accel = 2.0,
                       double predict_T = 1.5, double dt = 0.1, double robot_radius = 0.38,
- double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {});
-// Time-varying form: linearly extrapolate dynamic actors as p + v*t for collision checks. An empty list equals the static form.
+                      double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {});
+// Time-varying form: linearly extrapolate dynamic actors as p + v*t for collision checks. An empty list
+// equals the static form.
 DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                           DwaWeights wt, const std::vector<DynamicObjectState>& dyn, double v_max = 2.0,
                           double w_max = 2.0, double accel = 3.0, double predict_T = 2.5, double dt = 0.1,
@@ -50,5 +52,6 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  double v_max = 2.0, double w_max = 2.0, double accel = 3.0,
                                  double predict_T = 2.5, double dt = 0.1, double frame_dt = 0.1,
                                  double safety_margin = 0.0, double robot_radius = 0.38,
- double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {});
+                                 double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {},
+                                 double min_velocity_mps = -0.5);
 } // namespace sim

@@ -16,7 +16,7 @@
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
   if (!(condition)) {                                                                                        \
-   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                            \
+   std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n";                           \
    return 1;                                                                                                 \
   }                                                                                                          \
  } while (false)
@@ -34,7 +34,7 @@ int main() {
    if (mission.result().status == mission::MissionStatus::Succeeded) {
     ++succeeded;
    }
- if (mission.result().failure_reason.find("collision") != std::string::npos) {
+   if (mission.result().failure_reason.find("collision") != std::string::npos) {
     ++coll;
    }
    for (const auto& episode : mission.shadow_episodes()) {
@@ -44,8 +44,8 @@ int main() {
    }
   }
   std::cerr << (b == 0 ? "default" : "recommended") << " succ=" << succeeded << "/5 coll=" << coll
-            << "/5 cells=[" << cells[0][0] << "," << cells[0][1] << "][" << cells[1][0] << ","
-            << cells[1][1] << "]\n";
+            << "/5 cells=[" << cells[0][0] << "," << cells[0][1] << "][" << cells[1][0] << "," << cells[1][1]
+            << "]\n";
   CHECK(succeeded == 5);
   CHECK(coll == 0);
   CHECK(cells[1][0] + cells[1][1] > 0);

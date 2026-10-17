@@ -11,12 +11,20 @@ using DynamicCollision = std::function<bool(double, double, double)>;
 
 DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                   DwaWeights weights, const DynamicCollision& dynamic_collision, double v_max, double w_max,
- double accel, double predict_time, double dt, double yaw_accel,
- const StaticFeasibility& terrain_feasible) {
+                  double accel, double predict_time, double dt, double yaw_accel,
+                  const StaticFeasibility& terrain_feasible, double min_velocity_mps = -0.5) {
  DwaResult output;
  output.best.valid = false;
  output.best.score = -1e18;
- for (double velocity = -0.5; velocity <= v_max + 1e-9; velocity += 0.25) {
+ const double min_velocity = std::max(-0.5, min_velocity_mps);
+ std::vector<double> velocity_samples;
+ for (double velocity = min_velocity; velocity <= v_max + 1e-9; velocity += 0.25)
+  velocity_samples.push_back(velocity);
+ if (min_velocity_mps >= 0.0 && v_max >= min_velocity &&
+     (velocity_samples.empty() || std::abs(velocity_samples.back() - v_max) > 1e-9)) {
+  velocity_samples.push_back(v_max);
+ }
+ for (double velocity : velocity_samples) {
   if (std::abs(velocity - cur_v) > accel * predict_time) {
    continue;
   }
@@ -30,15 +38,15 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
    double free_time = predict_time;
    bool collision = false;
    for (double time = 0.0; time < predict_time; time += dt) {
- const Vec2 previous{x, y};
+    const Vec2 previous{x, y};
     rollout_v += clamp(velocity - rollout_v, -accel * dt, accel * dt);
     rollout_w += clamp(angular - rollout_w, -yaw_accel * dt, yaw_accel * dt);
     x += rollout_v * std::cos(heading) * dt;
     y += rollout_v * std::sin(heading) * dt;
     heading += rollout_w * dt;
     points.push_back({x, y});
- if (!map.isFree(x, y) || dynamic_collision(x, y, time) ||
- (terrain_feasible && !terrain_feasible(previous, {x, y}))) {
+    if (!map.isFree(x, y) || dynamic_collision(x, y, time) ||
+        (terrain_feasible && !terrain_feasible(previous, {x, y}))) {
      collision = true;
      free_time = time;
      break;
@@ -66,16 +74,16 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
 
 DwaResult dwa_compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
                       DwaWeights weights, double v_max, double w_max, double accel, double predict_time,
- double dt, double robot_radius, double yaw_accel, StaticFeasibility terrain_feasible) {
+                      double dt, double robot_radius, double yaw_accel, StaticFeasibility terrain_feasible) {
  (void)robot_radius;
  return compute(
    pos, theta, cur_v, cur_w, goal, map, weights, [](double, double, double) { return false; }, v_max, w_max,
- accel, predict_time, dt, yaw_accel, terrain_feasible);
+   accel, predict_time, dt, yaw_accel, terrain_feasible);
 }
 
 DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal, const GridMap& map,
-                          DwaWeights weights, const std::vector<DynamicObjectState>& actors, double v_max, double w_max,
-                          double accel, double predict_time, double dt, double safety_margin,
+                          DwaWeights weights, const std::vector<DynamicObjectState>& actors, double v_max,
+                          double w_max, double accel, double predict_time, double dt, double safety_margin,
                           double robot_radius, double yaw_accel) {
  const auto dynamic_collision = [&](double x, double y, double time) {
   for (const auto& actor : actors) {
@@ -88,30 +96,45 @@ DwaResult dwa_compute_dyn(Vec2 pos, double theta, double cur_v, double cur_w, Ve
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
- predict_time, dt, yaw_accel, {});
+                predict_time, dt, yaw_accel, {});
 }
 
 DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
                                  const GridMap& map, DwaWeights weights,
-                                 const std::vector<std::vector<DynamicObjectState>>& predicted_frames, double v_max,
-                                 double w_max, double accel, double predict_time, double dt, double frame_dt,
- double safety_margin, double robot_radius, double yaw_accel,
- StaticFeasibility terrain_feasible) {
+                                 const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
+                                 double v_max, double w_max, double accel, double predict_time, double dt,
+                                 double frame_dt, double safety_margin, double robot_radius, double yaw_accel,
+                                 StaticFeasibility terrain_feasible, double min_velocity_mps) {
  const auto dynamic_collision = [&](double x, double y, double time) {
   if (predicted_frames.empty()) {
    return false;
   }
   const auto frame_index = std::min(predicted_frames.size() - 1,
                                     static_cast<std::size_t>(std::max(0.0, std::floor(time / frame_dt))));
-  for (const auto& actor : predicted_frames[frame_index]) {
-   if (std::hypot(x - actor.p.x, y - actor.p.y) < actor.radius + robot_radius + safety_margin) {
+  for (std::size_t actor_index = 0; actor_index < predicted_frames[frame_index].size(); ++actor_index) {
+   const auto& actor = predicted_frames[frame_index][actor_index];
+   const double distance_now = std::hypot(x - actor.p.x, y - actor.p.y);
+   const double physical_limit = actor.radius + robot_radius;
+   const double safety_limit = physical_limit + safety_margin;
+   if (distance_now < physical_limit) {
     return true;
+   }
+   if (distance_now < safety_limit) {
+    // If the rollout starts inside a soft safety margin, freezing can be more
+    // dangerous than escaping. Admit only samples that do not reduce the
+    // same-time separation; physical overlap remains an unconditional veto.
+    if (actor_index >= predicted_frames.front().size())
+     return true;
+    const auto& initial_actor = predicted_frames.front()[actor_index];
+    const double initial_distance = std::hypot(pos.x - initial_actor.p.x, pos.y - initial_actor.p.y);
+    if (initial_distance >= safety_limit || distance_now + 1e-9 < initial_distance)
+     return true;
    }
   }
   return false;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
- predict_time, dt, yaw_accel, terrain_feasible);
+                predict_time, dt, yaw_accel, terrain_feasible, min_velocity_mps);
 }
 
 } // namespace sim

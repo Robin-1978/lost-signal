@@ -3,6 +3,7 @@
 #include "content_catalog.hpp"
 #include "component_registry.hpp"
 #include "mission/systems/control_system.hpp"
+#include "mission/systems/dynamic_traffic_system.hpp"
 #include "mission/systems/field_dispatch_system.hpp"
 #include "mission/systems/field_operator_system.hpp"
 #include "mission/systems/goal_system.hpp"
@@ -11,6 +12,7 @@
 #include "sim/simulated_platform.hpp"
 #include "mission/world/actor_behavior_registry.hpp"
 #include "autonomy/behavior/entry_governor.hpp"
+#include "autonomy/behavior/crossing_behavior.hpp"
 #include "autonomy/planning/validation/entry_shadow.hpp"
 #include "hw/chassis/diff_drive.hpp"
 #include "autonomy/perception/dynamic_obstacle_map.hpp"
@@ -155,6 +157,15 @@ struct ControlSnapshot {
  bool shadow_assessed{false};
  double shadow_depart_s{-1.0};
  int shadow_reason{-1};
+ // Authored conflict-zone hypothesis. Shadow authority publishes evidence;
+ // control authority additionally permits the crossing state machine to
+ // constrain motion after its executable-trajectory gate is satisfied.
+ bool crossing_assessed{false};
+ bool crossing_control_authority{false};
+ std::string crossing_zone_id;
+ sim::Vec2 crossing_stop{0, 0};
+ double crossing_wait_s{-1.0};
+ int crossing_reason{-1};
  // Spatial pocket shadow (Gate B): last sampling while waiting. verdict codes
  // sim::SearchVerdict (0=FoundFeasible/1=AllRefused/2=Incomplete), -1 = unsampled.
  int shadow_pocket_verdict{-1};
@@ -354,18 +365,17 @@ class MissionSimulation {
  static constexpr double fixed_step_s = 0.02;
 
  MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
- const MissionSimulationOptions& options);
+                   const MissionSimulationOptions& options);
 
- MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
-                   std::optional<uint64_t> seed_override = std::nullopt,
-                   const std::vector<std::string>& owned_abilities = {},
-                   const ComponentRegistry& component_registry = ComponentRegistry::builtins(),
- std::shared_ptr<const autonomy::IGlobalPlanner> global_planner = {},
- PhysicsMode physics_mode = PhysicsMode::Bullet,
- std::shared_ptr<sim::IHighLevelPolicy> high_level_policy = {},
- std::string contract_id = {},
- std::string runtime_provider_id = "channel.in-process",
- sim::runtime::RuntimeRegistry runtime_registry = sim::runtime::RuntimeRegistry::with_builtins());
+ MissionSimulation(
+   const ContentCatalog& catalog, std::string level_id, BuildSelection build,
+   std::optional<uint64_t> seed_override = std::nullopt, const std::vector<std::string>& owned_abilities = {},
+   const ComponentRegistry& component_registry = ComponentRegistry::builtins(),
+   std::shared_ptr<const autonomy::IGlobalPlanner> global_planner = {},
+   PhysicsMode physics_mode = PhysicsMode::Bullet,
+   std::shared_ptr<sim::IHighLevelPolicy> high_level_policy = {}, std::string contract_id = {},
+   std::string runtime_provider_id = "channel.in-process",
+   sim::runtime::RuntimeRegistry runtime_registry = sim::runtime::RuntimeRegistry::with_builtins());
 
  void reset();
  void start();
@@ -382,12 +392,11 @@ class MissionSimulation {
  const FieldOperatorState& field_operator() const { return field_operator_system_.state(); }
  const FieldIntentState& field_intent() const { return field_operator_system_.intent(); }
  bool set_field_operator_command(double world_x, double world_y);
- bool issue_field_intent(FieldIntentKind kind,
- std::optional<sim::Vec2> target = std::nullopt);
+ bool issue_field_intent(FieldIntentKind kind, std::optional<sim::Vec2> target = std::nullopt);
  const WorldActivityState& world_activity() const { return snapshot_.world_activity; }
  const GoalStep* active_goal() const {
- const auto index = goal_system_.active_goal_index();
- return index && *index < level_.objective.goals.size() ? &level_.objective.goals[*index] : nullptr;
+  const auto index = goal_system_.active_goal_index();
+  return index && *index < level_.objective.goals.size() ? &level_.objective.goals[*index] : nullptr;
  }
 
  const LevelDefinition& level() const { return level_; }
@@ -402,9 +411,9 @@ class MissionSimulation {
  const sim::TerrainModel& terrain_model() const { return terrain_; }
  const sim::TerrainCapability& terrain_capability() const { return terrain_capability_; }
  const sim::ChassisCaps& chassis_caps() const { return chassis_caps_; }
- std::optional<sim::physics::RigidTransform> lookup_transform(
- const std::string& target_frame, const std::string& source_frame) const {
- return frame_tree_.lookup(target_frame, source_frame);
+ std::optional<sim::physics::RigidTransform> lookup_transform(const std::string& target_frame,
+                                                              const std::string& source_frame) const {
+  return frame_tree_.lookup(target_frame, source_frame);
  }
  std::vector<std::string> frame_ids() const { return frame_tree_.frame_ids(); }
  double frame_timestamp_s() const { return estimation_system_.state().timestamp_s; }
@@ -424,20 +433,23 @@ class MissionSimulation {
  const std::string& runtime_provider_id() const { return runtime_provider_id_; }
  std::uint32_t runtime_api_version() const { return sim::runtime::kApiVersion; }
  sim::runtime::LifecycleState runtime_state() const {
- return runtime_channel_ ? runtime_channel_->state() : sim::runtime::LifecycleState::Unconfigured;
+  return runtime_channel_ ? runtime_channel_->state() : sim::runtime::LifecycleState::Unconfigured;
  }
  sim::runtime::RuntimeHealth runtime_health() const {
- return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
+  return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
  }
  const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
  std::string_view global_planner_id() const { return planning_system_.planner().id(); }
  std::string_view local_planner_id() const {
- switch (chassis_caps_.command_space) {
- case sim::ChassisCommandSpace::SteeringAngle: return "ackermann-rollout";
- case sim::ChassisCommandSpace::HolonomicTwist: return "holonomic-rollout";
- case sim::ChassisCommandSpace::YawRate: return "dwa-yaw-rate";
- }
- return "unknown";
+  switch (chassis_caps_.command_space) {
+  case sim::ChassisCommandSpace::SteeringAngle:
+   return "ackermann-rollout";
+  case sim::ChassisCommandSpace::HolonomicTwist:
+   return "holonomic-rollout";
+  case sim::ChassisCommandSpace::YawRate:
+   return "dwa-yaw-rate";
+  }
+  return "unknown";
  }
  const ContractJob* active_contract() const { return active_contract_; }
  PhysicsMode physics_mode() const { return physics_mode_; }
@@ -448,7 +460,7 @@ class MissionSimulation {
  void reset_payload();
  void collect_payload(const GoalStep& goal);
  bool update_payload_integrity(const sim::DiffState& before, const sim::DiffState& after,
- double lateral_accel_mps2, double contact_impulse_Ns);
+                               double lateral_accel_mps2, double contact_impulse_Ns);
  void synchronize_payload_dynamics();
  void update_environment();
  double environment_grip_multiplier(const std::string& material) const;
@@ -561,10 +573,10 @@ class MissionSimulation {
   // the registry evaluates them, mission never branches on kinds.
   mission::ActorBehaviorParams behavior;
   bool social{false};
- std::string visual_kind{"vehicle"};
+  std::string visual_kind{"vehicle"};
   std::string visual_model;
   double visual_ref_radius_m{0.45};
- double display_heading_rad{0.0};
+  double display_heading_rad{0.0};
   double t0{0.0};
  };
  std::vector<SimAgent> agents_;
@@ -604,6 +616,7 @@ class MissionSimulation {
  // Entry governor state (Phase-2 Behavior brake): hysteresis lives here,
  // reset every run like every other per-run state below.
  sim::GovernorState governor_state_;
+ DynamicTrafficSystem dynamic_traffic_system_;
  double next_scan_s_{0.0};
  double next_decision_s_{0.0};
  double next_replay_s_{0.0};

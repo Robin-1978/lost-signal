@@ -278,11 +278,11 @@ AI View answers “what evidence caused it?” with the same event IDs and measu
 - Success, dynamic collision, static collision, and timeout have specific debrief paths.
 - Content, locale, headless, and mission regression checks pass.
 
-Acceptance evidence on the Bullet backend is deterministic for seed 47. The recommended performance
-computer finishes in 89.18 s with zero collisions and 0.984 m dynamic clearance. The otherwise identical
-light-computer build finishes in 86.18 s with zero collisions but only 0.464 m clearance, below the 0.6 m
-safe-score threshold. This gives the player a controlled comparison in which one relevant variable changes
-the safety margin without turning the lesson into an arbitrary failure.
+The original clearance comparison was invalidated by the corrected nominal/conservative prediction split. The
+current deterministic Bullet evidence keeps both builds safe: the performance computer finishes sooner and with a
+slightly larger dynamic clearance, while the otherwise identical light-computer build consumes less energy. This
+is now taught as a speed/compute/energy tradeoff. A future fault-injection experiment will provide the unsafe
+counterexample without depending on a known collision in the normal controller.
 
 ### Alpha Stage 2 — Make decision evidence a shared runtime contract
 
@@ -348,9 +348,9 @@ seed, runtime and physics backends, hardware, algorithm IDs, a canonical configu
 and the shared decision chain. `--reproduce` rejects incompatible content and restores the declared run.
 `tools/compare_runs.py` verifies both digests, forbids invariant changes, and requires each controlled variable to
 be named. A manifest reproduction matched every reported metric. Changing only
-`hardware.components.computer` from `computer.performance` to `computer.light` changed completion time from
-89.18 s to 86.18 s, energy from 2.209 Wh to 1.747 Wh, and dynamic clearance from 0.984 m to 0.464 m; both runs
-completed without collision, while the light-computer run lost the safe score.
+`hardware.components.computer` remains the declared controlled variable for the comparison artifact. Exact metrics
+are regenerated at release time because corrected autonomy contracts intentionally invalidate old baselines; the
+comparison must report the current time, energy, and clearance values rather than preserve obsolete score claims.
 
 ### Alpha Stage 5 — Release closure
 
@@ -366,9 +366,30 @@ Status: **complete**
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The local release gate passed on Linux x86_64 with 59/59 graphical and headless tests, 59/59 sanitizer tests,
-content and locale validation, all deterministic generator checks, a graphical Xvfb smoke run, and two
-byte-identical five-frame `lost_signal` screenshot sequences. CI now runs a separate content/provenance drift
-job in addition to portable Linux, macOS, and Windows headless builds, sanitizers, and the Linux client. The
-published revision remains gated on those remote jobs.
+The current Linux x86_64 Release build passes 64/64 tests, content validation, and canonical content roundtrip.
+Sanitizers, the graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain
+final publishing gates. A sanitizer result from an earlier baseline is not evidence for the current revision.
+
+## Next implementation order
+
+The RO-1 rigid-body, device, and autonomy reference baseline remains the foundation. The next work does not add
+more sensor families, SLAM, VLA, ROS integration, or additional chassis fidelity until the current behavior and
+runtime contracts are closed.
+
+1. **Executable motion contract and runtime decomposition.** Make the local planner return the timestamped
+ trajectory that control will track, add validation and tracking-envelope feedback, then continue after the
+ completed `DynamicTrafficSystem` extraction with sensor scheduling, decision evidence, mission progress, and
+ snapshot assembly from `MissionSimulation`.
+2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
+ cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
+ exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).
+3. **One polished, playful scenario.** Use the same generic systems to author a chassis/terrain challenge with
+ multiple targets, moving world actors, meaningful parameter choices, readable consequences, and a deterministic
+ debrief. Existing chapters remain available.
+4. **Visual and audio finish for that scenario.** Improve models, materials, wheel animation, lighting, particles,
+ camera staging, hints, and legends from snapshot state after the scenario mechanics are stable.
+5. **Experiment framework and fault injection.** Compare declared algorithm/configuration variants with versioned
+ results, then add delay, loss, stale data, actuator lag, slip, and sensor faults through provider contracts.
+
+Each item must leave deterministic focused tests and the complete mission suite green before the next item starts.
 

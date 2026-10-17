@@ -8,13 +8,19 @@
 
 namespace sim {
 
-// Predictor input: one tracked object plus what the tracker learned about its
-// patrol corridor. The tracker owns observation/velocity/bounds estimation;
-// the predictor owns only the future: constant-velocity extrapolation with
+// Predictor input: one prediction seed plus what the tracker learned about
+// its motion corridor. The seed may preserve a learned periodic-motion
+// velocity while the current public track is stopped at a corridor endpoint.
+// The predictor owns only the future: constant-velocity extrapolation with
 // reflection inside the observed corridor. Pure function of its arguments,
 // no hidden state, so DWA and tests can call it without a tracker.
 struct PredictInput {
  DynamicObjectState state;
+ // Optional second motion mode. Trackers use it when a previously moving
+ // target pauses: continuing and reversing are both plausible until fresh
+ // observations resolve intent.
+ Vec2 alternate_velocity{0.0, 0.0};
+ bool alternate_velocity_valid{false};
  double last_observed_s{0.0};
  Vec2 min_observed{0.0, 0.0};
  Vec2 max_observed{0.0, 0.0};
@@ -25,8 +31,9 @@ struct PredictInput {
 // Fixed-step future frames: frame k holds the predicted state at
 // time_s + age + k * frame_dt_s for every input younger than max_age_s.
 // Stale inputs (age > max_age_s) and future-dated inputs are skipped.
-std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs, double time_s,
-                                                  double horizon_s, double frame_dt_s, double max_age_s);
+std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs,
+                                                            double time_s, double horizon_s,
+                                                            double frame_dt_s, double max_age_s);
 
 // Phase-aware gap acceptance: the minimum predicted separation between the
 // ego vehicle (advancing along its path at speed_mps, holding at the end)
@@ -68,8 +75,8 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
 // action waits until the observed error (predicted vs actual release) proves
 // small. Pure function, no behavior by itself.
 double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
-                           const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
-                           double ego_radius_m, double margin_m);
+                          const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
+                          double ego_radius_m, double margin_m);
 
 // Infinity is not one verdict: callers (and shadow logs) must distinguish
 // why no departure is provable, because each cause belongs to a different
@@ -77,24 +84,24 @@ double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, 
 // corridor. kHorizonShort/kWaitUnsafe/kBlockedInWindow are undecidable here,
 // never "unsafe forever".
 enum class DepartReason {
- kGoNow,          // wait_s == 0: depart now, whole trajectory proven.
- kWait,           // wait_s > 0: earliest provably safe departure.
- kBlockedInWindow,// horizon covers the traversal and the waiting spot stays
-                  // safe, yet no wait clears the corridor.
- kWaitUnsafe,     // the waiting spot itself is swept by a threat within the
-                  // horizon: staying is what kills. Phase-2 territory.
- kHorizonShort,   // the horizon cannot even cover the traversal: unknown,
-                  // not unsafe (SOTIF Area 3: never file unknown as safe).
- kInvalid,        // degenerate input (empty path/frames, non-positive cruise).
- kUnassessed,     // capability does not exist yet (Phase-2 pocket/rejoin/detour):
-                  // honestly Unknown, never borrowed from another cause.
- kClear,          // a leg checked over its full interval with no violation.
- kStaticBlocked,  // no static path exists (A* on the inflated grid failed):
-                  // geometric infeasibility, proven — not traffic, not unknown.
- kCapsViolated,   // the geometric path exists but the chassis cannot execute
-                  // it: fillet radius below Rmin, smoothed path clipping an
-                  // obstacle, or steer demand beyond spec. Proven against the
-                  // caller-supplied execution caps — not traffic, not unknown.
+ kGoNow,           // wait_s == 0: depart now, whole trajectory proven.
+ kWait,            // wait_s > 0: earliest provably safe departure.
+ kBlockedInWindow, // horizon covers the traversal and the waiting spot stays
+                   // safe, yet no wait clears the corridor.
+ kWaitUnsafe,      // the waiting spot itself is swept by a threat within the
+                   // horizon: staying is what kills. Phase-2 territory.
+ kHorizonShort,    // the horizon cannot even cover the traversal: unknown,
+                   // not unsafe (SOTIF Area 3: never file unknown as safe).
+ kInvalid,         // degenerate input (empty path/frames, non-positive cruise).
+ kUnassessed,      // capability does not exist yet (Phase-2 pocket/rejoin/detour):
+                   // honestly Unknown, never borrowed from another cause.
+ kClear,           // a leg checked over its full interval with no violation.
+ kStaticBlocked,   // no static path exists (A* on the inflated grid failed):
+                   // geometric infeasibility, proven — not traffic, not unknown.
+ kCapsViolated,    // the geometric path exists but the chassis cannot execute
+                   // it: fillet radius below Rmin, smoothed path clipping an
+                   // obstacle, or steer demand beyond spec. Proven against the
+                   // caller-supplied execution caps — not traffic, not unknown.
 };
 
 struct DepartureAssessment {
@@ -104,8 +111,7 @@ struct DepartureAssessment {
 
 const char* depart_reason_name(DepartReason reason);
 
-DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx,
-                                     double cruise_mps,
+DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
                                      const std::vector<std::vector<DynamicObjectState>>& frames,
                                      double frame_dt_s, double ego_radius_m, double margin_m);
 
@@ -113,11 +119,11 @@ DepartureAssessment assess_departure(const std::vector<Vec2>& path, std::size_t 
 // only time feasibility is assessable today. Pocket/rejoin/detour need
 // spatial planning that does not exist yet and report Unknown honesty.
 enum class LocalCandidate {
- kProceed,     // depart now along the remaining path, no waiting.
- kWaitInPlace, // hold the current spot until the assessed departure, then proceed.
- kWaitAtPocket,// move aside, wait safe, rejoin. Phase-2 (unassessed).
- kRejoin,      // rejoin evaluation after a pocket wait. Phase-2 (unassessed).
- kDetour,      // Existing local detour; DWA owns execution today.
+ kProceed,      // depart now along the remaining path, no waiting.
+ kWaitInPlace,  // hold the current spot until the assessed departure, then proceed.
+ kWaitAtPocket, // move aside, wait safe, rejoin. Phase-2 (unassessed).
+ kRejoin,       // rejoin evaluation after a pocket wait. Phase-2 (unassessed).
+ kDetour,       // Existing local detour; DWA owns execution today.
 };
 
 struct Feasibility {
@@ -186,8 +192,8 @@ struct ChassisExecCaps {
 // not unknown.
 // Evidence: exec_traj holds the checked timed trajectory (empty when nothing
 // was executed-checked).
-LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta,
-                             Vec2 pocket, double cruise_mps, const ChassisExecCaps& exec,
+LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
+                             double cruise_mps, const ChassisExecCaps& exec,
                              const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
                              double ego_radius_m, double margin_m);
 
@@ -204,9 +210,8 @@ LegAssessment assess_hold(Vec2 spot, double hold_from_s, double hold_until_s,
 // inside the horizon), then the violation is classified: swept hold position
 // means WaitUnsafe, otherwise BlockedInWindow.
 LegAssessment assess_rejoin(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
-                            double depart_delay_s,
-                            const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
-                            double ego_radius_m, double margin_m);
+                            double depart_delay_s, const std::vector<std::vector<DynamicObjectState>>& frames,
+                            double frame_dt_s, double ego_radius_m, double margin_m);
 
 struct PocketAssessment {
  LegAssessment transit;
@@ -265,9 +270,9 @@ struct PocketSearch {
 // Generate (bounded, deterministic) + assess (three legs each) + keep every
 // verdict with its reasons. hold_s is the scheduling policy input, identical
 // for all candidates; scheduling optimization is not this slice.
-PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route,
-                            Vec2 start, double start_theta, double cruise_mps, const ChassisExecCaps& exec,
-                            double hold_s, const PocketSampleParams& params,
+PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>& route, Vec2 start,
+                            double start_theta, double cruise_mps, const ChassisExecCaps& exec, double hold_s,
+                            const PocketSampleParams& params,
                             const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
                             double ego_radius_m, double margin_m);
 
@@ -275,9 +280,8 @@ PocketSearch sample_pockets(const GridMap& inflated_map, const std::vector<Vec2>
 // from pocket to the route merge point (on the caller-inflated grid), then
 // the route suffix appended for the rejoin leg. Spot selection lives in
 // sample_pockets; this composes assessment for given spots.
-PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta,
-                                    Vec2 pocket, Vec2 merge,
-                                    const std::vector<Vec2>& route_suffix, double cruise_mps,
+PocketAssessment assess_pocket_wait(const GridMap& inflated_map, Vec2 start, double start_theta, Vec2 pocket,
+                                    Vec2 merge, const std::vector<Vec2>& route_suffix, double cruise_mps,
                                     const ChassisExecCaps& exec, double hold_s,
                                     const std::vector<std::vector<DynamicObjectState>>& frames,
                                     double frame_dt_s, double ego_radius_m, double margin_m);

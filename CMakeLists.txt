@@ -85,6 +85,7 @@ add_library(lost_signal_autonomy STATIC
  src/autonomy/behavior/high_level_policy.cpp
  src/autonomy/planning/validation/entry_shadow.cpp
  src/autonomy/behavior/entry_governor.cpp
+ src/autonomy/behavior/crossing_behavior.cpp
  src/autonomy/localization/estimation_system.cpp
  src/autonomy/perception/dynamic_obstacle_map.cpp
  src/autonomy/planning/local/dwa.cpp
@@ -134,6 +135,7 @@ add_library(lost_signal_mission STATIC
  src/mission/mission_simulation.cpp
  src/mission/world/actor_behavior_registry.cpp
  src/mission/systems/control_system.cpp
+ src/mission/systems/dynamic_traffic_system.cpp
  src/mission/systems/field_dispatch_system.cpp
  src/mission/systems/field_operator_system.cpp
  src/mission/systems/goal_system.cpp
@@ -374,6 +376,10 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_executable(test_entry_governor tests/new/test_entry_governor.cpp)
  target_link_libraries(test_entry_governor PRIVATE lost_signal_stack)
  add_test(NAME entry_governor COMMAND test_entry_governor)
+
+ add_executable(test_dynamic_traffic_system tests/new/test_dynamic_traffic_system.cpp)
+ target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_mission)
+ add_test(NAME dynamic_traffic_system COMMAND test_dynamic_traffic_system)
 
  add_executable(test_algo_invariants tests/new/test_algo_invariants.cpp)
  target_link_libraries(test_algo_invariants PRIVATE lost_signal_stack)
