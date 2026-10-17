@@ -32,13 +32,6 @@
         "radius_m": 1.25
       },
       {
-        "marker": "traffic_hold",
-        "label": "动态路口观察点",
-        "action": "inspect",
-        "radius_m": 0.4,
-        "dwell_s": 1.0
-      },
-      {
         "marker": "signal_tower",
         "label": "信号塔",
         "action": "complete",
@@ -59,7 +52,7 @@
   "teaching": {
     "concept": "sensing_rate",
     "prediction_prompt": "同一条走廊，同一班叉车：12 米射程 5Hz 和 5 米射程 20Hz，哪个活下来？",
-    "knowledge_card": "看得远不如看得勤：5Hz 下叉车每帧走 0.11 米，确认加外推，窗口全是旧位置。默认配置在走廊东口撞上，推荐配置 91.72 秒拿全分。"
+    "knowledge_card": "看得远不等于看得及时：5Hz 下叉车每帧走 0.11 米，确认与外推依赖更旧的位置。比较两套配置的预测不确定性、等待时间和最小净距。"
   },
   "score": {
     "safe_min_clearance_m": 0.3,

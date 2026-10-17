@@ -8,11 +8,11 @@ trajectory that the motion layer will execute.
 
 The project does not need a general-purpose behavior-tree runtime today. The compact design has two parts:
 
-1. A data-driven **Behavior Graph** composes discrete mission actions such as navigate, observe, collect, wait,
- cross, recover, and complete. Content selects and parameterizes nodes; C++ providers implement reusable node
- types.
+1. A data-driven **Behavior Graph** is the planned composition model for discrete intent such as navigate,
+ collect, recover, and complete. Content selects task intent; autonomy providers implement reusable behavior.
+ Content does not author the stop pose or a mandatory wait for a dynamic encounter.
 2. A deterministic **safety state machine** owns each continuous commitment. A crossing, for example, progresses
- through `Inactive -> Holding -> Scheduled -> Committed -> Cleared` and never jumps back to `Holding` while the
+ through `Inactive -> Holding -> Committed -> Cleared` and never jumps back to `Holding` while the
  physical body still occupies the conflict region.
 
 The graph provides authoring, explanation, and replay. The state machine provides small, exhaustively testable
@@ -33,10 +33,10 @@ intent, and the latest validated motion proposal. It emits a `BehaviorConstraint
 - stable reason and evidence codes.
 
 The motion planner turns that constraint into a timestamped trajectory. A separate validator checks static
-geometry, chassis feasibility, prediction coverage, and same-time dynamic clearance. Control tracks only the
-validated trajectory. A crossing can enter `Committed` only after the validator accepts that executable
-trajectory, including its expected speed envelope and clearance time. A constant-speed traversal of the global
-route is useful shadow evidence, but it is not authority for a DWA trajectory that can slow, reverse, or detour.
+geometry, chassis feasibility, prediction coverage, same-time dynamic clearance, and RO-1 emergency stopping. The
+behavior latch enters `Committed` only after the route occupancy and intent contract remains safe for its
+confirmation interval. The route-level crossing schedule decides whether departure is permitted; it does not claim
+that a different DWA rollout is safe. Every local rollout remains independently validated on every decision tick.
 
 ```mermaid
 flowchart LR
@@ -46,8 +46,8 @@ flowchart LR
  Graph --> Constraint[BehaviorConstraint]
  Constraint --> Motion[Local motion proposal]
  Motion --> Validator[Trajectory validator]
- Validator -->|accepted| Commit[Safety state machine]
- Commit --> Control[Trajectory tracking]
+ Commit[Safety state machine] --> Constraint
+ Validator -->|accepted| Control[Trajectory tracking]
  Validator -->|rejected| Graph
 ```
 
@@ -58,21 +58,88 @@ Map conflict zones declare an explicit `authority`:
 - `shadow` evaluates the route-level crossing hypothesis without constraining the vehicle;
 - `control` may apply the hold/commit state machine.
 
-All current authored zones remain `shadow`. Focused tests already cover stable stop geometry, body occupancy,
-prediction ambiguity, and commit hysteresis, but the runtime experiment exposed a missing contract: the assessor
-proved a constant-speed route while DWA executed a different trajectory. Promotion to `control` therefore
-requires all of the following:
+`shadow` remains available for experiments. The research-base forklift encounter is a bounded `control` slice in
+every level that traverses it; sensing configuration changes evidence quality, never whether safety behavior exists.
+Focused tests cover stable stop geometry, physical body occupancy, prediction ambiguity, commit hysteresis, and
+complete exit. The first runtime experiment exposed a missing contract: the assessor proved a constant-speed route
+while DWA executed a different trajectory. A new promotion to `control` therefore requires all of the following:
 
 1. the local planner returns a time-parameterized, owned trajectory;
-2. behavior validation evaluates that exact trajectory and its speed tolerance;
+2. local validation evaluates that exact trajectory independently of behavior permission;
 3. the controller reports whether tracking remains inside the accepted envelope;
 4. a minimum-risk response exists for an envelope violation after commitment;
 5. deterministic mission tests cover arrival at the stop line, safe release, complete physical clearance,
  prediction reversal, packet loss, and an actor approaching the waiting point;
 6. the controlled scenario succeeds without relaxing collision geometry or the declared safety margin.
 
-Until those gates pass, DWA remains responsible for short-horizon dynamic avoidance and conflict-zone results are
-evidence rather than authority.
+The controlled slice holds before the mapped conflict region, requires a continuously safe release interval, fixes
+the exit target after commitment, forbids ordinary reverse recovery while crossing, and retains an independent
+physical-collision veto. Its selected local rollout is validated against static geometry, terrain, prediction
+coverage, swept same-time dynamic clearance, and a braking tail. If braking after commitment would stop the body in
+the conflict, a fully margin-compliant forward rollout is the named `CommittedTransit` response. It still must pass
+the nominal static and dynamic checks. Trajectory tracking error remains evidence until a closed-loop recovery for
+tracking-envelope violations is implemented.
+
+## DWA safety evidence
+
+DWA is retained as the deterministic teaching baseline. Its score only orders candidates after hard feasibility
+checks; no weight can make a colliding trajectory executable. The dedicated `dwa_dynamic` contract suite covers:
+
+- inter-frame crossing with ego and obstacle compared at the same future time;
+- a crossing actor that rejects fast straight motion while retaining a safe deceleration;
+- target reversal and sudden slowdown inside the prediction horizon;
+- an actor entering the waiting pose after the robot has stopped;
+- physical footprint separated from forecast uncertainty;
+- physical overlap producing no valid command;
+- explicit stop-pose heading overriding the ordinary path-tangent critic;
+- deterministic candidate order, command, and score under identical inputs.
+
+`trajectory_validator` separately covers continuous swept collision, prediction coverage, behavior stop planes,
+unsafe high-score rejection, minimum-risk escape from an existing soft-margin incursion, and emergency-braking
+tails. Mission regression then verifies the complete sensor-to-actuator loop. These layers answer different
+questions; a successful level cannot replace the algorithm or contract tests.
+
+## Dynamic actor estimation and crossing policy
+
+Dynamic behavior uses five explicit stages:
+
+```text
+timestamped LiDAR observations
+ -> constant-velocity track estimate
+ -> bounded, possibly multi-modal prediction
+ -> conflict-zone occupancy decision
+ -> validated local trajectory
+ -> control, with an independent emergency veto
+```
+
+The tracker uses a deterministic alpha-beta predictor/corrector over position and velocity. It predicts to the
+observation sample time, applies the position innovation with separate position and velocity gains, rejects stale
+timestamps, limits impossible speed, and learns shuttle corridors from filtered states. Repeated endpoint samples
+make current velocity converge toward zero while prediction retains continuation and reversal hypotheses until
+sustained motion resolves intent. This small constant-velocity filter fits the present single-LiDAR teaching scope.
+A covariance-aware Kalman filter or interacting multiple-model tracker becomes justified when the simulator adds
+association uncertainty, acceleration models, or fused radar/camera observations; replacing the current filter must
+preserve the same timestamped track and prediction contracts.
+
+Crossing relevance follows the route point nearest the physical body, never the controller lookahead index. The map
+zone represents the geometric overlap of the two motion corridors. Release requires the ego body to settle at a
+fixed stop line, current prediction evidence to exist, every relevant prediction mode to leave the zone, the
+observed actor motion to point outward, and the complete ego traversal interval to be clear for a sustained
+confirmation time. Empty frames, stale tracks, and unconfirmed motion mean unknown and keep the hold active; absence
+of a mature track is never treated as a clear road. Passing the commit line latches the exit maneuver so ordinary
+soft-margin changes do not stop or reverse the robot inside the conflict area.
+
+This design follows the compact parts of established stacks rather than importing their runtime:
+
+- [Autoware intersection behavior](https://autowarefoundation.github.io/autoware_universe/main/planning/behavior_velocity_planner/autoware_behavior_velocity_intersection_module/)
+  derives attention/conflicting areas, collision intervals, stop lines, and a pass-judge line from route geometry.
+- [Autoware occlusion behavior](https://autowarefoundation.github.io/autoware_universe/main/planning/behavior_velocity_planner/autoware_behavior_velocity_occlusion_spot_module/)
+  separates visibility risk and safe approach constraints from ordinary path following.
+- [CARLA Traffic Manager](https://carla.readthedocs.io/en/latest/adv_traffic_manager/) separates localization and
+  path overlap, collision decisions, motion planning, and actuation, and documents deterministic synchronous runs.
+
+The reusable idea is the semantic boundary between stages. Lost Signal keeps its small deterministic scheduler and
+LSRI contracts instead of taking a dependency on ROS 2, Autoware, or CARLA internals.
 
 ## Mission runtime decomposition
 
@@ -90,7 +157,10 @@ Extraction proceeds by owned state and testable contracts:
 | --- | --- | --- |
 | `SensorScheduleSystem` | sampling phase, sequence, sample and delivery time | device measurement math |
 | `AutonomyPipeline` | localization-to-control scheduling and immutable inputs | mission goals or actor truth |
-| `DynamicTrafficSystem` | conflict semantics and commitment state | Bullet bodies or game collision flags |
+| `RouteTrackingSystem` | route progress, travel direction and heading-loop state | goals, scoring, physics, or actor truth |
+| `DynamicTrafficSystem` | stateless filtering and translation of authored conflict regions | stop poses, behavior state, predictions, or commands |
+| `CrossingBehaviorSystem` | route-derived stop/exit poses and hold/commit/clear state | mission goals, actor truth, Bullet bodies, or game collision flags |
+| `TrajectoryTrackingSystem` | accepted local trajectory and tracking-envelope evidence | command arbitration or physics stepping |
 | `MissionProgressSystem` | goals, payload actions, success and failure | planner internals |
 | `DecisionEvidenceSystem` | transition records and stable evidence codes | localized player prose |
 | `SnapshotAssembler` | immutable presentation and replay value | physics stepping or control decisions |
@@ -98,4 +168,15 @@ Extraction proceeds by owned state and testable contracts:
 `MissionSimulation` should retain construction, reset, fixed-step ordering, lifecycle, and accessors. Each
 extraction must preserve deterministic output and pass its focused contract tests before the next responsibility
 moves. File size is a symptom; ownership and dependency direction are the acceptance criteria.
+
+The first executable-contract slice is now present: differential, Ackermann, and holonomic local planners return
+`ExecutableTrajectory`; the validator checks the selected rollout continuously between static samples and at the
+same time as predicted actors; `TrajectoryTrackingSystem` reports the next estimate against that accepted rollout.
+These reports remain evidence until minimum-risk handling for an envelope violation is implemented and tested.
+
+The first autonomy-pipeline slice is also extracted: `PerceptionPipeline` owns LiDAR projection, foreground
+classification, transient occupancy, tracks, and predictions. `MissionSimulation` schedules the simulated device and
+moves the delivered message across LSRI, but it cannot update perception state directly. Behavior stop constraints
+are now executable geometry as well: an uncommitted crossing supplies a latched stop point and one-sided plane to
+the local trajectory validator, so a high-scoring rollout cannot cross the virtual wall.
 

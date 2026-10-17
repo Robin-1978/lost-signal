@@ -2,8 +2,12 @@
 
 #include "content_catalog.hpp"
 #include "component_registry.hpp"
-#include "mission/systems/control_system.hpp"
+#include "autonomy/control/route_tracking_system.hpp"
+#include "mission/systems/collision_monitor.hpp"
 #include "mission/systems/dynamic_traffic_system.hpp"
+#include "mission/systems/deterministic_scheduler.hpp"
+#include "mission/systems/decision_evidence_system.hpp"
+#include "autonomy/pipeline/autonomy_pipeline.hpp"
 #include "mission/systems/field_dispatch_system.hpp"
 #include "mission/systems/field_operator_system.hpp"
 #include "mission/systems/goal_system.hpp"
@@ -15,7 +19,6 @@
 #include "autonomy/behavior/crossing_behavior.hpp"
 #include "autonomy/planning/validation/entry_shadow.hpp"
 #include "hw/chassis/diff_drive.hpp"
-#include "autonomy/perception/dynamic_obstacle_map.hpp"
 #include "autonomy/planning/local/dwa.hpp"
 #include "autonomy/planning/local/ackermann_local.hpp"
 #include "autonomy/planning/local/holonomic_local.hpp"
@@ -24,7 +27,6 @@
 #include "autonomy/control/follow.hpp"
 #include "autonomy/localization/estimation_system.hpp"
 #include "autonomy/mapping/terrain.hpp"
-#include "hw/sensors/hal.hpp"
 #include "hw/sensors/sensor_system.hpp"
 #include "physics/frame_transform.hpp"
 #include "autonomy/mapping/grid_map.hpp"
@@ -61,28 +63,6 @@ struct MissionEvent {
  double time_s{0.0};
  std::string code;
  std::string message;
-};
-
-// One compact, presentation-neutral explanation of an autonomy decision.
-// Stable codes are localized by clients and serialized verbatim by headless
-// tools. Non-finite measurements mean that evidence was unavailable;
-// algorithms never manufacture a measurement for presentation.
-struct DecisionEvidence {
- std::uint64_t sequence{0};
- double decision_time_s{0.0};
- double end_time_s{-1.0};
- double observation_time_s{std::numeric_limits<double>::quiet_NaN()};
- std::vector<std::string> observation_refs;
- double prediction_horizon_s{0.0};
- double measured_separation_m{std::numeric_limits<double>::quiet_NaN()};
- double predicted_separation_m{std::numeric_limits<double>::quiet_NaN()};
- std::string constraint_code{"none"};
- std::string reason_code{"unassessed"};
- std::string action_code{"idle"};
- double target_speed_mps{0.0};
- double target_yaw_rate_radps{0.0};
- std::string outcome_code{"active"};
- std::uint64_t superseded_by{0};
 };
 
 // Gate-3 shadow wait episode (structured): one waiting interval with the
@@ -127,6 +107,7 @@ struct DynamicObstacleSnapshot {
  sim::Vec2 estimated_velocity;
  double radius_m{0.0};
  double last_observed_s{0.0};
+ double learned_endpoint_dwell_s{0.0};
  std::string visual_kind{"vehicle"};
  double heading_rad{0.0};
 };
@@ -151,6 +132,21 @@ struct ControlSnapshot {
  sim::Vec2 local_target;
  std::vector<LocalTrajectorySnapshot> dwa_candidates;
  std::vector<sim::Vec2> dwa_selected;
+ double dwa_proposed_v_mps{0.0};
+ double dwa_proposed_w_radps{0.0};
+ std::size_t dwa_accepted_candidates{0};
+ // Exact local trajectory contract. The validator checks the same timed
+ // rollout whose command is handed to control; tracking compares the next
+ // estimate against that accepted rollout.
+ bool trajectory_validated{false};
+ int trajectory_verdict{-1};
+ double trajectory_min_dynamic_clearance_m{std::numeric_limits<double>::infinity()};
+ std::uint64_t trajectory_sequence{0};
+ bool trajectory_tracking_active{false};
+ bool trajectory_within_envelope{false};
+ double trajectory_position_error_m{0.0};
+ double trajectory_heading_error_rad{0.0};
+ double trajectory_speed_error_mps{0.0};
  // Shadow departure assessment (gate 3): observed only, never acted on.
  // shadow_reason codes sim::DepartReason for the departure verdict
  // (assess_departure never emits kUnassessed/kClear), -1 = unassessed.
@@ -166,6 +162,24 @@ struct ControlSnapshot {
  sim::Vec2 crossing_stop{0, 0};
  double crossing_wait_s{-1.0};
  int crossing_reason{-1};
+ int crossing_phase{0};
+ bool crossing_committed{false};
+ bool crossing_ready_to_commit{false};
+ bool crossing_safe_to_commit{false};
+ bool crossing_position_ready{false};
+ bool crossing_speed_ready{false};
+ bool crossing_heading_ready{false};
+ double crossing_stop_longitudinal_m{0.0};
+ double crossing_stop_lateral_m{0.0};
+ double crossing_stop_distance_m{0.0};
+ double crossing_stop_heading_error_rad{0.0};
+ bool crossing_prediction_evidence_available{false};
+ bool crossing_threats_moving_away{false};
+ sim::Vec2 crossing_exit{0, 0};
+ double crossing_transit_speed_mps{0.0};
+ double crossing_execution_duration_s{0.0};
+ double crossing_execution_min_gap_m{std::numeric_limits<double>::infinity()};
+ double crossing_execution_required_gap_m{0.0};
  // Spatial pocket shadow (Gate B): last sampling while waiting. verdict codes
  // sim::SearchVerdict (0=FoundFeasible/1=AllRefused/2=Incomplete), -1 = unsampled.
  int shadow_pocket_verdict{-1};
@@ -316,6 +330,13 @@ struct MissionResult {
  double max_odometry_error_m{0.0};
  double odometry_heading_error_rad{0.0};
  double max_odometry_heading_error_rad{0.0};
+ // Navigation estimate in map. In odometry-only mode these equal the raw
+ // odometry errors above; fused localization corrects map->odom while raw
+ // odom->base_footprint remains continuous and may continue to drift.
+ double fused_pose_error_m{0.0};
+ double max_fused_pose_error_m{0.0};
+ double fused_heading_error_rad{0.0};
+ double max_fused_heading_error_rad{0.0};
  int collisions{0};
  int pedestrian_contacts{0};
  // Perception diagnostics compare anonymous tracks with truth after planning;
@@ -422,7 +443,9 @@ class MissionSimulation {
  const PayloadState& payload_state() const { return payload_; }
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
- const std::vector<DecisionEvidence>& decisions() const { return decisions_; }
+ const std::vector<DecisionEvidence>& decisions() const {
+ return decision_evidence_system_.records();
+ }
  const std::vector<MissionSnapshot>& replay() const { return replay_; }
  void seek_replay(double time_s);
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
@@ -483,7 +506,6 @@ class MissionSimulation {
  void update_shadow_episode();
  void record_replay();
  double surface_traction(sim::Vec2 position) const;
- double static_clearance(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
  double decision_hz() const;
  double corner_speed_cap(double nav_x, double nav_y) const;
@@ -514,7 +536,6 @@ class MissionSimulation {
  ResolvedBuild resolved_build_;
  bool was_saturated_{false};
  double rigid_rollover_exposure_s_{0.0};
- double rigid_static_contact_s_{0.0};
  double previous_payload_shock_mps2_{0.0};
  double filtered_payload_shock_mps2_{0.0};
  bool payload_shock_initialized_{false};
@@ -523,16 +544,20 @@ class MissionSimulation {
 
  std::unique_ptr<sim::GridMap> truth_map_;
  std::unique_ptr<sim::SensorSystem> sensor_system_;
+ std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
  std::unique_ptr<sim::GridMap> collision_map_;
+ std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;
+ double planning_clearance_m_{0.0};
  std::unique_ptr<sim::DiffDrive> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
- std::unique_ptr<ControlSystem> control_system_;
+ std::unique_ptr<sim::RouteTrackingSystem> route_tracking_system_;
  double heading_kp_{0.0};
  // Yaw-rate capability used by DWA/manual/clamps. Diff: DiffDrive w_max.
  // Ackermann: v*tan(steer_max)/base at top drive speed. Hardware, not tuned.
  double yaw_cap_rads_{2.0};
+ double max_forward_speed_mps_{0.0};
  sim::EstimationSystem estimation_system_;
  sim::physics::FrameTransformTree frame_tree_;
  sim::TerrainModel terrain_;
@@ -586,7 +611,7 @@ class MissionSimulation {
  MissionSnapshot snapshot_;
  MissionResult result_;
  std::vector<MissionEvent> events_;
- std::vector<DecisionEvidence> decisions_;
+ DecisionEvidenceSystem decision_evidence_system_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  // Shadow slip instrument (tracked only, see apply_motion): detector state
@@ -615,16 +640,14 @@ class MissionSimulation {
  double shadow_open_nearest_{-1.0};
  // Entry governor state (Phase-2 Behavior brake): hysteresis lives here,
  // reset every run like every other per-run state below.
- sim::GovernorState governor_state_;
+ sim::EntryGovernorSystem entry_governor_system_;
  DynamicTrafficSystem dynamic_traffic_system_;
- double next_scan_s_{0.0};
- double next_decision_s_{0.0};
- double next_replay_s_{0.0};
+ sim::CrossingBehaviorSystem crossing_behavior_system_;
+ DeterministicScheduler scheduler_;
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;
  std::uint64_t motion_sequence_{0};
  std::uint64_t command_sequence_{0};
- std::uint64_t decision_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;
 };

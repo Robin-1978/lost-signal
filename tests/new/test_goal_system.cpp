@@ -48,6 +48,20 @@ int main() {
  CHECK(finish && finish->mission_complete);
  CHECK(!ordered.active_goal_index());
 
+ mission::ObjectiveDefinition stopped_task;
+ auto inspect = goal("inspect", "a", "inspect");
+ inspect.dwell_s = 0.10;
+ stopped_task.goals = {inspect, goal("finish", "home", "complete")};
+ mission::GoalSystem inspection;
+ inspection.reset(stopped_task);
+ // Entering the radius at driving speed never consumes stopped dwell time.
+ for (int sample = 0; sample < 10; ++sample)
+ CHECK(!inspection.update(stopped_task, map, {1.0, 0.0}, 0.25, true, 0.02));
+ for (int sample = 0; sample < 4; ++sample)
+ CHECK(!inspection.update(stopped_task, map, {1.0, 0.0}, 0.0, true, 0.02));
+ const auto inspected = inspection.update(stopped_task, map, {1.0, 0.0}, 0.0, true, 0.02);
+ CHECK(inspected && inspected->goal.action == "inspect");
+
  mission::ObjectiveDefinition autonomous;
  autonomous.goal_order = "autonomous";
  autonomous.goals = {

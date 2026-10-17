@@ -5,9 +5,8 @@
     "/objective/via_label": "Power Module",
     "/objective/goal_label": "Signal Tower",
     "/objective/goals/0/label": "Power Module",
-    "/objective/goals/1/label": "Dynamic Intersection Observation Point",
-    "/objective/goals/2/label": "Signal Tower",
+    "/objective/goals/1/label": "Signal Tower",
     "/teaching/prediction_prompt": "Same corridor, same forklift: which survives—12 m at 5 Hz or 5 m at 20 Hz?",
-    "/teaching/knowledge_card": "Seeing far cannot replace seeing often. At 5 Hz the forklift moves 0.11 m between scans, so confirmation and extrapolation rely on old positions. The default build collides at the corridor’s east entrance; the recommended build earns every badge in 91.72 s."
+    "/teaching/knowledge_card": "Seeing far cannot replace seeing often. At 5 Hz the forklift moves 0.11 m between scans, so confirmation and extrapolation rely on older positions. Compare the resulting uncertainty, wait time, and minimum clearance."
   }
 }

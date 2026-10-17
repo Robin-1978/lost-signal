@@ -22,9 +22,10 @@ commits to a crossing, and releases or falls back when observations change. A lo
 and executes the short-horizon motion toward the selected pocket or through the committed crossing; it does not own
 the long-duration traffic state machine.
 
-That separation also creates a strict promotion gate: behavior may commit only against the time-parameterized
-trajectory the motion layer will execute. Current conflict zones are authored with `shadow` authority while that
-trajectory contract is completed. See [Behavior architecture](behavior-architecture.md).
+That separation also creates a strict promotion gate: behavior admission evaluates a time-parameterized route
+schedule, while the local validator independently checks every exact executable rollout. The research-base
+crossing uses `control` authority only because stop-pose, braking-tail, prediction, and deterministic mission
+contracts are present. See [Behavior architecture](behavior-architecture.md).
 
 The CMake targets make the same boundaries visible. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets. `lost_signal_stack` is a convenience target that aggregates them. `lost_signal_mission` composes the stack with authored content and simulation.
 

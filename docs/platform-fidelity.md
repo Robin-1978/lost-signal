@@ -270,6 +270,11 @@ is not a release claim until the same autonomy build completes those hardware ga
 5. Allow an optional future `identified` profile from a low-speed robot and planar LiDAR without blocking release.
 6. Add multi-line or solid-state providers only for a concrete learning scenario or target device.
 
+The rigid-body acceptance fixture already covers a 30 mm curb and drop with partial support loss, pitch response,
+IMU impact, hull clearance, and recovery to three-point support. Add a separate negative-height groove fixture to
+bound wheel bridging, temporary contact loss, chassis clearance, and post-impact settling; a visible level seam is
+not a substitute for this model test.
+
 This order keeps unused abstraction out of the runtime while preserving the contracts needed for later providers.
 
 ## Engineering references

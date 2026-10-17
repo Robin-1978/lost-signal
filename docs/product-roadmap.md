@@ -86,13 +86,13 @@ payload-sweep, and hardware-identification envelopes listed in `reference-platfo
  concise explainable-autonomy presentation.
 8. Generalize the experiment, regression, and fault-injection framework from the finished content.
 9. Add further sensors or autonomy only for a named experience
- or measured platform target. Run the sanitizer suite as the final repository gate.
+ or measured platform target. Run the sanitizer suite for milestone and release-candidate gates.
 
 ### M0 — Maintain responsive UI quality (deferred, non-blocking)
 
 The shared legend vocabulary, compact labels, and hover hints remain part of the product contract. Broad screenshot
 matrix work is paused while the higher-value gameplay milestones proceed. Fix clipping or overlap when it blocks a
-real flow, keep temporary captures out of the repository, and retain the sanitizer suite as the final repository
+real flow, keep temporary captures out of the repository, and retain the sanitizer suite as a milestone/release
 gate because it is intentionally expensive.
 
 **Exit:** no clipped or overlapping localized text, compact labels remain understandable without hover, tooltips
@@ -243,7 +243,7 @@ The garage should emphasize variables that can explain this encounter. Unrelated
 | Beat | Simulation trigger | What the player sees | Learning purpose |
 |---|---|---|---|
 | Carry the spark | Mission start through power-module pickup | A dark signal tower establishes the destination. RO-1 routes around the storage racks and retrieves a visible power module. | Establish intention, route, and the cause of the coming world change. |
-| The blind crossing | Power pickup summons depot traffic; RO-1 reaches the inspection pocket | The depot wakes up, a forklift emerges from behind an occluding rack, and RO-1 observes, predicts, brakes outside the conflict area, and waits when needed. | Turn an apparent hesitation into a readable safety decision. |
+| The blind crossing | Power pickup summons depot traffic; the planned route approaches the conflict region | The depot wakes up, a forklift emerges from behind an occluding rack, and RO-1 derives a safe stop pose from current route and vehicle state, predicts, brakes, and waits when needed. | Turn an apparent hesitation into a readable safety decision. |
 | Send the signal | The predicted conflict clears and RO-1 reaches the tower | RO-1 commits to the crossing, docks at the relay, and the tower changes from dark to a valley-wide pulse. | Pay off the prediction with a visible outcome and a concise evidence chain. |
 
 The route and timing come from the simulation. Presentation may amplify a real state transition, but it may not invent traffic, detection, clearance, or success.
@@ -279,9 +279,9 @@ AI View answers “what evidence caused it?” with the same event IDs and measu
 - Content, locale, headless, and mission regression checks pass.
 
 The original clearance comparison was invalidated by the corrected nominal/conservative prediction split. The
-current deterministic Bullet evidence keeps both builds safe: the performance computer finishes sooner and with a
-slightly larger dynamic clearance, while the otherwise identical light-computer build consumes less energy. This
-is now taught as a speed/compute/energy tradeoff. A future fault-injection experiment will provide the unsafe
+current deterministic Bullet evidence keeps both builds safe: the performance computer preserves a larger dynamic
+clearance, while the otherwise identical light-computer build finishes slightly sooner and consumes less energy.
+This is now taught as a clearance/compute/energy tradeoff. A future fault-injection experiment will provide the unsafe
 counterexample without depending on a known collision in the normal controller.
 
 ### Alpha Stage 2 — Make decision evidence a shared runtime contract
@@ -312,7 +312,7 @@ Status: **complete**
 
 Improve the research-base scene after the encounter and evidence timing are stable:
 
-- create distinct silhouettes for the power cradle, inspection pocket, occluding cargo rack, and signal tower;
+- create distinct silhouettes for the power cradle, conflict region, occluding cargo rack, and signal tower;
 - improve RO-1 and forklift materials, readable fronts/rears, wheels, mast, work lights, and warning beacon;
 - use worn metal, safety paint, damp concrete, screen emission, and controlled color contrast to separate navigable space from industrial clutter;
 - bind tower power-up, forklift beacon, RO-1 waiting lights, tire marks, dust, and water effects to real snapshot state;
@@ -322,8 +322,8 @@ Improve the research-base scene after the encounter and evidence timing are stab
 The gate is a deterministic screenshot sequence at the preparation, conflict, wait, crossing, and success moments, plus a graphical smoke test with no missing assets or shader warnings. Each visible or audible event must name the state that drives it.
 
 The vertical slice now keeps its encounter landmarks physically present while their state changes. The power
-module disappears from its cradle after `goals_reached` advances; the observation pocket changes from active to
-complete from that same ordered-goal state; and the signal tower remains dark until `MissionStatus::Succeeded`,
+module disappears from its cradle after `goals_reached` advances; the conflict overlay reads the live autonomy
+phase; and the signal tower remains dark until `MissionStatus::Succeeded`,
 then emits a cyan pulse and expanding signal rings. The forklift beacon reads actor velocity, detection, and
 `waiting_for_clearance`; RO-1 lamps read that same wait state; tire marks and bounded dust, spray, and skid smoke
 read replayed motion, surface, and traction state. The graphical-only audio director consumes `MissionEvent` and
@@ -361,14 +361,16 @@ Status: **complete**
 - update learning, architecture, validation, asset-provenance, and sim-to-real documents to match shipped behavior;
 - remove temporary screenshots, generated diagnostics, stale references, and unneeded workspace files;
 - verify licenses and provenance for every shipped asset;
-- run content and locale validation, the full headless suite, sanitizer checks, graphical smoke tests, and deterministic screenshots;
+- run content and locale validation, the full headless suite, graphical smoke tests, and deterministic screenshots;
+- run sanitizer checks for milestone and release-candidate tags;
 - publish only after Linux, macOS, Windows, sanitizer, and graphical CI jobs pass.
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The current Linux x86_64 Release build passes 64/64 tests, content validation, and canonical content roundtrip.
-Sanitizers, the graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain
-final publishing gates. A sanitizer result from an earlier baseline is not evidence for the current revision.
+The current Linux x86_64 Release build passes 74/74 tests, content validation, and canonical content roundtrip.
+The graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain final
+publishing gates. Sanitizers run at milestone and release-candidate gates; a result from an earlier baseline is not
+evidence for the current revision.
 
 ## Next implementation order
 
@@ -392,4 +394,13 @@ runtime contracts are closed.
  results, then add delay, loss, stale data, actuator lag, slip, and sensor faults through provider contracts.
 
 Each item must leave deterministic focused tests and the complete mission suite green before the next item starts.
+
+The first slice of item 1 is implemented: all three local-planner families return one typed, timestamped
+`ExecutableTrajectory`; mission arbitration publishes its command only after exact static, terrain, prediction-
+horizon, and swept dynamic validation; and the extracted `TrajectoryTrackingSystem` reports tracking-envelope
+evidence on the next decision tick. The `lost_signal` conflict zone is the first controlled vertical slice: a
+filtered dynamic track, conservative crossing assessment, sustained release, latched exit transit, and independent
+physical-collision veto now pass the scenario's collision and clearance contract. Other conflict zones remain in
+`shadow`. The remaining item-1 work is minimum-risk handling for tracking violations and extraction of sensor
+scheduling, decision evidence, mission progress, and snapshot assembly.
 

@@ -1,34 +1,18 @@
 #pragma once
 
-#include "autonomy/perception/dynamic_object.hpp"
-#include "autonomy/mapping/grid_map.hpp"
-#include "sensor.hpp"
+#include "runtime/sensor_messages.hpp"
 
-#include <vector>
+#include <optional>
 
 namespace sim {
 
-// Simulation geometry backend. It returns an ideal scan; SensorSystem applies
-// the configured observation model afterward. A real device adapter belongs
-// at the timestamped Scan message boundary because it must not accept world
-// truth or receive synthetic noise twice.
+// Raw device-provider boundary. A native driver and a simulated device both
+// publish the same timestamped measurement contract. World geometry and
+// autonomy algorithms are deliberately absent from this interface.
 class LidarBackend {
  public:
  virtual ~LidarBackend() = default;
- virtual Scan scan(Vec2 position, double heading, int rays, double range,
-                   const std::vector<DynamicObjectState>& dynamic_objects) = 0;
-};
-
-class SimLidar : public LidarBackend {
- public:
- explicit SimLidar(const GridMap& map) : map_(map) {}
- Scan scan(Vec2 position, double heading, int rays, double range,
-           const std::vector<DynamicObjectState>& dynamic_objects) override {
-  return lidar_raycast(map_, position, heading, rays, range, dynamic_objects);
- }
-
- private:
- const GridMap& map_;
+ virtual std::optional<Scan> read() = 0;
 };
 
 } // namespace sim

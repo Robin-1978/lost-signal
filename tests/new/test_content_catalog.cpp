@@ -172,9 +172,9 @@ int main() {
  CHECK(level.objective.via == "supply_station");
  CHECK(level.objective.goal == "signal_tower");
  CHECK(std::abs(level.objective.time_limit_s - 180.0) < 1e-9);
- CHECK(level.objective.goals.size() == 4);
- CHECK(level.objective.goals[2].action == "inspect");
- CHECK(std::abs(level.objective.goals[2].dwell_s - 1.0) < 1e-9);
+ CHECK(level.objective.goals.size() == 3);
+ CHECK(std::none_of(level.objective.goals.begin(), level.objective.goals.end(),
+ [](const auto& goal) { return goal.action == "inspect"; }));
 
  const auto& map = catalog.map(level.map);
  CHECK(map.markers.count("robot_bay") == 1);

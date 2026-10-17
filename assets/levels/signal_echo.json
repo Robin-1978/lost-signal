@@ -32,13 +32,6 @@
         "radius_m": 1.25
       },
       {
-        "marker": "traffic_hold",
-        "label": "动态路口观察点",
-        "action": "inspect",
-        "radius_m": 0.4,
-        "dwell_s": 1.0
-      },
-      {
         "marker": "signal_tower",
         "label": "信号塔",
         "action": "complete",

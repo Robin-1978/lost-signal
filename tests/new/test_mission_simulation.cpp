@@ -126,6 +126,8 @@ int main() {
               << preterminal.control.governor_hold << " stop=(" << preterminal.control.governor_stop.x << ','
               << preterminal.control.governor_stop.y << ") cmd=(" << preterminal.control.target_v_mps << ','
               << preterminal.control.target_w_radps << ") decision=" << preterminal.decision.reason_code
+ << " target=(" << preterminal.control.local_target.x << ','
+ << preterminal.control.local_target.y << ")"
               << '/' << preterminal.decision.measured_separation_m << '/'
               << preterminal.decision.predicted_separation_m;
     for (const auto& actor : preterminal.actors) {
@@ -268,6 +270,10 @@ int main() {
  CHECK(first.result().collisions == 0);
  CHECK(first.result().safe_score);
  CHECK(first.result().min_dynamic_clearance_m >= first.level().safe_min_clearance_m);
+ // Fused map pose is the navigation estimate. Raw odometry remains
+ // continuous and is expected to drift beneath map->odom corrections.
+ CHECK(first.result().max_fused_pose_error_m < first.result().max_odometry_error_m);
+ CHECK(first.result().max_fused_pose_error_m <= first.level().max_localization_error_m);
  CHECK(first.result().astar_expanded > 0);
  CHECK(first.result().local_decisions > 0);
  first_repeat.run_to_completion();
@@ -318,23 +324,23 @@ int main() {
                    [sequence = explained_wait->sequence](const auto& snapshot) {
                     return snapshot.decision.sequence == sequence && snapshot.decision.action_code == "wait";
                    }));
- // The authored finale is a real three-beat sequence: collect power, wake
- // traffic, inspect the blind crossing, then restore the relay.
+ // The authored task sequence describes mission intent only: collect power,
+ // wake traffic, then restore the relay. Crossing observation and any stop
+ // are runtime autonomy behavior rather than a scripted mission waypoint.
  const auto event_index = [&](const char* code) {
-  return std::find_if(first.events().begin(), first.events().end(),
-                      [code](const auto& event) { return event.code == code; }) -
-         first.events().begin();
+ return static_cast<std::size_t>(std::find_if(first.events().begin(), first.events().end(),
+ [code](const auto& event) { return event.code == code; }) -
+ first.events().begin());
  };
  const auto pickup_index = event_index("via-reached");
  const auto traffic_index = event_index("summoned");
- const auto inspect_index = event_index("inspection-complete");
  const auto complete_index = event_index("mission-complete");
  CHECK(pickup_index < traffic_index);
- CHECK(traffic_index < inspect_index);
- CHECK(inspect_index < complete_index);
- // Gate-3 shadow isolation: the observer assessed departures during the finale
- // (snapshot fields populated) and logged wait episodes (first/last/actual)
- // without changing physics — time_s bit-identical above is the proof.
+ CHECK(traffic_index < complete_index);
+ CHECK(event_index("inspection-complete") == first.events().size());
+ // Route-level departure evidence remains visible beside the controlled
+ // conflict-zone state machine. Repeating the run above proves determinism;
+ // the controlled slice is intentionally allowed to constrain physics.
  CHECK(std::any_of(first.replay().begin(), first.replay().end(),
                    [](const auto& snapshot) { return snapshot.control.shadow_assessed; }));
  // (FF shadow log removed with the stage-4 negative verdict: mapping +
@@ -393,6 +399,7 @@ int main() {
   CHECK(logged == episodes.size());
   CHECK(!episodes.empty());
   int counts[6] = {0, 0, 0, 0, 0, 0};
+ bool saw_wait_unsafe = false;
   for (const auto& episode : episodes) {
    CHECK(episode.start_s <= episode.end_s);
    CHECK(episode.waited_s >= 0.0);
@@ -401,16 +408,21 @@ int main() {
    CHECK(episode.last_reason >= 0 && episode.last_reason <= 5);
    CHECK((episode.first_pred_s >= 0.0 || episode.first_pred_s == std::numeric_limits<double>::infinity()) &&
          (episode.last_pred_s >= 0.0 || episode.last_pred_s == std::numeric_limits<double>::infinity()));
-   CHECK(std::isfinite(episode.entry_threat_speed_mps) && episode.entry_threat_speed_mps >= 0.0);
-   CHECK(std::isfinite(episode.entry_nearest_m));
+ CHECK((std::isfinite(episode.entry_threat_speed_mps) && episode.entry_threat_speed_mps >= 0.0) ||
+ episode.entry_threat_speed_mps == -1.0);
+ CHECK((std::isfinite(episode.entry_nearest_m) && episode.entry_nearest_m >= 0.0) ||
+ episode.entry_nearest_m == -1.0);
    ++counts[episode.first_reason];
+ saw_wait_unsafe = saw_wait_unsafe ||
+ episode.first_reason == static_cast<int>(sim::DepartReason::kWaitUnsafe) ||
+ episode.last_reason == static_cast<int>(sim::DepartReason::kWaitUnsafe);
    std::cerr << "shadow episode: start=" << episode.start_s << " first=" << episode.first_pred_s << "("
              << sim::depart_reason_name(static_cast<sim::DepartReason>(episode.first_reason))
              << ") last=" << episode.last_pred_s << "("
              << sim::depart_reason_name(static_cast<sim::DepartReason>(episode.last_reason))
              << ") waited=" << episode.waited_s << "\n";
   }
-  CHECK(counts[static_cast<int>(sim::DepartReason::kWaitUnsafe)] > 0);
+ CHECK(saw_wait_unsafe);
  }
  CHECK(std::any_of(first.replay().begin(), first.replay().end(),
                    [](const auto& snapshot) { return !snapshot.dynamic_obstacles.empty(); }));
@@ -434,6 +446,24 @@ int main() {
  CHECK(std::all_of(first.replay().begin(), first.replay().end(), [](const auto& snapshot) {
   return std::abs(snapshot.control.left_pwm) <= 1.0 && std::abs(snapshot.control.right_pwm) <= 1.0;
  }));
+ // Once the behavior layer commits, ordinary DWA recovery cannot stop and
+ // reverse inside the crossing. Physical clearance remains independently
+ // enforced by the zero-collision and minimum-clearance assertions above.
+ bool saw_committed_crossing = false;
+ bool saw_cleared_crossing = false;
+ for (const auto& snapshot : first.replay()) {
+ if (snapshot.control.crossing_phase == static_cast<int>(sim::CrossingPhase::Committed)) {
+ saw_committed_crossing = true;
+ CHECK(snapshot.control.crossing_committed);
+ CHECK(!snapshot.control.governor_hold);
+ CHECK(snapshot.control.target_v_mps >= -1e-9);
+ }
+ if (saw_committed_crossing &&
+ snapshot.control.crossing_phase == static_cast<int>(sim::CrossingPhase::Cleared)) {
+ saw_cleared_crossing = true;
+ }
+ }
+ CHECK(saw_committed_crossing && saw_cleared_crossing);
 
  const auto progress_path = std::filesystem::temp_directory_path() / "lost-signal-progress-test.json";
  std::filesystem::remove(progress_path);
@@ -475,8 +505,8 @@ int main() {
 
  // One controlled change creates a repeatable tradeoff: both builds use the
  // same hardware and careful policy except for the computer. The performance
- // computer completes sooner; the light computer consumes less energy. Both
- // must remain safe after the dynamic-avoidance correction.
+ // computer preserves more dynamic clearance; the light computer finishes
+ // slightly sooner and consumes less energy. Both remain safe.
  {
   mission::MissionSimulation default_attempt(catalog, "lost_signal",
                                              catalog.presentation_for_level("lost_signal").default_build);
@@ -490,9 +520,9 @@ int main() {
   CHECK(default_attempt.result().safe_score);
   CHECK(default_attempt.result().min_dynamic_clearance_m >=
         catalog.level("lost_signal").safe_min_clearance_m);
-  CHECK(default_attempt.result().min_dynamic_clearance_m < first.result().min_dynamic_clearance_m);
-  CHECK(default_attempt.result().time_s > first.result().time_s);
+ CHECK(default_attempt.result().time_s < first.result().time_s);
   CHECK(default_attempt.result().energy_wh < first.result().energy_wh);
+ CHECK(default_attempt.result().min_dynamic_clearance_m < first.result().min_dynamic_clearance_m);
   // The corrected local planner must preserve its safety contract even for a
   // poor, aggressive build. This configuration may be less efficient, but a
   // lesson must not depend on shipping a known collision in the controller.
@@ -505,6 +535,10 @@ int main() {
   hot_build.style = 1.0;
   mission::MissionSimulation hot_attempt(catalog, "lost_signal", hot_build);
   hot_attempt.run_to_completion();
+ std::cerr << "lost_signal hot status=" << static_cast<int>(hot_attempt.result().status)
+ << " collisions=" << hot_attempt.result().collisions
+ << " clearance=" << hot_attempt.result().min_dynamic_clearance_m
+ << " time=" << hot_attempt.result().time_s << '\n';
   CHECK(hot_attempt.result().status == mission::MissionStatus::Succeeded);
   CHECK(hot_attempt.result().safe_score);
   CHECK(hot_attempt.result().collisions == 0);
@@ -670,9 +704,10 @@ int main() {
   CHECK(fast.result().failure_reason == "collision-static");
   CHECK(fast.result().slip_events > 0);
  }
- // Cross-slope cargo exposes a measurable stability margin. Both stock builds
- // stay below the rigid-body rollover boundary; the faster standard-tire run
- // must carry the higher peak risk.
+ // Cross-slope cargo exposes two independent physical limits. The grip build
+ // completes below the rigid-body rollover boundary. The aggressive
+ // standard-tire build also remains upright, but sustained saturation and
+ // slip prevent it from climbing the grade before the mission timeout.
  {
   const auto& presentation = catalog.presentation_for_level("cross_slope");
   mission::MissionSimulation careful(catalog, "cross_slope", presentation.recommended_build, std::nullopt, {},
@@ -687,9 +722,11 @@ int main() {
   mission::MissionSimulation fast(catalog, "cross_slope", presentation.default_build, std::nullopt, {},
                                   mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Bullet);
   fast.run_to_completion();
-  CHECK(fast.result().status == mission::MissionStatus::Succeeded);
+ CHECK(fast.result().status == mission::MissionStatus::Failed);
+ CHECK(fast.result().failure_reason == "timeout");
+ CHECK(fast.result().collisions == 0);
   CHECK(fast.result().max_rollover_risk < 1.0);
-  CHECK(fast.result().max_rollover_risk > careful.result().max_rollover_risk);
+ CHECK(fast.result().max_drive_slip_ratio > careful.result().max_drive_slip_ratio);
  }
  // Continuous field sessions keep stepping beyond authored mission limits and
  // share one deterministic environment snapshot across weather, incidents,

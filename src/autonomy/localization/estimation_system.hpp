@@ -1,8 +1,10 @@
 #pragma once
 
-#include "sim/runtime_state.hpp"
+#include "autonomy/localization/dead_reckon.hpp"
+#include "runtime/observation.hpp"
 
 #include <cstdint>
+#include <cmath>
 
 namespace sim {
 
@@ -17,6 +19,12 @@ class EstimationSystem {
  double position_error(Vec2 truth) const { return odometry_.driftErr(truth); }
  double heading_error_rad(double truth_heading_rad) const {
  return std::abs(wrap_angle(odometry_.th - truth_heading_rad));
+ }
+ double fused_position_error(Vec2 truth) const {
+ return std::hypot(state_.position.x - truth.x, state_.position.y - truth.y);
+ }
+ double fused_heading_error_rad(double truth_heading_rad) const {
+ return std::abs(wrap_angle(state_.heading_rad - truth_heading_rad));
  }
  Vec2 odometry_position() const { return odometry_.p; }
  double odometry_heading_rad() const { return odometry_.th; }

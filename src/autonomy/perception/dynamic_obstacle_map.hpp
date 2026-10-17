@@ -4,6 +4,7 @@
 #include "autonomy/planning/local/predictor.hpp"
 
 #include <cstddef>
+#include <deque>
 #include <vector>
 
 namespace sim {
@@ -14,10 +15,23 @@ struct DynamicObservation {
  double radius{0.0};
 };
 
+enum class TrackMotionClass {
+ Unconfirmed,
+ Moving,
+ IntentAmbiguous,
+};
+
 struct DynamicTrack {
  std::size_t object_id{0};
  DynamicObjectState state;
  double last_observed_s{0.0};
+ TrackMotionClass motion_class{TrackMotionClass::Unconfirmed};
+ double learned_endpoint_dwell_s{0.0};
+};
+
+struct TrackMotionSample {
+ double time_s{0.0};
+ Vec2 position;
 };
 
 // Transient local map for moving objects. Static A* occupancy remains separate
@@ -42,20 +56,24 @@ class DynamicObstacleMap {
  private:
  struct TrackState {
   DynamicTrack track;
-  Vec2 velocity_anchor_position;
-  double velocity_anchor_time_s{0.0};
-  bool velocity_initialized{false};
   // Last resolved motion before a periodic target pauses at a learned
   // corridor endpoint. The public track still reports the measured stop;
   // only prediction uses this motion hypothesis to cover the return trip.
   Vec2 last_motion_velocity;
   bool motion_velocity_initialized{false};
+ Vec2 motion_candidate_velocity;
+ int motion_confirmation_samples{0};
   bool intent_ambiguous{false};
   int decisive_motion_samples{0};
+ double stationary_since_s{-1.0};
+ double learned_endpoint_dwell_s{0.0};
   Vec2 min_observed;
   Vec2 max_observed;
   bool bounded_x{false};
   bool bounded_y{false};
+ std::deque<TrackMotionSample> motion_samples;
+ double position_error_ema_m{0.03};
+ double velocity_error_ema_mps{0.04};
  };
 
  std::vector<TrackState> tracks_;

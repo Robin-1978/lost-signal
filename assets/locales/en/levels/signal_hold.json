@@ -5,8 +5,7 @@
     "/objective/via_label": "Power Module",
     "/objective/goal_label": "Signal Tower",
     "/objective/goals/0/label": "Power Module",
-    "/objective/goals/1/label": "Dynamic Intersection Observation Point",
-    "/objective/goals/2/label": "Signal Tower",
+    "/objective/goals/1/label": "Signal Tower",
     "/teaching/prediction_prompt": "This forklift blocks the same corridor for several seconds. Is it faster to wait or squeeze past?",
     "/teaching/knowledge_card": "Waiting is a maneuver. Depart as soon as the corridor opens. The shadow evaluation records the first estimate, final estimate, and actual wait; a useful prediction should agree with reality."
   }

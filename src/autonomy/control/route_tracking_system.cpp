@@ -1,18 +1,18 @@
-#include "control_system.hpp"
+#include "autonomy/control/route_tracking_system.hpp"
 
 #include <utility>
 
-namespace mission {
+namespace sim {
 
-ControlSystem::ControlSystem(double kp, double ki, double kd, double output_limit, double integral_limit)
+RouteTrackingSystem::RouteTrackingSystem(double kp, double ki, double kd, double output_limit, double integral_limit)
     : heading_pid_(std::make_unique<sim::PID>(kp, ki, kd, output_limit, integral_limit)) {}
 
-void ControlSystem::reset() {
+void RouteTrackingSystem::reset() {
  guide_state_ = {};
  heading_pid_->reset();
 }
 
-sim::Vec2 ControlSystem::navigation_target(const std::vector<sim::RoutePoint>& path,
+sim::Vec2 RouteTrackingSystem::navigation_target(const std::vector<sim::RoutePoint>& path,
  const sim::EstimatedState& estimate,
  double lookahead_m,
                                            const sim::GridMap& planning_map, sim::Vec2 fallback_goal) {
@@ -38,7 +38,7 @@ sim::Vec2 ControlSystem::navigation_target(const std::vector<sim::RoutePoint>& p
  lookahead_m, planning_map);
 }
 
-sim::GuideOut ControlSystem::follow_route(const std::vector<sim::RoutePoint>& path,
+sim::GuideOut RouteTrackingSystem::follow_route(const std::vector<sim::RoutePoint>& path,
  const sim::EstimatedState& estimate,
  double lookahead_m,
                                           double cruise_mps, double dt_s, const sim::GridMap& planning_map,
@@ -53,8 +53,8 @@ sim::GuideOut ControlSystem::follow_route(const std::vector<sim::RoutePoint>& pa
                         *heading_pid_, lookahead_m, cruise_mps, dt_s, planning_map, chassis_caps);
 }
 
-sim::TravelDirection ControlSystem::travel_direction(const std::vector<sim::RoutePoint>& path) const {
+sim::TravelDirection RouteTrackingSystem::travel_direction(const std::vector<sim::RoutePoint>& path) const {
  return sim::path_travel_direction(path, guide_state_.idx);
 }
 
-} // namespace mission
+} // namespace sim

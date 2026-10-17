@@ -31,6 +31,9 @@ class GridMap {
  }
  // inflate occupied cells by radius (meters) -> out costmap (0 free, 100 lethal+inflated)
  GridMap inflated(double radius) const;
+ // Union another occupancy layer with identical geometry. Layer-specific
+ // clearing never erases obstacles owned by a different layer.
+ void mergeOccupied(const GridMap& other);
  std::pair<int, int> worldToGrid(double wx, double wy) const {
   return {(int)std::floor(wx / res_), (int)std::floor(wy / res_)};
  }

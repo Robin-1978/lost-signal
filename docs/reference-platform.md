@@ -354,7 +354,7 @@ identified-hardware envelope remain open.
 6. Freeze mission scoring and outcomes while the platform gate is open. Flat, slope, cross-slope, low-friction and
 loose-ground content supplies repeatable inputs to engineering probes; mission success is not a physics oracle.
 7. Re-run and re-author RO-1 mission baselines only after the physical, actuator and sensor gates pass. Run release
-tests and then ASan as the final repository gate.
+tests, with ASan/UBSan reserved for milestone and release-candidate gates.
 
 Only after these gates pass does work resume on new Playgrounds, additional chassis, multi-line or solid-state
 LiDAR, SLAM, VLA, HIL, or other expansion.

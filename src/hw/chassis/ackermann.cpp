@@ -3,6 +3,7 @@
 #include "hw/dynamics/contact.hpp"
 
 #include "core/math.hpp"
+#include "core/actuator_response.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -84,12 +85,13 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  servo.target_rad = clamp(command.target_w, -params_.max_steer_rad, params_.max_steer_rad);
  servo.pwm = servo_pid_.update(servo.target_rad - delta_rad_, dt);
  servo.pid_p = servo_pid_.p();
- const double rate_demand = clamp(servo.pwm * params_.max_steer_rate_radps, -params_.max_steer_rate_radps,
-                                  params_.max_steer_rate_radps);
- const double lag = params_.servo_response_s > 0.0 ? 1.0 - std::exp(-dt / params_.servo_response_s) : 1.0;
- servo_rate_state_ += (rate_demand - servo_rate_state_) * lag;
+ const double rate_demand = clamp(servo.pwm * params_.max_steer_rate_radps,
+ -params_.max_steer_rate_radps, params_.max_steer_rate_radps);
+ servo_rate_state_ = first_order_rate_step(
+ servo_rate_state_, rate_demand, params_.servo_response_s, dt);
  delta_rad_ = clamp(delta_rad_ + servo_rate_state_ * dt, -params_.max_steer_rad, params_.max_steer_rad);
  servo.angle_rad = delta_rad_;
+ servo.rate_radps = servo_rate_state_;
  // Linkage output (Ackermann condition): both front wheels share the turn
  // center on the rear-axle line, so the inner wheel steers more.
  // R = L/tan(delta); inner = atan(L/(R-T/2)), outer = atan(L/(R+T/2)).

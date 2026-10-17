@@ -16,6 +16,10 @@ namespace sim {
 // no hidden state, so DWA and tests can call it without a tracker.
 struct PredictInput {
  DynamicObjectState state;
+ // Deterministic first-order uncertainty model. This is an explicit safety
+ // envelope, not a probability claim: u(t) = u0 + growth * prediction_time.
+ double position_uncertainty_growth_mps{0.0};
+ double position_uncertainty_cap_m{std::numeric_limits<double>::infinity()};
  // Optional second motion mode. Trackers use it when a previously moving
  // target pauses: continuing and reversing are both plausible until fresh
  // observations resolve intent.
@@ -26,10 +30,16 @@ struct PredictInput {
  Vec2 max_observed{0.0, 0.0};
  bool bounded_x{false};
  bool bounded_y{false};
+ // Conservative lower bound learned from completed endpoint stops. Zero
+ // preserves immediate reflection until perception has observed evidence.
+ double endpoint_dwell_s{0.0};
+ // Remaining portion of the current observed endpoint stop.
+ double initial_dwell_remaining_s{0.0};
 };
 
 // Fixed-step future frames: frame k holds the predicted state at
 // time_s + age + k * frame_dt_s for every input younger than max_age_s.
+// Each frame also carries the time-grown position uncertainty envelope.
 // Stale inputs (age > max_age_s) and future-dated inputs are skipped.
 std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs,
                                                             double time_s, double horizon_s,

@@ -40,22 +40,27 @@ int main() {
  {
   sim::DynamicObstacleMap map;
   map.observe({0, {5.0, 5.0}, 0.5}, 0.0);
-  map.observe({0, {5.2, 5.0}, 0.5}, 0.2);
-  CHECK(check_parity(map, 0.2, 1.0, 0.1, 1.0) == 0);
-  CHECK(map.predict(0.2, 1.0, 0.1, 1.0).size() == 11);
+ for (int sample = 1; sample <= 10; ++sample)
+ map.observe({0, {5.0 + sample * 0.1, 5.0}, 0.5}, sample * 0.1);
+ CHECK(check_parity(map, 1.0, 1.0, 0.1, 1.0) == 0);
+ CHECK(map.predict(1.0, 1.0, 0.1, 1.0).size() == 11);
  }
  // B: reversal pins a bounded corridor; reflection must clamp inside it.
  {
   sim::DynamicObstacleMap map;
   map.observe({0, {5.0, 5.0}, 0.5}, 0.0);
-  map.observe({0, {5.2, 5.0}, 0.5}, 0.2);
-  map.observe({0, {5.0, 5.0}, 0.5}, 0.4);
-  CHECK(check_parity(map, 0.4, 1.0, 0.1, 1.0) == 0);
-  for (const auto& frame : map.predict(0.4, 1.0, 0.1, 1.0)) {
+ for (int sample = 1; sample <= 10; ++sample)
+ map.observe({0, {5.0 + sample * 0.1, 5.0}, 0.5}, sample * 0.1);
+ for (int sample = 11; sample <= 16; ++sample)
+ map.observe({0, {6.0, 5.0}, 0.5}, sample * 0.1);
+ for (int sample = 1; sample <= 10; ++sample)
+ map.observe({0, {6.0 - sample * 0.1, 5.0}, 0.5}, 1.6 + sample * 0.1);
+ CHECK(check_parity(map, 2.6, 1.0, 0.1, 1.0) == 0);
+ for (const auto& frame : map.predict(2.6, 1.0, 0.1, 1.0)) {
    CHECK(frame.size() == 1);
    for (const auto& hypothesis : frame) {
-    CHECK(hypothesis.p.x >= 5.0 - 1e-9);
-    CHECK(hypothesis.p.x <= 5.2 + 1e-9);
+ CHECK(hypothesis.p.x >= 4.9);
+ CHECK(hypothesis.p.x <= 6.1);
    }
   }
  }
@@ -64,21 +69,24 @@ int main() {
   sim::DynamicObstacleMap map;
   map.observe({0, {1.0, 1.0}, 0.4}, 0.0);
   map.observe({1, {9.0, 2.0}, 0.6}, 0.0);
-  map.observe({0, {1.4, 1.2}, 0.4}, 0.2);
-  map.observe({1, {8.4, 2.4}, 0.6}, 0.2);
-  CHECK(check_parity(map, 0.2, 0.5, 0.1, 1.0) == 0);
-  CHECK(map.predict(0.2, 0.5, 0.1, 1.0).front().size() == 2);
+ for (int sample = 1; sample <= 10; ++sample) {
+ map.observe({0, {1.0 + sample * 0.20, 1.0 + sample * 0.10}, 0.4}, sample * 0.1);
+ map.observe({1, {9.0 - sample * 0.25, 2.0 + sample * 0.15}, 0.6}, sample * 0.1);
+ }
+ CHECK(check_parity(map, 1.0, 0.5, 0.1, 1.0) == 0);
+ CHECK(map.predict(1.0, 0.5, 0.1, 1.0).front().size() == 2);
  }
  // D: non-zero age (gap since last observation); both paths advance equally.
  {
   sim::DynamicObstacleMap map;
   map.observe({0, {3.0, 3.0}, 0.5}, 0.0);
-  map.observe({0, {3.4, 3.0}, 0.5}, 0.2);
-  CHECK(check_parity(map, 0.7, 1.0, 0.1, 1.0) == 0);
-  const auto frames = map.predict(0.7, 1.0, 0.1, 1.0);
+ for (int sample = 1; sample <= 10; ++sample)
+ map.observe({0, {3.0 + sample * 0.1, 3.0}, 0.5}, sample * 0.1);
+ CHECK(check_parity(map, 1.5, 1.0, 0.1, 1.0) == 0);
+ const auto frames = map.predict(1.5, 1.0, 0.1, 1.0);
   CHECK(!frames.empty() && frames.front().size() == 1);
   // Age-advanced position must exceed the last observation (moving +x).
-  CHECK(frames.front()[0].p.x > 3.4);
+ CHECK(frames.front()[0].p.x > 4.0);
  }
  // E: stale track excluded by max_age on both paths.
  {

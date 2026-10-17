@@ -6,6 +6,7 @@ namespace sim {
 
 struct HolonomicLocalConfig {
  double max_speed_mps{2.0};
+ double min_forward_speed_mps{0.0};
  double max_yaw_radps{2.0};
  double max_accel_mps2{3.0};
  double max_yaw_accel_radps2{6.0};

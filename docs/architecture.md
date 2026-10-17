@@ -58,15 +58,34 @@ body-class reflectivities are not calibrated material optics.
 
 `src/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
 
+`PerceptionPipeline` is the observation boundary for planar LiDAR. It consumes timestamped raw and static-reference
+scans after LSRI delivery, then owns projection and deskew, foreground extraction, transient ray-cleared occupancy,
+anonymous tracking, and prediction state. Neither mission code nor simulated hardware classifies obstacles. A replay
+or hardware source can feed the same scan contract without changing mapping or planning.
+
 Global planners share a canonical `RoutePoint` result rather than a geometry-only polyline. Position, nominal body heading,
 and arrival direction remain one value from planning through control. Grid A* still performs an eight-connected 2D
 search and emits forward segments; its heading is the geometric route tangent and its final point inherits the
 incoming edge heading. Hybrid A* remains the Ackermann default and preserves its searched heading and gear, including
 at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cusp instead of inferring gear from point geometry.
 
-The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy layer. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets, while `lost_signal_stack` is their small aggregate target.
+The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy
+layer. Route following, waypoint progress, heading PID state, crossing behavior, prediction, and trajectory
+validation all live in `src/autonomy`; mission code only supplies task intent and world semantics. The
+`deployable_boundary` test rejects includes from `mission`, `sim`, `physics`, or `client` in `core`, `runtime`, or
+`autonomy`, and rejects world-layer sources or libraries in the autonomy target. `lost_signal_autonomy`,
+`lost_signal_vehicle`, and `lost_signal_runtime` remain separate targets, while `lost_signal_stack` is their
+simulation aggregate.
 
-The planning pipeline produces a feasible body command. The selected chassis converts that command into wheel speed and steering targets. Motor controllers compare targets with quantized feedback and apply actuation to physics.
+Each local planner produces one `ExecutableTrajectory`: an explicit command space, the body command, and strictly
+time-ordered pose, velocity, yaw-rate, and steering samples. The runtime validates the exact selected samples
+against the inflated map, terrain feasibility, prediction coverage, and swept same-time dynamic clearance before
+publishing the command. For RO-1 it also follows the candidate through the declared decision/actuator response
+delay and validates a tire-limited emergency-braking tail. Once a conflict-zone transit is committed, a nominal
+trajectory that still satisfies full static and dynamic clearance may continue when braking would strand the body
+inside the conflict; this is reported separately as `CommittedTransit` and never waives nominal collision
+validation. The selected chassis then converts that command into wheel speed and steering targets.
+Motor controllers compare targets with quantized feedback and apply actuation to physics.
 
 For Ackermann platforms, the command is an equivalent front-wheel steering angle from the local planner through
 LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physical motor type, native drive command
@@ -77,6 +96,18 @@ capabilities without exposing PWM or device protocols to autonomy.
 ### Mission systems
 
 `src/mission/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
+`DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
+and translates authority into a neutral autonomy contract. `CrossingBehaviorSystem` in `autonomy/behavior` owns
+the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
+tracked-object predictions, and controls the hold/commit/clear transitions. Content never supplies a parking
+coordinate, and actor truth and physics objects never cross the autonomy boundary. `TrajectoryTrackingSystem` owns the last
+accepted local trajectory between decision ticks and reports position, heading, and speed errors against its
+interpolated expected state. Tracking is currently evidence only; it does not silently modify control authority.
+Dynamic-object perception publishes timestamped constant-velocity track estimates rather than raw LiDAR cluster
+centroids. Prediction may retain two motion modes while a shuttle pauses at a learned endpoint. Behavior consumes
+that conservative view. Motion regression uses measurement-time samples so a smooth position filter cannot turn an
+endpoint dwell into false outbound motion. An empty or stale prediction is explicit unknown evidence and can never
+release a controlled crossing. A separate physical-collision validator retains final veto authority.
 
 Task orchestration is moving toward a small data-driven Behavior Graph, while continuous commitments use focused
 deterministic state machines. The project does not embed a general-purpose behavior-tree runtime. The detailed
@@ -84,9 +115,10 @@ contract and the incremental decomposition of the current composition root are r
 [Behavior architecture](behavior-architecture.md).
 
 Conflict-zone content carries `shadow` or `control` authority. Shadow evaluation can compare a route-level
-hypothesis without changing commands. Control authority is allowed only after the behavior validator and local
-planner share the same time-parameterized executable trajectory; a constant-speed global-route check cannot grant
-authority over a DWA trajectory with different timing.
+hypothesis without changing commands. Control authority supplies a stop, hold, or commit constraint. The
+route-level crossing schedule is admission evidence, while the local planner independently validates the exact DWA
+trajectory at every decision tick. Admission never acts as a collision waiver and cannot lower static clearance,
+dynamic clearance, prediction coverage, or braking requirements for an uncommitted motion.
 
 The field operator, autonomous robot, dynamic actors, weather, and events remain part of one simulation world. Expedition mode reuses the same sensing, planning, control, and physics path as authored missions.
 
@@ -108,6 +140,16 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 schedules it and combines its published result with goals and autonomy diagnostics. Wheel motors, encoders, IMU and LiDAR device behavior belong
 to `src/hw/`; rigid bodies, joints, contacts and raycasts belong to `src/physics/`; binding authored devices to
 physics joints and links belongs to `src/sim/`. No wheel, caster or sensor model belongs in a renderer.
+
+The deployable algorithm set is `lost_signal_core + lost_signal_runtime + lost_signal_autonomy` plus a native
+platform adapter. Those targets do not include or link `mission`, `sim`, `physics`, or `client`. Neutral observation
+messages live under `runtime/`; simulator truth remains under `sim/`. A real deployment therefore replaces the
+LSRI provider and platform adapter and omits all game, world, Bullet, and rendering targets.
+
+`mission_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
+into neutral autonomy inputs and copies diagnostics into the game snapshot. It is not an algorithm provider. A
+native product still needs its own lifecycle/configuration entry point around the same autonomy classes; the
+repository does not yet ship a turnkey real-robot executable.
 
 Robot geometry has three independent meanings:
 
@@ -190,6 +232,11 @@ These are useful sim-to-real seams because a hardware adapter can replace actuat
 
 Frames follow the familiar `map → odom → base_footprint → base_link → sensor/wheel link` structure. This aligns with [ROS REP-105](https://www.ros.org/reps/rep-0105.html). Geometry, time, angles, velocity, and acceleration use SI units and conventions consistent with [ROS REP-103](https://www.ros.org/reps/rep-0103.html).
 
+`odom → base_footprint` is the continuous dead-reckoned motion and is never reset by a global correction.
+Localization updates change `map → odom`; the composed state in `map` is the fused pose consumed by planning.
+Headless artifacts therefore report raw odometry drift and fused map-pose error separately. Safety scoring uses the
+estimate that actually drives navigation, while the raw metric remains available for wheel-slip and odometry lessons.
+
 `base_footprint` is the terrain projection; `base_link` is the physical root-body origin. Robot `mounts` are always
 calibrated in `base_link`. Physics owns centre-of-mass motion, then the shared transform tree evaluates each sensor
 origin. In particular, the simulated IMU lives in `src/hw/sensors`: it receives ideal six-axis truth at `imu_link`
@@ -251,4 +298,7 @@ The architecture already provides several uncommon combinations in a small open 
 - data-driven educational content with string-only localization overlays;
 - a clean path for log comparison, native hardware providers, and measured HIL work.
 
-The main technical risk is concentration in `MissionSimulation`, which still coordinates many subsystems. Recent extraction of planning, control, goal, dispatch, operator, and world-activity systems reduces that pressure, but continued changes should move ownership behind narrow interfaces rather than add more branches to the central loop.
+The main technical risk is concentration in `MissionSimulation`, which still coordinates many subsystems. Recent
+extraction of planning, control, goal, dispatch, operator, world activity, dynamic traffic, and trajectory tracking
+reduces that pressure. Sensor scheduling, decision evidence, mission progress, and snapshot assembly remain the
+next ownership boundaries.

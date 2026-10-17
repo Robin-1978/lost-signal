@@ -4,6 +4,7 @@
 #include "autonomy/mapping/terrain.hpp"
 #include "hw/chassis/motor_drive.hpp"
 #include "hw/sensors/sensor.hpp"
+#include "core/lidar_truth.hpp"
 #include "physics/frame_transform.hpp"
 #include "physics/physics_world.hpp"
 #include "physics/tire_contact.hpp"

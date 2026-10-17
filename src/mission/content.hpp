@@ -252,9 +252,8 @@ struct ConflictZoneDefinition {
  std::string id;
  sim::Vec2 min;
  sim::Vec2 max;
- // "shadow" evaluates semantics without constraining motion; "control" is
- // reserved for zones whose executable crossing trajectory has passed the
- // mission-level safety gate.
+ // "shadow" evaluates semantics without constraining motion; "control"
+ // allows the autonomy behavior and trajectory validator to constrain motion.
  std::string authority{"shadow"};
  std::vector<std::string> active_in;
 };

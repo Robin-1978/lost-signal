@@ -1,17 +1,17 @@
 #pragma once
 
 #include "autonomy/control/follow.hpp"
-#include "sim/runtime_state.hpp"
+#include "runtime/observation.hpp"
 
 #include <cstddef>
 #include <memory>
 #include <vector>
 
-namespace mission {
+namespace sim {
 
-class ControlSystem {
+class RouteTrackingSystem {
  public:
- ControlSystem(double kp, double ki, double kd, double output_limit, double integral_limit);
+ RouteTrackingSystem(double kp, double ki, double kd, double output_limit, double integral_limit);
 
  void reset();
  sim::Vec2 navigation_target(const std::vector<sim::RoutePoint>& path,
@@ -37,4 +37,4 @@ class ControlSystem {
  std::unique_ptr<sim::PID> heading_pid_;
 };
 
-} // namespace mission
+} // namespace sim

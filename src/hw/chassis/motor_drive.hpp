@@ -78,6 +78,7 @@ struct MotorDriveTelemetry {
 struct ServoTelemetry {
  double target_rad{0.0};
  double angle_rad{0.0};
+ double rate_radps{0.0};
  double pwm{0.0};
  double pid_p{0.0};
  double pid_i{0.0};

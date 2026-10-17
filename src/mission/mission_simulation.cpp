@@ -2,9 +2,11 @@
 #include "autonomy/planning/task/task_ordering.hpp"
 
 #include "autonomy/planning/global/astar.hpp"
+#include "autonomy/planning/validation/trajectory_validator.hpp"
 #include "mission/world/actor_behavior_registry.hpp"
 #include "hw/chassis/chassis_factory.hpp"
 #include "autonomy/localization/slip_detect.hpp"
+#include "physics/lidar_raycast.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -178,7 +180,7 @@ void MissionSimulation::reset() {
  high_level_policy_->reset(effective_seed() ^ 0x1f83d9abU);
  snapshot_.strategy_policy = high_level_policy_->name();
  events_.clear();
- decisions_.clear();
+ decision_evidence_system_.reset();
  replay_.clear();
  shadow_episodes_.clear();
  shadow_episode_open_ = false;
@@ -198,19 +200,17 @@ void MissionSimulation::reset() {
  field_dispatch_system_.reset(effective_seed() ^ 0xbb67ae85U);
  world_activity_system_.reset(effective_seed() ^ 0x510e527fU);
  snapshot_.world_activity = world_activity_system_.state();
- next_scan_s_ = 0.0;
- next_decision_s_ = 0.0;
- next_replay_s_ = 0.0;
+ const auto* scheduled_lidar = resolved_build_.lidar();
+ scheduler_.reset(scheduled_lidar ? 1.0 / scheduled_lidar->scan_hz : 0.0,
+ 1.0 / decision_hz(), 0.04);
  motion_sequence_ = 0;
  command_sequence_ = 0;
- decision_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
- governor_state_ = {};
- dynamic_traffic_system_.reset();
+ entry_governor_system_.reset();
+ crossing_behavior_system_.reset();
  was_saturated_ = false;
  rigid_rollover_exposure_s_ = 0.0;
- rigid_static_contact_s_ = 0.0;
  previous_payload_shock_mps2_ = 0.0;
  filtered_payload_shock_mps2_ = 0.0;
  payload_shock_initialized_ = false;
@@ -239,7 +239,10 @@ void MissionSimulation::reset() {
  estimation_system_.reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
  initialize_frame_tree();
  if (sensor_system_) {
-  sensor_system_->reset(effective_seed(), effective_seed() ^ 0x9e3779b9U);
+ sensor_system_->reset(effective_seed(), effective_seed() ^ 0x9e3779b9U);
+ }
+ if (autonomy_pipeline_) {
+ autonomy_pipeline_->reset(effective_seed() ^ 0x9e3779b9U);
  }
  update_actors();
  slip_detector_.reset();
@@ -475,14 +478,19 @@ void MissionSimulation::build_world() {
  const int width = static_cast<int>(std::ceil(map_definition_.size_m.x / map_definition_.grid_resolution_m));
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
+ std::vector<CollisionBox> collision_obstacles;
  for (const auto& obstacle : map_definition_.obstacles) {
   if (active_in_level(obstacle.active_in, level_id_)) {
    truth_map_->addBox(obstacle.min.x, obstacle.min.y, obstacle.max.x, obstacle.max.y);
+ collision_obstacles.push_back({obstacle.min, obstacle.max});
   }
  }
- sensor_system_ =
-   std::make_unique<sim::SensorSystem>(*truth_map_, effective_seed(), effective_seed() ^ 0x9e3779b9U);
+ sensor_system_ = std::make_unique<sim::SensorSystem>(
+ effective_seed(), effective_seed() ^ 0x9e3779b9U);
  collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(robot_definition_.collision_radius_m));
+ collision_monitor_ = std::make_unique<CollisionMonitor>(
+ map_definition_.size_m, robot_definition_.collision_radius_m,
+ std::move(collision_obstacles));
  std::vector<sim::HeightPatch> active_terrain;
  for (const auto& patch : map_definition_.terrain) {
   if (!active_in_level(patch.active_in, level_id_)) {
@@ -513,6 +521,7 @@ void MissionSimulation::build_world() {
  const auto* equipped_motor = resolved_build_.motor();
  const double motor_vmax =
    equipped_motor ? equipped_motor->max_wheel_speed_mps : robot_definition_.motor.max_wheel_speed_mps;
+ max_forward_speed_mps_ = motor_vmax;
  const double motor_stall =
    equipped_motor ? equipped_motor->stall_force_N : robot_definition_.motor.stall_force_N;
  const double motor_free =
@@ -657,7 +666,17 @@ void MissionSimulation::build_world() {
  const double planning_clearance = robot_definition_.collision_radius_m + 0.20 +
                                    chassis_caps_.planning_clearance_margin_m +
                                    level_.planning_localization_margin_m;
+ planning_clearance_m_ = planning_clearance;
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
+ const auto* mapping_lidar = resolved_build_.lidar();
+ const double mapping_period_s = mapping_lidar ? 1.0 / mapping_lidar->scan_hz : 0.1;
+ autonomy_pipeline_ = std::make_unique<sim::AutonomyPipeline>(
+ *truth_map_, width, height, map_definition_.grid_resolution_m,
+ effective_seed() ^ 0x9e3779b9U,
+ sim::ObservedObstacleLayerConfig{
+ std::max(0.30, 3.0 * mapping_period_s),
+ mapping_period_s,
+ });
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -671,8 +690,8 @@ void MissionSimulation::build_world() {
  // Differential and tracked share yaw-rate output units; their caps differ
  // (geometry vs vendor spin spec) and both already sit in yaw_cap_rads_.
  const double heading_out_lim = chassis_caps_.turn_command_limit();
- control_system_ =
-   std::make_unique<ControlSystem>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
+ route_tracking_system_ =
+   std::make_unique<sim::RouteTrackingSystem>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
                                    robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;
 
@@ -714,7 +733,8 @@ void MissionSimulation::build_world() {
 
 void MissionSimulation::plan_route() {
  planned_route_.clear();
- dynamic_traffic_system_.reset();
+ entry_governor_system_.reset();
+ crossing_behavior_system_.reset();
  route_feasible_ = true;
  return_reserve_failure_ = false;
  if (snapshot_.status == MissionStatus::Ready)
@@ -755,7 +775,7 @@ void MissionSimulation::plan_route() {
   return;
  }
  planned_route_ = std::move(plan.path);
- control_system_->reset();
+ route_tracking_system_->reset();
 }
 
 void MissionSimulation::select_next_goal(const Pose& start) {
@@ -802,7 +822,12 @@ void MissionSimulation::select_next_goal(const Pose& start) {
   if (!plan.ok || plan.path.empty())
    continue;
   const auto candidate_cost = route_cost(plan.path);
-  const double planning_speed = std::max(0.3, property(behavior_, "cruise_mps") * 0.75);
+ // Traversal cost already includes terrain slowdown. Applying another 25%
+ // speed discount double-counts the same loss and can abandon feasible work
+ // while more than the authored return reserve remains. The reserve itself
+ // carries schedule uncertainty; convert weighted route length at nominal
+ // cruise here.
+ const double planning_speed = std::max(0.3, property(behavior_, "cruise_mps"));
   if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
       terminal != level_.objective.goals.end()) {
    const auto& home = map_definition_.markers.at(terminal->marker);
@@ -899,8 +924,8 @@ void MissionSimulation::set_endless_mode(bool enabled) {
   manual_command_ = {};
   manual_control_active_ = false;
   endless_target_key_ = "uninitialized";
-  if (control_system_)
-   control_system_->reset();
+  if (route_tracking_system_)
+   route_tracking_system_->reset();
  }
 }
 
@@ -982,15 +1007,13 @@ void MissionSimulation::step() {
  if (endless_mode_)
   field_operator_system_.update(fixed_step_s, map_definition_, level_id_);
  update_actors();
- if (const auto* sensor = resolved_build_.lidar(); sensor && snapshot_.time_s + 1e-9 >= next_scan_s_) {
+ if (scheduler_.scan_due(snapshot_.time_s)) {
   scan_environment();
-  next_scan_s_ += 1.0 / sensor->scan_hz;
  }
  if (manual_control_active_) {
   held_command_ = manual_command_;
- } else if (snapshot_.time_s + 1e-9 >= next_decision_s_) {
+ } else if (scheduler_.decision_due(snapshot_.time_s)) {
   decide_control();
-  next_decision_s_ += 1.0 / decision_hz();
  }
  if (!manual_control_active_ && !endless_mode_)
   apply_goal_stop_constraint();
@@ -1123,12 +1146,11 @@ void MissionSimulation::step() {
      snapshot_.time_s >= level_.objective.time_limit_s) {
   finish_failure("timeout", catalog_.tr("event.timeout_failure"));
  }
- if (snapshot_.time_s + 1e-9 >= next_replay_s_) {
+ if (scheduler_.replay_due(snapshot_.time_s)) {
   record_replay();
   // The fixed simulation tick is 20 ms. A 40 ms replay cadence keeps every
   // seek gap within the UI's 50 ms contract without fabricating interpolated
   // states (50 ms would alias into occasional 60 ms gaps).
-  next_replay_s_ += 0.04;
  }
 }
 
@@ -1244,14 +1266,28 @@ void MissionSimulation::scan_environment() {
    lidar_config.yaw_in_base_rad = mount->rotation_deg.z * sim::kPi / 180.0;
   }
  }
- auto produced_observation =
-   platform_
-     ? sensor_system_->capture_lidar(
-         truth, snapshot_.time_s, lidar_config,
-         platform_->scan_lidar(sensor->rays, lidar_config.range_m, estimation_system_.state().position,
-                               estimation_system_.state().heading_rad, snapshot_.time_s,
-                               1.0 / sensor->scan_hz, lidar_config.returns))
-     : sensor_system_->capture_lidar(truth, snapshot_.time_s, lidar_config);
+ sim::LidarRaycastTruth lidar_truth;
+ if (platform_) {
+ lidar_truth = platform_->scan_lidar(
+ sensor->rays, lidar_config.range_m, estimation_system_.state().position,
+ estimation_system_.state().heading_rad, snapshot_.time_s,
+ 1.0 / sensor->scan_hz, lidar_config.returns);
+ } else {
+ const double cosine = std::cos(truth.robot.theta);
+ const double sine = std::sin(truth.robot.theta);
+ const sim::Vec2 sensor_origin{
+ truth.robot.x + cosine * lidar_config.position_in_base.x -
+ sine * lidar_config.position_in_base.y,
+ truth.robot.y + sine * lidar_config.position_in_base.x +
+ cosine * lidar_config.position_in_base.y,
+ };
+ lidar_truth = sim::planar_lidar_truth(
+ *truth_map_, sensor_origin,
+ truth.robot.theta + lidar_config.yaw_in_base_rad,
+ sensor->rays, lidar_config.range_m, truth.dynamic_objects);
+ }
+ auto produced_observation = sensor_system_->capture_lidar(
+ truth, snapshot_.time_s, lidar_config, lidar_truth);
  if (!runtime_channel_ ||
      !runtime_channel_->platform().publish_observation(std::move(produced_observation))) {
   throw std::runtime_error("runtime channel rejected the simulated lidar observation");
@@ -1267,13 +1303,23 @@ void MissionSimulation::scan_environment() {
   snapshot_.estimated_heading = estimation_system_.state().heading_rad;
   update_frame_tree();
  }
- const auto perception =
-   sensor_system_->process_lidar(observation, estimation_system_.state(), track_max_age_s());
+ if (!observation.lidar || !observation.lidar_static_reference) {
+ throw std::runtime_error("lidar observation is missing raw or static-reference scan");
+ }
+ const auto& estimate = estimation_system_.state();
+ const auto perception = autonomy_pipeline_->process_lidar(
+ *observation.lidar, *observation.lidar_static_reference,
+ {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
+ estimate.angular_velocity_radps},
+ {lidar_config.position_in_base, lidar_config.yaw_in_base_rad,
+ lidar_config.noise.range_stddev_m,
+ std::max(0.45, level_.planning_localization_margin_m)},
+ track_max_age_s());
  const bool first_static_detection = !snapshot_.static_obstacle_detected;
  if (level_.objective.type == "observe_and_stop" && perception.static_obstacle_near) {
   snapshot_.static_obstacle_detected = true;
  }
- snapshot_.lidar_hits = perception.lidar_hits;
+ snapshot_.lidar_hits = perception.hits;
 
  if (first_static_detection && snapshot_.static_obstacle_detected &&
      level_.objective.type == "observe_and_stop") {
@@ -1302,11 +1348,14 @@ void MissionSimulation::scan_environment() {
 
 void MissionSimulation::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
- if (!sensor_system_) {
+ if (!autonomy_pipeline_) {
   return;
  }
- const auto tracks = sensor_system_->dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
+ const auto tracks =
+ autonomy_pipeline_->dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
+ if (track.motion_class == sim::TrackMotionClass::Unconfirmed)
+ continue;
   std::size_t nearest_actor = actual_actors_.size();
   double nearest_distance = 1.5;
   for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
@@ -1328,6 +1377,7 @@ void MissionSimulation::refresh_dynamic_obstacles() {
     track.state.v,
     track.state.radius,
     track.last_observed_s,
+ track.learned_endpoint_dwell_s,
     nearest_actor < agents_.size() ? agents_[nearest_actor].visual_kind : "vehicle",
     nearest_actor < agents_.size() ? agents_[nearest_actor].display_heading_rad
                                    : std::atan2(track.state.v.y, track.state.v.x),
@@ -1355,12 +1405,12 @@ sim::Vec2 MissionSimulation::current_navigation_target() {
   fallback = active ? as_vec(map_definition_.markers.at(active->marker))
                     : as_vec(map_definition_.markers.at(level_.objective.goal));
  }
- return control_system_->navigation_target(planned_route_, estimate, lookahead, *planning_map_, fallback);
+ return route_tracking_system_->navigation_target(planned_route_, estimate, lookahead, *planning_map_, fallback);
 }
 
 void MissionSimulation::refresh_endless_route() {
  const auto& field_intent = field_operator_system_.intent();
- if (!endless_mode_ || !planning_map_ || !control_system_)
+ if (!endless_mode_ || !planning_map_ || !route_tracking_system_)
   return;
  std::string target_key;
  sim::Vec2 target;
@@ -1397,7 +1447,7 @@ void MissionSimulation::refresh_endless_route() {
   return;
  endless_target_key_ = target_key;
  planned_route_.clear();
- control_system_->reset();
+ route_tracking_system_->reset();
  held_command_ = {};
  route_feasible_ = true;
  if (explicit_intent && (field_intent.kind == FieldIntentKind::Wait || follow_hold)) {
@@ -1423,626 +1473,6 @@ void MissionSimulation::refresh_endless_route() {
  }
  if (explicit_intent)
   field_operator_system_.acknowledge(field_intent.revision, plan.ok);
-}
-
-void MissionSimulation::decide_control() {
- ++result_.local_decisions;
- snapshot_.control = {};
- if (control_system_->path_index() >= planned_route_.size()) {
-  if (planned_route_.empty()) {
-   held_command_ = {0.0, 0.0};
-   DecisionEvidence decision;
-   decision.observation_time_s = snapshot_.time_s;
-   decision.constraint_code = "route";
-   decision.reason_code = "no-route";
-   decision.action_code = "wait";
-   publish_decision(std::move(decision));
-   return;
-  }
-  // Docking hold: waypoint bookkeeping exhausted (resync/accept ran ahead of
-  // a lagging chassis) but arrival tolerance unmet — success is measured by
-  // distance, not by idx. Hold the last waypoint so normal tracking (reverse
-  // hysteresis, watchdog, DWA arbitration below) docks the robot instead of
-  // parking short with tv=0 until timeout.
-  control_system_->set_path_index(planned_route_.size() - 1);
- }
- auto target = current_navigation_target();
- const auto& estimate = estimation_system_.state();
- const double nav_x = estimate.position.x;
- const double nav_y = estimate.position.y;
- const double nav_heading = estimate.heading_rad;
- const auto publish = [&](std::string constraint_code, std::string reason_code, std::string action_code,
-                          double observation_time_s, std::vector<std::string> observation_refs,
-                          double prediction_horizon_s, double measured_separation_m,
-                          double predicted_separation_m) {
-  DecisionEvidence decision;
-  decision.observation_time_s = observation_time_s;
-  decision.observation_refs = std::move(observation_refs);
-  decision.prediction_horizon_s = prediction_horizon_s;
-  decision.measured_separation_m = measured_separation_m;
-  decision.predicted_separation_m = predicted_separation_m;
-  decision.constraint_code = std::move(constraint_code);
-  decision.reason_code = std::move(reason_code);
-  decision.action_code = std::move(action_code);
-  decision.target_speed_mps = held_command_.target_v;
-  decision.target_yaw_rate_radps = held_command_.target_w;
-  publish_decision(std::move(decision));
- };
- sim::StrategyObservation strategy_observation;
- strategy_observation.stamp_s = estimate.timestamp_s;
- strategy_observation.ego = estimate;
- strategy_observation.route_target = target;
- const GoalStep* strategy_goal = active_goal();
- strategy_observation.goal = strategy_goal ? as_vec(map_definition_.markers.at(strategy_goal->marker))
-                                           : as_vec(map_definition_.markers.at(level_.objective.goal));
- strategy_observation.rollover_risk = snapshot_.rollover_risk;
- strategy_observation.traction_slip_observed = snapshot_.traction_slip_observed;
- strategy_observation.goals_reached = static_cast<int>(snapshot_.goals_reached);
- for (const auto& hit : snapshot_.lidar_hits) {
-  strategy_observation.visible_clearance_m =
-    std::min(strategy_observation.visible_clearance_m,
-             distance(estimate.position, hit) - robot_definition_.collision_radius_m);
- }
- sim::StrategySafetyContext strategy_context;
- strategy_context.fallback_target = target;
- strategy_context.map_size = map_definition_.size_m;
- strategy_context.clearance_hold_enabled = custom_high_level_policy_;
- const auto strategy_terrain = terrain_.sample({nav_x, nav_y});
- const bool material_terrain_load =
-   std::abs(sim::longitudinal_grade(strategy_terrain, nav_heading)) >= 0.12 ||
-   std::abs(sim::lateral_grade(strategy_terrain, nav_heading)) >= 0.12;
- // A custom upper policy gets the complete safety shield. The validated
- // route baseline already owns flat-ground speed and obstacle arbitration;
- // its residual-based relief is reserved for a mapped slope, where reducing
- // translation preserves differential steering authority under motor load.
- strategy_context.traction_relief_enabled = custom_high_level_policy_ || material_terrain_load;
- strategy_context.subgoal_is_safe = [this, nav_x, nav_y](sim::Vec2 subgoal) {
-  const double length = distance({nav_x, nav_y}, subgoal);
-  const int samples = std::max(1, static_cast<int>(std::ceil(length / 0.25)));
-  sim::Vec2 previous{nav_x, nav_y};
-  for (int index = 1; index <= samples; ++index) {
-   const double alpha = static_cast<double>(index) / samples;
-   const sim::Vec2 point{
-     nav_x + (subgoal.x - nav_x) * alpha,
-     nav_y + (subgoal.y - nav_y) * alpha,
-   };
-   if (!planning_map_->isFree(point.x, point.y) ||
-       !std::isfinite(navigation_traversal_cost(previous, point))) {
-    return false;
-   }
-   previous = point;
-  }
-  return true;
- };
- const auto strategy_request = high_level_policy_->decide(strategy_observation);
- // Speed and stability constraints belong to the strategy boundary,
- // regardless of who produced the request. Context flags avoid duplicating
- // obstacle arbitration already owned by the validated local planner.
- snapshot_.strategy = sim::apply_strategy_safety(strategy_request, strategy_observation, strategy_context);
- snapshot_.strategy_policy = high_level_policy_->name();
- if (snapshot_.strategy.applied.has_subgoal)
-  target = snapshot_.strategy.applied.subgoal;
- const double chassis_cruise =
-   property(behavior_, "cruise_mps") *
-   (physics_mode_ == PhysicsMode::Bullet ? chassis_caps_.rigid_body_cruise_scale : 1.0);
- auto route_control =
-   control_system_->follow_route(planned_route_, estimate, property(behavior_, "lookahead_m"), chassis_cruise,
-                                 1.0 / decision_hz(), *planning_map_, chassis_caps_);
- if (snapshot_.strategy.applied.has_subgoal) {
-  const double target_distance = distance({nav_x, nav_y}, target);
-  const double subgoal_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
-  route_control.tv = std::min(chassis_cruise, target_distance);
-  route_control.steer = control_system_->heading_command(subgoal_error, 1.0 / decision_hz());
-  route_control.err = subgoal_error;
-  route_control.reached = target_distance < 0.25;
- }
- snapshot_.control.local_target = target;
- snapshot_.control.heading_error_rad = route_control.err;
- snapshot_.control.heading_pid_p = control_system_->pid_p();
- snapshot_.control.heading_pid_i = control_system_->pid_i();
- snapshot_.control.heading_pid_d = control_system_->pid_d();
- // Docking controller: guide_step reports reached when waypoint bookkeeping
- // exhausts (accept/resync ran ahead of a lagging chassis), but mission
- // success is distance-to-goal. If the goal is still beyond tolerance yet
- // close, dock with the same PID instead of parking short until timeout.
- // Structure mirrors guide_step (reverse hysteresis, spin capability branch)
- // so behavior stays consistent across the tracking/docking seam.
- {
-  const GoalStep* active = active_goal();
-  sim::Vec2 goal = active ? as_vec(map_definition_.markers.at(active->marker))
-                          : as_vec(map_definition_.markers.at(level_.objective.goal));
-  double arrival_radius = active ? active->radius_m : level_.objective.arrive_tolerance_m;
-  if (endless_mode_) {
-   const auto& intent = field_operator_system_.intent();
-   if (intent.active) {
-    goal = intent.target;
-    arrival_radius = 0.25;
-   } else if (dispatch_has_priority(field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
-    goal = field_dispatch_system_.state().target;
-    arrival_radius = 0.85;
-   } else if (snapshot_.world_activity.incident.active) {
-    goal = snapshot_.world_activity.incident.position;
-    arrival_radius = std::max(0.25, snapshot_.world_activity.incident.radius_m);
-   }
-  }
-  const double dist_goal = distance({nav_x, nav_y}, goal);
-  const double tracking_arrival_radius = std::min(arrival_radius, 0.25);
-  // Bounded: far exhaustion means the follower lost the path, not that the
-  // goal is near; beelining across the map without waypoints risks walls.
-  // (An unbounded trial stranded swift tracks in a reversing cycle instead
-  // of docking — evidence for curation, not for a longer leash.)
-  if (route_control.reached && dist_goal > tracking_arrival_radius && dist_goal < 3.0) {
-   const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
-   if (!control_system_->reversing() && std::abs(dock_err) > 1.4)
-    control_system_->set_reversing(true);
-   else if (control_system_->reversing() && std::abs(dock_err) < 0.7)
-    control_system_->set_reversing(false);
-   const double dock_dt = 1.0 / decision_hz();
-   if (!control_system_->reversing()) {
-    route_control.tv = std::min(0.3, dist_goal);
-    route_control.steer = control_system_->heading_command(dock_err, dock_dt);
-   } else if (chassis_->caps().can_spin) {
-    control_system_->set_reversing(false);
-    route_control.tv = 0.0;
-    route_control.steer = control_system_->heading_command(dock_err, dock_dt);
-   } else {
-    route_control.tv = -0.3;
-    route_control.steer = -control_system_->heading_command(dock_err, dock_dt);
-   }
-   route_control.err = dock_err;
-   route_control.reached = false;
-  }
- }
- route_control.tv *= snapshot_.strategy.applied.speed_scale;
- const double unavailable = std::numeric_limits<double>::quiet_NaN();
- if (snapshot_.strategy.applied.mode == sim::StrategyMode::Hold) {
-  held_command_ = {};
-  snapshot_.waiting_for_clearance = true;
-  snapshot_.control.local_target = target;
-  snapshot_.control.heading_error_rad = route_control.err;
-  publish("high-level-intent", "strategy-hold", "wait", estimate.timestamp_s, {}, unavailable, unavailable,
-          unavailable);
-  update_shadow_episode();
-  return;
- }
- if (actual_actors_.empty()) {
-  const double preview_cap = corner_speed_cap(nav_x, nav_y);
-  held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
-                   route_control.steer};
-  snapshot_.waiting_for_clearance = false;
-  update_shadow_episode();
-  snapshot_.control.shadow_assessed = false;
-  snapshot_.control.shadow_pocket_verdict = -1;
-  snapshot_.control.shadow_pocket_feasible = 0;
-  snapshot_.control.shadow_pocket_total = 0;
-  for (int& bin : snapshot_.control.shadow_pocket_reasons) {
-   bin = 0;
-  }
-  const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
-  snapshot_.control.governor_hold = governor_idle.hold_active;
-  snapshot_.control.governor_stop = governor_idle.stop_point;
-  publish("none", "route-clear", "follow-route", estimate.timestamp_s, {}, unavailable, unavailable,
-          unavailable);
-  return;
- }
-
- const auto known_tracks =
-   sensor_system_->dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
-
- std::vector<std::string> observation_refs;
- double observation_time_s = std::numeric_limits<double>::quiet_NaN();
- observation_refs.reserve(known_tracks.size());
- for (const auto& track : known_tracks) {
-  observation_refs.push_back("track." + std::to_string(track.object_id));
-  if (!std::isfinite(observation_time_s) || track.last_observed_s > observation_time_s)
-   observation_time_s = track.last_observed_s;
- }
-
- double nearest_actor = std::numeric_limits<double>::infinity();
- for (const auto& track : known_tracks) {
-  const auto& actor = track.state;
-  nearest_actor = std::min(nearest_actor, distance({nav_x, nav_y}, actor.p) - actor.radius -
-                                            robot_definition_.collision_radius_m);
- }
-
- const auto* computer = resolved_build_.computer();
- const double prediction_horizon = computer ? computer->prediction_horizon_s : 1.2;
- const auto* active_lidar = resolved_build_.lidar();
- const double scan_motion_margin =
-   active_lidar
-     ? 2.0 * (property(behavior_, "cruise_mps") + yaw_cap_rads_ * robot_definition_.collision_radius_m) /
-         active_lidar->scan_hz
-     : 0.0;
- // A rotating scan is up to one frame old and the tracker consumes it on the
- // next decision. Reserve the distance the robot footprint can sweep across
- // those two periods. This belongs to dynamic avoidance; inflating the static
- // global map with it would incorrectly close narrow but stationary routes.
- const double requested_clearance = property(behavior_, "safe_clearance_m") + scan_motion_margin;
- const double risk_distance =
-   requested_clearance * requested_clearance * 2.5 + property(behavior_, "cruise_mps") * 0.6 + 0.1;
- const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
- double speed_cap = std::min(std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps"))),
-                             corner_speed_cap(nav_x, nav_y));
- speed_cap *= snapshot_.strategy.applied.speed_scale;
- const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
- constexpr double prediction_step_s = 0.1;
- // Predictor module (src/autonomy/predictor.*) owns future frames; the tracker
- // owns observations. known_tracks (age-advanced, for display) must not
- // feed prediction: map.predict() snapshots raw tracker state internally.
- const auto predicted_frames = sensor_system_->dynamic_obstacles().predict(
-   snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
- const auto nominal_predicted_frames = sensor_system_->dynamic_obstacles().predict_nominal(
-   snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
- // Shadow departure assessment (gate 3): observe only. This block reads
- // tracker state and writes snapshot shadow fields; held_command_ (the actual
- // control output) is untouched by everything in this block.
- std::vector<sim::Vec2> shadow_remaining{{nav_x, nav_y}};
- for (std::size_t i = control_system_->path_index(); i < planned_route_.size(); ++i) {
-  shadow_remaining.push_back(planned_route_[i].position);
- }
- const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
- double shadow_length = 0.0;
- for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
-  shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
- }
- // Crossing, route-departure shadow, and pocket evaluation share one
- // time-indexed prediction. Recomputing each consumer independently could
- // make a single decision explain itself with mutually different futures.
- const double assessment_horizon = shadow_length / shadow_cruise + prediction_horizon;
- const auto assessment_frames = sensor_system_->dynamic_obstacles().predict(
-   snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
-
- // A map-semantic conflict zone is the high-level contract for crossing
- // traffic. It yields a stable route-derived stop point and a bounded path
- // through the zone. Actor truth and game collision flags are deliberately
- // absent: only tracked predictions participate in departure assessment.
- bool mapped_crossing_relevant = false;
- bool mapped_crossing_stop_reached = false;
- std::optional<sim::GovernorOutput> mapped_governor;
- const auto traffic_decision = dynamic_traffic_system_.assess(
-   map_definition_.conflict_zones, level_id_, planned_route_, control_system_->path_index(), {nav_x, nav_y},
-   estimate.linear_velocity_mps, shadow_cruise, resolved_build_.tires().brake_decel_mps2, assessment_frames,
-   prediction_step_s, robot_definition_.collision_radius_m, requested_clearance, 1.0 / decision_hz());
- const auto& crossing = traffic_decision.assessment;
- // Without authored crossing semantics, the local planner is the only
- // authority protecting motion through an unresolved stop/reversal. It must
- // therefore honor every maintained intent hypothesis. An authored zone may
- // use the nominal short-horizon forecast for local rollout while its
- // conservative assessment remains visible to the behavior validator.
- const auto& local_predicted_frames =
-   traffic_decision.has_active_zone ? nominal_predicted_frames : predicted_frames;
- snapshot_.control.crossing_assessed = crossing.relevant;
- snapshot_.control.crossing_control_authority = traffic_decision.control_authority;
- snapshot_.control.crossing_zone_id = crossing.zone_id;
- snapshot_.control.crossing_stop = crossing.stop_point;
- snapshot_.control.crossing_wait_s =
-   std::isfinite(crossing.departure.wait_s) ? crossing.departure.wait_s : -1.0;
- snapshot_.control.crossing_reason = crossing.relevant ? static_cast<int>(crossing.departure.reason) : -1;
- if (traffic_decision.control_authority && crossing.relevant) {
-  mapped_crossing_relevant = true;
-  mapped_crossing_stop_reached = crossing.stop_reached;
-  mapped_governor = sim::GovernorOutput{
-    traffic_decision.control.hold_active,
-    traffic_decision.control.stop_point,
-    traffic_decision.control.stop_valid,
-  };
- }
-
- if (!mapped_crossing_relevant && (known_tracks.empty() || nearest_actor > risk_distance)) {
-  const double preview_cap = corner_speed_cap(nav_x, nav_y);
-  held_command_ = {route_control.tv > 0.0 ? std::min(route_control.tv, preview_cap) : route_control.tv,
-                   route_control.steer};
-  snapshot_.waiting_for_clearance = false;
-  update_shadow_episode();
-  snapshot_.control.shadow_assessed = false;
-  snapshot_.control.shadow_pocket_verdict = -1;
-  snapshot_.control.shadow_pocket_feasible = 0;
-  snapshot_.control.shadow_pocket_total = 0;
-  for (int& bin : snapshot_.control.shadow_pocket_reasons) {
-   bin = 0;
-  }
-  const auto governor_idle = sim::govern_entry(governor_state_, sim::GovernorInput{});
-  snapshot_.control.governor_hold = governor_idle.hold_active;
-  snapshot_.control.governor_stop = governor_idle.stop_point;
-  publish("none", known_tracks.empty() ? "no-dynamic-track" : "dynamic-track-clear", "follow-route",
-          observation_time_s, std::move(observation_refs), prediction_horizon,
-          std::isfinite(nearest_actor) ? nearest_actor : unavailable, unavailable);
-  return;
- }
- {
-  // Wait slack = the computer's own prediction horizon (existing content, not
-  // a new knob): waits beyond what the computer predicts are unassessable by
-  // construction (kHorizonShort) — which is itself shadow data.
-  const auto assessment =
-    sim::assess_departure(shadow_remaining, 0, shadow_cruise, assessment_frames, prediction_step_s,
-                          robot_definition_.collision_radius_m, requested_clearance);
-  snapshot_.control.shadow_assessed = true;
-  snapshot_.control.shadow_depart_s = assessment.wait_s;
-  snapshot_.control.shadow_reason = static_cast<int>(assessment.reason);
- }
- // Spatial pocket shadow (Gate B observation): same read-only contract, only
- // while waiting (last cycle's flag) — bounded cost, and waits are exactly
- // what Gate B must accumulate. Observation budget (window/offsets/cap), not
- // tuned: it cannot affect behavior by construction.
- snapshot_.control.shadow_pocket_verdict = -1;
- snapshot_.control.shadow_pocket_feasible = 0;
- snapshot_.control.shadow_pocket_total = 0;
- for (int& bin : snapshot_.control.shadow_pocket_reasons) {
-  bin = 0;
- }
- if (snapshot_.waiting_for_clearance) {
-  sim::PocketSampleParams pocket_params;
-  pocket_params.lateral_offsets_m = {1.5, -1.5};
-  pocket_params.window_m = 6.0;
-  pocket_params.vertex_stride_m = 1.5;
-  pocket_params.min_downstream_m = 3.0;
-  pocket_params.min_pocket_dist_m = 0.3;
-  pocket_params.max_candidates = 12;
-  const auto search = sim::sample_pockets(
-    *planning_map_, shadow_remaining, {nav_x, nav_y}, nav_heading, shadow_cruise,
-    sim::ChassisExecCaps{chassis_caps_.can_spin, chassis_caps_.max_yaw_rate_radps,
-                         chassis_caps_.geometry.steering_wheel_base_m, chassis_caps_.geometry.max_steer_rad,
-                         chassis_caps_.geometry.max_steer_rate_radps,
-                         chassis_caps_.geometry.steering_response_s},
-    prediction_horizon, pocket_params, assessment_frames, prediction_step_s,
-    robot_definition_.collision_radius_m, requested_clearance);
-  int pocket_feasible = 0;
-  for (const auto& candidate : search.candidates) {
-   if (candidate.assessment.overall == sim::Feasibility::Verdict::kFeasible) {
-    ++pocket_feasible;
-   }
-   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.transit.reason)];
-   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.hold.reason)];
-   ++snapshot_.control.shadow_pocket_reasons[static_cast<int>(candidate.assessment.rejoin.reason)];
-  }
-  snapshot_.control.shadow_pocket_verdict = static_cast<int>(search.verdict);
-  snapshot_.control.shadow_pocket_feasible = pocket_feasible;
-  snapshot_.control.shadow_pocket_total = static_cast<int>(search.candidates.size());
- }
- // Entry governor fallback (Phase-2, Behavior one-sided brake): fresh perceived tracks
- // feed the window shadow; Occupied engages HOLD_AT now, sustained Clear or
- // prolonged silence releases. Every perceived track is safety-relevant here:
- // tracker object IDs are sensor-owned identities, not indices into simulation
- // actors, and game collision policy must not leak into autonomy. Stopped ego
- // is assessed at a 0.5 m/s departure floor
- // (conservative: slower than any cruise, so the window is pessimistic).
- // Stop geometry uses PREDICTED threat occupancy (all forecast frames), not
- // current positions: parking next to the incoming threat's future path is
- // how the first wiring collided on signal_hold (39.4s hold -> rammed while
- // stopped). The stop point must clear the whole swept band.
- sim::GovernorOutput governor_out;
- if (mapped_governor) {
-  const bool was_hold = snapshot_.control.governor_hold;
-  governor_out = *mapped_governor;
-  snapshot_.control.governor_hold = governor_out.hold_active;
-  snapshot_.control.governor_stop = governor_out.stop_point;
-  if (governor_out.hold_active && !was_hold)
-   record_event("governor_hold", catalog_.tr("event.governor_hold"));
- } else if (!traffic_decision.has_active_zone) {
-  const sim::Vec2 ego{nav_x, nav_y};
-  const sim::Vec2 dir{std::cos(nav_heading), std::sin(nav_heading)};
-  const double ego_speed = std::abs(estimate.linear_velocity_mps);
-  const double assess_speed = ego_speed >= 0.15 ? ego_speed : 0.5;
-  sim::GovernorInput governor_input;
-  for (const auto& track : known_tracks) {
-   const double age = snapshot_.time_s - track.last_observed_s;
-   if (age < 0.0 || age > sim::kEntryStaleBudgetS) {
-    continue;
-   }
-   const sim::Vec2 tp{track.state.p.x, track.state.p.y};
-   const sim::Vec2 tv{track.state.v.x, track.state.v.y};
-   const auto center = sim::governor_conflict_center(ego, dir, tp, tv);
-   if (std::hypot(center.x - ego.x, center.y - ego.y) > 10.0) {
-    continue;
-   }
-   const double half = 0.45 + track.state.radius + 0.2;
-   sim::WindowThreat threat;
-   threat.valid = true;
-   threat.dist_to_zone_m = std::hypot(tp.x - center.x, tp.y - center.y) - half;
-   const double to_center = std::max(1e-6, std::hypot(center.x - tp.x, center.y - tp.y));
-   const double toward = (tv.x * (center.x - tp.x) + tv.y * (center.y - tp.y)) / to_center;
-   threat.speed_mps = (toward > 0.0) ? std::hypot(tv.x, tv.y) : 0.0;
-   threat.age_s = age;
-   const double ego_dist = std::max(0.0, std::hypot(center.x - ego.x, center.y - ego.y) - half);
-   const auto assessment =
-     sim::assess_entry_window(ego_dist, assess_speed, half, threat, sim::kEntryStaleBudgetS);
-   if (assessment.verdict == sim::EntryVerdict::kObservedOccupied) {
-    governor_input.occupied_fresh = true;
-   } else if (assessment.verdict == sim::EntryVerdict::kObservedClear) {
-    governor_input.clear_fresh = true;
-   }
-  }
-  if (governor_input.occupied_fresh) {
-   governor_input.clear_fresh = false; // occupied wins mixed frames.
-  }
-  // Corridor entry against every forecast frame: the first remaining-route
-  // point inside any predicted swept disc, walked back brake + margin.
-  if (governor_input.occupied_fresh || governor_input.clear_fresh) {
-   auto near_predicted = [&](sim::Vec2 p) {
-    for (const auto& frame : predicted_frames) {
-     for (const auto& future : frame) {
-      if (std::hypot(p.x - future.p.x, p.y - future.p.y) < 0.9) {
-       return true;
-      }
-     }
-    }
-    return false;
-   };
-   std::size_t entry = shadow_remaining.size();
-   for (std::size_t i = 0; i < shadow_remaining.size(); ++i) {
-    if (near_predicted(shadow_remaining[i])) {
-     entry = i;
-     break;
-    }
-   }
-   if (entry < shadow_remaining.size()) {
-    const double cruise = property(behavior_, "cruise_mps");
-    const double brake = resolved_build_.tires().brake_decel_mps2;
-    const double need = cruise * cruise / (2.0 * brake) + 1.0;
-    double walked = 0.0;
-    std::size_t stop = entry;
-    while (stop > 0 && walked < need) {
-     walked += std::hypot(shadow_remaining[stop].x - shadow_remaining[stop - 1].x,
-                          shadow_remaining[stop].y - shadow_remaining[stop - 1].y);
-     --stop;
-    }
-    governor_input.stop_point = shadow_remaining[stop];
-    governor_input.stop_valid = true;
-   }
-  }
-  const bool was_hold = governor_state_.hold_active;
-  governor_out = sim::govern_entry(governor_state_, governor_input);
-  snapshot_.control.governor_hold = governor_out.hold_active;
-  snapshot_.control.governor_stop = governor_out.stop_point;
-  if (governor_out.hold_active && !was_hold) {
-   record_event("governor_hold", catalog_.tr("event.governor_hold"));
-  }
- } else {
-  // Authored conflict-zone semantics supersede the legacy geometric
-  // intersection heuristic. If the current route does not enter a declared
-  // zone, the behavior layer has no crossing constraint to impose; ordinary
-  // local collision avoidance still runs below when a track is actually near.
-  governor_out = sim::govern_entry(governor_state_, {});
-  snapshot_.control.governor_hold = governor_out.hold_active;
-  snapshot_.control.governor_stop = governor_out.stop_point;
- }
- // Virtual wall (Phase-2 consumption): while the governor holds, cap speed
- // by stopping physics to the stop point. DWA still owns steering and the
- // release decision; this clamp only withholds speed, never commands it.
- if (governor_out.hold_active && governor_out.stop_valid) {
-  const double brake = resolved_build_.tires().brake_decel_mps2;
-  const double dist = mapped_crossing_relevant
-                        ? crossing.stop_distance_m
-                        : std::hypot(nav_x - governor_out.stop_point.x, nav_y - governor_out.stop_point.y);
-  const double v_allow = mapped_crossing_stop_reached || dist <= 0.05 ? 0.0 : std::sqrt(2.0 * brake * dist);
-  speed_cap = std::min(speed_cap, v_allow);
- }
- sim::DwaResult dwa;
- if (chassis_->caps().command_space == sim::ChassisCommandSpace::HolonomicTwist) {
-  sim::HolonomicLocalConfig local_config;
-  local_config.max_speed_mps = speed_cap;
-  local_config.max_yaw_radps = yaw_cap_rads_;
-  local_config.max_accel_mps2 = resolved_build_.tires().brake_decel_mps2;
-  local_config.max_yaw_accel_radps2 = robot_definition_.max_yaw_accel_radps2;
-  local_config.predict_time_s = prediction_horizon;
-  local_config.dt_s = prediction_step_s;
-  local_config.frame_dt_s = prediction_step_s;
-  local_config.safety_margin_m = requested_clearance;
-  local_config.robot_radius_m = robot_definition_.collision_radius_m;
-  dwa = sim::holonomic_local_compute(
-    {nav_x, nav_y}, nav_heading, estimate.linear_velocity_mps, snapshot_.robot.lateral_v,
-    estimate.angular_velocity_radps, target, *planning_map_, weights, local_predicted_frames, local_config,
-    [this](sim::Vec2 from, sim::Vec2 to) { return std::isfinite(navigation_traversal_cost(from, to)); });
- } else if (chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle) {
-  sim::AckermannLocalConfig local_config;
-  local_config.wheel_base_m = chassis_caps_.geometry.steering_wheel_base_m;
-  local_config.max_steer_rad = chassis_caps_.geometry.max_steer_rad;
-  local_config.max_steer_rate_radps = chassis_caps_.geometry.max_steer_rate_radps;
-  local_config.max_accel_mps2 = resolved_build_.tires().brake_decel_mps2;
-  local_config.max_speed_mps = speed_cap;
-  local_config.preferred_direction = control_system_->travel_direction(planned_route_);
-  local_config.predict_time_s = prediction_horizon;
-  local_config.dt_s = prediction_step_s;
-  local_config.frame_dt_s = prediction_step_s;
-  local_config.safety_margin_m = requested_clearance;
-  local_config.robot_radius_m = robot_definition_.collision_radius_m;
-  dwa = sim::ackermann_local_compute(
-    {nav_x, nav_y}, nav_heading, estimate.linear_velocity_mps, chassis_->telemetry().steer.angle_rad, target,
-    *planning_map_, weights, local_predicted_frames, local_config,
-    [this](sim::Vec2 from, sim::Vec2 to) { return std::isfinite(navigation_traversal_cost(from, to)); });
- } else {
-  dwa = sim::dwa_compute_trajectory(
-    {nav_x, nav_y}, nav_heading, estimate.linear_velocity_mps, estimate.angular_velocity_radps, target,
-    *planning_map_, weights, local_predicted_frames, speed_cap, yaw_cap_rads_,
-    resolved_build_.tires().brake_decel_mps2, prediction_horizon, prediction_step_s, prediction_step_s,
-    requested_clearance, robot_definition_.collision_radius_m, robot_definition_.max_yaw_accel_radps2,
-    [this](sim::Vec2 from, sim::Vec2 to) { return std::isfinite(navigation_traversal_cost(from, to)); },
-    mapped_crossing_relevant ? 0.0 : -0.5);
- }
- snapshot_.control.dwa_active = true;
- snapshot_.control.dwa_selected = dwa.best_path;
- double predicted_separation_m = std::numeric_limits<double>::quiet_NaN();
- for (std::size_t frame_index = 0;
-      frame_index < local_predicted_frames.size() && frame_index < dwa.best_path.size(); ++frame_index) {
-  for (const auto& future : local_predicted_frames[frame_index]) {
-   const double separation =
-     distance(dwa.best_path[frame_index], future.p) - future.radius - robot_definition_.collision_radius_m;
-   if (!std::isfinite(predicted_separation_m) || separation < predicted_separation_m)
-    predicted_separation_m = separation;
-  }
- }
- constexpr std::size_t kVisibleDwaCandidates = 24;
- const std::size_t candidate_stride =
-   std::max<std::size_t>(1, (dwa.rollouts.size() + kVisibleDwaCandidates - 1) / kVisibleDwaCandidates);
- for (std::size_t index = 0; index < dwa.rollouts.size(); index += candidate_stride) {
-  const auto& rollout = dwa.rollouts[index];
-  snapshot_.control.dwa_candidates.push_back({
-    rollout.points,
-    rollout.collision,
-    rollout.command.score,
-  });
- }
- if (!dwa.best.valid) {
-  held_command_ = {0.0, 0.0};
-  // A local-planner failure enters the zero-speed safety state. A recovery
-  // planner needs its own dynamically validated trajectory and termination
-  // contract; an unverified steering heuristic must never bypass DWA.
-  if (!snapshot_.waiting_for_clearance) {
-   std::ostringstream waiting;
-   waiting << std::fixed << std::setprecision(1) << nearest_actor;
-   record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}));
-  }
-  snapshot_.waiting_for_clearance = true;
-  shadow_open_speed_ = 0.0;
-  for (const auto& track : known_tracks) {
-   shadow_open_speed_ = std::max(shadow_open_speed_, std::hypot(track.state.v.x, track.state.v.y));
-  }
-  shadow_open_nearest_ = nearest_actor;
-  update_shadow_episode();
- } else {
-  // Arbitration without magic gains: while the avoidance speed is healthy, DWA
-  // owns both speed and turn; at creep speed the robot holds the route heading
-  // with the same derived proportional gain (P-only: integrator and derivative
-  // states are meaningless at standstill and would wind up or kick).
-  constexpr double kCreepSpeedMps = 0.15;
-  const double arbitrated_turn =
-    std::abs(dwa.best.v) < kCreepSpeedMps
-      ? (chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle
-           ? route_control.steer
-           : std::clamp(heading_kp_ * heading_error, -yaw_cap_rads_, yaw_cap_rads_))
-      : dwa.best.w;
-  held_command_ = {dwa.best.v < 0.0 ? dwa.best.v
-                                    : std::min({std::max(0.0, route_control.tv), dwa.best.v,
-                                                corner_speed_cap(nav_x, nav_y)}),
-                   arbitrated_turn};
-  held_command_.target_lateral_v = dwa.best.lateral_v;
-  snapshot_.waiting_for_clearance = std::abs(dwa.best.v) < kCreepSpeedMps;
-  if (snapshot_.waiting_for_clearance) {
-   std::ostringstream waiting;
-   waiting << std::fixed << std::setprecision(1) << nearest_actor;
-   record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}), 2.0);
-  }
-  shadow_open_speed_ = 0.0;
-  for (const auto& track : known_tracks) {
-   shadow_open_speed_ = std::max(shadow_open_speed_, std::hypot(track.state.v.x, track.state.v.y));
-  }
-  shadow_open_nearest_ = nearest_actor;
-  update_shadow_episode();
- }
- const bool minimum_risk_escape =
-   !dwa.best.valid && (std::abs(held_command_.target_v) > 1e-9 || std::abs(held_command_.target_w) > 1e-9);
- const std::string action_code =
-   minimum_risk_escape ? "minimum-risk-escape"
-                       : (snapshot_.waiting_for_clearance ? "wait" : (dwa.best.valid ? "avoid" : "wait"));
- const std::string reason_code =
-   !dwa.best.valid
-     ? "no-safe-local-trajectory"
-     : (governor_out.hold_active
-          ? "entry-window-occupied"
-          : (snapshot_.waiting_for_clearance ? "predicted-path-conflict" : "safe-local-trajectory"));
- publish(reason_code == "safe-local-trajectory" ? "none" : "dynamic-clearance", reason_code, action_code,
-         observation_time_s, std::move(observation_refs), prediction_horizon,
-         std::isfinite(nearest_actor) ? nearest_actor : unavailable, predicted_separation_m);
 }
 
 void MissionSimulation::apply_motion() {
@@ -2291,54 +1721,57 @@ void MissionSimulation::apply_motion() {
   return;
  }
 
- const bool outside_world = candidate.x < 0.0 || candidate.y < 0.0 ||
-                            candidate.x >= map_definition_.size_m.x ||
-                            candidate.y >= map_definition_.size_m.y;
- if (physics_mode_ == PhysicsMode::Bullet) {
-  if (have_rigid_state && rigid_state.static_collision)
-   rigid_static_contact_s_ += fixed_step_s;
-  else
-   rigid_static_contact_s_ = 0.0;
+ CollisionObservation collision_observation;
+ collision_observation.position = candidate_position;
+ collision_observation.time_s = snapshot_.time_s;
+ collision_observation.dt_s = fixed_step_s;
+ collision_observation.backend = physics_mode_ == PhysicsMode::Bullet
+ ? CollisionBackend::RigidBody
+ : CollisionBackend::Occupancy;
+ collision_observation.rigid_static_contact =
+ have_rigid_state && rigid_state.static_collision;
+ collision_observation.occupancy = collision_map_.get();
+ collision_observation.actors.reserve(actual_actors_.size());
+ for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
+ const bool rigid_contact = physics_mode_ == PhysicsMode::Bullet && have_rigid_state &&
+ index < agents_.size() &&
+ std::find(rigid_state.actor_collisions.begin(), rigid_state.actor_collisions.end(),
+ agents_[index].id) != rigid_state.actor_collisions.end();
+ collision_observation.actors.push_back({
+ actual_actors_[index],
+ index < agents_.size() && agents_[index].social,
+ rigid_contact,
+ });
  }
- const bool static_collision = physics_mode_ == PhysicsMode::Bullet
-                                 ? (outside_world || rigid_static_contact_s_ >= 0.25)
-                                 : !collision_map_->isFree(candidate.x, candidate.y);
- if (static_collision) {
+ const auto collision = collision_monitor_->assess(collision_observation);
+ if (collision.static_clearance_m < result_.min_static_clearance_m) {
+ result_.min_static_clearance_m = collision.static_clearance_m;
+ result_.min_static_clearance_time_s = snapshot_.time_s;
+ result_.min_static_robot_position = candidate_position;
+ }
+ result_.min_clearance_m = std::min(result_.min_clearance_m,
+ collision.static_clearance_m);
+ if (collision.dynamic_clearance_m < result_.min_dynamic_clearance_m) {
+ result_.min_dynamic_clearance_m = collision.dynamic_clearance_m;
+ result_.min_dynamic_clearance_time_s = snapshot_.time_s;
+ result_.min_dynamic_robot_position = candidate_position;
+ result_.min_dynamic_actor_position = collision.nearest_actor_position;
+ }
+ result_.min_clearance_m = std::min(result_.min_clearance_m,
+ collision.dynamic_clearance_m);
+ result_.pedestrian_contacts += collision.social_contacts;
+ if (collision.static_collision) {
   ++result_.collisions;
   if (!endless_mode_)
    finish_failure("collision-static", catalog_.tr("event.collision_static"));
   return;
  }
- for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
-  const auto& actor = actual_actors_[index];
-  const double clearance =
-    distance(candidate_position, actor.p) - actor.radius - robot_definition_.collision_radius_m;
-  result_.min_clearance_m = std::min(result_.min_clearance_m, clearance);
-  if (clearance < result_.min_dynamic_clearance_m) {
-   result_.min_dynamic_clearance_m = clearance;
-   result_.min_dynamic_clearance_time_s = snapshot_.time_s;
-   result_.min_dynamic_robot_position = candidate_position;
-   result_.min_dynamic_actor_position = actor.p;
-  }
-  const bool social = index < agents_.size() && agents_[index].social;
-  const bool rigid_actor_collision =
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state &&
-    std::find(rigid_state.actor_collisions.begin(), rigid_state.actor_collisions.end(), agents_[index].id) !=
-      rigid_state.actor_collisions.end();
-  const bool actor_collision = physics_mode_ == PhysicsMode::Bullet ? rigid_actor_collision : clearance < 0.0;
-  if (actor_collision && social) {
-   // Social contact: proximity already ate the clearance score above; a
-   // pedestrian never ends the run. Counted as evidence, not failure.
-   ++result_.pedestrian_contacts;
-   continue;
-  }
-  if (actor_collision) {
+ if (collision.dynamic_collision) {
    ++result_.collisions;
    if (!endless_mode_)
     finish_failure("collision-dynamic", catalog_.tr("event.collision_dynamic"));
    return;
   }
- }
 
  snapshot_.robot = candidate;
  result_.path_length_m += distance({before.x, before.y}, candidate_position);
@@ -2435,13 +1868,12 @@ void MissionSimulation::apply_motion() {
  result_.odometry_heading_error_rad = estimation_system_.heading_error_rad(candidate.theta);
  result_.max_odometry_heading_error_rad =
    std::max(result_.max_odometry_heading_error_rad, result_.odometry_heading_error_rad);
- const double fixed_clearance = static_clearance(candidate_position);
- if (fixed_clearance < result_.min_static_clearance_m) {
-  result_.min_static_clearance_m = fixed_clearance;
-  result_.min_static_clearance_time_s = snapshot_.time_s;
-  result_.min_static_robot_position = candidate_position;
- }
- result_.min_clearance_m = std::min(result_.min_clearance_m, fixed_clearance);
+ result_.fused_pose_error_m = estimation_system_.fused_position_error(candidate_position);
+ result_.max_fused_pose_error_m =
+ std::max(result_.max_fused_pose_error_m, result_.fused_pose_error_m);
+ result_.fused_heading_error_rad = estimation_system_.fused_heading_error_rad(candidate.theta);
+ result_.max_fused_heading_error_rad =
+ std::max(result_.max_fused_heading_error_rad, result_.fused_heading_error_rad);
 }
 
 double MissionSimulation::surface_traction(sim::Vec2 position) const {
@@ -2451,21 +1883,6 @@ double MissionSimulation::surface_traction(sim::Vec2 position) const {
   }
  }
  return 1.0;
-}
-
-double MissionSimulation::static_clearance(sim::Vec2 position) const {
- double minimum = std::min({position.x, position.y, map_definition_.size_m.x - position.x,
-                            map_definition_.size_m.y - position.y}) -
-                  robot_definition_.collision_radius_m;
- for (const auto& obstacle : map_definition_.obstacles) {
-  if (!active_in_level(obstacle.active_in, level_id_)) {
-   continue;
-  }
-  const double dx = std::max({obstacle.min.x - position.x, 0.0, position.x - obstacle.max.x});
-  const double dy = std::max({obstacle.min.y - position.y, 0.0, position.y - obstacle.max.y});
-  minimum = std::min(minimum, std::hypot(dx, dy) - robot_definition_.collision_radius_m);
- }
- return std::max(0.0, minimum);
 }
 
 void MissionSimulation::finish_success() {
@@ -2496,7 +1913,7 @@ void MissionSimulation::finish_success() {
   result_.scored_clearance_m = result_.min_clearance_m;
  }
  result_.safe_score = result_.collisions == 0 && result_.scored_clearance_m >= level_.safe_min_clearance_m &&
-                      result_.max_odometry_error_m <= level_.max_localization_error_m;
+ result_.max_fused_pose_error_m <= level_.max_localization_error_m;
  if (active_contract_) {
   result_.cargo_integrity = std::min(
     result_.cargo_integrity,
@@ -2562,43 +1979,15 @@ void MissionSimulation::record_event(std::string code, std::string message, doub
 }
 
 void MissionSimulation::publish_decision(DecisionEvidence decision) {
- const auto same_decision = [&] {
-  if (decisions_.empty())
-   return false;
-  const auto& previous = decisions_.back();
-  return previous.constraint_code == decision.constraint_code &&
-         previous.reason_code == decision.reason_code && previous.action_code == decision.action_code &&
-         previous.outcome_code == "active";
- }();
-
- decision.outcome_code = "active";
- decision.end_time_s = -1.0;
- decision.superseded_by = 0;
- if (same_decision) {
-  decision.sequence = decisions_.back().sequence;
-  decision.decision_time_s = decisions_.back().decision_time_s;
-  decisions_.back() = decision;
- } else {
-  const std::uint64_t next_sequence = ++decision_sequence_;
-  if (!decisions_.empty() && decisions_.back().outcome_code == "active") {
-   decisions_.back().end_time_s = snapshot_.time_s;
-   decisions_.back().outcome_code = "superseded";
-   decisions_.back().superseded_by = next_sequence;
-  }
-  decision.sequence = next_sequence;
-  decision.decision_time_s = snapshot_.time_s;
-  decisions_.push_back(decision);
- }
- snapshot_.decision = decision;
+ snapshot_.decision = decision_evidence_system_.publish(
+ std::move(decision), snapshot_.time_s);
 }
 
 void MissionSimulation::close_decision(std::string outcome_code) {
- if (decisions_.empty())
-  return;
- decisions_.back().end_time_s = snapshot_.time_s;
- decisions_.back().outcome_code = std::move(outcome_code);
- decisions_.back().superseded_by = 0;
- snapshot_.decision = decisions_.back();
+ if (const auto* closed = decision_evidence_system_.close(
+ std::move(outcome_code), snapshot_.time_s)) {
+ snapshot_.decision = *closed;
+ }
 }
 
 void MissionSimulation::update_shadow_episode() {
@@ -2689,7 +2078,7 @@ double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
- for (size_t i = control_system_->path_index() + 1; i < planned_route_.size(); ++i) {
+ for (size_t i = route_tracking_system_->path_index() + 1; i < planned_route_.size(); ++i) {
   along += distance(planned_route_[i].position, planned_route_[i - 1].position);
   if (along > preview) {
    break;
@@ -2703,7 +2092,7 @@ double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
   lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_route_, control_system_->path_index(), cruise, lateral_accel_limit,
+ return sim::corner_speed_cap(planned_route_, route_tracking_system_->path_index(), cruise, lateral_accel_limit,
                               preview);
 }
 

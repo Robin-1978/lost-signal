@@ -99,7 +99,14 @@ inline void advance_wp_until(const std::vector<RoutePoint>& path, size_t& idx, s
  const double dy = path[idx].position.y - ey;
  const double distance = std::hypot(dx, dy);
  const double along = dx * std::cos(eth) + dy * std::sin(eth);
- if (distance < accept)
+ // The final point in a gear section is a cusp. Ordinary waypoint
+ // lookahead tolerance must not consume it before the vehicle has executed
+ // the incoming motion; otherwise a short Hybrid A* reverse primitive can
+ // disappear at startup and the controller begins the forward section from
+ // an infeasible pose.
+ const bool cusp = idx + 1 == end_exclusive && end_exclusive < path.size();
+ const double arrival_tolerance = cusp ? std::min(accept, 0.15) : accept;
+ if (distance < arrival_tolerance)
  ++idx;
  else if (along < -0.1 && distance < 1.0 && idx + 1 < end_exclusive)
  ++idx;
@@ -263,33 +270,33 @@ inline GuideOut guide_step(const std::vector<RoutePoint>& path, GuideState& st, 
  double err = heading_err(la, ex, ey, eth);
  double steer_fwd = pid.update(err, dt);
  if (!st.reversing && std::abs(err) > 1.4)
-  st.reversing = true;
+ st.reversing = true;
  else if (st.reversing && std::abs(err) < 0.7)
-  st.reversing = false;
+ st.reversing = false;
  double tv, steer;
  if (st.spinning) {
-  // After the watchdog, remain in the spin until roughly aligned or the next step would reverse again.
-  // Only a chassis that can spin in place enters this state.
-  if (std::abs(err) < 0.5) {
-   st.spinning = false;
-   st.reverse_time = 0.0;
-  } else {
-   return {err, steer_fwd, 0.0, false};
-  }
+ // After the watchdog, remain in the spin until roughly aligned or the next step would reverse again.
+ // Only a chassis that can spin in place enters this state.
+ if (std::abs(err) < 0.5) {
+ st.spinning = false;
+ st.reverse_time = 0.0;
+ } else {
+ return {err, steer_fwd, 0.0, false};
+ }
  }
  if (st.reversing) {
   st.reverse_time += dt;
-  if (st.reverse_time > 3.0) {
-   // The watchdog stops reversing and spins when possible. A non-spinning chassis such as Ackermann
-   // continues steering in reverse, its natural recovery. Planning a full K-turn
-   // is future work and is not simulated here.
-   st.reversing = false;
-   st.reverse_time = 0.0;
-   if (caps.can_spin) {
-    st.spinning = true;
-    return {err, steer_fwd, 0.0, false};
-   }
-  }
+ if (st.reverse_time > 3.0) {
+ // The watchdog stops reversing and spins when possible. A non-spinning chassis such as Ackermann
+ // continues steering in reverse, its natural recovery. Planning a full K-turn
+ // is future work and is not simulated here.
+ st.reversing = false;
+ st.reverse_time = 0.0;
+ if (caps.can_spin) {
+ st.spinning = true;
+ return {err, steer_fwd, 0.0, false};
+ }
+ }
   tv = -0.4;
   steer = -steer_fwd;
  } // Target is behind: turn while reversing.

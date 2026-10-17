@@ -1,7 +1,7 @@
 #pragma once
 
 #include "autonomy/mapping/grid_map.hpp"
-#include "sim/runtime_state.hpp"
+#include "runtime/observation.hpp"
 
 #include <cstdint>
 #include <functional>

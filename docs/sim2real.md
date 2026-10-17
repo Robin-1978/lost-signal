@@ -10,7 +10,7 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 | Layer | Current state | Transfer outlook |
 |---|---|---|
-| Mission and behavior | high-level intent, goals, waits, and recovery are explicit | likely reusable after safety review |
+| Task intent and behavior | neutral route, conflict-region, hold/commit, and recovery contracts are explicit | behavior algorithms are reusable after safety review; game mission/progression is not deployed |
 | Global planning | A* and Hybrid A* consume maps and vehicle constraints | reusable when maps, footprint, and costs match the robot |
 | Local planning | trajectory evaluation uses obstacles, dynamics, and chassis limits | reusable only after latency, footprint, braking, and prediction calibration |
 | Kinematics | differential, tracked, Ackermann, swerve, and mecanum mappings are executable | reusable with measured geometry and sign conventions |
@@ -19,6 +19,24 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 | Sensors | rates, latency, bias, noise, quantization, dropouts, and extrinsics are represented | parameters require bag/log fitting and environmental tests |
 | Physics | Bullet models contact, slope, payload, and rigid bodies | useful for stress cases; tire/track/terrain contact requires identification |
 | Presentation and scoring | consume snapshots and telemetry | directly reusable for operator tools and education |
+
+## Deployment boundary
+
+A native robot build keeps `lost_signal_core`, `lost_signal_runtime`, and `lost_signal_autonomy`, then supplies an
+LSRI platform adapter for its sensors and chassis. It does not compile or ship `lost_signal_mission`, `src/sim`,
+`lost_signal_physics`, or `src/client`. Runtime observation contracts are defined outside the simulator and contain
+timestamps, frames, measurements, and estimated state only. Simulation truth, authored actors, game goals, scoring,
+and rendering snapshots cannot appear in an autonomy interface.
+
+Conflict-zone behavior follows the same rule. A map may provide a semantic conflict region, while autonomy derives
+the stop pose from the current route, footprint, localization margin, actuator delay, and braking capability. A
+mission file cannot prescribe a dynamic-world parking coordinate or grant permanent permission to cross.
+
+The simulator currently assembles these neutral inputs in `mission_autonomy.cpp`. The algorithm implementations,
+including route progress and its PID state, live in the autonomy target. The repository still needs a native
+lifecycle/configuration executable before it can run on a physical platform without custom integration. The
+`deployable_boundary` test prevents that remaining adapter work from being bypassed by importing game or simulator
+types into the reusable targets.
 
 ## The reality gap
 

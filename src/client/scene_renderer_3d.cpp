@@ -90,6 +90,11 @@ void draw_ground_ribbon(Vector3 from, Vector3 to, float width, Color tint) {
  DrawTriangle3D(from_right, to_right, to_left, tint);
 }
 
+void draw_ground_quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color tint) {
+ DrawTriangle3D(a, b, c, tint);
+ DrawTriangle3D(a, c, d, tint);
+}
+
 sim::TerrainSample terrain_at(const mission::PresentationFrameView& mission, sim::Vec2 position) {
  for (auto patch = mission.map_definition().terrain.rbegin();
       patch != mission.map_definition().terrain.rend(); ++patch) {
@@ -108,7 +113,8 @@ sim::TerrainSample terrain_at(const mission::PresentationFrameView& mission, sim
  return {};
 }
 
-const mission::SurfaceDefinition* surface_at(const mission::PresentationFrameView& mission, sim::Vec2 position) {
+const mission::SurfaceDefinition* surface_at(const mission::PresentationFrameView& mission,
+                                             sim::Vec2 position) {
  for (auto surface = mission.map_definition().surfaces.rbegin();
       surface != mission.map_definition().surfaces.rend(); ++surface) {
   if (mission::active_in_level(surface->active_in, mission.level().id) && position.x >= surface->min.x &&
@@ -368,18 +374,18 @@ SceneRenderer3D::~SceneRenderer3D() {
 
 std::optional<sim::Vec2> SceneRenderer3D::screen_to_ground(Vector2 screen) const {
  if (!camera_initialized_ || input_viewport_.width <= 1.0f || input_viewport_.height <= 1.0f ||
- !CheckCollisionPointRec(screen, input_viewport_)) {
- return std::nullopt;
+     !CheckCollisionPointRec(screen, input_viewport_)) {
+  return std::nullopt;
  }
  const Vector2 local{screen.x - input_viewport_.x, screen.y - input_viewport_.y};
- const Ray ray = GetScreenToWorldRayEx(local, camera_,
- static_cast<int>(input_viewport_.width), static_cast<int>(input_viewport_.height));
+ const Ray ray = GetScreenToWorldRayEx(local, camera_, static_cast<int>(input_viewport_.width),
+                                       static_cast<int>(input_viewport_.height));
  if (std::abs(ray.direction.y) < 1e-6f) {
- return std::nullopt;
+  return std::nullopt;
  }
  const float distance = -ray.position.y / ray.direction.y;
  if (distance < 0.0f) {
- return std::nullopt;
+  return std::nullopt;
  }
  const Vector3 hit = Vector3Add(ray.position, Vector3Scale(ray.direction, distance));
  return sim::Vec2{hit.x, -hit.z};
@@ -455,89 +461,88 @@ void SceneRenderer3D::draw_box(Vector3 position, Vector3 size, float yaw_degrees
  DrawModelEx(cube_model_, position, {0, 1, 0}, yaw_degrees, size, color);
 }
 
-void SceneRenderer3D::draw_prefab(const mission::ScenePrefabDefinition& prefab,
- const mission::Vec3& origin, const mission::Vec3& scale, double yaw_degrees) const {
+void SceneRenderer3D::draw_prefab(const mission::ScenePrefabDefinition& prefab, const mission::Vec3& origin,
+                                  const mission::Vec3& scale, double yaw_degrees) const {
  for (const auto& part : prefab.parts) {
- const mission::Vec3 scaled_offset{
- part.position_m.x * scale.x,
- part.position_m.y * scale.y,
- part.position_m.z * scale.z,
- };
- const auto offset = rotate_offset(scaled_offset, yaw_degrees);
- const mission::Vec3 position{
- origin.x + offset.x,
- origin.y + offset.y,
- origin.z + offset.z,
- };
- const mission::Vec3 size{
- part.size_m.x * scale.x,
- part.size_m.y * scale.y,
- part.size_m.z * scale.z,
- };
- const float yaw = static_cast<float>(yaw_degrees + part.yaw_degrees);
- const Color tint = color(part.color);
- if (!part.model_3d.empty()) {
- if (const auto* loaded = model(part.model_3d)) {
- DrawModelEx(*loaded, world(position), {0, 1, 0}, yaw,
- {static_cast<float>(size.x), static_cast<float>(size.y), static_cast<float>(size.z)}, tint);
- }
- } else if (part.primitive == "box") {
- draw_box(world(position),
- {static_cast<float>(size.x), static_cast<float>(size.z), static_cast<float>(size.y)}, yaw, tint);
- } else if (part.primitive == "sphere") {
- const float radius = static_cast<float>((size.x + size.y + size.z) / 3.0);
- DrawSphere(world(position), radius, tint);
- } else if (part.primitive == "cylinder") {
- const auto base = world(mission::Vec3{position.x, position.y, position.z - size.z * 0.5});
- const auto top = world(mission::Vec3{position.x, position.y, position.z + size.z * 0.5});
- const float planar_scale = static_cast<float>((scale.x + scale.y) * 0.5);
- DrawCylinderEx(base, top, static_cast<float>(part.size_m.x) * planar_scale,
- static_cast<float>(part.size_m.y) * planar_scale, 8, tint);
- }
+  const mission::Vec3 scaled_offset{
+    part.position_m.x * scale.x,
+    part.position_m.y * scale.y,
+    part.position_m.z * scale.z,
+  };
+  const auto offset = rotate_offset(scaled_offset, yaw_degrees);
+  const mission::Vec3 position{
+    origin.x + offset.x,
+    origin.y + offset.y,
+    origin.z + offset.z,
+  };
+  const mission::Vec3 size{
+    part.size_m.x * scale.x,
+    part.size_m.y * scale.y,
+    part.size_m.z * scale.z,
+  };
+  const float yaw = static_cast<float>(yaw_degrees + part.yaw_degrees);
+  const Color tint = color(part.color);
+  if (!part.model_3d.empty()) {
+   if (const auto* loaded = model(part.model_3d)) {
+    DrawModelEx(*loaded, world(position), {0, 1, 0}, yaw,
+                {static_cast<float>(size.x), static_cast<float>(size.y), static_cast<float>(size.z)}, tint);
+   }
+  } else if (part.primitive == "box") {
+   draw_box(world(position),
+            {static_cast<float>(size.x), static_cast<float>(size.z), static_cast<float>(size.y)}, yaw, tint);
+  } else if (part.primitive == "sphere") {
+   const float radius = static_cast<float>((size.x + size.y + size.z) / 3.0);
+   DrawSphere(world(position), radius, tint);
+  } else if (part.primitive == "cylinder") {
+   const auto base = world(mission::Vec3{position.x, position.y, position.z - size.z * 0.5});
+   const auto top = world(mission::Vec3{position.x, position.y, position.z + size.z * 0.5});
+   const float planar_scale = static_cast<float>((scale.x + scale.y) * 0.5);
+   DrawCylinderEx(base, top, static_cast<float>(part.size_m.x) * planar_scale,
+                  static_cast<float>(part.size_m.y) * planar_scale, 8, tint);
+  }
  }
 }
 
-void SceneRenderer3D::draw_attached_prefab(const mission::ScenePrefabDefinition& prefab,
- Vector3 body_origin, Quaternion body_rotation, const mission::Vec3& local_origin) const {
+void SceneRenderer3D::draw_attached_prefab(const mission::ScenePrefabDefinition& prefab, Vector3 body_origin,
+                                           Quaternion body_rotation,
+                                           const mission::Vec3& local_origin) const {
  for (const auto& part : prefab.parts) {
- const mission::Vec3 local{
- local_origin.x + part.position_m.x,
- local_origin.y + part.position_m.y,
- local_origin.z + part.position_m.z,
- };
- const Vector3 local_render{static_cast<float>(local.x), static_cast<float>(local.z),
- static_cast<float>(-local.y)};
- const Vector3 position =
- Vector3Add(body_origin, Vector3RotateByQuaternion(local_render, body_rotation));
- const Quaternion part_rotation = QuaternionMultiply(
- body_rotation,
- QuaternionFromEuler(0.0f, static_cast<float>(part.yaw_degrees / kRadToDeg), 0.0f));
- Vector3 axis;
- float angle = 0.0f;
- QuaternionToAxisAngle(part_rotation, &axis, &angle);
- const Vector3 scale{static_cast<float>(part.size_m.x), static_cast<float>(part.size_m.z),
- static_cast<float>(part.size_m.y)};
- const Color tint = color(part.color);
- if (!part.model_3d.empty()) {
- if (const auto* loaded = model(part.model_3d))
- DrawModelEx(*loaded, position, axis, angle * kRadToDeg, scale, tint);
- } else if (part.primitive == "box") {
- DrawModelEx(cube_model_, position, axis, angle * kRadToDeg, scale, tint);
- } else if (part.primitive == "sphere") {
- const float radius = static_cast<float>((part.size_m.x + part.size_m.y + part.size_m.z) / 3.0);
- DrawSphere(position, radius, tint);
- } else if (part.primitive == "cylinder") {
- const Vector3 half_axis = Vector3RotateByQuaternion(
- {0.0f, static_cast<float>(part.size_m.z * 0.5), 0.0f}, body_rotation);
- const float radius = static_cast<float>((part.size_m.x + part.size_m.y) * 0.5);
- DrawCylinderEx(Vector3Subtract(position, half_axis), Vector3Add(position, half_axis),
- radius, radius, 8, tint);
- }
+  const mission::Vec3 local{
+    local_origin.x + part.position_m.x,
+    local_origin.y + part.position_m.y,
+    local_origin.z + part.position_m.z,
+  };
+  const Vector3 local_render{static_cast<float>(local.x), static_cast<float>(local.z),
+                             static_cast<float>(-local.y)};
+  const Vector3 position = Vector3Add(body_origin, Vector3RotateByQuaternion(local_render, body_rotation));
+  const Quaternion part_rotation = QuaternionMultiply(
+    body_rotation, QuaternionFromEuler(0.0f, static_cast<float>(part.yaw_degrees / kRadToDeg), 0.0f));
+  Vector3 axis;
+  float angle = 0.0f;
+  QuaternionToAxisAngle(part_rotation, &axis, &angle);
+  const Vector3 scale{static_cast<float>(part.size_m.x), static_cast<float>(part.size_m.z),
+                      static_cast<float>(part.size_m.y)};
+  const Color tint = color(part.color);
+  if (!part.model_3d.empty()) {
+   if (const auto* loaded = model(part.model_3d))
+    DrawModelEx(*loaded, position, axis, angle * kRadToDeg, scale, tint);
+  } else if (part.primitive == "box") {
+   DrawModelEx(cube_model_, position, axis, angle * kRadToDeg, scale, tint);
+  } else if (part.primitive == "sphere") {
+   const float radius = static_cast<float>((part.size_m.x + part.size_m.y + part.size_m.z) / 3.0);
+   DrawSphere(position, radius, tint);
+  } else if (part.primitive == "cylinder") {
+   const Vector3 half_axis =
+     Vector3RotateByQuaternion({0.0f, static_cast<float>(part.size_m.z * 0.5), 0.0f}, body_rotation);
+   const float radius = static_cast<float>((part.size_m.x + part.size_m.y) * 0.5);
+   DrawCylinderEx(Vector3Subtract(position, half_axis), Vector3Add(position, half_axis), radius, radius, 8,
+                  tint);
+  }
  }
 }
 
 void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int screen_width, int screen_height,
- Rectangle input_viewport, bool assembly_view) {
+                           Rectangle input_viewport, bool assembly_view) {
  input_viewport_ = input_viewport;
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
@@ -546,14 +551,14 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
    std::find_if(state.actors.begin(), state.actors.end(), [](const auto& value) { return value.detected; });
  auto goal = mission.map_definition().markers.find(mission.level().objective.goal);
  if (const auto* active = mission.active_goal())
- goal = mission.map_definition().markers.find(active->marker);
+  goal = mission.map_definition().markers.find(active->marker);
  const bool success_shot =
    state.status == mission::MissionStatus::Succeeded && goal != mission.map_definition().markers.end();
  const bool event_shot = !success_shot && actor != state.actors.end() && state.dynamic_object_detected;
- const mission::SceneShotDefinition* shot = assembly_view
- ? nullptr
- : (success_shot ? &scene.camera.success_shot
- : (event_shot ? &scene.camera.event_shot : nullptr));
+ const mission::SceneShotDefinition* shot =
+   assembly_view
+     ? nullptr
+     : (success_shot ? &scene.camera.success_shot : (event_shot ? &scene.camera.event_shot : nullptr));
  if (shot) {
   focus.x = state.robot.x * shot->robot_focus_weight;
   focus.y = state.robot.y * shot->robot_focus_weight;
@@ -566,9 +571,9 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
    focus.y += goal->second.y * shot->goal_focus_weight;
   }
  } else if (!assembly_view && mission.endless_mode()) {
- const auto& field_operator = mission.field_operator();
- focus.x = state.robot.x * 0.52 + field_operator.position.x * 0.48;
- focus.y = state.robot.y * 0.52 + field_operator.position.y * 0.48;
+  const auto& field_operator = mission.field_operator();
+  focus.x = state.robot.x * 0.52 + field_operator.position.x * 0.48;
+  focus.y = state.robot.y * 0.52 + field_operator.position.y * 0.48;
  } else if (!assembly_view && actor != state.actors.end()) {
   focus.x =
     state.robot.x * scene.camera.robot_focus_weight + actor->position.x * scene.camera.actor_focus_weight;
@@ -580,16 +585,16 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
   }
  }
  const Vector3 target{static_cast<float>(focus.x),
- assembly_view ? static_cast<float>(state.robot_height_m + 0.08)
- : static_cast<float>(shot ? shot->target_height_m : scene.camera.target_height_m),
+                      assembly_view
+                        ? static_cast<float>(state.robot_height_m + 0.08)
+                        : static_cast<float>(shot ? shot->target_height_m : scene.camera.target_height_m),
                       static_cast<float>(-focus.y)};
- const Vector3 offset = assembly_view ? Vector3{1.65f, 1.05f, 1.65f}
- : world(shot ? shot->offset_m : scene.camera.offset_m);
- const float fov = assembly_view ? 32.0f
- : static_cast<float>(shot ? shot->fov_degrees : scene.camera.fov_degrees);
- const bool reset_camera =
- !camera_initialized_ || camera_level_ != mission.level().id ||
- camera_assembly_view_ != assembly_view || state.time_s + 1e-9 < camera_time_s_;
+ const Vector3 offset =
+   assembly_view ? Vector3{1.65f, 1.05f, 1.65f} : world(shot ? shot->offset_m : scene.camera.offset_m);
+ const float fov =
+   assembly_view ? 32.0f : static_cast<float>(shot ? shot->fov_degrees : scene.camera.fov_degrees);
+ const bool reset_camera = !camera_initialized_ || camera_level_ != mission.level().id ||
+                           camera_assembly_view_ != assembly_view || state.time_s + 1e-9 < camera_time_s_;
  if (reset_camera) {
   camera_focus_ = target;
   camera_offset_ = offset;
@@ -598,7 +603,7 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
   camera_pan_ = {};
   camera_initialized_ = true;
   camera_level_ = mission.level().id;
- camera_assembly_view_ = assembly_view;
+  camera_assembly_view_ = assembly_view;
  }
 
  const Vector2 mouse = GetMousePosition();
@@ -661,18 +666,20 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
  if (IsShaderValid(shader_) && view_position_loc_ >= 0) {
   SetShaderValue(shader_, view_position_loc_, &camera_.position, SHADER_UNIFORM_VEC3);
   const Vector3 light_direction = Vector3Normalize(world(scene.lighting.direction));
- const bool scripted_environment = !mission.level().environment_keyframes.empty();
- const double daylight_level = scripted_environment ? state.environment.daylight
- : (mission.endless_mode() ? state.world_activity.daylight : 1.0);
- const double visibility = scripted_environment ? state.environment.visibility
- : (mission.endless_mode() ? state.world_activity.visibility : 1.0);
- const double daylight = 0.28 + 0.72 * daylight_level;
+  const bool scripted_environment = !mission.level().environment_keyframes.empty();
+  const double daylight_level = scripted_environment
+                                  ? state.environment.daylight
+                                  : (mission.endless_mode() ? state.world_activity.daylight : 1.0);
+  const double visibility = scripted_environment
+                              ? state.environment.visibility
+                              : (mission.endless_mode() ? state.world_activity.visibility : 1.0);
+  const double daylight = 0.28 + 0.72 * daylight_level;
   const Vector3 light_color =
- shader_color(scene.lighting.directional_color, scene.lighting.directional_intensity * daylight);
- const Vector3 ambient = shader_color(scene.lighting.ambient_color, 0.52 + 0.48 * daylight);
+    shader_color(scene.lighting.directional_color, scene.lighting.directional_intensity * daylight);
+  const Vector3 ambient = shader_color(scene.lighting.ambient_color, 0.52 + 0.48 * daylight);
   const Vector3 fog_color = shader_color(scene.lighting.fog_color);
- const float fog_start = static_cast<float>(scene.lighting.fog_start_m * (0.55 + 0.45 * visibility));
- const float fog_end = static_cast<float>(scene.lighting.fog_end_m * (0.40 + 0.60 * visibility));
+  const float fog_start = static_cast<float>(scene.lighting.fog_start_m * (0.55 + 0.45 * visibility));
+  const float fog_end = static_cast<float>(scene.lighting.fog_end_m * (0.40 + 0.60 * visibility));
   const float shadow_strength =
     scene.lighting.shadow_map_resolution > 0 ? static_cast<float>(scene.lighting.shadow_strength) : 0.0f;
   const int shadow_resolution = std::max(1, scene.lighting.shadow_map_resolution);
@@ -692,14 +699,12 @@ void SceneRenderer3D::draw(const mission::PresentationFrameView& mission, int sc
   if (goal != mission.map_definition().markers.end()) {
    signal_light = world(goal->second, 1.6f);
   }
- double signal_intensity = 1.0;
- if (mission.level().objective.goal_visual == "signal_tower") {
- const bool powered = state.status == mission::MissionStatus::Succeeded;
- signal_intensity = powered
- ? 1.15 + 0.18 * std::sin(state.time_s * 5.4)
- : 0.06;
- }
- const Vector3 signal_color = shader_color(scene.lighting.goal_color, signal_intensity);
+  double signal_intensity = 1.0;
+  if (mission.level().objective.goal_visual == "signal_tower") {
+   const bool powered = state.status == mission::MissionStatus::Succeeded;
+   signal_intensity = powered ? 1.15 + 0.18 * std::sin(state.time_s * 5.4) : 0.06;
+  }
+  const Vector3 signal_color = shader_color(scene.lighting.goal_color, signal_intensity);
   SetShaderValue(shader_, point_light_0_position_loc_, &robot_light, SHADER_UNIFORM_VEC3);
   SetShaderValue(shader_, point_light_0_color_loc_, &robot_color, SHADER_UNIFORM_VEC3);
   SetShaderValue(shader_, point_light_1_position_loc_, &signal_light, SHADER_UNIFORM_VEC3);
@@ -772,11 +777,11 @@ void SceneRenderer3D::render_scene_target(const mission::PresentationFrameView& 
  BeginTextureMode(scene_target_);
  Color background = color(scene.lighting.fog_color);
  if (mission.endless_mode()) {
- const auto& activity = mission.world_activity();
- const float night = static_cast<float>(1.0 - activity.daylight);
- const float haze = static_cast<float>(1.0 - activity.visibility);
- background = mix(background, {8, 16, 24, 255}, night * 0.72f);
- background = mix(background, {104, 116, 119, 255}, haze * 0.55f);
+  const auto& activity = mission.world_activity();
+  const float night = static_cast<float>(1.0 - activity.daylight);
+  const float haze = static_cast<float>(1.0 - activity.visibility);
+  background = mix(background, {8, 16, 24, 255}, night * 0.72f);
+  background = mix(background, {104, 116, 119, 255}, haze * 0.55f);
  }
  ClearBackground(background);
  BeginMode3D(camera_);
@@ -868,13 +873,14 @@ void SceneRenderer3D::draw_scene(const mission::PresentationFrameView& mission) 
  draw_markers(mission);
  (void)scene;
  for (const auto& actor : mission.snapshot().actors) {
- draw_actor(actor, mission.snapshot().waiting_for_clearance, mission.snapshot().time_s);
+  draw_actor(actor, mission.snapshot().waiting_for_clearance, mission.snapshot().time_s);
  }
  draw_field_operator(mission);
  draw_robot(mission);
 }
 
-void SceneRenderer3D::draw_floor(const mission::MapDefinition& map, const mission::SceneDefinition& scene) const {
+void SceneRenderer3D::draw_floor(const mission::MapDefinition& map,
+                                 const mission::SceneDefinition& scene) const {
  const float width = static_cast<float>(map.size_m.x);
  const float length = static_cast<float>(map.size_m.y);
  DrawPlane({width * 0.5f, -0.08f, -length * 0.5f}, {width + 10.0f, length + 10.0f},
@@ -926,85 +932,92 @@ void SceneRenderer3D::draw_terrain(const mission::PresentationFrameView& mission
   if (!mission::active_in_level(patch.active_in, mission.level().id)) {
    continue;
   }
- const float width = static_cast<float>(patch.max.x - patch.min.x);
- const float length = static_cast<float>(patch.max.y - patch.min.y);
+  const float width = static_cast<float>(patch.max.x - patch.min.x);
+  const float length = static_cast<float>(patch.max.y - patch.min.y);
   const sim::Vec2 center{
     (patch.min.x + patch.max.x) * 0.5,
     (patch.min.y + patch.max.y) * 0.5,
   };
   const auto terrain = terrain_at(mission, center);
- const float grade = static_cast<float>(std::hypot(patch.grade_x, patch.grade_y));
+  const float grade = static_cast<float>(std::hypot(patch.grade_x, patch.grade_y));
 
- // Flat elevated patches are real high ground. Fill the volume down to the
- // base floor so they read as platforms instead of paper-thin planes hanging
- // in space. Sloped patches stay bridge-like and use piers below the deck.
- if (grade < 0.001f && terrain.height_m > 0.08) {
- const float support_height = static_cast<float>(terrain.height_m);
- draw_box({static_cast<float>(center.x), support_height * 0.5f - 0.03f,
- static_cast<float>(-center.y)},
- {width, support_height, length}, 0.0f, {43, 49, 46, 255});
- } else if (grade >= 0.001f) {
- for (float fraction : {0.34f, 0.70f}) {
- const bool road_runs_x = width >= length;
- const sim::Vec2 pier_position{
- road_runs_x ? patch.min.x + (patch.max.x - patch.min.x) * fraction : center.x,
- road_runs_x ? center.y : patch.min.y + (patch.max.y - patch.min.y) * fraction,
- };
- const auto pier_terrain = terrain_at(mission, pier_position);
- const float pier_height = static_cast<float>(pier_terrain.height_m);
- if (pier_height < 0.16f)
- continue;
- draw_box({static_cast<float>(pier_position.x), pier_height * 0.5f - 0.02f,
- static_cast<float>(-pier_position.y)},
- road_runs_x ? Vector3{0.24f, pier_height, std::max(0.3f, length - 0.42f)}
- : Vector3{std::max(0.3f, width - 0.42f), pier_height, 0.24f},
- 0.0f, {48, 54, 51, 255});
- }
- }
+  // Flat elevated patches are real high ground. Fill the volume down to the
+  // base floor so they read as platforms instead of paper-thin planes hanging
+  // in space. Sloped patches stay bridge-like and use piers below the deck.
+  if (grade < 0.001f && terrain.height_m > 0.08) {
+   const float support_height = static_cast<float>(terrain.height_m);
+   draw_box({static_cast<float>(center.x), support_height * 0.5f - 0.03f, static_cast<float>(-center.y)},
+            {width, support_height, length}, 0.0f, {43, 49, 46, 255});
+  } else if (grade >= 0.001f) {
+   for (float fraction : {0.34f, 0.70f}) {
+    const bool road_runs_x = width >= length;
+    const sim::Vec2 pier_position{
+      road_runs_x ? patch.min.x + (patch.max.x - patch.min.x) * fraction : center.x,
+      road_runs_x ? center.y : patch.min.y + (patch.max.y - patch.min.y) * fraction,
+    };
+    const auto pier_terrain = terrain_at(mission, pier_position);
+    const float pier_height = static_cast<float>(pier_terrain.height_m);
+    if (pier_height < 0.16f)
+     continue;
+    draw_box(
+      {static_cast<float>(pier_position.x), pier_height * 0.5f - 0.02f, static_cast<float>(-pier_position.y)},
+      road_runs_x ? Vector3{0.24f, pier_height, std::max(0.3f, length - 0.42f)}
+                  : Vector3{std::max(0.3f, width - 0.42f), pier_height, 0.24f},
+      0.0f, {48, 54, 51, 255});
+   }
+  }
 
-  const auto pose = ground_pose(center, terrain, -0.025f);
-  const Vector3 scale{
- width,
-    0.05f,
- length,
+  const Color tint = grade > 0.3f ? Color{83, 91, 80, 255} : Color{71, 80, 75, 255};
+  // Use the authored corner heights directly. Rotating a width-sized box
+  // foreshortens its horizontal span and creates a visible gap at a flat
+  // highland even though the Bullet triangle meshes share an exact edge.
+  const auto corner = [&](double x, double y) {
+   const double height =
+     patch.base_height_m + patch.grade_x * (x - patch.min.x) + patch.grade_y * (y - patch.min.y);
+return world(sim::Vec2{x, y}, static_cast<float>(height) + 0.002f);
   };
- const Color tint = grade > 0.3f ? Color{83, 91, 80, 255} : Color{71, 80, 75, 255};
-  DrawModelEx(cube_model_, pose.position, pose.axis, pose.angle_degrees, scale, tint);
+  const Vector3 deck_a = corner(patch.min.x, patch.min.y);
+  const Vector3 deck_b = corner(patch.max.x, patch.min.y);
+  const Vector3 deck_c = corner(patch.max.x, patch.max.y);
+  const Vector3 deck_d = corner(patch.min.x, patch.max.y);
+  draw_ground_quad(deck_a, deck_b, deck_c, deck_d, tint);
 
- // Curbs, guard rails and posts expose the edge and height of the route from
- // the default three-quarter camera. They also give every terrain lane the
- // same visual grammar: amber means a drop or unstable shoulder.
- const bool road_runs_x = width >= length;
- const float inset = 0.10f;
- const float rail_lift = grade > 0.001f || terrain.height_m > 0.35 ? 0.52f : 0.12f;
- const auto draw_edge_beam = [&](sim::Vec2 edge_center, Vector3 beam_scale, float lift, Color tint_color) {
- const auto edge_pose = ground_pose(edge_center, terrain_at(mission, edge_center), lift);
- DrawModelEx(cube_model_, edge_pose.position, edge_pose.axis, edge_pose.angle_degrees, beam_scale,
- tint_color);
- };
- if (road_runs_x) {
- for (double y : {patch.min.y + inset, patch.max.y - inset}) {
- draw_edge_beam({center.x, y}, {width, 0.075f, 0.10f}, 0.075f, kAmber);
- if (rail_lift > 0.2f)
- draw_edge_beam({center.x, y}, {width, 0.055f, 0.055f}, rail_lift, {111, 119, 111, 255});
- for (double x = patch.min.x + 0.35; rail_lift > 0.2f && x < patch.max.x; x += 1.5) {
- const auto post_ground = terrain_at(mission, {x, y});
- draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
- static_cast<float>(-y)}, {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
- }
- }
- } else {
- for (double x : {patch.min.x + inset, patch.max.x - inset}) {
- draw_edge_beam({x, center.y}, {0.10f, 0.075f, length}, 0.075f, kAmber);
- if (rail_lift > 0.2f)
- draw_edge_beam({x, center.y}, {0.055f, 0.055f, length}, rail_lift, {111, 119, 111, 255});
- for (double y = patch.min.y + 0.35; rail_lift > 0.2f && y < patch.max.y; y += 1.5) {
- const auto post_ground = terrain_at(mission, {x, y});
- draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
- static_cast<float>(-y)}, {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
- }
- }
- }
+  // Curbs, guard rails and posts expose the edge and height of the route from
+  // the default three-quarter camera. They also give every terrain lane the
+  // same visual grammar: amber means a drop or unstable shoulder.
+  const bool road_runs_x = width >= length;
+  const float inset = 0.10f;
+  const float rail_lift = grade > 0.001f || terrain.height_m > 0.35 ? 0.52f : 0.12f;
+  const auto draw_edge_beam = [&](sim::Vec2 edge_center, Vector3 beam_scale, float lift, Color tint_color) {
+   const auto edge_pose = ground_pose(edge_center, terrain_at(mission, edge_center), lift);
+   DrawModelEx(cube_model_, edge_pose.position, edge_pose.axis, edge_pose.angle_degrees, beam_scale,
+               tint_color);
+  };
+  if (road_runs_x) {
+   for (double y : {patch.min.y + inset, patch.max.y - inset}) {
+    draw_edge_beam({center.x, y}, {width, 0.075f, 0.10f}, 0.075f, kAmber);
+    if (rail_lift > 0.2f)
+     draw_edge_beam({center.x, y}, {width, 0.055f, 0.055f}, rail_lift, {111, 119, 111, 255});
+    for (double x = patch.min.x + 0.35; rail_lift > 0.2f && x < patch.max.x; x += 1.5) {
+     const auto post_ground = terrain_at(mission, {x, y});
+     draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
+               static_cast<float>(-y)},
+              {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
+    }
+   }
+  } else {
+   for (double x : {patch.min.x + inset, patch.max.x - inset}) {
+    draw_edge_beam({x, center.y}, {0.10f, 0.075f, length}, 0.075f, kAmber);
+    if (rail_lift > 0.2f)
+     draw_edge_beam({x, center.y}, {0.055f, 0.055f, length}, rail_lift, {111, 119, 111, 255});
+    for (double y = patch.min.y + 0.35; rail_lift > 0.2f && y < patch.max.y; y += 1.5) {
+     const auto post_ground = terrain_at(mission, {x, y});
+     draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
+               static_cast<float>(-y)},
+              {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
+    }
+   }
+  }
  }
 }
 
@@ -1058,7 +1071,7 @@ void SceneRenderer3D::draw_surface(const mission::PresentationFrameView& mission
  const auto plane = surface_models_.find(material.texture_albedo);
  bool textured = false;
  if (!material.texture_albedo.empty() && plane != surface_models_.end()) {
- textured = true;
+  textured = true;
   const int tiles_x = std::max(1, static_cast<int>(std::ceil(width)));
   const int tiles_z = std::max(1, static_cast<int>(std::ceil(length)));
   const float cell_w = width / static_cast<float>(tiles_x);
@@ -1075,50 +1088,44 @@ void SceneRenderer3D::draw_surface(const mission::PresentationFrameView& mission
   }
  }
  if (!textured) {
- for (int patch = 0; patch < 5; ++patch) {
-  const float x = center_x + (hash01(patch, 4, 1) - 0.5f) * width * 0.62f;
-  const float z = center_z + (hash01(patch, 5, 2) - 0.5f) * length * 0.62f;
-  const sim::Vec2 patch_center{x, -z};
-  const auto patch_pose = ground_pose(patch_center, terrain_at(mission, patch_center), 0.015f);
-  const Vector3 patch_size{
-    width * (0.20f + hash01(patch, 6, 3) * 0.19f),
-    0.018f,
-    length * (0.18f + hash01(patch, 7, 4) * 0.18f),
-  };
-  DrawModelEx(cube_model_, patch_pose.position, patch_pose.axis, patch_pose.angle_degrees, patch_size,
-              {39, 104, 105, 150});
- }
+  for (int patch = 0; patch < 5; ++patch) {
+   const float x = center_x + (hash01(patch, 4, 1) - 0.5f) * width * 0.62f;
+   const float z = center_z + (hash01(patch, 5, 2) - 0.5f) * length * 0.62f;
+   const sim::Vec2 patch_center{x, -z};
+   const auto patch_pose = ground_pose(patch_center, terrain_at(mission, patch_center), 0.015f);
+   const Vector3 patch_size{
+     width * (0.20f + hash01(patch, 6, 3) * 0.19f),
+     0.018f,
+     length * (0.18f + hash01(patch, 7, 4) * 0.18f),
+   };
+   DrawModelEx(cube_model_, patch_pose.position, patch_pose.axis, patch_pose.angle_degrees, patch_size,
+               {39, 104, 105, 150});
+  }
  }
 
  // Water must read before the robot reaches it. Texture gives the body of
  // the puddle; deterministic animated ripples and glints make it visibly
  // alive without feeding any state back into the simulation.
  if (material.drive_effect == "spray") {
- const float time = static_cast<float>(mission.snapshot().time_s);
- const Color water = color(material.effect_color);
- for (int ripple = 0; ripple < 8; ++ripple) {
- const float x = static_cast<float>(surface.min.x) +
- (0.12f + hash01(ripple, 31) * 0.76f) * width;
- const float y = static_cast<float>(surface.min.y) +
- (0.12f + hash01(ripple, 47) * 0.76f) * length;
- const auto ground = terrain_at(mission, {x, y});
- const float phase = std::fmod(time * (0.24f + hash01(ripple, 59) * 0.12f) +
- hash01(ripple, 67), 1.0f);
- DrawCircle3D(world(sim::Vec2{x, y}, static_cast<float>(ground.height_m) + 0.022f),
- 0.06f + phase * 0.24f, {1, 0, 0}, 90.0f, Fade(water, 0.26f * (1.0f - phase)));
- }
- for (int glint = 0; glint < 5; ++glint) {
- const float x = static_cast<float>(surface.min.x) +
- (0.10f + hash01(glint, 73) * 0.80f) * width;
- const float y = static_cast<float>(surface.min.y) +
- (0.12f + hash01(glint, 79) * 0.76f) * length;
- const auto ground = terrain_at(mission, {x, y});
- const float pulse = 0.18f + 0.12f *
- std::sin(time * 1.7f + hash01(glint, 83) * 2.0f * PI);
- DrawLine3D(world(sim::Vec2{x - 0.18f, y}, static_cast<float>(ground.height_m) + 0.025f),
- world(sim::Vec2{x + 0.18f, y}, static_cast<float>(ground.height_m) + 0.025f),
- Fade(water, pulse));
- }
+  const float time = static_cast<float>(mission.snapshot().time_s);
+  const Color water = color(material.effect_color);
+  for (int ripple = 0; ripple < 8; ++ripple) {
+   const float x = static_cast<float>(surface.min.x) + (0.12f + hash01(ripple, 31) * 0.76f) * width;
+   const float y = static_cast<float>(surface.min.y) + (0.12f + hash01(ripple, 47) * 0.76f) * length;
+   const auto ground = terrain_at(mission, {x, y});
+   const float phase = std::fmod(time * (0.24f + hash01(ripple, 59) * 0.12f) + hash01(ripple, 67), 1.0f);
+   DrawCircle3D(world(sim::Vec2{x, y}, static_cast<float>(ground.height_m) + 0.022f), 0.06f + phase * 0.24f,
+                {1, 0, 0}, 90.0f, Fade(water, 0.26f * (1.0f - phase)));
+  }
+  for (int glint = 0; glint < 5; ++glint) {
+   const float x = static_cast<float>(surface.min.x) + (0.10f + hash01(glint, 73) * 0.80f) * width;
+   const float y = static_cast<float>(surface.min.y) + (0.12f + hash01(glint, 79) * 0.76f) * length;
+   const auto ground = terrain_at(mission, {x, y});
+   const float pulse = 0.18f + 0.12f * std::sin(time * 1.7f + hash01(glint, 83) * 2.0f * PI);
+   DrawLine3D(world(sim::Vec2{x - 0.18f, y}, static_cast<float>(ground.height_m) + 0.025f),
+              world(sim::Vec2{x + 0.18f, y}, static_cast<float>(ground.height_m) + 0.025f),
+              Fade(water, pulse));
+  }
  }
 }
 
@@ -1142,226 +1149,208 @@ void SceneRenderer3D::draw_markers(const mission::PresentationFrameView& mission
               static_cast<float>(mission.snapshot().time_s * 40.0), {0.16f, 0.16f, 0.16f}, kAmber);
  };
  const auto draw_power_cradle = [&](const mission::Pose& pose, bool module_present, bool active) {
- const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
- const Color accent = active ? kAmber : (module_present ? Color{128, 105, 61, 255} : kCyan);
- DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.12f, base.z},
- 0.52f, 0.44f, 20, {45, 52, 50, 255});
- DrawCylinderWiresEx({base.x, base.y + 0.12f, base.z}, {base.x, base.y + 0.16f, base.z},
- 0.45f, 0.45f, 24, Fade(accent, 0.88f));
- for (int arm = 0; arm < 3; ++arm) {
- const float angle = static_cast<float>(arm) * 2.0f * PI / 3.0f;
- const Vector3 foot{base.x + std::cos(angle) * 0.34f, base.y + 0.14f,
- base.z + std::sin(angle) * 0.34f};
- const Vector3 shoulder{base.x + std::cos(angle) * 0.22f, base.y + 0.48f,
- base.z + std::sin(angle) * 0.22f};
- DrawCylinderEx(foot, shoulder, 0.035f, 0.025f, 8, {91, 98, 92, 255});
- }
- if (module_present) {
- const float hover = active ? 0.52f + 0.025f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0))
- : 0.48f;
- DrawModelEx(cube_model_, {base.x, base.y + hover, base.z}, {0, 1, 0},
- active ? static_cast<float>(mission.snapshot().time_s * 34.0) : 45.0f,
- {0.20f, 0.20f, 0.20f}, accent);
- } else {
- DrawSphere({base.x, base.y + 0.18f, base.z}, 0.045f, Fade(kCyan, 0.72f));
- }
- if (active)
- draw_supply(pose);
+  const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+  const Color accent = active ? kAmber : (module_present ? Color{128, 105, 61, 255} : kCyan);
+  DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.12f, base.z}, 0.52f, 0.44f, 20,
+                 {45, 52, 50, 255});
+  DrawCylinderWiresEx({base.x, base.y + 0.12f, base.z}, {base.x, base.y + 0.16f, base.z}, 0.45f, 0.45f, 24,
+                      Fade(accent, 0.88f));
+  for (int arm = 0; arm < 3; ++arm) {
+   const float angle = static_cast<float>(arm) * 2.0f * PI / 3.0f;
+   const Vector3 foot{base.x + std::cos(angle) * 0.34f, base.y + 0.14f, base.z + std::sin(angle) * 0.34f};
+   const Vector3 shoulder{base.x + std::cos(angle) * 0.22f, base.y + 0.48f, base.z + std::sin(angle) * 0.22f};
+   DrawCylinderEx(foot, shoulder, 0.035f, 0.025f, 8, {91, 98, 92, 255});
+  }
+  if (module_present) {
+   const float hover =
+     active ? 0.52f + 0.025f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0)) : 0.48f;
+   DrawModelEx(cube_model_, {base.x, base.y + hover, base.z}, {0, 1, 0},
+               active ? static_cast<float>(mission.snapshot().time_s * 34.0) : 45.0f, {0.20f, 0.20f, 0.20f},
+               accent);
+  } else {
+   DrawSphere({base.x, base.y + 0.18f, base.z}, 0.045f, Fade(kCyan, 0.72f));
+  }
+  if (active)
+   draw_supply(pose);
  };
  const auto draw_observation_point = [&](const mission::Pose& pose, bool active, bool complete) {
- const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
- const Color accent = active ? kAmber : (complete ? kCyan : Color{90, 98, 94, 255});
- for (float side : {-0.42f, 0.42f}) {
- DrawCylinderEx({base.x + side, base.y + 0.02f, base.z},
- {base.x + side, base.y + 0.52f, base.z}, 0.045f, 0.035f, 10,
- {66, 72, 69, 255});
- DrawSphere({base.x + side, base.y + 0.56f, base.z}, 0.07f, accent);
- }
- DrawLine3D({base.x - 0.34f, base.y + 0.035f, base.z - 0.34f},
- {base.x, base.y + 0.035f, base.z}, Fade(accent, 0.86f));
- DrawLine3D({base.x, base.y + 0.035f, base.z},
- {base.x - 0.34f, base.y + 0.035f, base.z + 0.34f}, Fade(accent, 0.86f));
- if (active) {
- const float pulse = 0.62f + 0.08f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.0));
- DrawCylinderWiresEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.05f, base.z},
- pulse, pulse, 36, Fade(kAmber, 0.72f));
- }
+  const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+  const Color accent = active ? kAmber : (complete ? kCyan : Color{90, 98, 94, 255});
+  for (float side : {-0.42f, 0.42f}) {
+   DrawCylinderEx({base.x + side, base.y + 0.02f, base.z}, {base.x + side, base.y + 0.52f, base.z}, 0.045f,
+                  0.035f, 10, {66, 72, 69, 255});
+   DrawSphere({base.x + side, base.y + 0.56f, base.z}, 0.07f, accent);
+  }
+  DrawLine3D({base.x - 0.34f, base.y + 0.035f, base.z - 0.34f}, {base.x, base.y + 0.035f, base.z},
+             Fade(accent, 0.86f));
+  DrawLine3D({base.x, base.y + 0.035f, base.z}, {base.x - 0.34f, base.y + 0.035f, base.z + 0.34f},
+             Fade(accent, 0.86f));
+  if (active) {
+   const float pulse = 0.62f + 0.08f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.0));
+   DrawCylinderWiresEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.05f, base.z}, pulse, pulse, 36,
+                       Fade(kAmber, 0.72f));
+  }
  };
  const auto draw_signal_tower = [&](const mission::Pose& pose, bool active, bool powered) {
- const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
- const float pulse = powered
- ? 0.72f + 0.28f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.4))
- : 0.18f;
- const Color signal = powered ? kCyan : Color{61, 70, 67, 255};
- DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.24f, base.z},
- 0.52f, 0.46f, 20, {54, 60, 58, 255});
- DrawCylinderEx({base.x, base.y + 0.22f, base.z}, {base.x, base.y + 2.70f, base.z},
- 0.13f, 0.07f, 16, {92, 101, 96, 255});
- for (float height : {1.25f, 1.85f, 2.42f}) {
- DrawCylinderEx({base.x - 0.34f, base.y + height, base.z},
- {base.x + 0.34f, base.y + height, base.z}, 0.025f, 0.025f, 8,
- {112, 120, 113, 255});
- DrawSphere({base.x, base.y + height, base.z}, 0.055f, Fade(signal, pulse));
- }
- DrawSphere({base.x, base.y + 2.78f, base.z}, powered ? 0.11f + 0.025f * pulse : 0.075f,
- Fade(signal, powered ? pulse : 0.72f));
- const float dock = static_cast<float>(mission.level().objective.arrive_tolerance_m);
- DrawCylinderWiresEx({base.x, base.y + 0.015f, base.z}, {base.x, base.y + 0.045f, base.z},
- dock, dock, 40, Fade(active ? kAmber : signal, 0.74f));
- if (powered) {
- for (int ring = 0; ring < 3; ++ring) {
- const float phase = std::fmod(static_cast<float>(mission.snapshot().time_s * 0.55) + ring / 3.0f, 1.0f);
- DrawCircle3D({base.x, base.y + 2.78f, base.z}, 0.18f + phase * 0.92f,
- {1, 0, 0}, 90.0f, Fade(kCyan, 0.38f * (1.0f - phase)));
- }
- }
+  const auto base = world(pose, static_cast<float>(terrain_at(mission, {pose.x, pose.y}).height_m));
+  const float pulse =
+    powered ? 0.72f + 0.28f * std::sin(static_cast<float>(mission.snapshot().time_s * 5.4)) : 0.18f;
+  const Color signal = powered ? kCyan : Color{61, 70, 67, 255};
+  DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.24f, base.z}, 0.52f, 0.46f, 20,
+                 {54, 60, 58, 255});
+  DrawCylinderEx({base.x, base.y + 0.22f, base.z}, {base.x, base.y + 2.70f, base.z}, 0.13f, 0.07f, 16,
+                 {92, 101, 96, 255});
+  for (float height : {1.25f, 1.85f, 2.42f}) {
+   DrawCylinderEx({base.x - 0.34f, base.y + height, base.z}, {base.x + 0.34f, base.y + height, base.z},
+                  0.025f, 0.025f, 8, {112, 120, 113, 255});
+   DrawSphere({base.x, base.y + height, base.z}, 0.055f, Fade(signal, pulse));
+  }
+  DrawSphere({base.x, base.y + 2.78f, base.z}, powered ? 0.11f + 0.025f * pulse : 0.075f,
+             Fade(signal, powered ? pulse : 0.72f));
+  const float dock = static_cast<float>(mission.level().objective.arrive_tolerance_m);
+  DrawCylinderWiresEx({base.x, base.y + 0.015f, base.z}, {base.x, base.y + 0.045f, base.z}, dock, dock, 40,
+                      Fade(active ? kAmber : signal, 0.74f));
+  if (powered) {
+   for (int ring = 0; ring < 3; ++ring) {
+    const float phase = std::fmod(static_cast<float>(mission.snapshot().time_s * 0.55) + ring / 3.0f, 1.0f);
+    DrawCircle3D({base.x, base.y + 2.78f, base.z}, 0.18f + phase * 0.92f, {1, 0, 0}, 90.0f,
+                 Fade(kCyan, 0.38f * (1.0f - phase)));
+   }
+  }
  };
  if (mission.endless_mode()) {
- const auto& incident = mission.world_activity().incident;
- if (incident.active) {
- const auto base = world(incident.position,
- static_cast<float>(terrain_at(mission, incident.position).height_m));
- const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 3.2));
- for (int beacon = -1; beacon <= 1; ++beacon) {
- const float offset = static_cast<float>(beacon) * 0.48f;
- DrawCylinderEx({base.x + offset, base.y + 0.02f, base.z - 0.52f},
- {base.x + offset, base.y + 0.31f, base.z - 0.52f}, 0.028f, 0.028f, 8,
- {73, 79, 75, 255});
- DrawSphere({base.x + offset, base.y + 0.34f, base.z - 0.52f},
- 0.045f + 0.008f * pulse, kDanger);
- }
- if (incident.kind == mission::WorldIncidentKind::RoadClosure) {
- draw_box({base.x, base.y + 0.32f, base.z}, {1.35f, 0.42f, 0.24f}, 12.0f,
- {207, 90, 55, 255});
- draw_box({base.x, base.y + 0.55f, base.z}, {1.05f, 0.09f, 0.12f}, 12.0f, kAmber);
- } else if (incident.kind == mission::WorldIncidentKind::FallenCargo) {
- draw_box({base.x - 0.22f, base.y + 0.20f, base.z}, {0.48f, 0.40f, 0.50f}, -18.0f,
- {164, 116, 64, 255});
- draw_box({base.x + 0.25f, base.y + 0.15f, base.z + 0.16f}, {0.40f, 0.30f, 0.38f}, 24.0f,
- {137, 92, 52, 255});
- } else {
- draw_box({base.x, base.y + 0.34f, base.z}, {0.54f, 0.68f, 0.46f}, 0.0f,
- {56, 69, 71, 255});
- DrawSphere({base.x, base.y + 0.64f, base.z - 0.24f}, 0.075f, kDanger);
- }
- }
- const auto& intent = mission.field_intent();
- if (intent.active && intent.kind != mission::FieldIntentKind::Follow &&
- intent.kind != mission::FieldIntentKind::Wait) {
- const auto base = world(intent.target,
- static_cast<float>(terrain_at(mission, intent.target).height_m));
- const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.8));
- const Color intent_color = intent.acknowledgement == mission::FieldIntentAcknowledgement::Rejected
- ? kDanger
- : (intent.kind == mission::FieldIntentKind::Search ? kAmber : kCyan);
- DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z},
- {base.x, base.y + 0.075f, base.z},
- 0.74f + pulse * 0.08f, 0.74f + pulse * 0.08f, 48, intent_color);
- DrawCylinderEx({base.x, base.y + 0.02f, base.z},
- {base.x, base.y + 0.045f, base.z}, 0.58f, 0.58f, 40,
- Fade(intent_color, 0.30f));
- if (intent.kind == mission::FieldIntentKind::Search) {
- DrawCylinderWiresEx({base.x, base.y + 0.025f, base.z},
- {base.x, base.y + 0.055f, base.z}, 1.10f + pulse * 0.24f,
- 1.10f + pulse * 0.24f, 48, Fade(intent_color, 0.55f));
- }
- }
- const auto& dispatch = mission.field_dispatch();
- if (!dispatch.active)
- return;
- const mission::Pose target{dispatch.target.x, dispatch.target.y, 0.0};
- const auto base = world(
- target, static_cast<float>(terrain_at(mission, dispatch.target).height_m));
- const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0));
- DrawCylinderEx({base.x, base.y + 0.01f, base.z}, {base.x, base.y + 0.055f, base.z},
- 0.72f + 0.06f * pulse, 0.72f + 0.06f * pulse, 40, Fade(kAmber, 0.42f));
- DrawCylinderWiresEx({base.x, base.y + 0.06f, base.z}, {base.x, base.y + 0.08f, base.z},
- 0.68f, 0.68f, 40, kAmber);
- DrawCylinderEx({base.x, base.y + 0.04f, base.z}, {base.x, base.y + 1.65f, base.z},
- 0.035f, 0.035f, 10, Fade(kAmber, 0.28f));
- if (dispatch.kind == "delivery") {
- DrawModelEx(cube_model_, {base.x, base.y + 1.42f, base.z}, {0, 1, 0},
- static_cast<float>(mission.snapshot().time_s * 34.0), {0.18f, 0.18f, 0.18f}, kAmber);
- } else {
- DrawSphere({base.x, base.y + 1.42f, base.z}, 0.16f + 0.025f * pulse, kAmber);
- DrawSphereWires({base.x, base.y + 1.42f, base.z}, 0.25f + 0.04f * pulse, 8, 12,
- Fade(kAmber, 0.65f));
- }
- return;
+  const auto& incident = mission.world_activity().incident;
+  if (incident.active) {
+   const auto base =
+     world(incident.position, static_cast<float>(terrain_at(mission, incident.position).height_m));
+   const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 3.2));
+   for (int beacon = -1; beacon <= 1; ++beacon) {
+    const float offset = static_cast<float>(beacon) * 0.48f;
+    DrawCylinderEx({base.x + offset, base.y + 0.02f, base.z - 0.52f},
+                   {base.x + offset, base.y + 0.31f, base.z - 0.52f}, 0.028f, 0.028f, 8, {73, 79, 75, 255});
+    DrawSphere({base.x + offset, base.y + 0.34f, base.z - 0.52f}, 0.045f + 0.008f * pulse, kDanger);
+   }
+   if (incident.kind == mission::WorldIncidentKind::RoadClosure) {
+    draw_box({base.x, base.y + 0.32f, base.z}, {1.35f, 0.42f, 0.24f}, 12.0f, {207, 90, 55, 255});
+    draw_box({base.x, base.y + 0.55f, base.z}, {1.05f, 0.09f, 0.12f}, 12.0f, kAmber);
+   } else if (incident.kind == mission::WorldIncidentKind::FallenCargo) {
+    draw_box({base.x - 0.22f, base.y + 0.20f, base.z}, {0.48f, 0.40f, 0.50f}, -18.0f, {164, 116, 64, 255});
+    draw_box({base.x + 0.25f, base.y + 0.15f, base.z + 0.16f}, {0.40f, 0.30f, 0.38f}, 24.0f,
+             {137, 92, 52, 255});
+   } else {
+    draw_box({base.x, base.y + 0.34f, base.z}, {0.54f, 0.68f, 0.46f}, 0.0f, {56, 69, 71, 255});
+    DrawSphere({base.x, base.y + 0.64f, base.z - 0.24f}, 0.075f, kDanger);
+   }
+  }
+  const auto& intent = mission.field_intent();
+  if (intent.active && intent.kind != mission::FieldIntentKind::Follow &&
+      intent.kind != mission::FieldIntentKind::Wait) {
+   const auto base = world(intent.target, static_cast<float>(terrain_at(mission, intent.target).height_m));
+   const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.8));
+   const Color intent_color = intent.acknowledgement == mission::FieldIntentAcknowledgement::Rejected
+                                ? kDanger
+                                : (intent.kind == mission::FieldIntentKind::Search ? kAmber : kCyan);
+   DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z}, {base.x, base.y + 0.075f, base.z},
+                       0.74f + pulse * 0.08f, 0.74f + pulse * 0.08f, 48, intent_color);
+   DrawCylinderEx({base.x, base.y + 0.02f, base.z}, {base.x, base.y + 0.045f, base.z}, 0.58f, 0.58f, 40,
+                  Fade(intent_color, 0.30f));
+   if (intent.kind == mission::FieldIntentKind::Search) {
+    DrawCylinderWiresEx({base.x, base.y + 0.025f, base.z}, {base.x, base.y + 0.055f, base.z},
+                        1.10f + pulse * 0.24f, 1.10f + pulse * 0.24f, 48, Fade(intent_color, 0.55f));
+   }
+  }
+  const auto& dispatch = mission.field_dispatch();
+  if (!dispatch.active)
+   return;
+  const mission::Pose target{dispatch.target.x, dispatch.target.y, 0.0};
+  const auto base = world(target, static_cast<float>(terrain_at(mission, dispatch.target).height_m));
+  const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.0));
+  DrawCylinderEx({base.x, base.y + 0.01f, base.z}, {base.x, base.y + 0.055f, base.z}, 0.72f + 0.06f * pulse,
+                 0.72f + 0.06f * pulse, 40, Fade(kAmber, 0.42f));
+  DrawCylinderWiresEx({base.x, base.y + 0.06f, base.z}, {base.x, base.y + 0.08f, base.z}, 0.68f, 0.68f, 40,
+                      kAmber);
+  DrawCylinderEx({base.x, base.y + 0.04f, base.z}, {base.x, base.y + 1.65f, base.z}, 0.035f, 0.035f, 10,
+                 Fade(kAmber, 0.28f));
+  if (dispatch.kind == "delivery") {
+   DrawModelEx(cube_model_, {base.x, base.y + 1.42f, base.z}, {0, 1, 0},
+               static_cast<float>(mission.snapshot().time_s * 34.0), {0.18f, 0.18f, 0.18f}, kAmber);
+  } else {
+   DrawSphere({base.x, base.y + 1.42f, base.z}, 0.16f + 0.025f * pulse, kAmber);
+   DrawSphereWires({base.x, base.y + 1.42f, base.z}, 0.25f + 0.04f * pulse, 8, 12, Fade(kAmber, 0.65f));
+  }
+  return;
  }
  const auto* active = mission.active_goal();
  const std::size_t active_index = mission.snapshot().active_goal_index;
  for (std::size_t index = 0; index < mission.level().objective.goals.size(); ++index) {
- const auto& step = mission.level().objective.goals[index];
- const auto marker = map.markers.find(step.marker);
- if (marker == map.markers.end())
- continue;
- const bool is_active = index == active_index;
- const std::string step_id = step.id.empty() ? step.marker : step.id;
- const bool complete = std::find(mission.snapshot().completed_goal_ids.begin(),
- mission.snapshot().completed_goal_ids.end(), step_id) !=
- mission.snapshot().completed_goal_ids.end();
- const bool abandoned = std::find(mission.snapshot().abandoned_goal_ids.begin(),
- mission.snapshot().abandoned_goal_ids.end(), step_id) !=
- mission.snapshot().abandoned_goal_ids.end();
- if (!step.visual.empty()) {
- const auto visual = scene.goal_visuals.find(step.visual);
- if (visual != scene.goal_visuals.end()) {
- const std::string state = abandoned ? "abandoned"
- : (complete ? "completed" : (is_active ? "active" : "available"));
- const auto state_prefab = visual->second.state_prefabs.find(state);
- if (state_prefab != visual->second.state_prefabs.end()) {
- const auto prefab = scene.prefabs.find(state_prefab->second);
- if (prefab != scene.prefabs.end()) {
- const auto terrain = terrain_at(mission, {marker->second.x, marker->second.y});
- draw_prefab(prefab->second,
- {marker->second.x, marker->second.y, terrain.height_m}, {1.0, 1.0, 1.0},
- marker->second.theta * kRadToDeg);
- }
- }
- if (is_active) {
- const auto base = world(marker->second,
- static_cast<float>(terrain_at(mission, {marker->second.x, marker->second.y}).height_m));
- const float pulse = 0.5f + 0.5f *
- std::sin(static_cast<float>(mission.snapshot().time_s * 4.2));
- DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z},
- {base.x, base.y + 0.075f, base.z}, 0.68f + 0.06f * pulse,
- 0.68f + 0.06f * pulse, 36, Fade(kAmber, 0.72f + 0.20f * pulse));
- }
- continue;
- }
- }
- if (step.action == "pickup")
- draw_power_cradle(marker->second, !complete, is_active);
- else if (step.action == "inspect")
- draw_observation_point(marker->second, is_active, complete);
- else if (step.action == "complete" && mission.level().objective.goal_visual == "signal_tower")
- draw_signal_tower(marker->second, is_active,
- complete || mission.snapshot().status == mission::MissionStatus::Succeeded);
+  const auto& step = mission.level().objective.goals[index];
+  const auto marker = map.markers.find(step.marker);
+  if (marker == map.markers.end())
+   continue;
+  const bool is_active = index == active_index;
+  const std::string step_id = step.id.empty() ? step.marker : step.id;
+  const bool complete =
+    std::find(mission.snapshot().completed_goal_ids.begin(), mission.snapshot().completed_goal_ids.end(),
+              step_id) != mission.snapshot().completed_goal_ids.end();
+  const bool abandoned =
+    std::find(mission.snapshot().abandoned_goal_ids.begin(), mission.snapshot().abandoned_goal_ids.end(),
+              step_id) != mission.snapshot().abandoned_goal_ids.end();
+  if (!step.visual.empty()) {
+   const auto visual = scene.goal_visuals.find(step.visual);
+   if (visual != scene.goal_visuals.end()) {
+    const std::string state =
+      abandoned ? "abandoned" : (complete ? "completed" : (is_active ? "active" : "available"));
+    const auto state_prefab = visual->second.state_prefabs.find(state);
+    if (state_prefab != visual->second.state_prefabs.end()) {
+     const auto prefab = scene.prefabs.find(state_prefab->second);
+     if (prefab != scene.prefabs.end()) {
+      const auto terrain = terrain_at(mission, {marker->second.x, marker->second.y});
+      draw_prefab(prefab->second, {marker->second.x, marker->second.y, terrain.height_m}, {1.0, 1.0, 1.0},
+                  marker->second.theta * kRadToDeg);
+     }
+    }
+    if (is_active) {
+     const auto base =
+       world(marker->second,
+             static_cast<float>(terrain_at(mission, {marker->second.x, marker->second.y}).height_m));
+     const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.2));
+     DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z}, {base.x, base.y + 0.075f, base.z},
+                         0.68f + 0.06f * pulse, 0.68f + 0.06f * pulse, 36,
+                         Fade(kAmber, 0.72f + 0.20f * pulse));
+    }
+    continue;
+   }
+  }
+  if (step.action == "pickup")
+   draw_power_cradle(marker->second, !complete, is_active);
+  else if (step.action == "inspect")
+   draw_observation_point(marker->second, is_active, complete);
+  else if (step.action == "complete" && mission.level().objective.goal_visual == "signal_tower")
+   draw_signal_tower(marker->second, is_active,
+                     complete || mission.snapshot().status == mission::MissionStatus::Succeeded);
  }
  if (!active)
- return;
+  return;
  if (!active->visual.empty())
- return;
+  return;
  if (const auto goal = map.markers.find(active->marker); goal != map.markers.end()) {
- if (active->action == "pickup") {
- return;
- }
+  if (active->action == "pickup") {
+   return;
+  }
   const auto base =
     world(goal->second, static_cast<float>(terrain_at(mission, {goal->second.x, goal->second.y}).height_m));
- if (active->action == "complete" && mission.level().objective.goal_visual == "supply_station") {
+  if (active->action == "complete" && mission.level().objective.goal_visual == "supply_station") {
    draw_supply(goal->second);
- } else if (active->action == "complete" && mission.level().objective.goal_visual == "signal_tower") {
- return;
- } else {
- const Color marker = active->action != "complete" || mission.level().objective.goal_visual == "stop_zone"
- ? kAmber
- : kCyan;
+  } else if (active->action == "complete" && mission.level().objective.goal_visual == "signal_tower") {
+   return;
+  } else {
+   const Color marker =
+     active->action != "complete" || mission.level().objective.goal_visual == "stop_zone" ? kAmber : kCyan;
    DrawCylinderEx({base.x, base.y + 0.01f, base.z}, {base.x, base.y + 0.055f, base.z}, 0.58f, 0.58f, 24,
                   Fade(marker, 0.55f));
    DrawCylinderWiresEx({base.x, base.y + 0.06f, base.z}, {base.x, base.y + 0.075f, base.z}, 0.58f, 0.58f, 24,
                        marker);
- if (active->action == "complete" && mission.level().objective.goal_visual == "calibration_pad") {
+   if (active->action == "complete" && mission.level().objective.goal_visual == "calibration_pad") {
     draw_box({base.x, base.y + 0.12f, base.z}, {0.52f, 0.12f, 0.52f}, 45.0f, {63, 103, 96, 255});
    }
   }
@@ -1370,14 +1359,13 @@ void SceneRenderer3D::draw_markers(const mission::PresentationFrameView& mission
 
 void SceneRenderer3D::draw_field_operator(const mission::PresentationFrameView& mission) const {
  if (!mission.endless_mode())
- return;
+  return;
  const auto& field_operator = mission.field_operator();
  const auto terrain = terrain_at(mission, field_operator.position);
  const float ground = static_cast<float>(terrain.height_m);
  const float heading = static_cast<float>(field_operator.heading_rad);
- const float stride = field_operator.moving
- ? 0.10f * std::sin(static_cast<float>(mission.snapshot().time_s * 11.0))
- : 0.0f;
+ const float stride =
+   field_operator.moving ? 0.10f * std::sin(static_cast<float>(mission.snapshot().time_s * 11.0)) : 0.0f;
  const Color jacket{222, 146, 58, 255};
  const Color trousers{43, 58, 61, 255};
  const Color helmet{236, 196, 91, 255};
@@ -1389,31 +1377,30 @@ void SceneRenderer3D::draw_field_operator(const mission::PresentationFrameView& 
  DrawCylinderEx(left_boot, left_hip, 0.065f, 0.085f, 10, trousers);
  DrawCylinderEx(right_boot, right_hip, 0.065f, 0.085f, 10, trousers);
  DrawCylinderEx(pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.48f, ground),
- pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.94f, ground),
- 0.20f, 0.16f, 14, jacket);
- DrawSphere(pose_offset(field_operator.position, heading, 0.015f, 0.0f, 1.10f, ground),
- 0.145f, {216, 174, 139, 255});
+                pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.94f, ground), 0.20f, 0.16f, 14,
+                jacket);
+ DrawSphere(pose_offset(field_operator.position, heading, 0.015f, 0.0f, 1.10f, ground), 0.145f,
+            {216, 174, 139, 255});
  DrawCylinderEx(pose_offset(field_operator.position, heading, 0.015f, 0.0f, 1.19f, ground),
- pose_offset(field_operator.position, heading, 0.015f, 0.0f, 1.25f, ground),
- 0.18f, 0.13f, 16, helmet);
- draw_box(pose_offset(field_operator.position, heading, -0.16f, 0.0f, 0.77f, ground),
- {0.18f, 0.34f, 0.30f}, -heading * kRadToDeg, {47, 77, 74, 255});
+                pose_offset(field_operator.position, heading, 0.015f, 0.0f, 1.25f, ground), 0.18f, 0.13f, 16,
+                helmet);
+ draw_box(pose_offset(field_operator.position, heading, -0.16f, 0.0f, 0.77f, ground), {0.18f, 0.34f, 0.30f},
+          -heading * kRadToDeg, {47, 77, 74, 255});
 
  const auto ground_center = world(field_operator.position, ground + 0.025f);
- DrawCylinderWiresEx(ground_center, {ground_center.x, ground_center.y + 0.02f, ground_center.z},
- 0.34f, 0.34f, 28, Fade(kAmber, 0.72f));
+ DrawCylinderWiresEx(ground_center, {ground_center.x, ground_center.y + 0.02f, ground_center.z}, 0.34f, 0.34f,
+                     28, Fade(kAmber, 0.72f));
 
  const auto& intent = mission.field_intent();
  if (intent.active && intent.kind == mission::FieldIntentKind::Follow) {
- const auto robot = world(sim::Vec2{mission.snapshot().robot.x, mission.snapshot().robot.y},
- static_cast<float>(mission.snapshot().robot_height_m * 0.32));
- const auto person = pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.20f, ground);
- for (int segment = 0; segment < 12; segment += 2) {
- const float from_t = static_cast<float>(segment) / 12.0f;
- const float to_t = static_cast<float>(segment + 1) / 12.0f;
- DrawLine3D(Vector3Lerp(robot, person, from_t), Vector3Lerp(robot, person, to_t),
- Fade(kCyan, 0.72f));
- }
+  const auto robot = world(sim::Vec2{mission.snapshot().robot.x, mission.snapshot().robot.y},
+                           static_cast<float>(mission.snapshot().robot_height_m * 0.32));
+  const auto person = pose_offset(field_operator.position, heading, 0.0f, 0.0f, 0.20f, ground);
+  for (int segment = 0; segment < 12; segment += 2) {
+   const float from_t = static_cast<float>(segment) / 12.0f;
+   const float to_t = static_cast<float>(segment + 1) / 12.0f;
+   DrawLine3D(Vector3Lerp(robot, person, from_t), Vector3Lerp(robot, person, to_t), Fade(kCyan, 0.72f));
+  }
  }
 }
 
@@ -1434,10 +1421,10 @@ void SceneRenderer3D::draw_robot(const mission::PresentationFrameView& mission) 
   return mission.build().part(slot);
  };
  const auto mount_in_slot = [&](const mission::MountDefinition& mount, const std::string& slot_id) {
- const auto slot = std::find_if(robot.slots.begin(), robot.slots.end(),
- [&](const auto& candidate) { return candidate.slot == slot_id; });
- return slot != robot.slots.end() &&
- std::find(slot->mounts.begin(), slot->mounts.end(), mount.id) != slot->mounts.end();
+  const auto slot = std::find_if(robot.slots.begin(), robot.slots.end(),
+                                 [&](const auto& candidate) { return candidate.slot == slot_id; });
+  return slot != robot.slots.end() &&
+         std::find(slot->mounts.begin(), slot->mounts.end(), mount.id) != slot->mounts.end();
  };
  const auto draw_part = [&](const mission::VisualDefinition& visual, const mission::MountDefinition& mount) {
   const Model* loaded = model(visual.model_3d);
@@ -1446,71 +1433,69 @@ void SceneRenderer3D::draw_robot(const mission::PresentationFrameView& mission) 
   const Vector3 local_position{static_cast<float>(mount.position_m.x), static_cast<float>(mount.position_m.z),
                                static_cast<float>(-mount.position_m.y)};
   auto position =
- Vector3Add({static_cast<float>(state.robot.x), body_height, static_cast<float>(-state.robot.y)},
+    Vector3Add({static_cast<float>(state.robot.x), body_height, static_cast<float>(-state.robot.y)},
                Vector3RotateByQuaternion(local_position, body_rotation));
- // Ready / garage / chapter-preview snapshots do not have a stepped
- // actuator frame yet. Their pose still comes from the authored mount TF;
- // omitting it was why all wheel meshes appeared as horizontal pucks in the
- // chapter selector even after live Bullet rendering used the right links.
- constexpr double kDegreesToRadians = sim::kPi / 180.0;
- const auto authored_mount_sim = sim::physics::quaternion_from_euler(
- mount.rotation_deg.x * kDegreesToRadians,
- mount.rotation_deg.y * kDegreesToRadians,
- mount.rotation_deg.z * kDegreesToRadians);
- const Quaternion authored_mount{
- static_cast<float>(authored_mount_sim.x),
- static_cast<float>(authored_mount_sim.z),
- static_cast<float>(-authored_mount_sim.y),
- static_cast<float>(authored_mount_sim.w),
- };
- Quaternion part_rotation = QuaternionMultiply(body_rotation, authored_mount);
- const auto actuation = std::find_if(state.control.mount_actuations.begin(),
- state.control.mount_actuations.end(),
- [&](const auto& candidate) { return candidate.mount_id == mount.id; });
- if (actuation != state.control.mount_actuations.end()) {
- if (actuation->base_from_link) {
- const auto& transform = *actuation->base_from_link;
- const Vector3 physical_position{static_cast<float>(transform.translation_m.x),
- static_cast<float>(transform.translation_m.z),
- static_cast<float>(-transform.translation_m.y)};
- position = Vector3Add(
- {static_cast<float>(state.robot.x), body_height, static_cast<float>(-state.robot.y)},
- Vector3RotateByQuaternion(physical_position, body_rotation));
- // Simulator coordinates are x-forward/y-left/z-up; raylib uses
- // x-forward/y-up/z-back. Map both the rotation axis and translation.
- const Quaternion physical_rotation{
- static_cast<float>(transform.rotation.x),
- static_cast<float>(transform.rotation.z),
- static_cast<float>(-transform.rotation.y),
- static_cast<float>(transform.rotation.w),
- };
- part_rotation = QuaternionMultiply(body_rotation, physical_rotation);
- } else {
- // A visual is authored in its link frame. Reproduce the same
- // parent-yaw * authored-mount * local-joint-roll chain used by TF and by
- // the articulated Bullet model. Previously the wheel GLBs baked in the
- // mount's 90-degree rotation while physical rendering applied the link
- // transform again, laying every wheel flat.
- auto local_sim = sim::physics::quaternion_multiply(
- sim::physics::quaternion_from_euler(0.0, 0.0, actuation->yaw_rad),
- sim::physics::quaternion_from_euler(
- mount.rotation_deg.x * kDegreesToRadians,
- mount.rotation_deg.y * kDegreesToRadians,
- mount.rotation_deg.z * kDegreesToRadians));
- if (mount.motion == "wheel") {
- local_sim = sim::physics::quaternion_multiply(
- local_sim, sim::physics::quaternion_from_euler(0.0, 0.0, actuation->roll_rad));
- }
- const Quaternion local_actuation{
- static_cast<float>(local_sim.x),
- static_cast<float>(local_sim.z),
- static_cast<float>(-local_sim.y),
- static_cast<float>(local_sim.w),
- };
- part_rotation = QuaternionMultiply(body_rotation, local_actuation);
- }
+  // Ready / garage / chapter-preview snapshots do not have a stepped
+  // actuator frame yet. Their pose still comes from the authored mount TF;
+  // omitting it was why all wheel meshes appeared as horizontal pucks in the
+  // chapter selector even after live Bullet rendering used the right links.
+  constexpr double kDegreesToRadians = sim::kPi / 180.0;
+  const auto authored_mount_sim = sim::physics::quaternion_from_euler(
+    mount.rotation_deg.x * kDegreesToRadians, mount.rotation_deg.y * kDegreesToRadians,
+    mount.rotation_deg.z * kDegreesToRadians);
+  const Quaternion authored_mount{
+    static_cast<float>(authored_mount_sim.x),
+    static_cast<float>(authored_mount_sim.z),
+    static_cast<float>(-authored_mount_sim.y),
+    static_cast<float>(authored_mount_sim.w),
+  };
+  Quaternion part_rotation = QuaternionMultiply(body_rotation, authored_mount);
+  const auto actuation =
+    std::find_if(state.control.mount_actuations.begin(), state.control.mount_actuations.end(),
+                 [&](const auto& candidate) { return candidate.mount_id == mount.id; });
+  if (actuation != state.control.mount_actuations.end()) {
+   if (actuation->base_from_link) {
+    const auto& transform = *actuation->base_from_link;
+    const Vector3 physical_position{static_cast<float>(transform.translation_m.x),
+                                    static_cast<float>(transform.translation_m.z),
+                                    static_cast<float>(-transform.translation_m.y)};
+    position =
+      Vector3Add({static_cast<float>(state.robot.x), body_height, static_cast<float>(-state.robot.y)},
+                 Vector3RotateByQuaternion(physical_position, body_rotation));
+    // Simulator coordinates are x-forward/y-left/z-up; raylib uses
+    // x-forward/y-up/z-back. Map both the rotation axis and translation.
+    const Quaternion physical_rotation{
+      static_cast<float>(transform.rotation.x),
+      static_cast<float>(transform.rotation.z),
+      static_cast<float>(-transform.rotation.y),
+      static_cast<float>(transform.rotation.w),
+    };
+    part_rotation = QuaternionMultiply(body_rotation, physical_rotation);
+   } else {
+    // A visual is authored in its link frame. Reproduce the same
+    // parent-yaw * authored-mount * local-joint-roll chain used by TF and by
+    // the articulated Bullet model. Previously the wheel GLBs baked in the
+    // mount's 90-degree rotation while physical rendering applied the link
+    // transform again, laying every wheel flat.
+    auto local_sim = sim::physics::quaternion_multiply(
+      sim::physics::quaternion_from_euler(0.0, 0.0, actuation->yaw_rad),
+      sim::physics::quaternion_from_euler(mount.rotation_deg.x * kDegreesToRadians,
+                                          mount.rotation_deg.y * kDegreesToRadians,
+                                          mount.rotation_deg.z * kDegreesToRadians));
+    if (mount.motion == "wheel") {
+     local_sim = sim::physics::quaternion_multiply(
+       local_sim, sim::physics::quaternion_from_euler(0.0, 0.0, actuation->roll_rad));
+    }
+    const Quaternion local_actuation{
+      static_cast<float>(local_sim.x),
+      static_cast<float>(local_sim.z),
+      static_cast<float>(-local_sim.y),
+      static_cast<float>(local_sim.w),
+    };
+    part_rotation = QuaternionMultiply(body_rotation, local_actuation);
+   }
   }
- if (mount_in_slot(mount, "sensor")) {
+  if (mount_in_slot(mount, "sensor")) {
    if (!mission.build().part("sensor").empty()) {
     const double scan_hz =
       mission::property(catalog_.component(mission.build().part("sensor")).behavior, "scan_hz");
@@ -1545,33 +1530,30 @@ void SceneRenderer3D::draw_robot(const mission::PresentationFrameView& mission) 
  const auto& payload = mission.payload_state();
  const auto& cargo = scene.payload_visual;
  if (!payload.history.empty() && !cargo.mount.empty()) {
- const auto* mount = find_mount(cargo.mount);
- const auto container = scene.prefabs.find(cargo.container_prefab);
- const auto item = scene.prefabs.find(payload.integrity < cargo.damaged_below_integrity
- ? cargo.damaged_item_prefab
- : cargo.item_prefab);
- if (mount && container != scene.prefabs.end() && item != scene.prefabs.end()) {
- const Vector3 body_origin{static_cast<float>(state.robot.x), body_height,
- static_cast<float>(-state.robot.y)};
- draw_attached_prefab(container->second, body_origin, body_rotation, mount->position_m);
- const int count = std::clamp(
- (payload.item_count + cargo.items_per_visual - 1) / cargo.items_per_visual,
- 0, cargo.max_visible_items);
- const int per_layer = cargo.grid_columns * cargo.grid_rows;
- for (int index = 0; index < count; ++index) {
- const int column = index % cargo.grid_columns;
- const int row = (index / cargo.grid_columns) % cargo.grid_rows;
- const int layer = index / per_layer;
- const mission::Vec3 local{
- mount->position_m.x + cargo.item_origin_m.x + column * cargo.item_spacing_m.x,
- mount->position_m.y + cargo.item_origin_m.y + row * cargo.item_spacing_m.y,
- mount->position_m.z + cargo.item_origin_m.z + layer * cargo.item_spacing_m.z,
- };
- draw_attached_prefab(item->second, body_origin, body_rotation, local);
+  const auto* mount = find_mount(cargo.mount);
+  const auto container = scene.prefabs.find(cargo.container_prefab);
+  const auto item = scene.prefabs.find(
+    payload.integrity < cargo.damaged_below_integrity ? cargo.damaged_item_prefab : cargo.item_prefab);
+  if (mount && container != scene.prefabs.end() && item != scene.prefabs.end()) {
+   const Vector3 body_origin{static_cast<float>(state.robot.x), body_height,
+                             static_cast<float>(-state.robot.y)};
+   draw_attached_prefab(container->second, body_origin, body_rotation, mount->position_m);
+   const int count = std::clamp((payload.item_count + cargo.items_per_visual - 1) / cargo.items_per_visual, 0,
+                                cargo.max_visible_items);
+   const int per_layer = cargo.grid_columns * cargo.grid_rows;
+   for (int index = 0; index < count; ++index) {
+    const int column = index % cargo.grid_columns;
+    const int row = (index / cargo.grid_columns) % cargo.grid_rows;
+    const int layer = index / per_layer;
+    const mission::Vec3 local{
+      mount->position_m.x + cargo.item_origin_m.x + column * cargo.item_spacing_m.x,
+      mount->position_m.y + cargo.item_origin_m.y + row * cargo.item_spacing_m.y,
+      mount->position_m.z + cargo.item_origin_m.z + layer * cargo.item_spacing_m.z,
+    };
+    draw_attached_prefab(item->second, body_origin, body_rotation, local);
+   }
+  }
  }
- }
- }
-
 }
 
 // Pedestrian stand-in: two stacked boxes (torso + head), teal so nobody reads
@@ -1589,16 +1571,17 @@ void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiti
  if (const Model* body = model(actor.visual_model)) {
   DrawModelEx(*body, pose_offset(position, yaw / kRadToDeg, 0, 0, 0), {0, 1, 0}, yaw, {s, s, s}, WHITE);
  }
- const bool beacon_active = actor.visual_kind == "vehicle" &&
- std::hypot(actor.velocity.x, actor.velocity.y) > 0.05;
+ const bool beacon_active =
+   actor.visual_kind == "vehicle" && std::hypot(actor.velocity.x, actor.velocity.y) > 0.05;
  if (beacon_active) {
   const auto beacon = pose_offset(position, yaw / kRadToDeg, -0.18f * s, 0, 1.0f * s);
- const float pulse = 0.72f + 0.28f * std::sin(static_cast<float>(actor.position.x * 0.7 +
- actor.position.y * 0.9 + time_s * 8.0));
- const Color beacon_color = waiting ? kDanger : kAmber;
- DrawSphere(beacon, (0.065f + 0.018f * pulse) * s, Fade(beacon_color, pulse));
- if (actor.detected)
- DrawSphereWires(beacon, 0.13f * s, 6, 10, Fade(beacon_color, 0.42f * pulse));
+  const float pulse =
+    0.72f +
+    0.28f * std::sin(static_cast<float>(actor.position.x * 0.7 + actor.position.y * 0.9 + time_s * 8.0));
+  const Color beacon_color = waiting ? kDanger : kAmber;
+  DrawSphere(beacon, (0.065f + 0.018f * pulse) * s, Fade(beacon_color, pulse));
+  if (actor.detected)
+   DrawSphereWires(beacon, 0.13f * s, 6, 10, Fade(beacon_color, 0.42f * pulse));
  }
 }
 
@@ -1613,30 +1596,30 @@ void SceneRenderer3D::draw_environment(const mission::PresentationFrameView& mis
   draw_prefab(prefab->second, instance.position_m, instance.scale, instance.yaw_degrees);
  }
  const double environment_wetness = !mission.level().environment_keyframes.empty()
- ? mission.snapshot().environment.wetness
- : (mission.endless_mode() ? mission.world_activity().wetness : 0.0);
+                                      ? mission.snapshot().environment.wetness
+                                      : (mission.endless_mode() ? mission.world_activity().wetness : 0.0);
  if (environment_wetness > 0.04) {
- // Wetness is shown as sparse, ground-hugging reflected glints. There are no
- // falling rain streaks: water reads from the road surface and puddle ripples.
- const float wetness = static_cast<float>(environment_wetness);
- const float time = static_cast<float>(mission.snapshot().time_s);
- const auto& map = mission.map_definition();
- for (int glint = 0; glint < 22; ++glint) {
- const sim::Vec2 p{
- 0.4 + hash01(glint, 149) * std::max(0.1, map.size_m.x - 0.8),
- 0.4 + hash01(glint, 157) * std::max(0.1, map.size_m.y - 0.8),
- };
- const auto ground = terrain_at(mission, p);
- const float length = 0.10f + 0.22f * hash01(glint, 163);
- const float pulse = 0.5f + 0.5f * std::sin(time * 0.8f + hash01(glint, 167) * 6.28318f);
- const Color reflected{151, 198, 205,
- static_cast<unsigned char>(std::clamp(12.0f + wetness * (20.0f + 25.0f * pulse), 0.0f, 255.0f))};
- DrawLine3D(world(sim::Vec2{p.x - length, p.y}, static_cast<float>(ground.height_m) + 0.018f),
- world(sim::Vec2{p.x + length, p.y}, static_cast<float>(ground.height_m) + 0.018f), reflected);
+  // Wetness is shown as sparse, ground-hugging reflected glints. There are no
+  // falling rain streaks: water reads from the road surface and puddle ripples.
+  const float wetness = static_cast<float>(environment_wetness);
+  const float time = static_cast<float>(mission.snapshot().time_s);
+  const auto& map = mission.map_definition();
+  for (int glint = 0; glint < 22; ++glint) {
+   const sim::Vec2 p{
+     0.4 + hash01(glint, 149) * std::max(0.1, map.size_m.x - 0.8),
+     0.4 + hash01(glint, 157) * std::max(0.1, map.size_m.y - 0.8),
+   };
+   const auto ground = terrain_at(mission, p);
+   const float length = 0.10f + 0.22f * hash01(glint, 163);
+   const float pulse = 0.5f + 0.5f * std::sin(time * 0.8f + hash01(glint, 167) * 6.28318f);
+   const Color reflected{
+     151, 198, 205,
+     static_cast<unsigned char>(std::clamp(12.0f + wetness * (20.0f + 25.0f * pulse), 0.0f, 255.0f))};
+   DrawLine3D(world(sim::Vec2{p.x - length, p.y}, static_cast<float>(ground.height_m) + 0.018f),
+              world(sim::Vec2{p.x + length, p.y}, static_cast<float>(ground.height_m) + 0.018f), reflected);
+  }
  }
- }
- }
-
+}
 
 void SceneRenderer3D::draw_motion_effects(const mission::PresentationFrameView& mission) const {
  const auto& state = mission.snapshot();
@@ -1652,11 +1635,11 @@ void SceneRenderer3D::draw_motion_effects(const mission::PresentationFrameView& 
   }
   const float age = static_cast<float>(state.time_s - frame.time_s);
   const float life = 1.0f - std::clamp(age / static_cast<float>(scene.effects.trail_duration_s), 0.0f, 1.0f);
- const float ground = static_cast<float>(
- terrain_at(mission, {frame.robot.x, frame.robot.y}).height_m + 0.018);
+  const float ground =
+    static_cast<float>(terrain_at(mission, {frame.robot.x, frame.robot.y}).height_m + 0.018);
   if (previous && std::abs(frame.robot.v) > 0.04) {
- const float previous_ground = static_cast<float>(terrain_at(
- mission, {previous->robot.x, previous->robot.y}).height_m + 0.018);
+   const float previous_ground =
+     static_cast<float>(terrain_at(mission, {previous->robot.x, previous->robot.y}).height_m + 0.018);
    for (float left : {-half_track, half_track}) {
     const auto from = pose_offset({previous->robot.x, previous->robot.y}, previous->robot.theta, -0.18f, left,
                                   0.0f, previous_ground);
@@ -1696,25 +1679,23 @@ void SceneRenderer3D::draw_motion_effects(const mission::PresentationFrameView& 
   const float back = -0.20f - hash01(key, 7) * 0.28f - age * 0.12f;
   const float intensity = static_cast<float>(scene.effects.surface_particle_scale *
                                              (skid_smoke ? 0.8 : material->effect_intensity));
- const float speed = std::clamp(std::abs(static_cast<float>(frame.robot.v)) * 1.35f, 0.24f, 1.0f);
+  const float speed = std::clamp(std::abs(static_cast<float>(frame.robot.v)) * 1.35f, 0.24f, 1.0f);
   const float rise = age * (skid_smoke || material->drive_effect == "dust" ? 0.24f : 0.38f);
- const float ground = static_cast<float>(
- terrain_at(mission, {frame.robot.x, frame.robot.y}).height_m);
+  const float ground = static_cast<float>(terrain_at(mission, {frame.robot.x, frame.robot.y}).height_m);
   const auto base =
     pose_offset({frame.robot.x, frame.robot.y}, frame.robot.theta, back, side, 0.035f + rise, ground);
   const Color effect_color = skid_smoke ? Color{118, 112, 101, 255} : color(material->effect_color);
   const float alpha = life * speed * intensity;
   if (!skid_smoke && material->drive_effect == "spray") {
- // Thin standing water produces a ground wake. Vertical streaks and drops
- // read as rainfall, so wheel contact is shown only with expanding,
- // low-profile rings that remain attached to the road surface.
- const float wake = 0.07f + age * 0.32f;
- const Vector3 wake_center{base.x, ground + 0.025f, base.z};
- DrawCircle3D(wake_center, wake, {1, 0, 0}, 90.0f, Fade(effect_color, 0.46f * alpha * life));
- if (age > 0.08f) {
- DrawCircle3D(wake_center, wake * 0.62f, {1, 0, 0}, 90.0f,
- Fade(effect_color, 0.24f * alpha * life));
- }
+   // Thin standing water produces a ground wake. Vertical streaks and drops
+   // read as rainfall, so wheel contact is shown only with expanding,
+   // low-profile rings that remain attached to the road surface.
+   const float wake = 0.07f + age * 0.32f;
+   const Vector3 wake_center{base.x, ground + 0.025f, base.z};
+   DrawCircle3D(wake_center, wake, {1, 0, 0}, 90.0f, Fade(effect_color, 0.46f * alpha * life));
+   if (age > 0.08f) {
+    DrawCircle3D(wake_center, wake * 0.62f, {1, 0, 0}, 90.0f, Fade(effect_color, 0.24f * alpha * life));
+   }
   } else {
    const float radius = (0.035f + hash01(key, 17) * 0.055f) * intensity;
    DrawSphere(base, radius, Fade(effect_color, 0.46f * alpha));
@@ -1725,8 +1706,7 @@ void SceneRenderer3D::draw_motion_effects(const mission::PresentationFrameView& 
 void SceneRenderer3D::draw_risk_effects(const mission::PresentationFrameView& mission) const {
  const auto& state = mission.snapshot();
  const auto& scene = catalog_.scene(mission.map_definition().scene_3d);
- const float ground = static_cast<float>(
- terrain_at(mission, {state.robot.x, state.robot.y}).height_m);
+ const float ground = static_cast<float>(terrain_at(mission, {state.robot.x, state.robot.y}).height_m);
  const auto center = world(sim::Vec2{state.robot.x, state.robot.y}, ground + 0.035f);
 
  if (state.rollover_risk >= 0.55) {
@@ -1734,15 +1714,15 @@ void SceneRenderer3D::draw_risk_effects(const mission::PresentationFrameView& mi
   const Color warning = mix(kAmber, kDanger, severity);
   const float radius = static_cast<float>(scene.effects.risk_indicator_radius_m);
   const float downhill_side = state.cross_slope >= 0.0 ? -1.0f : 1.0f;
- const float pulse = 0.72f + 0.28f * std::sin(static_cast<float>(state.time_s * 9.0));
- // A risk warning belongs to the machine. Three lamps on the downhill
- // shoulder communicate urgency without painting animated debug rings onto
- // the physical world; the numeric/vector explanation remains in Tab view.
- for (float forward : {-0.17f, 0.0f, 0.17f}) {
- const auto lamp = pose_offset({state.robot.x, state.robot.y}, state.robot.theta, forward,
- downhill_side * radius * 0.34f, 0.27f, ground);
- DrawSphere(lamp, 0.025f + 0.012f * severity, Fade(warning, pulse));
- }
+  const float pulse = 0.72f + 0.28f * std::sin(static_cast<float>(state.time_s * 9.0));
+  // A risk warning belongs to the machine. Three lamps on the downhill
+  // shoulder communicate urgency without painting animated debug rings onto
+  // the physical world; the numeric/vector explanation remains in Tab view.
+  for (float forward : {-0.17f, 0.0f, 0.17f}) {
+   const auto lamp = pose_offset({state.robot.x, state.robot.y}, state.robot.theta, forward,
+                                 downhill_side * radius * 0.34f, 0.27f, ground);
+   DrawSphere(lamp, 0.025f + 0.012f * severity, Fade(warning, pulse));
+  }
  }
 
  if (state.traction_saturated) {
@@ -1756,10 +1736,10 @@ void SceneRenderer3D::draw_risk_effects(const mission::PresentationFrameView& mi
  if (state.status == mission::MissionStatus::Failed) {
   for (int ray = 0; ray < 8; ++ray) {
    const float angle = ray * 2.0f * PI / 8.0f;
- const float length = 0.18f + 0.16f * (ray % 3);
- const Vector3 end{center.x + std::cos(angle) * length, center.y + 0.10f + 0.03f * (ray % 2),
- center.z + std::sin(angle) * length};
- DrawLine3D({center.x, center.y + 0.05f, center.z}, end, Fade(kAmber, 0.62f));
+   const float length = 0.18f + 0.16f * (ray % 3);
+   const Vector3 end{center.x + std::cos(angle) * length, center.y + 0.10f + 0.03f * (ray % 2),
+                     center.z + std::sin(angle) * length};
+   DrawLine3D({center.x, center.y + 0.05f, center.z}, end, Fade(kAmber, 0.62f));
   }
  }
 }
@@ -1773,8 +1753,7 @@ void SceneRenderer3D::draw_accents(const mission::PresentationFrameView& mission
  const float movement = std::min(1.0f, std::abs(static_cast<float>(state.robot.v)));
  const float bob_phase = static_cast<float>(state.time_s * scene.effects.bob_frequency_hz * 2.0 * PI);
  const float bob = std::sin(bob_phase) * movement * static_cast<float>(scene.effects.bob_amplitude_m);
- const float ground_height = static_cast<float>(
- terrain_at(mission, {state.robot.x, state.robot.y}).height_m);
+ const float ground_height = static_cast<float>(terrain_at(mission, {state.robot.x, state.robot.y}).height_m);
  const float body_height = static_cast<float>(state.robot_height_m);
 
  draw_motion_effects(mission);
@@ -1783,46 +1762,47 @@ void SceneRenderer3D::draw_accents(const mission::PresentationFrameView& mission
  const auto& payload = mission.payload_state();
  const auto& cargo = scene.payload_visual;
  const auto cargo_mount = std::find_if(mission.robot().mounts.begin(), mission.robot().mounts.end(),
- [&](const auto& mount) { return mount.id == cargo.mount; });
+                                       [&](const auto& mount) { return mount.id == cargo.mount; });
  if (!payload.history.empty() && cargo_mount != mission.robot().mounts.end()) {
- const double pickup_age = state.time_s - payload.history.back().time_s;
- if (pickup_age >= 0.0 && pickup_age < cargo.pickup_effect_duration_s) {
- const float progress = static_cast<float>(pickup_age / cargo.pickup_effect_duration_s);
- const float alpha = 1.0f - progress;
- const auto center = pose_offset({state.robot.x, state.robot.y}, state.robot.theta,
- static_cast<float>(cargo_mount->position_m.x), static_cast<float>(cargo_mount->position_m.y),
- static_cast<float>(cargo_mount->position_m.z + cargo.item_origin_m.z), body_height);
- const Color pickup_color = color(cargo.pickup_effect_color);
- const Color pickup_accent = color(cargo.pickup_effect_accent_color);
- for (int mote = 0; mote < cargo.pickup_effect_particles; ++mote) {
- const float angle = static_cast<float>(mote) * 2.39996f + progress * 5.4f;
- const float radius = static_cast<float>(cargo.pickup_effect_radius_m) * (1.0f - progress * 0.7f) *
- (0.72f + 0.25f * hash01(mote, 211));
- const Vector3 point{center.x + std::cos(angle) * radius,
- center.y + 0.04f + progress * static_cast<float>(cargo.pickup_effect_rise_m) +
- 0.08f * hash01(mote, 223),
- center.z + std::sin(angle) * radius};
- DrawSphere(point, 0.026f + 0.015f * hash01(mote, 227),
- Fade(mote % 3 == 0 ? pickup_accent : pickup_color, alpha));
- }
- DrawCircle3D({center.x, ground_height + 0.04f, center.z},
- static_cast<float>(cargo.pickup_effect_radius_m) * (0.5f + progress),
- {1, 0, 0}, 90.0f, Fade(pickup_accent, 0.55f * alpha));
- }
- if (payload.collected_mass_kg > 0.0 && payload.integrity < cargo.damage_warning_below_integrity) {
- const float severity = std::clamp(
- static_cast<float>((cargo.damage_warning_below_integrity - payload.integrity) /
- std::max(0.01, cargo.damage_warning_below_integrity)),
- 0.0f, 1.0f);
- const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(state.time_s * 10.0));
- const auto warning = pose_offset({state.robot.x, state.robot.y}, state.robot.theta,
- static_cast<float>(cargo_mount->position_m.x), static_cast<float>(cargo_mount->position_m.y),
- static_cast<float>(cargo_mount->position_m.z + cargo.damage_warning_height_m), body_height);
- const Color warning_color = color(cargo.damage_warning_color);
- DrawSphere(warning, 0.035f + severity * 0.025f, Fade(warning_color, pulse));
- DrawSphereWires(warning, 0.09f + severity * 0.05f, 6, 10,
- Fade(warning_color, 0.58f * pulse));
- }
+  const double pickup_age = state.time_s - payload.history.back().time_s;
+  if (pickup_age >= 0.0 && pickup_age < cargo.pickup_effect_duration_s) {
+   const float progress = static_cast<float>(pickup_age / cargo.pickup_effect_duration_s);
+   const float alpha = 1.0f - progress;
+   const auto center =
+     pose_offset({state.robot.x, state.robot.y}, state.robot.theta,
+                 static_cast<float>(cargo_mount->position_m.x), static_cast<float>(cargo_mount->position_m.y),
+                 static_cast<float>(cargo_mount->position_m.z + cargo.item_origin_m.z), body_height);
+   const Color pickup_color = color(cargo.pickup_effect_color);
+   const Color pickup_accent = color(cargo.pickup_effect_accent_color);
+   for (int mote = 0; mote < cargo.pickup_effect_particles; ++mote) {
+    const float angle = static_cast<float>(mote) * 2.39996f + progress * 5.4f;
+    const float radius = static_cast<float>(cargo.pickup_effect_radius_m) * (1.0f - progress * 0.7f) *
+                         (0.72f + 0.25f * hash01(mote, 211));
+    const Vector3 point{center.x + std::cos(angle) * radius,
+                        center.y + 0.04f + progress * static_cast<float>(cargo.pickup_effect_rise_m) +
+                          0.08f * hash01(mote, 223),
+                        center.z + std::sin(angle) * radius};
+    DrawSphere(point, 0.026f + 0.015f * hash01(mote, 227),
+               Fade(mote % 3 == 0 ? pickup_accent : pickup_color, alpha));
+   }
+   DrawCircle3D({center.x, ground_height + 0.04f, center.z},
+                static_cast<float>(cargo.pickup_effect_radius_m) * (0.5f + progress), {1, 0, 0}, 90.0f,
+                Fade(pickup_accent, 0.55f * alpha));
+  }
+  if (payload.collected_mass_kg > 0.0 && payload.integrity < cargo.damage_warning_below_integrity) {
+   const float severity =
+     std::clamp(static_cast<float>((cargo.damage_warning_below_integrity - payload.integrity) /
+                                   std::max(0.01, cargo.damage_warning_below_integrity)),
+                0.0f, 1.0f);
+   const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(state.time_s * 10.0));
+   const auto warning =
+     pose_offset({state.robot.x, state.robot.y}, state.robot.theta,
+                 static_cast<float>(cargo_mount->position_m.x), static_cast<float>(cargo_mount->position_m.y),
+                 static_cast<float>(cargo_mount->position_m.z + cargo.damage_warning_height_m), body_height);
+   const Color warning_color = color(cargo.damage_warning_color);
+   DrawSphere(warning, 0.035f + severity * 0.025f, Fade(warning_color, pulse));
+   DrawSphereWires(warning, 0.09f + severity * 0.05f, 6, 10, Fade(warning_color, 0.58f * pulse));
+  }
  }
 
  for (float left : {-0.10f, 0.10f}) {
@@ -1842,11 +1822,11 @@ void SceneRenderer3D::draw_accents(const mission::PresentationFrameView& mission
   }
  }
  if (state.status == mission::MissionStatus::Succeeded) {
- for (float side : {-0.13f, 0.13f}) {
- const auto lamp = pose_offset({state.robot.x, state.robot.y}, state.robot.theta, -0.29f, side,
- 0.24f, ground_height);
- DrawSphere(lamp, 0.034f, active_color);
- }
+  for (float side : {-0.13f, 0.13f}) {
+   const auto lamp =
+     pose_offset({state.robot.x, state.robot.y}, state.robot.theta, -0.29f, side, 0.24f, ground_height);
+   DrawSphere(lamp, 0.034f, active_color);
+  }
  }
 }
 

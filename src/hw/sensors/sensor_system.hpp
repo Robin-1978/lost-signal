@@ -1,12 +1,11 @@
 #pragma once
 
-#include "autonomy/perception/dynamic_obstacle_map.hpp"
-#include "hal.hpp"
+#include "hw/sensors/sensor.hpp"
+#include "core/lidar_truth.hpp"
 #include "sim/runtime_state.hpp"
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace sim {
@@ -22,12 +21,6 @@ struct LidarConfig {
  double latency_s{0.0};
  Vec2 position_in_base;
  double yaw_in_base_rad{0.0};
-};
-
-struct PerceptionFrame {
- std::vector<Vec2> lidar_hits;
- bool static_obstacle_near{false};
- bool dynamic_object_detected{false};
 };
 
 // Ideal rigid-body input to a simulated IMU. Values are already evaluated at
@@ -53,12 +46,9 @@ struct ImuConfig {
 
 class SensorSystem {
  public:
- SensorSystem(const GridMap& static_map, std::uint32_t noise_seed, std::uint32_t perception_seed);
+ SensorSystem(std::uint32_t noise_seed, std::uint32_t localization_seed);
 
- void reset(std::uint32_t noise_seed, std::uint32_t perception_seed);
- ObservationFrame capture_lidar(const WorldTruth& truth, double time_s, const LidarConfig& config);
- ObservationFrame capture_lidar(const WorldTruth& truth, double time_s, const LidarConfig& config,
-                                bool include_pose_observation);
+ void reset(std::uint32_t noise_seed, std::uint32_t localization_seed);
  ObservationFrame capture_lidar(const WorldTruth& truth, double time_s, const LidarConfig& config,
  const LidarRaycastTruth& raycast_truth, bool include_pose_observation = false);
  PoseObservation capture_pose(const WorldTruth& truth, double time_s,
@@ -66,31 +56,12 @@ class SensorSystem {
                               double heading_sigma_rad = 0.006);
  ImuObservation capture_imu(const ImuTruth& truth, double time_s,
  double sample_period_s, const ImuConfig& config);
- PerceptionFrame process_lidar(const ObservationFrame& observation, const EstimatedState& estimate,
-                               double track_max_age_s);
- const DynamicObstacleMap& dynamic_obstacles() const { return dynamic_obstacles_; }
- DynamicObstacleMap& dynamic_obstacles() { return dynamic_obstacles_; }
-
  private:
- struct PendingDetection {
-  std::size_t id{0};
-  Vec2 position;
-  double radius_m{0.45};
-  double last_seen_s{0.0};
-  int confirmations{0};
- };
-
- const GridMap& static_map_;
- std::unique_ptr<LidarBackend> lidar_;
  Rng noise_rng_;
- Rng perception_rng_;
  Rng localization_rng_;
  Rng imu_gyro_rng_;
  Rng imu_accel_rng_;
  Rng imu_bias_walk_rng_;
- DynamicObstacleMap dynamic_obstacles_;
- std::vector<PendingDetection> pending_;
- std::size_t next_track_id_{0};
  std::uint64_t lidar_sequence_{0};
  std::uint64_t pose_sequence_{0};
  std::uint64_t imu_sequence_{0};
@@ -98,7 +69,6 @@ class SensorSystem {
  double imu_roll_bias_radps_{0.0};
  double imu_pitch_bias_radps_{0.0};
  double imu_yaw_bias_radps_{0.0};
- LidarConfig last_config_;
 };
 
 } // namespace sim

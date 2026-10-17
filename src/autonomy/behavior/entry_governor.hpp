@@ -41,6 +41,11 @@ struct GovernorState {
 struct GovernorOutput {
   bool hold_active{false};
   Vec2 stop_point{0, 0};
+ // Unit tangent of the route at stop_point. Crossing behavior supplies it
+ // so the virtual-wall consumer can distinguish along-route distance from
+ // lateral localization error. Legacy geometric entry holds leave +x here
+ // and continue to use Euclidean distance.
+ Vec2 stop_direction{1, 0};
   bool stop_valid{false};
 };
 
@@ -48,6 +53,21 @@ constexpr int kReleaseClears = 25; // 25 x 0.02 s = 0.5 s sustained Clear.
 constexpr int kReleaseSilent = 15; // 15 x 0.02 s = 0.3 s without fresh data.
 
 GovernorOutput govern_entry(GovernorState& state, const GovernorInput& input);
+
+// Stateful autonomy owner for runtime use. The pure transition above remains
+// available for exhaustive contract tests; composition layers do not retain
+// or mutate behavior state themselves.
+class EntryGovernorSystem {
+ public:
+ void reset() { state_ = {}; }
+ GovernorOutput update(const GovernorInput& input) {
+ return govern_entry(state_, input);
+ }
+ bool holding() const { return state_.hold_active; }
+
+ private:
+ GovernorState state_;
+};
 
 // Shared consumer translation (neutral Vec2 math, no game types): conflict
 // center of the ego forward ray vs the threat velocity ray, clamped to

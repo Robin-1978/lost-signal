@@ -115,8 +115,7 @@ int main() {
 
  // Device range limits are observation semantics layered after ideal Bullet
  // geometry. A true return in the blind zone becomes an explicit no-return.
- sim::GridMap open_grid(400, 300, 0.1);
- sim::SensorSystem sensors(open_grid, 42, 7);
+ sim::SensorSystem sensors(42, 7);
  sim::LidarConfig config;
  config.rays = lidar->rays;
  config.min_range_m = lidar->min_range_m;

@@ -2,6 +2,7 @@
 #include "autonomy/mapping/grid_map.hpp"
 #include "autonomy/perception/dynamic_object.hpp"
 #include <functional>
+#include <optional>
 #include <vector>
 namespace sim {
 using StaticFeasibility = std::function<bool(Vec2, Vec2)>;
@@ -9,6 +10,14 @@ struct DwaWeights {
  double w_goal{1.0};
  double w_clear{2.0};
  double w_speed{0.3};
+ double w_path{1.2};
+ double w_progress{0.8};
+ double w_oscillation{0.25};
+};
+
+struct DwaReference {
+ std::vector<Vec2> path;
+ double previous_angular_command_radps{0.0};
 };
 struct DwaCmd {
  double v{0};
@@ -17,17 +26,42 @@ struct DwaCmd {
  double score{0};
  double lateral_v{0};
 };
-struct DwaRollout {
+
+enum class LocalCommandSpace {
+ DifferentialTwist,
+ SteeringAngle,
+ HolonomicTwist,
+};
+
+// One state of the trajectory that the local planner authorizes control to
+// execute. Time is relative to generation and strictly increasing after the
+// initial sample. Command-space-specific quantities stay explicit: a
+// steering angle is never reinterpreted as yaw rate.
+struct TrajectorySample {
+ double t_s{0.0};
+ Vec2 position;
+ double heading_rad{0.0};
+ double forward_mps{0.0};
+ double lateral_mps{0.0};
+ double yaw_rate_radps{0.0};
+ double steering_angle_rad{0.0};
+};
+
+struct ExecutableTrajectory {
+ LocalCommandSpace command_space{LocalCommandSpace::DifferentialTwist};
  DwaCmd command;
- std::vector<Vec2> points;
+ std::vector<TrajectorySample> samples;
+};
+
+struct DwaRollout {
+ ExecutableTrajectory trajectory;
  bool collision{false};
 };
 // Differential-drive DWA-lite: sample the (v,w) window, simulate forward for predict_T, and score each
 // candidate. Weights are method constants; the player selects a driving style rather than tuning individual
 // weights.
 struct DwaResult {
- DwaCmd best;
- std::vector<Vec2> best_path;
+ ExecutableTrajectory best;
  std::vector<DwaRollout> rollouts;
 };
 // robot_radius and yaw_accel come from robot JSON through the mission layer;
@@ -53,5 +87,7 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  double predict_T = 2.5, double dt = 0.1, double frame_dt = 0.1,
                                  double safety_margin = 0.0, double robot_radius = 0.38,
                                  double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {},
-                                 double min_velocity_mps = -0.5);
+ double min_velocity_mps = -0.5,
+ std::optional<double> target_heading_rad = std::nullopt,
+ const DwaReference& reference = {});
 } // namespace sim

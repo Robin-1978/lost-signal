@@ -105,18 +105,18 @@
       "id": "forklift_crossing",
       "type": "box",
       "min": [
-        13.0,
-        5.55
+        16.9,
+        6.1
       ],
       "max": [
-        18.0,
-        7.05
+        17.35,
+        6.5
       ],
-      "authority": "shadow",
+      "authority": "control",
       "active_in": [
         "lost_signal",
-        "signal_echo",
         "signal_hold",
+        "signal_echo",
         "signal_watch"
       ]
     }
@@ -161,11 +161,6 @@
       6.5,
       7.0,
       0.0
-    ],
-    "traffic_hold": [
-      14.2,
-      3.8,
-      1.5707963267948966
     ],
     "traffic_trigger": [
       10.5,

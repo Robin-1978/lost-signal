@@ -155,21 +155,39 @@ namespace {
 // min/max. The 0.05 m corridor floor and 8-reflection cap are method
 // constants: narrow corridors carry no direction information, and the cap
 // bounds work for pathological velocity/corridor ratios.
-double reflected_position(double position, double velocity, double time_s, double minimum, double maximum,
-                          bool bounded) {
- if (!bounded || maximum - minimum < 0.05)
-  return position + velocity * time_s;
- double predicted = position + velocity * time_s;
- for (int reflection = 0; reflection < 8; ++reflection) {
-  if (predicted < minimum) {
-   predicted = minimum + (minimum - predicted);
-  } else if (predicted > maximum) {
-   predicted = maximum - (predicted - maximum);
-  } else {
-   break;
-  }
+struct ReflectedAxisState {
+ double position{0.0};
+ double velocity{0.0};
+};
+
+ReflectedAxisState reflected_axis(double position, double velocity,
+ double time_s, double minimum, double maximum, bool bounded,
+ double endpoint_dwell_s, double initial_dwell_remaining_s) {
+ if (!bounded || maximum - minimum < 0.05 || std::abs(velocity) < 1e-9)
+ return {position + velocity * time_s, velocity};
+ double remaining = std::max(0.0, time_s);
+ position = std::clamp(position, minimum, maximum);
+ if (initial_dwell_remaining_s > 0.0) {
+ if (remaining <= initial_dwell_remaining_s)
+ return {position, 0.0};
+ remaining -= initial_dwell_remaining_s;
+ if ((position >= maximum - 1e-6 && velocity > 0.0) ||
+ (position <= minimum + 1e-6 && velocity < 0.0))
+ velocity = -velocity;
  }
- return std::clamp(predicted, minimum, maximum);
+ for (int transition = 0; transition < 16 && remaining > 1e-12; ++transition) {
+ const double boundary = velocity > 0.0 ? maximum : minimum;
+ const double travel_s = std::abs(boundary - position) / std::abs(velocity);
+ if (remaining < travel_s)
+ return {position + velocity * remaining, velocity};
+ position = boundary;
+ remaining -= travel_s;
+ if (remaining <= endpoint_dwell_s)
+ return {position, 0.0};
+ remaining -= endpoint_dwell_s;
+ velocity = -velocity;
+ }
+ return {std::clamp(position + velocity * remaining, minimum, maximum), velocity};
 }
 
 // Point-to-segment distance: the workhorse. interval_min_dist below reduces
@@ -208,11 +226,21 @@ std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<Pr
  std::vector<std::vector<DynamicObjectState>> frames;
  auto predict_mode = [](const PredictInput& input, Vec2 velocity, double prediction_time) {
   auto predicted = input.state;
-  predicted.v = velocity;
-  predicted.p.x = reflected_position(predicted.p.x, velocity.x, prediction_time, input.min_observed.x,
-                                     input.max_observed.x, input.bounded_x);
-  predicted.p.y = reflected_position(predicted.p.y, velocity.y, prediction_time, input.min_observed.y,
-                                     input.max_observed.y, input.bounded_y);
+ const auto x = reflected_axis(
+ predicted.p.x, velocity.x, prediction_time, input.min_observed.x,
+ input.max_observed.x, input.bounded_x, input.endpoint_dwell_s,
+ input.initial_dwell_remaining_s);
+ const auto y = reflected_axis(
+ predicted.p.y, velocity.y, prediction_time, input.min_observed.y,
+ input.max_observed.y, input.bounded_y, input.endpoint_dwell_s,
+ input.initial_dwell_remaining_s);
+ predicted.p = {x.position, y.position};
+ predicted.v = {x.velocity, y.velocity};
+ predicted.position_uncertainty_m =
+ std::min(std::max(0.0, input.position_uncertainty_cap_m),
+ std::max(0.0, input.state.position_uncertainty_m) +
+ std::max(0.0, input.position_uncertainty_growth_mps) *
+ std::max(0.0, prediction_time));
   return predicted;
  };
  for (double future_s = 0.0; future_s <= horizon_s + 1e-9; future_s += frame_dt_s) {
@@ -256,7 +284,8 @@ double timed_gap(const std::vector<TimedPose>& ego,
  if (frames.size() == 1) {
   for (const auto& threat : frames.front()) {
    const Vec2 e = ego_at(0.0);
-   gap = std::min(gap, std::hypot(threat.p.x - e.x, threat.p.y - e.y) - threat.radius - ego_radius_m);
+ gap = std::min(gap, std::hypot(threat.p.x - e.x, threat.p.y - e.y) -
+ threat.occupied_radius_m() - ego_radius_m);
   }
   return gap;
  }
@@ -266,7 +295,8 @@ double timed_gap(const std::vector<TimedPose>& ego,
   const auto& fa = frames[k];
   const auto& fb = frames[k + 1];
   for (std::size_t i = 0; i < fa.size() && i < fb.size(); ++i) {
-   gap = std::min(gap, interval_min_dist(ego0, ego1, fa[i].p, fb[i].p) - fa[i].radius - ego_radius_m);
+ gap = std::min(gap, interval_min_dist(ego0, ego1, fa[i].p, fb[i].p) -
+ std::max(fa[i].occupied_radius_m(), fb[i].occupied_radius_m()) - ego_radius_m);
   }
  }
  return gap;
@@ -310,7 +340,8 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
   // Degenerate single frame: point check (segment helper covers it, but be
   // explicit so the intent reads).
   for (const auto& threat : frames.front()) {
-   gap = std::min(gap, std::hypot(threat.p.x - ego_frame(0).x, threat.p.y - ego_frame(0).y) - threat.radius -
+ gap = std::min(gap, std::hypot(threat.p.x - ego_frame(0).x, threat.p.y - ego_frame(0).y) -
+ threat.occupied_radius_m() -
                          ego_radius_m);
   }
   return gap;
@@ -323,7 +354,8 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
   const auto& fa = frames[k];
   const auto& fb = frames[k + 1];
   for (std::size_t i = 0; i < fa.size() && i < fb.size(); ++i) {
-   gap = std::min(gap, interval_min_dist(ego0, ego1, fa[i].p, fb[i].p) - fa[i].radius - ego_radius_m);
+ gap = std::min(gap, interval_min_dist(ego0, ego1, fa[i].p, fb[i].p) -
+ std::max(fa[i].occupied_radius_m(), fb[i].occupied_radius_m()) - ego_radius_m);
   }
  }
  return gap;

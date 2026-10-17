@@ -81,15 +81,22 @@ add_library(lost_signal_autonomy STATIC
  src/autonomy/planning/global/global_planner.cpp
  src/autonomy/planning/global/hybrid_astar.cpp
  src/autonomy/planning/local/holonomic_local.cpp
+ src/autonomy/planning/local/local_planning_system.cpp
  src/autonomy/planning/task/task_ordering.cpp
  src/autonomy/behavior/high_level_policy.cpp
  src/autonomy/planning/validation/entry_shadow.cpp
+ src/autonomy/planning/validation/trajectory_validator.cpp
  src/autonomy/behavior/entry_governor.cpp
  src/autonomy/behavior/crossing_behavior.cpp
  src/autonomy/localization/estimation_system.cpp
+ src/autonomy/localization/dead_reckon.cpp
  src/autonomy/perception/dynamic_obstacle_map.cpp
+ src/autonomy/perception/lidar_perception_system.cpp
+ src/autonomy/perception/perception_pipeline.cpp
+ src/autonomy/pipeline/autonomy_pipeline.cpp
  src/autonomy/planning/local/dwa.cpp
  src/autonomy/mapping/grid_map.cpp
+ src/autonomy/mapping/observed_obstacle_layer.cpp
  src/autonomy/planning/local/predictor.cpp
  src/autonomy/localization/state_estimator.cpp
  src/autonomy/mapping/terrain.cpp
@@ -98,6 +105,8 @@ add_library(lost_signal_autonomy STATIC
  src/autonomy/localization/slip_observer.cpp
  src/autonomy/localization/estimator_filter.cpp
  src/autonomy/control/pid.cpp
+ src/autonomy/control/route_tracking_system.cpp
+ src/autonomy/control/trajectory_tracking_system.cpp
 )
 target_link_libraries(lost_signal_autonomy PUBLIC lost_signal_core)
 
@@ -116,6 +125,12 @@ add_library(lost_signal_vehicle STATIC
 target_link_libraries(lost_signal_vehicle PUBLIC
  lost_signal_core lost_signal_autonomy lost_signal_physics)
 
+add_library(lost_signal_sim_geometry STATIC
+ src/physics/lidar_raycast.cpp
+)
+target_link_libraries(lost_signal_sim_geometry PUBLIC
+ lost_signal_core lost_signal_autonomy)
+
 add_library(lost_signal_runtime STATIC
  src/runtime/runtime_channel.cpp
  src/runtime/replay_driver.cpp
@@ -124,7 +139,8 @@ target_link_libraries(lost_signal_runtime PUBLIC lost_signal_core)
 
 add_library(lost_signal_stack INTERFACE)
 target_link_libraries(lost_signal_stack INTERFACE
- lost_signal_autonomy lost_signal_vehicle lost_signal_runtime lost_signal_physics)
+ lost_signal_autonomy lost_signal_vehicle lost_signal_runtime lost_signal_physics
+ lost_signal_sim_geometry)
 
 add_library(lost_signal_mission STATIC
  src/mission/campaign_progress.cpp
@@ -133,8 +149,10 @@ add_library(lost_signal_mission STATIC
  src/mission/map_serialize.cpp
  src/sim/simulated_platform.cpp
  src/mission/mission_simulation.cpp
+ src/mission/mission_autonomy.cpp
  src/mission/world/actor_behavior_registry.cpp
- src/mission/systems/control_system.cpp
+ src/mission/systems/collision_monitor.cpp
+ src/mission/systems/decision_evidence_system.cpp
  src/mission/systems/dynamic_traffic_system.cpp
  src/mission/systems/field_dispatch_system.cpp
  src/mission/systems/field_operator_system.cpp
@@ -322,6 +340,10 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
  target_link_libraries(test_dynamic_perception PRIVATE lost_signal_stack)
  add_test(NAME dynamic_perception COMMAND test_dynamic_perception)
 
+add_executable(test_dwa_dynamic tests/new/test_dwa_dynamic.cpp)
+target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_autonomy)
+add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
+
  add_executable(test_dwell_behavior tests/new/test_dwell_behavior.cpp)
  target_link_libraries(test_dwell_behavior PRIVATE lost_signal_stack)
  add_test(NAME dwell_behavior COMMAND test_dwell_behavior)
@@ -380,6 +402,38 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_executable(test_dynamic_traffic_system tests/new/test_dynamic_traffic_system.cpp)
  target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_mission)
  add_test(NAME dynamic_traffic_system COMMAND test_dynamic_traffic_system)
+
+ add_executable(test_trajectory_validator tests/new/test_trajectory_validator.cpp)
+ target_link_libraries(test_trajectory_validator PRIVATE lost_signal_autonomy)
+ add_test(NAME trajectory_validator COMMAND test_trajectory_validator)
+
+ add_executable(test_observed_obstacle_layer tests/new/test_observed_obstacle_layer.cpp)
+ target_link_libraries(test_observed_obstacle_layer PRIVATE lost_signal_autonomy)
+ add_test(NAME observed_obstacle_layer COMMAND test_observed_obstacle_layer)
+
+ add_executable(test_perception_pipeline tests/new/test_perception_pipeline.cpp)
+ target_link_libraries(test_perception_pipeline PRIVATE lost_signal_autonomy)
+ add_test(NAME perception_pipeline COMMAND test_perception_pipeline)
+
+add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
+target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_autonomy)
+add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
+
+ add_executable(test_deterministic_scheduler tests/new/test_deterministic_scheduler.cpp)
+ target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_mission)
+ add_test(NAME deterministic_scheduler COMMAND test_deterministic_scheduler)
+
+add_executable(test_collision_monitor tests/new/test_collision_monitor.cpp)
+target_link_libraries(test_collision_monitor PRIVATE lost_signal_mission)
+add_test(NAME collision_monitor COMMAND test_collision_monitor)
+
+add_executable(test_decision_evidence_system tests/new/test_decision_evidence_system.cpp)
+target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_mission)
+add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
+
+ add_executable(test_trajectory_tracking_system tests/new/test_trajectory_tracking_system.cpp)
+ target_link_libraries(test_trajectory_tracking_system PRIVATE lost_signal_autonomy)
+ add_test(NAME trajectory_tracking_system COMMAND test_trajectory_tracking_system)
 
  add_executable(test_algo_invariants tests/new/test_algo_invariants.cpp)
  target_link_libraries(test_algo_invariants PRIVATE lost_signal_stack)
@@ -594,6 +648,11 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_runs.py -q
  )
  set_tests_properties(compare_runs PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+ add_test(
+ NAME deployable_boundary
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_deployable_boundary.py -q
+ )
+ set_tests_properties(deployable_boundary PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
  add_test(
  NAME run_artifact
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_run_artifact.py

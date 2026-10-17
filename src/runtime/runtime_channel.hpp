@@ -2,7 +2,7 @@
 
 #include "hw/chassis/caps.hpp"
 #include "hw/chassis/diff_drive.hpp"
-#include "sim/runtime_state.hpp"
+#include "runtime/observation.hpp"
 
 #include <cstddef>
 #include <cstdint>

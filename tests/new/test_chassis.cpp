@@ -202,21 +202,21 @@ int main() {
   sim::GuideState spin_state;
  sim::ChassisCaps spin;
  spin.can_spin = true;
-  // Face away from the path: latches reverse first.
+ // Face away from the path: latches reverse first.
   sim::GuideOut r1 =
     sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
-  CHECK(r1.tv < 0.0);
-  // Hold the error past the watchdog: spinner switches to spin-in-place.
-  bool spun = false;
-  for (int i = 0; i < 250; ++i) {
-   sim::GuideOut r =
-     sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
-   if (r.tv == 0.0) {
-    spun = true;
-    break;
-   }
-  }
-  CHECK(spun);
+ CHECK(r1.tv < 0.0);
+ // Hold the error past the watchdog: spinner switches to spin-in-place.
+ bool spun = false;
+ for (int i = 0; i < 250; ++i) {
+ sim::GuideOut r =
+ sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
+ if (r.tv == 0.0) {
+ spun = true;
+ break;
+ }
+ }
+ CHECK(spun);
   // Non-spinner never spins: still reversing after the watchdog period.
   sim::GuideState stiff;
   sim::PID pid3(2.0, 0.0, 0.0, 2.0, 1.0);
