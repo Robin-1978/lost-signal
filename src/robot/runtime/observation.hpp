@@ -3,7 +3,10 @@
 #include "robot/core/math.hpp"
 #include "robot/runtime/sensor_messages.hpp"
 
+#include <algorithm>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace sim {
 
@@ -15,6 +18,23 @@ struct EncoderObservation {
  double angular_velocity_radps{0.0};
  double slip_scale{1.0};
  MeasurementHeader header;
+};
+
+struct ActuatorFeedbackObservation {
+ struct Channel {
+ std::string channel_id;
+ double position_rad{0.0};
+ double velocity_radps{0.0};
+ };
+
+ std::vector<Channel> channels;
+ MeasurementHeader header;
+
+ const Channel* find(const std::string& channel_id) const {
+ const auto found = std::find_if(channels.begin(), channels.end(),
+ [&](const auto& channel) { return channel.channel_id == channel_id; });
+ return found == channels.end() ? nullptr : &*found;
+ }
 };
 
 struct ImuObservation {
@@ -45,6 +65,7 @@ struct ObservationFrame {
  // Simulation may raycast them; hardware may raycast the deployed map.
  std::optional<Scan> lidar_static_reference;
  std::optional<EncoderObservation> encoders;
+ std::optional<ActuatorFeedbackObservation> actuator_feedback;
  std::optional<ImuObservation> imu;
  std::optional<PoseObservation> absolute_pose;
 };

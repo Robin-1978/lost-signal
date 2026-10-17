@@ -12,7 +12,7 @@
 #include "sim/game/mission/content_catalog.hpp"
 #include "sim/game/scenario/scenario_session.hpp"
 #include "robot/core/math.hpp"
-#include "robot/autonomy/control/pid.hpp"
+#include "robot/control/pid.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "robot/control/feedforward.hpp"

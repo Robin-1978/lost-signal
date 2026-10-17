@@ -6,6 +6,8 @@
 
 namespace sim {
 
+inline constexpr std::uint32_t kMeasurementSchemaVersion = 2;
+
 // Transport-neutral measurement header used by simulation, replay, native
 // drivers, and future IPC providers. stamp_s is acquisition time in the
 // producer's monotonic clock; arrival time must never replace it.
@@ -14,7 +16,7 @@ struct MeasurementHeader {
  std::uint64_t sequence{0};
  std::string frame_id;
  double latency_s{0.0};
- std::uint32_t schema_version{1};
+ std::uint32_t schema_version{kMeasurementSchemaVersion};
  std::string source_id;
 };
 

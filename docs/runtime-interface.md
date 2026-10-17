@@ -2,7 +2,7 @@
 
 The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
 
-LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 1`. API v2 adds per-device endpoint ownership and typed actuator command transport; the existing measurement payload schema remains version 1.
+LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 2`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 adds named actuator-joint position and velocity feedback.
 
 ## Boundary
 
@@ -25,7 +25,7 @@ The simulator owns both ends of an in-process channel because simulation and ROB
 LSRI uses the following normative rules:
 
 - Physical quantities use SI units. Unit-bearing fields include suffixes such as `_m`, `_mps`, `_rad`, and `_radps`.
-- All timestamps use one monotonic clock. Command timestamps are signed 64-bit nanoseconds. Existing observation packets use SI seconds in v1; a transport converts them once at its provider boundary and must not substitute wall-clock time.
+- All timestamps use one monotonic clock. Command timestamps are signed 64-bit nanoseconds. Observation packets use SI seconds; a transport converts them once at its provider boundary and must not substitute wall-clock time.
 - Every command has a schema version, sample time, receive time, sequence, frame, source, and expiry time.
 - Every measurement has a schema version, sample time, sequence, frame, source, and declared latency.
 - Sequence numbers are strictly increasing per source. A channel rejects stale or repeated input.
@@ -57,6 +57,7 @@ The observation frame carries one or more transport-neutral measurements:
 |---|---|---|
 | Planar LiDAR | calibrated sensor frame | ranges, hits, optional intensity, scan timing |
 | Encoder odometry | `base_link` | linear velocity, angular velocity, slip scale |
+| Actuator feedback | `base_link` | named joint position and velocity channels |
 | IMU | `imu_link` | yaw rate, planar acceleration, noise description |
 | Absolute pose | `map` | position, heading, uncertainty |
 
@@ -110,6 +111,6 @@ Controller placement is therefore explicit. A provider never reinterprets a body
 
 ## Current evidence and limit
 
-The production mission loop now sends LiDAR, encoder, IMU, and localization observations through LSRI and sends every autonomous chassis command through its watchdog-protected command path. Interface tests cover lifecycle, capability validation, sequence rejection, bounded queues, motion and actuator timeout stops, all three body command spaces, per-device mixed-provider ownership, provider registration, and replay delivery.
+The production mission loop sends LiDAR, encoder, IMU, localization, and RO-1 wheel-joint observations through LSRI. In the default RO-1 Bullet path, the deployable ROBOT wheel controller consumes named left/right joint feedback, computes normalized duty, and sends both channels through the watchdog-protected actuator path. The SIM provider applies the delivered duty to the motor curve, wheel joints, contact, and rigid body. Domain mode and platforms with a smart drive capability continue to use the body-motion path.
 
-This completes the in-process semantic contract and its body-motion simulation integration. The typed actuator path is executable and tested at the channel boundary; the default scenario has not yet moved its low-level motor loop across that path. A real robot driver, calibration data, independent stop system, and hardware tests are still required before making a sim-to-real claim.
+Interface tests cover lifecycle, capability validation, actuator-feedback validation, sequence rejection, bounded queues, motion and actuator timeout stops, all three body command spaces, per-device mixed-provider ownership, provider registration, and replay delivery. This completes both in-process command placements for the reference platform. A real robot driver, calibration data, independent stop system, and hardware tests are still required before making a sim-to-real claim.

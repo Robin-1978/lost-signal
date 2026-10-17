@@ -3,11 +3,12 @@
 #include "robot/platform/chassis_caps.hpp"
 #include "sim/hardware/vehicle/contact.hpp"
 
+#include "robot/control/differential_wheel_controller.hpp"
 #include "robot/platform/differential_kinematics.hpp"
-#include "robot/autonomy/control/pid.hpp"
 
 #include <array>
 #include <cstddef>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -126,26 +127,6 @@ struct ChassisTelemetry {
  std::vector<JointEffortCommand> joint_efforts;
 };
 
-// Closed-loop wheel-speed tuning from first principles. The linearized wheel
-// plant dV/dt = (K_lin*u - c*V)/m_eff is dominated by inertia, so a conservative
-// PI is placed by bandwidth: Kp = m_w*wc/K_lin, Ki = Kp/Ti, Kd = Kp*Td.
-// wc, Ti, and Td come from the selected motor/controller profile.
-// The caller includes wheel/transmission inertia and the chassis mass or yaw
-// inertia reflected to one wheel. wc = 6 rad/s targets a ~0.5 s settle, well
-// The stock wc = 6 rad/s targets a roughly 0.5 s response below the 50 Hz
-// actuator rate; it is a documented typical assumption rather than a fit.
-struct WheelPidGains {
- double kp{0.0};
- double ki{0.0};
- double kd{0.0};
-};
-
-struct WheelControllerDesign {
- double bandwidth_radps{6.0};
- double integral_time_s{5.0};
- double derivative_time_s{0.005};
-};
-
 // Runtime body dynamics shared by every chassis implementation. Payload can
 // change after a pickup, while motors, wheel inertia and controller gains stay
 // the same physical hardware. The new plant values apply on the next step.
@@ -165,9 +146,6 @@ struct ChassisActuatorFeedback {
  bool valid() const { return !joints.empty(); }
 };
 
-WheelPidGains tune_wheel_pid(double wheel_mass_kg, double stall_force_N, double free_speed_mps,
- double linearize_at_mps, const WheelControllerDesign& design = {});
-
 // A chassis turns a body twist command into motion. Differential drive and
 // ackermann are the implementations; ro1.json drive.type selects one. Unknown
 // types must be rejected by the factory in game code, never stubbed here.
@@ -178,6 +156,12 @@ class ChassisModel {
  virtual void set_actuator_feedback(const ChassisActuatorFeedback&) {}
  virtual DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                         const GroundContact& ground) = 0;
+ virtual bool accepts_normalized_duty() const { return false; }
+ virtual DiffState step_normalized_duty(const DiffState&, const DiffCmd&,
+ const DifferentialWheelControlOutput&, double,
+ const GroundContact&) {
+ throw std::logic_error("chassis does not accept normalized-duty control");
+ }
  virtual const ChassisTelemetry& telemetry() const = 0;
  virtual ChassisCaps caps() const = 0;
 };
@@ -201,6 +185,10 @@ class DifferentialMotorDrive : public ChassisModel {
  void set_actuator_feedback(const ChassisActuatorFeedback& feedback) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
+ bool accepts_normalized_duty() const override { return true; }
+ DiffState step_normalized_duty(const DiffState& state, const DiffCmd& command,
+ const DifferentialWheelControlOutput& control,
+ double dt, const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
  ChassisCaps caps() const override {
@@ -214,16 +202,14 @@ class DifferentialMotorDrive : public ChassisModel {
  }
 
  private:
- double encoder_measure(double position_rad, double& previous_count, double dt);
+ DiffState apply_control(const DiffState& state, const DiffCmd& command,
+ DifferentialWheelControlOutput control, double dt,
+ const GroundContact& ground);
 
  MotorDriveParams params_;
- PID left_pid_;
- PID right_pid_;
+ DifferentialWheelController controller_;
  ChassisTelemetry telemetry_;
  ChassisActuatorFeedback feedback_;
- double previous_left_count_{0.0};
- double previous_right_count_{0.0};
- bool encoder_initialized_{false};
 };
 
 } // namespace sim

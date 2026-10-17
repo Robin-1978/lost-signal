@@ -18,6 +18,7 @@
 #include "robot/autonomy/behavior/entry_governor.hpp"
 #include "robot/autonomy/behavior/crossing_behavior.hpp"
 #include "robot/autonomy/planning/validation/entry_shadow.hpp"
+#include "robot/control/differential_wheel_controller.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/planar_diff_drive.hpp"
 #include "robot/autonomy/planning/local/dwa.hpp"
@@ -33,7 +34,6 @@
 #include "robot/autonomy/mapping/grid_map.hpp"
 #include "robot/autonomy/localization/slip_detect.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
-#include "robot/autonomy/control/pid.hpp"
 #include "sim/hardware/sensors/sensor.hpp"
 #include "robot/runtime/runtime_channel.hpp"
 #include "robot/runtime/map_provider.hpp"
@@ -457,6 +457,11 @@ class ScenarioSession {
  const char* physics_backend_name() const;
  const std::string& runtime_provider_id() const { return runtime_provider_id_; }
  std::uint32_t runtime_api_version() const { return sim::runtime::kApiVersion; }
+ sim::runtime::PlatformCommandLevel runtime_command_level() const {
+ return runtime_channel_
+ ? runtime_channel_->config().capabilities.command_level
+ : sim::runtime::PlatformCommandLevel::BodyMotion;
+ }
  sim::runtime::LifecycleState runtime_state() const {
   return runtime_channel_ ? runtime_channel_->state() : sim::runtime::LifecycleState::Unconfigured;
  }
@@ -557,6 +562,7 @@ class ScenarioSession {
  double planning_clearance_m_{0.0};
  std::unique_ptr<sim::PlanarDiffDrivePlant> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
+ std::unique_ptr<sim::DifferentialWheelController> differential_wheel_controller_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
  std::unique_ptr<sim::RouteTrackingSystem> route_tracking_system_;
  double heading_kp_{0.0};
@@ -654,6 +660,7 @@ class ScenarioSession {
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;
  std::uint64_t motion_sequence_{0};
+ std::uint64_t actuator_feedback_sequence_{0};
  std::uint64_t command_sequence_{0};
  bool manual_control_active_{false};
  sim::DiffCmd manual_command_;

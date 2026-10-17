@@ -29,6 +29,8 @@ int main() {
   CHECK(std::abs(manual.chassis_caps().geometry.support_width_m - 0.58) < 1e-12);
   CHECK(manual.runtime_provider_id() == "channel.in-process");
  CHECK(manual.runtime_api_version() == sim::runtime::kApiVersion);
+ CHECK(manual.runtime_command_level() ==
+ sim::runtime::PlatformCommandLevel::Actuator);
   CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Inactive);
   manual.start();
   CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Active);
@@ -36,6 +38,8 @@ int main() {
   for (int step = 0; step < 50; ++step)
    manual.step();
   CHECK(manual.result().path_length_m > 0.1);
+ CHECK(std::abs(manual.snapshot().control.left_pwm) > 1e-6);
+ CHECK(std::abs(manual.snapshot().control.right_pwm) > 1e-6);
   CHECK(manual.lookup_transform("map", "odom").has_value());
   CHECK(manual.lookup_transform("odom", "base_footprint").has_value());
   CHECK(manual.lookup_transform("base_footprint", "base_link").has_value());
@@ -52,6 +56,17 @@ int main() {
   CHECK(caster_roll != manual.snapshot().control.mount_actuations.end());
   CHECK(std::abs(caster_roll->roll_rad) > 1e-6);
   CHECK(std::abs(manual.frame_timestamp_s() - manual.snapshot().time_s) < 1e-9);
+ }
+
+ // The analytic/smart-drive composition keeps body-motion authority, while
+ // the articulated Bullet reference above exposes passive actuator channels.
+ {
+ mission::ScenarioSession domain(
+ catalog, "boot", catalog.presentation_for_level("boot").recommended_build,
+ std::nullopt, {}, mission::ComponentRegistry::builtins(), {},
+ mission::PhysicsMode::Domain);
+ CHECK(domain.runtime_command_level() ==
+ sim::runtime::PlatformCommandLevel::BodyMotion);
  }
 
  // A field expedition is a bounded-memory autonomous runtime mode. It keeps

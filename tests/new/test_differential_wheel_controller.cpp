@@ -1,0 +1,62 @@
+#include "robot/control/differential_wheel_controller.hpp"
+
+#include <cmath>
+#include <iostream>
+
+#define CHECK(condition) \
+    do { \
+        if (!(condition)) { \
+            std::cerr << __FILE__ << ':' << __LINE__ \
+                      << ": check failed: " #condition "\n"; \
+            return 1; \
+        } \
+    } while (false)
+
+int main() {
+    const sim::DifferentialWheelControllerConfig config{
+        0.50, 0.10, 2.0, 1000, 1.0, 2.0};
+    sim::DifferentialWheelController controller(config, {0.5, 0.0, 0.0});
+
+    sim::DifferentialWheelFeedback feedback;
+    feedback.positions_valid = true;
+    const auto first = controller.update({1.0, 1.0}, feedback, 0.02);
+    CHECK(std::abs(first.left.target_mps - 0.75) < 1e-12);
+    CHECK(std::abs(first.right.target_mps - 1.25) < 1e-12);
+    CHECK(first.left.measured_mps == 0.0);
+    CHECK(first.right.measured_mps == 0.0);
+    CHECK(first.left.normalized_duty > 0.0);
+    CHECK(first.right.normalized_duty > first.left.normalized_duty);
+
+ const double radians_per_count = 2.0 * 3.14159265358979323846 / 1000.0;
+    feedback.left_position_rad = 20.0 * radians_per_count;
+    feedback.right_position_rad = 30.0 * radians_per_count;
+    feedback.left_velocity_radps = 6.0;
+    feedback.right_velocity_radps = 9.0;
+    const auto second = controller.update({1.0, 1.0}, feedback, 0.02);
+    CHECK(std::abs(second.left.measured_mps - 20.0 * 0.10 * radians_per_count / 0.02) < 1e-12);
+    CHECK(std::abs(second.right.measured_mps - 30.0 * 0.10 * radians_per_count / 0.02) < 1e-12);
+    CHECK(std::abs(second.measured_forward_mps -
+                   0.5 * (second.left.measured_mps + second.right.measured_mps)) < 1e-12);
+    CHECK(std::abs(second.measured_yaw_radps -
+                   (second.right.measured_mps - second.left.measured_mps) / 0.50) < 1e-12);
+
+    const auto saturated = controller.update({5.0, 0.0}, feedback, 0.02);
+    CHECK(saturated.left.target_mps == 2.0);
+    CHECK(saturated.right.target_mps == 2.0);
+    CHECK(std::abs(saturated.left.normalized_duty) <= 1.0);
+    CHECK(std::abs(saturated.right.normalized_duty) <= 1.0);
+
+    controller.reset();
+    const auto reset = controller.update({}, feedback, 0.02);
+    CHECK(reset.left.measured_mps == 0.0);
+    CHECK(reset.right.measured_mps == 0.0);
+
+    bool threw = false;
+    try {
+        sim::DifferentialWheelController invalid({0.0, 0.1, 1.0, 100, 1.0, 1.0}, {});
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    CHECK(threw);
+    return 0;
+}

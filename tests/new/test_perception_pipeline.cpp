@@ -25,7 +25,7 @@ sim::Scan scan(double stamp_s, bool foreground) {
  value.hit.assign(4, 0);
  value.intensities.assign(4, 0.0);
  value.header = {stamp_s, static_cast<std::uint64_t>(std::llround(stamp_s * 10.0)),
- "lidar_link", 0.0, 1, "test.pipeline"};
+ "lidar_link", 0.0, sim::kMeasurementSchemaVersion, "test.pipeline"};
  if (foreground) {
  value.ranges[0] = 2.0;
  value.hit[0] = 1;

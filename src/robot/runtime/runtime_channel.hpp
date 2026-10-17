@@ -16,7 +16,7 @@
 namespace sim::runtime {
 
 inline constexpr std::uint32_t kApiVersion = 2;
-inline constexpr std::uint32_t kMessageSchemaVersion = 1;
+inline constexpr std::uint32_t kMessageSchemaVersion = kMeasurementSchemaVersion;
 
 // Transport-neutral monotonic time. Wire adapters may copy nanoseconds
 // directly; simulation converts its fixed-step seconds at the boundary.

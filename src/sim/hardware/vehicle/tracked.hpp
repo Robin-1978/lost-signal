@@ -3,7 +3,7 @@
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "sim/hardware/vehicle/contact.hpp"
-#include "robot/autonomy/control/pid.hpp"
+#include "robot/control/pid.hpp"
 
 namespace sim {
 

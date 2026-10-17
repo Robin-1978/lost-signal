@@ -4,7 +4,7 @@
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "sim/hardware/vehicle/tracked.hpp"
 #include "robot/autonomy/control/follow.hpp"
-#include "robot/autonomy/control/pid.hpp"
+#include "robot/control/pid.hpp"
 
 #include <cmath>
 #include <iostream>

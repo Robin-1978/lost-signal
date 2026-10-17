@@ -1,7 +1,7 @@
 #pragma once
 #include "robot/core/math.hpp"
 #include "robot/autonomy/mapping/grid_map.hpp"
-#include "robot/autonomy/control/pid.hpp"
+#include "robot/control/pid.hpp"
 #include "robot/autonomy/planning/path.hpp"
 #include "robot/platform/chassis_caps.hpp"
 #include <algorithm>

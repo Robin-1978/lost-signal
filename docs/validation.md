@@ -99,7 +99,7 @@ Results for the current RO-1 autonomy and scenario-boundary revision, tested on 
 - Content validation: passed; 27 levels, 5 maps, 5 scenes, 19 components, 4 policies, 5 robots, and 27 presentations
 - Locale validation: passed; 1,317 entries checked and 1,310 required translations present
 - Canonical content round-trip and deployable-boundary tests: passed
-- Release build with the graphical client enabled and CTest: passed; 78/78 tests
+- Release build with the graphical client enabled and CTest: passed; 79/79 tests
 - Two repeated recommended `lost_signal` runs were identical: succeeded in 67.74 simulated seconds, zero collisions, and 0.795 m minimum dynamic clearance
 - The `motor_trial` regression separates gearing tradeoffs: speed/express completes in 4.76 s while eco/balanced
  completes in 5.20 s; eco uses 0.042 Wh versus 0.068 Wh for speed

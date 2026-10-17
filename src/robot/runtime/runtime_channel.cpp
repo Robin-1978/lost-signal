@@ -92,6 +92,8 @@ std::vector<const MeasurementHeader*> measurement_headers(const ObservationFrame
   headers.push_back(&observation.lidar_static_reference->header);
  if (observation.encoders)
   headers.push_back(&observation.encoders->header);
+ if (observation.actuator_feedback)
+ headers.push_back(&observation.actuator_feedback->header);
  if (observation.imu)
   headers.push_back(&observation.imu->header);
  if (observation.absolute_pose)
@@ -439,6 +441,22 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
  !finite_nonnegative(imu.acceleration_noise_sigma_mps2)) {
  set_reason(reason, "imu payload contains a non-finite value or invalid noise sigma");
  return false;
+ }
+ }
+ if (observation.actuator_feedback) {
+ const auto& feedback = *observation.actuator_feedback;
+ if (feedback.channels.empty()) {
+ set_reason(reason, "actuator feedback contains no channels");
+ return false;
+ }
+ std::map<std::string, bool> channel_ids;
+ for (const auto& channel : feedback.channels) {
+ if (channel.channel_id.empty() || !std::isfinite(channel.position_rad) ||
+ !std::isfinite(channel.velocity_radps) ||
+ !channel_ids.emplace(channel.channel_id, true).second) {
+ set_reason(reason, "actuator feedback contains an invalid or duplicate channel");
+ return false;
+ }
  }
  }
  return true;

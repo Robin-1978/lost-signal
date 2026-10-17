@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -41,7 +42,7 @@ sim::ObservationFrame encoder_frame(double time_s, std::uint64_t sequence,
  frame.time_s = time_s;
  frame.encoders.emplace();
  frame.encoders->linear_velocity_mps = 0.5;
- frame.encoders->header = {time_s, sequence, "base_link", 0.0, 1, std::move(source)};
+ frame.encoders->header = {time_s, sequence, "base_link", 0.0, sim::kMeasurementSchemaVersion, std::move(source)};
  return frame;
 }
 
@@ -51,7 +52,22 @@ sim::ObservationFrame imu_frame(double time_s, std::uint64_t sequence,
  frame.time_s = time_s;
  frame.imu.emplace();
  frame.imu->yaw_rate_radps = 0.1;
- frame.imu->header = {time_s, sequence, "imu_link", 0.0, 1, std::move(source)};
+ frame.imu->header = {time_s, sequence, "imu_link", 0.0, sim::kMeasurementSchemaVersion, std::move(source)};
+ return frame;
+}
+
+sim::ObservationFrame actuator_feedback_frame(double time_s,
+ std::uint64_t sequence) {
+ sim::ObservationFrame frame;
+ frame.time_s = time_s;
+ frame.actuator_feedback.emplace();
+ frame.actuator_feedback->channels = {
+ {"left", 1.25, 3.5},
+ {"right", 1.50, 4.0},
+ };
+ frame.actuator_feedback->header = {
+ time_s, sequence, "base_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.actuator-feedback"};
  return frame;
 }
 
@@ -61,7 +77,7 @@ int main() {
  using namespace sim::runtime;
 
  CHECK(kApiVersion == 2);
- CHECK(kMessageSchemaVersion == 1);
+ CHECK(kMessageSchemaVersion == 2);
  CHECK(TimePoint::from_seconds(1.25).nanoseconds == 1'250'000'000);
  CHECK(std::abs(TimePoint::from_seconds(1.25).seconds() - 1.25) < 1e-12);
 
@@ -255,6 +271,25 @@ int main() {
  auto actuator_channel = make_in_process_channel(actuator_config);
  actuator_channel->configure();
  actuator_channel->activate();
+ CHECK(actuator_channel->platform().publish_observation(
+ actuator_feedback_frame(1.0, 0)));
+ const auto actuator_feedback =
+ actuator_channel->autonomy().read_observation();
+ CHECK(actuator_feedback && actuator_feedback->actuator_feedback);
+ const auto* left_feedback =
+ actuator_feedback->actuator_feedback->find("left");
+ CHECK(left_feedback);
+ CHECK(left_feedback->position_rad == 1.25);
+ CHECK(left_feedback->velocity_radps == 3.5);
+ auto duplicate_feedback = actuator_feedback_frame(1.1, 1);
+ duplicate_feedback.actuator_feedback->channels[1].channel_id = "left";
+ CHECK(!actuator_channel->platform().publish_observation(
+ std::move(duplicate_feedback)));
+ auto nonfinite_feedback = actuator_feedback_frame(1.1, 1);
+ nonfinite_feedback.actuator_feedback->channels[0].velocity_radps =
+ std::numeric_limits<double>::quiet_NaN();
+ CHECK(!actuator_channel->platform().publish_observation(
+ std::move(nonfinite_feedback)));
  ActuatorCommand actuator_command;
  actuator_command.header = {
  kMessageSchemaVersion, TimePoint::from_seconds(1.0),

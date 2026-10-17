@@ -210,6 +210,7 @@ void ScenarioSession::reset() {
  scheduler_.reset(scheduled_lidar ? 1.0 / scheduled_lidar->scan_hz : 0.0,
  1.0 / decision_hz(), 0.04);
  motion_sequence_ = 0;
+ actuator_feedback_sequence_ = 0;
  command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
@@ -644,6 +645,31 @@ void ScenarioSession::build_world() {
  chassis_caps_ = chassis_->caps();
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
+ differential_wheel_controller_.reset();
+ const auto has_actuator_channel = [&](const std::string& channel) {
+ return std::any_of(robot_definition_.articulation.actuators.begin(),
+ robot_definition_.articulation.actuators.end(),
+ [&](const auto& actuator) { return actuator.channel == channel; });
+ };
+ const bool deployable_actuator_control =
+ physics_mode_ != PhysicsMode::Domain &&
+ robot_definition_.drive_type == "differential" &&
+ chassis_->accepts_normalized_duty() &&
+ has_actuator_channel("left") && has_actuator_channel("right");
+ if (deployable_actuator_control) {
+ differential_wheel_controller_ =
+ std::make_unique<sim::DifferentialWheelController>(
+ sim::DifferentialWheelControllerConfig{
+ chassis_params.wheel_base_m,
+ chassis_params.wheel_radius_m,
+ chassis_params.max_wheel_speed_mps,
+ chassis_params.encoder_counts_per_revolution,
+ chassis_params.pwm_limit,
+ chassis_params.integral_limit,
+ },
+ wheel_gains);
+ }
+
  // LSRI composition root. The mission uses both ends because it contains the
  // simulator and the autonomy loop in one process. A hardware runner gives
  // the platform end to a native driver or bridge instead.
@@ -653,6 +679,16 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
+ if (differential_wheel_controller_) {
+ runtime_config.capabilities.command_level =
+ sim::runtime::PlatformCommandLevel::Actuator;
+ runtime_config.capabilities.actuator_channels = {
+ {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
+ {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
+ };
+ }
  runtime_config.maximum_command_ttl_s = 0.25;
  runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
  runtime_channel_->configure();
@@ -1486,14 +1522,7 @@ void ScenarioSession::apply_motion() {
   throw std::logic_error("mission has no active runtime channel");
  }
  const auto runtime_now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
- const auto outbound_command = sim::runtime::make_motion_command(held_command_, chassis_caps_, runtime_now,
-                                                                 command_sequence_++, fixed_step_s * 2.0);
- if (runtime_channel_->autonomy().write_motion(outbound_command) !=
-     sim::runtime::CommandWriteResult::Accepted) {
-  throw std::runtime_error("runtime channel rejected the autonomous motion command");
- }
- const sim::DiffCmd applied_command =
-   sim::runtime::to_diff_command(runtime_channel_->platform().read_motion(runtime_now));
+ sim::DiffCmd applied_command = held_command_;
  snapshot_.control.target_v_mps = applied_command.target_v;
  snapshot_.control.target_w_radps = applied_command.target_w;
  // NOTE (FF verdict): a shadow feedforward computation lived here in stage 3
@@ -1503,9 +1532,110 @@ void ScenarioSession::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
+ sim::DiffState domain_candidate;
+ if (differential_wheel_controller_) {
+ if (!platform_) {
+ throw std::logic_error("actuator-level differential control requires a platform provider");
+ }
+
+ // The platform owns the joints. Publish their measured state through LSRI
+ // before the deployable ROBOT controller sees it; simulator truth must not
+ // cross this boundary through an in-process shortcut.
+ const auto provider_feedback = platform_->actuator_feedback();
+ const auto* provider_left = provider_feedback.find("left");
+ const auto* provider_right = provider_feedback.find("right");
+ if (!provider_left || !provider_right) {
+ throw std::runtime_error("RO-1 platform did not provide both wheel joint measurements");
+ }
+ sim::ObservationFrame feedback_frame;
+ feedback_frame.time_s = snapshot_.time_s;
+ feedback_frame.actuator_feedback.emplace();
+ feedback_frame.actuator_feedback->channels = {
+ {"left", provider_left->position_rad, provider_left->velocity_radps},
+ {"right", provider_right->position_rad, provider_right->velocity_radps},
+ };
+ feedback_frame.actuator_feedback->header = {
+ snapshot_.time_s, actuator_feedback_sequence_++, "base_link", 0.0,
+ sim::kMeasurementSchemaVersion, "sim.actuator-feedback"};
+ if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame))) {
+ throw std::runtime_error("runtime channel rejected the actuator feedback observation");
+ }
+ const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
+ if (!delivered_feedback || !delivered_feedback->actuator_feedback) {
+ throw std::runtime_error("runtime channel did not deliver actuator feedback");
+ }
+ const auto* left = delivered_feedback->actuator_feedback->find("left");
+ const auto* right = delivered_feedback->actuator_feedback->find("right");
+ if (!left || !right) {
+ throw std::runtime_error("delivered actuator feedback is missing a RO-1 wheel channel");
+ }
+ const sim::DifferentialWheelFeedback wheel_feedback{
+ left->position_rad,
+ right->position_rad,
+ left->velocity_radps,
+ right->velocity_radps,
+ true,
+ };
+ auto wheel_control = differential_wheel_controller_->update(
+ applied_command, wheel_feedback, fixed_step_s);
+
+ sim::runtime::ActuatorCommand outbound_command;
+ outbound_command.header = {
+ sim::runtime::kMessageSchemaVersion,
+ runtime_now,
+ runtime_now,
+ command_sequence_++,
+ "base_link",
+ "controller.ro1",
+ };
+ outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(
+ snapshot_.time_s + fixed_step_s * 2.0);
+ outbound_command.setpoints = {
+ {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ wheel_control.left.normalized_duty},
+ {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ wheel_control.right.normalized_duty},
+ };
+ if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
+ sim::runtime::CommandWriteResult::Accepted) {
+ throw std::runtime_error("runtime channel rejected the RO-1 actuator command");
+ }
+ const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
+ const auto delivered_duty = [&](const std::string& channel) {
+ const auto found = std::find_if(
+ delivered_command.setpoints.begin(), delivered_command.setpoints.end(),
+ [&](const auto& setpoint) { return setpoint.channel_id == channel; });
+ if (found == delivered_command.setpoints.end() ||
+ found->mode != sim::runtime::ActuatorCommandMode::NormalizedDuty) {
+ throw std::runtime_error("delivered actuator command is missing a normalized-duty channel");
+ }
+ return found->value;
+ };
+ wheel_control.left.normalized_duty = delivered_duty("left");
+ wheel_control.right.normalized_duty = delivered_duty("right");
+
+ // The SIM plant receives only the delivered actuator command and its own
+ // provider-side joint state. Motor curves, joint effort, contact, and rigid
+ // body integration remain below the LSRI boundary.
+ chassis_->set_actuator_feedback(provider_feedback);
+ domain_candidate = chassis_->step_normalized_duty(
+ before, applied_command, wheel_control, fixed_step_s, ground_contact);
+ } else {
+ const auto outbound_command = sim::runtime::make_motion_command(
+ held_command_, chassis_caps_, runtime_now, command_sequence_++, fixed_step_s * 2.0);
+ if (runtime_channel_->autonomy().write_motion(outbound_command) !=
+ sim::runtime::CommandWriteResult::Accepted) {
+ throw std::runtime_error("runtime channel rejected the autonomous motion command");
+ }
+ applied_command = sim::runtime::to_diff_command(
+ runtime_channel_->platform().read_motion(runtime_now));
+ snapshot_.control.target_v_mps = applied_command.target_v;
+ snapshot_.control.target_w_radps = applied_command.target_w;
  if (platform_)
-  chassis_->set_actuator_feedback(platform_->actuator_feedback());
- auto domain_candidate = chassis_->step(before, applied_command, fixed_step_s, ground_contact);
+ chassis_->set_actuator_feedback(platform_->actuator_feedback());
+ domain_candidate = chassis_->step(
+ before, applied_command, fixed_step_s, ground_contact);
+ }
  const auto terrain_before = terrain_.sample({before.x, before.y});
  const double forward_grade = sim::longitudinal_grade(terrain_before, before.theta);
  if (!terrain_.empty()) {
@@ -1823,7 +1953,8 @@ void ScenarioSession::apply_motion() {
  motion_observation.encoders->angular_velocity_radps = encoder_w;
  motion_observation.encoders->slip_scale = slip;
  motion_observation.encoders->header = {
-   motion_observation.time_s, motion_sequence_++, "base_link", 0.0, 1, "sim.encoder"};
+ motion_observation.time_s, motion_sequence_++, "base_link", 0.0,
+ sim::kMeasurementSchemaVersion, "sim.encoder"};
  if (imu) {
   if (!sensor_system_)
    throw std::logic_error("configured IMU requires the hardware sensor system");

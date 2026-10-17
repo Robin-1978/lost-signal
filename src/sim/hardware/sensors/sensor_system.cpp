@@ -91,7 +91,7 @@ ImuObservation SensorSystem::capture_imu(const ImuTruth& truth, double time_s,
  observation.noise_sigma_radps = config.gyro_noise_radps;
  observation.acceleration_noise_sigma_mps2 = config.accel_noise_mps2;
  observation.header = {time_s, imu_sequence_++, config.frame_id,
- config.latency_s, 1, "sim.imu"};
+ config.latency_s, kMeasurementSchemaVersion, "sim.imu"};
  return observation;
 }
 
@@ -116,7 +116,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
  apply_lidar_range_limits(*frame.lidar_static_reference, config.min_range_m);
  frame.lidar->scan_period_s = 1.0 / config.scan_hz;
  frame.lidar_static_reference->scan_period_s = 1.0 / config.scan_hz;
- const MeasurementHeader header{time_s, lidar_sequence_++, config.frame_id, config.latency_s, 1, "sim.lidar"};
+ const MeasurementHeader header{time_s, lidar_sequence_++, config.frame_id, config.latency_s, kMeasurementSchemaVersion, "sim.lidar"};
  frame.lidar->header = header;
  frame.lidar_static_reference->header = header;
  if (include_pose_observation) {
@@ -130,7 +130,7 @@ ObservationFrame SensorSystem::capture_lidar(const WorldTruth& truth, double tim
  truth.robot.theta + localization_rng_.gauss(heading_sigma),
  position_sigma,
  heading_sigma,
- {time_s, pose_sequence_++, "map", 0.0, 1, "sim.localization"},
+ {time_s, pose_sequence_++, "map", 0.0, kMeasurementSchemaVersion, "sim.localization"},
  };
  }
  return frame;
@@ -147,7 +147,7 @@ PoseObservation SensorSystem::capture_pose(const WorldTruth& truth, double time_
    truth.robot.theta + localization_rng_.gauss(heading_sigma_rad),
    position_sigma_m,
    heading_sigma_rad,
- {time_s, pose_sequence_++, "map", 0.0, 1, "sim.localization"},
+ {time_s, pose_sequence_++, "map", 0.0, kMeasurementSchemaVersion, "sim.localization"},
  };
 }
 

@@ -367,7 +367,7 @@ Status: **complete**
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The current Linux x86_64 Release build passes 78/78 tests, content validation, and canonical content roundtrip.
+The current Linux x86_64 Release build passes 79/79 tests, content validation, and canonical content roundtrip.
 The graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain final
 publishing gates. Sanitizers run at milestone and release-candidate gates; a result from an earlier baseline is not
 evidence for the current revision.
@@ -395,11 +395,10 @@ Bullet or the client. LSRI now registers provider ownership per device endpoint 
 commands or typed actuator commands with explicit duty, effort, velocity, or position semantics. This permits mixed
 native/simulated sensor composition and lets controller placement be selected by platform capability.
 
-The shipped scenario path still uses body-motion authority with the low-level motor loop inside the simulated
-platform. The next RO-1 control-boundary slice is to run the deployable wheel controller through LSRI actuator mode
-and leave only motor electrical response, joint dynamics, tire contact, and rigid-body integration in SIM. Both
-paths remain useful: a real smart drive may own its embedded loop, while a passive motor interface may use the
-ROBOT controller.
+The shipped RO-1 Bullet scenario now runs the deployable wheel controller through LSRI actuator mode. Joint
+position/velocity feedback crosses LSRI measurement schema 2, and normalized left/right duty returns through the
+typed command path. SIM retains motor response, joint dynamics, tire contact, and rigid-body integration. Domain
+mode and a future real smart drive may still declare body-motion authority and own their embedded loops.
 2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
  cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
  exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).

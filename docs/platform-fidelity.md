@@ -2,8 +2,9 @@
 
 ## Decision
 
-Lost Signal keeps autonomy commands at the chassis level and adapts them to native actuator commands inside a
-platform provider. Sensor and actuator models grow through named, sourced profiles rather than through one
+Lost Signal declares controller placement as a platform capability. A smart platform accepts a chassis-level
+command and owns its low-level loops. A passive plant accepts typed actuator commands from a deployable ROBOT
+controller. Sensor and actuator models grow through named, sourced profiles rather than through one
 ever-more-expensive default simulation.
 
 This preserves a small teaching and regression runtime while allowing a calibrated robot profile to replace the
@@ -26,20 +27,20 @@ calibration date, test conditions, and held-out error bounds.
 
 ## Two stable boundaries
 
-LSRI carries intent between autonomy and a platform:
+LSRI supports two explicit control paths:
 
 ```text
-autonomy
-  -> forward speed + yaw rate / steering angle / holonomic twist
-  -> LSRI validation, expiry, and watchdog
-  -> platform adapter
-  -> native actuator controllers
-  -> motor, steering mechanism, tires, and body
+smart drive:
+ROBOT body command -> LSRI -> embedded/provider controller -> plant
+
+passive drive (default RO-1 Bullet composition):
+platform joint feedback -> LSRI -> ROBOT wheel controller
+ROBOT typed actuator command -> LSRI -> motor and mechanical plant
 ```
 
-The platform adapter owns kinematics, controller placement, device protocols, and feedback conversion. The
-autonomy stack therefore does not change when a simulated PWM plant is replaced by a drive that accepts velocity
-or torque commands.
+The composition root chooses one path from declared capabilities. Device protocols and feedback conversion remain
+inside platform providers. Kinematics and any controller that must transfer with ROBOT remain in `src/robot`;
+electrical response, mechanisms, tires, contact, and rigid-body dynamics remain in the provider or physical plant.
 
 Sensor observations travel in the other direction. Simulation and hardware publish the same timestamps, frames,
 sequences, units, and measurement fields. A hardware measurement is never passed through the simulation noise
@@ -91,6 +92,11 @@ PWM is the native electronic command and torque is its mechanical output. Bullet
 resistance, slip, and body integration; the motor controller no longer applies a second traction plant. The current
 catalog values are typical teaching parameters, not an identified voltage, current, winding, gearbox-efficiency,
 deadband, battery-sag, or thermal model.
+
+The wheel-speed PID and encoder quantization are in the deployable ROBOT control target. Physical wheel-joint
+position and velocity cross LSRI measurement schema 2; normalized left/right duty crosses the typed actuator
+command path. The SIM plant does not own a second wheel-speed loop. Its body-motion entry remains available as the
+explicit smart-drive/analytic mode.
 
 The wheel link owns the inertia of its physical wheel geometry. Each powered joint separately declares motor and
 gearbox inertia reflected to that axis (`armature_inertia_kgm2`). The Bullet adapter represents the armature as a

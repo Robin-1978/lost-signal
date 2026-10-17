@@ -219,6 +219,9 @@ This separation lets a steel deck be mechanically slippery yet optically strong 
  speeds match the analytic instantaneous-centre-of-curvature solution within a declared tolerance.
 - Forward and inverse kinematics are checked by independent geometric or finite-difference oracles.
 - Encoder counts come from joint angle and preserve sign through forward, reverse, and direction changes.
+- In the default Bullet composition, named joint position/velocity feedback crosses LSRI to the deployable ROBOT
+ wheel controller. Its normalized left/right duty returns through typed LSRI actuator commands before the SIM
+ motor curve produces joint effort. No simulator state enters the controller through a side channel.
 - Physical longitudinal slip compares each joint's `radius * angular_velocity` with the rigid-body velocity at that
  wheel contact. The reported ratio is `abs(tread - contact) / max(abs(tread), abs(contact), 0.1 m/s)` and requires
  both 0.08 m/s absolute mismatch and ratio above 0.25 for three steps; release takes five clean steps. This avoids
@@ -337,8 +340,9 @@ models and are not included in RO-1 release evidence.
 1. **Implemented:** schema v4 separates planning footprint, visual mounts, and an optional articulated link/joint/
  actuator assembly. The generic physics interface contains no RO-1 or caster-specific joint type.
 2. **Implemented for RO-1:** an elevated base, powered continuous wheel joints, passive swivel and rolling caster
- joints, 35 mm caster trail, physical joint encoder feedback, PWM-to-wheel-torque control, and deterministic Bullet
- contact substeps. Other chassis deliberately remain non-reference profiles.
+ joints, 35 mm caster trail, LSRI physical-joint feedback, deployable wheel PID, LSRI normalized-duty output,
+ PWM-to-wheel-torque plant response, and deterministic Bullet contact substeps. Other chassis deliberately remain
+ non-reference profiles.
 3. **Implemented:** `base_footprint`, physical `base_link`, wheel/caster links, and sensor mounts now share one frame
  contract; 3D parts use `base_link` mounts and wheel/caster animation reads Bullet joint position. The virtual IMU is
  owned by `src/sim/hardware/sensors/` and consumes transformed six-axis truth rather than planar command differences.

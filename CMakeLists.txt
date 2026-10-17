@@ -48,7 +48,9 @@ target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_optio
 
 add_library(lost_signal_robot_platform STATIC
  src/robot/platform/differential_kinematics.cpp
+ src/robot/control/pid.cpp
  src/robot/control/feedforward.cpp
+ src/robot/control/differential_wheel_controller.cpp
 )
 target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core)
 
@@ -81,7 +83,6 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/localization/estimator_replay.cpp
  src/robot/autonomy/localization/slip_observer.cpp
  src/robot/autonomy/localization/estimator_filter.cpp
- src/robot/autonomy/control/pid.cpp
  src/robot/autonomy/control/route_tracking_system.cpp
  src/robot/autonomy/control/trajectory_tracking_system.cpp
 )
@@ -171,6 +172,13 @@ if(NOT LOST_SIGNAL_BUILD_SIM)
  add_executable(test_feedforward tests/new/test_feedforward.cpp)
  target_link_libraries(test_feedforward PRIVATE lost_signal_robot_platform)
  add_test(NAME feedforward COMMAND test_feedforward)
+
+ add_executable(test_differential_wheel_controller
+ tests/new/test_differential_wheel_controller.cpp)
+ target_link_libraries(test_differential_wheel_controller PRIVATE
+ lost_signal_robot_platform)
+ add_test(NAME differential_wheel_controller COMMAND
+ test_differential_wheel_controller)
  endif()
  return()
 endif()
@@ -702,6 +710,13 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_feedforward tests/new/test_feedforward.cpp)
  target_link_libraries(test_feedforward PRIVATE lost_signal_sim_hardware)
  add_test(NAME feedforward COMMAND test_feedforward)
+
+ add_executable(test_differential_wheel_controller
+ tests/new/test_differential_wheel_controller.cpp)
+ target_link_libraries(test_differential_wheel_controller PRIVATE
+ lost_signal_robot_platform)
+ add_test(NAME differential_wheel_controller COMMAND
+ test_differential_wheel_controller)
 
  add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
  target_link_libraries(test_state_estimator PRIVATE lost_signal_sim_hardware)

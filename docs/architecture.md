@@ -100,7 +100,9 @@ validation. The selected chassis then converts that command into wheel speed and
 Motor controllers compare targets with encoder feedback. LSRI supports two explicit placements: a smart platform may
 accept `BodyMotionCommand` and own its low-level loops, while a ROBOT controller may publish typed per-channel
 actuator commands for a passive simulated plant or native driver. Command placement is a declared capability, never
-an implicit reinterpretation of the same number.
+an implicit reinterpretation of the same number. The default RO-1 Bullet composition uses the second placement:
+physical joint position/velocity travels from SIM to the ROBOT wheel controller through LSRI, and normalized left/
+right duty travels back through LSRI. SIM owns only the motor curve, joint effort, contact, and rigid-body plant.
 
 For Ackermann platforms, the command is an equivalent front-wheel steering angle from the local planner through
 LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physical motor type, native drive command

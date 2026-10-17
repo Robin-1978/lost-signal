@@ -23,7 +23,7 @@ sim::Scan scan(double stamp_s, bool foreground) {
  value.ranges.assign(4, value.max_range);
  value.hit.assign(4, 0);
  value.intensities.assign(4, 0.0);
- value.header = {stamp_s, 1, "lidar_link", 0.0, 1, "test.autonomy"};
+ value.header = {stamp_s, 1, "lidar_link", 0.0, sim::kMeasurementSchemaVersion, "test.autonomy"};
  if (foreground) {
  value.ranges[0] = 2.0;
  value.hit[0] = 1;
