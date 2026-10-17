@@ -381,7 +381,9 @@ runtime contracts are closed.
 1. **Executable motion contract and runtime decomposition.** Make the local planner return the timestamped
  trajectory that control will track, add validation and tracking-envelope feedback, then continue after the
  completed `DynamicTrafficSystem` extraction with sensor scheduling, decision evidence, mission progress, and
- snapshot assembly from `MissionSimulation`.
+ snapshot assembly from `MissionSimulation`. Split deployable operator intent and task lifecycle into a small
+ middleware-neutral Task Executive; rename the remaining world, scoring and story owner as the Scenario/Game
+ Session so `mission` no longer hides two incompatible responsibilities.
 2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
  cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
  exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).

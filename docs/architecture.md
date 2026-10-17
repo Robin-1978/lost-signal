@@ -6,7 +6,8 @@ Lost Signal separates authored content, autonomous behavior, physical execution,
 
 ```mermaid
 graph TD
- A[Mission and field intent] --> B[Behavior and goal management]
+ A[Operator mission request] --> X[Task executive]
+ X --> B[Behavior and goal management]
  B --> C[Global planner: A* or Hybrid A*]
  C --> D[Local planner and dynamic prediction]
  D --> E[Chassis-feasible command]
@@ -24,7 +25,9 @@ graph TD
  K --> N[Headless JSON and replay]
 ```
 
-The player affects `A`. Autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform boundary. Sensors observe `H`, and presentation reads `K` without changing the simulation.
+The player or a real operator affects `A`. The deployable executive owns task lifecycle and supplies goals to
+autonomy; autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform
+boundary. Sensors observe `H`, and presentation reads `K` without changing the simulation.
 
 ## Layer responsibilities
 
@@ -94,6 +97,22 @@ mode, controller placement, and mechanical load are separate platform concerns. 
 capabilities without exposing PWM or device protocols to autonomy.
 
 ### Mission systems
+
+The word *mission* has two distinct meanings and the codebase must not merge them:
+
+- a **Mission Request** is deployable operator intent such as navigate, inspect, collect, return, cancel, pause, or
+ resume. A **Task Executive** validates that request, expands it into ordered goals, tracks lifecycle and outcomes,
+ and supplies intent to autonomy. It never reads simulator truth and never emits wheel or steering commands;
+ planning, safety and control remain in autonomy;
+- a **Scenario Definition / Game Session** is simulation-only content: world actors, faults, scripted events,
+ scoring, story progression and presentation. It may observe mission progress, but it cannot choose a stop pose,
+ rewrite a trajectory, or grant a collision exception.
+
+The target deployable set therefore includes a small `lost_signal_executive` library above
+`lost_signal_autonomy`, with operator/API adapters above it and LSRI platform adapters below autonomy. That library
+will depend only on `core`, `runtime` and autonomy contracts. The current `src/mission/` directory predates this
+terminology and still combines task intent with the game session. Until it is split, `lost_signal_mission` remains
+simulation-only and must not be presented as a real-robot Mission Executive.
 
 `src/mission/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
 `DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
