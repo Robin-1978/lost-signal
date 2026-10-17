@@ -653,6 +653,163 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  };
 }
 
+::sim::LidarPointCloud SimulatedPlatform::raycast_lidar_point_cloud(
+ const ::sim::physics::RigidTransform& world_from_lidar,
+ int azimuth_samples, const std::vector<double>& vertical_angles_rad,
+ double range_m, ::sim::physics::CollisionMask collision_mask,
+ double timestamp_s, double scan_period_s,
+ ::sim::physics::Vec3 linear_velocity_mps, double yaw_rate_radps,
+ const ::sim::LidarReturnModel& return_model) const {
+ if (azimuth_samples <= 0 || vertical_angles_rad.empty() || !(range_m > 0.0) ||
+ !(scan_period_s > 0.0) || vertical_angles_rad.size() > 128) {
+ throw std::invalid_argument("physics multibeam lidar configuration is invalid");
+ }
+ ::sim::LidarPointCloud cloud;
+ cloud.pattern = ::sim::LidarPatternKind::MultiBeamSpinning;
+ cloud.rings = static_cast<std::uint16_t>(vertical_angles_rad.size());
+ cloud.azimuth_samples = static_cast<std::uint32_t>(azimuth_samples);
+ cloud.max_range_m = range_m;
+ cloud.scan_period_s = scan_period_s;
+ cloud.header = {timestamp_s, 0, lidar_frame_id_, 0.0,
+ kMeasurementSchemaVersion, "sim.physics.lidar-point-cloud"};
+ cloud.points.reserve(static_cast<std::size_t>(azimuth_samples) *
+ vertical_angles_rad.size());
+ const bool include_dynamic =
+ (collision_mask & ::sim::physics::collision_layer::DynamicActor) != 0;
+ const auto static_only_mask = static_cast<::sim::physics::CollisionMask>(
+ collision_mask & ~::sim::physics::collision_layer::DynamicActor);
+ for (int azimuth_index = 0; azimuth_index < azimuth_samples; ++azimuth_index) {
+ const double azimuth = 2.0 * ::sim::kPi * static_cast<double>(azimuth_index) /
+ static_cast<double>(azimuth_samples);
+ for (std::size_t ring = 0; ring < vertical_angles_rad.size(); ++ring) {
+ const double firing_index = static_cast<double>(
+ static_cast<std::size_t>(azimuth_index) * vertical_angles_rad.size() + ring);
+ const double firing_count = static_cast<double>(
+ static_cast<std::size_t>(azimuth_samples) * vertical_angles_rad.size());
+ const double time_offset_s = -scan_period_s +
+ scan_period_s * firing_index / firing_count;
+ auto sample_from_lidar = world_from_lidar;
+ sample_from_lidar.translation_m.x += linear_velocity_mps.x * time_offset_s;
+ sample_from_lidar.translation_m.y += linear_velocity_mps.y * time_offset_s;
+ sample_from_lidar.translation_m.z += linear_velocity_mps.z * time_offset_s;
+ sample_from_lidar.rotation = ::sim::physics::quaternion_multiply(
+ ::sim::physics::quaternion_from_euler(
+ 0.0, 0.0, yaw_rate_radps * time_offset_s),
+ sample_from_lidar.rotation);
+ const double vertical = vertical_angles_rad[ring];
+ const ::sim::physics::Vec3 local_direction{
+ std::cos(vertical) * std::cos(azimuth),
+ std::cos(vertical) * std::sin(azimuth),
+ std::sin(vertical),
+ };
+ const auto direction = ::sim::physics::rotate_vector(
+ sample_from_lidar.rotation, local_direction);
+ auto hit = world_->raycast({sample_from_lidar.translation_m, direction,
+ range_m, static_only_mask, robot_body_});
+ if (include_dynamic) {
+ for (const auto& [actor_id, actor_body] : actor_bodies_) {
+ const auto actor = world_->state(actor_body);
+ const ::sim::physics::Vec3 center{
+ actor.position_m.x + actor.linear_velocity_mps.x * time_offset_s,
+ actor.position_m.y + actor.linear_velocity_mps.y * time_offset_s,
+ actor.position_m.z + actor.linear_velocity_mps.z * time_offset_s,
+ };
+ const double offset_x = sample_from_lidar.translation_m.x - center.x;
+ const double offset_y = sample_from_lidar.translation_m.y - center.y;
+ const double a = direction.x * direction.x + direction.y * direction.y;
+ const double b = 2.0 * (offset_x * direction.x + offset_y * direction.y);
+ const double radius = actor_radii_m_.at(actor_id);
+ const double c = offset_x * offset_x + offset_y * offset_y - radius * radius;
+ const double discriminant = b * b - 4.0 * a * c;
+ if (a < 1e-12 || discriminant < 0.0)
+ continue;
+ const double distance = (-b - std::sqrt(discriminant)) / (2.0 * a);
+ if (distance < 0.0 || distance > range_m ||
+ (hit.hit && distance >= hit.distance_m))
+ continue;
+ const double hit_z = sample_from_lidar.translation_m.z + direction.z * distance;
+ if (std::abs(hit_z - center.z) > actor_heights_m_.at(actor_id) * 0.5)
+ continue;
+ const ::sim::physics::Vec3 point{
+ sample_from_lidar.translation_m.x + direction.x * distance,
+ sample_from_lidar.translation_m.y + direction.y * distance,
+ hit_z,
+ };
+ const double normal_length = std::max(
+ 1e-12, std::hypot(point.x - center.x, point.y - center.y));
+ hit = {true, actor_body, point,
+ {(point.x - center.x) / normal_length,
+ (point.y - center.y) / normal_length, 0.0}, distance};
+ }
+ }
+ if (!hit.hit)
+ continue;
+ const double incidence = std::clamp(
+ -(direction.x * hit.normal.x + direction.y * hit.normal.y +
+ direction.z * hit.normal.z), 0.0, 1.0);
+ double reflectivity = return_model.default_reflectivity;
+ if (is_terrain(hit.body)) {
+ reflectivity = return_model.terrain_reflectivity;
+ for (const auto& surface : map_.surfaces) {
+ if (!active_in_level(surface.active_in, level_.id) ||
+ hit.point_m.x < surface.min.x || hit.point_m.x >= surface.max.x ||
+ hit.point_m.y < surface.min.y || hit.point_m.y >= surface.max.y)
+ continue;
+ reflectivity = surface.lidar_reflectivity;
+ break;
+ }
+ } else if (is_static_obstacle(hit.body)) {
+ reflectivity = return_model.obstacle_reflectivity;
+ } else if (!actor_for(hit.body).empty()) {
+ reflectivity = return_model.actor_reflectivity;
+ }
+ const double attenuation = 1.0 /
+ (1.0 + return_model.distance_attenuation_per_m2 *
+ hit.distance_m * hit.distance_m);
+ const double angular_response = return_model.incidence_floor +
+ (1.0 - return_model.incidence_floor) * incidence;
+ cloud.points.push_back({
+ local_direction.x * hit.distance_m,
+ local_direction.y * hit.distance_m,
+ local_direction.z * hit.distance_m,
+ std::clamp(reflectivity * angular_response * attenuation, 0.0, 1.0),
+ time_offset_s,
+ static_cast<std::uint16_t>(ring),
+ 0,
+ });
+ }
+ }
+ return cloud;
+}
+
+::sim::LidarPointCloudRaycastTruth SimulatedPlatform::scan_lidar_point_cloud(
+ int azimuth_samples, const std::vector<double>& vertical_angles_rad,
+ double range_m, double timestamp_s, double scan_period_s,
+ const ::sim::LidarReturnModel& return_model) const {
+ if (!has_lidar_mount_)
+ throw std::runtime_error("robot has no sensor mount for physics lidar");
+ const auto body = world_->state(robot_body_);
+ update_dynamic_frames(body);
+ const auto world_from_lidar = frames_.lookup("map", lidar_frame_id_);
+ if (!world_from_lidar)
+ throw std::runtime_error("physics frame tree cannot resolve world to lidar_link");
+ constexpr auto static_mask = static_cast<::sim::physics::CollisionMask>(
+ ::sim::physics::collision_layer::Terrain |
+ ::sim::physics::collision_layer::StaticObstacle);
+ constexpr auto combined_mask = static_cast<::sim::physics::CollisionMask>(
+ static_mask | ::sim::physics::collision_layer::DynamicActor);
+ return {
+ raycast_lidar_point_cloud(*world_from_lidar, azimuth_samples,
+ vertical_angles_rad, range_m, combined_mask, timestamp_s,
+ scan_period_s, body.linear_velocity_mps, body.angular_velocity_radps.z,
+ return_model),
+ raycast_lidar_point_cloud(*world_from_lidar, azimuth_samples,
+ vertical_angles_rad, range_m, static_mask, timestamp_s,
+ scan_period_s, body.linear_velocity_mps, body.angular_velocity_radps.z,
+ return_model),
+ };
+}
+
 void SimulatedPlatform::update_dynamic_frames(const ::sim::physics::BodyState& body) const {
  const auto angles = ::sim::physics::euler_from_quaternion(body.rotation);
  const auto ground = terrain_.sample({body.position_m.x, body.position_m.y});

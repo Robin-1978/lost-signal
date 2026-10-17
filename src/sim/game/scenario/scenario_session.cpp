@@ -1280,6 +1280,21 @@ void ScenarioSession::scan_environment() {
  lidar_config.range_m = sensor->range_m * (0.55 + 0.45 * visibility);
  lidar_config.scan_hz = sensor->scan_hz;
  lidar_config.latency_s = sensor->latency_s;
+ lidar_config.projection_min_height_m = sensor->projection_min_height_m;
+ lidar_config.projection_max_height_m = sensor->projection_max_height_m;
+ if (sensor->vertical_channels > 1) {
+ lidar_config.vertical_angles_rad.reserve(
+ static_cast<std::size_t>(sensor->vertical_channels));
+ for (int ring = 0; ring < sensor->vertical_channels; ++ring) {
+ const double blend = sensor->vertical_channels == 1
+ ? 0.0
+ : static_cast<double>(ring) /
+ static_cast<double>(sensor->vertical_channels - 1);
+ lidar_config.vertical_angles_rad.push_back(
+ sensor->vertical_min_rad +
+ (sensor->vertical_max_rad - sensor->vertical_min_rad) * blend);
+ }
+ }
  lidar_config.noise = {
    sensor->noise_sigma_m,
    sensor->range_bias_m,
@@ -1309,12 +1324,21 @@ void ScenarioSession::scan_environment() {
   }
  }
  sim::LidarRaycastTruth lidar_truth;
- if (platform_) {
+ std::optional<sim::LidarPointCloudRaycastTruth> point_cloud_truth;
+ if (platform_ && sensor->vertical_channels > 1) {
+ point_cloud_truth = platform_->scan_lidar_point_cloud(
+ sensor->rays, lidar_config.vertical_angles_rad, lidar_config.range_m,
+ snapshot_.time_s, 1.0 / sensor->scan_hz, lidar_config.returns);
+ } else if (platform_) {
  lidar_truth = platform_->scan_lidar(
  sensor->rays, lidar_config.range_m, estimation_system_.state().position,
  estimation_system_.state().heading_rad, snapshot_.time_s,
  1.0 / sensor->scan_hz, lidar_config.returns);
  } else {
+ if (sensor->vertical_channels > 1) {
+ throw std::runtime_error(
+ "multi-line lidar requires a 3D platform provider");
+ }
  const double cosine = std::cos(truth.robot.theta);
  const double sine = std::sin(truth.robot.theta);
  const sim::Vec2 sensor_origin{
@@ -1328,7 +1352,10 @@ void ScenarioSession::scan_environment() {
  truth.robot.theta + lidar_config.yaw_in_base_rad,
  sensor->rays, lidar_config.range_m, truth.dynamic_objects);
  }
- auto produced_observation = sensor_system_->capture_lidar(
+ auto produced_observation = point_cloud_truth
+ ? sensor_system_->capture_lidar_point_cloud(
+ truth, snapshot_.time_s, lidar_config, *point_cloud_truth)
+ : sensor_system_->capture_lidar(
  truth, snapshot_.time_s, lidar_config, lidar_truth);
  if (!runtime_channel_ ||
      !runtime_channel_->platform().publish_observation(std::move(produced_observation))) {
@@ -1339,6 +1366,31 @@ void ScenarioSession::scan_environment() {
   throw std::runtime_error("runtime channel did not deliver the simulated lidar observation");
  }
  const auto& observation = *delivered_observation;
+ snapshot_.lidar_point_cloud.clear();
+ if (observation.lidar_point_cloud && platform_) {
+ const auto world_from_sensor =
+ platform_->lookup_transform("map", observation.lidar_point_cloud->header.frame_id);
+ if (world_from_sensor) {
+ constexpr std::size_t kPresentationPointLimit = 1800;
+ const std::size_t stride = std::max<std::size_t>(
+ 1, (observation.lidar_point_cloud->points.size() +
+ kPresentationPointLimit - 1) / kPresentationPointLimit);
+ snapshot_.lidar_point_cloud.reserve(
+ std::min(kPresentationPointLimit,
+ observation.lidar_point_cloud->points.size()));
+ for (std::size_t index = 0;
+ index < observation.lidar_point_cloud->points.size(); index += stride) {
+ const auto& point = observation.lidar_point_cloud->points[index];
+ const auto world_point = sim::physics::transform_point(
+ *world_from_sensor, {point.x_m, point.y_m, point.z_m});
+ snapshot_.lidar_point_cloud.push_back({
+ {world_point.x, world_point.y, world_point.z},
+ point.intensity,
+ point.ring,
+ });
+ }
+ }
+ }
  if (observation.absolute_pose) {
   estimation_system_.correct(*observation.absolute_pose, observation.time_s);
   snapshot_.estimated_position = estimation_system_.state().position;

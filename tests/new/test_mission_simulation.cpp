@@ -496,22 +496,22 @@ int main() {
  {
   mission::CampaignProgress diy = mission::CampaignProgress::load(
     std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
-  CHECK(diy.inventory().size() == 6);
+ CHECK(diy.inventory().size() == 7);
   mission::ScenarioSession boot_mission(catalog, "boot",
                                           catalog.presentation_for_level("boot").recommended_build);
   boot_mission.run_to_completion();
   CHECK(boot_mission.result().status == mission::MissionStatus::Succeeded);
   diy.record_completion("boot", boot_mission.result(), catalog);
-  CHECK(diy.inventory().size() == 8);
+ CHECK(diy.inventory().size() == 9);
   diy.record_completion("boot", boot_mission.result(), catalog);
-  CHECK(diy.inventory().size() == 8);
+ CHECK(diy.inventory().size() == 9);
   CHECK(diy.last_build("boot") == nullptr);
   mission::BuildSelection custom = boot_mission.build();
   custom.style = 0.2;
   diy.record_build("boot", custom);
   diy.save(progress_path, catalog);
   const auto diy_loaded = mission::CampaignProgress::load(progress_path, catalog);
-  CHECK(diy_loaded.inventory().size() == 8);
+ CHECK(diy_loaded.inventory().size() == 9);
   CHECK(diy_loaded.last_build("boot") != nullptr);
   CHECK(std::abs(diy_loaded.last_build("boot")->style - 0.2) < 1e-12);
   CHECK(diy_loaded.last_build("lost_signal") == nullptr);

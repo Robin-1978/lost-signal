@@ -59,6 +59,22 @@ ComponentSpec resolve_lidar(const ComponentDefinition& component) {
  const double terrain_reflectivity = optional_number(component, "terrain_reflectivity", 0.30, 0.0, 1.0);
  const double obstacle_reflectivity = optional_number(component, "obstacle_reflectivity", 0.68, 0.0, 1.0);
  const double actor_reflectivity = optional_number(component, "actor_reflectivity", 0.52, 0.0, 1.0);
+ const double vertical_channels = optional_number(
+ component, "vertical_channels", 1.0, 1.0, 128.0);
+ const double vertical_min_deg = optional_number(
+ component, "vertical_min_deg", 0.0, -90.0, 90.0);
+ const double vertical_max_deg = optional_number(
+ component, "vertical_max_deg", 0.0, -90.0, 90.0);
+ const double projection_min_height_m = optional_number(
+ component, "projection_min_height_m", -0.20, -10.0, 10.0);
+ const double projection_max_height_m = optional_number(
+ component, "projection_max_height_m", 1.50, -10.0, 10.0);
+ if (std::floor(vertical_channels) != vertical_channels ||
+ vertical_min_deg > vertical_max_deg ||
+ projection_min_height_m >= projection_max_height_m) {
+ throw ContentError("component '" + component.id +
+ "' has invalid multi-line lidar geometry");
+ }
  return LidarSpec{
  minimum_range,
  maximum_range, static_cast<int>(rays),
@@ -73,6 +89,11 @@ ComponentSpec resolve_lidar(const ComponentDefinition& component) {
  optional_number(component, "incidence_floor", 0.0, 0.0, 1.0),
  required_number(component, "distance_attenuation_per_m2", 0.0),
    required_number(component, "power_w", 0.0),
+ static_cast<int>(vertical_channels),
+ vertical_min_deg * sim::kPi / 180.0,
+ vertical_max_deg * sim::kPi / 180.0,
+ projection_min_height_m,
+ projection_max_height_m,
  };
 }
 

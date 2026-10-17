@@ -12,4 +12,9 @@ struct LidarRaycastTruth {
  Scan static_environment;
 };
 
+struct LidarPointCloudRaycastTruth {
+ LidarPointCloud combined;
+ LidarPointCloud static_environment;
+};
+
 } // namespace sim

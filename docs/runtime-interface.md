@@ -2,7 +2,7 @@
 
 The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
 
-LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 2`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 adds named actuator-joint position and velocity feedback.
+LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 3`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 added named actuator-joint position and velocity feedback; schema 3 adds timed, ring-indexed 3D LiDAR point clouds.
 
 ## Boundary
 
@@ -56,6 +56,7 @@ The observation frame carries one or more transport-neutral measurements:
 | Measurement | Required frame | Main fields |
 |---|---|---|
 | Planar LiDAR | calibrated sensor frame | ranges, hits, optional intensity, scan timing |
+| Multi-line LiDAR | calibrated sensor frame | XYZ, intensity, ring, return index, per-point timing |
 | Encoder odometry | `base_link` | linear velocity, angular velocity, slip scale |
 | Actuator feedback | `base_link` | named joint position and velocity channels |
 | IMU | `imu_link` | yaw rate, planar acceleration, noise description |

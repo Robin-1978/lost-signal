@@ -81,6 +81,10 @@ class SimulatedPlatform {
  ::sim::Vec2 estimated_position, double estimated_heading_rad,
  double timestamp_s = 0.0, double scan_period_s = 0.0,
  const ::sim::LidarReturnModel& return_model = {}) const;
+ ::sim::LidarPointCloudRaycastTruth scan_lidar_point_cloud(
+ int azimuth_samples, const std::vector<double>& vertical_angles_rad,
+ double range_m, double timestamp_s = 0.0, double scan_period_s = 0.0,
+ const ::sim::LidarReturnModel& return_model = {}) const;
  std::optional<::sim::physics::RigidTransform> lookup_transform(
  const std::string& target_frame, const std::string& source_frame) const {
  return frames_.lookup(target_frame, source_frame);
@@ -108,6 +112,13 @@ class SimulatedPlatform {
  const ::sim::physics::BodyState& after, double fixed_dt_s);
  ::sim::Scan raycast_lidar(const ::sim::physics::RigidTransform& world_from_lidar,
  int rays, double range_m, ::sim::physics::CollisionMask collision_mask,
+ double timestamp_s, double scan_period_s,
+ ::sim::physics::Vec3 linear_velocity_mps, double yaw_rate_radps,
+ const ::sim::LidarReturnModel& return_model) const;
+ ::sim::LidarPointCloud raycast_lidar_point_cloud(
+ const ::sim::physics::RigidTransform& world_from_lidar,
+ int azimuth_samples, const std::vector<double>& vertical_angles_rad,
+ double range_m, ::sim::physics::CollisionMask collision_mask,
  double timestamp_s, double scan_period_s,
  ::sim::physics::Vec3 linear_velocity_mps, double yaw_rate_radps,
  const ::sim::LidarReturnModel& return_model) const;

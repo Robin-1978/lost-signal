@@ -88,6 +88,8 @@ std::vector<const MeasurementHeader*> measurement_headers(const ObservationFrame
  std::vector<const MeasurementHeader*> headers;
  if (observation.lidar)
   headers.push_back(&observation.lidar->header);
+ if (observation.lidar_point_cloud)
+ headers.push_back(&observation.lidar_point_cloud->header);
  if (observation.lidar_static_reference)
   headers.push_back(&observation.lidar_static_reference->header);
  if (observation.encoders)
@@ -427,6 +429,28 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
    set_reason(reason, "lidar payload dimensions or range are invalid");
    return false;
   }
+ }
+ if (observation.lidar_point_cloud) {
+ const auto& cloud = *observation.lidar_point_cloud;
+ if (cloud.pattern != LidarPatternKind::MultiBeamSpinning || cloud.rings == 0 ||
+ cloud.azimuth_samples == 0 || !finite_nonnegative(cloud.max_range_m) ||
+ cloud.max_range_m <= 0.0 || !finite_nonnegative(cloud.scan_period_s) ||
+ cloud.scan_period_s <= 0.0 ||
+ cloud.points.size() > static_cast<std::size_t>(cloud.rings) * cloud.azimuth_samples) {
+ set_reason(reason, "lidar point cloud dimensions or timing are invalid");
+ return false;
+ }
+ for (const auto& point : cloud.points) {
+ if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
+ !std::isfinite(point.z_m) || !finite_nonnegative(point.intensity) ||
+ point.intensity > 1.0 || !std::isfinite(point.time_offset_s) ||
+ point.time_offset_s > 1e-9 ||
+ point.time_offset_s < -cloud.scan_period_s - 1e-9 ||
+ point.ring >= cloud.rings) {
+ set_reason(reason, "lidar point cloud contains an invalid return");
+ return false;
+ }
+ }
  }
  if (observation.lidar_static_reference && !observation.lidar) {
   set_reason(reason, "static lidar reference requires a lidar measurement");

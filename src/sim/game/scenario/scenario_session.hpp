@@ -264,6 +264,12 @@ struct EnvironmentState {
  double blend{0.0};
 };
 
+struct LidarPointSnapshot {
+ Vec3 position_m;
+ double intensity{0.0};
+ std::uint16_t ring{0};
+};
+
 struct MissionSnapshot {
  double time_s{0.0};
  sim::DiffState robot;
@@ -272,6 +278,7 @@ struct MissionSnapshot {
  std::vector<ActorSnapshot> actors;
  std::vector<DynamicObstacleSnapshot> dynamic_obstacles;
  std::vector<sim::Vec2> lidar_hits;
+ std::vector<LidarPointSnapshot> lidar_point_cloud;
  ControlSnapshot control;
  bool static_obstacle_detected{false};
  bool dynamic_object_detected{false};

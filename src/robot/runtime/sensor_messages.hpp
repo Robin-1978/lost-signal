@@ -6,7 +6,7 @@
 
 namespace sim {
 
-inline constexpr std::uint32_t kMeasurementSchemaVersion = 2;
+inline constexpr std::uint32_t kMeasurementSchemaVersion = 3;
 
 // Transport-neutral measurement header used by simulation, replay, native
 // drivers, and future IPC providers. stamp_s is acquisition time in the
@@ -48,6 +48,9 @@ struct LidarPointReturn {
 struct LidarPointCloud {
  std::vector<LidarPointReturn> points;
  LidarPatternKind pattern{LidarPatternKind::MultiBeamSpinning};
+ std::uint16_t rings{0};
+ std::uint32_t azimuth_samples{0};
+ double max_range_m{0.0};
  double scan_period_s{0.0};
  MeasurementHeader header;
 };

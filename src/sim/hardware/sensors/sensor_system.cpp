@@ -31,7 +31,69 @@ void validate_lidar_config(const LidarConfig& config) {
  }
 }
 
+void apply_point_cloud_noise(LidarPointCloud& cloud, double min_range_m,
+ const LidarNoiseModel& model, Rng& rng) {
+ std::vector<LidarPointReturn> filtered;
+ filtered.reserve(cloud.points.size());
+ for (auto point : cloud.points) {
+ const double range = std::sqrt(point.x_m * point.x_m + point.y_m * point.y_m +
+ point.z_m * point.z_m);
+ if (!(range >= min_range_m) || range > cloud.max_range_m ||
+ rng.uniform01() < model.dropout_probability)
+ continue;
+ double measured = range + model.range_bias_m + rng.gauss(model.range_stddev_m);
+ if (model.range_resolution_m > 0.0)
+ measured = std::round(measured / model.range_resolution_m) * model.range_resolution_m;
+ if (!(measured >= min_range_m) || measured > cloud.max_range_m)
+ continue;
+ const double scale = measured / std::max(1e-12, range);
+ point.x_m *= scale;
+ point.y_m *= scale;
+ point.z_m *= scale;
+ filtered.push_back(point);
+ }
+ cloud.points = std::move(filtered);
+}
+
 } // namespace
+
+Scan project_point_cloud_to_planar(const LidarPointCloud& cloud,
+ double min_height_m, double max_height_m) {
+ if (cloud.azimuth_samples == 0 || cloud.rings == 0 ||
+ !(cloud.max_range_m > 0.0) || min_height_m >= max_height_m) {
+ throw std::invalid_argument("invalid point-cloud projection configuration");
+ }
+ Scan scan;
+ scan.n_rays = static_cast<int>(cloud.azimuth_samples);
+ scan.max_range = cloud.max_range_m;
+ scan.angle_increment_rad = 2.0 * kPi / static_cast<double>(cloud.azimuth_samples);
+ scan.scan_period_s = cloud.scan_period_s;
+ scan.time_increment_s = cloud.scan_period_s / static_cast<double>(cloud.azimuth_samples);
+ scan.header = cloud.header;
+ scan.header.source_id = "sim.lidar";
+ scan.ranges.assign(cloud.azimuth_samples, cloud.max_range_m);
+ scan.hit.assign(cloud.azimuth_samples, 0);
+ scan.intensities.assign(cloud.azimuth_samples, 0.0);
+ for (const auto& point : cloud.points) {
+ if (point.z_m < min_height_m || point.z_m > max_height_m)
+ continue;
+ const double planar_range = std::hypot(point.x_m, point.y_m);
+ if (!(planar_range > 0.0) || planar_range > cloud.max_range_m)
+ continue;
+ double angle = std::atan2(point.y_m, point.x_m);
+ if (angle < 0.0)
+ angle += 2.0 * kPi;
+ const auto azimuth = static_cast<std::size_t>(std::llround(
+ angle / (2.0 * kPi) * static_cast<double>(cloud.azimuth_samples))) %
+ cloud.azimuth_samples;
+ if (planar_range < scan.ranges[azimuth]) {
+ scan.ranges[azimuth] = planar_range;
+ scan.hit[azimuth] = 1;
+ scan.intensities[azimuth] = point.intensity;
+ }
+ }
+ return scan;
+}
 
 SensorSystem::SensorSystem(std::uint32_t noise_seed, std::uint32_t localization_seed)
  : noise_rng_(noise_seed),
@@ -46,12 +108,55 @@ void SensorSystem::reset(std::uint32_t noise_seed, std::uint32_t localization_se
  imu_accel_rng_ = Rng(noise_seed ^ 0xa54ff53aU);
  imu_bias_walk_rng_ = Rng(noise_seed ^ 0x3c6ef372U);
  lidar_sequence_ = 0;
+ point_cloud_sequence_ = 0;
  pose_sequence_ = 0;
  imu_sequence_ = 0;
  imu_bias_initialized_ = false;
  imu_roll_bias_radps_ = 0.0;
  imu_pitch_bias_radps_ = 0.0;
  imu_yaw_bias_radps_ = 0.0;
+}
+
+ObservationFrame SensorSystem::capture_lidar_point_cloud(
+ const WorldTruth& truth, double time_s, const LidarConfig& config,
+ const LidarPointCloudRaycastTruth& raycast_truth,
+ bool include_pose_observation) {
+ validate_lidar_config(config);
+ const auto valid_cloud = [&](const LidarPointCloud& cloud) {
+ return cloud.pattern == LidarPatternKind::MultiBeamSpinning &&
+ cloud.rings == config.vertical_angles_rad.size() &&
+ cloud.azimuth_samples == static_cast<std::uint32_t>(config.rays) &&
+ std::abs(cloud.max_range_m - config.range_m) < 1e-9;
+ };
+ if (config.vertical_angles_rad.size() < 2 ||
+ !valid_cloud(raycast_truth.combined) ||
+ !valid_cloud(raycast_truth.static_environment)) {
+ throw std::invalid_argument("multibeam raycast truth does not match sensor configuration");
+ }
+ ObservationFrame frame;
+ frame.time_s = time_s;
+ frame.lidar_point_cloud = raycast_truth.combined;
+ frame.lidar_point_cloud->header = {
+ time_s, point_cloud_sequence_++, config.frame_id, config.latency_s,
+ kMeasurementSchemaVersion, "sim.lidar-point-cloud"};
+ apply_point_cloud_noise(*frame.lidar_point_cloud, config.min_range_m,
+ config.noise, noise_rng_);
+ auto static_cloud = raycast_truth.static_environment;
+ static_cloud.header = frame.lidar_point_cloud->header;
+ frame.lidar = project_point_cloud_to_planar(
+ *frame.lidar_point_cloud, config.projection_min_height_m,
+ config.projection_max_height_m);
+ frame.lidar_static_reference = project_point_cloud_to_planar(
+ static_cloud, config.projection_min_height_m,
+ config.projection_max_height_m);
+ const MeasurementHeader planar_header{
+ time_s, lidar_sequence_++, config.frame_id, config.latency_s,
+ kMeasurementSchemaVersion, "sim.lidar"};
+ frame.lidar->header = planar_header;
+ frame.lidar_static_reference->header = planar_header;
+ if (include_pose_observation)
+ frame.absolute_pose = capture_pose(truth, time_s);
+ return frame;
 }
 
 ImuObservation SensorSystem::capture_imu(const ImuTruth& truth, double time_s,

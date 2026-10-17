@@ -22,7 +22,8 @@
           "sensor.short_fast_lidar",
           "sensor.standard_lidar",
           "sensor.long_slow_lidar",
-          "sensor.precision_lidar"
+          "sensor.precision_lidar",
+          "sensor.sixteen_line_lidar"
         ]
       },
       {

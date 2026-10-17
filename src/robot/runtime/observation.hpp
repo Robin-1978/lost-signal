@@ -61,6 +61,7 @@ struct PoseObservation {
 struct ObservationFrame {
  double time_s{0.0};
  std::optional<Scan> lidar;
+ std::optional<LidarPointCloud> lidar_point_cloud;
  // Expected returns from known static geometry at the estimated sensor pose.
  // Simulation may raycast them; hardware may raycast the deployed map.
  std::optional<Scan> lidar_static_reference;

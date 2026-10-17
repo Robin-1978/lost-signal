@@ -21,7 +21,13 @@ struct LidarConfig {
  double latency_s{0.0};
  Vec2 position_in_base;
  double yaw_in_base_rad{0.0};
+ std::vector<double> vertical_angles_rad;
+ double projection_min_height_m{-0.20};
+ double projection_max_height_m{1.50};
 };
+
+Scan project_point_cloud_to_planar(const LidarPointCloud& cloud,
+ double min_height_m, double max_height_m);
 
 // Ideal rigid-body input to a simulated IMU. Values are already evaluated at
 // the calibrated imu_link origin and expressed in imu_link; the device model
@@ -51,6 +57,10 @@ class SensorSystem {
  void reset(std::uint32_t noise_seed, std::uint32_t localization_seed);
  ObservationFrame capture_lidar(const WorldTruth& truth, double time_s, const LidarConfig& config,
  const LidarRaycastTruth& raycast_truth, bool include_pose_observation = false);
+ ObservationFrame capture_lidar_point_cloud(
+ const WorldTruth& truth, double time_s, const LidarConfig& config,
+ const LidarPointCloudRaycastTruth& raycast_truth,
+ bool include_pose_observation = false);
  PoseObservation capture_pose(const WorldTruth& truth, double time_s,
  double position_sigma_m = 0.01,
                               double heading_sigma_rad = 0.006);
@@ -63,6 +73,7 @@ class SensorSystem {
  Rng imu_accel_rng_;
  Rng imu_bias_walk_rng_;
  std::uint64_t lidar_sequence_{0};
+ std::uint64_t point_cloud_sequence_{0};
  std::uint64_t pose_sequence_{0};
  std::uint64_t imu_sequence_{0};
  bool imu_bias_initialized_{false};

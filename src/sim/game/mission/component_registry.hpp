@@ -39,6 +39,11 @@ struct LidarSpec {
  double incidence_floor{0.0};
  double distance_attenuation_per_m2{0.0};
  double power_w{0.0};
+ int vertical_channels{1};
+ double vertical_min_rad{0.0};
+ double vertical_max_rad{0.0};
+ double projection_min_height_m{-0.20};
+ double projection_max_height_m{1.50};
 };
 
 struct ComputeSpec {

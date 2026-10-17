@@ -2,6 +2,7 @@
 #include "sim/game/mission/content_catalog.hpp"
 #include "sim/hardware/sensors/sensor_system.hpp"
 #include "sim/game/platform/simulated_platform.hpp"
+#include "robot/runtime/runtime_channel.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +61,16 @@ int main() {
  REQUIRE(lidar->range_resolution_m == 0.005);
  REQUIRE(lidar->power_w == 3.0);
 
+ mission::BuildSelection multibeam_build;
+ multibeam_build.parts["sensor"] = "sensor.sixteen_line_lidar";
+ const auto multibeam_resolved =
+ mission::ComponentRegistry::builtins().resolve(catalog, multibeam_build);
+ const auto* multibeam = multibeam_resolved.lidar();
+ REQUIRE(multibeam);
+ REQUIRE(multibeam->vertical_channels == 16);
+ REQUIRE(std::abs(multibeam->vertical_min_rad + 15.0 * sim::kPi / 180.0) < 1e-12);
+ REQUIRE(std::abs(multibeam->vertical_max_rad - 15.0 * sim::kPi / 180.0) < 1e-12);
+
  const auto& source_level = catalog.level("motor_trial");
  const auto& source_map = catalog.map(source_level.map);
  const auto map = empty_map(source_map);
@@ -104,6 +115,56 @@ int main() {
  REQUIRE(scan.combined.intensities[0] > 0.0);
  REQUIRE(!scan.static_environment.hit[0]);
  REQUIRE(scan.static_environment.ranges[0] == lidar->range_m);
+
+ // One rotating 3D scan owns all sixteen calibrated rings. Returns carry
+ // their ring and firing time; this is not sixteen unrelated planar scans.
+ std::vector<double> vertical_angles;
+ for (int ring = 0; ring < multibeam->vertical_channels; ++ring) {
+ const double blend = static_cast<double>(ring) /
+ static_cast<double>(multibeam->vertical_channels - 1);
+ vertical_angles.push_back(multibeam->vertical_min_rad +
+ (multibeam->vertical_max_rad - multibeam->vertical_min_rad) * blend);
+ }
+ platform.sync_actors({{"cloud_actor", {lidar_x + 2.0, lidar_y}, {}, 0.45}});
+ const auto cloud_truth = platform.scan_lidar_point_cloud(
+ multibeam->rays, vertical_angles, multibeam->range_m, kStampS,
+ 1.0 / multibeam->scan_hz, return_model);
+ REQUIRE(cloud_truth.combined.rings == 16);
+ REQUIRE(cloud_truth.combined.azimuth_samples ==
+ static_cast<std::uint32_t>(multibeam->rays));
+ REQUIRE(!cloud_truth.combined.points.empty());
+ REQUIRE(std::all_of(cloud_truth.combined.points.begin(),
+ cloud_truth.combined.points.end(), [](const auto& point) {
+ return point.ring < 16 && point.time_offset_s <= 0.0 &&
+ point.time_offset_s >= -0.1;
+ }));
+ REQUIRE(std::any_of(cloud_truth.combined.points.begin(),
+ cloud_truth.combined.points.end(), [](const auto& point) {
+ return point.z_m < -0.1;
+ }));
+
+ sim::LidarConfig multibeam_config;
+ multibeam_config.rays = multibeam->rays;
+ multibeam_config.min_range_m = multibeam->min_range_m;
+ multibeam_config.range_m = multibeam->range_m;
+ multibeam_config.scan_hz = multibeam->scan_hz;
+ multibeam_config.vertical_angles_rad = vertical_angles;
+ multibeam_config.projection_min_height_m =
+ multibeam->projection_min_height_m;
+ multibeam_config.projection_max_height_m =
+ multibeam->projection_max_height_m;
+ sim::WorldTruth cloud_world;
+ cloud_world.robot = {spawn.x, spawn.y, 0.0, 0.0, 0.0};
+ sim::SensorSystem cloud_sensor(77, 9);
+ const auto cloud_observation = cloud_sensor.capture_lidar_point_cloud(
+ cloud_world, kStampS, multibeam_config, cloud_truth);
+ REQUIRE(cloud_observation.lidar_point_cloud.has_value());
+ REQUIRE(cloud_observation.lidar.has_value());
+ REQUIRE(cloud_observation.lidar_static_reference.has_value());
+ REQUIRE(cloud_observation.lidar->n_rays == multibeam->rays);
+ REQUIRE(std::count(cloud_observation.lidar->hit.begin(),
+ cloud_observation.lidar->hit.end(), 1) > 0);
+ REQUIRE(sim::runtime::valid_observation_frame(cloud_observation));
 
  // Ray zero belongs to the acquisition start. A +1 m/s actor was 0.1 m
  // behind its end-of-scan pose, so its measured entry range changes by 0.1 m.
