@@ -187,7 +187,7 @@ include or link any `src/sim` source or `lost_signal_sim_*` library. Neutral obs
 messages live under `robot/runtime/`; simulator truth remains under `sim/`. A real deployment therefore replaces the
 LSRI provider and platform adapter and omits all game, world, Bullet, and rendering targets.
 
-`mission_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
+`scenario_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
 into neutral autonomy inputs and copies diagnostics into the game snapshot. It is not an algorithm provider. A
 native product still needs its own lifecycle/configuration entry point around the same autonomy classes; the
 repository does not yet ship a turnkey real-robot executable.
@@ -205,12 +205,11 @@ and [SDFormat](http://sdformat.org/spec?ver=1.12&elem=link): visual, collision, 
 representations and origins. Lost Signal keeps a smaller native format rather than importing either middleware
 format into the runtime.
 
-The current dynamic profile uses one flat sprung-hull proxy and chassis-resolved wheel forces. It applies the
-resolved force at the hull centre and the wheel-force difference as a yaw moment; applying traction below a hull
-with no suspension constraints produces artificial pitch and visible ground penetration. The higher-fidelity
-identified profile will represent a chassis body plus per-wheel connection, axle, radius, contact, and suspension
-parameters. Those are the same physical roles exposed by Bullet's `btRaycastVehicle`; they remain behind the
-platform boundary rather than changing planner commands.
+RO-1 uses the articulated reference assembly: an elevated chassis, two powered wheel links, and a passive caster
+fork and wheel joined and solved by Bullet. Its encoder truth comes from physical joint state and its motor loop
+applies wheel-joint effort. The other chassis remain compact teaching proxies until they pass equivalent physical
+gates. Optional suspension or identified tire models remain platform-provider concerns and do not change planner
+commands.
 
 ### Presentation
 
