@@ -1,4 +1,4 @@
-#include "mission/deployable_map_adapter.hpp"
+#include "sim/game/mission/deployable_map_adapter.hpp"
 
 #include <cmath>
 #include <iostream>

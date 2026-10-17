@@ -1,5 +1,5 @@
-#include "autonomy/planning/global/global_planner.hpp"
-#include "autonomy/control/follow.hpp"
+#include "robot/autonomy/planning/global/global_planner.hpp"
+#include "robot/autonomy/control/follow.hpp"
 
 #include <iostream>
 #include <memory>

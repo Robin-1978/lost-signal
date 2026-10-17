@@ -10,7 +10,7 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 | Layer | Current state | Transfer outlook |
 |---|---|---|
-| Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | external operator/fleet API and a native lifecycle executable remain; game scenario/progression is not deployed |
+| Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | external operator/fleet API and a native lifecycle executable remain; game sim/scenario/progression is not deployed |
 | Map management | LSRM v1, immutable revisions, semantic places, provider lifecycle, authored-map compiler, and checksummed package I/O are implemented | SLAM, survey, HD-map and remote providers still need concrete bridges and field evidence |
 | Global planning | A* and Hybrid A* consume maps and vehicle constraints | reusable when maps, footprint, and costs match the robot |
 | Local planning | trajectory evaluation uses obstacles, dynamics, and chassis limits | reusable only after latency, footprint, braking, and prediction calibration |
@@ -23,18 +23,21 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 ## Deployment boundary
 
-A native robot build keeps `lost_signal_core`, `lost_signal_runtime`, `lost_signal_map_io`,
-`lost_signal_autonomy`, and `lost_signal_executive`, then supplies LSRI platform and map providers. It
-does not compile or ship the current `lost_signal_scenario`, `src/sim`,
-`lost_signal_physics`, or `src/client`. Runtime observation contracts are defined outside the simulator and contain
+A native robot build links `lost_signal_robot_stack`, then supplies LSRI platform and map providers. The executable
+robot-only build gate configures with `LOST_SIGNAL_BUILD_SIM=OFF`; it does not fetch Bullet or compile anything under
+`src/sim`. Runtime observation and command contracts are defined outside the simulator and contain
 timestamps, frames, measurements, and estimated state only. Simulation truth, authored actors, game goals, scoring,
 and rendering snapshots cannot appear in an autonomy interface.
+
+Providers are selected per LSRI endpoint. A hardware-in-the-loop run may bind a native LiDAR to `lidar/front` while
+keeping IMU, encoders, actuators, terrain, and vehicle dynamics simulated. The inverse arrangement can feed virtual
+sensors to the deployable controller and command a real motor bench. Every binding declares its source, frame,
+clock domain, rate, backend, and role; duplicate command ownership is rejected.
 
 The Task Executive sits above autonomy and accepts validated task plans, cancels/pauses/resumes them,
 orders semantic goals, and reports progress. It cannot command actuators directly or bypass trajectory and safety
 validation. Scenario actors, score thresholds, scripted surprises and story state belong to a separate
-simulation-only Scenario/Game Session layer. The current `src/mission` name covers both concerns, so it is excluded
-as a whole until that split is complete.
+simulation-only Scenario/Game Session layer under `src/sim/game/`.
 
 The [Lost Signal Robot Map](robot-map.md) is likewise source-neutral. An editor, SLAM backend, survey compiler, or HD-map
 bridge publishes validated revisions through `IMapProvider`; planning and the Task Executive never import the
@@ -96,7 +99,7 @@ Passing this milestone means the simulator predicts selected low-speed behavior 
 
 ### Gate 1: LSRI parity
 
-The hardware adapter implements LSRI v1 with the same units, frame semantics, timestamps, sequence rules, command limits, lifecycle, watchdog, and state fields used by simulation. Unit, sign, transform, stale-data, and conformance tests pass.
+The hardware adapter implements LSRI v2 with the same units, frame semantics, timestamps, sequence rules, command limits, lifecycle, watchdog, and state fields used by simulation. Unit, sign, transform, stale-data, and conformance tests pass.
 
 ### Gate 2: component identification
 

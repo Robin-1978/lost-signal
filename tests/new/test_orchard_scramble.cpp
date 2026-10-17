@@ -1,5 +1,5 @@
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <nlohmann/json.hpp>
 

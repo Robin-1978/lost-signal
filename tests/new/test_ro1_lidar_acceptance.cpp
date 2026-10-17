@@ -1,7 +1,7 @@
-#include "mission/component_registry.hpp"
-#include "mission/content_catalog.hpp"
-#include "hw/sensors/sensor_system.hpp"
-#include "sim/simulated_platform.hpp"
+#include "sim/game/mission/component_registry.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/hardware/sensors/sensor_system.hpp"
+#include "sim/game/platform/simulated_platform.hpp"
 
 #include <algorithm>
 #include <cmath>

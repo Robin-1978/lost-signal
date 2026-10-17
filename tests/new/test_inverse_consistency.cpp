@@ -4,8 +4,8 @@
 // mapping stands on: linearity everywhere for twins, the Ackermann 0.5 m/s
 // floor (policy, pins the intentional non-inverse), tracked reuse.
 
-#include "hw/chassis/diff_drive.hpp"
-#include "hw/chassis/ackermann.hpp"
+#include "robot/platform/differential_kinematics.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -26,9 +26,9 @@ int main() {
   for (const double base : bases) {
    for (const auto& twist : cases) {
     double left = 0.0, right = 0.0;
-    sim::DiffDrive::twistToWheels(twist[0], twist[1], base, left, right);
+    sim::DifferentialKinematics::twist_to_wheels(twist[0], twist[1], base, left, right);
     double v = 0.0, w = 0.0;
-    sim::DiffDrive::wheelsToTwist(left, right, base, v, w);
+    sim::DifferentialKinematics::wheels_to_twist(left, right, base, v, w);
     CHECK(std::abs(v - twist[0]) < 1e-12);
     CHECK(std::abs(w - twist[1]) < 1e-12);
    }
@@ -38,9 +38,9 @@ int main() {
  // linearity at a tracked base. Scrub lives in dynamics, not kinematics.
  {
   double left = 0.0, right = 0.0;
-  sim::DiffDrive::twistToWheels(1.0, 1.5, 0.58, left, right);
+  sim::DifferentialKinematics::twist_to_wheels(1.0, 1.5, 0.58, left, right);
   double v = 0.0, w = 0.0;
-  sim::DiffDrive::wheelsToTwist(left, right, 0.58, v, w);
+  sim::DifferentialKinematics::wheels_to_twist(left, right, 0.58, v, w);
   CHECK(std::abs(v - 1.0) < 1e-12 && std::abs(w - 1.5) < 1e-12);
  }
  // Ackermann floor: below 0.5 m/s the pair is intentionally not inverse

@@ -1,29 +1,24 @@
-# Lost Signal Runtime Interface v1
+# Lost Signal Robot Interface v2
 
-The Lost Signal Runtime Interface (LSRI) is the small, project-owned boundary between autonomy and a robot platform. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
+The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
 
-LSRI v1 is implemented by `src/runtime/runtime_channel.*`. Its public constants are `kApiVersion == 1` and `kMessageSchemaVersion == 1`.
+LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 1`. API v2 adds per-device endpoint ownership and typed actuator command transport; the existing measurement payload schema remains version 1.
 
 ## Boundary
 
 ```mermaid
 flowchart LR
- Mission[Mission intent] --> Autonomy[Estimation, planning, control]
- Autonomy --> A[LSRI autonomy port]
- A --> C[Versioned runtime channel]
- C --> P[LSRI platform port]
- P --> Sim[Bullet adapter]
- P --> Replay[Replay driver]
- P --> Native[Native hardware driver]
-
- Sim --> P
- Replay --> P
- Native --> P
+ Mission[Mission intent] --> Robot[ROBOT: estimation, planning, control]
+ Robot <--> C[LSRI typed channels]
+ C <--> L[Real LiDAR provider]
+ C <--> I[Simulated IMU provider]
+ C <--> E[Replay encoder provider]
+ C <--> A[Simulated or native actuator provider]
 ```
 
-The autonomy port reads observations and writes motion commands. The platform port publishes observations and consumes commands. Neither port exposes world truth, Bullet bodies, game state, UI types, device types, or transport handles.
+The ROBOT port reads observations and writes body-motion or typed actuator commands. Platform providers publish observations and consume commands. Neither side exposes world truth, Bullet bodies, game state, UI types, device SDK types, or transport handles.
 
-The simulator owns both ends of an in-process channel because simulation and autonomy currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives the platform end to a native driver.
+The simulator owns both ends of an in-process channel because simulation and ROBOT currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives platform endpoints to native drivers. `EndpointRegistry` assigns ownership per `(endpoint_id, role)`, so a real LiDAR can coexist with a simulated IMU and actuator plant while two providers cannot command the same actuator endpoint.
 
 ## Required conventions
 
@@ -35,7 +30,7 @@ LSRI uses the following normative rules:
 - Every measurement has a schema version, sample time, sequence, frame, source, and declared latency.
 - Sequence numbers are strictly increasing per source. A channel rejects stale or repeated input.
 - Frames follow the project's `map → odom → base_footprint → base_link → sensor/wheel link` convention.
-- A platform declares its chassis command space and physical limits before activation.
+- A platform declares its chassis command space, accepted command level, actuator channels, modes, and physical limits before activation.
 - Invalid, out-of-order, expired, or incompatible commands never reach an actuator.
 
 These conventions align with SI and common mobile-robot frame practice, but they belong to LSRI and do not require an external middleware installation.
@@ -56,7 +51,7 @@ Safety-critical physical deployments still require an independent emergency stop
 
 ## Observations
 
-The v1 observation frame carries one or more of the existing transport-neutral measurements:
+The observation frame carries one or more transport-neutral measurements:
 
 | Measurement | Required frame | Main fields |
 |---|---|---|
@@ -69,7 +64,7 @@ LiDAR array sizes, ranges, headers, timestamps, sources, and schema versions are
 
 World truth is not an LSRI observation. A simulator may use truth internally to generate sensor packets, but autonomy receives only the resulting measurements.
 
-## Motion command
+## Commands
 
 `MotionCommand` names each quantity instead of changing a field's meaning silently:
 
@@ -80,6 +75,17 @@ World truth is not an LSRI observation. A simulator may use truth internally to 
 | `HolonomicTwist` | `forward_mps`, `lateral_mps`, `yaw_rate_radps` |
 
 The channel rejects the wrong command space, non-finite values, values outside declared limits, non-`base_link` commands, commands already expired on receipt, excessive TTLs, and non-monotonic sequences. `safe_stop` is valid only when every motion field is zero.
+
+`ActuatorCommand` is the lower-level alternative when the deployable ROBOT stack owns PID, feedforward, and actuator mapping. Each platform capability declares one unambiguous mode and numeric range for every named channel:
+
+| Mode | Meaning |
+|---|---|
+| `NormalizedDuty` | normalized voltage or PWM authority in the declared range |
+| `EffortNm` | shaft effort in newton-metres |
+| `VelocityRadps` | joint angular-velocity target |
+| `PositionRad` | joint angular-position target |
+
+An actuator command must set every declared channel exactly once, with the declared mode and units. Its watchdog emits each channel's declared safe value. This permits two valid deployments: a smart motor provider can accept body motion and own its embedded loops, or the ROBOT stack can run those loops and send actuator setpoints to a passive SIM plant or native driver.
 
 ## Providers and replay
 
@@ -96,17 +102,14 @@ channel->activate();
 
 The shipped provider is `channel.in-process`. `ReplayDriver` publishes ordered recorded observations through the same platform port, so replay does not bypass validation or the autonomy boundary.
 
-Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v1 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
+Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v2 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
 
-The provider boundary permits multi-threaded and multi-process execution, but v1 ships only the in-process provider. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
+The provider boundary permits multi-threaded and multi-process execution, but v2 ships only the in-process channel transport. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
 
-LSRI's motion command stops at the chassis-intent boundary. A platform provider may satisfy a wheel-velocity or
-steering-position target through native position, velocity, torque/current, voltage, or duty-cycle interfaces, but
-it must declare the selected controller and units rather than reinterpret a motion field. The planned capability
-and feedback model is documented in [platform fidelity and hardware adaptation](platform-fidelity.md).
+Controller placement is therefore explicit. A provider never reinterprets a body-motion number as torque, PWM, or joint position. Future wire encodings must preserve the same command mode, units, expiry, and channel identity. The capability and feedback model is documented in [platform fidelity and hardware adaptation](platform-fidelity.md).
 
 ## Current evidence and limit
 
-The production mission loop now sends LiDAR, encoder, IMU, and localization observations through LSRI and sends every autonomous chassis command through its watchdog-protected command path. Interface tests cover lifecycle, capability validation, sequence rejection, bounded queues, timeout stops, all three command spaces, provider registration, and replay delivery.
+The production mission loop now sends LiDAR, encoder, IMU, and localization observations through LSRI and sends every autonomous chassis command through its watchdog-protected command path. Interface tests cover lifecycle, capability validation, sequence rejection, bounded queues, motion and actuator timeout stops, all three body command spaces, per-device mixed-provider ownership, provider registration, and replay delivery.
 
-This completes the in-process standard and its simulation integration. A real robot driver, calibration data, independent stop system, and hardware tests are still required before making a sim-to-real claim.
+This completes the in-process semantic contract and its body-motion simulation integration. The typed actuator path is executable and tested at the channel boundary; the default scenario has not yet moved its low-level motor loop across that path. A real robot driver, calibration data, independent stop system, and hardware tests are still required before making a sim-to-real claim.

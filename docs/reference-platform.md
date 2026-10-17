@@ -340,8 +340,8 @@ models and are not included in RO-1 release evidence.
  joints, 35 mm caster trail, physical joint encoder feedback, PWM-to-wheel-torque control, and deterministic Bullet
  contact substeps. Other chassis deliberately remain non-reference profiles.
 3. **Implemented:** `base_footprint`, physical `base_link`, wheel/caster links, and sensor mounts now share one frame
- contract; 3D parts use `base_link` mounts and wheel/caster animation reads Bullet joint position. The IMU device is
- owned by `src/hw/sensors` and consumes transformed six-axis truth rather than planar command differences.
+ contract; 3D parts use `base_link` mounts and wheel/caster animation reads Bullet joint position. The virtual IMU is
+ owned by `src/sim/sensors` and consumes transformed six-axis truth rather than planar command differences.
 4. **Implemented for the dynamic gate:** straight/spin/arc, reverse, braking, low-friction slip truth, contact
 clearance, closed-loop 20-degree cross-slope pose hold, and a symmetric 20-degree uphill torque probe have executable
 checks. The loader now rejects disconnected joint trees, separated pivots, misaligned axes, invalid inertia tensors,

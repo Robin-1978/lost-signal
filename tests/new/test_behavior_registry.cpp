@@ -1,4 +1,4 @@
-#include "mission/world/actor_behavior_registry.hpp"
+#include "sim/game/mission/world/actor_behavior_registry.hpp"
 
 #include <cmath>
 #include <iostream>

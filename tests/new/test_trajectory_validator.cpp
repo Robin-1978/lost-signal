@@ -1,4 +1,4 @@
-#include "autonomy/planning/validation/trajectory_validator.hpp"
+#include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 
 #include <cmath>
 #include <iostream>

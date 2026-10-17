@@ -6,9 +6,9 @@
 // (RO-2) was probed and produces zero waits — excluded, not pinned zero.
 // Read-only accessors only.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <iostream>
 #include <limits>

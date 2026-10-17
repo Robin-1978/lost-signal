@@ -1,6 +1,6 @@
-#include "physics/physics_world.hpp"
-#include "physics/frame_transform.hpp"
-#include "physics/tire_contact.hpp"
+#include "sim/hardware/physics/physics_world.hpp"
+#include "sim/hardware/physics/frame_transform.hpp"
+#include "sim/hardware/physics/tire_contact.hpp"
 
 #include <cmath>
 #include <iostream>

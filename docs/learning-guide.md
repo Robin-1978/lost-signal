@@ -98,7 +98,7 @@ A class or club can assign pairs: one learner runs the experiment while the othe
 
 ## From the screen to the source
 
-Start with `assets/levels/` for the mission question and thresholds, then read `assets/presentation/` for its player-facing structure. `src/scenario/scenario_session.cpp` composes the loop; extracted systems live in `src/mission/systems/`. Global and local planning, localization, mapping, perception, behavior, and control have separate directories under `src/autonomy/`. Chassis and sensors live under `src/hw/`, and physics lives under `src/physics/`.
+Start with `assets/levels/` for the mission question and thresholds, then read `assets/presentation/` for its player-facing structure. `src/sim/game/scenario/scenario_session.cpp` composes the loop; extracted systems live in `src/sim/game/mission/systems/`. Global and local planning, localization, mapping, perception, behavior, and control have separate directories under `src/robot/autonomy/`. Deployable platform contracts live under `src/robot/platform/` and `src/robot/runtime/`; virtual chassis, sensors, and physics live under `src/sim/hardware/vehicle/`, `src/sim/hardware/sensors/`, and `src/sim/hardware/physics/`.
 
 Run a deterministic mission without a window when comparing code changes:
 

@@ -1,5 +1,5 @@
-#include "autonomy/planning/local/dwa.hpp"
-#include "autonomy/planning/validation/trajectory_validator.hpp"
+#include "robot/autonomy/planning/local/dwa.hpp"
+#include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 
 #include <algorithm>
 #include <cmath>

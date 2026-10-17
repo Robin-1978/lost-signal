@@ -3,7 +3,7 @@
 // shadow has never looked at. Same reader as the cross/hold replays, new
 // ground: verdict streams + determinism per level. Pins stay structural
 // (assessed>0, replay-identical); the distributions are evidence, not gates.
-#include "mission/content_catalog.hpp"
+#include "sim/game/mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <cmath>

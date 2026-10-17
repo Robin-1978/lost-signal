@@ -6,16 +6,16 @@ Lost Signal keeps algorithm extension inside a small, project-owned C++ stack. E
 
 | Directory | Responsibility | Typical output |
 | --- | --- | --- |
-| `autonomy/localization/` | estimate robot state from observations | estimated pose and motion |
-| `autonomy/mapping/` | static and observed spatial models | occupancy and terrain cost |
-| `autonomy/perception/` | track dynamic objects | neutral object states and tracks |
-| `autonomy/behavior/` | select intent and apply behavior constraints | route intent, hold, or subgoal |
-| `autonomy/planning/global/` | find a map-scale route | typed route points |
-| `autonomy/planning/local/` | choose feasible short-horizon motion | velocity, yaw-rate, or steering candidate |
-| `autonomy/planning/validation/` | assess planned motion without taking control | evidence and diagnostics |
-| `autonomy/control/` | track the selected path or motion target | body or actuator target |
+| `src/robot/autonomy/localization/` | estimate robot state from observations | estimated pose and motion |
+| `src/robot/autonomy/mapping/` | static and observed spatial models | occupancy and terrain cost |
+| `src/robot/autonomy/perception/` | track dynamic objects | neutral object states and tracks |
+| `src/robot/autonomy/behavior/` | select intent and apply behavior constraints | route intent, hold, or subgoal |
+| `src/robot/autonomy/planning/global/` | find a map-scale route | typed route points |
+| `src/robot/autonomy/planning/local/` | choose feasible short-horizon motion | velocity, yaw-rate, or steering candidate |
+| `src/robot/autonomy/planning/validation/` | assess planned motion without taking control | evidence and diagnostics |
+| `src/robot/autonomy/control/` | track the selected path or motion target | body or actuator target |
 
-DWA and the Ackermann and holonomic rollout samplers are local planners. Path following and PID belong to control. Deterministic patrol and wander motion describe simulated world actors, so they live under `mission/world/` rather than the autonomy stack.
+DWA and the Ackermann and holonomic rollout samplers are local planners. Path following and PID belong to control. Deterministic patrol and wander motion describe simulated world actors, so they live under `src/sim/game/mission/world/` rather than the autonomy stack.
 
 Waiting at a safe pocket is a behavior decision. The behavior layer selects the pocket, decides when to hold,
 commits to a crossing, and releases or falls back when observations change. A local planner such as DWA only checks
@@ -27,7 +27,7 @@ schedule, while the local validator independently checks every exact executable 
 crossing uses `control` authority only because stop-pose, braking-tail, prediction, and deterministic mission
 contracts are present. See [Behavior architecture](behavior-architecture.md).
 
-The CMake targets make the same boundaries visible. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets. `lost_signal_stack` is a convenience target that aggregates them. `lost_signal_scenario` composes the stack with authored content and simulation.
+The CMake targets make the same boundaries visible. `lost_signal_robot_stack` aggregates only deployable ROBOT targets. `lost_signal_sim_vehicle`, `lost_signal_sim_sensors`, and `lost_signal_sim_physics` depend on it through `lost_signal_sim_hardware`; `lost_signal_sim_game` adds authored content and simulation composition. The reverse dependency is rejected by tests and by the robot-only build.
 
 This organization follows two useful industry patterns while remaining smaller than either framework:
 
@@ -67,7 +67,7 @@ state's heading and gear rather than replacing them with an unearned requested g
 Implement the interface in your own source file:
 
 ```cpp
-#include "autonomy/planning/global/global_planner.hpp"
+#include "robot/autonomy/planning/global/global_planner.hpp"
 
 class ThetaStarPlanner final : public autonomy::IGlobalPlanner {
  public:

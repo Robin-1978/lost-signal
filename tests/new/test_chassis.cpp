@@ -1,10 +1,10 @@
-#include "hw/chassis/ackermann.hpp"
-#include "hw/chassis/caps.hpp"
-#include "hw/chassis/chassis_factory.hpp"
-#include "hw/chassis/motor_drive.hpp"
-#include "hw/chassis/tracked.hpp"
-#include "autonomy/control/follow.hpp"
-#include "autonomy/control/pid.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
+#include "robot/platform/chassis_caps.hpp"
+#include "sim/hardware/vehicle/chassis_factory.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
+#include "sim/hardware/vehicle/tracked.hpp"
+#include "robot/autonomy/control/follow.hpp"
+#include "robot/autonomy/control/pid.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -304,10 +304,10 @@ int main() {
                             std::make_pair(0.0, 0.0)}) {
    double left = 0.0;
    double right = 0.0;
-   sim::DiffDrive::twistToWheels(v, w, 0.52, left, right);
+   sim::DifferentialKinematics::twist_to_wheels(v, w, 0.52, left, right);
    double back_v = 0.0;
    double back_w = 0.0;
-   sim::DiffDrive::wheelsToTwist(left, right, 0.52, back_v, back_w);
+   sim::DifferentialKinematics::wheels_to_twist(left, right, 0.52, back_v, back_w);
    CHECK(std::abs(back_v - v) < 1e-12);
    CHECK(std::abs(back_w - w) < 1e-12);
   }

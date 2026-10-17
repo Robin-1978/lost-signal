@@ -4,10 +4,10 @@
 // of measured vs true, mapped through wheel_equiv_mass/stall_force into PWM
 // authority fraction. Evidence for the FF gate, not a standard.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
-#include "hw/chassis/diff_drive.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
+#include "robot/platform/differential_kinematics.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +39,7 @@ int main() {
  bool have_prev = false;
  for (const auto& snapshot : mission.replay()) {
   double tl = 0.0, tr = 0.0;
-  sim::DiffDrive::twistToWheels(snapshot.robot.v, snapshot.robot.w, base, tl, tr);
+  sim::DifferentialKinematics::twist_to_wheels(snapshot.robot.v, snapshot.robot.w, base, tl, tr);
   const double ml = snapshot.control.left_measured_mps;
   const double mr = snapshot.control.right_measured_mps;
   CHECK(std::isfinite(ml) && std::isfinite(mr));

@@ -6,7 +6,7 @@
 // Passing here would still not bound real-world error (margin calibration is
 // a later, separate slice); failing here blocks release discussion.
 
-#include "autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <cmath>
 #include <iostream>

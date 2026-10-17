@@ -2,9 +2,9 @@
 // a dormant actor wakes on a summon goal (miss branch would say otherwise)
 // and a recharge goal tops the battery account. The overlay copies the
 // shipped tree, adds one map + level + presentation, and runs headless.
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <filesystem>
 #include <fstream>

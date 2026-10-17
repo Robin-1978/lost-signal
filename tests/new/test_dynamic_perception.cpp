@@ -1,13 +1,13 @@
-#include "autonomy/perception/dynamic_obstacle_map.hpp"
-#include "autonomy/perception/lidar_perception_system.hpp"
-#include "autonomy/planning/local/predictor.hpp"
-#include "physics/lidar_raycast.hpp"
-#include "hw/chassis/diff_drive.hpp"
-#include "autonomy/planning/local/dwa.hpp"
-#include "autonomy/mapping/grid_map.hpp"
-#include "hw/chassis/motor_drive.hpp"
-#include "hw/sensors/sensor.hpp"
-#include "hw/sensors/sensor_system.hpp"
+#include "robot/autonomy/perception/dynamic_obstacle_map.hpp"
+#include "robot/autonomy/perception/lidar_perception_system.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
+#include "sim/hardware/physics/lidar_raycast.hpp"
+#include "robot/platform/differential_kinematics.hpp"
+#include "robot/autonomy/planning/local/dwa.hpp"
+#include "robot/autonomy/mapping/grid_map.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
+#include "sim/hardware/sensors/sensor.hpp"
+#include "sim/hardware/sensors/sensor_system.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -397,7 +397,7 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
 
  double left = 0.0;
  double right = 0.0;
- sim::DiffDrive::twistToWheels(1.0, 1.0, 0.52, left, right);
+ sim::DifferentialKinematics::twist_to_wheels(1.0, 1.0, 0.52, left, right);
  CHECK(std::abs(left - 0.74) < 1e-12);
  CHECK(std::abs(right - 1.26) < 1e-12);
 

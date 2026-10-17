@@ -385,8 +385,21 @@ runtime contracts are closed.
  middleware-neutral Task Executive; rename the remaining world, scoring and story owner as the Scenario/Game
  Session so `mission` no longer hides two incompatible responsibilities.
  The first Task Executive slice and the LSRM v1 map-provider/package boundary are implemented. The simulation
- composition root is now physically isolated as `src/scenario/ScenarioSession` and `lost_signal_scenario`; the
+ composition root is now physically isolated as `src/sim/game/scenario/ScenarioSession` and `lost_signal_sim_game`; the
  remaining deployable work is a native application/API adapter.
+
+The source and build boundary is now executable rather than descriptive: all deployable code is under
+`src/robot`, all virtual devices, plants, worlds, game systems, and presentation are under `src/sim`, and every
+dependency points from SIM to ROBOT. `LOST_SIGNAL_BUILD_SIM=OFF` builds and tests the ROBOT stack without configuring
+Bullet or the client. LSRI now registers provider ownership per device endpoint and carries either body-motion
+commands or typed actuator commands with explicit duty, effort, velocity, or position semantics. This permits mixed
+native/simulated sensor composition and lets controller placement be selected by platform capability.
+
+The shipped scenario path still uses body-motion authority with the low-level motor loop inside the simulated
+platform. The next RO-1 control-boundary slice is to run the deployable wheel controller through LSRI actuator mode
+and leave only motor electrical response, joint dynamics, tire contact, and rigid-body integration in SIM. Both
+paths remain useful: a real smart drive may own its embedded loop, while a passive motor interface may use the
+ROBOT controller.
 2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
  cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
  exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).

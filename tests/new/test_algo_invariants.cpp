@@ -1,5 +1,5 @@
-#include "mission/world/actor_motion.hpp"
-#include "autonomy/planning/validation/entry_shadow.hpp"
+#include "sim/game/mission/world/actor_motion.hpp"
+#include "robot/autonomy/planning/validation/entry_shadow.hpp"
 
 #include <cmath>
 #include <iostream>

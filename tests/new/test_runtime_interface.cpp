@@ -1,5 +1,6 @@
-#include "runtime/replay_driver.hpp"
-#include "runtime/runtime_channel.hpp"
+#include "robot/runtime/replay_driver.hpp"
+#include "robot/runtime/endpoint_registry.hpp"
+#include "robot/runtime/runtime_channel.hpp"
 
 #include <atomic>
 #include <cmath>
@@ -59,7 +60,7 @@ sim::ObservationFrame imu_frame(double time_s, std::uint64_t sequence,
 int main() {
  using namespace sim::runtime;
 
- CHECK(kApiVersion == 1);
+ CHECK(kApiVersion == 2);
  CHECK(kMessageSchemaVersion == 1);
  CHECK(TimePoint::from_seconds(1.25).nanoseconds == 1'250'000'000);
  CHECK(std::abs(TimePoint::from_seconds(1.25).seconds() - 1.25) < 1e-12);
@@ -98,7 +99,7 @@ int main() {
  CHECK(threw);
 
  auto channel = custom.create("channel.fixture", config());
- CHECK(channel->descriptor().api_version == 1);
+ CHECK(channel->descriptor().api_version == 2);
  CHECK(channel->state() == LifecycleState::Unconfigured);
  const auto before_active =
    make_motion_command({}, config().capabilities.chassis, TimePoint::from_seconds(0.0), 0, 0.1);
@@ -213,6 +214,72 @@ int main() {
  CHECK(replay.finished());
  replay.reset();
  CHECK(!replay.finished());
+
+ // Device-granular provider ownership permits mixed reality without allowing
+ // two providers to command the same endpoint.
+ EndpointRegistry endpoints;
+ endpoints.register_endpoint({
+ "lidar/front", "provider.native-lidar", "lidar.front", "lidar_link",
+ "host.monotonic", EndpointRole::ObservationSource, EndpointKind::Lidar,
+ ProviderBackend::Native, 10.0});
+ endpoints.register_endpoint({
+ "imu/base", "provider.sim-imu", "imu.base", "imu_link",
+ "simulation.fixed", EndpointRole::ObservationSource, EndpointKind::Imu,
+ ProviderBackend::Simulated, 100.0});
+ endpoints.register_endpoint({
+ "drive/left", "provider.sim-actuator", "drive.left", "left_wheel_link",
+ "simulation.fixed", EndpointRole::CommandSink, EndpointKind::Actuator,
+ ProviderBackend::Simulated, 50.0});
+ CHECK(endpoints.endpoints().size() == 3);
+ CHECK(endpoints.endpoint("lidar/front", EndpointRole::ObservationSource).backend ==
+ ProviderBackend::Native);
+ threw = false;
+ try {
+ endpoints.register_endpoint({
+ "drive/left", "provider.native-motor", "drive.left.native", "left_wheel_link",
+ "host.monotonic", EndpointRole::CommandSink, EndpointKind::Actuator,
+ ProviderBackend::Native, 50.0});
+ } catch (const std::runtime_error&) {
+ threw = true;
+ }
+ CHECK(threw);
+
+ // A deployable controller may own the low-level loop and send actuator
+ // commands to either a simulated plant or a native driver.
+ auto actuator_config = config();
+ actuator_config.capabilities.command_level = PlatformCommandLevel::Actuator;
+ actuator_config.capabilities.actuator_channels = {
+ {"left", ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0},
+ {"right", ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0},
+ };
+ auto actuator_channel = make_in_process_channel(actuator_config);
+ actuator_channel->configure();
+ actuator_channel->activate();
+ ActuatorCommand actuator_command;
+ actuator_command.header = {
+ kMessageSchemaVersion, TimePoint::from_seconds(1.0),
+ TimePoint::from_seconds(1.0), 7, "base_link", "controller.ro1"};
+ actuator_command.valid_until = TimePoint::from_seconds(1.1);
+ actuator_command.setpoints = {
+ {"left", ActuatorCommandMode::NormalizedDuty, 0.4},
+ {"right", ActuatorCommandMode::NormalizedDuty, 0.5},
+ };
+ CHECK(valid_actuator_command(actuator_command, actuator_config));
+ CHECK(actuator_channel->autonomy().write_actuators(actuator_command) ==
+ CommandWriteResult::Accepted);
+ const auto actuator_delivery =
+ actuator_channel->platform().read_actuators(TimePoint::from_seconds(1.05));
+ CHECK(!actuator_delivery.safe_stop);
+ CHECK(actuator_delivery.setpoints[1].value == 0.5);
+ const auto actuator_stop =
+ actuator_channel->platform().read_actuators(TimePoint::from_seconds(1.11));
+ CHECK(actuator_stop.safe_stop);
+ CHECK(actuator_stop.setpoints[0].value == 0.0);
+ auto wrong_mode = actuator_command;
+ wrong_mode.header.sequence = 8;
+ wrong_mode.setpoints[0].mode = ActuatorCommandMode::EffortNm;
+ CHECK(!valid_actuator_command(wrong_mode, actuator_config));
+ CHECK(actuator_channel->autonomy().write_motion(command) == CommandWriteResult::Invalid);
 
  channel->deactivate();
  CHECK(channel->state() == LifecycleState::Inactive);

@@ -1,5 +1,5 @@
-#include "mission/component_registry.hpp"
-#include "mission/content_catalog.hpp"
+#include "sim/game/mission/component_registry.hpp"
+#include "sim/game/mission/content_catalog.hpp"
 
 #include <filesystem>
 #include <fstream>

@@ -1,6 +1,6 @@
-#include "mission/content_catalog.hpp"
-#include "sim/simulated_platform.hpp"
-#include "physics/physics_world.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/platform/simulated_platform.hpp"
+#include "sim/hardware/physics/physics_world.hpp"
 
 #include <algorithm>
 #include <cmath>

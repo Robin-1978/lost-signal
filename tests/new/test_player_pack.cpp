@@ -6,9 +6,9 @@
 // (factory seams documented in docs/diy.md) — hardware is data, algorithms
 // are code, and this test pins exactly that boundary.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <filesystem>
 #include <fstream>

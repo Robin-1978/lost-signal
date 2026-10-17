@@ -5,9 +5,9 @@
 // speed at wait start. Episodes opening with inf prediction carry no error
 // (unassessable start) and are counted separately. Evidence only.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -17,7 +17,7 @@
 // A run can be safe yet a miss (conservative bias costs time); a miss is a
 // prediction-quality verdict, not a crash report.
 
-#include "autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>

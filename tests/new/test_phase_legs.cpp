@@ -3,7 +3,7 @@
 // diagnoses. Transit has no arrival proof yet (honest Unknown); hold and
 // rejoin are fully assessed. Mission stays untouched.
 
-#include "autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -1,4 +1,4 @@
-#include "autonomy/mapping/observed_obstacle_layer.hpp"
+#include "robot/autonomy/mapping/observed_obstacle_layer.hpp"
 
 #include <iostream>
 #include <vector>

@@ -1,6 +1,6 @@
-#include "mission/content_catalog.hpp"
-#include "hw/chassis/ackermann.hpp"
-#include "hw/chassis/motor_drive.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
 
 #include <cmath>
 #include <iostream>

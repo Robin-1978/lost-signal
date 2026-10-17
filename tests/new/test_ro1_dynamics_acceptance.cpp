@@ -1,5 +1,5 @@
-#include "mission/content_catalog.hpp"
-#include "sim/simulated_platform.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/platform/simulated_platform.hpp"
 
 #include <algorithm>
 #include <cmath>

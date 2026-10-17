@@ -5,7 +5,7 @@
 // DWA consume nothing — this test only reads snapshots. If the window check
 // is the right medicine for flagship myopia, Occupied episodes must precede
 // close encounters and flip to Clear as the threat passes.
-#include "mission/content_catalog.hpp"
+#include "sim/game/mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <cmath>

@@ -1,5 +1,5 @@
-#include "mission/systems/world_activity_system.hpp"
-#include "mission/content.hpp"
+#include "sim/game/mission/systems/world_activity_system.hpp"
+#include "sim/game/mission/content.hpp"
 
 #include <cmath>
 #include <iostream>

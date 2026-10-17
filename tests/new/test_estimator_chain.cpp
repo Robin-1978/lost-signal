@@ -3,12 +3,12 @@
 // Answers: does the residual envelope from the direct-truth slice survive
 // with the filter in the loop? No behavior, no release — chain evidence.
 
-#include "autonomy/localization/estimator_filter.hpp"
-#include "autonomy/localization/slip_observer.hpp"
-#include "autonomy/localization/state_estimator.hpp"
-#include "hw/chassis/ackermann.hpp"
-#include "hw/chassis/motor_drive.hpp"
-#include "hw/chassis/tracked.hpp"
+#include "robot/autonomy/localization/estimator_filter.hpp"
+#include "robot/autonomy/localization/slip_observer.hpp"
+#include "robot/autonomy/localization/state_estimator.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
+#include "sim/hardware/vehicle/tracked.hpp"
 
 #include <algorithm>
 #include <cmath>

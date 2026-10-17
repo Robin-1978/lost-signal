@@ -5,8 +5,8 @@
 // showed clean waiting (14 steps, 0 inside) — the pathology is
 // level-dependent, so this harness reports per-level instead of asserting
 // one shape. Nothing consumes the result.
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

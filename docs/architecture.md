@@ -33,7 +33,7 @@ boundary. Sensors observe `H`, and presentation reads `K` without changing the s
 
 ### Runtime boundary
 
-The [Lost Signal Runtime Interface](runtime-interface.md) is the project-owned robot boundary. Its autonomy port reads validated observations and writes expiring motion commands. Its platform port is implemented by the in-process simulator today and can be implemented by replay or a native hardware driver.
+The [Lost Signal Robot Interface (LSRI)](runtime-interface.md) is the project-owned robot boundary. Its ROBOT port reads validated observations and writes expiring body-motion or actuator commands. Its platform side can be composed from simulated, replay, remote, and native providers one endpoint at a time.
 
 LSRI remains a small project standard with no external middleware, executor, discovery, or device-SDK dependency.
 
@@ -43,9 +43,9 @@ LSRI remains a small project standard with no external middleware, executor, dis
 
 Locale files are sparse string-only overlays. They cannot change IDs, paths, seeds, physics, scores, or algorithms. English is the default runtime locale; Simplified Chinese remains available as `zh-CN`.
 
-### Hardware and sensors
+### Platform contracts and simulated devices
 
-`src/hw/` models chassis capabilities, inverse kinematics, actuators, motor response, contacts, encoders, LiDAR, and IMU observations. A chassis declares its command space and limits. Algorithms consume the common contracts rather than depending on a graphical representation.
+`src/robot/platform/`, `src/robot/control/`, and `src/robot/runtime/` contain deployable capabilities, kinematics, control algorithms, and LSRI contracts. `src/sim/hardware/vehicle/`, `src/sim/hardware/sensors/`, and `src/sim/hardware/physics/` contain virtual devices and physical plants. A chassis declares both its body command space and the lowest command level accepted by its provider. Algorithms consume these contracts without depending on Bullet or rendering.
 
 Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
 
@@ -67,7 +67,7 @@ body-class reflectivities are not calibrated material optics.
 
 ### Algorithms
 
-`src/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
+`src/robot/autonomy/` follows the data flow used by compact autonomous systems: localization, mapping, perception, behavior, global and local planning, validation, then control. DWA and chassis-specific rollout samplers live under local planning; path following and PID live under control. The stack uses SI units and explicit configuration.
 
 `PerceptionPipeline` is the observation boundary for planar LiDAR. It consumes timestamped raw and static-reference
 scans after LSRI delivery, then owns projection and deskew, foreground extraction, transient ray-cleared occupancy,
@@ -82,11 +82,12 @@ at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cus
 
 The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy
 layer. Route following, waypoint progress, heading PID state, crossing behavior, prediction, and trajectory
-validation all live in `src/autonomy`; mission code only supplies task intent and world semantics. The
-`deployable_boundary` test rejects includes from `mission`, `sim`, `physics`, or `client` in `core`, `runtime`,
-`autonomy`, `executive`, or `map_io`, and rejects world-layer sources or libraries in the autonomy target.
-`lost_signal_autonomy`, `lost_signal_executive`, `lost_signal_runtime`, and `lost_signal_map_io` remain separate
-deployable targets, while `lost_signal_stack` is their simulation aggregate with vehicle and physics libraries.
+validation all live in `src/robot/autonomy`; simulation mission code only supplies task intent and world semantics.
+The `deployable_boundary` test scans all of `src/robot`, rejects every `sim/` include, rejects SIM sources and SIM
+libraries from every `lost_signal_robot_*` target, and checks for the robot-only build gate.
+`lost_signal_robot_autonomy`, `lost_signal_robot_executive`, `lost_signal_robot_runtime`, and
+`lost_signal_robot_map_io` remain separate deployable targets. `lost_signal_robot_stack` aggregates only deployable
+targets; `lost_signal_sim_hardware` depends on it and adds virtual vehicles, sensors, geometry, and physics.
 
 Each local planner produces one `ExecutableTrajectory`: an explicit command space, the body command, and strictly
 time-ordered pose, velocity, yaw-rate, and steering samples. The runtime validates the exact selected samples
@@ -96,7 +97,10 @@ delay and validates a tire-limited emergency-braking tail. Once a conflict-zone 
 trajectory that still satisfies full static and dynamic clearance may continue when braking would strand the body
 inside the conflict; this is reported separately as `CommittedTransit` and never waives nominal collision
 validation. The selected chassis then converts that command into wheel speed and steering targets.
-Motor controllers compare targets with quantized feedback and apply actuation to physics.
+Motor controllers compare targets with encoder feedback. LSRI supports two explicit placements: a smart platform may
+accept `BodyMotionCommand` and own its low-level loops, while a ROBOT controller may publish typed per-channel
+actuator commands for a passive simulated plant or native driver. Command placement is a declared capability, never
+an implicit reinterpretation of the same number.
 
 For Ackermann platforms, the command is an equivalent front-wheel steering angle from the local planner through
 LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physical motor type, native drive command
@@ -116,24 +120,24 @@ The word *mission* has two distinct meanings and the codebase must not merge the
  scoring, story progression and presentation. It may observe mission progress, but it cannot choose a stop pose,
  rewrite a trajectory, or grant a collision exception.
 
-The target deployable set includes the implemented `lost_signal_executive` library above `lost_signal_autonomy`,
+The target deployable set includes the implemented `lost_signal_robot_executive` library above `lost_signal_robot_autonomy`,
 with operator/API adapters above it and LSRI platform adapters below autonomy. Its first `TaskExecutive` slice owns
 validated goal ordering, arrival, dwell, pause, resume, cancel, failure, and completion lifecycle. The implemented
 `MapManager` and `IMapProvider` own validated immutable map revisions and semantic-place resolution, while
-`lost_signal_map_io` loads and saves the checksummed LSRM v1 package. These targets depend only on deployable
+`lost_signal_robot_map_io` loads and saves the checksummed LSRM v1 package. These targets depend only on deployable
 contracts.
 
 `GoalSystem` is a thin adapter from authored game actions to `TaskExecutive` and resolves positions through
 `IMapProvider`; it no longer owns generic task lifecycle or reads map markers directly. The simulation composition
-root now lives in `src/scenario/` as `ScenarioSession`, and its CMake target is explicitly
-`lost_signal_scenario`. Authored game content and scenario adapters remain under `src/mission/`; both directories
+root now lives in `src/sim/game/scenario/` as `ScenarioSession`, and its CMake target is explicitly
+`lost_signal_sim_game`. Authored game content and scenario adapters remain under `src/sim/game/mission/`; both directories
 are simulation-only and are rejected from deployable dependencies.
 
-`src/mission/` owns authored goals, progression, field dispatch, world activity, scoring, and presentation data.
-`src/scenario/` owns fixed-step composition, telemetry, and replay. `ScenarioSession` composes the focused systems
+`src/sim/game/mission/` owns authored goals, progression, field dispatch, world activity, scoring, and presentation data.
+`src/sim/game/scenario/` owns fixed-step composition, telemetry, and replay. `ScenarioSession` composes the focused systems
 and publishes an immutable snapshot for consumers.
 `DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
-and translates authority into a neutral autonomy contract. `CrossingBehaviorSystem` in `autonomy/behavior` owns
+and translates authority into a neutral autonomy contract. `CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
 the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
 tracked-object predictions, and controls the hold/commit/clear transitions. Content never supplies a parking
 coordinate, and actor truth and physics objects never cross the autonomy boundary. `TrajectoryTrackingSystem` owns the last
@@ -172,14 +176,15 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 
 `SimulatedPlatform` maps content geometry, terrain, robot bodies, actors, contacts, and raycasts to the backend. In Bullet authority mode, Bullet owns rigid-body pose. The rendering layer never advances physics.
 
-`sim::platform::SimulatedPlatform` in `src/sim/` is the in-process simulation-platform adapter; mission code only
+`sim::platform::SimulatedPlatform` in `src/sim/game/platform/` is the in-process simulation-platform adapter; mission code only
 schedules it and combines its published result with goals and autonomy diagnostics. Wheel motors, encoders, IMU and LiDAR device behavior belong
-to `src/hw/`; rigid bodies, joints, contacts and raycasts belong to `src/physics/`; binding authored devices to
-physics joints and links belongs to `src/sim/`. No wheel, caster or sensor model belongs in a renderer.
+to `src/sim/hardware/vehicle/` and `src/sim/hardware/sensors/`; rigid bodies, joints, contacts and raycasts belong to
+`src/sim/hardware/physics/`; binding authored devices to physics joints and links belongs to `src/sim/game/platform/`. No wheel,
+caster or sensor model belongs in a renderer.
 
-The deployable algorithm set is `lost_signal_core + lost_signal_runtime + lost_signal_autonomy` plus a native
-platform adapter. Those targets do not include or link `mission`, `sim`, `physics`, or `client`. Neutral observation
-messages live under `runtime/`; simulator truth remains under `sim/`. A real deployment therefore replaces the
+The deployable set is `lost_signal_robot_stack` plus one or more native platform providers. Its targets do not
+include or link any `src/sim` source or `lost_signal_sim_*` library. Neutral observation and command
+messages live under `robot/runtime/`; simulator truth remains under `sim/`. A real deployment therefore replaces the
 LSRI provider and platform adapter and omits all game, world, Bullet, and rendering targets.
 
 `mission_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
@@ -209,7 +214,7 @@ platform boundary rather than changing planner commands.
 
 ### Presentation
 
-`src/client/` renders the field and AI views from the same immutable, timestamped presentation snapshot. The
+`src/sim/game/client/` renders the field and AI views from the same immutable, timestamped presentation snapshot. The
 snapshot combines platform state (body/link poses, contacts and device telemetry), mission state (goals, actors and
 environment), and autonomy diagnostics (routes, candidates and decisions). A hardware provider alone cannot
 publish the complete game view because goals and explanatory overlays are not hardware state.
@@ -220,7 +225,7 @@ the same value through a bounded queue or shared memory. This is subscription se
 middleware today. The renderer cannot step the runtime and never reads Bullet bodies, motor objects or sensor
 internals; it also never derives physical wheel or caster motion. UI state may pause or submit player intent, but
 changing camera or visualization layers cannot affect autonomous output. The headless executable consumes the same
-mission/platform results and reports English, machine-readable output.
+`src/sim/game/` results and reports English, machine-readable output.
 
 The update order follows the read/write split used by mature simulators:
 
@@ -231,7 +236,7 @@ command snapshot
  -> one authoritative physics step
  -> platform snapshot + ideal sensor truth
  -> hardware sensor/encoder models
- -> mission/autonomy presentation snapshot
+ -> game/scenario autonomy presentation snapshot
  -> zero or more read-only consumers (3D, AI view, headless, replay)
 ```
 
@@ -256,7 +261,7 @@ The most important extension boundaries are:
 - `IGlobalPlanner` for global planning;
 - `IHighLevelPolicy` for behavior selection;
 - `ChassisModel` plus `ChassisCaps` for feasible motion and actuator telemetry;
-- LSRI v1 ports, sensor packets, transform frames, lifecycle, and watchdog semantics;
+- LSRI v2 ports, sensor packets, transform frames, lifecycle, and watchdog semantics;
 - `DecisionEvidence` for observation-to-action explanations and deterministic decision transitions;
 - immutable snapshots for rendering, replay, and external observation.
 
@@ -275,7 +280,7 @@ estimate that actually drives navigation, while the raw metric remains available
 
 `base_footprint` is the terrain projection; `base_link` is the physical root-body origin. Robot `mounts` are always
 calibrated in `base_link`. Physics owns centre-of-mass motion, then the shared transform tree evaluates each sensor
-origin. In particular, the simulated IMU lives in `src/hw/sensors`: it receives ideal six-axis truth at `imu_link`
+origin. In particular, the simulated IMU lives in `src/sim/hardware/sensors/`: it receives ideal six-axis truth at `imu_link`
 and owns bias, random walk, white noise, timestamps, latency, and sequence numbers. Mission code only schedules the
 device and publishes its observation.
 

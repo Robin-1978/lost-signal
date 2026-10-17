@@ -8,12 +8,12 @@
 // Estimator shadow: ground-truth stream (latency 0.05 s) through
 // EstimateHolder; the episode records status/age/trace + reporting confidence.
 
-#include "autonomy/planning/local/pocket_shadow.hpp"
-#include "autonomy/planning/local/predictor.hpp"
-#include "autonomy/localization/state_estimator.hpp"
-#include "core/math.hpp"
-#include "hw/chassis/ackermann.hpp"
-#include "hw/chassis/motor_drive.hpp"
+#include "robot/autonomy/planning/local/pocket_shadow.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/localization/state_estimator.hpp"
+#include "robot/core/math.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
 
 #include <algorithm>
 #include <cmath>

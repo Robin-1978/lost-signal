@@ -2,7 +2,7 @@
 // dynamics chain (lead -> wheel accel -> resistance -> curve -> PWM).
 // Numbers are hand-computable from the documented formulas.
 
-#include "hw/feedforward.hpp"
+#include "robot/control/feedforward.hpp"
 
 #include <cmath>
 #include <iostream>

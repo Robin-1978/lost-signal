@@ -1,9 +1,9 @@
-#include "autonomy/planning/local/ackermann_local.hpp"
-#include "autonomy/planning/local/local_planning_system.hpp"
-#include "autonomy/planning/global/hybrid_astar.hpp"
-#include "autonomy/control/follow.hpp"
-#include "hw/chassis/ackermann.hpp"
-#include "hw/chassis/holonomic.hpp"
+#include "robot/autonomy/planning/local/ackermann_local.hpp"
+#include "robot/autonomy/planning/local/local_planning_system.hpp"
+#include "robot/autonomy/planning/global/hybrid_astar.hpp"
+#include "robot/autonomy/control/follow.hpp"
+#include "sim/hardware/vehicle/ackermann.hpp"
+#include "sim/hardware/vehicle/holonomic.hpp"
 
 #include <algorithm>
 #include <cmath>

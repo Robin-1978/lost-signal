@@ -5,8 +5,8 @@
 // collision-dynamic is the human hand. Park on the patrol segment and let
 // ping-pong deliver the mover; the governor must never fire here (manual
 // bypasses decide_control: the driver outranks strategy by construction).
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

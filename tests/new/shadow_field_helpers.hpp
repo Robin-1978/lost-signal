@@ -4,8 +4,8 @@
 // Layering: assess_entry_window takes neutral numbers; the ray-ray conflict
 // geometry (ego forward ray vs threat velocity ray) is the caller's
 // translation, kept here so every replay test uses the same one.
-#include "autonomy/planning/validation/entry_shadow.hpp"
-#include "scenario/scenario_session.hpp"
+#include "robot/autonomy/planning/validation/entry_shadow.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

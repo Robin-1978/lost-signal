@@ -4,9 +4,9 @@
 // Evidence only — no bounds asserted (bounds would BE calibration, which is
 // a separate, risk-decided slice). Deterministic: same seed, same numbers.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

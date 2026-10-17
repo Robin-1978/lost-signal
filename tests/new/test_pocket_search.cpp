@@ -2,7 +2,7 @@
 // full three-leg assessment per candidate, every verdict kept with reasons.
 // Sampling never upgrades conclusions; truncation and Unknown are Incomplete.
 
-#include "autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <algorithm>
 #include <cmath>

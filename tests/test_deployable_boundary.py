@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep the real-robot algorithm boundary independent of the game world."""
+"""Enforce the one-way SIM -> ROBOT source and target dependency."""
 
 from pathlib import Path
 import re
@@ -7,93 +7,127 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEPLOYABLE_DIRS = (
-    ROOT / "src/core",
-    ROOT / "src/runtime",
-    ROOT / "src/autonomy",
-    ROOT / "src/executive",
- ROOT / "src/map_io",
-)
-FORBIDDEN_LAYERS = ("mission", "scenario", "sim", "physics", "client")
+ROBOT_DIR = ROOT / "src/robot"
+SIM_HARDWARE_DIR = ROOT / "src/sim/hardware"
 
 
 class DeployableBoundaryTest(unittest.TestCase):
-    def test_deployable_sources_do_not_include_world_layers(self) -> None:
-        include = re.compile(
-            r'^\s*#\s*include\s*[<"](?:' + "|".join(FORBIDDEN_LAYERS) + r")/"
-        )
+    def test_robot_sources_do_not_include_sim(self) -> None:
+        include = re.compile(r'^\s*#\s*include\s*[<"]sim/')
         violations: list[str] = []
-        for directory in DEPLOYABLE_DIRS:
-            for source in sorted(directory.rglob("*")):
-                if source.suffix not in {".h", ".hpp", ".c", ".cc", ".cpp"}:
-                    continue
-                for line_number, line in enumerate(source.read_text().splitlines(), 1):
-                    if include.match(line):
-                        violations.append(
-                            f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
-                        )
-        self.assertEqual(
-            [], violations, "deployable code depends on game/simulator layers"
-        )
+        for source in sorted(ROBOT_DIR.rglob("*")):
+            if source.suffix not in {".h", ".hpp", ".c", ".cc", ".cpp"}:
+                continue
+            for line_number, line in enumerate(source.read_text().splitlines(), 1):
+                if include.match(line):
+                    violations.append(
+                        f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
+                    )
+        self.assertEqual([], violations, "ROBOT code depends on SIM headers")
 
-    def test_autonomy_target_contains_only_deployable_sources(self) -> None:
+    def test_sim_hardware_sources_do_not_include_game(self) -> None:
+        include = re.compile(r'^\s*#\s*include\s*[<"]sim/game/')
+        violations: list[str] = []
+        for source in sorted(SIM_HARDWARE_DIR.rglob("*")):
+            if source.suffix not in {".h", ".hpp", ".c", ".cc", ".cpp"}:
+                continue
+            for line_number, line in enumerate(source.read_text().splitlines(), 1):
+                if include.match(line):
+                    violations.append(
+                        f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
+                    )
+        self.assertEqual([], violations, "SIM hardware code depends on game headers")
+
+    def test_robot_targets_contain_only_robot_sources(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        target_pattern = re.compile(
+            r"add_library\((lost_signal_robot_[a-z_]+)\s+(?:STATIC|INTERFACE)"
+            r"(?P<body>[^)]*)\)"
+        )
+        targets = list(target_pattern.finditer(cmake))
+        self.assertTrue(targets, "no ROBOT targets found")
+        for target in targets:
+            sources = re.findall(r"src/([^\s)]+)", target.group("body"))
+            self.assertTrue(
+                all(source.startswith("robot/") for source in sources),
+                f"{target.group(1)} contains a SIM source: {sources}",
+            )
+
+    def test_robot_targets_do_not_link_sim_targets(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        links = re.compile(
+            r"target_link_libraries\((lost_signal_robot_[a-z_]+)\s+"
+            r"(?:PUBLIC|PRIVATE|INTERFACE)(?P<body>.*?)\)",
+            re.DOTALL,
+        )
+        targets = list(links.finditer(cmake))
+        self.assertTrue(targets, "no ROBOT link declarations found")
+        for target in targets:
+            self.assertNotRegex(
+                target.group("body"),
+                r"\blost_signal_sim_",
+                f"{target.group(1)} links a SIM target",
+            )
+
+    def test_sim_hardware_targets_contain_only_hardware_sources(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        target_pattern = re.compile(
+            r"add_library\((lost_signal_sim_(?:physics|vehicle|sensors|geometry))\s+STATIC"
+            r"(?P<body>[^)]*)\)"
+        )
+        targets = list(target_pattern.finditer(cmake))
+        self.assertEqual(4, len(targets), "expected four SIM hardware targets")
+        for target in targets:
+            sources = re.findall(r"src/([^\s)]+)", target.group("body"))
+            self.assertTrue(
+                all(source.startswith("sim/hardware/") for source in sources),
+                f"{target.group(1)} contains a game source: {sources}",
+            )
+
+    def test_sim_hardware_targets_do_not_link_game_targets(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        links = re.compile(
+            r"target_link_libraries\((lost_signal_sim_(?:physics|vehicle|sensors|geometry))\s+"
+            r"(?:PUBLIC|PRIVATE|INTERFACE)(?P<body>.*?)\)",
+            re.DOTALL,
+        )
+        targets = list(links.finditer(cmake))
+        self.assertGreaterEqual(len(targets), 4, "no SIM hardware link declarations found")
+        for target in targets:
+            self.assertNotRegex(
+                target.group("body"),
+                r"\blost_signal_sim_(?:scenario|game|client)\b",
+                f"{target.group(1)} links a game target",
+            )
+
+    def test_sim_game_target_contains_only_game_sources(self) -> None:
         cmake = (ROOT / "CMakeLists.txt").read_text()
         target = re.search(
-            r"add_library\(lost_signal_autonomy\s+STATIC(?P<body>.*?)\n\)",
+            r"add_library\(lost_signal_sim_game\s+STATIC(?P<body>[^)]*)\)",
             cmake,
-            re.DOTALL,
         )
-        self.assertIsNotNone(target)
+        self.assertIsNotNone(target, "no SIM game target found")
         sources = re.findall(r"src/([^\s)]+)", target.group("body"))
-        self.assertTrue(sources)
+        self.assertTrue(sources, "SIM game target has no sources")
         self.assertTrue(
-            all(
-                source.startswith(("autonomy/", "core/", "runtime/"))
-                for source in sources
-            ),
-            f"lost_signal_autonomy contains a world-layer source: {sources}",
+            all(source.startswith("sim/game/") for source in sources),
+            f"lost_signal_sim_game contains a hardware source: {sources}",
         )
 
-        links = re.search(
-            r"target_link_libraries\(lost_signal_autonomy\s+PUBLIC(?P<body>.*?)\)",
-            cmake,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(links)
-        for forbidden in (
-            "lost_signal_scenario",
-            "lost_signal_physics",
-            "lost_signal_vehicle",
-        ):
-            self.assertNotIn(forbidden, links.group("body"))
-
-    def test_executive_target_contains_only_deployable_sources(self) -> None:
+    def test_sim_hardware_aggregate_does_not_link_game(self) -> None:
         cmake = (ROOT / "CMakeLists.txt").read_text()
         target = re.search(
-            r"add_library\(lost_signal_executive\s+STATIC(?P<body>.*?)\n\)",
+            r"target_link_libraries\(lost_signal_sim_hardware\s+INTERFACE(?P<body>.*?)\)",
             cmake,
             re.DOTALL,
         )
-        self.assertIsNotNone(target)
-        sources = re.findall(r"src/([^\s)]+)", target.group("body"))
-        self.assertTrue(sources)
-        self.assertTrue(
-            all(source.startswith("executive/") for source in sources),
-            f"lost_signal_executive contains a world-layer source: {sources}",
-        )
+        self.assertIsNotNone(target, "no SIM hardware aggregate found")
+        self.assertNotRegex(target.group("body"), r"\blost_signal_sim_game\b")
 
-        links = re.search(
-            r"target_link_libraries\(lost_signal_executive\s+PUBLIC(?P<body>.*?)\)",
-            cmake,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(links)
-        for forbidden in (
-            "lost_signal_scenario",
-            "lost_signal_physics",
-            "lost_signal_vehicle",
-        ):
-            self.assertNotIn(forbidden, links.group("body"))
+    def test_robot_only_build_gate_is_declared(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn('option(LOST_SIGNAL_BUILD_SIM ', cmake)
+        self.assertRegex(cmake, r"(?s)if\(NOT LOST_SIGNAL_BUILD_SIM\).*?return\(\)")
 
 
 if __name__ == "__main__":

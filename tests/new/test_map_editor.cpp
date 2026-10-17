@@ -1,7 +1,7 @@
-#include "client/map_editor.hpp"
+#include "sim/game/client/map_editor.hpp"
 
-#include "mission/content_catalog.hpp"
-#include "mission/map_serialize.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/mission/map_serialize.hpp"
 
 #include <cmath>
 #include <filesystem>

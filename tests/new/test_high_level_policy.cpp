@@ -1,7 +1,7 @@
-#include "autonomy/behavior/high_level_policy.hpp"
-#include "mission/component_registry.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "robot/autonomy/behavior/high_level_policy.hpp"
+#include "sim/game/mission/component_registry.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <iostream>
 

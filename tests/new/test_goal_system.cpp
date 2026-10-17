@@ -1,5 +1,5 @@
-#include "mission/systems/goal_system.hpp"
-#include "mission/deployable_map_adapter.hpp"
+#include "sim/game/mission/systems/goal_system.hpp"
+#include "sim/game/mission/deployable_map_adapter.hpp"
 
 #include <iostream>
 

@@ -2,20 +2,20 @@
 // a parity-gated mirror of DifferentialMotorDrive::step + mission
 // wheel_ground, driven by recorded replay traces, then the T_lead x filter x
 // plant-mismatch matrix with synthetic step scenarios.
-// Production USED (never re-derived): PID, twistToWheels/wheelsToTwist,
+// Production USED (never re-derived): PID, twist_to_wheels/wheels_to_twist,
 // tune_wheel_pid, feedforward mapping, active_in_level, kPi.
 // Mirrored (bit-parity vs recorded traces gates every line): target clamp,
 // encoder, wheel force, body integration, ground combine, surface box test.
 // A parity failure stops this file (investigate, never loosen silently).
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
-#include "core/math.hpp"
-#include "autonomy/control/pid.hpp"
-#include "hw/chassis/diff_drive.hpp"
-#include "hw/chassis/motor_drive.hpp"
-#include "hw/feedforward.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
+#include "robot/core/math.hpp"
+#include "robot/autonomy/control/pid.hpp"
+#include "robot/platform/differential_kinematics.hpp"
+#include "sim/hardware/vehicle/motor_drive.hpp"
+#include "robot/control/feedforward.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -95,7 +95,7 @@ struct MirrorLoop {
   target_r = std::clamp(target_r, -params.max_wheel_speed_mps, params.max_wheel_speed_mps);
   double actual_l = 0.0;
   double actual_r = 0.0;
-  sim::DiffDrive::twistToWheels(v, w, params.wheel_base_m, actual_l, actual_r);
+  sim::DifferentialKinematics::twist_to_wheels(v, w, params.wheel_base_m, actual_l, actual_r);
   meas_l = encoder(actual_l, dt);
   meas_r = encoder(actual_r, dt);
   pwm_l = left_pid.update(target_l - meas_l, dt);
@@ -134,10 +134,10 @@ struct MirrorLoop {
   w = w + alpha * dt;
   double actual_cl = 0.0;
   double actual_cr = 0.0;
-  sim::DiffDrive::twistToWheels(v, w, params.wheel_base_m, actual_cl, actual_cr);
+  sim::DifferentialKinematics::twist_to_wheels(v, w, params.wheel_base_m, actual_cl, actual_cr);
   actual_cl = std::clamp(actual_cl, -params.max_wheel_speed_mps, params.max_wheel_speed_mps);
   actual_cr = std::clamp(actual_cr, -params.max_wheel_speed_mps, params.max_wheel_speed_mps);
-  sim::DiffDrive::wheelsToTwist(actual_cl, actual_cr, params.wheel_base_m, v, w);
+  sim::DifferentialKinematics::wheels_to_twist(actual_cl, actual_cr, params.wheel_base_m, v, w);
  }
 };
 
@@ -258,10 +258,10 @@ RunMetrics run_trace(const std::vector<TraceFrame>& frames, sim::MotorDriveParam
    loop.filt_r += (loop.meas_r - loop.filt_r) * alpha;
    double tv = 0.0;
    double tw = 0.0;
-   sim::DiffDrive::wheelsToTwist(frame.target_l, frame.target_r, wheel_base_m, tv, tw);
+   sim::DifferentialKinematics::wheels_to_twist(frame.target_l, frame.target_r, wheel_base_m, tv, tw);
    double mv = 0.0;
    double mw = 0.0;
-   sim::DiffDrive::wheelsToTwist(loop.filt_l, loop.filt_r, wheel_base_m, mv, mw);
+   sim::DifferentialKinematics::wheels_to_twist(loop.filt_l, loop.filt_r, wheel_base_m, mv, mw);
    sim::FeedforwardParams ffp = ff_base;
    ffp.rolling_resist = grounds[i].rolling_resist;
    const auto des = sim::lead_accel(tv, mv, tw, mw, t_lead);
@@ -323,10 +323,10 @@ RunMetrics run_steps(const std::vector<std::pair<double, double>>& targets, doub
    loop.filt_r += (loop.meas_r - loop.filt_r) * alpha;
    double tv = 0.0;
    double tw = 0.0;
-   sim::DiffDrive::wheelsToTwist(tL, tR, wheel_base_m, tv, tw);
+   sim::DifferentialKinematics::wheels_to_twist(tL, tR, wheel_base_m, tv, tw);
    double mv = 0.0;
    double mw = 0.0;
-   sim::DiffDrive::wheelsToTwist(loop.filt_l, loop.filt_r, wheel_base_m, mv, mw);
+   sim::DifferentialKinematics::wheels_to_twist(loop.filt_l, loop.filt_r, wheel_base_m, mv, mw);
    sim::FeedforwardParams ffp = ff_base;
    ffp.rolling_resist = ground.rolling_resist;
    const auto des = sim::lead_accel(tv, mv, tw, mw, kBaseLeadTimeS * t_scale);
@@ -398,7 +398,7 @@ double direct_parity(const sim::MotorDriveParams& params, const sim::WheelPidGai
   const double tw = 1.2 * std::sin(0.07 * i + 1.0);
   double wl = 0.0;
   double wr = 0.0;
-  sim::DiffDrive::twistToWheels(tv, tw, params.wheel_base_m, wl, wr);
+  sim::DifferentialKinematics::twist_to_wheels(tv, tw, params.wheel_base_m, wl, wr);
   sim::DiffState state = chained;
   sim::GroundContact contact;
   const MirrorGround mirror_ground = ground_for(i);
@@ -572,7 +572,7 @@ int main() {
   }
   double wl = 0.0;
   double wr = 0.0;
-  sim::DiffDrive::twistToWheels(1.0, 1.5, robot.wheel_base_m, wl, wr);
+  sim::DifferentialKinematics::twist_to_wheels(1.0, 1.5, robot.wheel_base_m, wl, wr);
   for (double t = 0.5; t < 3.0; t += kDt) {
    curve.emplace_back(wl, wr);
   }

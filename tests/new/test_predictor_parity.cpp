@@ -1,5 +1,5 @@
-#include "autonomy/perception/dynamic_obstacle_map.hpp"
-#include "autonomy/planning/local/predictor.hpp"
+#include "robot/autonomy/perception/dynamic_obstacle_map.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <cmath>
 #include <iostream>

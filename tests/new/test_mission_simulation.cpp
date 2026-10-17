@@ -1,7 +1,7 @@
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
-#include "autonomy/planning/local/predictor.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
+#include "robot/autonomy/planning/local/predictor.hpp"
 
 #include <cmath>
 #include <limits>
@@ -28,7 +28,7 @@ int main() {
   CHECK(std::abs(manual.chassis_caps().geometry.support_length_m - 0.40) < 1e-12);
   CHECK(std::abs(manual.chassis_caps().geometry.support_width_m - 0.58) < 1e-12);
   CHECK(manual.runtime_provider_id() == "channel.in-process");
-  CHECK(manual.runtime_api_version() == 1);
+ CHECK(manual.runtime_api_version() == sim::runtime::kApiVersion);
   CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Inactive);
   manual.start();
   CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Active);

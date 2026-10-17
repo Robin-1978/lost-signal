@@ -1,9 +1,9 @@
 // Contract reputation ledger (board economy, progress side): claim once,
 // double-claim no-ops, spend never goes negative, save round-trips, old
 // saves load at zero, and reputation buys persistent garage inventory.
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

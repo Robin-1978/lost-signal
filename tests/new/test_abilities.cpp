@@ -2,9 +2,9 @@
 // Closes the silent-drop hole: 23 ability rewards previously vanished in
 // record_completion (only components() were kept). Now registry-gated.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <cstdio>
 #include <filesystem>

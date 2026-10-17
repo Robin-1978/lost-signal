@@ -3,10 +3,10 @@
 // gates, validated builds honored by the mission. boot opts in [ro1, ro2]
 // (RO-2 verified to complete it below); all other levels stay fixed.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
-#include "physics/physics_world.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
+#include "sim/hardware/physics/physics_world.hpp"
 
 #include <algorithm>
 #include <cmath>

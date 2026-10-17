@@ -4,9 +4,9 @@
 // episode/timestamp pairing, valid time order and fixed-seed determinism.
 // Exact episode counts are deliberately not a contract.
 
-#include "mission/campaign_progress.hpp"
-#include "mission/content_catalog.hpp"
-#include "scenario/scenario_session.hpp"
+#include "sim/game/mission/campaign_progress.hpp"
+#include "sim/game/mission/content_catalog.hpp"
+#include "sim/game/scenario/scenario_session.hpp"
 
 #include <cmath>
 #include <iostream>

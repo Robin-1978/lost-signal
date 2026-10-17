@@ -5,7 +5,7 @@
 // candidate. Question answered with numbers: how many Occupied steps would
 // have been Clear, and how does the margin distribution move? The mission
 // is only ever read, never steered.
-#include "mission/content_catalog.hpp"
+#include "sim/game/mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
 #include <algorithm>

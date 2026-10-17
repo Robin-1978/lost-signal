@@ -181,10 +181,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
 
     _src_dir = _Path(__file__).resolve().parent.parent / "src"
     used_keys: set[str] = set()
-    for source in sorted(_src_dir.glob("client/*.cpp")) + sorted(
-        _src_dir.glob("mission/*.cpp")
+    for source in sorted(_src_dir.glob("sim/game/client/*.cpp")) + sorted(
+        _src_dir.glob("sim/game/mission/*.cpp")
  ) + sorted(
- _src_dir.glob("scenario/*.cpp")
+ _src_dir.glob("sim/game/scenario/*.cpp")
     ):
         text = source.read_text(encoding="utf-8")
         for match in _re.finditer(r'\btrf?\("([^"]+)"', text):

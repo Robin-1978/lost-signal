@@ -92,6 +92,13 @@ Source code, documentation, tests, schemas, and headless output use English. Loc
 # Portable simulation core and tests without graphical dependencies
 ./tools/build.sh --headless --test
 
+# Deployable ROBOT stack only: no Bullet, virtual devices, game, or renderer
+cmake -S . -B build/robot-only \
+ -DLOST_SIGNAL_BUILD_SIM=OFF -DLOST_SIGNAL_BUILD_CLIENT=OFF \
+ -DLOST_SIGNAL_BUILD_TESTS=ON
+cmake --build build/robot-only -j2
+ctest --test-dir build/robot-only --output-on-failure
+
 # Run one mission with its recommended build
 ./tools/run.sh --headless --level lost_signal --recommended
 
@@ -117,7 +124,7 @@ LOST_SIGNAL_BUILD_DIR=/path/to/lost-signal-build \
 
 ## What is simulated
 
-The compact [Lost Signal Runtime Interface](docs/runtime-interface.md) connects autonomy to simulation, replay, or future native hardware drivers without depending on an external robotics middleware. Its versioned ports validate capabilities, timestamps, sources, sequences, command expiry, lifecycle, and health. Middleware compatibility layers are outside the product roadmap.
+The compact [Lost Signal Robot Interface (LSRI)](docs/runtime-interface.md) connects the deployable ROBOT stack to simulated, replay, remote, or native providers without depending on external robotics middleware. Providers are selected per device endpoint, so a real LiDAR can run beside a simulated IMU, encoder, and vehicle plant. Versioned ports validate capabilities, timestamps, frames, sources, sequences, body-motion or typed actuator commands, expiry, lifecycle, ownership, and health. Middleware compatibility layers remain optional bridges.
 
 The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, source IDs, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
 
@@ -147,15 +154,21 @@ These interfaces create a useful path toward calibration, log replay, native har
 
 ```text
 assets/ Missions, maps, scenes, robots, components, locales, and schemas
-src/core/ Dependency-light shared primitives
-src/hw/ Chassis, motor/contact, sensor, and hardware-abstraction models
-src/autonomy/ Localization, mapping, perception, behavior, planning, and control
-src/mission/ Authored mission content, world actors, progression, and scoring
-src/scenario/ Simulation-only fixed-step ScenarioSession composition and replay
-src/physics/ Bullet adapter, physics ports, transforms, and regression backend
-src/runtime/ Versioned robot I/O contracts, provider registry, watchdog, and replay driver
-src/app/ Headless application entry point
-src/client/ raylib field/AI rendering and TGUI player interface
+src/robot/core/ Dependency-light deployable primitives
+src/robot/runtime/ LSRI observations, commands, endpoint ownership, lifecycle, and watchdogs
+src/robot/platform/ Platform capabilities and transport-neutral kinematics
+src/robot/control/ Deployable low-level control and feedforward algorithms
+src/robot/autonomy/ Localization, mapping, perception, behavior, planning, and trajectory control
+src/robot/executive/ Deployable mission-request lifecycle and task intent
+src/robot/map_io/ Deployable LSRM robot-map package I/O
+src/sim/hardware/vehicle/ Virtual chassis, motor, contact, and vehicle plants
+src/sim/hardware/sensors/ Virtual LiDAR, IMU, encoder, and device effects
+src/sim/game/mission/ Authored mission content, world actors, progression, and scoring
+src/sim/game/scenario/ Simulation-only fixed-step ScenarioSession composition and replay
+src/sim/hardware/physics/ Bullet adapter, physics ports, transforms, and regression backend
+src/sim/game/platform/ LSRI simulation provider and world-to-device bindings
+src/sim/game/app/ Headless application entry point
+src/sim/game/client/ raylib field/AI rendering and TGUI player interface
 tests/new/ C++ content, algorithm, physics, and mission regression tests
 docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts

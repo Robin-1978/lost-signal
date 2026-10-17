@@ -6,8 +6,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(LOST_SIGNAL_BUILD_SIM "Build simulation, scenarios, and headless runner" ON)
 option(LOST_SIGNAL_BUILD_CLIENT "Build the raylib + TGUI desktop client" ON)
-option(LOST_SIGNAL_BUILD_TESTS "Build headless tests" ON)
+option(LOST_SIGNAL_BUILD_TESTS "Build tests available for the selected product domains" ON)
 option(LOST_SIGNAL_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" OFF)
 option(LOST_SIGNAL_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
@@ -30,7 +31,6 @@ else()
 endif()
 
 include(FetchContent)
-
 FetchContent_Declare(
  nlohmann_json
  URL https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.11.3
@@ -39,14 +39,153 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-add_library(lost_signal_physics STATIC
- src/physics/frame_transform.cpp
- src/physics/planar_physics_world.cpp
- src/physics/tire_contact.cpp
+# ROBOT is the complete deployable stack. These targets must remain buildable
+# after src/sim is removed and must never link a simulation target.
+add_library(lost_signal_robot_core INTERFACE)
+target_include_directories(lost_signal_robot_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(lost_signal_robot_core INTERFACE cxx_std_20)
+target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_options)
+
+add_library(lost_signal_robot_platform STATIC
+ src/robot/platform/differential_kinematics.cpp
+ src/robot/control/feedforward.cpp
 )
-target_include_directories(lost_signal_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(lost_signal_physics PUBLIC cxx_std_20)
-target_link_libraries(lost_signal_physics PUBLIC lost_signal_project_options)
+target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core)
+
+add_library(lost_signal_robot_autonomy STATIC
+ src/robot/autonomy/planning/local/ackermann_local.cpp
+ src/robot/autonomy/planning/global/astar.cpp
+ src/robot/autonomy/planning/global/global_planner.cpp
+ src/robot/autonomy/planning/global/hybrid_astar.cpp
+ src/robot/autonomy/planning/local/holonomic_local.cpp
+ src/robot/autonomy/planning/local/local_planning_system.cpp
+ src/robot/autonomy/planning/task/task_ordering.cpp
+ src/robot/autonomy/behavior/high_level_policy.cpp
+ src/robot/autonomy/planning/validation/entry_shadow.cpp
+ src/robot/autonomy/planning/validation/trajectory_validator.cpp
+ src/robot/autonomy/behavior/entry_governor.cpp
+ src/robot/autonomy/behavior/crossing_behavior.cpp
+ src/robot/autonomy/localization/estimation_system.cpp
+ src/robot/autonomy/localization/dead_reckon.cpp
+ src/robot/autonomy/perception/dynamic_obstacle_map.cpp
+ src/robot/autonomy/perception/lidar_perception_system.cpp
+ src/robot/autonomy/perception/perception_pipeline.cpp
+ src/robot/autonomy/pipeline/autonomy_pipeline.cpp
+ src/robot/autonomy/planning/local/dwa.cpp
+ src/robot/autonomy/mapping/grid_map.cpp
+ src/robot/autonomy/mapping/observed_obstacle_layer.cpp
+ src/robot/autonomy/planning/local/predictor.cpp
+ src/robot/autonomy/localization/state_estimator.cpp
+ src/robot/autonomy/mapping/terrain.cpp
+ src/robot/autonomy/planning/local/pocket_shadow.cpp
+ src/robot/autonomy/localization/estimator_replay.cpp
+ src/robot/autonomy/localization/slip_observer.cpp
+ src/robot/autonomy/localization/estimator_filter.cpp
+ src/robot/autonomy/control/pid.cpp
+ src/robot/autonomy/control/route_tracking_system.cpp
+ src/robot/autonomy/control/trajectory_tracking_system.cpp
+)
+target_link_libraries(lost_signal_robot_autonomy PUBLIC
+ lost_signal_robot_core lost_signal_robot_platform)
+
+add_library(lost_signal_robot_runtime STATIC
+ src/robot/runtime/endpoint_registry.cpp
+ src/robot/runtime/map_provider.cpp
+ src/robot/runtime/runtime_channel.cpp
+ src/robot/runtime/replay_driver.cpp
+)
+target_link_libraries(lost_signal_robot_runtime PUBLIC
+ lost_signal_robot_core lost_signal_robot_platform)
+
+add_library(lost_signal_robot_map_io STATIC
+ src/robot/map_io/robot_map_package.cpp
+)
+target_link_libraries(lost_signal_robot_map_io PUBLIC
+ lost_signal_robot_core lost_signal_robot_runtime nlohmann_json::nlohmann_json)
+
+add_library(lost_signal_robot_executive STATIC
+ src/robot/executive/task_executive.cpp
+)
+target_link_libraries(lost_signal_robot_executive PUBLIC
+ lost_signal_robot_core lost_signal_robot_runtime lost_signal_robot_autonomy)
+
+add_library(lost_signal_robot_stack INTERFACE)
+target_link_libraries(lost_signal_robot_stack INTERFACE
+ lost_signal_robot_core
+ lost_signal_robot_platform
+ lost_signal_robot_runtime
+ lost_signal_robot_autonomy
+ lost_signal_robot_executive
+ lost_signal_robot_map_io)
+
+# A robot-only configuration is the executable architecture gate: no Bullet,
+# renderer, scenario content, or virtual device is configured or fetched.
+if(NOT LOST_SIGNAL_BUILD_SIM)
+ if(LOST_SIGNAL_BUILD_CLIENT)
+ message(STATUS "LOST_SIGNAL_BUILD_CLIENT ignored because LOST_SIGNAL_BUILD_SIM=OFF")
+ endif()
+ if(LOST_SIGNAL_BUILD_TESTS)
+ enable_testing()
+ find_package(Threads REQUIRED)
+
+ add_executable(test_runtime_interface tests/new/test_runtime_interface.cpp)
+ target_link_libraries(test_runtime_interface PRIVATE lost_signal_robot_runtime Threads::Threads)
+ add_test(NAME runtime_interface COMMAND test_runtime_interface)
+
+ add_executable(test_sha256 tests/new/test_sha256.cpp)
+ target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
+ add_test(NAME sha256 COMMAND test_sha256)
+
+ add_executable(test_global_planner_extension tests/new/test_global_planner_extension.cpp)
+ target_link_libraries(test_global_planner_extension PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME global_planner_extension COMMAND test_global_planner_extension)
+
+ add_executable(test_dwa_dynamic tests/new/test_dwa_dynamic.cpp)
+ target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
+
+ add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
+ target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
+
+ add_executable(test_perception_pipeline tests/new/test_perception_pipeline.cpp)
+ target_link_libraries(test_perception_pipeline PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME perception_pipeline COMMAND test_perception_pipeline)
+
+ add_executable(test_trajectory_validator tests/new/test_trajectory_validator.cpp)
+ target_link_libraries(test_trajectory_validator PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME trajectory_validator COMMAND test_trajectory_validator)
+
+ add_executable(test_task_executive tests/new/test_task_executive.cpp)
+ target_link_libraries(test_task_executive PRIVATE lost_signal_robot_executive)
+ add_test(NAME task_executive COMMAND test_task_executive)
+
+ add_executable(test_map_provider tests/new/test_map_provider.cpp)
+ target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
+ add_test(NAME map_provider COMMAND test_map_provider)
+
+ add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
+ target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)
+ add_test(NAME robot_map_package COMMAND test_robot_map_package)
+
+ add_executable(test_feedforward tests/new/test_feedforward.cpp)
+ target_link_libraries(test_feedforward PRIVATE lost_signal_robot_platform)
+ add_test(NAME feedforward COMMAND test_feedforward)
+ endif()
+ return()
+endif()
+
+# SIM implements an LSRI provider with virtual devices and physical plants. It
+# may depend on ROBOT; the reverse dependency is prohibited.
+add_library(lost_signal_sim_physics STATIC
+ src/sim/hardware/physics/frame_transform.cpp
+ src/sim/hardware/physics/planar_physics_world.cpp
+ src/sim/hardware/physics/tire_contact.cpp
+)
+target_include_directories(lost_signal_sim_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(lost_signal_sim_physics PUBLIC cxx_std_20)
+target_link_libraries(lost_signal_sim_physics PUBLIC
+ lost_signal_project_options lost_signal_robot_core)
 
 set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
 set(BUILD_BULLET3 OFF CACHE BOOL "" FORCE)
@@ -56,125 +195,73 @@ set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
 set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(INSTALL_LIBS OFF CACHE BOOL "" FORCE)
 set(USE_DOUBLE_PRECISION ON CACHE BOOL "" FORCE)
-# Bullet 3.25 declares compatibility with policies older than CMake 4 accepts.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_Declare(
  bullet
- URL https://github.com/bulletphysics/bullet3/archive/refs/tags/3.25.tar.gz
+ URL https://github.com/bulletsim/physics/bullet3/archive/refs/tags/3.25.tar.gz
  URL_HASH SHA256=c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77
  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(bullet)
-target_include_directories(lost_signal_physics SYSTEM PRIVATE ${bullet_SOURCE_DIR}/src)
-target_link_libraries(lost_signal_physics PRIVATE BulletDynamics BulletCollision LinearMath)
-target_sources(lost_signal_physics PRIVATE src/physics/bullet_physics_world.cpp)
-target_compile_definitions(lost_signal_physics PRIVATE BT_USE_DOUBLE_PRECISION)
+target_include_directories(lost_signal_sim_physics SYSTEM PRIVATE ${bullet_SOURCE_DIR}/src)
+target_link_libraries(lost_signal_sim_physics PRIVATE BulletDynamics BulletCollision LinearMath)
+target_sources(lost_signal_sim_physics PRIVATE src/sim/hardware/physics/bullet_physics_world.cpp)
+target_compile_definitions(lost_signal_sim_physics PRIVATE BT_USE_DOUBLE_PRECISION)
 
-add_library(lost_signal_core INTERFACE)
-target_include_directories(lost_signal_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(lost_signal_core INTERFACE cxx_std_20)
-target_link_libraries(lost_signal_core INTERFACE lost_signal_project_options)
-
-add_library(lost_signal_autonomy STATIC
- src/autonomy/planning/local/ackermann_local.cpp
- src/autonomy/planning/global/astar.cpp
- src/autonomy/planning/global/global_planner.cpp
- src/autonomy/planning/global/hybrid_astar.cpp
- src/autonomy/planning/local/holonomic_local.cpp
- src/autonomy/planning/local/local_planning_system.cpp
- src/autonomy/planning/task/task_ordering.cpp
- src/autonomy/behavior/high_level_policy.cpp
- src/autonomy/planning/validation/entry_shadow.cpp
- src/autonomy/planning/validation/trajectory_validator.cpp
- src/autonomy/behavior/entry_governor.cpp
- src/autonomy/behavior/crossing_behavior.cpp
- src/autonomy/localization/estimation_system.cpp
- src/autonomy/localization/dead_reckon.cpp
- src/autonomy/perception/dynamic_obstacle_map.cpp
- src/autonomy/perception/lidar_perception_system.cpp
- src/autonomy/perception/perception_pipeline.cpp
- src/autonomy/pipeline/autonomy_pipeline.cpp
- src/autonomy/planning/local/dwa.cpp
- src/autonomy/mapping/grid_map.cpp
- src/autonomy/mapping/observed_obstacle_layer.cpp
- src/autonomy/planning/local/predictor.cpp
- src/autonomy/localization/state_estimator.cpp
- src/autonomy/mapping/terrain.cpp
- src/autonomy/planning/local/pocket_shadow.cpp
- src/autonomy/localization/estimator_replay.cpp
- src/autonomy/localization/slip_observer.cpp
- src/autonomy/localization/estimator_filter.cpp
- src/autonomy/control/pid.cpp
- src/autonomy/control/route_tracking_system.cpp
- src/autonomy/control/trajectory_tracking_system.cpp
+add_library(lost_signal_sim_vehicle STATIC
+ src/sim/hardware/vehicle/ackermann.cpp
+ src/sim/hardware/vehicle/holonomic.cpp
+ src/sim/hardware/vehicle/motor_drive.cpp
+ src/sim/hardware/vehicle/chassis_factory.cpp
+ src/sim/hardware/vehicle/tracked.cpp
+ src/sim/hardware/vehicle/contact.cpp
+ src/sim/hardware/vehicle/planar_diff_drive.cpp
 )
-target_link_libraries(lost_signal_autonomy PUBLIC lost_signal_core)
+target_link_libraries(lost_signal_sim_vehicle PUBLIC
+ lost_signal_robot_stack lost_signal_sim_physics)
 
-add_library(lost_signal_vehicle STATIC
- src/hw/chassis/ackermann.cpp
- src/hw/chassis/diff_drive.cpp
- src/hw/chassis/holonomic.cpp
- src/hw/chassis/motor_drive.cpp
- src/hw/chassis/chassis_factory.cpp
- src/hw/chassis/tracked.cpp
- src/hw/dynamics/contact.cpp
- src/hw/feedforward.cpp
- src/hw/sensors/sensor.cpp
- src/hw/sensors/sensor_system.cpp
+add_library(lost_signal_sim_sensors STATIC
+ src/sim/hardware/sensors/sensor.cpp
+ src/sim/hardware/sensors/sensor_system.cpp
 )
-target_link_libraries(lost_signal_vehicle PUBLIC
- lost_signal_core lost_signal_autonomy lost_signal_physics)
+target_link_libraries(lost_signal_sim_sensors PUBLIC
+ lost_signal_robot_stack lost_signal_sim_vehicle lost_signal_sim_physics)
 
 add_library(lost_signal_sim_geometry STATIC
- src/physics/lidar_raycast.cpp
+ src/sim/hardware/physics/lidar_raycast.cpp
 )
 target_link_libraries(lost_signal_sim_geometry PUBLIC
- lost_signal_core lost_signal_autonomy)
+ lost_signal_robot_core lost_signal_robot_autonomy)
 
-add_library(lost_signal_runtime STATIC
- src/runtime/map_provider.cpp
- src/runtime/runtime_channel.cpp
- src/runtime/replay_driver.cpp
-)
-target_link_libraries(lost_signal_runtime PUBLIC lost_signal_core)
-
-add_library(lost_signal_map_io STATIC
- src/map_io/robot_map_package.cpp
-)
-target_link_libraries(lost_signal_map_io PUBLIC
- lost_signal_core lost_signal_runtime nlohmann_json::nlohmann_json)
-
-add_library(lost_signal_executive STATIC
- src/executive/task_executive.cpp
-)
-target_link_libraries(lost_signal_executive PUBLIC
- lost_signal_core lost_signal_runtime lost_signal_autonomy)
-
-add_library(lost_signal_stack INTERFACE)
-target_link_libraries(lost_signal_stack INTERFACE
- lost_signal_autonomy lost_signal_executive lost_signal_vehicle lost_signal_runtime lost_signal_map_io lost_signal_physics
+add_library(lost_signal_sim_hardware INTERFACE)
+target_link_libraries(lost_signal_sim_hardware INTERFACE
+ lost_signal_robot_stack
+ lost_signal_sim_physics
+ lost_signal_sim_vehicle
+ lost_signal_sim_sensors
  lost_signal_sim_geometry)
 
-add_library(lost_signal_scenario STATIC
- src/mission/campaign_progress.cpp
- src/mission/component_registry.cpp
- src/mission/content_catalog.cpp
- src/mission/deployable_map_adapter.cpp
- src/mission/map_serialize.cpp
- src/sim/simulated_platform.cpp
- src/scenario/scenario_session.cpp
- src/scenario/scenario_autonomy.cpp
- src/mission/world/actor_behavior_registry.cpp
- src/mission/systems/collision_monitor.cpp
- src/mission/systems/decision_evidence_system.cpp
- src/mission/systems/dynamic_traffic_system.cpp
- src/mission/systems/field_dispatch_system.cpp
- src/mission/systems/field_operator_system.cpp
- src/mission/systems/goal_system.cpp
- src/mission/systems/world_activity_system.cpp
+add_library(lost_signal_sim_game STATIC
+ src/sim/game/mission/campaign_progress.cpp
+ src/sim/game/mission/component_registry.cpp
+ src/sim/game/mission/content_catalog.cpp
+ src/sim/game/mission/deployable_map_adapter.cpp
+ src/sim/game/mission/map_serialize.cpp
+ src/sim/game/platform/simulated_platform.cpp
+ src/sim/game/scenario/scenario_session.cpp
+ src/sim/game/scenario/scenario_autonomy.cpp
+ src/sim/game/mission/world/actor_behavior_registry.cpp
+ src/sim/game/mission/systems/collision_monitor.cpp
+ src/sim/game/mission/systems/decision_evidence_system.cpp
+ src/sim/game/mission/systems/dynamic_traffic_system.cpp
+ src/sim/game/mission/systems/field_dispatch_system.cpp
+ src/sim/game/mission/systems/field_operator_system.cpp
+ src/sim/game/mission/systems/goal_system.cpp
+ src/sim/game/mission/systems/world_activity_system.cpp
 )
-target_include_directories(lost_signal_scenario PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(lost_signal_scenario PUBLIC lost_signal_stack nlohmann_json::nlohmann_json)
+target_include_directories(lost_signal_sim_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lost_signal_sim_game PUBLIC
+ lost_signal_sim_hardware nlohmann_json::nlohmann_json)
 
 set(LOST_SIGNAL_BUILD_INFO_HEADER
  ${CMAKE_CURRENT_BINARY_DIR}/generated/lost_signal/build_info.hpp)
@@ -194,12 +281,12 @@ add_custom_target(lost_signal_build_info
  VERBATIM)
 
 add_executable(lost_signal_headless
- src/app/headless_main.cpp
- src/app/run_artifact.cpp
+ src/sim/game/app/headless_main.cpp
+ src/sim/game/app/run_artifact.cpp
 )
 add_dependencies(lost_signal_headless lost_signal_build_info)
 target_include_directories(lost_signal_headless PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
-target_link_libraries(lost_signal_headless PRIVATE lost_signal_scenario)
+target_link_libraries(lost_signal_headless PRIVATE lost_signal_sim_game)
 
 if(LOST_SIGNAL_BUILD_CLIENT)
  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -232,14 +319,14 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  FetchContent_MakeAvailable(tgui)
 
  add_executable(lost_signal
- src/client/audio_director.cpp
- src/client/main.cpp
- src/client/game_ui.cpp
- src/client/map_editor.cpp
- src/client/scene_renderer_3d.cpp
- src/client/world_renderer.cpp
+ src/sim/game/client/audio_director.cpp
+ src/sim/game/client/main.cpp
+ src/sim/game/client/game_ui.cpp
+ src/sim/game/client/map_editor.cpp
+ src/sim/game/client/scene_renderer_3d.cpp
+ src/sim/game/client/world_renderer.cpp
  )
- target_link_libraries(lost_signal PRIVATE lost_signal_scenario raylib TGUI::TGUI)
+ target_link_libraries(lost_signal PRIVATE lost_signal_sim_game raylib TGUI::TGUI)
  get_target_property(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS raylib INTERFACE_INCLUDE_DIRECTORIES)
  if(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS)
  target_include_directories(lost_signal SYSTEM PRIVATE ${LOST_SIGNAL_RAYLIB_INCLUDE_DIRS})
@@ -259,86 +346,86 @@ if(LOST_SIGNAL_BUILD_TESTS)
  find_package(Threads REQUIRED)
 
  add_executable(test_content_catalog tests/new/test_content_catalog.cpp)
- target_link_libraries(test_content_catalog PRIVATE lost_signal_scenario)
+ target_link_libraries(test_content_catalog PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_content_catalog PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME content_catalog COMMAND test_content_catalog)
 
  add_executable(test_component_registry tests/new/test_component_registry.cpp)
- target_link_libraries(test_component_registry PRIVATE lost_signal_scenario)
+ target_link_libraries(test_component_registry PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_component_registry PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME component_registry COMMAND test_component_registry)
 
  add_executable(test_runtime_interface tests/new/test_runtime_interface.cpp)
- target_link_libraries(test_runtime_interface PRIVATE lost_signal_stack Threads::Threads)
+ target_link_libraries(test_runtime_interface PRIVATE lost_signal_sim_hardware Threads::Threads)
  add_test(NAME runtime_interface COMMAND test_runtime_interface)
 
  add_executable(test_sha256 tests/new/test_sha256.cpp)
- target_link_libraries(test_sha256 PRIVATE lost_signal_core)
+ target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
  add_test(NAME sha256 COMMAND test_sha256)
 
  add_executable(test_global_planner_extension tests/new/test_global_planner_extension.cpp)
- target_link_libraries(test_global_planner_extension PRIVATE lost_signal_autonomy)
+ target_link_libraries(test_global_planner_extension PRIVATE lost_signal_robot_autonomy)
  add_test(NAME global_planner_extension COMMAND test_global_planner_extension)
 
  add_executable(test_field_dispatch tests/new/test_field_dispatch.cpp)
- target_link_libraries(test_field_dispatch PRIVATE lost_signal_scenario)
+ target_link_libraries(test_field_dispatch PRIVATE lost_signal_sim_game)
  add_test(NAME field_dispatch COMMAND test_field_dispatch)
 
  add_executable(test_world_activity tests/new/test_world_activity.cpp)
- target_link_libraries(test_world_activity PRIVATE lost_signal_scenario)
+ target_link_libraries(test_world_activity PRIVATE lost_signal_sim_game)
  add_test(NAME world_activity COMMAND test_world_activity)
 
  add_executable(test_physics_world tests/new/test_physics_world.cpp)
- target_link_libraries(test_physics_world PRIVATE lost_signal_physics)
+ target_link_libraries(test_physics_world PRIVATE lost_signal_sim_physics)
  add_test(NAME physics_world COMMAND test_physics_world)
 
  add_executable(test_simulated_platform tests/new/test_simulated_platform.cpp)
- target_link_libraries(test_simulated_platform PRIVATE lost_signal_scenario)
+ target_link_libraries(test_simulated_platform PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_simulated_platform PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME simulated_platform COMMAND test_simulated_platform)
 
 add_executable(test_ro1_dynamics_acceptance tests/new/test_ro1_dynamics_acceptance.cpp)
-target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_scenario)
+target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_sim_game)
 target_compile_definitions(test_ro1_dynamics_acceptance PRIVATE
   LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME ro1_dynamics_acceptance COMMAND test_ro1_dynamics_acceptance)
 
 add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
-target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_scenario)
+target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_sim_game)
 target_compile_definitions(test_ro1_lidar_acceptance PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
 
  add_executable(test_terrain tests/new/test_terrain.cpp)
- target_link_libraries(test_terrain PRIVATE lost_signal_stack)
+ target_link_libraries(test_terrain PRIVATE lost_signal_sim_hardware)
  add_test(NAME terrain COMMAND test_terrain)
 
  add_executable(test_kinematic_navigation tests/new/test_kinematic_navigation.cpp)
- target_link_libraries(test_kinematic_navigation PRIVATE lost_signal_stack)
+ target_link_libraries(test_kinematic_navigation PRIVATE lost_signal_sim_hardware)
  add_test(NAME kinematic_navigation COMMAND test_kinematic_navigation)
 
  add_executable(test_high_level_policy tests/new/test_high_level_policy.cpp)
- target_link_libraries(test_high_level_policy PRIVATE lost_signal_scenario)
+ target_link_libraries(test_high_level_policy PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_high_level_policy PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME high_level_policy COMMAND test_high_level_policy)
 
 	 add_executable(test_field_operator tests/new/test_field_operator.cpp)
-	 target_link_libraries(test_field_operator PRIVATE lost_signal_scenario)
+	 target_link_libraries(test_field_operator PRIVATE lost_signal_sim_game)
 	 target_compile_definitions(test_field_operator PRIVATE
 	 LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
 	 )
 	 add_test(NAME field_operator COMMAND test_field_operator)
 
  add_executable(test_mission_simulation tests/new/test_mission_simulation.cpp)
- target_link_libraries(test_mission_simulation PRIVATE lost_signal_scenario)
+ target_link_libraries(test_mission_simulation PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_mission_simulation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -351,27 +438,27 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
  add_test(NAME mission_simulation COMMAND test_mission_simulation)
 
  add_executable(test_dynamic_perception tests/new/test_dynamic_perception.cpp)
- target_link_libraries(test_dynamic_perception PRIVATE lost_signal_stack)
+ target_link_libraries(test_dynamic_perception PRIVATE lost_signal_sim_hardware)
  add_test(NAME dynamic_perception COMMAND test_dynamic_perception)
 
 add_executable(test_dwa_dynamic tests/new/test_dwa_dynamic.cpp)
-target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_autonomy)
+target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_robot_autonomy)
 add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
 
  add_executable(test_dwell_behavior tests/new/test_dwell_behavior.cpp)
- target_link_libraries(test_dwell_behavior PRIVATE lost_signal_stack)
+ target_link_libraries(test_dwell_behavior PRIVATE lost_signal_sim_hardware)
  add_test(NAME dwell_behavior COMMAND test_dwell_behavior)
 
  add_executable(test_behavior_registry tests/new/test_behavior_registry.cpp)
-target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
+target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim_game)
  add_test(NAME behavior_registry COMMAND test_behavior_registry)
 
  add_executable(test_entry_shadow tests/new/test_entry_shadow.cpp)
- target_link_libraries(test_entry_shadow PRIVATE lost_signal_stack)
+ target_link_libraries(test_entry_shadow PRIVATE lost_signal_sim_hardware)
  add_test(NAME entry_shadow COMMAND test_entry_shadow)
 
  add_executable(test_entry_shadow_field tests/new/test_entry_shadow_field.cpp)
- target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_scenario)
+ target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_sim_game)
  target_include_directories(test_entry_shadow_field PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  target_compile_definitions(test_entry_shadow_field PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
@@ -379,14 +466,14 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
  add_test(NAME entry_shadow_field COMMAND test_entry_shadow_field)
 
  add_executable(test_stop_line_study tests/new/test_stop_line_study.cpp)
- target_link_libraries(test_stop_line_study PRIVATE lost_signal_scenario)
+ target_link_libraries(test_stop_line_study PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_stop_line_study PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME stop_line_study COMMAND test_stop_line_study)
 
  add_executable(test_stop_whatif tests/new/test_stop_whatif.cpp)
- target_link_libraries(test_stop_whatif PRIVATE lost_signal_scenario)
+ target_link_libraries(test_stop_whatif PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_stop_whatif PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -394,7 +481,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
  add_test(NAME stop_whatif COMMAND test_stop_whatif)
 
  add_executable(test_entry_shadow_town tests/new/test_entry_shadow_town.cpp)
- target_link_libraries(test_entry_shadow_town PRIVATE lost_signal_scenario)
+ target_link_libraries(test_entry_shadow_town PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_entry_shadow_town PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -402,7 +489,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
  add_test(NAME entry_shadow_town COMMAND test_entry_shadow_town)
 
  add_executable(test_manual_ram tests/new/test_manual_ram.cpp)
- target_link_libraries(test_manual_ram PRIVATE lost_signal_scenario)
+ target_link_libraries(test_manual_ram PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_manual_ram PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -410,51 +497,51 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
  add_test(NAME manual_ram COMMAND test_manual_ram)
 
  add_executable(test_entry_governor tests/new/test_entry_governor.cpp)
- target_link_libraries(test_entry_governor PRIVATE lost_signal_stack)
+ target_link_libraries(test_entry_governor PRIVATE lost_signal_sim_hardware)
  add_test(NAME entry_governor COMMAND test_entry_governor)
 
  add_executable(test_dynamic_traffic_system tests/new/test_dynamic_traffic_system.cpp)
- target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_scenario)
+ target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_sim_game)
  add_test(NAME dynamic_traffic_system COMMAND test_dynamic_traffic_system)
 
  add_executable(test_trajectory_validator tests/new/test_trajectory_validator.cpp)
- target_link_libraries(test_trajectory_validator PRIVATE lost_signal_autonomy)
+ target_link_libraries(test_trajectory_validator PRIVATE lost_signal_robot_autonomy)
  add_test(NAME trajectory_validator COMMAND test_trajectory_validator)
 
  add_executable(test_observed_obstacle_layer tests/new/test_observed_obstacle_layer.cpp)
- target_link_libraries(test_observed_obstacle_layer PRIVATE lost_signal_autonomy)
+ target_link_libraries(test_observed_obstacle_layer PRIVATE lost_signal_robot_autonomy)
  add_test(NAME observed_obstacle_layer COMMAND test_observed_obstacle_layer)
 
  add_executable(test_perception_pipeline tests/new/test_perception_pipeline.cpp)
- target_link_libraries(test_perception_pipeline PRIVATE lost_signal_autonomy)
+ target_link_libraries(test_perception_pipeline PRIVATE lost_signal_robot_autonomy)
  add_test(NAME perception_pipeline COMMAND test_perception_pipeline)
 
 add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
-target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_autonomy)
+target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
 
  add_executable(test_deterministic_scheduler tests/new/test_deterministic_scheduler.cpp)
- target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_scenario)
+ target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_sim_game)
  add_test(NAME deterministic_scheduler COMMAND test_deterministic_scheduler)
 
 add_executable(test_collision_monitor tests/new/test_collision_monitor.cpp)
-target_link_libraries(test_collision_monitor PRIVATE lost_signal_scenario)
+target_link_libraries(test_collision_monitor PRIVATE lost_signal_sim_game)
 add_test(NAME collision_monitor COMMAND test_collision_monitor)
 
 add_executable(test_decision_evidence_system tests/new/test_decision_evidence_system.cpp)
-target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_scenario)
+target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_sim_game)
 add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
 
  add_executable(test_trajectory_tracking_system tests/new/test_trajectory_tracking_system.cpp)
- target_link_libraries(test_trajectory_tracking_system PRIVATE lost_signal_autonomy)
+ target_link_libraries(test_trajectory_tracking_system PRIVATE lost_signal_robot_autonomy)
  add_test(NAME trajectory_tracking_system COMMAND test_trajectory_tracking_system)
 
  add_executable(test_algo_invariants tests/new/test_algo_invariants.cpp)
- target_link_libraries(test_algo_invariants PRIVATE lost_signal_stack)
+ target_link_libraries(test_algo_invariants PRIVATE lost_signal_sim_hardware)
  add_test(NAME algo_invariants COMMAND test_algo_invariants)
 
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
- target_link_libraries(test_summon_recharge PRIVATE lost_signal_scenario)
+ target_link_libraries(test_summon_recharge PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_summon_recharge PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -462,18 +549,18 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
 
 
  add_executable(test_model_validation tests/new/test_model_validation.cpp)
- target_link_libraries(test_model_validation PRIVATE lost_signal_scenario)
+ target_link_libraries(test_model_validation PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_model_validation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME model_validation COMMAND test_model_validation)
 
  add_executable(test_chassis tests/new/test_chassis.cpp)
- target_link_libraries(test_chassis PRIVATE lost_signal_stack)
+ target_link_libraries(test_chassis PRIVATE lost_signal_sim_hardware)
  add_test(NAME chassis COMMAND test_chassis)
 
- add_executable(test_map_editor tests/new/test_map_editor.cpp src/client/map_editor.cpp)
- target_link_libraries(test_map_editor PRIVATE lost_signal_scenario)
+ add_executable(test_map_editor tests/new/test_map_editor.cpp src/sim/game/client/map_editor.cpp)
+ target_link_libraries(test_map_editor PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_map_editor PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -481,164 +568,164 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME map_editor COMMAND test_map_editor)
 
  add_executable(test_map_roundtrip tests/new/test_map_roundtrip.cpp)
- target_link_libraries(test_map_roundtrip PRIVATE lost_signal_scenario)
+ target_link_libraries(test_map_roundtrip PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_map_roundtrip PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME map_roundtrip COMMAND test_map_roundtrip)
 
  add_executable(test_predictor_parity tests/new/test_predictor_parity.cpp)
- target_link_libraries(test_predictor_parity PRIVATE lost_signal_stack)
+ target_link_libraries(test_predictor_parity PRIVATE lost_signal_sim_hardware)
  add_test(NAME predictor_parity COMMAND test_predictor_parity)
 
  add_executable(test_slip_detect tests/new/test_slip_detect.cpp)
- target_link_libraries(test_slip_detect PRIVATE lost_signal_stack)
+ target_link_libraries(test_slip_detect PRIVATE lost_signal_sim_hardware)
  add_test(NAME slip_detect COMMAND test_slip_detect)
 
  add_executable(test_slip_shadow tests/new/test_slip_shadow.cpp)
- target_link_libraries(test_slip_shadow PRIVATE lost_signal_stack lost_signal_scenario)
+ target_link_libraries(test_slip_shadow PRIVATE lost_signal_sim_hardware lost_signal_sim_game)
  target_compile_definitions(test_slip_shadow PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME slip_shadow COMMAND test_slip_shadow)
 
  add_executable(test_departure_replay tests/new/test_departure_replay.cpp)
- target_link_libraries(test_departure_replay PRIVATE lost_signal_stack)
+ target_link_libraries(test_departure_replay PRIVATE lost_signal_sim_hardware)
  add_test(NAME departure_replay COMMAND test_departure_replay)
 
  add_executable(test_phase_legs tests/new/test_phase_legs.cpp)
- target_link_libraries(test_phase_legs PRIVATE lost_signal_stack)
+ target_link_libraries(test_phase_legs PRIVATE lost_signal_sim_hardware)
  add_test(NAME phase_legs COMMAND test_phase_legs)
 
  add_executable(test_goal_system tests/new/test_goal_system.cpp)
- target_link_libraries(test_goal_system PRIVATE lost_signal_scenario)
+ target_link_libraries(test_goal_system PRIVATE lost_signal_sim_game)
  add_test(NAME goal_system COMMAND test_goal_system)
 
  add_executable(test_task_executive tests/new/test_task_executive.cpp)
- target_link_libraries(test_task_executive PRIVATE lost_signal_executive)
+ target_link_libraries(test_task_executive PRIVATE lost_signal_robot_executive)
  add_test(NAME task_executive COMMAND test_task_executive)
 
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
- target_link_libraries(test_map_provider PRIVATE lost_signal_runtime)
+ target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
  add_test(NAME map_provider COMMAND test_map_provider)
 
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
- target_link_libraries(test_robot_map_package PRIVATE lost_signal_map_io)
+ target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)
  add_test(NAME robot_map_package COMMAND test_robot_map_package)
 
  add_executable(test_deployable_map_adapter tests/new/test_deployable_map_adapter.cpp)
- target_link_libraries(test_deployable_map_adapter PRIVATE lost_signal_scenario)
+ target_link_libraries(test_deployable_map_adapter PRIVATE lost_signal_sim_game)
  add_test(NAME deployable_map_adapter COMMAND test_deployable_map_adapter)
 
  add_executable(test_orchard_scramble tests/new/test_orchard_scramble.cpp)
- target_link_libraries(test_orchard_scramble PRIVATE lost_signal_scenario)
+ target_link_libraries(test_orchard_scramble PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_orchard_scramble PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME orchard_scramble COMMAND test_orchard_scramble)
 
  add_executable(test_pocket_search tests/new/test_pocket_search.cpp)
- target_link_libraries(test_pocket_search PRIVATE lost_signal_stack)
+ target_link_libraries(test_pocket_search PRIVATE lost_signal_sim_hardware)
  add_test(NAME pocket_search COMMAND test_pocket_search)
 
  add_executable(test_perturbation tests/new/test_perturbation.cpp)
- target_link_libraries(test_perturbation PRIVATE lost_signal_stack)
+ target_link_libraries(test_perturbation PRIVATE lost_signal_sim_hardware)
  add_test(NAME perturbation COMMAND test_perturbation)
 
  add_executable(test_estimation_error tests/new/test_estimation_error.cpp)
- target_link_libraries(test_estimation_error PRIVATE lost_signal_scenario)
+ target_link_libraries(test_estimation_error PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_estimation_error PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME estimation_error COMMAND test_estimation_error)
 
  add_executable(test_release_error tests/new/test_release_error.cpp)
- target_link_libraries(test_release_error PRIVATE lost_signal_scenario)
+ target_link_libraries(test_release_error PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_release_error PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME release_error COMMAND test_release_error)
 
  add_executable(test_player_pack tests/new/test_player_pack.cpp)
- target_link_libraries(test_player_pack PRIVATE lost_signal_scenario)
+ target_link_libraries(test_player_pack PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_player_pack PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME player_pack COMMAND test_player_pack)
 
  add_executable(test_chassis_choice tests/new/test_chassis_choice.cpp)
- target_link_libraries(test_chassis_choice PRIVATE lost_signal_scenario)
+ target_link_libraries(test_chassis_choice PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_chassis_choice PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME chassis_choice COMMAND test_chassis_choice)
 
  add_executable(test_abilities tests/new/test_abilities.cpp)
- target_link_libraries(test_abilities PRIVATE lost_signal_scenario)
+ target_link_libraries(test_abilities PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_abilities PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME abilities COMMAND test_abilities)
 
  add_executable(test_contract_rep tests/new/test_contract_rep.cpp)
- target_link_libraries(test_contract_rep PRIVATE lost_signal_scenario)
+ target_link_libraries(test_contract_rep PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_contract_rep PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME contract_rep COMMAND test_contract_rep)
 
  add_executable(test_signal_cross tests/new/test_signal_cross.cpp)
- target_link_libraries(test_signal_cross PRIVATE lost_signal_scenario)
+ target_link_libraries(test_signal_cross PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_signal_cross PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME signal_cross COMMAND test_signal_cross)
 
  add_executable(test_shadow_accumulation tests/new/test_shadow_accumulation.cpp)
- target_link_libraries(test_shadow_accumulation PRIVATE lost_signal_scenario)
+ target_link_libraries(test_shadow_accumulation PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_shadow_accumulation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME shadow_accumulation COMMAND test_shadow_accumulation)
 
  add_executable(test_signal_quality tests/new/test_signal_quality.cpp)
- target_link_libraries(test_signal_quality PRIVATE lost_signal_stack lost_signal_scenario)
+ target_link_libraries(test_signal_quality PRIVATE lost_signal_sim_hardware lost_signal_sim_game)
  target_compile_definitions(test_signal_quality PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME signal_quality COMMAND test_signal_quality)
 
  add_executable(test_inverse_consistency tests/new/test_inverse_consistency.cpp)
- target_link_libraries(test_inverse_consistency PRIVATE lost_signal_stack)
+ target_link_libraries(test_inverse_consistency PRIVATE lost_signal_sim_hardware)
  add_test(NAME inverse_consistency COMMAND test_inverse_consistency)
 
  add_executable(test_feedforward tests/new/test_feedforward.cpp)
- target_link_libraries(test_feedforward PRIVATE lost_signal_stack)
+ target_link_libraries(test_feedforward PRIVATE lost_signal_sim_hardware)
  add_test(NAME feedforward COMMAND test_feedforward)
 
  add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
- target_link_libraries(test_state_estimator PRIVATE lost_signal_stack)
+ target_link_libraries(test_state_estimator PRIVATE lost_signal_sim_hardware)
  add_test(NAME state_estimator COMMAND test_state_estimator)
 
  add_executable(test_ro2_pocket_shadow tests/new/test_ro2_pocket_shadow.cpp)
- target_link_libraries(test_ro2_pocket_shadow PRIVATE lost_signal_stack)
+ target_link_libraries(test_ro2_pocket_shadow PRIVATE lost_signal_sim_hardware)
  add_test(NAME ro2_pocket_shadow COMMAND test_ro2_pocket_shadow)
 
  add_executable(test_estimator_replay tests/new/test_estimator_replay.cpp)
- target_link_libraries(test_estimator_replay PRIVATE lost_signal_stack)
+ target_link_libraries(test_estimator_replay PRIVATE lost_signal_sim_hardware)
  add_test(NAME estimator_replay COMMAND test_estimator_replay)
  add_executable(test_slip_observer tests/new/test_slip_observer.cpp)
- target_link_libraries(test_slip_observer PRIVATE lost_signal_stack)
+ target_link_libraries(test_slip_observer PRIVATE lost_signal_sim_hardware)
  add_test(NAME slip_observer COMMAND test_slip_observer)
  add_executable(test_estimator_filter tests/new/test_estimator_filter.cpp)
- target_link_libraries(test_estimator_filter PRIVATE lost_signal_stack)
+ target_link_libraries(test_estimator_filter PRIVATE lost_signal_sim_hardware)
  add_test(NAME estimator_filter COMMAND test_estimator_filter)
  add_executable(test_estimator_chain tests/new/test_estimator_chain.cpp)
- target_link_libraries(test_estimator_chain PRIVATE lost_signal_stack)
+ target_link_libraries(test_estimator_chain PRIVATE lost_signal_sim_hardware)
  add_test(NAME estimator_chain COMMAND test_estimator_chain)
 
  add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
- target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_stack lost_signal_scenario)
+ target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_sim_hardware lost_signal_sim_game)
  target_compile_definitions(test_ff_sensitivity PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
