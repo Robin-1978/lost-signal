@@ -412,6 +412,26 @@ items below strengthen timing, fault evidence, and physical fidelity; they do no
 RO-2 through RO-5 remain teaching proxies until each receives its own independent geometry, actuator, contact,
 sensor, and maneuver acceptance matrix. Their expansion does not weaken or silently generalize the RO-1 evidence.
 
+### Selected implementation sequence: 16-line LiDAR, then RO-2
+
+Both expansions are approved, with this fixed order:
+
+1. **16-line spinning LiDAR on RO-1.** First make configured sensor latency affect deterministic delivery while
+ preserving acquisition timestamps. Then add data-authored vertical beam angles, ring and azimuth timing, 3D Bullet
+ raycasts, LSRI point-cloud transport, ground/non-ground projection into the existing local obstacle layer, and a
+ height/ring/intensity AI visualization. Analytic fixtures must cover flat ground, a vertical wall, a slope, a low
+ obstacle, an overhanging obstacle, occlusion, intensity, ring identity, and motion-distorted per-point timing.
+2. **RO-2 articulated Ackermann reference.** Replace the ideal single-body proxy with authored chassis, steering
+ knuckles, four rolling wheels, explicit drive and steering actuator channels, physical joint feedback, tire/contact
+ response, and deployable controllers across LSRI. The acceptance matrix must separately cover static wheel loads,
+ straight/reverse motion, steering step/rate, common instantaneous turn centre, minimum-radius circles, braking,
+ low-friction understeer/slip, cross-slope stability, command expiry, and long-run rest stability.
+
+The 16-line profile must not be implemented as sixteen independent planar scans, and RO-2 must not be promoted by
+retaining an analytic yaw-torque shortcut. Both features stay data-authored and use the same ROBOT/LSRI/SIM boundary
+as RO-1. After their focused gates pass, existing missions are re-run; mission success itself is not the physical
+oracle.
+
 ## Next implementation order
 
 The RO-1 rigid-body, device, and autonomy reference baseline remains the foundation. The next work does not add
