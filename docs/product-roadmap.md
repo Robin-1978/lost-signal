@@ -372,6 +372,46 @@ The graphical smoke run, deterministic screenshots, and portable Linux, macOS, a
 publishing gates. Sanitizers run at milestone and release-candidate gates; a result from an earlier baseline is not
 evidence for the current revision.
 
+## RO-1 post-baseline optimization backlog
+
+RO-1 now closes the reference control chain from body intent through deployable wheel PID and LSRI normalized-duty
+commands to the simulated motor, articulated wheels, tire contact, rigid body, and measured joint feedback. The
+items below strengthen timing, fault evidence, and physical fidelity; they do not reopen that ownership boundary.
+
+### Release-candidate gates
+
+1. **Sensor delivery time and fusion alignment.** Keep acquisition time immutable, delay simulated delivery by the
+ configured device latency, and align encoder, IMU, pose, and LiDAR updates by sample time. Tests must cover delayed,
+ jittered, stale, dropped, and out-of-order packets without using arrival time as the measurement timestamp. The
+ current LSRI header carries latency, but shipped component profiles use zero delivery delay and therefore do not yet
+ exercise this path end to end.
+2. **Integrated command-loss safety.** Exercise the complete RO-1 loop with skipped and expired actuator commands,
+ verify LSRI emits both channels' declared safe values, and measure stopping distance and residual wheel effort. The
+ existing channel-level watchdog test remains necessary but is not the full plant-level proof.
+3. **Long-run numerical stability.** Add bounded energy, pose, contact penetration, wheel-speed, and temperature-free
+ motor-state drift checks over longer stationary and constant-speed runs. Compare at least two internal contact step
+ sizes with tolerance envelopes rather than requiring bit identity between different solvers or platforms.
+4. **Final release execution.** Run ASan/UBSan after the functional work is frozen, then graphical smoke,
+ deterministic screenshot, packaging, and Linux/macOS/Windows CI gates. Record the exact commit, compiler, asset
+ hashes, scenario, seed, configuration, and result artifacts.
+
+### Optional higher-fidelity profiles
+
+5. **Electrical and drive effects.** Add named profiles for duty deadband, supply-voltage sag, current/torque limits,
+ regenerative or resistive braking, gearbox drag/backlash, command delay, and thermal derating. Each effect remains
+ independently switchable and requires a measurable maneuver; it must not become an unexplained default constant.
+6. **LiDAR fidelity families.** Extend the existing planar first-return profile with optional beam divergence,
+ weather attenuation, multi-return behavior, packet timing, and later multi-line spinning and solid-state patterns.
+ All variants publish the same LSRI time/frame/source contract and keep device-specific fields explicit.
+7. **Payload mechanics.** Add payload collision geometry, attachment compliance, and load placement instead of
+ changing only mass, centre height, and yaw inertia. Re-run static loads, braking, tip, slope, and rough-ground gates.
+8. **Identified or HIL evidence.** A contributed physical target must record calibration sources and pass held-out
+ wheel-speed, yaw, pose, stopping-distance, scan timing, range, and intensity error envelopes. Until then the project
+ may state that its boundary supports transfer experiments, but must not claim proven sim-to-real performance.
+
+RO-2 through RO-5 remain teaching proxies until each receives its own independent geometry, actuator, contact,
+sensor, and maneuver acceptance matrix. Their expansion does not weaken or silently generalize the RO-1 evidence.
+
 ## Next implementation order
 
 The RO-1 rigid-body, device, and autonomy reference baseline remains the foundation. The next work does not add

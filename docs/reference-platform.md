@@ -361,4 +361,6 @@ loose-ground content supplies repeatable inputs to engineering probes; mission s
 tests, with ASan/UBSan reserved for milestone and release-candidate gates.
 
 Only after these gates pass does work resume on new Playgrounds, additional chassis, multi-line or solid-state
-LiDAR, SLAM, VLA, HIL, or other expansion.
+LiDAR, SLAM, VLA, HIL, or other expansion. The prioritized release and optional fidelity work is maintained in the
+[RO-1 post-baseline optimization backlog](product-roadmap.md#ro-1-post-baseline-optimization-backlog); this document
+remains the acceptance source of truth for the physical reference model.
