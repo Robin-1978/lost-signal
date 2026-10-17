@@ -911,7 +911,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
 
  for (const auto& path : json_files(catalog.root_ / "robots")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
-  require_schema_version(value, path, 5);
+ require_schema_version(value, path, 6);
   const auto& drive = value.at("drive");
   const auto& motor = drive.at("motor");
   const auto& steering = drive.at("steering");
@@ -957,6 +957,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     steering.value("max_steer_rad", 0.6),
     steering.value("max_steer_rate_radps", 2.5),
     steering.value("servo_response_s", 0.4),
+ steering.value("stall_torque_Nm", 8.0),
   };
   robot.energy_base_w = energy.at("base_w").get<double>();
   robot.energy_per_v_w = energy.at("per_v_w").get<double>();
@@ -1000,12 +1001,18 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
       item.at("parent").get<std::string>(), item.at("child").get<std::string>(),
       vec3(item.at("pivot_in_parent_m")),   vec3(item.at("pivot_in_child_m")),
       vec3(item.at("axis_in_parent")),      vec3(item.at("axis_in_child")),
+ item.at("type").get<std::string>() == "revolute",
+ item.value("lower_limit_rad", 0.0), item.value("upper_limit_rad", 0.0),
     };
     if (!joint_ids.insert(joint.id).second || !link_ids.count(joint.parent) || !link_ids.count(joint.child) ||
         joint.parent == joint.child) {
      throw ContentError(path.string() + ": invalid articulated joint '" + joint.id + "'");
     }
-    robot.articulation.joints.push_back(std::move(joint));
+    if (joint.type == "revolute" && !(joint.lower_limit_rad < joint.upper_limit_rad)) {
+ throw ContentError(path.string() + ": bounded revolute joint '" + joint.id +
+ "' must have lower_limit_rad < upper_limit_rad");
+ }
+ robot.articulation.joints.push_back(std::move(joint));
    }
    const auto link_for = [&](const std::string& id) -> const RigidLinkDefinition& {
     const auto found = std::find_if(robot.articulation.links.begin(), robot.articulation.links.end(),

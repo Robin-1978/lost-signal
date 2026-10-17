@@ -432,11 +432,18 @@ retaining an analytic yaw-torque shortcut. Both features stay data-authored and 
 as RO-1. After their focused gates pass, existing missions are re-run; mission success itself is not the physical
 oracle.
 
-The 16-line implementation is now functionally complete: schema 3 point clouds, per-beam authored calibration,
+The 16-line implementation is functionally complete: schema 3 point clouds, per-beam authored calibration,
 three-dimensional firing-time raycasts, estimated-pose static reference, deterministic delayed delivery,
 ground/non-ground projection, bounded 3D presentation, shared replay storage, focused geometry tests, and a repeatable
 headless performance benchmark are implemented. A dedicated authored learning encounter and broader campaign
-playtest remain content work; they do not block starting the independent RO-2 physical gate.
+playtest remain content work.
+
+The RO-2 articulated physical gate is also complete at the documented `typical` level. The data-authored assembly,
+bounded front knuckles, four rolling wheels, rear drive, four-channel LSRI duty path, deployable Ackermann controller,
+physical feedback, and Bullet contact run without an analytic yaw-torque shortcut. Independent tests cover the matrix
+above plus motor-limited gradeability, zero-command rollback, public-step convergence, and 25 mm rough terrain.
+Mechanical tie rods, identified parameters, HIL, and real-car evidence remain optional later fidelity work rather
+than implied results of this gate.
 
 ## Next implementation order
 

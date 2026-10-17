@@ -246,8 +246,8 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  }
  for (const auto& joint : robot_.articulation.joints) {
  ::sim::physics::JointSpec spec;
- spec.kind = joint.type == "continuous" ? ::sim::physics::JointKind::Revolute
- : ::sim::physics::JointKind::Fixed;
+ spec.kind = joint.type == "fixed" ? ::sim::physics::JointKind::Fixed
+ : ::sim::physics::JointKind::Revolute;
  spec.parent = robot_links_.at(joint.parent);
  spec.child = robot_links_.at(joint.child);
  spec.pivot_in_parent_m = {joint.pivot_in_parent_m.x, joint.pivot_in_parent_m.y,
@@ -256,6 +256,9 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  joint.pivot_in_child_m.z};
  spec.axis_in_parent = {joint.axis_in_parent.x, joint.axis_in_parent.y, joint.axis_in_parent.z};
  spec.axis_in_child = {joint.axis_in_child.x, joint.axis_in_child.y, joint.axis_in_child.z};
+ spec.has_limits = joint.has_limits;
+ spec.lower_limit_rad = joint.lower_limit_rad;
+ spec.upper_limit_rad = joint.upper_limit_rad;
  robot_joints_[joint.id] = world_->create_joint(spec);
  child_link_joints_[joint.child] = robot_joints_.at(joint.id);
  }
@@ -1058,8 +1061,14 @@ RigidVehicleState SimulatedPlatform::read_state() const {
 }
 
 void SimulatedPlatform::update_drive_slip(RigidVehicleState& state) {
- const auto left_binding = actuator_bindings_.find("left");
- const auto right_binding = actuator_bindings_.find("right");
+ auto left_binding = actuator_bindings_.find("left");
+ auto right_binding = actuator_bindings_.find("right");
+ double half_track = robot_.wheel_base_m * 0.5;
+ if (left_binding == actuator_bindings_.end() || right_binding == actuator_bindings_.end()) {
+ left_binding = actuator_bindings_.find("rear_left_drive");
+ right_binding = actuator_bindings_.find("rear_right_drive");
+ half_track = robot_.track_width_m * 0.5;
+ }
  if (left_binding == actuator_bindings_.end() || right_binding == actuator_bindings_.end()) {
  drive_slipping_ = false;
  drive_slip_confirm_steps_ = 0;
@@ -1072,7 +1081,6 @@ void SimulatedPlatform::update_drive_slip(RigidVehicleState& state) {
  body.linear_velocity_mps);
  const auto angular_body = ::sim::physics::rotate_vector(body_from_world,
  body.angular_velocity_radps);
- const double half_track = robot_.wheel_base_m * 0.5;
  const double expected_left_mps = velocity_body.x - angular_body.z * half_track;
  const double expected_right_mps = velocity_body.x + angular_body.z * half_track;
  const double tread_left_mps = world_->joint_state(left_binding->second.joint).velocity_radps *

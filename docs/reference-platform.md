@@ -332,8 +332,35 @@ optional future `identified` or calibrated sim-to-real claim.
 | Determinism | **Executable for focused fixtures**: fresh worlds reproduce platform, encoder and IMU results | long-duration cross-platform envelope and final release/ASan run |
 | Mission outcomes | **Frozen while the typical platform gate is open** | re-baseline only after the executable model rows above pass; hardware measurements are not required |
 
-RO-2 through RO-5 are non-reference teaching proxies. Their current mission results do not validate their physical
-models and are not included in RO-1 release evidence.
+RO-2 now has its own articulated `typical` acceptance gate. It remains separate from RO-1 evidence: passing one
+platform never validates the other. RO-3 through RO-5 remain non-reference teaching proxies, and their mission
+results do not validate their physical models.
+
+## RO-2 independent Ackermann gate
+
+RO-2 is a 26 kg, rear-driven, four-wheel platform with two physical front steering knuckles. Its deployable ROBOT
+controller converts one equivalent centre angle into different inner and outer angles that share a rear-axle ICR,
+converts body speed into different rear-wheel targets in a turn, and closes the rear velocity and steering
+position/velocity loops from physical joint feedback. Four normalized-duty commands cross LSRI. SIM alone converts
+those commands to motor and servo torque, advances Bullet joints/contact, and publishes the resulting feedback.
+
+The deterministic acceptance executable checks:
+
+- four positive wheel loads, total load near weight, left/right symmetry, hull clearance, and long rest drift;
+- forward and reverse straight motion, steering step/rate/limits/recentring, inner/outer angle order, common ICR,
+  measured radius, and closed-loop braking;
+- convergence between 20 ms and 10 ms public steps;
+- lower achieved yaw and higher observed slip on low grip;
+- zero-command downhill rollback, climb/rollback on opposite sides of the independently calculated peak motor-force
+  grade boundary, four-wheel cross-slope support, and travel over 25 mm deterministic roughness;
+- the optional high-speed gearset exceeds the standard profile on a supported straight run and stops within a
+ bounded multiple of the independent peak electrical-braking energy limit;
+- four-channel capability validation and safe-zero output after command expiry.
+
+The steering angles are an equivalent steer-by-wire Ackermann linkage. A rack and tie rods are not represented as
+additional rigid bodies. The current geometry, mass, armature inertia, torque, friction, and compliance values are
+documented assumptions rather than measurements, so this gate supports repeatable education and regression without
+claiming an identified real vehicle.
 
 ## Implementation sequence
 
@@ -341,8 +368,9 @@ models and are not included in RO-1 release evidence.
  actuator assembly. The generic physics interface contains no RO-1 or caster-specific joint type.
 2. **Implemented for RO-1:** an elevated base, powered continuous wheel joints, passive swivel and rolling caster
  joints, 35 mm caster trail, LSRI physical-joint feedback, deployable wheel PID, LSRI normalized-duty output,
- PWM-to-wheel-torque plant response, and deterministic Bullet contact substeps. Other chassis deliberately remain
- non-reference profiles.
+ PWM-to-wheel-torque plant response, and deterministic Bullet contact substeps. **Implemented independently for
+ RO-2:** a chassis, two bounded steering knuckles, four rolling wheels, rear drive and steering closed loops, four
+ LSRI duty channels, and deterministic Bullet contact. RO-3 through RO-5 remain non-reference profiles.
 3. **Implemented:** `base_footprint`, physical `base_link`, wheel/caster links, and sensor mounts now share one frame
  contract; 3D parts use `base_link` mounts and wheel/caster animation reads Bullet joint position. The virtual IMU is
  owned by `src/sim/hardware/sensors/` and consumes transformed six-axis truth rather than planar command differences.
@@ -360,7 +388,7 @@ loose-ground content supplies repeatable inputs to engineering probes; mission s
 7. Re-run and re-author RO-1 mission baselines only after the physical, actuator and sensor gates pass. Run release
 tests, with ASan/UBSan reserved for milestone and release-candidate gates.
 
-Only after these gates pass does work resume on new Playgrounds, additional chassis, multi-line or solid-state
-LiDAR, SLAM, VLA, HIL, or other expansion. The prioritized release and optional fidelity work is maintained in the
+RO-1's gates passed before the completed 16-line LiDAR and RO-2 work began. New Playgrounds, additional chassis,
+solid-state LiDAR, SLAM, VLA, HIL, or other expansion still require their own scoped acceptance gates. The prioritized release and optional fidelity work is maintained in the
 [RO-1 post-baseline optimization backlog](product-roadmap.md#ro-1-post-baseline-optimization-backlog); this document
 remains the acceptance source of truth for the physical reference model.

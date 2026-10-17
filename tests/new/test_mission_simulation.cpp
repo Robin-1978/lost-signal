@@ -182,7 +182,9 @@ int main() {
              << preterminal.control.left_target_mps << ',' << preterminal.control.right_target_mps
              << ") wheel_measured=(" << preterminal.control.left_measured_mps << ','
              << preterminal.control.right_measured_mps << ") pwm=(" << preterminal.control.left_pwm << ','
-             << preterminal.control.right_pwm << ") pid_i=(" << preterminal.control.left_speed_pid_i << ','
+ << preterminal.control.right_pwm << ") steer=(" << preterminal.control.steer_target_rad << ','
+ << preterminal.control.steer_angle_rad << ',' << preterminal.control.steer_pwm
+ << ") pid_i=(" << preterminal.control.left_speed_pid_i << ','
              << preterminal.control.right_speed_pid_i << ") zrp=(" << preterminal.robot_height_m << ','
              << preterminal.robot_roll_rad << ',' << preterminal.robot_pitch_rad
              << ") contacts=" << preterminal.rigid_contact_count << " ground_links=";

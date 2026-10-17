@@ -59,10 +59,10 @@ libraries, but it cannot be the owner or clock of that sensor.
 ## Current implementation
 
 The dynamic robot model follows the standard link separation used by URDF and SDFormat: rendered meshes do not
-define contact, and the planning footprint does not double as the rigid-body shape. Robot schema v4 authors a
+define contact, and the planning footprint does not double as the rigid-body shape. Robot schema v6 authors a
 planning radius, visual mounts, and physical collision data independently. Its optional articulation describes
 generic links, rest poses, collision shapes, mass, friction, parent/child joints, axes, pivots, and actuator-channel
-bindings in data.
+bindings in data. Revolute joints may also declare bounded lower and upper angles.
 
 RO-1 is the first articulated reference platform. Its data defines an elevated base link, two powered cylindrical
 wheel links, a passive caster fork with a vertical swivel joint, and a separate caster wheel with a rolling joint.
@@ -70,7 +70,9 @@ The caster has a 35 mm authored trail: the swivel axis is ahead of the wheel axl
 the axle rather than an extra hidden visual offset. Bullet joint position and velocity are the only encoder truth.
 The passive caster is absent from motor-controller telemetry: it receives no command, and its visual transform is
 copied from physical link state through the platform/presentation snapshot.
-The other four chassis still use the compact rigid proxy and are outside the current reference gate.
+RO-2 is the second articulated reference platform. It has one chassis body, two front steering knuckles, four
+physical rolling wheels, two bounded steering joints, four wheel joints, and four actuator channels. RO-3 through
+RO-5 still use compact teaching proxies and remain outside an independent physical gate.
 
 RO-1 runs a deterministic 20 ms public physics step with four 5 ms Bullet contact substeps. This is a numerical
 integration choice, not a second clock domain. It prevents small-wheel contact and chained caster constraints from
@@ -213,19 +215,35 @@ hardware, build type, duration, median, real-time factor, and peak memory when c
 
 ### Ackermann drive
 
-The current Ackermann chain is:
+The articulated RO-2 Ackermann chain is:
 
 ```text
 planner/controller: forward speed + equivalent front-wheel steering angle
-  -> drive-wheel speed PID -> normalized PWM -> speed/force curve -> tire contact -> body force
-  -> steering position P loop -> normalized PWM -> rate limit + first-order servo response
-  -> left/right Ackermann linkage angles -> body yaw response
+ -> Ackermann geometry -> left/right rear-wheel speed + left/right front-knuckle angle targets
+ -> quantized physical joint feedback
+ -> rear-wheel velocity PID + steering position/velocity cascade
+ -> four normalized-duty LSRI channels
+ -> DC motor/servo torque-speed curves -> Bullet joints and tire contact -> rigid-body motion
 ```
 
-The drive loop uses quantized encoder feedback. Its PWM-like output drives a compact force-speed model, and tire
-contact limits the force by available traction before Bullet advances the body. The steering loop controls angle,
-then the linkage produces different inner and outer front-wheel angles. It does not yet model motor current,
-steering torque, rack inertia, compliance, friction, backlash, thermal limits, or battery voltage sag.
+The two front angles share one rear-axle instantaneous centre of rotation; the inner wheel turns farther than the
+outer wheel. This is a steer-by-wire equivalent of correct Ackermann geometry. RO-2 does not yet instantiate a rack,
+tie rods, ball joints, steering compliance, backlash, motor current, thermal limits, or battery voltage sag. A
+mechanical-linkage provider may add those bodies and joints without changing the body-command or four-channel LSRI
+contracts. No analytic body yaw torque participates in the articulated path.
+
+The independent RO-2 gate checks four-wheel static load and clearance, long rest, forward and reverse travel,
+steering step/rate/limits/recentring, common ICR, measured turn radius, closed-loop braking, 10/20 ms step convergence,
+low-grip understeer and drive slip, zero-command rollback on a grade, motor-limited gradeability, cross-slope support,
+and 25 mm rough terrain. Its optional high-speed gearset also has a straight-line support and motor-braking-distance
+gate at roughly 3.5 m/s. The current articulated drive models a current-limited four-quadrant H-bridge: motoring
+authority falls toward no-load speed, opposing duty retains bounded electrical braking authority, and zero duty
+coasts. A separate friction service-brake channel, parking brake, ABS, thermal fade, and brake blending remain future
+capabilities and are required before treating RO-2 as a passenger-car-scale plant. These are class-level `typical`
+results; they do not identify a physical car.
+
+The subsystem boundary, industry references, data split, low-speed lock requirement, and staged acceptance matrix are
+specified in [braking architecture](braking-architecture.md).
 
 The `standard`, `torque`, and `eco` catalog entries are currently parameter sets for the same plant. They change
 maximum wheel speed, stall force, free speed, and power scale. They are not PWM, torque, velocity, and position

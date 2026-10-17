@@ -456,6 +456,7 @@ struct SteeringDefinition {
  double max_steer_rad{0.6};
  double max_steer_rate_radps{2.5};
  double servo_response_s{0.4};
+ double stall_torque_Nm{8.0};
 };
 struct MotorDefinition {
  double max_wheel_speed_mps{0.0};
@@ -509,6 +510,9 @@ struct RigidJointDefinition {
  Vec3 pivot_in_child_m;
  Vec3 axis_in_parent;
  Vec3 axis_in_child;
+ bool has_limits{false};
+ double lower_limit_rad{0.0};
+ double upper_limit_rad{0.0};
 };
 
 struct JointActuatorDefinition {

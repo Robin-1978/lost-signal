@@ -88,6 +88,9 @@ struct BulletJoint {
  btRigidBody* child{nullptr};
  btVector3 axis_in_parent{0.0, 0.0, 1.0};
  bool revolute{false};
+ bool bounded{false};
+ double lower_limit_rad{0.0};
+ double upper_limit_rad{0.0};
  double accumulated_position_rad{0.0};
 };
 
@@ -268,6 +271,9 @@ class BulletPhysicsWorld final : public IPhysicsWorld {
  hinge->setLimit(btScalar(1.0), btScalar(-1.0));
  }
  stored.revolute = true;
+ stored.bounded = spec.has_limits;
+ stored.lower_limit_rad = spec.lower_limit_rad;
+ stored.upper_limit_rad = spec.upper_limit_rad;
  stored.constraint = std::move(hinge);
  } else {
  btTransform parent_frame;
@@ -432,6 +438,10 @@ class BulletPhysicsWorld final : public IPhysicsWorld {
  const btVector3 axis_world = joint.parent->getWorldTransform().getBasis() * joint.axis_in_parent;
  joint.accumulated_position_rad +=
  (joint.child->getAngularVelocity() - joint.parent->getAngularVelocity()).dot(axis_world) * fixed_dt_s;
+ if (joint.bounded) {
+ joint.accumulated_position_rad = std::clamp(joint.accumulated_position_rad,
+ joint.lower_limit_rad, joint.upper_limit_rad);
+ }
  }
   contacts_.clear();
   const int manifolds = dispatcher_->getNumManifolds();
@@ -478,11 +488,9 @@ class BulletPhysicsWorld final : public IPhysicsWorld {
  if (!stored.revolute) {
  return {};
  }
- const auto& hinge = static_cast<const btHingeConstraint&>(*stored.constraint);
  const btVector3 axis_world = stored.parent->getWorldTransform().getBasis() * stored.axis_in_parent;
  const double relative_velocity =
  (stored.child->getAngularVelocity() - stored.parent->getAngularVelocity()).dot(axis_world);
- (void)hinge;
  return {stored.accumulated_position_rad, relative_velocity};
  }
 

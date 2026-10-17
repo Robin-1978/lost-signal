@@ -583,6 +583,7 @@ void ScenarioSession::build_world() {
  chassis_params.max_steer_rad = robot_definition_.steering.max_steer_rad;
  chassis_params.max_steer_rate_radps = robot_definition_.steering.max_steer_rate_radps;
  chassis_params.servo_response_s = robot_definition_.steering.servo_response_s;
+ chassis_params.steering_stall_torque_Nm = robot_definition_.steering.stall_torque_Nm;
  chassis_params.steering_integral_limit = robot_definition_.steering.integral_limit;
  chassis_params.tracked_max_yaw_rate_rads = robot_definition_.tracked_max_yaw_rate_rads;
  chassis_params.behavior_w_max = params.max_yaw_rate_radps;
@@ -647,17 +648,18 @@ void ScenarioSession::build_world() {
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
  differential_wheel_controller_.reset();
+ ackermann_actuator_controller_.reset();
  const auto has_actuator_channel = [&](const std::string& channel) {
  return std::any_of(robot_definition_.articulation.actuators.begin(),
  robot_definition_.articulation.actuators.end(),
  [&](const auto& actuator) { return actuator.channel == channel; });
  };
- const bool deployable_actuator_control =
+ const bool deployable_differential_control =
  physics_mode_ != PhysicsMode::Domain &&
  robot_definition_.drive_type == "differential" &&
- chassis_->accepts_normalized_duty() &&
+ chassis_->accepts_actuator_duty() &&
  has_actuator_channel("left") && has_actuator_channel("right");
- if (deployable_actuator_control) {
+ if (deployable_differential_control) {
  differential_wheel_controller_ =
  std::make_unique<sim::DifferentialWheelController>(
  sim::DifferentialWheelControllerConfig{
@@ -667,6 +669,34 @@ void ScenarioSession::build_world() {
  chassis_params.encoder_counts_per_revolution,
  chassis_params.pwm_limit,
  chassis_params.integral_limit,
+ },
+ wheel_gains);
+ }
+ const bool deployable_ackermann_control =
+ physics_mode_ != PhysicsMode::Domain &&
+ robot_definition_.drive_type == "ackermann" &&
+ chassis_->accepts_actuator_duty() &&
+ has_actuator_channel("rear_left_drive") &&
+ has_actuator_channel("rear_right_drive") &&
+ has_actuator_channel("front_left_steer") &&
+ has_actuator_channel("front_right_steer");
+ if (deployable_ackermann_control) {
+ ackermann_actuator_controller_ =
+ std::make_unique<sim::AckermannActuatorController>(
+ sim::AckermannActuatorControllerConfig{
+ chassis_params.wheel_base_m,
+ chassis_params.track_width_m,
+ chassis_params.wheel_radius_m,
+ chassis_params.max_wheel_speed_mps,
+ chassis_params.max_steer_rad,
+ chassis_params.max_steer_rate_radps,
+ chassis_params.encoder_counts_per_revolution,
+ chassis_params.pwm_limit,
+ chassis_params.integral_limit,
+ 1.0,
+ chassis_params.steering_integral_limit,
+ 1.0 / std::max(0.05, chassis_params.servo_response_s),
+ 0.35,
  },
  wheel_gains);
  }
@@ -680,15 +710,28 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
- if (differential_wheel_controller_) {
+ if (differential_wheel_controller_ || ackermann_actuator_controller_) {
  runtime_config.capabilities.command_level =
  sim::runtime::PlatformCommandLevel::Actuator;
+ if (differential_wheel_controller_) {
  runtime_config.capabilities.actuator_channels = {
  {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  };
+ } else {
+ runtime_config.capabilities.actuator_channels = {
+ {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
+ {"rear_right_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
+ {"front_left_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -1.0, 1.0, 0.0},
+ {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ -1.0, 1.0, 0.0},
+ };
+ }
  }
  runtime_config.maximum_command_ttl_s = 0.25;
  runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
@@ -1687,8 +1730,95 @@ void ScenarioSession::apply_motion() {
  // provider-side joint state. Motor curves, joint effort, contact, and rigid
  // body integration remain below the LSRI boundary.
  chassis_->set_actuator_feedback(provider_feedback);
- domain_candidate = chassis_->step_normalized_duty(
- before, applied_command, wheel_control, fixed_step_s, ground_contact);
+ domain_candidate = chassis_->step_actuator_duty(
+ before, applied_command,
+ sim::ChassisActuatorDutyCommand{{
+ {"left", wheel_control.left.normalized_duty},
+ {"right", wheel_control.right.normalized_duty},
+ }},
+ fixed_step_s, ground_contact);
+ } else if (ackermann_actuator_controller_) {
+ if (!platform_)
+ throw std::logic_error("actuator-level Ackermann control requires a platform provider");
+ const auto provider_feedback = platform_->actuator_feedback();
+ const auto require_feedback = [&](const std::string& channel) {
+ const auto* value = provider_feedback.find(channel);
+ if (!value)
+ throw std::runtime_error("RO-2 platform is missing actuator feedback channel '" + channel + "'");
+ return value;
+ };
+ const auto* rear_left = require_feedback("rear_left_drive");
+ const auto* rear_right = require_feedback("rear_right_drive");
+ const auto* front_left = require_feedback("front_left_steer");
+ const auto* front_right = require_feedback("front_right_steer");
+
+ sim::ObservationFrame feedback_frame;
+ feedback_frame.time_s = snapshot_.time_s;
+ feedback_frame.actuator_feedback.emplace();
+ feedback_frame.actuator_feedback->channels = {
+ {"rear_left_drive", rear_left->position_rad, rear_left->velocity_radps},
+ {"rear_right_drive", rear_right->position_rad, rear_right->velocity_radps},
+ {"front_left_steer", front_left->position_rad, front_left->velocity_radps},
+ {"front_right_steer", front_right->position_rad, front_right->velocity_radps},
+ };
+ feedback_frame.actuator_feedback->header = {
+ snapshot_.time_s, actuator_feedback_sequence_++, "base_link", 0.0,
+ sim::kMeasurementSchemaVersion, "sim.actuator-feedback"};
+ if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame)))
+ throw std::runtime_error("runtime channel rejected RO-2 actuator feedback");
+ const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
+ if (!delivered_feedback || !delivered_feedback->actuator_feedback)
+ throw std::runtime_error("runtime channel did not deliver RO-2 actuator feedback");
+ const auto& feedback = *delivered_feedback->actuator_feedback;
+ const auto* delivered_rear_left = feedback.find("rear_left_drive");
+ const auto* delivered_rear_right = feedback.find("rear_right_drive");
+ const auto* delivered_front_left = feedback.find("front_left_steer");
+ const auto* delivered_front_right = feedback.find("front_right_steer");
+ if (!delivered_rear_left || !delivered_rear_right ||
+ !delivered_front_left || !delivered_front_right)
+ throw std::runtime_error("delivered RO-2 feedback is incomplete");
+ auto control = ackermann_actuator_controller_->update(applied_command,
+ {
+ delivered_rear_left->position_rad,
+ delivered_rear_right->position_rad,
+ delivered_rear_left->velocity_radps,
+ delivered_rear_right->velocity_radps,
+ delivered_front_left->position_rad,
+ delivered_front_right->position_rad,
+ delivered_front_left->velocity_radps,
+ delivered_front_right->velocity_radps,
+ true,
+ }, fixed_step_s);
+
+ sim::runtime::ActuatorCommand outbound_command;
+ outbound_command.header = {
+ sim::runtime::kMessageSchemaVersion, runtime_now, runtime_now,
+ command_sequence_++, "base_link", "controller.ro2"};
+ outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(
+ snapshot_.time_s + fixed_step_s * 2.0);
+ outbound_command.setpoints = {
+ {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ control.rear_left.normalized_duty},
+ {"rear_right_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ control.rear_right.normalized_duty},
+ {"front_left_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ control.front_left_steer.normalized_duty},
+ {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
+ control.front_right_steer.normalized_duty},
+ };
+ if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
+ sim::runtime::CommandWriteResult::Accepted)
+ throw std::runtime_error("runtime channel rejected the RO-2 actuator command");
+ const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
+ sim::ChassisActuatorDutyCommand plant_command;
+ for (const auto& setpoint : delivered_command.setpoints) {
+ if (setpoint.mode != sim::runtime::ActuatorCommandMode::NormalizedDuty)
+ throw std::runtime_error("RO-2 received a non-duty actuator command");
+ plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
+ }
+ chassis_->set_actuator_feedback(provider_feedback);
+ domain_candidate = chassis_->step_actuator_duty(
+ before, applied_command, plant_command, fixed_step_s, ground_contact);
  } else {
  const auto outbound_command = sim::runtime::make_motion_command(
  held_command_, chassis_caps_, runtime_now, command_sequence_++, fixed_step_s * 2.0);

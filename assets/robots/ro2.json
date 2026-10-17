@@ -1,12 +1,13 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "id": "robot.ro2",
   "title": "RO-2",
   "model_profile": {
-    "fidelity": "ideal",
-    "basis": "non-reference teaching proxy",
+    "fidelity": "typical",
+    "basis": "documented four-wheel articulated Ackermann reference assumptions",
     "source_refs": [
-      "docs/reference-platform.md#acceptance-matrix"
+      "docs/parameter-sources.md",
+      "docs/reference-platform.md"
     ]
   },
   "unlock_ability": "ability.ackermann",
@@ -22,7 +23,7 @@
     "wheel_radius_m": 0.1,
     "wheel_base_m": 0.62,
     "mass_kg": 26.0,
-    "yaw_inertia_kgm2": 2.8,
+    "yaw_inertia_kgm2": 1.926893947,
     "motor": {
       "max_wheel_speed_mps": 2.4,
       "max_wheel_accel_mps2": 6.0,
@@ -41,7 +42,8 @@
       "integral_limit": 1.2,
       "max_steer_rad": 0.55,
       "max_steer_rate_radps": 2.0,
-      "servo_response_s": 0.35
+      "servo_response_s": 0.35,
+      "stall_torque_Nm": 8.0
     },
     "energy": {
       "base_w": 14.0,
@@ -62,11 +64,105 @@
       "size_m": [
         0.62,
         0.42,
-        0.42
+        0.16
       ]
     }
   },
   "mounts": [
+    {
+      "id": "front_left_knuckle",
+      "position_m": [
+        0.31,
+        0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "front_left_knuckle_link",
+      "motion": "caster"
+    },
+    {
+      "id": "front_right_knuckle",
+      "position_m": [
+        0.31,
+        -0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "front_right_knuckle_link",
+      "motion": "caster"
+    },
+    {
+      "id": "front_left",
+      "position_m": [
+        0.31,
+        0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "front_left_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
+    {
+      "id": "front_right",
+      "position_m": [
+        0.31,
+        -0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "front_right_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
+    {
+      "id": "rear_left",
+      "position_m": [
+        -0.31,
+        0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "rear_left_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
+    {
+      "id": "rear_right",
+      "position_m": [
+        -0.31,
+        -0.29,
+        -0.15
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "rear_right_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
     {
       "id": "base",
       "position_m": [
@@ -96,70 +192,6 @@
       ],
       "frame_id": "cargo_bed_link",
       "motion": "fixed"
-    },
-    {
-      "id": "front_left",
-      "position_m": [
-        0.31,
-        0.29,
-        -0.11
-      ],
-      "rotation_deg": [
-        90,
-        0,
-        0
-      ],
-      "frame_id": "front_left_wheel_link",
-      "motion": "wheel",
-      "rolling_radius_m": 0.1
-    },
-    {
-      "id": "front_right",
-      "position_m": [
-        0.31,
-        -0.29,
-        -0.11
-      ],
-      "rotation_deg": [
-        90,
-        0,
-        0
-      ],
-      "frame_id": "front_right_wheel_link",
-      "motion": "wheel",
-      "rolling_radius_m": 0.1
-    },
-    {
-      "id": "rear_left",
-      "position_m": [
-        -0.31,
-        0.29,
-        -0.11
-      ],
-      "rotation_deg": [
-        90,
-        0,
-        0
-      ],
-      "frame_id": "rear_left_wheel_link",
-      "motion": "wheel",
-      "rolling_radius_m": 0.1
-    },
-    {
-      "id": "rear_right",
-      "position_m": [
-        -0.31,
-        -0.29,
-        -0.11
-      ],
-      "rotation_deg": [
-        90,
-        0,
-        0
-      ],
-      "frame_id": "rear_right_wheel_link",
-      "motion": "wheel",
-      "rolling_radius_m": 0.1
     },
     {
       "id": "sensor_top",
@@ -255,5 +287,418 @@
         "imu_body"
       ]
     }
-  ]
+  ],
+  "articulation": {
+    "root_link": "base_link",
+    "links": [
+      {
+        "id": "base_link",
+        "position_m": [
+          0,
+          0,
+          0.25
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 21.6,
+        "inertia_diagonal_kgm2": [
+          0.3636,
+          0.738,
+          1.0
+        ],
+        "friction": 0.2,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.62,
+            0.42,
+            0.16
+          ]
+        }
+      },
+      {
+        "id": "front_left_knuckle_link",
+        "position_m": [
+          0.31,
+          0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.2,
+        "inertia_diagonal_kgm2": [
+          0.0003,
+          0.0003,
+          0.00012
+        ],
+        "friction": 0.2,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.06,
+            0.06,
+            0.12
+          ]
+        }
+      },
+      {
+        "id": "front_left_wheel_link",
+        "position_m": [
+          0.31,
+          0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.0,
+        "inertia_diagonal_kgm2": [
+          0.002841333,
+          0.002841333,
+          0.005
+        ],
+        "friction": 1.0,
+        "rolling_support_moment_arm_m": 0.01,
+        "spinning_resistance": 0.01,
+        "contact_stiffness_Npm": 40000.0,
+        "contact_damping_Nspm": 1000.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "front_right_knuckle_link",
+        "position_m": [
+          0.31,
+          -0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.2,
+        "inertia_diagonal_kgm2": [
+          0.0003,
+          0.0003,
+          0.00012
+        ],
+        "friction": 0.2,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.06,
+            0.06,
+            0.12
+          ]
+        }
+      },
+      {
+        "id": "front_right_wheel_link",
+        "position_m": [
+          0.31,
+          -0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.0,
+        "inertia_diagonal_kgm2": [
+          0.002841333,
+          0.002841333,
+          0.005
+        ],
+        "friction": 1.0,
+        "rolling_support_moment_arm_m": 0.01,
+        "spinning_resistance": 0.01,
+        "contact_stiffness_Npm": 40000.0,
+        "contact_damping_Nspm": 1000.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "rear_left_wheel_link",
+        "position_m": [
+          -0.31,
+          0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.0,
+        "inertia_diagonal_kgm2": [
+          0.002841333,
+          0.002841333,
+          0.005
+        ],
+        "friction": 1.0,
+        "rolling_support_moment_arm_m": 0.01,
+        "spinning_resistance": 0.01,
+        "contact_stiffness_Npm": 40000.0,
+        "contact_damping_Nspm": 1000.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "rear_right_wheel_link",
+        "position_m": [
+          -0.31,
+          -0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.0,
+        "inertia_diagonal_kgm2": [
+          0.002841333,
+          0.002841333,
+          0.005
+        ],
+        "friction": 1.0,
+        "rolling_support_moment_arm_m": 0.01,
+        "spinning_resistance": 0.01,
+        "contact_stiffness_Npm": 40000.0,
+        "contact_damping_Nspm": 1000.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      }
+    ],
+    "joints": [
+      {
+        "id": "front_left_steer_joint",
+        "type": "revolute",
+        "parent": "base_link",
+        "child": "front_left_knuckle_link",
+        "pivot_in_parent_m": [
+          0.31,
+          0.29,
+          -0.15
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          0,
+          1
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ],
+        "lower_limit_rad": -0.75,
+        "upper_limit_rad": 0.75
+      },
+      {
+        "id": "front_left_roll_joint",
+        "type": "continuous",
+        "parent": "front_left_knuckle_link",
+        "child": "front_left_wheel_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "front_right_steer_joint",
+        "type": "revolute",
+        "parent": "base_link",
+        "child": "front_right_knuckle_link",
+        "pivot_in_parent_m": [
+          0.31,
+          -0.29,
+          -0.15
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          0,
+          1
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ],
+        "lower_limit_rad": -0.75,
+        "upper_limit_rad": 0.75
+      },
+      {
+        "id": "front_right_roll_joint",
+        "type": "continuous",
+        "parent": "front_right_knuckle_link",
+        "child": "front_right_wheel_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "rear_left_roll_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "rear_left_wheel_link",
+        "pivot_in_parent_m": [
+          -0.31,
+          0.29,
+          -0.15
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "rear_right_roll_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "rear_right_wheel_link",
+        "pivot_in_parent_m": [
+          -0.31,
+          -0.29,
+          -0.15
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      }
+    ],
+    "actuators": [
+      {
+        "channel": "rear_left_drive",
+        "joint": "rear_left_roll_joint",
+        "effort_limit_Nm": 5.4,
+        "armature_inertia_kgm2": 0.023
+      },
+      {
+        "channel": "rear_right_drive",
+        "joint": "rear_right_roll_joint",
+        "effort_limit_Nm": 5.4,
+        "armature_inertia_kgm2": 0.023
+      },
+      {
+        "channel": "front_left_steer",
+        "joint": "front_left_steer_joint",
+        "effort_limit_Nm": 8.0,
+        "armature_inertia_kgm2": 0.05
+      },
+      {
+        "channel": "front_right_steer",
+        "joint": "front_right_steer_joint",
+        "effort_limit_Nm": 8.0,
+        "armature_inertia_kgm2": 0.05
+      }
+    ]
+  }
 }

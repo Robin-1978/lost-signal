@@ -146,6 +146,15 @@ struct ChassisActuatorFeedback {
  bool valid() const { return !joints.empty(); }
 };
 
+struct ChassisActuatorDutyCommand {
+ struct Setpoint {
+ std::string channel;
+ double normalized_duty{0.0};
+ };
+ std::vector<Setpoint> setpoints;
+ double value(const std::string& channel) const;
+};
+
 // A chassis turns a body twist command into motion. Differential drive and
 // ackermann are the implementations; ro1.json drive.type selects one. Unknown
 // types must be rejected by the factory in game code, never stubbed here.
@@ -156,11 +165,11 @@ class ChassisModel {
  virtual void set_actuator_feedback(const ChassisActuatorFeedback&) {}
  virtual DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                         const GroundContact& ground) = 0;
- virtual bool accepts_normalized_duty() const { return false; }
- virtual DiffState step_normalized_duty(const DiffState&, const DiffCmd&,
- const DifferentialWheelControlOutput&, double,
+ virtual bool accepts_actuator_duty() const { return false; }
+ virtual DiffState step_actuator_duty(const DiffState&, const DiffCmd&,
+ const ChassisActuatorDutyCommand&, double,
  const GroundContact&) {
- throw std::logic_error("chassis does not accept normalized-duty control");
+ throw std::logic_error("chassis does not accept actuator-duty control");
  }
  virtual const ChassisTelemetry& telemetry() const = 0;
  virtual ChassisCaps caps() const = 0;
@@ -185,9 +194,9 @@ class DifferentialMotorDrive : public ChassisModel {
  void set_actuator_feedback(const ChassisActuatorFeedback& feedback) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
- bool accepts_normalized_duty() const override { return true; }
- DiffState step_normalized_duty(const DiffState& state, const DiffCmd& command,
- const DifferentialWheelControlOutput& control,
+ bool accepts_actuator_duty() const override { return true; }
+ DiffState step_actuator_duty(const DiffState& state, const DiffCmd& command,
+ const ChassisActuatorDutyCommand& control,
  double dt, const GroundContact& ground) override;
  const MotorDriveParams& params() const { return params_; }
  const ChassisTelemetry& telemetry() const override { return telemetry_; }

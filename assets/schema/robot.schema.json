@@ -17,7 +17,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 5
+      "const": 6
     },
     "id": {
       "$ref": "#/$defs/id"
@@ -246,6 +246,10 @@
             "servo_response_s": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "stall_torque_Nm": {
+              "type": "number",
+              "exclusiveMinimum": 0
             }
           }
         },
@@ -458,7 +462,8 @@
               "type": {
                 "enum": [
                   "fixed",
-                  "continuous"
+                  "continuous",
+                  "revolute"
                 ]
               },
               "parent": {
@@ -478,8 +483,31 @@
               },
               "axis_in_child": {
                 "$ref": "#/$defs/vec3"
+              },
+              "lower_limit_rad": {
+                "type": "number"
+              },
+              "upper_limit_rad": {
+                "type": "number"
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "revolute"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "lower_limit_rad",
+                    "upper_limit_rad"
+                  ]
+                }
+              }
+            ]
           }
         },
         "actuators": {

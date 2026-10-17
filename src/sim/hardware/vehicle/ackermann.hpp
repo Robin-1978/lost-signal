@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/platform/differential_kinematics.hpp"
+#include "robot/platform/ackermann_kinematics.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "robot/control/pid.hpp"
 
@@ -31,6 +32,7 @@ struct AckermannParams {
  double integral_limit{2.0};
  int encoder_counts_per_revolution{2048};
  double wheel_equiv_mass_kg{3.0};
+ double steering_stall_torque_Nm{8.0};
 };
 
 // Ackermann kinematics pair (uniform per-chassis contract, plan §4 item 14):
@@ -57,8 +59,13 @@ class AckermannDrive : public ChassisModel {
 
  void reset();
  void set_body_dynamics(const ChassisBodyDynamics& dynamics) override;
+ void set_actuator_feedback(const ChassisActuatorFeedback& feedback) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
+ bool accepts_actuator_duty() const override { return true; }
+ DiffState step_actuator_duty(const DiffState& state, const DiffCmd& command,
+ const ChassisActuatorDutyCommand& control, double dt,
+ const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
  ChassisCaps caps() const override {
  ChassisCaps output;
@@ -76,6 +83,7 @@ class AckermannDrive : public ChassisModel {
  std::max(0.05, params_.wheel_base_m);
  output.drive_force_units = 1.0;
  output.planning_clearance_margin_m = 0.15;
+ output.tread_slip_observable = true;
  return output;
  }
  double steer_angle() const { return delta_rad_; }
@@ -90,6 +98,7 @@ class AckermannDrive : public ChassisModel {
  double servo_rate_state_{0.0};
  double drive_wheel_{0.0};
  ChassisTelemetry telemetry_;
+ ChassisActuatorFeedback feedback_;
 };
 
 } // namespace sim

@@ -33,6 +33,16 @@ const ChassisActuatorFeedback::JointSample* ChassisActuatorFeedback::find(
  return found == joints.end() ? nullptr : &*found;
 }
 
+double ChassisActuatorDutyCommand::value(const std::string& channel) const {
+ const auto found = std::find_if(setpoints.begin(), setpoints.end(),
+ [&](const auto& setpoint) { return setpoint.channel == channel; });
+ if (found == setpoints.end())
+ throw std::invalid_argument("missing actuator duty channel '" + channel + "'");
+ if (!std::isfinite(found->normalized_duty))
+ throw std::invalid_argument("actuator duty must be finite");
+ return found->normalized_duty;
+}
+
 DifferentialMotorDrive::DifferentialMotorDrive(MotorDriveParams params,
  WheelPidGains gains)
  : params_(params),
@@ -83,15 +93,29 @@ DiffState DifferentialMotorDrive::step(const DiffState& state,
  dt, ground);
 }
 
-DiffState DifferentialMotorDrive::step_normalized_duty(
+DiffState DifferentialMotorDrive::step_actuator_duty(
  const DiffState& state, const DiffCmd& command,
- const DifferentialWheelControlOutput& control, double dt,
+ const ChassisActuatorDutyCommand& command_duty, double dt,
  const GroundContact& ground) {
- DifferentialWheelControlOutput bounded = control;
- bounded.left.normalized_duty = clamp(bounded.left.normalized_duty,
+ DifferentialWheelControlOutput bounded;
+ bounded.left.normalized_duty = clamp(command_duty.value("left"),
  -params_.pwm_limit, params_.pwm_limit);
- bounded.right.normalized_duty = clamp(bounded.right.normalized_duty,
+ bounded.right.normalized_duty = clamp(command_duty.value("right"),
  -params_.pwm_limit, params_.pwm_limit);
+ DifferentialKinematics::twist_to_wheels(command.target_v, command.target_w,
+ params_.wheel_base_m, bounded.left.target_mps, bounded.right.target_mps);
+ if (const auto* left = feedback_.find("left")) {
+ bounded.left.actual_mps = left->velocity_radps * params_.wheel_radius_m;
+ bounded.left.measured_mps = bounded.left.actual_mps;
+ }
+ if (const auto* right = feedback_.find("right")) {
+ bounded.right.actual_mps = right->velocity_radps * params_.wheel_radius_m;
+ bounded.right.measured_mps = bounded.right.actual_mps;
+ }
+ DifferentialKinematics::wheels_to_twist(
+ bounded.left.measured_mps, bounded.right.measured_mps,
+ params_.wheel_base_m, bounded.measured_forward_mps,
+ bounded.measured_yaw_radps);
  return apply_control(state, command, std::move(bounded), dt, ground);
 }
 

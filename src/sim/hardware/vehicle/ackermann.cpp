@@ -1,12 +1,14 @@
 #include "sim/hardware/vehicle/ackermann.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
 #include "sim/hardware/vehicle/contact.hpp"
+#include "sim/hardware/actuators/electric_drive.hpp"
 
 #include "robot/core/math.hpp"
 #include "robot/core/actuator_response.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace sim {
 namespace {
@@ -54,11 +56,17 @@ void AckermannDrive::reset() {
  telemetry_.differential = false;
  telemetry_.steering_servo_present = true;
  telemetry_.wheel_steer_count = 2;
+ feedback_ = {};
 }
 
 void AckermannDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
  params_.mass_kg = std::max(0.5, dynamics.mass_kg);
  params_.yaw_inertia_kgm2 = std::max(0.05, dynamics.yaw_inertia_kgm2);
+}
+
+void AckermannDrive::set_actuator_feedback(
+ const ChassisActuatorFeedback& feedback) {
+ feedback_ = feedback;
 }
 
 double AckermannDrive::encoder_measure(double wheel_mps, double dt) const {
@@ -97,22 +105,10 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  // R = L/tan(delta); inner = atan(L/(R-T/2)), outer = atan(L/(R+T/2)).
  // Straight (delta ~ 0) keeps both at the servo angle; the denominator guard
  // can never trip inside steer limits (R_min >> T/2) but stays for safety.
- {
-  const double track = std::max(0.05, params_.track_width_m);
-  const double base = std::max(0.05, params_.wheel_base_m);
-  if (std::abs(delta_rad_) < 1e-9) {
- telemetry_.wheel_steer_rad[0] = delta_rad_;
- telemetry_.wheel_steer_rad[1] = delta_rad_;
-  } else {
-   const double radius = base / std::tan(delta_rad_);
-   const double inner = std::atan(base / std::max(0.05, std::abs(radius) - track / 2.0));
-   const double outer = std::atan(base / (std::abs(radius) + track / 2.0));
-   const double sign = delta_rad_ > 0.0 ? 1.0 : -1.0;
-   // Positive delta is a left turn: the left wheel is inner.
- telemetry_.wheel_steer_rad[0] = sign * (delta_rad_ > 0.0 ? inner : outer);
- telemetry_.wheel_steer_rad[1] = sign * (delta_rad_ > 0.0 ? outer : inner);
-  }
- }
+ const auto wheel_angles = ackermann_steering_angles(delta_rad_,
+ params_.wheel_base_m, params_.track_width_m);
+ telemetry_.wheel_steer_rad[0] = wheel_angles.left_rad;
+ telemetry_.wheel_steer_rad[1] = wheel_angles.right_rad;
 
  // Drive unit: same shared contact as differential wheels (tire/ground content
  // means the same thing on every chassis). The drive wheel owns its speed
@@ -154,6 +150,74 @@ DiffState AckermannDrive::step(const DiffState& state, const DiffCmd& command, d
  return next;
 }
 
+DiffState AckermannDrive::step_actuator_duty(const DiffState& state,
+ const DiffCmd& command, const ChassisActuatorDutyCommand& control,
+ double dt, const GroundContact&) {
+ const auto* rear_left = feedback_.find("rear_left_drive");
+ const auto* rear_right = feedback_.find("rear_right_drive");
+ const auto* front_left = feedback_.find("front_left_steer");
+ const auto* front_right = feedback_.find("front_right_steer");
+ if (!rear_left || !rear_right || !front_left || !front_right)
+ throw std::runtime_error("articulated Ackermann plant requires four actuator feedback channels");
+
+ const double rear_left_duty = clamp(control.value("rear_left_drive"),
+ -params_.pwm_limit, params_.pwm_limit);
+ const double rear_right_duty = clamp(control.value("rear_right_drive"),
+ -params_.pwm_limit, params_.pwm_limit);
+ const double front_left_duty = clamp(control.value("front_left_steer"), -1.0, 1.0);
+ const double front_right_duty = clamp(control.value("front_right_steer"), -1.0, 1.0);
+ const auto drive_torque = [&](double duty, double velocity_radps) {
+ const double speed_mps = velocity_radps * params_.wheel_radius_m;
+ return hardware::dc_motor_force_N(duty, speed_mps, params_.stall_force_N,
+ params_.free_speed_mps) * params_.wheel_radius_m;
+ };
+ const auto steering_torque = [&](double duty, double velocity_radps) {
+ const bool motoring = duty * velocity_radps > 0.0;
+ const double motor_curve = motoring
+ ? std::max(0.0, 1.0 - std::abs(velocity_radps) /
+ std::max(0.05, params_.max_steer_rate_radps))
+ : 1.0;
+ return duty * params_.steering_stall_torque_Nm * motor_curve;
+ };
+
+ telemetry_ = {};
+ telemetry_.differential = false;
+ telemetry_.steering_servo_present = true;
+ telemetry_.wheel_steer_count = 2;
+ telemetry_.left.pwm = rear_left_duty;
+ telemetry_.right.pwm = rear_right_duty;
+ telemetry_.left.actual_mps = rear_left->velocity_radps * params_.wheel_radius_m;
+ telemetry_.right.actual_mps = rear_right->velocity_radps * params_.wheel_radius_m;
+ telemetry_.drive.pwm = 0.5 * (rear_left_duty + rear_right_duty);
+ telemetry_.drive.actual_mps =
+ 0.5 * (telemetry_.left.actual_mps + telemetry_.right.actual_mps);
+ telemetry_.drive.measured_mps = telemetry_.drive.actual_mps;
+ telemetry_.drive.target_mps = command.target_v;
+ telemetry_.steer.target_rad = command.target_w;
+ telemetry_.steer.angle_rad = 0.5 * (front_left->position_rad + front_right->position_rad);
+ telemetry_.steer.rate_radps = 0.5 * (front_left->velocity_radps + front_right->velocity_radps);
+ telemetry_.steer.pwm = 0.5 * (front_left_duty + front_right_duty);
+ telemetry_.wheel_steer_rad[0] = front_left->position_rad;
+ telemetry_.wheel_steer_rad[1] = front_right->position_rad;
+ telemetry_.measured_forward_mps = telemetry_.drive.actual_mps;
+ telemetry_.measured_yaw_radps = state.w;
+ telemetry_.joint_efforts = {
+ {"rear_left_drive", drive_torque(rear_left_duty, rear_left->velocity_radps)},
+ {"rear_right_drive", drive_torque(rear_right_duty, rear_right->velocity_radps)},
+ {"front_left_steer", steering_torque(front_left_duty, front_left->velocity_radps)},
+ {"front_right_steer", steering_torque(front_right_duty, front_right->velocity_radps)},
+ };
+ // Physical yaw is produced only by the steered tire contact. The returned
+ // planar estimate is for domain/shadow comparison and never drives Bullet.
+ DiffState next = state;
+ next.v = telemetry_.measured_forward_mps;
+ next.w = yaw_for_steer(next.v, command.target_w, params_.wheel_base_m);
+ next.x += next.v * std::cos(state.theta) * dt;
+ next.y += next.v * std::sin(state.theta) * dt;
+ next.theta = wrap_angle(state.theta + next.w * dt);
+ return next;
+}
+
 } // namespace sim
 
 // Chassis creator for the factory registry (see motor_drive.cpp).
@@ -185,6 +249,8 @@ BuiltChassis create_ackermann_chassis(const sim::ChassisBuildParams& params,
       params.pwm_limit,
       params.integral_limit,
       params.encoder_counts_per_revolution,
+ params.wheel_equiv_mass_kg,
+ params.steering_stall_torque_Nm,
     },
     gains, servo_kp);
   return out;

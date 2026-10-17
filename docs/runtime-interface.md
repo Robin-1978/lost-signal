@@ -122,6 +122,16 @@ Controller placement is therefore explicit. A provider never reinterprets a body
 
 ## Current evidence and limit
 
-The production mission loop sends LiDAR, encoder, IMU, localization, and RO-1 wheel-joint observations through LSRI. In the default RO-1 Bullet path, the deployable ROBOT wheel controller consumes named left/right joint feedback, computes normalized duty, and sends both channels through the watchdog-protected actuator path. The SIM provider applies the delivered duty to the motor curve, wheel joints, contact, and rigid body. Domain mode and platforms with a smart drive capability continue to use the body-motion path.
+The production mission loop sends LiDAR, encoder, IMU, localization, and physical joint observations through LSRI.
+In the default RO-1 Bullet path, the deployable ROBOT wheel controller consumes named left/right joint feedback,
+computes normalized duty, and sends both channels through the watchdog-protected actuator path. Articulated RO-2 uses
+the same placement with four channels: `rear_left_drive`, `rear_right_drive`, `front_left_steer`, and
+`front_right_steer`. Its ROBOT controller maps equivalent centre steering to distinct Ackermann knuckle targets and
+closes rear-wheel velocity and steering position/velocity loops. The SIM provider applies delivered duty to motor
+and servo torque-speed curves, physical joints, tire contact, and rigid bodies. Domain mode and platforms with a
+smart drive capability continue to use the body-motion path.
 
-Interface tests cover lifecycle, capability validation, actuator-feedback validation, sequence rejection, bounded queues, motion and actuator timeout stops, all three body command spaces, per-device mixed-provider ownership, provider registration, and replay delivery. This completes both in-process command placements for the reference platform. A real robot driver, calibration data, independent stop system, and hardware tests are still required before making a sim-to-real claim.
+Interface tests cover lifecycle, capability validation, actuator-feedback validation, sequence rejection, bounded
+queues, motion and actuator timeout stops, all three body command spaces, the RO-2 four-channel safe-zero watchdog,
+per-device mixed-provider ownership, provider registration, and replay delivery. A real robot driver, calibration
+data, independent stop system, and hardware tests are still required before making a sim-to-real claim.

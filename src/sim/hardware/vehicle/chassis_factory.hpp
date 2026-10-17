@@ -51,6 +51,7 @@ struct ChassisBuildParams {
   double max_steer_rad{0.6};
   double max_steer_rate_radps{2.5};
   double servo_response_s{0.4};
+ double steering_stall_torque_Nm{8.0};
   double steering_integral_limit{1.2};
   double tracked_max_yaw_rate_rads{1.5};
   // Mission behavior inputs (not hardware): differential yaw cap source and

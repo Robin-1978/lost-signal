@@ -1,4 +1,5 @@
 #include "sim/hardware/vehicle/ackermann.hpp"
+#include "sim/hardware/actuators/electric_drive.hpp"
 #include "robot/platform/chassis_caps.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
@@ -41,6 +42,14 @@ const sim::GroundContact kGround{0.7, 0.01, 4.0};
 } // namespace
 
 int main() {
+ // Motoring loses authority near no-load speed, while an opposing H-bridge
+ // command keeps bounded braking authority. Zero duty remains coast.
+ CHECK(std::abs(sim::hardware::dc_motor_force_N(1.0, 2.5, 50.0, 3.0) -
+ 50.0 / 6.0) < 1e-12);
+ CHECK(sim::hardware::dc_motor_force_N(-1.0, 2.5, 50.0, 3.0) == -50.0);
+ CHECK(sim::hardware::dc_motor_force_N(1.0, -2.5, 50.0, 3.0) == 50.0);
+ CHECK(sim::hardware::dc_motor_force_N(0.0, 2.5, 50.0, 3.0) == 0.0);
+
  // Actuator speed loops need their own anti-windup policy. A prolonged stall
  // must not store a full positive integral that erases differential torque
  // when the next command asks one wheel to reverse. Navigation heading PIDs
@@ -278,13 +287,13 @@ int main() {
   CHECK(a.v > 0.5);
   CHECK(std::abs(a.w) < 0.05);
   // Spin in place (slower than wheels: scrub eats torque).
-  sim::DiffState spun;
+ sim::DiffState spun;
   for (int step = 0; step < 100; ++step) {
-   spun = first.step(spun, {0.0, 1.0}, 0.02, kGround);
+ spun = first.step(spun, {0.0, 1.0}, 0.02, kGround);
   }
   CHECK(spun.w > 0.1);
   CHECK(std::abs(spun.v) < 0.1);
-  CHECK(first.telemetry().steer.angle_rad == 0.0);
+ CHECK(first.telemetry().steer.angle_rad == 0.0);
   // Ice: longitudinal breakaway flags slipping on the shared contact.
   const sim::GroundContact ice{0.05, 0.01, 4.0};
   sim::TrackedDrive sled(params, gains);

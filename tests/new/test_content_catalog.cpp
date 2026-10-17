@@ -124,7 +124,27 @@ int main() {
  CHECK(second.steering.max_steer_rad > 0.0);
  CHECK(second.steering.max_steer_rate_radps > 0.0);
  CHECK(second.steering.servo_response_s > 0.0);
+ CHECK(std::abs(second.steering.stall_torque_Nm - 8.0) < 1e-12);
  CHECK(second.motor.wheel_equiv_mass_kg > 0.0);
+ CHECK(second.articulation.root_link == "base_link");
+ CHECK(second.articulation.links.size() == 7);
+ CHECK(second.articulation.joints.size() == 6);
+ CHECK(second.articulation.actuators.size() == 4);
+ double second_mass_kg = 0.0;
+ for (const auto& link : second.articulation.links)
+ second_mass_kg += link.mass_kg;
+ CHECK(std::abs(second_mass_kg - second.mass_kg) < 1e-12);
+ int bounded_steering_joints = 0;
+ for (const auto& joint : second.articulation.joints) {
+ if (joint.id.ends_with("_steer_joint")) {
+ CHECK(joint.type == "revolute");
+ CHECK(joint.has_limits);
+ CHECK(std::abs(joint.lower_limit_rad + 0.75) < 1e-12);
+ CHECK(std::abs(joint.upper_limit_rad - 0.75) < 1e-12);
+ ++bounded_steering_joints;
+ }
+ }
+ CHECK(bounded_steering_joints == 2);
  // Third vehicle: tracked twin-drive on the shared contact with a vendor
  // spin spec. No level assigns it yet; the catalog contract already holds.
  const auto& third = catalog.robot("robot.ro3");

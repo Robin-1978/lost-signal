@@ -33,7 +33,8 @@
         "options": [
           "motor.standard",
           "motor.torque",
-          "motor.eco"
+          "motor.eco",
+          "motor.speed"
         ]
       }
     ],

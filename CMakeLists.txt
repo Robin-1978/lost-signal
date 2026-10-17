@@ -47,7 +47,9 @@ target_compile_features(lost_signal_robot_core INTERFACE cxx_std_20)
 target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_options)
 
 add_library(lost_signal_robot_platform STATIC
+ src/robot/platform/ackermann_kinematics.cpp
  src/robot/platform/differential_kinematics.cpp
+ src/robot/control/ackermann_actuator_controller.cpp
  src/robot/control/pid.cpp
  src/robot/control/feedforward.cpp
  src/robot/control/differential_wheel_controller.cpp
@@ -179,6 +181,13 @@ if(NOT LOST_SIGNAL_BUILD_SIM)
  lost_signal_robot_platform)
  add_test(NAME differential_wheel_controller COMMAND
  test_differential_wheel_controller)
+
+ add_executable(test_ackermann_actuator_controller
+ tests/new/test_ackermann_actuator_controller.cpp)
+ target_link_libraries(test_ackermann_actuator_controller PRIVATE
+ lost_signal_robot_platform lost_signal_robot_runtime)
+ add_test(NAME ackermann_actuator_controller COMMAND
+ test_ackermann_actuator_controller)
  endif()
  return()
 endif()
@@ -217,6 +226,7 @@ target_sources(lost_signal_sim_physics PRIVATE src/sim/hardware/physics/bullet_p
 target_compile_definitions(lost_signal_sim_physics PRIVATE BT_USE_DOUBLE_PRECISION)
 
 add_library(lost_signal_sim_vehicle STATIC
+ src/sim/hardware/actuators/electric_drive.cpp
  src/sim/hardware/vehicle/ackermann.cpp
  src/sim/hardware/vehicle/holonomic.cpp
  src/sim/hardware/vehicle/motor_drive.cpp
@@ -403,6 +413,13 @@ target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_sim_game)
 target_compile_definitions(test_ro1_dynamics_acceptance PRIVATE
   LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME ro1_dynamics_acceptance COMMAND test_ro1_dynamics_acceptance)
+
+ add_executable(test_ro2_dynamics_acceptance tests/new/test_ro2_dynamics_acceptance.cpp)
+ target_link_libraries(test_ro2_dynamics_acceptance PRIVATE lost_signal_sim_game)
+ target_compile_definitions(test_ro2_dynamics_acceptance PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME ro2_dynamics_acceptance COMMAND test_ro2_dynamics_acceptance)
 
 add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
 target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_sim_game)
@@ -717,6 +734,13 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  lost_signal_robot_platform)
  add_test(NAME differential_wheel_controller COMMAND
  test_differential_wheel_controller)
+
+ add_executable(test_ackermann_actuator_controller
+ tests/new/test_ackermann_actuator_controller.cpp)
+ target_link_libraries(test_ackermann_actuator_controller PRIVATE
+ lost_signal_robot_platform lost_signal_robot_runtime)
+ add_test(NAME ackermann_actuator_controller COMMAND
+ test_ackermann_actuator_controller)
 
  add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
  target_link_libraries(test_state_estimator PRIVATE lost_signal_sim_hardware)

@@ -115,6 +115,17 @@ wheel-surface free speed is 4.2 m/s and its short-duration rim stall force is 38
 for the standard profile. It is deliberately not a universally better motor: launch and grade authority are lower,
 the energy scale is higher, and autonomy may use its extra speed only when an explicit driving policy requests it.
 
+RO-2 uses the same class of documented motor assumptions with two rear drive channels and two front steering
+channels. Its 26 kg mass, 0.62 m wheelbase, 0.58 m track, 0.10 m wheel radius, 54 N per-wheel peak rim force, 8 N m
+steering stall torque, and 0.05 kg m^2 steering reflected inertia are engineering defaults chosen for the executable
+teaching envelope. They are neither measurements nor a named vehicle specification. The relatively large reflected
+steering inertia represents the complete servo/transmission/knuckle load seen at the joint; a future identified
+profile must replace it with measured step and coast response rather than retuning it to a mission outcome.
+The optional `motor.speed` gearset reaches about 3.5 m/s in the current RO-2 straight-line fixture. The articulated
+plant treats opposing duty as current-limited electrical braking and zero duty as coast; its measured stop is checked
+against the independent peak-force energy bound. This is not a friction service brake, ABS, parking brake, or thermal
+model. Those require separate actuator capabilities and sourced parameters before any automotive-speed claim.
+
 ## Wheel-ground contact
 
 There is no universal rubber stiffness. The standard tire default is derived from a declared operating point:
