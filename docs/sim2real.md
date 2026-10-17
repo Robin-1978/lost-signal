@@ -10,7 +10,8 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 | Layer | Current state | Transfer outlook |
 |---|---|---|
-| Task intent and behavior | neutral route, conflict-region, hold/commit, and recovery contracts are explicit | behavior algorithms are reusable after safety review; a deployable Task Executive is still required and game scenario/progression is not deployed |
+| Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | external operator/fleet API and a native lifecycle executable remain; game scenario/progression is not deployed |
+| Map management | LSRM v1, immutable revisions, semantic places, provider lifecycle, authored-map compiler, and checksummed package I/O are implemented | SLAM, survey, HD-map and remote providers still need concrete bridges and field evidence |
 | Global planning | A* and Hybrid A* consume maps and vehicle constraints | reusable when maps, footprint, and costs match the robot |
 | Local planning | trajectory evaluation uses obstacles, dynamics, and chassis limits | reusable only after latency, footprint, braking, and prediction calibration |
 | Kinematics | differential, tracked, Ackermann, swerve, and mecanum mappings are executable | reusable with measured geometry and sign conventions |
@@ -22,18 +23,24 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 
 ## Deployment boundary
 
-A native robot build keeps `lost_signal_core`, `lost_signal_runtime`, and `lost_signal_autonomy`, adds the planned
-middleware-neutral `lost_signal_executive`, then supplies an LSRI platform adapter for its sensors and chassis. It
-does not compile or ship the current `lost_signal_mission`, `src/sim`,
+A native robot build keeps `lost_signal_core`, `lost_signal_runtime`, `lost_signal_map_io`,
+`lost_signal_autonomy`, and `lost_signal_executive`, then supplies LSRI platform and map providers. It
+does not compile or ship the current `lost_signal_scenario`, `src/sim`,
 `lost_signal_physics`, or `src/client`. Runtime observation contracts are defined outside the simulator and contain
 timestamps, frames, measurements, and estimated state only. Simulation truth, authored actors, game goals, scoring,
 and rendering snapshots cannot appear in an autonomy interface.
 
-The Task Executive sits above autonomy and may accept user or fleet requests, validate/cancel/pause/resume them,
-order semantic goals, and report progress. It cannot command actuators directly or bypass trajectory and safety
+The Task Executive sits above autonomy and accepts validated task plans, cancels/pauses/resumes them,
+orders semantic goals, and reports progress. It cannot command actuators directly or bypass trajectory and safety
 validation. Scenario actors, score thresholds, scripted surprises and story state belong to a separate
 simulation-only Scenario/Game Session layer. The current `src/mission` name covers both concerns, so it is excluded
 as a whole until that split is complete.
+
+The [Lost Signal Robot Map](robot-map.md) is likewise source-neutral. An editor, SLAM backend, survey compiler, or HD-map
+bridge publishes validated revisions through `IMapProvider`; planning and the Task Executive never import the
+source format. The persisted LSRM package is a navigation product and does not pretend to preserve a SLAM pose graph,
+raw point cloud, Lanelet2 map, or simulation world. A global raster is optional. Map queries and perception derive a
+bounded rolling view; dynamic obstacles and inflated costs remain runtime layers.
 
 Conflict-zone behavior follows the same rule. A map may provide a semantic conflict region, while autonomy derives
 the stop pose from the current route, footprint, localization margin, actuator delay, and braking capability. A

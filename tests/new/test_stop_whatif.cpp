@@ -70,7 +70,7 @@ WhatIf run_whatif(const mission::ContentCatalog& catalog, const std::string& lev
     std::cerr << "no threat corridors for " << level_id << "\n";
     std::abort();
   }
-  mission::MissionSimulation mission(catalog, level_id, build);
+  mission::ScenarioSession mission(catalog, level_id, build);
   std::vector<RecordedStep> stream;
   std::vector<sim::Vec2> trail;
   mission.start();

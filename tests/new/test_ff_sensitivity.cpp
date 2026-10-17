@@ -10,7 +10,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "core/math.hpp"
 #include "autonomy/control/pid.hpp"
 #include "hw/chassis/diff_drive.hpp"
@@ -428,7 +428,7 @@ int main() {
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& pres = catalog.presentation_for_level("lost_signal");
  const auto& build = pres.recommended_build;
- const auto& robot = catalog.robot(mission::MissionSimulation::level_robot_id(catalog, "lost_signal", build));
+ const auto& robot = catalog.robot(mission::ScenarioSession::level_robot_id(catalog, "lost_signal", build));
  const std::string motor_id = build.parts.at("motor");
  const std::string tire_id = build.parts.at("tires");
  auto cprop = [&](const std::string& id, const std::string& key) {
@@ -457,7 +457,7 @@ int main() {
  ff_base.load_per_unit_N = robot.mass_kg * 9.81 / 2.0;
 
  // Recorded traces: full pinned finale run.
- mission::MissionSimulation mission(catalog, "lost_signal", build);
+ mission::ScenarioSession mission(catalog, "lost_signal", build);
  mission.run_to_completion();
  if (mission.result().status != mission::MissionStatus::Succeeded) {
   std::cerr << "recording mission failed: reason=" << mission.result().failure_reason

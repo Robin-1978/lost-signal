@@ -4,7 +4,7 @@
 // shipped tree, adds one map + level + presentation, and runs headless.
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -154,7 +154,7 @@ int main() {
  mission::BuildSelection build;
  build.parts["tires"] = "tires.standard";
  build.style = 0.0;
- mission::MissionSimulation mission(catalog, "test_summon", build, 7u);
+ mission::ScenarioSession mission(catalog, "test_summon", build, 7u);
  mission.run_to_completion();
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  bool summoned = false, recharged = false;

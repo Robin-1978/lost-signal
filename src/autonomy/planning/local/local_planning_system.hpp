@@ -31,6 +31,10 @@ struct LocalPlanningRequest {
  double step_s{0.1};
  double required_clearance_m{0.0};
  double robot_radius_m{0.0};
+ // Differential-drive actuator feasibility. A body (v,w) candidate is valid
+ // only when both v +/- w*track/2 remain within the selected motor speed.
+ double differential_track_m{0.0};
+ double max_wheel_speed_mps{0.0};
  double steering_wheel_base_m{0.0};
  double max_steer_rad{0.0};
  double max_steer_rate_radps{0.0};

@@ -27,7 +27,7 @@ schedule, while the local validator independently checks every exact executable 
 crossing uses `control` authority only because stop-pose, braking-tail, prediction, and deterministic mission
 contracts are present. See [Behavior architecture](behavior-architecture.md).
 
-The CMake targets make the same boundaries visible. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets. `lost_signal_stack` is a convenience target that aggregates them. `lost_signal_mission` composes the stack with authored content and simulation.
+The CMake targets make the same boundaries visible. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets. `lost_signal_stack` is a convenience target that aggregates them. `lost_signal_scenario` composes the stack with authored content and simulation.
 
 This organization follows two useful industry patterns while remaining smaller than either framework:
 
@@ -98,12 +98,12 @@ planners.register_factory("theta-star", [] {
  return std::make_shared<ThetaStarPlanner>();
 });
 
-mission::MissionSimulationOptions options;
+mission::ScenarioSessionOptions options;
 options.global_planner = planners.create("theta-star");
-mission::MissionSimulation simulation(catalog, level_id, build, options);
+mission::ScenarioSession simulation(catalog, level_id, build, options);
 ```
 
-No branch is added to `MissionSimulation`. The same injected planner runs through graphical missions and headless experiments. Chassis-specific defaults still select grid A* or Hybrid A* when no custom planner is supplied.
+No branch is added to `ScenarioSession`. The same injected planner runs through graphical missions and headless experiments. Chassis-specific defaults still select grid A* or Hybrid A* when no custom planner is supplied.
 
 A planner should keep all tuning explicit, respect map occupancy and the supplied traversal cost, return deterministic results for identical inputs, and explain failures through `diagnostic`. Add focused contract tests and at least one mission-level test when behavior changes. `tests/new/test_global_planner_extension.cpp` is the smallest working provider example.
 

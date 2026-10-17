@@ -6,7 +6,7 @@
 // ping-pong deliver the mover; the governor must never fire here (manual
 // bypasses decide_control: the driver outranks strategy by construction).
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -130,7 +130,7 @@ int main() {
  mission::BuildSelection build;
  build.parts["tires"] = "tires.standard";
  build.style = 0.0;
- mission::MissionSimulation ram(catalog, "test_ram", build, 7u);
+ mission::ScenarioSession ram(catalog, "test_ram", build, 7u);
  ram.start();
  // Drive at the patrol segment and stop on it (0.8 m < 0.9 m capture):
  // ping-pong guarantees the mover comes through. No parking precision

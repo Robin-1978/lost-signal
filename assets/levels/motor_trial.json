@@ -22,7 +22,7 @@
     "arrive_tolerance_m": 0.62
   },
   "loadout_rules": {
-    "budget": 3,
+    "budget": 4,
     "required_slots": [
       "tires",
       "motor"
@@ -30,12 +30,12 @@
   },
   "teaching": {
     "concept": "motors_and_energy",
-    "prediction_prompt": "扭矩电机一定更快吗？代价是什么？",
-    "knowledge_card": "扭矩换加速，能耗换续航；大力出奇迹，电量先见底。"
+    "prediction_prompt": "高速电机一定最快吗？扭矩、极速和能耗如何交换？",
+    "knowledge_card": "高速齿比提高轮速却降低轮缘力；低速大扭矩适合起步和坡道，正确选择取决于路线与任务。"
   },
   "score": {
     "safe_min_clearance_m": 0.15,
-    "fast_time_s": 4.3,
+    "fast_time_s": 5.0,
     "efficient_energy_wh": 0.05
   },
   "rewards": [

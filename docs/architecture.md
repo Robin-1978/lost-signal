@@ -49,9 +49,17 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 
 Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
 
-Maps are 2.5D: terrain patches carry base height, two-axis grade, and roughness, while surface materials carry
-friction, rolling drag, traction, and presentation effects. `SimulatedPlatform` turns that content into 3D collision
-geometry and contact state. The shipped LiDAR is a single-plane scanner mounted in a named 3D frame. In the
+Authored scenario maps carry 2.5D terrain patches and surface materials, while `SimulatedPlatform` turns that
+content into 3D collision geometry and contact state. The deployable [Lost Signal Robot Map](robot-map.md) is a
+separate provider-neutral contract: occupancy, elevation, uncertainty, surface classes, vector semantics, and
+topology are composable layers. A snapshot requires spatial grid data or semantic content, but a large vector/HD map
+does not allocate a mandatory global raster. A bounded static view is combined with ray-cleared sensor observations,
+tracking, prediction, footprint, and inflation to produce the rolling local costmap. The scenario adapter, a future
+SLAM backend, survey conversion, or HD-map bridge can publish the same immutable revision. The editor exports the
+checksummed `.lsmap` package as well as its complete scenario source. Actors, rendering materials, scripts, and
+physics truth never enter the Robot Map.
+
+The shipped LiDAR is a single-plane scanner mounted in a named 3D frame. In the
 production path it raycasts the 3D physics world against terrain, static geometry, and dynamic actors, includes
 scan-time robot motion, and synthesizes intensity from hit normal, body class, and distance before applying the
 declared bias, noise, quantization, and dropout model. It is not a multi-beam 3D point-cloud sensor, and its three
@@ -75,10 +83,10 @@ at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cus
 The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy
 layer. Route following, waypoint progress, heading PID state, crossing behavior, prediction, and trajectory
 validation all live in `src/autonomy`; mission code only supplies task intent and world semantics. The
-`deployable_boundary` test rejects includes from `mission`, `sim`, `physics`, or `client` in `core`, `runtime`, or
-`autonomy`, and rejects world-layer sources or libraries in the autonomy target. `lost_signal_autonomy`,
-`lost_signal_vehicle`, and `lost_signal_runtime` remain separate targets, while `lost_signal_stack` is their
-simulation aggregate.
+`deployable_boundary` test rejects includes from `mission`, `sim`, `physics`, or `client` in `core`, `runtime`,
+`autonomy`, `executive`, or `map_io`, and rejects world-layer sources or libraries in the autonomy target.
+`lost_signal_autonomy`, `lost_signal_executive`, `lost_signal_runtime`, and `lost_signal_map_io` remain separate
+deployable targets, while `lost_signal_stack` is their simulation aggregate with vehicle and physics libraries.
 
 Each local planner produces one `ExecutableTrajectory`: an explicit command space, the body command, and strictly
 time-ordered pose, velocity, yaw-rate, and steering samples. The runtime validates the exact selected samples
@@ -108,13 +116,22 @@ The word *mission* has two distinct meanings and the codebase must not merge the
  scoring, story progression and presentation. It may observe mission progress, but it cannot choose a stop pose,
  rewrite a trajectory, or grant a collision exception.
 
-The target deployable set therefore includes a small `lost_signal_executive` library above
-`lost_signal_autonomy`, with operator/API adapters above it and LSRI platform adapters below autonomy. That library
-will depend only on `core`, `runtime` and autonomy contracts. The current `src/mission/` directory predates this
-terminology and still combines task intent with the game session. Until it is split, `lost_signal_mission` remains
-simulation-only and must not be presented as a real-robot Mission Executive.
+The target deployable set includes the implemented `lost_signal_executive` library above `lost_signal_autonomy`,
+with operator/API adapters above it and LSRI platform adapters below autonomy. Its first `TaskExecutive` slice owns
+validated goal ordering, arrival, dwell, pause, resume, cancel, failure, and completion lifecycle. The implemented
+`MapManager` and `IMapProvider` own validated immutable map revisions and semantic-place resolution, while
+`lost_signal_map_io` loads and saves the checksummed LSRM v1 package. These targets depend only on deployable
+contracts.
 
-`src/mission/` owns goals, progression, field dispatch, world activity, scoring, telemetry, replay, and the fixed-step mission loop. `MissionSimulation` composes these systems and publishes an immutable snapshot for consumers.
+`GoalSystem` is a thin adapter from authored game actions to `TaskExecutive` and resolves positions through
+`IMapProvider`; it no longer owns generic task lifecycle or reads map markers directly. The simulation composition
+root now lives in `src/scenario/` as `ScenarioSession`, and its CMake target is explicitly
+`lost_signal_scenario`. Authored game content and scenario adapters remain under `src/mission/`; both directories
+are simulation-only and are rejected from deployable dependencies.
+
+`src/mission/` owns authored goals, progression, field dispatch, world activity, scoring, and presentation data.
+`src/scenario/` owns fixed-step composition, telemetry, and replay. `ScenarioSession` composes the focused systems
+and publishes an immutable snapshot for consumers.
 `DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
 and translates authority into a neutral autonomy contract. `CrossingBehaviorSystem` in `autonomy/behavior` owns
 the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
@@ -317,7 +334,7 @@ The architecture already provides several uncommon combinations in a small open 
 - data-driven educational content with string-only localization overlays;
 - a clean path for log comparison, native hardware providers, and measured HIL work.
 
-The main technical risk is concentration in `MissionSimulation`, which still coordinates many subsystems. Recent
+The main technical risk is concentration in `ScenarioSession`, which still coordinates many subsystems. Recent
 extraction of planning, control, goal, dispatch, operator, world activity, dynamic traffic, and trajectory tracking
 reduces that pressure. Sensor scheduling, decision evidence, mission progress, and snapshot assembly remain the
 next ownership boundaries.

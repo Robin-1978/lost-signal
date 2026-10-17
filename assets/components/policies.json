@@ -27,11 +27,22 @@
       "id": "policy.swift",
       "title": "激进",
       "description": "更快抵达，但留给感知和制动的时间更短。",
-      "style": 1.0,
+      "style": 0.8,
       "behavior": {
         "cruise_mps": 1.25,
         "safe_clearance_m": 0.4,
         "lookahead_m": 2.3
+      }
+    },
+    {
+      "id": "policy.express",
+      "title": "极速",
+      "description": "只适合开阔测试场：主动使用高速平台能力，并为更长制动距离负责。",
+      "style": 1.0,
+      "behavior": {
+        "cruise_mps": 3.2,
+        "safe_clearance_m": 0.3,
+        "lookahead_m": 3.5
       }
     }
   ]

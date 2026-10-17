@@ -3,7 +3,7 @@
 // saves load at zero, and reputation buys persistent garage inventory.
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -83,7 +83,7 @@ int main() {
   const auto& job = catalog.contracts().front();
  const auto& base_level = catalog.level(job.level);
  const auto& contract_presentation = catalog.presentation_for_level(job.level);
- mission::MissionSimulation contracted(catalog, job.level, contract_presentation.recommended_build,
+ mission::ScenarioSession contracted(catalog, job.level, contract_presentation.recommended_build,
  std::nullopt, std::vector<std::string>{}, mission::ComponentRegistry::builtins(),
  std::shared_ptr<const autonomy::IGlobalPlanner>{}, mission::PhysicsMode::Bullet,
  std::shared_ptr<sim::IHighLevelPolicy>{}, job.id);

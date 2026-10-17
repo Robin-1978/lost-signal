@@ -38,7 +38,7 @@ struct FieldExpeditionCheckpoint {
 };
 
 // Runtime state for the human field engineer and the high-level instructions
-// they give Luo Yi. This system owns no robot motion: MissionSimulation turns
+// they give Luo Yi. This system owns no robot motion: ScenarioSession turns
 // accepted intentions into normal planner goals and chassis commands.
 class FieldOperatorSystem {
  public:

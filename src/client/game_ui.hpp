@@ -1,7 +1,7 @@
 #pragma once
 
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <TGUI/TGUI.hpp>
 
@@ -34,10 +34,10 @@ class GameUi {
  GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
         const mission::PresentationDefinition& presentation);
 
- void set_screen(Screen screen, const mission::MissionSimulation* mission = nullptr);
- void resize(int width, int height, const mission::MissionSimulation* mission = nullptr);
- void refresh_running(const mission::MissionSimulation& mission, bool paused, double speed);
- void refresh_debrief(const mission::MissionSimulation& mission);
+ void set_screen(Screen screen, const mission::ScenarioSession* mission = nullptr);
+ void resize(int width, int height, const mission::ScenarioSession* mission = nullptr);
+ void refresh_running(const mission::ScenarioSession& mission, bool paused, double speed);
+ void refresh_debrief(const mission::ScenarioSession& mission);
  UiActions consume_actions();
 
  Screen screen() const { return screen_; }
@@ -60,12 +60,12 @@ class GameUi {
  void set_build(const mission::BuildSelection& build);
 
  private:
- void rebuild(const mission::MissionSimulation* mission);
+ void rebuild(const mission::ScenarioSession* mission);
  void build_chapter();
  void build_garage();
  void build_prediction();
- void build_running(const mission::MissionSimulation* mission);
- void build_debrief(const mission::MissionSimulation* mission);
+ void build_running(const mission::ScenarioSession* mission);
+ void build_debrief(const mission::ScenarioSession* mission);
  void select_component(const std::string& slot, const std::string& id);
  void select_chassis(const std::string& robot_id);
  void select_task_policy(const std::string& policy);

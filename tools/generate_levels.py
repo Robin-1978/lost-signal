@@ -39,9 +39,9 @@ LEVELS: list[dict] = [
         "title": "信号回响",
         "map": "research_base",
         "prerequisites": ["lost_signal"],
-        "seed": 48,
+ "seed": 42,
  "time_limit_s": 150,
-        "budget": 7,
+ "budget": 8,
         "arrive_tolerance_m": 0.62,
         "via_radius_m": 1.25,
         "safe_min_clearance_m": 0.3,
@@ -85,11 +85,11 @@ LEVELS: list[dict] = [
             "computer": "computer.light",
             "motor": "motor.standard",
             "imu": "imu.basic",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
-            "sensor": "sensor.standard_lidar",
+ "sensor": "sensor.short_fast_lidar",
             "computer": "computer.performance",
             "motor": "motor.standard",
             "imu": "imu.basic",
@@ -196,7 +196,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -265,7 +265,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -332,7 +332,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.sand",
@@ -403,7 +403,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.sand",
@@ -472,7 +472,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -540,7 +540,7 @@ LEVELS: list[dict] = [
             "tires": "tires.eco",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -599,7 +599,7 @@ LEVELS: list[dict] = [
         "efficient_energy_wh": 2.5,
         "concept": "sensing_rate",
         "prediction_prompt": "同一条走廊，同一班叉车：12 米射程 5Hz 和 5 米射程 20Hz，哪个活下来？",
-        "knowledge_card": "看得远不如看得勤：5Hz 下叉车每帧走 0.11 米，确认加外推，窗口全是旧位置。默认配置在走廊东口撞上，推荐配置 91.72 秒拿全分。",
+ "knowledge_card": "看得远不等于看得及时：5Hz 下叉车每帧走 0.11 米，确认与外推依赖更旧的位置。比较两套配置的预测不确定性、等待时间和最小净距。",
         "garage_heading": "换双眼睛再走",
         "garage_brief": "同一条走廊，同一班叉车，只换雷达。射程翻倍，刷新率砍到四分之一，看看会发生什么。",
         "prediction_heading": "出发前，先做一个判断",
@@ -758,7 +758,7 @@ LEVELS: list[dict] = [
             "computer": "computer.light",
             "motor": "motor.standard",
             "imu": "imu.basic",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -833,7 +833,7 @@ LEVELS: list[dict] = [
             "computer": "computer.light",
             "motor": "motor.standard",
             "imu": "imu.basic",
-            "style": 1.0,
+            "style": 0.8,
         },
         "recommended_build": {
             "tires": "tires.grip",
@@ -962,6 +962,12 @@ def build_objective(spec: dict) -> dict:
             "max_collisions": 0,
             "arrive_tolerance_m": spec["arrive_tolerance_m"],
             "via_radius_m": spec["via_radius_m"],
+ "goals": [
+ {"marker": "supply_station", "label": "能源模块", "action": "pickup",
+ "radius_m": spec["via_radius_m"]},
+ {"marker": "signal_tower", "label": "信号塔", "action": "complete",
+ "radius_m": spec["arrive_tolerance_m"]},
+ ],
         }
     if spec["template"] == "haul":
         return {
@@ -1018,6 +1024,7 @@ def build_level(spec: dict) -> dict:
         },
         "score": {
             "safe_min_clearance_m": spec["safe_min_clearance_m"],
+ **({"safe_clearance_scope": "dynamic"} if spec["template"] == "echo" else {}),
             **({"max_localization_error_m": spec["max_localization_error_m"]}
                if "max_localization_error_m" in spec else {}),
             "fast_time_s": spec["fast_time_s"],

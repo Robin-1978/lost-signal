@@ -7,7 +7,7 @@
 #include "map_editor.hpp"
 
 #include <optional>
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <TGUI/Backend/raylib.hpp>
 #include <TGUI/TGUI.hpp>
@@ -169,7 +169,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
   if (options.analysis_view)
    renderer.toggle_analysis_mode();
  const auto make_mission = [&](const std::string& level, const mission::BuildSelection& build) {
- auto created = std::make_unique<mission::MissionSimulation>(catalog, level, build, std::nullopt,
+ auto created = std::make_unique<mission::ScenarioSession>(catalog, level, build, std::nullopt,
  progress.abilities(), mission::ComponentRegistry::builtins(),
  std::shared_ptr<const autonomy::IGlobalPlanner>{}, options.physics_mode,
  std::shared_ptr<sim::IHighLevelPolicy>{},
@@ -207,7 +207,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
    ui.set_screen(client::Screen::Garage, mission.get());
   }
  mission::MissionSnapshot previous_presentation_snapshot = mission->snapshot();
- const mission::MissionSimulation* presentation_source = mission.get();
+ const mission::ScenarioSession* presentation_source = mission.get();
 
   while (!WindowShouldClose()) {
    gui.handleEvents();
@@ -465,10 +465,10 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
     } else {
      accumulator += std::min(0.1, static_cast<double>(GetFrameTime())) * speed;
      int steps = 0;
-     while (accumulator >= mission::MissionSimulation::fixed_step_s && steps < 80) {
+     while (accumulator >= mission::ScenarioSession::fixed_step_s && steps < 80) {
  previous_presentation_snapshot = mission->snapshot();
       mission->step();
-      accumulator -= mission::MissionSimulation::fixed_step_s;
+      accumulator -= mission::ScenarioSession::fixed_step_s;
       ++steps;
      }
     }
@@ -528,7 +528,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  const double presentation_delta_s =
  mission->snapshot().time_s - previous_presentation_snapshot.time_s;
  if (presentation_source != mission.get() ||
- std::abs(presentation_delta_s - mission::MissionSimulation::fixed_step_s) > 1e-9) {
+ std::abs(presentation_delta_s - mission::ScenarioSession::fixed_step_s) > 1e-9) {
  // Mission replacement, replay seek and an unstepped preview have no
  // adjacent fixed-step pair. Present their authoritative state directly.
  previous_presentation_snapshot = mission->snapshot();
@@ -537,7 +537,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  const bool interpolate_running = options.screenshot.empty() &&
  mission->snapshot().status == mission::MissionStatus::Running;
  const double presentation_alpha = interpolate_running
- ? accumulator / mission::MissionSimulation::fixed_step_s
+ ? accumulator / mission::ScenarioSession::fixed_step_s
  : 1.0;
  const mission::PresentationFrameView presentation{
  *mission, previous_presentation_snapshot, presentation_alpha};

@@ -6,7 +6,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "hw/chassis/diff_drive.hpp"
 
 #include <algorithm>
@@ -25,7 +25,7 @@
 int main() {
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto build = catalog.presentation_for_level("lost_signal").recommended_build;
- mission::MissionSimulation mission(catalog, "lost_signal", build);
+ mission::ScenarioSession mission(catalog, "lost_signal", build);
  CHECK(mission.robot().drive_type == "differential");
  mission.run_to_completion();
  const double base = mission.robot().wheel_base_m;

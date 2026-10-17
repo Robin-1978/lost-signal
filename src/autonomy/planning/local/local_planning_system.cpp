@@ -99,7 +99,8 @@ DwaResult generate(const LocalPlanningRequest& request,
  request.step_s, required_clearance_m, request.robot_radius_m,
  request.max_yaw_accel_radps2, terrain_feasible,
  minimum_forward_mps > 0.0 ? minimum_forward_mps : minimum_velocity_mps,
- request.target_heading_rad, request.reference);
+ request.target_heading_rad, request.reference,
+ request.differential_track_m, request.max_wheel_speed_mps);
 }
 
 ValidatedTrajectorySelection validate(const DwaResult& proposals,

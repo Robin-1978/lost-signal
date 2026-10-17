@@ -32,7 +32,7 @@ struct ShadowStream {
   double min_clear_margin_s{1e9};
 };
 
-ShadowStream run_shadow(mission::MissionSimulation& mission) {
+ShadowStream run_shadow(mission::ScenarioSession& mission) {
   ShadowStream stream;
   mission.start();
   int steps = 0;
@@ -72,7 +72,7 @@ ShadowStream run_shadow(mission::MissionSimulation& mission) {
 int main() {
   const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   const auto build = catalog.presentation_for_level("signal_cross").recommended_build;
-  mission::MissionSimulation first(catalog, "signal_cross", build);
+  mission::ScenarioSession first(catalog, "signal_cross", build);
   const auto s1 = run_shadow(first);
   CHECK(first.snapshot().status == mission::MissionStatus::Succeeded);
   std::cerr << "assessed=" << s1.assessed << " clear=" << s1.clear << " occupied=" << s1.occupied
@@ -86,7 +86,7 @@ int main() {
   CHECK(s1.assessed > 0);
   CHECK(s1.occupied > 0);
   // Determinism: same content/seed replays the identical verdict stream.
-  mission::MissionSimulation second(catalog, "signal_cross", build);
+  mission::ScenarioSession second(catalog, "signal_cross", build);
   const auto s2 = run_shadow(second);
   CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
         s2.uncertain == s1.uncertain);

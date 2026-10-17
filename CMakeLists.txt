@@ -132,24 +132,38 @@ target_link_libraries(lost_signal_sim_geometry PUBLIC
  lost_signal_core lost_signal_autonomy)
 
 add_library(lost_signal_runtime STATIC
+ src/runtime/map_provider.cpp
  src/runtime/runtime_channel.cpp
  src/runtime/replay_driver.cpp
 )
 target_link_libraries(lost_signal_runtime PUBLIC lost_signal_core)
 
+add_library(lost_signal_map_io STATIC
+ src/map_io/robot_map_package.cpp
+)
+target_link_libraries(lost_signal_map_io PUBLIC
+ lost_signal_core lost_signal_runtime nlohmann_json::nlohmann_json)
+
+add_library(lost_signal_executive STATIC
+ src/executive/task_executive.cpp
+)
+target_link_libraries(lost_signal_executive PUBLIC
+ lost_signal_core lost_signal_runtime lost_signal_autonomy)
+
 add_library(lost_signal_stack INTERFACE)
 target_link_libraries(lost_signal_stack INTERFACE
- lost_signal_autonomy lost_signal_vehicle lost_signal_runtime lost_signal_physics
+ lost_signal_autonomy lost_signal_executive lost_signal_vehicle lost_signal_runtime lost_signal_map_io lost_signal_physics
  lost_signal_sim_geometry)
 
-add_library(lost_signal_mission STATIC
+add_library(lost_signal_scenario STATIC
  src/mission/campaign_progress.cpp
  src/mission/component_registry.cpp
  src/mission/content_catalog.cpp
+ src/mission/deployable_map_adapter.cpp
  src/mission/map_serialize.cpp
  src/sim/simulated_platform.cpp
- src/mission/mission_simulation.cpp
- src/mission/mission_autonomy.cpp
+ src/scenario/scenario_session.cpp
+ src/scenario/scenario_autonomy.cpp
  src/mission/world/actor_behavior_registry.cpp
  src/mission/systems/collision_monitor.cpp
  src/mission/systems/decision_evidence_system.cpp
@@ -159,8 +173,8 @@ add_library(lost_signal_mission STATIC
  src/mission/systems/goal_system.cpp
  src/mission/systems/world_activity_system.cpp
 )
-target_include_directories(lost_signal_mission PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(lost_signal_mission PUBLIC lost_signal_stack nlohmann_json::nlohmann_json)
+target_include_directories(lost_signal_scenario PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lost_signal_scenario PUBLIC lost_signal_stack nlohmann_json::nlohmann_json)
 
 set(LOST_SIGNAL_BUILD_INFO_HEADER
  ${CMAKE_CURRENT_BINARY_DIR}/generated/lost_signal/build_info.hpp)
@@ -185,7 +199,7 @@ add_executable(lost_signal_headless
 )
 add_dependencies(lost_signal_headless lost_signal_build_info)
 target_include_directories(lost_signal_headless PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
-target_link_libraries(lost_signal_headless PRIVATE lost_signal_mission)
+target_link_libraries(lost_signal_headless PRIVATE lost_signal_scenario)
 
 if(LOST_SIGNAL_BUILD_CLIENT)
  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -225,7 +239,7 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  src/client/scene_renderer_3d.cpp
  src/client/world_renderer.cpp
  )
- target_link_libraries(lost_signal PRIVATE lost_signal_mission raylib TGUI::TGUI)
+ target_link_libraries(lost_signal PRIVATE lost_signal_scenario raylib TGUI::TGUI)
  get_target_property(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS raylib INTERFACE_INCLUDE_DIRECTORIES)
  if(LOST_SIGNAL_RAYLIB_INCLUDE_DIRS)
  target_include_directories(lost_signal SYSTEM PRIVATE ${LOST_SIGNAL_RAYLIB_INCLUDE_DIRS})
@@ -245,14 +259,14 @@ if(LOST_SIGNAL_BUILD_TESTS)
  find_package(Threads REQUIRED)
 
  add_executable(test_content_catalog tests/new/test_content_catalog.cpp)
- target_link_libraries(test_content_catalog PRIVATE lost_signal_mission)
+ target_link_libraries(test_content_catalog PRIVATE lost_signal_scenario)
  target_compile_definitions(test_content_catalog PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME content_catalog COMMAND test_content_catalog)
 
  add_executable(test_component_registry tests/new/test_component_registry.cpp)
- target_link_libraries(test_component_registry PRIVATE lost_signal_mission)
+ target_link_libraries(test_component_registry PRIVATE lost_signal_scenario)
  target_compile_definitions(test_component_registry PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -271,11 +285,11 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_test(NAME global_planner_extension COMMAND test_global_planner_extension)
 
  add_executable(test_field_dispatch tests/new/test_field_dispatch.cpp)
- target_link_libraries(test_field_dispatch PRIVATE lost_signal_mission)
+ target_link_libraries(test_field_dispatch PRIVATE lost_signal_scenario)
  add_test(NAME field_dispatch COMMAND test_field_dispatch)
 
  add_executable(test_world_activity tests/new/test_world_activity.cpp)
- target_link_libraries(test_world_activity PRIVATE lost_signal_mission)
+ target_link_libraries(test_world_activity PRIVATE lost_signal_scenario)
  add_test(NAME world_activity COMMAND test_world_activity)
 
  add_executable(test_physics_world tests/new/test_physics_world.cpp)
@@ -283,20 +297,20 @@ if(LOST_SIGNAL_BUILD_TESTS)
  add_test(NAME physics_world COMMAND test_physics_world)
 
  add_executable(test_simulated_platform tests/new/test_simulated_platform.cpp)
- target_link_libraries(test_simulated_platform PRIVATE lost_signal_mission)
+ target_link_libraries(test_simulated_platform PRIVATE lost_signal_scenario)
  target_compile_definitions(test_simulated_platform PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME simulated_platform COMMAND test_simulated_platform)
 
 add_executable(test_ro1_dynamics_acceptance tests/new/test_ro1_dynamics_acceptance.cpp)
-target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_mission)
+target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_scenario)
 target_compile_definitions(test_ro1_dynamics_acceptance PRIVATE
   LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME ro1_dynamics_acceptance COMMAND test_ro1_dynamics_acceptance)
 
 add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
-target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_mission)
+target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_scenario)
 target_compile_definitions(test_ro1_lidar_acceptance PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
@@ -310,21 +324,21 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
  add_test(NAME kinematic_navigation COMMAND test_kinematic_navigation)
 
  add_executable(test_high_level_policy tests/new/test_high_level_policy.cpp)
- target_link_libraries(test_high_level_policy PRIVATE lost_signal_mission)
+ target_link_libraries(test_high_level_policy PRIVATE lost_signal_scenario)
  target_compile_definitions(test_high_level_policy PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME high_level_policy COMMAND test_high_level_policy)
 
 	 add_executable(test_field_operator tests/new/test_field_operator.cpp)
-	 target_link_libraries(test_field_operator PRIVATE lost_signal_mission)
+	 target_link_libraries(test_field_operator PRIVATE lost_signal_scenario)
 	 target_compile_definitions(test_field_operator PRIVATE
 	 LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
 	 )
 	 add_test(NAME field_operator COMMAND test_field_operator)
 
  add_executable(test_mission_simulation tests/new/test_mission_simulation.cpp)
- target_link_libraries(test_mission_simulation PRIVATE lost_signal_mission)
+ target_link_libraries(test_mission_simulation PRIVATE lost_signal_scenario)
  target_compile_definitions(test_mission_simulation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -349,7 +363,7 @@ add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
  add_test(NAME dwell_behavior COMMAND test_dwell_behavior)
 
  add_executable(test_behavior_registry tests/new/test_behavior_registry.cpp)
-target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
+target_link_libraries(test_behavior_registry PRIVATE lost_signal_scenario)
  add_test(NAME behavior_registry COMMAND test_behavior_registry)
 
  add_executable(test_entry_shadow tests/new/test_entry_shadow.cpp)
@@ -357,7 +371,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_test(NAME entry_shadow COMMAND test_entry_shadow)
 
  add_executable(test_entry_shadow_field tests/new/test_entry_shadow_field.cpp)
- target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_mission)
+ target_link_libraries(test_entry_shadow_field PRIVATE lost_signal_scenario)
  target_include_directories(test_entry_shadow_field PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  target_compile_definitions(test_entry_shadow_field PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
@@ -365,14 +379,14 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_test(NAME entry_shadow_field COMMAND test_entry_shadow_field)
 
  add_executable(test_stop_line_study tests/new/test_stop_line_study.cpp)
- target_link_libraries(test_stop_line_study PRIVATE lost_signal_mission)
+ target_link_libraries(test_stop_line_study PRIVATE lost_signal_scenario)
  target_compile_definitions(test_stop_line_study PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME stop_line_study COMMAND test_stop_line_study)
 
  add_executable(test_stop_whatif tests/new/test_stop_whatif.cpp)
- target_link_libraries(test_stop_whatif PRIVATE lost_signal_mission)
+ target_link_libraries(test_stop_whatif PRIVATE lost_signal_scenario)
  target_compile_definitions(test_stop_whatif PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -380,7 +394,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_test(NAME stop_whatif COMMAND test_stop_whatif)
 
  add_executable(test_entry_shadow_town tests/new/test_entry_shadow_town.cpp)
- target_link_libraries(test_entry_shadow_town PRIVATE lost_signal_mission)
+ target_link_libraries(test_entry_shadow_town PRIVATE lost_signal_scenario)
  target_compile_definitions(test_entry_shadow_town PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -388,7 +402,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_test(NAME entry_shadow_town COMMAND test_entry_shadow_town)
 
  add_executable(test_manual_ram tests/new/test_manual_ram.cpp)
- target_link_libraries(test_manual_ram PRIVATE lost_signal_mission)
+ target_link_libraries(test_manual_ram PRIVATE lost_signal_scenario)
  target_compile_definitions(test_manual_ram PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -400,7 +414,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_test(NAME entry_governor COMMAND test_entry_governor)
 
  add_executable(test_dynamic_traffic_system tests/new/test_dynamic_traffic_system.cpp)
- target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_mission)
+ target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_scenario)
  add_test(NAME dynamic_traffic_system COMMAND test_dynamic_traffic_system)
 
  add_executable(test_trajectory_validator tests/new/test_trajectory_validator.cpp)
@@ -420,15 +434,15 @@ target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_autonomy)
 add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
 
  add_executable(test_deterministic_scheduler tests/new/test_deterministic_scheduler.cpp)
- target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_mission)
+ target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_scenario)
  add_test(NAME deterministic_scheduler COMMAND test_deterministic_scheduler)
 
 add_executable(test_collision_monitor tests/new/test_collision_monitor.cpp)
-target_link_libraries(test_collision_monitor PRIVATE lost_signal_mission)
+target_link_libraries(test_collision_monitor PRIVATE lost_signal_scenario)
 add_test(NAME collision_monitor COMMAND test_collision_monitor)
 
 add_executable(test_decision_evidence_system tests/new/test_decision_evidence_system.cpp)
-target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_mission)
+target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_scenario)
 add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
 
  add_executable(test_trajectory_tracking_system tests/new/test_trajectory_tracking_system.cpp)
@@ -440,7 +454,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME algo_invariants COMMAND test_algo_invariants)
 
  add_executable(test_summon_recharge tests/new/test_summon_recharge.cpp)
- target_link_libraries(test_summon_recharge PRIVATE lost_signal_mission)
+ target_link_libraries(test_summon_recharge PRIVATE lost_signal_scenario)
  target_compile_definitions(test_summon_recharge PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -448,7 +462,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
 
 
  add_executable(test_model_validation tests/new/test_model_validation.cpp)
- target_link_libraries(test_model_validation PRIVATE lost_signal_mission)
+ target_link_libraries(test_model_validation PRIVATE lost_signal_scenario)
  target_compile_definitions(test_model_validation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -459,7 +473,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME chassis COMMAND test_chassis)
 
  add_executable(test_map_editor tests/new/test_map_editor.cpp src/client/map_editor.cpp)
- target_link_libraries(test_map_editor PRIVATE lost_signal_mission)
+ target_link_libraries(test_map_editor PRIVATE lost_signal_scenario)
  target_compile_definitions(test_map_editor PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -467,7 +481,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME map_editor COMMAND test_map_editor)
 
  add_executable(test_map_roundtrip tests/new/test_map_roundtrip.cpp)
- target_link_libraries(test_map_roundtrip PRIVATE lost_signal_mission)
+ target_link_libraries(test_map_roundtrip PRIVATE lost_signal_scenario)
  target_compile_definitions(test_map_roundtrip PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -482,7 +496,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME slip_detect COMMAND test_slip_detect)
 
  add_executable(test_slip_shadow tests/new/test_slip_shadow.cpp)
- target_link_libraries(test_slip_shadow PRIVATE lost_signal_stack lost_signal_mission)
+ target_link_libraries(test_slip_shadow PRIVATE lost_signal_stack lost_signal_scenario)
  target_compile_definitions(test_slip_shadow PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -497,11 +511,27 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME phase_legs COMMAND test_phase_legs)
 
  add_executable(test_goal_system tests/new/test_goal_system.cpp)
- target_link_libraries(test_goal_system PRIVATE lost_signal_mission)
+ target_link_libraries(test_goal_system PRIVATE lost_signal_scenario)
  add_test(NAME goal_system COMMAND test_goal_system)
 
+ add_executable(test_task_executive tests/new/test_task_executive.cpp)
+ target_link_libraries(test_task_executive PRIVATE lost_signal_executive)
+ add_test(NAME task_executive COMMAND test_task_executive)
+
+ add_executable(test_map_provider tests/new/test_map_provider.cpp)
+ target_link_libraries(test_map_provider PRIVATE lost_signal_runtime)
+ add_test(NAME map_provider COMMAND test_map_provider)
+
+ add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
+ target_link_libraries(test_robot_map_package PRIVATE lost_signal_map_io)
+ add_test(NAME robot_map_package COMMAND test_robot_map_package)
+
+ add_executable(test_deployable_map_adapter tests/new/test_deployable_map_adapter.cpp)
+ target_link_libraries(test_deployable_map_adapter PRIVATE lost_signal_scenario)
+ add_test(NAME deployable_map_adapter COMMAND test_deployable_map_adapter)
+
  add_executable(test_orchard_scramble tests/new/test_orchard_scramble.cpp)
- target_link_libraries(test_orchard_scramble PRIVATE lost_signal_mission)
+ target_link_libraries(test_orchard_scramble PRIVATE lost_signal_scenario)
  target_compile_definitions(test_orchard_scramble PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -516,63 +546,63 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME perturbation COMMAND test_perturbation)
 
  add_executable(test_estimation_error tests/new/test_estimation_error.cpp)
- target_link_libraries(test_estimation_error PRIVATE lost_signal_mission)
+ target_link_libraries(test_estimation_error PRIVATE lost_signal_scenario)
  target_compile_definitions(test_estimation_error PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME estimation_error COMMAND test_estimation_error)
 
  add_executable(test_release_error tests/new/test_release_error.cpp)
- target_link_libraries(test_release_error PRIVATE lost_signal_mission)
+ target_link_libraries(test_release_error PRIVATE lost_signal_scenario)
  target_compile_definitions(test_release_error PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME release_error COMMAND test_release_error)
 
  add_executable(test_player_pack tests/new/test_player_pack.cpp)
- target_link_libraries(test_player_pack PRIVATE lost_signal_mission)
+ target_link_libraries(test_player_pack PRIVATE lost_signal_scenario)
  target_compile_definitions(test_player_pack PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME player_pack COMMAND test_player_pack)
 
  add_executable(test_chassis_choice tests/new/test_chassis_choice.cpp)
- target_link_libraries(test_chassis_choice PRIVATE lost_signal_mission)
+ target_link_libraries(test_chassis_choice PRIVATE lost_signal_scenario)
  target_compile_definitions(test_chassis_choice PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME chassis_choice COMMAND test_chassis_choice)
 
  add_executable(test_abilities tests/new/test_abilities.cpp)
- target_link_libraries(test_abilities PRIVATE lost_signal_mission)
+ target_link_libraries(test_abilities PRIVATE lost_signal_scenario)
  target_compile_definitions(test_abilities PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME abilities COMMAND test_abilities)
 
  add_executable(test_contract_rep tests/new/test_contract_rep.cpp)
- target_link_libraries(test_contract_rep PRIVATE lost_signal_mission)
+ target_link_libraries(test_contract_rep PRIVATE lost_signal_scenario)
  target_compile_definitions(test_contract_rep PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME contract_rep COMMAND test_contract_rep)
 
  add_executable(test_signal_cross tests/new/test_signal_cross.cpp)
- target_link_libraries(test_signal_cross PRIVATE lost_signal_mission)
+ target_link_libraries(test_signal_cross PRIVATE lost_signal_scenario)
  target_compile_definitions(test_signal_cross PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME signal_cross COMMAND test_signal_cross)
 
  add_executable(test_shadow_accumulation tests/new/test_shadow_accumulation.cpp)
- target_link_libraries(test_shadow_accumulation PRIVATE lost_signal_mission)
+ target_link_libraries(test_shadow_accumulation PRIVATE lost_signal_scenario)
  target_compile_definitions(test_shadow_accumulation PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME shadow_accumulation COMMAND test_shadow_accumulation)
 
  add_executable(test_signal_quality tests/new/test_signal_quality.cpp)
- target_link_libraries(test_signal_quality PRIVATE lost_signal_stack lost_signal_mission)
+ target_link_libraries(test_signal_quality PRIVATE lost_signal_stack lost_signal_scenario)
  target_compile_definitions(test_signal_quality PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
@@ -608,7 +638,7 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_test(NAME estimator_chain COMMAND test_estimator_chain)
 
  add_executable(test_ff_sensitivity tests/new/test_ff_sensitivity.cpp)
- target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_stack lost_signal_mission)
+ target_link_libraries(test_ff_sensitivity PRIVATE lost_signal_stack lost_signal_scenario)
  target_compile_definitions(test_ff_sensitivity PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )

@@ -1,7 +1,7 @@
 #include "app/run_artifact.hpp"
 #include "core/sha256.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "physics/physics_world.hpp"
 
 #include <nlohmann/json.hpp>
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
  const auto& experiment = comparable.at("experiment");
  if (experiment.at("condition_id") != "authored-base" || experiment.at("mode") != "mission")
  throw std::runtime_error("Run Artifact v2 reproduction supports authored mission runs only");
- if (std::abs(experiment.at("fixed_step_s").get<double>() - mission::MissionSimulation::fixed_step_s) > 1e-12)
+ if (std::abs(experiment.at("fixed_step_s").get<double>() - mission::ScenarioSession::fixed_step_s) > 1e-12)
  throw std::runtime_error("run artifact fixed timestep is incompatible with this build");
  if (experiment.at("runtime_provider") != "channel.in-process")
  throw std::runtime_error("run artifact requires an unavailable runtime provider");
@@ -155,14 +155,14 @@ int main(int argc, char** argv) {
  }
  if (field_intent && !endless)
  throw std::runtime_error("--intent requires --endless");
- mission::MissionSimulation mission(catalog, level_id, build, seed_override, {},
+ mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
  if (endless) {
  mission.set_endless_mode(true);
  if (field_intent && !mission.issue_field_intent(*field_intent, field_target))
  throw std::runtime_error("field intent requires a valid target");
  mission.start();
- const int steps = static_cast<int>(std::ceil(duration_s / mission::MissionSimulation::fixed_step_s));
+ const int steps = static_cast<int>(std::ceil(duration_s / mission::ScenarioSession::fixed_step_s));
  for (int step = 0; step < steps; ++step)
  mission.step();
  } else {

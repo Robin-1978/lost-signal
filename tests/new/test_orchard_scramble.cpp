@@ -1,5 +1,5 @@
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -34,7 +34,7 @@ void configure_orchard(const std::filesystem::path& assets, double time_limit_s,
  output << level.dump(2) << '\n';
 }
 
-bool has_event(const mission::MissionSimulation& run, const std::string& code) {
+bool has_event(const mission::ScenarioSession& run, const std::string& code) {
  return std::any_of(run.events().begin(), run.events().end(),
  [&](const auto& event) { return event.code == code; });
 }
@@ -54,7 +54,7 @@ int main() {
  for (const auto& policy : {"task.balanced", "task.safest", "task.fastest", "task.valuable"}) {
  auto build = base;
  build.task_policy = policy;
- mission::MissionSimulation run(catalog, "orchard_scramble", build, std::nullopt, {},
+ mission::ScenarioSession run(catalog, "orchard_scramble", build, std::nullopt, {},
  mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
  CHECK(run.payload_state().mass_kg == 0.0);
  run.run_to_completion();
@@ -110,10 +110,10 @@ int main() {
  auto constrained_build =
  constrained_catalog.presentation_for_level("orchard_scramble").recommended_build;
  constrained_build.task_policy = "task.valuable";
- mission::MissionSimulation constrained_a(
+ mission::ScenarioSession constrained_a(
  constrained_catalog, "orchard_scramble", constrained_build, std::nullopt, {},
  mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
- mission::MissionSimulation constrained_b(
+ mission::ScenarioSession constrained_b(
  constrained_catalog, "orchard_scramble", constrained_build, std::nullopt, {},
  mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
  constrained_a.run_to_completion();
@@ -136,7 +136,7 @@ int main() {
  const auto impossible_catalog = mission::ContentCatalog::load(overlay);
  auto impossible_build =
  impossible_catalog.presentation_for_level("orchard_scramble").recommended_build;
- mission::MissionSimulation impossible(
+ mission::ScenarioSession impossible(
  impossible_catalog, "orchard_scramble", impossible_build, std::nullopt, {},
  mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
  impossible.run_to_completion();

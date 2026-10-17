@@ -89,5 +89,7 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  double yaw_accel = 8.0, StaticFeasibility terrain_feasible = {},
  double min_velocity_mps = -0.5,
  std::optional<double> target_heading_rad = std::nullopt,
- const DwaReference& reference = {});
+ const DwaReference& reference = {},
+ double differential_track_m = 0.0,
+ double max_wheel_speed_mps = 0.0);
 } // namespace sim

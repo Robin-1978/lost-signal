@@ -6,6 +6,8 @@
     "/policies/1/title": "Standard",
     "/policies/1/description": "Balances speed with clearance.",
     "/policies/2/title": "Aggressive",
-    "/policies/2/description": "Arrives sooner but leaves less time for sensing and braking."
+    "/policies/2/description": "Arrives sooner but leaves less time for sensing and braking.",
+    "/policies/3/title": "Express",
+    "/policies/3/description": "For open test courses only: uses high-speed platform capability and accepts the longer stopping distance."
   }
 }

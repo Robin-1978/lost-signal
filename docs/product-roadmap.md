@@ -367,7 +367,7 @@ Status: **complete**
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The current Linux x86_64 Release build passes 74/74 tests, content validation, and canonical content roundtrip.
+The current Linux x86_64 Release build passes 78/78 tests, content validation, and canonical content roundtrip.
 The graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain final
 publishing gates. Sanitizers run at milestone and release-candidate gates; a result from an earlier baseline is not
 evidence for the current revision.
@@ -381,9 +381,12 @@ runtime contracts are closed.
 1. **Executable motion contract and runtime decomposition.** Make the local planner return the timestamped
  trajectory that control will track, add validation and tracking-envelope feedback, then continue after the
  completed `DynamicTrafficSystem` extraction with sensor scheduling, decision evidence, mission progress, and
- snapshot assembly from `MissionSimulation`. Split deployable operator intent and task lifecycle into a small
+ snapshot assembly from `ScenarioSession`. Split deployable operator intent and task lifecycle into a small
  middleware-neutral Task Executive; rename the remaining world, scoring and story owner as the Scenario/Game
  Session so `mission` no longer hides two incompatible responsibilities.
+ The first Task Executive slice and the LSRM v1 map-provider/package boundary are implemented. The simulation
+ composition root is now physically isolated as `src/scenario/ScenarioSession` and `lost_signal_scenario`; the
+ remaining deployable work is a native application/API adapter.
 2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
  cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
  exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).

@@ -4,7 +4,7 @@
 
 #include "core/sha256.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -60,7 +60,7 @@ std::string run_content_digest(const std::filesystem::path& assets) {
 
 nlohmann::json make_run_artifact(
  const mission::ContentCatalog& catalog,
- const mission::MissionSimulation& simulation,
+ const mission::ScenarioSession& simulation,
  const std::filesystem::path& assets,
  const nlohmann::json& result,
  std::string_view selection_label,
@@ -92,7 +92,7 @@ nlohmann::json make_run_artifact(
  {"seed", simulation.effective_seed()},
  {"physics_backend", simulation.physics_backend_name()},
  {"runtime_provider", simulation.runtime_provider_id()},
- {"fixed_step_s", mission::MissionSimulation::fixed_step_s},
+ {"fixed_step_s", mission::ScenarioSession::fixed_step_s},
  {"requested_duration_s", simulation.endless_mode() ? nlohmann::json(requested_duration_s) : nlohmann::json(nullptr)},
  };
  const nlohmann::json comparable_configuration = {

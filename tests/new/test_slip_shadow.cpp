@@ -6,7 +6,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -21,7 +21,7 @@
 
 int main() {
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
- auto check_timeline = [](const mission::MissionSimulation& run) {
+ auto check_timeline = [](const mission::ScenarioSession& run) {
  const auto& times = run.slip_episode_times();
  CHECK(times.size() == static_cast<std::size_t>(run.slip_episodes()));
  double previous = -1.0;
@@ -38,8 +38,8 @@ int main() {
  // Differential model-side slip telemetry is available and deterministic.
  {
   const auto& pres = catalog.presentation_for_level("lost_signal");
- mission::MissionSimulation first(catalog, "lost_signal", pres.recommended_build);
- mission::MissionSimulation second(catalog, "lost_signal", pres.recommended_build);
+ mission::ScenarioSession first(catalog, "lost_signal", pres.recommended_build);
+ mission::ScenarioSession second(catalog, "lost_signal", pres.recommended_build);
  first.run_to_completion();
  second.run_to_completion();
  CHECK(check_timeline(first) == 0);
@@ -51,7 +51,7 @@ int main() {
  const char* tracked[] = {"long_track", "sand_track"};
  for (const char* level : tracked) {
   const auto& pres = catalog.presentation_for_level(level);
-  mission::MissionSimulation mission(catalog, level, pres.recommended_build);
+  mission::ScenarioSession mission(catalog, level, pres.recommended_build);
   mission.run_to_completion();
  CHECK(check_timeline(mission) == 0);
   std::cerr << level << ": slip_episodes=" << mission.slip_episodes();

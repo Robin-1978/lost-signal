@@ -35,12 +35,12 @@
     "default_build": {
       "tires": "tires.eco",
       "sensor": "sensor.long_slow_lidar",
-      "style": 1.0
+      "style": 0.8
     },
     "recommended_build": {
       "tires": "tires.grip",
       "sensor": "sensor.short_fast_lidar",
-      "style": 1.0
+      "style": 0.8
     }
   },
   "prediction": {

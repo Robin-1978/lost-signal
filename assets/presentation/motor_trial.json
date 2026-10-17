@@ -5,7 +5,7 @@
   "level": "motor_trial",
   "garage": {
     "heading": "认识电机",
-    "brief": "扭矩与高效，两种脾气。先猜谁先到、谁更省，再看洛一跑给你看。",
+    "brief": "扭矩、效率与极速，三种齿比取舍。先猜谁先到、谁更省，再看洛一跑给你看。",
     "component_columns": [
       {
         "slot": "tires",
@@ -22,7 +22,8 @@
         "options": [
           "motor.standard",
           "motor.torque",
-          "motor.eco"
+          "motor.eco",
+          "motor.speed"
         ]
       }
     ],
@@ -30,7 +31,8 @@
     "policies": [
       "policy.careful",
       "policy.balanced",
-      "policy.swift"
+      "policy.swift",
+      "policy.express"
     ],
     "default_build": {
       "tires": "tires.standard",
@@ -39,23 +41,28 @@
     },
     "recommended_build": {
       "tires": "tires.standard",
-      "motor": "motor.torque",
+      "motor": "motor.speed",
       "style": 1.0
     }
   },
   "prediction": {
-    "heading": "大力一定赢吗？",
-    "hint": "先做预测。终点看用时，电表看能耗，两者都要看。",
+    "heading": "极速一定赢吗？",
+    "hint": "先做预测。高速齿比更快，但起步、坡道、能耗和制动都要付代价。",
     "choices": [
       {
+        "id": "motor_trial.power.speed",
+        "text": "高速电机在直道最快",
+        "feedback": "看它是否有足够直道发挥极速，也要检查能耗与停车距离。"
+      },
+      {
         "id": "motor_trial.power.torque",
-        "text": "扭矩电机一定最快",
-        "feedback": "大概率没错。再看一眼它的能耗账单。"
+        "text": "扭矩电机起步最快",
+        "feedback": "堵转力带来更强起步，但低齿比也限制最终速度。"
       },
       {
         "id": "motor_trial.power.eco",
         "text": "高效电机综合最好",
-        "feedback": "如果又够快又够省，说明这条路不需要那么多扭矩。"
+        "feedback": "如果时间要求不高，较低能耗可能比绝对速度更有价值。"
       }
     ]
   },
@@ -66,7 +73,7 @@
   },
   "debrief": {
     "success_title": "认识了电机",
-    "success_summary": "扭矩和效率写在同一张成绩单上，没有免费午餐。",
+    "success_summary": "高速、扭矩和效率写在同一张成绩单上；齿比选择没有免费午餐。",
     "failure_summary": "换一台电机，或者给预算留一点余量。",
     "evidence_heading": "本次运动",
     "evidence_caption": "用时与能耗都来自真实仿真，不是文案。",

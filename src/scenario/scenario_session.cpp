@@ -1,4 +1,5 @@
-#include "mission_simulation.hpp"
+#include "scenario_session.hpp"
+#include "mission/deployable_map_adapter.hpp"
 #include "autonomy/planning/task/task_ordering.hpp"
 
 #include "autonomy/planning/global/astar.hpp"
@@ -116,7 +117,7 @@ const char* physics_mode_name(PhysicsMode mode) {
  return "unknown";
 }
 
-const std::string& MissionSimulation::level_robot_id(const ContentCatalog& catalog,
+const std::string& ScenarioSession::level_robot_id(const ContentCatalog& catalog,
                                                      const std::string& level_id,
                                                      const BuildSelection& build) {
  // Validated player choice wins (validate_build enforces allow-list + unlock);
@@ -128,14 +129,14 @@ const std::string& MissionSimulation::level_robot_id(const ContentCatalog& catal
  return presentation_robot.empty() ? catalog.campaign().companion_robot : presentation_robot;
 }
 
-MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string level_id,
-                                     BuildSelection build, const MissionSimulationOptions& options)
-    : MissionSimulation(catalog, std::move(level_id), std::move(build), options.seed_override,
+ScenarioSession::ScenarioSession(const ContentCatalog& catalog, std::string level_id,
+                                     BuildSelection build, const ScenarioSessionOptions& options)
+    : ScenarioSession(catalog, std::move(level_id), std::move(build), options.seed_override,
                         options.owned_abilities, options.component_registry, options.global_planner,
                         options.physics_mode, options.high_level_policy, options.contract_id,
                         options.runtime_provider_id, options.runtime_registry) {}
 
-MissionSimulation::MissionSimulation(
+ScenarioSession::ScenarioSession(
   const ContentCatalog& catalog, std::string level_id, BuildSelection build,
   std::optional<uint64_t> seed_override, const std::vector<std::string>& owned_abilities,
   const ComponentRegistry& component_registry, std::shared_ptr<const autonomy::IGlobalPlanner> global_planner,
@@ -164,11 +165,16 @@ MissionSimulation::MissionSimulation(
    throw ContentError("contract '" + contract_id + "' does not target level '" + level_id_ + "'");
   active_contract_ = &*contract;
  }
+ std::string map_error;
+ if (!map_manager_.configure(make_deployable_map_snapshot(map_definition_, level_id_), &map_error) ||
+ !map_manager_.activate()) {
+ throw ContentError("cannot configure robot map: " + map_error);
+ }
  resolved_build_ = component_registry.resolve(catalog_, build_);
  reset();
 }
 
-void MissionSimulation::reset() {
+void ScenarioSession::reset() {
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
   runtime_channel_->deactivate();
  }
@@ -192,7 +198,7 @@ void MissionSimulation::reset() {
  manual_command_ = {};
  manual_control_active_ = false;
  endless_target_key_ = "uninitialized";
- goal_system_.reset(level_.objective);
+ goal_system_.reset(level_.objective, map_manager_);
  snapshot_.goals_reached = goal_system_.goals_reached();
  snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
  snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
@@ -253,7 +259,7 @@ void MissionSimulation::reset() {
  record_replay();
 }
 
-void MissionSimulation::reset_payload() {
+void ScenarioSession::reset_payload() {
  payload_ = {};
  auto add_initial_load = [this](double mass_kg, double cog_height_m) {
   if (mass_kg <= 0.0)
@@ -267,7 +273,7 @@ void MissionSimulation::reset_payload() {
  payload_.cog_height_m = payload_.mass_kg > 1e-9 ? payload_.first_moment_kgm / payload_.mass_kg : 0.0;
 }
 
-void MissionSimulation::update_environment() {
+void ScenarioSession::update_environment() {
  const auto& keyframes = level_.environment_keyframes;
  if (keyframes.empty()) {
   snapshot_.environment = {};
@@ -297,7 +303,7 @@ void MissionSimulation::update_environment() {
  result_.min_visibility = std::min(result_.min_visibility, snapshot_.environment.visibility);
 }
 
-double MissionSimulation::environment_grip_multiplier(const std::string& material) const {
+double ScenarioSession::environment_grip_multiplier(const std::string& material) const {
  const auto& keyframes = level_.environment_keyframes;
  if (keyframes.empty())
   return 1.0;
@@ -310,22 +316,22 @@ double MissionSimulation::environment_grip_multiplier(const std::string& materia
  return from + (to - from) * snapshot_.environment.blend;
 }
 
-double MissionSimulation::total_mass_kg() const {
+double ScenarioSession::total_mass_kg() const {
  return robot_definition_.mass_kg + payload_.mass_kg;
 }
 
-double MissionSimulation::combined_center_height_m() const {
+double ScenarioSession::combined_center_height_m() const {
  return std::max(
    0.05, (robot_definition_.mass_kg * robot_definition_.center_of_mass_height_m + payload_.first_moment_kgm) /
            std::max(0.5, total_mass_kg()));
 }
 
-double MissionSimulation::combined_yaw_inertia_kgm2() const {
+double ScenarioSession::combined_yaw_inertia_kgm2() const {
  return robot_definition_.yaw_inertia_kgm2 +
         payload_.mass_kg * robot_definition_.collision_radius_m * robot_definition_.collision_radius_m;
 }
 
-void MissionSimulation::synchronize_payload_dynamics() {
+void ScenarioSession::synchronize_payload_dynamics() {
  const sim::ChassisBodyDynamics dynamics{total_mass_kg(), combined_yaw_inertia_kgm2()};
  if (chassis_)
   chassis_->set_body_dynamics(dynamics);
@@ -341,7 +347,7 @@ void MissionSimulation::synchronize_payload_dynamics() {
  result_.final_payload_cog_height_m = payload_.cog_height_m;
 }
 
-void MissionSimulation::collect_payload(const GoalStep& goal) {
+void ScenarioSession::collect_payload(const GoalStep& goal) {
  if (goal.action != "collect" || goal.item_count <= 0 || goal.item_mass_kg <= 0.0)
   return;
  const std::string id = goal.id.empty() ? goal.marker : goal.id;
@@ -360,7 +366,7 @@ void MissionSimulation::collect_payload(const GoalStep& goal) {
  synchronize_payload_dynamics();
 }
 
-bool MissionSimulation::update_payload_integrity(const sim::DiffState& before, const sim::DiffState& after,
+bool ScenarioSession::update_payload_integrity(const sim::DiffState& before, const sim::DiffState& after,
                                                  double lateral_accel_mps2, double contact_impulse_Ns) {
  if (payload_.collected_mass_kg <= 1e-9)
   return true;
@@ -392,11 +398,11 @@ bool MissionSimulation::update_payload_integrity(const sim::DiffState& before, c
  return payload_.integrity >= 0.25;
 }
 
-const char* MissionSimulation::physics_backend_name() const {
+const char* ScenarioSession::physics_backend_name() const {
  return physics_mode_name(physics_mode_);
 }
 
-void MissionSimulation::initialize_rigid_physics() {
+void ScenarioSession::initialize_rigid_physics() {
  platform_.reset();
  if (physics_mode_ == PhysicsMode::Domain) {
   return;
@@ -407,7 +413,7 @@ void MissionSimulation::initialize_rigid_physics() {
    spawn.theta, total_mass_kg(), combined_center_height_m(), combined_yaw_inertia_kgm2());
 }
 
-void MissionSimulation::initialize_frame_tree() {
+void ScenarioSession::initialize_frame_tree() {
  frame_tree_.clear();
  constexpr double kDegreesToRadians = sim::kPi / 180.0;
  for (const auto& mount : robot_definition_.mounts) {
@@ -425,7 +431,7 @@ void MissionSimulation::initialize_frame_tree() {
  update_frame_tree();
 }
 
-void MissionSimulation::update_frame_tree() {
+void ScenarioSession::update_frame_tree() {
  const auto map_from_odom = estimation_system_.map_from_odom_translation();
  frame_tree_.set_transform(
    "map", "odom",
@@ -474,7 +480,7 @@ void MissionSimulation::update_frame_tree() {
  }
 }
 
-void MissionSimulation::build_world() {
+void ScenarioSession::build_world() {
  const int width = static_cast<int>(std::ceil(map_definition_.size_m.x / map_definition_.grid_resolution_m));
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
@@ -681,7 +687,7 @@ void MissionSimulation::build_world() {
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
  // (slow integrator kills steady-state error, short derivative damps).
- const double cruise = property(behavior_, "cruise_mps");
+ const double cruise = cruise_speed_mps();
  const double heading_kp =
    yaw_cap_rads_ / (2.0 * std::max(0.2, cruise) * std::max(0.1, robot_definition_.wheel_base_m));
  // PID output units follow the chassis (follow.hpp contract): yaw rate for
@@ -731,7 +737,7 @@ void MissionSimulation::build_world() {
  actual_actors_.assign(agents_.size(), {});
 }
 
-void MissionSimulation::plan_route() {
+void ScenarioSession::plan_route() {
  planned_route_.clear();
  entry_governor_system_.reset();
  crossing_behavior_system_.reset();
@@ -778,7 +784,7 @@ void MissionSimulation::plan_route() {
  route_tracking_system_->reset();
 }
 
-void MissionSimulation::select_next_goal(const Pose& start) {
+void ScenarioSession::select_next_goal(const Pose& start) {
  if (goal_system_.active_goal_index())
   return;
  const auto eligible = goal_system_.eligible_goals(level_.objective);
@@ -827,7 +833,7 @@ void MissionSimulation::select_next_goal(const Pose& start) {
  // while more than the authored return reserve remains. The reserve itself
  // carries schedule uncertainty; convert weighted route length at nominal
  // cruise here.
- const double planning_speed = std::max(0.3, property(behavior_, "cruise_mps"));
+ const double planning_speed = std::max(0.3, cruise_speed_mps());
   if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
       terminal != level_.objective.goals.end()) {
    const auto& home = map_definition_.markers.at(terminal->marker);
@@ -880,7 +886,7 @@ void MissionSimulation::select_next_goal(const Pose& start) {
  }
 }
 
-void MissionSimulation::finish_route_failure() {
+void ScenarioSession::finish_route_failure() {
  if (return_reserve_failure_) {
   finish_failure("return-reserve", catalog_.tr("event.return_reserve_failure"));
  } else {
@@ -888,7 +894,7 @@ void MissionSimulation::finish_route_failure() {
  }
 }
 
-void MissionSimulation::start() {
+void ScenarioSession::start() {
  if (snapshot_.status != MissionStatus::Ready) {
   return;
  }
@@ -913,7 +919,7 @@ void MissionSimulation::start() {
  }
 }
 
-void MissionSimulation::set_endless_mode(bool enabled) {
+void ScenarioSession::set_endless_mode(bool enabled) {
  if (snapshot_.status != MissionStatus::Ready)
   return;
  endless_mode_ = enabled;
@@ -929,14 +935,14 @@ void MissionSimulation::set_endless_mode(bool enabled) {
  }
 }
 
-bool MissionSimulation::set_field_operator_command(double world_x, double world_y) {
+bool ScenarioSession::set_field_operator_command(double world_x, double world_y) {
  if (!endless_mode_)
   return false;
  field_operator_system_.set_move_command({world_x, world_y});
  return true;
 }
 
-bool MissionSimulation::issue_field_intent(FieldIntentKind kind, std::optional<sim::Vec2> target) {
+bool ScenarioSession::issue_field_intent(FieldIntentKind kind, std::optional<sim::Vec2> target) {
  if (!endless_mode_ || !field_operator_system_.issue_intent(kind, target))
   return false;
  manual_control_active_ = false;
@@ -946,7 +952,7 @@ bool MissionSimulation::issue_field_intent(FieldIntentKind kind, std::optional<s
  return true;
 }
 
-void MissionSimulation::restore_endless_world(const WorldActivityCheckpoint& checkpoint) {
+void ScenarioSession::restore_endless_world(const WorldActivityCheckpoint& checkpoint) {
  if (!endless_mode_ || snapshot_.status != MissionStatus::Ready)
   throw std::logic_error("regional world can only be restored before an endless session starts");
  world_activity_system_.restore(checkpoint);
@@ -958,13 +964,13 @@ void MissionSimulation::restore_endless_world(const WorldActivityCheckpoint& che
   replay_.back() = snapshot_;
 }
 
-WorldActivityCheckpoint MissionSimulation::endless_world_checkpoint() const {
+WorldActivityCheckpoint ScenarioSession::endless_world_checkpoint() const {
  if (!endless_mode_)
   throw std::logic_error("regional world checkpoint requested outside endless mode");
  return world_activity_system_.checkpoint(snapshot_.time_s);
 }
 
-void MissionSimulation::restore_field_expedition(const FieldExpeditionCheckpoint& checkpoint) {
+void ScenarioSession::restore_field_expedition(const FieldExpeditionCheckpoint& checkpoint) {
  if (!endless_mode_ || snapshot_.status != MissionStatus::Ready)
   throw std::logic_error("field expedition can only be restored before an endless session starts");
  if (!checkpoint.level_id.empty() && checkpoint.level_id != level_id_)
@@ -973,7 +979,7 @@ void MissionSimulation::restore_field_expedition(const FieldExpeditionCheckpoint
  endless_target_key_ = "uninitialized";
 }
 
-FieldExpeditionCheckpoint MissionSimulation::field_expedition_checkpoint() const {
+FieldExpeditionCheckpoint ScenarioSession::field_expedition_checkpoint() const {
  if (!endless_mode_)
   throw std::logic_error("field expedition checkpoint requested outside endless mode");
  auto checkpoint = field_operator_system_.checkpoint();
@@ -981,7 +987,7 @@ FieldExpeditionCheckpoint MissionSimulation::field_expedition_checkpoint() const
  return checkpoint;
 }
 
-void MissionSimulation::run_to_completion() {
+void ScenarioSession::run_to_completion() {
  if (endless_mode_) {
   throw std::logic_error("endless simulation has no completion condition");
  }
@@ -991,16 +997,16 @@ void MissionSimulation::run_to_completion() {
  }
 }
 
-void MissionSimulation::set_manual_command(double forward, double turn) {
+void ScenarioSession::set_manual_command(double forward, double turn) {
  if (endless_mode_ || level_.control_mode != "manual_calibration")
   return;
  manual_control_active_ = true;
- const double cruise = property(behavior_, "cruise_mps");
+ const double cruise = cruise_speed_mps();
  manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
  manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * chassis_caps_.turn_command_limit();
 }
 
-void MissionSimulation::step() {
+void ScenarioSession::step() {
  if (snapshot_.status != MissionStatus::Running) {
   return;
  }
@@ -1082,7 +1088,7 @@ void MissionSimulation::step() {
  const auto arrival =
    endless_mode_
      ? std::optional<GoalArrival>{}
-     : goal_system_.update(level_.objective, map_definition_, {snapshot_.robot.x, snapshot_.robot.y},
+ : goal_system_.update(level_.objective, {snapshot_.robot.x, snapshot_.robot.y},
                            snapshot_.robot.v, completion_allowed, fixed_step_s);
  if (arrival) {
   const auto& goal = arrival->goal;
@@ -1154,7 +1160,7 @@ void MissionSimulation::step() {
  }
 }
 
-void MissionSimulation::apply_goal_stop_constraint() {
+void ScenarioSession::apply_goal_stop_constraint() {
  const GoalStep* goal = active_goal();
  if (!goal || goal->action != "inspect")
   return;
@@ -1173,7 +1179,7 @@ void MissionSimulation::apply_goal_stop_constraint() {
  }
 }
 
-void MissionSimulation::update_actors() {
+void ScenarioSession::update_actors() {
  // Rebuilt every step (agents are few; summoning changes the count mid-run,
  // so index-stable incremental writes would misalign after a summon).
  snapshot_.actors.clear();
@@ -1224,7 +1230,7 @@ void MissionSimulation::update_actors() {
  refresh_dynamic_obstacles();
 }
 
-void MissionSimulation::scan_environment() {
+void ScenarioSession::scan_environment() {
  const auto* sensor = resolved_build_.lidar();
  if (!sensor || !sensor_system_)
   return;
@@ -1346,7 +1352,7 @@ void MissionSimulation::scan_environment() {
  }
 }
 
-void MissionSimulation::refresh_dynamic_obstacles() {
+void ScenarioSession::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
  if (!autonomy_pipeline_) {
   return;
@@ -1388,7 +1394,7 @@ void MissionSimulation::refresh_dynamic_obstacles() {
  }
 }
 
-sim::Vec2 MissionSimulation::current_navigation_target() {
+sim::Vec2 ScenarioSession::current_navigation_target() {
  const double lookahead = property(behavior_, "lookahead_m");
  const auto& estimate = estimation_system_.state();
  sim::Vec2 fallback;
@@ -1408,7 +1414,7 @@ sim::Vec2 MissionSimulation::current_navigation_target() {
  return route_tracking_system_->navigation_target(planned_route_, estimate, lookahead, *planning_map_, fallback);
 }
 
-void MissionSimulation::refresh_endless_route() {
+void ScenarioSession::refresh_endless_route() {
  const auto& field_intent = field_operator_system_.intent();
  if (!endless_mode_ || !planning_map_ || !route_tracking_system_)
   return;
@@ -1475,7 +1481,7 @@ void MissionSimulation::refresh_endless_route() {
   field_operator_system_.acknowledge(field_intent.revision, plan.ok);
 }
 
-void MissionSimulation::apply_motion() {
+void ScenarioSession::apply_motion() {
  if (!runtime_channel_) {
   throw std::logic_error("mission has no active runtime channel");
  }
@@ -1876,7 +1882,7 @@ void MissionSimulation::apply_motion() {
  std::max(result_.max_fused_heading_error_rad, result_.fused_heading_error_rad);
 }
 
-double MissionSimulation::surface_traction(sim::Vec2 position) const {
+double ScenarioSession::surface_traction(sim::Vec2 position) const {
  for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    return surface.traction_scale * environment_grip_multiplier(surface.material);
@@ -1885,7 +1891,7 @@ double MissionSimulation::surface_traction(sim::Vec2 position) const {
  return 1.0;
 }
 
-void MissionSimulation::finish_success() {
+void ScenarioSession::finish_success() {
  held_command_ = {};
  snapshot_.waiting_for_clearance = false;
  update_shadow_episode();
@@ -1932,7 +1938,7 @@ void MissionSimulation::finish_success() {
  }
 }
 
-void MissionSimulation::finish_failure(std::string reason, std::string message) {
+void ScenarioSession::finish_failure(std::string reason, std::string message) {
  held_command_ = {};
  snapshot_.status = MissionStatus::Failed;
  snapshot_.robot.v = 0.0;
@@ -1969,7 +1975,7 @@ void MissionSimulation::finish_failure(std::string reason, std::string message) 
  }
 }
 
-void MissionSimulation::record_event(std::string code, std::string message, double throttle_s) {
+void ScenarioSession::record_event(std::string code, std::string message, double throttle_s) {
  if (code == last_event_code_ && snapshot_.time_s - last_event_time_s_ < throttle_s) {
   return;
  }
@@ -1978,19 +1984,19 @@ void MissionSimulation::record_event(std::string code, std::string message, doub
  events_.push_back({snapshot_.time_s, std::move(code), std::move(message)});
 }
 
-void MissionSimulation::publish_decision(DecisionEvidence decision) {
+void ScenarioSession::publish_decision(DecisionEvidence decision) {
  snapshot_.decision = decision_evidence_system_.publish(
  std::move(decision), snapshot_.time_s);
 }
 
-void MissionSimulation::close_decision(std::string outcome_code) {
+void ScenarioSession::close_decision(std::string outcome_code) {
  if (const auto* closed = decision_evidence_system_.close(
  std::move(outcome_code), snapshot_.time_s)) {
  snapshot_.decision = *closed;
  }
 }
 
-void MissionSimulation::update_shadow_episode() {
+void ScenarioSession::update_shadow_episode() {
  if (snapshot_.waiting_for_clearance) {
   if (!shadow_episode_open_) {
    shadow_episode_open_ = true;
@@ -2037,7 +2043,7 @@ void MissionSimulation::update_shadow_episode() {
  }
 }
 
-void MissionSimulation::record_replay() {
+void ScenarioSession::record_replay() {
  MissionSnapshot frame = snapshot_;
  // Candidate fans are useful live but would dominate a 20 Hz replay. The chosen
  // local path and all control values remain available for deterministic review.
@@ -2051,7 +2057,7 @@ void MissionSimulation::record_replay() {
  }
 }
 
-void MissionSimulation::seek_replay(double time_s) {
+void ScenarioSession::seek_replay(double time_s) {
  if (replay_.empty()) {
   return;
  }
@@ -2065,8 +2071,8 @@ void MissionSimulation::seek_replay(double time_s) {
 // sets the speed ceiling via lateral physics (see follow.hpp). Grip is the
 // minimum tire×surface mu over the preview — wet pavement ahead slows the
 // car before it arrives, not after it slides.
-double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
- const double cruise = property(behavior_, "cruise_mps");
+double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
+ const double cruise = cruise_speed_mps();
  const double lookahead = property(behavior_, "lookahead_m");
  const double speed = std::abs(snapshot_.robot.v);
  const double decel = resolved_build_.tires().brake_decel_mps2;
@@ -2096,19 +2102,28 @@ double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
                               preview);
 }
 
-double MissionSimulation::decision_hz() const {
+double ScenarioSession::decision_hz() const {
  const auto* computer = resolved_build_.computer();
  return computer ? computer->decision_hz : kBuiltInDecisionHz;
 }
 
-double MissionSimulation::track_max_age_s() const {
+double ScenarioSession::cruise_speed_mps() const {
+ const double requested = property(behavior_, "cruise_mps");
+ const double platform_limited = max_forward_speed_mps_ > 0.0
+ ? std::min(requested, max_forward_speed_mps_)
+ : requested;
+ return platform_limited *
+ (physics_mode_ == PhysicsMode::Bullet ? chassis_caps_.rigid_body_cruise_scale : 1.0);
+}
+
+double ScenarioSession::track_max_age_s() const {
  // Dynamic-track memory lives on the computer; computer-less levels use the
  // documented engine default.
  const auto* computer = resolved_build_.computer();
  return computer ? computer->track_max_age_s : kDynamicTrackMaxAgeS;
 }
 
-sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
+sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  // Traction is always tire tread combined with ground material: neither alone
  // decides grip. mu_ref anchors the product so concrete + standard behaves as
  // the long-validated reference.
@@ -2156,7 +2171,7 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  return contact;
 }
 
-double MissionSimulation::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const {
+double ScenarioSession::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const {
  const double segment_length = distance(from, to);
  if (segment_length < 1e-9) {
   return 1.0;

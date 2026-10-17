@@ -1,129 +1,76 @@
 #include "goal_system.hpp"
 
-#include <algorithm>
-#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <utility>
 
 namespace mission {
 
-void GoalSystem::reset(const ObjectiveDefinition& objective) {
- completed_.assign(objective.goals.size(), false);
- abandoned_.assign(objective.goals.size(), false);
- completion_order_.clear();
- abandonment_order_.clear();
- completed_count_ = 0;
- dwell_s_ = 0.0;
- active_goal_ = objective.goal_order == "autonomous" || objective.goals.empty()
- ? std::optional<std::size_t>{}
- : std::optional<std::size_t>{0};
+void GoalSystem::reset(const ObjectiveDefinition& objective, const sim::runtime::IMapProvider& maps) {
+ executive::TaskPlan plan;
+ plan.request_id = "scenario-objective";
+ plan.ordering = objective.goal_order == "autonomous"
+ ? executive::TaskOrdering::Autonomous
+ : executive::TaskOrdering::Authored;
+ plan.goals.reserve(objective.goals.size());
+ for (const auto& goal : objective.goals) {
+ const auto marker = maps.resolve_place(goal.marker);
+ if (!marker)
+ throw std::invalid_argument("task goal references an unresolved semantic place: " + goal.marker);
+ const bool inspect = goal.action == "inspect";
+ plan.goals.push_back({
+ goal.id.empty() ? goal.marker : goal.id,
+ marker->position_m,
+ goal.radius_m,
+ goal.action == "complete",
+ inspect,
+ inspect ? goal.dwell_s : 0.0,
+ goal.action == "complete"
+ ? objective.max_arrival_speed_mps
+ : (inspect ? 0.18 : std::numeric_limits<double>::max()),
+ });
+ }
+ if (!executive_.accept(std::move(plan)))
+ throw std::invalid_argument("objective cannot be translated to a task plan");
 }
 
 std::vector<std::size_t> GoalSystem::eligible_goals(const ObjectiveDefinition& objective) const {
- std::vector<std::size_t> candidates;
- bool unfinished_nonterminal = false;
- for (std::size_t index = 0; index < objective.goals.size(); ++index) {
- if (!completed(index) && !abandoned(index) && objective.goals[index].action != "complete") {
- unfinished_nonterminal = true;
- break;
- }
- }
- for (std::size_t index = 0; index < objective.goals.size(); ++index) {
- if (completed(index) || abandoned(index))
- continue;
- const bool terminal = objective.goals[index].action == "complete";
- if (terminal != unfinished_nonterminal)
- candidates.push_back(index);
- }
- return candidates;
+ (void)objective;
+ return executive_.eligible_goals();
 }
 
 bool GoalSystem::activate(const ObjectiveDefinition& objective, std::size_t index) {
- if (active_goal_ || index >= objective.goals.size())
- return false;
- const auto eligible = eligible_goals(objective);
- if (std::find(eligible.begin(), eligible.end(), index) == eligible.end())
- return false;
- active_goal_ = index;
- dwell_s_ = 0.0;
- return true;
+ (void)objective;
+ return executive_.activate(index);
 }
 
 bool GoalSystem::abandon(const ObjectiveDefinition& objective, std::size_t index) {
- if (active_goal_ || index >= objective.goals.size() || completed(index) || abandoned(index) ||
- objective.goals[index].action == "complete") {
- return false;
- }
- abandoned_[index] = true;
- abandonment_order_.push_back(index);
- return true;
+ (void)objective;
+ return executive_.abandon(index);
 }
 
 std::vector<std::string> GoalSystem::completed_goal_ids(const ObjectiveDefinition& objective) const {
- std::vector<std::string> ids;
- for (const std::size_t index : completion_order_) {
- if (index < objective.goals.size()) {
- const auto& goal = objective.goals[index];
- ids.push_back(goal.id.empty() ? goal.marker : goal.id);
- }
- }
- return ids;
+ (void)objective;
+ return executive_.completed_goal_ids();
 }
 
 std::vector<std::string> GoalSystem::abandoned_goal_ids(const ObjectiveDefinition& objective) const {
- std::vector<std::string> ids;
- for (const std::size_t index : abandonment_order_) {
- if (index < objective.goals.size()) {
- const auto& goal = objective.goals[index];
- ids.push_back(goal.id.empty() ? goal.marker : goal.id);
- }
- }
- return ids;
+ (void)objective;
+ return executive_.abandoned_goal_ids();
 }
 
-std::optional<GoalArrival> GoalSystem::update(const ObjectiveDefinition& objective, const MapDefinition& map,
+std::optional<GoalArrival> GoalSystem::update(const ObjectiveDefinition& objective,
  sim::Vec2 robot_position, double robot_speed_mps, bool completion_allowed, double dt_s) {
- if (!active_goal_ || *active_goal_ >= objective.goals.size()) {
-  return std::nullopt;
- }
- const std::size_t index = *active_goal_;
- const GoalStep& goal = objective.goals[index];
- const auto marker = map.markers.at(goal.marker);
- if (std::hypot(robot_position.x - marker.x, robot_position.y - marker.y) > goal.radius_m) {
- dwell_s_ = 0.0;
-  return std::nullopt;
- }
- if (goal.action == "complete" && !completion_allowed) {
-  return std::nullopt;
- }
- if (goal.action == "complete" && std::abs(robot_speed_mps) > objective.max_arrival_speed_mps) {
+ const auto active = executive_.active_goal_index();
+ if (!active || *active >= objective.goals.size())
  return std::nullopt;
- }
- if (goal.action == "inspect") {
- if (std::abs(robot_speed_mps) > 0.18) {
- dwell_s_ = 0.0;
+ const GoalStep goal = objective.goals[*active];
+ const auto arrival = executive_.update({
+ robot_position, robot_speed_mps, completion_allowed, dt_s,
+ });
+ if (!arrival)
  return std::nullopt;
- }
- dwell_s_ += dt_s;
- if (dwell_s_ + 1e-9 < goal.dwell_s)
- return std::nullopt;
- }
- GoalArrival arrival;
- arrival.index = index;
- arrival.goal = goal;
- arrival.mission_complete = goal.action == "complete";
- completed_[index] = true;
- completion_order_.push_back(index);
- ++completed_count_;
- active_goal_.reset();
- if (objective.goal_order != "autonomous") {
- for (std::size_t next = index + 1; next < objective.goals.size(); ++next) {
- if (!completed(next) && !abandoned(next)) {
- active_goal_ = next;
- break;
- }
- }
- }
- dwell_s_ = 0.0;
- return arrival;
+ return GoalArrival{arrival->index, goal, arrival->task_complete};
 }
 
 } // namespace mission

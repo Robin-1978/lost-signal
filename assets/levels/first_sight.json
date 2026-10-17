@@ -41,7 +41,8 @@
     "ability.distance_sensing",
     "imu.basic",
     "motor.torque",
-    "motor.eco"
+    "motor.eco",
+    "motor.speed"
   ],
   "chapter": 1,
   "mode": "mainline"

@@ -8,7 +8,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -80,7 +80,7 @@ int main() {
  // It passes the garage gate (budget/cost/slots) and drives a mission.
  auto build = catalog.presentation_for_level("boot").recommended_build;
  build.parts["tires"] = "tires.player_pro";
- mission::MissionSimulation mission(catalog, "boot", build);
+ mission::ScenarioSession mission(catalog, "boot", build);
  mission.run_to_completion();
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  std::cerr << "player pack green (tire drives boot to completion)\n";

@@ -3,7 +3,7 @@
   "translations": {
     "/title": "Meet the Motors",
     "/objective/goal_label": "Depot Calibration Pad",
-    "/teaching/prediction_prompt": "Does more torque always mean a faster run? What does it cost?",
-    "/teaching/knowledge_card": "Torque buys acceleration, while energy use reduces range. More force can solve one problem and drain the battery sooner."
+    "/teaching/prediction_prompt": "Is the high-speed motor always fastest? How do torque, speed, and energy trade?",
+    "/teaching/knowledge_card": "Faster gearing raises wheel speed but lowers rim force. Short gearing suits launches and grades; the right choice depends on the route and task."
   }
 }

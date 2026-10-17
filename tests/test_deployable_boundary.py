@@ -7,8 +7,14 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEPLOYABLE_DIRS = (ROOT / "src/core", ROOT / "src/runtime", ROOT / "src/autonomy")
-FORBIDDEN_LAYERS = ("mission", "sim", "physics", "client")
+DEPLOYABLE_DIRS = (
+    ROOT / "src/core",
+    ROOT / "src/runtime",
+    ROOT / "src/autonomy",
+    ROOT / "src/executive",
+ ROOT / "src/map_io",
+)
+FORBIDDEN_LAYERS = ("mission", "scenario", "sim", "physics", "client")
 
 
 class DeployableBoundaryTest(unittest.TestCase):
@@ -55,7 +61,35 @@ class DeployableBoundaryTest(unittest.TestCase):
         )
         self.assertIsNotNone(links)
         for forbidden in (
-            "lost_signal_mission",
+            "lost_signal_scenario",
+            "lost_signal_physics",
+            "lost_signal_vehicle",
+        ):
+            self.assertNotIn(forbidden, links.group("body"))
+
+    def test_executive_target_contains_only_deployable_sources(self) -> None:
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        target = re.search(
+            r"add_library\(lost_signal_executive\s+STATIC(?P<body>.*?)\n\)",
+            cmake,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(target)
+        sources = re.findall(r"src/([^\s)]+)", target.group("body"))
+        self.assertTrue(sources)
+        self.assertTrue(
+            all(source.startswith("executive/") for source in sources),
+            f"lost_signal_executive contains a world-layer source: {sources}",
+        )
+
+        links = re.search(
+            r"target_link_libraries\(lost_signal_executive\s+PUBLIC(?P<body>.*?)\)",
+            cmake,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(links)
+        for forbidden in (
+            "lost_signal_scenario",
             "lost_signal_physics",
             "lost_signal_vehicle",
         ):

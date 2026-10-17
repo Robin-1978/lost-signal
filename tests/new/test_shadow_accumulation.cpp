@@ -8,7 +8,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <iostream>
 #include <limits>
@@ -47,14 +47,14 @@ int main() {
   const auto build = catalog.presentation_for_level(plan.id).recommended_build;
   uint64_t base = 0;
   {
-   mission::MissionSimulation probe(catalog, plan.id, build);
+   mission::ScenarioSession probe(catalog, plan.id, build);
    base = probe.level().seed;
   }
   int cells[2][2] = {{0, 0}, {0, 0}};
   double finite_err_sum = 0.0;
   int finite_n = 0;
   for (int s = 0; s < plan.seeds; ++s) {
-   mission::MissionSimulation mission(catalog, plan.id, build, base + static_cast<uint64_t>(s));
+   mission::ScenarioSession mission(catalog, plan.id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
    int seed_cells[2][2] = {{0, 0}, {0, 0}};
    for (const auto& episode : mission.shadow_episodes()) {

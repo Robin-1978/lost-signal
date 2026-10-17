@@ -1,6 +1,6 @@
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "autonomy/planning/local/predictor.hpp"
 
 #include <cmath>
@@ -22,7 +22,7 @@ int main() {
  const auto build = catalog.presentation_for_level("lost_signal").recommended_build;
 
  {
-  mission::MissionSimulation manual(catalog, "boot",
+  mission::ScenarioSession manual(catalog, "boot",
                                     catalog.presentation_for_level("boot").recommended_build);
   CHECK(std::abs(manual.chassis_caps().geometry.drive_axle_x_m - 0.12) < 1e-12);
   CHECK(std::abs(manual.chassis_caps().geometry.support_length_m - 0.40) < 1e-12);
@@ -57,7 +57,7 @@ int main() {
  // A field expedition is a bounded-memory autonomous runtime mode. It keeps
  // stepping beyond the level timeout and never enters a debrief state.
  {
-  mission::MissionSimulation endless(catalog, "motor_trial",
+  mission::ScenarioSession endless(catalog, "motor_trial",
                                      catalog.presentation_for_level("motor_trial").recommended_build);
   endless.set_endless_mode(true);
   endless.start();
@@ -80,7 +80,7 @@ int main() {
  // creates a chassis-aware route and produces real Bullet motion without
  // keyboard input. The session remains open after a job completes.
  {
-  mission::MissionSimulation autonomous(catalog, "boot",
+  mission::ScenarioSession autonomous(catalog, "boot",
                                         catalog.presentation_for_level("boot").recommended_build);
   autonomous.set_endless_mode(true);
   autonomous.start();
@@ -103,7 +103,7 @@ int main() {
 
  for (const auto& level_id : catalog.campaign().levels) {
   const auto& level_presentation = catalog.presentation_for_level(level_id);
-  mission::MissionSimulation chapter_mission(catalog, level_id, level_presentation.recommended_build);
+  mission::ScenarioSession chapter_mission(catalog, level_id, level_presentation.recommended_build);
   mission::MissionSnapshot preterminal;
   int diagnostic_step = 0;
   chapter_mission.start();
@@ -209,7 +209,7 @@ int main() {
  // high-torque/high-grip recommendation climbs with margin, while the stock
  // motor on eco tires cannot complete the same 39 kg, 20-degree run.
  {
-  mission::MissionSimulation stock_slope(catalog, "slope_launch",
+  mission::ScenarioSession stock_slope(catalog, "slope_launch",
                                          catalog.presentation_for_level("slope_launch").default_build);
   stock_slope.run_to_completion();
   CHECK(stock_slope.result().status == mission::MissionStatus::Failed);
@@ -220,12 +220,12 @@ int main() {
  CHECK(sim::physics::bullet_physics_available());
  {
   const auto localization_physics = mission::PhysicsMode::Bullet;
-  mission::MissionSimulation drifting(
+  mission::ScenarioSession drifting(
     catalog, "localization", catalog.presentation_for_level("localization").default_build, std::nullopt, {},
     mission::ComponentRegistry::builtins(), {}, localization_physics);
   drifting.run_to_completion();
   CHECK(drifting.result().status == mission::MissionStatus::Succeeded);
-  mission::MissionSimulation localized(
+  mission::ScenarioSession localized(
     catalog, "localization", catalog.presentation_for_level("localization").recommended_build, std::nullopt,
     {}, mission::ComponentRegistry::builtins(), {}, localization_physics);
   localized.run_to_completion();
@@ -260,8 +260,8 @@ int main() {
 
  // Seed override: same effective seed reproduces bit-identical time; the
  // override path with the JSON seed equals the default path.
- mission::MissionSimulation first(catalog, "lost_signal", build);
- mission::MissionSimulation first_repeat(catalog, "lost_signal", build, first.level().seed);
+ mission::ScenarioSession first(catalog, "lost_signal", build);
+ mission::ScenarioSession first_repeat(catalog, "lost_signal", build, first.level().seed);
  CHECK(first_repeat.effective_seed() == first.effective_seed());
  CHECK(!first.planned_route().empty());
  first.run_to_completion();
@@ -482,7 +482,7 @@ int main() {
   mission::CampaignProgress diy = mission::CampaignProgress::load(
     std::filesystem::temp_directory_path() / "lost-signal-progress-missing.json", catalog);
   CHECK(diy.inventory().size() == 6);
-  mission::MissionSimulation boot_mission(catalog, "boot",
+  mission::ScenarioSession boot_mission(catalog, "boot",
                                           catalog.presentation_for_level("boot").recommended_build);
   boot_mission.run_to_completion();
   CHECK(boot_mission.result().status == mission::MissionStatus::Succeeded);
@@ -508,7 +508,7 @@ int main() {
  // computer preserves more dynamic clearance; the light computer finishes
  // slightly sooner and consumes less energy. Both remain safe.
  {
-  mission::MissionSimulation default_attempt(catalog, "lost_signal",
+  mission::ScenarioSession default_attempt(catalog, "lost_signal",
                                              catalog.presentation_for_level("lost_signal").default_build);
   default_attempt.run_to_completion();
   std::cerr << "lost_signal default status=" << static_cast<int>(default_attempt.result().status)
@@ -533,7 +533,7 @@ int main() {
   hot_build.parts["motor"] = "motor.torque";
   hot_build.parts["imu"] = "imu.basic";
   hot_build.style = 1.0;
-  mission::MissionSimulation hot_attempt(catalog, "lost_signal", hot_build);
+  mission::ScenarioSession hot_attempt(catalog, "lost_signal", hot_build);
   hot_attempt.run_to_completion();
  std::cerr << "lost_signal hot status=" << static_cast<int>(hot_attempt.result().status)
  << " collisions=" << hot_attempt.result().collisions
@@ -562,11 +562,11 @@ int main() {
   spin_build.parts["motor"] = "motor.torque";
   spin_build.parts["imu"] = "imu.basic";
   spin_build.style = 1.0;
-  mission::MissionSimulation spin_run(catalog, "blocked_route", spin_build);
+  mission::ScenarioSession spin_run(catalog, "blocked_route", spin_build);
   spin_run.run_to_completion();
   CHECK(spin_run.result().slip_events > 0);
   CHECK(spin_run.result().status == mission::MissionStatus::Succeeded);
-  mission::MissionSimulation spin_repeat(catalog, "blocked_route", spin_build);
+  mission::ScenarioSession spin_repeat(catalog, "blocked_route", spin_build);
   spin_repeat.run_to_completion();
   CHECK(std::abs(spin_repeat.result().time_s - spin_run.result().time_s) < 1e-12);
  }
@@ -574,16 +574,16 @@ int main() {
  {
   mission::BuildSelection mid_style = build;
   mid_style.style = 0.37;
-  mission::MissionSimulation mid_first(catalog, "lost_signal", mid_style);
+  mission::ScenarioSession mid_first(catalog, "lost_signal", mid_style);
   mid_first.run_to_completion();
   CHECK(mid_first.result().status == mission::MissionStatus::Succeeded);
-  mission::MissionSimulation mid_second(catalog, "lost_signal", mid_style);
+  mission::ScenarioSession mid_second(catalog, "lost_signal", mid_style);
   mid_second.run_to_completion();
   CHECK(std::abs(mid_second.result().time_s - mid_first.result().time_s) < 1e-12);
  }
 
  {
-  mission::MissionSimulation second(catalog, "lost_signal", build);
+  mission::ScenarioSession second(catalog, "lost_signal", build);
   second.run_to_completion();
   CHECK(second.result().status == first.result().status);
   CHECK(std::abs(second.result().time_s - first.result().time_s) < 1e-12);
@@ -609,7 +609,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("return_route");
   CHECK(presentation.robot_id == "robot.ro2");
-  mission::MissionSimulation debut(catalog, "return_route", presentation.recommended_build);
+  mission::ScenarioSession debut(catalog, "return_route", presentation.recommended_build);
   CHECK(debut.robot().drive_type == "ackermann");
   CHECK(!debut.robot().id.empty());
   debut.run_to_completion();
@@ -631,7 +631,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("track_turn");
   CHECK(presentation.robot_id == "robot.ro3");
-  mission::MissionSimulation slide(catalog, "track_turn", presentation.recommended_build);
+  mission::ScenarioSession slide(catalog, "track_turn", presentation.recommended_build);
   CHECK(slide.robot().drive_type == "tracked");
   slide.run_to_completion();
   CHECK(slide.result().status == mission::MissionStatus::Succeeded);
@@ -641,11 +641,11 @@ int main() {
  // accumulates enough slip-driven odometry error to lose the safety score.
  {
   const auto& presentation = catalog.presentation_for_level("loose_ground");
-  mission::MissionSimulation grit(catalog, "loose_ground", presentation.recommended_build);
+  mission::ScenarioSession grit(catalog, "loose_ground", presentation.recommended_build);
   grit.run_to_completion();
   CHECK(grit.result().status == mission::MissionStatus::Succeeded);
   CHECK(grit.result().safe_score);
-  mission::MissionSimulation grit_default(catalog, "loose_ground", presentation.default_build);
+  mission::ScenarioSession grit_default(catalog, "loose_ground", presentation.default_build);
   grit_default.run_to_completion();
   CHECK(grit_default.result().status == mission::MissionStatus::Succeeded);
   CHECK(!grit_default.result().safe_score);
@@ -655,7 +655,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("scrub_climb");
   CHECK(presentation.robot_id == "robot.ro3");
-  mission::MissionSimulation climb(catalog, "scrub_climb", presentation.recommended_build);
+  mission::ScenarioSession climb(catalog, "scrub_climb", presentation.recommended_build);
   climb.run_to_completion();
   CHECK(climb.result().status == mission::MissionStatus::Succeeded);
   CHECK(climb.result().safe_score);
@@ -664,7 +664,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("sand_track");
   CHECK(presentation.robot_id == "robot.ro3");
-  mission::MissionSimulation grit_track(catalog, "sand_track", presentation.recommended_build);
+  mission::ScenarioSession grit_track(catalog, "sand_track", presentation.recommended_build);
   grit_track.run_to_completion();
   CHECK(grit_track.result().status == mission::MissionStatus::Succeeded);
   CHECK(grit_track.result().safe_score);
@@ -673,7 +673,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("sand_steer");
   CHECK(presentation.robot_id == "robot.ro2");
-  mission::MissionSimulation sandy(catalog, "sand_steer", presentation.recommended_build);
+  mission::ScenarioSession sandy(catalog, "sand_steer", presentation.recommended_build);
   sandy.run_to_completion();
   CHECK(sandy.result().status == mission::MissionStatus::Succeeded);
   CHECK(sandy.result().safe_score);
@@ -682,7 +682,7 @@ int main() {
  {
   const auto& presentation = catalog.presentation_for_level("wet_scrub");
   CHECK(presentation.robot_id == "robot.ro3");
-  mission::MissionSimulation scrub_wet(catalog, "wet_scrub", presentation.recommended_build);
+  mission::ScenarioSession scrub_wet(catalog, "wet_scrub", presentation.recommended_build);
   scrub_wet.run_to_completion();
   CHECK(scrub_wet.result().status == mission::MissionStatus::Succeeded);
   CHECK(scrub_wet.result().safe_score);
@@ -692,12 +692,12 @@ int main() {
  // it and reaches the boundary.
  {
   const auto& presentation = catalog.presentation_for_level("rain_descent");
-  mission::MissionSimulation careful(catalog, "rain_descent", presentation.recommended_build, std::nullopt,
+  mission::ScenarioSession careful(catalog, "rain_descent", presentation.recommended_build, std::nullopt,
                                      {}, mission::ComponentRegistry::builtins(), {},
                                      mission::PhysicsMode::Bullet);
   careful.run_to_completion();
   CHECK(careful.result().status == mission::MissionStatus::Succeeded);
-  mission::MissionSimulation fast(catalog, "rain_descent", presentation.default_build, std::nullopt, {},
+  mission::ScenarioSession fast(catalog, "rain_descent", presentation.default_build, std::nullopt, {},
                                   mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Bullet);
   fast.run_to_completion();
   CHECK(fast.result().status == mission::MissionStatus::Failed);
@@ -710,7 +710,7 @@ int main() {
  // slip prevent it from climbing the grade before the mission timeout.
  {
   const auto& presentation = catalog.presentation_for_level("cross_slope");
-  mission::MissionSimulation careful(catalog, "cross_slope", presentation.recommended_build, std::nullopt, {},
+  mission::ScenarioSession careful(catalog, "cross_slope", presentation.recommended_build, std::nullopt, {},
                                      mission::ComponentRegistry::builtins(), {},
                                      mission::PhysicsMode::Bullet);
   careful.run_to_completion();
@@ -719,7 +719,7 @@ int main() {
   // keeps positive margin; its exact peak may move as the mass and inertia
   // model is corrected.
   CHECK(careful.result().max_rollover_risk < 1.0);
-  mission::MissionSimulation fast(catalog, "cross_slope", presentation.default_build, std::nullopt, {},
+  mission::ScenarioSession fast(catalog, "cross_slope", presentation.default_build, std::nullopt, {},
                                   mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Bullet);
   fast.run_to_completion();
  CHECK(fast.result().status == mission::MissionStatus::Failed);
@@ -728,12 +728,31 @@ int main() {
   CHECK(fast.result().max_rollover_risk < 1.0);
  CHECK(fast.result().max_drive_slip_ratio > careful.result().max_drive_slip_ratio);
  }
+ // The motor lesson exposes a measurable gearing tradeoff. The recommended
+ // high-speed drive must win the short straight on time, while the eco drive
+ // must retain a meaningful energy advantage. Score thresholds sit between
+ // the two observed outcomes so the debrief communicates that distinction.
+ {
+ const auto& presentation = catalog.presentation_for_level("motor_trial");
+ mission::ScenarioSession eco(catalog, "motor_trial", presentation.default_build);
+ mission::ScenarioSession speed(catalog, "motor_trial", presentation.recommended_build);
+ eco.run_to_completion();
+ speed.run_to_completion();
+ CHECK(eco.result().status == mission::MissionStatus::Succeeded);
+ CHECK(speed.result().status == mission::MissionStatus::Succeeded);
+ CHECK(speed.result().time_s + 0.25 < eco.result().time_s);
+ CHECK(eco.result().energy_wh + 0.01 < speed.result().energy_wh);
+ CHECK(!eco.result().fast_score);
+ CHECK(speed.result().fast_score);
+ CHECK(eco.result().efficient_score);
+ CHECK(!speed.result().efficient_score);
+ }
  // Continuous field sessions keep stepping beyond authored mission limits and
  // share one deterministic environment snapshot across weather, incidents,
  // dispatch, physics and replay.
  {
   const auto& field_presentation = catalog.presentation_for_level("boot");
-  mission::MissionSimulation field(catalog, "boot", field_presentation.recommended_build);
+  mission::ScenarioSession field(catalog, "boot", field_presentation.recommended_build);
   field.set_endless_mode(true);
   field.start();
   for (int step = 0; step < 3000; ++step)

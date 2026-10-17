@@ -162,6 +162,23 @@ int main() {
  CHECK(std::abs(sim::wrap_angle(
  sim::kPi * 0.5 - align.best.samples.back().heading_rad)) < sim::kPi * 0.5);
 
+ // Differential candidates must be feasible in wheel space. A body command
+ // can satisfy independent v/w limits while asking one wheel to exceed the
+ // selected motor speed; such a rollout must never reach validation/control.
+ constexpr double track_m = 0.6;
+ constexpr double wheel_limit_mps = 1.0;
+ const auto wheel_limited = sim::dwa_compute_trajectory(
+ {2.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, map, weights,
+ {}, 2.0, 2.0, 3.0, 1.0, 0.1, 0.1,
+ 0.0, 0.20, 8.0, {}, 0.0, std::nullopt, {}, track_m, wheel_limit_mps);
+ CHECK(!wheel_limited.rollouts.empty());
+ for (const auto& rollout : wheel_limited.rollouts) {
+ const double v = rollout.trajectory.command.v;
+ const double w = rollout.trajectory.command.w;
+ CHECK(std::abs(v - w * track_m * 0.5) <= wheel_limit_mps + 1e-9);
+ CHECK(std::abs(v + w * track_m * 0.5) <= wheel_limit_mps + 1e-9);
+ }
+
  // Identical inputs produce identical candidate order, commands and scores.
  const auto repeated = sim::dwa_compute_trajectory(
  {1.0, 1.0}, 0.0, 1.0, 0.0, {4.0, 1.0}, map, weights,

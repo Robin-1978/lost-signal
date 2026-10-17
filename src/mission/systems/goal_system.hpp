@@ -1,6 +1,8 @@
 #pragma once
 
+#include "executive/task_executive.hpp"
 #include "mission/content.hpp"
+#include "runtime/map_provider.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -15,33 +17,26 @@ struct GoalArrival {
  bool mission_complete{false};
 };
 
+// Scenario adapter around the deployable TaskExecutive. It translates map
+// markers and game action metadata once; generic goal lifecycle stays outside
+// the simulation layer.
 class GoalSystem {
  public:
- void reset(const ObjectiveDefinition& objective);
- std::size_t goals_reached() const { return completed_count_; }
- std::optional<std::size_t> active_goal_index() const { return active_goal_; }
+ void reset(const ObjectiveDefinition& objective, const sim::runtime::IMapProvider& maps);
+ std::size_t goals_reached() const { return executive_.goals_reached(); }
+ std::optional<std::size_t> active_goal_index() const { return executive_.active_goal_index(); }
  bool activate(const ObjectiveDefinition& objective, std::size_t index);
  bool abandon(const ObjectiveDefinition& objective, std::size_t index);
- bool completed(std::size_t index) const {
- return index < completed_.size() && completed_[index];
- }
- bool abandoned(std::size_t index) const {
- return index < abandoned_.size() && abandoned_[index];
- }
+ bool completed(std::size_t index) const { return executive_.completed(index); }
+ bool abandoned(std::size_t index) const { return executive_.abandoned(index); }
  std::vector<std::size_t> eligible_goals(const ObjectiveDefinition& objective) const;
  std::vector<std::string> completed_goal_ids(const ObjectiveDefinition& objective) const;
  std::vector<std::string> abandoned_goal_ids(const ObjectiveDefinition& objective) const;
- std::optional<GoalArrival> update(const ObjectiveDefinition& objective, const MapDefinition& map,
+ std::optional<GoalArrival> update(const ObjectiveDefinition& objective,
  sim::Vec2 robot_position, double robot_speed_mps, bool completion_allowed, double dt_s);
 
  private:
- std::vector<bool> completed_;
- std::vector<bool> abandoned_;
- std::vector<std::size_t> completion_order_;
- std::vector<std::size_t> abandonment_order_;
- std::optional<std::size_t> active_goal_;
- std::size_t completed_count_{0};
- double dwell_s_{0.0};
+ executive::TaskExecutive executive_;
 };
 
 } // namespace mission

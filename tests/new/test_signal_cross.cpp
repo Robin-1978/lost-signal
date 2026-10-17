@@ -8,7 +8,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <iostream>
 #include <limits>
@@ -29,7 +29,7 @@ int main() {
   int coll = 0, succeeded = 0;
   int cells[2][2] = {{0, 0}, {0, 0}};
   for (int s = 0; s < 5; ++s) {
-   mission::MissionSimulation mission(catalog, "signal_cross", build, 11u + static_cast<uint64_t>(s));
+   mission::ScenarioSession mission(catalog, "signal_cross", build, 11u + static_cast<uint64_t>(s));
    mission.run_to_completion();
    if (mission.result().status == mission::MissionStatus::Succeeded) {
     ++succeeded;

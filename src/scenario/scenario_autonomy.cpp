@@ -1,4 +1,4 @@
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -29,7 +29,7 @@ bool dispatch_has_priority(const FieldDispatchState& dispatch,
 
 } // namespace
 
-void MissionSimulation::decide_control() {
+void ScenarioSession::decide_control() {
  ++result_.local_decisions;
  snapshot_.control = {};
  if (route_tracking_system_->path_index() >= planned_route_.size()) {
@@ -148,9 +148,7 @@ void MissionSimulation::decide_control() {
  snapshot_.strategy_policy = high_level_policy_->name();
  if (snapshot_.strategy.applied.has_subgoal)
   target = snapshot_.strategy.applied.subgoal;
- const double chassis_cruise =
-   property(behavior_, "cruise_mps") *
-   (physics_mode_ == PhysicsMode::Bullet ? chassis_caps_.rigid_body_cruise_scale : 1.0);
+ const double chassis_cruise = cruise_speed_mps();
  auto route_control =
    route_tracking_system_->follow_route(planned_route_, estimate, property(behavior_, "lookahead_m"), chassis_cruise,
  1.0 / decision_hz(), local_planning_map, chassis_caps_);
@@ -259,7 +257,7 @@ void MissionSimulation::decide_control() {
  const auto* active_lidar = resolved_build_.lidar();
  const double scan_motion_margin =
    active_lidar
-     ? 2.0 * (property(behavior_, "cruise_mps") + yaw_cap_rads_ * robot_definition_.collision_radius_m) /
+ ? 2.0 * (cruise_speed_mps() + yaw_cap_rads_ * robot_definition_.collision_radius_m) /
          active_lidar->scan_hz
      : 0.0;
  // A rotating scan is up to one frame old and the tracker consumes it on the
@@ -277,7 +275,7 @@ void MissionSimulation::decide_control() {
  const double behavior_crossing_clearance =
  std::max(0.0, level_.safe_min_clearance_m);
  const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
- double speed_cap = std::min(std::max(0.20, sim::sched_v(heading_error, property(behavior_, "cruise_mps"))),
+ double speed_cap = std::min(std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
                              corner_speed_cap(nav_x, nav_y));
  speed_cap *= snapshot_.strategy.applied.speed_scale;
  // The selected rollout is the command contract. Feed route and corner caps
@@ -297,7 +295,7 @@ void MissionSimulation::decide_control() {
  for (std::size_t i = route_tracking_system_->path_index(); i < planned_route_.size(); ++i) {
   shadow_remaining.push_back(planned_route_[i].position);
  }
- const double shadow_cruise = std::max(1e-6, property(behavior_, "cruise_mps"));
+ const double shadow_cruise = std::max(1e-6, cruise_speed_mps());
  double shadow_length = 0.0;
  for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
   shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
@@ -509,7 +507,7 @@ void MissionSimulation::decide_control() {
     }
    }
    if (entry < shadow_remaining.size()) {
-    const double cruise = property(behavior_, "cruise_mps");
+ const double cruise = cruise_speed_mps();
     const double brake = resolved_build_.tires().brake_decel_mps2;
     const double need = cruise * cruise / (2.0 * brake) + 1.0;
     double walked = 0.0;
@@ -620,6 +618,10 @@ void MissionSimulation::decide_control() {
  // into a permanent hard stop.
  local_request.required_clearance_m = hard_crossing_clearance;
  local_request.robot_radius_m = robot_definition_.collision_radius_m;
+ local_request.differential_track_m = robot_definition_.drive_type == "differential"
+ ? robot_definition_.wheel_base_m
+ : 0.0;
+ local_request.max_wheel_speed_mps = max_forward_speed_mps_;
  local_request.steering_wheel_base_m = chassis_caps_.geometry.steering_wheel_base_m;
  local_request.max_steer_rad = chassis_caps_.geometry.max_steer_rad;
  local_request.max_steer_rate_radps = chassis_caps_.geometry.max_steer_rate_radps;

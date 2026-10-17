@@ -1,6 +1,6 @@
 #include "audio_director.hpp"
 
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -63,7 +63,7 @@ void AudioDirector::play(const std::string& cue_id) const {
  PlaySound(cue->second.sound);
 }
 
-void AudioDirector::reset(const mission::MissionSimulation& mission) {
+void AudioDirector::reset(const mission::ScenarioSession& mission) {
  mission_ = &mission;
  events_seen_ = 0;
  decisions_seen_ = 0;
@@ -77,7 +77,7 @@ void AudioDirector::reset(const mission::MissionSimulation& mission) {
  }
 }
 
-void AudioDirector::update(const mission::MissionSimulation& mission) {
+void AudioDirector::update(const mission::ScenarioSession& mission) {
  if (!ready_)
  return;
  if (mission_ != &mission || mission.snapshot().time_s + 1e-9 < last_time_s_ ||

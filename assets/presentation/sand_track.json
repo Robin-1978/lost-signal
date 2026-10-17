@@ -47,7 +47,7 @@
       "tires": "tires.eco",
       "sensor": "sensor.long_slow_lidar",
       "motor": "motor.standard",
-      "style": 1.0
+      "style": 0.8
     },
     "recommended_build": {
       "tires": "tires.sand",

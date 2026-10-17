@@ -48,7 +48,7 @@ struct WorldActivityTransition {
 };
 
 // Serializable continuation point for the regional world. Delays are stored
-// relative to the checkpoint so a fresh MissionSimulation can start its own
+// relative to the checkpoint so a fresh ScenarioSession can start its own
 // clock at zero without changing when the next event occurs. The standard
 // mt19937 stream representation preserves the deterministic event sequence.
 struct WorldActivityCheckpoint {

@@ -91,6 +91,11 @@ time. Coulomb smoothing width (`0.05 m/s`) and viscous drag (`0.6 N/(m/s)`) are 
 components may replace all five values; the fallback motor inside each robot declares the same fields. None remain
 as hidden constants in the differential-drive implementation.
 
+`motor.speed` represents a higher-speed, lower-reduction geared drive for controlled teaching runs. Its assumed
+wheel-surface free speed is 4.2 m/s and its short-duration rim stall force is 38 N, compared with 3.0 m/s and 54 N
+for the standard profile. It is deliberately not a universally better motor: launch and grade authority are lower,
+the energy scale is higher, and autonomy may use its extra speed only when an explicit driving policy requests it.
+
 ## Wheel-ground contact
 
 There is no universal rubber stiffness. The standard tire default is derived from a declared operating point:

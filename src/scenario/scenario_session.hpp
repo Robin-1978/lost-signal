@@ -1,7 +1,7 @@
 #pragma once
 
-#include "content_catalog.hpp"
-#include "component_registry.hpp"
+#include "mission/content_catalog.hpp"
+#include "mission/component_registry.hpp"
 #include "autonomy/control/route_tracking_system.hpp"
 #include "mission/systems/collision_monitor.hpp"
 #include "mission/systems/dynamic_traffic_system.hpp"
@@ -35,6 +35,7 @@
 #include "autonomy/control/pid.hpp"
 #include "hw/sensors/sensor.hpp"
 #include "runtime/runtime_channel.hpp"
+#include "runtime/map_provider.hpp"
 
 #include <map>
 #include <cstdint>
@@ -369,7 +370,7 @@ struct MissionResult {
 
 // Named composition options keep extension points discoverable and avoid a
 // positional constructor call when an application replaces one subsystem.
-struct MissionSimulationOptions {
+struct ScenarioSessionOptions {
  std::optional<std::uint64_t> seed_override;
  std::vector<std::string> owned_abilities;
  ComponentRegistry component_registry{ComponentRegistry::with_builtins()};
@@ -381,14 +382,14 @@ struct MissionSimulationOptions {
  sim::runtime::RuntimeRegistry runtime_registry{sim::runtime::RuntimeRegistry::with_builtins()};
 };
 
-class MissionSimulation {
+class ScenarioSession {
  public:
  static constexpr double fixed_step_s = 0.02;
 
- MissionSimulation(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
-                   const MissionSimulationOptions& options);
+ ScenarioSession(const ContentCatalog& catalog, std::string level_id, BuildSelection build,
+                   const ScenarioSessionOptions& options);
 
- MissionSimulation(
+ ScenarioSession(
    const ContentCatalog& catalog, std::string level_id, BuildSelection build,
    std::optional<uint64_t> seed_override = std::nullopt, const std::vector<std::string>& owned_abilities = {},
    const ComponentRegistry& component_registry = ComponentRegistry::builtins(),
@@ -508,6 +509,7 @@ class MissionSimulation {
  double surface_traction(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
  double decision_hz() const;
+ double cruise_speed_mps() const;
  double corner_speed_cap(double nav_x, double nav_y) const;
  double track_max_age_s() const;
  sim::GroundContact wheel_ground(sim::Vec2 position) const;
@@ -526,6 +528,9 @@ class MissionSimulation {
  std::optional<uint64_t> seed_override_;
  LevelDefinition level_;
  const MapDefinition& map_definition_;
+ // Deployable robot-map view of authored scenario content. Goal execution and
+ // autonomy consume this provider contract; game systems retain MapDefinition.
+ sim::runtime::MapManager map_manager_;
  const RobotDefinition& robot_definition_;
  PhysicsMode requested_physics_mode_{PhysicsMode::Bullet};
  PhysicsMode physics_mode_{PhysicsMode::Bullet};

@@ -59,7 +59,8 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
                   double accel, double predict_time, double dt, double yaw_accel,
  const StaticFeasibility& terrain_feasible, double min_velocity_mps = -0.5,
  std::optional<double> target_heading_rad = std::nullopt,
- const DwaReference& reference = {}) {
+ const DwaReference& reference = {}, double differential_track_m = 0.0,
+ double max_wheel_speed_mps = 0.0) {
  DwaResult output;
  output.best.command.valid = false;
  output.best.command.score = -1e18;
@@ -90,6 +91,14 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
  append_angular(cur_w);
  append_angular(w_max);
  for (double angular : angular_samples) {
+ if (differential_track_m > 0.0 && max_wheel_speed_mps > 0.0) {
+ const double left_mps = velocity - angular * differential_track_m * 0.5;
+ const double right_mps = velocity + angular * differential_track_m * 0.5;
+ if (std::max(std::abs(left_mps), std::abs(right_mps)) >
+ max_wheel_speed_mps + 1e-9) {
+ continue;
+ }
+ }
    double x = pos.x;
    double y = pos.y;
    double heading = theta;
@@ -194,7 +203,8 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  double v_max, double w_max, double accel, double predict_time, double dt,
                                  double frame_dt, double safety_margin, double robot_radius, double yaw_accel,
  StaticFeasibility terrain_feasible, double min_velocity_mps,
- std::optional<double> target_heading_rad, const DwaReference& reference) {
+ std::optional<double> target_heading_rad, const DwaReference& reference,
+ double differential_track_m, double max_wheel_speed_mps) {
  const auto dynamic_collision = [&](double x, double y, double time) {
  const auto clearance = dynamic_clearance_at(
  {x, y}, time, predicted_frames, frame_dt, robot_radius);
@@ -212,7 +222,7 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
  predict_time, dt, yaw_accel, terrain_feasible, min_velocity_mps,
- target_heading_rad, reference);
+ target_heading_rad, reference, differential_track_m, max_wheel_speed_mps);
 }
 
 } // namespace sim

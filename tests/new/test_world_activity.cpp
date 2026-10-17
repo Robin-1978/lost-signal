@@ -58,7 +58,7 @@ int main() {
  "fallen-cargo");
 
  // A restored regional session must continue the same weather/event stream
- // even though the new MissionSimulation clock starts again at zero.
+ // even though the new ScenarioSession clock starts again at zero.
  mission::WorldActivitySystem uninterrupted;
  mission::WorldActivitySystem resumed;
  uninterrupted.reset(778899);

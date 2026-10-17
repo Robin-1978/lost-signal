@@ -89,6 +89,33 @@
         "color": "#3F7A5E",
         "model_3d": "models/robots/ro1/compute_light.glb"
       }
+    },
+    {
+      "id": "motor.speed",
+      "title": "高速电机",
+      "description": "高速齿比换来更高极速，但低速扭矩更小、耗电与制动压力更高。",
+      "cost": 3,
+      "behavior": {
+        "max_wheel_speed_mps": 3.6,
+        "stall_force_N": 38.0,
+        "free_speed_mps": 4.2,
+        "power_scale": 1.35,
+        "controller_bandwidth_radps": 7.0,
+        "controller_integral_time_s": 5.0,
+        "controller_derivative_time_s": 0.005,
+        "coulomb_smoothing_speed_mps": 0.05,
+        "viscous_drag_N_per_mps": 0.7
+      },
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.2,
+          0.16,
+          0.1
+        ],
+        "color": "#B93FFF",
+        "model_3d": "models/robots/ro1/compute_light.glb"
+      }
     }
   ]
 }

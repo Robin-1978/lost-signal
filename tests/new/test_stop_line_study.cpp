@@ -6,7 +6,7 @@
 // level-dependent, so this harness reports per-level instead of asserting
 // one shape. Nothing consumes the result.
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -52,7 +52,7 @@ LevelStudy run_level(const mission::ContentCatalog& catalog, const std::string& 
       std::find(actor.active_in.begin(), actor.active_in.end(), level_id) != actor.active_in.end();
     if (active && actor.path.size() >= 2) corridors.push_back(actor.path);
   }
-  mission::MissionSimulation mission(catalog, level_id, build);
+  mission::ScenarioSession mission(catalog, level_id, build);
   mission.start();
   int steps = 0;
   while (mission.snapshot().status == mission::MissionStatus::Running && steps < 60000) {

@@ -165,7 +165,7 @@ Extraction proceeds by owned state and testable contracts:
 | `DecisionEvidenceSystem` | transition records and stable evidence codes | localized player prose |
 | `SnapshotAssembler` | immutable presentation and replay value | physics stepping or control decisions |
 
-`MissionSimulation` should retain construction, reset, fixed-step ordering, lifecycle, and accessors. Each
+`ScenarioSession` should retain construction, reset, fixed-step ordering, lifecycle, and accessors. Each
 extraction must preserve deterministic output and pass its focused contract tests before the next responsibility
 moves. File size is a symptom; ownership and dependency direction are the acceptance criteria.
 
@@ -175,7 +175,7 @@ same time as predicted actors; `TrajectoryTrackingSystem` reports the next estim
 These reports remain evidence until minimum-risk handling for an envelope violation is implemented and tested.
 
 The first autonomy-pipeline slice is also extracted: `PerceptionPipeline` owns LiDAR projection, foreground
-classification, transient occupancy, tracks, and predictions. `MissionSimulation` schedules the simulated device and
+classification, transient occupancy, tracks, and predictions. `ScenarioSession` schedules the simulated device and
 moves the delivered message across LSRI, but it cannot update perception state directly. Behavior stop constraints
 are now executable geometry as well: an uncommitted crossing supplies a latched stop point and one-sided plane to
 the local trajectory validator, so a high-scoring rollout cannot cross the virtual wall.

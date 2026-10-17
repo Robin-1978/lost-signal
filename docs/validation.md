@@ -94,13 +94,15 @@ The default `ContentCatalog::load(assets)` must select English. Explicit `zh-CN`
 
 ## Release record
 
-Results for the current RO-1 autonomy boundary revision, tested on Linux x86_64 on 2026-10-17:
+Results for the current RO-1 autonomy and scenario-boundary revision, tested on Linux x86_64 on 2026-10-18:
 
-- Content validation: passed; 27 levels, 5 maps, 5 scenes, 18 components, 3 policies, 5 robots, and 27 presentations
-- Locale validation: passed; 1,311 entries checked and 1,304 required translations present
+- Content validation: passed; 27 levels, 5 maps, 5 scenes, 19 components, 4 policies, 5 robots, and 27 presentations
+- Locale validation: passed; 1,317 entries checked and 1,310 required translations present
 - Canonical content round-trip and deployable-boundary tests: passed
-- Release build with the graphical client enabled and CTest: passed; 74/74 tests
+- Release build with the graphical client enabled and CTest: passed; 78/78 tests
 - Two repeated recommended `lost_signal` runs were identical: succeeded in 67.74 simulated seconds, zero collisions, and 0.795 m minimum dynamic clearance
+- The `motor_trial` regression separates gearing tradeoffs: speed/express completes in 4.76 s while eco/balanced
+ completes in 5.20 s; eco uses 0.042 Wh versus 0.068 Wh for speed
 - Two repeated recommended `signal_watch` runs were identical: succeeded in 69.78 simulated seconds, zero collisions, and 0.382 m minimum dynamic clearance
 - Graphical smoke and deterministic screenshot gates were not repeated for this revision
 - Sanitizers: reserved for milestone/release-candidate validation; do not reuse results from an older revision

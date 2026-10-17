@@ -1,11 +1,16 @@
 #include "map_editor.hpp"
 
+#include "map_io/robot_map_package.hpp"
 #include "mission/content_catalog.hpp"
+#include "mission/deployable_map_adapter.hpp"
 #include "mission/map_serialize.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <limits>
 
 namespace client {
 namespace {
@@ -428,6 +433,18 @@ bool MapEditor::save(const std::string& assets_root) {
   // Validity proof: a full catalog reload parses + validates everything
   // (schema, references, unlock chains). Throws on any breakage.
   mission::ContentCatalog::load(assets_root);
+ const auto robot_map_path = std::filesystem::path(assets_root) / "robot_maps" /
+ (working_.id + "__" + level_id_ + ".lsmap");
+ std::uint64_t revision = 1;
+ if (std::filesystem::exists(robot_map_path)) {
+ const auto previous = sim::map_io::load_robot_map_package(robot_map_path);
+ const std::string expected_id = working_.id + "/" + level_id_;
+ if (previous.map_id != expected_id || previous.revision == std::numeric_limits<std::uint64_t>::max())
+ throw std::runtime_error("existing robot-map package has incompatible identity or revision");
+ revision = previous.revision + 1;
+ }
+ const auto robot_map = mission::make_deployable_map_snapshot(working_, level_id_, {}, revision);
+ sim::map_io::save_robot_map_package(robot_map, robot_map_path);
  } catch (const std::exception& error) {
   message_ = catalog_.tr("editor.save_invalid") + error.what();
   return false;

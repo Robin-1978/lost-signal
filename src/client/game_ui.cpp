@@ -337,7 +337,7 @@ void GameUi::style_panel() {
  renderer->setBorders({1, 0, 0, 0});
 }
 
-void GameUi::resize(int width, int height, const mission::MissionSimulation* mission) {
+void GameUi::resize(int width, int height, const mission::ScenarioSession* mission) {
  width_ = width;
  height_ = height;
  panel_->setPosition(std::max(0.0f, static_cast<float>(width) - kPanelWidth), 0);
@@ -382,7 +382,7 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
  return button;
 }
 
-void GameUi::rebuild(const mission::MissionSimulation* mission) {
+void GameUi::rebuild(const mission::ScenarioSession* mission) {
  panel_->removeAllWidgets();
  add_parent_ = panel_;
  style_panel();
@@ -531,7 +531,7 @@ void GameUi::build_chapter() {
  scroll->setContentSize({static_cast<float>(kPanelWidth), y});
 }
 
-void GameUi::set_screen(Screen screen, const mission::MissionSimulation* mission) {
+void GameUi::set_screen(Screen screen, const mission::ScenarioSession* mission) {
  if (screen == Screen::Debrief && mission) {
  const auto previous = previous_results_.find(mission->level().id);
  comparison_result_ = previous == previous_results_.end()
@@ -757,7 +757,7 @@ void GameUi::build_prediction() {
  launch->onClick([this] { actions_.launch = true; });
 }
 
-void GameUi::build_running(const mission::MissionSimulation* mission) {
+void GameUi::build_running(const mission::ScenarioSession* mission) {
  auto panel_renderer = panel_->getRenderer();
  panel_renderer->setBackgroundColor({0, 0, 0, 0});
  panel_renderer->setBorders({0});
@@ -873,7 +873,7 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
  }
 }
 
-void GameUi::build_debrief(const mission::MissionSimulation* mission) {
+void GameUi::build_debrief(const mission::ScenarioSession* mission) {
  if (!mission) {
   return;
  }
@@ -1031,7 +1031,7 @@ void GameUi::build_debrief(const mission::MissionSimulation* mission) {
  refresh_debrief(*mission);
 }
 
-void GameUi::refresh_debrief(const mission::MissionSimulation& mission) {
+void GameUi::refresh_debrief(const mission::ScenarioSession& mission) {
  if (!replay_slider_ || !replay_value_ || !replay_cause_ || !replay_evidence_) {
   return;
  }
@@ -1337,7 +1337,7 @@ void GameUi::update_garage_labels() {
  }
 }
 
-void GameUi::refresh_running(const mission::MissionSimulation& mission, bool paused, double speed) {
+void GameUi::refresh_running(const mission::ScenarioSession& mission, bool paused, double speed) {
  if (!running_metrics_)
   return;
  const auto& state = mission.snapshot();

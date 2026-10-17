@@ -36,7 +36,7 @@
     "default_build": {
       "tires": "tires.eco",
       "motor": "motor.standard",
-      "style": 1.0
+      "style": 0.8
     },
     "recommended_build": {
       "tires": "tires.grip",

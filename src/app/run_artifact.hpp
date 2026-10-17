@@ -8,7 +8,7 @@
 
 namespace mission {
 class ContentCatalog;
-class MissionSimulation;
+class ScenarioSession;
 }
 
 namespace app {
@@ -19,7 +19,7 @@ std::string run_content_digest(const std::filesystem::path& assets);
 
 nlohmann::json make_run_artifact(
  const mission::ContentCatalog& catalog,
- const mission::MissionSimulation& simulation,
+ const mission::ScenarioSession& simulation,
  const std::filesystem::path& assets,
  const nlohmann::json& result,
  std::string_view selection_label,

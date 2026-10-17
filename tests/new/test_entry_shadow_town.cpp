@@ -28,7 +28,7 @@ struct TownStream {
   long uncertain{0};
 };
 
-TownStream run_level(mission::MissionSimulation& mission) {
+TownStream run_level(mission::ScenarioSession& mission) {
   TownStream stream;
   mission.start();
   int steps = 0;
@@ -60,7 +60,7 @@ int main() {
   const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
   for (const auto* level : {"town_freight", "big_freight"}) {
     const auto build = catalog.presentation_for_level(level).recommended_build;
-    mission::MissionSimulation first(catalog, level, build);
+    mission::ScenarioSession first(catalog, level, build);
     const auto s1 = run_level(first);
     std::cerr << level << ": status=" << static_cast<int>(first.snapshot().status)
               << " assessed=" << s1.assessed << " clear=" << s1.clear << " occupied=" << s1.occupied
@@ -68,7 +68,7 @@ int main() {
               << " min_dyn_clear=" << first.result().min_dynamic_clearance_m
               << " ped_contacts=" << first.result().pedestrian_contacts << "\n";
     CHECK(s1.assessed > 0);
-    mission::MissionSimulation second(catalog, level, build);
+    mission::ScenarioSession second(catalog, level, build);
     const auto s2 = run_level(second);
     CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
           s2.uncertain == s1.uncertain);

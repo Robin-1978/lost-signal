@@ -63,8 +63,8 @@ int main() {
  catalog.campaign().levels.size() + catalog.campaign().playgrounds.size());
  for (const auto& id : catalog.campaign().levels)
   CHECK(catalog.levels().count(id) == 1);
- CHECK(catalog.components().size() == 18);
- CHECK(catalog.policies().size() == 3);
+ CHECK(catalog.components().size() == 19);
+ CHECK(catalog.policies().size() == 4);
  CHECK(catalog.robots().size() == 5);
  for (const auto& [id, map] : catalog.maps())
   CHECK(catalog.scenes().count(map.scene_3d) == 1);
@@ -203,10 +203,13 @@ int main() {
  CHECK(presentation.default_build.part("sensor").empty());
  CHECK(presentation.default_build.part("computer").empty());
  CHECK(std::abs(presentation.default_build.style - 0.5) < 1e-12);
- CHECK(catalog.policies().size() == 3);
+ CHECK(catalog.policies().size() == 4);
  CHECK(std::abs(catalog.policy("policy.careful").style_anchor - 0.0) < 1e-12);
  CHECK(std::abs(catalog.policy("policy.balanced").style_anchor - 0.5) < 1e-12);
- CHECK(std::abs(catalog.policy("policy.swift").style_anchor - 1.0) < 1e-12);
+ CHECK(std::abs(catalog.policy("policy.swift").style_anchor - 0.8) < 1e-12);
+ CHECK(std::abs(catalog.policy("policy.express").style_anchor - 1.0) < 1e-12);
+ CHECK(std::abs(catalog.component("motor.speed").behavior.at("max_wheel_speed_mps") - 3.6) < 1e-12);
+ CHECK(std::abs(catalog.component("motor.speed").behavior.at("stall_force_N") - 38.0) < 1e-12);
  const auto& final_presentation = catalog.presentation_for_level("lost_signal");
  CHECK(std::abs(final_presentation.recommended_build.style - 0.0) < 1e-12);
  CHECK(std::abs(final_presentation.default_build.style - 0.0) < 1e-12);

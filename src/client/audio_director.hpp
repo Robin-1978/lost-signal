@@ -8,7 +8,7 @@
 #include <raylib.h>
 
 namespace mission {
-class MissionSimulation;
+class ScenarioSession;
 }
 
 namespace client {
@@ -24,7 +24,7 @@ class AudioDirector {
  AudioDirector(const AudioDirector&) = delete;
  AudioDirector& operator=(const AudioDirector&) = delete;
 
- void update(const mission::MissionSimulation& mission);
+ void update(const mission::ScenarioSession& mission);
 
  private:
  struct Cue {
@@ -47,13 +47,13 @@ class AudioDirector {
 
  Cue load(const std::filesystem::path& path) const;
  void play(const std::string& cue_id) const;
- void reset(const mission::MissionSimulation& mission);
+ void reset(const mission::ScenarioSession& mission);
 
  bool ready_{false};
  std::unordered_map<std::string, Cue> cues_;
  std::unordered_map<std::string, EventBinding> event_bindings_;
  DecisionTransition decision_transition_;
- const mission::MissionSimulation* mission_{nullptr};
+ const mission::ScenarioSession* mission_{nullptr};
  std::size_t events_seen_{0};
  std::size_t decisions_seen_{0};
  double last_time_s_{-1.0};

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,19 +10,19 @@ namespace mission {
 
 // Read-only boundary presented to graphical consumers for one main-loop
 // frame. The current single-threaded client borrows immutable state and
-// authored content from MissionSimulation; it exposes no stepping, control,
+// authored content from ScenarioSession; it exposes no stepping, control,
 // replay-seek, or lifecycle operation. A concurrent client can later replace
 // this borrowed view with an owned snapshot without changing renderer input
 // semantics.
 class PresentationFrameView {
  public:
- explicit PresentationFrameView(const MissionSimulation& mission)
+ explicit PresentationFrameView(const ScenarioSession& mission)
  : mission_(mission), snapshot_(&mission.snapshot()) {}
 
  // Render between the previous and current fixed-step states. This owned
  // presentation sample is display-only: physics, sensors, autonomy, replay
  // and artifacts continue to consume the authoritative current snapshot.
- PresentationFrameView(const MissionSimulation& mission, const MissionSnapshot& previous,
+ PresentationFrameView(const ScenarioSession& mission, const MissionSnapshot& previous,
  double alpha)
  : mission_(mission), interpolated_(interpolate(previous, mission.snapshot(), alpha)),
  snapshot_(&*interpolated_) {}
@@ -139,7 +139,7 @@ class PresentationFrameView {
  return output;
  }
 
- const MissionSimulation& mission_;
+ const ScenarioSession& mission_;
  std::optional<MissionSnapshot> interpolated_;
  const MissionSnapshot* snapshot_{nullptr};
 };

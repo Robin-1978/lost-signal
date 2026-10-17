@@ -1,6 +1,6 @@
 #include "mission/content_catalog.hpp"
 #include "mission/campaign_progress.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "mission/systems/field_operator_system.hpp"
 
 #include <cmath>
@@ -76,14 +76,14 @@ int main() {
 
  // Story/garage missions reject field controls. Expedition mode accepts them
  // and turns each intention into a route through the existing planner.
- mission::MissionSimulation story(catalog, "boot", build);
+ mission::ScenarioSession story(catalog, "boot", build);
  CHECK(!story.set_field_operator_command(1.0, 0.0));
  CHECK(!story.issue_field_intent(mission::FieldIntentKind::Follow));
 
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command
  // must then produce a real route and autonomous Bullet motion.
- mission::MissionSimulation control_guard(catalog, "boot", build);
+ mission::ScenarioSession control_guard(catalog, "boot", build);
  control_guard.set_endless_mode(true);
  control_guard.start();
  control_guard.set_manual_command(1.0, 1.0);
@@ -98,7 +98,7 @@ int main() {
  control_guard.step();
  CHECK(control_guard.result().path_length_m > 0.05);
 
- mission::MissionSimulation expedition(catalog, "boot", build);
+ mission::ScenarioSession expedition(catalog, "boot", build);
  expedition.set_endless_mode(true);
  expedition.start();
  CHECK(expedition.set_field_operator_command(1.0, 0.0));
@@ -148,7 +148,7 @@ int main() {
  CHECK(loaded.field_expedition()->intent.kind == mission::FieldIntentKind::Return);
  CHECK(loaded.field_expedition()->intent.revision == expedition.field_intent().revision);
 
- mission::MissionSimulation resumed(catalog, "boot", build);
+ mission::ScenarioSession resumed(catalog, "boot", build);
  resumed.set_endless_mode(true);
  resumed.restore_field_expedition(*loaded.field_expedition());
  resumed.start();

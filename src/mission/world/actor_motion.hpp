@@ -17,7 +17,7 @@ struct Patrol {
 // Pedestrian wander: closed waypoint loop at constant speed, pure time
 // function like patrol_state (deterministic, reproducible). Pedestrians are
 // kinematic social agents: proximity eats clearance, contact never fails the
-// mission (that call lives in MissionSimulation, not here).
+// mission (that call lives in ScenarioSession, not here).
 struct Wander {
  std::vector<sim::Vec2> points;
  double speed{0.5};

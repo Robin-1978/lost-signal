@@ -1,7 +1,7 @@
 #include "campaign_progress.hpp"
 
 #include "content_catalog.hpp"
-#include "mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <nlohmann/json.hpp>
 

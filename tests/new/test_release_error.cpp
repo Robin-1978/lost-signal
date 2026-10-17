@@ -7,7 +7,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -57,11 +57,11 @@ int main() {
   const auto build = catalog.presentation_for_level(level_id).recommended_build;
   uint64_t base = 0;
   {
-   mission::MissionSimulation probe(catalog, level_id, build);
+   mission::ScenarioSession probe(catalog, level_id, build);
    base = probe.level().seed;
   }
   for (int s = 0; s < 3; ++s) {
-   mission::MissionSimulation mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
+   mission::ScenarioSession mission(catalog, level_id, build, base + static_cast<uint64_t>(s));
    mission.run_to_completion();
    for (const auto& episode : mission.shadow_episodes()) {
     ++episodes;

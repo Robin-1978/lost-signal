@@ -43,13 +43,13 @@
     "default_build": {
       "tires": "tires.eco",
       "sensor": "sensor.standard_lidar",
-      "style": 1.0,
+      "style": 0.8,
       "imu": "imu.basic"
     },
     "recommended_build": {
       "tires": "tires.eco",
       "sensor": "sensor.standard_lidar",
-      "style": 1.0,
+      "style": 0.8,
       "imu": "imu.precise"
     }
   },

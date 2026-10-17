@@ -130,7 +130,12 @@ twin. See [parameter profiles and sources](docs/parameter-sources.md).
 Tracked, Ackermann, swerve, and mecanum content still uses compact proxy plants and is excluded from RO-1 release
 evidence.
 
-Maps are 2.5D: terrain patches define height, two-axis grade, and roughness, while surface definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The current LiDAR is a mounted single-plane scanner that raycasts that world, so terrain, static geometry, and moving actors occlude and return measurements according to their 3D poses.
+Authored simulation terrain is 2.5D: terrain patches define height, two-axis grade, and roughness, while surface
+definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The
+deployable [Lost Signal Robot Map](docs/robot-map.md) is a separate layered contract. Its global authority may be a
+compact occupancy/elevation raster or only vector, topology, and semantic data; perception and map adapters derive
+bounded rolling maps for local planning. The current LiDAR is a mounted single-plane scanner that raycasts the 3D
+world, so terrain, static geometry, and moving actors occlude and return measurements according to their 3D poses.
 
 Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include minimum/maximum range, motion distortion, estimated-motion deskew, configurable first-return intensity, bias, white noise, quantization, latency metadata, and missing returns. The IMU configures noise density and bandwidth, then derives per-sample noise before applying startup bias and random walk. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 
@@ -145,7 +150,8 @@ assets/ Missions, maps, scenes, robots, components, locales, and schemas
 src/core/ Dependency-light shared primitives
 src/hw/ Chassis, motor/contact, sensor, and hardware-abstraction models
 src/autonomy/ Localization, mapping, perception, behavior, planning, and control
-src/mission/ Content loading, mission simulation, world actors, progression, and scoring
+src/mission/ Authored mission content, world actors, progression, and scoring
+src/scenario/ Simulation-only fixed-step ScenarioSession composition and replay
 src/physics/ Bullet adapter, physics ports, transforms, and regression backend
 src/runtime/ Versioned robot I/O contracts, provider registry, watchdog, and replay driver
 src/app/ Headless application entry point

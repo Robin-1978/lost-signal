@@ -5,7 +5,7 @@
 // geometry (ego forward ray vs threat velocity ray) is the caller's
 // translation, kept here so every replay test uses the same one.
 #include "autonomy/planning/validation/entry_shadow.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 
 #include <algorithm>
 #include <cmath>

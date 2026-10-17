@@ -183,6 +183,8 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     used_keys: set[str] = set()
     for source in sorted(_src_dir.glob("client/*.cpp")) + sorted(
         _src_dir.glob("mission/*.cpp")
+ ) + sorted(
+ _src_dir.glob("scenario/*.cpp")
     ):
         text = source.read_text(encoding="utf-8")
         for match in _re.finditer(r'\btrf?\("([^"]+)"', text):

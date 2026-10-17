@@ -1,4 +1,5 @@
 #include "mission/systems/goal_system.hpp"
+#include "mission/deployable_map_adapter.hpp"
 
 #include <iostream>
 
@@ -24,6 +25,9 @@ mission::GoalStep goal(std::string id, std::string marker, std::string action) {
 
 mission::MapDefinition map_with_markers() {
  mission::MapDefinition map;
+ map.id = "test-map";
+ map.size_m = {4.0, 2.0};
+ map.grid_resolution_m = 0.5;
  map.markers.emplace("a", mission::Pose{1.0, 0.0, 0.0});
  map.markers.emplace("b", mission::Pose{2.0, 0.0, 0.0});
  map.markers.emplace("home", mission::Pose{0.0, 0.0, 0.0});
@@ -34,17 +38,20 @@ mission::MapDefinition map_with_markers() {
 
 int main() {
  const auto map = map_with_markers();
+ sim::runtime::MapManager maps;
+ CHECK(maps.configure(mission::make_deployable_map_snapshot(map, "test")));
+ CHECK(maps.activate());
 
  mission::ObjectiveDefinition authored;
  authored.goal_order = "authored";
  authored.goals = {goal("first", "a", "pickup"), goal("finish", "home", "complete")};
  mission::GoalSystem ordered;
- ordered.reset(authored);
+ ordered.reset(authored, maps);
  CHECK(ordered.active_goal_index() && *ordered.active_goal_index() == 0);
- const auto first = ordered.update(authored, map, {1.0, 0.0}, 0.0, true, 0.02);
+ const auto first = ordered.update(authored, {1.0, 0.0}, 0.0, true, 0.02);
  CHECK(first && first->index == 0 && !first->mission_complete);
  CHECK(ordered.active_goal_index() && *ordered.active_goal_index() == 1);
- const auto finish = ordered.update(authored, map, {0.0, 0.0}, 0.0, true, 0.02);
+ const auto finish = ordered.update(authored, {0.0, 0.0}, 0.0, true, 0.02);
  CHECK(finish && finish->mission_complete);
  CHECK(!ordered.active_goal_index());
 
@@ -53,13 +60,13 @@ int main() {
  inspect.dwell_s = 0.10;
  stopped_task.goals = {inspect, goal("finish", "home", "complete")};
  mission::GoalSystem inspection;
- inspection.reset(stopped_task);
+ inspection.reset(stopped_task, maps);
  // Entering the radius at driving speed never consumes stopped dwell time.
  for (int sample = 0; sample < 10; ++sample)
- CHECK(!inspection.update(stopped_task, map, {1.0, 0.0}, 0.25, true, 0.02));
+ CHECK(!inspection.update(stopped_task, {1.0, 0.0}, 0.25, true, 0.02));
  for (int sample = 0; sample < 4; ++sample)
- CHECK(!inspection.update(stopped_task, map, {1.0, 0.0}, 0.0, true, 0.02));
- const auto inspected = inspection.update(stopped_task, map, {1.0, 0.0}, 0.0, true, 0.02);
+ CHECK(!inspection.update(stopped_task, {1.0, 0.0}, 0.0, true, 0.02));
+ const auto inspected = inspection.update(stopped_task, {1.0, 0.0}, 0.0, true, 0.02);
  CHECK(inspected && inspected->goal.action == "inspect");
 
  mission::ObjectiveDefinition autonomous;
@@ -70,24 +77,24 @@ int main() {
  goal("packing-pad", "home", "complete"),
  };
  mission::GoalSystem tasks;
- tasks.reset(autonomous);
+ tasks.reset(autonomous, maps);
  CHECK(!tasks.active_goal_index());
  CHECK(tasks.eligible_goals(autonomous) == std::vector<std::size_t>({0, 1}));
  CHECK(!tasks.activate(autonomous, 2));
  CHECK(tasks.activate(autonomous, 1));
- const auto second_first = tasks.update(autonomous, map, {2.0, 0.0}, 0.0, true, 0.02);
+ const auto second_first = tasks.update(autonomous, {2.0, 0.0}, 0.0, true, 0.02);
  CHECK(second_first && second_first->index == 1);
  CHECK(tasks.eligible_goals(autonomous) == std::vector<std::size_t>({0}));
  CHECK(tasks.activate(autonomous, 0));
- CHECK(tasks.update(autonomous, map, {1.0, 0.0}, 0.0, true, 0.02));
+ CHECK(tasks.update(autonomous, {1.0, 0.0}, 0.0, true, 0.02));
  CHECK(tasks.eligible_goals(autonomous) == std::vector<std::size_t>({2}));
  CHECK(tasks.completed_goal_ids(autonomous) ==
  std::vector<std::string>({"apple-b", "apple-a"}));
  CHECK(tasks.activate(autonomous, 2));
- CHECK(tasks.update(autonomous, map, {0.0, 0.0}, 0.0, true, 0.02)->mission_complete);
+ CHECK(tasks.update(autonomous, {0.0, 0.0}, 0.0, true, 0.02)->mission_complete);
 
  mission::GoalSystem curtailed;
- curtailed.reset(autonomous);
+ curtailed.reset(autonomous, maps);
  CHECK(curtailed.abandon(autonomous, 1));
  CHECK(curtailed.eligible_goals(autonomous) == std::vector<std::size_t>({0}));
  CHECK(curtailed.abandon(autonomous, 0));

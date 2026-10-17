@@ -5,7 +5,7 @@
 
 #include "mission/campaign_progress.hpp"
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "scenario/scenario_session.hpp"
 #include "physics/physics_world.hpp"
 
 #include <algorithm>
@@ -54,7 +54,7 @@ int main() {
  }
  // Default path bit-identical: empty request keeps presentation/companion.
  {
-  mission::MissionSimulation mission(catalog, "boot",
+  mission::ScenarioSession mission(catalog, "boot",
                                   catalog.presentation_for_level("boot").recommended_build);
   CHECK(mission.robot().drive_type == "differential");
   mission.run_to_completion();
@@ -64,7 +64,7 @@ int main() {
  {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
-  mission::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.ackermann"});
+  mission::ScenarioSession mission(catalog, "boot", build, 1u, {"ability.ackermann"});
   CHECK(mission.robot().drive_type == "ackermann");
   mission.run_to_completion();
   CHECK(mission.result().status == mission::MissionStatus::Succeeded);
@@ -75,7 +75,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro2";
   try {
-   mission::MissionSimulation mission(catalog, "boot", build, 1u);
+   mission::ScenarioSession mission(catalog, "boot", build, 1u);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("ability.ackermann"));
@@ -86,7 +86,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.ro3";
   try {
-   mission::MissionSimulation mission(catalog, "boot", build, 1u, {"ability.tracked"});
+   mission::ScenarioSession mission(catalog, "boot", build, 1u, {"ability.tracked"});
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("not offered"));
@@ -97,7 +97,7 @@ int main() {
   auto build = catalog.presentation_for_level("boot").recommended_build;
   build.chassis_robot = "robot.nope";
   try {
-   mission::MissionSimulation mission(catalog, "boot", build, 1u);
+   mission::ScenarioSession mission(catalog, "boot", build, 1u);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(true);
@@ -108,7 +108,7 @@ int main() {
   auto build = catalog.presentation_for_level("lost_signal").recommended_build;
   build.chassis_robot = "robot.ro1";
   try {
-   mission::MissionSimulation mission(catalog, "lost_signal", build);
+   mission::ScenarioSession mission(catalog, "lost_signal", build);
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("not offered"));
@@ -139,7 +139,7 @@ int main() {
  for (const auto* robot_id : {"robot.ro4", "robot.ro5"}) {
  auto build = catalog.presentation_for_level("boot").recommended_build;
  build.chassis_robot = robot_id;
- mission::MissionSimulation mission(catalog, "boot", build, 1u, {},
+ mission::ScenarioSession mission(catalog, "boot", build, 1u, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
  mission.run_to_completion();
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
