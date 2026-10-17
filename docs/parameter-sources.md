@@ -47,6 +47,25 @@ calibrated optical measurements. The other shipped LiDARs
 are documented teaching variants in the same class; their shorter range, scan rate, noise, and power trade-offs are
 not named commercial devices.
 
+## 16-line spinning LiDAR
+
+`sensor.sixteen_line_lidar` is a typical teaching profile informed by the public architecture of compact 16-channel
+rotating scanners. It deliberately avoids a product name because range, power, noise, latency, beam calibration,
+intensity, and packet behavior have not been identified together against one device. The authored vertical sequence
+is `[-15, 1, -13, 3, -11, 5, -9, 7, -7, 9, -5, 11, -3, 13, -1, 15]` degrees. Keeping this interleaved order in data
+tests the distinction between ring identity, geometric elevation, and firing time.
+
+The profile uses 360 azimuth samples, 16 rings, 10 Hz, 0.3--12 m range, 5 mm quantization, 3 cm constant range noise,
+8 W teaching power, and 40 ms deterministic delivery latency. The ground projection seeds below `-0.25 m` in
+`lidar_link`, accepts connected surfaces up to 30 degrees, and keeps non-ground returns between `-0.2 m` and `1.5 m`.
+Those projection numbers are algorithm configuration rather than optical specifications. They must be retuned or
+replaced by a 3D mapping/perception method for a differently mounted or taller robot.
+
+The profile shares the documented synthetic reflectivity law with the planar sensor. None of these values claim the
+range accuracy, channel calibration, return strength, networking, thermal behavior, or reliability of a physical
+scanner. An `identified` profile must store per-beam calibration and compare timestamp, range, return rate, intensity,
+and motion distortion against held-out recorded clouds.
+
 ## IMU
 
 The basic profile uses the public noise-density scale of the

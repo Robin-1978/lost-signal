@@ -886,7 +886,10 @@ void SceneRenderer3D::draw_lidar_point_cloud(
  {65, 220, 255, 210}, {77, 244, 190, 210},
  {255, 218, 92, 210}, {255, 116, 145, 210},
  };
- for (const auto& point : mission.snapshot().lidar_point_cloud) {
+ const auto& cloud = mission.snapshot().lidar_point_cloud;
+ if (!cloud)
+ return;
+ for (const auto& point : *cloud) {
  const Color base = ring_colors[point.ring % 4];
  const float intensity = static_cast<float>(
  std::clamp(0.25 + point.intensity * 0.75, 0.0, 1.0));
@@ -896,7 +899,7 @@ void SceneRenderer3D::draw_lidar_point_cloud(
  static_cast<unsigned char>(base.b * intensity),
  base.a,
  };
- DrawSphere(world(point.position_m), 0.018f, color);
+ DrawPoint3D(world(point.position_m), color);
  }
 }
 

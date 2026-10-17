@@ -63,7 +63,7 @@ int main() {
  catalog.campaign().levels.size() + catalog.campaign().playgrounds.size());
  for (const auto& id : catalog.campaign().levels)
   CHECK(catalog.levels().count(id) == 1);
- CHECK(catalog.components().size() == 19);
+ CHECK(catalog.components().size() == 20);
  CHECK(catalog.policies().size() == 4);
  CHECK(catalog.robots().size() == 5);
  for (const auto& [id, map] : catalog.maps())

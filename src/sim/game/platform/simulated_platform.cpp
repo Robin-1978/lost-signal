@@ -784,7 +784,8 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
 
 ::sim::LidarPointCloudRaycastTruth SimulatedPlatform::scan_lidar_point_cloud(
  int azimuth_samples, const std::vector<double>& vertical_angles_rad,
- double range_m, double timestamp_s, double scan_period_s,
+ double range_m, ::sim::Vec2 estimated_position,
+ double estimated_heading_rad, double timestamp_s, double scan_period_s,
  const ::sim::LidarReturnModel& return_model) const {
  if (!has_lidar_mount_)
  throw std::runtime_error("robot has no sensor mount for physics lidar");
@@ -793,6 +794,22 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  const auto world_from_lidar = frames_.lookup("map", lidar_frame_id_);
  if (!world_from_lidar)
  throw std::runtime_error("physics frame tree cannot resolve world to lidar_link");
+ const auto estimated_ground = terrain_.sample(estimated_position);
+ const double estimated_roll = std::atan(
+ ::sim::lateral_grade(estimated_ground, estimated_heading_rad));
+ const double estimated_pitch = -std::atan(
+ ::sim::longitudinal_grade(estimated_ground, estimated_heading_rad));
+ const ::sim::physics::RigidTransform world_from_estimated_base{
+ {estimated_position.x, estimated_position.y,
+ estimated_ground.height_m + body_center_height_m_},
+ ::sim::physics::quaternion_from_euler(
+ estimated_roll, estimated_pitch, estimated_heading_rad),
+ };
+ const auto base_from_lidar = frames_.lookup("base_link", lidar_frame_id_);
+ if (!base_from_lidar)
+ throw std::runtime_error("physics frame tree cannot resolve base_link to lidar_link");
+ const auto world_from_estimated_lidar = ::sim::physics::compose(
+ world_from_estimated_base, *base_from_lidar);
  constexpr auto static_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Terrain |
  ::sim::physics::collision_layer::StaticObstacle);
@@ -803,7 +820,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  vertical_angles_rad, range_m, combined_mask, timestamp_s,
  scan_period_s, body.linear_velocity_mps, body.angular_velocity_radps.z,
  return_model),
- raycast_lidar_point_cloud(*world_from_lidar, azimuth_samples,
+ raycast_lidar_point_cloud(world_from_estimated_lidar, azimuth_samples,
  vertical_angles_rad, range_m, static_mask, timestamp_s,
  scan_period_s, body.linear_velocity_mps, body.angular_velocity_radps.z,
  return_model),

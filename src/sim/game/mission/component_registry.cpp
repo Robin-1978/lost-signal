@@ -34,6 +34,15 @@ double optional_number(const ComponentDefinition& component, const char* name, d
  return value;
 }
 
+double required_finite_number(const ComponentDefinition& component, const std::string& name) {
+ const auto found = component.behavior.find(name);
+ if (found == component.behavior.end() || !std::isfinite(found->second)) {
+ throw ContentError("component '" + component.id +
+ "' is missing or has invalid behavior property '" + name + "'");
+ }
+ return found->second;
+}
+
 ComponentSpec resolve_tires(const ComponentDefinition& component) {
  return TireSpec{
    required_number(component, "slip_scale", 0.0),
@@ -61,16 +70,28 @@ ComponentSpec resolve_lidar(const ComponentDefinition& component) {
  const double actor_reflectivity = optional_number(component, "actor_reflectivity", 0.52, 0.0, 1.0);
  const double vertical_channels = optional_number(
  component, "vertical_channels", 1.0, 1.0, 128.0);
- const double vertical_min_deg = optional_number(
- component, "vertical_min_deg", 0.0, -90.0, 90.0);
- const double vertical_max_deg = optional_number(
- component, "vertical_max_deg", 0.0, -90.0, 90.0);
+ std::vector<double> vertical_angles_rad;
+ if (vertical_channels > 1.0) {
+ vertical_angles_rad.reserve(static_cast<std::size_t>(vertical_channels));
+ for (int ring = 0; ring < static_cast<int>(vertical_channels); ++ring) {
+ const std::string key = "vertical_angle_" + std::to_string(ring) + "_deg";
+ const double angle_deg = required_finite_number(component, key);
+ if (angle_deg < -90.0 || angle_deg > 90.0) {
+ throw ContentError("component '" + component.id +
+ "' has out-of-range behavior property '" + key + "'");
+ }
+ vertical_angles_rad.push_back(angle_deg * sim::kPi / 180.0);
+ }
+ }
  const double projection_min_height_m = optional_number(
  component, "projection_min_height_m", -0.20, -10.0, 10.0);
  const double projection_max_height_m = optional_number(
  component, "projection_max_height_m", 1.50, -10.0, 10.0);
+ const double projection_ground_seed_max_height_m = optional_number(
+ component, "projection_ground_seed_max_height_m", -0.25, -10.0, 10.0);
+ const double projection_ground_max_slope_deg = optional_number(
+ component, "projection_ground_max_slope_deg", 30.0, 0.0, 89.0);
  if (std::floor(vertical_channels) != vertical_channels ||
- vertical_min_deg > vertical_max_deg ||
  projection_min_height_m >= projection_max_height_m) {
  throw ContentError("component '" + component.id +
  "' has invalid multi-line lidar geometry");
@@ -90,10 +111,11 @@ ComponentSpec resolve_lidar(const ComponentDefinition& component) {
  required_number(component, "distance_attenuation_per_m2", 0.0),
    required_number(component, "power_w", 0.0),
  static_cast<int>(vertical_channels),
- vertical_min_deg * sim::kPi / 180.0,
- vertical_max_deg * sim::kPi / 180.0,
+ std::move(vertical_angles_rad),
  projection_min_height_m,
  projection_max_height_m,
+ projection_ground_seed_max_height_m,
+ projection_ground_max_slope_deg * sim::kPi / 180.0,
  };
 }
 

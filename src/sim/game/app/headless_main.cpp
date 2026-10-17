@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <iostream>
 #include <string>
@@ -18,7 +19,7 @@ namespace {
 void usage(const char* executable) {
  std::cout << "Usage: " << executable
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
- " [--chassis ROBOT_ID] [--task-policy TASK_POLICY_ID]"
+ " [--chassis ROBOT_ID] [--component SLOT=ID] [--task-policy TASK_POLICY_ID]"
  " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
  " [--artifact FILE] [--reproduce FILE]\n";
@@ -48,6 +49,7 @@ int main(int argc, char** argv) {
  double duration_s = 60.0;
   std::optional<uint64_t> seed_override;
  std::string requested_chassis;
+ std::map<std::string, std::string> component_overrides;
  std::string requested_task_policy;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
@@ -70,6 +72,13 @@ int main(int argc, char** argv) {
  explicit_run_configuration = true;
  } else if (argument == "--chassis" && index + 1 < argc) {
  requested_chassis = argv[++index];
+ explicit_run_configuration = true;
+ } else if (argument == "--component" && index + 1 < argc) {
+ const std::string override = argv[++index];
+ const auto separator = override.find('=');
+ if (separator == std::string::npos || separator == 0 || separator + 1 == override.size())
+ throw std::runtime_error("--component requires SLOT=ID");
+ component_overrides[override.substr(0, separator)] = override.substr(separator + 1);
  explicit_run_configuration = true;
  } else if (argument == "--task-policy" && index + 1 < argc) {
  requested_task_policy = argv[++index];
@@ -150,6 +159,8 @@ int main(int argc, char** argv) {
  build = recommended ? presentation.recommended_build : presentation.default_build;
  if (!requested_chassis.empty())
  build.chassis_robot = requested_chassis;
+ for (const auto& [slot, component_id] : component_overrides)
+ build.parts[slot] = component_id;
  if (!requested_task_policy.empty())
  build.task_policy = requested_task_policy;
  }

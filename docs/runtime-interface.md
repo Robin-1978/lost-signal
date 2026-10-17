@@ -28,6 +28,9 @@ LSRI uses the following normative rules:
 - All timestamps use one monotonic clock. Command timestamps are signed 64-bit nanoseconds. Observation packets use SI seconds; a transport converts them once at its provider boundary and must not substitute wall-clock time.
 - Every command has a schema version, sample time, receive time, sequence, frame, source, and expiry time.
 - Every measurement has a schema version, sample time, sequence, frame, source, and declared latency.
+- `stamp_s` is acquisition time. A provider may publish the packet only when its delivery clock reaches
+ `stamp_s + latency_s`; fixed-step simulation rounds that availability up to the next simulation tick without
+ changing the stamp. Consumers must never replace acquisition time with arrival time.
 - Sequence numbers are strictly increasing per source. A channel rejects stale or repeated input.
 - Frames follow the project's `map → odom → base_footprint → base_link → sensor/wheel link` convention.
 - A platform declares its chassis command space, accepted command level, actuator channels, modes, and physical limits before activation.
@@ -63,6 +66,13 @@ The observation frame carries one or more transport-neutral measurements:
 | Absolute pose | `map` | position, heading, uncertainty |
 
 LiDAR array sizes, ranges, headers, timestamps, sources, and schema versions are validated before delivery. Simulation publishes `sim.lidar`, `sim.encoder`, `sim.imu`, and `sim.localization` sources. Hardware drivers must use stable names of their own.
+
+Schema 3 represents one multi-line rotation as one cloud. `ring` identifies the calibrated beam, while
+`time_offset_s` locates each firing in `[-scan_period_s, 0]` relative to the acquisition-end stamp. Ring order is a
+device firing order and is not assumed to be sorted by elevation. Missing rays are absent returns; a provider does
+not invent maximum-range points. The planar obstacle view derived from a cloud remains a separate measurement in
+the same observation frame and acquisition timestamp, so existing 2D autonomy can consume an explicit projection
+without losing the raw 3D evidence.
 
 World truth is not an LSRI observation. A simulator may use truth internally to generate sensor packets, but autonomy receives only the resulting measurements.
 

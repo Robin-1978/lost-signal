@@ -57,10 +57,15 @@ void apply_point_cloud_noise(LidarPointCloud& cloud, double min_range_m,
 
 } // namespace
 
-Scan project_point_cloud_to_planar(const LidarPointCloud& cloud,
- double min_height_m, double max_height_m) {
+Scan project_point_cloud_to_planar(
+ const LidarPointCloud& cloud, const PointCloudProjectionConfig& config) {
  if (cloud.azimuth_samples == 0 || cloud.rings == 0 ||
- !(cloud.max_range_m > 0.0) || min_height_m >= max_height_m) {
+ !(cloud.max_range_m > 0.0) ||
+ config.min_obstacle_height_m >= config.max_obstacle_height_m ||
+ !std::isfinite(config.ground_seed_max_height_m) ||
+ !std::isfinite(config.ground_max_slope_rad) ||
+ config.ground_max_slope_rad < 0.0 ||
+ config.ground_max_slope_rad >= 0.5 * kPi) {
  throw std::invalid_argument("invalid point-cloud projection configuration");
  }
  Scan scan;
@@ -74,8 +79,59 @@ Scan project_point_cloud_to_planar(const LidarPointCloud& cloud,
  scan.ranges.assign(cloud.azimuth_samples, cloud.max_range_m);
  scan.hit.assign(cloud.azimuth_samples, 0);
  scan.intensities.assign(cloud.azimuth_samples, 0.0);
- for (const auto& point : cloud.points) {
- if (point.z_m < min_height_m || point.z_m > max_height_m)
+ std::vector<std::vector<std::size_t>> returns_by_azimuth(cloud.azimuth_samples);
+ for (std::size_t index = 0; index < cloud.points.size(); ++index) {
+ const auto& point = cloud.points[index];
+ double angle = std::atan2(point.y_m, point.x_m);
+ if (angle < 0.0)
+ angle += 2.0 * kPi;
+ const auto azimuth = static_cast<std::size_t>(std::llround(
+ angle / (2.0 * kPi) * static_cast<double>(cloud.azimuth_samples))) %
+ cloud.azimuth_samples;
+ returns_by_azimuth[azimuth].push_back(index);
+ }
+
+ std::vector<char> ground(cloud.points.size(), 0);
+ for (auto& azimuth_returns : returns_by_azimuth) {
+ std::sort(azimuth_returns.begin(), azimuth_returns.end(),
+ [&](std::size_t left, std::size_t right) {
+ const auto elevation = [&](std::size_t index) {
+ const auto& point = cloud.points[index];
+ return std::atan2(point.z_m, std::hypot(point.x_m, point.y_m));
+ };
+ const double left_elevation = elevation(left);
+ const double right_elevation = elevation(right);
+ if (left_elevation != right_elevation)
+ return left_elevation < right_elevation;
+ return cloud.points[left].ring < cloud.points[right].ring;
+ });
+ if (azimuth_returns.empty())
+ continue;
+ const auto first = azimuth_returns.front();
+ if (cloud.points[first].z_m <= config.ground_seed_max_height_m)
+ ground[first] = 1;
+ for (std::size_t offset = 1; offset < azimuth_returns.size(); ++offset) {
+ const auto previous = azimuth_returns[offset - 1];
+ const auto current = azimuth_returns[offset];
+ if (!ground[previous])
+ continue;
+ const double previous_range = std::hypot(
+ cloud.points[previous].x_m, cloud.points[previous].y_m);
+ const double current_range = std::hypot(
+ cloud.points[current].x_m, cloud.points[current].y_m);
+ const double horizontal_delta = current_range - previous_range;
+ const double vertical_delta = cloud.points[current].z_m - cloud.points[previous].z_m;
+ const double surface_slope = std::abs(std::atan2(
+ vertical_delta, std::abs(horizontal_delta)));
+ if (surface_slope <= config.ground_max_slope_rad)
+ ground[current] = 1;
+ }
+ }
+
+ for (std::size_t index = 0; index < cloud.points.size(); ++index) {
+ const auto& point = cloud.points[index];
+ if (ground[index] || point.z_m < config.min_obstacle_height_m ||
+ point.z_m > config.max_obstacle_height_m)
  continue;
  const double planar_range = std::hypot(point.x_m, point.y_m);
  if (!(planar_range > 0.0) || planar_range > cloud.max_range_m)
@@ -144,11 +200,15 @@ ObservationFrame SensorSystem::capture_lidar_point_cloud(
  auto static_cloud = raycast_truth.static_environment;
  static_cloud.header = frame.lidar_point_cloud->header;
  frame.lidar = project_point_cloud_to_planar(
- *frame.lidar_point_cloud, config.projection_min_height_m,
- config.projection_max_height_m);
+ *frame.lidar_point_cloud,
+ {config.projection_min_height_m, config.projection_max_height_m,
+ config.projection_ground_seed_max_height_m,
+ config.projection_ground_max_slope_rad});
  frame.lidar_static_reference = project_point_cloud_to_planar(
- static_cloud, config.projection_min_height_m,
- config.projection_max_height_m);
+ static_cloud,
+ {config.projection_min_height_m, config.projection_max_height_m,
+ config.projection_ground_seed_max_height_m,
+ config.projection_ground_max_slope_rad});
  const MeasurementHeader planar_header{
  time_s, lidar_sequence_++, config.frame_id, config.latency_s,
  kMeasurementSchemaVersion, "sim.lidar"};

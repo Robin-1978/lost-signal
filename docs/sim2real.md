@@ -69,13 +69,12 @@ The largest current gaps are measurable:
 
 The simulated contact model is intentionally compact. Surface friction and traction create meaningful educational contrasts, but they are not identified Pacejka, terramechanics, or track-soil models. Weather effects also need real measurements before engineering use.
 
-The current LiDAR is a mounted single-plane scan produced by raycasting the 3D physics collision world. It sees
-terrain, static bodies, and dynamic actors; represents scan timing; and produces a synthetic intensity from the
-surface normal, distance, and a coarse terrain/static/actor reflectivity class. That is useful for geometry,
-occlusion, motion distortion, and observation-pipeline tests. It is not a calibrated return model, does not use
-per-material optical properties, and does not produce a multi-line 3D point cloud. A future multi-beam provider can
-reuse the same physics raycast and LSRI timestamp/frame contract when a concrete learning or hardware question
-requires it.
+The current LiDAR providers include a mounted single-plane scan and one 16-line spinning point cloud produced by
+raycasting the 3D physics collision world. They see terrain, static bodies, and dynamic actors; represent per-ray or
+per-point timing; and produce synthetic intensity from surface normal, distance, and a coarse
+terrain/static/actor reflectivity class. This supports geometry, occlusion, motion distortion, projection, and
+observation-pipeline tests. It is not a calibrated return model and does not use wavelength- and material-specific
+optical data, measured packets, jitter, or multi-return behavior.
 
 The staged sensor profiles, multi-line and solid-state extension boundary, Ackermann control cascade, and separation
 of physical motor types from actuator command modes are specified in

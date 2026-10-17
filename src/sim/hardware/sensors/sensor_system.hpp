@@ -24,10 +24,19 @@ struct LidarConfig {
  std::vector<double> vertical_angles_rad;
  double projection_min_height_m{-0.20};
  double projection_max_height_m{1.50};
+ double projection_ground_seed_max_height_m{-0.25};
+ double projection_ground_max_slope_rad{30.0 * kPi / 180.0};
 };
 
-Scan project_point_cloud_to_planar(const LidarPointCloud& cloud,
- double min_height_m, double max_height_m);
+struct PointCloudProjectionConfig {
+ double min_obstacle_height_m{-0.20};
+ double max_obstacle_height_m{1.50};
+ double ground_seed_max_height_m{-0.25};
+ double ground_max_slope_rad{30.0 * kPi / 180.0};
+};
+
+Scan project_point_cloud_to_planar(
+ const LidarPointCloud& cloud, const PointCloudProjectionConfig& config);
 
 // Ideal rigid-body input to a simulated IMU. Values are already evaluated at
 // the calibrated imu_link origin and expressed in imu_link; the device model

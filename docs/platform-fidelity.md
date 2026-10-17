@@ -151,7 +151,7 @@ identified rubber properties. Wheel-component and ground-material data will own 
 `SimulatedPlatform` resolves one effective pair for the physics backend. Bullet-specific ERP, CFM, or raw rolling
 constraint coefficients do not cross that content boundary.
 
-### Single-plane LiDAR
+### LiDAR providers
 
 The production LiDAR is already more than a 2D grid query. A named `lidar_link` emits each ray into the Bullet 3D
 collision world. Terrain, static geometry, and moving actors participate in occlusion. Each ray receives its own
@@ -181,11 +181,35 @@ optional future identified planar-LiDAR profile should add measured evidence in 
 Every stochastic term remains seeded in deterministic mode. Datasheet values provide initial bounds; recorded scans
 against known targets provide identified values.
 
-The transport-neutral sensor contract already reserves
-`PlanarSpinning`, `MultiBeamSpinning`, and `SolidState` patterns. Its point return contains XYZ, intensity,
-per-point time offset, ring, and return index. A future multi-line scanner adds calibrated vertical beam angles and
-ring timing. A future solid-state scanner supplies its own non-rotating pattern and exposure schedule. Both reuse the
-same physics raycast, frame tree, return model, and LSRI observation rules.
+The 16-line `MultiBeamSpinning` provider uses one rotating three-dimensional scan rather than sixteen unrelated
+planar scans. Its sixteen authored beam angles preserve an interleaved firing order. Every return contains sensor
+frame XYZ, normalized intensity, ring, return index, and a firing offset relative to the scan-end timestamp. Bullet
+raycasts terrain, static geometry, and moving actors at the firing pose, so occlusion and deterministic motion
+distortion are present. The static-reference cloud is generated at the estimated sensor pose rather than the truth
+pose.
+
+The raw cloud crosses LSRI schema 3. A range-image projection groups returns by azimuth, orders them by measured
+elevation, follows adjacent returns whose surface slope is inside the configured ground limit, and excludes that
+ground chain before selecting the nearest obstacle return. The authored seed height, maximum ground slope, and
+obstacle height interval are explicit teaching-profile values. This compact classifier supports the existing 2D
+local obstacle layer; it is not a replacement for a full 3D segmentation or elevation-map pipeline.
+
+The virtual device applies range limits, seeded bias/noise/quantization/dropout, and a deterministic 40 ms delivery
+latency after raycasting. Acquisition timestamps remain unchanged while the fixed-step provider releases a scan on
+the first tick at or after its availability time. Presentation keeps at most 1200 colored points per scan and replay
+frames share the immutable display cloud; autonomy still receives every simulated return.
+
+The profile is a class-level `typical` teaching configuration, not an identified VLP-16. It has one first return,
+coarse reflectivity classes, no beam divergence, no weather attenuation, no packet loss or jitter, and no calibrated
+material intensity. A future solid-state scanner supplies its own non-rotating pattern and exposure schedule while
+reusing the frame, timing, return, and LSRI rules.
+
+Run `python3 tools/benchmark_lidar.py` after a Release build to compare the planar and 16-line providers in the same
+20-second fixed-step Bullet scenario. On the development host used for the initial gate, four repeated runs measured
+about 1.50--1.59 seconds for the 800-ray planar profile and 4.05--4.11 seconds for the 5760-ray profile, or about
+4.9 times real time for the 16-line run. Sharing replay clouds reduced its 20-second peak resident set from roughly
+47 MB to 29 MB. These are regression reference measurements, not portable CI thresholds; contributors should report
+hardware, build type, duration, median, real-time factor, and peak memory when changing the raycast path.
 
 ### Ackermann drive
 
@@ -274,7 +298,8 @@ is not a release claim until the same autonomy build completes those hardware ga
 3. Preserve the other chassis as non-reference teaching profiles until each receives its own articulated gate.
 4. Add the actuator capability record when a native driver, HIL drive, or second actuator backend can exercise it.
 5. Allow an optional future `identified` profile from a low-speed robot and planar LiDAR without blocking release.
-6. Add multi-line or solid-state providers only for a concrete learning scenario or target device.
+6. Extend the implemented 16-line provider or add a solid-state provider only for a concrete learning scenario or
+ target device.
 
 The rigid-body acceptance fixture already covers a 30 mm curb and drop with partial support loss, pitch response,
 IMU impact, hull clearance, and recovery to three-point support. Add a separate negative-height groove fixture to

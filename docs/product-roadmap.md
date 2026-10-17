@@ -432,6 +432,12 @@ retaining an analytic yaw-torque shortcut. Both features stay data-authored and 
 as RO-1. After their focused gates pass, existing missions are re-run; mission success itself is not the physical
 oracle.
 
+The 16-line implementation is now functionally complete: schema 3 point clouds, per-beam authored calibration,
+three-dimensional firing-time raycasts, estimated-pose static reference, deterministic delayed delivery,
+ground/non-ground projection, bounded 3D presentation, shared replay storage, focused geometry tests, and a repeatable
+headless performance benchmark are implemented. A dedicated authored learning encounter and broader campaign
+playtest remain content work; they do not block starting the independent RO-2 physical gate.
+
 ## Next implementation order
 
 The RO-1 rigid-body, device, and autonomy reference baseline remains the foundation. The next work does not add

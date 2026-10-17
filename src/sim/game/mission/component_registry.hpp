@@ -40,10 +40,11 @@ struct LidarSpec {
  double distance_attenuation_per_m2{0.0};
  double power_w{0.0};
  int vertical_channels{1};
- double vertical_min_rad{0.0};
- double vertical_max_rad{0.0};
+ std::vector<double> vertical_angles_rad;
  double projection_min_height_m{-0.20};
  double projection_max_height_m{1.50};
+ double projection_ground_seed_max_height_m{-0.25};
+ double projection_ground_max_slope_rad{30.0 * sim::kPi / 180.0};
 };
 
 struct ComputeSpec {

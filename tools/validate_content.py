@@ -742,6 +742,42 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"components: sensor '{name}' minimum range must be below maximum range"
                 )
+            channels = behavior.get("vertical_channels", 1)
+            if not isinstance(channels, (int, float)) or int(channels) != channels or not 1 <= channels <= 128:
+                raise ContentError(
+                    f"components: sensor '{name}' vertical_channels must be an integer within [1, 128]"
+                )
+            if channels > 1:
+                angles = []
+                for ring in range(int(channels)):
+                    key = f"vertical_angle_{ring}_deg"
+                    if key not in behavior or not -90.0 <= behavior[key] <= 90.0:
+                        raise ContentError(
+                            f"components: sensor '{name}' requires {key} within [-90, 90]"
+                        )
+                    angles.append(behavior[key])
+                if len(set(angles)) != len(angles):
+                    raise ContentError(
+                        f"components: sensor '{name}' vertical beam angles must be unique"
+                    )
+                for key in (
+                    "projection_min_height_m",
+                    "projection_max_height_m",
+                    "projection_ground_seed_max_height_m",
+                    "projection_ground_max_slope_deg",
+                ):
+                    if key not in behavior:
+                        raise ContentError(
+                            f"components: sensor '{name}' misses multi-line behavior '{key}'"
+                        )
+                if behavior["projection_min_height_m"] >= behavior["projection_max_height_m"]:
+                    raise ContentError(
+                        f"components: sensor '{name}' projection height interval is empty"
+                    )
+                if not 0.0 <= behavior["projection_ground_max_slope_deg"] < 90.0:
+                    raise ContentError(
+                        f"components: sensor '{name}' ground slope limit must be within [0, 90)"
+                    )
             for key in (
                 "terrain_reflectivity",
                 "obstacle_reflectivity",

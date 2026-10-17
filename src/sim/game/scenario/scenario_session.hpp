@@ -30,6 +30,7 @@
 #include "robot/autonomy/localization/estimation_system.hpp"
 #include "robot/autonomy/mapping/terrain.hpp"
 #include "sim/hardware/sensors/sensor_system.hpp"
+#include "sim/hardware/sensors/deterministic_delivery_queue.hpp"
 #include "sim/hardware/physics/frame_transform.hpp"
 #include "robot/autonomy/mapping/grid_map.hpp"
 #include "robot/autonomy/localization/slip_detect.hpp"
@@ -270,6 +271,8 @@ struct LidarPointSnapshot {
  std::uint16_t ring{0};
 };
 
+using LidarPointCloudSnapshot = std::vector<LidarPointSnapshot>;
+
 struct MissionSnapshot {
  double time_s{0.0};
  sim::DiffState robot;
@@ -278,7 +281,10 @@ struct MissionSnapshot {
  std::vector<ActorSnapshot> actors;
  std::vector<DynamicObstacleSnapshot> dynamic_obstacles;
  std::vector<sim::Vec2> lidar_hits;
- std::vector<LidarPointSnapshot> lidar_point_cloud;
+ // One immutable cloud is shared by all replay frames until the next scan.
+ // This preserves seekable evidence without copying thousands of points at
+ // the 25 Hz replay cadence.
+ std::shared_ptr<const LidarPointCloudSnapshot> lidar_point_cloud;
  ControlSnapshot control;
  bool static_obstacle_detected{false};
  bool dynamic_object_detected{false};
@@ -509,6 +515,10 @@ class ScenarioSession {
  void finish_route_failure();
  void update_actors();
  void scan_environment();
+ void deliver_ready_lidar_observations();
+ void consume_lidar_observation(const sim::ObservationFrame& observation,
+ const sim::LidarConfig& lidar_config,
+ const std::optional<sim::physics::RigidTransform>& world_from_sensor_at_capture);
  void refresh_dynamic_obstacles();
  void decide_control();
  void apply_motion();
@@ -562,6 +572,12 @@ class ScenarioSession {
 
  std::unique_ptr<sim::GridMap> truth_map_;
  std::unique_ptr<sim::SensorSystem> sensor_system_;
+ struct PendingLidarObservation {
+ sim::ObservationFrame observation;
+ sim::LidarConfig config;
+ std::optional<sim::physics::RigidTransform> world_from_sensor_at_capture;
+ };
+ sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
  std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<CollisionMonitor> collision_monitor_;
