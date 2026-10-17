@@ -10,6 +10,7 @@
 #include <limits>
 #include <set>
 #include <sstream>
+#include <unordered_set>
 
 namespace mission {
 namespace {
@@ -1343,6 +1344,13 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   presentation.running_heading = running.at("heading").get<std::string>();
   presentation.normal_line = running.at("normal_line").get<std::string>();
   presentation.detected_line = running.at("detected_line").get<std::string>();
+ presentation.evidence_fields = running.value("evidence_fields", std::vector<std::string>{});
+ for (const auto& field : presentation.evidence_fields) {
+ static const std::unordered_set<std::string> allowed{
+ "speed", "braking", "steering", "turn_radius", "grade", "slip", "lidar"};
+ if (!allowed.count(field))
+ throw ContentError(path.string() + ": unknown running evidence field '" + field + "'");
+ }
   presentation.goal_lines = running.value("goal_lines", std::vector<std::string>{});
   presentation.success_title = debrief.at("success_title").get<std::string>();
   presentation.success_summary = debrief.at("success_summary").get<std::string>();

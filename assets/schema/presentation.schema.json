@@ -160,6 +160,21 @@
         "detected_line": {
           "$ref": "#/$defs/text"
         },
+        "evidence_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "speed",
+              "braking",
+              "steering",
+              "turn_radius",
+              "grade",
+              "slip",
+              "lidar"
+            ]
+          }
+        },
         "goal_lines": {
           "type": "array",
           "items": {

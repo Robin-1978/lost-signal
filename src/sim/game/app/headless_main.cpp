@@ -247,6 +247,13 @@ int main(int argc, char** argv) {
  {"max_height_m", result.max_shadow_height_error_m},
  }},
      {"slip_events", result.slip_events},
+ {"braking",
+ {
+ {"valid", result.braking_measurement_valid},
+ {"start_speed_mps", result.last_stop_start_speed_mps},
+ {"stop_time_s", result.last_stop_time_s},
+ {"stop_distance_m", result.last_stop_distance_m},
+ }},
      {"astar_expanded", result.astar_expanded},
      {"local_decisions", result.local_decisions},
      {"robot",

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -943,6 +944,14 @@ void GameUi::build_debrief(const mission::ScenarioSession* mission) {
               ? catalog_.trf("debrief.metrics_odom", {format_number(result.max_odometry_error_m, 2)})
               : catalog_.trf("debrief.metrics_clear", {format_number(result.scored_clearance_m, 2)});
  placed_text(metrics, 16, {182, 190, 186}, false, 14);
+ if (result.braking_measurement_valid &&
+ std::find(presentation_->evidence_fields.begin(), presentation_->evidence_fields.end(), "braking") !=
+ presentation_->evidence_fields.end()) {
+ placed_text(catalog_.trf("debrief.proving_metrics",
+ {format_number(result.last_stop_start_speed_mps, 2),
+ format_number(result.last_stop_time_s, 2), format_number(result.last_stop_distance_m, 2)}),
+ 14, {143, 201, 187}, true, 12);
+ }
 
  if (mission->level().objective.goal_order == "autonomous") {
  const auto labels = [&](const std::vector<std::string>& ids) {
@@ -1444,6 +1453,74 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  {std::to_string(state.goals_reached),
  std::to_string(mission.level().objective.goals.size()),
  active ? active->label : mission.level().objective.goal_label});
+ }
+ if (!presentation_->evidence_fields.empty()) {
+ const auto has_evidence = [&](const std::string& id) {
+ return std::find(presentation_->evidence_fields.begin(), presentation_->evidence_fields.end(), id) !=
+ presentation_->evidence_fields.end();
+ };
+ explanation += "\n\n" + catalog_.tr("running.evidence_title");
+ const auto add_evidence = [&](const std::string& line) { explanation += "\n" + line; };
+ if (has_evidence("speed")) {
+ add_evidence(catalog_.trf("running.evidence_speed",
+ {format_number(state.control.target_v_mps, 2),
+ format_number(state.control.measured_forward_mps, 2), format_number(state.robot.v, 2)}));
+ }
+ if (has_evidence("braking")) {
+ if (state.braking.active) {
+ add_evidence(catalog_.trf("running.evidence_braking_active",
+ {format_number(state.braking.start_speed_mps, 2), format_number(state.braking.elapsed_s, 2),
+ format_number(state.braking.distance_m, 2)}));
+ } else if (state.braking.valid) {
+ add_evidence(catalog_.trf("running.evidence_braking_last",
+ {format_number(state.braking.start_speed_mps, 2), format_number(state.braking.elapsed_s, 2),
+ format_number(state.braking.distance_m, 2)}));
+ } else {
+ add_evidence(catalog_.tr("running.evidence_braking_idle"));
+ }
+ }
+ if (has_evidence("steering")) {
+ if (state.control.wheel_steer_count >= 2) {
+ const double left_deg = state.control.wheel_steer_rad[0] * kRadToDeg;
+ const double right_deg = state.control.wheel_steer_rad[1] * kRadToDeg;
+ add_evidence(catalog_.trf("running.evidence_steering",
+ {format_number(state.control.steer_target_rad * kRadToDeg, 1),
+ format_number(state.control.steer_angle_rad * kRadToDeg, 1), format_number(left_deg, 1),
+ format_number(right_deg, 1), format_number(std::abs(left_deg - right_deg), 1)}));
+ } else {
+ add_evidence(catalog_.tr("running.evidence_steering_na"));
+ }
+ }
+ if (has_evidence("turn_radius")) {
+ const double measured_radius = std::abs(state.control.measured_yaw_rate_radps) > 0.02
+ ? std::abs(state.control.measured_forward_mps / state.control.measured_yaw_rate_radps)
+ : std::numeric_limits<double>::quiet_NaN();
+ add_evidence(catalog_.trf("running.evidence_turn_radius",
+ {evidence_value(measured_radius, "", 2),
+ evidence_value(mission.chassis_caps().geometry.minimum_turn_radius_m, "", 2)}));
+ }
+ if (has_evidence("grade")) {
+ add_evidence(catalog_.trf("running.evidence_grade",
+ {format_number(grade_degrees, 1), format_number(cross_degrees, 1),
+ format_number(state.rollover_risk * 100.0, 0)}));
+ }
+ if (has_evidence("slip")) {
+ add_evidence(catalog_.trf("running.evidence_slip",
+ {catalog_.tr(state.traction_slip_observed ? "running.evidence_yes" : "running.evidence_no"),
+ format_number(state.max_drive_slip_ratio, 2)}));
+ }
+ if (has_evidence("lidar") && !mission.build().part("sensor").empty()) {
+ const auto& sensor = catalog_.component(mission.build().part("sensor"));
+ const auto channels = sensor.behavior.find("vertical_channels");
+ const int channel_count = channels == sensor.behavior.end()
+ ? 1
+ : static_cast<int>(std::lround(channels->second));
+ const std::size_t returns = state.lidar_point_cloud
+ ? state.lidar_point_cloud->size()
+ : state.lidar_hits.size();
+ add_evidence(catalog_.trf("running.evidence_lidar",
+ {sensor.title, std::to_string(channel_count), std::to_string(returns)}));
+ }
  }
  running_metrics_->setText(explanation);
  if (running_explanation_card_) {

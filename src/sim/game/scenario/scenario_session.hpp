@@ -11,6 +11,7 @@
 #include "sim/game/mission/systems/field_dispatch_system.hpp"
 #include "sim/game/mission/systems/field_operator_system.hpp"
 #include "sim/game/mission/systems/goal_system.hpp"
+#include "sim/game/mission/systems/vehicle_measurement_system.hpp"
 #include "robot/autonomy/planning/global/global_planner.hpp"
 #include "sim/game/mission/systems/world_activity_system.hpp"
 #include "sim/game/platform/simulated_platform.hpp"
@@ -40,6 +41,7 @@
 #include "robot/runtime/runtime_channel.hpp"
 #include "robot/runtime/map_provider.hpp"
 
+#include <array>
 #include <map>
 #include <cstdint>
 #include <limits>
@@ -202,6 +204,10 @@ struct ControlSnapshot {
  double heading_pid_d{0.0};
  double target_v_mps{0.0};
  double target_w_radps{0.0};
+ // Platform feedback copied without presentation-side inference. The UI
+ // labels body truth separately from these actuator/kinematic observations.
+ double measured_forward_mps{0.0};
+ double measured_yaw_rate_radps{0.0};
  double left_target_mps{0.0};
  double right_target_mps{0.0};
  double left_measured_mps{0.0};
@@ -224,6 +230,8 @@ struct ControlSnapshot {
  double steer_angle_rad{0.0};
  double steer_pwm{0.0};
  bool steering_servo_present{false};
+ std::array<double, 4> wheel_steer_rad{};
+ std::size_t wheel_steer_count{0};
  // Generic actuator transforms already bound to robot mount ids. Renderers
  // never branch on chassis type or infer steering from body motion.
  std::vector<MountActuationSnapshot> mount_actuations;
@@ -325,6 +333,7 @@ struct MissionSnapshot {
  sim::StrategyDecision strategy;
  std::string strategy_policy{"route-baseline"};
  DecisionEvidence decision;
+ BrakingMeasurement braking;
 };
 
 struct MissionResult {
@@ -381,6 +390,10 @@ struct MissionResult {
  double final_payload_cog_height_m{0.0};
  double peak_wetness{0.0};
  double min_visibility{1.0};
+ bool braking_measurement_valid{false};
+ double last_stop_start_speed_mps{0.0};
+ double last_stop_time_s{0.0};
+ double last_stop_distance_m{0.0};
 };
 
 // Named composition options keep extension points discoverable and avoid a
@@ -651,6 +664,7 @@ class ScenarioSession {
  MissionResult result_;
  std::vector<MissionEvent> events_;
  DecisionEvidenceSystem decision_evidence_system_;
+ VehicleMeasurementSystem vehicle_measurement_system_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  // Shadow slip instrument (tracked only, see apply_motion): detector state

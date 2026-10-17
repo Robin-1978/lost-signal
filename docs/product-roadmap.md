@@ -54,8 +54,9 @@ it does not name apples, orchard crates, or harvest strategies.
 The numbered stages later in this document describe the completed alpha baseline. All new work follows the milestone
 sequence here so that completed release work and future work cannot be confused.
 
-The immediate sequence is **instrumented proving ground → RO-2 service braking → 2.5D editor output → refined play
-→ visual and audio polish → architecture validation and the experiment framework**. The RO-1 and RO-2 typical
+The immediate sequence is **instrumented proving ground → RO-2 service braking → 2.5D editor output → RO-3/4/5
+physical gates → refined play → visual and audio polish → architecture validation and the experiment framework**.
+The RO-1 and RO-2 typical
 reference gates and the 16-line LiDAR gate now pass; [the acceptance contract](reference-platform.md) remains the
 source of truth for the limits of those claims. Orchard Scramble is useful engineering evidence, but its static
 multi-collection loop is not accepted as the first polished Playground. The next content pass may change the format,
@@ -102,12 +103,15 @@ The next concrete work packages are:
  hold independently before using it in a lesson. Parking brake and ABS remain separate capabilities.
 3. Extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
  semantic markers, and test routes consumed by simulation. Validate lossless reload and world/grid transforms.
-4. Select and graybox one mechanically distinct Playground. Its surprise and choices must survive a fresh-player
+4. Promote RO-3 tracked, RO-4 swerve, and RO-5 mecanum from teaching proxies to independent physical reference
+ platforms. Each receives its own articulated/support model and acceptance matrix for loads, straight/reverse
+ motion, feasible turning, braking, low grip, grade, cross-slope, rough ground, timestep convergence, LSRI expiry,
+ and chassis-specific invariants. No platform inherits another platform's evidence.
+5. Select and graybox one mechanically distinct Playground. Its surprise and choices must survive a fresh-player
  test before permanent art begins; the Vehicle Proving Ground remains an engineering sandbox rather than campaign
  content.
-5. Polish the approved loop, then generalize its experiment and fault-injection needs. Bring RO-3 through RO-5 to
- independent physical acceptance only when a selected experience needs them. Full SLAM and VLA remain deferred
- until a named experience provides acceptance criteria.
+6. Polish the approved loop, then generalize its experiment and fault-injection needs. Full SLAM and VLA remain
+ deferred until a named experience provides acceptance criteria.
 
 ### M0 — Maintain responsive UI quality (deferred, non-blocking)
 

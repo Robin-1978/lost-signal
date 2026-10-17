@@ -661,6 +661,9 @@ struct PresentationDefinition {
  std::string running_heading;
  std::string normal_line;
  std::string detected_line;
+ // Ordered generic measurement ids shown while this presentation runs.
+ // Content selects evidence; the UI resolves each id from typed snapshots.
+ std::vector<std::string> evidence_fields;
  // Optional authored line for each ordered-goal index. This lets a multi-beat
  // mission describe its current intent without teaching the UI mission ids.
  std::vector<std::string> goal_lines;

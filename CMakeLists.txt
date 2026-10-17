@@ -275,6 +275,7 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/systems/field_dispatch_system.cpp
  src/sim/game/mission/systems/field_operator_system.cpp
  src/sim/game/mission/systems/goal_system.cpp
+ src/sim/game/mission/systems/vehicle_measurement_system.cpp
  src/sim/game/mission/systems/world_activity_system.cpp
 )
 target_include_directories(lost_signal_sim_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -448,6 +449,11 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
 	 LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
 	 )
 	 add_test(NAME field_operator COMMAND test_field_operator)
+
+ add_executable(test_vehicle_measurement_system
+ tests/new/test_vehicle_measurement_system.cpp)
+ target_link_libraries(test_vehicle_measurement_system PRIVATE lost_signal_sim_game)
+ add_test(NAME vehicle_measurement_system COMMAND test_vehicle_measurement_system)
 
  add_executable(test_mission_simulation tests/new/test_mission_simulation.cpp)
  target_link_libraries(test_mission_simulation PRIVATE lost_signal_sim_game)

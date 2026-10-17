@@ -96,8 +96,18 @@ int main() {
  for (int step = 0; step < 150; ++step)
  proving.step();
  CHECK(proving.result().path_length_m > 0.05);
- proving.set_manual_command(0.5, 0.2);
+ proving.set_manual_command(1.0, 0.0);
  CHECK(proving.manual_control_active());
+ for (int step = 0; step < 75; ++step)
+ proving.step();
+ CHECK(std::abs(proving.snapshot().robot.v) > 0.25);
+ proving.set_manual_command(0.0, 0.0);
+ for (int step = 0; step < 250 && !proving.result().braking_measurement_valid; ++step)
+ proving.step();
+ CHECK(proving.result().braking_measurement_valid);
+ CHECK(proving.result().last_stop_start_speed_mps > 0.25);
+ CHECK(proving.result().last_stop_time_s > 0.0);
+ CHECK(proving.result().last_stop_distance_m > 0.0);
 
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command

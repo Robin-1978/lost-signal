@@ -188,6 +188,7 @@ void ScenarioSession::reset() {
  lidar_delivery_queue_.clear();
  events_.clear();
  decision_evidence_system_.reset();
+ vehicle_measurement_system_.reset();
  replay_.clear();
  shadow_episodes_.clear();
  shadow_episode_open_ = false;
@@ -1909,6 +1910,8 @@ void ScenarioSession::apply_motion() {
  snapshot_.control.right_measured_mps = motors.differential
                                           ? motors.right.measured_mps
                                           : (motors.holonomic ? motors.modules[1].measured_mps : 0.0);
+ snapshot_.control.measured_forward_mps = motors.measured_forward_mps;
+ snapshot_.control.measured_yaw_rate_radps = motors.measured_yaw_radps;
  snapshot_.control.left_pwm = drive_unit.pwm;
  snapshot_.control.right_pwm =
    motors.differential ? motors.right.pwm : (motors.holonomic ? motors.modules[1].pwm : 0.0);
@@ -1942,6 +1945,8 @@ void ScenarioSession::apply_motion() {
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
  snapshot_.control.steering_servo_present = motors.steering_servo_present;
+ snapshot_.control.wheel_steer_rad = motors.wheel_steer_rad;
+ snapshot_.control.wheel_steer_count = motors.wheel_steer_count;
  snapshot_.control.mount_actuations.clear();
  const auto find_mount = [&](const std::string& id) -> const MountDefinition* {
   const auto mount = std::find_if(robot_definition_.mounts.begin(), robot_definition_.mounts.end(),
@@ -2147,6 +2152,14 @@ void ScenarioSession::apply_motion() {
 
  snapshot_.robot = candidate;
  result_.path_length_m += distance({before.x, before.y}, candidate_position);
+ snapshot_.braking = vehicle_measurement_system_.update(
+ snapshot_.time_s + fixed_step_s, candidate_position, candidate.v, applied_command.target_v);
+ if (snapshot_.braking.valid) {
+ result_.braking_measurement_valid = true;
+ result_.last_stop_start_speed_mps = snapshot_.braking.start_speed_mps;
+ result_.last_stop_time_s = snapshot_.braking.elapsed_s;
+ result_.last_stop_distance_m = snapshot_.braking.distance_m;
+ }
  const double motor_power = robot_definition_.energy_base_w +
                             robot_definition_.energy_per_v_w * std::hypot(candidate.v, candidate.lateral_v) +
                             robot_definition_.energy_per_w_w * std::abs(candidate.w);

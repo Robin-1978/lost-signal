@@ -106,7 +106,16 @@
   "running": {
     "heading": "人工驾驶 / 点击自动驾驶",
     "normal_line": "试车车辆：键盘输入立即接管；点击场地可请求自主导航。",
-    "detected_line": "试车车辆：已感知前方结构，人工与自动模式都使用真实平台反馈。"
+    "detected_line": "试车车辆：已感知前方结构，人工与自动模式都使用真实平台反馈。",
+    "evidence_fields": [
+      "speed",
+      "braking",
+      "steering",
+      "turn_radius",
+      "grade",
+      "slip",
+      "lidar"
+    ]
   },
   "debrief": {
     "success_title": "综合试车完成",
