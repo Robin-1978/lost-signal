@@ -362,6 +362,13 @@ additional rigid bodies. The current geometry, mass, armature inertia, torque, f
 documented assumptions rather than measurements, so this gate supports repeatable education and regression without
 claiming an identified real vehicle.
 
+RO-2 also has a dedicated generated visual assembly: its chassis and left/right steering-knuckle meshes are separate
+from RO-1, while tires, LiDAR, and compute modules remain reusable component assets selected in the garage. In Bullet
+mode every visual mount backed by an articulated link receives the complete physical `base_link -> child_link`
+transform. Front wheels therefore combine knuckle steering and wheel roll from physics, and the renderer contains no
+RO-2-specific animation branch. `return_route` is the introductory configurable run; `sand_steer` adds loose-ground
+steering and the optional high-speed motor.
+
 ## Implementation sequence
 
 1. **Implemented:** schema v4 separates planning footprint, visual mounts, and an optional articulated link/joint/

@@ -1992,11 +1992,32 @@ void ScenarioSession::apply_motion() {
   });
  }
  if (physics_mode_ == PhysicsMode::Bullet && platform_) {
-  for (auto& actuation : snapshot_.control.mount_actuations) {
-   const auto* mount = find_mount(actuation.mount_id);
-   if (mount)
-    actuation.base_from_link = platform_->link_transform_in_base(mount->frame_id);
-  }
+ // Publish every authored mount backed by a physical link, not only tires.
+ // Presentation can then attach knuckles, suspension arms, implements, or
+ // future articulated hardware without knowing a chassis type. Existing
+ // tire entries retain their semantic yaw/roll values for the 2D view.
+ for (const auto& mount : robot_definition_.mounts) {
+ const auto transform = platform_->link_transform_in_base(mount.frame_id);
+ if (!transform)
+ continue;
+ const auto existing = std::find_if(snapshot_.control.mount_actuations.begin(),
+ snapshot_.control.mount_actuations.end(), [&](const auto& candidate) {
+ return candidate.mount_id == mount.id;
+ });
+ if (existing != snapshot_.control.mount_actuations.end()) {
+ existing->base_from_link = transform;
+ continue;
+ }
+ double joint_angle_rad = 0.0;
+ if (const auto joint = platform_->joint_state_for_child(mount.frame_id))
+ joint_angle_rad = joint->position_rad;
+ snapshot_.control.mount_actuations.push_back({
+ mount.id,
+ joint_angle_rad,
+ 0.0,
+ transform,
+ });
+ }
  }
  const double meters_per_revolution = 2.0 * sim::kPi * robot_definition_.wheel_radius_m;
  snapshot_.control.left_target_rpm = snapshot_.control.left_target_mps * 60.0 / meters_per_revolution;

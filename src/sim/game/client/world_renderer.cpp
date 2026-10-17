@@ -588,10 +588,10 @@ void WorldRenderer::draw_header(const mission::PresentationFrameView& mission, i
  Color color = kAmber;
  if (status == mission::MissionStatus::Running) {
  text = mission.endless_mode()
- ? catalog_.tr("world.mode_field")
+ ? catalog_.trf("world.mode_field", {mission.robot().title})
  : (mission.level().control_mode == "manual_calibration"
  ? catalog_.tr("world.mode_manual")
- : catalog_.tr("world.mode_auto"));
+ : catalog_.trf("world.mode_auto", {mission.robot().title}));
   color = kCyan;
  } else if (status == mission::MissionStatus::Succeeded) {
   text = catalog_.tr("world.restored");

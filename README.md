@@ -58,6 +58,15 @@ Open the final mission directly in the AI view:
 ./tools/run.sh --demo --level lost_signal --analysis-view
 ```
 
+Open the RO-2 garage to assemble tires, LiDAR, and a motor before its Ackermann calibration run:
+
+```bash
+./tools/run.sh --level return_route --no-save
+```
+
+The later `sand_steer` experiment adds loose-ground steering and includes the optional high-speed motor. Both levels
+use the articulated four-wheel RO-2 plant; `--demo` skips the garage and starts the recommended build immediately.
+
 The first run checks CMake, downloads pinned dependencies with CMake `FetchContent`, builds the project, and launches the game. Later runs reuse the build. No account, launcher, or license activation is required.
 
 On Ubuntu or Debian, install the platform development packages once:

@@ -251,7 +251,35 @@
           0.18
         ],
         "color": "#D8ECE8",
-        "model_3d": "models/robots/ro1/chassis.glb"
+        "model_3d": "models/robots/ro2/chassis.glb"
+      }
+    },
+    {
+      "id": "ro2_front_left_knuckle",
+      "mount": "front_left_knuckle",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.1,
+          0.06,
+          0.14
+        ],
+        "color": "#70857F",
+        "model_3d": "models/robots/ro2/front_left_knuckle.glb"
+      }
+    },
+    {
+      "id": "ro2_front_right_knuckle",
+      "mount": "front_right_knuckle",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.1,
+          0.06,
+          0.14
+        ],
+        "color": "#70857F",
+        "model_3d": "models/robots/ro2/front_right_knuckle.glb"
       }
     }
   ],

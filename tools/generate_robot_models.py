@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "assets" / "models" / "robots" / "ro1"
+RO1_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro1"
+RO2_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro2"
 Vector3 = tuple[float, float, float]
 Mesh = tuple[list[Vector3], list[Vector3], list[int]]
 
@@ -108,7 +109,7 @@ def cylinder_mesh(size: tuple[float, float, float], sides: int = 24) -> Mesh:
     return positions, normals, indices
 
 
-def write_model(name: str, parts: list[Part], output: Path = OUTPUT) -> None:
+def write_model(name: str, parts: list[Part], output: Path = RO1_OUTPUT) -> None:
     mesh_builders: dict[str, Callable[[tuple[float, float, float]], Mesh]] = {
         "box": box_mesh,
         "cylinder": cylinder_mesh,
@@ -419,6 +420,63 @@ def main() -> None:
         Part(f"road_hub_{wheel_index}", "cylinder", (radius * 0.34, radius * 0.34, 0.174), mint,
         (wheel_x, 0, 0), rotation=turn_x, metallic=0.48, roughness=0.24, emissive=0.08),
         ])
+    pitch_down = (0.0, math.sin(math.radians(-5.0)), 0.0, math.cos(math.radians(-5.0)))
+    ro2_chassis = [
+        Part("structural_pan", "box", (0.62, 0.42, 0.09), rgba("#172321"),
+             (0.0, 0.0, -0.040), metallic=0.68, roughness=0.40),
+        Part("lower_body", "box", (0.66, 0.44, 0.10), rgba("#91AAA4"),
+             (0.0, 0.0, 0.015), metallic=0.42, roughness=0.34),
+        Part("sloped_nose", "box", (0.22, 0.38, 0.085), rgba("#D8ECE8"),
+             (0.215, 0.0, 0.095), rotation=pitch_down, metallic=0.34, roughness=0.28),
+        Part("center_deck", "box", (0.25, 0.32, 0.10), rgba("#BCD2CC"),
+             (-0.015, 0.0, 0.105), metallic=0.34, roughness=0.30),
+        Part("rear_power_bay", "box", (0.17, 0.36, 0.14), rgba("#667D77"),
+             (-0.235, 0.0, 0.085), metallic=0.48, roughness=0.32),
+        Part("sensor_deck", "box", (0.19, 0.22, 0.030), rgba("#172321"),
+             (0.095, 0.0, 0.168), metallic=0.62, roughness=0.24),
+        Part("front_bumper", "box", (0.040, 0.50, 0.070), rgba("#344743"),
+             (0.345, 0.0, -0.035), metallic=0.72, roughness=0.36),
+        Part("rear_bumper", "box", (0.035, 0.47, 0.060), rgba("#344743"),
+             (-0.342, 0.0, -0.030), metallic=0.72, roughness=0.36),
+        Part("left_front_fender", "box", (0.18, 0.036, 0.075), rgba("#5B716B"),
+             (0.245, 0.238, 0.005), metallic=0.48, roughness=0.34),
+        Part("right_front_fender", "box", (0.18, 0.036, 0.075), rgba("#5B716B"),
+             (0.245, -0.238, 0.005), metallic=0.48, roughness=0.34),
+        Part("left_rear_fender", "box", (0.18, 0.036, 0.075), rgba("#5B716B"),
+             (-0.245, 0.238, 0.005), metallic=0.48, roughness=0.34),
+        Part("right_rear_fender", "box", (0.18, 0.036, 0.075), rgba("#5B716B"),
+             (-0.245, -0.238, 0.005), metallic=0.48, roughness=0.34),
+        Part("front_face", "box", (0.024, 0.30, 0.070), rgba("#101817"),
+             (0.369, 0.0, 0.060), metallic=0.56, roughness=0.20),
+        Part("left_headlight", "box", (0.014, 0.070, 0.030), rgba("#51D6FF"),
+             (0.383, 0.105, 0.063), emissive=0.92, roughness=0.18),
+        Part("right_headlight", "box", (0.014, 0.070, 0.030), rgba("#51D6FF"),
+             (0.383, -0.105, 0.063), emissive=0.92, roughness=0.18),
+        Part("front_signature", "box", (0.014, 0.110, 0.012), rgba("#50E1C5"),
+             (0.384, 0.0, 0.040), emissive=0.72, roughness=0.18),
+        Part("rear_status", "box", (0.012, 0.20, 0.020), rgba("#F0AA48"),
+             (-0.361, 0.0, 0.080), emissive=0.76, roughness=0.20),
+        Part("left_cargo_rail", "box", (0.25, 0.020, 0.045), rgba("#8EA39D"),
+             (-0.105, 0.175, 0.175), metallic=0.58, roughness=0.30),
+        Part("right_cargo_rail", "box", (0.25, 0.020, 0.045), rgba("#8EA39D"),
+             (-0.105, -0.175, 0.175), metallic=0.58, roughness=0.30),
+    ]
+
+    def ro2_knuckle(side: float) -> list[Part]:
+        # side=+1 is left. Each steering arm points inboard so the two parts
+        # remain mechanically readable when the physical knuckles rotate.
+        return [
+            Part("upright", "box", (0.050, 0.038, 0.130), rgba("#70857F"),
+                 (0.0, 0.0, 0.0), metallic=0.76, roughness=0.26),
+            Part("kingpin", "cylinder", (0.018, 0.018, 0.155), rgba("#B6CAC4"),
+                 (0.0, 0.0, 0.0), metallic=0.82, roughness=0.20),
+            Part("wheel_hub", "cylinder", (0.030, 0.030, 0.090), rgba("#50645E"),
+                 (0.0, 0.0, 0.0), rotation=turn_x, metallic=0.78, roughness=0.22),
+            Part("steering_arm", "box", (0.100, 0.026, 0.026), rgba("#4A5D58"),
+                 (-0.035, -side * 0.035, 0.035), metallic=0.80, roughness=0.24),
+            Part("angle_witness", "box", (0.030, 0.012, 0.024), rgba("#50E1C5"),
+                 (0.034, -side * 0.032, 0.045), emissive=0.55, roughness=0.18),
+        ]
     for pad_index, pad_x in enumerate((-0.27, -0.18, -0.09, 0.0, 0.09, 0.18, 0.27)):
         tracked_track.extend([
         Part(f"top_pad_{pad_index}", "box", (0.074, 0.174, 0.026), rgba("#0D1312"),
@@ -735,6 +793,9 @@ def main() -> None:
     }
     for name, parts in models.items():
         write_model(name, parts)
+    write_model("chassis", ro2_chassis, RO2_OUTPUT)
+    write_model("front_left_knuckle", ro2_knuckle(+1.0), RO2_OUTPUT)
+    write_model("front_right_knuckle", ro2_knuckle(-1.0), RO2_OUTPUT)
     tracked_output = ROOT / "assets" / "models" / "robots" / "ro3"
     write_model("hull", tracked_hull, tracked_output)
     write_model("track", tracked_track, tracked_output)

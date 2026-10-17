@@ -635,12 +635,28 @@ int main() {
   CHECK(std::any_of(debut.replay().begin(), debut.replay().end(),
                     [](const auto& snapshot) { return snapshot.control.steer_angle_rad != 0.0; }));
   CHECK(std::any_of(debut.replay().begin(), debut.replay().end(), [](const auto& snapshot) {
-   return snapshot.control.mount_actuations.size() == 4 &&
-          snapshot.control.mount_actuations[0].mount_id == "front_left" &&
-          snapshot.control.mount_actuations[1].mount_id == "front_right" &&
-          (std::abs(snapshot.control.mount_actuations[0].yaw_rad) > 1e-6 ||
-           std::abs(snapshot.control.mount_actuations[1].yaw_rad) > 1e-6) &&
-          std::abs(snapshot.control.mount_actuations[0].roll_rad) > 1e-6;
+ const auto mounted = [&](std::string_view id) {
+ return std::find_if(snapshot.control.mount_actuations.begin(),
+ snapshot.control.mount_actuations.end(), [&](const auto& actuation) {
+ return actuation.mount_id == id;
+ });
+ };
+ const auto front_left = mounted("front_left");
+ const auto front_right = mounted("front_right");
+ const auto left_knuckle = mounted("front_left_knuckle");
+ const auto right_knuckle = mounted("front_right_knuckle");
+ return snapshot.control.mount_actuations.size() >= 6 &&
+ front_left != snapshot.control.mount_actuations.end() &&
+ front_right != snapshot.control.mount_actuations.end() &&
+ left_knuckle != snapshot.control.mount_actuations.end() &&
+ right_knuckle != snapshot.control.mount_actuations.end() &&
+ front_left->base_from_link && front_right->base_from_link &&
+ left_knuckle->base_from_link && right_knuckle->base_from_link &&
+ (std::abs(front_left->yaw_rad) > 1e-6 ||
+ std::abs(front_right->yaw_rad) > 1e-6) &&
+ std::abs(front_left->roll_rad) > 1e-6 &&
+ (std::abs(left_knuckle->yaw_rad) > 1e-6 ||
+ std::abs(right_knuckle->yaw_rad) > 1e-6);
   }));
  }
  // Tracked content car: twin-track layout, spin capability, scrub-limited

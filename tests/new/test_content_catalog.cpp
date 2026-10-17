@@ -120,6 +120,14 @@ int main() {
  // Second vehicle: ackermann geometry with honest steering hardware. No
  // level assigns it yet (slice 2); the catalog contract already holds.
  const auto& second = catalog.robot("robot.ro2");
+ CHECK(second.base_parts.size() == 3);
+ CHECK(second.base_parts[0].visual.model_3d == "models/robots/ro2/chassis.glb");
+ CHECK(second.base_parts[1].mount == "front_left_knuckle");
+ CHECK(second.base_parts[1].visual.model_3d ==
+ "models/robots/ro2/front_left_knuckle.glb");
+ CHECK(second.base_parts[2].mount == "front_right_knuckle");
+ CHECK(second.base_parts[2].visual.model_3d ==
+ "models/robots/ro2/front_right_knuckle.glb");
  CHECK(second.drive_type == "ackermann");
  CHECK(second.steering.max_steer_rad > 0.0);
  CHECK(second.steering.max_steer_rate_radps > 0.0);

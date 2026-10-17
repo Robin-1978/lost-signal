@@ -72,6 +72,7 @@ class GameUi {
  void set_style(double style);
  void update_style_label();
  void update_garage_labels();
+ std::string selected_robot_title() const;
  void sanitize_build();
  bool is_unlocked(const mission::LevelDefinition& level) const;
  std::string next_level_id() const;
@@ -118,6 +119,7 @@ class GameUi {
  tgui::Slider::Ptr style_slider_;
  tgui::Label::Ptr style_value_;
  tgui::Label::Ptr budget_label_;
+ tgui::Label::Ptr garage_heading_label_;
  tgui::Button::Ptr garage_next_button_;
  tgui::CheckBox::Ptr endless_checkbox_;
  tgui::Label::Ptr running_metrics_;

@@ -392,6 +392,7 @@ void GameUi::rebuild(const mission::ScenarioSession* mission) {
  style_slider_ = nullptr;
  style_value_ = nullptr;
  budget_label_ = nullptr;
+ garage_heading_label_ = nullptr;
  garage_next_button_ = nullptr;
  endless_checkbox_ = nullptr;
  running_metrics_ = nullptr;
@@ -563,12 +564,13 @@ void GameUi::build_garage() {
  panel_->add(scroll);
  add_parent_ = scroll;
  float y = 22.0f;
- auto section_label = add_label(catalog_.tr("garage.heading"), kMargin, y, 184, 14,
+ garage_heading_label_ = add_label(catalog_.trf("garage.heading", {selected_robot_title()}),
+ kMargin, y, 184, 14,
  {107, 190, 176}, true);
  auto chapter_button = add_button(catalog_.tr("chapter.garage_button"), kMargin + 194, y - 6, 118, 32);
  chapter_button->setTextSize(14);
  chapter_button->onClick([this] { actions_.open_chapter = true; });
- y += std::max(32.0f, section_label->getFullSize().y) + 8.0f;
+ y += std::max(32.0f, garage_heading_label_->getFullSize().y) + 8.0f;
  const auto place_text = [&](const std::string& text, unsigned size, tgui::Color color,
  bool bold = false, float gap = 8.0f) {
  auto label = add_label(text, kMargin, y, kContentWidth, size, color, bold);
@@ -752,7 +754,8 @@ void GameUi::build_prediction() {
  add_parent_ = panel_;
  auto back = add_button(catalog_.tr("garage.back"), kMargin, height_ - 74.0f, 116, 46);
  back->onClick([this] { actions_.open_garage = true; });
- auto launch = add_button(catalog_.tr("garage.launch"), kMargin + 132, height_ - 74.0f, 180, 46, true);
+ auto launch = add_button(catalog_.trf("garage.launch", {selected_robot_title()}),
+ kMargin + 132, height_ - 74.0f, 180, 46, true);
  launch->setEnabled(!prediction_choice_.empty());
  launch->onClick([this] { actions_.launch = true; });
 }
@@ -803,9 +806,10 @@ void GameUi::build_running(const mission::ScenarioSession* mission) {
  state_card->getRenderer()->setBorders({0, 0, 0, 3});
  state_card->getRenderer()->setRoundedBorderRadius(12);
  panel_->add(state_card);
- auto live = tgui::Label::create(expedition ? catalog_.tr("running.live_together")
+ const std::string robot_title = mission ? mission->robot().title : selected_robot_title();
+ auto live = tgui::Label::create(expedition ? catalog_.trf("running.live_together", {robot_title})
  : (manual ? catalog_.tr("running.live_drive")
- : catalog_.tr("running.live_decide")));
+ : catalog_.trf("running.live_decide", {robot_title})));
  live->setPosition(18, 14);
  live->setTextSize(12);
  live->getRenderer()->setTextColor({104, 218, 193});
@@ -1263,6 +1267,8 @@ void GameUi::update_garage_labels() {
  const std::string selected_chassis = !build_.chassis_robot.empty()
  ? build_.chassis_robot
  : (!presentation_->robot_id.empty() ? presentation_->robot_id : catalog_.campaign().companion_robot);
+ if (garage_heading_label_)
+ garage_heading_label_->setText(catalog_.trf("garage.heading", {catalog_.robot(selected_chassis).title}));
  for (const auto& card : chassis_cards_) {
  const auto& robot = catalog_.robot(card.id);
  const bool locked = !playground && !robot.unlock_ability.empty() &&
@@ -1335,6 +1341,15 @@ void GameUi::update_garage_labels() {
  garage_next_button_->setEnabled(used <= budget);
  }
  }
+}
+
+std::string GameUi::selected_robot_title() const {
+ const std::string id = !build_.chassis_robot.empty()
+ ? build_.chassis_robot
+ : (!presentation_->robot_id.empty()
+ ? presentation_->robot_id
+ : catalog_.campaign().companion_robot);
+ return catalog_.robot(id).title;
 }
 
 void GameUi::refresh_running(const mission::ScenarioSession& mission, bool paused, double speed) {
