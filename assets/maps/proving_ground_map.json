@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "id": "proving_ground_map",
+  "scene_3d": "scene.vehicle_proving_ground",
+  "size_m": [
+    48.0,
+    32.0
+  ],
+  "grid_resolution_m": 0.25,
+  "obstacles": [
+    {
+      "id": "slalom_a",
+      "type": "box",
+      "min": [
+        30.0,
+        2.0
+      ],
+      "max": [
+        31.0,
+        6.5
+      ]
+    },
+    {
+      "id": "slalom_b",
+      "type": "box",
+      "min": [
+        34.0,
+        5.5
+      ],
+      "max": [
+        35.0,
+        10.0
+      ]
+    },
+    {
+      "id": "slalom_c",
+      "type": "box",
+      "min": [
+        38.0,
+        2.0
+      ],
+      "max": [
+        39.0,
+        6.5
+      ]
+    },
+    {
+      "id": "handling_island",
+      "type": "box",
+      "min": [
+        21.5,
+        19.0
+      ],
+      "max": [
+        26.5,
+        21.0
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "wet_pad",
+      "type": "box",
+      "min": [
+        3.0,
+        10.0
+      ],
+      "max": [
+        12.0,
+        16.0
+      ],
+      "material": "standing_water",
+      "label": "湿滑制动区"
+    },
+    {
+      "id": "sand_pad",
+      "type": "box",
+      "min": [
+        14.0,
+        10.0
+      ],
+      "max": [
+        23.0,
+        16.0
+      ],
+      "material": "sand",
+      "label": "沙地牵引区"
+    },
+    {
+      "id": "gravel_pad",
+      "type": "box",
+      "min": [
+        25.0,
+        10.0
+      ],
+      "max": [
+        34.0,
+        16.0
+      ],
+      "material": "gravel",
+      "label": "碎石路面"
+    },
+    {
+      "id": "steel_pad",
+      "type": "box",
+      "min": [
+        36.0,
+        10.0
+      ],
+      "max": [
+        45.0,
+        16.0
+      ],
+      "material": "steel_deck",
+      "label": "钢板路面"
+    },
+    {
+      "id": "mud_pad",
+      "type": "box",
+      "min": [
+        14.0,
+        2.0
+      ],
+      "max": [
+        24.0,
+        8.0
+      ],
+      "material": "mud",
+      "label": "泥地附着区"
+    }
+  ],
+  "terrain": [
+    {
+      "id": "longitudinal_ramp",
+      "type": "height_patch",
+      "min": [
+        3.0,
+        21.5
+      ],
+      "max": [
+        13.0,
+        27.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.18,
+      "grade_y": 0.0,
+      "roughness": 0.0
+    },
+    {
+      "id": "ramp_highland",
+      "type": "height_patch",
+      "min": [
+        13.0,
+        21.5
+      ],
+      "max": [
+        19.5,
+        27.0
+      ],
+      "base_height_m": 1.8,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.0
+    },
+    {
+      "id": "cross_slope_lane",
+      "type": "height_patch",
+      "min": [
+        28.0,
+        21.0
+      ],
+      "max": [
+        38.0,
+        27.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.16,
+      "roughness": 0.008
+    },
+    {
+      "id": "rough_lane",
+      "type": "height_patch",
+      "min": [
+        40.0,
+        21.0
+      ],
+      "max": [
+        47.0,
+        27.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.025
+    }
+  ],
+  "markers": {
+    "assembly_pad": [
+      3.0,
+      3.0,
+      0.0
+    ],
+    "braking_start": [
+      4.0,
+      6.0,
+      0.0
+    ],
+    "wet_target": [
+      7.5,
+      13.0,
+      0.0
+    ],
+    "sand_target": [
+      18.5,
+      13.0,
+      0.0
+    ],
+    "gravel_target": [
+      29.5,
+      13.0,
+      0.0
+    ],
+    "steel_target": [
+      40.5,
+      13.0,
+      0.0
+    ],
+    "mud_target": [
+      19.0,
+      5.0,
+      0.0
+    ],
+    "ramp_start": [
+      4.0,
+      24.0,
+      0.0
+    ],
+    "ramp_top": [
+      16.0,
+      24.0,
+      0.0
+    ],
+    "cross_slope_target": [
+      33.0,
+      24.0,
+      0.0
+    ],
+    "rough_target": [
+      43.5,
+      24.0,
+      0.0
+    ],
+    "finish_beacon": [
+      44.0,
+      29.0,
+      0.0
+    ]
+  },
+  "actors": []
+}

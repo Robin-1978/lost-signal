@@ -991,7 +991,12 @@ void ScenarioSession::start() {
  initial_decision.action_code = "plan-route";
  publish_decision(std::move(initial_decision));
  if (endless_mode_)
-  refresh_endless_route();
+  refresh_operator_route();
+ if (level_.control_mode == "operator_drive") {
+ manual_control_active_ = true;
+ held_command_ = {};
+ manual_command_ = {};
+ }
  record_event(endless_mode_ ? "field-session-start" : "mission-start",
               endless_mode_ ? catalog_.tr("event.field_session_start") : catalog_.tr("event.mission_start"));
  if (!route_feasible_ && !endless_mode_) {
@@ -1023,12 +1028,13 @@ bool ScenarioSession::set_field_operator_command(double world_x, double world_y)
 }
 
 bool ScenarioSession::issue_field_intent(FieldIntentKind kind, std::optional<sim::Vec2> target) {
- if (!endless_mode_ || !field_operator_system_.issue_intent(kind, target))
+ const bool operator_drive = level_.control_mode == "operator_drive";
+ if ((!endless_mode_ && !operator_drive) || !field_operator_system_.issue_intent(kind, target))
   return false;
  manual_control_active_ = false;
  manual_command_ = {};
  endless_target_key_ = "uninitialized";
- refresh_endless_route();
+ refresh_operator_route();
  return true;
 }
 
@@ -1078,8 +1084,16 @@ void ScenarioSession::run_to_completion() {
 }
 
 void ScenarioSession::set_manual_command(double forward, double turn) {
- if (endless_mode_ || level_.control_mode != "manual_calibration")
+ const bool calibration = level_.control_mode == "manual_calibration";
+ const bool operator_drive = level_.control_mode == "operator_drive";
+ if (endless_mode_ || (!calibration && !operator_drive))
   return;
+ // Neutral keyboard state must not cancel an active click-to-drive route.
+ // Any non-neutral operator input takes authority immediately; after that
+ // takeover, releasing the keys requests a physical stop.
+ if (operator_drive && !manual_control_active_ &&
+ std::abs(forward) <= 1e-9 && std::abs(turn) <= 1e-9)
+ return;
  manual_control_active_ = true;
  const double cruise = cruise_speed_mps();
  manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
@@ -1161,7 +1175,7 @@ void ScenarioSession::step() {
     break;
    }
   }
-  refresh_endless_route();
+  refresh_operator_route();
  }
 
  const bool completion_allowed =
@@ -1547,7 +1561,7 @@ sim::Vec2 ScenarioSession::current_navigation_target() {
  const auto& estimate = estimation_system_.state();
  sim::Vec2 fallback;
  const auto& field_intent = field_operator_system_.intent();
- if (endless_mode_ && field_intent.active) {
+ if ((endless_mode_ || level_.control_mode == "operator_drive") && field_intent.active) {
   fallback = field_intent.target;
  } else if (endless_mode_ &&
             dispatch_has_priority(field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
@@ -1562,9 +1576,10 @@ sim::Vec2 ScenarioSession::current_navigation_target() {
  return route_tracking_system_->navigation_target(planned_route_, estimate, lookahead, *planning_map_, fallback);
 }
 
-void ScenarioSession::refresh_endless_route() {
+void ScenarioSession::refresh_operator_route() {
  const auto& field_intent = field_operator_system_.intent();
- if (!endless_mode_ || !planning_map_ || !route_tracking_system_)
+ const bool operator_drive = level_.control_mode == "operator_drive";
+ if ((!endless_mode_ && !operator_drive) || !planning_map_ || !route_tracking_system_)
   return;
  std::string target_key;
  sim::Vec2 target;
@@ -1588,11 +1603,12 @@ void ScenarioSession::refresh_endless_route() {
    target_key += ":" + std::to_string(static_cast<long long>(std::llround(target.x * 2.0))) + ":" +
                  std::to_string(static_cast<long long>(std::llround(target.y * 2.0)));
   }
- } else if (dispatch_has_priority(field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
+ } else if (endless_mode_ &&
+ dispatch_has_priority(field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
   const auto& dispatch = field_dispatch_system_.state();
   target_key = "dispatch:" + dispatch.marker_id + ":" + std::to_string(dispatch.stage);
   target = dispatch.target;
- } else if (snapshot_.world_activity.incident.active) {
+ } else if (endless_mode_ && snapshot_.world_activity.incident.active) {
   const auto& incident = snapshot_.world_activity.incident;
   target_key = "incident:" + incident.marker_id + ":" + world_incident_kind_id(incident.kind);
   target = incident.position;

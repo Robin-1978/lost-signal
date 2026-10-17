@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Vehicle Proving Ground",
+    "/objective/goal_label": "Proving-Ground Finish",
+    "/teaching/prediction_prompt": "How will chassis, tires, motor, computer, and sensors change the result on the same proving route?",
+    "/teaching/knowledge_card": "Manual input takes over immediately; click the ground to let the complete autonomy stack plan and drive. Multiple surfaces and 2.5D terrain come from map data."
+  }
+}

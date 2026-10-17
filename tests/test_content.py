@@ -40,6 +40,7 @@ class ContentValidationTests(unittest.TestCase):
         playgrounds = set(catalog["campaign"]["playgrounds"])
         self.assertFalse(guided & playgrounds)
         self.assertEqual(levels, guided | playgrounds)
+        self.assertIn("vehicle_proving_ground", playgrounds)
         served = {p["level"] for p in catalog["presentations"].values()}
         self.assertEqual(levels, served)
         scenes = set(catalog["scenes"].keys())
@@ -49,6 +50,22 @@ class ContentValidationTests(unittest.TestCase):
         robots = set(catalog["robots"].keys())
         self.assertIn(catalog["campaign"]["companion"]["robot"], robots)
         self.assertEqual("boot", catalog["presentations"]["presentation.boot"]["level"])
+        proving_ground = catalog["presentations"]["presentation.vehicle_proving_ground"]
+        self.assertEqual("robot.ro2", proving_ground["robot"])
+        self.assertEqual(
+            "operator_drive",
+            catalog["levels"]["vehicle_proving_ground"]["control_mode"],
+        )
+        proving_map = catalog["maps"]["proving_ground_map"]
+        self.assertEqual([48.0, 32.0], proving_map["size_m"])
+        self.assertEqual(
+            {"standing_water", "sand", "gravel", "steel_deck", "mud"},
+            {surface["material"] for surface in proving_map["surfaces"]},
+        )
+        self.assertEqual(
+            {"longitudinal_ramp", "ramp_highland", "cross_slope_lane", "rough_lane"},
+            {terrain["id"] for terrain in proving_map["terrain"]},
+        )
         self.assertEqual(
             "\u6d1b\u4e00", catalog["campaign"]["companion"]["display_name"]
         )

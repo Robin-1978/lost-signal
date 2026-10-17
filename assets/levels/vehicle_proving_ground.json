@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "vehicle_proving_ground",
+  "order": 101,
+  "title": "综合试车场",
+  "map": "proving_ground_map",
+  "control_mode": "operator_drive",
+  "localization_mode": "fused",
+  "chapter": 4,
+  "mode": "playground",
+  "prerequisites": [],
+  "seed": 2202,
+  "objective": {
+    "type": "reach",
+    "spawn": "assembly_pad",
+    "goal": "finish_beacon",
+    "goal_label": "综合试车终点",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 180.0,
+    "max_collisions": 20,
+    "arrive_tolerance_m": 1.0
+  },
+  "loadout_rules": {
+    "access": "open",
+    "budget": 30,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "open_vehicle_proving_ground",
+    "prediction_prompt": "同一条试车路线，底盘、轮胎、电机、计算单元和传感器会怎样改变结果？",
+    "knowledge_card": "人工输入随时接管车辆；点击场地目标则由完整自主驾驶栈规划和控制。多种路面与 2.5D 地形来自地图数据。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.2,
+    "fast_time_s": 150.0,
+    "efficient_energy_wh": 5.0
+  },
+  "rewards": []
+}

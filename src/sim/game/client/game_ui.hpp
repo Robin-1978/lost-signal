@@ -44,6 +44,7 @@ class GameUi {
  const mission::BuildSelection& build() const { return build_; }
  bool build_within_budget() const;
  bool endless_mode() const { return endless_mode_; }
+ bool world_pointer_available(float screen_x) const;
  const mission::PresentationDefinition& presentation() const { return *presentation_; }
  const std::string& level_id() const { return presentation_->level; }
  const std::string& contract_id() const { return active_contract_id_; }

@@ -6,6 +6,8 @@ The player is a field engineer, not a remote-control driver. The opening chassis
 
 In authored missions the player selects hardware, chooses a driving preference, makes a prediction, and dispatches the robot. In expedition mode the player walks around the site and asks RO-1 to follow, go to a point, search, wait, or return. The autonomy stack owns the route, collision avoidance, speed, steering, and actuator output.
 
+Vehicle Proving Ground is an optional engineering workspace outside campaign progression. It exposes every authored chassis and hardware component on a 48 × 32 m data-driven map with wet, sand, mud, gravel, steel, ramp, cross-slope, and rough-road zones. `operator_drive` starts under direct human authority; clicking the world plans through the normal autonomy stack, and any non-neutral driving input takes authority back. Switching control never bypasses LSRI, platform dynamics, perception, planning, or actuator feedback.
+
 ## Three nested loops
 
 ### Moment to moment: read the situation

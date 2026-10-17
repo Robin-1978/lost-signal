@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "id": "presentation.vehicle_proving_ground",
+  "is_default": false,
+  "level": "vehicle_proving_ground",
+  "robot": "robot.ro2",
+  "garage": {
+    "heading": "综合试车场",
+    "brief": "无需解锁，任选底盘与全部组件。键盘直接驾驶；点击场地让自主驾驶接管。大地图包含制动直道、湿地、沙地、泥地、碎石、钢板、纵坡、横坡与坑洼路。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "轮地接触",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand",
+          "tires.slick",
+          "wheels.steel"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "LiDAR",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar",
+          "sensor.precision_lidar",
+          "sensor.sixteen_line_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco",
+          "motor.speed"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "惯性单元",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶响应",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.light",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.sixteen_line_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.speed",
+      "imu": "imu.precise",
+      "style": 0.4
+    }
+  },
+  "prediction": {
+    "heading": "先选一个观察重点",
+    "hint": "试车场没有解锁门槛。换一项配置，再用相同路线比较证据。",
+    "choices": [
+      {
+        "id": "vehicle_proving_ground.turning",
+        "text": "观察左右前轮的转角差",
+        "feedback": "内侧前轮必须比外侧前轮转得更多，四个车轮才能指向共同的瞬时转动中心。"
+      },
+      {
+        "id": "vehicle_proving_ground.braking",
+        "text": "比较高速电机与停车距离",
+        "feedback": "更高极速不会免费缩短停车距离；制动结果还受轮胎抓地、车轮转速和接触载荷限制。"
+      },
+      {
+        "id": "vehicle_proving_ground.lidar",
+        "text": "比较单线与 16 线 LiDAR",
+        "feedback": "16 线传感器提供带高度、强度和逐点时间的三维回波，投影层再生成导航使用的二维障碍。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "人工驾驶 / 点击自动驾驶",
+    "normal_line": "试车车辆：键盘输入立即接管；点击场地可请求自主导航。",
+    "detected_line": "试车车辆：已感知前方结构，人工与自动模式都使用真实平台反馈。"
+  },
+  "debrief": {
+    "success_title": "综合试车完成",
+    "success_summary": "用相同路线更换一个组件，就能比较真实转向、速度、打滑、制动和感知结果。",
+    "failure_summary": "试车没有通过时，查看碰撞、轨迹和速度证据，再调整路线或组件。",
+    "evidence_heading": "试车证据",
+    "evidence_caption": "车体姿态、四轮关节、执行器命令、接触与 LiDAR 数据来自同一次确定性仿真。",
+    "knowledge_title": "同一接口连接不同底盘与硬件",
+    "failure_titles": {
+      "collision-static": "试车结束：静态碰撞次数超过限制",
+      "collision-dynamic": "试车结束：与动态目标碰撞",
+      "timeout": "试车结束：未在时限内抵达终点"
+    }
+  },
+  "chassis_options": [
+    "robot.ro1",
+    "robot.ro2",
+    "robot.ro3",
+    "robot.ro4",
+    "robot.ro5"
+  ]
+}

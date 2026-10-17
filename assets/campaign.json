@@ -39,7 +39,8 @@
     "signal_cross"
   ],
   "playgrounds": [
-    "orchard_scramble"
+    "orchard_scramble",
+    "vehicle_proving_ground"
   ],
   "starting_inventory": [
     "tires.standard",

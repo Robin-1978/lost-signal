@@ -80,6 +80,25 @@ int main() {
  CHECK(!story.set_field_operator_command(1.0, 0.0));
  CHECK(!story.issue_field_intent(mission::FieldIntentKind::Follow));
 
+ // Operator-drive playgrounds start under human authority. A click-to-drive
+ // target plans through the normal autonomy stack, and any later keyboard
+ // command takes authority back immediately.
+ mission::ScenarioSession proving(
+ catalog, "vehicle_proving_ground",
+ catalog.presentation_for_level("vehicle_proving_ground").recommended_build);
+ proving.start();
+ CHECK(proving.manual_control_active());
+ CHECK(proving.issue_field_intent(mission::FieldIntentKind::GoTo, sim::Vec2{7.5, 13.0}));
+ CHECK(!proving.manual_control_active());
+ CHECK(!proving.planned_route().empty());
+ proving.set_manual_command(0.0, 0.0);
+ CHECK(!proving.manual_control_active());
+ for (int step = 0; step < 150; ++step)
+ proving.step();
+ CHECK(proving.result().path_length_m > 0.05);
+ proving.set_manual_command(0.5, 0.2);
+ CHECK(proving.manual_control_active());
+
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command
  // must then produce a real route and autonomous Bullet motion.

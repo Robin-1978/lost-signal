@@ -836,11 +836,15 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{level_id}:/chassis_options: unknown robot '{chassis}'"
                 )
+        loadout_access = level_by_id[level_id].data["loadout_rules"].get(
+            "access",
+            "open" if level_by_id[level_id].data.get("mode") == "playground" else "campaign",
+        )
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             for slot in ("tires", "sensor", "computer", "motor", "imu"):
                 component_id = build.get(slot)
-                if component_id and component_id not in owned:
+                if component_id and loadout_access != "open" and component_id not in owned:
                     raise ContentError(
                         f"{level_id}:/garage/{field}/{slot}: '{component_id}' "
                         f"is not owned yet (no earlier reward grants it)"

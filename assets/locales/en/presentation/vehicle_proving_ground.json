@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "Vehicle Proving Ground",
+    "/garage/brief": "Choose any chassis and every component with no unlock requirement. Drive with the keyboard or click the ground to hand control to autonomy. The large map includes a braking straight, wet floor, sand, mud, gravel, steel deck, longitudinal grade, cross slope, and rough road.",
+    "/garage/component_columns/0/title": "Tire Contact",
+    "/garage/component_columns/2/title": "Computer",
+    "/garage/component_columns/3/title": "Drive Motor",
+    "/garage/component_columns/4/title": "Inertial Unit",
+    "/garage/policy_title": "Driving Response",
+    "/prediction/heading": "Choose What to Observe",
+    "/prediction/hint": "The proving ground has no unlock gate. Change one component and repeat the same route to compare evidence.",
+    "/prediction/choices/0/text": "Watch the front-wheel angle difference",
+    "/prediction/choices/0/feedback": "The inside front wheel must steer farther than the outside wheel so all four wheels point toward a common instantaneous center of rotation.",
+    "/prediction/choices/1/text": "Compare the speed motor and stopping distance",
+    "/prediction/choices/1/feedback": "A higher top speed does not shorten stopping distance for free. Braking still depends on tire grip, wheel speed, and contact load.",
+    "/prediction/choices/2/text": "Compare single-plane and 16-line LiDAR",
+    "/prediction/choices/2/feedback": "The 16-line sensor produces 3D returns with height, intensity, and per-point timing; a projection layer then creates 2D navigation obstacles.",
+    "/running/heading": "Manual Drive / Click-to-Drive Autonomy",
+    "/running/normal_line": "Proving vehicle: keyboard input takes over immediately; click the ground to request autonomous navigation.",
+    "/running/detected_line": "Proving vehicle: structure detected; manual and autonomous modes both use real platform feedback.",
+    "/debrief/success_title": "Proving Run Complete",
+    "/debrief/success_summary": "Change one component and repeat the route to compare physical steering, speed, slip, braking, and sensing.",
+    "/debrief/failure_summary": "If the run fails, inspect collision, trajectory, and speed evidence before changing the route or component.",
+    "/debrief/evidence_heading": "Proving-Ground Evidence",
+    "/debrief/evidence_caption": "Body pose, wheel joints, actuator commands, contact, and LiDAR data come from one deterministic simulation run.",
+    "/debrief/knowledge_title": "One Interface Connects Different Chassis and Hardware",
+    "/debrief/failure_titles/collision-static": "Run ended: static-collision limit exceeded",
+    "/debrief/failure_titles/collision-dynamic": "Run ended: moving-object collision",
+    "/debrief/failure_titles/timeout": "Run ended: finish not reached in time"
+  }
+}

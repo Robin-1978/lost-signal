@@ -42,6 +42,7 @@
     "control_mode": {
       "enum": [
         "manual_calibration",
+        "operator_drive",
         "autonomous"
       ]
     },
@@ -309,6 +310,12 @@
         "required_slots"
       ],
       "properties": {
+        "access": {
+          "enum": [
+            "campaign",
+            "open"
+          ]
+        },
         "budget": {
           "type": "integer",
           "minimum": 1

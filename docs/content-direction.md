@@ -45,6 +45,7 @@ design inputs, not validation evidence for this product.
 
 | Playground | Player fantasy and verb | Autonomous problem | Physical reveal | Comparison |
 |---|---|---|---|---|
+| **Vehicle Proving Ground** | Assemble any platform, drive it, then click a destination; test | route planning and safe control across a large 2.5D course | steering geometry, stopping distance, grip, grade, cross-slope, roughness, and LiDAR returns remain visible | chassis, tires, motor, compute, IMU, LiDAR, manual versus autonomous control |
 | **Orchard Scramble** | Recover windfall fruit before the storm; collect | terrain-aware task ordering under changing payload | mud slip, stacked load, fruit shock, rollover margin | chassis, tires, harvest doctrine |
 | **Firefly Survey** | Reconnect intermittent field beacons in fog; search | coverage, belief update, return reserve | observations appear and disappear with viewpoint and range | sensor pose, search policy, reserve |
 | **Runaway Carts** | Guide depot carts through a set of gates; shepherd | temporal reservation, gap selection, deadlock recovery | predicted paths cross before bodies do | priority rule, planner horizon |

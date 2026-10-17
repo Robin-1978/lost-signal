@@ -4,7 +4,7 @@
 
 Lost Signal is a third-person robotics adventure and an educational simulation. You enter Lan Valley as a field engineer, restore damaged infrastructure, investigate a mysterious transmission, and work alongside RO-1, an autonomous robot companion.
 
-You choose high-level intent: follow, travel, search, wait, or return. RO-1 decides how to get there. Perception, state estimation, global planning, local collision avoidance, chassis control, and Bullet physics all run during the mission. Except for the opening chassis-calibration lesson, the keyboard never directly drives the robot.
+You choose high-level intent: follow, travel, search, wait, or return. RO-1 decides how to get there. Perception, state estimation, global planning, local collision avoidance, chassis control, and Bullet physics all run during the mission. Direct driving is limited to the opening chassis-calibration lesson and the optional Vehicle Proving Ground.
 
 The current release is a `v0.1.0-alpha` source preview. The simulation core, Linux client, deterministic headless runner, and cross-platform tests are usable. Art, audio, accessibility, balance, and packaged releases are still in development.
 
@@ -24,9 +24,10 @@ Lost Signal uses C++20, Bullet 3.25, raylib 6.0, TGUI 1.13, nlohmann/json, CMake
 Lost Signal has two complementary ways to play:
 
 - **Guided Campaign** keeps every existing story chapter, prerequisite, and teaching sequence.
-- **Autonomy Playgrounds** are optional standalone experiments available at any time. Orchard Scramble is the first:
- choose the chassis, hardware, driving style, and harvest policy, then watch RO-1 autonomously order targets, collect
- fruit across varied terrain, manage its changing payload, and return to the packing pad.
+- **Autonomy Playgrounds** are optional standalone experiments available at any time. Orchard Scramble tests
+ autonomous task ordering and payload-aware terrain driving. Vehicle Proving Ground exposes every chassis and hardware
+ option on a large surface-and-slope course: drive directly with `WASD`, click the world to request autonomous
+ navigation, and press a driving key to take control back immediately.
 
 The Guided Campaign follows a simple learning loop:
 
@@ -36,7 +37,7 @@ The Guided Campaign follows a simple learning loop:
 4. Open the AI view with `Tab` and connect sensor evidence to planning and control.
 5. Use the debrief to find the first meaningful difference, then run the experiment again.
 
-The opening mission is a manual chassis calibration: `WASD` or the arrow keys control RO-1 so that acceleration, steering, and braking are tangible. Every later mission is autonomous.
+The opening mission is a manual chassis calibration: `WASD` or the arrow keys control RO-1 so that acceleration, steering, and braking are tangible. Guided missions after it are autonomous. The optional Vehicle Proving Ground deliberately supports both direct driving and click-to-drive autonomy through the same platform interface.
 
 In Lan Valley Expedition, `WASD` moves the field engineer. Press `F` to ask RO-1 to follow, `G` to go to the cursor, `Q` to search near the cursor, `X` to wait, and `R` to return. RO-1 plans the route, avoids obstacles, selects speed and steering, and drives its actuators. Right-drag rotates the camera, middle-drag pans, the wheel zooms, and `C` resets the camera.
 

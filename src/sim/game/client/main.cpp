@@ -444,13 +444,21 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  if (IsKeyPressed(KEY_R))
  mission->issue_field_intent(mission::FieldIntentKind::Return);
  } else if (ui.screen() == client::Screen::Running &&
- mission->level().control_mode == "manual_calibration" &&
+ (mission->level().control_mode == "manual_calibration" ||
+ mission->level().control_mode == "operator_drive") &&
  !options.demo && options.screenshot.empty()) {
     const double forward = (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1.0 : 0.0) -
                            (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1.0 : 0.0);
     const double turn = (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1.0 : 0.0) -
                         (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1.0 : 0.0);
     mission->set_manual_command(forward, turn);
+ if (mission->level().control_mode == "operator_drive" &&
+ std::abs(forward) <= 1e-9 && std::abs(turn) <= 1e-9 &&
+ (!editor || !editor->active()) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+ ui.world_pointer_available(GetMousePosition().x)) {
+ if (const auto target = renderer.screen_to_world(GetMousePosition()))
+ mission->issue_field_intent(mission::FieldIntentKind::GoTo, *target);
+ }
    }
 
    if (ui.screen() == client::Screen::Running && !paused &&

@@ -351,7 +351,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
       level.mode != "playground") {
    throw ContentError(path.string() + ": unsupported mode");
   }
-  if (level.control_mode != "manual_calibration" && level.control_mode != "autonomous") {
+ if (level.control_mode != "manual_calibration" && level.control_mode != "operator_drive" &&
+ level.control_mode != "autonomous") {
    throw ContentError(path.string() + ": unsupported control_mode");
   }
   if (level.localization_mode != "odometry" && level.localization_mode != "fused") {
@@ -448,6 +449,11 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    level.objective.goals.push_back(std::move(complete));
   }
   level.budget = loadout.at("budget").get<int>();
+ level.loadout_access =
+ loadout.value("access", level.mode == "playground" ? std::string{"open"} : std::string{"campaign"});
+ if (level.loadout_access != "campaign" && level.loadout_access != "open") {
+ throw ContentError(path.string() + ": unsupported loadout access");
+ }
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
   level.concept_id = teaching.at("concept").get<std::string>();
   level.prediction_prompt = teaching.at("prediction_prompt").get<std::string>();
@@ -1613,7 +1619,7 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
    throw ContentError("chassis '" + build.chassis_robot + "' is not offered for this level");
   }
   const auto& unlock = robot(build.chassis_robot).unlock_ability;
-  if (level_value.mode != "playground" && !unlock.empty() &&
+ if (level_value.loadout_access != "open" && !unlock.empty() &&
       std::find(owned_abilities.begin(), owned_abilities.end(), unlock) == owned_abilities.end()) {
    throw ContentError("chassis '" + build.chassis_robot + "' is locked behind '" + unlock + "'");
   }

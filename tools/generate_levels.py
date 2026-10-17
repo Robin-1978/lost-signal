@@ -391,9 +391,10 @@ LEVELS: list[dict] = [
         "budget": 6,
         "required_slots": ["tires", "sensor", "motor"],
         "columns": "sand",
+ "include_speed_motor": True,
         "arrive_tolerance_m": 1.0,
  "safe_min_clearance_m": 0.02,
- "max_localization_error_m": 0.5,
+ "max_localization_error_m": 0.6,
  "fast_time_s": 60.0,
  "efficient_energy_wh": 0.85,
         "concept": "sand_steer",
@@ -1055,6 +1056,10 @@ def build_presentation(spec: dict) -> dict:
         "default_build": spec["default_build"],
         "recommended_build": spec["recommended_build"],
     }
+    if spec.get("include_speed_motor"):
+        motor_column = next(column for column in doc["garage"]["component_columns"]
+                            if column["slot"] == "motor")
+        motor_column["options"].append("motor.speed")
     doc["prediction"] = {
         "heading": spec["prediction_heading"],
         "hint": spec["prediction_hint"],

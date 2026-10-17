@@ -589,9 +589,11 @@ void WorldRenderer::draw_header(const mission::PresentationFrameView& mission, i
  if (status == mission::MissionStatus::Running) {
  text = mission.endless_mode()
  ? catalog_.trf("world.mode_field", {mission.robot().title})
+ : (mission.level().control_mode == "operator_drive"
+ ? catalog_.tr("world.mode_operator")
  : (mission.level().control_mode == "manual_calibration"
  ? catalog_.tr("world.mode_manual")
- : catalog_.trf("world.mode_auto", {mission.robot().title}));
+ : catalog_.trf("world.mode_auto", {mission.robot().title})));
   color = kCyan;
  } else if (status == mission::MissionStatus::Succeeded) {
   text = catalog_.tr("world.restored");

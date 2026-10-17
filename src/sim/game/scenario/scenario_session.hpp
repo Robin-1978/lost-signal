@@ -419,6 +419,7 @@ class ScenarioSession {
  void step();
  void run_to_completion();
  void set_manual_command(double forward, double turn);
+ bool manual_control_active() const { return manual_control_active_; }
  void set_endless_mode(bool enabled);
  bool endless_mode() const { return endless_mode_; }
  void restore_endless_world(const WorldActivityCheckpoint& checkpoint);
@@ -541,7 +542,7 @@ class ScenarioSession {
  void initialize_frame_tree();
  void update_frame_tree();
  void apply_goal_stop_constraint();
- void refresh_endless_route();
+ void refresh_operator_route();
 
  const ContentCatalog& catalog_;
  std::string level_id_;

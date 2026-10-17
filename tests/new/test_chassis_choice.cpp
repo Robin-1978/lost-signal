@@ -81,12 +81,35 @@ int main() {
    CHECK(throws_like("ability.ackermann"));
   }
  }
- // Not offered on this level (ro3), even with its ability.
+ // The proving ground is available to a fresh save with every chassis and
+ // component family, while defaulting to the articulated RO-2.
  {
-  auto build = catalog.presentation_for_level("boot").recommended_build;
+  const auto& level = catalog.level("vehicle_proving_ground");
+  const auto& presentation = catalog.presentation_for_level("vehicle_proving_ground");
+  CHECK(level.mode == "playground");
+ CHECK(level.control_mode == "operator_drive");
+ CHECK(level.loadout_access == "open");
+  CHECK(presentation.robot_id == "robot.ro2");
+ CHECK(presentation.chassis_options.size() == 5);
+ CHECK(presentation.component_columns.size() == 5);
+  CHECK(std::find(catalog.campaign().playgrounds.begin(), catalog.campaign().playgrounds.end(),
+                  "vehicle_proving_ground") != catalog.campaign().playgrounds.end());
+  CHECK(std::find(presentation.component_columns[1].options.begin(),
+                  presentation.component_columns[1].options.end(),
+                  "sensor.sixteen_line_lidar") != presentation.component_columns[1].options.end());
+ CHECK(std::find(presentation.component_columns[3].options.begin(),
+ presentation.component_columns[3].options.end(),
+ "motor.speed") != presentation.component_columns[3].options.end());
+  mission::ScenarioSession mission(catalog, "vehicle_proving_ground",
+                                   presentation.recommended_build, 1u);
+  CHECK(mission.robot().drive_type == "ackermann");
+ }
+ // Not offered on a fixed campaign level, even with its ability.
+ {
+ auto build = catalog.presentation_for_level("lost_signal").recommended_build;
   build.chassis_robot = "robot.ro3";
   try {
-   mission::ScenarioSession mission(catalog, "boot", build, 1u, {"ability.tracked"});
+ mission::ScenarioSession mission(catalog, "lost_signal", build, 1u, {"ability.tracked"});
    CHECK(false);
   } catch (const std::exception&) {
    CHECK(throws_like("not offered"));

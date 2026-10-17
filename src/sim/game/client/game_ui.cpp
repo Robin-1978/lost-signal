@@ -346,6 +346,10 @@ void GameUi::resize(int width, int height, const mission::ScenarioSession* missi
  rebuild(mission);
 }
 
+bool GameUi::world_pointer_available(float screen_x) const {
+ return screen_x < std::max(0.0f, static_cast<float>(width_) - kPanelWidth);
+}
+
 tgui::Label::Ptr GameUi::add_label(const std::string& text, float x, float y, float width, unsigned text_size,
                                    tgui::Color color, bool bold) {
  auto label = tgui::Label::create(text);
@@ -633,8 +637,8 @@ void GameUi::build_garage() {
    add_parent_->add(card);
  card->setToolTip(make_tooltip(item.title + "\n" + item.description + "\n" + card_stat(column.slot, item)));
  card->onClick([this, slot = column.slot, id = option] {
- const bool playground = catalog_.level(presentation_->level).mode == "playground";
- if (playground || owned_.empty() || owned_.contains(id))
+ const bool open_loadout = catalog_.level(presentation_->level).loadout_access == "open";
+ if (open_loadout || owned_.empty() || owned_.contains(id))
  select_component(slot, id);
  else
  actions_.purchase_component = id;
@@ -798,6 +802,8 @@ void GameUi::build_running(const mission::ScenarioSession* mission) {
  auto state_card = tgui::Panel::create({kContentWidth, 128});
  const bool manual = mission && !mission->endless_mode() &&
  mission->level().control_mode == "manual_calibration";
+ const bool operator_drive = mission && !mission->endless_mode() &&
+ mission->level().control_mode == "operator_drive";
  const bool expedition = mission && mission->endless_mode();
  const float state_y = 22.0f + objective_card_height + 12.0f;
  state_card->setPosition(kMargin, state_y);
@@ -808,8 +814,9 @@ void GameUi::build_running(const mission::ScenarioSession* mission) {
  panel_->add(state_card);
  const std::string robot_title = mission ? mission->robot().title : selected_robot_title();
  auto live = tgui::Label::create(expedition ? catalog_.trf("running.live_together", {robot_title})
+ : (operator_drive ? catalog_.tr("running.live_operator")
  : (manual ? catalog_.tr("running.live_drive")
- : catalog_.trf("running.live_decide", {robot_title})));
+ : catalog_.trf("running.live_decide", {robot_title}))));
  live->setPosition(18, 14);
  live->setTextSize(12);
  live->getRenderer()->setTextColor({104, 218, 193});
@@ -1095,8 +1102,10 @@ void GameUi::refresh_debrief(const mission::ScenarioSession& mission) {
 
 void GameUi::select_component(const std::string& slot, const std::string& id) {
  // Locked options are disabled at the widget level, but this guard keeps
- // programmatic callers honest too. Empty ownership means no filtering.
- if (!owned_.empty() && !owned_.contains(id))
+ // programmatic callers honest too. Playgrounds deliberately expose their
+ // authored experiment matrix without mutating campaign inventory.
+ const bool open_loadout = catalog_.level(presentation_->level).loadout_access == "open";
+ if (!open_loadout && !owned_.empty() && !owned_.contains(id))
   return;
  assign_id(build_, slot, id);
  actions_.build_changed = true;
@@ -1117,7 +1126,7 @@ void GameUi::cycle_component(const std::string& slot) {
  column->options.size();
  for (std::size_t offset = 0; offset < column->options.size(); ++offset) {
  const auto& candidate = column->options[(start + offset) % column->options.size()];
- if (catalog_.level(presentation_->level).mode == "playground" ||
+ if (catalog_.level(presentation_->level).loadout_access == "open" ||
  owned_.empty() || owned_.contains(candidate)) {
  select_component(slot, candidate);
  return;
@@ -1127,7 +1136,7 @@ void GameUi::cycle_component(const std::string& slot) {
 
 void GameUi::select_chassis(const std::string& robot_id) {
  const auto& robot = catalog_.robot(robot_id);
- if (catalog_.level(presentation_->level).mode != "playground" &&
+ if (catalog_.level(presentation_->level).loadout_access != "open" &&
  !robot.unlock_ability.empty() && !owned_abilities_.contains(robot.unlock_ability)) {
  return;
  }
@@ -1238,7 +1247,7 @@ std::string GameUi::card_text(const std::string& slot, const mission::ComponentD
 void GameUi::sanitize_build() {
  // Selections the player does not own (stale saves, future content) fall back
  // to the level default, which content validation guarantees to be ownable.
- const bool playground = catalog_.level(presentation_->level).mode == "playground";
+ const bool playground = catalog_.level(presentation_->level).loadout_access == "open";
  if (owned_.empty())
   return;
  if (!playground) {
@@ -1263,7 +1272,7 @@ void GameUi::sanitize_build() {
 }
 
 void GameUi::update_garage_labels() {
- const bool playground = catalog_.level(presentation_->level).mode == "playground";
+ const bool playground = catalog_.level(presentation_->level).loadout_access == "open";
  const std::string selected_chassis = !build_.chassis_robot.empty()
  ? build_.chassis_robot
  : (!presentation_->robot_id.empty() ? presentation_->robot_id : catalog_.campaign().companion_robot);
@@ -1358,12 +1367,15 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  const auto& state = mission.snapshot();
  const bool manual = !mission.endless_mode() &&
  mission.level().control_mode == "manual_calibration";
+ const bool operator_drive = !mission.endless_mode() &&
+ mission.level().control_mode == "operator_drive";
  const double grade_degrees = std::atan(state.terrain_grade) * kRadToDeg;
  const double cross_degrees = std::atan(state.cross_slope) * kRadToDeg;
  const bool slope_active = std::abs(grade_degrees) >= 1.0 || std::abs(cross_degrees) >= 1.0;
  if (running_explanation_card_) {
   running_explanation_card_->setVisible(
- mission.endless_mode() || manual || state.static_obstacle_detected || state.dynamic_object_detected ||
+ mission.endless_mode() || manual || operator_drive || state.static_obstacle_detected ||
+ state.dynamic_object_detected ||
     state.waiting_for_clearance || slope_active || state.traction_saturated || state.rollover_risk >= 0.75);
  }
  std::string explanation;
@@ -1395,6 +1407,17 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  explanation += "\n" + catalog_.trf("running.incident",
  {incident_label(catalog_, environment.incident.kind), format_number(incident_distance),
  format_number(environment.incident.resolve_progress * 100.0, 0)});
+ }
+ } else if (operator_drive) {
+ const auto& intent = mission.field_intent();
+ explanation = catalog_.tr(mission.manual_control_active()
+ ? "running.operator_manual_body"
+ : "running.operator_auto_body");
+ if (intent.active) {
+ const double intent_distance = std::hypot(
+ state.robot.x - intent.target.x, state.robot.y - intent.target.y);
+ explanation += "\n\n" + catalog_.trf("running.operator_target",
+ {field_ack_label(catalog_, intent.acknowledgement), format_number(intent_distance)});
  }
  } else if (manual) {
  explanation = catalog_.tr("running.manual_body");

@@ -354,6 +354,9 @@ struct LevelDefinition {
  std::vector<std::string> prerequisites;
  unsigned seed{0};
  ObjectiveDefinition objective;
+ // "campaign" applies inventory and ability progression. "open" exposes
+ // the level-authored hardware matrix without granting any persistent item.
+ std::string loadout_access{"campaign"};
  int budget{0};
  std::vector<std::string> required_slots;
  std::string concept_id;

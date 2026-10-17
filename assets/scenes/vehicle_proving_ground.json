@@ -1,0 +1,335 @@
+{
+  "schema_version": 1,
+  "id": "scene.vehicle_proving_ground",
+  "camera": {
+    "offset_m": [
+      -10.0,
+      -11.5,
+      12.5
+    ],
+    "target_height_m": 0.9,
+    "fov_degrees": 46.0,
+    "focus_weights": {
+      "robot": 0.58,
+      "actor": 0.0,
+      "goal": 0.42
+    },
+    "event_shot": {
+      "offset_m": [
+        -8.0,
+        -9.0,
+        9.5
+      ],
+      "target_height_m": 0.85,
+      "fov_degrees": 39.0,
+      "focus_weights": {
+        "robot": 0.7,
+        "actor": 0.0,
+        "goal": 0.3
+      }
+    },
+    "success_shot": {
+      "offset_m": [
+        -6.5,
+        -7.0,
+        7.0
+      ],
+      "target_height_m": 1.15,
+      "fov_degrees": 37.0,
+      "focus_weights": {
+        "robot": 0.38,
+        "actor": 0.0,
+        "goal": 0.62
+      }
+    },
+    "transition_s": 0.65
+  },
+  "lighting": {
+    "direction": [
+      -0.55,
+      0.42,
+      -1.0
+    ],
+    "directional_color": "#FFE9C2",
+    "directional_intensity": 1.18,
+    "ambient_color": "#43504C",
+    "fog_color": "#0B1110",
+    "fog_start_m": 24.0,
+    "fog_end_m": 62.0,
+    "robot_active_color": "#1AD0AE",
+    "robot_waiting_color": "#E79B34",
+    "goal_color": "#2DE0D5",
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 42.0,
+    "shadow_strength": 0.66,
+    "exposure": 1.0,
+    "bloom_threshold": 0.8,
+    "bloom_strength": 0.22,
+    "vignette_strength": 0.13
+  },
+  "floor": {
+    "base_color": "#171C1A",
+    "tile_color": "#4C504A",
+    "boundary_color": "#272D2A",
+    "tile_size_m": 4.0,
+    "seam_m": 0.025,
+    "color_variation": 7,
+    "boundary_height_m": 0.32,
+    "boundary_width_m": 0.24,
+    "albedo_texture": "textures/environment/concrete_floor.png"
+  },
+  "prefabs": [
+    {
+      "id": "prefab.survey_beacon",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.08
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            0.16
+          ],
+          "color": "#343B38"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            1.25
+          ],
+          "color": "#707A74"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.43
+          ],
+          "size_m": [
+            0.11,
+            0.11,
+            0.11
+          ],
+          "color": "#E6A53A"
+        }
+      ]
+    },
+    {
+      "id": "prefab.drainage_unit",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.16
+          ],
+          "size_m": [
+            0.9,
+            0.5,
+            0.32
+          ],
+          "color": "#333B38"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.38
+          ],
+          "size_m": [
+            0.13,
+            0.13,
+            0.56
+          ],
+          "yaw_degrees": 90.0,
+          "color": "#6F7A75"
+        }
+      ]
+    },
+    {
+      "id": "prefab.test_sign",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.55
+          ],
+          "size_m": [
+            0.08,
+            0.08,
+            1.1
+          ],
+          "color": "#555E59"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            1.2
+          ],
+          "size_m": [
+            0.72,
+            0.09,
+            0.42
+          ],
+          "color": "#D89A35"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            -0.052,
+            1.2
+          ],
+          "size_m": [
+            0.52,
+            0.02,
+            0.08
+          ],
+          "color": "#202624"
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "id": "assembly_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        3.0,
+        3.0,
+        0.0
+      ]
+    },
+    {
+      "id": "wet_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        3.3,
+        15.6,
+        0.0
+      ]
+    },
+    {
+      "id": "wet_drain",
+      "prefab": "prefab.drainage_unit",
+      "position_m": [
+        11.3,
+        10.5,
+        0.0
+      ]
+    },
+    {
+      "id": "sand_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        14.3,
+        15.6,
+        0.0
+      ]
+    },
+    {
+      "id": "gravel_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        25.3,
+        15.6,
+        0.0
+      ]
+    },
+    {
+      "id": "steel_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        36.3,
+        15.6,
+        0.0
+      ]
+    },
+    {
+      "id": "mud_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        14.3,
+        7.6,
+        0.0
+      ]
+    },
+    {
+      "id": "ramp_low_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        3.4,
+        21.8,
+        0.0
+      ]
+    },
+    {
+      "id": "ramp_high_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        18.8,
+        22.0,
+        1.8
+      ]
+    },
+    {
+      "id": "cross_slope_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        28.3,
+        26.6,
+        0.0
+      ]
+    },
+    {
+      "id": "rough_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        40.3,
+        26.6,
+        0.0
+      ]
+    },
+    {
+      "id": "finish_beacon_visual",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        44.0,
+        29.0,
+        0.0
+      ]
+    }
+  ],
+  "effects": {
+    "robot_scale": 1.0,
+    "bob_amplitude_m": 0.0,
+    "bob_frequency_hz": 1.65,
+    "eye_height_m": 0.25,
+    "scan_radius_m": 1.45,
+    "perception_link_height_m": 0.42,
+    "prediction_horizon_s": 2.4,
+    "success_ring_radius_m": 0.82,
+    "trail_duration_s": 2.2,
+    "surface_particle_count": 40,
+    "surface_particle_scale": 1.3,
+    "risk_indicator_radius_m": 0.88
+  }
+}

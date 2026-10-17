@@ -54,10 +54,10 @@ it does not name apples, orchard crates, or harvest strategies.
 The numbered stages later in this document describe the completed alpha baseline. All new work follows the milestone
 sequence here so that completed release work and future work cannot be confused.
 
-The immediate sequence is **RO-1 reference correctness → content design and refined play → visual and audio polish
-→ architecture validation and the experiment framework**. The reference-platform correction was promoted ahead
-of content after the current prototype exposed a false wheel-contact model; [the acceptance contract](reference-platform.md)
-must pass before new chassis, sensors, or mechanics expand that error. Orchard Scramble is useful engineering evidence, but its static
+The immediate sequence is **instrumented proving ground → RO-2 service braking → 2.5D editor output → refined play
+→ visual and audio polish → architecture validation and the experiment framework**. The RO-1 and RO-2 typical
+reference gates and the 16-line LiDAR gate now pass; [the acceptance contract](reference-platform.md) remains the
+source of truth for the limits of those claims. Orchard Scramble is useful engineering evidence, but its static
 multi-collection loop is not accepted as the first polished Playground. The next content pass may change the format,
 map, actors, interactions, and required algorithms; it is not constrained to a reskinned delivery or collection
 mission. Responsive-information work continues only when a concrete usability problem blocks play. Platform fidelity
@@ -65,8 +65,11 @@ and broader sensors follow after the product milestones, except for correctness 
 
 The active implementation order is:
 
-Current status: stages 1--3 are complete for the published, unloaded RO-1 `typical` envelope. Stage 4 is active.
-The completion claim excludes the open split-friction, identified combined-slip, dynamic-rollover, systematic
+Current status: stages 1--4 are complete for the published, unloaded RO-1 `typical` envelope. The 16-line LiDAR and
+RO-2 articulated `typical` gates are also complete. The independent Vehicle Proving Ground is implemented as an
+always-available engineering space with open loadout selection, direct driving, and click-to-drive autonomy. It does
+not satisfy the polished-playground gate: it still needs explicit measurement evidence and repeatable maneuvers.
+The completion claims exclude the open split-friction, identified combined-slip, dynamic-rollover, systematic
 payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
 
 1. Complete the unloaded RO-1 reference assembly: articulated drive wheels and caster, physical encoder feedback,
@@ -87,6 +90,24 @@ payload-sweep, and hardware-identification envelopes listed in `reference-platfo
 8. Generalize the experiment, regression, and fault-injection framework from the finished content.
 9. Add further sensors or autonomy only for a named experience
  or measured platform target. Run the sanitizer suite for milestone and release-candidate gates.
+
+The next concrete work packages are:
+
+1. Turn the Vehicle Proving Ground into measurable evidence. Add data-authored repeatable maneuvers and label live
+ and debrief measurements for speed, stopping distance and time, commanded and measured steering, inner/outer
+ steering-angle difference, measured turn radius, grade, slip, and active LiDAR profile. Keep simulator truth and
+ onboard-observable estimates visibly distinct.
+2. Add an optional service-brake actuator for the high-speed RO-2 profile through the existing ROBOT/LSRI/SIM
+ boundary. Verify apply/release response, torque sign and saturation, tire-limited stopping, split grip, and grade
+ hold independently before using it in a lesson. Parking brake and ABS remain separate capabilities.
+3. Extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
+ semantic markers, and test routes consumed by simulation. Validate lossless reload and world/grid transforms.
+4. Select and graybox one mechanically distinct Playground. Its surprise and choices must survive a fresh-player
+ test before permanent art begins; the Vehicle Proving Ground remains an engineering sandbox rather than campaign
+ content.
+5. Polish the approved loop, then generalize its experiment and fault-injection needs. Bring RO-3 through RO-5 to
+ independent physical acceptance only when a selected experience needs them. Full SLAM and VLA remain deferred
+ until a named experience provides acceptance criteria.
 
 ### M0 — Maintain responsive UI quality (deferred, non-blocking)
 
