@@ -14,5 +14,5 @@ struct AStarResult {
 // This is the first planning tradeoff the player encounters.
 using TraversalCost = std::function<double(Vec2 from, Vec2 to)>;
 AStarResult astar_plan(const GridMap& costmap, Vec2 start, Vec2 goal, double h_weight = 1.0,
-                       const TraversalCost& traversal_cost = {});
+ const TraversalCost& traversal_cost = {}, double goal_tolerance_m = 0.0);
 } // namespace sim

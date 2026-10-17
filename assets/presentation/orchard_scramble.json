@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "id": "presentation.orchard_scramble",
+  "is_default": false,
+  "level": "orchard_scramble",
+  "robot": "robot.ro1",
+  "garage": {
+    "heading": "果园争分夺秒",
+    "brief": "暴风雨前，选择底盘、轮胎和任务偏好。机器人会自己决定先去哪、怎样穿过泥洼与横坡，并带着越来越重的苹果返回装箱台。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "果园轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "距离雷达",
+        "options": [
+          "sensor.short_fast_lidar",
+          "sensor.standard_lidar",
+          "sensor.long_slow_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "任务计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "姿态感知",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.mid",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.5,
+      "task_policy": "task.balanced"
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.short_fast_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.torque",
+      "imu": "imu.precise",
+      "style": 0.2,
+      "task_policy": "task.safest"
+    }
+  },
+  "prediction": {
+    "heading": "第一筐该去哪里？",
+    "hint": "距离只是一个变量；泥地、横坡、价值和回程载荷都会改变答案。",
+    "choices": [
+      {
+        "id": "orchard.nearest",
+        "text": "先拿最近的一筐",
+        "feedback": "最近路线通常省时，但低抓地或回程坡度会改变真实代价。"
+      },
+      {
+        "id": "orchard.valuable",
+        "text": "先拿最值钱的山脊果",
+        "feedback": "价值优先可能值得绕路，也会更早抬高载荷和重心。"
+      },
+      {
+        "id": "orchard.safe",
+        "text": "先走稳妥的硬地果行",
+        "feedback": "保守排序牺牲距离，换取抓地和侧翻余量。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "自主采收进行中",
+    "normal_line": "RO-1：正在比较剩余果筐、地形代价、载荷与安全回程。",
+    "detected_line": "RO-1：地形或载荷约束改变，正在重新排序并规划。",
+    "goal_lines": [
+      "选择第一筐",
+      "载荷已增加，重新排序",
+      "继续采收",
+      "检查回程余量",
+      "最后一筐",
+      "返回装箱台",
+      "采收完成"
+    ]
+  },
+  "debrief": {
+    "success_title": "苹果安全回到装箱台",
+    "success_summary": "查看实际访问顺序、载荷历史、打滑、能耗和侧翻余量，解释机器人为何这样排序。",
+    "failure_summary": "沿时间轴找到地形、载荷或回程约束首次失去余量的位置，再换底盘、轮胎或策略。",
+    "evidence_heading": "采收决策证据",
+    "evidence_caption": "目标顺序、物理载荷、路线代价与车辆状态来自同一确定性运行。",
+    "knowledge_title": "任务排序不是最近邻",
+    "failure_titles": {
+      "collision-static": "采收失败：碰到果树或边界",
+      "collision-dynamic": "采收失败：动态碰撞",
+      "rollover": "采收失败：载荷与坡面导致侧翻",
+      "timeout": "采收失败：暴风雨前未返回",
+      "no-feasible-route": "采收失败：剩余目标没有可行路线",
+      "payload-damage": "采收失败：果实冲击损伤超过交付阈值",
+      "return-reserve": "采收失败：天气窗口不足以安全返场"
+    }
+  },
+  "chassis_options": [
+    "robot.ro1",
+    "robot.ro2",
+    "robot.ro3",
+    "robot.ro4",
+    "robot.ro5"
+  ],
+  "task_policies": [
+    "task.balanced",
+    "task.safest",
+    "task.fastest",
+    "task.valuable"
+  ]
+}

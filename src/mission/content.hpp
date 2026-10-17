@@ -48,6 +48,9 @@ struct SurfaceMaterialDefinition {
  double friction_mu{1.0};
  double rolling_drag{0.0};
  double traction_scale{1.0};
+ double normal_stiffness_Npm{1.0e9};
+ double normal_damping_Nspm{0.0};
+ double lidar_reflectivity{0.30};
  std::string drive_effect{"none"};
  std::array<unsigned char, 4> effect_color{255, 255, 255, 255};
  double effect_intensity{0.0};
@@ -65,6 +68,9 @@ struct SurfaceDefinition {
  double traction_scale{1.0};
  double friction_mu{0.8};
  double rolling_drag{0.0};
+ double normal_stiffness_Npm{1.0e9};
+ double normal_damping_Nspm{0.0};
+ double lidar_reflectivity{0.30};
 };
 
 struct TerrainPatchDefinition {
@@ -185,6 +191,38 @@ struct ScenePrefabDefinition {
  std::vector<ScenePartDefinition> parts;
 };
 
+struct SceneGoalVisualDefinition {
+ std::string id;
+ // available, active, completed, abandoned. A missing state draws nothing.
+ std::unordered_map<std::string, std::string> state_prefabs;
+};
+
+struct ScenePayloadVisualDefinition {
+ std::string mount;
+ std::string container_prefab;
+ std::string item_prefab;
+ std::string damaged_item_prefab;
+ Vec3 item_origin_m;
+ // Column spacing (+x), row spacing (+y), and layer spacing (+z) in the
+ // robot frame. The item prefabs stay presentation-only; payload truth comes
+ // from PayloadState and is replayed independently of this layout.
+ Vec3 item_spacing_m;
+ int grid_columns{1};
+ int grid_rows{1};
+ int items_per_visual{1};
+ int max_visible_items{1};
+ double damaged_below_integrity{0.75};
+ double pickup_effect_duration_s{0.0};
+ int pickup_effect_particles{0};
+ std::array<unsigned char, 4> pickup_effect_color{255, 255, 255, 255};
+ std::array<unsigned char, 4> pickup_effect_accent_color{255, 255, 255, 255};
+ double pickup_effect_radius_m{0.0};
+ double pickup_effect_rise_m{0.0};
+ double damage_warning_below_integrity{0.0};
+ std::array<unsigned char, 4> damage_warning_color{255, 255, 255, 255};
+ double damage_warning_height_m{0.0};
+};
+
 struct SceneInstanceDefinition {
  std::string id;
  std::string prefab;
@@ -201,6 +239,8 @@ struct SceneDefinition {
  SceneEffectsDefinition effects;
  SceneFloorDefinition floor;
  std::unordered_map<std::string, ScenePrefabDefinition> prefabs;
+ std::unordered_map<std::string, SceneGoalVisualDefinition> goal_visuals;
+ ScenePayloadVisualDefinition payload_visual;
  std::vector<SceneInstanceDefinition> instances;
 };
 
@@ -231,6 +271,17 @@ struct GoalStep {
  // Optional stopped dwell for inspect actions. The goal system owns the
  // timer, while mission control only supplies a physically reachable stop.
  double dwell_s{0.0};
+ // Stable task identity. Marker is the default for existing authored goals;
+ // selectable task sets should name it explicitly so visit order can change
+ // without changing result or replay identity.
+ std::string id;
+ // Optional scene-owned visual id. The goal framework never names themed art.
+ std::string visual;
+ int item_count{0};
+ double item_mass_kg{0.0};
+ double item_cog_height_m{0.0};
+ double item_value{0.0};
+ double item_fragility{0.0};
 };
 
 struct ObjectiveDefinition {
@@ -251,6 +302,23 @@ struct ObjectiveDefinition {
  // Derived ordered goals (catalog fills from legacy fields when the JSON has
  // no explicit "goals"): mission consumes this list, never the legacy fields.
  std::vector<GoalStep> goals;
+ // authored: visit array order. autonomous: select unfinished non-terminal
+ // tasks at runtime, then activate the terminal complete goal.
+ std::string goal_order{"authored"};
+ std::string task_policy{"task.balanced"};
+ double return_reserve_s{0.0};
+};
+
+struct EnvironmentKeyframeDefinition {
+ std::string id;
+ std::string label;
+ double time_s{0.0};
+ double wetness{0.0};
+ double visibility{1.0};
+ double daylight{1.0};
+ // Material id -> multiplier applied to the shared tire/ground contact.
+ // Missing materials remain at 1.0. Values interpolate on simulation time.
+ std::unordered_map<std::string, double> material_grip;
 };
 
 struct ChapterDefinition {
@@ -279,11 +347,16 @@ struct LevelDefinition {
  double safe_min_clearance_m{0.0};
  std::string safe_clearance_scope{"all"};
  double max_localization_error_m{999.0};
+ // Extra global-costmap inflation for known localization uncertainty. It is
+ // content because a dead-reckoning lesson and a fused-pose lesson can use
+ // the same robot and geometry with different safety envelopes.
+ double planning_localization_margin_m{0.0};
  double fast_time_s{0.0};
  double efficient_energy_wh{0.0};
  std::vector<std::string> rewards;
  double payload_mass_kg{0.0};
  double payload_cog_height_m{0.0};
+ std::vector<EnvironmentKeyframeDefinition> environment_keyframes;
 };
 
 struct AbilityDefinition {
@@ -307,6 +380,15 @@ struct ContractJob {
  std::string blurb;
 };
 
+// Non-localized provenance for a family of component parameters. A typical
+// profile is a documented engineering default. Identified is reserved for a
+// profile fitted to a named physical unit and validation data.
+struct ModelProfileDefinition {
+ std::string fidelity;
+ std::string basis;
+ std::vector<std::string> source_refs;
+};
+
 struct ComponentDefinition {
  std::string id;
  std::string slot;
@@ -315,12 +397,20 @@ struct ComponentDefinition {
  int cost{0};
  Properties behavior;
  VisualDefinition visual;
+ ModelProfileDefinition model_profile;
 };
 
 struct MountDefinition {
  std::string id;
  Vec3 position_m;
  Vec3 rotation_deg;
+ // Assembly-authored visual motion. Simulation binds actuator channels to
+ // mounts; renderers interpret the role without naming a chassis or mount.
+ std::string motion{"fixed"};
+ // Physical rolling radius for wheel/caster motion. It lives on the mount so
+ // passive supports and mixed wheel assemblies animate from their own
+ // geometry rather than borrowing one chassis-wide visual constant.
+ double rolling_radius_m{0.0};
  // Stable robotics frame name. Empty remains supported for player packs and
  // resolves to <mount-id>_link; official robots publish explicit names.
  std::string frame_id;
@@ -335,6 +425,13 @@ struct RobotPartDefinition {
 struct RobotSlotDefinition {
  std::string slot;
  std::vector<std::string> mounts;
+};
+
+struct PassiveSupportDefinition {
+ // The fork swivels with caster heading while the wheel also rolls. Keeping
+ // these as separate authored mounts avoids rotating the fork with the tire.
+ std::string steer_mount;
+ std::string roll_mount;
 };
 
 struct SteeringDefinition {
@@ -355,15 +452,72 @@ struct MotorDefinition {
  // Per-wheel equivalent translational mass (wheel + tire + reflected rotor).
  // Hardware data: the contact patch integrates the tread against this.
  double wheel_equiv_mass_kg{3.0};
+ // Controller and low-speed drivetrain assumptions are authored data, not
+ // hidden tuning constants in the simulation backend.
+ double controller_bandwidth_radps{6.0};
+ double controller_integral_time_s{5.0};
+ double controller_derivative_time_s{0.005};
+ double coulomb_smoothing_speed_mps{0.05};
+ double viscous_drag_N_per_mps{0.6};
 };
 
 struct EncoderDefinition {
  int counts_per_revolution{0};
 };
 
+struct RigidLinkDefinition {
+ std::string id;
+ std::string shape;
+ Vec3 size_m;
+ double radius_m{0.0};
+ double length_m{0.0};
+ Vec3 position_m;
+ Vec3 rotation_deg;
+ double mass_kg{0.0};
+ Vec3 inertia_diagonal_kgm2;
+ double friction{0.8};
+ // Finite-patch support moment divided by normal load, in metres. This is
+ // distinct from the tire component's dimensionless rolling resistance.
+ double rolling_support_moment_arm_m{0.0};
+ double spinning_resistance{0.0};
+ double contact_stiffness_Npm{0.0};
+ double contact_damping_Nspm{0.0};
+ Vec3 contact_axle_axis;
+};
+
+struct RigidJointDefinition {
+ std::string id;
+ std::string type;
+ std::string parent;
+ std::string child;
+ Vec3 pivot_in_parent_m;
+ Vec3 pivot_in_child_m;
+ Vec3 axis_in_parent;
+ Vec3 axis_in_child;
+};
+
+struct JointActuatorDefinition {
+ // Chassis-neutral assembly data binds a named controller output channel to
+ // a joint. The differential controller currently publishes left / right.
+ std::string channel;
+ std::string joint;
+ double effort_limit_Nm{0.0};
+ // Motor/gearbox inertia reflected to the driven joint axis. This is an
+ // actuator property, separate from the physical wheel-link inertia.
+ double armature_inertia_kgm2{0.0};
+};
+
+struct ArticulationDefinition {
+ std::string root_link;
+ std::vector<RigidLinkDefinition> links;
+ std::vector<RigidJointDefinition> joints;
+ std::vector<JointActuatorDefinition> actuators;
+};
+
 struct RobotDefinition {
  std::string id;
  std::string title;
+ ModelProfileDefinition model_profile;
  std::string drive_type;
  std::string drive_label_key;
  double wheel_radius_m{0.0};
@@ -388,13 +542,23 @@ struct RobotDefinition {
  double energy_per_v_w{0.0};
  double energy_per_w_w{0.0};
  EncoderDefinition encoder;
+ ArticulationDefinition articulation;
+ // Orientation-independent envelope consumed by grid and local planners.
  double collision_radius_m{0.0};
+ // Authored rigid hull consumed by Bullet. It is deliberately separate from
+ // the planning envelope and from the wheel/caster support polygon.
+ std::string rigid_body_shape;
+ Vec3 rigid_body_size_m;
  double collision_height_m{0.0};
+ // Rest height of the physical base_link origin above the support surface and
+ // height of the complete unloaded assembly centre of mass. They are derived
+ // from articulated link data when present; neither is a visual-mesh offset.
+ double base_link_height_m{0.0};
+ double center_of_mass_height_m{0.0};
  std::vector<MountDefinition> mounts;
  // Passive rolling supports belong to the chassis assembly, not to the
- // powered tire component slot. Their mount order is the telemetry channel
- // order published by ChassisModel (for RO-1: front caster, rear caster).
- std::vector<std::string> passive_support_mounts;
+ // powered tire component slot. Array order is the telemetry channel order.
+ std::vector<PassiveSupportDefinition> passive_supports;
  std::vector<RobotPartDefinition> base_parts;
  std::vector<RobotSlotDefinition> slots;
 };
@@ -407,11 +571,23 @@ struct PolicyDefinition {
  Properties behavior;
 };
 
+struct TaskPolicyDefinition {
+ std::string id;
+ std::string title;
+ std::string description;
+ // Registered autonomy implementation plus data-only tuning parameters.
+ std::string algorithm;
+ Properties parameters;
+};
+
 struct BuildSelection {
  // slot -> component id. New hardware slots need no C++ changes: loader,
  // validation, cost, UI, renderers and saves all iterate this map.
  std::map<std::string, std::string> parts;
  double style{0.5};
+ // Empty keeps the level-authored doctrine. Autonomous task sets may choose
+ // References a catalog task policy without changing driving control.
+ std::string task_policy;
  // Player-requested chassis (robot id, empty = presentation default).
  // Honored only when listed in the level's chassis_options and validated
  // (ownership checked by the caller holding progress, see validate_build).
@@ -448,6 +624,8 @@ struct PresentationDefinition {
  // today, zero behavior drift). Entries must name robots; the mission honors
  // a validated build request, the garage owns the UI, abilities own unlock.
  std::vector<std::string> chassis_options;
+ // Ordered allow-list for autonomous task-ordering algorithms.
+ std::vector<std::string> task_policies;
  std::string garage_heading;
  std::string garage_brief;
  std::vector<ComponentColumn> component_columns;
@@ -489,7 +667,10 @@ struct CampaignDefinition {
  std::string companion_name;
  std::string companion_robot;
  std::string starting_level;
+ // Guided Campaign order. Optional systemic experiences are listed
+ // separately so adding a playground never changes chapter progression.
  std::vector<std::string> levels;
+ std::vector<std::string> playgrounds;
  std::vector<std::string> starting_inventory;
  std::vector<std::string> starting_policies;
 };

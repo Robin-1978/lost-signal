@@ -224,6 +224,10 @@ def write_model(name: str, parts: list[Part], output: Path = OUTPUT) -> None:
                 ],
             }
         )
+        # Generated robot assets use the repository's robotics frame (+x forward,
+        # +y left, +z up). The renderer owns the single robotics-to-raylib basis
+        # change when it loads a model. Keeping that boundary here avoids baking a
+        # second conversion into vertices and turning the assembled chassis over.
         node = {"mesh": index, "name": part.name, "translation": part.position}
         if part.rotation is not None:
             node["rotation"] = part.rotation
@@ -269,9 +273,8 @@ def main() -> None:
         Part(
             "tire",
             "cylinder",
-            (0.105, 0.105, 0.10),
+   (0.10, 0.10, 0.10),
             rgba("#263331"),
-            rotation=turn_x,
             roughness=0.84,
         ),
         Part(
@@ -279,7 +282,6 @@ def main() -> None:
             "cylinder",
             (0.066, 0.066, 0.106),
             rgba("#6F837E"),
-            rotation=turn_x,
             metallic=0.62,
             roughness=0.32,
         ),
@@ -288,7 +290,6 @@ def main() -> None:
             "cylinder",
             (0.031, 0.031, 0.112),
             mint,
-            rotation=turn_x,
             metallic=0.46,
             emissive=0.12,
         ),
@@ -297,9 +298,8 @@ def main() -> None:
         Part(
             "tire",
             "cylinder",
-            (0.115, 0.115, 0.12),
+   (0.09, 0.09, 0.12),
             dark,
-            rotation=turn_x,
             roughness=0.94,
         ),
         Part(
@@ -307,7 +307,6 @@ def main() -> None:
             "cylinder",
             (0.061, 0.061, 0.125),
             rgba("#64736F"),
-            rotation=turn_x,
             metallic=0.54,
         ),
         Part(
@@ -315,7 +314,6 @@ def main() -> None:
             "cylinder",
             (0.036, 0.036, 0.132),
             mint,
-            rotation=turn_x,
             metallic=0.42,
             emissive=0.18,
         ),
@@ -326,10 +324,10 @@ def main() -> None:
             Part(
                 f"tread_{tread:02d}",
                 "box",
-                (0.040, 0.135, 0.026),
+ (0.024, 0.026, 0.135),
                 rgba("#101817"),
-                (math.cos(angle) * 0.112, 0.0, math.sin(angle) * 0.112),
-                rotation=(0.0, math.sin(-angle * 0.5), 0.0, math.cos(-angle * 0.5)),
+ (math.cos(angle) * 0.088, -math.sin(angle) * 0.088, 0.0),
+ rotation=(0.0, 0.0, math.sin(-angle * 0.5), math.cos(-angle * 0.5)),
                 roughness=0.98,
             )
         )
@@ -337,9 +335,8 @@ def main() -> None:
         Part(
             "tire",
             "cylinder",
-            (0.098, 0.098, 0.08),
+   (0.10, 0.10, 0.08),
             rgba("#314442"),
-            rotation=turn_x,
             roughness=0.72,
         ),
         Part(
@@ -347,7 +344,6 @@ def main() -> None:
             "cylinder",
             (0.071, 0.071, 0.086),
             rgba("#A9C7BE"),
-            rotation=turn_x,
             metallic=0.40,
             roughness=0.28,
         ),
@@ -356,11 +352,28 @@ def main() -> None:
             "cylinder",
             (0.025, 0.025, 0.091),
             mint,
-            rotation=turn_x,
             metallic=0.40,
             emissive=0.10,
         ),
     ]
+    # Wheel assets are authored in their link frame: the joint axis is local +Z.
+    # The robot link / mount transform turns +Z onto the vehicle's lateral axis.
+    # Keeping that rotation out of the mesh prevents the physical link rotation
+    # from being applied twice by the renderer.
+    # An off-center sidewall witness makes encoder-backed rotation visible.
+    for wheel_parts, face_z in ((standard_wheel, 0.056), (grip_wheel, 0.068), (eco_wheel, 0.046)):
+        for side in (-1.0, 1.0):
+            wheel_parts.append(
+                Part(
+                    f"rotation_witness_{'left' if side > 0 else 'right'}",
+                    "box",
+                    (0.028, 0.040, 0.010),
+                    rgba("#F4B74B"),
+                    (0.058, 0.0, side * face_z),
+                    emissive=0.48,
+                    roughness=0.30,
+                )
+            )
     tracked_hull = [
     Part("armored_belly", "box", (0.58, 0.46, 0.12), dark, (0, 0, -0.015),
     metallic=0.56, roughness=0.46),
@@ -594,14 +607,13 @@ def main() -> None:
  roughness=0.25,
  ),
         ],
- "caster": [
+ "caster_wheel": [
  Part(
  "caster_tire",
  "cylinder",
  (0.055, 0.055, 0.064),
  rgba("#151D1C"),
- (-0.030, 0, 0),
- rotation=turn_x,
+ (0, 0, 0),
  roughness=0.92,
  ),
  Part(
@@ -609,8 +621,7 @@ def main() -> None:
  "cylinder",
  (0.031, 0.031, 0.069),
  rgba("#778A85"),
- (-0.030, 0, 0),
- rotation=turn_x,
+ (0, 0, 0),
  metallic=0.68,
  roughness=0.28,
  ),
@@ -619,21 +630,22 @@ def main() -> None:
  "cylinder",
  (0.013, 0.013, 0.096),
  mint,
- (-0.030, 0, 0),
- rotation=turn_x,
+ (0, 0, 0),
  metallic=0.72,
  roughness=0.22,
  ),
+ ],
+ "caster_fork": [
  Part("fork_left", "box", (0.070, 0.018, 0.092), rgba("#657772"),
- (-0.004, 0.047, 0.052), metallic=0.66, roughness=0.30),
+ (-0.0175, 0.047, -0.013), metallic=0.66, roughness=0.30),
  Part("fork_right", "box", (0.070, 0.018, 0.092), rgba("#657772"),
- (-0.004, -0.047, 0.052), metallic=0.66, roughness=0.30),
+ (-0.0175, -0.047, -0.013), metallic=0.66, roughness=0.30),
  Part("fork_bridge", "box", (0.092, 0.112, 0.026), rgba("#52645F"),
- (0.012, 0, 0.104), metallic=0.70, roughness=0.27),
+ (0, 0, 0.039), metallic=0.70, roughness=0.27),
  Part("swivel_stem", "cylinder", (0.024, 0.024, 0.075), rgba("#7E918B"),
- (0.025, 0, 0.147), metallic=0.76, roughness=0.22),
+ (0, 0, 0.082), metallic=0.76, roughness=0.22),
  Part("swivel_bearing", "cylinder", (0.052, 0.052, 0.022), dark,
- (0.025, 0, 0.192), metallic=0.56, roughness=0.28),
+ (0, 0, 0.127), metallic=0.56, roughness=0.28),
  ],
         "wheel_standard": standard_wheel,
         "wheel_grip": grip_wheel,

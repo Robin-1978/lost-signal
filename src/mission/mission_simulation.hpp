@@ -8,7 +8,7 @@
 #include "mission/systems/goal_system.hpp"
 #include "autonomy/planning/global/global_planner.hpp"
 #include "mission/systems/world_activity_system.hpp"
-#include "mission/physics_scene.hpp"
+#include "sim/simulated_platform.hpp"
 #include "mission/world/actor_behavior_registry.hpp"
 #include "autonomy/behavior/entry_governor.hpp"
 #include "autonomy/planning/validation/entry_shadow.hpp"
@@ -39,6 +39,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace mission {
@@ -137,6 +138,10 @@ struct LocalTrajectorySnapshot {
 struct MountActuationSnapshot {
  std::string mount_id;
  double yaw_rad{0.0};
+ double roll_rad{0.0};
+ // Articulated physics supplies the complete base_link_T_child transform.
+ // This includes caster-trail translation and supersedes yaw/roll synthesis.
+ std::optional<sim::physics::RigidTransform> base_from_link;
 };
 
 struct ControlSnapshot {
@@ -195,6 +200,43 @@ struct ControlSnapshot {
  std::vector<MountActuationSnapshot> mount_actuations;
 };
 
+struct PayloadPickup {
+ std::string goal_id;
+ double time_s{0.0};
+ int item_count{0};
+ double mass_kg{0.0};
+ double cog_height_m{0.0};
+ double value{0.0};
+ double fragility{0.0};
+};
+
+// Authoritative runtime load state. Content describes the starting load and
+// collectible trays; simulation owns their accumulated mass and first moment.
+// Replay snapshots copy this value so a seek cannot show a different plant
+// from the one that produced the recorded motion.
+struct PayloadState {
+ double mass_kg{0.0};
+ double first_moment_kgm{0.0};
+ double cog_height_m{0.0};
+ int item_count{0};
+ double value{0.0};
+ double collected_mass_kg{0.0};
+ double fragility_mass_sum{0.0};
+ double integrity{1.0};
+ double max_shock_mps2{0.0};
+ double max_jerk_mps3{0.0};
+ std::vector<PayloadPickup> history;
+};
+
+struct EnvironmentState {
+ double wetness{0.0};
+ double visibility{1.0};
+ double daylight{1.0};
+ std::size_t keyframe_index{0};
+ std::size_t next_keyframe_index{0};
+ double blend{0.0};
+};
+
 struct MissionSnapshot {
  double time_s{0.0};
  sim::DiffState robot;
@@ -208,9 +250,15 @@ struct MissionSnapshot {
  bool dynamic_object_detected{false};
  bool waiting_for_clearance{false};
  bool via_reached{false};
- // Ordered-goals progress: index of the next unreached goal in
- // objective.goals. via_reached stays synced for legacy UI/headless readers.
+ // Number completed. Autonomous task order is represented separately by the
+ // stable active/completed/abandoned ids and must never use this as an index.
  std::size_t goals_reached{0};
+ std::size_t active_goal_index{std::numeric_limits<std::size_t>::max()};
+ std::string active_goal_id;
+ std::vector<std::string> completed_goal_ids;
+ std::vector<std::string> abandoned_goal_ids;
+ PayloadState payload;
+ EnvironmentState environment;
  MissionStatus status{MissionStatus::Ready};
  double robot_height_m{0.0};
  double robot_roll_rad{0.0};
@@ -219,12 +267,17 @@ struct MissionSnapshot {
  double cross_slope{0.0};
  double rollover_risk{0.0};
  bool traction_saturated{false};
+ // Onboard-observable estimate from encoder/IMU disagreement. Autonomy may
+ // consume this; traction_saturated above remains simulator plant truth.
+ bool traction_slip_observed{false};
  // Bullet-shadow comparison. Zero in Domain mode; in Bullet authority these
  // describe the live rigid body and shadow_error_* stay zero.
  double shadow_position_error_m{0.0};
  double shadow_heading_error_rad{0.0};
  double shadow_height_error_m{0.0};
  int rigid_contact_count{0};
+ std::vector<std::string> ground_contact_links;
+ double max_drive_slip_ratio{0.0};
  // Regional conditions are copied into every replay frame. Physics, sensing,
  // rendering and UI therefore describe the same instant when replay seeks.
  WorldActivityState world_activity;
@@ -250,6 +303,8 @@ struct MissionResult {
  sim::Vec2 min_dynamic_actor_position;
  double odometry_error_m{0.0};
  double max_odometry_error_m{0.0};
+ double odometry_heading_error_rad{0.0};
+ double max_odometry_heading_error_rad{0.0};
  int collisions{0};
  int pedestrian_contacts{0};
  // Perception diagnostics compare anonymous tracks with truth after planning;
@@ -257,6 +312,7 @@ struct MissionResult {
  long assoc_agree{0};
  long assoc_total{0};
  int slip_events{0};
+ double max_drive_slip_ratio{0.0};
  int astar_expanded{0};
  int local_decisions{0};
  bool via_reached{false};
@@ -271,6 +327,12 @@ struct MissionResult {
  double max_shadow_height_error_m{0.0};
  int rigid_contacts{0};
  double cargo_integrity{1.0};
+ int collected_items{0};
+ double collected_value{0.0};
+ double final_payload_mass_kg{0.0};
+ double final_payload_cog_height_m{0.0};
+ double peak_wetness{0.0};
+ double min_visibility{1.0};
 };
 
 // Named composition options keep extension points discoverable and avoid a
@@ -324,8 +386,8 @@ class MissionSimulation {
  std::optional<sim::Vec2> target = std::nullopt);
  const WorldActivityState& world_activity() const { return snapshot_.world_activity; }
  const GoalStep* active_goal() const {
- const auto index = snapshot_.goals_reached;
- return index < level_.objective.goals.size() ? &level_.objective.goals[index] : nullptr;
+ const auto index = goal_system_.active_goal_index();
+ return index && *index < level_.objective.goals.size() ? &level_.objective.goals[*index] : nullptr;
  }
 
  const LevelDefinition& level() const { return level_; }
@@ -348,6 +410,7 @@ class MissionSimulation {
  double frame_timestamp_s() const { return estimation_system_.state().timestamp_s; }
  const std::vector<sim::RoutePoint>& planned_route() const { return planned_route_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
+ const PayloadState& payload_state() const { return payload_; }
  const MissionResult& result() const { return result_; }
  const std::vector<MissionEvent>& events() const { return events_; }
  const std::vector<DecisionEvidence>& decisions() const { return decisions_; }
@@ -382,7 +445,19 @@ class MissionSimulation {
 
  private:
  void build_world();
+ void reset_payload();
+ void collect_payload(const GoalStep& goal);
+ bool update_payload_integrity(const sim::DiffState& before, const sim::DiffState& after,
+ double lateral_accel_mps2, double contact_impulse_Ns);
+ void synchronize_payload_dynamics();
+ void update_environment();
+ double environment_grip_multiplier(const std::string& material) const;
+ double total_mass_kg() const;
+ double combined_center_height_m() const;
+ double combined_yaw_inertia_kgm2() const;
+ void select_next_goal(const Pose& start);
  void plan_route();
+ void finish_route_failure();
  void update_actors();
  void scan_environment();
  void refresh_dynamic_obstacles();
@@ -425,10 +500,12 @@ class MissionSimulation {
  // Content is converted once into validated, unit-bearing runtime contracts.
  // BuildSelection remains the stable map used by saves and player packs.
  ResolvedBuild resolved_build_;
- double gyro_bias_{0.0};
  bool was_saturated_{false};
  double rigid_rollover_exposure_s_{0.0};
  double rigid_static_contact_s_{0.0};
+ double previous_payload_shock_mps2_{0.0};
+ double filtered_payload_shock_mps2_{0.0};
+ bool payload_shock_initialized_{false};
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 
@@ -446,24 +523,26 @@ class MissionSimulation {
  double yaw_cap_rads_{2.0};
  sim::EstimationSystem estimation_system_;
  sim::physics::FrameTransformTree frame_tree_;
- sim::Rng imu_rng_;
- sim::Rng imu_accel_rng_;
- sim::Rng imu_bias_walk_rng_;
  sim::TerrainModel terrain_;
  sim::TerrainCapability terrain_capability_;
  sim::ChassisCaps chassis_caps_;
  autonomy::GlobalPlanningSystem planning_system_;
  bool custom_global_planner_{false};
- std::unique_ptr<PhysicsScene> physics_scene_;
+ std::unique_ptr<sim::platform::SimulatedPlatform> platform_;
  bool custom_high_level_policy_{false};
  std::shared_ptr<sim::IHighLevelPolicy> high_level_policy_;
  const ContractJob* active_contract_{nullptr};
  GoalSystem goal_system_;
+ PayloadState payload_;
+ // Wheel phase is simulation state and is copied into replay snapshots via
+ // mount_actuations. Renderers never synthesize motion from wall-clock time.
+ std::unordered_map<std::string, double> mount_roll_rad_;
  FieldDispatchSystem field_dispatch_system_;
  FieldOperatorSystem field_operator_system_;
  WorldActivitySystem world_activity_system_;
  std::vector<sim::RoutePoint> planned_route_;
  bool route_feasible_{true};
+ bool return_reserve_failure_{false};
  // Persistent expedition mode: the same world, sensors and Bullet contacts
  // keep stepping without goal, timeout or collision termination. The player
  // moves the field operator and issues high-level intents; the robot always
@@ -531,7 +610,6 @@ class MissionSimulation {
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;
  std::uint64_t motion_sequence_{0};
- std::uint64_t imu_sequence_{0};
  std::uint64_t command_sequence_{0};
  std::uint64_t decision_sequence_{0};
  bool manual_control_active_{false};

@@ -79,6 +79,28 @@ int main() {
  // Production perception receives anonymous ranges. Static-map differencing,
  // clustering and temporal confirmation create the track without truth IDs.
  sim::SensorSystem sensors(open_map, 7, 11);
+ // IMU is a hardware-layer device: physics supplies ideal six-axis truth;
+ // this device owns frame/sequence, fixed bias, random walk and white noise.
+ const sim::ImuTruth imu_truth{0.1, -0.2, 0.3, 1.2, -0.4, 9.7};
+ const auto ideal_imu = sensors.capture_imu(imu_truth, 0.02, 0.02, {});
+ CHECK(ideal_imu.roll_rate_radps == imu_truth.roll_rate_radps);
+ CHECK(ideal_imu.pitch_rate_radps == imu_truth.pitch_rate_radps);
+ CHECK(ideal_imu.yaw_rate_radps == imu_truth.yaw_rate_radps);
+ CHECK(ideal_imu.forward_acceleration_mps2 == imu_truth.forward_specific_force_mps2);
+ CHECK(ideal_imu.left_acceleration_mps2 == imu_truth.left_specific_force_mps2);
+ CHECK(ideal_imu.up_acceleration_mps2 == imu_truth.up_specific_force_mps2);
+ CHECK(ideal_imu.header.frame_id == "imu_link");
+ CHECK(ideal_imu.header.sequence == 0);
+ sim::SensorSystem noisy_imu_a(open_map, 37, 11);
+ sim::SensorSystem noisy_imu_b(open_map, 37, 11);
+ const sim::ImuConfig noisy_imu_config{0.01, 0.02, 0.003, 0.05, "imu_link", 0.004};
+ const auto imu_a = noisy_imu_a.capture_imu(imu_truth, 1.0, 0.02, noisy_imu_config);
+ const auto imu_b = noisy_imu_b.capture_imu(imu_truth, 1.0, 0.02, noisy_imu_config);
+ CHECK(imu_a.roll_rate_radps == imu_b.roll_rate_radps);
+ CHECK(imu_a.pitch_rate_radps == imu_b.pitch_rate_radps);
+ CHECK(imu_a.yaw_rate_radps == imu_b.yaw_rate_radps);
+ CHECK(imu_a.forward_acceleration_mps2 == imu_b.forward_acceleration_mps2);
+ CHECK(imu_a.header.latency_s == 0.004);
  sim::WorldTruth truth;
  truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
  truth.dynamic_objects = forklift;
@@ -87,6 +109,7 @@ int main() {
  estimate.heading_rad = 0.0;
  sim::LidarConfig lidar_config;
  lidar_config.rays = 360;
+ lidar_config.min_range_m = 0.2;
  lidar_config.range_m = 10.0;
  lidar_config.scan_hz = 10.0;
  const auto first_frame = sensors.capture_lidar(truth, 0.0, lidar_config);
@@ -97,6 +120,15 @@ int main() {
 CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal Domain comparison is instantaneous
 CHECK(first_frame.lidar->intensities.size() == first_frame.lidar->ranges.size());
 CHECK(first_frame.lidar->intensities[0] > 0.0);
+ sim::SensorSystem near_field_sensors(open_map, 7, 11);
+ sim::WorldTruth near_field_truth = truth;
+ near_field_truth.dynamic_objects = {{{1.3, 5.0}, {}, 0.1}};
+ lidar_config.min_range_m = 0.25;
+ const auto near_field = near_field_sensors.capture_lidar(near_field_truth, 0.0, lidar_config);
+ CHECK(!near_field.lidar->hit[0]);
+ CHECK(near_field.lidar->ranges[0] == near_field.lidar->max_range);
+ CHECK(near_field.lidar->intensities[0] == 0.0);
+ lidar_config.min_range_m = 0.2;
  const auto first_perception = sensors.process_lidar(first_frame, estimate, 1.0);
  CHECK(!first_perception.dynamic_object_detected);
  const auto second_frame = sensors.capture_lidar(truth, 0.1, lidar_config);
@@ -153,31 +185,27 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  const sim::WheelPidGains test_gains = sim::tune_wheel_pid(12.0, 54.0, 3.0, 1.2);
  CHECK(test_gains.kp > 1.0);
  CHECK(test_gains.kp < 4.0);
- sim::DifferentialMotorDrive motors(
-   {
-     0.52,
-     0.10,
-     2.4,
-     4.2,
-     54.0,
-     3.0,
-     24.0,
-     2.4,
-     2048,
-     1.0,
-     2.0,
- 0.5,
- 0.5,
- 2.0,
- {{0.25, 0.0}, {-0.25, 0.0}},
-   },
-   test_gains);
+ sim::MotorDriveParams test_motor_params;
+ test_motor_params.wheel_base_m = 0.52;
+ test_motor_params.wheel_radius_m = 0.10;
+ test_motor_params.max_wheel_speed_mps = 2.4;
+ test_motor_params.max_wheel_accel_mps2 = 4.2;
+ test_motor_params.stall_force_N = 54.0;
+ test_motor_params.free_speed_mps = 3.0;
+ test_motor_params.mass_kg = 24.0;
+ test_motor_params.yaw_inertia_kgm2 = 2.4;
+ test_motor_params.encoder_counts_per_revolution = 2048;
+ test_motor_params.pwm_limit = 1.0;
+ test_motor_params.integral_limit = 2.0;
+ test_motor_params.support_width_m = 0.5;
+ test_motor_params.support_length_m = 0.5;
+ test_motor_params.max_yaw_rate_radps = 2.0;
+ sim::DifferentialMotorDrive motors(test_motor_params, test_gains);
  const sim::GroundContact test_ground{0.7, 0.01, 4.2};
  sim::DiffState driven;
  driven = motors.step(driven, {1.0, 0.6}, 0.02, test_ground);
  CHECK(motors.telemetry().left.pwm > 0.0);
  CHECK(motors.telemetry().right.target_mps > motors.telemetry().left.target_mps);
- CHECK(motors.telemetry().passive_caster_steer_count == 2);
  CHECK(std::abs(motors.telemetry().left.pwm) <= 1.0);
  CHECK(std::abs(motors.telemetry().right.pwm) <= 1.0);
  for (int step = 0; step < 100; ++step) {
@@ -185,10 +213,6 @@ CHECK(first_frame.lidar->intensities[0] > 0.0);
  }
  CHECK(driven.v > 0.7);
  CHECK(driven.w > 0.2);
- // Both wheel PIDs saturate equally on the first acceleration frame, so the
- // caster direction only becomes observable after yaw response develops.
- CHECK(motors.telemetry().passive_caster_steer_rad[0] > 0.0);
- CHECK(motors.telemetry().passive_caster_steer_rad[1] < 0.0);
  CHECK(std::abs(motors.telemetry().left.measured_mps) > 0.5);
 
  // predicted_gap: head-on approach shrinks to the known minimum, diverging

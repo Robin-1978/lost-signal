@@ -65,11 +65,12 @@ StrategyDecision apply_strategy_safety(const StrategyAction& requested,
  decision.applied.speed_scale = 0.25;
  override_reason(decision, "rollover-speed-cap");
  }
- if (observation.traction_saturated && decision.applied.speed_scale > 0.55) {
+if (context.traction_relief_enabled && observation.traction_slip_observed &&
+ decision.applied.speed_scale > 0.55) {
  decision.applied.speed_scale = 0.55;
  override_reason(decision, "traction-speed-cap");
  }
- if (observation.visible_clearance_m < 0.20) {
+ if (context.clearance_hold_enabled && observation.visible_clearance_m < 0.20) {
  decision.applied.mode = StrategyMode::Hold;
  decision.applied.speed_scale = 0.0;
  override_reason(decision, "clearance-hold");

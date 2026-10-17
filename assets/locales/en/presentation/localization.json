@@ -2,7 +2,7 @@
   "schema_version": 1,
   "translations": {
     "/garage/heading": "Cross the Slippery Service Zone",
-    "/garage/brief": "RO-1 estimates position from wheel rotation. Choose tires, then see how slip changes the estimate.",
+    "/garage/brief": "RO-1 estimates motion from wheel encoders and a yaw-rate sensor. Compare how tire contact and IMU quality change the estimate.",
     "/garage/component_columns/0/title": "Drive Tires",
     "/garage/component_columns/1/title": "LiDAR",
     "/garage/component_columns/2/title": "Inertial Measurement Unit",
@@ -18,7 +18,7 @@
     "/running/detected_line": "RO-1: Environment sensing is online; the position estimate keeps updating.",
     "/debrief/success_title": "Find the Accumulated Position Error",
     "/debrief/success_summary": "The gap between actual and estimated paths reveals odometry drift.",
-    "/debrief/failure_summary": "Choose tires with better traction, or try again at a lower speed.",
+    "/debrief/failure_summary": "Use better traction and a lower-bias IMU, or reduce speed before trying again.",
     "/debrief/evidence_heading": "Position Evidence",
     "/debrief/evidence_caption": "The debrief error is the difference between wheel odometry and actual position.",
     "/debrief/knowledge_title": "Localization and Drift",

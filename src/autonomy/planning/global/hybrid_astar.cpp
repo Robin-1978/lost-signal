@@ -37,8 +37,7 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  }
  const auto [sx, sy] = map.worldToGrid(start.x, start.y);
  const auto [gx, gy] = map.worldToGrid(goal.x, goal.y);
- if (!map.inside(sx, sy) || !map.inside(gx, gy) || !map.isFree(start.x, start.y) ||
- !map.isFree(goal.x, goal.y)) {
+ if (!map.inside(sx, sy) || !map.inside(gx, gy) || !map.isFree(start.x, start.y)) {
  return result;
  }
  const int directions = config.allow_reverse ? 2 : 1;
@@ -163,9 +162,13 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  : TravelDirection::Unspecified;
  const double terminal_distance =
  std::hypot(goal.x - route_nodes.back().x, goal.y - route_nodes.back().y);
- if (terminal_distance > 1e-9) {
+ // An authored goal may sit inside the optional clearance band while its
+ // arrival region still contains safe poses. Do not append an unsafe exact
+ // anchor in that case; the searched terminal pose already satisfies the
+ // requested goal-region contract.
+ if (terminal_distance > 1e-9 && map.isFree(goal.x, goal.y)) {
  result.path.push_back({goal, route_nodes.back().heading, terminal_direction});
- } else {
+ } else if (terminal_distance <= 1e-9) {
  result.path.back().position = goal;
  }
  return result;

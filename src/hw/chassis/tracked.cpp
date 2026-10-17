@@ -26,8 +26,10 @@ constexpr double kYawViscousNmsPerRadps = 2.0;
 
 TrackedDrive::TrackedDrive(TrackedParams params, WheelPidGains drive_gains)
     : params_(params),
-      left_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit),
-      right_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit) {
+left_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit,
+ AntiWindupMode::ConditionalIntegration),
+right_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit,
+ AntiWindupMode::ConditionalIntegration) {
  telemetry_.differential = true;
 }
 
@@ -38,6 +40,11 @@ void TrackedDrive::reset() {
  right_tread_mps_ = 0.0;
  telemetry_ = {};
  telemetry_.differential = true;
+}
+
+void TrackedDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
+ params_.mass_kg = std::max(0.5, dynamics.mass_kg);
+ params_.yaw_inertia_kgm2 = std::max(0.05, dynamics.yaw_inertia_kgm2);
 }
 
 double TrackedDrive::encoder_measure(double wheel_mps, double dt) const {

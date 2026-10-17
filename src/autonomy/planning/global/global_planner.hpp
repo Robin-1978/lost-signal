@@ -14,12 +14,16 @@
 
 namespace autonomy {
 
-inline constexpr std::uint32_t kGlobalPlannerApiMajor = 2;
+inline constexpr std::uint32_t kGlobalPlannerApiMajor = 3;
 inline constexpr std::uint32_t kGlobalPlannerApiMinor = 0;
 
 struct PlanningPose {
  sim::Vec2 position;
  double heading_rad{0.0};
+ // A mission goal is a region, not necessarily a point. Zero requests the
+ // exact containing grid cell. Positive values let a planner finish at a
+ // collision-free pose inside the authored arrival region.
+ double position_tolerance_m{0.0};
 };
 
 struct GlobalPlannerRequest {

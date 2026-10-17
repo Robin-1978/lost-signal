@@ -43,11 +43,13 @@ JOBS_PER_WEEK = 5
 
 
 def job_pool() -> list[dict]:
-    """Return contract candidates, excluding the opening tutorial."""
+    """Return Guided Campaign contract candidates, excluding the tutorial."""
+    campaign = json.loads((ASSETS / "campaign.json").read_text(encoding="utf-8"))
+    guided_levels = set(campaign["levels"])
     pool = []
     for path in sorted((ASSETS / "levels").glob("*.json")):
         level = json.loads(path.read_text(encoding="utf-8"))
-        if level.get("order", 0) > 2:
+        if level["id"] in guided_levels and level.get("order", 0) > 2:
             pool.append({"id": level["id"], "order": level["order"]})
     return pool
 

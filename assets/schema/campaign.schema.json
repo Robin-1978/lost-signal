@@ -11,6 +11,7 @@
     "companion",
     "starting_level",
     "levels",
+    "playgrounds",
     "starting_inventory",
     "starting_policies"
   ],
@@ -61,6 +62,13 @@
     "levels": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "playgrounds": {
+      "type": "array",
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/id"

@@ -1,6 +1,7 @@
 #include "hw/chassis/ackermann.hpp"
 #include "hw/chassis/caps.hpp"
 #include "hw/chassis/chassis_factory.hpp"
+#include "hw/chassis/motor_drive.hpp"
 #include "hw/chassis/tracked.hpp"
 #include "autonomy/control/follow.hpp"
 #include "autonomy/control/pid.hpp"
@@ -40,6 +41,34 @@ const sim::GroundContact kGround{0.7, 0.01, 4.0};
 } // namespace
 
 int main() {
+ // Actuator speed loops need their own anti-windup policy. A prolonged stall
+ // must not store a full positive integral that erases differential torque
+ // when the next command asks one wheel to reverse. Navigation heading PIDs
+ // retain the legacy integration behavior through the default constructor.
+ {
+ sim::PID motor_pid(2.0, 1.0, 0.0, 1.0, 10.0,
+ sim::AntiWindupMode::ConditionalIntegration);
+ for (int step = 0; step < 100; ++step)
+ (void)motor_pid.update(2.0, 0.02);
+ CHECK(std::abs(motor_pid.i()) < 1e-12);
+ CHECK(motor_pid.update(-0.25, 0.02) < 0.0);
+
+ sim::MotorDriveParams params;
+ params.wheel_base_m = 0.58;
+ sim::DifferentialMotorDrive drive(params, {2.0, 1.0, 0.0});
+ sim::ChassisActuatorFeedback stalled_feedback;
+ stalled_feedback.joints = {{"left", 0.0, 0.0}, {"right", 0.0, 0.0}};
+ sim::DiffState stalled;
+ for (int step = 0; step < 100; ++step) {
+ drive.set_actuator_feedback(stalled_feedback);
+ stalled = drive.step(stalled, {1.0, 0.0}, 0.02, kGround);
+ }
+ drive.set_actuator_feedback(stalled_feedback);
+ (void)drive.step(stalled, {0.0, 1.0}, 0.02, kGround);
+ CHECK(drive.telemetry().left.pwm < 0.0);
+ CHECK(drive.telemetry().right.pwm > 0.0);
+ }
+
  // Path follower boundaries: empty and exhausted paths are valid terminal
  // states. These cases used to read path[idx] before checking the bound.
  {

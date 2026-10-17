@@ -13,7 +13,7 @@ The current release is a `v0.1.0-alpha` source preview. The simulation core, Lin
 - **Autonomy is the game mechanic.** A*, Hybrid A*, DWA, dynamic-object prediction, kinematic conversion, motor control, and PID feedback determine what RO-1 actually does.
 - **The robot's reasoning is visible.** Switch between the field view and the AI view to inspect LiDAR returns, estimated pose, global paths, local trajectory candidates, terrain costs, wheel targets, encoder feedback, and PWM output from the same simulation snapshot.
 - **Failure produces evidence.** Slippery surfaces, slopes, occlusion, sensor noise, missing returns, and moving forklifts create causal events that can be replayed and tested by changing one variable at a time.
-- **Five chassis families have distinct behavior.** Differential, tracked, Ackermann, swerve, and mecanum drives use their own feasible-motion contracts, controllers, and actuator mappings.
+- **Five chassis families have distinct behavior.** Differential, tracked, Ackermann, swerve, and mecanum drives use their own feasible-motion contracts, controllers, and actuator mappings. RO-1 differential drive is the current articulated physics reference; the other four remain non-reference teaching proxies until they pass equivalent physical gates.
 - **Experiments are reproducible.** Fixed timesteps, seeded scenarios, JSON headless output, schemas, and automated tests support classes, algorithm comparisons, and community contributions.
 - **Content is data-driven.** Missions, maps, scenes, robots, hardware, policies, story beats, presentation, and UI text load from `assets/`.
 
@@ -21,7 +21,14 @@ Lost Signal uses C++20, Bullet 3.25, raylib 6.0, TGUI 1.13, nlohmann/json, CMake
 
 ## Play and learn
 
-The campaign follows a simple learning loop:
+Lost Signal has two complementary ways to play:
+
+- **Guided Campaign** keeps every existing story chapter, prerequisite, and teaching sequence.
+- **Autonomy Playgrounds** are optional standalone experiments available at any time. Orchard Scramble is the first:
+ choose the chassis, hardware, driving style, and harvest policy, then watch RO-1 autonomously order targets, collect
+ fruit across varied terrain, manage its changing payload, and return to the packing pad.
+
+The Guided Campaign follows a simple learning loop:
 
 1. Change one component or driving preference in the garage.
 2. Predict what will happen.
@@ -88,6 +95,10 @@ Source code, documentation, tests, schemas, and headless output use English. Loc
 # Run one mission with its recommended build
 ./tools/run.sh --headless --level lost_signal --recommended
 
+# Run the optional Orchard Scramble playground with an explicit task policy
+./tools/run.sh --headless --level orchard_scramble --recommended \
+ --task-policy safest --json
+
 # Exercise a high-level companion command and emit machine-readable output
 ./tools/run.sh --headless --level boot --endless --duration 8 \
  --intent go-to --target 6 4 --json
@@ -106,17 +117,26 @@ LOST_SIGNAL_BUILD_DIR=/path/to/lost-signal-build \
 
 ## What is simulated
 
-The compact [Lost Signal Runtime Interface](docs/runtime-interface.md) connects autonomy to simulation, replay, or future native hardware drivers without depending on ROS 2. Its versioned ports validate capabilities, timestamps, sources, sequences, command expiry, lifecycle, and health. An optional bridge can translate LSRI to ROS 2 or another middleware at the edge.
+The compact [Lost Signal Runtime Interface](docs/runtime-interface.md) connects autonomy to simulation, replay, or future native hardware drivers without depending on an external robotics middleware. Its versioned ports validate capabilities, timestamps, sources, sequences, command expiry, lifecycle, and health. Middleware compatibility layers are outside the product roadmap.
 
 The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, source IDs, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
 
+RO-1 is the only current physical reference platform. Its Bullet assembly contains an elevated chassis, two driven
+wheel bodies, a passive swivel fork and a separately rolling caster wheel. Link mass/inertia, joint pivots and axes,
+mount transforms, support geometry, encoder feedback, and reflected drive inertia are validated as one assembly.
+RO-1 and each component family declare an `ideal`, `typical`, or `identified` parameter profile. The shipped RO-1
+uses sourced typical defaults and documented engineering assumptions; publishing it does not require a physical
+twin. See [parameter profiles and sources](docs/parameter-sources.md).
+Tracked, Ackermann, swerve, and mecanum content still uses compact proxy plants and is excluded from RO-1 release
+evidence.
+
 Maps are 2.5D: terrain patches define height, two-axis grade, and roughness, while surface definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The current LiDAR is a mounted single-plane scanner that raycasts that world, so terrain, static geometry, and moving actors occlude and return measurements according to their 3D poses.
 
-Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include motion distortion, estimated-motion deskew, first-return intensity, bias, white noise, quantization, and missing returns. The IMU models bias, random walk, and angular-velocity and acceleration noise. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
+Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include minimum/maximum range, motion distortion, estimated-motion deskew, configurable first-return intensity, bias, white noise, quantization, latency metadata, and missing returns. The IMU configures noise density and bandwidth, then derives per-sample noise before applying startup bias and random walk. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 
 The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. Bullet is the authoritative and default rigid-body backend in both graphical and headless runs. A deterministic planar backend remains available for focused regression tests and algorithm comparison.
 
-These interfaces create a useful path toward ROS 2 adapters, calibration, log replay, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
+These interfaces create a useful path toward calibration, log replay, native hardware providers, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
 
 ## Repository map
 

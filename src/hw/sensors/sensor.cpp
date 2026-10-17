@@ -50,11 +50,20 @@ Scan apply_lidar_noise(Scan ideal_scan, const LidarNoiseModel& model, Rng& rng) 
  }
    continue;
   }
-  range += model.range_bias_m + rng.gauss(model.range_stddev_m);
+ range += model.range_bias_m + rng.gauss(model.range_stddev_m);
   if (model.range_resolution_m > 0.0) {
    range = std::round(range / model.range_resolution_m) * model.range_resolution_m;
   }
-  range = std::clamp(range, 0.0, ideal_scan.max_range);
+ // A measurement driven outside the device interval is a no-return, not a
+ // valid obstacle invented exactly at the range boundary. The minimum-range
+ // blind zone is applied by SensorSystem because it belongs to the selected
+ // device profile; this layer owns the universal maximum-range behavior.
+ if (range < 0.0 || range >= ideal_scan.max_range) {
+ ideal_scan.hit[index] = 0;
+ range = ideal_scan.max_range;
+ if (!ideal_scan.intensities.empty())
+ ideal_scan.intensities[index] = 0.0;
+ }
  }
  return ideal_scan;
 }
@@ -126,24 +135,25 @@ void DeadReckon::update(double velocity, double angular_velocity, double dt, Rng
  const double distance = velocity * dt;
  const double distance_sigma = 0.02 * std::abs(distance) + 0.0005;
  const double noisy_distance = distance + rng.gauss(distance_sigma) * slip_scale;
- // Complementary heading, weighted by slip: wheels are excellent on grip and
- // lie when sliding, the gyro is mediocre everywhere. Trust each source where
- // it deserves it, like any real fusion filter does with covariances.
- // Authority cap 0.5: even on ice the wheels keep half the vote, so soft-tire
- // evidence is never fully masked by the gyro. L5-recommended (grip, low slip)
- // never engages the gyro at all and is unaffected by this number.
+ // Complementary heading, weighted by the variance of each increment. Wheel
+ // heading uncertainty grows with the contact/slip scale. Gyro rate noise is
+ // converted to an increment uncertainty over this sample. The IMU hardware
+ // model has already applied bias, random walk and white noise to gyro_rate;
+ // sampling gyro_sigma again here would count the same sensor noise twice.
  double gyro_weight = 0.0;
  if (has_gyro) {
-  gyro_weight = std::clamp((slip_scale - 1.0) * 0.5, 0.0, 0.8);
+ const double wheel_increment_sigma =
+ (0.05 * std::abs(angular_velocity * dt) + 0.0008) * std::max(0.0, slip_scale);
+ const double gyro_increment_sigma = std::max(0.0, gyro_sigma) * dt;
+ const double wheel_variance = wheel_increment_sigma * wheel_increment_sigma;
+ const double gyro_variance = gyro_increment_sigma * gyro_increment_sigma;
+ const double total_variance = wheel_variance + gyro_variance;
+ gyro_weight = total_variance > 0.0 ? wheel_variance / total_variance : 0.0;
  }
  const double heading_delta = angular_velocity * dt;
  const double heading_sigma = 0.05 * std::abs(heading_delta) + 0.0008;
  const double wheel_part = heading_delta + rng.gauss(heading_sigma) * slip_scale + yaw_bias * distance;
- // Zero weight draws nothing: gyro-less runs reproduce the old stream bit-for-bit.
- double gyro_part = 0.0;
- if (gyro_weight > 0.0) {
-  gyro_part = gyro_rate * dt + rng.gauss(gyro_sigma) * std::sqrt(dt);
- }
+ const double gyro_part = gyro_rate * dt;
  th += (1.0 - gyro_weight) * wheel_part + gyro_weight * gyro_part;
  p.x += noisy_distance * std::cos(th);
  p.y += noisy_distance * std::sin(th);

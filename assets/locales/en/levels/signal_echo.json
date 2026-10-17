@@ -4,6 +4,9 @@
     "/title": "Signal Echo",
     "/objective/via_label": "Power Module",
     "/objective/goal_label": "Signal Tower",
+    "/objective/goals/0/label": "Power Module",
+    "/objective/goals/1/label": "Dynamic Intersection Observation Point",
+    "/objective/goals/2/label": "Signal Tower",
     "/teaching/prediction_prompt": "On a second run through the forklift corridor, where is time worth saving?",
     "/teaching/knowledge_card": "The same route behaves differently with a new motor and sensing combination. Read the evidence before chasing speed."
   }

@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "id": "orchard_hillside",
+  "scene_3d": "scene.orchard_scramble",
+  "size_m": [
+    26.0,
+    20.0
+  ],
+  "grid_resolution_m": 0.25,
+  "obstacles": [
+    {
+      "id": "orchard_tree_01",
+      "type": "box",
+      "min": [
+        6.68,
+        1.68
+      ],
+      "max": [
+        7.32,
+        2.32
+      ]
+    },
+    {
+      "id": "orchard_tree_02",
+      "type": "box",
+      "min": [
+        6.68,
+        5.18
+      ],
+      "max": [
+        7.32,
+        5.82
+      ]
+    },
+    {
+      "id": "orchard_tree_03",
+      "type": "box",
+      "min": [
+        6.68,
+        8.68
+      ],
+      "max": [
+        7.32,
+        9.32
+      ]
+    },
+    {
+      "id": "orchard_tree_04",
+      "type": "box",
+      "min": [
+        6.68,
+        13.68
+      ],
+      "max": [
+        7.32,
+        14.32
+      ]
+    },
+    {
+      "id": "orchard_tree_05",
+      "type": "box",
+      "min": [
+        6.68,
+        17.18
+      ],
+      "max": [
+        7.32,
+        17.82
+      ]
+    },
+    {
+      "id": "orchard_tree_06",
+      "type": "box",
+      "min": [
+        12.68,
+        3.18
+      ],
+      "max": [
+        13.32,
+        3.82
+      ]
+    },
+    {
+      "id": "orchard_tree_07",
+      "type": "box",
+      "min": [
+        12.68,
+        6.68
+      ],
+      "max": [
+        13.32,
+        7.32
+      ]
+    },
+    {
+      "id": "orchard_tree_08",
+      "type": "box",
+      "min": [
+        12.68,
+        11.18
+      ],
+      "max": [
+        13.32,
+        11.82
+      ]
+    },
+    {
+      "id": "orchard_tree_09",
+      "type": "box",
+      "min": [
+        12.68,
+        15.18
+      ],
+      "max": [
+        13.32,
+        15.82
+      ]
+    },
+    {
+      "id": "orchard_tree_10",
+      "type": "box",
+      "min": [
+        12.68,
+        18.18
+      ],
+      "max": [
+        13.32,
+        18.82
+      ]
+    },
+    {
+      "id": "orchard_tree_11",
+      "type": "box",
+      "min": [
+        18.68,
+        1.68
+      ],
+      "max": [
+        19.32,
+        2.32
+      ]
+    },
+    {
+      "id": "orchard_tree_12",
+      "type": "box",
+      "min": [
+        18.68,
+        5.68
+      ],
+      "max": [
+        19.32,
+        6.32
+      ]
+    },
+    {
+      "id": "orchard_tree_13",
+      "type": "box",
+      "min": [
+        18.68,
+        9.68
+      ],
+      "max": [
+        19.32,
+        10.32
+      ]
+    },
+    {
+      "id": "orchard_tree_14",
+      "type": "box",
+      "min": [
+        18.68,
+        14.68
+      ],
+      "max": [
+        19.32,
+        15.32
+      ]
+    },
+    {
+      "id": "orchard_tree_15",
+      "type": "box",
+      "min": [
+        18.68,
+        17.68
+      ],
+      "max": [
+        19.32,
+        18.32
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "muddy_swale",
+      "type": "box",
+      "min": [
+        7.5,
+        0.5
+      ],
+      "max": [
+        13.0,
+        6.5
+      ],
+      "material": "mud",
+      "label": "泥泞洼地"
+    },
+    {
+      "id": "ridge_gravel",
+      "type": "box",
+      "min": [
+        20.0,
+        3.0
+      ],
+      "max": [
+        25.5,
+        9.0
+      ],
+      "material": "gravel",
+      "label": "碎石山脊"
+    }
+  ],
+  "terrain": [
+    {
+      "id": "orchard_hillside",
+      "type": "height_patch",
+      "min": [
+        0.0,
+        0.0
+      ],
+      "max": [
+        26.0,
+        20.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.025,
+      "grade_y": 0.11,
+      "roughness": 0.035
+    }
+  ],
+  "markers": {
+    "packing_pad": [
+      2.5,
+      10.0,
+      0.0
+    ],
+    "apple_outer_row": [
+      24.0,
+      17.5,
+      3.141592653589793
+    ],
+    "apple_muddy_swale": [
+      10.0,
+      3.0,
+      0.0
+    ],
+    "apple_side_hill": [
+      22.0,
+      13.0,
+      1.5707963267948966
+    ],
+    "apple_orchard_aisle": [
+      10.0,
+      16.5,
+      0.0
+    ],
+    "apple_ridge_pocket": [
+      23.5,
+      6.0,
+      3.141592653589793
+    ]
+  },
+  "actors": []
+}

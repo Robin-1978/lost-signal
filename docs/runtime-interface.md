@@ -1,6 +1,6 @@
 # Lost Signal Runtime Interface v1
 
-The Lost Signal Runtime Interface (LSRI) is the small, middleware-neutral boundary between autonomy and a robot platform. The core does not depend on ROS 2, DDS, a device SDK, or a simulator API. Bullet, deterministic replay, native hardware drivers, and optional middleware bridges all meet the same contract.
+The Lost Signal Runtime Interface (LSRI) is the small, project-owned boundary between autonomy and a robot platform. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
 
 LSRI v1 is implemented by `src/runtime/runtime_channel.*`. Its public constants are `kApiVersion == 1` and `kMessageSchemaVersion == 1`.
 
@@ -15,17 +15,15 @@ flowchart LR
  P --> Sim[Bullet adapter]
  P --> Replay[Replay driver]
  P --> Native[Native hardware driver]
- P --> Bridge[Optional ROS 2 or other bridge]
 
  Sim --> P
  Replay --> P
  Native --> P
- Bridge --> P
 ```
 
-The autonomy port reads observations and writes motion commands. The platform port publishes observations and consumes commands. Neither port exposes world truth, Bullet bodies, game state, UI types, ROS messages, or transport handles.
+The autonomy port reads observations and writes motion commands. The platform port publishes observations and consumes commands. Neither port exposes world truth, Bullet bodies, game state, UI types, device types, or transport handles.
 
-The simulator owns both ends of an in-process channel because simulation and autonomy currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives the platform end to a native driver. A bridge is just another platform adapter.
+The simulator owns both ends of an in-process channel because simulation and autonomy currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives the platform end to a native driver.
 
 ## Required conventions
 
@@ -40,7 +38,7 @@ LSRI uses the following normative rules:
 - A platform declares its chassis command space and physical limits before activation.
 - Invalid, out-of-order, expired, or incompatible commands never reach an actuator.
 
-These conventions align with SI and common mobile-robot frame practice, but they belong to LSRI and do not require a ROS installation.
+These conventions align with SI and common mobile-robot frame practice, but they belong to LSRI and do not require an external middleware installation.
 
 ## Lifecycle and health
 
@@ -101,22 +99,6 @@ The shipped provider is `channel.in-process`. `ReplayDriver` publishes ordered r
 Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v1 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
 
 The provider boundary permits multi-threaded and multi-process execution, but v1 ships only the in-process provider. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
-
-## Optional ROS 2 bridge
-
-ROS 2 is an adapter target, not the project runtime. A bridge may translate:
-
-| LSRI | ROS 2 bridge target |
-|---|---|
-| LiDAR observation | `sensor_msgs/msg/LaserScan` |
-| IMU observation | `sensor_msgs/msg/Imu` |
-| Encoder/pose state | `nav_msgs/msg/Odometry` |
-| Frame relationships | TF2 |
-| Yaw-rate motion | `geometry_msgs/msg/TwistStamped` |
-| Steering motion | an Ackermann command adapter |
-| Actuator state/command | ros2_control state and command interfaces |
-
-The bridge owns QoS, executors, discovery, DDS, and ROS lifecycle mapping. None of those types enter `lost_signal_stack` or `lost_signal_mission`. Another bridge can target a serial protocol, CAN gateway, Zenoh, shared memory, or a classroom microcontroller without changing autonomy.
 
 LSRI's motion command stops at the chassis-intent boundary. A platform provider may satisfy a wheel-velocity or
 steering-position target through native position, velocity, torque/current, voltage, or duty-cycle interfaces, but

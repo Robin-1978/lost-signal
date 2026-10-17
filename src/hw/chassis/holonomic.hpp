@@ -36,6 +36,7 @@ void mecanum_forward(const std::array<double, 4>& wheel_mps, double wheel_base_m
 class HolonomicDrive final : public ChassisModel {
  public:
  explicit HolonomicDrive(HolonomicParams params);
+ void set_body_dynamics(const ChassisBodyDynamics& dynamics) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
  const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }

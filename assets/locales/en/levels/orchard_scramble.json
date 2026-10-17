@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Orchard Scramble",
+    "/objective/goal_label": "Packing Pad",
+    "/objective/goals/0/label": "Outer Row Crate",
+    "/objective/goals/1/label": "Muddy Swale Crate",
+    "/objective/goals/2/label": "Side-Hill Crate",
+    "/objective/goals/3/label": "Narrow-Aisle Crate",
+    "/objective/goals/4/label": "Ridge Select Fruit",
+    "/objective/goals/5/label": "Packing Pad",
+    "/teaching/prediction_prompt": "Will fastest, safest, and highest-value doctrines choose the same first crate?",
+    "/teaching/knowledge_card": "Task order changes with surface, feasible motion, payload mass, center of gravity, and the cost of returning safely.",
+    "/environment/keyframes/0/label": "Storm Break",
+    "/environment/keyframes/1/label": "Drizzle Closing In",
+    "/environment/keyframes/2/label": "Downpour Front",
+    "/environment/keyframes/3/label": "Weather Closure"
+  }
+}

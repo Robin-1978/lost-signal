@@ -216,6 +216,13 @@
       "items": {
         "$ref": "#/$defs/id"
       }
+    },
+    "task_policies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
     }
   },
   "$defs": {
@@ -252,6 +259,9 @@
           "$ref": "#/$defs/id"
         },
         "imu": {
+          "$ref": "#/$defs/id"
+        },
+        "task_policy": {
           "$ref": "#/$defs/id"
         }
       }

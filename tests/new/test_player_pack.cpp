@@ -25,8 +25,15 @@
 namespace fs = std::filesystem;
 
 const char kPlayerTire[] = R"({
-  "schema_version": 1,
+ "schema_version": 2,
   "slot": "tires",
+ "model_profile": {
+ "fidelity": "typical",
+ "basis": "third-party documented contact assumptions",
+ "source_refs": [
+ "player-pack://tires.player_pro"
+ ]
+ },
   "components": [
     {
       "id": "tires.player_pro",
@@ -38,7 +45,9 @@ const char kPlayerTire[] = R"({
         "brake_decel_mps2": 3.0,
         "power_scale": 1.0,
         "friction_mu": 0.7,
-        "rolling_resistance": 0.01
+ "rolling_resistance": 0.01,
+ "normal_stiffness_Npm": 40000.0,
+ "normal_damping_Nspm": 1000.0
       },
       "visual": {
         "primitive_2d": "wheel",

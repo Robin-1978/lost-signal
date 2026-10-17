@@ -4,8 +4,8 @@ namespace sim {
 // Excess yaw rate can cause slip and amplify odometry error; motor_drive applies the traction limit.
 struct DiffState {
  double x{0}, y{0}, theta{0}, v{0}, w{0};
- // Body-left velocity. Differential/tracked/Ackermann keep this zero;
- // swerve and mecanum use it for physically real holonomic motion.
+ // Body-left velocity. An offset differential axle produces the rigid-body
+ // value -axle_x*w at base_link; swerve and mecanum command it directly.
  double lateral_v{0};
 };
 struct DiffCmd {

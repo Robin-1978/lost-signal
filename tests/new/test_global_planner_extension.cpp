@@ -68,7 +68,7 @@ class FixtureCuspPlanner final : public autonomy::IGlobalPlanner {
 } // namespace
 
 int main() {
- CHECK(autonomy::kGlobalPlannerApiMajor == 2);
+ CHECK(autonomy::kGlobalPlannerApiMajor == 3);
  CHECK(autonomy::kGlobalPlannerApiMinor == 0);
 
  auto registry = autonomy::GlobalPlannerRegistry::with_builtins();

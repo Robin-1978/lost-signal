@@ -7,6 +7,7 @@
     "schema_version",
     "id",
     "title",
+    "model_profile",
     "coordinates",
     "drive",
     "collision",
@@ -16,7 +17,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 5
     },
     "id": {
       "$ref": "#/$defs/id"
@@ -24,6 +25,37 @@
     "title": {
       "type": "string",
       "minLength": 1
+    },
+    "model_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fidelity",
+        "basis",
+        "source_refs"
+      ],
+      "properties": {
+        "fidelity": {
+          "enum": [
+            "ideal",
+            "typical",
+            "identified"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "coordinates": {
       "type": "object",
@@ -104,7 +136,12 @@
             "free_speed_mps",
             "pwm_limit",
             "integral_limit",
-            "wheel_equiv_mass_kg"
+            "wheel_equiv_mass_kg",
+            "controller_bandwidth_radps",
+            "controller_integral_time_s",
+            "controller_derivative_time_s",
+            "coulomb_smoothing_speed_mps",
+            "viscous_drag_N_per_mps"
           ],
           "properties": {
             "max_wheel_speed_mps": {
@@ -135,6 +172,26 @@
             "wheel_equiv_mass_kg": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "controller_bandwidth_radps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "controller_integral_time_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "controller_derivative_time_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "coulomb_smoothing_speed_mps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "viscous_drag_N_per_mps": {
+              "type": "number",
+              "minimum": 0
             }
           }
         },
@@ -225,21 +282,234 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "shape",
-        "radius_m",
-        "height_m"
+        "planning_radius_m",
+        "rigid_body"
       ],
       "properties": {
-        "shape": {
-          "const": "cylinder"
-        },
-        "radius_m": {
+        "planning_radius_m": {
           "type": "number",
           "exclusiveMinimum": 0
         },
-        "height_m": {
-          "type": "number",
-          "exclusiveMinimum": 0
+        "rigid_body": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "shape",
+            "size_m"
+          ],
+          "properties": {
+            "shape": {
+              "const": "box"
+            },
+            "size_m": {
+              "$ref": "#/$defs/positive_vec3"
+            }
+          }
+        }
+      }
+    },
+    "articulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_link",
+        "links",
+        "joints",
+        "actuators"
+      ],
+      "properties": {
+        "root_link": {
+          "$ref": "#/$defs/id"
+        },
+        "links": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "position_m",
+              "rotation_deg",
+              "mass_kg",
+              "inertia_diagonal_kgm2",
+              "collision"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "position_m": {
+                "$ref": "#/$defs/vec3"
+              },
+              "rotation_deg": {
+                "$ref": "#/$defs/vec3"
+              },
+              "mass_kg": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "inertia_diagonal_kgm2": {
+                "$ref": "#/$defs/positive_vec3"
+              },
+              "friction": {
+                "type": "number",
+                "minimum": 0
+              },
+              "rolling_support_moment_arm_m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "spinning_resistance": {
+                "type": "number",
+                "minimum": 0
+              },
+              "contact_stiffness_Npm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "contact_damping_Nspm": {
+                "type": "number",
+                "minimum": 0
+              },
+              "contact_axle_axis": {
+                "$ref": "#/$defs/vec3"
+              },
+              "collision": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "shape"
+                ],
+                "properties": {
+                  "shape": {
+                    "enum": [
+                      "box",
+                      "cylinder"
+                    ]
+                  },
+                  "size_m": {
+                    "$ref": "#/$defs/positive_vec3"
+                  },
+                  "radius_m": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "length_m": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "shape": {
+                          "const": "box"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "size_m"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "shape": {
+                          "const": "cylinder"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "radius_m",
+                        "length_m"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "joints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "parent",
+              "child",
+              "pivot_in_parent_m",
+              "pivot_in_child_m",
+              "axis_in_parent",
+              "axis_in_child"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "type": {
+                "enum": [
+                  "fixed",
+                  "continuous"
+                ]
+              },
+              "parent": {
+                "$ref": "#/$defs/id"
+              },
+              "child": {
+                "$ref": "#/$defs/id"
+              },
+              "pivot_in_parent_m": {
+                "$ref": "#/$defs/vec3"
+              },
+              "pivot_in_child_m": {
+                "$ref": "#/$defs/vec3"
+              },
+              "axis_in_parent": {
+                "$ref": "#/$defs/vec3"
+              },
+              "axis_in_child": {
+                "$ref": "#/$defs/vec3"
+              }
+            }
+          }
+        },
+        "actuators": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "channel",
+              "joint",
+              "effort_limit_Nm"
+            ],
+            "properties": {
+              "channel": {
+                "$ref": "#/$defs/id"
+              },
+              "joint": {
+                "$ref": "#/$defs/id"
+              },
+              "effort_limit_Nm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "armature_inertia_kgm2": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
         }
       }
     },
@@ -252,29 +522,72 @@
         "required": [
           "id",
           "position_m",
-          "rotation_deg"
+          "rotation_deg",
+          "motion"
         ],
         "properties": {
           "id": {
             "$ref": "#/$defs/id"
           },
           "position_m": {
-            "$ref": "#/$defs/vec3"
+            "$ref": "#/$defs/vec3",
+            "description": "Mount origin expressed in the robot root base_link frame."
           },
           "rotation_deg": {
             "$ref": "#/$defs/vec3"
           },
           "frame_id": {
             "$ref": "#/$defs/id"
+          },
+          "motion": {
+            "enum": [
+              "fixed",
+              "wheel",
+              "track",
+              "caster"
+            ]
+          },
+          "rolling_radius_m": {
+            "type": "number",
+            "exclusiveMinimum": 0
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "motion": {
+                  "const": "wheel"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "rolling_radius_m"
+              ]
+            }
+          }
+        ]
       }
     },
-    "passive_support_mounts": {
+    "passive_supports": {
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "$ref": "#/$defs/id"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "steer_mount",
+          "roll_mount"
+        ],
+        "properties": {
+          "steer_mount": {
+            "$ref": "#/$defs/id"
+          },
+          "roll_mount": {
+            "$ref": "#/$defs/id"
+          }
+        }
       }
     },
     "base_parts": {
@@ -343,6 +656,15 @@
       "maxItems": 3,
       "items": {
         "type": "number"
+      }
+    },
+    "positive_vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
       }
     },
     "visual": {

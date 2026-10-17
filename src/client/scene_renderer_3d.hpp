@@ -1,7 +1,7 @@
 #pragma once
 
 #include "mission/content_catalog.hpp"
-#include "mission/mission_simulation.hpp"
+#include "mission/presentation_view.hpp"
 
 #include <raylib.h>
 
@@ -20,7 +20,7 @@ class SceneRenderer3D {
  SceneRenderer3D(const SceneRenderer3D&) = delete;
  SceneRenderer3D& operator=(const SceneRenderer3D&) = delete;
 
- void draw(const mission::MissionSimulation& mission, int screen_width, int screen_height,
+ void draw(const mission::PresentationFrameView& mission, int screen_width, int screen_height,
  Rectangle input_viewport, bool assembly_view = false);
  const Camera3D& camera() const { return camera_; }
  std::optional<sim::Vec2> screen_to_ground(Vector2 screen) const;
@@ -29,24 +29,28 @@ class SceneRenderer3D {
  void bind_shader(Model& model) const;
  void ensure_shadow_map(int resolution);
  void ensure_post_targets(int width, int height);
- void render_shadow_map(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene,
+ void render_shadow_map(const mission::PresentationFrameView& mission, const mission::SceneDefinition& scene,
                         Vector3 light_direction);
- void render_scene_target(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene);
+ void render_scene_target(const mission::PresentationFrameView& mission, const mission::SceneDefinition& scene);
  void composite_scene(const mission::SceneDefinition& scene) const;
- void draw_scene(const mission::MissionSimulation& mission) const;
+ void draw_scene(const mission::PresentationFrameView& mission) const;
  void draw_floor(const mission::MapDefinition& map, const mission::SceneDefinition& scene) const;
- void draw_terrain(const mission::MissionSimulation& mission) const;
+ void draw_terrain(const mission::PresentationFrameView& mission) const;
  void draw_shelf(const mission::BoxDefinition& obstacle) const;
- void draw_surface(const mission::MissionSimulation& mission, const mission::SurfaceDefinition& surface) const;
- void draw_markers(const mission::MissionSimulation& mission) const;
- void draw_field_operator(const mission::MissionSimulation& mission) const;
- void draw_robot(const mission::MissionSimulation& mission) const;
+ void draw_surface(const mission::PresentationFrameView& mission, const mission::SurfaceDefinition& surface) const;
+ void draw_markers(const mission::PresentationFrameView& mission) const;
+ void draw_field_operator(const mission::PresentationFrameView& mission) const;
+ void draw_robot(const mission::PresentationFrameView& mission) const;
  void draw_actor(const mission::ActorSnapshot& actor, bool waiting, double time_s) const;
- void draw_environment(const mission::MissionSimulation& mission, const mission::SceneDefinition& scene) const;
- void draw_accents(const mission::MissionSimulation& mission) const;
- void draw_motion_effects(const mission::MissionSimulation& mission) const;
- void draw_risk_effects(const mission::MissionSimulation& mission) const;
+ void draw_environment(const mission::PresentationFrameView& mission, const mission::SceneDefinition& scene) const;
+ void draw_accents(const mission::PresentationFrameView& mission) const;
+ void draw_motion_effects(const mission::PresentationFrameView& mission) const;
+ void draw_risk_effects(const mission::PresentationFrameView& mission) const;
  void draw_box(Vector3 position, Vector3 size, float yaw_degrees, Color color) const;
+ void draw_prefab(const mission::ScenePrefabDefinition& prefab, const mission::Vec3& position,
+ const mission::Vec3& scale, double yaw_degrees) const;
+ void draw_attached_prefab(const mission::ScenePrefabDefinition& prefab, Vector3 body_origin,
+ Quaternion body_rotation, const mission::Vec3& local_origin) const;
  const Model* model(const std::string& path) const;
 
  const mission::ContentCatalog& catalog_;

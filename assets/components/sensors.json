@@ -1,6 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slot": "sensor",
+  "model_profile": {
+    "fidelity": "typical",
+    "basis": "public specifications plus documented teaching variants",
+    "source_refs": [
+      "docs/parameter-sources.md#single-plane-lidar"
+    ]
+  },
   "components": [
     {
       "id": "sensor.short_fast_lidar",
@@ -8,6 +15,7 @@
       "description": "看得近，更新快，适合繁忙的狭窄区域。",
       "cost": 2,
       "behavior": {
+        "min_range_m": 0.15,
         "range_m": 5.0,
         "rays": 48,
         "scan_hz": 20.0,
@@ -15,7 +23,13 @@
         "range_bias_m": 0.0,
         "range_resolution_m": 0.0,
         "dropout_probability": 0.0,
-        "power_w": 18.0
+        "power_w": 18.0,
+        "latency_s": 0.0,
+        "terrain_reflectivity": 0.3,
+        "obstacle_reflectivity": 0.68,
+        "actor_reflectivity": 0.52,
+        "incidence_floor": 0.15,
+        "distance_attenuation_per_m2": 0.018
       },
       "visual": {
         "primitive_2d": "disc",
@@ -34,14 +48,21 @@
       "description": "距离和刷新速度均衡。",
       "cost": 1,
       "behavior": {
-        "range_m": 8.0,
-        "rays": 72,
+        "min_range_m": 0.2,
+        "range_m": 12.0,
+        "rays": 800,
         "scan_hz": 10.0,
         "noise_sigma_m": 0.05,
         "range_bias_m": 0.0,
-        "range_resolution_m": 0.0,
+        "range_resolution_m": 0.005,
         "dropout_probability": 0.0,
-        "power_w": 22.0
+        "power_w": 3.0,
+        "latency_s": 0.0,
+        "terrain_reflectivity": 0.3,
+        "obstacle_reflectivity": 0.68,
+        "actor_reflectivity": 0.52,
+        "incidence_floor": 0.15,
+        "distance_attenuation_per_m2": 0.018
       },
       "visual": {
         "primitive_2d": "disc",
@@ -60,6 +81,7 @@
       "description": "很早就能看到远处物体，但两次扫描间隔较长。",
       "cost": 2,
       "behavior": {
+        "min_range_m": 0.3,
         "range_m": 12.0,
         "rays": 72,
         "scan_hz": 5.0,
@@ -67,7 +89,13 @@
         "range_bias_m": 0.0,
         "range_resolution_m": 0.0,
         "dropout_probability": 0.0,
-        "power_w": 28.0
+        "power_w": 28.0,
+        "latency_s": 0.0,
+        "terrain_reflectivity": 0.3,
+        "obstacle_reflectivity": 0.68,
+        "actor_reflectivity": 0.52,
+        "incidence_floor": 0.15,
+        "distance_attenuation_per_m2": 0.018
       },
       "visual": {
         "primitive_2d": "disc",
@@ -86,6 +114,7 @@
       "description": "噪声极低，但很耗电。",
       "cost": 3,
       "behavior": {
+        "min_range_m": 0.1,
         "range_m": 8.0,
         "rays": 96,
         "scan_hz": 10.0,
@@ -93,7 +122,13 @@
         "range_bias_m": 0.0,
         "range_resolution_m": 0.0,
         "dropout_probability": 0.0,
-        "power_w": 34.0
+        "power_w": 34.0,
+        "latency_s": 0.0,
+        "terrain_reflectivity": 0.3,
+        "obstacle_reflectivity": 0.68,
+        "actor_reflectivity": 0.52,
+        "incidence_floor": 0.15,
+        "distance_attenuation_per_m2": 0.018
       },
       "visual": {
         "primitive_2d": "disc",

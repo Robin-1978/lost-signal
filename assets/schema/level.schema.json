@@ -51,6 +51,20 @@
         "fused"
       ]
     },
+    "planning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localization_margin_m"
+      ],
+      "properties": {
+        "localization_margin_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
     "payload": {
       "type": "object",
       "additionalProperties": false,
@@ -98,7 +112,8 @@
           "enum": [
             "reach",
             "observe_and_stop",
-            "deliver_via"
+            "deliver_via",
+            "collect_and_return"
           ]
         },
         "spawn": {
@@ -124,7 +139,8 @@
             "stop_zone",
             "calibration_pad",
             "supply_station",
-            "signal_tower"
+            "signal_tower",
+            "packing_pad"
           ]
         },
         "time_limit_s": {
@@ -155,6 +171,9 @@
               "action"
             ],
             "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
               "marker": {
                 "$ref": "#/$defs/id"
               },
@@ -165,6 +184,7 @@
               "action": {
                 "enum": [
                   "pickup",
+                  "collect",
                   "complete",
                   "summon",
                   "recharge",
@@ -185,9 +205,76 @@
               "dwell_s": {
                 "type": "number",
                 "exclusiveMinimum": 0
+              },
+              "item": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "count",
+                  "mass_kg",
+                  "cog_height_m",
+                  "value",
+                  "fragility"
+                ],
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "mass_kg": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "cog_height_m": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "fragility": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              },
+              "visual": {
+                "$ref": "#/$defs/id"
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "const": "collect"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "id",
+                    "item"
+                  ]
+                }
+              }
+            ]
           }
+        },
+        "goal_order": {
+          "enum": [
+            "authored",
+            "autonomous"
+          ]
+        },
+        "task_policy": {
+          "$ref": "#/$defs/id"
+        },
+        "return_reserve_s": {
+          "type": "number",
+          "minimum": 0
         },
         "max_arrival_speed_mps": {
           "type": "number",
@@ -315,14 +402,90 @@
       "enum": [
         "mainline",
         "contract",
-        "experiment"
+        "experiment",
+        "playground"
       ]
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
     }
   },
   "$defs": {
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9_.-]+$"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interpolation",
+        "keyframes"
+      ],
+      "properties": {
+        "interpolation": {
+          "const": "linear"
+        },
+        "keyframes": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/environment_keyframe"
+          }
+        }
+      }
+    },
+    "environment_keyframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "time_s",
+        "wetness",
+        "visibility",
+        "daylight",
+        "material_grip"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "time_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "wetness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "visibility": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        "daylight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "material_grip": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 1.5
+          }
+        }
+      }
     }
   }
 }

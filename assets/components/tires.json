@@ -1,6 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slot": "tires",
+  "model_profile": {
+    "fidelity": "typical",
+    "basis": "documented contact deflection and damping-ratio assumptions",
+    "source_refs": [
+      "docs/parameter-sources.md#wheel-ground-contact"
+    ]
+  },
   "components": [
     {
       "id": "tires.standard",
@@ -12,7 +19,9 @@
         "brake_decel_mps2": 3.0,
         "power_scale": 1.0,
         "friction_mu": 0.7,
-        "rolling_resistance": 0.01
+        "rolling_resistance": 0.01,
+        "normal_stiffness_Npm": 40000.0,
+        "normal_damping_Nspm": 1000.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -34,8 +43,10 @@
         "slip_scale": 0.25,
         "brake_decel_mps2": 4.2,
         "power_scale": 1.15,
-        "friction_mu": 0.9,
-        "rolling_resistance": 0.014
+        "friction_mu": 1.2,
+        "rolling_resistance": 0.014,
+        "normal_stiffness_Npm": 35000.0,
+        "normal_damping_Nspm": 1100.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -58,7 +69,9 @@
         "brake_decel_mps2": 2.2,
         "power_scale": 0.8,
         "friction_mu": 0.5,
-        "rolling_resistance": 0.007
+        "rolling_resistance": 0.007,
+        "normal_stiffness_Npm": 55000.0,
+        "normal_damping_Nspm": 900.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -81,7 +94,9 @@
         "brake_decel_mps2": 4.0,
         "power_scale": 1.3,
         "friction_mu": 1.0,
-        "rolling_resistance": 0.02
+        "rolling_resistance": 0.02,
+        "normal_stiffness_Npm": 25000.0,
+        "normal_damping_Nspm": 1200.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -104,7 +119,9 @@
         "brake_decel_mps2": 3.4,
         "power_scale": 0.7,
         "friction_mu": 0.65,
-        "rolling_resistance": 0.005
+        "rolling_resistance": 0.005,
+        "normal_stiffness_Npm": 60000.0,
+        "normal_damping_Nspm": 850.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -115,6 +132,31 @@
         ],
         "color": "#1A1E20",
         "model_3d": "models/robots/ro1/wheel_eco.glb"
+      }
+    },
+    {
+      "id": "wheels.steel",
+      "title": "钢制实验轮",
+      "description": "刚度高、滚阻低，会把接缝冲击直接传到底盘；潮湿钢板上的抓地很有限。",
+      "cost": 2,
+      "behavior": {
+        "slip_scale": 1.8,
+        "brake_decel_mps2": 1.8,
+        "power_scale": 0.72,
+        "friction_mu": 0.35,
+        "rolling_resistance": 0.002,
+        "normal_stiffness_Npm": 2000000.0,
+        "normal_damping_Nspm": 250.0
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.2,
+          0.08,
+          0.11
+        ],
+        "color": "#AAB6BC",
+        "model_3d": "models/robots/ro1/wheel_standard.glb"
       }
     }
   ]

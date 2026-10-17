@@ -6,7 +6,7 @@
     20.0,
     14.0
   ],
-  "grid_resolution_m": 0.5,
+  "grid_resolution_m": 0.25,
   "obstacles": [],
   "surfaces": [
     {
@@ -59,7 +59,7 @@
       "base_height_m": 0.0,
       "grade_x": 0.364,
       "grade_y": 0.0,
-      "roughness": 0.02,
+      "roughness": 0.0,
       "active_in": [
         "slope_launch"
       ]
@@ -135,7 +135,7 @@
       "base_height_m": 0.0,
       "grade_x": 0.0,
       "grade_y": 0.36,
-      "roughness": 0.065,
+      "roughness": 0.015,
       "active_in": [
         "cross_slope"
       ]

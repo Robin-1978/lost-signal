@@ -42,6 +42,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(lost_signal_physics STATIC
  src/physics/frame_transform.cpp
  src/physics/planar_physics_world.cpp
+ src/physics/tire_contact.cpp
 )
 target_include_directories(lost_signal_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(lost_signal_physics PUBLIC cxx_std_20)
@@ -80,6 +81,7 @@ add_library(lost_signal_autonomy STATIC
  src/autonomy/planning/global/global_planner.cpp
  src/autonomy/planning/global/hybrid_astar.cpp
  src/autonomy/planning/local/holonomic_local.cpp
+ src/autonomy/planning/task/task_ordering.cpp
  src/autonomy/behavior/high_level_policy.cpp
  src/autonomy/planning/validation/entry_shadow.cpp
  src/autonomy/behavior/entry_governor.cpp
@@ -128,7 +130,7 @@ add_library(lost_signal_mission STATIC
  src/mission/component_registry.cpp
  src/mission/content_catalog.cpp
  src/mission/map_serialize.cpp
- src/mission/physics_scene.cpp
+ src/sim/simulated_platform.cpp
  src/mission/mission_simulation.cpp
  src/mission/world/actor_behavior_registry.cpp
  src/mission/systems/control_system.cpp
@@ -260,12 +262,24 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_physics_world PRIVATE lost_signal_physics)
  add_test(NAME physics_world COMMAND test_physics_world)
 
- add_executable(test_physics_scene tests/new/test_physics_scene.cpp)
- target_link_libraries(test_physics_scene PRIVATE lost_signal_mission)
- target_compile_definitions(test_physics_scene PRIVATE
+ add_executable(test_simulated_platform tests/new/test_simulated_platform.cpp)
+ target_link_libraries(test_simulated_platform PRIVATE lost_signal_mission)
+ target_compile_definitions(test_simulated_platform PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
- add_test(NAME physics_scene COMMAND test_physics_scene)
+ add_test(NAME simulated_platform COMMAND test_simulated_platform)
+
+add_executable(test_ro1_dynamics_acceptance tests/new/test_ro1_dynamics_acceptance.cpp)
+target_link_libraries(test_ro1_dynamics_acceptance PRIVATE lost_signal_mission)
+target_compile_definitions(test_ro1_dynamics_acceptance PRIVATE
+  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_test(NAME ro1_dynamics_acceptance COMMAND test_ro1_dynamics_acceptance)
+
+add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
+target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_mission)
+target_compile_definitions(test_ro1_lidar_acceptance PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
 
  add_executable(test_terrain tests/new/test_terrain.cpp)
  target_link_libraries(test_terrain PRIVATE lost_signal_stack)
@@ -421,6 +435,17 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_mission)
  add_executable(test_phase_legs tests/new/test_phase_legs.cpp)
  target_link_libraries(test_phase_legs PRIVATE lost_signal_stack)
  add_test(NAME phase_legs COMMAND test_phase_legs)
+
+ add_executable(test_goal_system tests/new/test_goal_system.cpp)
+ target_link_libraries(test_goal_system PRIVATE lost_signal_mission)
+ add_test(NAME goal_system COMMAND test_goal_system)
+
+ add_executable(test_orchard_scramble tests/new/test_orchard_scramble.cpp)
+ target_link_libraries(test_orchard_scramble PRIVATE lost_signal_mission)
+ target_compile_definitions(test_orchard_scramble PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME orchard_scramble COMMAND test_orchard_scramble)
 
  add_executable(test_pocket_search tests/new/test_pocket_search.cpp)
  target_link_libraries(test_pocket_search PRIVATE lost_signal_stack)

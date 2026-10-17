@@ -1,9 +1,16 @@
 #pragma once
 namespace sim {
+enum class AntiWindupMode {
+ None,
+ ConditionalIntegration,
+};
+
 class PID {
  public:
- PID(double kp = 1.0, double ki = 0.0, double kd = 0.0, double out_lim = 1.0, double int_lim = 1.0)
-     : kp_(kp), ki_(ki), kd_(kd), out_lim_(out_lim), int_lim_(int_lim) {}
+ PID(double kp = 1.0, double ki = 0.0, double kd = 0.0, double out_lim = 1.0,
+ double int_lim = 1.0, AntiWindupMode anti_windup = AntiWindupMode::None)
+ : kp_(kp), ki_(ki), kd_(kd), out_lim_(out_lim), int_lim_(int_lim),
+ anti_windup_(anti_windup) {}
  void setGains(double kp, double ki, double kd) {
   kp_ = kp;
   ki_ = ki;
@@ -25,6 +32,7 @@ class PID {
 
  private:
  double kp_, ki_, kd_, out_lim_, int_lim_;
+ AntiWindupMode anti_windup_{AntiWindupMode::None};
  double integ_{0}, prev_err_{0};
  bool first_{true};
  double p_{0}, i_{0}, d_{0};

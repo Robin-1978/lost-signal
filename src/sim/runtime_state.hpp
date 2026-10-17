@@ -22,12 +22,14 @@ struct EncoderObservation {
 };
 
 struct ImuObservation {
+ // Right-handed imu_link axes: +x forward, +y left, +z up. Keep the complete
+ // six-axis measurement even while the planar estimator consumes only yaw.
+ double roll_rate_radps{0.0};
+ double pitch_rate_radps{0.0};
  double yaw_rate_radps{0.0};
- // Planar accelerometer channels expressed in imu_link. They are published
- // even though the current 2D estimator only consumes yaw rate, so the
- // configured accelerometer noise is observable rather than decorative.
  double forward_acceleration_mps2{0.0};
  double left_acceleration_mps2{0.0};
+ double up_acceleration_mps2{0.0};
  double noise_sigma_radps{0.0};
  double acceleration_noise_sigma_mps2{0.0};
  MeasurementHeader header;

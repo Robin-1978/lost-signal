@@ -31,6 +31,11 @@ struct GovernorState {
   bool hold_active{false};
   int clear_streak{0};
   int silent_streak{0};
+ // The virtual wall belongs to the active hold, not to one observation
+ // frame. A tracker gap must not erase the point while hysteresis still
+ // says HOLD; doing so leaves a stopped robot inside the swept corridor.
+ Vec2 stop_point{0, 0};
+ bool stop_valid{false};
 };
 
 struct GovernorOutput {

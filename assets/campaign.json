@@ -38,6 +38,9 @@
     "signal_watch",
     "signal_cross"
   ],
+  "playgrounds": [
+    "orchard_scramble"
+  ],
   "starting_inventory": [
     "tires.standard",
     "tires.grip",

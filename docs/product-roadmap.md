@@ -25,7 +25,11 @@ The runtime should support different kinds of play rather than reskinning every 
 | Recovery under constraints | **Floodplain Rescue:** collect scattered power cells and serve stranded equipment | task priority, energy reserve, route risk | scheduling, recharging, wet traction, payload and time windows |
 | Comparative challenge | **Robot Field Day:** run one seeded course with different chassis or planners | comparison pair and metric target | feasible-motion contracts, algorithm comparison, regression evidence |
 
-The first prototype after the release foundation should be **Orchard Scramble**. It reuses existing terrain, chassis, tires, payload, planning, deterministic seeds, and scoring, so it tests the flexibility of the framework without using a new sensor or a large subsystem as a substitute for game design.
+The first vertical slice after the release foundation is **Orchard Scramble** because collection, changing load,
+terrain choice, and fruit damage can create a physical and strategic loop that is unlike point-to-point delivery.
+The design is not limited to features the current runtime already exposes. If truthful apples, payload, terrain, or
+autonomous task ordering require a new contract, the runtime changes with the slice; unreleased interfaces receive
+no compatibility shim.
 
 Its core loop is:
 
@@ -38,24 +42,187 @@ Its core loop is:
 
 Apples are physical mission items with deterministic pickup radii and payload effects. Their score responds to measured impact, roll, and acceleration; decorative animation does not alter the result. The mode earns inclusion only if at least two builds produce visibly different, explainable strategies on the same seed.
 
-## Post-alpha work order
+The implementation boundary is data first. Level data owns the task set, payload values, return reserve, and
+deterministic environment keyframes. Map data owns 2.5D terrain, surface materials, obstacles, and actors. Scene data
+owns prefabs, goal-state visuals, attached payload layout, effects, lighting, and instances. Robot data owns the
+physical assembly, motion roles, and cargo attachment frame. Task-policy and audio catalogs own the offered
+algorithms and event-to-cue mappings. C++ supplies reusable loaders, registries, simulation contracts, and renderers;
+it does not name apples, orchard crates, or harvest strategies.
 
-The next work keeps product design ahead of technology expansion:
+## Next execution milestones
 
-1. **Orchard gameplay prototype:** prove multi-goal ordering, terrain choice, payload growth, and a useful comparison with simple authored geometry.
-2. **Orchard visual and audio pass:** after the loop is stable, build the distinctive orchard, materials, fruit feedback, weather, particles, landmarks, and state-driven sound around real simulation events.
-3. **Measured platform-fidelity slice:** use one planar LiDAR and one low-speed robot target to exercise the calibrated profile and actuator-provider design in [platform fidelity](platform-fidelity.md).
-4. **Broader sensors and autonomy:** add multi-line or solid-state LiDAR, SLAM, or VLA only when an authored learning question needs that observation or decision capability.
+The numbered stages later in this document describe the completed alpha baseline. All new work follows the milestone
+sequence here so that completed release work and future work cannot be confused.
 
-Each step receives its own acceptance gate before the next begins. Sensor count and algorithm count are not
-substitutes for a refined, explainable experience.
+The immediate sequence is **RO-1 reference correctness → content design and refined play → visual and audio polish
+→ architecture validation and the experiment framework**. The reference-platform correction was promoted ahead
+of content after the current prototype exposed a false wheel-contact model; [the acceptance contract](reference-platform.md)
+must pass before new chassis, sensors, or mechanics expand that error. Orchard Scramble is useful engineering evidence, but its static
+multi-collection loop is not accepted as the first polished Playground. The next content pass may change the format,
+map, actors, interactions, and required algorithms; it is not constrained to a reskinned delivery or collection
+mission. Responsive-information work continues only when a concrete usability problem blocks play. Platform fidelity
+and broader sensors follow after the product milestones, except for correctness fixes needed by the chosen content.
 
-The [verification strategy](verification-strategy.md) is a continuous gate across all four steps. Contract
+The active implementation order is:
+
+Current status: stages 1--3 are complete for the published, unloaded RO-1 `typical` envelope. Stage 4 is active.
+The completion claim excludes the open split-friction, identified combined-slip, dynamic-rollover, systematic
+payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
+
+1. Complete the unloaded RO-1 reference assembly: articulated drive wheels and caster, physical encoder feedback,
+ valid mass/inertia data, motor and reflected joint inertia, inertial and collision origins, and stable contact.
+2. Validate its devices and closed loops independently: PWM-to-torque drive, braking/coast/backdrive, encoder,
+ IMU frame and specific force, and the reference single-line LiDAR.
+3. Treat flat floor, slope, cross-slope, low-friction and loose-ground scenes as fixed engineering fixtures. Compare
+ forces, loads, slip, pose, scan returns and failure boundaries with analytic or separately derived expectations.
+ Do not tune mission time, spawn, score, route or expected success to make an incomplete model pass.
+4. After those gates pass, re-run the existing RO-1 missions and correct the reusable planning, collision, control,
+ and goal-region contracts they expose. Only then author or tune player-facing outcomes.
+5. Define a composable Scenario/Mechanic data contract and editor-facing algorithm catalogs. Implement exact bounded
+ multi-goal A* and make actor/object motion selection fully data-authored.
+6. Design and graybox a mechanically distinct Playground with a visible physical event. Test the choice, consequence,
+ autonomous response, and same-seed retry before approving its permanent art direction.
+7. Refine that approved loop with authored 3D models, materials, animation, particles, lighting, cameras, sound, and a
+ concise explainable-autonomy presentation.
+8. Generalize the experiment, regression, and fault-injection framework from the finished content.
+9. Add further sensors or autonomy only for a named experience
+ or measured platform target. Run the sanitizer suite as the final repository gate.
+
+### M0 — Maintain responsive UI quality (deferred, non-blocking)
+
+The shared legend vocabulary, compact labels, and hover hints remain part of the product contract. Broad screenshot
+matrix work is paused while the higher-value gameplay milestones proceed. Fix clipping or overlap when it blocks a
+real flow, keep temporary captures out of the repository, and retain the sanitizer suite as the final repository
+gate because it is intentionally expensive.
+
+**Exit:** no clipped or overlapping localized text, compact labels remain understandable without hover, tooltips
+show the full explanation, the normal release checks pass, and no temporary capture is tracked or documented.
+
+### M1 — Create the content direction and build its first graybox
+
+Status: **open — Orchard is a systems prototype; its gameplay is not approved**
+
+Start from player experience rather than the current feature list. Define a small content bible for a family of
+autonomy playgrounds: what fantasy the player enters, what high-level choices they make, what the robot owns, what
+physical event creates surprise, what causal evidence explains it, and what one-variable retry teaches. Develop the
+collection, search, herding, construction, rescue, and comparative formats above far enough to distinguish their
+loops and required engine capabilities. They may demand new mission structure, interactive objects, task allocation,
+terrain semantics, sensors, or algorithms; existing runtime limits do not veto a strong concept.
+
+Use **Orchard Scramble** as the first full graybox, then test whether it is actually playful before committing art.
+Write its encounter contract: player choices, autonomous responsibilities, scoring, failure and recovery, and a
+same-seed comparison. Implement autonomous apple-order selection, deterministic physical collection, increasing
+payload mass and center-of-gravity effects, and metrics for collected fruit, fruit integrity, time, energy, slip,
+and rollover margin. Build a complete loop with simple authored geometry, several surface and slope choices, a
+collection zone, weather pressure, and at least two viable builds. The player selects equipment and a collection
+priority; RO-1 performs the planning and driving. Runtime work follows the design and remains reusable where the
+second content format demonstrates the same need; mission-specific behavior stays in content or mission systems.
+
+The existing chapters remain the Guided Campaign. Orchard and later systemic formats live in an optional Autonomy
+Playgrounds collection with no campaign prerequisite; the player chooses between them rather than having the new
+mode inserted into the current story sequence. The detailed content and runtime contract is in
+[content direction](content-direction.md).
+
+The Orchard engineering loop is playable from that separate collection. It includes five autonomous collection
+tasks, four small registered task-ordering algorithms selected through data, terrain-aware ordering, dynamic
+rigid-body payload updates, cargo integrity, deterministic return reserve, and a four-stage storm timeline. Weather
+keyframes interpolate wetness, visibility, daylight, and per-material grip on simulation time. The same state changes
+wheel contact, route cost, 3D presentation, replay, and headless evidence; crossing a stage boundary triggers an
+autonomous replan. RO-1 uses two driven wheels and one rear caster, all official scenes render at physical scale
+1.0, and wheel roll comes from actuator state rather than wall-clock animation.
+
+Its deterministic results remain regression evidence, not gameplay approval. The loop still reads as several
+static pickups followed by a return, its physical surprise is weak, and its current art does not establish the
+quality bar. M1 therefore remains open until a distinct mechanic and a fresh-player playtest justify the content.
+
+**Exit:** the content bible shows several mechanically distinct experiences and the engine capability each one
+would exercise. A fresh player can complete and understand the orchard loop; two builds or policies take visibly
+different, explainable approaches on the same seed; collection and payload effects come from simulation state; the
+run is deterministic and testable headlessly. Playtest evidence says the loop is worth polishing. No permanent art
+quality is required yet.
+
+### M2 — Give the approved Playground a visual and audio identity (blocked by M1)
+
+Replace graybox presentation with distinctive terrain, landmarks, vehicle details, materials, weather,
+bounded particles, pickup and damage feedback, and state-driven sound. Visual and audio events read simulation state
+and never manufacture gameplay outcomes. Keep headless execution independent of graphical assets.
+
+The Orchard prototype has a first presentation pass through scene data: varied fruit-bearing tree prefabs, deterministic
+scale and yaw variation, a detailed packing shed, storm beacons, state-specific collection/packing prefabs, an
+attached cargo crate with healthy/damaged item variants, wet-ground glints, pickup particles, and cargo warnings.
+The audio cue catalog maps generic event and decision codes to files and cooldowns; the graphical client no longer
+contains orchard-specific sound branches. This remains reusable evidence, but permanent hero assets begin only after
+M1 approves a loop and identifies the views and physical events that matter most.
+
+**Exit:** the preparation, route-choice, pickup, risk, and debrief beats are readable without opening AI View; a
+deterministic screenshot sequence and graphical smoke test show no missing assets or warnings; every dynamic effect
+names the state that drives it.
+
+### M3 — Validate the architecture and generalize an experiment framework
+
+Use the finished orchard slice as evidence to audit planner, route, chassis, actuator, sensor, payload, mission,
+scenario, runtime, timing, and data-ownership contracts. Correct boundaries that made the slice difficult, then
+generalize only the demonstrated needs into Scenario, Experiment, Baseline, Metric, and Diff concepts. Add
+deterministic fault profiles and compare complete trajectories and declared metrics rather than a success boolean.
+Keep the in-process fixed-step runtime as the default while preserving provider and message boundaries suitable for
+future threads, processes, and native hardware. External middleware compatibility is not a product milestone.
+
+**Exit:** the orchard experiment can reproduce and compare controlled variants without UI-specific logic; contract
+tests cover units, frames, timestamps, command semantics, route metadata, dynamic payload, and fault boundaries; a
+new planner or chassis can enter through documented contracts without editing mission orchestration.
+
+### M4 — Complete one sourced typical platform-fidelity slice
+
+Use RO-1 and one planar LiDAR to validate sourced sensor profiles, timestamps, intensity and
+dropout semantics, actuator modes, command expiry, and provider boundaries described in
+[platform fidelity](platform-fidelity.md). Every default records its public specification or engineering assumption,
+units, range, and effect. Do not claim calibrated sim-to-real accuracy from simulation tests alone.
+
+**Exit:** the typical profile, limitations, analytic fixtures, deterministic evidence, and parameter provenance are
+published. An optional future `identified` profile supplies calibration inputs and held-out hardware errors without
+changing the runtime contracts.
+
+### M5 — Expand sensors and autonomy only through authored questions
+
+Add multi-line or solid-state LiDAR, SLAM, VLA, multi-process transport, HIL, or native drivers when
+a specific learning or deployment experience requires it. Each addition must first state what new observation,
+decision, or validation question it makes possible.
+
+**Exit:** each capability ships with a scenario, measurable acceptance evidence, and a smaller interface than the
+external system it may bridge to.
+
+Each milestone passes its exit gate before the next begins. Sensor count and algorithm count are not substitutes for
+a refined, explainable experience.
+
+The [verification strategy](verification-strategy.md) is a continuous gate across all milestones. Contract
 correctness, mathematical invariants, independent oracles, deterministic system evidence, fault boundaries, and
 physical validation are accumulated in that order. An algorithm or interface correction may change an unreleased
 scenario outcome; the project keeps the correct model and then updates the lesson or content expectation.
 
-## Stage 1 — Design and implement the flagship encounter
+### Responsive information-design gate
+
+Player-facing layouts measure localized text instead of assuming Chinese-length copy. Chapter, garage, prediction,
+running, and debrief panels use vertical flow or scrolling; configuration choices remain readable at the minimum
+1100×720 window and at the reference 1440×900 capture size. English and Simplified Chinese screenshots must show no
+clipping or overlap.
+
+Persistent screen space is reserved for the current goal, active safety state, and decision evidence. Repeated
+controls, component families, map layers, and diagnostic categories use a small shared symbol and color vocabulary.
+Hover hints expose the full localized name, units, and consequence; the compact label still communicates the action
+for screenshots, keyboard navigation, and users who never hover. A tooltip cannot be the only place that contains a
+safety-critical value or the current autonomous action.
+
+The AI view applies that vocabulary as a compact legend: cyan identifies the global route and LiDAR evidence,
+neutral white records actual motion, violet shows local-planner samples, amber marks the selected local trajectory,
+and red identifies predicted conflict. Hovering a legend row explains the producer and semantic meaning; hovering a
+terrain-layer chip explains the active measurement. The current decision and safety clearance remain visible.
+
+## Completed alpha baseline
+
+The following stages record work already completed for the original `lost_signal` vertical slice. They are retained
+as release evidence and are not the queue for upcoming work.
+
+### Alpha Stage 1 — Design and implement the flagship encounter
 
 Status: **complete**
 
@@ -117,7 +284,7 @@ light-computer build finishes in 86.18 s with zero collisions but only 0.464 m c
 safe-score threshold. This gives the player a controlled comparison in which one relevant variable changes
 the safety margin without turning the lesson into an arbitrary failure.
 
-## Stage 2 — Make decision evidence a shared runtime contract
+### Alpha Stage 2 — Make decision evidence a shared runtime contract
 
 Status: **complete**
 
@@ -139,7 +306,7 @@ recommended seed-47 run currently produces 72 records for 892 local-planning cyc
 the record active at that simulation time; headless JSON emits the closed transition chain; live field copy,
 AI View, debrief, and regression tests read the same fields and localize only stable reason/action codes.
 
-## Stage 3 — Build the state-driven audiovisual vertical slice
+### Alpha Stage 3 — Build the state-driven audiovisual vertical slice
 
 Status: **complete**
 
@@ -166,7 +333,7 @@ demo, screenshots, and every headless target avoid audio initialization.
 The local gate passed with byte-identical 1440×900 images from two runs at 2.0, 23.7, 25.0, 26.5, and terminal
 simulation time. The generated WAV set also passes byte-for-byte `--check` reproduction.
 
-## Stage 4 — Add a minimum reproducible run artifact
+### Alpha Stage 4 — Add a minimum reproducible run artifact
 
 Status: **complete**
 
@@ -176,7 +343,7 @@ Add a small comparison command that rejects incompatible comparisons and reports
 
 The gate is reproduction of the recommended `lost_signal` result from its manifest plus a clear diff against one controlled alternative.
 
-Run Artifact v1 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
+Run Artifact v2 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
 seed, runtime and physics backends, hardware, algorithm IDs, a canonical configuration digest, metrics, events,
 and the shared decision chain. `--reproduce` rejects incompatible content and restores the declared run.
 `tools/compare_runs.py` verifies both digests, forbids invariant changes, and requires each controlled variable to
@@ -185,7 +352,7 @@ be named. A manifest reproduction matched every reported metric. Changing only
 89.18 s to 86.18 s, energy from 2.209 Wh to 1.747 Wh, and dynamic clearance from 0.984 m to 0.464 m; both runs
 completed without collision, while the light-computer run lost the safe score.
 
-## Stage 5 — Release closure
+### Alpha Stage 5 — Release closure
 
 Status: **complete**
 

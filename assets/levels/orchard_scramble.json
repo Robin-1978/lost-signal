@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "id": "orchard_scramble",
+  "order": 100,
+  "title": "果园争分夺秒",
+  "map": "orchard_hillside",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 4,
+  "mode": "playground",
+  "prerequisites": [],
+  "seed": 41021,
+  "objective": {
+    "type": "collect_and_return",
+    "spawn": "packing_pad",
+    "goal": "packing_pad",
+    "goal_label": "装箱台",
+    "goal_visual": "packing_pad",
+    "time_limit_s": 180.0,
+    "max_collisions": 1,
+    "arrive_tolerance_m": 0.75,
+    "goal_order": "autonomous",
+    "task_policy": "task.balanced",
+    "return_reserve_s": 22.0,
+    "goals": [
+      {
+        "id": "outer-row",
+        "marker": "apple_outer_row",
+        "label": "外侧果行",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 8,
+          "mass_kg": 4.0,
+          "cog_height_m": 0.55,
+          "value": 8.0,
+          "fragility": 0.4
+        },
+        "visual": "goal.orchard_crate"
+      },
+      {
+        "id": "muddy-swale",
+        "marker": "apple_muddy_swale",
+        "label": "泥洼果筐",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 6,
+          "mass_kg": 3.0,
+          "cog_height_m": 0.62,
+          "value": 8.0,
+          "fragility": 0.55
+        },
+        "visual": "goal.orchard_crate"
+      },
+      {
+        "id": "side-hill",
+        "marker": "apple_side_hill",
+        "label": "横坡果筐",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 7,
+          "mass_kg": 4.5,
+          "cog_height_m": 0.82,
+          "value": 12.0,
+          "fragility": 0.7
+        },
+        "visual": "goal.orchard_crate"
+      },
+      {
+        "id": "orchard-aisle",
+        "marker": "apple_orchard_aisle",
+        "label": "窄行果筐",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 5,
+          "mass_kg": 2.5,
+          "cog_height_m": 0.48,
+          "value": 7.0,
+          "fragility": 0.35
+        },
+        "visual": "goal.orchard_crate"
+      },
+      {
+        "id": "ridge-pocket",
+        "marker": "apple_ridge_pocket",
+        "label": "山脊精品果",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 9,
+          "mass_kg": 5.0,
+          "cog_height_m": 0.75,
+          "value": 18.0,
+          "fragility": 0.85
+        },
+        "visual": "goal.orchard_crate"
+      },
+      {
+        "id": "packing-pad",
+        "marker": "packing_pad",
+        "label": "装箱台",
+        "action": "complete",
+        "radius_m": 0.85,
+        "visual": "goal.orchard_packing"
+      }
+    ]
+  },
+  "loadout_rules": {
+    "budget": 10,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "terrain_aware_task_ordering",
+    "prediction_prompt": "同一批苹果，最快、最稳和最值钱会选出相同的第一站吗？",
+    "knowledge_card": "目标排序会随着路面、可行运动、载荷质量与重心一起变化；回程也是规划的一部分。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.2,
+    "fast_time_s": 125.0,
+    "efficient_energy_wh": 2.8
+  },
+  "rewards": [],
+  "environment": {
+    "interpolation": "linear",
+    "keyframes": [
+      {
+        "id": "storm.break",
+        "label": "风暴间歇",
+        "time_s": 0.0,
+        "wetness": 0.08,
+        "visibility": 1.0,
+        "daylight": 0.92,
+        "material_grip": {
+          "paved": 1.0,
+          "mud": 1.0,
+          "gravel": 1.0
+        }
+      },
+      {
+        "id": "storm.drizzle",
+        "label": "细雨逼近",
+        "time_s": 55.0,
+        "wetness": 0.38,
+        "visibility": 0.88,
+        "daylight": 0.78,
+        "material_grip": {
+          "paved": 0.98,
+          "mud": 0.88,
+          "gravel": 0.94
+        }
+      },
+      {
+        "id": "storm.downpour",
+        "label": "暴雨过境",
+        "time_s": 110.0,
+        "wetness": 0.72,
+        "visibility": 0.7,
+        "daylight": 0.62,
+        "material_grip": {
+          "paved": 0.94,
+          "mud": 0.7,
+          "gravel": 0.84
+        }
+      },
+      {
+        "id": "storm.closure",
+        "label": "天气封场",
+        "time_s": 160.0,
+        "wetness": 1.0,
+        "visibility": 0.55,
+        "daylight": 0.48,
+        "material_grip": {
+          "paved": 0.9,
+          "mud": 0.58,
+          "gravel": 0.76
+        }
+      }
+    ]
+  }
+}

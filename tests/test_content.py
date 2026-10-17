@@ -36,7 +36,10 @@ class ContentValidationTests(unittest.TestCase):
     def test_repository_content_is_valid(self) -> None:
         catalog = load_and_validate(self.assets)
         levels = set(catalog["levels"].keys())
-        self.assertEqual(levels, set(catalog["campaign"]["levels"]))
+        guided = set(catalog["campaign"]["levels"])
+        playgrounds = set(catalog["campaign"]["playgrounds"])
+        self.assertFalse(guided & playgrounds)
+        self.assertEqual(levels, guided | playgrounds)
         served = {p["level"] for p in catalog["presentations"].values()}
         self.assertEqual(levels, served)
         scenes = set(catalog["scenes"].keys())

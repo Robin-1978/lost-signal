@@ -40,7 +40,7 @@
         "marker": "traffic_hold",
         "label": "动态路口观察点",
         "action": "inspect",
-        "radius_m": 0.78,
+        "radius_m": 0.4,
         "dwell_s": 1.0
       },
       {

@@ -89,7 +89,7 @@ int main() {
  std::shared_ptr<sim::IHighLevelPolicy>{}, job.id);
  CHECK(contracted.active_contract() != nullptr);
  CHECK(contracted.active_contract()->id == job.id);
- CHECK(std::abs(contracted.level().payload_mass_kg -
+ CHECK(std::abs(contracted.payload_state().mass_kg -
  (base_level.payload_mass_kg + job.mass_kg)) < 1e-9);
   mission::CampaignProgress missed;
   mission::MissionResult missed_run;

@@ -29,6 +29,7 @@ class ContentCatalog {
  const RobotDefinition& robot(const std::string& id) const;
  const ComponentDefinition& component(const std::string& id) const;
  const PolicyDefinition& policy(const std::string& id) const;
+ const TaskPolicyDefinition& task_policy(const std::string& id) const;
  const PresentationDefinition& presentation(const std::string& id) const;
  const PresentationDefinition& presentation_for_level(const std::string& level_id) const;
  const PresentationDefinition& default_presentation() const;
@@ -50,6 +51,9 @@ class ContentCatalog {
   return surface_materials_;
  }
  const std::unordered_map<std::string, PolicyDefinition>& policies() const { return policies_; }
+ const std::unordered_map<std::string, TaskPolicyDefinition>& task_policies() const {
+ return task_policies_;
+ }
  const std::unordered_map<std::string, RobotDefinition>& robots() const { return robots_; }
  const std::unordered_map<std::string, SceneDefinition>& scenes() const { return scenes_; }
  const std::unordered_map<std::string, PresentationDefinition>& presentations() const {
@@ -80,6 +84,7 @@ class ContentCatalog {
  std::vector<ContractJob> contracts_;
  std::unordered_map<std::string, std::string> strings_;
  std::unordered_map<std::string, PolicyDefinition> policies_;
+ std::unordered_map<std::string, TaskPolicyDefinition> task_policies_;
  std::unordered_map<std::string, PresentationDefinition> presentations_;
  std::vector<StoryBeatDefinition> story_beats_;
  std::vector<ChapterDefinition> chapters_;

@@ -62,6 +62,11 @@ HolonomicDrive::HolonomicDrive(HolonomicParams params) : params_(params) {
  telemetry_.wheel_steer_count = params_.kind == HolonomicKind::Swerve ? 4 : 0;
 }
 
+void HolonomicDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
+ params_.mass_kg = std::max(0.5, dynamics.mass_kg);
+ params_.yaw_inertia_kgm2 = std::max(0.05, dynamics.yaw_inertia_kgm2);
+}
+
 DiffState HolonomicDrive::step(const DiffState& state, const DiffCmd& command, double dt,
  const GroundContact& ground) {
  double target_forward = command.target_v;

@@ -21,7 +21,7 @@
     "goal": "slope_top",
     "goal_label": "通信桥集结点",
     "goal_visual": "supply_station",
-    "time_limit_s": 110,
+    "time_limit_s": 180,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62,
     "goals": [
@@ -66,7 +66,8 @@
     "efficient_energy_wh": 1.2
   },
   "rewards": [
-    "ability.terrain"
+    "ability.terrain",
+    "imu.precise"
   ],
   "mode": "mainline"
 }

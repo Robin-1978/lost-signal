@@ -354,6 +354,17 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
   set_reason(reason, "static lidar reference requires a lidar measurement");
   return false;
  }
+ if (observation.imu) {
+ const auto& imu = *observation.imu;
+ if (!std::isfinite(imu.roll_rate_radps) || !std::isfinite(imu.pitch_rate_radps) ||
+ !std::isfinite(imu.yaw_rate_radps) || !std::isfinite(imu.forward_acceleration_mps2) ||
+ !std::isfinite(imu.left_acceleration_mps2) || !std::isfinite(imu.up_acceleration_mps2) ||
+ !finite_nonnegative(imu.noise_sigma_radps) ||
+ !finite_nonnegative(imu.acceleration_noise_sigma_mps2)) {
+ set_reason(reason, "imu payload contains a non-finite value or invalid noise sigma");
+ return false;
+ }
+ }
  return true;
 }
 

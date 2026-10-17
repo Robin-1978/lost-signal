@@ -54,24 +54,44 @@ Tests should target the smallest layer that can establish a claim:
  intended for comparison.
 6. Keep stochastic effects seeded in deterministic runs and report tolerance-based cross-platform limits where
  bit identity is not a valid claim.
+7. Keep plant acceptance separate from mission regression. Plant fixtures prescribe forces, geometry, surfaces and
+initial state, then compare measured physical quantities with analytic bounds. Mission tests evaluate the complete
+autonomy loop only after those fixtures pass; a level's success flag is never a dynamics oracle.
+8. Diagnose visible motion against authoritative state before changing contact parameters. A bounded physical
+ pitch/height/speed trace with visible stepping indicates presentation cadence; fixed-step interpolation belongs in
+ a read-only render snapshot and must never feed sensors, control, replay, or headless results.
 
 When a corrected model changes an authored outcome, keep the correct model and reassess the lesson. Update the
 scenario or its expected outcome only when the new result still demonstrates the stated learning question.
+While a reference-platform gate is open, terrain and traffic scenes are immutable experiment inputs. Their mission
+scores, timing and success expectations are not adjusted to compensate for a chassis, actuator or sensor defect.
 
 ## Planned gates
 
 The verification work proceeds with the product roadmap rather than as a separate late phase:
 
-1. **Current architecture gate:** enforce the typed route contract, Ackermann steering-angle semantics, signed
- reverse behavior, and full headless mission regression.
-2. **Orchard prototype gate:** compare at least two chassis or builds on the same seed; validate multi-goal ordering,
+1. **RO-1 platform gate:** validate the articulated assembly, mass/inertia, three support contacts, motor/armature,
+ encoder, IMU, and the sourced planar-LiDAR profile, plus coast/brake/backdrive, low grip and slope boundaries without mission-score or route
+ tuning. The dynamics gate includes analytic static wheel loads, short peak-torque launch, public-step convergence,
+ zero-command initialization, maximum-speed straight stability, driven-axle spin, longitudinal and lateral adhesion,
+ friction-pyramid bounds, emergency stopping distance and load transfer, steady-circle `a_y = v*yaw_rate`, and
+ longitudinal grade probes immediately around the analytic peak-torque and driven-wheel adhesion boundaries. Publish the tested typical envelope, public sources,
+ and engineering assumptions. The cross-slope gate uses a high-grip under/over-limit support-polygon fixture so
+ tipping is not confused with sliding. A discrete 30 mm curb/deck/drop fixture closes only that named envelope;
+split-friction, combined-slip, dynamic-rollover and systematic payload sweeps stay marked partial until they receive
+independent boundary fixtures. A successful 20-degree lesson
+ does not close larger slope, curb, or payload claims.
+2. **Current architecture gate:** enforce the typed route contract and deterministic RO-1 mission regression after
+ the platform gate passes. Ackermann and the other chassis remain outside this release evidence until each receives
+ its own articulated gate.
+3. **Orchard prototype gate:** compare at least two validated builds on the same seed; validate multi-goal ordering,
  payload changes, terrain choice, and result-artifact identity.
-3. **Fault-injection gate:** make delay, drop, stale/out-of-order observations, actuator lag/saturation, and low
+4. **Fault-injection gate:** make delay, drop, stale/out-of-order observations, actuator lag/saturation, and low
  friction declarative and deterministic; assert the intended fallback.
-4. **Identified planar-platform gate:** fit one robot and one planar LiDAR from calibration data, then publish held-out
- pose, steering, stopping, timing, range, return-rate, and energy errors.
-5. **HIL gate:** compare simulation, replay, and hardware providers through the same LSRI contracts before adding a
- broader sensor family or making a transfer claim.
+5. **Optional identified-profile gate:** a future contributor may fit one robot and one planar LiDAR from calibration
+ data, then publish held-out pose, steering, stopping, timing, range, return-rate, and energy errors.
+6. **Optional HIL gate:** compare simulation, replay, and hardware providers through the same LSRI contracts before
+ making a claim about that hardware target. This does not block the simulation and teaching roadmap.
 
 Multi-line LiDAR, solid-state LiDAR, SLAM, VLA, and multi-process transport enter this sequence only when a concrete
 learning or deployment question supplies their acceptance metric.

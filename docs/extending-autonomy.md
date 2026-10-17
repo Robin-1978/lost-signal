@@ -1,6 +1,6 @@
 # Extending autonomy
 
-Lost Signal keeps algorithm extension inside a small, middleware-neutral C++ stack. ROS 2, DDS, pluginlib, and a dynamic loader are not required. An optional bridge may translate data at the LSRI boundary without changing an algorithm.
+Lost Signal keeps algorithm extension inside a small, project-owned C++ stack. External middleware, a plugin framework, and a dynamic loader are not required.
 
 ## Module boundaries
 
@@ -16,6 +16,11 @@ Lost Signal keeps algorithm extension inside a small, middleware-neutral C++ sta
 | `autonomy/control/` | track the selected path or motion target | body or actuator target |
 
 DWA and the Ackermann and holonomic rollout samplers are local planners. Path following and PID belong to control. Deterministic patrol and wander motion describe simulated world actors, so they live under `mission/world/` rather than the autonomy stack.
+
+Waiting at a safe pocket is a behavior decision. The behavior layer selects the pocket, decides when to hold,
+commits to a crossing, and releases or falls back when observations change. A local planner such as DWA only checks
+and executes the short-horizon motion toward the selected pocket or through the committed crossing; it does not own
+the long-duration traffic state machine.
 
 The CMake targets make the same boundaries visible. `lost_signal_autonomy`, `lost_signal_vehicle`, and `lost_signal_runtime` are separate targets. `lost_signal_stack` is a convenience target that aggregates them. `lost_signal_mission` composes the stack with authored content and simulation.
 
@@ -101,4 +106,4 @@ A planner should keep all tuning explicit, respect map occupancy and the supplie
 
 Global planning is the first versioned algorithm registry. Local planners and controllers already have clear directory and data boundaries, but they do not yet expose equivalent versioned registries. Add those only when a second implementation needs selection; avoid abstract interfaces with one consumer and no replacement pressure.
 
-Hardware remains separate. Algorithms emit neutral motion targets, LSRI validates and transports commands, and a vehicle adapter converts them to platform-specific actuation. A ROS 2 bridge can wrap these contracts later without moving the algorithms into ROS packages.
+Hardware remains separate. Algorithms emit neutral motion targets, LSRI validates and transports commands, and a vehicle adapter converts them to platform-specific actuation. Native providers implement that boundary without moving algorithms into device-specific packages.

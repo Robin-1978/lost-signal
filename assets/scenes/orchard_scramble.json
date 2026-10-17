@@ -1,0 +1,1694 @@
+{
+  "schema_version": 1,
+  "id": "scene.orchard_scramble",
+  "camera": {
+    "offset_m": [
+      -8.8,
+      -10.5,
+      11.5
+    ],
+    "target_height_m": 0.9,
+    "fov_degrees": 44.0,
+    "focus_weights": {
+      "robot": 0.58,
+      "actor": 0.0,
+      "goal": 0.42
+    },
+    "event_shot": {
+      "offset_m": [
+        -5.8,
+        -7.0,
+        6.8
+      ],
+      "target_height_m": 0.8,
+      "fov_degrees": 39.0,
+      "focus_weights": {
+        "robot": 0.72,
+        "actor": 0.0,
+        "goal": 0.28
+      }
+    },
+    "success_shot": {
+      "offset_m": [
+        -5.0,
+        -6.0,
+        5.6
+      ],
+      "target_height_m": 1.0,
+      "fov_degrees": 36.0,
+      "focus_weights": {
+        "robot": 0.45,
+        "actor": 0.0,
+        "goal": 0.55
+      }
+    },
+    "transition_s": 0.65
+  },
+  "lighting": {
+    "direction": [
+      -0.65,
+      0.32,
+      -1.0
+    ],
+    "directional_color": "#FFD6A1",
+    "directional_intensity": 1.08,
+    "ambient_color": "#34423B",
+    "fog_color": "#18201D",
+    "fog_start_m": 18.0,
+    "fog_end_m": 42.0,
+    "robot_active_color": "#43D6B3",
+    "robot_waiting_color": "#F4B65D",
+    "goal_color": "#FFB347",
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 34.0,
+    "shadow_strength": 0.68,
+    "exposure": 1.0,
+    "bloom_threshold": 0.86,
+    "bloom_strength": 0.18,
+    "vignette_strength": 0.12
+  },
+  "effects": {
+    "robot_scale": 1.0,
+    "bob_amplitude_m": 0.0,
+    "bob_frequency_hz": 1.6,
+    "eye_height_m": 0.25,
+    "scan_radius_m": 1.5,
+    "perception_link_height_m": 0.42,
+    "prediction_horizon_s": 2.4,
+    "success_ring_radius_m": 0.9,
+    "trail_duration_s": 2.4,
+    "surface_particle_count": 48,
+    "surface_particle_scale": 1.15,
+    "risk_indicator_radius_m": 0.9
+  },
+  "floor": {
+    "base_color": "#29352A",
+    "tile_color": "#4B5A3B",
+    "boundary_color": "#33412F",
+    "tile_size_m": 2.0,
+    "seam_m": 0.015,
+    "color_variation": 9,
+    "boundary_height_m": 0.26,
+    "boundary_width_m": 0.22,
+    "albedo_texture": "textures/environment/gravel_floor.png"
+  },
+  "prefabs": [
+    {
+      "id": "prefab.orchard_tree",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.75
+          ],
+          "size_m": [
+            0.17,
+            0.17,
+            1.5
+          ],
+          "color": "#765039"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.75
+          ],
+          "size_m": [
+            0.82,
+            0.82,
+            0.68
+          ],
+          "color": "#526B39"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.35,
+            0.05,
+            1.55
+          ],
+          "size_m": [
+            0.5,
+            0.5,
+            0.45
+          ],
+          "color": "#657F42"
+        }
+      ]
+    },
+    {
+      "id": "prefab.packing_shed",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.08
+          ],
+          "size_m": [
+            2.2,
+            2.2,
+            0.16
+          ],
+          "color": "#8E6C42"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            1.35
+          ],
+          "size_m": [
+            2.6,
+            2.6,
+            0.16
+          ],
+          "color": "#A84A3E"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.9,
+            -0.9,
+            0.7
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            1.4
+          ],
+          "color": "#5B4935"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.9,
+            -0.9,
+            0.7
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            1.4
+          ],
+          "color": "#5B4935"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0.92,
+            0.72
+          ],
+          "size_m": [
+            2.15,
+            0.08,
+            1.18
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#C8AA74"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0.86,
+            0.74
+          ],
+          "size_m": [
+            1.05,
+            0.04,
+            0.52
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#273B3B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0.82,
+            0.74
+          ],
+          "size_m": [
+            0.88,
+            0.03,
+            0.34
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#F0C260"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.7,
+            -0.88,
+            1.16
+          ],
+          "size_m": [
+            0.09,
+            0.09,
+            0.09
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#54D7C1"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.7,
+            -0.88,
+            1.16
+          ],
+          "size_m": [
+            0.09,
+            0.09,
+            0.09
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#54D7C1"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.66,
+            0.45,
+            0.22
+          ],
+          "size_m": [
+            0.52,
+            0.42,
+            0.38
+          ],
+          "yaw_degrees": -8.0,
+          "color": "#8A6038"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.04,
+            0.5,
+            0.18
+          ],
+          "size_m": [
+            0.56,
+            0.4,
+            0.3
+          ],
+          "yaw_degrees": 6.0,
+          "color": "#A8773F"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_crate",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.12
+          ],
+          "size_m": [
+            0.68,
+            0.48,
+            0.2
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#7E522B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.22,
+            -0.13,
+            0.26
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8812D"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            -0.22,
+            -0.13,
+            0.365
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            -0.14,
+            0.27
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D74A37"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            -0.14,
+            0.375
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.22,
+            -0.1,
+            0.26
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D74A37"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0.22,
+            -0.1,
+            0.365
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.12,
+            0.13,
+            0.3
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8812D"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            -0.12,
+            0.13,
+            0.40499999999999997
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.13,
+            0.12,
+            0.3
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D74A37"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0.13,
+            0.12,
+            0.40499999999999997
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_crate_abandoned",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.12
+          ],
+          "size_m": [
+            0.68,
+            0.48,
+            0.2
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#534D42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.22,
+            -0.13,
+            0.26
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#777063"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            -0.22,
+            -0.13,
+            0.365
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            -0.14,
+            0.27
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#70695B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            -0.14,
+            0.375
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.22,
+            -0.1,
+            0.26
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#70695B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0.22,
+            -0.1,
+            0.365
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.12,
+            0.13,
+            0.3
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#777063"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            -0.12,
+            0.13,
+            0.40499999999999997
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.13,
+            0.12,
+            0.3
+          ],
+          "size_m": [
+            0.095,
+            0.095,
+            0.095
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#70695B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0.13,
+            0.12,
+            0.40499999999999997
+          ],
+          "size_m": [
+            0.01,
+            0.008,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#524327"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_packing_pad",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.035
+          ],
+          "size_m": [
+            1.38,
+            1.38,
+            0.07
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#695237"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.52,
+            -0.52,
+            0.1
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8AC50"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.52,
+            -0.52,
+            0.1
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8AC50"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.52,
+            0.52,
+            0.1
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8AC50"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.52,
+            0.52,
+            0.1
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E8AC50"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_packing_complete",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.035
+          ],
+          "size_m": [
+            1.38,
+            1.38,
+            0.07
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#435C4C"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.3,
+            -0.2,
+            0.16
+          ],
+          "size_m": [
+            0.42,
+            0.3,
+            0.18
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#7E522B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.3,
+            0.05,
+            0.16
+          ],
+          "size_m": [
+            0.42,
+            0.3,
+            0.18
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#7E522B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.3,
+            -0.2,
+            0.29
+          ],
+          "size_m": [
+            0.075,
+            0.075,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#DC4C33"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.3,
+            0.05,
+            0.29
+          ],
+          "size_m": [
+            0.075,
+            0.075,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E68830"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_crate",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            0.48,
+            0.38,
+            0.075
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#835B35"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0.17,
+            0.07
+          ],
+          "size_m": [
+            0.48,
+            0.035,
+            0.14
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#A47743"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            -0.17,
+            0.07
+          ],
+          "size_m": [
+            0.48,
+            0.035,
+            0.14
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#A47743"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.22,
+            0,
+            0.07
+          ],
+          "size_m": [
+            0.035,
+            0.31,
+            0.14
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#95683B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.22,
+            0,
+            0.07
+          ],
+          "size_m": [
+            0.035,
+            0.31,
+            0.14
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#95683B"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_fruit",
+      "parts": [
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            0.06,
+            0.06,
+            0.06
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D94D38"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.075
+          ],
+          "size_m": [
+            0.008,
+            0.008,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#4D462A"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_fruit_damaged",
+      "parts": [
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            0.06,
+            0.06,
+            0.06
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#704B3A"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.075
+          ],
+          "size_m": [
+            0.008,
+            0.008,
+            0.045
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#3D3826"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_tree_ruby",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.75
+          ],
+          "size_m": [
+            0.17,
+            0.17,
+            1.5
+          ],
+          "color": "#765039"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.75
+          ],
+          "size_m": [
+            0.82,
+            0.82,
+            0.68
+          ],
+          "color": "#526B39"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.35,
+            0.05,
+            1.55
+          ],
+          "size_m": [
+            0.5,
+            0.5,
+            0.45
+          ],
+          "color": "#657F42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.35,
+            -0.28,
+            1.65
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D94936"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.28,
+            -0.35,
+            1.82
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#EC7A34"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.12,
+            0.36,
+            1.92
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D94936"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.46,
+            0.18,
+            1.58
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#EC7A34"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.48,
+            0.12,
+            1.48
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D94936"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_tree_gold",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.75
+          ],
+          "size_m": [
+            0.17,
+            0.17,
+            1.5
+          ],
+          "color": "#765039"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.75
+          ],
+          "size_m": [
+            0.82,
+            0.82,
+            0.68
+          ],
+          "color": "#526B39"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.35,
+            0.05,
+            1.55
+          ],
+          "size_m": [
+            0.5,
+            0.5,
+            0.45
+          ],
+          "color": "#657F42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.35,
+            -0.28,
+            1.65
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E7A13B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.28,
+            -0.35,
+            1.82
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D75D35"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.12,
+            0.36,
+            1.92
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E7A13B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.46,
+            0.18,
+            1.58
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D75D35"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.48,
+            0.12,
+            1.48
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#E7A13B"
+        }
+      ]
+    },
+    {
+      "id": "prefab.orchard_tree_rose",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.75
+          ],
+          "size_m": [
+            0.17,
+            0.17,
+            1.5
+          ],
+          "color": "#765039"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.75
+          ],
+          "size_m": [
+            0.82,
+            0.82,
+            0.68
+          ],
+          "color": "#526B39"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.35,
+            0.05,
+            1.55
+          ],
+          "size_m": [
+            0.5,
+            0.5,
+            0.45
+          ],
+          "color": "#657F42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.35,
+            -0.28,
+            1.65
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#C83C4F"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.28,
+            -0.35,
+            1.82
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#EF8A42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.12,
+            0.36,
+            1.92
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#C83C4F"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0.46,
+            0.18,
+            1.58
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#EF8A42"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            -0.48,
+            0.12,
+            1.48
+          ],
+          "size_m": [
+            0.085,
+            0.085,
+            0.085
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#C83C4F"
+        }
+      ]
+    },
+    {
+      "id": "prefab.storm_beacon",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.75
+          ],
+          "size_m": [
+            0.045,
+            0.045,
+            1.5
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#445457"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.55
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            0.12
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#F1B94B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.18,
+            0,
+            1.25
+          ],
+          "size_m": [
+            0.4,
+            0.035,
+            0.18
+          ],
+          "yaw_degrees": 0.0,
+          "color": "#D95A44"
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "id": "tree_01",
+      "prefab": "prefab.orchard_tree_ruby",
+      "position_m": [
+        7.0,
+        2.0,
+        0.395
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.92
+      ],
+      "yaw_degrees": -60.0
+    },
+    {
+      "id": "tree_02",
+      "prefab": "prefab.orchard_tree_gold",
+      "position_m": [
+        7.0,
+        5.5,
+        0.78
+      ],
+      "scale": [
+        0.9500000000000001,
+        1.02,
+        1.0
+      ],
+      "yaw_degrees": -23.0
+    },
+    {
+      "id": "tree_03",
+      "prefab": "prefab.orchard_tree_rose",
+      "position_m": [
+        7.0,
+        9.0,
+        1.165
+      ],
+      "scale": [
+        1.0,
+        0.9400000000000001,
+        1.08
+      ],
+      "yaw_degrees": 14.0
+    },
+    {
+      "id": "tree_04",
+      "prefab": "prefab.orchard_tree_ruby",
+      "position_m": [
+        7.0,
+        14.0,
+        1.715
+      ],
+      "scale": [
+        1.05,
+        1.06,
+        0.9600000000000001
+      ],
+      "yaw_degrees": 51.0
+    },
+    {
+      "id": "tree_05",
+      "prefab": "prefab.orchard_tree_gold",
+      "position_m": [
+        7.0,
+        17.5,
+        2.1
+      ],
+      "scale": [
+        1.1,
+        0.98,
+        1.04
+      ],
+      "yaw_degrees": -32.0
+    },
+    {
+      "id": "tree_06",
+      "prefab": "prefab.orchard_tree_rose",
+      "position_m": [
+        13.0,
+        3.5,
+        0.71
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.92
+      ],
+      "yaw_degrees": 5.0
+    },
+    {
+      "id": "tree_07",
+      "prefab": "prefab.orchard_tree_ruby",
+      "position_m": [
+        13.0,
+        7.0,
+        1.095
+      ],
+      "scale": [
+        0.9500000000000001,
+        1.02,
+        1.0
+      ],
+      "yaw_degrees": 42.0
+    },
+    {
+      "id": "tree_08",
+      "prefab": "prefab.orchard_tree_gold",
+      "position_m": [
+        13.0,
+        11.5,
+        1.5899999999999999
+      ],
+      "scale": [
+        1.0,
+        0.9400000000000001,
+        1.08
+      ],
+      "yaw_degrees": -41.0
+    },
+    {
+      "id": "tree_09",
+      "prefab": "prefab.orchard_tree_rose",
+      "position_m": [
+        13.0,
+        15.5,
+        2.0300000000000002
+      ],
+      "scale": [
+        1.05,
+        1.06,
+        0.9600000000000001
+      ],
+      "yaw_degrees": -4.0
+    },
+    {
+      "id": "tree_10",
+      "prefab": "prefab.orchard_tree_ruby",
+      "position_m": [
+        13.0,
+        18.5,
+        2.3600000000000003
+      ],
+      "scale": [
+        1.1,
+        0.98,
+        1.04
+      ],
+      "yaw_degrees": 33.0
+    },
+    {
+      "id": "tree_11",
+      "prefab": "prefab.orchard_tree_gold",
+      "position_m": [
+        19.0,
+        2.0,
+        0.6950000000000001
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.92
+      ],
+      "yaw_degrees": -50.0
+    },
+    {
+      "id": "tree_12",
+      "prefab": "prefab.orchard_tree_rose",
+      "position_m": [
+        19.0,
+        6.0,
+        1.135
+      ],
+      "scale": [
+        0.9500000000000001,
+        1.02,
+        1.0
+      ],
+      "yaw_degrees": -13.0
+    },
+    {
+      "id": "tree_13",
+      "prefab": "prefab.orchard_tree_ruby",
+      "position_m": [
+        19.0,
+        10.0,
+        1.5750000000000002
+      ],
+      "scale": [
+        1.0,
+        0.9400000000000001,
+        1.08
+      ],
+      "yaw_degrees": 24.0
+    },
+    {
+      "id": "tree_14",
+      "prefab": "prefab.orchard_tree_gold",
+      "position_m": [
+        19.0,
+        15.0,
+        2.125
+      ],
+      "scale": [
+        1.05,
+        1.06,
+        0.9600000000000001
+      ],
+      "yaw_degrees": -59.0
+    },
+    {
+      "id": "tree_15",
+      "prefab": "prefab.orchard_tree_rose",
+      "position_m": [
+        19.0,
+        18.0,
+        2.455
+      ],
+      "scale": [
+        1.1,
+        0.98,
+        1.04
+      ],
+      "yaw_degrees": -22.0
+    },
+    {
+      "id": "packing_shed",
+      "prefab": "prefab.packing_shed",
+      "position_m": [
+        2.5,
+        10.0,
+        1.1625
+      ]
+    },
+    {
+      "id": "storm_beacon_west",
+      "prefab": "prefab.storm_beacon",
+      "position_m": [
+        1.0,
+        1.1,
+        0.12
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "yaw_degrees": 18.0
+    },
+    {
+      "id": "storm_beacon_east",
+      "prefab": "prefab.storm_beacon",
+      "position_m": [
+        25.0,
+        18.8,
+        2.65
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "yaw_degrees": -22.0
+    }
+  ],
+  "goal_visuals": [
+    {
+      "id": "goal.orchard_crate",
+      "states": {
+        "available": "prefab.orchard_crate",
+        "active": "prefab.orchard_crate",
+        "abandoned": "prefab.orchard_crate_abandoned"
+      }
+    },
+    {
+      "id": "goal.orchard_packing",
+      "states": {
+        "available": "prefab.orchard_packing_pad",
+        "active": "prefab.orchard_packing_pad",
+        "completed": "prefab.orchard_packing_complete"
+      }
+    }
+  ],
+  "payload_visual": {
+    "mount": "cargo_bed",
+    "container_prefab": "prefab.payload_crate",
+    "item_prefab": "prefab.payload_fruit",
+    "damaged_item_prefab": "prefab.payload_fruit_damaged",
+    "item_origin_m": [
+      -0.15,
+      -0.1,
+      0.12
+    ],
+    "item_spacing_m": [
+      0.1,
+      0.1,
+      0.105
+    ],
+    "grid_columns": 4,
+    "grid_rows": 3,
+    "items_per_visual": 4,
+    "max_visible_items": 12,
+    "damaged_below_integrity": 0.75,
+    "pickup_effect": {
+      "duration_s": 1.1,
+      "particles": 10,
+      "color": "#E04F30",
+      "accent_color": "#F2A23A",
+      "radius_m": 0.48,
+      "rise_m": 0.34
+    },
+    "damage_warning": {
+      "below_integrity": 0.85,
+      "color": "#F24F4A",
+      "height_m": 0.3
+    }
+  }
+}

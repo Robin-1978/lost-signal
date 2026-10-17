@@ -1,4 +1,5 @@
 #include "content_catalog.hpp"
+#include "autonomy/planning/task/task_ordering.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -6,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <set>
 #include <sstream>
 
@@ -58,6 +60,13 @@ void require_schema_v1(const json& value, const std::filesystem::path& path) {
  }
 }
 
+void require_schema_version(const json& value, const std::filesystem::path& path,
+ int expected) {
+ if (value.value("schema_version", 0) != expected) {
+ throw ContentError(path.string() + ": unsupported schema_version");
+ }
+}
+
 std::vector<std::filesystem::path> json_files(const std::filesystem::path& directory) {
  if (!std::filesystem::is_directory(directory)) {
   throw ContentError("missing content directory: " + directory.string());
@@ -78,6 +87,49 @@ sim::Vec2 vec2(const json& value) {
 
 Vec3 vec3(const json& value) {
  return {value.at(0).get<double>(), value.at(1).get<double>(), value.at(2).get<double>()};
+}
+
+Vec3 rotate_rpy_degrees(Vec3 value, Vec3 rotation_deg) {
+ constexpr double kDegreesToRadians = sim::kPi / 180.0;
+ const double roll = rotation_deg.x * kDegreesToRadians;
+ const double pitch = rotation_deg.y * kDegreesToRadians;
+ const double yaw = rotation_deg.z * kDegreesToRadians;
+ const double sr = std::sin(roll);
+ const double cr = std::cos(roll);
+ const double sp = std::sin(pitch);
+ const double cp = std::cos(pitch);
+ const double sy = std::sin(yaw);
+ const double cy = std::cos(yaw);
+ const Vec3 rolled{value.x, cr * value.y - sr * value.z, sr * value.y + cr * value.z};
+ const Vec3 pitched{cp * rolled.x + sp * rolled.z, rolled.y,
+ -sp * rolled.x + cp * rolled.z};
+ return {cy * pitched.x - sy * pitched.y, sy * pitched.x + cy * pitched.y,
+ pitched.z};
+}
+
+double norm(Vec3 value) {
+ return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
+}
+
+Vec3 subtract(Vec3 left, Vec3 right) {
+ return {left.x - right.x, left.y - right.y, left.z - right.z};
+}
+
+Vec3 add(Vec3 left, Vec3 right) {
+ return {left.x + right.x, left.y + right.y, left.z + right.z};
+}
+
+double dot(Vec3 left, Vec3 right) {
+ return left.x * right.x + left.y * right.y + left.z * right.z;
+}
+
+double inertia_about_model_z(const RigidLinkDefinition& link) {
+ const Vec3 local_x = rotate_rpy_degrees({1.0, 0.0, 0.0}, link.rotation_deg);
+ const Vec3 local_y = rotate_rpy_degrees({0.0, 1.0, 0.0}, link.rotation_deg);
+ const Vec3 local_z = rotate_rpy_degrees({0.0, 0.0, 1.0}, link.rotation_deg);
+ return link.inertia_diagonal_kgm2.x * local_x.z * local_x.z +
+ link.inertia_diagonal_kgm2.y * local_y.z * local_y.z +
+ link.inertia_diagonal_kgm2.z * local_z.z * local_z.z;
 }
 
 std::array<unsigned char, 4> rgba(const std::string& value) {
@@ -124,12 +176,13 @@ BuildSelection build(const json& value) {
  // no loader change (schema constrains the spelling, validator the semantics).
  BuildSelection selection;
  for (auto it = value.begin(); it != value.end(); ++it) {
-  if (it.key() == "style") {
+ if (it.key() == "style" || it.key() == "task_policy") {
    continue;
   }
   selection.parts[it.key()] = it.value().get<std::string>();
  }
  selection.style = value.at("style").get<double>();
+ selection.task_policy = value.value("task_policy", std::string{});
  return selection;
 }
 
@@ -144,6 +197,51 @@ void insert_unique(std::unordered_map<std::string, Value>& values, Value value,
 
 bool contains(const std::vector<std::string>& values, const std::string& value) {
  return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+double cross(sim::Vec2 origin, sim::Vec2 a, sim::Vec2 b) {
+ return (a.x - origin.x) * (b.y - origin.y) -
+ (a.y - origin.y) * (b.x - origin.x);
+}
+
+std::vector<sim::Vec2> convex_hull(std::vector<sim::Vec2> points) {
+ std::sort(points.begin(), points.end(), [](const auto& left, const auto& right) {
+ return left.x < right.x || (left.x == right.x && left.y < right.y);
+ });
+ points.erase(std::unique(points.begin(), points.end(), [](const auto& left, const auto& right) {
+ return std::abs(left.x - right.x) < 1e-9 && std::abs(left.y - right.y) < 1e-9;
+ }), points.end());
+ if (points.size() < 3)
+ return points;
+ std::vector<sim::Vec2> hull;
+ for (const auto& point : points) {
+ while (hull.size() >= 2 && cross(hull[hull.size() - 2], hull.back(), point) <= 1e-9)
+ hull.pop_back();
+ hull.push_back(point);
+ }
+ const std::size_t lower_size = hull.size();
+ for (auto it = points.rbegin() + 1; it != points.rend(); ++it) {
+ while (hull.size() > lower_size && cross(hull[hull.size() - 2], hull.back(), *it) <= 1e-9)
+ hull.pop_back();
+ hull.push_back(*it);
+ }
+ hull.pop_back();
+ return hull;
+}
+
+double origin_support_margin(const std::vector<sim::Vec2>& contacts) {
+ const auto hull = convex_hull(contacts);
+ if (hull.size() < 3)
+ return -1.0;
+ double margin = std::numeric_limits<double>::infinity();
+ for (std::size_t index = 0; index < hull.size(); ++index) {
+ const auto& from = hull[index];
+ const auto& to = hull[(index + 1) % hull.size()];
+ const double edge_length = std::hypot(to.x - from.x, to.y - from.y);
+ const double inward_distance = cross(from, to, {0.0, 0.0}) / std::max(1e-9, edge_length);
+ margin = std::min(margin, inward_distance);
+ }
+ return margin;
 }
 
 bool valid_locale_name(const std::string& value) {
@@ -215,9 +313,30 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    companion.at("robot").get<std::string>(),
    campaign_json.at("starting_level").get<std::string>(),
    campaign_json.at("levels").get<std::vector<std::string>>(),
+ campaign_json.at("playgrounds").get<std::vector<std::string>>(),
    campaign_json.at("starting_inventory").get<std::vector<std::string>>(),
    campaign_json.at("starting_policies").get<std::vector<std::string>>(),
  };
+
+ const auto task_policies_path = catalog.root_ / "task_policies.json";
+ const auto task_policies_json =
+ read_localized_json(task_policies_path, catalog.root_, catalog.locale_);
+ require_schema_v1(task_policies_json, task_policies_path);
+ const auto task_algorithms = autonomy::TaskOrderingRegistry::with_builtins();
+ for (const auto& item : task_policies_json.at("task_policies")) {
+ TaskPolicyDefinition policy{
+ item.at("id").get<std::string>(),
+ item.at("title").get<std::string>(),
+ item.at("description").get<std::string>(),
+ item.at("algorithm").get<std::string>(),
+ properties(item.at("parameters")),
+ };
+ if (!task_algorithms.contains(policy.algorithm)) {
+ throw ContentError(task_policies_path.string() + ": unknown task-ordering algorithm '" +
+ policy.algorithm + "'");
+ }
+ insert_unique(catalog.task_policies_, std::move(policy), task_policies_path);
+ }
 
  for (const auto& path : json_files(catalog.root_ / "levels")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
@@ -235,7 +354,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   level.map = value.at("map").get<std::string>();
   level.control_mode = value.at("control_mode").get<std::string>();
   level.localization_mode = value.at("localization_mode").get<std::string>();
-  if (level.mode != "mainline" && level.mode != "contract" && level.mode != "experiment") {
+  if (level.mode != "mainline" && level.mode != "contract" && level.mode != "experiment" &&
+ level.mode != "playground") {
    throw ContentError(path.string() + ": unsupported mode");
   }
   if (level.control_mode != "manual_calibration" && level.control_mode != "autonomous") {
@@ -254,6 +374,12 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     objective.at("max_collisions").get<int>(),      objective.at("arrive_tolerance_m").get<double>(),
     objective.value("max_arrival_speed_mps", 999.0), objective.value("via_radius_m", 1.25), {},
   };
+ level.objective.goal_order = objective.value("goal_order", std::string{"authored"});
+ level.objective.task_policy = objective.value("task_policy", std::string{"task.balanced"});
+ level.objective.return_reserve_s = objective.value("return_reserve_s", 0.0);
+ if (level.objective.goal_order != "authored" && level.objective.goal_order != "autonomous") {
+ throw ContentError(path.string() + ": unknown goal_order " + level.objective.goal_order);
+ }
   // Unified goals: explicit list wins; otherwise derive from legacy fields so
   // reach = [complete] and deliver_via = [pickup, complete]. Same arrivals,
   // same order, same radii — derivation is behavior-preserving by construction.
@@ -267,10 +393,22 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     step.summon_actor = entry.value("summon_actor", std::string{});
     step.recharge_wh = entry.value("recharge_wh", 0.0);
  step.dwell_s = entry.value("dwell_s", 0.0);
+ step.id = entry.value("id", step.marker);
+ step.visual = entry.value("visual", std::string{});
+ if (const auto item = entry.find("item"); item != entry.end()) {
+ step.item_count = item->at("count").get<int>();
+ step.item_mass_kg = item->at("mass_kg").get<double>();
+ step.item_cog_height_m = item->at("cog_height_m").get<double>();
+ step.item_value = item->at("value").get<double>();
+ step.item_fragility = item->at("fragility").get<double>();
+ }
     if (step.action != "pickup" && step.action != "complete" && step.action != "summon" &&
- step.action != "recharge" && step.action != "inspect") {
+ step.action != "recharge" && step.action != "inspect" && step.action != "collect") {
      throw ContentError(path.string() + ": unknown goal action " + step.action);
     }
+ if (step.action == "collect" && (step.item_count <= 0 || step.item_mass_kg <= 0.0)) {
+ throw ContentError(path.string() + ": collect goal requires positive item count and mass");
+ }
  if (step.action == "inspect" && step.dwell_s <= 0.0) {
  throw ContentError(path.string() + ": inspect goal requires dwell_s > 0");
  }
@@ -279,22 +417,35 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    if (level.objective.goals.empty()) {
     throw ContentError(path.string() + ": empty goals list");
    }
-  } else if (!level.objective.via.empty()) {
-   level.objective.goals.push_back(
-     {level.objective.via, level.objective.via_label, "pickup", level.objective.via_radius_m, {}, 0.0});
-   level.objective.goals.push_back({level.objective.goal,
-                                    level.objective.goal_label,
-                                    "complete",
-                                    level.objective.arrive_tolerance_m,
-                                    {},
-                                    0.0});
+ std::set<std::string> task_ids;
+ for (const auto& step : level.objective.goals) {
+ if (!task_ids.insert(step.id.empty() ? step.marker : step.id).second) {
+ throw ContentError(path.string() + ": duplicate goal id " + step.id);
+ }
+ }
+ } else if (!level.objective.via.empty()) {
+ GoalStep pickup;
+ pickup.id = level.objective.via;
+ pickup.marker = level.objective.via;
+ pickup.label = level.objective.via_label;
+ pickup.action = "pickup";
+ pickup.radius_m = level.objective.via_radius_m;
+ level.objective.goals.push_back(std::move(pickup));
+ GoalStep complete;
+ complete.id = level.objective.goal;
+ complete.marker = level.objective.goal;
+ complete.label = level.objective.goal_label;
+ complete.action = "complete";
+ complete.radius_m = level.objective.arrive_tolerance_m;
+ level.objective.goals.push_back(std::move(complete));
   } else {
-   level.objective.goals.push_back({level.objective.goal,
-                                    level.objective.goal_label,
-                                    "complete",
-                                    level.objective.arrive_tolerance_m,
-                                    {},
-                                    0.0});
+ GoalStep complete;
+ complete.id = level.objective.goal;
+ complete.marker = level.objective.goal;
+ complete.label = level.objective.goal_label;
+ complete.action = "complete";
+ complete.radius_m = level.objective.arrive_tolerance_m;
+ level.objective.goals.push_back(std::move(complete));
   }
   level.budget = loadout.at("budget").get<int>();
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
@@ -308,6 +459,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    throw ContentError(path.string() + ": invalid safe_clearance_scope");
   }
   level.max_localization_error_m = score.value("max_localization_error_m", 999.0);
+ if (const auto planning = value.find("planning"); planning != value.end()) {
+ level.planning_localization_margin_m = planning->at("localization_margin_m").get<double>();
+ }
   level.fast_time_s = score.at("fast_time_s").get<double>();
   level.efficient_energy_wh = score.at("efficient_energy_wh").get<double>();
   level.rewards = value.at("rewards").get<std::vector<std::string>>();
@@ -315,6 +469,29 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    level.payload_mass_kg = payload->at("mass_kg").get<double>();
    level.payload_cog_height_m = payload->at("cog_height_m").get<double>();
   }
+ if (const auto environment = value.find("environment"); environment != value.end()) {
+ double previous_time_s = -1.0;
+ for (const auto& item : environment->at("keyframes")) {
+ EnvironmentKeyframeDefinition keyframe;
+ keyframe.id = item.at("id").get<std::string>();
+ keyframe.label = item.at("label").get<std::string>();
+ keyframe.time_s = item.at("time_s").get<double>();
+ keyframe.wetness = item.at("wetness").get<double>();
+ keyframe.visibility = item.at("visibility").get<double>();
+ keyframe.daylight = item.at("daylight").get<double>();
+ keyframe.material_grip =
+ item.at("material_grip").get<std::unordered_map<std::string, double>>();
+ if (keyframe.time_s <= previous_time_s) {
+ throw ContentError(path.string() + ": environment keyframe times must increase");
+ }
+ previous_time_s = keyframe.time_s;
+ level.environment_keyframes.push_back(std::move(keyframe));
+ }
+ if (!level.environment_keyframes.empty() &&
+ std::abs(level.environment_keyframes.front().time_s) > 1e-9) {
+ throw ContentError(path.string() + ": environment timeline must start at 0 s");
+ }
+ }
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
@@ -331,6 +508,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    material.texture_albedo = item.value("texture", std::string{});
    material.rolling_drag = item.at("rolling_drag").get<double>();
    material.traction_scale = item.at("traction_scale").get<double>();
+ material.normal_stiffness_Npm = item.value("normal_stiffness_Npm", 1.0e9);
+ material.normal_damping_Nspm = item.value("normal_damping_Nspm", 0.0);
+ material.lidar_reflectivity = item.at("lidar_reflectivity").get<double>();
    if (const auto effect = item.find("drive_effect"); effect != item.end()) {
     material.drive_effect = effect->at("kind").get<std::string>();
     material.effect_color = rgba(effect->at("color").get<std::string>());
@@ -415,6 +595,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    surface.traction_scale = material.traction_scale;
    surface.friction_mu = material.friction_mu;
    surface.rolling_drag = material.rolling_drag;
+ surface.normal_stiffness_Npm = material.normal_stiffness_Npm;
+ surface.normal_damping_Nspm = material.normal_damping_Nspm;
+ surface.lidar_reflectivity = material.lidar_reflectivity;
    map.surfaces.push_back(std::move(surface));
   }
   for (const auto& item : value.value("terrain", nlohmann::json::array())) {
@@ -594,6 +777,41 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     throw ContentError(path.string() + ": duplicate scene prefab");
    }
   }
+ for (const auto& visual_value : value.value("goal_visuals", json::array())) {
+ SceneGoalVisualDefinition visual;
+ visual.id = visual_value.at("id").get<std::string>();
+ visual.state_prefabs =
+ visual_value.at("states").get<std::unordered_map<std::string, std::string>>();
+ if (!scene.goal_visuals.emplace(visual.id, std::move(visual)).second) {
+ throw ContentError(path.string() + ": duplicate goal visual");
+ }
+ }
+ if (const auto payload_value = value.find("payload_visual"); payload_value != value.end()) {
+ const auto& pickup_effect = payload_value->at("pickup_effect");
+ const auto& damage_warning = payload_value->at("damage_warning");
+ scene.payload_visual = {
+ payload_value->at("mount").get<std::string>(),
+ payload_value->at("container_prefab").get<std::string>(),
+ payload_value->at("item_prefab").get<std::string>(),
+ payload_value->at("damaged_item_prefab").get<std::string>(),
+ vec3(payload_value->at("item_origin_m")),
+ vec3(payload_value->at("item_spacing_m")),
+ payload_value->at("grid_columns").get<int>(),
+ payload_value->at("grid_rows").get<int>(),
+ payload_value->at("items_per_visual").get<int>(),
+ payload_value->at("max_visible_items").get<int>(),
+ payload_value->at("damaged_below_integrity").get<double>(),
+ pickup_effect.at("duration_s").get<double>(),
+ pickup_effect.at("particles").get<int>(),
+ rgba(pickup_effect.at("color").get<std::string>()),
+ rgba(pickup_effect.at("accent_color").get<std::string>()),
+ pickup_effect.at("radius_m").get<double>(),
+ pickup_effect.at("rise_m").get<double>(),
+ damage_warning.at("below_integrity").get<double>(),
+ rgba(damage_warning.at("color").get<std::string>()),
+ damage_warning.at("height_m").get<double>(),
+ };
+ }
   std::set<std::string> instance_ids;
   for (const auto& instance_value : value.at("instances")) {
    const auto instance_id = instance_value.at("id").get<std::string>();
@@ -618,13 +836,34 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
                        "'");
    }
   }
+ for (const auto& [visual_id, visual] : scene.goal_visuals) {
+ for (const auto& [state, prefab] : visual.state_prefabs) {
+ if (state != "available" && state != "active" && state != "completed" &&
+ state != "abandoned") {
+ throw ContentError(path.string() + ": goal visual '" + visual_id +
+ "' uses unknown state '" + state + "'");
+ }
+ if (!scene.prefabs.contains(prefab)) {
+ throw ContentError(path.string() + ": goal visual '" + visual_id +
+ "' references unknown prefab '" + prefab + "'");
+ }
+ }
+ }
+ if (!scene.payload_visual.mount.empty()) {
+ for (const auto& prefab : {scene.payload_visual.container_prefab,
+ scene.payload_visual.item_prefab, scene.payload_visual.damaged_item_prefab}) {
+ if (!scene.prefabs.contains(prefab)) {
+ throw ContentError(path.string() + ": payload visual references unknown prefab '" + prefab + "'");
+ }
+ }
+ }
   insert_unique(catalog.scenes_, std::move(scene), path);
  }
 
  for (const auto& path : json_files(catalog.root_ / "components")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
-  require_schema_v1(value, path);
   if (path.filename() == "policies.json") {
+ require_schema_v1(value, path);
    for (const auto& item : value.at("policies")) {
     PolicyDefinition policy{
       item.at("id").get<std::string>(),          item.at("title").get<std::string>(),
@@ -635,13 +874,20 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    }
    continue;
   }
+ require_schema_version(value, path, 2);
   const auto slot = value.at("slot").get<std::string>();
+ const auto& profile = value.at("model_profile");
   for (const auto& item : value.at("components")) {
    ComponentDefinition component{
      item.at("id").get<std::string>(),    slot,
      item.at("title").get<std::string>(), item.at("description").get<std::string>(),
      item.at("cost").get<int>(),          properties(item.at("behavior")),
-     visual(item.at("visual")),
+ visual(item.at("visual")),
+ ModelProfileDefinition{
+ profile.at("fidelity").get<std::string>(),
+ profile.at("basis").get<std::string>(),
+ profile.at("source_refs").get<std::vector<std::string>>(),
+ },
    };
    require_visual_asset(component.visual, catalog.root_, path);
    insert_unique(catalog.components_, std::move(component), path);
@@ -650,7 +896,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
 
  for (const auto& path : json_files(catalog.root_ / "robots")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
-  require_schema_v1(value, path);
+ require_schema_version(value, path, 5);
   const auto& drive = value.at("drive");
   const auto& motor = drive.at("motor");
   const auto& steering = drive.at("steering");
@@ -660,6 +906,12 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   RobotDefinition robot;
   robot.id = value.at("id").get<std::string>();
   robot.title = value.at("title").get<std::string>();
+ const auto& robot_profile = value.at("model_profile");
+ robot.model_profile = {
+ robot_profile.at("fidelity").get<std::string>(),
+ robot_profile.at("basis").get<std::string>(),
+ robot_profile.at("source_refs").get<std::vector<std::string>>(),
+ };
   robot.drive_type = drive.at("type").get<std::string>();
  robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
   robot.wheel_radius_m = drive.at("wheel_radius_m").get<double>();
@@ -669,6 +921,11 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     motor.at("stall_force_N").get<double>(),       motor.at("free_speed_mps").get<double>(),
     motor.at("pwm_limit").get<double>(),           motor.at("integral_limit").get<double>(),
     motor.at("wheel_equiv_mass_kg").get<double>(),
+ motor.at("controller_bandwidth_radps").get<double>(),
+ motor.at("controller_integral_time_s").get<double>(),
+ motor.at("controller_derivative_time_s").get<double>(),
+ motor.at("coulomb_smoothing_speed_mps").get<double>(),
+ motor.at("viscous_drag_N_per_mps").get<double>(),
   };
   robot.mass_kg = drive.at("mass_kg").get<double>();
   robot.yaw_inertia_kgm2 = drive.at("yaw_inertia_kgm2").get<double>();
@@ -687,8 +944,201 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.energy_per_v_w = energy.at("per_v_w").get<double>();
   robot.energy_per_w_w = energy.at("per_w_w").get<double>();
   robot.encoder = {encoder.at("counts_per_revolution").get<int>()};
-  robot.collision_radius_m = collision.at("radius_m").get<double>();
-  robot.collision_height_m = collision.at("height_m").get<double>();
+ Vec3 articulated_center_of_mass_in_base;
+ double articulated_center_of_mass_height_m = 0.0;
+ double articulated_base_link_height_m = 0.0;
+ bool has_articulated_center_of_mass = false;
+ if (const auto articulation = value.find("articulation"); articulation != value.end()) {
+ robot.articulation.root_link = articulation->at("root_link").get<std::string>();
+ std::set<std::string> link_ids;
+ for (const auto& item : articulation->at("links")) {
+ const auto& collision_shape = item.at("collision");
+ RigidLinkDefinition link;
+ link.id = item.at("id").get<std::string>();
+ link.shape = collision_shape.at("shape").get<std::string>();
+ link.size_m = collision_shape.contains("size_m") ? vec3(collision_shape.at("size_m")) : Vec3{};
+ link.radius_m = collision_shape.value("radius_m", 0.0);
+ link.length_m = collision_shape.value("length_m", 0.0);
+ link.position_m = vec3(item.at("position_m"));
+ link.rotation_deg = vec3(item.at("rotation_deg"));
+ link.mass_kg = item.at("mass_kg").get<double>();
+ link.inertia_diagonal_kgm2 = vec3(item.at("inertia_diagonal_kgm2"));
+ link.friction = item.value("friction", 0.8);
+ link.rolling_support_moment_arm_m = item.value("rolling_support_moment_arm_m", 0.0);
+ link.spinning_resistance = item.value("spinning_resistance", 0.0);
+ link.contact_stiffness_Npm = item.value("contact_stiffness_Npm", 0.0);
+ link.contact_damping_Nspm = item.value("contact_damping_Nspm", 0.0);
+ link.contact_axle_axis = item.contains("contact_axle_axis")
+ ? vec3(item.at("contact_axle_axis")) : Vec3{};
+ if (!link_ids.insert(link.id).second)
+ throw ContentError(path.string() + ": duplicate articulated link '" + link.id + "'");
+ robot.articulation.links.push_back(std::move(link));
+ }
+ if (!link_ids.count(robot.articulation.root_link))
+ throw ContentError(path.string() + ": articulation root_link is unknown");
+ std::set<std::string> joint_ids;
+ for (const auto& item : articulation->at("joints")) {
+ RigidJointDefinition joint{
+ item.at("id").get<std::string>(), item.at("type").get<std::string>(),
+ item.at("parent").get<std::string>(), item.at("child").get<std::string>(),
+ vec3(item.at("pivot_in_parent_m")), vec3(item.at("pivot_in_child_m")),
+ vec3(item.at("axis_in_parent")), vec3(item.at("axis_in_child")),
+ };
+ if (!joint_ids.insert(joint.id).second || !link_ids.count(joint.parent) ||
+ !link_ids.count(joint.child) || joint.parent == joint.child) {
+ throw ContentError(path.string() + ": invalid articulated joint '" + joint.id + "'");
+ }
+ robot.articulation.joints.push_back(std::move(joint));
+ }
+ const auto link_for = [&](const std::string& id) -> const RigidLinkDefinition& {
+ const auto found = std::find_if(robot.articulation.links.begin(), robot.articulation.links.end(),
+ [&](const auto& link) { return link.id == id; });
+ if (found == robot.articulation.links.end())
+ throw ContentError(path.string() + ": unknown articulated link '" + id + "'");
+ return *found;
+ };
+ const auto& root_link = link_for(robot.articulation.root_link);
+ if (norm(root_link.rotation_deg) > 1e-9) {
+ throw ContentError(path.string() +
+ ": articulated root_link must align with the declared base_link axes");
+ }
+ if (robot.articulation.joints.size() + 1 != robot.articulation.links.size()) {
+ throw ContentError(path.string() + ": articulation must be a single rooted tree");
+ }
+ std::set<std::string> child_links;
+ std::map<std::string, std::vector<std::string>> children;
+ for (const auto& joint : robot.articulation.joints) {
+ if (joint.child == robot.articulation.root_link || !child_links.insert(joint.child).second) {
+ throw ContentError(path.string() +
+ ": every non-root articulated link must have exactly one parent");
+ }
+ children[joint.parent].push_back(joint.child);
+ const auto& parent = link_for(joint.parent);
+ const auto& child = link_for(joint.child);
+ const Vec3 parent_pivot = add(parent.position_m,
+ rotate_rpy_degrees(joint.pivot_in_parent_m, parent.rotation_deg));
+ const Vec3 child_pivot = add(child.position_m,
+ rotate_rpy_degrees(joint.pivot_in_child_m, child.rotation_deg));
+ if (norm(subtract(parent_pivot, child_pivot)) > 1e-6) {
+ throw ContentError(path.string() + ": articulated joint '" + joint.id +
+ "' has separated parent and child pivots at rest");
+ }
+ const Vec3 parent_axis = rotate_rpy_degrees(joint.axis_in_parent, parent.rotation_deg);
+ const Vec3 child_axis = rotate_rpy_degrees(joint.axis_in_child, child.rotation_deg);
+ const double parent_axis_norm = norm(parent_axis);
+ const double child_axis_norm = norm(child_axis);
+ if (parent_axis_norm < 1e-9 || child_axis_norm < 1e-9 ||
+ std::abs(std::abs(dot(parent_axis, child_axis) /
+ (parent_axis_norm * child_axis_norm)) - 1.0) > 1e-6) {
+ throw ContentError(path.string() + ": articulated joint '" + joint.id +
+ "' axes do not align at rest");
+ }
+ }
+ std::set<std::string> reachable;
+ std::vector<std::string> pending{robot.articulation.root_link};
+ while (!pending.empty()) {
+ const auto current = pending.back();
+ pending.pop_back();
+ if (!reachable.insert(current).second)
+ throw ContentError(path.string() + ": articulated joint graph contains a cycle");
+ const auto found = children.find(current);
+ if (found != children.end())
+ pending.insert(pending.end(), found->second.begin(), found->second.end());
+ }
+ if (reachable.size() != robot.articulation.links.size())
+ throw ContentError(path.string() + ": articulated joint graph is disconnected");
+
+ double articulated_mass_kg = 0.0;
+ Vec3 first_moment;
+ for (const auto& link : robot.articulation.links) {
+ const auto inertia = link.inertia_diagonal_kgm2;
+ if (inertia.x > inertia.y + inertia.z + 1e-9 ||
+ inertia.y > inertia.x + inertia.z + 1e-9 ||
+ inertia.z > inertia.x + inertia.y + 1e-9) {
+ throw ContentError(path.string() + ": articulated link '" + link.id +
+ "' has a non-physical inertia tensor");
+ }
+ articulated_mass_kg += link.mass_kg;
+ first_moment.x += link.mass_kg * link.position_m.x;
+ first_moment.y += link.mass_kg * link.position_m.y;
+ first_moment.z += link.mass_kg * link.position_m.z;
+ }
+ if (std::abs(articulated_mass_kg - robot.mass_kg) >
+ 1e-6 * std::max(1.0, robot.mass_kg)) {
+ throw ContentError(path.string() +
+ ": articulated link masses must sum to drive.mass_kg");
+ }
+ const Vec3 assembly_center{first_moment.x / articulated_mass_kg,
+ first_moment.y / articulated_mass_kg, first_moment.z / articulated_mass_kg};
+ articulated_center_of_mass_in_base = subtract(assembly_center, root_link.position_m);
+ articulated_center_of_mass_height_m = assembly_center.z;
+ articulated_base_link_height_m = root_link.position_m.z;
+ has_articulated_center_of_mass = true;
+ double assembly_yaw_inertia = 0.0;
+ for (const auto& link : robot.articulation.links) {
+ const double dx = link.position_m.x - assembly_center.x;
+ const double dy = link.position_m.y - assembly_center.y;
+ assembly_yaw_inertia += inertia_about_model_z(link) + link.mass_kg * (dx * dx + dy * dy);
+ }
+ std::set<std::string> actuator_channels;
+ for (const auto& item : articulation->at("actuators")) {
+ JointActuatorDefinition actuator{item.at("channel").get<std::string>(),
+ item.at("joint").get<std::string>(), item.at("effort_limit_Nm").get<double>(),
+ item.value("armature_inertia_kgm2", 0.0)};
+ if (!actuator_channels.insert(actuator.channel).second || !joint_ids.count(actuator.joint))
+ throw ContentError(path.string() + ": invalid articulated actuator channel '" + actuator.channel + "'");
+ if (actuator.armature_inertia_kgm2 > 0.0) {
+ const auto driven_joint = std::find_if(robot.articulation.joints.begin(),
+ robot.articulation.joints.end(),
+ [&](const auto& joint) { return joint.id == actuator.joint; });
+ const auto axis = driven_joint->axis_in_child;
+ const double axis_norm = norm(axis);
+ const int principal_components = static_cast<int>(std::abs(axis.x) > 1e-9) +
+ static_cast<int>(std::abs(axis.y) > 1e-9) +
+ static_cast<int>(std::abs(axis.z) > 1e-9);
+ if (std::abs(axis_norm - 1.0) > 1e-6 || principal_components != 1) {
+ throw ContentError(path.string() + ": actuator armature for '" + actuator.channel +
+ "' requires a unit principal joint axis");
+ }
+ const auto& child = link_for(driven_joint->child);
+ RigidLinkDefinition armature;
+ armature.rotation_deg = child.rotation_deg;
+ const double transverse = 0.5 * actuator.armature_inertia_kgm2;
+ armature.inertia_diagonal_kgm2 = {
+ std::abs(axis.x) > 0.5 ? actuator.armature_inertia_kgm2 : transverse,
+ std::abs(axis.y) > 0.5 ? actuator.armature_inertia_kgm2 : transverse,
+ std::abs(axis.z) > 0.5 ? actuator.armature_inertia_kgm2 : transverse,
+ };
+ assembly_yaw_inertia += inertia_about_model_z(armature);
+ }
+ robot.articulation.actuators.push_back(std::move(actuator));
+ }
+ if (std::abs(assembly_yaw_inertia - robot.yaw_inertia_kgm2) >
+ 0.001 * std::max(assembly_yaw_inertia, robot.yaw_inertia_kgm2)) {
+ throw ContentError(path.string() +
+ ": drive.yaw_inertia_kgm2 must match the articulated assembly and armatures");
+ }
+ }
+ robot.collision_radius_m = collision.at("planning_radius_m").get<double>();
+ const auto& rigid_body = collision.at("rigid_body");
+ robot.rigid_body_shape = rigid_body.at("shape").get<std::string>();
+ robot.rigid_body_size_m = vec3(rigid_body.at("size_m"));
+ robot.collision_height_m = robot.rigid_body_size_m.z;
+ robot.base_link_height_m = robot.collision_height_m * 0.5;
+ robot.center_of_mass_height_m = robot.collision_height_m * 0.5;
+ if (has_articulated_center_of_mass) {
+ robot.base_link_height_m = articulated_base_link_height_m;
+ robot.center_of_mass_height_m = articulated_center_of_mass_height_m;
+ }
+ if (robot.rigid_body_shape != "box" || robot.rigid_body_size_m.x <= 0.0 ||
+ robot.rigid_body_size_m.y <= 0.0 || robot.rigid_body_size_m.z <= 0.0) {
+ throw ContentError(path.string() + ": rigid_body must be a positive box");
+ }
+ if (std::hypot(robot.rigid_body_size_m.x * 0.5,
+ robot.rigid_body_size_m.y * 0.5) > robot.collision_radius_m + 1e-9) {
+ throw ContentError(path.string() +
+ ": planning_radius_m must contain the rigid body footprint");
+ }
   std::set<std::string> mount_ids;
  std::set<std::string> frame_ids;
   for (const auto& item : value.at("mounts")) {
@@ -696,8 +1146,18 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
      item.at("id").get<std::string>(),
      vec3(item.at("position_m")),
      vec3(item.at("rotation_deg")),
+ item.at("motion").get<std::string>(),
+ item.value("rolling_radius_m", 0.0),
  item.value("frame_id", item.at("id").get<std::string>() + "_link"),
    };
+ if (mount.motion != "fixed" && mount.motion != "wheel" &&
+ mount.motion != "track" && mount.motion != "caster") {
+ throw ContentError(path.string() + ": unknown mount motion '" + mount.motion + "'");
+ }
+ if (mount.motion == "wheel" && mount.rolling_radius_m <= 0.0) {
+ throw ContentError(path.string() + ": rolling mount '" + mount.id +
+ "' requires rolling_radius_m > 0");
+ }
    if (!mount_ids.insert(mount.id).second) {
     throw ContentError(path.string() + ": duplicate robot mount '" + mount.id + "'");
    }
@@ -710,11 +1170,52 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  }
    robot.mounts.push_back(std::move(mount));
   }
- robot.passive_support_mounts =
- value.value("passive_support_mounts", std::vector<std::string>{});
- for (const auto& mount : robot.passive_support_mounts) {
- if (!mount_ids.count(mount)) {
- throw ContentError(path.string() + ": passive support references unknown mount '" + mount + "'");
+ if (!robot.articulation.links.empty()) {
+ const auto& root = *std::find_if(robot.articulation.links.begin(),
+ robot.articulation.links.end(), [&](const auto& link) {
+ return link.id == robot.articulation.root_link;
+ });
+ for (const auto& link : robot.articulation.links) {
+ if (link.id == robot.articulation.root_link)
+ continue;
+ const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& candidate) { return candidate.frame_id == link.id; });
+ if (mount == robot.mounts.end()) {
+ throw ContentError(path.string() + ": articulated link '" + link.id +
+ "' has no matching mount/frame");
+ }
+ const Vec3 expected_position = subtract(link.position_m, root.position_m);
+ if (norm(subtract(mount->position_m, expected_position)) > 1e-6 ||
+ norm(subtract(mount->rotation_deg, link.rotation_deg)) > 1e-6) {
+ throw ContentError(path.string() + ": mount/frame for articulated link '" + link.id +
+ "' does not match its rest transform");
+ }
+ if (mount->motion == "wheel" && link.shape == "cylinder" &&
+ std::abs(mount->rolling_radius_m - link.radius_m) > 1e-9) {
+ throw ContentError(path.string() + ": rolling radius for articulated link '" + link.id +
+ "' does not match its collision radius");
+ }
+ }
+ }
+ if (const auto supports = value.find("passive_supports"); supports != value.end()) {
+ for (const auto& item : *supports) {
+ PassiveSupportDefinition support{
+ item.at("steer_mount").get<std::string>(),
+ item.at("roll_mount").get<std::string>(),
+ };
+ const auto steer = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& mount) { return mount.id == support.steer_mount; });
+ const auto roll = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& mount) { return mount.id == support.roll_mount; });
+ if (steer == robot.mounts.end() || roll == robot.mounts.end()) {
+ throw ContentError(path.string() + ": passive support references an unknown mount");
+ }
+ if (support.steer_mount == support.roll_mount || steer->motion != "caster" ||
+ roll->motion != "wheel" || roll->rolling_radius_m <= 0.0) {
+ throw ContentError(path.string() +
+ ": passive support requires distinct caster steer and rolling wheel mounts");
+ }
+ robot.passive_supports.push_back(std::move(support));
  }
  }
   for (const auto& item : value.at("base_parts")) {
@@ -750,6 +1251,36 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     throw ContentError(path.string() + ": missing robot slot '" + required + "'");
    }
   }
+ if (robot.drive_type == "differential") {
+ std::vector<sim::Vec2> contacts;
+ const auto tires = std::find_if(robot.slots.begin(), robot.slots.end(),
+ [](const auto& slot) { return slot.slot == "tires"; });
+ if (tires != robot.slots.end()) {
+ for (const auto& mount_id : tires->mounts) {
+ const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& candidate) { return candidate.id == mount_id; });
+ if (mount != robot.mounts.end())
+ contacts.push_back({mount->position_m.x, mount->position_m.y});
+ }
+ }
+ for (const auto& support : robot.passive_supports) {
+ const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [&](const auto& candidate) { return candidate.id == support.roll_mount; });
+ if (mount != robot.mounts.end())
+ contacts.push_back({mount->position_m.x, mount->position_m.y});
+ }
+ constexpr double kMinimumSupportMarginM = 0.02;
+ if (has_articulated_center_of_mass) {
+ for (auto& contact : contacts) {
+ contact.x -= articulated_center_of_mass_in_base.x;
+ contact.y -= articulated_center_of_mass_in_base.y;
+ }
+ }
+ if (origin_support_margin(contacts) < kMinimumSupportMarginM) {
+ throw ContentError(path.string() +
+ ": differential support polygon must contain the centre of mass with at least 0.02 m margin");
+ }
+ }
   insert_unique(catalog.robots_, std::move(robot), path);
  }
 
@@ -766,6 +1297,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   presentation.level = value.at("level").get<std::string>();
   presentation.robot_id = value.value("robot", std::string{});
   presentation.chassis_options = value.value("chassis_options", std::vector<std::string>{});
+ presentation.task_policies = value.value("task_policies", std::vector<std::string>{});
   presentation.garage_heading = garage.at("heading").get<std::string>();
   presentation.garage_brief = garage.at("brief").get<std::string>();
   for (const auto& item : garage.at("component_columns")) {
@@ -855,9 +1387,17 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
 
  (void)catalog.robot(catalog.campaign_.companion_robot);
 
+ std::vector<std::string> experience_ids = catalog.campaign_.levels;
+ experience_ids.insert(experience_ids.end(), catalog.campaign_.playgrounds.begin(),
+ catalog.campaign_.playgrounds.end());
+ std::set<std::string> unique_experiences(experience_ids.begin(), experience_ids.end());
+ if (unique_experiences.size() != experience_ids.size()) {
+ throw ContentError("guided levels and playgrounds must be disjoint and unique");
+ }
  std::set<int> orders;
- for (const auto& id : catalog.campaign_.levels) {
+ for (const auto& id : experience_ids) {
   const auto& level = catalog.level(id);
+ (void)catalog.task_policy(level.objective.task_policy);
   if (!orders.insert(level.order).second) {
    throw ContentError("duplicate level order");
   }
@@ -875,8 +1415,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    throw ContentError("level '" + id + "' references an unknown map marker");
   }
  }
- if (catalog.campaign_.levels.size() != catalog.levels_.size()) {
-  throw ContentError("campaign must list every level exactly once");
+ if (experience_ids.size() != catalog.levels_.size()) {
+ throw ContentError("guided levels and playgrounds must list every level exactly once");
  }
  for (const auto& [id, presentation] : catalog.presentations_) {
   (void)catalog.level(presentation.level);
@@ -886,6 +1426,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   for (const auto& chassis : presentation.chassis_options) {
    (void)catalog.robot(chassis);
   }
+ for (const auto& policy : presentation.task_policies) {
+ (void)catalog.task_policy(policy);
+ }
   catalog.validate_build(presentation.level, presentation.default_build);
   catalog.validate_build(presentation.level, presentation.recommended_build);
  }
@@ -894,6 +1437,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  }
  for (const auto& level_id : catalog.campaign_.levels) {
   (void)catalog.presentation_for_level(level_id);
+ }
+ for (const auto& level_id : catalog.campaign_.playgrounds) {
+ (void)catalog.presentation_for_level(level_id);
  }
  return catalog;
 }
@@ -975,6 +1521,14 @@ const PolicyDefinition& ContentCatalog::policy(const std::string& id) const {
  return found->second;
 }
 
+const TaskPolicyDefinition& ContentCatalog::task_policy(const std::string& id) const {
+ const auto found = task_policies_.find(id);
+ if (found == task_policies_.end()) {
+ throw ContentError("unknown task policy '" + id + "'");
+ }
+ return found->second;
+}
+
 const PresentationDefinition& ContentCatalog::presentation(const std::string& id) const {
  const auto found = presentations_.find(id);
  if (found == presentations_.end()) {
@@ -1047,7 +1601,7 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
    throw ContentError("chassis '" + build.chassis_robot + "' is not offered for this level");
   }
   const auto& unlock = robot(build.chassis_robot).unlock_ability;
-  if (!unlock.empty() &&
+ if (level_value.mode != "playground" && !unlock.empty() &&
       std::find(owned_abilities.begin(), owned_abilities.end(), unlock) == owned_abilities.end()) {
    throw ContentError("chassis '" + build.chassis_robot + "' is locked behind '" + unlock + "'");
   }
@@ -1071,6 +1625,16 @@ void ContentCatalog::validate_build(const std::string& level_id, const BuildSele
  }
  if (!(build.style >= 0.0 && build.style <= 1.0)) {
   throw ContentError("driving style must be within [0, 1]");
+ }
+ if (!build.task_policy.empty() && level_value.objective.goal_order != "autonomous") {
+ throw ContentError("task policy requires an autonomous goal set");
+ }
+ if (!build.task_policy.empty()) {
+ (void)task_policy(build.task_policy);
+ const auto& offered = presentation_for_level(level_id).task_policies;
+ if (!contains(offered, build.task_policy)) {
+ throw ContentError("task policy '" + build.task_policy + "' is not offered for this level");
+ }
  }
  if (build_cost(build) > level_value.budget) {
   throw ContentError("selected build exceeds level budget");

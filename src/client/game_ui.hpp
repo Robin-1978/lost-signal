@@ -35,7 +35,7 @@ class GameUi {
         const mission::PresentationDefinition& presentation);
 
  void set_screen(Screen screen, const mission::MissionSimulation* mission = nullptr);
- void resize(int width, int height);
+ void resize(int width, int height, const mission::MissionSimulation* mission = nullptr);
  void refresh_running(const mission::MissionSimulation& mission, bool paused, double speed);
  void refresh_debrief(const mission::MissionSimulation& mission);
  UiActions consume_actions();
@@ -68,6 +68,7 @@ class GameUi {
  void build_debrief(const mission::MissionSimulation* mission);
  void select_component(const std::string& slot, const std::string& id);
  void select_chassis(const std::string& robot_id);
+ void select_task_policy(const std::string& policy);
  void set_style(double style);
  void update_style_label();
  void update_garage_labels();
@@ -98,6 +99,7 @@ class GameUi {
  UiActions actions_;
  int width_{1440};
  int height_{900};
+ bool layout_ready_{false};
  std::string prediction_choice_;
  std::unordered_set<std::string> completed_levels_;
  std::unordered_set<std::string> owned_;
@@ -112,6 +114,7 @@ class GameUi {
  };
  std::unordered_map<std::string, std::vector<SlotCard>> slot_cards_;
  std::vector<SlotCard> chassis_cards_;
+ std::vector<SlotCard> task_policy_cards_;
  tgui::Slider::Ptr style_slider_;
  tgui::Label::Ptr style_value_;
  tgui::Label::Ptr budget_label_;
@@ -119,7 +122,7 @@ class GameUi {
  tgui::CheckBox::Ptr endless_checkbox_;
  tgui::Label::Ptr running_metrics_;
  tgui::Label::Ptr running_state_;
- tgui::Panel::Ptr running_explanation_card_;
+ tgui::ScrollablePanel::Ptr running_explanation_card_;
  tgui::Button::Ptr pause_button_;
  tgui::Slider::Ptr replay_slider_;
  tgui::Label::Ptr replay_value_;

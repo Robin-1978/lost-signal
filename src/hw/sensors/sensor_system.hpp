@@ -13,9 +13,11 @@ namespace sim {
 
 struct LidarConfig {
  int rays{0};
+ double min_range_m{0.0};
  double range_m{0.0};
  double scan_hz{0.0};
  LidarNoiseModel noise;
+ LidarReturnModel returns;
  std::string frame_id{"lidar_link"};
  double latency_s{0.0};
  Vec2 position_in_base;
@@ -26,6 +28,27 @@ struct PerceptionFrame {
  std::vector<Vec2> lidar_hits;
  bool static_obstacle_near{false};
  bool dynamic_object_detected{false};
+};
+
+// Ideal rigid-body input to a simulated IMU. Values are already evaluated at
+// the calibrated imu_link origin and expressed in imu_link; the device model
+// below owns bias, random walk, white noise, timing and sequence numbers.
+struct ImuTruth {
+ double roll_rate_radps{0.0};
+ double pitch_rate_radps{0.0};
+ double yaw_rate_radps{0.0};
+ double forward_specific_force_mps2{0.0};
+ double left_specific_force_mps2{0.0};
+ double up_specific_force_mps2{9.81};
+};
+
+struct ImuConfig {
+ double gyro_noise_radps{0.0};
+ double gyro_bias_stddev_radps{0.0};
+ double gyro_bias_random_walk_radps_sqrt_s{0.0};
+ double accel_noise_mps2{0.0};
+ std::string frame_id{"imu_link"};
+ double latency_s{0.0};
 };
 
 class SensorSystem {
@@ -41,6 +64,8 @@ class SensorSystem {
  PoseObservation capture_pose(const WorldTruth& truth, double time_s,
  double position_sigma_m = 0.01,
                               double heading_sigma_rad = 0.006);
+ ImuObservation capture_imu(const ImuTruth& truth, double time_s,
+ double sample_period_s, const ImuConfig& config);
  PerceptionFrame process_lidar(const ObservationFrame& observation, const EstimatedState& estimate,
                                double track_max_age_s);
  const DynamicObstacleMap& dynamic_obstacles() const { return dynamic_obstacles_; }
@@ -60,11 +85,19 @@ class SensorSystem {
  Rng noise_rng_;
  Rng perception_rng_;
  Rng localization_rng_;
+ Rng imu_gyro_rng_;
+ Rng imu_accel_rng_;
+ Rng imu_bias_walk_rng_;
  DynamicObstacleMap dynamic_obstacles_;
  std::vector<PendingDetection> pending_;
  std::size_t next_track_id_{0};
  std::uint64_t lidar_sequence_{0};
  std::uint64_t pose_sequence_{0};
+ std::uint64_t imu_sequence_{0};
+ bool imu_bias_initialized_{false};
+ double imu_roll_bias_radps_{0.0};
+ double imu_pitch_bias_radps_{0.0};
+ double imu_yaw_bias_radps_{0.0};
  LidarConfig last_config_;
 };
 

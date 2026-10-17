@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mission/mission_simulation.hpp"
+#include "mission/presentation_view.hpp"
 
 #include "map_editor.hpp"
 
@@ -26,7 +26,7 @@ class WorldRenderer {
  WorldRenderer(const WorldRenderer&) = delete;
  WorldRenderer& operator=(const WorldRenderer&) = delete;
 
- void draw(const mission::MissionSimulation& mission, int screen_width, int screen_height,
+ void draw(const mission::PresentationFrameView& mission, int screen_width, int screen_height,
  const std::string& chapter_title, bool assembly_view = false);
  void toggle_analysis_mode() { analysis_mode_ = !analysis_mode_; }
  bool analysis_mode() const { return analysis_mode_; }
@@ -34,21 +34,24 @@ class WorldRenderer {
  TerrainLayer terrain_layer() const { return terrain_layer_; }
  std::optional<sim::Vec2> screen_to_world(Vector2 screen) const;
  std::optional<std::string> garage_slot_at(Vector2 screen) const;
- void draw_edit_overlay(const mission::MissionSimulation& mission, const MapEditor& editor) const;
+ void draw_edit_overlay(const mission::PresentationFrameView& mission, const MapEditor& editor) const;
 
  private:
  Vector2 world_to_screen(sim::Vec2 point) const;
  void draw_text(const std::string& text, Vector2 position, float size, Color color) const;
- void draw_header(const mission::MissionSimulation& mission, int width, const std::string& chapter_title) const;
- void draw_world(const mission::MissionSimulation& mission) const;
- void draw_terrain_layer(const mission::MissionSimulation& mission) const;
- void draw_terrain_layer_panel(const mission::MissionSimulation& mission) const;
- void draw_field_operator(const mission::MissionSimulation& mission) const;
- void draw_robot(const mission::MissionSimulation& mission) const;
- void draw_dust(const mission::MissionSimulation& mission) const;
- void draw_telemetry(const mission::MissionSimulation& mission, int screen_height) const;
+ void draw_header(const mission::PresentationFrameView& mission, int width, const std::string& chapter_title) const;
+ void draw_world(const mission::PresentationFrameView& mission) const;
+ void draw_terrain_layer(const mission::PresentationFrameView& mission) const;
+ void draw_terrain_layer_panel(const mission::PresentationFrameView& mission) const;
+ void draw_analysis_legend() const;
+ void register_hover_hint(Rectangle area, const std::string& text) const;
+ void draw_hover_hint() const;
+ void draw_field_operator(const mission::PresentationFrameView& mission) const;
+ void draw_robot(const mission::PresentationFrameView& mission) const;
+ void draw_dust(const mission::PresentationFrameView& mission) const;
+ void draw_telemetry(const mission::PresentationFrameView& mission, int screen_height) const;
  void draw_view_mode() const;
- void draw_garage_overlay(const mission::MissionSimulation& mission);
+ void draw_garage_overlay(const mission::PresentationFrameView& mission);
 
  Font font_{};
  bool owns_font_{false};
@@ -86,6 +89,9 @@ class WorldRenderer {
  // Threat-blend hold for focus hysteresis (display only, mission-time based).
  sim::Vec2 focus_hold_{0.0, 0.0};
  double focus_hold_until_{-1.0};
+ mutable std::string frame_hover_hint_;
+ mutable std::string active_hover_hint_;
+ mutable double hover_hint_started_s_{0.0};
 };
 
 std::filesystem::path find_ui_font(const std::filesystem::path& assets = {});

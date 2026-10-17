@@ -5,15 +5,17 @@
 #include <limits>
 namespace sim {
 AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight,
-                       const TraversalCost& traversal_cost) {
+ const TraversalCost& traversal_cost, double goal_tolerance_m) {
  AStarResult r;
  auto [sx, sy] = cm.worldToGrid(start.x, start.y);
  auto [gx, gy] = cm.worldToGrid(goal.x, goal.y);
  int W = cm.w(), H = cm.h();
  auto idx = [&](int x, int y) { return y * W + x; };
- if (!cm.inside(sx, sy) || !cm.inside(gx, gy))
+ if (!cm.inside(sx, sy) || !cm.inside(gx, gy) || goal_tolerance_m < 0.0 ||
+ !std::isfinite(goal_tolerance_m))
   return r;
  const double INF = 1e18;
+ const bool goal_cell_free = cm.isFreeCell(gx, gy);
  std::vector<double> g(W * H, INF);
  std::vector<int> parent(W * H, -1);
  std::vector<char> closed(W * H, 0);
@@ -36,7 +38,11 @@ AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight
    continue;
   closed[u] = 1;
   r.expanded++;
-  if (ux == gx && uy == gy) {
+ const Vec2 current_position = cm.gridToWorld(ux, uy);
+ const bool exact_goal_cell = ux == gx && uy == gy;
+ const bool inside_goal_region = !goal_cell_free && goal_tolerance_m > 0.0 &&
+ std::hypot(current_position.x - goal.x, current_position.y - goal.y) <= goal_tolerance_m;
+ if (exact_goal_cell || inside_goal_region) {
    r.ok = true;
  std::vector<Vec2> positions;
    for (int cur = u; cur != -1; cur = parent[cur]) {

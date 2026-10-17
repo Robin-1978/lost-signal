@@ -11,7 +11,7 @@
   "prerequisites": [
     "lost_signal"
   ],
-  "seed": 48,
+  "seed": 42,
   "objective": {
     "type": "deliver_via",
     "spawn": "robot_bay",
@@ -23,10 +23,31 @@
     "time_limit_s": 150,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62,
-    "via_radius_m": 1.25
+    "via_radius_m": 1.25,
+    "goals": [
+      {
+        "marker": "supply_station",
+        "label": "能源模块",
+        "action": "pickup",
+        "radius_m": 1.25
+      },
+      {
+        "marker": "traffic_hold",
+        "label": "动态路口观察点",
+        "action": "inspect",
+        "radius_m": 0.4,
+        "dwell_s": 1.0
+      },
+      {
+        "marker": "signal_tower",
+        "label": "信号塔",
+        "action": "complete",
+        "radius_m": 0.62
+      }
+    ]
   },
   "loadout_rules": {
-    "budget": 7,
+    "budget": 8,
     "required_slots": [
       "tires",
       "sensor",
@@ -42,6 +63,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.3,
+    "safe_clearance_scope": "dynamic",
     "fast_time_s": 75.0,
     "efficient_energy_wh": 2.0
   },

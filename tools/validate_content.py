@@ -83,6 +83,35 @@ def _register(ids: dict[str, str], object_id: str, location: str) -> None:
     ids[object_id] = location
 
 
+def _support_margin(contacts: list[tuple[float, float]]) -> float:
+    points = sorted(set(contacts))
+    if len(points) < 3:
+        return -1.0
+
+    def cross(origin: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+        return (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0])
+
+    lower: list[tuple[float, float]] = []
+    for point in points:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 1e-9:
+            lower.pop()
+        lower.append(point)
+    upper: list[tuple[float, float]] = []
+    for point in reversed(points):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 1e-9:
+            upper.pop()
+        upper.append(point)
+    hull = lower[:-1] + upper[:-1]
+    if len(hull) < 3:
+        return -1.0
+    margin = math.inf
+    for index, start in enumerate(hull):
+        end = hull[(index + 1) % len(hull)]
+        edge_length = math.hypot(end[0] - start[0], end[1] - start[1])
+        margin = min(margin, cross(start, end, (0.0, 0.0)) / max(1e-9, edge_length))
+    return margin
+
+
 def load_and_validate(root: Path) -> dict[str, Any]:
     root = root.resolve()
     validate_locales(root)
@@ -99,12 +128,14 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         if p.name != "policies.json"
     ]
     policies = _read(root / "components" / "policies.json")
+    task_policies = _read(root / "task_policies.json")
     stories = [_read(p) for p in sorted((root / "story").glob("*.json"))]
     contracts = [_read(p) for p in sorted((root / "contracts").glob("*.json"))]
     presentations = [_read(p) for p in sorted((root / "presentation").glob("*.json"))]
     robots = [_read(p) for p in sorted((root / "robots").glob("*.json"))]
     abilities = _read(root / "abilities.json")
     strings = _read(root / "strings.json")
+    audio_cues = _read(root / "audio" / "cues.json")
 
     if (
         not levels
@@ -131,6 +162,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     for doc in component_docs:
         _schema(doc, schema_dir / "components.schema.json")
     _schema(policies, schema_dir / "policies.schema.json")
+    _schema(task_policies, schema_dir / "task-policies.schema.json")
     for doc in stories:
         _schema(doc, schema_dir / "story.schema.json")
     for doc in contracts:
@@ -139,20 +171,25 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         _schema(doc, schema_dir / "presentation.schema.json")
     _schema(abilities, schema_dir / "abilities.schema.json")
     _schema(strings, schema_dir / "strings.schema.json")
+    _schema(audio_cues, schema_dir / "audio-cues.schema.json")
     # String coverage: every tr("key") literal in client AND game code must
     # resolve (typos fail here, not on the debrief screen). Sim event sentences
     # live in strings.json too (event.*): player-facing text is content,
     # never C++ literals. Keys are always full literals, never constructed.
     import re as _re
     from pathlib import Path as _Path
+
     _src_dir = _Path(__file__).resolve().parent.parent / "src"
     used_keys: set[str] = set()
-    for source in sorted(_src_dir.glob("client/*.cpp")) + sorted(_src_dir.glob("mission/*.cpp")):
+    for source in sorted(_src_dir.glob("client/*.cpp")) + sorted(
+        _src_dir.glob("mission/*.cpp")
+    ):
         text = source.read_text(encoding="utf-8")
         for match in _re.finditer(r'\btrf?\("([^"]+)"', text):
             used_keys.add(match.group(1))
         for match in _re.finditer(
-            r'"((?:app|chapter|garage|prediction|running|debrief|world|editor|ui)\.[a-z_]+)"', text
+            r'"((?:app|chapter|garage|prediction|running|debrief|world|editor|ui)\.[a-z_]+)"',
+            text,
         ):
             used_keys.add(match.group(1))
     # Data-driven labels are references too. Keeping them in content removes UI
@@ -177,6 +214,11 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             "pwm_limit",
             "integral_limit",
             "wheel_equiv_mass_kg",
+ "controller_bandwidth_radps",
+ "controller_integral_time_s",
+ "controller_derivative_time_s",
+ "coulomb_smoothing_speed_mps",
+ "viscous_drag_N_per_mps",
         ):
             if key not in doc.data["drive"]["motor"]:
                 raise ContentError(f"{doc.path}:/drive/motor: robot misses '{key}'")
@@ -189,11 +231,41 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         *scenes,
         *component_docs,
         policies,
+        task_policies,
         *stories,
         *presentations,
         *robots,
+        audio_cues,
     ]:
         _finite_numbers(doc.data, doc.path)
+
+    cue_ids: set[str] = set()
+    for index, cue in enumerate(audio_cues.data["cues"]):
+        if cue["id"] in cue_ids:
+            raise ContentError(f"{audio_cues.path}:/cues/{index}/id: duplicate cue")
+        cue_ids.add(cue["id"])
+        if not (root / cue["file"]).is_file():
+            raise ContentError(
+                f"{audio_cues.path}:/cues/{index}/file: missing audio '{cue['file']}'"
+            )
+    event_codes: set[str] = set()
+    for index, binding in enumerate(audio_cues.data["events"]):
+        if binding["cue"] not in cue_ids:
+            raise ContentError(
+                f"{audio_cues.path}:/events/{index}/cue: unknown cue '{binding['cue']}'"
+            )
+        for code in binding["codes"]:
+            if code in event_codes:
+                raise ContentError(
+                    f"{audio_cues.path}:/events/{index}/codes: duplicate event code '{code}'"
+                )
+            event_codes.add(code)
+    transition = audio_cues.data["decision_transition"]
+    for field in ("enter_cue", "exit_cue"):
+        if transition[field] not in cue_ids:
+            raise ContentError(
+                f"{audio_cues.path}:/decision_transition/{field}: unknown cue '{transition[field]}'"
+            )
 
     global_ids: dict[str, str] = {}
     _register(global_ids, campaign.data["id"], f"{campaign.path}:/id")
@@ -226,7 +298,9 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         materials = {m["id"] for m in surface_library.data["materials"]}
         for index, rect in enumerate(doc.data["surfaces"]):
             if rect["material"] not in materials:
-                raise ContentError(f"{doc.path}:/surfaces/{index}: unknown material '{rect['material']}'")
+                raise ContentError(
+                    f"{doc.path}:/surfaces/{index}: unknown material '{rect['material']}'"
+                )
         size = doc.data["size_m"]
         for collection in ("obstacles", "surfaces"):
             for index, box in enumerate(doc.data[collection]):
@@ -295,6 +369,27 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     raise ContentError(
                         f"{doc.path}:/prefabs/{prefab_index}/parts/{part_index}/model_3d: missing model '{model}'"
                     )
+        goal_visual_ids: set[str] = set()
+        for visual_index, visual in enumerate(scene.get("goal_visuals", [])):
+            if visual["id"] in goal_visual_ids:
+                raise ContentError(
+                    f"{doc.path}:/goal_visuals/{visual_index}/id: duplicate goal visual"
+                )
+            goal_visual_ids.add(visual["id"])
+            for state, prefab_id in visual["states"].items():
+                if prefab_id not in prefab_ids:
+                    raise ContentError(
+                        f"{doc.path}:/goal_visuals/{visual_index}/states/{state}: "
+                        f"unknown prefab '{prefab_id}'"
+                    )
+        payload_visual = scene.get("payload_visual")
+        if payload_visual:
+            for field in ("container_prefab", "item_prefab", "damaged_item_prefab"):
+                if payload_visual[field] not in prefab_ids:
+                    raise ContentError(
+                        f"{doc.path}:/payload_visual/{field}: unknown prefab "
+                        f"'{payload_visual[field]}'"
+                    )
         instance_ids: set[str] = set()
         for instance_index, instance in enumerate(scene["instances"]):
             if instance["id"] in instance_ids:
@@ -330,6 +425,10 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         if scene["floor"]["seam_m"] >= scene["floor"]["tile_size_m"]:
             raise ContentError(
                 f"{doc.path}:/floor/seam_m: seam must be smaller than a tile"
+            )
+        if not math.isclose(scene["effects"]["robot_scale"], 1.0, abs_tol=1e-9):
+            raise ContentError(
+                f"{doc.path}:/effects/robot_scale: official scenes must preserve physical scale 1.0"
             )
         floor_texture = root / scene["floor"]["albedo_texture"]
         if not floor_texture.is_file():
@@ -374,12 +473,14 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 f"{doc.path}:/unlock_ability: unknown ability '{robot['unlock_ability']}'"
             )
         mount_ids: set[str] = set()
+        mounts_by_id: dict[str, dict[str, Any]] = {}
         for index, mount in enumerate(robot["mounts"]):
             if mount["id"] in mount_ids:
                 raise ContentError(
                     f"{doc.path}:/mounts/{index}/id: duplicate mount '{mount['id']}'"
                 )
             mount_ids.add(mount["id"])
+            mounts_by_id[mount["id"]] = mount
         slots: set[str] = set()
         for index, slot in enumerate(robot["slots"]):
             if slot["slot"] in slots:
@@ -406,12 +507,44 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(
                 f"{doc.path}:/slots: robot must define tires, sensor, computer, motor and imu slots"
             )
-        for index, mount in enumerate(robot.get("passive_support_mounts", [])):
-            if mount not in mount_ids:
+        for index, support in enumerate(robot.get("passive_supports", [])):
+            steer_mount = support["steer_mount"]
+            roll_mount = support["roll_mount"]
+            if steer_mount not in mount_ids or roll_mount not in mount_ids:
                 raise ContentError(
-                    f"{doc.path}:/passive_support_mounts/{index}: unknown mount '{mount}'"
+                    f"{doc.path}:/passive_supports/{index}: unknown mount"
+                )
+            if (
+                steer_mount == roll_mount
+                or mounts_by_id[steer_mount]["motion"] != "caster"
+                or mounts_by_id[roll_mount]["motion"] != "wheel"
+            ):
+                raise ContentError(
+                    f"{doc.path}:/passive_supports/{index}: expected distinct caster "
+                    "steer and rolling wheel mounts"
+                )
+        tire_slot = next(slot for slot in robot["slots"] if slot["slot"] == "tires")
+        for mount in tire_slot["mounts"]:
+            if mounts_by_id[mount]["motion"] not in {"wheel", "track"}:
+                raise ContentError(
+                    f"{doc.path}:/slots: tire mount '{mount}' must declare wheel or track motion"
+                )
+        if robot["drive"]["type"] == "differential":
+            contacts = [
+                tuple(mounts_by_id[mount]["position_m"][:2])
+                for mount in tire_slot["mounts"]
+            ]
+            contacts.extend(
+                tuple(mounts_by_id[support["steer_mount"]]["position_m"][:2])
+                for support in robot.get("passive_supports", [])
+            )
+            if _support_margin(contacts) < 0.02:
+                raise ContentError(
+                    f"{doc.path}:/mounts: differential support polygon must contain "
+                    "base_link with at least 0.02 m margin"
                 )
 
+    policy_by_id: dict[str, dict[str, Any]] = {}
     policy_by_id: dict[str, dict[str, Any]] = {}
     anchors: list[float] = []
     for index, policy in enumerate(policies.data["policies"]):
@@ -428,6 +561,20 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         raise ContentError(
             f"{policies.path}:/policies: style anchors must be strictly increasing"
         )
+
+    task_policy_by_id: dict[str, dict[str, Any]] = {}
+    for index, policy in enumerate(task_policies.data["task_policies"]):
+        policy_id = policy["id"]
+        _register(
+            global_ids, policy_id, f"{task_policies.path}:/task_policies/{index}/id"
+        )
+        task_policy_by_id[policy_id] = policy
+    for level_id, level_doc in level_by_id.items():
+        policy_id = level_doc.data["objective"].get("task_policy", "task.balanced")
+        if policy_id not in task_policy_by_id:
+            raise ContentError(
+                f"{level_doc.path}:/objective/task_policy: unknown task policy '{policy_id}'"
+            )
 
     if sum(1 for doc in presentations if doc.data["is_default"]) != 1:
         raise ContentError(
@@ -450,6 +597,19 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 f"{doc.path}:/level: duplicate presentation for level '{presentation['level']}'"
             )
         presentation_levels.add(presentation["level"])
+        offered_task_policies = presentation.get("task_policies", [])
+        if (
+            level.data["objective"].get("goal_order", "authored") == "autonomous"
+            and not offered_task_policies
+        ):
+            raise ContentError(
+                f"{doc.path}:/task_policies: autonomous goal sets must offer a task policy"
+            )
+        for policy_index, policy_id in enumerate(offered_task_policies):
+            if policy_id not in task_policy_by_id:
+                raise ContentError(
+                    f"{doc.path}:/task_policies/{policy_index}: unknown task policy '{policy_id}'"
+                )
         columns = {
             column["slot"]: column
             for column in presentation["garage"]["component_columns"]
@@ -509,7 +669,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             cost = 0
-            selected_slots = set(build) - {"style"}
+            selected_slots = set(build) - {"style", "task_policy"}
             if selected_slots != required_slots:
                 raise ContentError(
                     f"{doc.path}:/garage/{field}: component slots must match level requirements"
@@ -531,6 +691,23 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{doc.path}:/garage/{field}/style: style must be within [0, 1]"
                 )
+            task_policy = build.get("task_policy")
+            if task_policy is not None:
+                if (
+                    level.data["objective"].get("goal_order", "authored")
+                    != "autonomous"
+                ):
+                    raise ContentError(
+                        f"{doc.path}:/garage/{field}/task_policy: requires autonomous goal order"
+                    )
+                if task_policy not in task_policy_by_id:
+                    raise ContentError(
+                        f"{doc.path}:/garage/{field}/task_policy: unknown task policy"
+                    )
+                if task_policy not in offered_task_policies:
+                    raise ContentError(
+                        f"{doc.path}:/garage/{field}/task_policy: policy is not offered by this level"
+                    )
             if cost > level.data["loadout_rules"]["budget"]:
                 raise ContentError(
                     f"{doc.path}:/garage/{field}: build cost exceeds level budget"
@@ -539,30 +716,88 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     # DIY unlock chain: official builds may only use parts the player can own
     # by then (starting inventory plus component rewards of earlier levels).
     for name, component in components.items():
+        if component[0] == "sensor":
+            behavior = component[1]["behavior"]
+            for key in (
+                "min_range_m",
+                "range_m",
+                "rays",
+                "scan_hz",
+                "noise_sigma_m",
+                "latency_s",
+                "terrain_reflectivity",
+                "obstacle_reflectivity",
+                "actor_reflectivity",
+                "incidence_floor",
+                "distance_attenuation_per_m2",
+                "power_w",
+            ):
+                if key not in behavior:
+                    raise ContentError(
+                        f"components: sensor '{name}' misses behavior '{key}'"
+                    )
+            if behavior["min_range_m"] >= behavior["range_m"]:
+                raise ContentError(
+                    f"components: sensor '{name}' minimum range must be below maximum range"
+                )
+            for key in (
+                "terrain_reflectivity",
+                "obstacle_reflectivity",
+                "actor_reflectivity",
+                "incidence_floor",
+            ):
+                if not 0.0 <= behavior[key] <= 1.0:
+                    raise ContentError(
+                        f"components: sensor '{name}' behavior '{key}' must be within [0, 1]"
+                    )
+    for name, component in components.items():
         if component[0] == "motor":
-            for key in ("max_wheel_speed_mps", "stall_force_N", "free_speed_mps", "power_scale"):
+            for key in (
+                "max_wheel_speed_mps",
+                "stall_force_N",
+                "free_speed_mps",
+                "power_scale",
+ "controller_bandwidth_radps",
+ "controller_integral_time_s",
+ "controller_derivative_time_s",
+ "coulomb_smoothing_speed_mps",
+ "viscous_drag_N_per_mps",
+            ):
                 if key not in component[1]["behavior"]:
                     raise ContentError(
                         f"components: motor '{name}' misses behavior '{key}'"
                     )
     for name, component in components.items():
         if component[0] == "imu":
-            for key in ("gyro_noise_radps", "gyro_bias_radps", "accel_noise_mps2", "power_w"):
+            for key in (
+                "gyro_noise_density_radps_sqrt_hz",
+                "accel_noise_density_mps2_sqrt_hz",
+                "noise_bandwidth_hz",
+                "gyro_bias_stddev_radps",
+                "gyro_bias_random_walk_radps_sqrt_s",
+                "power_w",
+            ):
                 if key not in component[1]["behavior"]:
                     raise ContentError(
                         f"components: imu '{name}' misses behavior '{key}'"
                     )
     presentation_by_level = {doc.data["level"]: doc.data for doc in presentations}
     owned: set[str] = set(campaign.data["starting_inventory"])
-    for level_id in campaign.data["levels"]:
+    for level_id in campaign.data["levels"] + campaign.data["playgrounds"]:
         presentation = presentation_by_level.get(level_id)
         if presentation is None:
-            raise ContentError(f"{root / 'presentation'}: missing presentation for '{level_id}'")
+            raise ContentError(
+                f"{root / 'presentation'}: missing presentation for '{level_id}'"
+            )
         if presentation.get("robot") and presentation["robot"] not in robot_by_id:
-            raise ContentError(f"{level_id}:/robot: unknown robot '{presentation['robot']}'")
+            raise ContentError(
+                f"{level_id}:/robot: unknown robot '{presentation['robot']}'"
+            )
         for chassis in presentation.get("chassis_options", []):
             if chassis not in robot_by_id:
-                raise ContentError(f"{level_id}:/chassis_options: unknown robot '{chassis}'")
+                raise ContentError(
+                    f"{level_id}:/chassis_options: unknown robot '{chassis}'"
+                )
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
             for slot in ("tires", "sensor", "computer", "motor", "imu"):
@@ -581,9 +816,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                         f"{level_id}:/rewards: unknown ability '{reward}'"
                     )
             elif not reward.startswith("story."):
-                raise ContentError(
-                    f"{level_id}:/rewards: unknown reward '{reward}'"
-                )
+                raise ContentError(f"{level_id}:/rewards: unknown reward '{reward}'")
 
     if presentation_levels != set(level_by_id):
         missing = sorted(set(level_by_id) - presentation_levels)
@@ -608,17 +841,23 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 )
 
     campaign_levels = campaign.data["levels"]
-    if set(campaign_levels) != set(level_by_id):
+    playgrounds = campaign.data["playgrounds"]
+    if set(campaign_levels) & set(playgrounds):
         raise ContentError(
-            f"{campaign.path}:/levels: must list every level exactly once"
+            f"{campaign.path}: guided levels and playgrounds must be disjoint"
+        )
+    if set(campaign_levels) | set(playgrounds) != set(level_by_id):
+        raise ContentError(
+            f"{campaign.path}: guided levels and playgrounds must list every level exactly once"
         )
     sorted_ids = [level_id for _, level_id in sorted(order_to_id.items())]
-    if campaign_levels != sorted_ids:
+    listed_ids = campaign_levels + playgrounds
+    if listed_ids != sorted_ids:
         raise ContentError(
-            f"{campaign.path}:/levels: order must match each level's order field"
+            f"{campaign.path}: guided levels followed by playgrounds must match level order fields"
         )
-    if campaign.data["starting_level"] not in level_by_id:
-        raise ContentError(f"{campaign.path}:/starting_level: unknown level")
+    if campaign.data["starting_level"] not in campaign_levels:
+        raise ContentError(f"{campaign.path}:/starting_level: must be a guided level")
     if campaign.data["companion"]["robot"] not in robot_by_id:
         raise ContentError(f"{campaign.path}:/companion/robot: unknown robot")
     for index, component_id in enumerate(campaign.data["starting_inventory"]):
@@ -637,6 +876,54 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         map_doc = map_by_id.get(level["map"])
         if map_doc is None:
             raise ContentError(f"{doc.path}:/map: unknown map '{level['map']}'")
+        environment = level.get("environment")
+        if environment:
+            times = [keyframe["time_s"] for keyframe in environment["keyframes"]]
+            if not math.isclose(times[0], 0.0, abs_tol=1e-9):
+                raise ContentError(
+                    f"{doc.path}:/environment/keyframes: timeline must start at 0 s"
+                )
+            if any(current <= previous for previous, current in zip(times, times[1:])):
+                raise ContentError(
+                    f"{doc.path}:/environment/keyframes: times must be strictly increasing"
+                )
+            for keyframe_index, keyframe in enumerate(environment["keyframes"]):
+                for material in keyframe["material_grip"]:
+                    if material not in materials:
+                        raise ContentError(
+                            f"{doc.path}:/environment/keyframes/{keyframe_index}/material_grip: "
+                            f"unknown material '{material}'"
+                        )
+        scene_doc = scene_by_id[map_doc.data["scene_3d"]]
+        scene_goal_visuals = {
+            visual["id"] for visual in scene_doc.data.get("goal_visuals", [])
+        }
+        for goal_index, goal in enumerate(level["objective"].get("goals", [])):
+            visual_id = goal.get("visual")
+            if goal["action"] == "collect" and not visual_id:
+                raise ContentError(
+                    f"{doc.path}:/objective/goals/{goal_index}/visual: collect goals require a scene visual"
+                )
+            if visual_id and visual_id not in scene_goal_visuals:
+                raise ContentError(
+                    f"{doc.path}:/objective/goals/{goal_index}/visual: unknown scene goal visual "
+                    f"'{visual_id}'"
+                )
+        payload_visual = scene_doc.data.get("payload_visual")
+        if payload_visual:
+            presentation = presentation_by_level[level["id"]]
+            applicable_robots = presentation.get("chassis_options") or [
+                presentation.get("robot", campaign.data["companion"]["robot"])
+            ]
+            for robot_id in applicable_robots:
+                robot_mounts = {
+                    mount["id"] for mount in robot_by_id[robot_id]["mounts"]
+                }
+                if payload_visual["mount"] not in robot_mounts:
+                    raise ContentError(
+                        f"{scene_doc.path}:/payload_visual/mount: robot '{robot_id}' has no "
+                        f"mount '{payload_visual['mount']}'"
+                    )
         for index, prerequisite in enumerate(level["prerequisites"]):
             if prerequisite not in level_by_id:
                 raise ContentError(

@@ -23,7 +23,8 @@
           "description",
           "friction_mu",
           "rolling_drag",
-          "traction_scale"
+          "traction_scale",
+          "lidar_reflectivity"
         ],
         "properties": {
           "id": {
@@ -48,6 +49,19 @@
           "traction_scale": {
             "type": "number",
             "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "normal_stiffness_Npm": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "normal_damping_Nspm": {
+            "type": "number",
+            "minimum": 0
+          },
+          "lidar_reflectivity": {
+            "type": "number",
+            "minimum": 0,
             "maximum": 1
           },
           "texture": {

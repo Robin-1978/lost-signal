@@ -47,10 +47,10 @@
       "imu": "imu.basic"
     },
     "recommended_build": {
-      "tires": "tires.grip",
+      "tires": "tires.eco",
       "sensor": "sensor.standard_lidar",
-      "style": 0.0,
-      "imu": "imu.basic"
+      "style": 1.0,
+      "imu": "imu.precise"
     }
   },
   "prediction": {

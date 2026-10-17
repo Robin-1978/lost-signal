@@ -43,8 +43,8 @@ struct Rng {
 // Header shared by every simulated or hardware measurement. stamp_s is the
 // acquisition time in the simulation/robot monotonic clock; latency_s is the
 // known delivery delay. sequence is per sensor stream and frame_id names the
-// calibrated TF frame. Optional bridges may translate this contract to ROS 2
-// or another middleware without making that middleware a core dependency.
+// calibrated transform frame. Providers translate this contract to their
+// native device representation at the platform boundary.
 struct MeasurementHeader {
  double stamp_s{0.0};
  std::uint64_t sequence{0};
@@ -116,6 +116,18 @@ struct LidarNoiseModel {
  double range_bias_m{0.0};
  double range_resolution_m{0.0};
  double dropout_probability{0.0};
+};
+
+// Normalized first-return model used after ideal 3D geometry selects the
+// nearest surface. Values describe a named sensor/material profile; they are
+// observation parameters and never alter collision or tire friction.
+struct LidarReturnModel {
+ double terrain_reflectivity{0.30};
+ double obstacle_reflectivity{0.68};
+ double actor_reflectivity{0.52};
+ double default_reflectivity{0.50};
+ double incidence_floor{0.15};
+ double distance_attenuation_per_m2{0.018};
 };
 
 Scan apply_lidar_noise(Scan ideal_scan, const LidarNoiseModel& model, Rng& rng);

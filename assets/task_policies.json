@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "task_policies": [
+    {
+      "id": "task.fastest",
+      "title": "最快回路",
+      "description": "按地形加权通行代价选择下一筐，优先缩短预计完成时间。",
+      "algorithm": "route-cost",
+      "parameters": {}
+    },
+    {
+      "id": "task.safest",
+      "title": "最大安全余量",
+      "description": "先最小化路线中最坏的地形风险，再比较总通行代价。",
+      "algorithm": "minimax-risk",
+      "parameters": {
+        "risk_scale": 1000.0
+      }
+    },
+    {
+      "id": "task.valuable",
+      "title": "价值密度",
+      "description": "比较单位通行代价可回收的价值，优先高价值果筐。",
+      "algorithm": "value-density",
+      "parameters": {
+        "value_exponent": 1.0
+      }
+    },
+    {
+      "id": "task.balanced",
+      "title": "均衡采收",
+      "description": "综合路线距离、地形代价和价值，避免只追逐单一指标。",
+      "algorithm": "balanced-density",
+      "parameters": {
+        "value_exponent": 0.5,
+        "distance_mix": 0.15
+      }
+    }
+  ]
+}

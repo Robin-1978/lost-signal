@@ -25,12 +25,14 @@ namespace sim {
 // Every number a chassis implementation needs, resolved by the caller
 // (equipped-component overrides applied upstream, like today).
 struct ChassisBuildParams {
- struct PassiveCaster {
- double x_m{0.0};
- double y_m{0.0};
- };
   double wheel_base_m{0.5};
   double wheel_radius_m{0.1};
+ // Assembly-derived contact geometry in the robot frame. drive_axle_x_m is
+ // the mean longitudinal position of the differential drive wheels; support
+ // extents come from authored rolling contacts rather than collision bounds.
+ double drive_axle_x_m{0.0};
+ double support_width_m{0.5};
+ double support_length_m{0.5};
   double track_width_m{0.58};
   double track_length_m{0.7};
  double collision_radius_m{0.38};
@@ -41,6 +43,8 @@ struct ChassisBuildParams {
   double pwm_limit{1.0};
   double integral_limit{2.0};
   double wheel_equiv_mass_kg{3.0};
+ double coulomb_smoothing_speed_mps{0.05};
+ double viscous_drag_N_per_mps{0.6};
   int encoder_counts_per_revolution{2048};
   double mass_kg{26.0};
   double yaw_inertia_kgm2{2.8};
@@ -54,7 +58,6 @@ struct ChassisBuildParams {
   double behavior_w_max{2.0};
   double behavior_accel_max{6.0};
  double max_yaw_accel_radps2{8.0};
- std::vector<PassiveCaster> passive_casters;
 };
 
 struct BuiltChassis {

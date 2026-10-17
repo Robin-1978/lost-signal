@@ -206,6 +206,8 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
   } else if (!options.level.empty()) {
    ui.set_screen(client::Screen::Garage, mission.get());
   }
+ mission::MissionSnapshot previous_presentation_snapshot = mission->snapshot();
+ const mission::MissionSimulation* presentation_source = mission.get();
 
   while (!WindowShouldClose()) {
    gui.handleEvents();
@@ -214,8 +216,8 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
    while (const int key = GetKeyPressed())
     gui.handleKeyPressed(key);
 
-   if (IsWindowResized())
-    ui.resize(GetScreenWidth(), GetScreenHeight());
+ if (IsWindowResized())
+ ui.resize(GetScreenWidth(), GetScreenHeight(), mission.get());
    if (IsKeyPressed(KEY_SPACE))
     paused = !paused;
  if (IsKeyPressed(KEY_TAB))
@@ -457,12 +459,14 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
      // Automated art checks advance by a fixed number of simulation ticks per frame so
      // screenshots are byte-for-byte reproducible on different machines.
      for (int step = 0; step < 12 && mission->snapshot().status == mission::MissionStatus::Running; ++step) {
+ previous_presentation_snapshot = mission->snapshot();
       mission->step();
      }
     } else {
      accumulator += std::min(0.1, static_cast<double>(GetFrameTime())) * speed;
      int steps = 0;
      while (accumulator >= mission::MissionSimulation::fixed_step_s && steps < 80) {
+ previous_presentation_snapshot = mission->snapshot();
       mission->step();
       accumulator -= mission::MissionSimulation::fixed_step_s;
       ++steps;
@@ -521,11 +525,27 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
     if (catalog.level(level_id).chapter == mission->level().chapter)
      ++section;
    }
-   renderer.draw(*mission, GetScreenWidth(), GetScreenHeight(),
+ const double presentation_delta_s =
+ mission->snapshot().time_s - previous_presentation_snapshot.time_s;
+ if (presentation_source != mission.get() ||
+ std::abs(presentation_delta_s - mission::MissionSimulation::fixed_step_s) > 1e-9) {
+ // Mission replacement, replay seek and an unstepped preview have no
+ // adjacent fixed-step pair. Present their authoritative state directly.
+ previous_presentation_snapshot = mission->snapshot();
+ presentation_source = mission.get();
+ }
+ const bool interpolate_running = options.screenshot.empty() &&
+ mission->snapshot().status == mission::MissionStatus::Running;
+ const double presentation_alpha = interpolate_running
+ ? accumulator / mission::MissionSimulation::fixed_step_s
+ : 1.0;
+ const mission::PresentationFrameView presentation{
+ *mission, previous_presentation_snapshot, presentation_alpha};
+ renderer.draw(presentation, GetScreenWidth(), GetScreenHeight(),
                  chapter_title + "  /  " + catalog.trf("world.section", {std::to_string(section)}),
                  ui.screen() == client::Screen::Garage);
    if (editor && editor->active()) {
-    renderer.draw_edit_overlay(*mission, *editor);
+ renderer.draw_edit_overlay(presentation, *editor);
    }
    gui.draw();
    EndDrawing();

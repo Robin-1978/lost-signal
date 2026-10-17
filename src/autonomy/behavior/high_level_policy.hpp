@@ -20,7 +20,9 @@ struct StrategyObservation {
  Vec2 goal;
  double visible_clearance_m{999.0};
  double rollover_risk{0.0};
- bool traction_saturated{false};
+// Onboard estimate from independent wheel and body motion. This is not the
+// simulator's contact/slip truth.
+bool traction_slip_observed{false};
  int goals_reached{0};
 };
 
@@ -65,6 +67,14 @@ struct StrategySafetyContext {
  Vec2 fallback_target;
  Vec2 map_size;
  double max_subgoal_distance_m{10.0};
+ // The validated local planner already owns obstacle stop / wait behavior.
+ // Enable this conservative raw-clearance stop only for upper policies that
+ // can otherwise bypass that baseline with a local subgoal.
+ bool clearance_hold_enabled{true};
+// The acceleration-residual observer is intentionally conservative. The
+// built-in controller enables relief where mapped terrain load makes a
+// sustained residual actionable; external policies keep the full shield.
+bool traction_relief_enabled{true};
  std::function<bool(Vec2)> subgoal_is_safe;
 };
 

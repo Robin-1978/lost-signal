@@ -44,6 +44,16 @@
       "items": {
         "$ref": "#/$defs/instance"
       }
+    },
+    "goal_visuals": {
+      "type": "array",
+      "uniqueItems": false,
+      "items": {
+        "$ref": "#/$defs/goal_visual"
+      }
+    },
+    "payload_visual": {
+      "$ref": "#/$defs/payload_visual"
     }
   },
   "$defs": {
@@ -527,6 +537,165 @@
         },
         "active_in": {
           "$ref": "#/$defs/active"
+        }
+      }
+    },
+    "goal_visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "states"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "states": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "$ref": "#/$defs/id"
+            },
+            "active": {
+              "$ref": "#/$defs/id"
+            },
+            "completed": {
+              "$ref": "#/$defs/id"
+            },
+            "abandoned": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        }
+      }
+    },
+    "payload_visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mount",
+        "container_prefab",
+        "item_prefab",
+        "damaged_item_prefab",
+        "item_origin_m",
+        "item_spacing_m",
+        "grid_columns",
+        "grid_rows",
+        "items_per_visual",
+        "max_visible_items",
+        "damaged_below_integrity",
+        "pickup_effect",
+        "damage_warning"
+      ],
+      "properties": {
+        "mount": {
+          "$ref": "#/$defs/id"
+        },
+        "container_prefab": {
+          "$ref": "#/$defs/id"
+        },
+        "item_prefab": {
+          "$ref": "#/$defs/id"
+        },
+        "damaged_item_prefab": {
+          "$ref": "#/$defs/id"
+        },
+        "item_origin_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "item_spacing_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "grid_columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "grid_rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "items_per_visual": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_visible_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "damaged_below_integrity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "pickup_effect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "duration_s",
+            "particles",
+            "color",
+            "accent_color",
+            "radius_m",
+            "rise_m"
+          ],
+          "properties": {
+            "duration_s": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 5
+            },
+            "particles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "accent_color": {
+              "$ref": "#/$defs/color"
+            },
+            "radius_m": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "rise_m": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 3
+            }
+          }
+        },
+        "damage_warning": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "below_integrity",
+            "color",
+            "height_m"
+          ],
+          "properties": {
+            "below_integrity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "color": {
+              "$ref": "#/$defs/color"
+            },
+            "height_m": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 3
+            }
+          }
         }
       }
     }

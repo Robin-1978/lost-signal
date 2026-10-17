@@ -73,10 +73,14 @@ nlohmann::json make_run_artifact(
  {"style", simulation.build().style},
  {"requested_chassis", simulation.build().chassis_robot},
  };
+ const std::string task_ordering = simulation.level().objective.goal_order == "autonomous"
+ ? simulation.level().objective.task_policy
+ : std::string{};
  const nlohmann::json algorithms = {
  {"global_planner", simulation.global_planner_id()},
  {"local_planner", simulation.local_planner_id()},
  {"high_level_policy", simulation.strategy_policy_name()},
+ {"task_ordering", task_ordering},
  {"localization", simulation.level().localization_mode},
  {"motion_controller", "pid-feedforward-v1"},
  {"runtime_interface", "lsri-v1"},
@@ -102,7 +106,7 @@ nlohmann::json make_run_artifact(
  metrics.erase("events");
  metrics.erase("decisions");
  return {
- {"schema", {{"name", "lost-signal.run"}, {"version", 1}}},
+ {"schema", {{"name", "lost-signal.run"}, {"version", kRunArtifactSchemaVersion}}},
  {"producer", {
  {"project_version", build_info::project_version},
  {"source_revision", build_info::source_revision},

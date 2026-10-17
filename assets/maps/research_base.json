@@ -6,7 +6,7 @@
     20.0,
     14.0
   ],
-  "grid_resolution_m": 0.5,
+  "grid_resolution_m": 0.25,
   "obstacles": [
     {
       "id": "west_shelf",
@@ -102,8 +102,8 @@
   ],
   "markers": {
     "calibration_pad": [
-      7.0,
-      7.0,
+      6.5,
+      6.5,
       0.0
     ],
     "east_gate": [
@@ -115,6 +115,11 @@
       6.0,
       4.0,
       0.0
+    ],
+    "loose_ground_start": [
+      14.5,
+      4.5,
+      1.5707963267948966
     ],
     "robot_bay": [
       1.0,
@@ -138,7 +143,7 @@
     ],
     "traffic_hold": [
       14.2,
-      4.7,
+      3.8,
       1.5707963267948966
     ],
     "traffic_trigger": [
@@ -155,15 +160,15 @@
   "actors": [
     {
       "id": "forklift_a",
-      "type": "patrol",
+      "type": "dwell",
       "path": [
         [
           17.5,
-          6.0
+          6.3
         ],
         [
           14.0,
-          6.0
+          6.3
         ]
       ],
       "speed_mps": 0.55,
@@ -178,7 +183,11 @@
         "model": "models/actors/forklift.glb",
         "kind": "vehicle",
         "ref_radius_m": 0.45
-      }
+      },
+      "waits": [
+        3.0,
+        3.0
+      ]
     },
     {
       "id": "forklift_b",
@@ -211,11 +220,11 @@
       "path": [
         [
           17.5,
-          6.0
+          6.3
         ],
         [
           13.5,
-          6.0
+          6.3
         ]
       ],
       "speed_mps": 0.55,
@@ -232,7 +241,7 @@
       "dormant_until_summoned": true,
       "waits": [
         0.0,
-        4.0
+        2.0
       ]
     }
   ]

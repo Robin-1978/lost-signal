@@ -29,11 +29,15 @@ def artifact(computer: str = "computer.performance", seed: int = 47) -> dict:
             "robot": "robot.ro1",
             "style": 0.0,
         },
-        "algorithms": {"global_planner": "astar-grid", "local_planner": "dwa-yaw-rate"},
+ "algorithms": {
+ "global_planner": "astar-grid",
+ "local_planner": "dwa-yaw-rate",
+ "task_ordering": "task.balanced",
+ },
     }
     packed = json.dumps(comparable, sort_keys=True, separators=(",", ":")).encode()
     return {
-        "schema": {"name": "lost-signal.run", "version": 1},
+ "schema": {"name": "lost-signal.run", "version": 2},
         "producer": {"source_revision": "abc"},
         "configuration": {
             "comparable": comparable,

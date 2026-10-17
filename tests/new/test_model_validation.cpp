@@ -28,6 +28,8 @@ sim::MotorDriveParams drive_params(const mission::RobotDefinition& robot) {
  params.pwm_limit = robot.motor.pwm_limit;
  params.integral_limit = robot.motor.integral_limit;
  params.encoder_counts_per_revolution = robot.encoder.counts_per_revolution;
+ params.coulomb_smoothing_speed_mps = robot.motor.coulomb_smoothing_speed_mps;
+ params.viscous_drag_N_per_mps = robot.motor.viscous_drag_N_per_mps;
  return params;
 }
 
@@ -43,13 +45,21 @@ int main() {
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& robot = catalog.robot(catalog.campaign().companion_robot);
  CHECK(robot.drive_type == "differential");
+ CHECK(robot.model_profile.fidelity == "typical");
  CHECK(robot.mass_kg > 0.0);
  CHECK(robot.yaw_inertia_kgm2 > 0.0);
  const auto params = drive_params(robot);
+ const sim::WheelControllerDesign controller_design{
+ robot.motor.controller_bandwidth_radps,
+ robot.motor.controller_integral_time_s,
+ robot.motor.controller_derivative_time_s,
+ };
  const sim::WheelPidGains gains =
    sim::tune_wheel_pid(robot.mass_kg / 2.0, robot.motor.stall_force_N, robot.motor.free_speed_mps,
-                       0.5 * robot.motor.max_wheel_speed_mps);
+ 0.5 * robot.motor.max_wheel_speed_mps, controller_design);
  CHECK(gains.kp > 0.0 && gains.ki > 0.0 && gains.kd >= 0.0);
+ CHECK(std::abs(gains.ki - gains.kp / robot.motor.controller_integral_time_s) < 1e-12);
+ CHECK(std::abs(gains.kd - gains.kp * robot.motor.controller_derivative_time_s) < 1e-12);
 
  // Full throttle from standstill: F=ma per wheel pair, within caps.
  {

@@ -10,6 +10,9 @@ enum class ChassisCommandSpace { YawRate, SteeringAngle, HolonomicTwist };
 struct ChassisGeometry {
  double support_width_m{0.5};
  double support_length_m{0.5};
+ // Longitudinal offset from base_link to the driven axle. Zero for chassis
+ // whose kinematic reference already lies on the axle/module center.
+ double drive_axle_x_m{0.0};
  double steering_wheel_base_m{0.0};
  double max_steer_rad{0.0};
  double max_steer_rate_radps{0.0};

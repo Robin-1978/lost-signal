@@ -11,6 +11,10 @@ GovernorOutput govern_entry(GovernorState& state, const GovernorInput& input) {
     state.hold_active = true;
     state.clear_streak = 0;
     state.silent_streak = 0;
+ if (input.stop_valid) {
+ state.stop_point = input.stop_point;
+ state.stop_valid = true;
+ }
   } else if (input.clear_fresh) {
     state.silent_streak = 0;
     if (state.hold_active) {
@@ -18,6 +22,7 @@ GovernorOutput govern_entry(GovernorState& state, const GovernorInput& input) {
       if (state.clear_streak >= kReleaseClears) {
         state.hold_active = false;
         state.clear_streak = 0;
+ state.stop_valid = false;
       }
     }
   } else {
@@ -27,14 +32,15 @@ GovernorOutput govern_entry(GovernorState& state, const GovernorInput& input) {
     state.clear_streak = 0;
     if (state.silent_streak >= kReleaseSilent) {
       state.hold_active = false;
+ state.stop_valid = false;
     }
   }
   GovernorOutput out;
   out.hold_active = state.hold_active;
-  // A hold without a valid stop point is a held brake with nowhere to aim:
-  // still reported (DWA clamps to zero), the point just stays stale.
-  out.stop_point = input.stop_point;
-  out.stop_valid = input.stop_valid;
+ // A hold without a valid stop point is still reported (DWA clamps to zero),
+ // but once a valid virtual wall exists it persists for the hold lifetime.
+ out.stop_point = state.stop_point;
+ out.stop_valid = state.hold_active && state.stop_valid;
   (void)fresh;
   return out;
 }

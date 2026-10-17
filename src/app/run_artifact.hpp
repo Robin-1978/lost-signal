@@ -13,6 +13,8 @@ class MissionSimulation;
 
 namespace app {
 
+inline constexpr int kRunArtifactSchemaVersion = 2;
+
 std::string run_content_digest(const std::filesystem::path& assets);
 
 nlohmann::json make_run_artifact(

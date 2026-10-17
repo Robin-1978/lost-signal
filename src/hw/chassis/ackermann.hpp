@@ -56,6 +56,7 @@ class AckermannDrive : public ChassisModel {
  AckermannDrive(AckermannParams params, WheelPidGains drive_gains, double servo_kp);
 
  void reset();
+ void set_body_dynamics(const ChassisBodyDynamics& dynamics) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
                 const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }

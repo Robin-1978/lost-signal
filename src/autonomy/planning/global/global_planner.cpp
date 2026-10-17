@@ -31,13 +31,17 @@ bool valid_route(const std::vector<sim::RoutePoint>& path) {
 
 GlobalPlan AStarGlobalPlanner::plan(const GlobalPlannerRequest& request) const {
  return adapt_plan(sim::astar_plan(request.map, request.start.position, request.goal.position, 1.0,
- request.traversal_cost));
+ request.traversal_cost, request.goal.position_tolerance_m));
 }
 
 GlobalPlan HybridAStarGlobalPlanner::plan(const GlobalPlannerRequest& request) const {
+ auto config = config_;
+ if (request.goal.position_tolerance_m > 0.0) {
+ config.goal_position_tolerance_m = request.goal.position_tolerance_m;
+ }
  return adapt_plan(sim::hybrid_astar_plan(
  request.map, request.start.position, request.start.heading_rad, request.goal.position,
- request.goal.heading_rad, config_, request.traversal_cost));
+ request.goal.heading_rad, config, request.traversal_cost));
 }
 
 void GlobalPlannerRegistry::register_factory(std::string id, GlobalPlannerFactory factory) {

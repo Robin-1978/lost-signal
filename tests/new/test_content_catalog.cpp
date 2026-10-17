@@ -1,5 +1,6 @@
 #include "mission/content_catalog.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -34,6 +35,7 @@ int main() {
  CHECK(source_catalog.components().size() == catalog.components().size());
  CHECK(source_catalog.robots().size() == catalog.robots().size());
  CHECK(source_catalog.campaign().levels == catalog.campaign().levels);
+ CHECK(source_catalog.campaign().playgrounds == catalog.campaign().playgrounds);
  for (const auto& [id, localized] : catalog.levels()) {
   const auto& source = source_catalog.level(id);
   CHECK(localized.id == source.id);
@@ -57,10 +59,11 @@ int main() {
  }
  CHECK(rejected_unknown_locale);
  CHECK(!catalog.campaign().levels.empty());
- CHECK(catalog.levels().size() == catalog.campaign().levels.size());
+ CHECK(catalog.levels().size() ==
+ catalog.campaign().levels.size() + catalog.campaign().playgrounds.size());
  for (const auto& id : catalog.campaign().levels)
   CHECK(catalog.levels().count(id) == 1);
- CHECK(catalog.components().size() == 17);
+ CHECK(catalog.components().size() == 18);
  CHECK(catalog.policies().size() == 3);
  CHECK(catalog.robots().size() == 5);
  for (const auto& [id, map] : catalog.maps())
@@ -85,6 +88,35 @@ int main() {
  CHECK(robot.drive_type == "differential");
  CHECK(std::abs(robot.motor.max_wheel_speed_mps - 2.4) < 1e-9);
  CHECK(robot.encoder.counts_per_revolution == 2048);
+ CHECK(std::abs(robot.wheel_base_m - 0.58) < 1e-12);
+ CHECK(robot.articulation.root_link == "base_link");
+ CHECK(robot.articulation.links.size() == 5);
+ CHECK(robot.articulation.joints.size() == 4);
+ CHECK(robot.articulation.actuators.size() == 2);
+ double articulated_mass_kg = 0.0;
+ for (const auto& link : robot.articulation.links) {
+ articulated_mass_kg += link.mass_kg;
+ CHECK(link.inertia_diagonal_kgm2.x <=
+ link.inertia_diagonal_kgm2.y + link.inertia_diagonal_kgm2.z + 1e-12);
+ CHECK(link.inertia_diagonal_kgm2.y <=
+ link.inertia_diagonal_kgm2.x + link.inertia_diagonal_kgm2.z + 1e-12);
+ CHECK(link.inertia_diagonal_kgm2.z <=
+ link.inertia_diagonal_kgm2.x + link.inertia_diagonal_kgm2.y + 1e-12);
+ }
+ CHECK(std::abs(articulated_mass_kg - robot.mass_kg) < 1e-12);
+ CHECK(std::abs(robot.base_link_height_m - 0.24) < 1e-12);
+ CHECK(std::abs(robot.center_of_mass_height_m - 0.2183125) < 1e-9);
+ CHECK(std::abs(robot.yaw_inertia_kgm2 - 1.333745) < 1e-9);
+ CHECK(std::abs(robot.articulation.actuators.front().armature_inertia_kgm2 - 0.023) < 1e-12);
+ const auto caster_wheel_link = std::find_if(robot.articulation.links.begin(),
+ robot.articulation.links.end(),
+ [](const auto& link) { return link.id == "rear_caster_wheel_link"; });
+ const auto caster_link = std::find_if(robot.articulation.links.begin(),
+ robot.articulation.links.end(),
+ [](const auto& link) { return link.id == "rear_caster_link"; });
+ CHECK(caster_wheel_link != robot.articulation.links.end());
+ CHECK(caster_link != robot.articulation.links.end());
+ CHECK(std::abs((caster_link->position_m.x - caster_wheel_link->position_m.x) - 0.035) < 1e-12);
  // Second vehicle: ackermann geometry with honest steering hardware. No
  // level assigns it yet (slice 2); the catalog contract already holds.
  const auto& second = catalog.robot("robot.ro2");
@@ -108,11 +140,28 @@ int main() {
  CHECK(catalog.surface_material("standing_water").drive_effect == "spray");
  CHECK(catalog.surface_material("sand").drive_effect == "dust");
  CHECK(catalog.surface_material("paved").traction_scale == 1.0);
- CHECK(robot.mounts.size() == 8);
+ CHECK(catalog.surface_material("paved").lidar_reflectivity == 0.35);
+ CHECK(catalog.surface_material("steel_deck").lidar_reflectivity == 0.75);
+ CHECK(robot.mounts.size() == 9);
  CHECK(robot.mounts.back().frame_id == "imu_link");
- CHECK(robot.passive_support_mounts.size() == 2);
- CHECK(robot.passive_support_mounts.front() == "caster_front");
+ CHECK(robot.passive_supports.size() == 1);
+ CHECK(robot.passive_supports.front().steer_mount == "caster_rear");
+ CHECK(robot.passive_supports.front().roll_mount == "caster_rear_wheel");
  CHECK(robot.base_parts.size() == 3);
+ const auto cargo_mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [](const auto& mount) { return mount.id == "cargo_bed"; });
+ CHECK(cargo_mount != robot.mounts.end());
+ CHECK(cargo_mount->motion == "fixed");
+ const auto driven_wheel = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [](const auto& mount) { return mount.id == "wheel_left"; });
+ CHECK(driven_wheel != robot.mounts.end());
+ CHECK(driven_wheel->motion == "wheel");
+ CHECK(driven_wheel->rolling_radius_m == robot.wheel_radius_m);
+ CHECK(std::abs(driven_wheel->position_m.x - 0.12) < 1e-12);
+ const auto caster = std::find_if(robot.mounts.begin(), robot.mounts.end(),
+ [](const auto& mount) { return mount.id == "caster_rear"; });
+ CHECK(caster != robot.mounts.end());
+ CHECK(std::abs(caster->position_m.x + 0.28) < 1e-12);
  CHECK(robot.slots.size() == 5);
  CHECK(catalog.component("sensor.short_fast_lidar").visual.primitive_2d == "disc");
  CHECK(catalog.component("sensor.short_fast_lidar").visual.model_3d.ends_with("lidar_fast.glb"));

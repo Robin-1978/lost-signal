@@ -2,7 +2,9 @@
 
 #include "mission/mission_simulation.hpp"
 
-#include <array>
+#include <nlohmann/json.hpp>
+
+#include <fstream>
 
 namespace client {
 
@@ -15,23 +17,35 @@ AudioDirector::AudioDirector(const std::filesystem::path& assets, bool enabled) 
  return;
 
  const auto audio = assets / "audio";
- power_pickup_ = load(audio / "power_pickup.wav");
- traffic_warning_ = load(audio / "traffic_warning.wav");
- decision_wait_ = load(audio / "decision_wait.wav");
- decision_clear_ = load(audio / "decision_clear.wav");
- relay_restored_ = load(audio / "relay_restored.wav");
- collision_ = load(audio / "collision.wav");
+ std::ifstream input(audio / "cues.json");
+ const nlohmann::json config = nlohmann::json::parse(input);
+ for (const auto& item : config.at("cues")) {
+ const auto id = item.at("id").get<std::string>();
+ cues_.emplace(id, load(assets / item.at("file").get<std::string>()));
+ }
+ for (const auto& item : config.at("events")) {
+ for (const auto& code : item.at("codes")) {
+ event_bindings_.emplace(code.get<std::string>(),
+ EventBinding{item.at("cue").get<std::string>(),
+ item.at("cooldown_s").get<double>(), -1000.0});
+ }
+ }
+ const auto& transition = config.at("decision_transition");
+ decision_transition_ = {
+ transition.at("action_code").get<std::string>(),
+ transition.at("enter_cue").get<std::string>(),
+ transition.at("exit_cue").get<std::string>(),
+ transition.at("exit_stable_s").get<double>(),
+ };
 }
 
 AudioDirector::~AudioDirector() {
  if (!ready_)
  return;
- for (Cue* cue : std::array{
- &power_pickup_, &traffic_warning_, &decision_wait_,
- &decision_clear_, &relay_restored_, &collision_,
- }) {
- if (cue->loaded)
- UnloadSound(cue->sound);
+ for (auto& [id, cue] : cues_) {
+ (void)id;
+ if (cue.loaded)
+ UnloadSound(cue.sound);
  }
  CloseAudioDevice();
 }
@@ -43,9 +57,10 @@ AudioDirector::Cue AudioDirector::load(const std::filesystem::path& path) const 
  return cue;
 }
 
-void AudioDirector::play(const Cue& cue) {
- if (cue.loaded)
- PlaySound(cue.sound);
+void AudioDirector::play(const std::string& cue_id) const {
+ const auto cue = cues_.find(cue_id);
+ if (cue != cues_.end() && cue->second.loaded)
+ PlaySound(cue->second.sound);
 }
 
 void AudioDirector::reset(const mission::MissionSimulation& mission) {
@@ -54,9 +69,12 @@ void AudioDirector::reset(const mission::MissionSimulation& mission) {
  decisions_seen_ = 0;
  last_time_s_ = mission.snapshot().time_s;
  last_action_.clear();
- wait_cue_active_ = false;
+ transition_active_ = false;
  clear_candidate_s_ = -1.0;
- last_warning_s_ = -1000.0;
+ for (auto& [code, binding] : event_bindings_) {
+ (void)code;
+ binding.last_play_s = -1000.0;
+ }
 }
 
 void AudioDirector::update(const mission::MissionSimulation& mission) {
@@ -68,18 +86,13 @@ void AudioDirector::update(const mission::MissionSimulation& mission) {
  }
 
  for (; events_seen_ < mission.events().size(); ++events_seen_) {
- const auto& code = mission.events()[events_seen_].code;
- if (code == "via-reached")
- play(power_pickup_);
- else if ((code == "dynamic-detected" || code == "emergency-escape") &&
- mission.events()[events_seen_].time_s - last_warning_s_ >= 3.0) {
- play(traffic_warning_);
- last_warning_s_ = mission.events()[events_seen_].time_s;
+ const auto& event = mission.events()[events_seen_];
+ const auto found = event_bindings_.find(event.code);
+ if (found != event_bindings_.end() &&
+ event.time_s - found->second.last_play_s >= found->second.cooldown_s) {
+ play(found->second.cue);
+ found->second.last_play_s = event.time_s;
  }
- else if (code == "mission-complete")
- play(relay_restored_);
- else if (code == "collision-static" || code == "collision-dynamic" || code == "rollover")
- play(collision_);
  }
 
  for (; decisions_seen_ < mission.decisions().size(); ++decisions_seen_) {
@@ -89,19 +102,19 @@ void AudioDirector::update(const mission::MissionSimulation& mission) {
  // Planner output may alternate between wait and a feasible rollout for a
  // few ticks at a boundary. Latch the audible wait episode until non-waiting
  // has remained stable, so true state changes are heard without cue chatter.
- const bool waiting = last_action_ == "wait";
- if (waiting) {
+ const bool transition_action = last_action_ == decision_transition_.action_code;
+ if (transition_action) {
  clear_candidate_s_ = -1.0;
- if (!wait_cue_active_) {
- play(decision_wait_);
- wait_cue_active_ = true;
+ if (!transition_active_) {
+ play(decision_transition_.enter_cue);
+ transition_active_ = true;
  }
- } else if (wait_cue_active_) {
+ } else if (transition_active_) {
  if (clear_candidate_s_ < 0.0)
  clear_candidate_s_ = mission.snapshot().time_s;
- else if (mission.snapshot().time_s - clear_candidate_s_ >= 0.8) {
- play(decision_clear_);
- wait_cue_active_ = false;
+ else if (mission.snapshot().time_s - clear_candidate_s_ >= decision_transition_.exit_stable_s) {
+ play(decision_transition_.exit_cue);
+ transition_active_ = false;
  clear_candidate_s_ = -1.0;
  }
  }

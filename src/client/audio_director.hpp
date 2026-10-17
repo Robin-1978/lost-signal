@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 
 #include <raylib.h>
 
@@ -31,25 +32,34 @@ class AudioDirector {
  bool loaded{false};
  };
 
+ struct EventBinding {
+ std::string cue;
+ double cooldown_s{0.0};
+ double last_play_s{-1000.0};
+ };
+
+ struct DecisionTransition {
+ std::string action_code;
+ std::string enter_cue;
+ std::string exit_cue;
+ double exit_stable_s{0.0};
+ };
+
  Cue load(const std::filesystem::path& path) const;
- static void play(const Cue& cue);
+ void play(const std::string& cue_id) const;
  void reset(const mission::MissionSimulation& mission);
 
  bool ready_{false};
- Cue power_pickup_;
- Cue traffic_warning_;
- Cue decision_wait_;
- Cue decision_clear_;
- Cue relay_restored_;
- Cue collision_;
+ std::unordered_map<std::string, Cue> cues_;
+ std::unordered_map<std::string, EventBinding> event_bindings_;
+ DecisionTransition decision_transition_;
  const mission::MissionSimulation* mission_{nullptr};
  std::size_t events_seen_{0};
  std::size_t decisions_seen_{0};
  double last_time_s_{-1.0};
  std::string last_action_;
- bool wait_cue_active_{false};
+ bool transition_active_{false};
  double clear_candidate_s_{-1.0};
- double last_warning_s_{-1000.0};
 };
 
 } // namespace client

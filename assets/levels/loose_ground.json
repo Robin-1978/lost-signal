@@ -11,9 +11,12 @@
     "track_turn"
   ],
   "seed": 101,
+  "planning": {
+    "localization_margin_m": 0.25
+  },
   "objective": {
     "type": "reach",
-    "spawn": "supply_station",
+    "spawn": "loose_ground_start",
     "goal": "signal_tower",
     "goal_label": "信号塔",
     "goal_visual": "signal_tower",

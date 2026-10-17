@@ -94,7 +94,6 @@ The implementation and roadmap use public conventions and simulator practices as
 
 - [ROS REP-103](https://www.ros.org/reps/rep-0103.html) standardizes SI units and coordinate conventions.
 - [ROS REP-105](https://www.ros.org/reps/rep-0105.html) defines the `map`, `odom`, and `base_link` relationship used by mobile robots.
-- [ros2_control hardware interfaces](https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html) are a useful target for an optional LSRI bridge, not a core dependency.
 - [CARLA sensor reference](https://carla.readthedocs.io/en/latest/ref_sensors/) exposes sensor rate, bias, standard deviation, and seed parameters; Lost Signal follows the same principle of explicit observation configuration.
 - [Gazebo sensor documentation](https://gazebosim.org/docs/harmonic/sensors/) provides a mature comparison point for simulated sensor systems.
 - [Webots tutorials](https://cyberbotics.com/doc/guide/tutorials) demonstrate controller development across simulated robot and sensor interfaces.

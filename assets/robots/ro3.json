@@ -1,7 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 5,
   "id": "robot.ro3",
   "title": "RO-3",
+  "model_profile": {
+    "fidelity": "ideal",
+    "basis": "non-reference teaching proxy",
+    "source_refs": [
+      "docs/reference-platform.md#acceptance-matrix"
+    ]
+  },
   "unlock_ability": "ability.tracked",
   "coordinates": {
     "units": "meters",
@@ -23,7 +30,12 @@
       "free_speed_mps": 3.0,
       "pwm_limit": 1.0,
       "integral_limit": 2.0,
-      "wheel_equiv_mass_kg": 3.0
+      "wheel_equiv_mass_kg": 3.0,
+      "controller_bandwidth_radps": 6.0,
+      "controller_integral_time_s": 5.0,
+      "controller_derivative_time_s": 0.005,
+      "coulomb_smoothing_speed_mps": 0.05,
+      "viscous_drag_N_per_mps": 0.6
     },
     "steering": {
       "integral_limit": 1.2
@@ -42,94 +54,121 @@
     "label_key": "garage.drive.tracked"
   },
   "collision": {
-    "shape": "cylinder",
-    "radius_m": 0.42,
-    "height_m": 0.42
+    "planning_radius_m": 0.42,
+    "rigid_body": {
+      "shape": "box",
+      "size_m": [
+        0.66,
+        0.5,
+        0.42
+      ]
+    }
   },
   "mounts": [
     {
       "id": "base",
       "position_m": [
-        0,
-        0,
-        0.18
+        0.0,
+        0.0,
+        -0.03
       ],
       "rotation_deg": [
         0,
         0,
         0
       ],
-      "frame_id": "base_visual_link"
+      "frame_id": "base_visual_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "cargo_bed",
+      "position_m": [
+        -0.08,
+        0.0,
+        0.17
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "cargo_bed_link",
+      "motion": "fixed"
     },
     {
       "id": "wheel_left",
       "position_m": [
-        0,
+        0.0,
         0.29,
-        0.125
+        -0.085
       ],
       "rotation_deg": [
         90,
         0,
         0
       ],
-      "frame_id": "left_wheel_link"
+      "frame_id": "left_wheel_link",
+      "motion": "track"
     },
     {
       "id": "wheel_right",
       "position_m": [
-        0,
+        0.0,
         -0.29,
-        0.125
+        -0.085
       ],
       "rotation_deg": [
         90,
         0,
         0
       ],
-      "frame_id": "right_wheel_link"
+      "frame_id": "right_wheel_link",
+      "motion": "track"
     },
     {
       "id": "sensor_top",
       "position_m": [
         0.1,
-        0,
-        0.34
+        0.0,
+        0.13
       ],
       "rotation_deg": [
         0,
         0,
         0
       ],
-      "frame_id": "lidar_link"
+      "frame_id": "lidar_link",
+      "motion": "fixed"
     },
     {
       "id": "compute_rear",
       "position_m": [
         -0.18,
-        0,
-        0.3
+        0.0,
+        0.09
       ],
       "rotation_deg": [
         0,
         0,
         0
       ],
-      "frame_id": "compute_link"
+      "frame_id": "compute_link",
+      "motion": "fixed"
     },
     {
       "id": "imu_body",
       "position_m": [
-        0,
-        0,
-        0.24
+        0.0,
+        0.0,
+        0.03
       ],
       "rotation_deg": [
         0,
         0,
         0
       ],
-      "frame_id": "imu_link"
+      "frame_id": "imu_link",
+      "motion": "fixed"
     }
   ],
   "base_parts": [

@@ -49,6 +49,7 @@ def note(time_s: float, start_s: float, duration_s: float, frequency_hz: float) 
 def assets() -> dict[str, bytes]:
  rng = random.Random(47)
  collision_noise = [rng.uniform(-1.0, 1.0) for _ in range(round(0.42 * RATE))]
+ harvest_noise = [rng.uniform(-1.0, 1.0) for _ in range(round(0.48 * RATE))]
  return {
  "power_pickup.wav": render(
  0.56,
@@ -76,6 +77,24 @@ def assets() -> dict[str, bytes]:
  lambda t: (0.62 * collision_noise[min(len(collision_noise) - 1, int(t * RATE))]
  + 0.38 * tone(t, 82.0)) * math.exp(-8.0 * t),
  ),
+        "harvest_pickup.wav": render(
+            0.58,
+            lambda t: 0.10 * harvest_noise[min(len(harvest_noise) - 1, int(t * RATE))]
+            * math.exp(-7.0 * t)
+            + note(t, 0.05, 0.25, 349.23)
+            + note(t, 0.19, 0.31, 523.25)
+            + 0.55 * note(t, 0.30, 0.24, 698.46),
+        ),
+        "task_abandoned.wav": render(
+            0.54,
+            lambda t: note(t, 0.00, 0.28, 392.0)
+            + note(t, 0.18, 0.32, 293.66),
+        ),
+        "fruit_damage.wav": render(
+            0.48,
+            lambda t: (0.36 * harvest_noise[min(len(harvest_noise) - 1, int(t * RATE))]
+            + 0.24 * tone(t, 118.0) + 0.18 * tone(t, 177.0)) * math.exp(-9.5 * t),
+        ),
  }
 
 

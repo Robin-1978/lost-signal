@@ -1,6 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slot": "computer",
+  "model_profile": {
+    "fidelity": "ideal",
+    "basis": "deterministic scheduling profiles for controlled experiments",
+    "source_refs": [
+      "docs/parameter-sources.md#compute-and-algorithm-cadence"
+    ]
+  },
   "components": [
     {
       "id": "computer.light",

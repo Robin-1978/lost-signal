@@ -319,7 +319,7 @@
     }
   ],
   "effects": {
-    "robot_scale": 1.12,
+    "robot_scale": 1.0,
     "bob_amplitude_m": 0.0,
     "bob_frequency_hz": 1.65,
     "eye_height_m": 0.25,

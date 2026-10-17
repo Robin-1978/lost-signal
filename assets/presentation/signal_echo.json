@@ -71,7 +71,7 @@
     },
     "recommended_build": {
       "tires": "tires.grip",
-      "sensor": "sensor.standard_lidar",
+      "sensor": "sensor.short_fast_lidar",
       "computer": "computer.performance",
       "motor": "motor.standard",
       "imu": "imu.basic",

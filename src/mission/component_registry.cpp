@@ -41,6 +41,8 @@ ComponentSpec resolve_tires(const ComponentDefinition& component) {
    required_number(component, "power_scale", 0.0),
    required_number(component, "friction_mu", 0.0, false),
    required_number(component, "rolling_resistance", 0.0),
+ required_number(component, "normal_stiffness_Npm", 0.0, false),
+ required_number(component, "normal_damping_Nspm", 0.0),
  };
 }
 
@@ -49,12 +51,27 @@ ComponentSpec resolve_lidar(const ComponentDefinition& component) {
  if (rays > 4096.0 || std::floor(rays) != rays) {
   throw ContentError("component '" + component.id + "' has invalid behavior property 'rays'");
  }
+ const double minimum_range = required_number(component, "min_range_m", 0.0);
+ const double maximum_range = required_number(component, "range_m", 0.0, false);
+ if (minimum_range >= maximum_range) {
+ throw ContentError("component '" + component.id + "' has min_range_m >= range_m");
+ }
+ const double terrain_reflectivity = optional_number(component, "terrain_reflectivity", 0.30, 0.0, 1.0);
+ const double obstacle_reflectivity = optional_number(component, "obstacle_reflectivity", 0.68, 0.0, 1.0);
+ const double actor_reflectivity = optional_number(component, "actor_reflectivity", 0.52, 0.0, 1.0);
  return LidarSpec{
-   required_number(component, "range_m", 0.0, false), static_cast<int>(rays),
+ minimum_range,
+ maximum_range, static_cast<int>(rays),
    required_number(component, "scan_hz", 0.0, false), required_number(component, "noise_sigma_m", 0.0),
  optional_number(component, "range_bias_m", 0.0, -10.0, 10.0),
  optional_number(component, "range_resolution_m", 0.0, 0.0, 10.0),
  optional_number(component, "dropout_probability", 0.0, 0.0, 1.0),
+ optional_number(component, "latency_s", 0.0, 0.0, 10.0),
+ terrain_reflectivity,
+ obstacle_reflectivity,
+ actor_reflectivity,
+ optional_number(component, "incidence_floor", 0.0, 0.0, 1.0),
+ required_number(component, "distance_attenuation_per_m2", 0.0),
    required_number(component, "power_w", 0.0),
  };
 }
@@ -74,15 +91,26 @@ ComponentSpec resolve_motor(const ComponentDefinition& component) {
    required_number(component, "stall_force_N", 0.0, false),
    required_number(component, "free_speed_mps", 0.0, false),
    required_number(component, "power_scale", 0.0, false),
+ required_number(component, "controller_bandwidth_radps", 0.0, false),
+ required_number(component, "controller_integral_time_s", 0.0, false),
+ required_number(component, "controller_derivative_time_s", 0.0),
+ required_number(component, "coulomb_smoothing_speed_mps", 0.0, false),
+ required_number(component, "viscous_drag_N_per_mps", 0.0),
  };
 }
 
 ComponentSpec resolve_imu(const ComponentDefinition& component) {
+ const double gyro_density = required_number(component, "gyro_noise_density_radps_sqrt_hz", 0.0);
+ const double accel_density = required_number(component, "accel_noise_density_mps2_sqrt_hz", 0.0);
+ const double bandwidth = required_number(component, "noise_bandwidth_hz", 0.0, false);
  return ImuSpec{
-   required_number(component, "gyro_noise_radps", 0.0),
-   required_number(component, "gyro_bias_radps", 0.0),
+ gyro_density,
+ accel_density,
+ bandwidth,
+ gyro_density * std::sqrt(bandwidth),
+ required_number(component, "gyro_bias_stddev_radps", 0.0),
    required_number(component, "power_w", 0.0),
-   required_number(component, "accel_noise_mps2", 0.0),
+ accel_density * std::sqrt(bandwidth),
  optional_number(component, "gyro_bias_random_walk_radps_sqrt_s", 0.0, 0.0, 10.0),
  };
 }

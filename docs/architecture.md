@@ -30,9 +30,9 @@ The player affects `A`. Autonomous code owns `B` through `G`. LSRI carries comma
 
 ### Runtime boundary
 
-The [Lost Signal Runtime Interface](runtime-interface.md) is the middleware-neutral robot boundary. Its autonomy port reads validated observations and writes expiring motion commands. Its platform port is implemented by the in-process simulator today and can be implemented by replay, a native hardware driver, or an optional bridge.
+The [Lost Signal Runtime Interface](runtime-interface.md) is the project-owned robot boundary. Its autonomy port reads validated observations and writes expiring motion commands. Its platform port is implemented by the in-process simulator today and can be implemented by replay or a native hardware driver.
 
-LSRI is a project standard rather than a ROS 2 API. Core libraries contain no ROS, DDS, executor, discovery, or ros2_control dependency. A bridge translates at the edge when integration with that ecosystem is useful.
+LSRI remains a small project standard with no external middleware, executor, discovery, or device-SDK dependency.
 
 ### Content
 
@@ -47,7 +47,7 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
 
 Maps are 2.5D: terrain patches carry base height, two-axis grade, and roughness, while surface materials carry
-friction, rolling drag, traction, and presentation effects. `PhysicsScene` turns that content into 3D collision
+friction, rolling drag, traction, and presentation effects. `SimulatedPlatform` turns that content into 3D collision
 geometry and contact state. The shipped LiDAR is a single-plane scanner mounted in a named 3D frame. In the
 production path it raycasts the 3D physics world against terrain, static geometry, and dynamic actors, includes
 scan-time robot motion, and synthesizes intensity from hit normal, body class, and distance before applying the
@@ -92,15 +92,69 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 
 `IPhysicsWorld` is the backend boundary. Bullet is the production and default backend. A deterministic planar backend supports regression and focused algorithm tests. Bullet-shadow mode can compare integration paths without giving the shadow backend authority over gameplay.
 
-`PhysicsScene` maps content geometry, terrain, robot bodies, actors, contacts, and raycasts to the backend. In Bullet authority mode, Bullet owns rigid-body pose. The rendering layer never advances physics.
+`SimulatedPlatform` maps content geometry, terrain, robot bodies, actors, contacts, and raycasts to the backend. In Bullet authority mode, Bullet owns rigid-body pose. The rendering layer never advances physics.
+
+`sim::platform::SimulatedPlatform` in `src/sim/` is the in-process simulation-platform adapter; mission code only
+schedules it and combines its published result with goals and autonomy diagnostics. Wheel motors, encoders, IMU and LiDAR device behavior belong
+to `src/hw/`; rigid bodies, joints, contacts and raycasts belong to `src/physics/`; binding authored devices to
+physics joints and links belongs to `src/sim/`. No wheel, caster or sensor model belongs in a renderer.
+
+Robot geometry has three independent meanings:
+
+- the circular planning footprint is an orientation-independent conservative envelope for grid and local planners;
+- the rigid hull is an authored flat collision primitive used by Bullet;
+- the support polygon comes from wheel, track, and caster contact mounts and governs stability geometry.
+
+Robot schema v4 forbids deriving one of these from another. In particular, a support triangle is not a hull and a
+planning circle is not a vehicle contact shape. This follows the link semantics used by
+[URDF](https://docs.ros.org/en/rolling/Tutorials/Intermediate/URDF/Adding-Physical-and-Collision-Properties-to-a-URDF-Model.html)
+and [SDFormat](http://sdformat.org/spec?ver=1.12&elem=link): visual, collision, and inertial properties have separate
+representations and origins. Lost Signal keeps a smaller native format rather than importing either middleware
+format into the runtime.
+
+The current dynamic profile uses one flat sprung-hull proxy and chassis-resolved wheel forces. It applies the
+resolved force at the hull centre and the wheel-force difference as a yaw moment; applying traction below a hull
+with no suspension constraints produces artificial pitch and visible ground penetration. The higher-fidelity
+identified profile will represent a chassis body plus per-wheel connection, axle, radius, contact, and suspension
+parameters. Those are the same physical roles exposed by Bullet's `btRaycastVehicle`; they remain behind the
+platform boundary rather than changing planner commands.
 
 ### Presentation
 
-`src/client/` renders the field and AI views from the same snapshot. UI state may pause or request an intent, but changing camera or visualization layers cannot affect autonomous output. The headless executable uses the same content and mission core and reports English, machine-readable results.
+`src/client/` renders the field and AI views from the same immutable, timestamped presentation snapshot. The
+snapshot combines platform state (body/link poses, contacts and device telemetry), mission state (goals, actors and
+environment), and autonomy diagnostics (routes, candidates and decisions). A hardware provider alone cannot
+publish the complete game view because goals and explanatory overlays are not hardware state.
+
+In-process code passes a `PresentationFrameView` with read-only access for the duration of one main-loop frame. A
+future threaded or multi-process provider may materialize and deliver
+the same value through a bounded queue or shared memory. This is subscription semantics without requiring a
+middleware today. The renderer cannot step the runtime and never reads Bullet bodies, motor objects or sensor
+internals; it also never derives physical wheel or caster motion. UI state may pause or submit player intent, but
+changing camera or visualization layers cannot affect autonomous output. The headless executable consumes the same
+mission/platform results and reports English, machine-readable output.
+
+The update order follows the read/write split used by mature simulators:
+
+```text
+command snapshot
+ -> hardware controller/device commands
+ -> simulation-platform binding
+ -> one authoritative physics step
+ -> platform snapshot + ideal sensor truth
+ -> hardware sensor/encoder models
+ -> mission/autonomy presentation snapshot
+ -> zero or more read-only consumers (3D, AI view, headless, replay)
+```
+
+[Gazebo's system lifecycle](https://gazebosim.org/api/sim/9/createsystemplugins.html) applies commands before the
+physics update and gives sensors, graphics and rendering read-only post-update access. CARLA similarly sends a
+timestamped [`WorldSnapshot`](https://carla.readthedocs.io/en/latest/python_api/#carla.WorldSnapshot) to clients on
+each tick. Lost Signal uses this ownership pattern while keeping its smaller native LSRI and snapshot contracts.
 
 ### Experiment evidence
 
-Run Artifact v1 records build and source identity, a SHA-256 content manifest, comparable run inputs, hardware and
+Run Artifact v2 records build and source identity, a SHA-256 content manifest, comparable run inputs, hardware and
 algorithm IDs, metrics, events, and the structured decision chain. `--reproduce` restores the declared authored
 mission configuration, while `tools/compare_runs.py` rejects undeclared input changes. This compact manifest is
 separate from UI snapshot replay and LSRI observation replay; large sensor traces remain external references.
@@ -125,6 +179,12 @@ These are useful sim-to-real seams because a hardware adapter can replace actuat
 ## Coordinate and time model
 
 Frames follow the familiar `map → odom → base_footprint → base_link → sensor/wheel link` structure. This aligns with [ROS REP-105](https://www.ros.org/reps/rep-0105.html). Geometry, time, angles, velocity, and acceleration use SI units and conventions consistent with [ROS REP-103](https://www.ros.org/reps/rep-0103.html).
+
+`base_footprint` is the terrain projection; `base_link` is the physical root-body origin. Robot `mounts` are always
+calibrated in `base_link`. Physics owns centre-of-mass motion, then the shared transform tree evaluates each sensor
+origin. In particular, the simulated IMU lives in `src/hw/sensors`: it receives ideal six-axis truth at `imu_link`
+and owns bias, random walk, white noise, timestamps, latency, and sequence numbers. Mission code only schedules the
+device and publishes its observation.
 
 The simulation advances at a fixed step. Sensors have independent sample rates and declared latency. The current in-process provider delivers each generated packet immediately; a real-time or transport provider may schedule delivery from the same metadata. Determinism requires the same content, configuration, seed, backend, and build assumptions; cross-backend numeric identity is not promised.
 
@@ -179,6 +239,6 @@ The architecture already provides several uncommon combinations in a small open 
 - observation noise, sampling, frames, and latency separated from world truth;
 - deterministic scenario seeds and machine-readable results;
 - data-driven educational content with string-only localization overlays;
-- a clean path for log comparison and later ROS 2 integration.
+- a clean path for log comparison, native hardware providers, and measured HIL work.
 
 The main technical risk is concentration in `MissionSimulation`, which still coordinates many subsystems. Recent extraction of planning, control, goal, dispatch, operator, and world-activity systems reduces that pressure, but continued changes should move ownership behind narrow interfaces rather than add more branches to the central loop.

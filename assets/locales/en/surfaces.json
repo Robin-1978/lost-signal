@@ -8,6 +8,10 @@
     "/materials/2/title": "Sand",
     "/materials/2/description": "Loose fine sand lets tires dig in and has the highest rolling resistance.",
     "/materials/3/title": "Standing Water",
-    "/materials/3/description": "A shallow water layer leaves 35% of baseline traction, especially punishing for efficiency tires."
+    "/materials/3/description": "A shallow water layer leaves 35% of baseline traction, especially punishing for efficiency tires.",
+    "/materials/4/title": "Mud",
+    "/materials/4/description": "Saturated soil reduces traction and adds rolling resistance. Heavier payloads demand more torque and more careful routing.",
+    "/materials/5/title": "Steel Test Deck",
+    "/materials/5/description": "A stiff, low-loss metal surface whose joints transmit sharp impacts; wet steel offers limited adhesion."
   }
 }

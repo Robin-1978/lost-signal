@@ -3,7 +3,7 @@
 ## Decision
 
 Lost Signal keeps autonomy commands at the chassis level and adapts them to native actuator commands inside a
-platform provider. Sensor and actuator models grow through measured, named profiles rather than through one
+platform provider. Sensor and actuator models grow through named, sourced profiles rather than through one
 ever-more-expensive default simulation.
 
 This preserves a small teaching and regression runtime while allowing a calibrated robot profile to replace the
@@ -14,8 +14,12 @@ The design has three fidelity levels:
 | Profile | Purpose | Required behavior |
 |---|---|---|
 | `ideal` | algorithm teaching and focused tests | geometry and timing with deliberately minimal error |
-| `dynamic` | shipped game and physical comparisons | current contact, actuator response, scan timing, and seeded observation errors |
+| `typical` | shipped game and controlled physical comparisons | public specifications, documented engineering assumptions, units, ranges, and seeded observation errors |
 | `identified` | one measured hardware target | parameters fitted from logs, with a stated calibration source and validation envelope |
+
+The RO-1 release requires the `typical` level. Lost Signal is not planning to build a physical RO-1, so hardware
+identification is an optional future contribution rather than a game-release gate. The exact shipped assumptions
+and public sources are recorded in [parameter profiles and sources](parameter-sources.md).
 
 `identified` is not a claim that every unmeasured effect is realistic. It names the robot, sensor, firmware,
 calibration date, test conditions, and held-out error bounds.
@@ -41,7 +45,105 @@ Sensor observations travel in the other direction. Simulation and hardware publi
 sequences, units, and measurement fields. A hardware measurement is never passed through the simulation noise
 model a second time.
 
+Rendering is outside both directions. The simulated platform publishes a timestamped platform snapshot after its
+authoritative step; mission code combines that with goals, environment and autonomy diagnostics into a presentation
+snapshot. The graphical client, headless reporter and replay recorder are read-only consumers. In the current
+single-process runtime, publication can be a const value handoff. Future threads or processes may transport the same
+contract through a bounded queue or shared memory without changing device, physics or rendering ownership.
+
+A GPU scene used by a future camera or depth sensor is still part of sensor simulation. Its pixels become a
+timestamped hardware observation before autonomy sees them. The player's 3D camera may share meshes and rendering
+libraries, but it cannot be the owner or clock of that sensor.
+
 ## Current implementation
+
+The dynamic robot model follows the standard link separation used by URDF and SDFormat: rendered meshes do not
+define contact, and the planning footprint does not double as the rigid-body shape. Robot schema v4 authors a
+planning radius, visual mounts, and physical collision data independently. Its optional articulation describes
+generic links, rest poses, collision shapes, mass, friction, parent/child joints, axes, pivots, and actuator-channel
+bindings in data.
+
+RO-1 is the first articulated reference platform. Its data defines an elevated base link, two powered cylindrical
+wheel links, a passive caster fork with a vertical swivel joint, and a separate caster wheel with a rolling joint.
+The caster has a 35 mm authored trail: the swivel axis is ahead of the wheel axle, while the wheel model origin is
+the axle rather than an extra hidden visual offset. Bullet joint position and velocity are the only encoder truth.
+The passive caster is absent from motor-controller telemetry: it receives no command, and its visual transform is
+copied from physical link state through the platform/presentation snapshot.
+The other four chassis still use the compact rigid proxy and are outside the current reference gate.
+
+RO-1 runs a deterministic 20 ms public physics step with four 5 ms Bullet contact substeps. This is a numerical
+integration choice, not a second clock domain. It prevents small-wheel contact and chained caster constraints from
+injecting the visible pitch impulse produced by one coarse contact solve. Only the two powered wheels and caster
+wheel may touch a flat floor during nominal motion; the base and fork have positive clearance.
+
+RO-1 currently uses one compact brushed-DC-style drive profile:
+
+```text
+wheel-speed target
+ -> PID from quantized physical joint position
+ -> signed PWM duty
+ -> stall-torque / no-load-speed curve
+ -> gearbox-equivalent wheel-joint torque
+ -> Bullet contact
+```
+
+PWM is the native electronic command and torque is its mechanical output. Bullet owns tire friction, rolling
+resistance, slip, and body integration; the motor controller no longer applies a second traction plant. The current
+catalog values are typical teaching parameters, not an identified voltage, current, winding, gearbox-efficiency,
+deadband, battery-sag, or thermal model.
+
+The wheel link owns the inertia of its physical wheel geometry. Each powered joint separately declares motor and
+gearbox inertia reflected to that axis (`armature_inertia_kgm2`). The Bullet adapter represents the armature as a
+coaxial axisymmetric inertial component on the constrained wheel link because Bullet hinges do not expose a native
+armature term. This preserves a valid inertia tensor and the intended wheel-speed transient without pretending the
+extra inertia is tire mass or friction. The value remains a typical-profile assumption until a coast or torque-step
+test identifies it on hardware.
+
+For RO-1, Bullet solves compliant normal contact and two tangent friction constraints in the same 5 ms internal
+substeps as the wheel and caster joints. `BulletTireContact` derives the rolling and axle tangent directions from the
+physical wheel pose and contact normal; it also refreshes material values already cached in persistent manifolds when
+the active surface changes. A static-friction anchor resists slip while the pose is held. It is not a parking brake: an
+unbraked differential platform with a passive caster can yaw toward the fall line and roll downhill without violating
+static friction. The 20-degree hold gate therefore exercises the encoder, zero-speed motor loop, and heading/position
+hold together with tire contact.
+
+Slope behavior is tested in three distinct modes: coast applies zero joint effort and must roll; closed-loop pose
+hold uses encoder feedback and may hold only inside its authority; a known sub-gravity shaft torque on the 20-degree
+grade must still roll backward. This keeps controller success, motor authority, and tire adhesion as separate
+evidence instead of hiding all three in one friction coefficient.
+
+Catalog `rolling_resistance` is dimensionless `Crr`; Bullet's torsional contact limit has torque/load length units.
+The adapter converts rolling resistance about the wheel axle to `Crr * wheel_radius`. Articulated wheel content also
+declares `rolling_support_moment_arm_m`, a finite-patch support value about the tire's non-rolling axes. Bullet's
+rolling anisotropy keeps these two effects separate enough for the compact reference model. `btRaycastVehicle` is
+reserved for a possible coarse Ackermann provider and is not used for the collision-wheel, two-joint passive caster.
+
+The motor profile owns available shaft torque (`stall_force_N * wheel_radius_m`). The articulation actuator limit is
+a separate joint/transmission safety ceiling and must be at least as large as every supported motor profile; it must
+not silently clamp an equipped torque motor to the stock motor's stall torque. RO-1's current 10 N·m joint ceiling
+admits its 9 N·m torque profile while each motor model still enforces its own lower curve. The dynamic torque profile
+provides 180 N total stall force: a 39 kg slope lesson needs about 131 N for gravity at 20 degrees and about 5 N for
+nominal rolling resistance, leaving limited authority for acceleration and differential steering. These are declared
+teaching parameters rather than identified hardware values.
+
+In articulated mode, contact saturation is no longer inferred from the analytic motor-force clamp. The platform
+compares physical wheel tread speed with rigid-body contact-point speed, applies low-speed and persistence guards,
+and publishes the resulting model-side slip state and maximum ratio in the deterministic run evidence.
+
+`ITireContact` is a semantic adapter, not an outer tire-force solver. The current `BulletTireContact` maps common
+friction, compliance, wheel-axis, rolling, and spinning semantics into the Bullet body and its internal constraints.
+A future `ChronoTireContact` must live inside a complete Chrono platform provider that owns bodies, joints, contact,
+and time integration; mixing Chrono tire forces into a Bullet world would create two coupled plants.
+
+The shipped grip tire uses a declared typical-profile friction coefficient of 1.2. This represents a high-grip
+teaching tire on the dry slope surface, not a measured material pair; the ordinary tire remains at 0.7. The value
+must be replaced by contact-pair measurements before an identified-profile claim.
+
+Normal contact compliance follows the same evidence rule. The current RO-1 wheel values are typical teaching
+assumptions chosen to produce millimetre-scale static deflection and a documented damping ratio. They are not
+identified rubber properties. Wheel-component and ground-material data will own their respective compliance;
+`SimulatedPlatform` resolves one effective pair for the physics backend. Bullet-specific ERP, CFM, or raw rolling
+constraint coefficients do not cross that content boundary.
 
 ### Single-plane LiDAR
 
@@ -57,11 +159,12 @@ Its current limits are explicit:
 - a single first return;
 - coarse terrain/static/actor reflectivity instead of material and wavelength calibration;
 - constant Gaussian range noise and constant dropout probability;
-- no beam divergence, minimum-range blind zone, intensity saturation, temperature drift, or transport jitter;
-- the shipped component data currently sets bias, quantization, and base dropout to zero even though the model supports those fields.
+- no beam divergence, intensity saturation, temperature drift, or transport jitter;
+- the shipped standard profile uses a 0.2 m invalid near field and 5 mm quantization, while fixed bias and base
+ dropout remain zero-valued typical assumptions rather than calibrated device measurements.
 
-The next improvement is a calibrated planar-LiDAR profile, not an immediate switch to a large 3D point cloud. In
-priority order it should add:
+The executable typical gate covers the first item below and the deterministic forms of the second and third. An
+optional future identified planar-LiDAR profile should add measured evidence in this order:
 
 1. minimum and maximum valid range, angular coverage, scan direction, phase, and per-ray acquisition timing;
 2. measured range resolution, fixed bias, and distance-dependent variance;
@@ -99,7 +202,7 @@ maximum wheel speed, stall force, free speed, and power scale. They are not PWM,
 command modes.
 
 The current Ackermann follower and local sampler use `0.25 m/s` as a conservative reverse policy default. This is
-a tunable dynamic-profile value, not an identified motor, gearbox, or chassis limit. An `identified` platform must
+a tunable typical-profile value, not an identified motor, gearbox, or chassis limit. An `identified` platform must
 derive forward and reverse limits from measured hardware behavior and keep the controller and sampler on the same
 declared value.
 
@@ -160,11 +263,11 @@ is not a release claim until the same autonomy build completes those hardware ga
 
 ## Implementation order
 
-1. Keep the current `dynamic` profile as the deterministic product baseline.
-2. Preserve steering-angle semantics from the Ackermann planner through LSRI to the steering position loop.
-3. Introduce a planar-LiDAR profile only with measurable fields and deterministic validation cases.
+1. Finish the RO-1 `typical` reference gates and publish its explicit validation envelope.
+2. Introduce the reference planar-LiDAR profile only with measurable fields and deterministic validation cases.
+3. Preserve the other chassis as non-reference teaching profiles until each receives its own articulated gate.
 4. Add the actuator capability record when a native driver, HIL drive, or second actuator backend can exercise it.
-5. Create the first `identified` profile from one low-speed robot and one planar LiDAR, then publish held-out errors.
+5. Allow an optional future `identified` profile from a low-speed robot and planar LiDAR without blocking release.
 6. Add multi-line or solid-state providers only for a concrete learning scenario or target device.
 
 This order keeps unused abstraction out of the runtime while preserving the contracts needed for later providers.
@@ -173,7 +276,6 @@ This order keeps unused abstraction out of the runtime while preserving the cont
 
 - [SDFormat sensor specification](https://sdformat.org/spec/1.12/sensor/) separates scan samples, angular resolution, range limits, resolution, and noise configuration.
 - [Ouster sensor data documentation](https://static.ouster.dev/sensor-docs/image_route1/image_route2/sensor_data/sensor-data.html) illustrates per-measurement timestamps, frame and measurement IDs, range quantization, calibrated reflectivity, and multiple return profiles in a production multi-line sensor.
-- [ros2_control hardware interface types](https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html) provide a useful external example of named command and state interfaces with limits. LSRI remains independent and uses a bridge when ROS 2 integration is desired.
 - [ROS REP-103](https://www.ros.org/reps/rep-0103.html) supplies the SI-unit and coordinate conventions shared by simulation and hardware adapters.
 
 These references inform the contracts. Only measurements from a target platform validate a profile.

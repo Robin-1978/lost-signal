@@ -19,9 +19,12 @@ struct TireSpec {
  double power_scale{0.0};
  double friction_mu{0.0};
  double rolling_resistance{0.0};
+ double normal_stiffness_Npm{0.0};
+ double normal_damping_Nspm{0.0};
 };
 
 struct LidarSpec {
+ double min_range_m{0.0};
  double range_m{0.0};
  int rays{0};
  double scan_hz{0.0};
@@ -29,6 +32,12 @@ struct LidarSpec {
  double range_bias_m{0.0};
  double range_resolution_m{0.0};
  double dropout_probability{0.0};
+ double latency_s{0.0};
+ double terrain_reflectivity{0.0};
+ double obstacle_reflectivity{0.0};
+ double actor_reflectivity{0.0};
+ double incidence_floor{0.0};
+ double distance_attenuation_per_m2{0.0};
  double power_w{0.0};
 };
 
@@ -44,11 +53,19 @@ struct MotorSpec {
  double stall_force_N{0.0};
  double free_speed_mps{0.0};
  double power_scale{0.0};
+ double controller_bandwidth_radps{0.0};
+ double controller_integral_time_s{0.0};
+ double controller_derivative_time_s{0.0};
+ double coulomb_smoothing_speed_mps{0.0};
+ double viscous_drag_N_per_mps{0.0};
 };
 
 struct ImuSpec {
+ double gyro_noise_density_radps_sqrt_hz{0.0};
+ double accel_noise_density_mps2_sqrt_hz{0.0};
+ double noise_bandwidth_hz{0.0};
  double gyro_noise_radps{0.0};
- double gyro_bias_radps{0.0};
+ double gyro_bias_stddev_radps{0.0};
  double power_w{0.0};
  double accel_noise_mps2{0.0};
  double gyro_bias_random_walk_radps_sqrt_s{0.0};

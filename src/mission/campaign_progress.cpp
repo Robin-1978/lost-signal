@@ -136,13 +136,14 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
   const auto& entry = it.value();
   BuildSelection build;
   for (auto field = entry.begin(); field != entry.end(); ++field) {
-   if (field.key() == "style" || field.key() == "chassis") {
+ if (field.key() == "style" || field.key() == "chassis" || field.key() == "task_policy") {
     continue;
    }
    build.parts[field.key()] = field.value().get<std::string>();
   }
   build.style = std::clamp(entry.value("style", 0.5), 0.0, 1.0);
   build.chassis_robot = entry.value("chassis", std::string{});
+ build.task_policy = entry.value("task_policy", std::string{});
   bool known = true;
   for (const auto& [slot, id] : build.parts) {
    (void)slot;
@@ -215,7 +216,8 @@ void CampaignProgress::record_completion(const std::string& level_id, const Miss
    }
   }
  }
- const auto& order = catalog.campaign().levels;
+ std::vector<std::string> order = catalog.campaign().levels;
+ order.insert(order.end(), catalog.campaign().playgrounds.begin(), catalog.campaign().playgrounds.end());
  std::sort(completed_levels_.begin(), completed_levels_.end(), [&](const auto& left, const auto& right) {
   return std::find(order.begin(), order.end(), left) < std::find(order.begin(), order.end(), right);
  });
@@ -293,6 +295,9 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
    fields[slot] = id;
   }
   fields["style"] = build.style;
+ if (!build.task_policy.empty()) {
+ fields["task_policy"] = build.task_policy;
+ }
   if (!build.chassis_robot.empty()) {
    fields["chassis"] = build.chassis_robot;
   }

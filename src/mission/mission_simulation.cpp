@@ -1,4 +1,5 @@
 #include "mission_simulation.hpp"
+#include "autonomy/planning/task/task_ordering.hpp"
 
 #include "autonomy/planning/global/astar.hpp"
 #include "mission/world/actor_behavior_registry.hpp"
@@ -155,19 +156,13 @@ MissionSimulation::MissionSimulation(const ContentCatalog& catalog, std::string 
  high_level_policy_(high_level_policy ? std::move(high_level_policy)
  : sim::make_route_baseline_policy()) {
  catalog_.validate_build(level_id_, build_, owned_abilities);
+ if (!build_.task_policy.empty())
+ level_.objective.task_policy = build_.task_policy;
  if (!contract_id.empty()) {
  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
  [&](const ContractJob& job) { return job.id == contract_id; });
  if (contract == catalog_.contracts().end() || contract->level != level_id_)
  throw ContentError("contract '" + contract_id + "' does not target level '" + level_id_ + "'");
- const double previous_mass = level_.payload_mass_kg;
- const double combined_mass = previous_mass + contract->mass_kg;
- level_.payload_cog_height_m = combined_mass > 1e-9
- ? (previous_mass * level_.payload_cog_height_m +
- contract->mass_kg * contract->cog_height_m) /
- combined_mass
- : 0.0;
- level_.payload_mass_kg = combined_mass;
  active_contract_ = &*contract;
  }
  resolved_build_ = component_registry.resolve(catalog_, build_);
@@ -178,11 +173,11 @@ void MissionSimulation::reset() {
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
  runtime_channel_->deactivate();
  }
- imu_rng_ = sim::Rng(effective_seed() ^ 0x51ed2707U);
- imu_accel_rng_ = sim::Rng(effective_seed() ^ 0xa54ff53aU);
- imu_bias_walk_rng_ = sim::Rng(effective_seed() ^ 0x3c6ef372U);
  result_ = {};
  snapshot_ = {};
+ update_environment();
+ mount_roll_rad_.clear();
+ reset_payload();
  high_level_policy_->reset(effective_seed() ^ 0x1f83d9abU);
  snapshot_.strategy_policy = high_level_policy_->name();
  events_.clear();
@@ -198,7 +193,11 @@ void MissionSimulation::reset() {
  manual_command_ = {};
  manual_control_active_ = false;
  endless_target_key_ = "uninitialized";
- goal_system_.reset();
+ goal_system_.reset(level_.objective);
+ snapshot_.goals_reached = goal_system_.goals_reached();
+ snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
+ snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
+ snapshot_.payload = payload_;
  field_dispatch_system_.reset(effective_seed() ^ 0xbb67ae85U);
  world_activity_system_.reset(effective_seed() ^ 0x510e527fU);
  snapshot_.world_activity = world_activity_system_.state();
@@ -206,29 +205,36 @@ void MissionSimulation::reset() {
  next_decision_s_ = 0.0;
  next_replay_s_ = 0.0;
  motion_sequence_ = 0;
- imu_sequence_ = 0;
  command_sequence_ = 0;
  decision_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  governor_state_ = {};
- // Gyro bias is drawn once per run: constant within the run, new every run.
- const auto* imu = resolved_build_.imu();
- gyro_bias_ = imu ? imu_rng_.gauss(imu->gyro_bias_radps) : 0.0;
  was_saturated_ = false;
  rigid_rollover_exposure_s_ = 0.0;
  rigid_static_contact_s_ = 0.0;
+ previous_payload_shock_mps2_ = 0.0;
+ filtered_payload_shock_mps2_ = 0.0;
+ payload_shock_initialized_ = false;
  build_world();
  initialize_rigid_physics();
+ synchronize_payload_dynamics();
  plan_route();
 
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
  snapshot_.robot = {spawn.x, spawn.y, spawn.theta, 0.0, 0.0};
  field_operator_system_.reset(map_definition_, {spawn.x, spawn.y}, level_id_);
  const auto spawn_terrain = terrain_.sample({spawn.x, spawn.y});
- snapshot_.robot_height_m = spawn_terrain.height_m + robot_definition_.collision_height_m * 0.5;
+ if (platform_) {
+ const auto physical = platform_->state();
+ snapshot_.robot_height_m = physical.height_m;
+ snapshot_.robot_pitch_rad = physical.pitch_rad;
+ snapshot_.robot_roll_rad = physical.roll_rad;
+ } else {
+ snapshot_.robot_height_m = spawn_terrain.height_m + robot_definition_.base_link_height_m;
  snapshot_.robot_pitch_rad = -std::atan(sim::longitudinal_grade(spawn_terrain, spawn.theta));
  snapshot_.robot_roll_rad = std::atan(sim::lateral_grade(spawn_terrain, spawn.theta));
+ }
  snapshot_.estimated_position = {spawn.x, spawn.y};
  snapshot_.estimated_heading = spawn.theta;
  snapshot_.status = MissionStatus::Ready;
@@ -246,24 +252,170 @@ void MissionSimulation::reset() {
  record_replay();
 }
 
+void MissionSimulation::reset_payload() {
+ payload_ = {};
+ auto add_initial_load = [this](double mass_kg, double cog_height_m) {
+ if (mass_kg <= 0.0)
+ return;
+ payload_.mass_kg += mass_kg;
+ payload_.first_moment_kgm += mass_kg * std::max(0.0, cog_height_m);
+ };
+ add_initial_load(level_.payload_mass_kg, level_.payload_cog_height_m);
+ if (active_contract_)
+ add_initial_load(active_contract_->mass_kg, active_contract_->cog_height_m);
+ payload_.cog_height_m = payload_.mass_kg > 1e-9
+ ? payload_.first_moment_kgm / payload_.mass_kg
+ : 0.0;
+}
+
+void MissionSimulation::update_environment() {
+ const auto& keyframes = level_.environment_keyframes;
+ if (keyframes.empty()) {
+ snapshot_.environment = {};
+ return;
+ }
+ const auto upper = std::upper_bound(
+ keyframes.begin(), keyframes.end(), snapshot_.time_s,
+ [](double time_s, const EnvironmentKeyframeDefinition& keyframe) {
+ return time_s < keyframe.time_s;
+ });
+ const std::size_t next = upper == keyframes.end()
+ ? keyframes.size() - 1
+ : static_cast<std::size_t>(upper - keyframes.begin());
+ const std::size_t current = upper == keyframes.end() ? next : (next == 0 ? 0 : next - 1);
+ const auto& from = keyframes[current];
+ const auto& to = keyframes[next];
+ const double duration_s = to.time_s - from.time_s;
+ const double blend = duration_s > 1e-9
+ ? std::clamp((snapshot_.time_s - from.time_s) / duration_s, 0.0, 1.0)
+ : 0.0;
+ const auto lerp = [blend](double a, double b) { return a + (b - a) * blend; };
+ snapshot_.environment = {
+ lerp(from.wetness, to.wetness),
+ lerp(from.visibility, to.visibility),
+ lerp(from.daylight, to.daylight),
+ current,
+ next,
+ blend,
+ };
+ result_.peak_wetness = std::max(result_.peak_wetness, snapshot_.environment.wetness);
+ result_.min_visibility = std::min(result_.min_visibility, snapshot_.environment.visibility);
+}
+
+double MissionSimulation::environment_grip_multiplier(const std::string& material) const {
+ const auto& keyframes = level_.environment_keyframes;
+ if (keyframes.empty())
+ return 1.0;
+ const auto value = [&](std::size_t index) {
+ const auto found = keyframes[index].material_grip.find(material);
+ return found == keyframes[index].material_grip.end() ? 1.0 : found->second;
+ };
+ const double from = value(snapshot_.environment.keyframe_index);
+ const double to = value(snapshot_.environment.next_keyframe_index);
+ return from + (to - from) * snapshot_.environment.blend;
+}
+
+double MissionSimulation::total_mass_kg() const {
+ return robot_definition_.mass_kg + payload_.mass_kg;
+}
+
+double MissionSimulation::combined_center_height_m() const {
+ return std::max(0.05,
+ (robot_definition_.mass_kg * robot_definition_.center_of_mass_height_m +
+ payload_.first_moment_kgm) /
+ std::max(0.5, total_mass_kg()));
+}
+
+double MissionSimulation::combined_yaw_inertia_kgm2() const {
+ return robot_definition_.yaw_inertia_kgm2 +
+ payload_.mass_kg * robot_definition_.collision_radius_m * robot_definition_.collision_radius_m;
+}
+
+void MissionSimulation::synchronize_payload_dynamics() {
+ const sim::ChassisBodyDynamics dynamics{total_mass_kg(), combined_yaw_inertia_kgm2()};
+ if (chassis_)
+ chassis_->set_body_dynamics(dynamics);
+ if (platform_)
+ platform_->update_load(dynamics.mass_kg, combined_center_height_m(),
+ dynamics.yaw_inertia_kgm2);
+ terrain_capability_.mass_kg = dynamics.mass_kg;
+ const double support_width = chassis_caps_.geometry.support_width_m;
+ terrain_capability_.max_cross_slope_rad =
+ std::atan2(support_width * 0.5, combined_center_height_m()) * 0.98;
+ snapshot_.payload = payload_;
+ result_.collected_items = payload_.item_count;
+ result_.collected_value = payload_.value;
+ result_.final_payload_mass_kg = payload_.mass_kg;
+ result_.final_payload_cog_height_m = payload_.cog_height_m;
+}
+
+void MissionSimulation::collect_payload(const GoalStep& goal) {
+ if (goal.action != "collect" || goal.item_count <= 0 || goal.item_mass_kg <= 0.0)
+ return;
+ const std::string id = goal.id.empty() ? goal.marker : goal.id;
+ payload_.mass_kg += goal.item_mass_kg;
+ payload_.first_moment_kgm += goal.item_mass_kg * goal.item_cog_height_m;
+ payload_.cog_height_m = payload_.first_moment_kgm / payload_.mass_kg;
+ payload_.item_count += goal.item_count;
+ payload_.value += goal.item_value;
+ const double previous_collected_mass = payload_.collected_mass_kg;
+ payload_.integrity = (payload_.integrity * previous_collected_mass + goal.item_mass_kg) /
+ (previous_collected_mass + goal.item_mass_kg);
+ payload_.collected_mass_kg += goal.item_mass_kg;
+ payload_.fragility_mass_sum += goal.item_mass_kg * goal.item_fragility;
+ payload_.history.push_back({id, snapshot_.time_s, goal.item_count, goal.item_mass_kg,
+ goal.item_cog_height_m, goal.item_value, goal.item_fragility});
+ synchronize_payload_dynamics();
+}
+
+bool MissionSimulation::update_payload_integrity(const sim::DiffState& before,
+ const sim::DiffState& after, double lateral_accel_mps2, double contact_impulse_Ns) {
+ if (payload_.collected_mass_kg <= 1e-9)
+ return true;
+ const double forward_accel_mps2 = (after.v - before.v) / fixed_step_s;
+ const double raw_shock_mps2 = std::hypot(forward_accel_mps2, lateral_accel_mps2);
+ // Fruit sits in a tray rather than at an ideal rigid-body point. A 120 ms
+ // first-order mount response rejects fixed-step contact chatter while keeping
+ // braking, bumps and collisions in the measured cargo acceleration.
+ const double filter_alpha = 1.0 - std::exp(-fixed_step_s / 0.12);
+ filtered_payload_shock_mps2_ +=
+ (raw_shock_mps2 - filtered_payload_shock_mps2_) * filter_alpha;
+ const double shock_mps2 = filtered_payload_shock_mps2_;
+ const double jerk_mps3 = payload_shock_initialized_
+ ? std::abs(shock_mps2 - previous_payload_shock_mps2_) / fixed_step_s
+ : 0.0;
+ previous_payload_shock_mps2_ = shock_mps2;
+ payload_shock_initialized_ = true;
+ payload_.max_shock_mps2 = std::max(payload_.max_shock_mps2, shock_mps2);
+ payload_.max_jerk_mps3 = std::max(payload_.max_jerk_mps3, jerk_mps3);
+
+ const double fragility = std::clamp(
+ payload_.fragility_mass_sum / payload_.collected_mass_kg, 0.0, 1.0);
+ const double shock_excess = std::max(0.0, shock_mps2 - 4.0);
+ const double jerk_excess = std::max(0.0, jerk_mps3 - 24.0);
+ const double roll_excess = std::max(0.0, snapshot_.rollover_risk - 0.55);
+ double damage = fragility * fixed_step_s *
+ (0.001 * shock_excess * shock_excess + 0.00002 * jerk_excess + 0.02 * roll_excess);
+ damage += fragility * 0.008 * std::max(0.0, contact_impulse_Ns - 4.0);
+ payload_.integrity = std::clamp(payload_.integrity - damage, 0.0, 1.0);
+ snapshot_.payload = payload_;
+ result_.cargo_integrity = payload_.integrity;
+ return payload_.integrity >= 0.25;
+}
+
 const char* MissionSimulation::physics_backend_name() const {
  return physics_mode_name(physics_mode_);
 }
 
 void MissionSimulation::initialize_rigid_physics() {
- physics_scene_.reset();
+ platform_.reset();
  if (physics_mode_ == PhysicsMode::Domain) {
  return;
  }
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
- const double total_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double center_height =
- std::max(0.05, (robot_definition_.mass_kg * robot_definition_.collision_height_m * 0.5 +
- level_.payload_mass_kg * level_.payload_cog_height_m) /
- std::max(0.5, total_mass));
- physics_scene_ = std::make_unique<PhysicsScene>(map_definition_, level_, robot_definition_,
+ platform_ = std::make_unique<sim::platform::SimulatedPlatform>(map_definition_, level_, robot_definition_,
  chassis_caps_, terrain_, sim::Vec2{spawn.x, spawn.y}, spawn.theta,
- total_mass, center_height);
+ total_mass_kg(), combined_center_height_m(), combined_yaw_inertia_kgm2());
 }
 
 void MissionSimulation::initialize_frame_tree() {
@@ -291,18 +443,13 @@ void MissionSimulation::update_frame_tree() {
  estimation_system_.map_from_odom_heading_rad()),
  });
  const auto odom_position = estimation_system_.odometry_position();
+ const auto estimated_ground = terrain_.sample(estimation_system_.state().position);
  frame_tree_.set_transform("odom", "base_footprint", {
- {odom_position.x, odom_position.y, 0.0},
+ {odom_position.x, odom_position.y, estimated_ground.height_m},
  sim::physics::quaternion_from_euler(0.0, 0.0,
  estimation_system_.odometry_heading_rad()),
  });
- const double total_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double center_height =
- std::max(0.05, (robot_definition_.mass_kg * robot_definition_.collision_height_m * 0.5 +
- level_.payload_mass_kg * level_.payload_cog_height_m) /
- std::max(0.5, total_mass));
- const double base_height = snapshot_.robot_height_m - center_height *
- std::cos(snapshot_.robot_roll_rad) * std::cos(snapshot_.robot_pitch_rad);
+ const double base_height = snapshot_.robot_height_m - estimated_ground.height_m;
  frame_tree_.set_transform("base_footprint", "base_link", {
  {0.0, 0.0, base_height},
  sim::physics::quaternion_from_euler(snapshot_.robot_roll_rad,
@@ -316,10 +463,18 @@ void MissionSimulation::update_frame_tree() {
  if (mount == robot_definition_.mounts.end())
  continue;
  frame_tree_.set_transform("base_link", mount->frame_id, {
- {mount->position_m.x, mount->position_m.y, mount->position_m.z},
+ actuation.base_from_link
+ ? actuation.base_from_link->translation_m
+ : sim::physics::Vec3{mount->position_m.x, mount->position_m.y, mount->position_m.z},
+ actuation.base_from_link
+ ? actuation.base_from_link->rotation
+ : sim::physics::quaternion_multiply(
+ sim::physics::quaternion_from_euler(0.0, 0.0, actuation.yaw_rad),
+ sim::physics::quaternion_multiply(
  sim::physics::quaternion_from_euler(mount->rotation_deg.x * kDegreesToRadians,
  mount->rotation_deg.y * kDegreesToRadians,
- mount->rotation_deg.z * kDegreesToRadians + actuation.yaw_rad),
+ mount->rotation_deg.z * kDegreesToRadians),
+ sim::physics::quaternion_from_euler(0.0, 0.0, actuation.roll_rad))),
  });
  }
 }
@@ -370,10 +525,29 @@ void MissionSimulation::build_world() {
    equipped_motor ? equipped_motor->stall_force_N : robot_definition_.motor.stall_force_N;
  const double motor_free =
    equipped_motor ? equipped_motor->free_speed_mps : robot_definition_.motor.free_speed_mps;
- const double simulation_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double wheel_mass = std::max(0.5, simulation_mass / 2.0);
+ const sim::WheelControllerDesign controller_design{
+ equipped_motor ? equipped_motor->controller_bandwidth_radps
+ : robot_definition_.motor.controller_bandwidth_radps,
+ equipped_motor ? equipped_motor->controller_integral_time_s
+ : robot_definition_.motor.controller_integral_time_s,
+ equipped_motor ? equipped_motor->controller_derivative_time_s
+ : robot_definition_.motor.controller_derivative_time_s,
+ };
+ const double simulation_mass = total_mass_kg();
+ double wheel_mass = std::max(0.05, robot_definition_.motor.wheel_equiv_mass_kg);
+ if (robot_definition_.drive_type == "differential") {
+ // A wheel-speed loop accelerates the wheel/gear train plus the chassis.
+ // Common mode reflects M/2 into each wheel; differential mode reflects
+ // 2*Iz/track^2. Tuning only against rotor inertia makes yaw response far
+ // slower than the stated closed-loop bandwidth.
+ const double common_mode_mass = simulation_mass * 0.5;
+ const double differential_mode_mass = 2.0 * combined_yaw_inertia_kgm2() /
+ (robot_definition_.wheel_base_m * robot_definition_.wheel_base_m);
+ wheel_mass += std::max(common_mode_mass, differential_mode_mass);
+ }
  const sim::WheelPidGains wheel_gains =
-   sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax);
+ sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax,
+ controller_design);
  // Chassis construction goes through the factory registry (hw/chassis):
  // new drive.type implementations register themselves; mission only
  // translates robot JSON + equipped specs into neutral build params.
@@ -390,11 +564,15 @@ void MissionSimulation::build_world() {
  chassis_params.pwm_limit = robot_definition_.motor.pwm_limit;
  chassis_params.integral_limit = robot_definition_.motor.integral_limit;
  chassis_params.wheel_equiv_mass_kg = robot_definition_.motor.wheel_equiv_mass_kg;
+ chassis_params.coulomb_smoothing_speed_mps = equipped_motor
+ ? equipped_motor->coulomb_smoothing_speed_mps
+ : robot_definition_.motor.coulomb_smoothing_speed_mps;
+ chassis_params.viscous_drag_N_per_mps = equipped_motor
+ ? equipped_motor->viscous_drag_N_per_mps
+ : robot_definition_.motor.viscous_drag_N_per_mps;
  chassis_params.encoder_counts_per_revolution = robot_definition_.encoder.counts_per_revolution;
  chassis_params.mass_kg = simulation_mass;
- chassis_params.yaw_inertia_kgm2 =
-   robot_definition_.yaw_inertia_kgm2 +
-   level_.payload_mass_kg * robot_definition_.collision_radius_m * robot_definition_.collision_radius_m;
+ chassis_params.yaw_inertia_kgm2 = combined_yaw_inertia_kgm2();
  chassis_params.max_steer_rad = robot_definition_.steering.max_steer_rad;
  chassis_params.max_steer_rate_radps = robot_definition_.steering.max_steer_rate_radps;
  chassis_params.servo_response_s = robot_definition_.steering.servo_response_s;
@@ -403,11 +581,52 @@ void MissionSimulation::build_world() {
  chassis_params.behavior_w_max = params.w_max;
  chassis_params.behavior_accel_max = params.accel_max;
  chassis_params.max_yaw_accel_radps2 = robot_definition_.max_yaw_accel_radps2;
- for (const auto& mount_id : robot_definition_.passive_support_mounts) {
+ // Resolve the support footprint from the assembled rolling contacts. Robot
+ // data is the source of truth for where wheels touch; collision radius is a
+ // body envelope and must not masquerade as a stability footprint.
+ std::vector<const MountDefinition*> rolling_contacts;
+ const auto tire_slot_definition = std::find_if(
+ robot_definition_.slots.begin(), robot_definition_.slots.end(),
+ [](const auto& slot) { return slot.slot == "tires"; });
+ if (tire_slot_definition != robot_definition_.slots.end()) {
+ double drive_axle_x_sum = 0.0;
+ std::size_t drive_wheel_count = 0;
+ for (const auto& mount_id : tire_slot_definition->mounts) {
  const auto mount = std::find_if(robot_definition_.mounts.begin(), robot_definition_.mounts.end(),
  [&](const auto& candidate) { return candidate.id == mount_id; });
- if (mount != robot_definition_.mounts.end())
- chassis_params.passive_casters.push_back({mount->position_m.x, mount->position_m.y});
+ if (mount == robot_definition_.mounts.end())
+ continue;
+ rolling_contacts.push_back(&*mount);
+ if (robot_definition_.drive_type == "differential" && mount->motion == "wheel") {
+ drive_axle_x_sum += mount->position_m.x;
+ ++drive_wheel_count;
+ }
+ }
+ if (drive_wheel_count > 0)
+ chassis_params.drive_axle_x_m = drive_axle_x_sum / static_cast<double>(drive_wheel_count);
+ }
+ for (const auto& support : robot_definition_.passive_supports) {
+ const auto mount = std::find_if(robot_definition_.mounts.begin(), robot_definition_.mounts.end(),
+ [&](const auto& candidate) { return candidate.id == support.steer_mount; });
+ if (mount != robot_definition_.mounts.end()) {
+ rolling_contacts.push_back(&*mount);
+ }
+ }
+ if (rolling_contacts.size() >= 2) {
+ double min_x = rolling_contacts.front()->position_m.x;
+ double max_x = min_x;
+ double min_y = rolling_contacts.front()->position_m.y;
+ double max_y = min_y;
+ for (const auto* mount : rolling_contacts) {
+ min_x = std::min(min_x, mount->position_m.x);
+ max_x = std::max(max_x, mount->position_m.x);
+ min_y = std::min(min_y, mount->position_m.y);
+ max_y = std::max(max_y, mount->position_m.y);
+ }
+ if (max_x - min_x > 0.05)
+ chassis_params.support_length_m = max_x - min_x;
+ if (max_y - min_y > 0.05)
+ chassis_params.support_width_m = max_y - min_y;
  }
  // Builtin registration is explicit at the composition root (idempotent):
  // archive linkers drop unreferenced self-registering objects, so static
@@ -439,14 +658,13 @@ void MissionSimulation::build_world() {
  chassis_caps_.geometry.max_steer_rad, map_definition_.grid_resolution_m)
  : autonomy::default_global_planner());
  }
- const double requested_clearance = property(behavior_, "safe_clearance_m");
- const bool has_dynamic_actors =
- std::any_of(map_definition_.actors.begin(), map_definition_.actors.end(),
- [&](const auto& actor) { return active_in_level(actor.active_in, level_id_); });
- const double planning_clearance =
- robot_definition_.collision_radius_m +
- std::clamp(requested_clearance * (has_dynamic_actors ? 0.80 : 0.45), 0.40, 0.75) +
- chassis_caps_.planning_clearance_margin_m;
+ // The global costmap reserves the physical envelope plus a small numerical
+ // margin. Policy clearance belongs to the local planner, which can trade it
+ // against narrow passages and moving objects continuously. Baking the whole
+ // policy distance into a coarse binary grid erased valid goal regions and
+ // made a nominally cautious build unable to dock.
+ const double planning_clearance = robot_definition_.collision_radius_m + 0.20 +
+ chassis_caps_.planning_clearance_margin_m + level_.planning_localization_margin_m;
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
@@ -505,34 +723,37 @@ void MissionSimulation::build_world() {
 void MissionSimulation::plan_route() {
  planned_route_.clear();
  route_feasible_ = true;
+ return_reserve_failure_ = false;
  if (snapshot_.status == MissionStatus::Ready)
  result_.astar_expanded = 0;
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
  const Pose start = snapshot_.status == MissionStatus::Ready
  ? spawn
  : Pose{snapshot_.robot.x, snapshot_.robot.y, snapshot_.robot.theta};
- const GoalStep* next = active_goal();
- if (!next) {
- route_feasible_ = false;
- return;
- }
- const auto& goal = map_definition_.markers.at(next->marker);
  const auto* equipped_motor = resolved_build_.motor();
  const double stall_force =
    equipped_motor ? equipped_motor->stall_force_N : robot_definition_.motor.stall_force_N;
  const double drive_units = chassis_caps_.drive_force_units;
  const double support_width = chassis_caps_.geometry.support_width_m;
- const double total_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double center_height =
-   std::max(0.05, (robot_definition_.mass_kg * robot_definition_.collision_height_m * 0.5 +
-                   level_.payload_mass_kg * level_.payload_cog_height_m) /
-                    std::max(0.5, total_mass));
  terrain_capability_ = {};
- terrain_capability_.mass_kg = robot_definition_.mass_kg + level_.payload_mass_kg;
+ terrain_capability_.mass_kg = total_mass_kg();
  terrain_capability_.available_drive_force_N = stall_force * drive_units;
  terrain_capability_.friction_mu = resolved_build_.tires().friction_mu;
- terrain_capability_.max_cross_slope_rad = std::atan2(support_width * 0.5, center_height) * 0.98;
- std::vector<autonomy::PlanningPose> waypoints{{as_vec(start), start.theta}, {as_vec(goal), goal.theta}};
+ terrain_capability_.max_cross_slope_rad =
+ std::atan2(support_width * 0.5, combined_center_height_m()) * 0.98;
+
+ select_next_goal(start);
+ const GoalStep* next = active_goal();
+ if (!next) {
+ route_feasible_ = false;
+ return;
+ }
+ const auto active_index = goal_system_.active_goal_index();
+ snapshot_.active_goal_index = active_index.value_or(std::numeric_limits<std::size_t>::max());
+ snapshot_.active_goal_id = next->id.empty() ? next->marker : next->id;
+ const auto& goal = map_definition_.markers.at(next->marker);
+ std::vector<autonomy::PlanningPose> waypoints{
+ {as_vec(start), start.theta}, {as_vec(goal), goal.theta, next->radius_m}};
  auto plan = planning_system_.plan(*planning_map_, waypoints,
  [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
  result_.astar_expanded += plan.expanded;
@@ -542,6 +763,112 @@ void MissionSimulation::plan_route() {
  }
  planned_route_ = std::move(plan.path);
  control_system_->reset();
+}
+
+void MissionSimulation::select_next_goal(const Pose& start) {
+ if (goal_system_.active_goal_index())
+ return;
+ const auto eligible = goal_system_.eligible_goals(level_.objective);
+ if (eligible.empty())
+ return;
+
+ std::optional<std::size_t> best_index;
+ double best_score = std::numeric_limits<double>::infinity();
+ std::string best_id;
+ std::vector<std::size_t> reserve_rejected;
+ bool terminal_out_of_time = false;
+ const auto terminal = std::find_if(level_.objective.goals.begin(), level_.objective.goals.end(),
+ [](const GoalStep& goal) { return goal.action == "complete"; });
+ struct RouteCost {
+ double distance_m{0.0};
+ double traversal_cost{0.0};
+ double worst_multiplier{1.0};
+ };
+ const auto route_cost = [this](const std::vector<sim::RoutePoint>& path) {
+ RouteCost cost;
+ for (std::size_t point = 1; point < path.size(); ++point) {
+ const auto from = path[point - 1].position;
+ const auto to = path[point].position;
+ const double multiplier = navigation_traversal_cost(from, to);
+ const double segment_distance = distance(from, to);
+ cost.distance_m += segment_distance;
+ cost.traversal_cost += segment_distance * multiplier;
+ cost.worst_multiplier = std::max(cost.worst_multiplier, multiplier);
+ }
+ return cost;
+ };
+ const auto ordering_algorithms = autonomy::TaskOrderingRegistry::with_builtins();
+ const auto& ordering_policy = catalog_.task_policy(level_.objective.task_policy);
+ for (const std::size_t index : eligible) {
+ const auto& candidate = level_.objective.goals[index];
+ const auto& marker = map_definition_.markers.at(candidate.marker);
+ const auto plan = planning_system_.plan(*planning_map_,
+ {{as_vec(start), start.theta}, {as_vec(marker), marker.theta, candidate.radius_m}},
+ [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
+ result_.astar_expanded += plan.expanded;
+ if (!plan.ok || plan.path.empty())
+ continue;
+ const auto candidate_cost = route_cost(plan.path);
+ const double planning_speed = std::max(0.3, property(behavior_, "cruise_mps") * 0.75);
+ if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
+ terminal != level_.objective.goals.end()) {
+ const auto& home = map_definition_.markers.at(terminal->marker);
+ const auto return_plan = planning_system_.plan(*planning_map_,
+ {{as_vec(marker), marker.theta}, {as_vec(home), home.theta, terminal->radius_m}},
+ [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
+ result_.astar_expanded += return_plan.expanded;
+ if (!return_plan.ok || return_plan.path.empty())
+ continue;
+ const double return_cost = route_cost(return_plan.path).traversal_cost;
+ const double expected_finish_s = snapshot_.time_s +
+ (candidate_cost.traversal_cost + return_cost) / planning_speed + level_.objective.return_reserve_s;
+ if (expected_finish_s > level_.objective.time_limit_s) {
+ reserve_rejected.push_back(index);
+ continue;
+ }
+ }
+ if (candidate.action == "complete" && level_.objective.return_reserve_s > 0.0 &&
+ snapshot_.time_s + candidate_cost.traversal_cost / planning_speed > level_.objective.time_limit_s) {
+ terminal_out_of_time = true;
+ continue;
+ }
+ double score = candidate_cost.traversal_cost;
+ if (candidate.action != "complete") {
+ score = ordering_algorithms.score(ordering_policy.algorithm, ordering_policy.parameters,
+ {candidate_cost.distance_m, candidate_cost.traversal_cost,
+ candidate_cost.worst_multiplier, candidate.item_value});
+ }
+ const std::string id = candidate.id.empty() ? candidate.marker : candidate.id;
+ if (!best_index || score < best_score - 1e-9 ||
+ (std::abs(score - best_score) <= 1e-9 && id < best_id)) {
+ best_index = index;
+ best_score = score;
+ best_id = id;
+ }
+ }
+ if (best_index)
+ goal_system_.activate(level_.objective, *best_index);
+ else if (!reserve_rejected.empty()) {
+ for (const std::size_t index : reserve_rejected) {
+ if (!goal_system_.abandon(level_.objective, index))
+ continue;
+ const auto& goal = level_.objective.goals[index];
+ record_event("task-abandoned",
+ catalog_.trf("event.task_abandoned", {goal.label}));
+ }
+ snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
+ select_next_goal(start);
+ } else if (terminal_out_of_time) {
+ return_reserve_failure_ = true;
+ }
+}
+
+void MissionSimulation::finish_route_failure() {
+ if (return_reserve_failure_) {
+ finish_failure("return-reserve", catalog_.tr("event.return_reserve_failure"));
+ } else {
+ finish_failure("no-feasible-route", catalog_.tr("event.no_feasible_route"));
+ }
 }
 
 void MissionSimulation::start() {
@@ -565,7 +892,7 @@ void MissionSimulation::start() {
  record_event(endless_mode_ ? "field-session-start" : "mission-start",
  endless_mode_ ? catalog_.tr("event.field_session_start") : catalog_.tr("event.mission_start"));
  if (!route_feasible_ && !endless_mode_) {
- finish_failure("no-feasible-route", catalog_.tr("event.no_feasible_route"));
+ finish_route_failure();
  }
 }
 
@@ -681,6 +1008,19 @@ void MissionSimulation::step() {
  snapshot_.time_s += fixed_step_s;
  result_.time_s = snapshot_.time_s;
 
+ const std::size_t previous_environment_stage = snapshot_.environment.keyframe_index;
+ update_environment();
+ if (!endless_mode_ && snapshot_.environment.keyframe_index != previous_environment_stage) {
+ const auto& stage = level_.environment_keyframes[snapshot_.environment.keyframe_index];
+ record_event("environment-changed",
+ catalog_.trf("event.environment_changed", {stage.label}));
+ plan_route();
+ if (!route_feasible_) {
+ finish_route_failure();
+ return;
+ }
+ }
+
  if (endless_mode_) {
  const auto world_transitions =
  world_activity_system_.update(snapshot_.time_s, fixed_step_s, map_definition_,
@@ -734,15 +1074,27 @@ void MissionSimulation::step() {
  if (arrival) {
   const auto& goal = arrival->goal;
   snapshot_.goals_reached = goal_system_.goals_reached();
+ snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
+ snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
+ const auto active_index = goal_system_.active_goal_index();
+ snapshot_.active_goal_index = active_index.value_or(std::numeric_limits<std::size_t>::max());
+ snapshot_.active_goal_id = active_index
+ ? (level_.objective.goals[*active_index].id.empty()
+ ? level_.objective.goals[*active_index].marker
+ : level_.objective.goals[*active_index].id)
+ : std::string{};
   if (arrival->mission_complete) {
    finish_success();
   } else if (goal.action == "pickup") {
    snapshot_.via_reached = true;
    result_.via_reached = true;
-   const std::string next_label = snapshot_.goals_reached < level_.objective.goals.size()
-                                    ? level_.objective.goals[snapshot_.goals_reached].label
-                                    : level_.objective.goal_label;
+ const GoalStep* next_goal = active_goal();
+ const std::string next_label = next_goal ? next_goal->label : level_.objective.goal_label;
    record_event("via-reached", catalog_.trf("event.via_reached", {goal.label, next_label}));
+ } else if (goal.action == "collect") {
+ collect_payload(goal);
+ record_event("item-collected", catalog_.trf("event.item_collected",
+ {goal.label, std::to_string(goal.item_count)}));
   } else if (goal.action == "recharge") {
    // Pass-through goal: top up the battery account, keep driving. Net energy
    // never goes negative; the top-up amount is content, the accounting here.
@@ -776,7 +1128,7 @@ void MissionSimulation::step() {
  if (!arrival->mission_complete && snapshot_.status == MissionStatus::Running) {
  plan_route();
  if (!route_feasible_)
- finish_failure("no-feasible-route", catalog_.tr("event.no_feasible_route"));
+ finish_route_failure();
  }
  }
  if (!endless_mode_ && snapshot_.status == MissionStatus::Running &&
@@ -847,8 +1199,8 @@ void MissionSimulation::update_actors() {
     agent.visual_ref_radius_m,
   });
  }
- if (physics_scene_) {
- std::vector<PhysicsActorState> actors;
+ if (platform_) {
+ std::vector<sim::platform::PhysicsActorState> actors;
  actors.reserve(actual_actors_.size());
  for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
  actors.push_back({index < agents_.size() ? agents_[index].id : std::to_string(index),
@@ -858,7 +1210,7 @@ void MissionSimulation::update_actors() {
  const auto& incident = snapshot_.world_activity.incident;
  actors.push_back({"field-incident", incident.position, {}, incident.radius_m});
  }
- physics_scene_->sync_actors(actors);
+ platform_->sync_actors(actors);
  }
  refresh_dynamic_obstacles();
 }
@@ -872,14 +1224,24 @@ void MissionSimulation::scan_environment() {
  truth.dynamic_objects = actual_actors_;
  sim::LidarConfig lidar_config;
  lidar_config.rays = sensor->rays;
+ lidar_config.min_range_m = sensor->min_range_m;
  const double visibility = endless_mode_ ? snapshot_.world_activity.visibility : 1.0;
  lidar_config.range_m = sensor->range_m * (0.55 + 0.45 * visibility);
  lidar_config.scan_hz = sensor->scan_hz;
+ lidar_config.latency_s = sensor->latency_s;
  lidar_config.noise = {
  sensor->noise_sigma_m,
  sensor->range_bias_m,
  sensor->range_resolution_m,
  sensor->dropout_probability,
+ };
+ lidar_config.returns = {
+ sensor->terrain_reflectivity,
+ sensor->obstacle_reflectivity,
+ sensor->actor_reflectivity,
+ 0.50,
+ sensor->incidence_floor,
+ sensor->distance_attenuation_per_m2,
  };
  if (endless_mode_) {
  lidar_config.noise.range_stddev_m += (1.0 - visibility) * 0.025;
@@ -897,12 +1259,12 @@ void MissionSimulation::scan_environment() {
  lidar_config.yaw_in_base_rad = mount->rotation_deg.z * sim::kPi / 180.0;
  }
  }
- auto produced_observation = physics_scene_
+ auto produced_observation = platform_
  ? sensor_system_->capture_lidar(
  truth, snapshot_.time_s, lidar_config,
- physics_scene_->scan_lidar(sensor->rays, lidar_config.range_m,
+ platform_->scan_lidar(sensor->rays, lidar_config.range_m,
  estimation_system_.state().position, estimation_system_.state().heading_rad,
- snapshot_.time_s, 1.0 / sensor->scan_hz))
+ snapshot_.time_s, 1.0 / sensor->scan_hz, lidar_config.returns))
  : sensor_system_->capture_lidar(truth, snapshot_.time_s, lidar_config);
  if (!runtime_channel_ ||
  !runtime_channel_->platform().publish_observation(std::move(produced_observation))) {
@@ -1067,7 +1429,7 @@ void MissionSimulation::refresh_endless_route() {
  const double target_heading = std::atan2(target.y - start.y, target.x - start.x);
  const std::vector<autonomy::PlanningPose> waypoints{
  {start, snapshot_.robot.theta},
- {target, target_heading},
+ {target, target_heading, 0.85},
  };
  auto plan = planning_system_.plan(*planning_map_, waypoints,
  [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
@@ -1132,7 +1494,7 @@ void MissionSimulation::decide_control() {
  ? as_vec(map_definition_.markers.at(strategy_goal->marker))
  : as_vec(map_definition_.markers.at(level_.objective.goal));
  strategy_observation.rollover_risk = snapshot_.rollover_risk;
- strategy_observation.traction_saturated = snapshot_.traction_saturated;
+strategy_observation.traction_slip_observed = snapshot_.traction_slip_observed;
  strategy_observation.goals_reached = static_cast<int>(snapshot_.goals_reached);
  for (const auto& hit : snapshot_.lidar_hits) {
  strategy_observation.visible_clearance_m = std::min(
@@ -1142,6 +1504,16 @@ void MissionSimulation::decide_control() {
  sim::StrategySafetyContext strategy_context;
  strategy_context.fallback_target = target;
  strategy_context.map_size = map_definition_.size_m;
+ strategy_context.clearance_hold_enabled = custom_high_level_policy_;
+ const auto strategy_terrain = terrain_.sample({nav_x, nav_y});
+ const bool material_terrain_load =
+ std::abs(sim::longitudinal_grade(strategy_terrain, nav_heading)) >= 0.12 ||
+ std::abs(sim::lateral_grade(strategy_terrain, nav_heading)) >= 0.12;
+ // A custom upper policy gets the complete safety shield. The validated
+ // route baseline already owns flat-ground speed and obstacle arbitration;
+ // its residual-based relief is reserved for a mapped slope, where reducing
+ // translation preserves differential steering authority under motor load.
+ strategy_context.traction_relief_enabled = custom_high_level_policy_ || material_terrain_load;
  strategy_context.subgoal_is_safe = [this, nav_x, nav_y](sim::Vec2 subgoal) {
  const double length = distance({nav_x, nav_y}, subgoal);
  const int samples = std::max(1, static_cast<int>(std::ceil(length / 0.25)));
@@ -1161,14 +1533,11 @@ void MissionSimulation::decide_control() {
  return true;
  };
  const auto strategy_request = high_level_policy_->decide(strategy_observation);
- if (custom_high_level_policy_) {
+ // Speed and stability constraints belong to the strategy boundary,
+ // regardless of who produced the request. Context flags avoid duplicating
+ // obstacle arbitration already owned by the validated local planner.
  snapshot_.strategy =
  sim::apply_strategy_safety(strategy_request, strategy_observation, strategy_context);
- } else {
- // The built-in planner/controller stack is the validated fallback itself.
- // The external-policy shield wraps plug-ins without perturbing that baseline.
- snapshot_.strategy = {strategy_request, strategy_request, false, {}};
- }
  snapshot_.strategy_policy = high_level_policy_->name();
  if (snapshot_.strategy.applied.has_subgoal)
  target = snapshot_.strategy.applied.subgoal;
@@ -1198,16 +1567,31 @@ void MissionSimulation::decide_control() {
  // so behavior stays consistent across the tracking/docking seam.
  {
  const GoalStep* active = active_goal();
- const auto goal = active
+ sim::Vec2 goal = active
  ? as_vec(map_definition_.markers.at(active->marker))
  : as_vec(map_definition_.markers.at(level_.objective.goal));
+ double arrival_radius = active ? active->radius_m : level_.objective.arrive_tolerance_m;
+ if (endless_mode_) {
+ const auto& intent = field_operator_system_.intent();
+ if (intent.active) {
+ goal = intent.target;
+ arrival_radius = 0.25;
+ } else if (dispatch_has_priority(
+ field_dispatch_system_.state(), snapshot_.world_activity.incident)) {
+ goal = field_dispatch_system_.state().target;
+ arrival_radius = 0.85;
+ } else if (snapshot_.world_activity.incident.active) {
+ goal = snapshot_.world_activity.incident.position;
+ arrival_radius = std::max(0.25, snapshot_.world_activity.incident.radius_m);
+ }
+ }
   const double dist_goal = distance({nav_x, nav_y}, goal);
+ const double tracking_arrival_radius = std::min(arrival_radius, 0.25);
   // Bounded: far exhaustion means the follower lost the path, not that the
   // goal is near; beelining across the map without waypoints risks walls.
   // (An unbounded trial stranded swift tracks in a reversing cycle instead
   // of docking — evidence for curation, not for a longer leash.)
- const double arrival_radius = active ? active->radius_m : level_.objective.arrive_tolerance_m;
- if (route_control.reached && dist_goal > arrival_radius && dist_goal < 3.0) {
+ if (route_control.reached && dist_goal > tracking_arrival_radius && dist_goal < 3.0) {
    const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
    if (!control_system_->reversing() && std::abs(dock_err) > 1.4)
     control_system_->set_reversing(true);
@@ -1578,40 +1962,9 @@ void MissionSimulation::decide_control() {
  }
  if (!dwa.best.valid) {
   held_command_ = {0.0, 0.0};
-  // A stop is unsafe when a tracked object is already moving into the wait
-  // pose. Execute a bounded minimum-risk escape in free space instead of
-  // freezing and allowing the obstacle to run over the robot.
-  for (const auto& track : known_tracks) {
-   const sim::Vec2 away{nav_x - track.state.p.x, nav_y - track.state.p.y};
-   const double center_distance = std::hypot(away.x, away.y);
-   if (center_distance < 1e-6) {
-    continue;
-   }
-   const double closing_speed = (track.state.v.x * away.x + track.state.v.y * away.y) / center_distance;
-   const double clearance = center_distance - track.state.radius - robot_definition_.collision_radius_m;
-   if (closing_speed <= 0.05 || clearance > requested_clearance + 0.55) {
-    continue;
-   }
-   const sim::Vec2 forward{std::cos(nav_heading), std::sin(nav_heading)};
-   const double direction = forward.x * away.x + forward.y * away.y >= 0.0 ? 1.0 : -1.0;
-   const sim::Vec2 escape_point{
-     nav_x + forward.x * direction * 0.55,
-     nav_y + forward.y * direction * 0.55,
-   };
-   if (!planning_map_->isFree(escape_point.x, escape_point.y)) {
-    continue;
-   }
-   const double motion_heading = sim::wrap_angle(nav_heading + (direction < 0.0 ? sim::kPi : 0.0));
-   const double away_heading = std::atan2(away.y, away.x);
-   const double escape_error = sim::wrap_angle(away_heading - motion_heading);
-   held_command_ = {
-     direction * std::min(0.45, property(behavior_, "cruise_mps")),
- std::clamp(heading_kp_ * escape_error, -chassis_caps_.turn_command_limit(),
- chassis_caps_.turn_command_limit()),
-   };
-   record_event("emergency-escape", catalog_.tr("event.emergency_escape"), 1.0);
-   break;
-  }
+ // A local-planner failure enters the zero-speed safety state. A recovery
+ // planner needs its own dynamically validated trajectory and termination
+ // contract; an unverified steering heuristic must never bypass DWA.
   if (!snapshot_.waiting_for_clearance) {
    std::ostringstream waiting;
    waiting << std::fixed << std::setprecision(1) << nearest_actor;
@@ -1690,6 +2043,8 @@ void MissionSimulation::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
+ if (platform_)
+ chassis_->set_actuator_feedback(platform_->actuator_feedback());
  auto domain_candidate = chassis_->step(before, applied_command, fixed_step_s, ground_contact);
  const auto terrain_before = terrain_.sample({before.x, before.y});
  const double forward_grade = sim::longitudinal_grade(terrain_before, before.theta);
@@ -1701,16 +2056,24 @@ void MissionSimulation::apply_motion() {
   if (commanding_uphill && gravity_reversed_motion && std::abs(before.v) < 0.08) {
  domain_candidate.v = 0.0;
   }
- domain_candidate.x = before.x + domain_candidate.v * std::cos(domain_candidate.theta) * fixed_step_s;
- domain_candidate.y = before.y + domain_candidate.v * std::sin(domain_candidate.theta) * fixed_step_s;
+ domain_candidate.x = before.x +
+ (domain_candidate.v * std::cos(domain_candidate.theta) -
+ domain_candidate.lateral_v * std::sin(domain_candidate.theta)) * fixed_step_s;
+ domain_candidate.y = before.y +
+ (domain_candidate.v * std::sin(domain_candidate.theta) +
+ domain_candidate.lateral_v * std::cos(domain_candidate.theta)) * fixed_step_s;
  }
  const auto& motors = chassis_->telemetry();
- RigidVehicleState rigid_state;
+ sim::platform::RigidVehicleState rigid_state;
  bool have_rigid_state = false;
- if (physics_scene_) {
- rigid_state = physics_scene_->step(motors, ground_contact, fixed_step_s);
+ if (platform_) {
+ rigid_state = platform_->step(motors, ground_contact, fixed_step_s);
  have_rigid_state = true;
  snapshot_.rigid_contact_count = rigid_state.contact_count;
+ snapshot_.ground_contact_links = rigid_state.ground_contact_links;
+ snapshot_.max_drive_slip_ratio = rigid_state.max_drive_slip_ratio;
+ result_.max_drive_slip_ratio = std::max(result_.max_drive_slip_ratio,
+ rigid_state.max_drive_slip_ratio);
  result_.rigid_contacts += rigid_state.contact_count;
  if (physics_mode_ == PhysicsMode::BulletShadow) {
  snapshot_.shadow_position_error_m =
@@ -1718,7 +2081,7 @@ void MissionSimulation::apply_motion() {
  snapshot_.shadow_heading_error_rad =
  std::abs(sim::wrap_angle(domain_candidate.theta - rigid_state.planar.theta));
  const double domain_height = terrain_.sample({domain_candidate.x, domain_candidate.y}).height_m +
- robot_definition_.collision_height_m * 0.5;
+ robot_definition_.base_link_height_m;
  snapshot_.shadow_height_error_m = std::abs(domain_height - rigid_state.height_m);
  result_.max_shadow_position_error_m =
  std::max(result_.max_shadow_position_error_m, snapshot_.shadow_position_error_m);
@@ -1751,49 +2114,106 @@ void MissionSimulation::apply_motion() {
  snapshot_.control.right_speed_pid_p = motors.differential ? motors.right.pid_p : 0.0;
  snapshot_.control.right_speed_pid_i = motors.differential ? motors.right.pid_i : 0.0;
  snapshot_.control.right_speed_pid_d = motors.differential ? motors.right.pid_d : 0.0;
- // Shadow slip detection (upper-bound study): TRACKED ONLY. Differential
- // encoders cannot observe tread (lesson §5: they read body-twist-derived
- // wheel speeds), so the detector stays off there by design, not omission.
- // True body accel stands in for the IMU: perfect-IMU upper bound, labeled
- // as such. Encoder side is real quantized tread telemetry.
+ // Onboard-observable slip estimate. Articulated differential encoders now
+ // read physical joint motion, so both they and tracked drives have tread
+ // state independent of body motion. Candidate is the post-step body state;
+ // comparing against the previous snapshot keeps both accelerations on the
+ // same sample interval.
  if (chassis_caps_.tread_slip_observable) {
   const double tread_v = (snapshot_.control.left_measured_mps + snapshot_.control.right_measured_mps) / 2.0;
   if (slip_have_prev_) {
    const double encoder_accel = (tread_v - slip_prev_tread_v_) / fixed_step_s;
-   const double true_accel = (snapshot_.robot.v - slip_prev_body_v_) / fixed_step_s;
-   slip_detector_.step(encoder_accel, true_accel, fixed_step_s);
+ const double body_accel = (candidate.v - slip_prev_body_v_) / fixed_step_s;
+ slip_detector_.step(encoder_accel, body_accel, fixed_step_s);
    if (slip_detector_.episodes() > static_cast<int>(slip_episode_times_.size())) {
     slip_episode_times_.push_back(snapshot_.time_s);
    }
   }
   slip_prev_tread_v_ = tread_v;
-  slip_prev_body_v_ = snapshot_.robot.v;
+slip_prev_body_v_ = candidate.v;
   slip_have_prev_ = true;
  }
+ snapshot_.traction_slip_observed = slip_detector_.detected();
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
  snapshot_.control.steering_servo_present = motors.steering_servo_present;
  snapshot_.control.mount_actuations.clear();
+ const auto find_mount = [&](const std::string& id) -> const MountDefinition* {
+ const auto mount = std::find_if(robot_definition_.mounts.begin(), robot_definition_.mounts.end(),
+ [&](const auto& candidate_mount) { return candidate_mount.id == id; });
+ return mount == robot_definition_.mounts.end() ? nullptr : &*mount;
+ };
  const auto tire_slot = std::find_if(robot_definition_.slots.begin(), robot_definition_.slots.end(),
  [](const auto& slot) { return slot.slot == "tires"; });
  if (tire_slot != robot_definition_.slots.end()) {
- const std::size_t count = std::min(tire_slot->mounts.size(), motors.wheel_steer_count);
+ const std::size_t count = tire_slot->mounts.size();
  snapshot_.control.mount_actuations.reserve(
- count + std::min(robot_definition_.passive_support_mounts.size(),
- motors.passive_caster_steer_count));
+ count + 2 * robot_definition_.passive_supports.size());
  for (std::size_t index = 0; index < count; ++index) {
+ double speed_mps = 0.0;
+ if (motors.holonomic && index < motors.modules.size()) {
+ speed_mps = motors.modules[index].actual_mps;
+ } else if (robot_definition_.drive_type == "ackermann") {
+ speed_mps = motors.drive.actual_mps;
+ } else if (index == 0) {
+ speed_mps = motors.left.actual_mps;
+ } else if (index == 1) {
+ speed_mps = motors.right.actual_mps;
+ }
+ const auto* mount = find_mount(tire_slot->mounts[index]);
+ auto& roll = mount_roll_rad_[tire_slot->mounts[index]];
+ const auto physical_joint = physics_mode_ == PhysicsMode::Bullet && platform_ && mount
+ ? platform_->joint_state_for_child(mount->frame_id)
+ : std::nullopt;
+ if (physical_joint) {
+ roll = std::remainder(physical_joint->position_rad, 2.0 * sim::kPi);
+ } else if (mount && mount->rolling_radius_m > 0.0) {
+ roll = std::remainder(roll + speed_mps / mount->rolling_radius_m * fixed_step_s,
+ 2.0 * sim::kPi);
+ }
+ const double steer = index < motors.wheel_steer_count
+ ? motors.wheel_steer_rad[index]
+ : 0.0;
  snapshot_.control.mount_actuations.push_back(
- {tire_slot->mounts[index], motors.wheel_steer_rad[index]});
+ {tire_slot->mounts[index], steer, roll, std::nullopt});
  }
  }
- const std::size_t passive_count = std::min(robot_definition_.passive_support_mounts.size(),
- motors.passive_caster_steer_count);
- for (std::size_t index = 0; index < passive_count; ++index) {
+ for (const auto& support : robot_definition_.passive_supports) {
+ const auto* steer_mount = find_mount(support.steer_mount);
+ const auto* roll_mount = find_mount(support.roll_mount);
+ double steer = 0.0;
+ auto& roll = mount_roll_rad_[support.roll_mount];
+ const auto physical_steer = physics_mode_ == PhysicsMode::Bullet && platform_ && steer_mount
+ ? platform_->joint_state_for_child(steer_mount->frame_id)
+ : std::nullopt;
+ const auto physical_roll = physics_mode_ == PhysicsMode::Bullet && platform_ && roll_mount
+ ? platform_->joint_state_for_child(roll_mount->frame_id)
+ : std::nullopt;
+ if (physical_steer)
+ steer = std::remainder(physical_steer->position_rad, 2.0 * sim::kPi);
+ if (physical_roll) {
+ roll = std::remainder(physical_roll->position_rad, 2.0 * sim::kPi);
+ }
  snapshot_.control.mount_actuations.push_back({
- robot_definition_.passive_support_mounts[index],
- motors.passive_caster_steer_rad[index],
+ support.steer_mount,
+ steer,
+ 0.0,
+ std::nullopt,
  });
+ snapshot_.control.mount_actuations.push_back({
+ support.roll_mount,
+ steer,
+ roll,
+ std::nullopt,
+ });
+ }
+ if (physics_mode_ == PhysicsMode::Bullet && platform_) {
+ for (auto& actuation : snapshot_.control.mount_actuations) {
+ const auto* mount = find_mount(actuation.mount_id);
+ if (mount)
+ actuation.base_from_link = platform_->link_transform_in_base(mount->frame_id);
+ }
  }
  const double meters_per_revolution = 2.0 * sim::kPi * robot_definition_.wheel_radius_m;
  snapshot_.control.left_target_rpm = snapshot_.control.left_target_mps * 60.0 / meters_per_revolution;
@@ -1809,18 +2229,14 @@ void MissionSimulation::apply_motion() {
  snapshot_.robot_pitch_rad = rigid_state.pitch_rad;
  snapshot_.robot_roll_rad = rigid_state.roll_rad;
  } else {
- snapshot_.robot_height_m = terrain_state.height_m + robot_definition_.collision_height_m * 0.5;
+ snapshot_.robot_height_m = terrain_state.height_m + robot_definition_.base_link_height_m;
  snapshot_.robot_pitch_rad = -std::atan(candidate_grade);
  snapshot_.robot_roll_rad = std::atan(candidate_cross_grade);
  }
  snapshot_.terrain_grade = candidate_grade;
  snapshot_.cross_slope = candidate_cross_grade;
  const double support_width = chassis_caps_.geometry.support_width_m;
- const double total_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double center_height =
-   std::max(0.05, (robot_definition_.mass_kg * robot_definition_.collision_height_m * 0.5 +
-                   level_.payload_mass_kg * level_.payload_cog_height_m) /
-                    std::max(0.5, total_mass));
+ const double center_height = combined_center_height_m();
  const double bump_accel_mps2 =
    sim::roughness_lateral_acceleration(terrain_state.roughness, candidate.v, support_width);
  const double downhill_sign = candidate_cross_grade < 0.0 ? -1.0 : 1.0;
@@ -1834,6 +2250,12 @@ void MissionSimulation::apply_motion() {
  result_.max_grade = std::max(result_.max_grade, std::abs(candidate_grade));
  result_.max_abs_roll_rad = std::max(result_.max_abs_roll_rad, std::abs(snapshot_.robot_roll_rad));
  result_.max_rollover_risk = std::max(result_.max_rollover_risk, snapshot_.rollover_risk);
+ if (!update_payload_integrity(before, candidate, lateral_accel_mps2,
+ have_rigid_state ? rigid_state.max_contact_impulse_Ns : 0.0)) {
+ if (!endless_mode_)
+ finish_failure("payload-damage", catalog_.tr("event.payload_damage"));
+ return;
+ }
 
  if (physics_mode_ == PhysicsMode::Bullet) {
  if (snapshot_.rollover_risk >= 1.0)
@@ -1910,7 +2332,7 @@ void MissionSimulation::apply_motion() {
  const auto* imu = resolved_build_.imu();
  const double motor_scale = equipped_motor ? equipped_motor->power_scale : 1.0;
  const double grade_power =
-   std::max(0.0, (robot_definition_.mass_kg + level_.payload_mass_kg) * 9.81 * candidate.v * candidate_grade /
+ std::max(0.0, total_mass_kg() * 9.81 * candidate.v * candidate_grade /
                    std::sqrt(1.0 + candidate_grade * candidate_grade));
  const double total_power = motor_power * resolved_build_.tires().power_scale * motor_scale + grade_power +
                             (sensor ? sensor->power_w : 0.0) + (computer ? computer->power_w : 0.0) +
@@ -1925,7 +2347,8 @@ void MissionSimulation::apply_motion() {
  // Traction saturation (model-side contact state, like motor force: used for
  // odometry degradation, never displayed as a sensed reading). Rising edge
  // counts a slip episode for the debrief.
- const bool saturated = motors.traction_saturated;
+ const bool saturated = motors.traction_saturated ||
+ (physics_mode_ == PhysicsMode::Bullet && have_rigid_state && rigid_state.drive_slipping);
  snapshot_.traction_saturated = saturated;
  if (saturated && !was_saturated_) {
   ++result_.slip_events;
@@ -1936,12 +2359,6 @@ void MissionSimulation::apply_motion() {
  }
  const double encoder_v = motors.measured_forward_mps;
  const double encoder_w = motors.measured_yaw_radps;
- if (imu && imu->gyro_bias_random_walk_radps_sqrt_s > 0.0) {
- gyro_bias_ += imu_bias_walk_rng_.gauss(
- imu->gyro_bias_random_walk_radps_sqrt_s * std::sqrt(fixed_step_s));
- }
- const double gyro_rate = imu ? candidate.w + gyro_bias_ + imu_rng_.gauss(imu->gyro_noise_radps) : 0.0;
- const double gyro_sigma = imu ? imu->gyro_noise_radps : 0.0;
  sim::ObservationFrame motion_observation;
  motion_observation.time_s = snapshot_.time_s + fixed_step_s;
  motion_observation.encoders.emplace();
@@ -1951,19 +2368,33 @@ void MissionSimulation::apply_motion() {
  motion_observation.encoders->header =
  {motion_observation.time_s, motion_sequence_++, "base_link", 0.0, 1, "sim.encoder"};
  if (imu) {
- motion_observation.imu.emplace();
- motion_observation.imu->yaw_rate_radps = gyro_rate;
- const double ideal_forward_acceleration = (candidate.v - before.v) / fixed_step_s;
- const double ideal_left_acceleration =
- (candidate.lateral_v - before.lateral_v) / fixed_step_s + candidate.v * candidate.w;
- motion_observation.imu->forward_acceleration_mps2 =
- ideal_forward_acceleration + imu_accel_rng_.gauss(imu->accel_noise_mps2);
- motion_observation.imu->left_acceleration_mps2 =
- ideal_left_acceleration + imu_accel_rng_.gauss(imu->accel_noise_mps2);
- motion_observation.imu->noise_sigma_radps = gyro_sigma;
- motion_observation.imu->acceleration_noise_sigma_mps2 = imu->accel_noise_mps2;
- motion_observation.imu->header =
- {motion_observation.time_s, imu_sequence_++, "imu_link", 0.0, 1, "sim.imu"};
+ if (!sensor_system_)
+ throw std::logic_error("configured IMU requires the hardware sensor system");
+ const sim::ImuTruth truth{
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_angular_velocity_radps.x : 0.0,
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_angular_velocity_radps.y : 0.0,
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_angular_velocity_radps.z : candidate.w,
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_specific_force_mps2.x : (candidate.v - before.v) / fixed_step_s,
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_specific_force_mps2.y
+ : (candidate.lateral_v - before.lateral_v) / fixed_step_s + candidate.v * candidate.w,
+ physics_mode_ == PhysicsMode::Bullet && have_rigid_state
+ ? rigid_state.imu_specific_force_mps2.z : 9.81,
+ };
+ const sim::ImuConfig config{
+ imu->gyro_noise_radps,
+ imu->gyro_bias_stddev_radps,
+ imu->gyro_bias_random_walk_radps_sqrt_s,
+ imu->accel_noise_mps2,
+ "imu_link",
+ 0.0,
+ };
+ motion_observation.imu = sensor_system_->capture_imu(
+ truth, motion_observation.time_s, fixed_step_s, config);
  }
  if (level_.localization_mode == "fused" && sensor_system_) {
   sim::WorldTruth truth;
@@ -1986,6 +2417,9 @@ void MissionSimulation::apply_motion() {
  update_frame_tree();
  result_.odometry_error_m = estimation_system_.position_error(candidate_position);
  result_.max_odometry_error_m = std::max(result_.max_odometry_error_m, result_.odometry_error_m);
+ result_.odometry_heading_error_rad = estimation_system_.heading_error_rad(candidate.theta);
+ result_.max_odometry_heading_error_rad =
+ std::max(result_.max_odometry_heading_error_rad, result_.odometry_heading_error_rad);
  const double fixed_clearance = static_clearance(candidate_position);
  if (fixed_clearance < result_.min_static_clearance_m) {
   result_.min_static_clearance_m = fixed_clearance;
@@ -1998,7 +2432,7 @@ void MissionSimulation::apply_motion() {
 double MissionSimulation::surface_traction(sim::Vec2 position) const {
  for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
-   return surface.traction_scale;
+ return surface.traction_scale * environment_grip_multiplier(surface.material);
   }
  }
  return 1.0;
@@ -2049,10 +2483,10 @@ void MissionSimulation::finish_success() {
  result_.safe_score = result_.collisions == 0 && result_.scored_clearance_m >= level_.safe_min_clearance_m &&
                       result_.max_odometry_error_m <= level_.max_localization_error_m;
  if (active_contract_) {
- result_.cargo_integrity = std::clamp(
+ result_.cargo_integrity = std::min(result_.cargo_integrity, std::clamp(
  1.0 - active_contract_->fragility *
  (0.45 * result_.collisions + 0.5 * std::max(0.0, result_.max_rollover_risk - 0.55)),
- 0.0, 1.0);
+ 0.0, 1.0));
  result_.safe_score = result_.safe_score && result_.cargo_integrity >= 0.75;
  }
  result_.fast_score = result_.time_s <= level_.fast_time_s;
@@ -2235,11 +2669,7 @@ double MissionSimulation::corner_speed_cap(double nav_x, double nav_y) const {
    std::max(lookahead, speed * speed / (2.0 * std::max(0.5, decel)) + speed * 2.0 / decision_hz());
  double grip = wheel_ground({nav_x, nav_y}).mu_eff;
  const double support_width = chassis_caps_.geometry.support_width_m;
- const double total_mass = robot_definition_.mass_kg + level_.payload_mass_kg;
- const double center_height =
- std::max(0.05, (robot_definition_.mass_kg * robot_definition_.collision_height_m * 0.5 +
- level_.payload_mass_kg * level_.payload_cog_height_m) /
- std::max(0.5, total_mass));
+ const double center_height = combined_center_height_m();
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
@@ -2281,17 +2711,28 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  constexpr double kMuReference = 0.8;
  const double tire_mu = resolved_build_.tires().friction_mu;
  const double tire_rr = resolved_build_.tires().rolling_resistance;
+ const double tire_stiffness = resolved_build_.tires().normal_stiffness_Npm;
+ const double tire_damping = resolved_build_.tires().normal_damping_Nspm;
  double ground_mu = 1.0;
  double ground_rr = 0.0;
+ double ground_stiffness = 1.0e9;
+ double ground_damping = 0.0;
  double traction = 1.0;
+ std::string ground_material;
  for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
+ ground_stiffness = surface.normal_stiffness_Npm;
+ ground_damping = surface.normal_damping_Nspm;
    traction = surface.traction_scale;
+ ground_material = surface.material;
    break;
   }
  }
+ const double environment_grip = environment_grip_multiplier(ground_material);
+ ground_mu *= environment_grip;
+ traction *= environment_grip;
  sim::GroundContact contact;
  contact.mu_eff = tire_mu * ground_mu / kMuReference;
  if (endless_mode_) {
@@ -2303,6 +2744,12 @@ sim::GroundContact MissionSimulation::wheel_ground(sim::Vec2 position) const {
  contact.rolling_resist = tire_rr + ground_rr;
  contact.accel_limit_mps2 = std::min(robot_definition_.motor.max_wheel_accel_mps2,
                                      resolved_build_.tires().brake_decel_mps2 * (0.5 + 0.5 * traction));
+ contact.normal_stiffness_Npm =
+ 1.0 / (1.0 / tire_stiffness + 1.0 / ground_stiffness);
+ // The dynamic profile treats the material value as additional pair
+ // dissipation. Identified profiles replace this reduced convention with a
+ // fitted contact-pair damping value.
+ contact.normal_damping_Nspm = tire_damping + ground_damping;
  return contact;
 }
 

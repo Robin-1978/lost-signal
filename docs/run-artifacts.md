@@ -1,4 +1,4 @@
-# Run Artifact v1
+# Run Artifact v2
 
 A Run Artifact records enough identity and result evidence to rerun and compare one Lost Signal experiment. It
 is a compact JSON manifest, not an interactive replay and not a sensor log.
@@ -17,9 +17,14 @@ The artifact records:
 - a SHA-256 manifest of every JSON content file under the selected assets directory;
 - mission, authored condition, seed, fixed timestep, physics backend, and LSRI provider;
 - actual robot, selected components, style, and requested chassis override;
-- global and local planner IDs, high-level policy, localization mode, controller, and runtime interface;
+- global and local planner IDs, high-level policy, autonomous task-ordering policy, localization mode, controller,
+ and runtime interface;
 - a canonical configuration digest, result metrics, causal events, and structured decision evidence;
-- external trace references, currently empty because Run Artifact v1 does not embed sensor streams.
+- external trace references, currently empty because Run Artifact v2 does not embed sensor streams.
+
+Version 2 adds task-ordering identity and the task, payload, and cargo-integrity results used by Autonomy
+Playgrounds. Version 1 artifacts predate that comparison contract and are intentionally rejected during active
+development rather than silently reinterpreted.
 
 The content manifest hashes each JSON file as sorted relative path, a NUL byte, its exact bytes, and another
 NUL byte. Player models, textures, sounds, fonts, and screenshots do not change a simulation comparison.
@@ -66,7 +71,7 @@ score changes. `--json` emits the comparison report for automation.
 
 - Interactive replay stores snapshots for seeking the player UI.
 - LSRI replay feeds recorded observation packets back through runtime validation.
-- Run Artifact v1 identifies an experiment and its compact outcome.
+- Run Artifact v2 identifies an experiment and its compact outcome.
 - A future trace store may hold large LiDAR, IMU, encoder, and command streams by digest and place references in
  `inputs.trace_refs`.
 

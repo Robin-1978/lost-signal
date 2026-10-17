@@ -1,9 +1,11 @@
 #include "physics/physics_world.hpp"
 #include "physics/frame_transform.hpp"
+#include "physics/tire_contact.hpp"
 
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -89,10 +91,74 @@ double braking_distance(double speed_mps, double brake_force_N) {
  return world->state(robot).position_m.x - start_x;
 }
 
+std::pair<double, double> mass_update_drive_response(
+ std::unique_ptr<sim::physics::IPhysicsWorld> world) {
+ using namespace sim::physics;
+ BodySpec body;
+ body.shape = ShapeKind::Box;
+ body.half_extents_m = {0.35, 0.28, 0.20};
+ body.mass_kg = 20.0;
+ body.position_m = {0.0, 0.0, 100.0};
+ body.friction = 0.0;
+ const BodyHandle handle = world->spawn(body);
+
+ world->apply_drive(handle, {100.0, 0.0, 0.0, 0.0});
+ world->step(0.1);
+ const double unloaded_velocity = world->state(handle).linear_velocity_mps.x;
+
+ BodyState reset;
+ reset.position_m = body.position_m;
+ world->set_state(handle, reset);
+ world->set_mass_properties(handle, 40.0, {});
+ world->apply_drive(handle, {100.0, 0.0, 0.0, 0.0});
+ world->step(0.1);
+ return {unloaded_velocity, world->state(handle).linear_velocity_mps.x};
+}
+
 } // namespace
 
 int main() {
  using namespace sim::physics;
+
+ auto tire_contact = make_bullet_tire_contact();
+ CHECK(tire_contact->backend_name() == "bullet");
+ TireContactSpec tire;
+ tire.base_friction = 0.9;
+ tire.rolling_support_moment_arm_m = 0.012;
+ tire.spinning_resistance = 0.02;
+ tire.radius_m = 0.1;
+ tire.normal_stiffness_Npm = 40000.0;
+ tire.normal_damping_Nspm = 1000.0;
+ tire.axle_axis_local = {0.0, 1.0, 0.0};
+ BodySpec tire_body;
+ tire_contact->configure_body(tire_body, tire);
+ CHECK(std::abs(tire_body.rolling_friction - 0.012) < 1e-12);
+ CHECK(std::abs(tire_body.spinning_friction - 0.002) < 1e-12);
+ CHECK(tire_body.friction_anchor);
+ CHECK(tire_body.contact_axle_axis_local.y == 1.0);
+ const auto resolved_contact = tire_contact->resolve(tire, {
+ 0.5,
+ 0.03,
+ 25000.0,
+ 700.0,
+ });
+ CHECK(std::abs(resolved_contact.friction - 0.45) < 1e-12);
+ CHECK(std::abs(resolved_contact.rolling_friction_length_m - 0.012) < 1e-12);
+ CHECK(std::abs(resolved_contact.spinning_friction_length_m - 0.002) < 1e-12);
+ CHECK(std::abs(resolved_contact.rolling_anisotropy.x - 1.0) < 1e-12);
+ CHECK(std::abs(resolved_contact.rolling_anisotropy.y - 0.25) < 1e-12);
+ CHECK(std::abs(resolved_contact.rolling_anisotropy.z - 1.0) < 1e-12);
+ CHECK(resolved_contact.normal_stiffness_Npm == 25000.0);
+ CHECK(resolved_contact.normal_damping_Nspm == 700.0);
+ bool invalid_tire_rejected = false;
+ try {
+ TireContactSpec invalid_tire = tire;
+ invalid_tire.radius_m = 0.0;
+ (void)tire_contact->resolve(invalid_tire, {1.0, 0.01, 10000.0, 100.0});
+ } catch (const std::invalid_argument&) {
+ invalid_tire_rejected = true;
+ }
+ CHECK(invalid_tire_rejected);
 
  FrameTransformTree frames;
  frames.set_transform("world", "base_link",
@@ -136,7 +202,18 @@ int main() {
  }
  CHECK(invalid_handle_rejected);
 
+ const auto [planar_unloaded, planar_loaded] =
+ mass_update_drive_response(make_planar_physics_world());
+ CHECK(planar_unloaded > 0.0);
+ CHECK(planar_loaded > planar_unloaded * 0.4);
+ CHECK(planar_loaded < planar_unloaded * 0.6);
+
  CHECK(bullet_physics_available());
+ const auto [bullet_unloaded, bullet_loaded] =
+ mass_update_drive_response(make_bullet_physics_world());
+ CHECK(bullet_unloaded > 0.0);
+ CHECK(bullet_loaded > bullet_unloaded * 0.4);
+ CHECK(bullet_loaded < bullet_unloaded * 0.6);
   auto bullet = make_bullet_physics_world();
   CHECK(bullet->backend_name() == "bullet");
   BodySpec ground;

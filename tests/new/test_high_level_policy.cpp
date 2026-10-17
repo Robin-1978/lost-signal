@@ -51,12 +51,20 @@ int main() {
  CHECK(rejected.applied.speed_scale == 1.0);
 
  observation.rollover_risk = 0.91;
- observation.traction_saturated = true;
+observation.traction_slip_observed = true;
  sim::StrategyAction fast;
  const auto capped = sim::apply_strategy_safety(fast, observation, context);
  CHECK(capped.applied.speed_scale == 0.25);
  CHECK(capped.safety_reasons.size() == 1);
  CHECK(capped.safety_reasons.front() == "rollover-speed-cap");
+
+ observation.rollover_risk = 0.0;
+ context.traction_relief_enabled = false;
+ const auto terrain_relief_disabled = sim::apply_strategy_safety(fast, observation, context);
+ CHECK(terrain_relief_disabled.applied.speed_scale == 1.0);
+ context.traction_relief_enabled = true;
+ const auto terrain_relief = sim::apply_strategy_safety(fast, observation, context);
+ CHECK(terrain_relief.applied.speed_scale == 0.55);
 
  observation.visible_clearance_m = 0.1;
  const auto stopped = sim::apply_strategy_safety(fast, observation, context);

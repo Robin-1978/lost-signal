@@ -1,6 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slot": "motor",
+  "model_profile": {
+    "fidelity": "typical",
+    "basis": "documented DC geared-motor engineering assumptions",
+    "source_refs": [
+      "docs/parameter-sources.md#drive-motor-and-controller"
+    ]
+  },
   "components": [
     {
       "id": "motor.standard",
@@ -11,7 +18,12 @@
         "max_wheel_speed_mps": 2.4,
         "stall_force_N": 54.0,
         "free_speed_mps": 3.0,
-        "power_scale": 1.0
+        "power_scale": 1.0,
+        "controller_bandwidth_radps": 6.0,
+        "controller_integral_time_s": 5.0,
+        "controller_derivative_time_s": 0.005,
+        "coulomb_smoothing_speed_mps": 0.05,
+        "viscous_drag_N_per_mps": 0.6
       },
       "visual": {
         "primitive_2d": "box",
@@ -31,9 +43,14 @@
       "cost": 2,
       "behavior": {
         "max_wheel_speed_mps": 2.0,
-        "stall_force_N": 75.0,
+        "stall_force_N": 90.0,
         "free_speed_mps": 2.4,
-        "power_scale": 1.25
+        "power_scale": 1.25,
+        "controller_bandwidth_radps": 6.0,
+        "controller_integral_time_s": 5.0,
+        "controller_derivative_time_s": 0.005,
+        "coulomb_smoothing_speed_mps": 0.05,
+        "viscous_drag_N_per_mps": 0.6
       },
       "visual": {
         "primitive_2d": "box",
@@ -55,7 +72,12 @@
         "max_wheel_speed_mps": 2.2,
         "stall_force_N": 48.0,
         "free_speed_mps": 3.0,
-        "power_scale": 0.75
+        "power_scale": 0.75,
+        "controller_bandwidth_radps": 6.0,
+        "controller_integral_time_s": 5.0,
+        "controller_derivative_time_s": 0.005,
+        "coulomb_smoothing_speed_mps": 0.05,
+        "viscous_drag_N_per_mps": 0.6
       },
       "visual": {
         "primitive_2d": "box",

@@ -8,12 +8,15 @@
       "friction_mu": 1.0,
       "rolling_drag": 0.0,
       "traction_scale": 1.0,
+      "normal_stiffness_Npm": 100000000.0,
+      "normal_damping_Nspm": 0.0,
       "texture": "textures/environment/concrete_floor.png",
       "drive_effect": {
         "kind": "none",
         "color": "#89918B",
         "intensity": 0.0
-      }
+      },
+      "lidar_reflectivity": 0.35
     },
     {
       "id": "gravel",
@@ -22,12 +25,15 @@
       "friction_mu": 0.7,
       "rolling_drag": 0.015,
       "traction_scale": 0.8,
+      "normal_stiffness_Npm": 5000000.0,
+      "normal_damping_Nspm": 200.0,
       "texture": "textures/environment/gravel_floor.png",
       "drive_effect": {
         "kind": "dust",
         "color": "#B3A17A",
         "intensity": 0.75
-      }
+      },
+      "lidar_reflectivity": 0.28
     },
     {
       "id": "sand",
@@ -36,12 +42,15 @@
       "friction_mu": 0.55,
       "rolling_drag": 0.03,
       "traction_scale": 0.65,
+      "normal_stiffness_Npm": 150000.0,
+      "normal_damping_Nspm": 800.0,
       "texture": "textures/environment/sand_floor.png",
       "drive_effect": {
         "kind": "dust",
         "color": "#D8B978",
         "intensity": 1.15
-      }
+      },
+      "lidar_reflectivity": 0.22
     },
     {
       "id": "standing_water",
@@ -50,12 +59,49 @@
       "friction_mu": 0.35,
       "rolling_drag": 0.02,
       "traction_scale": 0.45,
+      "normal_stiffness_Npm": 100000000.0,
+      "normal_damping_Nspm": 0.0,
       "texture": "textures/environment/water_floor.png",
       "drive_effect": {
         "kind": "spray",
         "color": "#7BCED2",
         "intensity": 1.0
-      }
+      },
+      "lidar_reflectivity": 0.1
+    },
+    {
+      "id": "mud",
+      "title": "泥地",
+      "description": "饱水软土降低抓地并增加滚阻，载荷越重越考验扭矩与路线选择。",
+      "friction_mu": 0.48,
+      "rolling_drag": 0.025,
+      "traction_scale": 0.55,
+      "normal_stiffness_Npm": 100000.0,
+      "normal_damping_Nspm": 1000.0,
+      "texture": "textures/environment/mud_floor.png",
+      "drive_effect": {
+        "kind": "spray",
+        "color": "#796044",
+        "intensity": 0.7
+      },
+      "lidar_reflectivity": 0.18
+    },
+    {
+      "id": "steel_deck",
+      "title": "钢制试验台",
+      "description": "高刚度、低滚阻的金属表面；接缝冲击明显，受潮后附着下降。",
+      "friction_mu": 0.45,
+      "rolling_drag": 0.002,
+      "traction_scale": 0.55,
+      "normal_stiffness_Npm": 500000000.0,
+      "normal_damping_Nspm": 50.0,
+      "texture": "textures/environment/concrete_floor.png",
+      "drive_effect": {
+        "kind": "none",
+        "color": "#B8C4CA",
+        "intensity": 0.0
+      },
+      "lidar_reflectivity": 0.75
     }
   ]
 }

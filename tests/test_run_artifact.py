@@ -47,7 +47,11 @@ class RunArtifactIntegrationTest(unittest.TestCase):
             baseline = json.loads(first.read_text(encoding="utf-8"))
             candidate = json.loads(second.read_text(encoding="utf-8"))
             self.assertEqual(
-                baseline["schema"], {"name": "lost-signal.run", "version": 1}
+                baseline["schema"], {"name": "lost-signal.run", "version": 2}
+            )
+            self.assertEqual(
+                baseline["configuration"]["comparable"]["algorithms"]["task_ordering"],
+ "",
             )
             self.assertEqual(
                 baseline["configuration"]["digest"],

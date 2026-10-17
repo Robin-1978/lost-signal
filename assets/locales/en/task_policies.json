@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/task_policies/0/title": "Fastest Route",
+    "/task_policies/0/description": "Choose the next crate by terrain-weighted traversal cost to reduce expected completion time.",
+    "/task_policies/1/title": "Maximum Margin",
+    "/task_policies/1/description": "Minimize the route's worst terrain risk first, then compare total traversal cost.",
+    "/task_policies/2/title": "Value Density",
+    "/task_policies/2/description": "Compare recoverable value per unit of traversal cost and favor high-value crates.",
+    "/task_policies/3/title": "Balanced Harvest",
+    "/task_policies/3/description": "Combine route distance, terrain cost, and value instead of chasing one metric."
+  }
+}

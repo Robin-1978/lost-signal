@@ -2,9 +2,12 @@
 #include "mission/campaign_progress.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 namespace client {
 namespace {
@@ -13,6 +16,130 @@ constexpr float kPanelWidth = 360.0f;
 constexpr float kMargin = 24.0f;
 constexpr float kContentWidth = 312.0f;
 constexpr double kRadToDeg = 57.29577951308232;
+
+std::size_t utf8_sequence_length(unsigned char lead) {
+ if ((lead & 0x80U) == 0)
+ return 1;
+ if ((lead & 0xE0U) == 0xC0U)
+ return 2;
+ if ((lead & 0xF0U) == 0xE0U)
+ return 3;
+ if ((lead & 0xF8U) == 0xF0U)
+ return 4;
+ return 1;
+}
+
+std::uint32_t decode_utf8(const std::string& text, std::size_t offset, std::size_t length) {
+ const auto byte = [&](std::size_t index) { return static_cast<unsigned char>(text[offset + index]); };
+ if (length == 1)
+ return byte(0);
+ if (length == 2)
+ return static_cast<std::uint32_t>((byte(0) & 0x1FU) << 6U) |
+ static_cast<std::uint32_t>(byte(1) & 0x3FU);
+ if (length == 3)
+ return static_cast<std::uint32_t>((byte(0) & 0x0FU) << 12U) |
+ static_cast<std::uint32_t>((byte(1) & 0x3FU) << 6U) |
+ static_cast<std::uint32_t>(byte(2) & 0x3FU);
+ return static_cast<std::uint32_t>((byte(0) & 0x07U) << 18U) |
+ static_cast<std::uint32_t>((byte(1) & 0x3FU) << 12U) |
+ static_cast<std::uint32_t>((byte(2) & 0x3FU) << 6U) |
+ static_cast<std::uint32_t>(byte(3) & 0x3FU);
+}
+
+std::size_t glyph_columns(std::uint32_t codepoint) {
+ const bool wide = (codepoint >= 0x1100U && codepoint <= 0x115FU) ||
+ (codepoint >= 0x2E80U && codepoint <= 0xA4CFU) ||
+ (codepoint >= 0xAC00U && codepoint <= 0xD7A3U) ||
+ (codepoint >= 0xF900U && codepoint <= 0xFAFFU) ||
+ (codepoint >= 0xFE10U && codepoint <= 0xFE6FU) ||
+ (codepoint >= 0xFF00U && codepoint <= 0xFF60U) ||
+ (codepoint >= 0xFFE0U && codepoint <= 0xFFE6U) ||
+ (codepoint >= 0x1F300U && codepoint <= 0x1FAFFU);
+ return wide ? 2 : 1;
+}
+
+std::size_t display_columns(const std::string& text) {
+ std::size_t columns = 0;
+ for (std::size_t offset = 0; offset < text.size();) {
+ const std::size_t requested = utf8_sequence_length(static_cast<unsigned char>(text[offset]));
+ const std::size_t length = std::min(requested, text.size() - offset);
+ columns += glyph_columns(decode_utf8(text, offset, length));
+ offset += length;
+ }
+ return columns;
+}
+
+std::vector<std::string> split_token(const std::string& token, std::size_t columns) {
+ std::vector<std::string> chunks;
+ std::size_t start = 0;
+ std::size_t used = 0;
+ for (std::size_t offset = 0; offset < token.size();) {
+ const std::size_t requested = utf8_sequence_length(static_cast<unsigned char>(token[offset]));
+ const std::size_t length = std::min(requested, token.size() - offset);
+ const std::size_t glyph_width = glyph_columns(decode_utf8(token, offset, length));
+ if (used > 0 && used + glyph_width > columns) {
+ chunks.push_back(token.substr(start, offset - start));
+ start = offset;
+ used = 0;
+ }
+ used += glyph_width;
+ offset += length;
+ }
+ chunks.push_back(token.substr(start));
+ return chunks;
+}
+
+std::string wrap_words(const std::string& text, std::size_t columns) {
+ if (columns == 0 || display_columns(text) <= columns)
+ return text;
+ std::istringstream input(text);
+ std::ostringstream output;
+ std::string word;
+ std::size_t line_length = 0;
+ while (input >> word) {
+ const auto word_columns = display_columns(word);
+ if (word_columns > columns) {
+ if (line_length != 0)
+ output << '\n';
+ const auto chunks = split_token(word, columns);
+ for (std::size_t index = 0; index < chunks.size(); ++index) {
+ if (index != 0)
+ output << '\n';
+ output << chunks[index];
+ }
+ line_length = display_columns(chunks.back());
+ continue;
+ }
+ if (line_length == 0) {
+ output << word;
+ line_length = word_columns;
+ } else if (line_length + 1 + word_columns <= columns) {
+ output << ' ' << word;
+ line_length += 1 + word_columns;
+ } else {
+ output << '\n' << word;
+ line_length = word_columns;
+ }
+ }
+ return output.str();
+}
+
+std::size_t text_line_count(const std::string& text) {
+ return 1 + static_cast<std::size_t>(std::count(text.begin(), text.end(), '\n'));
+}
+
+tgui::Label::Ptr make_tooltip(const std::string& text) {
+ auto tooltip = tgui::Label::create(text);
+ tooltip->setTextSize(13);
+ tooltip->setMaximumTextWidth(280.0f);
+ auto renderer = tooltip->getRenderer();
+ renderer->setTextColor({232, 235, 229});
+ renderer->setBackgroundColor({18, 24, 23, 246});
+ renderer->setBorderColor({94, 126, 116, 230});
+ renderer->setBorders({1});
+ renderer->setPadding({9, 7});
+ return tooltip;
+}
 
 std::string format_number(double value, int precision = 1) {
  std::ostringstream output;
@@ -189,6 +316,8 @@ std::string field_time(double hours) {
 GameUi::GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
                const mission::PresentationDefinition& presentation)
     : gui_(gui), catalog_(catalog), presentation_(&presentation), build_(presentation.default_build) {
+ tgui::ToolTip::setInitialDelay(std::chrono::milliseconds(350));
+ tgui::ToolTip::setDistanceToMouse({12, 18});
  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
  [&](const auto& job) { return job.level == presentation_->level; });
  if (contract != catalog_.contracts().end())
@@ -198,6 +327,7 @@ GameUi::GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
  style_panel();
  resize(width_, height_);
  rebuild(nullptr);
+ layout_ready_ = true;
 }
 
 void GameUi::style_panel() {
@@ -207,11 +337,13 @@ void GameUi::style_panel() {
  renderer->setBorders({1, 0, 0, 0});
 }
 
-void GameUi::resize(int width, int height) {
+void GameUi::resize(int width, int height, const mission::MissionSimulation* mission) {
  width_ = width;
  height_ = height;
  panel_->setPosition(std::max(0.0f, static_cast<float>(width) - kPanelWidth), 0);
  panel_->setSize(std::min(kPanelWidth, static_cast<float>(width)), static_cast<float>(height));
+ if (layout_ready_)
+ rebuild(mission);
 }
 
 tgui::Label::Ptr GameUi::add_label(const std::string& text, float x, float y, float width, unsigned text_size,
@@ -256,6 +388,7 @@ void GameUi::rebuild(const mission::MissionSimulation* mission) {
  style_panel();
  slot_cards_.clear();
  chassis_cards_.clear();
+ task_policy_cards_.clear();
  style_slider_ = nullptr;
  style_value_ = nullptr;
  budget_label_ = nullptr;
@@ -306,12 +439,8 @@ std::string GameUi::next_level_id() const {
 }
 
 void GameUi::build_chapter() {
- // Level roster lives in a scroll panel: 21 buttons × 54px overflow any fixed
- // window (720p fit ~12). Scrollbar appears only when content exceeds space.
  auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
  scroll->setPosition(0, 0);
- // Transparent like the parent panel: ScrollablePanel defaults to a WHITE
- // background (shipped regression once — chapter screen went white).
  {
   auto look = scroll->getRenderer();
   look->setBackgroundColor({0, 0, 0, 0});
@@ -322,13 +451,19 @@ void GameUi::build_chapter() {
  scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
  add_parent_ = scroll;
- add_label(catalog_.tr("chapter.game_title"), kMargin, 25, kContentWidth, 14, {107, 190, 176}, true);
- add_label(catalog_.campaign().title, kMargin, 53, kContentWidth, 25, {239, 238, 229}, true);
- add_label(catalog_.tr("chapter.subtitle"), kMargin, 94, kContentWidth, 14, {157, 163, 158});
+ float y = 24.0f;
+ const auto place_text = [&](const std::string& text, unsigned size, tgui::Color color,
+ bool bold = false, float gap = 8.0f) {
+ auto label = add_label(text, kMargin, y, kContentWidth, size, color, bold);
+ y += std::max(static_cast<float>(size) * 1.35f, label->getFullSize().y) + gap;
+ return label;
+ };
+ place_text(catalog_.tr("chapter.game_title"), 14, {107, 190, 176}, true, 5);
+ place_text(catalog_.campaign().title, 25, {239, 238, 229}, true, 8);
+ place_text(catalog_.tr("chapter.subtitle"), 14, {157, 163, 158}, false, 10);
+ place_text(catalog_.trf("chapter.contract_balance", {std::to_string(reputation_)}),
+ 14, {232, 172, 80}, true, 14);
 
- add_label(catalog_.trf("chapter.contract_balance", {std::to_string(reputation_)}),
- kMargin, 124, kContentWidth, 14, {232, 172, 80}, true);
- float y = 166.0f;
  int shown_chapter = 0;
  for (const auto& level_id : catalog_.campaign().levels) {
   const auto& level = catalog_.level(level_id);
@@ -342,39 +477,58 @@ void GameUi::build_chapter() {
    }
    const std::string heading =
      chapter != nullptr ? chapter->title : catalog_.trf("chapter.fallback", {std::to_string(shown_chapter)});
-   add_label(heading, kMargin, y, kContentWidth, 17, {107, 190, 176}, true);
-   y += 30.0f;
+ place_text(heading, 17, {107, 190, 176}, true, 7);
   }
   const bool complete = completed_levels_.contains(level_id);
   const bool unlocked = is_unlocked(level);
   const std::string prefix = complete ? "✓ " : unlocked ? "○ " : "— ";
   const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
     [&](const auto& job) { return job.level == level_id; });
-  std::string button_text = prefix + std::to_string(level.order) + " " + level.title;
-  float button_height = 44.0f;
+ std::string button_text = wrap_words(prefix + std::to_string(level.order) + " " + level.title, 34);
+ unsigned button_text_size = 17;
   if (contract != catalog_.contracts().end()) {
    const bool claimed = claimed_contracts_.contains(contract->id);
-   button_text += "\n" + catalog_.trf(
+ button_text += "\n" + wrap_words(catalog_.trf(
      claimed ? "chapter.contract_claimed" : "chapter.contract_offer",
- {contract_axis_label(catalog_, contract->axis), std::to_string(contract->rep)});
-   button_height = 58.0f;
+ {contract_axis_label(catalog_, contract->axis), std::to_string(contract->rep)}), 38);
+ button_text_size = 13;
   }
+ const float button_height =
+ std::max(46.0f, 14.0f + static_cast<float>(text_line_count(button_text)) * (button_text_size + 4.0f));
   auto button = add_button(button_text, kMargin, y, kContentWidth, button_height,
     level_id == presentation_->level && unlocked);
-  if (contract != catalog_.contracts().end())
-   button->setTextSize(15);
+ button->setTextSize(button_text_size);
+ std::string tooltip_text = level.title + "\n" + level.knowledge_card;
+ if (contract != catalog_.contracts().end())
+ tooltip_text += "\n\n" + contract->blurb;
+ button->setToolTip(make_tooltip(tooltip_text));
   button->setEnabled(unlocked);
   button->onClick([this, level_id] { actions_.selected_level = level_id; });
   y += button_height + 10.0f;
  }
- add_label(catalog_.tr("chapter.footer_head") + catalog_.tr("chapter.footer_tail"), kMargin, y + 12,
-           kContentWidth, 13, {137, 151, 145});
- if (!add_parent_) {
-  return;
+ if (!catalog_.campaign().playgrounds.empty()) {
+ y += 8.0f;
+ place_text(catalog_.tr("chapter.playgrounds_heading"), 18, {232, 172, 80}, true, 5);
+ place_text(catalog_.tr("chapter.playgrounds_subtitle"), 13, {157, 163, 158}, false, 10);
+ for (const auto& level_id : catalog_.campaign().playgrounds) {
+ const auto& level = catalog_.level(level_id);
+ const bool complete = completed_levels_.contains(level_id);
+ const std::string prefix = complete ? "✓ " : "◇ ";
+ const std::string button_text = wrap_words(prefix + level.title, 34);
+ const float button_height =
+ std::max(46.0f, 14.0f + static_cast<float>(text_line_count(button_text)) * 21.0f);
+ auto button = add_button(button_text, kMargin, y, kContentWidth, button_height,
+ level_id == presentation_->level);
+ button->setTextSize(17);
+ button->setToolTip(make_tooltip(level.title + "\n" + level.knowledge_card));
+ button->onClick([this, level_id] { actions_.selected_level = level_id; });
+ y += button_height + 10.0f;
  }
- if (const auto scrollable = std::dynamic_pointer_cast<tgui::ScrollablePanel>(add_parent_)) {
-  scrollable->setContentSize({static_cast<float>(kPanelWidth), y + 60.0f});
  }
+ y += 4.0f;
+ place_text(catalog_.tr("chapter.footer_head") + " " + catalog_.tr("chapter.footer_tail"),
+ 13, {137, 151, 145}, false, 24);
+ scroll->setContentSize({static_cast<float>(kPanelWidth), y});
 }
 
 void GameUi::set_screen(Screen screen, const mission::MissionSimulation* mission) {
@@ -408,104 +562,126 @@ void GameUi::build_garage() {
  scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  panel_->add(scroll);
  add_parent_ = scroll;
- add_label(catalog_.tr("garage.heading"), kMargin, 24, kContentWidth, 16, {107, 190, 176}, true);
- auto chapter_button = add_button(catalog_.tr("chapter.garage_button"), kMargin + 216, 16, 96, 30);
+ float y = 22.0f;
+ auto section_label = add_label(catalog_.tr("garage.heading"), kMargin, y, 184, 14,
+ {107, 190, 176}, true);
+ auto chapter_button = add_button(catalog_.tr("chapter.garage_button"), kMargin + 194, y - 6, 118, 32);
+ chapter_button->setTextSize(14);
  chapter_button->onClick([this] { actions_.open_chapter = true; });
- add_label(presentation_->garage_heading, kMargin, 51, kContentWidth, 25, {239, 238, 229}, true);
- add_label(presentation_->garage_brief, kMargin, 94, kContentWidth, 16, {157, 163, 158});
+ y += std::max(32.0f, section_label->getFullSize().y) + 8.0f;
+ const auto place_text = [&](const std::string& text, unsigned size, tgui::Color color,
+ bool bold = false, float gap = 8.0f) {
+ auto label = add_label(text, kMargin, y, kContentWidth, size, color, bold);
+ y += std::max(static_cast<float>(size) * 1.35f, label->getFullSize().y) + gap;
+ return label;
+ };
+ place_text(presentation_->garage_heading, 25, {239, 238, 229}, true, 10);
+ place_text(presentation_->garage_brief, 15, {157, 163, 158}, false, 12);
 
- float y = 226.0f;
  if (const auto* beat = catalog_.story_beat(presentation_->level, "before")) {
-  add_label(beat->speaker + "：" + beat->text, kMargin, 168, kContentWidth, 14, {184, 199, 190});
-  y = 248.0f;
+ place_text(beat->speaker + ": " + beat->text, 14, {184, 199, 190}, false, 12);
  }
  if (!active_contract_id_.empty()) {
  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
  [&](const auto& job) { return job.id == active_contract_id_; });
  if (contract != catalog_.contracts().end()) {
- add_label(catalog_.trf("garage.contract_payload",
+ place_text(catalog_.trf("garage.contract_payload",
  {contract->blurb, format_number(contract->mass_kg, 0),
  format_number(contract->cog_height_m, 2)}),
- kMargin, y, kContentWidth, 14, {232, 172, 80});
- y += 86.0f;
+ 14, {232, 172, 80}, false, 14);
  }
  }
- constexpr float kCardGap = 6.0f;
- constexpr float kCardHeight = 56.0f;
+ constexpr float kCardGap = 8.0f;
+ constexpr float kCardHeight = 70.0f;
 
  if (!presentation_->chassis_options.empty()) {
- add_label(catalog_.tr("garage.chassis"), kMargin, y, kContentWidth, 16, {132, 139, 135}, true);
- const float chassis_width = (kContentWidth - kCardGap) / 2.0f;
- std::size_t index = 0;
+ place_text(catalog_.tr("garage.chassis"), 16, {132, 139, 135}, true, 4);
  for (const auto& robot_id : presentation_->chassis_options) {
- const float row = static_cast<float>(index / 2);
- const float col = static_cast<float>(index % 2);
+ const auto& robot = catalog_.robot(robot_id);
  auto card = tgui::Button::create(" ");
- card->setPosition(kMargin + col * (chassis_width + kCardGap),
- y + 24 + row * (kCardHeight + kCardGap));
- card->setSize(chassis_width, kCardHeight);
+ card->setPosition(kMargin, y);
+ card->setSize(kContentWidth, kCardHeight);
  card->setTextSize(14);
  auto look = card->getRenderer();
  look->setRoundedBorderRadius(8);
  look->setBorders({1.0f});
  add_parent_->add(card);
+ card->setToolTip(make_tooltip(robot.title + "\n" + catalog_.tr(robot.drive_label_key)));
  card->onClick([this, robot_id] { select_chassis(robot_id); });
  chassis_cards_.push_back({robot_id, card});
- ++index;
+ y += kCardHeight + kCardGap;
  }
- const float rows = static_cast<float>((presentation_->chassis_options.size() + 1) / 2);
- y += 24 + rows * (kCardHeight + kCardGap) + 10;
+ y += 8.0f;
  }
 
- const float card_width = (kContentWidth - 2.0f * kCardGap) / 3.0f;
  for (const auto& column : presentation_->component_columns) {
  if (!column.player_choice)
  continue;
-  add_label(column.title, kMargin, y, kContentWidth, 16, {132, 139, 135}, true);
-  std::size_t index = 0;
+ place_text(column.title, 16, {132, 139, 135}, true, 4);
   for (const auto& option : column.options) {
    const auto& item = catalog_.component(option);
-   const float row = static_cast<float>(index / 3);
-   const float col = static_cast<float>(index % 3);
    auto card = tgui::Button::create(" ");
-   card->setPosition(kMargin + col * (card_width + kCardGap), y + 24 + row * (kCardHeight + kCardGap));
-   card->setSize(card_width, kCardHeight);
+ card->setPosition(kMargin, y);
+ card->setSize(kContentWidth, kCardHeight);
    card->setTextSize(14);
    card->setText(card_text(column.slot, item, false));
    auto look = card->getRenderer();
    look->setRoundedBorderRadius(8);
    look->setBorders({1.0f});
    add_parent_->add(card);
+ card->setToolTip(make_tooltip(item.title + "\n" + item.description + "\n" + card_stat(column.slot, item)));
  card->onClick([this, slot = column.slot, id = option] {
- if (owned_.empty() || owned_.contains(id))
+ const bool playground = catalog_.level(presentation_->level).mode == "playground";
+ if (playground || owned_.empty() || owned_.contains(id))
  select_component(slot, id);
  else
  actions_.purchase_component = id;
  });
    slot_cards_[column.slot].push_back({option, card});
-   ++index;
+ y += kCardHeight + kCardGap;
   }
-  const float rows = static_cast<float>((column.options.size() + 2) / 3);
-  y += 24 + rows * (kCardHeight + kCardGap) + 10;
+ y += 8.0f;
  }
- add_label(presentation_->policy_title, kMargin, y, kContentWidth, 14, {132, 139, 135}, true);
+ if (catalog_.level(presentation_->level).objective.goal_order == "autonomous") {
+ place_text(catalog_.tr("garage.task_policy"), 16, {132, 139, 135}, true, 4);
+ for (const auto& policy_id : presentation_->task_policies) {
+ const auto& policy = catalog_.task_policy(policy_id);
+ auto card = tgui::Button::create(policy.title);
+ card->setPosition(kMargin, y);
+ card->setSize(kContentWidth, 48.0f);
+ card->setTextSize(14);
+ auto look = card->getRenderer();
+ look->setRoundedBorderRadius(8);
+ look->setBorders({1.0f});
+ add_parent_->add(card);
+ card->setToolTip(make_tooltip(policy.title + "\n" + policy.description));
+ card->onClick([this, choice = policy_id] { select_task_policy(choice); });
+ task_policy_cards_.push_back({policy_id, card});
+ y += 56.0f;
+ }
+ y += 8.0f;
+ }
+ place_text(presentation_->policy_title, 14, {132, 139, 135}, true, 6);
  style_slider_ = tgui::Slider::create(0, 100);
- style_slider_->setPosition(kMargin, y + 28);
+ style_slider_->setPosition(kMargin, y);
  style_slider_->setSize(kContentWidth, 18);
  style_slider_->setValue(static_cast<float>(build_.style * 100.0));
  style_slider_->onValueChange([this](float value) { set_style(static_cast<double>(value) / 100.0); });
  add_parent_->add(style_slider_);
- add_label(catalog_.tr("garage.style_gentle"), kMargin, y + 50, 80, 14, {132, 139, 135});
+ y += 26.0f;
+ add_label(catalog_.tr("garage.style_gentle"), kMargin, y, 80, 14, {132, 139, 135});
  auto style_mid =
-   add_label(catalog_.tr("garage.style_normal"), kMargin, y + 50, kContentWidth, 14, {132, 139, 135});
+ add_label(catalog_.tr("garage.style_normal"), kMargin, y, kContentWidth, 14, {132, 139, 135});
  style_mid->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Center);
  auto style_fast =
-   add_label(catalog_.tr("garage.style_fast"), kMargin, y + 50, kContentWidth, 14, {132, 139, 135});
+ add_label(catalog_.tr("garage.style_fast"), kMargin, y, kContentWidth, 14, {132, 139, 135});
  style_fast->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Right);
- style_value_ = add_label("", kMargin, y + 70, kContentWidth, 15, {143, 201, 187});
+ y += 27.0f;
+ style_value_ = add_label("", kMargin, y, kContentWidth, 15, {143, 201, 187});
+ y += 64.0f;
 
  endless_checkbox_ = tgui::CheckBox::create(catalog_.tr("garage.endless_mode"));
- endless_checkbox_->setPosition(kMargin, y + 104);
+ endless_checkbox_->setPosition(kMargin, y);
  endless_checkbox_->setTextSize(15);
  endless_checkbox_->setChecked(endless_mode_);
  endless_checkbox_->getRenderer()->setTextColor({184, 199, 190});
@@ -515,29 +691,53 @@ void GameUi::build_garage() {
  garage_next_button_->setText(catalog_.tr(checked ? "garage.enter_world" : "garage.next"));
  });
  add_parent_->add(endless_checkbox_);
- add_label(catalog_.tr("garage.expedition_control"), kMargin + 22, y + 134,
+ y += std::max(28.0f, endless_checkbox_->getFullSize().y) + 8.0f;
+ auto roles = add_label(catalog_.tr("garage.expedition_control"), kMargin + 22, y,
  kContentWidth - 22, 14, {154, 183, 174});
- budget_label_ = add_label("", kMargin, y + 170, kContentWidth, 18, {151, 167, 159}, true);
- auto recommended = add_button(catalog_.tr("garage.use_recommended"), kMargin, y + 206, 148, 42);
+ y += std::max(20.0f, roles->getFullSize().y) + 12.0f;
+ budget_label_ = add_label("", kMargin, y, kContentWidth, 18, {151, 167, 159}, true);
+ y += 38.0f;
+ auto recommended = add_button(catalog_.tr("garage.use_recommended"), kMargin, y, 162, 42);
+ recommended->setTextSize(14);
  recommended->onClick([this] { use_recommended_build(); });
- garage_next_button_ = add_button(catalog_.tr("garage.next"), kMargin + 164, y + 206, 148, 42, true);
+ garage_next_button_ = add_button(catalog_.tr("garage.next"), kMargin + 172, y, 140, 42, true);
  garage_next_button_->setText(
  catalog_.tr(endless_mode_ ? "garage.enter_world" : "garage.next"));
+ garage_next_button_->setTextSize(16);
  garage_next_button_->onClick([this] { actions_.open_prediction = true; });
  update_garage_labels();
- if (const auto scrollable = std::dynamic_pointer_cast<tgui::ScrollablePanel>(add_parent_)) {
- scrollable->setContentSize({static_cast<float>(kPanelWidth), y + 262.0f});
- }
+ scroll->setContentSize({static_cast<float>(kPanelWidth), y + 66.0f});
 }
 
 void GameUi::build_prediction() {
- add_label(catalog_.tr("prediction.departure"), kMargin, 26, kContentWidth, 14, {107, 190, 176}, true);
- add_label(presentation_->prediction_heading, kMargin, 55, kContentWidth, 25, {239, 238, 229}, true);
- add_label(presentation_->prediction_hint, kMargin, 101, kContentWidth, 14, {157, 163, 158});
+ auto scroll = tgui::ScrollablePanel::create(
+ {static_cast<float>(kPanelWidth), std::max(1.0f, static_cast<float>(height_) - 88.0f)});
+ scroll->setPosition(0, 0);
+ scroll->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
+ scroll->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
+ auto scroll_renderer = scroll->getRenderer();
+ scroll_renderer->setBackgroundColor({0, 0, 0, 0});
+ scroll_renderer->setBorderColor({0, 0, 0, 0});
+ scroll_renderer->setBorders({0});
+ panel_->add(scroll);
+ add_parent_ = scroll;
+ float y = 24.0f;
+ const auto place_text = [&](const std::string& text, unsigned size, tgui::Color color,
+ bool bold = false, float gap = 8.0f) {
+ auto label = add_label(text, kMargin, y, kContentWidth, size, color, bold);
+ y += std::max(static_cast<float>(size) * 1.35f, label->getFullSize().y) + gap;
+ return label;
+ };
+ place_text(catalog_.tr("prediction.departure"), 14, {107, 190, 176}, true, 5);
+ place_text(presentation_->prediction_heading, 23, {239, 238, 229}, true, 10);
+ place_text(presentation_->prediction_hint, 14, {157, 163, 158}, false, 16);
 
- float y = 184.0f;
  for (const auto& choice : presentation_->prediction_choices) {
-  auto button = add_button(choice.text, kMargin, y, kContentWidth, 58);
+ const std::string wrapped = wrap_words(choice.text, 38);
+ const float height = std::max(58.0f, 20.0f + 19.0f * static_cast<float>(text_line_count(wrapped)));
+ auto button = add_button(wrapped, kMargin, y, kContentWidth, height);
+ button->setTextSize(15);
+ button->setToolTip(make_tooltip(choice.feedback));
   button->onClick([this, id = choice.id] {
    prediction_choice_ = id;
    rebuild(nullptr);
@@ -546,8 +746,10 @@ void GameUi::build_prediction() {
    button->getRenderer()->setBackgroundColor({52, 61, 57});
    button->getRenderer()->setBorderColor({108, 189, 174});
   }
-  y += 72;
+ y += height + 12.0f;
  }
+ scroll->setContentSize({static_cast<float>(kPanelWidth), y + 16.0f});
+ add_parent_ = panel_;
  auto back = add_button(catalog_.tr("garage.back"), kMargin, height_ - 74.0f, 116, 46);
  back->onClick([this] { actions_.open_garage = true; });
  auto launch = add_button(catalog_.tr("garage.launch"), kMargin + 132, height_ - 74.0f, 180, 46, true);
@@ -560,7 +762,7 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
  panel_renderer->setBackgroundColor({0, 0, 0, 0});
  panel_renderer->setBorders({0});
 
- auto objective_card = tgui::Panel::create({kContentWidth, 86});
+ auto objective_card = tgui::Panel::create({kContentWidth, 100});
  objective_card->setPosition(kMargin, 22);
  objective_card->getRenderer()->setBackgroundColor({12, 17, 17, 218});
  objective_card->getRenderer()->setBorderColor({78, 104, 95, 150});
@@ -572,23 +774,30 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
    catalog_.trf("ui.chapter_row", {std::to_string(level.chapter), std::to_string(level.order), level.title}));
  chapter->setPosition(16, 12);
  chapter->setTextSize(13);
+ chapter->setMaximumTextWidth(kContentWidth - 32.0f);
  chapter->getRenderer()->setTextColor({107, 190, 176});
  chapter->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
  objective_card->add(chapter);
  auto objective = tgui::Label::create(
  mission && mission->endless_mode() ? catalog_.tr("running.endless_heading")
  : presentation_->running_heading);
- objective->setPosition(16, 39);
+ const float chapter_height = std::max(18.0f, chapter->getFullSize().y);
+ objective->setPosition(16, 12.0f + chapter_height + 7.0f);
  objective->setTextSize(18);
+ objective->setMaximumTextWidth(kContentWidth - 32.0f);
  objective->getRenderer()->setTextColor({239, 238, 229});
  objective->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
  objective_card->add(objective);
+ const float objective_height = std::max(24.0f, objective->getFullSize().y);
+ const float objective_card_height = 12.0f + chapter_height + 7.0f + objective_height + 13.0f;
+ objective_card->setSize({kContentWidth, objective_card_height});
 
- auto state_card = tgui::Panel::create({kContentWidth, 104});
+ auto state_card = tgui::Panel::create({kContentWidth, 128});
  const bool manual = mission && !mission->endless_mode() &&
  mission->level().control_mode == "manual_calibration";
  const bool expedition = mission && mission->endless_mode();
- state_card->setPosition(kMargin, 120);
+ const float state_y = 22.0f + objective_card_height + 12.0f;
+ state_card->setPosition(kMargin, state_y);
  state_card->getRenderer()->setBackgroundColor({19, 27, 25, 225});
  state_card->getRenderer()->setBorderColor({73, 212, 185, 180});
  state_card->getRenderer()->setBorders({0, 0, 0, 3});
@@ -610,9 +819,16 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
  running_state_->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
  state_card->add(running_state_);
 
- auto card = tgui::Panel::create({kContentWidth, 210});
+ const float controls_y = std::max(650.0f, static_cast<float>(height_) - 70.0f);
+ const float garage_y = controls_y - 48.0f;
+ const float explanation_y = state_y + 142.0f;
+ const float explanation_height = std::max(180.0f, garage_y - explanation_y - 14.0f);
+ auto card = tgui::ScrollablePanel::create({kContentWidth, explanation_height});
  running_explanation_card_ = card;
- card->setPosition(kMargin, 238);
+ card->setPosition(kMargin, explanation_y);
+ card->setContentSize({kContentWidth - 12.0f, explanation_height - 4.0f});
+ card->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
+ card->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
  card->getRenderer()->setBackgroundColor({10, 14, 15, 210});
  card->getRenderer()->setBorderColor({62, 76, 72, 150});
  card->getRenderer()->setBorders({1});
@@ -629,11 +845,10 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
  running_metrics_ = tgui::Label::create(catalog_.tr("running.metrics_idle"));
  running_metrics_->setPosition(18, 42);
  running_metrics_->setTextSize(14);
- running_metrics_->setMaximumTextWidth(276);
+ running_metrics_->setMaximumTextWidth(264);
  running_metrics_->getRenderer()->setTextColor({194, 199, 194});
  card->add(running_metrics_);
 
- const float controls_y = std::max(468.0f, static_cast<float>(height_) - 70.0f);
  for (int index = 0; index < 3; ++index) {
   const double speeds[] = {1.0, 2.0, 4.0};
   auto button = add_button(std::to_string(static_cast<int>(speeds[index])) + "×", kMargin + index * 58.0f,
@@ -645,11 +860,12 @@ void GameUi::build_running(const mission::MissionSimulation* mission) {
  const bool endless = mission && mission->endless_mode();
  const float garage_x = endless ? kMargin + 160.0f : kMargin;
  const float garage_width = endless ? 152.0f : kContentWidth;
- auto garage = add_button(catalog_.tr("running.to_garage"), garage_x, controls_y - 48.0f,
+ auto garage = add_button(catalog_.tr("running.to_garage"), garage_x, garage_y,
  garage_width, 36);
+ garage->setTextSize(16);
  garage->onClick([this] { actions_.open_garage = true; });
  if (endless) {
- auto reset = add_button(catalog_.tr("running.reset_robot"), kMargin, controls_y - 48.0f, 152, 36);
+ auto reset = add_button(catalog_.tr("running.reset_robot"), kMargin, garage_y, 152, 36);
  reset->onClick([this] { actions_.reset_simulation = true; });
  }
  if (mission) {
@@ -682,73 +898,116 @@ void GameUi::build_debrief(const mission::MissionSimulation* mission) {
   if (found != presentation_->failure_titles.end())
    title = found->second;
  }
- add_label(catalog_.tr("debrief.title"), kMargin, 24, kContentWidth, 14, {107, 190, 176}, true);
- add_label(title, kMargin, 51, kContentWidth, 24,
-           succeeded ? tgui::Color{105, 235, 193} : tgui::Color{255, 145, 120}, true);
+ float layout_y = 24.0f;
+ const auto advance = [&](float used_height, float gap = 8.0f) {
+  layout_y += std::max(1.0f, used_height) + gap;
+ };
+ const auto placed_text = [&](const std::string& text, unsigned size, tgui::Color color, bool bold = false,
+                            float gap = 8.0f) {
+  auto label = add_label(text, kMargin, layout_y, kContentWidth, size, color, bold);
+  advance(std::max(static_cast<float>(size) * 1.35f, label->getFullSize().y), gap);
+  return label;
+ };
+ placed_text(catalog_.tr("debrief.title"), 14, {107, 190, 176}, true, 4);
+ placed_text(title, 24, succeeded ? tgui::Color{105, 235, 193} : tgui::Color{255, 145, 120}, true, 10);
  std::string summary = succeeded ? presentation_->success_summary : presentation_->failure_summary;
  if (succeeded) {
   if (const auto* beat = catalog_.story_beat(presentation_->level, "after")) {
    summary += "\n" + beat->speaker + "：" + beat->text;
   }
  }
- add_label(summary, kMargin, 96, kContentWidth, 15, {157, 163, 158});
+ placed_text(summary, 15, {157, 163, 158}, false, 10);
 
  const auto badge = [&](bool earned, const char* key) {
   return (earned ? catalog_.tr("debrief.badge_on") : catalog_.tr("debrief.badge_off")) + catalog_.tr(key);
  };
- add_label(badge(result.safe_score, "debrief.badge_safe") + " " +
+ placed_text(badge(result.safe_score, "debrief.badge_safe") + " " +
              badge(result.fast_score, "debrief.badge_fast") + " " +
              badge(result.efficient_score, "debrief.badge_efficient"),
-           kMargin, 166, kContentWidth, 17, {220, 222, 216}, true);
+           17, {220, 222, 216}, true, 10);
  std::string metrics =
    catalog_.trf("debrief.metrics", {format_number(result.time_s), format_number(result.path_length_m),
                                     format_number(result.energy_wh, 2)});
  metrics += mission->level().concept_id == "odometry_drift"
               ? catalog_.trf("debrief.metrics_odom", {format_number(result.max_odometry_error_m, 2)})
               : catalog_.trf("debrief.metrics_clear", {format_number(result.scored_clearance_m, 2)});
- add_label(metrics, kMargin, 207, kContentWidth, 16, {182, 190, 186});
+ placed_text(metrics, 16, {182, 190, 186}, false, 14);
 
- add_label(catalog_.tr("debrief.prediction_title"), kMargin, 267, kContentWidth, 15,
- {107, 190, 176}, true);
+ if (mission->level().objective.goal_order == "autonomous") {
+ const auto labels = [&](const std::vector<std::string>& ids) {
+ std::string text;
+ for (const auto& id : ids) {
+ const auto goal = std::find_if(mission->level().objective.goals.begin(),
+ mission->level().objective.goals.end(), [&](const auto& candidate) {
+ return (candidate.id.empty() ? candidate.marker : candidate.id) == id;
+ });
+ if (!text.empty())
+ text += " → ";
+ text += goal == mission->level().objective.goals.end() ? id : goal->label;
+ }
+ return text.empty() ? catalog_.tr("debrief.none") : text;
+ };
+ placed_text(catalog_.trf("debrief.task_metrics",
+ {labels(mission->snapshot().completed_goal_ids),
+ labels(mission->snapshot().abandoned_goal_ids)}),
+ 14, {166, 187, 178}, false, 10);
+ }
+ if (result.collected_items > 0 || !mission->level().environment_keyframes.empty()) {
+ placed_text(catalog_.trf("debrief.payload_environment_metrics",
+ {std::to_string(result.collected_items), format_number(result.final_payload_mass_kg, 1),
+ format_number(result.cargo_integrity * 100.0, 1),
+ format_number(result.max_rollover_risk * 100.0, 0),
+ format_number(result.peak_wetness * 100.0, 0),
+ format_number(result.min_visibility * 100.0, 0)}),
+ 14, {166, 187, 178}, false, 14);
+ }
+
+ placed_text(catalog_.tr("debrief.prediction_title"), 15, {107, 190, 176}, true, 6);
  const auto prediction =
  std::find_if(presentation_->prediction_choices.begin(), presentation_->prediction_choices.end(),
- [&](const auto& value) { return value.id == prediction_choice_; });
+              [&](const auto& value) { return value.id == prediction_choice_; });
  if (prediction != presentation_->prediction_choices.end()) {
- add_label(prediction->text + "\n" + prediction->feedback, kMargin, 293, kContentWidth, 14,
- {170, 184, 178});
+  placed_text(prediction->text + "\n" + prediction->feedback, 14, {170, 184, 178}, false, 14);
  } else {
- add_label(catalog_.tr("debrief.prediction_missing"), kMargin, 293, kContentWidth, 14,
- {132, 145, 139});
+  placed_text(catalog_.tr("debrief.prediction_missing"), 14, {132, 145, 139}, false, 14);
  }
 
  if (comparison_result_) {
- const auto& previous = *comparison_result_;
- comparison_label_ = add_label(
- catalog_.trf("debrief.comparison",
- {format_delta(result.time_s - previous.time_s),
- format_delta(result.energy_wh - previous.energy_wh, 2),
- format_delta(result.scored_clearance_m - previous.scored_clearance_m, 2)}),
- kMargin, 389, kContentWidth, 14, {232, 185, 103}, true);
+  const auto& previous = *comparison_result_;
+  comparison_label_ = add_label(
+   catalog_.trf("debrief.comparison",
+               {format_delta(result.time_s - previous.time_s),
+                format_delta(result.energy_wh - previous.energy_wh, 2),
+                format_delta(result.scored_clearance_m - previous.scored_clearance_m, 2)}),
+   kMargin, layout_y, kContentWidth, 14, {232, 185, 103}, true);
+  advance(std::max(19.0f, comparison_label_->getFullSize().y), 14);
  } else {
- comparison_label_ = add_label(catalog_.tr("debrief.comparison_first"), kMargin, 389,
- kContentWidth, 14, {132, 145, 139});
+  comparison_label_ = add_label(catalog_.tr("debrief.comparison_first"), kMargin, layout_y,
+                                kContentWidth, 14, {132, 145, 139});
+  advance(std::max(19.0f, comparison_label_->getFullSize().y), 14);
  }
 
- add_label(catalog_.tr("debrief.replay_title"), kMargin, 438, kContentWidth, 16, {239, 238, 229}, true);
+ placed_text(catalog_.tr("debrief.replay_title"), 16, {239, 238, 229}, true, 6);
  replay_slider_ = tgui::Slider::create(0.0f, static_cast<float>(std::max(0.05, result.time_s)));
- replay_slider_->setPosition(kMargin, 470);
+ replay_slider_->setPosition(kMargin, layout_y);
  replay_slider_->setSize(kContentWidth, 18);
  replay_slider_->setValue(static_cast<float>(mission->snapshot().time_s));
  replay_slider_->onValueChange([this](float value) { actions_.replay_time_s = static_cast<double>(value); });
  add_parent_->add(replay_slider_);
- replay_value_ = add_label("", kMargin, 494, kContentWidth, 14, {143, 201, 187}, true);
- replay_cause_ = add_label("", kMargin, 522, kContentWidth, 14, {194, 199, 194});
+ advance(20.0f, 6);
+ replay_value_ = add_label("", kMargin, layout_y, kContentWidth, 14, {143, 201, 187}, true);
+ advance(std::max(19.0f, replay_value_->getFullSize().y), 4);
+ replay_cause_ = add_label("", kMargin, layout_y, kContentWidth, 14, {194, 199, 194});
+ advance(std::max(19.0f, replay_cause_->getFullSize().y), 14);
 
- add_label(presentation_->evidence_heading, kMargin, 616, kContentWidth, 16, {239, 238, 229}, true);
- replay_evidence_ = add_label("", kMargin, 646, kContentWidth, 14, {151, 170, 163});
+ placed_text(presentation_->evidence_heading, 16, {239, 238, 229}, true, 6);
+ replay_evidence_ = add_label("", kMargin, layout_y, kContentWidth, 14, {151, 170, 163});
+ advance(std::max(19.0f, replay_evidence_->getFullSize().y), 14);
 
- add_label(presentation_->knowledge_title, kMargin, 770, kContentWidth, 16, {107, 190, 176}, true);
- add_label(mission->level().knowledge_card, kMargin, 800, kContentWidth, 14, {170, 184, 178});
+ placed_text(presentation_->knowledge_title, 16, {107, 190, 176}, true, 4);
+ placed_text(mission->level().knowledge_card, 14, {170, 184, 178}, false, 12);
+ scroll->setContentSize({static_cast<float>(kPanelWidth), layout_y + 32.0f});
+
 
  add_parent_ = panel_;
  if (succeeded) {
@@ -789,6 +1048,11 @@ void GameUi::refresh_debrief(const mission::MissionSimulation& mission) {
  } else if (state.traction_saturated) {
   replay_cause_->setText(catalog_.trf(
     "debrief.cause_traction", {format_number(grade_degrees), format_number(std::abs(state.robot.v))}));
+ } else if (!mission.level().environment_keyframes.empty() && state.environment.wetness >= 0.2) {
+ const auto& stage = mission.level().environment_keyframes[state.environment.keyframe_index];
+ replay_cause_->setText(catalog_.trf("debrief.cause_environment",
+ {stage.label, format_number(state.environment.wetness * 100.0, 0),
+ format_number(state.environment.visibility * 100.0, 0)}));
  } else if (state.decision.sequence > 0 && !state.decision.observation_refs.empty()) {
  replay_cause_->setText(catalog_.trf("debrief.cause_decision",
  decision_arguments(catalog_, state.decision)));
@@ -849,7 +1113,8 @@ void GameUi::cycle_component(const std::string& slot) {
  column->options.size();
  for (std::size_t offset = 0; offset < column->options.size(); ++offset) {
  const auto& candidate = column->options[(start + offset) % column->options.size()];
- if (owned_.empty() || owned_.contains(candidate)) {
+ if (catalog_.level(presentation_->level).mode == "playground" ||
+ owned_.empty() || owned_.contains(candidate)) {
  select_component(slot, candidate);
  return;
  }
@@ -858,10 +1123,17 @@ void GameUi::cycle_component(const std::string& slot) {
 
 void GameUi::select_chassis(const std::string& robot_id) {
  const auto& robot = catalog_.robot(robot_id);
- if (!robot.unlock_ability.empty() && !owned_abilities_.contains(robot.unlock_ability)) {
+ if (catalog_.level(presentation_->level).mode != "playground" &&
+ !robot.unlock_ability.empty() && !owned_abilities_.contains(robot.unlock_ability)) {
  return;
  }
  build_.chassis_robot = robot_id;
+ actions_.build_changed = true;
+ update_garage_labels();
+}
+
+void GameUi::select_task_policy(const std::string& policy) {
+ build_.task_policy = policy;
  actions_.build_changed = true;
  update_garage_labels();
 }
@@ -948,7 +1220,8 @@ std::string GameUi::card_stat(const std::string& slot, const mission::ComponentD
  if (slot == "computer")
   return catalog_.trf("garage.stat_computer", {format_number(get("decision_hz"), 0)});
  if (slot == "imu")
-  return catalog_.trf("garage.stat_imu", {format_number(get("gyro_noise_radps"), 3)});
+ return catalog_.trf("garage.stat_imu",
+ {format_number(get("gyro_noise_density_radps_sqrt_hz"), 4)});
  return std::string();
 }
 
@@ -961,19 +1234,23 @@ std::string GameUi::card_text(const std::string& slot, const mission::ComponentD
 void GameUi::sanitize_build() {
  // Selections the player does not own (stale saves, future content) fall back
  // to the level default, which content validation guarantees to be ownable.
+ const bool playground = catalog_.level(presentation_->level).mode == "playground";
  if (owned_.empty())
   return;
+ if (!playground) {
  for (const auto& slot : {"tires", "sensor", "computer"}) {
-  const auto& current = selected_id(build_, slot);
-  if (!current.empty() && !owned_.contains(current)) {
-   assign_id(build_, slot, selected_id(presentation_->default_build, slot));
+ const auto& current = selected_id(build_, slot);
+ if (!current.empty() && !owned_.contains(current)) {
+ assign_id(build_, slot, selected_id(presentation_->default_build, slot));
+ }
   }
  }
  if (!build_.chassis_robot.empty()) {
  const auto offered = std::find(presentation_->chassis_options.begin(),
  presentation_->chassis_options.end(), build_.chassis_robot);
  const auto& robot = catalog_.robot(build_.chassis_robot);
- const bool locked = !robot.unlock_ability.empty() && !owned_abilities_.contains(robot.unlock_ability);
+ const bool locked = !playground && !robot.unlock_ability.empty() &&
+ !owned_abilities_.contains(robot.unlock_ability);
  if (offered == presentation_->chassis_options.end() || locked) {
  build_.chassis_robot.clear();
  }
@@ -982,12 +1259,14 @@ void GameUi::sanitize_build() {
 }
 
 void GameUi::update_garage_labels() {
+ const bool playground = catalog_.level(presentation_->level).mode == "playground";
  const std::string selected_chassis = !build_.chassis_robot.empty()
  ? build_.chassis_robot
  : (!presentation_->robot_id.empty() ? presentation_->robot_id : catalog_.campaign().companion_robot);
  for (const auto& card : chassis_cards_) {
  const auto& robot = catalog_.robot(card.id);
- const bool locked = !robot.unlock_ability.empty() && !owned_abilities_.contains(robot.unlock_ability);
+ const bool locked = !playground && !robot.unlock_ability.empty() &&
+ !owned_abilities_.contains(robot.unlock_ability);
  const bool active = card.id == selected_chassis;
  card.button->setEnabled(!locked);
  auto look = card.button->getRenderer();
@@ -1004,13 +1283,14 @@ void GameUi::update_garage_labels() {
  }
  const std::string drive = catalog_.tr(robot.drive_label_key);
  card.button->setText(catalog_.trf("garage.chassis_card",
- {robot.title, drive, locked ? catalog_.tr("garage.card_locked") : ""}));
+ {robot.title, drive, locked ? catalog_.tr("garage.card_locked") : "",
+ active ? catalog_.tr("garage.chassis_selected") : ""}));
  }
  for (const auto& [slot, cards] : slot_cards_) {
   const std::string current = selected_id(build_, slot);
   for (const auto& card : cards) {
    const auto& item = catalog_.component(card.id);
-   const bool locked = !owned_.empty() && !owned_.contains(card.id);
+ const bool locked = !playground && !owned_.empty() && !owned_.contains(card.id);
    const bool active = card.id == current;
  card.button->setEnabled(!locked || reputation_ >= mission::component_reputation_cost(item));
    auto look = card.button->getRenderer();
@@ -1031,6 +1311,15 @@ void GameUi::update_garage_labels() {
  std::to_string(mission::component_reputation_cost(item))})
  : card_text(slot, item, false));
   }
+ }
+ for (const auto& card : task_policy_cards_) {
+ const bool active = card.id == build_.task_policy ||
+ (build_.task_policy.empty() && card.id == catalog_.level(presentation_->level).objective.task_policy);
+ auto look = card.button->getRenderer();
+ look->setBackgroundColor(active ? tgui::Color{52, 61, 57} : tgui::Color{26, 30, 31});
+ look->setBackgroundColorHover(active ? tgui::Color{58, 68, 63} : tgui::Color{38, 44, 43});
+ look->setBorderColor(active ? tgui::Color{108, 189, 174} : tgui::Color{64, 69, 67});
+ look->setTextColor(active ? tgui::Color{235, 244, 238} : tgui::Color{225, 224, 215});
  }
  if (style_slider_) {
   style_slider_->setValue(static_cast<float>(build_.style * 100.0));
@@ -1119,6 +1408,12 @@ void GameUi::refresh_running(const mission::MissionSimulation& mission, bool pau
  active ? active->label : mission.level().objective.goal_label});
  }
  running_metrics_->setText(explanation);
+ if (running_explanation_card_) {
+ const float content_height = 42.0f + std::max(20.0f, running_metrics_->getFullSize().y) + 18.0f;
+ running_explanation_card_->setContentSize(
+ {kContentWidth - 12.0f,
+ std::max(running_explanation_card_->getSize().y - 4.0f, content_height)});
+ }
  if (running_state_) {
   if (paused)
    running_state_->setText(catalog_.tr("running.paused"));
@@ -1141,8 +1436,15 @@ void GameUi::refresh_running(const mission::MissionSimulation& mission, bool pau
  {decision_action(catalog_, state.decision)}));
  else if (state.dynamic_object_detected || state.static_obstacle_detected) {
    running_state_->setText(presentation_->detected_line);
- } else if (state.goals_reached < presentation_->goal_lines.size()) {
- running_state_->setText(presentation_->goal_lines[state.goals_reached]);
+ } else if (!presentation_->goal_lines.empty()) {
+ const std::size_t completed_line = mission.level().objective.goals.size();
+ const std::size_t line = state.active_goal_index < mission.level().objective.goals.size()
+ ? state.active_goal_index
+ : completed_line;
+ if (line < presentation_->goal_lines.size())
+ running_state_->setText(presentation_->goal_lines[line]);
+ else
+ running_state_->setText(presentation_->normal_line);
  } else
  running_state_->setText(presentation_->normal_line);
  }

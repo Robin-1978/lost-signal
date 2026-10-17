@@ -10,6 +10,8 @@
     "/components/3/title": "Wide Sand Tires",
     "/components/3/description": "Strong traction on soft ground, with higher energy use on hard surfaces.",
     "/components/4/title": "Racing Slicks",
-    "/components/4/description": "Fast and efficient on hard surfaces, with poor grip when wet."
+    "/components/4/description": "Fast and efficient on hard surfaces, with poor grip when wet.",
+    "/components/5/title": "Steel Test Wheels",
+    "/components/5/description": "High stiffness and low rolling loss transmit deck-joint shocks into the chassis, with limited grip on wet steel."
   }
 }

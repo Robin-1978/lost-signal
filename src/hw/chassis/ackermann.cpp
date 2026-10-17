@@ -35,7 +35,8 @@ double yaw_for_steer(double body_v, double delta_rad, double wheel_base_m) {
 
 AckermannDrive::AckermannDrive(AckermannParams params, WheelPidGains drive_gains, double servo_kp)
     : params_(params),
-      drive_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit),
+ drive_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit,
+ AntiWindupMode::ConditionalIntegration),
       servo_pid_(servo_kp, 0.0, 0.0, 1.0, 0.5) {
  telemetry_.differential = false;
  telemetry_.steering_servo_present = true;
@@ -52,6 +53,11 @@ void AckermannDrive::reset() {
  telemetry_.differential = false;
  telemetry_.steering_servo_present = true;
  telemetry_.wheel_steer_count = 2;
+}
+
+void AckermannDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
+ params_.mass_kg = std::max(0.5, dynamics.mass_kg);
+ params_.yaw_inertia_kgm2 = std::max(0.05, dynamics.yaw_inertia_kgm2);
 }
 
 double AckermannDrive::encoder_measure(double wheel_mps, double dt) const {

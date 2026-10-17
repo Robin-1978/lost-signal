@@ -25,14 +25,21 @@ int main() {
   const auto held = govern_entry(state, occ);
   CHECK(held.hold_active && held.stop_valid);
   CHECK(held.stop_point.x == 3.0 && held.stop_point.y == 4.0);
-  // Uncertain gaps keep the hold (never invent a release).
-  for (int i = 0; i < 10; ++i) CHECK(govern_entry(state, idle).hold_active);
+ // Uncertain gaps keep both the hold and its virtual wall (never invent a
+ // release and never erase the only safe stopping point).
+ for (int i = 0; i < 10; ++i) {
+ const auto gap = govern_entry(state, idle);
+ CHECK(gap.hold_active);
+ CHECK(gap.stop_valid);
+ CHECK(gap.stop_point.x == 3.0 && gap.stop_point.y == 4.0);
+ }
   // A single Clear does not release (needs 25 sustained).
   sim::GovernorInput clear;
   clear.clear_fresh = true;
   CHECK(govern_entry(state, clear).hold_active);
   for (int i = 0; i < 23; ++i) CHECK(govern_entry(state, clear).hold_active);
   CHECK(!govern_entry(state, clear).hold_active);
+ CHECK(!state.stop_valid);
   // Re-engage, then prolonged silence releases (tracks gone: DWA owns it).
   CHECK(govern_entry(state, occ).hold_active);
   for (int i = 0; i < 14; ++i) CHECK(govern_entry(state, idle).hold_active);

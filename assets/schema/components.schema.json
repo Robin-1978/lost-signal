@@ -6,15 +6,47 @@
   "required": [
     "schema_version",
     "slot",
+    "model_profile",
     "components"
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "slot": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_.-]*$"
+    },
+    "model_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fidelity",
+        "basis",
+        "source_refs"
+      ],
+      "properties": {
+        "fidelity": {
+          "enum": [
+            "ideal",
+            "typical",
+            "identified"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "components": {
       "type": "array",

@@ -70,9 +70,48 @@ class PlanarPhysicsWorld final : public IPhysicsWorld {
   return {static_cast<std::uint32_t>(bodies_.size())};
  }
 
+ JointHandle create_joint(const JointSpec&) override {
+ throw std::logic_error("planar physics does not support articulated joints");
+ }
+
  void remove(BodyHandle body) override { checked(body).active = false; }
 
  void set_state(BodyHandle body, const BodyState& state) override { checked(body).state = state; }
+
+ void set_mass_properties(BodyHandle body, double mass_kg,
+ Vec3 inertia_diagonal_kgm2) override {
+ if (!(mass_kg > 0.0) || inertia_diagonal_kgm2.x < 0.0 ||
+ inertia_diagonal_kgm2.y < 0.0 || inertia_diagonal_kgm2.z < 0.0) {
+ throw std::invalid_argument("invalid dynamic mass properties");
+ }
+ auto& stored = checked(body);
+ if (stored.spec.kinematic) {
+ throw std::invalid_argument("cannot change mass properties of a kinematic body");
+ }
+ stored.spec.mass_kg = mass_kg;
+ stored.spec.inertia_diagonal_kgm2 = inertia_diagonal_kgm2;
+ }
+
+ void set_contact_friction(BodyHandle body, double friction,
+ double rolling_friction, double spinning_friction) override {
+ auto& spec = checked(body).spec;
+ spec.friction = friction;
+ spec.rolling_friction = rolling_friction;
+ spec.spinning_friction = spinning_friction;
+ }
+
+ void set_contact_rolling_anisotropy(BodyHandle body, Vec3 local_scale) override {
+ checked(body).spec.rolling_friction_anisotropy = local_scale;
+ }
+
+ void set_contact_compliance(BodyHandle body, double stiffness_Npm,
+ double damping_Nspm) override {
+ if (!(stiffness_Npm > 0.0) || damping_Nspm < 0.0)
+ throw std::invalid_argument("invalid contact compliance");
+ auto& spec = checked(body).spec;
+ spec.contact_stiffness_Npm = stiffness_Npm;
+ spec.contact_damping_Nspm = damping_Nspm;
+ }
 
  void apply_drive(BodyHandle body, const DriveForces& drive) override {
   auto& stored = checked(body);
@@ -116,12 +155,42 @@ class PlanarPhysicsWorld final : public IPhysicsWorld {
  stored.torque_Nm.z += point_world.x * force_world.y - point_world.y * force_world.x;
  }
 
+ void apply_force_at_world_point(BodyHandle body, Vec3 force_world_N,
+ Vec3 point_world_m) override {
+ auto& stored = checked(body);
+ if (stored.spec.mass_kg <= 0.0 || stored.spec.kinematic) {
+ return;
+ }
+ stored.force_N.x += force_world_N.x;
+ stored.force_N.y += force_world_N.y;
+ stored.force_N.z += force_world_N.z;
+ const Vec3 relative_point{
+ point_world_m.x - stored.state.position_m.x,
+ point_world_m.y - stored.state.position_m.y,
+ point_world_m.z - stored.state.position_m.z,
+ };
+ stored.torque_Nm.z +=
+ relative_point.x * force_world_N.y - relative_point.y * force_world_N.x;
+ }
+
  void apply_local_torque(BodyHandle body, Vec3 torque_body_Nm) override {
  auto& stored = checked(body);
  if (stored.spec.mass_kg <= 0.0 || stored.spec.kinematic) {
  return;
  }
  stored.torque_Nm.z += torque_body_Nm.z;
+ }
+
+ void apply_world_torque(BodyHandle body, Vec3 torque_world_Nm) override {
+ auto& stored = checked(body);
+ if (stored.spec.mass_kg <= 0.0 || stored.spec.kinematic) {
+ return;
+ }
+ stored.torque_Nm.z += torque_world_Nm.z;
+ }
+
+ void apply_joint_effort(JointHandle, double) override {
+ throw std::logic_error("planar physics does not support articulated joints");
  }
 
  void step(double fixed_dt_s) override {
@@ -165,6 +234,13 @@ class PlanarPhysicsWorld final : public IPhysicsWorld {
       {body.state.position_m.x, body.state.position_m.y, 0.0},
       {0.0, 0.0, 1.0},
       impact_speed * body.spec.mass_kg,
+ impact_speed * body.spec.mass_kg / fixed_dt_s,
+ {},
+ {},
+ 0.0,
+ 0.0,
+ 0.0,
+ 0.0,
     });
    }
    body.force_N = {};
@@ -173,6 +249,10 @@ class PlanarPhysicsWorld final : public IPhysicsWorld {
  }
 
  BodyState state(BodyHandle body) const override { return checked(body).state; }
+
+ JointState joint_state(JointHandle) const override {
+ throw std::logic_error("planar physics does not support articulated joints");
+ }
 
  const std::vector<ContactEvent>& contacts() const override { return contacts_; }
 

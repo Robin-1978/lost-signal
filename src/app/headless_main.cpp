@@ -18,6 +18,7 @@ namespace {
 void usage(const char* executable) {
  std::cout << "Usage: " << executable
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
+ " [--chassis ROBOT_ID] [--task-policy TASK_POLICY_ID]"
  " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
  " [--artifact FILE] [--reproduce FILE]\n";
@@ -46,6 +47,8 @@ int main(int argc, char** argv) {
  bool explicit_run_configuration = false;
  double duration_s = 60.0;
   std::optional<uint64_t> seed_override;
+ std::string requested_chassis;
+ std::string requested_task_policy;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
  mission::PhysicsMode physics_mode = mission::PhysicsMode::Bullet;
@@ -64,6 +67,12 @@ int main(int argc, char** argv) {
  explicit_run_configuration = true;
    } else if (argument == "--seed" && index + 1 < argc) {
     seed_override = std::stoull(argv[++index]);
+ explicit_run_configuration = true;
+ } else if (argument == "--chassis" && index + 1 < argc) {
+ requested_chassis = argv[++index];
+ explicit_run_configuration = true;
+ } else if (argument == "--task-policy" && index + 1 < argc) {
+ requested_task_policy = argv[++index];
  explicit_run_configuration = true;
    } else if (argument == "--json") {
     json_output = true;
@@ -108,8 +117,9 @@ int main(int argc, char** argv) {
  nlohmann::json artifact;
  input >> artifact;
  if (artifact.value("schema", nlohmann::json{}) !=
- nlohmann::json{{"name", "lost-signal.run"}, {"version", 1}}) {
- throw std::runtime_error("--reproduce requires lost-signal.run schema version 1");
+ nlohmann::json{{"name", "lost-signal.run"}, {"version", app::kRunArtifactSchemaVersion}}) {
+ throw std::runtime_error("--reproduce requires lost-signal.run schema version " +
+ std::to_string(app::kRunArtifactSchemaVersion));
  }
  const auto& configuration = artifact.at("configuration");
  const auto& comparable = configuration.at("comparable");
@@ -119,7 +129,7 @@ int main(int argc, char** argv) {
  throw std::runtime_error("run artifact content hash does not match --assets");
  const auto& experiment = comparable.at("experiment");
  if (experiment.at("condition_id") != "authored-base" || experiment.at("mode") != "mission")
- throw std::runtime_error("Run Artifact v1 reproduction supports authored mission runs only");
+ throw std::runtime_error("Run Artifact v2 reproduction supports authored mission runs only");
  if (std::abs(experiment.at("fixed_step_s").get<double>() - mission::MissionSimulation::fixed_step_s) > 1e-12)
  throw std::runtime_error("run artifact fixed timestep is incompatible with this build");
  if (experiment.at("runtime_provider") != "channel.in-process")
@@ -131,12 +141,17 @@ int main(int argc, char** argv) {
  build.parts = hardware.at("components").get<std::map<std::string, std::string>>();
  build.style = hardware.at("style").get<double>();
  build.chassis_robot = hardware.value("requested_chassis", std::string{});
+ build.task_policy = comparable.at("algorithms").value("task_ordering", std::string{});
  selection_label = "reproduced";
  } else {
  if (level_id.empty())
  level_id = catalog.campaign().starting_level;
  const auto& presentation = catalog.presentation_for_level(level_id);
  build = recommended ? presentation.recommended_build : presentation.default_build;
+ if (!requested_chassis.empty())
+ build.chassis_robot = requested_chassis;
+ if (!requested_task_policy.empty())
+ build.task_policy = requested_task_policy;
  }
  if (field_intent && !endless)
  throw std::runtime_error("--intent requires --endless");
@@ -155,6 +170,10 @@ int main(int argc, char** argv) {
  }
   const auto& result = mission.result();
  const auto runtime_health = mission.runtime_health();
+ const auto& environment_keyframes = mission.level().environment_keyframes;
+ const std::string environment_stage = environment_keyframes.empty()
+ ? std::string{}
+ : environment_keyframes[mission.snapshot().environment.keyframe_index].id;
 
  if (json_output || !artifact_path.empty()) {
    nlohmann::json output = {
@@ -202,6 +221,8 @@ int main(int argc, char** argv) {
       }},
      {"odometry_error_m", result.odometry_error_m},
      {"max_odometry_error_m", result.max_odometry_error_m},
+ {"odometry_heading_error_rad", result.odometry_heading_error_rad},
+ {"max_odometry_heading_error_rad", result.max_odometry_heading_error_rad},
      {"collisions", result.collisions},
  {"rigid_contacts", result.rigid_contacts},
  {"shadow_error",
@@ -231,8 +252,19 @@ int main(int argc, char** argv) {
         {"current_rollover_risk", mission.snapshot().rollover_risk},
         {"max_rollover_risk", result.max_rollover_risk},
         {"traction_saturated", mission.snapshot().traction_saturated},
+ {"traction_slip_observed", mission.snapshot().traction_slip_observed},
         {"traction_saturation_occurred", result.slip_events > 0},
+ {"max_drive_slip_ratio", result.max_drive_slip_ratio},
       }},
+ {"environment",
+ {
+ {"stage", environment_stage},
+ {"wetness", mission.snapshot().environment.wetness},
+ {"visibility", mission.snapshot().environment.visibility},
+ {"daylight", mission.snapshot().environment.daylight},
+ {"peak_wetness", result.peak_wetness},
+ {"min_visibility", result.min_visibility},
+ }},
  {"endless",
  {
  {"enabled", mission.endless_mode()},
@@ -256,6 +288,28 @@ int main(int argc, char** argv) {
  }},
  }},
      {"via_reached", result.via_reached},
+ {"tasks",
+ {
+ {"goal_order", mission.level().objective.goal_order},
+ {"policy", mission.level().objective.task_policy},
+ {"completed_count", mission.snapshot().goals_reached},
+ {"active_goal_id", mission.snapshot().active_goal_id},
+ {"completed_goal_ids", mission.snapshot().completed_goal_ids},
+ {"abandoned_goal_ids", mission.snapshot().abandoned_goal_ids},
+ }},
+ {"payload",
+ {
+ {"mass_kg", mission.payload_state().mass_kg},
+ {"collected_mass_kg", mission.payload_state().collected_mass_kg},
+ {"first_moment_kgm", mission.payload_state().first_moment_kgm},
+ {"cog_height_m", mission.payload_state().cog_height_m},
+ {"collected_items", result.collected_items},
+ {"collected_value", result.collected_value},
+ {"cargo_integrity", result.cargo_integrity},
+ {"max_shock_mps2", mission.payload_state().max_shock_mps2},
+ {"max_jerk_mps3", mission.payload_state().max_jerk_mps3},
+ {"history", nlohmann::json::array()},
+ }},
      {"events", nlohmann::json::array()},
  {"decisions", nlohmann::json::array()},
      {"scores",
@@ -265,6 +319,17 @@ int main(int argc, char** argv) {
         {"efficient", result.efficient_score},
       }},
    };
+ for (const auto& pickup : mission.payload_state().history) {
+ output["payload"]["history"].push_back({
+ {"goal_id", pickup.goal_id},
+ {"time_s", pickup.time_s},
+ {"item_count", pickup.item_count},
+ {"mass_kg", pickup.mass_kg},
+ {"cog_height_m", pickup.cog_height_m},
+ {"value", pickup.value},
+ {"fragility", pickup.fragility},
+ });
+ }
    for (const auto& event : mission.events()) {
     output["events"].push_back({
       {"time_s", event.time_s},
@@ -319,6 +384,7 @@ int main(int argc, char** argv) {
              << " grade=" << mission.snapshot().terrain_grade << " max_grade=" << result.max_grade
              << " max_roll=" << result.max_abs_roll_rad << "rad"
              << " rollover_risk=" << result.max_rollover_risk
+ << " max_drive_slip_ratio=" << result.max_drive_slip_ratio
              << " traction_saturated=" << (mission.snapshot().traction_saturated ? "yes" : "no");
    if (!result.failure_reason.empty()) {
     std::cout << "  reason=" << result.failure_reason;
