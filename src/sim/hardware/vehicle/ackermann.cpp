@@ -40,7 +40,13 @@ AckermannDrive::AckermannDrive(AckermannParams params, WheelPidGains drive_gains
     : params_(params),
  drive_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd, params.pwm_limit, params.integral_limit,
  AntiWindupMode::ConditionalIntegration),
-      servo_pid_(servo_kp, 0.0, 0.0, 1.0, 0.5) {
+ servo_pid_(servo_kp, 0.0, 0.0, 1.0, 0.5),
+ rear_left_brake_({params.service_brake_max_torque_Nm,
+ params.service_brake_apply_time_s, params.service_brake_release_time_s,
+ params.service_brake_low_speed_radps}),
+ rear_right_brake_({params.service_brake_max_torque_Nm,
+ params.service_brake_apply_time_s, params.service_brake_release_time_s,
+ params.service_brake_low_speed_radps}) {
  telemetry_.differential = false;
  telemetry_.steering_servo_present = true;
  telemetry_.wheel_steer_count = 2;
@@ -57,6 +63,8 @@ void AckermannDrive::reset() {
  telemetry_.steering_servo_present = true;
  telemetry_.wheel_steer_count = 2;
  feedback_ = {};
+ rear_left_brake_.reset();
+ rear_right_brake_.reset();
 }
 
 void AckermannDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
@@ -166,6 +174,10 @@ DiffState AckermannDrive::step_actuator_duty(const DiffState& state,
  -params_.pwm_limit, params_.pwm_limit);
  const double front_left_duty = clamp(control.value("front_left_steer"), -1.0, 1.0);
  const double front_right_duty = clamp(control.value("front_right_steer"), -1.0, 1.0);
+ const double rear_left_brake_request = clamp(
+ control.value("rear_left_brake"), 0.0, 1.0);
+ const double rear_right_brake_request = clamp(
+ control.value("rear_right_brake"), 0.0, 1.0);
  const auto drive_torque = [&](double duty, double velocity_radps) {
  const double speed_mps = velocity_radps * params_.wheel_radius_m;
  return hardware::dc_motor_force_N(duty, speed_mps, params_.stall_force_N,
@@ -201,11 +213,24 @@ DiffState AckermannDrive::step_actuator_duty(const DiffState& state,
  telemetry_.wheel_steer_rad[1] = front_right->position_rad;
  telemetry_.measured_forward_mps = telemetry_.drive.actual_mps;
  telemetry_.measured_yaw_radps = state.w;
+ const double rear_left_brake_torque = rear_left_brake_.step(
+ rear_left_brake_request, rear_left->velocity_radps, dt);
+ const double rear_right_brake_torque = rear_right_brake_.step(
+ rear_right_brake_request, rear_right->velocity_radps, dt);
+ telemetry_.service_brake_count = params_.service_brake_max_torque_Nm > 0.0 ? 2 : 0;
+ const auto left_brake = rear_left_brake_.telemetry();
+ const auto right_brake = rear_right_brake_.telemetry();
+ telemetry_.service_brakes[0] = {
+ left_brake.requested, left_brake.applied, left_brake.delivered_torque_Nm};
+ telemetry_.service_brakes[1] = {
+ right_brake.requested, right_brake.applied, right_brake.delivered_torque_Nm};
  telemetry_.joint_efforts = {
  {"rear_left_drive", drive_torque(rear_left_duty, rear_left->velocity_radps)},
  {"rear_right_drive", drive_torque(rear_right_duty, rear_right->velocity_radps)},
  {"front_left_steer", steering_torque(front_left_duty, front_left->velocity_radps)},
  {"front_right_steer", steering_torque(front_right_duty, front_right->velocity_radps)},
+ {"rear_left_brake", rear_left_brake_torque},
+ {"rear_right_brake", rear_right_brake_torque},
  };
  // Physical yaw is produced only by the steered tire contact. The returned
  // planar estimate is for domain/shadow comparison and never drives Bullet.
@@ -251,6 +276,10 @@ BuiltChassis create_ackermann_chassis(const sim::ChassisBuildParams& params,
       params.encoder_counts_per_revolution,
  params.wheel_equiv_mass_kg,
  params.steering_stall_torque_Nm,
+ params.service_brake_max_torque_Nm,
+ params.service_brake_apply_time_s,
+ params.service_brake_release_time_s,
+ params.service_brake_low_speed_radps,
     },
     gains, servo_kp);
   return out;

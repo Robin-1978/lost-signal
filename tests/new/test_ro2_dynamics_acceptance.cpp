@@ -79,13 +79,18 @@ struct Rig {
  robot.motor.free_speed_mps, robot.mass_kg, robot.yaw_inertia_kgm2,
  robot.motor.pwm_limit, robot.motor.integral_limit,
  robot.encoder.counts_per_revolution, robot.motor.wheel_equiv_mass_kg,
- robot.steering.stall_torque_Nm}, {}, 1.0),
+ robot.steering.stall_torque_Nm,
+ robot.service_brake.enabled ? robot.service_brake.maximum_torque_Nm : 0.0,
+ robot.service_brake.apply_time_s, robot.service_brake.release_time_s,
+ robot.service_brake.low_speed_smoothing_radps}, {}, 1.0),
  controller({robot.wheel_base_m, robot.track_width_m, robot.wheel_radius_m,
  robot.motor.max_wheel_speed_mps, robot.steering.max_steer_rad,
  robot.steering.max_steer_rate_radps,
  robot.encoder.counts_per_revolution, robot.motor.pwm_limit,
  robot.motor.integral_limit, 1.0, robot.steering.integral_limit,
- 1.0 / robot.steering.servo_response_s, 0.35},
+ 1.0 / robot.steering.servo_response_s, 0.35,
+ robot.service_brake.enabled,
+ robot.service_brake.low_speed_smoothing_radps * robot.wheel_radius_m},
  sim::tune_wheel_pid(robot.motor.wheel_equiv_mass_kg + robot.mass_kg * 0.5,
  robot.motor.stall_force_N, robot.motor.free_speed_mps,
  robot.motor.max_wheel_speed_mps * 0.5,
@@ -114,6 +119,8 @@ struct Rig {
  {"rear_right_drive", output.rear_right.normalized_duty},
  {"front_left_steer", output.front_left_steer.normalized_duty},
  {"front_right_steer", output.front_right_steer.normalized_duty},
+ {"rear_left_brake", output.rear_left_brake_request},
+ {"rear_right_brake", output.rear_right_brake_request},
  }}, dt_s, ground);
  return plant.telemetry();
  }
@@ -134,7 +141,9 @@ int main() {
 
  REQUIRE(robot.articulation.links.size() == 7);
  REQUIRE(robot.articulation.joints.size() == 6);
- REQUIRE(robot.articulation.actuators.size() == 4);
+ REQUIRE(robot.articulation.actuators.size() == 6);
+ REQUIRE(robot.service_brake.enabled);
+ REQUIRE(robot.service_brake.maximum_torque_Nm > 0.0);
 
  // RO-2 is a small 0.62 m-wheelbase teaching car. Its optional high-speed
  // gearing is still a physical configuration: prove that it exceeds the
@@ -378,6 +387,12 @@ const auto initial = platform.state();
  double minimum_speed_mps = state.planar.v;
  for (int step = 0; step < 150; ++step) {
  const auto actuation = rig.step(platform, state.planar, {0.0, 0.0}, dry);
+ if (step == 0) {
+ REQUIRE(actuation.service_brake_count == 2);
+ REQUIRE(actuation.service_brakes[0].requested == 1.0);
+ REQUIRE(actuation.service_brakes[0].applied > 0.0);
+ REQUIRE(actuation.service_brakes[0].delivered_torque_Nm < 0.0);
+ }
  state = platform.step(actuation, dry, kStepS);
  minimum_speed_mps = std::min(minimum_speed_mps, state.planar.v);
  }
@@ -385,6 +400,39 @@ const auto initial = platform.state();
  REQUIRE(state.planar.x - brake_start_x < 1.8);
  REQUIRE(minimum_speed_mps > -0.15);
  }
+
+ // Brake torque is independent of tire adhesion. The same request on a
+ // low-grip surface must produce more wheel/body slip and a longer stop;
+ // otherwise the brake plant has incorrectly duplicated the contact limit.
+ const auto brake_on = [&](const sim::GroundContact& contact) {
+ sim::platform::SimulatedPlatform platform(map, level, robot, caps, terrain,
+ spawn, 0.0, robot.mass_kg, robot.center_of_mass_height_m,
+ robot.yaw_inertia_kgm2);
+ Rig rig(robot);
+ auto state = platform.state();
+ for (int step = 0; step < 180; ++step) {
+ const auto actuation = rig.step(platform, state.planar, {1.6, 0.0}, contact);
+ state = platform.step(actuation, contact, kStepS);
+ }
+ const double start_x = state.planar.x;
+ double peak_slip = 0.0;
+ int stop_steps = 240;
+ for (int step = 0; step < 240; ++step) {
+ const auto actuation = rig.step(platform, state.planar, {0.0, 0.0}, contact);
+ state = platform.step(actuation, contact, kStepS);
+ peak_slip = std::max(peak_slip, state.max_drive_slip_ratio);
+ if (std::abs(state.planar.v) < 0.05 && stop_steps == 240)
+ stop_steps = step;
+ }
+ return std::array<double, 3>{state.planar.x - start_x, peak_slip,
+ stop_steps * kStepS};
+ };
+ const auto dry_brake = brake_on(dry);
+ const sim::GroundContact wet_brake_contact{0.18, 0.01, 6.0, 40000.0, 1000.0};
+ const auto wet_brake = brake_on(wet_brake_contact);
+ REQUIRE(wet_brake[0] > dry_brake[0] * 1.15);
+ REQUIRE(wet_brake[1] > dry_brake[1] + 0.05);
+ REQUIRE(wet_brake[2] > dry_brake[2]);
 
  // Halving the public physics step must converge to the same straight-line
  // solution; this catches a controller that only works at one frame rate.

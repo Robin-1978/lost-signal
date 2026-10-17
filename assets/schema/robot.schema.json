@@ -208,6 +208,38 @@
             }
           }
         },
+        "service_brake": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "maximum_torque_Nm",
+            "apply_time_s",
+            "release_time_s",
+            "low_speed_smoothing_radps"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maximum_torque_Nm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "apply_time_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "release_time_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "low_speed_smoothing_radps": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
         "mass_kg": {
           "type": "number",
           "exclusiveMinimum": 0

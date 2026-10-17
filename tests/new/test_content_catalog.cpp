@@ -137,7 +137,9 @@ int main() {
  CHECK(second.articulation.root_link == "base_link");
  CHECK(second.articulation.links.size() == 7);
  CHECK(second.articulation.joints.size() == 6);
- CHECK(second.articulation.actuators.size() == 4);
+ CHECK(second.articulation.actuators.size() == 6);
+ CHECK(second.service_brake.enabled);
+ CHECK(std::abs(second.service_brake.maximum_torque_Nm - 7.0) < 1e-12);
  double second_mass_kg = 0.0;
  for (const auto& link : second.articulation.links)
  second_mass_kg += link.mass_kg;

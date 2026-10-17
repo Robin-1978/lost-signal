@@ -38,7 +38,13 @@ enum class LifecycleState { Unconfigured, Inactive, Active };
 enum class HealthLevel { Healthy, Degraded, Fault };
 enum class CommandWriteResult { Accepted, Inactive, Invalid, OutOfOrder };
 enum class PlatformCommandLevel { BodyMotion, Actuator };
-enum class ActuatorCommandMode { NormalizedDuty, EffortNm, VelocityRadps, PositionRad };
+enum class ActuatorCommandMode {
+ NormalizedDuty,
+ NormalizedBrake,
+ EffortNm,
+ VelocityRadps,
+ PositionRad
+};
 
 const char* lifecycle_state_name(LifecycleState state);
 const char* health_level_name(HealthLevel level);

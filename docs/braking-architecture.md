@@ -45,8 +45,9 @@ accuracy.
 
 ### Service brake
 
-The first service-brake provider uses a normalized request, apply/release response, maximum torque, and data-authored
-wheel distribution. Away from zero speed, each wheel torque opposes its angular velocity:
+The first service-brake provider is implemented for RO-2. It uses a normalized request, independent apply/release
+response, maximum torque, and data-authored joint bindings. Away from zero speed, each wheel torque opposes its
+angular velocity:
 
 ```text
 requested_torque_i = brake_state * max_torque * wheel_fraction_i
@@ -56,9 +57,11 @@ The brake plant limits actuator torque only. It never clips torque against `mu *
 tire/contact provider owns available ground force and wheel slip. An analytic chassis backend must apply that limit
 once in its contact model.
 
-Near zero speed, a sign function is insufficient because it reverses torque and chatters. A complete provider changes
-to a bounded wheel-lock or stick constraint. The constraint releases on throttle/release intent and cannot prevent
-the whole locked tire from sliding when surface friction is insufficient.
+Near zero speed, a sign function is insufficient because it reverses torque and chatters. The current provider uses
+a bounded linear smoothing region and reaches zero torque at zero wheel speed, so it cannot propel the wheel through
+standstill and does not claim static holding. A future parking-brake provider may add a bounded wheel-lock or stick
+constraint. That constraint must release on throttle/release intent and cannot prevent the whole locked tire from
+sliding when surface friction is insufficient.
 
 ### Parking brake
 
@@ -76,10 +79,10 @@ a deployable ROBOT controller.
 
 ## Data and interface contract
 
-The eventual service-brake data contains maximum torque, wheel or axle distribution, apply/release time constants,
-low-speed transition parameters, and optional thermal state. LSRI exposes either a normalized service/parking request
-with a declared plant mapping or explicit per-wheel effort commands; it never reinterprets a velocity target as brake
-torque.
+Service-brake data contains maximum torque, per-joint bindings, apply/release time constants, and a low-speed
+transition speed. LSRI exposes `NormalizedBrake` independently from normalized motor duty, and the watchdog may
+declare a nonzero fail-safe brake value. Later profiles may add wheel distribution and thermal state. LSRI never
+reinterprets a velocity target as brake torque.
 
 `tires.brake_decel_mps2` is legacy planning configuration and must be split. Brake hardware owns maximum torque;
 tire and surface data own friction/contact; the runtime capability derives a conservative available-deceleration

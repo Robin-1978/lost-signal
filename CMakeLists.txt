@@ -227,6 +227,7 @@ target_compile_definitions(lost_signal_sim_physics PRIVATE BT_USE_DOUBLE_PRECISI
 
 add_library(lost_signal_sim_vehicle STATIC
  src/sim/hardware/actuators/electric_drive.cpp
+ src/sim/hardware/actuators/service_brake.cpp
  src/sim/hardware/vehicle/ackermann.cpp
  src/sim/hardware/vehicle/holonomic.cpp
  src/sim/hardware/vehicle/motor_drive.cpp
@@ -747,6 +748,10 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  lost_signal_robot_platform lost_signal_robot_runtime)
  add_test(NAME ackermann_actuator_controller COMMAND
  test_ackermann_actuator_controller)
+
+ add_executable(test_service_brake tests/new/test_service_brake.cpp)
+ target_link_libraries(test_service_brake PRIVATE lost_signal_sim_vehicle)
+ add_test(NAME service_brake COMMAND test_service_brake)
 
  add_executable(test_state_estimator tests/new/test_state_estimator.cpp)
  target_link_libraries(test_state_estimator PRIVATE lost_signal_sim_hardware)

@@ -53,6 +53,13 @@
     "encoder": {
       "counts_per_revolution": 2048
     },
+    "service_brake": {
+      "enabled": true,
+      "maximum_torque_Nm": 7.0,
+      "apply_time_s": 0.12,
+      "release_time_s": 0.08,
+      "low_speed_smoothing_radps": 0.6
+    },
     "max_yaw_accel_radps2": 5.0,
     "track_width_m": 0.58,
     "label_key": "garage.drive.ackermann"
@@ -714,6 +721,18 @@
         "joint": "rear_right_roll_joint",
         "effort_limit_Nm": 5.4,
         "armature_inertia_kgm2": 0.023
+      },
+      {
+        "channel": "rear_left_brake",
+        "joint": "rear_left_roll_joint",
+        "effort_limit_Nm": 7.0,
+        "armature_inertia_kgm2": 0.0
+      },
+      {
+        "channel": "rear_right_brake",
+        "joint": "rear_right_roll_joint",
+        "effort_limit_Nm": 7.0,
+        "armature_inertia_kgm2": 0.0
       },
       {
         "channel": "front_left_steer",

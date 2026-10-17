@@ -34,7 +34,7 @@ int main() {
 
  sim::AckermannActuatorController controller({
  base_m, track_m, 0.1, 2.4, 0.55, 2.0, 2048,
- 1.0, 2.0, 1.0, 1.2, 1.0 / 0.35, 0.35,
+ 1.0, 2.0, 1.0, 1.2, 1.0 / 0.35, 0.35, true, 0.08,
  }, {0.4, 0.08, 0.002});
  const auto first = controller.update({1.0, steer_rad}, {}, 0.02);
  CHECK(first.rear_left.target_mps < first.rear_right.target_mps);
@@ -43,9 +43,16 @@ int main() {
  CHECK(first.front_left_steer.target_rad > first.front_right_steer.target_rad);
  CHECK(first.front_left_steer.normalized_duty >
  first.front_right_steer.normalized_duty);
+ CHECK(first.rear_left_brake_request == 0.0);
+ const auto stopping = controller.update({0.0, 0.0},
+ {0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, false}, 0.02);
+ CHECK(stopping.rear_left.normalized_duty == 0.0);
+ CHECK(stopping.rear_right.normalized_duty == 0.0);
+ CHECK(stopping.rear_left_brake_request == 1.0);
+ CHECK(stopping.rear_right_brake_request == 1.0);
 
  // LSRI actuator expiry is independent of the in-process simulator. A real
- // provider receives exactly the same four safe zero setpoints after TTL.
+ // provider receives zero drive/steer and fail-safe brake requests after TTL.
  sim::runtime::RuntimeChannelConfig config;
  config.capabilities.command_level = sim::runtime::PlatformCommandLevel::Actuator;
  config.capabilities.max_forward_speed_mps = 2.4;
@@ -59,6 +66,8 @@ int main() {
  {"rear_right_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0},
  {"front_left_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0},
  {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0},
+ {"rear_left_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake, 0.0, 1.0, 1.0},
+ {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake, 0.0, 1.0, 1.0},
  };
  auto channel = sim::runtime::make_in_process_channel(config);
  channel->configure();
@@ -75,15 +84,19 @@ int main() {
  {"rear_right_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty, 0.4},
  {"front_left_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty, 0.2},
  {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty, 0.2},
+ {"rear_left_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake, 0.0},
+ {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake, 0.0},
  };
  CHECK(channel->autonomy().write_actuators(command) ==
  sim::runtime::CommandWriteResult::Accepted);
  const auto expired = channel->platform().read_actuators(
  sim::runtime::TimePoint::from_seconds(1.10));
  CHECK(expired.safe_stop);
- CHECK(expired.setpoints.size() == 4);
- for (const auto& setpoint : expired.setpoints)
- CHECK(setpoint.value == 0.0);
+ CHECK(expired.setpoints.size() == 6);
+ for (const auto& setpoint : expired.setpoints) {
+ const bool brake = setpoint.mode == sim::runtime::ActuatorCommandMode::NormalizedBrake;
+ CHECK(setpoint.value == (brake ? 1.0 : 0.0));
+ }
  CHECK(channel->health().watchdog_stops == 1);
  return 0;
 }

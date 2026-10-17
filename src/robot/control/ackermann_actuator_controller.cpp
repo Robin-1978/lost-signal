@@ -33,6 +33,9 @@ AckermannActuatorController::AckermannActuatorController(
  // rear-axle ICR throughout the authored command range.
  (void)ackermann_steering_angles(config_.max_center_steer_rad,
  config_.wheel_base_m, config_.track_width_m);
+ if (!std::isfinite(config_.service_brake_speed_threshold_mps) ||
+ config_.service_brake_speed_threshold_mps < 0.0)
+ throw std::invalid_argument("invalid Ackermann service-brake threshold");
 }
 
 void AckermannActuatorController::reset() {
@@ -97,6 +100,22 @@ AckermannActuatorControlOutput AckermannActuatorController::update(
  output.rear_left.target_mps - output.rear_left.measured_mps, dt_s);
  output.rear_right.normalized_duty = rear_right_pid_.update(
  output.rear_right.target_mps - output.rear_right.measured_mps, dt_s);
+ if (config_.service_brake_enabled) {
+ const bool stop_requested =
+ std::abs(output.rear_left.target_mps) <= config_.service_brake_speed_threshold_mps &&
+ std::abs(output.rear_right.target_mps) <= config_.service_brake_speed_threshold_mps;
+ const bool rolling =
+ std::max(std::abs(output.rear_left.actual_mps),
+ std::abs(output.rear_right.actual_mps)) >
+ config_.service_brake_speed_threshold_mps;
+ const double request = stop_requested && rolling ? 1.0 : 0.0;
+ output.rear_left_brake_request = request;
+ output.rear_right_brake_request = request;
+ if (request > 0.0) {
+ output.rear_left.normalized_duty = 0.0;
+ output.rear_right.normalized_duty = 0.0;
+ }
+ }
  const auto steering_duty = [&](double target_rad, double position_rad,
  double velocity_radps) {
  const double desired_rate = clamp(

@@ -484,6 +484,14 @@ struct EncoderDefinition {
  int counts_per_revolution{0};
 };
 
+struct ServiceBrakeDefinition {
+ bool enabled{false};
+ double maximum_torque_Nm{0.0};
+ double apply_time_s{0.12};
+ double release_time_s{0.08};
+ double low_speed_smoothing_radps{0.6};
+};
+
 struct RigidLinkDefinition {
  std::string id;
  std::string shape;
@@ -564,6 +572,7 @@ struct RobotDefinition {
  double energy_per_v_w{0.0};
  double energy_per_w_w{0.0};
  EncoderDefinition encoder;
+ ServiceBrakeDefinition service_brake;
  ArticulationDefinition articulation;
  // Orientation-independent envelope consumed by grid and local planners.
  double collision_radius_m{0.0};

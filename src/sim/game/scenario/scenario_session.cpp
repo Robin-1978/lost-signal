@@ -586,6 +586,13 @@ void ScenarioSession::build_world() {
  chassis_params.servo_response_s = robot_definition_.steering.servo_response_s;
  chassis_params.steering_stall_torque_Nm = robot_definition_.steering.stall_torque_Nm;
  chassis_params.steering_integral_limit = robot_definition_.steering.integral_limit;
+ chassis_params.service_brake_max_torque_Nm =
+ robot_definition_.service_brake.enabled
+ ? robot_definition_.service_brake.maximum_torque_Nm : 0.0;
+ chassis_params.service_brake_apply_time_s = robot_definition_.service_brake.apply_time_s;
+ chassis_params.service_brake_release_time_s = robot_definition_.service_brake.release_time_s;
+ chassis_params.service_brake_low_speed_radps =
+ robot_definition_.service_brake.low_speed_smoothing_radps;
  chassis_params.tracked_max_yaw_rate_rads = robot_definition_.tracked_max_yaw_rate_rads;
  chassis_params.behavior_w_max = params.max_yaw_rate_radps;
  chassis_params.behavior_accel_max = params.max_acceleration_mps2;
@@ -698,6 +705,9 @@ void ScenarioSession::build_world() {
  chassis_params.steering_integral_limit,
  1.0 / std::max(0.05, chassis_params.servo_response_s),
  0.35,
+ robot_definition_.service_brake.enabled,
+ robot_definition_.service_brake.low_speed_smoothing_radps *
+ chassis_params.wheel_radius_m,
  },
  wheel_gains);
  }
@@ -732,6 +742,14 @@ void ScenarioSession::build_world() {
  {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -1.0, 1.0, 0.0},
  };
+ if (robot_definition_.service_brake.enabled) {
+ runtime_config.capabilities.actuator_channels.push_back(
+ {"rear_left_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
+ 0.0, 1.0, 1.0});
+ runtime_config.capabilities.actuator_channels.push_back(
+ {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
+ 0.0, 1.0, 1.0});
+ }
  }
  }
  runtime_config.maximum_command_ttl_s = 0.25;
@@ -1823,14 +1841,27 @@ void ScenarioSession::apply_motion() {
  {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  control.front_right_steer.normalized_duty},
  };
+ if (robot_definition_.service_brake.enabled) {
+ outbound_command.setpoints.push_back(
+ {"rear_left_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
+ control.rear_left_brake_request});
+ outbound_command.setpoints.push_back(
+ {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
+ control.rear_right_brake_request});
+ }
  if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
  sim::runtime::CommandWriteResult::Accepted)
  throw std::runtime_error("runtime channel rejected the RO-2 actuator command");
  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
  sim::ChassisActuatorDutyCommand plant_command;
  for (const auto& setpoint : delivered_command.setpoints) {
- if (setpoint.mode != sim::runtime::ActuatorCommandMode::NormalizedDuty)
- throw std::runtime_error("RO-2 received a non-duty actuator command");
+ const bool brake_channel = setpoint.channel_id == "rear_left_brake" ||
+ setpoint.channel_id == "rear_right_brake";
+ const auto expected_mode = brake_channel
+ ? sim::runtime::ActuatorCommandMode::NormalizedBrake
+ : sim::runtime::ActuatorCommandMode::NormalizedDuty;
+ if (setpoint.mode != expected_mode)
+ throw std::runtime_error("RO-2 received an actuator command with the wrong mode");
  plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
  }
  chassis_->set_actuator_feedback(provider_feedback);

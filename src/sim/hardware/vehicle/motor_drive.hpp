@@ -94,6 +94,11 @@ struct ChassisTelemetry {
  std::string channel;
  double effort_Nm{0.0};
  };
+ struct BrakeActuatorTelemetry {
+ double requested{0.0};
+ double applied{0.0};
+ double delivered_torque_Nm{0.0};
+ };
  bool differential{true};
  bool holonomic{false};
  WheelMotorTelemetry left;
@@ -125,6 +130,10 @@ struct ChassisTelemetry {
  // native hardware provider. Chassis-specific convenience fields above stay
  // inside the hardware controller and never leak into the physics adapter.
  std::vector<JointEffortCommand> joint_efforts;
+ // Plant-side evidence for validation and presentation. This truth never
+ // enters deployable ROBOT planning or controller observations.
+ std::array<BrakeActuatorTelemetry, 4> service_brakes{};
+ std::size_t service_brake_count{0};
 };
 
 // Runtime body dynamics shared by every chassis implementation. Payload can

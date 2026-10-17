@@ -53,6 +53,10 @@ struct ChassisBuildParams {
   double servo_response_s{0.4};
  double steering_stall_torque_Nm{8.0};
   double steering_integral_limit{1.2};
+ double service_brake_max_torque_Nm{0.0};
+ double service_brake_apply_time_s{0.12};
+ double service_brake_release_time_s{0.08};
+ double service_brake_low_speed_radps{0.6};
   double tracked_max_yaw_rate_rads{1.5};
   // Mission behavior inputs (not hardware): differential yaw cap source and
   // the accel clamp both chassis share with the behavior layer.

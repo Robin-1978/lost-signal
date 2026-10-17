@@ -970,6 +970,15 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.energy_per_v_w = energy.at("per_v_w").get<double>();
   robot.energy_per_w_w = energy.at("per_w_w").get<double>();
   robot.encoder = {encoder.at("counts_per_revolution").get<int>()};
+ if (const auto brake = drive.find("service_brake"); brake != drive.end()) {
+ robot.service_brake = {
+ brake->at("enabled").get<bool>(),
+ brake->at("maximum_torque_Nm").get<double>(),
+ brake->at("apply_time_s").get<double>(),
+ brake->at("release_time_s").get<double>(),
+ brake->at("low_speed_smoothing_radps").get<double>(),
+ };
+ }
   Vec3 articulated_center_of_mass_in_base;
   double articulated_center_of_mass_height_m = 0.0;
   double articulated_base_link_height_m = 0.0;

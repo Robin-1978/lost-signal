@@ -4,6 +4,7 @@
 #include "robot/platform/ackermann_kinematics.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "robot/control/pid.hpp"
+#include "sim/hardware/actuators/service_brake.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -33,6 +34,10 @@ struct AckermannParams {
  int encoder_counts_per_revolution{2048};
  double wheel_equiv_mass_kg{3.0};
  double steering_stall_torque_Nm{8.0};
+ double service_brake_max_torque_Nm{0.0};
+ double service_brake_apply_time_s{0.12};
+ double service_brake_release_time_s{0.08};
+ double service_brake_low_speed_radps{0.6};
 };
 
 // Ackermann kinematics pair (uniform per-chassis contract, plan §4 item 14):
@@ -99,6 +104,8 @@ class AckermannDrive : public ChassisModel {
  double drive_wheel_{0.0};
  ChassisTelemetry telemetry_;
  ChassisActuatorFeedback feedback_;
+ hardware::ServiceBrakePlant rear_left_brake_;
+ hardware::ServiceBrakePlant rear_right_brake_;
 };
 
 } // namespace sim

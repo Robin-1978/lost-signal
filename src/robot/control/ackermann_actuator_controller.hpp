@@ -20,6 +20,8 @@ struct AckermannActuatorControllerConfig {
  double steering_integral_limit{1.2};
  double steering_position_gain_radps_per_rad{2.5};
  double steering_velocity_gain_s{0.35};
+ bool service_brake_enabled{false};
+ double service_brake_speed_threshold_mps{0.08};
 };
 
 struct AckermannActuatorFeedback {
@@ -45,6 +47,8 @@ struct AckermannActuatorControlOutput {
  WheelControlTelemetry rear_right;
  SteeringControlTelemetry front_left_steer;
  SteeringControlTelemetry front_right_steer;
+ double rear_left_brake_request{0.0};
+ double rear_right_brake_request{0.0};
 };
 
 // Deployable Ackermann actuator controller. It owns linkage geometry,

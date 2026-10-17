@@ -1,0 +1,49 @@
+#include "sim/hardware/actuators/service_brake.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
+namespace sim::hardware {
+
+ServiceBrakePlant::ServiceBrakePlant(ServiceBrakeParams params)
+ : params_(params) {
+ if (!std::isfinite(params_.maximum_torque_Nm) ||
+ !std::isfinite(params_.apply_time_s) ||
+ !std::isfinite(params_.release_time_s) ||
+ !std::isfinite(params_.low_speed_smoothing_radps) ||
+ params_.maximum_torque_Nm < 0.0 || params_.apply_time_s <= 0.0 ||
+ params_.release_time_s <= 0.0 || params_.low_speed_smoothing_radps <= 0.0) {
+ throw std::invalid_argument("invalid service-brake actuator parameters");
+ }
+}
+
+void ServiceBrakePlant::reset() {
+ telemetry_ = {};
+}
+
+double ServiceBrakePlant::step(double normalized_request,
+ double shaft_velocity_radps, double dt_s) {
+ if (!std::isfinite(normalized_request) ||
+ !std::isfinite(shaft_velocity_radps) || !std::isfinite(dt_s) ||
+ dt_s <= 0.0) {
+ throw std::invalid_argument("service-brake inputs must be finite and dt positive");
+ }
+ telemetry_.requested = std::clamp(normalized_request, 0.0, 1.0);
+ const double response_s = telemetry_.requested > telemetry_.applied
+ ? params_.apply_time_s : params_.release_time_s;
+ const double maximum_delta = dt_s / response_s;
+ telemetry_.applied += std::clamp(telemetry_.requested - telemetry_.applied,
+ -maximum_delta, maximum_delta);
+
+ // A smooth odd function opposes either shaft direction and tends to zero at
+ // standstill. It cannot propel the wheel through zero or act as a parking
+ // lock; a separate parking-brake capability may provide static holding.
+ const double direction = std::clamp(
+ shaft_velocity_radps / params_.low_speed_smoothing_radps, -1.0, 1.0);
+ telemetry_.delivered_torque_Nm =
+ -direction * telemetry_.applied * params_.maximum_torque_Nm;
+ return telemetry_.delivered_torque_Nm;
+}
+
+} // namespace sim::hardware
