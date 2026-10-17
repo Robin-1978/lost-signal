@@ -586,6 +586,11 @@ struct RobotDefinition {
  std::string drive_label_key;
  double wheel_radius_m{0.0};
  double wheel_base_m{0.0};
+ // Calibrated separation used by skid-steer inverse/forward kinematics.
+ // For ordinary differential wheels this equals wheel_base_m. Tracks need a
+ // larger effective value because lateral scrub moves their instantaneous
+ // centres of rotation away from the geometric centreline.
+ double effective_track_width_m{0.0};
  double mass_kg{0.0};
  double yaw_inertia_kgm2{0.0};
  double max_yaw_accel_radps2{8.0};

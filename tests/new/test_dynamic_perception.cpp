@@ -145,7 +145,7 @@ int main() {
  lidar_config.min_range_m = 0.2;
  const auto projection_state = sim::LidarProjectionState{
  estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
- estimate.angular_velocity_radps};
+ estimate.lateral_velocity_mps, estimate.angular_velocity_radps};
  const auto projection_config = sim::LidarProjectionConfig{};
  const auto first_perception = perception.process(
  *first_frame.lidar, *first_frame.lidar_static_reference,

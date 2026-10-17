@@ -58,6 +58,38 @@ int main() {
  mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
  CHECK(run.payload_state().mass_kg == 0.0);
  run.run_to_completion();
+ if (run.result().status != mission::MissionStatus::Succeeded) {
+ std::cerr << "orchard policy=" << policy
+ << " reason=" << run.result().failure_reason
+ << " time=" << run.result().time_s
+ << " pose=(" << run.snapshot().robot.x << ',' << run.snapshot().robot.y << ')'
+ << " collisions=" << run.result().collisions
+ << " min_static=" << run.result().min_static_clearance_m
+ << " min_static_at=(" << run.result().min_static_robot_position.x << ','
+ << run.result().min_static_robot_position.y << ')'
+ << " completed=";
+ for (const auto& id : run.snapshot().completed_goal_ids)
+ std::cerr << id << ',';
+ std::cerr << " abandoned=";
+ for (const auto& id : run.snapshot().abandoned_goal_ids)
+ std::cerr << id << ',';
+ std::cerr << '\n';
+ const auto& replay = run.replay();
+ const auto begin = replay.size() > 20 ? replay.size() - 20 : 0;
+ for (std::size_t index = begin; index < replay.size(); ++index) {
+ const auto& frame = replay[index];
+ std::cerr << " frame t=" << frame.time_s << " truth=(" << frame.robot.x << ','
+ << frame.robot.y << ',' << frame.robot.theta << ") estimate=("
+ << frame.estimated_position.x << ',' << frame.estimated_position.y << ','
+ << frame.estimated_heading << ") goal=" << frame.active_goal_id
+ << " local=(" << frame.control.local_target.x << ','
+ << frame.control.local_target.y << ") cmd=("
+ << frame.control.dwa_proposed_v_mps << ','
+ << frame.control.dwa_proposed_w_radps << ") accepted="
+ << frame.control.dwa_accepted_candidates << " verdict="
+ << frame.control.trajectory_verdict << '\n';
+ }
+ }
  CHECK(run.result().status == mission::MissionStatus::Succeeded);
  CHECK(run.level().objective.task_policy == policy);
  CHECK(run.payload_state().history.size() == 5);

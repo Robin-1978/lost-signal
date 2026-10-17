@@ -16,6 +16,7 @@ struct LidarProjectionState {
  Vec2 base_position;
  double base_heading_rad{0.0};
  double linear_velocity_mps{0.0};
+ double lateral_velocity_mps{0.0};
  double angular_velocity_radps{0.0};
 };
 

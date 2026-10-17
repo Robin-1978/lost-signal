@@ -122,6 +122,10 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "effective_track_width_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "track_width_m": {
           "type": "number",
           "exclusiveMinimum": 0

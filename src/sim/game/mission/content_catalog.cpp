@@ -958,6 +958,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
   robot.wheel_radius_m = drive.at("wheel_radius_m").get<double>();
   robot.wheel_base_m = drive.at("wheel_base_m").get<double>();
+  robot.effective_track_width_m = drive.value("effective_track_width_m", robot.wheel_base_m);
   robot.motor = {
     motor.at("max_wheel_speed_mps").get<double>(),
     motor.at("max_wheel_accel_mps2").get<double>(),
@@ -978,6 +979,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.tracked_max_yaw_rate_rads = drive.value("max_yaw_rate_rads", 1.5);
   robot.track_length_m = drive.value("track_length_m", 0.7);
   robot.track_width_m = drive.value("track_width_m", 0.58);
+  if (!(robot.effective_track_width_m > 0.0)) {
+   throw ContentError(path.string() + ": effective_track_width_m must be positive");
+  }
   robot.unlock_ability = value.value("unlock_ability", std::string{});
   robot.steering = {
     steering.at("integral_limit").get<double>(),

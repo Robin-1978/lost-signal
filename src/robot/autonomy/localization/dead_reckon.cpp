@@ -5,12 +5,20 @@
 
 namespace sim {
 
-void DeadReckon::update(double velocity, double angular_velocity, double dt,
+void DeadReckon::update(double forward_velocity, double lateral_velocity,
+ double angular_velocity, double dt,
  Rng& rng, double slip_scale, double yaw_bias, bool has_gyro,
  double gyro_rate, double gyro_sigma) {
- const double distance = velocity * dt;
- const double distance_sigma = 0.02 * std::abs(distance) + 0.0005;
- const double noisy_distance = distance + rng.gauss(distance_sigma) * slip_scale;
+ const double forward_distance = forward_velocity * dt;
+ const double forward_sigma = 0.02 * std::abs(forward_distance) + 0.0005;
+ const double noisy_forward_distance =
+ forward_distance + rng.gauss(forward_sigma) * slip_scale;
+ double noisy_lateral_distance = 0.0;
+ if (std::abs(lateral_velocity) > 1e-12) {
+ const double lateral_distance = lateral_velocity * dt;
+ const double lateral_sigma = 0.02 * std::abs(lateral_distance) + 0.0005;
+ noisy_lateral_distance = lateral_distance + rng.gauss(lateral_sigma) * slip_scale;
+ }
  double gyro_weight = 0.0;
  if (has_gyro) {
  const double wheel_increment_sigma =
@@ -25,11 +33,11 @@ void DeadReckon::update(double velocity, double angular_velocity, double dt,
  const double heading_delta = angular_velocity * dt;
  const double heading_sigma = 0.05 * std::abs(heading_delta) + 0.0008;
  const double wheel_part = heading_delta + rng.gauss(heading_sigma) * slip_scale +
- yaw_bias * distance;
+ yaw_bias * forward_distance;
  const double gyro_part = gyro_rate * dt;
  th += (1.0 - gyro_weight) * wheel_part + gyro_weight * gyro_part;
- p.x += noisy_distance * std::cos(th);
- p.y += noisy_distance * std::sin(th);
+ p.x += noisy_forward_distance * std::cos(th) - noisy_lateral_distance * std::sin(th);
+ p.y += noisy_forward_distance * std::sin(th) + noisy_lateral_distance * std::cos(th);
 }
 
 double DeadReckon::driftErr(Vec2 true_position) const {

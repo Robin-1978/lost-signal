@@ -98,6 +98,15 @@ struct MirrorLoop {
   sim::DifferentialKinematics::twist_to_wheels(v, w, params.wheel_base_m, actual_l, actual_r);
   meas_l = encoder(actual_l, dt);
   meas_r = encoder(actual_r, dt);
+ // Keep the mirror aligned with the deployable wheel controller: once a
+ // wheel has entered the newly requested direction, stale integral effort
+ // from the old direction must no longer oppose it.
+ if (std::abs(target_l) > 1e-4 && target_l * left_pid.i() < 0.0 &&
+ target_l * meas_l >= 0.0)
+ left_pid.reset();
+ if (std::abs(target_r) > 1e-4 && target_r * right_pid.i() < 0.0 &&
+ target_r * meas_r >= 0.0)
+ right_pid.reset();
   pwm_l = left_pid.update(target_l - meas_l, dt);
   pwm_r = right_pid.update(target_r - meas_r, dt);
   pid_i_l = left_pid.i();

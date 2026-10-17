@@ -179,7 +179,7 @@ CHECK(std::abs(base_from_imu->translation_m.z) < 1e-12);
  double right_force_N = 0.0;
  double caster_force_N = 0.0;
  for (int step = 0; step < 200; ++step) {
- const auto state = resting.step(no_effort, {}, 0.02);
+ const auto state = resting.step(no_effort, sim::GroundContact{}, 0.02);
  if (step < 100)
  continue;
  for (const auto& load : state.ground_contact_loads) {

@@ -34,6 +34,14 @@
           "motor.torque",
           "motor.eco"
         ]
+      },
+      {
+        "slot": "imu",
+        "title": "IMU",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
       }
     ],
     "policy_title": "驾驶风格",
@@ -46,13 +54,15 @@
       "tires": "tires.eco",
       "sensor": "sensor.long_slow_lidar",
       "motor": "motor.standard",
-      "style": 0.8
+      "style": 0.8,
+      "imu": "imu.basic"
     },
     "recommended_build": {
       "tires": "tires.grip",
       "sensor": "sensor.short_fast_lidar",
       "motor": "motor.standard",
-      "style": 0.0
+      "style": 0.0,
+      "imu": "imu.precise"
     }
   },
   "prediction": {

@@ -1,5 +1,6 @@
 #include "sim/hardware/vehicle/tracked.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
+#include "sim/hardware/actuators/electric_drive.hpp"
 
 #include "robot/core/math.hpp"
 
@@ -47,6 +48,10 @@ void TrackedDrive::set_body_dynamics(const ChassisBodyDynamics& dynamics) {
  params_.yaw_inertia_kgm2 = std::max(0.05, dynamics.yaw_inertia_kgm2);
 }
 
+void TrackedDrive::set_actuator_feedback(const ChassisActuatorFeedback& feedback) {
+ feedback_ = feedback;
+}
+
 double TrackedDrive::encoder_measure(double wheel_mps, double dt) const {
  const double circumference = 2.0 * kPi * params_.wheel_radius_m;
  const double revolutions = wheel_mps * dt / circumference;
@@ -59,7 +64,7 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  auto& left = telemetry_.left;
  auto& right = telemetry_.right;
 
- DifferentialKinematics::twist_to_wheels(command.target_v, command.target_w, params_.wheel_base_m, left.target_mps,
+ DifferentialKinematics::twist_to_wheels(command.target_v, command.target_w, params_.effective_track_width_m, left.target_mps,
                           right.target_mps);
  left.target_mps = clamp(left.target_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  right.target_mps = clamp(right.target_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
@@ -78,7 +83,7 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
 
  double body_left = 0.0;
  double body_right = 0.0;
- DifferentialKinematics::twist_to_wheels(state.v, state.w, params_.wheel_base_m, body_left, body_right);
+ DifferentialKinematics::twist_to_wheels(state.v, state.w, params_.effective_track_width_m, body_left, body_right);
  const double weight_per_track = params_.mass_kg * kGravity / 2.0;
  const double traction_limit = std::max(0.0, ground.mu_eff) * weight_per_track;
  const double resist_coeff = std::max(0.0, ground.rolling_resist);
@@ -118,16 +123,79 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  DiffState next = state;
  next.v = state.v + std::clamp(accel * dt, -accel_cap * dt, accel_cap * dt);
  next.w = state.w + alpha * dt;
- DifferentialKinematics::twist_to_wheels(next.v, next.w, params_.wheel_base_m, left.actual_mps, right.actual_mps);
+ DifferentialKinematics::twist_to_wheels(next.v, next.w, params_.effective_track_width_m, left.actual_mps, right.actual_mps);
  left.actual_mps = clamp(left.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  right.actual_mps = clamp(right.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
- DifferentialKinematics::wheels_to_twist(left.actual_mps, right.actual_mps, params_.wheel_base_m, next.v, next.w);
- DifferentialKinematics::wheels_to_twist(left.measured_mps, right.measured_mps, params_.wheel_base_m,
+ DifferentialKinematics::wheels_to_twist(left.actual_mps, right.actual_mps, params_.effective_track_width_m, next.v, next.w);
+ DifferentialKinematics::wheels_to_twist(left.measured_mps, right.measured_mps, params_.effective_track_width_m,
  telemetry_.measured_forward_mps, telemetry_.measured_yaw_radps);
  telemetry_.measured_lateral_mps = 0.0;
  telemetry_.traction_saturated = left.slipping || right.slipping;
  next.x = state.x + next.v * std::cos(state.theta) * dt;
  next.y = state.y + next.v * std::sin(state.theta) * dt;
+ next.theta = wrap_angle(state.theta + next.w * dt);
+ return next;
+}
+
+DiffState TrackedDrive::step_actuator_duty(const DiffState& state, const DiffCmd& command,
+                                           const ChassisActuatorDutyCommand& control, double dt,
+                                           const GroundContact&) {
+ constexpr std::array<const char*, 3> kLeftChannels{"front_left_drive", "middle_left_drive",
+                                                    "rear_left_drive"};
+ constexpr std::array<const char*, 3> kRightChannels{"front_right_drive", "middle_right_drive",
+                                                     "rear_right_drive"};
+ const auto mean_velocity = [&](const auto& channels) {
+  double sum = 0.0;
+  for (const auto* channel : channels) {
+   const auto* sample = feedback_.find(channel);
+   if (!sample)
+    throw std::runtime_error("articulated tracked plant has incomplete road-wheel feedback");
+   sum += sample->velocity_radps;
+  }
+  return sum / static_cast<double>(channels.size());
+ };
+ const double left_velocity_radps = mean_velocity(kLeftChannels);
+ const double right_velocity_radps = mean_velocity(kRightChannels);
+ const double left_duty = clamp(control.value("left"), -params_.pwm_limit, params_.pwm_limit);
+ const double right_duty = clamp(control.value("right"), -params_.pwm_limit, params_.pwm_limit);
+ const auto torque = [&](double duty, double velocity_radps) {
+  const double speed_mps = velocity_radps * params_.wheel_radius_m;
+  return hardware::dc_motor_force_N(duty, speed_mps, params_.stall_force_N, params_.free_speed_mps) *
+         params_.wheel_radius_m;
+ };
+
+ telemetry_ = {};
+ telemetry_.differential = true;
+ telemetry_.left.target_mps = command.target_v - command.target_w * params_.effective_track_width_m * 0.5;
+ telemetry_.right.target_mps = command.target_v + command.target_w * params_.effective_track_width_m * 0.5;
+ telemetry_.left.actual_mps = left_velocity_radps * params_.wheel_radius_m;
+ telemetry_.right.actual_mps = right_velocity_radps * params_.wheel_radius_m;
+ telemetry_.left.measured_mps = telemetry_.left.actual_mps;
+ telemetry_.right.measured_mps = telemetry_.right.actual_mps;
+ telemetry_.left.pwm = left_duty;
+ telemetry_.right.pwm = right_duty;
+ telemetry_.measured_forward_mps = 0.5 * (telemetry_.left.actual_mps + telemetry_.right.actual_mps);
+ telemetry_.measured_yaw_radps = (telemetry_.right.actual_mps - telemetry_.left.actual_mps) /
+                                 std::max(0.05, params_.effective_track_width_m);
+ telemetry_.desired_yaw_rate_radps = command.target_w;
+ // One physical motor is authored at each road wheel. The logical side duty
+ // is a bus command, so every motor receives the same duty and retains its
+ // own declared stall torque; dividing here would model one motor split by a
+ // fictional ideal gearbox and cannot overcome real six-contact scrub.
+ const double left_torque = torque(left_duty, left_velocity_radps);
+ const double right_torque = torque(right_duty, right_velocity_radps);
+ for (const auto* channel : kLeftChannels)
+  telemetry_.joint_efforts.push_back({channel, left_torque});
+ for (const auto* channel : kRightChannels)
+  telemetry_.joint_efforts.push_back({channel, right_torque});
+
+ // This planar value is shadow evidence only. In articulated mode Bullet
+ // integrates the two joint torques, six rolling contacts, gravity and scrub.
+ DiffState next = state;
+ next.v = telemetry_.measured_forward_mps;
+ next.w = telemetry_.measured_yaw_radps;
+ next.x += next.v * std::cos(state.theta) * dt;
+ next.y += next.v * std::sin(state.theta) * dt;
  next.theta = wrap_angle(state.theta + next.w * dt);
  return next;
 }
@@ -146,6 +214,7 @@ BuiltChassis create_tracked_chassis(const sim::ChassisBuildParams& params,
   out.model = std::make_unique<sim::TrackedDrive>(
     sim::TrackedParams{
       params.wheel_base_m,
+     params.effective_track_width_m,
       params.wheel_radius_m,
       params.track_length_m,
       params.max_wheel_speed_mps,

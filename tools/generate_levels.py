@@ -449,7 +449,7 @@ LEVELS: list[dict] = [
         "chapter": 2,
         "title": "湿滑履带",
         "map": "research_base",
- "localization_mode": "odometry",
+ "localization_mode": "fused",
         "prerequisites": ["sand_steer"],
         "seed": 263,
         "robot": "robot.ro3",
@@ -458,10 +458,10 @@ LEVELS: list[dict] = [
         "goal_label": "玻璃门",
         "goal_visual": "stop_zone",
         "time_limit_s": 150,
-        "budget": 5,
-        "required_slots": ["tires", "sensor", "motor"],
-        "columns": "trio",
-        "arrive_tolerance_m": 0.62,
+ "budget": 7,
+ "required_slots": ["tires", "sensor", "motor", "imu"],
+ "columns": "trio_imu",
+ "arrive_tolerance_m": 0.75,
         "safe_min_clearance_m": 0.2,
         "max_localization_error_m": 3.0,
         "fast_time_s": 40.0,
@@ -474,12 +474,14 @@ LEVELS: list[dict] = [
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
             "style": 0.8,
+ "imu": "imu.basic",
         },
         "recommended_build": {
             "tires": "tires.grip",
             "sensor": "sensor.short_fast_lidar",
             "motor": "motor.standard",
             "style": 0.0,
+ "imu": "imu.precise",
         },
         "rewards": ["ability.wet_scrub"],
         "garage_heading": "湿滑履带",
@@ -916,6 +918,11 @@ TRIO_COLUMNS = [
      "options": ["motor.standard", "motor.torque", "motor.eco"]},
 ]
 
+TRIO_IMU_COLUMNS = TRIO_COLUMNS + [
+ {"slot": "imu", "title": "IMU",
+ "options": ["imu.basic", "imu.precise"]},
+]
+
 COLUMNS = [
     {"slot": "tires", "title": "驱动轮胎",
      "options": ["tires.standard", "tires.grip", "tires.eco", "tires.sand", "tires.slick"]},
@@ -1050,7 +1057,8 @@ def build_presentation(spec: dict) -> dict:
         "heading": spec["garage_heading"],
         "brief": spec["garage_brief"],
         "component_columns": copy.deepcopy(
-            {"trio": TRIO_COLUMNS, "sand": SAND_COLUMNS}.get(spec.get("columns"), COLUMNS)),
+ {"trio": TRIO_COLUMNS, "trio_imu": TRIO_IMU_COLUMNS,
+ "sand": SAND_COLUMNS}.get(spec.get("columns"), COLUMNS)),
         "policy_title": "驾驶风格",
         "policies": ["policy.careful", "policy.balanced", "policy.swift"],
         "default_build": spec["default_build"],

@@ -159,10 +159,22 @@ int main() {
  // spin spec. No level assigns it yet; the catalog contract already holds.
  const auto& third = catalog.robot("robot.ro3");
  CHECK(third.drive_type == "tracked");
- CHECK(catalog.robot("robot.ro4").drive_type == "swerve");
- CHECK(catalog.robot("robot.ro5").drive_type == "mecanum");
+ CHECK(third.articulation.links.size() == 7);
+ CHECK(third.articulation.joints.size() == 6);
+ CHECK(third.articulation.actuators.size() == 6);
+ const auto& fourth = catalog.robot("robot.ro4");
+ CHECK(fourth.drive_type == "swerve");
+ CHECK(fourth.articulation.links.size() == 9);
+ CHECK(fourth.articulation.joints.size() == 8);
+ CHECK(fourth.articulation.actuators.size() == 8);
+ const auto& fifth = catalog.robot("robot.ro5");
+ CHECK(fifth.drive_type == "mecanum");
+ CHECK(fifth.articulation.links.size() == 5);
+ CHECK(fifth.articulation.joints.size() == 4);
+ CHECK(fifth.articulation.actuators.size() == 4);
  CHECK(third.tracked_max_yaw_rate_rads > 0.0);
  CHECK(third.track_length_m > 0.0);
+ CHECK(third.effective_track_width_m > third.wheel_base_m);
  // Ground material library: the migrated wet_floor resolves to library
  // numbers, so this also pins the zero-behavior-change migration.
  CHECK(catalog.surface_material("standing_water").friction_mu == 0.35);

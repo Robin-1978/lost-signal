@@ -1,10 +1,10 @@
-# RO-1 reference platform
+# Lost Signal reference platforms
 
 ## Decision
 
-RO-1 is the correctness reference for Lost Signal. New chassis families, sensors, gameplay mechanics, and
-sim-to-real claims wait until this platform passes its physical, sensor, timing, and determinism gates. The goal is
-one small system whose meanings are unambiguous, not a large catalog of approximate models.
+RO-1 is the baseline differential-drive correctness reference. RO-2 through RO-5 have separate gates for mechanisms
+that RO-1 cannot validate. Passing one platform never transfers evidence to another, and none of these simulator
+gates alone proves sim-to-real performance.
 
 The fidelity sequence has two distinct kinds of compliance. Finite wheel-ground contact stiffness and damping are
 part of the baseline from the first rigid multibody model because infinite-rigidity contact is neither physical nor
@@ -219,9 +219,16 @@ This separation lets a steel deck be mechanically slippery yet optically strong 
  speeds match the analytic instantaneous-centre-of-curvature solution within a declared tolerance.
 - Forward and inverse kinematics are checked by independent geometric or finite-difference oracles.
 - Encoder counts come from joint angle and preserve sign through forward, reverse, and direction changes.
+- Wheel odometry crosses LSRI as the complete `base_link` planar twist: forward velocity, left velocity, and yaw
+ rate. Differential and Ackermann platforms normally publish near-zero lateral velocity; swerve and mecanum retain
+ their measured lateral motion through dead reckoning, fusion, LiDAR deskew, and local planning.
 - In the default Bullet composition, named joint position/velocity feedback crosses LSRI to the deployable ROBOT
  wheel controller. Its normalized left/right duty returns through typed LSRI actuator commands before the SIM
  motor curve produces joint effort. No simulator state enters the controller through a side channel.
+- A direction change keeps accumulated integral effort while the wheel is still decelerating through zero. Once
+ measured wheel motion has entered the new requested direction, any integral term that still pushes the old way is
+ cleared before the next PID update. Focused controller tests cover this rule for differential, Ackermann, and
+ holonomic drive loops.
 - Physical longitudinal slip compares each joint's `radius * angular_velocity` with the rigid-body velocity at that
  wheel contact. The reported ratio is `abs(tread - contact) / max(abs(tread), abs(contact), 0.1 m/s)` and requires
  both 0.08 m/s absolute mismatch and ratio above 0.25 for three steps; release takes five clean steps. This avoids
@@ -332,9 +339,8 @@ optional future `identified` or calibrated sim-to-real claim.
 | Determinism | **Executable for focused fixtures**: fresh worlds reproduce platform, encoder and IMU results | long-duration cross-platform envelope and final release/ASan run |
 | Mission outcomes | **Frozen while the typical platform gate is open** | re-baseline only after the executable model rows above pass; hardware measurements are not required |
 
-RO-2 now has its own articulated `typical` acceptance gate. It remains separate from RO-1 evidence: passing one
-platform never validates the other. RO-3 through RO-5 remain non-reference teaching proxies, and their mission
-results do not validate their physical models.
+RO-2 through RO-5 now have independent articulated `typical` acceptance gates. Mission outcomes remain product
+evidence; the physical gates use loads, poses, joint feedback, slip, geometric invariants, and timestep convergence.
 
 ## RO-2 independent Ackermann gate
 
@@ -370,6 +376,39 @@ transform. Front wheels therefore combine knuckle steering and wheel roll from p
 RO-2-specific animation branch. `return_route` is the introductory configurable run; `sand_steer` adds loose-ground
 steering and the optional high-speed motor.
 
+## RO-3 tracked reference
+
+RO-3 is a 30 kg skid-steer platform with six physical road wheels. The deployable differential controller consumes
+the mean encoder state of each side and publishes two logical track-duty channels through LSRI. The SIM plant expands
+each delivered side command across three motor joints; Bullet contact supplies longitudinal traction, lateral scrub,
+normal load, gravity, and body motion. Physical track spacing remains separate from the calibrated
+`effective_track_width_m` used by skid-steer inverse/forward kinematics; this standard ICR correction prevents tread
+speed from being misreported as body yaw during scrub. The shipped `1.2 m` value is a documented typical assumption,
+not an identified real vehicle parameter. The acceptance gate checks six-point support and hull clearance, rest drift,
+forward/reverse symmetry, pivot turn with bounded centre drift, low-grip launch, motor braking, 18% grade travel,
+cross-slope support, 25 mm deterministic rough ground, and 10/20 ms convergence. The grade fixture ends before the
+rigid triangle-mesh crest: climbing a continuous slope and traversing a compliant full-track crest are separate claims.
+
+## RO-4 swerve reference
+
+RO-4 has four steering knuckles and four wheel bodies. ROBOT performs shortest-angle module optimization, permits
+wheel-speed reversal instead of unnecessary 180-degree steering travel, closes four drive loops and four steering
+loops from joint feedback, and publishes eight duty channels. The gate independently exercises straight travel,
+reverse, crab motion, yaw, combined twist, four-point support, low grip, motor braking, 18% grade travel, cross-slope
+hold, 25 mm deterministic rough ground, and 10/20 ms convergence. Bullet receives only joint efforts; the resulting
+tire directions produce the body motion.
+
+## RO-5 mecanum reference
+
+RO-5 has four physical rolling joints and four LSRI drive channels. A cylinder contact alone cannot model passive
+rollers, so the SIM provider owns a mecanum contact adapter. It converts physical rim/contact slip through the
+alternating roller Jacobian, uses Bullet's previous-step normal load, and clamps the diagonal force to the local
+Coulomb circle before applying it at the measured wheel contact point. The controller and plant never inject a
+lateral chassis velocity. The gate checks forward, reverse, lateral, yaw and combined motion, support, low grip,
+motor braking, 18% grade travel, passive downhill roller motion on a cross-slope, 25 mm deterministic rough ground,
+and timestep convergence. The compact roller law is suitable for deterministic teaching; identified roller loss,
+compliance and load-sharing still require measured data.
+
 ## Implementation sequence
 
 1. **Implemented:** schema v4 separates planning footprint, visual mounts, and an optional articulated link/joint/
@@ -377,8 +416,9 @@ steering and the optional high-speed motor.
 2. **Implemented for RO-1:** an elevated base, powered continuous wheel joints, passive swivel and rolling caster
  joints, 35 mm caster trail, LSRI physical-joint feedback, deployable wheel PID, LSRI normalized-duty output,
  PWM-to-wheel-torque plant response, and deterministic Bullet contact substeps. **Implemented independently for
- RO-2:** a chassis, two bounded steering knuckles, four rolling wheels, rear drive and steering closed loops, four
- LSRI duty channels, and deterministic Bullet contact. RO-3 through RO-5 remain non-reference profiles.
+ RO-2:** Ackermann joints, rear drive, service braking and six typed channels; **RO-3:** six driven road wheels and
+ two logical track channels; **RO-4:** four drive/steer modules and eight channels; **RO-5:** four drive joints and a
+ load-limited roller-contact provider.
 3. **Implemented:** `base_footprint`, physical `base_link`, wheel/caster links, and sensor mounts now share one frame
  contract; 3D parts use `base_link` mounts and wheel/caster animation reads Bullet joint position. The virtual IMU is
  owned by `src/sim/hardware/sensors/` and consumes transformed six-axis truth rather than planar command differences.

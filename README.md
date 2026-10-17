@@ -13,7 +13,7 @@ The current release is a `v0.1.0-alpha` source preview. The simulation core, Lin
 - **Autonomy is the game mechanic.** A*, Hybrid A*, DWA, dynamic-object prediction, kinematic conversion, motor control, and PID feedback determine what RO-1 actually does.
 - **The robot's reasoning is visible.** Switch between the field view and the AI view to inspect LiDAR returns, estimated pose, global paths, local trajectory candidates, terrain costs, wheel targets, encoder feedback, and PWM output from the same simulation snapshot.
 - **Failure produces evidence.** Slippery surfaces, slopes, occlusion, sensor noise, missing returns, and moving forklifts create causal events that can be replayed and tested by changing one variable at a time.
-- **Five chassis families have distinct behavior.** Differential, tracked, Ackermann, swerve, and mecanum drives use their own feasible-motion contracts, controllers, and actuator mappings. RO-1 differential drive is the current articulated physics reference; the other four remain non-reference teaching proxies until they pass equivalent physical gates.
+- **Five chassis families have distinct behavior.** Differential, tracked, Ackermann, swerve, and mecanum drives use their own feasible-motion contracts, deployable controllers, articulated assemblies, actuator mappings, contact mechanisms, and independent physical gates.
 - **Experiments are reproducible.** Fixed timesteps, seeded scenarios, JSON headless output, schemas, and automated tests support classes, algorithm comparisons, and community contributions.
 - **Content is data-driven.** Missions, maps, scenes, robots, hardware, policies, story beats, presentation, and UI text load from `assets/`.
 
@@ -138,14 +138,14 @@ The compact [Lost Signal Robot Interface (LSRI)](docs/runtime-interface.md) conn
 
 The runtime publishes a `map → odom → base_footprint → base_link → sensor/wheel link` transform tree. LiDAR, encoder, IMU, and localization observations carry timestamps, sequence numbers, source IDs, frame IDs, and latency metadata. Sensor extrinsics affect ray origins and projection.
 
-RO-1 is the only current physical reference platform. Its Bullet assembly contains an elevated chassis, two driven
-wheel bodies, a passive swivel fork and a separately rolling caster wheel. Link mass/inertia, joint pivots and axes,
-mount transforms, support geometry, encoder feedback, and reflected drive inertia are validated as one assembly.
-RO-1 and each component family declare an `ideal`, `typical`, or `identified` parameter profile. The shipped RO-1
-uses sourced typical defaults and documented engineering assumptions; publishing it does not require a physical
-twin. See [parameter profiles and sources](docs/parameter-sources.md).
-Tracked, Ackermann, swerve, and mecanum content still uses compact proxy plants and is excluded from RO-1 release
-evidence.
+All five shipped chassis are articulated rigid-body reference platforms with independent acceptance evidence.
+RO-1 uses two driven wheels and a passive trailing caster; RO-2 uses rear drive, Ackermann knuckles, an independent
+service brake, and four rolling wheels; RO-3 distributes two track commands over six driven road wheels; RO-4 has
+four independently steered and driven modules; RO-5 has four driven wheels plus a load-limited mecanum roller-contact
+provider. Link mass/inertia, pivots, axes, mount transforms, support loads, encoder feedback, actuator torque, and
+contact response are validated per platform. The shipped values are documented typical assumptions rather than an
+identified physical twin. See [reference platforms](docs/reference-platform.md) and
+[parameter profiles and sources](docs/parameter-sources.md).
 
 Authored simulation terrain is 2.5D: terrain patches define height, two-axis grade, and roughness, while surface
 definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The

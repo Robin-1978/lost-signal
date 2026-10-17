@@ -1,5 +1,6 @@
 #include "sim/hardware/vehicle/holonomic.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
+#include "sim/hardware/actuators/electric_drive.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,53 +9,11 @@
 namespace sim {
 namespace {
 
-constexpr std::array<double, 4> kXSign{1.0, 1.0, -1.0, -1.0};
-constexpr std::array<double, 4> kYSign{1.0, -1.0, 1.0, -1.0};
-
-double angle_delta(double target, double current) {
- return wrap_angle(target - current);
-}
-
+constexpr std::array<const char*, 4> kDriveChannels{"front_left_drive", "front_right_drive",
+                                                    "rear_left_drive", "rear_right_drive"};
+constexpr std::array<const char*, 4> kSteerChannels{"front_left_steer", "front_right_steer",
+                                                    "rear_left_steer", "rear_right_steer"};
 } // namespace
-
-std::array<HolonomicWheelCommand, 4> swerve_inverse(double forward_mps, double left_mps,
- double yaw_radps, double wheel_base_m, double track_width_m,
- const std::array<double, 4>& previous_steer_rad) {
- std::array<HolonomicWheelCommand, 4> output;
- for (std::size_t index = 0; index < output.size(); ++index) {
- const double x = kXSign[index] * wheel_base_m * 0.5;
- const double y = kYSign[index] * track_width_m * 0.5;
- const double wheel_x = forward_mps - yaw_radps * y;
- const double wheel_y = left_mps + yaw_radps * x;
- double speed = std::hypot(wheel_x, wheel_y);
- double steer = speed > 1e-9 ? std::atan2(wheel_y, wheel_x) : previous_steer_rad[index];
- // A swerve module can reverse the wheel and rotate 180 degrees less. This
- // prevents slow steering flips around the +/-pi boundary.
- if (std::abs(angle_delta(steer, previous_steer_rad[index])) > kPi * 0.5) {
- steer = wrap_angle(steer + kPi);
- speed = -speed;
- }
- output[index] = {speed, steer};
- }
- return output;
-}
-
-std::array<double, 4> mecanum_inverse(double forward_mps, double left_mps, double yaw_radps,
- double wheel_base_m, double track_width_m) {
- const double radius = (wheel_base_m + track_width_m) * 0.5;
- return {forward_mps - left_mps - radius * yaw_radps,
- forward_mps + left_mps + radius * yaw_radps,
- forward_mps + left_mps - radius * yaw_radps,
- forward_mps - left_mps + radius * yaw_radps};
-}
-
-void mecanum_forward(const std::array<double, 4>& wheel, double wheel_base_m,
- double track_width_m, double& forward_mps, double& left_mps, double& yaw_radps) {
- const double radius = std::max(0.05, (wheel_base_m + track_width_m) * 0.5);
- forward_mps = (wheel[0] + wheel[1] + wheel[2] + wheel[3]) * 0.25;
- left_mps = (-wheel[0] + wheel[1] + wheel[2] - wheel[3]) * 0.25;
- yaw_radps = (-wheel[0] + wheel[1] - wheel[2] + wheel[3]) / (4.0 * radius);
-}
 
 HolonomicDrive::HolonomicDrive(HolonomicParams params) : params_(params) {
  telemetry_.differential = false;
@@ -125,6 +84,62 @@ DiffState HolonomicDrive::step(const DiffState& state, const DiffCmd& command, d
  return next;
 }
 
+DiffState HolonomicDrive::step_actuator_duty(const DiffState& state, const DiffCmd& command,
+                                             const ChassisActuatorDutyCommand& control, double dt,
+                                             const GroundContact&) {
+ std::array<double, 4> wheel_mps{};
+ std::array<double, 4> steer_rad{};
+ telemetry_ = {};
+ telemetry_.differential = false;
+ telemetry_.holonomic = true;
+ telemetry_.wheel_steer_count = params_.kind == HolonomicKind::Swerve ? 4 : 0;
+ const auto motor_torque = [&](double duty, double omega) {
+  return hardware::dc_motor_force_N(duty, omega * params_.wheel_radius_m, params_.stall_force_N,
+                                    params_.free_speed_mps) *
+         params_.wheel_radius_m;
+ };
+ for (std::size_t i = 0; i < 4; ++i) {
+  const auto* drive = feedback_.find(kDriveChannels[i]);
+  if (!drive)
+   throw std::runtime_error("articulated holonomic plant has incomplete drive feedback");
+  const double duty = clamp(control.value(kDriveChannels[i]), -params_.pwm_limit, params_.pwm_limit);
+  wheel_mps[i] = drive->velocity_radps * params_.wheel_radius_m;
+  telemetry_.modules[i].pwm = duty;
+  telemetry_.modules[i].actual_mps = wheel_mps[i];
+  telemetry_.modules[i].measured_mps = wheel_mps[i];
+  telemetry_.joint_efforts.push_back({kDriveChannels[i], motor_torque(duty, drive->velocity_radps)});
+  if (params_.kind == HolonomicKind::Swerve) {
+   const auto* steer = feedback_.find(kSteerChannels[i]);
+   if (!steer)
+    throw std::runtime_error("articulated swerve plant has incomplete steering feedback");
+   const double steer_duty = clamp(control.value(kSteerChannels[i]), -1.0, 1.0);
+   steer_rad[i] = steer->position_rad;
+   telemetry_.wheel_steer_rad[i] = steer_rad[i];
+   const double curve = steer_duty * steer->velocity_radps > 0.0
+                          ? std::max(0.0, 1.0 - std::abs(steer->velocity_radps) / 8.0)
+                          : 1.0;
+   telemetry_.joint_efforts.push_back(
+     {kSteerChannels[i], steer_duty * params_.steering_stall_torque_Nm * curve});
+  }
+ }
+ if (params_.kind == HolonomicKind::Swerve)
+  swerve_forward(wheel_mps, steer_rad, params_.wheel_base_m, params_.track_width_m,
+                 telemetry_.measured_forward_mps, telemetry_.measured_lateral_mps,
+                 telemetry_.measured_yaw_radps);
+ else
+  mecanum_forward(wheel_mps, params_.wheel_base_m, params_.track_width_m, telemetry_.measured_forward_mps,
+                  telemetry_.measured_lateral_mps, telemetry_.measured_yaw_radps);
+ DiffState next = state;
+ next.v = telemetry_.measured_forward_mps;
+ next.lateral_v = telemetry_.measured_lateral_mps;
+ next.w = telemetry_.measured_yaw_radps;
+ next.x += (next.v * std::cos(state.theta) - next.lateral_v * std::sin(state.theta)) * dt;
+ next.y += (next.v * std::sin(state.theta) + next.lateral_v * std::cos(state.theta)) * dt;
+ next.theta = wrap_angle(state.theta + next.w * dt);
+ (void)command;
+ return next;
+}
+
 namespace {
 BuiltChassis create_holonomic(const ChassisBuildParams& params, HolonomicKind kind) {
  BuiltChassis output;
@@ -132,7 +147,8 @@ BuiltChassis create_holonomic(const ChassisBuildParams& params, HolonomicKind ki
  params.track_width_m, params.max_wheel_speed_mps,
  std::min(params.max_wheel_accel_mps2, params.behavior_accel_max),
  params.max_yaw_accel_radps2, params.mass_kg, params.yaw_inertia_kgm2,
- params.behavior_w_max});
+ params.behavior_w_max, params.wheel_radius_m,
+   params.stall_force_N, params.free_speed_mps, params.pwm_limit, params.steering_stall_torque_Nm});
  return output;
 }
 } // namespace

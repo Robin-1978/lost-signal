@@ -21,6 +21,7 @@
 #include "robot/autonomy/planning/validation/entry_shadow.hpp"
 #include "robot/control/differential_wheel_controller.hpp"
 #include "robot/control/ackermann_actuator_controller.hpp"
+#include "robot/control/holonomic_actuator_controller.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/planar_diff_drive.hpp"
 #include "robot/autonomy/planning/local/dwa.hpp"
@@ -604,6 +605,7 @@ class ScenarioSession {
  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::DifferentialWheelController> differential_wheel_controller_;
  std::unique_ptr<sim::AckermannActuatorController> ackermann_actuator_controller_;
+ std::unique_ptr<sim::HolonomicActuatorController> holonomic_actuator_controller_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
  std::unique_ptr<sim::RouteTrackingSystem> route_tracking_system_;
  double heading_kp_{0.0};

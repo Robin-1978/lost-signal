@@ -59,6 +59,28 @@ int main() {
  CHECK(plan.selection.validation.accepted());
  CHECK(plan.selection.trajectory.command.valid);
 
+ // If the body is inside a conservative planning margin while still clear
+ // of physical geometry, a forward-only search may have no exit. The local
+ // system must validate a bounded reverse escape instead of waiting forever.
+ sim::GridMap preferred_map(100, 100, 0.1);
+ sim::GridMap physical_map(100, 100, 0.1);
+ preferred_map.addBox(4.5, 0.0, 5.5, 10.0);
+ physical_map.addBox(5.0, 0.0, 5.5, 10.0);
+ auto trapped = request;
+ trapped.position = {4.7, 5.0};
+ trapped.heading_rad = 0.0;
+ trapped.forward_mps = 0.0;
+ trapped.target = {8.0, 5.0};
+ trapped.max_speed_mps = 0.75;
+ trapped.prediction_horizon_s = 1.5;
+ trapped.step_s = 0.1;
+ const auto escape = pipeline.plan_local(
+ trapped, preferred_map, {}, {}, &physical_map);
+ CHECK(escape.selection.validation.minimum_risk_escape());
+ CHECK(escape.selection.trajectory.command.valid);
+ CHECK(escape.selection.trajectory.command.v < 0.0);
+ CHECK(escape.selection.trajectory.samples.back().position.x < 4.5);
+
  const sim::TrajectoryTrackingLimits limits{0.25, 0.25, 0.5};
  CHECK(pipeline.accept_trajectory(
  2.0, plan.selection.trajectory, limits) == 1);

@@ -5,7 +5,7 @@
   "title": "湿滑履带",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "odometry",
+  "localization_mode": "fused",
   "chapter": 4,
   "mode": "experiment",
   "prerequisites": [
@@ -20,14 +20,15 @@
     "goal_visual": "stop_zone",
     "time_limit_s": 150,
     "max_collisions": 0,
-    "arrive_tolerance_m": 0.62
+    "arrive_tolerance_m": 0.75
   },
   "loadout_rules": {
-    "budget": 5,
+    "budget": 7,
     "required_slots": [
       "tires",
       "sensor",
-      "motor"
+      "motor",
+      "imu"
     ]
   },
   "teaching": {

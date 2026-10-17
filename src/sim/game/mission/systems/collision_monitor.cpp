@@ -93,10 +93,27 @@ CollisionAssessment CollisionMonitor::assess(
  out.static_collision = outside || rigid_static_contact_s_ >= 0.25;
  } else {
  rigid_static_contact_s_ = 0.0;
- if (!observation.occupancy)
- throw std::invalid_argument("occupancy collision backend requires a grid");
- out.static_collision = outside ||
- !observation.occupancy->isFree(observation.position.x, observation.position.y);
+// The domain plant collides against authored geometry, not a rasterized
+// planning costmap. Grid inflation is deliberately conservative and can add
+// almost one cell around box corners; treating that approximation as contact
+// reports a collision while a circular footprint still has real clearance.
+// The occupancy pointer remains available as planning evidence, while the
+// exact box/world footprint contract decides physical contact here.
+ const bool footprint_outside =
+ observation.position.x <= robot_radius_m_ ||
+ observation.position.y <= robot_radius_m_ ||
+ observation.position.x >= world_size_.x - robot_radius_m_ ||
+ observation.position.y >= world_size_.y - robot_radius_m_;
+ const bool obstacle_overlap = std::any_of(
+ static_obstacles_.begin(), static_obstacles_.end(), [&](const auto& obstacle) {
+ const double nearest_x = std::clamp(
+ observation.position.x, obstacle.min.x, obstacle.max.x);
+ const double nearest_y = std::clamp(
+ observation.position.y, obstacle.min.y, obstacle.max.y);
+ return std::hypot(observation.position.x - nearest_x,
+ observation.position.y - nearest_y) <= robot_radius_m_;
+ });
+out.static_collision = outside || footprint_outside || obstacle_overlap;
  }
 
  for (const auto& actor : observation.actors) {

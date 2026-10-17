@@ -154,6 +154,7 @@ class SimulatedPlatform {
  struct ActuatorBinding {
  ::sim::physics::JointHandle joint;
  double effort_limit_Nm{0.0};
+  ::sim::physics::BodyHandle contact_body;
  };
  std::map<std::string, ActuatorBinding> actuator_bindings_;
  double articulated_non_root_mass_kg_{0.0};

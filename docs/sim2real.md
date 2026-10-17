@@ -80,11 +80,16 @@ The staged sensor profiles, multi-line and solid-state extension boundary, Acker
 of physical motor types from actuator command modes are specified in
 [platform fidelity and hardware adaptation](platform-fidelity.md).
 
-The articulated RO-2 path exercises the intended transfer boundary more deeply than the older analytic Ackermann
-proxy: ROBOT owns the Ackermann geometry and closed loops, LSRI carries four normalized-duty channels and joint
+The articulated RO-2 path exercises the intended transfer boundary end to end: ROBOT owns the Ackermann geometry
+and closed loops, LSRI carries normalized-duty and brake channels plus joint
 feedback, and SIM owns motor/servo response, mechanisms, contact, and rigid-body integration. Its successful dynamics
 gate is simulator evidence only. The mass, inertia, steering load, tire response, latency, and controller gains still
 require identification and held-out hardware validation before any transfer claim.
+
+RO-3, RO-4, and RO-5 use the same boundary: ROBOT owns tracked or holonomic kinematics and closed loops; LSRI owns
+typed actuator commands and joint feedback; SIM owns motors, mechanisms, terrain contact, gravity, and Bullet time.
+The mecanum roller law is explicitly a SIM contact-provider mechanism. Replacing it with measured hardware, a
+higher-fidelity provider, or a replay source does not change the ROBOT controller contract.
 
 ## First hardware milestone: log and compare
 

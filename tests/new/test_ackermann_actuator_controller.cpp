@@ -51,6 +51,18 @@ int main() {
  CHECK(stopping.rear_left_brake_request == 1.0);
  CHECK(stopping.rear_right_brake_request == 1.0);
 
+ sim::AckermannActuatorController reversing({
+ base_m, track_m, 0.1, 2.4, 0.55, 2.0, 2048,
+ 1.0, 2.0, 1.0, 1.2, 1.0 / 0.35, 0.35, false, 0.08,
+ }, {0.2, 1.0, 0.0});
+ sim::AckermannActuatorControlOutput forward_windup;
+ for (int step = 0; step < 100; ++step)
+ forward_windup = reversing.update({1.0, 0.0}, {}, 0.02);
+ CHECK(forward_windup.rear_left.normalized_duty > 0.5);
+ const auto reverse_after_windup = reversing.update({-1.0, 0.0}, {}, 0.02);
+ CHECK(reverse_after_windup.rear_left.normalized_duty < 0.0);
+ CHECK(reverse_after_windup.rear_right.normalized_duty < 0.0);
+
  // LSRI actuator expiry is independent of the in-process simulator. A real
  // provider receives zero drive/steer and fail-safe brake requests after TTL.
  sim::runtime::RuntimeChannelConfig config;

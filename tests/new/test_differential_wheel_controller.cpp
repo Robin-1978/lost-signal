@@ -51,6 +51,19 @@ int main() {
     CHECK(reset.left.measured_mps == 0.0);
     CHECK(reset.right.measured_mps == 0.0);
 
+ // A retained positive integral must never drive a wheel forward after a
+ // non-zero target changes sign. This matters when a local planner asks one
+ // wheel to reverse for a tight turn under load.
+ sim::DifferentialWheelController reversing(config, {0.2, 1.0, 0.0});
+ sim::DifferentialWheelFeedback stopped_feedback;
+ sim::DifferentialWheelControlOutput forward_windup;
+ for (int step = 0; step < 100; ++step)
+ forward_windup = reversing.update({1.0, 0.0}, stopped_feedback, 0.02);
+ CHECK(forward_windup.left.normalized_duty > 0.5);
+ const auto reverse_after_windup = reversing.update({-1.0, 0.0}, stopped_feedback, 0.02);
+ CHECK(reverse_after_windup.left.normalized_duty < 0.0);
+ CHECK(reverse_after_windup.right.normalized_duty < 0.0);
+
     bool threw = false;
     try {
         sim::DifferentialWheelController invalid({0.0, 0.1, 1.0, 100, 1.0, 1.0}, {});

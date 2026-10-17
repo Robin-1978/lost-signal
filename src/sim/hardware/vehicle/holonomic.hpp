@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sim/hardware/vehicle/motor_drive.hpp"
+#include "robot/platform/holonomic_kinematics.hpp"
 
 #include <array>
 
@@ -18,26 +19,23 @@ struct HolonomicParams {
  double mass_kg{26.0};
  double yaw_inertia_kgm2{2.8};
  double max_yaw_rate_radps{2.0};
+ double wheel_radius_m{0.1};
+ double stall_force_N{54.0};
+ double free_speed_mps{3.0};
+ double pwm_limit{1.0};
+ double steering_stall_torque_Nm{8.0};
 };
-
-struct HolonomicWheelCommand {
- double speed_mps{0.0};
- double steer_rad{0.0};
-};
-
-std::array<HolonomicWheelCommand, 4> swerve_inverse(double forward_mps, double left_mps,
- double yaw_radps, double wheel_base_m, double track_width_m,
- const std::array<double, 4>& previous_steer_rad = {});
-std::array<double, 4> mecanum_inverse(double forward_mps, double left_mps, double yaw_radps,
- double wheel_base_m, double track_width_m);
-void mecanum_forward(const std::array<double, 4>& wheel_mps, double wheel_base_m,
- double track_width_m, double& forward_mps, double& left_mps, double& yaw_radps);
 
 class HolonomicDrive final : public ChassisModel {
  public:
  explicit HolonomicDrive(HolonomicParams params);
  void set_body_dynamics(const ChassisBodyDynamics& dynamics) override;
+ void set_actuator_feedback(const ChassisActuatorFeedback& feedback) override { feedback_ = feedback; }
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
+ const GroundContact& ground) override;
+ bool accepts_actuator_duty() const override { return true; }
+ DiffState step_actuator_duty(const DiffState& state, const DiffCmd& command,
+                              const ChassisActuatorDutyCommand& control, double dt,
  const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
  ChassisCaps caps() const override {
@@ -53,6 +51,7 @@ class HolonomicDrive final : public ChassisModel {
  private:
  HolonomicParams params_;
  ChassisTelemetry telemetry_;
+ ChassisActuatorFeedback feedback_;
 };
 
 } // namespace sim

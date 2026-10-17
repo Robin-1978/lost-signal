@@ -38,6 +38,13 @@ int main() {
  domain_hit.position = {4.5, 4.5};
  CHECK(monitor.assess(domain_hit).static_collision);
 
+// Raster inflation may occupy a diagonal cell even though the circular body
+// remains clear of the authored box. Physical collision uses exact geometry;
+// the planning grid stays conservative without becoming false ground truth.
+auto clear_corner = free;
+clear_corner.position = {5.4, 5.4};
+CHECK(!monitor.assess(clear_corner).static_collision);
+
  monitor.reset();
  auto rigid = free;
  rigid.backend = mission::CollisionBackend::RigidBody;

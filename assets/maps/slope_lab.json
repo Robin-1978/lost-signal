@@ -88,11 +88,11 @@
       "type": "height_patch",
       "min": [
         0.0,
-        5.2
+        4.2
       ],
       "max": [
         10.0,
-        8.8
+        9.8
       ],
       "base_height_m": 0.0,
       "grade_x": 0.28,
@@ -107,11 +107,11 @@
       "type": "height_patch",
       "min": [
         10.0,
-        5.2
+        4.2
       ],
       "max": [
         19.0,
-        8.8
+        9.8
       ],
       "base_height_m": 2.8,
       "grade_x": 0.0,

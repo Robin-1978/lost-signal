@@ -564,17 +564,20 @@ void ScenarioSession::build_world() {
    equipped_motor ? equipped_motor->stall_force_N : robot_definition_.motor.stall_force_N;
  const double motor_free =
    equipped_motor ? equipped_motor->free_speed_mps : robot_definition_.motor.free_speed_mps;
+ const bool track_bus_controller = robot_definition_.drive_type == "tracked";
+ const double base_controller_bandwidth = equipped_motor && !track_bus_controller
+                                            ? equipped_motor->controller_bandwidth_radps
+                  : robot_definition_.motor.controller_bandwidth_radps;
  const sim::WheelControllerDesign controller_design{
-   equipped_motor ? equipped_motor->controller_bandwidth_radps
-                  : robot_definition_.motor.controller_bandwidth_radps,
-   equipped_motor ? equipped_motor->controller_integral_time_s
+   base_controller_bandwidth,
+   equipped_motor && !track_bus_controller ? equipped_motor->controller_integral_time_s
                   : robot_definition_.motor.controller_integral_time_s,
-   equipped_motor ? equipped_motor->controller_derivative_time_s
+   equipped_motor && !track_bus_controller ? equipped_motor->controller_derivative_time_s
                   : robot_definition_.motor.controller_derivative_time_s,
  };
  const double simulation_mass = total_mass_kg();
  double wheel_mass = std::max(0.05, robot_definition_.motor.wheel_equiv_mass_kg);
- if (robot_definition_.drive_type == "differential") {
+ if (robot_definition_.drive_type == "differential" || robot_definition_.drive_type == "tracked") {
   // A wheel-speed loop accelerates the wheel/gear train plus the chassis.
   // Common mode reflects M/2 into each wheel; differential mode reflects
   // 2*Iz/track^2. Tuning only against rotor inertia makes yaw response far
@@ -585,12 +588,13 @@ void ScenarioSession::build_world() {
   wheel_mass += std::max(common_mode_mass, differential_mode_mass);
  }
  const sim::WheelPidGains wheel_gains =
-   sim::tune_wheel_pid(wheel_mass, motor_stall, motor_free, 0.5 * motor_vmax, controller_design);
+   sim::tune_wheel_pid(wheel_mass, robot_definition_.drive_type == "tracked" ? motor_stall * 3.0 : motor_stall, motor_free, 0.5 * motor_vmax, controller_design);
  // Chassis construction goes through the factory registry (hw/chassis):
  // new drive.type implementations register themselves; mission only
  // translates robot JSON + equipped specs into neutral build params.
  sim::ChassisBuildParams chassis_params;
  chassis_params.wheel_base_m = robot_definition_.wheel_base_m;
+ chassis_params.effective_track_width_m = robot_definition_.effective_track_width_m;
  chassis_params.wheel_radius_m = robot_definition_.wheel_radius_m;
  chassis_params.track_width_m = robot_definition_.track_width_m;
  chassis_params.track_length_m = robot_definition_.track_length_m;
@@ -686,6 +690,7 @@ void ScenarioSession::build_world() {
 
  differential_wheel_controller_.reset();
  ackermann_actuator_controller_.reset();
+ holonomic_actuator_controller_.reset();
  const auto has_actuator_channel = [&](const std::string& channel) {
  return std::any_of(robot_definition_.articulation.actuators.begin(),
  robot_definition_.articulation.actuators.end(),
@@ -693,14 +698,20 @@ void ScenarioSession::build_world() {
  };
  const bool deployable_differential_control =
  physics_mode_ != PhysicsMode::Domain &&
- robot_definition_.drive_type == "differential" &&
+   (robot_definition_.drive_type == "differential" || robot_definition_.drive_type == "tracked") &&
  chassis_->accepts_actuator_duty() &&
- has_actuator_channel("left") && has_actuator_channel("right");
+   ((has_actuator_channel("left") && has_actuator_channel("right")) ||
+    (has_actuator_channel("front_left_drive") && has_actuator_channel("middle_left_drive") &&
+     has_actuator_channel("rear_left_drive") && has_actuator_channel("front_right_drive") &&
+     has_actuator_channel("middle_right_drive") && has_actuator_channel("rear_right_drive")));
  if (deployable_differential_control) {
- differential_wheel_controller_ =
+  const double control_track_width_m = robot_definition_.drive_type == "tracked"
+                                         ? robot_definition_.effective_track_width_m
+                                         : chassis_params.wheel_base_m;
+  differential_wheel_controller_ =
  std::make_unique<sim::DifferentialWheelController>(
  sim::DifferentialWheelControllerConfig{
- chassis_params.wheel_base_m,
+      control_track_width_m,
  chassis_params.wheel_radius_m,
  chassis_params.max_wheel_speed_mps,
  chassis_params.encoder_counts_per_revolution,
@@ -740,6 +751,25 @@ void ScenarioSession::build_world() {
  },
  wheel_gains);
  }
+ const bool deployable_holonomic_control =
+   physics_mode_ != PhysicsMode::Domain &&
+   (robot_definition_.drive_type == "swerve" || robot_definition_.drive_type == "mecanum") &&
+   chassis_->accepts_actuator_duty() && has_actuator_channel("front_left_drive") &&
+   has_actuator_channel("front_right_drive") && has_actuator_channel("rear_left_drive") &&
+   has_actuator_channel("rear_right_drive") &&
+   (robot_definition_.drive_type == "mecanum" ||
+    (has_actuator_channel("front_left_steer") && has_actuator_channel("front_right_steer") &&
+     has_actuator_channel("rear_left_steer") && has_actuator_channel("rear_right_steer")));
+ if (deployable_holonomic_control) {
+  holonomic_actuator_controller_ = std::make_unique<sim::HolonomicActuatorController>(
+    sim::HolonomicActuatorControllerConfig{
+      robot_definition_.drive_type == "swerve" ? sim::HolonomicControlKind::Swerve
+                                               : sim::HolonomicControlKind::Mecanum,
+      chassis_params.wheel_base_m, chassis_params.track_width_m, chassis_params.wheel_radius_m,
+      chassis_params.max_wheel_speed_mps, chassis_params.pwm_limit, chassis_params.integral_limit,
+      1.0 / std::max(0.05, chassis_params.servo_response_s)},
+    wheel_gains);
+ }
 
  // LSRI composition root. The mission uses both ends because it contains the
  // simulator and the autonomy loop in one process. A hardware runner gives
@@ -750,7 +780,7 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
- if (differential_wheel_controller_ || ackermann_actuator_controller_) {
+ if (differential_wheel_controller_ || ackermann_actuator_controller_ || holonomic_actuator_controller_) {
  runtime_config.capabilities.command_level =
  sim::runtime::PlatformCommandLevel::Actuator;
  if (differential_wheel_controller_) {
@@ -760,7 +790,7 @@ void ScenarioSession::build_world() {
  {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  };
- } else {
+ } else if (ackermann_actuator_controller_) {
  runtime_config.capabilities.actuator_channels = {
  {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
@@ -778,6 +808,20 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.actuator_channels.push_back(
  {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
  0.0, 1.0, 1.0});
+   }
+  } else {
+   for (const auto* channel :
+        {"front_left_drive", "front_right_drive", "rear_left_drive", "rear_right_drive"}) {
+    runtime_config.capabilities.actuator_channels.push_back(
+      {channel, sim::runtime::ActuatorCommandMode::NormalizedDuty, -chassis_params.pwm_limit,
+       chassis_params.pwm_limit, 0.0});
+   }
+   if (robot_definition_.drive_type == "swerve") {
+    for (const auto* channel :
+         {"front_left_steer", "front_right_steer", "rear_left_steer", "rear_right_steer"}) {
+     runtime_config.capabilities.actuator_channels.push_back(
+       {channel, sim::runtime::ActuatorCommandMode::NormalizedDuty, -1.0, 1.0, 0.0});
+    }
  }
  }
  }
@@ -1526,6 +1570,7 @@ void ScenarioSession::consume_lidar_observation(
  const auto perception = autonomy_pipeline_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
+ estimate.lateral_velocity_mps,
  estimate.angular_velocity_radps},
  {lidar_config.position_in_base, lidar_config.yaw_in_base_rad,
  lidar_config.noise.range_stddev_m,
@@ -1718,10 +1763,30 @@ void ScenarioSession::apply_motion() {
  // before the deployable ROBOT controller sees it; simulator truth must not
  // cross this boundary through an in-process shortcut.
  const auto provider_feedback = platform_->actuator_feedback();
- const auto* provider_left = provider_feedback.find("left");
- const auto* provider_right = provider_feedback.find("right");
+ const auto average_track_side =
+    [&](const char* front, const char* middle,
+        const char* rear) -> std::optional<sim::ChassisActuatorFeedback::JointSample> {
+   const auto* a = provider_feedback.find(front);
+   const auto* b = provider_feedback.find(middle);
+   const auto* c = provider_feedback.find(rear);
+   if (!a || !b || !c)
+    return std::nullopt;
+   return sim::ChassisActuatorFeedback::JointSample{
+     {},
+     (a->position_rad + b->position_rad + c->position_rad) / 3.0,
+     (a->velocity_radps + b->velocity_radps + c->velocity_radps) / 3.0};
+  };
+  const auto tracked_left = robot_definition_.drive_type == "tracked"
+                              ? average_track_side("front_left_drive", "middle_left_drive", "rear_left_drive")
+                              : std::nullopt;
+  const auto tracked_right =
+    robot_definition_.drive_type == "tracked"
+      ? average_track_side("front_right_drive", "middle_right_drive", "rear_right_drive")
+      : std::nullopt;
+  const auto* provider_left = tracked_left ? &*tracked_left : provider_feedback.find("left");
+ const auto* provider_right = tracked_right ? &*tracked_right : provider_feedback.find("right");
  if (!provider_left || !provider_right) {
- throw std::runtime_error("RO-1 platform did not provide both wheel joint measurements");
+ throw std::runtime_error("differential platform did not provide both drive joint measurements");
  }
  sim::ObservationFrame feedback_frame;
  feedback_frame.time_s = snapshot_.time_s;
@@ -1743,7 +1808,7 @@ void ScenarioSession::apply_motion() {
  const auto* left = delivered_feedback->actuator_feedback->find("left");
  const auto* right = delivered_feedback->actuator_feedback->find("right");
  if (!left || !right) {
- throw std::runtime_error("delivered actuator feedback is missing a RO-1 wheel channel");
+ throw std::runtime_error("delivered actuator feedback is missing a differential drive channel");
  }
  const sim::DifferentialWheelFeedback wheel_feedback{
  left->position_rad,
@@ -1762,7 +1827,7 @@ void ScenarioSession::apply_motion() {
  runtime_now,
  command_sequence_++,
  "base_link",
- "controller.ro1",
+    "controller.differential-wheel",
  };
  outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(
  snapshot_.time_s + fixed_step_s * 2.0);
@@ -1774,7 +1839,7 @@ void ScenarioSession::apply_motion() {
  };
  if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
  sim::runtime::CommandWriteResult::Accepted) {
- throw std::runtime_error("runtime channel rejected the RO-1 actuator command");
+ throw std::runtime_error("runtime channel rejected the differential actuator command");
  }
  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
  const auto delivered_duty = [&](const std::string& channel) {
@@ -1891,6 +1956,75 @@ void ScenarioSession::apply_motion() {
  : sim::runtime::ActuatorCommandMode::NormalizedDuty;
  if (setpoint.mode != expected_mode)
  throw std::runtime_error("RO-2 received an actuator command with the wrong mode");
+ plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
+ }
+ chassis_->set_actuator_feedback(provider_feedback);
+  domain_candidate =
+    chassis_->step_actuator_duty(before, applied_command, plant_command, fixed_step_s, ground_contact);
+ } else if (holonomic_actuator_controller_) {
+  if (!platform_)
+   throw std::logic_error("actuator-level holonomic control requires a platform provider");
+  constexpr std::array<const char*, 4> drive_channels{"front_left_drive", "front_right_drive",
+                                                      "rear_left_drive", "rear_right_drive"};
+  constexpr std::array<const char*, 4> steer_channels{"front_left_steer", "front_right_steer",
+                                                      "rear_left_steer", "rear_right_steer"};
+  const auto provider_feedback = platform_->actuator_feedback();
+  sim::ObservationFrame feedback_frame;
+  feedback_frame.time_s = snapshot_.time_s;
+  feedback_frame.actuator_feedback.emplace();
+  for (const auto& joint : provider_feedback.joints) {
+   feedback_frame.actuator_feedback->channels.push_back(
+     {joint.channel, joint.position_rad, joint.velocity_radps});
+  }
+  feedback_frame.actuator_feedback->header = {
+    snapshot_.time_s,       actuator_feedback_sequence_++, "base_link", 0.0, sim::kMeasurementSchemaVersion,
+    "sim.actuator-feedback"};
+  if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame)))
+   throw std::runtime_error("runtime channel rejected holonomic actuator feedback");
+  const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
+  if (!delivered_feedback || !delivered_feedback->actuator_feedback)
+   throw std::runtime_error("runtime channel did not deliver holonomic actuator feedback");
+  sim::HolonomicActuatorFeedback controller_feedback;
+  for (std::size_t i = 0; i < drive_channels.size(); ++i) {
+   const auto* drive = delivered_feedback->actuator_feedback->find(drive_channels[i]);
+   if (!drive)
+    throw std::runtime_error("holonomic drive feedback is incomplete");
+   controller_feedback.drive_velocity_radps[i] = drive->velocity_radps;
+   if (robot_definition_.drive_type == "swerve") {
+    const auto* steer = delivered_feedback->actuator_feedback->find(steer_channels[i]);
+    if (!steer)
+     throw std::runtime_error("swerve steering feedback is incomplete");
+    controller_feedback.steer_position_rad[i] = steer->position_rad;
+   }
+  }
+  const auto control =
+    holonomic_actuator_controller_->update(applied_command, controller_feedback, fixed_step_s);
+  sim::runtime::ActuatorCommand outbound_command;
+  outbound_command.header = {sim::runtime::kMessageSchemaVersion,
+                             runtime_now,
+                             runtime_now,
+                             command_sequence_++,
+                             "base_link",
+                             "controller.holonomic"};
+  outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0);
+  for (std::size_t i = 0; i < drive_channels.size(); ++i) {
+   outbound_command.setpoints.push_back(
+     {drive_channels[i], sim::runtime::ActuatorCommandMode::NormalizedDuty, control.drive_duty[i]});
+  }
+  if (robot_definition_.drive_type == "swerve") {
+   for (std::size_t i = 0; i < steer_channels.size(); ++i) {
+    outbound_command.setpoints.push_back(
+      {steer_channels[i], sim::runtime::ActuatorCommandMode::NormalizedDuty, control.steer_duty[i]});
+   }
+  }
+  if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
+      sim::runtime::CommandWriteResult::Accepted)
+   throw std::runtime_error("runtime channel rejected holonomic actuator command");
+  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
+  sim::ChassisActuatorDutyCommand plant_command;
+  for (const auto& setpoint : delivered_command.setpoints) {
+   if (setpoint.mode != sim::runtime::ActuatorCommandMode::NormalizedDuty)
+    throw std::runtime_error("holonomic actuator command has the wrong mode");
  plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
  }
  chassis_->set_actuator_feedback(provider_feedback);
@@ -2260,6 +2394,7 @@ void ScenarioSession::apply_motion() {
  motion_observation.time_s = snapshot_.time_s + fixed_step_s;
  motion_observation.encoders.emplace();
  motion_observation.encoders->linear_velocity_mps = encoder_v;
+ motion_observation.encoders->lateral_velocity_mps = motors.measured_lateral_mps;
  motion_observation.encoders->angular_velocity_radps = encoder_w;
  motion_observation.encoders->slip_scale = slip;
  motion_observation.encoders->header = {

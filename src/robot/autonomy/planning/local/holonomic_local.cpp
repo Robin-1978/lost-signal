@@ -3,14 +3,51 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace sim {
+namespace {
+
+struct PathProjection {
+ double distance_m{0.0};
+ double along_m{0.0};
+};
+
+PathProjection project_to_path(Vec2 point, const std::vector<Vec2>& path) {
+ PathProjection best{std::numeric_limits<double>::infinity(), 0.0};
+ double accumulated_m = 0.0;
+ for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+ const Vec2 delta{path[index + 1].x - path[index].x,
+ path[index + 1].y - path[index].y};
+ const double length_m = std::hypot(delta.x, delta.y);
+ if (length_m < 1e-9)
+ continue;
+ const double projection = std::clamp(
+ ((point.x - path[index].x) * delta.x +
+ (point.y - path[index].y) * delta.y) /
+ (length_m * length_m), 0.0, 1.0);
+ const Vec2 closest{path[index].x + projection * delta.x,
+ path[index].y + projection * delta.y};
+ const double distance_m = std::hypot(point.x - closest.x, point.y - closest.y);
+ if (distance_m < best.distance_m) {
+ best.distance_m = distance_m;
+ best.along_m = accumulated_m + projection * length_m;
+ }
+ accumulated_m += length_m;
+ }
+ if (path.size() == 1)
+ best.distance_m = std::hypot(point.x - path.front().x, point.y - path.front().y);
+ return best;
+}
+
+} // namespace
 
 DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double current_forward_mps,
                                   double current_left_mps, double current_yaw_radps, Vec2 goal,
                                   const GridMap& map, DwaWeights weights,
                                   const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
-                                  const HolonomicLocalConfig& config, StaticFeasibility terrain_feasible) {
+ const HolonomicLocalConfig& config, StaticFeasibility terrain_feasible,
+ const DwaReference& reference) {
  DwaResult output;
  output.best.command.score = -1e18;
  const double minimum_forward = std::min(config.min_forward_speed_mps, config.max_speed_mps);
@@ -56,10 +93,28 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
      }
     }
     const double goal_score = -std::hypot(goal.x - x, goal.y - y);
+ const double goal_heading = std::atan2(goal.y - y, goal.x - x);
+ const double heading_score = std::cos(wrap_angle(goal_heading - heading));
     const double clearance_score = collision ? free_time : config.predict_time_s + 1.0;
-    const double score = weights.w_goal * goal_score + weights.w_clear * clearance_score +
+ double path_score = 0.0;
+ double progress_score = 0.0;
+ if (reference.path.size() >= 2) {
+ double distance_sum_m = 0.0;
+ for (const auto& sample : samples)
+ distance_sum_m += project_to_path(sample.position, reference.path).distance_m;
+ const auto start_projection = project_to_path(position, reference.path);
+ const auto end_projection = project_to_path({x, y}, reference.path);
+ path_score = -distance_sum_m / static_cast<double>(samples.size());
+ progress_score = end_projection.along_m - start_projection.along_m;
+ }
+ const bool angular_reversal =
+ target_yaw * reference.previous_angular_command_radps < -0.04;
+ const double score = weights.w_goal * (goal_score + 0.7 * heading_score) +
+ weights.w_clear * clearance_score +
                          weights.w_speed * std::hypot(target_forward, target_left) -
-                         0.02 * std::abs(target_yaw);
+ 0.02 * std::abs(target_yaw) + weights.w_path * path_score +
+ weights.w_progress * progress_score -
+ weights.w_oscillation * (angular_reversal ? 1.0 : 0.0);
     DwaCmd command{target_forward, target_yaw, !collision, score, target_left};
     ExecutableTrajectory trajectory{LocalCommandSpace::HolonomicTwist, command, std::move(samples)};
     output.rollouts.push_back({trajectory, collision});

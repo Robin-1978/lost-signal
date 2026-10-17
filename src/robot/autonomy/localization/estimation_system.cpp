@@ -11,7 +11,7 @@ void EstimationSystem::reset(double x, double y, double heading_rad, std::uint32
  odometry_.reset(x, y, heading_rad);
  map_from_odom_translation_ = {};
  map_from_odom_heading_rad_ = 0.0;
- state_ = {{x, y}, heading_rad, 0.0, 0.0, 1.0, 0.0};
+ state_ = {{x, y}, heading_rad, 0.0, 0.0, 0.0, 1.0, 0.0};
 }
 
 void EstimationSystem::update_map_state() {
@@ -40,11 +40,20 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
  }
  const double gyro_rate = has_imu ? observation.imu->yaw_rate_radps : 0.0;
  const double gyro_sigma = has_imu ? observation.imu->noise_sigma_radps : 0.0;
- odometry_.update(encoder.linear_velocity_mps, encoder.angular_velocity_radps, dt_s, rng_, encoder.slip_scale,
-                  0.003 * encoder.slip_scale, has_imu, gyro_rate, gyro_sigma);
+ odometry_.update(encoder.linear_velocity_mps, encoder.lateral_velocity_mps,
+ encoder.angular_velocity_radps, dt_s, rng_, encoder.slip_scale,
+ 0.003 * encoder.slip_scale, has_imu, gyro_rate, gyro_sigma);
  update_map_state();
  state_.linear_velocity_mps = encoder.linear_velocity_mps;
- state_.angular_velocity_radps = encoder.angular_velocity_radps;
+ state_.lateral_velocity_mps = encoder.lateral_velocity_mps;
+ // Wheel differential is the low-noise nominal rate. Once the provider marks
+ // its uncertainty above the nominal slip scale, it is no longer a body-rate
+ // observation (notably for skid steering), so a mounted gyro owns the live
+ // angular velocity. Heading propagation above already blends both using
+ // their variances; this selection prevents ordinary wheel motion from being
+ // made noisier while refusing a known-slipping wheel rate as body truth.
+ state_.angular_velocity_radps =
+   has_imu && encoder.slip_scale > 2.0 ? gyro_rate : encoder.angular_velocity_radps;
  state_.confidence = std::clamp(1.0 / std::max(1.0, encoder.slip_scale), 0.05, 1.0);
  state_.timestamp_s = observation.time_s;
 }

@@ -106,10 +106,12 @@ The next concrete work packages are:
  hold independently before using it in a lesson. Parking brake and ABS remain separate capabilities.
 3. **Implemented:** extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
  semantic markers, and test routes consumed by simulation. Validate lossless reload and world/grid transforms.
-4. Promote RO-3 tracked, RO-4 swerve, and RO-5 mecanum from teaching proxies to independent physical reference
- platforms. Each receives its own articulated/support model and acceptance matrix for loads, straight/reverse
- motion, feasible turning, braking, low grip, grade, cross-slope, rough ground, timestep convergence, LSRI expiry,
- and chassis-specific invariants. No platform inherits another platform's evidence.
+4. **Implemented:** promote RO-3 tracked, RO-4 swerve, and RO-5 mecanum to independent physical reference
+ platforms. Each has its own articulated/support model and acceptance evidence for rest stability, signed commanded
+ motion, low grip, grade, cross-slope, rough ground, motor braking, timestep convergence, the LSRI actuator path, and
+ chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
+ brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
+ inherits another platform's evidence.
 5. Select and graybox one mechanically distinct Playground. Its surprise and choices must survive a fresh-player
  test before permanent art begins; the Vehicle Proving Ground remains an engineering sandbox rather than campaign
  content.
@@ -395,10 +397,10 @@ Status: **complete**
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The current Linux x86_64 Release build passes 79/79 tests, content validation, and canonical content roundtrip.
-The graphical smoke run, deterministic screenshots, and portable Linux, macOS, and Windows CI remain final
-publishing gates. Sanitizers run at milestone and release-candidate gates; a result from an earlier baseline is not
-evidence for the current revision.
+The current Linux x86_64 Release build passes 87/87 tests, the 15/15 ROBOT-only gate, content validation, canonical
+content roundtrip, the 35/35 five-chassis Bullet proving matrix, and deterministic graphical smoke under Xvfb.
+ASan/UBSan also passes all 82 C++ tests and five Python wrapper gates on this revision. Portable Linux, macOS, and
+Windows CI remain publishing gates; local Linux evidence does not replace those hosted jobs.
 
 ## RO-1 post-baseline optimization backlog
 
@@ -437,8 +439,9 @@ items below strengthen timing, fault evidence, and physical fidelity; they do no
  wheel-speed, yaw, pose, stopping-distance, scan timing, range, and intensity error envelopes. Until then the project
  may state that its boundary supports transfer experiments, but must not claim proven sim-to-real performance.
 
-RO-2 through RO-5 remain teaching proxies until each receives its own independent geometry, actuator, contact,
-sensor, and maneuver acceptance matrix. Their expansion does not weaken or silently generalize the RO-1 evidence.
+RO-2 through RO-5 now have independent geometry, actuator, contact, and maneuver acceptance gates. Their typical
+parameters remain engineering assumptions, and their completion does not weaken or silently generalize RO-1
+evidence. Sensor evidence remains attached to the selected sensor profile rather than duplicated per chassis.
 
 ### Selected implementation sequence: 16-line LiDAR, then RO-2
 

@@ -13,6 +13,8 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 RO1_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro1"
 RO2_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro2"
+RO4_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro4"
+RO5_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro5"
 Vector3 = tuple[float, float, float]
 Mesh = tuple[list[Vector3], list[Vector3], list[int]]
 
@@ -799,6 +801,60 @@ def main() -> None:
     tracked_output = ROOT / "assets" / "models" / "robots" / "ro3"
     write_model("hull", tracked_hull, tracked_output)
     write_model("track", tracked_track, tracked_output)
+    swerve_chassis = [
+    Part("lower_frame", "box", (0.52, 0.52, 0.11), rgba("#193431"),
+    (0, 0, -0.035), metallic=0.62, roughness=0.30),
+    Part("cross_deck", "box", (0.42, 0.30, 0.10), rgba("#A9D9D1"),
+    (0, 0, 0.055), metallic=0.34, roughness=0.28),
+    Part("spine", "box", (0.26, 0.46, 0.055), rgba("#5A827B"),
+    (0, 0, 0.12), metallic=0.52, roughness=0.24),
+    Part("status_bar", "box", (0.018, 0.24, 0.025), rgba("#50E1C5"),
+    (0.27, 0, 0.08), emissive=0.85, roughness=0.16),
+    ]
+    swerve_module = [
+    Part("steer_pod", "cylinder", (0.050, 0.050, 0.095), rgba("#486D67"),
+    metallic=0.72, roughness=0.24),
+    Part("kingpin_cap", "cylinder", (0.030, 0.030, 0.112), rgba("#A7C5BE"),
+    metallic=0.80, roughness=0.18),
+    Part("direction_witness", "box", (0.090, 0.018, 0.018), rgba("#50E1C5"),
+    (0.035, 0, 0.055), emissive=0.80, roughness=0.16),
+    ]
+    mecanum_chassis = [
+    Part("lower_frame", "box", (0.52, 0.52, 0.11), rgba("#30382B"),
+    (0, 0, -0.035), metallic=0.55, roughness=0.40),
+    Part("armored_deck", "box", (0.43, 0.39, 0.11), rgba("#C9D49F"),
+    (0, 0, 0.055), metallic=0.30, roughness=0.38),
+    Part("center_spine", "box", (0.30, 0.16, 0.07), rgba("#75805D"),
+    (0, 0, 0.14), metallic=0.44, roughness=0.30),
+    Part("status_bar", "box", (0.018, 0.25, 0.025), rgba("#F1C75B"),
+    (0.27, 0, 0.08), emissive=0.82, roughness=0.18),
+    ]
+    # Mounted with the wheel frame, these diagonal witnesses make the alternating
+    # roller handedness readable without pretending the low-poly bars are the
+    # collision geometry used by the contact provider.
+    roller_left = [
+    Part("hub", "cylinder", (0.072, 0.072, 0.072), rgba("#69725A"),
+    metallic=0.65, roughness=0.30),
+    Part("roller_witness_a", "box", (0.15, 0.018, 0.020), rgba("#F1C75B"),
+    rotation=(0, 0, math.sin(math.pi/8), math.cos(math.pi/8)), metallic=0.58, roughness=0.34),
+    Part("roller_witness_b", "box", (0.15, 0.018, 0.020), rgba("#F1C75B"),
+    (0, 0, 0.035), rotation=(0, 0, math.sin(math.pi/8), math.cos(math.pi/8)),
+    metallic=0.58, roughness=0.34),
+    ]
+    roller_right = [
+    Part("hub", "cylinder", (0.072, 0.072, 0.072), rgba("#69725A"),
+    metallic=0.65, roughness=0.30),
+    Part("roller_witness_a", "box", (0.15, 0.018, 0.020), rgba("#F1C75B"),
+    rotation=(0, 0, -math.sin(math.pi/8), math.cos(math.pi/8)), metallic=0.58, roughness=0.34),
+    Part("roller_witness_b", "box", (0.15, 0.018, 0.020), rgba("#F1C75B"),
+    (0, 0, 0.035), rotation=(0, 0, -math.sin(math.pi/8), math.cos(math.pi/8)),
+    metallic=0.58, roughness=0.34),
+    ]
+    write_model("chassis", swerve_chassis, RO4_OUTPUT)
+    write_model("swerve_module", swerve_module, RO4_OUTPUT)
+    write_model("chassis", mecanum_chassis, RO5_OUTPUT)
+    write_model("roller_left", roller_left, RO5_OUTPUT)
+    write_model("roller_right", roller_right, RO5_OUTPUT)
 
 
 if __name__ == "__main__":

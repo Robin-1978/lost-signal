@@ -126,6 +126,13 @@ plant treats opposing duty as current-limited electrical braking and zero duty a
 against the independent peak-force energy bound. This is not a friction service brake, ABS, parking brake, or thermal
 model. Those require separate actuator capabilities and sourced parameters before any automotive-speed claim.
 
+RO-3 separates its `0.55 m` physical left/right contact spacing from the `1.2 m`
+`effective_track_width_m` used by skid-steer kinematics. Tracked vehicles turn around terrain-dependent
+instantaneous centres of rotation, so geometric spacing alone overestimates body yaw from tread speed. The shipped
+effective width is a typical engineering assumption selected for the deterministic rigid-contact envelope. A real
+profile must identify it from held-out tread-speed and body-yaw data on each relevant surface; mission completion is
+not a calibration method.
+
 ## Wheel-ground contact
 
 There is no universal rubber stiffness. The standard tire default is derived from a declared operating point:

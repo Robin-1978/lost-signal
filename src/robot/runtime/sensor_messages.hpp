@@ -6,7 +6,7 @@
 
 namespace sim {
 
-inline constexpr std::uint32_t kMeasurementSchemaVersion = 3;
+inline constexpr std::uint32_t kMeasurementSchemaVersion = 4;
 
 // Transport-neutral measurement header used by simulation, replay, native
 // drivers, and future IPC providers. stamp_s is acquisition time in the

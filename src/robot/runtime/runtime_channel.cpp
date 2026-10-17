@@ -456,6 +456,16 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
   set_reason(reason, "static lidar reference requires a lidar measurement");
   return false;
  }
+ if (observation.encoders) {
+ const auto& encoder = *observation.encoders;
+ if (!std::isfinite(encoder.linear_velocity_mps) ||
+ !std::isfinite(encoder.lateral_velocity_mps) ||
+ !std::isfinite(encoder.angular_velocity_radps) ||
+ !std::isfinite(encoder.slip_scale) || encoder.slip_scale <= 0.0) {
+ set_reason(reason, "encoder odometry contains a non-finite twist or invalid slip scale");
+ return false;
+ }
+ }
  if (observation.imu) {
  const auto& imu = *observation.imu;
  if (!std::isfinite(imu.roll_rate_radps) || !std::isfinite(imu.pitch_rate_radps) ||

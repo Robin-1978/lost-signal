@@ -49,10 +49,12 @@ target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_optio
 add_library(lost_signal_robot_platform STATIC
  src/robot/platform/ackermann_kinematics.cpp
  src/robot/platform/differential_kinematics.cpp
+ src/robot/platform/holonomic_kinematics.cpp
  src/robot/control/ackermann_actuator_controller.cpp
  src/robot/control/pid.cpp
  src/robot/control/feedforward.cpp
  src/robot/control/differential_wheel_controller.cpp
+ src/robot/control/holonomic_actuator_controller.cpp
 )
 target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core)
 
@@ -135,6 +137,10 @@ if(NOT LOST_SIGNAL_BUILD_SIM)
  target_link_libraries(test_runtime_interface PRIVATE lost_signal_robot_runtime Threads::Threads)
  add_test(NAME runtime_interface COMMAND test_runtime_interface)
 
+add_executable(test_planar_odometry tests/new/test_planar_odometry.cpp)
+target_link_libraries(test_planar_odometry PRIVATE lost_signal_robot_autonomy)
+add_test(NAME planar_odometry COMMAND test_planar_odometry)
+
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
  add_test(NAME sha256 COMMAND test_sha256)
@@ -181,6 +187,13 @@ if(NOT LOST_SIGNAL_BUILD_SIM)
  lost_signal_robot_platform)
  add_test(NAME differential_wheel_controller COMMAND
  test_differential_wheel_controller)
+
+ add_executable(test_holonomic_actuator_controller
+ tests/new/test_holonomic_actuator_controller.cpp)
+ target_link_libraries(test_holonomic_actuator_controller PRIVATE
+ lost_signal_robot_platform)
+ add_test(NAME holonomic_actuator_controller COMMAND
+ test_holonomic_actuator_controller)
 
  add_executable(test_ackermann_actuator_controller
  tests/new/test_ackermann_actuator_controller.cpp)
@@ -383,6 +396,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_runtime_interface PRIVATE lost_signal_sim_hardware Threads::Threads)
  add_test(NAME runtime_interface COMMAND test_runtime_interface)
 
+ add_executable(test_planar_odometry tests/new/test_planar_odometry.cpp)
+ target_link_libraries(test_planar_odometry PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME planar_odometry COMMAND test_planar_odometry)
+
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
  add_test(NAME sha256 COMMAND test_sha256)
@@ -422,6 +439,20 @@ add_test(NAME ro1_dynamics_acceptance COMMAND test_ro1_dynamics_acceptance)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME ro2_dynamics_acceptance COMMAND test_ro2_dynamics_acceptance)
+
+add_executable(test_ro3_dynamics_acceptance tests/new/test_ro3_dynamics_acceptance.cpp)
+target_link_libraries(test_ro3_dynamics_acceptance PRIVATE lost_signal_sim_game)
+target_compile_definitions(test_ro3_dynamics_acceptance PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_test(NAME ro3_dynamics_acceptance COMMAND test_ro3_dynamics_acceptance)
+
+add_executable(test_holonomic_dynamics_acceptance
+ tests/new/test_holonomic_dynamics_acceptance.cpp)
+target_link_libraries(test_holonomic_dynamics_acceptance PRIVATE lost_signal_sim_game)
+target_compile_definitions(test_holonomic_dynamics_acceptance PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_test(NAME holonomic_dynamics_acceptance COMMAND
+ test_holonomic_dynamics_acceptance)
 
 add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
 target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_sim_game)
@@ -741,6 +772,13 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  lost_signal_robot_platform)
  add_test(NAME differential_wheel_controller COMMAND
  test_differential_wheel_controller)
+
+ add_executable(test_holonomic_actuator_controller
+ tests/new/test_holonomic_actuator_controller.cpp)
+ target_link_libraries(test_holonomic_actuator_controller PRIVATE
+ lost_signal_robot_platform)
+ add_test(NAME holonomic_actuator_controller COMMAND
+ test_holonomic_actuator_controller)
 
  add_executable(test_ackermann_actuator_controller
  tests/new/test_ackermann_actuator_controller.cpp)

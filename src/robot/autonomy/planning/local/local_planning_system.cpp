@@ -43,8 +43,11 @@ DwaResult generate(const LocalPlanningRequest& request,
  const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  double required_clearance_m, double minimum_forward_mps,
- const StaticFeasibility& terrain_feasible) {
- const double predict_time_s = rollout_horizon(request);
+ const StaticFeasibility& terrain_feasible,
+ double minimum_horizon_s = 0.0) {
+ const double predict_time_s = std::min(
+ request.prediction_horizon_s,
+ std::max(minimum_horizon_s, rollout_horizon(request)));
  if (request.command_space == LocalCommandSpace::HolonomicTwist) {
  HolonomicLocalConfig config;
  config.max_speed_mps = request.max_speed_mps;
@@ -60,7 +63,8 @@ DwaResult generate(const LocalPlanningRequest& request,
  return holonomic_local_compute(
  request.position, request.heading_rad, request.forward_mps,
  request.lateral_mps, request.yaw_rate_radps, request.target,
- planning_map, request.weights, predicted_frames, config, terrain_feasible);
+ planning_map, request.weights, predicted_frames, config, terrain_feasible,
+ request.reference);
  }
  if (request.command_space == LocalCommandSpace::SteeringAngle) {
  AckermannLocalConfig config;
@@ -184,10 +188,32 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  output.proposals = generate(
  request, *physical_collision_map, predicted_frames,
  request.required_clearance_m, request.committed_progress_floor_mps,
- terrain_feasible);
+ terrain_feasible, 1.0);
  output.selection = select_static_margin_escape(
  output.proposals, request, planning_map, *physical_collision_map,
  predicted_frames, request.required_clearance_m, terrain_feasible);
+ // A skid-steer or differential chassis can enter the soft planning margin
+ // while its nose points toward the obstacle. If no forward rollout exits
+ // that margin, make one deliberate reverse search through the same physical
+ // map and continuous validator. Waiting cannot improve a static geometry
+ // trap, and the reverse command is still bounded by wheel speed and swept
+ // collision checks.
+ if (!output.selection.validation.accepted() &&
+ request.command_space == LocalCommandSpace::DifferentialTwist &&
+ !request.route_is_reverse && !request.crossing_relevant) {
+ auto recovery_request = request;
+ recovery_request.route_is_reverse = true;
+ auto recovery = generate(
+ recovery_request, *physical_collision_map, predicted_frames,
+ request.required_clearance_m, 0.0, terrain_feasible, 1.0);
+ auto selection = select_static_margin_escape(
+ recovery, recovery_request, planning_map, *physical_collision_map,
+ predicted_frames, request.required_clearance_m, terrain_feasible);
+ if (selection.validation.accepted()) {
+ output.proposals = std::move(recovery);
+ output.selection = std::move(selection);
+ }
+ }
  return output;
  }
  output.proposals = generate(

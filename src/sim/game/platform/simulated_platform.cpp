@@ -7,8 +7,8 @@
 
 namespace sim::platform {
 
-using mission::MountDefinition;
 using mission::active_in_level;
+using mission::MountDefinition;
 namespace {
 
 constexpr double kGravityMps2 = 9.81;
@@ -248,13 +248,15 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  }
  for (const auto& actuator : robot_.articulation.actuators) {
  actuator_bindings_[actuator.channel] = {
- robot_joints_.at(actuator.joint), actuator.effort_limit_Nm};
+ robot_joints_.at(actuator.joint), actuator.effort_limit_Nm, {}};
  const auto joint = std::find_if(robot_.articulation.joints.begin(),
  robot_.articulation.joints.end(),
  [&](const auto& value) { return value.id == actuator.joint; });
- if (joint != robot_.articulation.joints.end())
+ if (joint != robot_.articulation.joints.end()) {
+    actuator_bindings_[actuator.channel].contact_body = robot_links_.at(joint->child);
  driven_contact_bodies_.push_back(robot_links_.at(joint->child));
  }
+  }
  if (!robot_body_ || actuator_bindings_.empty())
  throw std::runtime_error("articulated platform requires a root and at least one actuator binding");
  // Resolve the authored assembly onto the terrain before simulation time
@@ -857,7 +859,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  const double mu_scale = std::clamp(ground.mu_eff, 0.0, 2.0);
  if (tire != tire_contacts_.end()) {
  tire_contact_->apply(*world_, body, tire->second, {
- mu_scale,
+ robot_.drive_type == "mecanum" ? mu_scale * 0.02 : mu_scale,
  ground.rolling_resist,
  ground.normal_stiffness_Npm,
  ground.normal_damping_Nspm,
@@ -865,6 +867,79 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  } else {
  world_->set_contact_friction(body, material->second.friction * mu_scale,
  material->second.rolling_resistance, material->second.spinning_resistance);
+ }
+ }
+ // A mecanum wheel's passive rollers redirect longitudinal rim slip into a
+ // diagonal contact force. A plain cylinder cannot represent that mechanism:
+ // its no-slip direction is fixed by the cylinder axis. This provider-side
+ // contact adapter uses the physical joint speed, contact-point velocity and
+ // measured previous-step normal load to implement a linear-creep/Coulomb
+ // model. Applying the force at the measured contact point gives the wheel an
+ // equal reaction torque, so the encoder cannot free-spin independently of
+ // vehicle motion. ROBOT still emits only motor duty; no body-force truth
+ // crosses LSRI, and Bullet remains responsible for rigid-body integration.
+  if (robot_.drive_type == "mecanum") {
+   const auto roller_sign = [](const std::string& channel) {
+    return channel == "front_left_drive" || channel == "rear_right_drive" ? -1.0 : 1.0;
+   };
+   for (const auto& command : actuation.joint_efforts) {
+    if (!command.channel.ends_with("_drive"))
+     continue;
+    const auto binding = actuator_bindings_.find(command.channel);
+    if (binding == actuator_bindings_.end() || !binding->second.contact_body)
+     continue;
+ double normal_force_N = 0.0;
+ ::sim::physics::Vec3 contact_point_sum{};
+ ::sim::physics::Vec3 contact_normal_sum{};
+    for (const auto& contact : world_->contacts()) {
+ const bool wheel_is_a = same(contact.body_a, binding->second.contact_body) &&
+ is_terrain(contact.body_b);
+ const bool wheel_is_b = same(contact.body_b, binding->second.contact_body) &&
+ is_terrain(contact.body_a);
+ if (!wheel_is_a && !wheel_is_b)
+ continue;
+ const double load_N = std::abs(contact.normal_force_N);
+ normal_force_N += load_N;
+ contact_point_sum = add(contact_point_sum, scale(contact.point_m, load_N));
+ const double normal_sign = wheel_is_a ? 1.0 : -1.0;
+ contact_normal_sum = add(contact_normal_sum,
+ scale(contact.normal_on_b, normal_sign * load_N));
+    }
+    // An unloaded wheel cannot transmit drive force. Contacts are retained from
+    // the previous fixed Bullet step, so the first grounded step naturally
+    // establishes load before the roller adapter begins transmitting torque.
+    if (normal_force_N < 1.0)
+     continue;
+    const auto wheel_state = world_->state(binding->second.contact_body);
+    const auto wheel_ground = ground_at({wheel_state.position_m.x, wheel_state.position_m.y});
+    const auto material = robot_contact_materials_.find(binding->second.contact_body.value);
+    const double tire_mu = material == robot_contact_materials_.end() ? 1.0 : material->second.friction;
+ const double roller = roller_sign(command.channel);
+ auto traction_world = ::sim::physics::rotate_vector(before.rotation, {1.0, roller, 0.0});
+ auto contact_normal = scale(contact_normal_sum,
+ 1.0 / std::max(1e-9, magnitude(contact_normal_sum)));
+ traction_world = subtract(traction_world,
+ scale(contact_normal, traction_world.x * contact_normal.x +
+ traction_world.y * contact_normal.y +
+ traction_world.z * contact_normal.z));
+ const double traction_norm = std::max(1e-6, magnitude(traction_world));
+ const auto wheel_offset = subtract(wheel_state.position_m, before.position_m);
+ const auto wheel_center_velocity = add(before.linear_velocity_mps,
+ cross(before.angular_velocity_radps, wheel_offset));
+ const double contact_generalized_speed_mps =
+ traction_world.x * wheel_center_velocity.x +
+ traction_world.y * wheel_center_velocity.y +
+ traction_world.z * wheel_center_velocity.z;
+ const double rim_speed_mps =
+ world_->joint_state(binding->second.joint).velocity_radps * robot_.wheel_radius_m;
+ constexpr double kLongitudinalCreepNPerMps = 80.0;
+ const double creep_force_N =
+ kLongitudinalCreepNPerMps * (rim_speed_mps - contact_generalized_speed_mps);
+ const double component_limit_N = tire_mu * wheel_ground.mu_eff * normal_force_N / traction_norm;
+ const double component_N = std::clamp(creep_force_N, -component_limit_N, component_limit_N);
+ const auto force_world = scale(traction_world, component_N);
+ const auto contact_point = scale(contact_point_sum, 1.0 / normal_force_N);
+ world_->apply_force_at_world_point(binding->second.contact_body, force_world, contact_point);
  }
  }
  for (const auto& command : actuation.joint_efforts) {

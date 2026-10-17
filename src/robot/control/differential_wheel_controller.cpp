@@ -117,7 +117,14 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
             distance_per_count / dt_s;
     }
 
-    output.left.normalized_duty =
+ const auto clear_opposing_integral = [](double target_mps, double measured_mps, PID& pid) {
+ if (std::abs(target_mps) > 1e-4 && target_mps * pid.i() < 0.0 &&
+ target_mps * measured_mps >= 0.0)
+ pid.reset();
+ };
+ clear_opposing_integral(output.left.target_mps, output.left.measured_mps, left_pid_);
+ clear_opposing_integral(output.right.target_mps, output.right.measured_mps, right_pid_);
+ output.left.normalized_duty =
         left_pid_.update(output.left.target_mps - output.left.measured_mps, dt_s);
     output.right.normalized_duty =
         right_pid_.update(output.right.target_mps - output.right.measured_mps, dt_s);

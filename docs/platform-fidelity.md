@@ -70,9 +70,20 @@ The caster has a 35 mm authored trail: the swivel axis is ahead of the wheel axl
 the axle rather than an extra hidden visual offset. Bullet joint position and velocity are the only encoder truth.
 The passive caster is absent from motor-controller telemetry: it receives no command, and its visual transform is
 copied from physical link state through the platform/presentation snapshot.
-RO-2 is the second articulated reference platform. It has one chassis body, two front steering knuckles, four
-physical rolling wheels, two bounded steering joints, four wheel joints, and four actuator channels. RO-3 through
-RO-5 still use compact teaching proxies and remain outside an independent physical gate.
+RO-2 adds two front steering knuckles, four physical wheels, rear drive, and independent service brakes. RO-3 has
+six road-wheel bodies and distributes each of two deployable track commands across three motor joints. RO-4 has four
+continuous steering joints and four wheel joints driven through eight LSRI duty channels. RO-5 has four wheel joints;
+its SIM contact provider resolves the alternating roller Jacobian from physical joint/rim slip, contact-point motion,
+and the previous Bullet normal load. It applies the resulting diagonal force at the measured contact point and limits
+it by the local tire/surface Coulomb circle. This contact reaction loads the wheel encoder instead of allowing an
+unloaded command-derived force. No articulated chassis injects a commanded body velocity or yaw torque into Bullet.
+
+Planning occupancy and physical contact remain separate evidence. Global and local costmaps may conservatively
+inflate authored obstacles by the footprint, localization allowance, and grid resolution. The analytic Domain plant
+tests its circular footprint against continuous authored box geometry, while Bullet uses rigid contacts. A coarse
+raster cell therefore cannot manufacture a physical collision at a geometrically clear box corner. Minimum-risk
+recovery may leave an already-entered soft planning margin, including a bounded reverse maneuver for differential
+and tracked chassis, but every sample must remain outside the physical collision geometry.
 
 RO-1 runs a deterministic 20 ms public physics step with four 5 ms Bullet contact substeps. This is a numerical
 integration choice, not a second clock domain. It prevents small-wheel contact and chained caster constraints from
@@ -311,9 +322,9 @@ is not a release claim until the same autonomy build completes those hardware ga
 
 ## Implementation order
 
-1. Finish the RO-1 `typical` reference gates and publish its explicit validation envelope.
-2. Introduce the reference planar-LiDAR profile only with measurable fields and deterministic validation cases.
-3. Preserve the other chassis as non-reference teaching profiles until each receives its own articulated gate.
+1. Maintain the completed RO-1 `typical` reference gates and its explicit validation envelope.
+2. Maintain the planar and 16-line LiDAR profiles with measurable fields and deterministic validation cases.
+3. Keep every chassis gate independent; changes to one mechanism rerun its own load, motion, grip, and timestep evidence.
 4. Add the actuator capability record when a native driver, HIL drive, or second actuator backend can exercise it.
 5. Allow an optional future `identified` profile from a low-speed robot and planar LiDAR without blocking release.
 6. Extend the implemented 16-line provider or add a solid-state provider only for a concrete learning scenario or

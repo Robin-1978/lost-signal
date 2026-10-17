@@ -20,6 +20,7 @@ struct HolonomicLocalConfig {
 DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double current_forward_mps,
  double current_left_mps, double current_yaw_radps, Vec2 goal, const GridMap& map,
  DwaWeights weights, const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
- const HolonomicLocalConfig& config, StaticFeasibility terrain_feasible = {});
+ const HolonomicLocalConfig& config, StaticFeasibility terrain_feasible = {},
+ const DwaReference& reference = {});
 
 } // namespace sim

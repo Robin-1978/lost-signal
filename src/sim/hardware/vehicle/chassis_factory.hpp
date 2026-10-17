@@ -26,6 +26,9 @@ namespace sim {
 // (equipped-component overrides applied upstream, like today).
 struct ChassisBuildParams {
   double wheel_base_m{0.5};
+ // Calibrated skid-steer kinematic separation. It equals wheel_base_m for
+ // ordinary differential wheels and may be larger for tracked contact.
+ double effective_track_width_m{0.5};
   double wheel_radius_m{0.1};
  // Assembly-derived contact geometry in the robot frame. drive_axle_x_m is
  // the mean longitudinal position of the differential drive wheels; support

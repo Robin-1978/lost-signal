@@ -14,7 +14,10 @@ namespace sim {
 // hardware providers. No physics, mission, actor-truth, or rendering type is
 // reachable through this contract.
 struct EncoderObservation {
+ // Body-frame planar twist reconstructed from wheel/track encoders and the
+ // platform geometry: +x forward, +y left, +z counter-clockwise.
  double linear_velocity_mps{0.0};
+ double lateral_velocity_mps{0.0};
  double angular_velocity_radps{0.0};
  double slip_scale{1.0};
  MeasurementHeader header;
@@ -75,6 +78,7 @@ struct EstimatedState {
  Vec2 position;
  double heading_rad{0.0};
  double linear_velocity_mps{0.0};
+ double lateral_velocity_mps{0.0};
  double angular_velocity_radps{0.0};
  double confidence{1.0};
  double timestamp_s{0.0};

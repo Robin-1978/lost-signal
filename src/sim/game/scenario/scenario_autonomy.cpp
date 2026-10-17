@@ -70,7 +70,7 @@ void ScenarioSession::decide_control() {
  const sim::GridMap local_physical_collision_map = autonomy_pipeline_->compose_local_map(
  *truth_map_, snapshot_.time_s, robot_definition_.collision_radius_m);
  const auto tracking = autonomy_pipeline_->observe_trajectory(
-   snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
+ snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
  snapshot_.control.trajectory_sequence = tracking.sequence;
  snapshot_.control.trajectory_tracking_active = tracking.active;
  snapshot_.control.trajectory_within_envelope = tracking.within_envelope;
@@ -280,6 +280,7 @@ void ScenarioSession::decide_control() {
  speed_cap *= snapshot_.strategy.applied.speed_scale;
  // The selected rollout is the command contract. Feed route and corner caps
  // into candidate generation so mission code never rewrites its speed later.
+ if (chassis_caps_.command_space != sim::ChassisCommandSpace::HolonomicTwist)
  speed_cap = std::min(speed_cap, std::abs(route_control.tv));
  const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
@@ -452,7 +453,7 @@ void ScenarioSession::decide_control() {
  } else if (!traffic_decision.has_active_zone) {
   const sim::Vec2 ego{nav_x, nav_y};
   const sim::Vec2 dir{std::cos(nav_heading), std::sin(nav_heading)};
-  const double ego_speed = std::abs(estimate.linear_velocity_mps);
+ const double ego_speed = std::abs(estimate.linear_velocity_mps);
   const double assess_speed = ego_speed >= 0.15 ? ego_speed : 0.5;
   sim::GovernorInput governor_input;
   for (const auto& track : known_tracks) {
@@ -572,12 +573,12 @@ void ScenarioSession::decide_control() {
   speed_cap = std::min(speed_cap, v_allow);
  }
  const auto route_direction = route_tracking_system_->travel_direction(planned_route_);
- // RO-1 treats gear as a global-route contract; its follower recovery may
- // not silently rewrite a forward A* section. Other chassis retain their
- // established recovery behavior until their own reference models and route
- // contracts are validated in the next platform phase.
+ // Gear is owned by the global route for every chassis. The follower's
+ // signed command is only a fallback once the route has no direction metadata
+ // (for example after the terminal index); it may not silently reverse a
+ // forward section to improve a local score.
  const bool reverse_route = route_direction == sim::TravelDirection::Reverse ||
- (robot_definition_.id != "robot.ro1" && route_control.tv < 0.0);
+ (route_direction == sim::TravelDirection::Unspecified && route_control.tv < 0.0);
  const bool crossing_committed = traffic_decision.control_authority && traffic_decision.control.committed;
  constexpr double kCommittedProgressFloorMps = 0.15;
  const double committed_floor = crossing_committed
@@ -599,7 +600,7 @@ void ScenarioSession::decide_control() {
  local_request.position = {nav_x, nav_y};
  local_request.heading_rad = nav_heading;
  local_request.forward_mps = estimate.linear_velocity_mps;
- local_request.lateral_mps = snapshot_.robot.lateral_v;
+ local_request.lateral_mps = estimate.lateral_velocity_mps;
  local_request.yaw_rate_radps = estimate.angular_velocity_radps;
  local_request.steering_angle_rad = chassis_->telemetry().steer.angle_rad;
  local_request.steering_rate_radps = chassis_->telemetry().steer.rate_radps;
@@ -618,7 +619,8 @@ void ScenarioSession::decide_control() {
  // into a permanent hard stop.
  local_request.required_clearance_m = hard_crossing_clearance;
  local_request.robot_radius_m = robot_definition_.collision_radius_m;
- local_request.differential_track_m = robot_definition_.drive_type == "differential"
+ local_request.differential_track_m = robot_definition_.drive_type == "tracked"        ? robot_definition_.effective_track_width_m
+   : robot_definition_.drive_type == "differential"
  ? robot_definition_.wheel_base_m
  : 0.0;
  local_request.max_wheel_speed_mps = max_forward_speed_mps_;
@@ -627,11 +629,7 @@ void ScenarioSession::decide_control() {
  local_request.max_steer_rate_radps = chassis_caps_.geometry.max_steer_rate_radps;
  local_request.steering_response_s = chassis_caps_.geometry.steering_response_s;
  local_request.preferred_direction = route_direction;
- // RO-1 uses the typed route direction. Legacy platform profiles keep their
- // bidirectional recovery sample until their local-planner contracts are
- // validated independently; this RO-1 phase must not silently change them.
- local_request.route_is_reverse = reverse_route ||
- robot_definition_.id != "robot.ro1";
+ local_request.route_is_reverse = reverse_route;
  local_request.crossing_relevant = mapped_crossing_relevant;
  local_request.crossing_committed = crossing_committed;
  local_request.body_in_conflict = crossing.body_in_conflict;
@@ -641,10 +639,11 @@ void ScenarioSession::decide_control() {
  local_request.stop_direction = governor_out.stop_direction;
  local_request.stop_tolerance_m = 0.05;
  local_request.committed_progress_floor_mps = committed_floor;
- // The current stopping-tail model is accepted for the RO-1 differential
- // reference plant. Other chassis need their own steering/track/holonomic
- // stop propagator before this gate can claim physical admissibility.
- if (robot_definition_.id == "robot.ro1") {
+ // The stopping tail is based on the delivered controller bandwidth and the
+ // tire/contact deceleration contract. It applies to actuator-level wheeled
+ // and tracked plants; the trajectory validator then checks the resulting
+ // swept path in the chassis' own command space.
+ if (physics_mode_ != PhysicsMode::Domain && chassis_->accepts_actuator_duty()) {
  const auto* local_motor = resolved_build_.motor();
  const double local_controller_bandwidth = local_motor
  ? local_motor->controller_bandwidth_radps
@@ -653,10 +652,12 @@ void ScenarioSession::decide_control() {
  1.0 / std::max(0.1, local_controller_bandwidth);
  local_request.emergency_decel_mps2 = resolved_build_.tires().brake_decel_mps2;
  }
- // Path/progress/oscillation critics are part of the validated RO-1 local
- // planner profile. Tracked and holonomic chassis keep their established
- // sampler scoring until their own dynamics and acceptance cases are closed.
- if (robot_definition_.id == "robot.ro1") {
+ // Path/progress/oscillation critics are shared guidance for twist-space
+ // planners, including tracked and holonomic chassis. A tracked plant still
+ // includes scrub, while a holonomic plant may make progress laterally;
+ // both need the global path to distinguish useful motion from a rollout
+ // that merely points toward the goal through an obstacle.
+ if (local_request.command_space != sim::LocalCommandSpace::SteeringAngle) {
  local_request.reference.previous_angular_command_radps = held_command_.target_w;
  local_request.reference.path.push_back({nav_x, nav_y});
  if (!planned_route_.empty()) {

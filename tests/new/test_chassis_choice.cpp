@@ -1,7 +1,7 @@
-// Player chassis choice (backend slice; TGUI column deferred to desktop).
-// Contract: presentation opt-in (absent = fixed, today's path), robot unlock
-// gates, validated builds honored by the mission. boot opts in [ro1, ro2]
-// (RO-2 verified to complete it below); all other levels stay fixed.
+// Player chassis choice contract: presentation opt-in (absent = fixed),
+// robot unlock gates, validated builds honored by the mission and the UI.
+// The proving ground exposes every chassis without progression gates while
+// ordinary campaign levels retain their authored choices.
 
 #include "sim/game/mission/campaign_progress.hpp"
 #include "sim/game/mission/content_catalog.hpp"
@@ -175,11 +175,22 @@ int main() {
  mission::ScenarioSession mission(catalog, "boot", build, 1u, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
  mission.run_to_completion();
+ if (mission.result().status != mission::MissionStatus::Succeeded) {
+ std::cerr << "playable-level failure: robot=" << robot_id
+ << " physics=" << static_cast<int>(physics_mode)
+ << " status=" << static_cast<int>(mission.result().status)
+ << " reason=" << mission.result().failure_reason
+ << " time_s=" << mission.result().time_s
+ << " pose=(" << mission.snapshot().robot.x << ',' << mission.snapshot().robot.y
+ << ',' << mission.snapshot().robot.theta << ")"
+ << " collisions=" << mission.result().collisions << '\n';
+ }
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  CHECK(mission.physics_mode() == physics_mode);
+ CHECK(mission.result().max_fused_pose_error_m < 0.5);
  if (std::string(robot_id) == "robot.ro4") {
  CHECK(std::any_of(mission.replay().begin(), mission.replay().end(), [](const auto& frame) {
- return frame.control.mount_actuations.size() == 4 &&
+ return frame.control.mount_actuations.size() >= 4 &&
  std::any_of(frame.control.mount_actuations.begin(), frame.control.mount_actuations.end(),
  [](const auto& actuation) { return std::abs(actuation.yaw_rad) > 1e-6; });
  }));

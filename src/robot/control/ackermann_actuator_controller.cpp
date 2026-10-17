@@ -96,6 +96,15 @@ AckermannActuatorControlOutput AckermannActuatorController::update(
  output.rear_left.measured_mps = output.rear_left.actual_mps;
  output.rear_right.measured_mps = output.rear_right.actual_mps;
  }
+ const auto clear_opposing_integral = [](double target_mps, double measured_mps, PID& pid) {
+ if (std::abs(target_mps) > 1e-4 && target_mps * pid.i() < 0.0 &&
+ target_mps * measured_mps >= 0.0)
+ pid.reset();
+ };
+ clear_opposing_integral(
+ output.rear_left.target_mps, output.rear_left.measured_mps, rear_left_pid_);
+ clear_opposing_integral(
+ output.rear_right.target_mps, output.rear_right.measured_mps, rear_right_pid_);
  output.rear_left.normalized_duty = rear_left_pid_.update(
  output.rear_left.target_mps - output.rear_left.measured_mps, dt_s);
  output.rear_right.normalized_duty = rear_right_pid_.update(

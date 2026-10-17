@@ -42,6 +42,7 @@ sim::ObservationFrame encoder_frame(double time_s, std::uint64_t sequence,
  frame.time_s = time_s;
  frame.encoders.emplace();
  frame.encoders->linear_velocity_mps = 0.5;
+ frame.encoders->lateral_velocity_mps = -0.2;
  frame.encoders->header = {time_s, sequence, "base_link", 0.0, sim::kMeasurementSchemaVersion, std::move(source)};
  return frame;
 }
@@ -77,7 +78,7 @@ int main() {
  using namespace sim::runtime;
 
  CHECK(kApiVersion == 2);
- CHECK(kMessageSchemaVersion == 3);
+ CHECK(kMessageSchemaVersion == 4);
  CHECK(TimePoint::from_seconds(1.25).nanoseconds == 1'250'000'000);
  CHECK(std::abs(TimePoint::from_seconds(1.25).seconds() - 1.25) < 1e-12);
 
@@ -128,6 +129,7 @@ int main() {
  CHECK(channel->platform().publish_observation(encoder_frame(0.0, 0)));
  const auto received = channel->autonomy().read_observation();
  CHECK(received && received->encoders);
+ CHECK(received->encoders->lateral_velocity_mps == -0.2);
  CHECK(received->encoders->header.source_id == "test.encoder");
  CHECK(!channel->platform().publish_observation(encoder_frame(0.1, 0)));
  CHECK(channel->health().rejected_observations == 1);

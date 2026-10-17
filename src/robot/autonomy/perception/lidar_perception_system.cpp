@@ -16,13 +16,16 @@ struct Cluster {
 };
 
 ObservedRay2D project_ray(const Scan& scan, Vec2 current_origin, double current_heading,
- double linear_velocity_mps, double angular_velocity_radps, int ray) {
+ double linear_velocity_mps, double lateral_velocity_mps,
+ double angular_velocity_radps, int ray) {
  const double time_offset_s = scan.time_increment_s > 0.0
  ? -scan.scan_period_s + scan.time_increment_s * static_cast<double>(ray)
  : 0.0;
  const Vec2 sample_origin{
- current_origin.x + std::cos(current_heading) * linear_velocity_mps * time_offset_s,
- current_origin.y + std::sin(current_heading) * linear_velocity_mps * time_offset_s,
+ current_origin.x + (std::cos(current_heading) * linear_velocity_mps -
+ std::sin(current_heading) * lateral_velocity_mps) * time_offset_s,
+ current_origin.y + (std::sin(current_heading) * linear_velocity_mps +
+ std::cos(current_heading) * lateral_velocity_mps) * time_offset_s,
  };
  const double sample_heading = current_heading + angular_velocity_radps * time_offset_s;
  const double angle = sample_heading + scan.angle_min_rad +
@@ -158,7 +161,8 @@ LidarPerceptionFrame LidarPerceptionSystem::process(const Scan& scan, const Scan
  output.obstacle_rays.reserve(static_cast<std::size_t>(scan.n_rays));
  for (int ray = 0; ray < scan.n_rays; ++ray) {
  auto projected = project_ray(scan, sensor_origin, sensor_heading,
- state.linear_velocity_mps, state.angular_velocity_radps, ray);
+ state.linear_velocity_mps, state.lateral_velocity_mps,
+ state.angular_velocity_radps, ray);
  // Known static geometry is already owned and inflated by the immutable map
  // layer. Mark only foreground endpoints in the transient observation layer;
  // every beam still participates in clearing that layer.

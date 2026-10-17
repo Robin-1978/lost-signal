@@ -14,6 +14,7 @@ namespace sim {
 // vendor capability, not something the controller may assume.
 struct TrackedParams {
  double wheel_base_m{0.55};
+ double effective_track_width_m{0.55};
  double wheel_radius_m{0.1};
  double track_length_m{0.7};
  double max_drive_speed_mps{2.0};
@@ -44,7 +45,12 @@ class TrackedDrive : public ChassisModel {
 
  void reset();
  void set_body_dynamics(const ChassisBodyDynamics& dynamics) override;
+ void set_actuator_feedback(const ChassisActuatorFeedback& feedback) override;
  DiffState step(const DiffState& state, const DiffCmd& command, double dt,
+                const GroundContact& ground) override;
+ bool accepts_actuator_duty() const override { return true; }
+ DiffState step_actuator_duty(const DiffState& state, const DiffCmd& command,
+                              const ChassisActuatorDutyCommand& control, double dt,
                 const GroundContact& ground) override;
  const ChassisTelemetry& telemetry() const override { return telemetry_; }
  ChassisCaps caps() const override {
@@ -56,7 +62,7 @@ class TrackedDrive : public ChassisModel {
  // centerline while pivoting. Reserve that real overhang in global planning
  // so the track does not clip shelving even when its circular footprint
  // radius alone would fit.
- output.planning_clearance_margin_m = 0.0;
+ output.planning_clearance_margin_m = 0.10;
  output.rigid_body_cruise_scale = 0.65;
  output.tread_slip_observable = true;
  return output;
@@ -71,6 +77,7 @@ class TrackedDrive : public ChassisModel {
  double left_tread_mps_{0.0};
  double right_tread_mps_{0.0};
  ChassisTelemetry telemetry_;
+ ChassisActuatorFeedback feedback_;
 };
 
 } // namespace sim
