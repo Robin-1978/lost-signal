@@ -61,12 +61,12 @@
       "policy.swift"
     ],
     "default_build": {
-      "tires": "tires.standard",
+      "tires": "tires.grip",
       "sensor": "sensor.standard_lidar",
-      "computer": "computer.mid",
-      "motor": "motor.standard",
-      "imu": "imu.basic",
-      "style": 0.5
+      "computer": "computer.performance",
+      "motor": "motor.torque",
+      "imu": "imu.precise",
+      "style": 0.35
     },
     "recommended_build": {
       "tires": "tires.grip",
