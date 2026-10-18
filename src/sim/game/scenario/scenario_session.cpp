@@ -1055,6 +1055,13 @@ void ScenarioSession::plan_route() {
  select_next_goal(start);
  const GoalStep* next = active_goal();
  if (!next) {
+ if (level_.objective.goal_order == "player") {
+ snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
+ snapshot_.active_goal_id.clear();
+ held_command_ = {};
+ route_tracking_system_->reset();
+ return;
+ }
   route_feasible_ = false;
   return;
  }
@@ -1079,6 +1086,8 @@ void ScenarioSession::plan_route() {
 void ScenarioSession::select_next_goal(const Pose& start) {
  if (goal_system_.active_goal_index())
   return;
+ if (level_.objective.goal_order == "player")
+ return;
  const auto eligible = goal_system_.eligible_goals(level_.objective);
  if (eligible.empty())
   return;
@@ -1176,6 +1185,47 @@ void ScenarioSession::select_next_goal(const Pose& start) {
  } else if (terminal_out_of_time) {
   return_reserve_failure_ = true;
  }
+}
+
+std::vector<std::size_t> ScenarioSession::eligible_goals() const {
+ if (level_.objective.goal_order != "player")
+ return {};
+ return goal_system_.eligible_goals(level_.objective);
+}
+
+bool ScenarioSession::select_goal(std::size_t index) {
+ if (level_.objective.goal_order != "player" ||
+ snapshot_.status != MissionStatus::Running || active_goal()) {
+ return false;
+ }
+ if (!goal_system_.activate(level_.objective, index))
+ return false;
+ plan_route();
+ if (!route_feasible_) {
+ finish_route_failure();
+ return true;
+ }
+ const auto& goal = level_.objective.goals[index];
+ record_event("target-selected", catalog_.trf("event.target_selected", {goal.label}));
+ return true;
+}
+
+bool ScenarioSession::select_goal_near(sim::Vec2 world, double tolerance_m) {
+ if (!(tolerance_m > 0.0))
+ return false;
+ std::optional<std::size_t> nearest;
+ double nearest_distance = tolerance_m;
+ for (const std::size_t index : eligible_goals()) {
+ const auto marker = map_definition_.markers.find(level_.objective.goals[index].marker);
+ if (marker == map_definition_.markers.end())
+ continue;
+ const double candidate_distance = distance(world, as_vec(marker->second));
+ if (candidate_distance <= nearest_distance) {
+ nearest = index;
+ nearest_distance = candidate_distance;
+ }
+ }
+ return nearest && select_goal(*nearest);
 }
 
 void ScenarioSession::finish_route_failure() {

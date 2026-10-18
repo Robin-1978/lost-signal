@@ -693,6 +693,13 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  target_link_libraries(test_goal_system PRIVATE lost_signal_sim_game)
  add_test(NAME goal_system COMMAND test_goal_system)
 
+ add_executable(test_player_goal_order tests/new/test_player_goal_order.cpp)
+ target_link_libraries(test_player_goal_order PRIVATE lost_signal_sim_game)
+ target_compile_definitions(test_player_goal_order PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME player_goal_order COMMAND test_player_goal_order)
+
  add_executable(test_task_executive tests/new/test_task_executive.cpp)
  target_link_libraries(test_task_executive PRIVATE lost_signal_robot_executive)
  add_test(NAME task_executive COMMAND test_task_executive)

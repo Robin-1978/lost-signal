@@ -1,0 +1,1179 @@
+{
+  "schema_version": 1,
+  "id": "scene.stormglass_protocol",
+  "camera": {
+    "offset_m": [
+      -10.8,
+      -13.5,
+      15.8
+    ],
+    "target_height_m": 1.1,
+    "fov_degrees": 49.0,
+    "focus_weights": {
+      "robot": 0.56,
+      "actor": 0.0,
+      "goal": 0.44
+    },
+    "event_shot": {
+      "offset_m": [
+        -7.2,
+        -8.4,
+        8.6
+      ],
+      "target_height_m": 1.0,
+      "fov_degrees": 42.0,
+      "focus_weights": {
+        "robot": 0.68,
+        "actor": 0.12,
+        "goal": 0.2
+      }
+    },
+    "success_shot": {
+      "offset_m": [
+        -5.4,
+        -6.2,
+        6.4
+      ],
+      "target_height_m": 1.25,
+      "fov_degrees": 37.0,
+      "focus_weights": {
+        "robot": 0.42,
+        "actor": 0.0,
+        "goal": 0.58
+      }
+    },
+    "transition_s": 0.55
+  },
+  "lighting": {
+    "direction": [
+      -0.55,
+      0.38,
+      -1.0
+    ],
+    "directional_color": "#93C8FF",
+    "directional_intensity": 0.82,
+    "ambient_color": "#172941",
+    "fog_color": "#071423",
+    "fog_start_m": 14.0,
+    "fog_end_m": 34.0,
+    "robot_active_color": "#4EF1C1",
+    "robot_waiting_color": "#FFB34D",
+    "goal_color": "#F450E8",
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 30.0,
+    "shadow_strength": 0.78,
+    "exposure": 1.18,
+    "bloom_threshold": 0.62,
+    "bloom_strength": 0.48,
+    "vignette_strength": 0.24
+  },
+  "effects": {
+    "robot_scale": 1.0,
+    "bob_amplitude_m": 0.0,
+    "bob_frequency_hz": 1.5,
+    "eye_height_m": 0.25,
+    "scan_radius_m": 1.7,
+    "perception_link_height_m": 0.46,
+    "prediction_horizon_s": 3.0,
+    "success_ring_radius_m": 1.05,
+    "trail_duration_s": 3.2,
+    "surface_particle_count": 64,
+    "surface_particle_scale": 1.55,
+    "risk_indicator_radius_m": 1.05
+  },
+  "floor": {
+    "base_color": "#101B2A",
+    "tile_color": "#18304A",
+    "boundary_color": "#3B5680",
+    "tile_size_m": 2.0,
+    "seam_m": 0.018,
+    "color_variation": 8,
+    "boundary_height_m": 0.34,
+    "boundary_width_m": 0.24,
+    "albedo_texture": "textures/environment/gravel_floor.png"
+  },
+  "prefabs": [
+    {
+      "id": "prefab.storm_pylon",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            1.35
+          ],
+          "size_m": [
+            0.09,
+            0.09,
+            2.7
+          ],
+          "color": "#32465A"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            2.78
+          ],
+          "size_m": [
+            0.14,
+            0.14,
+            0.14
+          ],
+          "color": "#55E9FF"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.24,
+            0,
+            2.1
+          ],
+          "size_m": [
+            0.5,
+            0.04,
+            0.18
+          ],
+          "color": "#C83DFF",
+          "yaw_degrees": 25
+        }
+      ]
+    },
+    {
+      "id": "prefab.antenna_array",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            1.1
+          ],
+          "size_m": [
+            0.1,
+            0.1,
+            2.2
+          ],
+          "color": "#3B4E62"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            2.28
+          ],
+          "size_m": [
+            0.18,
+            0.18,
+            0.18
+          ],
+          "color": "#FF4FD8"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.35,
+            0,
+            1.65
+          ],
+          "size_m": [
+            0.72,
+            0.05,
+            0.34
+          ],
+          "color": "#5BDFF2",
+          "yaw_degrees": 18
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.28,
+            0,
+            1.15
+          ],
+          "size_m": [
+            0.58,
+            0.05,
+            0.28
+          ],
+          "color": "#946CFF",
+          "yaw_degrees": -22
+        }
+      ]
+    },
+    {
+      "id": "prefab.broken_solar",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            1.5,
+            0.12,
+            0.72
+          ],
+          "color": "#183B5B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.36,
+            -0.07,
+            0.46
+          ],
+          "size_m": [
+            0.04,
+            0.03,
+            0.66
+          ],
+          "color": "#55DDF5"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.36,
+            -0.07,
+            0.46
+          ],
+          "size_m": [
+            0.04,
+            0.03,
+            0.66
+          ],
+          "color": "#55DDF5"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0.1,
+            0.18
+          ],
+          "size_m": [
+            0.04,
+            0.04,
+            0.42
+          ],
+          "color": "#55616C"
+        }
+      ]
+    },
+    {
+      "id": "prefab.yard_wall",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.52
+          ],
+          "size_m": [
+            1,
+            1,
+            1.04
+          ],
+          "color": "#293A4A"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            -0.01,
+            1.02
+          ],
+          "size_m": [
+            1.02,
+            1.02,
+            0.06
+          ],
+          "color": "#D145EF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_cyan",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#49EAFF"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#49EAFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_cyan_active",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#49EAFF"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#FFFFFF"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_cyan_spent",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            0.12
+          ],
+          "color": "#425063"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_orange",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#FF9D3D"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#FF9D3D"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_orange_active",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#FF9D3D"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#FFFFFF"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_orange_spent",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            0.12
+          ],
+          "color": "#425063"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_magenta",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#F450E8"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#F450E8"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_magenta_active",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#F450E8"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "color": "#FFFFFF"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.72
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.42
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.core_magenta_spent",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            0.12
+          ],
+          "color": "#425063"
+        }
+      ]
+    },
+    {
+      "id": "prefab.stormglass_base",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.82
+          ],
+          "size_m": [
+            0.08,
+            0.08,
+            1.25
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.52
+          ],
+          "size_m": [
+            0.22,
+            0.22,
+            0.22
+          ],
+          "color": "#4EF1C1"
+        }
+      ]
+    },
+    {
+      "id": "prefab.stormglass_base_active",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.82
+          ],
+          "size_m": [
+            0.08,
+            0.08,
+            1.25
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.52
+          ],
+          "size_m": [
+            0.22,
+            0.22,
+            0.22
+          ],
+          "color": "#FFFFFF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.stormglass_base_complete",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.09
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.16
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.22
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.18
+          ],
+          "color": "#35475B"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.82
+          ],
+          "size_m": [
+            0.08,
+            0.08,
+            1.25
+          ],
+          "color": "#223246"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            1.52
+          ],
+          "size_m": [
+            0.22,
+            0.22,
+            0.22
+          ],
+          "color": "#64FFD1"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_rack",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.04
+          ],
+          "size_m": [
+            0.5,
+            0.36,
+            0.08
+          ],
+          "color": "#253646"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0.16,
+            0.13
+          ],
+          "size_m": [
+            0.5,
+            0.035,
+            0.18
+          ],
+          "color": "#4B6173"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            -0.16,
+            0.13
+          ],
+          "size_m": [
+            0.5,
+            0.035,
+            0.18
+          ],
+          "color": "#4B6173"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_core",
+      "parts": [
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            0.07,
+            0.07,
+            0.07
+          ],
+          "color": "#52E7FF"
+        }
+      ]
+    },
+    {
+      "id": "prefab.payload_core_damaged",
+      "parts": [
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0
+          ],
+          "size_m": [
+            0.07,
+            0.07,
+            0.07
+          ],
+          "color": "#F35B63"
+        }
+      ]
+    }
+  ],
+  "instances": [
+    {
+      "id": "horizon_pylon_a",
+      "prefab": "prefab.storm_pylon",
+      "role": "visual_only",
+      "position_m": [
+        7.5,
+        16.8,
+        0.0
+      ],
+      "scale": [
+        0.75,
+        0.75,
+        0.8
+      ],
+      "yaw_degrees": 14
+    },
+    {
+      "id": "horizon_pylon_b",
+      "prefab": "prefab.storm_pylon",
+      "role": "visual_only",
+      "position_m": [
+        11.5,
+        17.2,
+        0.0
+      ],
+      "scale": [
+        0.65,
+        0.65,
+        0.72
+      ],
+      "yaw_degrees": -18
+    }
+  ],
+  "goal_visuals": [
+    {
+      "id": "goal.core_cyan",
+      "states": {
+        "available": "prefab.core_cyan",
+        "active": "prefab.core_cyan_active",
+        "completed": "prefab.core_cyan_spent"
+      }
+    },
+    {
+      "id": "goal.core_orange",
+      "states": {
+        "available": "prefab.core_orange",
+        "active": "prefab.core_orange_active",
+        "completed": "prefab.core_orange_spent"
+      }
+    },
+    {
+      "id": "goal.core_magenta",
+      "states": {
+        "available": "prefab.core_magenta",
+        "active": "prefab.core_magenta_active",
+        "completed": "prefab.core_magenta_spent"
+      }
+    },
+    {
+      "id": "goal.stormglass_base",
+      "states": {
+        "available": "prefab.stormglass_base",
+        "active": "prefab.stormglass_base_active",
+        "completed": "prefab.stormglass_base_complete"
+      }
+    }
+  ],
+  "payload_visual": {
+    "mount": "cargo_bed",
+    "container_prefab": "prefab.payload_rack",
+    "item_prefab": "prefab.payload_core",
+    "damaged_item_prefab": "prefab.payload_core_damaged",
+    "item_origin_m": [
+      -0.14,
+      -0.09,
+      0.13
+    ],
+    "item_spacing_m": [
+      0.14,
+      0.18,
+      0.1
+    ],
+    "grid_columns": 3,
+    "grid_rows": 1,
+    "items_per_visual": 1,
+    "max_visible_items": 3,
+    "damaged_below_integrity": 0.72,
+    "pickup_effect": {
+      "duration_s": 1.25,
+      "particles": 18,
+      "color": "#4DEBFF",
+      "accent_color": "#F44FDC",
+      "radius_m": 0.68,
+      "rise_m": 0.55
+    },
+    "damage_warning": {
+      "below_integrity": 0.82,
+      "color": "#FF5364",
+      "height_m": 0.42
+    }
+  }
+}

@@ -432,6 +432,15 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
     ui.refresh_debrief(*mission);
    }
 
+ if (ui.screen() == client::Screen::Running &&
+ mission->level().objective.goal_order == "player" && !mission->active_goal() &&
+ (!editor || !editor->active()) && !options.demo && options.screenshot.empty() &&
+ IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+ ui.world_pointer_available(GetMousePosition().x)) {
+ if (const auto target = renderer.screen_to_world(GetMousePosition()))
+ mission->select_goal_near(*target);
+ }
+
  if (ui.screen() == client::Screen::Running && mission->endless_mode() &&
  (!editor || !editor->active()) && !options.demo && options.screenshot.empty()) {
  const double world_x = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1.0 : 0.0) -

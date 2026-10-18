@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "id": "presentation.stormglass_protocol",
+  "is_default": false,
+  "level": "stormglass_protocol",
+  "robot": "robot.ro1",
+  "garage": {
+    "heading": "风暴晶核协议",
+    "brief": "离子风暴正在吞没山谷。选择装备，然后亲自决定三枚晶核的抢救顺序；RO-1 会自主感知、规划、避障和驾驶。每装上一枚晶核，质量、重心和后续风险都会改变。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "风暴轮胎",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco",
+          "tires.sand"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "环境感知",
+        "options": [
+          "sensor.standard_lidar",
+          "sensor.sixteen_line_lidar",
+          "sensor.short_fast_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "自主计算单元",
+        "options": [
+          "computer.light",
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque",
+          "motor.eco"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "姿态感知",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "驾驶策略",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.mid",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.sixteen_line_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.torque",
+      "imu": "imu.precise",
+      "style": 0.35
+    }
+  },
+  "prediction": {
+    "heading": "第一枚晶核，你选哪一个？",
+    "hint": "洪水路线近但会变滑；山脊会抬高重心；暗影场有遮挡和移动工程车。先做判断，再让数据回答。",
+    "choices": [
+      {
+        "id": "stormglass.flood",
+        "text": "先救洪水晶核",
+        "feedback": "低重心重载会增加制动距离，但后续横坡稳定性可能更好。"
+      },
+      {
+        "id": "stormglass.ridge",
+        "text": "先救山脊晶核",
+        "feedback": "尽早穿越山脊可避开后期低抓地，但高位载荷会改变之后的侧翻余量。"
+      },
+      {
+        "id": "stormglass.shadow",
+        "text": "先救暗影晶核",
+        "feedback": "轻载穿越动态交通更灵活，但遮挡后的时间冲突仍需持续预测。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "风暴现场指挥",
+    "normal_line": "选择一枚发光晶核。你负责目标与顺序，RO-1 负责所有驾驶动作。",
+    "detected_line": "RO-1 正在根据 LiDAR、地图、预测轨迹与当前载荷重新评估安全路线。",
+    "evidence_fields": [
+      "speed",
+      "braking",
+      "grade",
+      "slip",
+      "lidar"
+    ],
+    "goal_lines": [
+      "选择第一枚晶核",
+      "载荷改变：选择下一枚",
+      "风暴增强：选择最后一枚",
+      "选择基地返航",
+      "协议完成"
+    ]
+  },
+  "debrief": {
+    "success_title": "三枚晶核重新点亮基地",
+    "success_summary": "比较实际抢救顺序、载荷历史、最低净空、打滑、能耗与风暴阶段，解释为什么同一张地图会产生不同风险。",
+    "failure_summary": "找到第一个失去余量的证据：路线、动态间隙、抓地、制动、横坡还是时间，然后在同一种子下只改变一个选择。",
+    "evidence_heading": "风暴协议证据",
+    "evidence_caption": "任务顺序、物理载荷、天气、传感器、规划和车辆状态来自同一确定性运行。",
+    "knowledge_title": "目标选择与运动规划是两层问题",
+    "failure_titles": {
+      "collision-static": "协议失败：撞到固定设施",
+      "collision-dynamic": "协议失败：与工程车发生碰撞",
+      "rollover": "协议失败：载荷与横坡耗尽侧翻余量",
+      "timeout": "协议失败：风暴窗口关闭",
+      "no-feasible-route": "协议失败：所选目标没有可行路线",
+      "payload-damage": "协议失败：晶核冲击超过容限",
+      "return-reserve": "协议失败：返航余量不足"
+    }
+  },
+  "chassis_options": [
+    "robot.ro1",
+    "robot.ro2"
+  ]
+}

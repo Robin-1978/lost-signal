@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Stormglass Protocol",
+    "/objective/goal_label": "Stormglass Base",
+    "/objective/goals/0/label": "Flood Core",
+    "/objective/goals/1/label": "Ridge Core",
+    "/objective/goals/2/label": "Shadow Core",
+    "/objective/goals/3/label": "Stormglass Base",
+    "/teaching/prediction_prompt": "Which core should be recovered first? Can the shortest route make later payload, slope, and storm exposure more dangerous?",
+    "/teaching/knowledge_card": "The human chooses task goals; the robot continuously owns perception, mapping, global planning, dynamic avoidance, and control. Target order changes payload, center of gravity, braking margin, and weather exposure.",
+    "/environment/keyframes/0/label": "Ion Storm Warning",
+    "/environment/keyframes/1/label": "Charged Rain",
+    "/environment/keyframes/2/label": "Storm Surge",
+    "/environment/keyframes/3/label": "Eye Approaching"
+  }
+}

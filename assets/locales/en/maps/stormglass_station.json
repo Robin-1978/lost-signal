@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/surfaces/0/label": "Flooded Basin",
+    "/surfaces/1/label": "Gravel Ridge",
+    "/surfaces/2/label": "Antenna Apron"
+  }
+}

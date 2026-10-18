@@ -276,6 +276,11 @@
     "/strings/debrief.none": "None",
     "/strings/debrief.task_metrics": "Actual order: {0}\nAbandoned: {1}",
     "/strings/debrief.payload_environment_metrics": "Recovered {0} items · Payload {1} kg · Integrity {2}%\nPeak rollover risk {3}% · Peak wetness {4}% · Minimum visibility {5}%",
-    "/strings/debrief.cause_environment": "Conditions: {0} · Wetness {1}% · Visibility {2}%\nWheel contact and route cost use this recorded environment state"
+    "/strings/debrief.cause_environment": "Conditions: {0} · Wetness {1}% · Visibility {2}%\nWheel contact and route cost use this recorded environment state",
+    "/strings/running.select_target_hint": "Select {0}. The robot will plan and drive autonomously.",
+    "/strings/event.target_selected": "Target selected: {0}. Planning an autonomous route.",
+    "/strings/world.mode_choose": "Choose the next recovery target",
+    "/strings/running.choose_target_body": "Observe\nThe glowing targets are ready for selection\n\nInfer\nOrder changes payload, terrain, and storm exposure\n\nAct\nClick a target in the world; the robot will plan and drive autonomously",
+    "/strings/running.choose_target_next": "Waiting for your target"
   }
 }

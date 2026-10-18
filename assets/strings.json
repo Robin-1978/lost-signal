@@ -281,6 +281,11 @@
     "debrief.none": "无",
     "debrief.task_metrics": "实际顺序：{0}\n放弃任务：{1}",
     "debrief.payload_environment_metrics": "回收 {0} 件 · 载荷 {1} kg · 完整度 {2}%\n峰值侧翻风险 {3}% · 峰值湿度 {4}% · 最低能见度 {5}%",
-    "debrief.cause_environment": "环境：{0} · 湿度 {1}% · 能见度 {2}%\n轮地抓地合同与路线代价已使用这一时刻的条件"
+    "debrief.cause_environment": "环境：{0} · 湿度 {1}% · 能见度 {2}%\n轮地抓地合同与路线代价已使用这一时刻的条件",
+    "running.select_target_hint": "点击选择目标：{0}。机器人会自主规划与驾驶。",
+    "event.target_selected": "已选择目标：{0}。正在自主规划路线。",
+    "world.mode_choose": "等待你选择下一个目标",
+    "running.choose_target_body": "观察\n三处发光目标正在等待选择\n\n判断\n顺序会改变载荷、地形与天气风险\n\n行动\n点击场景中的目标；机器人将自主规划和驾驶",
+    "running.choose_target_next": "等待你选择目标"
   }
 }

@@ -140,7 +140,7 @@
         "time_limit_s": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "maximum": 180
+          "maximum": 300
         },
         "max_collisions": {
           "type": "integer",
@@ -260,7 +260,8 @@
         "goal_order": {
           "enum": [
             "authored",
-            "autonomous"
+            "autonomous",
+            "player"
           ]
         },
         "task_policy": {

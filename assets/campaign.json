@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_version": "vertical-slice-2",
+  "content_version": "vertical-slice-3",
   "id": "lost_signal_campaign",
   "title": "失落的信号",
   "companion": {
@@ -42,7 +42,8 @@
     "orchard_scramble",
     "vehicle_proving_ground",
     "bridge_the_washout",
-    "manipulation_lab"
+    "manipulation_lab",
+    "stormglass_protocol"
   ],
   "starting_inventory": [
     "tires.standard",
@@ -122,7 +123,8 @@
         "orchard_scramble",
         "vehicle_proving_ground",
         "bridge_the_washout",
-        "manipulation_lab"
+        "manipulation_lab",
+        "stormglass_protocol"
       ]
     }
   ]

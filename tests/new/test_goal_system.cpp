@@ -93,6 +93,17 @@ int main() {
  CHECK(tasks.activate(autonomous, 2));
  CHECK(tasks.update(autonomous, {0.0, 0.0}, 0.0, true, 0.02)->mission_complete);
 
+ mission::ObjectiveDefinition player = autonomous;
+ player.goal_order = "player";
+ mission::GoalSystem directed;
+ directed.reset(player, maps);
+ CHECK(!directed.active_goal_index());
+ CHECK(directed.eligible_goals(player) == std::vector<std::size_t>({0, 1}));
+ CHECK(!directed.activate(player, 2));
+ CHECK(directed.activate(player, 0));
+ CHECK(directed.update(player, {1.0, 0.0}, 0.0, true, 0.02));
+ CHECK(directed.eligible_goals(player) == std::vector<std::size_t>({1}));
+
  mission::GoalSystem curtailed;
  curtailed.reset(autonomous, maps);
  CHECK(curtailed.abandon(autonomous, 1));

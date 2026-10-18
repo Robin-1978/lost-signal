@@ -471,6 +471,9 @@ class ScenarioSession {
   const auto index = goal_system_.active_goal_index();
   return index && *index < level_.objective.goals.size() ? &level_.objective.goals[*index] : nullptr;
  }
+ std::vector<std::size_t> eligible_goals() const;
+ bool select_goal(std::size_t index);
+ bool select_goal_near(sim::Vec2 world, double tolerance_m = 1.35);
 
  const LevelDefinition& level() const { return level_; }
  const MapDefinition& map_definition() const { return map_definition_; }

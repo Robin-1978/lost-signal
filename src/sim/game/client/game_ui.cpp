@@ -1516,6 +1516,8 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  }
  } else if (manual) {
  explanation = catalog_.tr("running.manual_body");
+ } else if (mission.level().objective.goal_order == "player" && !mission.active_goal()) {
+ explanation = catalog_.tr("running.choose_target_body");
  } else if (state.rollover_risk >= 0.75) {
   explanation = catalog_.trf("running.risk_body", {format_number(std::abs(cross_degrees)),
                                                    format_number(state.rollover_risk * 100.0, 0)});
@@ -1538,7 +1540,10 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  explanation += catalog_.trf("running.goal_progress",
  {std::to_string(state.goals_reached),
  std::to_string(mission.level().objective.goals.size()),
- active ? active->label : mission.level().objective.goal_label});
+ active ? active->label
+ : (mission.level().objective.goal_order == "player"
+ ? catalog_.tr("running.choose_target_next")
+ : mission.level().objective.goal_label)});
  }
  if (!presentation_->evidence_fields.empty()) {
  const auto has_evidence = [&](const std::string& id) {
@@ -1638,7 +1643,13 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  : catalog_.tr("running.endless_state_auto")));
  } else if (manual)
  running_state_->setText(catalog_.tr("running.manual_state"));
- else if (state.decision.sequence > 0 && state.decision.action_code != "follow-route" &&
+ else if (mission.level().objective.goal_order == "player" && !mission.active_goal()) {
+ const std::size_t line = std::min(
+ state.goals_reached, presentation_->goal_lines.empty()
+ ? std::size_t{0} : presentation_->goal_lines.size() - 1);
+ running_state_->setText(presentation_->goal_lines.empty()
+ ? presentation_->normal_line : presentation_->goal_lines[line]);
+ } else if (state.decision.sequence > 0 && state.decision.action_code != "follow-route" &&
  state.decision.action_code != "plan-route")
  running_state_->setText(catalog_.trf("running.decision_state",
  {decision_action(catalog_, state.decision)}));

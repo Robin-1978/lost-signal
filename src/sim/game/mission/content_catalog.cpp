@@ -419,7 +419,8 @@ require_schema_v1(value, path);
   level.objective.goal_order = objective.value("goal_order", std::string{"authored"});
   level.objective.task_policy = objective.value("task_policy", std::string{"task.balanced"});
   level.objective.return_reserve_s = objective.value("return_reserve_s", 0.0);
-  if (level.objective.goal_order != "authored" && level.objective.goal_order != "autonomous") {
+ if (level.objective.goal_order != "authored" && level.objective.goal_order != "autonomous" &&
+ level.objective.goal_order != "player") {
    throw ContentError(path.string() + ": unknown goal_order " + level.objective.goal_order);
   }
   // Unified goals: explicit list wins; otherwise derive from legacy fields so

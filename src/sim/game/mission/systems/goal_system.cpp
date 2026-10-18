@@ -9,7 +9,7 @@ namespace mission {
 void GoalSystem::reset(const ObjectiveDefinition& objective, const sim::runtime::IMapProvider& maps) {
  executive::TaskPlan plan;
  plan.request_id = "scenario-objective";
- plan.ordering = objective.goal_order == "autonomous"
+ plan.ordering = objective.goal_order == "autonomous" || objective.goal_order == "player"
  ? executive::TaskOrdering::Autonomous
  : executive::TaskOrdering::Authored;
  plan.goals.reserve(objective.goals.size());

@@ -586,7 +586,9 @@ void WorldRenderer::draw_header(const mission::PresentationFrameView& mission, i
  std::string text = catalog_.tr("world.status_deploy");
  Color color = kAmber;
  if (status == mission::MissionStatus::Running) {
- text = mission.endless_mode()
+ text = mission.level().objective.goal_order == "player" && !mission.active_goal()
+ ? catalog_.tr("world.mode_choose")
+ : mission.endless_mode()
  ? catalog_.trf("world.mode_field", {mission.robot().title})
  : (mission.level().control_mode == "operator_drive"
  ? catalog_.tr("world.mode_operator")
@@ -938,6 +940,19 @@ void WorldRenderer::draw_world(const mission::PresentationFrameView& mission) co
  draw_marker_at(dispatch.target, kAmber, label, true);
  }
  } else {
+ if (mission.level().objective.goal_order == "player" && !mission.active_goal()) {
+ for (const std::size_t index : mission.eligible_goals()) {
+ const auto& goal = mission.level().objective.goals[index];
+ const auto marker = map.markers.find(goal.marker);
+ if (marker == map.markers.end())
+ continue;
+ const Color color = goal.action == "complete" ? kCyan : Color{225, 92, 214, 255};
+ draw_marker(goal.marker, color, goal.label, goal.action == "complete");
+ const Vector2 screen = world_to_screen({marker->second.x, marker->second.y});
+ register_hover_hint({screen.x - 36.0f, screen.y - 36.0f, 72.0f, 96.0f},
+ catalog_.trf("running.select_target_hint", {goal.label}));
+ }
+ }
  if (const auto* active = mission.active_goal()) {
  draw_marker(active->marker, active->action == "complete" ? kCyan : kAmber,
  active->label, active->action == "complete");

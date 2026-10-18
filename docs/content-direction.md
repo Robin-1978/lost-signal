@@ -56,115 +56,76 @@ design inputs, not validation evidence for this product.
 The second playground must exercise a different verb before a general content framework is declared stable. Reuse is
 earned when two experiences need the same semantic contract.
 
-## Selected vertical slice: Bridge the Washout
+## Selected vertical slice: Stormglass Protocol
 
-Orchard Scramble remains a useful multi-goal, payload, and weather systems prototype. It is not the visual-polish
-target: its repeated pickup loop does not yet create the strong physical surprise required by the product promise.
-The next player-facing graybox is **Bridge the Washout**, selected because it creates a different verb, a visible
-world change, and an immediate relationship between a player's plan and autonomous motion.
+**Stormglass Protocol** is the polished gameplay vertical slice. Bridge the Washout remains a construction and map
+transaction regression, but it is no longer the product direction: choosing bridge pieces made the player think about
+the structure more than the robot. Stormglass makes the robot the visible agent and gives the player consequential
+command decisions without asking them to steer.
 
-### Fantasy and learning question
+> Choose which failing relays to recover as an ion storm turns terrain, visibility, and payload into a race against
+> physics.
 
-A flash flood has cut the only service road to a signal repeater. The field engineer has a small set of modular
-deck panels and support blocks. The player commits a repair plan; the world is rebuilt from that plan; then the
-selected robot must decide whether the route is traversable and drive it autonomously.
+### Design evidence
 
-The learning question is:
+The loop applies four public design inputs:
 
-> Why can a geometrically connected route still be impossible for a particular chassis, load, approach angle, or
-> traction limit?
+- [PhET research](https://phet.colorado.edu/en/research): use direct interaction, animation, immediate feedback,
+  minimal text, and implicit scaffolding; a simulation alone is not a lesson.
+- [RoboCo](https://www.roboco.co/): a concrete open-ended challenge motivates experimentation with the robot system.
+- [Learning Science Through Computer Games and Simulations](https://nap.nationalacademies.org/catalog/13078/learning-science-through-computer-games-and-simulations): games can support motivation, conceptual understanding,
+  scientific practice, and identification with science when their activity and learning goal agree.
+- [Productive Failure](https://manukapur.com/productive-failure/): begin with a complex but bounded problem, then
+  compare evidence and consolidate the concept instead of explaining the answer first.
 
-This is a construction puzzle followed by an autonomous proof run. It is not another delivery route with different
-scenery. The bridge placement changes collision geometry, elevation, slope, surface material, semantic connectivity,
-and the next immutable map revision before planning begins.
+These sources guide the interaction model; they do not establish that this level is effective. A fresh-player study
+must still test whether the intended ideas are understood.
 
-### Three-minute loop
+### Player loop
 
-1. **Read the washout.** One camera move reveals the start, broken road, water, two banks, limited panels, and the
- repeater. The game shows panel length and support limits without exposing a wall of telemetry.
-2. **Commit a repair.** The player places or chooses a bounded arrangement of panels and supports, selects one
- chassis/build, and predicts the likely failure or success reason.
-3. **Build the world.** Panels settle as physical, load-bearing collision objects. The LSRM-backed navigation view
- publishes a new map revision derived from the same geometry.
-4. **Prove the route.** The player issues one high-level `restore repeater` intent. The robot plans, approaches,
- brakes, crosses, and either reaches the repeater or refuses/recovers for a measured reason.
-5. **Explain and retry.** The debrief identifies the first binding constraint: disconnected map, excessive grade,
- insufficient clearance, minimum turning radius, cross-slope/rollover risk, traction/braking limit, collision, or
- successful margin. A retry changes one panel, support, chassis, tire, or payload while retaining the seed.
+1. A compact night scene immediately shows the robot, storm base, three colored signal cores, flooded basin, raised
+   ridge, occluded antenna yard, and a moving service cart.
+2. The player predicts an order, then clicks one currently eligible core. This is a semantic task command, not a
+   steering or throttle input.
+3. RO-1 independently senses, localizes, plans the global route, predicts moving traffic, chooses local trajectories,
+   controls its actuators, and either reaches the core or fails for measured reasons.
+4. Each recovered core changes physical payload mass and center of gravity. The storm changes visibility, wetness,
+   daylight, and material grip on simulation time.
+5. Control returns to the player after each recovery. The terminal base becomes eligible only after all three cores
+   are complete.
+6. The debrief compares order, time, energy, clearance, grip, payload history, and storm stage. A retry preserves the
+   seed and changes one decision or hardware choice.
 
-### Graybox topology and choices
+The three cores deliberately create different consequences. Flood Core is heavy with a low center of gravity; Ridge
+Core is lighter but carried high; Shadow Core is light and valuable but lies behind occlusion and timed traffic. No
+C++ branch names this level or any core. Level data owns tasks, payloads, weather, score and teaching text; map data
+owns terrain, physical/LiDAR-visible structures and actors; scene data owns lighting, fog, bloom, prefabs, particles,
+and goal/payload states.
 
-The first layout provides three authored crossing corridors rather than one hidden solution:
+### Generic player-directed task contract
 
-| Corridor | Construction tension | Chassis contrast |
-|---|---|---|
-| Short broken culvert | few panels, steep approach | compact differential/tracked builds can accept a tighter approach |
-| Wide shallow wash | more panels, low grade, wet bank | traction and braking dominate; longer vehicles have room to align |
-| Offset service ledge | one narrow turn and cross-slope | Ackermann radius conflicts with swerve/mecanum lateral alignment |
+`goal_order: "player"` exposes the unordered task set already owned by the deployable task executive. While no goal
+is selected, simulation and weather continue and the controller holds a physical stop. Only eligible nonterminal
+objectives accept a click. After all nonterminal objectives finish, the terminal objective becomes eligible. A
+selection plans through the ordinary global/local autonomy stack; an infeasible selection produces the ordinary
+route failure instead of scripted motion. The graphical client resolves world clicks and the headless runner accepts
+an explicit stable-ID sequence, so the same choice sequence is deterministic and testable.
 
-The initial inventory supports at least two safe plans and several legible failures. Difficulty comes from choosing a
-tradeoff and observing the robot's physical proof, not from pixel-perfect placement. Panel endpoints snap to authored
-construction sockets in the first graybox; free placement is considered only after the bounded loop is enjoyable.
+### Current acceptance evidence
 
-### Reusable implementation contract
+- The Guided Campaign and every existing Playground remain registered.
+- Default language is English; the complete source locale remains Simplified Chinese.
+- The first recommended-build sequence (`flood-core,ridge-core,shadow-core,stormglass-base`) succeeds deterministically
+  in about 102 simulated seconds with no collision. An alternate order completes in about 93 seconds and changes distance, energy, dynamic clearance,
+  payload timing, and weather exposure on the same seed.
+- Static scene structures share rendering, MuJoCo collision, occupancy and LiDAR geometry. The moving cart follows
+  authored data and enters the normal prediction/DWA path.
+- The first screenshot is designed around dark blue storm fog, cyan/magenta/orange cores, a luminous central base,
+  physical antenna/solar silhouettes, wet terrain, and clear clickable target rings.
 
-- **Construction pieces are data.** A catalog entry declares geometry, mass, collision shape, top surface, friction,
- support requirements, allowed sockets, and presentation asset. Scenario data declares inventory and valid placement
- regions. C++ implements generic placement, validation, physics binding, and map publication; it does not name a
- bridge, flood, or repeater.
-- **One source of geometry.** The committed piece transform creates both MuJoCo collision geometry and the next map
- revision. Rendering, planning, and scoring may not maintain independent hand-authored copies.
-- **Revision before autonomy.** A proof run starts only after placement validation and atomic map publication. The run
- artifact records the construction-plan hash, resulting map revision, selected build, algorithm IDs, and seed.
-- **Truthful feasibility.** Global planning may reject disconnected or kinematically impossible routes. Local
- planning and trajectory validation retain final responsibility for footprint, braking, contact, and dynamic safety.
-- **No hidden success lane.** Mission data may define sockets and goals, but it cannot prescribe the robot path or a
- chassis-specific success flag. Success comes from the normal map, planner, controller, and physical world.
-- **Deterministic editing.** The same authored layout and placement plan produce the same transforms, map package,
- content hash, and headless result. Invalid or unsupported pieces fail before the world is partially modified.
-
-The first contract increment is implemented. `construction_pieces.json` owns reusable piece geometry and support
-rules; optional level construction data owns sockets and inventory. `ConstructionPlan` serialization sorts placements
-by stable instance ID, preserves directional endpoints, and hashes the canonical JSON with SHA-256. Resolution
-validates the complete plan before returning any publishable pieces. The shared `world_object` representation is now
-used by existing scenery as well: a physical object renders one prefab, spawns its MuJoCo collision proxies, returns
-material-dependent LiDAR intensity, enters the deployable occupancy map with oriented-box rasterization, and supplies
-the continuous collision monitor. Pure decals such as warning strips remain explicit `visual_only` scene instances.
-
-The complete commit transaction is implemented. A fully validated plan prepares and publishes one immutable next
-map revision, rasterizes each driveable deck into elevation and surface-class layers, preserves free occupancy, adds
-stable semantic features, stamps the plan SHA-256 into map provenance, and rebuilds matching MuJoCo support bodies,
-contact material, LiDAR reflectivity, route planning, and rendering at the same Ready-state boundary. Invalid plans
-leave the map revision and world unchanged. Run Artifact v3 records the canonical plan and the same run's physical
-contact and full-surface traversal evidence.
-
-The current washout offers two valid three-meter solutions and one rejected overlong component. The smooth steel
-plate has lower rolling loss and less wet traction; the drained grating has more grip and drag. Both solution plans
-complete the same deterministic RO-1 proof run with physical deck contact, 16-line LiDAR returns, full traversal,
-and zero collision. This is a controlled engineering choice rather than one correct button surrounded by traps.
-
-### M1 acceptance gate
-
-- A new player can describe the goal, commit a plan, start the autonomous proof, and identify the first binding
- constraint without opening documentation.
-- At least two construction plans or chassis choices produce visibly different, correctly explained outcomes on the
- same seed; at least two are valid solutions rather than one right answer and a set of traps.
-- Collision geometry, map elevation/surface data, planning, vehicle dynamics, scoring, replay, and the debrief agree
- on the committed construction plan.
-- Success, refusal, loss of traction, contact, and rollover-risk outcomes are deterministic and work headlessly.
-- The Guided Campaign, Orchard prototype, and Vehicle Proving Ground remain available and unchanged in role.
-- A fresh-player test supports polishing the loop. Until that evidence exists, generated graybox assets remain
- replaceable and M2 visual production does not begin.
-
-### Implementation order
-
-1. Add the construction-piece and socket schemas, canonical plan hashing, validation, and round-trip tests.
-2. Bind a committed plan to generic MuJoCo bodies and publish the derived LSRM map revision atomically.
-3. **Implemented for the first corridor:** add the washout graybox, bounded plan UI, autonomous proof intent, result
- reasons, and headless input.
-4. **Implemented for RO-1:** add deterministic rejection evidence and two successful surface families without
- claiming every chassis can solve every plan. Additional corridor/chassis combinations remain future content.
-5. Run a fresh-player test, revise the loop, and approve or reject it for M2 visual/audio production.
+The next gate is observation, not another capability: watch fresh players identify the objective, make at least four
+high-level choices, and explain one changed outcome. Do not add another sensor, chassis, SLAM, or VLA feature until
+that evidence identifies a concrete need.
 
 ## Existing systems prototype: Orchard Scramble
 

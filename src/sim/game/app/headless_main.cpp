@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,7 @@
 #include <optional>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -21,6 +23,7 @@ void usage(const char* executable) {
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
  " [--chassis ROBOT_ID] [--component SLOT=ID] [--task-policy TASK_POLICY_ID]"
  " [--construction-plan PLAN_ID]"
+ " [--goal-sequence GOAL_ID,GOAL_ID,...]"
  " [--maneuver ID]"
  " [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
@@ -58,6 +61,7 @@ int main(int argc, char** argv) {
  std::string reproduced_construction_hash;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
+ std::vector<std::string> requested_goal_sequence;
   for (int index = 1; index < argc; ++index) {
    const std::string argument = argv[index];
    if (argument == "--assets" && index + 1 < argc) {
@@ -92,6 +96,21 @@ int main(int argc, char** argv) {
  explicit_run_configuration = true;
  } else if (argument == "--construction-plan" && index + 1 < argc) {
  requested_construction_plan = argv[++index];
+ explicit_run_configuration = true;
+ } else if (argument == "--goal-sequence" && index + 1 < argc) {
+ std::string sequence = argv[++index];
+ std::size_t begin = 0;
+ while (begin <= sequence.size()) {
+ const std::size_t end = sequence.find(',', begin);
+ const std::string id = sequence.substr(begin, end == std::string::npos
+ ? std::string::npos : end - begin);
+ if (id.empty())
+ throw std::runtime_error("--goal-sequence contains an empty goal id");
+ requested_goal_sequence.push_back(id);
+ if (end == std::string::npos)
+ break;
+ begin = end + 1;
+ }
  explicit_run_configuration = true;
    } else if (argument == "--json") {
     json_output = true;
@@ -182,6 +201,8 @@ int main(int argc, char** argv) {
  throw std::runtime_error("--maneuver cannot be combined with --endless");
  if (!requested_maneuver.empty() && !artifact_path.empty())
  throw std::runtime_error("maneuver artifacts require a future explicit artifact schema field");
+ if (!requested_goal_sequence.empty() && !artifact_path.empty())
+ throw std::runtime_error("player-directed artifacts require a future explicit artifact schema field");
  mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
  mission::ComponentRegistry::builtins());
  if (mission.level().construction) {
@@ -216,7 +237,11 @@ int main(int argc, char** argv) {
  // Operator intent is an input to an active ROBOT session. Publishing it
  // before start made the headless path differ from a click in the graphical
  // client and could leave the target outside the live control loop.
- if (endless || field_intent)
+ if (!requested_goal_sequence.empty() && mission.level().objective.goal_order != "player")
+ throw std::runtime_error("--goal-sequence requires a player-ordered level");
+ if (requested_goal_sequence.empty() && mission.level().objective.goal_order == "player")
+ throw std::runtime_error("player-ordered headless runs require --goal-sequence");
+ if (endless || field_intent || !requested_goal_sequence.empty())
  mission.start();
  if (field_intent && !mission.issue_field_intent(*field_intent, field_target))
  throw std::runtime_error("field intent requires a valid target");
@@ -233,6 +258,24 @@ int main(int argc, char** argv) {
  mission.field_intent().active &&
  mission.field_intent().acknowledgement !=
  mission::FieldIntentAcknowledgement::Rejected) {
+ mission.step();
+ }
+ } else if (!requested_goal_sequence.empty()) {
+ std::size_t next_goal = 0;
+ while (mission.snapshot().status == mission::MissionStatus::Running) {
+ if (!mission.active_goal()) {
+ if (next_goal >= requested_goal_sequence.size())
+ throw std::runtime_error("--goal-sequence ended before the mission completed");
+ const std::string& requested = requested_goal_sequence[next_goal++];
+ const auto& goals = mission.level().objective.goals;
+ const auto found = std::find_if(goals.begin(), goals.end(), [&](const auto& goal) {
+ return (goal.id.empty() ? goal.marker : goal.id) == requested;
+ });
+ if (found == goals.end() ||
+ !mission.select_goal(static_cast<std::size_t>(std::distance(goals.begin(), found)))) {
+ throw std::runtime_error("goal is unknown, ineligible, or has no feasible route: " + requested);
+ }
+ }
  mission.step();
  }
  } else {
@@ -390,6 +433,7 @@ int main(int argc, char** argv) {
  {
  {"goal_order", mission.level().objective.goal_order},
  {"policy", mission.level().objective.task_policy},
+ {"requested_sequence", requested_goal_sequence},
  {"completed_count", mission.snapshot().goals_reached},
  {"active_goal_id", mission.snapshot().active_goal_id},
  {"completed_goal_ids", mission.snapshot().completed_goal_ids},

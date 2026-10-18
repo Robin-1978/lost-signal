@@ -1,0 +1,446 @@
+{
+  "schema_version": 1,
+  "id": "stormglass_station",
+  "scene_3d": "scene.stormglass_protocol",
+  "size_m": [
+    24.0,
+    18.0
+  ],
+  "grid_resolution_m": 0.25,
+  "obstacles": [],
+  "surfaces": [
+    {
+      "id": "stormglass_flooded_basin",
+      "type": "box",
+      "min": [
+        1.0,
+        1.0
+      ],
+      "max": [
+        10.0,
+        7.2
+      ],
+      "material": "standing_water",
+      "label": "淹水低地"
+    },
+    {
+      "id": "stormglass_ridge_gravel",
+      "type": "box",
+      "min": [
+        14.0,
+        10.5
+      ],
+      "max": [
+        22.5,
+        17.0
+      ],
+      "material": "gravel",
+      "label": "碎石山脊"
+    },
+    {
+      "id": "stormglass_antenna_apron",
+      "type": "box",
+      "min": [
+        14.0,
+        1.0
+      ],
+      "max": [
+        23.0,
+        8.5
+      ],
+      "material": "paved",
+      "label": "天线阵列场"
+    }
+  ],
+  "terrain": [
+    {
+      "id": "stormglass_flood_ripples",
+      "type": "height_patch",
+      "min": [
+        1.0,
+        1.0
+      ],
+      "max": [
+        10.0,
+        7.2
+      ],
+      "base_height_m": -0.03,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.018
+    },
+    {
+      "id": "stormglass_ridge_ramp",
+      "type": "height_patch",
+      "min": [
+        0.0,
+        10.5
+      ],
+      "max": [
+        24.0,
+        15.5
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.075,
+      "roughness": 0.018
+    },
+    {
+      "id": "stormglass_ridge_crown",
+      "type": "height_patch",
+      "min": [
+        0.0,
+        15.5
+      ],
+      "max": [
+        24.0,
+        17.0
+      ],
+      "base_height_m": 0.375,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.012
+    }
+  ],
+  "world_objects": [
+    {
+      "id": "storm_pylon_1",
+      "prefab": "prefab.storm_pylon",
+      "position_m": [
+        2,
+        2,
+        0
+      ],
+      "yaw_degrees": 0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.4
+          ],
+          "size_m": [
+            0.45,
+            0.45,
+            2.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "storm_pylon_2",
+      "prefab": "prefab.storm_pylon",
+      "position_m": [
+        2,
+        16,
+        0
+      ],
+      "yaw_degrees": 37,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.4
+          ],
+          "size_m": [
+            0.45,
+            0.45,
+            2.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "storm_pylon_3",
+      "prefab": "prefab.storm_pylon",
+      "position_m": [
+        22,
+        2,
+        0
+      ],
+      "yaw_degrees": 74,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.4
+          ],
+          "size_m": [
+            0.45,
+            0.45,
+            2.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "storm_pylon_4",
+      "prefab": "prefab.storm_pylon",
+      "position_m": [
+        22,
+        16,
+        0
+      ],
+      "yaw_degrees": 21,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.4
+          ],
+          "size_m": [
+            0.45,
+            0.45,
+            2.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "antenna_array",
+      "prefab": "prefab.antenna_array",
+      "position_m": [
+        21.6,
+        8.9,
+        0
+      ],
+      "yaw_degrees": -12,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.1
+          ],
+          "size_m": [
+            1.1,
+            1.1,
+            2.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "solar_1",
+      "prefab": "prefab.broken_solar",
+      "position_m": [
+        15.3,
+        1.8,
+        0
+      ],
+      "yaw_degrees": 18,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.35
+          ],
+          "size_m": [
+            1.5,
+            0.16,
+            0.7
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "solar_2",
+      "prefab": "prefab.broken_solar",
+      "position_m": [
+        18.0,
+        1.5,
+        0
+      ],
+      "yaw_degrees": -12,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.35
+          ],
+          "size_m": [
+            1.5,
+            0.16,
+            0.7
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "solar_3",
+      "prefab": "prefab.broken_solar",
+      "position_m": [
+        20.6,
+        1.8,
+        0
+      ],
+      "yaw_degrees": 10,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.35
+          ],
+          "size_m": [
+            1.5,
+            0.16,
+            0.7
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "yard_wall_1",
+      "prefab": "prefab.yard_wall",
+      "position_m": [
+        17.0,
+        6.5,
+        0
+      ],
+      "yaw_degrees": 0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.525
+          ],
+          "size_m": [
+            0.35,
+            2.2,
+            1.05
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "yard_wall_2",
+      "prefab": "prefab.yard_wall",
+      "position_m": [
+        20.7,
+        6.5,
+        0
+      ],
+      "yaw_degrees": 0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.525
+          ],
+          "size_m": [
+            0.35,
+            2.2,
+            1.05
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "yard_wall_3",
+      "prefab": "prefab.yard_wall",
+      "position_m": [
+        18.85,
+        7.6,
+        0
+      ],
+      "yaw_degrees": 0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.525
+          ],
+          "size_m": [
+            3.4,
+            0.25,
+            1.05
+          ],
+          "material": "paved"
+        }
+      ]
+    }
+  ],
+  "markers": {
+    "stormglass_base": [
+      12.0,
+      9.0,
+      -1.5707963267948966
+    ],
+    "flood_core": [
+      5.2,
+      4.2,
+      0.0
+    ],
+    "ridge_core": [
+      18.4,
+      15.8,
+      3.141592653589793
+    ],
+    "shadow_core": [
+      18.8,
+      4.0,
+      3.141592653589793
+    ]
+  },
+  "actors": [
+    {
+      "id": "service_cart_alpha",
+      "type": "patrol",
+      "path": [
+        [
+          22.2,
+          2.0
+        ],
+        [
+          22.2,
+          7.2
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.4,
+      "active_in": [
+        "stormglass_protocol"
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
+        "ref_radius_m": 0.4
+      },
+      "waits": [
+        0.6,
+        0.4
+      ]
+    }
+  ]
+}

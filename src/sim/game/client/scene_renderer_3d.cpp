@@ -1329,12 +1329,15 @@ void SceneRenderer3D::draw_markers(const mission::PresentationFrameView& mission
  }
  const auto* active = mission.active_goal();
  const std::size_t active_index = mission.snapshot().active_goal_index;
+ const auto eligible = mission.eligible_goals();
  for (std::size_t index = 0; index < mission.level().objective.goals.size(); ++index) {
   const auto& step = mission.level().objective.goals[index];
   const auto marker = map.markers.find(step.marker);
   if (marker == map.markers.end())
    continue;
   const bool is_active = index == active_index;
+ const bool is_eligible =
+ std::find(eligible.begin(), eligible.end(), index) != eligible.end();
   const std::string step_id = step.id.empty() ? step.marker : step.id;
   const bool complete =
     std::find(mission.snapshot().completed_goal_ids.begin(), mission.snapshot().completed_goal_ids.end(),
@@ -1356,14 +1359,15 @@ void SceneRenderer3D::draw_markers(const mission::PresentationFrameView& mission
                   marker->second.theta * kRadToDeg);
      }
     }
-    if (is_active) {
+ if (is_active || is_eligible) {
      const auto base =
        world(marker->second,
              static_cast<float>(terrain_at(mission, {marker->second.x, marker->second.y}).height_m));
      const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(mission.snapshot().time_s * 4.2));
      DrawCylinderWiresEx({base.x, base.y + 0.035f, base.z}, {base.x, base.y + 0.075f, base.z},
-                         0.68f + 0.06f * pulse, 0.68f + 0.06f * pulse, 36,
-                         Fade(kAmber, 0.72f + 0.20f * pulse));
+ (is_active ? 0.68f : 0.82f) + 0.06f * pulse,
+ (is_active ? 0.68f : 0.82f) + 0.06f * pulse, 36,
+ Fade(is_active ? kAmber : Color{225, 92, 214, 255}, 0.62f + 0.28f * pulse));
     }
     continue;
    }

@@ -33,6 +33,7 @@ class PresentationFrameView {
  const FieldIntentState& field_intent() const { return mission_.field_intent(); }
  const WorldActivityState& world_activity() const { return mission_.world_activity(); }
  const GoalStep* active_goal() const { return mission_.active_goal(); }
+ std::vector<std::size_t> eligible_goals() const { return mission_.eligible_goals(); }
  const LevelDefinition& level() const { return mission_.level(); }
  const MapDefinition& map_definition() const { return mission_.map_definition(); }
  const BuildSelection& build() const { return mission_.build(); }

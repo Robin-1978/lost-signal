@@ -18,6 +18,7 @@ The runtime should support different kinds of play rather than reskinning every 
 
 | Format | Example experience | Player decisions | Autonomy and physics lesson |
 |---|---|---|---|
+| Directed recovery under a changing world | **Stormglass Protocol:** choose the recovery order of three relay cores during an ion storm | next core, hardware, risk hypothesis | human goal selection versus autonomous motion, payload/CoG, grip, slope, occlusion, prediction and time pressure |
 | Collection and route ordering | **Orchard Scramble:** recover fallen apples across a muddy hillside before weather closes in | harvest zone, chassis, tires, collection priority, safety/time preference | multi-goal ordering, terrain cost, feasible motion, traction, payload growth, rollover and fruit-integrity tradeoffs |
 | Search and discovery | **Firefly Survey:** locate intermittent signal nodes in fog | search boundary, sensor package, coverage preference, return reserve | coverage planning, observation range, uncertainty, map discovery, energy-aware return |
 | Herding and flow | **Runaway Carts:** guide autonomous carts through gates without entering their predicted paths | gate order, waiting zones, traffic priority | multi-agent prediction, temporal reservations, safe gaps, deadlock recovery |
@@ -55,9 +56,11 @@ The numbered stages later in this document describe the completed alpha baseline
 sequence here so that completed release work and future work cannot be confused.
 
 The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
-The active sequence is now **MuJoCo atomic migration → mobile-manipulator foundation → manipulation laboratory → grasp/contact validation → focused visual/audio revision →
-experiment/fault framework**. Its world commit, playable proof run, first visual pass, and deterministic evidence are
-implemented. [The acceptance contract](reference-platform.md) remains the
+The active sequence is now **Stormglass gameplay validation → focused visual/audio revision → causal debrief and
+same-seed comparison → experiment/fault framework**. MuJoCo migration, the mobile-manipulator foundation, the
+Manipulation Lab, and the first grasp/contact gates are completed platform capabilities; they are not the current
+product priority. Stormglass now has its world, player-directed task loop, first visual pass, and deterministic
+headless evidence. [The acceptance contract](reference-platform.md) remains the
 source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
 static multi-collection loop is not accepted as the first polished Playground. Responsive-information work continues
 only when a concrete usability problem blocks play. Platform fidelity and broader sensors follow after the product
@@ -151,53 +154,35 @@ gate because it is intentionally expensive.
 **Exit:** no clipped or overlapping localized text, compact labels remain understandable without hover, tooltips
 show the full explanation, the normal release checks pass, and no temporary capture is tracked or documented.
 
-### M1 — Create the content direction and build its first graybox
+### M1 — Validate Stormglass Protocol as the gameplay vertical slice
 
-Status: **implementation gate complete — external fresh-player evidence remains**
+Status: **implemented; fresh-player observation remains**
 
-Start from player experience rather than the current feature list. Define a small content bible for a family of
-autonomy playgrounds: what fantasy the player enters, what high-level choices they make, what the robot owns, what
-physical event creates surprise, what causal evidence explains it, and what one-variable retry teaches. Develop the
-collection, search, herding, construction, rescue, and comparative formats above far enough to distinguish their
-loops and required engine capabilities. They may demand new mission structure, interactive objects, task allocation,
-terrain semantics, sensors, or algorithms; existing runtime limits do not veto a strong concept.
+Stormglass Protocol replaces Bridge the Washout as the candidate product loop. The player sees three recoverable
+signal cores in a compact ion-storm scene, predicts an order, and selects one goal at a time. RO-1 owns sensing,
+localization, global planning, dynamic prediction, local planning, actuator control and stopping. Each pickup changes
+physical payload and center of gravity; authored storm keyframes change visibility, wetness, daylight and grip. A
+moving service cart introduces a time conflict without placing decision code in simulation content.
 
-Keep **Orchard Scramble** as the completed systems prototype and regression case. Build **Bridge the Washout** as the
-first candidate for permanent polish, then test whether it is actually playful before committing art. Its detailed
-loop, data/runtime boundaries, and acceptance gate are defined in [content direction](content-direction.md).
-Implement data-authored construction pieces and sockets, canonical plan hashing, transactional placement, one shared
-source for MuJoCo and LSRM geometry, a bounded placement UI, autonomous proof runs, and causal failure evidence.
-Build three crossing corridors with at least two viable solution families and meaningful chassis differences. The
-player commits a repair plan and high-level restore intent; the robot owns planning, braking, crossing, refusal, and
-recovery. Runtime work remains generic, while flood, bridge, repeater, inventory, and scoring semantics stay in data
-or simulation-only game systems.
+The reusable capability is `goal_order: "player"`: the task executive exposes eligible stable-ID goals, locks the
+terminal return until work is complete, and waits under a zero command between choices. UI world clicks and headless
+`--goal-sequence` publish the same semantic selection. No code knows Stormglass target IDs. Recommended-build
+sequences complete deterministically with different route/time/clearance evidence for different orders.
 
-The existing chapters remain the Guided Campaign. All systemic formats live in an optional Autonomy
-Playgrounds collection with no campaign prerequisite; the player chooses between them rather than having the new
-mode inserted into the current story sequence. The detailed content and runtime contract is in
-[content direction](content-direction.md).
+Research inputs and the detailed design/acceptance contract are recorded in [content direction](content-direction.md).
+The next work is to observe new players and revise only the parts that block the intended loop. Existing campaign
+chapters, Vehicle Proving Ground, Orchard, Bridge, and Manipulation Lab remain available.
 
-The Orchard engineering loop is playable from that separate collection. It includes five autonomous collection
-tasks, four small registered task-ordering algorithms selected through data, terrain-aware ordering, dynamic
-rigid-body payload updates, cargo integrity, deterministic return reserve, and a four-stage storm timeline. Weather
-keyframes interpolate wetness, visibility, daylight, and per-material grip on simulation time. The same state changes
-wheel contact, route cost, 3D presentation, replay, and headless evidence; crossing a stage boundary triggers an
-autonomous replan. RO-1 uses two driven wheels and one rear caster, all official scenes render at physical scale
-1.0, and wheel roll comes from actuator state rather than wall-clock animation.
+**Exit:** three fresh players can identify the danger, choose targets without steering, complete or diagnose a run,
+and explain how one of payload, terrain, grip, traffic prediction, or storm timing changed the result. At least two
+orders remain safely completable on the same seed and produce measurably different evidence. Until this observation,
+do not expand the sensor/chassis catalog or begin SLAM/VLA work.
 
-Its deterministic results remain regression evidence, not gameplay approval. The loop still reads as several
-static pickups followed by a return, its physical surprise is weak, and its current art does not establish the
-quality bar. M1 therefore remains open until a distinct mechanic and a fresh-player playtest justify the content.
+### M2 — Refine Stormglass visual, audio, and debrief identity
 
-**Exit:** the content bible shows several mechanically distinct experiences and the engine capability each one
-would exercise. A fresh player can complete and understand the washout loop; two construction plans or chassis
-choices produce visibly different, explainable results on the same seed; construction changes physics and map state
-from one authoritative plan; the run is deterministic and testable headlessly. Playtest evidence says the loop is
-worth polishing. No permanent art quality is required yet.
-
-### M2 — Give the approved Playground a visual and audio identity (blocked by M1)
-
-Replace graybox presentation with distinctive terrain, landmarks, vehicle details, materials, weather,
+The first data-authored Stormglass presentation uses night fog, high bloom, three color-coded cores, a luminous
+base, storm pylons, broken solar arrays, antenna structures, wet terrain and state-driven pickup effects. Refine it
+from playtest evidence with distinctive terrain, landmarks, vehicle details, materials, weather,
 bounded particles, pickup and damage feedback, and state-driven sound. Visual and audio events read simulation state
 and never manufacture gameplay outcomes. Keep headless execution independent of graphical assets.
 

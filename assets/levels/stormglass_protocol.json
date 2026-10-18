@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "id": "stormglass_protocol",
+  "order": 104,
+  "title": "风暴晶核协议",
+  "map": "stormglass_station",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 4,
+  "mode": "playground",
+  "prerequisites": [],
+  "seed": 73119,
+  "objective": {
+    "type": "collect_and_return",
+    "spawn": "stormglass_base",
+    "goal": "stormglass_base",
+    "goal_label": "风暴基地",
+    "goal_visual": "stormglass_base",
+    "time_limit_s": 180.0,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.72,
+    "goal_order": "player",
+    "task_policy": "task.balanced",
+    "return_reserve_s": 0.0,
+    "goals": [
+      {
+        "id": "flood-core",
+        "marker": "flood_core",
+        "label": "洪水晶核",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 1,
+          "mass_kg": 5.5,
+          "cog_height_m": 0.34,
+          "value": 9.0,
+          "fragility": 0.35
+        },
+        "visual": "goal.core_cyan"
+      },
+      {
+        "id": "ridge-core",
+        "marker": "ridge_core",
+        "label": "山脊晶核",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 1,
+          "mass_kg": 3.8,
+          "cog_height_m": 0.88,
+          "value": 14.0,
+          "fragility": 0.75
+        },
+        "visual": "goal.core_orange"
+      },
+      {
+        "id": "shadow-core",
+        "marker": "shadow_core",
+        "label": "暗影晶核",
+        "action": "collect",
+        "radius_m": 0.78,
+        "item": {
+          "count": 1,
+          "mass_kg": 2.2,
+          "cog_height_m": 0.62,
+          "value": 18.0,
+          "fragility": 0.6
+        },
+        "visual": "goal.core_magenta"
+      },
+      {
+        "id": "stormglass-base",
+        "marker": "stormglass_base",
+        "label": "风暴基地",
+        "action": "complete",
+        "radius_m": 0.82,
+        "visual": "goal.stormglass_base"
+      }
+    ]
+  },
+  "loadout_rules": {
+    "budget": 14,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "player_directed_autonomy",
+    "prediction_prompt": "先救哪一枚晶核？最短路线会不会让后续载荷、坡度与风暴更危险？",
+    "knowledge_card": "人类选择任务目标；机器人持续负责感知、地图、全局规划、动态避障和控制。目标顺序会改变载荷、重心、制动余量与天气暴露。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.32,
+    "fast_time_s": 135.0,
+    "efficient_energy_wh": 3.4
+  },
+  "rewards": [],
+  "environment": {
+    "interpolation": "linear",
+    "keyframes": [
+      {
+        "id": "stormglass.warning",
+        "label": "离子风暴警报",
+        "time_s": 0.0,
+        "wetness": 0.08,
+        "visibility": 0.9,
+        "daylight": 0.34,
+        "material_grip": {
+          "paved": 1.0,
+          "standing_water": 0.93,
+          "gravel": 1.0
+        }
+      },
+      {
+        "id": "stormglass.rain",
+        "label": "带电雨幕",
+        "time_s": 45.0,
+        "wetness": 0.38,
+        "visibility": 0.75,
+        "daylight": 0.26,
+        "material_grip": {
+          "paved": 0.97,
+          "standing_water": 0.78,
+          "gravel": 0.92
+        }
+      },
+      {
+        "id": "stormglass.surge",
+        "label": "风暴增幅",
+        "time_s": 90.0,
+        "wetness": 0.7,
+        "visibility": 0.58,
+        "daylight": 0.18,
+        "material_grip": {
+          "paved": 0.92,
+          "standing_water": 0.62,
+          "gravel": 0.8
+        }
+      },
+      {
+        "id": "stormglass.blackout",
+        "label": "风暴眼逼近",
+        "time_s": 130.0,
+        "wetness": 0.95,
+        "visibility": 0.42,
+        "daylight": 0.1,
+        "material_grip": {
+          "paved": 0.86,
+          "standing_water": 0.5,
+          "gravel": 0.7
+        }
+      }
+    ]
+  }
+}
