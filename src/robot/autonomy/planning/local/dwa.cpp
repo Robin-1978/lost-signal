@@ -60,7 +60,8 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
  const StaticFeasibility& terrain_feasible, double min_velocity_mps = -0.5,
  std::optional<double> target_heading_rad = std::nullopt,
  const DwaReference& reference = {}, double differential_track_m = 0.0,
- double max_wheel_speed_mps = 0.0) {
+ double max_wheel_speed_mps = 0.0,
+ double actuator_response_delay_s = 0.0) {
  DwaResult output;
  output.best.command.valid = false;
  output.best.command.score = -1e18;
@@ -110,8 +111,16 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
    for (double time = 0.0; time < predict_time; time += dt) {
     const double step_dt = std::min(dt, predict_time - time);
     const Vec2 previous{x, y};
-    rollout_v += clamp(velocity - rollout_v, -accel * step_dt, accel * step_dt);
-    rollout_w += clamp(angular - rollout_w, -yaw_accel * step_dt, yaw_accel * step_dt);
+ // A command does not instantaneously change wheel speed. Preserve the
+ // measured twist during the declared closed-loop response delay, then apply
+ // physical acceleration limits. Without this interval, a nominal in-place
+ // turn can look collision-free while the real chassis still translates.
+ const double responsive_dt = std::max(
+ 0.0, time + step_dt - std::max(time, actuator_response_delay_s));
+ rollout_v += clamp(velocity - rollout_v,
+ -accel * responsive_dt, accel * responsive_dt);
+ rollout_w += clamp(angular - rollout_w,
+ -yaw_accel * responsive_dt, yaw_accel * responsive_dt);
     x += rollout_v * std::cos(heading) * step_dt;
     y += rollout_v * std::sin(heading) * step_dt;
     heading += rollout_w * step_dt;
@@ -152,9 +161,17 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
  }
  const bool angular_reversal =
  angular * reference.previous_angular_command_radps < -0.04;
+ // When the route follower requests an in-place recovery, heading progress
+ // is the only useful motion. A fixed steering-effort penalty can otherwise
+ // beat the small heading improvement visible in a short rollout and make
+ // the zero command a permanent local optimum. Moving rollouts retain the
+ // damping term; oscillation has its own history-aware critic below.
+ const double angular_effort_penalty = v_max <= 1e-9
+ ? 0.0
+ : 0.025 * std::abs(angular);
    const double score = weights.w_goal * (goal_score + 0.7 * heading_score) +
                         weights.w_clear * clearance_score + weights.w_speed * velocity -
- 0.025 * std::abs(angular) + weights.w_path * path_score +
+ angular_effort_penalty + weights.w_path * path_score +
  weights.w_progress * progress_score -
  weights.w_oscillation * (angular_reversal ? 1.0 : 0.0);
    DwaCmd command{velocity, angular, !collision, score};
@@ -204,7 +221,8 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
                                  double frame_dt, double safety_margin, double robot_radius, double yaw_accel,
  StaticFeasibility terrain_feasible, double min_velocity_mps,
  std::optional<double> target_heading_rad, const DwaReference& reference,
- double differential_track_m, double max_wheel_speed_mps) {
+ double differential_track_m, double max_wheel_speed_mps,
+ double actuator_response_delay_s) {
  const auto dynamic_collision = [&](double x, double y, double time) {
  const auto clearance = dynamic_clearance_at(
  {x, y}, time, predicted_frames, frame_dt, robot_radius);
@@ -222,7 +240,8 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
  predict_time, dt, yaw_accel, terrain_feasible, min_velocity_mps,
- target_heading_rad, reference, differential_track_m, max_wheel_speed_mps);
+ target_heading_rad, reference, differential_track_m, max_wheel_speed_mps,
+ actuator_response_delay_s);
 }
 
 } // namespace sim

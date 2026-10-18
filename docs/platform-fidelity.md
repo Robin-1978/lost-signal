@@ -39,7 +39,7 @@ LSRI supports two explicit control paths:
 smart drive:
 ROBOT body command -> LSRI -> embedded/provider controller -> plant
 
-passive drive (default RO-1 Bullet composition):
+passive drive (default RO-1 MuJoCo composition):
 platform joint feedback -> LSRI -> ROBOT wheel controller
 ROBOT typed actuator command -> LSRI -> motor and mechanical plant
 ```
@@ -73,27 +73,27 @@ bindings in data. Revolute joints may also declare bounded lower and upper angle
 RO-1 is the first articulated reference platform. Its data defines an elevated base link, two powered cylindrical
 wheel links, a passive caster fork with a vertical swivel joint, and a separate caster wheel with a rolling joint.
 The caster has a 35 mm authored trail: the swivel axis is ahead of the wheel axle, while the wheel model origin is
-the axle rather than an extra hidden visual offset. Bullet joint position and velocity are the only encoder truth.
+the axle rather than an extra hidden visual offset. MuJoCo joint position and velocity are the only encoder truth.
 The passive caster is absent from motor-controller telemetry: it receives no command, and its visual transform is
 copied from physical link state through the platform/presentation snapshot.
 RO-2 adds two front steering knuckles, four physical wheels, rear drive, and independent service brakes. RO-3 has
 six road-wheel bodies and distributes each of two deployable track commands across three motor joints. RO-4 has four
 continuous steering joints and four wheel joints driven through eight LSRI duty channels. RO-5 has four wheel joints;
 its SIM contact provider resolves the alternating roller Jacobian from physical joint/rim slip, contact-point motion,
-and the previous Bullet normal load. It applies the resulting diagonal force at the measured contact point and limits
+and the previous MuJoCo normal load. It applies the resulting diagonal force at the measured contact point and limits
 it by the local tire/surface Coulomb circle. This contact reaction loads the wheel encoder instead of allowing an
-unloaded command-derived force. No articulated chassis injects a commanded body velocity or yaw torque into Bullet.
+unloaded command-derived force. No articulated chassis injects a commanded body velocity or yaw torque into MuJoCo.
 
 Planning occupancy and physical contact remain separate evidence. Global and local costmaps may conservatively
-inflate authored obstacles by the footprint, localization allowance, and grid resolution. The analytic Domain plant
-tests its circular footprint against continuous authored box geometry, including oriented `world_object` collision
-boxes, while Bullet uses the same boxes as rigid contacts. Occupancy rasterization uses box-versus-cell separating
+inflate authored obstacles by the footprint, localization allowance, and grid resolution. Focused geometry tests
+compare circular footprints against continuous authored box geometry, including oriented `world_object` collision
+boxes, while MuJoCo uses the same boxes as rigid contacts. Occupancy rasterization uses box-versus-cell separating
 axes rather than filling a rotated object's world AABB. A coarse
 raster cell therefore cannot manufacture a physical collision at a geometrically clear box corner. Minimum-risk
 recovery may leave an already-entered soft planning margin, including a bounded reverse maneuver for differential
 and tracked chassis, but every sample must remain outside the physical collision geometry.
 
-RO-1 runs a deterministic 20 ms public physics step with four 5 ms Bullet contact substeps. This is a numerical
+RO-1 runs a deterministic 20 ms public physics step with twenty 1 ms MuJoCo contact substeps. This is a numerical
 integration choice, not a second clock domain. It prevents small-wheel contact and chained caster constraints from
 injecting the visible pitch impulse produced by one coarse contact solve. Only the two powered wheels and caster
 wheel may touch a flat floor during nominal motion; the base and fork have positive clearance.
@@ -106,10 +106,10 @@ wheel-speed target
  -> signed PWM duty
  -> stall-torque / no-load-speed curve
  -> gearbox-equivalent wheel-joint torque
- -> Bullet contact
+ -> MuJoCo contact
 ```
 
-PWM is the native electronic command and torque is its mechanical output. Bullet owns tire friction, rolling
+PWM is the native electronic command and torque is its mechanical output. MuJoCo owns tire friction, rolling
 resistance, slip, and body integration; the motor controller no longer applies a second traction plant. The current
 catalog values are typical teaching parameters, not an identified voltage, current, winding, gearbox-efficiency,
 deadband, battery-sag, or thermal model.
@@ -120,16 +120,23 @@ command path. The SIM plant does not own a second wheel-speed loop. Its body-mot
 explicit smart-drive/analytic mode.
 
 The wheel link owns the inertia of its physical wheel geometry. Each powered joint separately declares motor and
-gearbox inertia reflected to that axis (`armature_inertia_kgm2`). The Bullet adapter represents the armature as a
-coaxial axisymmetric inertial component on the constrained wheel link because Bullet hinges do not expose a native
-armature term. This preserves a valid inertia tensor and the intended wheel-speed transient without pretending the
-extra inertia is tire mass or friction. The value remains a typical-profile assumption until a coast or torque-step
-test identifies it on hardware.
+gearbox inertia reflected to that axis (`armature_inertia_kgm2`). MuJoCo stores the value on the hinge's native
+`armature` field. This preserves the intended wheel-speed transient without pretending the reflected inertia is tire
+mass or friction. The value remains a typical-profile assumption until a coast or torque-step test identifies it on
+hardware.
 
-For RO-1, Bullet solves compliant normal contact and two tangent friction constraints in the same 5 ms internal
-substeps as the wheel and caster joints. `BulletTireContact` derives the rolling and axle tangent directions from the
-physical wheel pose and contact normal; it also refreshes material values already cached in persistent manifolds when
-the active surface changes. A static-friction anchor resists slip while the pose is held. It is not a parking brake: an
+For RO-1, MuJoCo solves compliant normal contact and an elliptic friction cone in the same 1 ms internal substeps as
+the wheel and caster joints. The drive wheels remain centred cylinders. The caster visual is a conventional
+cylindrical wheel, while its centred oblate-ellipsoid collision proxy approximates the wheel's crowned transverse
+tread: it keeps the 55 mm rolling radius and 64 mm full width, but makes contact begin at the tread centre. This lets
+the 35 mm trail rotate the passive fork without the full-width scrub moment of a perfectly flat rigid cylinder. The
+proxy is suitable for the reference flat-floor and small-obstacle envelope; precise kerb, groove, pressure, and tire
+deformation studies need a measured crown profile and compliant tire model.
+
+The provider uses MuJoCo's native geom coefficients: one isotropic sliding coefficient, one torsional moment arm,
+and one rolling moment arm shared by both rolling directions. It does not mutate contact frames or friction after
+`mj_step1`, because MuJoCo has already constructed the constraints at that point. Static tire friction resists slip
+while the pose is held. It is not a parking brake: an
 unbraked differential platform with a passive caster can yaw toward the fall line and roll downhill without violating
 static friction. The 20-degree hold gate therefore exercises the encoder, zero-speed motor loop, and heading/position
 hold together with tire contact.
@@ -139,11 +146,10 @@ hold uses encoder feedback and may hold only inside its authority; a known sub-g
 grade must still roll backward. This keeps controller success, motor authority, and tire adhesion as separate
 evidence instead of hiding all three in one friction coefficient.
 
-Catalog `rolling_resistance` is dimensionless `Crr`; Bullet's torsional contact limit has torque/load length units.
-The adapter converts rolling resistance about the wheel axle to `Crr * wheel_radius`. Articulated wheel content also
-declares `rolling_support_moment_arm_m`, a finite-patch support value about the tire's non-rolling axes. Bullet's
-rolling anisotropy keeps these two effects separate enough for the compact reference model. `btRaycastVehicle` is
-reserved for a possible coarse Ackermann provider and is not used for the collision-wheel, two-joint passive caster.
+Catalog `rolling_resistance` is dimensionless `Crr`; MuJoCo's rolling-friction limit has torque/load length units.
+The adapter converts it to `Crr * wheel_radius`. Because native geom rolling friction is isotropic, this compact model
+does not claim independently identified rolling resistance about the axle and scrub resistance about the other
+contact-plane axis.
 
 The motor profile owns available shaft torque (`stall_force_N * wheel_radius_m`). The articulation actuator limit is
 a separate joint/transmission safety ceiling and must be at least as large as every supported motor profile; it must
@@ -157,10 +163,10 @@ In articulated mode, contact saturation is no longer inferred from the analytic 
 compares physical wheel tread speed with rigid-body contact-point speed, applies low-speed and persistence guards,
 and publishes the resulting model-side slip state and maximum ratio in the deterministic run evidence.
 
-`ITireContact` is a semantic adapter, not an outer tire-force solver. The current `BulletTireContact` maps common
-friction, compliance, wheel-axis, rolling, and spinning semantics into the Bullet body and its internal constraints.
-A future `ChronoTireContact` must live inside a complete Chrono platform provider that owns bodies, joints, contact,
-and time integration; mixing Chrono tire forces into a Bullet world would create two coupled plants.
+The tire-contact resolver is a semantic adapter, not an outer tire-force solver. It maps common friction, compliance,
+wheel-axis, rolling, and spinning semantics into MuJoCo geoms and per-contact constraint coefficients. A future
+external tire implementation must live inside a complete platform provider that owns bodies, joints, contact, and
+time integration; mixing a second tire-force solver into the MuJoCo world would create two coupled plants.
 
 The shipped grip tire uses a declared typical-profile friction coefficient of 1.2. This represents a high-grip
 teaching tire on the dry slope surface, not a measured material pair; the ordinary tire remains at 0.7. The value
@@ -169,18 +175,18 @@ must be replaced by contact-pair measurements before an identified-profile claim
 Normal contact compliance follows the same evidence rule. The current RO-1 wheel values are typical teaching
 assumptions chosen to produce millimetre-scale static deflection and a documented damping ratio. They are not
 identified rubber properties. Wheel-component and ground-material data will own their respective compliance;
-`SimulatedPlatform` resolves one effective pair for the physics backend. Bullet-specific ERP, CFM, or raw rolling
-constraint coefficients do not cross that content boundary.
+`SimulatedPlatform` resolves one effective pair for MuJoCo. Raw `solref`, `solimp`, or contact-array indices do not
+cross that content boundary.
 
 Height patches may also declare `grade_xy_per_m`, the mixed derivative in `z += grade_xy_per_m * dx * dy`.
 This expresses a continuous transition where lateral grade grows from zero instead of appearing as a vertical wall
-at a planar-patch boundary. Bullet, terrain-cost gradients, the 3D renderer, and exported map elevation evaluate the
+at a planar-patch boundary. MuJoCo, terrain-cost gradients, the 3D renderer, and exported map elevation evaluate the
 same function. The proving-ground cross-slope now has matched entry and exit transitions; its RO-1 plant gate begins
 on the adjacent flat floor and verifies closed-loop entry without static collision or excessive roll.
 
 ### LiDAR providers
 
-The production LiDAR is already more than a 2D grid query. A named `lidar_link` emits each ray into the Bullet 3D
+The production LiDAR is already more than a 2D grid query. A named `lidar_link` emits each ray into the MuJoCo 3D
 collision world. Terrain, static geometry, unified world objects, and moving actors participate in occlusion. A world
 object's resolved collision proxy is shared with contact and its surface material supplies normalized reflectivity.
 Each ray receives its own
@@ -212,7 +218,7 @@ against known targets provide identified values.
 
 The 16-line `MultiBeamSpinning` provider uses one rotating three-dimensional scan rather than sixteen unrelated
 planar scans. Its sixteen authored beam angles preserve an interleaved firing order. Every return contains sensor
-frame XYZ, normalized intensity, ring, return index, and a firing offset relative to the scan-end timestamp. Bullet
+frame XYZ, normalized intensity, ring, return index, and a firing offset relative to the scan-end timestamp. MuJoCo
 raycasts terrain, static geometry, and moving actors at the firing pose, so occlusion and deterministic motion
 distortion are present. The static-reference cloud is generated at the estimated sensor pose rather than the truth
 pose.
@@ -234,7 +240,7 @@ material intensity. A future solid-state scanner supplies its own non-rotating p
 reusing the frame, timing, return, and LSRI rules.
 
 Run `python3 tools/benchmark_lidar.py` after a Release build to compare the planar and 16-line providers in the same
-20-second fixed-step Bullet scenario. On the development host used for the initial gate, four repeated runs measured
+20-second fixed-step MuJoCo scenario. On the development host used for the initial gate, four repeated runs measured
 about 1.50--1.59 seconds for the 800-ray planar profile and 4.05--4.11 seconds for the 5760-ray profile, or about
 4.9 times real time for the 16-line run. Sharing replay clouds reduced its 20-second peak resident set from roughly
 47 MB to 29 MB. These are regression reference measurements, not portable CI thresholds; contributors should report
@@ -250,7 +256,7 @@ planner/controller: forward speed + equivalent front-wheel steering angle
  -> quantized physical joint feedback
  -> rear-wheel velocity PID + steering position/velocity cascade
  -> four normalized-duty LSRI channels
- -> DC motor/servo torque-speed curves -> Bullet joints and tire contact -> rigid-body motion
+ -> DC motor/servo torque-speed curves -> MuJoCo joints and tire contact -> rigid-body motion
 ```
 
 The two front angles share one rear-axle instantaneous centre of rotation; the inner wheel turns farther than the
@@ -261,9 +267,10 @@ contracts. No analytic body yaw torque participates in the articulated path.
 
 The independent RO-2 gate checks four-wheel static load and clearance, long rest, forward and reverse travel,
 steering step/rate/limits/recentring, common ICR, measured turn radius, closed-loop braking, 10/20 ms step convergence,
-low-grip understeer and drive slip, zero-command rollback on a grade, motor-limited gradeability, cross-slope support,
-and 25 mm rough terrain. Its optional 6.0 m/s high-speed drive package also has a straight-line support and combined
-motor/service-brake stopping-distance gate at roughly 5.5 m/s. The current articulated drive models a current-limited four-quadrant H-bridge: motoring
+low-grip translation loss and drive slip, zero-command rollback on a grade, motor-limited gradeability, cross-slope
+support, and 25 mm rough terrain. Its optional 6.0 m/s motor package retains headroom above the separately declared
+2.4 m/s chassis rating; the gate validates support and combined motor/service-brake stopping at the chassis rating.
+The current articulated drive models a current-limited four-quadrant H-bridge: motoring
 authority falls toward no-load speed, opposing duty retains bounded electrical braking authority, and zero duty
 coasts. RO-2's separate rear-wheel friction service-brake channel is implemented; parking brake, ABS, thermal fade,
 and brake blending remain future capabilities and are required before treating RO-2 as a passenger-car-scale plant.

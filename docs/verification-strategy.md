@@ -73,8 +73,8 @@ The verification work proceeds with the product roadmap rather than as a separat
 1. **RO-1 platform gate:** validate the articulated assembly, mass/inertia, three support contacts, motor/armature,
  encoder, IMU, and the sourced planar-LiDAR profile, plus coast/brake/backdrive, low grip and slope boundaries without mission-score or route
  tuning. The dynamics gate includes analytic static wheel loads, short peak-torque launch, public-step convergence,
- zero-command initialization, maximum-speed straight stability, driven-axle spin, longitudinal and lateral adhesion,
- friction-pyramid bounds, emergency stopping distance and load transfer, steady-circle `a_y = v*yaw_rate`, and
+ zero-command initialization, rated-speed straight stability, driven-axle spin, longitudinal and lateral adhesion,
+ elliptic contact-cone bounds, emergency stopping distance and load transfer, steady-circle `a_y = v*yaw_rate`, and
  longitudinal grade probes immediately around the analytic peak-torque and driven-wheel adhesion boundaries. Publish the tested typical envelope, public sources,
  and engineering assumptions. The cross-slope gate uses a high-grip under/over-limit support-polygon fixture so
  tipping is not confused with sliding. A discrete 30 mm curb/deck/drop fixture closes only that named envelope;
@@ -83,7 +83,7 @@ independent boundary fixtures. A successful 20-degree lesson
  does not close larger slope, curb, or payload claims.
 2. **Current architecture gate:** enforce the typed route contract and deterministic mission regression after the
  platform gates pass. RO-1 through RO-5 now have separate articulated assemblies, chassis-specific invariants, and
- independent seven-maneuver Bullet evidence; no platform inherits another platform's result.
+ independent seven-maneuver MuJoCo evidence; no platform inherits another platform's result.
 3. **Orchard prototype gate:** compare at least two validated builds on the same seed; validate multi-goal ordering,
  payload changes, terrain choice, and result-artifact identity.
 4. **Fault-injection gate:** make delay, drop, stale/out-of-order observations, actuator lag/saturation, and low

@@ -16,6 +16,13 @@ int main() {
  static_map.setOccupied(1.25, 1.25);
  sim::ObservedObstacleLayer layer(20, 20, 0.5, {0.6, 0.1});
 
+ // The transient layer does not own the world boundary. Inflating an empty
+ // observation layer must be an identity operation on the static base map;
+ // otherwise a robot near a mapped boundary becomes trapped despite seeing
+ // no foreground obstacle.
+ const auto empty_composition = layer.compose(static_map, 0.0, 0.8);
+ CHECK(empty_composition.isFree(9.75, 9.75));
+
  CHECK(layer.observe(1.0, {{{2.25, 2.25}, {5.25, 2.25}, true}}));
  CHECK(layer.fresh(1.19));
  CHECK(!layer.fresh(1.21));

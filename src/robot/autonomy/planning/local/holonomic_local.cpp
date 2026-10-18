@@ -180,7 +180,8 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
  terminal_heading_error <= config.terminal_heading_tolerance_rad;
  score = weights.w_goal * (4.0 * goal_score + 0.7 * heading_score) +
  weights.w_clear * clearance_score -
- 2.0 * terminal_speed - 0.35 * std::abs(yaw) +
+ 2.0 * terminal_speed - 0.35 * std::abs(yaw) -
+ 4.0 * terminal_heading_error +
  (settled ? 3.0 : 0.0) + 0.2 * weights.w_path * path_score -
  weights.w_oscillation * (angular_reversal ? 1.0 : 0.0);
  } else {

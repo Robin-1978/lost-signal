@@ -36,6 +36,7 @@ struct MotorDriveParams {
  double max_yaw_rate_radps{2.0};
  double coulomb_smoothing_speed_mps{0.05};
  double viscous_drag_N_per_mps{0.6};
+ double static_friction_feedforward_duty{0.0};
 };
 
 // Per-step ground contact for the driven wheels. The mission combines the tire
@@ -46,9 +47,10 @@ struct GroundContact {
  double mu_eff{0.7};
  double rolling_resist{0.01};
  double accel_limit_mps2{6.0};
- // Effective wheel-ground normal compliance for the active contact pair.
- double normal_stiffness_Npm{40000.0};
- double normal_damping_Nspm{1000.0};
+ // Effective MuJoCo positive-format normal response for the active contact
+ // pair. This is a fitted response time and damping ratio, not N/m or N*s/m.
+ double contact_time_constant_s{0.006};
+ double contact_damping_ratio{1.0};
 };
 
 struct WheelMotorTelemetry {
@@ -64,8 +66,8 @@ struct WheelMotorTelemetry {
  // curve, rolling resistance and the tire-ground traction clamp.
  double longitudinal_force_N{0.0};
  // Shaft torque delivered at the wheel joint after the motor curve. An
- // articulated physics backend consumes this; the analytic backend consumes
- // longitudinal_force_N. They are alternative plant boundaries.
+ // The MuJoCo plant consumes this. longitudinal_force_N remains an analytic
+ // diagnostic used by focused motor/contact tests.
  double joint_effort_Nm{0.0};
 };
 
@@ -94,10 +96,15 @@ struct ChassisTelemetry {
  std::string channel;
  double effort_Nm{0.0};
  };
+ struct JointBrakeCommand {
+ std::string channel;
+ double maximum_torque_Nm{0.0};
+ double low_speed_smoothing_radps{1.0};
+ };
  struct BrakeActuatorTelemetry {
  double requested{0.0};
  double applied{0.0};
- double delivered_torque_Nm{0.0};
+ double available_torque_Nm{0.0};
  };
  bool differential{true};
  bool holonomic{false};
@@ -130,6 +137,9 @@ struct ChassisTelemetry {
  // native hardware provider. Chassis-specific convenience fields above stay
  // inside the hardware controller and never leak into the physics adapter.
  std::vector<JointEffortCommand> joint_efforts;
+ // Passive brake capacities are distinct from signed actuator efforts. The
+ // platform reevaluates their opposing direction at physics-substep cadence.
+ std::vector<JointBrakeCommand> joint_brakes;
  // Plant-side evidence for validation and presentation. This truth never
  // enters deployable ROBOT planning or controller observations.
  std::array<BrakeActuatorTelemetry, 4> service_brakes{};

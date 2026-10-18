@@ -91,6 +91,7 @@ int main() {
     sim::filter_update_position(f, zx, zy, kRp);
     sim::filter_update_velocity(f, zvx, zvy, kRv);
     sim::filter_update_yaw(f, zt, kRy);
+ sim::filter_update_yaw_rate(f, tw + randn() * 0.01, kRy);
     raw_sq += (zx - tx) * (zx - tx) + (zy - ty) * (zy - ty);
     filt_sq += (f.state[0] - tx) * (f.state[0] - tx) + (f.state[1] - ty) * (f.state[1] - ty);
     const double sx = std::sqrt(std::max(1e-12, f.covariance[0]));
@@ -132,6 +133,7 @@ int main() {
     sim::filter_update_velocity(g, std::numeric_limits<double>::quiet_NaN(),
                                 std::numeric_limits<double>::quiet_NaN(), kRv);
     sim::filter_update_yaw(g, 1.0, 0.0);
+ sim::filter_update_yaw_rate(g, 1.0, 0.0);
     sim::filter_predict(g, -0.5, kQ, kQw);
     for (std::size_t i = 0; i < 6; ++i) {
       CHECK(g.state[i] == snapshot.state[i]);

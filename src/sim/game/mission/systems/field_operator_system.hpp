@@ -11,6 +11,14 @@ namespace mission {
 enum class FieldIntentKind { Follow, GoTo, Search, Wait, Return };
 enum class FieldIntentAcknowledgement { Idle, Pending, Accepted, Completed, Rejected };
 
+// A point-and-go request is a pose-region contract. The local planner and the
+// executive completion gate must use the same limits or a stopped chassis can
+// be accepted by one layer and remain active forever in the other.
+inline constexpr double kFieldIntentArrivalPositionToleranceM = 0.30;
+inline constexpr double kFieldIntentArrivalSpeedMps = 0.05;
+inline constexpr double kFieldIntentArrivalYawToleranceRad = 0.12;
+inline constexpr double kFieldIntentArrivalYawRateRadps = 0.05;
+
 const char* field_intent_kind_id(FieldIntentKind kind);
 const char* field_intent_acknowledgement_id(FieldIntentAcknowledgement acknowledgement);
 

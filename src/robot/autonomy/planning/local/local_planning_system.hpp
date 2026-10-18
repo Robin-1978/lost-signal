@@ -60,6 +60,15 @@ struct LocalPlanningRequest {
  double committed_progress_floor_mps{0.0};
  double emergency_stop_delay_s{0.0};
  double emergency_decel_mps2{0.0};
+ // Closed-loop delay used inside nominal differential rollout simulation.
+ // This is actuator response only; emergency_stop_delay_s additionally
+ // includes the next decision interval.
+ double actuator_response_delay_s{0.0};
+ // Preferred-margin recovery is deliberately a low-energy maneuver. These
+ // caps bound contact risk while the body is closer to static geometry than
+ // the nominal planning envelope permits.
+ double recovery_max_speed_mps{0.15};
+ double recovery_max_yaw_rate_radps{0.8};
  DwaReference reference;
 };
 
@@ -75,12 +84,21 @@ struct LocalPlanningOutput {
  // may require forward progress, but it never weakens static or dynamic safety.
 class LocalPlanningSystem {
  public:
+ void reset() {
+ static_margin_blocked_s_ = 0.0;
+ physical_margin_recovery_active_ = false;
+ }
  LocalPlanningOutput plan(
  const LocalPlanningRequest& request,
  const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  StaticFeasibility terrain_feasible = {},
- const GridMap* physical_collision_map = nullptr) const;
+ const GridMap* physical_collision_map = nullptr,
+ StaticFeasibility physical_terrain_feasible = {});
+
+ private:
+ double static_margin_blocked_s_{0.0};
+ bool physical_margin_recovery_active_{false};
 };
 
 } // namespace sim

@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 8,
   "id": "robot.ro1",
   "title": "洛一 / RO-1",
   "model_profile": {
@@ -21,6 +21,7 @@
     "type": "differential",
     "wheel_radius_m": 0.1,
     "wheel_base_m": 0.58,
+    "rated_speed_mps": 1.0,
     "mass_kg": 24.0,
     "yaw_inertia_kgm2": 1.333745,
     "motor": {
@@ -34,6 +35,7 @@
       "controller_bandwidth_radps": 6.0,
       "controller_integral_time_s": 5.0,
       "controller_derivative_time_s": 0.005,
+      "static_friction_feedforward_duty": 0.08,
       "coulomb_smoothing_speed_mps": 0.05,
       "viscous_drag_N_per_mps": 0.6
     },
@@ -112,10 +114,9 @@
           0.007
         ],
         "friction": 1.0,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.01,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -146,10 +147,9 @@
           0.007
         ],
         "friction": 1.0,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.01,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -208,17 +208,16 @@
           0.00075625
         ],
         "friction": 0.8,
-        "rolling_support_moment_arm_m": 0.008,
         "spinning_resistance": 0.008,
-        "contact_stiffness_Npm": 30000.0,
-        "contact_damping_Nspm": 800.0,
+        "contact_time_constant_s": 0.008,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
           1
         ],
         "collision": {
-          "shape": "cylinder",
+          "shape": "crowned_wheel",
           "radius_m": 0.055,
           "length_m": 0.064
         }
@@ -301,7 +300,9 @@
           0,
           0,
           1
-        ]
+        ],
+        "damping_Nms_per_rad": 0.02,
+        "friction_loss_Nm": 0.01
       },
       {
         "id": "rear_caster_roll_joint",

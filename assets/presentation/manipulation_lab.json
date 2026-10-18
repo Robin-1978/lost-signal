@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "id": "presentation.manipulation_lab",
+  "is_default": false,
+  "level": "manipulation_lab",
+  "robot": "robot.ro6",
+  "garage": {
+    "heading": "RO-6 移动操作平台",
+    "brief": "观察底盘上的四自由度机械臂。首次实验验证位姿、逆运动学、关节限位、力矩控制与多刚体反馈；抓取将在接触闭环完成后加入。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "底盘支承",
+        "options": [
+          "tires.standard",
+          "tires.grip"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "环境扫描",
+        "options": [
+          "sensor.standard_lidar",
+          "sensor.sixteen_line_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "操作计算",
+        "options": [
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "底盘驱动",
+        "options": [
+          "motor.standard",
+          "motor.torque"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "姿态反馈",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "底盘响应",
+    "policies": [
+      "policy.careful",
+      "policy.balanced"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.mid",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.2
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.sixteen_line_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.torque",
+      "imu": "imu.precise",
+      "style": 0.1
+    }
+  },
+  "prediction": {
+    "heading": "选择观察层",
+    "hint": "三种视角来自同一次物理闭环；选择不会改变实验输入。",
+    "choices": [
+      {
+        "id": "manipulator.kinematics",
+        "text": "观察目标位姿与逆运动学",
+        "feedback": "解析 IK 会比较两个肘部构型，选择满足全部限位且最接近当前姿态的一支。"
+      },
+      {
+        "id": "manipulator.control",
+        "text": "观察关节目标、反馈与力矩",
+        "feedback": "位置命令通过 LSRI 进入关节控制器；速度参考和输出力矩都有明确上限。"
+      },
+      {
+        "id": "manipulator.stability",
+        "text": "观察机械臂运动对底盘的反作用",
+        "feedback": "连杆质量、惯性、重力和关节反力都由同一个 MuJoCo 多刚体系统求解。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "机械臂闭环验证",
+    "normal_line": "RO-6：正在跟踪笛卡尔目标并监测关节限位与末端误差。",
+    "detected_line": "RO-6：目标可达，关节反馈和底盘姿态持续更新。",
+    "evidence_fields": [
+      "manipulator",
+      "grade"
+    ]
+  },
+  "debrief": {
+    "success_title": "机械臂闭环验证通过",
+    "success_summary": "RO-6 在真实关节限位、速度和力矩约束下完成位姿序列，并在最终目标内停止。",
+    "failure_summary": "检查目标可达性、关节限位、力矩饱和、末端误差和底盘稳定性。",
+    "evidence_heading": "移动操作证据",
+    "evidence_caption": "目标位姿、关节反馈、输出力矩、末端误差和底盘姿态来自同一次确定性运行。",
+    "knowledge_title": "机械臂不是播放动画",
+    "failure_titles": {
+      "manipulator-target": "实验失败：末端没有进入目标公差",
+      "rollover": "实验失败：机械臂运动使平台失稳",
+      "timeout": "实验失败：关节没有按时收敛"
+    }
+  },
+  "chassis_options": [
+    "robot.ro6"
+  ]
+}

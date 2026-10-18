@@ -22,7 +22,7 @@ void usage(const char* executable) {
  " [--chassis ROBOT_ID] [--component SLOT=ID] [--task-policy TASK_POLICY_ID]"
  " [--construction-plan PLAN_ID]"
  " [--maneuver ID]"
- " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
+ " [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
  " [--artifact FILE] [--reproduce FILE]\n";
 }
@@ -58,7 +58,6 @@ int main(int argc, char** argv) {
  std::string reproduced_construction_hash;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
- mission::PhysicsMode physics_mode = mission::PhysicsMode::Bullet;
   for (int index = 1; index < argc; ++index) {
    const std::string argument = argv[index];
    if (argument == "--assets" && index + 1 < argc) {
@@ -114,9 +113,6 @@ int main(int argc, char** argv) {
  } else if (argument == "--target" && index + 2 < argc) {
  field_target = sim::Vec2{std::stod(argv[++index]), std::stod(argv[++index])};
  explicit_run_configuration = true;
- } else if (argument == "--physics" && index + 1 < argc) {
- physics_mode = mission::parse_physics_mode(argv[++index]);
- explicit_run_configuration = true;
    } else if (argument == "--help" || argument == "-h") {
     usage(argv[0]);
     return 0;
@@ -156,7 +152,8 @@ int main(int argc, char** argv) {
  throw std::runtime_error("run artifact requires an unavailable runtime provider");
  level_id = experiment.at("mission_id").get<std::string>();
  seed_override = experiment.at("seed").get<std::uint64_t>();
- physics_mode = mission::parse_physics_mode(experiment.at("physics_backend").get<std::string>());
+ if (experiment.at("physics_backend") != "mujoco")
+ throw std::runtime_error("run artifact requires the MuJoCo physics engine");
  const auto& hardware = comparable.at("hardware");
  build.parts = hardware.at("components").get<std::map<std::string, std::string>>();
  build.style = hardware.at("style").get<double>();
@@ -186,7 +183,7 @@ int main(int argc, char** argv) {
  if (!requested_maneuver.empty() && !artifact_path.empty())
  throw std::runtime_error("maneuver artifacts require a future explicit artifact schema field");
  mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
- mission::ComponentRegistry::builtins(), {}, physics_mode);
+ mission::ComponentRegistry::builtins());
  if (mission.level().construction) {
  const auto& construction = *mission.level().construction;
  std::string option_id = requested_construction_plan.empty()
@@ -266,7 +263,7 @@ int main(int argc, char** argv) {
  {"rejected_commands", runtime_health.rejected_commands},
  {"watchdog_stops", runtime_health.watchdog_stops},
  }},
-     {"bullet_available", sim::physics::bullet_physics_available()},
+     {"mujoco_available", sim::physics::mujoco_physics_available()},
      {"status", mission::mission_status_name(result.status)},
      {"failure_reason", result.failure_reason},
      {"time_s", result.time_s},
@@ -303,12 +300,6 @@ int main(int argc, char** argv) {
  {"max_fused_heading_error_rad", result.max_fused_heading_error_rad},
      {"collisions", result.collisions},
  {"rigid_contacts", result.rigid_contacts},
- {"shadow_error",
- {
- {"max_position_m", result.max_shadow_position_error_m},
- {"max_heading_rad", result.max_shadow_heading_error_rad},
- {"max_height_m", result.max_shadow_height_error_m},
- }},
      {"slip_events", result.slip_events},
  {"braking",
  {
@@ -319,12 +310,31 @@ int main(int argc, char** argv) {
  }},
      {"astar_expanded", result.astar_expanded},
      {"local_decisions", result.local_decisions},
+ {"local_planner",
+ {
+ {"target", {mission.snapshot().control.local_target.x,
+ mission.snapshot().control.local_target.y}},
+ {"accepted_candidates", mission.snapshot().control.dwa_accepted_candidates},
+ {"trajectory_validated", mission.snapshot().control.trajectory_validated},
+ {"trajectory_verdict", mission.snapshot().control.trajectory_verdict},
+ {"trajectory_diagnostic", mission.snapshot().control.trajectory_diagnostic},
+ {"wheel_speed_mps", {mission.snapshot().control.left_measured_mps,
+ mission.snapshot().control.right_measured_mps}},
+ {"governor_hold", mission.snapshot().control.governor_hold},
+ {"crossing_relevant", mission.snapshot().control.crossing_assessed},
+ {"crossing_phase", mission.snapshot().control.crossing_phase},
+ }},
      {"robot",
       {
         {"x", mission.snapshot().robot.x},
         {"y", mission.snapshot().robot.y},
         {"z", mission.snapshot().robot_height_m},
         {"heading", mission.snapshot().robot.theta},
+ {"linear_mps", mission.snapshot().robot.v},
+ {"yaw_rate_radps", mission.snapshot().robot.w},
+ {"estimated_forward_mps", mission.snapshot().estimated_forward_mps},
+ {"estimated_lateral_mps", mission.snapshot().estimated_lateral_mps},
+ {"estimated_yaw_rate_radps", mission.snapshot().estimated_yaw_rate_radps},
         {"roll_rad", mission.snapshot().robot_roll_rad},
         {"pitch_rad", mission.snapshot().robot_pitch_rad},
       }},
@@ -407,6 +417,19 @@ int main(int argc, char** argv) {
         {"efficient", result.efficient_score},
       }},
    };
+ if (mission.snapshot().manipulator.present) {
+ const auto& arm = mission.snapshot().manipulator;
+ output["manipulator"] = {
+ {"target_reachable", arm.target_reachable},
+ {"target_joint_rad", arm.target_joint_rad},
+ {"measured_joint_rad", arm.measured_joint_rad},
+ {"measured_velocity_radps", arm.measured_velocity_radps},
+ {"target_position_m", {arm.target_pose.x_m, arm.target_pose.y_m, arm.target_pose.z_m}},
+ {"measured_position_m", {arm.measured_pose.x_m, arm.measured_pose.y_m, arm.measured_pose.z_m}},
+ {"position_error_m", arm.position_error_m},
+ {"maximum_joint_speed_radps", result.max_manipulator_joint_speed_radps},
+ };
+ }
  if (mission.committed_construction()) {
  std::vector<std::string> piece_ids;
  for (const auto& piece : mission.committed_construction()->pieces)

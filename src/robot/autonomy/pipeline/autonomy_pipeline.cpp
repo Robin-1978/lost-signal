@@ -10,6 +10,7 @@ AutonomyPipeline::AutonomyPipeline(const GridMap& static_map, int width,
 
 void AutonomyPipeline::reset(std::uint32_t seed) {
  perception_.reset(seed);
+ local_planner_.reset();
  trajectory_tracker_.reset();
 }
 
@@ -40,9 +41,11 @@ LocalPlanningOutput AutonomyPipeline::plan_local(
  const LocalPlanningRequest& request, const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  StaticFeasibility terrain_feasible,
- const GridMap* physical_collision_map) const {
+ const GridMap* physical_collision_map,
+ StaticFeasibility physical_terrain_feasible) {
  return local_planner_.plan(request, planning_map, predicted_frames,
- std::move(terrain_feasible), physical_collision_map);
+ std::move(terrain_feasible), physical_collision_map,
+ std::move(physical_terrain_feasible));
 }
 
 TrajectoryTrackingReport AutonomyPipeline::observe_trajectory(

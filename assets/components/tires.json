@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slot": "tires",
   "model_profile": {
     "fidelity": "typical",
@@ -20,8 +20,8 @@
         "power_scale": 1.0,
         "friction_mu": 0.7,
         "rolling_resistance": 0.01,
-        "normal_stiffness_Npm": 40000.0,
-        "normal_damping_Nspm": 1000.0
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -45,8 +45,8 @@
         "power_scale": 1.15,
         "friction_mu": 1.2,
         "rolling_resistance": 0.014,
-        "normal_stiffness_Npm": 35000.0,
-        "normal_damping_Nspm": 1100.0
+        "contact_time_constant_s": 0.008,
+        "contact_damping_ratio": 1.1
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -70,8 +70,8 @@
         "power_scale": 0.8,
         "friction_mu": 0.5,
         "rolling_resistance": 0.007,
-        "normal_stiffness_Npm": 55000.0,
-        "normal_damping_Nspm": 900.0
+        "contact_time_constant_s": 0.005,
+        "contact_damping_ratio": 1.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -95,8 +95,8 @@
         "power_scale": 1.3,
         "friction_mu": 1.0,
         "rolling_resistance": 0.02,
-        "normal_stiffness_Npm": 25000.0,
-        "normal_damping_Nspm": 1200.0
+        "contact_time_constant_s": 0.012,
+        "contact_damping_ratio": 1.2
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -120,8 +120,8 @@
         "power_scale": 0.7,
         "friction_mu": 0.65,
         "rolling_resistance": 0.005,
-        "normal_stiffness_Npm": 60000.0,
-        "normal_damping_Nspm": 850.0
+        "contact_time_constant_s": 0.004,
+        "contact_damping_ratio": 1.0
       },
       "visual": {
         "primitive_2d": "wheel",
@@ -145,8 +145,8 @@
         "power_scale": 0.72,
         "friction_mu": 0.35,
         "rolling_resistance": 0.002,
-        "normal_stiffness_Npm": 2000000.0,
-        "normal_damping_Nspm": 250.0
+        "contact_time_constant_s": 0.0025,
+        "contact_damping_ratio": 0.9
       },
       "visual": {
         "primitive_2d": "wheel",

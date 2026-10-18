@@ -91,5 +91,6 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
  std::optional<double> target_heading_rad = std::nullopt,
  const DwaReference& reference = {},
  double differential_track_m = 0.0,
- double max_wheel_speed_mps = 0.0);
+ double max_wheel_speed_mps = 0.0,
+ double actuator_response_delay_s = 0.0);
 } // namespace sim

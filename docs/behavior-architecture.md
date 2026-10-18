@@ -58,6 +58,12 @@ Map conflict zones declare an explicit `authority`:
 - `shadow` evaluates the route-level crossing hypothesis without constraining the vehicle;
 - `control` may apply the hold/commit state machine.
 
+Each zone also declares `participant_radius_m`, a conservative envelope around the traffic reference point. It
+combines the largest expected participant footprint with the site's tracking reserve, so behavior can derive a safe
+stop before a live track matures without reading simulator actor truth. The stop is solved continuously on the
+global route; grid vertices provide route topology but do not quantize the final behavior constraint. Prediction
+then checks that fixed hold pose and the complete crossing trajectory at matching times.
+
 `shadow` remains available for experiments. The research-base forklift encounter is a bounded `control` slice in
 every level that traverses it; sensing configuration changes evidence quality, never whether safety behavior exists.
 Focused tests cover stable stop geometry, physical body occupancy, prediction ambiguity, commit hysteresis, and
@@ -159,7 +165,7 @@ Extraction proceeds by owned state and testable contracts:
 | `AutonomyPipeline` | localization-to-control scheduling and immutable inputs | mission goals or actor truth |
 | `RouteTrackingSystem` | route progress, travel direction and heading-loop state | goals, scoring, physics, or actor truth |
 | `DynamicTrafficSystem` | stateless filtering and translation of authored conflict regions | stop poses, behavior state, predictions, or commands |
-| `CrossingBehaviorSystem` | route-derived stop/exit poses and hold/commit/clear state | mission goals, actor truth, Bullet bodies, or game collision flags |
+| `CrossingBehaviorSystem` | route-derived stop/exit poses and hold/commit/clear state | mission goals, actor truth, MuJoCo bodies, or game collision flags |
 | `TrajectoryTrackingSystem` | accepted local trajectory and tracking-envelope evidence | command arbitration or physics stepping |
 | `MissionProgressSystem` | goals, payload actions, success and failure | planner internals |
 | `DecisionEvidenceSystem` | transition records and stable evidence codes | localized player prose |

@@ -552,14 +552,14 @@ void GameUi::build_chapter() {
  card->add(title);
 
  const float title_bottom = 34.0f + std::max(24.0f, title->getFullSize().y);
- auto concept = tgui::Label::create(wrap_words(level.knowledge_card, columns == 2 ? 54 : 76));
- concept->setPosition(17, std::min(67.0f, title_bottom + 5.0f));
- concept->setTextSize(12);
- concept->setMaximumTextWidth(card_width - 34.0f);
- concept->getRenderer()->setTextColor(unlocked ? tgui::Color{166, 176, 171}
+auto knowledge = tgui::Label::create(wrap_words(level.knowledge_card, columns == 2 ? 54 : 76));
+knowledge->setPosition(17, std::min(67.0f, title_bottom + 5.0f));
+knowledge->setTextSize(12);
+knowledge->setMaximumTextWidth(card_width - 34.0f);
+knowledge->getRenderer()->setTextColor(unlocked ? tgui::Color{166, 176, 171}
  : tgui::Color{104, 112, 108});
- concept->setIgnoreMouseEvents(true);
- card->add(concept);
+knowledge->setIgnoreMouseEvents(true);
+card->add(knowledge);
 
  std::string tooltip_text = level.title + "\n" + level.knowledge_card;
  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
@@ -731,10 +731,10 @@ void GameUi::build_garage() {
  add_label(catalog_.tr("garage.style_gentle"), kMargin, y, 80, 14, {132, 139, 135});
  auto style_mid =
  add_label(catalog_.tr("garage.style_normal"), kMargin, y, kContentWidth, 14, {132, 139, 135});
- style_mid->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Center);
+ style_mid->setHorizontalAlignment(tgui::HorizontalAlignment::Center);
  auto style_fast =
  add_label(catalog_.tr("garage.style_fast"), kMargin, y, kContentWidth, 14, {132, 139, 135});
- style_fast->setHorizontalAlignment(tgui::Label::HorizontalAlignment::Right);
+ style_fast->setHorizontalAlignment(tgui::HorizontalAlignment::Right);
  y += 27.0f;
  style_value_ = add_label("", kMargin, y, kContentWidth, 15, {143, 201, 187});
  y += 64.0f;
@@ -1589,6 +1589,13 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  add_evidence(catalog_.trf("running.evidence_grade",
  {format_number(grade_degrees, 1), format_number(cross_degrees, 1),
  format_number(state.rollover_risk * 100.0, 0)}));
+ }
+ if (has_evidence("manipulator")) {
+ add_evidence(catalog_.trf("running.evidence_manipulator",
+ {catalog_.tr(state.manipulator.target_reachable
+ ? "running.evidence_yes" : "running.evidence_no"),
+ format_number(state.manipulator.position_error_m * 1000.0, 1),
+ format_number(state.manipulator.maximum_joint_speed_radps, 2)}));
  }
  if (has_evidence("slip")) {
  add_evidence(catalog_.trf("running.evidence_slip",

@@ -1,7 +1,10 @@
 #include "sim/hardware/vehicle/contact.hpp"
 
+#include "sim/hardware/actuators/electric_drive.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace sim {
 namespace {
@@ -15,28 +18,41 @@ constexpr double kSlipSpeedFloorMps = 0.3;
 
 WheelContactResult step_driven_wheel(double wheel_mps, double body_mps, double pwm,
                                      const WheelContactParams& params, double dt) {
- const double curve = std::max(
- 0.0, 1.0 - std::abs(wheel_mps) / std::max(0.05, params.free_speed_mps));
- const double motor_force = pwm * params.stall_force_N * curve;
+ if (!(dt > 0.0) || !std::isfinite(dt))
+ throw std::invalid_argument("wheel contact step must be finite and positive");
  const double denom = std::max(kSlipSpeedFloorMps, std::abs(body_mps));
  const double stiffness = std::max(0.0, params.traction_limit_N) / (kSlipRef * denom);
  const double mass = std::max(0.5, params.wheel_equiv_mass_kg);
- const double wheel_free =
-   (mass * wheel_mps / dt + motor_force + stiffness * body_mps) / (mass / dt + stiffness);
- const double force_free = stiffness * (wheel_free - body_mps);
- // Traction cap: the ground cannot return more than mu*N. Past the cap the
- // tread breaks away — the body gets the capped force, the wheel keeps the
- // remainder as spin. This is what makes the "saturated" in linear-saturated
- // true, identically for every chassis sharing this module.
  const double limit = std::max(0.0, params.traction_limit_N);
+ double remaining = dt;
+ double contact_impulse_Ns = 0.0;
+ double slip = 0.0;
+ bool slipped = false;
+ // The electrical/contact time scale is shorter than the outer 20 ms
+ // control period. Re-evaluate the four-quadrant motor curve and tire force
+ // at 1 ms so a braking wheel that crosses zero does not use a stale torque
+ // for the rest of the public step.
+ while (remaining > 1e-12) {
+ const double h = std::min(0.001, remaining);
+ const double motor_force = hardware::dc_motor_force_N(
+ pwm, wheel_mps, params.stall_force_N, params.free_speed_mps);
+ const double wheel_free =
+ (mass * wheel_mps / h + motor_force + stiffness * body_mps) / (mass / h + stiffness);
+ const double force_free = stiffness * (wheel_free - body_mps);
+ double body_force = force_free;
  if (std::abs(force_free) <= limit) {
-  const double slip = (wheel_free - body_mps) / denom;
-  return {wheel_free, force_free, slip, std::abs(slip) > kSlipRef};
+ wheel_mps = wheel_free;
+ } else {
+ body_force = std::copysign(limit, force_free);
+ wheel_mps += (motor_force - body_force) * h / mass;
+ slipped = true;
  }
- const double capped = std::copysign(limit, force_free);
- const double wheel_capped = wheel_mps + (motor_force - capped) * dt / mass;
- const double slip = (wheel_capped - body_mps) / denom;
- return {wheel_capped, capped, slip, true};
+ slip = (wheel_mps - body_mps) / denom;
+ slipped = slipped || std::abs(slip) > kSlipRef;
+ contact_impulse_Ns += body_force * h;
+ remaining -= h;
+ }
+ return {wheel_mps, contact_impulse_Ns / dt, slip, slipped};
 }
 
 } // namespace sim

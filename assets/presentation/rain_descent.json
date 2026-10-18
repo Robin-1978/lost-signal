@@ -5,7 +5,7 @@
   "level": "rain_descent",
   "garage": {
     "heading": "雨后下坡",
-    "brief": "湿坡会放大制动距离。选择轮胎和驾驶风格，保留坡底停车余量。",
+    "brief": "湿坡会放大制动距离。轮地抓地决定上限，电机反向力矩决定能否用足这份抓地。",
     "component_columns": [
       {
         "slot": "tires",
@@ -40,18 +40,18 @@
     },
     "recommended_build": {
       "tires": "tires.grip",
-      "motor": "motor.standard",
+      "motor": "motor.torque",
       "style": 0.0
     }
   },
   "prediction": {
     "heading": "坡底能停住吗？",
-    "hint": "比较抓地与速度造成的制动距离。",
+    "hint": "同时比较轮地抓地、电机反向力矩与进入坡道的速度。",
     "choices": [
       {
         "id": "rain_descent.grip",
-        "text": "抓地胎更稳",
-        "feedback": "有效摩擦提高后，制动饱和更晚，停车距离缩短。"
+        "text": "抓地与制动力矩都要留余量",
+        "feedback": "轮地摩擦给出可用制动力上限；电机反向力矩不足时，再好的轮胎也用不满。"
       },
       {
         "id": "rain_descent.fast",

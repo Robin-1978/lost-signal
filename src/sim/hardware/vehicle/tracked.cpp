@@ -94,7 +94,8 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  auto drive_track = [&](double pwm, double tread_mps, double body_track_mps, WheelMotorTelemetry& telemetry) {
   const WheelContactResult contact = step_driven_wheel(
     tread_mps, body_track_mps, pwm,
-    {params_.stall_force_N, params_.free_speed_mps, traction_limit, params_.wheel_equiv_mass_kg}, dt);
+{params_.stall_force_N * params_.drive_units_per_side, params_.free_speed_mps,
+ traction_limit, params_.wheel_equiv_mass_kg * params_.drive_units_per_side}, dt);
   telemetry.slipping = contact.slipping;
   return std::make_pair(contact.wheel_mps, contact.body_force_N - resistance(body_track_mps));
  };
@@ -108,21 +109,38 @@ DiffState TrackedDrive::step(const DiffState& state, const DiffCmd& command, dou
  // slower than differential spin at the same command.
  const double scrub_coulomb =
    std::max(0.0, ground.mu_eff) * params_.mass_kg * kGravity * std::max(0.1, params_.track_length_m) / 4.0;
- const double torque = (force_right - force_left) * params_.wheel_base_m / 2.0 -
-                       scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) -
-                       kYawViscousNmsPerRadps * state.w;
+ const double drive_torque =
+ (force_right - force_left) * params_.wheel_base_m / 2.0;
+ // Solve the regularized Coulomb/viscous yaw resistance implicitly. An
+ // explicit 20 ms update has a gain C/(I*v_s) large enough to hop across
+ // zero on alternate ticks, which turns passive scrub into a numerical
+ // oscillator. This scalar equation is monotone, so Newton converges to the
+ // unique physical end-of-step yaw rate.
+ double next_yaw_rate = state.w;
+ for (int iteration = 0; iteration < 8; ++iteration) {
+ const double normalized = next_yaw_rate / kCoulombWidthMps;
+ const double tanh_value = std::tanh(normalized);
+ const double residual = params_.yaw_inertia_kgm2 * (next_yaw_rate - state.w) / dt -
+ drive_torque + scrub_coulomb * tanh_value +
+ kYawViscousNmsPerRadps * next_yaw_rate;
+ const double derivative = params_.yaw_inertia_kgm2 / dt +
+ scrub_coulomb * (1.0 - tanh_value * tanh_value) / kCoulombWidthMps +
+ kYawViscousNmsPerRadps;
+ next_yaw_rate -= residual / derivative;
+ }
+ const double scrub_torque =
+ -scrub_coulomb * std::tanh(next_yaw_rate / kCoulombWidthMps) -
+ kYawViscousNmsPerRadps * next_yaw_rate;
  left.longitudinal_force_N = force_left;
  right.longitudinal_force_N = force_right;
- telemetry_.extra_yaw_torque_Nm = -scrub_coulomb * std::tanh(state.w / kCoulombWidthMps) -
- kYawViscousNmsPerRadps * state.w;
+ telemetry_.extra_yaw_torque_Nm = scrub_torque;
  telemetry_.desired_yaw_rate_radps = command.target_w;
  telemetry_.yaw_rate_tracking_time_s = 0.35;
- const double alpha = torque / std::max(0.05, params_.yaw_inertia_kgm2);
  const double accel = (force_left + force_right) / std::max(0.5, params_.mass_kg);
  const double accel_cap = std::min(params_.max_drive_accel_mps2, std::max(0.5, ground.accel_limit_mps2));
  DiffState next = state;
  next.v = state.v + std::clamp(accel * dt, -accel_cap * dt, accel_cap * dt);
- next.w = state.w + alpha * dt;
+next.w = next_yaw_rate;
  DifferentialKinematics::twist_to_wheels(next.v, next.w, params_.effective_track_width_m, left.actual_mps, right.actual_mps);
  left.actual_mps = clamp(left.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
  right.actual_mps = clamp(right.actual_mps, -params_.max_drive_speed_mps, params_.max_drive_speed_mps);
@@ -189,7 +207,7 @@ DiffState TrackedDrive::step_actuator_duty(const DiffState& state, const DiffCmd
  for (const auto* channel : kRightChannels)
   telemetry_.joint_efforts.push_back({channel, right_torque});
 
- // This planar value is shadow evidence only. In articulated mode Bullet
+ // This planar value is diagnostic kinematics only. MuJoCo
  // integrates the two joint torques, six rolling contacts, gravity and scrub.
  DiffState next = state;
  next.v = telemetry_.measured_forward_mps;

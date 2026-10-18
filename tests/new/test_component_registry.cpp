@@ -23,7 +23,7 @@ struct PayloadSpec {
 };
 
 const char kBrokenTire[] = R"({
- "schema_version": 2,
+ "schema_version": 3,
  "slot": "tires",
  "model_profile": {"fidelity":"typical","basis":"test","source_refs":["test"]},
  "components": [{
@@ -47,7 +47,7 @@ const char kBrokenTire[] = R"({
 })";
 
 const char kPayload[] = R"({
- "schema_version": 2,
+ "schema_version": 3,
  "slot": "payload",
  "model_profile": {"fidelity":"typical","basis":"test","source_refs":["test"]},
  "components": [{
@@ -90,8 +90,8 @@ int main() {
  CHECK(resolved.definition("sensor").model_profile.fidelity == "typical");
  CHECK(!resolved.definition("sensor").model_profile.source_refs.empty());
  CHECK(resolved.traction().brake_decel_mps2 == 3.0);
- CHECK(resolved.traction().normal_stiffness_Npm == 40000.0);
- CHECK(resolved.traction().normal_damping_Nspm == 1000.0);
+ CHECK(resolved.traction().contact_time_constant_s == 0.006);
+ CHECK(resolved.traction().contact_damping_ratio == 1.0);
 CHECK(resolved.lidar() && resolved.lidar()->rays == 800);
  CHECK(resolved.lidar()->min_range_m == 0.2);
  CHECK(resolved.lidar()->dropout_probability == 0.0);

@@ -101,12 +101,12 @@ struct Rig {
 };
 } // namespace
 int main() {
- REQUIRE(sim::physics::bullet_physics_available());
+ REQUIRE(sim::physics::mujoco_physics_available());
  auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  auto& level = catalog.level("motor_trial");
  auto map = empty_map(catalog.map(level.map));
  sim::TerrainModel terrain;
- sim::GroundContact dry{1, .01, 6, 40000, 1000};
+ sim::GroundContact dry{1.0, 0.01, 6.0, 0.006, 1.0};
  for (const auto id : {"robot.ro4", "robot.ro5"}) {
   const auto& r = catalog.robot(id);
   const bool sw = r.drive_type == "swerve";
@@ -257,7 +257,7 @@ int main() {
  << " coarse " << coarse[0] << ',' << coarse[1] << ',' << coarse[2] << '\n';
   REQUIRE(std::hypot(fine[0] - coarse[0], fine[1] - coarse[1]) < .35);
   REQUIRE(std::abs(fine[2] - coarse[2]) < .35);
-  const sim::GroundContact low_grip{.12, .01, 6, 40000, 1000};
+ const sim::GroundContact low_grip{0.12, 0.01, 6.0, 0.006, 1.0};
   const auto dry_launch = maneuver({1, 0, 0}, dry, .02, 1.0);
   const auto wet_launch = maneuver({1, 0, 0}, low_grip, .02, 1.0);
   REQUIRE(dry_launch[0] > wet_launch[0] + .08);
@@ -300,25 +300,26 @@ int main() {
  const auto cross_map = slope_map(catalog.map(level.map), 0.0, 0.16);
  const auto cross_terrain = terrain_for(cross_map);
  sim::platform::SimulatedPlatform cross_platform(
- cross_map, level, r, caps, cross_terrain, {10, 10}, 0,
+ cross_map, level, r, caps, cross_terrain, {10, 20}, 0,
  r.mass_kg, r.center_of_mass_height_m, r.yaw_inertia_kgm2);
  sim::ChassisTelemetry coast;
  auto cross_state = cross_platform.state();
  for (int i = 0; i < 200; ++i)
  cross_state = cross_platform.step(coast, dry, kDt);
+ std::cerr << id << " cross y " << cross_state.planar.y
+ << " roll " << cross_state.roll_rad << '\n';
  REQUIRE(std::abs(cross_state.roll_rad - std::atan(0.16)) < 0.06);
  REQUIRE(!touching(cross_state, "base_link"));
  int cross_contacts = 0;
  for (auto* link : {"front_left_wheel_link", "front_right_wheel_link",
  "rear_left_wheel_link", "rear_right_wheel_link"})
  cross_contacts += touching(cross_state, link);
- std::cerr << id << " cross y " << cross_state.planar.y
- << " roll " << cross_state.roll_rad << " contacts " << cross_contacts << '\n';
+ std::cerr << id << " cross contacts " << cross_contacts << '\n';
  REQUIRE(cross_contacts >= (sw ? 4 : 2));
  if (sw)
- REQUIRE(std::abs(cross_state.planar.y - 10.0) < 0.20);
+ REQUIRE(std::abs(cross_state.planar.y - 20.0) < 0.20);
  else
- REQUIRE(cross_state.planar.y < 9.5);
+ REQUIRE(cross_state.planar.y < 19.5);
 
  const auto rough_map = slope_map(catalog.map(level.map), 0.0, 0.0, 0.025);
  const auto rough_terrain = terrain_for(rough_map);

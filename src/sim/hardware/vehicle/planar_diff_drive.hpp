@@ -5,7 +5,7 @@
 namespace sim {
 
 // Lightweight simulation plant used by the planar regression backend. The
-// Bullet vehicle plant remains authoritative for rigid-body runs.
+// MuJoCo vehicle plant remains authoritative for rigid-body runs.
 struct PlanarDiffDriveParams {
  double max_forward_mps{2.0};
  double max_reverse_mps{1.0};

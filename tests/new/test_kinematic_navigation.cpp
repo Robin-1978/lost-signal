@@ -163,7 +163,7 @@ int main() {
  escape_request.robot_radius_m = 0.25;
  CHECK(!preferred_margin.isFree(escape_request.position.x, escape_request.position.y));
  CHECK(physical_collision.isFree(escape_request.position.x, escape_request.position.y));
- const sim::LocalPlanningSystem local_system;
+ sim::LocalPlanningSystem local_system;
  // A stop pose keeps its route-tangent heading even when position error is
  // zero. Point-only scoring is singular here and used to align with atan2(0,0).
  sim::GridMap pose_map(40, 40, 0.1);

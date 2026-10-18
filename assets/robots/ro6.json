@@ -1,0 +1,994 @@
+{
+  "schema_version": 8,
+  "id": "robot.ro6",
+  "title": "RO-6 移动操作机器人",
+  "model_profile": {
+    "fidelity": "typical",
+    "basis": "compact mobile manipulator geometry and bounded joint effort defaults; not hardware-identified",
+    "source_refs": [
+      "docs/parameter-sources.md#mobile-manipulator"
+    ]
+  },
+  "coordinates": {
+    "units": "meters",
+    "forward": "+x",
+    "left": "+y",
+    "up": "+z",
+    "angles": "degrees"
+  },
+  "drive": {
+    "type": "differential",
+    "wheel_radius_m": 0.1,
+    "wheel_base_m": 0.58,
+    "rated_speed_mps": 1.0,
+    "mass_kg": 27.099999999999998,
+    "yaw_inertia_kgm2": 1.4440621475630373,
+    "motor": {
+      "max_wheel_speed_mps": 2.4,
+      "max_wheel_accel_mps2": 6.0,
+      "stall_force_N": 54.0,
+      "free_speed_mps": 3.0,
+      "pwm_limit": 1.0,
+      "integral_limit": 2.0,
+      "wheel_equiv_mass_kg": 3.0,
+      "controller_bandwidth_radps": 6.0,
+      "controller_integral_time_s": 5.0,
+      "controller_derivative_time_s": 0.005,
+      "static_friction_feedforward_duty": 0.08,
+      "coulomb_smoothing_speed_mps": 0.05,
+      "viscous_drag_N_per_mps": 0.6
+    },
+    "steering": {
+      "integral_limit": 1.2
+    },
+    "energy": {
+      "base_w": 14.0,
+      "per_v_w": 28.0,
+      "per_w_w": 5.0
+    },
+    "encoder": {
+      "counts_per_revolution": 2048
+    },
+    "max_yaw_accel_radps2": 8.0,
+    "label_key": "garage.drive.differential"
+  },
+  "collision": {
+    "planning_radius_m": 0.38,
+    "rigid_body": {
+      "shape": "box",
+      "size_m": [
+        0.62,
+        0.42,
+        0.42
+      ]
+    }
+  },
+  "articulation": {
+    "root_link": "base_link",
+    "links": [
+      {
+        "id": "base_link",
+        "position_m": [
+          0,
+          0,
+          0.24
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 20.4,
+        "inertia_diagonal_kgm2": [
+          0.355,
+          0.709,
+          0.95336
+        ],
+        "friction": 0.2,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.62,
+            0.42,
+            0.18
+          ]
+        }
+      },
+      {
+        "id": "left_wheel_link",
+        "position_m": [
+          0.12,
+          0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.4,
+        "inertia_diagonal_kgm2": [
+          0.004,
+          0.004,
+          0.007
+        ],
+        "friction": 1.0,
+        "spinning_resistance": 0.01,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "right_wheel_link",
+        "position_m": [
+          0.12,
+          -0.29,
+          0.1
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 1.4,
+        "inertia_diagonal_kgm2": [
+          0.004,
+          0.004,
+          0.007
+        ],
+        "friction": 1.0,
+        "spinning_resistance": 0.01,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.1,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "rear_caster_link",
+        "position_m": [
+          -0.28,
+          0,
+          0.12
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.3,
+        "inertia_diagonal_kgm2": [
+          0.00041,
+          0.00041,
+          0.00032
+        ],
+        "friction": 0.1,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.08,
+            0.08,
+            0.1
+          ]
+        }
+      },
+      {
+        "id": "rear_caster_wheel_link",
+        "position_m": [
+          -0.315,
+          0,
+          0.055
+        ],
+        "rotation_deg": [
+          -90,
+          0,
+          0
+        ],
+        "mass_kg": 0.5,
+        "inertia_diagonal_kgm2": [
+          0.000548792,
+          0.000548792,
+          0.00075625
+        ],
+        "friction": 0.8,
+        "spinning_resistance": 0.008,
+        "contact_time_constant_s": 0.008,
+        "contact_damping_ratio": 1.0,
+        "contact_axle_axis": [
+          0,
+          0,
+          1
+        ],
+        "collision": {
+          "shape": "cylinder",
+          "radius_m": 0.055,
+          "length_m": 0.064
+        }
+      },
+      {
+        "id": "arm_turret_link",
+        "position_m": [
+          0,
+          0,
+          0.42
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.8,
+        "inertia_diagonal_kgm2": [
+          0.0034133333333333338,
+          0.0030133333333333336,
+          0.0030133333333333336
+        ],
+        "friction": 0.3,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.14,
+            0.16,
+            0.16
+          ]
+        }
+      },
+      {
+        "id": "arm_upper_link",
+        "position_m": [
+          0,
+          0,
+          0.64
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 1.1,
+        "inertia_diagonal_kgm2": [
+          0.007702291666666669,
+          0.007702291666666669,
+          0.00103125
+        ],
+        "friction": 0.3,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.075,
+            0.075,
+            0.28
+          ]
+        }
+      },
+      {
+        "id": "arm_forearm_link",
+        "position_m": [
+          0,
+          0,
+          0.9
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.8,
+        "inertia_diagonal_kgm2": [
+          0.004121666666666667,
+          0.004121666666666667,
+          0.0005633333333333334
+        ],
+        "friction": 0.3,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.065,
+            0.065,
+            0.24
+          ]
+        }
+      },
+      {
+        "id": "tool_link",
+        "position_m": [
+          0,
+          0,
+          1.08
+        ],
+        "rotation_deg": [
+          0,
+          0,
+          0
+        ],
+        "mass_kg": 0.4,
+        "inertia_diagonal_kgm2": [
+          0.0008133333333333334,
+          0.0008133333333333334,
+          0.0006666666666666669
+        ],
+        "friction": 0.3,
+        "collision": {
+          "shape": "box",
+          "size_m": [
+            0.1,
+            0.1,
+            0.12
+          ]
+        }
+      }
+    ],
+    "joints": [
+      {
+        "id": "left_wheel_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "left_wheel_link",
+        "pivot_in_parent_m": [
+          0.12,
+          0.29,
+          -0.14
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "right_wheel_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "right_wheel_link",
+        "pivot_in_parent_m": [
+          0.12,
+          -0.29,
+          -0.14
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "rear_caster_swivel_joint",
+        "type": "continuous",
+        "parent": "base_link",
+        "child": "rear_caster_link",
+        "pivot_in_parent_m": [
+          -0.28,
+          0,
+          -0.07
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0.05
+        ],
+        "axis_in_parent": [
+          0,
+          0,
+          1
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ],
+        "damping_Nms_per_rad": 0.02,
+        "friction_loss_Nm": 0.01
+      },
+      {
+        "id": "rear_caster_roll_joint",
+        "type": "continuous",
+        "parent": "rear_caster_link",
+        "child": "rear_caster_wheel_link",
+        "pivot_in_parent_m": [
+          -0.035,
+          0,
+          -0.065
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          0
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "arm_base_joint",
+        "type": "revolute",
+        "parent": "base_link",
+        "child": "arm_turret_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0.1
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          -0.08
+        ],
+        "axis_in_parent": [
+          0,
+          0,
+          1
+        ],
+        "axis_in_child": [
+          0,
+          0,
+          1
+        ],
+        "lower_limit_rad": -2.8,
+        "upper_limit_rad": 2.8
+      },
+      {
+        "id": "arm_shoulder_joint",
+        "type": "revolute",
+        "parent": "arm_turret_link",
+        "child": "arm_upper_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0.08
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          -0.14
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          1,
+          0
+        ],
+        "lower_limit_rad": -1.45,
+        "upper_limit_rad": 1.45
+      },
+      {
+        "id": "arm_elbow_joint",
+        "type": "revolute",
+        "parent": "arm_upper_link",
+        "child": "arm_forearm_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0.14
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          -0.12
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          1,
+          0
+        ],
+        "lower_limit_rad": -2.35,
+        "upper_limit_rad": 2.35
+      },
+      {
+        "id": "arm_wrist_joint",
+        "type": "revolute",
+        "parent": "arm_forearm_link",
+        "child": "tool_link",
+        "pivot_in_parent_m": [
+          0,
+          0,
+          0.12
+        ],
+        "pivot_in_child_m": [
+          0,
+          0,
+          -0.06
+        ],
+        "axis_in_parent": [
+          0,
+          1,
+          0
+        ],
+        "axis_in_child": [
+          0,
+          1,
+          0
+        ],
+        "lower_limit_rad": -1.75,
+        "upper_limit_rad": 1.75
+      }
+    ],
+    "actuators": [
+      {
+        "channel": "left",
+        "joint": "left_wheel_joint",
+        "effort_limit_Nm": 10.0,
+        "armature_inertia_kgm2": 0.023
+      },
+      {
+        "channel": "right",
+        "joint": "right_wheel_joint",
+        "effort_limit_Nm": 10.0,
+        "armature_inertia_kgm2": 0.023
+      },
+      {
+        "channel": "arm_base",
+        "joint": "arm_base_joint",
+        "effort_limit_Nm": 4.0,
+        "armature_inertia_kgm2": 0.02
+      },
+      {
+        "channel": "arm_shoulder",
+        "joint": "arm_shoulder_joint",
+        "effort_limit_Nm": 12.0,
+        "armature_inertia_kgm2": 0.12
+      },
+      {
+        "channel": "arm_elbow",
+        "joint": "arm_elbow_joint",
+        "effort_limit_Nm": 8.0,
+        "armature_inertia_kgm2": 0.02
+      },
+      {
+        "channel": "arm_wrist",
+        "joint": "arm_wrist_joint",
+        "effort_limit_Nm": 3.0,
+        "armature_inertia_kgm2": 0.03
+      }
+    ]
+  },
+  "mounts": [
+    {
+      "id": "base",
+      "position_m": [
+        0,
+        0,
+        -0.06
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "base_visual_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "cargo_bed",
+      "position_m": [
+        -0.08,
+        0,
+        0.14
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "cargo_bed_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "wheel_left",
+      "position_m": [
+        0.12,
+        0.29,
+        -0.14
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "left_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
+    {
+      "id": "wheel_right",
+      "position_m": [
+        0.12,
+        -0.29,
+        -0.14
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "right_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.1
+    },
+    {
+      "id": "caster_rear",
+      "position_m": [
+        -0.28,
+        0,
+        -0.12
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "rear_caster_link",
+      "motion": "caster"
+    },
+    {
+      "id": "caster_rear_wheel",
+      "position_m": [
+        -0.315,
+        0,
+        -0.185
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "frame_id": "rear_caster_wheel_link",
+      "motion": "wheel",
+      "rolling_radius_m": 0.055
+    },
+    {
+      "id": "sensor_top",
+      "position_m": [
+        0.1,
+        0,
+        0.1
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "lidar_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "compute_rear",
+      "position_m": [
+        -0.18,
+        0,
+        0.06
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "compute_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "imu_body",
+      "position_m": [
+        0,
+        0,
+        0.0
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "imu_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "arm_turret",
+      "position_m": [
+        0,
+        0,
+        0.18
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "arm_turret_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "arm_upper",
+      "position_m": [
+        0,
+        0,
+        0.4
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "arm_upper_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "arm_forearm",
+      "position_m": [
+        0,
+        0,
+        0.66
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "arm_forearm_link",
+      "motion": "fixed"
+    },
+    {
+      "id": "tool",
+      "position_m": [
+        0,
+        0,
+        0.8400000000000001
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "frame_id": "tool_link",
+      "motion": "fixed"
+    }
+  ],
+  "base_parts": [
+    {
+      "id": "ro1_chassis",
+      "mount": "base",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.7,
+          0.5,
+          0.18
+        ],
+        "color": "#D8ECE8",
+        "model_3d": "models/robots/ro1/chassis.glb"
+      }
+    },
+    {
+      "id": "ro1_rear_caster_fork",
+      "mount": "caster_rear",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.11,
+          0.11,
+          0.2
+        ],
+        "color": "#657772",
+        "model_3d": "models/robots/ro1/caster_fork.glb"
+      }
+    },
+    {
+      "id": "ro1_rear_caster_wheel",
+      "mount": "caster_rear_wheel",
+      "visual": {
+        "primitive_2d": "disc",
+        "size_m": [
+          0.11,
+          0.11,
+          0.064
+        ],
+        "color": "#151D1C",
+        "model_3d": "models/robots/ro1/caster_wheel.glb"
+      }
+    },
+    {
+      "id": "arm_turret_visual",
+      "mount": "arm_turret",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.14,
+          0.16,
+          0.16
+        ],
+        "color": "#62D8C2",
+        "model_3d": "models/robots/ro6/turret.glb"
+      }
+    },
+    {
+      "id": "arm_upper_visual",
+      "mount": "arm_upper",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.075,
+          0.075,
+          0.28
+        ],
+        "color": "#62D8C2",
+        "model_3d": "models/robots/ro6/upper_arm.glb"
+      }
+    },
+    {
+      "id": "arm_forearm_visual",
+      "mount": "arm_forearm",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.065,
+          0.065,
+          0.24
+        ],
+        "color": "#62D8C2",
+        "model_3d": "models/robots/ro6/forearm.glb"
+      }
+    },
+    {
+      "id": "tool_visual",
+      "mount": "tool",
+      "visual": {
+        "primitive_2d": "box",
+        "size_m": [
+          0.1,
+          0.1,
+          0.12
+        ],
+        "color": "#62D8C2",
+        "model_3d": "models/robots/ro6/tool.glb"
+      }
+    }
+  ],
+  "slots": [
+    {
+      "slot": "tires",
+      "mounts": [
+        "wheel_left",
+        "wheel_right"
+      ]
+    },
+    {
+      "slot": "sensor",
+      "mounts": [
+        "sensor_top"
+      ]
+    },
+    {
+      "slot": "computer",
+      "mounts": [
+        "compute_rear"
+      ]
+    },
+    {
+      "slot": "motor",
+      "mounts": []
+    },
+    {
+      "slot": "imu",
+      "mounts": [
+        "imu_body"
+      ]
+    }
+  ],
+  "passive_supports": [
+    {
+      "steer_mount": "caster_rear",
+      "roll_mount": "caster_rear_wheel"
+    }
+  ],
+  "manipulator": {
+    "type": "yaw_planar_3r",
+    "channels": [
+      "arm_base",
+      "arm_shoulder",
+      "arm_elbow",
+      "arm_wrist"
+    ],
+    "shoulder_height_m": 0.26,
+    "upper_arm_length_m": 0.28,
+    "forearm_length_m": 0.24,
+    "tool_length_m": 0.12,
+    "lower_rad": [
+      -2.8,
+      -1.45,
+      -2.35,
+      -1.75
+    ],
+    "upper_rad": [
+      2.8,
+      1.45,
+      2.35,
+      1.75
+    ],
+    "home_rad": [
+      0.0,
+      0.18,
+      -0.36,
+      0.18
+    ],
+    "kp": [
+      18.0,
+      55.0,
+      38.0,
+      18.0
+    ],
+    "kd": [
+      2.2,
+      5.0,
+      3.5,
+      1.8
+    ],
+    "maximum_effort_Nm": [
+      4.0,
+      12.0,
+      8.0,
+      3.0
+    ],
+    "maximum_velocity_radps": [
+      1.2,
+      0.8,
+      1.0,
+      1.2
+    ],
+    "gravity_moment_Nm": [
+      4.8069,
+      1.88352,
+      0.23544
+    ],
+    "end_effector_frame": "tool_link"
+  }
+}

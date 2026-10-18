@@ -12,7 +12,9 @@ struct ServiceBrakeParams {
 struct ServiceBrakeTelemetry {
  double requested{0.0};
  double applied{0.0};
- double delivered_torque_Nm{0.0};
+ // Positive passive capacity offered to the physics provider. Actual signed
+ // joint torque is resolved from instantaneous shaft velocity there.
+ double available_torque_Nm{0.0};
 };
 
 // A mechanical service-brake actuator. It owns actuator lag and requested
@@ -23,8 +25,7 @@ class ServiceBrakePlant {
  explicit ServiceBrakePlant(ServiceBrakeParams params);
 
  void reset();
- double step(double normalized_request, double shaft_velocity_radps,
- double dt_s);
+ double step(double normalized_request, double dt_s);
  const ServiceBrakeTelemetry& telemetry() const { return telemetry_; }
 
  private:

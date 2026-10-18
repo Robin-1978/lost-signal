@@ -85,7 +85,7 @@ int main() {
  const auto& contract_presentation = catalog.presentation_for_level(job.level);
  mission::ScenarioSession contracted(catalog, job.level, contract_presentation.recommended_build,
  std::nullopt, std::vector<std::string>{}, mission::ComponentRegistry::builtins(),
- std::shared_ptr<const autonomy::IGlobalPlanner>{}, mission::PhysicsMode::Bullet,
+ std::shared_ptr<const autonomy::IGlobalPlanner>{},
  std::shared_ptr<sim::IHighLevelPolicy>{}, job.id);
  CHECK(contracted.active_contract() != nullptr);
  CHECK(contracted.active_contract()->id == job.id);

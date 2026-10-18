@@ -3,15 +3,16 @@
 #include <stdexcept>
 #include <cmath>
 namespace sim {
-GridMap GridMap::inflated(double radius) const {
+GridMap GridMap::inflated(double radius, GridBoundaryPolicy boundary_policy) const {
  GridMap out(w_, h_, res_);
  // Outside the authored map is occupied. Inflate that implicit obstacle
  // inward as well as explicit occupied cells: planning a body centre in the
  // last free cell is unsafe when its footprint already crosses the world
  // boundary. Use cell-centre clearance because every planner state is a cell
  // centre and continuous trajectory validation samples between those states.
+ if (boundary_policy == GridBoundaryPolicy::Occupied) {
  for (int gy = 0; gy < h_; ++gy) {
-  for (int gx = 0; gx < w_; ++gx) {
+ for (int gx = 0; gx < w_; ++gx) {
    const double center_x = (static_cast<double>(gx) + 0.5) * res_;
    const double center_y = (static_cast<double>(gy) + 0.5) * res_;
    const double boundary_clearance =
@@ -20,6 +21,7 @@ GridMap GridMap::inflated(double radius) const {
    if (boundary_clearance <= radius + 1e-12)
     out.data_[gy * w_ + gx] = 100;
   }
+ }
  }
  // Planning samples cell centres, while an occupied cell represents its full
  // square area. Measure centre-to-square distance so a circular robot cannot

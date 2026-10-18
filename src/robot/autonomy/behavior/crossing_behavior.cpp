@@ -54,18 +54,51 @@ std::size_t physical_route_index(const std::vector<RoutePoint>& route, Vec2 ego_
  return nearest;
 }
 
+struct RouteProjection {
+ double along_m{0.0};
+ double lateral_m{std::numeric_limits<double>::infinity()};
+};
+
+RouteProjection project_to_route(const std::vector<RoutePoint>& route, Vec2 point) {
+ RouteProjection best;
+ if (route.empty())
+ return best;
+ if (route.size() == 1)
+ return {0.0, distance(route.front().position, point)};
+ double accumulated_m = 0.0;
+ for (std::size_t index = 0; index + 1 < route.size(); ++index) {
+ const Vec2 from = route[index].position;
+ const Vec2 delta{
+ route[index + 1].position.x - from.x,
+ route[index + 1].position.y - from.y,
+ };
+ const double length_m = std::hypot(delta.x, delta.y);
+ if (length_m <= 1e-9)
+ continue;
+ const double blend = std::clamp(
+ ((point.x - from.x) * delta.x + (point.y - from.y) * delta.y) /
+ (length_m * length_m), 0.0, 1.0);
+ const Vec2 projected{
+ from.x + blend * delta.x,
+ from.y + blend * delta.y,
+ };
+ const double lateral_m = distance(point, projected);
+ if (lateral_m + 1e-12 < best.lateral_m) {
+ best.lateral_m = lateral_m;
+ best.along_m = accumulated_m + blend * length_m;
+ }
+ accumulated_m += length_m;
+ }
+ return best;
+}
+
 double route_distance_to_point(const std::vector<RoutePoint>& route, Vec2 ego_position,
  Vec2 target, double tolerance_m) {
  if (route.empty())
  return 0.0;
- const std::size_t start = physical_route_index(route, ego_position);
- const std::size_t target_index = physical_route_index(route, target);
- double remaining = distance(ego_position, target);
- if (start <= target_index) {
- remaining = distance(ego_position, route[start].position);
- for (std::size_t index = start; index < target_index; ++index)
- remaining += distance(route[index].position, route[index + 1].position);
- }
+ const auto ego = project_to_route(route, ego_position);
+ const auto goal = project_to_route(route, target);
+ const double remaining = ego.lateral_m + std::max(0.0, goal.along_m - ego.along_m);
  return std::max(0.0, remaining - tolerance_m);
 }
 
@@ -269,14 +302,6 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  // path_index is only retained as caller evidence and never grants clearance.
  (void)path_index;
  const std::size_t start = physical_route_index(route, ego_position);
- double largest_actor_radius = 0.0;
- for (const auto& frame : predicted_frames) {
-  for (const auto& actor : frame)
- largest_actor_radius = std::max(largest_actor_radius, actor.occupied_radius_m());
- }
- const double clear_distance =
- safety.ego_radius_m + safety.clearance_m + largest_actor_radius;
-
  const ConflictZone* selected_zone = nullptr;
  std::size_t selected_entry = route.size();
  std::size_t selected_exit = route.size();
@@ -305,7 +330,10 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
    // The maneuver ends at a safe refuge, not at the mathematical box edge.
    // assess_departure holds its endpoint for the rest of the horizon, so the
    // endpoint must clear the zone by both footprints and the safety margin.
-   while (exit + 1 < route.size() && distance_to_box(route[exit].position, zone) < clear_distance)
+ const double zone_clear_distance = safety.ego_radius_m +
+ safety.clearance_m + std::max(0.0, zone.participant_radius_m);
+ while (exit + 1 < route.size() &&
+ distance_to_box(route[exit].position, zone) < zone_clear_distance)
     ++exit;
    if (exit >= start || body_inside_zone) {
     const std::size_t route_distance = body_inside_zone ? 0 : (entry > start ? entry - start + 1 : 1);
@@ -324,6 +352,8 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  }
  if (!selected_zone)
   return out;
+ const double clear_distance = safety.ego_radius_m + safety.clearance_m +
+ std::max(0.0, selected_zone->participant_radius_m);
 
  std::size_t stop = selected_entry;
  // Derive the stop line from the canonical route, not the controller's
@@ -339,15 +369,53 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  clear_distance + kStopLineToleranceM + safety.stop_position_tolerance_m) {
   --stop;
  }
- // The authored box describes the route conflict, while a tracked actor may
- // sweep beyond that box along its lane. A valid stop line must also be a
- // safe hold pose over the complete prediction window. Back up along the
- // canonical route until waiting itself satisfies the same footprint and
- // margin contract used for traversal.
+ // The semantic box describes the intersection of participant reference
+ // paths. Its declared participant radius makes the fixed stop safe before a
+ // track matures. Forecast uncertainty remains time indexed in the hold check
+ // below; folding its horizon maximum into geometry would count it twice.
+ // A valid stop line must also be a safe hold pose over the complete
+ // prediction window. Back up along the canonical route until waiting itself
+ // satisfies the same footprint and margin contract used for traversal.
  while (stop > 0 && !safe_waiting_spot(
  route[stop].position, predicted_frames, safety.ego_radius_m,
  safety.clearance_m + safety.stop_position_tolerance_m)) {
  --stop;
+ }
+ // Global search vertices are discrete, but a behavior stop line is a
+ // continuous world-space pose. Once an upstream vertex is safe and the next
+ // one is unsafe, bisect that route segment to keep the stop as close to the
+ // crossing as the geometric and predicted-hold contracts permit. This
+ // avoids quantizing visibility and safety to the global grid resolution.
+ const auto stop_pose_safe = [&](Vec2 point) {
+ return distance_to_box(point, *selected_zone) >=
+ clear_distance + kStopLineToleranceM + safety.stop_position_tolerance_m &&
+ safe_waiting_spot(point, predicted_frames, safety.ego_radius_m,
+ safety.clearance_m + safety.stop_position_tolerance_m);
+ };
+ Vec2 continuous_stop = route[stop].position;
+ if (stop + 1 < route.size() && stop_pose_safe(continuous_stop) &&
+ !stop_pose_safe(route[stop + 1].position)) {
+ double safe_blend = 0.0;
+ double unsafe_blend = 1.0;
+ for (int iteration = 0; iteration < 32; ++iteration) {
+ const double blend = 0.5 * (safe_blend + unsafe_blend);
+ const Vec2 candidate{
+ route[stop].position.x +
+ blend * (route[stop + 1].position.x - route[stop].position.x),
+ route[stop].position.y +
+ blend * (route[stop + 1].position.y - route[stop].position.y),
+ };
+ if (stop_pose_safe(candidate))
+ safe_blend = blend;
+ else
+ unsafe_blend = blend;
+ }
+ continuous_stop = {
+ route[stop].position.x +
+ safe_blend * (route[stop + 1].position.x - route[stop].position.x),
+ route[stop].position.y +
+ safe_blend * (route[stop + 1].position.y - route[stop].position.y),
+ };
  }
 
  std::vector<Vec2> crossing_path{ego_position};
@@ -377,18 +445,18 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  const double direction_norm = std::max(1e-9, std::hypot(stop_direction.x, stop_direction.y));
  stop_direction.x /= direction_norm;
  stop_direction.y /= direction_norm;
- const double longitudinal = (ego_position.x - route[stop].position.x) * stop_direction.x +
-                             (ego_position.y - route[stop].position.y) * stop_direction.y;
+ const double longitudinal = (ego_position.x - continuous_stop.x) * stop_direction.x +
+ (ego_position.y - continuous_stop.y) * stop_direction.y;
  const double lateral =
- -(ego_position.x - route[stop].position.x) * stop_direction.y +
- (ego_position.y - route[stop].position.y) * stop_direction.x;
+ -(ego_position.x - continuous_stop.x) * stop_direction.y +
+ (ego_position.y - continuous_stop.y) * stop_direction.x;
  const double stop_pose_tolerance = kStopLineToleranceM + safety.stop_position_tolerance_m;
  out.stop_reached = std::hypot(longitudinal, lateral) <= stop_pose_tolerance;
  out.zone_id = selected_zone->id;
  out.entry_index = selected_entry;
  out.exit_index = selected_exit;
  out.stop_index = stop;
- out.stop_point = route[stop].position;
+ out.stop_point = continuous_stop;
  out.stop_direction = stop_direction;
  out.exit_point = route[selected_exit].position;
  if (selected_exit + 1 < route.size()) {
@@ -412,7 +480,7 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  // plane. On a curved approach, a point many metres away may project beyond
  // that plane even though the vehicle has not reached the crossing.
  out.stop_distance_m = route_distance_to_point(
- route, ego_position, route[stop].position, safety.stop_position_tolerance_m);
+ route, ego_position, continuous_stop, safety.stop_position_tolerance_m);
  out.transit_speed_mps = execution.preferred_speed_mps;
  out.prediction_evidence_available = !predicted_frames.empty() &&
  !predicted_frames.front().empty();

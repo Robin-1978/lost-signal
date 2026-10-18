@@ -40,8 +40,8 @@ struct ConstructedSupportBody {
  double pitch_rad{0.0};
  double friction_mu{0.8};
  double rolling_drag{0.0};
- double normal_stiffness_Npm{0.0};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0};
+ double contact_damping_ratio{0.0};
  double lidar_reflectivity{0.3};
 };
 
@@ -50,7 +50,7 @@ struct LinkContactLoad {
  int contact_points{0};
  double normal_impulse_Ns{0.0};
  double normal_force_N{0.0};
- // Magnitude of the resultant tangent impulse after resolving Bullet's two
+ // Magnitude of the resultant tangent impulse after resolving the contact
  // contact-plane basis components into world coordinates.
  double tangent_impulse_Ns{0.0};
  ::sim::physics::Vec3 tangent_impulse_world_Ns;
@@ -83,7 +83,7 @@ struct RigidVehicleState {
  bool drive_slipping{false};
 };
 
-// Bullet owns the vehicle pose and, for articulated platforms, all joint
+// MuJoCo owns the vehicle pose and, for articulated platforms, all joint
 // positions and velocities. Chassis controllers own targets and electronics;
 // actuator feedback crosses this boundary before the next control update.
 class SimulatedPlatform {
@@ -126,7 +126,7 @@ class SimulatedPlatform {
  bool articulated() const { return articulated_; }
 
  private:
- ::sim::physics::BodySpec terrain_mesh(const TerrainPatchDefinition& patch) const;
+ ::sim::physics::BodyModel terrain_heightfield(const TerrainPatchDefinition& patch) const;
  bool is_terrain(::sim::physics::BodyHandle body) const;
  bool is_robot_body(::sim::physics::BodyHandle body) const;
  bool is_static_obstacle(::sim::physics::BodyHandle body) const;
@@ -153,8 +153,7 @@ class SimulatedPlatform {
  const LevelDefinition& level_;
  const RobotDefinition& robot_;
  const ::sim::TerrainModel& terrain_;
- std::unique_ptr<::sim::physics::IPhysicsWorld> world_;
- std::unique_ptr<::sim::physics::ITireContact> tire_contact_;
+ ::sim::physics::MujocoSimulation world_;
  ::sim::physics::BodyHandle robot_body_;
  std::map<std::string, ::sim::physics::BodyHandle> robot_links_;
  std::map<std::uint32_t, std::string> robot_link_names_;

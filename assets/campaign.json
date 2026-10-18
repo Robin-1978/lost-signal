@@ -41,7 +41,8 @@
   "playgrounds": [
     "orchard_scramble",
     "vehicle_proving_ground",
-    "bridge_the_washout"
+    "bridge_the_washout",
+    "manipulation_lab"
   ],
   "starting_inventory": [
     "tires.standard",
@@ -120,7 +121,8 @@
       "levels": [
         "orchard_scramble",
         "vehicle_proving_ground",
-        "bridge_the_washout"
+        "bridge_the_washout",
+        "manipulation_lab"
       ]
     }
   ]

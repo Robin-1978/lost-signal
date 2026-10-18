@@ -3,11 +3,11 @@
 The project downloads the following pinned build dependencies with CMake
 `FetchContent`. They are not relicensed under Apache-2.0.
 
-## Bullet Physics 3.25
+## MuJoCo 3.16.0
 
-- Source: <https://github.com/bulletphysics/bullet3>
-- License: zlib
-- Project: Bullet Continuous Collision Detection and Physics Library
+- Source: <https://github.com/google-deepmind/mujoco>
+- License: Apache License 2.0
+- Project: MuJoCo physics engine
 - Modifications: none
 
 ## raylib 6.0

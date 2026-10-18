@@ -126,6 +126,7 @@ int main() {
                                     0.02 * 0.02);
       }
       sim::filter_update_yaw(f, state.theta + randn() * 0.01, 0.01 * 0.01);
+ sim::filter_update_yaw_rate(f, state.w + randn() * 0.01, 0.01 * 0.01);
       const auto obs = sim::observe_slip({measured, 0.0}, holder_view(holder, f));
       if (obs.quality == sim::SlipQuality::kObservable) {
         max_ratio = std::max(max_ratio, std::abs(obs.longitudinal_ratio));
@@ -145,7 +146,7 @@ int main() {
     sim::DiffState state{0.0, 0.0, 0.0, 0.0, 0.0};
     sim::StateEstimate f = fresh_filter();
     sim::EstimateHolder holder2;
-    double ss_yaw = 0.0, ss_ratio = 0.0;
+ double ss_yaw = 0.0, ss_truth_yaw = 0.0, ss_ratio = 0.0;
     int n_ss = 0;
     for (int k = 0; k < 250; ++k) {
       state = car.step(state, {1.0, 0.8}, kDt, sand_contact());
@@ -160,19 +161,32 @@ int main() {
                                     0.02 * 0.02);
       }
       sim::filter_update_yaw(f, state.theta + randn() * 0.01, 0.01 * 0.01);
+ // Gyro rate is the independent body-yaw observation. Without this update
+ // the CV filter can lag a skid-steer turn and the residual incorrectly
+ // attributes estimator lag to track scrub.
+ sim::filter_update_yaw_rate(f, state.w + randn() * 0.01, 0.01 * 0.01);
       const auto obs = sim::observe_slip({wheel_v, wheel_w}, holder_view(holder2, f));
+ sim::PropagatedEstimate truth_view;
+ truth_view.status = sim::EstimateStatus::kFresh;
+ truth_view.estimate.state = {state.x, state.y, state.theta, state.v, 0.0, state.w};
+ truth_view.estimate.wheel_valid = true;
+ truth_view.estimate.imu_valid = true;
+ const auto truth_obs = sim::observe_slip({wheel_v, wheel_w}, truth_view);
       if (k * kDt >= 3.0 && obs.quality == sim::SlipQuality::kObservable) {
         ss_yaw += std::abs(obs.yaw_residual_rads);
+ ss_truth_yaw += std::abs(truth_obs.yaw_residual_rads);
         ss_ratio += std::abs(obs.longitudinal_ratio);
         ++n_ss;
       }
     }
     ss_yaw /= std::max(1, n_ss);
+ ss_truth_yaw /= std::max(1, n_ss);
     ss_ratio /= std::max(1, n_ss);
     std::cerr << "chain-scrub: n_ss=" << n_ss << " steady_yawres=" << ss_yaw
-              << " steady_ratio=" << ss_ratio << "\n";
+ << " truth_yawres=" << ss_truth_yaw << " steady_ratio=" << ss_ratio << "\n";
     CHECK(n_ss > 80);
-    CHECK(ss_yaw > 0.10 && ss_yaw < 0.30);
+ CHECK(ss_truth_yaw > 0.10);
+ CHECK(std::abs(ss_yaw - ss_truth_yaw) < 0.05);
     CHECK(ss_ratio < 0.03);
   }
   std::cerr << "estimator chain green\n";

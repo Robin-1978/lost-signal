@@ -213,27 +213,31 @@ DiffState AckermannDrive::step_actuator_duty(const DiffState& state,
  telemetry_.wheel_steer_rad[1] = front_right->position_rad;
  telemetry_.measured_forward_mps = telemetry_.drive.actual_mps;
  telemetry_.measured_yaw_radps = state.w;
- const double rear_left_brake_torque = rear_left_brake_.step(
- rear_left_brake_request, rear_left->velocity_radps, dt);
- const double rear_right_brake_torque = rear_right_brake_.step(
- rear_right_brake_request, rear_right->velocity_radps, dt);
+ const double rear_left_brake_capacity = rear_left_brake_.step(
+ rear_left_brake_request, dt);
+ const double rear_right_brake_capacity = rear_right_brake_.step(
+ rear_right_brake_request, dt);
  telemetry_.service_brake_count = params_.service_brake_max_torque_Nm > 0.0 ? 2 : 0;
  const auto left_brake = rear_left_brake_.telemetry();
  const auto right_brake = rear_right_brake_.telemetry();
  telemetry_.service_brakes[0] = {
- left_brake.requested, left_brake.applied, left_brake.delivered_torque_Nm};
+ left_brake.requested, left_brake.applied, left_brake.available_torque_Nm};
  telemetry_.service_brakes[1] = {
- right_brake.requested, right_brake.applied, right_brake.delivered_torque_Nm};
+ right_brake.requested, right_brake.applied, right_brake.available_torque_Nm};
  telemetry_.joint_efforts = {
  {"rear_left_drive", drive_torque(rear_left_duty, rear_left->velocity_radps)},
  {"rear_right_drive", drive_torque(rear_right_duty, rear_right->velocity_radps)},
  {"front_left_steer", steering_torque(front_left_duty, front_left->velocity_radps)},
  {"front_right_steer", steering_torque(front_right_duty, front_right->velocity_radps)},
- {"rear_left_brake", rear_left_brake_torque},
- {"rear_right_brake", rear_right_brake_torque},
+ };
+ telemetry_.joint_brakes = {
+ {"rear_left_brake", rear_left_brake_capacity,
+ params_.service_brake_low_speed_radps},
+ {"rear_right_brake", rear_right_brake_capacity,
+ params_.service_brake_low_speed_radps},
  };
  // Physical yaw is produced only by the steered tire contact. The returned
- // planar estimate is for domain/shadow comparison and never drives Bullet.
+ // The planar estimate is diagnostic kinematics and never drives MuJoCo.
  DiffState next = state;
  next.v = telemetry_.measured_forward_mps;
  next.w = yaw_for_steer(next.v, command.target_w, params_.wheel_base_m);

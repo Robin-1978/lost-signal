@@ -19,7 +19,7 @@ def artifact(computer: str = "computer.performance", seed: int = 47) -> dict:
             "fixed_step_s": 0.02,
             "mission_id": "lost_signal",
             "mode": "mission",
-            "physics_backend": "bullet",
+ "physics_backend": "mujoco",
             "requested_duration_s": None,
             "runtime_provider": "channel.in-process",
             "seed": seed,

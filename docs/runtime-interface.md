@@ -1,6 +1,6 @@
 # Lost Signal Robot Interface v2
 
-The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. Bullet, deterministic replay, and native hardware drivers all meet the same contract.
+The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. MuJoCo, deterministic replay, and native hardware drivers all meet the same contract.
 
 LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 4`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 added named actuator-joint position and velocity feedback; schema 3 added timed, ring-indexed 3D LiDAR point clouds; schema 4 makes wheel odometry a complete body-frame planar twist so holonomic motion is not discarded.
 
@@ -16,7 +16,7 @@ flowchart LR
  C <--> A[Simulated or native actuator provider]
 ```
 
-The ROBOT port reads observations and writes body-motion or typed actuator commands. Platform providers publish observations and consume commands. Neither side exposes world truth, Bullet bodies, game state, UI types, device SDK types, or transport handles.
+The ROBOT port reads observations and writes body-motion or typed actuator commands. Platform providers publish observations and consume commands. Neither side exposes world truth, MuJoCo bodies, game state, UI types, device SDK types, or transport handles.
 
 The simulator owns both ends of an in-process channel because simulation and ROBOT currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives platform endpoints to native drivers. `EndpointRegistry` assigns ownership per `(endpoint_id, role)`, so a real LiDAR can coexist with a simulated IMU and actuator plant while two providers cannot command the same actuator endpoint.
 
@@ -123,13 +123,13 @@ Controller placement is therefore explicit. A provider never reinterprets a body
 ## Current evidence and limit
 
 The production mission loop sends LiDAR, encoder, IMU, localization, and physical joint observations through LSRI.
-In the default RO-1 Bullet path, the deployable ROBOT wheel controller consumes named left/right joint feedback,
+In the default RO-1 MuJoCo path, the deployable ROBOT wheel controller consumes named left/right joint feedback,
 computes normalized duty, and sends both channels through the watchdog-protected actuator path. Articulated RO-2 uses
 the same placement with four channels: `rear_left_drive`, `rear_right_drive`, `front_left_steer`, and
 `front_right_steer`. Its ROBOT controller maps equivalent centre steering to distinct Ackermann knuckle targets and
 closes rear-wheel velocity and steering position/velocity loops. The SIM provider applies delivered duty to motor
-and servo torque-speed curves, physical joints, tire contact, and rigid bodies. Domain mode and platforms with a
-smart drive capability continue to use the body-motion path.
+and servo torque-speed curves, physical joints, tire contact, and rigid bodies. External platforms that explicitly
+declare a smart-drive capability may instead own their low-level loops and accept the body-motion path.
 
 Interface tests cover lifecycle, capability validation, actuator-feedback validation, sequence rejection, bounded
 queues, motion and actuator timeout stops, all three body command spaces, the RO-2 four-channel safe-zero watchdog,

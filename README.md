@@ -4,7 +4,7 @@
 
 Lost Signal is a third-person robotics adventure and an educational simulation. You enter Lan Valley as a field engineer, restore damaged infrastructure, investigate a mysterious transmission, and work alongside RO-1, an autonomous robot companion.
 
-You choose high-level intent: follow, travel, search, wait, or return. RO-1 decides how to get there. Perception, state estimation, global planning, local collision avoidance, chassis control, and Bullet physics all run during the mission. Direct driving is limited to the opening chassis-calibration lesson and the optional Vehicle Proving Ground.
+You choose high-level intent: follow, travel, search, wait, or return. RO-1 decides how to get there. Perception, state estimation, global planning, local collision avoidance, chassis control, and MuJoCo physics all run during the mission. Direct driving is limited to the opening chassis-calibration lesson and the optional Vehicle Proving Ground.
 
 The current release is a `v0.1.0-alpha` source preview. The simulation core, Linux client, deterministic headless runner, and cross-platform tests are usable. Art, audio, accessibility, balance, and packaged releases are still in development.
 
@@ -17,7 +17,7 @@ The current release is a `v0.1.0-alpha` source preview. The simulation core, Lin
 - **Experiments are reproducible.** Fixed timesteps, seeded scenarios, JSON headless output, schemas, and automated tests support classes, algorithm comparisons, and community contributions.
 - **Content is data-driven.** Missions, maps, scenes, robots, hardware, policies, story beats, presentation, and UI text load from `assets/`.
 
-Lost Signal uses C++20, Bullet 3.25, raylib 6.0, TGUI 1.13, nlohmann/json, CMake, and glTF 2.0/GLB.
+Lost Signal uses C++20, MuJoCo 3.16.0, raylib 6.0, TGUI 1.13, nlohmann/json, CMake, and glTF 2.0/GLB.
 
 ## Play and learn
 
@@ -102,7 +102,7 @@ Source code, documentation, tests, schemas, and headless output use English. Loc
 # Portable simulation core and tests without graphical dependencies
 ./tools/build.sh --headless --test
 
-# Deployable ROBOT stack only: no Bullet, virtual devices, game, or renderer
+# Deployable ROBOT stack only: no MuJoCo, virtual devices, game, or renderer
 cmake -S . -B build/robot-only \
  -DLOST_SIGNAL_BUILD_SIM=OFF -DLOST_SIGNAL_BUILD_CLIENT=OFF \
  -DLOST_SIGNAL_BUILD_TESTS=ON
@@ -148,17 +148,17 @@ identified physical twin. See [reference platforms](docs/reference-platform.md) 
 [parameter profiles and sources](docs/parameter-sources.md).
 
 Authored simulation terrain is 2.5D: terrain patches define height, two-axis grade, and roughness, while surface
-definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The
+definitions provide friction, rolling drag, and traction. MuJoCo turns them into a 3D collision world. The
 deployable [Lost Signal Robot Map](docs/robot-map.md) is a separate layered contract. Its global authority may be a
 compact occupancy/elevation raster or only vector, topology, and semantic data; perception and map adapters derive
-bounded rolling maps for local planning. Physical `world_object` data is shared by rendering, Bullet, map projection,
+bounded rolling maps for local planning. Physical `world_object` data is shared by rendering, MuJoCo, map projection,
 and LiDAR; purely decorative scene instances are explicitly marked `visual_only`. The planar and 16-line LiDAR
 profiles raycast the 3D world, so terrain, static structures, and moving actors occlude and return measurements from
 their physical 3D poses and surface-material response.
 
 Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include minimum/maximum range, motion distortion, estimated-motion deskew, configurable first-return intensity, bias, white noise, quantization, latency metadata, and missing returns. The IMU configures noise density and bandwidth, then derives per-sample noise before applying startup bias and random walk. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 
-The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. Bullet is the authoritative and default rigid-body backend in both graphical and headless runs. A deterministic planar backend remains available for focused regression tests and algorithm comparison.
+The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. MuJoCo is the single authoritative rigid-body engine in graphical and headless runs. It advances at 1 ms internal substeps; fixed-step algorithm tests remain independent of the simulator engine.
 
 These interfaces create a useful path toward calibration, log replay, native hardware providers, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
 
@@ -177,7 +177,7 @@ src/sim/hardware/vehicle/ Virtual chassis, motor, contact, and vehicle plants
 src/sim/hardware/sensors/ Virtual LiDAR, IMU, encoder, and device effects
 src/sim/game/mission/ Authored mission content, world actors, progression, and scoring
 src/sim/game/scenario/ Simulation-only fixed-step ScenarioSession composition and replay
-src/sim/hardware/physics/ Bullet adapter, physics ports, transforms, and regression backend
+src/sim/hardware/physics/ Physics model/compiler, transforms, contact semantics, and focused fixtures
 src/sim/game/platform/ LSRI simulation provider and world-to-device bindings
 src/sim/game/app/ Headless application entry point
 src/sim/game/client/ raylib field/AI rendering and TGUI player interface
@@ -186,10 +186,10 @@ docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts
 ```
 
-Start with the [creative direction](docs/creative-direction.md), [product roadmap](docs/product-roadmap.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), [platform-fidelity design](docs/platform-fidelity.md), [verification strategy](docs/verification-strategy.md), [Run Artifact](docs/run-artifacts.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
+Start with the [creative direction](docs/creative-direction.md), [product roadmap](docs/product-roadmap.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [physics engine migration](docs/physics-engine-migration.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), [platform-fidelity design](docs/platform-fidelity.md), [verification strategy](docs/verification-strategy.md), [Run Artifact](docs/run-artifacts.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
 
 ## License
 
 Original code, configuration, missions, and documentation are licensed under the [Apache License 2.0](LICENSE). It permits use, modification, distribution, and commercial use while requiring preservation of the license and applicable notices and providing an explicit patent grant.
 
-Bullet, raylib, TGUI, nlohmann/json, and Noto Sans CJK retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MuJoCo, raylib, TGUI, nlohmann/json, and Noto Sans CJK retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

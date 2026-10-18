@@ -34,6 +34,7 @@ int main() {
  auto active_zones = adapter.active_zones(zones, "lesson");
  CHECK(active_zones.size() == 1);
  CHECK(active_zones.front().authority == sim::CrossingAuthority::Observe);
+ CHECK(active_zones.front().geometry.participant_radius_m == 0.0);
  const auto shadow =
  system.assess(active_zones, route, 0, {2.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);

@@ -81,7 +81,7 @@ observation.traction_slip_observed = true;
  auto hold = std::make_shared<HoldPolicy>();
  mission::ScenarioSession mission(catalog, "boot", presentation.recommended_build,
  std::nullopt, std::vector<std::string>{}, mission::ComponentRegistry::builtins(),
- std::shared_ptr<const autonomy::IGlobalPlanner>{}, mission::PhysicsMode::Bullet, hold);
+ std::shared_ptr<const autonomy::IGlobalPlanner>{}, hold);
  const auto start = mission.snapshot().robot;
  mission.start();
  for (int step = 0; step < 30; ++step)

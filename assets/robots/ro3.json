@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 8,
   "id": "robot.ro3",
   "title": "RO-3",
   "model_profile": {
@@ -21,7 +21,8 @@
     "type": "tracked",
     "wheel_radius_m": 0.1,
     "wheel_base_m": 0.55,
-    "effective_track_width_m": 1.2,
+    "rated_speed_mps": 2.4,
+    "effective_track_width_m": 2.4,
     "mass_kg": 30.0,
     "yaw_inertia_kgm2": 1.99465,
     "motor": {
@@ -35,6 +36,7 @@
       "controller_bandwidth_radps": 9.0,
       "controller_integral_time_s": 5.0,
       "controller_derivative_time_s": 0.005,
+      "static_friction_feedforward_duty": 0.08,
       "coulomb_smoothing_speed_mps": 0.05,
       "viscous_drag_N_per_mps": 0.6
     },
@@ -397,10 +399,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -431,10 +432,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -465,10 +465,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -499,10 +498,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -533,10 +531,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,
@@ -567,10 +564,9 @@
           0.005
         ],
         "friction": 0.75,
-        "rolling_support_moment_arm_m": 0.01,
         "spinning_resistance": 0.012,
-        "contact_stiffness_Npm": 40000.0,
-        "contact_damping_Nspm": 1000.0,
+        "contact_time_constant_s": 0.006,
+        "contact_damping_ratio": 1.0,
         "contact_axle_axis": [
           0,
           0,

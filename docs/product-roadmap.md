@@ -55,7 +55,7 @@ The numbered stages later in this document describe the completed alpha baseline
 sequence here so that completed release work and future work cannot be confused.
 
 The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
-The active sequence is now **fresh-player validation of Bridge the Washout → focused visual/audio revision →
+The active sequence is now **MuJoCo atomic migration → mobile-manipulator foundation → manipulation laboratory → grasp/contact validation → focused visual/audio revision →
 experiment/fault framework**. Its world commit, playable proof run, first visual pass, and deterministic evidence are
 implemented. [The acceptance contract](reference-platform.md) remains the
 source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
@@ -74,7 +74,7 @@ RO-2 now has an independent LSRI service-brake path, and editor saves atomically
 occupancy, exact authored 2.5D elevation (including deterministic rough relief), surface classes, and semantic places.
 The first construction foundation is also complete: data-authored pieces and sockets, order-independent canonical
 plan hashing, transactional validation, and a unified static-world entity contract. A `world_object` now owns the
-prefab transform, collision proxies, contact material, LiDAR reflectivity, Bullet bodies, oriented planning
+prefab transform, collision proxies, contact material, LiDAR reflectivity, MuJoCo bodies, oriented planning
 rasterization, and continuous collision geometry. Remaining scene instances are explicitly `visual_only`.
 The completion claims exclude the open split-friction, identified combined-slip, dynamic-rollover, systematic
 payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
@@ -115,9 +115,24 @@ The next concrete work packages are:
  chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
  brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
  inherits another platform's evidence.
-5. **Implementation complete; human validation pending:** **Bridge the Washout** is a bounded construction puzzle
+5. **Frozen for redesign:** **Bridge the Washout** currently proves atomic world/map/physics construction, but its
+   menu-driven repair is not accepted as robot gameplay. Keep it as a regression fixture; do not expand its player
+   flow until a real robot manipulation capability exists.
+6. **Implemented:** MuJoCo 3.16.0 is the single production engine, with a native compiled model/data lifecycle, 1 ms
+ contact substeps, articulated trees, free-joint actor proxies, height fields, and aligned wheel friction. The cutover removed the
+ retired engine, backend selector, and planar production world after the five-chassis acceptance matrix passed.
+7. **Active:** add a compact mobile manipulator as a general ROBOT/SIM capability. The first release must include a
+   data-authored serial chain, explicit joint limits and actuator units, FK/IK, time-parameterized joint targets,
+ feedback control through LSRI, MuJoCo articulated dynamics, link transforms, telemetry, and deterministic
+   reach/limit/stability acceptance tests. A dedicated Manipulation Lab demonstrates the capability independently
+   of any story mission.
+8. **Next:** add grasp contacts and object attachment only after the arm can reach and hold poses under gravity.
+   Grasp success must come from finger/object contact and force/closure criteria; mission code may not teleport an
+   object to the tool frame. After that gate, manipulation can support repair, sorting, recovery, inspection, and
+   construction scenarios through data-authored tasks.
+9. **Retained regression:** **Bridge the Washout** is a bounded construction puzzle
  followed by an autonomous physical proof run. A Ready-state transaction publishes the validated plan to LSRM,
- Bullet support/contact, LiDAR, planning, replay, and rendering. Two valid bridge surfaces create a grip/drag choice;
+ MuJoCo support/contact, LiDAR, planning, replay, and rendering. Two valid bridge surfaces create a grip/drag choice;
  an overlong part is rejected without mutating the world. Headless and Run Artifact v3 prove map revision 2,
  physical bridge contact, full traversal, success, and zero collision. The dark storm scene, real guardrails and
  rubble, warning light, material contrast, 16-line point cloud, and bounded plan UI form the first presentation pass.
@@ -151,7 +166,7 @@ Keep **Orchard Scramble** as the completed systems prototype and regression case
 first candidate for permanent polish, then test whether it is actually playful before committing art. Its detailed
 loop, data/runtime boundaries, and acceptance gate are defined in [content direction](content-direction.md).
 Implement data-authored construction pieces and sockets, canonical plan hashing, transactional placement, one shared
-source for Bullet and LSRM geometry, a bounded placement UI, autonomous proof runs, and causal failure evidence.
+source for MuJoCo and LSRM geometry, a bounded placement UI, autonomous proof runs, and causal failure evidence.
 Build three crossing corridors with at least two viable solution families and meaningful chassis differences. The
 player commits a repair plan and high-level restore intent; the robot owns planning, braking, crossing, refusal, and
 recovery. Runtime work remains generic, while flood, bridge, repeater, inventory, and scoring semantics stay in data
@@ -318,7 +333,7 @@ AI View answers “what evidence caused it?” with the same event IDs and measu
 - Content, locale, headless, and mission regression checks pass.
 
 The original clearance comparison was invalidated by the corrected nominal/conservative prediction split. The
-current deterministic Bullet evidence keeps both builds safe: the performance computer preserves a larger dynamic
+current deterministic MuJoCo evidence keeps both builds safe: the performance computer preserves a larger dynamic
 clearance, while the otherwise identical light-computer build finishes slightly sooner and consumes less energy.
 This is now taught as a clearance/compute/energy tradeoff. A future fault-injection experiment will provide the unsafe
 counterexample without depending on a known collision in the normal controller.
@@ -383,7 +398,7 @@ Add a small comparison command that rejects incompatible comparisons and reports
 The gate is reproduction of the recommended `lost_signal` result from its manifest plus a clear diff against one controlled alternative.
 
 Run Artifact v3 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
-seed, runtime and physics backends, hardware, algorithm IDs, a canonical configuration digest, metrics, events,
+seed, runtime, physics engine and version, hardware, algorithm IDs, a canonical configuration digest, metrics, events,
 the shared decision chain, and constructed-world plan/contact/traversal evidence. `--reproduce` rejects incompatible content and restores the declared run.
 `tools/compare_runs.py` verifies both digests, forbids invariant changes, and requires each controlled variable to
 be named. A manifest reproduction matched every reported metric. Changing only
@@ -407,7 +422,7 @@ Status: **complete**
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
 The current Linux x86_64 Release build passes 90/90 tests, content and locale validation, canonical content
-roundtrip, the five-chassis Bullet proving matrix, and a byte-identical Bridge screenshot repeat under Xvfb. The
+roundtrip, the five-chassis MuJoCo proving matrix, and a byte-identical Bridge screenshot repeat under Xvfb. The
 most recent sanitizer baseline predates this Bridge increment; ASan/UBSan remains the final frozen-milestone gate as
 planned. Portable Linux, macOS, and Windows CI remain publishing gates; local Linux evidence does not replace those
 hosted jobs.
@@ -458,7 +473,7 @@ evidence. Sensor evidence remains attached to the selected sensor profile rather
 Both expansions are approved, with this fixed order:
 
 1. **16-line spinning LiDAR on RO-1.** First make configured sensor latency affect deterministic delivery while
- preserving acquisition timestamps. Then add data-authored vertical beam angles, ring and azimuth timing, 3D Bullet
+ preserving acquisition timestamps. Then add data-authored vertical beam angles, ring and azimuth timing, 3D MuJoCo
  raycasts, LSRI point-cloud transport, ground/non-ground projection into the existing local obstacle layer, and a
  height/ring/intensity AI visualization. Analytic fixtures must cover flat ground, a vertical wall, a slope, a low
  obstacle, an overhanging obstacle, occlusion, intensity, ring identity, and motion-distorted per-point timing.
@@ -481,7 +496,7 @@ playtest remain content work.
 
 The RO-2 articulated physical gate is also complete at the documented `typical` level. The data-authored assembly,
 bounded front knuckles, four rolling wheels, rear drive, four-channel LSRI duty path, deployable Ackermann controller,
-physical feedback, and Bullet contact run without an analytic yaw-torque shortcut. Independent tests cover the matrix
+physical feedback, and MuJoCo contact run without an analytic yaw-torque shortcut. Independent tests cover the matrix
 above plus motor-limited gradeability, zero-command rollback, public-step convergence, and 25 mm rough terrain.
 Mechanical tie rods, identified parameters, HIL, and real-car evidence remain optional later fidelity work rather
 than implied results of this gate.
@@ -505,14 +520,14 @@ runtime contracts are closed.
 The source and build boundary is now executable rather than descriptive: all deployable code is under
 `src/robot`, all virtual devices, plants, worlds, game systems, and presentation are under `src/sim`, and every
 dependency points from SIM to ROBOT. `LOST_SIGNAL_BUILD_SIM=OFF` builds and tests the ROBOT stack without configuring
-Bullet or the client. LSRI now registers provider ownership per device endpoint and carries either body-motion
+MuJoCo or the client. LSRI now registers provider ownership per device endpoint and carries either body-motion
 commands or typed actuator commands with explicit duty, effort, velocity, or position semantics. This permits mixed
 native/simulated sensor composition and lets controller placement be selected by platform capability.
 
-The shipped RO-1 Bullet scenario now runs the deployable wheel controller through LSRI actuator mode. Joint
+The shipped RO-1 MuJoCo scenario now runs the deployable wheel controller through LSRI actuator mode. Joint
 position/velocity feedback crosses LSRI measurement schema 2, and normalized left/right duty returns through the
-typed command path. SIM retains motor response, joint dynamics, tire contact, and rigid-body integration. Domain
-mode and a future real smart drive may still declare body-motion authority and own their embedded loops.
+typed command path. SIM retains motor response, joint dynamics, tire contact, and rigid-body integration. A future
+real smart drive may declare body-motion authority and own its embedded loops.
 2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
  cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
  exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).

@@ -53,7 +53,7 @@ angular velocity:
 requested_torque_i = brake_state * max_torque * wheel_fraction_i
 ```
 
-The brake plant limits actuator torque only. It never clips torque against `mu * normal_load`; Bullet or the selected
+The brake plant limits actuator torque only. It never clips torque against `mu * normal_load`; MuJoCo or the selected
 tire/contact provider owns available ground force and wheel slip. An analytic chassis backend must apply that limit
 once in its contact model.
 

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "id": "manipulation_lab",
+  "order": 103,
+  "title": "移动操作实验室",
+  "map": "proving_ground_map",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "chapter": 4,
+  "mode": "playground",
+  "prerequisites": [],
+  "seed": 6206,
+  "objective": {
+    "type": "reach",
+    "spawn": "assembly_pad",
+    "goal": "assembly_pad",
+    "goal_label": "机械臂标定台",
+    "goal_visual": "calibration_pad",
+    "time_limit_s": 30.0,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.45,
+    "max_arrival_speed_mps": 0.05,
+    "goals": [
+      {
+        "id": "arm_reach_sequence",
+        "marker": "assembly_pad",
+        "label": "四点位姿轨迹",
+        "action": "inspect",
+        "radius_m": 0.45,
+        "dwell_s": 15.0
+      },
+      {
+        "id": "arm_hold_proof",
+        "marker": "assembly_pad",
+        "label": "末端保持验证",
+        "action": "complete",
+        "radius_m": 0.45
+      }
+    ]
+  },
+  "loadout_rules": {
+    "access": "open",
+    "budget": 20,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "mobile_manipulator_closed_loop",
+    "prediction_prompt": "末端位姿怎样变成真实关节运动？",
+    "knowledge_card": "目标位姿先经过逆运动学和关节限位，再生成有速度上限的关节参考；反馈控制器输出受限力矩，MuJoCo 多刚体决定机械臂和底盘的实际运动。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "fast_time_s": 20.0,
+    "efficient_energy_wh": 8.0
+  },
+  "rewards": [],
+  "manipulation": {
+    "success_position_tolerance_m": 0.06,
+    "waypoints": [
+      {
+        "time_s": 0.0,
+        "target_m": [
+          0.00716,
+          0.0,
+          0.892
+        ],
+        "tool_pitch_rad": 0.0
+      },
+      {
+        "time_s": 3.0,
+        "target_m": [
+          0.3,
+          0.0,
+          0.62
+        ],
+        "tool_pitch_rad": 0.55
+      },
+      {
+        "time_s": 6.0,
+        "target_m": [
+          0.24,
+          0.24,
+          0.58
+        ],
+        "tool_pitch_rad": 0.7
+      },
+      {
+        "time_s": 9.0,
+        "target_m": [
+          0.18,
+          -0.28,
+          0.68
+        ],
+        "tool_pitch_rad": 0.4
+      },
+      {
+        "time_s": 12.0,
+        "target_m": [
+          0.00716,
+          0.0,
+          0.892
+        ],
+        "tool_pitch_rad": 0.0
+      }
+    ]
+  }
+}

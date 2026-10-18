@@ -43,7 +43,7 @@ struct StrategyDecision {
 };
 
 // Stable upper-policy boundary. A learned policy can implement this interface
-// without gaining access to Bullet bodies, wheel torque, actor truth or future
+// without gaining access to MuJoCo bodies, wheel torque, actor truth or future
 // paths. The observation is timestamped estimated state plus task facts.
 class IHighLevelPolicy {
  public:

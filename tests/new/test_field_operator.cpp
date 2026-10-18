@@ -115,7 +115,7 @@ int main() {
  CHECK(proving.result().last_stop_distance_m > 0.0);
 
  // RO-4 point-and-go settles through the complete planner, actuator and
- // Bullet chain. Arrival uses planar speed, clears the completed route and
+ // MuJoCo chain. Arrival uses planar speed, clears the completed route and
  // leaves no synthetic dynamic-clearance wait behind.
  auto ro4_build = catalog.presentation_for_level("vehicle_proving_ground").recommended_build;
  ro4_build.chassis_robot = "robot.ro4";
@@ -125,6 +125,15 @@ int main() {
  CHECK(ro4_point_and_go.issue_field_intent(mission::FieldIntentKind::GoTo, ro4_target));
  for (int step = 0; step < 4000 && ro4_point_and_go.field_intent().active; ++step)
  ro4_point_and_go.step();
+ if (ro4_point_and_go.field_intent().active) {
+ const auto& s = ro4_point_and_go.snapshot();
+ std::cerr << "RO-4 point-and-go unfinished pose=(" << s.robot.x << ',' << s.robot.y
+ << ',' << s.robot.theta << ") velocity=(" << s.robot.v << ','
+ << s.robot.lateral_v << ',' << s.robot.w << ") target=(" << ro4_target.x
+ << ',' << ro4_target.y << ") route=" << ro4_point_and_go.planned_route().size()
+ << " accepted=" << s.control.dwa_accepted_candidates
+ << " verdict=" << s.control.trajectory_verdict << '\n';
+ }
  CHECK(!ro4_point_and_go.field_intent().active);
  CHECK(ro4_point_and_go.field_intent().acknowledgement ==
  mission::FieldIntentAcknowledgement::Completed);
@@ -141,7 +150,7 @@ int main() {
 
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command
- // must then produce a real route and autonomous Bullet motion.
+ // must then produce a real route and autonomous MuJoCo motion.
  mission::ScenarioSession control_guard(catalog, "boot", build);
  control_guard.set_endless_mode(true);
  control_guard.start();

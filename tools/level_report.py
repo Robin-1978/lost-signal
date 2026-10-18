@@ -38,7 +38,6 @@ def run(
     level: str,
     config: str,
     seed: int | None,
-    physics: str,
 ) -> dict:
     command = [
         str(headless),
@@ -48,8 +47,6 @@ def run(
         level,
         f"--{config}",
         "--json",
-        "--physics",
-        physics,
     ]
     if seed is not None:
         command += ["--seed", str(seed)]
@@ -93,7 +90,7 @@ def single_row(level: str, config: str, result: dict) -> str:
 
 
 def single_seed_report(
-    headless: Path, assets: Path, levels: list[str], physics: str
+    headless: Path, assets: Path, levels: list[str]
 ) -> tuple[list[str], int]:
     lines = [
         "| Mission | Build | Result | Time/s | Energy/Wh | Scored clearance/m | Max odometry error/m | Max grade | "
@@ -104,7 +101,7 @@ def single_seed_report(
     for level in levels:
         for config in ("default", "recommended"):
             try:
-                result = run(headless, assets, level, config, None, physics)
+                result = run(headless, assets, level, config, None)
                 lines.append(single_row(level, config, result))
             except Exception as error:  # noqa: BLE001
                 lines.append(
@@ -115,7 +112,7 @@ def single_seed_report(
 
 
 def multi_seed_report(
-    headless: Path, assets: Path, levels: list[str], seeds: int, physics: str
+    headless: Path, assets: Path, levels: list[str], seeds: int
 ) -> tuple[list[str], int]:
     lines = [
         f"Each build runs {seeds} seeds (level.seed + 0..{seeds - 1}); the first seed is repeated for determinism.",
@@ -132,10 +129,10 @@ def multi_seed_report(
         for config in ("default", "recommended"):
             try:
                 trials = [
-                    run(headless, assets, level, config, base_seed + index, physics)
+                    run(headless, assets, level, config, base_seed + index)
                     for index in range(seeds)
                 ]
-                repeat = run(headless, assets, level, config, base_seed, physics)
+                repeat = run(headless, assets, level, config, base_seed)
             except Exception as error:  # noqa: BLE001
                 lines.append(
                     f"| {level} | {config} | Runtime error: {error} | - | - | - | - | - | - |"
@@ -170,11 +167,6 @@ def main() -> int:
     parser.add_argument("--assets", type=Path, default=Path("assets"))
     parser.add_argument("--headless", type=Path, default=default_headless())
     parser.add_argument("--seeds", type=int, default=1)
-    parser.add_argument(
-        "--physics",
-        choices=("domain", "shadow", "bullet", "auto"),
-        default="bullet",
-    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.seeds < 1:
@@ -187,11 +179,11 @@ def main() -> int:
     campaign = json.loads((assets / "campaign.json").read_text())
     if args.seeds == 1:
         lines, failures = single_seed_report(
-            headless, assets, campaign["levels"], args.physics
+            headless, assets, campaign["levels"]
         )
     else:
         lines, failures = multi_seed_report(
-            headless, assets, campaign["levels"], args.seeds, args.physics
+            headless, assets, campaign["levels"], args.seeds
         )
     report = "\n".join(lines) + "\n"
     if args.output:

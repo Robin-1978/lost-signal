@@ -73,8 +73,9 @@ int main() {
  sim::evaluate_crossing(zones, route, 0, {2.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps);
  CHECK(approach.relevant && approach.zone_id == "near");
- CHECK(approach.entry_index == 4 && approach.exit_index == 7);
- CHECK(approach.stop_index == 2 && approach.stop_point.x == 2.0);
+CHECK(approach.entry_index == 4 && approach.exit_index == 7);
+CHECK(approach.stop_index == 3);
+CHECK(std::abs(approach.stop_point.x - 3.3) < 1e-6);
  CHECK(approach.departure.reason == sim::DepartReason::kGoNow);
  const auto advanced =
  sim::evaluate_crossing(zones, route, 3, {1.2, 0.4}, 0.0, 0.0, open_frames, 0.1,
@@ -87,11 +88,13 @@ int main() {
  CHECK(lookahead_far_ahead.relevant && lookahead_far_ahead.zone_id == "near");
  CHECK(lookahead_far_ahead.stop_index == approach.stop_index);
  const auto at_stop =
- sim::evaluate_crossing(zones, route, 3, {2.05, 0.05}, 0.0, 0.0, open_frames, 0.1,
+ sim::evaluate_crossing(zones, route, 3,
+ {approach.stop_point.x + 0.05, approach.stop_point.y + 0.05},
+ 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps);
  CHECK(at_stop.stop_reached);
  CHECK(approach.stop_direction.x == 1.0 && approach.stop_direction.y == 0.0);
- CHECK(std::abs(approach.stop_distance_m) < 1e-12);
+CHECK(std::abs(approach.stop_distance_m - 1.3) < 1e-6);
  const std::vector<std::vector<sim::DynamicObjectState>> blocked_frames(151, {{{5.0, 0.0}, {0.0, 0.0}, 0.4}});
  const auto blocked_crossing =
  sim::evaluate_crossing(zones, route, 0, {0.0, 0.0}, 0.0, 0.0, blocked_frames, 0.1,

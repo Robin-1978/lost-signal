@@ -80,7 +80,7 @@ headless target does not compile or link the client audio director.
 
 ## Behavioral evidence
 
-C++ tests cover content loading, component registration, field intent, world activity, physics backends, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices.
+C++ tests cover content loading, component registration, field intent, world activity, physics behavior, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices.
 
 A deterministic release run should also be recorded:
 

@@ -120,6 +120,10 @@ void filter_update_velocity(StateEstimate& estimate, double z_vx, double z_vy, d
   scalar_update(estimate, 4, z_vy, r_v);
 }
 
+void filter_update_yaw_rate(StateEstimate& estimate, double z_w, double r_w) {
+ scalar_update(estimate, 5, z_w, r_w);
+}
+
 void filter_update_yaw(StateEstimate& estimate, double z_theta, double r_theta) {
   if (!std::isfinite(z_theta)) {
     return;

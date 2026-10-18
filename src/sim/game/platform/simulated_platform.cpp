@@ -48,8 +48,6 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  double spawn_heading_rad, double total_mass_kg, double center_height_m,
  double yaw_inertia_kgm2, const std::vector<ConstructedSupportBody>& constructed_supports)
  : map_(map), level_(level), robot_(robot), terrain_(terrain),
- world_(::sim::physics::make_bullet_physics_world()),
- tire_contact_(::sim::physics::make_bullet_tire_contact()),
  total_mass_kg_(std::max(0.5, total_mass_kg)),
  body_center_height_m_(std::max(0.05, robot.base_link_height_m)),
  center_height_m_(std::max(0.05, center_height_m)),
@@ -58,7 +56,7 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  support_length_m_ = std::max(0.05, chassis_caps.geometry.support_length_m);
  drive_axle_x_m_ = chassis_caps.geometry.drive_axle_x_m;
 
- ::sim::physics::BodySpec floor;
+ ::sim::physics::BodyModel floor;
  floor.shape = ::sim::physics::ShapeKind::Box;
  floor.half_extents_m = {map_.size_m.x * 0.5, map_.size_m.y * 0.5, 0.10};
  floor.position_m = {map_.size_m.x * 0.5, map_.size_m.y * 0.5, -0.10};
@@ -66,10 +64,10 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  floor.collision_group = ::sim::physics::collision_layer::Terrain;
  floor.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- terrain_bodies_.push_back(world_->spawn(floor));
+ terrain_bodies_.push_back(world_.add_body(floor));
 
  // Keep an authoritative rigid body inside the authored world. The domain
- // grid already rejects out-of-bounds poses; Bullet needs the same boundary
+ // grid already rejects out-of-bounds poses; physics needs the same boundary
  // represented as contact geometry instead of allowing a long free fall.
  const double wall_height = 2.5;
  const double wall_thickness = 0.10;
@@ -84,7 +82,7 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  {wall_half_y, {map_.size_m.x + wall_thickness, map_.size_m.y * 0.5, wall_height}},
  };
  for (const auto& [half_extents, position] : walls) {
- ::sim::physics::BodySpec wall;
+ ::sim::physics::BodyModel wall;
  wall.shape = ::sim::physics::ShapeKind::Box;
  wall.half_extents_m = half_extents;
  wall.position_m = position;
@@ -92,16 +90,16 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  wall.collision_group = ::sim::physics::collision_layer::StaticObstacle;
  wall.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- obstacle_bodies_.push_back(world_->spawn(wall));
+ obstacle_bodies_.push_back(world_.add_body(wall));
  }
 
  for (const auto& patch : map_.terrain) {
  if (active_in_level(patch.active_in, level_.id)) {
- terrain_bodies_.push_back(world_->spawn(terrain_mesh(patch)));
+ terrain_bodies_.push_back(world_.add_body(terrain_heightfield(patch)));
  }
  }
  for (const auto& support : constructed_supports) {
- ::sim::physics::BodySpec body;
+ ::sim::physics::BodyModel body;
  body.shape = ::sim::physics::ShapeKind::Box;
  body.half_extents_m = {
  support.size_m.x * 0.5,
@@ -109,18 +107,18 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  support.size_m.z * 0.5,
  };
  body.position_m = support.center_m;
-// Positive construction pitch means the local +X endpoint is higher. Bullet's
+// Positive construction pitch means the local +X endpoint is higher. The
 // right-handed Y rotation maps +X toward -Z, hence the sign conversion here.
 body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  support.yaw_rad);
  body.friction = support.friction_mu;
  body.rolling_friction = support.rolling_drag;
- body.contact_stiffness_Npm = support.normal_stiffness_Npm;
- body.contact_damping_Nspm = support.normal_damping_Nspm;
+ body.contact_time_constant_s = support.contact_time_constant_s;
+ body.contact_damping_ratio = support.contact_damping_ratio;
  body.collision_group = ::sim::physics::collision_layer::Terrain;
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- const auto handle = world_->spawn(body);
+ const auto handle = world_.add_body(body);
  terrain_bodies_.push_back(handle);
  terrain_reflectivity_[handle.value] = support.lidar_reflectivity;
  constructed_support_ids_[handle.value] = support.id;
@@ -129,7 +127,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  if (!active_in_level(obstacle.active_in, level_.id)) {
  continue;
  }
- ::sim::physics::BodySpec body;
+ ::sim::physics::BodyModel body;
  body.shape = ::sim::physics::ShapeKind::Box;
  body.half_extents_m = {(obstacle.max.x - obstacle.min.x) * 0.5,
  (obstacle.max.y - obstacle.min.y) * 0.5, 0.75};
@@ -139,12 +137,12 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  body.collision_group = ::sim::physics::collision_layer::StaticObstacle;
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- obstacle_bodies_.push_back(world_->spawn(body));
+ obstacle_bodies_.push_back(world_.add_body(body));
  }
 
  const auto world_collisions = mission::resolve_world_collisions(map_, level_.id);
  for (const auto& resolved : world_collisions) {
- ::sim::physics::BodySpec body;
+ ::sim::physics::BodyModel body;
  body.shape = ::sim::physics::ShapeKind::Box;
  body.half_extents_m = {
  resolved.size_m.x * 0.5,
@@ -155,12 +153,12 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  body.rotation = ::sim::physics::quaternion_from_euler(0.0, 0.0, resolved.yaw_rad);
  body.friction = resolved.friction_mu;
  body.rolling_friction = resolved.rolling_drag;
- body.contact_stiffness_Npm = resolved.normal_stiffness_Npm;
- body.contact_damping_Nspm = resolved.normal_damping_Nspm;
+ body.contact_time_constant_s = resolved.contact_time_constant_s;
+ body.contact_damping_ratio = resolved.contact_damping_ratio;
  body.collision_group = ::sim::physics::collision_layer::StaticObstacle;
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- const auto handle = world_->spawn(body);
+ const auto handle = world_.add_body(body);
  obstacle_bodies_.push_back(handle);
  obstacle_reflectivity_[handle.value] = resolved.lidar_reflectivity;
  }
@@ -180,7 +178,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  if (!robot_.articulation.links.empty()) {
  articulated_ = true;
  for (const auto& link : robot_.articulation.links) {
- ::sim::physics::BodySpec body;
+ ::sim::physics::BodyModel body;
  if (link.shape == "box") {
  body.shape = ::sim::physics::ShapeKind::Box;
  body.half_extents_m = {link.size_m.x * 0.5, link.size_m.y * 0.5, link.size_m.z * 0.5};
@@ -188,28 +186,19 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  body.shape = ::sim::physics::ShapeKind::Cylinder;
  body.radius_m = link.radius_m;
  body.height_m = link.length_m;
+ } else if (link.shape == "ellipsoid" || link.shape == "crowned_wheel") {
+ body.shape = ::sim::physics::ShapeKind::Ellipsoid;
+ body.radius_m = link.radius_m;
+ body.height_m = link.length_m;
+ // MuJoCo has no crowned-cylinder primitive. A centred oblate ellipsoid
+ // keeps a circular rolling plane while giving a crowned transverse tread.
+ body.half_extents_m = {link.radius_m, link.radius_m, link.length_m * 0.5};
  } else {
  throw std::runtime_error("unsupported articulated link collision shape '" + link.shape + "'");
  }
  body.mass_kg = link.mass_kg;
  body.inertia_diagonal_kgm2 = {link.inertia_diagonal_kgm2.x,
  link.inertia_diagonal_kgm2.y, link.inertia_diagonal_kgm2.z};
- for (const auto& actuator : robot_.articulation.actuators) {
- const auto joint = std::find_if(robot_.articulation.joints.begin(),
- robot_.articulation.joints.end(),
- [&](const auto& candidate) { return candidate.id == actuator.joint; });
- if (joint == robot_.articulation.joints.end() || joint->child != link.id ||
- actuator.armature_inertia_kgm2 <= 0.0)
- continue;
- const double axial = actuator.armature_inertia_kgm2;
- const double transverse = axial * 0.5;
- const double ax = std::abs(joint->axis_in_child.x);
- const double ay = std::abs(joint->axis_in_child.y);
- const double az = std::abs(joint->axis_in_child.z);
- body.inertia_diagonal_kgm2.x += ax > 0.5 ? axial : transverse;
- body.inertia_diagonal_kgm2.y += ay > 0.5 ? axial : transverse;
- body.inertia_diagonal_kgm2.z += az > 0.5 ? axial : transverse;
- }
  if (link.id == robot_.articulation.root_link) {
  articulated_root_mass_kg_ = link.mass_kg;
  articulated_root_inertia_kgm2_ = body.inertia_diagonal_kgm2;
@@ -230,10 +219,11 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  articulated_non_root_mass_kg_ += link.mass_kg;
  }
  body.friction = link.friction;
- body.rolling_friction = link.rolling_support_moment_arm_m;
+ // The resolved tire/surface Crr is installed before each public step.
+ body.rolling_friction = 0.0;
  body.spinning_friction = link.spinning_resistance * body.radius_m;
- body.contact_stiffness_Npm = link.contact_stiffness_Npm;
- body.contact_damping_Nspm = link.contact_damping_Nspm;
+ body.contact_time_constant_s = link.contact_time_constant_s;
+ body.contact_damping_ratio = link.contact_damping_ratio;
  body.contact_axle_axis_local = {link.contact_axle_axis.x, link.contact_axle_axis.y,
  link.contact_axle_axis.z};
  const bool tire_body = magnitude(body.contact_axle_axis_local) > 0.5;
@@ -241,19 +231,17 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  if (tire_body) {
  tire = {
  link.friction,
- link.rolling_support_moment_arm_m,
  link.spinning_resistance,
  body.radius_m,
- link.contact_stiffness_Npm,
- link.contact_damping_Nspm,
+ link.contact_time_constant_s,
+ link.contact_damping_ratio,
  body.contact_axle_axis_local,
- true,
  };
- tire_contact_->configure_body(body, tire);
  }
+ if (link.id == robot_.articulation.root_link) {
  body.linear_damping = 0.02;
  body.angular_damping = 0.02;
- body.continuous_collision = true;
+ }
  body.collision_group = ::sim::physics::collision_layer::Vehicle;
  body.collision_mask = vehicle_mask;
  const ::sim::physics::RigidTransform robot_from_link{
@@ -263,9 +251,9 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  const auto world_from_link = ::sim::physics::compose(world_from_robot, robot_from_link);
  body.position_m = world_from_link.translation_m;
  body.rotation = world_from_link.rotation;
- const auto handle = world_->spawn(body);
+ const auto handle = world_.add_body(body);
  robot_contact_materials_[handle.value] = {
- link.friction, link.rolling_support_moment_arm_m,
+ link.friction, 0.0,
  link.spinning_resistance * body.radius_m};
  robot_links_[link.id] = handle;
  robot_link_names_[handle.value] = link.id;
@@ -278,7 +266,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  }
  }
  for (const auto& joint : robot_.articulation.joints) {
- ::sim::physics::JointSpec spec;
+ ::sim::physics::JointModel spec;
  spec.kind = joint.type == "fixed" ? ::sim::physics::JointKind::Fixed
  : ::sim::physics::JointKind::Revolute;
  spec.parent = robot_links_.at(joint.parent);
@@ -292,7 +280,14 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  spec.has_limits = joint.has_limits;
  spec.lower_limit_rad = joint.lower_limit_rad;
  spec.upper_limit_rad = joint.upper_limit_rad;
- robot_joints_[joint.id] = world_->create_joint(spec);
+ spec.damping_Nms_per_rad = joint.damping_Nms_per_rad;
+ spec.friction_loss_Nm = joint.friction_loss_Nm;
+ const auto actuator = std::find_if(robot_.articulation.actuators.begin(),
+ robot_.articulation.actuators.end(),
+ [&](const auto& candidate) { return candidate.joint == joint.id; });
+ if (actuator != robot_.articulation.actuators.end())
+ spec.armature_inertia_kgm2 = actuator->armature_inertia_kgm2;
+ robot_joints_[joint.id] = world_.add_joint(spec);
  child_link_joints_[joint.child] = robot_joints_.at(joint.id);
  }
  for (const auto& actuator : robot_.articulation.actuators) {
@@ -308,20 +303,16 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
   }
  if (!robot_body_ || actuator_bindings_.empty())
  throw std::runtime_error("articulated platform requires a root and at least one actuator binding");
+ world_.compile();
  // Resolve the authored assembly onto the terrain before simulation time
  // starts. Constraint stabilization from an exactly authored pose can
  // otherwise appear as a one-frame chassis kick. After the short deterministic
  // settle, preserve the solved poses and clear velocities.
  for (int index = 0; index < 100; ++index)
- world_->step(0.002);
- for (const auto body : robot_bodies_) {
- auto state = world_->state(body);
- state.linear_velocity_mps = {};
- state.angular_velocity_radps = {};
- world_->set_state(body, state);
- }
+ world_.step(0.002);
+ world_.clear_velocities();
  } else {
- ::sim::physics::BodySpec vehicle;
+ ::sim::physics::BodyModel vehicle;
  vehicle.shape = ::sim::physics::ShapeKind::Box;
  vehicle.half_extents_m = {robot_.rigid_body_size_m.x * 0.5,
  robot_.rigid_body_size_m.y * 0.5, robot_.rigid_body_size_m.z * 0.5};
@@ -329,7 +320,6 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  vehicle.friction = 0.0;
  vehicle.linear_damping = 0.03;
  vehicle.angular_damping = 0.10;
- vehicle.continuous_collision = true;
  vehicle.collision_group = ::sim::physics::collision_layer::Vehicle;
  vehicle.collision_mask = vehicle_mask;
  const double inertia_roll = std::max(0.05, total_mass_kg_ *
@@ -341,8 +331,9 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  std::max(0.25, std::cos(roll) * std::cos(pitch));
  vehicle.position_m = {spawn.x, spawn.y, ground.height_m + vertical_half_extent + 0.01};
  vehicle.rotation = robot_rotation;
- robot_body_ = world_->spawn(vehicle);
+ robot_body_ = world_.add_body(vehicle);
  robot_bodies_.push_back(robot_body_);
+ world_.compile();
  }
 
  for (const auto& mount : robot_.mounts) {
@@ -354,7 +345,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
    };
   frames_.set_transform("base_link", mount.frame_id, robot_from_mount);
   if (mount.frame_id == "imu_link") {
- // Mounts are calibrated in base_link. Bullet also reports the root body at
+ // Mounts are calibrated in base_link. MuJoCo reports the root body at
  // base_link, so this is the exact COM-to-sensor lever arm used by the IMU.
  body_from_imu_ = robot_from_mount;
   }
@@ -363,7 +354,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  frames_.set_transform("base_link", "imu_link", {});
  }
  frames_.set_transform("map", "odom", {});
- const auto initial_body_state = world_->state(robot_body_);
+ const auto initial_body_state = world_.state(robot_body_);
  update_inertial_truth(initial_body_state, initial_body_state, 1.0);
  update_dynamic_frames(initial_body_state);
  for (const auto& slot : robot_.slots) {
@@ -394,7 +385,7 @@ void SimulatedPlatform::update_load(double total_mass_kg, double center_height_m
  const double vertical_offset_m = payload_height_m - robot_.base_link_height_m;
  const double payload_transverse_inertia =
  0.5 * payload_yaw_inertia + payload_mass_kg * vertical_offset_m * vertical_offset_m;
- world_->set_mass_properties(robot_body_, articulated_root_mass_kg_ + payload_mass_kg,
+ world_.set_mass_properties(robot_body_, articulated_root_mass_kg_ + payload_mass_kg,
  {articulated_root_inertia_kgm2_.x + payload_transverse_inertia,
  articulated_root_inertia_kgm2_.y + payload_transverse_inertia,
  articulated_root_inertia_kgm2_.z + payload_yaw_inertia});
@@ -403,18 +394,19 @@ void SimulatedPlatform::update_load(double total_mass_kg, double center_height_m
  (support_width_m_ * support_width_m_ + 4.0 * center_height_m_ * center_height_m_) / 12.0);
  const double inertia_pitch = std::max(0.05, total_mass_kg_ *
  (support_length_m_ * support_length_m_ + 4.0 * center_height_m_ * center_height_m_) / 12.0);
- world_->set_mass_properties(robot_body_, total_mass_kg_,
+ world_.set_mass_properties(robot_body_, total_mass_kg_,
  {inertia_roll, inertia_pitch, yaw_inertia_kgm2_});
  }
 }
 
 const char* SimulatedPlatform::backend_name() const {
- return world_ ? world_->backend_name().data() : "none";
+ return world_.engine_name().data();
 }
 
-::sim::physics::BodySpec SimulatedPlatform::terrain_mesh(const TerrainPatchDefinition& patch) const {
- ::sim::physics::BodySpec body;
- body.shape = ::sim::physics::ShapeKind::TriangleMesh;
+::sim::physics::BodyModel SimulatedPlatform::terrain_heightfield(
+ const TerrainPatchDefinition& patch) const {
+ ::sim::physics::BodyModel body;
+ body.shape = ::sim::physics::ShapeKind::HeightField;
  body.friction = 1.0;
  body.collision_group = ::sim::physics::collision_layer::Terrain;
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
@@ -422,94 +414,35 @@ const char* SimulatedPlatform::backend_name() const {
  const double resolution = std::min(0.25, map_.grid_resolution_m);
  const int nx = std::max(1, static_cast<int>(std::ceil((patch.max.x - patch.min.x) / resolution)));
  const int ny = std::max(1, static_cast<int>(std::ceil((patch.max.y - patch.min.y) / resolution)));
- body.mesh_vertices_m.reserve(static_cast<std::size_t>((nx + 1) * (ny + 1) + 4));
+ body.position_m = {(patch.min.x + patch.max.x) * 0.5,
+ (patch.min.y + patch.max.y) * 0.5, 0.0};
+ body.half_extents_m = {(patch.max.x - patch.min.x) * 0.5,
+ (patch.max.y - patch.min.y) * 0.5, 0.0};
+ body.heightfield_rows = static_cast<std::size_t>(ny + 1);
+ body.heightfield_cols = static_cast<std::size_t>(nx + 1);
+ body.heightfield_elevation_m.reserve(body.heightfield_rows * body.heightfield_cols);
  for (int y = 0; y <= ny; ++y) {
  const double wy = patch.min.y + (patch.max.y - patch.min.y) * static_cast<double>(y) / ny;
  for (int x = 0; x <= nx; ++x) {
  const double wx = patch.min.x + (patch.max.x - patch.min.x) * static_cast<double>(x) / nx;
- body.mesh_vertices_m.push_back({wx, wy, terrain_patch_height(patch, wx, wy)});
+ body.heightfield_elevation_m.push_back(terrain_patch_height(patch, wx, wy));
  }
  }
- auto vertex = [nx](int x, int y) {
- return static_cast<std::uint32_t>(y * (nx + 1) + x);
- };
- for (int y = 0; y < ny; ++y) {
- for (int x = 0; x < nx; ++x) {
- const auto a = vertex(x, y);
- const auto b = vertex(x + 1, y);
- const auto c = vertex(x + 1, y + 1);
- const auto d = vertex(x, y + 1);
- body.mesh_indices.insert(body.mesh_indices.end(), {a, b, c, a, c, d});
- }
- }
-
- // Close the perimeter down to the base plane. This makes elevated patches
- // real platforms with retaining walls instead of infinitely thin carpets.
- const double bottom_z = std::min(-0.10, std::min({terrain_patch_height(patch, patch.min.x, patch.min.y),
- terrain_patch_height(patch, patch.max.x, patch.min.y),
- terrain_patch_height(patch, patch.max.x, patch.max.y),
- terrain_patch_height(patch, patch.min.x, patch.max.y)}) - 0.10);
- const std::uint32_t bottom_start = static_cast<std::uint32_t>(body.mesh_vertices_m.size());
- body.mesh_vertices_m.insert(body.mesh_vertices_m.end(), {
- {patch.min.x, patch.min.y, bottom_z},
- {patch.max.x, patch.min.y, bottom_z},
- {patch.max.x, patch.max.y, bottom_z},
- {patch.min.x, patch.max.y, bottom_z},
- });
- const std::uint32_t top_corners[] = {vertex(0, 0), vertex(nx, 0), vertex(nx, ny), vertex(0, ny)};
- const ::sim::Vec2 corners[] = {{patch.min.x, patch.min.y}, {patch.max.x, patch.min.y},
- {patch.max.x, patch.max.y}, {patch.min.x, patch.max.y}};
- const auto shared_edge = [&](int side) {
- const int next = (side + 1) % 4;
- for (const auto& other : map_.terrain) {
- if (&other == &patch || !active_in_level(other.active_in, level_.id))
- continue;
- bool adjacent = false;
- if (side == 0)
- adjacent = std::abs(other.max.y - patch.min.y) < 1e-6 &&
- other.min.x <= patch.min.x + 1e-6 && other.max.x >= patch.max.x - 1e-6;
- else if (side == 1)
- adjacent = std::abs(other.min.x - patch.max.x) < 1e-6 &&
- other.min.y <= patch.min.y + 1e-6 && other.max.y >= patch.max.y - 1e-6;
- else if (side == 2)
- adjacent = std::abs(other.min.y - patch.max.y) < 1e-6 &&
- other.min.x <= patch.min.x + 1e-6 && other.max.x >= patch.max.x - 1e-6;
- else
- adjacent = std::abs(other.max.x - patch.min.x) < 1e-6 &&
- other.min.y <= patch.min.y + 1e-6 && other.max.y >= patch.max.y - 1e-6;
- if (!adjacent)
- continue;
- const double a_delta = std::abs(terrain_patch_height(patch, corners[side].x, corners[side].y) -
- terrain_patch_height(other, corners[side].x, corners[side].y));
- const double b_delta = std::abs(terrain_patch_height(patch, corners[next].x, corners[next].y) -
- terrain_patch_height(other, corners[next].x, corners[next].y));
- if (a_delta < 0.05 && b_delta < 0.05)
- return true;
- }
- return false;
- };
- for (int side = 0; side < 4; ++side) {
- const int next = (side + 1) % 4;
- if (shared_edge(side))
- continue;
- const auto top_a = top_corners[side];
- const auto top_b = top_corners[next];
- const auto bottom_a = bottom_start + static_cast<std::uint32_t>(side);
- const auto bottom_b = bottom_start + static_cast<std::uint32_t>(next);
- body.mesh_indices.insert(body.mesh_indices.end(), {bottom_a, bottom_b, top_b, bottom_a, top_b, top_a});
- }
- body.mesh_indices.insert(body.mesh_indices.end(),
- {bottom_start, bottom_start + 2, bottom_start + 1, bottom_start, bottom_start + 3, bottom_start + 2});
+ const auto minimum = std::min_element(body.heightfield_elevation_m.begin(),
+ body.heightfield_elevation_m.end());
+ body.heightfield_base_depth_m = std::max(0.1, minimum == body.heightfield_elevation_m.end()
+ ? 0.1 : *minimum + 0.1);
  return body;
 }
 
 void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors) {
  std::set<std::string> active_ids;
+ bool topology_changed = false;
  for (const auto& actor : actors) {
  active_ids.insert(actor.id);
  auto found = actor_bodies_.find(actor.id);
  if (found == actor_bodies_.end()) {
- ::sim::physics::BodySpec body;
+ ::sim::physics::BodyModel body;
  body.shape = ::sim::physics::ShapeKind::Cylinder;
  body.radius_m = actor.radius_m;
  body.height_m = std::max(0.5, actor.radius_m * 2.0);
@@ -520,11 +453,30 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
  body.position_m = ::sim::physics::Vec3{actor.position.x, actor.position.y,
  terrain_.sample(actor.position).height_m + body.height_m * 0.5};
- found = actor_bodies_.emplace(actor.id, world_->spawn(body)).first;
+ found = actor_bodies_.emplace(actor.id, world_.add_body(body)).first;
  actor_radii_m_[actor.id] = actor.radius_m;
  actor_heights_m_[actor.id] = body.height_m;
+ topology_changed = true;
  }
- ::sim::physics::BodyState state = world_->state(found->second);
+ }
+ for (auto found = actor_bodies_.begin(); found != actor_bodies_.end();) {
+ if (active_ids.contains(found->first)) {
+ ++found;
+ continue;
+ }
+ world_.remove_body(found->second);
+ actor_radii_m_.erase(found->first);
+ actor_heights_m_.erase(found->first);
+ found = actor_bodies_.erase(found);
+ topology_changed = true;
+ }
+ if (topology_changed)
+ world_.compile();
+ for (const auto& actor : actors) {
+ const auto found = actor_bodies_.find(actor.id);
+ if (found == actor_bodies_.end())
+ continue;
+ ::sim::physics::BodyState state = world_.state(found->second);
  state.position_m = ::sim::physics::Vec3{actor.position.x, actor.position.y,
  terrain_.sample(actor.position).height_m + std::max(0.5, actor.radius_m * 2.0) * 0.5};
  state.linear_velocity_mps = {actor.velocity.x, actor.velocity.y, 0.0};
@@ -532,17 +484,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  state.rotation = ::sim::physics::quaternion_from_euler(0.0, 0.0,
  std::atan2(actor.velocity.y, actor.velocity.x));
  }
- world_->set_state(found->second, state);
- }
- for (auto found = actor_bodies_.begin(); found != actor_bodies_.end();) {
- if (active_ids.contains(found->first)) {
- ++found;
- continue;
- }
- world_->remove(found->second);
- actor_radii_m_.erase(found->first);
- actor_heights_m_.erase(found->first);
- found = actor_bodies_.erase(found);
+ world_.set_state(found->second, state);
  }
 }
 
@@ -582,11 +524,11 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  (collision_mask & ::sim::physics::collision_layer::DynamicActor) != 0;
  const auto static_only_mask = static_cast<::sim::physics::CollisionMask>(
  collision_mask & ~::sim::physics::collision_layer::DynamicActor);
- auto hit = world_->raycast({sample_from_lidar.translation_m, direction, range_m,
+ auto hit = world_.raycast({sample_from_lidar.translation_m, direction, range_m,
  static_only_mask, robot_body_});
  if (include_dynamic) {
  for (const auto& [actor_id, actor_body] : actor_bodies_) {
- const auto actor = world_->state(actor_body);
+ const auto actor = world_.state(actor_body);
  const double center_x = actor.position_m.x + actor.linear_velocity_mps.x * time_offset_s;
  const double center_y = actor.position_m.y + actor.linear_velocity_mps.y * time_offset_s;
  const double center_z = actor.position_m.z + actor.linear_velocity_mps.z * time_offset_s;
@@ -666,7 +608,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  if (!has_lidar_mount_) {
  throw std::runtime_error("robot has no sensor mount for physics lidar");
  }
- const auto body = world_->state(robot_body_);
+ const auto body = world_.state(robot_body_);
  update_dynamic_frames(body);
  const auto world_from_lidar = frames_.lookup("map", lidar_frame_id_);
  if (!world_from_lidar) {
@@ -752,11 +694,11 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  };
  const auto direction = ::sim::physics::rotate_vector(
  sample_from_lidar.rotation, local_direction);
- auto hit = world_->raycast({sample_from_lidar.translation_m, direction,
+ auto hit = world_.raycast({sample_from_lidar.translation_m, direction,
  range_m, static_only_mask, robot_body_});
  if (include_dynamic) {
  for (const auto& [actor_id, actor_body] : actor_bodies_) {
- const auto actor = world_->state(actor_body);
+ const auto actor = world_.state(actor_body);
  const ::sim::physics::Vec3 center{
  actor.position_m.x + actor.linear_velocity_mps.x * time_offset_s,
  actor.position_m.y + actor.linear_velocity_mps.y * time_offset_s,
@@ -844,7 +786,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  const ::sim::LidarReturnModel& return_model) const {
  if (!has_lidar_mount_)
  throw std::runtime_error("robot has no sensor mount for physics lidar");
- const auto body = world_->state(robot_body_);
+ const auto body = world_.state(robot_body_);
  update_dynamic_frames(body);
  const auto world_from_lidar = frames_.lookup("map", lidar_frame_id_);
  if (!world_from_lidar)
@@ -905,7 +847,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  const GroundContactResolver& ground_at, double fixed_dt_s) {
  if (!ground_at)
  throw std::invalid_argument("platform ground-contact resolver is empty");
- const auto before = world_->state(robot_body_);
+ const auto before = world_.state(robot_body_);
  const auto angles = ::sim::physics::euler_from_quaternion(before.rotation);
  const double yaw = angles.z;
  const double lateral_speed = -std::sin(yaw) * before.linear_velocity_mps.x +
@@ -919,19 +861,23 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  if (material == robot_contact_materials_.end())
  continue;
  const auto tire = tire_contacts_.find(body.value);
- const auto body_state = world_->state(body);
+ const auto body_state = world_.state(body);
  const auto ground = ground_at({body_state.position_m.x, body_state.position_m.y});
  const double mu_scale = std::clamp(ground.mu_eff, 0.0, 2.0);
  if (tire != tire_contacts_.end()) {
- tire_contact_->apply(*world_, body, tire->second, {
+ const auto resolved = ::sim::physics::resolve_tire_contact(tire->second, {
  robot_.drive_type == "mecanum" ? mu_scale * 0.02 : mu_scale,
  ground.rolling_resist,
- ground.normal_stiffness_Npm,
- ground.normal_damping_Nspm,
+ ground.contact_time_constant_s,
+ ground.contact_damping_ratio,
  });
+ world_.set_contact_parameters(body, resolved.friction,
+ resolved.rolling_friction_length_m, resolved.spinning_friction_length_m,
+ resolved.contact_time_constant_s, resolved.contact_damping_ratio);
  } else {
- world_->set_contact_friction(body, material->second.friction * mu_scale,
- material->second.rolling_resistance, material->second.spinning_resistance);
+ world_.set_contact_parameters(body, material->second.friction * mu_scale,
+ material->second.rolling_resistance, material->second.spinning_resistance,
+ ground.contact_time_constant_s, ground.contact_damping_ratio);
  }
  }
  // A mecanum wheel's passive rollers redirect longitudinal rim slip into a
@@ -942,7 +888,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  // model. Applying the force at the measured contact point gives the wheel an
  // equal reaction torque, so the encoder cannot free-spin independently of
  // vehicle motion. ROBOT still emits only motor duty; no body-force truth
- // crosses LSRI, and Bullet remains responsible for rigid-body integration.
+ // crosses LSRI, and MuJoCo remains responsible for rigid-body integration.
   if (robot_.drive_type == "mecanum") {
    const auto roller_sign = [](const std::string& channel) {
     return channel == "front_left_drive" || channel == "rear_right_drive" ? -1.0 : 1.0;
@@ -956,7 +902,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  double normal_force_N = 0.0;
  ::sim::physics::Vec3 contact_point_sum{};
  ::sim::physics::Vec3 contact_normal_sum{};
-    for (const auto& contact : world_->contacts()) {
+    for (const auto& contact : world_.contacts()) {
  const bool wheel_is_a = same(contact.body_a, binding->second.contact_body) &&
  is_terrain(contact.body_b);
  const bool wheel_is_b = same(contact.body_b, binding->second.contact_body) &&
@@ -966,16 +912,18 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  const double load_N = std::abs(contact.normal_force_N);
  normal_force_N += load_N;
  contact_point_sum = add(contact_point_sum, scale(contact.point_m, load_N));
- const double normal_sign = wheel_is_a ? 1.0 : -1.0;
+ // ContactEvent::normal_on_b points A -> B. Convert either ordering to the
+ // terrain-to-wheel support normal used by the tire adapter.
+ const double normal_sign = wheel_is_a ? -1.0 : 1.0;
  contact_normal_sum = add(contact_normal_sum,
  scale(contact.normal_on_b, normal_sign * load_N));
     }
     // An unloaded wheel cannot transmit drive force. Contacts are retained from
-    // the previous fixed Bullet step, so the first grounded step naturally
+ // the previous fixed physics step, so the first grounded step naturally
     // establishes load before the roller adapter begins transmitting torque.
     if (normal_force_N < 1.0)
      continue;
-    const auto wheel_state = world_->state(binding->second.contact_body);
+    const auto wheel_state = world_.state(binding->second.contact_body);
     const auto wheel_ground = ground_at({wheel_state.position_m.x, wheel_state.position_m.y});
     const auto material = robot_contact_materials_.find(binding->second.contact_body.value);
     const double tire_mu = material == robot_contact_materials_.end() ? 1.0 : material->second.friction;
@@ -996,7 +944,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  traction_world.y * wheel_center_velocity.y +
  traction_world.z * wheel_center_velocity.z;
  const double rim_speed_mps =
- world_->joint_state(binding->second.joint).velocity_radps * robot_.wheel_radius_m;
+ world_.joint_state(binding->second.joint).velocity_radps * robot_.wheel_radius_m;
  constexpr double kLongitudinalCreepNPerMps = 80.0;
  const double creep_force_N =
  kLongitudinalCreepNPerMps * (rim_speed_mps - contact_generalized_speed_mps);
@@ -1004,24 +952,32 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  const double component_N = std::clamp(creep_force_N, -component_limit_N, component_limit_N);
  const auto force_world = scale(traction_world, component_N);
  const auto contact_point = scale(contact_point_sum, 1.0 / normal_force_N);
- world_->apply_force_at_world_point(binding->second.contact_body, force_world, contact_point);
+ world_.apply_force_at_world_point(binding->second.contact_body, force_world, contact_point);
  }
+ }
+ for (const auto& command : actuation.joint_brakes) {
+ const auto binding = actuator_bindings_.find(command.channel);
+ if (binding == actuator_bindings_.end())
+ throw std::runtime_error("brake command references unbound channel '" +
+ command.channel + "'");
+ world_.apply_joint_brake(binding->second.joint,
+ command.maximum_torque_Nm, command.low_speed_smoothing_radps);
  }
  for (const auto& command : actuation.joint_efforts) {
  const auto binding = actuator_bindings_.find(command.channel);
  if (binding == actuator_bindings_.end())
  throw std::runtime_error("actuator command references unbound channel '" + command.channel + "'");
- world_->apply_joint_effort(binding->second.joint,
+ world_.apply_joint_effort(binding->second.joint,
  std::clamp(command.effort_Nm, -binding->second.effort_limit_Nm,
  binding->second.effort_limit_Nm));
  }
- world_->step(fixed_dt_s);
-  const auto after = world_->state(robot_body_);
+ world_.step(fixed_dt_s);
+  const auto after = world_.state(robot_body_);
   update_inertial_truth(before, after, fixed_dt_s);
   update_dynamic_frames(after);
  auto output = read_state();
  update_drive_slip(output);
- for (const auto& contact : world_->contacts()) {
+ for (const auto& contact : world_.contacts()) {
  ::sim::physics::BodyHandle other;
  ::sim::physics::BodyHandle robot_contact_body;
  if (is_robot_body(contact.body_a)) {
@@ -1101,7 +1057,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  // contact resultant at the hull centre and preserve the exact differential
  // yaw moment explicitly. A future articulated wheel/suspension body can
  // replace this adapter without changing the actuator contract.
- world_->apply_force_at_local_point(robot_body_,
+ world_.apply_force_at_local_point(robot_body_,
  {forward_force_N, lateral_force_N, 0.0}, {0.0, 0.0, 0.0});
 
  const double grip_force = std::max(0.0, ground.mu_eff) * total_mass_kg_ * kGravityMps2;
@@ -1112,7 +1068,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  const double lateral_damping =
  std::clamp(static_slope_support - lateral_speed * total_mass_kg_ / 0.12,
  -grip_force, grip_force);
- world_->apply_force_at_local_point(robot_body_, {0.0, lateral_damping, 0.0},
+ world_.apply_force_at_local_point(robot_body_, {0.0, lateral_damping, 0.0},
  {0.0, 0.0, 0.0});
  const double yaw_limit = grip_force * std::max(0.1, support_length_m_) * 0.5;
  double yaw_torque = contact_yaw_torque_Nm + actuation.extra_yaw_torque_Nm;
@@ -1125,14 +1081,14 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  (actuation.desired_yaw_rate_radps - before.angular_velocity_radps.z) /
  actuation.yaw_rate_tracking_time_s;
  }
- world_->apply_local_torque(robot_body_,
+ world_.apply_local_torque(robot_body_,
  {0.0, 0.0, std::clamp(yaw_torque, -yaw_limit, yaw_limit)});
- world_->step(fixed_dt_s);
- const auto after = world_->state(robot_body_);
+ world_.step(fixed_dt_s);
+ const auto after = world_.state(robot_body_);
  update_inertial_truth(before, after, fixed_dt_s);
  update_dynamic_frames(after);
  auto output = read_state();
- for (const auto& contact : world_->contacts()) {
+ for (const auto& contact : world_.contacts()) {
  ::sim::physics::BodyHandle other;
  if (same(contact.body_a, robot_body_)) {
  other = contact.body_b;
@@ -1161,7 +1117,7 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
 }
 
 RigidVehicleState SimulatedPlatform::state() const {
- update_dynamic_frames(world_->state(robot_body_));
+ update_dynamic_frames(world_.state(robot_body_));
  return read_state();
 }
 
@@ -1170,7 +1126,7 @@ std::optional<::sim::physics::JointState> SimulatedPlatform::joint_state_for_chi
  const auto found = child_link_joints_.find(child_link);
  if (found == child_link_joints_.end())
  return std::nullopt;
- return world_->joint_state(found->second);
+ return world_.joint_state(found->second);
 }
 
 std::optional<::sim::physics::RigidTransform> SimulatedPlatform::link_transform_in_base(
@@ -1178,15 +1134,15 @@ std::optional<::sim::physics::RigidTransform> SimulatedPlatform::link_transform_
  const auto found = robot_links_.find(child_link);
  if (found == robot_links_.end())
  return std::nullopt;
- const auto base = world_->state(robot_body_);
- const auto child = world_->state(found->second);
+ const auto base = world_.state(robot_body_);
+ const auto child = world_.state(found->second);
  const ::sim::physics::RigidTransform world_from_base{base.position_m, base.rotation};
  const ::sim::physics::RigidTransform world_from_child{child.position_m, child.rotation};
  return ::sim::physics::compose(::sim::physics::inverse(world_from_base), world_from_child);
 }
 
 RigidVehicleState SimulatedPlatform::read_state() const {
- const auto body = world_->state(robot_body_);
+ const auto body = world_.state(robot_body_);
  const auto angles = ::sim::physics::euler_from_quaternion(body.rotation);
  const double forward_speed = std::cos(angles.z) * body.linear_velocity_mps.x +
  std::sin(angles.z) * body.linear_velocity_mps.y;
@@ -1222,7 +1178,7 @@ void SimulatedPlatform::update_drive_slip(RigidVehicleState& state) {
  drive_slip_release_steps_ = 0;
  return;
  }
- const auto body = world_->state(robot_body_);
+ const auto body = world_.state(robot_body_);
  const auto body_from_world = ::sim::physics::inverse({{}, body.rotation}).rotation;
  const auto velocity_body = ::sim::physics::rotate_vector(body_from_world,
  body.linear_velocity_mps);
@@ -1230,9 +1186,9 @@ void SimulatedPlatform::update_drive_slip(RigidVehicleState& state) {
  body.angular_velocity_radps);
  const double expected_left_mps = velocity_body.x - angular_body.z * half_track;
  const double expected_right_mps = velocity_body.x + angular_body.z * half_track;
- const double tread_left_mps = world_->joint_state(left_binding->second.joint).velocity_radps *
+ const double tread_left_mps = world_.joint_state(left_binding->second.joint).velocity_radps *
  robot_.wheel_radius_m;
- const double tread_right_mps = world_->joint_state(right_binding->second.joint).velocity_radps *
+ const double tread_right_mps = world_.joint_state(right_binding->second.joint).velocity_radps *
  robot_.wheel_radius_m;
  const auto ratio = [](double tread_mps, double contact_mps) {
  return std::abs(tread_mps - contact_mps) /
@@ -1297,7 +1253,7 @@ bool SimulatedPlatform::is_robot_body(::sim::physics::BodyHandle body) const {
  ::sim::ChassisActuatorFeedback feedback;
  feedback.joints.reserve(actuator_bindings_.size());
  for (const auto& [channel, binding] : actuator_bindings_) {
- const auto state = world_->joint_state(binding.joint);
+ const auto state = world_.joint_state(binding.joint);
  feedback.joints.push_back({channel, state.position_rad, state.velocity_radps});
  }
  return feedback;

@@ -112,7 +112,7 @@ construction sockets in the first graybox; free placement is considered only aft
  support requirements, allowed sockets, and presentation asset. Scenario data declares inventory and valid placement
  regions. C++ implements generic placement, validation, physics binding, and map publication; it does not name a
  bridge, flood, or repeater.
-- **One source of geometry.** The committed piece transform creates both Bullet collision geometry and the next map
+- **One source of geometry.** The committed piece transform creates both MuJoCo collision geometry and the next map
  revision. Rendering, planning, and scoring may not maintain independent hand-authored copies.
 - **Revision before autonomy.** A proof run starts only after placement validation and atomic map publication. The run
  artifact records the construction-plan hash, resulting map revision, selected build, algorithm IDs, and seed.
@@ -127,13 +127,13 @@ The first contract increment is implemented. `construction_pieces.json` owns reu
 rules; optional level construction data owns sockets and inventory. `ConstructionPlan` serialization sorts placements
 by stable instance ID, preserves directional endpoints, and hashes the canonical JSON with SHA-256. Resolution
 validates the complete plan before returning any publishable pieces. The shared `world_object` representation is now
-used by existing scenery as well: a physical object renders one prefab, spawns its Bullet collision proxies, returns
+used by existing scenery as well: a physical object renders one prefab, spawns its MuJoCo collision proxies, returns
 material-dependent LiDAR intensity, enters the deployable occupancy map with oriented-box rasterization, and supplies
 the continuous collision monitor. Pure decals such as warning strips remain explicit `visual_only` scene instances.
 
 The complete commit transaction is implemented. A fully validated plan prepares and publishes one immutable next
 map revision, rasterizes each driveable deck into elevation and surface-class layers, preserves free occupancy, adds
-stable semantic features, stamps the plan SHA-256 into map provenance, and rebuilds matching Bullet support bodies,
+stable semantic features, stamps the plan SHA-256 into map provenance, and rebuilds matching MuJoCo support bodies,
 contact material, LiDAR reflectivity, route planning, and rendering at the same Ready-state boundary. Invalid plans
 leave the map revision and world unchanged. Run Artifact v3 records the canonical plan and the same run's physical
 contact and full-surface traversal evidence.
@@ -159,7 +159,7 @@ and zero collision. This is a controlled engineering choice rather than one corr
 ### Implementation order
 
 1. Add the construction-piece and socket schemas, canonical plan hashing, validation, and round-trip tests.
-2. Bind a committed plan to generic Bullet bodies and publish the derived LSRM map revision atomically.
+2. Bind a committed plan to generic MuJoCo bodies and publish the derived LSRM map revision atomically.
 3. **Implemented for the first corridor:** add the washout graybox, bounded plan UI, autonomous proof intent, result
  reasons, and headless input.
 4. **Implemented for RO-1:** add deterministic rejection evidence and two successful surface families without

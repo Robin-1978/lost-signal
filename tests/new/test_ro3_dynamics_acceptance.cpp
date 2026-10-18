@@ -105,7 +105,7 @@ struct Rig {
 } // namespace
 
 int main() {
- REQUIRE(sim::physics::bullet_physics_available());
+ REQUIRE(sim::physics::mujoco_physics_available());
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  const auto& robot = catalog.robot("robot.ro3");
  const auto& level = catalog.level("motor_trial");
@@ -114,7 +114,7 @@ int main() {
  caps.geometry.support_width_m = robot.track_width_m;
  caps.geometry.support_length_m = robot.track_length_m;
  const sim::TerrainModel terrain;
- const sim::GroundContact dry{1.0, 0.01, 6.0, 40000.0, 1000.0};
+ const sim::GroundContact dry{1.0, 0.01, 6.0, 0.006, 1.0};
  const sim::Vec2 spawn{10.0, 10.0};
 
  REQUIRE(robot.articulation.links.size() == 7);
@@ -178,6 +178,10 @@ int main() {
   }
   std::cerr << "RO3 pivot yaw=" << yaw
             << " drift=" << std::hypot(state.planar.x - start.planar.x, state.planar.y - start.planar.y)
+ << " wheels=" << rig.plant.telemetry().left.actual_mps << ','
+ << rig.plant.telemetry().right.actual_mps
+ << " duty=" << rig.plant.telemetry().left.pwm << ','
+ << rig.plant.telemetry().right.pwm
             << '\n';
   // The calibrated skid-steer separation must make a 1 rad/s request track
   // the body response, rather than merely proving that the chassis can twitch.
@@ -201,7 +205,7 @@ int main() {
  };
  const double coarse = launch(.02, dry), fine = launch(.01, dry);
  REQUIRE(std::abs(coarse - fine) < .2);
- const sim::GroundContact low_grip{.12, .01, 6.0, 40000.0, 1000.0};
+ const sim::GroundContact low_grip{.12, .01, 6.0, 0.006, 1.0};
  REQUIRE(coarse > launch(.02, low_grip) + .08);
  {
  const auto grade_map = slope_map(catalog.map(level.map), 0.18);

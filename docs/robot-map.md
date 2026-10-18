@@ -155,13 +155,18 @@ semantics. An adapter may compile it from Lanelet2 or OpenDRIVE while retaining 
 Large providers serve vector/tile windows rather than allocating a global fine raster. Free-space Hybrid A* continues
 to work when no road graph is present.
 
+Controlled conflict features carry authority and a conservative participant envelope. The envelope belongs to map
+semantics and covers the expected traffic footprint plus a site-specific tracking reserve. Autonomy combines it
+with the ego footprint and safety policy to solve a continuous stop pose on the route. Runtime tracks decide when
+the crossing is open; simulator actor definitions never provide the stop location or leak into ROBOT code.
+
 ## Verification gates
 
 - exact package round trip, including unknown occupancy, NaN elevation, surface IDs, and semantic feature IDs;
 - checksum, truncated-file, unsupported-version, and path-escape rejection;
 - world/cell conversion at rotated and negative origins and all map boundaries;
 - monotonic revision and publication-time rejection;
-- authored ramp and rough-relief export use the same authoritative height function as the Bullet mesh at every
+- authored ramp and rough-relief export use the same authoritative height function as the MuJoCo mesh at every
  tested cell centre;
 - SLAM 2D snapshots remain valid with all 2.5D layers absent;
 - new static revisions trigger replan while local dynamic clearing never changes the static revision;

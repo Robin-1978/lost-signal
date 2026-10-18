@@ -53,11 +53,11 @@ class CollisionMonitor {
  // Continuous circular-footprint check used by local trajectory validation.
  // This is analytic world geometry, independent of the raster costmap used
  // for route preference and observed-obstacle layering.
- bool static_motion_free(sim::Vec2 from, sim::Vec2 to) const;
-
- private:
+ bool static_motion_free(sim::Vec2 from, sim::Vec2 to,
+ double execution_margin_m = 0.0) const;
  double static_clearance(sim::Vec2 position) const;
 
+ private:
  sim::Vec2 world_size_;
  double robot_radius_m_{0.0};
  std::vector<CollisionBox> static_obstacles_;

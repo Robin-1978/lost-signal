@@ -16,7 +16,7 @@
     "goal": "packing_pad",
     "goal_label": "装箱台",
     "goal_visual": "packing_pad",
-    "time_limit_s": 180.0,
+    "time_limit_s": 240.0,
     "max_collisions": 1,
     "arrive_tolerance_m": 0.75,
     "goal_order": "autonomous",

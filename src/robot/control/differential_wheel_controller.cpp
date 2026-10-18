@@ -35,7 +35,10 @@ DifferentialWheelController::DifferentialWheelController(
         config_.max_wheel_speed_mps <= 0.0 ||
         config_.encoder_counts_per_revolution <= 0 ||
         !std::isfinite(config_.duty_limit) || config_.duty_limit <= 0.0 ||
-        !std::isfinite(config_.integral_limit) || config_.integral_limit < 0.0) {
+ !std::isfinite(config_.integral_limit) || config_.integral_limit < 0.0 ||
+ !std::isfinite(config_.static_friction_feedforward_duty) ||
+ config_.static_friction_feedforward_duty < 0.0 ||
+ config_.static_friction_feedforward_duty > config_.duty_limit) {
         throw std::invalid_argument("invalid differential wheel controller configuration");
     }
 }
@@ -46,6 +49,9 @@ void DifferentialWheelController::reset() {
     encoder_initialized_ = false;
     previous_left_count_ = 0.0;
     previous_right_count_ = 0.0;
+ target_initialized_ = false;
+ previous_left_target_mps_ = 0.0;
+ previous_right_target_mps_ = 0.0;
 }
 
 double DifferentialWheelController::encoder_measure(double position_rad,
@@ -117,23 +123,48 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
             distance_per_count / dt_s;
     }
 
- const auto clear_opposing_integral = [](double target_mps, double measured_mps, PID& pid) {
- if (std::abs(target_mps) > 1e-4 && target_mps * pid.i() < 0.0 &&
- target_mps * measured_mps >= 0.0)
+ const auto prepare_integral = [&](double target_mps, double previous_target_mps,
+ double measured_mps, PID& pid) {
+ const bool stop_requested = std::abs(target_mps) <= 1e-4;
+ const bool direction_changed = target_initialized_ &&
+ target_mps * previous_target_mps <= 0.0 &&
+ std::abs(target_mps - previous_target_mps) > 1e-4;
+ const bool sharply_reduced = target_initialized_ &&
+ std::abs(previous_target_mps) > 0.1 &&
+ std::abs(target_mps) < 0.5 * std::abs(previous_target_mps);
+ const bool opposing = std::abs(target_mps) > 1e-4 &&
+ target_mps * pid.i() < 0.0 && target_mps * measured_mps >= 0.0;
+ if (stop_requested || direction_changed || sharply_reduced || opposing)
  pid.reset();
  };
- clear_opposing_integral(output.left.target_mps, output.left.measured_mps, left_pid_);
- clear_opposing_integral(output.right.target_mps, output.right.measured_mps, right_pid_);
- output.left.normalized_duty =
-        left_pid_.update(output.left.target_mps - output.left.measured_mps, dt_s);
-    output.right.normalized_duty =
-        right_pid_.update(output.right.target_mps - output.right.measured_mps, dt_s);
+ prepare_integral(output.left.target_mps, previous_left_target_mps_,
+ output.left.measured_mps, left_pid_);
+ prepare_integral(output.right.target_mps, previous_right_target_mps_,
+ output.right.measured_mps, right_pid_);
+ const auto static_feedforward = [&](double target_mps) {
+ return std::abs(target_mps) <= 1e-4
+ ? 0.0
+ : std::copysign(config_.static_friction_feedforward_duty, target_mps);
+ };
+ output.left.static_feedforward = static_feedforward(output.left.target_mps);
+ output.right.static_feedforward = static_feedforward(output.right.target_mps);
+ output.left.normalized_duty = clamp(
+ left_pid_.update(output.left.target_mps - output.left.measured_mps, dt_s) +
+ output.left.static_feedforward,
+ -config_.duty_limit, config_.duty_limit);
+ output.right.normalized_duty = clamp(
+ right_pid_.update(output.right.target_mps - output.right.measured_mps, dt_s) +
+ output.right.static_feedforward,
+ -config_.duty_limit, config_.duty_limit);
     output.left.pid_p = left_pid_.p();
     output.left.pid_i = left_pid_.i();
     output.left.pid_d = left_pid_.d();
     output.right.pid_p = right_pid_.p();
     output.right.pid_i = right_pid_.i();
     output.right.pid_d = right_pid_.d();
+ previous_left_target_mps_ = output.left.target_mps;
+ previous_right_target_mps_ = output.right.target_mps;
+ target_initialized_ = true;
     DifferentialKinematics::wheels_to_twist(
         output.left.measured_mps, output.right.measured_mps,
         config_.track_width_m, output.measured_forward_mps,

@@ -75,7 +75,7 @@ int main() {
   CHECK(catalog.levels().count(id) == 1);
  CHECK(catalog.components().size() == 24);
  CHECK(catalog.policies().size() == 4);
- CHECK(catalog.robots().size() == 5);
+ CHECK(catalog.robots().size() == 6);
  for (const auto& [id, map] : catalog.maps())
   CHECK(catalog.scenes().count(map.scene_3d) == 1);
  for (const auto& [id, level] : catalog.levels()) {
@@ -127,6 +127,9 @@ int main() {
  CHECK(caster_wheel_link != robot.articulation.links.end());
  CHECK(caster_link != robot.articulation.links.end());
  CHECK(std::abs((caster_link->position_m.x - caster_wheel_link->position_m.x) - 0.035) < 1e-12);
+ CHECK(caster_wheel_link->shape == "crowned_wheel");
+ CHECK(std::abs(caster_wheel_link->radius_m - 0.055) < 1e-12);
+ CHECK(std::abs(caster_wheel_link->length_m - 0.064) < 1e-12);
  // Second vehicle: ackermann geometry with honest steering hardware. No
  // level assigns it yet (slice 2); the catalog contract already holds.
  const auto& second = catalog.robot("robot.ro2");

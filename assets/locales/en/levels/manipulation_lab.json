@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Manipulation Lab",
+    "/objective/goal_label": "Manipulator calibration pad",
+    "/objective/goals/0/label": "Four-pose reach sequence",
+    "/objective/goals/1/label": "End-effector hold proof",
+    "/teaching/prediction_prompt": "How does an end-effector pose become physical joint motion?",
+    "/teaching/knowledge_card": "Targets pass through inverse kinematics and joint limits, then become velocity-limited joint references. Feedback control requests bounded torque; MuJoCo multibody dynamics decides the actual arm and base motion."
+  }
+}

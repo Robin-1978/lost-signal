@@ -52,8 +52,8 @@ struct SurfaceMaterialDefinition {
  double friction_mu{1.0};
  double rolling_drag{0.0};
  double traction_scale{1.0};
- double normal_stiffness_Npm{1.0e9};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0025};
+ double contact_damping_ratio{1.0};
  double lidar_reflectivity{0.30};
  std::string drive_effect{"none"};
  std::array<unsigned char, 4> effect_color{255, 255, 255, 255};
@@ -72,8 +72,8 @@ struct SurfaceDefinition {
  double traction_scale{1.0};
  double friction_mu{0.8};
  double rolling_drag{0.0};
- double normal_stiffness_Npm{1.0e9};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0025};
+ double contact_damping_ratio{1.0};
  double lidar_reflectivity{0.30};
 };
 
@@ -91,7 +91,7 @@ struct TerrainPatchDefinition {
  double grade_xy_per_m{0.0};
 };
 
-// Authoritative authored height used by Bullet mesh generation and Robot Map
+// Authoritative authored height used by MuJoCo mesh generation and Robot Map
 // export. Keeping one function prevents the physical world and 2.5D map from
 // disagreeing about deterministic rough relief.
 inline double terrain_patch_height(const TerrainPatchDefinition& patch,
@@ -287,11 +287,15 @@ struct ConflictZoneDefinition {
  // allows the autonomy behavior and trajectory validator to constrain motion.
  std::string authority{"shadow"};
  std::vector<std::string> active_in;
+ // Conservative traffic envelope for this semantic region: expected physical
+ // footprint plus the site's tracking reserve. Required by control-authority
+ // zones so behavior never needs simulator actor truth to derive a safe stop.
+ double participant_radius_m{0.0};
 };
 
 // A visible solid belongs to the simulated world, not to the renderer. Its
 // instance transform selects a scene prefab for presentation and carries the
-// collision proxies used by Bullet, LiDAR and map projection. Scene instances
+// collision proxies used by MuJoCo, LiDAR and map projection. Scene instances
 // that remain outside this list are explicitly visual-only decoration.
 struct WorldCollisionDefinition {
  Vec3 position_m;
@@ -300,8 +304,8 @@ struct WorldCollisionDefinition {
  std::string material;
  double friction_mu{0.8};
  double rolling_drag{0.0};
- double normal_stiffness_Npm{1.0e9};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0025};
+ double contact_damping_ratio{1.0};
  double lidar_reflectivity{0.30};
 };
 
@@ -473,6 +477,17 @@ struct ConstructionScenarioDefinition {
  std::vector<ConstructionPlanOptionDefinition> plans;
 };
 
+struct ManipulationWaypointDefinition {
+ double time_s{0.0};
+ Vec3 target_m;
+ double tool_pitch_rad{0.0};
+};
+
+struct ManipulationProgramDefinition {
+ std::vector<ManipulationWaypointDefinition> waypoints;
+ double success_position_tolerance_m{0.03};
+};
+
 struct LevelDefinition {
  std::string id;
  int order{0};
@@ -508,6 +523,7 @@ struct LevelDefinition {
  std::vector<EnvironmentKeyframeDefinition> environment_keyframes;
  std::vector<ManeuverDefinition> maneuvers;
  std::optional<ConstructionScenarioDefinition> construction;
+ std::optional<ManipulationProgramDefinition> manipulation;
 };
 
 struct AbilityDefinition {
@@ -609,6 +625,7 @@ struct MotorDefinition {
  double controller_bandwidth_radps{6.0};
  double controller_integral_time_s{5.0};
  double controller_derivative_time_s{0.005};
+ double static_friction_feedforward_duty{0.08};
  double coulomb_smoothing_speed_mps{0.05};
  double viscous_drag_N_per_mps{0.6};
 };
@@ -636,12 +653,9 @@ struct RigidLinkDefinition {
  double mass_kg{0.0};
  Vec3 inertia_diagonal_kgm2;
  double friction{0.8};
- // Finite-patch support moment divided by normal load, in metres. This is
- // distinct from the tire component's dimensionless rolling resistance.
- double rolling_support_moment_arm_m{0.0};
  double spinning_resistance{0.0};
- double contact_stiffness_Npm{0.0};
- double contact_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0};
+ double contact_damping_ratio{0.0};
  Vec3 contact_axle_axis;
 };
 
@@ -657,6 +671,8 @@ struct RigidJointDefinition {
  bool has_limits{false};
  double lower_limit_rad{0.0};
  double upper_limit_rad{0.0};
+ double damping_Nms_per_rad{0.0};
+ double friction_loss_Nm{0.0};
 };
 
 struct JointActuatorDefinition {
@@ -677,6 +693,27 @@ struct ArticulationDefinition {
  std::vector<JointActuatorDefinition> actuators;
 };
 
+// Deployable semantic contract for a compact serial manipulator. Articulation
+// remains the source of rigid bodies and joints; this block names the chain
+// and provides controller/kinematic parameters shared by SIM and real adapters.
+struct ManipulatorDefinition {
+ std::string type;
+ std::array<std::string, 4> channels;
+ double shoulder_height_m{0.0};
+ double upper_arm_length_m{0.0};
+ double forearm_length_m{0.0};
+ double tool_length_m{0.0};
+ std::array<double, 4> lower_rad{};
+ std::array<double, 4> upper_rad{};
+ std::array<double, 4> home_rad{};
+ std::array<double, 4> kp{};
+ std::array<double, 4> kd{};
+ std::array<double, 4> maximum_effort_Nm{};
+ std::array<double, 4> maximum_velocity_radps{};
+ std::array<double, 3> gravity_moment_Nm{};
+ std::string end_effector_frame;
+};
+
 struct RobotDefinition {
  std::string id;
  std::string title;
@@ -685,6 +722,10 @@ struct RobotDefinition {
  std::string drive_label_key;
  double wheel_radius_m{0.0};
  double wheel_base_m{0.0};
+ // Maximum validated chassis speed for autonomous operation. The equipped
+ // motor may have a higher wheel-speed capability; this limit captures the
+ // complete running gear, passive supports and stability evidence.
+ double rated_speed_mps{0.0};
  // Calibrated separation used by skid-steer inverse/forward kinematics.
  // For ordinary differential wheels this equals wheel_base_m. Tracks need a
  // larger effective value because lateral scrub moves their instantaneous
@@ -712,9 +753,10 @@ struct RobotDefinition {
  EncoderDefinition encoder;
  ServiceBrakeDefinition service_brake;
  ArticulationDefinition articulation;
+ std::optional<ManipulatorDefinition> manipulator;
  // Orientation-independent envelope consumed by grid and local planners.
  double collision_radius_m{0.0};
- // Authored rigid hull consumed by Bullet. It is deliberately separate from
+ // Authored rigid hull consumed by MuJoCo. It is deliberately separate from
  // the planning envelope and from the wheel/caster support polygon.
  std::string rigid_body_shape;
  Vec3 rigid_body_size_m;

@@ -56,8 +56,6 @@ def main() -> int:
         "--recommended",
         "--component",
         "tires=tires.standard",
-        "--physics",
-        "bullet",
         "--endless",
         "--duration",
         str(arguments.duration),

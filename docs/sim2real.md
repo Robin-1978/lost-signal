@@ -4,7 +4,7 @@
 
 Lost Signal is **not yet a demonstrated sim-to-real system**. It now has a versioned, middleware-neutral [runtime interface](runtime-interface.md) plus SI units, explicit frames, timestamped observations, chassis capability contracts, actuator telemetry, deterministic replay, and headless comparison. No target robot has completed a calibrated closed-loop mission with simulator-to-hardware error measurements, so transfer remains an engineering hypothesis.
 
-That distinction matters. A realistic renderer or a Bullet vehicle does not prove transfer. Evidence begins when the same command and observation contracts run against real hardware and recorded logs can be compared with the simulator.
+That distinction matters. A realistic renderer or a MuJoCo vehicle does not prove transfer. Evidence begins when the same command and observation contracts run against real hardware and recorded logs can be compared with the simulator.
 
 ## What can transfer
 
@@ -18,13 +18,13 @@ That distinction matters. A realistic renderer or a Bullet vehicle does not prov
 | Motor control | targets, encoder feedback, PID, and PWM-like authority are modeled | gains and feedforward must be identified on each platform |
 | Estimation | timestamped encoder, IMU, and localization inputs have stable boundaries | algorithms may transfer; noise and covariance must be measured |
 | Sensors | rates, latency, bias, noise, quantization, dropouts, and extrinsics are represented | parameters require bag/log fitting and environmental tests |
-| Physics | Bullet models contact, slope, payload, and rigid bodies | useful for stress cases; tire/track/terrain contact requires identification |
+| Physics | MuJoCo models contact, slope, payload, and rigid bodies | useful for stress cases; tire/track/terrain contact requires identification |
 | Presentation and scoring | consume snapshots and telemetry | directly reusable for operator tools and education |
 
 ## Deployment boundary
 
 A native robot build links `lost_signal_robot_stack`, then supplies LSRI platform and map providers. The executable
-robot-only build gate configures with `LOST_SIGNAL_BUILD_SIM=OFF`; it does not fetch Bullet or compile anything under
+robot-only build gate configures with `LOST_SIGNAL_BUILD_SIM=OFF`; it does not fetch MuJoCo or compile anything under
 `src/sim`. Runtime observation and command contracts are defined outside the simulator and contain
 timestamps, frames, measurements, and estimated state only. Simulation truth, authored actors, game goals, scoring,
 and rendering snapshots cannot appear in an autonomy interface.
@@ -87,7 +87,7 @@ gate is simulator evidence only. The mass, inertia, steering load, tire response
 require identification and held-out hardware validation before any transfer claim.
 
 RO-3, RO-4, and RO-5 use the same boundary: ROBOT owns tracked or holonomic kinematics and closed loops; LSRI owns
-typed actuator commands and joint feedback; SIM owns motors, mechanisms, terrain contact, gravity, and Bullet time.
+typed actuator commands and joint feedback; SIM owns motors, mechanisms, terrain contact, gravity, and MuJoCo time.
 The mecanum roller law is explicitly a SIM contact-provider mechanism. Replacing it with measured hardware, a
 higher-fidelity provider, or a replay source does not change the ROBOT controller contract.
 

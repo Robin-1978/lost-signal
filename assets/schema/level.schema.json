@@ -410,6 +410,47 @@
     "construction": {
       "$ref": "#/$defs/construction"
     },
+    "manipulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "waypoints"
+      ],
+      "properties": {
+        "success_position_tolerance_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 0.25
+        },
+        "waypoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time_s",
+              "target_m",
+              "tool_pitch_rad"
+            ],
+            "properties": {
+              "time_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "target_m": {
+                "$ref": "#/$defs/vec3"
+              },
+              "tool_pitch_rad": {
+                "type": "number",
+                "minimum": -3.141593,
+                "maximum": 3.141593
+              }
+            }
+          }
+        }
+      }
+    },
     "environment": {
       "$ref": "#/$defs/environment"
     },

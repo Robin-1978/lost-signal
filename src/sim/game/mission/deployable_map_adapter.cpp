@@ -132,6 +132,8 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  {zone.min.x, zone.max.y},
  };
  feature.attributes.emplace("authority", zone.authority);
+ feature.attributes.emplace(
+ "participant_radius_m", std::to_string(zone.participant_radius_m));
  result.features.push_back(std::move(feature));
  }
  return result;

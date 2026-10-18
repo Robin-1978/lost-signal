@@ -55,9 +55,14 @@ int main() {
  auto build = base;
  build.task_policy = policy;
  mission::ScenarioSession run(catalog, "orchard_scramble", build, std::nullopt, {},
- mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
+ mission::ComponentRegistry::builtins());
  CHECK(run.payload_state().mass_kg == 0.0);
  run.run_to_completion();
+ std::cerr << "orchard policy=" << policy << " status="
+ << static_cast<int>(run.result().status) << " pickups="
+ << run.payload_state().history.size() << " completed="
+ << run.snapshot().completed_goal_ids.size() << " time=" << run.result().time_s
+ << '\n';
  if (run.result().status != mission::MissionStatus::Succeeded) {
  std::cerr << "orchard policy=" << policy
  << " reason=" << run.result().failure_reason
@@ -144,12 +149,19 @@ int main() {
  constrained_build.task_policy = "task.valuable";
  mission::ScenarioSession constrained_a(
  constrained_catalog, "orchard_scramble", constrained_build, std::nullopt, {},
- mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
+ mission::ComponentRegistry::builtins());
  mission::ScenarioSession constrained_b(
  constrained_catalog, "orchard_scramble", constrained_build, std::nullopt, {},
- mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
+ mission::ComponentRegistry::builtins());
  constrained_a.run_to_completion();
  constrained_b.run_to_completion();
+ std::cerr << "orchard constrained completed=";
+ for (const auto& id : constrained_a.snapshot().completed_goal_ids)
+ std::cerr << id << ',';
+ std::cerr << " abandoned=";
+ for (const auto& id : constrained_a.snapshot().abandoned_goal_ids)
+ std::cerr << id << ',';
+ std::cerr << " time=" << constrained_a.result().time_s << '\n';
  CHECK(constrained_a.result().status == mission::MissionStatus::Succeeded);
  CHECK(constrained_a.snapshot().completed_goal_ids ==
  std::vector<std::string>({"ridge-pocket", "side-hill", "outer-row",
@@ -170,7 +182,7 @@ int main() {
  impossible_catalog.presentation_for_level("orchard_scramble").recommended_build;
  mission::ScenarioSession impossible(
  impossible_catalog, "orchard_scramble", impossible_build, std::nullopt, {},
- mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Domain);
+ mission::ComponentRegistry::builtins());
  impossible.run_to_completion();
  CHECK(impossible.result().status == mission::MissionStatus::Failed);
  CHECK(impossible.result().failure_reason == "return-reserve");

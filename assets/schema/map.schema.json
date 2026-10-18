@@ -262,7 +262,8 @@
         "type",
         "min",
         "max",
-        "authority"
+        "authority",
+        "participant_radius_m"
       ],
       "properties": {
         "id": {
@@ -282,6 +283,11 @@
             "shadow",
             "control"
           ]
+        },
+        "participant_radius_m": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Conservative radius in meters around a traffic reference point, including expected footprint and the site's tracking reserve."
         },
         "active_in": {
           "$ref": "#/$defs/active"

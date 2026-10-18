@@ -19,7 +19,7 @@ namespace sim {
 // Process noise enters as continuous white noise on (ax, ay, alpha) with
 // caller-given spectral densities; discrete Q via the textbook CV form
 // (dt^3/3, dt^2/2, dt per axis). Measurement updates are sequential scalar
-// Kalman updates (position x/y, velocity vx/vy, yaw) with caller-given R —
+// Kalman updates (position x/y, velocity vx/vy, yaw and yaw rate) with caller-given R —
 // equivalent to the vector form for diagonal R, simpler to audit.
 // Velocity here is the BODY estimate the slip observer will consume;
 // wheel twist stays an independent input to the residual (never fused in).
@@ -31,5 +31,6 @@ void filter_predict(StateEstimate& estimate, double dt_s, double q_accel, double
 void filter_update_position(StateEstimate& estimate, double z_x, double z_y, double r_xy);
 void filter_update_velocity(StateEstimate& estimate, double z_vx, double z_vy, double r_v);
 void filter_update_yaw(StateEstimate& estimate, double z_theta, double r_theta);
+void filter_update_yaw_rate(StateEstimate& estimate, double z_w, double r_w);
 
 } // namespace sim

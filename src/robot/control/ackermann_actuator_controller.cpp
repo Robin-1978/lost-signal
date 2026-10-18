@@ -16,6 +16,16 @@ AckermannActuatorController::AckermannActuatorController(
  AntiWindupMode::ConditionalIntegration),
  rear_right_pid_(drive_gains.kp, drive_gains.ki, drive_gains.kd,
  config.drive_duty_limit, config.drive_integral_limit,
+ AntiWindupMode::ConditionalIntegration),
+ front_left_steer_velocity_pid_(
+ config.steering_velocity_gain_s,
+ config.steering_velocity_gain_s * config.steering_position_gain_radps_per_rad,
+ 0.0, config.steering_duty_limit, config.steering_integral_limit,
+ AntiWindupMode::ConditionalIntegration),
+ front_right_steer_velocity_pid_(
+ config.steering_velocity_gain_s,
+ config.steering_velocity_gain_s * config.steering_position_gain_radps_per_rad,
+ 0.0, config.steering_duty_limit, config.steering_integral_limit,
  AntiWindupMode::ConditionalIntegration) {
  const double values[] = {config_.wheel_base_m, config_.track_width_m,
  config_.wheel_radius_m, config_.max_wheel_speed_mps,
@@ -41,6 +51,8 @@ AckermannActuatorController::AckermannActuatorController(
 void AckermannActuatorController::reset() {
  rear_left_pid_.reset();
  rear_right_pid_.reset();
+ front_left_steer_velocity_pid_.reset();
+ front_right_steer_velocity_pid_.reset();
  encoder_initialized_ = false;
  previous_rear_left_count_ = 0.0;
  previous_rear_right_count_ = 0.0;
@@ -126,21 +138,22 @@ AckermannActuatorControlOutput AckermannActuatorController::update(
  }
  }
  const auto steering_duty = [&](double target_rad, double position_rad,
- double velocity_radps) {
+ double velocity_radps, PID& velocity_pid) {
  const double desired_rate = clamp(
  config_.steering_position_gain_radps_per_rad * (target_rad - position_rad),
  -config_.max_steer_rate_radps, config_.max_steer_rate_radps);
- return clamp(config_.steering_velocity_gain_s * (desired_rate - velocity_radps),
- -config_.steering_duty_limit, config_.steering_duty_limit);
+ if (std::abs(desired_rate) > 1e-4 && desired_rate * velocity_pid.i() < 0.0)
+ velocity_pid.reset();
+ return velocity_pid.update(desired_rate - velocity_radps, dt_s);
  };
  output.front_left_steer = {steer.left_rad,
  feedback.front_left_steer_position_rad,
  steering_duty(steer.left_rad, feedback.front_left_steer_position_rad,
- feedback.front_left_steer_velocity_radps)};
+ feedback.front_left_steer_velocity_radps, front_left_steer_velocity_pid_)};
  output.front_right_steer = {steer.right_rad,
  feedback.front_right_steer_position_rad,
  steering_duty(steer.right_rad, feedback.front_right_steer_position_rad,
- feedback.front_right_steer_velocity_radps)};
+ feedback.front_right_steer_velocity_radps, front_right_steer_velocity_pid_)};
  return output;
 }
 

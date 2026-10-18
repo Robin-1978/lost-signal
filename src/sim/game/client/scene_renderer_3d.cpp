@@ -879,7 +879,6 @@ void SceneRenderer3D::draw_scene(const mission::PresentationFrameView& mission) 
  }
  draw_field_operator(mission);
  draw_robot(mission);
- draw_lidar_point_cloud(mission);
 }
 
 void SceneRenderer3D::draw_constructed_supports(
@@ -931,29 +930,6 @@ void SceneRenderer3D::draw_constructed_supports(
  DrawModelEx(cube_model_, local_to_world({0.0f, height * 0.49f, side * width * 0.47f}), axis,
  angle * kRadToDeg, {length * 0.94f, 0.012f, 0.028f}, edge);
  }
- }
-}
-
-void SceneRenderer3D::draw_lidar_point_cloud(
- const mission::PresentationFrameView& mission) const {
- static constexpr Color ring_colors[] = {
- {65, 220, 255, 210}, {77, 244, 190, 210},
- {255, 218, 92, 210}, {255, 116, 145, 210},
- };
- const auto& cloud = mission.snapshot().lidar_point_cloud;
- if (!cloud)
- return;
- for (const auto& point : *cloud) {
- const Color base = ring_colors[point.ring % 4];
- const float intensity = static_cast<float>(
- std::clamp(0.25 + point.intensity * 0.75, 0.0, 1.0));
- const Color color{
- static_cast<unsigned char>(base.r * intensity),
- static_cast<unsigned char>(base.g * intensity),
- static_cast<unsigned char>(base.b * intensity),
- base.a,
- };
- DrawPoint3D(world(point.position_m), color);
  }
 }
 
@@ -1048,7 +1024,7 @@ void SceneRenderer3D::draw_terrain(const mission::PresentationFrameView& mission
   const Color tint = grade > 0.3f ? Color{83, 91, 80, 255} : Color{71, 80, 75, 255};
   // Use the authored corner heights directly. Rotating a width-sized box
   // foreshortens its horizontal span and creates a visible gap at a flat
-  // highland even though the Bullet triangle meshes share an exact edge.
+  // highland even though the MuJoCo triangle meshes share an exact edge.
  const auto corner = [&](double x, double y) {
  return world(sim::Vec2{x, y},
  static_cast<float>(mission::terrain_patch_height(patch, x, y)) + 0.002f);
@@ -1509,7 +1485,7 @@ void SceneRenderer3D::draw_robot(const mission::PresentationFrameView& mission) 
   // Ready / garage / chapter-preview snapshots do not have a stepped
   // actuator frame yet. Their pose still comes from the authored mount TF;
   // omitting it was why all wheel meshes appeared as horizontal pucks in the
-  // chapter selector even after live Bullet rendering used the right links.
+  // chapter selector even after live MuJoCo rendering used the right links.
   constexpr double kDegreesToRadians = sim::kPi / 180.0;
   const auto authored_mount_sim = sim::physics::quaternion_from_euler(
     mount.rotation_deg.x * kDegreesToRadians, mount.rotation_deg.y * kDegreesToRadians,
@@ -1545,7 +1521,7 @@ void SceneRenderer3D::draw_robot(const mission::PresentationFrameView& mission) 
    } else {
     // A visual is authored in its link frame. Reproduce the same
     // parent-yaw * authored-mount * local-joint-roll chain used by TF and by
-    // the articulated Bullet model. Previously the wheel GLBs baked in the
+    // the articulated MuJoCo model. Previously the wheel GLBs baked in the
     // mount's 90-degree rotation while physical rendering applied the link
     // transform again, laying every wheel flat.
     auto local_sim = sim::physics::quaternion_multiply(

@@ -11,7 +11,8 @@ std::vector<sim::CrossingZoneSpec> DynamicTrafficSystem::active_zones(
  if (!active_in_level(definition.active_in, level_id))
  continue;
  active.push_back({
- {definition.id, definition.min, definition.max},
+ {definition.id, definition.min, definition.max,
+ definition.participant_radius_m},
  definition.authority == "control"
  ? sim::CrossingAuthority::Control
  : sim::CrossingAuthority::Observe,

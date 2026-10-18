@@ -345,7 +345,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  {
  const auto path = catalog.root_ / "construction_pieces.json";
  const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
- require_schema_v1(value, path);
+require_schema_v1(value, path);
  for (const auto& item : value.at("pieces")) {
  const auto& collision = item.at("collision");
  const auto& support = item.at("support");
@@ -599,13 +599,31 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  }
  level.construction = std::move(scenario);
  }
+ if (const auto manipulation = value.find("manipulation"); manipulation != value.end()) {
+ ManipulationProgramDefinition program;
+ program.success_position_tolerance_m =
+ manipulation->value("success_position_tolerance_m", 0.03);
+ double previous_time = -1.0;
+ for (const auto& item : manipulation->at("waypoints")) {
+ ManipulationWaypointDefinition waypoint{
+ item.at("time_s").get<double>(), vec3(item.at("target_m")),
+ item.at("tool_pitch_rad").get<double>()};
+ if (!(waypoint.time_s > previous_time))
+ throw ContentError(path.string() + ": manipulation waypoint times must increase");
+ previous_time = waypoint.time_s;
+ program.waypoints.push_back(waypoint);
+ }
+ if (program.waypoints.empty() || !(program.success_position_tolerance_m > 0.0))
+ throw ContentError(path.string() + ": invalid manipulation program");
+ level.manipulation = std::move(program);
+ }
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
  {
   const auto path = catalog.root_ / "surfaces.json";
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
-  require_schema_v1(value, path);
+require_schema_version(value, path, 2);
   for (const auto& item : value.at("materials")) {
    SurfaceMaterialDefinition material;
    material.id = item.at("id").get<std::string>();
@@ -616,8 +634,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  material.albedo_tint = rgba(item.value("albedo_tint", std::string{"#FFFFFF"}));
    material.rolling_drag = item.at("rolling_drag").get<double>();
    material.traction_scale = item.at("traction_scale").get<double>();
-   material.normal_stiffness_Npm = item.value("normal_stiffness_Npm", 1.0e9);
-   material.normal_damping_Nspm = item.value("normal_damping_Nspm", 0.0);
+material.contact_time_constant_s = item.value("contact_time_constant_s", 0.0025);
+material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
    material.lidar_reflectivity = item.at("lidar_reflectivity").get<double>();
    if (const auto effect = item.find("drive_effect"); effect != item.end()) {
     material.drive_effect = effect->at("kind").get<std::string>();
@@ -703,8 +721,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    surface.traction_scale = material.traction_scale;
    surface.friction_mu = material.friction_mu;
    surface.rolling_drag = material.rolling_drag;
-   surface.normal_stiffness_Npm = material.normal_stiffness_Npm;
-   surface.normal_damping_Nspm = material.normal_damping_Nspm;
+   surface.contact_time_constant_s = material.contact_time_constant_s;
+   surface.contact_damping_ratio = material.contact_damping_ratio;
    surface.lidar_reflectivity = material.lidar_reflectivity;
    map.surfaces.push_back(std::move(surface));
   }
@@ -731,6 +749,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    zone.max = vec2(item.at("max"));
    zone.authority = item.at("authority").get<std::string>();
    zone.active_in = item.value("active_in", std::vector<std::string>{});
+ zone.participant_radius_m = item.at("participant_radius_m").get<double>();
    if (!(zone.min.x < zone.max.x && zone.min.y < zone.max.y)) {
     throw ContentError(path.string() + ": conflict zone '" + zone.id + "' has an invalid box");
    }
@@ -738,6 +757,11 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     throw ContentError(path.string() + ": conflict zone '" + zone.id + "' has unknown authority '" +
                        zone.authority + "'");
    }
+ if (!(zone.participant_radius_m >= 0.0) ||
+ (zone.authority == "control" && !(zone.participant_radius_m > 0.0))) {
+ throw ContentError(path.string() + ": conflict zone '" + zone.id +
+ "' requires a positive participant_radius_m for control authority");
+ }
    map.conflict_zones.push_back(std::move(zone));
   }
  std::set<std::string> world_object_ids;
@@ -777,8 +801,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  material,
  surface.friction_mu,
  surface.rolling_drag,
- surface.normal_stiffness_Npm,
- surface.normal_damping_Nspm,
+ surface.contact_time_constant_s,
+ surface.contact_damping_ratio,
  surface.lidar_reflectivity,
  });
  }
@@ -1047,7 +1071,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    }
    continue;
   }
-  require_schema_version(value, path, 2);
+ require_schema_version(value, path, 3);
   const auto slot = value.at("slot").get<std::string>();
   const auto& profile = value.at("model_profile");
   for (const auto& item : value.at("components")) {
@@ -1072,7 +1096,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
 
  for (const auto& path : json_files(catalog.root_ / "robots")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
- require_schema_version(value, path, 6);
+ require_schema_version(value, path, 8);
   const auto& drive = value.at("drive");
   const auto& motor = drive.at("motor");
   const auto& steering = drive.at("steering");
@@ -1092,6 +1116,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
   robot.wheel_radius_m = drive.at("wheel_radius_m").get<double>();
   robot.wheel_base_m = drive.at("wheel_base_m").get<double>();
+ robot.rated_speed_mps = drive.at("rated_speed_mps").get<double>();
   robot.effective_track_width_m = drive.value("effective_track_width_m", robot.wheel_base_m);
   robot.motor = {
     motor.at("max_wheel_speed_mps").get<double>(),
@@ -1104,6 +1129,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     motor.at("controller_bandwidth_radps").get<double>(),
     motor.at("controller_integral_time_s").get<double>(),
     motor.at("controller_derivative_time_s").get<double>(),
+ motor.at("static_friction_feedforward_duty").get<double>(),
     motor.at("coulomb_smoothing_speed_mps").get<double>(),
     motor.at("viscous_drag_N_per_mps").get<double>(),
   };
@@ -1113,8 +1139,8 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   robot.tracked_max_yaw_rate_rads = drive.value("max_yaw_rate_rads", 1.5);
   robot.track_length_m = drive.value("track_length_m", 0.7);
   robot.track_width_m = drive.value("track_width_m", 0.58);
-  if (!(robot.effective_track_width_m > 0.0)) {
-   throw ContentError(path.string() + ": effective_track_width_m must be positive");
+ if (!(robot.effective_track_width_m > 0.0) || !(robot.rated_speed_mps > 0.0)) {
+ throw ContentError(path.string() + ": track width and rated speed must be positive");
   }
   robot.unlock_ability = value.value("unlock_ability", std::string{});
   robot.steering = {
@@ -1157,10 +1183,14 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
     link.mass_kg = item.at("mass_kg").get<double>();
     link.inertia_diagonal_kgm2 = vec3(item.at("inertia_diagonal_kgm2"));
     link.friction = item.value("friction", 0.8);
-    link.rolling_support_moment_arm_m = item.value("rolling_support_moment_arm_m", 0.0);
     link.spinning_resistance = item.value("spinning_resistance", 0.0);
-    link.contact_stiffness_Npm = item.value("contact_stiffness_Npm", 0.0);
-    link.contact_damping_Nspm = item.value("contact_damping_Nspm", 0.0);
+    link.contact_time_constant_s = item.value("contact_time_constant_s", 0.0);
+    link.contact_damping_ratio = item.value("contact_damping_ratio", 0.0);
+ if (link.contact_time_constant_s > 0.0 &&
+ (link.contact_time_constant_s < 0.002 || !(link.contact_damping_ratio > 0.0))) {
+ throw ContentError(path.string() + ": articulated link '" + link.id +
+ "' has invalid MuJoCo contact response");
+ }
     link.contact_axle_axis = item.contains("contact_axle_axis") ? vec3(item.at("contact_axle_axis")) : Vec3{};
     if (!link_ids.insert(link.id).second)
      throw ContentError(path.string() + ": duplicate articulated link '" + link.id + "'");
@@ -1177,7 +1207,13 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
       vec3(item.at("axis_in_parent")),      vec3(item.at("axis_in_child")),
  item.at("type").get<std::string>() == "revolute",
  item.value("lower_limit_rad", 0.0), item.value("upper_limit_rad", 0.0),
+ item.value("damping_Nms_per_rad", 0.0), item.value("friction_loss_Nm", 0.0),
     };
+ if (!std::isfinite(joint.damping_Nms_per_rad) || joint.damping_Nms_per_rad < 0.0 ||
+ !std::isfinite(joint.friction_loss_Nm) || joint.friction_loss_Nm < 0.0) {
+ throw ContentError(path.string() + ": articulated joint '" + joint.id +
+ "' damping and friction loss must be finite and non-negative");
+ }
     if (!joint_ids.insert(joint.id).second || !link_ids.count(joint.parent) || !link_ids.count(joint.child) ||
         joint.parent == joint.child) {
      throw ContentError(path.string() + ": invalid articulated joint '" + joint.id + "'");
@@ -1311,6 +1347,58 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
                        ": drive.yaw_inertia_kgm2 must match the articulated assembly and armatures");
    }
   }
+ if (const auto manipulator = value.find("manipulator"); manipulator != value.end()) {
+ ManipulatorDefinition definition;
+ definition.type = manipulator->at("type").get<std::string>();
+ definition.channels = manipulator->at("channels").get<std::array<std::string, 4>>();
+ definition.shoulder_height_m = manipulator->at("shoulder_height_m").get<double>();
+ definition.upper_arm_length_m = manipulator->at("upper_arm_length_m").get<double>();
+ definition.forearm_length_m = manipulator->at("forearm_length_m").get<double>();
+ definition.tool_length_m = manipulator->at("tool_length_m").get<double>();
+ definition.lower_rad = manipulator->at("lower_rad").get<std::array<double, 4>>();
+ definition.upper_rad = manipulator->at("upper_rad").get<std::array<double, 4>>();
+ definition.home_rad = manipulator->at("home_rad").get<std::array<double, 4>>();
+ definition.kp = manipulator->at("kp").get<std::array<double, 4>>();
+ definition.kd = manipulator->at("kd").get<std::array<double, 4>>();
+ definition.maximum_effort_Nm =
+ manipulator->at("maximum_effort_Nm").get<std::array<double, 4>>();
+ definition.maximum_velocity_radps =
+ manipulator->at("maximum_velocity_radps").get<std::array<double, 4>>();
+ definition.gravity_moment_Nm =
+ manipulator->at("gravity_moment_Nm").get<std::array<double, 3>>();
+ definition.end_effector_frame = manipulator->at("end_effector_frame").get<std::string>();
+ if (definition.type != "yaw_planar_3r")
+ throw ContentError(path.string() + ": unsupported manipulator type '" + definition.type + "'");
+ std::set<std::string> unique_channels;
+ for (std::size_t index = 0; index < definition.channels.size(); ++index) {
+ const auto actuator = std::find_if(robot.articulation.actuators.begin(),
+ robot.articulation.actuators.end(), [&](const auto& candidate) {
+ return candidate.channel == definition.channels[index];
+ });
+ if (!unique_channels.insert(definition.channels[index]).second ||
+ actuator == robot.articulation.actuators.end()) {
+ throw ContentError(path.string() + ": manipulator references an invalid actuator channel");
+ }
+ if (!(definition.lower_rad[index] < definition.home_rad[index] &&
+ definition.home_rad[index] < definition.upper_rad[index]) ||
+ !(definition.kp[index] > 0.0) || definition.kd[index] < 0.0 ||
+ !(definition.maximum_effort_Nm[index] > 0.0) ||
+ !(definition.maximum_velocity_radps[index] > 0.0)) {
+ throw ContentError(path.string() + ": manipulator has invalid joint parameters");
+ }
+ }
+ for (const double moment : definition.gravity_moment_Nm) {
+ if (!(std::isfinite(moment) && moment >= 0.0))
+ throw ContentError(path.string() + ": manipulator has invalid gravity moments");
+ }
+ if (!(definition.shoulder_height_m > 0.0 && definition.upper_arm_length_m > 0.0 &&
+ definition.forearm_length_m > 0.0 && definition.tool_length_m >= 0.0)) {
+ throw ContentError(path.string() + ": manipulator has invalid kinematic dimensions");
+ }
+ if (definition.end_effector_frame.empty())
+ throw ContentError(path.string() + ": manipulator end_effector_frame is empty");
+ robot.manipulator = std::move(definition);
+ }
   robot.collision_radius_m = collision.at("planning_radius_m").get<double>();
   const auto& rigid_body = collision.at("rigid_body");
   robot.rigid_body_shape = rigid_body.at("shape").get<std::string>();
@@ -1357,6 +1445,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    }
    robot.mounts.push_back(std::move(mount));
   }
+ if (robot.manipulator && !frame_ids.contains(robot.manipulator->end_effector_frame)) {
+ throw ContentError(path.string() + ": manipulator end_effector_frame has no matching mount");
+ }
   if (!robot.articulation.links.empty()) {
    const auto& root =
      *std::find_if(robot.articulation.links.begin(), robot.articulation.links.end(),
@@ -1375,7 +1466,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
      throw ContentError(path.string() + ": mount/frame for articulated link '" + link.id +
                         "' does not match its rest transform");
     }
-    if (mount->motion == "wheel" && link.shape == "cylinder" &&
+ if (mount->motion == "wheel" &&
+ (link.shape == "cylinder" || link.shape == "ellipsoid" ||
+ link.shape == "crowned_wheel") &&
         std::abs(mount->rolling_radius_m - link.radius_m) > 1e-9) {
      throw ContentError(path.string() + ": rolling radius for articulated link '" + link.id +
                         "' does not match its collision radius");
@@ -1520,7 +1613,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  presentation.evidence_fields = running.value("evidence_fields", std::vector<std::string>{});
  for (const auto& field : presentation.evidence_fields) {
  static const std::unordered_set<std::string> allowed{
- "speed", "braking", "steering", "turn_radius", "grade", "slip", "lidar"};
+ "speed", "braking", "steering", "turn_radius", "grade", "slip", "lidar", "manipulator"};
  if (!allowed.count(field))
  throw ContentError(path.string() + ": unknown running evidence field '" + field + "'");
  }
@@ -1677,7 +1770,6 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  }
  return catalog;
 }
-
 const LevelDefinition& ContentCatalog::level(const std::string& id) const {
  const auto found = levels_.find(id);
  if (found == levels_.end()) {

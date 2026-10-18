@@ -15,8 +15,8 @@ struct ResolvedWorldCollision {
  std::string material;
  double friction_mu{0.8};
  double rolling_drag{0.0};
- double normal_stiffness_Npm{1.0e9};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0025};
+ double contact_damping_ratio{1.0};
  double lidar_reflectivity{0.30};
  sim::Vec2 aabb_min;
  sim::Vec2 aabb_max;

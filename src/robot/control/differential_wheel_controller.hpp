@@ -28,6 +28,10 @@ struct DifferentialWheelControllerConfig {
     int encoder_counts_per_revolution{2048};
     double duty_limit{1.0};
     double integral_limit{2.0};
+ // Identified duty needed to overcome static drivetrain/contact resistance.
+ // Applied only for a non-zero wheel-speed request; it never holds a stopped
+ // wheel and therefore cannot hide a missing parking brake.
+ double static_friction_feedforward_duty{0.0};
 };
 
 struct DifferentialWheelFeedback {
@@ -46,6 +50,7 @@ struct WheelControlTelemetry {
     double pid_p{0.0};
     double pid_i{0.0};
     double pid_d{0.0};
+ double static_feedforward{0.0};
 };
 
 struct DifferentialWheelControlOutput {
@@ -79,6 +84,9 @@ class DifferentialWheelController {
     bool encoder_initialized_{false};
     double previous_left_count_{0.0};
     double previous_right_count_{0.0};
+ bool target_initialized_{false};
+ double previous_left_target_mps_{0.0};
+ double previous_right_target_mps_{0.0};
 };
 
 } // namespace sim

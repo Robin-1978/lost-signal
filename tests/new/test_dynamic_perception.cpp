@@ -128,7 +128,7 @@ int main() {
  CHECK(first_frame.lidar->header.sequence == 0);
  CHECK(first_frame.lidar->header.frame_id == "lidar_link");
  CHECK(first_frame.lidar->scan_period_s == 0.1);
- CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal Domain comparison is instantaneous
+ CHECK(first_frame.lidar->time_increment_s == 0.0); // ideal focused scan is instantaneous
  CHECK(first_frame.lidar->intensities.size() == first_frame.lidar->ranges.size());
  CHECK(first_frame.lidar->intensities[0] > 0.0);
  sim::SensorSystem near_field_sensors(7, 11);

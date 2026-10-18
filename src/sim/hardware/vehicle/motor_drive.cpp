@@ -1,6 +1,8 @@
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
 
+#include "sim/hardware/actuators/electric_drive.hpp"
+
 #include "robot/core/math.hpp"
 
 #include <algorithm>
@@ -49,7 +51,8 @@ DifferentialMotorDrive::DifferentialMotorDrive(MotorDriveParams params,
  controller_({params.wheel_base_m, params.wheel_radius_m,
  params.max_wheel_speed_mps,
  params.encoder_counts_per_revolution,
- params.pwm_limit, params.integral_limit},
+ params.pwm_limit, params.integral_limit,
+ params.static_friction_feedforward_duty},
  gains) {}
 
 void DifferentialMotorDrive::set_body_dynamics(
@@ -153,10 +156,8 @@ DiffState DifferentialMotorDrive::apply_control(
  const double resist_coeff = std::max(0.0, ground.rolling_resist);
  auto wheel_force = [&](double duty, double wheel_mps,
  WheelMotorTelemetry& wheel) {
- const double curve = std::max(
- 0.0, 1.0 - std::abs(wheel_mps) /
- std::max(0.05, params_.free_speed_mps));
- double force = duty * params_.stall_force_N * curve;
+ double force = hardware::dc_motor_force_N(
+ duty, wheel_mps, params_.stall_force_N, params_.free_speed_mps);
  if (physical_feedback) {
  wheel.slipping = false;
  return force;
@@ -252,6 +253,7 @@ BuiltChassis create_differential_chassis(const ChassisBuildParams& params,
  params.behavior_w_max,
  params.coulomb_smoothing_speed_mps,
  params.viscous_drag_N_per_mps,
+ params.static_friction_feedforward_duty,
  },
  gains);
  return out;

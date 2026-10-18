@@ -50,8 +50,8 @@ ComponentSpec resolve_traction(const ComponentDefinition& component) {
    required_number(component, "power_scale", 0.0),
    required_number(component, "friction_mu", 0.0, false),
    required_number(component, "rolling_resistance", 0.0),
- required_number(component, "normal_stiffness_Npm", 0.0, false),
- required_number(component, "normal_damping_Nspm", 0.0),
+ required_number(component, "contact_time_constant_s", 0.002),
+ required_number(component, "contact_damping_ratio", 0.0, false),
  };
 }
 
@@ -137,6 +137,7 @@ ComponentSpec resolve_motor(const ComponentDefinition& component) {
  required_number(component, "controller_bandwidth_radps", 0.0, false),
  required_number(component, "controller_integral_time_s", 0.0, false),
  required_number(component, "controller_derivative_time_s", 0.0),
+ required_number(component, "static_friction_feedforward_duty", 0.0),
  required_number(component, "coulomb_smoothing_speed_mps", 0.0, false),
  required_number(component, "viscous_drag_N_per_mps", 0.0),
  };

@@ -37,7 +37,8 @@ class AutonomyPipeline {
  const LocalPlanningRequest& request, const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  StaticFeasibility terrain_feasible = {},
- const GridMap* physical_collision_map = nullptr) const;
+ const GridMap* physical_collision_map = nullptr,
+ StaticFeasibility physical_terrain_feasible = {});
 
  TrajectoryTrackingReport observe_trajectory(
  double time_s, Vec2 position, double heading_rad,

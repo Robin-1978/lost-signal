@@ -23,6 +23,8 @@
 #include "robot/control/differential_wheel_controller.hpp"
 #include "robot/control/ackermann_actuator_controller.hpp"
 #include "robot/control/holonomic_actuator_controller.hpp"
+#include "robot/control/manipulator_joint_controller.hpp"
+#include "robot/platform/serial_manipulator.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/planar_diff_drive.hpp"
 #include "robot/autonomy/planning/local/dwa.hpp"
@@ -57,15 +59,6 @@
 namespace mission {
 
 enum class MissionStatus { Ready, Running, Succeeded, Failed };
-
-// Bullet is the production pose integrator and the default. Domain keeps the
-// deterministic 2.5D reference model for explicit comparison, while Shadow
-// runs the same wheel forces through Bullet without letting it drive gameplay.
-// Auto resolves to Bullet because Bullet is a required build dependency.
-enum class PhysicsMode { Domain, BulletShadow, Bullet, Auto };
-
-PhysicsMode parse_physics_mode(const std::string& value);
-const char* physics_mode_name(PhysicsMode mode);
 
 struct MissionEvent {
  double time_s{0.0};
@@ -148,6 +141,7 @@ struct ControlSnapshot {
  // estimate against that accepted rollout.
  bool trajectory_validated{false};
  int trajectory_verdict{-1};
+ std::string trajectory_diagnostic;
  double trajectory_min_dynamic_clearance_m{std::numeric_limits<double>::infinity()};
  std::uint64_t trajectory_sequence{0};
  bool trajectory_tracking_active{false};
@@ -239,6 +233,18 @@ struct ControlSnapshot {
  std::vector<MountActuationSnapshot> mount_actuations;
 };
 
+struct ManipulatorSnapshot {
+ bool present{false};
+ bool target_reachable{false};
+ std::array<double, 4> target_joint_rad{};
+ std::array<double, 4> measured_joint_rad{};
+ std::array<double, 4> measured_velocity_radps{};
+ sim::EndEffectorPose target_pose;
+ sim::EndEffectorPose measured_pose;
+ double position_error_m{0.0};
+ double maximum_joint_speed_radps{0.0};
+};
+
 struct PayloadPickup {
  std::string goal_id;
  double time_s{0.0};
@@ -289,6 +295,9 @@ struct MissionSnapshot {
  sim::DiffState robot;
  sim::Vec2 estimated_position;
  double estimated_heading{0.0};
+ double estimated_forward_mps{0.0};
+ double estimated_lateral_mps{0.0};
+ double estimated_yaw_rate_radps{0.0};
  std::vector<ActorSnapshot> actors;
  std::vector<DynamicObstacleSnapshot> dynamic_obstacles;
  std::vector<sim::Vec2> lidar_hits;
@@ -297,6 +306,7 @@ struct MissionSnapshot {
  // the 25 Hz replay cadence.
  std::shared_ptr<const LidarPointCloudSnapshot> lidar_point_cloud;
  ControlSnapshot control;
+ ManipulatorSnapshot manipulator;
  bool static_obstacle_detected{false};
  bool dynamic_object_detected{false};
  bool waiting_for_clearance{false};
@@ -321,11 +331,6 @@ struct MissionSnapshot {
  // Onboard-observable estimate from encoder/IMU disagreement. Autonomy may
  // consume this; traction_saturated above remains simulator plant truth.
  bool traction_slip_observed{false};
- // Bullet-shadow comparison. Zero in Domain mode; in Bullet authority these
- // describe the live rigid body and shadow_error_* stay zero.
- double shadow_position_error_m{0.0};
- double shadow_heading_error_rad{0.0};
- double shadow_height_error_m{0.0};
  int rigid_contact_count{0};
  std::vector<std::string> ground_contact_links;
  double max_drive_slip_ratio{0.0};
@@ -381,12 +386,11 @@ struct MissionResult {
  double max_grade{0.0};
  double max_abs_roll_rad{0.0};
  double max_rollover_risk{0.0};
- double max_shadow_position_error_m{0.0};
- double max_shadow_heading_error_rad{0.0};
- double max_shadow_height_error_m{0.0};
  int rigid_contacts{0};
  bool construction_contact_observed{false};
  bool construction_surface_traversed{false};
+ double final_manipulator_error_m{0.0};
+ double max_manipulator_joint_speed_radps{0.0};
  double cargo_integrity{1.0};
  int collected_items{0};
  double collected_value{0.0};
@@ -407,7 +411,6 @@ struct ScenarioSessionOptions {
  std::vector<std::string> owned_abilities;
  ComponentRegistry component_registry{ComponentRegistry::with_builtins()};
  std::shared_ptr<const autonomy::IGlobalPlanner> global_planner;
- PhysicsMode physics_mode{PhysicsMode::Bullet};
  std::shared_ptr<sim::IHighLevelPolicy> high_level_policy;
  std::string contract_id;
  std::string runtime_provider_id{"channel.in-process"};
@@ -426,7 +429,6 @@ class ScenarioSession {
    std::optional<uint64_t> seed_override = std::nullopt, const std::vector<std::string>& owned_abilities = {},
    const ComponentRegistry& component_registry = ComponentRegistry::builtins(),
    std::shared_ptr<const autonomy::IGlobalPlanner> global_planner = {},
-   PhysicsMode physics_mode = PhysicsMode::Bullet,
    std::shared_ptr<sim::IHighLevelPolicy> high_level_policy = {}, std::string contract_id = {},
    std::string runtime_provider_id = "channel.in-process",
    sim::runtime::RuntimeRegistry runtime_registry = sim::runtime::RuntimeRegistry::with_builtins());
@@ -530,7 +532,6 @@ class ScenarioSession {
   return "unknown";
  }
  const ContractJob* active_contract() const { return active_contract_; }
- PhysicsMode physics_mode() const { return physics_mode_; }
  double navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const;
 
  private:
@@ -557,6 +558,9 @@ class ScenarioSession {
  void refresh_dynamic_obstacles();
  void decide_control();
  void apply_motion();
+ void append_manipulator_efforts(sim::ChassisTelemetry& telemetry);
+ sim::EndEffectorPose manipulation_target_pose(double time_s) const;
+ void refresh_manipulator_snapshot();
  void finish_success();
  void finish_failure(std::string reason, std::string message);
  void record_event(std::string code, std::string message, double throttle_s = 0.0);
@@ -600,8 +604,6 @@ class ScenarioSession {
  };
  std::unordered_map<std::string, ConstructionTraversalEvidence> construction_evidence_;
  const RobotDefinition& robot_definition_;
- PhysicsMode requested_physics_mode_{PhysicsMode::Bullet};
- PhysicsMode physics_mode_{PhysicsMode::Bullet};
  sim::runtime::RuntimeRegistry runtime_registry_;
  std::string runtime_provider_id_;
  // Content is converted once into validated, unit-bearing runtime contracts.
@@ -616,6 +618,10 @@ class ScenarioSession {
  Properties behavior_;
 
  std::unique_ptr<sim::GridMap> truth_map_;
+ // Empty static base for recovery composition. Transient LiDAR obstacles are
+ // still rasterized; authored geometry is checked analytically to avoid a
+ // conservative occupied cell trapping a physically clear footprint.
+ std::unique_ptr<sim::GridMap> recovery_base_map_;
  std::unique_ptr<sim::SensorSystem> sensor_system_;
  struct PendingLidarObservation {
  sim::ObservationFrame observation;
@@ -634,6 +640,12 @@ class ScenarioSession {
  std::unique_ptr<sim::AckermannActuatorController> ackermann_actuator_controller_;
  std::unique_ptr<sim::HolonomicActuatorController> holonomic_actuator_controller_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
+ std::unique_ptr<sim::runtime::IRuntimeChannel> manipulator_channel_;
+ std::unique_ptr<sim::ManipulatorJointController> manipulator_controller_;
+ sim::ManipulatorGeometry manipulator_geometry_;
+ sim::ManipulatorJointPosition manipulator_target_joints_;
+ std::uint64_t manipulator_feedback_sequence_{0};
+ std::uint64_t manipulator_command_sequence_{0};
  std::unique_ptr<sim::RouteTrackingSystem> route_tracking_system_;
  double heading_kp_{0.0};
  // Yaw-rate capability used by DWA/manual/clamps. Differential bases use
@@ -663,7 +675,7 @@ class ScenarioSession {
  std::vector<sim::RoutePoint> planned_route_;
  bool route_feasible_{true};
  bool return_reserve_failure_{false};
- // Persistent expedition mode: the same world, sensors and Bullet contacts
+ // Persistent expedition mode: the same world, sensors and MuJoCo contacts
  // keep stepping without goal, timeout or collision termination. The player
  // moves the field operator and issues high-level intents; the robot always
  // drives through the autonomous planning and control stack.

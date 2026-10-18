@@ -17,7 +17,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 6
+      "const": 8
     },
     "id": {
       "$ref": "#/$defs/id"
@@ -92,6 +92,7 @@
         "type",
         "wheel_radius_m",
         "wheel_base_m",
+        "rated_speed_mps",
         "mass_kg",
         "yaw_inertia_kgm2",
         "motor",
@@ -122,6 +123,10 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "rated_speed_mps": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "effective_track_width_m": {
           "type": "number",
           "exclusiveMinimum": 0
@@ -144,6 +149,7 @@
             "controller_bandwidth_radps",
             "controller_integral_time_s",
             "controller_derivative_time_s",
+            "static_friction_feedforward_duty",
             "coulomb_smoothing_speed_mps",
             "viscous_drag_N_per_mps"
           ],
@@ -188,6 +194,11 @@
             "controller_derivative_time_s": {
               "type": "number",
               "minimum": 0
+            },
+            "static_friction_feedforward_duty": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
             },
             "coulomb_smoothing_speed_mps": {
               "type": "number",
@@ -396,21 +407,17 @@
                 "type": "number",
                 "minimum": 0
               },
-              "rolling_support_moment_arm_m": {
-                "type": "number",
-                "minimum": 0
-              },
               "spinning_resistance": {
                 "type": "number",
                 "minimum": 0
               },
-              "contact_stiffness_Npm": {
+              "contact_time_constant_s": {
+                "type": "number",
+                "minimum": 0.002
+              },
+              "contact_damping_ratio": {
                 "type": "number",
                 "exclusiveMinimum": 0
-              },
-              "contact_damping_Nspm": {
-                "type": "number",
-                "minimum": 0
               },
               "contact_axle_axis": {
                 "$ref": "#/$defs/vec3"
@@ -425,7 +432,9 @@
                   "shape": {
                     "enum": [
                       "box",
-                      "cylinder"
+                      "cylinder",
+                      "crowned_wheel",
+                      "ellipsoid"
                     ]
                   },
                   "size_m": {
@@ -459,7 +468,11 @@
                     "if": {
                       "properties": {
                         "shape": {
-                          "const": "cylinder"
+                          "enum": [
+                            "cylinder",
+                            "crowned_wheel",
+                            "ellipsoid"
+                          ]
                         }
                       }
                     },
@@ -525,6 +538,14 @@
               },
               "upper_limit_rad": {
                 "type": "number"
+              },
+              "damping_Nms_per_rad": {
+                "type": "number",
+                "minimum": 0
+              },
+              "friction_loss_Nm": {
+                "type": "number",
+                "minimum": 0
               }
             },
             "allOf": [
@@ -574,6 +595,90 @@
               }
             }
           }
+        }
+      }
+    },
+    "manipulator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "channels",
+        "shoulder_height_m",
+        "upper_arm_length_m",
+        "forearm_length_m",
+        "tool_length_m",
+        "lower_rad",
+        "upper_rad",
+        "home_rad",
+        "kp",
+        "kd",
+        "maximum_effort_Nm",
+        "maximum_velocity_radps",
+        "gravity_moment_Nm",
+        "end_effector_frame"
+      ],
+      "properties": {
+        "type": {
+          "const": "yaw_planar_3r"
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "shoulder_height_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "upper_arm_length_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "forearm_length_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tool_length_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lower_rad": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "upper_rad": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "home_rad": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "kp": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "kd": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "maximum_effort_Nm": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "maximum_velocity_radps": {
+          "$ref": "#/$defs/joint_array"
+        },
+        "gravity_moment_Nm": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "end_effector_frame": {
+          "$ref": "#/$defs/id"
         }
       }
     },
@@ -729,6 +834,14 @@
       "items": {
         "type": "number",
         "exclusiveMinimum": 0
+      }
+    },
+    "joint_array": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number"
       }
     },
     "visual": {

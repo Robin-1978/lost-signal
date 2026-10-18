@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
+#include "robot/autonomy/planning/local/local_planning_system.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -197,6 +198,88 @@ int main() {
  leave_invasion, map, invading_hold, 1.0, 0.2, 0.1, {}, escape_braking);
  CHECK(leave_result.accepted());
  CHECK(leave_result.minimum_risk_escape());
+
+ // A long soft-inflation incursion can require two receding-horizon stages:
+ // first rotate in physically free space, then translate out. Refusing every
+ // rollout whose first endpoint is still in the soft margin deadlocks a real
+ // differential robot even though the physical map is clear.
+ sim::GridMap preferred(100, 100, 0.1);
+ preferred.addBox(3.5, 4.5, 6.5, 5.5);
+ sim::GridMap physical(100, 100, 0.1);
+ sim::LocalPlanningRequest staged_request;
+ staged_request.command_space = sim::LocalCommandSpace::DifferentialTwist;
+ staged_request.position = {5.0, 5.0};
+ staged_request.heading_rad = 0.0;
+ staged_request.target = {5.0, 7.0};
+ staged_request.max_speed_mps = 0.5;
+ staged_request.max_yaw_rate_radps = 1.6;
+ staged_request.max_accel_mps2 = 1.0;
+ staged_request.max_yaw_accel_radps2 = 4.0;
+ staged_request.prediction_horizon_s = 1.0;
+ staged_request.step_s = 0.1;
+ staged_request.robot_radius_m = 0.2;
+ staged_request.differential_track_m = 0.5;
+ staged_request.max_wheel_speed_mps = 2.0;
+ const auto staged = sim::LocalPlanningSystem{}.plan(
+ staged_request, preferred, {}, {}, &physical);
+ CHECK(staged.selection.validation.accepted());
+ CHECK(staged.selection.validation.minimum_risk_escape());
+ CHECK(staged.selection.validation.diagnostic.find("in-place alignment") != std::string::npos);
+ CHECK(std::abs(staged.selection.trajectory.command.v) < 1e-12);
+ CHECK(staged.selection.trajectory.command.w > 0.0);
+
+ // Soft-map recovery escalates only after a persistent standstill. The first
+ // nine seconds preserve the normal clearance contract; after ten seconds a
+ // physically validated, incremental escape may reduce a wide inflation
+ // incursion, and the recovery mode remains active on the next cycle.
+ sim::GridMap deep_preferred(100, 100, 0.1);
+ deep_preferred.addBox(3.5, 4.5, 6.5, 7.5);
+ auto deep_request = staged_request;
+ deep_request.heading_rad = sim::kPi * 0.5;
+ deep_request.target = {5.0, 9.0};
+ sim::LocalPlanningSystem delayed_recovery;
+ const auto strict_static = [](sim::Vec2 from, sim::Vec2 to) {
+ return std::hypot(to.x - from.x, to.y - from.y) <= 1e-9;
+ };
+ const auto physical_only = [](sim::Vec2, sim::Vec2) { return true; };
+ sim::LocalPlanningOutput delayed;
+ for (int cycle = 0; cycle < 99; ++cycle) {
+ delayed = delayed_recovery.plan(
+ deep_request, deep_preferred, {}, strict_static, &physical, physical_only);
+ CHECK(!delayed.selection.validation.accepted());
+ }
+ delayed = delayed_recovery.plan(
+ deep_request, deep_preferred, {}, strict_static, &physical, physical_only);
+ CHECK(delayed.selection.validation.minimum_risk_escape());
+ CHECK(delayed.selection.validation.diagnostic.find("reduces") != std::string::npos);
+CHECK(std::abs(delayed.selection.trajectory.command.v) > 0.0);
+ const auto persistent_recovery = delayed_recovery.plan(
+ deep_request, deep_preferred, {}, strict_static, &physical, physical_only);
+ CHECK(persistent_recovery.selection.validation.minimum_risk_escape());
+CHECK(std::abs(persistent_recovery.selection.trajectory.command.v) > 0.0);
+
+ // An upcoming conflict zone must not disable a physically validated escape
+ // from unrelated static inflation several metres before the stop line. Only
+ // commitment or the body actually entering the conflict forbids reversal.
+ sim::GridMap reverse_preferred(100, 100, 0.1);
+ reverse_preferred.addBox(4.9, 4.5, 6.5, 5.5);
+ auto upcoming_crossing = staged_request;
+ upcoming_crossing.position = {5.0, 5.0};
+ upcoming_crossing.target = {7.0, 5.0};
+ upcoming_crossing.max_speed_mps = 0.15;
+ upcoming_crossing.crossing_relevant = true;
+ const auto reverse_escape = sim::LocalPlanningSystem{}.plan(
+ upcoming_crossing, reverse_preferred, {}, {}, &physical);
+ CHECK(reverse_escape.selection.validation.accepted());
+ CHECK(reverse_escape.selection.validation.minimum_risk_escape());
+ CHECK(reverse_escape.selection.trajectory.command.v < 0.0);
+ CHECK(std::abs(reverse_escape.selection.trajectory.command.v) <=
+ upcoming_crossing.max_speed_mps + 1e-9);
+
+ upcoming_crossing.body_in_conflict = true;
+ const auto no_reverse_inside = sim::LocalPlanningSystem{}.plan(
+ upcoming_crossing, reverse_preferred, {}, {}, &physical);
+ CHECK(!no_reverse_inside.selection.validation.accepted());
 
  return 0;
 }

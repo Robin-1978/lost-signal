@@ -48,6 +48,7 @@ struct ChassisBuildParams {
   double wheel_equiv_mass_kg{3.0};
  double coulomb_smoothing_speed_mps{0.05};
  double viscous_drag_N_per_mps{0.6};
+ double static_friction_feedforward_duty{0.0};
   int encoder_counts_per_revolution{2048};
   double mass_kg{26.0};
   double yaw_inertia_kgm2{2.8};

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/garage/heading": "RO-6 Mobile Manipulator",
+    "/garage/brief": "Study a four-axis arm on a mobile base. This first experiment verifies poses, inverse kinematics, joint limits, torque control, and multibody feedback. Grasping follows after the contact loop is validated.",
+    "/garage/component_columns/0/title": "Base support",
+    "/garage/component_columns/1/title": "Environment scan",
+    "/garage/component_columns/2/title": "Manipulation compute",
+    "/garage/component_columns/3/title": "Base drive",
+    "/garage/component_columns/4/title": "Attitude feedback",
+    "/garage/policy_title": "Base response",
+    "/prediction/heading": "Choose an evidence layer",
+    "/prediction/hint": "All three views come from the same physical loop; the choice does not alter the experiment.",
+    "/prediction/choices/0/text": "Watch target pose and inverse kinematics",
+    "/prediction/choices/0/feedback": "Analytic IK evaluates both elbow branches and selects the limit-valid solution nearest the current posture.",
+    "/prediction/choices/1/text": "Watch joint target, feedback, and torque",
+    "/prediction/choices/1/feedback": "Position commands cross LSRI into the joint controller; reference speed and output torque have explicit limits.",
+    "/prediction/choices/2/text": "Watch arm reaction on the mobile base",
+    "/prediction/choices/2/feedback": "Link mass, inertia, gravity, and joint reaction are solved by the same MuJoCo multibody system.",
+    "/running/heading": "Manipulator closed-loop proof",
+    "/running/normal_line": "RO-6: tracking Cartesian targets while monitoring joint limits and end-effector error.",
+    "/running/detected_line": "RO-6: target reachable; joint feedback and base attitude remain live.",
+    "/debrief/success_title": "Manipulator loop verified",
+    "/debrief/success_summary": "RO-6 completed the pose sequence under real joint, speed, and torque limits, then settled inside the final tolerance.",
+    "/debrief/failure_summary": "Inspect reachability, joint limits, torque saturation, end-effector error, and base stability.",
+    "/debrief/evidence_heading": "Mobile manipulation evidence",
+    "/debrief/evidence_caption": "Target poses, joint feedback, requested torque, end-effector error, and base attitude come from one deterministic run.",
+    "/debrief/knowledge_title": "An arm is not an animation",
+    "/debrief/failure_titles/manipulator-target": "Experiment failed: the tool stayed outside tolerance",
+    "/debrief/failure_titles/rollover": "Experiment failed: arm motion destabilized the platform",
+    "/debrief/failure_titles/timeout": "Experiment failed: joints did not settle in time"
+  }
+}

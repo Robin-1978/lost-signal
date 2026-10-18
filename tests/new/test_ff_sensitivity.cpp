@@ -15,6 +15,7 @@
 #include "robot/control/pid.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
+#include "sim/hardware/actuators/electric_drive.hpp"
 #include "robot/control/feedforward.hpp"
 
 #include <algorithm>
@@ -58,6 +59,9 @@ struct MirrorLoop {
  double w{0.0};
  double filt_l{0.0};
  double filt_r{0.0};
+ double previous_target_l{0.0};
+ double previous_target_r{0.0};
+ bool target_initialized{false};
 
  void set_state(double v_in, double w_in) {
   v = v_in;
@@ -98,15 +102,20 @@ struct MirrorLoop {
   sim::DifferentialKinematics::twist_to_wheels(v, w, params.wheel_base_m, actual_l, actual_r);
   meas_l = encoder(actual_l, dt);
   meas_r = encoder(actual_r, dt);
- // Keep the mirror aligned with the deployable wheel controller: once a
- // wheel has entered the newly requested direction, stale integral effort
- // from the old direction must no longer oppose it.
- if (std::abs(target_l) > 1e-4 && target_l * left_pid.i() < 0.0 &&
- target_l * meas_l >= 0.0)
- left_pid.reset();
- if (std::abs(target_r) > 1e-4 && target_r * right_pid.i() < 0.0 &&
- target_r * meas_r >= 0.0)
- right_pid.reset();
+ const auto prepare_integral = [&](double target, double previous,
+ double measured, sim::PID& pid) {
+ const bool stop_requested = std::abs(target) <= 1e-4;
+ const bool direction_changed = target_initialized && target * previous <= 0.0 &&
+ std::abs(target - previous) > 1e-4;
+ const bool sharply_reduced = target_initialized && std::abs(previous) > 0.1 &&
+ std::abs(target) < 0.5 * std::abs(previous);
+ const bool opposing = std::abs(target) > 1e-4 && target * pid.i() < 0.0 &&
+ target * measured >= 0.0;
+ if (stop_requested || direction_changed || sharply_reduced || opposing)
+ pid.reset();
+ };
+ prepare_integral(target_l, previous_target_l, meas_l, left_pid);
+ prepare_integral(target_r, previous_target_r, meas_r, right_pid);
   pwm_l = left_pid.update(target_l - meas_l, dt);
   pwm_r = right_pid.update(target_r - meas_r, dt);
   pid_i_l = left_pid.i();
@@ -115,6 +124,9 @@ struct MirrorLoop {
   const double total_r = std::clamp(pwm_r + ff_r_in, -params.pwm_limit, params.pwm_limit);
   pwm_l = total_l;
   pwm_r = total_r;
+ previous_target_l = target_l;
+ previous_target_r = target_r;
+ target_initialized = true;
   const double weight = params.mass_kg * kGravity / 2.0;
   const double traction = std::max(0.0, ground.mu_eff) * weight;
   const double rr = std::max(0.0, ground.rolling_resist);
@@ -123,8 +135,8 @@ struct MirrorLoop {
   for (int side = 0; side < 2; ++side) {
    const double pwm = side == 0 ? total_l : total_r;
    const double wheel = side == 0 ? actual_l : actual_r;
-   const double curve = std::max(0.0, 1.0 - std::abs(wheel) / std::max(0.05, params.free_speed_mps));
-   double force = pwm * params.stall_force_N * curve;
+ double force = sim::hardware::dc_motor_force_N(
+ pwm, wheel, params.stall_force_N, params.free_speed_mps);
    force -= rr * weight * std::tanh(wheel / kCoulombWidthMps) + kViscousNPerMps * wheel;
    if (std::abs(force) > traction) {
     force = std::copysign(traction, force);
@@ -472,6 +484,27 @@ int main() {
   std::cerr << "recording mission failed: reason=" << mission.result().failure_reason
             << " time=" << mission.result().time_s << " collisions=" << mission.result().collisions
             << " clearance=" << mission.result().min_dynamic_clearance_m << '\n';
+ const auto& replay = mission.replay();
+ const auto begin = replay.size() > 30 ? replay.size() - 30 : 0;
+ for (std::size_t index = begin; index < replay.size(); ++index) {
+ const auto& frame = replay[index];
+ std::cerr << " frame t=" << frame.time_s << " truth=(" << frame.robot.x << ','
+ << frame.robot.y << ',' << frame.robot.theta << ") estimate=("
+ << frame.estimated_position.x << ',' << frame.estimated_position.y << ','
+ << frame.estimated_heading << ") goal=" << frame.active_goal_id
+ << " local=(" << frame.control.local_target.x << ','
+ << frame.control.local_target.y << ") cmd=("
+ << frame.control.target_v_mps << ',' << frame.control.target_w_radps
+ << ") dwa=(" << frame.control.dwa_proposed_v_mps << ','
+ << frame.control.dwa_proposed_w_radps << ") accepted="
+ << frame.control.dwa_accepted_candidates << " verdict="
+ << frame.control.trajectory_verdict << " diagnostic='"
+ << frame.control.trajectory_diagnostic << "' wheels=("
+ << frame.control.left_target_mps << ',' << frame.control.right_target_mps
+ << ") measured=(" << frame.control.left_measured_mps << ','
+ << frame.control.right_measured_mps << ") pwm=("
+ << frame.control.left_pwm << ',' << frame.control.right_pwm << ")\n";
+ }
  }
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
  std::vector<TraceFrame> frames;

@@ -27,7 +27,7 @@ int main() {
     CHECK(first.left.normalized_duty > 0.0);
     CHECK(first.right.normalized_duty > first.left.normalized_duty);
 
- const double radians_per_count = 2.0 * 3.14159265358979323846 / 1000.0;
+ const double radians_per_count = 2.0 * 3.14159265358979323846 / 1.0;
     feedback.left_position_rad = 20.0 * radians_per_count;
     feedback.right_position_rad = 30.0 * radians_per_count;
     feedback.left_velocity_radps = 6.0;
@@ -63,6 +63,34 @@ int main() {
  const auto reverse_after_windup = reversing.update({-1.0, 0.0}, stopped_feedback, 0.02);
  CHECK(reverse_after_windup.left.normalized_duty < 0.0);
  CHECK(reverse_after_windup.right.normalized_duty < 0.0);
+
+ // A zero-speed request may brake measured motion through the proportional
+ // term, but once the encoder is stopped it must not retain historical PWM.
+ const auto zero_after_windup = reversing.update({0.0, 0.0}, stopped_feedback, 0.02);
+ CHECK(zero_after_windup.left.normalized_duty == 0.0);
+ CHECK(zero_after_windup.right.normalized_duty == 0.0);
+ CHECK(zero_after_windup.left.pid_i == 0.0);
+ CHECK(zero_after_windup.right.pid_i == 0.0);
+
+ // Low-speed turns need an identified static-friction term immediately;
+ // waiting for unrelated historical integral state made physical behavior
+ // depend on the route taken before the turn. The term follows the requested
+ // wheel direction and disappears completely on a stop request.
+ const sim::DifferentialWheelControllerConfig low_speed_config{
+ 0.58, 0.10, 2.4, 2048, 1.0, 2.0, 0.08};
+ sim::DifferentialWheelController low_speed(low_speed_config, {2.5, 0.5, 0.0});
+ const auto spin_start = low_speed.update({0.0, 0.1}, stopped_feedback, 0.02);
+ CHECK(std::abs(spin_start.left.target_mps + 0.029) < 1e-12);
+ CHECK(std::abs(spin_start.right.target_mps - 0.029) < 1e-12);
+ CHECK(spin_start.left.static_feedforward == -0.08);
+ CHECK(spin_start.right.static_feedforward == 0.08);
+ CHECK(spin_start.left.normalized_duty < -0.08);
+ CHECK(spin_start.right.normalized_duty > 0.08);
+ const auto spin_stop = low_speed.update({}, stopped_feedback, 0.02);
+ CHECK(spin_stop.left.static_feedforward == 0.0);
+ CHECK(spin_stop.right.static_feedforward == 0.0);
+ CHECK(spin_stop.left.normalized_duty == 0.0);
+ CHECK(spin_stop.right.normalized_duty == 0.0);
 
     bool threw = false;
     try {

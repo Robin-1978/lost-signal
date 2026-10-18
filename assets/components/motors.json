@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slot": "motor",
   "model_profile": {
     "fidelity": "typical",
@@ -22,6 +22,7 @@
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
+        "static_friction_feedforward_duty": 0.08,
         "coulomb_smoothing_speed_mps": 0.05,
         "viscous_drag_N_per_mps": 0.6
       },
@@ -49,6 +50,7 @@
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
+        "static_friction_feedforward_duty": 0.05,
         "coulomb_smoothing_speed_mps": 0.05,
         "viscous_drag_N_per_mps": 0.6
       },
@@ -76,6 +78,7 @@
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
+        "static_friction_feedforward_duty": 0.09,
         "coulomb_smoothing_speed_mps": 0.05,
         "viscous_drag_N_per_mps": 0.6
       },
@@ -103,6 +106,7 @@
         "controller_bandwidth_radps": 7.5,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
+        "static_friction_feedforward_duty": 0.12,
         "coulomb_smoothing_speed_mps": 0.05,
         "viscous_drag_N_per_mps": 0.7
       },

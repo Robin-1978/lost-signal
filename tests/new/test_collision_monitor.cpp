@@ -34,6 +34,14 @@ int main() {
  CHECK(!monitor.static_motion_free({0.49, 2.0}, {2.0, 2.0}));
  CHECK(monitor.static_motion_free({0.51, 2.0}, {2.0, 2.0}));
 
+ // The execution reserve is a planner safety tube, not a larger physical
+ // body. Outside it, crossing the reserve is refused. If estimation already
+ // starts inside it, exact collision remains authoritative and only motion
+ // that maintains or increases true clearance may recover.
+ CHECK(!monitor.static_motion_free({2.0, 3.44}, {6.0, 3.44}, 0.10));
+CHECK(monitor.static_motion_free({3.44, 4.5}, {3.43, 4.5}, 0.10));
+CHECK(!monitor.static_motion_free({3.44, 4.5}, {3.45, 4.5}, 0.10));
+
  // A rotated rail keeps its real orientation in the continuous safety
  // oracle; points inside its world AABB corner are not false collisions.
  mission::CollisionMonitor rotated({10.0, 10.0}, 0.1,

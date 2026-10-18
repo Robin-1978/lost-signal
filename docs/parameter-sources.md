@@ -111,11 +111,9 @@ components may replace all five values; the fallback motor inside each robot dec
 as hidden constants in the differential-drive implementation.
 
 `motor.speed` represents a higher-speed, lower-reduction drive package for controlled teaching runs. Its assumed
-wheel-surface free speed is 7.0 m/s and its short-duration rim stall force is 32 N, compared with 3.0 m/s and 54 N
-for the standard profile. On RO-2's 0.10 m wheels those surface speeds correspond to about 668 and 286 wheel rpm;
-they are post-reduction wheel speeds, not unmodeled motor-shaft rpm. The high-speed package is deliberately not
-universally better: launch and grade authority are lower, the energy scale is higher, and autonomy may use its extra
-speed only when an explicit driving policy requests it.
+wheel-surface capability is 6.0 m/s and its free speed is 7.0 m/s, with 32 N short-duration rim stall force, compared
+with 2.4/3.0 m/s and 54 N for the standard package. Motor capability and validated chassis rating are separate data:
+RO-1 is rated at 1.0 m/s and RO-2 at 2.4 m/s. Autonomy never treats no-load motor speed as a safe chassis speed.
 
 RO-2 uses the same class of documented motor assumptions with two rear drive channels and two front steering
 channels. Its 26 kg mass, 0.62 m wheelbase, 0.58 m track, 0.10 m wheel radius, 54 N per-wheel peak rim force, 8 N m
@@ -123,13 +121,13 @@ steering stall torque, and 0.05 kg m^2 steering reflected inertia are engineerin
 teaching envelope. They are neither measurements nor a named vehicle specification. The relatively large reflected
 steering inertia represents the complete servo/transmission/knuckle load seen at the joint; a future identified
 profile must replace it with measured step and coast response rather than retuning it to a mission outcome.
-The optional `motor.speed` package targets 6.0 m/s; the current RO-2 straight-line fixture reaches about 5.5 m/s and
-stops in about 4.7 m. The articulated drive plant treats opposing duty as current-limited electrical braking and zero
+The optional `motor.speed` package retains 6.0 m/s of motor headroom; the current RO-2 straight-line fixture validates
+the 2.4 m/s chassis rating and stops in about 0.96 m. The articulated drive plant treats opposing duty as current-limited electrical braking and zero
 duty as coast. RO-2 separately applies its implemented rear-wheel service-brake plant, whose torque and response time
 also enter the independent stopping envelope. Neither mechanism is ABS, a parking brake, or a thermal model. Those
 require separate capabilities and sourced parameters before any automotive-speed claim.
 
-RO-3 separates its `0.55 m` physical left/right contact spacing from the `1.2 m`
+RO-3 separates its `0.55 m` physical left/right contact spacing from the `2.4 m`
 `effective_track_width_m` used by skid-steer kinematics. Tracked vehicles turn around terrain-dependent
 instantaneous centres of rotation, so geometric spacing alone overestimates body yaw from tread speed. The shipped
 effective width is a typical engineering assumption selected for the deterministic rigid-contact envelope. A real
@@ -138,33 +136,47 @@ not a calibration method.
 
 ## Wheel-ground contact
 
-There is no universal rubber stiffness. The standard tire default is derived from a declared operating point:
-100 N divided by 2.5 mm gives `40,000 N/m`. For effective supported mass `m`, stiffness `k`, and damping ratio `zeta`,
-the linearized pair damping is:
+There is no universal rubber stiffness, and the shipped typical profiles do not expose an invented linear spring.
+They declare MuJoCo's positive-format contact time constant and damping ratio directly. The tire and surface values
+are combined conservatively by the contact adapter, then installed as `solref = (time_constant, damping_ratio)`;
+`solimp` remains an engine-owned impedance curve. A shorter time constant produces a harder numerical contact, but it
+is not an independently measurable `N/m` value. The `0.006 s, 1.0` standard-tire assumption and each surface value
+must therefore be validated through observable loaded height, penetration, rebound and contact load rather than
+being described as identified rubber constants.
 
-```text
-damping = 2 * zeta * sqrt(k * m)
-```
-
-The shipped values are effective wheel-ground pair parameters around normal RO-1 load. They combine tire, mount,
-floor, bearing, and structural compliance. They do not claim a globally linear rubber law. Two linear normal
-compliances in series combine as `1/k_pair = 1/k_wheel + 1/k_ground`; damping is a pair assumption and is not blindly
-summed as a physical identity.
-
-Friction coefficients, rolling resistance, and normal compliance remain separate configuration values. The steel
-wheel profile is deliberately much stiffer and lower-loss, while still finite. Solver chatter is a numerical
-failure and is never presented as physical vibration.
+Friction coefficients, rolling resistance, and contact solver response remain separate configuration values.
+MuJoCo's rolling field is a moment arm; Lost Signal derives it from dimensionless `Crr * rolling_radius` rather than
+copying a universal length. The steel-wheel profile uses a shorter time constant and lower rolling loss, while still
+remaining finite. Solver chatter is a numerical failure and is never presented as physical vibration.
 
 RO-1's stock caster has no suspension travel. It is a massive fork with a vertical swivel, a separate rolling wheel,
-and finite caster trail. Contact compliance represents the small deformation of tire, mount, floor, bearings, and
-structure around the operating load. A sprung caster is a different assembly profile and requires an authored
-prismatic joint, travel, preload, stiffness, damping, and stops. It is not a numerical stabilization option.
+35 mm trail, and a crowned rubber tread. The collision proxy is a centred oblate ellipsoid with 55 mm rolling radius
+and 64 mm full width. This is a typical-profile geometry assumption, chosen to retain a smooth circular rolling plane
+and a narrow central contact band; it is not an identified crown radius or contact patch. A measured profile should
+record wheel diameter, tread width, transverse crown coordinates, hardness, static loaded radius, and swivel/rolling
+breakaway torque. Contact parameters then fit load/deflection and rebound evidence instead of inferring rubber
+properties from the visible mesh.
+
+A sprung caster is a different assembly profile and requires an authored prismatic joint, travel, preload,
+stiffness, damping, and stops. It is not a numerical stabilization option. MuJoCo maintainer guidance for wheeled
+models likewise separates three issues: use a precisely centred smooth collision shape, soften contact to represent
+rubber-like behavior, and add suspension only when the real mechanism or coplanar support requires it. See
+[MuJoCo issue 57](https://github.com/google-deepmind/mujoco/issues/57). The
+[MuJoCo Menagerie Stretch model](https://github.com/google-deepmind/mujoco_menagerie/blob/main/hello_robot_stretch/stretch.xml)
+uses a spherical caster proxy when only support is needed; RO-1 keeps explicit swivel and rolling joints because its
+caster kinematics and wheel rotation are part of the learning evidence.
 
 ## Compute and algorithm cadence
 
 Compute profiles are controlled experiment settings. Decision rate, prediction horizon, track age, and nominal
 power create visible autonomy trade-offs, but they do not model a named processor, scheduler, cache, or operating
 system. Their fidelity is `ideal` by design.
+
+The research-base crossing uses a `0.65 m` participant envelope: the authored `0.45 m` forklift footprint plus a
+`0.10 m` bounded prediction envelope and `0.10 m` site reserve for clustering, map alignment, and stop tracking.
+This is a conservative map assumption, not an identified vehicle parameter. It is intentionally separate from the
+live track radius and from the player's safety-clearance policy, and the deterministic mission gate verifies the
+resulting physical minimum clearance independently.
 
 ## Validation and extension rule
 
@@ -176,3 +188,14 @@ than copying the implementation formula into every oracle.
 An identified profile may be added later without changing these contracts. It must name the device or robot,
 calibration conditions, dataset, fit method, and held-out error envelope. Those requirements apply to the optional
 claim, not to publishing Lost Signal as a simulation and knowledge-learning project.
+
+## Mobile manipulator
+
+RO-6 is a typical, educational compact-arm profile rather than an identified hardware model. Its four-axis chain uses SI link dimensions, bounded revolute joints, rate-limited position references, effort-limited feedback control, and model-based gravity feedforward. The three gravity moments are derived from the authored link masses, link lengths and link-centre locations (`4.8069`, `1.88352`, and `0.23544 N m`); they are explicit deployable controller parameters rather than simulator truth. Geometry follows common small mobile-manipulator proportions; controller values are deterministic engineering defaults and require identification before any physical transfer claim. The implementation follows the separation used by MoveIt, ros2_control, and Gazebo: kinematics and planning consume joint states and limits, controller interfaces carry typed position commands, and the simulator alone resolves rigid-body forces and contacts.
+
+References:
+
+- MoveIt motion planning and Planning Scene concepts: <https://moveit.picknik.ai/main/doc/concepts/move_group.html>
+- MoveIt hybrid planning: <https://moveit.picknik.ai/main/doc/concepts/hybrid_planning/hybrid_planning.html>
+- ros2_control joint command/state interfaces: <https://control.ros.org/master/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html>
+- Gazebo joint and joint-trajectory controllers: <https://gazebosim.org/api/sim/9/jointcontrollers.html>

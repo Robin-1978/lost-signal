@@ -16,6 +16,11 @@ struct ConflictZone {
  std::string id;
  Vec2 min;
  Vec2 max;
+ // Conservative traffic envelope around a participant reference point,
+ // including its expected footprint and the site's declared tracking reserve.
+ // This comes from map semantics, not simulation truth, so a stop line remains
+ // safe before a live track matures.
+ double participant_radius_m{0.0};
 };
 
 // Behavior authority is part of the autonomy input contract. A world/content

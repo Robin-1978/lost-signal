@@ -29,6 +29,9 @@ struct TrackedParams {
  int encoder_counts_per_revolution{2048};
  double wheel_equiv_mass_kg{3.0};
  double support_width_m{0.55};
+ // RO-3 has one independently authored motor at each of three road wheels
+ // per side. The logical side command is broadcast to all three drives.
+ double drive_units_per_side{3.0};
 };
 
 // Tracked chassis: two skid-steered tracks. Longitudinally each track is a

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "materials": [
     {
       "id": "paved",
@@ -8,8 +8,8 @@
       "friction_mu": 1.0,
       "rolling_drag": 0.0,
       "traction_scale": 1.0,
-      "normal_stiffness_Npm": 100000000.0,
-      "normal_damping_Nspm": 0.0,
+      "contact_time_constant_s": 0.0025,
+      "contact_damping_ratio": 1.0,
       "texture": "textures/environment/concrete_floor.png",
       "drive_effect": {
         "kind": "none",
@@ -25,8 +25,8 @@
       "friction_mu": 0.7,
       "rolling_drag": 0.015,
       "traction_scale": 0.8,
-      "normal_stiffness_Npm": 5000000.0,
-      "normal_damping_Nspm": 200.0,
+      "contact_time_constant_s": 0.01,
+      "contact_damping_ratio": 1.15,
       "texture": "textures/environment/gravel_floor.png",
       "drive_effect": {
         "kind": "dust",
@@ -42,8 +42,8 @@
       "friction_mu": 0.55,
       "rolling_drag": 0.03,
       "traction_scale": 0.65,
-      "normal_stiffness_Npm": 150000.0,
-      "normal_damping_Nspm": 800.0,
+      "contact_time_constant_s": 0.02,
+      "contact_damping_ratio": 1.2,
       "texture": "textures/environment/sand_floor.png",
       "drive_effect": {
         "kind": "dust",
@@ -59,8 +59,8 @@
       "friction_mu": 0.35,
       "rolling_drag": 0.02,
       "traction_scale": 0.45,
-      "normal_stiffness_Npm": 100000000.0,
-      "normal_damping_Nspm": 0.0,
+      "contact_time_constant_s": 0.0025,
+      "contact_damping_ratio": 1.0,
       "texture": "textures/environment/water_floor.png",
       "drive_effect": {
         "kind": "spray",
@@ -76,8 +76,8 @@
       "friction_mu": 0.48,
       "rolling_drag": 0.025,
       "traction_scale": 0.55,
-      "normal_stiffness_Npm": 100000.0,
-      "normal_damping_Nspm": 1000.0,
+      "contact_time_constant_s": 0.025,
+      "contact_damping_ratio": 1.25,
       "texture": "textures/environment/mud_floor.png",
       "drive_effect": {
         "kind": "spray",
@@ -93,8 +93,8 @@
       "friction_mu": 0.92,
       "rolling_drag": 0.004,
       "traction_scale": 0.94,
-      "normal_stiffness_Npm": 80000000.0,
-      "normal_damping_Nspm": 80.0,
+      "contact_time_constant_s": 0.003,
+      "contact_damping_ratio": 1.0,
       "texture": "textures/environment/concrete_floor.png",
       "albedo_tint": "#2C3C42",
       "drive_effect": {
@@ -111,8 +111,8 @@
       "friction_mu": 0.82,
       "rolling_drag": 0.006,
       "traction_scale": 0.9,
-      "normal_stiffness_Npm": 350000000.0,
-      "normal_damping_Nspm": 120.0,
+      "contact_time_constant_s": 0.0025,
+      "contact_damping_ratio": 0.95,
       "texture": "textures/environment/concrete_floor.png",
       "albedo_tint": "#334950",
       "drive_effect": {
@@ -129,8 +129,8 @@
       "friction_mu": 0.45,
       "rolling_drag": 0.002,
       "traction_scale": 0.55,
-      "normal_stiffness_Npm": 500000000.0,
-      "normal_damping_Nspm": 50.0,
+      "contact_time_constant_s": 0.0025,
+      "contact_damping_ratio": 0.9,
       "texture": "textures/environment/concrete_floor.png",
       "drive_effect": {
         "kind": "none",

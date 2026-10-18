@@ -9,7 +9,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "materials": {
       "type": "array",
@@ -24,6 +24,8 @@
           "friction_mu",
           "rolling_drag",
           "traction_scale",
+          "contact_time_constant_s",
+          "contact_damping_ratio",
           "lidar_reflectivity"
         ],
         "properties": {
@@ -51,13 +53,13 @@
             "exclusiveMinimum": 0,
             "maximum": 1
           },
-          "normal_stiffness_Npm": {
+          "contact_time_constant_s": {
+            "type": "number",
+            "minimum": 0.002
+          },
+          "contact_damping_ratio": {
             "type": "number",
             "exclusiveMinimum": 0
-          },
-          "normal_damping_Nspm": {
-            "type": "number",
-            "minimum": 0
           },
           "lidar_reflectivity": {
             "type": "number",

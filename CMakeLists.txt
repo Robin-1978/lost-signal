@@ -50,11 +50,13 @@ add_library(lost_signal_robot_platform STATIC
  src/robot/platform/ackermann_kinematics.cpp
  src/robot/platform/differential_kinematics.cpp
  src/robot/platform/holonomic_kinematics.cpp
+ src/robot/platform/serial_manipulator.cpp
  src/robot/control/ackermann_actuator_controller.cpp
  src/robot/control/pid.cpp
  src/robot/control/feedforward.cpp
  src/robot/control/differential_wheel_controller.cpp
  src/robot/control/holonomic_actuator_controller.cpp
+ src/robot/control/manipulator_joint_controller.cpp
 )
 target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core)
 
@@ -123,7 +125,7 @@ target_link_libraries(lost_signal_robot_stack INTERFACE
  lost_signal_robot_executive
  lost_signal_robot_map_io)
 
-# A robot-only configuration is the executable architecture gate: no Bullet,
+# A robot-only configuration is the executable architecture gate: no MuJoCo,
 # renderer, scenario content, or virtual device is configured or fetched.
 if(NOT LOST_SIGNAL_BUILD_SIM)
  if(LOST_SIGNAL_BUILD_CLIENT)
@@ -201,6 +203,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  lost_signal_robot_platform lost_signal_robot_runtime)
  add_test(NAME ackermann_actuator_controller COMMAND
  test_ackermann_actuator_controller)
+
+ add_executable(test_serial_manipulator tests/new/test_serial_manipulator.cpp)
+ target_link_libraries(test_serial_manipulator PRIVATE lost_signal_robot_platform)
+ add_test(NAME serial_manipulator COMMAND test_serial_manipulator)
  endif()
  return()
 endif()
@@ -209,7 +215,7 @@ endif()
 # may depend on ROBOT; the reverse dependency is prohibited.
 add_library(lost_signal_sim_physics STATIC
  src/sim/hardware/physics/frame_transform.cpp
- src/sim/hardware/physics/planar_physics_world.cpp
+ src/sim/hardware/physics/mujoco_simulation.cpp
  src/sim/hardware/physics/tire_contact.cpp
 )
 target_include_directories(lost_signal_sim_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -217,26 +223,20 @@ target_compile_features(lost_signal_sim_physics PUBLIC cxx_std_20)
 target_link_libraries(lost_signal_sim_physics PUBLIC
  lost_signal_project_options lost_signal_robot_core)
 
-set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
-set(BUILD_BULLET3 OFF CACHE BOOL "" FORCE)
-set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
-set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
-set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
-set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-set(INSTALL_LIBS OFF CACHE BOOL "" FORCE)
-set(USE_DOUBLE_PRECISION ON CACHE BOOL "" FORCE)
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+set(MUJOCO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MUJOCO_BUILD_SIMULATE OFF CACHE BOOL "" FORCE)
+set(MUJOCO_BUILD_STUDIO OFF CACHE BOOL "" FORCE)
+set(MUJOCO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MUJOCO_TEST_PYTHON_UTIL OFF CACHE BOOL "" FORCE)
+set(MUJOCO_ENABLE_LTO OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
- bullet
- URL https://github.com/bulletsim/physics/bullet3/archive/refs/tags/3.25.tar.gz
- URL_HASH SHA256=c45afb6399e3f68036ddb641c6bf6f552bf332d5ab6be62f7e6c54eda05ceb77
+ mujoco
+ URL https://github.com/google-deepmind/mujoco/archive/refs/tags/3.16.0.tar.gz
+ URL_HASH SHA256=45fe830707c80cf2fa54b37811ea13d7cc1774400704f69d85d2ecc1a151a236
  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-FetchContent_MakeAvailable(bullet)
-target_include_directories(lost_signal_sim_physics SYSTEM PRIVATE ${bullet_SOURCE_DIR}/src)
-target_link_libraries(lost_signal_sim_physics PRIVATE BulletDynamics BulletCollision LinearMath)
-target_sources(lost_signal_sim_physics PRIVATE src/sim/hardware/physics/bullet_physics_world.cpp)
-target_compile_definitions(lost_signal_sim_physics PRIVATE BT_USE_DOUBLE_PRECISION)
+FetchContent_MakeAvailable(mujoco)
+target_link_libraries(lost_signal_sim_physics PRIVATE mujoco::mujoco)
 
 add_library(lost_signal_sim_vehicle STATIC
  src/sim/hardware/actuators/electric_drive.cpp
@@ -413,6 +413,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_runtime_interface PRIVATE lost_signal_sim_hardware Threads::Threads)
  add_test(NAME runtime_interface COMMAND test_runtime_interface)
 
+ add_executable(test_serial_manipulator tests/new/test_serial_manipulator.cpp)
+ target_link_libraries(test_serial_manipulator PRIVATE lost_signal_robot_platform)
+ add_test(NAME serial_manipulator COMMAND test_serial_manipulator)
+
  add_executable(test_planar_odometry tests/new/test_planar_odometry.cpp)
  target_link_libraries(test_planar_odometry PRIVATE lost_signal_robot_autonomy)
  add_test(NAME planar_odometry COMMAND test_planar_odometry)
@@ -470,6 +474,14 @@ target_compile_definitions(test_holonomic_dynamics_acceptance PRIVATE
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 add_test(NAME holonomic_dynamics_acceptance COMMAND
  test_holonomic_dynamics_acceptance)
+
+add_executable(test_ro6_manipulator_acceptance
+ tests/new/test_ro6_manipulator_acceptance.cpp)
+target_link_libraries(test_ro6_manipulator_acceptance PRIVATE lost_signal_sim_game)
+target_compile_definitions(test_ro6_manipulator_acceptance PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_test(NAME ro6_manipulator_acceptance COMMAND
+ test_ro6_manipulator_acceptance)
 
 add_executable(test_ro1_lidar_acceptance tests/new/test_ro1_lidar_acceptance.cpp)
 target_link_libraries(test_ro1_lidar_acceptance PRIVATE lost_signal_sim_game)

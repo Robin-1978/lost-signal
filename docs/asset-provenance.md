@@ -22,7 +22,7 @@ Where a generator exists, it is the source of truth. Change the generator and ru
 
 `assets/fonts/NotoSansCJKsc-Regular.otf` is Noto Sans CJK SC under the SIL Open Font License 1.1. Its license is stored at `assets/fonts/OFL.txt`.
 
-Bullet, raylib, TGUI, and nlohmann/json are downloaded build dependencies and retain their own licenses. They are not relicensed under Apache-2.0. See `THIRD_PARTY_NOTICES.md` for versions, sources, attribution, and license details.
+MuJoCo, raylib, TGUI, and nlohmann/json are downloaded build dependencies and retain their own licenses. They are not relicensed under Apache-2.0. See `THIRD_PARTY_NOTICES.md` for versions, sources, attribution, and license details.
 
 ## Contribution requirements
 

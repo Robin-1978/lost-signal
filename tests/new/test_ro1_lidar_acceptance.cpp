@@ -46,7 +46,7 @@ sim::ChassisCaps caps_for(const mission::RobotDefinition& robot) {
 } // namespace
 
 int main() {
- REQUIRE(sim::physics::bullet_physics_available());
+ REQUIRE(sim::physics::mujoco_physics_available());
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
  mission::BuildSelection build;
  build.parts["sensor"] = "sensor.standard_lidar";
@@ -271,7 +271,7 @@ int main() {
  REQUIRE(moving.combined.hit[0]);
  REQUIRE(std::abs(moving.combined.ranges[0] - 1.80) < 1e-6);
 
- // Device range limits are observation semantics layered after ideal Bullet
+ // Device range limits are observation semantics layered after ideal MuJoCo
  // geometry. A true return in the blind zone becomes an explicit no-return.
  sim::SensorSystem sensors(42, 7);
  sim::LidarConfig config;
@@ -331,7 +331,7 @@ int main() {
  REQUIRE(out_of_range.ranges[0] == lidar->range_m);
  REQUIRE(out_of_range.intensities[0] == 0.0);
 
- // A data-authored world object is one physical entity: Bullet and both the
+ // A data-authored world object is one physical entity: MuJoCo and both the
  // planar and multibeam LiDAR paths observe the same collision proxy. The
  // material reflectivity also owns the return intensity.
  auto world_map = empty_map(source_map);

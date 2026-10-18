@@ -59,11 +59,13 @@ void CollisionMonitor::reset() {
  rigid_static_contact_s_ = 0.0;
 }
 
-bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to) const {
+bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to,
+ double execution_margin_m) const {
+ const auto motion_free_at_radius = [&](double radius_m) {
  const auto inside_world = [&](sim::Vec2 point) {
- return point.x > robot_radius_m_ && point.y > robot_radius_m_ &&
- point.x < world_size_.x - robot_radius_m_ &&
- point.y < world_size_.y - robot_radius_m_;
+ return point.x > radius_m && point.y > radius_m &&
+ point.x < world_size_.x - radius_m &&
+ point.y < world_size_.y - radius_m;
  };
  if (!inside_world(from) || !inside_world(to))
  return false;
@@ -72,11 +74,28 @@ bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to) const {
  const auto local_to = box_local_point(obstacle, to);
  const auto half = box_half_extents(obstacle);
  if (segment_intersects_box(local_from, local_to,
- {-half.x - robot_radius_m_, -half.y - robot_radius_m_},
- {half.x + robot_radius_m_, half.y + robot_radius_m_}))
+ {-half.x - radius_m, -half.y - radius_m},
+ {half.x + radius_m, half.y + radius_m}))
  return false;
  }
  return true;
+ };
+
+ if (!motion_free_at_radius(robot_radius_m_))
+ return false;
+ const double margin = std::max(0.0, execution_margin_m);
+ if (margin <= 0.0)
+ return true;
+ const double initial_clearance = static_clearance(from);
+ if (initial_clearance + 1e-9 >= margin)
+ return motion_free_at_radius(robot_radius_m_ + margin);
+
+ // If tracking/localization has already put the centre inside the execution
+ // reserve, preserve exact physical collision checking and admit only
+ // non-worsening recovery segments until the reserve has been regained.
+ const sim::Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
+ return static_clearance(midpoint) + 1e-9 >= initial_clearance &&
+ static_clearance(to) + 1e-9 >= initial_clearance;
 }
 
 double CollisionMonitor::static_clearance(sim::Vec2 position) const {

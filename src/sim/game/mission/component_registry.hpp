@@ -22,8 +22,8 @@ struct TractionSpec {
  double power_scale{0.0};
  double friction_mu{0.0};
  double rolling_resistance{0.0};
- double normal_stiffness_Npm{0.0};
- double normal_damping_Nspm{0.0};
+ double contact_time_constant_s{0.0};
+ double contact_damping_ratio{0.0};
 };
 
 struct LidarSpec {
@@ -65,6 +65,7 @@ struct MotorSpec {
  double controller_bandwidth_radps{0.0};
  double controller_integral_time_s{0.0};
  double controller_derivative_time_s{0.0};
+ double static_friction_feedforward_duty{0.0};
  double coulomb_smoothing_speed_mps{0.0};
  double viscous_drag_N_per_mps{0.0};
 };

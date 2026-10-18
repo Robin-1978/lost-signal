@@ -25,7 +25,7 @@
 namespace fs = std::filesystem;
 
 const char kPlayerTire[] = R"({
- "schema_version": 2,
+ "schema_version": 3,
   "slot": "tires",
  "model_profile": {
  "fidelity": "typical",
@@ -46,8 +46,8 @@ const char kPlayerTire[] = R"({
         "power_scale": 1.0,
         "friction_mu": 0.7,
  "rolling_resistance": 0.01,
- "normal_stiffness_Npm": 40000.0,
- "normal_damping_Nspm": 1000.0
+ "contact_time_constant_s": 0.006,
+ "contact_damping_ratio": 1.0
       },
       "visual": {
         "primitive_2d": "wheel",

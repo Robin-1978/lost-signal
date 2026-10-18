@@ -63,12 +63,13 @@ void ScenarioSession::decide_control() {
  const sim::GridMap local_planning_map = autonomy_pipeline_->compose_local_map(
  *planning_map_, snapshot_.time_s, planning_clearance_m_);
  // Static planning owns two severities. The preferred map includes the
- // normal numerical/policy envelope. The physical map includes the robot
- // footprint and observed obstacles only; it is consulted solely to leave a
- // preferred-margin incursion without turning a recoverable tracking error
- // into a permanent stop.
+ // normal numerical/policy envelope. Recovery keeps footprint-inflated
+ // transient observations in a raster while the analytic collision monitor
+ // checks authored geometry. Reusing the coarse static occupancy cells as a
+ // physical oracle can add almost one cell around a box corner and trap a
+ // footprint that still has real clearance.
  const sim::GridMap local_physical_collision_map = autonomy_pipeline_->compose_local_map(
- *truth_map_, snapshot_.time_s, robot_definition_.collision_radius_m);
+ *recovery_base_map_, snapshot_.time_s, robot_definition_.collision_radius_m);
  const auto tracking = autonomy_pipeline_->observe_trajectory(
  snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
  snapshot_.control.trajectory_sequence = tracking.sequence;
@@ -316,13 +317,16 @@ void ScenarioSession::decide_control() {
  std::optional<sim::GovernorOutput> mapped_governor;
  const auto active_crossing_zones = dynamic_traffic_system_.active_zones(
  map_definition_.conflict_zones, level_id_);
+ constexpr double kStopControllerToleranceM = 0.0;
  const auto traffic_decision = crossing_behavior_system_.assess(
  active_crossing_zones, planned_route_, route_tracking_system_->path_index(), {nav_x, nav_y},
  estimate.linear_velocity_mps, nav_heading, assessment_frames,
  prediction_step_s,
  {robot_definition_.collision_radius_m, behavior_crossing_clearance,
- std::max(map_definition_.grid_resolution_m,
- level_.planning_localization_margin_m), 0.35},
+ // Route vertices are world-space poses even when the global search used a
+ // raster. Grid resolution affects which poses exist; it is not physical
+ // stop-controller error. Reserve only the declared localization margin here.
+ kStopControllerToleranceM + level_.planning_localization_margin_m, 0.35},
  // Admission may prove only a speed that the receding-horizon controller
  // will actually execute. Searching up to motor free speed would prove one
  // timed crossing and then hand a different high-speed steering rollout to
@@ -553,8 +557,15 @@ void ScenarioSession::decide_control() {
  if (local_stop_plane_active) {
  target = governor_out.stop_point;
  snapshot_.control.local_target = target;
+ // A differential chassis cannot correct lateral stop-line error while it
+ // is simultaneously scored against the final crossing heading. Approach
+ // the stop pose first, then align in place once the position contract is
+ // satisfied. Otherwise a safe rollout can settle abeam of the line with
+ // zero translation forever.
+ if (traffic_decision.readiness.position_ready) {
  local_target_heading = std::atan2(
  governor_out.stop_direction.y, governor_out.stop_direction.x);
+ }
  }
  }
  // Include decision and actuator response before ideal constant braking.
@@ -566,6 +577,12 @@ void ScenarioSession::decide_control() {
  : robot_definition_.motor.controller_bandwidth_radps;
  const double response_delay_s = 1.0 / decision_hz() +
  1.0 / std::max(0.1, bandwidth);
+ // Route progress can be zero while the body is still laterally displaced
+ // from the stop pose. Preserve a bounded corrective approach; the swept
+ // stop-plane validator below still prevents entry into the conflict zone.
+ if (mapped_crossing_relevant && !traffic_decision.readiness.position_ready) {
+ dist = std::max(dist, distance({nav_x, nav_y}, governor_out.stop_point));
+ }
  const double v_allow = dist <= 1e-9
  ? 0.0
  : brake * (std::sqrt(response_delay_s * response_delay_s +
@@ -599,7 +616,21 @@ void ScenarioSession::decide_control() {
  }
  local_request.position = {nav_x, nav_y};
  local_request.heading_rad = nav_heading;
- local_request.forward_mps = estimate.linear_velocity_mps;
+ // Encoder and fused-pose filters retain millimetres-per-second residuals
+ // after the physical wheels have stopped. Feeding that noise into the
+ // rollout makes every in-place correction drift microscopically through an
+ // exact behavior stop plane, so the safety validator can never authorize a
+ // recovery. Apply a narrow planning deadband only when both drive encoders
+ // independently report rest; real body motion above this sensor floor stays
+ // visible to the planner.
+ constexpr double kPlanningRestDeadbandMps = 0.005;
+ const bool drive_encoders_stopped =
+ std::abs(snapshot_.control.left_measured_mps) < kPlanningRestDeadbandMps &&
+ std::abs(snapshot_.control.right_measured_mps) < kPlanningRestDeadbandMps;
+ local_request.forward_mps = drive_encoders_stopped &&
+ std::abs(estimate.linear_velocity_mps) < kPlanningRestDeadbandMps
+ ? 0.0
+ : estimate.linear_velocity_mps;
  local_request.lateral_mps = estimate.lateral_velocity_mps;
  local_request.yaw_rate_radps = estimate.angular_velocity_radps;
  local_request.steering_angle_rad = chassis_->telemetry().steer.angle_rad;
@@ -616,8 +647,13 @@ void ScenarioSession::decide_control() {
  field_intent.active && field_intent.kind != FieldIntentKind::Follow &&
  field_intent.kind != FieldIntentKind::Wait) {
  local_request.terminal_position = field_intent.target;
- local_request.terminal_position_tolerance_m = 0.25;
- local_request.terminal_max_speed_mps = 0.05;
+ local_request.terminal_position_tolerance_m =
+ kFieldIntentArrivalPositionToleranceM;
+ local_request.terminal_max_speed_mps = kFieldIntentArrivalSpeedMps;
+ local_request.terminal_heading_tolerance_rad =
+ kFieldIntentArrivalYawToleranceRad;
+ local_request.terminal_max_yaw_rate_radps =
+ kFieldIntentArrivalYawRateRadps;
  if (!planned_route_.empty())
  local_request.target_heading_rad = planned_route_.back().heading_rad;
  } else if (const GoalStep* goal = active_goal();
@@ -663,19 +699,21 @@ void ScenarioSession::decide_control() {
  local_stop_plane_active && governor_out.hold_active && governor_out.stop_valid && !crossing_committed;
  local_request.stop_point = governor_out.stop_point;
  local_request.stop_direction = governor_out.stop_direction;
- local_request.stop_tolerance_m = 0.05;
+ local_request.stop_tolerance_m = kStopControllerToleranceM;
  local_request.committed_progress_floor_mps = committed_floor;
  // The stopping tail is based on the delivered controller bandwidth and the
  // tire/contact deceleration contract. It applies to actuator-level wheeled
  // and tracked plants; the trajectory validator then checks the resulting
  // swept path in the chassis' own command space.
- if (physics_mode_ != PhysicsMode::Domain && chassis_->accepts_actuator_duty()) {
+ if (chassis_->accepts_actuator_duty()) {
  const auto* local_motor = resolved_build_.motor();
  const double local_controller_bandwidth = local_motor
  ? local_motor->controller_bandwidth_radps
  : robot_definition_.motor.controller_bandwidth_radps;
- local_request.emergency_stop_delay_s = 1.0 / decision_hz() +
+ local_request.actuator_response_delay_s =
  1.0 / std::max(0.1, local_controller_bandwidth);
+ local_request.emergency_stop_delay_s = 1.0 / decision_hz() +
+ local_request.actuator_response_delay_s;
  local_request.emergency_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
  }
  // Path/progress/oscillation critics are shared guidance for twist-space
@@ -686,7 +724,15 @@ void ScenarioSession::decide_control() {
  if (local_request.command_space != sim::LocalCommandSpace::SteeringAngle) {
  local_request.reference.previous_angular_command_radps = held_command_.target_w;
  local_request.reference.path.push_back({nav_x, nav_y});
- if (!planned_route_.empty()) {
+ if (local_request.stop_plane_active) {
+ // A behavior hold inserts a temporary terminal pose into the local plan.
+ // Referencing route vertices beyond the closed virtual wall asks the path
+ // critic to continue through the crossing while the validator forbids it.
+ // Truncate the local reference at the latched stop pose so all critics and
+ // the behavior constraint describe the same maneuver.
+ if (distance({nav_x, nav_y}, local_request.stop_point) > 1e-6)
+ local_request.reference.path.push_back(local_request.stop_point);
+ } else if (!planned_route_.empty()) {
  const std::size_t guide_index = std::min(
  route_tracking_system_->path_index(), planned_route_.size() - 1);
  const std::size_t search_begin = guide_index > 8 ? guide_index - 8 : 0;
@@ -722,8 +768,13 @@ void ScenarioSession::decide_control() {
  local_request, local_planning_map, local_predicted_frames,
  [this](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
- collision_monitor_->static_motion_free(from, to);
- }, &local_physical_collision_map);
+ collision_monitor_->static_motion_free(
+ from, to, std::max(0.05, level_.planning_localization_margin_m));
+ }, &local_physical_collision_map,
+ [this](sim::Vec2 from, sim::Vec2 to) {
+ return std::isfinite(navigation_traversal_cost(from, to)) &&
+ collision_monitor_->static_motion_free(from, to, 0.0);
+ });
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;
  snapshot_.control.dwa_active =
@@ -737,6 +788,7 @@ void ScenarioSession::decide_control() {
  const auto& trajectory_validation = validated_selection.validation;
  snapshot_.control.trajectory_validated = trajectory_validation.accepted();
  snapshot_.control.trajectory_verdict = static_cast<int>(trajectory_validation.verdict);
+ snapshot_.control.trajectory_diagnostic = trajectory_validation.diagnostic;
  snapshot_.control.trajectory_min_dynamic_clearance_m = trajectory_validation.min_dynamic_clearance_m;
  double predicted_separation_m = std::isfinite(trajectory_validation.min_dynamic_clearance_m)
                                    ? trajectory_validation.min_dynamic_clearance_m

@@ -77,6 +77,18 @@ int main() {
  sim::kPi * 0.5 - align_terminal.best.samples.back().heading_rad)) <
  sim::kPi * 0.5);
 
+ // A small residual just outside the arrival tolerance still requires a
+ // real alignment command. This is the terminal condition that previously
+ // left RO-4 stopped forever with a valid position but a 0.20 rad yaw error.
+ auto fine_align_config = terminal_config;
+ fine_align_config.terminal_heading_rad = 0.20;
+ fine_align_config.terminal_heading_tolerance_rad = 0.12;
+ const auto fine_align_terminal = sim::holonomic_local_compute(
+ {5.0, 5.0}, 0.0, 0.0, 0.0, 0.0, {5.0, 5.0}, map, weights,
+ {}, fine_align_config);
+ CHECK(fine_align_terminal.best.command.valid);
+ CHECK(fine_align_terminal.best.command.w > 0.0);
+
  // Exact-time interpolation is mandatory. The target crosses the stationary
  // ego between two prediction frames; endpoint-only or floor-index checking
  // would incorrectly publish a valid command.

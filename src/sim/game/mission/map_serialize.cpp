@@ -80,6 +80,7 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["min"] = vec2(zone.min);
   item["max"] = vec2(zone.max);
   item["authority"] = zone.authority;
+ item["participant_radius_m"] = zone.participant_radius_m;
   if (!zone.active_in.empty()) {
    item["active_in"] = strings(zone.active_in);
   }

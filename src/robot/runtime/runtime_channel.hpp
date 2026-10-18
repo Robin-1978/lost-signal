@@ -152,7 +152,7 @@ class IAutonomyPort {
  virtual CommandWriteResult write_actuators(const ActuatorCommand& command) = 0;
 };
 
-// A Bullet adapter, log replay, native hardware driver, or ROS bridge owns
+// A MuJoCo adapter, log replay, native hardware driver, or ROS bridge owns
 // this side. It publishes measured observations and consumes commands.
 class IPlatformPort {
  public:

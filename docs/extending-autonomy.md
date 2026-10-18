@@ -55,7 +55,7 @@ It returns an owned `GlobalPlan`: success, a route, expanded-node count, and an 
 `RoutePoint` contains position, nominal body heading, and the forward or reverse direction used to arrive at that point.
 The first point uses `Unspecified`; every later point must name a direction. `GlobalPlanningSystem` rejects a
 successful result that violates this contract. The planner cannot access mission progression, renderer state,
-Bullet bodies, future actor truth, or actuator internals.
+MuJoCo bodies, future actor truth, or actuator internals.
 
 The API version is `kGlobalPlannerApiMajor == 2`. This is a source-level C++ contract. It is not a stable
 shared-library ABI across compilers. Lost Signal is under active development, so unreleased API versions are replaced

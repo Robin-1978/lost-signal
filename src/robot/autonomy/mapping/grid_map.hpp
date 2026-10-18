@@ -2,6 +2,11 @@
 #include "robot/core/math.hpp"
 #include <vector>
 namespace sim {
+enum class GridBoundaryPolicy {
+ Occupied,
+ Ignore,
+};
+
 // Occupancy grid: 0 free, 100 occupied. World origin at (0,0), res = meters/cell.
 class GridMap {
  public:
@@ -29,8 +34,13 @@ class GridMap {
     if (inside(gx, gy))
      data_[gy * w_ + gx] = 100;
  }
- // inflate occupied cells by radius (meters) -> out costmap (0 free, 100 lethal+inflated)
- GridMap inflated(double radius) const;
+ // Inflate occupied cells by radius (meters) into a binary costmap. A static
+ // world normally treats space outside the grid as occupied; a transient
+ // observation layer must ignore its boundary because the base map owns that
+ // policy and an empty sensor layer must contribute no obstacles.
+ GridMap inflated(
+ double radius,
+ GridBoundaryPolicy boundary_policy = GridBoundaryPolicy::Occupied) const;
  // Union another occupancy layer with identical geometry. Layer-specific
  // clearing never erases obstacles owned by a different layer.
  void mergeOccupied(const GridMap& other);

@@ -14,7 +14,7 @@ graph TD
  E --> F[Kinematics and actuator targets]
  F --> G[Motor control and PID]
  G --> R[LSRI motion port]
- R --> H[Bullet or deterministic physics]
+ R --> H[MuJoCo physics]
  H --> I[LiDAR, IMU, encoders, contacts]
  I --> O[LSRI observation port]
  O --> J[State estimation and tracking]
@@ -45,7 +45,7 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 
 ### Platform contracts and simulated devices
 
-`src/robot/platform/`, `src/robot/control/`, and `src/robot/runtime/` contain deployable capabilities, kinematics, control algorithms, and LSRI contracts. `src/sim/hardware/vehicle/`, `src/sim/hardware/sensors/`, and `src/sim/hardware/physics/` contain virtual devices and physical plants. A chassis declares both its body command space and the lowest command level accepted by its provider. Algorithms consume these contracts without depending on Bullet or rendering.
+`src/robot/platform/`, `src/robot/control/`, and `src/robot/runtime/` contain deployable capabilities, kinematics, control algorithms, and LSRI contracts. `src/sim/hardware/vehicle/`, `src/sim/hardware/sensors/`, and `src/sim/hardware/physics/` contain virtual devices and physical plants. A chassis declares both its body command space and the lowest command level accepted by its provider. Algorithms consume these contracts without depending on MuJoCo or rendering.
 
 Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements.
 The current in-process simulator queues LiDAR observations until their deterministic availability time while preserving
@@ -65,7 +65,7 @@ physics truth never enter the Robot Map.
 
 Static scene geometry follows one entity contract. `MapDefinition::world_objects` owns a stable ID, prefab transform,
 one or more local collision boxes, active-level filter, and material. The same resolved transforms drive the renderer,
-Bullet bodies, planar and multi-line LiDAR ray hits, material reflectivity, oriented occupancy rasterization, and the
+MuJoCo bodies, planar and multi-line LiDAR ray hits, material reflectivity, oriented occupancy rasterization, and the
 continuous collision monitor. A scene instance outside that contract must declare `role: visual_only`; it is suitable
 for paint, warning strips, and presentation cues and cannot masquerade as a wall, railing, tree, or crate. This mirrors
 the visual/collision separation in SDFormat while preventing independently placed visual and physical copies.
@@ -127,7 +127,7 @@ validation. The selected chassis then converts that command into wheel speed and
 Motor controllers compare targets with encoder feedback. LSRI supports two explicit placements: a smart platform may
 accept `BodyMotionCommand` and own its low-level loops, while a ROBOT controller may publish typed per-channel
 actuator commands for a passive simulated plant or native driver. Command placement is a declared capability, never
-an implicit reinterpretation of the same number. The default RO-1 Bullet composition uses the second placement:
+an implicit reinterpretation of the same number. The default RO-1 MuJoCo composition uses the second placement:
 physical joint position/velocity travels from SIM to the ROBOT wheel controller through LSRI, and normalized left/
 right duty travels back through LSRI. SIM owns only the motor curve, joint effort, contact, and rigid-body plant.
 
@@ -166,10 +166,12 @@ are simulation-only and are rejected from deployable dependencies.
 `src/sim/game/scenario/` owns fixed-step composition, telemetry, and replay. `ScenarioSession` composes the focused systems
 and publishes an immutable snapshot for consumers.
 `DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
-and translates authority into a neutral autonomy contract. `CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
+and translates authority plus the declared participant envelope into a neutral autonomy contract.
+`CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
 the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
 tracked-object predictions, and controls the hold/commit/clear transitions. Content never supplies a parking
-coordinate, and actor truth and physics objects never cross the autonomy boundary. `TrajectoryTrackingSystem` owns the last
+coordinate: the stop is a continuous pose derived from route and conflict geometry rather than a selected grid
+cell. Actor truth and physics objects never cross the autonomy boundary. `TrajectoryTrackingSystem` owns the last
 accepted local trajectory between decision ticks and reports position, heading, and speed errors against its
 interpolated expected state. Tracking is currently evidence only; it does not silently modify control authority.
 Dynamic-object perception publishes timestamped constant-velocity track estimates rather than raw LiDAR cluster
@@ -201,9 +203,14 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 
 ### Physics
 
-`IPhysicsWorld` is the backend boundary. Bullet is the production and default backend. A deterministic planar backend supports regression and focused algorithm tests. Bullet-shadow mode can compare integration paths without giving the shadow backend authority over gameplay.
+MuJoCo 3.16.0 is the single production physics engine. There is no runtime backend selector, compatibility layer, or
+second production world. The complete decision, native model/data design, limits, and completed atomic cutover gate
+are defined in [Physics engine decision and migration](physics-engine-migration.md).
 
-`SimulatedPlatform` maps content geometry, terrain, robot bodies, actors, contacts, and raycasts to the backend. In Bullet authority mode, Bullet owns rigid-body pose. The rendering layer never advances physics.
+The simulation model compiler maps content geometry, native 2.5D terrain, complete robot assemblies, actors,
+contacts, and sensor sites into one immutable MuJoCo model. A simulation instance owns its corresponding mutable
+state and is the single physics writer. Focused analytic kinematics remain test oracles, never a second production
+world. The rendering layer never advances physics.
 
 `sim::platform::SimulatedPlatform` in `src/sim/game/platform/` is the in-process simulation-platform adapter; mission code only
 schedules it and combines its published result with goals and autonomy diagnostics. Wheel motors, encoders, IMU and LiDAR device behavior belong
@@ -214,7 +221,7 @@ caster or sensor model belongs in a renderer.
 The deployable set is `lost_signal_robot_stack` plus one or more native platform providers. Its targets do not
 include or link any `src/sim` source or `lost_signal_sim_*` library. Neutral observation and command
 messages live under `robot/runtime/`; simulator truth remains under `sim/`. A real deployment therefore replaces the
-LSRI provider and platform adapter and omits all game, world, Bullet, and rendering targets.
+LSRI provider and platform adapter and omits all game, world, MuJoCo, and rendering targets.
 
 `scenario_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
 into neutral autonomy inputs and copies diagnostics into the game snapshot. It is not an algorithm provider. A
@@ -224,7 +231,7 @@ repository does not yet ship a turnkey real-robot executable.
 Robot geometry has three independent meanings:
 
 - the circular planning footprint is an orientation-independent conservative envelope for grid and local planners;
-- the rigid hull is an authored flat collision primitive used by Bullet;
+- the rigid hull is authored collision geometry compiled into the simulation model;
 - the support polygon comes from wheel, track, and caster contact mounts and governs stability geometry.
 
 Robot schema v4 forbids deriving one of these from another. In particular, a support triangle is not a hull and a
@@ -237,7 +244,7 @@ format into the runtime.
 RO-1 uses an elevated chassis, two powered wheel links, and a passive caster fork and wheel. RO-2 uses bounded
 Ackermann knuckles, four rolling wheels, rear drive, and an independent service brake. RO-3 distributes two track
 commands over six driven road wheels, RO-4 uses four independently steered and driven modules, and RO-5 combines
-four driven wheels with a load-limited mecanum roller-contact provider. Bullet solves every articulated assembly;
+four driven wheels with a load-limited mecanum roller-contact provider. The single production physics engine solves every articulated assembly;
 encoder truth comes from physical joint state and the motor loops apply joint effort. Each platform has its own
 physical acceptance gate. Optional suspension or identified tire, track, and roller models remain platform-provider
 concerns and do not change planner commands.
@@ -252,7 +259,7 @@ publish the complete game view because goals and explanatory overlays are not ha
 In-process code passes a `PresentationFrameView` with read-only access for the duration of one main-loop frame. A
 future threaded or multi-process provider may materialize and deliver
 the same value through a bounded queue or shared memory. This is subscription semantics without requiring a
-middleware today. The renderer cannot step the runtime and never reads Bullet bodies, motor objects or sensor
+middleware today. The renderer cannot step the runtime and never reads MuJoCo bodies, motor objects or sensor
 internals; it also never derives physical wheel or caster motion. UI state may pause or submit player intent, but
 changing camera or visualization layers cannot affect autonomous output. The headless executable consumes the same
 `src/sim/game/` results and reports English, machine-readable output.
@@ -287,7 +294,7 @@ separate from UI snapshot replay and LSRI observation replay; large sensor trace
 The most important extension boundaries are:
 
 - `ContentCatalog` for validated, localized data;
-- `IPhysicsWorld` for rigid-body execution and raycasts;
+- the authored simulation-model contract and its MuJoCo compiler bindings for bodies, joints, contacts, sites, and rays;
 - `IGlobalPlanner` for global planning;
 - `IHighLevelPolicy` for behavior selection;
 - `ChassisModel` plus `ChassisCaps` for feasible motion and actuator telemetry;

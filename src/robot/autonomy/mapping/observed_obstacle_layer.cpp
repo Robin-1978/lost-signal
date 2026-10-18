@@ -108,7 +108,8 @@ GridMap ObservedObstacleLayer::compose(const GridMap& static_costmap, double now
  }
  }
  GridMap result = static_costmap;
- result.mergeOccupied(observed.inflated(inflation_radius_m));
+ result.mergeOccupied(observed.inflated(
+ inflation_radius_m, GridBoundaryPolicy::Ignore));
  return result;
 }
 

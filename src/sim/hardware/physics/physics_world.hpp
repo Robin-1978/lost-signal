@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -22,23 +24,18 @@ struct Quaternion {
 
 struct BodyHandle {
  std::uint32_t value{0};
-
  explicit operator bool() const { return value != 0; }
  bool operator==(BodyHandle other) const { return value == other.value; }
 };
 
 struct JointHandle {
  std::uint32_t value{0};
-
  explicit operator bool() const { return value != 0; }
  bool operator==(JointHandle other) const { return value == other.value; }
 };
 
 using CollisionMask = std::uint16_t;
 
-// Semantic collision layers keep sensor visibility separate from contact
-// response. Bodies still collide according to collision_mask; ray queries can
-// select terrain, authored obstacles, actors, or vehicles independently.
 namespace collision_layer {
 inline constexpr CollisionMask Default = CollisionMask{1} << 0;
 inline constexpr CollisionMask Terrain = CollisionMask{1} << 1;
@@ -48,9 +45,12 @@ inline constexpr CollisionMask Vehicle = CollisionMask{1} << 4;
 inline constexpr CollisionMask All = static_cast<CollisionMask>(~CollisionMask{0});
 } // namespace collision_layer
 
-enum class ShapeKind { Box, Sphere, Cylinder, TriangleMesh };
+enum class ShapeKind { Box, Sphere, Cylinder, Ellipsoid, HeightField };
 
-struct BodySpec {
+// A complete collection of these model values is compiled before stepping.
+// This describes physical semantics; it is not a runtime rigid-body command.
+struct BodyModel {
+ std::string name;
  ShapeKind shape{ShapeKind::Box};
  Vec3 half_extents_m{0.5, 0.5, 0.5};
  double radius_m{0.5};
@@ -59,36 +59,31 @@ struct BodySpec {
  double friction{0.8};
  double rolling_friction{0.0};
  double spinning_friction{0.0};
- // Local-axis scaling for Bullet-style rolling moment constraints. A tire
- // can retain finite contact-patch support about its non-rolling axes while
- // using Crr * radius about the wheel axle.
- Vec3 rolling_friction_anisotropy{1.0, 1.0, 1.0};
- // Preserve a positional static-friction anchor while a manifold contact
- // persists. This is useful for slowly loaded wheel contacts and must not be
- // confused with rolling or spinning resistance.
- bool friction_anchor{false};
- // Optional compliant contact parameters. A zero stiffness keeps the physics
- // engine's rigid-contact default. Units match a linear spring/damper at the
- // contact patch.
- double contact_stiffness_Npm{0.0};
- double contact_damping_Nspm{0.0};
- // A non-zero local axle enables a wheel-aligned contact frame. The physics
- // backend resolves longitudinal and lateral friction from this axis and the
- // contact normal instead of choosing directions from instantaneous slip.
+// MuJoCo positive-format solref semantics. These are an effective contact
+// response time and damping ratio, not SI spring/damper coefficients. Zero
+// selects MuJoCo's documented 0.02 s, critically damped default.
+double contact_time_constant_s{0.0};
+double contact_damping_ratio{0.0};
  Vec3 contact_axle_axis_local;
- double restitution{0.0};
+ // Per-body drag coefficients applied at the body's inertial origin. Units
+ // are N/(m/s) and N*m/(rad/s); articulated child links are included.
  double linear_damping{0.0};
  double angular_damping{0.0};
- bool continuous_collision{false};
- // Optional body-space principal inertia. Zero means derive it from shape and
- // mass. Vehicle content supplies yaw inertia so controller and rigid body use
- // the same hardware value.
  Vec3 inertia_diagonal_kgm2;
- // Static triangle mesh data. Indices are triples into mesh_vertices_m.
- std::vector<Vec3> mesh_vertices_m;
- std::vector<std::uint32_t> mesh_indices;
+ // Native regular height field. Samples are row-major from minimum Y to
+ // maximum Y, each row from minimum X to maximum X. They are local heights
+ // in metres above position_m.z. half_extents_m.x/y are horizontal radii.
+ std::size_t heightfield_rows{0};
+ std::size_t heightfield_cols{0};
+ std::vector<double> heightfield_elevation_m;
+ double heightfield_base_depth_m{0.1};
  Vec3 position_m;
  Quaternion rotation;
+ // Externally prescribed dynamic proxy. It has a free joint and an
+ // auto-derived mass/inertia so MuJoCo sees its authored velocity in contact
+ // Jacobians; the provider rewrites pose/velocity at each outer update.
+ // This deliberately does not use a mocap body, whose motion has no physical
+ // velocity in MuJoCo contact dynamics.
  bool kinematic{false};
  CollisionMask collision_group{collision_layer::Default};
  CollisionMask collision_mask{collision_layer::All};
@@ -96,10 +91,8 @@ struct BodySpec {
 
 enum class JointKind { Fixed, Revolute };
 
-// Generic articulated-body boundary. Pivots and axes are expressed in the
-// respective parent / child body frames. A revolute joint reports child
-// motion about axis_in_parent; effort is positive about that same axis.
-struct JointSpec {
+struct JointModel {
+ std::string name;
  JointKind kind{JointKind::Fixed};
  BodyHandle parent;
  BodyHandle child;
@@ -107,10 +100,15 @@ struct JointSpec {
  Vec3 pivot_in_child_m;
  Vec3 axis_in_parent{0.0, 0.0, 1.0};
  Vec3 axis_in_child{0.0, 0.0, 1.0};
- bool disable_parent_child_collision{true};
  bool has_limits{false};
  double lower_limit_rad{0.0};
  double upper_limit_rad{0.0};
+ double armature_inertia_kgm2{0.0};
+ // Passive joint properties. For a revolute joint these have units of
+ // N*m*s/rad and N*m respectively. They are authored hardware properties,
+ // independent of actuator control and contact compliance.
+ double damping_Nms_per_rad{0.0};
+ double friction_loss_Nm{0.0};
 };
 
 struct JointState {
@@ -139,9 +137,6 @@ struct ContactEvent {
  Vec3 normal_on_b;
  double impulse_Ns{0.0};
  double normal_force_N{0.0};
- // Friction impulse is resolved in two orthogonal directions tangent to the
- // contact plane. Together these components can represent any in-plane
- // direction; consumers must not interpret them as two separate contacts.
  Vec3 tangent_direction_1;
  Vec3 tangent_direction_2;
  double tangent_impulse_1_Ns{0.0};
@@ -171,40 +166,57 @@ struct RaycastResult {
  double distance_m{0.0};
 };
 
-class IPhysicsWorld {
+// Owns the complete authored model and one authoritative mjData instance.
+// add_* and remove_body change topology and require an explicit compile()
+// transaction. Recompilation preserves state for surviving stable handles.
+class MujocoSimulation {
  public:
- virtual ~IPhysicsWorld() = default;
+ MujocoSimulation();
+ ~MujocoSimulation();
+ MujocoSimulation(MujocoSimulation&&) noexcept;
+ MujocoSimulation& operator=(MujocoSimulation&&) noexcept;
+ MujocoSimulation(const MujocoSimulation&) = delete;
+ MujocoSimulation& operator=(const MujocoSimulation&) = delete;
 
- virtual std::string_view backend_name() const = 0;
- virtual void reset() = 0;
- virtual BodyHandle spawn(const BodySpec& spec) = 0;
- virtual JointHandle create_joint(const JointSpec& spec) = 0;
- virtual void remove(BodyHandle body) = 0;
- virtual void set_state(BodyHandle body, const BodyState& state) = 0;
- virtual void set_mass_properties(BodyHandle body, double mass_kg,
- Vec3 inertia_diagonal_kgm2) = 0;
- virtual void set_contact_friction(BodyHandle body, double friction,
- double rolling_friction, double spinning_friction) = 0;
- virtual void set_contact_rolling_anisotropy(BodyHandle body, Vec3 local_scale) = 0;
- virtual void set_contact_compliance(BodyHandle body, double stiffness_Npm,
- double damping_Nspm) = 0;
- virtual void apply_drive(BodyHandle body, const DriveForces& forces) = 0;
- virtual void apply_force_at_local_point(BodyHandle body, Vec3 force_body_N, Vec3 point_body_m) = 0;
- virtual void apply_force_at_world_point(BodyHandle body, Vec3 force_world_N,
- Vec3 point_world_m) = 0;
- virtual void apply_local_torque(BodyHandle body, Vec3 torque_body_Nm) = 0;
- virtual void apply_world_torque(BodyHandle body, Vec3 torque_world_Nm) = 0;
- virtual void apply_joint_effort(JointHandle joint, double effort_Nm) = 0;
- virtual void step(double fixed_dt_s) = 0;
- virtual BodyState state(BodyHandle body) const = 0;
- virtual JointState joint_state(JointHandle joint) const = 0;
- virtual const std::vector<ContactEvent>& contacts() const = 0;
- virtual RaycastResult raycast(const Ray& ray) const = 0;
+ std::string_view engine_name() const { return "mujoco"; }
+ void clear_model();
+ BodyHandle add_body(const BodyModel& body);
+ JointHandle add_joint(const JointModel& joint);
+ void remove_body(BodyHandle body);
+ void compile();
+ bool compiled() const;
+ // Preserve the settled configuration while clearing every generalized
+ // velocity, including passive articulation joints.
+ void clear_velocities();
+
+ void set_state(BodyHandle body, const BodyState& state);
+ void set_mass_properties(BodyHandle body, double mass_kg, Vec3 inertia_diagonal_kgm2);
+ void set_contact_parameters(BodyHandle body, double friction,
+ double rolling_friction, double spinning_friction,
+double time_constant_s, double damping_ratio);
+ void apply_drive(BodyHandle body, const DriveForces& forces);
+ void apply_force_at_local_point(BodyHandle body, Vec3 force_body_N, Vec3 point_body_m);
+ void apply_force_at_world_point(BodyHandle body, Vec3 force_world_N, Vec3 point_world_m);
+ void apply_local_torque(BodyHandle body, Vec3 torque_body_Nm);
+ void apply_world_torque(BodyHandle body, Vec3 torque_world_Nm);
+ void apply_joint_effort(JointHandle joint, double effort_Nm);
+ // Register a passive brake capacity for the next public step. The provider
+ // reevaluates direction from joint velocity at every internal substep, so a
+ // brake cannot propel a joint through zero as a sampled external torque can.
+ void apply_joint_brake(JointHandle joint, double maximum_torque_Nm,
+ double low_speed_smoothing_radps);
+ void step(double fixed_dt_s);
+ BodyState state(BodyHandle body) const;
+ JointState joint_state(JointHandle joint) const;
+ const std::vector<ContactEvent>& contacts() const;
+ RaycastResult raycast(const Ray& ray) const;
+
+ private:
+ class Impl;
+ std::unique_ptr<Impl> impl_;
 };
 
-std::unique_ptr<IPhysicsWorld> make_planar_physics_world();
-std::unique_ptr<IPhysicsWorld> make_bullet_physics_world();
-bool bullet_physics_available();
+bool mujoco_physics_available();
 
 Quaternion quaternion_from_euler(double roll_rad, double pitch_rad, double yaw_rad);
 Vec3 euler_from_quaternion(const Quaternion& rotation);

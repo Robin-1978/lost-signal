@@ -162,22 +162,16 @@ int main() {
   CHECK(back->chassis_robot == "robot.ro2");
  }
  // The two holonomic chassis are selectable content and complete a real
- // playable level through the full planner/controller/chassis chain. A
- // Bullet build repeats the same proof with rigid-body pose authority.
- std::vector<mission::PhysicsMode> physics_modes{mission::PhysicsMode::Domain};
- if (sim::physics::bullet_physics_available()) {
- physics_modes.push_back(mission::PhysicsMode::Bullet);
- }
- for (const auto physics_mode : physics_modes) {
+ // playable level through the full planner/controller/MuJoCo chain.
  for (const auto* robot_id : {"robot.ro4", "robot.ro5"}) {
  auto build = catalog.presentation_for_level("boot").recommended_build;
  build.chassis_robot = robot_id;
  mission::ScenarioSession mission(catalog, "boot", build, 1u, {},
- mission::ComponentRegistry::builtins(), {}, physics_mode);
+ mission::ComponentRegistry::builtins());
  mission.run_to_completion();
  if (mission.result().status != mission::MissionStatus::Succeeded) {
  std::cerr << "playable-level failure: robot=" << robot_id
- << " physics=" << static_cast<int>(physics_mode)
+ << " physics=" << mission.physics_backend_name()
  << " status=" << static_cast<int>(mission.result().status)
  << " reason=" << mission.result().failure_reason
  << " time_s=" << mission.result().time_s
@@ -186,7 +180,7 @@ int main() {
  << " collisions=" << mission.result().collisions << '\n';
  }
  CHECK(mission.result().status == mission::MissionStatus::Succeeded);
- CHECK(mission.physics_mode() == physics_mode);
+CHECK(std::string_view(mission.physics_backend_name()) == "mujoco");
  CHECK(mission.result().max_fused_pose_error_m < 0.5);
  if (std::string(robot_id) == "robot.ro4") {
  CHECK(std::any_of(mission.replay().begin(), mission.replay().end(), [](const auto& frame) {
@@ -194,7 +188,6 @@ int main() {
  std::any_of(frame.control.mount_actuations.begin(), frame.control.mount_actuations.end(),
  [](const auto& actuation) { return std::abs(actuation.yaw_rad) > 1e-6; });
  }));
- }
  }
  }
  std::cerr << "chassis choice green\n";

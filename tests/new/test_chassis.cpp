@@ -68,7 +68,7 @@ int main() {
  sim::ChassisActuatorFeedback stalled_feedback;
  stalled_feedback.joints = {{"left", 0.0, 0.0}, {"right", 0.0, 0.0}};
  sim::DiffState stalled;
- for (int step = 0; step < 100; ++step) {
+for (int step = 0; step < 100; ++step) {
  drive.set_actuator_feedback(stalled_feedback);
  stalled = drive.step(stalled, {1.0, 0.0}, 0.02, kGround);
  }
@@ -287,13 +287,22 @@ int main() {
   CHECK(a.v > 0.5);
   CHECK(std::abs(a.w) < 0.05);
   // Spin in place (slower than wheels: scrub eats torque).
+ sim::TrackedDrive spinner(params, gains);
  sim::DiffState spun;
-  for (int step = 0; step < 100; ++step) {
- spun = first.step(spun, {0.0, 1.0}, 0.02, kGround);
+ for (int step = 0; step < 500; ++step) {
+ spun = spinner.step(spun, {0.0, 1.0}, 0.02, kGround);
   }
-  CHECK(spun.w > 0.1);
+ const double drive_yaw_torque =
+ (spinner.telemetry().right.longitudinal_force_N -
+ spinner.telemetry().left.longitudinal_force_N) * params.wheel_base_m * 0.5;
+ const double scrub_capacity =
+ kGround.mu_eff * params.mass_kg * 9.81 * params.track_length_m * 0.25;
+ const double steady_residual = drive_yaw_torque -
+ scrub_capacity * std::tanh(spun.w / 0.05) - 2.0 * spun.w;
+ CHECK(spun.w > 0.04);
+ CHECK(std::abs(steady_residual) < 0.2);
   CHECK(std::abs(spun.v) < 0.1);
- CHECK(first.telemetry().steer.angle_rad == 0.0);
+CHECK(spinner.telemetry().steer.angle_rad == 0.0);
   // Ice: longitudinal breakaway flags slipping on the shared contact.
   const sim::GroundContact ice{0.05, 0.01, 4.0};
   sim::TrackedDrive sled(params, gains);

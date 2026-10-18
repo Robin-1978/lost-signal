@@ -42,7 +42,6 @@ class SceneRenderer3D {
  void draw_markers(const mission::PresentationFrameView& mission) const;
  void draw_field_operator(const mission::PresentationFrameView& mission) const;
  void draw_robot(const mission::PresentationFrameView& mission) const;
- void draw_lidar_point_cloud(const mission::PresentationFrameView& mission) const;
  void draw_actor(const mission::ActorSnapshot& actor, bool waiting, double time_s) const;
  void draw_environment(const mission::PresentationFrameView& mission, const mission::SceneDefinition& scene) const;
  void draw_accents(const mission::PresentationFrameView& mission) const;

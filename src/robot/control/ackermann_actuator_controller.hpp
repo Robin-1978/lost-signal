@@ -71,6 +71,8 @@ class AckermannActuatorController {
  AckermannActuatorControllerConfig config_;
  PID rear_left_pid_;
  PID rear_right_pid_;
+ PID front_left_steer_velocity_pid_;
+ PID front_right_steer_velocity_pid_;
  bool encoder_initialized_{false};
  double previous_rear_left_count_{0.0};
  double previous_rear_right_count_{0.0};

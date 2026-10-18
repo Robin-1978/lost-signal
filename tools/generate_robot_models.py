@@ -16,6 +16,7 @@ RO2_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro2"
 RO3_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro3"
 RO4_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro4"
 RO5_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro5"
+RO6_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro6"
 Vector3 = tuple[float, float, float]
 Mesh = tuple[list[Vector3], list[Vector3], list[int]]
 
@@ -868,6 +869,32 @@ def main() -> None:
     write_model("chassis", mecanum_chassis, RO5_OUTPUT)
     write_model("roller_left", roller_left, RO5_OUTPUT)
     write_model("roller_right", roller_right, RO5_OUTPUT)
+    arm_dark = rgba("#172321")
+    arm_mint = rgba("#62D8C2")
+    arm_orange = rgba("#F3A84B")
+    write_model("turret", [
+        Part("slew_base", "cylinder", (0.105, 0.105, 0.10), arm_dark, metallic=0.72, roughness=0.25),
+        Part("shoulder_housing", "box", (0.12, 0.16, 0.09), arm_mint, (0, 0, 0.055), metallic=0.42),
+    ], RO6_OUTPUT)
+    write_model("upper_arm", [
+        Part("beam", "box", (0.075, 0.075, 0.28), arm_mint, metallic=0.48, roughness=0.27),
+        Part("shoulder_axis", "cylinder", (0.055, 0.055, 0.11), arm_dark,
+             (0, 0, -0.14), rotation=(math.sin(math.pi/4), 0, 0, math.cos(math.pi/4)), metallic=0.72),
+        Part("elbow_light", "box", (0.025, 0.078, 0.035), arm_orange,
+             (0.039, 0, 0.115), emissive=0.65),
+    ], RO6_OUTPUT)
+    write_model("forearm", [
+        Part("beam", "box", (0.065, 0.065, 0.24), rgba("#8FA9A3"), metallic=0.52, roughness=0.25),
+        Part("elbow_axis", "cylinder", (0.048, 0.048, 0.10), arm_dark,
+             (0, 0, -0.12), rotation=(math.sin(math.pi/4), 0, 0, math.cos(math.pi/4)), metallic=0.74),
+    ], RO6_OUTPUT)
+    write_model("tool", [
+        Part("wrist", "cylinder", (0.042, 0.042, 0.08), arm_dark,
+             (0, 0, -0.03), rotation=(math.sin(math.pi/4), 0, 0, math.cos(math.pi/4)), metallic=0.76),
+        Part("palm", "box", (0.10, 0.10, 0.06), arm_mint, (0, 0, 0.035), metallic=0.46),
+        Part("finger_left", "box", (0.028, 0.025, 0.105), arm_orange, (0.025, 0.048, 0.105), metallic=0.58),
+        Part("finger_right", "box", (0.028, 0.025, 0.105), arm_orange, (0.025, -0.048, 0.105), metallic=0.58),
+    ], RO6_OUTPUT)
 
 
 if __name__ == "__main__":

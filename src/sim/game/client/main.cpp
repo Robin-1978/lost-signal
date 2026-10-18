@@ -14,6 +14,7 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -36,7 +37,6 @@ struct Options {
  std::filesystem::path progress_file;
  bool no_save{false};
  bool mute{false};
- mission::PhysicsMode physics_mode{mission::PhysicsMode::Bullet};
 };
 
 std::filesystem::path default_progress_path() {
@@ -103,13 +103,10 @@ Options parse_options(int argc, char** argv) {
    options.no_save = true;
  else if (argument == "--mute")
  options.mute = true;
- else if (argument == "--physics" && index + 1 < argc)
- options.physics_mode = mission::parse_physics_mode(argv[++index]);
   else if (argument == "--help" || argument == "-h") {
  std::cout << "Usage: lost_signal [--assets PATH] [--language en|zh-CN] [--level ID] [--demo]"
                 " [--analysis-view] [--chapter-view] [--garage-view]"
- " [--screenshot FILE] [--screenshot-time SECONDS] [--save FILE|--no-save] [--mute]"
- " [--physics domain|shadow|bullet|auto]\n";
+ " [--screenshot FILE] [--screenshot-time SECONDS] [--save FILE|--no-save] [--mute]\n";
    std::exit(0);
   } else
    throw std::runtime_error("unknown argument: " + argument);
@@ -171,8 +168,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  const auto make_mission = [&](const std::string& level, const mission::BuildSelection& build) {
  auto created = std::make_unique<mission::ScenarioSession>(catalog, level, build, std::nullopt,
  progress.abilities(), mission::ComponentRegistry::builtins(),
- std::shared_ptr<const autonomy::IGlobalPlanner>{}, options.physics_mode,
- std::shared_ptr<sim::IHighLevelPolicy>{},
+ std::shared_ptr<const autonomy::IGlobalPlanner>{}, std::shared_ptr<sim::IHighLevelPolicy>{},
  ui.endless_mode() ? std::string{} : ui.contract_id());
  created->set_endless_mode(ui.endless_mode());
  if (created->endless_mode() && progress.regional_world())
@@ -486,13 +482,31 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
      }
     } else {
      accumulator += std::min(0.1, static_cast<double>(GetFrameTime())) * speed;
+ // Physics, autonomy and a multi-line LiDAR scan all run on this thread.
+ // Catching up an unbounded simulation backlog here starves the native
+ // window queue, which makes buttons and even the close request appear
+ // unresponsive. Keep deterministic fixed ticks, but let simulated time run
+ // slower than wall time when the machine cannot sustain the requested rate.
+ // One tick is always allowed; faster hosts may consume more within budget.
+ constexpr auto kInteractiveSimulationBudget = std::chrono::milliseconds(10);
+ constexpr int kMaximumInteractiveSteps = 8;
+ const auto simulation_started = std::chrono::steady_clock::now();
      int steps = 0;
-     while (accumulator >= mission::ScenarioSession::fixed_step_s && steps < 80) {
+ while (accumulator >= mission::ScenarioSession::fixed_step_s &&
+ steps < kMaximumInteractiveSteps) {
  previous_presentation_snapshot = mission->snapshot();
       mission->step();
       accumulator -= mission::ScenarioSession::fixed_step_s;
       ++steps;
+ if (std::chrono::steady_clock::now() - simulation_started >=
+ kInteractiveSimulationBudget) {
+ break;
+ }
      }
+ // Discard excess wall-clock debt instead of entering a permanent catch-up
+ // loop. The simulation state itself is never skipped or integrated with a
+ // larger dt; only the UI's real-time pacing falls behind under load.
+ accumulator = std::min(accumulator, mission::ScenarioSession::fixed_step_s);
     }
    }
    if (ui.screen() == client::Screen::Running) {
@@ -559,7 +573,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  const bool interpolate_running = options.screenshot.empty() &&
  mission->snapshot().status == mission::MissionStatus::Running;
  const double presentation_alpha = interpolate_running
- ? accumulator / mission::ScenarioSession::fixed_step_s
+ ? std::clamp(accumulator / mission::ScenarioSession::fixed_step_s, 0.0, 1.0)
  : 1.0;
  const mission::PresentationFrameView presentation{
  *mission, previous_presentation_snapshot, presentation_alpha};

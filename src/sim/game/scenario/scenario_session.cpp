@@ -92,32 +92,6 @@ const char* mission_status_name(MissionStatus status) {
  return "unknown";
 }
 
-PhysicsMode parse_physics_mode(const std::string& value) {
- if (value == "domain")
-  return PhysicsMode::Domain;
- if (value == "shadow")
-  return PhysicsMode::BulletShadow;
- if (value == "bullet")
-  return PhysicsMode::Bullet;
- if (value == "auto")
-  return PhysicsMode::Auto;
- throw std::invalid_argument("unknown physics mode '" + value + "' (expected domain|shadow|bullet|auto)");
-}
-
-const char* physics_mode_name(PhysicsMode mode) {
- switch (mode) {
- case PhysicsMode::Domain:
-  return "domain";
- case PhysicsMode::BulletShadow:
-  return "bullet-shadow";
- case PhysicsMode::Bullet:
-  return "bullet";
- case PhysicsMode::Auto:
-  return "auto";
- }
- return "unknown";
-}
-
 const std::string& ScenarioSession::level_robot_id(const ContentCatalog& catalog,
                                                      const std::string& level_id,
                                                      const BuildSelection& build) {
@@ -134,21 +108,19 @@ ScenarioSession::ScenarioSession(const ContentCatalog& catalog, std::string leve
                                      BuildSelection build, const ScenarioSessionOptions& options)
     : ScenarioSession(catalog, std::move(level_id), std::move(build), options.seed_override,
                         options.owned_abilities, options.component_registry, options.global_planner,
-                        options.physics_mode, options.high_level_policy, options.contract_id,
+ options.high_level_policy, options.contract_id,
                         options.runtime_provider_id, options.runtime_registry) {}
 
 ScenarioSession::ScenarioSession(
   const ContentCatalog& catalog, std::string level_id, BuildSelection build,
   std::optional<uint64_t> seed_override, const std::vector<std::string>& owned_abilities,
   const ComponentRegistry& component_registry, std::shared_ptr<const autonomy::IGlobalPlanner> global_planner,
-  PhysicsMode physics_mode, std::shared_ptr<sim::IHighLevelPolicy> high_level_policy, std::string contract_id,
+ std::shared_ptr<sim::IHighLevelPolicy> high_level_policy, std::string contract_id,
   std::string runtime_provider_id, sim::runtime::RuntimeRegistry runtime_registry)
     : catalog_(catalog), level_id_(std::move(level_id)), build_(std::move(build)),
       seed_override_(seed_override), level_(catalog_.level(level_id_)),
       map_definition_(catalog_.map(level_.map)),
       robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_, build_))),
-      requested_physics_mode_(physics_mode),
-      physics_mode_(physics_mode == PhysicsMode::Auto ? PhysicsMode::Bullet : physics_mode),
       runtime_registry_(std::move(runtime_registry)), runtime_provider_id_(std::move(runtime_provider_id)),
       behavior_(catalog_.style_behavior(build_.style)), estimation_system_(effective_seed() ^ 0x6a09e667U),
       planning_system_(global_planner ? global_planner : autonomy::default_global_planner()),
@@ -208,6 +180,10 @@ void ScenarioSession::reset() {
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
   runtime_channel_->deactivate();
  }
+ if (manipulator_channel_ &&
+ manipulator_channel_->state() == sim::runtime::LifecycleState::Active) {
+ manipulator_channel_->deactivate();
+ }
  result_ = {};
  snapshot_ = {};
  construction_evidence_.clear();
@@ -245,6 +221,8 @@ void ScenarioSession::reset() {
  motion_sequence_ = 0;
  actuator_feedback_sequence_ = 0;
  command_sequence_ = 0;
+ manipulator_feedback_sequence_ = 0;
+ manipulator_command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
  entry_governor_system_.reset();
@@ -256,6 +234,7 @@ void ScenarioSession::reset() {
  payload_shock_initialized_ = false;
  build_world();
  initialize_rigid_physics();
+ snapshot_.manipulator.present = robot_definition_.manipulator.has_value();
  synchronize_payload_dynamics();
  plan_route();
 
@@ -477,14 +456,11 @@ bool ScenarioSession::update_payload_integrity(const sim::DiffState& before, con
 }
 
 const char* ScenarioSession::physics_backend_name() const {
- return physics_mode_name(physics_mode_);
+ return "mujoco";
 }
 
 void ScenarioSession::initialize_rigid_physics() {
  platform_.reset();
- if (physics_mode_ == PhysicsMode::Domain) {
-  return;
- }
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
  platform_ = std::make_unique<sim::platform::SimulatedPlatform>(
    map_definition_, level_, robot_definition_, chassis_caps_, terrain_, sim::Vec2{spawn.x, spawn.y},
@@ -509,8 +485,8 @@ ScenarioSession::constructed_support_bodies() const {
  resolved.pitch_rad,
  material.friction_mu,
  material.rolling_drag,
- material.normal_stiffness_Npm,
- material.normal_damping_Nspm,
+ material.contact_time_constant_s,
+ material.contact_damping_ratio,
  material.lidar_reflectivity,
  });
  }
@@ -588,6 +564,8 @@ void ScenarioSession::build_world() {
  const int width = static_cast<int>(std::ceil(map_definition_.size_m.x / map_definition_.grid_resolution_m));
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
+ recovery_base_map_ =
+ std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
  std::vector<CollisionBox> collision_obstacles;
  const auto deployable_map = map_manager_.current_snapshot();
  if (!deployable_map || !deployable_map->grid)
@@ -712,6 +690,9 @@ void ScenarioSession::build_world() {
  chassis_params.free_speed_mps = motor_free;
  chassis_params.pwm_limit = robot_definition_.motor.pwm_limit;
  chassis_params.integral_limit = robot_definition_.motor.integral_limit;
+ chassis_params.static_friction_feedforward_duty = equipped_motor
+ ? equipped_motor->static_friction_feedforward_duty
+ : robot_definition_.motor.static_friction_feedforward_duty;
  chassis_params.wheel_equiv_mass_kg = robot_definition_.motor.wheel_equiv_mass_kg;
  chassis_params.coulomb_smoothing_speed_mps = equipped_motor
                                                 ? equipped_motor->coulomb_smoothing_speed_mps
@@ -804,7 +785,6 @@ void ScenarioSession::build_world() {
  [&](const auto& actuator) { return actuator.channel == channel; });
  };
  const bool deployable_differential_control =
- physics_mode_ != PhysicsMode::Domain &&
    (robot_definition_.drive_type == "differential" || robot_definition_.drive_type == "tracked") &&
  chassis_->accepts_actuator_duty() &&
    ((has_actuator_channel("left") && has_actuator_channel("right")) ||
@@ -824,11 +804,11 @@ void ScenarioSession::build_world() {
  chassis_params.encoder_counts_per_revolution,
  chassis_params.pwm_limit,
  chassis_params.integral_limit,
+ chassis_params.static_friction_feedforward_duty,
  },
  wheel_gains);
  }
  const bool deployable_ackermann_control =
- physics_mode_ != PhysicsMode::Domain &&
  robot_definition_.drive_type == "ackermann" &&
  chassis_->accepts_actuator_duty() &&
  has_actuator_channel("rear_left_drive") &&
@@ -859,7 +839,6 @@ void ScenarioSession::build_world() {
  wheel_gains);
  }
  const bool deployable_holonomic_control =
-   physics_mode_ != PhysicsMode::Domain &&
    (robot_definition_.drive_type == "swerve" || robot_definition_.drive_type == "mecanum") &&
    chassis_->accepts_actuator_duty() && has_actuator_channel("front_left_drive") &&
    has_actuator_channel("front_right_drive") && has_actuator_channel("rear_left_drive") &&
@@ -936,6 +915,39 @@ void ScenarioSession::build_world() {
  runtime_config.maximum_command_ttl_s = 0.25;
  runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
  runtime_channel_->configure();
+ manipulator_channel_.reset();
+ manipulator_controller_.reset();
+ if (robot_definition_.manipulator) {
+ const auto& arm = *robot_definition_.manipulator;
+ manipulator_geometry_ = {
+ arm.shoulder_height_m,
+ arm.upper_arm_length_m,
+ arm.forearm_length_m,
+ arm.tool_length_m,
+ arm.lower_rad,
+ arm.upper_rad,
+ };
+ manipulator_target_joints_.rad = arm.home_rad;
+ manipulator_controller_ = std::make_unique<sim::ManipulatorJointController>(
+ sim::ManipulatorJointControllerConfig{
+ arm.kp, arm.kd, arm.maximum_effort_Nm, arm.maximum_velocity_radps,
+ arm.gravity_moment_Nm});
+ sim::runtime::RuntimeChannelConfig arm_config;
+ arm_config.instance_id = robot_definition_.id + ".manipulator";
+ arm_config.capabilities.chassis = chassis_caps_;
+ arm_config.capabilities.max_forward_speed_mps = motor_vmax;
+ arm_config.capabilities.max_lateral_speed_mps =
+ chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
+ arm_config.capabilities.command_level = sim::runtime::PlatformCommandLevel::Actuator;
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ arm_config.capabilities.actuator_channels.push_back({
+ arm.channels[index], sim::runtime::ActuatorCommandMode::PositionRad,
+ arm.lower_rad[index], arm.upper_rad[index], arm.home_rad[index]});
+ }
+ arm_config.maximum_command_ttl_s = 0.25;
+ manipulator_channel_ = runtime_registry_.create(runtime_provider_id_, arm_config);
+ manipulator_channel_->configure();
+ }
  if (!custom_global_planner_) {
   planning_system_ = autonomy::GlobalPlanningSystem(
     chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle
@@ -1185,6 +1197,8 @@ void ScenarioSession::start() {
   throw std::logic_error("mission runtime channel is not ready for activation");
  }
  runtime_channel_->activate();
+ if (manipulator_channel_)
+ manipulator_channel_->activate();
  snapshot_.status = MissionStatus::Running;
  result_.status = MissionStatus::Running;
  DecisionEvidence initial_decision;
@@ -1247,7 +1261,7 @@ void ScenarioSession::restore_endless_world(const WorldActivityCheckpoint& check
  world_activity_system_.restore(checkpoint);
  snapshot_.world_activity = world_activity_system_.state();
  // Refresh now so a persisted road incident participates in the first
- // Bullet/LiDAR frame instead of appearing one simulation tick late.
+ // MuJoCo/LiDAR frame instead of appearing one simulation tick late.
  update_actors();
  if (!replay_.empty())
   replay_.back() = snapshot_;
@@ -1301,6 +1315,146 @@ void ScenarioSession::set_manual_command(double forward, double turn) {
  const double cruise = cruise_speed_mps();
  manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
  manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * chassis_caps_.turn_command_limit();
+}
+
+sim::EndEffectorPose ScenarioSession::manipulation_target_pose(double time_s) const {
+ if (!robot_definition_.manipulator)
+ return {};
+ if (!level_.manipulation || level_.manipulation->waypoints.empty())
+ return sim::manipulator_forward_kinematics(manipulator_geometry_,
+ sim::ManipulatorJointPosition{robot_definition_.manipulator->home_rad});
+ const auto& points = level_.manipulation->waypoints;
+ if (time_s <= points.front().time_s) {
+ const auto& point = points.front();
+ return {point.target_m.x, point.target_m.y, point.target_m.z, point.tool_pitch_rad};
+ }
+ if (time_s >= points.back().time_s) {
+ const auto& point = points.back();
+ return {point.target_m.x, point.target_m.y, point.target_m.z, point.tool_pitch_rad};
+ }
+ const auto upper = std::upper_bound(points.begin(), points.end(), time_s,
+ [](double value, const ManipulationWaypointDefinition& point) {
+ return value < point.time_s;
+ });
+ const auto& next = *upper;
+ const auto& previous = *(upper - 1);
+ double ratio = (time_s - previous.time_s) / (next.time_s - previous.time_s);
+ // Zero endpoint velocity keeps the requested Cartesian path continuous when
+ // a new segment begins, avoiding an artificial joint impulse.
+ ratio = ratio * ratio * (3.0 - 2.0 * ratio);
+ const auto blend = [ratio](double from, double to) { return from + (to - from) * ratio; };
+ return {
+ blend(previous.target_m.x, next.target_m.x),
+ blend(previous.target_m.y, next.target_m.y),
+ blend(previous.target_m.z, next.target_m.z),
+ blend(previous.tool_pitch_rad, next.tool_pitch_rad),
+ };
+}
+
+void ScenarioSession::append_manipulator_efforts(sim::ChassisTelemetry& telemetry) {
+ if (!robot_definition_.manipulator || !manipulator_channel_ || !manipulator_controller_)
+ return;
+ if (!platform_)
+ throw std::logic_error("a simulated manipulator requires the articulated platform provider");
+ const auto& arm = *robot_definition_.manipulator;
+ const auto provider = platform_->actuator_feedback();
+ sim::ManipulatorJointFeedback controller_feedback;
+ sim::ObservationFrame frame;
+ frame.time_s = snapshot_.time_s;
+ frame.actuator_feedback.emplace();
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ const auto* joint = provider.find(arm.channels[index]);
+ if (!joint)
+ throw std::runtime_error("manipulator platform feedback is missing channel '" +
+ arm.channels[index] + "'");
+ controller_feedback.position_rad[index] = joint->position_rad;
+ controller_feedback.velocity_radps[index] = joint->velocity_radps;
+ frame.actuator_feedback->channels.push_back(
+ {arm.channels[index], joint->position_rad, joint->velocity_radps});
+ }
+ controller_feedback.valid = true;
+ frame.actuator_feedback->header = {
+ snapshot_.time_s, manipulator_feedback_sequence_++, "base_link", 0.0,
+ sim::kMeasurementSchemaVersion, "sim.manipulator-feedback"};
+ if (!manipulator_channel_->platform().publish_observation(std::move(frame)))
+ throw std::runtime_error("manipulator channel rejected actuator feedback");
+ const auto delivered_feedback = manipulator_channel_->autonomy().read_observation();
+ if (!delivered_feedback || !delivered_feedback->actuator_feedback)
+ throw std::runtime_error("manipulator channel did not deliver actuator feedback");
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ const auto* joint = delivered_feedback->actuator_feedback->find(arm.channels[index]);
+ if (!joint)
+ throw std::runtime_error("delivered manipulator feedback is incomplete");
+ controller_feedback.position_rad[index] = joint->position_rad;
+ controller_feedback.velocity_radps[index] = joint->velocity_radps;
+ }
+
+ const auto target_pose = manipulation_target_pose(snapshot_.time_s);
+ const auto solution = sim::manipulator_inverse_kinematics(
+ manipulator_geometry_, target_pose, manipulator_target_joints_);
+ snapshot_.manipulator.target_pose = target_pose;
+ snapshot_.manipulator.target_reachable = solution.has_value();
+ if (solution)
+ manipulator_target_joints_ = solution->joints;
+
+ const auto now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
+ sim::runtime::ActuatorCommand command;
+ command.header = {sim::runtime::kMessageSchemaVersion, now, now,
+ manipulator_command_sequence_++, "base_link", "controller.serial-manipulator"};
+ command.valid_until = sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0);
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ command.setpoints.push_back({arm.channels[index],
+ sim::runtime::ActuatorCommandMode::PositionRad,
+ manipulator_target_joints_.rad[index]});
+ }
+ if (manipulator_channel_->autonomy().write_actuators(command) !=
+ sim::runtime::CommandWriteResult::Accepted)
+ throw std::runtime_error("manipulator channel rejected position command");
+ const auto delivered_command = manipulator_channel_->platform().read_actuators(now);
+ std::array<double, 4> delivered_target{};
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ const auto setpoint = std::find_if(delivered_command.setpoints.begin(),
+ delivered_command.setpoints.end(), [&](const auto& candidate) {
+ return candidate.channel_id == arm.channels[index];
+ });
+ if (setpoint == delivered_command.setpoints.end() ||
+ setpoint->mode != sim::runtime::ActuatorCommandMode::PositionRad)
+ throw std::runtime_error("delivered manipulator command is incomplete");
+ delivered_target[index] = setpoint->value;
+ }
+ const auto control = manipulator_controller_->update(
+ delivered_target, controller_feedback, fixed_step_s);
+ snapshot_.manipulator.target_joint_rad = control.target_rad;
+ for (std::size_t index = 0; index < arm.channels.size(); ++index)
+ telemetry.joint_efforts.push_back({arm.channels[index], control.effort_Nm[index]});
+}
+
+void ScenarioSession::refresh_manipulator_snapshot() {
+ if (!robot_definition_.manipulator || !platform_)
+ return;
+ const auto& arm = *robot_definition_.manipulator;
+ const auto feedback = platform_->actuator_feedback();
+ sim::ManipulatorJointPosition measured;
+ double maximum_speed = 0.0;
+ for (std::size_t index = 0; index < arm.channels.size(); ++index) {
+ const auto* joint = feedback.find(arm.channels[index]);
+ if (!joint)
+ return;
+ measured.rad[index] = joint->position_rad;
+ snapshot_.manipulator.measured_joint_rad[index] = joint->position_rad;
+ snapshot_.manipulator.measured_velocity_radps[index] = joint->velocity_radps;
+ maximum_speed = std::max(maximum_speed, std::abs(joint->velocity_radps));
+ }
+ snapshot_.manipulator.measured_pose =
+ sim::manipulator_forward_kinematics(manipulator_geometry_, measured);
+ const auto& actual = snapshot_.manipulator.measured_pose;
+ const auto& target = snapshot_.manipulator.target_pose;
+ snapshot_.manipulator.position_error_m = std::hypot(
+ std::hypot(actual.x_m - target.x_m, actual.y_m - target.y_m), actual.z_m - target.z_m);
+ snapshot_.manipulator.maximum_joint_speed_radps = maximum_speed;
+ result_.final_manipulator_error_m = snapshot_.manipulator.position_error_m;
+ result_.max_manipulator_joint_speed_radps =
+ std::max(result_.max_manipulator_joint_speed_radps, maximum_speed);
 }
 
 void ScenarioSession::step() {
@@ -1462,15 +1616,27 @@ void ScenarioSession::step() {
 
 void ScenarioSession::apply_goal_stop_constraint() {
  const GoalStep* goal = active_goal();
- if (!goal || goal->action != "inspect")
+ if (!goal)
   return;
+ const double chassis_cruise = cruise_speed_mps();
+ const double arrival_speed = goal->action == "inspect"
+ ? 0.18
+ : level_.objective.max_arrival_speed_mps;
+ if (arrival_speed >= chassis_cruise)
+ return;
  const auto marker = map_definition_.markers.find(goal->marker);
  if (marker == map_definition_.markers.end())
   return;
  const double remaining = std::max(
    0.0, distance({snapshot_.robot.x, snapshot_.robot.y}, as_vec(marker->second)) - goal->radius_m * 0.55);
- const double deceleration = std::max(0.35, resolved_build_.traction().brake_decel_mps2 * 0.65);
- const double stop_cap = std::sqrt(2.0 * deceleration * remaining);
+ const auto terrain_state = terrain_.sample({snapshot_.robot.x, snapshot_.robot.y});
+ const double grade = sim::longitudinal_grade(terrain_state, snapshot_.robot.theta);
+ const double downhill_acceleration = std::max(
+ 0.0, -9.81 * grade / std::sqrt(1.0 + grade * grade));
+ const double deceleration = std::max(
+ 0.10, resolved_build_.traction().brake_decel_mps2 - downhill_acceleration);
+ const double stop_cap = std::sqrt(
+ arrival_speed * arrival_speed + 2.0 * deceleration * remaining);
  if (remaining <= 0.04) {
   held_command_.target_v = 0.0;
  held_command_.target_lateral_v = 0.0;
@@ -1493,20 +1659,16 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
  return;
  }
  const auto& estimate = estimation_system_.state();
- constexpr double kOperatorArrivalRadiusM = 0.25;
- constexpr double kOperatorArrivalSpeedMps = 0.05;
- constexpr double kOperatorArrivalYawToleranceRad = 0.12;
- constexpr double kOperatorArrivalYawRateRadps = 0.05;
- const std::optional<double> required_heading = planned_route_.empty()
- ? std::nullopt
- : std::optional<double>{planned_route_.back().heading_rad};
- if (distance(estimate.position, intent.target) > kOperatorArrivalRadiusM ||
+ const bool requires_heading = !planned_route_.empty();
+ const double required_heading = requires_heading ? planned_route_.back().heading_rad : 0.0;
+ if (distance(estimate.position, intent.target) >
+ kFieldIntentArrivalPositionToleranceM ||
  std::hypot(estimate.linear_velocity_mps, estimate.lateral_velocity_mps) >
- kOperatorArrivalSpeedMps ||
- std::abs(estimate.angular_velocity_radps) > kOperatorArrivalYawRateRadps ||
- (required_heading &&
- std::abs(sim::wrap_angle(*required_heading - estimate.heading_rad)) >
- kOperatorArrivalYawToleranceRad)) {
+ kFieldIntentArrivalSpeedMps ||
+ std::abs(estimate.angular_velocity_radps) > kFieldIntentArrivalYawRateRadps ||
+ (requires_heading &&
+ std::abs(sim::wrap_angle(required_heading - estimate.heading_rad)) >
+ kFieldIntentArrivalYawToleranceRad)) {
  return;
  }
 
@@ -1712,6 +1874,9 @@ void ScenarioSession::consume_lidar_observation(
   estimation_system_.correct(*observation.absolute_pose, observation.time_s);
   snapshot_.estimated_position = estimation_system_.state().position;
   snapshot_.estimated_heading = estimation_system_.state().heading_rad;
+ snapshot_.estimated_forward_mps = estimation_system_.state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = estimation_system_.state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = estimation_system_.state().angular_velocity_radps;
   update_frame_tree();
  }
  if (!observation.lidar || !observation.lidar_static_reference) {
@@ -1904,7 +2069,6 @@ void ScenarioSession::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
- sim::DiffState domain_candidate;
  if (differential_wheel_controller_) {
  if (!platform_) {
  throw std::logic_error("actuator-level differential control requires a platform provider");
@@ -2010,7 +2174,7 @@ void ScenarioSession::apply_motion() {
  // provider-side joint state. Motor curves, joint effort, contact, and rigid
  // body integration remain below the LSRI boundary.
  chassis_->set_actuator_feedback(provider_feedback);
- domain_candidate = chassis_->step_actuator_duty(
+ (void)chassis_->step_actuator_duty(
  before, applied_command,
  sim::ChassisActuatorDutyCommand{{
  {"left", wheel_control.left.normalized_duty},
@@ -2110,8 +2274,8 @@ void ScenarioSession::apply_motion() {
  plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
  }
  chassis_->set_actuator_feedback(provider_feedback);
-  domain_candidate =
-    chassis_->step_actuator_duty(before, applied_command, plant_command, fixed_step_s, ground_contact);
+ (void)chassis_->step_actuator_duty(
+ before, applied_command, plant_command, fixed_step_s, ground_contact);
  } else if (holonomic_actuator_controller_) {
   if (!platform_)
    throw std::logic_error("actuator-level holonomic control requires a platform provider");
@@ -2180,7 +2344,7 @@ void ScenarioSession::apply_motion() {
  plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
  }
  chassis_->set_actuator_feedback(provider_feedback);
- domain_candidate = chassis_->step_actuator_duty(
+ (void)chassis_->step_actuator_duty(
  before, applied_command, plant_command, fixed_step_s, ground_contact);
  } else {
  const auto outbound_command = sim::runtime::make_motion_command(
@@ -2195,55 +2359,28 @@ void ScenarioSession::apply_motion() {
  snapshot_.control.target_w_radps = applied_command.target_w;
  if (platform_)
  chassis_->set_actuator_feedback(platform_->actuator_feedback());
- domain_candidate = chassis_->step(
+ (void)chassis_->step(
  before, applied_command, fixed_step_s, ground_contact);
  }
- const auto terrain_before = terrain_.sample({before.x, before.y});
- const double forward_grade = sim::longitudinal_grade(terrain_before, before.theta);
- if (!terrain_.empty()) {
-  const double grade_accel = -9.81 * forward_grade / std::sqrt(1.0 + forward_grade * forward_grade);
-  domain_candidate.v += grade_accel * fixed_step_s;
-  const bool commanding_uphill = applied_command.target_v * forward_grade > 0.0;
-  const bool gravity_reversed_motion = domain_candidate.v * applied_command.target_v < 0.0;
-  if (commanding_uphill && gravity_reversed_motion && std::abs(before.v) < 0.08) {
-   domain_candidate.v = 0.0;
-  }
-  domain_candidate.x = before.x + (domain_candidate.v * std::cos(domain_candidate.theta) -
-                                   domain_candidate.lateral_v * std::sin(domain_candidate.theta)) *
-                                    fixed_step_s;
-  domain_candidate.y = before.y + (domain_candidate.v * std::sin(domain_candidate.theta) +
-                                   domain_candidate.lateral_v * std::cos(domain_candidate.theta)) *
-                                    fixed_step_s;
- }
  const auto& motors = chassis_->telemetry();
+ auto platform_actuation = motors;
+ append_manipulator_efforts(platform_actuation);
  sim::platform::RigidVehicleState rigid_state;
  bool have_rigid_state = false;
  if (platform_) {
- rigid_state = platform_->step(motors,
+ rigid_state = platform_->step(platform_actuation,
  [this](sim::Vec2 position) { return wheel_ground(position); }, fixed_step_s);
+ refresh_manipulator_snapshot();
   have_rigid_state = true;
   snapshot_.rigid_contact_count = rigid_state.contact_count;
   snapshot_.ground_contact_links = rigid_state.ground_contact_links;
   snapshot_.max_drive_slip_ratio = rigid_state.max_drive_slip_ratio;
   result_.max_drive_slip_ratio = std::max(result_.max_drive_slip_ratio, rigid_state.max_drive_slip_ratio);
   result_.rigid_contacts += rigid_state.contact_count;
-  if (physics_mode_ == PhysicsMode::BulletShadow) {
-   snapshot_.shadow_position_error_m =
-     distance({domain_candidate.x, domain_candidate.y}, {rigid_state.planar.x, rigid_state.planar.y});
-   snapshot_.shadow_heading_error_rad =
-     std::abs(sim::wrap_angle(domain_candidate.theta - rigid_state.planar.theta));
-   const double domain_height = terrain_.sample({domain_candidate.x, domain_candidate.y}).height_m +
-                                robot_definition_.base_link_height_m;
-   snapshot_.shadow_height_error_m = std::abs(domain_height - rigid_state.height_m);
-   result_.max_shadow_position_error_m =
-     std::max(result_.max_shadow_position_error_m, snapshot_.shadow_position_error_m);
-   result_.max_shadow_heading_error_rad =
-     std::max(result_.max_shadow_heading_error_rad, snapshot_.shadow_heading_error_rad);
-   result_.max_shadow_height_error_m =
-     std::max(result_.max_shadow_height_error_m, snapshot_.shadow_height_error_m);
-  }
  }
- auto candidate = physics_mode_ == PhysicsMode::Bullet ? rigid_state.planar : domain_candidate;
+ if (!have_rigid_state)
+ throw std::logic_error("MuJoCo platform did not produce a rigid state");
+ auto candidate = rigid_state.planar;
  // Telemetry shape follows the chassis (telemetry_.differential selects the
  // active side). Ackermann mirrors the single drive unit into the left_*
  // fields and reports the servo below; the right_* fields stay zero rather
@@ -2318,7 +2455,7 @@ void ScenarioSession::apply_motion() {
    }
  const auto* mount = find_mount(traction_slot->mounts[index]);
  auto& roll = mount_roll_rad_[traction_slot->mounts[index]];
-   const auto physical_joint = physics_mode_ == PhysicsMode::Bullet && platform_ && mount
+ const auto physical_joint = platform_ && mount
                                  ? platform_->joint_state_for_child(mount->frame_id)
                                  : std::nullopt;
    if (physical_joint) {
@@ -2336,10 +2473,10 @@ void ScenarioSession::apply_motion() {
   const auto* roll_mount = find_mount(support.roll_mount);
   double steer = 0.0;
   auto& roll = mount_roll_rad_[support.roll_mount];
-  const auto physical_steer = physics_mode_ == PhysicsMode::Bullet && platform_ && steer_mount
+ const auto physical_steer = platform_ && steer_mount
                                 ? platform_->joint_state_for_child(steer_mount->frame_id)
                                 : std::nullopt;
-  const auto physical_roll = physics_mode_ == PhysicsMode::Bullet && platform_ && roll_mount
+ const auto physical_roll = platform_ && roll_mount
                                ? platform_->joint_state_for_child(roll_mount->frame_id)
                                : std::nullopt;
   if (physical_steer)
@@ -2360,7 +2497,7 @@ void ScenarioSession::apply_motion() {
     std::nullopt,
   });
  }
- if (physics_mode_ == PhysicsMode::Bullet && platform_) {
+ if (platform_) {
  // Publish every authored mount backed by a physical link, not only tires.
  // Presentation can then attach knuckles, suspension arms, implements, or
  // future articulated hardware without knowing a chassis type. Existing
@@ -2419,15 +2556,9 @@ void ScenarioSession::apply_motion() {
  const auto terrain_state = terrain_.sample(candidate_position);
  const double candidate_grade = sim::longitudinal_grade(terrain_state, candidate.theta);
  const double candidate_cross_grade = sim::lateral_grade(terrain_state, candidate.theta);
- if (physics_mode_ == PhysicsMode::Bullet && have_rigid_state) {
-  snapshot_.robot_height_m = rigid_state.height_m;
-  snapshot_.robot_pitch_rad = rigid_state.pitch_rad;
-  snapshot_.robot_roll_rad = rigid_state.roll_rad;
- } else {
-  snapshot_.robot_height_m = terrain_state.height_m + robot_definition_.base_link_height_m;
-  snapshot_.robot_pitch_rad = -std::atan(candidate_grade);
-  snapshot_.robot_roll_rad = std::atan(candidate_cross_grade);
- }
+ snapshot_.robot_height_m = rigid_state.height_m;
+ snapshot_.robot_pitch_rad = rigid_state.pitch_rad;
+ snapshot_.robot_roll_rad = rigid_state.roll_rad;
  snapshot_.terrain_grade = candidate_grade;
  snapshot_.cross_slope = candidate_cross_grade;
  const double support_width = chassis_caps_.geometry.support_width_m;
@@ -2436,12 +2567,8 @@ void ScenarioSession::apply_motion() {
    sim::roughness_lateral_acceleration(terrain_state.roughness, candidate.v, support_width);
  const double downhill_sign = candidate_cross_grade < 0.0 ? -1.0 : 1.0;
  const double lateral_accel_mps2 = candidate.v * candidate.w + downhill_sign * bump_accel_mps2;
- const double analytic_rollover_risk =
-   sim::dynamic_rollover_risk(candidate_cross_grade, lateral_accel_mps2, support_width, center_height);
- snapshot_.rollover_risk = physics_mode_ == PhysicsMode::Bullet
-                             ? std::abs(snapshot_.robot_roll_rad) /
-                                 std::max(0.05, sim::static_rollover_angle(support_width, center_height))
-                             : analytic_rollover_risk;
+ snapshot_.rollover_risk = std::abs(snapshot_.robot_roll_rad) /
+ std::max(0.05, sim::static_rollover_angle(support_width, center_height));
  result_.max_grade = std::max(result_.max_grade, std::abs(candidate_grade));
  result_.max_abs_roll_rad = std::max(result_.max_abs_roll_rad, std::abs(snapshot_.robot_roll_rad));
  result_.max_rollover_risk = std::max(result_.max_rollover_risk, snapshot_.rollover_risk);
@@ -2452,15 +2579,11 @@ void ScenarioSession::apply_motion() {
   return;
  }
 
- if (physics_mode_ == PhysicsMode::Bullet) {
-  if (snapshot_.rollover_risk >= 1.0)
+ if (snapshot_.rollover_risk >= 1.0)
    rigid_rollover_exposure_s_ += fixed_step_s;
   else
    rigid_rollover_exposure_s_ = std::max(0.0, rigid_rollover_exposure_s_ - 2.0 * fixed_step_s);
- }
- const bool rollover = physics_mode_ == PhysicsMode::Bullet
-                         ? (snapshot_.rollover_risk >= 1.25 || rigid_rollover_exposure_s_ >= 0.40)
-                         : snapshot_.rollover_risk >= 1.0;
+ const bool rollover = snapshot_.rollover_risk >= 1.25 || rigid_rollover_exposure_s_ >= 0.40;
  if (rollover) {
   ++result_.collisions;
   if (!endless_mode_)
@@ -2472,15 +2595,13 @@ void ScenarioSession::apply_motion() {
  collision_observation.position = candidate_position;
  collision_observation.time_s = snapshot_.time_s;
  collision_observation.dt_s = fixed_step_s;
- collision_observation.backend = physics_mode_ == PhysicsMode::Bullet
- ? CollisionBackend::RigidBody
- : CollisionBackend::Occupancy;
+ collision_observation.backend = CollisionBackend::RigidBody;
  collision_observation.rigid_static_contact =
  have_rigid_state && rigid_state.static_collision;
  collision_observation.occupancy = collision_map_.get();
  collision_observation.actors.reserve(actual_actors_.size());
  for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
- const bool rigid_contact = physics_mode_ == PhysicsMode::Bullet && have_rigid_state &&
+ const bool rigid_contact = have_rigid_state &&
  index < agents_.size() &&
  std::find(rigid_state.actor_collisions.begin(), rigid_state.actor_collisions.end(),
  agents_[index].id) != rigid_state.actor_collisions.end();
@@ -2553,8 +2674,7 @@ void ScenarioSession::apply_motion() {
  // Traction saturation (model-side contact state, like motor force: used for
  // odometry degradation, never displayed as a sensed reading). Rising edge
  // counts a slip episode for the debrief.
- const bool saturated = motors.traction_saturated || (physics_mode_ == PhysicsMode::Bullet &&
-                                                      have_rigid_state && rigid_state.drive_slipping);
+ const bool saturated = motors.traction_saturated || rigid_state.drive_slipping;
  snapshot_.traction_saturated = saturated;
  if (saturated && !was_saturated_) {
   ++result_.slip_events;
@@ -2579,16 +2699,12 @@ void ScenarioSession::apply_motion() {
   if (!sensor_system_)
    throw std::logic_error("configured IMU requires the hardware sensor system");
   const sim::ImuTruth truth{
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state ? rigid_state.imu_angular_velocity_radps.x : 0.0,
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state ? rigid_state.imu_angular_velocity_radps.y : 0.0,
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state ? rigid_state.imu_angular_velocity_radps.z
-                                                             : candidate.w,
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state ? rigid_state.imu_specific_force_mps2.x
-                                                             : (candidate.v - before.v) / fixed_step_s,
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state
-      ? rigid_state.imu_specific_force_mps2.y
-      : (candidate.lateral_v - before.lateral_v) / fixed_step_s + candidate.v * candidate.w,
-    physics_mode_ == PhysicsMode::Bullet && have_rigid_state ? rigid_state.imu_specific_force_mps2.z : 9.81,
+ rigid_state.imu_angular_velocity_radps.x,
+ rigid_state.imu_angular_velocity_radps.y,
+ rigid_state.imu_angular_velocity_radps.z,
+ rigid_state.imu_specific_force_mps2.x,
+ rigid_state.imu_specific_force_mps2.y,
+ rigid_state.imu_specific_force_mps2.z,
   };
   const sim::ImuConfig config{
     imu->gyro_noise_radps,
@@ -2619,6 +2735,9 @@ void ScenarioSession::apply_motion() {
  }
  snapshot_.estimated_position = estimation_system_.state().position;
  snapshot_.estimated_heading = estimation_system_.state().heading_rad;
+ snapshot_.estimated_forward_mps = estimation_system_.state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = estimation_system_.state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = estimation_system_.state().angular_velocity_radps;
  update_frame_tree();
  result_.odometry_error_m = estimation_system_.position_error(candidate_position);
  result_.max_odometry_error_m = std::max(result_.max_odometry_error_m, result_.odometry_error_m);
@@ -2666,6 +2785,12 @@ const SurfaceMaterialDefinition* ScenarioSession::constructed_surface_at(
 }
 
 void ScenarioSession::finish_success() {
+ if (level_.manipulation &&
+ (!snapshot_.manipulator.target_reachable ||
+ snapshot_.manipulator.position_error_m > level_.manipulation->success_position_tolerance_m)) {
+ finish_failure("manipulator-target", catalog_.tr("event.manipulator_target_failure"));
+ return;
+ }
  held_command_ = {};
  snapshot_.waiting_for_clearance = false;
  update_shadow_episode();
@@ -2884,10 +3009,10 @@ double ScenarioSession::decision_hz() const {
 double ScenarioSession::cruise_speed_mps() const {
  const double requested = property(behavior_, "cruise_mps");
  const double platform_limited = max_forward_speed_mps_ > 0.0
- ? std::min(requested, max_forward_speed_mps_)
+ ? std::min({requested, max_forward_speed_mps_, robot_definition_.rated_speed_mps})
  : requested;
  return platform_limited *
- (physics_mode_ == PhysicsMode::Bullet ? chassis_caps_.rigid_body_cruise_scale : 1.0);
+ chassis_caps_.rigid_body_cruise_scale;
 }
 
 double ScenarioSession::track_max_age_s() const {
@@ -2904,27 +3029,27 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  constexpr double kMuReference = 0.8;
  const double tire_mu = resolved_build_.traction().friction_mu;
  const double tire_rr = resolved_build_.traction().rolling_resistance;
- const double tire_stiffness = resolved_build_.traction().normal_stiffness_Npm;
- const double tire_damping = resolved_build_.traction().normal_damping_Nspm;
+ const double tire_response_s = resolved_build_.traction().contact_time_constant_s;
+ const double tire_damping_ratio = resolved_build_.traction().contact_damping_ratio;
  double ground_mu = 1.0;
  double ground_rr = 0.0;
- double ground_stiffness = 1.0e9;
- double ground_damping = 0.0;
+ double ground_response_s = 0.0025;
+ double ground_damping_ratio = 1.0;
  double traction = 1.0;
  std::string ground_material;
  if (const auto* material = constructed_surface_at(position)) {
  ground_mu = material->friction_mu;
  ground_rr = material->rolling_drag;
- ground_stiffness = material->normal_stiffness_Npm;
- ground_damping = material->normal_damping_Nspm;
+ ground_response_s = material->contact_time_constant_s;
+ ground_damping_ratio = material->contact_damping_ratio;
  traction = material->traction_scale;
  ground_material = material->id;
  } else for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
-   ground_stiffness = surface.normal_stiffness_Npm;
-   ground_damping = surface.normal_damping_Nspm;
+ ground_response_s = surface.contact_time_constant_s;
+ ground_damping_ratio = surface.contact_damping_ratio;
    traction = surface.traction_scale;
    ground_material = surface.material;
    break;
@@ -2937,18 +3062,21 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  contact.mu_eff = tire_mu * ground_mu / kMuReference;
  if (endless_mode_) {
   // Regional wetness affects the same contact contract consumed by chassis
-  // dynamics and Bullet forces. It is not a renderer-only weather effect.
+  // dynamics and MuJoCo forces. It is not a renderer-only weather effect.
   contact.mu_eff *= 1.0 - 0.32 * snapshot_.world_activity.wetness;
   traction *= 1.0 - 0.28 * snapshot_.world_activity.wetness;
  }
  contact.rolling_resist = tire_rr + ground_rr;
  contact.accel_limit_mps2 = std::min(robot_definition_.motor.max_wheel_accel_mps2,
  resolved_build_.traction().brake_decel_mps2 * (0.5 + 0.5 * traction));
- contact.normal_stiffness_Npm = 1.0 / (1.0 / tire_stiffness + 1.0 / ground_stiffness);
- // The dynamic profile treats the material value as additional pair
- // dissipation. Identified profiles replace this reduced convention with a
- // fitted contact-pair damping value.
- contact.normal_damping_Nspm = tire_damping + ground_damping;
+ // This is a compact effective pair model. The slower response dominates:
+ // rubber controls hard floors, while sand or mud can override the tire. We
+ // deliberately avoid applying physical springs-in-series algebra to
+ // MuJoCo's normalized time-constant parameter.
+ const bool ground_dominates = ground_response_s > tire_response_s;
+ contact.contact_time_constant_s = std::max(tire_response_s, ground_response_s);
+ contact.contact_damping_ratio = ground_dominates
+ ? ground_damping_ratio : tire_damping_ratio;
  return contact;
 }
 
