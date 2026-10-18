@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "id": "bridge_the_washout",
+  "order": 102,
+  "title": "跨越冲毁路段",
+  "map": "washout_canyon",
+  "control_mode": "autonomous",
+  "localization_mode": "fused",
+  "prerequisites": [],
+  "seed": 8117,
+  "objective": {
+    "type": "reach",
+    "spawn": "west_staging",
+    "goal": "east_relay",
+    "goal_label": "东岸应急中继站",
+    "goal_visual": "relay_goal",
+    "time_limit_s": 90.0,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.65,
+    "max_arrival_speed_mps": 0.08
+  },
+  "loadout_rules": {
+    "access": "open",
+    "budget": 20,
+    "required_slots": [
+      "tires",
+      "sensor",
+      "computer",
+      "motor",
+      "imu"
+    ]
+  },
+  "teaching": {
+    "concept": "construction_changes_the_robot_map",
+    "prediction_prompt": "哪一个构件能在两个锚点之间形成连续、可扫描、可规划的支承面？",
+    "knowledge_card": "构造提交不是视觉机关：同一份桥面几何会原子更新物理、2.5D 地图、LiDAR 与渲染，然后自主系统才重新规划。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.18,
+    "fast_time_s": 35.0,
+    "efficient_energy_wh": 5.0
+  },
+  "rewards": [],
+  "chapter": 4,
+  "mode": "playground",
+  "construction": {
+    "id": "washout_single_span",
+    "snap_tolerance_m": 0.06,
+    "inventory": {
+      "construction.deck_short": 1,
+      "construction.deck_grip": 1,
+      "construction.deck_long": 1
+    },
+    "sockets": [
+      {
+        "id": "west_bank_socket",
+        "type": "bank_anchor",
+        "position_m": [
+          8.5,
+          5.0,
+          0.72
+        ]
+      },
+      {
+        "id": "east_bank_socket",
+        "type": "bank_anchor",
+        "position_m": [
+          11.5,
+          5.0,
+          0.72
+        ]
+      }
+    ],
+    "default_plan": "washout.short_deck",
+    "plans": [
+      {
+        "id": "washout.short_deck",
+        "placements": [
+          {
+            "instance_id": "washout_bridge",
+            "piece_id": "construction.deck_short",
+            "start_socket": "west_bank_socket",
+            "end_socket": "east_bank_socket"
+          }
+        ]
+      },
+      {
+        "id": "washout.grip_deck",
+        "placements": [
+          {
+            "instance_id": "washout_bridge",
+            "piece_id": "construction.deck_grip",
+            "start_socket": "west_bank_socket",
+            "end_socket": "east_bank_socket"
+          }
+        ]
+      },
+      {
+        "id": "washout.long_deck",
+        "placements": [
+          {
+            "instance_id": "washout_bridge",
+            "piece_id": "construction.deck_long",
+            "start_socket": "west_bank_socket",
+            "end_socket": "east_bank_socket"
+          }
+        ]
+      }
+    ]
+  }
+}

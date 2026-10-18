@@ -39,6 +39,9 @@ class PresentationFrameView {
  const RobotDefinition& robot() const { return mission_.robot(); }
  const sim::GridMap& navigation_map() const { return mission_.navigation_map(); }
  const sim::TerrainModel& terrain_model() const { return mission_.terrain_model(); }
+ const std::optional<ConstructionPlanResolution>& committed_construction() const {
+ return mission_.committed_construction();
+ }
  const sim::ChassisCaps& chassis_caps() const { return mission_.chassis_caps(); }
  const std::vector<sim::RoutePoint>& planned_route() const { return mission_.planned_route(); }
  const MissionSnapshot& snapshot() const { return *snapshot_; }

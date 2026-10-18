@@ -1,0 +1,636 @@
+{
+  "schema_version": 1,
+  "id": "scene.washout_canyon",
+  "camera": {
+    "offset_m": [
+      -7.8,
+      -9.4,
+      5.8
+    ],
+    "target_height_m": 0.78,
+    "fov_degrees": 44.0,
+    "focus_weights": {
+      "robot": 0.46,
+      "actor": 0.0,
+      "goal": 0.54
+    },
+    "event_shot": {
+      "offset_m": [
+        -5.8,
+        -7.2,
+        4.3
+      ],
+      "target_height_m": 0.68,
+      "fov_degrees": 40.0,
+      "focus_weights": {
+        "robot": 0.62,
+        "actor": 0.0,
+        "goal": 0.38
+      }
+    },
+    "success_shot": {
+      "offset_m": [
+        -4.6,
+        -6.0,
+        3.9
+      ],
+      "target_height_m": 0.92,
+      "fov_degrees": 38.0,
+      "focus_weights": {
+        "robot": 0.3,
+        "actor": 0.0,
+        "goal": 0.7
+      }
+    },
+    "transition_s": 0.8
+  },
+  "lighting": {
+    "direction": [
+      -0.72,
+      0.34,
+      -1.0
+    ],
+    "directional_color": "#FFC47B",
+    "directional_intensity": 1.05,
+    "ambient_color": "#263E49",
+    "fog_color": "#06131A",
+    "fog_start_m": 10.0,
+    "fog_end_m": 30.0,
+    "robot_active_color": "#32F0D1",
+    "robot_waiting_color": "#FFB547",
+    "goal_color": "#4CF7DF",
+    "shadow_map_resolution": 4096,
+    "shadow_extent_m": 26.0,
+    "shadow_strength": 0.72,
+    "exposure": 0.92,
+    "bloom_threshold": 0.64,
+    "bloom_strength": 0.42,
+    "vignette_strength": 0.24
+  },
+  "floor": {
+    "base_color": "#071016",
+    "tile_color": "#102D38",
+    "boundary_color": "#192A31",
+    "tile_size_m": 2.0,
+    "seam_m": 0.018,
+    "color_variation": 8,
+    "boundary_height_m": 0.42,
+    "boundary_width_m": 0.26,
+    "albedo_texture": "textures/environment/water_floor.png"
+  },
+  "prefabs": [
+    {
+      "id": "prefab.bridge_anchor",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.14
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.28
+          ],
+          "color": "#33434A"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.42
+          ],
+          "size_m": [
+            0.24,
+            0.24,
+            0.32
+          ],
+          "color": "#71848B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.61
+          ],
+          "size_m": [
+            0.12,
+            0.12,
+            0.06
+          ],
+          "color": "#42E9CE"
+        }
+      ]
+    },
+    {
+      "id": "prefab.warning_beacon",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.08
+          ],
+          "size_m": [
+            0.28,
+            0.28,
+            0.16
+          ],
+          "color": "#26333A"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.44
+          ],
+          "size_m": [
+            0.055,
+            0.055,
+            0.58
+          ],
+          "color": "#65747A"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            0.79
+          ],
+          "size_m": [
+            0.1,
+            0.1,
+            0.1
+          ],
+          "color": "#FF9B3D"
+        }
+      ]
+    },
+    {
+      "id": "prefab.guard_segment",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.13
+          ],
+          "size_m": [
+            1.0,
+            0.12,
+            0.12
+          ],
+          "color": "#56666C"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.44,
+            0,
+            0.28
+          ],
+          "size_m": [
+            0.07,
+            0.07,
+            0.56
+          ],
+          "color": "#354249"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.44,
+            0,
+            0.28
+          ],
+          "size_m": [
+            0.07,
+            0.07,
+            0.56
+          ],
+          "color": "#354249"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.47
+          ],
+          "size_m": [
+            1.0,
+            0.07,
+            0.08
+          ],
+          "color": "#D27D32"
+        }
+      ]
+    },
+    {
+      "id": "prefab.cliff_strata",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.3
+          ],
+          "size_m": [
+            0.18,
+            2.8,
+            0.6
+          ],
+          "color": "#273238"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.52
+          ],
+          "size_m": [
+            0.2,
+            2.5,
+            0.08
+          ],
+          "color": "#3B4A4E"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.18
+          ],
+          "size_m": [
+            0.2,
+            2.2,
+            0.06
+          ],
+          "color": "#17242A"
+        }
+      ]
+    },
+    {
+      "id": "prefab.washout_rubble",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.18,
+            0,
+            0.1
+          ],
+          "size_m": [
+            0.46,
+            0.72,
+            0.2
+          ],
+          "yaw_degrees": 14,
+          "color": "#39464A"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.2,
+            0.08,
+            0.08
+          ],
+          "size_m": [
+            0.38,
+            0.52,
+            0.16
+          ],
+          "yaw_degrees": -21,
+          "color": "#596367"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.02,
+            -0.28,
+            0.19
+          ],
+          "size_m": [
+            0.22,
+            0.34,
+            0.18
+          ],
+          "yaw_degrees": 31,
+          "color": "#263439"
+        }
+      ]
+    },
+    {
+      "id": "prefab.approach_chevrons",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.42,
+            -0.22,
+            0.012
+          ],
+          "size_m": [
+            0.56,
+            0.07,
+            0.024
+          ],
+          "yaw_degrees": 28,
+          "color": "#F1A43B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            -0.42,
+            0.22,
+            0.012
+          ],
+          "size_m": [
+            0.56,
+            0.07,
+            0.024
+          ],
+          "yaw_degrees": -28,
+          "color": "#F1A43B"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.34,
+            -0.22,
+            0.012
+          ],
+          "size_m": [
+            0.56,
+            0.07,
+            0.024
+          ],
+          "yaw_degrees": 28,
+          "color": "#55E5CC"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0.34,
+            0.22,
+            0.012
+          ],
+          "size_m": [
+            0.56,
+            0.07,
+            0.024
+          ],
+          "yaw_degrees": -28,
+          "color": "#55E5CC"
+        }
+      ]
+    },
+    {
+      "id": "prefab.relay_goal_active",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.018
+          ],
+          "size_m": [
+            0.52,
+            0.52,
+            0.036
+          ],
+          "color": "#26E8C488"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.035
+          ],
+          "size_m": [
+            0.22,
+            0.22,
+            0.07
+          ],
+          "color": "#E7B04A"
+        }
+      ]
+    },
+    {
+      "id": "prefab.relay_goal_complete",
+      "parts": [
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            0.018
+          ],
+          "size_m": [
+            0.58,
+            0.58,
+            0.036
+          ],
+          "color": "#4CFFE0AA"
+        }
+      ]
+    },
+    {
+      "id": "prefab.signal_tower",
+      "parts": [
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            0.1
+          ],
+          "size_m": [
+            0.7,
+            0.7,
+            0.2
+          ],
+          "color": "#24343A"
+        },
+        {
+          "primitive": "cylinder",
+          "position_m": [
+            0,
+            0,
+            1.25
+          ],
+          "size_m": [
+            0.09,
+            0.09,
+            2.3
+          ],
+          "color": "#687A80"
+        },
+        {
+          "primitive": "sphere",
+          "position_m": [
+            0,
+            0,
+            2.48
+          ],
+          "size_m": [
+            0.18,
+            0.18,
+            0.18
+          ],
+          "color": "#49F2D4"
+        },
+        {
+          "primitive": "box",
+          "position_m": [
+            0,
+            0,
+            1.65
+          ],
+          "size_m": [
+            0.9,
+            0.1,
+            0.07
+          ],
+          "color": "#94ABB0"
+        }
+      ]
+    }
+  ],
+  "goal_visuals": [
+    {
+      "id": "relay_goal",
+      "states": {
+        "available": "prefab.relay_goal_active",
+        "active": "prefab.relay_goal_active",
+        "completed": "prefab.relay_goal_complete",
+        "abandoned": "prefab.relay_goal_active"
+      }
+    }
+  ],
+  "instances": [
+    {
+      "id": "west_approach_marks",
+      "prefab": "prefab.approach_chevrons",
+      "role": "visual_only",
+      "position_m": [
+        7.15,
+        5.0,
+        0.818
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 0
+    },
+    {
+      "id": "east_approach_marks",
+      "prefab": "prefab.approach_chevrons",
+      "role": "visual_only",
+      "position_m": [
+        12.85,
+        5.0,
+        0.818
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 180
+    },
+    {
+      "id": "west_cliff_north",
+      "prefab": "prefab.cliff_strata",
+      "role": "visual_only",
+      "position_m": [
+        8.46,
+        2.55,
+        0.0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 0
+    },
+    {
+      "id": "west_cliff_south",
+      "prefab": "prefab.cliff_strata",
+      "role": "visual_only",
+      "position_m": [
+        8.46,
+        7.45,
+        0.0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 0
+    },
+    {
+      "id": "east_cliff_north",
+      "prefab": "prefab.cliff_strata",
+      "role": "visual_only",
+      "position_m": [
+        11.54,
+        2.55,
+        0.0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 0
+    },
+    {
+      "id": "east_cliff_south",
+      "prefab": "prefab.cliff_strata",
+      "role": "visual_only",
+      "position_m": [
+        11.54,
+        7.45,
+        0.0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "yaw_degrees": 0
+    }
+  ],
+  "effects": {
+    "robot_scale": 1.0,
+    "bob_amplitude_m": 0.0,
+    "bob_frequency_hz": 1.5,
+    "eye_height_m": 0.25,
+    "scan_radius_m": 1.55,
+    "perception_link_height_m": 0.42,
+    "prediction_horizon_s": 3.0,
+    "success_ring_radius_m": 0.86,
+    "trail_duration_s": 2.5,
+    "surface_particle_count": 48,
+    "surface_particle_scale": 1.5,
+    "risk_indicator_radius_m": 0.92
+  }
+}

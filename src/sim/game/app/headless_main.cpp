@@ -20,6 +20,7 @@ void usage(const char* executable) {
  std::cout << "Usage: " << executable
  << " [--assets PATH] [--level ID] [--default|--recommended] [--seed N]"
  " [--chassis ROBOT_ID] [--component SLOT=ID] [--task-policy TASK_POLICY_ID]"
+ " [--construction-plan PLAN_ID]"
  " [--maneuver ID]"
  " [--physics domain|shadow|bullet|auto] [--endless [--duration SECONDS]"
  " [--intent follow|go-to|search|wait|return] [--target X Y]] [--json]"
@@ -53,6 +54,8 @@ int main(int argc, char** argv) {
  std::map<std::string, std::string> component_overrides;
  std::string requested_task_policy;
  std::string requested_maneuver;
+ std::string requested_construction_plan;
+ std::string reproduced_construction_hash;
  std::optional<mission::FieldIntentKind> field_intent;
  std::optional<sim::Vec2> field_target;
  mission::PhysicsMode physics_mode = mission::PhysicsMode::Bullet;
@@ -87,6 +90,9 @@ int main(int argc, char** argv) {
  explicit_run_configuration = true;
  } else if (argument == "--maneuver" && index + 1 < argc) {
  requested_maneuver = argv[++index];
+ explicit_run_configuration = true;
+ } else if (argument == "--construction-plan" && index + 1 < argc) {
+ requested_construction_plan = argv[++index];
  explicit_run_configuration = true;
    } else if (argument == "--json") {
     json_output = true;
@@ -143,7 +149,7 @@ int main(int argc, char** argv) {
  throw std::runtime_error("run artifact content hash does not match --assets");
  const auto& experiment = comparable.at("experiment");
  if (experiment.at("condition_id") != "authored-base" || experiment.at("mode") != "mission")
- throw std::runtime_error("Run Artifact v2 reproduction supports authored mission runs only");
+ throw std::runtime_error("Run Artifact v3 reproduction supports authored mission runs only");
  if (std::abs(experiment.at("fixed_step_s").get<double>() - mission::ScenarioSession::fixed_step_s) > 1e-12)
  throw std::runtime_error("run artifact fixed timestep is incompatible with this build");
  if (experiment.at("runtime_provider") != "channel.in-process")
@@ -156,6 +162,10 @@ int main(int argc, char** argv) {
  build.style = hardware.at("style").get<double>();
  build.chassis_robot = hardware.value("requested_chassis", std::string{});
  build.task_policy = comparable.at("algorithms").value("task_ordering", std::string{});
+ if (const auto construction = comparable.find("construction");
+ construction != comparable.end() && !construction->is_null()) {
+ reproduced_construction_hash = construction->at("plan_sha256").get<std::string>();
+ }
  selection_label = "reproduced";
  } else {
  if (level_id.empty())
@@ -177,6 +187,30 @@ int main(int argc, char** argv) {
  throw std::runtime_error("maneuver artifacts require a future explicit artifact schema field");
  mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
+ if (mission.level().construction) {
+ const auto& construction = *mission.level().construction;
+ std::string option_id = requested_construction_plan.empty()
+ ? construction.default_plan : requested_construction_plan;
+ if (!reproduced_construction_hash.empty()) {
+ option_id.clear();
+ for (const auto& option : construction.plans) {
+ const auto candidate = mission::construction_plan_from_option(construction, option.id);
+ if (mission::construction_plan_sha256(candidate) == reproduced_construction_hash) {
+ option_id = option.id;
+ break;
+ }
+ }
+ if (option_id.empty())
+ throw std::runtime_error("run artifact construction plan is unavailable in this content");
+ }
+ std::string reason;
+ if (!mission.commit_construction_plan(
+ mission::construction_plan_from_option(construction, option_id), &reason)) {
+ throw std::runtime_error("construction plan rejected: " + reason);
+ }
+ } else if (!requested_construction_plan.empty() || !reproduced_construction_hash.empty()) {
+ throw std::runtime_error("construction plan supplied for a level without construction");
+ }
  if (!requested_maneuver.empty() && !mission.activate_maneuver(requested_maneuver))
  throw std::runtime_error("unknown or unavailable maneuver: " + requested_maneuver);
  if (endless)
@@ -373,6 +407,18 @@ int main(int argc, char** argv) {
         {"efficient", result.efficient_score},
       }},
    };
+ if (mission.committed_construction()) {
+ std::vector<std::string> piece_ids;
+ for (const auto& piece : mission.committed_construction()->pieces)
+ piece_ids.push_back(piece.placement.piece_id);
+ output["construction"] = {
+ {"plan_sha256", mission.committed_construction()->plan_sha256},
+ {"map_revision", mission.map_revision()},
+ {"piece_ids", piece_ids},
+  {"contact_observed", result.construction_contact_observed},
+  {"surface_traversed", result.construction_surface_traversed},
+ };
+ }
  for (const auto& pickup : mission.payload_state().history) {
  output["payload"]["history"].push_back({
  {"goal_id", pickup.goal_id},

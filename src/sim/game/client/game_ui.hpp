@@ -27,6 +27,7 @@ struct UiActions {
  std::string selected_level;
  std::optional<double> replay_time_s;
  std::string purchase_component;
+ std::string construction_plan;
 };
 
 class GameUi {
@@ -64,7 +65,7 @@ class GameUi {
  void rebuild(const mission::ScenarioSession* mission);
  void build_chapter();
  void build_garage();
- void build_prediction();
+ void build_prediction(const mission::ScenarioSession* mission);
  void build_running(const mission::ScenarioSession* mission);
  void build_debrief(const mission::ScenarioSession* mission);
  void select_component(const std::string& slot, const std::string& id);

@@ -87,6 +87,42 @@
       "lidar_reflectivity": 0.18
     },
     {
+      "id": "weathered_asphalt",
+      "title": "雨后旧沥青",
+      "description": "应急道路的深色粗糙铺面，雨后仍保留可信抓地与清晰的激光回波。",
+      "friction_mu": 0.92,
+      "rolling_drag": 0.004,
+      "traction_scale": 0.94,
+      "normal_stiffness_Npm": 80000000.0,
+      "normal_damping_Nspm": 80.0,
+      "texture": "textures/environment/concrete_floor.png",
+      "albedo_tint": "#2C3C42",
+      "drive_effect": {
+        "kind": "none",
+        "color": "#52646A",
+        "intensity": 0.0
+      },
+      "lidar_reflectivity": 0.3
+    },
+    {
+      "id": "grip_grating",
+      "title": "高抓地应急格栅",
+      "description": "粗糙格栅与排水孔保留较高湿地附着，但滚阻与振动高于平整钢板。",
+      "friction_mu": 0.82,
+      "rolling_drag": 0.006,
+      "traction_scale": 0.9,
+      "normal_stiffness_Npm": 350000000.0,
+      "normal_damping_Nspm": 120.0,
+      "texture": "textures/environment/concrete_floor.png",
+      "albedo_tint": "#334950",
+      "drive_effect": {
+        "kind": "none",
+        "color": "#4EE7C5",
+        "intensity": 0.0
+      },
+      "lidar_reflectivity": 0.58
+    },
+    {
       "id": "steel_deck",
       "title": "钢制试验台",
       "description": "高刚度、低滚阻的金属表面；接缝冲击明显，受潮后附着下降。",

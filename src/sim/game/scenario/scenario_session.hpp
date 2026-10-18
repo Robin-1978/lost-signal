@@ -2,6 +2,7 @@
 
 #include "sim/game/mission/content_catalog.hpp"
 #include "sim/game/mission/component_registry.hpp"
+#include "sim/game/mission/construction_plan.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
 #include "sim/game/mission/systems/collision_monitor.hpp"
 #include "sim/game/mission/systems/dynamic_traffic_system.hpp"
@@ -384,6 +385,8 @@ struct MissionResult {
  double max_shadow_heading_error_rad{0.0};
  double max_shadow_height_error_m{0.0};
  int rigid_contacts{0};
+ bool construction_contact_observed{false};
+ bool construction_surface_traversed{false};
  double cargo_integrity{1.0};
  int collected_items{0};
  double collected_value{0.0};
@@ -434,6 +437,20 @@ class ScenarioSession {
  void start();
  void step();
  void run_to_completion();
+ // Construction is a bounded pre-run world transaction. A successful commit
+ // publishes the map revision and matching physics/sensing/render geometry
+ // before the session can start; rejected plans leave the current world intact.
+ bool commit_construction_plan(const ConstructionPlan& plan, std::string* reason = nullptr);
+ bool construction_ready() const {
+ return !level_.construction || committed_construction_.has_value();
+ }
+ const std::optional<ConstructionPlanResolution>& committed_construction() const {
+ return committed_construction_;
+ }
+ std::uint64_t map_revision() const {
+ const auto map = map_manager_.current_snapshot();
+ return map ? map->revision : 0;
+ }
  void set_manual_command(double forward, double turn);
  bool manual_control_active() const { return manual_control_active_; }
  void set_endless_mode(bool enabled);
@@ -548,6 +565,7 @@ class ScenarioSession {
  void update_shadow_episode();
  void record_replay();
  double surface_traction(sim::Vec2 position) const;
+ const SurfaceMaterialDefinition* constructed_surface_at(sim::Vec2 position) const;
  sim::Vec2 current_navigation_target();
  double decision_hz() const;
  double cruise_speed_mps() const;
@@ -560,6 +578,7 @@ class ScenarioSession {
  void apply_goal_stop_constraint();
  void complete_operator_intent_if_arrived();
  void refresh_operator_route();
+ std::vector<sim::platform::ConstructedSupportBody> constructed_support_bodies() const;
 
  const ContentCatalog& catalog_;
  std::string level_id_;
@@ -573,6 +592,13 @@ class ScenarioSession {
  // Deployable robot-map view of authored scenario content. Goal execution and
  // autonomy consume this provider contract; game systems retain MapDefinition.
  sim::runtime::MapManager map_manager_;
+ std::optional<ConstructionPlanResolution> committed_construction_;
+ struct ConstructionTraversalEvidence {
+ double min_local_x_m{std::numeric_limits<double>::infinity()};
+ double max_local_x_m{-std::numeric_limits<double>::infinity()};
+ bool physical_contact{false};
+ };
+ std::unordered_map<std::string, ConstructionTraversalEvidence> construction_evidence_;
  const RobotDefinition& robot_definition_;
  PhysicsMode requested_physics_mode_{PhysicsMode::Bullet};
  PhysicsMode physics_mode_{PhysicsMode::Bullet};

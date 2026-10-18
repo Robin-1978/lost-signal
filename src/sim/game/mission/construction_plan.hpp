@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -54,6 +55,9 @@ ConstructionPlanResolution resolve_construction_plan(
  const ConstructionScenarioDefinition& scenario,
  const std::unordered_map<std::string, ConstructionPieceDefinition>& catalog,
  const ConstructionPlan& plan);
+
+ConstructionPlan construction_plan_from_option(
+ const ConstructionScenarioDefinition& scenario, std::string_view option_id);
 
 // Prepare the complete immutable map side of a construction transaction.
 // Driveable pieces update elevation and surface class while remaining free in

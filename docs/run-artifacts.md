@@ -1,4 +1,4 @@
-# Run Artifact v2
+# Run Artifact v3
 
 A Run Artifact records enough identity and result evidence to rerun and compare one Lost Signal experiment. It
 is a compact JSON manifest, not an interactive replay and not a sensor log.
@@ -20,11 +20,13 @@ The artifact records:
 - global and local planner IDs, high-level policy, autonomous task-ordering policy, localization mode, controller,
  and runtime interface;
 - a canonical configuration digest, result metrics, causal events, and structured decision evidence;
-- external trace references, currently empty because Run Artifact v2 does not embed sensor streams.
+- an optional canonical construction plan, plan digest, resulting map revision, committed piece IDs, physical-contact
+ and full-traversal evidence;
+- external trace references, currently empty because Run Artifact v3 does not embed sensor streams.
 
-Version 2 adds task-ordering identity and the task, payload, and cargo-integrity results used by Autonomy
-Playgrounds. Version 1 artifacts predate that comparison contract and are intentionally rejected during active
-development rather than silently reinterpreted.
+Version 3 adds constructed-world identity and proof metrics. Version 2 added task-ordering identity and the task,
+payload, and cargo-integrity results used by Autonomy Playgrounds. Earlier artifacts are intentionally rejected
+during active development rather than silently reinterpreted.
 
 The content manifest hashes each JSON file as sorted relative path, a NUL byte, its exact bytes, and another
 NUL byte. Player models, textures, sounds, fonts, and screenshots do not change a simulation comparison.
@@ -71,7 +73,7 @@ score changes. `--json` emits the comparison report for automation.
 
 - Interactive replay stores snapshots for seeking the player UI.
 - LSRI replay feeds recorded observation packets back through runtime validation.
-- Run Artifact v2 identifies an experiment and its compact outcome.
+- Run Artifact v3 identifies an experiment and its compact outcome.
 - A future trace store may hold large LiDAR, IMU, encoder, and command streams by digest and place references in
  `inputs.trace_refs`.
 

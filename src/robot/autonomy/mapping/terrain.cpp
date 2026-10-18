@@ -19,9 +19,36 @@ bool contains(const HeightPatch& patch, Vec2 position) {
         position.y < patch.max.y;
 }
 
+bool sample_support(const SupportSurface& support, Vec2 position, TerrainSample& result) {
+ const double dx = position.x - support.center.x;
+ const double dy = position.y - support.center.y;
+ const double cosine = std::cos(support.yaw_rad);
+ const double sine = std::sin(support.yaw_rad);
+ const double local_x = cosine * dx + sine * dy;
+ const double local_y = -sine * dx + cosine * dy;
+ if (std::abs(local_x) >= support.half_length_m ||
+ std::abs(local_y) >= support.half_width_m) {
+ return false;
+ }
+ result = {
+ support.center_height_m + support.grade_along_local_x * local_x,
+ support.grade_along_local_x * cosine,
+ support.grade_along_local_x * sine,
+ 0.0,
+ };
+ return true;
+}
+
 } // namespace
 
 TerrainSample TerrainModel::sample(Vec2 position) const {
+ // Runtime supports are later world revisions and therefore overlay authored
+ // terrain wherever their bounded footprint exists.
+ for (auto support = supports_.rbegin(); support != supports_.rend(); ++support) {
+ TerrainSample result;
+ if (sample_support(*support, position, result))
+ return result;
+ }
  for (auto patch = patches_.rbegin(); patch != patches_.rend(); ++patch) {
   if (!contains(*patch, position)) {
    continue;

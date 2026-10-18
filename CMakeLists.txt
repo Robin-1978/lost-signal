@@ -391,6 +391,13 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_construction_plan PRIVATE lost_signal_sim_game)
  add_test(NAME construction_plan COMMAND test_construction_plan)
 
+ add_executable(test_bridge_washout tests/new/test_bridge_washout.cpp)
+ target_link_libraries(test_bridge_washout PRIVATE lost_signal_sim_game)
+ target_compile_definitions(test_bridge_washout PRIVATE
+ LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+ )
+ add_test(NAME bridge_washout COMMAND test_bridge_washout)
+
  add_executable(test_world_geometry tests/new/test_world_geometry.cpp)
  target_link_libraries(test_world_geometry PRIVATE lost_signal_sim_game)
  add_test(NAME world_geometry COMMAND test_world_geometry)

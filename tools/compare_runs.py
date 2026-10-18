@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare compatible Lost Signal Run Artifact v2 files."""
+"""Compare compatible Lost Signal Run Artifact v3 files."""
 
 from __future__ import annotations
 
@@ -45,6 +45,8 @@ METRICS = (
  "payload.mass_kg",
  "payload.cog_height_m",
  "payload.cargo_integrity",
+ "construction.contact_observed",
+ "construction.surface_traversed",
     "scores.safe",
     "scores.fast",
     "scores.efficient",
@@ -64,8 +66,8 @@ def load_artifact(path: Path) -> dict[str, Any]:
         artifact = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ArtifactError(f"cannot read {path}: {error}") from error
-    if artifact.get("schema") != {"name": "lost-signal.run", "version": 2}:
-        raise ArtifactError(f"{path}: expected lost-signal.run schema version 2")
+    if artifact.get("schema") != {"name": "lost-signal.run", "version": 3}:
+        raise ArtifactError(f"{path}: expected lost-signal.run schema version 3")
     try:
         configuration = artifact["configuration"]["comparable"]
         recorded = artifact["configuration"]["digest"]

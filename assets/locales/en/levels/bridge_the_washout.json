@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/title": "Bridge the Washout",
+    "/objective/goal_label": "East-bank emergency relay",
+    "/teaching/prediction_prompt": "Which component can form a continuous, scannable, driveable support surface between both anchors?",
+    "/teaching/knowledge_card": "A construction commit is a real world change: one bridge geometry atomically updates physics, the 2.5D robot map, LiDAR, and rendering before autonomy replans."
+  }
+}

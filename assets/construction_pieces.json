@@ -26,7 +26,41 @@
         "support_top"
       ],
       "presentation": {
-        "color": "#77878D"
+        "color": "#56666C",
+        "top_color": "#5C686C",
+        "accent_color": "#FFAA43F5",
+        "surface_pattern": "plate"
+      }
+    },
+    {
+      "id": "construction.deck_grip",
+      "title": "高抓地格栅桥面",
+      "description": "三米应急格栅桥面，滚阻略高，但潮湿条件下提供更大的附着余量。",
+      "collision": {
+        "type": "box",
+        "size_m": [
+          3.0,
+          1.2,
+          0.18
+        ]
+      },
+      "mass_kg": 215.0,
+      "top_surface": {
+        "material": "grip_grating"
+      },
+      "support": {
+        "required_endpoint_contacts": 2,
+        "max_span_m": 3.0
+      },
+      "allowed_socket_types": [
+        "bank_anchor",
+        "support_top"
+      ],
+      "presentation": {
+        "color": "#425860",
+        "top_color": "#4B686C",
+        "accent_color": "#34F4CAF5",
+        "surface_pattern": "grating"
       }
     },
     {
@@ -54,7 +88,10 @@
         "support_top"
       ],
       "presentation": {
-        "color": "#697B83"
+        "color": "#697B83",
+        "top_color": "#68777B",
+        "accent_color": "#FFAA43F5",
+        "surface_pattern": "plate"
       }
     },
     {
@@ -82,7 +119,10 @@
         "support_top"
       ],
       "presentation": {
-        "color": "#59666B"
+        "color": "#59666B",
+        "top_color": "#657277",
+        "accent_color": "#FFAA43F5",
+        "surface_pattern": "plate"
       }
     }
   ]

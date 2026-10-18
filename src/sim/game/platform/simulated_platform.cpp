@@ -46,7 +46,7 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  const RobotDefinition& robot, const ::sim::ChassisCaps& chassis_caps,
  const ::sim::TerrainModel& terrain, ::sim::Vec2 spawn,
  double spawn_heading_rad, double total_mass_kg, double center_height_m,
- double yaw_inertia_kgm2)
+ double yaw_inertia_kgm2, const std::vector<ConstructedSupportBody>& constructed_supports)
  : map_(map), level_(level), robot_(robot), terrain_(terrain),
  world_(::sim::physics::make_bullet_physics_world()),
  tire_contact_(::sim::physics::make_bullet_tire_contact()),
@@ -99,6 +99,31 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  if (active_in_level(patch.active_in, level_.id)) {
  terrain_bodies_.push_back(world_->spawn(terrain_mesh(patch)));
  }
+ }
+ for (const auto& support : constructed_supports) {
+ ::sim::physics::BodySpec body;
+ body.shape = ::sim::physics::ShapeKind::Box;
+ body.half_extents_m = {
+ support.size_m.x * 0.5,
+ support.size_m.y * 0.5,
+ support.size_m.z * 0.5,
+ };
+ body.position_m = support.center_m;
+// Positive construction pitch means the local +X endpoint is higher. Bullet's
+// right-handed Y rotation maps +X toward -Z, hence the sign conversion here.
+body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
+ support.yaw_rad);
+ body.friction = support.friction_mu;
+ body.rolling_friction = support.rolling_drag;
+ body.contact_stiffness_Npm = support.normal_stiffness_Npm;
+ body.contact_damping_Nspm = support.normal_damping_Nspm;
+ body.collision_group = ::sim::physics::collision_layer::Terrain;
+ body.collision_mask = static_cast<::sim::physics::CollisionMask>(
+ ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
+ const auto handle = world_->spawn(body);
+ terrain_bodies_.push_back(handle);
+ terrain_reflectivity_[handle.value] = support.lidar_reflectivity;
+ constructed_support_ids_[handle.value] = support.id;
  }
  for (const auto& obstacle : map_.obstacles) {
  if (!active_in_level(obstacle.active_in, level_.id)) {
@@ -602,7 +627,10 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  0.0, 1.0);
  double reflectivity = return_model.default_reflectivity;
  if (is_terrain(hit.body)) {
- reflectivity = return_model.terrain_reflectivity;
+ const auto committed = terrain_reflectivity_.find(hit.body.value);
+ reflectivity = committed == terrain_reflectivity_.end()
+ ? return_model.terrain_reflectivity : committed->second;
+ if (committed == terrain_reflectivity_.end()) {
  for (const auto& surface : map_.surfaces) {
  if (!active_in_level(surface.active_in, level_.id) ||
  hit.point_m.x < surface.min.x || hit.point_m.x >= surface.max.x ||
@@ -610,6 +638,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  continue;
  reflectivity = surface.lidar_reflectivity;
  break;
+ }
  }
  }
  else if (is_static_obstacle(hit.body)) {
@@ -768,7 +797,10 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  direction.z * hit.normal.z), 0.0, 1.0);
  double reflectivity = return_model.default_reflectivity;
  if (is_terrain(hit.body)) {
- reflectivity = return_model.terrain_reflectivity;
+ const auto committed = terrain_reflectivity_.find(hit.body.value);
+ reflectivity = committed == terrain_reflectivity_.end()
+ ? return_model.terrain_reflectivity : committed->second;
+ if (committed == terrain_reflectivity_.end()) {
  for (const auto& surface : map_.surfaces) {
  if (!active_in_level(surface.active_in, level_.id) ||
  hit.point_m.x < surface.min.x || hit.point_m.x >= surface.max.x ||
@@ -776,6 +808,7 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  continue;
  reflectivity = surface.lidar_reflectivity;
  break;
+ }
  }
  } else if (is_static_obstacle(hit.body)) {
  const auto material = obstacle_reflectivity_.find(hit.body.value);
@@ -1003,6 +1036,13 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  continue;
  ++output.contact_count;
  if (is_terrain(other)) {
+ const auto support = constructed_support_ids_.find(other.value);
+ if (support != constructed_support_ids_.end() &&
+ std::find(output.constructed_support_contacts.begin(),
+ output.constructed_support_contacts.end(), support->second) ==
+ output.constructed_support_contacts.end()) {
+ output.constructed_support_contacts.push_back(support->second);
+ }
  const auto name = robot_link_names_.find(robot_contact_body.value);
  if (name != robot_link_names_.end()) {
  if (std::find(output.ground_contact_links.begin(), output.ground_contact_links.end(), name->second) ==
@@ -1102,6 +1142,11 @@ RigidVehicleState SimulatedPlatform::step(const ::sim::ChassisTelemetry& actuati
  continue;
  }
  ++output.contact_count;
+ if (is_terrain(other)) {
+ const auto support = constructed_support_ids_.find(other.value);
+ if (support != constructed_support_ids_.end())
+ output.constructed_support_contacts.push_back(support->second);
+ }
  if (is_static_obstacle(other)) {
  output.static_collision = true;
  output.max_contact_impulse_Ns = std::max(output.max_contact_impulse_Ns, contact.impulse_Ns);

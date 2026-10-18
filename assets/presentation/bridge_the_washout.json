@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "id": "presentation.bridge_the_washout",
+  "is_default": false,
+  "level": "bridge_the_washout",
+  "robot": "robot.ro1",
+  "garage": {
+    "heading": "冲毁路段工程行动",
+    "brief": "暴雨切断了通往中继站的道路。先装配 RO-1，再选择一份有界构造方案；只有通过几何与支承契约的桥面才能提交到世界。",
+    "component_columns": [
+      {
+        "slot": "tires",
+        "title": "轮地接触",
+        "options": [
+          "tires.standard",
+          "tires.grip",
+          "tires.eco"
+        ]
+      },
+      {
+        "slot": "sensor",
+        "title": "环境扫描",
+        "options": [
+          "sensor.standard_lidar",
+          "sensor.sixteen_line_lidar"
+        ]
+      },
+      {
+        "slot": "computer",
+        "title": "自主计算",
+        "options": [
+          "computer.mid",
+          "computer.performance"
+        ]
+      },
+      {
+        "slot": "motor",
+        "title": "驱动电机",
+        "options": [
+          "motor.standard",
+          "motor.torque"
+        ]
+      },
+      {
+        "slot": "imu",
+        "title": "姿态感知",
+        "options": [
+          "imu.basic",
+          "imu.precise"
+        ]
+      }
+    ],
+    "policy_title": "过桥驾驶风格",
+    "policies": [
+      "policy.careful",
+      "policy.balanced",
+      "policy.swift"
+    ],
+    "default_build": {
+      "tires": "tires.standard",
+      "sensor": "sensor.standard_lidar",
+      "computer": "computer.mid",
+      "motor": "motor.standard",
+      "imu": "imu.basic",
+      "style": 0.5
+    },
+    "recommended_build": {
+      "tires": "tires.grip",
+      "sensor": "sensor.sixteen_line_lidar",
+      "computer": "computer.performance",
+      "motor": "motor.torque",
+      "imu": "imu.precise",
+      "style": 0.15
+    }
+  },
+  "prediction": {
+    "heading": "先修路，再让机器人出发",
+    "hint": "方案必须精确连接两个锚点。悬空、超长或端点不匹配的构件不会进入物理世界。",
+    "choices": [
+      {
+        "id": "washout.short_deck",
+        "text": "提交 3.0 m 短跨钢桥面",
+        "feedback": "长度与两个岸边锚点吻合。提交后地图修订、桥面碰撞、LiDAR 回波和画面会在同一仿真边界生效。"
+      },
+      {
+        "id": "washout.grip_deck",
+        "text": "提交 3.0 m 高抓地格栅桥面",
+        "feedback": "同样满足锚点几何；粗糙排水格栅以稍高滚阻换取更大的湿地附着余量，可与平整钢板做同种子对比。"
+      },
+      {
+        "id": "washout.long_deck",
+        "text": "尝试 4.5 m 长跨钢桥面",
+        "feedback": "构件比 3.0 m 缺口更长，无法同时贴合两个固定锚点；验证器会拒绝它，世界保持原样。"
+      }
+    ]
+  },
+  "running": {
+    "heading": "验证构造后的自主通行",
+    "normal_line": "RO-1：新地图修订已接收，正在规划穿过已提交桥面。",
+    "detected_line": "RO-1：桥面回波与地图支承一致，持续检查轮地接触和净距。",
+    "evidence_fields": [
+      "speed",
+      "grade",
+      "slip",
+      "lidar"
+    ]
+  },
+  "debrief": {
+    "success_title": "中继站重新连通",
+    "success_summary": "RO-1 依据构造后的 2.5D 地图规划，并由真实轮地接触驶过同一块可扫描桥面。",
+    "failure_summary": "检查方案契约、地图修订、桥面接触与局部轨迹，找出世界在哪一层失去一致性。",
+    "evidence_heading": "构造与通行证据",
+    "evidence_caption": "方案哈希、地图修订、LiDAR 强度、轮地接触和最终轨迹来自同一次确定性运行。",
+    "knowledge_title": "改变世界也必须可验证",
+    "failure_titles": {
+      "collision-static": "行动失败：接触了桥外实体",
+      "timeout": "行动失败：未在窗口内抵达中继站",
+      "no-feasible-route": "行动失败：构造后的地图仍没有连续路线",
+      "rollover": "行动失败：车辆失去稳定支承"
+    }
+  },
+  "chassis_options": [
+    "robot.ro1"
+  ]
+}

@@ -210,6 +210,7 @@ void ScenarioSession::reset() {
  }
  result_ = {};
  snapshot_ = {};
+ construction_evidence_.clear();
  update_environment();
  mount_roll_rad_.clear();
  reset_payload();
@@ -290,6 +291,50 @@ void ScenarioSession::reset() {
  slip_prev_body_v_ = 0.0;
  slip_have_prev_ = false;
  record_replay();
+}
+
+bool ScenarioSession::commit_construction_plan(const ConstructionPlan& plan,
+ std::string* reason) {
+ const auto reject = [&](std::string message) {
+ if (reason)
+ *reason = std::move(message);
+ return false;
+ };
+ if (!level_.construction)
+ return reject("level has no construction scenario");
+ if (snapshot_.status != MissionStatus::Ready)
+ return reject("construction may only be committed before the run starts");
+ if (committed_construction_)
+ return reject("construction plan is already committed for this session");
+ const auto base = map_manager_.current_snapshot();
+ if (!base)
+ return reject("robot map is unavailable");
+
+ auto candidate = prepare_construction_world_commit(
+ *level_.construction, catalog_.construction_pieces(), plan, *base,
+ sim::runtime::TimePoint::from_seconds(snapshot_.time_s));
+ if (!candidate.resolution.ok || !candidate.map)
+ return reject(candidate.resolution.reason.empty()
+ ? "construction plan did not produce a complete world" : candidate.resolution.reason);
+
+ // Validate every physics/material dependency before publishing either side
+ // of the transaction. From this point reset only rebuilds deterministic
+ // runtime consumers from the already validated immutable values.
+ for (const auto& resolved : candidate.resolution.pieces) {
+ const auto& piece = catalog_.construction_piece(resolved.placement.piece_id);
+ if (!(piece.size_m.x > 0.0 && piece.size_m.y > 0.0 && piece.size_m.z > 0.0))
+ return reject("construction piece has invalid physical dimensions");
+ (void)catalog_.surface_material(piece.surface_material);
+ }
+ std::string map_error;
+ if (map_manager_.replace(*candidate.map, &map_error) != sim::runtime::MapUpdateResult::Accepted)
+ return reject(map_error.empty() ? "constructed map publication was rejected" : map_error);
+
+ committed_construction_ = std::move(candidate.resolution);
+ reset();
+ if (reason)
+ reason->clear();
+ return true;
 }
 
 void ScenarioSession::reset_payload() {
@@ -443,7 +488,33 @@ void ScenarioSession::initialize_rigid_physics() {
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
  platform_ = std::make_unique<sim::platform::SimulatedPlatform>(
    map_definition_, level_, robot_definition_, chassis_caps_, terrain_, sim::Vec2{spawn.x, spawn.y},
-   spawn.theta, total_mass_kg(), combined_center_height_m(), combined_yaw_inertia_kgm2());
+ spawn.theta, total_mass_kg(), combined_center_height_m(), combined_yaw_inertia_kgm2(),
+ constructed_support_bodies());
+}
+
+std::vector<sim::platform::ConstructedSupportBody>
+ScenarioSession::constructed_support_bodies() const {
+ std::vector<sim::platform::ConstructedSupportBody> result;
+ if (!committed_construction_)
+ return result;
+ result.reserve(committed_construction_->pieces.size());
+ for (const auto& resolved : committed_construction_->pieces) {
+ const auto& piece = catalog_.construction_piece(resolved.placement.piece_id);
+ const auto& material = catalog_.surface_material(piece.surface_material);
+ result.push_back({
+ resolved.placement.instance_id,
+ {resolved.center_m.x, resolved.center_m.y, resolved.center_m.z},
+ {piece.size_m.x, piece.size_m.y, piece.size_m.z},
+ resolved.yaw_rad,
+ resolved.pitch_rad,
+ material.friction_mu,
+ material.rolling_drag,
+ material.normal_stiffness_Npm,
+ material.normal_damping_Nspm,
+ material.lidar_reflectivity,
+ });
+ }
+ return result;
 }
 
 void ScenarioSession::initialize_frame_tree() {
@@ -518,15 +589,15 @@ void ScenarioSession::build_world() {
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
  std::vector<CollisionBox> collision_obstacles;
- const auto deployable_map = make_deployable_map_snapshot(map_definition_, level_id_);
- if (!deployable_map.grid)
+ const auto deployable_map = map_manager_.current_snapshot();
+ if (!deployable_map || !deployable_map->grid)
  throw std::runtime_error("deployable map adapter did not produce an occupancy grid");
- for (std::uint32_t y = 0; y < deployable_map.grid->height; ++y) {
- for (std::uint32_t x = 0; x < deployable_map.grid->width; ++x) {
- const auto index = static_cast<std::size_t>(y) * deployable_map.grid->width + x;
- if (deployable_map.grid->occupancy[index] < 50)
+ for (std::uint32_t y = 0; y < deployable_map->grid->height; ++y) {
+ for (std::uint32_t x = 0; x < deployable_map->grid->width; ++x) {
+ const auto index = static_cast<std::size_t>(y) * deployable_map->grid->width + x;
+ if (deployable_map->grid->occupancy[index] < 50)
  continue;
- const auto center = sim::runtime::grid_cell_center(*deployable_map.grid, {x, y});
+ const auto center = sim::runtime::grid_cell_center(*deployable_map->grid, {x, y});
  truth_map_->setOccupied(center.x, center.y);
  }
  }
@@ -565,7 +636,22 @@ void ScenarioSession::build_world() {
  patch.grade_xy_per_m,
   });
  }
- terrain_ = sim::TerrainModel(std::move(active_terrain));
+ std::vector<sim::SupportSurface> constructed_surfaces;
+ if (committed_construction_) {
+ for (const auto& resolved : committed_construction_->pieces) {
+ const auto& piece = catalog_.construction_piece(resolved.placement.piece_id);
+ constructed_surfaces.push_back({
+ resolved.placement.instance_id,
+ {resolved.center_m.x, resolved.center_m.y},
+ piece.size_m.x * 0.5 * std::cos(resolved.pitch_rad),
+ piece.size_m.y * 0.5,
+ resolved.yaw_rad,
+ resolved.center_m.z + piece.size_m.z * 0.5 * std::cos(resolved.pitch_rad),
+ std::tan(resolved.pitch_rad),
+ });
+ }
+ }
+ terrain_ = sim::TerrainModel(std::move(active_terrain), std::move(constructed_surfaces));
 
  sim::PlanarDiffDriveParams params;
  params.max_forward_mps = std::max(1.5, property(behavior_, "cruise_mps") * 1.25);
@@ -1091,6 +1177,9 @@ void ScenarioSession::finish_route_failure() {
 void ScenarioSession::start() {
  if (snapshot_.status != MissionStatus::Ready) {
   return;
+ }
+ if (!construction_ready()) {
+ throw std::logic_error("construction level requires a committed plan before start");
  }
  if (!runtime_channel_ || runtime_channel_->state() != sim::runtime::LifecycleState::Inactive) {
   throw std::logic_error("mission runtime channel is not ready for activation");
@@ -2305,6 +2394,28 @@ void ScenarioSession::apply_motion() {
  snapshot_.control.left_measured_rpm = snapshot_.control.left_measured_mps * 60.0 / meters_per_revolution;
  snapshot_.control.right_measured_rpm = snapshot_.control.right_measured_mps * 60.0 / meters_per_revolution;
  const sim::Vec2 candidate_position{candidate.x, candidate.y};
+ if (committed_construction_ && have_rigid_state) {
+  for (const auto& resolved : committed_construction_->pieces) {
+   if (std::find(rigid_state.constructed_support_contacts.begin(),
+                 rigid_state.constructed_support_contacts.end(),
+                 resolved.placement.instance_id) ==
+       rigid_state.constructed_support_contacts.end()) {
+    continue;
+   }
+   auto& evidence = construction_evidence_[resolved.placement.instance_id];
+   evidence.physical_contact = true;
+   result_.construction_contact_observed = true;
+   const double dx = candidate_position.x - resolved.center_m.x;
+   const double dy = candidate_position.y - resolved.center_m.y;
+   const double local_x = std::cos(resolved.yaw_rad) * dx +
+                          std::sin(resolved.yaw_rad) * dy;
+   evidence.min_local_x_m = std::min(evidence.min_local_x_m, local_x);
+   evidence.max_local_x_m = std::max(evidence.max_local_x_m, local_x);
+   const auto& piece = catalog_.construction_piece(resolved.placement.piece_id);
+   if (evidence.max_local_x_m - evidence.min_local_x_m >= piece.size_m.x * 0.8)
+    result_.construction_surface_traversed = true;
+  }
+ }
  const auto terrain_state = terrain_.sample(candidate_position);
  const double candidate_grade = sim::longitudinal_grade(terrain_state, candidate.theta);
  const double candidate_cross_grade = sim::lateral_grade(terrain_state, candidate.theta);
@@ -2523,12 +2634,35 @@ void ScenarioSession::apply_motion() {
 }
 
 double ScenarioSession::surface_traction(sim::Vec2 position) const {
+ if (const auto* material = constructed_surface_at(position))
+ return material->traction_scale * environment_grip_multiplier(material->id);
  for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    return surface.traction_scale * environment_grip_multiplier(surface.material);
   }
  }
  return 1.0;
+}
+
+const SurfaceMaterialDefinition* ScenarioSession::constructed_surface_at(
+ sim::Vec2 position) const {
+ if (!committed_construction_)
+ return nullptr;
+ for (auto resolved = committed_construction_->pieces.rbegin();
+ resolved != committed_construction_->pieces.rend(); ++resolved) {
+ const auto& piece = catalog_.construction_piece(resolved->placement.piece_id);
+ const double dx = position.x - resolved->center_m.x;
+ const double dy = position.y - resolved->center_m.y;
+ const double cosine = std::cos(resolved->yaw_rad);
+ const double sine = std::sin(resolved->yaw_rad);
+ const double local_x = cosine * dx + sine * dy;
+ const double local_y = -sine * dx + cosine * dy;
+ if (std::abs(local_x) <= piece.size_m.x * 0.5 * std::cos(resolved->pitch_rad) &&
+ std::abs(local_y) <= piece.size_m.y * 0.5) {
+ return &catalog_.surface_material(piece.surface_material);
+ }
+ }
+ return nullptr;
 }
 
 void ScenarioSession::finish_success() {
@@ -2778,7 +2912,14 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  double ground_damping = 0.0;
  double traction = 1.0;
  std::string ground_material;
- for (const auto& surface : map_definition_.surfaces) {
+ if (const auto* material = constructed_surface_at(position)) {
+ ground_mu = material->friction_mu;
+ ground_rr = material->rolling_drag;
+ ground_stiffness = material->normal_stiffness_Npm;
+ ground_damping = material->normal_damping_Nspm;
+ traction = material->traction_scale;
+ ground_material = material->id;
+ } else for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(position, surface)) {
    ground_mu = surface.friction_mu;
    ground_rr = surface.rolling_drag;
@@ -2840,7 +2981,9 @@ double ScenarioSession::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) 
  const double dry_tire_mu = resolved_build_.traction().friction_mu / 0.8;
  const double low_grip_penalty = std::max(0.0, dry_tire_mu / std::max(0.08, contact.mu_eff) - 1.0);
  double extra_ground_drag = 0.0;
- for (const auto& surface : map_definition_.surfaces) {
+ if (const auto* material = constructed_surface_at(midpoint)) {
+ extra_ground_drag = std::max(0.0, material->rolling_drag);
+ } else for (const auto& surface : map_definition_.surfaces) {
   if (active_in_level(surface.active_in, level_id_) && inside(midpoint, surface)) {
    extra_ground_drag = std::max(0.0, surface.rolling_drag);
    break;

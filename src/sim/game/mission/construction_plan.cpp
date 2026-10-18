@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <stdexcept>
 
 namespace mission {
 namespace {
@@ -134,6 +135,22 @@ ConstructionPlanResolution resolve_construction_plan(
  }
 
  result.ok = true;
+ return result;
+}
+
+ConstructionPlan construction_plan_from_option(
+ const ConstructionScenarioDefinition& scenario, std::string_view option_id) {
+ const auto option = std::find_if(scenario.plans.begin(), scenario.plans.end(),
+ [&](const auto& candidate) { return candidate.id == option_id; });
+ if (option == scenario.plans.end())
+ throw std::invalid_argument("unknown construction plan option '" + std::string(option_id) + "'");
+ ConstructionPlan result;
+ result.scenario = scenario.id;
+ result.placements.reserve(option->placements.size());
+ for (const auto& placement : option->placements) {
+ result.placements.push_back({placement.instance_id, placement.piece_id,
+ placement.start_socket, placement.end_socket});
+ }
  return result;
 }
 

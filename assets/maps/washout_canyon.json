@@ -1,0 +1,456 @@
+{
+  "schema_version": 1,
+  "id": "washout_canyon",
+  "scene_3d": "scene.washout_canyon",
+  "size_m": [
+    20.0,
+    10.0
+  ],
+  "grid_resolution_m": 0.25,
+  "obstacles": [],
+  "surfaces": [
+    {
+      "id": "west_road",
+      "type": "box",
+      "min": [
+        0.5,
+        1.2
+      ],
+      "max": [
+        8.5,
+        8.8
+      ],
+      "material": "weathered_asphalt",
+      "label": "West service road"
+    },
+    {
+      "id": "east_road",
+      "type": "box",
+      "min": [
+        11.5,
+        1.2
+      ],
+      "max": [
+        19.5,
+        8.8
+      ],
+      "material": "weathered_asphalt",
+      "label": "East service road"
+    },
+    {
+      "id": "washout_water",
+      "type": "box",
+      "min": [
+        8.5,
+        1.2
+      ],
+      "max": [
+        11.5,
+        8.8
+      ],
+      "material": "standing_water",
+      "label": "Flooded washout floor"
+    }
+  ],
+  "terrain": [
+    {
+      "id": "west_bank",
+      "type": "height_patch",
+      "min": [
+        0.5,
+        1.2
+      ],
+      "max": [
+        8.5,
+        8.8
+      ],
+      "base_height_m": 0.8,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.006
+    },
+    {
+      "id": "east_bank",
+      "type": "height_patch",
+      "min": [
+        11.5,
+        1.2
+      ],
+      "max": [
+        19.5,
+        8.8
+      ],
+      "base_height_m": 0.8,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "roughness": 0.006
+    }
+  ],
+  "world_objects": [
+    {
+      "id": "rubble_west_north",
+      "prefab": "prefab.washout_rubble",
+      "position_m": [
+        9.05,
+        2.45,
+        0.0
+      ],
+      "yaw_degrees": 18,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.11
+          ],
+          "size_m": [
+            0.86,
+            0.72,
+            0.22
+          ],
+          "material": "weathered_asphalt"
+        }
+      ]
+    },
+    {
+      "id": "rubble_east_south",
+      "prefab": "prefab.washout_rubble",
+      "position_m": [
+        10.85,
+        7.4,
+        0.0
+      ],
+      "yaw_degrees": -27,
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.11
+          ],
+          "size_m": [
+            0.86,
+            0.72,
+            0.22
+          ],
+          "material": "weathered_asphalt"
+        }
+      ]
+    },
+    {
+      "id": "west_anchor_north",
+      "prefab": "prefab.bridge_anchor",
+      "position_m": [
+        8.08,
+        3.82,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.36
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "west_anchor_south",
+      "prefab": "prefab.bridge_anchor",
+      "position_m": [
+        8.08,
+        6.18,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.36
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_anchor_north",
+      "prefab": "prefab.bridge_anchor",
+      "position_m": [
+        11.92,
+        3.82,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.36
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_anchor_south",
+      "prefab": "prefab.bridge_anchor",
+      "position_m": [
+        11.92,
+        6.18,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.36
+          ],
+          "size_m": [
+            0.42,
+            0.42,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "west_warning",
+      "prefab": "prefab.warning_beacon",
+      "position_m": [
+        7.65,
+        2.65,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            0.28,
+            0.28,
+            0.9
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_warning",
+      "prefab": "prefab.warning_beacon",
+      "position_m": [
+        12.35,
+        7.35,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.45
+          ],
+          "size_m": [
+            0.28,
+            0.28,
+            0.9
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "west_guard_north",
+      "prefab": "prefab.guard_segment",
+      "position_m": [
+        4.4,
+        1.42,
+        0.8
+      ],
+      "scale": [
+        7.5,
+        1,
+        1
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.28
+          ],
+          "size_m": [
+            1.0,
+            0.12,
+            0.56
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "west_guard_south",
+      "prefab": "prefab.guard_segment",
+      "position_m": [
+        4.4,
+        8.58,
+        0.8
+      ],
+      "scale": [
+        7.5,
+        1,
+        1
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.28
+          ],
+          "size_m": [
+            1.0,
+            0.12,
+            0.56
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_guard_north",
+      "prefab": "prefab.guard_segment",
+      "position_m": [
+        15.6,
+        1.42,
+        0.8
+      ],
+      "scale": [
+        7.5,
+        1,
+        1
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.28
+          ],
+          "size_m": [
+            1.0,
+            0.12,
+            0.56
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_guard_south",
+      "prefab": "prefab.guard_segment",
+      "position_m": [
+        15.6,
+        8.58,
+        0.8
+      ],
+      "scale": [
+        7.5,
+        1,
+        1
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            0.28
+          ],
+          "size_m": [
+            1.0,
+            0.12,
+            0.56
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "relay_tower",
+      "prefab": "prefab.signal_tower",
+      "position_m": [
+        18.2,
+        5.0,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0,
+            0,
+            1.25
+          ],
+          "size_m": [
+            0.7,
+            0.7,
+            2.5
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    }
+  ],
+  "markers": {
+    "west_staging": [
+      3.0,
+      5.0,
+      0.0
+    ],
+    "east_relay": [
+      17.0,
+      5.0,
+      0.0
+    ]
+  },
+  "actors": []
+}

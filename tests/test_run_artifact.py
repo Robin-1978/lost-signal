@@ -47,7 +47,7 @@ class RunArtifactIntegrationTest(unittest.TestCase):
             baseline = json.loads(first.read_text(encoding="utf-8"))
             candidate = json.loads(second.read_text(encoding="utf-8"))
             self.assertEqual(
-                baseline["schema"], {"name": "lost-signal.run", "version": 2}
+ baseline["schema"], {"name": "lost-signal.run", "version": 3}
             )
             self.assertEqual(
                 baseline["configuration"]["comparable"]["algorithms"]["task_ordering"],
@@ -71,6 +71,42 @@ class RunArtifactIntegrationTest(unittest.TestCase):
             rejected = self.run_headless("--reproduce", str(first))
             self.assertEqual(rejected.returncode, 1)
             self.assertIn("content hash does not match", rejected.stderr)
+
+    def test_constructed_world_reproduces_exact_plan(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            first = Path(temporary) / "bridge-first.run.json"
+            second = Path(temporary) / "bridge-second.run.json"
+            created = self.run_headless(
+                "--level", "bridge_the_washout", "--recommended",
+                "--construction-plan", "washout.short_deck", "--artifact", str(first)
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+            reproduced = self.run_headless(
+                "--reproduce", str(first), "--artifact", str(second)
+            )
+            self.assertEqual(reproduced.returncode, 0, reproduced.stderr)
+
+            baseline = json.loads(first.read_text(encoding="utf-8"))
+            candidate = json.loads(second.read_text(encoding="utf-8"))
+            construction = baseline["configuration"]["comparable"]["construction"]
+            self.assertEqual(construction["map_revision"], 2)
+            self.assertEqual(construction["piece_ids"], ["construction.deck_short"])
+            self.assertTrue(baseline["result"]["construction"]["contact_observed"])
+            self.assertTrue(baseline["result"]["construction"]["surface_traversed"])
+            self.assertEqual(
+                construction["plan_sha256"],
+                candidate["configuration"]["comparable"]["construction"]["plan_sha256"],
+            )
+            self.assertEqual(baseline["configuration"]["digest"],
+                                                                                candidate["configuration"]["digest"])
+            self.assertEqual(baseline["result"], candidate["result"])
+
+        rejected = self.run_headless(
+            "--level", "bridge_the_washout", "--recommended",
+            "--construction-plan", "washout.long_deck"
+        )
+        self.assertEqual(rejected.returncode, 1)
+        self.assertIn("construction plan rejected", rejected.stderr)
 
 
 if __name__ == "__main__":

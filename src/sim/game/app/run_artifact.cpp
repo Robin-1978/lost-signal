@@ -85,6 +85,18 @@ nlohmann::json make_run_artifact(
  {"motion_controller", "pid-feedforward-v1"},
  {"runtime_interface", "lsri-v1"},
  };
+ nlohmann::json construction = nullptr;
+ if (simulation.committed_construction()) {
+ std::vector<std::string> piece_ids;
+ for (const auto& piece : simulation.committed_construction()->pieces)
+ piece_ids.push_back(piece.placement.piece_id);
+ construction = {
+ {"canonical_plan", simulation.committed_construction()->canonical_plan},
+ {"plan_sha256", simulation.committed_construction()->plan_sha256},
+ {"map_revision", simulation.map_revision()},
+ {"piece_ids", piece_ids},
+ };
+ }
  const nlohmann::json experiment = {
  {"mission_id", simulation.level().id},
  {"condition_id", "authored-base"},
@@ -100,6 +112,7 @@ nlohmann::json make_run_artifact(
  {"experiment", experiment},
  {"hardware", hardware},
  {"algorithms", algorithms},
+ {"construction", construction},
  };
 
  nlohmann::json metrics = result;
@@ -132,6 +145,7 @@ nlohmann::json make_run_artifact(
  {"experiment", experiment},
  {"hardware", hardware},
  {"algorithms", algorithms},
+ {"construction", construction},
  }},
  {"configuration", {
  {"algorithm", "sha256"},

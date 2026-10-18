@@ -36,6 +36,7 @@ class SceneRenderer3D {
  void draw_scene(const mission::PresentationFrameView& mission) const;
  void draw_floor(const mission::MapDefinition& map, const mission::SceneDefinition& scene) const;
  void draw_terrain(const mission::PresentationFrameView& mission) const;
+ void draw_constructed_supports(const mission::PresentationFrameView& mission) const;
  void draw_shelf(const mission::BoxDefinition& obstacle) const;
  void draw_surface(const mission::PresentationFrameView& mission, const mission::SurfaceDefinition& surface) const;
  void draw_markers(const mission::PresentationFrameView& mission) const;

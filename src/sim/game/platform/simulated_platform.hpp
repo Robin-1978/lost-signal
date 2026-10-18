@@ -29,6 +29,22 @@ struct PhysicsActorState {
  double radius_m{0.0};
 };
 
+// Immutable runtime world geometry prepared by a validated construction
+// transaction. A committed deck is support terrain: it participates in wheel
+// contact and LiDAR, while navigation occupancy remains free above it.
+struct ConstructedSupportBody {
+ std::string id;
+ ::sim::physics::Vec3 center_m;
+ ::sim::physics::Vec3 size_m;
+ double yaw_rad{0.0};
+ double pitch_rad{0.0};
+ double friction_mu{0.8};
+ double rolling_drag{0.0};
+ double normal_stiffness_Npm{0.0};
+ double normal_damping_Nspm{0.0};
+ double lidar_reflectivity{0.3};
+};
+
 struct LinkContactLoad {
  std::string link;
  int contact_points{0};
@@ -58,6 +74,7 @@ struct RigidVehicleState {
  int contact_count{0};
  double max_contact_impulse_Ns{0.0};
  std::vector<std::string> ground_contact_links;
+ std::vector<std::string> constructed_support_contacts;
  std::vector<LinkContactLoad> ground_contact_loads;
  // Model-side longitudinal tire slip truth. This is platform telemetry for
  // validation and presentation, not an encoder measurement. The ratio uses
@@ -75,7 +92,8 @@ class SimulatedPlatform {
  SimulatedPlatform(const MapDefinition& map, const LevelDefinition& level, const RobotDefinition& robot,
  const ::sim::ChassisCaps& chassis_caps, const ::sim::TerrainModel& terrain,
  ::sim::Vec2 spawn, double spawn_heading_rad,
- double total_mass_kg, double center_height_m, double yaw_inertia_kgm2);
+ double total_mass_kg, double center_height_m, double yaw_inertia_kgm2,
+ const std::vector<ConstructedSupportBody>& constructed_supports = {});
 
  const char* backend_name() const;
  void sync_actors(const std::vector<PhysicsActorState>& actors);
@@ -162,6 +180,8 @@ class SimulatedPlatform {
  ::sim::physics::Vec3 articulated_root_inertia_kgm2_;
  bool articulated_{false};
  std::vector<::sim::physics::BodyHandle> terrain_bodies_;
+ std::map<std::uint32_t, double> terrain_reflectivity_;
+ std::map<std::uint32_t, std::string> constructed_support_ids_;
  std::vector<::sim::physics::BodyHandle> obstacle_bodies_;
  std::map<std::uint32_t, double> obstacle_reflectivity_;
  std::map<std::string, ::sim::physics::BodyHandle> actor_bodies_;

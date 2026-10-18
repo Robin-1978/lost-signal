@@ -439,7 +439,7 @@ void GameUi::rebuild(const mission::ScenarioSession* mission) {
   build_garage();
   break;
  case Screen::Prediction:
-  build_prediction();
+ build_prediction(mission);
   break;
  case Screen::Running:
   build_running(mission);
@@ -768,7 +768,7 @@ void GameUi::build_garage() {
  scroll->setContentSize({static_cast<float>(kPanelWidth), y + 66.0f});
 }
 
-void GameUi::build_prediction() {
+void GameUi::build_prediction(const mission::ScenarioSession* mission) {
  auto scroll = tgui::ScrollablePanel::create(
  {static_cast<float>(kPanelWidth), std::max(1.0f, static_cast<float>(height_) - 88.0f)});
  scroll->setPosition(0, 0);
@@ -791,19 +791,40 @@ void GameUi::build_prediction() {
  place_text(presentation_->prediction_heading, 23, {239, 238, 229}, true, 10);
  place_text(presentation_->prediction_hint, 14, {157, 163, 158}, false, 16);
 
+ bool selected_plan_valid = true;
+ const auto* construction = mission && mission->level().construction
+ ? &*mission->level().construction : nullptr;
  for (const auto& choice : presentation_->prediction_choices) {
+ bool plan_valid = true;
+ std::string plan_reason;
+ if (construction) {
+ try {
+ const auto plan = mission::construction_plan_from_option(*construction, choice.id);
+ const auto resolution = mission::resolve_construction_plan(
+ *construction, catalog_.construction_pieces(), plan);
+ plan_valid = resolution.ok;
+ plan_reason = resolution.reason;
+ } catch (const std::exception& error) {
+ plan_valid = false;
+ plan_reason = error.what();
+ }
+ }
  const std::string wrapped = wrap_words(choice.text, 38);
  const float height = std::max(58.0f, 20.0f + 19.0f * static_cast<float>(text_line_count(wrapped)));
  auto button = add_button(wrapped, kMargin, y, kContentWidth, height);
  button->setTextSize(15);
- button->setToolTip(make_tooltip(choice.feedback));
-  button->onClick([this, id = choice.id] {
+ button->setToolTip(make_tooltip(choice.feedback +
+ (!plan_valid && !plan_reason.empty() ? "\n\n" + plan_reason : std::string{})));
+ button->onClick([this, mission, id = choice.id] {
    prediction_choice_ = id;
-   rebuild(nullptr);
+ rebuild(mission);
   });
   if (choice.id == prediction_choice_) {
-   button->getRenderer()->setBackgroundColor({52, 61, 57});
-   button->getRenderer()->setBorderColor({108, 189, 174});
+ button->getRenderer()->setBackgroundColor(plan_valid ? tgui::Color{52, 61, 57}
+ : tgui::Color{62, 37, 34});
+ button->getRenderer()->setBorderColor(plan_valid ? tgui::Color{108, 189, 174}
+ : tgui::Color{225, 107, 88});
+ selected_plan_valid = plan_valid;
   }
  y += height + 12.0f;
  }
@@ -813,8 +834,11 @@ void GameUi::build_prediction() {
  back->onClick([this] { actions_.open_garage = true; });
  auto launch = add_button(catalog_.trf("garage.launch", {selected_robot_title()}),
  kMargin + 132, height_ - 74.0f, 180, 46, true);
- launch->setEnabled(!prediction_choice_.empty());
- launch->onClick([this] { actions_.launch = true; });
+ launch->setEnabled(!prediction_choice_.empty() && selected_plan_valid);
+ launch->onClick([this] {
+ actions_.launch = true;
+ actions_.construction_plan = prediction_choice_;
+ });
 }
 
 void GameUi::build_running(const mission::ScenarioSession* mission) {
@@ -1003,6 +1027,16 @@ void GameUi::build_debrief(const mission::ScenarioSession* mission) {
  {format_number(result.last_stop_start_speed_mps, 2),
  format_number(result.last_stop_time_s, 2), format_number(result.last_stop_distance_m, 2)}),
  14, {143, 201, 187}, true, 12);
+ }
+ if (mission->committed_construction()) {
+  const auto evidence_label = [&](bool value) {
+   return catalog_.tr(value ? "debrief.evidence_yes" : "debrief.evidence_no");
+  };
+  placed_text(catalog_.trf("debrief.construction_metrics",
+               {evidence_label(result.construction_contact_observed),
+                evidence_label(result.construction_surface_traversed),
+                std::to_string(mission->map_revision())}),
+              14, {143, 201, 187}, true, 12);
  }
 
  if (mission->level().objective.goal_order == "autonomous") {

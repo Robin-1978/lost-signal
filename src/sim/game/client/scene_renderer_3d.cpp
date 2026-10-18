@@ -861,6 +861,7 @@ void SceneRenderer3D::draw_scene(const mission::PresentationFrameView& mission) 
  const auto& scene = catalog_.scene(map.scene_3d);
  draw_floor(map, scene);
  draw_terrain(mission);
+ draw_constructed_supports(mission);
  draw_environment(mission, scene);
  for (const auto& surface : map.surfaces) {
   if (!mission::active_in_level(surface.active_in, mission.level().id))
@@ -879,6 +880,58 @@ void SceneRenderer3D::draw_scene(const mission::PresentationFrameView& mission) 
  draw_field_operator(mission);
  draw_robot(mission);
  draw_lidar_point_cloud(mission);
+}
+
+void SceneRenderer3D::draw_constructed_supports(
+ const mission::PresentationFrameView& mission) const {
+ if (!mission.committed_construction())
+ return;
+ for (const auto& resolved : mission.committed_construction()->pieces) {
+ const auto& piece = catalog_.construction_piece(resolved.placement.piece_id);
+ const Quaternion yaw = QuaternionFromAxisAngle(
+ {0.0f, 1.0f, 0.0f}, static_cast<float>(resolved.yaw_rad));
+ const Quaternion slope = QuaternionFromAxisAngle(
+ {0.0f, 0.0f, 1.0f}, static_cast<float>(resolved.pitch_rad));
+ const Quaternion rotation = QuaternionMultiply(yaw, slope);
+ Vector3 axis;
+ float angle = 0.0f;
+ QuaternionToAxisAngle(rotation, &axis, &angle);
+ const Vector3 center = world(resolved.center_m);
+ const Vector3 size{
+ static_cast<float>(piece.size_m.x),
+ static_cast<float>(piece.size_m.z),
+ static_cast<float>(piece.size_m.y),
+ };
+ DrawModelEx(cube_model_, center, axis, angle * kRadToDeg, size, color(piece.color));
+
+ // Construction remains one authoritative collision box. These flush plates,
+ // seams and edge lights stay inside or directly on that envelope, adding a
+ // readable engineered silhouette without inventing unsensed solid rails.
+ const auto local_to_world = [&](Vector3 local) {
+ return Vector3Add(center, Vector3RotateByQuaternion(local, rotation));
+ };
+ const Color top = color(piece.top_color);
+ const Color edge = color(piece.accent_color);
+ const float length = static_cast<float>(piece.size_m.x);
+ const float width = static_cast<float>(piece.size_m.y);
+ const float height = static_cast<float>(piece.size_m.z);
+ for (int seam = -2; seam <= 2; ++seam) {
+ const float x = static_cast<float>(seam) * length / 5.0f;
+ DrawModelEx(cube_model_, local_to_world({x, height * 0.505f, 0.0f}), axis,
+ angle * kRadToDeg, {0.025f, 0.006f, width * 0.94f}, top);
+ }
+ if (piece.surface_pattern == "grating") {
+ for (int rib = -5; rib <= 5; ++rib) {
+ const float z = static_cast<float>(rib) * width / 12.0f;
+ DrawModelEx(cube_model_, local_to_world({0.0f, height * 0.51f, z}), axis,
+ angle * kRadToDeg, {length * 0.92f, 0.008f, 0.018f}, top);
+ }
+ }
+ for (float side : {-1.0f, 1.0f}) {
+ DrawModelEx(cube_model_, local_to_world({0.0f, height * 0.49f, side * width * 0.47f}), axis,
+ angle * kRadToDeg, {length * 0.94f, 0.012f, 0.028f}, edge);
+ }
+ }
 }
 
 void SceneRenderer3D::draw_lidar_point_cloud(
@@ -1016,40 +1069,24 @@ void SceneRenderer3D::draw_terrain(const mission::PresentationFrameView& mission
  }
  }
 
-  // Curbs, guard rails and posts expose the edge and height of the route from
-  // the default three-quarter camera. They also give every terrain lane the
-  // same visual grammar: amber means a drop or unstable shoulder.
+ // A flush amber stripe exposes a terrain edge without inventing a solid
+ // guardrail that physics and LiDAR do not know about. Real rails are authored
+ // world_objects and therefore receive collision and reflectivity geometry.
   const bool road_runs_x = width >= length;
   const float inset = 0.10f;
-  const float rail_lift = grade > 0.001f || terrain.height_m > 0.35 ? 0.52f : 0.12f;
-  const auto draw_edge_beam = [&](sim::Vec2 edge_center, Vector3 beam_scale, float lift, Color tint_color) {
-   const auto edge_pose = ground_pose(edge_center, terrain_at(mission, edge_center), lift);
-   DrawModelEx(cube_model_, edge_pose.position, edge_pose.axis, edge_pose.angle_degrees, beam_scale,
-               tint_color);
-  };
+ const auto draw_edge_stripe = [&](sim::Vec2 from, sim::Vec2 to) {
+ const auto from_ground = terrain_at(mission, from);
+ const auto to_ground = terrain_at(mission, to);
+ DrawLine3D(world(from, static_cast<float>(from_ground.height_m) + 0.012f),
+ world(to, static_cast<float>(to_ground.height_m) + 0.012f), kAmber);
+ };
   if (road_runs_x) {
    for (double y : {patch.min.y + inset, patch.max.y - inset}) {
-    draw_edge_beam({center.x, y}, {width, 0.075f, 0.10f}, 0.075f, kAmber);
-    if (rail_lift > 0.2f)
-     draw_edge_beam({center.x, y}, {width, 0.055f, 0.055f}, rail_lift, {111, 119, 111, 255});
-    for (double x = patch.min.x + 0.35; rail_lift > 0.2f && x < patch.max.x; x += 1.5) {
-     const auto post_ground = terrain_at(mission, {x, y});
-     draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
-               static_cast<float>(-y)},
-              {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
-    }
+ draw_edge_stripe({patch.min.x, y}, {patch.max.x, y});
    }
   } else {
    for (double x : {patch.min.x + inset, patch.max.x - inset}) {
-    draw_edge_beam({x, center.y}, {0.10f, 0.075f, length}, 0.075f, kAmber);
-    if (rail_lift > 0.2f)
-     draw_edge_beam({x, center.y}, {0.055f, 0.055f, length}, rail_lift, {111, 119, 111, 255});
-    for (double y = patch.min.y + 0.35; rail_lift > 0.2f && y < patch.max.y; y += 1.5) {
-     const auto post_ground = terrain_at(mission, {x, y});
-     draw_box({static_cast<float>(x), static_cast<float>(post_ground.height_m) + rail_lift * 0.5f,
-               static_cast<float>(-y)},
-              {0.055f, rail_lift, 0.055f}, 0.0f, {93, 102, 96, 255});
-    }
+ draw_edge_stripe({x, patch.min.y}, {x, patch.max.y});
    }
   }
  }
@@ -1117,7 +1154,7 @@ void SceneRenderer3D::draw_surface(const mission::PresentationFrameView& mission
     const sim::Vec2 cell_center{cx, cz};
     const auto cell_pose = ground_pose(cell_center, terrain_at(mission, cell_center), 0.006f);
     DrawModelEx(plane->second, cell_pose.position, cell_pose.axis, cell_pose.angle_degrees,
-                {cell_w, 1.0f, cell_l}, WHITE);
+ {cell_w, 1.0f, cell_l}, color(material.albedo_tint));
    }
   }
  }

@@ -277,8 +277,8 @@ each tick. Lost Signal uses this ownership pattern while keeping its smaller nat
 
 ### Experiment evidence
 
-Run Artifact v2 records build and source identity, a SHA-256 content manifest, comparable run inputs, hardware and
-algorithm IDs, metrics, events, and the structured decision chain. `--reproduce` restores the declared authored
+Run Artifact v3 records build and source identity, a SHA-256 content manifest, comparable run inputs, hardware and
+algorithm IDs, constructed-world identity and traversal evidence, metrics, events, and the structured decision chain. `--reproduce` restores the declared authored
 mission configuration, while `tools/compare_runs.py` rejects undeclared input changes. This compact manifest is
 separate from UI snapshot replay and LSRI observation replay; large sensor traces remain external references.
 

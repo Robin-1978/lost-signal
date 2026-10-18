@@ -361,6 +361,9 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  piece.max_span_m = support.at("max_span_m").get<double>();
  piece.allowed_socket_types = item.at("allowed_socket_types").get<std::vector<std::string>>();
  piece.color = rgba(presentation.at("color").get<std::string>());
+ piece.top_color = rgba(presentation.value("top_color", presentation.at("color").get<std::string>()));
+ piece.accent_color = rgba(presentation.value("accent_color", std::string{"#27E0CAEB"}));
+ piece.surface_pattern = presentation.value("surface_pattern", std::string{"plate"});
  piece.model_3d = presentation.value("model_3d", std::string{});
  if (!piece.model_3d.empty() && !std::filesystem::is_regular_file(catalog.root_ / piece.model_3d)) {
  throw ContentError(path.string() + ": missing construction model '" + piece.model_3d + "'");
@@ -570,6 +573,25 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  throw ContentError(path.string() + ": duplicate construction socket '" + socket.id + "'");
  scenario.sockets.push_back(std::move(socket));
  }
+ scenario.default_plan = construction->at("default_plan").get<std::string>();
+ std::set<std::string> plan_ids;
+ for (const auto& item : construction->at("plans")) {
+ ConstructionPlanOptionDefinition option;
+ option.id = item.at("id").get<std::string>();
+ if (!plan_ids.insert(option.id).second)
+ throw ContentError(path.string() + ": duplicate construction plan option '" + option.id + "'");
+ for (const auto& encoded : item.at("placements")) {
+ option.placements.push_back({
+ encoded.at("instance_id").get<std::string>(),
+ encoded.at("piece_id").get<std::string>(),
+ encoded.at("start_socket").get<std::string>(),
+ encoded.at("end_socket").get<std::string>(),
+ });
+ }
+ scenario.plans.push_back(std::move(option));
+ }
+ if (!plan_ids.count(scenario.default_plan))
+ throw ContentError(path.string() + ": construction default_plan is not a plan option");
  for (const auto& [piece_id, count] : scenario.inventory) {
  if (count <= 0 || catalog.construction_pieces_.find(piece_id) == catalog.construction_pieces_.end()) {
  throw ContentError(path.string() + ": invalid construction inventory piece '" + piece_id + "'");
@@ -591,6 +613,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    material.description = item.at("description").get<std::string>();
    material.friction_mu = item.at("friction_mu").get<double>();
    material.texture_albedo = item.value("texture", std::string{});
+ material.albedo_tint = rgba(item.value("albedo_tint", std::string{"#FFFFFF"}));
    material.rolling_drag = item.at("rolling_drag").get<double>();
    material.traction_scale = item.at("traction_scale").get<double>();
    material.normal_stiffness_Npm = item.value("normal_stiffness_Npm", 1.0e9);

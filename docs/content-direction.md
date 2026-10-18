@@ -131,12 +131,17 @@ used by existing scenery as well: a physical object renders one prefab, spawns i
 material-dependent LiDAR intensity, enters the deployable occupancy map with oriented-box rasterization, and supplies
 the continuous collision monitor. Pure decals such as warning strips remain explicit `visual_only` scene instances.
 
-The map side of the commit transaction is now implemented. A fully validated plan prepares an immutable next map
-revision, rasterizes each driveable deck into elevation and surface-class layers, preserves free occupancy, adds
-stable semantic features, and stamps the plan SHA-256 into map provenance. Invalid plans produce no candidate map;
-the map manager's monotonic revision rules are exercised by the construction test. The live Bullet-body swap,
-renderer publication, placement UI, and Run Artifact fields remain one coordinated increment: a plan must never
-update the picture while leaving physics or autonomy on the previous world.
+The complete commit transaction is implemented. A fully validated plan prepares and publishes one immutable next
+map revision, rasterizes each driveable deck into elevation and surface-class layers, preserves free occupancy, adds
+stable semantic features, stamps the plan SHA-256 into map provenance, and rebuilds matching Bullet support bodies,
+contact material, LiDAR reflectivity, route planning, and rendering at the same Ready-state boundary. Invalid plans
+leave the map revision and world unchanged. Run Artifact v3 records the canonical plan and the same run's physical
+contact and full-surface traversal evidence.
+
+The current washout offers two valid three-meter solutions and one rejected overlong component. The smooth steel
+plate has lower rolling loss and less wet traction; the drained grating has more grip and drag. Both solution plans
+complete the same deterministic RO-1 proof run with physical deck contact, 16-line LiDAR returns, full traversal,
+and zero collision. This is a controlled engineering choice rather than one correct button surrounded by traps.
 
 ### M1 acceptance gate
 
@@ -155,9 +160,10 @@ update the picture while leaving physics or autonomy on the previous world.
 
 1. Add the construction-piece and socket schemas, canonical plan hashing, validation, and round-trip tests.
 2. Bind a committed plan to generic Bullet bodies and publish the derived LSRM map revision atomically.
-3. Add the three-corridor graybox, bounded placement UI, autonomous proof intent, result reasons, and headless input.
-4. Add deterministic fixtures for each feasibility reason and two successful solution families across the five
- chassis without claiming every chassis can solve every plan.
+3. **Implemented for the first corridor:** add the washout graybox, bounded plan UI, autonomous proof intent, result
+ reasons, and headless input.
+4. **Implemented for RO-1:** add deterministic rejection evidence and two successful surface families without
+ claiming every chassis can solve every plan. Additional corridor/chassis combinations remain future content.
 5. Run a fresh-player test, revise the loop, and approve or reject it for M2 visual/audio production.
 
 ## Existing systems prototype: Orchard Scramble

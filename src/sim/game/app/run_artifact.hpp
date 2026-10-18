@@ -13,7 +13,7 @@ class ScenarioSession;
 
 namespace app {
 
-inline constexpr int kRunArtifactSchemaVersion = 2;
+inline constexpr int kRunArtifactSchemaVersion = 3;
 
 std::string run_content_digest(const std::filesystem::path& assets);
 

@@ -68,6 +68,9 @@
             "type": "string",
             "minLength": 1
           },
+          "albedo_tint": {
+            "$ref": "#/$defs/color"
+          },
           "drive_effect": {
             "type": "object",
             "additionalProperties": false,

@@ -55,8 +55,9 @@ The numbered stages later in this document describe the completed alpha baseline
 sequence here so that completed release work and future work cannot be confused.
 
 The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
-The active sequence is now **finish Bridge the Washout world commit/apply loop → playable graybox → fresh-player validation →
-visual and audio polish → experiment/fault framework**. [The acceptance contract](reference-platform.md) remains the
+The active sequence is now **fresh-player validation of Bridge the Washout → focused visual/audio revision →
+experiment/fault framework**. Its world commit, playable proof run, first visual pass, and deterministic evidence are
+implemented. [The acceptance contract](reference-platform.md) remains the
 source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
 static multi-collection loop is not accepted as the first polished Playground. Responsive-information work continues
 only when a concrete usability problem blocks play. Platform fidelity and broader sensors follow after the product
@@ -114,13 +115,14 @@ The next concrete work packages are:
  chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
  brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
  inherits another platform's evidence.
-5. **In progress:** graybox **Bridge the Washout**, a bounded construction puzzle followed by an autonomous physical
- proof run. The piece/socket schema, canonical plan/validation library, shared static-world geometry boundary, and
- prepared LSRM revision with constructed elevation/surface semantics are implemented. The next increment must
- atomically publish that revision with its matching Bullet bodies, then
- expose bounded placement and proof-run controls. Its surprise and choices must survive a fresh-player test before
- permanent art begins; the Vehicle Proving Ground remains an engineering sandbox and Orchard remains a systems
- prototype.
+5. **Implementation complete; human validation pending:** **Bridge the Washout** is a bounded construction puzzle
+ followed by an autonomous physical proof run. A Ready-state transaction publishes the validated plan to LSRM,
+ Bullet support/contact, LiDAR, planning, replay, and rendering. Two valid bridge surfaces create a grip/drag choice;
+ an overlong part is rejected without mutating the world. Headless and Run Artifact v3 prove map revision 2,
+ physical bridge contact, full traversal, success, and zero collision. The dark storm scene, real guardrails and
+ rubble, warning light, material contrast, 16-line point cloud, and bounded plan UI form the first presentation pass.
+ A fresh-player test still decides the next content revision; the Vehicle Proving Ground remains an engineering
+ sandbox and Orchard remains a systems prototype.
 6. Polish the approved loop, then generalize its experiment and fault-injection needs. Full SLAM and VLA remain
  deferred until a named experience provides acceptance criteria.
 
@@ -136,7 +138,7 @@ show the full explanation, the normal release checks pass, and no temporary capt
 
 ### M1 — Create the content direction and build its first graybox
 
-Status: **open — construction/world-geometry foundation complete; commit/apply graybox and fresh-player evidence remain**
+Status: **implementation gate complete — external fresh-player evidence remains**
 
 Start from player experience rather than the current feature list. Define a small content bible for a family of
 autonomy playgrounds: what fantasy the player enters, what high-level choices they make, what the robot owns, what
@@ -380,9 +382,9 @@ Add a small comparison command that rejects incompatible comparisons and reports
 
 The gate is reproduction of the recommended `lost_signal` result from its manifest plus a clear diff against one controlled alternative.
 
-Run Artifact v2 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
+Run Artifact v3 now records source/build/platform identity, a SHA-256 JSON-content manifest, authored condition,
 seed, runtime and physics backends, hardware, algorithm IDs, a canonical configuration digest, metrics, events,
-and the shared decision chain. `--reproduce` rejects incompatible content and restores the declared run.
+the shared decision chain, and constructed-world plan/contact/traversal evidence. `--reproduce` rejects incompatible content and restores the declared run.
 `tools/compare_runs.py` verifies both digests, forbids invariant changes, and requires each controlled variable to
 be named. A manifest reproduction matched every reported metric. Changing only
 `hardware.components.computer` remains the declared controlled variable for the comparison artifact. Exact metrics
@@ -404,10 +406,11 @@ Status: **complete**
 
 The release claim remains deliberately narrow: Lost Signal demonstrates deterministic simulation, inspectable autonomy, reusable runtime semantics, and a path toward hardware integration. Real-world transfer requires calibrated hardware trials and recorded evidence.
 
-The current Linux x86_64 Release build passes 87/87 tests, the 15/15 ROBOT-only gate, content validation, canonical
-content roundtrip, the 35/35 five-chassis Bullet proving matrix, and deterministic graphical smoke under Xvfb.
-ASan/UBSan also passes all 82 C++ tests and five Python wrapper gates on this revision. Portable Linux, macOS, and
-Windows CI remain publishing gates; local Linux evidence does not replace those hosted jobs.
+The current Linux x86_64 Release build passes 90/90 tests, content and locale validation, canonical content
+roundtrip, the five-chassis Bullet proving matrix, and a byte-identical Bridge screenshot repeat under Xvfb. The
+most recent sanitizer baseline predates this Bridge increment; ASan/UBSan remains the final frozen-milestone gate as
+planned. Portable Linux, macOS, and Windows CI remain publishing gates; local Linux evidence does not replace those
+hosted jobs.
 
 ## RO-1 post-baseline optimization backlog
 

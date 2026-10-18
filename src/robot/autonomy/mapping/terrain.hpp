@@ -18,6 +18,20 @@ struct HeightPatch {
  double grade_xy_per_m{0.0};
 };
 
+// A bounded, oriented support surface published by construction or another
+// runtime world provider.  It is separate from authored height patches so a
+// bridge can be added atomically without rewriting the source map.  Height is
+// measured at the surface centre and grade_along_local_x follows its long axis.
+struct SupportSurface {
+ std::string id;
+ Vec2 center;
+ double half_length_m{0.0};
+ double half_width_m{0.0};
+ double yaw_rad{0.0};
+ double center_height_m{0.0};
+ double grade_along_local_x{0.0};
+};
+
 struct TerrainSample {
  double height_m{0.0};
  double grade_x{0.0};
@@ -38,15 +52,19 @@ struct TerrainCapability {
 class TerrainModel {
  public:
  TerrainModel() = default;
- explicit TerrainModel(std::vector<HeightPatch> patches) : patches_(std::move(patches)) {}
+ explicit TerrainModel(std::vector<HeightPatch> patches,
+ std::vector<SupportSurface> supports = {})
+ : patches_(std::move(patches)), supports_(std::move(supports)) {}
 
  TerrainSample sample(Vec2 position) const;
  double traversal_cost(Vec2 from, Vec2 to, const TerrainCapability& capability) const;
  bool empty() const { return patches_.empty(); }
  const std::vector<HeightPatch>& patches() const { return patches_; }
+ const std::vector<SupportSurface>& supports() const { return supports_; }
 
  private:
  std::vector<HeightPatch> patches_;
+ std::vector<SupportSurface> supports_;
 };
 
 double longitudinal_grade(const TerrainSample& terrain, double heading_rad);

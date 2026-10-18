@@ -40,7 +40,8 @@
   ],
   "playgrounds": [
     "orchard_scramble",
-    "vehicle_proving_ground"
+    "vehicle_proving_ground",
+    "bridge_the_washout"
   ],
   "starting_inventory": [
     "tires.standard",
@@ -118,7 +119,8 @@
       "accent": "#DC8D75",
       "levels": [
         "orchard_scramble",
-        "vehicle_proving_ground"
+        "vehicle_proving_ground",
+        "bridge_the_washout"
       ]
     }
   ]

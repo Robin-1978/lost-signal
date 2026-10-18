@@ -48,6 +48,7 @@ struct SurfaceMaterialDefinition {
  std::string description;
  // Albedo texture for ground patches (empty = flat boxes, same as before).
  std::string texture_albedo;
+ std::array<unsigned char, 4> albedo_tint{255, 255, 255, 255};
  double friction_mu{1.0};
  double rolling_drag{0.0};
  double traction_scale{1.0};
@@ -437,6 +438,9 @@ struct ConstructionPieceDefinition {
  double max_span_m{0.0};
  std::vector<std::string> allowed_socket_types;
  std::array<unsigned char, 4> color{255, 255, 255, 255};
+ std::array<unsigned char, 4> top_color{255, 255, 255, 255};
+ std::array<unsigned char, 4> accent_color{39, 224, 202, 235};
+ std::string surface_pattern{"plate"};
  std::string model_3d;
 };
 
@@ -446,11 +450,27 @@ struct ConstructionSocketDefinition {
  Vec3 position_m;
 };
 
+struct ConstructionPlacementDefinition {
+ std::string instance_id;
+ std::string piece_id;
+ std::string start_socket;
+ std::string end_socket;
+};
+
+// Authored, bounded choices keep game content out of the framework. The core
+// validates their geometry with the same contract used by external plans.
+struct ConstructionPlanOptionDefinition {
+ std::string id;
+ std::vector<ConstructionPlacementDefinition> placements;
+};
+
 struct ConstructionScenarioDefinition {
  std::string id;
  double snap_tolerance_m{0.0};
  std::unordered_map<std::string, int> inventory;
  std::vector<ConstructionSocketDefinition> sockets;
+ std::string default_plan;
+ std::vector<ConstructionPlanOptionDefinition> plans;
 };
 
 struct LevelDefinition {

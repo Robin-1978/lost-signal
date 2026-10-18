@@ -135,14 +135,7 @@
           "minLength": 1
         },
         "goal_visual": {
-          "enum": [
-            "exit",
-            "stop_zone",
-            "calibration_pad",
-            "supply_station",
-            "signal_tower",
-            "packing_pad"
-          ]
+          "$ref": "#/$defs/id"
         },
         "time_limit_s": {
           "type": "number",
@@ -509,7 +502,9 @@
         "id",
         "snap_tolerance_m",
         "inventory",
-        "sockets"
+        "sockets",
+        "default_plan",
+        "plans"
       ],
       "properties": {
         "id": {
@@ -551,6 +546,54 @@
               },
               "position_m": {
                 "$ref": "#/$defs/vec3"
+              }
+            }
+          }
+        },
+        "default_plan": {
+          "$ref": "#/$defs/id"
+        },
+        "plans": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "placements"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "placements": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "instance_id",
+                    "piece_id",
+                    "start_socket",
+                    "end_socket"
+                  ],
+                  "properties": {
+                    "instance_id": {
+                      "$ref": "#/$defs/id"
+                    },
+                    "piece_id": {
+                      "$ref": "#/$defs/id"
+                    },
+                    "start_socket": {
+                      "$ref": "#/$defs/id"
+                    },
+                    "end_socket": {
+                      "$ref": "#/$defs/id"
+                    }
+                  }
+                }
               }
             }
           }

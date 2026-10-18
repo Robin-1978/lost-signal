@@ -11,7 +11,11 @@
     "/materials/3/description": "A shallow water layer leaves 35% of baseline traction, especially punishing for efficiency tires.",
     "/materials/4/title": "Mud",
     "/materials/4/description": "Saturated soil reduces traction and adds rolling resistance. Heavier payloads demand more torque and more careful routing.",
-    "/materials/5/title": "Steel Test Deck",
-    "/materials/5/description": "A stiff, low-loss metal surface whose joints transmit sharp impacts; wet steel offers limited adhesion."
+    "/materials/5/title": "Weathered Asphalt",
+    "/materials/5/description": "Dark, coarse emergency-road pavement with credible wet traction and clear LiDAR returns.",
+    "/materials/6/title": "High-grip Emergency Grating",
+    "/materials/6/description": "Coarse drained grating preserves more wet traction, with higher drag and vibration than smooth plate.",
+    "/materials/7/title": "Steel Test Deck",
+    "/materials/7/description": "A stiff, low-loss metal surface whose joints transmit sharp impacts; wet steel offers limited adhesion."
   }
 }

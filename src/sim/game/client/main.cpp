@@ -183,6 +183,18 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  return created;
  };
  auto mission = make_mission(presentation.level, presentation.default_build);
+ const auto commit_construction = [&](mission::ScenarioSession& run,
+ const std::string& requested_plan = std::string{}) {
+ if (!run.level().construction)
+ return;
+ const auto& construction = *run.level().construction;
+ const auto& option = requested_plan.empty() ? construction.default_plan : requested_plan;
+ std::string reason;
+ if (!run.commit_construction_plan(
+ mission::construction_plan_from_option(construction, option), &reason)) {
+ throw std::runtime_error("construction commit failed: " + reason);
+ }
+ };
  double next_region_autosave_s = 5.0;
  const auto persist_regional_world = [&] {
  if (!persist_progress || !mission || !mission->endless_mode())
@@ -200,6 +212,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
   if ((options.demo || !options.screenshot.empty()) && !options.chapter_view && !options.garage_view) {
    ui.use_recommended_build();
  mission = make_mission(presentation.level, ui.build());
+ commit_construction(*mission);
    mission->start();
    ui.set_screen(client::Screen::Running, mission.get());
    speed = options.screenshot.empty() ? 2.0 : 8.0;
@@ -395,6 +408,7 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
      }
     }
  mission = make_mission(ui.level_id(), ui.build());
+ commit_construction(*mission, actions.construction_plan);
     mission->start();
     ui.set_screen(client::Screen::Running, mission.get());
     paused = false;
