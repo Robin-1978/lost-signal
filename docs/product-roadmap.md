@@ -25,7 +25,7 @@ The runtime should support different kinds of play rather than reskinning every 
 | Recovery under constraints | **Floodplain Rescue:** collect scattered power cells and serve stranded equipment | task priority, energy reserve, route risk | scheduling, recharging, wet traction, payload and time windows |
 | Comparative challenge | **Robot Field Day:** run one seeded course with different chassis or planners | comparison pair and metric target | feasible-motion contracts, algorithm comparison, regression evidence |
 
-The first vertical slice after the release foundation is **Orchard Scramble** because collection, changing load,
+The first systems prototype after the release foundation was **Orchard Scramble** because collection, changing load,
 terrain choice, and fruit damage can create a physical and strategic loop that is unlike point-to-point delivery.
 The design is not limited to features the current runtime already exposes. If truthful apples, payload, terrain, or
 autonomous task ordering require a new contract, the runtime changes with the slice; unreleased interfaces receive
@@ -54,15 +54,13 @@ it does not name apples, orchard crates, or harvest strategies.
 The numbered stages later in this document describe the completed alpha baseline. All new work follows the milestone
 sequence here so that completed release work and future work cannot be confused.
 
-The immediate sequence is **instrumented proving ground → RO-2 service braking → 2.5D editor output → RO-3/4/5
-physical gates → refined play → visual and audio polish → architecture validation and the experiment framework**.
-The RO-1 and RO-2 typical
-reference gates and the 16-line LiDAR gate now pass; [the acceptance contract](reference-platform.md) remains the
-source of truth for the limits of those claims. Orchard Scramble is useful engineering evidence, but its static
-multi-collection loop is not accepted as the first polished Playground. The next content pass may change the format,
-map, actors, interactions, and required algorithms; it is not constrained to a reskinned delivery or collection
-mission. Responsive-information work continues only when a concrete usability problem blocks play. Platform fidelity
-and broader sensors follow after the product milestones, except for correctness fixes needed by the chosen content.
+The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
+The active sequence is now **Bridge the Washout construction contract → playable graybox → fresh-player validation →
+visual and audio polish → experiment/fault framework**. [The acceptance contract](reference-platform.md) remains the
+source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
+static multi-collection loop is not accepted as the first polished Playground. Responsive-information work continues
+only when a concrete usability problem blocks play. Platform fidelity and broader sensors follow after the product
+milestones, except for correctness fixes needed by the chosen content.
 
 The active implementation order is:
 
@@ -112,9 +110,10 @@ The next concrete work packages are:
  chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
  brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
  inherits another platform's evidence.
-5. Select and graybox one mechanically distinct Playground. Its surprise and choices must survive a fresh-player
- test before permanent art begins; the Vehicle Proving Ground remains an engineering sandbox rather than campaign
- content.
+5. **Selected, implementation next:** graybox **Bridge the Washout**, a bounded construction puzzle followed by an
+ autonomous physical proof run. Its world edits, map revision, chassis feasibility, and failure evidence share one
+ geometry source. Its surprise and choices must survive a fresh-player test before permanent art begins; the Vehicle
+ Proving Ground remains an engineering sandbox and Orchard remains a systems prototype.
 6. Polish the approved loop, then generalize its experiment and fault-injection needs. Full SLAM and VLA remain
  deferred until a named experience provides acceptance criteria.
 
@@ -130,7 +129,7 @@ show the full explanation, the normal release checks pass, and no temporary capt
 
 ### M1 — Create the content direction and build its first graybox
 
-Status: **open — Orchard is a systems prototype; its gameplay is not approved**
+Status: **open — Bridge the Washout selected; graybox and fresh-player evidence remain**
 
 Start from player experience rather than the current feature list. Define a small content bible for a family of
 autonomy playgrounds: what fantasy the player enters, what high-level choices they make, what the robot owns, what
@@ -139,16 +138,17 @@ collection, search, herding, construction, rescue, and comparative formats above
 loops and required engine capabilities. They may demand new mission structure, interactive objects, task allocation,
 terrain semantics, sensors, or algorithms; existing runtime limits do not veto a strong concept.
 
-Use **Orchard Scramble** as the first full graybox, then test whether it is actually playful before committing art.
-Write its encounter contract: player choices, autonomous responsibilities, scoring, failure and recovery, and a
-same-seed comparison. Implement autonomous apple-order selection, deterministic physical collection, increasing
-payload mass and center-of-gravity effects, and metrics for collected fruit, fruit integrity, time, energy, slip,
-and rollover margin. Build a complete loop with simple authored geometry, several surface and slope choices, a
-collection zone, weather pressure, and at least two viable builds. The player selects equipment and a collection
-priority; RO-1 performs the planning and driving. Runtime work follows the design and remains reusable where the
-second content format demonstrates the same need; mission-specific behavior stays in content or mission systems.
+Keep **Orchard Scramble** as the completed systems prototype and regression case. Build **Bridge the Washout** as the
+first candidate for permanent polish, then test whether it is actually playful before committing art. Its detailed
+loop, data/runtime boundaries, and acceptance gate are defined in [content direction](content-direction.md).
+Implement data-authored construction pieces and sockets, canonical plan hashing, transactional placement, one shared
+source for Bullet and LSRM geometry, a bounded placement UI, autonomous proof runs, and causal failure evidence.
+Build three crossing corridors with at least two viable solution families and meaningful chassis differences. The
+player commits a repair plan and high-level restore intent; the robot owns planning, braking, crossing, refusal, and
+recovery. Runtime work remains generic, while flood, bridge, repeater, inventory, and scoring semantics stay in data
+or simulation-only game systems.
 
-The existing chapters remain the Guided Campaign. Orchard and later systemic formats live in an optional Autonomy
+The existing chapters remain the Guided Campaign. All systemic formats live in an optional Autonomy
 Playgrounds collection with no campaign prerequisite; the player chooses between them rather than having the new
 mode inserted into the current story sequence. The detailed content and runtime contract is in
 [content direction](content-direction.md).
@@ -166,10 +166,10 @@ static pickups followed by a return, its physical surprise is weak, and its curr
 quality bar. M1 therefore remains open until a distinct mechanic and a fresh-player playtest justify the content.
 
 **Exit:** the content bible shows several mechanically distinct experiences and the engine capability each one
-would exercise. A fresh player can complete and understand the orchard loop; two builds or policies take visibly
-different, explainable approaches on the same seed; collection and payload effects come from simulation state; the
-run is deterministic and testable headlessly. Playtest evidence says the loop is worth polishing. No permanent art
-quality is required yet.
+would exercise. A fresh player can complete and understand the washout loop; two construction plans or chassis
+choices produce visibly different, explainable results on the same seed; construction changes physics and map state
+from one authoritative plan; the run is deterministic and testable headlessly. Playtest evidence says the loop is
+worth polishing. No permanent art quality is required yet.
 
 ### M2 — Give the approved Playground a visual and audio identity (blocked by M1)
 

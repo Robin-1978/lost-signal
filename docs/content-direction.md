@@ -56,7 +56,96 @@ design inputs, not validation evidence for this product.
 The second playground must exercise a different verb before a general content framework is declared stable. Reuse is
 earned when two experiences need the same semantic contract.
 
-## First graybox: Orchard Scramble
+## Selected vertical slice: Bridge the Washout
+
+Orchard Scramble remains a useful multi-goal, payload, and weather systems prototype. It is not the visual-polish
+target: its repeated pickup loop does not yet create the strong physical surprise required by the product promise.
+The next player-facing graybox is **Bridge the Washout**, selected because it creates a different verb, a visible
+world change, and an immediate relationship between a player's plan and autonomous motion.
+
+### Fantasy and learning question
+
+A flash flood has cut the only service road to a signal repeater. The field engineer has a small set of modular
+deck panels and support blocks. The player commits a repair plan; the world is rebuilt from that plan; then the
+selected robot must decide whether the route is traversable and drive it autonomously.
+
+The learning question is:
+
+> Why can a geometrically connected route still be impossible for a particular chassis, load, approach angle, or
+> traction limit?
+
+This is a construction puzzle followed by an autonomous proof run. It is not another delivery route with different
+scenery. The bridge placement changes collision geometry, elevation, slope, surface material, semantic connectivity,
+and the next immutable map revision before planning begins.
+
+### Three-minute loop
+
+1. **Read the washout.** One camera move reveals the start, broken road, water, two banks, limited panels, and the
+ repeater. The game shows panel length and support limits without exposing a wall of telemetry.
+2. **Commit a repair.** The player places or chooses a bounded arrangement of panels and supports, selects one
+ chassis/build, and predicts the likely failure or success reason.
+3. **Build the world.** Panels settle as physical, load-bearing collision objects. The LSRM-backed navigation view
+ publishes a new map revision derived from the same geometry.
+4. **Prove the route.** The player issues one high-level `restore repeater` intent. The robot plans, approaches,
+ brakes, crosses, and either reaches the repeater or refuses/recovers for a measured reason.
+5. **Explain and retry.** The debrief identifies the first binding constraint: disconnected map, excessive grade,
+ insufficient clearance, minimum turning radius, cross-slope/rollover risk, traction/braking limit, collision, or
+ successful margin. A retry changes one panel, support, chassis, tire, or payload while retaining the seed.
+
+### Graybox topology and choices
+
+The first layout provides three authored crossing corridors rather than one hidden solution:
+
+| Corridor | Construction tension | Chassis contrast |
+|---|---|---|
+| Short broken culvert | few panels, steep approach | compact differential/tracked builds can accept a tighter approach |
+| Wide shallow wash | more panels, low grade, wet bank | traction and braking dominate; longer vehicles have room to align |
+| Offset service ledge | one narrow turn and cross-slope | Ackermann radius conflicts with swerve/mecanum lateral alignment |
+
+The initial inventory supports at least two safe plans and several legible failures. Difficulty comes from choosing a
+tradeoff and observing the robot's physical proof, not from pixel-perfect placement. Panel endpoints snap to authored
+construction sockets in the first graybox; free placement is considered only after the bounded loop is enjoyable.
+
+### Reusable implementation contract
+
+- **Construction pieces are data.** A catalog entry declares geometry, mass, collision shape, top surface, friction,
+ support requirements, allowed sockets, and presentation asset. Scenario data declares inventory and valid placement
+ regions. C++ implements generic placement, validation, physics binding, and map publication; it does not name a
+ bridge, flood, or repeater.
+- **One source of geometry.** The committed piece transform creates both Bullet collision geometry and the next map
+ revision. Rendering, planning, and scoring may not maintain independent hand-authored copies.
+- **Revision before autonomy.** A proof run starts only after placement validation and atomic map publication. The run
+ artifact records the construction-plan hash, resulting map revision, selected build, algorithm IDs, and seed.
+- **Truthful feasibility.** Global planning may reject disconnected or kinematically impossible routes. Local
+ planning and trajectory validation retain final responsibility for footprint, braking, contact, and dynamic safety.
+- **No hidden success lane.** Mission data may define sockets and goals, but it cannot prescribe the robot path or a
+ chassis-specific success flag. Success comes from the normal map, planner, controller, and physical world.
+- **Deterministic editing.** The same authored layout and placement plan produce the same transforms, map package,
+ content hash, and headless result. Invalid or unsupported pieces fail before the world is partially modified.
+
+### M1 acceptance gate
+
+- A new player can describe the goal, commit a plan, start the autonomous proof, and identify the first binding
+ constraint without opening documentation.
+- At least two construction plans or chassis choices produce visibly different, correctly explained outcomes on the
+ same seed; at least two are valid solutions rather than one right answer and a set of traps.
+- Collision geometry, map elevation/surface data, planning, vehicle dynamics, scoring, replay, and the debrief agree
+ on the committed construction plan.
+- Success, refusal, loss of traction, contact, and rollover-risk outcomes are deterministic and work headlessly.
+- The Guided Campaign, Orchard prototype, and Vehicle Proving Ground remain available and unchanged in role.
+- A fresh-player test supports polishing the loop. Until that evidence exists, generated graybox assets remain
+ replaceable and M2 visual production does not begin.
+
+### Implementation order
+
+1. Add the construction-piece and socket schemas, canonical plan hashing, validation, and round-trip tests.
+2. Bind a committed plan to generic Bullet bodies and publish the derived LSRM map revision atomically.
+3. Add the three-corridor graybox, bounded placement UI, autonomous proof intent, result reasons, and headless input.
+4. Add deterministic fixtures for each feasibility reason and two successful solution families across the five
+ chassis without claiming every chassis can solve every plan.
+5. Run a fresh-player test, revise the loop, and approve or reject it for M2 visual/audio production.
+
+## Existing systems prototype: Orchard Scramble
 
 ### Fantasy and learning question
 
