@@ -81,9 +81,9 @@ The verification work proceeds with the product roadmap rather than as a separat
 split-friction, combined-slip, dynamic-rollover and systematic payload sweeps stay marked partial until they receive
 independent boundary fixtures. A successful 20-degree lesson
  does not close larger slope, curb, or payload claims.
-2. **Current architecture gate:** enforce the typed route contract and deterministic RO-1 mission regression after
- the platform gate passes. Ackermann and the other chassis remain outside this release evidence until each receives
- its own articulated gate.
+2. **Current architecture gate:** enforce the typed route contract and deterministic mission regression after the
+ platform gates pass. RO-1 through RO-5 now have separate articulated assemblies, chassis-specific invariants, and
+ independent seven-maneuver Bullet evidence; no platform inherits another platform's result.
 3. **Orchard prototype gate:** compare at least two validated builds on the same seed; validate multi-goal ordering,
  payload changes, terrain choice, and result-artifact identity.
 4. **Fault-injection gate:** make delay, drop, stale/out-of-order observations, actuator lag/saturation, and low
@@ -93,8 +93,8 @@ independent boundary fixtures. A successful 20-degree lesson
 6. **Optional HIL gate:** compare simulation, replay, and hardware providers through the same LSRI contracts before
  making a claim about that hardware target. This does not block the simulation and teaching roadmap.
 
-Multi-line LiDAR, solid-state LiDAR, SLAM, VLA, and multi-process transport enter this sequence only when a concrete
-learning or deployment question supplies their acceptance metric.
+The 16-line spinning LiDAR gate is complete. Solid-state LiDAR, SLAM, VLA, and multi-process transport enter this
+sequence only when a concrete learning or deployment question supplies their acceptance metric.
 
 ## Claim boundary
 

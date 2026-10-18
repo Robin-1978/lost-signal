@@ -27,11 +27,12 @@ For the graphical client, install the platform packages listed in the README and
 
 ## Where changes belong
 
-- `src/hw/`: chassis, actuator, contact, sensor, and hardware-abstraction behavior
-- `src/autonomy/`: localization, mapping, perception, behavior, global/local planning, and control
-- `src/mission/`: mission state, content loading, telemetry, replay, and scoring
-- `src/physics/`: physics interfaces and backends
-- `src/client/`: rendering and interactive UI
+- `src/robot/runtime/` and `src/robot/platform/`: LSRI messages, providers, capabilities, and deployable chassis contracts
+- `src/robot/control/` and `src/robot/autonomy/`: deployable control, localization, mapping, perception, behavior, and planning
+- `src/robot/executive/` and `src/robot/map_io/`: deployable task lifecycle and LSRM package I/O
+- `src/sim/hardware/`: virtual chassis, actuators, contacts, sensors, and physics backends
+- `src/sim/game/mission/` and `src/sim/game/scenario/`: authored world/game systems and fixed-step composition
+- `src/sim/game/client/`: rendering, audio, and interactive UI
 - `assets/`: data-driven content and player-facing source text
 - `assets/locales/en/`: default-English string overlays
 - `tests/new/`: C++ behavioral and integration tests

@@ -47,7 +47,11 @@ Locale files are sparse string-only overlays. They cannot change IDs, paths, see
 
 `src/robot/platform/`, `src/robot/control/`, and `src/robot/runtime/` contain deployable capabilities, kinematics, control algorithms, and LSRI contracts. `src/sim/hardware/vehicle/`, `src/sim/hardware/sensors/`, and `src/sim/hardware/physics/` contain virtual devices and physical plants. A chassis declares both its body command space and the lowest command level accepted by its provider. Algorithms consume these contracts without depending on Bullet or rendering.
 
-Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements; the current in-process simulator records latency as metadata and delivers the packet immediately. World truth remains inside physics and scenario ownership.
+Sensors carry sequence, sample time, declared latency, source, and frame ID. Noise affects the generated measurements.
+The current in-process simulator queues LiDAR observations until their deterministic availability time while preserving
+their acquisition timestamp. IMU, encoder, actuator-feedback, and localization paths currently carry their declared
+timing in the observation contract without a general delayed-delivery queue. World truth remains inside physics and
+scenario ownership.
 
 Authored scenario maps carry 2.5D terrain patches and surface materials, while `SimulatedPlatform` turns that
 content into 3D collision geometry and contact state. The deployable [Lost Signal Robot Map](robot-map.md) is a
@@ -207,11 +211,13 @@ and [SDFormat](http://sdformat.org/spec?ver=1.12&elem=link): visual, collision, 
 representations and origins. Lost Signal keeps a smaller native format rather than importing either middleware
 format into the runtime.
 
-RO-1 uses the articulated reference assembly: an elevated chassis, two powered wheel links, and a passive caster
-fork and wheel joined and solved by Bullet. Its encoder truth comes from physical joint state and its motor loop
-applies wheel-joint effort. The other chassis remain compact teaching proxies until they pass equivalent physical
-gates. Optional suspension or identified tire models remain platform-provider concerns and do not change planner
-commands.
+RO-1 uses an elevated chassis, two powered wheel links, and a passive caster fork and wheel. RO-2 uses bounded
+Ackermann knuckles, four rolling wheels, rear drive, and an independent service brake. RO-3 distributes two track
+commands over six driven road wheels, RO-4 uses four independently steered and driven modules, and RO-5 combines
+four driven wheels with a load-limited mecanum roller-contact provider. Bullet solves every articulated assembly;
+encoder truth comes from physical joint state and the motor loops apply joint effort. Each platform has its own
+physical acceptance gate. Optional suspension or identified tire, track, and roller models remain platform-provider
+concerns and do not change planner commands.
 
 ### Presentation
 
@@ -285,7 +291,11 @@ origin. In particular, the simulated IMU lives in `src/sim/hardware/sensors/`: i
 and owns bias, random walk, white noise, timestamps, latency, and sequence numbers. Mission code only schedules the
 device and publishes its observation.
 
-The simulation advances at a fixed step. Sensors have independent sample rates and declared latency. The current in-process provider delivers each generated packet immediately; a real-time or transport provider may schedule delivery from the same metadata. Determinism requires the same content, configuration, seed, backend, and build assumptions; cross-backend numeric identity is not promised.
+The simulation advances at a fixed step. Sensors have independent sample rates and declared latency. LiDAR uses a
+bounded deterministic delivery queue; the other current observation paths publish at their scheduler tick and retain
+timing metadata for downstream evidence. A real-time or transport provider may apply the same contracts to every
+device. Determinism requires the same content, configuration, seed, backend, and build assumptions; cross-backend
+numeric identity is not promised.
 
 ## Scheduling and concurrency
 

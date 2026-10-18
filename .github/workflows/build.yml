@@ -3,7 +3,7 @@ name: build
 on:
   push:
   pull_request:
- workflow_dispatch:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,7 +36,7 @@ jobs:
           git diff --exit-code -- assets/models assets/textures
 
   sanitizer:
- if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
