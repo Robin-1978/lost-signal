@@ -136,6 +136,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     abilities = _read(root / "abilities.json")
     strings = _read(root / "strings.json")
     audio_cues = _read(root / "audio" / "cues.json")
+    construction_pieces = _read(root / "construction_pieces.json")
 
     if (
         not levels
@@ -172,6 +173,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     _schema(abilities, schema_dir / "abilities.schema.json")
     _schema(strings, schema_dir / "strings.schema.json")
     _schema(audio_cues, schema_dir / "audio-cues.schema.json")
+    _schema(construction_pieces, schema_dir / "construction-pieces.schema.json")
     # String coverage: every tr("key") literal in client AND game code must
     # resolve (typos fail here, not on the debrief screen). Sim event sentences
     # live in strings.json too (event.*): player-facing text is content,
@@ -238,6 +240,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         *presentations,
         *robots,
         audio_cues,
+        construction_pieces,
     ]:
         _finite_numbers(doc.data, doc.path)
 
@@ -297,7 +300,28 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(f"{doc.path}:/id: id must match filename")
         map_by_id[map_id] = doc
 
-        materials = {m["id"] for m in surface_library.data["materials"]}
+    materials = {m["id"] for m in surface_library.data["materials"]}
+    piece_ids: set[str] = set()
+    for index, piece in enumerate(construction_pieces.data["pieces"]):
+        _register(
+            global_ids,
+            piece["id"],
+            f"{construction_pieces.path}:/pieces/{index}/id",
+        )
+        piece_ids.add(piece["id"])
+        if piece["top_surface"]["material"] not in materials:
+            raise ContentError(
+                f"{construction_pieces.path}:/pieces/{index}/top_surface/material: "
+                "unknown material"
+            )
+        model = piece["presentation"].get("model_3d")
+        if model and not (root / model).is_file():
+            raise ContentError(
+                f"{construction_pieces.path}:/pieces/{index}/presentation/model_3d: "
+                f"missing model '{model}'"
+            )
+
+    for doc in maps:
         for index, rect in enumerate(doc.data["surfaces"]):
             if rect["material"] not in materials:
                 raise ContentError(
@@ -318,12 +342,12 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     raise ContentError(
                         f"{doc.path}:/{collection}/{index}: box must have positive area inside map bounds"
                     )
+        permanent = [box for box in doc.data["obstacles"] if "active_in" not in box]
         for name, pose in doc.data["markers"].items():
             if not _inside(pose, size):
                 raise ContentError(
                     f"{doc.path}:/markers/{name}: marker is outside map bounds"
                 )
-            permanent = [box for box in doc.data["obstacles"] if "active_in" not in box]
             if any(_inside_box(pose, box) for box in permanent):
                 raise ContentError(
                     f"{doc.path}:/markers/{name}: marker is inside a permanent obstacle"
@@ -353,6 +377,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     )
 
     scene_by_id: dict[str, Document] = {}
+    prefabs_by_scene: dict[str, set[str]] = {}
     for doc in scenes:
         scene = doc.data
         scene_id = scene["id"]
@@ -437,12 +462,39 @@ def load_and_validate(root: Path) -> dict[str, Any]:
             raise ContentError(
                 f"{doc.path}:/floor/albedo_texture: missing texture '{floor_texture}'"
             )
+        prefabs_by_scene[scene_id] = prefab_ids
 
     for doc in maps:
-        if doc.data["scene_3d"] not in scene_by_id:
+        scene_id = doc.data["scene_3d"]
+        if scene_id not in scene_by_id:
             raise ContentError(
                 f"{doc.path}:/scene_3d: unknown scene '{doc.data['scene_3d']}'"
             )
+        object_ids: set[str] = set()
+        for object_index, world_object in enumerate(doc.data.get("world_objects", [])):
+            if world_object["id"] in object_ids:
+                raise ContentError(
+                    f"{doc.path}:/world_objects/{object_index}/id: duplicate world object"
+                )
+            object_ids.add(world_object["id"])
+            if world_object["prefab"] not in prefabs_by_scene[scene_id]:
+                raise ContentError(
+                    f"{doc.path}:/world_objects/{object_index}/prefab: unknown prefab "
+                    f"'{world_object['prefab']}'"
+                )
+            for collision_index, collision in enumerate(world_object["collisions"]):
+                if collision["material"] not in materials:
+                    raise ContentError(
+                        f"{doc.path}:/world_objects/{object_index}/collisions/"
+                        f"{collision_index}/material: unknown material "
+                        f"'{collision['material']}'"
+                    )
+            for active_id in world_object.get("active_in", []):
+                if active_id not in level_by_id:
+                    raise ContentError(
+                        f"{doc.path}:/world_objects/{object_index}/active_in: "
+                        f"unknown level '{active_id}'"
+                    )
 
     components: dict[str, tuple[str, dict[str, Any]]] = {}
     components_by_slot: dict[str, list[dict[str, Any]]] = {}
@@ -945,6 +997,20 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         map_doc = map_by_id.get(level["map"])
         if map_doc is None:
             raise ContentError(f"{doc.path}:/map: unknown map '{level['map']}'")
+        construction = level.get("construction")
+        if construction:
+            socket_ids: set[str] = set()
+            for socket_index, socket in enumerate(construction["sockets"]):
+                if socket["id"] in socket_ids:
+                    raise ContentError(
+                        f"{doc.path}:/construction/sockets/{socket_index}/id: duplicate socket"
+                    )
+                socket_ids.add(socket["id"])
+            for piece_id in construction["inventory"]:
+                if piece_id not in piece_ids:
+                    raise ContentError(
+                        f"{doc.path}:/construction/inventory: unknown piece '{piece_id}'"
+                    )
         environment = level.get("environment")
         if environment:
             times = [keyframe["time_s"] for keyframe in environment["keyframes"]]

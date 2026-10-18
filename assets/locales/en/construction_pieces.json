@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/pieces/0/title": "Short Steel Deck",
+    "/pieces/0/description": "A three-meter modular deck that requires full support at two compatible endpoints.",
+    "/pieces/1/title": "Long Steel Deck",
+    "/pieces/1/description": "A four-and-a-half-meter deck that crosses wider gaps at the cost of inventory and approach grade.",
+    "/pieces/2/title": "Support Beam",
+    "/pieces/2/description": "A rigid module between a foundation and deck support point; it is not a driveable surface."
+  }
+}

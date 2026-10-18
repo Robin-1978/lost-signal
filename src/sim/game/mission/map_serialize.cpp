@@ -4,11 +4,17 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
+
 namespace mission {
 namespace {
 
 nlohmann::ordered_json vec2(const sim::Vec2& value) {
  return {value.x, value.y};
+}
+
+nlohmann::ordered_json vec3(const Vec3& value) {
+ return {value.x, value.y, value.z};
 }
 
 nlohmann::ordered_json strings(const std::vector<std::string>& values) {
@@ -108,6 +114,34 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   }
   actors.push_back(std::move(item));
  }
+ nlohmann::ordered_json world_objects = nlohmann::ordered_json::array();
+ for (const auto& object : map.world_objects) {
+ nlohmann::ordered_json collisions = nlohmann::ordered_json::array();
+ for (const auto& collision : object.collisions) {
+ nlohmann::ordered_json item;
+ item["type"] = "box";
+ item["position_m"] = vec3(collision.position_m);
+ item["size_m"] = vec3(collision.size_m);
+ if (std::abs(collision.yaw_degrees) > 1e-12)
+ item["yaw_degrees"] = collision.yaw_degrees;
+ item["material"] = collision.material;
+ collisions.push_back(std::move(item));
+ }
+ nlohmann::ordered_json item;
+ item["id"] = object.id;
+ item["prefab"] = object.prefab;
+ item["position_m"] = vec3(object.position_m);
+ if (std::abs(object.scale.x - 1.0) > 1e-12 || std::abs(object.scale.y - 1.0) > 1e-12 ||
+ std::abs(object.scale.z - 1.0) > 1e-12) {
+ item["scale"] = vec3(object.scale);
+ }
+ if (std::abs(object.yaw_degrees) > 1e-12)
+ item["yaw_degrees"] = object.yaw_degrees;
+ item["collisions"] = std::move(collisions);
+ if (!object.active_in.empty())
+ item["active_in"] = strings(object.active_in);
+ world_objects.push_back(std::move(item));
+ }
  nlohmann::ordered_json root;
  root["schema_version"] = 1;
  root["id"] = map.id;
@@ -121,6 +155,9 @@ std::string serialize_map_canonical(const MapDefinition& map) {
  }
  if (!conflict_zones.empty()) {
   root["conflict_zones"] = std::move(conflict_zones);
+ }
+ if (!world_objects.empty()) {
+ root["world_objects"] = std::move(world_objects);
  }
  root["markers"] = std::move(markers);
  root["actors"] = std::move(actors);

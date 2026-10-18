@@ -1,4 +1,5 @@
 #include "sim/game/mission/deployable_map_adapter.hpp"
+#include "sim/game/mission/world_geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,34 @@ bool active(const std::vector<std::string>& levels, std::string_view level_id) {
 
 bool contains(sim::Vec2 point, sim::Vec2 min, sim::Vec2 max) {
  return point.x >= min.x && point.x < max.x && point.y >= min.y && point.y < max.y;
+}
+
+bool overlaps_cell(const ResolvedWorldCollision& collision,
+ double cell_min_x, double cell_min_y, double cell_max_x, double cell_max_y) {
+ const double cell_half_x = (cell_max_x - cell_min_x) * 0.5;
+ const double cell_half_y = (cell_max_y - cell_min_y) * 0.5;
+ const double dx = collision.center_m.x - (cell_min_x + cell_half_x);
+ const double dy = collision.center_m.y - (cell_min_y + cell_half_y);
+ const double box_half_x = collision.size_m.x * 0.5;
+ const double box_half_y = collision.size_m.y * 0.5;
+ const double cosine = std::cos(collision.yaw_rad);
+ const double sine = std::sin(collision.yaw_rad);
+
+ // Separating-axis test for an oriented collision box and an axis-aligned
+ // grid cell. Rasterizing the full world AABB would close valid passages
+ // around rotated rails and props.
+ if (std::abs(dx) > cell_half_x + std::abs(cosine) * box_half_x +
+ std::abs(sine) * box_half_y ||
+ std::abs(dy) > cell_half_y + std::abs(sine) * box_half_x +
+ std::abs(cosine) * box_half_y) {
+ return false;
+ }
+ const double local_x = cosine * dx + sine * dy;
+ const double local_y = -sine * dx + cosine * dy;
+ return std::abs(local_x) <= box_half_x + std::abs(cosine) * cell_half_x +
+ std::abs(sine) * cell_half_y &&
+ std::abs(local_y) <= box_half_y + std::abs(sine) * cell_half_x +
+ std::abs(cosine) * cell_half_y;
 }
 
 } // namespace
@@ -35,6 +64,7 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  grid.elevation_m.assign(cell_count, 0.0F);
  grid.surface_class.assign(cell_count, 0);
  grid.surface_classes = {"default"};
+ const auto world_collisions = resolve_world_collisions(map, level_id);
 
  std::map<std::string, std::uint16_t> surface_indices{{"default", 0}};
  for (const auto& surface : map.surfaces) {
@@ -59,6 +89,14 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  if (active(obstacle.active_in, level_id) && overlaps) {
  grid.occupancy[index] = 100;
  break;
+ }
+ }
+ if (grid.occupancy[index] < 50) {
+ for (const auto& collision : world_collisions) {
+ if (overlaps_cell(collision, cell_min_x, cell_min_y, cell_max_x, cell_max_y)) {
+ grid.occupancy[index] = 100;
+ break;
+ }
  }
  }
  for (const auto& surface : map.surfaces) {

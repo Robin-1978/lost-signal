@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <set>
 #include <vector>
 
 #define REQUIRE(condition) \
@@ -26,6 +27,7 @@ mission::MapDefinition empty_map(const mission::MapDefinition& source) {
  map.id = "ro1_lidar_acceptance";
  map.size_m = {40.0, 30.0};
  map.obstacles.clear();
+ map.world_objects.clear();
  map.surfaces.clear();
  map.terrain.clear();
  map.actors.clear();
@@ -328,6 +330,50 @@ int main() {
  REQUIRE(!out_of_range.hit[0]);
  REQUIRE(out_of_range.ranges[0] == lidar->range_m);
  REQUIRE(out_of_range.intensities[0] == 0.0);
+
+ // A data-authored world object is one physical entity: Bullet and both the
+ // planar and multibeam LiDAR paths observe the same collision proxy. The
+ // material reflectivity also owns the return intensity.
+ auto world_map = empty_map(source_map);
+ mission::WorldCollisionDefinition world_collision;
+ world_collision.position_m = {0.0, 0.0, 1.0};
+ world_collision.size_m = {0.4, 1.0, 2.0};
+ world_collision.material = "steel_deck";
+ world_collision.lidar_reflectivity = 0.82;
+ mission::WorldObjectDefinition world_object;
+ world_object.id = "lidar-rail";
+ world_object.prefab = "prefab.test";
+ world_object.position_m = {lidar_x + 2.0, lidar_y, 0.0};
+ world_object.collisions.push_back(world_collision);
+ world_map.world_objects.push_back(world_object);
+ sim::platform::SimulatedPlatform world_platform(
+ world_map, source_level, robot, caps_for(robot), terrain, spawn, 0.0,
+ robot.mass_kg, robot.center_of_mass_height_m, robot.yaw_inertia_kgm2);
+ const auto world_scan = world_platform.scan_lidar(
+ lidar->rays, lidar->range_m, spawn, 0.0, kStampS, scan_period_s, return_model);
+ REQUIRE(world_scan.static_environment.hit[0]);
+ const auto world_lidar = world_platform.lookup_transform("map", "lidar_link");
+ REQUIRE(world_lidar);
+ const double world_object_range = world_object.position_m.x - 0.2 -
+ world_lidar->translation_m.x;
+ REQUIRE(std::abs(world_scan.static_environment.ranges[0] - world_object_range) < 1e-3);
+ const double measured_world_object_range = world_scan.static_environment.ranges[0];
+ const double expected_intensity = 0.82 /
+ (1.0 + return_model.distance_attenuation_per_m2 *
+ measured_world_object_range * measured_world_object_range);
+ REQUIRE(std::abs(world_scan.static_environment.intensities[0] -
+ expected_intensity) < 1e-6);
+
+ const auto world_cloud = world_platform.scan_lidar_point_cloud(
+ multibeam->rays, multibeam->vertical_angles_rad, multibeam->range_m,
+ spawn, 0.0, kStampS, 1.0 / multibeam->scan_hz, return_model);
+ std::set<std::uint16_t> rail_rings;
+ for (const auto& point : world_cloud.static_environment.points) {
+ if (std::abs(point.x_m - measured_world_object_range) < 0.01 &&
+ std::abs(point.y_m) < 1e-3)
+ rail_rings.insert(point.ring);
+ }
+ REQUIRE(rail_rings.size() >= 4);
 
  std::cout << "RO-1 planar LiDAR acceptance: " << lidar->rays << " rays @ "
  << lidar->scan_hz << " Hz, sample cadence="

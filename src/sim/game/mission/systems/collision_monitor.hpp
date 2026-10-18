@@ -12,6 +12,7 @@ enum class CollisionBackend { Occupancy, RigidBody };
 struct CollisionBox {
  sim::Vec2 min;
  sim::Vec2 max;
+ double yaw_rad{0.0};
 };
 
 struct CollisionActorObservation {

@@ -1611,6 +1611,14 @@ void SceneRenderer3D::draw_actor(const mission::ActorSnapshot& actor, bool waiti
 
 void SceneRenderer3D::draw_environment(const mission::PresentationFrameView& mission,
                                        const mission::SceneDefinition& scene) const {
+ for (const auto& object : mission.map_definition().world_objects) {
+ if (!mission::active_in_level(object.active_in, mission.level().id))
+ continue;
+ const auto prefab = scene.prefabs.find(object.prefab);
+ if (prefab == scene.prefabs.end())
+ continue;
+ draw_prefab(prefab->second, object.position_m, object.scale, object.yaw_degrees);
+ }
  for (const auto& instance : scene.instances) {
   if (!mission::active_in_level(instance.active_in, mission.level().id))
    continue;

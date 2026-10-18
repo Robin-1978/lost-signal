@@ -163,6 +163,7 @@ class SimulatedPlatform {
  bool articulated_{false};
  std::vector<::sim::physics::BodyHandle> terrain_bodies_;
  std::vector<::sim::physics::BodyHandle> obstacle_bodies_;
+ std::map<std::uint32_t, double> obstacle_reflectivity_;
  std::map<std::string, ::sim::physics::BodyHandle> actor_bodies_;
  std::map<std::string, double> actor_radii_m_;
  std::map<std::string, double> actor_heights_m_;

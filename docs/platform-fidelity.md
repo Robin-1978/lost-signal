@@ -86,7 +86,9 @@ unloaded command-derived force. No articulated chassis injects a commanded body 
 
 Planning occupancy and physical contact remain separate evidence. Global and local costmaps may conservatively
 inflate authored obstacles by the footprint, localization allowance, and grid resolution. The analytic Domain plant
-tests its circular footprint against continuous authored box geometry, while Bullet uses rigid contacts. A coarse
+tests its circular footprint against continuous authored box geometry, including oriented `world_object` collision
+boxes, while Bullet uses the same boxes as rigid contacts. Occupancy rasterization uses box-versus-cell separating
+axes rather than filling a rotated object's world AABB. A coarse
 raster cell therefore cannot manufacture a physical collision at a geometrically clear box corner. Minimum-risk
 recovery may leave an already-entered soft planning margin, including a bounded reverse maneuver for differential
 and tracked chassis, but every sample must remain outside the physical collision geometry.
@@ -173,16 +175,18 @@ constraint coefficients do not cross that content boundary.
 ### LiDAR providers
 
 The production LiDAR is already more than a 2D grid query. A named `lidar_link` emits each ray into the Bullet 3D
-collision world. Terrain, static geometry, and moving actors participate in occlusion. Each ray receives its own
+collision world. Terrain, static geometry, unified world objects, and moving actors participate in occlusion. A world
+object's resolved collision proxy is shared with contact and its surface material supplies normalized reflectivity.
+Each ray receives its own
 sample time over the scan period, so vehicle motion distorts a scan; an estimated-motion path produces the deskewed
 static comparison. The return model includes first-hit range, a normalized synthetic intensity, fixed bias, white
 noise, range quantization, seeded dropout, timestamp, source, sequence, and frame.
 
-Its current limits are explicit:
+The planar profile's current limits are explicit:
 
 - one horizontal scan plane;
 - a single first return;
-- coarse terrain/static/actor reflectivity instead of material and wavelength calibration;
+- normalized surface-material/static/actor reflectivity instead of wavelength calibration;
 - constant Gaussian range noise and constant dropout probability;
 - no beam divergence, intensity saturation, temperature drift, or transport jitter;
 - the shipped standard profile uses a 0.2 m invalid near field and 5 mm quantization, while fixed bias and base

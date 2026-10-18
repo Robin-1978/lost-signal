@@ -517,6 +517,7 @@
       "required": [
         "id",
         "prefab",
+        "role",
         "position_m"
       ],
       "properties": {
@@ -525,6 +526,9 @@
         },
         "prefab": {
           "$ref": "#/$defs/id"
+        },
+        "role": {
+          "const": "visual_only"
         },
         "position_m": {
           "$ref": "#/$defs/vec3"

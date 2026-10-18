@@ -342,6 +342,33 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   insert_unique(catalog.task_policies_, std::move(policy), task_policies_path);
  }
 
+ {
+ const auto path = catalog.root_ / "construction_pieces.json";
+ const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
+ require_schema_v1(value, path);
+ for (const auto& item : value.at("pieces")) {
+ const auto& collision = item.at("collision");
+ const auto& support = item.at("support");
+ const auto& presentation = item.at("presentation");
+ ConstructionPieceDefinition piece;
+ piece.id = item.at("id").get<std::string>();
+ piece.title = item.at("title").get<std::string>();
+ piece.description = item.at("description").get<std::string>();
+ piece.size_m = vec3(collision.at("size_m"));
+ piece.mass_kg = item.at("mass_kg").get<double>();
+ piece.surface_material = item.at("top_surface").at("material").get<std::string>();
+ piece.required_endpoint_contacts = support.at("required_endpoint_contacts").get<int>();
+ piece.max_span_m = support.at("max_span_m").get<double>();
+ piece.allowed_socket_types = item.at("allowed_socket_types").get<std::vector<std::string>>();
+ piece.color = rgba(presentation.at("color").get<std::string>());
+ piece.model_3d = presentation.value("model_3d", std::string{});
+ if (!piece.model_3d.empty() && !std::filesystem::is_regular_file(catalog.root_ / piece.model_3d)) {
+ throw ContentError(path.string() + ": missing construction model '" + piece.model_3d + "'");
+ }
+ insert_unique(catalog.construction_pieces_, std::move(piece), path);
+ }
+ }
+
  for (const auto& path : json_files(catalog.root_ / "levels")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
   require_schema_v1(value, path);
@@ -527,6 +554,29 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  level.maneuvers.push_back(std::move(maneuver));
  }
  }
+ if (const auto construction = value.find("construction"); construction != value.end()) {
+ ConstructionScenarioDefinition scenario;
+ scenario.id = construction->at("id").get<std::string>();
+ scenario.snap_tolerance_m = construction->at("snap_tolerance_m").get<double>();
+ scenario.inventory = construction->at("inventory").get<std::unordered_map<std::string, int>>();
+ std::set<std::string> socket_ids;
+ for (const auto& item : construction->at("sockets")) {
+ ConstructionSocketDefinition socket{
+ item.at("id").get<std::string>(),
+ item.at("type").get<std::string>(),
+ vec3(item.at("position_m")),
+ };
+ if (!socket_ids.insert(socket.id).second)
+ throw ContentError(path.string() + ": duplicate construction socket '" + socket.id + "'");
+ scenario.sockets.push_back(std::move(socket));
+ }
+ for (const auto& [piece_id, count] : scenario.inventory) {
+ if (count <= 0 || catalog.construction_pieces_.find(piece_id) == catalog.construction_pieces_.end()) {
+ throw ContentError(path.string() + ": invalid construction inventory piece '" + piece_id + "'");
+ }
+ }
+ level.construction = std::move(scenario);
+ }
   insert_unique(catalog.levels_, std::move(level), path);
  }
 
@@ -666,6 +716,50 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    }
    map.conflict_zones.push_back(std::move(zone));
   }
+ std::set<std::string> world_object_ids;
+ for (const auto& item : value.value("world_objects", nlohmann::json::array())) {
+ WorldObjectDefinition object;
+ object.id = item.at("id").get<std::string>();
+ if (!world_object_ids.insert(object.id).second) {
+ throw ContentError(path.string() + ": duplicate world object '" + object.id + "'");
+ }
+ object.prefab = item.at("prefab").get<std::string>();
+ object.position_m = vec3(item.at("position_m"));
+ object.scale = vec3(item.value("scale", json::array({1.0, 1.0, 1.0})));
+ if (!(object.scale.x > 0.0 && object.scale.y > 0.0 && object.scale.z > 0.0)) {
+ throw ContentError(path.string() + ": world object '" + object.id + "' has invalid scale");
+ }
+ object.yaw_degrees = item.value("yaw_degrees", 0.0);
+ object.active_in = item.value("active_in", std::vector<std::string>{});
+ for (const auto& active_id : object.active_in) {
+ (void)catalog.level(active_id);
+ }
+ for (const auto& collision : item.at("collisions")) {
+ if (collision.at("type").get<std::string>() != "box") {
+ throw ContentError(path.string() + ": world object '" + object.id +
+ "' uses an unsupported collision type");
+ }
+ const auto material = collision.at("material").get<std::string>();
+ const auto& surface = catalog.surface_material(material);
+ const auto size_m = vec3(collision.at("size_m"));
+ if (!(size_m.x > 0.0 && size_m.y > 0.0 && size_m.z > 0.0)) {
+ throw ContentError(path.string() + ": world object '" + object.id +
+ "' has invalid collision size");
+ }
+ object.collisions.push_back({
+ vec3(collision.at("position_m")),
+ size_m,
+ collision.value("yaw_degrees", 0.0),
+ material,
+ surface.friction_mu,
+ surface.rolling_drag,
+ surface.normal_stiffness_Npm,
+ surface.normal_damping_Nspm,
+ surface.lidar_reflectivity,
+ });
+ }
+ map.world_objects.push_back(std::move(object));
+ }
   for (auto it = value.at("markers").begin(); it != value.at("markers").end(); ++it) {
    map.markers.emplace(it.key(), pose(it.value()));
   }
@@ -868,9 +962,15 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    if (!instance_ids.insert(instance_id).second) {
     throw ContentError(path.string() + ": duplicate scene instance '" + instance_id + "'");
    }
+ const auto role = instance_value.at("role").get<std::string>();
+ if (role != "visual_only") {
+ throw ContentError(path.string() + ": scene instance '" + instance_id +
+ "' must declare role 'visual_only'");
+ }
    scene.instances.push_back({
      instance_id,
      instance_value.at("prefab").get<std::string>(),
+ role,
      vec3(instance_value.at("position_m")),
      vec3(instance_value.value("scale", json::array({1.0, 1.0, 1.0}))),
      instance_value.value("yaw_degrees", 0.0),
@@ -1484,7 +1584,13 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
   }
   (void)catalog.map(level.map);
   const auto& map = catalog.map(level.map);
-  (void)catalog.scene(map.scene_3d);
+ const auto& scene = catalog.scene(map.scene_3d);
+ for (const auto& object : map.world_objects) {
+ if (!scene.prefabs.contains(object.prefab)) {
+ throw ContentError("map '" + map.id + "' world object '" + object.id +
+ "' references unknown prefab '" + object.prefab + "'");
+ }
+ }
   if (!map.markers.count(level.objective.spawn) || !map.markers.count(level.objective.goal) ||
       (!level.objective.via.empty() && !map.markers.count(level.objective.via))) {
    throw ContentError("level '" + id + "' references an unknown map marker");
@@ -1494,6 +1600,13 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  throw ContentError("level '" + id + "' maneuver '" + maneuver.id +
  "' references an unknown map marker");
  }
+ }
+ }
+ for (const auto& [id, piece] : catalog.construction_pieces_) {
+ (void)id;
+ if (catalog.surface_materials_.find(piece.surface_material) == catalog.surface_materials_.end()) {
+ throw ContentError("construction piece '" + piece.id + "' references unknown surface material '" +
+ piece.surface_material + "'");
  }
  }
  if (experience_ids.size() != catalog.levels_.size()) {
@@ -1577,6 +1690,14 @@ const ComponentDefinition& ContentCatalog::component(const std::string& id) cons
  const auto found = components_.find(id);
  if (found == components_.end()) {
   throw ContentError("unknown component '" + id + "'");
+ }
+ return found->second;
+}
+
+const ConstructionPieceDefinition& ContentCatalog::construction_piece(const std::string& id) const {
+ const auto found = construction_pieces_.find(id);
+ if (found == construction_pieces_.end()) {
+ throw ContentError("unknown construction piece '" + id + "'");
  }
  return found->second;
 }

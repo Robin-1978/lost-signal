@@ -1,4 +1,5 @@
 #include "sim/game/platform/simulated_platform.hpp"
+#include "sim/game/mission/world_geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -114,6 +115,29 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
  obstacle_bodies_.push_back(world_->spawn(body));
+ }
+
+ const auto world_collisions = mission::resolve_world_collisions(map_, level_.id);
+ for (const auto& resolved : world_collisions) {
+ ::sim::physics::BodySpec body;
+ body.shape = ::sim::physics::ShapeKind::Box;
+ body.half_extents_m = {
+ resolved.size_m.x * 0.5,
+ resolved.size_m.y * 0.5,
+ resolved.size_m.z * 0.5,
+ };
+ body.position_m = {resolved.center_m.x, resolved.center_m.y, resolved.center_m.z};
+ body.rotation = ::sim::physics::quaternion_from_euler(0.0, 0.0, resolved.yaw_rad);
+ body.friction = resolved.friction_mu;
+ body.rolling_friction = resolved.rolling_drag;
+ body.contact_stiffness_Npm = resolved.normal_stiffness_Npm;
+ body.contact_damping_Nspm = resolved.normal_damping_Nspm;
+ body.collision_group = ::sim::physics::collision_layer::StaticObstacle;
+ body.collision_mask = static_cast<::sim::physics::CollisionMask>(
+ ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
+ const auto handle = world_->spawn(body);
+ obstacle_bodies_.push_back(handle);
+ obstacle_reflectivity_[handle.value] = resolved.lidar_reflectivity;
  }
 
  const auto ground = terrain_.sample(spawn);
@@ -588,7 +612,12 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  break;
  }
  }
- else if (is_static_obstacle(hit.body)) reflectivity = return_model.obstacle_reflectivity;
+ else if (is_static_obstacle(hit.body)) {
+ const auto material = obstacle_reflectivity_.find(hit.body.value);
+ reflectivity = material == obstacle_reflectivity_.end()
+ ? return_model.obstacle_reflectivity
+ : material->second;
+ }
  else if (!actor_for(hit.body).empty()) reflectivity = return_model.actor_reflectivity;
  const double attenuation = 1.0 / (1.0 + return_model.distance_attenuation_per_m2 *
  hit.distance_m * hit.distance_m);
@@ -749,7 +778,10 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  break;
  }
  } else if (is_static_obstacle(hit.body)) {
- reflectivity = return_model.obstacle_reflectivity;
+ const auto material = obstacle_reflectivity_.find(hit.body.value);
+ reflectivity = material == obstacle_reflectivity_.end()
+ ? return_model.obstacle_reflectivity
+ : material->second;
  } else if (!actor_for(hit.body).empty()) {
  reflectivity = return_model.actor_reflectivity;
  }

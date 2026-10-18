@@ -151,8 +151,10 @@ Authored simulation terrain is 2.5D: terrain patches define height, two-axis gra
 definitions provide friction, rolling drag, and traction. Bullet turns them into a 3D collision world. The
 deployable [Lost Signal Robot Map](docs/robot-map.md) is a separate layered contract. Its global authority may be a
 compact occupancy/elevation raster or only vector, topology, and semantic data; perception and map adapters derive
-bounded rolling maps for local planning. The current LiDAR is a mounted single-plane scanner that raycasts the 3D
-world, so terrain, static geometry, and moving actors occlude and return measurements according to their 3D poses.
+bounded rolling maps for local planning. Physical `world_object` data is shared by rendering, Bullet, map projection,
+and LiDAR; purely decorative scene instances are explicitly marked `visual_only`. The planar and 16-line LiDAR
+profiles raycast the 3D world, so terrain, static structures, and moving actors occlude and return measurements from
+their physical 3D poses and surface-material response.
 
 Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include minimum/maximum range, motion distortion, estimated-motion deskew, configurable first-return intensity, bias, white noise, quantization, latency metadata, and missing returns. The IMU configures noise density and bandwidth, then derives per-sample noise before applying startup bias and random walk. Encoders are quantized by counts per revolution. These effects alter observations rather than hidden world truth.
 

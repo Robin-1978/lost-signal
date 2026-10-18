@@ -195,6 +195,308 @@
       "roughness": 0.025
     }
   ],
+  "world_objects": [
+    {
+      "id": "assembly_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        1.5,
+        3.0,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "wet_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        3.3,
+        15.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "wet_drain",
+      "prefab": "prefab.drainage_unit",
+      "position_m": [
+        11.3,
+        10.5,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.3
+          ],
+          "size_m": [
+            0.95,
+            0.55,
+            0.6
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "sand_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        14.3,
+        15.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "gravel_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        25.3,
+        15.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "steel_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        36.3,
+        15.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "mud_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        14.3,
+        7.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "ramp_low_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        3.4,
+        21.8,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "ramp_high_beacon",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        18.8,
+        22.0,
+        1.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "cross_slope_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        28.3,
+        26.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "rough_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        40.3,
+        26.6,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "finish_beacon_visual",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        44.0,
+        30.0,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    }
+  ],
   "markers": {
     "assembly_pad": [
       3.0,

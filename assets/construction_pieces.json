@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "pieces": [
+    {
+      "id": "construction.deck_short",
+      "title": "短跨钢桥面",
+      "description": "三米模块化桥面，必须由两个兼容端点完整支承。",
+      "collision": {
+        "type": "box",
+        "size_m": [
+          3.0,
+          1.2,
+          0.16
+        ]
+      },
+      "mass_kg": 180.0,
+      "top_surface": {
+        "material": "steel_deck"
+      },
+      "support": {
+        "required_endpoint_contacts": 2,
+        "max_span_m": 3.0
+      },
+      "allowed_socket_types": [
+        "bank_anchor",
+        "support_top"
+      ],
+      "presentation": {
+        "color": "#77878D"
+      }
+    },
+    {
+      "id": "construction.deck_long",
+      "title": "长跨钢桥面",
+      "description": "四米半桥面能跨越更宽缺口，但库存和接近坡度更难安排。",
+      "collision": {
+        "type": "box",
+        "size_m": [
+          4.5,
+          1.2,
+          0.18
+        ]
+      },
+      "mass_kg": 290.0,
+      "top_surface": {
+        "material": "steel_deck"
+      },
+      "support": {
+        "required_endpoint_contacts": 2,
+        "max_span_m": 4.5
+      },
+      "allowed_socket_types": [
+        "bank_anchor",
+        "support_top"
+      ],
+      "presentation": {
+        "color": "#697B83"
+      }
+    },
+    {
+      "id": "construction.support_beam",
+      "title": "支承梁",
+      "description": "连接地基与桥面支承点的刚性模块，不提供可行驶表面。",
+      "collision": {
+        "type": "box",
+        "size_m": [
+          1.5,
+          0.3,
+          0.3
+        ]
+      },
+      "mass_kg": 95.0,
+      "top_surface": {
+        "material": "steel_deck"
+      },
+      "support": {
+        "required_endpoint_contacts": 2,
+        "max_span_m": 1.5
+      },
+      "allowed_socket_types": [
+        "ground_anchor",
+        "support_top"
+      ],
+      "presentation": {
+        "color": "#59666B"
+      }
+    }
+  ]
+}

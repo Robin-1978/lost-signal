@@ -63,11 +63,25 @@ SLAM backend, survey conversion, or HD-map bridge can publish the same immutable
 checksummed `.lsmap` package as well as its complete scenario source. Actors, rendering materials, scripts, and
 physics truth never enter the Robot Map.
 
-The shipped LiDAR is a single-plane scanner mounted in a named 3D frame. In the
-production path it raycasts the 3D physics world against terrain, static geometry, and dynamic actors, includes
-scan-time robot motion, and synthesizes intensity from hit normal, body class, and distance before applying the
-declared bias, noise, quantization, and dropout model. It is not a multi-beam 3D point-cloud sensor, and its three
-body-class reflectivities are not calibrated material optics.
+Static scene geometry follows one entity contract. `MapDefinition::world_objects` owns a stable ID, prefab transform,
+one or more local collision boxes, active-level filter, and material. The same resolved transforms drive the renderer,
+Bullet bodies, planar and multi-line LiDAR ray hits, material reflectivity, oriented occupancy rasterization, and the
+continuous collision monitor. A scene instance outside that contract must declare `role: visual_only`; it is suitable
+for paint, warning strips, and presentation cues and cannot masquerade as a wall, railing, tree, or crate. This mirrors
+the visual/collision separation in SDFormat while preventing independently placed visual and physical copies.
+
+The current collision proxies are authored boxes rather than triangle meshes, cylinders, or convex decomposition.
+They are deliberately inspectable and deterministic, but must be checked against each visible asset. The repository
+does not yet ship a SLAM backend or landmark extractor. It now supplies the prerequisite sensor-consistent static
+features: a SLAM implementation can consume timestamped LiDAR observations of the same structures that constrain
+physics, while the authored LSRM map remains a separate reference/provider output rather than hidden SLAM input.
+
+The shipped planar and 16-line LiDAR profiles are mounted in named 3D frames. In the
+production path they raycast the 3D physics world against terrain, static world objects, legacy authored boxes, and dynamic actors, include
+scan-time robot motion, and synthesize intensity from hit normal, body class, and distance before applying the
+declared bias, noise, quantization, dropout, and delivery-latency model. Static world objects resolve reflectivity from
+their surface material. The values remain normalized teaching responses rather than calibrated wavelength-dependent
+material optics.
 
 ### Algorithms
 

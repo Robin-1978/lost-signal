@@ -141,6 +141,260 @@
       ]
     }
   ],
+  "world_objects": [
+    {
+      "id": "launch_beacon_low",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        3.5,
+        0.55,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "slope_launch"
+      ]
+    },
+    {
+      "id": "launch_beacon_high",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        18.4,
+        1.25,
+        2.184
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "slope_launch"
+      ]
+    },
+    {
+      "id": "launch_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        4.0,
+        4.65,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "slope_launch"
+      ]
+    },
+    {
+      "id": "rain_drain_low",
+      "prefab": "prefab.drainage_unit",
+      "position_m": [
+        2.0,
+        4.65,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.3
+          ],
+          "size_m": [
+            0.95,
+            0.55,
+            0.6
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "rain_descent"
+      ]
+    },
+    {
+      "id": "rain_beacon_high",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        18.4,
+        5.45,
+        2.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "rain_descent"
+      ]
+    },
+    {
+      "id": "rain_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        4.0,
+        10.2,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "rain_descent"
+      ]
+    },
+    {
+      "id": "cross_beacon_a",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        1.3,
+        9.0,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "cross_slope"
+      ]
+    },
+    {
+      "id": "cross_beacon_b",
+      "prefab": "prefab.survey_beacon",
+      "position_m": [
+        18.7,
+        13.3,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.76
+          ],
+          "size_m": [
+            0.34,
+            0.34,
+            1.52
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "cross_slope"
+      ]
+    },
+    {
+      "id": "cross_sign",
+      "prefab": "prefab.test_sign",
+      "position_m": [
+        9.5,
+        13.35,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.72
+          ],
+          "size_m": [
+            0.75,
+            0.15,
+            1.44
+          ],
+          "material": "steel_deck"
+        }
+      ],
+      "active_in": [
+        "cross_slope"
+      ]
+    }
+  ],
   "markers": {
     "slope_start": [
       2.0,

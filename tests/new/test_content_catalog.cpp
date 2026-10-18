@@ -237,9 +237,12 @@ int main() {
  CHECK(map.actors[2].id == "forklift_finale");
  CHECK(map.actors[2].dormant_until_summoned);
  CHECK(map.scene_3d == "scene.research_base");
+ CHECK(map.world_objects.size() == 27);
  const auto& scene = catalog.scene(map.scene_3d);
  CHECK(scene.prefabs.size() == 8);
- CHECK(scene.instances.size() == 31);
+ CHECK(scene.instances.size() == 4);
+ CHECK(std::all_of(scene.instances.begin(), scene.instances.end(),
+ [](const auto& instance) { return instance.role == "visual_only"; }));
  CHECK(scene.floor.albedo_texture == "textures/environment/concrete_floor.png");
  CHECK(std::abs(scene.camera.fov_degrees - 41.0) < 1e-9);
  CHECK(std::abs(scene.camera.event_shot.fov_degrees - 38.0) < 1e-9);

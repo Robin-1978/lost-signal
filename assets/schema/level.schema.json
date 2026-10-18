@@ -414,6 +414,9 @@
         "playground"
       ]
     },
+    "construction": {
+      "$ref": "#/$defs/construction"
+    },
     "environment": {
       "$ref": "#/$defs/environment"
     },
@@ -483,6 +486,76 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9_.-]+$"
+    },
+    "vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false
+    },
+    "construction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "snap_tolerance_m",
+        "inventory",
+        "sockets"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "snap_tolerance_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.25
+        },
+        "inventory": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "sockets": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "position_m"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "type": {
+                "$ref": "#/$defs/id"
+              },
+              "position_m": {
+                "$ref": "#/$defs/vec3"
+              }
+            }
+          }
+        }
+      }
     },
     "environment": {
       "type": "object",

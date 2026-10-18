@@ -523,10 +523,9 @@ int main() {
  // One controlled change creates a repeatable tradeoff: both builds use the
  // same hardware and careful policy except for the computer. The longer
  // prediction changes the crossing schedule; the light computer finishes
- // slightly sooner and consumes less energy. Both must independently retain
- // the authored clearance contract. Minimum clearance is not monotonic in a
- // prediction horizon because a later safe window can pass a different part
- // of the periodic actor trajectory.
+ // sooner and consumes less energy. Both must independently retain the
+ // authored clearance contract. Minimum clearance is not used as the A/B
+ // discriminator: two safe schedules may pass the same physical envelope.
  {
   mission::ScenarioSession default_attempt(catalog, "lost_signal",
                                              catalog.presentation_for_level("lost_signal").default_build);
@@ -542,11 +541,11 @@ int main() {
         catalog.level("lost_signal").safe_min_clearance_m);
  CHECK(default_attempt.result().time_s < first.result().time_s);
   CHECK(default_attempt.result().energy_wh < first.result().energy_wh);
- CHECK(std::abs(default_attempt.result().min_dynamic_clearance_m - first.result().min_dynamic_clearance_m) >
-        0.05);
+ CHECK(first.result().time_s - default_attempt.result().time_s > 1.0);
+ CHECK(first.result().energy_wh - default_attempt.result().energy_wh > 0.2);
   // The corrected local planner must preserve its safety contract even for a
-  // poor, aggressive build. This configuration may be less efficient, but a
-  // lesson must not depend on shipping a known collision in the controller.
+ // poor, aggressive build. With the physical scene objects enabled it may
+ // time out, but failure must remain a safe stop rather than a collision.
   mission::BuildSelection hot_build;
   hot_build.parts["tires"] = "tires.eco";
   hot_build.parts["sensor"] = "sensor.long_slow_lidar";
@@ -560,9 +559,11 @@ int main() {
  << " collisions=" << hot_attempt.result().collisions
  << " clearance=" << hot_attempt.result().min_dynamic_clearance_m
  << " time=" << hot_attempt.result().time_s << '\n';
-  CHECK(hot_attempt.result().status == mission::MissionStatus::Succeeded);
-  CHECK(hot_attempt.result().safe_score);
+ CHECK(hot_attempt.result().status == mission::MissionStatus::Failed);
+ CHECK(hot_attempt.result().failure_reason == "timeout");
   CHECK(hot_attempt.result().collisions == 0);
+ CHECK(hot_attempt.result().min_dynamic_clearance_m >=
+ hot_attempt.level().safe_min_clearance_m);
   CHECK(hot_attempt.result().min_dynamic_clearance_m >= catalog.level("lost_signal").safe_min_clearance_m);
   bool actor_detected = false;
   for (const auto& event : hot_attempt.events()) {

@@ -27,6 +27,7 @@ mission::MapDefinition empty_map(const mission::MapDefinition& source) {
  m.id = "holonomic_acceptance";
  m.size_m = {50, 40};
  m.obstacles.clear();
+ m.world_objects.clear();
  m.surfaces.clear();
  m.terrain.clear();
  m.actors.clear();

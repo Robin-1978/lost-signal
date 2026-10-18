@@ -34,6 +34,16 @@ int main() {
  CHECK(!monitor.static_motion_free({0.49, 2.0}, {2.0, 2.0}));
  CHECK(monitor.static_motion_free({0.51, 2.0}, {2.0, 2.0}));
 
+ // A rotated rail keeps its real orientation in the continuous safety
+ // oracle; points inside its world AABB corner are not false collisions.
+ mission::CollisionMonitor rotated({10.0, 10.0}, 0.1,
+ {{{4.0, 4.8}, {6.0, 5.2}, sim::kPi / 4.0}});
+ mission::CollisionObservation rotated_corner;
+ rotated_corner.position = {5.65, 4.65};
+ CHECK(!rotated.assess(rotated_corner).static_collision);
+ rotated_corner.position = {5.35, 5.35};
+ CHECK(rotated.assess(rotated_corner).static_collision);
+
  auto domain_hit = free;
  domain_hit.position = {4.5, 4.5};
  CHECK(monitor.assess(domain_hit).static_collision);

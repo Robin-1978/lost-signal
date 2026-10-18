@@ -55,6 +55,12 @@
         "$ref": "#/$defs/conflict_zone"
       }
     },
+    "world_objects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/world_object"
+      }
+    },
     "markers": {
       "type": "object",
       "minProperties": 1,
@@ -273,6 +279,103 @@
         },
         "active_in": {
           "$ref": "#/$defs/active"
+        }
+      }
+    },
+    "vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false
+    },
+    "positive_vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      ],
+      "items": false
+    },
+    "world_collision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "position_m",
+        "size_m",
+        "material"
+      ],
+      "properties": {
+        "type": {
+          "const": "box"
+        },
+        "position_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "size_m": {
+          "$ref": "#/$defs/positive_vec3"
+        },
+        "yaw_degrees": {
+          "type": "number"
+        },
+        "material": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "world_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "prefab",
+        "position_m",
+        "collisions"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "prefab": {
+          "$ref": "#/$defs/id"
+        },
+        "position_m": {
+          "$ref": "#/$defs/vec3"
+        },
+        "scale": {
+          "$ref": "#/$defs/positive_vec3"
+        },
+        "yaw_degrees": {
+          "type": "number"
+        },
+        "active_in": {
+          "$ref": "#/$defs/active"
+        },
+        "collisions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/world_collision"
+          }
         }
       }
     },

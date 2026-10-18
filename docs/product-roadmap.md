@@ -55,7 +55,7 @@ The numbered stages later in this document describe the completed alpha baseline
 sequence here so that completed release work and future work cannot be confused.
 
 The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
-The active sequence is now **Bridge the Washout construction contract → playable graybox → fresh-player validation →
+The active sequence is now **finish Bridge the Washout world commit/apply loop → playable graybox → fresh-player validation →
 visual and audio polish → experiment/fault framework**. [The acceptance contract](reference-platform.md) remains the
 source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
 static multi-collection loop is not accepted as the first polished Playground. Responsive-information work continues
@@ -71,6 +71,10 @@ not satisfy the polished-playground gate because it remains an engineering instr
 Its live/debrief evidence, eight data-authored repeatable maneuvers, and headless `--maneuver` selection are complete.
 RO-2 now has an independent LSRI service-brake path, and editor saves atomically publish an LSRM package containing
 occupancy, exact authored 2.5D elevation (including deterministic rough relief), surface classes, and semantic places.
+The first construction foundation is also complete: data-authored pieces and sockets, order-independent canonical
+plan hashing, transactional validation, and a unified static-world entity contract. A `world_object` now owns the
+prefab transform, collision proxies, contact material, LiDAR reflectivity, Bullet bodies, oriented planning
+rasterization, and continuous collision geometry. Remaining scene instances are explicitly `visual_only`.
 The completion claims exclude the open split-friction, identified combined-slip, dynamic-rollover, systematic
 payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
 
@@ -110,10 +114,12 @@ The next concrete work packages are:
  chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
  brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
  inherits another platform's evidence.
-5. **Selected, implementation next:** graybox **Bridge the Washout**, a bounded construction puzzle followed by an
- autonomous physical proof run. Its world edits, map revision, chassis feasibility, and failure evidence share one
- geometry source. Its surprise and choices must survive a fresh-player test before permanent art begins; the Vehicle
- Proving Ground remains an engineering sandbox and Orchard remains a systems prototype.
+5. **In progress:** graybox **Bridge the Washout**, a bounded construction puzzle followed by an autonomous physical
+ proof run. The piece/socket schema, canonical plan/validation library, and shared static-world geometry boundary are
+ implemented. The next increment must atomically turn a valid plan into Bullet bodies and a new LSRM revision, then
+ expose bounded placement and proof-run controls. Its surprise and choices must survive a fresh-player test before
+ permanent art begins; the Vehicle Proving Ground remains an engineering sandbox and Orchard remains a systems
+ prototype.
 6. Polish the approved loop, then generalize its experiment and fault-injection needs. Full SLAM and VLA remain
  deferred until a named experience provides acceptance criteria.
 
@@ -129,7 +135,7 @@ show the full explanation, the normal release checks pass, and no temporary capt
 
 ### M1 — Create the content direction and build its first graybox
 
-Status: **open — Bridge the Washout selected; graybox and fresh-player evidence remain**
+Status: **open — construction/world-geometry foundation complete; commit/apply graybox and fresh-player evidence remain**
 
 Start from player experience rather than the current feature list. Define a small content bible for a family of
 autonomy playgrounds: what fantasy the player enters, what high-level choices they make, what the robot owns, what

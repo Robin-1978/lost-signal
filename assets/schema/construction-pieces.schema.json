@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "construction-pieces.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pieces"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "pieces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/piece"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    },
+    "positive_vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      ],
+      "items": false
+    },
+    "piece": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "description",
+        "collision",
+        "mass_kg",
+        "top_surface",
+        "support",
+        "allowed_socket_types",
+        "presentation"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "collision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "size_m"
+          ],
+          "properties": {
+            "type": {
+              "const": "box"
+            },
+            "size_m": {
+              "$ref": "#/$defs/positive_vec3"
+            }
+          }
+        },
+        "mass_kg": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "top_surface": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "material"
+          ],
+          "properties": {
+            "material": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        },
+        "support": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_endpoint_contacts",
+            "max_span_m"
+          ],
+          "properties": {
+            "required_endpoint_contacts": {
+              "const": 2
+            },
+            "max_span_m": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "allowed_socket_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "presentation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "color"
+          ],
+          "properties": {
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
+            },
+            "model_3d": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_./-]+\\.(glb|gltf)$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

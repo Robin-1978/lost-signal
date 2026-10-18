@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -247,6 +248,9 @@ struct ScenePayloadVisualDefinition {
 struct SceneInstanceDefinition {
  std::string id;
  std::string prefab;
+ // Scene instances never participate in physics or sensing. Anything solid
+ // belongs to MapDefinition::world_objects instead.
+ std::string role{"visual_only"};
  Vec3 position_m;
  Vec3 scale{1.0, 1.0, 1.0};
  double yaw_degrees{0.0};
@@ -279,6 +283,32 @@ struct ConflictZoneDefinition {
  std::vector<std::string> active_in;
 };
 
+// A visible solid belongs to the simulated world, not to the renderer. Its
+// instance transform selects a scene prefab for presentation and carries the
+// collision proxies used by Bullet, LiDAR and map projection. Scene instances
+// that remain outside this list are explicitly visual-only decoration.
+struct WorldCollisionDefinition {
+ Vec3 position_m;
+ Vec3 size_m;
+ double yaw_degrees{0.0};
+ std::string material;
+ double friction_mu{0.8};
+ double rolling_drag{0.0};
+ double normal_stiffness_Npm{1.0e9};
+ double normal_damping_Nspm{0.0};
+ double lidar_reflectivity{0.30};
+};
+
+struct WorldObjectDefinition {
+ std::string id;
+ std::string prefab;
+ Vec3 position_m;
+ Vec3 scale{1.0, 1.0, 1.0};
+ double yaw_degrees{0.0};
+ std::vector<WorldCollisionDefinition> collisions;
+ std::vector<std::string> active_in;
+};
+
 struct MapDefinition {
  std::string id;
  std::string scene_3d;
@@ -288,6 +318,7 @@ struct MapDefinition {
  std::vector<SurfaceDefinition> surfaces;
  std::vector<TerrainPatchDefinition> terrain;
  std::vector<ConflictZoneDefinition> conflict_zones;
+ std::vector<WorldObjectDefinition> world_objects;
  // Ordered: the editor saves maps back to JSON, and marker file order must
  // survive the round trip. Lookups only, never order-dependent logic.
  std::map<std::string, Pose> markers;
@@ -387,6 +418,36 @@ struct ExperienceCollectionDefinition {
  std::vector<std::string> levels;
 };
 
+// Data-owned building blocks for bounded construction playgrounds. A piece's
+// box is the authoritative geometry later consumed by physics, map
+// publication and rendering. Mission code may not carry a second copy.
+struct ConstructionPieceDefinition {
+ std::string id;
+ std::string title;
+ std::string description;
+ Vec3 size_m;
+ double mass_kg{0.0};
+ std::string surface_material;
+ int required_endpoint_contacts{2};
+ double max_span_m{0.0};
+ std::vector<std::string> allowed_socket_types;
+ std::array<unsigned char, 4> color{255, 255, 255, 255};
+ std::string model_3d;
+};
+
+struct ConstructionSocketDefinition {
+ std::string id;
+ std::string type;
+ Vec3 position_m;
+};
+
+struct ConstructionScenarioDefinition {
+ std::string id;
+ double snap_tolerance_m{0.0};
+ std::unordered_map<std::string, int> inventory;
+ std::vector<ConstructionSocketDefinition> sockets;
+};
+
 struct LevelDefinition {
  std::string id;
  int order{0};
@@ -421,6 +482,7 @@ struct LevelDefinition {
  double payload_cog_height_m{0.0};
  std::vector<EnvironmentKeyframeDefinition> environment_keyframes;
  std::vector<ManeuverDefinition> maneuvers;
+ std::optional<ConstructionScenarioDefinition> construction;
 };
 
 struct AbilityDefinition {

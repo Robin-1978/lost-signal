@@ -1,5 +1,6 @@
 #include "scenario_session.hpp"
 #include "sim/game/mission/deployable_map_adapter.hpp"
+#include "sim/game/mission/world_geometry.hpp"
 #include "robot/autonomy/planning/task/task_ordering.hpp"
 
 #include "robot/autonomy/planning/global/astar.hpp"
@@ -517,11 +518,30 @@ void ScenarioSession::build_world() {
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
  std::vector<CollisionBox> collision_obstacles;
+ const auto deployable_map = make_deployable_map_snapshot(map_definition_, level_id_);
+ if (!deployable_map.grid)
+ throw std::runtime_error("deployable map adapter did not produce an occupancy grid");
+ for (std::uint32_t y = 0; y < deployable_map.grid->height; ++y) {
+ for (std::uint32_t x = 0; x < deployable_map.grid->width; ++x) {
+ const auto index = static_cast<std::size_t>(y) * deployable_map.grid->width + x;
+ if (deployable_map.grid->occupancy[index] < 50)
+ continue;
+ const auto center = sim::runtime::grid_cell_center(*deployable_map.grid, {x, y});
+ truth_map_->setOccupied(center.x, center.y);
+ }
+ }
  for (const auto& obstacle : map_definition_.obstacles) {
   if (active_in_level(obstacle.active_in, level_id_)) {
-   truth_map_->addBox(obstacle.min.x, obstacle.min.y, obstacle.max.x, obstacle.max.y);
  collision_obstacles.push_back({obstacle.min, obstacle.max});
   }
+ }
+ for (const auto& collision : resolve_world_collisions(map_definition_, level_id_)) {
+ const sim::Vec2 half{collision.size_m.x * 0.5, collision.size_m.y * 0.5};
+ collision_obstacles.push_back({
+ {collision.center_m.x - half.x, collision.center_m.y - half.y},
+ {collision.center_m.x + half.x, collision.center_m.y + half.y},
+ collision.yaw_rad,
+ });
  }
  sensor_system_ = std::make_unique<sim::SensorSystem>(
  effective_seed(), effective_seed() ^ 0x9e3779b9U);

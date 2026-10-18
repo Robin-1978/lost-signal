@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "construction-plan.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scenario",
+    "placements"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "scenario": {
+      "$ref": "#/$defs/id"
+    },
+    "placements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "piece_id",
+          "start_socket",
+          "end_socket"
+        ],
+        "properties": {
+          "instance_id": {
+            "$ref": "#/$defs/id"
+          },
+          "piece_id": {
+            "$ref": "#/$defs/id"
+          },
+          "start_socket": {
+            "$ref": "#/$defs/id"
+          },
+          "end_socket": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$"
+    }
+  }
+}

@@ -123,6 +123,18 @@ construction sockets in the first graybox; free placement is considered only aft
 - **Deterministic editing.** The same authored layout and placement plan produce the same transforms, map package,
  content hash, and headless result. Invalid or unsupported pieces fail before the world is partially modified.
 
+The first contract increment is implemented. `construction_pieces.json` owns reusable piece geometry and support
+rules; optional level construction data owns sockets and inventory. `ConstructionPlan` serialization sorts placements
+by stable instance ID, preserves directional endpoints, and hashes the canonical JSON with SHA-256. Resolution
+validates the complete plan before returning any publishable pieces. The shared `world_object` representation is now
+used by existing scenery as well: a physical object renders one prefab, spawns its Bullet collision proxies, returns
+material-dependent LiDAR intensity, enters the deployable occupancy map with oriented-box rasterization, and supplies
+the continuous collision monitor. Pure decals such as warning strips remain explicit `visual_only` scene instances.
+
+The playable increment is still open. Construction pieces do not yet mutate the live Bullet world, publish a new map
+revision, appear in the placement UI, or enter a Run Artifact. Those four effects must be committed together; a plan
+must never update the picture while leaving physics or autonomy on the previous world.
+
 ### M1 acceptance gate
 
 - A new player can describe the goal, commit a plan, start the autonomous proof, and identify the first binding
@@ -274,6 +286,10 @@ can run. Headless execution consumes the same authored scenario as the graphical
   on navigation, coverage, and planning as linked agricultural autonomy problems.
 - [Simulation of an Autonomous Mobile Robot for LiDAR-Based In-Field Phenotyping and Navigation](https://doi.org/10.3390/robotics9020046)
   on simulated LiDAR operation in occluded crop rows.
+- [SDFormat model specification](http://sdformat.org/spec?ver=1.12&elem=model) for separate visual, collision, and
+ inertial representations within one model entity.
+- [MoveIt Planning Scene](https://moveit.picknik.ai/main/doc/examples/planning_scene/planning_scene_tutorial.html)
+ for treating world collision objects as planning inputs rather than presentation-only meshes.
 
 External references motivate questions and conventions. Only Lost Signal's deterministic tests, calibrated profiles,
 held-out measurements, HIL, or real trials can validate its own behavior.

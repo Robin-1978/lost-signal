@@ -276,9 +276,11 @@ target_link_libraries(lost_signal_sim_hardware INTERFACE
 add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/campaign_progress.cpp
  src/sim/game/mission/component_registry.cpp
+ src/sim/game/mission/construction_plan.cpp
  src/sim/game/mission/content_catalog.cpp
  src/sim/game/mission/deployable_map_adapter.cpp
  src/sim/game/mission/map_serialize.cpp
+ src/sim/game/mission/world_geometry.cpp
  src/sim/game/platform/simulated_platform.cpp
  src/sim/game/scenario/scenario_session.cpp
  src/sim/game/scenario/scenario_autonomy.cpp
@@ -384,6 +386,14 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME content_catalog COMMAND test_content_catalog)
+
+ add_executable(test_construction_plan tests/new/test_construction_plan.cpp)
+ target_link_libraries(test_construction_plan PRIVATE lost_signal_sim_game)
+ add_test(NAME construction_plan COMMAND test_construction_plan)
+
+ add_executable(test_world_geometry tests/new/test_world_geometry.cpp)
+ target_link_libraries(test_world_geometry PRIVATE lost_signal_sim_game)
+ add_test(NAME world_geometry COMMAND test_world_geometry)
 
  add_executable(test_component_registry tests/new/test_component_registry.cpp)
  target_link_libraries(test_component_registry PRIVATE lost_signal_sim_game)

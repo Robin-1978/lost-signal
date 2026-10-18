@@ -30,6 +30,20 @@ bool segment_intersects_box(sim::Vec2 from, sim::Vec2 to,
  return leave >= 0.0 && enter <= 1.0;
 }
 
+sim::Vec2 box_local_point(const CollisionBox& box, sim::Vec2 point) {
+ const sim::Vec2 center{(box.min.x + box.max.x) * 0.5,
+ (box.min.y + box.max.y) * 0.5};
+ const double dx = point.x - center.x;
+ const double dy = point.y - center.y;
+ const double cosine = std::cos(box.yaw_rad);
+ const double sine = std::sin(box.yaw_rad);
+ return {cosine * dx + sine * dy, -sine * dx + cosine * dy};
+}
+
+sim::Vec2 box_half_extents(const CollisionBox& box) {
+ return {(box.max.x - box.min.x) * 0.5, (box.max.y - box.min.y) * 0.5};
+}
+
 } // namespace
 
 CollisionMonitor::CollisionMonitor(sim::Vec2 world_size, double robot_radius_m,
@@ -54,11 +68,12 @@ bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to) const {
  if (!inside_world(from) || !inside_world(to))
  return false;
  for (const auto& obstacle : static_obstacles_) {
- const sim::Vec2 minimum{
- obstacle.min.x - robot_radius_m_, obstacle.min.y - robot_radius_m_};
- const sim::Vec2 maximum{
- obstacle.max.x + robot_radius_m_, obstacle.max.y + robot_radius_m_};
- if (segment_intersects_box(from, to, minimum, maximum))
+ const auto local_from = box_local_point(obstacle, from);
+ const auto local_to = box_local_point(obstacle, to);
+ const auto half = box_half_extents(obstacle);
+ if (segment_intersects_box(local_from, local_to,
+ {-half.x - robot_radius_m_, -half.y - robot_radius_m_},
+ {half.x + robot_radius_m_, half.y + robot_radius_m_}))
  return false;
  }
  return true;
@@ -68,10 +83,10 @@ double CollisionMonitor::static_clearance(sim::Vec2 position) const {
  double minimum = std::min({position.x, position.y,
  world_size_.x - position.x, world_size_.y - position.y}) - robot_radius_m_;
  for (const auto& obstacle : static_obstacles_) {
- const double dx = std::max({obstacle.min.x - position.x, 0.0,
- position.x - obstacle.max.x});
- const double dy = std::max({obstacle.min.y - position.y, 0.0,
- position.y - obstacle.max.y});
+ const auto local = box_local_point(obstacle, position);
+ const auto half = box_half_extents(obstacle);
+ const double dx = std::max(std::abs(local.x) - half.x, 0.0);
+ const double dy = std::max(std::abs(local.y) - half.y, 0.0);
  minimum = std::min(minimum,
  std::hypot(dx, dy) - robot_radius_m_);
  }
@@ -106,12 +121,11 @@ CollisionAssessment CollisionMonitor::assess(
  observation.position.y >= world_size_.y - robot_radius_m_;
  const bool obstacle_overlap = std::any_of(
  static_obstacles_.begin(), static_obstacles_.end(), [&](const auto& obstacle) {
- const double nearest_x = std::clamp(
- observation.position.x, obstacle.min.x, obstacle.max.x);
- const double nearest_y = std::clamp(
- observation.position.y, obstacle.min.y, obstacle.max.y);
- return std::hypot(observation.position.x - nearest_x,
- observation.position.y - nearest_y) <= robot_radius_m_;
+ const auto local = box_local_point(obstacle, observation.position);
+ const auto half = box_half_extents(obstacle);
+ const double dx = std::max(std::abs(local.x) - half.x, 0.0);
+ const double dy = std::max(std::abs(local.y) - half.y, 0.0);
+ return std::hypot(dx, dy) <= robot_radius_m_;
  });
 out.static_collision = outside || footprint_outside || obstacle_overlap;
  }

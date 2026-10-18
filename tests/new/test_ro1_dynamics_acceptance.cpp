@@ -50,6 +50,7 @@ mission::MapDefinition empty_map(const mission::MapDefinition& source) {
   map.id = "ro1_dynamics_acceptance";
   map.size_m = {40.0, 20.0};
   map.obstacles.clear();
+ map.world_objects.clear();
   map.surfaces.clear();
   map.terrain.clear();
   map.actors.clear();

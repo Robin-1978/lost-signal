@@ -234,266 +234,14 @@
   ],
   "instances": [
     {
-      "id": "wall_n_01",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        4.0,
-        22.18,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_n_02",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        10.0,
-        22.18,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_n_03",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        16.0,
-        22.18,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_n_04",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        22.0,
-        22.18,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_n_05",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        28.0,
-        22.18,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_e_01",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        30.18,
-        5.0,
-        0
-      ],
-      "yaw_degrees": 90,
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_e_02",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        30.18,
-        11.0,
-        0
-      ],
-      "yaw_degrees": 90,
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wall_e_03",
-      "prefab": "prefab.wall_panel",
-      "position_m": [
-        30.18,
-        17.0,
-        0
-      ],
-      "yaw_degrees": 90,
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "wh_crates_01",
-      "prefab": "prefab.maintenance_crates",
-      "position_m": [
-        5.0,
-        17.0,
-        0
-      ],
-      "yaw_degrees": 8
-    },
-    {
-      "id": "wh_crates_02",
-      "prefab": "prefab.maintenance_crates",
-      "position_m": [
-        9.0,
-        13.0,
-        0
-      ],
-      "yaw_degrees": -12
-    },
-    {
-      "id": "wh_reel_01",
-      "prefab": "prefab.cable_reel",
-      "position_m": [
-        7.0,
-        15.0,
-        0
-      ],
-      "yaw_degrees": 30
-    },
-    {
-      "id": "mk_crates_01",
-      "prefab": "prefab.maintenance_crates",
-      "position_m": [
-        19.0,
-        17.0,
-        0
-      ],
-      "yaw_degrees": 90
-    },
-    {
-      "id": "mk_console_01",
-      "prefab": "prefab.control_console",
-      "position_m": [
-        23.0,
-        13.0,
-        0
-      ]
-    },
-    {
-      "id": "mk_light_01",
-      "prefab": "prefab.service_light",
-      "position_m": [
-        21.0,
-        15.0,
-        0
-      ]
-    },
-    {
-      "id": "hs_plant_01",
-      "prefab": "prefab.plant_cluster",
-      "position_m": [
-        13.0,
-        4.0,
-        0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "id": "hs_plant_02",
-      "prefab": "prefab.plant_cluster",
-      "position_m": [
-        16.0,
-        7.0,
-        0
-      ],
-      "scale": [
-        0.9,
-        0.9,
-        0.9
-      ]
-    },
-    {
-      "id": "hs_reel_01",
-      "prefab": "prefab.cable_reel",
-      "position_m": [
-        14.5,
-        5.5,
-        0
-      ],
-      "yaw_degrees": 60
-    },
-    {
-      "id": "kk_crates_01",
-      "prefab": "prefab.maintenance_crates",
-      "position_m": [
-        23.0,
-        5.0,
-        0
-      ],
-      "yaw_degrees": 45,
-      "scale": [
-        0.8,
-        0.8,
-        0.8
-      ]
-    },
-    {
-      "id": "st_light_gate",
-      "prefab": "prefab.service_light",
-      "position_m": [
-        2.5,
-        3.0,
-        0
-      ]
-    },
-    {
-      "id": "st_light_hub",
-      "prefab": "prefab.service_light",
-      "position_m": [
-        13.0,
-        16.5,
-        0
-      ]
-    },
-    {
-      "id": "st_light_market",
-      "prefab": "prefab.service_light",
-      "position_m": [
-        26.0,
-        15.0,
-        0
-      ]
-    },
-    {
       "id": "st_strip_a1",
       "prefab": "prefab.warning_strip",
       "position_m": [
         10.8,
         11.3,
         0
-      ]
+      ],
+      "role": "visual_only"
     },
     {
       "id": "st_strip_a2",
@@ -502,7 +250,8 @@
         19.2,
         9.7,
         0
-      ]
+      ],
+      "role": "visual_only"
     },
     {
       "id": "st_strip_b1",
@@ -511,36 +260,8 @@
         26.3,
         8.0,
         0
-      ]
-    },
-    {
-      "id": "st_rubble_01",
-      "prefab": "prefab.rubble_cluster",
-      "position_m": [
-        28.5,
-        3.0,
-        0
       ],
-      "yaw_degrees": 20,
-      "scale": [
-        0.9,
-        0.9,
-        0.9
-      ]
-    },
-    {
-      "id": "st_plant_gate",
-      "prefab": "prefab.plant_cluster",
-      "position_m": [
-        0.8,
-        20.5,
-        0
-      ],
-      "scale": [
-        1.1,
-        1.1,
-        1.1
-      ]
+      "role": "visual_only"
     }
   ],
   "effects": {
