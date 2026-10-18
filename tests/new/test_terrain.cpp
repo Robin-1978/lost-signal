@@ -22,6 +22,21 @@ int main() {
  CHECK(std::abs(sim::longitudinal_grade(sample, 0.0) - 0.36) < 1e-12);
  CHECK(std::abs(sim::lateral_grade(sample, sim::kPi * 0.5) + 0.36) < 1e-12);
 
+ // A mixed derivative represents a continuous cross-slope transition. The
+ // entry edge is flat; four metres later it exactly matches a 16% side slope.
+ sim::TerrainModel cross_slope_transition({
+ {"entry", {0.0, 0.0}, {4.0, 6.0}, 0.0, 0.0, 0.0, 0.0, 0.04},
+ });
+ const auto entry = cross_slope_transition.sample({0.0, 3.0});
+ const auto middle = cross_slope_transition.sample({2.0, 3.0});
+ const auto exit = cross_slope_transition.sample({3.999999, 3.0});
+ CHECK(std::abs(entry.height_m) < 1e-12);
+ CHECK(std::abs(entry.grade_y) < 1e-12);
+ CHECK(std::abs(middle.height_m - 0.24) < 1e-12);
+ CHECK(std::abs(middle.grade_y - 0.08) < 1e-12);
+ CHECK(std::abs(exit.height_m - 0.47999988) < 1e-8);
+ CHECK(std::abs(exit.grade_y - 0.15999996) < 1e-8);
+
  sim::TerrainCapability weak;
  weak.mass_kg = 24.0;
  weak.available_drive_force_N = 55.0;

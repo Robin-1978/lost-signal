@@ -15,6 +15,7 @@ struct HeightPatch {
  double grade_x{0.0};
  double grade_y{0.0};
  double roughness{0.0};
+ double grade_xy_per_m{0.0};
 };
 
 struct TerrainSample {

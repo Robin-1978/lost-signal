@@ -115,8 +115,9 @@ The next concrete work packages are:
  brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
  inherits another platform's evidence.
 5. **In progress:** graybox **Bridge the Washout**, a bounded construction puzzle followed by an autonomous physical
- proof run. The piece/socket schema, canonical plan/validation library, and shared static-world geometry boundary are
- implemented. The next increment must atomically turn a valid plan into Bullet bodies and a new LSRM revision, then
+ proof run. The piece/socket schema, canonical plan/validation library, shared static-world geometry boundary, and
+ prepared LSRM revision with constructed elevation/surface semantics are implemented. The next increment must
+ atomically publish that revision with its matching Bullet bodies, then
  expose bounded placement and proof-run controls. Its surprise and choices must survive a fresh-player test before
  permanent art begins; the Vehicle Proving Ground remains an engineering sandbox and Orchard remains a systems
  prototype.

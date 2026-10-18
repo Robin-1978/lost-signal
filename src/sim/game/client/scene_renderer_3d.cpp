@@ -102,11 +102,12 @@ sim::TerrainSample terrain_at(const mission::PresentationFrameView& mission, sim
       position.x >= patch->max.x || position.y < patch->min.y || position.y >= patch->max.y) {
    continue;
   }
-  return {
-    patch->base_height_m + patch->grade_x * (position.x - patch->min.x) +
-      patch->grade_y * (position.y - patch->min.y),
-    patch->grade_x,
-    patch->grade_y,
+ const double dx = position.x - patch->min.x;
+ const double dy = position.y - patch->min.y;
+ return {
+ mission::terrain_patch_height(*patch, position.x, position.y),
+ patch->grade_x + patch->grade_xy_per_m * dy,
+ patch->grade_y + patch->grade_xy_per_m * dx,
     patch->roughness,
   };
  }
@@ -963,7 +964,7 @@ void SceneRenderer3D::draw_terrain(const mission::PresentationFrameView& mission
     (patch.min.y + patch.max.y) * 0.5,
   };
   const auto terrain = terrain_at(mission, center);
-  const float grade = static_cast<float>(std::hypot(patch.grade_x, patch.grade_y));
+ const float grade = static_cast<float>(std::hypot(terrain.grade_x, terrain.grade_y));
 
   // Flat elevated patches are real high ground. Fill the volume down to the
   // base floor so they read as platforms instead of paper-thin planes hanging
@@ -995,16 +996,25 @@ void SceneRenderer3D::draw_terrain(const mission::PresentationFrameView& mission
   // Use the authored corner heights directly. Rotating a width-sized box
   // foreshortens its horizontal span and creates a visible gap at a flat
   // highland even though the Bullet triangle meshes share an exact edge.
-  const auto corner = [&](double x, double y) {
-   const double height =
-     patch.base_height_m + patch.grade_x * (x - patch.min.x) + patch.grade_y * (y - patch.min.y);
-return world(sim::Vec2{x, y}, static_cast<float>(height) + 0.002f);
+ const auto corner = [&](double x, double y) {
+ return world(sim::Vec2{x, y},
+ static_cast<float>(mission::terrain_patch_height(patch, x, y)) + 0.002f);
   };
-  const Vector3 deck_a = corner(patch.min.x, patch.min.y);
-  const Vector3 deck_b = corner(patch.max.x, patch.min.y);
-  const Vector3 deck_c = corner(patch.max.x, patch.max.y);
-  const Vector3 deck_d = corner(patch.min.x, patch.max.y);
-  draw_ground_quad(deck_a, deck_b, deck_c, deck_d, tint);
+ const int terrain_x_cells = std::abs(patch.grade_xy_per_m) > 1e-12
+ ? std::max(1, static_cast<int>(std::ceil(width / 0.25f)))
+ : 1;
+ const int terrain_y_cells = std::abs(patch.grade_xy_per_m) > 1e-12
+ ? std::max(1, static_cast<int>(std::ceil(length / 0.25f)))
+ : 1;
+ for (int y = 0; y < terrain_y_cells; ++y) {
+ for (int x = 0; x < terrain_x_cells; ++x) {
+ const double x0 = patch.min.x + width * x / terrain_x_cells;
+ const double x1 = patch.min.x + width * (x + 1) / terrain_x_cells;
+ const double y0 = patch.min.y + length * y / terrain_y_cells;
+ const double y1 = patch.min.y + length * (y + 1) / terrain_y_cells;
+ draw_ground_quad(corner(x0, y0), corner(x1, y0), corner(x1, y1), corner(x0, y1), tint);
+ }
+ }
 
   // Curbs, guard rails and posts expose the edge and height of the route from
   // the default three-quarter camera. They also give every terrain lane the

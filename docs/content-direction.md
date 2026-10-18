@@ -131,9 +131,12 @@ used by existing scenery as well: a physical object renders one prefab, spawns i
 material-dependent LiDAR intensity, enters the deployable occupancy map with oriented-box rasterization, and supplies
 the continuous collision monitor. Pure decals such as warning strips remain explicit `visual_only` scene instances.
 
-The playable increment is still open. Construction pieces do not yet mutate the live Bullet world, publish a new map
-revision, appear in the placement UI, or enter a Run Artifact. Those four effects must be committed together; a plan
-must never update the picture while leaving physics or autonomy on the previous world.
+The map side of the commit transaction is now implemented. A fully validated plan prepares an immutable next map
+revision, rasterizes each driveable deck into elevation and surface-class layers, preserves free occupancy, adds
+stable semantic features, and stamps the plan SHA-256 into map provenance. Invalid plans produce no candidate map;
+the map manager's monotonic revision rules are exercised by the construction test. The live Bullet-body swap,
+renderer publication, placement UI, and Run Artifact fields remain one coordinated increment: a plan must never
+update the picture while leaving physics or autonomy on the previous world.
 
 ### M1 acceptance gate
 

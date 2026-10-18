@@ -39,7 +39,7 @@ sim::TerrainModel terrain_for(const mission::MapDefinition& map,
   for (const auto& patch : map.terrain) {
     if (mission::active_in_level(patch.active_in, level.id)) {
       patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m,
-                         patch.grade_x, patch.grade_y, patch.roughness});
+ patch.grade_x, patch.grade_y, patch.roughness, patch.grade_xy_per_m});
     }
   }
   return sim::TerrainModel(std::move(patches));

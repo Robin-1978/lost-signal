@@ -562,6 +562,7 @@ void ScenarioSession::build_world() {
     patch.grade_x,
     patch.grade_y,
     patch.roughness,
+ patch.grade_xy_per_m,
   });
  }
  terrain_ = sim::TerrainModel(std::move(active_terrain));

@@ -26,11 +26,13 @@ TerrainSample TerrainModel::sample(Vec2 position) const {
   if (!contains(*patch, position)) {
    continue;
   }
-  return {
-    patch->base_height_m + patch->grade_x * (position.x - patch->min.x) +
-      patch->grade_y * (position.y - patch->min.y),
-    patch->grade_x,
-    patch->grade_y,
+ const double dx = position.x - patch->min.x;
+ const double dy = position.y - patch->min.y;
+ return {
+ patch->base_height_m + patch->grade_x * dx + patch->grade_y * dy +
+ patch->grade_xy_per_m * dx * dy,
+ patch->grade_x + patch->grade_xy_per_m * dy,
+ patch->grade_y + patch->grade_xy_per_m * dx,
     patch->roughness,
   };
  }

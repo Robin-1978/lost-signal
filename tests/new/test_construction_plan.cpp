@@ -99,5 +99,47 @@ int main() {
  auto wrong_length_fixture = fixture;
  wrong_length_fixture.sockets[1].position_m.x = 2.5;
  CHECK(!mission::resolve_construction_plan(wrong_length_fixture, catalog, one).ok);
+
+ sim::runtime::MapSnapshot base_map;
+ base_map.map_id = "washout-map";
+ base_map.revision = 7;
+ base_map.sample_time = sim::runtime::TimePoint::from_seconds(1.0);
+ base_map.provenance = {"authored", "fixture", "base"};
+ auto& grid = base_map.grid.emplace();
+ grid.width = 8;
+ grid.height = 4;
+ grid.resolution_m = 0.5;
+ const std::size_t cell_count = grid.width * grid.height;
+ grid.occupancy.assign(cell_count, 100);
+ grid.elevation_m.assign(cell_count, 0.0F);
+ grid.surface_class.assign(cell_count, 0);
+ grid.surface_classes = {"default"};
+ catalog.at("construction.deck_short").surface_material = "steel_deck";
+ const auto commit = mission::prepare_construction_world_commit(
+ fixture, catalog, one, base_map, sim::runtime::TimePoint::from_seconds(2.0));
+ CHECK(commit.resolution.ok);
+ CHECK(commit.map.has_value());
+ CHECK(commit.map->revision == 8);
+ CHECK(commit.map->sample_time == sim::runtime::TimePoint::from_seconds(2.0));
+ CHECK(commit.map->provenance.source_revision == commit.resolution.plan_sha256);
+ CHECK(commit.map->features.size() == 1);
+ CHECK(commit.map->features.front().id == "bridge-1");
+ const auto bridge_cell = sim::runtime::world_to_grid(*commit.map->grid, {1.5, 0.25});
+ CHECK(bridge_cell.has_value());
+ const auto bridge_index = static_cast<std::size_t>(bridge_cell->y) * grid.width + bridge_cell->x;
+ CHECK(commit.map->grid->occupancy[bridge_index] == 0);
+ CHECK(std::abs(commit.map->grid->elevation_m[bridge_index] - 0.08F) < 1e-6F);
+ CHECK(commit.map->grid->surface_classes[commit.map->grid->surface_class[bridge_index]] ==
+ "steel_deck");
+ sim::runtime::MapManager manager;
+ CHECK(manager.configure(base_map));
+ CHECK(manager.activate());
+ CHECK(manager.replace(*commit.map) == sim::runtime::MapUpdateResult::Accepted);
+ CHECK(manager.current_snapshot()->revision == 8);
+
+ const auto rejected_commit = mission::prepare_construction_world_commit(
+ fixture, catalog, invalid, base_map, sim::runtime::TimePoint::from_seconds(2.0));
+ CHECK(!rejected_commit.resolution.ok);
+ CHECK(!rejected_commit.map.has_value());
  return 0;
 }

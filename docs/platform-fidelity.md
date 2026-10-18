@@ -172,6 +172,12 @@ identified rubber properties. Wheel-component and ground-material data will own 
 `SimulatedPlatform` resolves one effective pair for the physics backend. Bullet-specific ERP, CFM, or raw rolling
 constraint coefficients do not cross that content boundary.
 
+Height patches may also declare `grade_xy_per_m`, the mixed derivative in `z += grade_xy_per_m * dx * dy`.
+This expresses a continuous transition where lateral grade grows from zero instead of appearing as a vertical wall
+at a planar-patch boundary. Bullet, terrain-cost gradients, the 3D renderer, and exported map elevation evaluate the
+same function. The proving-ground cross-slope now has matched entry and exit transitions; its RO-1 plant gate begins
+on the adjacent flat floor and verifies closed-loop entry without static collision or excessive roll.
+
 ### LiDAR providers
 
 The production LiDAR is already more than a 2D grid query. A named `lidar_link` emits each ray into the Bullet 3D

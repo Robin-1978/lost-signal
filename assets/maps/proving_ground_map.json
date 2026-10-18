@@ -163,6 +163,23 @@
       "roughness": 0.0
     },
     {
+      "id": "cross_slope_entry_transition",
+      "type": "height_patch",
+      "min": [
+        24.0,
+        21.0
+      ],
+      "max": [
+        28.0,
+        27.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.0,
+      "grade_xy_per_m": 0.04,
+      "roughness": 0.0
+    },
+    {
       "id": "cross_slope_lane",
       "type": "height_patch",
       "min": [
@@ -177,6 +194,23 @@
       "grade_x": 0.0,
       "grade_y": 0.16,
       "roughness": 0.008
+    },
+    {
+      "id": "cross_slope_exit_transition",
+      "type": "height_patch",
+      "min": [
+        38.0,
+        21.0
+      ],
+      "max": [
+        40.0,
+        27.0
+      ],
+      "base_height_m": 0.0,
+      "grade_x": 0.0,
+      "grade_y": 0.16,
+      "grade_xy_per_m": -0.08,
+      "roughness": 0.0
     },
     {
       "id": "rough_lane",

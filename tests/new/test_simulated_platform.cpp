@@ -28,7 +28,7 @@ int main() {
  for (const auto& patch : map.terrain) {
  if (mission::active_in_level(patch.active_in, level.id)) {
  patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m, patch.grade_x,
- patch.grade_y, patch.roughness});
+ patch.grade_y, patch.roughness, patch.grade_xy_per_m});
  }
  }
  const sim::TerrainModel terrain(std::move(patches));
@@ -544,7 +544,7 @@ CHECK(std::get<3>(low_grip) > 0.25);
  for (const auto& patch : cross_map.terrain) {
  if (mission::active_in_level(patch.active_in, cross_level.id))
  cross_patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m,
- patch.grade_x, patch.grade_y, patch.roughness});
+ patch.grade_x, patch.grade_y, patch.roughness, patch.grade_xy_per_m});
  }
  const sim::TerrainModel cross_terrain(std::move(cross_patches));
  const auto& cross_spawn = cross_map.markers.at(cross_level.objective.spawn);
@@ -631,6 +631,59 @@ CHECK(std::get<3>(low_grip) > 0.25);
  CHECK(std::abs(cross_state.planar.y - cross_start.planar.y) < 0.30);
  }
 
+ // The proving-ground cross slope has a physical approach, not a vertical
+ // height-patch wall. A direct plant command must be able to enter it from
+ // the adjacent flat floor; autonomy success from a spawn already on the
+ // slope would not prove this geometry contract.
+ {
+ const auto& proving_level = catalog.level("vehicle_proving_ground");
+ const auto& proving_map = catalog.map(proving_level.map);
+ std::vector<sim::HeightPatch> proving_patches;
+ for (const auto& patch : proving_map.terrain) {
+ proving_patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m,
+ patch.grade_x, patch.grade_y, patch.roughness, patch.grade_xy_per_m});
+ }
+ const sim::TerrainModel proving_terrain(std::move(proving_patches));
+ sim::platform::SimulatedPlatform transition(
+ proving_map, proving_level, robot, chassis_caps, proving_terrain,
+ {23.25, 24.0}, 0.0, robot.mass_kg, robot.center_of_mass_height_m,
+ robot.yaw_inertia_kgm2);
+ const auto transition_start = transition.state();
+ sim::MotorDriveParams transition_params;
+ transition_params.wheel_base_m = robot.wheel_base_m;
+ transition_params.wheel_radius_m = robot.wheel_radius_m;
+ transition_params.drive_axle_x_m = 0.12;
+ transition_params.max_wheel_speed_mps = robot.motor.max_wheel_speed_mps;
+ transition_params.max_wheel_accel_mps2 = robot.motor.max_wheel_accel_mps2;
+ transition_params.stall_force_N = robot.motor.stall_force_N;
+ transition_params.free_speed_mps = robot.motor.free_speed_mps;
+ transition_params.mass_kg = robot.mass_kg;
+ transition_params.yaw_inertia_kgm2 = robot.yaw_inertia_kgm2;
+ transition_params.encoder_counts_per_revolution = robot.encoder.counts_per_revolution;
+ transition_params.pwm_limit = robot.motor.pwm_limit;
+ transition_params.integral_limit = robot.motor.integral_limit;
+ const auto transition_gains = sim::tune_wheel_pid(
+ robot.motor.wheel_equiv_mass_kg +
+ std::max(robot.mass_kg * 0.5, 2.0 * robot.yaw_inertia_kgm2 /
+ (robot.wheel_base_m * robot.wheel_base_m)),
+ robot.motor.stall_force_N, robot.motor.free_speed_mps,
+ robot.motor.max_wheel_speed_mps * 0.5);
+ sim::DifferentialMotorDrive transition_controller(transition_params, transition_gains);
+ auto transition_state = transition_start;
+ for (int index = 0; index < 700; ++index) {
+ transition_controller.set_actuator_feedback(transition.actuator_feedback());
+ const double heading_error = sim::wrap_angle(transition_state.planar.theta);
+ (void)transition_controller.step(
+ transition_state.planar, {0.55, std::clamp(-4.0 * heading_error, -1.0, 1.0)},
+ 0.02, {1.2, 0.014, 6.0});
+ transition_state = transition.step(
+ transition_controller.telemetry(), {1.2, 0.014, 6.0}, 0.02);
+ }
+ CHECK(transition_state.planar.x > 28.0);
+ CHECK(!transition_state.static_collision);
+ CHECK(std::abs(transition_state.roll_rad) < 0.25);
+ }
+
  // Smooth longitudinal-grade probe: bypass navigation and the motor speed
  // loop so the articulated plant sees a known symmetric shaft torque.
  {
@@ -640,7 +693,7 @@ CHECK(std::get<3>(low_grip) > 0.25);
  for (const auto& patch : slope_map.terrain) {
  if (mission::active_in_level(patch.active_in, slope_level.id))
  slope_patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m,
- patch.grade_x, patch.grade_y, patch.roughness});
+ patch.grade_x, patch.grade_y, patch.roughness, patch.grade_xy_per_m});
  }
  const sim::TerrainModel slope_terrain(std::move(slope_patches));
  const double slope_mass = robot.mass_kg + slope_level.payload_mass_kg;
@@ -697,7 +750,7 @@ CHECK(std::get<3>(low_grip) > 0.25);
  for (const auto& patch : rough_map.terrain) {
  if (mission::active_in_level(patch.active_in, level.id))
  rough_patches.push_back({patch.id, patch.min, patch.max, patch.base_height_m,
- patch.grade_x, patch.grade_y, patch.roughness});
+ patch.grade_x, patch.grade_y, patch.roughness, patch.grade_xy_per_m});
  }
  const sim::TerrainModel rough_terrain(std::move(rough_patches));
  const auto run_rough = [&]() {

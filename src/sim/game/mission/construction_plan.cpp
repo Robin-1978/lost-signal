@@ -137,4 +137,89 @@ ConstructionPlanResolution resolve_construction_plan(
  return result;
 }
 
+ConstructionWorldCommit prepare_construction_world_commit(
+ const ConstructionScenarioDefinition& scenario,
+ const std::unordered_map<std::string, ConstructionPieceDefinition>& catalog,
+ const ConstructionPlan& plan, const sim::runtime::MapSnapshot& base_map,
+ sim::runtime::TimePoint sample_time) {
+ ConstructionWorldCommit commit;
+ commit.resolution = resolve_construction_plan(scenario, catalog, plan);
+ if (!commit.resolution.ok || !base_map.grid)
+ return commit;
+
+ auto map = base_map;
+ map.revision = base_map.revision + 1;
+ map.sample_time = sample_time;
+ map.provenance.source_kind = "construction-plan";
+ map.provenance.producer_id = "lost-signal.construction";
+ map.provenance.source_revision = commit.resolution.plan_sha256;
+ auto& grid = *map.grid;
+
+ for (const auto& resolved : commit.resolution.pieces) {
+ const auto& piece = catalog.at(resolved.placement.piece_id);
+ auto material = std::find(grid.surface_classes.begin(), grid.surface_classes.end(),
+ piece.surface_material);
+ if (material == grid.surface_classes.end()) {
+ grid.surface_classes.push_back(piece.surface_material);
+ material = std::prev(grid.surface_classes.end());
+ }
+ const auto material_index = static_cast<std::uint16_t>(
+ std::distance(grid.surface_classes.begin(), material));
+ const double cosine = std::cos(resolved.yaw_rad);
+ const double sine = std::sin(resolved.yaw_rad);
+ const double horizontal_half_length = piece.size_m.x * 0.5 * std::cos(resolved.pitch_rad);
+ const double half_width = piece.size_m.y * 0.5;
+ for (std::uint32_t y = 0; y < grid.height; ++y) {
+ for (std::uint32_t x = 0; x < grid.width; ++x) {
+ const auto center = sim::runtime::grid_cell_center(grid, {x, y});
+ const double dx = center.x - resolved.center_m.x;
+ const double dy = center.y - resolved.center_m.y;
+ const double local_x = cosine * dx + sine * dy;
+ const double local_y = -sine * dx + cosine * dy;
+ if (std::abs(local_x) > horizontal_half_length || std::abs(local_y) > half_width)
+ continue;
+ const auto index = static_cast<std::size_t>(y) * grid.width + x;
+ grid.elevation_m[index] = static_cast<float>(
+ resolved.center_m.z + std::tan(resolved.pitch_rad) * local_x +
+ piece.size_m.z * 0.5 * std::cos(resolved.pitch_rad));
+ grid.surface_class[index] = material_index;
+ // A bridge deck is support terrain. Occupancy describes blocking volume
+ // in the navigation projection, so committing one must not create a wall.
+ grid.occupancy[index] = 0;
+ }
+ }
+
+ sim::runtime::SemanticFeature feature;
+ feature.id = resolved.placement.instance_id;
+ feature.kind = "constructed_surface";
+ feature.geometry = sim::runtime::SemanticGeometry::Polygon;
+ const sim::Vec2 local_corners[] = {
+ {-horizontal_half_length, -half_width},
+ {horizontal_half_length, -half_width},
+ {horizontal_half_length, half_width},
+ {-horizontal_half_length, half_width},
+ };
+ for (const auto corner : local_corners) {
+ feature.vertices_m.push_back({
+ resolved.center_m.x + cosine * corner.x - sine * corner.y,
+ resolved.center_m.y + sine * corner.x + cosine * corner.y,
+ });
+ }
+ feature.attributes.emplace("piece_id", resolved.placement.piece_id);
+ feature.attributes.emplace("plan_sha256", commit.resolution.plan_sha256);
+ feature.attributes.emplace("surface_material", piece.surface_material);
+ map.features.push_back(std::move(feature));
+ }
+
+ std::string reason;
+ if (!sim::runtime::valid_map_snapshot(map, &reason)) {
+ commit.resolution.ok = false;
+ commit.resolution.reason = "constructed map is invalid: " + reason;
+ commit.resolution.pieces.clear();
+ return commit;
+ }
+ commit.map = std::move(map);
+ return commit;
+}
+
 } // namespace mission

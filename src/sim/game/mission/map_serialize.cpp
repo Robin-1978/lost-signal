@@ -64,6 +64,8 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["base_height_m"] = patch.base_height_m;
   item["grade_x"] = patch.grade_x;
   item["grade_y"] = patch.grade_y;
+ if (std::abs(patch.grade_xy_per_m) > 1e-12)
+ item["grade_xy_per_m"] = patch.grade_xy_per_m;
   item["roughness"] = patch.roughness;
   if (!patch.active_in.empty()) {
    item["active_in"] = strings(patch.active_in);

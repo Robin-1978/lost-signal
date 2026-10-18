@@ -85,6 +85,9 @@ struct TerrainPatchDefinition {
  double grade_y{0.0};
  double roughness{0.0};
  std::vector<std::string> active_in;
+ // Mixed height derivative in 1/m. It lets authored terrain change grade
+ // continuously across a transition: z += grade_xy_per_m * dx * dy.
+ double grade_xy_per_m{0.0};
 };
 
 // Authoritative authored height used by Bullet mesh generation and Robot Map
@@ -92,8 +95,10 @@ struct TerrainPatchDefinition {
 // disagreeing about deterministic rough relief.
 inline double terrain_patch_height(const TerrainPatchDefinition& patch,
  double x, double y) {
- const double plane = patch.base_height_m + patch.grade_x * (x - patch.min.x) +
- patch.grade_y * (y - patch.min.y);
+ const double dx = x - patch.min.x;
+ const double dy = y - patch.min.y;
+ const double plane = patch.base_height_m + patch.grade_x * dx + patch.grade_y * dy +
+ patch.grade_xy_per_m * dx * dy;
  if (patch.roughness <= 0.0)
  return plane;
  const double width = std::max(0.1, patch.max.x - patch.min.x);

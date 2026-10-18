@@ -265,8 +265,7 @@ void WorldRenderer::draw_edit_overlay(const mission::PresentationFrameView& miss
  const Color hot = Fade(kAmber, 0.95f);
  if (!analysis_mode_) {
  const auto height_at = [](const mission::TerrainPatchDefinition& patch, double x, double y) {
- return patch.base_height_m + patch.grade_x * (x - patch.min.x) +
- patch.grade_y * (y - patch.min.y);
+ return mission::terrain_patch_height(patch, x, y);
  };
  BeginScissorMode(static_cast<int>(viewport_.x), static_cast<int>(viewport_.y),
  static_cast<int>(viewport_.width), static_cast<int>(viewport_.height));

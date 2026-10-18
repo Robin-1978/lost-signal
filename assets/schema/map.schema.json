@@ -237,6 +237,12 @@
           "minimum": -2,
           "maximum": 2
         },
+        "grade_xy_per_m": {
+          "type": "number",
+          "description": "Mixed height derivative used for continuous grade transitions, in inverse meters.",
+          "minimum": -2,
+          "maximum": 2
+        },
         "roughness": {
           "type": "number",
           "description": "Terrain height-disturbance amplitude in meters.",

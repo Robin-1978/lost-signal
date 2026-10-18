@@ -695,6 +695,7 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    patch.grade_y = item.at("grade_y").get<double>();
    patch.roughness = item.value("roughness", 0.0);
    patch.active_in = item.value("active_in", std::vector<std::string>{});
+ patch.grade_xy_per_m = item.value("grade_xy_per_m", 0.0);
    if (!(patch.min.x < patch.max.x && patch.min.y < patch.max.y)) {
     throw ContentError(path.string() + ": terrain patch '" + patch.id + "' has an invalid box");
    }
