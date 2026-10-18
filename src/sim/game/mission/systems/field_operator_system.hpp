@@ -9,7 +9,7 @@
 namespace mission {
 
 enum class FieldIntentKind { Follow, GoTo, Search, Wait, Return };
-enum class FieldIntentAcknowledgement { Idle, Pending, Accepted, Rejected };
+enum class FieldIntentAcknowledgement { Idle, Pending, Accepted, Completed, Rejected };
 
 const char* field_intent_kind_id(FieldIntentKind kind);
 const char* field_intent_acknowledgement_id(FieldIntentAcknowledgement acknowledgement);
@@ -50,6 +50,7 @@ class FieldOperatorSystem {
  void update(double dt_s, const MapDefinition& map, const std::string& level_id);
  bool issue_intent(FieldIntentKind kind, std::optional<sim::Vec2> target = std::nullopt);
  void acknowledge(std::uint64_t revision, bool accepted);
+ void complete(std::uint64_t revision);
  FieldExpeditionCheckpoint checkpoint() const { return {{}, state_, intent_}; }
  void restore(const FieldExpeditionCheckpoint& checkpoint, const MapDefinition& map,
  const std::string& level_id);

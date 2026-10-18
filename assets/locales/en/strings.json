@@ -210,6 +210,7 @@
     "/strings/field.ack.idle": "Awaiting intent",
     "/strings/field.ack.pending": "Checking the route",
     "/strings/field.ack.accepted": "Understood. Moving now.",
+    "/strings/field.ack.completed": "Destination reached.",
     "/strings/field.ack.rejected": "I can’t reach that point yet.",
     "/strings/event.field_session_start": "RO-1 entered the persistent expedition world. Field channel connected.",
     "/strings/event.field_dispatch_opened": "New {0} field call received. Location marked.",

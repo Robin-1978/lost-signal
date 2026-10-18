@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace sim {
 namespace {
@@ -40,6 +41,14 @@ PathProjection project_to_path(Vec2 point, const std::vector<Vec2>& path) {
  return best;
 }
 
+void append_unique(std::vector<double>& samples, double value) {
+ if (std::none_of(samples.begin(), samples.end(), [value](double existing) {
+ return std::abs(existing - value) < 1e-9;
+ })) {
+ samples.push_back(value);
+ }
+}
+
 } // namespace
 
 DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double current_forward_mps,
@@ -51,14 +60,60 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
  DwaResult output;
  output.best.command.score = -1e18;
  const double minimum_forward = std::min(config.min_forward_speed_mps, config.max_speed_mps);
- const double velocity_samples[] = {
+ std::vector<double> velocity_samples{
  minimum_forward,
  std::max(minimum_forward, config.max_speed_mps * 0.5),
  config.max_speed_mps,
  };
- const double lateral_samples[] = {-config.max_speed_mps * 0.6, 0.0, config.max_speed_mps * 0.6};
- const double yaw_samples[] = {-config.max_yaw_radps, -config.max_yaw_radps * 0.5, 0.0,
+ std::vector<double> lateral_samples{
+ -config.max_speed_mps * 0.6, 0.0, config.max_speed_mps * 0.6};
+ std::vector<double> yaw_samples{-config.max_yaw_radps, -config.max_yaw_radps * 0.5, 0.0,
                                config.max_yaw_radps * 0.5, config.max_yaw_radps};
+
+ const double terminal_distance = config.terminal_position
+ ? std::hypot(config.terminal_position->x - position.x,
+ config.terminal_position->y - position.y)
+ : std::numeric_limits<double>::infinity();
+ const double planar_speed = std::hypot(current_forward_mps, current_left_mps);
+ const double braking_distance = planar_speed * planar_speed /
+ (2.0 * std::max(1e-6, config.max_accel_mps2));
+ const double terminal_activation_m = std::max(
+ 1.0, config.terminal_position_tolerance_m + braking_distance +
+ 0.5 * config.max_speed_mps);
+ const bool terminal_mode = config.terminal_position &&
+ terminal_distance <= terminal_activation_m;
+ if (terminal_mode) {
+ // A swerve or mecanum chassis can correct a small overshoot directly. The
+ // final position error is transformed into body coordinates so the sampler
+ // includes signed fine-motion commands instead of choosing between a large
+ // lateral step and another forward-only pass around the goal.
+ const double dx = config.terminal_position->x - position.x;
+ const double dy = config.terminal_position->y - position.y;
+ const double desired_forward = std::clamp(
+ 1.2 * (std::cos(heading_rad) * dx + std::sin(heading_rad) * dy),
+ -config.max_speed_mps, config.max_speed_mps);
+ const double desired_left = std::clamp(
+ 1.2 * (-std::sin(heading_rad) * dx + std::cos(heading_rad) * dy),
+ -config.max_speed_mps, config.max_speed_mps);
+ velocity_samples.clear();
+ lateral_samples.clear();
+ append_unique(velocity_samples, 0.0);
+ append_unique(velocity_samples, desired_forward * 0.5);
+ append_unique(velocity_samples, desired_forward);
+ append_unique(lateral_samples, 0.0);
+ append_unique(lateral_samples, desired_left * 0.5);
+ append_unique(lateral_samples, desired_left);
+
+ yaw_samples.clear();
+ append_unique(yaw_samples, 0.0);
+ if (config.terminal_heading_rad) {
+ const double heading_error = wrap_angle(*config.terminal_heading_rad - heading_rad);
+ const double desired_yaw = std::clamp(
+ 1.5 * heading_error, -config.max_yaw_radps, config.max_yaw_radps);
+ append_unique(yaw_samples, desired_yaw * 0.5);
+ append_unique(yaw_samples, desired_yaw);
+ }
+ }
  for (double target_forward : velocity_samples) {
   for (double target_left : lateral_samples) {
    for (double target_yaw : yaw_samples) {
@@ -92,8 +147,12 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
       break;
      }
     }
-    const double goal_score = -std::hypot(goal.x - x, goal.y - y);
- const double goal_heading = std::atan2(goal.y - y, goal.x - x);
+ const Vec2 scoring_goal = terminal_mode ? *config.terminal_position : goal;
+ const double terminal_position_error = std::hypot(scoring_goal.x - x, scoring_goal.y - y);
+ const double goal_score = -terminal_position_error;
+ const double goal_heading = terminal_mode
+ ? config.terminal_heading_rad.value_or(heading_rad)
+ : std::atan2(goal.y - y, goal.x - x);
  const double heading_score = std::cos(wrap_angle(goal_heading - heading));
     const double clearance_score = collision ? free_time : config.predict_time_s + 1.0;
  double path_score = 0.0;
@@ -109,12 +168,29 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
  }
  const bool angular_reversal =
  target_yaw * reference.previous_angular_command_radps < -0.04;
- const double score = weights.w_goal * (goal_score + 0.7 * heading_score) +
+ double score = 0.0;
+ if (terminal_mode) {
+ const double terminal_speed = std::hypot(forward, left);
+ const double terminal_heading_error = config.terminal_heading_rad
+ ? std::abs(wrap_angle(*config.terminal_heading_rad - heading))
+ : 0.0;
+ const bool settled = terminal_position_error <= config.terminal_position_tolerance_m &&
+ terminal_speed <= config.terminal_max_speed_mps &&
+ std::abs(yaw) <= config.terminal_max_yaw_rate_radps &&
+ terminal_heading_error <= config.terminal_heading_tolerance_rad;
+ score = weights.w_goal * (4.0 * goal_score + 0.7 * heading_score) +
+ weights.w_clear * clearance_score -
+ 2.0 * terminal_speed - 0.35 * std::abs(yaw) +
+ (settled ? 3.0 : 0.0) + 0.2 * weights.w_path * path_score -
+ weights.w_oscillation * (angular_reversal ? 1.0 : 0.0);
+ } else {
+ score = weights.w_goal * (goal_score + 0.7 * heading_score) +
  weights.w_clear * clearance_score +
-                         weights.w_speed * std::hypot(target_forward, target_left) -
+ weights.w_speed * std::hypot(target_forward, target_left) -
  0.02 * std::abs(target_yaw) + weights.w_path * path_score +
  weights.w_progress * progress_score -
  weights.w_oscillation * (angular_reversal ? 1.0 : 0.0);
+ }
     DwaCmd command{target_forward, target_yaw, !collision, score, target_left};
     ExecutableTrajectory trajectory{LocalCommandSpace::HolonomicTwist, command, std::move(samples)};
     output.rollouts.push_back({trajectory, collision});

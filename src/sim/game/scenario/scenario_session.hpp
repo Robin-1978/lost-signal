@@ -558,6 +558,7 @@ class ScenarioSession {
  void initialize_frame_tree();
  void update_frame_tree();
  void apply_goal_stop_constraint();
+ void complete_operator_intent_if_arrived();
  void refresh_operator_route();
 
  const ContentCatalog& catalog_;

@@ -1214,6 +1214,7 @@ void ScenarioSession::step() {
  apply_motion();
  snapshot_.time_s += fixed_step_s;
  result_.time_s = snapshot_.time_s;
+ complete_operator_intent_if_arrived();
 
  const std::size_t previous_environment_stage = snapshot_.environment.keyframe_index;
  update_environment();
@@ -1277,7 +1278,8 @@ void ScenarioSession::step() {
    endless_mode_
      ? std::optional<GoalArrival>{}
  : goal_system_.update(level_.objective, {snapshot_.robot.x, snapshot_.robot.y},
-                           snapshot_.robot.v, completion_allowed, fixed_step_s);
+ std::hypot(snapshot_.robot.v, snapshot_.robot.lateral_v),
+ completion_allowed, fixed_step_s);
  if (arrival) {
   const auto& goal = arrival->goal;
   snapshot_.goals_reached = goal_system_.goals_reached();
@@ -1361,10 +1363,48 @@ void ScenarioSession::apply_goal_stop_constraint() {
  const double stop_cap = std::sqrt(2.0 * deceleration * remaining);
  if (remaining <= 0.04) {
   held_command_.target_v = 0.0;
+ held_command_.target_lateral_v = 0.0;
   held_command_.target_w = 0.0;
  } else {
-  held_command_.target_v = std::clamp(held_command_.target_v, -stop_cap, stop_cap);
+ const double requested_speed =
+ std::hypot(held_command_.target_v, held_command_.target_lateral_v);
+ if (requested_speed > stop_cap && requested_speed > 1e-9) {
+ const double scale = stop_cap / requested_speed;
+ held_command_.target_v *= scale;
+ held_command_.target_lateral_v *= scale;
  }
+ }
+}
+
+void ScenarioSession::complete_operator_intent_if_arrived() {
+ const auto intent = field_operator_system_.intent();
+ if (!intent.active ||
+ (intent.kind != FieldIntentKind::GoTo && intent.kind != FieldIntentKind::Return)) {
+ return;
+ }
+ const auto& estimate = estimation_system_.state();
+ constexpr double kOperatorArrivalRadiusM = 0.25;
+ constexpr double kOperatorArrivalSpeedMps = 0.05;
+ constexpr double kOperatorArrivalYawToleranceRad = 0.12;
+ constexpr double kOperatorArrivalYawRateRadps = 0.05;
+ const std::optional<double> required_heading = planned_route_.empty()
+ ? std::nullopt
+ : std::optional<double>{planned_route_.back().heading_rad};
+ if (distance(estimate.position, intent.target) > kOperatorArrivalRadiusM ||
+ std::hypot(estimate.linear_velocity_mps, estimate.lateral_velocity_mps) >
+ kOperatorArrivalSpeedMps ||
+ std::abs(estimate.angular_velocity_radps) > kOperatorArrivalYawRateRadps ||
+ (required_heading &&
+ std::abs(sim::wrap_angle(*required_heading - estimate.heading_rad)) >
+ kOperatorArrivalYawToleranceRad)) {
+ return;
+ }
+
+ field_operator_system_.complete(intent.revision);
+ planned_route_.clear();
+ route_tracking_system_->reset();
+ held_command_ = {};
+ endless_target_key_ = "completed:" + std::to_string(intent.revision);
 }
 
 void ScenarioSession::update_actors() {

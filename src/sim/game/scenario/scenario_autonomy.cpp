@@ -606,6 +606,32 @@ void ScenarioSession::decide_control() {
  local_request.steering_rate_radps = chassis_->telemetry().steer.rate_radps;
  local_request.target = target;
  local_request.target_heading_rad = local_target_heading;
+ // A route lookahead and a final destination are different contracts. A
+ // point-and-go operator command requires a physical stop at its selected
+ // point; low-speed authored goals also expose their arrival requirement.
+ // Keeping this explicit lets the deployable holonomic planner perform fine
+ // signed corrections without learning simulator markers or game actions.
+ const auto& field_intent = field_operator_system_.intent();
+ if ((endless_mode_ || level_.control_mode == "operator_drive") &&
+ field_intent.active && field_intent.kind != FieldIntentKind::Follow &&
+ field_intent.kind != FieldIntentKind::Wait) {
+ local_request.terminal_position = field_intent.target;
+ local_request.terminal_position_tolerance_m = 0.25;
+ local_request.terminal_max_speed_mps = 0.05;
+ if (!planned_route_.empty())
+ local_request.target_heading_rad = planned_route_.back().heading_rad;
+ } else if (const GoalStep* goal = active_goal();
+ goal && (goal->action == "inspect" ||
+ level_.objective.max_arrival_speed_mps < chassis_cruise)) {
+ const auto& marker = map_definition_.markers.at(goal->marker);
+ local_request.terminal_position = as_vec(marker);
+ local_request.terminal_position_tolerance_m = goal->radius_m;
+ local_request.terminal_max_speed_mps = goal->action == "inspect"
+ ? 0.18
+ : level_.objective.max_arrival_speed_mps;
+ if (local_request.command_space == sim::LocalCommandSpace::HolonomicTwist)
+ local_request.target_heading_rad = marker.theta;
+ }
  local_request.weights = weights;
  local_request.max_speed_mps = speed_cap;
  local_request.max_yaw_rate_radps = yaw_cap_rads_;
@@ -755,7 +781,13 @@ void ScenarioSession::decide_control() {
   constexpr double kCreepSpeedMps = 0.15;
   held_command_ = {command.v, command.w};
   held_command_.target_lateral_v = command.lateral_v;
-  snapshot_.waiting_for_clearance = std::abs(command.v) < kCreepSpeedMps;
+ const double commanded_translation_mps =
+ std::hypot(command.v, command.lateral_v);
+ // Slow terminal settling is not a dynamic-obstacle wait. Clearance waiting
+ // requires both a near-stationary command and actual dynamic/governor
+ // evidence; this also avoids classifying pure lateral motion as stopped.
+ snapshot_.waiting_for_clearance = commanded_translation_mps < kCreepSpeedMps &&
+ (governor_out.hold_active || !known_tracks.empty());
  const sim::TrajectoryTrackingLimits tracking_limits{
     std::max(2.0 * map_definition_.grid_resolution_m, level_.planning_localization_margin_m),
     std::max(0.10, std::atan2(map_definition_.grid_resolution_m,

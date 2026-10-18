@@ -270,6 +270,8 @@ std::string field_ack_label(const mission::ContentCatalog& catalog,
  return catalog.tr("field.ack.pending");
  case mission::FieldIntentAcknowledgement::Accepted:
  return catalog.tr("field.ack.accepted");
+ case mission::FieldIntentAcknowledgement::Completed:
+ return catalog.tr("field.ack.completed");
  case mission::FieldIntentAcknowledgement::Rejected:
  return catalog.tr("field.ack.rejected");
  case mission::FieldIntentAcknowledgement::Idle:

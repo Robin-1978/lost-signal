@@ -726,9 +726,10 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
   CHECK(scrub_wet.result().status == mission::MissionStatus::Succeeded);
   CHECK(scrub_wet.result().safe_score);
  }
- // Wet descent is a stopping task, not a drive-through waypoint. Both builds
- // settle inside the unload zone once the authored slope has a continuous
- // shoulder; the low-grip build must still expose more traction episodes.
+ // Wet descent is a stopping task, not a drive-through waypoint. The grip
+ // build settles inside the unload zone. Eco tires on standing water have an
+ // effective friction coefficient below the 0.28 grade, so the low-grip
+ // build cannot hold and must never be declared arrived while it is sliding.
  {
   const auto& presentation = catalog.presentation_for_level("rain_descent");
   mission::ScenarioSession careful(catalog, "rain_descent", presentation.recommended_build, std::nullopt,
@@ -739,8 +740,8 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
   mission::ScenarioSession fast(catalog, "rain_descent", presentation.default_build, std::nullopt, {},
                                   mission::ComponentRegistry::builtins(), {}, mission::PhysicsMode::Bullet);
   fast.run_to_completion();
-CHECK(fast.result().status == mission::MissionStatus::Succeeded);
-CHECK(fast.result().safe_score);
+CHECK(fast.result().status == mission::MissionStatus::Failed);
+CHECK(!fast.result().safe_score);
 CHECK(fast.result().slip_events > careful.result().slip_events);
  }
  // Cross-slope cargo exposes two independent physical limits. The grip build

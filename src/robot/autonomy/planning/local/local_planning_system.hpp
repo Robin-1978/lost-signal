@@ -22,6 +22,15 @@ struct LocalPlanningRequest {
  // crossing stop line. A point alone is singular at arrival and can make a
  // differential robot align with localization noise instead of the route.
  std::optional<double> target_heading_rad;
+ // Optional final pose contract. `target` remains the receding-horizon
+ // lookahead point; a final destination is separate so a holonomic planner
+ // can decelerate and make signed, fine translations after passing the last
+ // lookahead without treating every route waypoint as a docking pose.
+ std::optional<Vec2> terminal_position;
+ double terminal_position_tolerance_m{0.0};
+ double terminal_max_speed_mps{0.0};
+ double terminal_heading_tolerance_rad{0.12};
+ double terminal_max_yaw_rate_radps{0.05};
  DwaWeights weights;
  double max_speed_mps{0.0};
  double max_yaw_rate_radps{0.0};

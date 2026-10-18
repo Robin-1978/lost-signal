@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/local/dwa.hpp"
+#include "robot/autonomy/planning/local/holonomic_local.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 
 #include <algorithm>
@@ -36,6 +37,45 @@ const sim::DwaRollout* rollout_near(
 int main() {
  sim::GridMap map(100, 100, 0.1);
  const sim::DwaWeights weights{1.0, 2.0, 0.3, 1.2, 0.8, 0.25};
+
+ // Holonomic terminal planning is a pose-settling problem, not another
+ // forward-only route sample. On either side of the same destination the
+ // selected correction must change sign, remain slow, and avoid the bearing
+ // flip that used to command a needless half-turn after overshoot.
+ sim::HolonomicLocalConfig terminal_config;
+ terminal_config.max_speed_mps = 0.8;
+ terminal_config.max_yaw_radps = 1.5;
+ terminal_config.max_accel_mps2 = 2.0;
+ terminal_config.max_yaw_accel_radps2 = 4.0;
+ terminal_config.predict_time_s = 0.8;
+ terminal_config.dt_s = 0.1;
+ terminal_config.terminal_position = sim::Vec2{5.0, 5.0};
+ terminal_config.terminal_position_tolerance_m = 0.10;
+ terminal_config.terminal_max_speed_mps = 0.05;
+ const auto approach_terminal = sim::holonomic_local_compute(
+ {4.82, 5.0}, 0.0, 0.10, 0.0, 0.0, {5.0, 5.0}, map, weights,
+ {}, terminal_config);
+ CHECK(approach_terminal.best.command.valid);
+ CHECK(approach_terminal.best.command.v >= 0.0);
+ CHECK(approach_terminal.best.command.v < 0.35);
+ CHECK(std::abs(approach_terminal.best.command.w) < 1e-12);
+ const auto correct_overshoot = sim::holonomic_local_compute(
+ {5.18, 5.0}, 0.0, 0.10, 0.0, 0.0, {5.0, 5.0}, map, weights,
+ {}, terminal_config);
+ CHECK(correct_overshoot.best.command.valid);
+ CHECK(correct_overshoot.best.command.v < 0.0);
+ CHECK(std::abs(correct_overshoot.best.command.v) < 0.35);
+ CHECK(std::abs(correct_overshoot.best.command.w) < 1e-12);
+ auto pose_terminal_config = terminal_config;
+ pose_terminal_config.terminal_heading_rad = sim::kPi * 0.5;
+ const auto align_terminal = sim::holonomic_local_compute(
+ {5.0, 5.0}, 0.0, 0.0, 0.0, 0.0, {5.0, 5.0}, map, weights,
+ {}, pose_terminal_config);
+ CHECK(align_terminal.best.command.valid);
+ CHECK(align_terminal.best.command.w > 0.0);
+ CHECK(std::abs(sim::wrap_angle(
+ sim::kPi * 0.5 - align_terminal.best.samples.back().heading_rad)) <
+ sim::kPi * 0.5);
 
  // Exact-time interpolation is mandatory. The target crosses the stationary
  // ego between two prediction frames; endpoint-only or floor-index checking

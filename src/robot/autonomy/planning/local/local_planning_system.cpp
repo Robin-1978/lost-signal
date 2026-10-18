@@ -60,6 +60,12 @@ DwaResult generate(const LocalPlanningRequest& request,
  config.frame_dt_s = request.step_s;
  config.safety_margin_m = required_clearance_m;
  config.robot_radius_m = request.robot_radius_m;
+ config.terminal_position = request.terminal_position;
+ config.terminal_heading_rad = request.target_heading_rad;
+ config.terminal_position_tolerance_m = request.terminal_position_tolerance_m;
+ config.terminal_max_speed_mps = request.terminal_max_speed_mps;
+ config.terminal_heading_tolerance_rad = request.terminal_heading_tolerance_rad;
+ config.terminal_max_yaw_rate_radps = request.terminal_max_yaw_rate_radps;
  return holonomic_local_compute(
  request.position, request.heading_rad, request.forward_mps,
  request.lateral_mps, request.yaw_rate_radps, request.target,

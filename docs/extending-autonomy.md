@@ -17,6 +17,12 @@ Lost Signal keeps algorithm extension inside a small, project-owned C++ stack. E
 
 DWA and the Ackermann and holonomic rollout samplers are local planners. Path following and PID belong to control. Deterministic patrol and wander motion describe simulated world actors, so they live under `src/sim/game/mission/world/` rather than the autonomy stack.
 
+Local planners must distinguish a rolling lookahead from a terminal pose. The latter carries position and speed
+tolerances and may carry a heading tolerance. For holonomic command space, terminal sampling must include zero and
+small signed body-frame translations so an overshoot can be corrected without turning the body through 180 degrees.
+Tests should assert final planar speed, yaw rate and heading as well as position; `inside radius` alone is not an
+arrival oracle.
+
 Waiting at a safe pocket is a behavior decision. The behavior layer selects the pocket, decides when to hold,
 commits to a crossing, and releases or falls back when observations change. A local planner such as DWA only checks
 and executes the short-horizon motion toward the selected pocket or through the committed crossing; it does not own

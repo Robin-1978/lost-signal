@@ -59,6 +59,11 @@ int main() {
  CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Pending);
  first.acknowledge(1, true);
  CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Accepted);
+ first.complete(0);
+ CHECK(first.intent().active);
+ first.complete(1);
+ CHECK(!first.intent().active);
+ CHECK(first.intent().acknowledgement == mission::FieldIntentAcknowledgement::Completed);
  CHECK(!first.issue_intent(mission::FieldIntentKind::GoTo));
  CHECK(first.intent().revision == 1);
  CHECK(first.issue_intent(mission::FieldIntentKind::GoTo, sim::Vec2{7.0, 1.0}));
@@ -108,6 +113,31 @@ int main() {
  CHECK(proving.result().last_stop_start_speed_mps > 0.25);
  CHECK(proving.result().last_stop_time_s > 0.0);
  CHECK(proving.result().last_stop_distance_m > 0.0);
+
+ // RO-4 point-and-go settles through the complete planner, actuator and
+ // Bullet chain. Arrival uses planar speed, clears the completed route and
+ // leaves no synthetic dynamic-clearance wait behind.
+ auto ro4_build = catalog.presentation_for_level("vehicle_proving_ground").recommended_build;
+ ro4_build.chassis_robot = "robot.ro4";
+ mission::ScenarioSession ro4_point_and_go(catalog, "vehicle_proving_ground", ro4_build);
+ ro4_point_and_go.start();
+ const sim::Vec2 ro4_target{8.0, 8.0};
+ CHECK(ro4_point_and_go.issue_field_intent(mission::FieldIntentKind::GoTo, ro4_target));
+ for (int step = 0; step < 4000 && ro4_point_and_go.field_intent().active; ++step)
+ ro4_point_and_go.step();
+ CHECK(!ro4_point_and_go.field_intent().active);
+ CHECK(ro4_point_and_go.field_intent().acknowledgement ==
+ mission::FieldIntentAcknowledgement::Completed);
+ CHECK(near({ro4_point_and_go.snapshot().robot.x, ro4_point_and_go.snapshot().robot.y},
+ ro4_target, 0.30));
+ CHECK(std::hypot(ro4_point_and_go.snapshot().robot.v,
+ ro4_point_and_go.snapshot().robot.lateral_v) <= 0.08);
+ const double ro4_terminal_heading = std::atan2(
+ ro4_target.y - 3.0, ro4_target.x - 3.0);
+ CHECK(std::abs(sim::wrap_angle(
+ ro4_terminal_heading - ro4_point_and_go.snapshot().robot.theta)) <= 0.15);
+ CHECK(ro4_point_and_go.planned_route().empty());
+ CHECK(!ro4_point_and_go.snapshot().waiting_for_clearance);
 
  // Expedition input can move the human and express intent, but it can never
  // take direct authority over the robot chassis. A high-level GoTo command

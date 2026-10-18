@@ -84,6 +84,15 @@ search and emits forward segments; its heading is the geometric route tangent an
 incoming edge heading. Hybrid A* remains the Ackermann default and preserves its searched heading and gear, including
 at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cusp instead of inferring gear from point geometry.
 
+A route lookahead point and a terminal pose are separate local-planning inputs. A pass-through route point may be
+crossed at speed. A terminal pose is accepted only from estimated state: position must be inside its tolerance,
+planar speed and yaw rate must be below their stop tolerances, and an authored heading must be inside its yaw
+tolerance. The holonomic sampler adds signed fine forward/lateral corrections, a zero-motion candidate, and an
+explicit terminal-heading critic; it does not keep rewarding cruise speed near the destination. A point-and-go
+click has no authored yaw, so its default terminal heading is the final global-route heading. Scenario code observes
+the result and advances presentation state; it never writes body velocity to zero or declares arrival from forward
+speed alone.
+
 The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy
 layer. Route following, waypoint progress, heading PID state, crossing behavior, prediction, and trajectory
 validation all live in `src/robot/autonomy`; simulation mission code only supplies task intent and world semantics.

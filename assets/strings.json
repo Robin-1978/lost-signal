@@ -216,6 +216,7 @@
     "field.ack.idle": "等待指令",
     "field.ack.pending": "正在确认路线",
     "field.ack.accepted": "收到，开始行动",
+    "field.ack.completed": "已到达目的地",
     "field.ack.rejected": "这里暂时无法抵达",
     "event.field_session_start": "洛一进入持续行动世界，现场频道已连接。",
     "event.field_dispatch_opened": "收到新的{0}派单，位置已标记。",

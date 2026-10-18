@@ -42,6 +42,8 @@ const char* field_intent_acknowledgement_id(
  return "pending";
  case FieldIntentAcknowledgement::Accepted:
  return "accepted";
+ case FieldIntentAcknowledgement::Completed:
+ return "completed";
  case FieldIntentAcknowledgement::Rejected:
  return "rejected";
  }
@@ -168,6 +170,14 @@ void FieldOperatorSystem::acknowledge(std::uint64_t revision, bool accepted) {
  intent_.acknowledged_revision = revision;
  intent_.acknowledgement = accepted ? FieldIntentAcknowledgement::Accepted
  : FieldIntentAcknowledgement::Rejected;
+}
+
+void FieldOperatorSystem::complete(std::uint64_t revision) {
+ if (!intent_.active || revision != intent_.revision)
+ return;
+ intent_.active = false;
+ intent_.acknowledged_revision = revision;
+ intent_.acknowledgement = FieldIntentAcknowledgement::Completed;
 }
 
 bool FieldOperatorSystem::walkable(const MapDefinition& map, sim::Vec2 position,

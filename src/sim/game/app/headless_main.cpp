@@ -169,25 +169,42 @@ int main(int argc, char** argv) {
  if (!requested_task_policy.empty())
  build.task_policy = requested_task_policy;
  }
- if (field_intent && !endless)
- throw std::runtime_error("--intent requires --endless");
+ if (field_intent && !endless && catalog.level(level_id).control_mode != "operator_drive")
+ throw std::runtime_error("--intent requires --endless or an operator-drive level");
  if (!requested_maneuver.empty() && endless)
  throw std::runtime_error("--maneuver cannot be combined with --endless");
  if (!requested_maneuver.empty() && !artifact_path.empty())
  throw std::runtime_error("maneuver artifacts require a future explicit artifact schema field");
  mission::ScenarioSession mission(catalog, level_id, build, seed_override, {},
  mission::ComponentRegistry::builtins(), {}, physics_mode);
- if (endless) {
+ if (!requested_maneuver.empty() && !mission.activate_maneuver(requested_maneuver))
+ throw std::runtime_error("unknown or unavailable maneuver: " + requested_maneuver);
+ if (endless)
  mission.set_endless_mode(true);
+
+ // Operator intent is an input to an active ROBOT session. Publishing it
+ // before start made the headless path differ from a click in the graphical
+ // client and could leave the target outside the live control loop.
+ if (endless || field_intent)
+ mission.start();
  if (field_intent && !mission.issue_field_intent(*field_intent, field_target))
  throw std::runtime_error("field intent requires a valid target");
- mission.start();
+ if (endless) {
  const int steps = static_cast<int>(std::ceil(duration_s / mission::ScenarioSession::fixed_step_s));
  for (int step = 0; step < steps; ++step)
  mission.step();
+ } else if (field_intent) {
+ // An operator-drive intent is a bounded command inside a continuing
+ // playground session, not the authored level objective. Stop the headless
+ // run when that command completes or is rejected instead of waiting for the
+ // unrelated playground timeout.
+ while (mission.snapshot().status == mission::MissionStatus::Running &&
+ mission.field_intent().active &&
+ mission.field_intent().acknowledgement !=
+ mission::FieldIntentAcknowledgement::Rejected) {
+ mission.step();
+ }
  } else {
- if (!requested_maneuver.empty() && !mission.activate_maneuver(requested_maneuver))
- throw std::runtime_error("unknown or unavailable maneuver: " + requested_maneuver);
  mission.run_to_completion();
  }
   const auto& result = mission.result();
@@ -320,6 +337,9 @@ int main(int argc, char** argv) {
  mission::field_intent_acknowledgement_id(mission.field_intent().acknowledgement)},
  {"target", {mission.field_intent().target.x, mission.field_intent().target.y}},
  }},
+ {"operator_intent_completed",
+ mission.field_intent().acknowledgement ==
+ mission::FieldIntentAcknowledgement::Completed},
  }},
      {"via_reached", result.via_reached},
  {"tasks",
@@ -425,7 +445,11 @@ int main(int argc, char** argv) {
    }
    std::cout << '\n';
   }
- return endless || result.status == mission::MissionStatus::Succeeded ? 0 : 2;
+ const bool operator_intent_completed = field_intent && !endless &&
+ mission.field_intent().acknowledgement ==
+ mission::FieldIntentAcknowledgement::Completed;
+ return endless || operator_intent_completed ||
+ result.status == mission::MissionStatus::Succeeded ? 0 : 2;
  } catch (const std::exception& error) {
   std::cerr << "error: " << error.what() << '\n';
   return 1;
