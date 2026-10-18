@@ -18,10 +18,13 @@ struct HolonomicActuatorControllerConfig {
  double duty_limit{1.0};
  double integral_limit{2.0};
  double steer_kp{2.5};
+ double steer_velocity_gain_s{0.35};
+ double max_steer_rate_radps{2.0};
 };
 struct HolonomicActuatorFeedback {
  std::array<double, 4> drive_velocity_radps{};
  std::array<double, 4> steer_position_rad{};
+ std::array<double, 4> steer_velocity_radps{};
 };
 struct HolonomicActuatorControlOutput {
  std::array<double, 4> drive_duty{};

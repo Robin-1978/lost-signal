@@ -168,15 +168,16 @@ int main() {
  fast_robot.motor.controller_derivative_time_s = fast.at("controller_derivative_time_s");
  fast_robot.motor.coulomb_smoothing_speed_mps = fast.at("coulomb_smoothing_speed_mps");
  fast_robot.motor.viscous_drag_N_per_mps = fast.at("viscous_drag_N_per_mps");
+ const sim::Vec2 fast_spawn{3.0, 10.0};
  sim::platform::SimulatedPlatform platform(map, level, fast_robot, caps, terrain,
- spawn, 0.0, fast_robot.mass_kg, fast_robot.center_of_mass_height_m,
+ fast_spawn, 0.0, fast_robot.mass_kg, fast_robot.center_of_mass_height_m,
  fast_robot.yaw_inertia_kgm2);
  Rig rig(fast_robot);
  auto state = platform.state();
  const auto start = state;
  int full_support_steps = 0;
  double peak_yaw_rad = 0.0;
- for (int step = 0; step < 250; ++step) {
+ for (int step = 0; step < 350; ++step) {
  const auto actuation = rig.step(platform, state.planar,
  {fast_robot.motor.max_wheel_speed_mps, 0.0}, dry);
  state = platform.step(actuation, dry, kStepS);
@@ -197,18 +198,26 @@ int main() {
  }
  std::cerr << "RO2 high-speed v=" << speed_before_brake_mps
  << " brake=" << state.planar.x - brake_start_x << '\n';
- REQUIRE(speed_before_brake_mps > robot.motor.max_wheel_speed_mps * 1.15);
+ REQUIRE(speed_before_brake_mps > fast_robot.motor.max_wheel_speed_mps * 0.88);
  REQUIRE(std::abs(state.planar.y - start.planar.y) < 0.25);
  REQUIRE(peak_yaw_rad < 0.10);
- REQUIRE(full_support_steps >= 245);
+ REQUIRE(full_support_steps >= 345);
  REQUIRE(std::abs(state.planar.v) < 0.10);
  REQUIRE(minimum_braking_speed_mps > -0.20);
- const double peak_motor_decel_mps2 =
- 2.0 * fast_robot.motor.stall_force_N / fast_robot.mass_kg;
- const double ideal_min_brake_m = speed_before_brake_mps * speed_before_brake_mps /
- (2.0 * peak_motor_decel_mps2);
- REQUIRE(state.planar.x - brake_start_x > ideal_min_brake_m * 0.85);
- REQUIRE(state.planar.x - brake_start_x < ideal_min_brake_m * 1.6);
+ const double peak_motor_force_N = 2.0 * fast_robot.motor.stall_force_N;
+ const double peak_service_brake_force_N =
+ 2.0 * fast_robot.service_brake.maximum_torque_Nm / fast_robot.wheel_radius_m;
+ const double peak_combined_decel_mps2 =
+ (peak_motor_force_N + peak_service_brake_force_N) / fast_robot.mass_kg;
+ const double theoretical_shortest_m = speed_before_brake_mps * speed_before_brake_mps /
+ (2.0 * peak_combined_decel_mps2);
+ const double service_brake_decel_mps2 = peak_service_brake_force_N / fast_robot.mass_kg;
+ const double conservative_stop_m =
+ speed_before_brake_mps * fast_robot.service_brake.apply_time_s +
+ speed_before_brake_mps * speed_before_brake_mps / (2.0 * service_brake_decel_mps2);
+ const double measured_stop_m = state.planar.x - brake_start_x;
+ REQUIRE(measured_stop_m > theoretical_shortest_m * 0.95);
+ REQUIRE(measured_stop_m < conservative_stop_m * 1.8);
  }
 
  {

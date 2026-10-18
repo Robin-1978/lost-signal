@@ -2,6 +2,18 @@
   "schema_version": 1,
   "translations": {
     "/title": "Lost Signal",
-    "/companion/display_name": "RO-1"
+    "/companion/display_name": "RO-1",
+    "/collections/0/eyebrow": "Guided Journey",
+    "/collections/0/title": "Restart Lan Valley with RO-1",
+    "/collections/0/subtitle": "Eight progressive missions connect motion, sensing, localization, planning, and dynamic decisions into one complete adventure.",
+    "/collections/1/eyebrow": "Field Operations",
+    "/collections/1/title": "Town Contracts",
+    "/collections/1/subtitle": "Pursue safety, speed, or efficiency with familiar capabilities, and build field reputation from measured results.",
+    "/collections/2/eyebrow": "Engineering Trials",
+    "/collections/2/title": "Algorithms and Chassis",
+    "/collections/2/subtitle": "Hold conditions fixed, change one variable, and compare motors, chassis, terrain, waiting policies, and routes.",
+    "/collections/3/eyebrow": "Autonomy Worlds",
+    "/collections/3/title": "Autonomy Playgrounds",
+    "/collections/3/subtitle": "Standalone, reproducible systems games. You choose goals and constraints; the robot senses, plans, controls, and recovers."
   }
 }

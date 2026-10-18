@@ -375,6 +375,18 @@ struct ChapterDefinition {
  std::string blurb;
 };
 
+// Player-facing entry-point grouping. Collections are presentation data: they
+// can organize story chapters, laboratories, construction games, searches, or
+// any later experience without adding a menu branch in C++.
+struct ExperienceCollectionDefinition {
+ std::string id;
+ std::string eyebrow;
+ std::string title;
+ std::string subtitle;
+ std::string accent;
+ std::vector<std::string> levels;
+};
+
 struct LevelDefinition {
  std::string id;
  int order{0};
@@ -744,6 +756,9 @@ struct CampaignDefinition {
  // separately so adding a playground never changes chapter progression.
  std::vector<std::string> levels;
  std::vector<std::string> playgrounds;
+ // Ordered, data-authored groups rendered by the experience browser. Their
+ // level lists form an exact partition of levels + playgrounds.
+ std::vector<ExperienceCollectionDefinition> collections;
  std::vector<std::string> starting_inventory;
  std::vector<std::string> starting_policies;
 };

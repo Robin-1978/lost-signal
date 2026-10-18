@@ -22,7 +22,9 @@ HolonomicActuatorController::HolonomicActuatorController(HolonomicActuatorContro
  if (std::any_of(std::begin(positive_values), std::end(positive_values),
  [](double value) { return !std::isfinite(value) || value <= 0.0; }) ||
  !std::isfinite(config_.integral_limit) || config_.integral_limit < 0.0 ||
- !std::isfinite(config_.steer_kp) || config_.steer_kp < 0.0)
+ !std::isfinite(config_.steer_kp) || config_.steer_kp < 0.0 ||
+ !std::isfinite(config_.steer_velocity_gain_s) || config_.steer_velocity_gain_s <= 0.0 ||
+ !std::isfinite(config_.max_steer_rate_radps) || config_.max_steer_rate_radps <= 0.0)
   throw std::invalid_argument("invalid holonomic actuator controller configuration");
 }
 void HolonomicActuatorController::reset() {
@@ -41,6 +43,8 @@ HolonomicActuatorControlOutput HolonomicActuatorController::update(const DiffCmd
  std::any_of(feedback.drive_velocity_radps.begin(), feedback.drive_velocity_radps.end(),
  [](double value) { return !std::isfinite(value); }) ||
  std::any_of(feedback.steer_position_rad.begin(), feedback.steer_position_rad.end(),
+ [](double value) { return !std::isfinite(value); }) ||
+ std::any_of(feedback.steer_velocity_radps.begin(), feedback.steer_velocity_radps.end(),
  [](double value) { return !std::isfinite(value); }))
  throw std::invalid_argument("holonomic controller input must be finite");
  HolonomicActuatorControlOutput out;
@@ -49,10 +53,19 @@ HolonomicActuatorControlOutput HolonomicActuatorController::update(const DiffCmd
     swerve_inverse(command.target_v, command.target_lateral_v, command.target_w, config_.wheel_base_m,
                    config_.track_width_m, feedback.steer_position_rad);
   for (std::size_t i = 0; i < 4; ++i) {
+ const double steer_error = wrap_angle(modules[i].steer_rad - feedback.steer_position_rad[i]);
    out.target_speed_mps[i] = modules[i].speed_mps;
    out.target_steer_rad[i] = modules[i].steer_rad;
-   out.steer_duty[i] =
-     clamp(config_.steer_kp * wrap_angle(modules[i].steer_rad - feedback.steer_position_rad[i]), -1.0, 1.0);
+ // A real swerve module cannot produce the requested body velocity while
+ // its wheel is still pointed elsewhere. Cosine compensation removes the
+ // sideways drive impulse during a direction change; the speed returns
+ // continuously as the steering error closes.
+ out.target_speed_mps[i] *= std::max(0.0, std::cos(steer_error));
+ const double desired_rate = clamp(config_.steer_kp * steer_error,
+ -config_.max_steer_rate_radps, config_.max_steer_rate_radps);
+ out.steer_duty[i] = clamp(
+ config_.steer_velocity_gain_s * (desired_rate - feedback.steer_velocity_radps[i]),
+ -1.0, 1.0);
   }
  } else {
   out.target_speed_mps = mecanum_inverse(command.target_v, command.target_lateral_v, command.target_w,

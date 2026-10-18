@@ -55,5 +55,71 @@
     "policy.careful",
     "policy.balanced",
     "policy.swift"
+  ],
+  "collections": [
+    {
+      "id": "guided_campaign",
+      "eyebrow": "故事旅程",
+      "title": "与洛一重启岚谷",
+      "subtitle": "八个循序渐进的任务，把运动、感知、定位、规划与动态决策连成一次完整冒险。",
+      "accent": "#6BBEB0",
+      "levels": [
+        "boot",
+        "tire_trial",
+        "first_sight",
+        "slope_launch",
+        "localization",
+        "blocked_route",
+        "cross_slope",
+        "lost_signal"
+      ]
+    },
+    {
+      "id": "field_contracts",
+      "eyebrow": "现场行动",
+      "title": "镇子合同",
+      "subtitle": "在相同能力上追求安全、速度或能效，用真实结果建立现场信誉。",
+      "accent": "#E8AC50",
+      "levels": [
+        "town_freight",
+        "big_freight"
+      ]
+    },
+    {
+      "id": "engineering_trials",
+      "eyebrow": "工程实验",
+      "title": "算法与底盘试炼",
+      "subtitle": "固定条件、改变一个变量，比较电机、底盘、地面、等待策略和路线选择。",
+      "accent": "#78A9D1",
+      "levels": [
+        "motor_trial",
+        "rally",
+        "rain_descent",
+        "signal_echo",
+        "return_route",
+        "track_turn",
+        "loose_ground",
+        "long_haul",
+        "scrub_climb",
+        "sand_track",
+        "sand_steer",
+        "wet_scrub",
+        "signal_hold",
+        "long_track",
+        "signal_watch",
+        "signal_cross"
+      ]
+    },
+    {
+      "id": "autonomy_playgrounds",
+      "eyebrow": "自主世界",
+      "title": "Autonomy Playgrounds",
+      "subtitle": "独立、可重复的系统玩法。选择目标与约束，机器人负责感知、规划、控制和恢复。",
+      "accent": "#DC8D75",
+      "levels": [
+        "orchard_scramble",
+        "vehicle_proving_ground"
+      ]
+    }
   ]
 }

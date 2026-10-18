@@ -89,9 +89,9 @@ int main() {
  CHECK(resolved.has("tires"));
  CHECK(resolved.definition("sensor").model_profile.fidelity == "typical");
  CHECK(!resolved.definition("sensor").model_profile.source_refs.empty());
- CHECK(resolved.tires().brake_decel_mps2 == 3.0);
- CHECK(resolved.tires().normal_stiffness_Npm == 40000.0);
- CHECK(resolved.tires().normal_damping_Nspm == 1000.0);
+ CHECK(resolved.traction().brake_decel_mps2 == 3.0);
+ CHECK(resolved.traction().normal_stiffness_Npm == 40000.0);
+ CHECK(resolved.traction().normal_damping_Nspm == 1000.0);
 CHECK(resolved.lidar() && resolved.lidar()->rays == 800);
  CHECK(resolved.lidar()->min_range_m == 0.2);
  CHECK(resolved.lidar()->dropout_probability == 0.0);
@@ -103,7 +103,13 @@ CHECK(resolved.imu() && resolved.imu()->gyro_bias_stddev_radps == 0.005);
  0.0002443461 * std::sqrt(20.0)) < 1e-12);
  CHECK(std::abs(resolved.imu()->accel_noise_mps2 -
  0.00171616375 * std::sqrt(20.0)) < 1e-12);
- CHECK(mission::ComponentRegistry::builtins().supported_slots().size() == 5);
+ CHECK(mission::ComponentRegistry::builtins().supported_slots().size() == 6);
+
+ mission::BuildSelection tracked;
+ tracked.parts["tracks"] = "tracks.grip";
+ const auto resolved_tracks = mission::ComponentRegistry::builtins().resolve(catalog, tracked);
+ CHECK(resolved_tracks.has("tracks"));
+ CHECK(resolved_tracks.traction().friction_mu == 1.2);
 
  const fs::path overlay = fs::temp_directory_path() / "lost_signal_component_registry";
  std::error_code error;
@@ -145,7 +151,7 @@ CHECK(resolved.imu() && resolved.imu()->gyro_bias_stddev_radps == 0.005);
  CHECK(custom.definition("payload").id == "payload.cooler");
  CHECK(custom.get<PayloadSpec>("payload"));
  CHECK(custom.get<PayloadSpec>("payload")->capacity_kg == 12.0);
- CHECK(extension_registry.supported_slots().size() == 6);
+ CHECK(extension_registry.supported_slots().size() == 7);
 
  threw = false;
  try {

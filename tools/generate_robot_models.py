@@ -13,6 +13,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[1]
 RO1_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro1"
 RO2_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro2"
+RO3_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro3"
 RO4_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro4"
 RO5_OUTPUT = ROOT / "assets" / "models" / "robots" / "ro5"
 Vector3 = tuple[float, float, float]
@@ -404,7 +405,6 @@ def main() -> None:
     emissive=0.72, roughness=0.24),
     ]
     tracked_track = [
-    Part("belt_center", "box", (0.58, 0.145, 0.19), rgba("#171F1E"), roughness=0.96),
     Part("belt_top", "box", (0.58, 0.158, 0.032), rgba("#252E2C"), (0, 0, 0.105),
     roughness=0.98),
     Part("belt_bottom", "box", (0.58, 0.158, 0.032), rgba("#101615"), (0, 0, -0.105),
@@ -414,14 +414,26 @@ def main() -> None:
     Part("belt_rear", "cylinder", (0.105, 0.105, 0.15), rgba("#202826"), (-0.29, 0, 0),
     rotation=turn_x, roughness=0.97),
     ]
-    for wheel_index, wheel_x in enumerate((-0.285, -0.145, 0.0, 0.145, 0.285)):
-        radius = 0.078 if wheel_index in (0, 4) else 0.066
-        tracked_track.extend([
-        Part(f"road_wheel_{wheel_index}", "cylinder", (radius, radius, 0.166), rgba("#71837E"),
-        (wheel_x, 0, 0), rotation=turn_x, metallic=0.62, roughness=0.34),
-        Part(f"road_hub_{wheel_index}", "cylinder", (radius * 0.34, radius * 0.34, 0.174), mint,
-        (wheel_x, 0, 0), rotation=turn_x, metallic=0.48, roughness=0.24, emissive=0.08),
-        ])
+# The six visible road wheels come from RO-3's articulated wheel links. Do not
+# duplicate decorative wheels inside this belt model: duplicates obscure the
+# physical count, cannot follow joint feedback, and previously made the side
+# assemblies look like four or five horizontal pucks.
+    def track_road_wheel(name: str, rim: str, hub: str) -> list[Part]:
+        return [
+        Part(f"{name}_road_wheel", "cylinder", (0.084, 0.084, 0.058), rgba(rim),
+        metallic=0.52, roughness=0.48),
+        Part(f"{name}_hub", "cylinder", (0.031, 0.031, 0.066), rgba(hub),
+        metallic=0.70, roughness=0.24),
+        Part(f"{name}_rotation_witness", "box", (0.018, 0.032, 0.008), rgba("#F4B74B"),
+        (0.050, 0.0, 0.036), emissive=0.38, roughness=0.34),
+        ]
+
+    tracked_road_wheels = {
+    "track_road_standard": track_road_wheel("standard", "#53615D", "#50E1C5"),
+    "track_road_grip": track_road_wheel("grip", "#3B4845", "#82D6C7"),
+    "track_road_low_resistance": track_road_wheel("low_resistance", "#71827D", "#9BCFC5"),
+    "track_road_sand": track_road_wheel("sand", "#6B5A3B", "#E0B35C"),
+    }
     pitch_down = (0.0, math.sin(math.radians(-5.0)), 0.0, math.cos(math.radians(-5.0)))
     ro2_chassis = [
         Part("structural_pan", "box", (0.62, 0.42, 0.09), rgba("#172321"),
@@ -798,9 +810,10 @@ def main() -> None:
     write_model("chassis", ro2_chassis, RO2_OUTPUT)
     write_model("front_left_knuckle", ro2_knuckle(+1.0), RO2_OUTPUT)
     write_model("front_right_knuckle", ro2_knuckle(-1.0), RO2_OUTPUT)
-    tracked_output = ROOT / "assets" / "models" / "robots" / "ro3"
-    write_model("hull", tracked_hull, tracked_output)
-    write_model("track", tracked_track, tracked_output)
+    write_model("hull", tracked_hull, RO3_OUTPUT)
+    write_model("track", tracked_track, RO3_OUTPUT)
+    for name, parts in tracked_road_wheels.items():
+        write_model(name, parts, RO3_OUTPUT)
     swerve_chassis = [
     Part("lower_frame", "box", (0.52, 0.52, 0.11), rgba("#193431"),
     (0, 0, -0.035), metallic=0.62, roughness=0.30),

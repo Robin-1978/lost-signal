@@ -327,6 +327,7 @@
           "items": {
             "enum": [
               "tires",
+              "tracks",
               "sensor",
               "computer",
               "motor",

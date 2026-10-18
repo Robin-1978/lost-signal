@@ -3,7 +3,7 @@
   "translations": {
     "/garage/heading": "Meet RO-3’s Tracks",
     "/garage/brief": "RO-3 has no steering angle. A speed difference between its tracks creates skid steering. Enter corners slowly or wheel odometry will drift.",
-    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/0/title": "Track Assembly",
     "/garage/component_columns/1/title": "LiDAR",
     "/garage/component_columns/2/title": "Drive Motor",
     "/garage/policy_title": "Driving Preference",

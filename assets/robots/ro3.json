@@ -245,7 +245,7 @@
         -0.12
       ],
       "rotation_deg": [
-        90,
+        0,
         0,
         0
       ],
@@ -260,7 +260,7 @@
         -0.12
       ],
       "rotation_deg": [
-        90,
+        0,
         0,
         0
       ],
@@ -314,7 +314,7 @@
   ],
   "slots": [
     {
-      "slot": "tires",
+      "slot": "tracks",
       "mounts": [
         "front_left_wheel",
         "front_right_wheel",

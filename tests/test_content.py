@@ -40,6 +40,11 @@ class ContentValidationTests(unittest.TestCase):
         playgrounds = set(catalog["campaign"]["playgrounds"])
         self.assertFalse(guided & playgrounds)
         self.assertEqual(levels, guided | playgrounds)
+        collections = catalog["campaign"]["collections"]
+        self.assertEqual(4, len(collections))
+        collected = [level for group in collections for level in group["levels"]]
+        self.assertEqual(len(collected), len(set(collected)))
+        self.assertEqual(levels, set(collected))
         self.assertIn("vehicle_proving_ground", playgrounds)
         served = {p["level"] for p in catalog["presentations"].values()}
         self.assertEqual(levels, served)
@@ -149,6 +154,50 @@ class ContentValidationTests(unittest.TestCase):
         self.assertTrue(referenced)
         for model in sorted(referenced):
             self.assertTrue((self.assets / model).exists(), model)
+
+    def test_ro3_visuals_have_one_physical_source_per_road_wheel(self) -> None:
+        robot = json.loads((self.assets / "robots/ro3.json").read_text(encoding="utf-8"))
+        wheel_mounts = [mount for mount in robot["mounts"] if mount["motion"] == "wheel"]
+        self.assertEqual(6, len(wheel_mounts))
+        track_mounts = [mount for mount in robot["mounts"] if mount["motion"] == "track"]
+        self.assertEqual(2, len(track_mounts))
+        self.assertTrue(all(mount["rotation_deg"] == [0, 0, 0] for mount in track_mounts))
+
+        payload = (self.assets / "models/robots/ro3/track.glb").read_bytes()
+        json_length, json_type = struct.unpack_from("<II", payload, 12)
+        self.assertEqual(0x4E4F534A, json_type)
+        document = json.loads(payload[20 : 20 + json_length])
+        node_names = {node["name"] for node in document["nodes"]}
+        self.assertNotIn("belt_center", node_names)
+        self.assertFalse(any(name.startswith("road_wheel_") for name in node_names))
+        self.assertFalse(any(name.startswith("road_hub_") for name in node_names))
+
+    def test_tracked_missions_offer_track_components_only(self) -> None:
+        robot = json.loads((self.assets / "robots/ro3.json").read_text(encoding="utf-8"))
+        slots = {slot["slot"] for slot in robot["slots"]}
+        self.assertIn("tracks", slots)
+        self.assertNotIn("tires", slots)
+
+        for name in ("track_turn", "scrub_climb", "sand_track", "wet_scrub", "long_track"):
+            level = json.loads(
+                (self.assets / f"levels/{name}.json").read_text(encoding="utf-8")
+            )
+            presentation = json.loads(
+                (self.assets / f"presentation/{name}.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("tracks", level["loadout_rules"]["required_slots"], name)
+            self.assertNotIn("tires", level["loadout_rules"]["required_slots"], name)
+            columns = presentation["garage"]["component_columns"]
+            track_column = next(column for column in columns if column["slot"] == "tracks")
+            self.assertTrue(track_column["options"], name)
+            self.assertTrue(
+                all(component.startswith("tracks.") for component in track_column["options"]),
+                name,
+            )
+            for field in ("default_build", "recommended_build"):
+                build = presentation["garage"][field]
+                self.assertIn("tracks", build, name)
+                self.assertNotIn("tires", build, name)
 
     def test_floor_texture_is_packaged(self) -> None:
         texture = self.assets / "textures/environment/concrete_floor.png"

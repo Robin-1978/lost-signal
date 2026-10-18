@@ -505,9 +505,14 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{doc.path}:/base_parts/{index}/visual/model_3d: missing model '{model}'"
                 )
-        if slots != {"tires", "sensor", "computer", "motor", "imu"}:
+        ground_contact_slots = slots & {"tires", "tracks"}
+        if (
+            ground_contact_slots not in ({"tires"}, {"tracks"})
+            or slots - ground_contact_slots != {"sensor", "computer", "motor", "imu"}
+        ):
             raise ContentError(
-                f"{doc.path}:/slots: robot must define tires, sensor, computer, motor and imu slots"
+                f"{doc.path}:/slots: robot must define exactly one of tires/tracks plus "
+                "sensor, computer, motor and imu slots"
             )
         for index, support in enumerate(robot.get("passive_supports", [])):
             steer_mount = support["steer_mount"]
@@ -525,16 +530,18 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                     f"{doc.path}:/passive_supports/{index}: expected distinct caster "
                     "steer and rolling wheel mounts"
                 )
-        tire_slot = next(slot for slot in robot["slots"] if slot["slot"] == "tires")
-        for mount in tire_slot["mounts"]:
+        traction_slot = next(
+            slot for slot in robot["slots"] if slot["slot"] in {"tires", "tracks"}
+        )
+        for mount in traction_slot["mounts"]:
             if mounts_by_id[mount]["motion"] not in {"wheel", "track"}:
                 raise ContentError(
-                    f"{doc.path}:/slots: tire mount '{mount}' must declare wheel or track motion"
+                    f"{doc.path}:/slots: traction mount '{mount}' must declare wheel or track motion"
                 )
         if robot["drive"]["type"] == "differential":
             contacts = [
                 tuple(mounts_by_id[mount]["position_m"][:2])
-                for mount in tire_slot["mounts"]
+                for mount in traction_slot["mounts"]
             ]
             contacts.extend(
                 tuple(mounts_by_id[support["steer_mount"]]["position_m"][:2])
@@ -842,7 +849,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
         )
         for field in ("default_build", "recommended_build"):
             build = presentation["garage"][field]
-            for slot in ("tires", "sensor", "computer", "motor", "imu"):
+            for slot in ("tires", "tracks", "sensor", "computer", "motor", "imu"):
                 component_id = build.get(slot)
                 if component_id and loadout_access != "open" and component_id not in owned:
                     raise ContentError(
@@ -891,6 +898,26 @@ def load_and_validate(root: Path) -> dict[str, Any]:
     if set(campaign_levels) | set(playgrounds) != set(level_by_id):
         raise ContentError(
             f"{campaign.path}: guided levels and playgrounds must list every level exactly once"
+        )
+    collection_ids: set[str] = set()
+    collected_levels: list[str] = []
+    for index, collection in enumerate(campaign.data["collections"]):
+        if collection["id"] in collection_ids:
+            raise ContentError(
+                f"{campaign.path}:/collections/{index}/id: duplicate collection id"
+            )
+        collection_ids.add(collection["id"])
+        for level_id in collection["levels"]:
+            if level_id not in level_by_id:
+                raise ContentError(
+                    f"{campaign.path}:/collections/{index}/levels: unknown level '{level_id}'"
+                )
+            collected_levels.append(level_id)
+    if len(collected_levels) != len(set(collected_levels)):
+        raise ContentError(f"{campaign.path}: collections must not repeat a level")
+    if set(collected_levels) != set(level_by_id):
+        raise ContentError(
+            f"{campaign.path}: collections must present every level exactly once"
         )
     sorted_ids = [level_id for _, level_id in sorted(order_to_id.items())]
     listed_ids = campaign_levels + playgrounds

@@ -3,7 +3,7 @@
   "translations": {
     "/garage/heading": "Tracks on Sand",
     "/garage/brief": "Take a tracked chassis over the same sandy route. Sand consumes traction, while skid steering consumes more traction to turn; both effects arrive together.",
-    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/0/title": "Track Assembly",
     "/garage/component_columns/1/title": "LiDAR",
     "/garage/component_columns/2/title": "Drive Motor",
     "/garage/policy_title": "Driving Preference",

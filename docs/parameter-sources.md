@@ -110,10 +110,12 @@ time. Coulomb smoothing width (`0.05 m/s`) and viscous drag (`0.6 N/(m/s)`) are 
 components may replace all five values; the fallback motor inside each robot declares the same fields. None remain
 as hidden constants in the differential-drive implementation.
 
-`motor.speed` represents a higher-speed, lower-reduction geared drive for controlled teaching runs. Its assumed
-wheel-surface free speed is 4.2 m/s and its short-duration rim stall force is 38 N, compared with 3.0 m/s and 54 N
-for the standard profile. It is deliberately not a universally better motor: launch and grade authority are lower,
-the energy scale is higher, and autonomy may use its extra speed only when an explicit driving policy requests it.
+`motor.speed` represents a higher-speed, lower-reduction drive package for controlled teaching runs. Its assumed
+wheel-surface free speed is 7.0 m/s and its short-duration rim stall force is 32 N, compared with 3.0 m/s and 54 N
+for the standard profile. On RO-2's 0.10 m wheels those surface speeds correspond to about 668 and 286 wheel rpm;
+they are post-reduction wheel speeds, not unmodeled motor-shaft rpm. The high-speed package is deliberately not
+universally better: launch and grade authority are lower, the energy scale is higher, and autonomy may use its extra
+speed only when an explicit driving policy requests it.
 
 RO-2 uses the same class of documented motor assumptions with two rear drive channels and two front steering
 channels. Its 26 kg mass, 0.62 m wheelbase, 0.58 m track, 0.10 m wheel radius, 54 N per-wheel peak rim force, 8 N m
@@ -121,10 +123,11 @@ steering stall torque, and 0.05 kg m^2 steering reflected inertia are engineerin
 teaching envelope. They are neither measurements nor a named vehicle specification. The relatively large reflected
 steering inertia represents the complete servo/transmission/knuckle load seen at the joint; a future identified
 profile must replace it with measured step and coast response rather than retuning it to a mission outcome.
-The optional `motor.speed` gearset reaches about 3.5 m/s in the current RO-2 straight-line fixture. The articulated
-plant treats opposing duty as current-limited electrical braking and zero duty as coast; its measured stop is checked
-against the independent peak-force energy bound. This is not a friction service brake, ABS, parking brake, or thermal
-model. Those require separate actuator capabilities and sourced parameters before any automotive-speed claim.
+The optional `motor.speed` package targets 6.0 m/s; the current RO-2 straight-line fixture reaches about 5.5 m/s and
+stops in about 4.7 m. The articulated drive plant treats opposing duty as current-limited electrical braking and zero
+duty as coast. RO-2 separately applies its implemented rear-wheel service-brake plant, whose torque and response time
+also enter the independent stopping envelope. Neither mechanism is ABS, a parking brake, or a thermal model. Those
+require separate capabilities and sourced parameters before any automotive-speed claim.
 
 RO-3 separates its `0.55 m` physical left/right contact spacing from the `1.2 m`
 `effective_track_width_m` used by skid-steer kinematics. Tracked vehicles turn around terrain-dependent

@@ -41,6 +41,21 @@ int main() {
   CHECK(std::abs(reverse.drive_duty[i]) <= 1.0);
  }
 
+ // During a turn-to-straight transition, drive effort must wait for each
+ // module to align. Otherwise the four wheels pull in different lateral
+ // directions and excite a visible rear-body oscillation.
+ feedback = {};
+ feedback.steer_position_rad.fill(1.4);
+ const auto misaligned = swerve.update({1.0, 0.0, 0.0}, feedback, .02);
+ for (std::size_t i = 0; i < 4; ++i) {
+ CHECK(misaligned.target_speed_mps[i] > 0.0);
+ CHECK(misaligned.target_speed_mps[i] < 0.2);
+ }
+ feedback.steer_velocity_radps.fill(-1.5);
+ const auto aligning = swerve.update({1.0, 0.0, 0.0}, feedback, .02);
+ for (std::size_t i = 0; i < 4; ++i)
+ CHECK(std::abs(aligning.steer_duty[i]) < std::abs(misaligned.steer_duty[i]));
+
  sim::HolonomicActuatorController reversing(
  {sim::HolonomicControlKind::Mecanum, .6, .5, .1, 2.0, 1.0, 2.0, 3.0},
  {0.2, 1.0, 0.0});

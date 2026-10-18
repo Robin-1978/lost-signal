@@ -10,6 +10,12 @@ ever-more-expensive default simulation.
 This preserves a small teaching and regression runtime while allowing a calibrated robot profile to replace the
 simulated platform. It also prevents a device detail such as PWM duty cycle from leaking into planning code.
 
+Physical fidelity and controller quality are separate contracts. SIM/HW may change only to represent better geometry,
+mechanisms, actuator limits, contact, sensing, or identified parameters; it must not add body damping, hidden forces,
+instant velocity clamps, or extra constraints to make driving look stable. ROBOT may improve deployable kinematics,
+setpoint generation, feedback control, planning, and safety using only observations and declared capabilities. A
+remaining motion transient is preserved when it follows from the plant, contact, and control evidence.
+
 The design has three fidelity levels:
 
 | Profile | Purpose | Required behavior |
@@ -246,12 +252,12 @@ contracts. No analytic body yaw torque participates in the articulated path.
 The independent RO-2 gate checks four-wheel static load and clearance, long rest, forward and reverse travel,
 steering step/rate/limits/recentring, common ICR, measured turn radius, closed-loop braking, 10/20 ms step convergence,
 low-grip understeer and drive slip, zero-command rollback on a grade, motor-limited gradeability, cross-slope support,
-and 25 mm rough terrain. Its optional high-speed gearset also has a straight-line support and motor-braking-distance
-gate at roughly 3.5 m/s. The current articulated drive models a current-limited four-quadrant H-bridge: motoring
+and 25 mm rough terrain. Its optional 6.0 m/s high-speed drive package also has a straight-line support and combined
+motor/service-brake stopping-distance gate at roughly 5.5 m/s. The current articulated drive models a current-limited four-quadrant H-bridge: motoring
 authority falls toward no-load speed, opposing duty retains bounded electrical braking authority, and zero duty
-coasts. A separate friction service-brake channel, parking brake, ABS, thermal fade, and brake blending remain future
-capabilities and are required before treating RO-2 as a passenger-car-scale plant. These are class-level `typical`
-results; they do not identify a physical car.
+coasts. RO-2's separate rear-wheel friction service-brake channel is implemented; parking brake, ABS, thermal fade,
+and brake blending remain future capabilities and are required before treating RO-2 as a passenger-car-scale plant.
+These are class-level `typical` results; they do not identify a physical car.
 
 The subsystem boundary, industry references, data split, low-speed lock requirement, and staged acceptance matrix are
 specified in [braking architecture](braking-architecture.md).

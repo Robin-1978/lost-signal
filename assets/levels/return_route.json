@@ -44,7 +44,10 @@
     "efficient_energy_wh": 0.2
   },
   "rewards": [
-    "ability.ackermann"
+    "ability.ackermann",
+    "tracks.standard",
+    "tracks.grip",
+    "tracks.low_resistance"
   ],
   "mode": "experiment"
 }

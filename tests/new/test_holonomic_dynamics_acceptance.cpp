@@ -83,6 +83,7 @@ struct Rig {
     if (!t)
      throw std::runtime_error("steer feedback");
     in.steer_position_rad[i] = t->position_rad;
+ in.steer_velocity_radps[i] = t->velocity_radps;
    }
   }
   const auto out = controller.update(cmd, in, dt);
@@ -155,6 +156,100 @@ int main() {
   std::cerr << id << " spin " << spin[0] << ',' << spin[1] << ',' << spin[2] << '\n';
   REQUIRE(spin[2] > .5);
   REQUIRE(std::hypot(spin[0], spin[1]) < .6);
+ if (sw) {
+ // A direction change is a coupled steering/drive transient. After the
+ // modules have had time to realign, straight driving must not retain the
+ // rear-body fishtail that full drive-through-steer-error used to excite.
+ sim::platform::SimulatedPlatform transition_platform(
+ map, level, r, caps, terrain, {10, 10}, 0,
+ r.mass_kg, r.center_of_mass_height_m, r.yaw_inertia_kgm2);
+ Rig transition_rig(r, true);
+ auto transition_state = transition_platform.state();
+ for (int i = 0; i < 150; ++i) {
+ transition_state = transition_platform.step(
+ transition_rig.step(transition_platform, transition_state.planar, {.8, .8, 0}, dry),
+ dry, kDt);
+ }
+ sim::DiffState settled_start;
+ double unwrapped_yaw = transition_state.planar.theta;
+ double min_settled_yaw = 0.0;
+ double max_settled_yaw = 0.0;
+ for (int i = 0; i < 300; ++i) {
+ const double before_yaw = transition_state.planar.theta;
+ transition_state = transition_platform.step(
+ transition_rig.step(transition_platform, transition_state.planar, {1, 0, 0}, dry),
+ dry, kDt);
+ unwrapped_yaw += sim::wrap_angle(transition_state.planar.theta - before_yaw);
+ if (i == 149) {
+ settled_start = transition_state.planar;
+ min_settled_yaw = unwrapped_yaw;
+ max_settled_yaw = unwrapped_yaw;
+ } else if (i > 149) {
+ min_settled_yaw = std::min(min_settled_yaw, unwrapped_yaw);
+ max_settled_yaw = std::max(max_settled_yaw, unwrapped_yaw);
+ }
+ }
+ const double dx = transition_state.planar.x - settled_start.x;
+ const double dy = transition_state.planar.y - settled_start.y;
+ const double lateral_drift =
+ -std::sin(settled_start.theta) * dx + std::cos(settled_start.theta) * dy;
+ std::cerr << id << " turn-to-straight yaw-range "
+ << (max_settled_yaw - min_settled_yaw)
+ << " lateral-drift " << lateral_drift << '\n';
+ REQUIRE(max_settled_yaw - min_settled_yaw < .08);
+ REQUIRE(std::abs(lateral_drift) < .18);
+
+ // A raw operator release is an immediate zero chassis-speed request, but
+ // it must remain a physical stop: finite motor torque and tire contact
+ // decelerate the moving rigid body over time. This case deliberately adds
+ // no cosmetic command smoothing or body damping.
+ sim::platform::SimulatedPlatform braking_platform(
+ map, level, r, caps, terrain, {10, 10}, 0,
+ r.mass_kg, r.center_of_mass_height_m, r.yaw_inertia_kgm2);
+ Rig braking_rig(r, true);
+ auto braking_state = braking_platform.state();
+ for (int i = 0; i < 220; ++i) {
+ braking_state = braking_platform.step(
+ braking_rig.step(braking_platform, braking_state.planar, {1.0, 0, .65}, dry),
+ dry, kDt);
+ }
+ const auto release = braking_state.planar;
+ const double release_speed = std::hypot(release.v, release.lateral_v);
+ braking_state = braking_platform.step(
+ braking_rig.step(braking_platform, braking_state.planar, {0, 0, 0}, dry),
+ dry, kDt);
+ const double first_step_speed = std::hypot(braking_state.planar.v, braking_state.planar.lateral_v);
+ double braking_unwrapped_yaw = braking_state.planar.theta;
+ double min_braking_settle_yaw = 0.0;
+ double max_braking_settle_yaw = 0.0;
+ for (int i = 0; i < 300; ++i) {
+ const double before_yaw = braking_state.planar.theta;
+ braking_state = braking_platform.step(
+ braking_rig.step(braking_platform, braking_state.planar, {0, 0, 0}, dry),
+ dry, kDt);
+ braking_unwrapped_yaw += sim::wrap_angle(braking_state.planar.theta - before_yaw);
+ if (i == 199) {
+ min_braking_settle_yaw = braking_unwrapped_yaw;
+ max_braking_settle_yaw = braking_unwrapped_yaw;
+ } else if (i > 199) {
+ min_braking_settle_yaw = std::min(min_braking_settle_yaw, braking_unwrapped_yaw);
+ max_braking_settle_yaw = std::max(max_braking_settle_yaw, braking_unwrapped_yaw);
+ }
+ }
+ const double stop_distance = std::hypot(braking_state.planar.x - release.x,
+ braking_state.planar.y - release.y);
+ const double stopped_speed =
+ std::hypot(braking_state.planar.v, braking_state.planar.lateral_v);
+ std::cerr << id << " turning release speed " << release_speed
+ << " first-step " << first_step_speed << " stop-distance " << stop_distance
+ << " settled-yaw-range " << (max_braking_settle_yaw - min_braking_settle_yaw) << '\n';
+ REQUIRE(release_speed > .7);
+ REQUIRE(first_step_speed > release_speed * .8);
+ REQUIRE(stop_distance > .08);
+ REQUIRE(stopped_speed < .15);
+ REQUIRE(std::abs(braking_state.planar.w) < .10);
+ REQUIRE(max_braking_settle_yaw - min_braking_settle_yaw < .06);
+ }
   const auto fine = maneuver({.8, .35, .3}, dry, .01, 4.0);
   const auto coarse = maneuver({.8, .35, .3}, dry, .02, 4.0);
  std::cerr << id << " convergence fine " << fine[0] << ',' << fine[1] << ',' << fine[2]

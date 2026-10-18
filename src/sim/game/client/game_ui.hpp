@@ -87,14 +87,14 @@ class GameUi {
  tgui::Button::Ptr add_button(const std::string& text, float x, float y, float width, float height,
                               bool primary = false);
  void style_panel();
+ void layout_panel();
 
  tgui::BackendGui& gui_;
  const mission::ContentCatalog& catalog_;
  const mission::PresentationDefinition* presentation_;
  tgui::Panel::Ptr panel_;
- // Widget parent for add_label/add_button: the plain panel everywhere except
- // the chapter screen, which hosts 21+ level buttons in a ScrollablePanel
- // (fixed panel overflowed past 720p once the roster passed ~12 levels).
+ // Widget parent for add_label/add_button. The experience browser uses a
+ // full-screen scroll surface; in-mission screens retain the compact sidebar.
  tgui::Panel::Ptr add_parent_;
  mission::BuildSelection build_;
  Screen screen_{Screen::Chapter};

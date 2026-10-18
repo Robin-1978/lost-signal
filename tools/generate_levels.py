@@ -252,8 +252,8 @@ LEVELS: list[dict] = [
         "goal_visual": "supply_station",
  "time_limit_s": 120,
         "budget": 5,
-        "required_slots": ["tires", "sensor", "motor"],
-        "columns": "trio",
+        "required_slots": ["tracks", "sensor", "motor"],
+        "columns": "track_trio",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.0,
  "fast_time_s": 50.0,
@@ -262,18 +262,18 @@ LEVELS: list[dict] = [
         "prediction_prompt": "履带走窄走廊，打滑和转向哪个先出问题？",
         "knowledge_card": "履带过窄道：转弯全靠搓，慢一点，里程计才不撒谎。",
         "default_build": {
-            "tires": "tires.eco",
+            "tracks": "tracks.low_resistance",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
             "style": 0.8,
         },
         "recommended_build": {
-            "tires": "tires.grip",
+            "tracks": "tracks.grip",
             "sensor": "sensor.short_fast_lidar",
             "motor": "motor.standard",
             "style": 0.0,
         },
-        "rewards": ["ability.scrub_climb"],
+        "rewards": ["ability.scrub_climb", "tracks.sand"],
         "garage_heading": "履带再战",
         "garage_brief": "同一条北上路，换履带车再走一次。转弯即打滑，慢就是稳。",
         "prediction_heading": "履带北上，短板在哪？",
@@ -319,8 +319,8 @@ LEVELS: list[dict] = [
         "goal_visual": "signal_tower",
         "time_limit_s": 150,
         "budget": 6,
-        "required_slots": ["tires", "sensor", "motor"],
-        "columns": "sand",
+        "required_slots": ["tracks", "sensor", "motor"],
+        "columns": "track_sand",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.15,
  "fast_time_s": 75.0,
@@ -329,13 +329,13 @@ LEVELS: list[dict] = [
         "prediction_prompt": "沙地加履带，打滑乘以打滑等于什么？",
         "knowledge_card": "复合打滑：沙地吃抓地，履带吃转向，两样叠在一起，温柔是唯一的解。",
         "default_build": {
-            "tires": "tires.eco",
+            "tracks": "tracks.low_resistance",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
             "style": 0.8,
         },
         "recommended_build": {
-            "tires": "tires.sand",
+            "tracks": "tracks.sand",
             "sensor": "sensor.short_fast_lidar",
             "motor": "motor.standard",
             "style": 0.0,
@@ -459,8 +459,8 @@ LEVELS: list[dict] = [
         "goal_visual": "stop_zone",
         "time_limit_s": 150,
  "budget": 7,
- "required_slots": ["tires", "sensor", "motor", "imu"],
- "columns": "trio_imu",
+ "required_slots": ["tracks", "sensor", "motor", "imu"],
+ "columns": "track_trio_imu",
  "arrive_tolerance_m": 0.75,
         "safe_min_clearance_m": 0.2,
         "max_localization_error_m": 3.0,
@@ -470,14 +470,14 @@ LEVELS: list[dict] = [
         "prediction_prompt": "湿滑加履带，谁先顶不住？",
         "knowledge_card": "湿滑区里搓履带：水让抓地没了，搓让方向没了，慢是唯一的舵。",
         "default_build": {
-            "tires": "tires.eco",
+ "tracks": "tracks.low_resistance",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
             "style": 0.8,
  "imu": "imu.basic",
         },
         "recommended_build": {
-            "tires": "tires.grip",
+ "tracks": "tracks.grip",
             "sensor": "sensor.short_fast_lidar",
             "motor": "motor.standard",
             "style": 0.0,
@@ -529,8 +529,8 @@ LEVELS: list[dict] = [
         "goal_visual": "calibration_pad",
  "time_limit_s": 180,
         "budget": 5,
-        "required_slots": ["tires", "sensor", "motor"],
-        "columns": "trio",
+ "required_slots": ["tracks", "sensor", "motor"],
+        "columns": "track_trio",
         "arrive_tolerance_m": 0.62,
         "safe_min_clearance_m": 0.0,
         "max_localization_error_m": 2.0,
@@ -540,13 +540,13 @@ LEVELS: list[dict] = [
         "prediction_prompt": "同一条长途，拐角要什么组合才过得去？",
  "knowledge_card": "履带不是两只外露车轮：长接地履带转弯会产生搓擦与角点外扫，稳定策略和抓地材料要共同匹配。",
         "default_build": {
-            "tires": "tires.eco",
+ "tracks": "tracks.low_resistance",
             "sensor": "sensor.long_slow_lidar",
             "motor": "motor.standard",
             "style": 0.8,
         },
         "recommended_build": {
-            "tires": "tires.grip",
+ "tracks": "tracks.grip",
             "sensor": "sensor.short_fast_lidar",
             "motor": "motor.standard",
             "style": 0.0,
@@ -558,13 +558,13 @@ LEVELS: list[dict] = [
         "prediction_hint": "先做预测。慢车配长途，是稳还是摇摆？",
         "prediction_choices": [
             {"id": "long_track.combo",
-             "text": "careful＋抓地胎能到",
+             "text": "careful＋高抓地履带能到",
  "feedback": "对。完整履带总成配合稳妥策略和抓地材料，约 155 秒完成狭窄 S 形长途。"},
             {"id": "long_track.style_only",
              "text": "只把风格放稳就行",
  "feedback": "只降速仍不能消除履带搓擦和材料抓地差异。"},
             {"id": "long_track.tires_only",
-             "text": "只换抓地胎就行",
+             "text": "只换高抓地履带就行",
  "feedback": "只换材料仍不能消除长履带在急弯中的角点外扫。"},
         ],
         "running_heading": "履带远征",
@@ -923,6 +923,23 @@ TRIO_IMU_COLUMNS = TRIO_COLUMNS + [
  "options": ["imu.basic", "imu.precise"]},
 ]
 
+TRACK_TRIO_COLUMNS = [
+ {"slot": "tracks", "title": "履带总成",
+ "options": ["tracks.standard", "tracks.grip", "tracks.low_resistance"]},
+ *copy.deepcopy(TRIO_COLUMNS[1:]),
+]
+
+TRACK_SAND_COLUMNS = [
+ {"slot": "tracks", "title": "履带总成",
+ "options": ["tracks.standard", "tracks.grip", "tracks.low_resistance", "tracks.sand"]},
+ *copy.deepcopy(SAND_COLUMNS[1:]),
+]
+
+TRACK_TRIO_IMU_COLUMNS = TRACK_TRIO_COLUMNS + [
+ {"slot": "imu", "title": "IMU",
+ "options": ["imu.basic", "imu.precise"]},
+]
+
 COLUMNS = [
     {"slot": "tires", "title": "驱动轮胎",
      "options": ["tires.standard", "tires.grip", "tires.eco", "tires.sand", "tires.slick"]},
@@ -1058,7 +1075,9 @@ def build_presentation(spec: dict) -> dict:
         "brief": spec["garage_brief"],
         "component_columns": copy.deepcopy(
  {"trio": TRIO_COLUMNS, "trio_imu": TRIO_IMU_COLUMNS,
- "sand": SAND_COLUMNS}.get(spec.get("columns"), COLUMNS)),
+ "sand": SAND_COLUMNS, "track_trio": TRACK_TRIO_COLUMNS,
+ "track_sand": TRACK_SAND_COLUMNS,
+ "track_trio_imu": TRACK_TRIO_IMU_COLUMNS}.get(spec.get("columns"), COLUMNS)),
         "policy_title": "驾驶风格",
         "policies": ["policy.careful", "policy.balanced", "policy.swift"],
         "default_build": spec["default_build"],

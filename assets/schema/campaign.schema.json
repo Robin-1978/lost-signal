@@ -12,6 +12,7 @@
     "starting_level",
     "levels",
     "playgrounds",
+    "collections",
     "starting_inventory",
     "starting_policies"
   ],
@@ -74,6 +75,13 @@
         "$ref": "#/$defs/id"
       }
     },
+    "collections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/collection"
+      }
+    },
     "starting_inventory": {
       "type": "array",
       "uniqueItems": true,
@@ -90,6 +98,47 @@
     }
   },
   "$defs": {
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "eyebrow",
+        "title",
+        "subtitle",
+        "accent",
+        "levels"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "eyebrow": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subtitle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9_.-]+$"

@@ -331,8 +331,8 @@ void ScenarioSession::decide_control() {
  // its route cruise speed.
  {shadow_cruise, shadow_cruise,
  std::min(robot_definition_.motor.max_wheel_accel_mps2,
- resolved_build_.tires().brake_decel_mps2),
- resolved_build_.tires().brake_decel_mps2, yaw_cap_rads_},
+ resolved_build_.traction().brake_decel_mps2),
+ resolved_build_.traction().brake_decel_mps2, yaw_cap_rads_},
  1.0 / decision_hz());
  const auto& crossing = traffic_decision.assessment;
  // Behavior may grant permission to enter a controlled crossing, but it is
@@ -509,7 +509,7 @@ void ScenarioSession::decide_control() {
    }
    if (entry < shadow_remaining.size()) {
  const double cruise = cruise_speed_mps();
-    const double brake = resolved_build_.tires().brake_decel_mps2;
+ const double brake = resolved_build_.traction().brake_decel_mps2;
     const double need = cruise * cruise / (2.0 * brake) + 1.0;
     double walked = 0.0;
     std::size_t stop = entry;
@@ -543,7 +543,7 @@ void ScenarioSession::decide_control() {
  // the point and plane below, so steering converges to the proven hold pose
  // instead of continuing to aim beyond a speed-only wall.
  if (governor_out.hold_active && governor_out.stop_valid) {
-  const double brake = resolved_build_.tires().brake_decel_mps2;
+ const double brake = resolved_build_.traction().brake_decel_mps2;
  double dist = std::hypot(nav_x - governor_out.stop_point.x, nav_y - governor_out.stop_point.y);
  if (mapped_crossing_relevant) {
  dist = crossing.stop_distance_m;
@@ -609,7 +609,7 @@ void ScenarioSession::decide_control() {
  local_request.weights = weights;
  local_request.max_speed_mps = speed_cap;
  local_request.max_yaw_rate_radps = yaw_cap_rads_;
- local_request.max_accel_mps2 = resolved_build_.tires().brake_decel_mps2;
+ local_request.max_accel_mps2 = resolved_build_.traction().brake_decel_mps2;
  local_request.max_yaw_accel_radps2 = robot_definition_.max_yaw_accel_radps2;
  local_request.prediction_horizon_s = prediction_horizon;
  local_request.step_s = prediction_step_s;
@@ -650,7 +650,7 @@ void ScenarioSession::decide_control() {
  : robot_definition_.motor.controller_bandwidth_radps;
  local_request.emergency_stop_delay_s = 1.0 / decision_hz() +
  1.0 / std::max(0.1, local_controller_bandwidth);
- local_request.emergency_decel_mps2 = resolved_build_.tires().brake_decel_mps2;
+ local_request.emergency_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
  }
  // Path/progress/oscillation critics are shared guidance for twist-space
  // planners, including tracked and holonomic chassis. A tracked plant still
@@ -760,7 +760,7 @@ void ScenarioSession::decide_control() {
     std::max(2.0 * map_definition_.grid_resolution_m, level_.planning_localization_margin_m),
     std::max(0.10, std::atan2(map_definition_.grid_resolution_m,
                               std::max(0.05, robot_definition_.collision_radius_m))),
-    std::max(0.10, 2.0 * resolved_build_.tires().brake_decel_mps2 / decision_hz()),
+ std::max(0.10, 2.0 * resolved_build_.traction().brake_decel_mps2 / decision_hz()),
   };
   snapshot_.control.trajectory_sequence =
  autonomy_pipeline_->accept_trajectory(snapshot_.time_s, selected_trajectory, tracking_limits);

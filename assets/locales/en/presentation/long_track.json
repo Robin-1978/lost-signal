@@ -3,7 +3,7 @@
   "translations": {
     "/garage/heading": "Tracks for the Long Haul",
     "/garage/brief": "Return from the signal tower to the calibration pad with the full tracked assembly. Long contact patches cross rough ground well, but narrow S-bends need room for scrub and corner sweep.",
-    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/0/title": "Track Assembly",
     "/garage/component_columns/1/title": "LiDAR",
     "/garage/component_columns/2/title": "Drive Motor",
     "/garage/policy_title": "Driving style",

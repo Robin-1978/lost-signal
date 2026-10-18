@@ -43,8 +43,8 @@ double required_finite_number(const ComponentDefinition& component, const std::s
  return found->second;
 }
 
-ComponentSpec resolve_tires(const ComponentDefinition& component) {
- return TireSpec{
+ComponentSpec resolve_traction(const ComponentDefinition& component) {
+ return TractionSpec{
    required_number(component, "slip_scale", 0.0),
    required_number(component, "brake_decel_mps2", 0.0, false),
    required_number(component, "power_scale", 0.0),
@@ -172,12 +172,13 @@ const ComponentDefinition& ResolvedBuild::definition(const std::string& slot) co
  return *found->second.definition;
 }
 
-const TireSpec& ResolvedBuild::tires() const {
- const auto* value = get<TireSpec>("tires");
- if (!value) {
-  throw ContentError("build has no component in required slot 'tires'");
- }
+const TractionSpec& ResolvedBuild::traction() const {
+ for (const auto* slot : {"tires", "tracks"}) {
+ const auto* value = get<TractionSpec>(slot);
+ if (value)
  return *value;
+ }
+ throw ContentError("build has no tire or track component providing traction");
 }
 
 const LidarSpec* ResolvedBuild::lidar() const {
@@ -203,7 +204,8 @@ const ComponentRegistry& ComponentRegistry::builtins() {
 
 ComponentRegistry ComponentRegistry::with_builtins() {
  ComponentRegistry result;
- result.register_slot("tires", resolve_tires);
+ result.register_slot("tires", resolve_traction);
+ result.register_slot("tracks", resolve_traction);
  result.register_slot("sensor", resolve_lidar);
  result.register_slot("computer", resolve_computer);
  result.register_slot("motor", resolve_motor);

@@ -259,6 +259,9 @@
         "tires": {
           "$ref": "#/$defs/id"
         },
+        "tracks": {
+          "$ref": "#/$defs/id"
+        },
         "sensor": {
           "$ref": "#/$defs/id"
         },

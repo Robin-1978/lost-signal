@@ -9,12 +9,12 @@
     "brief": "车库到玻璃门，蹭过湿滑区边缘，换履带车。滑上加搓，慢字当头。",
     "component_columns": [
       {
-        "slot": "tires",
-        "title": "驱动轮胎",
+        "slot": "tracks",
+        "title": "履带总成",
         "options": [
-          "tires.standard",
-          "tires.grip",
-          "tires.eco"
+          "tracks.standard",
+          "tracks.grip",
+          "tracks.low_resistance"
         ]
       },
       {
@@ -51,14 +51,14 @@
       "policy.swift"
     ],
     "default_build": {
-      "tires": "tires.eco",
+      "tracks": "tracks.low_resistance",
       "sensor": "sensor.long_slow_lidar",
       "motor": "motor.standard",
       "style": 0.8,
       "imu": "imu.basic"
     },
     "recommended_build": {
-      "tires": "tires.grip",
+      "tracks": "tracks.grip",
       "sensor": "sensor.short_fast_lidar",
       "motor": "motor.standard",
       "style": 0.0,

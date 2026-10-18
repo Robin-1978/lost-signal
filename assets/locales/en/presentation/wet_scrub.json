@@ -3,7 +3,7 @@
   "translations": {
     "/garage/heading": "Tracks on Wet Ground",
     "/garage/brief": "Take a tracked chassis from the repair bay to the glass door along the wet edge. Water reduces traction, track scrub spends more, and gentle control becomes essential.",
-    "/garage/component_columns/0/title": "Traction Material",
+    "/garage/component_columns/0/title": "Track Assembly",
     "/garage/component_columns/1/title": "LiDAR",
     "/garage/component_columns/2/title": "Drive Motor",
     "/garage/policy_title": "Driving Preference",

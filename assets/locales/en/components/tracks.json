@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "translations": {
+    "/components/0/title": "Standard Rubber Tracks",
+    "/components/0/description": "A balanced rubber track-pad and road-wheel package for ordinary hard ground.",
+    "/components/1/title": "High-Grip Track Pads",
+    "/components/1/description": "Soft high-grip pads shorten braking distance but consume more energy while scrub steering.",
+    "/components/2/title": "Low-Resistance Tracks",
+    "/components/2/description": "Firm low-resistance pads save cruise energy but need more distance to stop on wet ground.",
+    "/components/3/title": "Wide-Grouser Sand Tracks",
+    "/components/3/description": "Wide grousers retain traction on loose ground but consume more energy while turning on hard surfaces."
+  }
+}

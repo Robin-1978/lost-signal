@@ -25,7 +25,7 @@
   "loadout_rules": {
     "budget": 5,
     "required_slots": [
-      "tires",
+      "tracks",
       "sensor",
       "motor"
     ]
@@ -41,6 +41,7 @@
     "efficient_energy_wh": 0.6
   },
   "rewards": [
-    "ability.scrub_climb"
+    "ability.scrub_climb",
+    "tracks.sand"
   ]
 }

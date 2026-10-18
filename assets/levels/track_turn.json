@@ -27,7 +27,7 @@
   "loadout_rules": {
     "budget": 5,
     "required_slots": [
-      "tires",
+      "tracks",
       "sensor",
       "motor"
     ]

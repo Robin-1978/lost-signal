@@ -548,7 +548,7 @@ void ScenarioSession::build_world() {
 
  sim::PlanarDiffDriveParams params;
  params.max_forward_mps = std::max(1.5, property(behavior_, "cruise_mps") * 1.25);
- params.max_acceleration_mps2 = resolved_build_.tires().brake_decel_mps2;
+ params.max_acceleration_mps2 = resolved_build_.traction().brake_decel_mps2;
  params.track_width_m = robot_definition_.wheel_base_m;
  drive_ = std::make_unique<sim::PlanarDiffDrivePlant>(params);
  // Chassis dispatch: drive.type selects the actuator model. Unknown types
@@ -634,13 +634,13 @@ void ScenarioSession::build_world() {
  // data is the source of truth for where wheels touch; collision radius is a
  // body envelope and must not masquerade as a stability footprint.
  std::vector<const MountDefinition*> rolling_contacts;
- const auto tire_slot_definition =
+ const auto traction_slot_definition =
    std::find_if(robot_definition_.slots.begin(), robot_definition_.slots.end(),
-                [](const auto& slot) { return slot.slot == "tires"; });
- if (tire_slot_definition != robot_definition_.slots.end()) {
+ [](const auto& slot) { return slot.slot == "tires" || slot.slot == "tracks"; });
+ if (traction_slot_definition != robot_definition_.slots.end()) {
   double drive_axle_x_sum = 0.0;
   std::size_t drive_wheel_count = 0;
-  for (const auto& mount_id : tire_slot_definition->mounts) {
+ for (const auto& mount_id : traction_slot_definition->mounts) {
    const auto mount = std::find_if(robot_definition_.mounts.begin(), robot_definition_.mounts.end(),
                                    [&](const auto& candidate) { return candidate.id == mount_id; });
    if (mount == robot_definition_.mounts.end())
@@ -767,7 +767,8 @@ void ScenarioSession::build_world() {
                                                : sim::HolonomicControlKind::Mecanum,
       chassis_params.wheel_base_m, chassis_params.track_width_m, chassis_params.wheel_radius_m,
       chassis_params.max_wheel_speed_mps, chassis_params.pwm_limit, chassis_params.integral_limit,
-      1.0 / std::max(0.05, chassis_params.servo_response_s)},
+ 1.0 / std::max(0.05, chassis_params.servo_response_s), 0.35,
+ chassis_params.max_steer_rate_radps},
     wheel_gains);
  }
 
@@ -929,7 +930,7 @@ void ScenarioSession::plan_route() {
  terrain_capability_ = {};
  terrain_capability_.mass_kg = total_mass_kg();
  terrain_capability_.available_drive_force_N = stall_force * drive_units;
- terrain_capability_.friction_mu = resolved_build_.tires().friction_mu;
+ terrain_capability_.friction_mu = resolved_build_.traction().friction_mu;
  terrain_capability_.max_cross_slope_rad = std::atan2(support_width * 0.5, combined_center_height_m()) * 0.98;
 
  select_next_goal(start);
@@ -1356,7 +1357,7 @@ void ScenarioSession::apply_goal_stop_constraint() {
   return;
  const double remaining = std::max(
    0.0, distance({snapshot_.robot.x, snapshot_.robot.y}, as_vec(marker->second)) - goal->radius_m * 0.55);
- const double deceleration = std::max(0.35, resolved_build_.tires().brake_decel_mps2 * 0.65);
+ const double deceleration = std::max(0.35, resolved_build_.traction().brake_decel_mps2 * 0.65);
  const double stop_cap = std::sqrt(2.0 * deceleration * remaining);
  if (remaining <= 0.04) {
   held_command_.target_v = 0.0;
@@ -1995,6 +1996,7 @@ void ScenarioSession::apply_motion() {
     if (!steer)
      throw std::runtime_error("swerve steering feedback is incomplete");
     controller_feedback.steer_position_rad[i] = steer->position_rad;
+ controller_feedback.steer_velocity_radps[i] = steer->velocity_radps;
    }
   }
   const auto control =
@@ -2148,10 +2150,10 @@ void ScenarioSession::apply_motion() {
                                   [&](const auto& candidate_mount) { return candidate_mount.id == id; });
   return mount == robot_definition_.mounts.end() ? nullptr : &*mount;
  };
- const auto tire_slot = std::find_if(robot_definition_.slots.begin(), robot_definition_.slots.end(),
-                                     [](const auto& slot) { return slot.slot == "tires"; });
- if (tire_slot != robot_definition_.slots.end()) {
-  const std::size_t count = tire_slot->mounts.size();
+ const auto traction_slot = std::find_if(robot_definition_.slots.begin(), robot_definition_.slots.end(),
+ [](const auto& slot) { return slot.slot == "tires" || slot.slot == "tracks"; });
+ if (traction_slot != robot_definition_.slots.end()) {
+ const std::size_t count = traction_slot->mounts.size();
   snapshot_.control.mount_actuations.reserve(count + 2 * robot_definition_.passive_supports.size());
   for (std::size_t index = 0; index < count; ++index) {
    double speed_mps = 0.0;
@@ -2164,8 +2166,8 @@ void ScenarioSession::apply_motion() {
    } else if (index == 1) {
     speed_mps = motors.right.actual_mps;
    }
-   const auto* mount = find_mount(tire_slot->mounts[index]);
-   auto& roll = mount_roll_rad_[tire_slot->mounts[index]];
+ const auto* mount = find_mount(traction_slot->mounts[index]);
+ auto& roll = mount_roll_rad_[traction_slot->mounts[index]];
    const auto physical_joint = physics_mode_ == PhysicsMode::Bullet && platform_ && mount
                                  ? platform_->joint_state_for_child(mount->frame_id)
                                  : std::nullopt;
@@ -2175,7 +2177,8 @@ void ScenarioSession::apply_motion() {
     roll = std::remainder(roll + speed_mps / mount->rolling_radius_m * fixed_step_s, 2.0 * sim::kPi);
    }
    const double steer = index < motors.wheel_steer_count ? motors.wheel_steer_rad[index] : 0.0;
-   snapshot_.control.mount_actuations.push_back({tire_slot->mounts[index], steer, roll, std::nullopt});
+ snapshot_.control.mount_actuations.push_back(
+ {traction_slot->mounts[index], steer, roll, std::nullopt});
   }
  }
  for (const auto& support : robot_definition_.passive_supports) {
@@ -2365,12 +2368,12 @@ void ScenarioSession::apply_motion() {
  const double motor_scale = equipped_motor ? equipped_motor->power_scale : 1.0;
  const double grade_power = std::max(0.0, total_mass_kg() * 9.81 * candidate.v * candidate_grade /
                                             std::sqrt(1.0 + candidate_grade * candidate_grade));
- const double total_power = motor_power * resolved_build_.tires().power_scale * motor_scale + grade_power +
+ const double total_power = motor_power * resolved_build_.traction().power_scale * motor_scale + grade_power +
                             (sensor ? sensor->power_w : 0.0) + (computer ? computer->power_w : 0.0) +
                             (imu ? imu->power_w : 0.0);
  result_.energy_wh += total_power * fixed_step_s / 3600.0;
 
- double slip = resolved_build_.tires().slip_scale;
+ double slip = resolved_build_.traction().slip_scale;
  const double traction = surface_traction(candidate_position);
  if (traction < 1.0) {
   slip /= traction;
@@ -2651,7 +2654,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double cruise = cruise_speed_mps();
  const double lookahead = property(behavior_, "lookahead_m");
  const double speed = std::abs(snapshot_.robot.v);
- const double decel = resolved_build_.tires().brake_decel_mps2;
+ const double decel = resolved_build_.traction().brake_decel_mps2;
  const double preview =
    std::max(lookahead, speed * speed / (2.0 * std::max(0.5, decel)) + speed * 2.0 / decision_hz());
  double grip = wheel_ground({nav_x, nav_y}).mu_eff;
@@ -2704,10 +2707,10 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  // decides grip. mu_ref anchors the product so concrete + standard behaves as
  // the long-validated reference.
  constexpr double kMuReference = 0.8;
- const double tire_mu = resolved_build_.tires().friction_mu;
- const double tire_rr = resolved_build_.tires().rolling_resistance;
- const double tire_stiffness = resolved_build_.tires().normal_stiffness_Npm;
- const double tire_damping = resolved_build_.tires().normal_damping_Nspm;
+ const double tire_mu = resolved_build_.traction().friction_mu;
+ const double tire_rr = resolved_build_.traction().rolling_resistance;
+ const double tire_stiffness = resolved_build_.traction().normal_stiffness_Npm;
+ const double tire_damping = resolved_build_.traction().normal_damping_Nspm;
  double ground_mu = 1.0;
  double ground_rr = 0.0;
  double ground_stiffness = 1.0e9;
@@ -2738,7 +2741,7 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
  }
  contact.rolling_resist = tire_rr + ground_rr;
  contact.accel_limit_mps2 = std::min(robot_definition_.motor.max_wheel_accel_mps2,
-                                     resolved_build_.tires().brake_decel_mps2 * (0.5 + 0.5 * traction));
+ resolved_build_.traction().brake_decel_mps2 * (0.5 + 0.5 * traction));
  contact.normal_stiffness_Npm = 1.0 / (1.0 / tire_stiffness + 1.0 / ground_stiffness);
  // The dynamic profile treats the material value as additional pair
  // dissipation. Identified profiles replace this reduced convention with a
@@ -2767,12 +2770,13 @@ double ScenarioSession::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) 
  const double slope = std::atan(std::abs(signed_grade));
  const double downhill_gravity_mps2 = signed_grade < 0.0 ? 9.81 * std::sin(slope) : 0.0;
  const double grip_brake_mps2 = std::max(0.0, contact.mu_eff) * 9.81 * std::cos(slope);
- const double available_brake_mps2 = std::min(resolved_build_.tires().brake_decel_mps2, grip_brake_mps2);
+ const double available_brake_mps2 =
+ std::min(resolved_build_.traction().brake_decel_mps2, grip_brake_mps2);
  if (downhill_gravity_mps2 > available_brake_mps2 + 1e-9) {
   return std::numeric_limits<double>::infinity();
  }
  const double brake_usage = downhill_gravity_mps2 / std::max(0.1, available_brake_mps2);
- const double dry_tire_mu = resolved_build_.tires().friction_mu / 0.8;
+ const double dry_tire_mu = resolved_build_.traction().friction_mu / 0.8;
  const double low_grip_penalty = std::max(0.0, dry_tire_mu / std::max(0.08, contact.mu_eff) - 1.0);
  double extra_ground_drag = 0.0;
  for (const auto& surface : map_definition_.surfaces) {

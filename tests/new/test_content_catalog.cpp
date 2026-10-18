@@ -36,6 +36,15 @@ int main() {
  CHECK(source_catalog.robots().size() == catalog.robots().size());
  CHECK(source_catalog.campaign().levels == catalog.campaign().levels);
  CHECK(source_catalog.campaign().playgrounds == catalog.campaign().playgrounds);
+ CHECK(source_catalog.campaign().collections.size() == catalog.campaign().collections.size());
+ for (std::size_t index = 0; index < catalog.campaign().collections.size(); ++index) {
+ CHECK(source_catalog.campaign().collections[index].id ==
+ catalog.campaign().collections[index].id);
+ CHECK(source_catalog.campaign().collections[index].accent ==
+ catalog.campaign().collections[index].accent);
+ CHECK(source_catalog.campaign().collections[index].levels ==
+ catalog.campaign().collections[index].levels);
+ }
  for (const auto& [id, localized] : catalog.levels()) {
   const auto& source = source_catalog.level(id);
   CHECK(localized.id == source.id);
@@ -59,11 +68,12 @@ int main() {
  }
  CHECK(rejected_unknown_locale);
  CHECK(!catalog.campaign().levels.empty());
+ CHECK(catalog.campaign().collections.size() == 4);
  CHECK(catalog.levels().size() ==
  catalog.campaign().levels.size() + catalog.campaign().playgrounds.size());
  for (const auto& id : catalog.campaign().levels)
   CHECK(catalog.levels().count(id) == 1);
- CHECK(catalog.components().size() == 20);
+ CHECK(catalog.components().size() == 24);
  CHECK(catalog.policies().size() == 4);
  CHECK(catalog.robots().size() == 5);
  for (const auto& [id, map] : catalog.maps())
@@ -250,8 +260,8 @@ int main() {
  CHECK(std::abs(catalog.policy("policy.balanced").style_anchor - 0.5) < 1e-12);
  CHECK(std::abs(catalog.policy("policy.swift").style_anchor - 0.8) < 1e-12);
  CHECK(std::abs(catalog.policy("policy.express").style_anchor - 1.0) < 1e-12);
- CHECK(std::abs(catalog.component("motor.speed").behavior.at("max_wheel_speed_mps") - 3.6) < 1e-12);
- CHECK(std::abs(catalog.component("motor.speed").behavior.at("stall_force_N") - 38.0) < 1e-12);
+ CHECK(std::abs(catalog.component("motor.speed").behavior.at("max_wheel_speed_mps") - 6.0) < 1e-12);
+ CHECK(std::abs(catalog.component("motor.speed").behavior.at("stall_force_N") - 32.0) < 1e-12);
  const auto& final_presentation = catalog.presentation_for_level("lost_signal");
  CHECK(std::abs(final_presentation.recommended_build.style - 0.0) < 1e-12);
  CHECK(std::abs(final_presentation.default_build.style - 0.0) < 1e-12);

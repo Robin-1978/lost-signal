@@ -152,6 +152,15 @@ std::string format_delta(double value, int precision = 1) {
  return (value > 0.0 ? "+" : "") + format_number(value, precision);
 }
 
+tgui::Color color_from_hex(const std::string& value) {
+ if (value.size() != 7 || value.front() != '#')
+ return {107, 190, 176};
+ const auto channel = [&](std::size_t offset) {
+ return static_cast<std::uint8_t>(std::stoul(value.substr(offset, 2), nullptr, 16));
+ };
+ return {channel(1), channel(3), channel(5)};
+}
+
 std::string evidence_value(double value, const std::string& unit, int precision = 1) {
  return std::isfinite(value) ? format_number(value, precision) + unit : "—";
 }
@@ -269,14 +278,6 @@ std::string field_ack_label(const mission::ContentCatalog& catalog,
  return catalog.tr("field.ack.idle");
 }
 
-std::string contract_axis_label(const mission::ContentCatalog& catalog, const std::string& axis) {
- if (axis == "fast")
- return catalog.tr("contract.axis.fast");
- if (axis == "efficient")
- return catalog.tr("contract.axis.efficient");
- return catalog.tr("contract.axis.safe");
-}
-
 std::string weather_label(const mission::ContentCatalog& catalog, mission::WeatherKind weather) {
  switch (weather) {
  case mission::WeatherKind::Clear:
@@ -333,21 +334,39 @@ GameUi::GameUi(tgui::BackendGui& gui, const mission::ContentCatalog& catalog,
 
 void GameUi::style_panel() {
  auto renderer = panel_->getRenderer();
+ if (screen_ == Screen::Chapter) {
+ renderer->setBackgroundColor({8, 12, 14, 255});
+ renderer->setBorderColor({0, 0, 0, 0});
+ renderer->setBorders({0});
+ } else {
  renderer->setBackgroundColor({12, 15, 18});
  renderer->setBorderColor({63, 65, 61});
  renderer->setBorders({1, 0, 0, 0});
+ }
+}
+
+void GameUi::layout_panel() {
+ if (screen_ == Screen::Chapter) {
+ panel_->setPosition(0, 0);
+ panel_->setSize(static_cast<float>(width_), static_cast<float>(height_));
+ return;
+ }
+ const float panel_width = std::min(kPanelWidth, static_cast<float>(width_));
+ panel_->setPosition(std::max(0.0f, static_cast<float>(width_) - panel_width), 0);
+ panel_->setSize(panel_width, static_cast<float>(height_));
 }
 
 void GameUi::resize(int width, int height, const mission::ScenarioSession* mission) {
  width_ = width;
  height_ = height;
- panel_->setPosition(std::max(0.0f, static_cast<float>(width) - kPanelWidth), 0);
- panel_->setSize(std::min(kPanelWidth, static_cast<float>(width)), static_cast<float>(height));
+ layout_panel();
  if (layout_ready_)
  rebuild(mission);
 }
 
 bool GameUi::world_pointer_available(float screen_x) const {
+ if (screen_ == Screen::Chapter)
+ return false;
  return screen_x < std::max(0.0f, static_cast<float>(width_) - kPanelWidth);
 }
 
@@ -388,6 +407,7 @@ tgui::Button::Ptr GameUi::add_button(const std::string& text, float x, float y, 
 }
 
 void GameUi::rebuild(const mission::ScenarioSession* mission) {
+ layout_panel();
  panel_->removeAllWidgets();
  add_parent_ = panel_;
  style_panel();
@@ -445,7 +465,16 @@ std::string GameUi::next_level_id() const {
 }
 
 void GameUi::build_chapter() {
- auto scroll = tgui::ScrollablePanel::create({static_cast<float>(kPanelWidth), static_cast<float>(height_)});
+ const float viewport_width = static_cast<float>(width_);
+ const float canvas_width = std::max(300.0f, std::min(1100.0f, viewport_width - 48.0f));
+ const float canvas_x = std::max(24.0f, (viewport_width - canvas_width) * 0.5f);
+ const int columns = canvas_width >= 760.0f ? 2 : 1;
+ const float column_gap = 16.0f;
+ const float card_width =
+ (canvas_width - column_gap * static_cast<float>(columns - 1)) / static_cast<float>(columns);
+ constexpr float card_height = 140.0f;
+
+ auto scroll = tgui::ScrollablePanel::create({viewport_width, static_cast<float>(height_)});
  scroll->setPosition(0, 0);
  {
   auto look = scroll->getRenderer();
@@ -460,81 +489,101 @@ void GameUi::build_chapter() {
  float y = 24.0f;
  const auto place_text = [&](const std::string& text, unsigned size, tgui::Color color,
  bool bold = false, float gap = 8.0f) {
- auto label = add_label(text, kMargin, y, kContentWidth, size, color, bold);
+ auto label = add_label(text, canvas_x, y, canvas_width, size, color, bold);
  y += std::max(static_cast<float>(size) * 1.35f, label->getFullSize().y) + gap;
  return label;
  };
- place_text(catalog_.tr("chapter.game_title"), 14, {107, 190, 176}, true, 5);
- place_text(catalog_.campaign().title, 25, {239, 238, 229}, true, 8);
- place_text(catalog_.tr("chapter.subtitle"), 14, {157, 163, 158}, false, 10);
+ place_text(catalog_.tr("chapter.game_title"), 13, {107, 190, 176}, true, 4);
+ place_text(catalog_.campaign().title, 38, {244, 242, 233}, true, 6);
+ place_text(catalog_.tr("chapter.subtitle"), 16, {171, 181, 176}, false, 8);
  place_text(catalog_.trf("chapter.contract_balance", {std::to_string(reputation_)}),
- 14, {232, 172, 80}, true, 14);
+ 13, {232, 172, 80}, true, 26);
 
- int shown_chapter = 0;
- for (const auto& level_id : catalog_.campaign().levels) {
-  const auto& level = catalog_.level(level_id);
-  if (level.chapter != shown_chapter) {
-   shown_chapter = level.chapter;
-   const mission::ChapterDefinition* chapter = nullptr;
-   for (const auto& entry : catalog_.chapters()) {
-    if (entry.id == shown_chapter) {
-     chapter = &entry;
-    }
-   }
-   const std::string heading =
-     chapter != nullptr ? chapter->title : catalog_.trf("chapter.fallback", {std::to_string(shown_chapter)});
- place_text(heading, 17, {107, 190, 176}, true, 7);
-  }
-  const bool complete = completed_levels_.contains(level_id);
-  const bool unlocked = is_unlocked(level);
-  const std::string prefix = complete ? "✓ " : unlocked ? "○ " : "— ";
-  const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
-    [&](const auto& job) { return job.level == level_id; });
- std::string button_text = wrap_words(prefix + std::to_string(level.order) + " " + level.title, 34);
- unsigned button_text_size = 17;
-  if (contract != catalog_.contracts().end()) {
-   const bool claimed = claimed_contracts_.contains(contract->id);
- button_text += "\n" + wrap_words(catalog_.trf(
-     claimed ? "chapter.contract_claimed" : "chapter.contract_offer",
- {contract_axis_label(catalog_, contract->axis), std::to_string(contract->rep)}), 38);
- button_text_size = 13;
-  }
- const float button_height =
- std::max(46.0f, 14.0f + static_cast<float>(text_line_count(button_text)) * (button_text_size + 4.0f));
-  auto button = add_button(button_text, kMargin, y, kContentWidth, button_height,
-    level_id == presentation_->level && unlocked);
- button->setTextSize(button_text_size);
- std::string tooltip_text = level.title + "\n" + level.knowledge_card;
- if (contract != catalog_.contracts().end())
- tooltip_text += "\n\n" + contract->blurb;
- button->setToolTip(make_tooltip(tooltip_text));
-  button->setEnabled(unlocked);
-  button->onClick([this, level_id] { actions_.selected_level = level_id; });
-  y += button_height + 10.0f;
- }
- if (!catalog_.campaign().playgrounds.empty()) {
- y += 8.0f;
- place_text(catalog_.tr("chapter.playgrounds_heading"), 18, {232, 172, 80}, true, 5);
- place_text(catalog_.tr("chapter.playgrounds_subtitle"), 13, {157, 163, 158}, false, 10);
- for (const auto& level_id : catalog_.campaign().playgrounds) {
+ for (const auto& collection : catalog_.campaign().collections) {
+ const auto accent = color_from_hex(collection.accent);
+ place_text(collection.eyebrow, 12, accent, true, 3);
+ place_text(collection.title, 23, {239, 238, 229}, true, 4);
+ place_text(collection.subtitle, 14, {151, 163, 157}, false, 14);
+
+ for (std::size_t index = 0; index < collection.levels.size(); ++index) {
+ const auto& level_id = collection.levels[index];
  const auto& level = catalog_.level(level_id);
  const bool complete = completed_levels_.contains(level_id);
- const std::string prefix = complete ? "✓ " : "◇ ";
- const std::string button_text = wrap_words(prefix + level.title, 34);
- const float button_height =
- std::max(46.0f, 14.0f + static_cast<float>(text_line_count(button_text)) * 21.0f);
- auto button = add_button(button_text, kMargin, y, kContentWidth, button_height,
- level_id == presentation_->level);
- button->setTextSize(17);
- button->setToolTip(make_tooltip(level.title + "\n" + level.knowledge_card));
- button->onClick([this, level_id] { actions_.selected_level = level_id; });
- y += button_height + 10.0f;
+ const bool unlocked = level.mode == "playground" || is_unlocked(level);
+ const bool selected = level_id == presentation_->level;
+ const int column = static_cast<int>(index % static_cast<std::size_t>(columns));
+ const int row = static_cast<int>(index / static_cast<std::size_t>(columns));
+ const float x = canvas_x + static_cast<float>(column) * (card_width + column_gap);
+ const float card_y = y + static_cast<float>(row) * (card_height + 14.0f);
+
+ auto card = tgui::Panel::create({card_width, card_height});
+ card->setPosition(x, card_y);
+ const tgui::Color normal_background = selected ? tgui::Color{29, 42, 40, 252}
+ : unlocked ? tgui::Color{19, 26, 28, 248}
+ : tgui::Color{14, 18, 20, 230};
+ auto look = card->getRenderer();
+ look->setBackgroundColor(normal_background);
+ look->setBorderColor(unlocked ? accent : tgui::Color{49, 55, 54});
+ look->setBorders({selected ? 4.0f : 2.0f, 1.0f, 1.0f, 1.0f});
+ look->setRoundedBorderRadius(12);
+ scroll->add(card);
+
+ std::ostringstream status_text;
+ status_text << (complete ? "✓ " : unlocked ? "○ " : "— ")
+ << std::setfill('0') << std::setw(2) << level.order;
+ auto status = tgui::Label::create(status_text.str());
+ status->setPosition(17, 12);
+ status->setTextSize(12);
+ status->getRenderer()->setTextColor(unlocked ? accent : tgui::Color{91, 98, 94});
+ status->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
+ status->setIgnoreMouseEvents(true);
+ card->add(status);
+
+ auto title = tgui::Label::create(wrap_words(level.title, columns == 2 ? 30 : 42));
+ title->setPosition(17, 34);
+ title->setTextSize(19);
+ title->setMaximumTextWidth(card_width - 34.0f);
+ title->getRenderer()->setTextColor(unlocked ? tgui::Color{240, 239, 230}
+ : tgui::Color{132, 140, 136});
+ title->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
+ title->setIgnoreMouseEvents(true);
+ card->add(title);
+
+ const float title_bottom = 34.0f + std::max(24.0f, title->getFullSize().y);
+ auto concept = tgui::Label::create(wrap_words(level.knowledge_card, columns == 2 ? 54 : 76));
+ concept->setPosition(17, std::min(67.0f, title_bottom + 5.0f));
+ concept->setTextSize(12);
+ concept->setMaximumTextWidth(card_width - 34.0f);
+ concept->getRenderer()->setTextColor(unlocked ? tgui::Color{166, 176, 171}
+ : tgui::Color{104, 112, 108});
+ concept->setIgnoreMouseEvents(true);
+ card->add(concept);
+
+ std::string tooltip_text = level.title + "\n" + level.knowledge_card;
+ const auto contract = std::find_if(catalog_.contracts().begin(), catalog_.contracts().end(),
+ [&](const auto& job) { return job.level == level_id; });
+ if (contract != catalog_.contracts().end())
+ tooltip_text += "\n\n" + contract->blurb;
+ card->setToolTip(make_tooltip(tooltip_text));
+ if (unlocked) {
+ auto* card_widget = card.get();
+ card->onMouseEnter([card_widget] {
+ card_widget->getRenderer()->setBackgroundColor({35, 46, 45, 252});
+ });
+ card->onMouseLeave([card_widget, normal_background] {
+ card_widget->getRenderer()->setBackgroundColor(normal_background);
+ });
+ card->onClick([this, level_id] { actions_.selected_level = level_id; });
  }
  }
- y += 4.0f;
+ const auto rows = (collection.levels.size() + static_cast<std::size_t>(columns) - 1) /
+ static_cast<std::size_t>(columns);
+ y += static_cast<float>(rows) * (card_height + 14.0f) + 20.0f;
+ }
+
  place_text(catalog_.tr("chapter.footer_head") + " " + catalog_.tr("chapter.footer_tail"),
- 13, {137, 151, 145}, false, 24);
- scroll->setContentSize({static_cast<float>(kPanelWidth), y});
+ 13, {137, 151, 145}, false, 32);
+ scroll->setContentSize({viewport_width, y});
 }
 
 void GameUi::set_screen(Screen screen, const mission::ScenarioSession* mission) {
@@ -548,6 +597,7 @@ void GameUi::set_screen(Screen screen, const mission::ScenarioSession* mission) 
  comparison_result_.reset();
  }
  screen_ = screen;
+ layout_panel();
  rebuild(mission);
 }
 
@@ -1232,7 +1282,7 @@ std::string GameUi::card_stat(const std::string& slot, const mission::ComponentD
  // Card line 2: the stat that makes the choice meaningful (content numbers,
  // never invented): grip mu / top speed / range+rate / decision rate / gyro
  // noise. Compact units fit 100px cards at 14px (verified by screenshot).
- if (slot == "tires")
+ if (slot == "tires" || slot == "tracks")
   return catalog_.trf("garage.stat_tire", {format_number(get("friction_mu"), 1)});
  if (slot == "motor")
   return catalog_.trf("garage.stat_motor", {format_number(get("max_wheel_speed_mps"), 1)});
@@ -1260,7 +1310,7 @@ void GameUi::sanitize_build() {
  if (owned_.empty())
   return;
  if (!playground) {
- for (const auto& slot : {"tires", "sensor", "computer"}) {
+ for (const auto& slot : {"tires", "tracks", "sensor", "computer"}) {
  const auto& current = selected_id(build_, slot);
  if (!current.empty() && !owned_.contains(current)) {
  assign_id(build_, slot, selected_id(presentation_->default_build, slot));

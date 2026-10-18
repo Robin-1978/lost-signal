@@ -13,7 +13,10 @@ namespace mission {
 // Runtime component contracts. JSON stays flexible at the content boundary;
 // simulation code receives named, unit-bearing fields after one validation
 // pass instead of repeatedly looking up string keys in the hot path.
-struct TireSpec {
+// A replaceable ground-contact package. Wheeled robots provide tire
+// components, while tracked robots provide track-pad/road-wheel components;
+// both resolve to the same physical contract consumed by planning and SIM.
+struct TractionSpec {
  double slip_scale{0.0};
  double brake_decel_mps2{0.0};
  double power_scale{0.0};
@@ -104,7 +107,7 @@ class ResolvedBuild {
   return result;
  }
 
- const TireSpec& tires() const;
+ const TractionSpec& traction() const;
  const LidarSpec* lidar() const;
  const ComputeSpec* computer() const;
  const MotorSpec* motor() const;

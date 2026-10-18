@@ -360,8 +360,8 @@ The deterministic acceptance executable checks:
 - lower achieved yaw and higher observed slip on low grip;
 - zero-command downhill rollback, climb/rollback on opposite sides of the independently calculated peak motor-force
   grade boundary, four-wheel cross-slope support, and travel over 25 mm deterministic roughness;
-- the optional high-speed gearset exceeds the standard profile on a supported straight run and stops within a
- bounded multiple of the independent peak electrical-braking energy limit;
+- the optional high-speed drive package exceeds the standard profile on a supported straight run and stops within a
+ bounded physical stopping-distance envelope;
 - six-channel capability validation; command expiry produces safe-zero drive/steer and fail-safe brake requests.
 
 The steering angles are an equivalent steer-by-wire Ackermann linkage. A rack and tie rods are not represented as
@@ -393,10 +393,15 @@ rigid triangle-mesh crest: climbing a continuous slope and traversing a complian
 
 RO-4 has four steering knuckles and four wheel bodies. ROBOT performs shortest-angle module optimization, permits
 wheel-speed reversal instead of unnecessary 180-degree steering travel, closes four drive loops and four steering
-loops from joint feedback, and publishes eight duty channels. The gate independently exercises straight travel,
-reverse, crab motion, yaw, combined twist, four-point support, low grip, motor braking, 18% grade travel, cross-slope
-hold, 25 mm deterministic rough ground, and 10/20 ms convergence. Bullet receives only joint efforts; the resulting
-tire directions produce the body motion.
+loops from joint position and velocity feedback, and publishes eight duty channels. During direction changes it
+multiplies each wheel-speed target by the cosine of its steering error, so a sideways module cannot apply full drive
+while rotating into alignment. This follows the public WPILib
+[module optimization and cosine-compensation contract](https://docs.wpilib.org/en/stable/docs/software/kinematics-and-odometry/swerve-drive-kinematics.html#module-angle-optimization);
+the reference establishes the control method, while Lost Signal's Bullet regression establishes only this model's
+behavior. The gate independently exercises straight travel,
+reverse, crab motion, yaw, combined twist, four-point support, low grip, finite motor braking from a turning release,
+18% grade travel, cross-slope hold, 25 mm deterministic rough ground, turn-to-straight settling, and 10/20 ms
+convergence. Bullet receives only joint efforts; the resulting tire directions produce the body motion.
 
 ## RO-5 mecanum reference
 

@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -114,17 +115,13 @@ int main() {
  {
   std::ifstream in(overlay / "campaign.json");
   CHECK(static_cast<bool>(in));
-  std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  const auto levels_pos = text.find("\"levels\"");
-  CHECK(levels_pos != std::string::npos);
-  const auto open_pos = text.find("[", levels_pos);
-  CHECK(open_pos != std::string::npos);
-  const auto close_pos = text.find("]", open_pos);
-  CHECK(close_pos != std::string::npos);
-  text.insert(close_pos, ", \"test_ram\"");
+ nlohmann::json campaign;
+ in >> campaign;
+ campaign.at("levels").push_back("test_ram");
+ campaign.at("collections").back().at("levels").push_back("test_ram");
   std::ofstream out(overlay / "campaign.json", std::ios::trunc);
   CHECK(static_cast<bool>(out));
-  out << text;
+ out << campaign.dump(2) << '\n';
  }
  const auto catalog = mission::ContentCatalog::load(overlay.string());
  mission::BuildSelection build;

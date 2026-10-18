@@ -9,12 +9,12 @@
     "brief": "RO-3 是履带车：没有方向盘，两侧履带速度差搓着转向。慢进弯，否则里程计会撒谎。",
     "component_columns": [
       {
-        "slot": "tires",
-        "title": "驱动轮胎",
+        "slot": "tracks",
+        "title": "履带总成",
         "options": [
-          "tires.standard",
-          "tires.grip",
-          "tires.eco"
+          "tracks.standard",
+          "tracks.grip",
+          "tracks.low_resistance"
         ]
       },
       {
@@ -43,16 +43,16 @@
       "policy.swift"
     ],
     "default_build": {
-      "tires": "tires.eco",
       "sensor": "sensor.long_slow_lidar",
       "motor": "motor.standard",
-      "style": 0.8
+      "style": 0.8,
+      "tracks": "tracks.low_resistance"
     },
     "recommended_build": {
-      "tires": "tires.grip",
       "sensor": "sensor.short_fast_lidar",
       "motor": "motor.standard",
-      "style": 0.0
+      "style": 0.0,
+      "tracks": "tracks.grip"
     }
   },
   "prediction": {

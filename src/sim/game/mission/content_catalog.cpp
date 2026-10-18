@@ -301,19 +301,29 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  const auto campaign_json = read_localized_json(campaign_path, catalog.root_, catalog.locale_);
  require_schema_v1(campaign_json, campaign_path);
  const auto& companion = campaign_json.at("companion");
- catalog.campaign_ = {
-   campaign_json.at("id").get<std::string>(),
-   campaign_json.at("title").get<std::string>(),
-   campaign_json.at("content_version").get<std::string>(),
-   companion.at("unit_code").get<std::string>(),
-   companion.at("display_name").get<std::string>(),
-   companion.at("robot").get<std::string>(),
-   campaign_json.at("starting_level").get<std::string>(),
-   campaign_json.at("levels").get<std::vector<std::string>>(),
-   campaign_json.at("playgrounds").get<std::vector<std::string>>(),
-   campaign_json.at("starting_inventory").get<std::vector<std::string>>(),
-   campaign_json.at("starting_policies").get<std::vector<std::string>>(),
- };
+ catalog.campaign_.id = campaign_json.at("id").get<std::string>();
+ catalog.campaign_.title = campaign_json.at("title").get<std::string>();
+ catalog.campaign_.content_version = campaign_json.at("content_version").get<std::string>();
+ catalog.campaign_.companion_code = companion.at("unit_code").get<std::string>();
+ catalog.campaign_.companion_name = companion.at("display_name").get<std::string>();
+ catalog.campaign_.companion_robot = companion.at("robot").get<std::string>();
+ catalog.campaign_.starting_level = campaign_json.at("starting_level").get<std::string>();
+ catalog.campaign_.levels = campaign_json.at("levels").get<std::vector<std::string>>();
+ catalog.campaign_.playgrounds = campaign_json.at("playgrounds").get<std::vector<std::string>>();
+ for (const auto& collection : campaign_json.at("collections")) {
+ catalog.campaign_.collections.push_back({
+ collection.at("id").get<std::string>(),
+ collection.at("eyebrow").get<std::string>(),
+ collection.at("title").get<std::string>(),
+ collection.at("subtitle").get<std::string>(),
+ collection.at("accent").get<std::string>(),
+ collection.at("levels").get<std::vector<std::string>>(),
+ });
+ }
+ catalog.campaign_.starting_inventory =
+ campaign_json.at("starting_inventory").get<std::vector<std::string>>();
+ catalog.campaign_.starting_policies =
+ campaign_json.at("starting_policies").get<std::vector<std::string>>();
 
  const auto task_policies_path = catalog.root_ / "task_policies.json";
  const auto task_policies_json = read_localized_json(task_policies_path, catalog.root_, catalog.locale_);
@@ -1297,17 +1307,23 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
    }
    robot.slots.push_back(std::move(slot));
   }
-  for (const auto* required : {"tires", "sensor", "computer"}) {
+ for (const auto* required : {"sensor", "computer"}) {
    if (!slot_ids.count(required)) {
     throw ContentError(path.string() + ": missing robot slot '" + required + "'");
    }
   }
+ const bool has_tires = slot_ids.count("tires") != 0;
+ const bool has_tracks = slot_ids.count("tracks") != 0;
+ if (has_tires == has_tracks) {
+ throw ContentError(path.string() +
+ ": robot must define exactly one ground-contact slot: 'tires' or 'tracks'");
+ }
   if (robot.drive_type == "differential") {
    std::vector<sim::Vec2> contacts;
-   const auto tires = std::find_if(robot.slots.begin(), robot.slots.end(),
-                                   [](const auto& slot) { return slot.slot == "tires"; });
-   if (tires != robot.slots.end()) {
-    for (const auto& mount_id : tires->mounts) {
+ const auto traction = std::find_if(robot.slots.begin(), robot.slots.end(),
+ [](const auto& slot) { return slot.slot == "tires" || slot.slot == "tracks"; });
+ if (traction != robot.slots.end()) {
+ for (const auto& mount_id : traction->mounts) {
      const auto mount = std::find_if(robot.mounts.begin(), robot.mounts.end(),
                                      [&](const auto& candidate) { return candidate.id == mount_id; });
      if (mount != robot.mounts.end())
@@ -1482,6 +1498,22 @@ ContentCatalog ContentCatalog::load(const std::filesystem::path& assets_root,
  }
  if (experience_ids.size() != catalog.levels_.size()) {
   throw ContentError("guided levels and playgrounds must list every level exactly once");
+ }
+ std::set<std::string> collection_ids;
+ std::set<std::string> collected_levels;
+ for (const auto& collection : catalog.campaign_.collections) {
+ if (!collection_ids.insert(collection.id).second) {
+ throw ContentError("duplicate experience collection '" + collection.id + "'");
+ }
+ for (const auto& level_id : collection.levels) {
+ (void)catalog.level(level_id);
+ if (!collected_levels.insert(level_id).second) {
+ throw ContentError("experience collections repeat level '" + level_id + "'");
+ }
+ }
+ }
+ if (collected_levels != unique_experiences) {
+ throw ContentError("experience collections must present every level exactly once");
  }
  for (const auto& [id, presentation] : catalog.presentations_) {
   (void)catalog.level(presentation.level);

@@ -1,0 +1,113 @@
+{
+  "schema_version": 2,
+  "slot": "tracks",
+  "model_profile": {
+    "fidelity": "typical",
+    "basis": "typical interchangeable rubber-track contact packages for the RO-3 reference platform",
+    "source_refs": [
+      "docs/reference-platform.md#ro-3-tracked-reference"
+    ]
+  },
+  "components": [
+    {
+      "id": "tracks.standard",
+      "title": "标准橡胶履带",
+      "description": "均衡的橡胶履带板与承重轮总成，适合普通硬地。",
+      "cost": 1,
+      "behavior": {
+        "slip_scale": 0.6,
+        "brake_decel_mps2": 3.0,
+        "power_scale": 1.0,
+        "friction_mu": 0.8,
+        "rolling_resistance": 0.012,
+        "normal_stiffness_Npm": 40000.0,
+        "normal_damping_Nspm": 1000.0
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.168,
+          0.064,
+          0.168
+        ],
+        "color": "#53615D",
+        "model_3d": "models/robots/ro3/track_road_standard.glb"
+      }
+    },
+    {
+      "id": "tracks.grip",
+      "title": "高抓地履带板",
+      "description": "软质高抓地履带板缩短制动距离，但搓地转向更耗能。",
+      "cost": 2,
+      "behavior": {
+        "slip_scale": 0.25,
+        "brake_decel_mps2": 4.2,
+        "power_scale": 1.15,
+        "friction_mu": 1.2,
+        "rolling_resistance": 0.014,
+        "normal_stiffness_Npm": 35000.0,
+        "normal_damping_Nspm": 1100.0
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.168,
+          0.064,
+          0.168
+        ],
+        "color": "#3B4845",
+        "model_3d": "models/robots/ro3/track_road_grip.glb"
+      }
+    },
+    {
+      "id": "tracks.low_resistance",
+      "title": "低阻复合履带",
+      "description": "硬质低阻履带板节省巡航能耗，但在湿滑地面制动更长。",
+      "cost": 1,
+      "behavior": {
+        "slip_scale": 1.5,
+        "brake_decel_mps2": 2.2,
+        "power_scale": 0.8,
+        "friction_mu": 0.5,
+        "rolling_resistance": 0.007,
+        "normal_stiffness_Npm": 55000.0,
+        "normal_damping_Nspm": 900.0
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.168,
+          0.064,
+          0.168
+        ],
+        "color": "#71827D",
+        "model_3d": "models/robots/ro3/track_road_low_resistance.glb"
+      }
+    },
+    {
+      "id": "tracks.sand",
+      "title": "宽齿沙地履带",
+      "description": "宽齿履带板在松软地面保持牵引，硬地搓转会消耗更多能量。",
+      "cost": 3,
+      "behavior": {
+        "slip_scale": 0.3,
+        "brake_decel_mps2": 4.0,
+        "power_scale": 1.3,
+        "friction_mu": 1.0,
+        "rolling_resistance": 0.02,
+        "normal_stiffness_Npm": 25000.0,
+        "normal_damping_Nspm": 1200.0
+      },
+      "visual": {
+        "primitive_2d": "wheel",
+        "size_m": [
+          0.168,
+          0.064,
+          0.168
+        ],
+        "color": "#6B5A3B",
+        "model_3d": "models/robots/ro3/track_road_sand.glb"
+      }
+    }
+  ]
+}

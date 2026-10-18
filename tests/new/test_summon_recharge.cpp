@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -127,17 +128,13 @@ int main() {
  {
   std::ifstream in(overlay / "campaign.json");
   CHECK(static_cast<bool>(in));
-  std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  auto levels_pos = text.find("\"levels\"");
-  CHECK(levels_pos != std::string::npos);
-  auto open_pos = text.find("[", levels_pos);
-  CHECK(open_pos != std::string::npos);
-  auto close_pos = text.find("]", open_pos);
-  CHECK(close_pos != std::string::npos);
-  text.insert(close_pos, ", \"test_summon\"");
+ nlohmann::json campaign;
+ in >> campaign;
+ campaign.at("levels").push_back("test_summon");
+ campaign.at("collections").back().at("levels").push_back("test_summon");
   std::ofstream out(overlay / "campaign.json", std::ios::trunc);
   CHECK(static_cast<bool>(out));
-  out << text;
+ out << campaign.dump(2) << '\n';
  }
  const auto catalog = mission::ContentCatalog::load(overlay.string());
  // Explicit goals parse (summon + recharge + complete, in order).
