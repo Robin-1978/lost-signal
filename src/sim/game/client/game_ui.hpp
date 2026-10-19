@@ -9,6 +9,8 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace client {
 
@@ -28,6 +30,8 @@ struct UiActions {
  std::optional<double> replay_time_s;
  std::string purchase_component;
  std::string construction_plan;
+ std::string initial_goal_id;
+ std::optional<std::size_t> selected_goal;
 };
 
 class GameUi {
@@ -75,6 +79,7 @@ class GameUi {
  void update_style_label();
  void update_garage_labels();
  std::string selected_robot_title() const;
+ std::string selected_prediction_goal() const;
  void sanitize_build();
  bool is_unlocked(const mission::LevelDefinition& level) const;
  std::string next_level_id() const;
@@ -127,6 +132,10 @@ class GameUi {
  tgui::Label::Ptr running_metrics_;
  tgui::Label::Ptr running_state_;
  tgui::ScrollablePanel::Ptr running_explanation_card_;
+ tgui::Panel::Ptr running_goal_picker_;
+ std::vector<std::pair<std::size_t, tgui::Button::Ptr>> running_goal_buttons_;
+ float running_explanation_base_y_{0.0f};
+ float running_explanation_bottom_y_{0.0f};
  tgui::Button::Ptr pause_button_;
  tgui::Slider::Ptr replay_slider_;
  tgui::Label::Ptr replay_value_;

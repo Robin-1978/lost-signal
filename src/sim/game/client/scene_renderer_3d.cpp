@@ -392,6 +392,49 @@ std::optional<sim::Vec2> SceneRenderer3D::screen_to_ground(Vector2 screen) const
  return sim::Vec2{hit.x, -hit.z};
 }
 
+std::optional<std::size_t> SceneRenderer3D::goal_at_screen(
+ const mission::PresentationFrameView& mission, Vector2 screen, float tolerance_px) const {
+ if (!camera_initialized_ || !(tolerance_px > 0.0f) ||
+ !CheckCollisionPointRec(screen, input_viewport_)) {
+ return std::nullopt;
+ }
+ const auto point_segment_distance = [](Vector2 point, Vector2 from, Vector2 to) {
+ const Vector2 delta = Vector2Subtract(to, from);
+ const float length_squared = Vector2LengthSqr(delta);
+ const float amount = length_squared > 1e-6f
+ ? std::clamp(Vector2DotProduct(Vector2Subtract(point, from), delta) / length_squared, 0.0f, 1.0f)
+ : 0.0f;
+ return Vector2Distance(point, Vector2Add(from, Vector2Scale(delta, amount)));
+ };
+ const Vector3 forward = Vector3Normalize(Vector3Subtract(camera_.target, camera_.position));
+ std::optional<std::size_t> nearest;
+ float nearest_distance = tolerance_px;
+ for (const std::size_t index : mission.eligible_goals()) {
+ const auto& goal = mission.level().objective.goals[index];
+ const auto marker = mission.map_definition().markers.find(goal.marker);
+ if (marker == mission.map_definition().markers.end())
+ continue;
+ const sim::Vec2 position{marker->second.x, marker->second.y};
+ const float ground_height = static_cast<float>(terrain_at(mission, position).height_m);
+ const Vector3 ground = world(position, ground_height);
+ if (Vector3DotProduct(Vector3Subtract(ground, camera_.position), forward) <= 0.0f)
+ continue;
+ const Vector2 ground_local = GetWorldToScreenEx(
+ ground, camera_, static_cast<int>(input_viewport_.width), static_cast<int>(input_viewport_.height));
+ const Vector2 top_local = GetWorldToScreenEx(
+ Vector3Add(ground, {0.0f, 1.45f, 0.0f}), camera_,
+ static_cast<int>(input_viewport_.width), static_cast<int>(input_viewport_.height));
+ const Vector2 ground_screen{ground_local.x + input_viewport_.x, ground_local.y + input_viewport_.y};
+ const Vector2 top_screen{top_local.x + input_viewport_.x, top_local.y + input_viewport_.y};
+ const float candidate = point_segment_distance(screen, ground_screen, top_screen);
+ if (candidate <= nearest_distance) {
+ nearest = index;
+ nearest_distance = candidate;
+ }
+ }
+ return nearest;
+}
+
 void SceneRenderer3D::bind_shader(Model& model_value) const {
  if (!IsShaderValid(shader_))
   return;

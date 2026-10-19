@@ -822,6 +822,9 @@ struct PredictionChoice {
  std::string id;
  std::string text;
  std::string feedback;
+ // Optional task selected by this pre-launch choice. The client never has to
+ // infer a themed task ID from player-facing text or a presentation ID.
+ std::string goal_id;
 };
 
 struct PresentationDefinition {

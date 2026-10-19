@@ -281,6 +281,7 @@
     "/strings/event.target_selected": "Target selected: {0}. Planning an autonomous route.",
     "/strings/world.mode_choose": "Choose the next recovery target",
     "/strings/running.choose_target_body": "Observe\nThe glowing targets are ready for selection\n\nInfer\nOrder changes payload, terrain, and storm exposure\n\nAct\nClick a target in the world; the robot will plan and drive autonomously",
-    "/strings/running.choose_target_next": "Waiting for your target"
+    "/strings/running.choose_target_next": "Waiting for your target",
+    "/strings/running.choose_target_title": "Choose the next autonomous target"
   }
 }

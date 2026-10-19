@@ -23,13 +23,15 @@ int main() {
  CHECK(!session.active_goal());
  CHECK(session.planned_route().empty());
  CHECK(session.eligible_goals() == std::vector<std::size_t>({0, 1, 2}));
+ CHECK(presentation.prediction_choices.size() == 3);
+ CHECK(presentation.prediction_choices[0].goal_id == "flood-core");
 
  session.start();
  CHECK(session.snapshot().status == mission::MissionStatus::Running);
  CHECK(!session.active_goal());
  CHECK(!session.select_goal(3));
  CHECK(!session.select_goal_near({0.0, 0.0}, 0.5));
- CHECK(session.select_goal_near({18.4, 15.8}));
+ CHECK(session.select_goal("ridge-core"));
  CHECK(session.active_goal());
  CHECK(session.active_goal()->id == "ridge-core");
  CHECK(!session.planned_route().empty());

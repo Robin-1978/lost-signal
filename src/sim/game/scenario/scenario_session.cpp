@@ -1210,6 +1210,15 @@ bool ScenarioSession::select_goal(std::size_t index) {
  return true;
 }
 
+bool ScenarioSession::select_goal(const std::string& id) {
+ if (id.empty())
+ return false;
+ const auto found = std::find_if(level_.objective.goals.begin(), level_.objective.goals.end(),
+ [&](const GoalStep& goal) { return (goal.id.empty() ? goal.marker : goal.id) == id; });
+ return found != level_.objective.goals.end() &&
+ select_goal(static_cast<std::size_t>(std::distance(level_.objective.goals.begin(), found)));
+}
+
 bool ScenarioSession::select_goal_near(sim::Vec2 world, double tolerance_m) {
  if (!(tolerance_m > 0.0))
  return false;

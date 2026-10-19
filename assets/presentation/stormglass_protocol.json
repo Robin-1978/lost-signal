@@ -83,16 +83,19 @@
     "choices": [
       {
         "id": "stormglass.flood",
+        "goal_id": "flood-core",
         "text": "先救洪水晶核",
         "feedback": "低重心重载会增加制动距离，但后续横坡稳定性可能更好。"
       },
       {
         "id": "stormglass.ridge",
+        "goal_id": "ridge-core",
         "text": "先救山脊晶核",
         "feedback": "尽早穿越山脊可避开后期低抓地，但高位载荷会改变之后的侧翻余量。"
       },
       {
         "id": "stormglass.shadow",
+        "goal_id": "shadow-core",
         "text": "先救暗影晶核",
         "feedback": "轻载穿越动态交通更灵活，但遮挡后的时间冲突仍需持续预测。"
       }

@@ -425,6 +425,8 @@ void GameUi::rebuild(const mission::ScenarioSession* mission) {
  running_metrics_ = nullptr;
  running_state_ = nullptr;
  running_explanation_card_ = nullptr;
+ running_goal_picker_ = nullptr;
+ running_goal_buttons_.clear();
  pause_button_ = nullptr;
  replay_slider_ = nullptr;
  replay_value_ = nullptr;
@@ -838,6 +840,7 @@ void GameUi::build_prediction(const mission::ScenarioSession* mission) {
  launch->onClick([this] {
  actions_.launch = true;
  actions_.construction_plan = prediction_choice_;
+ actions_.initial_goal_id = selected_prediction_goal();
  });
 }
 
@@ -910,7 +913,41 @@ void GameUi::build_running(const mission::ScenarioSession* mission) {
  const float controls_y = std::max(650.0f, static_cast<float>(height_) - 70.0f);
  const float garage_y = controls_y - 48.0f;
  const float explanation_y = state_y + 142.0f;
- const float explanation_height = std::max(180.0f, garage_y - explanation_y - 14.0f);
+ running_explanation_base_y_ = explanation_y;
+ running_explanation_bottom_y_ = garage_y - 14.0f;
+ if (mission && mission->level().objective.goal_order == "player") {
+ running_goal_picker_ = tgui::Panel::create({kContentWidth, 1});
+ running_goal_picker_->setPosition(kMargin, explanation_y);
+ auto picker_look = running_goal_picker_->getRenderer();
+ picker_look->setBackgroundColor({16, 22, 24, 238});
+ picker_look->setBorderColor({225, 92, 214, 190});
+ picker_look->setBorders({1});
+ picker_look->setRoundedBorderRadius(12);
+ panel_->add(running_goal_picker_);
+ auto picker_title = tgui::Label::create(catalog_.tr("running.choose_target_title"));
+ picker_title->setPosition(14, 11);
+ picker_title->setTextSize(13);
+ picker_title->getRenderer()->setTextColor({238, 151, 225});
+ picker_title->getRenderer()->setTextStyle(tgui::TextStyle::Bold);
+ running_goal_picker_->add(picker_title);
+ for (std::size_t index = 0; index < mission->level().objective.goals.size(); ++index) {
+ auto button = tgui::Button::create(mission->level().objective.goals[index].label);
+ button->setSize(kContentWidth - 28.0f, 36.0f);
+ button->setTextSize(14);
+ auto look = button->getRenderer();
+ look->setRoundedBorderRadius(8);
+ look->setBorders({1});
+ look->setBackgroundColor({38, 26, 42});
+ look->setBackgroundColorHover({63, 37, 66});
+ look->setBorderColor({136, 72, 139});
+ look->setBorderColorHover({225, 92, 214});
+ look->setTextColor({242, 224, 239});
+ button->onClick([this, index] { actions_.selected_goal = index; });
+ running_goal_picker_->add(button);
+ running_goal_buttons_.push_back({index, button});
+ }
+ }
+ const float explanation_height = std::max(96.0f, garage_y - explanation_y - 14.0f);
  auto card = tgui::ScrollablePanel::create({kContentWidth, explanation_height});
  running_explanation_card_ = card;
  card->setPosition(kMargin, explanation_y);
@@ -1132,7 +1169,10 @@ void GameUi::build_debrief(const mission::ScenarioSession* mission) {
   auto garage = add_button(catalog_.tr("debrief.to_garage"), kMargin, height_ - 74.0f, 148, 46);
   garage->onClick([this] { actions_.open_garage = true; });
   auto retry = add_button(catalog_.tr("debrief.retry"), kMargin + 164, height_ - 74.0f, 148, 46, true);
-  retry->onClick([this] { actions_.retry = true; });
+retry->onClick([this] {
+ actions_.retry = true;
+ actions_.initial_goal_id = selected_prediction_goal();
+});
  }
  refresh_debrief(*mission);
 }
@@ -1456,6 +1496,13 @@ std::string GameUi::selected_robot_title() const {
  return catalog_.robot(id).title;
 }
 
+std::string GameUi::selected_prediction_goal() const {
+ const auto found = std::find_if(presentation_->prediction_choices.begin(),
+ presentation_->prediction_choices.end(),
+ [this](const auto& choice) { return choice.id == prediction_choice_; });
+ return found == presentation_->prediction_choices.end() ? std::string{} : found->goal_id;
+}
+
 void GameUi::refresh_running(const mission::ScenarioSession& mission, bool paused, double speed) {
  if (!running_metrics_)
   return;
@@ -1464,6 +1511,7 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
  mission.level().control_mode == "manual_calibration";
  const bool operator_drive = !mission.endless_mode() &&
  mission.level().control_mode == "operator_drive";
+ const bool choosing_goal = mission.level().objective.goal_order == "player" && !mission.active_goal();
  const double grade_degrees = std::atan(state.terrain_grade) * kRadToDeg;
  const double cross_degrees = std::atan(state.cross_slope) * kRadToDeg;
  const bool slope_active = std::abs(grade_degrees) >= 1.0 || std::abs(cross_degrees) >= 1.0;
@@ -1471,7 +1519,29 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
   running_explanation_card_->setVisible(
  mission.endless_mode() || manual || operator_drive || state.static_obstacle_detected ||
  state.dynamic_object_detected ||
-    state.waiting_for_clearance || slope_active || state.traction_saturated || state.rollover_risk >= 0.75);
+ state.waiting_for_clearance || choosing_goal || slope_active || state.traction_saturated ||
+ state.rollover_risk >= 0.75);
+ }
+ if (running_goal_picker_) {
+ const auto eligible = mission.eligible_goals();
+ float button_y = 39.0f;
+ for (const auto& [index, button] : running_goal_buttons_) {
+ const bool visible = choosing_goal &&
+ std::find(eligible.begin(), eligible.end(), index) != eligible.end();
+ button->setVisible(visible);
+ if (visible) {
+ button->setPosition(14.0f, button_y);
+ button_y += 42.0f;
+ }
+ }
+ const float picker_height = button_y + 8.0f;
+ running_goal_picker_->setSize({kContentWidth, picker_height});
+ running_goal_picker_->setVisible(choosing_goal);
+ const float explanation_y =
+ running_explanation_base_y_ + (choosing_goal ? picker_height + 10.0f : 0.0f);
+ running_explanation_card_->setPosition(kMargin, explanation_y);
+ running_explanation_card_->setSize(
+ {kContentWidth, std::max(72.0f, running_explanation_bottom_y_ - explanation_y)});
  }
  std::string explanation;
  if (mission.endless_mode()) {
@@ -1533,7 +1603,9 @@ void GameUi::refresh_running(const mission::ScenarioSession& mission, bool pause
     catalog_.trf("running.slope_body", {format_number(grade_degrees), format_number(cross_degrees),
                                         format_number(state.rollover_risk * 100.0, 0)});
  } else {
-  explanation = catalog_.tr("running.clear_head") + mission.level().objective.goal_label;
+ const auto* current_goal = mission.active_goal();
+ explanation = catalog_.tr("running.clear_head") +
+ (current_goal ? current_goal->label : mission.level().objective.goal_label);
  }
  if (mission.level().objective.goals.size() > 1) {
  const auto* active = mission.active_goal();

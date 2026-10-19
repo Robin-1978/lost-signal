@@ -1606,6 +1606,7 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
      item.at("id").get<std::string>(),
      item.at("text").get<std::string>(),
      item.at("feedback").get<std::string>(),
+ item.value("goal_id", std::string{}),
    });
   }
   presentation.running_heading = running.at("heading").get<std::string>();
@@ -1747,7 +1748,7 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
  throw ContentError("experience collections must present every level exactly once");
  }
  for (const auto& [id, presentation] : catalog.presentations_) {
-  (void)catalog.level(presentation.level);
+ const auto& level = catalog.level(presentation.level);
   if (!presentation.robot_id.empty()) {
    (void)catalog.robot(presentation.robot_id);
   }
@@ -1757,6 +1758,22 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
   for (const auto& policy : presentation.task_policies) {
    (void)catalog.task_policy(policy);
   }
+ for (const auto& choice : presentation.prediction_choices) {
+ if (choice.goal_id.empty())
+ continue;
+ if (level.objective.goal_order != "player") {
+ throw ContentError("presentation '" + id + "' binds prediction choice '" + choice.id +
+ "' to a goal in a mission that is not player ordered");
+ }
+ const bool known_goal = std::any_of(
+ level.objective.goals.begin(), level.objective.goals.end(), [&](const GoalStep& goal) {
+ return (goal.id.empty() ? goal.marker : goal.id) == choice.goal_id;
+ });
+ if (!known_goal) {
+ throw ContentError("presentation '" + id + "' prediction choice '" + choice.id +
+ "' references unknown goal '" + choice.goal_id + "'");
+ }
+ }
   catalog.validate_build(presentation.level, presentation.default_build);
   catalog.validate_build(presentation.level, presentation.recommended_build);
  }

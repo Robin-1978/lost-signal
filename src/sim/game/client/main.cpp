@@ -406,6 +406,8 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  mission = make_mission(ui.level_id(), ui.build());
  commit_construction(*mission, actions.construction_plan);
     mission->start();
+ if (!actions.initial_goal_id.empty())
+ mission->select_goal(actions.initial_goal_id);
     ui.set_screen(client::Screen::Running, mission.get());
     paused = false;
     accumulator = 0.0;
@@ -413,6 +415,8 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
    }
  if (actions.toggle_pause)
  paused = !paused;
+ if (actions.selected_goal && ui.screen() == client::Screen::Running)
+ mission->select_goal(*actions.selected_goal);
  if (actions.reset_simulation && mission->endless_mode()) {
  try { persist_regional_world(); }
  catch (const std::exception& error) {
@@ -437,7 +441,10 @@ int run_client(mission::ContentCatalog catalog, const Options& options) {
  (!editor || !editor->active()) && !options.demo && options.screenshot.empty() &&
  IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
  ui.world_pointer_available(GetMousePosition().x)) {
- if (const auto target = renderer.screen_to_world(GetMousePosition()))
+ const mission::PresentationFrameView view{*mission};
+ if (const auto goal = renderer.goal_at_screen(view, GetMousePosition()))
+ mission->select_goal(*goal);
+ else if (const auto target = renderer.screen_to_world(GetMousePosition()))
  mission->select_goal_near(*target);
  }
 

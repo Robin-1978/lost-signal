@@ -246,6 +246,29 @@ std::optional<sim::Vec2> WorldRenderer::screen_to_world(Vector2 screen) const {
  return sim::Vec2{(screen.x - world_origin_.x) / scale_, (world_origin_.y - screen.y) / scale_};
 }
 
+std::optional<std::size_t> WorldRenderer::goal_at_screen(
+ const mission::PresentationFrameView& mission, Vector2 screen) const {
+ if (!drawn_once_ || !CheckCollisionPointRec(screen, viewport_))
+ return std::nullopt;
+ if (!analysis_mode_)
+ return scene_3d_->goal_at_screen(mission, screen);
+ std::optional<std::size_t> nearest;
+ float nearest_distance = 46.0f;
+ for (const std::size_t index : mission.eligible_goals()) {
+ const auto& goal = mission.level().objective.goals[index];
+ const auto marker = mission.map_definition().markers.find(goal.marker);
+ if (marker == mission.map_definition().markers.end())
+ continue;
+ const Vector2 projected = world_to_screen({marker->second.x, marker->second.y});
+ const float candidate = std::hypot(screen.x - projected.x, screen.y - projected.y);
+ if (candidate <= nearest_distance) {
+ nearest = index;
+ nearest_distance = candidate;
+ }
+ }
+ return nearest;
+}
+
 std::optional<std::string> WorldRenderer::garage_slot_at(Vector2 screen) const {
  for (const auto& hotspot : garage_hotspots_) {
  if (CheckCollisionPointCircle(screen, hotspot.center, hotspot.radius) ||

@@ -136,6 +136,9 @@
               },
               "feedback": {
                 "$ref": "#/$defs/text"
+              },
+              "goal_id": {
+                "$ref": "#/$defs/id"
               }
             }
           }

@@ -473,6 +473,7 @@ class ScenarioSession {
  }
  std::vector<std::size_t> eligible_goals() const;
  bool select_goal(std::size_t index);
+ bool select_goal(const std::string& id);
  bool select_goal_near(sim::Vec2 world, double tolerance_m = 1.35);
 
  const LevelDefinition& level() const { return level_; }

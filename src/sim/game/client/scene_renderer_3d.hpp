@@ -24,6 +24,8 @@ class SceneRenderer3D {
  Rectangle input_viewport, bool assembly_view = false);
  const Camera3D& camera() const { return camera_; }
  std::optional<sim::Vec2> screen_to_ground(Vector2 screen) const;
+ std::optional<std::size_t> goal_at_screen(
+ const mission::PresentationFrameView& mission, Vector2 screen, float tolerance_px = 46.0f) const;
 
  private:
  void bind_shader(Model& model) const;

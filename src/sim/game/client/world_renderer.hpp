@@ -33,6 +33,8 @@ class WorldRenderer {
  void set_terrain_layer(TerrainLayer layer) { terrain_layer_ = layer; }
  TerrainLayer terrain_layer() const { return terrain_layer_; }
  std::optional<sim::Vec2> screen_to_world(Vector2 screen) const;
+ std::optional<std::size_t> goal_at_screen(
+ const mission::PresentationFrameView& mission, Vector2 screen) const;
  std::optional<std::string> garage_slot_at(Vector2 screen) const;
  void draw_edit_overlay(const mission::PresentationFrameView& mission, const MapEditor& editor) const;
 
