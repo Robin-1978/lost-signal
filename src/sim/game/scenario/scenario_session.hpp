@@ -549,6 +549,7 @@ class ScenarioSession {
  double environment_grip_multiplier(const std::string& material) const;
  double total_mass_kg() const;
  double combined_center_height_m() const;
+ double combined_center_x_m() const;
  double combined_yaw_inertia_kgm2() const;
  void select_next_goal(const Pose& start);
  void plan_route();

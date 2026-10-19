@@ -77,6 +77,11 @@ struct ObservationFrame {
 struct EstimatedState {
  Vec2 position;
  double heading_rad{0.0};
+ // Gravity-referenced base_link attitude. These values are estimated from
+ // calibrated IMU observations; simulation truth must never populate them.
+ double roll_rad{0.0};
+ double pitch_rad{0.0};
+ bool attitude_valid{false};
  double linear_velocity_mps{0.0};
  double lateral_velocity_mps{0.0};
  double angular_velocity_radps{0.0};

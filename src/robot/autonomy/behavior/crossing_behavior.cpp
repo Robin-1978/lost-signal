@@ -307,15 +307,29 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  std::size_t selected_exit = route.size();
  std::size_t selected_distance = route.size();
  for (const auto& zone : zones) {
+ const double route_relevance_distance = safety.ego_radius_m +
+ safety.clearance_m + std::max(0.0, zone.participant_radius_m);
+ const ConflictZone relevance_zone{
+ zone.id,
+ {zone.min.x - route_relevance_distance, zone.min.y - route_relevance_distance},
+ {zone.max.x + route_relevance_distance, zone.max.y + route_relevance_distance},
+ zone.participant_radius_m,
+ };
  const bool body_inside_zone =
- distance_to_box(ego_position, zone) <= safety.ego_radius_m;
+ distance_to_box(ego_position, zone) <=
+ safety.ego_radius_m + std::max(0.0, zone.participant_radius_m);
   std::size_t scan = 0;
   while (scan < route.size()) {
    const auto route_intersects_at = [&](std::size_t index) {
-    if (inside(route[index].position, zone))
+ // A route need not pass through the mathematical center-line box to
+ // conflict with traffic. Relevance uses the Minkowski envelope of both
+ // participants plus the required clearance; stop/exit placement below
+ // still measures Euclidean distance from the canonical semantic box.
+ if (inside(route[index].position, relevance_zone))
      return true;
     return index + 1 < route.size() &&
-     segment_intersects(route[index].position, route[index + 1].position, zone);
+ segment_intersects(route[index].position, route[index + 1].position,
+ relevance_zone);
    };
    while (scan < route.size() && !route_intersects_at(scan))
     ++scan;
@@ -486,9 +500,11 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  !predicted_frames.front().empty();
  // Gap acceptance also needs an intent guard. A mathematically open window
  // must not release on the first noisy samples of an actor reversal. Only
- // actors whose predicted envelope can reach this zone participate; every
- // such mode must already be outside and increasing its distance from the
- // zone. Alternate predictor modes therefore keep ambiguous dwells closed.
+ // actors whose predicted envelope can reach this zone participate, and each
+ // must be moving reliably outwards. Requiring its complete spatial envelope
+ // to clear the zone as well would duplicate the time-indexed swept-gap gate
+ // below and can deadlock a periodic actor whose endpoint is close to the
+ // semantic box even though it will be clear when ego arrives.
  out.relevant_threats_moving_away = out.prediction_evidence_available;
  if (out.prediction_evidence_available) {
  for (std::size_t actor_index = 0; actor_index < predicted_frames.front().size(); ++actor_index) {
@@ -504,7 +520,6 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  }
  if (!can_reach_zone)
  continue;
- const double now_distance = distance_to_box(current.p, *selected_zone);
  const Vec2 closest{
  std::clamp(current.p.x, selected_zone->min.x, selected_zone->max.x),
  std::clamp(current.p.y, selected_zone->min.y, selected_zone->max.y),
@@ -514,7 +529,7 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  const double outward_norm = std::max(1e-9, std::hypot(outward_x, outward_y));
  const double outward_speed =
  (current.v.x * outward_x + current.v.y * outward_y) / outward_norm;
- if (now_distance <= actor_envelope || outward_speed < kReliableAwaySpeedMps) {
+ if (outward_speed < kReliableAwaySpeedMps) {
  out.relevant_threats_moving_away = false;
  break;
  }
@@ -615,20 +630,24 @@ CrossingOutput govern_crossing(CrossingState& state, const CrossingInput& input,
  if (input.body_in_conflict) {
   state.phase = CrossingPhase::Committed;
   state.clear_time_s = 0.0;
+ state.clear_observation_samples = 0;
  return {state.phase, false, true, state.stop_point, state.stop_direction, false, state.exit_point, state.exit_valid,
  state.transit_speed_mps};
  }
  state.phase = CrossingPhase::Holding;
  if (input.ready_to_commit && input.safe_to_commit) {
   state.clear_time_s += std::max(0.0, input.dt_s);
-  if (state.clear_time_s + 1e-12 >= kCrossingCommitConfirmS) {
+ ++state.clear_observation_samples;
+ if (state.clear_observation_samples >= kCrossingCommitConfirmSamples) {
    state.phase = CrossingPhase::Committed;
    state.clear_time_s = 0.0;
+ state.clear_observation_samples = 0;
  return {state.phase, false, true, state.stop_point, state.stop_direction, false, state.exit_point, state.exit_valid,
  state.transit_speed_mps};
   }
  } else {
   state.clear_time_s = 0.0;
+ state.clear_observation_samples = 0;
  }
  return {state.phase, true, false, state.stop_point, state.stop_direction, state.stop_valid, state.exit_point, state.exit_valid,
  state.transit_speed_mps};

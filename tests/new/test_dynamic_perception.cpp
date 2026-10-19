@@ -210,6 +210,71 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  }
  CHECK(wall_perception_system.dynamic_obstacles().active_tracks(0.2, 1.0).empty());
 
+ // A three-degree registration error moves a thin wall edge between rays.
+ // Repeated static frames must remain map-consistent instead of acquiring a
+ // fictitious high-speed track. The angular offset is an independent input;
+ // the test does not reproduce the correspondence implementation.
+ sim::LidarPerceptionSystem shifted_wall_perception(wall_map, 23);
+ for (int frame_index = 0; frame_index < 8; ++frame_index) {
+ auto wall_frame = wall_sensors.capture_lidar(
+ wall_truth, 1.0 + 0.1 * frame_index, lidar_config,
+ sim::planar_lidar_truth(wall_map, {1.0, 5.0}, 0.0, 360, 10.0));
+ auto shifted_ranges = wall_frame.lidar->ranges;
+ auto shifted_hits = wall_frame.lidar->hit;
+ auto shifted_intensities = wall_frame.lidar->intensities;
+ for (std::size_t ray = 0; ray < shifted_ranges.size(); ++ray) {
+ const std::size_t source = (ray + shifted_ranges.size() - 3) % shifted_ranges.size();
+ wall_frame.lidar->ranges[ray] = shifted_ranges[source];
+ wall_frame.lidar->hit[ray] = shifted_hits[source];
+ wall_frame.lidar->intensities[ray] = shifted_intensities[source];
+ }
+ const auto shifted = shifted_wall_perception.process(
+ *wall_frame.lidar, *wall_frame.lidar_static_reference,
+ {wall_estimate.position, wall_estimate.heading_rad,
+ wall_estimate.linear_velocity_mps, wall_estimate.lateral_velocity_mps,
+ wall_estimate.angular_velocity_radps}, {}, 1.0);
+ CHECK(!shifted.dynamic_object_detected);
+ }
+ CHECK(shifted_wall_perception.dynamic_obstacles().active_tracks(1.7, 1.0).empty());
+
+ // A pitched single-line scanner can intersect a slope or flat ground. The
+ // endpoint is free in a 2D occupancy grid but lies on the 2.5D elevation
+ // layer, so it must be ground rather than a moving object. The reference is
+ // deliberately empty to model a small attitude/registration mismatch.
+ sim::GridMap elevation_map(100, 50, 0.2);
+ for (int y = 0; y < elevation_map.h(); ++y) {
+ for (int x = 0; x < elevation_map.w(); ++x) {
+ const auto centre = elevation_map.gridToWorld(x, y);
+ elevation_map.setElevation(centre.x, centre.y, 0.0);
+ }
+ }
+ sim::LidarPerceptionSystem ground_perception(elevation_map, 29);
+ sim::Scan ground_scan;
+ ground_scan.n_rays = 360;
+ ground_scan.max_range = 10.0;
+ ground_scan.angle_increment_rad = 2.0 * sim::kPi / 360.0;
+ ground_scan.ranges.assign(360, ground_scan.max_range);
+ ground_scan.hit.assign(360, 0);
+ ground_scan.ranges[0] = 0.56 / std::sin(0.10);
+ ground_scan.hit[0] = 1;
+ ground_scan.header.frame_id = "lidar_link";
+ sim::Scan empty_ground_reference = ground_scan;
+ empty_ground_reference.ranges[0] = empty_ground_reference.max_range;
+ empty_ground_reference.hit[0] = 0;
+ for (int frame_index = 0; frame_index < 8; ++frame_index) {
+ ground_scan.header.stamp_s = 2.0 + 0.1 * frame_index;
+ empty_ground_reference.header.stamp_s = ground_scan.header.stamp_s;
+ const auto frame = ground_perception.process(
+ ground_scan, empty_ground_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0,
+ 0.24, 0.0, 0.10, true},
+ {{0.0, 0.0}, 0.0, 0.0, 0.45,
+ 0.32, 0.0, 0.0, 0.30}, 1.0);
+ CHECK(!frame.obstacle_rays[0].hit);
+ CHECK(!frame.dynamic_object_detected);
+ }
+ CHECK(ground_perception.dynamic_obstacles().active_tracks(2.7, 1.0).empty());
+
  // A cluster centroid can alternate between opposite visible edges of a
  // stationary object. The tracker must not publish this as motion. This is
  // an independent bounded-output oracle; it does not duplicate filter math.
@@ -349,6 +414,24 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(std::abs(uncertain_frames.front().front().position_uncertainty_m - 0.03) < 1e-12);
  CHECK(std::abs(uncertain_frames.back().front().position_uncertainty_m - 0.13) < 1e-12);
  CHECK(uncertain_frames.back().front().radius == 0.20);
+
+ // Adjacent-frame interpolation relies on stable object/hypothesis order.
+ // One nominal+alternate input followed by a nominal-only input must retain
+ // that exact three-slot identity for the complete forecast.
+ sim::PredictInput multimode;
+ multimode.state = {{0.0, 0.0}, {1.0, 0.0}, 0.2};
+ multimode.alternate_velocity = {-1.0, 0.0};
+ multimode.alternate_velocity_valid = true;
+ sim::PredictInput second_object;
+ second_object.state = {{10.0, 0.0}, {2.0, 0.0}, 0.3};
+ const auto ordered_frames = sim::predict_frames(
+ {multimode, second_object}, 0.0, 1.0, 0.5, 2.0);
+ CHECK(ordered_frames.size() == 3);
+ CHECK(std::all_of(ordered_frames.begin(), ordered_frames.end(),
+ [](const auto& frame) { return frame.size() == 3; }));
+ CHECK(std::abs(ordered_frames.back()[0].p.x - 1.0) < 1e-12);
+ CHECK(std::abs(ordered_frames.back()[1].p.x + 1.0) < 1e-12);
+ CHECK(std::abs(ordered_frames.back()[2].p.x - 12.0) < 1e-12);
 
  const auto partial_step = sim::dwa_compute({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3},
                                             1.5, 1.5, 2.0, 0.25, 0.1, 0.38, 8.0);

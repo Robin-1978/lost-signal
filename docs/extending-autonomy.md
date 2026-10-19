@@ -43,7 +43,7 @@ This organization follows two useful industry patterns while remaining smaller t
 
 Lost Signal adopts the boundaries and narrow interfaces. It does not adopt their middleware, process model, package count, or deployment machinery.
 
-## Global planner API v2
+## Global planner API v4
 
 `IGlobalPlanner` is the extension boundary for map-scale planning. A planner receives a `GlobalPlannerRequest` containing only:
 
@@ -57,16 +57,19 @@ The first point uses `Unspecified`; every later point must name a direction. `Gl
 successful result that violates this contract. The planner cannot access mission progression, renderer state,
 MuJoCo bodies, future actor truth, or actuator internals.
 
-The API version is `kGlobalPlannerApiMajor == 2`. This is a source-level C++ contract. It is not a stable
+The API version is `kGlobalPlannerApiMajor == 4`. This is a source-level C++ contract. It is not a stable
 shared-library ABI across compilers. Lost Signal is under active development, so unreleased API versions are replaced
 directly rather than preserved through compatibility shims. The registry provides deterministic in-process
-selection; loading untrusted shared libraries at runtime is outside v2.
+selection; loading untrusted shared libraries at runtime is outside v4.
 
 The built-in planners share this result contract without sharing an algorithm. Grid A* searches an eight-connected
 2D cost map, emits forward segments, and derives the nominal body heading from the route tangent. Its final point
 inherits the incoming grid edge heading; it does not claim to satisfy `goal.heading_rad`. Hybrid A* searches position,
-heading, and gear under Ackermann curvature constraints. Its exact terminal anchor inherits the final searched
-state's heading and gear rather than replacing them with an unearned requested goal heading.
+heading, and gear under Ackermann curvature constraints. Its returned endpoint is the final collision-checked searched
+state inside the requested goal tolerance. It never appends an unchecked straight edge to the authored point.
+When a route has multiple authored waypoints, `GlobalPlanningSystem` starts each new segment at the preceding
+segment's returned terminal pose. This keeps the composite route continuous even when a tolerance-aware planner does
+not end at the waypoint centre.
 
 ## Add a planner
 
@@ -116,5 +119,48 @@ A planner should keep all tuning explicit, respect map occupancy and the supplie
 ## Future extension seams
 
 Global planning is the first versioned algorithm registry. Local planners and controllers already have clear directory and data boundaries, but they do not yet expose equivalent versioned registries. Add those only when a second implementation needs selection; avoid abstract interfaces with one consumer and no replacement pressure.
+
+### TEB evaluation
+
+Timed Elastic Band is a useful future local-planner experiment, but it is not
+part of the current release. The maintained ROS implementation describes TEB
+as an online optimization of trajectory time, obstacle separation and
+kinodynamic constraints, with additional work for distinctive topologies and
+car-like robots. That makes it especially relevant to narrow passages,
+explicit arrival timing and Ackermann maneuvers. It also introduces a nonlinear
+optimizer, substantially more tuning and a new failure surface; importing the
+ROS package would additionally bring ROS and g2o-facing integration that Lost
+Signal does not need.
+
+The current safety defect class is independent of the candidate optimizer:
+state estimation, actuator response, stopping authority and the final swept
+trajectory validator must agree for DWA, TEB or any later solver. Adding TEB
+before that contract is closed could produce smoother paths while preserving
+the same unsafe stopping assumption. Lost Signal therefore keeps the classic
+DWA and chassis-specific rollout planners for the release gate.
+
+When a named teaching experiment requires TEB, implement a project-owned
+provider behind a versioned local-planner API. It must consume
+`LocalPlanningRequest`, emit the same `ExecutableTrajectory`, use the runtime
+chassis capability contract, and pass the existing independent validator. Its
+acceptance experiment compares DWA and TEB on identical map, observation trace,
+seed and build using completion, minimum static/dynamic clearance, solve time,
+oscillation count, path length, final pose error and command continuity. A TEB
+trajectory receives no collision or stopping exception merely because its
+optimizer reports convergence.
+
+References used for this decision:
+
+- [TEB local planner](https://github.com/rst-tu-dortmund/teb_local_planner) and
+  its cited trajectory-optimization and car-like-robot publications;
+- [Nav2 DWB controller](https://github.com/ros-navigation/navigation2/tree/main/nav2_dwb_controller),
+  which separates trajectory generators from critic plugins;
+- [Nav2 MPPI controller](https://github.com/ros-navigation/navigation2/tree/main/nav2_mppi_controller),
+  which uses motion-model plugins, forward simulation, critics and a published
+  optimal trajectory for downstream checking.
+
+The DWB/MPPI separation is closer to Lost Signal's existing sampler plus
+independent-validator architecture than a direct port of the ROS TEB package.
+It is an architectural reference, not a ROS2 integration plan.
 
 Hardware remains separate. Algorithms emit neutral motion targets, LSRI validates and transports commands, and a vehicle adapter converts them to platform-specific actuation. Native providers implement that boundary without moving algorithms into device-specific packages.

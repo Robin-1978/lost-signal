@@ -18,6 +18,10 @@ struct LidarProjectionState {
  double linear_velocity_mps{0.0};
  double lateral_velocity_mps{0.0};
  double angular_velocity_radps{0.0};
+ double base_height_m{0.0};
+ double base_roll_rad{0.0};
+ double base_pitch_rad{0.0};
+ bool attitude_valid{false};
 };
 
 struct LidarProjectionConfig {
@@ -25,6 +29,10 @@ struct LidarProjectionConfig {
  double yaw_in_base_rad{0.0};
  double range_noise_sigma_m{0.0};
  double map_alignment_tolerance_m{0.45};
+ double height_in_base_m{0.0};
+ double roll_in_base_rad{0.0};
+ double pitch_in_base_rad{0.0};
+ double ground_alignment_tolerance_m{0.30};
 };
 
 struct LidarPerceptionFrame {

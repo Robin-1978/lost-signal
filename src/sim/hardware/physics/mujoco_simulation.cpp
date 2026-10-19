@@ -319,18 +319,22 @@ bodies_.push_back({model, true, -1, -1, -1});
  mj_forward(model_.get(), data_.get());
  }
 
- void set_mass_properties(BodyHandle handle, double mass, Vec3 inertia) {
+ void set_mass_properties(BodyHandle handle, double mass, Vec3 inertia, Vec3 inertial_position) {
  require_compiled();
  auto& body = checked_body(handle);
  if (!(mass > 0.0) || !finite(mass) || !valid_diagonal_inertia(inertia, false) ||
- body.model.kinematic)
+ !finite(inertial_position) || body.model.kinematic)
  throw std::invalid_argument("invalid dynamic mass properties");
  model_->body_mass[body.body_id] = mass;
  model_->body_inertia[3 * body.body_id] = inertia.x;
  model_->body_inertia[3 * body.body_id + 1] = inertia.y;
  model_->body_inertia[3 * body.body_id + 2] = inertia.z;
+ model_->body_ipos[3 * body.body_id] = inertial_position.x;
+ model_->body_ipos[3 * body.body_id + 1] = inertial_position.y;
+ model_->body_ipos[3 * body.body_id + 2] = inertial_position.z;
  body.model.mass_kg = mass;
  body.model.inertia_diagonal_kgm2 = inertia;
+ body.model.inertial_position_m = inertial_position;
  // mj_setConst evaluates model constants in qpos0 and leaves mjData there.
  // Calling it directly during a payload update therefore teleports every
  // free body back to its authored pose. Runtime identification and payload
@@ -533,6 +537,7 @@ body.model.contact_damping_ratio = damping_ratio;
  !finite(body.linear_damping) || !finite(body.angular_damping) ||
  !finite(body.contact_time_constant_s) || !finite(body.contact_damping_ratio) ||
  !finite(body.contact_axle_axis_local) || !finite(body.position_m) ||
+ !finite(body.inertial_position_m) ||
  !valid_diagonal_inertia(body.inertia_diagonal_kgm2, true))
  throw std::invalid_argument("invalid physics body properties");
  if (body.mass_kg == 0.0 && !body.kinematic &&
@@ -683,6 +688,12 @@ body.model.contact_damping_ratio = damping_ratio;
  const std::string padding(static_cast<std::size_t>(indent), ' ');
  xml << padding << "<body name=\"" << body_name(handle) << "\" pos=\""
  << vector(relative.translation_m) << "\" quat=\"" << quaternion(relative.rotation) << "\"";
+ // Runtime payload and identification updates may move the inertial frame.
+ // MuJoCo's simple-body optimization allocates a diagonal-only mass block
+ // and cannot accept that change in mj_setConst; compile a general block for
+ // dynamic bodies so the public mass-properties contract remains valid.
+ if (body.mass_kg > 0.0 && !body.kinematic && body.movable_inertial_origin)
+ xml << " simple=\"false\"";
  xml << ">\n";
  if (!parent && (body.mass_kg > 0.0 || body.kinematic))
  xml << padding << " <freejoint name=\"" << free_joint_name(handle) << "\"/>\n";
@@ -707,7 +718,8 @@ body.model.contact_damping_ratio = damping_ratio;
  }
  if (body.mass_kg > 0.0 && body.inertia_diagonal_kgm2.x > 0.0 &&
  body.inertia_diagonal_kgm2.y > 0.0 && body.inertia_diagonal_kgm2.z > 0.0) {
- xml << padding << " <inertial pos=\"0 0 0\" mass=\"" << body.mass_kg
+ xml << padding << " <inertial pos=\"" << vector(body.inertial_position_m)
+ << "\" mass=\"" << body.mass_kg
  << "\" diaginertia=\"" << vector(body.inertia_diagonal_kgm2) << "\"/>\n";
  }
  const int group = collision_group_index(body.collision_group);
@@ -962,8 +974,9 @@ void MujocoSimulation::compile() { impl_->compile(); }
 bool MujocoSimulation::compiled() const { return impl_->compiled(); }
 void MujocoSimulation::clear_velocities() { impl_->clear_velocities(); }
 void MujocoSimulation::set_state(BodyHandle body, const BodyState& state) { impl_->set_state(body, state); }
-void MujocoSimulation::set_mass_properties(BodyHandle body, double mass, Vec3 inertia) {
- impl_->set_mass_properties(body, mass, inertia);
+void MujocoSimulation::set_mass_properties(
+ BodyHandle body, double mass, Vec3 inertia, Vec3 inertial_position) {
+ impl_->set_mass_properties(body, mass, inertia, inertial_position);
 }
 
 void MujocoSimulation::set_contact_parameters(BodyHandle body, double friction,

@@ -2,9 +2,35 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 namespace sim {
+
+void GridMap::setElevation(double wx, double wy, double elevation_m) {
+ if (!std::isfinite(elevation_m))
+ throw std::invalid_argument("grid elevation must be finite");
+ const auto [gx, gy] = worldToGrid(wx, wy);
+ if (!inside(gx, gy))
+ return;
+ if (elevation_m_.empty()) {
+ elevation_m_.assign(data_.size(), std::numeric_limits<float>::quiet_NaN());
+ }
+ elevation_m_[static_cast<std::size_t>(gy) * w_ + gx] =
+ static_cast<float>(elevation_m);
+}
+
+std::optional<double> GridMap::elevation(double wx, double wy) const {
+ const auto [gx, gy] = worldToGrid(wx, wy);
+ if (!inside(gx, gy) || elevation_m_.empty())
+ return std::nullopt;
+ const float value = elevation_m_[static_cast<std::size_t>(gy) * w_ + gx];
+ if (!std::isfinite(value))
+ return std::nullopt;
+ return static_cast<double>(value);
+}
+
 GridMap GridMap::inflated(double radius, GridBoundaryPolicy boundary_policy) const {
  GridMap out(w_, h_, res_);
+ out.elevation_m_ = elevation_m_;
  // Outside the authored map is occupied. Inflate that implicit obstacle
  // inward as well as explicit occupied cells: planning a body centre in the
  // last free cell is unsafe when its footprint already crosses the world

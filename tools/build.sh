@@ -21,7 +21,7 @@ for argument in "$@"; do
 Usage: tools/build.sh [--headless] [--test] [--debug] [--clean]
 
 Builds the project and downloads CMake plus pinned source dependencies when needed.
-Environment overrides: LOST_SIGNAL_BUILD_DIR, LOST_SIGNAL_TOOLCHAIN_DIR.
+Environment overrides: CXX, LOST_SIGNAL_BUILD_DIR, LOST_SIGNAL_TOOLCHAIN_DIR.
 EOF
  exit 0
  ;;
@@ -99,15 +99,69 @@ if test -z "$cmake_bin"; then
  fi
 fi
 
-if ! command -v "${CXX:-c++}" >/dev/null 2>&1; then
- echo "A C++20 compiler is required (set CXX to its executable)." >&2
+compiler_supports_required_cxx20() {
+ local compiler="$1"
+ local probe_dir
+ probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/lost-signal-cxx-probe.XXXXXX")"
+ cat >"$probe_dir/probe.cpp" <<'EOF'
+#include <atomic>
+int main() {
+ std::atomic<int> value{0};
+ value.notify_all();
+ value.wait(1);
+ return value.load();
+}
+EOF
+ if "$compiler" -std=c++20 "$probe_dir/probe.cpp" -o "$probe_dir/probe" \
+  >/dev/null 2>&1; then
+  rm -rf "$probe_dir"
+  return 0
+ fi
+ rm -rf "$probe_dir"
+ return 1
+}
+
+if test -n "${CXX:-}"; then
+ compiler_candidates=("$CXX")
+else
+ # Prefer the user's normal compiler when it satisfies the complete language
+ # and library contract. The versioned GNU compiler is the verified release
+ # toolchain on the development workstation; Clang is a compatibility path.
+ compiler_candidates=(g++-13 clang++ c++)
+fi
+
+cxx_bin=""
+for candidate in "${compiler_candidates[@]}"; do
+ if command -v "$candidate" >/dev/null 2>&1 &&
+  compiler_supports_required_cxx20 "$candidate"; then
+  cxx_bin="$(command -v "$candidate")"
+  break
+ fi
+done
+if test -z "$cxx_bin"; then
+ if test -n "${CXX:-}"; then
+  echo "CXX=$CXX cannot compile the required C++20 atomic wait/notify API." >&2
+ else
+  echo "A compiler with C++20 atomic wait/notify support is required (GCC 11+, GCC 13 verified)." >&2
+ fi
  exit 1
 fi
 
+if test -f "$build_dir/CMakeCache.txt"; then
+ cached_cxx="$(sed -n 's/^CMAKE_CXX_COMPILER:FILEPATH=//p' "$build_dir/CMakeCache.txt" | head -n1)"
+ if test -n "$cached_cxx" &&
+  test "$(readlink -f "$cached_cxx")" != "$(readlink -f "$cxx_bin")"; then
+  echo "Build directory $build_dir was configured with $cached_cxx, but this run selected $cxx_bin." >&2
+  echo "Run again with --clean or choose a separate LOST_SIGNAL_BUILD_DIR." >&2
+  exit 1
+ fi
+fi
+
 echo "Configuring ${build_type} build in $build_dir"
+echo "C++ compiler: $cxx_bin"
 echo "CMake dependencies are pinned and downloaded automatically on first build."
 
-"$cmake_bin" -S "$project_root" -B "$build_dir" \
+CXX="$cxx_bin" "$cmake_bin" -S "$project_root" -B "$build_dir" \
  -DCMAKE_BUILD_TYPE="$build_type" \
  -DLOST_SIGNAL_BUILD_CLIENT="$build_client" \
  -DLOST_SIGNAL_BUILD_TESTS=ON

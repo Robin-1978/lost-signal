@@ -14,6 +14,11 @@ struct DiffCmd {
  // SteeringAngle chassis. LSRI keeps these meanings in separate named fields.
  double target_v{0}, target_w{0};
  double target_lateral_v{0};
+ // A controlled braking transition invalidates integral state accumulated
+ // for the previous maneuver. The target may remain non-zero while a
+ // stability-aware ramp approaches rest, so this is distinct from LSRI's
+ // zero-valued fail-safe command.
+ bool controlled_stop{false};
 };
 // Pure differential-drive kinematics. Real and simulated platform providers
 // use the same conversion, while acceleration, contact, motor, and pose

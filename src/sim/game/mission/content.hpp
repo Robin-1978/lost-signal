@@ -766,6 +766,7 @@ struct RobotDefinition {
  // from articulated link data when present; neither is a visual-mesh offset.
  double base_link_height_m{0.0};
  double center_of_mass_height_m{0.0};
+ Vec3 center_of_mass_in_base_m;
  std::vector<MountDefinition> mounts;
  // Passive rolling supports belong to the chassis assembly, not to the
  // powered tire component slot. Array order is the telemetry channel order.

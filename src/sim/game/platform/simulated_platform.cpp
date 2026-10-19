@@ -1,5 +1,6 @@
 #include "sim/game/platform/simulated_platform.hpp"
 #include "sim/game/mission/world_geometry.hpp"
+#include "sim/hardware/physics/raycast_geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -202,6 +203,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  if (link.id == robot_.articulation.root_link) {
  articulated_root_mass_kg_ = link.mass_kg;
  articulated_root_inertia_kgm2_ = body.inertia_diagonal_kgm2;
+ body.movable_inertial_origin = true;
  const double payload_mass_kg = std::max(0.0, total_mass_kg_ - robot_.mass_kg);
  const double payload_yaw_inertia = std::max(0.0, yaw_inertia_kgm2_ - robot_.yaw_inertia_kgm2);
  const double payload_height_m = payload_mass_kg > 1e-9
@@ -209,11 +211,22 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  robot_.mass_kg * robot_.center_of_mass_height_m) / payload_mass_kg
  : robot_.base_link_height_m;
  const double vertical_offset_m = payload_height_m - robot_.base_link_height_m;
- const double payload_transverse_inertia =
- 0.5 * payload_yaw_inertia + payload_mass_kg * vertical_offset_m * vertical_offset_m;
- body.mass_kg += payload_mass_kg;
- body.inertia_diagonal_kgm2.x += payload_transverse_inertia;
- body.inertia_diagonal_kgm2.y += payload_transverse_inertia;
+ const double combined_root_mass_kg = link.mass_kg + payload_mass_kg;
+ const double root_com_z_m = payload_mass_kg > 0.0
+ ? payload_mass_kg * vertical_offset_m / combined_root_mass_kg
+ : 0.0;
+ const double root_shift_m = root_com_z_m;
+ const double payload_shift_m = vertical_offset_m - root_com_z_m;
+ const double payload_intrinsic_transverse_inertia = 0.5 * payload_yaw_inertia;
+ const double parallel_axis_transverse =
+ link.mass_kg * root_shift_m * root_shift_m +
+ payload_mass_kg * payload_shift_m * payload_shift_m;
+ body.mass_kg = combined_root_mass_kg;
+ body.inertial_position_m = {0.0, 0.0, root_com_z_m};
+ body.inertia_diagonal_kgm2.x +=
+ payload_intrinsic_transverse_inertia + parallel_axis_transverse;
+ body.inertia_diagonal_kgm2.y +=
+ payload_intrinsic_transverse_inertia + parallel_axis_transverse;
  body.inertia_diagonal_kgm2.z += payload_yaw_inertia;
  } else {
  articulated_non_root_mass_kg_ += link.mass_kg;
@@ -327,6 +340,7 @@ body.rotation = ::sim::physics::quaternion_from_euler(0.0, -support.pitch_rad,
  const double inertia_pitch = std::max(0.05, total_mass_kg_ *
  (support_length_m_ * support_length_m_ + 4.0 * center_height_m_ * center_height_m_) / 12.0);
  vehicle.inertia_diagonal_kgm2 = {inertia_roll, inertia_pitch, yaw_inertia_kgm2_};
+ vehicle.movable_inertial_origin = true;
  const double vertical_half_extent = body_center_height_m_ /
  std::max(0.25, std::cos(roll) * std::cos(pitch));
  vehicle.position_m = {spawn.x, spawn.y, ground.height_m + vertical_half_extent + 0.01};
@@ -383,12 +397,22 @@ void SimulatedPlatform::update_load(double total_mass_kg, double center_height_m
  robot_.mass_kg * robot_.center_of_mass_height_m) / payload_mass_kg
  : robot_.base_link_height_m;
  const double vertical_offset_m = payload_height_m - robot_.base_link_height_m;
- const double payload_transverse_inertia =
- 0.5 * payload_yaw_inertia + payload_mass_kg * vertical_offset_m * vertical_offset_m;
+ const double combined_root_mass_kg = articulated_root_mass_kg_ + payload_mass_kg;
+ const double root_com_z_m = payload_mass_kg > 0.0
+ ? payload_mass_kg * vertical_offset_m / combined_root_mass_kg
+ : 0.0;
+ const double payload_intrinsic_transverse_inertia = 0.5 * payload_yaw_inertia;
+ const double root_shift_m = root_com_z_m;
+ const double payload_shift_m = vertical_offset_m - root_com_z_m;
+ const double combined_transverse_inertia =
+ articulated_root_inertia_kgm2_.x + articulated_root_mass_kg_ * root_shift_m * root_shift_m +
+ payload_intrinsic_transverse_inertia + payload_mass_kg * payload_shift_m * payload_shift_m;
  world_.set_mass_properties(robot_body_, articulated_root_mass_kg_ + payload_mass_kg,
- {articulated_root_inertia_kgm2_.x + payload_transverse_inertia,
- articulated_root_inertia_kgm2_.y + payload_transverse_inertia,
- articulated_root_inertia_kgm2_.z + payload_yaw_inertia});
+ {combined_transverse_inertia,
+ articulated_root_inertia_kgm2_.y + articulated_root_mass_kg_ * root_shift_m * root_shift_m +
+ payload_intrinsic_transverse_inertia + payload_mass_kg * payload_shift_m * payload_shift_m,
+ articulated_root_inertia_kgm2_.z + payload_yaw_inertia},
+ {0.0, 0.0, root_com_z_m});
  } else {
  const double inertia_roll = std::max(0.05, total_mass_kg_ *
  (support_width_m_ * support_width_m_ + 4.0 * center_height_m_ * center_height_m_) / 12.0);
@@ -532,32 +556,12 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  const double center_x = actor.position_m.x + actor.linear_velocity_mps.x * time_offset_s;
  const double center_y = actor.position_m.y + actor.linear_velocity_mps.y * time_offset_s;
  const double center_z = actor.position_m.z + actor.linear_velocity_mps.z * time_offset_s;
- const double offset_x = sample_from_lidar.translation_m.x - center_x;
- const double offset_y = sample_from_lidar.translation_m.y - center_y;
- const double a = direction.x * direction.x + direction.y * direction.y;
- const double b = 2.0 * (offset_x * direction.x + offset_y * direction.y);
- const double radius = actor_radii_m_.at(actor_id);
- const double c = offset_x * offset_x + offset_y * offset_y - radius * radius;
- const double discriminant = b * b - 4.0 * a * c;
- if (a < 1e-12 || discriminant < 0.0)
- continue;
- const double actor_distance = (-b - std::sqrt(discriminant)) / (2.0 * a);
- if (actor_distance < 0.0 || actor_distance > range_m ||
- (hit.hit && actor_distance >= hit.distance_m))
- continue;
- const double hit_z = sample_from_lidar.translation_m.z + direction.z * actor_distance;
- if (std::abs(hit_z - center_z) > actor_heights_m_.at(actor_id) * 0.5)
- continue;
- const double hit_x = sample_from_lidar.translation_m.x + direction.x * actor_distance;
- const double hit_y = sample_from_lidar.translation_m.y + direction.y * actor_distance;
- const double normal_length = std::max(1e-12, std::hypot(hit_x - center_x, hit_y - center_y));
- hit = {
- true,
- actor_body,
- {hit_x, hit_y, hit_z},
- {(hit_x - center_x) / normal_length, (hit_y - center_y) / normal_length, 0.0},
- actor_distance,
- };
+ const auto actor_hit = ::sim::physics::raycast_upright_finite_cylinder(
+ {sample_from_lidar.translation_m, direction, range_m}, actor_body,
+ {center_x, center_y, center_z}, actor_radii_m_.at(actor_id),
+ actor_heights_m_.at(actor_id));
+ if (actor_hit.hit && (!hit.hit || actor_hit.distance_m < hit.distance_m))
+ hit = actor_hit;
  }
  }
  scan.ranges.push_back(hit.hit ? hit.distance_m : range_m);
@@ -604,7 +608,8 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
 ::sim::LidarRaycastTruth SimulatedPlatform::scan_lidar(int rays, double range_m,
  ::sim::Vec2 estimated_position, double estimated_heading_rad,
  double timestamp_s, double scan_period_s,
- const ::sim::LidarReturnModel& return_model) const {
+ const ::sim::LidarReturnModel& return_model,
+ std::optional<BaseAttitudeEstimate> estimated_attitude) const {
  if (!has_lidar_mount_) {
  throw std::runtime_error("robot has no sensor mount for physics lidar");
  }
@@ -616,8 +621,16 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  }
 
  const auto estimated_ground = terrain_.sample(estimated_position);
- const double estimated_roll = std::atan(::sim::lateral_grade(estimated_ground, estimated_heading_rad));
- const double estimated_pitch = -std::atan(::sim::longitudinal_grade(estimated_ground,
+ if (estimated_attitude && (!std::isfinite(estimated_attitude->roll_rad) ||
+ !std::isfinite(estimated_attitude->pitch_rad))) {
+ throw std::invalid_argument("estimated LiDAR attitude must be finite");
+ }
+ const double estimated_roll = estimated_attitude
+ ? estimated_attitude->roll_rad
+ : std::atan(::sim::lateral_grade(estimated_ground, estimated_heading_rad));
+ const double estimated_pitch = estimated_attitude
+ ? estimated_attitude->pitch_rad
+ : -std::atan(::sim::longitudinal_grade(estimated_ground,
  estimated_heading_rad));
  const ::sim::physics::RigidTransform world_from_estimated_base{
  {estimated_position.x, estimated_position.y,
@@ -704,32 +717,11 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  actor.position_m.y + actor.linear_velocity_mps.y * time_offset_s,
  actor.position_m.z + actor.linear_velocity_mps.z * time_offset_s,
  };
- const double offset_x = sample_from_lidar.translation_m.x - center.x;
- const double offset_y = sample_from_lidar.translation_m.y - center.y;
- const double a = direction.x * direction.x + direction.y * direction.y;
- const double b = 2.0 * (offset_x * direction.x + offset_y * direction.y);
- const double radius = actor_radii_m_.at(actor_id);
- const double c = offset_x * offset_x + offset_y * offset_y - radius * radius;
- const double discriminant = b * b - 4.0 * a * c;
- if (a < 1e-12 || discriminant < 0.0)
- continue;
- const double distance = (-b - std::sqrt(discriminant)) / (2.0 * a);
- if (distance < 0.0 || distance > range_m ||
- (hit.hit && distance >= hit.distance_m))
- continue;
- const double hit_z = sample_from_lidar.translation_m.z + direction.z * distance;
- if (std::abs(hit_z - center.z) > actor_heights_m_.at(actor_id) * 0.5)
- continue;
- const ::sim::physics::Vec3 point{
- sample_from_lidar.translation_m.x + direction.x * distance,
- sample_from_lidar.translation_m.y + direction.y * distance,
- hit_z,
- };
- const double normal_length = std::max(
- 1e-12, std::hypot(point.x - center.x, point.y - center.y));
- hit = {true, actor_body, point,
- {(point.x - center.x) / normal_length,
- (point.y - center.y) / normal_length, 0.0}, distance};
+ const auto actor_hit = ::sim::physics::raycast_upright_finite_cylinder(
+ {sample_from_lidar.translation_m, direction, range_m}, actor_body, center,
+ actor_radii_m_.at(actor_id), actor_heights_m_.at(actor_id));
+ if (actor_hit.hit && (!hit.hit || actor_hit.distance_m < hit.distance_m))
+ hit = actor_hit;
  }
  }
  if (!hit.hit)
@@ -783,7 +775,8 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  int azimuth_samples, const std::vector<double>& vertical_angles_rad,
  double range_m, ::sim::Vec2 estimated_position,
  double estimated_heading_rad, double timestamp_s, double scan_period_s,
- const ::sim::LidarReturnModel& return_model) const {
+ const ::sim::LidarReturnModel& return_model,
+ std::optional<BaseAttitudeEstimate> estimated_attitude) const {
  if (!has_lidar_mount_)
  throw std::runtime_error("robot has no sensor mount for physics lidar");
  const auto body = world_.state(robot_body_);
@@ -792,10 +785,17 @@ void SimulatedPlatform::sync_actors(const std::vector<PhysicsActorState>& actors
  if (!world_from_lidar)
  throw std::runtime_error("physics frame tree cannot resolve world to lidar_link");
  const auto estimated_ground = terrain_.sample(estimated_position);
- const double estimated_roll = std::atan(
- ::sim::lateral_grade(estimated_ground, estimated_heading_rad));
- const double estimated_pitch = -std::atan(
- ::sim::longitudinal_grade(estimated_ground, estimated_heading_rad));
+ if (estimated_attitude && (!std::isfinite(estimated_attitude->roll_rad) ||
+ !std::isfinite(estimated_attitude->pitch_rad))) {
+ throw std::invalid_argument("estimated LiDAR attitude must be finite");
+ }
+ const double estimated_roll = estimated_attitude
+ ? estimated_attitude->roll_rad
+ : std::atan(::sim::lateral_grade(estimated_ground, estimated_heading_rad));
+ const double estimated_pitch = estimated_attitude
+ ? estimated_attitude->pitch_rad
+ : -std::atan(::sim::longitudinal_grade(estimated_ground,
+ estimated_heading_rad));
  const ::sim::physics::RigidTransform world_from_estimated_base{
  {estimated_position.x, estimated_position.y,
  estimated_ground.height_m + body_center_height_m_},

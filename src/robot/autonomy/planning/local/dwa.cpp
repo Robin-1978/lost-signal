@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/local/dwa.hpp"
+#include "robot/autonomy/planning/local/command_window.hpp"
 #include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 
 #include <algorithm>
@@ -66,37 +67,41 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
  output.best.command.valid = false;
  output.best.command.score = -1e18;
  const double min_velocity = std::max(-0.5, min_velocity_mps);
- std::vector<double> velocity_samples;
- for (double velocity = min_velocity; velocity <= v_max + 1e-9; velocity += 0.25)
-  velocity_samples.push_back(velocity);
- if (v_max >= min_velocity &&
-     (velocity_samples.empty() || std::abs(velocity_samples.back() - v_max) > 1e-9)) {
-  velocity_samples.push_back(v_max);
- }
+ if (v_max + 1e-9 < min_velocity || dt <= 0.0)
+ return output;
+ // DWA's dynamic window is the set of commands reachable by the next
+ // control update, not by the end of the complete prediction horizon. The
+ // rollout may be several seconds long, but publishing its terminal target
+ // immediately would bypass the acceleration model used to validate it.
+ // When the current speed is already outside a newly reduced policy cap,
+ // retain the nearest rate-limited recovery command instead of demanding an
+ // impossible instantaneous clamp.
+ const auto velocity_window = next_command_window(
+ cur_v, min_velocity, v_max, accel * dt);
+ const auto velocity_samples = command_samples(
+ velocity_window, 0.25, {cur_v, 0.0, min_velocity, v_max});
  for (double velocity : velocity_samples) {
-  if (std::abs(velocity - cur_v) > accel * predict_time) {
-   continue;
-  }
- std::vector<double> angular_samples;
- const auto append_angular = [&](double angular) {
- angular = std::clamp(angular, -w_max, w_max);
- if (std::none_of(angular_samples.begin(), angular_samples.end(),
- [&](double existing) { return std::abs(existing - angular) <= 1e-9; })) {
- angular_samples.push_back(angular);
- }
- };
- for (double angular = -w_max; angular <= w_max + 1e-9; angular += 0.3)
- append_angular(angular);
- append_angular(-w_max);
- append_angular(0.0);
- append_angular(cur_w);
- append_angular(w_max);
+ const auto angular_window = next_command_window(
+ cur_w, -w_max, w_max, yaw_accel * dt);
+ const auto angular_samples = command_samples(
+ angular_window, 0.3, {cur_w, 0.0, -w_max, w_max});
  for (double angular : angular_samples) {
  if (differential_track_m > 0.0 && max_wheel_speed_mps > 0.0) {
  const double left_mps = velocity - angular * differential_track_m * 0.5;
  const double right_mps = velocity + angular * differential_track_m * 0.5;
  if (std::max(std::abs(left_mps), std::abs(right_mps)) >
  max_wheel_speed_mps + 1e-9) {
+ continue;
+ }
+ }
+ if (differential_track_m > 0.0 && accel > 0.0) {
+ const double current_left_mps = cur_v - cur_w * differential_track_m * 0.5;
+ const double current_right_mps = cur_v + cur_w * differential_track_m * 0.5;
+ const double target_left_mps = velocity - angular * differential_track_m * 0.5;
+ const double target_right_mps = velocity + angular * differential_track_m * 0.5;
+ const double max_wheel_delta_mps = accel * dt;
+ if (std::abs(target_left_mps - current_left_mps) > max_wheel_delta_mps + 1e-9 ||
+ std::abs(target_right_mps - current_right_mps) > max_wheel_delta_mps + 1e-9) {
  continue;
  }
  }
@@ -223,20 +228,16 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
  std::optional<double> target_heading_rad, const DwaReference& reference,
  double differential_track_m, double max_wheel_speed_mps,
  double actuator_response_delay_s) {
+ (void)safety_margin;
  const auto dynamic_collision = [&](double x, double y, double time) {
  const auto clearance = dynamic_clearance_at(
  {x, y}, time, predicted_frames, frame_dt, robot_radius);
- if (clearance.physical_m < 0.0)
- return true;
- if (clearance.conservative_m >= safety_margin)
- return false;
- // If prediction changes while the robot is already inside a soft envelope,
- // allow only a non-worsening escape. The independent validator below still
- // requires measurable terminal improvement and never permits overlap.
- const auto initial = dynamic_clearance_at(
- pos, 0.0, predicted_frames, frame_dt, robot_radius);
- return initial.conservative_m >= safety_margin ||
- clearance.conservative_m + 1e-9 < initial.conservative_m;
+ // Candidate generation removes physical collisions only. The independent
+ // trajectory validator owns uncertainty and the required soft margin so it
+ // can distinguish an unsafe rollout from a named minimum-risk escape. A
+ // sampler-level soft-margin veto used to discard every escape whose gap
+ // briefly shrank while an actor approached.
+ return clearance.physical_m < 0.0;
  };
  return compute(pos, theta, cur_v, cur_w, goal, map, weights, dynamic_collision, v_max, w_max, accel,
  predict_time, dt, yaw_accel, terrain_feasible, min_velocity_mps,

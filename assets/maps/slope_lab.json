@@ -134,7 +134,7 @@
       ],
       "base_height_m": 0.0,
       "grade_x": 0.0,
-      "grade_y": 0.36,
+ "grade_y": 0.24,
       "roughness": 0.015,
       "active_in": [
         "cross_slope"

@@ -1407,9 +1407,11 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
   robot.collision_height_m = robot.rigid_body_size_m.z;
   robot.base_link_height_m = robot.collision_height_m * 0.5;
   robot.center_of_mass_height_m = robot.collision_height_m * 0.5;
+ robot.center_of_mass_in_base_m = {0.0, 0.0, robot.center_of_mass_height_m};
   if (has_articulated_center_of_mass) {
    robot.base_link_height_m = articulated_base_link_height_m;
    robot.center_of_mass_height_m = articulated_center_of_mass_height_m;
+ robot.center_of_mass_in_base_m = articulated_center_of_mass_in_base;
   }
   if (robot.rigid_body_shape != "box" || robot.rigid_body_size_m.x <= 0.0 ||
       robot.rigid_body_size_m.y <= 0.0 || robot.rigid_body_size_m.z <= 0.0) {

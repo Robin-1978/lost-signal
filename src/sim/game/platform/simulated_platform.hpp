@@ -83,6 +83,15 @@ struct RigidVehicleState {
  bool drive_slipping{false};
 };
 
+// Optional deployable pose-estimator output used only to raycast the known
+// static map. The measured scan always comes from the physical sensor pose.
+// Keeping the two explicit prevents simulation body truth from leaking into
+// the autonomy reference scan.
+struct BaseAttitudeEstimate {
+ double roll_rad{0.0};
+ double pitch_rad{0.0};
+};
+
 // MuJoCo owns the vehicle pose and, for articulated platforms, all joint
 // positions and velocities. Chassis controllers own targets and electronics;
 // actuator feedback crosses this boundary before the next control update.
@@ -100,13 +109,15 @@ class SimulatedPlatform {
  ::sim::LidarRaycastTruth scan_lidar(int rays, double range_m,
  ::sim::Vec2 estimated_position, double estimated_heading_rad,
  double timestamp_s = 0.0, double scan_period_s = 0.0,
- const ::sim::LidarReturnModel& return_model = {}) const;
+ const ::sim::LidarReturnModel& return_model = {},
+ std::optional<BaseAttitudeEstimate> estimated_attitude = std::nullopt) const;
  ::sim::LidarPointCloudRaycastTruth scan_lidar_point_cloud(
  int azimuth_samples, const std::vector<double>& vertical_angles_rad,
  double range_m, ::sim::Vec2 estimated_position,
  double estimated_heading_rad, double timestamp_s = 0.0,
  double scan_period_s = 0.0,
- const ::sim::LidarReturnModel& return_model = {}) const;
+ const ::sim::LidarReturnModel& return_model = {},
+ std::optional<BaseAttitudeEstimate> estimated_attitude = std::nullopt) const;
  std::optional<::sim::physics::RigidTransform> lookup_transform(
  const std::string& target_frame, const std::string& source_frame) const {
  return frames_.lookup(target_frame, source_frame);

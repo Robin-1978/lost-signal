@@ -18,7 +18,7 @@
     "goal": "supply_station",
     "goal_label": "能源模块",
     "goal_visual": "supply_station",
-    "time_limit_s": 120,
+ "time_limit_s": 180,
     "max_collisions": 0,
     "arrive_tolerance_m": 0.62
   },

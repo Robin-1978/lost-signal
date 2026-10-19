@@ -735,6 +735,42 @@
       0.0
     ]
   },
+"conflict_zones": [
+{
+"id": "market_street_crossing",
+"type": "box",
+"min": [
+10.3,
+10.3
+],
+"max": [
+10.7,
+10.7
+],
+"authority": "control",
+"participant_radius_m": 0.55,
+"active_in": [
+"town_freight"
+]
+},
+{
+"id": "market_gate_turnaround",
+"type": "box",
+"min": [
+25.3,
+17.8
+],
+"max": [
+25.7,
+18.0
+],
+"authority": "control",
+"participant_radius_m": 0.55,
+"active_in": [
+"town_freight"
+]
+}
+],
   "actors": [
     {
       "id": "town_cart_a",

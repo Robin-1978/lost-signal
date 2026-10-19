@@ -75,4 +75,13 @@ double roughness_lateral_acceleration(double roughness_m, double speed_mps, doub
 double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, double support_width_m,
                              double center_of_mass_height_m);
 
+// Symmetric command-acceleration ceiling that preserves a requested fraction
+// of both front and rear longitudinal support margins on the current grade.
+// Distances are measured from the combined COM projection to the support
+// edges. The result limits target changes; tire/contact physics still decides
+// the acceleration that is actually realized.
+double longitudinal_stability_acceleration_limit(double longitudinal_grade,
+ double front_support_m, double rear_support_m, double center_of_mass_height_m,
+ double margin_fraction = 0.70);
+
 } // namespace sim

@@ -39,7 +39,10 @@ double rollout_horizon(const LocalPlanningRequest& request) {
  }
  const double braking_time = std::abs(request.forward_mps) /
  std::max(1e-6, request.max_accel_mps2);
- const double stopping_horizon = request.emergency_stop_delay_s + braking_time;
+ const double angular_braking_time = std::abs(request.yaw_rate_radps) /
+ std::max(1e-6, request.max_yaw_accel_radps2);
+ const double stopping_horizon = request.emergency_stop_delay_s +
+ std::max(braking_time, angular_braking_time);
  // A rollout represents one receding-horizon action toward the current local
  // target. Extending a constant yaw command well past that target makes a
  // valid turn look like a multi-revolution loop and causes stop/turn limit
@@ -153,6 +156,7 @@ ValidatedTrajectorySelection validate(const DwaResult& proposals,
  constraints.stop_tolerance_m = request.stop_tolerance_m;
  constraints.emergency_stop_delay_s = request.emergency_stop_delay_s;
  constraints.emergency_decel_mps2 = request.emergency_decel_mps2;
+ constraints.differential_track_m = request.differential_track_m;
  constraints.committed_transit = request.crossing_committed;
  constraints.committed_progress_floor_mps = request.committed_progress_floor_mps;
  return select_executable_trajectory(
@@ -179,6 +183,7 @@ ValidatedTrajectorySelection select_static_margin_escape(
  constraints.stop_tolerance_m = request.stop_tolerance_m;
  constraints.emergency_stop_delay_s = request.emergency_stop_delay_s;
  constraints.emergency_decel_mps2 = request.emergency_decel_mps2;
+ constraints.differential_track_m = request.differential_track_m;
  constraints.committed_transit = request.crossing_committed;
  constraints.committed_progress_floor_mps = request.committed_progress_floor_mps;
  for (const auto& rollout : proposals.rollouts) {
@@ -206,11 +211,25 @@ ValidatedTrajectorySelection select_static_margin_escape(
  std::remainder(escape_heading_rad - start.heading_rad, 2.0 * kPi));
  const double terminal_heading_error = std::abs(
  std::remainder(escape_heading_rad - finish.heading_rad, 2.0 * kPi));
+ const double measured_translation_mps = std::hypot(
+ request.forward_mps, request.lateral_mps);
+ const double predicted_stop_translation_m =
+ measured_translation_mps * std::max(0.0, request.emergency_stop_delay_s) +
+ (request.emergency_decel_mps2 > 0.0
+ ? measured_translation_mps * measured_translation_mps /
+ (2.0 * request.emergency_decel_mps2)
+ : (measured_translation_mps > 1e-6
+ ? std::numeric_limits<double>::infinity() : 0.0));
  const bool stages_alignment =
  request.command_space == LocalCommandSpace::DifferentialTwist &&
  preferred_map.isFree(request.target.x, request.target.y) &&
  std::abs(rollout.trajectory.command.v) <= 1e-9 &&
  std::abs(rollout.trajectory.command.w) > 1e-6 &&
+ // A zero target is not an in-place maneuver while the measured chassis is
+ // still translating. Require its complete braking envelope to fit inside
+ // the same displacement tolerance used to classify the rollout; otherwise
+ // control must brake first and replan from the measured stopped state.
+ predicted_stop_translation_m <= 0.02 &&
  displacement_m <= 0.02 &&
  terminal_heading_error + 0.05 < initial_heading_error;
  const bool reduces_margin_incursion = allow_incremental_escape &&
@@ -258,6 +277,20 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  const bool physical_escape_available = physical_collision_map &&
  physical_collision_map->isFree(request.position.x, request.position.y);
  if (inside_preferred_margin && physical_escape_available) {
+ const double measured_margin_depth_m = distance_to_free_space(planning_map, request.position);
+ // Recovery state follows measured motion, not the endpoint of a predicted
+ // rollout. A valid command can fail to make progress because of tracking
+ // error, contact or a short receding horizon. Treating that prediction as
+ // success restarted the fallback timer every cycle and left the robot
+ // oscillating inside the same inflation band.
+ constexpr double kMeasuredProgressM = 0.02;
+ if (!std::isfinite(static_margin_best_depth_m_) ||
+ measured_margin_depth_m + kMeasuredProgressM < static_margin_best_depth_m_) {
+ static_margin_best_depth_m_ = measured_margin_depth_m;
+ static_margin_blocked_s_ = 0.0;
+ } else {
+ static_margin_blocked_s_ += std::max(0.0, request.step_s);
+ }
  auto escape_request = request;
  escape_request.max_speed_mps = std::min(
  escape_request.max_speed_mps, escape_request.recovery_max_speed_mps);
@@ -300,11 +333,13 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  // physical footprint map with terrain feasibility only. This fallback does
  // not weaken collision validation; it removes duplicate soft inflation.
  attempt_escape(terrain_feasible, false);
- if (output.selection.validation.accepted()) {
- static_margin_blocked_s_ = 0.0;
+ const bool nominal_escape_accepted = output.selection.validation.accepted();
+ LocalPlanningOutput nominal_output = output;
+ constexpr double kPhysicalMarginFallbackDelayS = 10.0;
+ if (nominal_escape_accepted && !physical_margin_recovery_active_ &&
+ static_margin_blocked_s_ + 1e-9 < kPhysicalMarginFallbackDelayS) {
  return output;
  }
- static_margin_blocked_s_ += std::max(0.0, request.step_s);
  double nearest_dynamic_clearance_m = std::numeric_limits<double>::infinity();
  for (const auto& frame : predicted_frames) {
  for (const auto& actor : frame) {
@@ -317,7 +352,6 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  const bool dynamic_scene_is_remote =
  nearest_dynamic_clearance_m > request.required_clearance_m +
  escape_request.max_speed_mps * request.prediction_horizon_s;
- constexpr double kPhysicalMarginFallbackDelayS = 10.0;
  if (physical_terrain_feasible && dynamic_scene_is_remote &&
  !request.stop_plane_active &&
  (physical_margin_recovery_active_ ||
@@ -325,12 +359,15 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  attempt_escape(physical_terrain_feasible, true);
  if (output.selection.validation.accepted()) {
  physical_margin_recovery_active_ = true;
- static_margin_blocked_s_ = 0.0;
+ return output;
  }
  }
+ if (nominal_escape_accepted)
+ return nominal_output;
  return output;
  }
  static_margin_blocked_s_ = 0.0;
+ static_margin_best_depth_m_ = std::numeric_limits<double>::infinity();
  physical_margin_recovery_active_ = false;
  output.proposals = generate(
  request, planning_map, predicted_frames, request.required_clearance_m,

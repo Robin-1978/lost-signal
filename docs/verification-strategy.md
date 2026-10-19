@@ -36,7 +36,8 @@ The following rules are checked in code review and tests:
  explicitly forward or reverse.
 - Grid A* and Hybrid A* remain different algorithms behind the same output contract. Grid A* emits forward route
  segments and derives geometric tangent headings; its last point inherits the incoming segment heading. Hybrid A*
- preserves the heading and gear from its searched state, including on the exact terminal anchor.
+ preserves the heading and gear from its final searched state inside the goal tolerance. It cannot append an exact
+ authored anchor unless a formal connector has independently established collision and kinematic feasibility.
 - Lookahead cannot cross a forward/reverse cusp. Ackermann steering obeys
  `yaw_rate = signed_speed * tan(steering_angle) / wheelbase`.
 - Unsupported capabilities, malformed routes, stale commands, and invalid units fail explicitly.
@@ -60,6 +61,10 @@ autonomy loop only after those fixtures pass; a level's success flag is never a 
 8. Diagnose visible motion against authoritative state before changing contact parameters. A bounded physical
  pitch/height/speed trace with visible stepping indicates presentation cadence; fixed-step interpolation belongs in
  a read-only render snapshot and must never feed sensors, control, replay, or headless results.
+9. Keep safety prediction and safety execution on one capability contract. In particular, a trajectory validator's
+ emergency-stop tail and the command limiter must use the same available deceleration after grade, support geometry,
+ combined center of mass, actuator limit, and control interval are applied. A mission success cannot prove these
+ two independently plausible calculations agree.
 
 When a corrected model changes an authored outcome, keep the correct model and reassess the lesson. Update the
 scenario or its expected outcome only when the new result still demonstrates the stated learning question.

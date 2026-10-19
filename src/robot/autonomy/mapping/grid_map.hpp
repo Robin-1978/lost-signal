@@ -1,5 +1,6 @@
 #pragma once
 #include "robot/core/math.hpp"
+#include <optional>
 #include <vector>
 namespace sim {
 enum class GridBoundaryPolicy {
@@ -25,6 +26,9 @@ class GridMap {
   return inside(gx, gy) && data_[gy * w_ + gx] < 50;
  }
  bool isFreeCell(int gx, int gy) const { return inside(gx, gy) && data_[gy * w_ + gx] < 50; }
+ void setElevation(double wx, double wy, double elevation_m);
+ std::optional<double> elevation(double wx, double wy) const;
+ bool hasElevation() const { return elevation_m_.size() == data_.size(); }
  // World-space box with half-open bounds [x0,x1)x[y0,y1), avoiding an extra cell.
  void addBox(double x0, double y0, double x1, double y1) {
   int gx0 = (int)std::floor(x0 / res_), gx1 = (int)std::ceil(x1 / res_);
@@ -54,5 +58,8 @@ class GridMap {
  int w_, h_;
  double res_;
  std::vector<int8_t> data_;
+ // Optional 2.5D ground layer at cell centres. NaN is unknown. Occupancy and
+ // elevation share coordinates but retain independent semantics.
+ std::vector<float> elevation_m_;
 };
 } // namespace sim

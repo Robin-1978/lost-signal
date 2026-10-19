@@ -37,6 +37,10 @@ struct TrajectoryConstraints {
  // decay to zero under the identified tire-limited deceleration.
  double emergency_stop_delay_s{0.0};
  double emergency_decel_mps2{0.0};
+ // Differential emergency braking is integrated in wheel space. This must
+ // be the same driven-wheel separation used by command execution; zero keeps
+ // the generic twist-space fallback for non-differential providers.
+ double differential_track_m{0.0};
  // Once behavior has committed to a conflict-zone transit, a fully
  // margin-compliant forward rollout may be the minimum-risk contingency when
  // braking would strand the body in the conflict. This never waives nominal
@@ -48,6 +52,10 @@ struct TrajectoryConstraints {
 struct TrajectoryValidation {
  TrajectoryVerdict verdict{TrajectoryVerdict::InvalidStructure};
  double min_dynamic_clearance_m{std::numeric_limits<double>::infinity()};
+ // Positive separation gained by a named minimum-risk escape from an
+ // already-violated soft margin. Selection uses this before ordinary planner
+ // score, because a contingency must maximize recovery from the hazard.
+ double escape_clearance_gain_m{0.0};
  std::string diagnostic;
  bool accepted() const {
  return verdict == TrajectoryVerdict::Accepted || verdict == TrajectoryVerdict::MinimumRiskEscape ||

@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/local/ackermann_local.hpp"
+#include "robot/autonomy/planning/local/command_window.hpp"
 #include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 #include "robot/core/actuator_response.hpp"
 
@@ -17,36 +18,36 @@ DwaResult ackermann_local_compute(Vec2 position, double heading_rad, double curr
  const auto dynamic_collision = [&](double x, double y, double time) {
  return dynamic_clearance_at(
  {x, y}, time, predicted_frames, config.frame_dt_s,
- config.robot_radius_m).conservative_m < config.safety_margin_m;
+ config.robot_radius_m).physical_m < 0.0;
  };
 
  const double reverse_limit = std::min(config.max_speed_mps, config.max_reverse_speed_mps);
- std::vector<double> speed_samples;
- const auto append_speed = [&](double speed) {
- if (std::none_of(speed_samples.begin(), speed_samples.end(),
- [&](double existing) { return std::abs(existing - speed) <= 1e-9; })) {
- speed_samples.push_back(speed);
- }
- };
+ double minimum_speed = 0.0;
+ double maximum_speed = config.max_speed_mps;
+ std::vector<double> preferred_speeds{
+ 0.0, 0.5 * config.max_speed_mps, config.max_speed_mps};
  if (config.preferred_direction == TravelDirection::Reverse) {
- append_speed(-reverse_limit);
- append_speed(-0.5 * reverse_limit);
- append_speed(0.0);
+ minimum_speed = -reverse_limit;
+ maximum_speed = 0.0;
+ preferred_speeds = {-reverse_limit, -0.5 * reverse_limit, 0.0};
  } else {
  // Gear is a global-route contract. A forward Hybrid A* section must not
  // become reverse merely because the old fixed 0.25 m/s sample stride starts
  // below zero. Include the exact cap so low-speed turns still have a moving
  // candidate when max_speed is smaller than that stride.
- const double minimum_speed = std::min(
+ minimum_speed = std::min(
  std::max(0.0, config.min_forward_speed_mps), config.max_speed_mps);
- append_speed(minimum_speed);
- append_speed(std::max(minimum_speed, 0.5 * config.max_speed_mps));
- append_speed(config.max_speed_mps);
+ preferred_speeds = {
+ minimum_speed,
+ std::max(minimum_speed, 0.5 * config.max_speed_mps),
+ config.max_speed_mps};
  }
+ const auto speed_window = next_command_window(
+ current_speed_mps, minimum_speed, maximum_speed,
+ config.max_accel_mps2 * config.dt_s);
+ const auto speed_samples = command_samples(
+ speed_window, 0.25, preferred_speeds);
  for (double target_speed : speed_samples) {
-  if (std::abs(target_speed - current_speed_mps) > config.max_accel_mps2 * config.predict_time_s) {
-   continue;
-  }
   constexpr int kSteerSamples = 9;
   for (int steer_sample = 0; steer_sample < kSteerSamples; ++steer_sample) {
    const double target_steer =

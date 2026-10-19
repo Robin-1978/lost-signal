@@ -91,7 +91,11 @@ int main() {
  << frame.control.local_target.y << ") cmd=("
  << frame.control.dwa_proposed_v_mps << ','
  << frame.control.dwa_proposed_w_radps << ") accepted="
- << frame.control.dwa_accepted_candidates << " verdict="
+ << frame.control.dwa_accepted_candidates << " applied=("
+ << frame.control.target_v_mps << ',' << frame.control.target_w_radps
+ << ") measured=(" << frame.control.left_measured_mps << ','
+ << frame.control.right_measured_mps << ") estimate_v="
+ << frame.estimated_forward_mps << " verdict="
  << frame.control.trajectory_verdict << '\n';
  }
  }
@@ -168,6 +172,9 @@ int main() {
  "orchard-aisle", "packing-pad"}));
  CHECK(constrained_a.snapshot().abandoned_goal_ids ==
  std::vector<std::string>({"muddy-swale"}));
+ CHECK(constrained_a.result().time_s <=
+ constrained_a.level().objective.time_limit_s -
+ constrained_a.level().objective.return_reserve_s + 1e-9);
  CHECK(has_event(constrained_a, "task-abandoned"));
  CHECK(constrained_b.snapshot().completed_goal_ids == constrained_a.snapshot().completed_goal_ids);
  CHECK(constrained_b.snapshot().abandoned_goal_ids == constrained_a.snapshot().abandoned_goal_ids);

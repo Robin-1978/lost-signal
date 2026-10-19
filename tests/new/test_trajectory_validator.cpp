@@ -177,6 +177,23 @@ int main() {
  CHECK(committed_stop.accepted());
  CHECK(committed_stop.committed_transit());
 
+ // Differential braking acts on each wheel. With asymmetric reverse wheel
+ // speeds the slow wheel stops first and the other wheel sweeps a longer arc;
+ // scaling body v and yaw together would incorrectly accept this obstacle.
+ auto asymmetric_reverse = trajectory;
+ asymmetric_reverse.samples = {
+ {0.0, {6.0, 6.0}, 0.0, -0.294, 0.0, 0.72, 0.0},
+ {0.2, {6.0, 6.0}, 0.0, -0.294, 0.0, 0.72, 0.0},
+ };
+ sim::GridMap asymmetric_map(1000, 1000, 0.01);
+ asymmetric_map.addBox(5.935, 5.985, 5.945, 5.995);
+ sim::TrajectoryConstraints differential_braking;
+ differential_braking.emergency_decel_mps2 = 1.0;
+ differential_braking.differential_track_m = 0.5;
+ CHECK(sim::validate_executable_trajectory(
+ asymmetric_reverse, asymmetric_map, {}, 0.01, 0.2, 0.1, {},
+ differential_braking).verdict == sim::TrajectoryVerdict::UnsafeEmergencyStop);
+
  // Braking includes the stationary hold after velocity reaches zero. If a
  // moving actor will invade that hold pose while the nominal trajectory stays
  // fully clear and increases separation, the latter is a named minimum-risk
@@ -198,6 +215,45 @@ int main() {
  leave_invasion, map, invading_hold, 1.0, 0.2, 0.1, {}, escape_braking);
  CHECK(leave_result.accepted());
  CHECK(leave_result.minimum_risk_escape());
+
+ // The maintained-intent forecast can be longer than one local rollout. A
+ // stationary candidate that is clear over its one-second action horizon is
+ // still unsafe when a predicted actor reaches its emergency hold pose at
+ // two seconds. This is an independent passive-safety contract, rather than
+ // a mission score or a simulator collision assertion.
+ auto late_invasion = trajectory;
+ late_invasion.samples = {
+{0.0, {4.0, 3.0}, 0.0, 1.0, 0.0, 0.0, 0.0},
+{1.0, {5.0, 3.0}, 0.0, 1.0, 0.0, 0.0, 0.0},
+ };
+ const std::vector<std::vector<sim::DynamicObjectState>> late_frames{
+{{{4.5, 5.0}, {0.0, -1.0}, 0.2}},
+{{{4.5, 4.0}, {0.0, -1.0}, 0.2}},
+{{{4.5, 3.0}, {0.0, -1.0}, 0.2}},
+ };
+ sim::TrajectoryConstraints late_stop;
+ late_stop.emergency_decel_mps2 = 1.0;
+ const auto late_result = sim::validate_executable_trajectory(
+late_invasion, map, late_frames, 1.0, 0.2, 0.05, {}, late_stop);
+ CHECK(late_result.verdict == sim::TrajectoryVerdict::UnsafeEmergencyStop);
+
+ // When every candidate is already inside a soft dynamic margin, select the
+ // physically safe escape that gains the most separation before considering
+ // the ordinary route score. A goal-biased score must not steer a contingency
+ // along the hazard when a stronger escape exists.
+ auto weak_escape = escape;
+ weak_escape.command.score = 100.0;
+ weak_escape.samples.back().position = {1.1, 3.0};
+ auto strong_escape = escape;
+ strong_escape.command.score = 1.0;
+ strong_escape.samples.back().position = {2.0, 3.0};
+ sim::DwaResult escape_proposals;
+ escape_proposals.best = weak_escape;
+ escape_proposals.rollouts = {{weak_escape, false}, {strong_escape, false}};
+ const auto safest_escape = sim::select_executable_trajectory(
+ escape_proposals, map, fixed_threat, 1.0, 0.2, 0.5);
+ CHECK(safest_escape.validation.minimum_risk_escape());
+ CHECK(safest_escape.trajectory.samples.back().position.x == 2.0);
 
  // A long soft-inflation incursion can require two receding-horizon stages:
  // first rotate in physically free space, then translate out. Refusing every
@@ -228,10 +284,22 @@ int main() {
  CHECK(std::abs(staged.selection.trajectory.command.v) < 1e-12);
  CHECK(staged.selection.trajectory.command.w > 0.0);
 
- // Soft-map recovery escalates only after a persistent standstill. The first
- // nine seconds preserve the normal clearance contract; after ten seconds a
- // physically validated, incremental escape may reduce a wide inflation
- // incursion, and the recovery mode remains active on the next cycle.
+ // A zero-v command cannot be called an in-place recovery while measured
+ // translation still needs more than the alignment displacement budget to
+ // stop. The recovery must brake and replan from the stopped measurement.
+ auto moving_staged_request = staged_request;
+ moving_staged_request.forward_mps = -0.20;
+ moving_staged_request.emergency_stop_delay_s = 0.20;
+ moving_staged_request.emergency_decel_mps2 = 2.0;
+ const auto moving_staged = sim::LocalPlanningSystem{}.plan(
+ moving_staged_request, preferred, {}, {}, &physical);
+ CHECK(moving_staged.selection.validation.diagnostic.find("in-place alignment") ==
+ std::string::npos);
+
+ // Soft-map recovery escalates only after a persistent standstill. Ten full
+ // measured seconds preserve the normal clearance contract; the following
+ // decision may use a physically validated incremental escape, and the
+ // recovery mode remains active on the next cycle.
  sim::GridMap deep_preferred(100, 100, 0.1);
  deep_preferred.addBox(3.5, 4.5, 6.5, 7.5);
  auto deep_request = staged_request;
@@ -243,7 +311,7 @@ int main() {
  };
  const auto physical_only = [](sim::Vec2, sim::Vec2) { return true; };
  sim::LocalPlanningOutput delayed;
- for (int cycle = 0; cycle < 99; ++cycle) {
+ for (int cycle = 0; cycle < 100; ++cycle) {
  delayed = delayed_recovery.plan(
  deep_request, deep_preferred, {}, strict_static, &physical, physical_only);
  CHECK(!delayed.selection.validation.accepted());
@@ -262,7 +330,7 @@ CHECK(std::abs(persistent_recovery.selection.trajectory.command.v) > 0.0);
  // from unrelated static inflation several metres before the stop line. Only
  // commitment or the body actually entering the conflict forbids reversal.
  sim::GridMap reverse_preferred(100, 100, 0.1);
- reverse_preferred.addBox(4.9, 4.5, 6.5, 5.5);
+ reverse_preferred.addBox(5.0, 4.5, 6.5, 5.5);
  auto upcoming_crossing = staged_request;
  upcoming_crossing.position = {5.0, 5.0};
  upcoming_crossing.target = {7.0, 5.0};

@@ -92,11 +92,26 @@ scans after LSRI delivery, then owns projection and deskew, foreground extractio
 anonymous tracking, and prediction state. Neither mission code nor simulated hardware classifies obstacles. A replay
 or hardware source can feed the same scan contract without changing mapping or planning.
 
+Planar returns are projected through `map → base_link → lidar_link` with the estimator's roll, pitch, yaw and the
+calibrated sensor mount. The local map retains LSRM elevation, so a beam that intersects mapped ground is rejected as
+ground rather than promoted to an obstacle merely because the robot is pitched on a slope. Neighboring reference
+azimuths are searched within the localization uncertainty envelope instead of requiring an exact same-ray match.
+This is attitude-aware geometric compensation, not SLAM: the repository does not yet estimate map alignment from
+scan matching or publish calibrated pose covariance.
+
+A future camera provider follows the same boundary: LSRI carries timestamped image or depth observations with frame,
+calibration and exposure timing; ROBOT perception may publish class probability, extent, orientation and optional
+intent cues. Those semantics may enrich an anonymous LiDAR track, but collision safety continues to consume observed
+geometry when a camera is absent, stale or uncertain. Simulator actor IDs and authored class labels never enter the
+ROBOT observation stream.
+
 Global planners share a canonical `RoutePoint` result rather than a geometry-only polyline. Position, nominal body heading,
 and arrival direction remain one value from planning through control. Grid A* still performs an eight-connected 2D
 search and emits forward segments; its heading is the geometric route tangent and its final point inherits the
 incoming edge heading. Hybrid A* remains the Ackermann default and preserves its searched heading and gear, including
-at its exact terminal anchor. Ackermann lookahead stops at a forward/reverse cusp instead of inferring gear from point geometry.
+at its collision-checked terminal state inside the requested goal tolerance. Multi-waypoint composition continues
+from that actual terminal pose, so it cannot create an unchecked gap to an authored waypoint. Ackermann lookahead
+stops at a forward/reverse cusp instead of inferring gear from point geometry.
 
 A route lookahead point and a terminal pose are separate local-planning inputs. A pass-through route point may be
 crossed at speed. A terminal pose is accepted only from estimated state: position must be inside its tolerance,
@@ -124,6 +139,22 @@ delay and validates a tire-limited emergency-braking tail. Once a conflict-zone 
 trajectory that still satisfies full static and dynamic clearance may continue when braking would strand the body
 inside the conflict; this is reported separately as `CommittedTransit` and never waives nominal collision
 validation. The selected chassis then converts that command into wheel speed and steering targets.
+
+The prediction horizon never enlarges the command that may be issued now. Differential, Ackermann and holonomic
+samplers restrict the published velocity to what the next decision interval can reach. If a route transition reduces
+a cap below the measured speed, the planner publishes the nearest rate-limited braking command and stages the stop
+over subsequent decisions. Differential candidates additionally satisfy the acceleration limit in left/right wheel
+space, preventing simultaneous braking and yaw changes from asking either wheel for an unreachable speed step. The
+rollout horizon includes both translational and rotational braking time, so a fast spin cannot be scored from a view
+that ends before the chassis can reduce yaw rate. Candidate generation removes physical overlap; the independent
+validator owns uncertainty margins and may name a physically clear, separation-increasing maneuver as a
+`MinimumRiskEscape`. The rollout starts from measured motion and predicts the consequence of the next command; it
+does not send the rollout's terminal velocity directly to the controller.
+If validation finds no executable trajectory, the safety state also respects the platform contract: it stages the
+stop from measured motion instead of publishing an impossible instantaneous zero. Differential and tracked
+platforms perform that transition in left/right wheel space. The longitudinal deceleration ceiling is derived from
+the dynamically loaded front/rear support bounds, combined load COM, mapped grade, and tire-limited brake ability;
+MuJoCo remains responsible for the resulting contact, slip, pose, and stopping distance.
 Motor controllers compare targets with encoder feedback. LSRI supports two explicit placements: a smart platform may
 accept `BodyMotionCommand` and own its low-level loops, while a ROBOT controller may publish typed per-channel
 actuator commands for a passive simulated plant or native driver. Command placement is a declared capability, never
@@ -233,6 +264,12 @@ Robot geometry has three independent meanings:
 - the circular planning footprint is an orientation-independent conservative envelope for grid and local planners;
 - the rigid hull is authored collision geometry compiled into the simulation model;
 - the support polygon comes from wheel, track, and caster contact mounts and governs stability geometry.
+
+These values are assembled at runtime rather than selected by robot ID. Robot/component JSON produces a
+`ChassisCaps` record containing command space, support bounds, steering geometry, speed/rate limits and provider
+capabilities. Global and local planner registries select implementations from that record. Runtime payload updates
+change mass and combined COM without changing the planner API. Replacing the chassis during an active physics
+session is not supported; selecting a different chassis or component loadout before a run is data driven.
 
 Robot schema v4 forbids deriving one of these from another. In particular, a support triangle is not a hull and a
 planning circle is not a vehicle contact shape. This follows the link semantics used by

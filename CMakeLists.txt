@@ -89,6 +89,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/localization/estimator_replay.cpp
  src/robot/autonomy/localization/slip_observer.cpp
  src/robot/autonomy/localization/estimator_filter.cpp
+ src/robot/autonomy/control/safe_stop_limiter.cpp
  src/robot/autonomy/control/route_tracking_system.cpp
  src/robot/autonomy/control/trajectory_tracking_system.cpp
 )
@@ -143,6 +144,10 @@ add_executable(test_planar_odometry tests/new/test_planar_odometry.cpp)
 target_link_libraries(test_planar_odometry PRIVATE lost_signal_robot_autonomy)
 add_test(NAME planar_odometry COMMAND test_planar_odometry)
 
+ add_executable(test_estimation_attitude tests/new/test_estimation_attitude.cpp)
+ target_link_libraries(test_estimation_attitude PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME estimation_attitude COMMAND test_estimation_attitude)
+
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
  add_test(NAME sha256 COMMAND test_sha256)
@@ -158,6 +163,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
  target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
  add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
+
+ add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)
+ target_link_libraries(test_safe_stop_limiter PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME safe_stop_limiter COMMAND test_safe_stop_limiter)
 
  add_executable(test_perception_pipeline tests/new/test_perception_pipeline.cpp)
  target_link_libraries(test_perception_pipeline PRIVATE lost_signal_robot_autonomy)
@@ -216,6 +225,7 @@ endif()
 add_library(lost_signal_sim_physics STATIC
  src/sim/hardware/physics/frame_transform.cpp
  src/sim/hardware/physics/mujoco_simulation.cpp
+ src/sim/hardware/physics/raycast_geometry.cpp
  src/sim/hardware/physics/tire_contact.cpp
 )
 target_include_directories(lost_signal_sim_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -421,6 +431,10 @@ if(LOST_SIGNAL_BUILD_TESTS)
  target_link_libraries(test_planar_odometry PRIVATE lost_signal_robot_autonomy)
  add_test(NAME planar_odometry COMMAND test_planar_odometry)
 
+ add_executable(test_estimation_attitude tests/new/test_estimation_attitude.cpp)
+ target_link_libraries(test_estimation_attitude PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME estimation_attitude COMMAND test_estimation_attitude)
+
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)
  add_test(NAME sha256 COMMAND test_sha256)
@@ -611,6 +625,10 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim_game)
 add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
 target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
+
+add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)
+target_link_libraries(test_safe_stop_limiter PRIVATE lost_signal_robot_autonomy)
+add_test(NAME safe_stop_limiter COMMAND test_safe_stop_limiter)
 
  add_executable(test_deterministic_scheduler tests/new/test_deterministic_scheduler.cpp)
  target_link_libraries(test_deterministic_scheduler PRIVATE lost_signal_sim_game)

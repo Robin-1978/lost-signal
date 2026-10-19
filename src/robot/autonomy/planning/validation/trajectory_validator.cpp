@@ -45,26 +45,42 @@ TrajectorySample sample_at(const ExecutableTrajectory& trajectory, double time_s
 
 std::vector<TrajectorySample> emergency_stop_samples(
  const ExecutableTrajectory& trajectory, double delay_s,
- double decel_mps2, double integration_step_s) {
+ double decel_mps2, double integration_step_s,
+ double differential_track_m, double hold_until_s) {
  const double start_s = std::clamp(
  delay_s, 0.0, trajectory.samples.back().t_s);
  std::vector<TrajectorySample> out{sample_at(trajectory, start_s)};
  auto state = out.front();
- for (int step = 0; step < 10000 && std::abs(state.forward_mps) > 1e-6; ++step) {
+ double left_mps = state.forward_mps;
+ double right_mps = state.forward_mps;
+ if (differential_track_m > 0.0) {
+ left_mps -= state.yaw_rate_radps * differential_track_m * 0.5;
+ right_mps += state.yaw_rate_radps * differential_track_m * 0.5;
+ }
+ const auto toward_zero = [decel_mps2](double value, double duration_s) {
+ return value > 0.0
+ ? std::max(0.0, value - decel_mps2 * duration_s)
+ : std::min(0.0, value + decel_mps2 * duration_s);
+ };
+ for (int step = 0; step < 10000 &&
+ std::max(std::abs(left_mps), std::abs(right_mps)) > 1e-6; ++step) {
  const double duration_s = std::min(
- integration_step_s, std::abs(state.forward_mps) / decel_mps2);
- const double next_speed = state.forward_mps > 0.0
- ? std::max(0.0, state.forward_mps - decel_mps2 * duration_s)
- : std::min(0.0, state.forward_mps + decel_mps2 * duration_s);
- // Symmetric wheel braking preserves instantaneous curvature while speed
- // decays. Once translation reaches zero, residual spin does not change the
- // circular RO-1 collision footprint.
- const double ratio = std::abs(state.forward_mps) > 1e-9
- ? next_speed / state.forward_mps
- : 0.0;
- const double next_yaw_rate = state.yaw_rate_radps * ratio;
- const double average_speed = 0.5 * (state.forward_mps + next_speed);
- const double average_yaw_rate = 0.5 * (state.yaw_rate_radps + next_yaw_rate);
+ integration_step_s,
+ std::max(std::abs(left_mps), std::abs(right_mps)) / decel_mps2);
+ const double next_left_mps = toward_zero(left_mps, duration_s);
+ const double next_right_mps = toward_zero(right_mps, duration_s);
+ const double current_speed = 0.5 * (left_mps + right_mps);
+ const double next_speed = 0.5 * (next_left_mps + next_right_mps);
+ const double current_yaw_rate = differential_track_m > 0.0
+ ? (right_mps - left_mps) / differential_track_m
+ : state.yaw_rate_radps;
+ const double next_yaw_rate = differential_track_m > 0.0
+ ? (next_right_mps - next_left_mps) / differential_track_m
+ : (std::abs(state.forward_mps) > 1e-9
+ ? state.yaw_rate_radps * next_speed / state.forward_mps
+ : 0.0);
+ const double average_speed = 0.5 * (current_speed + next_speed);
+ const double average_yaw_rate = 0.5 * (current_yaw_rate + next_yaw_rate);
  const double middle_heading = state.heading_rad + 0.5 * average_yaw_rate * duration_s;
  state.position.x += average_speed * std::cos(middle_heading) * duration_s;
  state.position.y += average_speed * std::sin(middle_heading) * duration_s;
@@ -72,15 +88,17 @@ std::vector<TrajectorySample> emergency_stop_samples(
  state.t_s += duration_s;
  state.forward_mps = next_speed;
  state.yaw_rate_radps = next_yaw_rate;
+ left_mps = next_left_mps;
+ right_mps = next_right_mps;
  out.push_back(state);
  }
  // A safe stop is a hold, not only the instant at which velocity reaches
  // zero. Keep the final pose occupied through the nominal action horizon so
  // an approaching actor cannot make "brake now" look safe by arriving one
  // sample after the vehicle stops.
- while (state.t_s + 1e-9 < trajectory.samples.back().t_s) {
+ while (state.t_s + 1e-9 < hold_until_s) {
  state.t_s = std::min(
- trajectory.samples.back().t_s, state.t_s + integration_step_s);
+ hold_until_s, state.t_s + integration_step_s);
  state.forward_mps = 0.0;
  state.lateral_mps = 0.0;
  state.yaw_rate_radps = 0.0;
@@ -232,6 +250,7 @@ validate_executable_trajectory(const ExecutableTrajectory& trajectory, const Gri
  // already violated.
    if (initial_clearance + 1e-9 < required_margin_m && out.min_dynamic_clearance_m >= -1e-9 &&
  displacement >= 0.05 && terminal_clearance >= initial_clearance + 0.05) {
+ out.escape_clearance_gain_m = terminal_clearance - initial_clearance;
     out.verdict = TrajectoryVerdict::MinimumRiskEscape;
     out.diagnostic = "trajectory escapes an existing soft-margin incursion";
     return out;
@@ -251,9 +270,18 @@ validate_executable_trajectory(const ExecutableTrajectory& trajectory, const Gri
  out.diagnostic = "trajectory does not cover the emergency-stop response delay";
  return out;
  }
+ // A stopped robot still occupies space. When the caller supplies a longer
+ // maintained-intent forecast than the executable rollout, validate the
+ // stopped pose through that complete forecast. Otherwise an actor arriving
+ // just beyond the local rollout could make a command look passively safe,
+ // even though braking leaves the robot in its path.
+ const double dynamic_horizon_s = predicted_frames.empty()
+ ? trajectory.samples.back().t_s
+ : static_cast<double>(predicted_frames.size() - 1) * prediction_frame_dt_s;
  const auto stop = emergency_stop_samples(
  trajectory, constraints.emergency_stop_delay_s,
- constraints.emergency_decel_mps2, prediction_frame_dt_s);
+ constraints.emergency_decel_mps2, prediction_frame_dt_s,
+ constraints.differential_track_m, dynamic_horizon_s);
  for (std::size_t index = 1; index < stop.size(); ++index) {
  if (!segment_is_free(planning_map, stop[index - 1].position, stop[index].position) ||
  (terrain_feasible && !terrain_feasible(
@@ -327,6 +355,7 @@ select_executable_trajectory(const DwaResult& proposals, const GridMap& planning
  ValidatedTrajectorySelection out;
  int best_rank = 0;
  double best_score = -std::numeric_limits<double>::infinity();
+ double best_escape_gain_m = -std::numeric_limits<double>::infinity();
  for (const auto& rollout : proposals.rollouts) {
  if (rollout.collision || !rollout.trajectory.command.valid)
  continue;
@@ -337,10 +366,17 @@ select_executable_trajectory(const DwaResult& proposals, const GridMap& planning
  continue;
  ++out.accepted_candidates;
  const int rank = validation.verdict == TrajectoryVerdict::Accepted ? 2 : 1;
- if (rank < best_rank || (rank == best_rank && rollout.trajectory.command.score <= best_score))
+ const bool better_escape = rank == 1 && best_rank == 1 &&
+ (validation.escape_clearance_gain_m > best_escape_gain_m + 1e-9 ||
+ (std::abs(validation.escape_clearance_gain_m - best_escape_gain_m) <= 1e-9 &&
+ rollout.trajectory.command.score > best_score));
+ const bool better_nominal = rank == 2 && best_rank == 2 &&
+ rollout.trajectory.command.score > best_score;
+ if (rank < best_rank || (rank == best_rank && !better_escape && !better_nominal))
  continue;
  best_rank = rank;
  best_score = rollout.trajectory.command.score;
+ best_escape_gain_m = validation.escape_clearance_gain_m;
  out.trajectory = rollout.trajectory;
  out.validation = validation;
  }

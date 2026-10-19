@@ -1,5 +1,6 @@
 #include "sim/hardware/physics/frame_transform.hpp"
 #include "sim/hardware/physics/physics_world.hpp"
+#include "sim/hardware/physics/raycast_geometry.hpp"
 #include "sim/hardware/physics/tire_contact.hpp"
 
 #include <cmath>
@@ -84,6 +85,65 @@ double runtime_friction_response(double friction) {
 int main() {
  using namespace sim::physics;
  CHECK(mujoco_physics_available());
+
+ // Closed finite-cylinder LiDAR proxy: side, cap, inside-origin, and miss
+ // cases have independent analytic ranges. This helper is also used for
+ // scan-time dynamic actor motion in planar and multi-line LiDAR.
+ const BodyHandle analytic_cylinder{7};
+ const auto side_hit = raycast_upright_finite_cylinder(
+ {{-2.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, 10.0}, analytic_cylinder,
+ {0.0, 0.0, 0.0}, 1.0, 2.0);
+ CHECK(side_hit.hit && side_hit.body == analytic_cylinder);
+ CHECK(std::abs(side_hit.distance_m - 1.0) < 1e-12);
+ CHECK(std::abs(side_hit.normal.x + 1.0) < 1e-12);
+ const auto top_hit = raycast_upright_finite_cylinder(
+ {{0.0, 0.0, 3.0}, {0.0, 0.0, -2.0}, 10.0}, analytic_cylinder,
+ {0.0, 0.0, 0.0}, 1.0, 2.0);
+ CHECK(top_hit.hit);
+ CHECK(std::abs(top_hit.distance_m - 2.0) < 1e-12);
+ CHECK(std::abs(top_hit.point_m.z - 1.0) < 1e-12);
+ CHECK(std::abs(top_hit.normal.z - 1.0) < 1e-12);
+ const auto inside_hit = raycast_upright_finite_cylinder(
+ {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, 10.0}, analytic_cylinder,
+ {0.0, 0.0, 0.0}, 1.0, 2.0);
+ CHECK(inside_hit.hit && std::abs(inside_hit.distance_m - 1.0) < 1e-12);
+ const auto cap_miss = raycast_upright_finite_cylinder(
+ {{1.1, 0.0, 3.0}, {0.0, 0.0, -1.0}, 10.0}, analytic_cylinder,
+ {0.0, 0.0, 0.0}, 1.0, 2.0);
+ CHECK(!cap_miss.hit);
+
+ // A runtime COM offset must affect moments without moving the body frame.
+ // The same horizontal force through the body origin produces no pitch for
+ // a centred inertia, but a non-zero pitch impulse when COM is 0.5 m above.
+ {
+ MujocoSimulation com_simulation;
+ BodyModel centered_body;
+ centered_body.shape = ShapeKind::Box;
+ centered_body.half_extents_m = {0.2, 0.2, 0.2};
+ centered_body.mass_kg = 2.0;
+ centered_body.inertia_diagonal_kgm2 = {0.2, 0.2, 0.2};
+ centered_body.position_m = {0.0, 0.0, 100.0};
+ const auto centered_handle = com_simulation.add_body(centered_body);
+ auto offset_body = centered_body;
+ offset_body.position_m.x = 5.0;
+ offset_body.movable_inertial_origin = true;
+ const auto offset_handle = com_simulation.add_body(offset_body);
+ com_simulation.compile();
+ const auto offset_pose_before = com_simulation.state(offset_handle).position_m;
+ com_simulation.set_mass_properties(
+ offset_handle, 2.0, {0.2, 0.2, 0.2}, {0.0, 0.0, 0.5});
+ const auto offset_pose_after = com_simulation.state(offset_handle).position_m;
+ CHECK(std::abs(offset_pose_after.x - offset_pose_before.x) < 1e-12);
+ CHECK(std::abs(offset_pose_after.y - offset_pose_before.y) < 1e-12);
+ CHECK(std::abs(offset_pose_after.z - offset_pose_before.z) < 1e-12);
+ com_simulation.apply_force_at_world_point(
+ centered_handle, {10.0, 0.0, 0.0}, centered_body.position_m);
+ com_simulation.apply_force_at_world_point(
+ offset_handle, {10.0, 0.0, 0.0}, offset_body.position_m);
+ com_simulation.step(0.01);
+ CHECK(std::abs(com_simulation.state(centered_handle).angular_velocity_radps.y) < 1e-10);
+ CHECK(std::abs(com_simulation.state(offset_handle).angular_velocity_radps.y) > 0.05);
+ }
 
  TireContactSpec tire;
  tire.base_friction = 0.9;

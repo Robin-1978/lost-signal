@@ -65,10 +65,38 @@ class FixtureCuspPlanner final : public autonomy::IGlobalPlanner {
  }
 };
 
+class TolerantFixturePlanner final : public autonomy::IGlobalPlanner {
+ public:
+ std::string_view id() const noexcept override { return "fixture-tolerant"; }
+ autonomy::GlobalPlannerCapabilities capabilities() const noexcept override { return {true}; }
+
+ autonomy::GlobalPlan plan(const autonomy::GlobalPlannerRequest& request) const override {
+ if (calls_++ == 0) {
+ const sim::Vec2 terminal{request.goal.position.x - 0.25, request.goal.position.y};
+ first_terminal_ = terminal;
+ return {{{request.start.position, request.start.heading_rad, sim::TravelDirection::Unspecified},
+ {terminal, 0.25, sim::TravelDirection::Forward}}, 1, true, {}};
+ }
+ continued_from_terminal_ =
+ std::hypot(request.start.position.x - first_terminal_.x,
+ request.start.position.y - first_terminal_.y) < 1e-12 &&
+ std::abs(request.start.heading_rad - 0.25) < 1e-12;
+ return {{{request.start.position, request.start.heading_rad, sim::TravelDirection::Unspecified},
+ {request.goal.position, request.goal.heading_rad, sim::TravelDirection::Forward}}, 1, true, {}};
+ }
+
+ bool continued_from_terminal() const noexcept { return continued_from_terminal_; }
+
+ private:
+ mutable int calls_{0};
+ mutable sim::Vec2 first_terminal_{};
+ mutable bool continued_from_terminal_{false};
+};
+
 } // namespace
 
 int main() {
- CHECK(autonomy::kGlobalPlannerApiMajor == 3);
+ CHECK(autonomy::kGlobalPlannerApiMajor == 4);
  CHECK(autonomy::kGlobalPlannerApiMinor == 0);
 
  auto registry = autonomy::GlobalPlannerRegistry::with_builtins();
@@ -94,6 +122,13 @@ int main() {
  CHECK(route.path.size() == 3);
  CHECK(route.path.front().position.x == 0.5);
  CHECK(route.path.back().position.y == 4.5);
+
+ const auto tolerant_planner = std::make_shared<TolerantFixturePlanner>();
+ autonomy::GlobalPlanningSystem tolerant_planning(tolerant_planner);
+ const auto tolerant_route = tolerant_planning.plan(map, waypoints, {});
+ CHECK(tolerant_route.ok);
+ CHECK(tolerant_planner->continued_from_terminal());
+ CHECK(tolerant_route.path.size() == 3);
 
  // Segment de-duplication removes only the new segment's Unspecified start.
  // Its first motion direction remains on the following point, so lookahead

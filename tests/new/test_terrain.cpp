@@ -51,6 +51,19 @@ int main() {
  CHECK(std::abs(static_risk - sim::rollover_risk(0.4, 0.6, 0.4)) < 1e-12);
  CHECK(sim::dynamic_rollover_risk(0.4, 1.5, 0.6, 0.4) > static_risk);
  CHECK(sim::dynamic_rollover_risk(0.4, -1.5, 0.6, 0.4) < static_risk);
+
+ // A front-heavy/asymmetric support polygon has less braking margin than
+ // acceleration margin. A downhill grade consumes still more of that front
+ // margin, while an uphill grade consumes rearward acceleration margin.
+ const double level_limit = sim::longitudinal_stability_acceleration_limit(
+  0.0, 0.12, 0.31, 0.40, 1.0);
+ const double downhill_limit = sim::longitudinal_stability_acceleration_limit(
+  -0.11, 0.12, 0.31, 0.40, 1.0);
+ const double uphill_limit = sim::longitudinal_stability_acceleration_limit(
+  0.11, 0.12, 0.31, 0.40, 1.0);
+ CHECK(std::abs(level_limit - 9.81 * 0.12 / 0.40) < 1e-9);
+ CHECK(downhill_limit < level_limit);
+ CHECK(uphill_limit < 9.81 * 0.31 / 0.40);
  CHECK(sim::roughness_lateral_acceleration(0.05, 2.0, 0.5) >
        sim::roughness_lateral_acceleration(0.05, 1.0, 0.5));
  CHECK(sim::roughness_lateral_acceleration(0.0, 2.0, 0.5) == 0.0);
@@ -73,5 +86,14 @@ int main() {
   }
  }
  CHECK(used_detour);
+
+ // An eight-connected point path cannot pass through the zero-width corner
+ // shared by two occupied cells. Both cardinal neighbours block the only
+ // exit, so the diagonal goal is unreachable.
+ sim::GridMap corner_map(2, 2, 1.0);
+ corner_map.setOccupied(1.5, 0.5);
+ corner_map.setOccupied(0.5, 1.5);
+ const auto corner_route = sim::astar_plan(corner_map, {0.5, 0.5}, {1.5, 1.5});
+ CHECK(!corner_route.ok);
  return 0;
 }

@@ -21,6 +21,9 @@ struct LidarConfig {
  double latency_s{0.0};
  Vec2 position_in_base;
  double yaw_in_base_rad{0.0};
+ double height_in_base_m{0.0};
+ double roll_in_base_rad{0.0};
+ double pitch_in_base_rad{0.0};
  std::vector<double> vertical_angles_rad;
  double projection_min_height_m{-0.20};
  double projection_max_height_m{1.50};

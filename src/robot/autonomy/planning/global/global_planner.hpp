@@ -14,7 +14,7 @@
 
 namespace autonomy {
 
-inline constexpr std::uint32_t kGlobalPlannerApiMajor = 3;
+inline constexpr std::uint32_t kGlobalPlannerApiMajor = 4;
 inline constexpr std::uint32_t kGlobalPlannerApiMinor = 0;
 
 struct PlanningPose {
@@ -93,7 +93,8 @@ std::shared_ptr<const IGlobalPlanner> ackermann_global_planner(
  double wheel_base_m, double max_steer_rad, double map_resolution_m);
 
 // Joins one or more planner segments into a route while keeping the selected
-// planner independent of mission progression and presentation.
+// planner independent of mission progression and presentation. A planner may
+// end inside a goal tolerance; the next segment begins at that returned pose.
 class GlobalPlanningSystem {
  public:
  explicit GlobalPlanningSystem(std::shared_ptr<const IGlobalPlanner> planner);

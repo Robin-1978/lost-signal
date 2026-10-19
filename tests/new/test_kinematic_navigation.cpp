@@ -30,7 +30,8 @@ int main() {
  CHECK(plan.ok);
  CHECK(plan.path.size() > 8);
  CHECK(plan.path.front().arrival_direction == sim::TravelDirection::Unspecified);
- CHECK(std::hypot(plan.path.back().position.x - 7.5, plan.path.back().position.y - 7.5) < 1e-9);
+ CHECK(std::hypot(plan.path.back().position.x - 7.5, plan.path.back().position.y - 7.5) <=
+ hybrid.goal_position_tolerance_m + 1e-9);
  for (const auto& point : plan.path)
   CHECK(map.isFree(point.position.x, point.position.y));
  for (std::size_t point = 1; point < plan.path.size(); ++point) {
@@ -51,6 +52,26 @@ int main() {
  CHECK(nearby_plan.ok);
  CHECK(nearby_plan.path.size() >= 2);
  CHECK(nearby_plan.path[1].arrival_direction != sim::TravelDirection::Unspecified);
+
+ // A free authored goal does not justify an unchecked line from the searched
+ // terminal state. This obstacle intersects that former synthetic edge while
+ // leaving the searched straight primitive and exact goal free.
+ sim::GridMap terminal_map(60, 60, 0.05);
+ terminal_map.addBox(1.26, 1.06, 1.34, 1.14);
+ auto terminal_config = hybrid;
+ terminal_config.primitive_length_m = 0.4;
+ terminal_config.goal_position_tolerance_m = 0.35;
+ terminal_config.goal_heading_tolerance_rad = sim::kPi;
+ const sim::Vec2 authored_goal{1.2, 1.2};
+ const auto terminal_plan = sim::hybrid_astar_plan(
+ terminal_map, {1.0, 1.0}, 0.0, authored_goal, 0.0, terminal_config);
+ CHECK(terminal_plan.ok);
+ CHECK(terminal_plan.path.size() == 2);
+ CHECK(std::hypot(terminal_plan.path.back().position.x - authored_goal.x,
+ terminal_plan.path.back().position.y - authored_goal.y) > 1e-3);
+ CHECK(std::hypot(terminal_plan.path.back().position.x - authored_goal.x,
+ terminal_plan.path.back().position.y - authored_goal.y) <=
+ terminal_config.goal_position_tolerance_m + 1e-9);
 
  sim::AckermannLocalConfig local;
  local.wheel_base_m = 0.62;
@@ -196,6 +217,25 @@ int main() {
  escape.selection.trajectory.samples.end(), [&](const auto& sample) {
  return physical_collision.isFree(sample.position.x, sample.position.y);
  }));
+
+ // A rollout endpoint is only a prediction. If the measured pose remains in
+ // the same soft margin, the planner must eventually enter incremental
+ // physical-map recovery even though each nominal rollout claims that it can
+ // leave the margin. This regression keeps the measured pose deliberately
+ // fixed to represent contact or tracking error.
+ sim::LocalPlanningSystem stalled_recovery;
+ int physical_feasibility_calls = 0;
+ sim::LocalPlanningRequest stalled_request = escape_request;
+ for (int cycle = 0; cycle < 105; ++cycle) {
+ const auto stalled = stalled_recovery.plan(
+ stalled_request, preferred_margin, {}, {}, &physical_collision,
+ [&](sim::Vec2, sim::Vec2) {
+ ++physical_feasibility_calls;
+ return true;
+ });
+ CHECK(stalled.selection.validation.accepted());
+ }
+ CHECK(physical_feasibility_calls > 0);
 
  const auto mecanum = sim::mecanum_inverse(1.2, -0.4, 0.7, 0.6, 0.5);
  double recovered_forward = 0.0, recovered_left = 0.0, recovered_yaw = 0.0;

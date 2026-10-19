@@ -120,8 +120,9 @@ GlobalPlan GlobalPlanningSystem::plan(const sim::GridMap& map,
  return result;
  }
  result.ok = true;
+ PlanningPose segment_start = waypoints.front();
  for (std::size_t index = 1; index < waypoints.size(); ++index) {
- auto segment = planner_->plan({map, waypoints[index - 1], waypoints[index], traversal_cost});
+ auto segment = planner_->plan({map, segment_start, waypoints[index], traversal_cost});
  result.expanded += segment.expanded;
  if (!segment.ok) {
  result.ok = false;
@@ -142,6 +143,11 @@ GlobalPlan GlobalPlanningSystem::plan(const sim::GridMap& map,
  segment.path.erase(segment.path.begin());
  }
  result.path.insert(result.path.end(), segment.path.begin(), segment.path.end());
+ // A tolerance-aware planner may finish at a valid pose near the authored
+ // waypoint. The next segment must start at that physical terminal pose;
+ // restarting at the authored point would insert an unchecked discontinuity.
+ const auto& terminal = result.path.back();
+ segment_start = {terminal.position, terminal.heading_rad, 0.0};
  }
  return result;
 }

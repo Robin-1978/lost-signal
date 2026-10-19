@@ -80,7 +80,15 @@ headless target does not compile or link the client audio director.
 
 ## Behavioral evidence
 
-C++ tests cover content loading, component registration, field intent, world activity, physics behavior, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices.
+C++ tests cover content loading, component registration, field intent, world activity, physics behavior, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices. Local-planner fixtures require differential, Ackermann, and holonomic commands to remain inside the next decision interval's reachable velocity window; differential commands are checked again in left/right wheel space. Terrain fixtures independently check asymmetric front/rear support and grade-dependent longitudinal stability limits. The orchard matrix exercises every task-ordering policy with changing payload, center of mass, terrain, grip, staged no-trajectory stops, and a physical return to the packing pad.
+
+The ROBOT-only `safe_stop_limiter` fixture independently checks that a moving
+chassis cannot receive an instantaneous zero target, each differential wheel
+respects the next control interval, downhill grade and a taller combined COM
+reduce the available stop step, and a COM projection on the support edge
+reports zero stability margin. The local trajectory validator consumes that
+same declared deceleration for its emergency-stop tail; neither check reads
+MuJoCo contact truth.
 
 A deterministic release run should also be recorded:
 
@@ -137,3 +145,8 @@ Results for the current five-chassis autonomy and platform revision, tested on L
 ## Limits of the evidence
 
 Automated tests demonstrate contracts and regressions represented in the repository. They do not establish gameplay enjoyment, accessibility, GPU compatibility beyond tested environments, numerical identity across every compiler, physical parameter accuracy, or safety for real hardware. Human learning feedback uses the optional protocol in [playtest-guide.md](playtest-guide.md) and is reported separately from automated gates.
+
+The detailed claim boundary and subsystem evidence matrix are maintained in
+[simulation-model-audit.md](simulation-model-audit.md). Release builds use GCC 13 explicitly; Clang 18 is a separate
+compatibility job. `tools/build.sh` rejects compilers that cannot compile the C++20 atomic wait/notify API and refuses
+to reuse a build directory configured by another compiler.

@@ -10,6 +10,11 @@ enum class ChassisCommandSpace { YawRate, SteeringAngle, HolonomicTwist };
 struct ChassisGeometry {
  double support_width_m{0.5};
  double support_length_m{0.5};
+ // Longitudinal support bounds in base_link. Keeping the asymmetric bounds
+ // matters for three-point differential chassis: an axle near the front and
+ // a rear caster have very different acceleration and braking tip margins.
+ double support_min_x_m{-0.25};
+ double support_max_x_m{0.25};
  // Longitudinal offset from base_link to the driven axle. Zero for chassis
  // whose kinematic reference already lies on the axle/module center.
  double drive_axle_x_m{0.0};

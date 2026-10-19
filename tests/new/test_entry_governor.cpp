@@ -77,6 +77,39 @@ CHECK(approach.entry_index == 4 && approach.exit_index == 7);
 CHECK(approach.stop_index == 3);
 CHECK(std::abs(approach.stop_point.x - 3.3) < 1e-6);
  CHECK(approach.departure.reason == sim::DepartReason::kGoNow);
+
+ // Conflict relevance is a footprint/Minkowski-envelope query, not a
+ // center-line intersection query. This route skirts the semantic box but
+ // still overlaps a participant once both bodies and policy clearance are
+ // included, so behavior must derive a stop instead of leaving the case to a
+ // late lidar-only emergency response.
+ std::vector<sim::RoutePoint> near_miss_route;
+ for (int x = 0; x <= 10; ++x)
+ near_miss_route.push_back({{static_cast<double>(x), 0.9}, 0.0,
+ x == 0 ? sim::TravelDirection::Unspecified : sim::TravelDirection::Forward});
+ const std::vector<sim::ConflictZone> compact_zone{
+ {"compact", {4.9, -0.1}, {5.1, 0.1}, 0.4},
+ };
+ const auto near_miss = sim::evaluate_crossing(
+ compact_zone, near_miss_route, 0, {1.0, 0.9}, 0.0, 0.0,
+ open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps);
+ CHECK(near_miss.relevant);
+ CHECK(near_miss.zone_id == "compact");
+
+ // A cross-traffic participant can still overlap the zone's conservative
+ // spatial envelope while moving decisively outwards. Admission is governed
+ // by the same-time swept trajectory; the intent gate must not require that
+ // duplicate envelope to clear before the ego trajectory even starts.
+ std::vector<std::vector<sim::DynamicObjectState>> outward_frames;
+ for (int frame = 0; frame <= 150; ++frame) {
+ const double time_s = 0.1 * frame;
+ outward_frames.push_back({{{5.0, 1.1 + time_s}, {0.0, 1.0}, 0.2}});
+ }
+ const auto outward_crossing = sim::evaluate_crossing(
+ zones, route, 0, {2.0, 0.0}, 0.0, 0.0, outward_frames, 0.1,
+ {0.35, 0.25, 0.0}, crossing_caps);
+ CHECK(outward_crossing.departure.reason == sim::DepartReason::kGoNow);
+ CHECK(outward_crossing.relevant_threats_moving_away);
  const auto advanced =
  sim::evaluate_crossing(zones, route, 3, {1.2, 0.4}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps);
@@ -173,8 +206,7 @@ CHECK(std::abs(approach.stop_distance_m - 1.3) < 1e-6);
  for (int sample = 0; sample < 10; ++sample)
   CHECK(sim::govern_crossing(crossing, crossing_clear).hold_active);
  crossing_clear.ready_to_commit = true;
- const int confirming_samples =
- static_cast<int>(std::ceil(sim::kCrossingCommitConfirmS / crossing_clear.dt_s));
+ const int confirming_samples = sim::kCrossingCommitConfirmSamples;
  for (int sample = 0; sample + 1 < confirming_samples; ++sample) {
   crossing_out = sim::govern_crossing(crossing, crossing_clear);
   CHECK(crossing_out.hold_active && !crossing_out.committed);

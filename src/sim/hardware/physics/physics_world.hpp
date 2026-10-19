@@ -69,7 +69,13 @@ double contact_damping_ratio{0.0};
  // are N/(m/s) and N*m/(rad/s); articulated child links are included.
  double linear_damping{0.0};
  double angular_damping{0.0};
+ // Inertial origin expressed in the body frame. Geometry and TF remain at
+ // the body origin while mass, gravity, and moments act about this COM.
+ Vec3 inertial_position_m;
  Vec3 inertia_diagonal_kgm2;
+ // Disable MuJoCo's simple-body allocation only when this body's inertial
+ // origin may move after compilation (for example a payload-bearing root).
+ bool movable_inertial_origin{false};
  // Native regular height field. Samples are row-major from minimum Y to
  // maximum Y, each row from minimum X to maximum X. They are local heights
  // in metres above position_m.z. half_extents_m.x/y are horizontal radii.
@@ -190,7 +196,8 @@ class MujocoSimulation {
  void clear_velocities();
 
  void set_state(BodyHandle body, const BodyState& state);
- void set_mass_properties(BodyHandle body, double mass_kg, Vec3 inertia_diagonal_kgm2);
+ void set_mass_properties(BodyHandle body, double mass_kg, Vec3 inertia_diagonal_kgm2,
+ Vec3 inertial_position_m = {});
  void set_contact_parameters(BodyHandle body, double friction,
  double rolling_friction, double spinning_friction,
 double time_constant_s, double damping_ratio);

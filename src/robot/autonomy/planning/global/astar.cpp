@@ -68,6 +68,13 @@ AStarResult astar_plan(const GridMap& cm, Vec2 start, Vec2 goal, double h_weight
    int vx = ux + DX[k], vy = uy + DY[k];
    if (!cm.inside(vx, vy) || !cm.isFreeCell(vx, vy) || closed[idx(vx, vy)])
     continue;
+ // A diagonal grid edge has non-zero swept area at both adjacent cells.
+ // Requiring both cardinal neighbours prevents a point route from passing
+ // through the shared corner of two occupied cells.
+ if (DX[k] != 0 && DY[k] != 0 &&
+ (!cm.isFreeCell(ux + DX[k], uy) || !cm.isFreeCell(ux, uy + DY[k]))) {
+ continue;
+ }
    const Vec2 from = cm.gridToWorld(ux, uy);
    const Vec2 to = cm.gridToWorld(vx, vy);
    const double multiplier = traversal_cost ? traversal_cost(from, to) : 1.0;

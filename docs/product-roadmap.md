@@ -101,6 +101,13 @@ payload-sweep, and hardware-identification envelopes listed in `reference-platfo
 9. Add further sensors or autonomy only for a named experience
  or measured platform target. Run the sanitizer suite for milestone and release-candidate gates.
 
+TEB remains a planned comparative local-planner experiment rather than a
+release dependency. It enters after the shared estimation, braking-tail,
+trajectory-validation and execution contracts pass with the existing
+planners, and only with a data-authored DWA-versus-TEB lesson and quantitative
+acceptance matrix. The decision and required interface are recorded in
+[Extending autonomy](extending-autonomy.md#teb-evaluation).
+
 The next concrete work packages are:
 
 1. **Implemented:** turn the Vehicle Proving Ground into measurable evidence. Data-authored repeatable maneuvers label live

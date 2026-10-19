@@ -144,7 +144,7 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  route_nodes.push_back(nodes[static_cast<std::size_t>(index)]);
  }
  std::reverse(route_nodes.begin(), route_nodes.end());
- result.path.reserve(route_nodes.size() + 1);
+ result.path.reserve(route_nodes.size());
  for (std::size_t index = 0; index < route_nodes.size(); ++index) {
  const auto& node = route_nodes[index];
  result.path.push_back({
@@ -154,23 +154,10 @@ AStarResult hybrid_astar_plan(const GridMap& map, Vec2 start, double start_headi
  : (node.direction < 0 ? TravelDirection::Reverse : TravelDirection::Forward),
  });
  }
- // Keep an exact endpoint for waypoint composition. The terminal anchor
- // inherits the final searched state's body heading and gear; it must not
- // invent the requested yaw as if the search had reached it exactly.
- const TravelDirection terminal_direction = route_nodes.size() > 1
- ? (route_nodes.back().direction < 0 ? TravelDirection::Reverse : TravelDirection::Forward)
- : TravelDirection::Unspecified;
- const double terminal_distance =
- std::hypot(goal.x - route_nodes.back().x, goal.y - route_nodes.back().y);
- // An authored goal may sit inside the optional clearance band while its
- // arrival region still contains safe poses. Do not append an unsafe exact
- // anchor in that case; the searched terminal pose already satisfies the
- // requested goal-region contract.
- if (terminal_distance > 1e-9 && map.isFree(goal.x, goal.y)) {
- result.path.push_back({goal, route_nodes.back().heading, terminal_direction});
- } else if (terminal_distance <= 1e-9) {
- result.path.back().position = goal;
- }
+ // The searched terminal state is the route endpoint. Appending the authored
+ // goal here would create a new edge that was never checked for collision,
+ // curvature, heading, or gear feasibility. Callers use the declared goal
+ // tolerance when deciding whether this searched pose completes the request.
  return result;
 }
 

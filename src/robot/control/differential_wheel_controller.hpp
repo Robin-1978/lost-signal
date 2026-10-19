@@ -87,6 +87,7 @@ class DifferentialWheelController {
  bool target_initialized_{false};
  double previous_left_target_mps_{0.0};
  double previous_right_target_mps_{0.0};
+ bool controlled_stop_active_{false};
 };
 
 } // namespace sim

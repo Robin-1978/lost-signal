@@ -134,4 +134,21 @@ double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, doub
  return effective_angle / std::max(0.05, static_rollover_angle(support_width_m, center_of_mass_height_m));
 }
 
+double longitudinal_stability_acceleration_limit(double longitudinal_grade,
+ double front_support_m, double rear_support_m, double center_of_mass_height_m,
+ double margin_fraction) {
+ const double height = std::max(0.01, center_of_mass_height_m);
+ const double front = std::max(0.0, front_support_m);
+ const double rear = std::max(0.0, rear_support_m);
+ const double slope = std::atan(longitudinal_grade);
+ const double gravity_normal = kGravityMps2 * std::cos(slope);
+ const double gravity_forward = kGravityMps2 * std::sin(slope);
+ // Positive acceleration shifts normal load rearward; negative acceleration
+ // shifts it forward. Grade contributes before any commanded acceleration.
+ const double forward_limit = gravity_normal * rear / height - gravity_forward;
+ const double braking_limit = gravity_normal * front / height + gravity_forward;
+ return std::max(0.0, std::clamp(margin_fraction, 0.0, 1.0) *
+  std::min(forward_limit, braking_limit));
+}
+
 } // namespace sim

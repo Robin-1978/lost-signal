@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/local/holonomic_local.hpp"
+#include "robot/autonomy/planning/local/command_window.hpp"
 #include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 
 #include <algorithm>
@@ -117,6 +118,24 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
  for (double target_forward : velocity_samples) {
   for (double target_left : lateral_samples) {
    for (double target_yaw : yaw_samples) {
+ // The sampled values describe policy targets. Publish only the planar
+ // velocity vector and yaw rate reachable by the next control update; the
+ // longer rollout horizon is evidence about that command, not extra actuator
+ // response time available before publication.
+ double forward_delta = target_forward - current_forward_mps;
+ double left_delta = target_left - current_left_mps;
+ const double planar_delta = std::hypot(forward_delta, left_delta);
+ const double max_planar_delta = std::max(0.0, config.max_accel_mps2 * config.dt_s);
+ if (planar_delta > max_planar_delta && planar_delta > 1e-12) {
+ const double scale = max_planar_delta / planar_delta;
+ forward_delta *= scale;
+ left_delta *= scale;
+ }
+ target_forward = current_forward_mps + forward_delta;
+ target_left = current_left_mps + left_delta;
+ target_yaw = next_rate_limited_command(
+ current_yaw_radps, target_yaw, -config.max_yaw_radps,
+ config.max_yaw_radps, config.max_yaw_accel_radps2 * config.dt_s);
     double x = position.x, y = position.y, heading = heading_rad;
     double forward = current_forward_mps, left = current_left_mps, yaw = current_yaw_radps;
     bool collision = false;
@@ -140,7 +159,7 @@ DwaResult holonomic_local_compute(Vec2 position, double heading_rad, double curr
      samples.push_back({sample_time, {x, y}, heading, forward, left, yaw, 0.0});
  const bool dynamic_hit = dynamic_clearance_at(
  {x, y}, sample_time, predicted_frames, config.frame_dt_s,
- config.robot_radius_m).conservative_m < config.safety_margin_m;
+ config.robot_radius_m).physical_m < 0.0;
      if (!map.isFree(x, y) || dynamic_hit || (terrain_feasible && !terrain_feasible(previous, {x, y}))) {
       collision = true;
       free_time = time;

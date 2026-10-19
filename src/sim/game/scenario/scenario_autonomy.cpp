@@ -1,4 +1,5 @@
 #include "sim/game/scenario/scenario_session.hpp"
+#include "robot/autonomy/control/safe_stop_limiter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -68,8 +69,14 @@ void ScenarioSession::decide_control() {
  // checks authored geometry. Reusing the coarse static occupancy cells as a
  // physical oracle can add almost one cell around a box corner and trap a
  // footprint that still has real clearance.
+ // A recovery may relax policy inflation, but it still has to reserve the
+ // declared localization error around the physical footprint. Otherwise an
+ // estimated pose a centimetre inside the map can authorize a trajectory
+ // whose true body crosses a wall or map boundary. This margin is deployable
+ // configuration, not simulator ground truth.
  const sim::GridMap local_physical_collision_map = autonomy_pipeline_->compose_local_map(
- *recovery_base_map_, snapshot_.time_s, robot_definition_.collision_radius_m);
+ *recovery_base_map_, snapshot_.time_s,
+ robot_definition_.collision_radius_m + level_.planning_localization_margin_m);
  const auto tracking = autonomy_pipeline_->observe_trajectory(
  snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
  snapshot_.control.trajectory_sequence = tracking.sequence;
@@ -276,9 +283,10 @@ void ScenarioSession::decide_control() {
  const double behavior_crossing_clearance =
  std::max(0.0, level_.safe_min_clearance_m);
  const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
- double speed_cap = std::min(std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
+ const double route_independent_speed_cap =
+ std::min(std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
                              corner_speed_cap(nav_x, nav_y));
- speed_cap *= snapshot_.strategy.applied.speed_scale;
+ double speed_cap = route_independent_speed_cap * snapshot_.strategy.applied.speed_scale;
  // The selected rollout is the command contract. Feed route and corner caps
  // into candidate generation so mission code never rewrites its speed later.
  if (chassis_caps_.command_space != sim::ChassisCommandSpace::HolonomicTwist)
@@ -565,6 +573,25 @@ void ScenarioSession::decide_control() {
  if (traffic_decision.readiness.position_ready) {
  local_target_heading = std::atan2(
  governor_out.stop_direction.y, governor_out.stop_direction.x);
+ } else {
+ // The behavior stop pose temporarily supersedes the ordinary route
+ // lookahead. Its approach speed must therefore be derived from that pose,
+ // not from a route follower that may currently be in a spin/reverse recovery
+ // aimed at a waypoint beyond the virtual wall. Collision and stop-plane
+ // validation below remain authoritative.
+ const double stop_heading_error = sim::heading_err(
+ governor_out.stop_point, nav_x, nav_y, nav_heading);
+ const double stop_distance = distance(
+ {nav_x, nav_y}, governor_out.stop_point);
+ route_control.err = stop_heading_error;
+ route_control.tv = std::min(chassis_cruise, stop_distance);
+ const double stop_approach_cap = std::min(
+ std::max(0.20, sim::sched_v(stop_heading_error, chassis_cruise)),
+ corner_speed_cap(nav_x, nav_y)) * snapshot_.strategy.applied.speed_scale;
+ speed_cap = std::min(
+ stop_approach_cap,
+ std::abs(route_control.tv));
+ snapshot_.control.heading_error_rad = stop_heading_error;
  }
  }
  }
@@ -602,6 +629,16 @@ void ScenarioSession::decide_control() {
  ? std::min(speed_cap, std::max(kCommittedProgressFloorMps,
  traffic_decision.control.transit_speed_mps))
  : 0.0;
+ // A zero-speed recovery on a spin-capable chassis is an explicit pose
+ // maneuver. Give the local planner that body-heading goal so the path-
+ // tangent critic cannot reward holding the old yaw forever after waypoint
+ // progress has stopped. Ackermann remains governed by its route/gear model.
+ if (!local_target_heading && !mapped_crossing_relevant &&
+ !governor_out.hold_active && chassis_caps_.can_spin &&
+ std::abs(route_control.tv) <= 1e-9 && std::abs(route_control.err) > 0.05) {
+ local_target_heading = std::atan2(
+ target.y - nav_y, target.x - nav_x);
+ }
  sim::LocalPlanningRequest local_request;
  switch (chassis_caps_.command_space) {
  case sim::ChassisCommandSpace::YawRate:
@@ -671,6 +708,19 @@ void ScenarioSession::decide_control() {
  local_request.weights = weights;
  local_request.max_speed_mps = speed_cap;
  local_request.max_yaw_rate_radps = yaw_cap_rads_;
+ sim::SafeStopLimits current_stop_limits;
+ current_stop_limits.brake_decel_mps2 =
+ resolved_build_.traction().brake_decel_mps2;
+ current_stop_limits.longitudinal_grade =
+ sim::longitudinal_grade(strategy_terrain, nav_heading);
+ current_stop_limits.center_of_mass_x_m = combined_center_x_m();
+ current_stop_limits.center_of_mass_height_m = combined_center_height_m();
+ const double safe_stop_decel_mps2 = sim::safe_stop_linear_decel_limit(
+ chassis_caps_, current_stop_limits);
+ // Candidate generation uses the normal drive/brake actuator envelope. The
+ // separately modelled emergency tail uses the stricter stability-aware stop
+ // limit below; conflating the two would unnecessarily cap ordinary forward
+ // acceleration by the smaller of the front and rear support margins.
  local_request.max_accel_mps2 = resolved_build_.traction().brake_decel_mps2;
  local_request.max_yaw_accel_radps2 = robot_definition_.max_yaw_accel_radps2;
  local_request.prediction_horizon_s = prediction_horizon;
@@ -714,7 +764,7 @@ void ScenarioSession::decide_control() {
  1.0 / std::max(0.1, local_controller_bandwidth);
  local_request.emergency_stop_delay_s = 1.0 / decision_hz() +
  local_request.actuator_response_delay_s;
- local_request.emergency_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ local_request.emergency_decel_mps2 = safe_stop_decel_mps2;
  }
  // Path/progress/oscillation critics are shared guidance for twist-space
  // planners, including tracked and holonomic chassis. A tracked plant still
@@ -769,11 +819,12 @@ void ScenarioSession::decide_control() {
  [this](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
  collision_monitor_->static_motion_free(
- from, to, std::max(0.05, level_.planning_localization_margin_m));
+ from, to, level_.planning_localization_margin_m);
  }, &local_physical_collision_map,
  [this](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
- collision_monitor_->static_motion_free(from, to, 0.0);
+ collision_monitor_->static_motion_free(
+ from, to, level_.planning_localization_margin_m);
  });
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;
@@ -810,7 +861,40 @@ void ScenarioSession::decide_control() {
  }
  const bool trajectory_accepted = trajectory_validation.accepted();
  if (!trajectory_accepted) {
-  held_command_ = {0.0, 0.0};
+ // A rejected rollout requests a stop, but zero is not an instantaneous
+ // actuator state. Stage the emergency command through the assembled support
+ // polygon and the same wheel-space rate contract used by DWA. This prevents
+ // an otherwise harmless soft-margin failure from pitching a high-COM load
+ // over its short front support while leaving MuJoCo free to realize the
+ // commanded torque, slip, and stopping distance.
+ const auto stop_terrain = terrain_.sample({nav_x, nav_y});
+ const double stop_grade = sim::longitudinal_grade(stop_terrain, nav_heading);
+ const bool steering_command =
+ local_request.command_space == sim::LocalCommandSpace::SteeringAngle;
+ const sim::SafeStopMotion stop_motion{
+ local_request.forward_mps,
+ local_request.lateral_mps,
+ steering_command ? local_request.steering_angle_rad : local_request.yaw_rate_radps,
+ };
+ sim::SafeStopLimits stop_limits;
+ stop_limits.update_interval_s = prediction_step_s;
+ stop_limits.brake_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ stop_limits.max_speed_mps = local_request.max_speed_mps;
+ stop_limits.max_turn = steering_command
+ ? local_request.max_steer_rad : local_request.max_yaw_rate_radps;
+ stop_limits.max_turn_rate = steering_command
+ ? local_request.max_steer_rate_radps : local_request.max_yaw_accel_radps2;
+ stop_limits.differential_track_m = local_request.differential_track_m;
+ stop_limits.max_wheel_speed_mps = local_request.max_wheel_speed_mps;
+ stop_limits.longitudinal_grade = stop_grade;
+ stop_limits.center_of_mass_x_m = combined_center_x_m();
+ stop_limits.center_of_mass_height_m = combined_center_height_m();
+ const auto stop_command = sim::stage_safe_stop(
+ chassis_caps_, stop_motion, stop_limits);
+ held_command_.target_v = stop_command.forward_mps;
+ held_command_.target_lateral_v = stop_command.lateral_mps;
+ held_command_.target_w = stop_command.turn;
+ held_command_.controlled_stop = true;
   // A local-planner failure enters the zero-speed safety state. A recovery
   // planner needs its own dynamically validated trajectory and termination
   // contract; an unverified steering heuristic must never bypass DWA.

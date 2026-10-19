@@ -52,6 +52,7 @@ void DifferentialWheelController::reset() {
  target_initialized_ = false;
  previous_left_target_mps_ = 0.0;
  previous_right_target_mps_ = 0.0;
+ controlled_stop_active_ = false;
 }
 
 double DifferentialWheelController::encoder_measure(double position_rad,
@@ -97,6 +98,19 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
                                     config_.max_wheel_speed_mps);
     output.left.actual_mps = feedback.left_velocity_radps * config_.wheel_radius_m;
     output.right.actual_mps = feedback.right_velocity_radps * config_.wheel_radius_m;
+
+ // A planner safety stop changes the controller objective from tracking a
+ // maneuver to dissipating motion. Retaining integral effort from a hard
+ // spin can accelerate one wheel for several cycles after braking begins,
+ // increasing body speed before it eventually stops. Clear that obsolete
+ // state when controlled stopping begins; the integrator may then rebuild
+ // against the braking ramp while motor limits and contact physics determine
+ // the real deceleration.
+ if (command.controlled_stop && !controlled_stop_active_) {
+ left_pid_.reset();
+ right_pid_.reset();
+ }
+ controlled_stop_active_ = command.controlled_stop;
 
     if (feedback.positions_valid) {
         const double counts_per_rad =

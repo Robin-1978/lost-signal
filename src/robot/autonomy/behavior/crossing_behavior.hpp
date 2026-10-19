@@ -137,6 +137,7 @@ struct CrossingInput {
 struct CrossingState {
  CrossingPhase phase{CrossingPhase::Inactive};
  double clear_time_s{0.0};
+ int clear_observation_samples{0};
  Vec2 stop_point{0, 0};
  Vec2 stop_direction{1, 0};
  bool stop_valid{false};
@@ -159,7 +160,11 @@ struct CrossingOutput {
  double transit_speed_mps{0.0};
 };
 
-constexpr double kCrossingCommitConfirmS = 0.40;
+// Release must be supported by independent consecutive observations. A
+// duration-only gate degenerates into one sample on a slow computer and can
+// outlive target visibility on a fast one; the observation count preserves
+// the same evidence contract at every declared decision cadence.
+constexpr int kCrossingCommitConfirmSamples = 2;
 // Time separation around the predicted conflict interval. Admission sweeps
 // both early and late execution by this amount; the spatial validator remains
 // an independent hard gate.

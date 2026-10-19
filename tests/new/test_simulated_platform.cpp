@@ -310,6 +310,43 @@ CHECK(max_pitch_step_rad < 0.025);
  center_after.imu_specific_force_mps2.y) - expected_left_delta) < 0.02);
  }
 
+ // IMU mounting orientation is part of the measurement contract. Two
+ // physically identical worlds differ only by a +90 degree imu_link yaw;
+ // inverse frame rotation maps base +X to IMU -Y and base +Y to IMU +X.
+ {
+ auto rotated_robot = robot;
+ const auto imu_mount = std::find_if(rotated_robot.mounts.begin(), rotated_robot.mounts.end(),
+ [](const auto& mount) { return mount.frame_id == "imu_link"; });
+ CHECK(imu_mount != rotated_robot.mounts.end());
+ imu_mount->position_m = {0.0, 0.0, 0.0};
+ imu_mount->rotation_deg = {0.0, 0.0, 90.0};
+ sim::platform::SimulatedPlatform base_imu(map, level, robot, chassis_caps, terrain,
+ {spawn.x, spawn.y}, spawn.theta, mass, center_height, robot.yaw_inertia_kgm2);
+ sim::platform::SimulatedPlatform yawed_imu(map, level, rotated_robot, chassis_caps, terrain,
+ {spawn.x, spawn.y}, spawn.theta, mass, center_height, robot.yaw_inertia_kgm2);
+ sim::ChassisTelemetry effort;
+ effort.differential = true;
+ effort.joint_efforts = {{"left", 1.5}, {"right", 3.0}};
+ sim::platform::RigidVehicleState base_sample;
+ sim::platform::RigidVehicleState yawed_sample;
+ for (int index = 0; index < 20; ++index) {
+ base_sample = base_imu.step(effort, ground, 0.02);
+ yawed_sample = yawed_imu.step(effort, ground, 0.02);
+ }
+ CHECK(std::abs(yawed_sample.imu_specific_force_mps2.x -
+ base_sample.imu_specific_force_mps2.y) < 1e-8);
+ CHECK(std::abs(yawed_sample.imu_specific_force_mps2.y +
+ base_sample.imu_specific_force_mps2.x) < 1e-8);
+ CHECK(std::abs(yawed_sample.imu_specific_force_mps2.z -
+ base_sample.imu_specific_force_mps2.z) < 1e-8);
+ CHECK(std::abs(yawed_sample.imu_angular_velocity_radps.x -
+ base_sample.imu_angular_velocity_radps.y) < 1e-8);
+ CHECK(std::abs(yawed_sample.imu_angular_velocity_radps.y +
+ base_sample.imu_angular_velocity_radps.x) < 1e-8);
+ CHECK(std::abs(yawed_sample.imu_angular_velocity_radps.z -
+ base_sample.imu_angular_velocity_radps.z) < 1e-8);
+ }
+
  // Independent differential geometry checks use direct, symmetric shaft
  // efforts so controller tuning cannot hide a joint-axis or sign error.
  {
@@ -541,9 +578,10 @@ CHECK(std::get<1>(low_grip) > std::get<0>(low_grip) + 0.20);
 CHECK(std::get<2>(low_grip));
 CHECK(std::get<3>(low_grip) > 0.25);
 
- // Cross-slope plant probe: isolate passive lateral holding and symmetric
- // drive from planning/controller effects while the reference gate is being
- // calibrated.
+ // Cross-slope plant probe: isolate passive lateral grip, heading control and
+ // symmetric drive from planning effects. A coasted caster base may turn into
+ // the fall line and roll, while active heading control keeps the wheels
+ // across a 24% grade and lets bounded static contact friction hold laterally.
  {
  const auto& cross_level = catalog.level("cross_slope");
  const auto& cross_map = catalog.map(cross_level.map);
@@ -614,9 +652,19 @@ CHECK(std::get<3>(low_grip) > 0.25);
  std::clamp(-4.0 * heading_error, -1.0, 1.0)}, 0.02, cross_contact);
  cross_state = cross.step(cross_controller.telemetry(), cross_contact, 0.02);
  }
+ std::cerr << "RO1 cross-slope controlled displacement/roll="
+ << std::hypot(cross_state.planar.x - cross_start.planar.x,
+ cross_state.planar.y - cross_start.planar.y) << '/' << cross_state.roll_rad
+ << " delta=" << cross_state.planar.x - cross_start.planar.x << ','
+ << cross_state.planar.y - cross_start.planar.y << " yaw="
+ << sim::wrap_angle(cross_state.planar.theta - cross_start.planar.theta)
+ << " contacts=" << cross_state.ground_contact_links.size() << '\n';
+ CHECK(std::abs(sim::wrap_angle(cross_state.planar.theta - cross_start.planar.theta)) < 0.10);
  CHECK(std::hypot(cross_state.planar.x - cross_start.planar.x,
  cross_state.planar.y - cross_start.planar.y) < 0.03);
- CHECK(std::abs(cross_state.roll_rad - std::atan(0.36)) < 0.03);
+ CHECK(std::abs(cross_state.roll_rad - std::atan(0.24)) < 0.03);
+ CHECK(std::abs(cross_state.roll_rad) <
+ sim::static_rollover_angle(robot.wheel_base_m, cross_center));
  CHECK(std::find(cross_state.ground_contact_links.begin(),
  cross_state.ground_contact_links.end(), "left_wheel_link") !=
  cross_state.ground_contact_links.end());
@@ -626,6 +674,7 @@ CHECK(std::get<3>(low_grip) > 0.25);
  CHECK(std::find(cross_state.ground_contact_links.begin(),
  cross_state.ground_contact_links.end(), "rear_caster_wheel_link") !=
  cross_state.ground_contact_links.end());
+ const auto controlled_state = cross_state;
  sim::ChassisTelemetry uphill;
  uphill.differential = true;
  uphill.joint_efforts = {{"left", 2.0}, {"right", 2.0}};
@@ -637,8 +686,8 @@ CHECK(std::get<3>(low_grip) > 0.25);
  // Raw equal shaft torque must move the chassis forward. It is intentionally
  // not a cross-slope lane-hold controller, so bounded downhill drift remains
  // a plant output rather than a controller acceptance criterion.
- CHECK(cross_state.planar.x > cross_start.planar.x + 0.10);
-CHECK(std::abs(cross_state.planar.y - cross_start.planar.y) < 0.60);
+ CHECK(cross_state.planar.x > controlled_state.planar.x + 0.10);
+CHECK(std::abs(cross_state.planar.y - controlled_state.planar.y) < 0.60);
  }
 
  // The proving-ground cross slope has a physical approach, not a vertical
@@ -728,6 +777,9 @@ CHECK(std::abs(cross_state.planar.y - cross_start.planar.y) < 0.60);
  slope_terrain, {6.0, 2.9}, 0.0, slope_mass, slope_center,
  robot.yaw_inertia_kgm2);
  const auto slope_start = slope.state();
+ const auto slope_left_start = slope.joint_state_for_child("left_wheel_link");
+ const auto slope_right_start = slope.joint_state_for_child("right_wheel_link");
+ CHECK(slope_left_start && slope_right_start);
  sim::ChassisTelemetry effort;
  effort.differential = true;
  effort.joint_efforts = {{"left", 8.0}, {"right", 8.0}};
@@ -742,7 +794,15 @@ CHECK(std::abs(cross_state.planar.y - cross_start.planar.y) < 0.60);
  CHECK(std::abs(slope_state.planar.y - slope_start.planar.y) < 0.03);
  CHECK(std::abs(slope_state.pitch_rad + std::atan(0.364)) < 0.03);
  CHECK(left_joint && right_joint && caster_joint && swivel_joint);
- CHECK(std::abs(left_joint->velocity_radps - right_joint->velocity_radps) < 1.0);
+ std::cerr << "RO1 slope wheel speeds/slip=" << left_joint->velocity_radps << ','
+ << right_joint->velocity_radps << '/' << slope_state.max_drive_slip_ratio
+ << " yaw=" << sim::wrap_angle(slope_state.planar.theta - slope_start.planar.theta) << '\n';
+ const double encoder_yaw =
+ ((right_joint->position_rad - slope_right_start->position_rad) -
+ (left_joint->position_rad - slope_left_start->position_rad)) *
+ robot.wheel_radius_m / robot.wheel_base_m;
+ CHECK(std::abs(encoder_yaw -
+ sim::wrap_angle(slope_state.planar.theta - slope_start.planar.theta)) < 0.20);
  CHECK(slope_state.max_drive_slip_ratio < 0.30);
  }
 

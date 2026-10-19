@@ -1,4 +1,5 @@
 #include "robot/autonomy/planning/local/dwa.hpp"
+#include "robot/autonomy/planning/local/ackermann_local.hpp"
 #include "robot/autonomy/planning/local/holonomic_local.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 
@@ -37,6 +38,67 @@ const sim::DwaRollout* rollout_near(
 int main() {
  sim::GridMap map(100, 100, 0.1);
  const sim::DwaWeights weights{1.0, 2.0, 0.3, 1.2, 0.8, 0.25};
+
+ // The command published now must belong to the next control period's
+ // dynamic window. A long prediction horizon is not permission to send its
+ // terminal velocity immediately. If a route transition drops the policy
+ // cap below the measured speed, DWA emits the nearest reachable braking
+ // command and stages the stop over subsequent decisions.
+ const auto staged_stop = sim::dwa_compute_trajectory(
+ {1.0, 1.0}, 0.0, 0.75, 0.74, {1.0, 1.0}, map, weights,
+ {}, 0.0, 1.2, 3.0, 1.5, 0.1, 0.1,
+ 0.0, 0.20, 4.0, {}, 0.0, std::nullopt, {}, 0.50, 2.0);
+ CHECK(staged_stop.best.command.valid);
+ CHECK(!staged_stop.rollouts.empty());
+ for (const auto& rollout : staged_stop.rollouts) {
+ CHECK(std::abs(rollout.trajectory.command.v - 0.75) <= 3.0 * 0.1 + 1e-9);
+ CHECK(std::abs(rollout.trajectory.command.w - 0.74) <= 4.0 * 0.1 + 1e-9);
+ CHECK(rollout.trajectory.command.v >= 0.45 - 1e-9);
+ const double current_left = 0.75 - 0.74 * 0.25;
+ const double current_right = 0.75 + 0.74 * 0.25;
+ const double target_left = rollout.trajectory.command.v -
+ rollout.trajectory.command.w * 0.25;
+ const double target_right = rollout.trajectory.command.v +
+ rollout.trajectory.command.w * 0.25;
+ CHECK(std::abs(target_left - current_left) <= 3.0 * 0.1 + 1e-9);
+ CHECK(std::abs(target_right - current_right) <= 3.0 * 0.1 + 1e-9);
+ }
+ CHECK(staged_stop.best.command.v >= 0.45 - 1e-9);
+
+ sim::AckermannLocalConfig ackermann_stop;
+ ackermann_stop.max_speed_mps = 0.0;
+ ackermann_stop.max_accel_mps2 = 2.0;
+ ackermann_stop.max_steer_rad = 0.5;
+ ackermann_stop.predict_time_s = 1.5;
+ ackermann_stop.dt_s = 0.1;
+ const auto staged_ackermann_stop = sim::ackermann_local_compute(
+ {1.0, 1.0}, 0.0, 1.0, 0.0, 0.0, {1.0, 1.0}, map, weights,
+ {}, ackermann_stop);
+ CHECK(staged_ackermann_stop.best.command.valid);
+ for (const auto& rollout : staged_ackermann_stop.rollouts) {
+ CHECK(std::abs(rollout.trajectory.command.v - 1.0) <= 2.0 * 0.1 + 1e-9);
+ CHECK(rollout.trajectory.command.v >= 0.8 - 1e-9);
+ }
+
+ sim::HolonomicLocalConfig holonomic_stop;
+ holonomic_stop.max_speed_mps = 0.8;
+ holonomic_stop.max_accel_mps2 = 2.0;
+ holonomic_stop.max_yaw_radps = 1.5;
+ holonomic_stop.max_yaw_accel_radps2 = 3.0;
+ holonomic_stop.predict_time_s = 1.0;
+ holonomic_stop.dt_s = 0.1;
+ holonomic_stop.terminal_position = sim::Vec2{1.0, 1.0};
+ const auto staged_holonomic_stop = sim::holonomic_local_compute(
+ {1.0, 1.0}, 0.0, 0.8, 0.6, 0.7, {1.0, 1.0}, map, weights,
+ {}, holonomic_stop);
+ CHECK(staged_holonomic_stop.best.command.valid);
+ for (const auto& rollout : staged_holonomic_stop.rollouts) {
+ const double planar_delta = std::hypot(
+ rollout.trajectory.command.v - 0.8,
+ rollout.trajectory.command.lateral_v - 0.6);
+ CHECK(planar_delta <= 2.0 * 0.1 + 1e-9);
+ CHECK(std::abs(rollout.trajectory.command.w - 0.7) <= 3.0 * 0.1 + 1e-9);
+ }
 
  // Holonomic terminal planning is a pose-settling problem, not another
  // forward-only route sample. On either side of the same destination the
@@ -108,16 +170,19 @@ int main() {
  // safe decelerating candidate remains selectable. Safety arbitration checks
  // all candidates before score ordering.
  const std::vector<std::vector<sim::DynamicObjectState>> crossing_actor{
- {{{1.7, 0.0}, {0.0, 2.0}, 0.20}},
- {{{1.7, 1.0}, {0.0, 2.0}, 0.20}},
- {{{1.7, 2.0}, {0.0, 2.0}, 0.20}},
+ {{{1.95, 0.0}, {0.0, 2.0}, 0.20}},
+ {{{1.95, 1.0}, {0.0, 2.0}, 0.20}},
+ {{{1.95, 2.0}, {0.0, 2.0}, 0.20}},
  };
  const auto crossing_plan = sim::dwa_compute_trajectory(
  {1.0, 1.0}, 0.0, 1.0, 0.0, {4.0, 1.0}, map, weights,
  crossing_actor, 1.0, 1.5, 3.0, 1.0, 0.1, 0.5,
  0.10, 0.20, 8.0, {}, 0.0);
  const auto* straight_fast = rollout_near(crossing_plan, 1.0, 0.0);
- CHECK(straight_fast && straight_fast->collision);
+ CHECK(straight_fast && !straight_fast->collision);
+ CHECK(sim::validate_executable_trajectory(
+ straight_fast->trajectory, map, crossing_actor, 0.5, 0.20, 0.10).verdict ==
+ sim::TrajectoryVerdict::DynamicCollision);
  const auto crossing_selection = sim::select_executable_trajectory(
  crossing_plan, map, crossing_actor, 0.5, 0.20, 0.10);
  CHECK(crossing_selection.validation.accepted());
@@ -136,7 +201,9 @@ int main() {
  reversing_actor, 1.0, 1.5, 3.0, 2.0, 0.1, 1.0,
  0.10, 0.20, 8.0, {}, 0.0);
  const auto* reversing_straight = rollout_near(reversing_plan, 1.0, 0.0);
- CHECK(reversing_straight && reversing_straight->collision);
+ CHECK(reversing_straight);
+ CHECK(!sim::validate_executable_trajectory(
+ reversing_straight->trajectory, map, reversing_actor, 1.0, 0.20, 0.10).accepted());
 
  // Sudden target slowdown is represented by positions at each future time,
  // rather than trusting the first measured velocity forever. The stopped
@@ -154,7 +221,9 @@ int main() {
  slowing_actor, 1.0, 1.5, 3.0, 2.0, 0.1, 0.5,
  0.10, 0.20, 8.0, {}, 0.0);
  const auto* slowing_straight = rollout_near(slowing_plan, 1.0, 0.0);
- CHECK(slowing_straight && slowing_straight->collision);
+ CHECK(slowing_straight);
+ CHECK(!sim::validate_executable_trajectory(
+ slowing_straight->trajectory, map, slowing_actor, 0.5, 0.20, 0.10).accepted());
 
  // Waiting is itself a trajectory. If an actor enters the hold position in
  // the future, the zero command is unsafe even though the position is clear

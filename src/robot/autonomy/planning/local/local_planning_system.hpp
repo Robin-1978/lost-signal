@@ -4,6 +4,7 @@
 #include "robot/autonomy/planning/local/dwa.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 
+#include <limits>
 #include <optional>
 
 namespace sim {
@@ -86,6 +87,7 @@ class LocalPlanningSystem {
  public:
  void reset() {
  static_margin_blocked_s_ = 0.0;
+ static_margin_best_depth_m_ = std::numeric_limits<double>::infinity();
  physical_margin_recovery_active_ = false;
  }
  LocalPlanningOutput plan(
@@ -98,6 +100,7 @@ class LocalPlanningSystem {
 
  private:
  double static_margin_blocked_s_{0.0};
+ double static_margin_best_depth_m_{std::numeric_limits<double>::infinity()};
  bool physical_margin_recovery_active_{false};
 };
 

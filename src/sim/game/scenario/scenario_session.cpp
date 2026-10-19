@@ -256,6 +256,14 @@ void ScenarioSession::reset() {
  snapshot_.estimated_heading = spawn.theta;
  snapshot_.status = MissionStatus::Ready;
  estimation_system_.reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
+ if (resolved_build_.imu()) {
+ // Seed from the deployed elevation map, then let calibrated IMU rates and
+ // gravity observations track the live chassis attitude. Physical body truth
+ // is deliberately excluded from this estimator initialization.
+ estimation_system_.initialize_attitude(
+ std::atan(sim::lateral_grade(spawn_terrain, spawn.theta)),
+ -std::atan(sim::longitudinal_grade(spawn_terrain, spawn.theta)));
+ }
  initialize_frame_tree();
  if (sensor_system_) {
  sensor_system_->reset(effective_seed(), effective_seed() ^ 0x9e3779b9U);
@@ -383,6 +391,15 @@ double ScenarioSession::combined_center_height_m() const {
            std::max(0.5, total_mass_kg()));
 }
 
+double ScenarioSession::combined_center_x_m() const {
+ // Collected payload is mounted on the base_link centreline. A future load
+ // carrier may provide its own longitudinal first moment through the same
+ // contract; until then only the measured/declared robot assembly shifts the
+ // combined projection.
+ return robot_definition_.mass_kg * robot_definition_.center_of_mass_in_base_m.x /
+  std::max(0.5, total_mass_kg());
+}
+
 double ScenarioSession::combined_yaw_inertia_kgm2() const {
  return robot_definition_.yaw_inertia_kgm2 +
         payload_.mass_kg * robot_definition_.collision_radius_m * robot_definition_.collision_radius_m;
@@ -504,6 +521,12 @@ void ScenarioSession::initialize_frame_tree() {
                                                                   mount.rotation_deg.y * kDegreesToRadians,
                                                                   mount.rotation_deg.z * kDegreesToRadians),
                             });
+ if (mount.frame_id == "imu_link") {
+ estimation_system_.set_imu_mount_rpy(
+ mount.rotation_deg.x * kDegreesToRadians,
+ mount.rotation_deg.y * kDegreesToRadians,
+ mount.rotation_deg.z * kDegreesToRadians);
+ }
  }
  if (!frame_tree_.lookup("base_link", "imu_link")) {
   frame_tree_.set_transform("base_link", "imu_link", {});
@@ -520,7 +543,8 @@ void ScenarioSession::update_frame_tree() {
      sim::physics::quaternion_from_euler(0.0, 0.0, estimation_system_.map_from_odom_heading_rad()),
    });
  const auto odom_position = estimation_system_.odometry_position();
- const auto estimated_ground = terrain_.sample(estimation_system_.state().position);
+ const auto& estimated_state = estimation_system_.state();
+ const auto estimated_ground = terrain_.sample(estimated_state.position);
  frame_tree_.set_transform(
    "odom", "base_footprint",
    {
@@ -528,11 +552,17 @@ void ScenarioSession::update_frame_tree() {
      sim::physics::quaternion_from_euler(0.0, 0.0, estimation_system_.odometry_heading_rad()),
    });
  const double base_height = snapshot_.robot_height_m - estimated_ground.height_m;
+ const double estimated_roll = estimated_state.attitude_valid
+ ? estimated_state.roll_rad
+ : std::atan(sim::lateral_grade(estimated_ground, estimated_state.heading_rad));
+ const double estimated_pitch = estimated_state.attitude_valid
+ ? estimated_state.pitch_rad
+ : -std::atan(sim::longitudinal_grade(estimated_ground, estimated_state.heading_rad));
  frame_tree_.set_transform(
    "base_footprint", "base_link",
    {
      {0.0, 0.0, base_height},
-     sim::physics::quaternion_from_euler(snapshot_.robot_roll_rad, snapshot_.robot_pitch_rad, 0.0),
+ sim::physics::quaternion_from_euler(estimated_roll, estimated_pitch, 0.0),
    });
 
  constexpr double kDegreesToRadians = sim::kPi / 180.0;
@@ -573,9 +603,16 @@ void ScenarioSession::build_world() {
  for (std::uint32_t y = 0; y < deployable_map->grid->height; ++y) {
  for (std::uint32_t x = 0; x < deployable_map->grid->width; ++x) {
  const auto index = static_cast<std::size_t>(y) * deployable_map->grid->width + x;
+ const auto center = sim::runtime::grid_cell_center(*deployable_map->grid, {x, y});
+ if (deployable_map->grid->elevation_m.size() ==
+ static_cast<std::size_t>(deployable_map->grid->width) *
+ deployable_map->grid->height) {
+ const float elevation_m = deployable_map->grid->elevation_m[index];
+ if (std::isfinite(elevation_m))
+ truth_map_->setElevation(center.x, center.y, elevation_m);
+ }
  if (deployable_map->grid->occupancy[index] < 50)
  continue;
- const auto center = sim::runtime::grid_cell_center(*deployable_map->grid, {x, y});
  truth_map_->setOccupied(center.x, center.y);
  }
  }
@@ -722,6 +759,8 @@ void ScenarioSession::build_world() {
  // data is the source of truth for where wheels touch; collision radius is a
  // body envelope and must not masquerade as a stability footprint.
  std::vector<const MountDefinition*> rolling_contacts;
+ double support_min_x_m = -0.25;
+ double support_max_x_m = 0.25;
  const auto traction_slot_definition =
    std::find_if(robot_definition_.slots.begin(), robot_definition_.slots.end(),
  [](const auto& slot) { return slot.slot == "tires" || slot.slot == "tracks"; });
@@ -764,6 +803,8 @@ void ScenarioSession::build_world() {
    chassis_params.support_length_m = max_x - min_x;
   if (max_y - min_y > 0.05)
    chassis_params.support_width_m = max_y - min_y;
+ support_min_x_m = min_x;
+ support_max_x_m = max_x;
  }
  // Builtin registration is explicit at the composition root (idempotent):
  // archive linkers drop unreferenced self-registering objects, so static
@@ -774,6 +815,8 @@ void ScenarioSession::build_world() {
    sim::ChassisFactory::create(robot_definition_.drive_type, chassis_params, wheel_gains);
  chassis_ = std::move(built.model);
  chassis_caps_ = chassis_->caps();
+ chassis_caps_.geometry.support_min_x_m = support_min_x_m;
+ chassis_caps_.geometry.support_max_x_m = support_max_x_m;
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
  differential_wheel_controller_.reset();
@@ -1838,20 +1881,30 @@ void ScenarioSession::scan_environment() {
    lidar_config.frame_id = mount->frame_id;
    lidar_config.position_in_base = {mount->position_m.x, mount->position_m.y};
    lidar_config.yaw_in_base_rad = mount->rotation_deg.z * sim::kPi / 180.0;
+ lidar_config.height_in_base_m = mount->position_m.z;
+ lidar_config.roll_in_base_rad = mount->rotation_deg.x * sim::kPi / 180.0;
+ lidar_config.pitch_in_base_rad = mount->rotation_deg.y * sim::kPi / 180.0;
   }
  }
  sim::LidarRaycastTruth lidar_truth;
  std::optional<sim::LidarPointCloudRaycastTruth> point_cloud_truth;
+ const auto& estimated_state = estimation_system_.state();
+ const std::optional<sim::platform::BaseAttitudeEstimate> estimated_attitude =
+ estimated_state.attitude_valid
+ ? std::optional<sim::platform::BaseAttitudeEstimate>{{
+ estimated_state.roll_rad, estimated_state.pitch_rad}}
+ : std::nullopt;
  if (platform_ && sensor->vertical_channels > 1) {
  point_cloud_truth = platform_->scan_lidar_point_cloud(
  sensor->rays, lidar_config.vertical_angles_rad, lidar_config.range_m,
- estimation_system_.state().position, estimation_system_.state().heading_rad,
- snapshot_.time_s, 1.0 / sensor->scan_hz, lidar_config.returns);
+ estimated_state.position, estimated_state.heading_rad,
+ snapshot_.time_s, 1.0 / sensor->scan_hz, lidar_config.returns,
+ estimated_attitude);
  } else if (platform_) {
  lidar_truth = platform_->scan_lidar(
- sensor->rays, lidar_config.range_m, estimation_system_.state().position,
- estimation_system_.state().heading_rad, snapshot_.time_s,
- 1.0 / sensor->scan_hz, lidar_config.returns);
+ sensor->rays, lidar_config.range_m, estimated_state.position,
+ estimated_state.heading_rad, snapshot_.time_s,
+ 1.0 / sensor->scan_hz, lidar_config.returns, estimated_attitude);
  } else {
  if (sensor->vertical_channels > 1) {
  throw std::runtime_error(
@@ -1942,14 +1995,19 @@ void ScenarioSession::consume_lidar_observation(
  throw std::runtime_error("lidar observation is missing raw or static-reference scan");
  }
  const auto& estimate = estimation_system_.state();
+ const auto estimated_ground = terrain_.sample(estimate.position);
  const auto perception = autonomy_pipeline_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
  estimate.lateral_velocity_mps,
- estimate.angular_velocity_radps},
+ estimate.angular_velocity_radps,
+ estimated_ground.height_m + robot_definition_.base_link_height_m,
+ estimate.roll_rad, estimate.pitch_rad, estimate.attitude_valid},
  {lidar_config.position_in_base, lidar_config.yaw_in_base_rad,
  lidar_config.noise.range_stddev_m,
- std::max(0.45, level_.planning_localization_margin_m)},
+ std::max(0.45, level_.planning_localization_margin_m),
+ lidar_config.height_in_base_m, lidar_config.roll_in_base_rad,
+ lidar_config.pitch_in_base_rad, 0.30},
  track_max_age_s());
  const bool first_static_detection = !snapshot_.static_obstacle_detected;
  if (level_.objective.type == "observe_and_stop" && perception.static_obstacle_near) {
@@ -1967,7 +2025,7 @@ void ScenarioSession::consume_lidar_observation(
   snapshot_.dynamic_object_detected = true;
  }
  refresh_dynamic_obstacles();
- if (first_detection && snapshot_.dynamic_object_detected) {
+if (first_detection && snapshot_.dynamic_object_detected) {
   double first_range = 0.0;
   for (const auto& obstacle : snapshot_.dynamic_obstacles) {
    const double range = std::hypot(obstacle.estimated_position.x - snapshot_.robot.x,
