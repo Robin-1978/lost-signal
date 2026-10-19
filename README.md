@@ -7,6 +7,8 @@ Lost Signal is a third-person robotics adventure and an educational simulation. 
 You choose high-level intent: follow, travel, search, wait, or return. RO-1 decides how to get there. Perception, state estimation, global planning, local collision avoidance, chassis control, and MuJoCo physics all run during the mission. Direct driving is limited to the opening chassis-calibration lesson and the optional Vehicle Proving Ground.
 
 The current release is a `v0.1.0-alpha` source preview. The simulation core, Linux client, deterministic headless runner, and cross-platform tests are usable. Art, audio, accessibility, balance, and packaged releases are still in development.
+The [current status and canonical execution plan](docs/product-roadmap.md#current-status-and-canonical-execution-plan)
+separates completed platform evidence from the remaining autonomy, release, gameplay, and presentation gates.
 
 ## Why this project is different
 

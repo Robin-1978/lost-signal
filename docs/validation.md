@@ -116,9 +116,34 @@ tree retain `source_dirty: true`; release evidence uses a clean revision.
 
 The default `ContentCatalog::load(assets)` must select English. Explicit `zh-CN` loading must select the source Chinese strings. Unsupported locale codes must report an error. Tests compare both catalogs to ensure localization leaves mission IDs, content graph, paths, seeds, physics, scoring, and algorithm configuration unchanged.
 
-## Release record
+## Current release-candidate status
 
-Results for the current five-chassis autonomy and platform revision, tested on Linux x86_64 on 2026-10-18:
+The current source revision is **not yet covered by a complete release record**. Recent simulation and autonomy work
+changed estimation, LiDAR projection, terrain composition, local-planner reachable command windows, trajectory
+validation, staged safe stopping, crossing release and differential-controller transitions. Focused fixtures and the
+recommended `lost_signal` run provide useful evidence, but they do not replace the ordered release gates above.
+
+The remaining known integration blocker is `town_freight --recommended`: the robot avoids collision but can wait
+until timeout at a holding pose that does not provide continuous free-space evidence for the conflict corridor. The
+planned correction is a ROBOT-side conflict-zone observability contract and an automatically selected holding pose
+that is both safe and capable of observing release evidence. Missing or occluded observations remain unknown; a
+missing dynamic track is not proof of free space.
+
+After that correction is frozen, create a new record from a clean revision by running, in order:
+
+1. GCC 13 Release build and the complete CTest suite with parallelism 8.
+2. ROBOT-only build/tests and all content, schema, locale and generator checks.
+3. Repeated identical-seed run artifacts and strict comparison of results and key trajectory metrics.
+4. Graphical input, clean-shutdown, recommended-experience and proving-ground smoke tests.
+5. Clang 18 compatibility, followed by ASan/UBSan as the final expensive gate.
+
+Until that record exists, publish the repository only as an Alpha / Developer Preview and retain the claim limits in
+[Simulation model audit](simulation-model-audit.md).
+
+## Last completed release record
+
+Historical baseline results for the five-chassis autonomy and platform revision tested on Linux x86_64 on
+2026-10-18 follow. They remain regression context and must not be presented as validation of later revisions:
 
 - Content validation: passed; 29 levels, 7 maps, 7 scenes, 24 components, 4 policies, 5 robots, and 29 presentations
 - Locale validation: passed; 1,451 entries checked and 1,443 required translations present

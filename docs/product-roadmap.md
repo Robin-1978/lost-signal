@@ -50,200 +50,128 @@ physical assembly, motion roles, and cargo attachment frame. Task-policy and aud
 algorithms and event-to-cue mappings. C++ supplies reusable loaders, registries, simulation contracts, and renderers;
 it does not name apples, orchard crates, or harvest strategies.
 
-## Next execution milestones
+## Current status and canonical execution plan
 
-The numbered stages later in this document describe the completed alpha baseline. All new work follows the milestone
-sequence here so that completed release work and future work cannot be confused.
+Lost Signal is an open-source **alpha platform** with a strong simulation and autonomy foundation. It is not yet the
+polished first public product described above. The platform can already support deterministic learning experiments;
+the remaining work is to close one autonomy safety gap, rerun the release evidence, and turn one implemented scenario
+into a clear, attractive, explainable experience.
 
-The proving ground, service brake, 2.5D editor output, 16-line LiDAR, and five articulated platform gates are complete.
-The active sequence is now **Stormglass gameplay validation → focused visual/audio revision → causal debrief and
-same-seed comparison → experiment/fault framework**. MuJoCo migration, the mobile-manipulator foundation, the
-Manipulation Lab, and the first grasp/contact gates are completed platform capabilities; they are not the current
-product priority. Stormglass now has its world, player-directed task loop, first visual pass, and deterministic
-headless evidence. [The acceptance contract](reference-platform.md) remains the
-source of truth for the limits of the platform claims. Orchard Scramble remains useful engineering evidence, but its
-static multi-collection loop is not accepted as the first polished Playground. Responsive-information work continues
-only when a concrete usability problem blocks play. Platform fidelity and broader sensors follow after the product
-milestones, except for correctness fixes needed by the chosen content.
+The completed foundation includes:
 
-The active implementation order is:
+- MuJoCo 3.16.0 as the single production physics engine, with articulated bodies, height fields, physical contacts,
+ and a 1 ms contact substep;
+- the deployable ROBOT / LSRI / SIM boundary, including mixed provider ownership and a ROBOT-only build;
+- the unloaded RO-1 `typical` reference envelope, the 16-line LiDAR, RO-2 articulated Ackermann and service brake,
+ and independent RO-3, RO-4 and RO-5 reference gates;
+- the LSRM 2.5D map contract and editor output for occupancy, elevation, surface classes and semantic places;
+- the Vehicle Proving Ground, Orchard Scramble, Bridge regression fixture, Manipulation Lab and Stormglass Protocol;
+- deterministic headless execution, replay/run artifacts, content validation, localization, mapping, prediction,
+ global planning, local rollout planning, independent trajectory validation and actuator control.
 
-Current status: stages 1--4 are complete for the published, unloaded RO-1 `typical` envelope. The 16-line LiDAR and
-RO-2 articulated `typical` gates are also complete. The independent Vehicle Proving Ground is implemented as an
-always-available engineering space with open loadout selection, direct driving, and click-to-drive autonomy. It does
-not satisfy the polished-playground gate because it remains an engineering instrument rather than a playful loop.
-Its live/debrief evidence, eight data-authored repeatable maneuvers, and headless `--maneuver` selection are complete.
-RO-2 now has an independent LSRI service-brake path, and editor saves atomically publish an LSRM package containing
-occupancy, exact authored 2.5D elevation (including deterministic rough relief), surface classes, and semantic places.
-The first construction foundation is also complete: data-authored pieces and sockets, order-independent canonical
-plan hashing, transactional validation, and a unified static-world entity contract. A `world_object` now owns the
-prefab transform, collision proxies, contact material, LiDAR reflectivity, MuJoCo bodies, oriented planning
-rasterization, and continuous collision geometry. Remaining scene instances are explicitly `visual_only`.
-The completion claims exclude the open split-friction, identified combined-slip, dynamic-rollover, systematic
-payload-sweep, and hardware-identification envelopes listed in `reference-platform.md`.
+The [reference platform](reference-platform.md) and [simulation model audit](simulation-model-audit.md) define the
+limits of these claims. Typical parameters are engineering assumptions until a named physical target supplies
+calibration data and held-out validation. The architecture supports transfer experiments; it does not prove
+sim-to-real accuracy.
 
-1. Complete the unloaded RO-1 reference assembly: articulated drive wheels and caster, physical encoder feedback,
- valid mass/inertia data, motor and reflected joint inertia, inertial and collision origins, and stable contact.
-2. Validate its devices and closed loops independently: PWM-to-torque drive, braking/coast/backdrive, encoder,
- IMU frame and specific force, and the reference single-line LiDAR.
-3. Treat flat floor, slope, cross-slope, low-friction and loose-ground scenes as fixed engineering fixtures. Compare
- forces, loads, slip, pose, scan returns and failure boundaries with analytic or separately derived expectations.
- Do not tune mission time, spawn, score, route or expected success to make an incomplete model pass.
-4. After those gates pass, re-run the existing RO-1 missions and correct the reusable planning, collision, control,
- and goal-region contracts they expose. Only then author or tune player-facing outcomes.
-5. Define a composable Scenario/Mechanic data contract and editor-facing algorithm catalogs. Implement exact bounded
- multi-goal A* and make actor/object motion selection fully data-authored.
-6. Design and graybox a mechanically distinct Playground with a visible physical event. Test the choice, consequence,
- autonomous response, and same-seed retry before approving its permanent art direction.
-7. Refine that approved loop with authored 3D models, materials, animation, particles, lighting, cameras, sound, and a
- concise explainable-autonomy presentation.
-8. Generalize the experiment, regression, and fault-injection framework from the finished content.
-9. Add further sensors or autonomy only for a named experience
- or measured platform target. Run the sanitizer suite for milestone and release-candidate gates.
+Existing campaign chapters remain available. The Vehicle Proving Ground is an engineering instrument, Orchard is a
+systems prototype, Bridge is retained as a construction/map/physics regression, and Manipulation Lab demonstrates a
+platform capability. **Stormglass Protocol is the sole candidate for the first polished gameplay experience.**
 
-TEB remains a planned comparative local-planner experiment rather than a
-release dependency. It enters after the shared estimation, braking-tail,
-trajectory-validation and execution contracts pass with the existing
-planners, and only with a data-authored DWA-versus-TEB lesson and quantitative
-acceptance matrix. The decision and required interface are recorded in
-[Extending autonomy](extending-autonomy.md#teb-evaluation).
+Work proceeds through the following queue. A later package starts only when the preceding exit gate is met.
 
-The next concrete work packages are:
+### P0 — Close the current autonomy safety gap
 
-1. **Implemented:** turn the Vehicle Proving Ground into measurable evidence. Data-authored repeatable maneuvers label live
- and debrief measurements for speed, stopping distance and time, commanded and measured steering, inner/outer
- steering-angle difference, measured turn radius, grade, slip, and active LiDAR profile. Keep simulator truth and
- onboard-observable estimates visibly distinct.
-2. **Implemented:** add an optional service-brake actuator for the high-speed RO-2 profile through the existing ROBOT/LSRI/SIM
- boundary. Verify apply/release response, torque sign and saturation, tire-limited stopping, split grip, and grade
- hold independently before using it in a lesson. Parking brake and ABS remain separate capabilities.
-3. **Implemented:** extend the map editor to author and export the same LSRM-compatible 2.5D surfaces, height patches, obstacles,
- semantic markers, and test routes consumed by simulation. Validate lossless reload and world/grid transforms.
-4. **Implemented:** promote RO-3 tracked, RO-4 swerve, and RO-5 mecanum to independent physical reference
- platforms. Each has its own articulated/support model and acceptance evidence for rest stability, signed commanded
- motion, low grip, grade, cross-slope, rough ground, motor braking, timestep convergence, the LSRI actuator path, and
- chassis-specific invariants. Generic runtime expiry remains covered at the typed LSRI boundary; optional parking
- brakes, ABS, compliant full tracks, and identified tire/roller laws require separate future capabilities. No platform
- inherits another platform's evidence.
-5. **Frozen for redesign:** **Bridge the Washout** currently proves atomic world/map/physics construction, but its
-   menu-driven repair is not accepted as robot gameplay. Keep it as a regression fixture; do not expand its player
-   flow until a real robot manipulation capability exists.
-6. **Implemented:** MuJoCo 3.16.0 is the single production engine, with a native compiled model/data lifecycle, 1 ms
- contact substeps, articulated trees, free-joint actor proxies, height fields, and aligned wheel friction. The cutover removed the
- retired engine, backend selector, and planar production world after the five-chassis acceptance matrix passed.
-7. **Active:** add a compact mobile manipulator as a general ROBOT/SIM capability. The first release must include a
-   data-authored serial chain, explicit joint limits and actuator units, FK/IK, time-parameterized joint targets,
- feedback control through LSRI, MuJoCo articulated dynamics, link transforms, telemetry, and deterministic
-   reach/limit/stability acceptance tests. A dedicated Manipulation Lab demonstrates the capability independently
-   of any story mission.
-8. **Next:** add grasp contacts and object attachment only after the arm can reach and hold poses under gravity.
-   Grasp success must come from finger/object contact and force/closure criteria; mission code may not teleport an
-   object to the tool frame. After that gate, manipulation can support repair, sorting, recovery, inspection, and
-   construction scenarios through data-authored tasks.
-9. **Retained regression:** **Bridge the Washout** is a bounded construction puzzle
- followed by an autonomous physical proof run. A Ready-state transaction publishes the validated plan to LSRM,
- MuJoCo support/contact, LiDAR, planning, replay, and rendering. Two valid bridge surfaces create a grip/drag choice;
- an overlong part is rejected without mutating the world. Headless and Run Artifact v3 prove map revision 2,
- physical bridge contact, full traversal, success, and zero collision. The dark storm scene, real guardrails and
- rubble, warning light, material contrast, 16-line point cloud, and bounded plan UI form the first presentation pass.
- A fresh-player test still decides the next content revision; the Vehicle Proving Ground remains an engineering
- sandbox and Orchard remains a systems prototype.
-6. Polish the approved loop, then generalize its experiment and fault-injection needs. Full SLAM and VLA remain
- deferred until a named experience provides acceptance criteria.
+The remaining known integration blocker is `town_freight --recommended`. Collision avoidance is conservative, but
+the robot can wait until timeout at a safe pose that cannot continuously observe the traffic corridor. A vanished
+track correctly becomes unknown; absence of a track must never be treated as proof that the crossing is clear.
 
-### M0 — Maintain responsive UI quality (deferred, non-blocking)
+Implement a ROBOT-side observability contract that records which conflict-zone entrances and corridor cells are
+covered by current LiDAR free-space rays. Select holding poses from static map geometry, route geometry, sensor field
+of view and occlusion so a pose must be both safe and capable of collecting release evidence. Keep uncovered or
+occluded space unknown. Simulation actor truth, authored actor IDs and a pre-scripted stop point remain outside this
+decision.
 
-The shared legend vocabulary, compact labels, and hover hints remain part of the product contract. Broad screenshot
-matrix work is paused while the higher-value gameplay milestones proceed. Fix clipping or overlap when it blocks a
-real flow, keep temporary captures out of the repository, and retain the sanitizer suite as a milestone/release
-gate because it is intentionally expensive.
+Add focused tests for an occluded safe holding pose, a visible corridor with consecutive clear observations, a target
+that leaves the field of view before the corridor is observed clear, and the fallback path when conflict-zone
+semantics are absent. Then rerun `town_freight` with fixed seed and require success, zero collisions, declared dynamic
+clearance and no timeout.
 
-**Exit:** no clipped or overlapping localized text, compact labels remain understandable without hover, tooltips
-show the full explanation, the normal release checks pass, and no temporary capture is tracked or documented.
+**Exit:** crossing release is based on positive, time-aligned observation evidence; the scenario completes without
+weakening collision margins, changing world truth or inserting scenario-specific decision code.
 
-### M1 — Validate Stormglass Protocol as the gameplay vertical slice
+### P1 — Re-establish the release candidate evidence
 
-Status: **implemented; fresh-player observation remains**
+After P0 is frozen, run the gates in [Validation](validation.md): GCC 13 Release and the complete CTest suite with
+parallelism 8; ROBOT-only build and tests; schema, content, locale and generated-artifact checks; identical-seed run
+artifact reproduction; graphical input, shutdown and recommended-experience smoke tests; Clang 18 compatibility; and
+ASan/UBSan last. Record the exact revision, commands, counts and results. A historical green baseline does not cover a
+new autonomy or simulation revision.
 
-Stormglass Protocol replaces Bridge the Washout as the candidate product loop. The player sees three recoverable
-signal cores in a compact ion-storm scene, predicts an order, and selects one goal at a time. RO-1 owns sensing,
-localization, global planning, dynamic prediction, local planning, actuator control and stopping. Each pickup changes
-physical payload and center of gravity; authored storm keyframes change visibility, wetness, daylight and grip. A
-moving service cart introduces a time conflict without placing decision code in simulation content.
+**Exit:** the current clean revision has one complete release record. It may be published as an Alpha / Developer
+Preview with the claim boundaries stated in the simulation audit.
 
-The reusable capability is `goal_order: "player"`: the task executive exposes eligible stable-ID goals, locks the
-terminal return until work is complete, and waits under a zero command between choices. UI world clicks and headless
-`--goal-sequence` publish the same semantic selection. No code knows Stormglass target IDs. Recommended-build
-sequences complete deterministically with different route/time/clearance evidence for different orders.
+### P2 — Validate Stormglass as the gameplay vertical slice
 
-Research inputs and the detailed design/acceptance contract are recorded in [content direction](content-direction.md).
-The next work is to observe new players and revise only the parts that block the intended loop. Existing campaign
-chapters, Vehicle Proving Ground, Orchard, Bridge, and Manipulation Lab remain available.
+Stormglass already provides three player-selected signal cores, autonomous goal execution, payload and centre-of-
+gravity changes, authored storm keyframes, changing grip and a moving service cart. Use the playtest protocol to find
+where a new player cannot identify the danger, choose a goal, understand waiting, complete or diagnose the run, and
+explain one causal effect. Revise the data-authored task loop and information rhythm only where evidence shows a
+problem. Existing campaign content remains selectable.
 
-**Exit:** three fresh players can identify the danger, choose targets without steering, complete or diagnose a run,
-and explain how one of payload, terrain, grip, traffic prediction, or storm timing changed the result. At least two
-orders remain safely completable on the same seed and produce measurably different evidence. Until this observation,
-do not expand the sensor/chassis catalog or begin SLAM/VLA work.
+**Exit:** three fresh players can complete or diagnose the loop without steering through the autonomy problem; at
+least two target orders are safely completable on one seed and produce measurably different route, time, payload,
+clearance or grip evidence.
 
-### M2 — Refine Stormglass visual, audio, and debrief identity
+### P3 — Give the approved loop a distinctive presentation
 
-The first data-authored Stormglass presentation uses night fog, high bloom, three color-coded cores, a luminous
-base, storm pylons, broken solar arrays, antenna structures, wet terrain and state-driven pickup effects. Refine it
-from playtest evidence with distinctive terrain, landmarks, vehicle details, materials, weather,
-bounded particles, pickup and damage feedback, and state-driven sound. Visual and audio events read simulation state
-and never manufacture gameplay outcomes. Keep headless execution independent of graphical assets.
+Refine Stormglass with authored models, readable landmarks, vehicle details, materials, weather, bounded particles,
+lighting, camera staging and state-driven sound. Preparation, target choice, risk, pickup, waiting, release, damage and
+debrief must remain readable without opening AI View. Every effect reads snapshot state and cannot manufacture a
+physics or autonomy outcome. Headless execution remains independent of graphical assets.
 
-The Orchard prototype has a first presentation pass through scene data: varied fruit-bearing tree prefabs, deterministic
-scale and yaw variation, a detailed packing shed, storm beacons, state-specific collection/packing prefabs, an
-attached cargo crate with healthy/damaged item variants, wet-ground glints, pickup particles, and cargo warnings.
-The audio cue catalog maps generic event and decision codes to files and cooldowns; the graphical client no longer
-contains orchard-specific sound branches. This remains reusable evidence, but permanent hero assets begin only after
-M1 approves a loop and identifies the views and physical events that matter most.
+Apply the responsive information-design gate below to real flows: compact symbols, measured localized text, hover
+hints, responsive panels, immediate mouse input and clean shutdown. Broad screenshot work remains secondary to a
+concrete blocked flow.
 
-**Exit:** the preparation, route-choice, pickup, risk, and debrief beats are readable without opening AI View; a
-deterministic screenshot sequence and graphical smoke test show no missing assets or warnings; every dynamic effect
-names the state that drives it.
+**Exit:** the complete experience is visually coherent, responsive and understandable in English and Simplified
+Chinese; deterministic graphical smoke tests contain no clipping, missing assets or state/render disagreement.
 
-### M3 — Validate the architecture and generalize an experiment framework
+### P4 — Complete the causal learning and comparison loop
 
-Use the finished orchard slice as evidence to audit planner, route, chassis, actuator, sensor, payload, mission,
-scenario, runtime, timing, and data-ownership contracts. Correct boundaries that made the slice difficult, then
-generalize only the demonstrated needs into Scenario, Experiment, Baseline, Metric, and Diff concepts. Add
-deterministic fault profiles and compare complete trajectories and declared metrics rather than a success boolean.
-Keep the in-process fixed-step runtime as the default while preserving provider and message boundaries suitable for
-future threads, processes, and native hardware. External middleware compatibility is not a product milestone.
+Upgrade AI View and the debrief from internal-state display to a causal chain: observation, prediction, rejected
+candidates, selected constraint, action and measured outcome. Let a player rerun the same seed after changing one
+declared variable and compare complete run artifacts and key trajectory metrics. Keep simulator truth and onboard-
+observable estimates visually distinct.
 
-**Exit:** the orchard experiment can reproduce and compare controlled variants without UI-specific logic; contract
-tests cover units, frames, timestamps, command semantics, route metadata, dynamic payload, and fault boundaries; a
-new planner or chassis can enter through documented contracts without editing mission orchestration.
+**Exit:** a player can explain why the robot waited, moved or stopped, change one variable, and see a reproducible
+causal difference rather than only a different success boolean.
 
-### M4 — Complete one sourced typical platform-fidelity slice
+### P5 — Generalize experiments and deterministic fault injection
 
-Use RO-1 and one planar LiDAR to validate sourced sensor profiles, timestamps, intensity and
-dropout semantics, actuator modes, command expiry, and provider boundaries described in
-[platform fidelity](platform-fidelity.md). Every default records its public specification or engineering assumption,
-units, range, and effect. Do not claim calibrated sim-to-real accuracy from simulation tests alone.
+Extract only the needs demonstrated by the finished content into Scenario, Experiment, Baseline, Metric and Diff
+contracts. Add seeded provider-level faults for delay, loss, reordering, stale timestamps, sensor noise, actuator lag,
+saturation, slip and changing load. Preserve the in-process fixed-step runtime while keeping LSRI provider boundaries
+suitable for future threads, processes and native devices.
 
-**Exit:** the typical profile, limitations, analytic fixtures, deterministic evidence, and parameter provenance are
-published. An optional future `identified` profile supplies calibration inputs and held-out hardware errors without
-changing the runtime contracts.
+**Exit:** a content-authored experiment can compare algorithm or configuration variants without UI-specific mission
+logic, and faults traverse the same validation and safety paths as ordinary observations and commands.
 
-### M5 — Expand sensors and autonomy only through authored questions
+### P6 — Expand capabilities only for a named question
 
-Add multi-line or solid-state LiDAR, SLAM, VLA, multi-process transport, HIL, or native drivers when
-a specific learning or deployment experience requires it. Each addition must first state what new observation,
-decision, or validation question it makes possible.
+Add further sensors, algorithms or execution modes only when a specific learning experience or measured platform
+target supplies acceptance criteria. TEB remains a planned DWA comparison provider behind the shared
+`LocalPlanningRequest` → `ExecutableTrajectory` → `TrajectoryValidator` contract. Camera, production SLAM,
+solid-state LiDAR, multi-process LSRI Wire, HIL, VLA, native drivers, ABS, parking brakes, identified tire laws and
+more complex manipulation remain candidate work rather than release dependencies.
 
-**Exit:** each capability ships with a scenario, measurable acceptance evidence, and a smaller interface than the
-external system it may bridge to.
+**Exit:** each new capability ships with a named scenario, quantitative evidence, documented limits and a smaller
+project-owned interface than any external system it may bridge to.
 
-Each milestone passes its exit gate before the next begins. Sensor count and algorithm count are not substitutes for
-a refined, explainable experience.
-
-The [verification strategy](verification-strategy.md) is a continuous gate across all milestones. Contract
-correctness, mathematical invariants, independent oracles, deterministic system evidence, fault boundaries, and
-physical validation are accumulated in that order. An algorithm or interface correction may change an unreleased
-scenario outcome; the project keeps the correct model and then updates the lesson or content expectation.
+The [verification strategy](verification-strategy.md) is a continuous gate across P0--P6. Contract correctness,
+mathematical invariants, independent oracles, deterministic system evidence, fault boundaries, and physical
+validation accumulate in that order. Correct an unreleased algorithm or interface directly, update every caller and
+test, and then update the content expectation; do not preserve an incorrect result through compatibility behavior.
 
 ### Responsive information-design gate
 
@@ -492,53 +420,4 @@ physical feedback, and MuJoCo contact run without an analytic yaw-torque shortcu
 above plus motor-limited gradeability, zero-command rollback, public-step convergence, and 25 mm rough terrain.
 Mechanical tie rods, identified parameters, HIL, and real-car evidence remain optional later fidelity work rather
 than implied results of this gate.
-
-## Next implementation order
-
-The RO-1 rigid-body, device, and autonomy reference baseline remains the foundation. The next work does not add
-more sensor families, SLAM, VLA, ROS integration, or additional chassis fidelity until the current behavior and
-runtime contracts are closed.
-
-1. **Executable motion contract and runtime decomposition.** Make the local planner return the timestamped
- trajectory that control will track, add validation and tracking-envelope feedback, then continue after the
- completed `DynamicTrafficSystem` extraction with sensor scheduling, decision evidence, mission progress, and
- snapshot assembly from `ScenarioSession`. Split deployable operator intent and task lifecycle into a small
- middleware-neutral Task Executive; rename the remaining world, scoring and story owner as the Scenario/Game
- Session so `mission` no longer hides two incompatible responsibilities.
- The first Task Executive slice and the LSRM v1 map-provider/package boundary are implemented. The simulation
- composition root is now physically isolated as `src/sim/game/scenario/ScenarioSession` and `lost_signal_sim_game`; the
- remaining deployable work is a native application/API adapter.
-
-The source and build boundary is now executable rather than descriptive: all deployable code is under
-`src/robot`, all virtual devices, plants, worlds, game systems, and presentation are under `src/sim`, and every
-dependency points from SIM to ROBOT. `LOST_SIGNAL_BUILD_SIM=OFF` builds and tests the ROBOT stack without configuring
-MuJoCo or the client. LSRI now registers provider ownership per device endpoint and carries either body-motion
-commands or typed actuator commands with explicit duty, effort, velocity, or position semantics. This permits mixed
-native/simulated sensor composition and lets controller placement be selected by platform capability.
-
-The shipped RO-1 MuJoCo scenario now runs the deployable wheel controller through LSRI actuator mode. Joint
-position/velocity feedback crosses LSRI measurement schema 2, and normalized left/right duty returns through the
-typed command path. SIM retains motor response, joint dynamics, tire contact, and rigid-body integration. A future
-real smart drive may declare body-motion authority and own its embedded loops.
-2. **Behavior Graph control path.** Add the small data-driven graph schema and reusable navigate, observe, wait,
- cross, collect, recover, and complete nodes. Promote a conflict zone from `shadow` to `control` only after its
- exact executable trajectory passes the gates in [Behavior architecture](behavior-architecture.md).
-3. **One polished, playful scenario.** Use the same generic systems to author a chassis/terrain challenge with
- multiple targets, moving world actors, meaningful parameter choices, readable consequences, and a deterministic
- debrief. Existing chapters remain available.
-4. **Visual and audio finish for that scenario.** Improve models, materials, wheel animation, lighting, particles,
- camera staging, hints, and legends from snapshot state after the scenario mechanics are stable.
-5. **Experiment framework and fault injection.** Compare declared algorithm/configuration variants with versioned
- results, then add delay, loss, stale data, actuator lag, slip, and sensor faults through provider contracts.
-
-Each item must leave deterministic focused tests and the complete mission suite green before the next item starts.
-
-The first slice of item 1 is implemented: all three local-planner families return one typed, timestamped
-`ExecutableTrajectory`; mission arbitration publishes its command only after exact static, terrain, prediction-
-horizon, and swept dynamic validation; and the extracted `TrajectoryTrackingSystem` reports tracking-envelope
-evidence on the next decision tick. The `lost_signal` conflict zone is the first controlled vertical slice: a
-filtered dynamic track, conservative crossing assessment, sustained release, latched exit transit, and independent
-physical-collision veto now pass the scenario's collision and clearance contract. Other conflict zones remain in
-`shadow`. The remaining item-1 work is minimum-risk handling for tracking violations and extraction of sensor
-scheduling, decision evidence, mission progress, and snapshot assembly.
 
