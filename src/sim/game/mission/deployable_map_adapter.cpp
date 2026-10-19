@@ -135,6 +135,20 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  feature.attributes.emplace(
  "participant_radius_m", std::to_string(zone.participant_radius_m));
  result.features.push_back(std::move(feature));
+ for (std::size_t index = 0; index < zone.observation_approaches.size(); ++index) {
+ const auto& approach = zone.observation_approaches[index];
+ sim::runtime::SemanticFeature approach_feature;
+ approach_feature.id = zone.id + ".approach." + std::to_string(index);
+ approach_feature.kind = "conflict_approach";
+ approach_feature.geometry = sim::runtime::SemanticGeometry::Polyline;
+ approach_feature.vertices_m = approach.centerline;
+ approach_feature.attributes.emplace("conflict_zone_id", zone.id);
+ approach_feature.attributes.emplace(
+ "half_width_m", std::to_string(approach.half_width_m));
+ approach_feature.attributes.emplace(
+ "maximum_speed_mps", std::to_string(approach.maximum_speed_mps));
+ result.features.push_back(std::move(approach_feature));
+ }
  }
  return result;
 }

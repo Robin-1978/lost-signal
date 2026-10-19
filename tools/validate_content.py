@@ -853,7 +853,7 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 "max_wheel_speed_mps",
                 "stall_force_N",
                 "free_speed_mps",
-                "power_scale",
+ "energy_scale",
  "controller_bandwidth_radps",
  "controller_integral_time_s",
  "controller_derivative_time_s",

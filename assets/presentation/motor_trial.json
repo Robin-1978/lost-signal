@@ -3,9 +3,10 @@
   "id": "presentation.motor_trial",
   "is_default": false,
   "level": "motor_trial",
+  "robot": "robot.ro2",
   "garage": {
     "heading": "认识电机",
-    "brief": "扭矩、效率与极速，三种齿比取舍。先猜谁先到、谁更省，再看洛一跑给你看。",
+    "brief": "扭矩、功率、效率与极速，三种驱动包的取舍。先猜谁先到、谁更省，再让 RO-2 跑给你看。",
     "component_columns": [
       {
         "slot": "tires",
@@ -68,15 +69,15 @@
   },
   "running": {
     "heading": "抵达仓库校准点",
-    "normal_line": "洛一：正在体会新电机的脾气。",
-    "detected_line": "洛一：前方状态已确认。"
+    "normal_line": "RO-2：正在体会新电机的脾气。",
+    "detected_line": "RO-2：前方状态已确认。"
   },
   "debrief": {
     "success_title": "认识了电机",
-    "success_summary": "高速、扭矩和效率写在同一张成绩单上；齿比选择没有免费午餐。",
+    "success_summary": "速度、功率、扭矩和效率写在同一张成绩单上；驱动包选择没有免费午餐。",
     "failure_summary": "换一台电机，或者给预算留一点余量。",
     "evidence_heading": "本次运动",
-    "evidence_caption": "用时与能耗都来自真实仿真，不是文案。",
+    "evidence_caption": "用时来自仿真；能耗是当前驱动包模型的估算值。",
     "knowledge_title": "电机与能耗",
     "failure_titles": {
       "collision-static": "试跑失败：碰到了障碍",

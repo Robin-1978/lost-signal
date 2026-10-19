@@ -47,7 +47,7 @@ ComponentSpec resolve_traction(const ComponentDefinition& component) {
  return TractionSpec{
    required_number(component, "slip_scale", 0.0),
    required_number(component, "brake_decel_mps2", 0.0, false),
-   required_number(component, "power_scale", 0.0),
+ required_number(component, "energy_scale", 0.0),
    required_number(component, "friction_mu", 0.0, false),
    required_number(component, "rolling_resistance", 0.0),
  required_number(component, "contact_time_constant_s", 0.002),
@@ -133,7 +133,7 @@ ComponentSpec resolve_motor(const ComponentDefinition& component) {
    required_number(component, "max_wheel_speed_mps", 0.0, false),
    required_number(component, "stall_force_N", 0.0, false),
    required_number(component, "free_speed_mps", 0.0, false),
-   required_number(component, "power_scale", 0.0, false),
+ required_number(component, "energy_scale", 0.0, false),
  required_number(component, "controller_bandwidth_radps", 0.0, false),
  required_number(component, "controller_integral_time_s", 0.0, false),
  required_number(component, "controller_derivative_time_s", 0.0),

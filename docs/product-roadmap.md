@@ -82,23 +82,27 @@ Work proceeds through the following queue. A later package starts only when the 
 
 ### P0 — Close the current autonomy safety gap
 
-The remaining known integration blocker is `town_freight --recommended`. Collision avoidance is conservative, but
-the robot can wait until timeout at a safe pose that cannot continuously observe the traffic corridor. A vanished
-track correctly becomes unknown; absence of a track must never be treated as proof that the crossing is clear.
+`town_freight --recommended` previously waited until timeout at a safe pose after traffic left tracker range. That
+failure is now closed without extending stale tracks. A vanished track remains unknown; absence of a track is never
+treated as proof that the crossing is clear.
 
-Implement a ROBOT-side observability contract that records which conflict-zone entrances and corridor cells are
-covered by current LiDAR free-space rays. Select holding poses from static map geometry, route geometry, sensor field
-of view and occlusion so a pose must be both safe and capable of collecting release evidence. Keep uncovered or
-occluded space unknown. Simulation actor truth, authored actor IDs and a pre-scripted stop point remain outside this
-decision.
+The implemented ROBOT-side observability contract records whether current LiDAR free-space rays cover every sampled
+point in a map-semantic traffic approach. A physical return, including a mapped wall, ends visibility; short range,
+partial coverage, occlusion, future-dated scans and aged scans remain unknown. The remaining unseen-arrival budget
+subtracts both the participant radius and scan age, and must cover the executable crossing plus its time margin.
+Holding poses remain derived from route and conflict geometry. The recommended build uses a sensor whose declared
+range can observe the complete approach from that stop. Simulation actor truth, actor paths and actor IDs stay in SIM.
 
-Add focused tests for an occluded safe holding pose, a visible corridor with consecutive clear observations, a target
-that leaves the field of view before the corridor is observed clear, and the fallback path when conflict-zone
-semantics are absent. Then rerun `town_freight` with fixed seed and require success, zero collisions, declared dynamic
-clearance and no timeout.
+Focused tests cover a physical-return occlusion, insufficient sensor range, complete visible-corridor coverage,
+scan aging, duplicate scan timestamps, consecutive independent observations, empty/stale prediction fallback, and
+the content-to-ROBOT semantic adapter. The fixed-seed integration run succeeds in `104.04 s`, records zero collisions
+and `0.673 m` minimum dynamic clearance. The static minimum (`0.217 m`) remains reported; this lesson's authored
+`dynamic` score scope measures the traffic interaction, as do the other crossing lessons.
 
 **Exit:** crossing release is based on positive, time-aligned observation evidence; the scenario completes without
 weakening collision margins, changing world truth or inserting scenario-specific decision code.
+
+**Status: complete.** P1 is the active package.
 
 ### P1 — Re-establish the release candidate evidence
 
@@ -163,7 +167,11 @@ Add further sensors, algorithms or execution modes only when a specific learning
 target supplies acceptance criteria. TEB remains a planned DWA comparison provider behind the shared
 `LocalPlanningRequest` → `ExecutableTrajectory` → `TrajectoryValidator` contract. Camera, production SLAM,
 solid-state LiDAR, multi-process LSRI Wire, HIL, VLA, native drivers, ABS, parking brakes, identified tire laws and
-more complex manipulation remain candidate work rather than release dependencies.
+more complex manipulation remain candidate work rather than release dependencies. Higher-fidelity electric-drive
+work is one named package: separate motor winding/back-EMF and torque constants, gearbox ratio/efficiency/reflected
+inertia, inverter bus voltage/current/PWM limits, nested current/speed control, and calibrated energy/regeneration.
+Until that package exists, `energy_scale` remains only a relative mission-energy estimate and never changes physical
+actuator effort.
 
 **Exit:** each new capability ships with a named scenario, quantitative evidence, documented limits and a smaller
 project-owned interface than any external system it may bridge to.

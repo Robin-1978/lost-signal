@@ -751,9 +751,52 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
    zone.authority = item.at("authority").get<std::string>();
    zone.active_in = item.value("active_in", std::vector<std::string>{});
  zone.participant_radius_m = item.at("participant_radius_m").get<double>();
+ for (const auto& approach_item :
+ item.value("observation_approaches", nlohmann::json::array())) {
+ ConflictObservationApproachDefinition approach;
+ for (const auto& point : approach_item.at("centerline"))
+ approach.centerline.push_back(vec2(point));
+ approach.half_width_m = approach_item.at("half_width_m").get<double>();
+ approach.maximum_speed_mps =
+ approach_item.at("maximum_speed_mps").get<double>();
+ if (approach.centerline.size() < 2 || approach.half_width_m < 0.0 ||
+ !(approach.maximum_speed_mps > 0.0)) {
+ throw ContentError(path.string() + ": conflict zone '" + zone.id +
+ "' has an invalid observation approach");
+ }
+ zone.observation_approaches.push_back(std::move(approach));
+ }
    if (!(zone.min.x < zone.max.x && zone.min.y < zone.max.y)) {
     throw ContentError(path.string() + ": conflict zone '" + zone.id + "' has an invalid box");
    }
+ constexpr double kApproachBoundaryToleranceM = 1e-6;
+ for (const auto& approach : zone.observation_approaches) {
+ const auto& start = approach.centerline.front();
+ const bool within_x = start.x >= zone.min.x - kApproachBoundaryToleranceM &&
+ start.x <= zone.max.x + kApproachBoundaryToleranceM;
+ const bool within_y = start.y >= zone.min.y - kApproachBoundaryToleranceM &&
+ start.y <= zone.max.y + kApproachBoundaryToleranceM;
+ const bool on_x_edge = std::abs(start.x - zone.min.x) <= kApproachBoundaryToleranceM ||
+ std::abs(start.x - zone.max.x) <= kApproachBoundaryToleranceM;
+ const bool on_y_edge = std::abs(start.y - zone.min.y) <= kApproachBoundaryToleranceM ||
+ std::abs(start.y - zone.max.y) <= kApproachBoundaryToleranceM;
+ if (!(within_x && within_y && (on_x_edge || on_y_edge))) {
+ throw ContentError(path.string() + ": conflict zone '" + zone.id +
+ "' observation approach must start on the zone boundary");
+ }
+ for (std::size_t point = 1; point < approach.centerline.size(); ++point) {
+ const auto& value = approach.centerline[point];
+ const bool strictly_inside =
+ value.x > zone.min.x + kApproachBoundaryToleranceM &&
+ value.x < zone.max.x - kApproachBoundaryToleranceM &&
+ value.y > zone.min.y + kApproachBoundaryToleranceM &&
+ value.y < zone.max.y - kApproachBoundaryToleranceM;
+ if (strictly_inside) {
+ throw ContentError(path.string() + ": conflict zone '" + zone.id +
+ "' observation approach must extend outward from its boundary");
+ }
+ }
+ }
    if (zone.authority != "shadow" && zone.authority != "control") {
     throw ContentError(path.string() + ": conflict zone '" + zone.id + "' has unknown authority '" +
                        zone.authority + "'");

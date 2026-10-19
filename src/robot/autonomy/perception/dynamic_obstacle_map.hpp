@@ -52,20 +52,6 @@ class DynamicObstacleMap {
                                                       double max_age_s) const;
  std::vector<std::vector<DynamicObjectState>> predict_nominal(double time_s, double horizon_s,
                                                               double frame_dt_s, double max_age_s) const;
- // Bounded phantom coast for behavior admission (crossing departure, waiting
- // assessment). Tracks stale by up to max_age_s + coast_horizon_s are still
- // predicted, but coasting claims no corridor knowledge: a sensor-range exit
- // is not an observed shuttle endpoint, so learned bounds, dwell, and
- // reflection are disabled and the motion continues ballistically with the
- // tracker's growing uncertainty (raised coast cap). Unknown beyond the
- // coast stays unknown — callers must still require full execution coverage
- // inside their horizon plus consecutive confirmations. Short-horizon
- // execution validation (DWA, trajectory validator) must keep the strict
- // fresh-only predict(); coasting never authorizes an actuator command.
- std::vector<std::vector<DynamicObjectState>> predict_coasted(double time_s, double horizon_s,
-                                                              double frame_dt_s, double max_age_s,
-                                                              double coast_horizon_s) const;
-
  private:
  struct TrackState {
   DynamicTrack track;

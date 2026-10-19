@@ -749,6 +749,22 @@
       ],
       "authority": "control",
       "participant_radius_m": 0.55,
+      "observation_approaches": [
+        {
+          "centerline": [
+            [
+              10.7,
+              10.5
+            ],
+            [
+              16.2,
+              10.5
+            ]
+          ],
+          "half_width_m": 0.15,
+          "maximum_speed_mps": 0.55
+        }
+      ],
       "active_in": [
         "town_freight"
       ]
@@ -766,6 +782,22 @@
       ],
       "authority": "control",
       "participant_radius_m": 0.55,
+      "observation_approaches": [
+        {
+          "centerline": [
+            [
+              25.5,
+              17.8
+            ],
+            [
+              25.5,
+              12.3
+            ]
+          ],
+          "half_width_m": 0.15,
+          "maximum_speed_mps": 0.5
+        }
+      ],
       "active_in": [
         "town_freight"
       ]

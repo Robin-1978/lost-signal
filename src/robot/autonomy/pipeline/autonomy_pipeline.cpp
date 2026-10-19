@@ -37,6 +37,14 @@ const ObservedObstacleLayer& AutonomyPipeline::observed_obstacles() const {
  return perception_.obstacle_layer();
 }
 
+const std::vector<ObservedRay2D>& AutonomyPipeline::latest_visibility_rays() const {
+ return perception_.latest_visibility_rays();
+}
+
+double AutonomyPipeline::latest_visibility_stamp_s() const {
+ return perception_.latest_visibility_stamp_s();
+}
+
 LocalPlanningOutput AutonomyPipeline::plan_local(
  const LocalPlanningRequest& request, const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,

@@ -68,7 +68,14 @@ class ContentValidationTests(unittest.TestCase):
             {surface["material"] for surface in proving_map["surfaces"]},
         )
         self.assertEqual(
-            {"longitudinal_ramp", "ramp_highland", "cross_slope_lane", "rough_lane"},
+ {
+ "longitudinal_ramp",
+ "ramp_highland",
+ "cross_slope_entry_transition",
+ "cross_slope_lane",
+ "cross_slope_exit_transition",
+ "rough_lane",
+ },
             {terrain["id"] for terrain in proving_map["terrain"]},
         )
         self.assertEqual(

@@ -14,7 +14,15 @@ namespace sim {
 struct ObservedRay2D {
  Vec2 origin;
  Vec2 endpoint;
+ // Foreground return owned by the transient obstacle layer. Static-map and
+ // ground-consistent returns remain false so they cannot create duplicate
+ // occupancy.
  bool hit{false};
+ // Any physical range return. Free-space reasoning may use the open segment
+ // before this endpoint, but must never claim visibility behind it. This is
+ // deliberately separate from `hit` because a static wall still occludes a
+ // crossing even though it belongs to the immutable map layer.
+ bool physical_return{false};
 };
 
 struct ObservedObstacleLayerConfig {

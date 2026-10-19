@@ -270,18 +270,20 @@ steering step/rate/limits/recentring, common ICR, measured turn radius, closed-l
 low-grip translation loss and drive slip, zero-command rollback on a grade, motor-limited gradeability, cross-slope
 support, and 25 mm rough terrain. Its optional 6.0 m/s motor package retains headroom above the separately declared
 2.4 m/s chassis rating; the gate validates support and combined motor/service-brake stopping at the chassis rating.
-The current articulated drive models a current-limited four-quadrant H-bridge: motoring
-authority falls toward no-load speed, opposing duty retains bounded electrical braking authority, and zero duty
-coasts. RO-2's separate rear-wheel friction service-brake channel is implemented; parking brake, ABS, thermal fade,
+The current articulated drive uses a lumped, current-limited four-quadrant duty-to-force model: motoring authority
+falls toward no-load speed, opposing duty retains bounded electrical-braking authority, and zero duty coasts. It does
+not yet solve bus voltage, winding current, back EMF, copper loss, inverter efficiency, or regeneration. RO-2's
+separate rear-wheel friction service-brake channel is implemented; parking brake, ABS, thermal fade,
 and brake blending remain future capabilities and are required before treating RO-2 as a passenger-car-scale plant.
 These are class-level `typical` results; they do not identify a physical car.
 
 The subsystem boundary, industry references, data split, low-speed lock requirement, and staged acceptance matrix are
 specified in [braking architecture](braking-architecture.md).
 
-The `standard`, `torque`, and `eco` catalog entries are currently parameter sets for the same plant. They change
-maximum wheel speed, stall force, free speed, and power scale. They are not PWM, torque, velocity, and position
-command modes.
+The `standard`, `torque`, `eco`, and `speed` catalog entries are currently parameter sets for the same plant. They
+change maximum wheel speed, stall force, free speed, and a separately named `energy_scale`. The first three fields
+affect mechanics; `energy_scale` affects only the coarse mission energy estimate. It is neither a mechanical-power
+multiplier nor an electrical limit. These entries are not PWM, torque, velocity, and position command modes.
 
 The current Ackermann follower and local sampler use `0.25 m/s` as a conservative reverse policy default. This is
 a tunable typical-profile value, not an identified motor, gearbox, or chassis limit. An `identified` platform must

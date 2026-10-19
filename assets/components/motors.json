@@ -18,13 +18,13 @@
         "max_wheel_speed_mps": 2.4,
         "stall_force_N": 54.0,
         "free_speed_mps": 3.0,
-        "power_scale": 1.0,
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
         "static_friction_feedforward_duty": 0.08,
         "coulomb_smoothing_speed_mps": 0.05,
-        "viscous_drag_N_per_mps": 0.6
+        "viscous_drag_N_per_mps": 0.6,
+        "energy_scale": 1.0
       },
       "visual": {
         "primitive_2d": "box",
@@ -46,13 +46,13 @@
         "max_wheel_speed_mps": 2.0,
         "stall_force_N": 90.0,
         "free_speed_mps": 2.4,
-        "power_scale": 1.25,
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
         "static_friction_feedforward_duty": 0.05,
         "coulomb_smoothing_speed_mps": 0.05,
-        "viscous_drag_N_per_mps": 0.6
+        "viscous_drag_N_per_mps": 0.6,
+        "energy_scale": 1.25
       },
       "visual": {
         "primitive_2d": "box",
@@ -74,13 +74,13 @@
         "max_wheel_speed_mps": 2.2,
         "stall_force_N": 48.0,
         "free_speed_mps": 3.0,
-        "power_scale": 0.75,
         "controller_bandwidth_radps": 6.0,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
         "static_friction_feedforward_duty": 0.09,
         "coulomb_smoothing_speed_mps": 0.05,
-        "viscous_drag_N_per_mps": 0.6
+        "viscous_drag_N_per_mps": 0.6,
+        "energy_scale": 0.75
       },
       "visual": {
         "primitive_2d": "box",
@@ -96,19 +96,19 @@
     {
       "id": "motor.speed",
       "title": "高速电机",
-      "description": "低减速比驱动包带来明显更高的极速，但起步力更小、耗电更多，停车距离也显著增加。",
+      "description": "更高峰值功率与低减速比带来明显更高的极速，但轮缘堵转力更小、耗电更多，停车距离也显著增加。",
       "cost": 3,
       "behavior": {
         "max_wheel_speed_mps": 6.0,
         "stall_force_N": 32.0,
         "free_speed_mps": 7.0,
-        "power_scale": 1.7,
         "controller_bandwidth_radps": 7.5,
         "controller_integral_time_s": 5.0,
         "controller_derivative_time_s": 0.005,
         "static_friction_feedforward_duty": 0.12,
         "coulomb_smoothing_speed_mps": 0.05,
-        "viscous_drag_N_per_mps": 0.7
+        "viscous_drag_N_per_mps": 0.7,
+        "energy_scale": 1.7
       },
       "visual": {
         "primitive_2d": "box",

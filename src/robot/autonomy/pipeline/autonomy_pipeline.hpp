@@ -32,6 +32,8 @@ class AutonomyPipeline {
 
  const DynamicObstacleMap& dynamic_obstacles() const;
  const ObservedObstacleLayer& observed_obstacles() const;
+ const std::vector<ObservedRay2D>& latest_visibility_rays() const;
+ double latest_visibility_stamp_s() const;
 
  LocalPlanningOutput plan_local(
  const LocalPlanningRequest& request, const GridMap& planning_map,

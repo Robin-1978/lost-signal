@@ -10,9 +10,146 @@ namespace {
 constexpr double kStopLineToleranceM = 0.10;
 constexpr double kReliableAwaySpeedMps = 0.25;
 constexpr double kSpeedSearchStepMps = 0.10;
+constexpr double kVisibilityEndpointReserveM = 0.05;
 
 double distance(Vec2 a, Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
+}
+
+double point_segment_distance(Vec2 point, Vec2 from, Vec2 to) {
+ const Vec2 delta{to.x - from.x, to.y - from.y};
+ const double length_sq = delta.x * delta.x + delta.y * delta.y;
+ if (length_sq <= 1e-12)
+ return distance(point, from);
+ const double blend = std::clamp(
+ ((point.x - from.x) * delta.x + (point.y - from.y) * delta.y) /
+ length_sq, 0.0, 1.0);
+ return distance(point, {from.x + blend * delta.x, from.y + blend * delta.y});
+}
+
+double polyline_length(const std::vector<Vec2>& path) {
+ double result = 0.0;
+ for (std::size_t index = 0; index + 1 < path.size(); ++index)
+ result += distance(path[index], path[index + 1]);
+ return result;
+}
+
+bool point_observed_free(Vec2 point, const std::vector<ObservedRay2D>& rays,
+ double participant_radius_m) {
+ const double proof_radius = std::max(
+ 0.02, participant_radius_m - kVisibilityEndpointReserveM);
+ for (const auto& ray : rays) {
+ const Vec2 delta{ray.endpoint.x - ray.origin.x,
+ ray.endpoint.y - ray.origin.y};
+ const double length = std::hypot(delta.x, delta.y);
+ if (length <= 1e-9)
+ continue;
+ // A physical return proves free space only before the hit surface. Reserve
+ // one participant radius so a centre immediately behind that surface is not
+ // incorrectly labelled visible and empty.
+ const double clear_length = ray.physical_return
+ ? std::max(0.0, length - participant_radius_m)
+ : length;
+ if (clear_length <= 1e-9)
+ continue;
+ const Vec2 clear_end{
+ ray.origin.x + delta.x * clear_length / length,
+ ray.origin.y + delta.y * clear_length / length,
+ };
+ if (point_segment_distance(point, ray.origin, clear_end) <= proof_radius)
+ return true;
+ }
+ return false;
+}
+
+struct ApproachObservation {
+ bool available{false};
+ bool clear{false};
+ double coverage{0.0};
+ double unseen_arrival_lower_bound_s{0.0};
+};
+
+ApproachObservation observe_approaches(
+ const ConflictZone& zone, const std::vector<ObservedRay2D>& rays,
+ double visibility_stamp_s, double evaluation_stamp_s,
+ double execution_duration_s) {
+ ApproachObservation result;
+ if (zone.observation_approaches.empty() || rays.empty() ||
+ !std::isfinite(visibility_stamp_s) || !(zone.participant_radius_m > 0.0)) {
+ return result;
+ }
+ result.available = true;
+ const double evidence_age_s = std::isfinite(evaluation_stamp_s)
+ ? evaluation_stamp_s - visibility_stamp_s
+ : 0.0;
+ if (evidence_age_s < -1e-9)
+ return {};
+ result.unseen_arrival_lower_bound_s =
+ std::numeric_limits<double>::infinity();
+ std::size_t samples = 0;
+ std::size_t covered = 0;
+ const double sample_spacing = std::clamp(
+ zone.participant_radius_m * 0.5, 0.10, 0.25);
+ for (const auto& approach : zone.observation_approaches) {
+ if (approach.centerline.size() < 2 || !(approach.maximum_speed_mps > 0.0) ||
+ approach.half_width_m < 0.0) {
+ result.available = false;
+ return result;
+ }
+ const double length_m = polyline_length(approach.centerline);
+ // A participant conflicts when its footprint reaches the zone boundary,
+ // before its reference point does. The scan also ages between acquisition
+ // and this decision, so neither distance may be spent twice.
+ const double remaining_arrival_s =
+ std::max(0.0, length_m - zone.participant_radius_m) /
+ approach.maximum_speed_mps - std::max(0.0, evidence_age_s);
+ result.unseen_arrival_lower_bound_s = std::min(
+ result.unseen_arrival_lower_bound_s,
+ std::max(0.0, remaining_arrival_s));
+ for (std::size_t segment = 0; segment + 1 < approach.centerline.size(); ++segment) {
+ const Vec2 from = approach.centerline[segment];
+ const Vec2 to = approach.centerline[segment + 1];
+ const Vec2 delta{to.x - from.x, to.y - from.y};
+ const double segment_length = std::hypot(delta.x, delta.y);
+ if (segment_length <= 1e-9)
+ continue;
+ const Vec2 normal{-delta.y / segment_length, delta.x / segment_length};
+ const int longitudinal_samples = std::max(
+ 1, static_cast<int>(std::ceil(segment_length / sample_spacing)));
+ const int lateral_samples = std::max(
+ 1, static_cast<int>(std::ceil(
+ 2.0 * approach.half_width_m / sample_spacing)));
+ for (int longitudinal = 0; longitudinal <= longitudinal_samples; ++longitudinal) {
+ const double along = static_cast<double>(longitudinal) /
+ static_cast<double>(longitudinal_samples);
+ const Vec2 centre{
+ from.x + along * delta.x,
+ from.y + along * delta.y,
+ };
+ for (int lateral = 0; lateral <= lateral_samples; ++lateral) {
+ const double across = lateral_samples == 0
+ ? 0.0
+ : -approach.half_width_m +
+ 2.0 * approach.half_width_m * static_cast<double>(lateral) /
+ static_cast<double>(lateral_samples);
+ const Vec2 sample{
+ centre.x + across * normal.x,
+ centre.y + across * normal.y,
+ };
+ ++samples;
+ if (point_observed_free(sample, rays, zone.participant_radius_m))
+ ++covered;
+ }
+ }
+ }
+ }
+ result.coverage = samples > 0
+ ? static_cast<double>(covered) / static_cast<double>(samples)
+ : 0.0;
+ result.clear = samples > 0 && covered == samples &&
+ result.unseen_arrival_lower_bound_s + 1e-9 >=
+ execution_duration_s + kCrossingTimeMarginS;
+ return result;
 }
 
 bool inside(Vec2 point, const ConflictZone& zone) {
@@ -293,7 +430,9 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  Vec2 ego_position, double ego_heading_rad, double ego_speed_mps,
                                      const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  double frame_dt_s, const CrossingSafetyEnvelope& safety,
- const CrossingExecutionCaps& execution) {
+ const CrossingExecutionCaps& execution,
+ const std::vector<ObservedRay2D>& visibility_rays,
+ double visibility_stamp_s, double evaluation_stamp_s) {
  CrossingEvaluation out;
  if (route.empty() || zones.empty())
   return out;
@@ -314,6 +453,7 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  {zone.min.x - route_relevance_distance, zone.min.y - route_relevance_distance},
  {zone.max.x + route_relevance_distance, zone.max.y + route_relevance_distance},
  zone.participant_radius_m,
+ {},
  };
  const bool body_inside_zone =
  distance_to_box(ego_position, zone) <=
@@ -547,12 +687,28 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  speed = std::min(maximum_speed, speed + kSpeedSearchStepMps)) {
  auto trajectory = crossing_trajectory(crossing_path, ego_heading_rad, ego_speed_mps,
  speed, frame_dt_s, execution);
- const auto assessment = assess_crossing_trajectory(
+ DepartureAssessment assessment{
+ std::numeric_limits<double>::infinity(), DepartReason::kInvalid};
+ if (out.prediction_evidence_available) {
+ assessment = assess_crossing_trajectory(
  trajectory, speed, predicted_frames, frame_dt_s, safety);
+ } else if (!trajectory.empty()) {
+ const auto observed = observe_approaches(
+ *selected_zone, visibility_rays, visibility_stamp_s,
+ evaluation_stamp_s, trajectory.back().t_s);
+ out.free_space_evidence_available = observed.available;
+ out.observed_approaches_clear = observed.clear;
+ out.observation_stamp_s = visibility_stamp_s;
+ out.observation_coverage = observed.coverage;
+ out.unseen_arrival_lower_bound_s =
+ observed.unseen_arrival_lower_bound_s;
+ if (observed.clear)
+ assessment = {0.0, DepartReason::kGoNow};
+ }
  double candidate_gap = std::numeric_limits<double>::infinity();
  if (trajectory.empty()) {
  candidate_gap = -std::numeric_limits<double>::infinity();
- } else {
+ } else if (out.prediction_evidence_available) {
  for (double shift_s = -kCrossingTimeMarginS;
  shift_s <= kCrossingTimeMarginS + 1e-9; shift_s += std::max(1e-6, frame_dt_s)) {
  auto shifted = trajectory;
@@ -564,9 +720,13 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  }
  const double candidate_required_gap = safety.clearance_m;
  if (!trajectory.empty()) {
+ if (out.prediction_evidence_available) {
  const double horizon_s = static_cast<double>(predicted_frames.size() - 1) *
  std::max(1e-6, frame_dt_s);
  any_covered = any_covered || trajectory.back().t_s <= horizon_s + 1e-9;
+ } else {
+ any_covered = any_covered || out.observed_approaches_clear;
+ }
  if (candidate_gap > best_gap) {
  best_gap = candidate_gap;
  out.transit_speed_mps = speed;
@@ -636,8 +796,14 @@ CrossingOutput govern_crossing(CrossingState& state, const CrossingInput& input,
  }
  state.phase = CrossingPhase::Holding;
  if (input.ready_to_commit && input.safe_to_commit) {
-  state.clear_time_s += std::max(0.0, input.dt_s);
+ const bool distinct_evidence = !std::isfinite(input.evidence_stamp_s) ||
+ !std::isfinite(state.last_clear_evidence_stamp_s) ||
+ input.evidence_stamp_s > state.last_clear_evidence_stamp_s + 1e-9;
+ if (distinct_evidence) {
+ state.clear_time_s += std::max(0.0, input.dt_s);
  ++state.clear_observation_samples;
+ state.last_clear_evidence_stamp_s = input.evidence_stamp_s;
+ }
  if (state.clear_observation_samples >= kCrossingCommitConfirmSamples) {
    state.phase = CrossingPhase::Committed;
    state.clear_time_s = 0.0;
@@ -648,6 +814,7 @@ CrossingOutput govern_crossing(CrossingState& state, const CrossingInput& input,
  } else {
   state.clear_time_s = 0.0;
  state.clear_observation_samples = 0;
+ state.last_clear_evidence_stamp_s = -std::numeric_limits<double>::infinity();
  }
  return {state.phase, true, false, state.stop_point, state.stop_direction, state.stop_valid, state.exit_point, state.exit_valid,
  state.transit_speed_mps};
@@ -664,7 +831,9 @@ CrossingBehaviorDecision CrossingBehaviorSystem::assess(
  Vec2 ego_position, double ego_speed_mps, double ego_heading_rad,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  double frame_dt_s, const CrossingSafetyEnvelope& safety,
- const CrossingExecutionCaps& execution, double decision_dt_s) {
+ const CrossingExecutionCaps& execution, double decision_dt_s,
+ const std::vector<ObservedRay2D>& visibility_rays,
+ double visibility_stamp_s, double evaluation_stamp_s) {
  std::vector<ConflictZone> geometry;
  geometry.reserve(zones.size());
  for (const auto& zone : zones)
@@ -674,7 +843,8 @@ CrossingBehaviorDecision CrossingBehaviorSystem::assess(
  decision.has_active_zone = !zones.empty();
  decision.assessment = evaluate_crossing(
  geometry, route, path_index, ego_position, ego_heading_rad, ego_speed_mps,
- predicted_frames, frame_dt_s, safety, execution);
+ predicted_frames, frame_dt_s, safety, execution,
+ visibility_rays, visibility_stamp_s, evaluation_stamp_s);
 
  const auto has_control_authority = [&](const std::string& id) {
  const auto match = std::find_if(zones.begin(), zones.end(), [&](const auto& zone) {
@@ -732,8 +902,10 @@ CrossingBehaviorDecision CrossingBehaviorSystem::assess(
  ego_position, ego_speed_mps, ego_heading_rad, ready_stop, ready_direction, safety);
  input.ready_to_commit = decision.readiness.ready();
  input.safe_to_commit = decision.assessment.departure.reason == DepartReason::kGoNow &&
- decision.assessment.prediction_evidence_available &&
- decision.assessment.relevant_threats_moving_away;
+ ((decision.assessment.prediction_evidence_available &&
+ decision.assessment.relevant_threats_moving_away) ||
+ (decision.assessment.free_space_evidence_available &&
+ decision.assessment.observed_approaches_clear));
  decision.ready_to_commit = input.ready_to_commit;
  decision.safe_to_commit = input.safe_to_commit;
  input.stop_point = decision.assessment.stop_point;
@@ -744,6 +916,7 @@ CrossingBehaviorDecision CrossingBehaviorSystem::assess(
  input.exit_valid = true;
  input.transit_speed_mps = decision.assessment.transit_speed_mps;
  input.dt_s = decision_dt_s;
+ input.evidence_stamp_s = visibility_stamp_s;
  const auto previous_phase = state_.phase;
  decision.control = govern_crossing(state_, input, decision.assessment.zone_id);
  if (state_.stop_valid) {

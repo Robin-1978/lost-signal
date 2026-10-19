@@ -6,6 +6,7 @@
 #include "sim/game/mission/content_catalog.hpp"
 #include "tests/new/shadow_field_helpers.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -26,6 +27,8 @@ struct TownStream {
   long clear{0};
   long occupied{0};
   long uncertain{0};
+ long free_space_evidence{0};
+ double maximum_observation_coverage{0.0};
 };
 
 TownStream run_level(mission::ScenarioSession& mission) {
@@ -36,6 +39,11 @@ TownStream run_level(mission::ScenarioSession& mission) {
     mission.step();
     ++steps;
     const auto& snap = mission.snapshot();
+ if (snap.control.crossing_free_space_evidence_available)
+ ++stream.free_space_evidence;
+ stream.maximum_observation_coverage = std::max(
+ stream.maximum_observation_coverage,
+ snap.control.crossing_observation_coverage);
     const double ego_speed = std::abs(snap.robot.v);
     const sim::Vec2 ego{snap.robot.x, snap.robot.y};
     for (const auto& track : snap.dynamic_obstacles) {
@@ -71,18 +79,24 @@ int main() {
     mission::ScenarioSession second(catalog, level, build);
     const auto s2 = run_level(second);
     CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
-          s2.uncertain == s1.uncertain);
+ s2.uncertain == s1.uncertain &&
+ s2.free_space_evidence == s1.free_space_evidence &&
+ s2.maximum_observation_coverage == s1.maximum_observation_coverage);
   }
   // P0 exit gate: town_freight must complete without timeout or collision.
-  // The second blind zone used to hold forever once the patrol left the 5 m
-  // sensing disc (no track = no release); the bounded coast lets the
-  // departure gate prove the corridor against the coasting motion instead.
+ // Track loss remains unknown. The recommended 12 m LiDAR must instead
+ // observe every authored traffic approach clear, with enough remaining
+ // unseen-arrival time for the executable crossing trajectory.
   {
    const auto build = catalog.presentation_for_level("town_freight").recommended_build;
    mission::ScenarioSession mission(catalog, "town_freight", build);
-   run_level(mission);
+ const auto stream = run_level(mission);
    CHECK(mission.result().status == mission::MissionStatus::Succeeded);
    CHECK(mission.result().collisions == 0);
+ CHECK(mission.result().time_s <= catalog.level("town_freight").objective.time_limit_s);
+ CHECK(mission.result().min_dynamic_clearance_m >= 0.5);
+ CHECK(stream.free_space_evidence > 0);
+ CHECK(stream.maximum_observation_coverage == 1.0);
   }
   std::cout << "entry shadow town green\n";
   return 0;

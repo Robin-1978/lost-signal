@@ -19,9 +19,18 @@ int main() {
                    0.0,
                    x == 0 ? sim::TravelDirection::Unspecified : sim::TravelDirection::Forward});
  }
- std::vector<mission::ConflictZoneDefinition> zones{
-   {"crossing", {4.0, -1.0}, {5.0, 1.0}, "shadow", {"lesson"}},
- };
+ mission::ConflictZoneDefinition crossing_zone;
+ crossing_zone.id = "crossing";
+ crossing_zone.min = {4.0, -1.0};
+ crossing_zone.max = {5.0, 1.0};
+ crossing_zone.authority = "shadow";
+ crossing_zone.active_in = {"lesson"};
+ mission::ConflictObservationApproachDefinition observed_approach;
+ observed_approach.centerline = {{4.5, 1.0}, {4.5, 6.0}};
+ observed_approach.half_width_m = 0.15;
+ observed_approach.maximum_speed_mps = 0.5;
+ crossing_zone.observation_approaches.push_back(observed_approach);
+ std::vector<mission::ConflictZoneDefinition> zones{crossing_zone};
  const std::vector<std::vector<sim::DynamicObjectState>> open_frames(121, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
 
  const auto off_route_ready = sim::assess_crossing_readiness(
@@ -35,6 +44,8 @@ int main() {
  CHECK(active_zones.size() == 1);
  CHECK(active_zones.front().authority == sim::CrossingAuthority::Observe);
  CHECK(active_zones.front().geometry.participant_radius_m == 0.0);
+ CHECK(active_zones.front().geometry.observation_approaches.size() == 1);
+ CHECK(active_zones.front().geometry.observation_approaches.front().maximum_speed_mps == 0.5);
  const auto shadow =
  system.assess(active_zones, route, 0, {2.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);

@@ -200,7 +200,11 @@ and publishes an immutable snapshot for consumers.
 and translates authority plus the declared participant envelope into a neutral autonomy contract.
 `CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
 the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
-tracked-object predictions, and controls the hold/commit/clear transitions. Content never supplies a parking
+tracked-object predictions and current LiDAR free-space evidence, and controls the hold/commit/clear transitions.
+Map semantics may declare traffic-approach centerlines, corridor width and maximum participant speed. A current scan
+must cover the complete approach before it can supplement a missing track; physical returns terminate visibility,
+and participant radius plus scan age reduce the remaining arrival-time bound. Duplicate sensor timestamps cannot
+advance the confirmation count. Content never supplies a parking
 coordinate: the stop is a continuous pose derived from route and conflict geometry rather than a selected grid
 cell. Actor truth and physics objects never cross the autonomy boundary. `TrajectoryTrackingSystem` owns the last
 accepted local trajectory between decision ticks and reports position, heading, and speed errors against its
@@ -208,8 +212,10 @@ interpolated expected state. Tracking is currently evidence only; it does not si
 Dynamic-object perception publishes timestamped constant-velocity track estimates rather than raw LiDAR cluster
 centroids. Prediction may retain two motion modes while a shuttle pauses at a learned endpoint. Behavior consumes
 that conservative view. Motion regression uses measurement-time samples so a smooth position filter cannot turn an
-endpoint dwell into false outbound motion. An empty or stale prediction is explicit unknown evidence and can never
-release a controlled crossing. A separate physical-collision validator retains final veto authority.
+endpoint dwell into false outbound motion. An empty or stale prediction is explicit unknown evidence; it can release
+a controlled crossing only when an independent, current and complete free-space observation proves every declared
+traffic approach clear for the executable interval. A separate physical-collision validator retains final veto
+authority.
 
 Task orchestration is moving toward a small data-driven Behavior Graph, while continuous commitments use focused
 deterministic state machines. The project does not embed a general-purpose behavior-tree runtime. The detailed

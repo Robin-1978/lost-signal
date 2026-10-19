@@ -81,6 +81,20 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["max"] = vec2(zone.max);
   item["authority"] = zone.authority;
  item["participant_radius_m"] = zone.participant_radius_m;
+ if (!zone.observation_approaches.empty()) {
+ nlohmann::ordered_json approaches = nlohmann::ordered_json::array();
+ for (const auto& approach : zone.observation_approaches) {
+ nlohmann::ordered_json approach_item;
+ nlohmann::ordered_json centerline = nlohmann::ordered_json::array();
+ for (const auto point : approach.centerline)
+ centerline.push_back(vec2(point));
+ approach_item["centerline"] = std::move(centerline);
+ approach_item["half_width_m"] = approach.half_width_m;
+ approach_item["maximum_speed_mps"] = approach.maximum_speed_mps;
+ approaches.push_back(std::move(approach_item));
+ }
+ item["observation_approaches"] = std::move(approaches);
+ }
   if (!zone.active_in.empty()) {
    item["active_in"] = strings(zone.active_in);
   }

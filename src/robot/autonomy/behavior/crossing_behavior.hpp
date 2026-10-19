@@ -1,13 +1,26 @@
 #pragma once
 
+#include "robot/autonomy/mapping/observed_obstacle_layer.hpp"
 #include "robot/autonomy/planning/local/predictor.hpp"
 #include "robot/autonomy/planning/path.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <vector>
 
 namespace sim {
+
+// Map-semantic traffic approach used for occlusion-aware admission. The
+// polyline starts on the conflict-region boundary and extends outward along a
+// possible participant path. If current LiDAR free-space rays cover the swept centre
+// corridor, an unseen participant beyond the far end cannot reach the zone
+// sooner than path_length / maximum_speed_mps.
+struct CrossingObservationApproach {
+ std::vector<Vec2> centerline;
+ double half_width_m{0.0};
+ double maximum_speed_mps{0.0};
+};
 
 // Neutral map semantics consumed by autonomy. Mission content adapters may
 // author boxes, polygons, or lanelets later; this first contract exposes only
@@ -21,6 +34,7 @@ struct ConflictZone {
  // This comes from map semantics, not simulation truth, so a stop line remains
  // safe before a live track matures.
  double participant_radius_m{0.0};
+ std::vector<CrossingObservationApproach> observation_approaches;
 };
 
 // Behavior authority is part of the autonomy input contract. A world/content
@@ -44,6 +58,14 @@ struct CrossingEvaluation {
  // hypothesis before behavior may accumulate a release confirmation.
  bool prediction_evidence_available{false};
  bool relevant_threats_moving_away{false};
+ // A fresh LiDAR scan may independently prove every authored traffic
+ // approach clear. This is positive free-space evidence; an empty track list
+ // alone never sets it.
+ bool free_space_evidence_available{false};
+ bool observed_approaches_clear{false};
+ double observation_stamp_s{-std::numeric_limits<double>::infinity()};
+ double observation_coverage{0.0};
+ double unseen_arrival_lower_bound_s{0.0};
  std::string zone_id;
  std::size_t entry_index{0};
  std::size_t exit_index{0};
@@ -112,7 +134,10 @@ CrossingEvaluation evaluate_crossing(const std::vector<ConflictZone>& zones,
  Vec2 ego_position, double ego_heading_rad, double ego_speed_mps,
                                      const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  double frame_dt_s, const CrossingSafetyEnvelope& safety,
- const CrossingExecutionCaps& execution);
+ const CrossingExecutionCaps& execution,
+ const std::vector<ObservedRay2D>& visibility_rays = {},
+ double visibility_stamp_s = -std::numeric_limits<double>::infinity(),
+ double evaluation_stamp_s = -std::numeric_limits<double>::infinity());
 
 enum class CrossingPhase { Inactive, Holding, Committed, Cleared };
 
@@ -132,6 +157,9 @@ struct CrossingInput {
  bool exit_valid{false};
  double transit_speed_mps{0.0};
  double dt_s{0.0};
+ // Confirmation counts distinct sensor observations. A fast decision loop
+ // must not count one LiDAR frame twice.
+ double evidence_stamp_s{-std::numeric_limits<double>::infinity()};
 };
 
 struct CrossingState {
@@ -146,6 +174,7 @@ struct CrossingState {
  bool exit_valid{false};
  double transit_speed_mps{0.0};
  std::string zone_id;
+ double last_clear_evidence_stamp_s{-std::numeric_limits<double>::infinity()};
 };
 
 struct CrossingOutput {
@@ -196,7 +225,10 @@ class CrossingBehaviorSystem {
  Vec2 ego_position, double ego_speed_mps, double ego_heading_rad,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  double frame_dt_s, const CrossingSafetyEnvelope& safety,
- const CrossingExecutionCaps& execution, double decision_dt_s);
+ const CrossingExecutionCaps& execution, double decision_dt_s,
+ const std::vector<ObservedRay2D>& visibility_rays = {},
+ double visibility_stamp_s = -std::numeric_limits<double>::infinity(),
+ double evaluation_stamp_s = -std::numeric_limits<double>::infinity());
 
  private:
  CrossingState state_;

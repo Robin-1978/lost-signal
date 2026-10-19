@@ -13,6 +13,8 @@ PerceptionPipeline::PerceptionPipeline(const GridMap& static_map, int width,
 void PerceptionPipeline::reset(std::uint32_t seed) {
  lidar_.reset(seed);
  obstacles_.reset();
+ latest_visibility_rays_.clear();
+ latest_visibility_stamp_s_ = -std::numeric_limits<double>::infinity();
 }
 
 LidarPerceptionFrame PerceptionPipeline::process(const Scan& scan,
@@ -24,6 +26,8 @@ LidarPerceptionFrame PerceptionPipeline::process(const Scan& scan,
  throw std::invalid_argument(
  "perception pipeline rejected an out-of-order LiDAR observation");
  }
+ latest_visibility_rays_ = frame.obstacle_rays;
+ latest_visibility_stamp_s_ = scan.header.stamp_s;
  return frame;
 }
 

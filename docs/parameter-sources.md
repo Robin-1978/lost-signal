@@ -112,8 +112,20 @@ as hidden constants in the differential-drive implementation.
 
 `motor.speed` represents a higher-speed, lower-reduction drive package for controlled teaching runs. Its assumed
 wheel-surface capability is 6.0 m/s and its free speed is 7.0 m/s, with 32 N short-duration rim stall force, compared
-with 2.4/3.0 m/s and 54 N for the standard package. Motor capability and validated chassis rating are separate data:
-RO-1 is rated at 1.0 m/s and RO-2 at 2.4 m/s. Autonomy never treats no-load motor speed as a safe chassis speed.
+with 2.4/3.0 m/s and 54 N for the standard package. Under the implemented linear force-speed curve, peak mechanical
+wheel power per drive channel is `stall_force * free_speed / 4`: 56 W for the speed package versus 40.5 W for the
+standard package and 36 W for the eco package. These are short-duration teaching assumptions, not electrical input
+ratings or continuous-duty claims. Motor capability and validated chassis rating are separate data: RO-1 is rated at
+1.0 m/s and RO-2 at 2.4 m/s. Autonomy never treats no-load motor speed as a safe chassis speed. The `motor_trial`
+therefore uses RO-2; placing the same component on RO-1 correctly leaves the vehicle limited to its 1.0 m/s rating.
+
+`energy_scale` is deliberately separate from those mechanical parameters. It multiplies the current mission-level
+energy estimate, which is based on chassis speed, yaw rate, grade, and declared sensor/computer loads. It does not
+feed MuJoCo effort and must not be described as motor power, efficiency, bus current, or battery consumption. The
+speed package's value of `1.7` is an authored teaching-profile assumption that makes this specific package consume
+more estimated energy in the comparison; high peak power does not universally imply greater energy use. A physical
+energy claim requires voltage, current, back-EMF, winding loss, inverter/gear efficiency, regeneration, and battery
+state models plus calibration data.
 
 RO-2 uses the same class of documented motor assumptions with two rear drive channels and two front steering
 channels. Its 26 kg mass, 0.62 m wheelbase, 0.58 m track, 0.10 m wheel radius, 54 N per-wheel peak rim force, 8 N m

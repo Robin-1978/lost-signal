@@ -246,6 +246,7 @@ LidarPerceptionFrame LidarPerceptionSystem::process(const Scan& scan, const Scan
  projected.ray.hit = !ground_return && is_unmapped_return(
  scan, static_reference, ray, config.range_noise_sigma_m, static_map_.res(),
  config.map_alignment_tolerance_m);
+ projected.ray.physical_return = scan.hit[ray];
  foreground[static_cast<std::size_t>(ray)] = projected.ray.hit ? 1 : 0;
  output.obstacle_rays.push_back(projected.ray);
  if (!scan.hit[ray])

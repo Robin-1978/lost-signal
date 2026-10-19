@@ -176,6 +176,11 @@ struct ControlSnapshot {
  double crossing_stop_distance_m{0.0};
  double crossing_stop_heading_error_rad{0.0};
  bool crossing_prediction_evidence_available{false};
+ bool crossing_free_space_evidence_available{false};
+ bool crossing_observed_approaches_clear{false};
+ double crossing_observation_coverage{0.0};
+ double crossing_unseen_arrival_lower_bound_s{0.0};
+ double crossing_observation_stamp_s{-1.0};
  bool crossing_threats_moving_away{false};
  sim::Vec2 crossing_exit{0, 0};
  double crossing_transit_speed_mps{0.0};

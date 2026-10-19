@@ -19,7 +19,9 @@ namespace mission {
 struct TractionSpec {
  double slip_scale{0.0};
  double brake_decel_mps2{0.0};
- double power_scale{0.0};
+ // Multiplier for the coarse mission energy estimate only. Contact dynamics
+ // use friction, rolling resistance and compliance below.
+ double energy_scale{0.0};
  double friction_mu{0.0};
  double rolling_resistance{0.0};
  double contact_time_constant_s{0.0};
@@ -61,7 +63,9 @@ struct MotorSpec {
  double max_wheel_speed_mps{0.0};
  double stall_force_N{0.0};
  double free_speed_mps{0.0};
- double power_scale{0.0};
+ // Multiplier for the coarse mission energy estimate only. Mechanical output
+ // is defined by stall_force_N and free_speed_mps.
+ double energy_scale{0.0};
  double controller_bandwidth_radps{0.0};
  double controller_integral_time_s{0.0};
  double controller_derivative_time_s{0.0};

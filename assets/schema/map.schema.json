@@ -289,6 +289,37 @@
           "minimum": 0,
           "description": "Conservative radius in meters around a traffic reference point, including expected footprint and the site's tracking reserve."
         },
+        "observation_approaches": {
+          "type": "array",
+          "description": "Map-semantic traffic approaches that LiDAR must observe clear before track-free crossing release. Each centerline starts on the conflict-zone boundary and extends outward.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "centerline",
+              "half_width_m",
+              "maximum_speed_mps"
+            ],
+            "properties": {
+              "centerline": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "$ref": "#/$defs/vec2"
+                }
+              },
+              "half_width_m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "maximum_speed_mps": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "default": []
+        },
         "active_in": {
           "$ref": "#/$defs/active"
         }

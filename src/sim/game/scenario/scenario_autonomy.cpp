@@ -314,19 +314,8 @@ void ScenarioSession::decide_control() {
  // time-indexed prediction. Recomputing each consumer independently could
  // make a single decision explain itself with mutually different futures.
  const double assessment_horizon = shadow_length / shadow_cruise + prediction_horizon;
- // Crossing admission uses a bounded phantom coast beyond tracker
- // freshness. A confirmed periodic actor that leaves the 5 m sensing disc
- // is not gone: it coasts ballistically on its last motion with growing
- // uncertainty (no corridor claims beyond observation — a range exit is
- // not an observed shuttle endpoint, so bounds and dwell do not reflect
- // it back). The departure gate still requires full execution coverage
- // inside this horizon plus consecutive confirmations, and DWA plus the
- // trajectory validator below keep the strict fresh-only frames. Unknown
- // beyond the coast stays unknown: no track ever observed means no
- // release. Coast length covers a committed transit plus margin.
- constexpr double kCrossingTrackCoastS = 12.0;
- const auto assessment_frames = autonomy_pipeline_->dynamic_obstacles().predict_coasted(
-   snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s(), kCrossingTrackCoastS);
+ const auto assessment_frames = autonomy_pipeline_->dynamic_obstacles().predict(
+ snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
 
  // A map-semantic conflict zone is the high-level contract for crossing
  // traffic. It yields a stable route-derived stop point and a bounded path
@@ -356,7 +345,8 @@ void ScenarioSession::decide_control() {
  std::min(robot_definition_.motor.max_wheel_accel_mps2,
  resolved_build_.traction().brake_decel_mps2),
  resolved_build_.traction().brake_decel_mps2, yaw_cap_rads_},
- 1.0 / decision_hz());
+ 1.0 / decision_hz(), autonomy_pipeline_->latest_visibility_rays(),
+ autonomy_pipeline_->latest_visibility_stamp_s(), snapshot_.time_s);
  const auto& crossing = traffic_decision.assessment;
  // Behavior may grant permission to enter a controlled crossing, but it is
  // never a collision waiver. The local planner is the final motion-safety
@@ -383,6 +373,15 @@ void ScenarioSession::decide_control() {
  snapshot_.control.crossing_stop_distance_m = crossing.stop_distance_m;
  snapshot_.control.crossing_stop_heading_error_rad = traffic_decision.readiness.heading_error_rad;
  snapshot_.control.crossing_prediction_evidence_available = crossing.prediction_evidence_available;
+ snapshot_.control.crossing_free_space_evidence_available =
+ crossing.free_space_evidence_available;
+ snapshot_.control.crossing_observed_approaches_clear =
+ crossing.observed_approaches_clear;
+ snapshot_.control.crossing_observation_coverage = crossing.observation_coverage;
+ snapshot_.control.crossing_unseen_arrival_lower_bound_s =
+ crossing.unseen_arrival_lower_bound_s;
+ snapshot_.control.crossing_observation_stamp_s =
+ std::isfinite(crossing.observation_stamp_s) ? crossing.observation_stamp_s : -1.0;
  snapshot_.control.crossing_threats_moving_away = crossing.relevant_threats_moving_away;
  snapshot_.control.crossing_exit = traffic_decision.control.exit_point;
  snapshot_.control.crossing_transit_speed_mps = crossing.transit_speed_mps;

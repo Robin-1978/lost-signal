@@ -43,7 +43,7 @@ const char kPlayerTire[] = R"({
       "behavior": {
         "slip_scale": 1.0,
         "brake_decel_mps2": 3.0,
-        "power_scale": 1.0,
+ "energy_scale": 1.0,
         "friction_mu": 0.7,
  "rolling_resistance": 0.01,
  "contact_time_constant_s": 0.006,

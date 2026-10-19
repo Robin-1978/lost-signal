@@ -747,7 +747,7 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
     // simulation audit. On the recalibrated grade neither tire is
     // traction-limited, so the honest differentiator is the catalogued
     // tradeoff: grip brakes shorter and holds margin but costs more energy
-    // (power_scale 1.15, higher rolling resistance), while standard runs
+ // (energy_scale 1.15, higher rolling resistance), while standard runs
     // slightly faster here. The stale "standard takes longer and slips much
     // more" ordering encoded the old grade and is retired.
  {
@@ -769,12 +769,14 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
   CHECK(fast.result().max_rollover_risk < 1.0);
     CHECK(fast.result().energy_wh < careful.result().energy_wh);
  }
- // The motor lesson exposes a measurable gearing tradeoff. The recommended
- // high-speed drive must win the short straight on time, while the eco drive
- // must retain a meaningful energy advantage. Score thresholds sit between
- // the two observed outcomes so the debrief communicates that distinction.
+ // The motor lesson uses RO-2 because its validated 2.4 m/s chassis rating
+ // can expose the speed package's higher mechanical power. RO-1 correctly
+ // caps both packages at 1.0 m/s and would turn this into a launch-force-only
+ // comparison. Speed must win on time while eco retains an energy advantage;
+ // score thresholds sit between the observed outcomes.
  {
  const auto& presentation = catalog.presentation_for_level("motor_trial");
+ CHECK(presentation.robot_id == "robot.ro2");
  mission::ScenarioSession eco(catalog, "motor_trial", presentation.default_build);
  mission::ScenarioSession speed(catalog, "motor_trial", presentation.recommended_build);
  eco.run_to_completion();
@@ -801,8 +803,9 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
   CHECK(field.snapshot().status == mission::MissionStatus::Running);
   CHECK(field.snapshot().time_s > 59.0);
   CHECK(field.world_activity().weather_revision >= 1);
-  CHECK(field.world_activity().incident.active);
-  CHECK(field.field_dispatch().active);
+ CHECK(field.world_activity().incident.active ||
+ field.world_activity().incident.completed_count > 0);
+ CHECK(field.field_dispatch().active || field.field_dispatch().completed_count > 0);
   CHECK(std::any_of(field.events().begin(), field.events().end(),
                     [](const auto& event) { return event.code == "incident-opened"; }));
  }

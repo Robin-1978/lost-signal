@@ -33,13 +33,6 @@ constexpr double kPositionUncertaintyCapM = 0.08;
 constexpr double kVelocityUncertaintyFloorMps = 0.04;
 constexpr double kVelocityUncertaintyCapMps = 0.12;
 constexpr double kPositionPredictionEnvelopeCapM = 0.10;
-// Coasting uncertainty cap: an unobserved track's reachable set must grow far
-// beyond the fresh-observation envelope, otherwise a long coast reads as
-// false certainty. 1.0 m keeps a 12 s coast honest inside site-scale
-// corridors while still permitting release when the swept gap dwarfs the
-// envelope. Engineering assumption; replace with a calibrated covariance
-// when a hardware target provides one.
-constexpr double kCoastedUncertaintyCapM = 1.0;
 
 Vec2 limited_velocity(Vec2 velocity) {
  const double speed = std::hypot(velocity.x, velocity.y);
@@ -338,23 +331,6 @@ std::vector<std::vector<DynamicObjectState>> DynamicObstacleMap::predict_nominal
  for (auto& input : inputs)
   input.alternate_velocity_valid = false;
  return predict_frames(inputs, time_s, horizon_s, frame_dt_s, max_age_s);
-}
-
-std::vector<std::vector<DynamicObjectState>> DynamicObstacleMap::predict_coasted(
-    double time_s, double horizon_s, double frame_dt_s, double max_age_s, double coast_horizon_s) const {
- auto inputs = predict_inputs();
- for (auto& input : inputs) {
-  if (time_s - input.last_observed_s > max_age_s) {
-   input.bounded_x = false;
-   input.bounded_y = false;
-   input.endpoint_dwell_s = 0.0;
-   input.initial_dwell_remaining_s = 0.0;
-   input.position_uncertainty_cap_m =
-     std::max(input.position_uncertainty_cap_m, kCoastedUncertaintyCapM);
-  }
- }
- return predict_frames(inputs, time_s, horizon_s, frame_dt_s,
-                       max_age_s + std::max(0.0, coast_horizon_s));
 }
 
 } // namespace sim

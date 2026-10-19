@@ -153,6 +153,10 @@ int main() {
  CHECK(!first_perception.dynamic_object_detected);
  CHECK(std::any_of(first_perception.obstacle_rays.begin(),
  first_perception.obstacle_rays.end(), [](const auto& ray) { return ray.hit; }));
+ CHECK(std::all_of(first_perception.obstacle_rays.begin(),
+ first_perception.obstacle_rays.end(), [](const auto& ray) {
+ return !ray.hit || ray.physical_return;
+ }));
  bool motion_confirmed = false;
  double last_frame_time = 0.0;
  for (int sample = 1; sample <= 20 && !motion_confirmed; ++sample) {
@@ -206,6 +210,10 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  if (frame_index == 0) {
  CHECK(std::none_of(wall_perception.obstacle_rays.begin(),
  wall_perception.obstacle_rays.end(), [](const auto& ray) { return ray.hit; }));
+ CHECK(std::any_of(wall_perception.obstacle_rays.begin(),
+ wall_perception.obstacle_rays.end(), [](const auto& ray) {
+ return ray.physical_return;
+ }));
  }
  }
  CHECK(wall_perception_system.dynamic_obstacles().active_tracks(0.2, 1.0).empty());
@@ -271,6 +279,7 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  {{0.0, 0.0}, 0.0, 0.0, 0.45,
  0.32, 0.0, 0.0, 0.30}, 1.0);
  CHECK(!frame.obstacle_rays[0].hit);
+ CHECK(frame.obstacle_rays[0].physical_return);
  CHECK(!frame.dynamic_object_detected);
  }
  CHECK(ground_perception.dynamic_obstacles().active_tracks(2.7, 1.0).empty());
@@ -358,26 +367,18 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(nominal.front().size() == 1);
  CHECK(nominal.back().front().p.x > 1.3);
 
- // A confirmed mover that leaves the sensing disc coasts ballistically for
- // behavior admission: fresh-only predict() drops it once stale, while
- // predict_coasted() keeps it inside the coast horizon. The coast must not
- // reflect at the range-exit bound (sensor geometry is not a learned
- // shuttle endpoint), and its uncertainty must keep growing toward the
- // coast cap instead of reading as false certainty.
- sim::DynamicObstacleMap leaver;
- leaver.observe({11, {0.0, 0.0}, 0.4}, 0.0);
+ // Leaving the field of view does not create a behavior-grade phantom.
+ // Once the last observation exceeds the declared freshness budget, every
+ // prediction frame is empty and crossing behavior must seek independent
+ // positive free-space evidence rather than extrapolate this track.
+ sim::DynamicObstacleMap departed;
+ departed.observe({11, {0.0, 0.0}, 0.4}, 0.0);
  for (int sample = 1; sample <= 10; ++sample)
-  leaver.observe({11, {0.05 * sample, 0.0}, 0.4}, sample * 0.1);
- const auto fresh_only = leaver.predict(4.0, 2.0, 0.1, 1.0);
- CHECK(fresh_only.front().empty());
- const auto coasted = leaver.predict_coasted(4.0, 2.0, 0.1, 1.0, 12.0);
- CHECK(coasted.size() == 21);
- CHECK(coasted.front().size() == 1);
- CHECK(coasted.front()[0].p.x > 1.8 && coasted.front()[0].p.x < 2.2);
- CHECK(coasted.back()[0].p.x > coasted.front()[0].p.x);
- CHECK(coasted.front()[0].position_uncertainty_m > 0.10);
- const auto beyond_coast = leaver.predict_coasted(20.0, 2.0, 0.1, 1.0, 12.0);
- CHECK(beyond_coast.front().empty());
+ departed.observe({11, {0.05 * sample, 0.0}, 0.4}, sample * 0.1);
+ const auto stale_departure = departed.predict(4.0, 2.0, 0.1, 1.0);
+ CHECK(stale_departure.size() == 21);
+ for (const auto& frame : stale_departure)
+ CHECK(frame.empty());
 
  // At a 5 Hz sensor cadence, the smooth position state may coast beyond a
  // shuttle endpoint. Intent classification must follow the measurement-time

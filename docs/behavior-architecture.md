@@ -129,11 +129,14 @@ preserve the same timestamped track and prediction contracts.
 
 Crossing relevance follows the route point nearest the physical body, never the controller lookahead index. The map
 zone represents the geometric overlap of the two motion corridors. Release requires the ego body to settle at a
-fixed stop line, current prediction evidence to exist, every relevant prediction mode to leave the zone, the
-observed actor motion to point outward, and the complete ego traversal interval to be clear for a sustained
-confirmation time. Empty frames, stale tracks, and unconfirmed motion mean unknown and keep the hold active; absence
-of a mature track is never treated as a clear road. Passing the commit line latches the exit maneuver so ordinary
-soft-margin changes do not stop or reverse the robot inside the conflict area.
+fixed stop line and one of two positive evidence paths. Fresh tracked-object evidence must show every relevant
+prediction mode leaving the zone with outward observed motion and a clear complete traversal interval. When no fresh
+track exists, current LiDAR rays must cover every point of each map-semantic traffic approach, and the conservative
+arrival bound for anything beyond the observed corridor must exceed traversal time plus margin. Physical returns
+occlude the space behind them; participant radius and scan age reduce that bound. Consecutive confirmation counts
+distinct sensor timestamps, so a faster behavior loop cannot reuse one scan. Empty frames, stale tracks, short range,
+partial coverage and unconfirmed motion remain unknown and keep the hold active. Passing the commit line latches the
+exit maneuver so ordinary soft-margin changes do not stop or reverse the robot inside the conflict area.
 
 This design follows the compact parts of established stacks rather than importing their runtime:
 

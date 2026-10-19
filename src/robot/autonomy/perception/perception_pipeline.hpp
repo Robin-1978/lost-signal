@@ -4,6 +4,8 @@
 #include "robot/autonomy/perception/lidar_perception_system.hpp"
 
 #include <cstdint>
+#include <limits>
+#include <vector>
 
 namespace sim {
 
@@ -30,10 +32,17 @@ class PerceptionPipeline {
  }
  DynamicObstacleMap& dynamic_obstacles() { return lidar_.dynamic_obstacles(); }
  const ObservedObstacleLayer& obstacle_layer() const { return obstacles_; }
+ const std::vector<ObservedRay2D>& latest_visibility_rays() const {
+ return latest_visibility_rays_;
+ }
+ double latest_visibility_stamp_s() const { return latest_visibility_stamp_s_; }
 
  private:
  LidarPerceptionSystem lidar_;
  ObservedObstacleLayer obstacles_;
+ std::vector<ObservedRay2D> latest_visibility_rays_;
+ double latest_visibility_stamp_s_{-
+ std::numeric_limits<double>::infinity()};
 };
 
 } // namespace sim

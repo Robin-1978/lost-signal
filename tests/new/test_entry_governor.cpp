@@ -65,8 +65,8 @@ int main() {
                    x == 0 ? sim::TravelDirection::Unspecified : sim::TravelDirection::Forward});
  }
  const std::vector<sim::ConflictZone> zones{
-   {"far", {9.5, -1.0}, {10.5, 1.0}},
-   {"near", {4.0, -1.0}, {6.0, 1.0}},
+ {"far", {9.5, -1.0}, {10.5, 1.0}, 0.0, {}},
+ {"near", {4.0, -1.0}, {6.0, 1.0}, 0.0, {}},
  };
  const std::vector<std::vector<sim::DynamicObjectState>> open_frames(151, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
  const auto approach =
@@ -88,7 +88,7 @@ CHECK(std::abs(approach.stop_point.x - 3.3) < 1e-6);
  near_miss_route.push_back({{static_cast<double>(x), 0.9}, 0.0,
  x == 0 ? sim::TravelDirection::Unspecified : sim::TravelDirection::Forward});
  const std::vector<sim::ConflictZone> compact_zone{
- {"compact", {4.9, -0.1}, {5.1, 0.1}, 0.4},
+ {"compact", {4.9, -0.1}, {5.1, 0.1}, 0.4, {}},
  };
  const auto near_miss = sim::evaluate_crossing(
  compact_zone, near_miss_route, 0, {1.0, 0.9}, 0.0, 0.0,
@@ -146,7 +146,7 @@ CHECK(std::abs(approach.stop_distance_m - 1.3) < 1e-6);
  CHECK(unknown_crossing.departure.reason == sim::DepartReason::kInvalid);
  sim::CrossingBehaviorSystem unknown_behavior;
  const std::vector<sim::CrossingZoneSpec> controlled_zones{
- {{"near", {4.0, -1.0}, {6.0, 1.0}}, sim::CrossingAuthority::Control},
+ {{"near", {4.0, -1.0}, {6.0, 1.0}, 0.0, {}}, sim::CrossingAuthority::Control},
  };
  for (int sample = 0; sample < 20; ++sample) {
  const auto decision = unknown_behavior.assess(
@@ -156,6 +156,105 @@ CHECK(std::abs(approach.stop_distance_m - 1.3) < 1e-6);
  CHECK(!decision.control.committed);
  CHECK(!decision.safe_to_commit);
  }
+
+ // Positive free-space evidence is a separate admission source. A physical
+ // return before the traffic approach leaves it occluded, while dense rays
+ // that extend through the complete authored approach prove it clear. The
+ // same LiDAR frame cannot be counted twice by a faster decision loop.
+ sim::ConflictZone observed_zone;
+ observed_zone.id = "observed";
+ observed_zone.min = {4.0, -0.5};
+ observed_zone.max = {5.0, 0.5};
+ observed_zone.participant_radius_m = 0.45;
+ sim::CrossingObservationApproach observed_approach;
+ observed_approach.centerline = {{4.5, 0.5}, {4.5, 5.5}};
+ observed_approach.half_width_m = 0.15;
+ observed_approach.maximum_speed_mps = 0.5;
+ observed_zone.observation_approaches.push_back(observed_approach);
+ std::vector<sim::ObservedRay2D> occluded_rays;
+ for (int ray = 0; ray < 720; ++ray) {
+ const double angle = -sim::kPi + 2.0 * sim::kPi *
+ static_cast<double>(ray) / 720.0;
+ occluded_rays.push_back({{2.0, 0.0},
+ {2.0 + std::cos(angle), std::sin(angle)}, false, true});
+ }
+ const auto occluded = sim::evaluate_crossing(
+ {observed_zone}, route, 0, {2.0, 0.0}, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps,
+ occluded_rays, 1.0);
+ CHECK(occluded.free_space_evidence_available);
+ CHECK(!occluded.observed_approaches_clear);
+ CHECK(occluded.departure.reason != sim::DepartReason::kGoNow);
+
+ std::vector<sim::ObservedRay2D> clear_rays;
+ for (int ray = 0; ray < 1440; ++ray) {
+ const double angle = -sim::kPi + 2.0 * sim::kPi *
+ static_cast<double>(ray) / 1440.0;
+ clear_rays.push_back({{2.0, 0.0},
+ {2.0 + 20.0 * std::cos(angle), 20.0 * std::sin(angle)},
+ false, false});
+ }
+ const auto observed_clear = sim::evaluate_crossing(
+ {observed_zone}, route, 0, {2.0, 0.0}, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps,
+ clear_rays, 2.0);
+ CHECK(observed_clear.free_space_evidence_available);
+ CHECK(observed_clear.observed_approaches_clear);
+ CHECK(observed_clear.observation_coverage == 1.0);
+ CHECK(observed_clear.departure.reason == sim::DepartReason::kGoNow);
+
+ // A no-return ray is free only as far as the sensor range. Five metres do
+ // not cover this complete approach from the current stop pose, so a short
+ // LiDAR cannot turn the unseen tail into a clear-road assertion.
+ std::vector<sim::ObservedRay2D> short_rays;
+ for (int ray = 0; ray < 1440; ++ray) {
+ const double angle = -sim::kPi + 2.0 * sim::kPi *
+ static_cast<double>(ray) / 1440.0;
+ short_rays.push_back({{2.0, 0.0},
+ {2.0 + 5.0 * std::cos(angle), 5.0 * std::sin(angle)},
+ false, false});
+ }
+ const auto short_range = sim::evaluate_crossing(
+ {observed_zone}, route, 0, {2.0, 0.0}, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps,
+ short_rays, 2.0, 2.0);
+ CHECK(short_range.free_space_evidence_available);
+ CHECK(!short_range.observed_approaches_clear);
+ CHECK(short_range.observation_coverage < 1.0);
+ CHECK(short_range.departure.reason != sim::DepartReason::kGoNow);
+
+ // Geometric coverage does not make an old scan current. Once enough of the
+ // unseen-arrival budget has elapsed, the same rays return to unknown.
+ const auto aged_scan = sim::evaluate_crossing(
+ {observed_zone}, route, 0, {2.0, 0.0}, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps,
+ clear_rays, 2.0, 8.0);
+ CHECK(aged_scan.free_space_evidence_available);
+ CHECK(aged_scan.observation_coverage == 1.0);
+ CHECK(!aged_scan.observed_approaches_clear);
+ CHECK(aged_scan.departure.reason != sim::DepartReason::kGoNow);
+
+ sim::CrossingBehaviorSystem observed_behavior;
+ const std::vector<sim::CrossingZoneSpec> observed_controlled{
+ {observed_zone, sim::CrossingAuthority::Control},
+ };
+ const auto observed_stop = observed_clear.stop_point;
+ auto one_scan = observed_behavior.assess(
+ observed_controlled, route, 0, observed_stop, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0, 0.35}, crossing_caps,
+ 0.05, clear_rays, 2.0);
+ CHECK(one_scan.control.hold_active && !one_scan.control.committed);
+ one_scan = observed_behavior.assess(
+ observed_controlled, route, 0, observed_stop, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0, 0.35}, crossing_caps,
+ 0.05, clear_rays, 2.0);
+ CHECK(one_scan.control.hold_active && !one_scan.control.committed);
+ const auto second_scan = observed_behavior.assess(
+ observed_controlled, route, 0, observed_stop, 0.0, 0.0,
+ unknown_frames, 0.1, {0.35, 0.25, 0.0, 0.35}, crossing_caps,
+ 0.05, clear_rays, 2.1);
+ CHECK(second_scan.control.committed);
+
  const auto cleared =
  sim::evaluate_crossing(zones, route, 8, {8.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps);

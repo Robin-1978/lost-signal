@@ -279,6 +279,12 @@ struct SceneDefinition {
 // conflict with the robot route. The behavior layer derives route entry,
 // stop, and exit points from this box; actor paths and collision truth never
 // enter autonomy.
+struct ConflictObservationApproachDefinition {
+ std::vector<sim::Vec2> centerline;
+ double half_width_m{0.0};
+ double maximum_speed_mps{0.0};
+};
+
 struct ConflictZoneDefinition {
  std::string id;
  sim::Vec2 min;
@@ -291,6 +297,10 @@ struct ConflictZoneDefinition {
  // footprint plus the site's tracking reserve. Required by control-authority
  // zones so behavior never needs simulator actor truth to derive a safe stop.
  double participant_radius_m{0.0};
+ // Sensor-verifiable traffic corridors. These are map semantics, independent
+ // of simulated actors: SLAM/survey/HD-map providers may publish the same
+ // approach geometry and speed envelope.
+ std::vector<ConflictObservationApproachDefinition> observation_approaches;
 };
 
 // A visible solid belongs to the simulated world, not to the renderer. Its

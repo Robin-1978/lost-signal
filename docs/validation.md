@@ -123,13 +123,14 @@ changed estimation, LiDAR projection, terrain composition, local-planner reachab
 validation, staged safe stopping, crossing release and differential-controller transitions. Focused fixtures and the
 recommended `lost_signal` run provide useful evidence, but they do not replace the ordered release gates above.
 
-The remaining known integration blocker is `town_freight --recommended`: the robot avoids collision but can wait
-until timeout at a holding pose that does not provide continuous free-space evidence for the conflict corridor. The
-planned correction is a ROBOT-side conflict-zone observability contract and an automatically selected holding pose
-that is both safe and capable of observing release evidence. Missing or occluded observations remain unknown; a
-missing dynamic track is not proof of free space.
+The former `town_freight --recommended` timeout is closed by the ROBOT-side conflict-zone observability contract.
+The fixed-seed run now succeeds in `104.04 s` with zero collisions and `0.673 m` minimum dynamic clearance. Release
+without a fresh track requires complete, current LiDAR free-space coverage of every authored approach and enough
+unseen-arrival time to execute the crossing. Missing, short-range, occluded, duplicated or aged observations remain
+unknown. No simulator actor identity, path or truth enters this decision. Focused P0 tests and content round-trip
+checks pass; these results do not constitute the complete P1 release record.
 
-After that correction is frozen, create a new record from a clean revision by running, in order:
+Create a new record from a clean revision by running, in order:
 
 1. GCC 13 Release build and the complete CTest suite with parallelism 8.
 2. ROBOT-only build/tests and all content, schema, locale and generator checks.

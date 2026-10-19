@@ -2768,20 +2768,27 @@ void ScenarioSession::apply_motion() {
  result_.last_stop_time_s = snapshot_.braking.elapsed_s;
  result_.last_stop_distance_m = snapshot_.braking.distance_m;
  }
- const double motor_power = robot_definition_.energy_base_w +
+ // This remains an explicitly configured mission-energy estimate. It is not
+ // electrical bus power: the physical actuator path above is governed by the
+ // force-speed curve, PWM and contact dynamics. A future voltage/current and
+ // efficiency model should replace this estimator rather than feed its scale
+ // back into mechanics.
+ const double estimated_motion_power_w = robot_definition_.energy_base_w +
                             robot_definition_.energy_per_v_w * std::hypot(candidate.v, candidate.lateral_v) +
                             robot_definition_.energy_per_w_w * std::abs(candidate.w);
  const auto* equipped_motor = resolved_build_.motor();
  const auto* sensor = resolved_build_.lidar();
  const auto* computer = resolved_build_.computer();
  const auto* imu = resolved_build_.imu();
- const double motor_scale = equipped_motor ? equipped_motor->power_scale : 1.0;
- const double grade_power = std::max(0.0, total_mass_kg() * 9.81 * candidate.v * candidate_grade /
+ const double motor_energy_scale = equipped_motor ? equipped_motor->energy_scale : 1.0;
+ const double estimated_grade_power_w = std::max(0.0, total_mass_kg() * 9.81 * candidate.v * candidate_grade /
                                             std::sqrt(1.0 + candidate_grade * candidate_grade));
- const double total_power = motor_power * resolved_build_.traction().power_scale * motor_scale + grade_power +
+ const double estimated_total_power_w =
+ estimated_motion_power_w * resolved_build_.traction().energy_scale * motor_energy_scale +
+ estimated_grade_power_w +
                             (sensor ? sensor->power_w : 0.0) + (computer ? computer->power_w : 0.0) +
                             (imu ? imu->power_w : 0.0);
- result_.energy_wh += total_power * fixed_step_s / 3600.0;
+ result_.energy_wh += estimated_total_power_w * fixed_step_s / 3600.0;
 
  double slip = resolved_build_.traction().slip_scale;
  const double traction = surface_traction(candidate_position);
