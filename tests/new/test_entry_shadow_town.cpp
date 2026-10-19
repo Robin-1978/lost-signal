@@ -73,6 +73,17 @@ int main() {
     CHECK(s2.assessed == s1.assessed && s2.clear == s1.clear && s2.occupied == s1.occupied &&
           s2.uncertain == s1.uncertain);
   }
+  // P0 exit gate: town_freight must complete without timeout or collision.
+  // The second blind zone used to hold forever once the patrol left the 5 m
+  // sensing disc (no track = no release); the bounded coast lets the
+  // departure gate prove the corridor against the coasting motion instead.
+  {
+   const auto build = catalog.presentation_for_level("town_freight").recommended_build;
+   mission::ScenarioSession mission(catalog, "town_freight", build);
+   run_level(mission);
+   CHECK(mission.result().status == mission::MissionStatus::Succeeded);
+   CHECK(mission.result().collisions == 0);
+  }
   std::cout << "entry shadow town green\n";
   return 0;
 }

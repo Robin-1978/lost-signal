@@ -42,6 +42,7 @@
   },
   "score": {
     "safe_min_clearance_m": 0.5,
+    "safe_clearance_scope": "dynamic",
     "fast_time_s": 53.0,
     "efficient_energy_wh": 1.41
   },

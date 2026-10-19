@@ -314,8 +314,19 @@ void ScenarioSession::decide_control() {
  // time-indexed prediction. Recomputing each consumer independently could
  // make a single decision explain itself with mutually different futures.
  const double assessment_horizon = shadow_length / shadow_cruise + prediction_horizon;
- const auto assessment_frames = autonomy_pipeline_->dynamic_obstacles().predict(
-   snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
+ // Crossing admission uses a bounded phantom coast beyond tracker
+ // freshness. A confirmed periodic actor that leaves the 5 m sensing disc
+ // is not gone: it coasts ballistically on its last motion with growing
+ // uncertainty (no corridor claims beyond observation — a range exit is
+ // not an observed shuttle endpoint, so bounds and dwell do not reflect
+ // it back). The departure gate still requires full execution coverage
+ // inside this horizon plus consecutive confirmations, and DWA plus the
+ // trajectory validator below keep the strict fresh-only frames. Unknown
+ // beyond the coast stays unknown: no track ever observed means no
+ // release. Coast length covers a committed transit plus margin.
+ constexpr double kCrossingTrackCoastS = 12.0;
+ const auto assessment_frames = autonomy_pipeline_->dynamic_obstacles().predict_coasted(
+   snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s(), kCrossingTrackCoastS);
 
  // A map-semantic conflict zone is the high-level contract for crossing
  // traffic. It yields a stable route-derived stop point and a bounded path

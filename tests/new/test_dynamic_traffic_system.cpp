@@ -44,7 +44,9 @@ int main() {
 
  // Continuous route geometry is authoritative. Neither endpoint is inside
  // this narrow box, but the segment crosses it and must still produce a stop
- // and exit contract.
+ // and exit contract. Relevance uses the Minkowski envelope of both bodies
+ // plus clearance, so the 0→3.9 m segment already enters the expanded zone:
+ // the first vertex reached after entry is index 1, not 2.
  const std::vector<sim::RoutePoint> sparse_route{
   {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
   {{3.9, 0.0}, 0.0, sim::TravelDirection::Forward},
@@ -55,7 +57,7 @@ int main() {
  open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(sparse.assessment.relevant);
  CHECK(sparse.assessment.zone_id == "crossing");
- CHECK(sparse.assessment.entry_index == 2);
+ CHECK(sparse.assessment.entry_index == 1);
  CHECK(sparse.assessment.exit_index >= sparse.assessment.entry_index);
 
  zones.front().authority = "control";
@@ -77,7 +79,7 @@ int main() {
  CHECK(!wrong_heading.control.committed);
  }
  sim::CrossingBehaviorDecision committed;
- const int confirmation_samples = static_cast<int>(std::ceil(sim::kCrossingCommitConfirmS / 0.1));
+ const int confirmation_samples = sim::kCrossingCommitConfirmSamples;
  for (int sample = 0; sample < confirmation_samples; ++sample) {
  committed = system.assess(active_zones, route, 0, shadow.assessment.stop_point, 0.0, 0.0,
  open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);

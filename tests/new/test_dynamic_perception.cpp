@@ -358,6 +358,27 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(nominal.front().size() == 1);
  CHECK(nominal.back().front().p.x > 1.3);
 
+ // A confirmed mover that leaves the sensing disc coasts ballistically for
+ // behavior admission: fresh-only predict() drops it once stale, while
+ // predict_coasted() keeps it inside the coast horizon. The coast must not
+ // reflect at the range-exit bound (sensor geometry is not a learned
+ // shuttle endpoint), and its uncertainty must keep growing toward the
+ // coast cap instead of reading as false certainty.
+ sim::DynamicObstacleMap leaver;
+ leaver.observe({11, {0.0, 0.0}, 0.4}, 0.0);
+ for (int sample = 1; sample <= 10; ++sample)
+  leaver.observe({11, {0.05 * sample, 0.0}, 0.4}, sample * 0.1);
+ const auto fresh_only = leaver.predict(4.0, 2.0, 0.1, 1.0);
+ CHECK(fresh_only.front().empty());
+ const auto coasted = leaver.predict_coasted(4.0, 2.0, 0.1, 1.0, 12.0);
+ CHECK(coasted.size() == 21);
+ CHECK(coasted.front().size() == 1);
+ CHECK(coasted.front()[0].p.x > 1.8 && coasted.front()[0].p.x < 2.2);
+ CHECK(coasted.back()[0].p.x > coasted.front()[0].p.x);
+ CHECK(coasted.front()[0].position_uncertainty_m > 0.10);
+ const auto beyond_coast = leaver.predict_coasted(20.0, 2.0, 0.1, 1.0, 12.0);
+ CHECK(beyond_coast.front().empty());
+
  // At a 5 Hz sensor cadence, the smooth position state may coast beyond a
  // shuttle endpoint. Intent classification must follow the measurement-time
  // regression and enter the ambiguous state during the dwell, before the

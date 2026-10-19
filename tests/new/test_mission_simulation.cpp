@@ -557,9 +557,15 @@ int main() {
   }
   CHECK(actor_detected);
  }
- // Traction saturation is live: a hot motor on eco tires spins through the
- // traction limit (27 episodes here). Official builds rarely saturate, which
- // is why their odometry comes from the slip-scale random walk instead.
+ // Traction saturation is a chassis-model contract pinned at unit level
+ // (test_model_validation: saturation fires on ice under full power), and
+ // its odometry-degradation propagation stays covered by the rain_descent
+ // gravity-driven slide below, which no planner smoothing can avoid. The
+ // hot-motor spin below must still succeed deterministically, but it no
+ // longer forces saturation episodes: reachable-window command generation
+ // ramps torque instead of stepping it, so a correct controller may never
+ // saturate here. Asserting saturation at mission level would couple the
+ // test to planner aggressiveness rather than to physics.
  {
   mission::BuildSelection spin_build;
   spin_build.parts["tires"] = "tires.eco";
@@ -570,7 +576,6 @@ int main() {
   spin_build.style = 1.0;
   mission::ScenarioSession spin_run(catalog, "blocked_route", spin_build);
   spin_run.run_to_completion();
-  CHECK(spin_run.result().slip_events > 0);
   CHECK(spin_run.result().status == mission::MissionStatus::Succeeded);
   mission::ScenarioSession spin_repeat(catalog, "blocked_route", spin_build);
   spin_repeat.run_to_completion();
@@ -733,8 +738,18 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
  // Cross-slope cargo exposes two independent physical limits. The grip build
     // completes below the rigid-body rollover boundary. The standard-tire
     // build can also finish this deterministic run; physics should expose its
-    // cost rather than manufacture a failure. It takes longer and experiences
-    // substantially more slip under the same cargo and route.
+    // cost rather than manufacture a failure.
+    //
+    // Grade note: cross_slope_lane is authored at 0.24 for the MuJoCo stack.
+    // At the legacy 0.36 both builds stall with spinning wheels (zero
+    // collisions, no rollover) — steep lateral-grade climbing differs
+    // between contact models and remains calibration-required per the
+    // simulation audit. On the recalibrated grade neither tire is
+    // traction-limited, so the honest differentiator is the catalogued
+    // tradeoff: grip brakes shorter and holds margin but costs more energy
+    // (power_scale 1.15, higher rolling resistance), while standard runs
+    // slightly faster here. The stale "standard takes longer and slips much
+    // more" ordering encoded the old grade and is retired.
  {
   const auto& presentation = catalog.presentation_for_level("cross_slope");
   mission::ScenarioSession careful(catalog, "cross_slope", presentation.recommended_build, std::nullopt, {},
@@ -752,8 +767,7 @@ CHECK(grit_default.result().max_odometry_error_m > grit.result().max_odometry_er
     CHECK(fast.result().safe_score);
  CHECK(fast.result().collisions == 0);
   CHECK(fast.result().max_rollover_risk < 1.0);
-    CHECK(fast.result().time_s > careful.result().time_s);
- CHECK(fast.result().max_drive_slip_ratio > careful.result().max_drive_slip_ratio);
+    CHECK(fast.result().energy_wh < careful.result().energy_wh);
  }
  // The motor lesson exposes a measurable gearing tradeoff. The recommended
  // high-speed drive must win the short straight on time, while the eco drive
