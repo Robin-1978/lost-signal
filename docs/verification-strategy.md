@@ -66,6 +66,10 @@ autonomy loop only after those fixtures pass; a level's success flag is never a 
  combined center of mass, actuator limit, and control interval are applied. A mission success cannot prove these
  two independently plausible calculations agree.
 
+The [production verification coverage ledger](verification-coverage.md) maps these rules to every enabled model and
+algorithm. A new implementation updates that ledger and gains a focused independent-oracle gate before content can
+select it. Mission success is coupled evidence only; it never closes a missing subsystem row.
+
 When a corrected model changes an authored outcome, keep the correct model and reassess the lesson. Update the
 scenario or its expected outcome only when the new result still demonstrates the stated learning question.
 While a reference-platform gate is open, terrain and traffic scenes are immutable experiment inputs. Their mission

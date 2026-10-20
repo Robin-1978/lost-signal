@@ -75,6 +75,12 @@ double roughness_lateral_acceleration(double roughness_m, double speed_mps, doub
 double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, double support_width_m,
                              double center_of_mass_height_m);
 
+// Ratio between an effective gravity/load-line projection and the convex
+// support boundary, measured from the unloaded COM projection. Zero is the
+// reference point, one is wheel lift, and values above one are outside.
+double support_polygon_risk(Vec2 load_projection, Vec2 unloaded_projection,
+ const std::vector<Vec2>& support_polygon);
+
 // Symmetric command-acceleration ceiling that preserves a requested fraction
 // of both front and rear longitudinal support margins on the current grade.
 // Distances are measured from the combined COM projection to the support

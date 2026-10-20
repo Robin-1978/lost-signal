@@ -1,6 +1,7 @@
 #include "robot/autonomy/planning/local/predictor.hpp"
 
 #include "robot/autonomy/planning/global/astar.hpp"
+#include "robot/autonomy/planning/path_smoothing.hpp"
 #include "robot/core/math.hpp"
 
 #include <algorithm>
@@ -8,122 +9,10 @@
 #include <cstddef>
 #include <limits>
 #include <set>
+#include <utility>
 
 namespace sim {
 namespace {
-
-// Arc-fillet smoothing of a polyline corner with radius R: tangent points at
-// distance t = R*tan(phi/2) from the vertex along both legs, joined by a
-// subdivided arc (chords <= 0.1 m: sagitta <= 0.01/(8R) < 0.5 mm for R >= 1 m,
-// stated not hidden). fit=false when any corner needs more tangent than half
-// of either adjacent leg (adjacent fillets never overlap — conservative: a
-// refused corner is a capability verdict upstream, never silently
-// straightened) or the turn is a hairpin. Where a fillet does not fit
-// (tangent longer than half either leg: grid-snap endpoint jogs, short
-// detour legs), the raw vertex is kept with kappa 0 and pursuit plus the
-// swept/static rechecks decide — a geometric pre-refusal there would conflate
-// "corner needs swinging wide" with "corner is untraversable". fit=false
-// only on degenerate input. Sharp corners never get a free pass: deviation
-// is always swept and static-rechecked downstream.
-struct FilletResult {
- std::vector<Vec2> points;
- // Signed curvature per point from construction (not estimated): 0 on
- // straights, +/-1/radius_m on arcs. Exact, so steer demand never drifts
- // past the cap on floating-point noise.
- std::vector<double> kappa;
- bool fits{false};
-};
-
-FilletResult smooth_fillet(const std::vector<Vec2>& route, double radius_m) {
- FilletResult out;
- std::vector<Vec2> pts;
- for (const auto& p : route) {
-  if (pts.empty() || std::hypot(p.x - pts.back().x, p.y - pts.back().y) >= 1e-9) {
-   pts.push_back(p);
-  }
- }
- if (pts.size() < 3 || !(radius_m > 1e-9)) {
-  out.points = pts;
-  out.kappa.assign(pts.size(), 0.0);
-  out.fits = pts.size() >= 1;
-  return out;
- }
- std::vector<double> legs;
- for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
-  legs.push_back(std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
- }
- out.points.push_back(pts.front());
- out.kappa.push_back(0.0);
- for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
-  Vec2 d_in{pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y};
-  Vec2 d_out{pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y};
-  const double lin = std::hypot(d_in.x, d_in.y);
-  const double lout = std::hypot(d_out.x, d_out.y);
-  d_in = {d_in.x / lin, d_in.y / lin};
-  d_out = {d_out.x / lout, d_out.y / lout};
-  const double cos_phi = std::clamp(d_in.x * d_out.x + d_in.y * d_out.y, -1.0, 1.0);
-  const double phi = std::acos(cos_phi);
-  if (phi < 1e-6) {
-   out.points.push_back(pts[i]);
-   out.kappa.push_back(0.0);
-   continue;
-  }
-  const double tangent = radius_m * std::tan(phi / 2.0);
-  if (!(tangent <= 0.5 * legs[i - 1]) || !(tangent <= 0.5 * legs[i])) {
-   // No fillet room: keep the raw vertex (kappa 0), let pursuit swing and
-   // the rechecks judge. The vertex stays exactly where A* put it.
-   out.points.push_back(pts[i]);
-   out.kappa.push_back(0.0);
-   continue;
-  }
-  const Vec2 u{-d_in.x, -d_in.y};
-  const Vec2 w = d_out;
-  Vec2 bis{u.x + w.x, u.y + w.y};
-  const double bis_len = std::hypot(bis.x, bis.y);
-  const double sin_half = std::sin(phi / 2.0);
-  if (bis_len < 1e-9 || sin_half < 1e-9) {
-   out.points.clear();
-   out.kappa.clear();
-   out.fits = false;
-   return out;
-  }
-  bis = {bis.x / bis_len, bis.y / bis_len};
-  const Vec2 center{pts[i].x + bis.x * radius_m / sin_half, pts[i].y + bis.y * radius_m / sin_half};
-  const Vec2 t1{pts[i].x + u.x * tangent, pts[i].y + u.y * tangent};
-  const Vec2 t2{pts[i].x + w.x * tangent, pts[i].y + w.y * tangent};
-  const double cross = d_in.x * d_out.y - d_in.y * d_out.x;
-  const double a0 = std::atan2(t1.y - center.y, t1.x - center.x);
-  double sweep = std::atan2(t2.y - center.y, t2.x - center.x) - a0;
-  while (cross > 0.0 && sweep <= 0.0) {
-   sweep += 2.0 * kPi;
-  }
-  while (cross < 0.0 && sweep >= 0.0) {
-   sweep -= 2.0 * kPi;
-  }
-  const double arc_len = radius_m * std::abs(sweep);
-  const int steps = std::max(2, static_cast<int>(std::ceil(arc_len / 0.1)));
-  const double turn_sign = (cross > 0.0) ? 1.0 : -1.0;
-  out.points.push_back(t1);
-  out.kappa.push_back(0.0);
-  for (int k = 1; k < steps; ++k) {
-   const double a = a0 + sweep * static_cast<double>(k) / static_cast<double>(steps);
-   out.points.push_back({center.x + radius_m * std::cos(a), center.y + radius_m * std::sin(a)});
-   out.kappa.push_back(turn_sign / radius_m);
-  }
-  out.points.push_back(t2);
-  out.kappa.push_back(turn_sign / radius_m);
- }
- out.points.push_back(pts.back());
- out.kappa.push_back(0.0);
- if (out.points.size() != out.kappa.size()) {
-  out.points.clear();
-  out.kappa.clear();
-  out.fits = false;
-  return out;
- }
- out.fits = true;
- return out;
-}
 
 // Static recheck of an executed trajectory on the caller-inflated grid.
 // The A* contract covers the grid polyline; smoothing and servo lag move the
@@ -190,20 +79,6 @@ ReflectedAxisState reflected_axis(double position, double velocity,
  return {std::clamp(position + velocity * remaining, minimum, maximum), velocity};
 }
 
-// Point-to-segment distance: the workhorse. interval_min_dist below reduces
-// the time-parameterized closest approach to this exact call.
-double point_seg_dist(Vec2 p, Vec2 s0, Vec2 s1) {
- const double dx = s1.x - s0.x;
- const double dy = s1.y - s0.y;
- const double len2 = dx * dx + dy * dy;
- constexpr double kEps = 1e-12;
- if (len2 < kEps) {
-  return std::hypot(p.x - s0.x, p.y - s0.y);
- }
- const double t = std::clamp(((p.x - s0.x) * dx + (p.y - s0.y) * dy) / len2, 0.0, 1.0);
- return std::hypot(p.x - (s0.x + dx * t), p.y - (s0.y + dy * t));
-}
-
 // Time-parameterized closest approach over one frame interval: both bodies
 // move with the SAME time parameter (relative motion r + w*t), so this is a
 // point-to-segment distance, not a segment-segment one. An independent-(s,t)
@@ -212,20 +87,45 @@ double point_seg_dist(Vec2 p, Vec2 s0, Vec2 s1) {
 // discrete frame sampling alone can miss a fast crosser slipping between
 // frames; this sweeps every interval exactly (linear motion per interval is
 // exact for our predictors) and is conservative nowhere.
-double interval_min_dist(Vec2 a0, Vec2 a1, Vec2 b0, Vec2 b1) {
+struct IntervalClosestApproach {
+ double distance_m{0.0};
+ double fraction{0.0};
+};
+
+IntervalClosestApproach interval_closest_approach(Vec2 a0, Vec2 a1, Vec2 b0, Vec2 b1) {
  const Vec2 r{a0.x - b0.x, a0.y - b0.y};
  const Vec2 w{(a1.x - a0.x) - (b1.x - b0.x), (a1.y - a0.y) - (b1.y - b0.y)};
- return point_seg_dist({0.0, 0.0}, r, {r.x + w.x, r.y + w.y});
+ const double speed_squared = w.x * w.x + w.y * w.y;
+ const double fraction = speed_squared <= 1e-12
+ ? 0.0
+ : std::clamp(-(r.x * w.x + r.y * w.y) / speed_squared, 0.0, 1.0);
+ return {
+ std::hypot(r.x + fraction * w.x, r.y + fraction * w.y),
+ fraction,
+ };
+}
+
+double interval_min_dist(Vec2 a0, Vec2 a1, Vec2 b0, Vec2 b1) {
+ return interval_closest_approach(a0, a1, b0, b1).distance_m;
 }
 
 } // namespace
 
-std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<PredictInput>& inputs,
-                                                            double time_s, double horizon_s,
-                                                            double frame_dt_s, double max_age_s) {
- std::vector<std::vector<DynamicObjectState>> frames;
- auto predict_mode = [](const PredictInput& input, Vec2 velocity, double prediction_time) {
-  auto predicted = input.state;
+PredictionBatch predict_hypotheses(
+ const std::vector<PredictInput>& inputs, double time_s, double horizon_s,
+ double frame_dt_s, double max_age_s) {
+ PredictionBatch batch;
+ batch.stamp_s = time_s;
+ batch.frame_dt_s = frame_dt_s;
+ if (!(frame_dt_s > 0.0) || horizon_s < 0.0 || max_age_s < 0.0)
+ return batch;
+ for (double future_s = 0.0; future_s <= horizon_s + 1e-9;
+ future_s += frame_dt_s) {
+ batch.future_times_s.push_back(future_s);
+ }
+ const auto predict_mode = [](
+ const PredictInput& input, Vec2 velocity, double prediction_time) {
+ auto predicted = input.state;
  const auto x = reflected_axis(
  predicted.p.x, velocity.x, prediction_time, input.min_observed.x,
  input.max_observed.x, input.bounded_x, input.endpoint_dwell_s,
@@ -241,22 +141,198 @@ std::vector<std::vector<DynamicObjectState>> predict_frames(const std::vector<Pr
  std::max(0.0, input.state.position_uncertainty_m) +
  std::max(0.0, input.position_uncertainty_growth_mps) *
  std::max(0.0, prediction_time));
-  return predicted;
+ return predicted;
  };
- for (double future_s = 0.0; future_s <= horizon_s + 1e-9; future_s += frame_dt_s) {
-  auto& frame = frames.emplace_back();
-  for (const auto& input : inputs) {
-   const double age = time_s - input.last_observed_s;
-   if (age < -1e-9 || age > max_age_s)
-    continue;
-   const double prediction_time = age + future_s;
-   frame.push_back(predict_mode(input, input.state.v, prediction_time));
-   if (input.alternate_velocity_valid) {
-    frame.push_back(predict_mode(input, input.alternate_velocity, prediction_time));
-   }
-  }
+ for (const auto& input : inputs) {
+ const double age = time_s - input.last_observed_s;
+ if (age < -1e-9 || age > max_age_s)
+ continue;
+ struct VelocityMode {
+ Vec2 velocity;
+ bool alternate{false};
+ };
+ std::vector<VelocityMode> modes;
+ const auto append_mode = [&](Vec2 velocity, bool alternate) {
+ const auto duplicate = std::any_of(
+ modes.begin(), modes.end(), [&](const VelocityMode& existing) {
+ return std::hypot(
+ existing.velocity.x - velocity.x,
+ existing.velocity.y - velocity.y) <= 1e-9;
+ });
+ if (!duplicate)
+ modes.push_back({velocity, alternate});
+ };
+ const auto append_speed_envelope = [&](Vec2 velocity, bool alternate) {
+ const double speed = std::hypot(velocity.x, velocity.y);
+ const double uncertainty = std::max(0.0, input.velocity_uncertainty_mps);
+ if (speed > 1e-9 && uncertainty > 0.0) {
+ const Vec2 direction{velocity.x / speed, velocity.y / speed};
+ const double slow = std::max(0.0, speed - uncertainty);
+ append_mode({direction.x * slow, direction.y * slow}, alternate);
+ }
+ append_mode(velocity, alternate);
+ if (speed > 1e-9 && uncertainty > 0.0) {
+ const Vec2 direction{velocity.x / speed, velocity.y / speed};
+ const double fast = speed + uncertainty;
+ append_mode({direction.x * fast, direction.y * fast}, alternate);
+ }
+ };
+ append_speed_envelope(input.state.v, false);
+ if (input.alternate_velocity_valid)
+ append_speed_envelope(input.alternate_velocity, true);
+ for (std::size_t mode_index = 0; mode_index < modes.size(); ++mode_index) {
+ const auto& mode = modes[mode_index];
+ PredictedObjectHypothesis hypothesis;
+ hypothesis.track_id = input.track_id;
+ hypothesis.hypothesis_id = mode_index;
+ const double speed = std::hypot(mode.velocity.x, mode.velocity.y);
+ hypothesis.model = mode.alternate
+ ? PredictionModel::AlternateIntent
+ : speed <= 1e-9
+ ? PredictionModel::Stationary
+ : (input.bounded_x || input.bounded_y)
+ ? PredictionModel::ReflectedCorridor
+ : PredictionModel::ConstantVelocity;
+ hypothesis.states.reserve(batch.future_times_s.size());
+ for (const double future_s : batch.future_times_s) {
+ hypothesis.states.push_back(predict_mode(
+ input, mode.velocity, age + future_s));
+ }
+ batch.hypotheses.push_back(std::move(hypothesis));
+ }
+ }
+ return batch;
+}
+
+std::vector<std::vector<DynamicObjectState>> flatten_prediction_frames(
+ const PredictionBatch& prediction) {
+ std::vector<std::vector<DynamicObjectState>> frames(
+ prediction.future_times_s.size());
+ for (const auto& hypothesis : prediction.hypotheses) {
+ const std::size_t count = std::min(frames.size(), hypothesis.states.size());
+ for (std::size_t frame = 0; frame < count; ++frame)
+ frames[frame].push_back(hypothesis.states[frame]);
  }
  return frames;
+}
+
+std::vector<std::vector<DynamicObjectState>> predict_frames(
+ const std::vector<PredictInput>& inputs, double time_s, double horizon_s,
+ double frame_dt_s, double max_age_s) {
+ return flatten_prediction_frames(predict_hypotheses(
+ inputs, time_s, horizon_s, frame_dt_s, max_age_s));
+}
+
+std::vector<TimedPose> remaining_timed_trajectory(
+ const std::vector<TimedPose>& trajectory, double elapsed_s) {
+ if (trajectory.empty())
+ return {};
+ const double elapsed = std::clamp(
+ std::isfinite(elapsed_s) ? elapsed_s : 0.0,
+ trajectory.front().t_s, trajectory.back().t_s);
+ const auto after = std::lower_bound(
+ trajectory.begin(), trajectory.end(), elapsed,
+ [](const TimedPose& pose, double time_s) { return pose.t_s < time_s; });
+ Vec2 current = trajectory.back().p;
+ if (after == trajectory.begin()) {
+ current = after->p;
+ } else if (after != trajectory.end()) {
+ const auto& b = *after;
+ const auto& a = *(after - 1);
+ const double blend = (elapsed - a.t_s) /
+ std::max(1e-9, b.t_s - a.t_s);
+ current = {
+ a.p.x + (b.p.x - a.p.x) * blend,
+ a.p.y + (b.p.y - a.p.y) * blend,
+ };
+ }
+ std::vector<TimedPose> remaining{{0.0, current}};
+ for (const auto& pose : trajectory) {
+ if (pose.t_s <= elapsed + 1e-12)
+ continue;
+ remaining.push_back({pose.t_s - elapsed, pose.p});
+ }
+ return remaining;
+}
+
+double match_timed_trajectory_phase(
+ const std::vector<TimedPose>& trajectory, Vec2 measured_position,
+ double nominal_elapsed_s, double admitted_time_error_s) {
+ if (trajectory.empty())
+ return 0.0;
+ const double first_time_s = trajectory.front().t_s;
+ const double last_time_s = trajectory.back().t_s;
+ const double nominal_s = std::clamp(
+ std::isfinite(nominal_elapsed_s) ? nominal_elapsed_s : first_time_s,
+ first_time_s, last_time_s);
+ const double tolerance_s = std::max(
+ 0.0, std::isfinite(admitted_time_error_s) ? admitted_time_error_s : 0.0);
+ const double minimum_s = std::max(first_time_s, nominal_s - tolerance_s);
+ const double maximum_s = std::min(last_time_s, nominal_s + tolerance_s);
+ double best_time_s = nominal_s;
+ double best_distance_sq = std::numeric_limits<double>::infinity();
+ const auto consider = [&](double time_s, Vec2 position) {
+ const double dx = measured_position.x - position.x;
+ const double dy = measured_position.y - position.y;
+ const double distance_sq = dx * dx + dy * dy;
+ constexpr double kDistanceEquivalenceSq = 1e-18;
+ if (distance_sq + kDistanceEquivalenceSq < best_distance_sq ||
+ (std::abs(distance_sq - best_distance_sq) <= kDistanceEquivalenceSq &&
+ std::abs(time_s - nominal_s) < std::abs(best_time_s - nominal_s))) {
+ best_distance_sq = distance_sq;
+ best_time_s = time_s;
+ }
+ };
+
+ for (std::size_t index = 0; index + 1 < trajectory.size(); ++index) {
+ const auto& from = trajectory[index];
+ const auto& to = trajectory[index + 1];
+ const double segment_start_s = std::max(minimum_s, from.t_s);
+ const double segment_end_s = std::min(maximum_s, to.t_s);
+ if (segment_end_s + 1e-12 < segment_start_s)
+ continue;
+ const double duration_s = std::max(1e-12, to.t_s - from.t_s);
+ const double start_blend = std::clamp(
+ (segment_start_s - from.t_s) / duration_s, 0.0, 1.0);
+ const double end_blend = std::clamp(
+ (segment_end_s - from.t_s) / duration_s, 0.0, 1.0);
+ const Vec2 segment_start{
+ from.p.x + (to.p.x - from.p.x) * start_blend,
+ from.p.y + (to.p.y - from.p.y) * start_blend,
+ };
+ const Vec2 segment_end{
+ from.p.x + (to.p.x - from.p.x) * end_blend,
+ from.p.y + (to.p.y - from.p.y) * end_blend,
+ };
+ const Vec2 delta{
+ segment_end.x - segment_start.x,
+ segment_end.y - segment_start.y,
+ };
+ const double length_sq = delta.x * delta.x + delta.y * delta.y;
+ double projection = 0.0;
+ if (length_sq > 1e-18) {
+ projection = std::clamp(
+ ((measured_position.x - segment_start.x) * delta.x +
+ (measured_position.y - segment_start.y) * delta.y) / length_sq,
+ 0.0, 1.0);
+ } else if (segment_end_s > segment_start_s + 1e-12) {
+ // A dwell has identical geometry at every phase. Keep the phase nearest
+ // the nominal clock so a stationary reference cannot manufacture drift.
+ projection = std::clamp(
+ (nominal_s - segment_start_s) / (segment_end_s - segment_start_s),
+ 0.0, 1.0);
+ }
+ consider(
+ segment_start_s + (segment_end_s - segment_start_s) * projection,
+ {segment_start.x + delta.x * projection,
+ segment_start.y + delta.y * projection});
+ }
+ if (!std::isfinite(best_distance_sq)) {
+ const auto remaining = remaining_timed_trajectory(trajectory, nominal_s);
+ if (!remaining.empty())
+ consider(nominal_s, remaining.front().p);
+ }
+ return std::clamp(best_time_s, minimum_s, maximum_s);
 }
 
 double timed_gap(const std::vector<TimedPose>& ego,
@@ -359,6 +435,117 @@ double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, doubl
   }
  }
  return gap;
+}
+
+PredictedGapEvidence predicted_gap_evidence(
+ const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
+ const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
+ double ego_radius_m, double margin_m, double depart_delay_s) {
+ PredictedGapEvidence evidence;
+ if (path.empty() || frames.empty())
+ return evidence;
+ const double dt = std::max(1e-6, frame_dt_s);
+ const double speed = std::max(0.0, speed_mps);
+ const double delay = std::max(0.0, depart_delay_s);
+ auto ego_at = [&](double distance) {
+ double walked = 0.0;
+ Vec2 ego = path[std::min(start_idx, path.size() - 1)];
+ for (std::size_t segment = start_idx; segment + 1 < path.size(); ++segment) {
+ const double length = std::hypot(
+ path[segment + 1].x - path[segment].x,
+ path[segment + 1].y - path[segment].y);
+ if (length < 1e-9)
+ continue;
+ if (walked + length >= distance) {
+ const double fraction = std::clamp((distance - walked) / length, 0.0, 1.0);
+ return Vec2{
+ path[segment].x + (path[segment + 1].x - path[segment].x) * fraction,
+ path[segment].y + (path[segment + 1].y - path[segment].y) * fraction,
+ };
+ }
+ walked += length;
+ ego = path[segment + 1];
+ }
+ return ego;
+ };
+ const auto ego_frame = [&](std::size_t frame) {
+ return ego_at(speed * std::max(0.0, static_cast<double>(frame) * dt - delay));
+ };
+ const auto consider = [&](double center_distance_m, double occupied_radius_m,
+ double time_s, Vec2 ego_position) {
+ const double gap_m = center_distance_m - occupied_radius_m - ego_radius_m;
+ evidence.min_gap_m = std::min(evidence.min_gap_m, gap_m);
+ if (gap_m < margin_m && time_s < evidence.first_conflict_s) {
+ evidence.conflict = true;
+ evidence.first_conflict_s = time_s;
+ evidence.first_conflict_position = ego_position;
+ }
+ };
+ if (frames.size() == 1) {
+ const Vec2 ego = ego_frame(0);
+ for (const auto& threat : frames.front()) {
+ consider(std::hypot(threat.p.x - ego.x, threat.p.y - ego.y),
+ threat.occupied_radius_m(), 0.0, ego);
+ }
+ return evidence;
+ }
+ for (std::size_t frame = 0; frame + 1 < frames.size(); ++frame) {
+ const Vec2 ego0 = ego_frame(frame);
+ const Vec2 ego1 = ego_frame(frame + 1);
+ const auto& current = frames[frame];
+ const auto& next = frames[frame + 1];
+ for (std::size_t object = 0; object < current.size() && object < next.size(); ++object) {
+ const auto closest = interval_closest_approach(
+ ego0, ego1, current[object].p, next[object].p);
+ const double occupied_radius_m =
+ std::max(current[object].occupied_radius_m(), next[object].occupied_radius_m());
+ const double gap_m = closest.distance_m - occupied_radius_m - ego_radius_m;
+ evidence.min_gap_m = std::min(evidence.min_gap_m, gap_m);
+ if (gap_m >= margin_m)
+ continue;
+
+ // Report the first entry into the safety envelope, not merely the later
+ // closest-approach instant. In relative coordinates q(f)=r+w*f, solve
+ // |q(f)|^2=R^2 for the smaller root. The strict gap test above proves the
+ // interval actually enters the open envelope, so a tangent does not become
+ // a false conflict. This timestamp is used to place an upstream stop pose.
+ const Vec2 relative0{ego0.x - current[object].p.x,
+ ego0.y - current[object].p.y};
+ const Vec2 relative_step{
+ (ego1.x - ego0.x) - (next[object].p.x - current[object].p.x),
+ (ego1.y - ego0.y) - (next[object].p.y - current[object].p.y),
+ };
+ const double threshold_m = occupied_radius_m + ego_radius_m + margin_m;
+ const double c = relative0.x * relative0.x + relative0.y * relative0.y -
+ threshold_m * threshold_m;
+ double entry_fraction = 0.0;
+ if (c >= 0.0) {
+ const double a = relative_step.x * relative_step.x +
+ relative_step.y * relative_step.y;
+ const double b = 2.0 * (relative0.x * relative_step.x +
+ relative0.y * relative_step.y);
+ const double discriminant = std::max(0.0, b * b - 4.0 * a * c);
+ if (a > 1e-12) {
+ entry_fraction = std::clamp(
+ (-b - std::sqrt(discriminant)) / (2.0 * a), 0.0, 1.0);
+ } else {
+ entry_fraction = closest.fraction;
+ }
+ }
+ const Vec2 ego_entry{
+ ego0.x + entry_fraction * (ego1.x - ego0.x),
+ ego0.y + entry_fraction * (ego1.y - ego0.y),
+ };
+ const double entry_time_s =
+ (static_cast<double>(frame) + entry_fraction) * dt;
+ if (entry_time_s < evidence.first_conflict_s) {
+ evidence.conflict = true;
+ evidence.first_conflict_s = entry_time_s;
+ evidence.first_conflict_position = ego_entry;
+ }
+ }
+ }
+ return evidence;
 }
 
 double earliest_departure(const std::vector<Vec2>& path, std::size_t start_idx, double cruise_mps,
@@ -597,8 +784,8 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
            {}};
   }
   const double r_min = exec.wheel_base_m / std::tan(exec.max_steer_rad);
-  const auto smooth = smooth_fillet(route, r_min);
-  if (!smooth.fits) {
+  const auto smooth = fillet_polyline(route, r_min);
+ if (!smooth.valid) {
    return {Feasibility::Verdict::kInfeasible,
            DepartReason::kCapsViolated,
            std::numeric_limits<double>::infinity(),
@@ -612,7 +799,7 @@ LegAssessment assess_transit(const GridMap& inflated_map, Vec2 start, double sta
            std::numeric_limits<double>::infinity(),
            {}};
   }
-  const auto ack = execute_ackermann(smooth.points, smooth.kappa, start_theta, cruise_mps, exec);
+  const auto ack = execute_ackermann(smooth.points, smooth.curvature_inv_m, start_theta, cruise_mps, exec);
   if (ack.demand_clipped || ack.traj.empty()) {
    return {Feasibility::Verdict::kInfeasible,
            DepartReason::kCapsViolated,

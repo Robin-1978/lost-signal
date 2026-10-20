@@ -8,7 +8,8 @@ PerceptionPipeline::PerceptionPipeline(const GridMap& static_map, int width,
  int height, double resolution_m, std::uint32_t seed,
  ObservedObstacleLayerConfig obstacle_config)
  : lidar_(static_map, seed),
- obstacles_(width, height, resolution_m, obstacle_config) {}
+ obstacles_(width, height, resolution_m, obstacle_config),
+ obstacle_config_(obstacle_config) {}
 
 void PerceptionPipeline::reset(std::uint32_t seed) {
  lidar_.reset(seed);
@@ -21,8 +22,10 @@ LidarPerceptionFrame PerceptionPipeline::process(const Scan& scan,
  const Scan& static_reference, const LidarProjectionState& state,
  const LidarProjectionConfig& config, double track_max_age_s) {
  auto frame = lidar_.process(scan, static_reference, state, config,
- track_max_age_s);
- if (!obstacles_.observe(scan.header.stamp_s, frame.obstacle_rays)) {
+ track_max_age_s, obstacle_config_.obstacle_persistence_s);
+ if (!obstacles_.observe(
+ scan.header.stamp_s, frame.obstacle_rays,
+ frame.dynamic_clearing_regions)) {
  throw std::invalid_argument(
  "perception pipeline rejected an out-of-order LiDAR observation");
  }

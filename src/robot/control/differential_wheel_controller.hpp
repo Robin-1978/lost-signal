@@ -32,6 +32,12 @@ struct DifferentialWheelControllerConfig {
  // Applied only for a non-zero wheel-speed request; it never holds a stopped
  // wheel and therefore cannot hide a missing parking brake.
  double static_friction_feedforward_duty{0.0};
+ // Parameters for converting an SI longitudinal acceleration request into
+ // finite common wheel duty. A zero total mass disables this feedforward.
+ double total_mass_kg{0.0};
+ double stall_force_per_unit_N{0.0};
+ double free_speed_mps{0.0};
+ double driven_unit_count{2.0};
 };
 
 struct DifferentialWheelFeedback {
@@ -51,6 +57,7 @@ struct WheelControlTelemetry {
     double pid_i{0.0};
     double pid_d{0.0};
  double static_feedforward{0.0};
+ double acceleration_feedforward{0.0};
 };
 
 struct DifferentialWheelControlOutput {

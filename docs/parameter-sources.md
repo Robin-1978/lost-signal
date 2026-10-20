@@ -125,7 +125,9 @@ feed MuJoCo effort and must not be described as motor power, efficiency, bus cur
 speed package's value of `1.7` is an authored teaching-profile assumption that makes this specific package consume
 more estimated energy in the comparison; high peak power does not universally imply greater energy use. A physical
 energy claim requires voltage, current, back-EMF, winding loss, inverter/gear efficiency, regeneration, and battery
-state models plus calibration data.
+state models plus calibration data. The estimator integrates its configured power proxy over simulation time, so
+its result is dimensionally reported in Wh. It remains an **estimated Wh** value: it is not calibrated evidence for
+battery range, electrical efficiency, component sizing, or energy certification.
 
 RO-2 uses the same class of documented motor assumptions with two rear drive channels and two front steering
 channels. Its 26 kg mass, 0.62 m wheelbase, 0.58 m track, 0.10 m wheel radius, 54 N per-wheel peak rim force, 8 N m
@@ -184,11 +186,10 @@ Compute profiles are controlled experiment settings. Decision rate, prediction h
 power create visible autonomy trade-offs, but they do not model a named processor, scheduler, cache, or operating
 system. Their fidelity is `ideal` by design.
 
-The research-base crossing uses a `0.65 m` participant envelope: the authored `0.45 m` forklift footprint plus a
-`0.10 m` bounded prediction envelope and `0.10 m` site reserve for clustering, map alignment, and stop tracking.
-This is a conservative map assumption, not an identified vehicle parameter. It is intentionally separate from the
-live track radius and from the player's safety-clearance policy, and the deterministic mission gate verifies the
-resulting physical minimum clearance independently.
+The current research-base map still carries a legacy `0.65 m` conflict-geometry reserve used to place its mapped
+stop line. It must not be interpreted as knowledge of a live forklift's footprint or motion capability. P1 replaces
+this actor-shaped field with explicit conflict-area geometry; runtime footprint and prediction uncertainty come from
+ROBOT perception, while an unmapped temporary participant uses the same generic dynamic-interaction path.
 
 ## Validation and extension rule
 

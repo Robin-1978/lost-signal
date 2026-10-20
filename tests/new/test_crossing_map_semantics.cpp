@@ -1,4 +1,4 @@
-#include "sim/game/mission/systems/dynamic_traffic_system.hpp"
+#include "robot/autonomy/behavior/crossing_map_semantics.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -12,40 +12,50 @@
  } while (false)
 
 int main() {
- const sim::CrossingExecutionCaps crossing_caps{1.0, 2.0, 2.0, 2.0, 2.0};
+ const sim::CrossingExecutionCaps crossing_caps{1.0, 2.0, 2.0, 2.0, 2.0, 4.0};
  std::vector<sim::RoutePoint> route;
  for (int x = 0; x <= 8; ++x) {
   route.push_back({{static_cast<double>(x), 0.0},
                    0.0,
                    x == 0 ? sim::TravelDirection::Unspecified : sim::TravelDirection::Forward});
  }
- mission::ConflictZoneDefinition crossing_zone;
- crossing_zone.id = "crossing";
- crossing_zone.min = {4.0, -1.0};
- crossing_zone.max = {5.0, 1.0};
- crossing_zone.authority = "shadow";
- crossing_zone.active_in = {"lesson"};
- mission::ConflictObservationApproachDefinition observed_approach;
- observed_approach.centerline = {{4.5, 1.0}, {4.5, 6.0}};
- observed_approach.half_width_m = 0.15;
- observed_approach.maximum_speed_mps = 0.5;
- crossing_zone.observation_approaches.push_back(observed_approach);
- std::vector<mission::ConflictZoneDefinition> zones{crossing_zone};
+ sim::runtime::MapSnapshot map;
+ map.map_id = "crossing-map";
+ map.revision = 1;
+ map.features.push_back({
+ "crossing", "conflict_zone", sim::runtime::SemanticGeometry::Polygon,
+ {{4.0, -1.0}, {5.0, -1.0}, {5.0, 1.0}, {4.0, 1.0}},
+ {{"authority", "shadow"}},
+ });
+ map.features.push_back({
+ "crossing.approach.0", "conflict_approach",
+ sim::runtime::SemanticGeometry::Polyline,
+ {{4.5, 1.0}, {4.5, 6.0}},
+ {{"conflict_zone_id", "crossing"}, {"half_width_m", "0.15"}},
+ });
  const std::vector<std::vector<sim::DynamicObjectState>> open_frames(121, {{{50.0, 50.0}, {0.0, 0.0}, 0.4}});
+ std::vector<std::vector<sim::DynamicObjectState>> observed_open_frames(121);
+ for (std::size_t frame = 0; frame < observed_open_frames.size(); ++frame) {
+ sim::DynamicObjectState actor;
+ actor.p = {6.0 + 0.1 * static_cast<double>(frame), 0.0};
+ actor.v = {1.0, 0.0};
+ actor.radius = 0.4;
+ actor.prediction_ready = true;
+ observed_open_frames[frame] = {actor};
+ }
 
  const auto off_route_ready = sim::assess_crossing_readiness(
  {4.0, 5.0}, 0.0, 0.0, {4.0, 0.0}, {1.0, 0.0}, {0.35, 0.25, 0.0});
  CHECK(!off_route_ready.position_ready);
  CHECK(std::abs(off_route_ready.stop_lateral_m - 5.0) < 1e-12);
 
- mission::DynamicTrafficSystem adapter;
  sim::CrossingBehaviorSystem system;
- auto active_zones = adapter.active_zones(zones, "lesson");
+ const auto shadow_semantics = sim::crossing_semantics_from_map(map);
+ CHECK(shadow_semantics.valid);
+ auto active_zones = shadow_semantics.zones;
  CHECK(active_zones.size() == 1);
  CHECK(active_zones.front().authority == sim::CrossingAuthority::Observe);
- CHECK(active_zones.front().geometry.participant_radius_m == 0.0);
  CHECK(active_zones.front().geometry.observation_approaches.size() == 1);
- CHECK(active_zones.front().geometry.observation_approaches.front().maximum_speed_mps == 0.5);
  const auto shadow =
  system.assess(active_zones, route, 0, {2.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
@@ -65,26 +75,29 @@ int main() {
   {{8.0, 0.0}, 0.0, sim::TravelDirection::Forward},
  };
  const auto sparse = system.assess(active_zones, sparse_route, 0, {0.0, 0.0}, 0.0, 0.0,
- open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
+ observed_open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(sparse.assessment.relevant);
  CHECK(sparse.assessment.zone_id == "crossing");
  CHECK(sparse.assessment.entry_index == 1);
  CHECK(sparse.assessment.exit_index >= sparse.assessment.entry_index);
 
- zones.front().authority = "control";
- active_zones = adapter.active_zones(zones, "lesson");
+ map.features.front().attributes["authority"] = "control";
+ const auto control_semantics = sim::crossing_semantics_from_map(map);
+ CHECK(control_semantics.valid);
+ active_zones = control_semantics.zones;
  CHECK(active_zones.front().authority == sim::CrossingAuthority::Control);
  system.reset();
  const auto controlled = system.assess(active_zones, route, 0, shadow.assessment.stop_point, 0.0, 0.0,
  open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(controlled.control_authority);
  CHECK(controlled.control.hold_active && !controlled.control.committed);
+ const auto controlled_stop = controlled.assessment.stop_point;
  // Position and zero speed are insufficient: commitment also requires the
  // chassis to face the route tangent at the stop pose.
  for (int sample = 0; sample < 10; ++sample) {
  const auto wrong_heading = system.assess(
  active_zones, route, 0, shadow.assessment.stop_point, 0.0,
- sim::kPi, open_frames, 0.1, {0.35, 0.25, 0.0, 0.35},
+ sim::kPi, observed_open_frames, 0.1, {0.35, 0.25, 0.0, 0.35},
  crossing_caps, 0.1);
  CHECK(wrong_heading.control.hold_active);
  CHECK(!wrong_heading.control.committed);
@@ -92,8 +105,8 @@ int main() {
  sim::CrossingBehaviorDecision committed;
  const int confirmation_samples = sim::kCrossingCommitConfirmSamples;
  for (int sample = 0; sample < confirmation_samples; ++sample) {
- committed = system.assess(active_zones, route, 0, shadow.assessment.stop_point, 0.0, 0.0,
- open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
+ committed = system.assess(active_zones, route, 0, controlled_stop, 0.0, 0.0,
+ observed_open_frames, 0.1, {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  }
  CHECK(committed.control.committed && !committed.control.hold_active);
  CHECK(committed.control.exit_valid);
@@ -102,7 +115,7 @@ int main() {
  // Controller lookahead may already be at the route end while the body is
  // still approaching. Physical progress keeps the commitment relevant.
  const auto lookahead_ahead = system.assess(active_zones, route, route.size() - 1,
- shadow.assessment.stop_point, 0.0, 0.0, open_frames, 0.1,
+ controlled_stop, 0.0, 0.0, observed_open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(lookahead_ahead.assessment.relevant);
  CHECK(lookahead_ahead.control.committed);
@@ -115,30 +128,36 @@ int main() {
  {{10.0, 0.0}, 0.0, sim::TravelDirection::Forward},
  };
  const auto projection_gap = system.assess(active_zones, route_without_zone, 0,
- {5.5, 0.0}, 0.5, 0.0, open_frames, 0.1,
+ {5.5, 0.0}, 0.5, 0.0, observed_open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
- CHECK(!projection_gap.assessment.relevant);
+ CHECK(projection_gap.assessment.relevant);
  CHECK(projection_gap.control_authority);
  CHECK(projection_gap.control.committed);
  const auto passed_exit = system.assess(active_zones, route_without_zone, 0,
- {7.0, 0.0}, 0.5, 0.0, open_frames, 0.1,
+ {7.0, 0.0}, 0.5, 0.0, observed_open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(passed_exit.control_authority);
  CHECK(passed_exit.control.phase == sim::CrossingPhase::Cleared);
  CHECK(!passed_exit.control.committed && !passed_exit.control.hold_active);
  const auto same_zone_again = system.assess(active_zones, route, 0,
- shadow.assessment.stop_point, 0.0, 0.0, open_frames, 0.1,
+ controlled_stop, 0.0, 0.0, observed_open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(same_zone_again.assessment.relevant);
  CHECK(same_zone_again.control.phase == sim::CrossingPhase::Cleared);
  CHECK(!same_zone_again.control.hold_active && !same_zone_again.control.committed);
 
  system.reset();
- const auto inactive_zones = adapter.active_zones(zones, "other");
+ const std::vector<sim::CrossingZoneSpec> inactive_zones;
  const auto inactive =
  system.assess(inactive_zones, route, 0, {2.0, 0.0}, 0.0, 0.0, open_frames, 0.1,
  {0.35, 0.25, 0.0}, crossing_caps, 0.1);
  CHECK(!inactive.has_active_zone && !inactive.assessment.relevant);
- std::cout << "dynamic traffic system green\n";
+ auto invalid_map = map;
+ invalid_map.features.back().attributes["conflict_zone_id"] = "missing";
+ const auto invalid_semantics = sim::crossing_semantics_from_map(invalid_map);
+ CHECK(!invalid_semantics.valid);
+ CHECK(invalid_semantics.diagnostic.find("unknown zone") != std::string::npos);
+
+ std::cout << "crossing map semantics green\n";
  return 0;
 }

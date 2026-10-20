@@ -99,6 +99,24 @@ for (int step = 0; step < 100; ++step) {
   std::size_t terminal_index = finished.size();
   sim::advance_wp(finished, terminal_index, 0.0, 0.0, 0.0, 0.6, 1.0);
   CHECK(terminal_index == finished.size());
+
+ // Euclidean proximity does not prove along-route progress around an
+ // obstacle. Resynchronization may advance only to a waypoint that is
+ // directly reachable in the current inflated costmap; otherwise a U-shaped
+ // route can jump across its wall and make the local planner fight the global
+ // path indefinitely.
+ sim::GridMap blocked_resync(40, 40, 0.1);
+ blocked_resync.addBox(1.2, 0.8, 1.4, 1.2);
+ const std::vector<sim::RoutePoint> around_wall{
+ {{1.0, 2.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{2.0, 2.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{2.0, 1.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{1.5, 1.0}, 0.0, sim::TravelDirection::Unspecified},
+ };
+ std::size_t blocked_index = 0;
+ sim::advance_wp(around_wall, blocked_index, 1.0, 1.0, 0.0,
+ 0.2, 1.0, &blocked_resync);
+ CHECK(blocked_index == 0);
  }
 
  // Typed car paths preserve gear and keep lookahead on the current side of a
@@ -200,8 +218,8 @@ for (int step = 0; step < 100; ++step) {
  CHECK(std::abs(a.x - b.x) < 1e-12);
  CHECK(std::abs(a.theta - b.theta) < 1e-12);
 
- // Capability branching: a spinning chassis recovers by spinning in place,
- // a non-spinning one keeps reversing (ackermann recovery is steered reverse).
+ // Capability branching: a spinning chassis aligns before translating,
+ // while a non-spinning one uses reverse steering recovery.
  {
   sim::GridMap corridor(200, 200, 0.1);
  const std::vector<sim::RoutePoint> path{
@@ -211,27 +229,46 @@ for (int step = 0; step < 100; ++step) {
   sim::GuideState spin_state;
  sim::ChassisCaps spin;
  spin.can_spin = true;
- // Face away from the path: latches reverse first.
+ // Face away from the path: a spin-capable base enters the rotation shim
+ // immediately instead of cutting a large arc while translating.
   sim::GuideOut r1 =
     sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
- CHECK(r1.tv < 0.0);
- // Hold the error past the watchdog: spinner switches to spin-in-place.
- bool spun = false;
- for (int i = 0; i < 250; ++i) {
- sim::GuideOut r =
- sim::guide_step(path, spin_state, 0.0, 0.0, 3.14159, pid, 1.6, 1.0, 0.02, corridor, spin);
- if (r.tv == 0.0) {
- spun = true;
- break;
- }
- }
- CHECK(spun);
+ CHECK(r1.target_valid);
+ CHECK(std::abs(r1.err - sim::heading_err(
+ r1.target, 0.0, 0.0, 3.14159)) < 1e-12);
+
+ // The local reference starts at the follower's monotonic progress index.
+ // A geometrically closer point on the already traversed side of a corner
+ // must never re-enter the DWA path and reverse its progress critic.
+ const std::vector<sim::RoutePoint> folded_route{
+ {{0.0, 0.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{1.0, 0.0}, 0.0, sim::TravelDirection::Forward},
+ {{1.0, 1.0}, sim::kPi * 0.5, sim::TravelDirection::Forward},
+ {{0.1, 1.0}, sim::kPi, sim::TravelDirection::Forward},
+ {{0.1, 0.2}, -sim::kPi * 0.5, sim::TravelDirection::Forward},
+ };
+ const auto forward_reference = sim::forward_route_reference(
+ folded_route, 3, {0.05, 0.15}, 3.0);
+ CHECK(forward_reference.size() == 3);
+ CHECK(std::abs(forward_reference[1].x - 0.1) < 1e-12);
+ CHECK(std::abs(forward_reference[1].y - 1.0) < 1e-12);
+CHECK(std::none_of(forward_reference.begin(), forward_reference.end(),
+ [&](sim::Vec2 point) {
+ return std::hypot(point.x - folded_route[0].position.x,
+ point.y - folded_route[0].position.y) < 1e-12;
+ }));
+ CHECK(r1.tv == 0.0);
+ CHECK(spin_state.spinning);
+ const auto aligned = sim::guide_step(
+ path, spin_state, 0.0, 0.0, 0.2, pid, 1.6, 1.0, 0.02, corridor, spin);
+ CHECK(aligned.tv > 0.0);
+ CHECK(!spin_state.spinning);
   // Non-spinner never spins: still reversing after the watchdog period.
   sim::GuideState stiff;
   sim::PID pid3(2.0, 0.0, 0.0, 2.0, 1.0);
  sim::ChassisCaps no_spin;
  no_spin.can_spin = false;
-  sim::GuideOut last{0, 0, 0, false};
+sim::GuideOut last;
   for (int i = 0; i < 250; ++i) {
    last = sim::guide_step(path, stiff, 0.0, 0.0, 3.14159, pid3, 1.6, 1.0, 0.02, corridor, no_spin);
   }
@@ -254,6 +291,12 @@ for (int step = 0; step < 100; ++step) {
   const double capped = sim::corner_speed_cap(bend, 0, 1.0, 3.0, 2.0);
   CHECK(capped < 1.0);
   CHECK(std::abs(capped - std::sqrt(3.0 * 0.3 / 1.5707963)) < 1e-6);
+ // A differential chassis may satisfy the lateral-acceleration envelope but
+ // still lack the wheel-speed difference needed to acquire the bend yaw
+ // rate. The independent analytic bound is v <= omega_max * R.
+ const double yaw_limited = sim::corner_speed_cap(
+ bend, 0, 1.0, 3.0, 2.0, 2.0);
+ CHECK(std::abs(yaw_limited - 2.0 * 0.3 / (sim::kPi * 0.5)) < 1e-12);
   // Same bend beyond the window: cruise untouched.
   CHECK(sim::corner_speed_cap(bend, 0, 1.0, 3.0, 0.5) == 1.0);
   // Gentle bend needs no slowdown: 0.2 rad over 2 m at a_lat 3 allows 5.5.

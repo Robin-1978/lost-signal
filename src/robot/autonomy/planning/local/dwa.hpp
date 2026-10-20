@@ -2,6 +2,7 @@
 #include "robot/autonomy/mapping/grid_map.hpp"
 #include "robot/autonomy/perception/dynamic_object.hpp"
 #include <functional>
+#include <limits>
 #include <optional>
 #include <vector>
 namespace sim {
@@ -19,13 +20,34 @@ struct DwaReference {
  std::vector<Vec2> path;
  double previous_angular_command_radps{0.0};
 };
+
+// Encoder-side state for differential and skid-steer reachability. Body
+// twist cannot substitute for this on a tracked chassis because lateral
+// scrub makes tread differential and achieved yaw deliberately differ.
+struct DifferentialWheelSpeeds {
+ double left_mps{0.0};
+ double right_mps{0.0};
+};
 struct DwaCmd {
  double v{0};
  double w{0};
  bool valid{false};
  double score{0};
  double lateral_v{0};
+ // A rotate-in-place pose request has a lexicographic heading contract.
+ // Clearance and smoothness still rank equally aligned commands, but they
+ // may not make a safe zero command preferable forever while heading error
+ // remains. Translating DWA commands leave this disabled.
+ bool pose_heading_priority{false};
+ double terminal_heading_error_rad{std::numeric_limits<double>::infinity()};
 };
+
+// Orders commands whose aggregate planner scores are numerically
+// distinguishable. Scores inside a scale-aware floating-point band are
+// resolved by explicit command keys, so selection does not depend on
+// compiler rounding or container iteration order. The secondary ordering is
+// deliberately conservative: smaller turn demand, then smaller translation.
+bool dwa_command_preferred(const DwaCmd& candidate, const DwaCmd& incumbent);
 
 enum class LocalCommandSpace {
  DifferentialTwist,
@@ -92,5 +114,8 @@ DwaResult dwa_compute_trajectory(Vec2 pos, double theta, double cur_v, double cu
  const DwaReference& reference = {},
  double differential_track_m = 0.0,
  double max_wheel_speed_mps = 0.0,
- double actuator_response_delay_s = 0.0);
+ double actuator_response_delay_s = 0.0,
+ double max_decel_mps2 = -1.0,
+ double drive_axle_x_m = 0.0,
+ std::optional<DifferentialWheelSpeeds> measured_wheel_speeds = std::nullopt);
 } // namespace sim

@@ -7,14 +7,16 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <limits>
 // Shared path following: lookahead-Ld pure pursuit, corner speed scheduling, and reverse hysteresis.
 // guide_step serves differential chassis and outputs target yaw rate, never fake motor PWM.
 namespace sim {
+inline bool los_clear(const GridMap& m, Vec2 a, Vec2 b);
 // Advance idx past waypoints that are reached or already behind the robot, preventing a target-behind loop.
 // First resynchronize forward when a later waypoint in the window is clearly closer after a cut corner or tracking loss.
 // idx only advances; reverse recovery handles backtracking without decrementing it.
 inline void advance_wp(const std::vector<RoutePoint>& path, size_t& idx, double ex, double ey, double eth,
-                       double accept, double Ld) {
+ double accept, double Ld, const GridMap* cost = nullptr) {
  (void)Ld;
  if (path.empty() || idx >= path.size())
   return;
@@ -23,7 +25,7 @@ inline void advance_wp(const std::vector<RoutePoint>& path, size_t& idx, double 
  double bd = std::hypot(path[idx].position.x - ex, path[idx].position.y - ey);
  for (size_t j = idx + 1; j < hi; j++) {
  double d = std::hypot(path[j].position.x - ex, path[j].position.y - ey);
-  if (d < bd) {
+ if (d < bd && (!cost || los_clear(*cost, {ex, ey}, path[j].position))) {
    bd = d;
    best = j;
   }
@@ -36,7 +38,8 @@ inline void advance_wp(const std::vector<RoutePoint>& path, size_t& idx, double 
   double along = (dx * std::cos(eth) + dy * std::sin(eth));
   if (dist < accept)
    idx++;
-  else if (along < -0.1 && dist < 1.0 && idx + 1 < path.size())
+ else if (along < -0.1 && dist < 1.0 && idx + 1 < path.size() &&
+ (!cost || los_clear(*cost, {ex, ey}, path[idx + 1].position)))
    idx++; // Already passed; the 1 m limit prevents skipping a corner in bulk.
   else
    break;
@@ -77,7 +80,8 @@ inline size_t path_direction_section_end(const std::vector<RoutePoint>& path, si
 }
 
 inline void advance_wp_until(const std::vector<RoutePoint>& path, size_t& idx, size_t end_exclusive,
- double ex, double ey, double eth, double accept) {
+ double ex, double ey, double eth, double accept,
+ const GridMap* cost = nullptr) {
  if (path.empty() || idx >= path.size())
  return;
  end_exclusive = std::min(end_exclusive, path.size());
@@ -87,7 +91,8 @@ inline void advance_wp_until(const std::vector<RoutePoint>& path, size_t& idx, s
  for (size_t candidate = idx + 1; candidate < hi; ++candidate) {
  const double candidate_distance =
  std::hypot(path[candidate].position.x - ex, path[candidate].position.y - ey);
- if (candidate_distance < best_distance) {
+ if (candidate_distance < best_distance &&
+ (!cost || los_clear(*cost, {ex, ey}, path[candidate].position))) {
  best_distance = candidate_distance;
  best = candidate;
  }
@@ -108,7 +113,8 @@ inline void advance_wp_until(const std::vector<RoutePoint>& path, size_t& idx, s
  const double arrival_tolerance = cusp ? std::min(accept, 0.15) : accept;
  if (distance < arrival_tolerance)
  ++idx;
- else if (along < -0.1 && distance < 1.0 && idx + 1 < end_exclusive)
+ else if (along < -0.1 && distance < 1.0 && idx + 1 < end_exclusive &&
+ (!cost || los_clear(*cost, {ex, ey}, path[idx + 1].position)))
  ++idx;
  else
  break;
@@ -122,6 +128,30 @@ inline bool los_clear(const GridMap& m, Vec2 a, Vec2 b) {
   double t = (double)i / n;
   if (!m.isFree(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t))
    return false;
+ }
+ return true;
+}
+
+// Route shortcutting needs a small resolved margin in addition to binary
+// line-of-sight. A ray that merely grazes the free side of a raster corner
+// can be geometrically clear while a finite-bandwidth controller cannot
+// acquire the tangent before its rollout enters the adjacent lethal cell.
+// Half a cell is the smallest margin represented by a free cell centre; the
+// footprint and localization envelopes are already baked into this map.
+inline bool los_clear_for_tracking(const GridMap& map, Vec2 from, Vec2 to) {
+ const double length = std::hypot(to.x - from.x, to.y - from.y);
+ const int samples = std::max(
+ 1, static_cast<int>(std::ceil(length / (0.5 * map.res()))));
+ const double required_clearance_m = 0.5 * map.res();
+ for (int sample = 0; sample <= samples; ++sample) {
+ const double alpha = static_cast<double>(sample) /
+ static_cast<double>(samples);
+ const double x = from.x + (to.x - from.x) * alpha;
+ const double y = from.y + (to.y - from.y) * alpha;
+ if (!map.isFree(x, y) ||
+ map.clearance(x, y) + 1e-9 < required_clearance_m) {
+ return false;
+ }
  }
  return true;
 }
@@ -139,7 +169,7 @@ inline Vec2 lookahead_pt(const std::vector<RoutePoint>& path, size_t idx, double
  size_t hi = std::min(path.size(), idx + 24);
  for (size_t i = idx; i < hi; i++) {
  if (std::hypot(path[i].position.x - ex, path[i].position.y - ey) >= Ld) {
- if (los_clear(cost, self, path[i].position))
+ if (los_clear_for_tracking(cost, self, path[i].position))
  return path[i].position;
    break; // Outside the circle but blocked: use stage 2 instead of jumping farther.
   }
@@ -150,7 +180,7 @@ inline Vec2 lookahead_pt(const std::vector<RoutePoint>& path, size_t idx, double
  // Doing so oscillates at the Ld boundary. Use the last visible point with d <= Ld in the window.
  for (size_t i = idx; i < hi; i++) {
  double d = std::hypot(path[i].position.x - ex, path[i].position.y - ey);
- if (d <= Ld && los_clear(cost, self, path[i].position)) {
+ if (d <= Ld && los_clear_for_tracking(cost, self, path[i].position)) {
  best = path[i].position;
    found = true;
   }
@@ -158,7 +188,7 @@ inline Vec2 lookahead_pt(const std::vector<RoutePoint>& path, size_t idx, double
  if (!found) {
   size_t j0 = idx > 4 ? idx - 4 : 0;
   for (size_t j = idx; j-- > j0;) { // Nearest visible point behind.
- if (los_clear(cost, self, path[j].position)) {
+ if (los_clear_for_tracking(cost, self, path[j].position)) {
  best = path[j].position;
     found = true;
     break;
@@ -184,7 +214,7 @@ inline Vec2 lookahead_pt_until(const std::vector<RoutePoint>& path, size_t idx, 
  const size_t hi = std::min(end_exclusive, idx + 24);
  for (size_t point = idx; point < hi; ++point) {
  if (std::hypot(path[point].position.x - ex, path[point].position.y - ey) >= Ld) {
- if (los_clear(cost, self, path[point].position))
+ if (los_clear_for_tracking(cost, self, path[point].position))
  return path[point].position;
  break;
  }
@@ -193,10 +223,39 @@ inline Vec2 lookahead_pt_until(const std::vector<RoutePoint>& path, size_t idx, 
  for (size_t point = idx; point < hi; ++point) {
  const double distance =
  std::hypot(path[point].position.x - ex, path[point].position.y - ey);
- if (distance <= Ld && los_clear(cost, self, path[point].position))
+ if (distance <= Ld &&
+ los_clear_for_tracking(cost, self, path[point].position))
  best = path[point].position;
  }
  return best;
+}
+
+// Build the local planner reference from the route follower's monotonic
+// progress index. Euclidean nearest-point searches may select an already
+// passed branch at a tight corner or on a route that folds back near itself;
+// the resulting current->past->future polyline gives a progress critic the
+// opposite topology from the controller. The follower has already performed
+// bounded LOS-aware resynchronization, so only its remaining route is valid.
+inline std::vector<Vec2> forward_route_reference(
+ const std::vector<RoutePoint>& path, size_t begin, Vec2 current,
+ double maximum_length_m) {
+ std::vector<Vec2> reference{current};
+ if (path.empty() || begin >= path.size())
+ return reference;
+ double accumulated_m = 0.0;
+ Vec2 previous = current;
+ for (size_t index = begin;
+ index < path.size() && accumulated_m <= maximum_length_m + 1e-9;
+ ++index) {
+ const Vec2 point = path[index].position;
+ const double leg_m = std::hypot(point.x - previous.x, point.y - previous.y);
+ if (leg_m <= 1e-6)
+ continue;
+ reference.push_back(point);
+ accumulated_m += leg_m;
+ previous = point;
+ }
+ return reference;
 }
 // Reduce speed with cosine error scheduling and retain 10% creep because a bicycle model cannot steer at v=0.
 inline double sched_v(double err, double cruise) {
@@ -212,8 +271,9 @@ inline double sched_v(double err, double cruise) {
 // The 0.5 traction reserve is a method constant for disturbances and model error.
 // Distance accumulates along the path; turn angle comes from adjacent segment headings.
 // This measures path curvature; sched_v separately handles current heading error.
-inline double corner_speed_cap(const std::vector<RoutePoint>& path, size_t idx, double cruise, double alat_max,
-                               double preview_m) {
+inline double corner_speed_cap(const std::vector<RoutePoint>& path, size_t idx,
+ double cruise, double alat_max, double preview_m,
+ double yaw_rate_max_radps = std::numeric_limits<double>::infinity()) {
  if (idx >= path.size() || cruise <= 0.0 || preview_m <= 0.0)
   return cruise;
  double cap = cruise;
@@ -234,7 +294,15 @@ inline double corner_speed_cap(const std::vector<RoutePoint>& path, size_t idx, 
  path[i + 1].position.y - path[i].position.y);
   if (leg < 1e-6)
    continue;
-  const double allowed = std::sqrt(std::max(0.0, alat_max) * leg / turn);
+ const double radius_m = leg / turn;
+ // Curvature must satisfy both tire/support lateral acceleration and the
+ // chassis' attainable yaw rate (omega = v / R). The acceleration-only cap
+ // is too loose for short raster corners: a differential drive can remain
+ // upright at high speed while its finite wheel-speed difference cannot
+ // build the required heading change before it cuts the corner.
+ const double allowed = std::min(
+ std::sqrt(std::max(0.0, alat_max) * radius_m),
+ std::max(0.0, yaw_rate_max_radps) * radius_m);
   if (allowed < cap)
    cap = allowed;
  }
@@ -259,16 +327,48 @@ struct GuideState {
 struct GuideOut {
  double err{0}, steer{0}, tv{0};
  bool reached{false};
+ // The lookahead point used to compute err/steer. Route progress and target
+ // selection are one stateful operation; exposing this exact point prevents
+ // a caller from advancing the waypoint index a second time to reconstruct
+ // a target that no longer matches the returned control request.
+ Vec2 target;
+ bool target_valid{false};
 };
 inline GuideOut guide_step(const std::vector<RoutePoint>& path, GuideState& st, double ex, double ey, double eth,
                            PID& pid, double Ld, double cruise, double dt, const GridMap& cost,
                            const ChassisCaps& caps) {
- advance_wp(path, st.idx, ex, ey, eth, 0.6, Ld);
+ advance_wp(path, st.idx, ex, ey, eth, 0.6, Ld, &cost);
  if (st.idx >= path.size())
-  return {0, 0, 0, true};
+return {0, 0, 0, true, {}, false};
  Vec2 la = lookahead_pt(path, st.idx, ex, ey, Ld, cost);
  double err = heading_err(la, ex, ey, eth);
  double steer_fwd = pid.update(err, dt);
+ // Rotation shim for chassis that can turn about the base_link origin. A
+ // driven axle offset from base_link turns about the axle, not the body
+ // origin: a nominal in-place pivot sweeps base_link along an arc and can
+ // consume the whole static clearance next to a boundary. Such a chassis
+ // must align with a bounded rolling/reverse arc instead. Starting
+ // translation with a large path-heading error still cuts the inside of a
+ // corner, so the reverse hysteresis below remains active. Enter/exit
+ // hysteresis prevents mode chatter. The local trajectory validator still
+ // checks the complete base-link sweep.
+ constexpr double kRotateToPathEnterRad = 0.85;
+ constexpr double kRotateToPathExitRad = 0.30;
+ const bool can_rotate_about_base_link =
+     caps.can_spin &&
+     std::abs(caps.geometry.drive_axle_x_m) <= 1e-9;
+ if (can_rotate_about_base_link &&
+ (st.spinning || std::abs(err) >= kRotateToPathEnterRad)) {
+ if (st.spinning && std::abs(err) <= kRotateToPathExitRad) {
+ st.spinning = false;
+ st.reverse_time = 0.0;
+ } else {
+ st.spinning = true;
+ st.reversing = false;
+ st.reverse_time = 0.0;
+ return {err, steer_fwd, 0.0, false, la, true};
+ }
+ }
  if (!st.reversing && std::abs(err) > 1.4)
  st.reversing = true;
  else if (st.reversing && std::abs(err) < 0.7)
@@ -281,7 +381,7 @@ inline GuideOut guide_step(const std::vector<RoutePoint>& path, GuideState& st, 
  st.spinning = false;
  st.reverse_time = 0.0;
  } else {
- return {err, steer_fwd, 0.0, false};
+ return {err, steer_fwd, 0.0, false, la, true};
  }
  }
  if (st.reversing) {
@@ -292,9 +392,9 @@ inline GuideOut guide_step(const std::vector<RoutePoint>& path, GuideState& st, 
  // is future work and is not simulated here.
  st.reversing = false;
  st.reverse_time = 0.0;
- if (caps.can_spin) {
+ if (can_rotate_about_base_link) {
  st.spinning = true;
- return {err, steer_fwd, 0.0, false};
+ return {err, steer_fwd, 0.0, false, la, true};
  }
  }
   tv = -0.4;
@@ -310,7 +410,7 @@ inline GuideOut guide_step(const std::vector<RoutePoint>& path, GuideState& st, 
   steer = steer_fwd;
   tv = sched_v(err, cruise);
  }
- return {err, steer, tv, false};
+ return {err, steer, tv, false, la, true};
 }
 
 // Pure Pursuit for a bicycle/Ackermann chassis. The output is front steering
@@ -322,9 +422,9 @@ inline GuideOut ackermann_guide_step(const std::vector<RoutePoint>& path,
  double eth, double wheel_base_m, double max_steer_rad, double Ld,
  double cruise, double dt, const GridMap& cost) {
  size_t section_end = path_direction_section_end(path, st.idx);
- advance_wp_until(path, st.idx, section_end, ex, ey, eth, 0.6);
+ advance_wp_until(path, st.idx, section_end, ex, ey, eth, 0.6, &cost);
  if (st.idx >= path.size())
- return {0, 0, 0, true};
+return {0, 0, 0, true, {}, false};
  section_end = path_direction_section_end(path, st.idx);
  const Vec2 target = lookahead_pt_until(path, st.idx, section_end, ex, ey, Ld, cost);
  const double alpha = heading_err(target, ex, ey, eth);
@@ -340,10 +440,11 @@ inline GuideOut ackermann_guide_step(const std::vector<RoutePoint>& path,
  st.reverse_time += dt;
  // steer was computed in the reverse motion frame. With signed bicycle
  // speed, the body-frame steering command has the opposite sign.
- return {alpha, -steer, -std::min(0.25, std::max(0.0, cruise)), false};
+ return {alpha, -steer, -std::min(0.25, std::max(0.0, cruise)), false,
+ target, true};
  }
  st.reverse_time = std::max(0.0, st.reverse_time - dt);
- return {alpha, steer, sched_v(alpha, cruise), false};
+ return {alpha, steer, sched_v(alpha, cruise), false, target, true};
 }
 
 } // namespace sim

@@ -1,17 +1,28 @@
 #include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
+#include "robot/autonomy/behavior/crossing_map_semantics.hpp"
+
+#include <stdexcept>
 
 namespace sim {
 
 AutonomyPipeline::AutonomyPipeline(const GridMap& static_map, int width,
  int height, double resolution_m, std::uint32_t seed,
- ObservedObstacleLayerConfig obstacle_config)
+ ObservedObstacleLayerConfig obstacle_config,
+ const runtime::IMapProvider* map_provider)
  : perception_(static_map, width, height, resolution_m, seed,
- std::move(obstacle_config)) {}
+ std::move(obstacle_config)),
+ map_provider_(map_provider) {
+ refresh_crossing_semantics();
+}
 
 void AutonomyPipeline::reset(std::uint32_t seed) {
  perception_.reset(seed);
  local_planner_.reset();
  trajectory_tracker_.reset();
+ crossing_behavior_.reset();
+ entry_governor_.reset();
+ crossing_execution_feedback_ = {};
+ refresh_crossing_semantics();
 }
 
 LidarPerceptionFrame AutonomyPipeline::process_lidar(
@@ -33,6 +44,13 @@ const DynamicObstacleMap& AutonomyPipeline::dynamic_obstacles() const {
  return perception_.dynamic_obstacles();
 }
 
+PredictionBatch AutonomyPipeline::predict_dynamic_objects(
+ double time_s, double horizon_s, double frame_dt_s,
+ double max_age_s) const {
+ return perception_.dynamic_obstacles().predict_typed(
+ time_s, horizon_s, frame_dt_s, max_age_s);
+}
+
 const ObservedObstacleLayer& AutonomyPipeline::observed_obstacles() const {
  return perception_.obstacle_layer();
 }
@@ -45,15 +63,95 @@ double AutonomyPipeline::latest_visibility_stamp_s() const {
  return perception_.latest_visibility_stamp_s();
 }
 
+void AutonomyPipeline::refresh_crossing_semantics() {
+ if (!map_provider_) {
+ crossing_zones_.clear();
+ crossing_map_id_.clear();
+ crossing_map_revision_ = 0;
+ return;
+ }
+ const auto map = map_provider_->current_snapshot();
+ if (!map) {
+ crossing_zones_.clear();
+ crossing_map_id_.clear();
+ crossing_map_revision_ = 0;
+ return;
+ }
+ if (map->map_id == crossing_map_id_ &&
+ map->revision == crossing_map_revision_)
+ return;
+ const auto semantics = crossing_semantics_from_map(*map);
+ if (!semantics.valid) {
+ throw std::invalid_argument(
+ "invalid crossing semantics in robot map '" + map->map_id +
+ "': " + semantics.diagnostic);
+ }
+ crossing_behavior_.reset();
+ entry_governor_.reset();
+ crossing_execution_feedback_ = {};
+ crossing_zones_ = semantics.zones;
+ crossing_map_id_ = map->map_id;
+ crossing_map_revision_ = map->revision;
+}
+
+CrossingBehaviorDecision AutonomyPipeline::assess_crossing(
+ const std::vector<RoutePoint>& route, std::size_t path_index,
+ Vec2 ego_position, double ego_speed_mps, double ego_heading_rad,
+ const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
+ double frame_dt_s, const CrossingSafetyEnvelope& safety,
+ const CrossingExecutionCaps& execution, double decision_dt_s,
+ double evaluation_stamp_s,
+ CrossingPathFeasibility path_feasible) {
+ refresh_crossing_semantics();
+ return crossing_behavior_.assess(
+ crossing_zones_, route, path_index, ego_position, ego_speed_mps,
+ ego_heading_rad, predicted_frames, frame_dt_s, safety, execution,
+ decision_dt_s, perception_.latest_visibility_rays(),
+ perception_.latest_visibility_stamp_s(),
+ evaluation_stamp_s,
+ crossing_execution_feedback_.committed &&
+ crossing_execution_feedback_.blocked,
+ crossing_execution_feedback_.committed &&
+ crossing_execution_feedback_.contingency_escape,
+ std::move(path_feasible));
+}
+
+GovernorOutput AutonomyPipeline::update_entry_governor(
+ const GovernorInput& input) {
+ return entry_governor_.update(input);
+}
+
+EntryWindowDecision AutonomyPipeline::assess_entry_window(
+ const EntryWindowRequest& request) {
+ return entry_governor_.assess(request);
+}
+
+bool AutonomyPipeline::entry_governor_holding() const {
+ return entry_governor_.holding();
+}
+
+void AutonomyPipeline::report_crossing_execution(
+ bool committed, const TrajectoryValidation& validation,
+ std::uint64_t trajectory_sequence, double stamp_s) {
+ crossing_execution_feedback_.trajectory_sequence = trajectory_sequence;
+ crossing_execution_feedback_.stamp_s = stamp_s;
+ crossing_execution_feedback_.committed = committed;
+ crossing_execution_feedback_.blocked = committed &&
+ !validation.preserves_behavior_authority();
+ crossing_execution_feedback_.contingency_escape = committed &&
+ validation.requires_committed_contingency();
+}
+
 LocalPlanningOutput AutonomyPipeline::plan_local(
  const LocalPlanningRequest& request, const GridMap& planning_map,
  const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
  StaticFeasibility terrain_feasible,
  const GridMap* physical_collision_map,
- StaticFeasibility physical_terrain_feasible) {
+ StaticFeasibility physical_terrain_feasible,
+ TerrainSampleQuery terrain_sample) {
  return local_planner_.plan(request, planning_map, predicted_frames,
  std::move(terrain_feasible), physical_collision_map,
- std::move(physical_terrain_feasible));
+ std::move(physical_terrain_feasible), std::move(terrain_sample));
 }
 
 TrajectoryTrackingReport AutonomyPipeline::observe_trajectory(

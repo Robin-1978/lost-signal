@@ -1,13 +1,16 @@
 #include "robot/autonomy/planning/local/ackermann_local.hpp"
 #include "robot/autonomy/planning/local/local_planning_system.hpp"
+#include "robot/autonomy/planning/global/global_planner.hpp"
 #include "robot/autonomy/planning/global/hybrid_astar.hpp"
 #include "robot/autonomy/control/follow.hpp"
+#include "robot/autonomy/control/route_tracking_system.hpp"
 #include "sim/hardware/vehicle/ackermann.hpp"
 #include "sim/hardware/vehicle/holonomic.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -18,6 +21,31 @@
  } while (false)
 
 int main() {
+ // Occupancy is discrete, but local-planner clearance is continuous inside
+ // each free cell and measures distance to complete occupied cell squares.
+ // The map boundary is implicit occupied space under the same contract.
+ {
+ sim::GridMap clearance_map(10, 10, 1.0);
+ clearance_map.addBox(5.0, 3.0, 6.0, 4.0);
+ CHECK(std::abs(clearance_map.clearance(4.25, 3.5) - 0.75) < 1e-12);
+ CHECK(std::abs(clearance_map.clearance(4.75, 3.5) - 0.25) < 1e-12);
+ CHECK(clearance_map.clearance(5.25, 3.5) == 0.0);
+ CHECK(std::abs(clearance_map.clearance(0.2, 8.0) - 0.2) < 1e-12);
+ CHECK(clearance_map.distanceToFreeSpace(5.25, 3.5) == 0.25);
+ CHECK(clearance_map.distanceToFreeSpace(4.75, 3.5) == 0.0);
+ }
+ {
+ sim::GridMap segment_map(10, 10, 1.0);
+ segment_map.setOccupied(4.5, 4.5);
+ CHECK(segment_map.segmentIsFree({1.5, 1.5}, {3.5, 3.5}));
+ CHECK(!segment_map.segmentIsFree({1.5, 1.5}, {7.5, 7.5}));
+ // Free endpoints do not prove a line free when it crosses an occupied
+ // interior cell; this is the shared behavior/executor map contract.
+ CHECK(segment_map.isFree(1.5, 4.5));
+ CHECK(segment_map.isFree(7.5, 4.5));
+ CHECK(!segment_map.segmentIsFree({1.5, 4.5}, {7.5, 4.5}));
+ }
+
  sim::GridMap map(40, 40, 0.25);
  // A wall with a broad opening forces a real turn rather than a straight
  // interpolation, while leaving enough room for the configured car radius.
@@ -237,6 +265,36 @@ int main() {
  }
  CHECK(physical_feasibility_calls > 0);
 
+ // Global replanning is triggered by persistent static evidence on the
+ // remaining route, while a live tracked actor at the same blockage keeps
+ // ownership in prediction/behavior. This prevents both permanent local
+ // recovery loops and global detours around a passing vehicle.
+ const std::vector<sim::RoutePoint> monitored_route{
+ {{1.0, 1.0}, 0.0, sim::TravelDirection::Unspecified},
+ {{2.0, 1.0}, 0.0, sim::TravelDirection::Forward},
+ {{4.0, 1.0}, 0.0, sim::TravelDirection::Forward},
+ };
+ sim::EstimatedState monitored_estimate;
+ monitored_estimate.position = {1.0, 1.0};
+ sim::GridMap blocked_route_map(40, 40, 0.1);
+ blocked_route_map.addBox(1.8, 0.8, 2.2, 1.2);
+ sim::RouteTrackingSystem route_monitor(1.0, 0.0, 0.0, 1.0, 1.0);
+ for (int cycle = 0; cycle < 9; ++cycle) {
+ CHECK(!route_monitor.should_replan(
+ monitored_route, monitored_estimate, blocked_route_map, {}, 0.1));
+ }
+ CHECK(route_monitor.should_replan(
+ monitored_route, monitored_estimate, blocked_route_map, {}, 0.1));
+ route_monitor.reset();
+ sim::DynamicTrack passing_actor;
+ passing_actor.state.p = {2.0, 1.0};
+ passing_actor.state.radius = 0.3;
+ for (int cycle = 0; cycle < 20; ++cycle) {
+ CHECK(!route_monitor.should_replan(
+ monitored_route, monitored_estimate, blocked_route_map,
+ {passing_actor}, 0.1));
+ }
+
  const auto mecanum = sim::mecanum_inverse(1.2, -0.4, 0.7, 0.6, 0.5);
  double recovered_forward = 0.0, recovered_left = 0.0, recovered_yaw = 0.0;
  sim::mecanum_forward(mecanum, 0.6, 0.5, recovered_forward, recovered_left, recovered_yaw);
@@ -257,5 +315,75 @@ int main() {
   state = drive.step(state, strafe, 0.02, {});
  CHECK(state.y > 1.0);
  CHECK(std::abs(state.x) < 1e-9);
+ // Lethal inflation and graded clearance have different jobs. The former
+ // rejects overlap; the latter keeps a nominal global route away from the
+ // edge of an occupied cell so ordinary tracking error does not immediately
+ // force local recovery. This is the default ROBOT planner contract and must
+ // not depend on a level-specific game setting.
+ {
+ sim::GridMap route_map(14, 12, 1.0);
+ // The central block gives equal-length upper and lower routes. The lower
+ // route remains physically free but runs beside a second obstacle for
+ // longer. Plain A* resolves that exact tie by grid index; the default
+ // graded critic should resolve it toward the route with more usable room.
+ route_map.addBox(5.0, 4.0, 9.0, 7.0);
+ route_map.addBox(4.0, 2.0, 10.0, 3.0);
+ const std::vector<autonomy::PlanningPose> request{
+ {{1.5, 5.5}, 0.0}, {{12.5, 5.5}, 0.0},
+ };
+ autonomy::GlobalPlanningSystem shortest(
+ autonomy::default_global_planner(), 0.0);
+ autonomy::GlobalPlanningSystem clearance_aware(
+ autonomy::default_global_planner());
+ const auto shortest_plan = shortest.plan(route_map, request, {});
+ const auto robust_plan = clearance_aware.plan(route_map, request, {});
+ CHECK(shortest_plan.ok);
+ CHECK(robust_plan.ok);
+ const auto y_extent = [](const auto& path) {
+ std::pair<double, double> value{
+ std::numeric_limits<double>::infinity(),
+ -std::numeric_limits<double>::infinity()};
+ for (const auto& point : path)
+ value = {std::min(value.first, point.position.y),
+ std::max(value.second, point.position.y)};
+ return value;
+ };
+ CHECK(y_extent(shortest_plan.path).first <= 3.5 + 1e-9);
+ CHECK(y_extent(robust_plan.path).second >= 7.5 - 1e-9);
+
+ // Clearance is a real soft cost, not only a deterministic tie breaker. The
+ // direct path below this wall is shorter and physically free, but it stays
+ // one half-cell from inflation. The default planner accepts a modest detour
+ // through the wider corridor so finite-bandwidth tracking does not start in
+ // local recovery.
+ sim::GridMap shortcut_map(12, 9, 1.0);
+ shortcut_map.addBox(4.0, 4.0, 8.0, 5.0);
+ const std::vector<autonomy::PlanningPose> shortcut_request{
+ {{1.5, 3.5}, 0.0}, {{10.5, 3.5}, 0.0},
+ };
+ const auto tight_shortcut = shortest.plan(shortcut_map, shortcut_request, {});
+ const auto margin_route = clearance_aware.plan(shortcut_map, shortcut_request, {});
+ CHECK(tight_shortcut.ok && margin_route.ok);
+ const auto path_length = [](const auto& path) {
+ double length = 0.0;
+ for (std::size_t index = 1; index < path.size(); ++index) {
+ length += std::hypot(
+ path[index].position.x - path[index - 1].position.x,
+ path[index].position.y - path[index - 1].position.y);
+ }
+ return length;
+ };
+ const auto minimum_clearance = [&](const auto& path) {
+ double clearance = std::numeric_limits<double>::infinity();
+ for (const auto& point : path)
+ clearance = std::min(clearance,
+ shortcut_map.clearance(point.position.x, point.position.y));
+ return clearance;
+ };
+ CHECK(path_length(margin_route.path) > path_length(tight_shortcut.path) + 0.1);
+ CHECK(minimum_clearance(margin_route.path) >
+ minimum_clearance(tight_shortcut.path) + 0.5);
+ }
+
  return 0;
 }

@@ -1,8 +1,44 @@
 #include "robot/autonomy/control/route_tracking_system.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <optional>
 #include <utility>
 
 namespace sim {
+namespace {
+
+std::optional<Vec2> first_blocked_route_point(
+ const std::vector<RoutePoint>& path, std::size_t begin, Vec2 current,
+ const GridMap& map, double maximum_lookahead_m) {
+ if (path.empty() || begin >= path.size() || !map.isFree(current.x, current.y))
+ return std::nullopt;
+ double inspected_m = 0.0;
+ Vec2 from = current;
+ const double sample_spacing_m = std::max(0.01, 0.5 * map.res());
+ for (std::size_t index = begin;
+ index < path.size() && inspected_m <= maximum_lookahead_m; ++index) {
+ const Vec2 to = path[index].position;
+ const double length_m = std::hypot(to.x - from.x, to.y - from.y);
+ const int samples = std::max(1, static_cast<int>(std::ceil(
+ length_m / sample_spacing_m)));
+ for (int sample = 1; sample <= samples; ++sample) {
+ const double alpha = static_cast<double>(sample) /
+ static_cast<double>(samples);
+ const Vec2 point{
+ from.x + (to.x - from.x) * alpha,
+ from.y + (to.y - from.y) * alpha,
+ };
+ if (!map.isFree(point.x, point.y))
+ return point;
+ }
+ inspected_m += length_m;
+ from = to;
+ }
+ return std::nullopt;
+}
+
+} // namespace
 
 RouteTrackingSystem::RouteTrackingSystem(double kp, double ki, double kd, double output_limit, double integral_limit)
     : heading_pid_(std::make_unique<sim::PID>(kp, ki, kd, output_limit, integral_limit)) {}
@@ -10,32 +46,7 @@ RouteTrackingSystem::RouteTrackingSystem(double kp, double ki, double kd, double
 void RouteTrackingSystem::reset() {
  guide_state_ = {};
  heading_pid_->reset();
-}
-
-sim::Vec2 RouteTrackingSystem::navigation_target(const std::vector<sim::RoutePoint>& path,
- const sim::EstimatedState& estimate,
- double lookahead_m,
-                                           const sim::GridMap& planning_map, sim::Vec2 fallback_goal) {
- const bool gear_changes = sim::path_has_reverse(path);
- std::size_t section_end = path.size();
- if (gear_changes) {
- section_end = sim::path_direction_section_end(path, guide_state_.idx);
- sim::advance_wp_until(path, guide_state_.idx, section_end, estimate.position.x,
- estimate.position.y, estimate.heading_rad, 0.55);
- } else {
- sim::advance_wp(path, guide_state_.idx, estimate.position.x, estimate.position.y,
- estimate.heading_rad, 0.55, lookahead_m);
- }
- if (guide_state_.idx >= path.size()) {
-  return fallback_goal;
- }
- if (gear_changes) {
- section_end = sim::path_direction_section_end(path, guide_state_.idx);
- return sim::lookahead_pt_until(path, guide_state_.idx, section_end, estimate.position.x,
- estimate.position.y, lookahead_m, planning_map);
- }
- return sim::lookahead_pt(path, guide_state_.idx, estimate.position.x, estimate.position.y,
- lookahead_m, planning_map);
+ static_route_blocked_s_ = 0.0;
 }
 
 sim::GuideOut RouteTrackingSystem::follow_route(const std::vector<sim::RoutePoint>& path,
@@ -55,6 +66,32 @@ sim::GuideOut RouteTrackingSystem::follow_route(const std::vector<sim::RoutePoin
 
 sim::TravelDirection RouteTrackingSystem::travel_direction(const std::vector<sim::RoutePoint>& path) const {
  return sim::path_travel_direction(path, guide_state_.idx);
+}
+
+bool RouteTrackingSystem::should_replan(
+ const std::vector<sim::RoutePoint>& path, const sim::EstimatedState& estimate,
+ const sim::GridMap& local_map,
+ const std::vector<sim::DynamicTrack>& dynamic_tracks, double dt_s) {
+ const auto blocked = first_blocked_route_point(
+ path, guide_state_.idx, estimate.position, local_map, 8.0);
+ if (!blocked) {
+ static_route_blocked_s_ = 0.0;
+ return false;
+ }
+ const bool explained_by_dynamic_track = std::any_of(
+ dynamic_tracks.begin(), dynamic_tracks.end(), [&](const DynamicTrack& track) {
+ const double dynamic_envelope_m =
+ track.state.radius + 2.0 * local_map.res();
+ return std::hypot(track.state.p.x - blocked->x,
+ track.state.p.y - blocked->y) <= dynamic_envelope_m;
+ });
+ if (explained_by_dynamic_track) {
+ static_route_blocked_s_ = 0.0;
+ return false;
+ }
+ static_route_blocked_s_ += std::max(0.0, dt_s);
+ constexpr double kPersistentStaticBlockageS = 1.0;
+ return static_route_blocked_s_ + 1e-9 >= kPersistentStaticBlockageS;
 }
 
 } // namespace sim

@@ -65,7 +65,7 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
  } catch (const json::exception& error) {
   throw ContentError(path.string() + ": invalid progress JSON: " + error.what());
  }
- if (value.value("schema_version", 0) != 2) {
+ if (value.value("schema_version", 0) != 3) {
   throw ContentError(path.string() + ": unsupported progress schema_version");
  }
 
@@ -163,6 +163,12 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
                                             it.value().value("efficient", false),
                                             it.value().value("best_time_s", 0.0),
                                             it.value().value("best_energy_wh", 0.0),
+ it.value().value("best_overall", 0.0),
+ it.value().value("safety", 0.0),
+ it.value().value("pace", 0.0),
+ it.value().value("efficiency", 0.0),
+ it.value().value("smoothness", 0.0),
+ it.value().value("decisiveness", 0.0),
                                           });
  }
  if (const auto expedition = value.find("field_expedition");
@@ -201,6 +207,10 @@ CampaignProgress CampaignProgress::load(const std::filesystem::path& path, const
 void CampaignProgress::record_completion(const std::string& level_id, const MissionResult& result,
                                          const ContentCatalog& catalog) {
  (void)catalog.level(level_id);
+ if (result.status != MissionStatus::Succeeded || result.collisions != 0 ||
+ !result.performance.ranked) {
+ return;
+ }
  if (std::find(completed_levels_.begin(), completed_levels_.end(), level_id) == completed_levels_.end()) {
   completed_levels_.push_back(level_id);
  }
@@ -230,6 +240,14 @@ void CampaignProgress::record_completion(const std::string& level_id, const Miss
  }
  if (score.best_energy_wh <= 0.0 || result.energy_wh < score.best_energy_wh) {
   score.best_energy_wh = result.energy_wh;
+ }
+ if (result.performance.overall > score.best_overall) {
+ score.best_overall = result.performance.overall;
+ score.safety = result.performance.safety;
+ score.pace = result.performance.pace;
+ score.efficiency = result.performance.efficiency;
+ score.smoothness = result.performance.smoothness;
+ score.decisiveness = result.performance.decisiveness;
  }
  // Contract earn: a job on this level pays once when its axis scores.
  // Idempotent via the claim ledger (replays and re-rides never double-pay).
@@ -311,10 +329,16 @@ void CampaignProgress::save(const std::filesystem::path& path, const ContentCata
     {"efficient", score.efficient},
     {"best_time_s", score.best_time_s},
     {"best_energy_wh", score.best_energy_wh},
+ {"best_overall", score.best_overall},
+ {"safety", score.safety},
+ {"pace", score.pace},
+ {"efficiency", score.efficiency},
+ {"smoothness", score.smoothness},
+ {"decisiveness", score.decisiveness},
   };
  }
  const json value = {
-   {"schema_version", 2},
+ {"schema_version", 3},
    {"content_version", catalog.campaign().content_version},
    {"completed_levels", completed_levels_},
    {"inventory", inventory_},

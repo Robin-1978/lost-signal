@@ -183,9 +183,11 @@ The word *mission* has two distinct meanings and the codebase must not merge the
 The target deployable set includes the implemented `lost_signal_robot_executive` library above `lost_signal_robot_autonomy`,
 with operator/API adapters above it and LSRI platform adapters below autonomy. Its first `TaskExecutive` slice owns
 validated goal ordering, arrival, dwell, pause, resume, cancel, failure, and completion lifecycle. The implemented
-`MapManager` and `IMapProvider` own validated immutable map revisions and semantic-place resolution, while
-`lost_signal_robot_map_io` loads and saves the checksummed LSRM v1 package. These targets depend only on deployable
-contracts.
+**Lost Signal Map Interface** consists of `IMapProvider`, immutable `MapSnapshot` revisions and bounded `MapView`
+queries. `MapManager` is its in-process lifecycle implementation and semantic-place resolver, while
+`lost_signal_robot_map_io` loads and saves the checksummed LSRM v1 package. Simulation compilation, SLAM, survey/HD
+map import and remote map services are provider adapters behind this ROBOT-owned boundary. These targets depend only
+on deployable contracts.
 
 `GoalSystem` is a thin adapter from authored game actions to `TaskExecutive` and resolves positions through
 `IMapProvider`; it no longer owns generic task lifecycle or reads map markers directly. The simulation composition
@@ -196,9 +198,9 @@ are simulation-only and are rejected from deployable dependencies.
 `src/sim/game/mission/` owns authored goals, progression, field dispatch, world activity, scoring, and presentation data.
 `src/sim/game/scenario/` owns fixed-step composition, telemetry, and replay. `ScenarioSession` composes the focused systems
 and publishes an immutable snapshot for consumers.
-`DynamicTrafficSystem` is a stateless world-content adapter for authored conflict zones: it filters level activation
-and translates authority plus the declared participant envelope into a neutral autonomy contract.
-`CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
+`CrossingMapSemantics` in `robot/autonomy/behavior` decodes deployable `conflict_zone` and `conflict_approach` features
+from the current Lost Signal Map Interface snapshot. Scenario content may author those map features, but SIM/game does
+not own a traffic-decision adapter or crossing state. `CrossingBehaviorSystem` in `robot/autonomy/behavior` owns
 the per-run crossing state, derives stop and exit poses from the current route and vehicle envelope, evaluates
 tracked-object predictions and current LiDAR free-space evidence, and controls the hold/commit/clear transitions.
 Map semantics may declare traffic-approach centerlines, corridor width and maximum participant speed. A current scan

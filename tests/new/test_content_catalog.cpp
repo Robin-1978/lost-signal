@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 #define CHECK(condition)                                                                                     \
  do {                                                                                                        \
@@ -295,5 +298,90 @@ int main() {
  CHECK(mainline == 8);
  CHECK(contracts == 2);
  CHECK(experiments == 16);
+
+ // A task may require crossing a dynamic lane, but its service pose must be
+ // beyond that lane. The envelope contains actor radius, the largest chassis
+ // offered by the presentation, and the level's dynamic-clearance contract.
+ const auto invalid_assets = std::filesystem::temp_directory_path() /
+ "lost_signal_invalid_dynamic_goal_assets";
+ std::error_code copy_error;
+ std::filesystem::remove_all(invalid_assets, copy_error);
+ copy_error.clear();
+ std::filesystem::copy(LOST_SIGNAL_TEST_ASSETS, invalid_assets,
+ std::filesystem::copy_options::recursive |
+ std::filesystem::copy_options::overwrite_existing,
+ copy_error);
+ CHECK(!copy_error);
+ const auto invalid_map_path = invalid_assets / "maps" / "signal_town_big.json";
+ nlohmann::json invalid_map;
+ {
+ std::ifstream input(invalid_map_path);
+ CHECK(static_cast<bool>(input));
+ input >> invalid_map;
+ }
+ invalid_map.at("markers").at("energy_core") = {25.5, 18.0, 0.0};
+ {
+ std::ofstream output(invalid_map_path, std::ios::trunc);
+ CHECK(static_cast<bool>(output));
+ output << invalid_map.dump(2) << '\n';
+ }
+ bool rejected_dynamic_goal = false;
+ try {
+ (void)mission::ContentCatalog::load(invalid_assets);
+ } catch (const mission::ContentError& error) {
+ rejected_dynamic_goal =
+ std::string(error.what()).find("lies inside fatal actor 'big_cart_a' swept safety envelope") !=
+ std::string::npos;
+ }
+ CHECK(rejected_dynamic_goal);
+
+ // A goal may miss an optional clearance badge without becoming invalid
+ // content. At 1.0 m lateral separation the largest selectable body and the
+ // 0.45 m forklift do not overlap, even though adding the level's preferred
+ // score distance would reject it.
+ invalid_map.at("markers").at("energy_core") = {25.5, 15.5, 0.0};
+ {
+ std::ofstream output(invalid_map_path, std::ios::trunc);
+ CHECK(static_cast<bool>(output));
+ output << invalid_map.dump(2) << '\n';
+ }
+ const auto invalid_cross_map_path = invalid_assets / "maps" / "research_base.json";
+ nlohmann::json invalid_cross_map;
+ {
+ std::ifstream input(invalid_cross_map_path);
+ CHECK(static_cast<bool>(input));
+ input >> invalid_cross_map;
+ }
+ invalid_cross_map.at("markers").at("signal_cross_tower") = {17.0, 10.0, 0.0};
+ {
+ std::ofstream output(invalid_cross_map_path, std::ios::trunc);
+ CHECK(static_cast<bool>(output));
+ output << invalid_cross_map.dump(2) << '\n';
+ }
+ bool score_only_clearance_loaded = true;
+ try {
+ (void)mission::ContentCatalog::load(invalid_assets);
+ } catch (const mission::ContentError&) {
+ score_only_clearance_loaded = false;
+ }
+ CHECK(score_only_clearance_loaded);
+
+ // Moving the same goal inside the actor-plus-largest-chassis physical
+ // envelope is an unavoidable dwell overlap and remains a hard content error.
+ invalid_cross_map.at("markers").at("signal_cross_tower") = {16.7, 10.0, 0.0};
+ {
+ std::ofstream output(invalid_cross_map_path, std::ios::trunc);
+ CHECK(static_cast<bool>(output));
+ output << invalid_cross_map.dump(2) << '\n';
+ }
+ bool rejected_unsafe_service_envelope = false;
+ try {
+ (void)mission::ContentCatalog::load(invalid_assets);
+ } catch (const mission::ContentError& error) {
+ rejected_unsafe_service_envelope =
+ std::string(error.what()).find("lies inside fatal actor 'forklift_b' swept safety envelope") !=
+ std::string::npos;
+ }
+ CHECK(rejected_unsafe_service_envelope);
  return 0;
 }

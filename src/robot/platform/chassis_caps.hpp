@@ -1,5 +1,9 @@
 #pragma once
 
+#include "robot/core/math.hpp"
+
+#include <vector>
+
 namespace sim {
 
 enum class ChassisCommandSpace { YawRate, SteeringAngle, HolonomicTwist };
@@ -15,6 +19,10 @@ struct ChassisGeometry {
  // a rear caster have very different acceleration and braking tip margins.
  double support_min_x_m{-0.25};
  double support_max_x_m{0.25};
+ // Convex ground-contact polygon in base_link coordinates. Width/length and
+ // extrema remain convenient scalar capabilities, while this polygon keeps
+ // diagonal tip-over physics for three-point and asymmetric platforms.
+ std::vector<Vec2> support_polygon;
  // Longitudinal offset from base_link to the driven axle. Zero for chassis
  // whose kinematic reference already lies on the axle/module center.
  double drive_axle_x_m{0.0};

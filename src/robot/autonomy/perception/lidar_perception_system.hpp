@@ -38,6 +38,7 @@ struct LidarProjectionConfig {
 struct LidarPerceptionFrame {
  std::vector<Vec2> hits;
  std::vector<ObservedRay2D> obstacle_rays;
+ std::vector<ObservedClearingRegion> dynamic_clearing_regions;
  bool static_obstacle_near{false};
  bool dynamic_object_detected{false};
 };
@@ -52,7 +53,7 @@ class LidarPerceptionSystem {
  void reset(std::uint32_t seed);
  LidarPerceptionFrame process(const Scan& scan, const Scan& static_reference,
  const LidarProjectionState& state, const LidarProjectionConfig& config,
- double track_max_age_s);
+ double track_max_age_s, double dynamic_occupancy_history_s = 0.0);
 
  const DynamicObstacleMap& dynamic_obstacles() const { return dynamic_obstacles_; }
  DynamicObstacleMap& dynamic_obstacles() { return dynamic_obstacles_; }

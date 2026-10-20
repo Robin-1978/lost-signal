@@ -71,7 +71,7 @@ int main() {
  fs::temp_directory_path() / "lost_signal_progress_rep_legacy.json";
  {
   std::ofstream out(legacy_path, std::ios::trunc);
-  out << "{\"schema_version\": 2, \"completed_levels\": [], \"inventory\": []}\n";
+ out << "{\"schema_version\": 3, \"completed_levels\": [], \"inventory\": []}\n";
  }
  const auto legacy = mission::CampaignProgress::load(legacy_path, catalog);
  CHECK(legacy.reputation() == 0);
@@ -95,9 +95,26 @@ int main() {
   mission::MissionResult missed_run;
   missed.record_completion(job.level, missed_run, catalog);
   CHECK(missed.reputation() == 0);
+ CHECK(missed.completed_levels().empty());
+
+ mission::MissionResult collided_run;
+ collided_run.status = mission::MissionStatus::Succeeded;
+ collided_run.collisions = 1;
+ collided_run.performance.ranked = true;
+ collided_run.performance.overall = 100.0;
+ missed.record_completion(job.level, collided_run, catalog);
+ CHECK(missed.completed_levels().empty());
 
   mission::CampaignProgress earn;
   mission::MissionResult qualifying_run;
+ qualifying_run.status = mission::MissionStatus::Succeeded;
+ qualifying_run.performance.ranked = true;
+ qualifying_run.performance.overall = 82.0;
+ qualifying_run.performance.safety = 81.0;
+ qualifying_run.performance.pace = 80.0;
+ qualifying_run.performance.efficiency = 79.0;
+ qualifying_run.performance.smoothness = 78.0;
+ qualifying_run.performance.decisiveness = 77.0;
   if (job.axis == "fast") {
    qualifying_run.fast_score = true;
   } else if (job.axis == "safe") {
@@ -109,6 +126,7 @@ int main() {
   }
   earn.record_completion(job.level, qualifying_run, catalog);
   CHECK(earn.reputation() == job.rep);
+ CHECK(earn.best_scores().at(job.level).best_overall == 82.0);
   earn.record_completion(job.level, qualifying_run, catalog);
   CHECK(earn.reputation() == job.rep);
   // C++ catalog carries every board the validator gates (relational pin:

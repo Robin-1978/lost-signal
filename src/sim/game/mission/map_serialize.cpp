@@ -80,7 +80,6 @@ std::string serialize_map_canonical(const MapDefinition& map) {
   item["min"] = vec2(zone.min);
   item["max"] = vec2(zone.max);
   item["authority"] = zone.authority;
- item["participant_radius_m"] = zone.participant_radius_m;
  if (!zone.observation_approaches.empty()) {
  nlohmann::ordered_json approaches = nlohmann::ordered_json::array();
  for (const auto& approach : zone.observation_approaches) {
@@ -90,7 +89,6 @@ std::string serialize_map_canonical(const MapDefinition& map) {
  centerline.push_back(vec2(point));
  approach_item["centerline"] = std::move(centerline);
  approach_item["half_width_m"] = approach.half_width_m;
- approach_item["maximum_speed_mps"] = approach.maximum_speed_mps;
  approaches.push_back(std::move(approach_item));
  }
  item["observation_approaches"] = std::move(approaches);
@@ -160,7 +158,7 @@ std::string serialize_map_canonical(const MapDefinition& map) {
  world_objects.push_back(std::move(item));
  }
  nlohmann::ordered_json root;
- root["schema_version"] = 1;
+ root["schema_version"] = 2;
  root["id"] = map.id;
  root["scene_3d"] = map.scene_3d;
  root["size_m"] = vec2(map.size_m);

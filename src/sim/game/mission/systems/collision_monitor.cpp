@@ -87,7 +87,11 @@ bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to,
  if (margin <= 0.0)
  return true;
  const double initial_clearance = static_clearance(from);
- if (initial_clearance + 1e-9 >= margin)
+ // The strict band applies only while the body is already clear of the whole
+ // reserve. At the boundary of the reserve, admitting only non-worsening
+ // segments is what lets a braking body stop instead of rejecting every
+ // candidate and continuing to coast under its previous command.
+ if (initial_clearance > margin + 1e-9)
  return motion_free_at_radius(robot_radius_m_ + margin);
 
  // If tracking/localization has already put the centre inside the execution

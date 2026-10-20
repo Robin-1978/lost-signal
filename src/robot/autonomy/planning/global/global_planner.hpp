@@ -16,6 +16,15 @@ namespace autonomy {
 
 inline constexpr std::uint32_t kGlobalPlannerApiMajor = 4;
 inline constexpr std::uint32_t kGlobalPlannerApiMinor = 0;
+// A binary inflated costmap proves footprint clearance only at the sampled
+// grid state. Real tracking error can consume the remainder of that free
+// cell. Keep a graded cost in the first free cell so the default planner
+// chooses usable tracking room when an equivalent route exists. This is a
+// ROBOT planning policy, not a level/game setting.
+// A full-cell clearance shortfall must be able to outweigh a modest route
+// shortcut. A tie-break-only value sends the global path along inflation
+// boundaries and leaves finite-bandwidth local control in permanent recovery.
+inline constexpr double kDefaultGlobalClearanceCostScale = 2.0;
 
 struct PlanningPose {
  sim::Vec2 position;
@@ -97,7 +106,9 @@ std::shared_ptr<const IGlobalPlanner> ackermann_global_planner(
 // end inside a goal tolerance; the next segment begins at that returned pose.
 class GlobalPlanningSystem {
  public:
- explicit GlobalPlanningSystem(std::shared_ptr<const IGlobalPlanner> planner);
+ explicit GlobalPlanningSystem(
+ std::shared_ptr<const IGlobalPlanner> planner,
+ double clearance_cost_scale = kDefaultGlobalClearanceCostScale);
 
  GlobalPlan plan(const sim::GridMap& map, const std::vector<PlanningPose>& waypoints,
  const sim::TraversalCost& traversal_cost) const;
@@ -106,6 +117,7 @@ class GlobalPlanningSystem {
 
  private:
  std::shared_ptr<const IGlobalPlanner> planner_;
+ double clearance_cost_scale_{0.0};
 };
 
 } // namespace autonomy

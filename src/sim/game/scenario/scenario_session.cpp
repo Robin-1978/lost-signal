@@ -4,6 +4,7 @@
 #include "robot/autonomy/planning/task/task_ordering.hpp"
 
 #include "robot/autonomy/planning/global/astar.hpp"
+#include "robot/autonomy/control/safe_stop_limiter.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 #include "sim/game/mission/world/actor_behavior_registry.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
@@ -30,6 +31,38 @@ sim::Vec2 as_vec(const Pose& pose) {
 
 double distance(sim::Vec2 a, sim::Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
+}
+
+std::vector<sim::Vec2> convex_support_hull(std::vector<sim::Vec2> points) {
+ std::sort(points.begin(), points.end(), [](sim::Vec2 a, sim::Vec2 b) {
+ return a.x < b.x || (a.x == b.x && a.y < b.y);
+ });
+ points.erase(std::unique(points.begin(), points.end(), [](sim::Vec2 a, sim::Vec2 b) {
+ return a.x == b.x && a.y == b.y;
+ }), points.end());
+ if (points.size() < 3)
+ return {};
+ const auto cross = [](sim::Vec2 origin, sim::Vec2 a, sim::Vec2 b) {
+ return (a.x - origin.x) * (b.y - origin.y) -
+ (a.y - origin.y) * (b.x - origin.x);
+ };
+ std::vector<sim::Vec2> hull;
+ hull.reserve(points.size() * 2);
+ for (const auto point : points) {
+ while (hull.size() >= 2 &&
+ cross(hull[hull.size() - 2], hull.back(), point) <= 0.0)
+ hull.pop_back();
+ hull.push_back(point);
+ }
+ const std::size_t lower_size = hull.size();
+ for (auto point = points.rbegin(); point != points.rend(); ++point) {
+ while (hull.size() > lower_size &&
+ cross(hull[hull.size() - 2], hull.back(), *point) <= 0.0)
+ hull.pop_back();
+ hull.push_back(*point);
+ }
+ hull.pop_back();
+ return hull;
 }
 
 bool dispatch_has_priority(const FieldDispatchState& dispatch, const WorldIncidentState& incident) {
@@ -225,8 +258,9 @@ void ScenarioSession::reset() {
  manipulator_command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
- entry_governor_system_.reset();
- crossing_behavior_system_.reset();
+ crossing_execution_segment_ = 0;
+ crossing_alignment_segment_ = 0;
+ crossing_segment_alignment_complete_ = false;
  was_saturated_ = false;
  rigid_rollover_exposure_s_ = 0.0;
  previous_payload_shock_mps2_ = 0.0;
@@ -277,6 +311,9 @@ void ScenarioSession::reset() {
  slip_prev_tread_v_ = 0.0;
  slip_prev_body_v_ = 0.0;
  slip_have_prev_ = false;
+ score_command_initialized_ = false;
+ score_previous_command_v_mps_ = 0.0;
+ score_previous_command_w_radps_ = 0.0;
  record_replay();
 }
 
@@ -817,6 +854,11 @@ void ScenarioSession::build_world() {
  chassis_caps_ = chassis_->caps();
  chassis_caps_.geometry.support_min_x_m = support_min_x_m;
  chassis_caps_.geometry.support_max_x_m = support_max_x_m;
+ std::vector<sim::Vec2> support_contacts;
+ support_contacts.reserve(rolling_contacts.size());
+ for (const auto* mount : rolling_contacts)
+ support_contacts.push_back({mount->position_m.x, mount->position_m.y});
+ chassis_caps_.geometry.support_polygon = convex_support_hull(std::move(support_contacts));
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
  differential_wheel_controller_.reset();
@@ -848,6 +890,10 @@ void ScenarioSession::build_world() {
  chassis_params.pwm_limit,
  chassis_params.integral_limit,
  chassis_params.static_friction_feedforward_duty,
+ simulation_mass,
+ robot_definition_.drive_type == "tracked" ? motor_stall * 3.0 : motor_stall,
+ motor_free,
+ 2.0,
  },
  wheel_gains);
  }
@@ -997,7 +1043,7 @@ void ScenarioSession::build_world() {
       ? autonomy::ackermann_global_planner(chassis_caps_.geometry.steering_wheel_base_m,
                                            chassis_caps_.geometry.max_steer_rad,
                                            map_definition_.grid_resolution_m)
-      : autonomy::default_global_planner());
+ : autonomy::default_global_planner());
  }
  // The global costmap reserves the physical envelope plus a small numerical
  // margin. Policy clearance belongs to the local planner, which can trade it
@@ -1006,7 +1052,7 @@ void ScenarioSession::build_world() {
  // made a nominally cautious build unable to dock.
  const double planning_clearance = robot_definition_.collision_radius_m + 0.20 +
                                    chassis_caps_.planning_clearance_margin_m +
-                                   level_.planning_localization_margin_m;
+ level_.planning_localization_margin_m;
  planning_clearance_m_ = planning_clearance;
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
  const auto* mapping_lidar = resolved_build_.lidar();
@@ -1017,7 +1063,7 @@ void ScenarioSession::build_world() {
  sim::ObservedObstacleLayerConfig{
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
- });
+ }, &map_manager_);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -1072,12 +1118,13 @@ void ScenarioSession::build_world() {
  actual_actors_.assign(agents_.size(), {});
 }
 
-void ScenarioSession::plan_route() {
- planned_route_.clear();
- entry_governor_system_.reset();
- crossing_behavior_system_.reset();
- route_feasible_ = true;
- return_reserve_failure_ = false;
+void ScenarioSession::plan_route(const sim::GridMap* map_override) {
+ // Replanning is transactional. A short-lived observed obstacle can make the
+ // layered map temporarily unsolvable; deleting the last validated route
+ // before its replacement exists turns a recoverable stop into a permanent
+ // no-route state. The local planner and collision monitor still prevent the
+ // retained route from being executed through current occupancy.
+ const bool had_validated_route = !planned_route_.empty();
  if (snapshot_.status == MissionStatus::Ready)
   result_.astar_expanded = 0;
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
@@ -1099,13 +1146,15 @@ void ScenarioSession::plan_route() {
  const GoalStep* next = active_goal();
  if (!next) {
  if (level_.objective.goal_order == "player") {
+ planned_route_.clear();
  snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
  snapshot_.active_goal_id.clear();
  held_command_ = {};
  route_tracking_system_->reset();
+ route_feasible_ = true;
  return;
  }
-  route_feasible_ = false;
+ route_feasible_ = had_validated_route;
   return;
  }
  const auto active_index = goal_system_.active_goal_index();
@@ -1114,14 +1163,20 @@ void ScenarioSession::plan_route() {
  const auto& goal = map_definition_.markers.at(next->marker);
  std::vector<autonomy::PlanningPose> waypoints{{as_vec(start), start.theta},
                                                {as_vec(goal), goal.theta, next->radius_m}};
- auto plan = planning_system_.plan(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
+ const sim::GridMap& route_map = map_override ? *map_override : *planning_map_;
+ auto plan = planning_system_.plan(route_map, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
   return navigation_traversal_cost(from, to);
  });
  result_.astar_expanded += plan.expanded;
  if (!plan.ok) {
-  route_feasible_ = false;
+ route_feasible_ = had_validated_route;
   return;
  }
+ crossing_execution_segment_ = 0;
+ crossing_alignment_segment_ = 0;
+ crossing_segment_alignment_complete_ = false;
+ route_feasible_ = true;
+ return_reserve_failure_ = false;
  planned_route_ = std::move(plan.path);
  route_tracking_system_->reset();
 }
@@ -2082,9 +2137,7 @@ void ScenarioSession::refresh_dynamic_obstacles() {
  }
 }
 
-sim::Vec2 ScenarioSession::current_navigation_target() {
- const double lookahead = property(behavior_, "lookahead_m");
- const auto& estimate = estimation_system_.state();
+sim::Vec2 ScenarioSession::navigation_fallback_target() const {
  sim::Vec2 fallback;
  const auto& field_intent = field_operator_system_.intent();
  if ((endless_mode_ || level_.control_mode == "operator_drive") && field_intent.active) {
@@ -2099,7 +2152,7 @@ sim::Vec2 ScenarioSession::current_navigation_target() {
   fallback = active ? as_vec(map_definition_.markers.at(active->marker))
                     : as_vec(map_definition_.markers.at(level_.objective.goal));
  }
- return route_tracking_system_->navigation_target(planned_route_, estimate, lookahead, *planning_map_, fallback);
+ return fallback;
 }
 
 void ScenarioSession::refresh_operator_route() {
@@ -2177,6 +2230,16 @@ void ScenarioSession::apply_motion() {
  }
  const auto runtime_now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
  sim::DiffCmd applied_command = held_command_;
+ if (score_command_initialized_) {
+ const double yaw_to_edge_m = 0.5 * std::max(0.0, chassis_caps_.geometry.support_width_m);
+ result_.command_variation_mps +=
+ std::abs(applied_command.target_v - score_previous_command_v_mps_) +
+ yaw_to_edge_m * std::abs(applied_command.target_w - score_previous_command_w_radps_);
+ } else {
+ score_command_initialized_ = true;
+ }
+ score_previous_command_v_mps_ = applied_command.target_v;
+ score_previous_command_w_radps_ = applied_command.target_w;
  snapshot_.control.target_v_mps = applied_command.target_v;
  snapshot_.control.target_w_radps = applied_command.target_w;
  // NOTE (FF verdict): a shadow feedforward computation lived here in stage 3
@@ -2951,9 +3014,36 @@ void ScenarioSession::finish_success() {
                0.0, 1.0));
   result_.safe_score = result_.safe_score && result_.cargo_integrity >= 0.75;
  }
- result_.fast_score = result_.time_s <= level_.fast_time_s;
- result_.efficient_score = result_.energy_wh <= level_.efficient_energy_wh;
  close_decision("mission-succeeded");
+ std::string previous_action;
+ for (const auto& decision : decision_evidence_system_.records()) {
+ const double end_time_s = decision.end_time_s >= decision.decision_time_s
+ ? decision.end_time_s : result_.time_s;
+ const double duration_s = std::max(0.0, end_time_s - decision.decision_time_s);
+ if (decision.action_code == "wait")
+ result_.wait_time_s += duration_s;
+ if (decision.action_code == "minimum-risk-escape")
+ result_.recovery_time_s += duration_s;
+ if (!previous_action.empty() && decision.action_code != previous_action)
+ ++result_.strategy_switches;
+ previous_action = decision.action_code;
+ }
+ result_.performance = compute_performance_score({
+ true,
+ result_.time_s,
+ level_.fast_time_s,
+ result_.energy_wh,
+ level_.efficient_energy_wh,
+ result_.scored_clearance_m,
+ level_.safe_min_clearance_m,
+ result_.path_length_m,
+ result_.command_variation_mps,
+ result_.wait_time_s,
+ result_.recovery_time_s,
+ result_.strategy_switches,
+ });
+ result_.fast_score = result_.performance.pace >= 100.0 - 1e-9;
+ result_.efficient_score = result_.performance.efficiency >= 100.0 - 1e-9;
  record_event("mission-complete", catalog_.trf("event.mission_complete", {level_.objective.goal_label}));
  record_replay();
  if (runtime_channel_ && runtime_channel_->state() == sim::runtime::LifecycleState::Active) {
@@ -3098,9 +3188,16 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double cruise = cruise_speed_mps();
  const double lookahead = property(behavior_, "lookahead_m");
  const double speed = std::abs(snapshot_.robot.v);
- const double decel = resolved_build_.traction().brake_decel_mps2;
+ sim::SafeStopLimits stop_limits;
+ stop_limits.brake_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ stop_limits.longitudinal_grade = sim::longitudinal_grade(
+ terrain_.sample({nav_x, nav_y}), snapshot_.estimated_heading);
+ stop_limits.center_of_mass_x_m = combined_center_x_m();
+ stop_limits.center_of_mass_height_m = combined_center_height_m();
+ const double decel = sim::safe_stop_linear_decel_limit(
+ chassis_caps_, stop_limits);
  const double preview =
-   std::max(lookahead, speed * speed / (2.0 * std::max(0.5, decel)) + speed * 2.0 / decision_hz());
+ std::max(lookahead, speed * speed / (2.0 * std::max(0.05, decel)) + speed * 2.0 / decision_hz());
  double grip = wheel_ground({nav_x, nav_y}).mu_eff;
  const double support_width = chassis_caps_.geometry.support_width_m;
  const double center_height = combined_center_height_m();
@@ -3122,7 +3219,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
  return sim::corner_speed_cap(planned_route_, route_tracking_system_->path_index(), cruise, lateral_accel_limit,
-                              preview);
+ preview, yaw_cap_rads_);
 }
 
 double ScenarioSession::decision_hz() const {

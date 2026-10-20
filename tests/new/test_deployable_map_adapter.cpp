@@ -28,7 +28,7 @@ int main() {
  });
  source.markers.emplace("dock", mission::Pose{0.5, 1.5, 0.75});
  source.conflict_zones.push_back({
- "crossing", {2.0, 0.0}, {3.0, 1.0}, "control", {"ramp-test"},
+ "crossing", {2.0, 0.0}, {3.0, 1.0}, "control", {"ramp-test"}, {},
  });
 
  const auto map = mission::make_deployable_map_snapshot(source, "ramp-test");

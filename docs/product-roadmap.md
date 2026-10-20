@@ -10,7 +10,10 @@ The first public release should let a new player give RO-1 a high-level intentio
 - **Learn:** AI View connects observations, predictions, constraints, and actions.
 - **Verify:** headless output and a run artifact make the same encounter reproducible and comparable.
 
-The campaign remains deterministic and fully usable without a language model. New sensors, general scenario overlays, full SLAM, VLA, multi-process transport, HIL, and native robot drivers remain outside this release path until a concrete learning or deployment case requires them.
+The campaign remains deterministic and fully usable without a language model. Known-map LiDAR localization is part of
+the release foundation because normal autonomous runs must not depend on simulator-truth pose corrections. Full map-
+building SLAM, general scenario overlays, VLA, multi-process transport, HIL, and native robot drivers remain outside
+this release path until a concrete learning or deployment case requires them.
 
 ## Content formats beyond point-to-point delivery
 
@@ -78,7 +81,9 @@ Existing campaign chapters remain available. The Vehicle Proving Ground is an en
 systems prototype, Bridge is retained as a construction/map/physics regression, and Manipulation Lab demonstrates a
 platform capability. **Stormglass Protocol is the sole candidate for the first polished gameplay experience.**
 
-Work proceeds through the following queue. A later package starts only when the preceding exit gate is met.
+Work proceeds through the following queue. A later package starts only when the preceding exit gate is met. Every
+production algorithm and physical model must first pass its smallest-layer contract gate; a successful mission cannot
+stand in for a kinematics, dynamics, sensing, estimation, planning, behavior, control, or interface test.
 
 ### P0 — Close the current autonomy safety gap
 
@@ -86,36 +91,207 @@ Work proceeds through the following queue. A later package starts only when the 
 failure is now closed without extending stale tracks. A vanished track remains unknown; absence of a track is never
 treated as proof that the crossing is clear.
 
-The implemented ROBOT-side observability contract records whether current LiDAR free-space rays cover every sampled
-point in a map-semantic traffic approach. A physical return, including a mapped wall, ends visibility; short range,
-partial coverage, occlusion, future-dated scans and aged scans remain unknown. The remaining unseen-arrival budget
-subtracts both the participant radius and scan age, and must cover the executable crossing plus its time margin.
-Holding poses remain derived from route and conflict geometry. The recommended build uses a sensor whose declared
-range can observe the complete approach from that stop. Simulation actor truth, actor paths and actor IDs stay in SIM.
+The ROBOT-side observability contract records how much of a possible traffic approach current LiDAR free-space rays
+cover. A physical return, including a mapped wall, ends visibility; short range, partial coverage, occlusion,
+future-dated scans and aged scans remain unknown. Coverage is diagnostic evidence for tracking and risk assessment.
+It cannot by itself prove a crossing clear because an ordinary map cannot supply an unknown participant's physical
+speed or acceleration. Simulation actor truth, actor paths, actor IDs and actor motion parameters stay in SIM.
 
 Focused tests cover a physical-return occlusion, insufficient sensor range, complete visible-corridor coverage,
-scan aging, duplicate scan timestamps, consecutive independent observations, empty/stale prediction fallback, and
-the content-to-ROBOT semantic adapter. The fixed-seed integration run succeeds in `104.04 s`, records zero collisions
-and `0.673 m` minimum dynamic clearance. The static minimum (`0.217 m`) remains reported; this lesson's authored
-`dynamic` score scope measures the traffic interaction, as do the other crossing lessons.
+scan aging, duplicate scan timestamps, empty/stale prediction fallback, and the content-to-ROBOT semantic adapter.
+The earlier GCC 13 fixed-seed completion used a map-authored participant speed as a hard unseen-arrival bound. That
+evidence is withdrawn: it demonstrated the scenario behavior but did not establish a deployable safety contract.
 
-**Exit:** crossing release is based on positive, time-aligned observation evidence; the scenario completes without
-weakening collision margins, changing world truth or inserting scenario-specific decision code.
+**Exit:** mapped and unmapped dynamic conflicts use the same perception-owned tracks, multi-model time occupancy,
+braking-feasible trajectory validation and independent collision monitor. No release depends on authored actor
+identity, path, turnaround point or physical capability. The reference scenario completes without weaker margins or
+scenario-specific decision code.
 
-**Status: complete.** P1 is the active package.
+**Status: reopened.** P1 supplies the general dynamic-interaction implementation required to close it.
 
-### P1 — Re-establish the release candidate evidence
+Current corrected-contract evidence: `lost_signal --recommended --seed 47`
+completes in 88.78 s with zero collisions and 0.392 m minimum measured dynamic
+clearance after the GAME score target was removed from the ROBOT hard gate.
+The run correctly completes without earning the optional 0.6 m clearance
+badge. Its continuous result is 77.6/100: clearance quality 65.4, pace 100,
+estimated efficiency 100, smoothness 48.1 and decisiveness 71.6. The 18.9 s
+wait, 2.3 s minimum-risk recovery and 23 action changes remain explicit
+optimization evidence rather than being hidden by binary completion.
 
-After P0 is frozen, run the gates in [Validation](validation.md): GCC 13 Release and the complete CTest suite with
-parallelism 8; ROBOT-only build and tests; schema, content, locale and generated-artifact checks; identical-seed run
-artifact reproduction; graphical input, shutdown and recommended-experience smoke tests; Clang 18 compatibility; and
-ASan/UBSan last. Record the exact revision, commands, counts and results. A historical green baseline does not cover a
-new autonomy or simulation revision.
+`town_freight --recommended` also completes in 60.04 s with zero collisions.
+Its former permanent `HorizonShort` hold was a route/geometry defect: the
+crossing evaluator skipped the first route vertex whose full footprint had
+already cleared the conflict envelope, lengthening a 3.5 s provable maneuver
+to 4.75 s. The corrected first-clear-exit contract has a focused diagonal
+regression. Its current 91.0 score includes seven strategy changes, no
+minimum-risk recovery and 62.8 smoothness; neither the prediction horizon
+nor the physical margin was weakened.
+
+The `rain_descent` unload marker now lies on a continuous flat runout after
+the wet 0.28-grade ramp. Previously the marker labelled “坡底卸货区” was still
+on the incline, so a robot required to arrive below 0.18 m/s could reach the
+correct position yet roll and tip while trying to park without a declared
+parking brake. The ramp retains its grade and wet-contact experiment; a
+content/terrain assertion pins flat goal geometry and continuous ramp-to-deck
+height before the mission regression checks the recommended and low-grip
+outcomes.
+
+Global navigation now assigns a material soft cost across two free cells
+beyond lethal inflation. The old `0.001` one-cell critic could only break an
+exact path-length tie; `scrub_climb` therefore selected a shorter route along
+the inflated shelf boundary and the local planner alternated between tracking
+and clearance recovery. The new focused oracle proves that a modestly longer
+wide corridor outranks a shorter boundary-hugging path while lethal occupancy
+and physical collision geometry remain unchanged. The recommended tracked
+run completes with zero collision; its 111 s runtime and low smoothness remain
+visible score targets rather than being called complete optimization.
+
+### P1 — Close foundation contracts before another release run
+
+Finish the active DWA, trajectory-validation, dynamic-prediction, crossing-behavior and LiDAR-perception work at the
+module where each claim originates. Normal drive acceleration, normal braking and the stability-aware emergency-stop
+tail remain distinct; forward/reverse candidate reachability stays explicit; and zero safe braking authority is a hard
+rejection rather than an implicit feature-disable value. Generic dynamic traffic uses a fresh, route-relevant finite
+prediction window and compares ego and target at the same time. A longer-range or denser LiDAR must not freeze a robot
+because it observes a real target that will occupy the same place at a different time. A mission goal may not lie in a
+fatal actor's authored swept volume.
+
+Maintain a [production coverage ledger](verification-coverage.md) for every algorithm and model. Each row names its contract, units/frames/time
+semantics, independent oracle, invariant/property cases, boundaries and faults, deterministic replay/system evidence,
+and remaining claim limit. Additions enter integration only after their focused gate exists. Tests must cover sensor
+density and cadence changes, stale/out-of-order data, degenerate and no-solution inputs, actuator saturation, low
+friction and grades where applicable. Tests may use simulator truth as an oracle, but production ROBOT inputs may not.
+
+**Exit:** focused and component tests prove the corrected contracts; the standard 800-sample planar LiDAR and teaching
+profiles preserve one stable moving-object track within declared tolerances; all dynamic-traffic reference missions
+finish with zero collisions without longer time limits or weaker margins; and the coverage ledger has no unowned
+production subsystem.
+
+The active crossing implementation now treats the canonical path, a map-validated shortcut and a fully rechecked
+circular-fillet path as separate candidates. Static feasibility cannot erase a dynamically safer route. Fillet
+curvature is constructed in a shared ROBOT module, continuous curve samples carry explicit execution semantics, and
+insufficient leg room falls back to stop-turn-go. The no-return boundary is the conflict approach safety envelope,
+not physical overlap with the semantic box. Bounded predictor hypotheses are also used for short-occlusion track
+association. P1 remains open until the full reference-mission and release gates are green.
+
+The next P1 correction is a general dynamic-object contract, not a `lost_signal` forklift rule. Map conflict semantics
+are optional context: without them, ROBOT derives temporary conflict regions from intersections between its planned
+motion and tracked time occupancy. Track identity and
+motion intent are separate: one physical object keeps its stable track ID while it stops, reverses, turns or changes
+model, unless association is genuinely lost and the lifecycle retires that track. The tracker publishes timestamped
+kinematics, shape, covariance/quality and lifecycle state. Global association uses uncertainty and geometry gates;
+it must not use simulation actor IDs. Prediction maintains explicit stationary, constant-velocity,
+constant-acceleration/turn and map-constrained hypotheses where evidence supports them. A learned shuttle or rail
+cycle may be one hypothesis, but two observed endpoints never make periodic reflection a safety guarantee for an
+ordinary vehicle.
+
+Behavior uses hypothesis confidence and uncertainty to rank progress, while command authorization checks every
+retained motion hypothesis against the complete executable ego trajectory and its braking tail. This is a
+receding-horizon, risk-controlled decision, not an absolute proof about an arbitrarily fast unknown participant.
+Hard guarantees require an independently enforced signal or physical interlock. Unsafe evidence changes the
+pre-entry decision to STOP immediately; GO requires sustained, timestamp-distinct evidence. Unknown is not silently
+renamed as reversing, safe or permanently blocked. The acceptance matrix includes constant motion,
+threshold-adjacent noise, deceleration-to-stop, deceleration-to-reversal, early reversal, turning, cadence changes,
+drop/out-of-order, partial occlusion, identity recovery, two-target crossing and an actually new target. Each case
+checks ID continuity, state/covariance bounds, hypothesis continuity, first conflict time, minimum same-time gap and
+safe-stop behavior before any mission outcome is considered.
+
+Implemented in the current P1 slice: the map-independent entry-window assessor is ROBOT-owned, clips the executable
+route to prediction coverage, detects continuous between-frame crossings and derives a temporary braking hold without
+an authored crossing or stop point. Stationary temporary targets remain in prediction even before any non-zero
+velocity is observed. Estimator readiness is now history-based and no longer means that a complete periodic shuttle
+cycle has been learned. Mapped rules and online inferred constraints are now intersected before a no-return boundary;
+the first valid wall along the current route wins, and the same swept stop-plane validator consumes map-independent
+walls. After no-return, a new upstream wall cannot replace the independently validated exit maneuver.
+The assessor also refuses to label the current pose as a safe waiting wall when retained target occupancy sweeps it;
+the conflict remains active while the local planner compares validated motion against brake-and-hold.
+
+The remaining gate is a typed stationary/CV/acceleration/turn model bank with uncertainty, a general interaction
+candidate owner for proceed/slow/brake-and-hold/avoid actions, and successful reference missions under the corrected
+contract. Brake-and-hold must itself pass time-occupancy validation. Avoidance belongs to normal behavior/local
+planning and must satisfy actuator, static-space, terrain, stability and braking-tail constraints. The last-line
+collision monitor may limit or stop motion but must not synthesize steering. A lower-risk escape is reported
+separately when no collision-free action exists; it must never be labelled safe merely because stopping is worse.
+Regression reports must include total waiting time, decision-mode transitions,
+time from the first continuously valid departure window to commitment,
+`T_intrusion`, `T_stop` and `T_escape`, plus the rejection reason for proceed,
+hold and escape candidates. Add explicit `NO_COLLISION_FREE_ACTION` and
+`VALIDATION_INDETERMINATE` outcomes instead of representing every unresolved
+cycle as an ordinary wait.
+
+Campaign results must also separate hard completion from continuous
+optimization. Objectives, collision/rollover and irreversible mission
+constraints decide success; raw minimum clearance, time, energy, smoothness
+and localization error remain comparable metrics, with threshold badges as
+secondary achievements. A score target may rank candidates or award a badge
+but must never enter ROBOT trajectory authorization.
+
+The GAME-side continuous score is now implemented for successful runs only.
+It preserves the original values and reports safety margin, pace, estimated
+efficiency, command smoothness and decisiveness plus a transparent weighted
+overall score. Ideal clearance saturates at its authored target; a closer
+collision-free run remains successful and receives a lower clearance score.
+Failures are unranked with zero score, so speed or energy can never compensate
+for a collision, rollover or incomplete objective. Campaign progress schema 3
+stores the best overall result and its five axes; the score is presentation
+and optimization data and has no dependency path back into ROBOT.
+
+The first typed-contract slice is implemented: `PredictionBatch` preserves
+track identity, hypothesis identity, model type and the shared prediction
+clock, and `AutonomyPipeline` owns its generation. Existing consumers receive
+an explicitly named deterministic flattening adapter. The remaining model-bank
+work is acceleration/deceleration, turning, covariance/quality, lifecycle and
+calibrated hypothesis ranking; the flattened adapter cannot be used as an
+identity source.
+
+### P2 — Add deployable known-map LiDAR localization
+
+Replace the normal `fused` mode's simulator-truth absolute pose with a ROBOT-side known-map localization provider.
+Keep the standard frame split used by REP-105: wheel/IMU odometry owns a smooth but drifting `odom -> base_footprint`
+prediction, while accepted map observations update `map -> odom`. The provider consumes only timestamped LiDAR,
+wheel/IMU estimates, calibrated sensor extrinsics and the immutable LSRM map snapshot; it publishes pose, covariance,
+quality and explicit rejection reason through the same runtime observation boundary used by replay and future hardware.
+
+The first implementation is deliberately smaller than full SLAM: deskew/project a planar scan using its acquisition
+times and the motion estimate, remove invalid/self/ground/dynamic returns, seed a deterministic coarse-to-fine
+scan-to-map search from odometry, estimate local uncertainty, then gate score, overlap, innovation, timestamp and map
+coverage before fusion. It must reject empty, repetitive, feature-poor or badly initialized scans instead of emitting a
+confident pose. Simulator-truth pose remains available only as a test oracle and explicitly labelled instrumentation.
+
+Focused gates use analytically generated scans on asymmetric maps, known SE(2) offsets, empty and symmetric geometry,
+occlusion/outliers, moving objects, scan motion distortion, slopes, latency, dropped scans and wrong initial guesses.
+Trajectory gates compare odometry-only drift with LiDAR-corrected error over distance and turns, verify that rejected
+matches do not jump the map frame, and replay the same observation trace deterministically under GCC and Clang. Normal
+recommended missions must complete with truth correction disabled.
+
+This stage is map localization, not map building. A later SLAM provider may produce LSRM occupancy/elevation plus
+localization constraints through the same interfaces. A future 16-line LiDAR-inertial provider must use per-point time,
+ring and IMU extrinsics for deskew; local odometry, global loop closure and map persistence remain separate contracts.
+
+The design follows the useful boundaries in [REP-105](https://www.ros.org/reps/rep-0105.html), Nav2
+[AMCL](https://github.com/ros-navigation/navigation2/tree/main/nav2_amcl), Cartographer's
+[local/global SLAM split](https://google-cartographer-ros.readthedocs.io/en/latest/algo_walkthrough.html), Autoware's
+[NDT scan matcher](https://github.com/autowarefoundation/autoware_core/tree/main/localization/autoware_ndt_scan_matcher)
+and [EKF localizer](https://github.com/autowarefoundation/autoware_core/tree/main/localization/autoware_ekf_localizer),
+and LIO-SAM's [time/ring/extrinsic requirements](https://github.com/TixiaoShan/LIO-SAM). These are semantic and
+validation references; Lost Signal keeps a compact project-owned provider interface and does not import ROS2.
+
+**Exit:** a standard-LiDAR reference run localizes against an LSRM map without simulation pose truth, reports calibrated
+quality limits and bounded held-out trajectory error, survives declared dropout/degeneracy cases safely, and produces
+the same accepted/rejected observation sequence on replay.
+
+### P3 — Re-establish the release candidate evidence
+
+After P1 and P2 are frozen, run the gates in [Validation](validation.md): GCC 13 Release and the complete CTest suite
+with parallelism 8; ROBOT-only build and tests; schema, content, locale and generated-artifact checks; identical-seed
+run artifact reproduction; graphical input, shutdown and recommended-experience smoke tests; Clang 18 compatibility;
+and ASan/UBSan last. Record the exact revision, commands, counts and results. A historical green baseline does not cover
+a new autonomy, localization or simulation revision.
 
 **Exit:** the current clean revision has one complete release record. It may be published as an Alpha / Developer
 Preview with the claim boundaries stated in the simulation audit.
 
-### P2 — Validate Stormglass as the gameplay vertical slice
+### P4 — Validate Stormglass as the gameplay vertical slice
 
 Stormglass already provides three player-selected signal cores, autonomous goal execution, payload and centre-of-
 gravity changes, authored storm keyframes, changing grip and a moving service cart. Use the playtest protocol to find
@@ -127,7 +303,7 @@ problem. Existing campaign content remains selectable.
 least two target orders are safely completable on one seed and produce measurably different route, time, payload,
 clearance or grip evidence.
 
-### P3 — Give the approved loop a distinctive presentation
+### P5 — Give the approved loop a distinctive presentation
 
 Refine Stormglass with authored models, readable landmarks, vehicle details, materials, weather, bounded particles,
 lighting, camera staging and state-driven sound. Preparation, target choice, risk, pickup, waiting, release, damage and
@@ -141,7 +317,7 @@ concrete blocked flow.
 **Exit:** the complete experience is visually coherent, responsive and understandable in English and Simplified
 Chinese; deterministic graphical smoke tests contain no clipping, missing assets or state/render disagreement.
 
-### P4 — Complete the causal learning and comparison loop
+### P6 — Complete the causal learning and comparison loop
 
 Upgrade AI View and the debrief from internal-state display to a causal chain: observation, prediction, rejected
 candidates, selected constraint, action and measured outcome. Let a player rerun the same seed after changing one
@@ -151,7 +327,7 @@ observable estimates visually distinct.
 **Exit:** a player can explain why the robot waited, moved or stopped, change one variable, and see a reproducible
 causal difference rather than only a different success boolean.
 
-### P5 — Generalize experiments and deterministic fault injection
+### P7 — Generalize experiments and deterministic fault injection
 
 Extract only the needs demonstrated by the finished content into Scenario, Experiment, Baseline, Metric and Diff
 contracts. Add seeded provider-level faults for delay, loss, reordering, stale timestamps, sensor noise, actuator lag,
@@ -161,22 +337,23 @@ suitable for future threads, processes and native devices.
 **Exit:** a content-authored experiment can compare algorithm or configuration variants without UI-specific mission
 logic, and faults traverse the same validation and safety paths as ordinary observations and commands.
 
-### P6 — Expand capabilities only for a named question
+### P8 — Expand capabilities only for a named question
 
 Add further sensors, algorithms or execution modes only when a specific learning experience or measured platform
 target supplies acceptance criteria. TEB remains a planned DWA comparison provider behind the shared
-`LocalPlanningRequest` → `ExecutableTrajectory` → `TrajectoryValidator` contract. Camera, production SLAM,
+`LocalPlanningRequest` → `ExecutableTrajectory` → `TrajectoryValidator` contract. Camera, map-building SLAM,
 solid-state LiDAR, multi-process LSRI Wire, HIL, VLA, native drivers, ABS, parking brakes, identified tire laws and
 more complex manipulation remain candidate work rather than release dependencies. Higher-fidelity electric-drive
 work is one named package: separate motor winding/back-EMF and torque constants, gearbox ratio/efficiency/reflected
 inertia, inverter bus voltage/current/PWM limits, nested current/speed control, and calibrated energy/regeneration.
 Until that package exists, `energy_scale` remains only a relative mission-energy estimate and never changes physical
-actuator effort.
+actuator effort. Fidelity claims advance only for behavior that is both implemented and validated; adding fields or
+describing a future model does not advance the claim.
 
 **Exit:** each new capability ships with a named scenario, quantitative evidence, documented limits and a smaller
 project-owned interface than any external system it may bridge to.
 
-The [verification strategy](verification-strategy.md) is a continuous gate across P0--P6. Contract correctness,
+The [verification strategy](verification-strategy.md) is a continuous gate across P0--P8. Contract correctness,
 mathematical invariants, independent oracles, deterministic system evidence, fault boundaries, and physical
 validation accumulate in that order. Correct an unreleased algorithm or interface directly, update every caller and
 test, and then update the content expectation; do not preserve an incorrect result through compatibility behavior.

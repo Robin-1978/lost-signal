@@ -40,6 +40,7 @@ class PerceptionPipeline {
  private:
  LidarPerceptionSystem lidar_;
  ObservedObstacleLayer obstacles_;
+ ObservedObstacleLayerConfig obstacle_config_;
  std::vector<ObservedRay2D> latest_visibility_rays_;
  double latest_visibility_stamp_s_{-
  std::numeric_limits<double>::infinity()};

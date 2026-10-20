@@ -101,6 +101,10 @@ struct MotionCommand {
  double lateral_mps{0.0};
  double yaw_rate_radps{0.0};
  double steering_angle_rad{0.0};
+ double longitudinal_acceleration_feedforward_mps2{0.0};
+ // A nonzero, rate-limited braking command. This is controller state
+ // semantics, not the zero-valued watchdog/fault command below.
+ bool controlled_stop{false};
  bool safe_stop{false};
 };
 

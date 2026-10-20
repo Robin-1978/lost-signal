@@ -134,6 +134,36 @@ double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, doub
  return effective_angle / std::max(0.05, static_rollover_angle(support_width_m, center_of_mass_height_m));
 }
 
+double support_polygon_risk(Vec2 load_projection, Vec2 unloaded_projection,
+ const std::vector<Vec2>& support_polygon) {
+ if (support_polygon.size() < 3)
+ return std::numeric_limits<double>::infinity();
+ double twice_area = 0.0;
+ for (std::size_t index = 0; index < support_polygon.size(); ++index) {
+ const auto& a = support_polygon[index];
+ const auto& b = support_polygon[(index + 1) % support_polygon.size()];
+ twice_area += a.x * b.y - a.y * b.x;
+ }
+ if (std::abs(twice_area) < 1e-12)
+ return std::numeric_limits<double>::infinity();
+ const double orientation = twice_area > 0.0 ? 1.0 : -1.0;
+ double risk = 0.0;
+ for (std::size_t index = 0; index < support_polygon.size(); ++index) {
+ const auto& a = support_polygon[index];
+ const auto& b = support_polygon[(index + 1) % support_polygon.size()];
+ const Vec2 edge{b.x - a.x, b.y - a.y};
+ const auto signed_inside = [&](Vec2 point) {
+ return orientation * (edge.x * (point.y - a.y) - edge.y * (point.x - a.x));
+ };
+ const double reference_distance = signed_inside(unloaded_projection);
+ if (!(reference_distance > 1e-12))
+ return std::numeric_limits<double>::infinity();
+ const double loaded_distance = signed_inside(load_projection);
+ risk = std::max(risk, 1.0 - loaded_distance / reference_distance);
+ }
+ return std::max(0.0, risk);
+}
+
 double longitudinal_stability_acceleration_limit(double longitudinal_grade,
  double front_support_m, double rear_support_m, double center_of_mass_height_m,
  double margin_fraction) {
@@ -145,10 +175,16 @@ double longitudinal_stability_acceleration_limit(double longitudinal_grade,
  const double gravity_forward = kGravityMps2 * std::sin(slope);
  // Positive acceleration shifts normal load rearward; negative acceleration
  // shifts it forward. Grade contributes before any commanded acceleration.
- const double forward_limit = gravity_normal * rear / height - gravity_forward;
- const double braking_limit = gravity_normal * front / height + gravity_forward;
- return std::max(0.0, std::clamp(margin_fraction, 0.0, 1.0) *
-  std::min(forward_limit, braking_limit));
+ const double margin = std::clamp(margin_fraction, 0.0, 1.0);
+ // The margin applies to total load-line travel from the unloaded COM, not
+ // only to the actuator acceleration left after gravity. On a downhill grade
+ // gravity may already consume most of the front-support allowance; scaling
+ // the residual limit would silently give that gravity term back.
+ const double forward_limit =
+ margin * gravity_normal * rear / height - gravity_forward;
+ const double braking_limit =
+ margin * gravity_normal * front / height + gravity_forward;
+ return std::max(0.0, std::min(forward_limit, braking_limit));
 }
 
 } // namespace sim

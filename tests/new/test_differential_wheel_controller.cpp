@@ -72,6 +72,70 @@ int main() {
  CHECK(zero_after_windup.left.pid_i == 0.0);
  CHECK(zero_after_windup.right.pid_i == 0.0);
 
+ // Zero-speed control under a persistent external load is an active velocity
+ // objective. Clear old maneuver windup once, but then retain new integral
+ // effort so a finite motor can remove steady-state grade error.
+ sim::DifferentialWheelController grade_hold(config, {0.2, 0.8, 0.0});
+ sim::DifferentialWheelFeedback downhill_feedback;
+ downhill_feedback.left_velocity_radps = -1.0;
+ downhill_feedback.right_velocity_radps = -1.0;
+ const auto hold_first = grade_hold.update({}, downhill_feedback, 0.02);
+ sim::DifferentialWheelControlOutput hold_later;
+ for (int step = 0; step < 40; ++step)
+ hold_later = grade_hold.update({}, downhill_feedback, 0.02);
+ CHECK(hold_first.left.normalized_duty > 0.0);
+ CHECK(hold_later.left.pid_i > hold_first.left.pid_i);
+ CHECK(hold_later.right.pid_i > hold_first.right.pid_i);
+ CHECK(hold_later.left.normalized_duty > hold_first.left.normalized_duty);
+ CHECK(hold_later.right.normalized_duty > hold_first.right.normalized_duty);
+
+ // A common SI acceleration request maps through mass sharing and finite
+ // motor force. This oracle is independent of the PID: 20 kg * 1 m/s^2 / two
+ // units / 50 N per unit = 0.2 duty at zero wheel speed.
+ auto compensated_config = config;
+ compensated_config.total_mass_kg = 20.0;
+ compensated_config.stall_force_per_unit_N = 50.0;
+ compensated_config.free_speed_mps = 2.0;
+ compensated_config.driven_unit_count = 2.0;
+ sim::DifferentialWheelController compensated(
+ compensated_config, {0.0, 0.0, 0.0});
+ sim::DiffCmd compensation_command;
+ compensation_command.target_v = 1.0;
+ compensation_command.longitudinal_acceleration_feedforward_mps2 = 1.0;
+ const auto compensation = compensated.update(
+ compensation_command, stopped_feedback, 0.02);
+ CHECK(std::abs(compensation.left.acceleration_feedforward - 0.2) < 1e-12);
+ CHECK(std::abs(compensation.right.acceleration_feedforward - 0.2) < 1e-12);
+ CHECK(std::abs(compensation.left.normalized_duty - 0.2) < 1e-12);
+ CHECK(std::abs(compensation.right.normalized_duty - 0.2) < 1e-12);
+ compensation_command.target_v = 0.0;
+ const auto grade_hold_compensation = compensated.update(
+ compensation_command, stopped_feedback, 0.02);
+ CHECK(std::abs(grade_hold_compensation.left.acceleration_feedforward - 0.2) < 1e-12);
+ CHECK(std::abs(grade_hold_compensation.right.acceleration_feedforward - 0.2) < 1e-12);
+
+ // Common-mode grade compensation must never reverse the signed duty of an
+ // inner wheel that the twist command asks to run backward. Without an
+ // angular-acceleration feedforward contract, that wheel remains under its
+ // signed static/PID loop while the outer wheel receives the compatible
+ // common-mode term.
+ auto turning_config = compensated_config;
+ turning_config.static_friction_feedforward_duty = 0.08;
+ sim::DifferentialWheelController loaded_turn(
+ turning_config, {0.5, 0.0, 0.0});
+ sim::DiffCmd turning_command;
+ turning_command.target_v = 0.20;
+ turning_command.target_w = -1.0;
+ turning_command.longitudinal_acceleration_feedforward_mps2 = 1.0;
+ const auto turning = loaded_turn.update(
+ turning_command, stopped_feedback, 0.02);
+ CHECK(turning.left.target_mps > 0.0);
+ CHECK(turning.right.target_mps < 0.0);
+ CHECK(std::abs(turning.left.acceleration_feedforward - 0.2) < 1e-12);
+ CHECK(turning.right.acceleration_feedforward == 0.0);
+ CHECK(turning.left.normalized_duty > 0.0);
+ CHECK(turning.right.normalized_duty < 0.0);
+
  // Low-speed turns need an identified static-friction term immediately;
  // waiting for unrelated historical integral state made physical behavior
  // depend on the route taken before the turn. The term follows the requested

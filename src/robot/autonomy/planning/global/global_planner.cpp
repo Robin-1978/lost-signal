@@ -27,6 +27,26 @@ bool valid_route(const std::vector<sim::RoutePoint>& path) {
  return true;
 }
 
+sim::TraversalCost clearance_aware_cost(
+ const sim::GridMap& map, const sim::TraversalCost& authored_cost,
+ double clearance_cost_scale) {
+ return [&map, authored_cost, clearance_cost_scale](sim::Vec2 from, sim::Vec2 to) {
+ const double base = authored_cost ? authored_cost(from, to) : 1.0;
+ if (!(base > 0.0) || !std::isfinite(base))
+ return base;
+ // Binary inflation remains lethal. Add a graded cost across two free cells
+ // so a modestly longer route can preserve tracking margin instead of merely
+ // resolving exact-length ties at the occupied-cell boundary. This mirrors
+ // the inscribed/lethal plus decaying-cost layers used by production
+ // navigation costmaps while keeping physical collision geometry unchanged.
+ const double preferred_clearance_m = 2.0 * map.res();
+ const double shortfall = std::clamp(
+ (preferred_clearance_m - map.clearance(to.x, to.y)) /
+ preferred_clearance_m, 0.0, 1.0);
+ return base * (1.0 + clearance_cost_scale * shortfall * shortfall);
+ };
+}
+
 } // namespace
 
 GlobalPlan AStarGlobalPlanner::plan(const GlobalPlannerRequest& request) const {
@@ -105,11 +125,16 @@ std::shared_ptr<const IGlobalPlanner> ackermann_global_planner(
  return std::make_shared<HybridAStarGlobalPlanner>(config);
 }
 
-GlobalPlanningSystem::GlobalPlanningSystem(std::shared_ptr<const IGlobalPlanner> planner)
- : planner_(std::move(planner)) {
+GlobalPlanningSystem::GlobalPlanningSystem(
+ std::shared_ptr<const IGlobalPlanner> planner,
+ double clearance_cost_scale)
+ : planner_(std::move(planner)),
+ clearance_cost_scale_(clearance_cost_scale) {
  if (!planner_) {
  throw std::invalid_argument("global planning system requires a planner");
  }
+ if (!(clearance_cost_scale_ >= 0.0) || !std::isfinite(clearance_cost_scale_))
+ throw std::invalid_argument("global planning clearance cost must be finite and non-negative");
 }
 
 GlobalPlan GlobalPlanningSystem::plan(const sim::GridMap& map,
@@ -120,9 +145,12 @@ GlobalPlan GlobalPlanningSystem::plan(const sim::GridMap& map,
  return result;
  }
  result.ok = true;
+ const auto effective_traversal_cost = clearance_cost_scale_ > 0.0
+ ? clearance_aware_cost(map, traversal_cost, clearance_cost_scale_)
+ : traversal_cost;
  PlanningPose segment_start = waypoints.front();
  for (std::size_t index = 1; index < waypoints.size(); ++index) {
- auto segment = planner_->plan({map, segment_start, waypoints[index], traversal_cost});
+ auto segment = planner_->plan({map, segment_start, waypoints[index], effective_traversal_cost});
  result.expanded += segment.expanded;
  if (!segment.ok) {
  result.ok = false;

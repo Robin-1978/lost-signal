@@ -23,6 +23,26 @@
  } while (false)
 
 int main() {
+ // A temporary object does not need to move before it becomes a dynamic
+ // safety input. Repeated timestamped observations establish a stationary
+ // model; the old non-zero-velocity gate silently dropped pallets and parked
+ // vehicles from prediction.
+ sim::DynamicObstacleMap stationary_map;
+ for (int sample = 0; sample < 6; ++sample)
+ stationary_map.observe({99, {2.0, 3.0}, 0.35}, 0.1 * sample);
+ const auto stationary_inputs = stationary_map.predict_inputs();
+ CHECK(stationary_inputs.size() == 1);
+ CHECK(stationary_inputs.front().state.prediction_ready);
+ CHECK(std::hypot(stationary_inputs.front().state.v.x,
+ stationary_inputs.front().state.v.y) < 1e-9);
+ const auto stationary_frames = stationary_map.predict(0.5, 1.0, 0.1, 1.0);
+ CHECK(stationary_frames.size() == 11);
+ for (const auto& frame : stationary_frames) {
+ CHECK(frame.size() == 1);
+ CHECK(std::abs(frame.front().p.x - 2.0) < 1e-9);
+ CHECK(std::abs(frame.front().p.y - 3.0) < 1e-9);
+ }
+
  // The engine and transforms are pinned together: these values must stay
  // stable when a seeded experiment moves between standard libraries.
  sim::Rng portable_uniform(12345);
@@ -158,6 +178,7 @@ int main() {
  return !ray.hit || ray.physical_return;
  }));
  bool motion_confirmed = false;
+ bool confirmed_track_removed_from_static_layer = false;
  double last_frame_time = 0.0;
  for (int sample = 1; sample <= 20 && !motion_confirmed; ++sample) {
  last_frame_time = sample * 0.1;
@@ -172,12 +193,167 @@ int main() {
  *moving_frame.lidar, *moving_frame.lidar_static_reference,
  projection_state, projection_config, 1.0);
  motion_confirmed = moving_perception.dynamic_object_detected;
+ if (motion_confirmed) {
+ CHECK(!moving_perception.dynamic_clearing_regions.empty());
+ confirmed_track_removed_from_static_layer = std::none_of(
+ moving_perception.obstacle_rays.begin(),
+ moving_perception.obstacle_rays.end(), [](const auto& ray) {
+ return ray.hit;
+ });
+ CHECK(std::any_of(
+ moving_perception.obstacle_rays.begin(),
+ moving_perception.obstacle_rays.end(), [](const auto& ray) {
+ return ray.physical_return;
+ }));
+ }
  }
  CHECK(motion_confirmed);
+ CHECK(confirmed_track_removed_from_static_layer);
  const auto anonymous_tracks = perception.dynamic_obstacles().active_tracks(last_frame_time, 1.0);
  CHECK(anonymous_tracks.size() == 1);
 CHECK(anonymous_tracks.front().motion_class != sim::TrackMotionClass::Unconfirmed);
 CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front().p.x) < 0.35);
+
+ // Angular sample density is a sensor characteristic, not an object count.
+ // The same isolated moving cylinder must remain one confirmed anonymous
+ // track with sparse teaching, ordinary and dense reference scans. One whole
+ // dropped scan is allowed by the declared track age and must not change ID.
+ for (const int rays : {48, 360, 800}) {
+ sim::SensorSystem density_sensors(101 + rays, 103 + rays);
+ sim::LidarPerceptionSystem density_perception(open_map, 107 + rays);
+ sim::WorldTruth density_truth;
+ density_truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ density_truth.dynamic_objects = {{{5.0, 4.5}, {0.0, 0.30}, 0.5}};
+ sim::LidarConfig density_config;
+ density_config.rays = rays;
+ density_config.min_range_m = 0.2;
+ density_config.range_m = 10.0;
+ density_config.scan_hz = 10.0;
+ std::size_t confirmed_id = std::numeric_limits<std::size_t>::max();
+ for (int sample = 0; sample <= 30; ++sample) {
+ const double stamp_s = 0.1 * sample;
+ density_truth.dynamic_objects.front().p.y = 4.5 + 0.30 * stamp_s;
+ if (sample != 16) {
+ const auto frame = density_sensors.capture_lidar(
+ density_truth, stamp_s, density_config,
+ sim::planar_lidar_truth(open_map, {1.0, 5.0}, 0.0, rays, 10.0,
+ density_truth.dynamic_objects));
+ density_perception.process(
+ *frame.lidar, *frame.lidar_static_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0}, {}, 1.0);
+ }
+ const auto density_tracks =
+ density_perception.dynamic_obstacles().active_tracks(stamp_s, 1.0);
+ const auto confirmed_count = static_cast<int>(std::count_if(
+ density_tracks.begin(), density_tracks.end(), [](const auto& track) {
+ return track.motion_class != sim::TrackMotionClass::Unconfirmed;
+ }));
+ CHECK(confirmed_count <= 1);
+ if (confirmed_count == 1) {
+ const auto& track = *std::find_if(
+ density_tracks.begin(), density_tracks.end(), [](const auto& candidate) {
+ return candidate.motion_class != sim::TrackMotionClass::Unconfirmed;
+ });
+ if (confirmed_id == std::numeric_limits<std::size_t>::max())
+ confirmed_id = track.object_id;
+ CHECK(track.object_id == confirmed_id);
+ }
+ }
+ const auto density_tracks =
+ density_perception.dynamic_obstacles().active_tracks(3.0, 1.0);
+ CHECK(density_tracks.size() == 1);
+ CHECK(density_tracks.front().object_id == confirmed_id);
+ CHECK(density_tracks.front().motion_class != sim::TrackMotionClass::Unconfirmed);
+ // Forty-eight rays quantize a target at this range by roughly half a
+ // metre, so it is a valid teaching profile for detection/track continuity,
+ // not a truthful 0.3 m/s velocity instrument. Standard and dense profiles
+ // must recover the motion quantitatively.
+ if (rays >= 360)
+ CHECK(std::abs(density_tracks.front().state.v.y - 0.30) < 0.12);
+ CHECK(std::abs(density_tracks.front().state.p.y - 5.40) < 0.35);
+ }
+
+ // One missing foreground beam inside a dense silhouette is not evidence of
+ // two physical objects. Endpoint-distance clustering may bridge exactly one
+ // beam when both sides remain geometrically connected.
+ {
+ constexpr int kRays = 800;
+ sim::SensorSystem missed_beam_sensors(1201, 1203);
+ sim::LidarPerceptionSystem missed_beam_perception(open_map, 1207);
+ sim::WorldTruth missed_beam_truth;
+ missed_beam_truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ missed_beam_truth.dynamic_objects = {{{4.0, 8.0}, {}, 0.5}};
+ sim::LidarConfig missed_beam_config;
+ missed_beam_config.rays = kRays;
+ missed_beam_config.min_range_m = 0.2;
+ missed_beam_config.range_m = 10.0;
+ missed_beam_config.scan_hz = 10.0;
+ for (int sample = 0; sample < 6; ++sample) {
+ auto frame = missed_beam_sensors.capture_lidar(
+ missed_beam_truth, sample * 0.1, missed_beam_config,
+ sim::planar_lidar_truth(open_map, {1.0, 5.0}, 0.0, kRays, 10.0,
+ missed_beam_truth.dynamic_objects));
+ std::vector<int> target_rays;
+ for (int ray = 0; ray < kRays; ++ray) {
+ if (frame.lidar->hit[static_cast<std::size_t>(ray)] &&
+ !frame.lidar_static_reference->hit[static_cast<std::size_t>(ray)]) {
+ target_rays.push_back(ray);
+ }
+ }
+ CHECK(target_rays.size() >= 5);
+ const auto missing = static_cast<std::size_t>(
+ target_rays[target_rays.size() / 2]);
+ frame.lidar->hit[missing] = 0;
+ frame.lidar->ranges[missing] = frame.lidar->max_range;
+ frame.lidar->intensities[missing] = 0.0;
+ missed_beam_perception.process(
+ *frame.lidar, *frame.lidar_static_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0}, {}, 1.0);
+ }
+ const auto missed_beam_tracks =
+ missed_beam_perception.dynamic_obstacles().active_tracks(0.5, 1.0);
+ CHECK(missed_beam_tracks.size() == 1);
+ }
+ // A wider, repeatable silhouette split reaches the detection-merge layer
+ // rather than the one-beam cluster bridge. Overlapping reconstructed
+ // occupied circles still represent one round target and must confirm one ID.
+ {
+ constexpr int kRays = 800;
+ sim::SensorSystem occlusion_sensors(1301, 1303);
+ sim::LidarPerceptionSystem occlusion_perception(open_map, 1307);
+ sim::WorldTruth occlusion_truth;
+ occlusion_truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ occlusion_truth.dynamic_objects = {{{4.0, 8.0}, {}, 0.5}};
+ sim::LidarConfig occlusion_config;
+ occlusion_config.rays = kRays;
+ occlusion_config.min_range_m = 0.2;
+ occlusion_config.range_m = 10.0;
+ occlusion_config.scan_hz = 10.0;
+ for (int sample = 0; sample < 6; ++sample) {
+ auto frame = occlusion_sensors.capture_lidar(
+ occlusion_truth, sample * 0.1, occlusion_config,
+ sim::planar_lidar_truth(open_map, {1.0, 5.0}, 0.0, kRays, 10.0,
+ occlusion_truth.dynamic_objects));
+ std::vector<int> target_rays;
+ for (int ray = 0; ray < kRays; ++ray) {
+ if (frame.lidar->hit[static_cast<std::size_t>(ray)] &&
+ !frame.lidar_static_reference->hit[static_cast<std::size_t>(ray)])
+ target_rays.push_back(ray);
+ }
+ CHECK(target_rays.size() >= 11);
+ const std::size_t middle = target_rays.size() / 2;
+ for (std::size_t offset = middle - 2; offset <= middle + 2; ++offset) {
+ const auto missing = static_cast<std::size_t>(target_rays[offset]);
+ frame.lidar->hit[missing] = 0;
+ frame.lidar->ranges[missing] = frame.lidar->max_range;
+ frame.lidar->intensities[missing] = 0.0;
+ }
+ occlusion_perception.process(
+ *frame.lidar, *frame.lidar_static_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0}, {}, 1.0);
+ }
+ CHECK(occlusion_perception.dynamic_obstacles().active_tracks(0.5, 1.0).size() == 1);
+ }
 
  // A map-alignment residual at a wall edge belongs to occupancy mapping,
  // not dynamic-object tracking. Repeated frames must not manufacture a
@@ -309,12 +485,49 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(moving.size() == 1);
  CHECK(std::abs(moving.front().state.v.x - 0.55) < 0.08);
  CHECK(std::abs(moving.front().state.p.x - 1.10) < 0.08);
+ const auto long_constant_forecast =
+ constant_velocity.predict(2.0, 3.0, 1.0, 1.0);
+ CHECK(long_constant_forecast.size() == 4);
+ CHECK(long_constant_forecast.back().front().position_uncertainty_m > 0.10);
+ CHECK(long_constant_forecast.back().front().position_uncertainty_m >=
+ long_constant_forecast.front().front().position_uncertainty_m);
  // A stale sample is ignored according to sensor time; arrival order cannot
  // reverse an otherwise valid track.
  constant_velocity.observe({1, {-20.0, 0.0}, 0.5}, 1.9);
  const auto after_stale = constant_velocity.active_tracks(2.0, 1.0);
  CHECK(after_stale.front().state.p.x == moving.front().state.p.x);
  CHECK(after_stale.front().state.v.x == moving.front().state.v.x);
+
+ // Intent is a temporal state, not a one-sample speed threshold. The first
+ // fitted-speed sample below the low threshold must retain the established
+ // motion intent; a second distinct observation confirms ambiguity. This is
+ // an independent state-transition oracle and does not reproduce the filter.
+ sim::DynamicObstacleMap intent_confirmation;
+ intent_confirmation.observe({2, {0.0, 0.0}, 0.5}, 0.0);
+ for (int sample = 1; sample <= 20; ++sample)
+ intent_confirmation.observe(
+ {2, {0.55 * sample * 0.1, 0.0}, 0.5}, sample * 0.1);
+ bool saw_first_low_sample = false;
+ bool saw_confirmed_ambiguity = false;
+ double held_position = 1.10;
+ for (int sample = 21; sample <= 40; ++sample) {
+ intent_confirmation.observe(
+ {2, {held_position, 0.0}, 0.5}, sample * 0.1);
+ const auto track = intent_confirmation.active_tracks(sample * 0.1, 1.0);
+ CHECK(track.size() == 1);
+ if (std::hypot(track.front().state.v.x, track.front().state.v.y) < 0.40) {
+ if (!saw_first_low_sample) {
+ CHECK(track.front().motion_class == sim::TrackMotionClass::Moving);
+ saw_first_low_sample = true;
+ } else {
+ CHECK(track.front().motion_class == sim::TrackMotionClass::IntentAmbiguous);
+ saw_confirmed_ambiguity = true;
+ break;
+ }
+ }
+ }
+ CHECK(saw_first_low_sample);
+ CHECK(saw_confirmed_ambiguity);
 
  // A learned shuttle corridor remains occupied during endpoint dwell. The
  // public track correctly reports near-zero current velocity, while the
@@ -331,24 +544,63 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(std::abs(stopped_track.front().state.v.x) < 0.10);
  const auto dwell_forecast = shuttle.predict(3.0, 1.0, 0.1, 1.0);
  CHECK(dwell_forecast.size() == 11);
- CHECK(dwell_forecast.front().size() == 2);
+ CHECK(dwell_forecast.front().size() >= 2);
  CHECK(dwell_forecast[5][0].p.x != dwell_forecast[5][1].p.x);
 
- // Once sustained measurements establish the return leg, velocity changes
- // sign and the learned corridor contains all reflected forecasts.
+ // One observed reversal establishes one endpoint, not a complete shuttle
+ // corridor. The travelled frontier on the unseen side must remain open;
+ // otherwise each new observation moves a fake reflection boundary and can
+ // invalidate a previously admitted crossing schedule.
+ bool checked_reversal_position = false;
  for (int sample = 1; sample <= 20; ++sample)
+ {
  shuttle.observe({7, {1.0 - 0.05 * sample, 0.0}, 0.4}, 3.0 + sample * 0.1);
+ const auto current = shuttle.active_tracks(3.0 + sample * 0.1, 1.0);
+ const auto modes = shuttle.predict_inputs();
+ if (!current.empty() && !modes.empty() &&
+ modes.front().alternate_velocity_valid &&
+ current.front().state.p.x > 0.10 && current.front().state.p.x < 0.90) {
+ // Velocity ambiguity may add modes, but every mode starts at the current
+ // timestamped position. Endpoint snapping here would teleport the actor
+ // and manufacture a false crossing conflict several metres away.
+ CHECK(std::abs(modes.front().state.p.x - current.front().state.p.x) < 1e-12);
+ checked_reversal_position = true;
+ }
+ }
+ CHECK(checked_reversal_position);
  const auto reversed_track = shuttle.active_tracks(5.0, 1.0);
  CHECK(reversed_track.front().state.v.x < -0.40);
  const auto learned_motion = shuttle.predict_inputs();
  CHECK(learned_motion.size() == 1);
  CHECK(learned_motion.front().endpoint_dwell_s >= 0.5);
+ CHECK(!learned_motion.front().bounded_x);
+// Readiness comes from sufficient timestamped history, not from observing a
+// complete shuttle cycle. The missing opposite endpoint limits the periodic
+// hypothesis but does not erase a usable generic motion estimate.
+CHECK(learned_motion.front().state.prediction_ready);
  const auto predictions = shuttle.predict(5.0, 1.0, 0.1, 1.0);
  CHECK(predictions.size() == 11);
- for (const auto& frame : predictions) {
- CHECK(frame.size() == 1);
- CHECK(frame[0].p.x >= -0.10);
- CHECK(frame[0].p.x <= 1.10);
+ CHECK(!predictions.back().empty());
+ CHECK(predictions.back().front().p.x < -0.10);
+
+ // Endpoint dwell may be asymmetric. After learning a long pause at x=1,
+ // an immediate reversal at x=0 lowers the shared conservative dwell bound
+ // to zero; applying the long pause to both ends would create a false safe
+ // crossing window just before the no-dwell return.
+ for (int sample = 1; sample <= 10; ++sample)
+ shuttle.observe({7, {0.05 * sample, 0.0}, 0.4}, 5.0 + sample * 0.1);
+ const auto asymmetric_dwell = shuttle.predict_inputs();
+ CHECK(asymmetric_dwell.size() == 1);
+ CHECK(asymmetric_dwell.front().endpoint_dwell_s == 0.0);
+ CHECK(asymmetric_dwell.front().bounded_x);
+ CHECK(asymmetric_dwell.front().state.prediction_ready);
+ const auto bounded_predictions = shuttle.predict(6.0, 1.0, 0.1, 1.0);
+ for (const auto& frame : bounded_predictions) {
+ CHECK(frame.size() >= 3);
+ for (const auto& hypothesis : frame) {
+ CHECK(hypothesis.p.x >= -0.10);
+ CHECK(hypothesis.p.x <= 1.10);
+ }
  }
 
  // Even without a learned reversal boundary (for example after track
@@ -398,7 +650,7 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(slow_dwell_track.front().motion_class == sim::TrackMotionClass::IntentAmbiguous);
  const auto slow_dwell_forecast = slow_shuttle.predict(4.0, 1.0, 0.1, 1.0);
  CHECK(!slow_dwell_forecast.empty());
- CHECK(slow_dwell_forecast.front().size() == 2);
+ CHECK(slow_dwell_forecast.front().size() >= 2);
 
  const auto dwa = sim::dwa_compute({1.0, 2.0}, 0.0, 0.0, 0.0, {8.0, 2.0}, open_map, {1.0, 2.0, 0.3}, 1.5, 1.5,
                                    2.0, 1.5, 0.1, 0.38, 8.0);
@@ -436,6 +688,26 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  CHECK(std::abs(uncertain_frames.front().front().position_uncertainty_m - 0.03) < 1e-12);
  CHECK(std::abs(uncertain_frames.back().front().position_uncertainty_m - 0.13) < 1e-12);
  CHECK(uncertain_frames.back().front().radius == 0.20);
+
+ // Velocity uncertainty on a bounded motion manifold changes arrival phase
+ // along that manifold. It must not inflate the actor equally in the
+ // cross-track direction.
+ sim::PredictInput phase_uncertain;
+ phase_uncertain.state = {{0.0, 2.0}, {1.0, 0.0}, 0.20, 0.03, true};
+ phase_uncertain.velocity_uncertainty_mps = 0.20;
+ phase_uncertain.min_observed = {0.0, 2.0};
+ phase_uncertain.max_observed = {10.0, 2.0};
+ phase_uncertain.bounded_x = true;
+ const auto phase_frames = sim::predict_frames(
+ {phase_uncertain}, 0.0, 1.0, 1.0, 2.0);
+ CHECK(phase_frames.back().size() == 3);
+ CHECK(std::abs(phase_frames.back()[0].p.x - 0.8) < 1e-12);
+ CHECK(std::abs(phase_frames.back()[1].p.x - 1.0) < 1e-12);
+ CHECK(std::abs(phase_frames.back()[2].p.x - 1.2) < 1e-12);
+ for (const auto& hypothesis : phase_frames.back()) {
+ CHECK(std::abs(hypothesis.p.y - 2.0) < 1e-12);
+ CHECK(std::abs(hypothesis.position_uncertainty_m - 0.03) < 1e-12);
+ }
 
  // Adjacent-frame interpolation relies on stable object/hypothesis order.
  // One nominal+alternate input followed by a nominal-only input must retain
@@ -576,6 +848,28 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
   };
   const double swept = sim::predicted_gap(line, 0, 0.0, crossing, 0.1, 0.38);
   CHECK(std::abs(swept - (0.1 - 0.5 - 0.38)) < 1e-9);
+ const auto swept_evidence = sim::predicted_gap_evidence(
+ line, 0, 0.0, crossing, 0.1, 0.38, 0.0);
+ CHECK(swept_evidence.conflict);
+ CHECK(std::abs(swept_evidence.min_gap_m - swept) < 1e-12);
+ // The envelope radius is 0.88 m and the crossing stays at y=0.1 m.
+ // This analytic root is the first entry, earlier than closest approach.
+ const double expected_entry_fraction =
+ (1.0 - std::sqrt(0.88 * 0.88 - 0.1 * 0.1)) / 2.0;
+ CHECK(std::abs(swept_evidence.first_conflict_s -
+ expected_entry_fraction * 0.1) < 1e-12);
+ CHECK(std::abs(swept_evidence.first_conflict_position.x) < 1e-12);
+ // A target can use the same route position long before the ego gets there.
+ // A spatial union would report a false conflict; same-time relative motion
+ // remains five metres apart throughout this finite window.
+ const std::vector<std::vector<sim::DynamicObjectState>> already_gone = {
+ {{{5.0, 0.0}, {1.0, 0.0}, 0.2}},
+ {{{6.0, 0.0}, {1.0, 0.0}, 0.2}},
+ };
+ const auto different_times = sim::predicted_gap_evidence(
+ line, 0, 1.0, already_gone, 1.0, 0.38, 0.5);
+ CHECK(!different_times.conflict);
+ CHECK(std::abs(different_times.min_gap_m - 4.42) < 1e-12);
  }
  // Departure reasons: infinity is three different verdicts with three owners.
  {
@@ -667,6 +961,119 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
   const std::vector<sim::TimedPose> rush{{{0.0, {0.0, 0.0}}, {2.0, {2.0, 0.0}}}};
   CHECK(sim::timed_gap(rush, visiting, 0.1, 0.38) < held);
   CHECK(sim::timed_gap({}, visiting, 0.1, 0.38) == std::numeric_limits<double>::infinity());
+ }
+ // A planner may correctly drop an unobserved target after its freshness
+ // budget while the tracker retains a longer dormant association hypothesis.
+ // Reappearing after a two-second occlusion must update the established ID,
+ // not create a new immature actor and discard learned motion history.
+ {
+ constexpr int kRays = 800;
+ sim::SensorSystem coast_sensors(1901, 1903);
+ sim::LidarPerceptionSystem coast_perception(open_map, 1907);
+ sim::WorldTruth coast_truth;
+ coast_truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ sim::LidarConfig coast_config;
+ coast_config.rays = kRays;
+ coast_config.min_range_m = 0.2;
+ coast_config.range_m = 10.0;
+ coast_config.scan_hz = 10.0;
+ const auto process_coast_scan = [&](double stamp_s) {
+ const auto frame = coast_sensors.capture_lidar(
+ coast_truth, stamp_s, coast_config,
+ sim::planar_lidar_truth(open_map, {1.0, 5.0}, 0.0, kRays, 10.0,
+ coast_truth.dynamic_objects));
+ coast_perception.process(
+ *frame.lidar, *frame.lidar_static_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0}, {}, 1.25);
+ };
+ for (int sample = 0; sample < 10; ++sample) {
+ const double stamp_s = 0.1 * sample;
+ coast_truth.dynamic_objects = {{{5.0, 4.5 + 0.30 * stamp_s},
+ {0.0, 0.30}, 0.5}};
+ process_coast_scan(stamp_s);
+ }
+ const auto before_occlusion =
+ coast_perception.dynamic_obstacles().active_tracks(0.9, 1.25);
+ CHECK(before_occlusion.size() == 1);
+ const auto coast_id = before_occlusion.front().object_id;
+ coast_truth.dynamic_objects.clear();
+ for (int sample = 10; sample < 30; ++sample)
+ process_coast_scan(0.1 * sample);
+ CHECK(coast_perception.dynamic_obstacles().active_tracks(2.9, 1.25).empty());
+ coast_truth.dynamic_objects = {{{5.0, 5.4}, {0.0, 0.30}, 0.5}};
+ process_coast_scan(3.0);
+ const auto after_occlusion =
+ coast_perception.dynamic_obstacles().active_tracks(3.0, 1.25);
+ CHECK(after_occlusion.size() == 1);
+ CHECK(after_occlusion.front().object_id == coast_id);
+ }
+
+ // Association must use the same bounded-motion phase model as planning.
+ // Train a shuttle over both corridor legs, hide it for 2.4 seconds, then
+ // reintroduce it at the analytically reflected phase. Linear coasting would
+ // be metres outside the corridor and would fragment the identity here.
+ {
+ constexpr int kRays = 800;
+ sim::SensorSystem shuttle_sensors(2001, 2003);
+ sim::LidarPerceptionSystem shuttle_perception(open_map, 2007);
+ sim::WorldTruth shuttle_truth;
+ shuttle_truth.robot = {1.0, 5.0, 0.0, 0.0, 0.0};
+ sim::LidarConfig shuttle_config;
+ shuttle_config.rays = kRays;
+ shuttle_config.min_range_m = 0.2;
+ shuttle_config.range_m = 10.0;
+ shuttle_config.scan_hz = 10.0;
+ const auto process_shuttle_scan = [&](double stamp_s) {
+ const auto frame = shuttle_sensors.capture_lidar(
+ shuttle_truth, stamp_s, shuttle_config,
+ sim::planar_lidar_truth(open_map, {1.0, 5.0}, 0.0,
+ kRays, 10.0, shuttle_truth.dynamic_objects));
+ shuttle_perception.process(
+ *frame.lidar, *frame.lidar_static_reference,
+ {{1.0, 5.0}, 0.0, 0.0, 0.0, 0.0}, {}, 1.25);
+ };
+ for (int sample = 0; sample <= 20; ++sample) {
+ const double stamp_s = 0.1 * sample;
+ shuttle_truth.dynamic_objects = {{{5.0, 4.5 + 0.05 * sample},
+ {0.0, 0.5}, 0.5}};
+ process_shuttle_scan(stamp_s);
+ }
+ for (int sample = 21; sample <= 40; ++sample) {
+ const double stamp_s = 0.1 * sample;
+ shuttle_truth.dynamic_objects = {{{5.0, 5.5 - 0.05 * (sample - 20)},
+ {0.0, -0.5}, 0.5}};
+ process_shuttle_scan(stamp_s);
+ }
+ // A travelled lower extent is not a confirmed endpoint until motion turns
+ // there. Observe the beginning of the second outbound leg before claiming a
+ // closed periodic corridor.
+ for (int sample = 41; sample <= 50; ++sample) {
+ const double stamp_s = 0.1 * sample;
+ shuttle_truth.dynamic_objects = {{{5.0, 4.5 + 0.05 * (sample - 40)},
+ {0.0, 0.5}, 0.5}};
+ process_shuttle_scan(stamp_s);
+ }
+ const auto learned = shuttle_perception.dynamic_obstacles().predict_inputs();
+ CHECK(learned.size() == 1);
+ CHECK(learned.front().bounded_y);
+ const auto before_hide =
+ shuttle_perception.dynamic_obstacles().active_tracks(5.0, 1.25);
+ CHECK(before_hide.size() == 1);
+ const auto shuttle_id = before_hide.front().object_id;
+
+ shuttle_truth.dynamic_objects.clear();
+for (int sample = 51; sample <= 74; ++sample)
+ process_shuttle_scan(0.1 * sample);
+CHECK(shuttle_perception.dynamic_obstacles().active_tracks(7.4, 1.25).empty());
+ // From y=5.0 moving up, reflection at the learned upper endpoint sends the
+ // target to y=4.75 at t=7.5 on its return toward the lower endpoint.
+shuttle_truth.dynamic_objects = {{{5.0, 4.75}, {0.0, -0.5}, 0.5}};
+process_shuttle_scan(7.5);
+ const auto after_hide =
+ shuttle_perception.dynamic_obstacles().active_tracks(7.5, 1.25);
+ CHECK(after_hide.size() == 1);
+ CHECK(after_hide.front().object_id == shuttle_id);
+ CHECK(after_hide.front().motion_class != sim::TrackMotionClass::Unconfirmed);
  }
  return 0;
 }

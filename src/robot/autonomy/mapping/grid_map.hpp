@@ -26,6 +26,22 @@ class GridMap {
   return inside(gx, gy) && data_[gy * w_ + gx] < 50;
  }
  bool isFreeCell(int gx, int gy) const { return inside(gx, gy) && data_[gy * w_ + gx] < 50; }
+ // Continuous line-of-travel occupancy query. Sampling at no more than half
+ // a cell prevents a segment whose endpoints are free from jumping across a
+ // lethal raster cell. Behavior admission and executable-trajectory
+ // validation use this same primitive so they cannot disagree on whether a
+ // promised path is statically traversable.
+ bool segmentIsFree(Vec2 from, Vec2 to) const;
+ // Exact world-space distance from a point to the occupied set represented
+ // by this raster. An occupied cell owns its complete square, rather than
+ // only its centre. Space outside the map is occupied as well. The value is
+ // zero in occupied space and varies continuously while a point moves inside
+ // free cells, which makes it suitable for local-planner clearance critics.
+ double clearance(double wx, double wy) const;
+ // Exact distance from a point in occupied raster space to the union of free
+ // cell squares. Returns zero in free space and infinity when no free cell
+ // exists. This is the continuous penetration-depth counterpart of isFree().
+ double distanceToFreeSpace(double wx, double wy) const;
  void setElevation(double wx, double wy, double elevation_m);
  std::optional<double> elevation(double wx, double wy) const;
  bool hasElevation() const { return elevation_m_.size() == data_.size(); }

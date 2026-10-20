@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <optional>
 
 namespace sim {
 
@@ -70,6 +71,12 @@ class EstimationSystem {
  double imu_mount_yaw_rad_{0.0};
  Quaternion attitude_;
  bool attitude_initialized_{false};
+ std::optional<PoseObservation> velocity_pose_anchor_;
+ Vec2 absolute_velocity_world_mps_;
+ double absolute_yaw_rate_radps_{0.0};
+ bool absolute_velocity_valid_{false};
+ int pose_velocity_innovation_samples_{0};
+ int pose_yaw_rate_innovation_samples_{0};
 };
 
 } // namespace sim

@@ -39,6 +39,9 @@ int main() {
   CHECK(progress.abilities().empty());
   mission::MissionResult done;
   done.safe_score = true;
+ done.status = mission::MissionStatus::Succeeded;
+ done.performance.ranked = true;
+ done.performance.overall = 75.0;
   progress.record_completion("signal_cross", done, catalog);
   CHECK(progress.abilities().size() == 1);
   CHECK(progress.abilities().front() == "ability.signal_cross");
@@ -57,7 +60,7 @@ int main() {
  std::filesystem::temp_directory_path() / "lost_signal_progress_abilities_legacy.json";
   {
    std::ofstream out(legacy_path, std::ios::trunc);
-   out << "{\"schema_version\": 2, \"completed_levels\": [], \"inventory\": []}\n";
+ out << "{\"schema_version\": 3, \"completed_levels\": [], \"inventory\": []}\n";
   }
   const auto legacy = mission::CampaignProgress::load(legacy_path, catalog);
   CHECK(legacy.abilities().empty());

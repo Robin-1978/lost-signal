@@ -36,6 +36,18 @@ sim::ObservationFrame observation(double time_s, double roll_rate,
  return frame;
 }
 
+sim::PoseObservation pose(double time_s, double x, double y,
+ double heading_rad = 0.0) {
+ sim::PoseObservation value;
+ value.position = {x, y};
+ value.heading_rad = heading_rad;
+ value.position_sigma_m = 0.01;
+ value.heading_sigma_rad = 0.006;
+ value.header = {
+ time_s, 0, "map", 0.0, sim::kMeasurementSchemaVersion, "test.pose"};
+ return value;
+}
+
 } // namespace
 
 int main() {
@@ -92,6 +104,59 @@ int main() {
  impulse.update(observation(0.02, 0.0, 0.0, 0.0,
  impulse_x, 0.0, impulse_z), 0.02);
  CHECK(std::abs(impulse.state().pitch_rad) < 0.03);
+
+ // Independent pose motion must remain observable when wheel encoders say
+ // zero, as happens with locked wheels sliding on a slope. The oracle is a
+ // one metre-per-second map-frame translation with a stationary heading.
+ sim::EstimationSystem sliding(17);
+ sliding.reset(0.0, 0.0, 0.0, 17);
+ sliding.correct(pose(0.0, 0.0, 0.0), 0.0);
+ for (int sample = 1; sample <= 10; ++sample) {
+ const double time_s = 0.02 * sample;
+ sliding.update(observation(time_s, 0.0, 0.0, 0.0,
+ 0.0, 0.0, kGravityMps2), 0.02);
+ sliding.correct(pose(time_s, time_s, 0.0), time_s);
+ }
+ CHECK(sliding.state().linear_velocity_mps > 0.55);
+ CHECK(std::abs(sliding.state().lateral_velocity_mps) < 1e-12);
+ CHECK(std::abs(sliding.state().angular_velocity_radps) < 1e-12);
+
+ // Sub-threshold pose differentiation noise must not replace a quiet wheel
+ // observation during ordinary rolling.
+ sim::EstimationSystem quiet(19);
+ quiet.reset(0.0, 0.0, 0.0, 19);
+ quiet.correct(pose(0.0, 0.0, 0.0), 0.0);
+ for (int sample = 1; sample <= 10; ++sample) {
+ const double time_s = 0.02 * sample;
+ auto quiet_observation = observation(time_s, 0.0, 0.0, 0.0,
+ 0.0, 0.0, kGravityMps2);
+ quiet_observation.encoders->linear_velocity_mps = 0.5;
+ quiet.update(quiet_observation, 0.02);
+ // A 0.51 m/s differentiated pose agrees with the 0.50 m/s encoder.
+ quiet.correct(pose(time_s, 0.51 * time_s, 0.0), time_s);
+ }
+ CHECK(std::abs(quiet.state().linear_velocity_mps - 0.5) < 1e-12);
+
+ // One independent-pose jump is not enough to declare body motion against
+ // stopped encoders. The next consistent window may confirm real sliding;
+ // a quiet follow-up instead clears the pending innovation.
+ sim::EstimationSystem pose_spike(23);
+ pose_spike.reset(0.0, 0.0, 0.0, 23);
+ pose_spike.correct(pose(0.0, 0.0, 0.0), 0.0);
+ for (int sample = 1; sample <= 5; ++sample) {
+ const double time_s = 0.02 * sample;
+ pose_spike.update(observation(time_s, 0.0, 0.0, 0.0,
+ 0.0, 0.0, kGravityMps2), 0.02);
+ pose_spike.correct(pose(time_s, sample == 5 ? 0.10 : 0.0, 0.0), time_s);
+ }
+ CHECK(std::abs(pose_spike.state().linear_velocity_mps) < 1e-12);
+ for (int sample = 6; sample <= 10; ++sample) {
+ const double time_s = 0.02 * sample;
+ pose_spike.update(observation(time_s, 0.0, 0.0, 0.0,
+ 0.0, 0.0, kGravityMps2), 0.02);
+ pose_spike.correct(pose(time_s, 0.10, 0.0), time_s);
+ }
+ CHECK(std::abs(pose_spike.state().linear_velocity_mps) < 1e-12);
 
  bool rejected = false;
  try {

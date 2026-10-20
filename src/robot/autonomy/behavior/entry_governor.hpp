@@ -1,6 +1,10 @@
 #pragma once
 
+#include "robot/core/dynamic_object_state.hpp"
 #include "robot/core/math.hpp"
+
+#include <limits>
+#include <vector>
 
 namespace sim {
 
@@ -24,6 +28,7 @@ struct GovernorInput {
   bool occupied_fresh{false};
   bool clear_fresh{false};
   Vec2 stop_point{0, 0};
+ Vec2 stop_direction{1, 0};
   bool stop_valid{false};
 };
 
@@ -35,6 +40,7 @@ struct GovernorState {
  // frame. A tracker gap must not erase the point while hysteresis still
  // says HOLD; doing so leaves a stopped robot inside the swept corridor.
  Vec2 stop_point{0, 0};
+ Vec2 stop_direction{1, 0};
  bool stop_valid{false};
 };
 
@@ -54,6 +60,54 @@ constexpr int kReleaseSilent = 15; // 15 x 0.02 s = 0.3 s without fresh data.
 
 GovernorOutput govern_entry(GovernorState& state, const GovernorInput& input);
 
+// Map-independent dynamic conflict assessment. The route starts at the
+// measured ego position. All target states come from ROBOT perception and
+// prediction; map conflict semantics and simulator actor identity are absent.
+// The result is one-sided: it may request a hold, but never commands motion.
+struct EntryWindowRequest {
+ std::vector<Vec2> route;
+ double cruise_speed_mps{0.0};
+ std::vector<std::vector<DynamicObjectState>> predicted_frames;
+ double frame_dt_s{0.0};
+ double ego_radius_m{0.0};
+ double clearance_m{0.0};
+ double braking_deceleration_mps2{0.0};
+};
+
+struct DynamicEntryAssessment {
+ GovernorInput governor;
+ bool prediction_evidence_available{false};
+ bool conflict{false};
+ // True only when brake-and-hold at the derived point remains outside every
+ // retained target occupancy over the prediction horizon. A conflict with no
+ // safe hold is not converted into a zero-speed command; the local planner
+ // must compare fully validated motion candidates against brake-and-hold.
+ bool safe_hold_available{false};
+ double minimum_gap_m{std::numeric_limits<double>::infinity()};
+ double first_conflict_s{std::numeric_limits<double>::infinity()};
+ Vec2 first_conflict_position;
+ double stop_distance_m{std::numeric_limits<double>::infinity()};
+};
+
+DynamicEntryAssessment assess_dynamic_entry_window(
+ const EntryWindowRequest& request);
+
+// Intersects two one-sided behavior constraints before a no-return boundary.
+// A mapped rule and an online, map-independent conflict detector are both
+// allowed to withhold motion; neither can grant permission over the other.
+// When both provide valid virtual walls, the first wall along the current
+// route wins. An invalid held wall means "stop now" and is therefore the
+// stricter result. The caller must not introduce a new stop after entering a
+// separately validated no-return maneuver.
+GovernorOutput merge_entry_constraints(
+ const GovernorOutput& first, const GovernorOutput& second,
+ const std::vector<Vec2>& route);
+
+struct EntryWindowDecision {
+ DynamicEntryAssessment assessment;
+ GovernorOutput control;
+};
+
 // Stateful autonomy owner for runtime use. The pure transition above remains
 // available for exhaustive contract tests; composition layers do not retain
 // or mutate behavior state themselves.
@@ -62,6 +116,12 @@ class EntryGovernorSystem {
  void reset() { state_ = {}; }
  GovernorOutput update(const GovernorInput& input) {
  return govern_entry(state_, input);
+ }
+ EntryWindowDecision assess(const EntryWindowRequest& request) {
+ EntryWindowDecision decision;
+ decision.assessment = assess_dynamic_entry_window(request);
+ decision.control = govern_entry(state_, decision.assessment.governor);
+ return decision;
  }
  bool holding() const { return state_.hold_active; }
 

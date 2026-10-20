@@ -22,6 +22,12 @@ struct BestScore {
  bool efficient{false};
  double best_time_s{0.0};
  double best_energy_wh{0.0};
+ double best_overall{0.0};
+ double safety{0.0};
+ double pace{0.0};
+ double efficiency{0.0};
+ double smoothness{0.0};
+ double decisiveness{0.0};
 };
 
 int component_reputation_cost(const ComponentDefinition& component);

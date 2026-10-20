@@ -79,6 +79,28 @@ int main() {
  for (const auto& id : run.snapshot().abandoned_goal_ids)
  std::cerr << id << ',';
  std::cerr << '\n';
+ const auto& route = run.planned_route();
+ if (!route.empty()) {
+ const sim::Vec2 pose{run.snapshot().estimated_position.x,
+ run.snapshot().estimated_position.y};
+ std::size_t closest = 0;
+ double closest_distance = 1e9;
+ for (std::size_t index = 0; index < route.size(); ++index) {
+ const double candidate = std::hypot(
+ route[index].position.x - pose.x, route[index].position.y - pose.y);
+ if (candidate < closest_distance) {
+ closest = index;
+ closest_distance = candidate;
+ }
+ }
+ const std::size_t first = closest > 5 ? closest - 5 : 0;
+ const std::size_t last = std::min(route.size(), closest + 6);
+ for (std::size_t index = first; index < last; ++index) {
+ std::cerr << " route[" << index << "]=(" << route[index].position.x << ','
+ << route[index].position.y << ") heading=" << route[index].heading_rad
+ << " gear=" << static_cast<int>(route[index].arrival_direction) << '\n';
+ }
+ }
  const auto& replay = run.replay();
  const auto begin = replay.size() > 20 ? replay.size() - 20 : 0;
  for (std::size_t index = begin; index < replay.size(); ++index) {

@@ -181,6 +181,8 @@ std::string decision_reason(const mission::ContentCatalog& catalog,
  return catalog.tr("decision.reason.dynamic-track-clear");
  if (decision.reason_code == "no-safe-local-trajectory")
  return catalog.tr("decision.reason.no-safe-local-trajectory");
+ if (decision.reason_code == "stability-envelope")
+ return catalog.tr("decision.reason.stability-envelope");
  if (decision.reason_code == "entry-window-occupied")
  return catalog.tr("decision.reason.entry-window-occupied");
  if (decision.reason_code == "predicted-path-conflict")
@@ -1050,12 +1052,25 @@ void GameUi::build_debrief(const mission::ScenarioSession* mission) {
              badge(result.fast_score, "debrief.badge_fast") + " " +
              badge(result.efficient_score, "debrief.badge_efficient"),
            17, {220, 222, 216}, true, 10);
+ if (result.performance.ranked) {
+ placed_text(catalog_.trf("debrief.performance_score",
+ {format_number(result.performance.overall, 0),
+ format_number(result.performance.safety, 0),
+ format_number(result.performance.pace, 0),
+ format_number(result.performance.efficiency, 0),
+ format_number(result.performance.smoothness, 0),
+ format_number(result.performance.decisiveness, 0)}),
+ 16, {105, 235, 193}, true, 10);
+ }
  std::string metrics =
    catalog_.trf("debrief.metrics", {format_number(result.time_s), format_number(result.path_length_m),
                                     format_number(result.energy_wh, 2)});
  metrics += mission->level().concept_id == "odometry_drift"
               ? catalog_.trf("debrief.metrics_odom", {format_number(result.max_odometry_error_m, 2)})
               : catalog_.trf("debrief.metrics_clear", {format_number(result.scored_clearance_m, 2)});
+ metrics += catalog_.trf("debrief.performance_raw",
+ {format_number(result.wait_time_s, 1), format_number(result.recovery_time_s, 1),
+ std::to_string(result.strategy_switches)});
  placed_text(metrics, 16, {182, 190, 186}, false, 14);
  if (result.braking_measurement_valid &&
  std::find(presentation_->evidence_fields.begin(), presentation_->evidence_fields.end(), "braking") !=

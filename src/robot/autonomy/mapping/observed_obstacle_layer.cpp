@@ -43,12 +43,59 @@ std::vector<std::size_t> ObservedObstacleLayer::ray_cells(Vec2 origin, Vec2 endp
  return result;
 }
 
-bool ObservedObstacleLayer::observe(double stamp_s, const std::vector<ObservedRay2D>& rays) {
+bool ObservedObstacleLayer::observe(double stamp_s,
+ const std::vector<ObservedRay2D>& rays,
+ const std::vector<ObservedClearingRegion>& clearing_regions) {
  if (!std::isfinite(stamp_s) || stamp_s + 1e-9 < last_observation_stamp_s_)
  return false;
 
  std::vector<char> cleared(cells_.size(), 0);
  std::vector<char> marked(cells_.size(), 0);
+
+ const auto distance_to_segment = [](Vec2 point, Vec2 from, Vec2 to) {
+ const Vec2 delta{to.x - from.x, to.y - from.y};
+ const double length_squared = delta.x * delta.x + delta.y * delta.y;
+ if (length_squared <= 1e-12)
+ return std::hypot(point.x - from.x, point.y - from.y);
+ const double projection = std::clamp(
+ ((point.x - from.x) * delta.x + (point.y - from.y) * delta.y) /
+ length_squared, 0.0, 1.0);
+ return std::hypot(
+ point.x - (from.x + projection * delta.x),
+ point.y - (from.y + projection * delta.y));
+ };
+ const double cell_half_diagonal = resolution_ / std::sqrt(2.0);
+ for (const auto& region : clearing_regions) {
+ if (!std::isfinite(region.from.x) || !std::isfinite(region.from.y) ||
+ !std::isfinite(region.to.x) || !std::isfinite(region.to.y) ||
+ !(region.radius_m >= 0.0) || !std::isfinite(region.radius_m)) {
+ continue;
+ }
+ const double min_x = std::min(region.from.x, region.to.x) -
+ region.radius_m - cell_half_diagonal;
+ const double max_x = std::max(region.from.x, region.to.x) +
+ region.radius_m + cell_half_diagonal;
+ const double min_y = std::min(region.from.y, region.to.y) -
+ region.radius_m - cell_half_diagonal;
+ const double max_y = std::max(region.from.y, region.to.y) +
+ region.radius_m + cell_half_diagonal;
+ const int gx0 = std::max(0, static_cast<int>(std::floor(min_x / resolution_)));
+ const int gx1 = std::min(width_ - 1, static_cast<int>(std::floor(max_x / resolution_)));
+ const int gy0 = std::max(0, static_cast<int>(std::floor(min_y / resolution_)));
+ const int gy1 = std::min(height_ - 1, static_cast<int>(std::floor(max_y / resolution_)));
+ for (int gy = gy0; gy <= gy1; ++gy) {
+ for (int gx = gx0; gx <= gx1; ++gx) {
+ const Vec2 centre{
+ (static_cast<double>(gx) + 0.5) * resolution_,
+ (static_cast<double>(gy) + 0.5) * resolution_,
+ };
+ if (distance_to_segment(centre, region.from, region.to) <=
+ region.radius_m + cell_half_diagonal) {
+ cleared[static_cast<std::size_t>(gy * width_ + gx)] = 1;
+ }
+ }
+ }
+ }
  for (const auto& ray : rays) {
  if (!std::isfinite(ray.origin.x) || !std::isfinite(ray.origin.y) ||
  !std::isfinite(ray.endpoint.x) || !std::isfinite(ray.endpoint.y)) {
@@ -89,6 +136,23 @@ bool ObservedObstacleLayer::active(const CellEvidence& cell, double now_s) const
 std::size_t ObservedObstacleLayer::active_obstacle_cells(double now_s) const {
  return static_cast<std::size_t>(
  std::count_if(cells_.begin(), cells_.end(), [&](const auto& cell) { return active(cell, now_s); }));
+}
+
+std::vector<Vec2> ObservedObstacleLayer::active_obstacle_centres(
+ double now_s) const {
+ std::vector<Vec2> result;
+ for (int gy = 0; gy < height_; ++gy) {
+ for (int gx = 0; gx < width_; ++gx) {
+ const auto index = static_cast<std::size_t>(gy * width_ + gx);
+ if (active(cells_[index], now_s)) {
+ result.push_back({
+ (static_cast<double>(gx) + 0.5) * resolution_,
+ (static_cast<double>(gy) + 0.5) * resolution_,
+ });
+ }
+ }
+ }
+ return result;
 }
 
 GridMap ObservedObstacleLayer::compose(const GridMap& static_costmap, double now_s,

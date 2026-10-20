@@ -39,6 +39,10 @@ mission::FieldIntentKind parse_field_intent(const std::string& value) {
  throw std::runtime_error("unknown field intent: " + value);
 }
 
+nlohmann::json finite_or_null(double value) {
+ return std::isfinite(value) ? nlohmann::json(value) : nlohmann::json(nullptr);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -344,6 +348,15 @@ int main(int argc, char** argv) {
      {"collisions", result.collisions},
  {"rigid_contacts", result.rigid_contacts},
      {"slip_events", result.slip_events},
+{"perception",
+ {
+ {"truth_association_matches", result.assoc_agree},
+ {"truth_association_total", result.assoc_total},
+ {"truth_association_ratio",
+ result.assoc_total > 0
+ ? static_cast<double>(result.assoc_agree) / static_cast<double>(result.assoc_total)
+ : 1.0},
+ }},
  {"braking",
  {
  {"valid", result.braking_measurement_valid},
@@ -353,19 +366,93 @@ int main(int argc, char** argv) {
  }},
      {"astar_expanded", result.astar_expanded},
      {"local_decisions", result.local_decisions},
+ {"strategy", {
+ {"mode", static_cast<int>(mission.snapshot().strategy.applied.mode)},
+ {"speed_scale", mission.snapshot().strategy.applied.speed_scale},
+ {"safety_reasons", mission.snapshot().strategy.safety_reasons},
+ }},
  {"local_planner",
  {
  {"target", {mission.snapshot().control.local_target.x,
  mission.snapshot().control.local_target.y}},
  {"accepted_candidates", mission.snapshot().control.dwa_accepted_candidates},
+ {"proposed_command", {
+ mission.snapshot().control.dwa_proposed_v_mps,
+ mission.snapshot().control.dwa_proposed_w_radps}},
  {"trajectory_validated", mission.snapshot().control.trajectory_validated},
  {"trajectory_verdict", mission.snapshot().control.trajectory_verdict},
  {"trajectory_diagnostic", mission.snapshot().control.trajectory_diagnostic},
+ {"trajectory_max_dynamic_rollover_risk",
+ mission.snapshot().control.trajectory_max_dynamic_rollover_risk},
+ {"trajectory_preserves_committed_schedule",
+ mission.snapshot().control.trajectory_preserves_committed_schedule},
+ {"trajectory_committed_position_error_m",
+ mission.snapshot().control.trajectory_committed_position_error_m},
+ {"trajectory_committed_heading_error_rad",
+ mission.snapshot().control.trajectory_committed_heading_error_rad},
+ {"trajectory_committed_speed_error_mps",
+ mission.snapshot().control.trajectory_committed_speed_error_mps},
+ {"trajectory_committed_tracking_cost",
+ mission.snapshot().control.trajectory_committed_tracking_cost},
+ {"transient_obstacle_cells",
+ mission.snapshot().control.transient_obstacle_cells},
+ {"nearest_transient_obstacle_m",
+ finite_or_null(mission.snapshot().control.nearest_transient_obstacle_m)},
+ {"nearest_dynamic_track_m",
+ finite_or_null(mission.snapshot().control.nearest_dynamic_track_m)},
+ {"local_map_pose_free",
+ mission.snapshot().control.local_map_pose_free},
+ {"local_map_pose_clearance_m",
+ finite_or_null(mission.snapshot().control.local_map_pose_clearance_m)},
+ {"static_margin_recovery_active",
+ mission.snapshot().control.static_margin_recovery_active},
+ {"static_margin_recovery_gear",
+ mission.snapshot().control.static_margin_recovery_gear},
+ {"static_margin_escape_origin",
+ {mission.snapshot().control.static_margin_escape_origin.x,
+ mission.snapshot().control.static_margin_escape_origin.y}},
+ {"static_margin_escape_heading_rad",
+ mission.snapshot().control.static_margin_escape_heading_rad},
+ {"static_margin_escape_required_progress_m",
+ mission.snapshot().control.static_margin_escape_required_progress_m},
+ {"static_margin_escape_progress_m",
+ mission.snapshot().control.static_margin_escape_progress_m},
+ {"near_boundary_clearance_recovery_active",
+ mission.snapshot().control.near_boundary_clearance_recovery_active},
  {"wheel_speed_mps", {mission.snapshot().control.left_measured_mps,
  mission.snapshot().control.right_measured_mps}},
  {"governor_hold", mission.snapshot().control.governor_hold},
  {"crossing_relevant", mission.snapshot().control.crossing_assessed},
+{"crossing_stop", {mission.snapshot().control.crossing_stop.x,
+ mission.snapshot().control.crossing_stop.y}},
+{"crossing_exit", {mission.snapshot().control.crossing_exit.x,
+ mission.snapshot().control.crossing_exit.y}},
+{"crossing_stop_longitudinal_m",
+ mission.snapshot().control.crossing_stop_longitudinal_m},
+{"crossing_stop_lateral_m",
+ mission.snapshot().control.crossing_stop_lateral_m},
+{"crossing_stop_distance_m",
+ mission.snapshot().control.crossing_stop_distance_m},
+{"crossing_stop_heading_error_rad",
+ mission.snapshot().control.crossing_stop_heading_error_rad},
  {"crossing_phase", mission.snapshot().control.crossing_phase},
+{"crossing_committed", mission.snapshot().control.crossing_committed},
+{"crossing_body_in_conflict",
+ mission.snapshot().control.crossing_body_in_conflict},
+{"crossing_execution_blocked",
+ mission.snapshot().control.crossing_execution_blocked},
+{"crossing_recovery_to_stop",
+ mission.snapshot().control.crossing_recovery_to_stop},
+{"crossing_recovery_reverse",
+ mission.snapshot().control.crossing_recovery_reverse},
+{"crossing_no_return_started",
+ mission.snapshot().control.crossing_no_return_started},
+{"crossing_alignment_required",
+ mission.snapshot().control.crossing_alignment_required},
+{"crossing_alignment_complete",
+ mission.snapshot().control.crossing_alignment_complete},
+{"crossing_execution_initial_heading_rad",
+ mission.snapshot().control.crossing_execution_initial_heading_rad},
 {"crossing_reason", mission.snapshot().control.crossing_reason},
 {"crossing_ready_to_commit", mission.snapshot().control.crossing_ready_to_commit},
 {"crossing_safe_to_commit", mission.snapshot().control.crossing_safe_to_commit},
@@ -374,6 +461,8 @@ int main(int argc, char** argv) {
 {"crossing_heading_ready", mission.snapshot().control.crossing_heading_ready},
 {"crossing_prediction_evidence_available",
  mission.snapshot().control.crossing_prediction_evidence_available},
+ {"crossing_prediction_models_ready",
+ mission.snapshot().control.crossing_prediction_models_ready},
 {"crossing_free_space_evidence_available",
  mission.snapshot().control.crossing_free_space_evidence_available},
 {"crossing_observed_approaches_clear",
@@ -485,6 +574,19 @@ int main(int argc, char** argv) {
         {"safe", result.safe_score},
         {"fast", result.fast_score},
         {"efficient", result.efficient_score},
+ {"ranked", result.performance.ranked},
+ {"overall", result.performance.overall},
+ {"safety", result.performance.safety},
+ {"pace", result.performance.pace},
+ {"efficiency_score", result.performance.efficiency},
+ {"smoothness", result.performance.smoothness},
+ {"decisiveness", result.performance.decisiveness},
+ {"raw", {
+ {"command_variation_mps", result.command_variation_mps},
+ {"wait_time_s", result.wait_time_s},
+ {"recovery_time_s", result.recovery_time_s},
+ {"strategy_switches", result.strategy_switches},
+ }},
       }},
    };
  if (mission.snapshot().manipulator.present) {
@@ -499,6 +601,90 @@ int main(int argc, char** argv) {
  {"position_error_m", arm.position_error_m},
  {"maximum_joint_speed_radps", result.max_manipulator_joint_speed_radps},
  };
+ }
+ nlohmann::json local_candidates = nlohmann::json::array();
+ for (const auto& candidate : mission.snapshot().control.dwa_candidates) {
+ nlohmann::json points = nlohmann::json::array();
+ for (const auto point : candidate.points)
+ points.push_back({point.x, point.y});
+ local_candidates.push_back({
+ {"collision", candidate.collision},
+ {"score", candidate.score},
+ {"command", {candidate.command_v_mps, candidate.command_w_radps}},
+ {"points", std::move(points)},
+ });
+ }
+ output["local_planner"]["visible_candidates"] = std::move(local_candidates);
+ output["local_planner"]["route"] = nlohmann::json::array();
+ for (const auto& point : mission.planned_route()) {
+ output["local_planner"]["route"].push_back({
+ {"position", {point.position.x, point.position.y}},
+ {"heading_rad", point.heading_rad},
+ {"direction", static_cast<int>(point.arrival_direction)},
+ });
+ }
+ output["local_planner"]["trace_1hz"] = nlohmann::json::array();
+ double next_trace_time_s = 0.0;
+ for (const auto& frame : mission.replay()) {
+ if (frame.time_s + 1e-9 < next_trace_time_s)
+ continue;
+ nlohmann::json trace_actors = nlohmann::json::array();
+ for (const auto& actor : frame.actors) {
+ trace_actors.push_back({
+ {"id", actor.id},
+ {"position", {actor.position.x, actor.position.y}},
+ {"velocity", {actor.velocity.x, actor.velocity.y}},
+ {"detected", actor.detected},
+ });
+ }
+ output["local_planner"]["trace_1hz"].push_back({
+ {"time_s", frame.time_s},
+ {"position", {frame.robot.x, frame.robot.y}},
+ {"heading_rad", frame.robot.theta},
+ {"estimated_position", {frame.estimated_position.x, frame.estimated_position.y}},
+ {"target", {frame.control.local_target.x, frame.control.local_target.y}},
+ {"command", {frame.control.target_v_mps, frame.control.target_w_radps}},
+ {"proposed_command", {frame.control.dwa_proposed_v_mps,
+ frame.control.dwa_proposed_w_radps}},
+ {"body_twist", {frame.robot.v, frame.robot.w}},
+ {"estimated_twist", {frame.estimated_forward_mps,
+ frame.estimated_lateral_mps, frame.estimated_yaw_rate_radps}},
+ {"wheel_target_mps", {frame.control.left_target_mps,
+ frame.control.right_target_mps}},
+ {"wheel_measured_mps", {frame.control.left_measured_mps,
+ frame.control.right_measured_mps}},
+ {"wheel_pwm", {frame.control.left_pwm, frame.control.right_pwm}},
+ {"clearance_m", finite_or_null(frame.control.local_map_pose_clearance_m)},
+ {"trajectory_verdict", frame.control.trajectory_verdict},
+ {"trajectory_diagnostic", frame.control.trajectory_diagnostic},
+ {"near_boundary_recovery",
+ frame.control.near_boundary_clearance_recovery_active},
+ {"governor_hold", frame.control.governor_hold},
+ {"crossing", {
+ {"phase", frame.control.crossing_phase},
+ {"committed", frame.control.crossing_committed},
+ {"body_in_conflict", frame.control.crossing_body_in_conflict},
+ {"no_return_started", frame.control.crossing_no_return_started},
+ {"ready_to_commit", frame.control.crossing_ready_to_commit},
+ {"safe_to_commit", frame.control.crossing_safe_to_commit},
+ {"position_ready", frame.control.crossing_position_ready},
+ {"speed_ready", frame.control.crossing_speed_ready},
+ {"heading_ready", frame.control.crossing_heading_ready},
+ {"execution_blocked", frame.control.crossing_execution_blocked},
+ {"execution_min_gap_m",
+ finite_or_null(frame.control.crossing_execution_min_gap_m)},
+ {"execution_required_gap_m",
+ frame.control.crossing_execution_required_gap_m},
+ {"execution_duration_s",
+ frame.control.crossing_execution_duration_s},
+ {"stop", {frame.control.crossing_stop.x,
+ frame.control.crossing_stop.y}},
+ {"exit", {frame.control.crossing_exit.x,
+ frame.control.crossing_exit.y}},
+ }},
+ {"actors", std::move(trace_actors)},
+ });
+ next_trace_time_s = frame.time_s + 1.0;
  }
  if (mission.committed_construction()) {
  std::vector<std::string> piece_ids;

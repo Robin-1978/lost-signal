@@ -49,6 +49,7 @@ struct WhatIf {
   long steps{0};
   long actual_occupied{0};
   long hypo_clear_given_occupied{0};
+ long hypo_occupied_given_occupied{0};
   double actual_min_clear_margin{1e9};
   double hypo_min_margin{1e9};
   bool finished{false};
@@ -124,7 +125,6 @@ WhatIf run_whatif(const mission::ContentCatalog& catalog, const std::string& lev
   // SAME speed (isolates the position effect: would being a braking distance
   // further back have cleared this step?). Stopped steps assess Uncertain in
   // both and drop out of the comparison naturally.
-  long hypo_occupied_given_occupied = 0;
   for (const auto& rec : stream) {
     const auto actual = field::assess_pose_vs_track(rec.ego, rec.heading, rec.speed, rec.track_pos,
                                                     rec.track_vel, rec.track_radius, rec.age);
@@ -140,7 +140,7 @@ WhatIf run_whatif(const mission::ContentCatalog& catalog, const std::string& lev
       if (hypo.verdict == sim::EntryVerdict::kObservedClear) {
         ++out.hypo_clear_given_occupied;
       } else if (hypo.verdict == sim::EntryVerdict::kObservedOccupied) {
-        ++hypo_occupied_given_occupied;
+ ++out.hypo_occupied_given_occupied;
       }
     }
     if (hypo.verdict == sim::EntryVerdict::kObservedClear)
@@ -157,16 +157,20 @@ int main() {
   const auto r1 = run_whatif(catalog, "signal_hold", candidate);
   std::cerr << "hold: steps=" << r1.steps << " actual_occupied=" << r1.actual_occupied
             << " hypo_clear_given_occupied=" << r1.hypo_clear_given_occupied
+ << " hypo_occupied_given_occupied=" << r1.hypo_occupied_given_occupied
             << " actual_min_clear_margin=" << r1.actual_min_clear_margin
             << " hypo_min_margin=" << r1.hypo_min_margin << " candidate=(" << candidate.x << ","
             << candidate.y << ")\n";
   CHECK(r1.finished);
   CHECK(r1.actual_occupied > 0);
+ CHECK(r1.hypo_clear_given_occupied + r1.hypo_occupied_given_occupied ==
+ r1.actual_occupied);
   std::cerr << "conversion=" << r1.hypo_clear_given_occupied << "/" << r1.actual_occupied << "\n";
   sim::Vec2 candidate2{0, 0};
   const auto r2 = run_whatif(catalog, "signal_hold", candidate2);
   CHECK(r2.steps == r1.steps && r2.actual_occupied == r1.actual_occupied &&
-        r2.hypo_clear_given_occupied == r1.hypo_clear_given_occupied);
+ r2.hypo_clear_given_occupied == r1.hypo_clear_given_occupied &&
+ r2.hypo_occupied_given_occupied == r1.hypo_occupied_given_occupied);
   CHECK(candidate2.x == candidate.x && candidate2.y == candidate.y);
   std::cout << "stop whatif green\n";
   return 0;

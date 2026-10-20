@@ -3,9 +3,9 @@
 #include "sim/game/mission/content_catalog.hpp"
 #include "sim/game/mission/component_registry.hpp"
 #include "sim/game/mission/construction_plan.hpp"
+#include "sim/game/mission/performance_score.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
 #include "sim/game/mission/systems/collision_monitor.hpp"
-#include "sim/game/mission/systems/dynamic_traffic_system.hpp"
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
 #include "sim/game/mission/systems/decision_evidence_system.hpp"
 #include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
@@ -117,6 +117,8 @@ struct LocalTrajectorySnapshot {
  std::vector<sim::Vec2> points;
  bool collision{false};
  double score{0.0};
+ double command_v_mps{0.0};
+ double command_w_radps{0.0};
 };
 
 struct MountActuationSnapshot {
@@ -143,12 +145,37 @@ struct ControlSnapshot {
  int trajectory_verdict{-1};
  std::string trajectory_diagnostic;
  double trajectory_min_dynamic_clearance_m{std::numeric_limits<double>::infinity()};
+ double trajectory_max_dynamic_rollover_risk{0.0};
  std::uint64_t trajectory_sequence{0};
  bool trajectory_tracking_active{false};
  bool trajectory_within_envelope{false};
  double trajectory_position_error_m{0.0};
  double trajectory_heading_error_rad{0.0};
  double trajectory_speed_error_mps{0.0};
+ bool trajectory_preserves_committed_schedule{false};
+ double trajectory_committed_position_error_m{
+ std::numeric_limits<double>::infinity()};
+ double trajectory_committed_heading_error_rad{
+ std::numeric_limits<double>::infinity()};
+ double trajectory_committed_speed_error_mps{
+ std::numeric_limits<double>::infinity()};
+ double trajectory_committed_tracking_cost{
+ std::numeric_limits<double>::infinity()};
+ std::size_t transient_obstacle_cells{0};
+ double nearest_transient_obstacle_m{
+ std::numeric_limits<double>::infinity()};
+ double nearest_dynamic_track_m{
+ std::numeric_limits<double>::infinity()};
+ bool local_map_pose_free{true};
+ double local_map_pose_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ bool static_margin_recovery_active{false};
+ int static_margin_recovery_gear{0};
+ sim::Vec2 static_margin_escape_origin;
+ double static_margin_escape_heading_rad{0.0};
+ double static_margin_escape_required_progress_m{0.0};
+ double static_margin_escape_progress_m{0.0};
+ bool near_boundary_clearance_recovery_active{false};
  // Shadow departure assessment (gate 3): observed only, never acted on.
  // shadow_reason codes sim::DepartReason for the departure verdict
  // (assess_departure never emits kUnassessed/kClear), -1 = unassessed.
@@ -166,6 +193,14 @@ struct ControlSnapshot {
  int crossing_reason{-1};
  int crossing_phase{0};
  bool crossing_committed{false};
+ bool crossing_body_in_conflict{false};
+ bool crossing_execution_blocked{false};
+ bool crossing_recovery_to_stop{false};
+ bool crossing_recovery_reverse{false};
+ bool crossing_no_return_started{false};
+ bool crossing_alignment_required{false};
+ bool crossing_alignment_complete{true};
+ double crossing_execution_initial_heading_rad{0.0};
  bool crossing_ready_to_commit{false};
  bool crossing_safe_to_commit{false};
  bool crossing_position_ready{false};
@@ -176,6 +211,7 @@ struct ControlSnapshot {
  double crossing_stop_distance_m{0.0};
  double crossing_stop_heading_error_rad{0.0};
  bool crossing_prediction_evidence_available{false};
+ bool crossing_prediction_models_ready{false};
  bool crossing_free_space_evidence_available{false};
  bool crossing_observed_approaches_clear{false};
  double crossing_observation_coverage{0.0};
@@ -388,6 +424,11 @@ struct MissionResult {
  bool safe_score{false};
  bool fast_score{false};
  bool efficient_score{false};
+ PerformanceScore performance;
+ double command_variation_mps{0.0};
+ double wait_time_s{0.0};
+ double recovery_time_s{0.0};
+ int strategy_switches{0};
  double max_grade{0.0};
  double max_abs_roll_rad{0.0};
  double max_rollover_risk{0.0};
@@ -557,7 +598,7 @@ class ScenarioSession {
  double combined_center_x_m() const;
  double combined_yaw_inertia_kgm2() const;
  void select_next_goal(const Pose& start);
- void plan_route();
+ void plan_route(const sim::GridMap* map_override = nullptr);
  void finish_route_failure();
  void update_actors();
  void scan_environment();
@@ -580,7 +621,7 @@ class ScenarioSession {
  void record_replay();
  double surface_traction(sim::Vec2 position) const;
  const SurfaceMaterialDefinition* constructed_surface_at(sim::Vec2 position) const;
- sim::Vec2 current_navigation_target();
+ sim::Vec2 navigation_fallback_target() const;
  double decision_hz() const;
  double cruise_speed_mps() const;
  double corner_speed_cap(double nav_x, double nav_y) const;
@@ -728,6 +769,9 @@ class ScenarioSession {
  double slip_prev_tread_v_{0.0};
  double slip_prev_body_v_{0.0};
  bool slip_have_prev_{false};
+ bool score_command_initialized_{false};
+ double score_previous_command_v_mps_{0.0};
+ double score_previous_command_w_radps_{0.0};
  sim::DiffCmd held_command_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
  // a wait opens, vs the last assessment and the actual waited time when it
@@ -746,9 +790,11 @@ class ScenarioSession {
  double shadow_open_nearest_{-1.0};
  // Entry governor state (Phase-2 Behavior brake): hysteresis lives here,
  // reset every run like every other per-run state below.
- sim::EntryGovernorSystem entry_governor_system_;
- DynamicTrafficSystem dynamic_traffic_system_;
- sim::CrossingBehaviorSystem crossing_behavior_system_;
+ // Spatial execution indices are adapter state until the complete autonomy
+ // control cycle moves behind the deployable ROBOT runner boundary.
+ std::size_t crossing_execution_segment_{0};
+ std::size_t crossing_alignment_segment_{0};
+ bool crossing_segment_alignment_complete_{false};
  DeterministicScheduler scheduler_;
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;

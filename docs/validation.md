@@ -82,6 +82,16 @@ headless target does not compile or link the client audio director.
 
 C++ tests cover content loading, component registration, field intent, world activity, physics behavior, terrain, chassis kinematics, high-level policy, mission completion, dynamic perception, waiting behavior, entry governance, estimation, replay, slip observation, control consistency, player content, contracts, and deterministic scenario matrices. Local-planner fixtures require differential, Ackermann, and holonomic commands to remain inside the next decision interval's reachable velocity window; differential commands are checked again in left/right wheel space. Terrain fixtures independently check asymmetric front/rear support and grade-dependent longitudinal stability limits. The orchard matrix exercises every task-ordering policy with changing payload, center of mass, terrain, grip, staged no-trajectory stops, and a physical return to the packing pad.
 
+Mission completion and performance ranking are separate contracts. A run is
+ranked only after its objective succeeds with zero collision/rollover failure.
+The GAME result then records raw time, clearance, estimated energy, command
+variation, wait/recovery duration and action changes, and derives five 0--100
+axes plus an overall score. Ideal clearance and target pace/energy saturate at
+100; falling below an ideal clearance can reduce quality without converting a
+physically valid run into failure. `performance_score` pins failed-run
+exclusion, the 95/133 pace ratio, clearance saturation, energy ordering,
+smoothness and decisiveness. None of these values enters ROBOT admission.
+
 The ROBOT-only `safe_stop_limiter` fixture independently checks that a moving
 chassis cannot receive an instantaneous zero target, each differential wheel
 respects the next control interval, downhill grade and a taller combined COM
@@ -89,6 +99,30 @@ reduce the available stop step, and a COM projection on the support edge
 reports zero stability margin. The local trajectory validator consumes that
 same declared deceleration for its emergency-stop tail; neither check reads
 MuJoCo contact truth.
+
+Longitudinal planning keeps three quantities distinct. Normal drive
+acceleration is bounded by the declared motor/wheel and traction envelope;
+normal deceleration is the actuator's reachable braking rate. These two rates
+form an asymmetric next-update velocity window, Emergency-stop deceleration is a third,
+stability-aware value used only to validate the delayed braking tail and stage
+a rejected command toward zero. A configured emergency-stop contract whose
+current safe authority is zero rejects moving candidates; zero cannot disable
+the check. Focused tests cover asymmetric forward and reverse windows plus the zero-authority rejection.
+
+Cross-compiler evidence separates three questions:
+
+- **Numerical correctness:** floating-point results stay within the declared oracle tolerance. GCC and Clang may
+ round expressions differently, and MuJoCo contact/friction active sets may switch at those boundaries.
+- **Decision stability:** local-planner scores inside a scale-aware 64-ULP band use an explicit secondary order
+ (smaller turn demand, then smaller translation and stable signed keys). A meaningful score difference still wins;
+ the tie rule does not enlarge collision or stability limits.
+- **Physical safety:** every selected rollout independently satisfies collision, prediction-horizon, terrain,
+ support-polygon, dynamic-load and emergency-stop-tail constraints. GCC and Clang may produce different safe
+ trajectories and completion times; both must satisfy the same quantitative contract.
+
+The compiler, compiler version, build type and source identity belong in every retained run artifact. Cross-compiler
+validation compares safety invariants and explainable decisions rather than requiring bit-identical floating-point
+trajectories. Bit identity is only required when a narrower test explicitly declares it.
 
 A deterministic release run should also be recorded:
 
@@ -120,15 +154,24 @@ The default `ContentCatalog::load(assets)` must select English. Explicit `zh-CN`
 
 The current source revision is **not yet covered by a complete release record**. Recent simulation and autonomy work
 changed estimation, LiDAR projection, terrain composition, local-planner reachable command windows, trajectory
-validation, staged safe stopping, crossing release and differential-controller transitions. Focused fixtures and the
-recommended `lost_signal` run provide useful evidence, but they do not replace the ordered release gates above.
+validation, staged safe stopping, crossing release, path smoothing and differential-controller transitions. Focused
+fixtures now include an analytic circular-fillet oracle and bounded-shuttle reassociation after a 2.4 s occlusion.
+Earlier timing and clearance baselines were invalidated by the corrected score/safety split and must not be used as
+current release evidence. These focused fixtures remain necessary, but they are not a replacement for the ordered
+release gates above.
 
-The former `town_freight --recommended` timeout is closed by the ROBOT-side conflict-zone observability contract.
-The fixed-seed run now succeeds in `104.04 s` with zero collisions and `0.673 m` minimum dynamic clearance. Release
-without a fresh track requires complete, current LiDAR free-space coverage of every authored approach and enough
-unseen-arrival time to execute the crossing. Missing, short-range, occluded, duplicated or aged observations remain
-unknown. No simulator actor identity, path or truth enters this decision. Focused P0 tests and content round-trip
-checks pass; these results do not constitute the complete P1 release record.
+The former `town_freight --recommended` completion relied on an authored participant-speed limit to convert visible
+approach length into an unseen-arrival bound. That evidence remains withdrawn because an ordinary robot map cannot
+know an unknown real participant's physical capability. Complete LiDAR coverage remains useful tracking evidence but
+does not grant track-free release. Under the corrected contract, the current seed-47 `lost_signal --recommended`
+run completes in 88.78 s with zero collisions and 0.392 m minimum measured dynamic clearance. It succeeds without
+the optional 0.6 m clearance badge, proving that the score target no longer acts as a ROBOT permission threshold.
+`town_freight --recommended` completes in 60.04 s and `signal_echo --recommended` completes in 72.26 s, both with
+zero collisions. The crossing first-clear-exit fixture prevents a raster endpoint beyond the physical refuge from
+inflating execution past the prediction horizon. Focused geometry, map-adapter, typed-prediction parity, unsafe-hold,
+stop-plane-preserving escape and generic unmapped-conflict tests pass. Continuous scores still expose substantial
+command variation, waits, recovery time and action switches, so P1 interaction quality and the complete multi-model
+prediction chain remain open even though these reference missions now finish.
 
 Create a new record from a clean revision by running, in order:
 

@@ -67,12 +67,14 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/global/hybrid_astar.cpp
  src/robot/autonomy/planning/local/holonomic_local.cpp
  src/robot/autonomy/planning/local/local_planning_system.cpp
+ src/robot/autonomy/planning/path_smoothing.cpp
  src/robot/autonomy/planning/task/task_ordering.cpp
  src/robot/autonomy/behavior/high_level_policy.cpp
  src/robot/autonomy/planning/validation/entry_shadow.cpp
  src/robot/autonomy/planning/validation/trajectory_validator.cpp
  src/robot/autonomy/behavior/entry_governor.cpp
  src/robot/autonomy/behavior/crossing_behavior.cpp
+ src/robot/autonomy/behavior/crossing_map_semantics.cpp
  src/robot/autonomy/localization/estimation_system.cpp
  src/robot/autonomy/localization/dead_reckon.cpp
  src/robot/autonomy/perception/dynamic_obstacle_map.cpp
@@ -155,6 +157,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_global_planner_extension tests/new/test_global_planner_extension.cpp)
  target_link_libraries(test_global_planner_extension PRIVATE lost_signal_robot_autonomy)
  add_test(NAME global_planner_extension COMMAND test_global_planner_extension)
+
+ add_executable(test_path_smoothing tests/new/test_path_smoothing.cpp)
+ target_link_libraries(test_path_smoothing PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME path_smoothing COMMAND test_path_smoothing)
 
  add_executable(test_dwa_dynamic tests/new/test_dwa_dynamic.cpp)
  target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_robot_autonomy)
@@ -290,6 +296,7 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/content_catalog.cpp
  src/sim/game/mission/deployable_map_adapter.cpp
  src/sim/game/mission/map_serialize.cpp
+ src/sim/game/mission/performance_score.cpp
  src/sim/game/mission/world_geometry.cpp
  src/sim/game/platform/simulated_platform.cpp
  src/sim/game/scenario/scenario_session.cpp
@@ -297,7 +304,6 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/world/actor_behavior_registry.cpp
  src/sim/game/mission/systems/collision_monitor.cpp
  src/sim/game/mission/systems/decision_evidence_system.cpp
- src/sim/game/mission/systems/dynamic_traffic_system.cpp
  src/sim/game/mission/systems/field_dispatch_system.cpp
  src/sim/game/mission/systems/field_operator_system.cpp
  src/sim/game/mission/systems/goal_system.cpp
@@ -543,6 +549,10 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
  endif()
  add_test(NAME mission_simulation COMMAND test_mission_simulation)
 
+ add_executable(test_performance_score tests/new/test_performance_score.cpp)
+ target_link_libraries(test_performance_score PRIVATE lost_signal_sim_game)
+ add_test(NAME performance_score COMMAND test_performance_score)
+
  add_executable(test_dynamic_perception tests/new/test_dynamic_perception.cpp)
  target_link_libraries(test_dynamic_perception PRIVATE lost_signal_sim_hardware)
  add_test(NAME dynamic_perception COMMAND test_dynamic_perception)
@@ -550,6 +560,10 @@ add_test(NAME ro1_lidar_acceptance COMMAND test_ro1_lidar_acceptance)
 add_executable(test_dwa_dynamic tests/new/test_dwa_dynamic.cpp)
 target_link_libraries(test_dwa_dynamic PRIVATE lost_signal_robot_autonomy)
 add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
+
+ add_executable(test_path_smoothing tests/new/test_path_smoothing.cpp)
+ target_link_libraries(test_path_smoothing PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME path_smoothing COMMAND test_path_smoothing)
 
  add_executable(test_dwell_behavior tests/new/test_dwell_behavior.cpp)
  target_link_libraries(test_dwell_behavior PRIVATE lost_signal_sim_hardware)
@@ -606,9 +620,9 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim_game)
  target_link_libraries(test_entry_governor PRIVATE lost_signal_sim_hardware)
  add_test(NAME entry_governor COMMAND test_entry_governor)
 
- add_executable(test_dynamic_traffic_system tests/new/test_dynamic_traffic_system.cpp)
- target_link_libraries(test_dynamic_traffic_system PRIVATE lost_signal_sim_game)
- add_test(NAME dynamic_traffic_system COMMAND test_dynamic_traffic_system)
+ add_executable(test_crossing_map_semantics tests/new/test_crossing_map_semantics.cpp)
+ target_link_libraries(test_crossing_map_semantics PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME crossing_map_semantics COMMAND test_crossing_map_semantics)
 
  add_executable(test_trajectory_validator tests/new/test_trajectory_validator.cpp)
  target_link_libraries(test_trajectory_validator PRIVATE lost_signal_robot_autonomy)

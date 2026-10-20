@@ -38,7 +38,11 @@ DifferentialWheelController::DifferentialWheelController(
  !std::isfinite(config_.integral_limit) || config_.integral_limit < 0.0 ||
  !std::isfinite(config_.static_friction_feedforward_duty) ||
  config_.static_friction_feedforward_duty < 0.0 ||
- config_.static_friction_feedforward_duty > config_.duty_limit) {
+ config_.static_friction_feedforward_duty > config_.duty_limit ||
+ !std::isfinite(config_.total_mass_kg) || config_.total_mass_kg < 0.0 ||
+ !std::isfinite(config_.stall_force_per_unit_N) || config_.stall_force_per_unit_N < 0.0 ||
+ !std::isfinite(config_.free_speed_mps) || config_.free_speed_mps < 0.0 ||
+ !std::isfinite(config_.driven_unit_count) || config_.driven_unit_count <= 0.0) {
         throw std::invalid_argument("invalid differential wheel controller configuration");
     }
 }
@@ -75,6 +79,7 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
     const double values[] = {
         command.target_v,
         command.target_w,
+ command.longitudinal_acceleration_feedforward_mps2,
         feedback.left_position_rad,
         feedback.right_position_rad,
         feedback.left_velocity_radps,
@@ -139,7 +144,12 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
 
  const auto prepare_integral = [&](double target_mps, double previous_target_mps,
  double measured_mps, PID& pid) {
- const bool stop_requested = std::abs(target_mps) <= 1e-4;
+ // Clear stale maneuver effort when entering a zero-speed objective, then
+ // allow the integral term to rebuild against a sustained grade/load. Resetting
+ // on every zero-target sample leaves a permanent proportional speed error
+ // and makes an otherwise capable motor roll downhill indefinitely.
+ const bool stop_requested = std::abs(target_mps) <= 1e-4 &&
+ (!target_initialized_ || std::abs(previous_target_mps) > 1e-4);
  const bool direction_changed = target_initialized_ &&
  target_mps * previous_target_mps <= 0.0 &&
  std::abs(target_mps - previous_target_mps) > 1e-4;
@@ -162,13 +172,47 @@ DifferentialWheelControlOutput DifferentialWheelController::update(
  };
  output.left.static_feedforward = static_feedforward(output.left.target_mps);
  output.right.static_feedforward = static_feedforward(output.right.target_mps);
+ const bool common_zero_target =
+ std::abs(output.left.target_mps) <= 1e-4 &&
+ std::abs(output.right.target_mps) <= 1e-4;
+ const auto acceleration_feedforward = [&](double target_mps, double measured_mps) {
+ if (config_.total_mass_kg <= 0.0 || config_.stall_force_per_unit_N <= 0.0 ||
+ config_.free_speed_mps <= 0.0)
+ return 0.0;
+ const double requested_force_per_unit_N =
+ config_.total_mass_kg * command.longitudinal_acceleration_feedforward_mps2 /
+ config_.driven_unit_count;
+ // This term represents common-mode longitudinal effort (for example grade
+ // compensation). It is not a wheel-specific yaw feedforward. Applying it
+ // to a stopped or oppositely commanded inner wheel can reverse that wheel's
+ // signed duty during a tight turn, so the physical plant receives the
+ // opposite differential torque from the planner's request. The velocity
+ // loop remains responsible for that wheel; a future wheel-specific
+ // acceleration contract may model common and differential effort together.
+ if (!common_zero_target &&
+ (std::abs(target_mps) <= 1e-4 ||
+ requested_force_per_unit_N * target_mps <= 0.0))
+ return 0.0;
+ const double force_authority_N = config_.stall_force_per_unit_N * std::max(
+ 0.0, 1.0 - std::abs(measured_mps) / config_.free_speed_mps);
+ if (force_authority_N <= 1e-12)
+ return requested_force_per_unit_N == 0.0
+ ? 0.0
+ : std::copysign(config_.duty_limit, requested_force_per_unit_N);
+ return clamp(requested_force_per_unit_N / force_authority_N,
+ -config_.duty_limit, config_.duty_limit);
+ };
+ output.left.acceleration_feedforward =
+ acceleration_feedforward(output.left.target_mps, output.left.measured_mps);
+ output.right.acceleration_feedforward =
+ acceleration_feedforward(output.right.target_mps, output.right.measured_mps);
  output.left.normalized_duty = clamp(
  left_pid_.update(output.left.target_mps - output.left.measured_mps, dt_s) +
- output.left.static_feedforward,
+ output.left.static_feedforward + output.left.acceleration_feedforward,
  -config_.duty_limit, config_.duty_limit);
  output.right.normalized_duty = clamp(
  right_pid_.update(output.right.target_mps - output.right.measured_mps, dt_s) +
- output.right.static_feedforward,
+ output.right.static_feedforward + output.right.acceleration_feedforward,
  -config_.duty_limit, config_.duty_limit);
     output.left.pid_p = left_pid_.p();
     output.left.pid_i = left_pid_.i();

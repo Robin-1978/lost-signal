@@ -4,6 +4,70 @@
 #include <cmath>
 #include <limits>
 namespace sim {
+namespace {
+
+double distance_to_cell_square(
+ double wx, double wy, int gx, int gy, double resolution) {
+ const double x0 = static_cast<double>(gx) * resolution;
+ const double x1 = x0 + resolution;
+ const double y0 = static_cast<double>(gy) * resolution;
+ const double y1 = y0 + resolution;
+ const double dx = std::max({x0 - wx, 0.0, wx - x1});
+ const double dy = std::max({y0 - wy, 0.0, wy - y1});
+ return std::hypot(dx, dy);
+}
+
+} // namespace
+
+bool GridMap::segmentIsFree(Vec2 from, Vec2 to) const {
+ const double length = std::hypot(to.x - from.x, to.y - from.y);
+ const int subdivisions = std::max(
+ 1, static_cast<int>(std::ceil(length / (0.5 * res_))));
+ for (int step = 0; step <= subdivisions; ++step) {
+ const double blend = static_cast<double>(step) /
+ static_cast<double>(subdivisions);
+ if (!isFree(
+ from.x + (to.x - from.x) * blend,
+ from.y + (to.y - from.y) * blend)) {
+ return false;
+ }
+ }
+ return true;
+}
+
+double GridMap::clearance(double wx, double wy) const {
+ const double width_m = static_cast<double>(w_) * res_;
+ const double height_m = static_cast<double>(h_) * res_;
+ if (!(wx >= 0.0 && wy >= 0.0 && wx <= width_m && wy <= height_m) ||
+ !isFree(wx, wy)) {
+ return 0.0;
+ }
+ // The map boundary represents the nearest point of implicit outside
+ // occupancy. Explicit cells then contribute their full closed squares.
+ double best = std::min({wx, wy, width_m - wx, height_m - wy});
+ for (int gy = 0; gy < h_; ++gy) {
+ for (int gx = 0; gx < w_; ++gx) {
+ if (isFreeCell(gx, gy))
+ continue;
+ best = std::min(best, distance_to_cell_square(wx, wy, gx, gy, res_));
+ }
+ }
+ return std::max(0.0, best);
+}
+
+double GridMap::distanceToFreeSpace(double wx, double wy) const {
+ if (isFree(wx, wy))
+ return 0.0;
+ double best = std::numeric_limits<double>::infinity();
+ for (int gy = 0; gy < h_; ++gy) {
+ for (int gx = 0; gx < w_; ++gx) {
+ if (!isFreeCell(gx, gy))
+ continue;
+ best = std::min(best, distance_to_cell_square(wx, wy, gx, gy, res_));
+ }
+ }
+ return best;
+}
 
 void GridMap::setElevation(double wx, double wy, double elevation_m) {
  if (!std::isfinite(elevation_m))

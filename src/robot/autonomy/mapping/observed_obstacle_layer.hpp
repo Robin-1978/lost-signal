@@ -23,6 +23,20 @@ struct ObservedRay2D {
  // deliberately separate from `hit` because a static wall still occludes a
  // crossing even though it belongs to the immutable map layer.
  bool physical_return{false};
+ // Angular sample spacing of the source scan. This describes measurement
+ // support for diagnostics; it is not a beam width or a promise that an
+ // object between adjacent rays would be detected.
+ double angular_resolution_rad{0.0};
+};
+
+// A confirmed dynamic track owns transient endpoint marks left while it was
+// still anonymous. Clearing its recent swept capsule transfers that evidence
+// to the time-indexed dynamic layer. Current anonymous/static markings are
+// applied afterwards and therefore retain precedence.
+struct ObservedClearingRegion {
+ Vec2 from;
+ Vec2 to;
+ double radius_m{0.0};
 };
 
 struct ObservedObstacleLayerConfig {
@@ -40,10 +54,12 @@ class ObservedObstacleLayer {
  ObservedObstacleLayerConfig config = {});
 
  void reset();
- bool observe(double stamp_s, const std::vector<ObservedRay2D>& rays);
+ bool observe(double stamp_s, const std::vector<ObservedRay2D>& rays,
+ const std::vector<ObservedClearingRegion>& clearing_regions = {});
 
  bool fresh(double now_s) const;
  std::size_t active_obstacle_cells(double now_s) const;
+ std::vector<Vec2> active_obstacle_centres(double now_s) const;
  GridMap compose(const GridMap& static_costmap, double now_s, double inflation_radius_m) const;
 
  double last_observation_stamp_s() const { return last_observation_stamp_s_; }

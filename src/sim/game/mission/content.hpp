@@ -282,7 +282,6 @@ struct SceneDefinition {
 struct ConflictObservationApproachDefinition {
  std::vector<sim::Vec2> centerline;
  double half_width_m{0.0};
- double maximum_speed_mps{0.0};
 };
 
 struct ConflictZoneDefinition {
@@ -293,13 +292,9 @@ struct ConflictZoneDefinition {
  // allows the autonomy behavior and trajectory validator to constrain motion.
  std::string authority{"shadow"};
  std::vector<std::string> active_in;
- // Conservative traffic envelope for this semantic region: expected physical
- // footprint plus the site's tracking reserve. Required by control-authority
- // zones so behavior never needs simulator actor truth to derive a safe stop.
- double participant_radius_m{0.0};
- // Sensor-verifiable traffic corridors. These are map semantics, independent
- // of simulated actors: SLAM/survey/HD-map providers may publish the same
- // approach geometry and speed envelope.
+ // Geometric traffic corridors used for occlusion diagnostics. They describe
+ // stable infrastructure only; live participant shape and uncertainty come
+ // from perception and tracking.
  std::vector<ConflictObservationApproachDefinition> observation_approaches;
 };
 

@@ -517,7 +517,8 @@ bool valid_motion_command(const MotionCommand& command, const RuntimeChannelConf
   return false;
  }
  if (!std::isfinite(command.forward_mps) || !std::isfinite(command.lateral_mps) ||
-     !std::isfinite(command.yaw_rate_radps) || !std::isfinite(command.steering_angle_rad)) {
+ !std::isfinite(command.yaw_rate_radps) || !std::isfinite(command.steering_angle_rad) ||
+ !std::isfinite(command.longitudinal_acceleration_feedforward_mps2)) {
   set_reason(reason, "motion command contains a non-finite value");
   return false;
  }
@@ -622,6 +623,8 @@ MotionCommand make_motion_command(const DiffCmd& command, const ChassisCaps& cap
  output.valid_until = TimePoint::from_seconds(now.seconds() + valid_for_s);
  output.command_space = capabilities.command_space;
  output.forward_mps = command.target_v;
+ output.longitudinal_acceleration_feedforward_mps2 =
+ command.longitudinal_acceleration_feedforward_mps2;
  if (capabilities.command_space == ChassisCommandSpace::SteeringAngle) {
   output.steering_angle_rad = command.target_w;
  } else {
@@ -630,6 +633,7 @@ MotionCommand make_motion_command(const DiffCmd& command, const ChassisCaps& cap
  if (capabilities.command_space == ChassisCommandSpace::HolonomicTwist) {
   output.lateral_mps = command.target_lateral_v;
  }
+ output.controlled_stop = command.controlled_stop;
  return output;
 }
 
@@ -664,6 +668,9 @@ DiffCmd to_diff_command(const MotionCommand& command) {
    command.command_space == ChassisCommandSpace::HolonomicTwist ? command.lateral_mps : 0.0;
  output.target_w = command.command_space == ChassisCommandSpace::SteeringAngle ? command.steering_angle_rad
                                                                                : command.yaw_rate_radps;
+ output.longitudinal_acceleration_feedforward_mps2 =
+ command.longitudinal_acceleration_feedforward_mps2;
+ output.controlled_stop = command.controlled_stop;
  return output;
 }
 

@@ -44,12 +44,29 @@ int main() {
  {{2.25, 2.25}, {6.25, 2.25}, false}}));
  CHECK(!layer.compose(static_map, 1.2, 0.0).isFree(5.25, 2.25));
 
+ // After an anonymous return becomes a confirmed moving track, its recent
+ // swept capsule is transferred out of static occupancy. A different current
+ // return inside that capsule still wins, so ownership transfer cannot erase
+ // independently observed geometry.
+ CHECK(layer.observe(1.3, {
+ {{2.25, 3.25}, {4.25, 3.25}, true},
+ {{2.25, 3.25}, {5.25, 3.25}, true},
+ }));
+ CHECK(!layer.compose(static_map, 1.3, 0.0).isFree(4.25, 3.25));
+ CHECK(!layer.compose(static_map, 1.3, 0.0).isFree(5.25, 3.25));
+ CHECK(layer.observe(1.4,
+ {{{2.25, 3.25}, {5.25, 3.25}, true}},
+ {{{4.25, 3.25}, {5.25, 3.25}, 0.35}}));
+ const auto transferred = layer.compose(static_map, 1.4, 0.0);
+ CHECK(transferred.isFree(4.25, 3.25));
+ CHECK(!transferred.isFree(5.25, 3.25));
+
  // Unobserved transient obstacles expire; an old frame cannot resurrect or
  // clear newer evidence.
- CHECK(layer.active_obstacle_cells(1.79) == 1);
- CHECK(layer.active_obstacle_cells(1.81) == 0);
+CHECK(layer.active_obstacle_cells(1.99) == 1);
+CHECK(layer.active_obstacle_cells(2.01) == 0);
  CHECK(!layer.observe(1.0, {{{2.25, 2.25}, {4.25, 2.25}, true}}));
- CHECK(layer.active_obstacle_cells(1.81) == 0);
+CHECK(layer.active_obstacle_cells(2.01) == 0);
 
  layer.reset();
  CHECK(layer.active_obstacle_cells(2.0) == 0);

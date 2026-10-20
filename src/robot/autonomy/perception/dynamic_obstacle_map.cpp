@@ -17,9 +17,15 @@ constexpr double kPositionGain = 0.35;
 constexpr double kVelocityGain = 0.08;
 constexpr double kMaxTrackedSpeedMps = 3.0;
 constexpr double kReliableMotionSpeedMps = 0.25;
-constexpr double kMotionMemoryBlend = 0.20;
+// Confirmed corridor speed is a process state, not the latest one-second
+// LiDAR regression. At 10 Hz this gain gives roughly a two-second time
+// constant for same-direction speed changes; sign reversals still replace
+// the state immediately below. The innovation is retained in the prediction
+// envelope, so smoothing does not turn acceleration into false certainty.
+constexpr double kMotionMemoryBlend = 0.05;
 constexpr double kIntentAmbiguousBelowMps = 0.40;
 constexpr double kIntentDecisiveAboveMps = 0.48;
+constexpr int kIntentAmbiguousSamples = 2;
 constexpr int kIntentDecisiveSamples = 2;
 constexpr int kMotionConfirmationSamples = 3;
 constexpr double kVelocityFitWindowS = 1.0;
@@ -32,7 +38,11 @@ constexpr double kPositionUncertaintyFloorM = 0.03;
 constexpr double kPositionUncertaintyCapM = 0.08;
 constexpr double kVelocityUncertaintyFloorMps = 0.04;
 constexpr double kVelocityUncertaintyCapMps = 0.12;
-constexpr double kPositionPredictionEnvelopeCapM = 0.10;
+// A dwell is positive evidence only when consecutive raw observations remain
+// at the same endpoint. Keep this tighter than the tracker uncertainty: a
+// noisy or sparsely sampled turn may under-estimate dwell (conservative), but
+// motion away from an endpoint must never be re-labelled as a promised pause.
+constexpr double kEndpointDwellPositionToleranceM = 0.02;
 
 Vec2 limited_velocity(Vec2 velocity) {
  const double speed = std::hypot(velocity.x, velocity.y);
@@ -70,6 +80,22 @@ Vec2 fitted_velocity(
  return fallback;
  return limited_velocity({covariance.x / time_variance,
  covariance.y / time_variance});
+}
+
+double observed_endpoint_dwell(
+ const std::deque<TrackMotionSample>& samples,
+ bool use_x_axis, double endpoint) {
+ double first_s = -1.0;
+ double last_s = -1.0;
+ for (const auto& sample : samples) {
+ const double coordinate = use_x_axis ? sample.position.x : sample.position.y;
+ if (std::abs(coordinate - endpoint) > kEndpointDwellPositionToleranceM)
+ continue;
+ if (first_s < 0.0)
+ first_s = sample.time_s;
+ last_s = sample.time_s;
+ }
+ return first_s < 0.0 ? 0.0 : std::max(0.0, last_s - first_s);
 }
 
 } // namespace
@@ -134,8 +160,25 @@ void DynamicObstacleMap::observe(const DynamicObservation& observation, double t
  const Vec2 filtered_velocity = fitted_velocity(
  track.motion_samples, alpha_beta_velocity);
  const double position_residual_m = std::hypot(innovation.x, innovation.y);
+ // Phase uncertainty is the observed variation of the fitted velocity, not
+ // raw position innovation divided by one scan interval. The latter turns a
+ // few centimetres of LiDAR centroid noise into a persistent 0.5 m/s speed
+ // error. Once a corridor is known, only the along-corridor component changes
+ // arrival phase; cross-track residual remains represented by position
+ // uncertainty.
+ const Vec2 velocity_innovation{
+ filtered_velocity.x - (track.motion_velocity_initialized
+ ? track.last_motion_velocity.x : track.track.state.v.x),
+ filtered_velocity.y - (track.motion_velocity_initialized
+ ? track.last_motion_velocity.y : track.track.state.v.y),
+ };
  const double velocity_residual_mps = std::min(
- kVelocityUncertaintyCapMps, position_residual_m / dt);
+ kVelocityUncertaintyCapMps,
+ track.bounded_x
+ ? std::abs(velocity_innovation.x)
+ : track.bounded_y
+ ? std::abs(velocity_innovation.y)
+ : std::hypot(velocity_innovation.x, velocity_innovation.y));
  track.position_error_ema_m = std::max(
  kPositionUncertaintyFloorM,
  std::min(kPositionUncertaintyCapM,
@@ -188,21 +231,41 @@ void DynamicObstacleMap::observe(const DynamicObservation& observation, double t
  // filtered turning point and switch the remembered continuation mode.
  const double corridor_x = track.max_observed.x - track.min_observed.x;
  const double corridor_y = track.max_observed.y - track.min_observed.y;
- if (corridor_x >= corridor_y) {
- track.bounded_x = true;
+ const bool use_x_axis = corridor_x >= corridor_y;
+ const double endpoint = use_x_axis
+ ? (track.last_motion_velocity.x >= 0.0
+ ? track.max_observed.x : track.min_observed.x)
+ : (track.last_motion_velocity.y >= 0.0
+ ? track.max_observed.y : track.min_observed.y);
+ const double observed_dwell_s = observed_endpoint_dwell(
+ track.motion_samples, use_x_axis, endpoint);
+ if (use_x_axis) {
+ if (track.last_motion_velocity.x >= 0.0)
+ track.max_x_endpoint_observed = true;
+ else
+ track.min_x_endpoint_observed = true;
+ track.bounded_x = track.min_x_endpoint_observed &&
+ track.max_x_endpoint_observed;
  } else {
- track.bounded_y = true;
+ if (track.last_motion_velocity.y >= 0.0)
+ track.max_y_endpoint_observed = true;
+ else
+ track.min_y_endpoint_observed = true;
+ track.bounded_y = track.min_y_endpoint_observed &&
+ track.max_y_endpoint_observed;
  }
+ // One scalar dwell model is shared by both corridor endpoints. Its only
+ // safe interpretation is the minimum observed dwell: a pause learned at
+ // one end cannot be promised at the other. An immediate reversal therefore
+ // contributes zero and remains the conservative bound for this track. Use
+ // raw endpoint occupancy rather than filtered low speed: filter lag can make
+ // an immediate reversal look like a pause that never physically occurred.
+ track.learned_endpoint_dwell_s = track.endpoint_dwell_observed
+ ? std::min(track.learned_endpoint_dwell_s, observed_dwell_s)
+ : observed_dwell_s;
+ track.endpoint_dwell_observed = true;
  track.last_motion_velocity = filtered_velocity;
- if (track.stationary_since_s >= 0.0) {
- const double observed_dwell_s = time_s - track.stationary_since_s;
- if (observed_dwell_s >= 0.20) {
- track.learned_endpoint_dwell_s = track.learned_endpoint_dwell_s <= 0.0
- ? observed_dwell_s
- : std::min(track.learned_endpoint_dwell_s, observed_dwell_s);
- }
  track.stationary_since_s = -1.0;
- }
  } else {
  track.last_motion_velocity = {
  track.last_motion_velocity.x * (1.0 - kMotionMemoryBlend) + filtered_velocity.x * kMotionMemoryBlend,
@@ -214,10 +277,15 @@ void DynamicObstacleMap::observe(const DynamicObservation& observation, double t
  track.motion_confirmation_samples = 0;
  track.motion_candidate_velocity = {};
  }
-  if (track.motion_velocity_initialized && measured_speed < kIntentAmbiguousBelowMps) {
-   track.intent_ambiguous = true;
-   track.decisive_motion_samples = 0;
+ if (track.motion_velocity_initialized && !track.intent_ambiguous &&
+ measured_speed < kIntentAmbiguousBelowMps) {
+ if (++track.ambiguous_motion_samples >= kIntentAmbiguousSamples) {
+ track.intent_ambiguous = true;
+ track.ambiguous_motion_samples = 0;
+ track.decisive_motion_samples = 0;
+ }
   } else if (track.intent_ambiguous) {
+ track.ambiguous_motion_samples = 0;
    if (measured_speed >= kIntentDecisiveAboveMps) {
     if (++track.decisive_motion_samples >= kIntentDecisiveSamples) {
      track.intent_ambiguous = false;
@@ -226,6 +294,8 @@ void DynamicObstacleMap::observe(const DynamicObservation& observation, double t
    } else {
     track.decisive_motion_samples = 0;
    }
+ } else {
+ track.ambiguous_motion_samples = 0;
   }
  if (measured_speed < kReliableMotionSpeedMps) {
  if (track.stationary_since_s < 0.0)
@@ -259,29 +329,117 @@ std::vector<DynamicTrack> DynamicObstacleMap::active_tracks(double time_s, doubl
  return result;
 }
 
+std::vector<DynamicAssociationHypothesis>
+DynamicObstacleMap::association_hypotheses(
+ double time_s, double max_age_s) const {
+ std::vector<DynamicAssociationHypothesis> result;
+ const auto inputs = predict_inputs();
+ std::size_t input_index = 0;
+ for (const auto& stored : tracks_) {
+ const PredictInput* input = nullptr;
+ if (stored.motion_velocity_initialized) {
+ if (input_index >= inputs.size())
+ break;
+ input = &inputs[input_index++];
+ }
+ const double age = time_s - stored.track.last_observed_s;
+ if (age < -1e-9 || age > max_age_s)
+ continue;
+ if (!input) {
+ auto state = stored.track.state;
+ state.p.x += state.v.x * age;
+ state.p.y += state.v.y * age;
+ result.push_back({
+ stored.track.object_id, state, stored.track.last_observed_s});
+ continue;
+ }
+ // Reuse the production predictor so association and planning reflect at
+ // exactly the same learned endpoints and honor the same dwell/intent modes.
+ const auto frames = predict_frames({*input}, time_s, 0.0, 1.0, max_age_s);
+ if (frames.empty())
+ continue;
+ for (const auto& state : frames.front()) {
+ result.push_back({
+ stored.track.object_id, state, stored.track.last_observed_s});
+ }
+ }
+ return result;
+}
+
 std::vector<PredictInput> DynamicObstacleMap::predict_inputs() const {
  std::vector<PredictInput> inputs;
  for (const auto& stored : tracks_) {
- if (!stored.motion_velocity_initialized)
- continue;
   PredictInput input;
+ input.track_id = stored.track.object_id;
   input.state = stored.track.state;
  input.state.position_uncertainty_m = stored.position_error_ema_m;
+ const bool bounded_motion = stored.bounded_x || stored.bounded_y;
+ const bool enough_history = stored.motion_samples.size() >= 5 &&
+ stored.motion_samples.back().time_s -
+ stored.motion_samples.front().time_s >= 0.4;
+ // Ambiguous intent does not make the estimate unusable: the predictor
+ // publishes each retained mode and downstream safety checks their union.
+ // Readiness only asserts sufficient time history and must not collapse
+ // stop/reverse ambiguity into a false absence of evidence.
+ input.state.prediction_ready = enough_history;
+ if (bounded_motion && stored.motion_velocity_initialized) {
+ // Once a motion manifold is observed, velocity error changes phase along
+ // that manifold. Slow/nominal/fast hypotheses represent it without
+ // inventing equal lateral motion away from the lane.
+ // Use the confirmed motion-model velocity as the forecast mean. The raw
+ // one-second regression remains useful for reversal detection, but its
+ // view-dependent centroid slope can move by more than 0.1 m/s from one
+ // scan to the next. Feeding that value directly into every new forecast
+ // changes a periodic actor's phase discontinuously and invalidates a
+ // crossing proof even though the confirmed motion has not changed.
+ input.state.v = stored.last_motion_velocity;
+ input.velocity_uncertainty_mps = stored.velocity_error_ema_mps;
+ } else {
+ // Before a manifold is known, direction itself is uncertain. Radial growth
+ // is conservative for short-horizon local avoidance. Stationary tracks are
+ // retained too: a temporary stopped pallet or vehicle must not disappear
+ // merely because no non-zero motion velocity has been initialized.
  input.position_uncertainty_growth_mps = stored.velocity_error_ema_mps;
- input.position_uncertainty_cap_m = kPositionPredictionEnvelopeCapM;
+ }
+ // Do not truncate velocity uncertainty at a fixed radial distance. A
+ // 10-centimetre cap made a six-second crossing look certain even when the
+ // measured velocity error could move a shuttle's reflected phase by several
+ // decimetres. The predictor already grows this deterministic envelope with
+ // forecast time; a future covariance provider may replace it with a
+ // calibrated confidence region, but horizon growth must remain visible to
+ // every safety consumer.
   // Deceleration or a stop makes continuation and reversal both valid until
   // two decisive motion samples resolve intent. Hysteresis prevents one noisy
   // scan from granting a crossing release during endpoint dwell.
   if (stored.motion_velocity_initialized && stored.intent_ambiguous) {
    input.state.v = stored.last_motion_velocity;
- if (stored.bounded_x)
- input.state.p.x = stored.last_motion_velocity.x >= 0.0
- ? stored.max_observed.x
- : stored.min_observed.x;
- if (stored.bounded_y)
- input.state.p.y = stored.last_motion_velocity.y >= 0.0
- ? stored.max_observed.y
- : stored.min_observed.y;
+ // Ambiguous intent changes the velocity hypotheses, never the measured
+ // position. During reversal hysteresis the target may already be moving
+ // through the corridor; snapping it to the endpoint selected by the last
+ // velocity sign teleports every hypothesis across the scene. Only a raw
+ // observation that is actually dwelling at a learned endpoint may anchor
+ // the seed there to remove alpha-beta filter overshoot.
+ if (stored.stationary_since_s >= 0.0 && !stored.motion_samples.empty()) {
+ const Vec2 measured = stored.motion_samples.back().position;
+ if (stored.bounded_x) {
+ const double to_min = std::abs(measured.x - stored.min_observed.x);
+ const double to_max = std::abs(measured.x - stored.max_observed.x);
+ if (std::min(to_min, to_max) <= kEndpointDwellPositionToleranceM) {
+ input.state.p.x = to_min <= to_max
+ ? stored.min_observed.x
+ : stored.max_observed.x;
+ }
+ }
+ if (stored.bounded_y) {
+ const double to_min = std::abs(measured.y - stored.min_observed.y);
+ const double to_max = std::abs(measured.y - stored.max_observed.y);
+ if (std::min(to_min, to_max) <= kEndpointDwellPositionToleranceM) {
+ input.state.p.y = to_min <= to_max
+ ? stored.min_observed.y
+ : stored.max_observed.y;
+ }
+ }
+ }
    input.alternate_velocity = {
      -stored.last_motion_velocity.x,
      -stored.last_motion_velocity.y,
@@ -320,7 +478,15 @@ std::vector<PredictInput> DynamicObstacleMap::predict_inputs() const {
 std::vector<std::vector<DynamicObjectState>>
 DynamicObstacleMap::predict(double time_s, double horizon_s, double frame_dt_s, double max_age_s) const {
  // Thin delegation: all future-frame math lives in the predictor module.
- return predict_frames(predict_inputs(), time_s, horizon_s, frame_dt_s, max_age_s);
+ return flatten_prediction_frames(
+ predict_typed(time_s, horizon_s, frame_dt_s, max_age_s));
+}
+
+PredictionBatch DynamicObstacleMap::predict_typed(
+ double time_s, double horizon_s, double frame_dt_s,
+ double max_age_s) const {
+ return predict_hypotheses(
+ predict_inputs(), time_s, horizon_s, frame_dt_s, max_age_s);
 }
 
 std::vector<std::vector<DynamicObjectState>> DynamicObstacleMap::predict_nominal(double time_s,

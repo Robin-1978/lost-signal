@@ -49,8 +49,12 @@ int main() {
  constexpr double expected_decel_mps2 = 9.81 * 0.12 / 0.40;
  constexpr double expected_delta_mps = expected_decel_mps2 * 0.1;
  CHECK(std::abs(level.applied_linear_decel_limit_mps2 - expected_decel_mps2) < 1e-12);
- CHECK(std::abs(level.forward_mps - (1.0 - expected_delta_mps)) < 1e-12);
+ // Yaw stabilization consumes the available differential wheel-speed change
+ // first. The common speed may therefore reduce by less than the straight-
+ // line analytic limit during this interval.
+ CHECK(level.forward_mps <= moving.forward_mps + 1e-12);
  CHECK(level.forward_mps > 0.0);
+ CHECK(std::abs(level.turn) < std::abs(moving.turn));
 
  // Each differential wheel, rather than only body speed, respects the same
  // one-interval bound. This prevents a yaw command from hiding an impossible
@@ -61,6 +65,14 @@ int main() {
  const double new_right = level.forward_mps + level.turn * 0.25;
  CHECK(std::abs(new_left - old_left) <= expected_delta_mps + 1e-12);
  CHECK(std::abs(new_right - old_right) <= expected_delta_mps + 1e-12);
+
+ // With no yaw to dissipate, the complete wheel budget remains available to
+ // longitudinal braking and reaches the analytic one-step result.
+ const auto straight_stop = sim::stage_safe_stop(
+ chassis, {1.0, 0.0, 0.0}, base_limits());
+ CHECK(std::abs(
+ straight_stop.forward_mps - (1.0 - expected_delta_mps)) < 1e-12);
+ CHECK(std::abs(straight_stop.turn) < 1e-12);
 
  auto downhill_limits = base_limits();
  downhill_limits.longitudinal_grade = -0.11;

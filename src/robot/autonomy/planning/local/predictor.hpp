@@ -3,6 +3,7 @@
 #include "robot/autonomy/perception/dynamic_object.hpp"
 #include "robot/autonomy/mapping/grid_map.hpp"
 
+#include <cstddef>
 #include <limits>
 #include <vector>
 
@@ -15,11 +16,18 @@ namespace sim {
 // reflection inside the observed corridor. Pure function of its arguments,
 // no hidden state, so DWA and tests can call it without a tracker.
 struct PredictInput {
+ // Stable perception-owned identity. The sentinel is allowed only for pure
+ // predictor tests or anonymous inputs; production tracking fills this field.
+ std::size_t track_id{std::numeric_limits<std::size_t>::max()};
  DynamicObjectState state;
  // Deterministic first-order uncertainty model. This is an explicit safety
  // envelope, not a probability claim: u(t) = u0 + growth * prediction_time.
  double position_uncertainty_growth_mps{0.0};
  double position_uncertainty_cap_m{std::numeric_limits<double>::infinity()};
+ // Magnitude uncertainty along each declared motion mode. The predictor
+ // emits deterministic slow/nominal/fast hypotheses, preserving a learned
+ // corridor instead of turning longitudinal phase error into radial motion.
+ double velocity_uncertainty_mps{0.0};
  // Optional second motion mode. Trackers use it when a previously moving
  // target pauses: continuing and reversing are both plausible until fresh
  // observations resolve intent.
@@ -36,6 +44,41 @@ struct PredictInput {
  // Remaining portion of the current observed endpoint stop.
  double initial_dwell_remaining_s{0.0};
 };
+
+// Typed prediction is the ownership-preserving contract. Several hypotheses
+// may describe one track; they are not several physical objects. Confidence
+// is deliberately absent until a calibrated probability model exists. Every
+// published hypothesis is retained by safety consumers.
+enum class PredictionModel {
+ Stationary,
+ ConstantVelocity,
+ ReflectedCorridor,
+ AlternateIntent,
+};
+
+struct PredictedObjectHypothesis {
+ std::size_t track_id{std::numeric_limits<std::size_t>::max()};
+ std::size_t hypothesis_id{0};
+ PredictionModel model{PredictionModel::Stationary};
+ std::vector<DynamicObjectState> states;
+};
+
+struct PredictionBatch {
+ double stamp_s{0.0};
+ double frame_dt_s{0.0};
+ std::vector<double> future_times_s;
+ std::vector<PredictedObjectHypothesis> hypotheses;
+};
+
+PredictionBatch predict_hypotheses(
+ const std::vector<PredictInput>& inputs, double time_s, double horizon_s,
+ double frame_dt_s, double max_age_s);
+
+// Compatibility projection for current DWA/trajectory consumers. Ordering is
+// deterministic (input order, then hypothesis order), but identity must not be
+// reconstructed from a frame index. New behavior logic consumes PredictionBatch.
+std::vector<std::vector<DynamicObjectState>> flatten_prediction_frames(
+ const PredictionBatch& prediction);
 
 // Fixed-step future frames: frame k holds the predicted state at
 // time_s + age + k * frame_dt_s for every input younger than max_age_s.
@@ -62,6 +105,22 @@ struct TimedPose {
  Vec2 p{0.0, 0.0};
 };
 
+// Returns the unexecuted suffix of a timed motion in a new clock domain.
+// The first pose is interpolated at `elapsed_s` and always has t=0; later
+// poses preserve their original timing relative to that instant. This is the
+// handoff used when a behavior-level timed proof is consumed by a
+// receding-horizon local planner after one or more control cycles.
+std::vector<TimedPose> remaining_timed_trajectory(
+ const std::vector<TimedPose>& trajectory, double elapsed_s);
+
+// Matches a measured position to the closest phase of a timed trajectory,
+// constrained to the already admitted clock band around nominal_elapsed_s.
+// This consumes timing uncertainty that behavior has explicitly swept; it
+// never enlarges that uncertainty or changes the trajectory geometry.
+double match_timed_trajectory_phase(
+ const std::vector<TimedPose>& trajectory, Vec2 measured_position,
+ double nominal_elapsed_s, double admitted_time_error_s);
+
 // Swept same-time gap between an arbitrary timed ego motion and the threat
 // frames. Generalizes predicted_gap (constant cruise + depart delay) to
 // multi-phase executions: drive, hold at a pocket, rejoin. Ego positions are
@@ -77,6 +136,23 @@ double timed_gap(const std::vector<TimedPose>& ego,
 double predicted_gap(const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
                      const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
                      double ego_radius_m, double depart_delay_s = 0.0);
+
+// Same-time collision evidence for behavior and diagnostics. Unlike a
+// spatial union of every future footprint with every route point, this keeps
+// ego and target on the same prediction clock and reports where the first
+// conflicting interval is closest. `min_gap_m` uses the same swept-interval
+// arithmetic as predicted_gap; `conflict` means min_gap_m < margin_m.
+struct PredictedGapEvidence {
+ double min_gap_m{std::numeric_limits<double>::infinity()};
+ bool conflict{false};
+ double first_conflict_s{std::numeric_limits<double>::infinity()};
+ Vec2 first_conflict_position;
+};
+
+PredictedGapEvidence predicted_gap_evidence(
+ const std::vector<Vec2>& path, std::size_t start_idx, double speed_mps,
+ const std::vector<std::vector<DynamicObjectState>>& frames, double frame_dt_s,
+ double ego_radius_m, double margin_m, double depart_delay_s = 0.0);
 
 // Earliest safe departure: smallest wait d >= 0 such that departing at now+d
 // keeps the whole prediction horizon clear (via predicted_gap with delay).

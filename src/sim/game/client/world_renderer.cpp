@@ -101,6 +101,8 @@ std::string decision_reason(const mission::ContentCatalog& catalog,
  return catalog.tr("decision.reason.dynamic-track-clear");
  if (decision.reason_code == "no-safe-local-trajectory")
  return catalog.tr("decision.reason.no-safe-local-trajectory");
+ if (decision.reason_code == "stability-envelope")
+ return catalog.tr("decision.reason.stability-envelope");
  if (decision.reason_code == "entry-window-occupied")
  return catalog.tr("decision.reason.entry-window-occupied");
  if (decision.reason_code == "predicted-path-conflict")

@@ -31,6 +31,36 @@ and public sources are recorded in [parameter profiles and sources](parameter-so
 `identified` is not a claim that every unmeasured effect is realistic. It names the robot, sensor, firmware,
 calibration date, test conditions, and held-out error bounds.
 
+## Fidelity build order
+
+The platform raises fidelity by closing observable causal chains, rather than by adding parameters that have no
+independent acceptance test. The release priority is:
+
+| Layer | Required evidence | Release priority |
+|---|---|---|
+| Coordinates, time and kinematics | units, frames, timestamps, feasible velocity/steering and pose change agree with independent geometric or finite-difference oracles | required |
+| Multibody dynamics | mass, inertia, gravity, acceleration, braking and collision response satisfy analytic bounds and timestep-convergence checks | required |
+| Actuators and limits | declared speed, effort, acceleration, steering and braking limits propagate through typed commands and measured feedback | required |
+| Contact, terrain and collision geometry | support loads, friction, slip, slope, surface material, ground clearance and physical obstacles affect the same plant seen by sensors and controllers | required |
+| LiDAR, IMU and encoder observations | geometry, mounting frames, timing, occlusion, invalid returns and declared error processes have focused fixtures | required |
+| Electrical, thermal and battery behavior | voltage, current, back-EMF, winding and inverter loss, regeneration, temperature and state of charge use sourced or identified parameters | deferred until a named learning or hardware question requires it |
+
+“Required” means implemented and validated for the behavior claimed by a shipped profile. A `typical` profile must
+match its declared parameters and physical constraints; it does not claim agreement with an unnamed real machine.
+Only an `identified` profile backed by calibration data and held-out measurements may make a quantitative hardware
+agreement claim. Contact and terrain are required in Lost Signal because slope, low-friction ground, wheel slip and
+stopping distance are product lessons, not optional visual effects.
+
+Planner reachability and passive safety use related physical data for
+different questions. The normal drive limit answers how quickly the actuator
+can increase speed. The normal brake limit answers how quickly an ordinary
+candidate can reduce speed. The emergency-stop limit answers whether the
+vehicle can stop after decision and actuator delay while respecting the
+current support, combined centre of mass, grade and configured margin. The
+first two define the dynamic window; the third validates its stopping tail.
+No field is reused as a sentinel: if an equipped platform requires emergency
+stopping and the safe limit becomes zero, moving rollouts are inadmissible.
+
 ## Two stable boundaries
 
 LSRI supports two explicit control paths:

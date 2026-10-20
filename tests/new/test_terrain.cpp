@@ -64,9 +64,27 @@ int main() {
  CHECK(std::abs(level_limit - 9.81 * 0.12 / 0.40) < 1e-9);
  CHECK(downhill_limit < level_limit);
  CHECK(uphill_limit < 9.81 * 0.31 / 0.40);
+ const double downhill_margin_limit = sim::longitudinal_stability_acceleration_limit(
+ -0.11, 0.12, 0.31, 0.40, 0.70);
+ const double downhill_angle = std::atan(-0.11);
+ const double expected_downhill_margin = std::max(
+ 0.0, 0.70 * 9.81 * std::cos(downhill_angle) * 0.12 / 0.40 +
+ 9.81 * std::sin(downhill_angle));
+ CHECK(std::abs(downhill_margin_limit - expected_downhill_margin) < 1e-9);
  CHECK(sim::roughness_lateral_acceleration(0.05, 2.0, 0.5) >
        sim::roughness_lateral_acceleration(0.05, 1.0, 0.5));
  CHECK(sim::roughness_lateral_acceleration(0.0, 2.0, 0.5) == 0.0);
+
+ // A three-point chassis has a triangular support polygon. The same lateral
+ // load projection can be safe near the axle and outside near the caster;
+ // independent width/length bounds would incorrectly accept both.
+ const std::vector<sim::Vec2> triangular_support{
+ {-0.28, 0.0}, {0.12, -0.29}, {0.12, 0.29},
+ };
+ CHECK(sim::support_polygon_risk(
+ {0.0, -0.10}, {0.0, 0.0}, triangular_support) < 1.0);
+ CHECK(sim::support_polygon_risk(
+ {-0.15, -0.10}, {0.0, 0.0}, triangular_support) > 1.0);
 
  sim::TerrainModel platform({
  {"deck", {5.0, 1.0}, {9.0, 4.0}, 2.0, 0.0, 0.0, 0.0},

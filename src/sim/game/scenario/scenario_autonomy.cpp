@@ -1,17 +1,26 @@
 #include "sim/game/scenario/scenario_session.hpp"
 #include "robot/autonomy/control/safe_stop_limiter.hpp"
+#include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <utility>
 
 namespace mission {
 namespace {
+
+// Keep a measured margin below the analytic wheel-lift boundary. This is a
+// platform safety policy, independent of the player's speed preference.
+// It does not replace runtime roll/roll-rate monitoring or identified tire
+// and suspension models.
+constexpr double kLocalDynamicRolloverRiskLimit = 0.85;
 
 double distance(sim::Vec2 a, sim::Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
@@ -32,6 +41,12 @@ bool dispatch_has_priority(const FieldDispatchState& dispatch,
 
 void ScenarioSession::decide_control() {
  ++result_.local_decisions;
+ // Actuator feedback belongs to the observation that preceded this decision.
+ // Preserve it before clearing presentation/output fields for the new cycle;
+ // otherwise differential reachability silently receives zero wheel speeds
+ // on every update even though LSRI delivered valid encoder feedback.
+ const double measured_left_mps = snapshot_.control.left_measured_mps;
+ const double measured_right_mps = snapshot_.control.right_measured_mps;
  snapshot_.control = {};
  if (route_tracking_system_->path_index() >= planned_route_.size()) {
   if (planned_route_.empty()) {
@@ -51,11 +66,21 @@ void ScenarioSession::decide_control() {
   // parking short with tv=0 until timeout.
   route_tracking_system_->set_path_index(planned_route_.size() - 1);
  }
- auto target = current_navigation_target();
  const auto& estimate = estimation_system_.state();
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
+ // The declared localization error is the physical uncertainty reserve. The
+ // preferred static envelope is the normal planning margin; recovery is
+ // allowed to consume that envelope, but never this hard stand-off. A small
+ // non-zero stand-off is required even when a level declares zero localization
+ // error: tracker lag, grade creep and an offset axle are physical motion, not
+ // localization noise. Keep the preferred envelope (robot radius plus policy
+ // margin) as the normal planning contract and use this floor only to stop a
+ // recovery from spending the last centimetres before contact.
+ constexpr double kPhysicalStandoffReserveM = 0.10;
+ const double physical_execution_margin_m = std::max(
+  level_.planning_localization_margin_m, kPhysicalStandoffReserveM);
  // The local planning view composes immutable authored occupancy with the
  // transient LiDAR obstacle layer. Dynamic target prediction remains a
  // separate time-indexed input below; an observed obstacle therefore cannot
@@ -63,6 +88,38 @@ void ScenarioSession::decide_control() {
  // its identity.
  const sim::GridMap local_planning_map = autonomy_pipeline_->compose_local_map(
  *planning_map_, snapshot_.time_s, planning_clearance_m_);
+ const auto transient_obstacles =
+ autonomy_pipeline_->observed_obstacles().active_obstacle_centres(
+ snapshot_.time_s);
+ snapshot_.control.transient_obstacle_cells = transient_obstacles.size();
+ snapshot_.control.nearest_transient_obstacle_m =
+ std::numeric_limits<double>::infinity();
+ for (const auto obstacle : transient_obstacles) {
+ snapshot_.control.nearest_transient_obstacle_m = std::min(
+ snapshot_.control.nearest_transient_obstacle_m,
+ distance(estimate.position, obstacle));
+ }
+ snapshot_.control.local_map_pose_free =
+ local_planning_map.isFree(nav_x, nav_y);
+ snapshot_.control.local_map_pose_clearance_m =
+ local_planning_map.clearance(nav_x, nav_y);
+ const auto active_dynamic_tracks =
+ autonomy_pipeline_->dynamic_obstacles().active_tracks(
+ snapshot_.time_s, track_max_age_s());
+ if (route_tracking_system_->should_replan(
+ planned_route_, estimate, local_planning_map, active_dynamic_tracks,
+ 1.0 / decision_hz())) {
+ // Persistent unmodelled static occupancy invalidates the global route.
+ // Replan from the estimated pose on the same layered costmap consumed by
+ // local planning. Live tracked actors are excluded by the ROBOT-side route
+ // monitor, so a passing forklift remains a prediction/behavior problem
+ // rather than becoming a permanent detour in mission code.
+ plan_route(&local_planning_map);
+ if (planned_route_.empty()) {
+ held_command_ = {};
+ return;
+ }
+ }
  // Static planning owns two severities. The preferred map includes the
  // normal numerical/policy envelope. Recovery keeps footprint-inflated
  // transient observations in a raster while the analytic collision monitor
@@ -85,6 +142,18 @@ void ScenarioSession::decide_control() {
  snapshot_.control.trajectory_position_error_m = tracking.position_error_m;
  snapshot_.control.trajectory_heading_error_rad = tracking.heading_error_rad;
  snapshot_.control.trajectory_speed_error_mps = tracking.speed_error_mps;
+ const double chassis_cruise = cruise_speed_mps();
+ auto route_control =
+ route_tracking_system_->follow_route(planned_route_, estimate,
+ property(behavior_, "lookahead_m"), chassis_cruise,
+ 1.0 / decision_hz(), local_planning_map, chassis_caps_);
+ // The target and control request must come from the same stateful route
+ // update. Re-running waypoint advancement here used to select a different
+ // target at layered-map corners and could lock a valid forward route into
+ // an in-place spin with a zero-velocity DWA window.
+ auto target = route_control.target_valid
+ ? route_control.target
+ : navigation_fallback_target();
  const auto publish = [&](std::string constraint_code, std::string reason_code, std::string action_code,
                           double observation_time_s, std::vector<std::string> observation_refs,
                           double prediction_horizon_s, double measured_separation_m,
@@ -156,10 +225,6 @@ void ScenarioSession::decide_control() {
  snapshot_.strategy_policy = high_level_policy_->name();
  if (snapshot_.strategy.applied.has_subgoal)
   target = snapshot_.strategy.applied.subgoal;
- const double chassis_cruise = cruise_speed_mps();
- auto route_control =
-   route_tracking_system_->follow_route(planned_route_, estimate, property(behavior_, "lookahead_m"), chassis_cruise,
- 1.0 / decision_hz(), local_planning_map, chassis_caps_);
  if (snapshot_.strategy.applied.has_subgoal) {
   const double target_distance = distance({nav_x, nav_y}, target);
   const double subgoal_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
@@ -259,6 +324,7 @@ void ScenarioSession::decide_control() {
   nearest_actor = std::min(nearest_actor, distance({nav_x, nav_y}, actor.p) - actor.radius -
                                             robot_definition_.collision_radius_m);
  }
+ snapshot_.control.nearest_dynamic_track_m = nearest_actor;
 
  const auto* computer = resolved_build_.computer();
  const double prediction_horizon = computer ? computer->prediction_horizon_s : 1.2;
@@ -272,16 +338,15 @@ void ScenarioSession::decide_control() {
  // next decision. Reserve the distance the robot footprint can sweep across
  // those two periods. This belongs to dynamic avoidance; inflating the static
  // global map with it would incorrectly close narrow but stationary routes.
- const double requested_clearance = property(behavior_, "safe_clearance_m") + scan_motion_margin;
- // Separate the hard crossing admission envelope from the driving policy's
- // preferred comfort margin. A cautious style may request more clearance
- // than a periodic corridor can ever provide; treating that preference as a
- // hard behavior invariant creates permanent waits. The authored safety
- // threshold plus sensing-motion uncertainty is the non-negotiable gate.
- const double hard_crossing_clearance =
- std::max(0.0, level_.safe_min_clearance_m) + scan_motion_margin;
- const double behavior_crossing_clearance =
- std::max(0.0, level_.safe_min_clearance_m);
+ const double preferred_clearance =
+ property(behavior_, "safe_clearance_m") + scan_motion_margin;
+ // Separate three quantities: physical footprint overlap is the absolute
+ // collision floor; sensing/control uncertainty is the hard normal-motion
+ // reserve; policy and score clearances are soft preferences. The level's
+ // safe_min_clearance_m lives under `score` and must never become an
+ // autonomy permission threshold. Doing so makes legitimate narrow or
+ // time-critical maneuvers impossible and couples ROBOT behavior to GAME.
+ const double hard_crossing_clearance = scan_motion_margin;
  const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
  const double route_independent_speed_cap =
  std::min(std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
@@ -291,13 +356,17 @@ void ScenarioSession::decide_control() {
  // into candidate generation so mission code never rewrites its speed later.
  if (chassis_caps_.command_space != sim::ChassisCommandSpace::HolonomicTwist)
  speed_cap = std::min(speed_cap, std::abs(route_control.tv));
- const sim::DwaWeights weights{1.0, 1.3 + requested_clearance * 1.8, 0.25};
+ const sim::DwaWeights weights{1.0, 1.3 + preferred_clearance * 1.8, 0.25};
  constexpr double prediction_step_s = 0.1;
  // Predictor module (src/robot/autonomy/predictor.*) owns future frames; the tracker
  // owns observations. known_tracks (age-advanced, for display) must not
  // feed prediction: map.predict() snapshots raw tracker state internally.
- const auto predicted_frames = autonomy_pipeline_->dynamic_obstacles().predict(
-   snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
+ const auto predicted_batch = autonomy_pipeline_->predict_dynamic_objects(
+ snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
+ const auto predicted_frames = sim::flatten_prediction_frames(predicted_batch);
+ const auto stationary_forecast_clearance = sim::minimum_stationary_clearance(
+ {nav_x, nav_y}, predicted_frames, prediction_step_s,
+ robot_definition_.collision_radius_m);
  // Shadow departure assessment (gate 3): observe only. This block reads
  // tracker state and writes snapshot shadow fields; held_command_ (the actual
  // control output) is untouched by everything in this block.
@@ -306,16 +375,25 @@ void ScenarioSession::decide_control() {
   shadow_remaining.push_back(planned_route_[i].position);
  }
  const double shadow_cruise = std::max(1e-6, cruise_speed_mps());
- double shadow_length = 0.0;
- for (std::size_t i = 0; i + 1 < shadow_remaining.size(); ++i) {
-  shadow_length += distance(shadow_remaining[i + 1], shadow_remaining[i]);
- }
+ const double crossing_preferred_speed_mps =
+ shadow_cruise * snapshot_.strategy.applied.speed_scale;
+ const double crossing_platform_speed_mps = std::max(
+ crossing_preferred_speed_mps,
+ std::min(max_forward_speed_mps_, robot_definition_.rated_speed_mps) *
+ chassis_caps_.rigid_body_cruise_scale *
+ snapshot_.strategy.applied.speed_scale);
  // Crossing, route-departure shadow, and pocket evaluation share one
  // time-indexed prediction. Recomputing each consumer independently could
  // make a single decision explain itself with mutually different futures.
- const double assessment_horizon = shadow_length / shadow_cruise + prediction_horizon;
- const auto assessment_frames = autonomy_pipeline_->dynamic_obstacles().predict(
+ // This is a local receding-horizon contract: extending a short-horizon
+ // motion model to the final mission goal makes uncertainty grow for tens of
+ // seconds and can push a safe crossing hold pose outside sensor range. A
+ // crossing whose complete execution does not fit this declared computer
+ // horizon is explicitly HorizonShort and remains closed.
+ const double assessment_horizon = prediction_horizon;
+ const auto assessment_batch = autonomy_pipeline_->predict_dynamic_objects(
  snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
+ const auto assessment_frames = sim::flatten_prediction_frames(assessment_batch);
 
  // A map-semantic conflict zone is the high-level contract for crossing
  // traffic. It yields a stable route-derived stop point and a bounded path
@@ -323,30 +401,51 @@ void ScenarioSession::decide_control() {
  // absent: only tracked predictions participate in departure assessment.
  bool mapped_crossing_relevant = false;
  std::optional<sim::GovernorOutput> mapped_governor;
- const auto active_crossing_zones = dynamic_traffic_system_.active_zones(
- map_definition_.conflict_zones, level_id_);
- constexpr double kStopControllerToleranceM = 0.0;
- const auto traffic_decision = crossing_behavior_system_.assess(
- active_crossing_zones, planned_route_, route_tracking_system_->path_index(), {nav_x, nav_y},
+ // A differential chassis whose driven axle is offset from base_link sweeps
+ // base_link while yawing at a stationary axle. Behavior backs the stop pose
+ // up by this same bound; the local stop-plane validator may then admit that
+ // physically necessary pose correction without spending safety clearance.
+ const double stop_plane_tracking_tolerance_m =
+ std::abs(chassis_caps_.geometry.drive_axle_x_m);
+ const auto traffic_decision = autonomy_pipeline_->assess_crossing(
+ planned_route_, route_tracking_system_->path_index(), {nav_x, nav_y},
  estimate.linear_velocity_mps, nav_heading, assessment_frames,
  prediction_step_s,
- {robot_definition_.collision_radius_m, behavior_crossing_clearance,
+ {robot_definition_.collision_radius_m, hard_crossing_clearance,
  // Route vertices are world-space poses even when the global search used a
  // raster. Grid resolution affects which poses exist; it is not physical
  // stop-controller error. Reserve only the declared localization margin here.
- kStopControllerToleranceM + level_.planning_localization_margin_m, 0.35},
+ level_.planning_localization_margin_m, 0.35,
+ sim::kCrossingPositionTrackingToleranceM +
+ level_.planning_localization_margin_m,
+ stop_plane_tracking_tolerance_m},
  // Admission may prove only a speed that the receding-horizon controller
  // will actually execute. Searching up to motor free speed would prove one
  // timed crossing and then hand a different high-speed steering rollout to
- // DWA. Faster crossings require an explicit timed-trajectory tracker with a
- // validated tracking envelope; the current reference controller commits at
- // its route cruise speed.
- {shadow_cruise, shadow_cruise,
+ // DWA. The executor below consumes the selected transit speed explicitly;
+ // behavior may choose any speed within the assembled platform limit while
+ // every candidate remains subject to the shared validator.
+ {crossing_preferred_speed_mps, crossing_platform_speed_mps,
  std::min(robot_definition_.motor.max_wheel_accel_mps2,
  resolved_build_.traction().brake_decel_mps2),
- resolved_build_.traction().brake_decel_mps2, yaw_cap_rads_},
- 1.0 / decision_hz(), autonomy_pipeline_->latest_visibility_rays(),
- autonomy_pipeline_->latest_visibility_stamp_s(), snapshot_.time_s);
+ resolved_build_.traction().brake_decel_mps2, yaw_cap_rads_,
+ robot_definition_.max_yaw_accel_radps2,
+ 1.0 / decision_hz() + 1.0 / std::max(
+ 0.1, resolved_build_.motor()
+ ? resolved_build_.motor()->controller_bandwidth_radps
+ : robot_definition_.motor.controller_bandwidth_radps),
+ prediction_horizon,
+ // The current DWA/RO-1 plant has validated stop-turn-go execution. Its
+ // continuous-curvature yaw response is still a roadmap capability and may
+ // not be assumed by crossing admission merely because the base can spin.
+ false},
+ 1.0 / decision_hz(), snapshot_.time_s,
+ [this, &local_planning_map, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
+ return std::isfinite(navigation_traversal_cost(from, to)) &&
+ collision_monitor_->static_motion_free(
+ from, to, physical_execution_margin_m) &&
+ local_planning_map.segmentIsFree(from, to);
+ });
  const auto& crossing = traffic_decision.assessment;
  // Behavior may grant permission to enter a controlled crossing, but it is
  // never a collision waiver. The local planner is the final motion-safety
@@ -363,6 +462,21 @@ void ScenarioSession::decide_control() {
  snapshot_.control.crossing_reason = crossing.relevant ? static_cast<int>(crossing.departure.reason) : -1;
  snapshot_.control.crossing_phase = static_cast<int>(traffic_decision.control.phase);
  snapshot_.control.crossing_committed = traffic_decision.control.committed;
+ snapshot_.control.crossing_body_in_conflict = crossing.body_in_conflict;
+ snapshot_.control.crossing_execution_blocked =
+ autonomy_pipeline_->crossing_execution_feedback().blocked;
+ snapshot_.control.crossing_recovery_to_stop =
+ traffic_decision.control.recovery_to_stop;
+ snapshot_.control.crossing_recovery_reverse =
+ traffic_decision.control.recovery_reverse;
+ snapshot_.control.crossing_no_return_started =
+ traffic_decision.control.no_return_started;
+ snapshot_.control.crossing_alignment_required =
+ traffic_decision.control.execution_alignment_required;
+ snapshot_.control.crossing_alignment_complete =
+ traffic_decision.control.execution_alignment_complete;
+ snapshot_.control.crossing_execution_initial_heading_rad =
+ traffic_decision.control.execution_initial_heading_rad;
  snapshot_.control.crossing_ready_to_commit = traffic_decision.ready_to_commit;
  snapshot_.control.crossing_safe_to_commit = traffic_decision.safe_to_commit;
  snapshot_.control.crossing_position_ready = traffic_decision.readiness.position_ready;
@@ -373,6 +487,8 @@ void ScenarioSession::decide_control() {
  snapshot_.control.crossing_stop_distance_m = crossing.stop_distance_m;
  snapshot_.control.crossing_stop_heading_error_rad = traffic_decision.readiness.heading_error_rad;
  snapshot_.control.crossing_prediction_evidence_available = crossing.prediction_evidence_available;
+ snapshot_.control.crossing_prediction_models_ready =
+ crossing.prediction_models_ready;
  snapshot_.control.crossing_free_space_evidence_available =
  crossing.free_space_evidence_available;
  snapshot_.control.crossing_observed_approaches_clear =
@@ -408,7 +524,7 @@ void ScenarioSession::decide_control() {
   // construction (kHorizonShort) — which is itself shadow data.
   const auto assessment =
     sim::assess_departure(shadow_remaining, 0, shadow_cruise, assessment_frames, prediction_step_s,
-                          robot_definition_.collision_radius_m, requested_clearance);
+ robot_definition_.collision_radius_m, preferred_clearance);
   snapshot_.control.shadow_assessed = true;
   snapshot_.control.shadow_depart_s = assessment.wait_s;
   snapshot_.control.shadow_reason = static_cast<int>(assessment.reason);
@@ -438,7 +554,7 @@ void ScenarioSession::decide_control() {
                          chassis_caps_.geometry.max_steer_rate_radps,
                          chassis_caps_.geometry.steering_response_s},
     prediction_horizon, pocket_params, assessment_frames, prediction_step_s,
-    robot_definition_.collision_radius_m, requested_clearance);
+ robot_definition_.collision_radius_m, preferred_clearance);
   int pocket_feasible = 0;
   for (const auto& candidate : search.candidates) {
    if (candidate.assessment.overall == sim::Feasibility::Verdict::kFeasible) {
@@ -464,101 +580,95 @@ void ScenarioSession::decide_control() {
  // how the first wiring collided on signal_hold (39.4s hold -> rammed while
  // stopped). The stop point must clear the whole swept band.
  sim::GovernorOutput governor_out;
+ sim::GovernorOutput stop_plane_governor;
+ bool stop_plane_governor_available = false;
+ bool governor_uses_mapped_geometry = false;
  std::optional<double> local_target_heading;
  bool local_stop_plane_active = false;
- if (mapped_governor) {
-  governor_out = *mapped_governor;
+ const bool crossing_reverse_recovery =
+ traffic_decision.control_authority &&
+ traffic_decision.control.recovery_to_stop &&
+ traffic_decision.control.recovery_reverse;
+ const bool crossing_committed =
+ traffic_decision.control_authority && traffic_decision.control.committed;
+ bool crossing_stop_pose_reverse = false;
+ // Always evaluate the map-independent conflict path. A mapped behavior may
+ // own the current stop/commit contract, but its presence must not disable
+ // ROBOT's generic perception-to-trajectory conflict detector elsewhere.
+ const auto entry_batch = autonomy_pipeline_->predict_dynamic_objects(
+ snapshot_.time_s, prediction_horizon, prediction_step_s,
+ sim::kEntryStaleBudgetS);
+ const auto entry_frames = sim::flatten_prediction_frames(entry_batch);
+ sim::EntryWindowRequest entry_request;
+ entry_request.route = shadow_remaining;
+ entry_request.cruise_speed_mps = shadow_cruise;
+ entry_request.predicted_frames = entry_frames;
+ entry_request.frame_dt_s = prediction_step_s;
+ entry_request.ego_radius_m = robot_definition_.collision_radius_m;
+ entry_request.clearance_m = hard_crossing_clearance;
+ entry_request.braking_deceleration_mps2 =
+ resolved_build_.traction().brake_decel_mps2;
+ const bool generic_was_hold = autonomy_pipeline_->entry_governor_holding();
+ const auto generic_entry =
+ autonomy_pipeline_->assess_entry_window(entry_request);
+ if (mapped_governor && !crossing_committed &&
+ !traffic_decision.control.no_return_started) {
+ if (mapped_governor->hold_active && mapped_governor->stop_valid) {
+ // The mapped behavior wall remains a no-entry boundary even when the
+ // generic dynamic assessment proves that waiting at the current pose is
+ // unsafe. In that case the local planner may search for an upstream or
+ // lateral minimum-risk escape, but it may not turn that emergency into an
+ // unadmitted crossing. One merged GovernorOutput cannot represent both
+ // facts, so retain the behavior wall as an independent validator input.
+ stop_plane_governor = *mapped_governor;
+ stop_plane_governor_available = true;
+ }
+ // Before the no-return boundary, mapped rules and map-independent online
+ // conflicts are an intersection of one-sided constraints. A semantic zone
+ // cannot suppress a temporary object outside that zone, and the generic
+ // detector cannot grant permission over a mapped stop/yield rule.
+ governor_out = sim::merge_entry_constraints(
+ *mapped_governor, generic_entry.control, shadow_remaining);
+ governor_uses_mapped_geometry =
+ mapped_governor->hold_active && governor_out.stop_valid &&
+ std::hypot(governor_out.stop_point.x - mapped_governor->stop_point.x,
+ governor_out.stop_point.y - mapped_governor->stop_point.y) <= 1e-9;
   snapshot_.control.governor_hold = governor_out.hold_active;
   snapshot_.control.governor_stop = governor_out.stop_point;
- if (governor_out.hold_active && traffic_decision.phase_changed)
+ if (governor_out.hold_active &&
+ ((governor_uses_mapped_geometry && traffic_decision.phase_changed) ||
+ (!governor_uses_mapped_geometry && !generic_was_hold)))
    record_event("governor_hold", catalog_.tr("event.governor_hold"));
- } else if (!traffic_decision.has_active_zone) {
-  const sim::Vec2 ego{nav_x, nav_y};
-  const sim::Vec2 dir{std::cos(nav_heading), std::sin(nav_heading)};
- const double ego_speed = std::abs(estimate.linear_velocity_mps);
-  const double assess_speed = ego_speed >= 0.15 ? ego_speed : 0.5;
-  sim::GovernorInput governor_input;
-  for (const auto& track : known_tracks) {
-   const double age = snapshot_.time_s - track.last_observed_s;
-   if (age < 0.0 || age > sim::kEntryStaleBudgetS) {
-    continue;
-   }
-   const sim::Vec2 tp{track.state.p.x, track.state.p.y};
-   const sim::Vec2 tv{track.state.v.x, track.state.v.y};
-   const auto center = sim::governor_conflict_center(ego, dir, tp, tv);
-   if (std::hypot(center.x - ego.x, center.y - ego.y) > 10.0) {
-    continue;
-   }
-   const double half = 0.45 + track.state.radius + 0.2;
-   sim::WindowThreat threat;
-   threat.valid = true;
-   threat.dist_to_zone_m = std::hypot(tp.x - center.x, tp.y - center.y) - half;
-   const double to_center = std::max(1e-6, std::hypot(center.x - tp.x, center.y - tp.y));
-   const double toward = (tv.x * (center.x - tp.x) + tv.y * (center.y - tp.y)) / to_center;
-   threat.speed_mps = (toward > 0.0) ? std::hypot(tv.x, tv.y) : 0.0;
-   threat.age_s = age;
-   const double ego_dist = std::max(0.0, std::hypot(center.x - ego.x, center.y - ego.y) - half);
-   const auto assessment =
-     sim::assess_entry_window(ego_dist, assess_speed, half, threat, sim::kEntryStaleBudgetS);
-   if (assessment.verdict == sim::EntryVerdict::kObservedOccupied) {
-    governor_input.occupied_fresh = true;
-   } else if (assessment.verdict == sim::EntryVerdict::kObservedClear) {
-    governor_input.clear_fresh = true;
-   }
-  }
-  if (governor_input.occupied_fresh) {
-   governor_input.clear_fresh = false; // occupied wins mixed frames.
-  }
-  // Corridor entry against every forecast frame: the first remaining-route
-  // point inside any predicted swept disc, walked back brake + margin.
-  if (governor_input.occupied_fresh || governor_input.clear_fresh) {
-   auto near_predicted = [&](sim::Vec2 p) {
-    for (const auto& frame : predicted_frames) {
-     for (const auto& future : frame) {
-      if (std::hypot(p.x - future.p.x, p.y - future.p.y) < 0.9) {
-       return true;
-      }
-     }
-    }
-    return false;
-   };
-   std::size_t entry = shadow_remaining.size();
-   for (std::size_t i = 0; i < shadow_remaining.size(); ++i) {
-    if (near_predicted(shadow_remaining[i])) {
-     entry = i;
-     break;
-    }
-   }
-   if (entry < shadow_remaining.size()) {
- const double cruise = cruise_speed_mps();
- const double brake = resolved_build_.traction().brake_decel_mps2;
-    const double need = cruise * cruise / (2.0 * brake) + 1.0;
-    double walked = 0.0;
-    std::size_t stop = entry;
-    while (stop > 0 && walked < need) {
-     walked += std::hypot(shadow_remaining[stop].x - shadow_remaining[stop - 1].x,
-                          shadow_remaining[stop].y - shadow_remaining[stop - 1].y);
-     --stop;
-    }
-    governor_input.stop_point = shadow_remaining[stop];
-    governor_input.stop_valid = true;
-   }
-  }
- const bool was_hold = entry_governor_system_.holding();
- governor_out = entry_governor_system_.update(governor_input);
-  snapshot_.control.governor_hold = governor_out.hold_active;
-  snapshot_.control.governor_stop = governor_out.stop_point;
-  if (governor_out.hold_active && !was_hold) {
-   record_event("governor_hold", catalog_.tr("event.governor_hold"));
-  }
+ } else if (mapped_governor) {
+ // A committed maneuver is already governed by its timed execution proof.
+ // Reintroducing the generic entry wall here creates contradictory authority
+ // (Committed and HOLD in the same cycle). Fresh dynamic forecasts still pass
+ // through the independent local validator; before no-return, rejection feeds
+ // a controlled stop back to the crossing state machine, and after no-return
+ // only a fully validated continuation or minimum-risk contingency may run.
+ governor_out = *mapped_governor;
+ if (mapped_governor->hold_active && mapped_governor->stop_valid) {
+ stop_plane_governor = *mapped_governor;
+ stop_plane_governor_available = true;
+ }
+ governor_uses_mapped_geometry = true;
+ snapshot_.control.governor_hold = governor_out.hold_active;
+ snapshot_.control.governor_stop = governor_out.stop_point;
  } else {
-  // Authored conflict-zone semantics supersede the legacy geometric
-  // intersection heuristic. If the current route does not enter a declared
-  // zone, the behavior layer has no crossing constraint to impose; ordinary
-  // local collision avoidance still runs below when a track is actually near.
- governor_out = entry_governor_system_.update({});
-  snapshot_.control.governor_hold = governor_out.hold_active;
-  snapshot_.control.governor_stop = governor_out.stop_point;
+ // Map-independent dynamic interaction. ROBOT compares the executable route
+ // prefix with perception-owned time occupancy and derives a temporary hold
+ // point when they conflict. Authored crossing semantics are optional context,
+ // not a prerequisite for avoiding a temporary participant.
+ governor_out = generic_entry.control;
+ snapshot_.control.governor_hold = governor_out.hold_active;
+ snapshot_.control.governor_stop = governor_out.stop_point;
+ if (governor_out.hold_active && !generic_was_hold)
+ record_event("governor_hold", catalog_.tr("event.governor_hold"));
+ }
+ if (!stop_plane_governor_available && governor_out.hold_active &&
+ governor_out.stop_valid) {
+ stop_plane_governor = governor_out;
+ stop_plane_governor_available = true;
  }
  // Virtual wall (Phase-2 consumption): while the governor holds, cap speed
  // by stopping physics to the stop point. The local planner also receives
@@ -567,7 +677,7 @@ void ScenarioSession::decide_control() {
  if (governor_out.hold_active && governor_out.stop_valid) {
  const double brake = resolved_build_.traction().brake_decel_mps2;
  double dist = std::hypot(nav_x - governor_out.stop_point.x, nav_y - governor_out.stop_point.y);
- if (mapped_crossing_relevant) {
+ if (governor_uses_mapped_geometry) {
  dist = crossing.stop_distance_m;
  const double local_stop_activation_m = std::max(
  2.0, speed_cap * prediction_horizon + property(behavior_, "lookahead_m"));
@@ -576,33 +686,84 @@ void ScenarioSession::decide_control() {
  target = governor_out.stop_point;
  snapshot_.control.local_target = target;
  // A differential chassis cannot correct lateral stop-line error while it
- // is simultaneously scored against the final crossing heading. Approach
- // the stop pose first, then align in place once the position contract is
- // satisfied. Otherwise a safe rollout can settle abeam of the line with
- // zero translation forever.
- if (traffic_decision.readiness.position_ready) {
+ // Differential kinematics are referenced at the driven axle. RO-1's axle
+ // is offset from base_link, so controlling the body origin as if it were the
+ // instantaneous rotation centre creates a circular chase during pure yaw.
+ const auto pose_approach = sim::crossing_pose_approach(
+ {nav_x, nav_y}, nav_heading, governor_out.stop_point,
+ governor_out.stop_direction, crossing_reverse_recovery,
+ chassis_caps_.geometry.drive_axle_x_m,
+ sim::kCrossingPositionTrackingToleranceM);
+ if (pose_approach.control_position_acquired) {
  local_target_heading = std::atan2(
  governor_out.stop_direction.y, governor_out.stop_direction.x);
+ // Position readiness closes the translational part of the hold contract.
+ // Keep only the in-place heading correction active until behavior grants a
+ // new crossing commitment. Reapplying the route speed cap here makes the
+ // robot drive through and orbit the stop pose while correctly waiting for
+ // a safe traffic window.
+ speed_cap = 0.0;
+ route_control.tv = 0.0;
  } else {
  // The behavior stop pose temporarily supersedes the ordinary route
  // lookahead. Its approach speed must therefore be derived from that pose,
  // not from a route follower that may currently be in a spin/reverse recovery
  // aimed at a waypoint beyond the virtual wall. Collision and stop-plane
  // validation below remain authoritative.
- const double stop_heading_error = sim::heading_err(
- governor_out.stop_point, nav_x, nav_y, nav_heading);
- const double stop_distance = distance(
- {nav_x, nav_y}, governor_out.stop_point);
+ crossing_stop_pose_reverse = pose_approach.reverse;
+ const double stop_heading_error = std::remainder(
+ pose_approach.body_heading_rad - nav_heading, 2.0 * sim::kPi);
+ const double stop_distance = pose_approach.control_distance_m;
  route_control.err = stop_heading_error;
- route_control.tv = std::min(chassis_cruise, stop_distance);
+ route_control.tv = (crossing_stop_pose_reverse ? -1.0 : 1.0) *
+ std::min(chassis_cruise, stop_distance);
+ // A spin-capable differential platform reaches a pose robustly in three
+ // stages: face the point, translate to it, then align with the crossing.
+ // Allowing translation through a large bearing error makes constant-twist
+ // rollouts orbit the stop point and can move laterally toward traffic even
+ // though their stop-plane projection remains behind the virtual wall.
+ local_target_heading = pose_approach.body_heading_rad;
+ // Stop-pose recovery is a rotate-then-translate controller. Near the
+ // virtual plane, a loose heading gate lets every translating rollout cross
+ // the plane before it can correct lateral error, so the validator correctly
+ // rejects all motion. Use the same tight initial-heading contract that the
+ // crossing trajectory itself proves.
+ constexpr double kStopApproachHeadingToleranceRad =
+ sim::kCrossingInitialHeadingToleranceRad;
+ const bool align_before_approach = chassis_caps_.can_spin &&
+ std::abs(chassis_caps_.geometry.drive_axle_x_m) <= 1e-9 &&
+ std::abs(stop_heading_error) > kStopApproachHeadingToleranceRad;
  const double stop_approach_cap = std::min(
  std::max(0.20, sim::sched_v(stop_heading_error, chassis_cruise)),
  corner_speed_cap(nav_x, nav_y)) * snapshot_.strategy.applied.speed_scale;
- speed_cap = std::min(
- stop_approach_cap,
- std::abs(route_control.tv));
+ const bool stationary_hold_safe =
+ stationary_forecast_clearance.conservative_m + 1e-9 >=
+ hard_crossing_clearance;
+ speed_cap = align_before_approach && stationary_hold_safe
+ ? 0.0
+ : std::min(stop_approach_cap, std::abs(route_control.tv));
+ // Rotate-then-translate is the preferred pose controller while holding is
+ // safe. If a predicted actor will invade the stationary footprint, expose
+ // bounded translation as well and let the shared trajectory validator pick
+ // a same-time minimum-risk arc. A hard zero-speed alignment in that case
+ // creates an avoidable collision/deadlock.
+ if (align_before_approach && stationary_hold_safe)
+ route_control.tv = 0.0;
  snapshot_.control.heading_error_rad = stop_heading_error;
  }
+ }
+ } else {
+ // An inferred conflict has no authored stop pose. Its ROBOT-derived wall
+ // still enters the same swept stop-plane validator as mapped behavior; a
+ // scalar speed cap alone can be crossed by response lag or steering motion.
+ const double local_stop_activation_m = std::max(
+ 2.0, speed_cap * prediction_horizon + property(behavior_, "lookahead_m"));
+ local_stop_plane_active = dist <= local_stop_activation_m;
+ if (local_stop_plane_active) {
+ target = governor_out.stop_point;
+ snapshot_.control.local_target = target;
+ local_target_heading = std::atan2(
+ governor_out.stop_direction.y, governor_out.stop_direction.x);
  }
  }
  // Include decision and actuator response before ideal constant braking.
@@ -617,10 +778,11 @@ void ScenarioSession::decide_control() {
  // Route progress can be zero while the body is still laterally displaced
  // from the stop pose. Preserve a bounded corrective approach; the swept
  // stop-plane validator below still prevents entry into the conflict zone.
- if (mapped_crossing_relevant && !traffic_decision.readiness.position_ready) {
+ if (governor_uses_mapped_geometry &&
+ !traffic_decision.readiness.position_ready) {
  dist = std::max(dist, distance({nav_x, nav_y}, governor_out.stop_point));
  }
- const double v_allow = dist <= 1e-9
+ const double v_allow = dist <= 1e-9 || brake <= 1e-9
  ? 0.0
  : brake * (std::sqrt(response_delay_s * response_delay_s +
  2.0 * dist / brake) - response_delay_s);
@@ -631,20 +793,275 @@ void ScenarioSession::decide_control() {
  // signed command is only a fallback once the route has no direction metadata
  // (for example after the terminal index); it may not silently reverse a
  // forward section to improve a local score.
- const bool reverse_route = route_direction == sim::TravelDirection::Reverse ||
+ const bool reverse_route = crossing_reverse_recovery ||
+ crossing_stop_pose_reverse ||
+ route_direction == sim::TravelDirection::Reverse ||
  (route_direction == sim::TravelDirection::Unspecified && route_control.tv < 0.0);
- const bool crossing_committed = traffic_decision.control_authority && traffic_decision.control.committed;
+ if (crossing_committed && traffic_decision.control.exit_valid) {
+ // The committed crossing owns a complete route to a proved refuge. The
+ // ordinary route follower may still expose a short lookahead waypoint near
+ // the stop line; keeping that stale point as DWA's goal makes the local
+ // planner brake or spin immediately after admission. Drive toward the
+ // latched exit while the spatial corridor and dynamic validator constrain
+ // every published command.
+ // The same ownership applies to longitudinal intent. A grid follower can
+ // report zero at a raster corner that behavior deliberately collapsed out
+ // of the crossing maneuver. Rebuild the cap from the admitted transit speed;
+ // actuator reachability and every independent validator remain downstream.
+ speed_cap = std::min(
+ traffic_decision.control.transit_speed_mps,
+ crossing_platform_speed_mps);
+ const auto& execution = traffic_decision.control.execution_trajectory;
+ const bool continuous_execution =
+ traffic_decision.control.execution_continuous;
+ target = traffic_decision.control.exit_point;
+ std::vector<sim::TimedPose> execution_path;
+ for (const auto& pose : execution) {
+ if (!execution_path.empty() &&
+ distance(execution_path.back().p, pose.p) <= 1e-6) {
+ // A repeated position is a planned dwell (typically stop-turn-go).
+ // Retain its departure time so elapsed-time advancement cannot leave the
+ // corner before the admitted yaw maneuver has completed.
+ execution_path.back().t_s = std::max(execution_path.back().t_s, pose.t_s);
+ continue;
+ }
+ while (execution_path.size() >= 2) {
+ const auto a = execution_path[execution_path.size() - 2].p;
+ const auto b = execution_path.back().p;
+ const double first = std::atan2(b.y - a.y, b.x - a.x);
+ const double second = std::atan2(pose.p.y - b.y, pose.p.x - b.x);
+ if (std::abs(std::remainder(second - first, 2.0 * sim::kPi)) > 1e-3)
+ break;
+ execution_path.pop_back();
+ }
+ execution_path.push_back(pose);
+ }
+ if (traffic_decision.phase_changed) {
+ crossing_execution_segment_ = 0;
+ crossing_alignment_segment_ = 0;
+ crossing_segment_alignment_complete_ = false;
+ }
+ if (execution_path.size() >= 2) {
+ crossing_execution_segment_ = std::min(
+ crossing_execution_segment_, execution_path.size() - 2);
+ const double waypoint_tolerance_m = std::max(
+ sim::kCrossingPositionTrackingToleranceM,
+ traffic_decision.control.tracking_corridor_m);
+ const bool initial_alignment_pending =
+ traffic_decision.control.execution_alignment_required &&
+ !traffic_decision.control.execution_alignment_complete;
+ const auto execution_waypoint_reached = [&](std::size_t segment) {
+ const auto from = execution_path[segment].p;
+ const auto to = execution_path[segment + 1].p;
+ if (distance({nav_x, nav_y}, to) <= waypoint_tolerance_m)
+ return true;
+ if (!continuous_execution)
+ return false;
+ const sim::Vec2 delta{to.x - from.x, to.y - from.y};
+ const double length_m = std::hypot(delta.x, delta.y);
+ if (length_m <= 1e-9)
+ return true;
+ const double progress_m =
+ ((nav_x - from.x) * delta.x + (nav_y - from.y) * delta.y) /
+ length_m;
+ return progress_m >= length_m;
+ };
+ // A grid route may put its first vertex inside the ordinary waypoint
+ // tolerance. Do not skip that leg before completing the heading contract
+ // that behavior proved for it; otherwise the executor turns toward the
+ // second leg while behavior waits forever for the first heading.
+ while (!initial_alignment_pending &&
+ crossing_execution_segment_ + 2 < execution_path.size() &&
+ execution_waypoint_reached(crossing_execution_segment_) &&
+ (continuous_execution ||
+ std::abs(estimate.linear_velocity_mps) <= 0.10)) {
+ // Planned time is a safety schedule, never proof that the physical body
+ // reached a waypoint. Advancing solely because its timestamp elapsed made
+ // a lagging base accelerate toward the next leg before completing the
+ // required stop, then leave the admitted tracking tube. The timed
+ // validator handles early/late safety; spatial execution advances only on
+ // measured arrival and settling.
+ ++crossing_execution_segment_;
+ if (!continuous_execution) {
+ crossing_alignment_segment_ = crossing_execution_segment_;
+ crossing_segment_alignment_complete_ = false;
+ }
+ }
+ const auto segment_start = execution_path[crossing_execution_segment_].p;
+ target = execution_path[crossing_execution_segment_ + 1].p;
+ const double segment_heading = std::atan2(
+ target.y - segment_start.y, target.x - segment_start.x);
+ // A crossing leg is a pose-constrained stop-turn-go maneuver, not merely a
+ // point target. Preserve its body-heading contract throughout translation.
+ // Near a point goal the distance critic is otherwise indifferent to yaw;
+ // DWA can then select a sharp turn just before the corner even though the
+ // behavior proof requires arriving at rest along the current leg.
+ local_target_heading = segment_heading;
+ const double heading_error = std::abs(std::remainder(
+ segment_heading - nav_heading, 2.0 * sim::kPi));
+ // Re-align whenever a safety stop or minimum-risk escape has rotated the
+ // differential body away from the admitted segment. Restricting this stage
+ // to the exact segment start deadlocks a displaced body: every forced
+ // forward rollout leaves the proved corridor, while the needed in-place
+ // turn is never generated. The local validator still checks the stationary
+ // footprint and dynamic forecast before publishing the turn.
+ if (!continuous_execution &&
+ crossing_alignment_segment_ != crossing_execution_segment_) {
+ crossing_alignment_segment_ = crossing_execution_segment_;
+ crossing_segment_alignment_complete_ = false;
+ }
+ if (!crossing_segment_alignment_complete_ &&
+ heading_error <= sim::kCrossingInitialHeadingToleranceRad) {
+ crossing_segment_alignment_complete_ = true;
+ }
+ // Segment alignment is a one-shot execution stage. Encoder lag just after
+ // translation starts must not re-arm an in-place turn and alternate the
+ // speed cap between zero and cruise on successive replans.
+ const bool align_segment =
+ (traffic_decision.control.execution_alignment_required &&
+ !traffic_decision.control.execution_alignment_complete) ||
+ (!continuous_execution && !crossing_segment_alignment_complete_);
+ if (align_segment) {
+ speed_cap = 0.0;
+ local_target_heading = segment_heading;
+ } else {
+ const auto* crossing_motor = resolved_build_.motor();
+ const double crossing_bandwidth = crossing_motor
+ ? crossing_motor->controller_bandwidth_radps
+ : robot_definition_.motor.controller_bandwidth_radps;
+ const double response_delay_s = 1.0 / decision_hz() +
+ 1.0 / std::max(0.1, crossing_bandwidth);
+ const double brake = resolved_build_.traction().brake_decel_mps2;
+ const double segment_length_m = std::max(
+ 1e-9, distance(segment_start, target));
+ const sim::Vec2 segment_direction{
+ (target.x - segment_start.x) / segment_length_m,
+ (target.y - segment_start.y) / segment_length_m,
+ };
+ const double remaining_m = std::max(
+ 0.0,
+ (target.x - nav_x) * segment_direction.x +
+ (target.y - nav_y) * segment_direction.y);
+ const bool final_crossing_segment =
+ continuous_execution ||
+ crossing_execution_segment_ + 2 == execution_path.size();
+ // Intermediate corners are explicit stop-turn-go poses. The final point is
+ // a conflict-clear boundary: crossing control ends there and the canonical
+ // route continues, so braking to zero would implement a different maneuver
+ // from the behavior trajectory used for admission.
+ if (!final_crossing_segment) {
+ const double v_allow = remaining_m <= 1e-9
+ ? 0.0
+ : brake * (std::sqrt(response_delay_s * response_delay_s +
+ 2.0 * remaining_m / brake) - response_delay_s);
+ speed_cap = std::min(speed_cap, v_allow);
+ }
+ if (continuous_execution) {
+ const double planned_dt_s =
+ execution_path[crossing_execution_segment_ + 1].t_s -
+ execution_path[crossing_execution_segment_].t_s;
+ if (planned_dt_s > 1e-6) {
+ speed_cap = std::min(speed_cap,
+ segment_length_m / planned_dt_s);
+ }
+ // Follow a point ahead on the complete curve rather than aiming at the
+ // next dense arc sample. A next-sample target can lie only centimetres
+ // away, causing DWA to delay steering until it has overshot the curve.
+ double lookahead_m = std::clamp(speed_cap * 0.8, 0.40, 0.80);
+ const double projected_progress_m = std::clamp(
+ (nav_x - segment_start.x) * segment_direction.x +
+ (nav_y - segment_start.y) * segment_direction.y,
+ 0.0, segment_length_m);
+ sim::Vec2 cursor{
+ segment_start.x + projected_progress_m * segment_direction.x,
+ segment_start.y + projected_progress_m * segment_direction.y,
+ };
+ std::size_t look_segment = crossing_execution_segment_;
+ while (look_segment + 1 < execution_path.size()) {
+ const auto end = execution_path[look_segment + 1].p;
+ const double available_m = distance(cursor, end);
+ if (available_m >= lookahead_m - 1e-9) {
+ const double blend = available_m <= 1e-9 ? 0.0 :
+ lookahead_m / available_m;
+ target = {
+ cursor.x + (end.x - cursor.x) * blend,
+ cursor.y + (end.y - cursor.y) * blend,
+ };
+ local_target_heading = std::atan2(end.y - cursor.y,
+ end.x - cursor.x);
+ break;
+ }
+ lookahead_m -= available_m;
+ cursor = end;
+ ++look_segment;
+ target = cursor;
+ if (look_segment + 1 < execution_path.size()) {
+ const auto next = execution_path[look_segment + 1].p;
+ local_target_heading = std::atan2(next.y - cursor.y,
+ next.x - cursor.x);
+ }
+
+ // A rolling curve tangent is path guidance, not a terminal body-pose
+ // constraint. Passing it as target_heading_rad makes a constant-command
+ // DWA rollout try to finish its whole horizon at the near-field tangent;
+ // that suppresses the yaw-rate increase needed by the upcoming curve.
+ // The reference-path critic already evaluates the rollout's projected
+ // tangent at its endpoint and is the correct receding-horizon contract.
+ local_target_heading.reset();
+ }
+ }
+ // DWA is a receding-horizon tracker. Giving it only the distant refuge
+ // lets a constant-yaw rollout match the final heading with a broad arc that
+ // slowly leaves a narrow proved tube. Prune the current straight leg to a
+ // rolling carrot while retaining the leg endpoint for braking and waypoint
+ // completion above.
+if (!continuous_execution && remaining_m > 0.5) {
+ const double projected_progress_m = std::clamp(
+ (nav_x - segment_start.x) * segment_direction.x +
+ (nav_y - segment_start.y) * segment_direction.y,
+ 0.0, segment_length_m);
+ const double local_lookahead_m = std::clamp(speed_cap, 0.5, 1.0);
+ const double carrot_progress_m = std::min(
+ segment_length_m, projected_progress_m + local_lookahead_m);
+ target = {
+ segment_start.x + carrot_progress_m * segment_direction.x,
+ segment_start.y + carrot_progress_m * segment_direction.y,
+ };
+ }
+ }
+ }
+ // A merged invalid hold means stationary occupancy is unsafe; it does not
+ // erase a separately valid crossing boundary. Activate that boundary for
+ // the same local preview distance used by ordinary virtual walls so every
+ // recovery candidate remains on the uncommitted side.
+ if (!crossing_committed && stop_plane_governor_available &&
+ !traffic_decision.control.relocated_hold) {
+ const double stop_plane_distance_m = std::hypot(
+ nav_x - stop_plane_governor.stop_point.x,
+ nav_y - stop_plane_governor.stop_point.y);
+ const double local_stop_activation_m = std::max(
+ 2.0, speed_cap * prediction_horizon + property(behavior_, "lookahead_m"));
+ local_stop_plane_active = local_stop_plane_active ||
+ stop_plane_distance_m <= local_stop_activation_m;
+ }
+ snapshot_.control.local_target = target;
+ }
  constexpr double kCommittedProgressFloorMps = 0.15;
- const double committed_floor = crossing_committed
- ? std::min(speed_cap, std::max(kCommittedProgressFloorMps,
- traffic_decision.control.transit_speed_mps))
+ // The admitted trajectory may begin with an in-place alignment while the
+ // body is still at the safe stop pose. Keep the floor disabled during that
+ // stage, then require actuator-reachable progress as soon as alignment is
+ // complete. Waiting until physical conflict entry lets a zero-speed DWA
+ // candidate consume the complete admitted traffic window before moving.
+ const double committed_floor = crossing_committed &&
+ traffic_decision.control.execution_alignment_complete
+ ? std::min(speed_cap, kCommittedProgressFloorMps)
  : 0.0;
  // A zero-speed recovery on a spin-capable chassis is an explicit pose
  // maneuver. Give the local planner that body-heading goal so the path-
  // tangent critic cannot reward holding the old yaw forever after waypoint
  // progress has stopped. Ackermann remains governed by its route/gear model.
- if (!local_target_heading && !mapped_crossing_relevant &&
- !governor_out.hold_active && chassis_caps_.can_spin &&
+ if (!local_target_heading && !local_stop_plane_active &&
+ chassis_caps_.can_spin &&
  std::abs(route_control.tv) <= 1e-9 && std::abs(route_control.err) > 0.05) {
  local_target_heading = std::atan2(
  target.y - nav_y, target.x - nav_x);
@@ -667,15 +1084,20 @@ void ScenarioSession::decide_control() {
  // after the physical wheels have stopped. Feeding that noise into the
  // rollout makes every in-place correction drift microscopically through an
  // exact behavior stop plane, so the safety validator can never authorize a
- // recovery. Apply a narrow planning deadband only when both drive encoders
- // independently report rest; real body motion above this sensor floor stays
- // visible to the planner.
+ // recovery. Apply a narrow planning deadband only when the encoder common
+ // mode reports no translation; differential tread motion remains available
+ // to the yaw-reachability model.
  constexpr double kPlanningRestDeadbandMps = 0.005;
- const bool drive_encoders_stopped =
- std::abs(snapshot_.control.left_measured_mps) < kPlanningRestDeadbandMps &&
- std::abs(snapshot_.control.right_measured_mps) < kPlanningRestDeadbandMps;
- local_request.forward_mps = drive_encoders_stopped &&
- std::abs(estimate.linear_velocity_mps) < kPlanningRestDeadbandMps
+ const double measured_encoder_forward_mps =
+ 0.5 * (measured_left_mps + measured_right_mps);
+ // Opposite tread motion is an in-place turn, so its common mode is the
+ // longitudinal observation. Requiring both treads to stop leaves fused-pose
+ // centimetre noise looking like real forward/reverse travel during a pivot.
+ constexpr double kPlanningPoseVelocityDeadbandMps = 0.03;
+ const bool encoder_translation_stopped =
+ std::abs(measured_encoder_forward_mps) < kPlanningRestDeadbandMps;
+ local_request.forward_mps = encoder_translation_stopped &&
+ std::abs(estimate.linear_velocity_mps) < kPlanningPoseVelocityDeadbandMps
  ? 0.0
  : estimate.linear_velocity_mps;
  local_request.lateral_mps = estimate.lateral_velocity_mps;
@@ -717,6 +1139,13 @@ void ScenarioSession::decide_control() {
  }
  local_request.weights = weights;
  local_request.max_speed_mps = speed_cap;
+ // Preserve a behavior-independent motion budget for the safety planner.
+ // A stop line or yield decision can set max_speed_mps to zero, but waiting
+ // is not safe when a predicted participant will enter the stationary
+ // footprint. This cap comes from the ordinary chassis/terrain speed limit;
+ // it is not actor truth or a scenario-specific escape command.
+ local_request.collision_escape_max_speed_mps =
+ route_independent_speed_cap * snapshot_.strategy.applied.speed_scale;
  local_request.max_yaw_rate_radps = yaw_cap_rads_;
  sim::SafeStopLimits current_stop_limits;
  current_stop_limits.brake_decel_mps2 =
@@ -731,7 +1160,10 @@ void ScenarioSession::decide_control() {
  // separately modelled emergency tail uses the stricter stability-aware stop
  // limit below; conflating the two would unnecessarily cap ordinary forward
  // acceleration by the smaller of the front and rear support margins.
- local_request.max_accel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ local_request.max_accel_mps2 = std::min(
+ robot_definition_.motor.max_wheel_accel_mps2,
+ resolved_build_.traction().brake_decel_mps2);
+ local_request.max_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
  local_request.max_yaw_accel_radps2 = robot_definition_.max_yaw_accel_radps2;
  local_request.prediction_horizon_s = prediction_horizon;
  local_request.step_s = prediction_step_s;
@@ -745,22 +1177,63 @@ void ScenarioSession::decide_control() {
    : robot_definition_.drive_type == "differential"
  ? robot_definition_.wheel_base_m
  : 0.0;
+ local_request.drive_axle_x_m = chassis_caps_.geometry.drive_axle_x_m;
  local_request.max_wheel_speed_mps = max_forward_speed_mps_;
+ if (local_request.differential_track_m > 0.0) {
+ local_request.measured_wheel_speeds = sim::DifferentialWheelSpeeds{
+ measured_left_mps,
+ measured_right_mps,
+ };
+ }
  local_request.steering_wheel_base_m = chassis_caps_.geometry.steering_wheel_base_m;
  local_request.max_steer_rad = chassis_caps_.geometry.max_steer_rad;
  local_request.max_steer_rate_radps = chassis_caps_.geometry.max_steer_rate_radps;
  local_request.steering_response_s = chassis_caps_.geometry.steering_response_s;
+ local_request.support_width_m = chassis_caps_.geometry.support_width_m;
+ local_request.support_polygon = chassis_caps_.geometry.support_polygon;
+ local_request.center_of_mass_x_m = combined_center_x_m();
+ local_request.center_of_mass_height_m = combined_center_height_m();
+ local_request.max_dynamic_rollover_risk = kLocalDynamicRolloverRiskLimit;
  local_request.preferred_direction = route_direction;
  local_request.route_is_reverse = reverse_route;
  local_request.crossing_relevant = mapped_crossing_relevant;
  local_request.crossing_committed = crossing_committed;
- local_request.body_in_conflict = crossing.body_in_conflict;
- local_request.stop_plane_active = mapped_crossing_relevant &&
- local_stop_plane_active && governor_out.hold_active && governor_out.stop_valid && !crossing_committed;
- local_request.stop_point = governor_out.stop_point;
- local_request.stop_direction = governor_out.stop_direction;
- local_request.stop_tolerance_m = kStopControllerToleranceM;
+ local_request.committed_no_return =
+ traffic_decision.control.no_return_started;
+ local_request.stop_plane_active = local_stop_plane_active &&
+ stop_plane_governor_available &&
+ !crossing_committed && !traffic_decision.control.relocated_hold;
+ local_request.stop_point = stop_plane_governor_available
+ ? stop_plane_governor.stop_point
+ : governor_out.stop_point;
+ local_request.stop_direction = stop_plane_governor_available
+ ? stop_plane_governor.stop_direction
+ : governor_out.stop_direction;
+ local_request.stop_tolerance_m = stop_plane_tracking_tolerance_m;
  local_request.committed_progress_floor_mps = committed_floor;
+ if (crossing_committed) {
+ local_request.committed_tracking_corridor_m =
+ traffic_decision.control.tracking_corridor_m;
+ // Admission explicitly swept the behavior schedule over
+ // +/- kCrossingTimeMarginS. Match measured progress to a phase inside that
+ // already-proved band, then keep that phase for the candidate interval and
+ // remaining-trajectory recheck. Always choosing the slow edge incorrectly
+ // rejected a platform that accelerated ahead of that edge; always choosing
+ // nominal time incorrectly rejected ordinary actuator lag.
+ const double matched_execution_phase_s =
+ sim::match_timed_trajectory_phase(
+ traffic_decision.control.execution_trajectory, {nav_x, nav_y},
+ traffic_decision.control.execution_elapsed_s,
+ sim::kCrossingTimeMarginS);
+ local_request.committed_reference_trajectory =
+ sim::remaining_timed_trajectory(
+ traffic_decision.control.execution_trajectory,
+ matched_execution_phase_s);
+ local_request.committed_reference_path.reserve(
+ traffic_decision.control.execution_trajectory.size());
+ for (const auto& pose : traffic_decision.control.execution_trajectory)
+ local_request.committed_reference_path.push_back(pose.p);
+ }
  // The stopping tail is based on the delivered controller bandwidth and the
  // tire/contact deceleration contract. It applies to actuator-level wheeled
  // and tracked plants; the trajectory validator then checks the resulting
@@ -770,11 +1243,26 @@ void ScenarioSession::decide_control() {
  const double local_controller_bandwidth = local_motor
  ? local_motor->controller_bandwidth_radps
  : robot_definition_.motor.controller_bandwidth_radps;
+ local_request.emergency_stop_required = true;
  local_request.actuator_response_delay_s =
  1.0 / std::max(0.1, local_controller_bandwidth);
  local_request.emergency_stop_delay_s = 1.0 / decision_hz() +
  local_request.actuator_response_delay_s;
  local_request.emergency_decel_mps2 = safe_stop_decel_mps2;
+ const double brake_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ const double stop_center_x_m = combined_center_x_m();
+ const double stop_center_height_m = combined_center_height_m();
+ local_request.safe_stop_decel =
+ [this, brake_decel_mps2, stop_center_x_m, stop_center_height_m](
+ sim::Vec2 position, double heading_rad) {
+ sim::SafeStopLimits limits;
+ limits.brake_decel_mps2 = brake_decel_mps2;
+ limits.longitudinal_grade = sim::longitudinal_grade(
+ terrain_.sample(position), heading_rad);
+ limits.center_of_mass_x_m = stop_center_x_m;
+ limits.center_of_mass_height_m = stop_center_height_m;
+ return sim::safe_stop_linear_decel_limit(chassis_caps_, limits);
+ };
  }
  // Path/progress/oscillation critics are shared guidance for twist-space
  // planners, including tracked and holonomic chassis. A tracked plant still
@@ -784,7 +1272,12 @@ void ScenarioSession::decide_control() {
  if (local_request.command_space != sim::LocalCommandSpace::SteeringAngle) {
  local_request.reference.previous_angular_command_radps = held_command_.target_w;
  local_request.reference.path.push_back({nav_x, nav_y});
- if (local_request.stop_plane_active) {
+ if (crossing_committed && !local_request.committed_reference_path.empty()) {
+ for (const auto& point : local_request.committed_reference_path) {
+ if (distance(local_request.reference.path.back(), point) > 1e-6)
+ local_request.reference.path.push_back(point);
+ }
+ } else if (local_request.stop_plane_active) {
  // A behavior hold inserts a temporary terminal pose into the local plan.
  // Referencing route vertices beyond the closed virtual wall asks the path
  // critic to continue through the crossing while the validator forbids it.
@@ -795,62 +1288,180 @@ void ScenarioSession::decide_control() {
  } else if (!planned_route_.empty()) {
  const std::size_t guide_index = std::min(
  route_tracking_system_->path_index(), planned_route_.size() - 1);
- const std::size_t search_begin = guide_index > 8 ? guide_index - 8 : 0;
- const std::size_t search_end = std::min(planned_route_.size(), guide_index + 32);
- std::size_t closest_index = search_begin;
- double closest_distance = std::numeric_limits<double>::infinity();
- for (std::size_t index = search_begin; index < search_end; ++index) {
- const double candidate_distance = distance(
- {nav_x, nav_y}, planned_route_[index].position);
- if (candidate_distance < closest_distance) {
- closest_distance = candidate_distance;
- closest_index = index;
- }
- }
  const double reference_length_m =
  speed_cap * prediction_horizon + property(behavior_, "lookahead_m");
- double accumulated_m = 0.0;
- sim::Vec2 previous{nav_x, nav_y};
- for (std::size_t index = closest_index;
- index < planned_route_.size() && accumulated_m <= reference_length_m;
- ++index) {
- const auto point = planned_route_[index].position;
- const double leg_m = distance(previous, point);
- if (leg_m > 1e-6) {
- local_request.reference.path.push_back(point);
- accumulated_m += leg_m;
- previous = point;
- }
- }
+ local_request.reference.path = sim::forward_route_reference(
+ planned_route_, guide_index, {nav_x, nav_y}, reference_length_m);
  }
  }
  const auto local_plan = autonomy_pipeline_->plan_local(
  local_request, local_planning_map, local_predicted_frames,
- [this](sim::Vec2 from, sim::Vec2 to) {
+ [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
  collision_monitor_->static_motion_free(
- from, to, level_.planning_localization_margin_m);
+ from, to, physical_execution_margin_m);
  }, &local_physical_collision_map,
- [this](sim::Vec2 from, sim::Vec2 to) {
+ [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
+ // The physical map owns observed obstacles, but its static base is authored
+ // occupancy rather than a footprint-inflated raster. Keep the analytic
+ // world/box collision check here as well; otherwise a recovery may leave
+ // soft inflation by driving through a wall or across the world boundary.
+ // The localization reserve is physical uncertainty, not the comfort/policy
+ // envelope that this recovery is allowed to relax.
  return std::isfinite(navigation_traversal_cost(from, to)) &&
  collision_monitor_->static_motion_free(
- from, to, level_.planning_localization_margin_m);
- });
+ from, to, physical_execution_margin_m);
+ }, [this](sim::Vec2 position) { return terrain_.sample(position); });
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;
+ if (snapshot_.time_s >= 155.0 && snapshot_.time_s <= 196.0 &&
+     nav_y < 2.0) {
+  double predicted_min_y = std::numeric_limits<double>::infinity();
+  double predicted_terminal_y = nav_y;
+  double predicted_min_clearance = std::numeric_limits<double>::infinity();
+  for (const auto& sample : validated_selection.trajectory.samples) {
+   predicted_min_y = std::min(predicted_min_y, sample.position.y);
+   predicted_terminal_y = sample.position.y;
+   predicted_min_clearance = std::min(
+    predicted_min_clearance,
+    collision_monitor_->static_clearance(sample.position));
+  }
+  const auto& selected_command = validated_selection.trajectory.command;
+  std::fprintf(stderr,
+   "[trace] t=%.2f nav=(%.3f,%.3f,%.3f) v=%.3f w=%.3f "
+   "cmd=(%.3f,%.3f) best=(%.3f,%.3f) pred=(%.3f,%.3f,clr%.3f) "
+   "mon_clr=%.3f pref_clr=%.3f phys_clr=%.3f req=%.3f "
+   "stop=%d maxv=%.2f rec=%d gear=%d nbr=%d prog=%.3f acc=%zu verdict=%d\n",
+   snapshot_.time_s, nav_x, nav_y, nav_heading,
+   local_request.forward_mps, local_request.yaw_rate_radps,
+   selected_command.v, selected_command.w,
+   dwa.best.command.v, dwa.best.command.w,
+   predicted_min_y, predicted_terminal_y, predicted_min_clearance,
+   collision_monitor_->static_clearance({nav_x, nav_y}),
+   local_planning_map.clearance(nav_x, nav_y),
+   local_physical_collision_map.clearance(nav_x, nav_y),
+   local_request.required_clearance_m,
+   local_request.stop_plane_active ? 1 : 0,
+   local_request.max_speed_mps,
+   local_plan.static_margin_recovery_active ? 1 : 0,
+   local_plan.static_margin_recovery_gear,
+   local_plan.near_boundary_clearance_recovery_active ? 1 : 0,
+   local_plan.static_margin_escape_progress_m,
+   validated_selection.accepted_candidates,
+   static_cast<int>(validated_selection.validation.verdict));
+ }
+ snapshot_.control.static_margin_recovery_active =
+ local_plan.static_margin_recovery_active;
+ snapshot_.control.static_margin_recovery_gear =
+ local_plan.static_margin_recovery_gear;
+ snapshot_.control.static_margin_escape_origin =
+ local_plan.static_margin_escape_origin;
+ snapshot_.control.static_margin_escape_heading_rad =
+ local_plan.static_margin_escape_heading_rad;
+ snapshot_.control.static_margin_escape_required_progress_m =
+ local_plan.static_margin_escape_required_progress_m;
+ snapshot_.control.static_margin_escape_progress_m =
+ local_plan.static_margin_escape_progress_m;
+ snapshot_.control.near_boundary_clearance_recovery_active =
+ local_plan.near_boundary_clearance_recovery_active;
  snapshot_.control.dwa_active =
  local_request.command_space == sim::LocalCommandSpace::DifferentialTwist;
  snapshot_.control.dwa_proposed_v_mps = dwa.best.command.v;
  snapshot_.control.dwa_proposed_w_radps = dwa.best.command.w;
  snapshot_.control.dwa_accepted_candidates = validated_selection.accepted_candidates;
+	if (std::abs(route_control.tv) <= 1e-9 && std::abs(route_control.err) > 0.05) {
+		static double diagnostic_last_s = -1.0;
+		if (snapshot_.time_s - diagnostic_last_s > 2.0) {
+			diagnostic_last_s = snapshot_.time_s;
+			int turning = 0;
+			int turning_free = 0;
+			for (const auto& rollout : dwa.rollouts) {
+				if (std::abs(rollout.trajectory.command.w) <= 0.1) {
+					continue;
+				}
+				++turning;
+				if (!rollout.collision) {
+					++turning_free;
+				}
+			}
+			const bool preferred_free =
+				local_planning_map.isFree(nav_x, nav_y);
+			const double preferred_clearance =
+				local_planning_map.clearance(nav_x, nav_y);
+			const bool physical_free =
+				local_physical_collision_map.isFree(nav_x, nav_y);
+			const double physical_clearance =
+				local_physical_collision_map.clearance(nav_x, nav_y);
+			std::fprintf(stderr,
+				"[diag] t=%.2f nav=(%.2f,%.2f,%.2f) target=(%.2f,%.2f) err=%.3f "
+				"tv=%.3f cap=%.3f target_hdg=%s%.3f fwd=%.3f yaw=%.3f "
+				"yaw_accel=%.2f accel=%.3f decel=%.3f track=%.3f "
+				"wheel=(%.3f,%.3f) best=(%.3f,%.3f,v%d) rollouts=%zu turn=%d/%d "
+				"accepted=%zu verdict=%d idx=%zu route=%zu "
+				"pref=(%d,%.2f) phys=(%d,%.2f) rec=%d nbr=%d "
+				"escape=(%.2f,%.2f,%.2f) progress=%.2f\n",
+				snapshot_.time_s, nav_x, nav_y, nav_heading, target.x, target.y,
+				route_control.err, route_control.tv, speed_cap,
+				local_target_heading ? "" : "none:", local_target_heading.value_or(0.0),
+				local_request.forward_mps, local_request.yaw_rate_radps,
+				local_request.max_yaw_accel_radps2, local_request.max_accel_mps2,
+				local_request.max_decel_mps2, local_request.differential_track_m,
+				local_request.measured_wheel_speeds
+					? local_request.measured_wheel_speeds->left_mps : 0.0,
+				local_request.measured_wheel_speeds
+					? local_request.measured_wheel_speeds->right_mps : 0.0,
+				dwa.best.command.v,
+				dwa.best.command.w, dwa.best.command.valid ? 1 : 0,
+				dwa.rollouts.size(), turning_free, turning,
+				validated_selection.accepted_candidates,
+				static_cast<int>(validated_selection.validation.verdict),
+				route_tracking_system_->path_index(), planned_route_.size(),
+				preferred_free ? 1 : 0, preferred_clearance,
+				physical_free ? 1 : 0, physical_clearance,
+				local_plan.static_margin_recovery_active ? 1 : 0,
+				local_plan.near_boundary_clearance_recovery_active ? 1 : 0,
+				local_plan.static_margin_escape_origin.x,
+				local_plan.static_margin_escape_origin.y,
+				local_plan.static_margin_escape_heading_rad,
+				local_plan.static_margin_escape_progress_m);
+		}
+	}
  const auto& selected_trajectory = validated_selection.trajectory;
  for (const auto& sample : selected_trajectory.samples)
   snapshot_.control.dwa_selected.push_back(sample.position);
  const auto& trajectory_validation = validated_selection.validation;
+ // Local collision freedom is weaker than the time-indexed crossing proof.
+ // If selection can no longer execute either the admitted schedule or a
+ // separately named committed contingency, behavior must reassess the old
+ // admission on the next decision cycle instead of silently waiting inside
+ // its expiring traffic window.
+ // Schedule preservation is independent of the local recovery verdict. A
+ // body that has drifted into preferred static inflation may receive a
+ // MinimumRiskEscape label while the independently joined timed continuation
+ // still preserves the admitted crossing. Treating that label alone as a
+ // blocked schedule revokes valid authority one cycle before the recovery
+ // exits the soft margin. Only loss of the schedule proof blocks execution.
+ autonomy_pipeline_->report_crossing_execution(
+ crossing_committed, trajectory_validation,
+ snapshot_.control.trajectory_sequence, snapshot_.time_s);
+ snapshot_.control.crossing_execution_blocked =
+ autonomy_pipeline_->crossing_execution_feedback().blocked;
  snapshot_.control.trajectory_validated = trajectory_validation.accepted();
  snapshot_.control.trajectory_verdict = static_cast<int>(trajectory_validation.verdict);
  snapshot_.control.trajectory_diagnostic = trajectory_validation.diagnostic;
  snapshot_.control.trajectory_min_dynamic_clearance_m = trajectory_validation.min_dynamic_clearance_m;
+ snapshot_.control.trajectory_max_dynamic_rollover_risk =
+ trajectory_validation.max_dynamic_rollover_risk;
+ snapshot_.control.trajectory_preserves_committed_schedule =
+ trajectory_validation.preserves_committed_schedule;
+ snapshot_.control.trajectory_committed_position_error_m =
+ trajectory_validation.committed_position_error_m;
+ snapshot_.control.trajectory_committed_heading_error_rad =
+ trajectory_validation.committed_heading_error_rad;
+ snapshot_.control.trajectory_committed_speed_error_mps =
+ trajectory_validation.committed_speed_error_mps;
+ snapshot_.control.trajectory_committed_tracking_cost =
+ trajectory_validation.committed_tracking_cost;
  double predicted_separation_m = std::isfinite(trajectory_validation.min_dynamic_clearance_m)
                                    ? trajectory_validation.min_dynamic_clearance_m
                                    : std::numeric_limits<double>::quiet_NaN();
@@ -867,9 +1478,27 @@ void ScenarioSession::decide_control() {
     std::move(rollout_points),
     rollout.collision,
     rollout.trajectory.command.score,
+ rollout.trajectory.command.v,
+ rollout.trajectory.command.w,
   });
  }
- const bool trajectory_accepted = trajectory_validation.accepted();
+ // Once a safety stop has started, finish the physically reachable stop
+ // before transferring authority back to a newly valid moving rollout. A
+ // planner can become nominally feasible one cycle after rejection while
+ // the plant is still carrying the rejected maneuver's momentum; alternating
+ // those two commands produces a brake/accelerate limit cycle on slopes.
+ constexpr double kControlledStopLinearReleaseMps = 0.04;
+ constexpr double kControlledStopYawReleaseRadps = 0.08;
+ const bool controlled_stop_in_progress = held_command_.controlled_stop &&
+ (std::abs(local_request.forward_mps) > kControlledStopLinearReleaseMps ||
+ std::abs(local_request.lateral_mps) > kControlledStopLinearReleaseMps ||
+ std::abs(local_request.yaw_rate_radps) > kControlledStopYawReleaseRadps);
+ const bool trajectory_accepted =
+ trajectory_validation.accepted() && !controlled_stop_in_progress;
+ const bool stability_rejection =
+ trajectory_validation.verdict == sim::TrajectoryVerdict::DynamicStabilityViolation ||
+ (trajectory_validation.verdict == sim::TrajectoryVerdict::UnsafeEmergencyStop &&
+ trajectory_validation.diagnostic.find("support-polygon") != std::string::npos);
  if (!trajectory_accepted) {
  // A rejected rollout requests a stop, but zero is not an instantaneous
  // actuator state. Stage the emergency command through the assembled support
@@ -881,10 +1510,17 @@ void ScenarioSession::decide_control() {
  const double stop_grade = sim::longitudinal_grade(stop_terrain, nav_heading);
  const bool steering_command =
  local_request.command_space == sim::LocalCommandSpace::SteeringAngle;
+ // A stop trajectory is initialized from feedback once, then remains a
+ // monotonic command ramp. Re-seeding it from measured speed every cycle
+ // makes a downhill disturbance raise the next target and prevents the
+ // speed loop from developing braking error.
+ const bool continuing_controlled_stop = held_command_.controlled_stop;
  const sim::SafeStopMotion stop_motion{
- local_request.forward_mps,
- local_request.lateral_mps,
- steering_command ? local_request.steering_angle_rad : local_request.yaw_rate_radps,
+ continuing_controlled_stop ? held_command_.target_v : local_request.forward_mps,
+ continuing_controlled_stop ? held_command_.target_lateral_v : local_request.lateral_mps,
+ continuing_controlled_stop
+ ? held_command_.target_w
+ : (steering_command ? local_request.steering_angle_rad : local_request.yaw_rate_radps),
  };
  sim::SafeStopLimits stop_limits;
  stop_limits.update_interval_s = prediction_step_s;
@@ -909,9 +1545,13 @@ void ScenarioSession::decide_control() {
   // planner needs its own dynamically validated trajectory and termination
   // contract; an unverified steering heuristic must never bypass DWA.
   if (!snapshot_.waiting_for_clearance) {
-   std::ostringstream waiting;
-   waiting << std::fixed << std::setprecision(1) << nearest_actor;
-   record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}));
+ if (stability_rejection) {
+ record_event("stability_hold", catalog_.tr("event.stability_hold"));
+ } else if (std::isfinite(nearest_actor)) {
+ std::ostringstream waiting;
+ waiting << std::fixed << std::setprecision(1) << nearest_actor;
+ record_event("waiting", catalog_.trf("event.waiting", {waiting.str()}));
+ }
   }
   snapshot_.waiting_for_clearance = true;
  shadow_open_speed_ = known_tracks.empty() ? -1.0 : 0.0;
@@ -919,7 +1559,8 @@ void ScenarioSession::decide_control() {
  shadow_open_speed_ = std::max(shadow_open_speed_, std::hypot(track.state.v.x, track.state.v.y));
  }
  shadow_open_nearest_ = std::isfinite(nearest_actor) ? nearest_actor : -1.0;
-  update_shadow_episode();
+ if (!known_tracks.empty() || governor_out.hold_active)
+ update_shadow_episode();
  } else {
   const auto& command = selected_trajectory.command;
   // This is the only command publication point for a validated local
@@ -954,6 +1595,18 @@ void ScenarioSession::decide_control() {
  shadow_open_nearest_ = std::isfinite(nearest_actor) ? nearest_actor : -1.0;
   update_shadow_episode();
  }
+ // Compensate the gravity component using deployable state only. A calibrated
+ // IMU attitude owns the live estimate when available; otherwise the deployed
+ // 2.5D terrain map supplies the local grade. The low-level controller maps
+ // this SI request through finite motor authority, while tire/contact physics
+ // remains free to slip when the surface cannot carry the requested force.
+ const auto current_terrain = terrain_.sample({nav_x, nav_y});
+ const double current_grade = sim::longitudinal_grade(current_terrain, nav_heading);
+ const auto& control_estimate = estimation_system_.state();
+ held_command_.longitudinal_acceleration_feedforward_mps2 =
+ control_estimate.attitude_valid
+ ? -9.81 * std::sin(control_estimate.pitch_rad)
+ : 9.81 * current_grade / std::sqrt(1.0 + current_grade * current_grade);
  const bool minimum_risk_escape = trajectory_validation.minimum_risk_escape();
  const bool committed_transit = trajectory_validation.committed_transit();
  const std::string action_code =
@@ -964,13 +1617,20 @@ void ScenarioSession::decide_control() {
      : (snapshot_.waiting_for_clearance ? "wait" : (trajectory_accepted ? "avoid" : "wait"));
  const std::string reason_code =
  !trajectory_accepted
-     ? "no-safe-local-trajectory"
+ ? (controlled_stop_in_progress
+ ? "controlled-stop-in-progress"
+ : (stability_rejection ? "stability-envelope" : "no-safe-local-trajectory"))
  : (committed_transit
  ? "crossing-committed"
      : (governor_out.hold_active
           ? "entry-window-occupied"
  : (snapshot_.waiting_for_clearance ? "predicted-path-conflict" : "safe-local-trajectory")));
- publish(reason_code == "safe-local-trajectory" ? "none" : "dynamic-clearance", reason_code, action_code,
+ const std::string constraint_code = reason_code == "safe-local-trajectory"
+ ? "none"
+ : (controlled_stop_in_progress
+ ? "physical-stop"
+ : (stability_rejection ? "dynamic-stability" : "dynamic-clearance"));
+ publish(constraint_code, reason_code, action_code,
          observation_time_s, std::move(observation_refs), prediction_horizon,
          std::isfinite(nearest_actor) ? nearest_actor : unavailable, predicted_separation_m);
 }

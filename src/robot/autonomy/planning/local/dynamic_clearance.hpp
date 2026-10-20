@@ -52,4 +52,23 @@ inline DynamicClearance dynamic_clearance_at(
  return out;
 }
 
+// Clearance of a brake-and-hold pose over the complete maintained forecast.
+// A staged rotate-then-translate recovery may prefer to turn in place, but
+// that preference cannot become a hard zero-speed constraint when a moving
+// object is predicted to invade the stationary footprint.
+inline DynamicClearance minimum_stationary_clearance(
+ Vec2 ego, const std::vector<std::vector<DynamicObjectState>>& frames,
+ double frame_dt_s, double ego_radius_m) {
+ DynamicClearance out;
+ for (std::size_t index = 0; index < frames.size(); ++index) {
+ const auto sample = dynamic_clearance_at(
+ ego, static_cast<double>(index) * frame_dt_s,
+ frames, frame_dt_s, ego_radius_m);
+ out.physical_m = std::min(out.physical_m, sample.physical_m);
+ out.conservative_m = std::min(
+ out.conservative_m, sample.conservative_m);
+ }
+ return out;
+}
+
 } // namespace sim

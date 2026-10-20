@@ -254,6 +254,41 @@ bool valid_locale_name(const std::string& value) {
  return true;
 }
 
+double point_segment_distance(sim::Vec2 point, sim::Vec2 from, sim::Vec2 to) {
+ const sim::Vec2 segment{to.x - from.x, to.y - from.y};
+ const double length_squared = segment.x * segment.x + segment.y * segment.y;
+ if (length_squared <= 1e-18)
+ return std::hypot(point.x - from.x, point.y - from.y);
+ const sim::Vec2 relative{point.x - from.x, point.y - from.y};
+ const double fraction = std::clamp(
+ (relative.x * segment.x + relative.y * segment.y) / length_squared,
+ 0.0, 1.0);
+ const sim::Vec2 nearest{
+ from.x + fraction * segment.x,
+ from.y + fraction * segment.y,
+ };
+ return std::hypot(point.x - nearest.x, point.y - nearest.y);
+}
+
+bool point_in_actor_swept_volume(sim::Vec2 point, const ActorDefinition& actor,
+ double additional_radius_m) {
+ if (actor.path.empty() || actor.radius_m < 0.0 || additional_radius_m < 0.0)
+ return false;
+ const double envelope_radius_m = actor.radius_m + additional_radius_m;
+ if (actor.path.size() == 1)
+ return point_segment_distance(point, actor.path.front(), actor.path.front()) <= envelope_radius_m;
+ if (actor.kind == "patrol") {
+ return point_segment_distance(point, actor.path[0], actor.path[1]) <= envelope_radius_m;
+ }
+ for (std::size_t index = 0; index < actor.path.size(); ++index) {
+ if (point_segment_distance(point, actor.path[index],
+ actor.path[(index + 1) % actor.path.size()]) <= envelope_radius_m) {
+ return true;
+ }
+ }
+ return false;
+}
+
 } // namespace
 
 double property(const Properties& properties, const std::string& name) {
@@ -696,7 +731,7 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
  }
  for (const auto& path : json_files(catalog.root_ / "maps")) {
   const auto value = read_localized_json(path, catalog.root_, catalog.locale_);
-  require_schema_v1(value, path);
+ require_schema_version(value, path, 2);
   MapDefinition map;
   map.id = value.at("id").get<std::string>();
   map.scene_3d = value.at("scene_3d").get<std::string>();
@@ -750,17 +785,13 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
    zone.max = vec2(item.at("max"));
    zone.authority = item.at("authority").get<std::string>();
    zone.active_in = item.value("active_in", std::vector<std::string>{});
- zone.participant_radius_m = item.at("participant_radius_m").get<double>();
  for (const auto& approach_item :
  item.value("observation_approaches", nlohmann::json::array())) {
  ConflictObservationApproachDefinition approach;
  for (const auto& point : approach_item.at("centerline"))
  approach.centerline.push_back(vec2(point));
  approach.half_width_m = approach_item.at("half_width_m").get<double>();
- approach.maximum_speed_mps =
- approach_item.at("maximum_speed_mps").get<double>();
- if (approach.centerline.size() < 2 || approach.half_width_m < 0.0 ||
- !(approach.maximum_speed_mps > 0.0)) {
+ if (approach.centerline.size() < 2 || !(approach.half_width_m > 0.0)) {
  throw ContentError(path.string() + ": conflict zone '" + zone.id +
  "' has an invalid observation approach");
  }
@@ -801,11 +832,6 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
     throw ContentError(path.string() + ": conflict zone '" + zone.id + "' has unknown authority '" +
                        zone.authority + "'");
    }
- if (!(zone.participant_radius_m >= 0.0) ||
- (zone.authority == "control" && !(zone.participant_radius_m > 0.0))) {
- throw ContentError(path.string() + ": conflict zone '" + zone.id +
- "' requires a positive participant_radius_m for control authority");
- }
    map.conflict_zones.push_back(std::move(zone));
   }
  std::set<std::string> world_object_ids;
@@ -1759,6 +1785,39 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
       (!level.objective.via.empty() && !map.markers.count(level.objective.via))) {
    throw ContentError("level '" + id + "' references an unknown map marker");
   }
+ // Goal markers describe intended service/arrival poses. They may sit beyond
+ // a controlled crossing, but their centres must lie outside the physical
+ // swept volume of every fatal actor. Validate the largest selectable
+ // chassis because a content selection must not turn an otherwise valid task
+ // into an unavoidable overlap. Score clearance is deliberately absent: a
+ // debrief target may be missed without making task geometry invalid.
+ const auto& presentation = catalog.presentation_for_level(id);
+ double largest_robot_radius_m = 0.0;
+ const auto include_robot_radius = [&](const std::string& robot_id) {
+ largest_robot_radius_m =
+ std::max(largest_robot_radius_m, catalog.robot(robot_id).collision_radius_m);
+ };
+ include_robot_radius(presentation.robot_id.empty() ? catalog.campaign_.companion_robot
+ : presentation.robot_id);
+ for (const auto& chassis_id : presentation.chassis_options)
+ include_robot_radius(chassis_id);
+ const double service_envelope_m = largest_robot_radius_m;
+ for (const auto& goal : level.objective.goals) {
+ const auto marker = map.markers.find(goal.marker);
+ if (marker == map.markers.end()) {
+ throw ContentError("level '" + id + "' references an unknown goal marker '" +
+ goal.marker + "'");
+ }
+ const sim::Vec2 service_point{marker->second.x, marker->second.y};
+ for (const auto& actor : map.actors) {
+ if (actor.collision_social || !active_in_level(actor.active_in, id))
+ continue;
+ if (point_in_actor_swept_volume(service_point, actor, service_envelope_m)) {
+ throw ContentError("level '" + id + "' goal marker '" + goal.marker +
+ "' lies inside fatal actor '" + actor.id + "' swept safety envelope");
+ }
+ }
+ }
  for (const auto& maneuver : level.maneuvers) {
  if (!map.markers.count(maneuver.spawn) || !map.markers.count(maneuver.goal)) {
  throw ContentError("level '" + id + "' maneuver '" + maneuver.id +

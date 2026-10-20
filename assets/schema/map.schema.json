@@ -16,7 +16,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+ "const": 2
     },
     "id": {
       "$ref": "#/$defs/id"
@@ -262,8 +262,7 @@
         "type",
         "min",
         "max",
-        "authority",
-        "participant_radius_m"
+ "authority"
       ],
       "properties": {
         "id": {
@@ -284,21 +283,15 @@
             "control"
           ]
         },
-        "participant_radius_m": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Conservative radius in meters around a traffic reference point, including expected footprint and the site's tracking reserve."
-        },
         "observation_approaches": {
           "type": "array",
-          "description": "Map-semantic traffic approaches that LiDAR must observe clear before track-free crossing release. Each centerline starts on the conflict-zone boundary and extends outward.",
+ "description": "Geometric traffic approaches used for visibility diagnostics. Each centerline starts on the conflict-zone boundary and extends outward; it does not declare unknown participants' physical capabilities.",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": [
               "centerline",
-              "half_width_m",
-              "maximum_speed_mps"
+ "half_width_m"
             ],
             "properties": {
               "centerline": {
@@ -310,11 +303,7 @@
               },
               "half_width_m": {
                 "type": "number",
-                "minimum": 0
-              },
-              "maximum_speed_mps": {
-                "type": "number",
-                "exclusiveMinimum": 0
+ "exclusiveMinimum": 0
               }
             }
           },

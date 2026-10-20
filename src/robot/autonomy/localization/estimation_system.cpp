@@ -9,6 +9,8 @@ namespace {
 
 constexpr double kGravityMps2 = 9.81;
 constexpr double kAttitudeCorrectionTimeConstantS = 0.50;
+constexpr double kPoseVelocityWindowS = 0.10;
+constexpr double kPoseVelocityFilterTimeConstantS = 0.25;
 
 } // namespace
 
@@ -66,6 +68,12 @@ void EstimationSystem::reset(double x, double y, double heading_rad, std::uint32
  state_.confidence = 1.0;
  attitude_ = {};
  attitude_initialized_ = false;
+ velocity_pose_anchor_.reset();
+ absolute_velocity_world_mps_ = {};
+ absolute_yaw_rate_radps_ = 0.0;
+ absolute_velocity_valid_ = false;
+ pose_velocity_innovation_samples_ = 0;
+ pose_yaw_rate_innovation_samples_ = 0;
 }
 
 void EstimationSystem::set_imu_mount_rpy(double roll_in_base_rad,
@@ -223,6 +231,41 @@ void EstimationSystem::correct(const PoseObservation& observation, double time_s
  };
  const double corrected_heading = wrap_angle(
  state_.heading_rad + wrap_angle(observation.heading_rad - state_.heading_rad) * heading_gain);
+ std::optional<Vec2> measured_pose_velocity_world_mps;
+ std::optional<double> measured_pose_yaw_rate_radps;
+
+ // A pose source also observes body translation independently of wheel
+ // rotation. Differentiate over a finite window, then low-pass the result so
+ // centimetre-level position noise is not amplified by the 20 ms control
+ // tick. This makes fused localization retain observability when locked or
+ // slipping wheels report zero speed while the chassis still moves.
+ if (!velocity_pose_anchor_) {
+ velocity_pose_anchor_ = observation;
+ } else {
+ const double velocity_dt_s =
+ observation.header.stamp_s - velocity_pose_anchor_->header.stamp_s;
+ if (velocity_dt_s >= kPoseVelocityWindowS - 1e-12) {
+ const Vec2 measured_world_velocity{
+ (observation.position.x - velocity_pose_anchor_->position.x) / velocity_dt_s,
+ (observation.position.y - velocity_pose_anchor_->position.y) / velocity_dt_s,
+ };
+ const double measured_yaw_rate = wrap_angle(
+ observation.heading_rad - velocity_pose_anchor_->heading_rad) / velocity_dt_s;
+ measured_pose_velocity_world_mps = measured_world_velocity;
+ measured_pose_yaw_rate_radps = measured_yaw_rate;
+ const double blend = absolute_velocity_valid_
+ ? 1.0 - std::exp(-velocity_dt_s / kPoseVelocityFilterTimeConstantS)
+ : 1.0;
+ absolute_velocity_world_mps_.x +=
+ blend * (measured_world_velocity.x - absolute_velocity_world_mps_.x);
+ absolute_velocity_world_mps_.y +=
+ blend * (measured_world_velocity.y - absolute_velocity_world_mps_.y);
+ absolute_yaw_rate_radps_ +=
+ blend * (measured_yaw_rate - absolute_yaw_rate_radps_);
+ absolute_velocity_valid_ = true;
+ velocity_pose_anchor_ = observation;
+ }
+ }
  // Keep odom -> base_footprint continuous. Global corrections move map ->
  // odom, matching the standard SLAM/localization TF contract.
  map_from_odom_heading_rad_ = wrap_angle(corrected_heading - odometry_.th);
@@ -233,6 +276,58 @@ void EstimationSystem::correct(const PoseObservation& observation, double time_s
  corrected_position.y - (sine * odometry_.p.x + cosine * odometry_.p.y),
  };
  update_map_state();
+ if (absolute_velocity_valid_ && measured_pose_velocity_world_mps &&
+ measured_pose_yaw_rate_radps) {
+ const double cosine_heading = std::cos(corrected_heading);
+ const double sine_heading = std::sin(corrected_heading);
+ const double pose_forward_mps =
+ cosine_heading * absolute_velocity_world_mps_.x +
+ sine_heading * absolute_velocity_world_mps_.y;
+ const double pose_lateral_mps =
+ -sine_heading * absolute_velocity_world_mps_.x +
+ cosine_heading * absolute_velocity_world_mps_.y;
+ // Weight a centimetre-accuracy pose source strongly enough to expose gross
+ // wheel slip while retaining the smoother encoder estimate during ordinary
+ // rolling. The measurement sigma remains part of the contract.
+ const double nominal_velocity_gain = std::clamp(
+ 0.8 / (1.0 + 20.0 * observation.position_sigma_m), 0.25, 0.8);
+ const double velocity_innovation_mps = std::hypot(
+ cosine_heading * measured_pose_velocity_world_mps->x +
+ sine_heading * measured_pose_velocity_world_mps->y -
+ state_.linear_velocity_mps,
+ -sine_heading * measured_pose_velocity_world_mps->x +
+ cosine_heading * measured_pose_velocity_world_mps->y -
+ state_.lateral_velocity_mps);
+ const double velocity_innovation_threshold_mps = std::max(
+ 0.25, 3.0 * std::sqrt(2.0) * observation.position_sigma_m /
+ kPoseVelocityWindowS);
+ const double velocity_gain =
+ velocity_innovation_mps > velocity_innovation_threshold_mps &&
+ ++pose_velocity_innovation_samples_ >= 2
+ ? nominal_velocity_gain : 0.0;
+ if (velocity_innovation_mps <= velocity_innovation_threshold_mps)
+ pose_velocity_innovation_samples_ = 0;
+ state_.linear_velocity_mps +=
+ velocity_gain * (pose_forward_mps - state_.linear_velocity_mps);
+ state_.lateral_velocity_mps +=
+ velocity_gain * (pose_lateral_mps - state_.lateral_velocity_mps);
+ const double nominal_yaw_rate_gain = std::clamp(
+ 0.8 / (1.0 + 20.0 * observation.heading_sigma_rad), 0.25, 0.8);
+ const double yaw_rate_innovation_threshold_radps = std::max(
+ 0.25, 3.0 * std::sqrt(2.0) * observation.heading_sigma_rad /
+ kPoseVelocityWindowS);
+ const double yaw_rate_gain =
+ std::abs(*measured_pose_yaw_rate_radps - state_.angular_velocity_radps) >
+ yaw_rate_innovation_threshold_radps &&
+ ++pose_yaw_rate_innovation_samples_ >= 2
+ ? nominal_yaw_rate_gain : 0.0;
+ if (std::abs(*measured_pose_yaw_rate_radps - state_.angular_velocity_radps) <=
+ yaw_rate_innovation_threshold_radps) {
+ pose_yaw_rate_innovation_samples_ = 0;
+ }
+ state_.angular_velocity_radps +=
+ yaw_rate_gain * (absolute_yaw_rate_radps_ - state_.angular_velocity_radps);
+ }
  state_.confidence = std::max(state_.confidence, 0.9);
  state_.timestamp_s = time_s;
 }

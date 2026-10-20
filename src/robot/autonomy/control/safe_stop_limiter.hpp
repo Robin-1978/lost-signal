@@ -4,9 +4,12 @@
 
 namespace sim {
 
-// Measured chassis motion at the instant a safety stop is requested. `turn`
-// is yaw rate for YawRate/HolonomicTwist chassis and steering angle for an
-// Ackermann chassis.
+// Reference motion for one step of the stop ramp. The caller initializes it
+// from measured chassis motion when stopping begins, then feeds the previous
+// published stop command into subsequent steps. Reinitializing every step
+// from a gravity-accelerated measurement would move the braking target away
+// from zero. `turn` is yaw rate for YawRate/HolonomicTwist chassis and
+// steering angle for an Ackermann chassis.
 struct SafeStopMotion {
  double forward_mps{0.0};
  double lateral_mps{0.0};

@@ -132,8 +132,6 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  {zone.min.x, zone.max.y},
  };
  feature.attributes.emplace("authority", zone.authority);
- feature.attributes.emplace(
- "participant_radius_m", std::to_string(zone.participant_radius_m));
  result.features.push_back(std::move(feature));
  for (std::size_t index = 0; index < zone.observation_approaches.size(); ++index) {
  const auto& approach = zone.observation_approaches[index];
@@ -145,8 +143,6 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  approach_feature.attributes.emplace("conflict_zone_id", zone.id);
  approach_feature.attributes.emplace(
  "half_width_m", std::to_string(approach.half_width_m));
- approach_feature.attributes.emplace(
- "maximum_speed_mps", std::to_string(approach.maximum_speed_mps));
  result.features.push_back(std::move(approach_feature));
  }
  }

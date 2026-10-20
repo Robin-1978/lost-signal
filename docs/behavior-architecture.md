@@ -38,6 +38,29 @@ behavior latch enters `Committed` only after the route occupancy and intent cont
 confirmation interval. The route-level crossing schedule decides whether departure is permitted; it does not claim
 that a different DWA rollout is safe. Every local rollout remains independently validated on every decision tick.
 
+### Clearance and result semantics
+
+Distance has three separate meanings and they must not share one threshold:
+
+1. **Physical clearance** is signed footprint-to-footprint separation. A negative value is geometric overlap and is
+ a collision. Zero is the physical boundary, not a useful normal-driving target.
+2. **Hard operational reserve** covers represented observation age, sensor motion during acquisition, localization
+ and tracking uncertainty, controller response, and reachable braking or escape motion. Normal candidates must pass
+ the complete time-indexed reserve. A minimum-risk response may enter the normal reserve only when every normal
+ action fails, it improves risk relative to brake-and-hold, and its complete physical trajectory remains free.
+3. **Preferred clearance** is a policy or score target such as 0.5 m or 0.6 m. It ranks already feasible candidates
+ and awards a debrief result. Missing it cannot by itself turn a completed collision-free task into failure.
+
+The current rotating-LiDAR reserve includes a deterministic scan-motion term derived from scan cadence, ego speed,
+yaw rate and footprint radius. This is a conservative baseline, not a calibrated uncertainty model; P1 still needs
+relative target motion, data age, estimator covariance and tracking/control error to enter the reserve explicitly.
+`score.safe_min_clearance_m` remains GAME-owned and never enters a ROBOT permission calculation or map-validity test.
+
+A gameplay mission succeeds when its objectives and hard mission constraints are satisfied. Clearance, time,
+energy, smoothness and estimation quality remain optimization evidence and badge/leaderboard axes. Physics and
+algorithm acceptance scenes retain quantitative pass/fail envelopes because their purpose is model verification,
+not campaign progression.
+
 ```mermaid
 flowchart LR
  Intent[Mission intent] --> Graph[Behavior Graph]
@@ -58,11 +81,15 @@ Map conflict zones declare an explicit `authority`:
 - `shadow` evaluates the route-level crossing hypothesis without constraining the vehicle;
 - `control` may apply the hold/commit state machine.
 
-Each zone also declares `participant_radius_m`, a conservative envelope around the traffic reference point. It
-combines the largest expected participant footprint with the site's tracking reserve, so behavior can derive a safe
-stop before a live track matures without reading simulator actor truth. The stop is solved continuously on the
-global route; grid vertices provide route topology but do not quantize the final behavior constraint. Prediction
-then checks that fixed hold pose and the complete crossing trajectory at matching times.
+Mapped zones are optional context for route rules and early approach control. The stop is solved continuously on the
+global route; grid vertices provide route topology but do not quantize the final behavior constraint. An unmapped
+temporary participant must still produce an online conflict through the same time-occupancy pipeline. Map geometry
+never supplies actor identity, authored motion or physical capability.
+
+Visibility sampling records where current rays provide free-space evidence. Scanner angular resolution enters
+through the actual ray set, so a sparse scan leaves gaps instead of receiving a fixed behavior-layer beam width.
+Even complete geometric coverage is diagnostic only: without an enforced traffic interlock it cannot bound how soon
+an unseen real participant may enter and cannot independently authorize a crossing.
 
 `shadow` remains available for experiments. The research-base forklift encounter is a bounded `control` slice in
 every level that traverses it; sensing configuration changes evidence quality, never whether safety behavior exists.
@@ -82,9 +109,20 @@ The controlled slice holds before the mapped conflict region, requires a continu
 the exit target after commitment, forbids ordinary reverse recovery while crossing, and retains an independent
 physical-collision veto. Its selected local rollout is validated against static geometry, terrain, prediction
 coverage, swept same-time dynamic clearance, and a braking tail. If braking after commitment would stop the body in
-the conflict, a fully margin-compliant forward rollout is the named `CommittedTransit` response. It still must pass
-the nominal static and dynamic checks. Trajectory tracking error remains evidence until a closed-loop recovery for
-tracking-envelope violations is implemented.
+the conflict or its unsafe approach envelope, a validated forward rollout is the named `CommittedTransit` response.
+The no-return latch starts when the body enters that safety envelope, before physical overlap with the map box; a
+vehicle may not stop at the edge of moving traffic and then reverse toward an old stop pose whose recovery was never
+proved. Static collision, terrain and physical-overlap checks remain hard vetoes.
+
+The canonical global polyline and every map-validated shortcut are parallel candidates. Static line-of-sight never
+overwrites the canonical route because a shorter chord can have worse same-time clearance from moving traffic. A
+differential candidate may replace fitting raster corners with tangent circular fillets from the shared ROBOT-side
+path-smoothing module. The module publishes constructed curvature, and behavior time-parameterizes it with linear
+acceleration, braking, yaw-rate and yaw-acceleration caps. Every fillet chord is rechecked through the deployable map
+callback. A corner that lacks space or fails that check retains the explicit stop-turn-go contract. The crossing exit
+is a non-zero-speed control handoff boundary rather than an artificial docking stop. The executor receives an
+explicit continuous/stop-turn execution flag, follows continuous curves with a rolling lookahead, and never
+reinterprets dense arc samples as stop points.
 
 ## DWA safety evidence
 
@@ -118,32 +156,105 @@ timestamped LiDAR observations
  -> control, with an independent emergency veto
 ```
 
-The tracker uses a deterministic alpha-beta predictor/corrector over position and velocity. It predicts to the
-observation sample time, applies the position innovation with separate position and velocity gains, rejects stale
-timestamps, limits impossible speed, and learns shuttle corridors from filtered states. Repeated endpoint samples
-make current velocity converge toward zero while prediction retains continuation and reversal hypotheses until
-sustained motion resolves intent. This small constant-velocity filter fits the present single-LiDAR teaching scope.
-A covariance-aware Kalman filter or interacting multiple-model tracker becomes justified when the simulator adds
-association uncertainty, acceleration models, or fused radar/camera observations; replacing the current filter must
-preserve the same timestamped track and prediction contracts.
+The map-independent entry-window assessor now lives in ROBOT. It clips the
+ego route to the current prediction horizon, checks the continuous same-time
+sweep including between-frame crossings, and derives a temporary hold point
+from braking distance plus predicted occupancy. SIM supplies no stop
+position. Mapped crossing behavior may add route rules and commitment state;
+the generic detector remains available when mapped semantics are absent or
+irrelevant.
 
-Crossing relevance follows the route point nearest the physical body, never the controller lookahead index. The map
-zone represents the geometric overlap of the two motion corridors. Release requires the ego body to settle at a
-fixed stop line and one of two positive evidence paths. Fresh tracked-object evidence must show every relevant
-prediction mode leaving the zone with outward observed motion and a clear complete traversal interval. When no fresh
-track exists, current LiDAR rays must cover every point of each map-semantic traffic approach, and the conservative
-arrival bound for anything beyond the observed corridor must exceed traversal time plus margin. Physical returns
-occlude the space behind them; participant radius and scan age reduce that bound. Consecutive confirmation counts
-distinct sensor timestamps, so a faster behavior loop cannot reuse one scan. Empty frames, stale tracks, short range,
-partial coverage and unconfirmed motion remain unknown and keep the hold active. Passing the commit line latches the
-exit maneuver so ordinary soft-margin changes do not stop or reverse the robot inside the conflict area.
+Dynamic conflict does not imply that stopping is always the safest action.
+ROBOT treats proceed, bounded slowdown, brake-and-hold, and kinematically
+feasible avoidance as different candidate trajectories. Holding is admissible
+only when the predicted target occupancy does not invade the hold trajectory.
+An avoidance or escape is admissible only after the same static geometry,
+terrain, actuator, stability, full-footprint dynamic-clearance and braking-tail
+checks used for ordinary motion. If every collision-free candidate fails, the
+result is explicitly no collision-free action; a separately named
+minimum-risk motion may be selected only when it has lower predicted impact
+risk than brake-and-hold and does not introduce a physical collision. This is
+an operational risk response, not a safety-rated guarantee about another
+participant.
+
+The final collision monitor has a narrower role. It consumes fresh sensor
+evidence with minimum latency and may limit speed or demand braking; it never
+invents an unvalidated steering maneuver. This follows the separation used by
+Nav2 Collision Monitor and Autoware AEB. Autoware's dynamic obstacle avoidance
+similarly modifies the drivable area only when the motion satisfies lateral
+acceleration and jerk constraints, and declines aggressive avoidance for a
+target that is too close or moving laterally too fast. Lost Signal therefore
+keeps normal interaction planning, independent trajectory validation and
+last-line braking as three distinct contracts.
+
+The current tracker uses a deterministic alpha-beta predictor/corrector over position and velocity. It predicts to
+the observation sample time, applies the position innovation with separate position and velocity gains, rejects stale
+timestamps and limits impossible speed. It can retain continuation and reversal hypotheses around an observed
+endpoint and can use bounded-motion hypotheses to associate a target after a short occlusion. Alternate hypotheses
+with one object ID are association gates for one physical entity, never duplicate actors.
+Stationary targets remain prediction inputs after sufficient timestamped observations; a pallet or stopped vehicle
+is not dropped merely because the tracker has never initialized a non-zero motion velocity. `prediction_ready`
+means the estimator has enough time history for behavior use. It does not mean a periodic cycle or physical
+capability has been proved.
+
+That implementation is a limited teaching baseline, not the final general traffic contract. A direction change does
+not create a new object: identity lifecycle and motion-mode inference are separate. Likewise, two observed reversal
+points support a periodic-motion hypothesis but do not prove that an ordinary vehicle must reflect there again. P1
+therefore replaces `bounded corridor = mature safety proof` with covariance-aware tracking, global gated association,
+an explicit motion-model bank and uncertainty-aware time occupancy. Stationary, constant-velocity,
+acceleration/turn and map-constrained modes remain distinguishable. Rail or shuttle periodicity is enabled only as an
+additional hypothesis when map or history evidence supports it. The safety consumer retains every plausible conflict
+mode supported by the current evidence; hypothesis confidence may rank progress but cannot waive a collision. This is
+a receding-horizon risk contract, not a claim that an unknown object has a map-declared physical bound.
+
+Prediction now first publishes a typed `PredictionBatch`: every hypothesis
+keeps its perception-owned `track_id`, a deterministic `hypothesis_id`, its
+model type, the common timestamp/frame clock, and its complete state sequence.
+The current DWA and trajectory validators consume a deterministic flattened
+compatibility view, while new behavior code must consume the typed batch and
+must not reconstruct identity from vector position. The represented models are
+currently stationary, constant velocity, reflected corridor and alternate
+intent. Acceleration/deceleration, turning, covariance and calibrated
+probability remain open; absence of a confidence field is intentional until
+those values can be validated.
+
+Crossing relevance follows the route point nearest the physical body, never the controller lookahead index. A mapped
+zone may name the geometric overlap of motion corridors; without one, ROBOT derives a temporary conflict from the
+intersection of its planned motion and tracked time occupancy. Fresh tracked evidence must show every retained motion
+hypothesis has a clear complete traversal interval. A route-relative label such as `outbound` belongs to crossing
+evaluation, not to the generic tracker. Empty frames, stale tracks, short range, occlusion, partial visibility and
+unconfirmed motion remain uncertain and cannot become positive clearance evidence. Consecutive GO confirmation counts
+distinct sensor timestamps, so a faster behavior loop cannot reuse one scan. Before the no-return point, every cycle
+must retain a braking-feasible safe action; after it, the independently validated minimum-risk continuation owns the
+exit rather than an unsafe stop or reverse inside traffic.
 
 This design follows the compact parts of established stacks rather than importing their runtime:
 
+- [Autoware multi-object tracking](https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_multi_object_tracker/)
+ separates global data association from EKF models, gates association by geometry and Mahalanobis/maximum distance,
+ and can run multiple class models concurrently for stability.
+- [Autoware map-based prediction](https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_map_based_prediction/)
+ stores time-series object history, associates objects with reachable map paths, produces multiple maneuvers with
+ probabilities and refines them with motion constraints.
 - [Autoware intersection behavior](https://autowarefoundation.github.io/autoware_universe/main/planning/behavior_velocity_planner/autoware_behavior_velocity_intersection_module/)
-  derives attention/conflicting areas, collision intervals, stop lines, and a pass-judge line from route geometry.
+ derives attention/conflicting areas, collision intervals, stop lines, and a pass-judge line from route geometry;
+ unsafe evidence stops immediately while GO uses a hold time to prevent chattering.
 - [Autoware occlusion behavior](https://autowarefoundation.github.io/autoware_universe/main/planning/behavior_velocity_planner/autoware_behavior_velocity_occlusion_spot_module/)
   separates visibility risk and safe approach constraints from ordinary path following.
+- [Apollo prediction](https://apollo.baidu.com/docs/apollo/latest/md_modules_2prediction_2README.html)
+ consumes obstacle position, heading, velocity and acceleration and separates scenario analysis, trajectory
+ evaluation/probability and free/map/interaction predictors.
+- [Autoware dynamic obstacle avoidance](https://autowarefoundation.github.io/autoware_universe/main/planning/behavior_path_planner/autoware_behavior_path_dynamic_obstacle_avoidance_module/)
+ uses object state and predicted paths to restrict drivable space, while
+ retaining lateral-acceleration and jerk feasibility as a prerequisite for an
+ avoidance maneuver.
+- [Autoware autonomous emergency braking](https://autowarefoundation.github.io/autoware_universe/main/control/autoware_autonomous_emergency_braking/)
+ independently checks predicted ego footprints against fresh point clouds and
+ predicted objects, then emits an emergency-stop signal rather than planning
+ a new steering path.
+- [Nav2 Collision Monitor](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/collision_monitor/)
+ bypasses the costmap for low-latency sensor checks and provides stop,
+ slowdown, velocity-limit and time-to-collision approach models.
 - [CARLA Traffic Manager](https://carla.readthedocs.io/en/latest/adv_traffic_manager/) separates localization and
   path overlap, collision decisions, motion planning, and actuation, and documents deterministic synchronous runs.
 

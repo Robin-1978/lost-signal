@@ -35,6 +35,9 @@
       "imu"
     ]
   },
+ "planning": {
+ "localization_margin_m": 0.03
+ },
   "teaching": {
     "concept": "town_haul",
     "prediction_prompt": "新镇子第一单：湿滑仓门、砂石主街、沙地货道，两辆巡逻车横竖穿行。走哪条道，什么时候让？",

@@ -14,6 +14,10 @@ struct DiffCmd {
  // SteeringAngle chassis. LSRI keeps these meanings in separate named fields.
  double target_v{0}, target_w{0};
  double target_lateral_v{0};
+ // Desired common longitudinal actuator acceleration, normally used for
+ // gravity/load feedforward. It is an SI-unit request with finite motor and
+ // contact authority, not a promise that the body realizes this acceleration.
+ double longitudinal_acceleration_feedforward_mps2{0};
  // A controlled braking transition invalidates integral state accumulated
  // for the previous maneuver. The target may remain non-zero while a
  // stability-aware ramp approaches rest, so this is distinct from LSRI's

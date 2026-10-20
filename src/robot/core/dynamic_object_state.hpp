@@ -17,6 +17,11 @@ struct DynamicObjectState {
  // geometry so planners can report physical and conservative clearance with
  // one unambiguous contract. Predictors grow this value with forecast time.
  double position_uncertainty_m{0.0};
+ // True when perception has enough timestamp-distinct history for this state
+ // to participate in a behavior decision. This is estimator readiness, not
+ // proof of periodic motion or a physical capability bound. Local collision
+ // avoidance still consumes unready tracks conservatively.
+ bool prediction_ready{false};
 
  double occupied_radius_m() const {
  return std::max(0.0, radius) + std::max(0.0, position_uncertainty_m);

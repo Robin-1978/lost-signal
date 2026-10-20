@@ -1,6 +1,11 @@
-# Lost Signal Robot Map (LSRM)
+# Lost Signal Map Interface and Robot Map (LSRM)
 
-Lost Signal uses a provider-neutral, layered robot-map contract for ground navigation. A global raster is optional:
+The **Lost Signal Map Interface** is the deployable ROBOT runtime boundary formed by `IMapProvider`, immutable
+`MapSnapshot` values and bounded `MapView` queries. The **Lost Signal Robot Map (LSRM)** is the map data model carried
+through that interface and its checksummed `.lsmap` persistence package. These names distinguish the API from one
+storage encoding: a SLAM or remote provider can implement the interface without first writing a package.
+
+Lost Signal uses this provider-neutral, layered robot-map contract for ground navigation. A global raster is optional:
 a compact indoor map may contain occupancy and 2.5D elevation layers, while a campus or road map may contain only
 vector geometry, topology, semantic places, and rules. The simulated world remains fully 3D, and the minimap remains
 a 2D presentation. The Robot Map is the stable value between map producers and deployable task, localization,
@@ -25,7 +30,7 @@ silently reduced and presented as lossless Robot Map storage. Their providers pu
 needed by the running Lost Signal stack and record source provenance.
 
 The current scenario adapter is the first map compiler. The in-process `MapManager` is the first provider. A future
-SLAM, file, remote-service, or automotive-map provider implements the same read-only interface.
+SLAM, file, remote-service, or automotive-map provider implements the same read-only Lost Signal Map Interface.
 
 ## Global map and local world model
 
@@ -155,10 +160,10 @@ semantics. An adapter may compile it from Lanelet2 or OpenDRIVE while retaining 
 Large providers serve vector/tile windows rather than allocating a global fine raster. Free-space Hybrid A* continues
 to work when no road graph is present.
 
-Controlled conflict features carry authority and a conservative participant envelope. The envelope belongs to map
-semantics and covers the expected traffic footprint plus a site-specific tracking reserve. Autonomy combines it
-with the ego footprint and safety policy to solve a continuous stop pose on the route. Runtime tracks decide when
-the crossing is open; simulator actor definitions never provide the stop location or leak into ROBOT code.
+Conflict features may carry route rules, geometric attention areas and control authority. They are optional context,
+not a list of every place where a temporary participant may cross. Autonomy must also infer conflicts online from
+planned ego motion and runtime tracks. Simulator actor definitions never provide stop locations, paths, identities or
+motion capabilities to ROBOT code.
 
 ## Verification gates
 

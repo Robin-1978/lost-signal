@@ -135,6 +135,8 @@ int main() {
  CHECK(channel->health().rejected_observations == 1);
 
  sim::DiffCmd desired{1.25, 0.4};
+ desired.controlled_stop = true;
+ desired.longitudinal_acceleration_feedforward_mps2 = -1.25;
  const auto command = make_motion_command(desired, config().capabilities.chassis,
                                           TimePoint::from_seconds(0.0), 1, 0.1, "test.autonomy");
  CHECK(valid_motion_command(command, config()));
@@ -147,8 +149,12 @@ int main() {
  CHECK(channel->autonomy().write_motion(command) == CommandWriteResult::Accepted);
  const auto delivered = channel->platform().read_motion(TimePoint::from_seconds(0.05));
  CHECK(!delivered.safe_stop);
+ CHECK(delivered.controlled_stop);
  CHECK(std::abs(to_diff_command(delivered).target_v - 1.25) < 1e-12);
  CHECK(std::abs(to_diff_command(delivered).target_w - 0.4) < 1e-12);
+ CHECK(to_diff_command(delivered).controlled_stop);
+ CHECK(std::abs(
+ to_diff_command(delivered).longitudinal_acceleration_feedforward_mps2 + 1.25) < 1e-12);
  CHECK(channel->autonomy().write_motion(command) == CommandWriteResult::OutOfOrder);
  const auto stopped = channel->platform().read_motion(TimePoint::from_seconds(0.11));
  CHECK(stopped.safe_stop);

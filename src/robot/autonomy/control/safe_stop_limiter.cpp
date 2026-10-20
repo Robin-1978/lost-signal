@@ -34,15 +34,50 @@ SafeStopCommand stage_safe_stop(const ChassisCaps& chassis,
  const double half_track_m = 0.5 * limits.differential_track_m;
  const double left_mps = motion.forward_mps - motion.turn * half_track_m;
  const double right_mps = motion.forward_mps + motion.turn * half_track_m;
- const double next_left_mps = next_rate_limited_command(
- left_mps, 0.0, -limits.max_wheel_speed_mps,
- limits.max_wheel_speed_mps, linear_delta_mps);
- const double next_right_mps = next_rate_limited_command(
- right_mps, 0.0, -limits.max_wheel_speed_mps,
- limits.max_wheel_speed_mps, linear_delta_mps);
- output.forward_mps = 0.5 * (next_left_mps + next_right_mps);
- output.turn = (next_right_mps - next_left_mps) /
- limits.differential_track_m;
+ // Subtracting the same absolute speed from both wheels preserves their
+ // difference until the slower wheel reaches zero. On a slope that lets a
+ // small yaw grow while the chassis is supposedly stopping. Allocate the
+ // reachable wheel-speed box to reduce yaw first, then choose the closest
+ // feasible longitudinal speed to zero. This never changes either wheel by
+ // more than linear_delta_mps and never invents an instantaneous lock.
+ const double wheel_limited_yaw_delta =
+ 2.0 * linear_delta_mps / limits.differential_track_m;
+ const double requested_yaw_delta =
+ std::max(0.0, limits.max_turn_rate) *
+ std::max(0.0, limits.update_interval_s);
+ output.turn = next_rate_limited_command(
+ motion.turn, 0.0, -limits.max_turn, limits.max_turn,
+ std::min(wheel_limited_yaw_delta, requested_yaw_delta));
+
+ double minimum_forward = std::max(
+ left_mps - linear_delta_mps + output.turn * half_track_m,
+ right_mps - linear_delta_mps - output.turn * half_track_m);
+ double maximum_forward = std::min(
+ left_mps + linear_delta_mps + output.turn * half_track_m,
+ right_mps + linear_delta_mps - output.turn * half_track_m);
+ minimum_forward = std::max({
+ minimum_forward,
+ -limits.max_wheel_speed_mps + output.turn * half_track_m,
+ -limits.max_wheel_speed_mps - output.turn * half_track_m,
+ });
+ maximum_forward = std::min({
+ maximum_forward,
+ limits.max_wheel_speed_mps + output.turn * half_track_m,
+ limits.max_wheel_speed_mps - output.turn * half_track_m,
+ });
+ if (minimum_forward <= maximum_forward + 1e-12) {
+ output.forward_mps = std::clamp(0.0, minimum_forward, maximum_forward);
+ } else {
+ // Defensive fallback for an already out-of-range measured state. Scaling
+ // both wheels preserves curvature and respects the largest per-wheel step.
+ const double largest_wheel_speed =
+ std::max(std::abs(left_mps), std::abs(right_mps));
+ const double scale = largest_wheel_speed > 1e-12
+ ? std::max(0.0, 1.0 - linear_delta_mps / largest_wheel_speed)
+ : 0.0;
+ output.forward_mps = motion.forward_mps * scale;
+ output.turn = motion.turn * scale;
+ }
  return output;
  }
 
