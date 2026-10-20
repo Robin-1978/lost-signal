@@ -3,6 +3,7 @@
 #include "robot/autonomy/behavior/crossing_behavior.hpp"
 #include "robot/autonomy/behavior/entry_governor.hpp"
 #include "robot/autonomy/control/trajectory_tracking_system.hpp"
+#include "robot/autonomy/localization/known_map_localizer.hpp"
 #include "robot/autonomy/perception/perception_pipeline.hpp"
 #include "robot/autonomy/planning/local/local_planning_system.hpp"
 #include "robot/runtime/map_provider.hpp"
@@ -52,6 +53,10 @@ class AutonomyPipeline {
  const std::vector<ObservedRay2D>& latest_visibility_rays() const;
  double latest_visibility_stamp_s() const;
 
+ KnownMapLocalizationResult localize_known_map(
+ const Scan& scan, Vec2 odom_position, double odom_heading_rad,
+ const runtime::MapSnapshot& map, double timestamp_s) const;
+
  // Behavior obtains deployable semantics through IMapProvider. Simulation
  // callers provide route, state and sensor evidence; they never select or
  // translate map features, and cannot own the behavior state machine.
@@ -92,6 +97,7 @@ class AutonomyPipeline {
 
  private:
  PerceptionPipeline perception_;
+ KnownMapLocalizer known_map_localizer_;
  LocalPlanningSystem local_planner_;
  TrajectoryTrackingSystem trajectory_tracker_;
  const runtime::IMapProvider* map_provider_{nullptr};

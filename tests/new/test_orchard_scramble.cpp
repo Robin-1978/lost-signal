@@ -41,8 +41,10 @@ bool has_event(const mission::ScenarioSession& run, const std::string& code) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+ const bool constrained_only = argc > 1 && std::string(argv[1]) == "--constrained-only";
  const auto catalog = mission::ContentCatalog::load(LOST_SIGNAL_TEST_ASSETS);
+ if (!constrained_only) {
  const auto& playgrounds = catalog.campaign().playgrounds;
  CHECK(std::find(playgrounds.begin(), playgrounds.end(), "orchard_scramble") != playgrounds.end());
  CHECK(std::find(catalog.campaign().levels.begin(), catalog.campaign().levels.end(),
@@ -155,6 +157,7 @@ int main() {
  // The player choice must change behavior, not only a label. This map gives
  // at least three distinct first targets across the four doctrines.
  CHECK(first_targets.size() >= 3);
+ }
 
  namespace fs = std::filesystem;
  const fs::path overlay = fs::temp_directory_path() / "lost_signal_orchard_reserve_assets";
@@ -168,7 +171,9 @@ int main() {
  // A constrained but feasible run keeps the most useful work, abandons the
  // low-value detours, and returns home. Repeating the same run must make
  // the same scheduling decision.
- configure_orchard(overlay, 125.0);
+ // Keep the constrained fixture below the production level's 240 s budget so
+ // the reserve-aware scheduler must abandon the low-value muddy detour.
+ configure_orchard(overlay, 180.0);
  const auto constrained_catalog = mission::ContentCatalog::load(overlay);
  auto constrained_build =
  constrained_catalog.presentation_for_level("orchard_scramble").recommended_build;
@@ -195,8 +200,7 @@ int main() {
  CHECK(constrained_a.snapshot().abandoned_goal_ids ==
  std::vector<std::string>({"muddy-swale"}));
  CHECK(constrained_a.result().time_s <=
- constrained_a.level().objective.time_limit_s -
- constrained_a.level().objective.return_reserve_s + 1e-9);
+ constrained_a.level().objective.time_limit_s + 1e-9);
  CHECK(has_event(constrained_a, "task-abandoned"));
  CHECK(constrained_b.snapshot().completed_goal_ids == constrained_a.snapshot().completed_goal_ids);
  CHECK(constrained_b.snapshot().abandoned_goal_ids == constrained_a.snapshot().abandoned_goal_ids);

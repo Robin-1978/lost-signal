@@ -1,0 +1,168 @@
+#include "robot/autonomy/localization/known_map_localizer.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
+
+namespace sim {
+namespace {
+
+bool finite_pose(Vec2 p, double heading) {
+ return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(heading);
+}
+
+Vec2 rotate(Vec2 p, double heading) {
+ const double c = std::cos(heading);
+ const double s = std::sin(heading);
+ return {c * p.x - s * p.y, s * p.x + c * p.y};
+}
+
+Vec2 sensor_world_position(Vec2 base, double base_heading,
+ const KnownMapLocalizationConfig& config) {
+ const auto offset = rotate({config.sensor_x_m, config.sensor_y_m}, base_heading);
+ return {base.x + offset.x, base.y + offset.y};
+}
+
+double endpoint_score(const runtime::MapGrid& grid, Vec2 point) {
+ const double c = std::cos(grid.origin_yaw_rad);
+ const double s = std::sin(grid.origin_yaw_rad);
+ const double dx = point.x - grid.origin_m.x;
+ const double dy = point.y - grid.origin_m.y;
+ const int cell_x = static_cast<int>(std::floor((c * dx + s * dy) /
+ grid.resolution_m));
+ const int cell_y = static_cast<int>(std::floor((-s * dx + c * dy) /
+ grid.resolution_m));
+ if (cell_x < 0 || cell_y < 0 ||
+ cell_x >= static_cast<int>(grid.width) || cell_y >= static_cast<int>(grid.height))
+ return -0.25; // outside map is evidence against this pose.
+ const auto index = static_cast<std::size_t>(cell_y) * grid.width +
+ static_cast<std::size_t>(cell_x);
+ if (index >= grid.occupancy.size())
+ return -0.25;
+ const int value = static_cast<int>(grid.occupancy[index]);
+ if (value < 0)
+ return 0.0; // unknown must not become false certainty.
+ return value >= 50 ? 1.0 : -0.20;
+}
+
+} // namespace
+
+KnownMapLocalizationResult KnownMapLocalizer::localize(
+ const Scan& scan, const Vec2& odom_position, double odom_heading_rad,
+ const runtime::MapSnapshot& map, double timestamp_s) const {
+ KnownMapLocalizationResult result;
+ result.pose.header = {timestamp_s, 0, "map", 0.0,
+ kMeasurementSchemaVersion, "robot.known-map-lidar"};
+ if (!finite_pose(odom_position, odom_heading_rad)) {
+ result.rejection_reason = "invalid odometry prior";
+ return result;
+ }
+ if (scan.n_rays <= 0 || scan.ranges.size() != static_cast<std::size_t>(scan.n_rays) ||
+ scan.hit.size() != scan.ranges.size() || !(scan.max_range > 0.0) ||
+ !std::isfinite(scan.header.stamp_s) ||
+ std::abs(scan.header.stamp_s - timestamp_s) > 0.05) {
+ result.rejection_reason = "invalid or stale scan";
+ return result;
+ }
+ if (!map.grid || map.frame_id != "map" || map.grid->width == 0 ||
+ map.grid->height == 0 || !(map.grid->resolution_m > 0.0) ||
+ map.grid->occupancy.size() !=
+ static_cast<std::size_t>(map.grid->width) * map.grid->height) {
+ result.rejection_reason = "map snapshot unavailable or invalid";
+ return result;
+ }
+ if (!(config_.search_translation_m >= 0.0) || !(config_.search_heading_rad >= 0.0) ||
+ !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0)) {
+ result.rejection_reason = "invalid matcher configuration";
+ return result;
+ }
+
+ struct Return { double range; double angle; };
+ std::vector<Return> returns;
+ returns.reserve(scan.ranges.size());
+ for (std::size_t i = 0; i < scan.ranges.size(); ++i) {
+ const double range = scan.ranges[i];
+ if (!scan.hit[i] || !std::isfinite(range) || range <= 0.05 || range >= scan.max_range)
+ continue;
+ returns.push_back({range, scan.angle_min_rad +
+ scan.angle_increment_rad * static_cast<double>(i)});
+ }
+ result.usable_returns = returns.size();
+ if (returns.size() < config_.minimum_returns) {
+ result.rejection_reason = "insufficient geometric returns";
+ return result;
+ }
+
+ const auto& grid = *map.grid;
+ double best_score = -std::numeric_limits<double>::infinity();
+ double second_score = -std::numeric_limits<double>::infinity();
+ Vec2 best_position = odom_position;
+ double best_heading = odom_heading_rad;
+ double best_overlap = 0.0;
+ const int translation_steps = static_cast<int>(std::ceil(
+ config_.search_translation_m / config_.translation_step_m));
+ const int heading_steps = static_cast<int>(std::ceil(
+ config_.search_heading_rad / config_.heading_step_rad));
+ for (int iy = -translation_steps; iy <= translation_steps; ++iy) {
+ for (int ix = -translation_steps; ix <= translation_steps; ++ix) {
+ for (int ih = -heading_steps; ih <= heading_steps; ++ih) {
+ const Vec2 candidate{odom_position.x + ix * config_.translation_step_m,
+ odom_position.y + iy * config_.translation_step_m};
+ const double heading = wrap_angle(odom_heading_rad + ih * config_.heading_step_rad);
+ const Vec2 sensor_position = sensor_world_position(candidate, heading, config_);
+ double score = 0.0;
+ std::size_t known = 0;
+ std::size_t matches = 0;
+ for (const auto& point : returns) {
+ const auto local = rotate({point.range * std::cos(point.angle + config_.sensor_yaw_rad),
+ point.range * std::sin(point.angle + config_.sensor_yaw_rad)}, heading);
+ const double value = endpoint_score(grid,
+ {sensor_position.x + local.x, sensor_position.y + local.y});
+ score += value;
+ if (value != 0.0) {
+ ++known;
+ if (value > 0.0)
+ ++matches;
+ }
+ }
+ if (known == 0)
+ continue;
+ const double overlap = static_cast<double>(matches) /
+ static_cast<double>(returns.size());
+ score /= static_cast<double>(returns.size());
+ if (score > best_score) {
+ second_score = best_score;
+ best_score = score;
+ best_position = candidate;
+ best_heading = heading;
+ best_overlap = overlap;
+ } else if (score > second_score) {
+ second_score = score;
+ }
+ }
+ }
+ }
+ if (!std::isfinite(best_score) || best_overlap < config_.minimum_overlap) {
+ result.rejection_reason = "map overlap below acceptance gate";
+ return result;
+ }
+ // A nearly tied score is a degeneracy signal. Do not turn a repetitive
+ // corridor into a confident global correction.
+ if (std::isfinite(second_score) && best_score - second_score < 0.01) {
+ result.rejection_reason = "map match is geometrically ambiguous";
+ return result;
+ }
+ result.accepted = true;
+ result.score = best_score;
+ result.overlap = best_overlap;
+ result.pose.position = best_position;
+ result.pose.heading_rad = best_heading;
+ result.pose.position_sigma_m = std::max(0.02, grid.resolution_m * 0.75);
+ result.pose.heading_sigma_rad = std::max(0.01, config_.heading_step_rad * 1.5);
+ result.pose.header = {timestamp_s, 0, "map", 0.0,
+ kMeasurementSchemaVersion, "robot.known-map-lidar"};
+ return result;
+}
+
+} // namespace sim

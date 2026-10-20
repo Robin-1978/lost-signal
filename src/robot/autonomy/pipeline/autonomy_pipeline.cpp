@@ -17,6 +17,7 @@ AutonomyPipeline::AutonomyPipeline(const GridMap& static_map, int width,
 
 void AutonomyPipeline::reset(std::uint32_t seed) {
  perception_.reset(seed);
+ known_map_localizer_.reset();
  local_planner_.reset();
  trajectory_tracker_.reset();
  crossing_behavior_.reset();
@@ -61,6 +62,13 @@ const std::vector<ObservedRay2D>& AutonomyPipeline::latest_visibility_rays() con
 
 double AutonomyPipeline::latest_visibility_stamp_s() const {
  return perception_.latest_visibility_stamp_s();
+}
+
+KnownMapLocalizationResult AutonomyPipeline::localize_known_map(
+ const Scan& scan, Vec2 odom_position, double odom_heading_rad,
+ const runtime::MapSnapshot& map, double timestamp_s) const {
+ return known_map_localizer_.localize(
+ scan, odom_position, odom_heading_rad, map, timestamp_s);
 }
 
 void AutonomyPipeline::refresh_crossing_semantics() {

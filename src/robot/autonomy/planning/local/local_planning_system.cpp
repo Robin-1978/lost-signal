@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -368,6 +367,9 @@ ValidatedTrajectorySelection select_static_margin_escape(
  (2.0 * request.emergency_decel_mps2)
  : (measured_translation_mps > 1e-6
  ? std::numeric_limits<double>::infinity() : 0.0));
+ const bool improves_soft_margin = starts_inside_preferred_margin &&
+ distance_to_free_space(preferred_map, finish.position) + 0.01 <
+ distance_to_free_space(preferred_map, start.position);
  const bool stages_alignment =
  request.command_space == LocalCommandSpace::DifferentialTwist &&
  std::abs(rollout.trajectory.command.v) <= 1e-9 &&
@@ -377,8 +379,15 @@ ValidatedTrajectorySelection select_static_margin_escape(
  // the same displacement tolerance used to classify the rollout; otherwise
  // control must brake first and replan from the measured stopped state.
  predicted_stop_translation_m <= 0.02 &&
- control_displacement_m <= 0.02 &&
- terminal_heading_error + 0.05 < initial_heading_error;
+ // Rotating around an offset driven axle moves base_link along a real,
+ // bounded arc. Accept that geometric sweep as alignment progress; the
+ // swept physical validator below still rejects an arc that contacts an
+ // obstacle or violates the execution reserve.
+ control_displacement_m <=
+ 0.02 + std::abs(request.drive_axle_x_m) * std::abs(wrap_angle(
+ finish.heading_rad - start.heading_rad)) &&
+ (terminal_heading_error + 0.05 < initial_heading_error ||
+ improves_soft_margin);
  const bool differential_rotation_at_rest =
  request.command_space == LocalCommandSpace::DifferentialTwist &&
  std::abs(request.forward_mps) <= 1e-6 &&
@@ -408,8 +417,21 @@ ValidatedTrajectorySelection select_static_margin_escape(
  !exits_preferred_margin && commanded_translation &&
  displacement_m >= 0.05 && terminal_margin_depth_m + 0.05 <
  initial_margin_depth_m;
+ const bool restores_preferred_clearance = allow_incremental_escape &&
+ preferred_map.clearance(terminal.x, terminal.y) >
+ preferred_map.clearance(start.position.x, start.position.y) + 0.005 &&
+ (commanded_translation || std::abs(rollout.trajectory.command.w) > 1e-6);
  const bool stages_existing_incursion_alignment =
  starts_inside_preferred_margin && stages_alignment;
+ // If the measured chassis is still drifting toward a soft boundary, a
+ // validated zero command is a real actuator braking step, not an idle
+ // fallback. Accept it so the next cycle can rebuild a reverse window from
+ // the stopped measured wheel speeds; otherwise every reverse candidate can
+ // be unreachable while the body continues to creep.
+ const bool stages_braking_hold = starts_inside_preferred_margin &&
+ std::abs(rollout.trajectory.command.v) <= 1e-9 &&
+ std::abs(rollout.trajectory.command.w) <= 1e-9 &&
+ predicted_stop_translation_m <= 0.02;
  const bool continues_committed_transit = request.crossing_committed &&
  rollout.trajectory.command.v + 1e-9 >= request.committed_progress_floor_mps &&
  // A restart from rest may move less than the ordinary 5 cm escape
@@ -418,7 +440,9 @@ ValidatedTrajectorySelection select_static_margin_escape(
  // body displacement is non-zero; later replans raise the reachable floor.
  rollout.trajectory.command.v > 1e-9 && displacement_m > 1e-6;
  if (!exits_with_translation && !continues_committed_transit &&
-!reduces_margin_incursion && !stages_existing_incursion_alignment) {
+ !reduces_margin_incursion && !restores_preferred_clearance &&
+ !stages_existing_incursion_alignment &&
+ !stages_braking_hold) {
  continue;
  }
  auto validation = validate_executable_trajectory(
@@ -431,7 +455,10 @@ if (!validation.accepted()) {
  ++output.accepted_candidates;
  const int rank = exits_with_translation
  ? 4
-: (continues_committed_transit ? 3 : (reduces_margin_incursion ? 2 : 1));
+ : (continues_committed_transit ? 3
+ : ((reduces_margin_incursion || restores_preferred_clearance ||
+ (stages_existing_incursion_alignment &&
+ std::abs(request.drive_axle_x_m) > 1e-9)) ? 2 : 1));
  constexpr double kDepthEquivalenceM = 1e-6;
  constexpr double kHeadingEquivalenceRad = 1e-6;
  const bool shallower_margin =
@@ -481,45 +508,26 @@ ValidatedTrajectorySelection select_near_boundary_clearance_escape(
  request.position.x, request.position.y);
  double best_clearance_m = initial_clearance_m + minimum_clearance_gain_m;
  double best_target_distance_m = std::numeric_limits<double>::infinity();
- static int near_boundary_debug_budget = 120;
- const bool near_boundary_debug =
-  near_boundary_debug_budget > 0 && request.position.x > 22.5 &&
-  request.position.x < 23.5 && request.position.y > 0.4 &&
-  request.position.y < 0.9;
- if (near_boundary_debug) {
-  --near_boundary_debug_budget;
-  std::fprintf(stderr,
-   "[nbr] pos=(%.3f,%.3f) target=(%.3f,%.3f) initial=%.3f maxv=%.2f maxw=%.2f\n",
-   request.position.x, request.position.y, request.target.x,
-   request.target.y, initial_clearance_m, request.max_speed_mps,
-   request.max_yaw_rate_radps);
- }
  for (const auto& rollout : proposals.rollouts) {
  if (rollout.collision || !rollout.trajectory.command.valid ||
  rollout.trajectory.samples.size() < 2) {
-  if (near_boundary_debug) {
-   std::fprintf(stderr, "[nbr]  cmd=(%.2f,%.2f) skip collision=%d valid=%d n=%zu\n",
-    rollout.trajectory.command.v, rollout.trajectory.command.w,
-    rollout.collision ? 1 : 0,
-    rollout.trajectory.command.valid ? 1 : 0,
-    rollout.trajectory.samples.size());
-  }
   continue;
  }
  // A body which still starts in preferred free space may not use the
- // physical-map contingency to cut through soft inflation. The recovery is
- // a control-barrier maneuver: every sample stays on the allowed side and
- // the terminal state must increase continuous clearance.
- const bool all_preferred_free = std::none_of(
- rollout.trajectory.samples.begin(), rollout.trajectory.samples.end(),
- [&](const auto& sample) {
+ // physical-map contingency to cut through soft inflation. Once the measured
+ // pose is already inside that soft band, however, including the initial
+ // sample in this test makes every escape impossible: the first sample is
+ // necessarily occupied even when the rollout immediately restores
+ // clearance. In that case the terminal clearance gain below is the control
+ // barrier; the physical swept validator remains authoritative.
+ const bool starts_inside_preferred = !preferred_map.isFree(
+ request.position.x, request.position.y);
+ const bool all_preferred_free = starts_inside_preferred ||
+ std::none_of(rollout.trajectory.samples.begin(),
+ rollout.trajectory.samples.end(), [&](const auto& sample) {
  return !preferred_map.isFree(sample.position.x, sample.position.y);
  });
  if (!all_preferred_free) {
-  if (near_boundary_debug) {
-   std::fprintf(stderr, "[nbr]  cmd=(%.2f,%.2f) rejected preferred band\n",
-    rollout.trajectory.command.v, rollout.trajectory.command.w);
-  }
   continue;
  }
  const auto& terminal = rollout.trajectory.samples.back();
@@ -533,11 +541,6 @@ ValidatedTrajectorySelection select_near_boundary_clearance_escape(
  // control back to the route tracker, which repeated the same inward turn.
  if (terminal_clearance_m <=
  initial_clearance_m + minimum_clearance_gain_m - 1e-9) {
-  if (near_boundary_debug) {
-   std::fprintf(stderr, "[nbr]  cmd=(%.2f,%.2f) rejected terminal=%.3f\n",
-    rollout.trajectory.command.v, rollout.trajectory.command.w,
-    terminal_clearance_m);
-  }
   continue;
  }
  const auto candidate = validate(
@@ -545,19 +548,7 @@ ValidatedTrajectorySelection select_near_boundary_clearance_escape(
  physical_collision_map, predicted_frames, required_clearance_m,
  terrain_feasible, terrain_sample);
  if (!candidate.validation.accepted()) {
-  if (near_boundary_debug) {
-   std::fprintf(stderr,
-    "[nbr]  cmd=(%.2f,%.2f) rejected verdict=%d diag=%s\n",
-    rollout.trajectory.command.v, rollout.trajectory.command.w,
-    static_cast<int>(candidate.validation.verdict),
-    candidate.validation.diagnostic.c_str());
-  }
   continue;
- }
- if (near_boundary_debug) {
-  std::fprintf(stderr, "[nbr]  cmd=(%.2f,%.2f) accepted term=%.3f\n",
-   rollout.trajectory.command.v, rollout.trajectory.command.w,
-   terminal_clearance_m);
  }
  const double target_distance_m = std::hypot(
  terminal.position.x - request.target.x,
@@ -722,7 +713,11 @@ std::max(0.0, escape_projection.distance_m - 0.5 * planning_map.res());
  output.proposals = generate(
  escape_request, *physical_collision_map, predicted_frames,
  escape_request.required_clearance_m, escape_request.committed_progress_floor_mps,
- feasibility, 1.0);
+ // Candidate generation is only a bounded geometric sampler here. The
+ // complete terrain and execution feasibility contract is applied by the
+ // independent validator below; filtering the same recovery twice made a
+ // non-worsening escape disappear before it could be evaluated.
+ {}, 1.0);
  output.selection = select_static_margin_escape(
  output.proposals, escape_request, planning_map, *physical_collision_map,
  predicted_frames, escape_request.required_clearance_m, feasibility,
@@ -882,15 +877,10 @@ std::max(0.0, escape_projection.distance_m - 0.5 * planning_map.res());
  target_heading_rad - request.heading_rad));
  const double terminal_heading_error_rad = std::abs(wrap_angle(
  target_heading_rad - terminal.heading_rad));
- // An empty/invalid ordinary selection is the strongest possible stall.
- // The near-boundary recovery must still be reachable in that state; gating
- // it on a valid ordinary rollout made a zero behavior speed cap and an
- // already-rejected alignment window permanently strand the body while
- // grade creep carried it toward the boundary.
  const bool ordinary_stalled =
  !output.selection.validation.accepted() ||
  (initial_target_distance_m - terminal_target_distance_m < 0.01 &&
-  initial_heading_error_rad - terminal_heading_error_rad < 0.02);
+ initial_heading_error_rad - terminal_heading_error_rad < 0.02);
  const bool no_collision_free_translation = std::none_of(
  output.proposals.rollouts.begin(), output.proposals.rollouts.end(),
  [](const auto& rollout) {

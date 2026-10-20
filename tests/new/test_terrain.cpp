@@ -140,6 +140,15 @@ int main() {
  (2.0 * kStep);
  CHECK(std::abs(finite_x - rough_sample.grade_x) < 1e-3);
  CHECK(std::abs(finite_y - rough_sample.grade_y) < 1e-3);
+ // Local planner rotation shims can advance only a few millimetres around an
+ // offset axle. Roughness must be evaluated from the local surface gradient,
+ // not an exaggerated secant slope over that tiny segment.
+ sim::TerrainCapability rough_cap;
+ rough_cap.mass_kg = 24.0;
+ rough_cap.available_drive_force_N = 240.0;
+ rough_cap.friction_mu = 0.8;
+ CHECK(std::isfinite(rough.traversal_cost(
+ {probe.x, probe.y}, {probe.x + 0.003, probe.y - 0.002}, rough_cap)));
  // Relief the chassis cannot tilt to follow becomes a vertical excitation.
  // The ride limit is the speed at which that excitation consumes the stated
  // share of gravity, and it must tighten with rougher ground.

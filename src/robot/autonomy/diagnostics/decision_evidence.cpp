@@ -1,8 +1,8 @@
-#include "sim/game/mission/systems/decision_evidence_system.hpp"
+#include "robot/autonomy/diagnostics/decision_evidence.hpp"
 
 #include <utility>
 
-namespace mission {
+namespace sim::autonomy {
 
 void DecisionEvidenceSystem::reset() {
  records_.clear();
@@ -16,7 +16,6 @@ const DecisionEvidence& DecisionEvidenceSystem::publish(
  records_.back().reason_code == decision.reason_code &&
  records_.back().action_code == decision.action_code &&
  records_.back().outcome_code == "active";
-
  decision.outcome_code = "active";
  decision.end_time_s = -1.0;
  decision.superseded_by = 0;
@@ -26,7 +25,6 @@ const DecisionEvidence& DecisionEvidenceSystem::publish(
  records_.back() = std::move(decision);
  return records_.back();
  }
-
  const std::uint64_t sequence = ++next_sequence_;
  if (!records_.empty() && records_.back().outcome_code == "active") {
  records_.back().end_time_s = now_s;
@@ -49,4 +47,4 @@ const DecisionEvidence* DecisionEvidenceSystem::close(
  return &records_.back();
 }
 
-} // namespace mission
+} // namespace sim::autonomy

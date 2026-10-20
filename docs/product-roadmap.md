@@ -252,11 +252,44 @@ prediction, while accepted map observations update `map -> odom`. The provider c
 wheel/IMU estimates, calibrated sensor extrinsics and the immutable LSRM map snapshot; it publishes pose, covariance,
 quality and explicit rejection reason through the same runtime observation boundary used by replay and future hardware.
 
+#### Localization, LSRI and planning must remain separate
+
+Localization is a replaceable ROBOT capability, not a planner variant. `KnownMapLocalizer`, AMCL/particle
+relocalization, LiDAR-inertial odometry, and a future full SLAM backend must all publish the same timestamped pose
+observation or `map -> odom` correction. The global planner, local planner, trajectory validator and controller must
+consume the resulting `RobotState` and declared chassis capabilities without knowing which localization provider
+produced it. Adding or replacing a localization provider therefore must not require changes to DWA, TEB, Hybrid A*,
+or chassis-specific rollout code.
+
+LSRI remains the transport and lifecycle contract between providers and ROBOT. It carries LiDAR, IMU, encoder,
+localization and actuator observations/commands with units, frames, timestamps, sequence numbers, source identity and
+expiry; it does not perform SLAM, planning or control. SIM may implement an LSRI provider, but it must not inject
+world truth into the normal ROBOT localization path. A real LiDAR can be mixed with simulated IMU or actuators only
+through the same provider boundary.
+
+The only planner-facing consequence of localization is state validity. A rejected or stale match leaves odometry in
+control and reports degraded confidence. An accepted correction within the estimator gate updates `map -> odom`.
+A discontinuous relocalization, map revision change, or covariance/innovation failure invalidates the active route
+and requests replanning; it does not silently alter a local planner's physics or safety thresholds. This is an
+integration contract and a focused test, not a reason to place scan matching inside local planning.
+
+The current working-tree changes in local planning belong to the independent orchard recovery and trajectory-safety
+work package. They are not part of known-map localization and must be reviewed and committed separately so a future
+localization change can be verified without changing planner behavior.
+
 The first implementation is deliberately smaller than full SLAM: deskew/project a planar scan using its acquisition
 times and the motion estimate, remove invalid/self/ground/dynamic returns, seed a deterministic coarse-to-fine
 scan-to-map search from odometry, estimate local uncertainty, then gate score, overlap, innovation, timestamp and map
 coverage before fusion. It must reject empty, repetitive, feature-poor or badly initialized scans instead of emitting a
 confident pose. Simulator-truth pose remains available only as a test oracle and explicitly labelled instrumentation.
+
+The first ROBOT-owned slice is now present as `KnownMapLocalizer`. It consumes a timestamped planar scan, an
+odometric SE(2) prior and an immutable `MapSnapshot`; it performs a bounded deterministic occupancy endpoint search,
+reports overlap/score/covariance and rejects stale, empty, invalid or weak matches. `AutonomyPipeline` exposes the
+same provider-neutral operation, and the SIM harness accepts `localization_mode: known_map` to exercise it without
+publishing a simulator absolute-pose correction. This is a component gate, not the P2 exit: deskew, dynamic/ground
+filtering, covariance/innovation gates, held-out trajectory evidence and migration of normal recommended levels are
+still required.
 
 Focused gates use analytically generated scans on asymmetric maps, known SE(2) offsets, empty and symmetric geometry,
 occlusion/outliers, moving objects, scan motion distortion, slopes, latency, dropped scans and wrong initial guesses.
@@ -268,6 +301,37 @@ This stage is map localization, not map building. A later SLAM provider may prod
 localization constraints through the same interfaces. A future 16-line LiDAR-inertial provider must use per-point time,
 ring and IMU extrinsics for deskew; local odometry, global loop closure and map persistence remain separate contracts.
 
+AMCL/particle relocalization is a separate P2 follow-up for cold start, kidnapped-robot recovery and large initial
+pose error. It must publish the same pose-observation contract and confidence state as scan matching. It must not be
+used to hide a weak local matcher, and it must not make the planner depend on particle-filter internals. Continuous
+localization and global recovery may select different providers, but both must trigger the same route invalidation and
+replanning policy when the pose jump exceeds the active estimator gate.
+
+For Lost Signal's small authored maps, the deployable no-GNSS startup path is **known-map global localization**:
+LiDAR observations and odometry/IMU motion are evaluated against the whole bounded map using AMCL/particle recovery or
+a similarly global scan matcher. It must support an unknown initial pose, reject symmetric or feature-poor ambiguity,
+and expose `UNLOCALIZED`, `LOCALIZED`, `DEGRADED` and `RELOCALIZING` states. The robot may perform a bounded in-place
+observation sweep before accepting a pose; this is a localization behavior and must not be hidden inside DWA. The
+current bounded `KnownMapLocalizer` remains only the local-correction component until this gate is implemented.
+
+The complementary **mapless online-SLAM path** starts with an arbitrary local origin, builds submaps while moving and
+estimates its own pose from LiDAR, IMU and encoders. It does not require RTK or GNSS for a small self-contained map.
+When the map is later saved, its local origin and provenance become the map anchor; a future run can use known-map
+global localization to recover that pose. Both paths publish the same pose/state contract, while mapless SLAM also
+publishes validated LSRM revisions and retains its pose graph/session data separately.
+
+The delivery order is intentional: **first complete known-map global localization, then add mapless online SLAM**.
+The first stage supplies a reliable pose/state contract, unknown-pose recovery behavior and planner replan semantics.
+The second stage reuses those contracts while adding a mapping session and a map-builder lifecycle; it must not create
+a second pose type or make Planner depend on a SLAM backend. In mapless mode there is no external localization input,
+but the SLAM backend still estimates its own pose internally from the first observation onward.
+
+Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
+`ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable
+static revisions; and a future `IMapBuilder` publishes complete candidate revisions plus session/checkpoint metadata.
+Planner reads only `RobotState` and a pinned `MapView`. Map revision publication or a pose jump invalidates the
+affected route and requests a fresh plan through the existing pipeline.
+
 The design follows the useful boundaries in [REP-105](https://www.ros.org/reps/rep-0105.html), Nav2
 [AMCL](https://github.com/ros-navigation/navigation2/tree/main/nav2_amcl), Cartographer's
 [local/global SLAM split](https://google-cartographer-ros.readthedocs.io/en/latest/algo_walkthrough.html), Autoware's
@@ -278,7 +342,16 @@ validation references; Lost Signal keeps a compact project-owned provider interf
 
 **Exit:** a standard-LiDAR reference run localizes against an LSRM map without simulation pose truth, reports calibrated
 quality limits and bounded held-out trajectory error, survives declared dropout/degeneracy cases safely, and produces
-the same accepted/rejected observation sequence on replay.
+the same accepted/rejected observation sequence on replay. A provider-conformance test must run the same planner and
+controller trace with odometry-only, known-map and a recorded-relocalization source; planner commands may differ only
+when the supplied pose/state differs, never because the planner branches on provider identity. A rejected match,
+accepted small correction and large relocalization jump each have explicit route/replan assertions.
+
+The collision monitor and decision-evidence state machine have also moved to ROBOT-owned autonomy libraries. SIM keeps
+compatibility type aliases and supplies world/physics observations; it no longer compiles those algorithms as mission
+implementations. Remaining SIM-side autonomy audit items are tracked separately from content, actor behavior and plant
+code, which remain simulation responsibilities.
+
 
 ### P3 — Re-establish the release candidate evidence
 

@@ -1223,9 +1223,17 @@ void ScenarioSession::select_next_goal(const Pose& start) {
  // time estimate. The local planner also caps speed where relief shorter
  // than the support base would unload a contact. Scheduling with cruise
  // speed alone therefore commits to work whose return leg cannot fit.
+ constexpr double kScheduleExecutionDuty = 0.60;
  const double nominal_time_s = segment_distance * multiplier / planning_speed;
  const double ride_time_s = segment_distance / std::min(planning_speed, ride_speed);
- cost.expected_time_s += std::max(nominal_time_s, ride_time_s);
+ // Planning speed is a ceiling, not a prediction. Acceleration, corner
+ // tracking, actuator settling and short obstacle recoveries all consume
+ // part of a transit. Scheduling at the ceiling repeatedly admits a final
+ // low-value pickup without enough time left to return. Reserve a bounded
+ // 40% execution duty for those physically realized delays instead of
+ // changing route costs or the robot's safety speed.
+ cost.expected_time_s += std::max(nominal_time_s, ride_time_s) /
+ kScheduleExecutionDuty;
   }
   return cost;
  };
@@ -2044,6 +2052,16 @@ void ScenarioSession::consume_lidar_observation(
  });
  }
  snapshot_.lidar_point_cloud = std::move(presentation_cloud);
+ }
+ if (level_.localization_mode == "known_map" && observation.lidar && autonomy_pipeline_) {
+ const auto map = map_manager_.current_snapshot();
+ if (map) {
+ const auto& odom = estimation_system_.state();
+ const auto match = autonomy_pipeline_->localize_known_map(
+ *observation.lidar, odom.position, odom.heading_rad, *map, observation.time_s);
+ if (match.accepted)
+ estimation_system_.correct(match.pose, observation.time_s);
+ }
  }
  if (observation.absolute_pose) {
   estimation_system_.correct(*observation.absolute_pose, observation.time_s);
@@ -3325,7 +3343,15 @@ double ScenarioSession::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) 
 
  const auto from_sample = terrain_.sample(from);
  const auto to_sample = terrain_.sample(to);
- const double signed_grade = (to_sample.height_m - from_sample.height_m) / segment_length;
+ // Offset-axle rotation produces millimetre-scale segments. A secant over
+ // that distance amplifies the authored roughness waveform into a fictitious
+ // downhill grade and can reject even a zero-translation recovery command.
+ // TerrainModel uses the same local-gradient rule for short segments; keep
+ // the stopping/traction calculation on that contract as well.
+ const double signed_grade = segment_length < 0.05
+ ? sim::longitudinal_grade(from_sample, std::atan2(
+ to.y - from.y, to.x - from.x))
+ : (to_sample.height_m - from_sample.height_m) / segment_length;
  const double slope = std::atan(std::abs(signed_grade));
  const double downhill_gravity_mps2 = signed_grade < 0.0 ? 9.81 * std::sin(slope) : 0.0;
  const double grip_brake_mps2 = std::max(0.0, contact.mu_eff) * 9.81 * std::cos(slope);

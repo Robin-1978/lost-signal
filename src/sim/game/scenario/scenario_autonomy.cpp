@@ -1302,9 +1302,10 @@ if (!continuous_execution && remaining_m > 0.5) {
  const auto local_plan = autonomy_pipeline_->plan_local(
  local_request, local_planning_map, local_predicted_frames,
  [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
- return std::isfinite(navigation_traversal_cost(from, to)) &&
+ const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
  collision_monitor_->static_motion_free(
  from, to, physical_execution_margin_m);
+ return feasible;
  }, &local_physical_collision_map,
  [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  // The physical map owns observed obstacles, but its static base is authored
@@ -1313,9 +1314,17 @@ if (!continuous_execution && remaining_m > 0.5) {
  // soft inflation by driving through a wall or across the world boundary.
  // The localization reserve is physical uncertainty, not the comfort/policy
  // envelope that this recovery is allowed to relax.
- return std::isfinite(navigation_traversal_cost(from, to)) &&
- collision_monitor_->static_motion_free(
- from, to, physical_execution_margin_m);
+ const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
+ (collision_monitor_->static_motion_free(
+ from, to, physical_execution_margin_m) ||
+ // A physical-map escape is entered only after the preferred inflation
+ // envelope has stranded the measured pose. Permit a bounded, non-worsening
+ // sweep through that reserve, while retaining exact footprint collision and
+ // terrain checks; this is not a general planning relaxation.
+ (collision_monitor_->static_motion_free(from, to, 0.0) &&
+ collision_monitor_->static_clearance(to) + 0.01 >=
+ collision_monitor_->static_clearance(from)));
+ return feasible;
  }, [this](sim::Vec2 position) { return terrain_.sample(position); });
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;

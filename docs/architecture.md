@@ -96,8 +96,10 @@ Planar returns are projected through `map → base_link → lidar_link` with the
 calibrated sensor mount. The local map retains LSRM elevation, so a beam that intersects mapped ground is rejected as
 ground rather than promoted to an obstacle merely because the robot is pitched on a slope. Neighboring reference
 azimuths are searched within the localization uncertainty envelope instead of requiring an exact same-ray match.
-This is attitude-aware geometric compensation, not SLAM: the repository does not yet estimate map alignment from
-scan matching or publish calibrated pose covariance.
+The ROBOT `KnownMapLocalizer` additionally provides a bounded deterministic occupancy scan-to-map correction around
+the wheel/IMU prior, with explicit overlap, timestamp and degeneracy rejection and a covariance-bearing pose result.
+It is known-map localization rather than map-building SLAM; full deskew, calibrated innovation gates and normal-level
+deployment evidence remain the P2 gate.
 
 A future camera provider follows the same boundary: LSRI carries timestamped image or depth observations with frame,
 calibration and exposure timing; ROBOT perception may publish class probability, extent, orientation and optional

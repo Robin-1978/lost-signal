@@ -13,6 +13,13 @@ constexpr double kGravityMps2 = 9.81;
 // segment endpoints keeps A* from "climbing" onto an elevated deck through
 // its side just because the deck itself is flat.
 constexpr double kMaximumContinuousGrade = 0.85;
+// A local planner can produce millimetre-scale samples while rotating around
+// an offset axle. The secant height over such a segment is dominated by the
+// authored roughness waveform and is not the grade seen by the chassis
+// support. Use the surface gradient for those short samples; retain the
+// endpoint secant check for ordinary travel so a real patch edge still
+// behaves as a discontinuity.
+constexpr double kMinimumSecantDistanceM = 0.05;
 
 bool contains(const HeightPatch& patch, Vec2 position) {
  return position.x >= patch.min.x && position.x < patch.max.x && position.y >= patch.min.y &&
@@ -78,7 +85,9 @@ double TerrainModel::traversal_cost(Vec2 from, Vec2 to, const TerrainCapability&
  }
  const auto from_terrain = sample(from);
  const auto to_terrain = sample(to);
- const double segment_grade = (to_terrain.height_m - from_terrain.height_m) / distance;
+ const double segment_grade = distance < kMinimumSecantDistanceM
+ ? longitudinal_grade(from_terrain, std::atan2(dy, dx))
+ : (to_terrain.height_m - from_terrain.height_m) / distance;
  if (std::abs(segment_grade) > kMaximumContinuousGrade) {
  return std::numeric_limits<double>::infinity();
  }

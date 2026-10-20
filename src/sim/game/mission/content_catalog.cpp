@@ -431,7 +431,8 @@ require_schema_v1(value, path);
  level.control_mode != "autonomous") {
    throw ContentError(path.string() + ": unsupported control_mode");
   }
-  if (level.localization_mode != "odometry" && level.localization_mode != "fused") {
+ if (level.localization_mode != "odometry" && level.localization_mode != "fused" &&
+ level.localization_mode != "known_map") {
    throw ContentError(path.string() + ": unsupported localization_mode");
   }
   level.prerequisites = value.at("prerequisites").get<std::vector<std::string>>();

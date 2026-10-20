@@ -1,14 +1,14 @@
-#include "sim/game/mission/systems/collision_monitor.hpp"
+#include "robot/autonomy/validation/collision_monitor.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
-namespace mission {
+namespace sim::autonomy {
 namespace {
 
-bool segment_intersects_box(sim::Vec2 from, sim::Vec2 to,
- sim::Vec2 minimum, sim::Vec2 maximum) {
+bool segment_intersects_box(Vec2 from, Vec2 to,
+ Vec2 minimum, Vec2 maximum) {
  double enter = 0.0;
  double leave = 1.0;
  const auto clip_axis = [&](double start, double delta, double low, double high,
@@ -30,8 +30,8 @@ bool segment_intersects_box(sim::Vec2 from, sim::Vec2 to,
  return leave >= 0.0 && enter <= 1.0;
 }
 
-sim::Vec2 box_local_point(const CollisionBox& box, sim::Vec2 point) {
- const sim::Vec2 center{(box.min.x + box.max.x) * 0.5,
+Vec2 box_local_point(const CollisionBox& box, Vec2 point) {
+ const Vec2 center{(box.min.x + box.max.x) * 0.5,
  (box.min.y + box.max.y) * 0.5};
  const double dx = point.x - center.x;
  const double dy = point.y - center.y;
@@ -40,13 +40,13 @@ sim::Vec2 box_local_point(const CollisionBox& box, sim::Vec2 point) {
  return {cosine * dx + sine * dy, -sine * dx + cosine * dy};
 }
 
-sim::Vec2 box_half_extents(const CollisionBox& box) {
+Vec2 box_half_extents(const CollisionBox& box) {
  return {(box.max.x - box.min.x) * 0.5, (box.max.y - box.min.y) * 0.5};
 }
 
 } // namespace
 
-CollisionMonitor::CollisionMonitor(sim::Vec2 world_size, double robot_radius_m,
+CollisionMonitor::CollisionMonitor(Vec2 world_size, double robot_radius_m,
  std::vector<CollisionBox> static_obstacles)
  : world_size_(world_size),
  robot_radius_m_(robot_radius_m),
@@ -59,10 +59,10 @@ void CollisionMonitor::reset() {
  rigid_static_contact_s_ = 0.0;
 }
 
-bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to,
+bool CollisionMonitor::static_motion_free(Vec2 from, Vec2 to,
  double execution_margin_m) const {
  const auto motion_free_at_radius = [&](double radius_m) {
- const auto inside_world = [&](sim::Vec2 point) {
+ const auto inside_world = [&](Vec2 point) {
  return point.x > radius_m && point.y > radius_m &&
  point.x < world_size_.x - radius_m &&
  point.y < world_size_.y - radius_m;
@@ -97,12 +97,12 @@ bool CollisionMonitor::static_motion_free(sim::Vec2 from, sim::Vec2 to,
  // If tracking/localization has already put the centre inside the execution
  // reserve, preserve exact physical collision checking and admit only
  // non-worsening recovery segments until the reserve has been regained.
- const sim::Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
+ const Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
  return static_clearance(midpoint) + 1e-9 >= initial_clearance &&
  static_clearance(to) + 1e-9 >= initial_clearance;
 }
 
-double CollisionMonitor::static_clearance(sim::Vec2 position) const {
+double CollisionMonitor::static_clearance(Vec2 position) const {
  double minimum = std::min({position.x, position.y,
  world_size_.x - position.x, world_size_.y - position.y}) - robot_radius_m_;
  for (const auto& obstacle : static_obstacles_) {
@@ -174,4 +174,4 @@ out.static_collision = outside || footprint_outside || obstacle_overlap;
  return out;
 }
 
-} // namespace mission
+} // namespace sim::autonomy

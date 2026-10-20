@@ -67,6 +67,8 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/global/hybrid_astar.cpp
  src/robot/autonomy/planning/local/holonomic_local.cpp
  src/robot/autonomy/planning/local/local_planning_system.cpp
+ src/robot/autonomy/validation/collision_monitor.cpp
+ src/robot/autonomy/diagnostics/decision_evidence.cpp
  src/robot/autonomy/planning/path_smoothing.cpp
  src/robot/autonomy/planning/task/task_ordering.cpp
  src/robot/autonomy/behavior/high_level_policy.cpp
@@ -76,6 +78,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/behavior/crossing_behavior.cpp
  src/robot/autonomy/behavior/crossing_map_semantics.cpp
  src/robot/autonomy/localization/estimation_system.cpp
+ src/robot/autonomy/localization/known_map_localizer.cpp
  src/robot/autonomy/localization/dead_reckon.cpp
  src/robot/autonomy/perception/dynamic_obstacle_map.cpp
  src/robot/autonomy/perception/lidar_perception_system.cpp
@@ -190,6 +193,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
  add_test(NAME map_provider COMMAND test_map_provider)
 
+ add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
+ target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
+
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
  target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)
  add_test(NAME robot_map_package COMMAND test_robot_map_package)
@@ -302,8 +309,6 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/scenario/scenario_session.cpp
  src/sim/game/scenario/scenario_autonomy.cpp
  src/sim/game/mission/world/actor_behavior_registry.cpp
- src/sim/game/mission/systems/collision_monitor.cpp
- src/sim/game/mission/systems/decision_evidence_system.cpp
  src/sim/game/mission/systems/field_dispatch_system.cpp
  src/sim/game/mission/systems/field_operator_system.cpp
  src/sim/game/mission/systems/goal_system.cpp
@@ -739,6 +744,10 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
  add_test(NAME map_provider COMMAND test_map_provider)
+
+ add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
+ target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
 
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
  target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)

@@ -247,9 +247,11 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
     const double sample_time = time + step_dt;
  samples.push_back({sample_time, {x, y}, wrap_angle(heading),
  rollout_v, rollout_lateral_v, rollout_w, 0.0});
-    if (!map.isFree(x, y) || dynamic_collision(x, y, sample_time) ||
-        (terrain_feasible && !terrain_feasible(previous, {x, y}))) {
-     collision = true;
+ const bool map_free = map.isFree(x, y);
+ const bool dynamic_hit = dynamic_collision(x, y, sample_time);
+ const bool terrain_ok = !terrain_feasible || terrain_feasible(previous, {x, y});
+ if (!map_free || dynamic_hit || !terrain_ok) {
+ collision = true;
      free_time = time;
      break;
     }
