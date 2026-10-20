@@ -1,9 +1,9 @@
-#include "vehicle_measurement_system.hpp"
+#include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace mission {
+namespace sim::autonomy {
 namespace {
 
 constexpr double kMovingSpeedMps = 0.25;
@@ -11,7 +11,7 @@ constexpr double kZeroCommandMps = 0.05;
 constexpr double kStoppedSpeedMps = 0.03;
 constexpr double kCancelCommandMps = 0.15;
 
-double distance(sim::Vec2 first, sim::Vec2 second) {
+double distance(Vec2 first, Vec2 second) {
  return std::hypot(first.x - second.x, first.y - second.y);
 }
 
@@ -27,7 +27,7 @@ void VehicleMeasurementSystem::reset() {
 }
 
 const BrakingMeasurement& VehicleMeasurementSystem::update(
- double time_s, sim::Vec2 position, double speed_mps, double target_speed_mps) {
+ double time_s, Vec2 position, double speed_mps, double target_speed_mps) {
  if (!have_previous_) {
  have_previous_ = true;
  previous_target_speed_mps_ = target_speed_mps;
@@ -53,7 +53,8 @@ const BrakingMeasurement& VehicleMeasurementSystem::update(
  if (braking_.active) {
  braking_.distance_m += distance(previous_position_, position);
  braking_.elapsed_s = std::max(0.0, time_s - brake_start_time_s_);
- const bool stopped = std::abs(speed_mps) <= kStoppedSpeedMps || speed_mps * brake_direction_ <= 0.0;
+ const bool stopped = std::abs(speed_mps) <= kStoppedSpeedMps ||
+ speed_mps * brake_direction_ <= 0.0;
  const bool cancelled = std::abs(target_speed_mps) >= kCancelCommandMps &&
  target_speed_mps * brake_direction_ > 0.0;
  if (stopped) {
@@ -70,4 +71,4 @@ const BrakingMeasurement& VehicleMeasurementSystem::update(
  return braking_;
 }
 
-} // namespace mission
+} // namespace sim::autonomy

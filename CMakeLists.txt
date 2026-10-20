@@ -69,6 +69,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/local/local_planning_system.cpp
  src/robot/autonomy/validation/collision_monitor.cpp
  src/robot/autonomy/diagnostics/decision_evidence.cpp
+ src/robot/autonomy/diagnostics/vehicle_measurement.cpp
  src/robot/autonomy/planning/path_smoothing.cpp
  src/robot/autonomy/planning/task/task_ordering.cpp
  src/robot/autonomy/behavior/high_level_policy.cpp
@@ -312,7 +313,6 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/systems/field_dispatch_system.cpp
  src/sim/game/mission/systems/field_operator_system.cpp
  src/sim/game/mission/systems/goal_system.cpp
- src/sim/game/mission/systems/vehicle_measurement_system.cpp
  src/sim/game/mission/systems/world_activity_system.cpp
 )
 target_include_directories(lost_signal_sim_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -40,6 +40,7 @@
 #include "sim/hardware/physics/frame_transform.hpp"
 #include "robot/autonomy/mapping/grid_map.hpp"
 #include "robot/autonomy/localization/slip_detect.hpp"
+#include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "sim/hardware/sensors/sensor.hpp"
 #include "robot/runtime/runtime_channel.hpp"
@@ -758,7 +759,7 @@ class ScenarioSession {
  MissionResult result_;
  std::vector<MissionEvent> events_;
  DecisionEvidenceSystem decision_evidence_system_;
- VehicleMeasurementSystem vehicle_measurement_system_;
+ sim::autonomy::VehicleMeasurementSystem vehicle_measurement_system_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  // Shadow slip instrument (tracked only, see apply_motion): detector state

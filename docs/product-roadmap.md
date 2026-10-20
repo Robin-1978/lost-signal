@@ -352,6 +352,11 @@ compatibility type aliases and supplies world/physics observations; it no longer
 implementations. Remaining SIM-side autonomy audit items are tracked separately from content, actor behavior and plant
 code, which remain simulation responsibilities.
 
+The passive braking measurement state machine has now moved to `robot/autonomy/diagnostics/vehicle_measurement`; the
+SIM header is only a compatibility alias and the SIM target no longer compiles an implementation. It observes command
+transitions and measured motion for diagnostics and scoring evidence; it does not replace the physical brake actuator,
+the trajectory validator or the safety stop limiter.
+
 
 ### P3 — Re-establish the release candidate evidence
 

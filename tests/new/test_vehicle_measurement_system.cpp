@@ -1,4 +1,4 @@
-#include "sim/game/mission/systems/vehicle_measurement_system.hpp"
+#include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -12,7 +12,7 @@
  } while (false)
 
 int main() {
- mission::VehicleMeasurementSystem instrument;
+ sim::autonomy::VehicleMeasurementSystem instrument;
  instrument.reset();
 
  instrument.update(0.0, {0.0, 0.0}, 1.0, 1.0);
