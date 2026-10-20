@@ -354,9 +354,7 @@ return {0, 0, 0, true, {}, false};
  // checks the complete base-link sweep.
  constexpr double kRotateToPathEnterRad = 0.85;
  constexpr double kRotateToPathExitRad = 0.30;
- const bool can_rotate_about_base_link =
-     caps.can_spin &&
-     std::abs(caps.geometry.drive_axle_x_m) <= 1e-9;
+ const bool can_rotate_about_base_link = caps.can_rotate_about_base_link();
  if (can_rotate_about_base_link &&
  (st.spinning || std::abs(err) >= kRotateToPathEnterRad)) {
  if (st.spinning && std::abs(err) <= kRotateToPathExitRad) {

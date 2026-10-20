@@ -2,6 +2,7 @@
 
 #include "robot/core/math.hpp"
 
+#include <cmath>
 #include <vector>
 
 namespace sim {
@@ -50,6 +51,14 @@ struct ChassisCaps {
  return command_space == ChassisCommandSpace::SteeringAngle
  ? geometry.max_steer_rad
  : max_yaw_rate_radps;
+ }
+
+ // Shared alignment capability: a nominal pivot is only a base-link rotation
+ // when the drive axle coincides with base_link. An offset axle turns about
+ // the axle and sweeps base_link, so alignment must be validated as a
+ // rolling/reverse candidate instead of being assumed from `can_spin`.
+ bool can_rotate_about_base_link() const {
+ return can_spin && std::abs(geometry.drive_axle_x_m) <= 1e-9;
  }
 };
 

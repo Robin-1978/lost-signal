@@ -278,7 +278,7 @@ void ScenarioSession::decide_control() {
    if (!route_tracking_system_->reversing()) {
     route_control.tv = std::min(0.3, dist_goal);
     route_control.steer = route_tracking_system_->heading_command(dock_err, dock_dt);
-   } else if (chassis_->caps().can_spin) {
+   } else if (chassis_->caps().can_rotate_about_base_link()) {
     route_tracking_system_->set_reversing(false);
     route_control.tv = 0.0;
     route_control.steer = route_tracking_system_->heading_command(dock_err, dock_dt);
@@ -730,8 +730,7 @@ void ScenarioSession::decide_control() {
  // crossing trajectory itself proves.
  constexpr double kStopApproachHeadingToleranceRad =
  sim::kCrossingInitialHeadingToleranceRad;
- const bool align_before_approach = chassis_caps_.can_spin &&
- std::abs(chassis_caps_.geometry.drive_axle_x_m) <= 1e-9 &&
+ const bool align_before_approach = chassis_caps_.can_rotate_about_base_link() &&
  std::abs(stop_heading_error) > kStopApproachHeadingToleranceRad;
  const double stop_approach_cap = std::min(
  std::max(0.20, sim::sched_v(stop_heading_error, chassis_cruise)),
@@ -1061,7 +1060,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // tangent critic cannot reward holding the old yaw forever after waypoint
  // progress has stopped. Ackermann remains governed by its route/gear model.
  if (!local_target_heading && !local_stop_plane_active &&
- chassis_caps_.can_spin &&
+ chassis_caps_.can_rotate_about_base_link() &&
  std::abs(route_control.tv) <= 1e-9 && std::abs(route_control.err) > 0.05) {
  local_target_heading = std::atan2(
  target.y - nav_y, target.x - nav_x);
