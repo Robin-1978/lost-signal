@@ -39,6 +39,7 @@ bool sample_support(const SupportSurface& support, Vec2 position, TerrainSample&
  return true;
 }
 
+
 } // namespace
 
 TerrainSample TerrainModel::sample(Vec2 position) const {
@@ -55,11 +56,13 @@ TerrainSample TerrainModel::sample(Vec2 position) const {
   }
  const double dx = position.x - patch->min.x;
  const double dy = position.y - patch->min.y;
+ const ReliefSample relief = rough_relief(patch->roughness,
+ patch->max.x - patch->min.x, patch->max.y - patch->min.y, dx, dy);
  return {
  patch->base_height_m + patch->grade_x * dx + patch->grade_y * dy +
- patch->grade_xy_per_m * dx * dy,
- patch->grade_x + patch->grade_xy_per_m * dy,
- patch->grade_y + patch->grade_xy_per_m * dx,
+ patch->grade_xy_per_m * dx * dy + relief.height_m,
+ patch->grade_x + patch->grade_xy_per_m * dy + relief.gradient_x,
+ patch->grade_y + patch->grade_xy_per_m * dx + relief.gradient_y,
     patch->roughness,
   };
  }
@@ -132,6 +135,21 @@ double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, doub
  const double normal_load = kGravityMps2 * std::cos(surface_angle);
  const double effective_angle = std::atan2(std::abs(lateral_load), std::max(0.05, normal_load));
  return effective_angle / std::max(0.05, static_rollover_angle(support_width_m, center_of_mass_height_m));
+}
+
+double roughness_vertical_acceleration(double roughness_m, double speed_mps, double support_base_m) {
+ const double base = std::max(0.1, support_base_m);
+ const double wavenumber = 2.0 * kPi / base;
+ return wavenumber * wavenumber * std::max(0.0, roughness_m) * speed_mps * speed_mps;
+}
+
+double roughness_ride_speed_limit(double roughness_m, double support_base_m, double gravity_fraction) {
+ const double per_speed_squared =
+ roughness_vertical_acceleration(roughness_m, 1.0, support_base_m);
+ if (!(per_speed_squared > 1e-9)) {
+ return std::numeric_limits<double>::infinity();
+ }
+ return std::sqrt(std::max(0.0, gravity_fraction) * kGravityMps2 / per_speed_squared);
 }
 
 double support_polygon_risk(Vec2 load_projection, Vec2 unloaded_projection,

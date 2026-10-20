@@ -237,6 +237,7 @@ void ScenarioSession::reset() {
  shadow_episode_last_s_ = -1.0;
  shadow_episode_last_reason_ = -1;
  held_command_ = {};
+ controlled_stop_settle_cycles_ = 0;
  manual_command_ = {};
  manual_control_active_ = false;
  endless_target_key_ = "uninitialized";
@@ -1200,10 +1201,12 @@ void ScenarioSession::select_next_goal(const Pose& start) {
  struct RouteCost {
   double distance_m{0.0};
   double traversal_cost{0.0};
+ double expected_time_s{0.0};
   double worst_multiplier{1.0};
  };
  const auto route_cost = [this](const std::vector<sim::RoutePoint>& path) {
   RouteCost cost;
+ const double planning_speed = std::max(0.3, cruise_speed_mps());
   for (std::size_t point = 1; point < path.size(); ++point) {
    const auto from = path[point - 1].position;
    const auto to = path[point].position;
@@ -1212,6 +1215,17 @@ void ScenarioSession::select_next_goal(const Pose& start) {
    cost.distance_m += segment_distance;
    cost.traversal_cost += segment_distance * multiplier;
    cost.worst_multiplier = std::max(cost.worst_multiplier, multiplier);
+ const sim::Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
+ const double ride_speed = sim::roughness_ride_speed_limit(
+ terrain_.sample(midpoint).roughness,
+ chassis_caps_.geometry.support_length_m, 0.5);
+ // Route cost expresses how choppy or demanding a segment is; it is not a
+ // time estimate. The local planner also caps speed where relief shorter
+ // than the support base would unload a contact. Scheduling with cruise
+ // speed alone therefore commits to work whose return leg cannot fit.
+ const double nominal_time_s = segment_distance * multiplier / planning_speed;
+ const double ride_time_s = segment_distance / std::min(planning_speed, ride_speed);
+ cost.expected_time_s += std::max(nominal_time_s, ride_time_s);
   }
   return cost;
  };
@@ -1227,12 +1241,6 @@ void ScenarioSession::select_next_goal(const Pose& start) {
   if (!plan.ok || plan.path.empty())
    continue;
   const auto candidate_cost = route_cost(plan.path);
- // Traversal cost already includes terrain slowdown. Applying another 25%
- // speed discount double-counts the same loss and can abandon feasible work
- // while more than the authored return reserve remains. The reserve itself
- // carries schedule uncertainty; convert weighted route length at nominal
- // cruise here.
- const double planning_speed = std::max(0.3, cruise_speed_mps());
   if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
       terminal != level_.objective.goals.end()) {
    const auto& home = map_definition_.markers.at(terminal->marker);
@@ -1242,9 +1250,9 @@ void ScenarioSession::select_next_goal(const Pose& start) {
    result_.astar_expanded += return_plan.expanded;
    if (!return_plan.ok || return_plan.path.empty())
     continue;
-   const double return_cost = route_cost(return_plan.path).traversal_cost;
+ const double return_time_s = route_cost(return_plan.path).expected_time_s;
    const double expected_finish_s = snapshot_.time_s +
-                                    (candidate_cost.traversal_cost + return_cost) / planning_speed +
+ candidate_cost.expected_time_s + return_time_s +
                                     level_.objective.return_reserve_s;
    if (expected_finish_s > level_.objective.time_limit_s) {
     reserve_rejected.push_back(index);
@@ -1252,7 +1260,7 @@ void ScenarioSession::select_next_goal(const Pose& start) {
    }
   }
   if (candidate.action == "complete" && level_.objective.return_reserve_s > 0.0 &&
-      snapshot_.time_s + candidate_cost.traversal_cost / planning_speed > level_.objective.time_limit_s) {
+ snapshot_.time_s + candidate_cost.expected_time_s > level_.objective.time_limit_s) {
    terminal_out_of_time = true;
    continue;
   }

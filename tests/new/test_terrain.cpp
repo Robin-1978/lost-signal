@@ -15,7 +15,9 @@
 
 int main() {
  sim::TerrainModel terrain({
-   {"steep", {2.0, 1.0}, {8.0, 4.0}, 0.0, 0.36, 0.0, 0.1},
+ // Plane-only patch: the relief contract is exercised separately below, so
+ // this sample pins the exact plane gradient the planner relies on.
+ {"steep", {2.0, 1.0}, {8.0, 4.0}, 0.0, 0.36, 0.0, 0.0},
  });
  const auto sample = terrain.sample({3.0, 2.0});
  CHECK(std::abs(sample.height_m - 0.36) < 1e-12);
@@ -113,5 +115,41 @@ int main() {
  corner_map.setOccupied(0.5, 1.5);
  const auto corner_route = sim::astar_plan(corner_map, {0.5, 0.5}, {1.5, 1.5});
  CHECK(!corner_route.ok);
+
+ // Rough relief is part of the deployable map, not a cosmetic terrain value.
+ // The physics mesh and this sample are authored from one function, so the
+ // robot plans over the surface it actually drives on. Height and gradient
+ // must describe that same surface; a sampled plane with hidden relief would
+ // make every stability and stopping decision optimistic exactly where the
+ // ground is worst.
+ sim::TerrainModel rough({
+ {"rough", {0.0, 0.0}, {10.0, 10.0}, 0.0, 0.0, 0.0, 0.04},
+ });
+ const sim::Vec2 probe{4.1, 5.3};
+ const auto rough_sample = rough.sample(probe);
+ CHECK(std::abs(rough_sample.height_m) > 1e-3);
+ CHECK(std::abs(rough_sample.height_m) <= 0.04 + 1e-9);
+ constexpr double kStep = 1e-4;
+ const double finite_x =
+ (rough.sample({probe.x + kStep, probe.y}).height_m -
+ rough.sample({probe.x - kStep, probe.y}).height_m) /
+ (2.0 * kStep);
+ const double finite_y =
+ (rough.sample({probe.x, probe.y + kStep}).height_m -
+ rough.sample({probe.x, probe.y - kStep}).height_m) /
+ (2.0 * kStep);
+ CHECK(std::abs(finite_x - rough_sample.grade_x) < 1e-3);
+ CHECK(std::abs(finite_y - rough_sample.grade_y) < 1e-3);
+ // Relief the chassis cannot tilt to follow becomes a vertical excitation.
+ // The ride limit is the speed at which that excitation consumes the stated
+ // share of gravity, and it must tighten with rougher ground.
+ CHECK(!std::isfinite(sim::roughness_ride_speed_limit(0.0, 0.435, 0.5)));
+ const double smooth_ride = sim::roughness_ride_speed_limit(0.01, 0.435, 0.5);
+ const double rough_ride = sim::roughness_ride_speed_limit(0.04, 0.435, 0.5);
+ CHECK(std::isfinite(rough_ride));
+ CHECK(rough_ride < smooth_ride);
+ CHECK(std::abs(sim::roughness_vertical_acceleration(0.04, rough_ride, 0.435) -
+ 0.5 * 9.81) < 1e-6);
+ CHECK(sim::roughness_ride_speed_limit(0.04, 0.435, 0.25) < rough_ride);
  return 0;
 }

@@ -149,10 +149,18 @@ DwaResult compute(Vec2 pos, double theta, double cur_v, double cur_w, Vec2 goal,
  // When the current speed is already outside a newly reduced policy cap,
  // retain the nearest rate-limited recovery command instead of demanding an
  // impossible instantaneous clamp.
+ // Encoder-side motion is the authoritative starting point when the plant
+ // publishes it. A filtered body estimate can lag a slide by a factor of ten,
+ // which makes a window that is already past its reachable band look like a
+ // gentle manoeuvre and produces commands the wheels cannot execute.
+ const bool have_measured_wheels = measured_wheel_speeds.has_value();
+ const double window_cur_v = have_measured_wheels
+ ? 0.5 * (measured_wheel_speeds->left_mps + measured_wheel_speeds->right_mps)
+ : cur_v;
  const auto velocity_window = next_velocity_command_window(
- cur_v, min_velocity, v_max, accel * dt, decel * dt);
+ window_cur_v, min_velocity, v_max, accel * dt, decel * dt);
  const auto velocity_samples = command_samples(
- velocity_window, 0.25, {cur_v, 0.0, min_velocity, v_max});
+ velocity_window, 0.25, {window_cur_v, 0.0, min_velocity, v_max});
  // The longitudinal window above already arrests measured motion in the
  // wrong gear without authorizing an immediate forward lurch. Do not zero
  // yaw at the same time: a spin-capable chassis must still be able to rotate

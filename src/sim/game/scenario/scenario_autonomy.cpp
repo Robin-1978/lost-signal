@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <iomanip>
 #include <iterator>
 #include <limits>
@@ -348,9 +347,16 @@ void ScenarioSession::decide_control() {
  // time-critical maneuvers impossible and couples ROBOT behavior to GAME.
  const double hard_crossing_clearance = scan_motion_margin;
  const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
+ // Ride limit. Relief the chassis cannot tilt over lifts a contact instead
+ // of steering the body, and the caster only retains the pitch restraint
+ // while it carries weight. Hold the demanded vertical excitation below
+ // half of g so a bump cannot unload the support that keeps the body level.
+ const double ride_speed_limit_mps = sim::roughness_ride_speed_limit(
+ terrain_.sample({nav_x, nav_y}).roughness,
+ chassis_caps_.geometry.support_length_m, 0.5);
  const double route_independent_speed_cap =
- std::min(std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
-                             corner_speed_cap(nav_x, nav_y));
+ std::min({std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
+ corner_speed_cap(nav_x, nav_y), ride_speed_limit_mps});
  double speed_cap = route_independent_speed_cap * snapshot_.strategy.applied.speed_scale;
  // The selected rollout is the command contract. Feed route and corner caps
  // into candidate generation so mission code never rewrites its speed later.
@@ -1313,42 +1319,6 @@ if (!continuous_execution && remaining_m > 0.5) {
  }, [this](sim::Vec2 position) { return terrain_.sample(position); });
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;
- if (snapshot_.time_s >= 155.0 && snapshot_.time_s <= 196.0 &&
-     nav_y < 2.0) {
-  double predicted_min_y = std::numeric_limits<double>::infinity();
-  double predicted_terminal_y = nav_y;
-  double predicted_min_clearance = std::numeric_limits<double>::infinity();
-  for (const auto& sample : validated_selection.trajectory.samples) {
-   predicted_min_y = std::min(predicted_min_y, sample.position.y);
-   predicted_terminal_y = sample.position.y;
-   predicted_min_clearance = std::min(
-    predicted_min_clearance,
-    collision_monitor_->static_clearance(sample.position));
-  }
-  const auto& selected_command = validated_selection.trajectory.command;
-  std::fprintf(stderr,
-   "[trace] t=%.2f nav=(%.3f,%.3f,%.3f) v=%.3f w=%.3f "
-   "cmd=(%.3f,%.3f) best=(%.3f,%.3f) pred=(%.3f,%.3f,clr%.3f) "
-   "mon_clr=%.3f pref_clr=%.3f phys_clr=%.3f req=%.3f "
-   "stop=%d maxv=%.2f rec=%d gear=%d nbr=%d prog=%.3f acc=%zu verdict=%d\n",
-   snapshot_.time_s, nav_x, nav_y, nav_heading,
-   local_request.forward_mps, local_request.yaw_rate_radps,
-   selected_command.v, selected_command.w,
-   dwa.best.command.v, dwa.best.command.w,
-   predicted_min_y, predicted_terminal_y, predicted_min_clearance,
-   collision_monitor_->static_clearance({nav_x, nav_y}),
-   local_planning_map.clearance(nav_x, nav_y),
-   local_physical_collision_map.clearance(nav_x, nav_y),
-   local_request.required_clearance_m,
-   local_request.stop_plane_active ? 1 : 0,
-   local_request.max_speed_mps,
-   local_plan.static_margin_recovery_active ? 1 : 0,
-   local_plan.static_margin_recovery_gear,
-   local_plan.near_boundary_clearance_recovery_active ? 1 : 0,
-   local_plan.static_margin_escape_progress_m,
-   validated_selection.accepted_candidates,
-   static_cast<int>(validated_selection.validation.verdict));
- }
  snapshot_.control.static_margin_recovery_active =
  local_plan.static_margin_recovery_active;
  snapshot_.control.static_margin_recovery_gear =
@@ -1368,78 +1338,12 @@ if (!continuous_execution && remaining_m > 0.5) {
  snapshot_.control.dwa_proposed_v_mps = dwa.best.command.v;
  snapshot_.control.dwa_proposed_w_radps = dwa.best.command.w;
  snapshot_.control.dwa_accepted_candidates = validated_selection.accepted_candidates;
-	if (std::abs(route_control.tv) <= 1e-9 && std::abs(route_control.err) > 0.05) {
-		static double diagnostic_last_s = -1.0;
-		if (snapshot_.time_s - diagnostic_last_s > 2.0) {
-			diagnostic_last_s = snapshot_.time_s;
-			int turning = 0;
-			int turning_free = 0;
-			for (const auto& rollout : dwa.rollouts) {
-				if (std::abs(rollout.trajectory.command.w) <= 0.1) {
-					continue;
-				}
-				++turning;
-				if (!rollout.collision) {
-					++turning_free;
-				}
-			}
-			const bool preferred_free =
-				local_planning_map.isFree(nav_x, nav_y);
-			const double preferred_clearance =
-				local_planning_map.clearance(nav_x, nav_y);
-			const bool physical_free =
-				local_physical_collision_map.isFree(nav_x, nav_y);
-			const double physical_clearance =
-				local_physical_collision_map.clearance(nav_x, nav_y);
-			std::fprintf(stderr,
-				"[diag] t=%.2f nav=(%.2f,%.2f,%.2f) target=(%.2f,%.2f) err=%.3f "
-				"tv=%.3f cap=%.3f target_hdg=%s%.3f fwd=%.3f yaw=%.3f "
-				"yaw_accel=%.2f accel=%.3f decel=%.3f track=%.3f "
-				"wheel=(%.3f,%.3f) best=(%.3f,%.3f,v%d) rollouts=%zu turn=%d/%d "
-				"accepted=%zu verdict=%d idx=%zu route=%zu "
-				"pref=(%d,%.2f) phys=(%d,%.2f) rec=%d nbr=%d "
-				"escape=(%.2f,%.2f,%.2f) progress=%.2f\n",
-				snapshot_.time_s, nav_x, nav_y, nav_heading, target.x, target.y,
-				route_control.err, route_control.tv, speed_cap,
-				local_target_heading ? "" : "none:", local_target_heading.value_or(0.0),
-				local_request.forward_mps, local_request.yaw_rate_radps,
-				local_request.max_yaw_accel_radps2, local_request.max_accel_mps2,
-				local_request.max_decel_mps2, local_request.differential_track_m,
-				local_request.measured_wheel_speeds
-					? local_request.measured_wheel_speeds->left_mps : 0.0,
-				local_request.measured_wheel_speeds
-					? local_request.measured_wheel_speeds->right_mps : 0.0,
-				dwa.best.command.v,
-				dwa.best.command.w, dwa.best.command.valid ? 1 : 0,
-				dwa.rollouts.size(), turning_free, turning,
-				validated_selection.accepted_candidates,
-				static_cast<int>(validated_selection.validation.verdict),
-				route_tracking_system_->path_index(), planned_route_.size(),
-				preferred_free ? 1 : 0, preferred_clearance,
-				physical_free ? 1 : 0, physical_clearance,
-				local_plan.static_margin_recovery_active ? 1 : 0,
-				local_plan.near_boundary_clearance_recovery_active ? 1 : 0,
-				local_plan.static_margin_escape_origin.x,
-				local_plan.static_margin_escape_origin.y,
-				local_plan.static_margin_escape_heading_rad,
-				local_plan.static_margin_escape_progress_m);
-		}
-	}
  const auto& selected_trajectory = validated_selection.trajectory;
  for (const auto& sample : selected_trajectory.samples)
-  snapshot_.control.dwa_selected.push_back(sample.position);
+ snapshot_.control.dwa_selected.push_back(sample.position);
  const auto& trajectory_validation = validated_selection.validation;
  // Local collision freedom is weaker than the time-indexed crossing proof.
- // If selection can no longer execute either the admitted schedule or a
- // separately named committed contingency, behavior must reassess the old
- // admission on the next decision cycle instead of silently waiting inside
- // its expiring traffic window.
- // Schedule preservation is independent of the local recovery verdict. A
- // body that has drifted into preferred static inflation may receive a
- // MinimumRiskEscape label while the independently joined timed continuation
- // still preserves the admitted crossing. Treating that label alone as a
- // blocked schedule revokes valid authority one cycle before the recovery
- // exits the soft margin. Only loss of the schedule proof blocks execution.
+ // Reassess an admitted schedule whenever its validated continuation is lost.
  autonomy_pipeline_->report_crossing_execution(
  crossing_committed, trajectory_validation,
  snapshot_.control.trajectory_sequence, snapshot_.time_s);
@@ -1462,8 +1366,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  snapshot_.control.trajectory_committed_tracking_cost =
  trajectory_validation.committed_tracking_cost;
  double predicted_separation_m = std::isfinite(trajectory_validation.min_dynamic_clearance_m)
-                                   ? trajectory_validation.min_dynamic_clearance_m
-                                   : std::numeric_limits<double>::quiet_NaN();
+ ? trajectory_validation.min_dynamic_clearance_m
+ : std::numeric_limits<double>::quiet_NaN();
  constexpr std::size_t kVisibleDwaCandidates = 24;
  const std::size_t candidate_stride =
    std::max<std::size_t>(1, (dwa.rollouts.size() + kVisibleDwaCandidates - 1) / kVisibleDwaCandidates);
@@ -1487,11 +1391,31 @@ if (!continuous_execution && remaining_m > 0.5) {
  // the plant is still carrying the rejected maneuver's momentum; alternating
  // those two commands produces a brake/accelerate limit cycle on slopes.
  constexpr double kControlledStopLinearReleaseMps = 0.04;
- constexpr double kControlledStopYawReleaseRadps = 0.08;
+ // A stop latch belongs to the plant state, not to the filtered pose used by
+ // the planner. The fused estimate may already be near zero while the wheel
+ // joints still carry substantial speed, especially after a short safety
+ // rejection on a slope. Releasing on that estimate immediately republishes
+ // a high target and turns the stop into a brake/accelerate limit cycle.
+ // Peak wheel speed also rises with a differential, so an in-place rotation
+ // keeps the latch closed without consulting the planner's requested yaw. A
+ // request is evidence of intent, never of motion, and gating release on it
+ // deadlocks the turn the planner needs in order to leave the stop.
+ const double measured_stop_wheel_mps = local_request.measured_wheel_speeds
+ ? std::max(std::abs(local_request.measured_wheel_speeds->left_mps),
+ std::abs(local_request.measured_wheel_speeds->right_mps))
+ : std::abs(local_request.forward_mps);
+ constexpr int kControlledStopSettleCycles = 3;
+ if (!held_command_.controlled_stop) {
+ controlled_stop_settle_cycles_ = 0;
+ } else if (measured_stop_wheel_mps <= kControlledStopLinearReleaseMps) {
+ controlled_stop_settle_cycles_ = std::min(
+ kControlledStopSettleCycles, controlled_stop_settle_cycles_ + 1);
+ } else {
+ controlled_stop_settle_cycles_ = 0;
+ }
  const bool controlled_stop_in_progress = held_command_.controlled_stop &&
- (std::abs(local_request.forward_mps) > kControlledStopLinearReleaseMps ||
- std::abs(local_request.lateral_mps) > kControlledStopLinearReleaseMps ||
- std::abs(local_request.yaw_rate_radps) > kControlledStopYawReleaseRadps);
+(controlled_stop_settle_cycles_ < kControlledStopSettleCycles ||
+ measured_stop_wheel_mps > kControlledStopLinearReleaseMps);
  const bool trajectory_accepted =
  trajectory_validation.accepted() && !controlled_stop_in_progress;
  const bool stability_rejection =
@@ -1509,13 +1433,31 @@ if (!continuous_execution && remaining_m > 0.5) {
  const double stop_grade = sim::longitudinal_grade(stop_terrain, nav_heading);
  const bool steering_command =
  local_request.command_space == sim::LocalCommandSpace::SteeringAngle;
+ // A safety stop must start from the motion that the plant is actually
+ // carrying, not from the last requested twist.  On a downhill grade the
+ // request can already be zero while encoder feedback continues to show a
+ // substantial rollback.  Seeding the ramp from the request would publish
+ // zero again and leave the controller with no reachable braking target.
+ const double measured_stop_forward_mps = local_request.measured_wheel_speeds
+ ? 0.5 * (local_request.measured_wheel_speeds->left_mps +
+ local_request.measured_wheel_speeds->right_mps)
+ : local_request.forward_mps;
  // A stop trajectory is initialized from feedback once, then remains a
  // monotonic command ramp. Re-seeding it from measured speed every cycle
  // makes a downhill disturbance raise the next target and prevents the
  // speed loop from developing braking error.
- const bool continuing_controlled_stop = held_command_.controlled_stop;
+ const bool stop_target_initialized =
+ std::abs(held_command_.target_v) > 1e-4 ||
+ std::abs(held_command_.target_lateral_v) > 1e-4 ||
+ std::abs(held_command_.target_w) > 1e-4;
+ // A zero stop target is not enough to prove that the ramp was initialized:
+ // gravity can move the plant after the target has already reached zero.
+ // Re-seed once from feedback when that happens, then continue the monotonic
+ // ramp from the newly staged target.
+ const bool continuing_controlled_stop =
+ held_command_.controlled_stop && stop_target_initialized;
  const sim::SafeStopMotion stop_motion{
- continuing_controlled_stop ? held_command_.target_v : local_request.forward_mps,
+ continuing_controlled_stop ? held_command_.target_v : measured_stop_forward_mps,
  continuing_controlled_stop ? held_command_.target_lateral_v : local_request.lateral_mps,
  continuing_controlled_stop
  ? held_command_.target_w
@@ -1536,7 +1478,14 @@ if (!continuous_execution && remaining_m > 0.5) {
  stop_limits.center_of_mass_height_m = combined_center_height_m();
  const auto stop_command = sim::stage_safe_stop(
  chassis_caps_, stop_motion, stop_limits);
- held_command_.target_v = stop_command.forward_mps;
+ // A negative measured velocity is already motion away from the requested
+ // route. A less-negative velocity target still asks the motor loop to track
+ // downhill motion for another interval, which can amplify rollback before
+ // the grade is arrested. Command the zero target directly; the controlled
+ // stop flag makes the low-level controller reset stale effort and apply its
+ // normal opposing feedback torque.
+ held_command_.target_v = measured_stop_forward_mps < -kControlledStopLinearReleaseMps
+ ? 0.0 : stop_command.forward_mps;
  held_command_.target_lateral_v = stop_command.lateral_mps;
  held_command_.target_w = stop_command.turn;
  held_command_.controlled_stop = true;
@@ -1566,6 +1515,7 @@ if (!continuous_execution && remaining_m > 0.5) {
   // trajectory. Every speed/turn cap was applied before rollout generation.
   constexpr double kCreepSpeedMps = 0.15;
   held_command_ = {command.v, command.w};
+ controlled_stop_settle_cycles_ = 0;
   held_command_.target_lateral_v = command.lateral_v;
  const double commanded_translation_mps =
  std::hypot(command.v, command.lateral_v);
@@ -1606,6 +1556,29 @@ if (!continuous_execution && remaining_m > 0.5) {
  control_estimate.attitude_valid
  ? -9.81 * std::sin(control_estimate.pitch_rad)
  : 9.81 * current_grade / std::sqrt(1.0 + current_grade * current_grade);
+ // Gravity compensation is a bounded actuator request, not an unbounded
+ // estimate. An attitude estimate that lags or overshoots on a slide can
+ // otherwise consume the whole duty range and cancel the velocity loop's
+ // braking effort, driving the wheels further in the direction of travel.
+ // The support-polygon limit is the same physical bound used to stage a
+ // controlled stop, so the request stays inside what the chassis can apply
+ // without pitching over.
+ held_command_.longitudinal_acceleration_feedforward_mps2 = std::clamp(
+ held_command_.longitudinal_acceleration_feedforward_mps2,
+ -local_request.emergency_decel_mps2, local_request.emergency_decel_mps2);
+ const double measured_control_forward_mps = local_request.measured_wheel_speeds
+ ? 0.5 * (local_request.measured_wheel_speeds->left_mps +
+ local_request.measured_wheel_speeds->right_mps)
+ : local_request.forward_mps;
+ // During a controlled stop, gravity compensation must not become a drive
+ // command in the same direction as the residual motion. Let the velocity
+ // loop dissipate that motion; retain feedforward only when it assists the
+ // stop or when the chassis is not in the stop state.
+ if (held_command_.controlled_stop &&
+ held_command_.longitudinal_acceleration_feedforward_mps2 *
+ measured_control_forward_mps > 0.0) {
+ held_command_.longitudinal_acceleration_feedforward_mps2 = 0.0;
+ }
  const bool minimum_risk_escape = trajectory_validation.minimum_risk_escape();
  const bool committed_transit = trajectory_validation.committed_transit();
  const std::string action_code =

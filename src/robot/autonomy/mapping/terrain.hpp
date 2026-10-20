@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/core/math.hpp"
+#include "robot/core/terrain_relief.hpp"
 
 #include <string>
 #include <vector>
@@ -49,6 +50,7 @@ struct TerrainCapability {
  double roughness_cost_weight{1.0};
 };
 
+
 class TerrainModel {
  public:
  TerrainModel() = default;
@@ -72,6 +74,18 @@ double lateral_grade(const TerrainSample& terrain, double heading_rad);
 double static_rollover_angle(double support_width_m, double center_of_mass_height_m);
 double rollover_risk(double cross_grade, double support_width_m, double center_of_mass_height_m);
 double roughness_lateral_acceleration(double roughness_m, double speed_mps, double support_width_m);
+// Peak vertical acceleration demanded by relief the chassis cannot follow.
+// Relief shorter than the support base acts as an excitation instead of a
+// ramp: the body cannot tilt to absorb it, so every contact has to
+// accelerate upward at once. For a sinusoidal wave of the given amplitude
+// whose wavelength equals the support base the peak is
+// (2*pi/L)^2 * roughness * v^2.
+double roughness_vertical_acceleration(double roughness_m, double speed_mps, double support_base_m);
+// Speed at which that vertical excitation consumes the given fraction of
+// gravity. A contact lifts once the demanded acceleration exceeds the share
+// of weight it carries, which turns the support polygon into a line and
+// removes the pitch or roll restraint the chassis was relying on.
+double roughness_ride_speed_limit(double roughness_m, double support_base_m, double gravity_fraction);
 double dynamic_rollover_risk(double cross_grade, double lateral_accel_mps2, double support_width_m,
                              double center_of_mass_height_m);
 

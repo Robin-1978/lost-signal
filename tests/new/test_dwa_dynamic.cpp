@@ -137,6 +137,20 @@ int main() {
  return std::abs(rollout.trajectory.command.w) > 0.1;
  }));
 
+ // Encoder motion, not the filtered body estimate, defines the reachable
+ // window. A body estimate that has already decayed to a centimetre per
+ // second while the wheels still roll backwards would otherwise authorize a
+ // forward command the actuators cannot reach in one control period.
+ const auto encoder_reported_rollback = sim::dwa_compute_trajectory(
+ {1.0, 1.0}, 0.0, -0.02, 0.0, {1.0, 8.0}, map, weights,
+ {}, 2.0, 1.2, 3.0, 1.0, 0.1, 0.1,
+ 0.0, 0.20, 4.0, {}, 0.0, sim::kPi * 0.5, {}, 0.58, 2.4, 0.0, 4.0,
+ 0.0, sim::DifferentialWheelSpeeds{-0.10, -0.08});
+ CHECK(encoder_reported_rollback.best.command.valid);
+ CHECK(encoder_reported_rollback.best.command.v <= 1e-12);
+ for (const auto& rollout : encoder_reported_rollback.rollouts)
+ CHECK(rollout.trajectory.command.v <= 1e-12);
+
  // A heading error must still produce a turn while the longitudinal
  // recovery holds v at zero. Otherwise the vehicle can never rotate out of
  // the error and the route follower's zero-speed spin request deadlocks.

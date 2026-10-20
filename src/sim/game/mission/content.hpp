@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/core/math.hpp"
+#include "robot/core/terrain_relief.hpp"
 
 #include <array>
 #include <algorithm>
@@ -102,14 +103,11 @@ inline double terrain_patch_height(const TerrainPatchDefinition& patch,
  patch.grade_xy_per_m * dx * dy;
  if (patch.roughness <= 0.0)
  return plane;
- const double width = std::max(0.1, patch.max.x - patch.min.x);
- const double depth = std::max(0.1, patch.max.y - patch.min.y);
- const double u = std::clamp((x - patch.min.x) / width, 0.0, 1.0);
- const double v = std::clamp((y - patch.min.y) / depth, 0.0, 1.0);
- const double edge_fade = std::sin(sim::kPi * u) * std::sin(sim::kPi * v);
- const double wave = std::sin(2.0 * sim::kPi * (x - patch.min.x) / 1.35) *
- std::sin(2.0 * sim::kPi * (y - patch.min.y) / 0.95);
- return plane + patch.roughness * edge_fade * wave;
+ // Bit-for-bit the same relief the robot's deployable map samples. Duplicating
+ // this shape here would let the collision mesh and the planning surface drift
+ // apart, and the robot would plan over ground that does not exist.
+ return plane + sim::rough_relief(patch.roughness, patch.max.x - patch.min.x,
+ patch.max.y - patch.min.y, dx, dy).height_m;
 }
 
 struct ActorDefinition {
