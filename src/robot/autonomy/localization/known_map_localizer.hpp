@@ -1,7 +1,6 @@
 #pragma once
 
-#include "robot/runtime/map_provider.hpp"
-#include "robot/runtime/sensor_messages.hpp"
+#include "robot/autonomy/localization/localization_provider.hpp"
 
 #include <cstddef>
 #include <string>
@@ -24,16 +23,9 @@ struct KnownMapLocalizationConfig {
  double sensor_yaw_rad{0.0};
 };
 
-struct KnownMapLocalizationResult {
- bool accepted{false};
- PoseObservation pose;
- double score{0.0};
- double overlap{0.0};
- std::size_t usable_returns{0};
- std::string rejection_reason;
-};
+using KnownMapLocalizationResult = autonomy::LocalizationResult;
 
-class KnownMapLocalizer final {
+class KnownMapLocalizer final : public autonomy::ILocalizationProvider {
  public:
  explicit KnownMapLocalizer(KnownMapLocalizationConfig config = {})
  : config_(config) {}
@@ -42,7 +34,7 @@ class KnownMapLocalizer final {
 
  KnownMapLocalizationResult localize(
  const Scan& scan, const Vec2& odom_position, double odom_heading_rad,
- const runtime::MapSnapshot& map, double timestamp_s) const;
+ const runtime::MapSnapshot& map, double timestamp_s) const override;
 
  private:
  KnownMapLocalizationConfig config_;

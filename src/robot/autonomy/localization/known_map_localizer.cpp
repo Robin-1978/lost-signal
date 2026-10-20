@@ -52,10 +52,12 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  const Scan& scan, const Vec2& odom_position, double odom_heading_rad,
  const runtime::MapSnapshot& map, double timestamp_s) const {
  KnownMapLocalizationResult result;
+ result.state = autonomy::LocalizationState::Unlocalized;
  result.pose.header = {timestamp_s, 0, "map", 0.0,
  kMeasurementSchemaVersion, "robot.known-map-lidar"};
  if (!finite_pose(odom_position, odom_heading_rad)) {
  result.rejection_reason = "invalid odometry prior";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  if (scan.n_rays <= 0 || scan.ranges.size() != static_cast<std::size_t>(scan.n_rays) ||
@@ -63,6 +65,7 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  !std::isfinite(scan.header.stamp_s) ||
  std::abs(scan.header.stamp_s - timestamp_s) > 0.05) {
  result.rejection_reason = "invalid or stale scan";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  if (!map.grid || map.frame_id != "map" || map.grid->width == 0 ||
@@ -70,11 +73,13 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  map.grid->occupancy.size() !=
  static_cast<std::size_t>(map.grid->width) * map.grid->height) {
  result.rejection_reason = "map snapshot unavailable or invalid";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  if (!(config_.search_translation_m >= 0.0) || !(config_.search_heading_rad >= 0.0) ||
  !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0)) {
  result.rejection_reason = "invalid matcher configuration";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
 
@@ -91,6 +96,7 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  result.usable_returns = returns.size();
  if (returns.size() < config_.minimum_returns) {
  result.rejection_reason = "insufficient geometric returns";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
 
@@ -145,15 +151,18 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
  if (!std::isfinite(best_score) || best_overlap < config_.minimum_overlap) {
  result.rejection_reason = "map overlap below acceptance gate";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  // A nearly tied score is a degeneracy signal. Do not turn a repetitive
  // corridor into a confident global correction.
  if (std::isfinite(second_score) && best_score - second_score < 0.01) {
  result.rejection_reason = "map match is geometrically ambiguous";
+ result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  result.accepted = true;
+ result.state = autonomy::LocalizationState::Localized;
  result.score = best_score;
  result.overlap = best_overlap;
  result.pose.position = best_position;

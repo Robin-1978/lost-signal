@@ -79,6 +79,7 @@ int main() {
  sim::KnownMapLocalizer localizer(config);
  const auto result = localizer.localize(scan, {3.05, 4.22}, 0.11, map, 12.0);
  CHECK(result.accepted);
+ CHECK(result.state == sim::autonomy::LocalizationState::Localized);
  CHECK(std::hypot(result.pose.position.x - truth.x,
  result.pose.position.y - truth.y) <= 0.12);
  CHECK(std::abs(sim::wrap_angle(result.pose.heading_rad - truth_heading)) <= 0.08);
@@ -88,12 +89,14 @@ int main() {
  empty.hit.assign(empty.hit.size(), 0);
  const auto rejected = localizer.localize(empty, truth, truth_heading, map, 12.0);
  CHECK(!rejected.accepted);
+ CHECK(rejected.state == sim::autonomy::LocalizationState::Degraded);
  CHECK(rejected.rejection_reason == "insufficient geometric returns");
 
  auto stale = scan;
  stale.header.stamp_s = 2.0;
  const auto stale_result = localizer.localize(stale, truth, truth_heading, map, 12.0);
  CHECK(!stale_result.accepted);
+ CHECK(stale_result.state == sim::autonomy::LocalizationState::Degraded);
  CHECK(stale_result.rejection_reason == "invalid or stale scan");
  return 0;
 }
