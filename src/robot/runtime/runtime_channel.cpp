@@ -96,6 +96,8 @@ std::vector<const MeasurementHeader*> measurement_headers(const ObservationFrame
   headers.push_back(&observation.encoders->header);
  if (observation.actuator_feedback)
  headers.push_back(&observation.actuator_feedback->header);
+ if (observation.power)
+ headers.push_back(&observation.power->header);
  if (observation.imu)
   headers.push_back(&observation.imu->header);
  if (observation.absolute_pose)
@@ -491,6 +493,17 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
  set_reason(reason, "actuator feedback contains an invalid or duplicate channel");
  return false;
  }
+ }
+ }
+ if (observation.power) {
+ const auto& power = *observation.power;
+ if (!std::isfinite(power.voltage_v) || power.voltage_v < 0.0 ||
+ !std::isfinite(power.current_a) || !std::isfinite(power.state_of_charge) ||
+ power.state_of_charge < 0.0 || power.state_of_charge > 1.0 ||
+ !std::isfinite(power.remaining_energy_wh) || power.remaining_energy_wh < 0.0 ||
+ !std::isfinite(power.temperature_c)) {
+ set_reason(reason, "power payload contains an invalid voltage, current, charge, energy, or temperature");
+ return false;
  }
  }
  return true;

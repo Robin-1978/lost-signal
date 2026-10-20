@@ -332,6 +332,20 @@ static revisions; and a future `IMapBuilder` publishes complete candidate revisi
 Planner reads only `RobotState` and a pinned `MapView`. Map revision publication or a pose jump invalidates the
 affected route and requests a fresh plan through the existing pipeline.
 
+The same P2 package also freezes the `RobotExecutive` boundary. `TaskExecutive` remains the tested lifecycle kernel,
+while the deployable coordinator above it accepts provider-neutral task requests and coordinates the autonomy providers. The
+coordinator consumes state, perception summaries, map status and health; raw LSRI packets stay with the estimator,
+mapping and perception providers that own them. A SIM adapter may submit the same request and expose simulated LSRI
+endpoints, but it must not pass game objectives, actor truth or ScenarioSession state into ROBOT. The brain's output is
+intent and lifecycle state; local planning, safety validation and LSRI remain responsible for executable commands.
+
+**Brain exit:** a request submitted by a simulation adapter and by a provider-neutral test client produces the same
+ROBOT task lifecycle and autonomy inputs; replacing the SIM LSRI provider with replay or native endpoints requires no
+brain or planner code change. Pause, cancel, stale-observation and provider-health failures have explicit outcomes,
+power telemetry has an explicit stale/missing policy for reserve enforcement, and no game-only type is reachable from
+`lost_signal_robot_executive`. Battery/charger physics remains a provider concern; the executive only consumes the
+typed LSRI power observation and publishes a mission-level resource directive.
+
 The design follows the useful boundaries in [REP-105](https://www.ros.org/reps/rep-0105.html), Nav2
 [AMCL](https://github.com/ros-navigation/navigation2/tree/main/nav2_amcl), Cartographer's
 [local/global SLAM split](https://google-cartographer-ros.readthedocs.io/en/latest/algo_walkthrough.html), Autoware's

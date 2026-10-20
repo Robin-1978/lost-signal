@@ -18,6 +18,18 @@ flowchart LR
 
 The ROBOT port reads observations and writes body-motion or typed actuator commands. Platform providers publish observations and consume commands. Neither side exposes world truth, MuJoCo bodies, game state, UI types, device SDK types, or transport handles.
 
+The LSRI channel is below `RobotExecutive`. The executive receives generic task requests and publishes lifecycle/status
+events; it does not need to consume raw LiDAR or encoder packets. Estimation, mapping and perception providers may read
+the typed observations they own from LSRI, publish immutable state/perception products, and feed those products to PNC,
+behavior and control. This allows one real sensor to be mixed with simulated or replayed providers without changing the
+brain API. A SIM game adapter therefore sends a normal task request and supplies a provider; it never imports a game
+command into ROBOT.
+
+The request boundary is deliberately separate from the sensor boundary. A request can be serialized over an operator
+API, submitted by a test harness, or created by a simulation adapter, but it contains no scenario actor, story, level,
+MuJoCo or renderer field. Completion and failure are reported as stable lifecycle results, while detailed sensor and
+decision evidence remains available through the ROBOT diagnostics/replay interfaces.
+
 The simulator owns both ends of an in-process channel because simulation and ROBOT currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives platform endpoints to native drivers. `EndpointRegistry` assigns ownership per `(endpoint_id, role)`, so a real LiDAR can coexist with a simulated IMU and actuator plant while two providers cannot command the same actuator endpoint.
 
 ## Required conventions
@@ -62,6 +74,7 @@ The observation frame carries one or more transport-neutral measurements:
 | Multi-line LiDAR | calibrated sensor frame | XYZ, intensity, ring, return index, per-point timing |
 | Wheel odometry | `base_link` | body-frame forward velocity, left velocity, yaw rate, slip scale |
 | Actuator feedback | `base_link` | named joint position and velocity channels |
+| Power telemetry | platform power frame | voltage, signed current, state of charge, remaining energy, temperature and charging/fault state |
 | IMU | `imu_link` | yaw rate, planar acceleration, noise description |
 | Absolute pose | `map` | position, heading, uncertainty |
 
@@ -75,6 +88,11 @@ the same observation frame and acquisition timestamp, so existing 2D autonomy ca
 without losing the raw 3D evidence.
 
 World truth is not an LSRI observation. A simulator may use truth internally to generate sensor packets, but autonomy receives only the resulting measurements.
+
+Power telemetry is optional at the channel level so a minimal replay or teaching provider can omit it. A
+`RobotExecutive` that must enforce an energy reserve treats missing or stale power data as an explicit degraded
+condition; it must not turn GAME's relative `energy_scale` into a battery state. The provider owns battery, charger and
+current-sensor behavior, while the executive owns mission admission, return-to-charge and degraded-mode decisions.
 
 ## Commands
 

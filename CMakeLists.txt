@@ -80,6 +80,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/behavior/crossing_map_semantics.cpp
  src/robot/autonomy/localization/estimation_system.cpp
  src/robot/autonomy/localization/known_map_localizer.cpp
+ src/robot/autonomy/localization/global_map_localizer.cpp
  src/robot/autonomy/localization/dead_reckon.cpp
  src/robot/autonomy/perception/dynamic_obstacle_map.cpp
  src/robot/autonomy/perception/lidar_perception_system.cpp

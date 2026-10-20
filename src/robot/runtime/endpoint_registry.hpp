@@ -7,7 +7,7 @@
 namespace sim::runtime {
 
 enum class EndpointRole { ObservationSource, CommandSink };
-enum class EndpointKind { Lidar, Imu, Encoder, JointState, Actuator, Map };
+enum class EndpointKind { Lidar, Imu, Encoder, JointState, Actuator, Power, Map };
 enum class ProviderBackend { Simulated, Native, Replay, Remote };
 
 // A provider owns one endpoint, not an entire robot. This permits a real

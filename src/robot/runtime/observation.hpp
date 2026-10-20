@@ -40,6 +40,20 @@ struct ActuatorFeedbackObservation {
  }
 };
 
+// Platform-provided power telemetry. This is a measurement, not the coarse
+// mission-energy estimate used by GAME scoring. Native battery-management
+// systems and simulated power providers publish the same fields through LSRI.
+struct PowerObservation {
+ double voltage_v{0.0};
+ double current_a{0.0}; // positive discharge, negative regeneration/charge
+ double state_of_charge{0.0}; // normalized [0, 1]
+ double remaining_energy_wh{0.0};
+ double temperature_c{0.0};
+ bool charging{false};
+ bool fault{false};
+ MeasurementHeader header;
+};
+
 struct ImuObservation {
  // Right-handed imu_link axes: +x forward, +y left, +z up.
  double roll_rate_radps{0.0};
@@ -70,6 +84,7 @@ struct ObservationFrame {
  std::optional<Scan> lidar_static_reference;
  std::optional<EncoderObservation> encoders;
  std::optional<ActuatorFeedbackObservation> actuator_feedback;
+ std::optional<PowerObservation> power;
  std::optional<ImuObservation> imu;
  std::optional<PoseObservation> absolute_pose;
 };

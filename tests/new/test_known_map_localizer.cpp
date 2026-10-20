@@ -1,4 +1,5 @@
 #include "robot/autonomy/localization/known_map_localizer.hpp"
+#include "robot/autonomy/localization/global_map_localizer.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -31,6 +32,8 @@ sim::runtime::MapSnapshot make_map() {
  for (int y = 12; y < 66; ++y) occupy(53, y);
  for (int x = 18; x < 54; ++x) occupy(x, 24);
  for (int x = 30; x < 68; ++x) occupy(x, 56);
+ for (int y = 32; y < 61; ++y) occupy(36, y);
+ for (int x = 19; x <= 36; ++x) occupy(x, 32);
  return map;
 }
 
@@ -98,5 +101,29 @@ int main() {
  CHECK(!stale_result.accepted);
  CHECK(stale_result.state == sim::autonomy::LocalizationState::Degraded);
  CHECK(stale_result.rejection_reason == "invalid or stale scan");
+
+ sim::GlobalMapLocalizationConfig global_config;
+ global_config.grid_step_m = 0.20;
+ global_config.heading_step_rad = 0.35;
+ global_config.minimum_overlap = 0.15;
+ global_config.minimum_score_margin = 0.005;
+ global_config.ambiguity_distance_m = 0.45;
+ global_config.ambiguity_heading_rad = 0.50;
+ global_config.minimum_returns = 12;
+ global_config.maximum_returns = 96;
+ sim::GlobalMapLocalizer global(global_config);
+ const auto global_result = global.localize(
+ scan, {6.4, 2.1}, -2.4, map, 12.0);
+ std::cerr << "global accepted=" << global_result.accepted << " pos="
+ << global_result.pose.position.x << "," << global_result.pose.position.y
+ << " h=" << global_result.pose.heading_rad << " score="
+ << global_result.score << " overlap=" << global_result.overlap << " reason="
+ << global_result.rejection_reason << "\n";
+ CHECK(global_result.accepted);
+ CHECK(global_result.state == sim::autonomy::LocalizationState::Localized);
+ CHECK(std::hypot(global_result.pose.position.x - truth.x,
+ global_result.pose.position.y - truth.y) <= 0.30);
+ CHECK(std::abs(sim::wrap_angle(global_result.pose.heading_rad - truth_heading)) <= 0.24);
+ CHECK(global_result.pose.header.source_id == "robot.global-known-map-lidar");
  return 0;
 }

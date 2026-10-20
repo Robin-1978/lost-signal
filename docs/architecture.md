@@ -6,7 +6,7 @@ Lost Signal separates authored content, autonomous behavior, physical execution,
 
 ```mermaid
 graph TD
- A[Operator mission request] --> X[Task executive]
+ A[Operator or external task request] --> X[RobotExecutive / TaskExecutive]
  X --> B[Behavior and goal management]
  B --> C[Global planner: A* or Hybrid A*]
  C --> D[Local planner and dynamic prediction]
@@ -14,10 +14,11 @@ graph TD
  E --> F[Kinematics and actuator targets]
  F --> G[Motor control and PID]
  G --> R[LSRI motion port]
- R --> H[MuJoCo physics]
+ R --> H[Platform provider: SIM or real hardware]
  H --> I[LiDAR, IMU, encoders, contacts]
  I --> O[LSRI observation port]
- O --> J[State estimation and tracking]
+ O --> J[State estimation, mapping and perception]
+ J --> X
  J --> C
  J --> K[Immutable simulation snapshot]
  K --> L[3D field view]
@@ -25,9 +26,22 @@ graph TD
  K --> N[Headless JSON and replay]
 ```
 
-The player or a real operator affects `A`. The deployable executive owns task lifecycle and supplies goals to
-autonomy; autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform
-boundary. Sensors observe `H`, and presentation reads `K` without changing the simulation.
+The player, a real operator, or another application supplies `A` as a provider-neutral task request. The deployable
+**RobotExecutive** (the robot brain) owns request validation, task lifecycle, mission-level priorities, recovery mode,
+resource policy (power reserve and charging/return decisions), platform-health degradation and the coordination
+of localization, mapping, perception, planning and control. It does not read a simulator scene or emit wheel commands
+itself. `TaskExecutive` is the first implementation slice of this brain; the surrounding coordinator remains a ROBOT
+composition root.
+
+The brain normally consumes an estimated state, perception summaries, map status, platform capabilities and health
+events. It does not need every raw sensor sample. The lower ROBOT modules may read the typed LSRI observations they
+own (LiDAR, IMU, encoders, actuator feedback and point clouds) through the same observation port. LSRI is the data
+boundary, not a rule that every algorithm must subscribe to every sensor. This keeps the brain above algorithms while
+still allowing a new sensor provider to feed the appropriate estimator or perception module directly.
+
+Autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform boundary. `H` is
+either the simulated platform provider or a native hardware provider; both implement the same contract. Sensors
+observe `H`, and presentation reads immutable snapshots without changing the runtime.
 
 ## Layer responsibilities
 
@@ -169,6 +183,31 @@ LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physic
 mode, controller placement, and mechanical load are separate platform concerns. The
 [platform-fidelity design](platform-fidelity.md) defines how a future native or HIL provider declares those
 capabilities without exposing PWM or device protocols to autonomy.
+
+### RobotExecutive and external commands
+
+The deployable upper layer is a `RobotExecutive` service, not a game system. Its external API accepts generic requests such as
+`navigate`, `inspect`, `collect`, `return`, `pause`, `resume` and `cancel`, together with map-frame goals, constraints,
+priority and a request ID. The API does not contain a level ID, story event, actor ID, scripted route, renderer state or
+simulator time. A real operator, a remote application and a simulation adapter all submit the same request type.
+
+The brain coordinates these stages:
+
+1. validate and queue the external request;
+2. resolve named places through the ROBOT-owned `IMapProvider` when a request uses a semantic place;
+3. select the active behavior and route goal;
+4. provide the current intent and constraints to localization, perception, global planning, local planning, safety
+   validation and control;
+5. publish lifecycle, health, completion and failure evidence to the caller.
+
+It may request a safe stop or cancel a plan, but the safety supervisor and LSRI watchdog retain final authority over
+whether a command reaches an actuator. Localization, mapping, perception, PNC and control remain replaceable
+providers below the brain; the brain does not branch on whether a provider is simulated, replayed or native.
+
+`ScenarioSession` and game systems are adapters. They translate authored objectives and player choices into the
+generic request, provide a SIM LSRI provider and display the brain's read-only status. They cannot call a planner,
+write a stop pose, classify an actor, or inject a simulated absolute pose. In a real deployment these adapters are
+omitted and a native/operator API submits the same requests over the ROBOT service boundary.
 
 ### Mission systems
 

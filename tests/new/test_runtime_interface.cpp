@@ -72,6 +72,15 @@ sim::ObservationFrame actuator_feedback_frame(double time_s,
  return frame;
 }
 
+sim::ObservationFrame power_frame(double time_s, std::uint64_t sequence) {
+ sim::ObservationFrame frame;
+ frame.time_s = time_s;
+ frame.power = sim::PowerObservation{
+ 24.0, 3.0, 0.72, 172.8, 31.0, false, false,
+ {time_s, sequence, "power_link", 0.0, sim::kMeasurementSchemaVersion, "test.power"}};
+ return frame;
+}
+
 } // namespace
 
 int main() {
@@ -131,6 +140,10 @@ int main() {
  CHECK(received && received->encoders);
  CHECK(received->encoders->lateral_velocity_mps == -0.2);
  CHECK(received->encoders->header.source_id == "test.encoder");
+ CHECK(channel->platform().publish_observation(power_frame(0.05, 0)));
+ const auto power_received = channel->autonomy().read_observation();
+ CHECK(power_received && power_received->power);
+ CHECK(std::abs(power_received->power->state_of_charge - 0.72) < 1e-12);
  CHECK(!channel->platform().publish_observation(encoder_frame(0.1, 0)));
  CHECK(channel->health().rejected_observations == 1);
 
