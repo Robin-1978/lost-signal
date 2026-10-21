@@ -371,6 +371,18 @@ The next P2 gates are:
  176 ms and peak RSS about 61 MiB. This is a repeatability gate, not field evidence; long loop closure replay and
  held-out terrain remain required before normal levels rely on mapless SLAM.
 
+5. **Component gate added:** `localization_environments` runs one matrix over six environments instead of one fixture:
+ shelved warehouse convergence, a translation-invariant long corridor, a quarter-turn symmetric hall, a featureless
+ hangar, a warehouse scan with 20 % dropout plus outliers plus an unmodelled crossing object, and a ten-pose route
+ through a doorway into a repeated-column hall. Each case asserts the correct outcome for its observability, not a
+ uniform success. The matrix found a real defect: the endpoint score is quantised, so adjacent 5 cm samples of one
+ solution tie exactly and the old margin reported a well-observed pose as geometrically ambiguous (six of ten facility
+ poses were rejected). `KnownMapLocalizer` now retains separated hypothesis peaks (`ambiguity_distance_m`,
+ `ambiguity_heading_rad`) and measures the margin between distinct hypotheses; the corridor still rejects with zero
+ margin, while the facility route accepts 10/10 poses with zero wrong accepts and 0.25 m worst error. The reported
+ large-map p95 latency is one continuous local `localize()` call in a bounded 16 m window, measured on the development
+ host; it excludes cold-start global search, map publication, sensor transport and scheduling.
+
 Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
 map revision. Continuing mapping adds keyframes in a new or extended mapping session; editing or importing map geometry
 creates a new map revision and rebuilds the index rather than silently rewriting historical session constraints.

@@ -213,6 +213,11 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
 
+ add_executable(test_localization_environments tests/new/test_localization_environments.cpp)
+ target_link_libraries(test_localization_environments PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME localization_environments COMMAND test_localization_environments)
+ set_tests_properties(localization_environments PROPERTIES TIMEOUT 300)
+
  add_executable(test_large_map_localization tests/new/test_large_map_localization.cpp)
  target_link_libraries(test_large_map_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME large_map_localization COMMAND test_large_map_localization)
@@ -804,6 +809,11 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
+
+ add_executable(test_localization_environments tests/new/test_localization_environments.cpp)
+ target_link_libraries(test_localization_environments PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME localization_environments COMMAND test_localization_environments)
+ set_tests_properties(localization_environments PROPERTIES TIMEOUT 300)
 
  add_executable(test_large_map_localization tests/new/test_large_map_localization.cpp)
  target_link_libraries(test_large_map_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)

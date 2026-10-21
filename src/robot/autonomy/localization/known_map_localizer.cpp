@@ -78,7 +78,9 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
  if (!(config_.search_translation_m >= 0.0) || !(config_.search_heading_rad >= 0.0) ||
  !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0) ||
- !(config_.minimum_score_margin >= 0.0)) {
+ !(config_.minimum_score_margin >= 0.0) ||
+ !(config_.ambiguity_distance_m > 0.0) ||
+ !(config_.ambiguity_heading_rad > 0.0)) {
  result.rejection_reason = "invalid matcher configuration";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
@@ -102,11 +104,25 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
 
  const auto& grid = *map.grid;
- double best_score = -std::numeric_limits<double>::infinity();
- double second_score = -std::numeric_limits<double>::infinity();
- Vec2 best_position = odom_position;
- double best_heading = odom_heading_rad;
- double best_overlap = 0.0;
+ struct Hypothesis {
+ Vec2 position;
+ double heading_rad{0.0};
+ double score{-std::numeric_limits<double>::infinity()};
+ double overlap{0.0};
+ };
+ const auto same_hypothesis = [&](const Hypothesis& left, const Hypothesis& right) {
+ return std::hypot(left.position.x - right.position.x,
+ left.position.y - right.position.y) < config_.ambiguity_distance_m &&
+ std::abs(wrap_angle(left.heading_rad - right.heading_rad)) <
+ config_.ambiguity_heading_rad;
+ };
+ // The endpoint score is quantised: adjacent samples of one physical solution
+ // routinely tie exactly. Keeping every tied sample would label a well
+ // observed pose as ambiguous, so the search retains separated hypotheses and
+ // measures the margin between distinct peaks.
+ constexpr std::size_t kMaximumHypotheses = 24;
+ std::vector<Hypothesis> hypotheses;
+ hypotheses.reserve(kMaximumHypotheses);
  const int translation_steps = static_cast<int>(std::ceil(
  config_.search_translation_m / config_.translation_step_m));
  const int heading_steps = static_cast<int>(std::ceil(
@@ -138,40 +154,71 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  const double overlap = static_cast<double>(matches) /
  static_cast<double>(returns.size());
  score /= static_cast<double>(returns.size());
- if (score > best_score) {
- second_score = best_score;
- best_score = score;
- best_position = candidate;
- best_heading = heading;
- best_overlap = overlap;
- } else if (score > second_score) {
- second_score = score;
+ const Hypothesis hypothesis{candidate, heading, score, overlap};
+ const auto existing = std::find_if(hypotheses.begin(), hypotheses.end(),
+ [&](const auto& value) { return same_hypothesis(value, hypothesis); });
+ if (existing != hypotheses.end()) {
+ if (hypothesis.score > existing->score)
+ *existing = hypothesis;
+ continue;
+ }
+ if (hypotheses.size() < kMaximumHypotheses) {
+ hypotheses.push_back(hypothesis);
+ continue;
+ }
+ const auto weakest = std::min_element(hypotheses.begin(), hypotheses.end(),
+ [](const auto& left, const auto& right) {
+ return left.score < right.score;
+ });
+ if (hypothesis.score > weakest->score)
+ *weakest = hypothesis;
  }
  }
  }
+ if (hypotheses.empty()) {
+ result.rejection_reason = "map overlap below acceptance gate";
+ result.state = autonomy::LocalizationState::Degraded;
+ return result;
  }
- if (!std::isfinite(best_score) || best_overlap < config_.minimum_overlap) {
+ // Deterministic ordering, including exact ties, so a decision never depends
+ // on evaluation order.
+ std::sort(hypotheses.begin(), hypotheses.end(),
+ [](const auto& left, const auto& right) {
+ if (left.score != right.score)
+ return left.score > right.score;
+ if (left.position.x != right.position.x)
+ return left.position.x < right.position.x;
+ if (left.position.y != right.position.y)
+ return left.position.y < right.position.y;
+ return left.heading_rad < right.heading_rad;
+ });
+ const Hypothesis& best = hypotheses.front();
+ const double second_score = hypotheses.size() > 1
+ ? hypotheses[1].score
+ : -std::numeric_limits<double>::infinity();
+ if (!std::isfinite(best.score) || best.overlap < config_.minimum_overlap) {
  result.rejection_reason = "map overlap below acceptance gate";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  // A nearly tied score is a degeneracy signal. Do not turn a repetitive
- // corridor into a confident global correction.
- if (std::isfinite(second_score) && best_score - second_score < config_.minimum_score_margin) {
- result.score = best_score;
- result.overlap = best_overlap;
- result.score_margin = best_score - second_score;
+ // corridor into a confident map correction.
+ if (std::isfinite(second_score) &&
+ best.score - second_score < config_.minimum_score_margin) {
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = best.score - second_score;
  result.rejection_reason = "map match is geometrically ambiguous";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
  }
  result.accepted = true;
  result.state = autonomy::LocalizationState::Localized;
- result.score = best_score;
- result.overlap = best_overlap;
- result.score_margin = std::isfinite(second_score) ? best_score - second_score : 1.0;
- result.pose.position = best_position;
- result.pose.heading_rad = best_heading;
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = std::isfinite(second_score) ? best.score - second_score : 1.0;
+ result.pose.position = best.position;
+ result.pose.heading_rad = best.heading_rad;
  result.pose.position_sigma_m = std::max(0.02, grid.resolution_m * 0.75);
  result.pose.heading_sigma_rad = std::max(0.01, config_.heading_step_rad * 1.5);
  result.pose.header = {timestamp_s, 0, "map", 0.0,
