@@ -682,6 +682,7 @@ class ScenarioSession {
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
  std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
+ bool known_map_startup_localized_{false};
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;

@@ -119,7 +119,9 @@ the wheel/IMU prior, with explicit overlap, timestamp and degeneracy rejection a
 `GlobalMapLocalizer` and `StartupLocalization` provide cold start: when a known map exists, an unknown initial pose is
 searched against the complete bounded map and rejected matches remain `RELOCALIZING`; no simulator absolute pose is
 substituted. With no map, the same startup contract delegates to `OnlineSlamMapBuilder` and publishes a local-origin
-pose. Full deskew, calibrated innovation gates and normal-level deployment evidence remain the P2 gate.
+pose. The SIM `known_map` adapter invokes this global path until it succeeds, then uses local correction and falls back
+to global recovery if local observability is lost. Full deskew, calibrated innovation gates and normal-level deployment
+evidence remain the P2 gate.
 
 A future camera provider follows the same boundary: LSRI carries timestamped image or depth observations with frame,
 calibration and exposure timing; ROBOT perception may publish class probability, extent, orientation and optional

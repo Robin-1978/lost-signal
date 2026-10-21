@@ -174,7 +174,7 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_test(NAME dwa_dynamic COMMAND test_dwa_dynamic)
 
  add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
- target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
+ target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
 
  add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)
@@ -657,7 +657,7 @@ target_link_libraries(test_behavior_registry PRIVATE lost_signal_sim_game)
  add_test(NAME perception_pipeline COMMAND test_perception_pipeline)
 
 add_executable(test_autonomy_pipeline tests/new/test_autonomy_pipeline.cpp)
-target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy)
+target_link_libraries(test_autonomy_pipeline PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
 add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
 
 add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)

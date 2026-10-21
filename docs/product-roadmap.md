@@ -315,7 +315,8 @@ observation sweep before accepting a pose; this is a localization behavior and m
 `GlobalMapLocalizer` plus `StartupLocalization` now implement this bounded cold-start contract; the existing bounded
 `KnownMapLocalizer` remains the local-correction component. Startup tests cover no-scan waiting, unknown-origin global
 recovery, rejection without a fabricated pose, and the mapless fallback. AMCL/particle recovery and a physical
-in-place sweep remain P2 extensions for larger initial error, kidnapped-robot recovery and symmetric maps.
+in-place sweep remain P2 extensions for larger initial error, kidnapped-robot recovery and symmetric maps. The SIM
+`known_map` adapter now exercises the same startup/recovery path rather than silently relying on a fused pose.
 
 The complementary **mapless online-SLAM path** starts with an arbitrary local origin, builds submaps while moving and
 estimates its own pose from LiDAR plus the IMU/encoder prior. It does not require RTK or GNSS for a small self-contained map.

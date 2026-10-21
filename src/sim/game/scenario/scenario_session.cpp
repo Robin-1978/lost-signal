@@ -306,6 +306,7 @@ void ScenarioSession::reset() {
  if (autonomy_pipeline_) {
  autonomy_pipeline_->reset(effective_seed() ^ 0x9e3779b9U);
  }
+ known_map_startup_localized_ = false;
  update_actors();
  slip_detector_.reset();
  slip_episode_times_.clear();
@@ -2057,10 +2058,20 @@ void ScenarioSession::consume_lidar_observation(
  const auto map = map_manager_.current_snapshot();
  if (map) {
  const auto& odom = estimation_system_.state();
- const auto match = autonomy_pipeline_->localize_known_map(
- *observation.lidar, odom.position, odom.heading_rad, *map, observation.time_s);
- if (match.accepted)
+ auto match = known_map_startup_localized_
+ ? autonomy_pipeline_->localize_known_map(
+ *observation.lidar, odom.position, odom.heading_rad, *map, observation.time_s)
+ : autonomy_pipeline_->localize_known_map_global(
+ *observation.lidar, *map, observation.time_s);
+ // A local correction can lose observability after a bad scan. Recover through
+ // the same full-map startup provider instead of accepting a fabricated pose.
+ if (!match.accepted && known_map_startup_localized_)
+ match = autonomy_pipeline_->localize_known_map_global(
+ *observation.lidar, *map, observation.time_s);
+ if (match.accepted) {
  estimation_system_.correct(match.pose, observation.time_s);
+ known_map_startup_localized_ = true;
+ }
  }
  }
  if (observation.absolute_pose) {

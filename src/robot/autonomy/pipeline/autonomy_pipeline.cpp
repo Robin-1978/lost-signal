@@ -71,6 +71,11 @@ KnownMapLocalizationResult AutonomyPipeline::localize_known_map(
  scan, odom_position, odom_heading_rad, map, timestamp_s);
 }
 
+autonomy::LocalizationResult AutonomyPipeline::localize_known_map_global(
+ const Scan& scan, const runtime::MapSnapshot& map, double timestamp_s) const {
+ return global_map_localizer_.localize_unknown_start(scan, map, timestamp_s);
+}
+
 void AutonomyPipeline::refresh_crossing_semantics() {
  if (!map_provider_) {
  crossing_zones_.clear();
