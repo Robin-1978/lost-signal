@@ -204,7 +204,8 @@ int main() {
  CHECK(cloud_elevation);
 
  // Ground rejection is gravity-referenced when ROBOT has a valid attitude.
- // With a 0.2 rad nose-up pitch, this return is on level ground even though
+ // With a 0.2 rad nose-up pitch and 0.15 rad roll, this return is on level
+ // ground even though
  // its sensor-frame z value alone would look like a raised obstacle. The
  // elevated return must remain an occupied endpoint and publish its world
  // height using the same gravity transform.
@@ -212,12 +213,12 @@ int main() {
  sim::EstimatedState inclined_prior = prior;
  inclined_prior.attitude_valid = true;
  inclined_prior.pitch_rad = 0.20;
- inclined_prior.roll_rad = 0.0;
+ inclined_prior.roll_rad = 0.15;
  sim::LidarPointCloud inclined_cloud = cloud;
  inclined_cloud.header.stamp_s = 4.2;
  inclined_cloud.header.sequence = 42;
  inclined_cloud.points = {
- {1.0, 0.0, -0.10, 1.0, -0.02, 0, 0}, // gravity height ~= -0.30 m: ground
+ {1.0, 0.0, -0.105, 1.0, -0.02, 0, 0}, // gravity height ~= -0.30 m: ground
  {2.0, 0.0, 0.50, 1.0, -0.01, 1, 0}, // elevated obstacle
  };
  sim::ObservationFrame inclined_frame;
