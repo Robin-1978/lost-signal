@@ -167,6 +167,8 @@ int main() {
  sim::autonomy::OnlineSlamConfig cloud_config = config;
  cloud_config.sensor_height_m = 0.30;
  cloud_config.ground_rejection_band_m = 0.06;
+ cloud_config.translation_search_m = 0.0;
+ cloud_config.heading_search_rad = 0.0;
  sim::autonomy::OnlineSlamMapBuilder cloud_builder(cloud_config);
  sim::LidarPointCloud cloud;
  cloud.rings = 16;
@@ -200,6 +202,81 @@ int main() {
  for (const auto elevation : cloud_update.published_map->grid->elevation_m)
  cloud_elevation = cloud_elevation || std::isfinite(elevation);
  CHECK(cloud_elevation);
+
+ // Multi-frame point-cloud replay: a stable elevated return should converge
+ // to one uncertain-but-valid terrain height, while a return that disappears
+ // is cleared by subsequent free-space rays. This exercises the complete
+ // ROBOT-side projection, occupancy evidence and elevation publication path.
+ const auto replay_cell = [&](const sim::runtime::MapSnapshot& snapshot,
+ sim::Vec2 point) {
+ const auto cell = sim::runtime::world_to_grid(*snapshot.grid, point);
+ if (!cell)
+ return std::size_t{0};
+ return static_cast<std::size_t>(cell->y) * snapshot.grid->width + cell->x;
+ };
+ sim::LidarPointCloud replay_cloud = cloud;
+ replay_cloud.points = {
+ {2.0, -0.02, 0.35, 1.0, -0.04, 3, 0}, // stable elevated return
+ {1.0, -1.02, 0.30, 1.0, -0.03, 4, 0}, // transient return
+ };
+ std::shared_ptr<const sim::runtime::MapSnapshot> replay_map;
+ for (int frame_index = 0; frame_index < 4; ++frame_index) {
+ replay_cloud.header.stamp_s = 4.1 + 0.1 * frame_index;
+ replay_cloud.header.sequence = 5 + frame_index;
+ sim::ObservationFrame replay_frame;
+ replay_frame.time_s = replay_cloud.header.stamp_s;
+ replay_frame.lidar_point_cloud = replay_cloud;
+ replay_map = cloud_builder.update(replay_frame, prior,
+ sim::runtime::TimePoint::from_seconds(replay_cloud.header.stamp_s)).published_map;
+ }
+ CHECK(replay_map && replay_map->grid);
+ const auto stable_index = replay_cell(*replay_map, {2.0, -0.02});
+ const auto transient_index = replay_cell(*replay_map, {1.0, -1.02});
+ bool stable_found = false;
+ bool transient_found = false;
+ for (int dy = -1; dy <= 1; ++dy) {
+ for (int dx = -1; dx <= 1; ++dx) {
+ const auto stable = stable_index + static_cast<std::ptrdiff_t>(dy) *
+ replay_map->grid->width + dx;
+ const auto transient = transient_index + static_cast<std::ptrdiff_t>(dy) *
+ replay_map->grid->width + dx;
+ if (replay_map->grid->occupancy[stable] >= 50 &&
+ std::isfinite(replay_map->grid->elevation_m[stable]) &&
+ std::abs(replay_map->grid->elevation_m[stable] - 0.65F) < 0.08F &&
+ std::isfinite(replay_map->grid->elevation_sigma_m[stable]) &&
+ replay_map->grid->elevation_sigma_m[stable] < 0.50F)
+ stable_found = true;
+ if (replay_map->grid->occupancy[transient] >= 50)
+ transient_found = true;
+ }
+ }
+ CHECK(stable_found);
+ CHECK(transient_found);
+ replay_cloud.points.resize(1); // remove only the transient return
+ for (int frame_index = 0; frame_index < 20; ++frame_index) {
+ replay_cloud.header.stamp_s = 4.5 + 0.1 * frame_index;
+ replay_cloud.header.sequence = 9 + frame_index;
+ sim::ObservationFrame replay_frame;
+ replay_frame.time_s = replay_cloud.header.stamp_s;
+ replay_frame.lidar_point_cloud = replay_cloud;
+ replay_map = cloud_builder.update(replay_frame, prior,
+ sim::runtime::TimePoint::from_seconds(replay_cloud.header.stamp_s)).published_map;
+ }
+ CHECK(replay_map && replay_map->grid);
+ bool transient_cleared = true;
+ bool stable_retained = false;
+ for (int dy = -1; dy <= 1; ++dy) {
+ for (int dx = -1; dx <= 1; ++dx) {
+ const auto transient = transient_index + static_cast<std::ptrdiff_t>(dy) *
+ replay_map->grid->width + dx;
+ const auto stable = stable_index + static_cast<std::ptrdiff_t>(dy) *
+ replay_map->grid->width + dx;
+ transient_cleared = transient_cleared && replay_map->grid->occupancy[transient] == 0;
+ stable_retained = stable_retained || replay_map->grid->occupancy[stable] >= 50;
+ }
+ }
+ CHECK(transient_cleared);
+ CHECK(stable_retained);
 
  // Transient filtering: a post that stops being observed must leave the live
  // submap, while the wall behind it stays. Two wrong answers are rejected

@@ -421,9 +421,11 @@ The next P2 gates are:
 2. **In progress:** calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and
  uncertainty. The ROBOT `ElevationFusion` component now combines multi-view heights by inverse variance, includes pose
  uncertainty, bounds stale evidence with a forgetting factor, and exposes disagreement as uncertainty instead of
- silently publishing a precise but contradictory terrain value. `OnlineSlamMapBuilder` and `KeyframeMapRebuilder` now use
- this fusion path for published elevation cells. It still needs calibrated ground classification and end-to-end 16-line
- replay evidence;
+silently publishing a precise but contradictory terrain value. `OnlineSlamMapBuilder` and `KeyframeMapRebuilder` now use
+this fusion path for published elevation cells. `test_online_slam` now replays a multi-frame 16-line point cloud: a
+stable elevated return retains an occupied cell and a fused height with bounded uncertainty, while a return that stops
+being observed is cleared by subsequent free-space evidence. This is end-to-end ROBOT-side replay, not calibrated field
+terrain evidence; calibrated ground classification and held-out 16-line replay remain open;
  The `OccupancyLogOdds` component now provides bounded inverse-sensor-model evidence with hysteresis; it is used during
  keyframe map reconstruction and has an isolated transient-return regression. It is intentionally not yet enabled in the
 live online submap until the evidence path below was validated. It now runs there as well: free-space carving clears a
