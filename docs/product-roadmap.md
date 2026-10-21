@@ -359,6 +359,9 @@ The next P2 gates are:
  silently publishing a precise but contradictory terrain value. `OnlineSlamMapBuilder` and `KeyframeMapRebuilder` now use
  this fusion path for published elevation cells. It still needs calibrated ground classification and end-to-end 16-line
  replay evidence;
+ The `OccupancyLogOdds` component now provides bounded inverse-sensor-model evidence with hysteresis; it is used during
+ keyframe map reconstruction and has an isolated transient-return regression. It is intentionally not yet enabled in the
+ live online submap, because doing so without a calibrated dynamic/static classifier changed the validated replay path.
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;
