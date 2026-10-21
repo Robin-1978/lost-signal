@@ -134,10 +134,11 @@ calibration and relative constraints. A keyframe is created only when motion,
 heading, elapsed time or geometric change makes it useful; ordinary sensor
 frames remain front-end input and are not retained forever. Odometry and scan
 matching constraints connect neighboring keyframes. A separately validated
-loop-closure constraint can connect distant keyframes. The first fixed
-keyframe removes the SE(2) global gauge freedom, and the backend publishes
-optimized map-frame poses. It does not mutate a planner's map or expose solver
-types.
+loop-closure constraint can connect distant keyframes, but only after an
+independent evidence gate checks temporal separation, candidate distance, scan
+overlap, score margin and information validity. The first fixed keyframe
+removes the SE(2) global gauge freedom, and the backend publishes optimized
+map-frame poses. It does not mutate a planner's map or expose solver types.
 
 Lost Signal's first backend is a ROBOT-only SE(2) pose graph with sparse
 Gauss--Newton and a robust Huber weight for loop closures. It is a small,

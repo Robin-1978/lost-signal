@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/mapping/pose_graph.hpp"
+#include "robot/autonomy/mapping/loop_closure.hpp"
 #include "robot/runtime/observation.hpp"
 
 #include <cstddef>
@@ -20,6 +21,7 @@ struct KeyframeTriggerConfig {
 
 struct MappingSessionConfig {
  KeyframeTriggerConfig keyframes;
+ LoopClosureGateConfig loop_closure;
  std::array<double, 9> odometry_information{
  400.0, 0.0, 0.0, 0.0, 400.0, 0.0, 0.0, 0.0, 400.0};
 };
@@ -49,6 +51,8 @@ class MappingSession final {
 
  void reset();
  MappingSessionUpdate ingest(Pose2 pose, Scan scan, double stamp_s);
+ MappingSessionUpdate add_loop_closure(std::uint64_t from, std::uint64_t to,
+ LoopClosureEvidence evidence);
 
  const MappingSessionConfig& config() const { return config_; }
  const std::vector<MappingSessionKeyframe>& keyframes() const { return keyframes_; }
@@ -61,6 +65,7 @@ class MappingSession final {
  bool trigger(const Pose2& pose, double stamp_s) const;
 
  MappingSessionConfig config_;
+ LoopClosureGate loop_gate_;
  PoseGraphBackend graph_;
  std::vector<MappingSessionKeyframe> keyframes_;
 };

@@ -345,8 +345,9 @@ third-party optimizer is considered.
 The next P2 gates are:
 
 1. **In progress:** `MappingSession` now selects bounded keyframes from motion, heading and time thresholds, retains
- timestamped session scans, and creates the sequential odometry chain. Loop-candidate overlap validation and complete
- reconstruction of an optimized map revision are still required;
+ timestamped session scans, creates the sequential odometry chain, and applies a separate loop-closure evidence gate
+ for temporal separation, spatial candidate distance, overlap, score margin and information validity. Complete
+ reconstruction of an optimized map revision is still required;
 2. calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and uncertainty;
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;

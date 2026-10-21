@@ -15,7 +15,7 @@ bool finite_pose(const Pose2& pose) {
 } // namespace
 
 MappingSession::MappingSession(MappingSessionConfig config)
- : config_(std::move(config)) {}
+ : config_(std::move(config)), loop_gate_(config_.loop_closure) {}
 
 void MappingSession::reset() {
  graph_.clear();
@@ -133,6 +133,42 @@ MappingSessionUpdate MappingSession::ingest(Pose2 pose, Scan scan, double stamp_
  output.created_keyframe = true;
  output.keyframe_id = id;
  output.diagnostic = "keyframe created";
+ return output;
+}
+
+MappingSessionUpdate MappingSession::add_loop_closure(
+ std::uint64_t from, std::uint64_t to, LoopClosureEvidence evidence) {
+ MappingSessionUpdate output;
+ const auto* from_keyframe = graph_.find_keyframe(from);
+ const auto* to_keyframe = graph_.find_keyframe(to);
+ if (!from_keyframe || !to_keyframe) {
+ output.diagnostic = "loop closure references an unknown keyframe";
+ return output;
+ }
+ const auto decision = loop_gate_.validate(*from_keyframe, *to_keyframe, evidence);
+ if (!decision.accepted) {
+ output.diagnostic = decision.diagnostic;
+ return output;
+ }
+ PoseGraphConstraint constraint;
+ constraint.id = (static_cast<std::uint64_t>(graph_.constraint_count()) + 1U) << 32U |
+ (from ^ to);
+ if (constraint.id == 0)
+ constraint.id = static_cast<std::uint64_t>(graph_.constraint_count()) + 1U;
+ constraint.from = from;
+ constraint.to = to;
+ constraint.measured_relative_pose = evidence.measured_relative_pose;
+ constraint.information = evidence.information;
+ constraint.kind = PoseGraphConstraintKind::LoopClosure;
+ std::string reason;
+ if (!graph_.add_constraint(constraint, &reason)) {
+ output.diagnostic = "failed to add loop closure: " + reason;
+ return output;
+ }
+ output.accepted = true;
+ output.created_keyframe = false;
+ output.keyframe_id = to;
+ output.diagnostic = decision.diagnostic;
  return output;
 }
 

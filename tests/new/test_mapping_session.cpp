@@ -33,6 +33,7 @@ int main() {
  config.keyframes.heading_threshold_rad = 0.3;
  config.keyframes.maximum_interval_s = 2.0;
  config.keyframes.maximum_keyframes = 4;
+ config.loop_closure.minimum_temporal_separation_s = 2.0;
  sim::autonomy::MappingSession session(config);
 
  auto first = session.ingest({{0.0, 0.0}, 0.0}, scan(1.0, 1), 1.0);
@@ -50,6 +51,22 @@ int main() {
  CHECK(session.graph().constraint_count() == 3);
  CHECK(session.graph().find_keyframe(1)->fixed);
  CHECK(!session.graph().find_keyframe(2)->fixed);
+
+ sim::autonomy::LoopClosureEvidence closure;
+ closure.match_score = 0.92;
+ closure.overlap = 0.88;
+ closure.score_margin = 0.20;
+ closure.measured_relative_pose =
+ sim::autonomy::relative_pose(session.graph().find_keyframe(4)->initial_pose,
+ session.graph().find_keyframe(1)->initial_pose);
+ closure.information = sim::autonomy::pose_graph_information(0.05, 0.05);
+ auto accepted_closure = session.add_loop_closure(4, 1, closure);
+ CHECK(accepted_closure.accepted);
+ CHECK(session.graph().constraint_count() == 4);
+ closure.score_margin = 0.01;
+ auto ambiguous_closure = session.add_loop_closure(4, 1, closure);
+ CHECK(!ambiguous_closure.accepted);
+ CHECK(ambiguous_closure.diagnostic == "loop closure match is ambiguous");
 
  auto over_budget = session.ingest({{1.2, 0.0}, 0.4}, scan(4.0, 6), 4.0);
  CHECK(!over_budget.accepted);

@@ -97,6 +97,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/mapping/online_slam.cpp
  src/robot/autonomy/mapping/pose_graph.cpp
  src/robot/autonomy/mapping/mapping_session.cpp
+ src/robot/autonomy/mapping/loop_closure.cpp
  src/robot/autonomy/mapping/observed_obstacle_layer.cpp
  src/robot/autonomy/planning/local/predictor.cpp
  src/robot/autonomy/localization/state_estimator.cpp
