@@ -1192,57 +1192,14 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
     robot_profile.at("basis").get<std::string>(),
     robot_profile.at("source_refs").get<std::vector<std::string>>(),
   };
-  robot.drive_type = drive.at("type").get<std::string>();
-  robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
-  robot.wheel_radius_m = drive.at("wheel_radius_m").get<double>();
-  robot.wheel_base_m = drive.at("wheel_base_m").get<double>();
- robot.rated_speed_mps = drive.at("rated_speed_mps").get<double>();
-  robot.effective_track_width_m = drive.value("effective_track_width_m", robot.wheel_base_m);
-  robot.motor = {
-    motor.at("max_wheel_speed_mps").get<double>(),
-    motor.at("max_wheel_accel_mps2").get<double>(),
-    motor.at("stall_force_N").get<double>(),
-    motor.at("free_speed_mps").get<double>(),
-    motor.at("pwm_limit").get<double>(),
-    motor.at("integral_limit").get<double>(),
-    motor.at("wheel_equiv_mass_kg").get<double>(),
-    motor.at("controller_bandwidth_radps").get<double>(),
-    motor.at("controller_integral_time_s").get<double>(),
-    motor.at("controller_derivative_time_s").get<double>(),
- motor.at("static_friction_feedforward_duty").get<double>(),
-    motor.at("coulomb_smoothing_speed_mps").get<double>(),
-    motor.at("viscous_drag_N_per_mps").get<double>(),
-  };
-  robot.mass_kg = drive.at("mass_kg").get<double>();
-  robot.yaw_inertia_kgm2 = drive.at("yaw_inertia_kgm2").get<double>();
-  robot.max_yaw_accel_radps2 = drive.at("max_yaw_accel_radps2").get<double>();
-  robot.tracked_max_yaw_rate_rads = drive.value("max_yaw_rate_rads", 1.5);
-  robot.track_length_m = drive.value("track_length_m", 0.7);
-  robot.track_width_m = drive.value("track_width_m", 0.58);
- if (!(robot.effective_track_width_m > 0.0) || !(robot.rated_speed_mps > 0.0)) {
- throw ContentError(path.string() + ": track width and rated speed must be positive");
-  }
-  robot.unlock_ability = value.value("unlock_ability", std::string{});
-  robot.steering = {
-    steering.at("integral_limit").get<double>(),
-    steering.value("max_steer_rad", 0.6),
-    steering.value("max_steer_rate_radps", 2.5),
-    steering.value("servo_response_s", 0.4),
- steering.value("stall_torque_Nm", 8.0),
-  };
-  robot.energy_base_w = energy.at("base_w").get<double>();
-  robot.energy_per_v_w = energy.at("per_v_w").get<double>();
-  robot.energy_per_w_w = energy.at("per_w_w").get<double>();
-  robot.encoder = {encoder.at("counts_per_revolution").get<int>()};
- if (const auto brake = drive.find("service_brake"); brake != drive.end()) {
- robot.service_brake = {
- brake->at("enabled").get<bool>(),
- brake->at("maximum_torque_Nm").get<double>(),
- brake->at("apply_time_s").get<double>(),
- brake->at("release_time_s").get<double>(),
- brake->at("low_speed_smoothing_radps").get<double>(),
- };
- }
+  // Hardware capability is parsed and range checked by ROBOT. The catalog
+ // supplies the document path for diagnostics and keeps presentation-only
+ // keys (for example the garage label) out of the hardware contract.
+ json hardware_drive = drive;
+ hardware_drive.erase("label_key");
+ static_cast<sim::RobotDriveProfile&>(robot) =
+ sim::parse_robot_drive(hardware_drive, path.string());
+ robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
   Vec3 articulated_center_of_mass_in_base;
   double articulated_center_of_mass_height_m = 0.0;
   double articulated_base_link_height_m = 0.0;

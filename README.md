@@ -97,6 +97,18 @@ Source code, documentation, tests, schemas, and headless output use English. Loc
 
 ## Build, test, and run headlessly
 
+MuJoCo is the physics engine of the simulation, so every simulation build includes it; there is no separate
+"MuJoCo" build directory. Keep one working tree at `build/` and delete short-lived profile directories when the
+investigation finishes.
+
+```bash
+# Canonical workspace build: game client, simulation core (MuJoCo), and tests
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+ -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 -DCMAKE_C_COMPILER=/usr/bin/gcc-13
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
 ```bash
 # Graphical client, simulation core, and tests
 ./tools/build.sh --test

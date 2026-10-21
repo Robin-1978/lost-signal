@@ -57,6 +57,7 @@ target_link_libraries(lost_signal_robot_config PUBLIC lost_signal_robot_core nlo
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 add_library(lost_signal_robot_platform STATIC
+ src/robot/platform/robot_drive_profile.cpp
  src/robot/platform/ackermann_kinematics.cpp
  src/robot/platform/differential_kinematics.cpp
  src/robot/platform/holonomic_kinematics.cpp
@@ -68,7 +69,7 @@ add_library(lost_signal_robot_platform STATIC
  src/robot/control/holonomic_actuator_controller.cpp
  src/robot/control/manipulator_joint_controller.cpp
 )
-target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core)
+target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_core nlohmann_json::nlohmann_json)
 
 add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/local/ackermann_local.cpp
@@ -408,7 +409,7 @@ add_library(lost_signal_sim_game STATIC
 )
 target_include_directories(lost_signal_sim_game PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(lost_signal_sim_game PUBLIC
- lost_signal_sim_hardware nlohmann_json::nlohmann_json)
+ lost_signal_sim_hardware lost_signal_robot_platform nlohmann_json::nlohmann_json)
 
 set(LOST_SIGNAL_BUILD_INFO_HEADER
  ${CMAKE_CURRENT_BINARY_DIR}/generated/lost_signal/build_info.hpp)

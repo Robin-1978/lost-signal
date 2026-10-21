@@ -6,6 +6,23 @@ fault, and physical evidence required for stronger claims.
 
 ## Build profiles
 
+### Canonical workspace build
+
+Everyday development and release validation use one directory, `build/`. MuJoCo is a required dependency of the
+simulation, so there is no separate "with physics engine" build directory: a simulation build always contains it.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+ -DCMAKE_CXX_COMPILER=/usr/bin/g++-13 -DCMAKE_C_COMPILER=/usr/bin/gcc-13
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+The two profiles below remain available for focused work (a headless machine without window-system packages, or a
+sanitizer run). They are temporary directories; delete them when the investigation is finished so the workspace keeps
+a single build tree. Compiler cross-checks (Clang 18) are built the same way in a scratch directory and removed once
+the difference is explained.
+
 ### Portable headless
 
 ```bash

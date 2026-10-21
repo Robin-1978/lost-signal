@@ -2,6 +2,7 @@
 
 #include "robot/core/math.hpp"
 #include "robot/core/terrain_relief.hpp"
+#include "robot/platform/robot_drive_profile.hpp"
 
 #include <array>
 #include <algorithm>
@@ -604,46 +605,13 @@ struct PassiveSupportDefinition {
  std::string roll_mount;
 };
 
-struct SteeringDefinition {
- double integral_limit{1.2};
- // Ackermann hardware. Unused by differential cars; required content for
- // ackermann robots (the servo derivation and yaw capability come from these).
- double max_steer_rad{0.6};
- double max_steer_rate_radps{2.5};
- double servo_response_s{0.4};
- double stall_torque_Nm{8.0};
-};
-struct MotorDefinition {
- double max_wheel_speed_mps{0.0};
- double max_wheel_accel_mps2{0.0};
- double stall_force_N{0.0};
- double free_speed_mps{0.0};
- double pwm_limit{1.0};
- double integral_limit{2.0};
- // Per-wheel equivalent translational mass (wheel + tire + reflected rotor).
- // Hardware data: the contact patch integrates the tread against this.
- double wheel_equiv_mass_kg{3.0};
- // Controller and low-speed drivetrain assumptions are authored data, not
- // hidden tuning constants in the simulation backend.
- double controller_bandwidth_radps{6.0};
- double controller_integral_time_s{5.0};
- double controller_derivative_time_s{0.005};
- double static_friction_feedforward_duty{0.08};
- double coulomb_smoothing_speed_mps{0.05};
- double viscous_drag_N_per_mps{0.6};
-};
-
-struct EncoderDefinition {
- int counts_per_revolution{0};
-};
-
-struct ServiceBrakeDefinition {
- bool enabled{false};
- double maximum_torque_Nm{0.0};
- double apply_time_s{0.12};
- double release_time_s{0.08};
- double low_speed_smoothing_radps{0.6};
-};
+// Hardware parameter types are owned by ROBOT so a native bring-up parses the
+// same contract without the game catalog. The catalog adds content metadata
+// (titles, unlock gates, slots, presentation) on top of this profile.
+using sim::EncoderDefinition;
+using sim::MotorDefinition;
+using sim::ServiceBrakeDefinition;
+using sim::SteeringDefinition;
 
 struct RigidLinkDefinition {
  std::string id;
@@ -717,44 +685,18 @@ struct ManipulatorDefinition {
  std::string end_effector_frame;
 };
 
-struct RobotDefinition {
- std::string id;
- std::string title;
- ModelProfileDefinition model_profile;
- std::string drive_type;
- std::string drive_label_key;
- double wheel_radius_m{0.0};
- double wheel_base_m{0.0};
- // Maximum validated chassis speed for autonomous operation. The equipped
- // motor may have a higher wheel-speed capability; this limit captures the
- // complete running gear, passive supports and stability evidence.
- double rated_speed_mps{0.0};
- // Calibrated separation used by skid-steer inverse/forward kinematics.
- // For ordinary differential wheels this equals wheel_base_m. Tracks need a
- // larger effective value because lateral scrub moves their instantaneous
- // centres of rotation away from the geometric centreline.
- double effective_track_width_m{0.0};
- double mass_kg{0.0};
- double yaw_inertia_kgm2{0.0};
- double max_yaw_accel_radps2{8.0};
- // Tracked spin capability (vendor spec). Only read by tracked robots;
- // wheeled chassis derive yaw authority from geometry instead.
- double tracked_max_yaw_rate_rads{1.5};
- // Track contact length (vendor spec). Only read by tracked robots.
- double track_length_m{0.7};
- // Axle track width (vendor spec). Only read by ackermann robots (linkage).
- double track_width_m{0.58};
- // Unlock gate for player chassis choice (content data, not code): empty =
- // starter (always available), otherwise an ability.* id the garage checks.
- // The mission trusts validated builds; ownership lives at the UI layer.
- std::string unlock_ability;
- MotorDefinition motor;
- SteeringDefinition steering;
- double energy_base_w{0.0};
- double energy_per_v_w{0.0};
- double energy_per_w_w{0.0};
- EncoderDefinition encoder;
- ServiceBrakeDefinition service_brake;
+// A robot definition is a deployable hardware profile plus content metadata.
+// The drive-train half lives in ROBOT (see robot/platform/robot_drive_profile.hpp);
+// titles, unlock gates, component slots and presentation belong here.
+struct RobotDefinition : sim::RobotDriveProfile {
+  std::string id;
+  std::string title;
+  ModelProfileDefinition model_profile;
+  std::string drive_label_key;
+  // Unlock gate for player chassis choice (content data, not code): empty =
+  // starter (always available), otherwise an ability.* id the garage checks.
+  // The mission trusts validated builds; ownership lives at the UI layer.
+  std::string unlock_ability;
  ArticulationDefinition articulation;
  std::optional<ManipulatorDefinition> manipulator;
  // Orientation-independent envelope consumed by grid and local planners.

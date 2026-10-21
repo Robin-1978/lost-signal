@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -91,6 +92,31 @@ std::filesystem::path MotionPolicy::resolve_path(const std::filesystem::path& co
  if (*configured != '\0') {
  return std::filesystem::path(configured) / "policy" / "motion_policy.json";
  }
+ }
+ // A native install keeps robot_data beside the content root. Test harnesses
+ // and overlay builds may mount authored content in a temporary directory
+ // while the robot data still lives in the source tree, so walk up a bounded
+ // number of ancestors before falling back to the sibling layout.
+ std::error_code error;
+ const auto search_up = [&error](std::filesystem::path start) -> std::optional<std::filesystem::path> {
+ for (std::filesystem::path probe = std::move(start); !probe.empty();) {
+ const auto candidate = probe / "robot_data" / "policy" / "motion_policy.json";
+ if (std::filesystem::exists(candidate, error)) {
+ return candidate;
+ }
+ const auto parent = probe.parent_path();
+ if (parent == probe) {
+ break;
+ }
+ probe = parent;
+ }
+ return std::nullopt;
+ };
+ if (const auto found = search_up(content_root)) {
+ return *found;
+ }
+ if (const auto found = search_up(std::filesystem::current_path(error))) {
+ return *found;
  }
  return content_root.parent_path() / "robot_data" / "policy" / "motion_policy.json";
 }
