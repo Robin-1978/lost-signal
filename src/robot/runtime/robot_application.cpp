@@ -106,9 +106,13 @@ RobotCycleOutput RobotApplication::step(const RobotCycleInput& input) {
  throw std::logic_error("robot cycle requires an active application");
  RobotCycleOutput output;
  auto& coordinator = active_coordinator();
+ if (input.run_autonomy) {
  const auto autonomy_cycle = coordinator.run_cycle({input.autonomy, input.local_planning});
  output.autonomy = autonomy_cycle.autonomy;
  output.local_planning = autonomy_cycle.local_planning;
+ } else if (input.local_planning) {
+ output.local_planning = coordinator.plan_local_motion(*input.local_planning);
+ }
  // A body/actuator intent is only publishable after the ROBOT planner has
  // proved the corresponding local transaction. This prevents a native or
  // simulated adapter from bypassing trajectory validation by supplying a

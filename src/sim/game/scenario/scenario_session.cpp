@@ -2379,12 +2379,14 @@ void ScenarioSession::apply_motion() {
  (void)chassis_->step_actuator_duty(
  before, applied_command, plant_command, fixed_step_s, ground_contact);
  } else {
- const auto outbound_command = sim::runtime::make_motion_command(
- held_command(), chassis_caps_, runtime_now, command_sequence()++, fixed_step_s * 2.0);
- if (runtime_channel_->autonomy().write_motion(outbound_command) !=
- sim::runtime::CommandWriteResult::Accepted) {
- throw std::runtime_error("runtime channel rejected the autonomous motion command");
+ if (!robot_application_) {
+ throw std::logic_error("motion-level control requires the ROBOT application");
  }
+ const auto control = robot_application_->execute_motion(
+ applied_command, fixed_step_s, runtime_now,
+ sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0));
+ if (!control.motion_command)
+ throw std::runtime_error("ROBOT application did not produce motion command");
  applied_command = sim::runtime::to_diff_command(
  runtime_channel_->platform().read_motion(runtime_now));
  snapshot_.control.target_v_mps = applied_command.target_v;

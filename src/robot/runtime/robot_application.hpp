@@ -36,6 +36,11 @@ struct RobotCycleInput {
  // command. Native and simulated composition roots therefore share one
  // autonomy cycle instead of duplicating planner orchestration.
  const autonomy::RobotLocalPlanningInput* local_planning{nullptr};
+ // A composition root may already have run the behavior transaction while
+ // assembling this cycle's local-planning facts. In that case ROBOT still
+ // owns local planning and validation, but must not update the policy twice
+ // in one decision tick.
+ bool run_autonomy{true};
  std::optional<DiffCmd> motion_intent;
  double dt_s{0.0};
  runtime::TimePoint now;

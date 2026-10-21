@@ -1354,7 +1354,17 @@ if (!continuous_execution && remaining_m > 0.5) {
  autonomy_coordinator_->collision_monitor().static_clearance(from)));
  return feasible;
  }, [this](sim::Vec2 position) { return terrain_.sample(position); }};
- const auto local_plan = autonomy_coordinator_->plan_local_motion(local_planning_input);
+ // The scenario owns only provider-neutral request assembly. ROBOT owns the
+ // local planner invocation and trajectory validation through the common
+ // application cycle; run_autonomy=false avoids updating the already applied
+ // high-level strategy a second time in this decision tick.
+ sim::robot::RobotCycleInput local_cycle;
+ local_cycle.local_planning = &local_planning_input;
+ local_cycle.run_autonomy = false;
+ const auto local_cycle_output = robot_application_->step(local_cycle);
+ if (!local_cycle_output.local_planning)
+ throw std::runtime_error("ROBOT application did not produce local planning output");
+ const auto& local_plan = *local_cycle_output.local_planning;
  snapshot_.control.local_motion_mode = static_cast<int>(local_plan.status.mode);
  snapshot_.control.local_motion_authorized = local_plan.status.motion_authorized;
  snapshot_.control.local_motion_decision_time_s = local_plan.status.decision_time_s;
