@@ -184,4 +184,29 @@ std::optional<TaskArrival> TaskExecutive::update(const TaskObservation& observat
  return TaskArrival{index, goal.id, complete};
 }
 
+LocalizationDirective TaskExecutive::localization_directive(
+ const TaskObservation& observation) const {
+ if (!observation.localization_valid ||
+ !std::isfinite(observation.localization_confidence) ||
+ !std::isfinite(observation.localization_age_s) ||
+ observation.localization_age_s < 0.0) {
+ return {LocalizationResponse::StopAndHold,
+ "localization invalid"};
+ }
+ if (observation.localization_age_s > 5.0 ||
+ observation.localization_confidence < 0.15) {
+ return {LocalizationResponse::StopAndHold,
+ "localization lost"};
+ }
+ if (observation.localization_age_s > 2.0 ||
+ observation.localization_confidence < 0.35) {
+ return {LocalizationResponse::HoldForRelocalization,
+ "localization degraded"};
+ }
+ if (observation.localization_confidence < 0.60)
+ return {LocalizationResponse::ReduceSpeed,
+ "localization confidence reduced"};
+ return {};
+}
+
 } // namespace executive

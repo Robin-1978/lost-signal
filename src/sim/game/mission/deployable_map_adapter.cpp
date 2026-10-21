@@ -83,6 +83,16 @@ sim::runtime::MapSnapshot make_deployable_map_snapshot(
  const double cell_min_y = static_cast<double>(y) * grid.resolution_m;
  const double cell_max_x = cell_min_x + grid.resolution_m;
  const double cell_max_y = cell_min_y + grid.resolution_m;
+ // The physics provider closes every map edge with the rigid boundary walls
+ // defined by world_boundary_walls(). Their inner face lies exactly on the
+ // authored border, so the outermost cell ring cannot be traversed and must be
+ // occupied in the localization map. Without this the LiDAR on a level with no
+ // interior furniture sees walls that the map does not contain, scan matching
+ // reports zero overlap and the robot can never correct its pose.
+ const bool boundary_cell = x == 0 || y == 0 || x + 1 == grid.width || y + 1 == grid.height;
+ if (boundary_cell) {
+ grid.occupancy[index] = 100;
+ }
  for (const auto& obstacle : map.obstacles) {
  const bool overlaps = cell_min_x < obstacle.max.x && cell_max_x > obstacle.min.x &&
  cell_min_y < obstacle.max.y && cell_max_y > obstacle.min.y;

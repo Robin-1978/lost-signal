@@ -1075,6 +1075,13 @@ def load_and_validate(root: Path) -> dict[str, Any]:
                 raise ContentError(
                     f"{doc.path}:/objective/{field}: unknown marker '{marker}'"
                 )
+        if level.get("localization_mode") == "known_map" and "sensor" not in set(
+            level["loadout_rules"]["required_slots"]
+        ):
+            raise ContentError(
+                f"{doc.path}:/loadout_rules/required_slots: known_map localization "
+                "requires a 'sensor' slot; the robot cannot localize without a LiDAR"
+            )
         minimum_cost = 0
         for index, slot in enumerate(level["loadout_rules"]["required_slots"]):
             choices = components_by_slot.get(slot, [])

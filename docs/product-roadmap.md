@@ -291,6 +291,27 @@ publishing a simulator absolute-pose correction. This is a component gate, not t
 filtering, covariance/innovation gates, held-out trajectory evidence and migration of normal recommended levels are
 still required.
 
+The correction policy is now explicit in ROBOT's `LocalizationSupervisor`. A known, low-uncertainty estimate runs
+bounded local scan-to-map correction only when motion or an idle deadline makes it due; a rejected local match is
+evidence and does not by itself launch a whole-map search. Unknown start, invalid/high estimator uncertainty, or a
+lost estimate requests rate-limited global recovery. The local matcher receives an `IMapProvider::query_region()`
+view, while the global provider alone receives the complete map. Estimation owns the propagated position/heading
+uncertainty and fuses accepted measurement covariance; the supervisor does not maintain a second drift model.
+
+Localization quality is a multi-signal ROBOT output: position/heading sigma, match score, overlap, separated-hypothesis
+margin, innovation consistency, and observation age are retained separately. Sigma is the recovery gate, while quality
+evidence is published to behavior and local planning. `RobotExecutive` is the task-level owner of a lost/relocalizing
+decision (pause, safe return, or retry); local planning and control execute the resulting speed/stop constraint and
+continue to apply independent swept-collision and braking validation. The executive publishes a mode, not an absolute
+velocity or brake torque; the chassis-aware local planner converts quality into a speed envelope. A degraded but
+usable estimate caps ordinary speed; confidence never relaxes a hard safety constraint. The local planner consumes localization health directly; the executive does not relay a speed or stop value through the planning request.
+
+The authority ordering is explicit: task intent is advisory to motion, executable velocity is owned by chassis-aware
+local planning and control, and collision/stability safety is the final gate. When a predicted dynamic intrusion makes
+waiting unsafe, the planner may compare braking, retreat and other bounded escape candidates, but every candidate goes
+through the same independent swept-geometry, actuator, terrain and stability validation. A task cannot force an
+unvalidated escape; if no safe candidate exists, the result is an explicit no-safe-action diagnostic.
+
 This migration is now applied to the shipped level catalog: every production level that previously selected `fused`
 selects `known_map`, and the SIM session no longer calls `capture_pose()` or publishes an `absolute_pose` measurement.
 The spawn marker is the declared initial-pose contract for a level; its first LiDAR scan still passes the local map
@@ -778,3 +799,44 @@ above plus motor-limited gradeability, zero-command rollback, public-step conver
 Mechanical tie rods, identified parameters, HIL, and real-car evidence remain optional later fidelity work rather
 than implied results of this gate.
 
+
+### Deployed data ownership: ROBOT data versus game content
+
+Tuned robot behaviour must not be compiled into the game. The repository now separates two data roots:
+
+- `robot_data/` is deployable robot data: platform policy (currently
+ `policy/motion_policy.json`), and the future home of calibration, map packages and per-device provider
+ configuration. A native bring-up reads this directory unchanged.
+- `assets/` is game content: levels, presentations, scenes, story, UI strings and the component catalog.
+
+`MotionPolicy` fails loudly on a missing file, an unknown key, or an out-of-range value. This is deliberate: the
+class of bug behind "sim-to-real will explode" is a tuned threshold that exists only in an executable.
+
+### Remaining SIM to ROBOT migration
+
+The algorithm bodies already live in ROBOT; what still sits in `src/sim/game/scenario/scenario_autonomy.cpp` and
+`scenario_session.cpp` is the per-tick composition of those algorithms. It is the largest remaining piece of
+robot-facing decision code inside the game. The migration plan is:
+
+1. Extract `AutonomyCoordinator` into ROBOT with a typed request (task intent, estimated state with localization
+ health, goal set, map provider, predicted dynamic frames, chassis capabilities, operator override) and a typed
+ result (accepted command, motion-capability status, decision evidence, recovery reason). The function currently
+ spans roughly 1,600 lines of one scenario method; it will move in stages, one behaviour group at a time, with the
+ simulator calling the coordinator through LSRI-typed inputs only.
+2. Move platform profile parsing (`assets/robots/*.json` drive, motor, collision, slot and mount definitions) into
+ ROBOT, leaving the catalog responsible only for locating and handing over JSON. Render-only fields stay in a
+ presentation struct.
+3. Keep the mission and scenario layer responsible for authored goals, scoring, story and actor truth only. Any
+ decision that would also run on a real robot must live behind a ROBOT interface.
+
+Each stage keeps the deployed boundary test green: a ROBOT target that links SIM fails the build.
+
+### Slope-lab localization mode
+
+The three slope lessons (`slope_launch`, `cross_slope`, `rain_descent`) run on the robot's own wheel/IMU odometry.
+The slope lab is a 20 by 14 m track whose only LiDAR features are the perimeter and four props, and its 20-degree ramp
+makes a horizontally mounted planar LiDAR see the ramp surface as a wall. A planar endpoint matcher cannot separate
+that ground return from an obstacle, so these lessons would stop on a localization hold for reasons that have nothing
+to do with their teaching goal (traction, cross-slope stability, wet braking). The estimator still runs; it simply does
+not receive a map correction. Levels with feature-rich maps keep `known_map` localization, and the boundary-wall
+geometry is now part of every deployable map, so a LiDAR can never see a wall that the map does not contain.

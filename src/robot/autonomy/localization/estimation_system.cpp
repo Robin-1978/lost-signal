@@ -1,4 +1,5 @@
 #include "robot/autonomy/localization/estimation_system.hpp"
+#include "robot/config/motion_policy.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -11,6 +12,10 @@ constexpr double kGravityMps2 = 9.81;
 constexpr double kAttitudeCorrectionTimeConstantS = 0.50;
 constexpr double kPoseVelocityWindowS = 0.10;
 constexpr double kPoseVelocityFilterTimeConstantS = 0.25;
+constexpr double kMinimumPositionSigmaM = 0.005;
+constexpr double kMaximumPositionSigmaM = 100.0;
+constexpr double kMinimumHeadingSigmaRad = 0.002;
+constexpr double kMaximumHeadingSigmaRad = 3.141592653589793;
 
 } // namespace
 
@@ -65,7 +70,12 @@ void EstimationSystem::reset(double x, double y, double heading_rad, std::uint32
  state_ = {};
  state_.position = {x, y};
  state_.heading_rad = heading_rad;
+ state_.position_sigma_m = 0.05;
+ state_.heading_sigma_rad = 0.01;
  state_.confidence = 1.0;
+ state_.localization_confidence = 1.0;
+ state_.localization_valid = true;
+ state_.localization_age_s = 0.0;
  attitude_ = {};
  attitude_initialized_ = false;
  velocity_pose_anchor_.reset();
@@ -180,6 +190,7 @@ void EstimationSystem::update_map_state() {
 }
 
 void EstimationSystem::update(const ObservationFrame& observation, double dt_s) {
+	const auto& policy = motion_policy_;
  if (!observation.encoders) {
   throw std::invalid_argument("estimation update requires encoder observation");
  }
@@ -204,6 +215,36 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
  0.003 * encoder.slip_scale, has_imu, gyro_rate, gyro_sigma);
  if (has_imu)
  update_attitude(*observation.imu, dt_s);
+ // Propagate a bounded diagonal SE(2) covariance approximation. The dead
+ // reckoner owns the sampled motion; this is the estimator-owned uncertainty
+ // envelope used by recovery policy, so it includes travelled distance,
+ // heading uncertainty and provider-reported slip without pretending that
+ // simulation truth is a measurement.
+ const double safe_dt = std::max(0.0, dt_s);
+ const double travelled_m = std::hypot(
+ encoder.linear_velocity_mps, encoder.lateral_velocity_mps) * safe_dt;
+ const double slip = std::max(1.0, encoder.slip_scale);
+ const double distance_noise_m =
+ (0.02 * travelled_m + 0.0005 * std::sqrt(safe_dt)) * slip;
+ const double heading_increment = std::abs(encoder.angular_velocity_radps) * safe_dt;
+ const double heading_noise_rad =
+ (0.05 * heading_increment + 0.0008 * std::sqrt(safe_dt)) * slip;
+ const double heading_sigma_from_imu = has_imu
+ ? std::max(0.0, observation.imu->noise_sigma_radps) * safe_dt : 0.0;
+ const double heading_process_sigma = std::hypot(
+ heading_noise_rad, heading_sigma_from_imu);
+ const double translation_from_heading = travelled_m * state_.heading_sigma_rad;
+ const double position_variance = state_.position_sigma_m * state_.position_sigma_m +
+ distance_noise_m * distance_noise_m +
+ translation_from_heading * translation_from_heading;
+ const double heading_variance = state_.heading_sigma_rad * state_.heading_sigma_rad +
+ heading_process_sigma * heading_process_sigma;
+ state_.position_sigma_m = std::clamp(
+ std::sqrt(std::max(0.0, position_variance)),
+ kMinimumPositionSigmaM, kMaximumPositionSigmaM);
+ state_.heading_sigma_rad = std::clamp(
+ std::sqrt(std::max(0.0, heading_variance)),
+ kMinimumHeadingSigmaRad, kMaximumHeadingSigmaRad);
  update_map_state();
  state_.linear_velocity_mps = encoder.linear_velocity_mps;
  state_.lateral_velocity_mps = encoder.lateral_velocity_mps;
@@ -217,14 +258,41 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
    has_imu && encoder.slip_scale > 2.0 ? gyro_rate : encoder.angular_velocity_radps;
  state_.confidence = std::clamp(1.0 / std::max(1.0, encoder.slip_scale), 0.05, 1.0);
  state_.timestamp_s = observation.time_s;
+ state_.localization_age_s = std::max(0.0, state_.localization_age_s + safe_dt);
+ const double covariance_quality = 1.0 /
+ (1.0 + state_.position_sigma_m / policy.localization_quality.position_half_quality_sigma_m +
+ state_.heading_sigma_rad / policy.localization_quality.heading_half_quality_sigma_rad);
+ const double quality_evidence = std::clamp(
+ std::min(state_.localization_score, state_.localization_overlap), 0.0, 1.0);
+ const double age_factor = std::exp(
+ -state_.localization_age_s / policy.localization_quality.confidence_decay_time_constant_s);
+ state_.localization_confidence = std::clamp(
+ (policy.localization_quality.covariance_weight * covariance_quality +
+ policy.localization_quality.evidence_weight * quality_evidence) * age_factor,
+ 0.0, 1.0);
+ state_.localization_valid = std::isfinite(state_.position_sigma_m) &&
+ std::isfinite(state_.heading_sigma_rad) &&
+ state_.position_sigma_m < policy.localization_quality.untrusted_position_sigma_m &&
+ state_.heading_sigma_rad < policy.localization_quality.untrusted_heading_sigma_rad;
 }
 
 void EstimationSystem::correct(const PoseObservation& observation, double time_s) {
  if (observation.header.frame_id != "map" || std::abs(observation.header.stamp_s - time_s) > 1e-9) {
  throw std::invalid_argument("pose measurement header does not match correction time");
  }
- const double position_gain = std::clamp(0.65 / (1.0 + observation.position_sigma_m * 4.0), 0.15, 0.65);
- const double heading_gain = std::clamp(0.65 / (1.0 + observation.heading_sigma_rad * 10.0), 0.15, 0.65);
+ const double measurement_position_sigma = std::clamp(
+ std::isfinite(observation.position_sigma_m) ? observation.position_sigma_m : 1.0,
+ kMinimumPositionSigmaM, kMaximumPositionSigmaM);
+ const double measurement_heading_sigma = std::clamp(
+ std::isfinite(observation.heading_sigma_rad) ? observation.heading_sigma_rad : 1.0,
+ kMinimumHeadingSigmaRad, kMaximumHeadingSigmaRad);
+ const double position_gain = std::clamp(0.65 / (1.0 + measurement_position_sigma * 4.0), 0.15, 0.65);
+ const double heading_gain = std::clamp(0.65 / (1.0 + measurement_heading_sigma * 10.0), 0.15, 0.65);
+ const double position_innovation_m = std::hypot(
+ observation.position.x - state_.position.x,
+ observation.position.y - state_.position.y);
+ const double heading_innovation_rad = std::abs(
+ wrap_angle(observation.heading_rad - state_.heading_rad));
  const Vec2 corrected_position{
  state_.position.x + (observation.position.x - state_.position.x) * position_gain,
  state_.position.y + (observation.position.y - state_.position.y) * position_gain,
@@ -276,6 +344,38 @@ void EstimationSystem::correct(const PoseObservation& observation, double time_s
  corrected_position.y - (sine * odometry_.p.x + cosine * odometry_.p.y),
  };
  update_map_state();
+ // Fuse the accepted map observation into the estimator's uncertainty. The
+ // pose update above deliberately retains its bounded tracking gain; the
+ // covariance update is conservative and never reports more confidence than
+ // the measurement can support.
+ const double prior_position_variance = state_.position_sigma_m * state_.position_sigma_m;
+ const double prior_heading_variance = state_.heading_sigma_rad * state_.heading_sigma_rad;
+ const double measurement_position_variance = measurement_position_sigma * measurement_position_sigma;
+ const double measurement_heading_variance = measurement_heading_sigma * measurement_heading_sigma;
+ state_.position_sigma_m = std::clamp(
+ std::max(std::sqrt((prior_position_variance * measurement_position_variance) /
+ (prior_position_variance + measurement_position_variance)),
+ position_innovation_m * 1.5),
+ kMinimumPositionSigmaM, kMaximumPositionSigmaM);
+ state_.heading_sigma_rad = std::clamp(
+ std::max(std::sqrt((prior_heading_variance * measurement_heading_variance) /
+ (prior_heading_variance + measurement_heading_variance)),
+ heading_innovation_rad * 1.5),
+ kMinimumHeadingSigmaRad, kMaximumHeadingSigmaRad);
+ state_.localization_age_s = 0.0;
+ state_.localization_score = observation.quality_score;
+ state_.localization_overlap = observation.quality_overlap;
+ state_.localization_score_margin = observation.quality_margin;
+ const double quality_evidence = std::clamp(
+ std::min(observation.quality_score, observation.quality_overlap), 0.0, 1.0);
+	const auto& policy = motion_policy_;
+ const double covariance_quality = 1.0 /
+ (1.0 + state_.position_sigma_m / policy.localization_quality.position_half_quality_sigma_m +
+ state_.heading_sigma_rad / policy.localization_quality.heading_half_quality_sigma_rad);
+ state_.localization_confidence = std::clamp(
+ policy.localization_quality.covariance_weight * covariance_quality +
+ policy.localization_quality.evidence_weight * quality_evidence, 0.0, 1.0);
+ state_.localization_valid = true;
  if (absolute_velocity_valid_ && measured_pose_velocity_world_mps &&
  measured_pose_yaw_rate_radps) {
  const double cosine_heading = std::cos(corrected_heading);

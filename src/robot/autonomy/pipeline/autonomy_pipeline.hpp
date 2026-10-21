@@ -38,6 +38,10 @@ class AutonomyPipeline {
 
  void reset(std::uint32_t seed);
 
+ // Applies the deployed motion policy to the stages that consume it.
+ // Composition roots call this once after construction.
+ void set_motion_policy(const MotionPolicy& policy) { local_planner_.set_motion_policy(policy); }
+
  LidarPerceptionFrame process_lidar(
  const Scan& scan, const Scan& static_reference,
  const LidarProjectionState& state, const LidarProjectionConfig& config,

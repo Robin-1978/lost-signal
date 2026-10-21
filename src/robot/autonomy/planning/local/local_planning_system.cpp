@@ -590,6 +590,31 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  // Keeping the unreachable nominal floor in the validator rejects every
  // generated rollout and permanently strands the body in the conflict zone.
  auto request = requested;
+ const double localization_confidence = std::isfinite(request.localization_confidence)
+ ? std::clamp(request.localization_confidence, 0.0, 1.0) : 0.0;
+ const double localization_age_s = std::isfinite(request.localization_age_s)
+ ? std::max(0.0, request.localization_age_s)
+ : std::numeric_limits<double>::infinity();
+ // Localization may constrain an ordinary motion plan, but it never supplies
+ // a command. Severely stale or badly degraded health closes the drive window;
+ // the actuator window below still produces a physically reachable braking
+ // command from the measured speed. Reduced evidence retains a usable but
+ // deliberately slower operating envelope.
+ // Invalid is a quality signal, not an automatic command to freeze: a finite
+ // but degraded wheel/IMU estimate can still support a bounded slow motion.
+ // Reserve the hold state for confidence below the minimum usable envelope or
+ // an actually stale stream whose age has exceeded the recovery grace period.
+	const auto& authority = motion_policy_.localization_motion;
+	const bool localization_hold = !std::isfinite(localization_confidence) ||
+		localization_confidence < authority.hold_confidence ||
+		localization_age_s > authority.hold_max_age_s;
+	const double localization_speed_scale = localization_hold ? 0.0
+		: !request.localization_valid || localization_confidence < authority.reduced_confidence
+		? authority.reduced_speed_scale
+		: localization_confidence < authority.cautious_confidence
+		? authority.cautious_speed_scale : 1.0;
+ request.max_speed_mps =
+ std::max(0.0, request.max_speed_mps) * localization_speed_scale;
  if (request.command_space == LocalCommandSpace::DifferentialTwist &&
  request.crossing_committed && request.committed_no_return &&
  request.committed_progress_floor_mps > 0.0 && request.step_s > 0.0) {
@@ -616,6 +641,40 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  std::sin(static_margin_escape_heading_rad_);
  value.near_boundary_clearance_recovery_active =
  near_boundary_clearance_recovery_active_;
+ value.status.decision_time_s = request.time_s;
+ value.status.speed_cap_mps = request.max_speed_mps;
+ if (!value.selection.validation.accepted()) {
+  value.status.mode = LocalMotionMode::NoSafeAction;
+  value.status.motion_authorized = false;
+  value.status.reason = value.selection.validation.diagnostic.empty()
+  ? "no candidate passed the complete safety validation"
+  : value.selection.validation.diagnostic;
+  value.status.recovery_condition =
+  "a collision-free, actuator-feasible and stable action must be proved";
+ } else if (value.selection.validation.minimum_risk_escape()) {
+  value.status.mode = LocalMotionMode::MinimumRiskEscape;
+  value.status.motion_authorized = true;
+  value.status.reason = value.selection.validation.diagnostic;
+  value.status.recovery_condition =
+  "ordinary collision-free planning must become available";
+ } else if (localization_hold) {
+  value.status.mode = LocalMotionMode::LocalizationHold;
+  value.status.motion_authorized = true;
+  value.status.speed_cap_mps = 0.0;
+  value.status.reason = "localization is invalid, stale or insufficient for ordinary motion";
+  value.status.recovery_condition =
+  "a fresh accepted localization correction must restore confidence and coverage";
+ } else if (localization_speed_scale < 1.0) {
+  value.status.mode = LocalMotionMode::LocalizationReduced;
+  value.status.motion_authorized = true;
+  value.status.reason = "localization confidence limits the ordinary speed envelope";
+  value.status.recovery_condition =
+  "sustained accepted localization evidence must restore the nominal envelope";
+ } else {
+  value.status.mode = LocalMotionMode::Nominal;
+  value.status.motion_authorized = true;
+  value.status.reason = value.selection.validation.diagnostic;
+ }
  return value;
  };
  const bool dynamic_forecast_present = std::any_of(
@@ -645,8 +704,8 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  static_margin_escape_required_progress_m_ = 0.0;
  }
  }
- const bool static_margin_recovery_required =
-inside_preferred_margin || static_margin_recovery_gear_ != 0;
+ const bool static_margin_recovery_required = !localization_hold &&
+ (inside_preferred_margin || static_margin_recovery_gear_ != 0);
  if (static_margin_recovery_required && physical_escape_available) {
  const double measured_margin_depth_m = distance_to_free_space(planning_map, request.position);
  // Recovery state follows measured motion, not the endpoint of a predicted
@@ -837,6 +896,7 @@ std::max(0.0, escape_projection.distance_m - 0.5 * planning_map.res());
  physical_terrain_feasible && !dynamic_forecast_present &&
  !request.stop_plane_active && !request.crossing_committed &&
  !request.committed_no_return &&
+ !localization_hold &&
  request.command_space == LocalCommandSpace::DifferentialTwist &&
  planning_map.isFree(request.position.x, request.position.y);
  // A differential base with an offset drive axle moves base_link along an
@@ -954,7 +1014,7 @@ std::max(0.0, escape_projection.distance_m - 0.5 * planning_map.res());
  const bool dynamic_collision_escape_required = dynamic_forecast_present &&
  stationary_clearance.conservative_m + 1e-9 <
  request.required_clearance_m;
- if (!output.selection.validation.accepted() &&
+ if (!localization_hold && !output.selection.validation.accepted() &&
  request.command_space == LocalCommandSpace::DifferentialTwist &&
  !request.route_is_reverse &&
  ((!request.crossing_committed && !request.committed_no_return) ||
@@ -1004,7 +1064,8 @@ std::max(0.0, escape_projection.distance_m - 0.5 * planning_map.res());
  // and reverse motions directly against brake-and-hold. This is a last-resort
  // collision escape: it may enter the soft clearance margin, but never a
  // physical overlap, static obstacle, infeasible terrain, or stability limit.
- if (!output.selection.validation.accepted() && dynamic_collision_escape_required &&
+ if (!localization_hold && !output.selection.validation.accepted() &&
+ dynamic_collision_escape_required &&
  physical_collision_map) {
  auto escape_request = request;
  escape_request.crossing_committed = false;

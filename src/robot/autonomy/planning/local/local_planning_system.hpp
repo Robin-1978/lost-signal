@@ -3,6 +3,7 @@
 #include "robot/autonomy/planning/global/global_planner.hpp"
 #include "robot/autonomy/planning/local/dwa.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
+#include "robot/config/motion_policy.hpp"
 
 #include <limits>
 #include <optional>
@@ -10,6 +11,7 @@
 namespace sim {
 
 struct LocalPlanningRequest {
+ double time_s{0.0};
  LocalCommandSpace command_space{LocalCommandSpace::DifferentialTwist};
  Vec2 position;
  double heading_rad{0.0};
@@ -109,11 +111,51 @@ struct LocalPlanningRequest {
  double center_of_mass_height_m{0.0};
  double max_dynamic_rollover_risk{0.0};
  DwaReference reference;
+ // Localization quality is a constraint on this planner. The executive does
+ // not provide an absolute speed or brake torque: this chassis-aware planner
+ // consumes the localization health it already receives, converts it into its
+ // ordinary drive and braking windows, and reports the resulting motion mode.
+ // Safety validation remains independent for every resulting trajectory.
+ double localization_confidence{1.0};
+ bool localization_valid{true};
+ double localization_age_s{0.0};
+};
+
+enum class LocalMotionMode {
+ Nominal,
+ LocalizationReduced,
+ LocalizationHold,
+ MinimumRiskEscape,
+ NoSafeAction,
+};
+
+inline const char* local_motion_mode_name(LocalMotionMode mode) {
+ switch (mode) {
+ case LocalMotionMode::Nominal: return "nominal";
+ case LocalMotionMode::LocalizationReduced: return "localization_reduced";
+ case LocalMotionMode::LocalizationHold: return "localization_hold";
+ case LocalMotionMode::MinimumRiskEscape: return "minimum_risk_escape";
+ case LocalMotionMode::NoSafeAction: return "no_safe_action";
+ }
+ return "unknown";
+}
+
+// Deployable motion-capability report for the executive and operator UI. It
+// describes what the planner proved for one decision cycle; it is not a wheel
+// command and does not transfer speed authority out of planning/control.
+struct LocalPlanningStatus {
+ LocalMotionMode mode{LocalMotionMode::Nominal};
+ bool motion_authorized{false};
+ double decision_time_s{0.0};
+ double speed_cap_mps{0.0};
+ std::string reason;
+ std::string recovery_condition;
 };
 
 struct LocalPlanningOutput {
  DwaResult proposals;
  ValidatedTrajectorySelection selection;
+ LocalPlanningStatus status;
  bool static_margin_recovery_active{false};
  int static_margin_recovery_gear{0};
  Vec2 static_margin_escape_origin;
@@ -130,6 +172,13 @@ struct LocalPlanningOutput {
  // may require forward progress, but it never weakens static or dynamic safety.
 class LocalPlanningSystem {
  public:
+	// The motion policy carries the deployed localization-to-speed envelope.
+	// Composition roots load it from robot_data; tests keep the baseline.
+	explicit LocalPlanningSystem(MotionPolicy motion_policy = {}) : motion_policy_(motion_policy) {}
+
+	void set_motion_policy(const MotionPolicy& policy) { motion_policy_ = policy; }
+	const MotionPolicy& motion_policy() const { return motion_policy_; }
+
  void reset() {
  static_margin_blocked_s_ = 0.0;
  static_margin_best_depth_m_ = std::numeric_limits<double>::infinity();
@@ -150,6 +199,8 @@ class LocalPlanningSystem {
  TerrainSampleQuery terrain_sample = {});
 
  private:
+	MotionPolicy motion_policy_;
+
  double static_margin_blocked_s_{0.0};
  double static_margin_best_depth_m_{std::numeric_limits<double>::infinity()};
  bool physical_margin_recovery_active_{false};

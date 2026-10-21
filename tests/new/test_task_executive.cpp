@@ -1,6 +1,7 @@
 #include "robot/executive/task_executive.hpp"
 
 #include <iostream>
+#include <limits>
 
 #define CHECK(condition) \
  do { \
@@ -47,6 +48,33 @@ int main() {
  CHECK(cancelled.cancel());
  CHECK(cancelled.state() == executive::TaskState::Cancelled);
  CHECK(!cancelled.activate(0));
+
+ const auto reduced = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, true, 0.50, 0.0});
+ CHECK(reduced.response == executive::LocalizationResponse::ReduceSpeed);
+
+ const auto nominal = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, true, 0.90, 0.0});
+ CHECK(nominal.response == executive::LocalizationResponse::Continue);
+
+ const auto relocalize = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, true, 0.50, 2.5});
+ CHECK(relocalize.response ==
+ executive::LocalizationResponse::HoldForRelocalization);
+
+ const auto held = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, false, 0.90, 0.0});
+ CHECK(held.response == executive::LocalizationResponse::StopAndHold);
+
+ const auto stale = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, true, 0.90, 5.5});
+ CHECK(stale.response == executive::LocalizationResponse::StopAndHold);
+
+ const auto invalid_confidence = tasks.localization_directive(
+ {{1.0, 0.0}, 0.0, true, 0.0, true,
+ std::numeric_limits<double>::quiet_NaN(), 0.0});
+ CHECK(invalid_confidence.response ==
+ executive::LocalizationResponse::StopAndHold);
 
  auto invalid = plan;
  invalid.goals[1].id = invalid.goals[0].id;

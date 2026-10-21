@@ -532,6 +532,16 @@ require_schema_v1(value, path);
  throw ContentError(path.string() + ": unsupported loadout access");
  }
   level.required_slots = loadout.at("required_slots").get<std::vector<std::string>>();
+ // Known-map localization consumes a LiDAR driven scan-to-map correction.
+ // A level author that forgets the sensor slot produces a robot that can
+ // never localize, which previously surfaced only as an unbounded localization
+ // age during a mission run instead of a content error at load time.
+ if (level.localization_mode == "known_map" &&
+ std::find(level.required_slots.begin(), level.required_slots.end(), "sensor") ==
+ level.required_slots.end()) {
+ throw ContentError(path.string() +
+ ": known_map localization requires a 'sensor' slot in required_slots");
+ }
   level.concept_id = teaching.at("concept").get<std::string>();
   level.prediction_prompt = teaching.at("prediction_prompt").get<std::string>();
   level.knowledge_card = teaching.at("knowledge_card").get<std::string>();

@@ -69,29 +69,21 @@ SimulatedPlatform::SimulatedPlatform(const MapDefinition& map, const LevelDefini
 
  // Keep an authoritative rigid body inside the authored world. The domain
  // grid already rejects out-of-bounds poses; physics needs the same boundary
- // represented as contact geometry instead of allowing a long free fall.
- const double wall_height = 2.5;
- const double wall_thickness = 0.10;
- const ::sim::physics::Vec3 wall_half_x{map_.size_m.x * 0.5 + wall_thickness,
- wall_thickness, wall_height};
- const ::sim::physics::Vec3 wall_half_y{wall_thickness,
- map_.size_m.y * 0.5 + wall_thickness, wall_height};
- const std::pair<::sim::physics::Vec3, ::sim::physics::Vec3> walls[] = {
- {wall_half_x, {map_.size_m.x * 0.5, -wall_thickness, wall_height}},
- {wall_half_x, {map_.size_m.x * 0.5, map_.size_m.y + wall_thickness, wall_height}},
- {wall_half_y, {-wall_thickness, map_.size_m.y * 0.5, wall_height}},
- {wall_half_y, {map_.size_m.x + wall_thickness, map_.size_m.y * 0.5, wall_height}},
- };
- for (const auto& [half_extents, position] : walls) {
- ::sim::physics::BodyModel wall;
- wall.shape = ::sim::physics::ShapeKind::Box;
- wall.half_extents_m = half_extents;
- wall.position_m = position;
- wall.friction = 0.2;
- wall.collision_group = ::sim::physics::collision_layer::StaticObstacle;
- wall.collision_mask = static_cast<::sim::physics::CollisionMask>(
+ // represented as contact geometry instead of allowing a long free fall. The
+ // rectangles come from the shared world-geometry module so the physics walls
+ // and the deployable localization map can never disagree about what a LiDAR
+ // is allowed to see.
+ constexpr double kWallHeightM = 2.5;
+ for (const auto& wall : mission::world_boundary_walls(map_)) {
+ ::sim::physics::BodyModel body;
+ body.shape = ::sim::physics::ShapeKind::Box;
+ body.half_extents_m = {wall.half_extents_m.x, wall.half_extents_m.y, kWallHeightM};
+ body.position_m = {wall.center_m.x, wall.center_m.y, kWallHeightM};
+ body.friction = 0.2;
+ body.collision_group = ::sim::physics::collision_layer::StaticObstacle;
+ body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- obstacle_bodies_.push_back(world_.add_body(wall));
+ obstacle_bodies_.push_back(world_.add_body(body));
  }
 
  for (const auto& patch : map_.terrain) {

@@ -39,6 +39,14 @@ own (LiDAR, IMU, encoders, actuator feedback and point clouds) through the same 
 boundary, not a rule that every algorithm must subscribe to every sensor. This keeps the brain above algorithms while
 still allowing a new sensor provider to feed the appropriate estimator or perception module directly.
 
+The command authority is ordered by consequence. RobotExecutive publishes task intent and operating mode; it never
+chooses a wheel speed or brake torque. Behavior and local planning turn that intent, chassis capability, localization
+quality and scene constraints into an executable velocity envelope. The controller tracks that envelope. The
+independent safety validator has final authority over the candidate trajectory: it may reject a commanded transit,
+require a reachable braking tail, or select a separately generated and validated escape when remaining stationary is
+predicted to be unsafe. An escape is still subject to collision, terrain, actuator and stability checks. If no
+collision-free action can be proven, the system reports that state instead of overriding safety to satisfy the task.
+
 Autonomous code owns `B` through `G`. LSRI carries commands and observations across the platform boundary. `H` is
 either the simulated platform provider or a native hardware provider; both implement the same contract. Sensors
 observe `H`, and presentation reads immutable snapshots without changing the runtime.
@@ -128,9 +136,13 @@ the wheel/IMU prior, with explicit overlap, timestamp and degeneracy rejection a
 `GlobalMapLocalizer` and `StartupLocalization` provide cold start: when a known map exists, an unknown initial pose is
 searched against the complete bounded map and rejected matches remain `RELOCALIZING`; no simulator absolute pose is
 substituted. With no map, the same startup contract delegates to `OnlineSlamMapBuilder` and publishes a local-origin
-pose. The SIM `known_map` adapter invokes this global path until it succeeds, then uses local correction and falls back
-to global recovery if local observability is lost. Full deskew, calibrated innovation gates and normal-level deployment
-evidence remain the P2 gate.
+pose. `LocalizationSupervisor` schedules local correction by motion/idle cadence and estimator uncertainty; global
+matching is a rate-limited recovery action only. It requests bounded map views for local matching and complete maps
+only for unknown-start or lost-pose recovery. The estimator publishes sigma, match evidence, innovation/age and a
+separate localization confidence to behavior and planning. Full deskew, calibrated innovation gates and normal-level
+deployment evidence remain the P2 gate. RobotExecutive consumes localization health for task-level responses; it does
+not calculate a chassis speed or brake torque. The local planner maps the response and quality into chassis-specific
+velocity windows from the localization health it already consumes, and the controller tracks those windows under the independent safety validator.
 
 A future camera provider follows the same boundary: LSRI carries timestamped image or depth observations with frame,
 calibration and exposure timing; ROBOT perception may publish class probability, extent, orientation and optional

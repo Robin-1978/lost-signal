@@ -14,6 +14,7 @@
 #include "sim/game/mission/systems/goal_system.hpp"
 #include "sim/game/mission/systems/vehicle_measurement_system.hpp"
 #include "robot/autonomy/planning/global/global_planner.hpp"
+#include "robot/config/motion_policy.hpp"
 #include "sim/game/mission/systems/world_activity_system.hpp"
 #include "sim/game/platform/simulated_platform.hpp"
 #include "sim/game/mission/world/actor_behavior_registry.hpp"
@@ -34,6 +35,7 @@
 #include "robot/core/event_log.hpp"
 #include "robot/autonomy/control/follow.hpp"
 #include "robot/autonomy/localization/estimation_system.hpp"
+#include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/mapping/terrain.hpp"
 #include "sim/hardware/sensors/sensor_system.hpp"
 #include "sim/hardware/sensors/deterministic_delivery_queue.hpp"
@@ -153,6 +155,12 @@ struct ControlSnapshot {
  double trajectory_position_error_m{0.0};
  double trajectory_heading_error_rad{0.0};
  double trajectory_speed_error_mps{0.0};
+ int local_motion_mode{-1};
+ bool local_motion_authorized{false};
+ double local_motion_decision_time_s{0.0};
+ double local_motion_speed_cap_mps{0.0};
+ std::string local_motion_reason;
+ std::string local_motion_recovery_condition;
  bool trajectory_preserves_committed_schedule{false};
  double trajectory_committed_position_error_m{
  std::numeric_limits<double>::infinity()};
@@ -340,6 +348,21 @@ struct MissionSnapshot {
  double estimated_forward_mps{0.0};
  double estimated_lateral_mps{0.0};
  double estimated_yaw_rate_radps{0.0};
+ double localization_confidence{1.0};
+ bool localization_valid{true};
+ double localization_age_s{0.0};
+ double localization_position_sigma_m{0.0};
+ double localization_heading_sigma_rad{0.0};
+ double localization_score{1.0};
+ double localization_overlap{1.0};
+ double localization_score_margin{1.0};
+ std::string localization_action;
+ std::string localization_reason;
+ bool localization_match_accepted{false};
+ double localization_match_score{0.0};
+ double localization_match_overlap{0.0};
+ double localization_match_margin{0.0};
+ std::size_t localization_usable_returns{0};
  std::vector<ActorSnapshot> actors;
  std::vector<DynamicObstacleSnapshot> dynamic_obstacles;
  std::vector<sim::Vec2> lidar_hits;
@@ -682,7 +705,7 @@ class ScenarioSession {
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
  std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
- bool known_map_startup_localized_{false};
+ sim::autonomy::LocalizationSupervisor localization_supervisor_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;
@@ -706,7 +729,11 @@ class ScenarioSession {
  // Ackermann: v*tan(steer_max)/base at top drive speed. Hardware, not tuned.
  double yaw_cap_rads_{2.0};
  double max_forward_speed_mps_{0.0};
- sim::EstimationSystem estimation_system_;
+	// Deployable motion and localization policy shared with a native robot.
+	// Loaded once from robot_data so the executable contains no tuned
+	// thresholds that a hardware integrator cannot audit or override.
+	sim::MotionPolicy motion_policy_;
+	sim::EstimationSystem estimation_system_;
  sim::physics::FrameTransformTree frame_tree_;
  sim::TerrainModel terrain_;
  sim::TerrainCapability terrain_capability_;

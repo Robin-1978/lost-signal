@@ -11,6 +11,12 @@ namespace executive {
 
 enum class TaskOrdering { Authored, Autonomous };
 enum class TaskState { Idle, Active, Paused, Succeeded, Failed, Cancelled };
+enum class LocalizationResponse { Continue, ReduceSpeed, HoldForRelocalization, StopAndHold };
+
+struct LocalizationDirective {
+ LocalizationResponse response{LocalizationResponse::Continue};
+ std::string reason;
+};
 
 // Middleware-neutral operator intent after an API/UI adapter has resolved
 // named places into the active map frame. Scenario actions and presentation
@@ -36,6 +42,12 @@ struct TaskObservation {
  double speed_mps{0.0};
  bool completion_allowed{true};
  double dt_s{0.0};
+ // Localization evidence arrives from ROBOT localization. The executive
+ // chooses the task-level response; trajectory generation and control still
+ // own feasible braking and the independent safety checks.
+ bool localization_valid{true};
+ double localization_confidence{1.0};
+ double localization_age_s{0.0};
 };
 
 struct TaskArrival {
@@ -69,6 +81,8 @@ class TaskExecutive {
  std::vector<std::string> completed_goal_ids() const;
  std::vector<std::string> abandoned_goal_ids() const;
  std::optional<TaskArrival> update(const TaskObservation& observation);
+ LocalizationDirective localization_directive(
+ const TaskObservation& observation) const;
 
  private:
  TaskPlan plan_;

@@ -34,6 +34,10 @@ class GoalSystem {
  std::vector<std::string> abandoned_goal_ids(const ObjectiveDefinition& objective) const;
  std::optional<GoalArrival> update(const ObjectiveDefinition& objective,
  sim::Vec2 robot_position, double robot_speed_mps, bool completion_allowed, double dt_s);
+ executive::LocalizationDirective localization_directive(
+ sim::Vec2 robot_position, double robot_speed_mps,
+ bool localization_valid, double localization_confidence,
+ double localization_age_s) const;
 
  private:
  executive::TaskExecutive executive_;

@@ -75,6 +75,19 @@ bool inside(sim::Vec2 point, const SurfaceDefinition& box) {
  return point.x >= box.min.x && point.x < box.max.x && point.y >= box.min.y && point.y < box.max.y;
 }
 
+sim::runtime::MapSnapshot snapshot_from_view(const sim::runtime::MapView& view) {
+ sim::runtime::MapSnapshot snapshot;
+ snapshot.map_id = view.map_id;
+ snapshot.revision = view.revision;
+ snapshot.frame_id = view.frame_id;
+ snapshot.sample_time = view.sample_time;
+ snapshot.grid = view.grid;
+ snapshot.places = view.places;
+ snapshot.features = view.features;
+ snapshot.relations = view.relations;
+ return snapshot;
+}
+
 std::string field_kind_label(const ContentCatalog& catalog, const std::string& kind) {
  if (kind == "delivery")
   return catalog.tr("field.kind.delivery");
@@ -155,13 +168,20 @@ ScenarioSession::ScenarioSession(
       map_definition_(catalog_.map(level_.map)),
       robot_definition_(catalog_.robot(level_robot_id(catalog_, level_id_, build_))),
       runtime_registry_(std::move(runtime_registry)), runtime_provider_id_(std::move(runtime_provider_id)),
-      behavior_(catalog_.style_behavior(build_.style)), estimation_system_(effective_seed() ^ 0x6a09e667U),
+	behavior_(catalog_.style_behavior(build_.style)),
+	motion_policy_(sim::MotionPolicy::load(sim::MotionPolicy::resolve_path(catalog_.root()))),
+	estimation_system_(effective_seed() ^ 0x6a09e667U),
       planning_system_(global_planner ? global_planner : autonomy::default_global_planner()),
       custom_global_planner_(static_cast<bool>(global_planner)),
       custom_high_level_policy_(static_cast<bool>(high_level_policy)),
       high_level_policy_(high_level_policy ? std::move(high_level_policy)
                                            : sim::make_route_baseline_policy()) {
  catalog_.validate_build(level_id_, build_, owned_abilities);
+	// The motion policy belongs to the robot, not to this scenario. Applying it
+	// once here keeps the executable free of tuned thresholds and gives a
+	// native bring-up the same knobs through robot_data/policy.
+	estimation_system_.set_motion_policy(motion_policy_);
+	localization_supervisor_.set_config(motion_policy_.localization_supervisor);
  if (!build_.task_policy.empty())
   level_.objective.task_policy = build_.task_policy;
  if (!contract_id.empty()) {
@@ -312,7 +332,7 @@ void ScenarioSession::reset() {
  // expensive unknown-origin global search on every frame. Startup/recovery
  // without this contract is exercised by StartupLocalization tests and the
  // explicit relocalization path.
- known_map_startup_localized_ = level_.localization_mode == "known_map";
+ localization_supervisor_.reset(level_.localization_mode == "known_map");
  update_actors();
  slip_detector_.reset();
  slip_episode_times_.clear();
@@ -1072,6 +1092,7 @@ void ScenarioSession::build_world() {
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
  }, &map_manager_);
+	autonomy_pipeline_->set_motion_policy(motion_policy_);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -2060,24 +2081,65 @@ void ScenarioSession::consume_lidar_observation(
  }
  snapshot_.lidar_point_cloud = std::move(presentation_cloud);
  }
+ snapshot_.localization_action = "not_scheduled";
+ snapshot_.localization_reason = "mode=" + level_.localization_mode +
+ (observation.lidar ? ";scan=present" : ";scan=absent") +
+ (autonomy_pipeline_ ? ";pipeline=present" : ";pipeline=absent");
  if (level_.localization_mode == "known_map" && observation.lidar && autonomy_pipeline_) {
  const auto map = map_manager_.current_snapshot();
  if (map) {
  const auto& odom = estimation_system_.state();
- auto match = known_map_startup_localized_
- ? autonomy_pipeline_->localize_known_map(
- *observation.lidar, odom.position, odom.heading_rad, *map, observation.time_s)
- : autonomy_pipeline_->localize_known_map_global(
- *observation.lidar, *map, observation.time_s);
- // A local correction can lose observability after a bad scan. Recover through
- // the same full-map startup provider instead of accepting a fabricated pose.
- if (!match.accepted && known_map_startup_localized_)
+ sim::KnownMapLocalizationResult match;
+ std::string localization_reason;
+ const auto action = localization_supervisor_.next(
+ observation.time_s, odom.position, odom.heading_rad,
+ {odom.localization_valid, odom.position_sigma_m, odom.heading_sigma_rad,
+ odom.localization_confidence, odom.localization_age_s},
+ &localization_reason);
+ snapshot_.localization_action = sim::autonomy::localization_action_name(action);
+ snapshot_.localization_reason = localization_reason;
+ if (action == sim::autonomy::LocalizationAction::LocalCorrection) {
+ const auto view = map_manager_.query_region(
+ localization_supervisor_.local_window(odom.position));
+ if (view) {
+ const auto local_map = snapshot_from_view(*view);
+ match = autonomy_pipeline_->localize_known_map(
+ *observation.lidar, odom.position, odom.heading_rad, local_map,
+ observation.time_s);
+ } else {
+ match.rejection_reason = "local map view unavailable";
+ }
+ localization_supervisor_.record_local(
+ match.accepted, observation.time_s, match.pose);
+ } else if (action == sim::autonomy::LocalizationAction::GlobalRelocalization) {
  match = autonomy_pipeline_->localize_known_map_global(
  *observation.lidar, *map, observation.time_s);
- if (match.accepted) {
- estimation_system_.correct(match.pose, observation.time_s);
- known_map_startup_localized_ = true;
+ localization_supervisor_.record_global(
+ match.accepted, observation.time_s, match.pose);
  }
+ snapshot_.localization_match_accepted = match.accepted;
+ snapshot_.localization_match_score = match.score;
+ snapshot_.localization_match_overlap = match.overlap;
+ snapshot_.localization_match_margin = match.score_margin;
+ snapshot_.localization_usable_returns = match.usable_returns;
+ if (!match.accepted && !match.rejection_reason.empty())
+ snapshot_.localization_reason = match.rejection_reason;
+ if (match.accepted)
+ estimation_system_.correct(match.pose, observation.time_s);
+ const auto& corrected = estimation_system_.state();
+ snapshot_.estimated_position = corrected.position;
+ snapshot_.estimated_heading = corrected.heading_rad;
+ snapshot_.estimated_forward_mps = corrected.linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = corrected.lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = corrected.angular_velocity_radps;
+ snapshot_.localization_confidence = corrected.localization_confidence;
+ snapshot_.localization_valid = corrected.localization_valid;
+ snapshot_.localization_age_s = corrected.localization_age_s;
+ snapshot_.localization_position_sigma_m = corrected.position_sigma_m;
+ snapshot_.localization_heading_sigma_rad = corrected.heading_sigma_rad;
+ snapshot_.localization_score = corrected.localization_score;
+ snapshot_.localization_overlap = corrected.localization_overlap;
+ snapshot_.localization_score_margin = corrected.localization_score_margin;
  }
  }
  if (observation.absolute_pose) {
@@ -2967,6 +3029,14 @@ void ScenarioSession::apply_motion() {
  snapshot_.estimated_forward_mps = estimation_system_.state().linear_velocity_mps;
  snapshot_.estimated_lateral_mps = estimation_system_.state().lateral_velocity_mps;
  snapshot_.estimated_yaw_rate_radps = estimation_system_.state().angular_velocity_radps;
+ snapshot_.localization_confidence = estimation_system_.state().localization_confidence;
+ snapshot_.localization_valid = estimation_system_.state().localization_valid;
+ snapshot_.localization_age_s = estimation_system_.state().localization_age_s;
+ snapshot_.localization_position_sigma_m = estimation_system_.state().position_sigma_m;
+ snapshot_.localization_heading_sigma_rad = estimation_system_.state().heading_sigma_rad;
+ snapshot_.localization_score = estimation_system_.state().localization_score;
+ snapshot_.localization_overlap = estimation_system_.state().localization_overlap;
+ snapshot_.localization_score_margin = estimation_system_.state().localization_score_margin;
  update_frame_tree();
  result_.odometry_error_m = estimation_system_.position_error(candidate_position);
  result_.max_odometry_error_m = std::max(result_.max_odometry_error_m, result_.odometry_error_m);

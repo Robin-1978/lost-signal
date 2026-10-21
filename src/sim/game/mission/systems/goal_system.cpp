@@ -73,4 +73,13 @@ std::optional<GoalArrival> GoalSystem::update(const ObjectiveDefinition& objecti
  return GoalArrival{arrival->index, goal, arrival->task_complete};
 }
 
+executive::LocalizationDirective GoalSystem::localization_directive(
+ sim::Vec2 robot_position, double robot_speed_mps,
+ bool localization_valid, double localization_confidence,
+ double localization_age_s) const {
+ return executive_.localization_directive({
+ robot_position, robot_speed_mps, true, 0.0,
+ localization_valid, localization_confidence, localization_age_s});
+}
+
 } // namespace mission

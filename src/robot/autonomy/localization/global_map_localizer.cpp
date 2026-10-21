@@ -219,6 +219,10 @@ autonomy::LocalizationResult GlobalMapLocalizer::localize(
  result.pose.heading_rad = best.heading;
  result.pose.position_sigma_m = std::max(0.05, grid.resolution_m * 1.5);
  result.pose.heading_sigma_rad = std::max(0.05, config_.heading_step_rad * 1.5);
+ result.pose.quality_score = std::clamp((best.score + 0.2) / 1.2, 0.0, 1.0);
+ result.pose.quality_overlap = std::clamp(best.overlap, 0.0, 1.0);
+ result.pose.quality_margin = std::clamp(
+ second ? best.score - second->score : 1.0, 0.0, 1.0);
  result.pose.header = {timestamp_s, 0, "map", 0.0,
  kMeasurementSchemaVersion, "robot.global-known-map-lidar"};
  return result;

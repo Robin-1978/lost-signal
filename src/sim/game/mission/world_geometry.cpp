@@ -59,4 +59,15 @@ std::vector<ResolvedWorldCollision> resolve_world_collisions(
  return result;
 }
 
+std::vector<WorldBoundaryWall> world_boundary_walls(const MapDefinition& map) {
+ constexpr double kWallThicknessM = 0.10;
+ const sim::Vec2 size = map.size_m;
+ return {
+ {{size.x * 0.5, -kWallThicknessM}, {size.x * 0.5 + kWallThicknessM, kWallThicknessM}},
+ {{size.x * 0.5, size.y + kWallThicknessM}, {size.x * 0.5 + kWallThicknessM, kWallThicknessM}},
+ {{-kWallThicknessM, size.y * 0.5}, {kWallThicknessM, size.y * 0.5 + kWallThicknessM}},
+ {{size.x + kWallThicknessM, size.y * 0.5}, {kWallThicknessM, size.y * 0.5 + kWallThicknessM}},
+ };
+}
+
 } // namespace mission

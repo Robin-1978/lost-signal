@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/localization/dead_reckon.hpp"
+#include "robot/config/motion_policy.hpp"
 #include "robot/runtime/observation.hpp"
 
 #include <cstdint>
@@ -12,6 +13,11 @@ namespace sim {
 class EstimationSystem {
  public:
  explicit EstimationSystem(std::uint32_t seed = 12345) : rng_(seed) {}
+
+	// Deployed calibration for quality and validity thresholds. Composition
+	// roots load it once from robot_data; unit tests keep the baseline defaults.
+	void set_motion_policy(const MotionPolicy& policy) { motion_policy_ = policy; }
+	const MotionPolicy& motion_policy() const { return motion_policy_; }
 
  void reset(double x, double y, double heading_rad, std::uint32_t seed);
  // Static calibration from imu_link coordinates into base_link. The mount
@@ -41,6 +47,8 @@ class EstimationSystem {
  double map_from_odom_heading_rad() const { return map_from_odom_heading_rad_; }
 
  private:
+	MotionPolicy motion_policy_{};
+
  struct Vector3 {
  double x{0.0};
  double y{0.0};

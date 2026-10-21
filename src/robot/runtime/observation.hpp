@@ -73,6 +73,11 @@ struct PoseObservation {
  double position_sigma_m{0.05};
  double heading_sigma_rad{0.01};
  MeasurementHeader header;
+ // Optional provider quality evidence. A provider may leave these at their
+ // neutral values; the estimator still gates on the declared sigmas.
+ double quality_score{1.0};
+ double quality_overlap{1.0};
+ double quality_margin{1.0};
 };
 
 struct ObservationFrame {
@@ -92,6 +97,11 @@ struct ObservationFrame {
 struct EstimatedState {
  Vec2 position;
  double heading_rad{0.0};
+ // One-sigma uncertainty propagated by the ROBOT estimator. These are not
+ // simulator truth and are the only uncertainty values autonomy supervisors
+ // should use for localization recovery gating.
+ double position_sigma_m{0.05};
+ double heading_sigma_rad{0.01};
  // Gravity-referenced base_link attitude. These values are estimated from
  // calibrated IMU observations; simulation truth must never populate them.
  double roll_rad{0.0};
@@ -102,6 +112,15 @@ struct EstimatedState {
  double angular_velocity_radps{0.0};
  double confidence{1.0};
  double timestamp_s{0.0};
+ // Localization quality is separate from wheel/IMU estimator confidence.
+ // It is consumed by behavior and local planning as a speed/operating-mode
+ // constraint, never as permission to bypass collision validation.
+ double localization_confidence{1.0};
+ bool localization_valid{true};
+ double localization_age_s{0.0};
+ double localization_score{1.0};
+ double localization_overlap{1.0};
+ double localization_score_margin{1.0};
 };
 
 } // namespace sim

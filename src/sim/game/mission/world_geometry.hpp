@@ -22,6 +22,17 @@ struct ResolvedWorldCollision {
  sim::Vec2 aabb_max;
 };
 
+// Rigid perimeter the physics provider places around the authored map domain.
+// The deployable map snapshot must rasterize the very same rectangles: a LiDAR
+// that sees a wall which the localization map does not contain produces zero
+// scan overlap and the robot can never correct its pose.
+struct WorldBoundaryWall {
+ sim::Vec2 center_m;
+ sim::Vec2 half_extents_m;
+};
+
+std::vector<WorldBoundaryWall> world_boundary_walls(const MapDefinition& map);
+
 // Resolve one authoritative world-object representation for physics, LiDAR,
 // navigation-map projection and collision monitoring.
 std::vector<ResolvedWorldCollision> resolve_world_collisions(

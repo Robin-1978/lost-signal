@@ -212,3 +212,26 @@ References:
 - MoveIt hybrid planning: <https://moveit.picknik.ai/main/doc/concepts/hybrid_planning/hybrid_planning.html>
 - ros2_control joint command/state interfaces: <https://control.ros.org/master/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html>
 - Gazebo joint and joint-trajectory controllers: <https://gazebosim.org/api/sim/9/jointcontrollers.html>
+
+## Localization and motion policy
+
+The deployable localization and motion thresholds live in `robot_data/policy/motion_policy.json` and are parsed by
+ROBOT (`src/robot/config/motion_policy.cpp`), not by the game. The file is strict: every key must exist, unknown keys
+are rejected, and every value is range checked at bring-up, so a typo stops the robot instead of silently keeping a
+compiled default. Field names carry their units (`_m`, `_rad`, `_s`, `ratio`, or a `[0,1]` quality fraction).
+
+The three sections have separate meanings:
+
+- `localization_quality` converts a pose measurement and its covariance into the published confidence and the
+ valid/untrusted flag. The half-quality sigmas and the covariance/evidence blend describe how the localizer's
+ demonstrated spread maps to a usable quality number; they are calibration values.
+- `localization_supervisor` schedules bounded local scan-to-map correction and rate-limited whole-map recovery. The
+ intervals are compute and mission cadence choices; the sigmas describe when the current hypothesis is no longer
+ trustworthy.
+- `localization_motion_authority` is the speed envelope the local planner derives from localization health. The
+ planner, not the executive, applies it, and the braking tail is always generated from measured speed even when
+ ordinary driving is withheld.
+
+Defaults equal the values used by the regression suite, so a deployment that ships the unmodified file behaves like
+the validated baseline. Hardware capabilities such as maximum wheel speed, braking torque or LiDAR range belong in
+the platform profile (`assets/robots/*.json`); they must never be expressed here.

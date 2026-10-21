@@ -1085,6 +1085,22 @@ if (!continuous_execution && remaining_m > 0.5) {
  }
  local_request.position = {nav_x, nav_y};
  local_request.heading_rad = nav_heading;
+ local_request.time_s = snapshot_.time_s;
+ const bool has_map_localization = level_.localization_mode == "known_map";
+ // `localization_confidence` describes map-frame correction health. An
+ // odometry-only level intentionally has no such stream; use the estimator's
+ // wheel/IMU confidence there instead of treating the absent map correction as
+ // a lost pose and freezing the teaching drive.
+ local_request.localization_confidence = has_map_localization
+ ? estimate.localization_confidence : estimate.confidence;
+ local_request.localization_valid = has_map_localization
+ ? estimate.localization_valid : std::isfinite(estimate.confidence) && estimate.confidence > 0.0;
+ // In odometry-only teaching levels the estimator intentionally has no map
+ // correction stream. Its map-fix age is therefore not a stale-sensor signal;
+ // the local planner must use the wheel/IMU estimate rather than freezing the
+ // vehicle after two seconds. Known-map levels pass the correction age.
+ local_request.localization_age_s = has_map_localization
+ ? estimate.localization_age_s : 0.0;
  // Encoder and fused-pose filters retain millimetres-per-second residuals
  // after the physical wheels have stopped. Feeding that noise into the
  // rollout makes every in-place correction drift microscopically through an
@@ -1326,6 +1342,12 @@ if (!continuous_execution && remaining_m > 0.5) {
  collision_monitor_->static_clearance(from)));
  return feasible;
  }, [this](sim::Vec2 position) { return terrain_.sample(position); });
+ snapshot_.control.local_motion_mode = static_cast<int>(local_plan.status.mode);
+ snapshot_.control.local_motion_authorized = local_plan.status.motion_authorized;
+ snapshot_.control.local_motion_decision_time_s = local_plan.status.decision_time_s;
+ snapshot_.control.local_motion_speed_cap_mps = local_plan.status.speed_cap_mps;
+ snapshot_.control.local_motion_reason = local_plan.status.reason;
+ snapshot_.control.local_motion_recovery_condition = local_plan.status.recovery_condition;
  const auto& dwa = local_plan.proposals;
  const auto& validated_selection = local_plan.selection;
  snapshot_.control.static_margin_recovery_active =

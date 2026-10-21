@@ -46,6 +46,11 @@ target_include_directories(lost_signal_robot_core INTERFACE ${CMAKE_CURRENT_SOUR
 target_compile_features(lost_signal_robot_core INTERFACE cxx_std_20)
 target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_options)
 
+add_library(lost_signal_robot_config STATIC
+ src/robot/config/motion_policy.cpp
+)
+target_link_libraries(lost_signal_robot_config PUBLIC lost_signal_robot_core nlohmann_json::nlohmann_json)
+
 # The pose-graph backend uses Eigen's header-only sparse Cholesky solver. It
 # remains an implementation dependency of ROBOT and is not exposed through
 # LSRI, map, localization or planner interfaces.
@@ -84,6 +89,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/behavior/crossing_behavior.cpp
  src/robot/autonomy/behavior/crossing_map_semantics.cpp
  src/robot/autonomy/localization/estimation_system.cpp
+ src/robot/autonomy/localization/localization_supervisor.cpp
  src/robot/autonomy/localization/known_map_localizer.cpp
  src/robot/autonomy/localization/global_map_localizer.cpp
  src/robot/autonomy/localization/startup_localization.cpp
@@ -115,7 +121,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/control/trajectory_tracking_system.cpp
 )
 target_link_libraries(lost_signal_robot_autonomy PUBLIC
- lost_signal_robot_core lost_signal_robot_platform Eigen3::Eigen)
+ lost_signal_robot_core lost_signal_robot_platform lost_signal_robot_config Eigen3::Eigen)
 
 add_library(lost_signal_robot_runtime STATIC
  src/robot/runtime/endpoint_registry.cpp
@@ -170,6 +176,14 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_estimation_attitude tests/new/test_estimation_attitude.cpp)
  target_link_libraries(test_estimation_attitude PRIVATE lost_signal_robot_autonomy)
  add_test(NAME estimation_attitude COMMAND test_estimation_attitude)
+
+ add_executable(test_localization_supervisor tests/new/test_localization_supervisor.cpp)
+ target_link_libraries(test_localization_supervisor PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME localization_supervisor COMMAND test_localization_supervisor)
+
+ add_executable(test_localization_motion_authority tests/new/test_localization_motion_authority.cpp)
+ target_link_libraries(test_localization_motion_authority PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME localization_motion_authority COMMAND test_localization_motion_authority)
 
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)

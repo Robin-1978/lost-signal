@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "provenance": "docs/parameter-sources.md#localization-and-motion-policy",
+  "localization_quality": {
+    "position_half_quality_sigma_m": 0.25,
+    "heading_half_quality_sigma_rad": 0.10,
+    "covariance_weight": 0.70,
+    "evidence_weight": 0.30,
+ "confidence_decay_time_constant_s": 20.0,
+    "untrusted_position_sigma_m": 0.45,
+    "untrusted_heading_sigma_rad": 0.25
+  },
+  "localization_supervisor": {
+    "correction_interval_s": 0.20,
+    "global_retry_interval_s": 2.0,
+    "minimum_translation_m": 0.05,
+    "minimum_heading_rad": 0.02,
+    "maximum_idle_interval_s": 5.0,
+    "local_window_half_extent_m": 30.0,
+    "lost_position_sigma_m": 0.45,
+    "lost_heading_sigma_rad": 0.25,
+    "local_failure_recovery_threshold": 3
+  },
+  "localization_motion_authority": {
+    "hold_confidence": 0.15,
+ "hold_max_age_s": 30.0,
+    "reduced_confidence": 0.35,
+    "reduced_speed_scale": 0.40,
+    "cautious_confidence": 0.60,
+    "cautious_speed_scale": 0.70
+  }
+}
