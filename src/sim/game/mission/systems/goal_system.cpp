@@ -30,42 +30,42 @@ void GoalSystem::reset(const ObjectiveDefinition& objective, const sim::runtime:
  : (inspect ? 0.18 : std::numeric_limits<double>::max()),
  });
  }
- if (!executive_.accept(std::move(plan)))
+ if (!robot_executive().submit(std::move(plan)))
  throw std::invalid_argument("objective cannot be translated to a task plan");
 }
 
 std::vector<std::size_t> GoalSystem::eligible_goals(const ObjectiveDefinition& objective) const {
  (void)objective;
- return executive_.eligible_goals();
+ return robot_executive().eligible_goals();
 }
 
 bool GoalSystem::activate(const ObjectiveDefinition& objective, std::size_t index) {
  (void)objective;
- return executive_.activate(index);
+ return robot_executive().activate(index);
 }
 
 bool GoalSystem::abandon(const ObjectiveDefinition& objective, std::size_t index) {
  (void)objective;
- return executive_.abandon(index);
+ return robot_executive().abandon(index);
 }
 
 std::vector<std::string> GoalSystem::completed_goal_ids(const ObjectiveDefinition& objective) const {
  (void)objective;
- return executive_.completed_goal_ids();
+ return robot_executive().completed_goal_ids();
 }
 
 std::vector<std::string> GoalSystem::abandoned_goal_ids(const ObjectiveDefinition& objective) const {
  (void)objective;
- return executive_.abandoned_goal_ids();
+ return robot_executive().abandoned_goal_ids();
 }
 
 std::optional<GoalArrival> GoalSystem::update(const ObjectiveDefinition& objective,
  sim::Vec2 robot_position, double robot_speed_mps, bool completion_allowed, double dt_s) {
- const auto active = executive_.active_goal_index();
+ const auto active = robot_executive().active_goal_index();
  if (!active || *active >= objective.goals.size())
  return std::nullopt;
  const GoalStep goal = objective.goals[*active];
- const auto arrival = executive_.update({
+ const auto arrival = robot_executive().update({
  robot_position, robot_speed_mps, completion_allowed, dt_s,
  });
  if (!arrival)
@@ -77,7 +77,7 @@ executive::LocalizationDirective GoalSystem::localization_directive(
  sim::Vec2 robot_position, double robot_speed_mps,
  bool localization_valid, double localization_confidence,
  double localization_age_s) const {
- return executive_.localization_directive({
+ return robot_executive().localization_directive({
  robot_position, robot_speed_mps, true, 0.0,
  localization_valid, localization_confidence, localization_age_s});
 }

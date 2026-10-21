@@ -149,6 +149,7 @@ target_link_libraries(lost_signal_robot_map_io PUBLIC
 
 add_library(lost_signal_robot_executive STATIC
  src/robot/executive/task_executive.cpp
+ src/robot/executive/robot_executive.cpp
  src/robot/runtime/robot_application.cpp
 )
 target_link_libraries(lost_signal_robot_executive PUBLIC
@@ -257,6 +258,10 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_task_executive tests/new/test_task_executive.cpp)
  target_link_libraries(test_task_executive PRIVATE lost_signal_robot_executive)
  add_test(NAME task_executive COMMAND test_task_executive)
+
+ add_executable(test_robot_executive tests/new/test_robot_executive.cpp)
+ target_link_libraries(test_robot_executive PRIVATE lost_signal_robot_executive)
+ add_test(NAME robot_executive COMMAND test_robot_executive)
 
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
@@ -921,6 +926,10 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_task_executive tests/new/test_task_executive.cpp)
  target_link_libraries(test_task_executive PRIVATE lost_signal_robot_executive)
  add_test(NAME task_executive COMMAND test_task_executive)
+
+ add_executable(test_robot_executive tests/new/test_robot_executive.cpp)
+ target_link_libraries(test_robot_executive PRIVATE lost_signal_robot_executive)
+ add_test(NAME robot_executive COMMAND test_robot_executive)
 
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)

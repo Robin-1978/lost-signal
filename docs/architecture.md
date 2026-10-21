@@ -28,9 +28,9 @@ graph TD
 
 The player, a real operator, or another application supplies `A` as a provider-neutral task request. The deployable
 **RobotExecutive** (the robot brain) owns request validation, task lifecycle, mission-level priorities, recovery mode,
-resource policy (power reserve and charging/return decisions), platform-health degradation and the coordination
-of localization, mapping, perception, planning and control. It does not read a simulator scene or emit wheel commands
-itself. `TaskExecutive` is the first implementation slice of this brain; the surrounding coordinator remains a ROBOT
+resource policy (power reserve and charging/return decisions), and platform-health degradation. It consumes the motion
+capability proved by autonomy, but does not calculate a velocity, select a local trajectory, or emit a wheel command.
+`TaskExecutive` is the lifecycle kernel inside `RobotExecutive`; the surrounding coordinator remains a ROBOT
 composition root.
 
 The brain normally consumes an estimated state, perception summaries, map status, platform capabilities and health
@@ -243,6 +243,13 @@ providers below the brain; the brain does not branch on whether a provider is si
 generic request, provide a SIM LSRI provider and display the brain's read-only status. They cannot call a planner,
 write a stop pose, classify an actor, or inject a simulated absolute pose. In a real deployment these adapters are
 omitted and a native/operator API submits the same requests over the ROBOT service boundary.
+
+`RobotApplication` is the runtime composition root below the executive. It owns LSRI lifecycle, cycle scheduling,
+provider conformance, controller invocation, command expiry and publication. Its `step()` method may receive a typed
+local-planning transaction during the incremental SIM migration, but that transaction is data, not an executive
+decision: `AutonomyCoordinator` still owns local planning and validation. `execute_motion()` is the single ROBOT
+entry point for publishing either a body-motion command or an actuator command. The application therefore connects
+the executive and autonomy layers; it does not become a second task or speed authority.
 
 ### Mission systems
 

@@ -46,9 +46,10 @@ keeping IMU, encoders, actuators, terrain, and vehicle dynamics simulated. The i
 sensors to the deployable controller and command a real motor bench. Every binding declares its source, frame,
 clock domain, rate, backend, and role; duplicate command ownership is rejected.
 
-The Task Executive sits above autonomy and accepts validated task plans, cancels/pauses/resumes them,
-orders semantic goals, and reports progress. It cannot command actuators directly or bypass trajectory and safety
-validation. Scenario actors, score thresholds, scripted surprises and story state belong to a separate
+The RobotExecutive sits above autonomy and accepts validated task plans, cancels/pauses/resumes them,
+orders semantic goals, consumes the local planner's motion-capability report, and reports progress. Its
+`TaskExecutive` kernel owns goal lifecycle; the facade does not calculate speed or command actuators. It cannot bypass
+trajectory and safety validation. Scenario actors, score thresholds, scripted surprises and story state belong to a separate
 simulation-only Scenario/Game Session layer under `src/sim/game/`.
 
 The [Lost Signal Robot Map](robot-map.md) is likewise source-neutral. An editor, SLAM backend, survey compiler, or HD-map

@@ -997,6 +997,13 @@ replacement for the individual perception, localization or planning modules.
 The coordinator extraction is a typed composition step, not the completion of SIM→ROBOT migration. Route-following,
 dynamic interaction and local candidate assembly still need the same extraction treatment before the gate can close.
 
+The task/runtime relationship is now explicit in code. `RobotExecutive` (`src/robot/executive/robot_executive.*`) wraps
+the tested `TaskExecutive` lifecycle kernel and consumes a typed `MotionCapabilityReport` from local planning. It can
+report normal, reduced, hold and no-safe-action states to an operator or task policy, but it has no speed or actuator
+authority. `RobotApplication` owns the facade and remains the runtime/LSRI composition root; its `step()` and
+`execute_motion()` methods schedule ROBOT cycles and publish expiring commands. This prevents the executive from
+competing with local planning while giving the task layer a stable capability result to consume.
+
 ### Magic-number audit (decision loop)
 
 Values still inline in `src/sim/game/scenario/scenario_autonomy.cpp` and their intended owner. Nothing here is a

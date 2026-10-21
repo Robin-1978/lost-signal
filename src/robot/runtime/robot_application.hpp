@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/pipeline/autonomy_coordinator.hpp"
+#include "robot/executive/robot_executive.hpp"
 #include "robot/executive/task_executive.hpp"
 #include "robot/runtime/runtime_channel.hpp"
 #include "robot/runtime/endpoint_registry.hpp"
@@ -95,8 +96,8 @@ class RobotApplication {
 
  autonomy::AutonomyCoordinator& coordinator() { return active_coordinator(); }
  const autonomy::AutonomyCoordinator& coordinator() const { return active_coordinator(); }
- executive::TaskExecutive& executive() { return executive_; }
- const executive::TaskExecutive& executive() const { return executive_; }
+ RobotExecutive& executive() { return executive_; }
+ const RobotExecutive& executive() const { return executive_; }
 
  private:
  std::unique_ptr<runtime::IRuntimeChannel> channel_;
@@ -104,7 +105,7 @@ class RobotApplication {
  runtime::ProviderConformanceMonitor conformance_;
  autonomy::AutonomyCoordinator coordinator_;
  autonomy::AutonomyCoordinator* borrowed_coordinator_{nullptr};
- executive::TaskExecutive executive_;
+ RobotExecutive executive_;
 
  runtime::IRuntimeChannel& active_channel();
  const runtime::IRuntimeChannel& active_channel() const;

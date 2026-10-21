@@ -259,10 +259,6 @@ void ScenarioSession::reset() {
  manual_command() = {};
  manual_control_active() = false;
  endless_target_key_ = "uninitialized";
- goal_system_.reset(level_.objective, map_manager_);
- snapshot_.goals_reached = goal_system_.goals_reached();
- snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
- snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
  snapshot_.payload = payload_;
  field_dispatch_system_.reset(effective_seed() ^ 0xbb67ae85U);
  world_activity_system_.reset(effective_seed() ^ 0x510e527fU);
@@ -286,6 +282,13 @@ void ScenarioSession::reset() {
  filtered_payload_shock_mps2_ = 0.0;
  payload_shock_initialized_ = false;
  build_world();
+ if (!robot_application_)
+ throw std::logic_error("world construction did not create the ROBOT application");
+ goal_system_.bind(robot_application_->executive());
+ goal_system_.reset(level_.objective, map_manager_);
+ snapshot_.goals_reached = goal_system_.goals_reached();
+ snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
+ snapshot_.abandoned_goal_ids = goal_system_.abandoned_goal_ids(level_.objective);
  initialize_rigid_physics();
  snapshot_.manipulator.present = robot_definition_.manipulator.has_value();
  synchronize_payload_dynamics();

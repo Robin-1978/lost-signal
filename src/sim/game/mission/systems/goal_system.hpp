@@ -1,6 +1,6 @@
 #pragma once
 
-#include "robot/executive/task_executive.hpp"
+#include "robot/executive/robot_executive.hpp"
 #include "sim/game/mission/content.hpp"
 #include "robot/runtime/map_provider.hpp"
 
@@ -22,13 +22,14 @@ struct GoalArrival {
 // the simulation layer.
 class GoalSystem {
  public:
+ void bind(sim::robot::RobotExecutive& executive) { executive_ = &executive; }
  void reset(const ObjectiveDefinition& objective, const sim::runtime::IMapProvider& maps);
- std::size_t goals_reached() const { return executive_.goals_reached(); }
- std::optional<std::size_t> active_goal_index() const { return executive_.active_goal_index(); }
+ std::size_t goals_reached() const { return robot_executive().goals_reached(); }
+ std::optional<std::size_t> active_goal_index() const { return robot_executive().active_goal_index(); }
  bool activate(const ObjectiveDefinition& objective, std::size_t index);
  bool abandon(const ObjectiveDefinition& objective, std::size_t index);
- bool completed(std::size_t index) const { return executive_.completed(index); }
- bool abandoned(std::size_t index) const { return executive_.abandoned(index); }
+ bool completed(std::size_t index) const { return robot_executive().completed(index); }
+ bool abandoned(std::size_t index) const { return robot_executive().abandoned(index); }
  std::vector<std::size_t> eligible_goals(const ObjectiveDefinition& objective) const;
  std::vector<std::string> completed_goal_ids(const ObjectiveDefinition& objective) const;
  std::vector<std::string> abandoned_goal_ids(const ObjectiveDefinition& objective) const;
@@ -40,7 +41,13 @@ class GoalSystem {
  double localization_age_s) const;
 
  private:
- executive::TaskExecutive executive_;
+ sim::robot::RobotExecutive& robot_executive() { return executive_ ? *executive_ : fallback_; }
+ const sim::robot::RobotExecutive& robot_executive() const {
+ return executive_ ? *executive_ : fallback_;
+ }
+
+ sim::robot::RobotExecutive fallback_;
+ sim::robot::RobotExecutive* executive_{nullptr};
 };
 
 } // namespace mission

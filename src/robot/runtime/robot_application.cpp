@@ -112,6 +112,27 @@ RobotCycleOutput RobotApplication::step(const RobotCycleInput& input) {
  output.local_planning = autonomy_cycle.local_planning;
  } else if (input.local_planning) {
  output.local_planning = coordinator.plan_local_motion(*input.local_planning);
+  const auto& status = output.local_planning->status;
+  MotionCapability capability = MotionCapability::Unknown;
+  switch (status.mode) {
+  case LocalMotionMode::Nominal:
+   capability = status.motion_authorized ? MotionCapability::Normal : MotionCapability::Hold;
+   break;
+  case LocalMotionMode::LocalizationReduced:
+   capability = status.motion_authorized ? MotionCapability::Reduced : MotionCapability::Hold;
+   break;
+  case LocalMotionMode::LocalizationHold:
+   capability = MotionCapability::Hold;
+   break;
+  case LocalMotionMode::MinimumRiskEscape:
+   capability = status.motion_authorized ? MotionCapability::Reduced : MotionCapability::Hold;
+   break;
+  case LocalMotionMode::NoSafeAction:
+   capability = MotionCapability::NoSafeAction;
+   break;
+  }
+  executive_.report_motion({capability, status.speed_cap_mps, status.reason,
+   status.recovery_condition, status.decision_time_s});
  }
  // A body/actuator intent is only publishable after the ROBOT planner has
  // proved the corresponding local transaction. This prevents a native or
