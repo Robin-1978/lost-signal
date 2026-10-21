@@ -40,7 +40,10 @@ struct OnlineSlamConfig {
  // overwriting cells. A passing person or cart must decay out of the map
  // once rays pass through it again, while a real wall keeps accumulating
  // endpoint evidence and survives an occasional spurious clearing ray.
- OccupancyLogOddsConfig occupancy{-.10F, 2.40F, -2.5F, 3.5F, .65F, .35F};
+ // A fresh endpoint earns confirmation immediately (2.4 > 0.65); clearing
+ // that confirmation needs about 1.5 s of 10 Hz free-carving, which is the
+ // cost of not letting a single bad ray delete a real obstacle.
+ OccupancyLogOddsConfig occupancy{-0.20F, 2.40F, -2.5F, 3.5F, 0.65F, 0.35F};
  std::string map_id{"online-slam"};
 };
 

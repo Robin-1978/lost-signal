@@ -46,6 +46,44 @@ sim::ObservationFrame frame(sim::Scan scan) {
  return observations;
 }
 
+// A corridor wall at wall_x with an optional round post in front of it. The
+// post is a transient return: it must not survive in the published submap
+// after the scans stop seeing it.
+sim::Scan scan_with_post(double stamp_s, std::uint64_t sequence, double wall_x,
+ double post_x, bool post_present) {
+ sim::Scan scan;
+ scan.n_rays = 180;
+ scan.max_range = 8.0;
+ scan.angle_min_rad = -sim::kPi;
+ scan.angle_increment_rad = 2.0 * sim::kPi / scan.n_rays;
+ scan.scan_period_s = 0.1;
+ scan.time_increment_s = scan.scan_period_s / scan.n_rays;
+ scan.header = {stamp_s, sequence, "lidar_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.transient-lidar"};
+ for (int i = 0; i < scan.n_rays; ++i) {
+ const double angle = scan.angle_min_rad + scan.angle_increment_rad * i;
+ const double cosine = std::cos(angle);
+ double range = scan.max_range;
+ if (cosine > 1e-6) {
+ const double wall = wall_x / cosine;
+ if (wall > 0.05 && wall < scan.max_range)
+ range = wall;
+ }
+ if (post_present && cosine > 1e-6) {
+ const double post = post_x / cosine;
+ // 0.10 m half-width post, expressed as the lateral offset of the
+ // intersection point with the post's plane.
+ const double lateral = std::abs(post * std::sin(angle));
+ if (lateral <= 0.10 && post > 0.05 && post < range)
+ range = post;
+ }
+ scan.ranges.push_back(range);
+ scan.hit.push_back(range < scan.max_range ? 1 : 0);
+ scan.intensities.push_back(1.0);
+ }
+ return scan;
+}
+
 } // namespace
 
 int main() {
@@ -148,6 +186,69 @@ int main() {
  for (const auto elevation : cloud_update.published_map->grid->elevation_m)
  cloud_elevation = cloud_elevation || std::isfinite(elevation);
  CHECK(cloud_elevation);
+
+ // Transient filtering: a post that stops being observed must leave the live
+ // submap, while the wall behind it stays. Two wrong answers are rejected
+ // here: a map that keeps burned-in phantom obstacles, and a map that lets a
+ // single stray ray delete real geometry.
+ sim::autonomy::OnlineSlamConfig transient_config = config;
+ transient_config.translation_search_m = 0.0;
+ transient_config.heading_search_rad = 0.0;
+ sim::autonomy::OnlineSlamMapBuilder transient_builder(transient_config);
+ sim::EstimatedState fixed_prior;
+ fixed_prior.position = {0.0, 0.0};
+ fixed_prior.heading_rad = 0.0;
+ fixed_prior.confidence = 1.0;
+ std::shared_ptr<const sim::runtime::MapSnapshot> transient_map;
+ std::uint64_t sequence = 1;
+ double stamp = 1.0;
+ for (int scan_index = 0; scan_index < 4; ++scan_index) {
+ transient_map = transient_builder.update(
+ frame(scan_with_post(stamp, sequence++, 5.0, 2.5, true)), fixed_prior,
+ sim::runtime::TimePoint::from_seconds(stamp)).published_map;
+ stamp += 0.1;
+ }
+ CHECK(transient_map && transient_map->grid);
+ const auto cell_index = [&](double x, double y) {
+ const auto cell = sim::runtime::world_to_grid(*transient_map->grid, {x, y});
+ if (!cell)
+ return std::size_t{0};
+ return static_cast<std::size_t>(cell->y) * transient_map->grid->width + cell->x;
+ };
+ const auto post_cell = cell_index(2.5, 0.0);
+ const auto wall_cell = cell_index(5.0, 3.0);
+ // A cell centre may straddle the exact geometric plane of the fixture, so
+ // confirmation is checked over the small window the return can land in.
+ const auto occupied_near = [&](std::size_t centre, int radius) {
+ for (int dy = -radius; dy <= radius; ++dy) {
+ for (int dx = -radius; dx <= radius; ++dx) {
+ const auto index = centre + static_cast<std::size_t>(dy) *
+ transient_map->grid->width + static_cast<std::ptrdiff_t>(dx);
+ if (transient_map->grid->occupancy[index] >= 50)
+ return true;
+ }
+ }
+ return false;
+ };
+ CHECK(occupied_near(post_cell, 1));
+ CHECK(occupied_near(wall_cell, 1));
+ for (int scan_index = 0; scan_index < 20; ++scan_index) {
+ transient_map = transient_builder.update(
+ frame(scan_with_post(stamp, sequence++, 5.0, 2.5, false)), fixed_prior,
+ sim::runtime::TimePoint::from_seconds(stamp)).published_map;
+ stamp += 0.1;
+ }
+ CHECK(transient_map && transient_map->grid);
+ int phantom = 0;
+ for (int dy = -3; dy <= 3; ++dy) {
+ for (int dx = -3; dx <= 3; ++dx) {
+ if (transient_map->grid->occupancy[post_cell + static_cast<std::size_t>(dy) *
+ transient_map->grid->width + dx] >= 50)
+ ++phantom;
+ }
+ }
+ CHECK(phantom == 0);
+ CHECK(occupied_near(wall_cell, 1));
 
  return 0;
 }
