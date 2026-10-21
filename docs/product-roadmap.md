@@ -863,6 +863,28 @@ Fixed algorithmic constants that stay in code: numerical epsilons (`1e-9`, `1e-6
 convert an interval to a per-cycle delta, and the `0.5` factor that converts two tread speeds to a common-mode
 longitudinal speed.
 
+### Progress: platform profile is now ROBOT-owned
+
+Stage 2 has started. The drive-train half of `assets/robots/*.json` — drive type, wheel geometry, mass and yaw
+inertia, motor capability, steering servo, encoder, service brake and energy coefficients — is defined and parsed by
+ROBOT (`src/robot/platform/robot_drive_profile.*`). The parser rejects unknown keys and range-checks every capability,
+so a native bring-up reads the same contract the simulator validates. `mission::RobotDefinition` now derives from
+`sim::RobotDriveProfile` and keeps only content metadata: title, presentation profile, garage label, unlock gate,
+slots and parts. The simulator no longer owns the semantics of motor or brake capability.
+
+Build layout is now one directory. MuJoCo is a required dependency of the simulation, so there is no separate
+"MuJoCo build": `build/` contains the client, the simulation core and every test, and `lost_signal` plus
+`lost_signal_headless` copy `robot_data/` next to their binaries so a packaged runtime resolves the same policy and
+hardware files as the source tree.
+
+### Known failing tests at this checkpoint
+
+- `mission_simulation`: `slope_launch` still times out after `stability_hold` with a diverged odometry estimate.
+- `test_summon_recharge` fixture still predates the `known_map` sensor-slot rule and aborts at load; it needs a
+ build that declares and equips the sensor slot.
+- `stop_whatif`, `entry_shadow_town`, `orchard_scramble`, `ff_sensitivity` and `run_artifact` were failing before
+ this checkpoint and have not been re-diagnosed yet.
+
 ### Slope-lab localization mode
 
 The three slope lessons (`slope_launch`, `cross_slope`, `rain_descent`) run on the robot's own wheel/IMU odometry.
