@@ -49,8 +49,12 @@ Conflict-zone behavior follows the same rule. A map may provide a semantic confl
 the stop pose from the current route, footprint, localization margin, actuator delay, and braking capability. A
 mission file cannot prescribe a dynamic-world parking coordinate or grant permanent permission to cross.
 
-The simulator currently assembles these neutral inputs in `src/sim/game/scenario/scenario_autonomy.cpp`. The algorithm implementations,
-including route progress and its PID state, live in the autonomy target. The repository still needs a native
+The simulator currently assembles these neutral inputs in `src/sim/game/scenario/scenario_autonomy.cpp`. The
+deployable upper-policy transaction is implemented by
+`src/robot/autonomy/pipeline/autonomy_coordinator.*`; the scenario supplies only its typed inputs. The remaining
+composition work is to move route-progress, dynamic-interaction and local-candidate assembly behind the same
+provider-neutral ROBOT boundary. The algorithm implementations, including route progress and its PID state, live in
+the autonomy target. The repository still needs a native
 lifecycle/configuration executable before it can run on a physical platform without custom integration. The
 `deployable_boundary` test prevents that remaining adapter work from being bypassed by importing game or simulator
 types into the reusable targets.

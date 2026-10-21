@@ -904,11 +904,17 @@ robot-facing decision code inside the game. The migration plan is:
 Each stage keeps the deployed boundary test green: a ROBOT target that links SIM fails the build.
 
 Progress on stage 1: the stop-authority latch, its release contract and its settle window now live in ROBOT
-(`src/robot/autonomy/control/controlled_stop_latch.*`) and the scenario only assembles inputs. The runtime thresholds
-that the decision loop previously hard-coded — gravity, physical stand-off, decision step, rollover risk limit,
-planning deadbands, committed progress floor, creep speed and the latch window — load from
+(`src/robot/autonomy/control/controlled_stop_latch.*`) and the scenario only assembles inputs. The upper-policy
+transaction is now also ROBOT-owned by `src/robot/autonomy/pipeline/autonomy_coordinator.*`: policy selection and
+the shared safety shield are applied together from estimated-state inputs, while SIM supplies only LSRI observations,
+task targets and a provider-neutral map feasibility callback. The scenario no longer calls a policy or safety shield
+directly. The runtime thresholds that the decision loop previously hard-coded — gravity, physical stand-off, decision
+step, rollover risk limit, planning deadbands, committed progress floor, creep speed and the latch window — load from
 `robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
 deployed file drifts from the compiled defaults. Remaining literals in the decision loop are catalogued below.
+
+The coordinator extraction is a typed composition step, not the completion of SIM→ROBOT migration. Route-following,
+dynamic interaction and local candidate assembly still need the same extraction treatment before the gate can close.
 
 ### Magic-number audit (decision loop)
 

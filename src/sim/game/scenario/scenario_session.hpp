@@ -10,6 +10,7 @@
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
 #include "sim/game/mission/systems/decision_evidence_system.hpp"
 #include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
+#include "robot/autonomy/pipeline/autonomy_coordinator.hpp"
 #include "sim/game/mission/systems/field_dispatch_system.hpp"
 #include "sim/game/mission/systems/field_operator_system.hpp"
 #include "sim/game/mission/systems/goal_system.hpp"
@@ -744,6 +745,9 @@ class ScenarioSession {
  std::unique_ptr<sim::platform::SimulatedPlatform> platform_;
  bool custom_high_level_policy_{false};
  std::shared_ptr<sim::IHighLevelPolicy> high_level_policy_;
+ // Robot-facing policy orchestration lives in ROBOT. The scenario only
+ // assembles observations from LSRI and content-owned task facts.
+ std::unique_ptr<sim::autonomy::AutonomyCoordinator> autonomy_coordinator_;
  const ContractJob* active_contract_{nullptr};
  GoalSystem goal_system_;
  PayloadState payload_;

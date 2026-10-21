@@ -210,12 +210,13 @@ void ScenarioSession::decide_control() {
   }
   return true;
  };
- const auto strategy_request = high_level_policy_->decide(strategy_observation);
- // Speed and stability constraints belong to the strategy boundary,
- // regardless of who produced the request. Context flags avoid duplicating
- // obstacle arbitration already owned by the validated local planner.
- snapshot_.strategy = sim::apply_strategy_safety(strategy_request, strategy_observation, strategy_context);
- snapshot_.strategy_policy = high_level_policy_->name();
+ // The policy and its common safety shield are ROBOT-owned. SIM supplies
+ // only the timestamped estimate, task target and provider-neutral map
+ // feasibility callback through the coordinator boundary.
+ const auto strategy_output = autonomy_coordinator_->update(
+ sim::autonomy::AutonomyCoordinatorInput{strategy_observation, strategy_context});
+ snapshot_.strategy = strategy_output.decision;
+ snapshot_.strategy_policy = strategy_output.policy_name;
  if (snapshot_.strategy.applied.has_subgoal)
   target = snapshot_.strategy.applied.subgoal;
  if (snapshot_.strategy.applied.has_subgoal) {
