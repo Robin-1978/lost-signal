@@ -61,7 +61,7 @@ void OnlineSlamMapBuilder::initialize_map() {
  map_.occupancy.assign(static_cast<std::size_t>(config_.width) * config_.height, -1);
  map_.elevation_m.clear();
  map_.elevation_sigma_m.clear();
- elevation_observations_.clear();
+ elevation_ = ElevationFusion(config_.elevation_fusion);
 }
 
 void OnlineSlamMapBuilder::reset() {
@@ -188,20 +188,13 @@ void OnlineSlamMapBuilder::update_elevation(std::size_t cell_index,
  std::numeric_limits<float>::quiet_NaN());
  map_.elevation_sigma_m.assign(map_.occupancy.size(),
  std::numeric_limits<float>::quiet_NaN());
- elevation_observations_.assign(map_.occupancy.size(), 0);
+ elevation_.reset(map_.occupancy.size());
  }
- const auto count = elevation_observations_[cell_index];
- if (count == 0 || !std::isfinite(map_.elevation_m[cell_index])) {
- map_.elevation_m[cell_index] = static_cast<float>(elevation_m);
- map_.elevation_sigma_m[cell_index] = 0.05F;
- } else {
- const double bounded_count = static_cast<double>(count);
- map_.elevation_m[cell_index] = static_cast<float>(
- (bounded_count * map_.elevation_m[cell_index] + elevation_m) /
- (bounded_count + 1.0));
+ const auto estimate = elevation_.fuse(cell_index, elevation_m);
+ if (estimate.valid) {
+ map_.elevation_m[cell_index] = static_cast<float>(estimate.height_m);
+ map_.elevation_sigma_m[cell_index] = static_cast<float>(estimate.sigma_m);
  }
- if (count < std::numeric_limits<std::uint16_t>::max())
- ++elevation_observations_[cell_index];
 }
 
 double OnlineSlamMapBuilder::match_score(const Scan& scan,

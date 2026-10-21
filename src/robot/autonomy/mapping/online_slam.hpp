@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/mapping/map_builder.hpp"
+#include "robot/autonomy/mapping/elevation_fusion.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +34,7 @@ struct OnlineSlamConfig {
  double minimum_match_score{0.30};
  double minimum_match_margin{0.02};
  bool publish_elevation_layer{true};
+ ElevationFusionConfig elevation_fusion{};
  std::string map_id{"online-slam"};
 };
 
@@ -54,7 +56,7 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  Vec2 pose_{};
  double heading_rad_{0.0};
  std::uint64_t revision_{0};
- std::vector<std::uint16_t> elevation_observations_;
+ ElevationFusion elevation_;
 
  void initialize_map();
  Vec2 world_to_local(Vec2 world) const;

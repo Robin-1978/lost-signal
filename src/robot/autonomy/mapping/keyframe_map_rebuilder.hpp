@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/mapping/mapping_session.hpp"
+#include "robot/autonomy/mapping/elevation_fusion.hpp"
 #include "robot/runtime/map_provider.hpp"
 
 #include <cstdint>
@@ -20,6 +21,9 @@ struct KeyframeMapRebuildConfig {
  double sensor_height_m{0.30};
  double ground_rejection_band_m{0.06};
  bool publish_elevation_layer{true};
+ // Multi-view height fusion policy. A cell is published only while its fused
+ // uncertainty stays inside these limits.
+ ElevationFusionConfig elevation{};
  std::string map_id{"online-slam"};
 };
 

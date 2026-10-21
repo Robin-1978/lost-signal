@@ -356,8 +356,9 @@ The next P2 gates are:
 2. **In progress:** calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and
  uncertainty. The ROBOT `ElevationFusion` component now combines multi-view heights by inverse variance, includes pose
  uncertainty, bounds stale evidence with a forgetting factor, and exposes disagreement as uncertainty instead of
- silently publishing a precise but contradictory terrain value. It still needs calibrated ground classification and
- end-to-end 16-line replay evidence;
+ silently publishing a precise but contradictory terrain value. `OnlineSlamMapBuilder` and `KeyframeMapRebuilder` now use
+ this fusion path for published elevation cells. It still needs calibrated ground classification and end-to-end 16-line
+ replay evidence;
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;

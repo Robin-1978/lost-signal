@@ -1,5 +1,7 @@
 #include "robot/autonomy/mapping/keyframe_map_rebuilder.hpp"
 
+#include "robot/autonomy/mapping/elevation_fusion.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -61,6 +63,8 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  std::numeric_limits<float>::quiet_NaN());
  }
  const double ray_step = std::max(0.02, config_.resolution_m * 0.5);
+ ElevationFusion elevation(config_.elevation);
+ elevation.reset(map.occupancy.size());
  for (const auto& keyframe : keyframes) {
  const auto& pose = keyframe.graph.initial_pose;
  const auto& scan = keyframe.scan;
@@ -118,8 +122,12 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  map.occupancy[cell_index] = 100;
  if (config_.publish_elevation_layer && index < scan.ray_heights_m.size() &&
  std::isfinite(scan.ray_heights_m[index])) {
- map.elevation_m[cell_index] = static_cast<float>(
- config_.sensor_height_m + scan.ray_heights_m[index]);
+ const auto estimate = elevation.fuse(
+ cell_index, config_.sensor_height_m + scan.ray_heights_m[index]);
+ if (estimate.valid) {
+ map.elevation_m[cell_index] = static_cast<float>(estimate.height_m);
+ map.elevation_sigma_m[cell_index] = static_cast<float>(estimate.sigma_m);
+ }
  }
  }
  }
