@@ -6,6 +6,9 @@
 namespace mission {
 namespace {
 
+// Mission markers use the authored acceptance radius; localization uncertainty
+// is handled by the ROBOT planner and estimator, never by silently widening a
+// game-side success test.
 constexpr double kArrivalRadiusM = 0.85;
 constexpr double kStoppedSpeedMps = 0.18;
 constexpr double kConfirmDwellS = 0.7;

@@ -99,6 +99,10 @@ must follow this order:
  platform-profile split and the magic-number audit together; each moved field needs units, source, range and a focused
  test. The actuator-control transaction is now ROBOT-owned: `ScenarioSession` publishes provider joint feedback through
  LSRI, receives a typed `ActuatorCommand` from the coordinator, and gives only the delivered command to the SIM plant.
+ The local-planning transaction follows the same boundary: `RobotLocalPlanningInput` and
+ `AutonomyCoordinator::plan_local_motion()` own the request, map views, predicted frames and provider-neutral
+ feasibility callbacks. `ScenarioSession` no longer calls the pipeline directly. Remaining work is to move construction
+ of that input (route/governor policy and terrain adapters) behind the ROBOT composition API.
 3. **Finish P2 localization and mapping integration.** Run all ordinary known-map levels through ROBOT localization,
    keep odometry-only only for explicitly teaching drift, and complete dynamic/ground return filtering, keyframe
    reconstruction after pose-graph correction, mapless online SLAM replay, cold-start global recovery and the 200,000
@@ -202,12 +206,35 @@ profiles preserve one stable moving-object track within declared tolerances; all
 finish with zero collisions without longer time limits or weaker margins; and the coverage ledger has no unowned
 production subsystem.
 
-The latest GCC build passes the focused SLAM/localization set and all 16-line projection gates. A serial full-CTest
-probe reached `mission_simulation` and exposed an existing P1 failure in the recommended `slope_launch` build: after
+The latest GCC build passes the focused SLAM/localization, MuJoCo state-contract, provider-boundary and 16-line
+projection gates. A serial full-CTest probe reached `mission_simulation` and exposed P1 failures in the recommended
+campaign builds; the first observed failure is `blocked_route`, where:
+
+* the physical robot remains near `(6.64, 12.87)` while the estimator has been pulled toward `(7.85, 11.32)`;
+* the planner correctly holds because the resulting route is no longer a safe executable candidate;
+* the failure is not a collision-threshold or mission-timeout problem.
+
+The next localization gate is to diagnose and correct the rejected/ambiguous known-map scan matches before changing
+task tolerances. The local matcher now requires a 0.05 score margin between separated geometric hypotheses, reducing
+the risk of repeatedly accepting a quantized aisle alternative; the integration test still needs a bounded campaign
+replay with localization evidence in its artifact. A separate `slope_launch` run also remains a physical plant issue:
+after
 the mid-slope inspection stop, RO-1 rolls back under the physical plant and remains at zero command until timeout,
 with no collision. This is tracked as a real differential controlled-stop/grade-hold defect; it must be fixed in the
 ROBOT control/actuator contract or the level's physically declared capabilities, never by relaxing the mission timeout
 or treating simulator pose as localization.
+
+The estimator now has a focused wheel-slip recovery contract. A provider raises the LSRI slip uncertainty multiplier
+when wheel/contact residuals are observed; with an IMU, gravity-compensated inertial velocity supplies the pose
+increment during saturation, while no-gyro platforms suppress unreliable differential yaw. The component gate covers
+static uphill gravity projection and spinning-wheel pose bounds. This reduces odometry self-deception but does not
+close `slope_launch`; the remaining failure is plant grade-hold/traction behavior and remains a P1 blocker.
+
+MuJoCo's body-state adapter is now covered by the physics-world contract: free-joint linear velocity is read from the
+three translational qvel entries, rotational qvel is converted from body to world coordinates once, and
+`mj_objectVelocity` is interpreted as `[angular, linear]` for non-free bodies. This prevents an engine-convention
+mistake from being hidden by planner or localization tuning. Terrain heightfield sampling is capped at 0.10 m so the
+contact normal resolves the 0.10 m wheel radius on authored slopes.
 
 The active crossing implementation now treats the canonical path, a map-validated shortcut and a fully rechecked
 circular-fillet path as separate candidates. Static feasibility cannot erase a dynamically safer route. Fillet

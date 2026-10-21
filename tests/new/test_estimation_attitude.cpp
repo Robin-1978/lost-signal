@@ -158,6 +158,26 @@ int main() {
  }
  CHECK(std::abs(pose_spike.state().linear_velocity_mps) < 1e-12);
 
+ // Wheel speed is not body speed during a saturated uphill contact. With a
+ // calibrated IMU reporting only the static gravity projection, the ROBOT
+ // estimator must keep the inertial pose bounded instead of integrating the
+ // free-spinning wheel into the map frame.
+ sim::EstimationSystem slope_slip(29);
+ slope_slip.reset(0.0, 0.0, 0.0, 29);
+ const double slope_pitch = -0.35;
+ slope_slip.initialize_attitude(0.0, slope_pitch);
+ for (int sample = 1; sample <= 100; ++sample) {
+ const double time_s = sample * 0.02;
+ auto uphill = observation(time_s, 0.0, 0.0, 0.0,
+ -kGravityMps2 * std::sin(slope_pitch), 0.0,
+ kGravityMps2 * std::cos(slope_pitch));
+ uphill.encoders->linear_velocity_mps = 0.8;
+ uphill.encoders->slip_scale = 3.0;
+ slope_slip.update(uphill, 0.02);
+ }
+ CHECK(std::abs(slope_slip.state().position.x) < 0.20);
+ CHECK(std::abs(slope_slip.state().linear_velocity_mps) < 0.20);
+
  bool rejected = false;
  try {
  impulse.set_imu_mount_rpy(0.0, std::nan(""), 0.0);

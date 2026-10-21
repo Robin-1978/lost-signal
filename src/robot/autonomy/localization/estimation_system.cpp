@@ -84,6 +84,8 @@ void EstimationSystem::reset(double x, double y, double heading_rad, std::uint32
  absolute_velocity_valid_ = false;
  pose_velocity_innovation_samples_ = 0;
  pose_yaw_rate_innovation_samples_ = 0;
+ imu_velocity_base_ = {};
+ slip_recovery_samples_ = 0;
 }
 
 void EstimationSystem::set_imu_mount_rpy(double roll_in_base_rad,
@@ -123,6 +125,26 @@ EstimationSystem::Vector3 EstimationSystem::imu_to_base(Vector3 value) const {
  sy * cp * value.x + (sy * sp * sr + cy * cr) * value.y +
  (sy * sp * cr - cy * sr) * value.z,
  -sp * value.x + cp * sr * value.y + cp * cr * value.z,
+ };
+}
+
+EstimationSystem::Vector3 EstimationSystem::gravity_in_base() const {
+ // The attitude quaternion maps base_link vectors into the world frame.
+ // Rotate the world gravity vector back into base_link so specific force can
+ // be converted to translational acceleration without treating the slope's
+ // static gravity component as forward motion.
+ const Vector3 gravity_world{0.0, 0.0, -kGravityMps2};
+ const Quaternion q = attitude_;
+ const Vector3 qv{-q.x, -q.y, -q.z};
+ const Vector3 t{
+ 2.0 * (qv.y * gravity_world.z - qv.z * gravity_world.y),
+ 2.0 * (qv.z * gravity_world.x - qv.x * gravity_world.z),
+ 2.0 * (qv.x * gravity_world.y - qv.y * gravity_world.x),
+ };
+ return {
+ gravity_world.x + q.w * t.x + (qv.y * t.z - qv.z * t.y),
+ gravity_world.y + q.w * t.y + (qv.z * t.x - qv.x * t.z),
+ gravity_world.z + q.w * t.z + (qv.x * t.y - qv.y * t.x),
  };
 }
 
@@ -210,11 +232,74 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
  : Vector3{};
  const double gyro_rate = calibrated_angular_rate.z;
  const double gyro_sigma = has_imu ? observation.imu->noise_sigma_radps : 0.0;
- odometry_.update(encoder.linear_velocity_mps, encoder.lateral_velocity_mps,
- encoder.angular_velocity_radps, dt_s, rng_, encoder.slip_scale,
- 0.003 * encoder.slip_scale, has_imu, gyro_rate, gyro_sigma);
  if (has_imu)
  update_attitude(*observation.imu, dt_s);
+ // Integrate gravity-compensated IMU acceleration as a bounded recovery
+ // signal. Wheel encoders remain the nominal velocity source; the inertial
+ // track is used only when the provider reports meaningful wheel slip. This
+ // is the same contract a native provider can satisfy with an IMU and wheel
+ // encoder pair, and it prevents a wheel that is spinning against a slope
+ // from advancing the map pose.
+ double inertial_acceleration_norm = std::numeric_limits<double>::infinity();
+ if (has_imu && attitude_initialized_ && std::isfinite(dt_s) && dt_s > 0.0) {
+  const auto force = imu_to_base({observation.imu->forward_acceleration_mps2,
+   observation.imu->left_acceleration_mps2,
+   observation.imu->up_acceleration_mps2});
+  const auto gravity = gravity_in_base();
+  const double acceleration_x = force.x + gravity.x;
+  const double acceleration_y = force.y + gravity.y;
+  if (std::isfinite(acceleration_x) && std::isfinite(acceleration_y)) {
+ inertial_acceleration_norm = std::hypot(acceleration_x, acceleration_y);
+   imu_velocity_base_.x += acceleration_x * dt_s;
+   imu_velocity_base_.y += acceleration_y * dt_s;
+  }
+ }
+ const bool slip_active = std::isfinite(encoder.slip_scale) &&
+ encoder.slip_scale > 1.5;
+ if (slip_active)
+ slip_recovery_samples_ = 0;
+ else
+ slip_recovery_samples_ = std::min(25, slip_recovery_samples_ + 1);
+ const bool translation_degraded = slip_active || slip_recovery_samples_ < 10;
+ if (!slip_active) {
+  const double pull = 1.0 - std::exp(-std::max(0.0, dt_s) / 0.25);
+  imu_velocity_base_.x += pull * (encoder.linear_velocity_mps - imu_velocity_base_.x);
+  imu_velocity_base_.y += pull * (encoder.lateral_velocity_mps - imu_velocity_base_.y);
+ }
+ double propagation_forward_mps = encoder.linear_velocity_mps;
+ double propagation_lateral_mps = encoder.lateral_velocity_mps;
+ if (slip_active) {
+ // A wheel/IMU pair cannot observe planar translation reliably while the
+ // driven contact is saturated: integrating accelerometer bias for the whole
+ // degraded interval creates a false map displacement that is worse than
+ // explicitly holding the last trusted pose. Keep the gyro for heading, mark
+ // translation as degraded, and resume wheel propagation only after contact
+ // recovers. A native provider may later replace this conservative hold with
+ // a validated external velocity source (visual, scan or GNSS).
+ const bool inertially_stationary = std::isfinite(inertial_acceleration_norm) &&
+ inertial_acceleration_norm < 0.15 &&
+ std::hypot(imu_velocity_base_.x, imu_velocity_base_.y) < 0.20;
+ if (inertially_stationary) {
+ propagation_forward_mps = 0.0;
+ propagation_lateral_mps = 0.0;
+ } else {
+ const double slip_divisor = std::max(1.0, encoder.slip_scale);
+ propagation_forward_mps = encoder.linear_velocity_mps / slip_divisor;
+ propagation_lateral_mps = encoder.lateral_velocity_mps / slip_divisor;
+ }
+ }
+ // Wheel yaw is not a body-heading measurement during saturated contact:
+ // unequal left/right slip can report a large in-place turn while the chassis
+ // follows a different angular motion. When a gyro is available, make that
+ // body-rate observation the propagation input for the degraded interval;
+ // without one, hold the last heading rather than integrating a known-bad
+ // differential-wheel yaw.
+ const double propagation_angular_mps = translation_degraded
+ ? (has_imu ? gyro_rate : 0.0)
+ : encoder.angular_velocity_radps;
+ odometry_.update(propagation_forward_mps, propagation_lateral_mps,
+ propagation_angular_mps, dt_s, rng_, encoder.slip_scale,
+ 0.003 * encoder.slip_scale, has_imu, gyro_rate, gyro_sigma);
  // Propagate a bounded diagonal SE(2) covariance approximation. The dead
  // reckoner owns the sampled motion; this is the estimator-owned uncertainty
  // envelope used by recovery policy, so it includes travelled distance,
@@ -246,8 +331,8 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
  std::sqrt(std::max(0.0, heading_variance)),
  kMinimumHeadingSigmaRad, kMaximumHeadingSigmaRad);
  update_map_state();
- state_.linear_velocity_mps = encoder.linear_velocity_mps;
- state_.lateral_velocity_mps = encoder.lateral_velocity_mps;
+ state_.linear_velocity_mps = propagation_forward_mps;
+ state_.lateral_velocity_mps = propagation_lateral_mps;
  // Wheel differential is the low-noise nominal rate. Once the provider marks
  // its uncertainty above the nominal slip scale, it is no longer a body-rate
  // observation (notably for skid steering), so a mounted gyro owns the live

@@ -427,7 +427,12 @@ const char* SimulatedPlatform::backend_name() const {
  body.collision_group = ::sim::physics::collision_layer::Terrain;
  body.collision_mask = static_cast<::sim::physics::CollisionMask>(
  ::sim::physics::collision_layer::Default | ::sim::physics::collision_layer::Vehicle);
- const double resolution = std::min(0.25, map_.grid_resolution_m);
+ // Heightfield sampling must resolve the wheel contact patch. A quarter-metre
+ // facet is larger than RO-1's 0.1 m wheel radius; on a 20 degree ramp the
+ // resulting normal discontinuity can unload one wheel and make the hull
+ // collide with the slope edge. Keep the terrain provider's authored grid as
+ // the upper bound, but cap the physical sample spacing at 0.10 m.
+ const double resolution = std::min(0.10, map_.grid_resolution_m);
  const int nx = std::max(1, static_cast<int>(std::ceil((patch.max.x - patch.min.x) / resolution)));
  const int ny = std::max(1, static_cast<int>(std::ceil((patch.max.y - patch.min.y) / resolution)));
  body.position_m = {(patch.min.x + patch.max.x) * 0.5,

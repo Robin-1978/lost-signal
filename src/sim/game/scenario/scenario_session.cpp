@@ -1084,7 +1084,7 @@ void ScenarioSession::build_world() {
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
  }, &map_manager_);
-	autonomy_coordinator_->pipeline().set_motion_policy(motion_policy_);
+	autonomy_coordinator_->set_motion_policy(motion_policy_);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -2095,7 +2095,7 @@ void ScenarioSession::consume_lidar_observation(
  autonomy_coordinator_->localization_supervisor().local_window(odom.position));
  if (view) {
  const auto local_map = snapshot_from_view(*view);
- match = autonomy_coordinator_->pipeline().localize_known_map(
+ match = autonomy_coordinator_->localize_known_map(
  *observation.lidar, odom.position, odom.heading_rad, local_map,
  observation.time_s);
  } else {
@@ -2104,7 +2104,7 @@ void ScenarioSession::consume_lidar_observation(
  autonomy_coordinator_->localization_supervisor().record_local(
  match.accepted, observation.time_s, match.pose);
  } else if (action == sim::autonomy::LocalizationAction::GlobalRelocalization) {
- match = autonomy_coordinator_->pipeline().localize_known_map_global(
+ match = autonomy_coordinator_->localize_known_map_global(
  *observation.lidar, *map, observation.time_s);
  autonomy_coordinator_->localization_supervisor().record_global(
  match.accepted, observation.time_s, match.pose);
@@ -2148,7 +2148,7 @@ void ScenarioSession::consume_lidar_observation(
  }
  const auto& estimate = autonomy_coordinator_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimate.position);
- const auto perception = autonomy_coordinator_->pipeline().process_lidar(
+ const auto perception = autonomy_coordinator_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
  estimate.lateral_velocity_mps,
@@ -2198,7 +2198,7 @@ void ScenarioSession::refresh_dynamic_obstacles() {
   return;
  }
  const auto tracks =
- autonomy_coordinator_->pipeline().dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
+ autonomy_coordinator_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
  if (track.motion_class == sim::TrackMotionClass::Unconfirmed)
  continue;
@@ -2710,14 +2710,30 @@ void ScenarioSession::apply_motion() {
  // Traction saturation (model-side contact state, like motor force: used for
  // odometry degradation, never displayed as a sensed reading). Rising edge
  // counts a slip episode for the debrief.
- const bool saturated = motors.traction_saturated || rigid_state.drive_slipping;
+ // The provider may report a slip episode before its hysteretic boolean
+ // latch is set. Publish that measured wheel/contact residual as degraded
+ // odometry immediately; otherwise the estimator keeps integrating a free
+ // spinning wheel for the confirmation window and can move the pose metres
+ // ahead of the body on a steep grade.
+ // Small tread/body residuals are expected while steering and during contact
+ // settling. Treat them as traction saturation only once the residual is a
+ // material fraction of wheel speed; otherwise the estimator would repeatedly
+ // discard valid translation on ordinary turns and never converge on a goal.
+ const bool saturated = motors.traction_saturated || rigid_state.drive_slipping ||
+ rigid_state.max_drive_slip_ratio > 0.20;
  snapshot_.traction_saturated = saturated;
  if (saturated && !was_saturated_) {
   ++result_.slip_events;
  }
  was_saturated_ = saturated;
  if (saturated) {
-  slip *= 3.0;
+ // LSRI's slip_scale is an uncertainty multiplier, not the tire's nominal
+ // material coefficient. A high-grip tire may have a nominal value below
+ // one, but once the provider has actually observed traction saturation the
+ // estimator must still receive an unambiguous elevated-slip observation.
+ // Keep the material value for healthy contact and raise the saturated
+ // sample above the estimator's recovery threshold.
+ slip = std::max(2.0, std::max(1.0, slip) * 3.0);
  }
  const double encoder_v = motors.measured_forward_mps;
  const double encoder_w = motors.measured_yaw_radps;

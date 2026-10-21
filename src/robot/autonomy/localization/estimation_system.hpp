@@ -67,6 +67,7 @@ class EstimationSystem {
  static Vector3 euler_from_quaternion(const Quaternion& value);
  static void normalize(Quaternion& value);
  Vector3 imu_to_base(Vector3 value) const;
+ Vector3 gravity_in_base() const;
  void update_attitude(const ImuObservation& imu, double dt_s);
 
  DeadReckon odometry_;
@@ -85,6 +86,14 @@ class EstimationSystem {
  bool absolute_velocity_valid_{false};
  int pose_velocity_innovation_samples_{0};
  int pose_yaw_rate_innovation_samples_{0};
+ // A short-lived inertial velocity track is maintained for wheel-slip
+ // recovery. It is never used as a standalone long-term odometry source:
+ // when wheel traction is healthy it is pulled back toward wheel velocity,
+ // and it only replaces the wheel increment while the provider declares
+ // elevated slip. This keeps the estimator honest on real hardware while
+ // preventing a saturated wheel from moving the pose through a slope.
+ Vector3 imu_velocity_base_{};
+ int slip_recovery_samples_{0};
 };
 
 } // namespace sim

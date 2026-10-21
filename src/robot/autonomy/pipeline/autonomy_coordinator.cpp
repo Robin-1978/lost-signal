@@ -230,6 +230,130 @@ ChassisControlResult AutonomyCoordinator::update_chassis_actuators(
  throw std::logic_error("no actuator controller has been configured");
 }
 
+LocalPlanningOutput AutonomyCoordinator::plan_local_motion(
+ const RobotLocalPlanningInput& input) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return motion_runtime_.plan_local(*pipeline_, input);
+}
+
+void AutonomyCoordinator::set_motion_policy(const MotionPolicy& policy) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ pipeline_->set_motion_policy(policy);
+}
+
+GridMap AutonomyCoordinator::compose_local_map(const GridMap& static_costmap,
+ double now_s, double inflation_radius_m) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->compose_local_map(static_costmap, now_s, inflation_radius_m);
+}
+
+std::vector<Vec2> AutonomyCoordinator::active_observed_obstacles(double now_s) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->observed_obstacles().active_obstacle_centres(now_s);
+}
+
+std::vector<DynamicTrack> AutonomyCoordinator::active_dynamic_tracks(
+ double time_s, double max_age_s) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->dynamic_obstacles().active_tracks(time_s, max_age_s);
+}
+
+PredictionBatch AutonomyCoordinator::predict_dynamic_objects(
+ double time_s, double horizon_s, double frame_dt_s, double max_age_s) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->predict_dynamic_objects(time_s, horizon_s, frame_dt_s, max_age_s);
+}
+
+LidarPerceptionFrame AutonomyCoordinator::process_lidar(
+ const Scan& scan, const Scan& static_reference, const LidarProjectionState& state,
+ const LidarProjectionConfig& config, double track_max_age_s) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->process_lidar(scan, static_reference, state, config, track_max_age_s);
+}
+
+KnownMapLocalizationResult AutonomyCoordinator::localize_known_map(
+ const Scan& scan, Vec2 odom_position, double odom_heading_rad,
+ const runtime::MapSnapshot& map, double timestamp_s) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->localize_known_map(scan, odom_position, odom_heading_rad, map, timestamp_s);
+}
+
+autonomy::LocalizationResult AutonomyCoordinator::localize_known_map_global(
+ const Scan& scan, const runtime::MapSnapshot& map, double timestamp_s) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->localize_known_map_global(scan, map, timestamp_s);
+}
+
+CrossingBehaviorDecision AutonomyCoordinator::assess_crossing(
+ const std::vector<RoutePoint>& route, std::size_t path_index, Vec2 ego_position,
+ double ego_speed_mps, double ego_heading_rad,
+ const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
+ double frame_dt_s, const CrossingSafetyEnvelope& safety,
+ const CrossingExecutionCaps& execution, double decision_dt_s,
+ double evaluation_stamp_s, CrossingPathFeasibility path_feasible) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->assess_crossing(route, path_index, ego_position, ego_speed_mps,
+ ego_heading_rad, predicted_frames, frame_dt_s, safety, execution, decision_dt_s,
+ evaluation_stamp_s, std::move(path_feasible));
+}
+
+GovernorOutput AutonomyCoordinator::update_entry_governor(const GovernorInput& input) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->update_entry_governor(input);
+}
+
+EntryWindowDecision AutonomyCoordinator::assess_entry_window(const EntryWindowRequest& request) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->assess_entry_window(request);
+}
+
+bool AutonomyCoordinator::entry_governor_holding() const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->entry_governor_holding();
+}
+
+void AutonomyCoordinator::report_crossing_execution(
+ bool committed, const TrajectoryValidation& validation,
+ std::uint64_t trajectory_sequence, double stamp_s) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ pipeline_->report_crossing_execution(committed, validation, trajectory_sequence, stamp_s);
+}
+
+const CrossingExecutionFeedback& AutonomyCoordinator::crossing_execution_feedback() const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->crossing_execution_feedback();
+}
+
+TrajectoryTrackingReport AutonomyCoordinator::observe_trajectory(
+ double time_s, Vec2 position, double heading_rad, double forward_mps) const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->observe_trajectory(time_s, position, heading_rad, forward_mps);
+}
+
+std::uint64_t AutonomyCoordinator::accept_trajectory(
+ double generated_at_s, const ExecutableTrajectory& trajectory,
+ const TrajectoryTrackingLimits& limits) {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return pipeline_->accept_trajectory(generated_at_s, trajectory, limits);
+}
+
 void AutonomyCoordinator::configure_global_planner(
  std::shared_ptr<const ::autonomy::IGlobalPlanner> planner) {
  if (!planner)

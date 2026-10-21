@@ -17,7 +17,11 @@ struct KnownMapLocalizationConfig {
  double translation_step_m{0.05};
  double heading_step_rad{0.035};
  double minimum_overlap{0.30};
- double minimum_score_margin{0.01};
+ // A local scan match is accepted only when its best separated hypothesis
+ // beats the next geometric explanation by a meaningful margin.  A tiny
+ // margin is unsafe in repetitive aisles: quantized occupancy scores can
+ // select a wrong corridor and repeatedly drag map->odom away from odometry.
+ double minimum_score_margin{0.05};
  // Open fields and orchard aisles can legitimately expose only a handful of
  // occupied returns. Keep the geometric minimum low enough to avoid freezing
  // on a sparse scan; overlap, score margin and covariance still gate whether

@@ -526,6 +526,10 @@ class ScenarioSession {
  bool manual_control_active() const {
  return autonomy_coordinator_->motion_runtime().manual_control_active();
  }
+ // Mutable control state is exposed to the scenario composition root only so
+ // input adapters can update the ROBOT-owned motion transaction. Tests and
+ // UI callers should use set_manual_command()/manual_control_active().
+ bool& manual_control_active() { return autonomy_coordinator_->motion_runtime().manual_control_active(); }
  void set_endless_mode(bool enabled);
  bool endless_mode() const { return endless_mode_; }
  void restore_endless_world(const WorldActivityCheckpoint& checkpoint);
@@ -666,7 +670,6 @@ class ScenarioSession {
  sim::DiffCmd& held_command() { return autonomy_coordinator_->motion_runtime().held_command(); }
  const sim::DiffCmd& held_command() const { return autonomy_coordinator_->motion_runtime().held_command(); }
  sim::DiffCmd& manual_command() { return autonomy_coordinator_->motion_runtime().manual_command(); }
- bool& manual_control_active() { return autonomy_coordinator_->motion_runtime().manual_control_active(); }
  std::uint64_t& motion_sequence() { return autonomy_coordinator_->motion_runtime().motion_sequence(); }
  std::uint64_t& actuator_feedback_sequence() { return autonomy_coordinator_->motion_runtime().actuator_feedback_sequence(); }
  std::uint64_t& command_sequence() { return autonomy_coordinator_->motion_runtime().command_sequence(); }

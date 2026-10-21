@@ -90,6 +90,49 @@ class AutonomyCoordinator {
  double dt_s, runtime::TimePoint now, runtime::TimePoint valid_until,
  std::uint64_t sequence);
 
+ LocalPlanningOutput plan_local_motion(const RobotLocalPlanningInput& input);
+ void set_motion_policy(const MotionPolicy& policy);
+
+ // Provider-neutral autonomy surface. Simulation and hardware composition
+ // roots use these typed views instead of reaching through the concrete
+ // AutonomyPipeline. This keeps the pipeline replaceable without letting a
+ // provider become the owner of perception, prediction, localization or
+ // crossing state.
+ GridMap compose_local_map(const GridMap& static_costmap, double now_s,
+ double inflation_radius_m) const;
+ std::vector<Vec2> active_observed_obstacles(double now_s) const;
+ std::vector<DynamicTrack> active_dynamic_tracks(double time_s,
+ double max_age_s) const;
+ PredictionBatch predict_dynamic_objects(double time_s, double horizon_s,
+ double frame_dt_s, double max_age_s) const;
+ LidarPerceptionFrame process_lidar(
+ const Scan& scan, const Scan& static_reference,
+ const LidarProjectionState& state, const LidarProjectionConfig& config,
+ double track_max_age_s);
+ KnownMapLocalizationResult localize_known_map(
+ const Scan& scan, Vec2 odom_position, double odom_heading_rad,
+ const runtime::MapSnapshot& map, double timestamp_s) const;
+ autonomy::LocalizationResult localize_known_map_global(
+ const Scan& scan, const runtime::MapSnapshot& map, double timestamp_s) const;
+ CrossingBehaviorDecision assess_crossing(
+ const std::vector<RoutePoint>& route, std::size_t path_index,
+ Vec2 ego_position, double ego_speed_mps, double ego_heading_rad,
+ const std::vector<std::vector<DynamicObjectState>>& predicted_frames,
+ double frame_dt_s, const CrossingSafetyEnvelope& safety,
+ const CrossingExecutionCaps& execution, double decision_dt_s,
+ double evaluation_stamp_s, CrossingPathFeasibility path_feasible = {});
+ GovernorOutput update_entry_governor(const GovernorInput& input);
+ EntryWindowDecision assess_entry_window(const EntryWindowRequest& request);
+ bool entry_governor_holding() const;
+ void report_crossing_execution(bool committed,
+ const TrajectoryValidation& validation, std::uint64_t trajectory_sequence,
+ double stamp_s);
+ const CrossingExecutionFeedback& crossing_execution_feedback() const;
+ TrajectoryTrackingReport observe_trajectory(double time_s, Vec2 position,
+ double heading_rad, double forward_mps) const;
+ std::uint64_t accept_trajectory(double generated_at_s,
+ const ExecutableTrajectory& trajectory, const TrajectoryTrackingLimits& limits);
+
  ChassisDiagnosticsSystem& diagnostics() { return diagnostics_; }
  const ChassisDiagnosticsSystem& diagnostics() const { return diagnostics_; }
 

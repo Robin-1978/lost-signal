@@ -404,9 +404,18 @@ return {0, 0, 0, true, {}, false};
   // flips, slow-spin chassis that cannot damp them) still accumulates toward
   // the watchdog. The 3 s threshold keeps its meaning: 3 net-seconds of
   // reversing trouble. A completed spin recovery (above) still clears it.
-  st.reverse_time = std::max(0.0, st.reverse_time - dt);
+ st.reverse_time = std::max(0.0, st.reverse_time - dt);
   steer = steer_fwd;
-  tv = sched_v(err, cruise);
+ // The route endpoint is a task stop, not merely another waypoint. Shape the
+ // terminal speed envelope from remaining distance so a dispatch/mission can
+ // enter its required stopped dwell without overshooting and circling the
+ // target. The local planner still applies chassis acceleration and braking
+ // limits; this is only the geometric reference speed.
+ const double terminal_distance = std::hypot(
+ path.back().position.x - ex, path.back().position.y - ey);
+ const double terminal_cruise = std::min(
+ cruise, std::max(0.10, 0.22 * terminal_distance));
+ tv = sched_v(err, terminal_cruise);
  }
  return {err, steer, tv, false, la, true};
 }

@@ -94,10 +94,10 @@ void ScenarioSession::decide_control() {
  // separate time-indexed input below; an observed obstacle therefore cannot
  // become a permanent global wall or disappear merely because tracking lost
  // its identity.
- const sim::GridMap local_planning_map = autonomy_coordinator_->pipeline().compose_local_map(
+ const sim::GridMap local_planning_map = autonomy_coordinator_->compose_local_map(
  *planning_map_, snapshot_.time_s, planning_clearance_m_);
  const auto transient_obstacles =
- autonomy_coordinator_->pipeline().observed_obstacles().active_obstacle_centres(
+ autonomy_coordinator_->active_observed_obstacles(
  snapshot_.time_s);
  snapshot_.control.transient_obstacle_cells = transient_obstacles.size();
  snapshot_.control.nearest_transient_obstacle_m =
@@ -112,7 +112,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control.local_map_pose_clearance_m =
  local_planning_map.clearance(nav_x, nav_y);
  const auto active_dynamic_tracks =
- autonomy_coordinator_->pipeline().dynamic_obstacles().active_tracks(
+ autonomy_coordinator_->active_dynamic_tracks(
  snapshot_.time_s, track_max_age_s());
  if (autonomy_coordinator_->route_tracking().should_replan(
  planned_route_, estimate, local_planning_map, active_dynamic_tracks,
@@ -139,10 +139,10 @@ void ScenarioSession::decide_control() {
  // estimated pose a centimetre inside the map can authorize a trajectory
  // whose true body crosses a wall or map boundary. This margin is deployable
  // configuration, not simulator ground truth.
- const sim::GridMap local_physical_collision_map = autonomy_coordinator_->pipeline().compose_local_map(
+ const sim::GridMap local_physical_collision_map = autonomy_coordinator_->compose_local_map(
  *recovery_base_map_, snapshot_.time_s,
  robot_definition_.collision_radius_m + level_.planning_localization_margin_m);
- const auto tracking = autonomy_coordinator_->pipeline().observe_trajectory(
+ const auto tracking = autonomy_coordinator_->observe_trajectory(
  snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
  snapshot_.control.trajectory_sequence = tracking.sequence;
  snapshot_.control.trajectory_tracking_active = tracking.active;
@@ -312,7 +312,7 @@ void ScenarioSession::decide_control() {
   return;
  }
  const auto all_tracks =
- autonomy_coordinator_->pipeline().dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
+ autonomy_coordinator_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
  std::vector<sim::DynamicTrack> known_tracks;
  std::copy_if(all_tracks.begin(), all_tracks.end(), std::back_inserter(known_tracks), [](const auto& track) {
  return track.motion_class != sim::TrackMotionClass::Unconfirmed;
@@ -379,7 +379,7 @@ void ScenarioSession::decide_control() {
  // Predictor module (src/robot/autonomy/predictor.*) owns future frames; the tracker
  // owns observations. known_tracks (age-advanced, for display) must not
  // feed prediction: map.predict() snapshots raw tracker state internally.
- const auto predicted_batch = autonomy_coordinator_->pipeline().predict_dynamic_objects(
+ const auto predicted_batch = autonomy_coordinator_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto predicted_frames = sim::flatten_prediction_frames(predicted_batch);
  const auto stationary_forecast_clearance = sim::minimum_stationary_clearance(
@@ -409,7 +409,7 @@ void ScenarioSession::decide_control() {
  // crossing whose complete execution does not fit this declared computer
  // horizon is explicitly HorizonShort and remains closed.
  const double assessment_horizon = prediction_horizon;
- const auto assessment_batch = autonomy_coordinator_->pipeline().predict_dynamic_objects(
+ const auto assessment_batch = autonomy_coordinator_->predict_dynamic_objects(
  snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
  const auto assessment_frames = sim::flatten_prediction_frames(assessment_batch);
 
@@ -425,7 +425,7 @@ void ScenarioSession::decide_control() {
  // physically necessary pose correction without spending safety clearance.
  const double stop_plane_tracking_tolerance_m =
  std::abs(chassis_caps_.geometry.drive_axle_x_m);
- const auto traffic_decision = autonomy_coordinator_->pipeline().assess_crossing(
+ const auto traffic_decision = autonomy_coordinator_->assess_crossing(
  planned_route_, autonomy_coordinator_->route_tracking().path_index(), {nav_x, nav_y},
  estimate.linear_velocity_mps, nav_heading, assessment_frames,
  prediction_step_s,
@@ -482,7 +482,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control.crossing_committed = traffic_decision.control.committed;
  snapshot_.control.crossing_body_in_conflict = crossing.body_in_conflict;
  snapshot_.control.crossing_execution_blocked =
- autonomy_coordinator_->pipeline().crossing_execution_feedback().blocked;
+ autonomy_coordinator_->crossing_execution_feedback().blocked;
  snapshot_.control.crossing_recovery_to_stop =
  traffic_decision.control.recovery_to_stop;
  snapshot_.control.crossing_recovery_reverse =
@@ -613,7 +613,7 @@ void ScenarioSession::decide_control() {
  // Always evaluate the map-independent conflict path. A mapped behavior may
  // own the current stop/commit contract, but its presence must not disable
  // ROBOT's generic perception-to-trajectory conflict detector elsewhere.
- const auto entry_batch = autonomy_coordinator_->pipeline().predict_dynamic_objects(
+ const auto entry_batch = autonomy_coordinator_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s,
  sim::kEntryStaleBudgetS);
  const auto entry_frames = sim::flatten_prediction_frames(entry_batch);
@@ -626,9 +626,9 @@ void ScenarioSession::decide_control() {
  entry_request.clearance_m = hard_crossing_clearance;
  entry_request.braking_deceleration_mps2 =
  resolved_build_.traction().brake_decel_mps2;
- const bool generic_was_hold = autonomy_coordinator_->pipeline().entry_governor_holding();
+ const bool generic_was_hold = autonomy_coordinator_->entry_governor_holding();
  const auto generic_entry =
- autonomy_coordinator_->pipeline().assess_entry_window(entry_request);
+ autonomy_coordinator_->assess_entry_window(entry_request);
  if (mapped_governor && !crossing_committed &&
  !traffic_decision.control.no_return_started) {
  if (mapped_governor->hold_active && mapped_governor->stop_valid) {
@@ -1328,8 +1328,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  planned_route_, guide_index, {nav_x, nav_y}, reference_length_m);
  }
  }
- const auto local_plan = autonomy_coordinator_->pipeline().plan_local(
- local_request, local_planning_map, local_predicted_frames,
+ const sim::autonomy::RobotLocalPlanningInput local_planning_input{
+ &local_request, &local_planning_map, &local_predicted_frames,
  [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
  autonomy_coordinator_->collision_monitor().static_motion_free(
@@ -1354,7 +1354,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  autonomy_coordinator_->collision_monitor().static_clearance(to) + 0.01 >=
  autonomy_coordinator_->collision_monitor().static_clearance(from)));
  return feasible;
- }, [this](sim::Vec2 position) { return terrain_.sample(position); });
+ }, [this](sim::Vec2 position) { return terrain_.sample(position); }};
+ const auto local_plan = autonomy_coordinator_->plan_local_motion(local_planning_input);
  snapshot_.control.local_motion_mode = static_cast<int>(local_plan.status.mode);
  snapshot_.control.local_motion_authorized = local_plan.status.motion_authorized;
  snapshot_.control.local_motion_decision_time_s = local_plan.status.decision_time_s;
@@ -1388,11 +1389,11 @@ if (!continuous_execution && remaining_m > 0.5) {
  const auto& trajectory_validation = validated_selection.validation;
  // Local collision freedom is weaker than the time-indexed crossing proof.
  // Reassess an admitted schedule whenever its validated continuation is lost.
- autonomy_coordinator_->pipeline().report_crossing_execution(
+ autonomy_coordinator_->report_crossing_execution(
  crossing_committed, trajectory_validation,
  snapshot_.control.trajectory_sequence, snapshot_.time_s);
  snapshot_.control.crossing_execution_blocked =
- autonomy_coordinator_->pipeline().crossing_execution_feedback().blocked;
+ autonomy_coordinator_->crossing_execution_feedback().blocked;
  snapshot_.control.trajectory_validated = trajectory_validation.accepted();
  snapshot_.control.trajectory_verdict = static_cast<int>(trajectory_validation.verdict);
  snapshot_.control.trajectory_diagnostic = trajectory_validation.diagnostic;
@@ -1571,7 +1572,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  std::max(0.10, 2.0 * resolved_build_.traction().brake_decel_mps2 / decision_hz()),
   };
   snapshot_.control.trajectory_sequence =
- autonomy_coordinator_->pipeline().accept_trajectory(snapshot_.time_s, selected_trajectory, tracking_limits);
+ autonomy_coordinator_->accept_trajectory(snapshot_.time_s, selected_trajectory, tracking_limits);
   if (snapshot_.waiting_for_clearance) {
    std::ostringstream waiting;
    waiting << std::fixed << std::setprecision(1) << nearest_actor;

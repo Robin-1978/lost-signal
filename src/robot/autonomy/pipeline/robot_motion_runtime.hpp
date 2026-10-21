@@ -1,12 +1,32 @@
 #pragma once
 
 #include "robot/platform/differential_kinematics.hpp"
+#include "robot/autonomy/planning/local/local_planning_system.hpp"
+
+#include <functional>
+#include <vector>
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
-namespace sim::autonomy {
+namespace sim {
+class AutonomyPipeline;
+namespace autonomy {
+
+// Provider-neutral local-planning transaction. The composition root may build
+// the observation and map views, but the planning call itself belongs to
+// ROBOT. Pointers are intentionally non-owning and valid only for the call;
+// they avoid copying a large local map on every control tick.
+struct RobotLocalPlanningInput {
+ const LocalPlanningRequest* request{nullptr};
+ const GridMap* planning_map{nullptr};
+ const std::vector<std::vector<DynamicObjectState>>* predicted_frames{nullptr};
+ StaticFeasibility terrain_feasible;
+ const GridMap* physical_collision_map{nullptr};
+ StaticFeasibility physical_terrain_feasible;
+ TerrainSampleQuery terrain_sample;
+};
 
 // Deployable state for the motion transaction.  This state is deliberately
 // independent of a mission, level, actor, physics body, or renderer.  A SIM
@@ -34,6 +54,12 @@ class RobotMotionRuntime {
     return crossing_segment_alignment_complete_;
   }
 
+ // The runtime owns the typed local-planning transaction. It deliberately
+ // accepts only ROBOT map, perception and chassis contracts; SIM providers
+ // stay outside this boundary.
+ LocalPlanningOutput plan_local(
+  AutonomyPipeline& pipeline, const RobotLocalPlanningInput& input) const;
+
  private:
   DiffCmd held_command_{};
   DiffCmd manual_command_{};
@@ -46,4 +72,5 @@ class RobotMotionRuntime {
   bool crossing_segment_alignment_complete_{false};
 };
 
-}  // namespace sim::autonomy
+} // namespace autonomy
+} // namespace sim

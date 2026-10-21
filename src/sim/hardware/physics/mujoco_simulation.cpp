@@ -807,13 +807,27 @@ body.body_id = body.geom_id = body.free_joint_id = -1;
 
  BodyState read_body_state(const StoredBody& body) const {
  const int id = body.body_id;
+ const Quaternion rotation{data_->xquat[4 * id + 1], data_->xquat[4 * id + 2],
+ data_->xquat[4 * id + 3], data_->xquat[4 * id]};
+ Vec3 linear_velocity{};
+ Vec3 angular_velocity{};
+ if (body.free_joint_id >= 0) {
+ // A free joint stores world linear velocity followed by body-frame angular
+ // velocity in qvel. Reading it directly avoids losing yaw when a tilted
+ // articulated root is queried through a spatial-vector conversion.
+ const int dof = model_->jnt_dofadr[body.free_joint_id];
+ linear_velocity = {data_->qvel[dof], data_->qvel[dof + 1], data_->qvel[dof + 2]};
+ const Vec3 angular_local{data_->qvel[dof + 3], data_->qvel[dof + 4], data_->qvel[dof + 5]};
+ angular_velocity = rotate_vector(rotation, angular_local);
+ } else {
  mjtNum velocity[6]{};
  mj_objectVelocity(model_.get(), data_.get(), mjOBJ_BODY, id, velocity, 0);
+ // mj_objectVelocity uses the spatial-vector convention [angular, linear].
+ angular_velocity = {velocity[0], velocity[1], velocity[2]};
+ linear_velocity = {velocity[3], velocity[4], velocity[5]};
+ }
  BodyState state{{data_->xpos[3 * id], data_->xpos[3 * id + 1], data_->xpos[3 * id + 2]},
- {data_->xquat[4 * id + 1], data_->xquat[4 * id + 2], data_->xquat[4 * id + 3],
- data_->xquat[4 * id]},
- {velocity[3], velocity[4], velocity[5]},
- {velocity[0], velocity[1], velocity[2]}};
+ rotation, linear_velocity, angular_velocity};
  return state;
  }
 
