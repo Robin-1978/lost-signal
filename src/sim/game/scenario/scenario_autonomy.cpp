@@ -59,7 +59,7 @@ void ScenarioSession::decide_control() {
   // parking short with tv=0 until timeout.
   autonomy_coordinator_->route_tracking().set_path_index(planned_route_.size() - 1);
  }
- const auto& estimate = estimation_system_.state();
+ const auto& estimate = autonomy_coordinator_->estimator().state();
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
@@ -1576,7 +1576,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // remains free to slip when the surface cannot carry the requested force.
  const auto current_terrain = terrain_.sample({nav_x, nav_y});
  const double current_grade = sim::longitudinal_grade(current_terrain, nav_heading);
- const auto& control_estimate = estimation_system_.state();
+ const auto& control_estimate = autonomy_coordinator_->estimator().state();
  held_command_.longitudinal_acceleration_feedforward_mps2 =
  control_estimate.attitude_valid
  ? -execution_policy.gravity_mps2 * std::sin(control_estimate.pitch_rad)

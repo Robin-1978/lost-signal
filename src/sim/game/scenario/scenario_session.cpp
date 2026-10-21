@@ -170,7 +170,6 @@ ScenarioSession::ScenarioSession(
       runtime_registry_(std::move(runtime_registry)), runtime_provider_id_(std::move(runtime_provider_id)),
 	behavior_(catalog_.style_behavior(build_.style)),
 	motion_policy_(sim::MotionPolicy::load(sim::MotionPolicy::resolve_path(catalog_.root()))),
-	estimation_system_(effective_seed() ^ 0x6a09e667U),
       planning_system_(global_planner ? global_planner : autonomy::default_global_planner()),
       custom_global_planner_(static_cast<bool>(global_planner)),
       custom_high_level_policy_(static_cast<bool>(high_level_policy)),
@@ -180,7 +179,7 @@ ScenarioSession::ScenarioSession(
 	// The motion policy belongs to the robot, not to this scenario. Applying it
 	// once here keeps the executable free of tuned thresholds and gives a
 	// native bring-up the same knobs through robot_data/policy.
-	estimation_system_.set_motion_policy(motion_policy_);
+ autonomy_coordinator_->set_estimator_motion_policy(motion_policy_);
 	localization_supervisor_.set_config(motion_policy_.localization_supervisor);
  if (!build_.task_policy.empty())
   level_.objective.task_policy = build_.task_policy;
@@ -310,12 +309,12 @@ void ScenarioSession::reset() {
  snapshot_.estimated_position = {spawn.x, spawn.y};
  snapshot_.estimated_heading = spawn.theta;
  snapshot_.status = MissionStatus::Ready;
- estimation_system_.reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
+ autonomy_coordinator_->estimator().reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
  if (resolved_build_.imu()) {
  // Seed from the deployed elevation map, then let calibrated IMU rates and
  // gravity observations track the live chassis attitude. Physical body truth
  // is deliberately excluded from this estimator initialization.
- estimation_system_.initialize_attitude(
+ autonomy_coordinator_->estimator().initialize_attitude(
  std::atan(sim::lateral_grade(spawn_terrain, spawn.theta)),
  -std::atan(sim::longitudinal_grade(spawn_terrain, spawn.theta)));
  }
@@ -587,7 +586,7 @@ void ScenarioSession::initialize_frame_tree() {
                                                                   mount.rotation_deg.z * kDegreesToRadians),
                             });
  if (mount.frame_id == "imu_link") {
- estimation_system_.set_imu_mount_rpy(
+ autonomy_coordinator_->estimator().set_imu_mount_rpy(
  mount.rotation_deg.x * kDegreesToRadians,
  mount.rotation_deg.y * kDegreesToRadians,
  mount.rotation_deg.z * kDegreesToRadians);
@@ -600,21 +599,21 @@ void ScenarioSession::initialize_frame_tree() {
 }
 
 void ScenarioSession::update_frame_tree() {
- const auto map_from_odom = estimation_system_.map_from_odom_translation();
+ const auto map_from_odom = autonomy_coordinator_->estimator().map_from_odom_translation();
  frame_tree_.set_transform(
    "map", "odom",
    {
      {map_from_odom.x, map_from_odom.y, 0.0},
-     sim::physics::quaternion_from_euler(0.0, 0.0, estimation_system_.map_from_odom_heading_rad()),
+     sim::physics::quaternion_from_euler(0.0, 0.0, autonomy_coordinator_->estimator().map_from_odom_heading_rad()),
    });
- const auto odom_position = estimation_system_.odometry_position();
- const auto& estimated_state = estimation_system_.state();
+ const auto odom_position = autonomy_coordinator_->estimator().odometry_position();
+ const auto& estimated_state = autonomy_coordinator_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimated_state.position);
  frame_tree_.set_transform(
    "odom", "base_footprint",
    {
      {odom_position.x, odom_position.y, estimated_ground.height_m},
-     sim::physics::quaternion_from_euler(0.0, 0.0, estimation_system_.odometry_heading_rad()),
+     sim::physics::quaternion_from_euler(0.0, 0.0, autonomy_coordinator_->estimator().odometry_heading_rad()),
    });
  const double base_height = snapshot_.robot_height_m - estimated_ground.height_m;
  const double estimated_roll = estimated_state.attitude_valid
@@ -1859,7 +1858,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
  (intent.kind != FieldIntentKind::GoTo && intent.kind != FieldIntentKind::Return)) {
  return;
  }
- const auto& estimate = estimation_system_.state();
+ const auto& estimate = autonomy_coordinator_->estimator().state();
  const bool requires_heading = !planned_route_.empty();
  const double required_heading = requires_heading ? planned_route_.back().heading_rad : 0.0;
  if (distance(estimate.position, intent.target) >
@@ -1987,7 +1986,7 @@ void ScenarioSession::scan_environment() {
  }
  sim::LidarRaycastTruth lidar_truth;
  std::optional<sim::LidarPointCloudRaycastTruth> point_cloud_truth;
- const auto& estimated_state = estimation_system_.state();
+ const auto& estimated_state = autonomy_coordinator_->estimator().state();
  const std::optional<sim::platform::BaseAttitudeEstimate> estimated_attitude =
  estimated_state.attitude_valid
  ? std::optional<sim::platform::BaseAttitudeEstimate>{{
@@ -2088,7 +2087,7 @@ void ScenarioSession::consume_lidar_observation(
  if (level_.localization_mode == "known_map" && observation.lidar && autonomy_pipeline_) {
  const auto map = map_manager_.current_snapshot();
  if (map) {
- const auto& odom = estimation_system_.state();
+ const auto& odom = autonomy_coordinator_->estimator().state();
  sim::KnownMapLocalizationResult match;
  std::string localization_reason;
  const auto action = localization_supervisor_.next(
@@ -2125,8 +2124,8 @@ void ScenarioSession::consume_lidar_observation(
  if (!match.accepted && !match.rejection_reason.empty())
  snapshot_.localization_reason = match.rejection_reason;
  if (match.accepted)
- estimation_system_.correct(match.pose, observation.time_s);
- const auto& corrected = estimation_system_.state();
+ autonomy_coordinator_->estimator().correct(match.pose, observation.time_s);
+ const auto& corrected = autonomy_coordinator_->estimator().state();
  snapshot_.estimated_position = corrected.position;
  snapshot_.estimated_heading = corrected.heading_rad;
  snapshot_.estimated_forward_mps = corrected.linear_velocity_mps;
@@ -2143,18 +2142,18 @@ void ScenarioSession::consume_lidar_observation(
  }
  }
  if (observation.absolute_pose) {
-  estimation_system_.correct(*observation.absolute_pose, observation.time_s);
-  snapshot_.estimated_position = estimation_system_.state().position;
-  snapshot_.estimated_heading = estimation_system_.state().heading_rad;
- snapshot_.estimated_forward_mps = estimation_system_.state().linear_velocity_mps;
- snapshot_.estimated_lateral_mps = estimation_system_.state().lateral_velocity_mps;
- snapshot_.estimated_yaw_rate_radps = estimation_system_.state().angular_velocity_radps;
+  autonomy_coordinator_->estimator().correct(*observation.absolute_pose, observation.time_s);
+  snapshot_.estimated_position = autonomy_coordinator_->estimator().state().position;
+  snapshot_.estimated_heading = autonomy_coordinator_->estimator().state().heading_rad;
+ snapshot_.estimated_forward_mps = autonomy_coordinator_->estimator().state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = autonomy_coordinator_->estimator().state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = autonomy_coordinator_->estimator().state().angular_velocity_radps;
   update_frame_tree();
  }
  if (!observation.lidar || !observation.lidar_static_reference) {
  throw std::runtime_error("lidar observation is missing raw or static-reference scan");
  }
- const auto& estimate = estimation_system_.state();
+ const auto& estimate = autonomy_coordinator_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimate.position);
  const auto perception = autonomy_pipeline_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
@@ -3020,33 +3019,33 @@ void ScenarioSession::apply_motion() {
  if (!delivered_motion) {
   throw std::runtime_error("runtime channel did not deliver the simulated motion observation");
  }
- estimation_system_.update(*delivered_motion, fixed_step_s);
+ autonomy_coordinator_->estimator().update(*delivered_motion, fixed_step_s);
  if (delivered_motion->absolute_pose) {
-  estimation_system_.correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
+  autonomy_coordinator_->estimator().correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
  }
- snapshot_.estimated_position = estimation_system_.state().position;
- snapshot_.estimated_heading = estimation_system_.state().heading_rad;
- snapshot_.estimated_forward_mps = estimation_system_.state().linear_velocity_mps;
- snapshot_.estimated_lateral_mps = estimation_system_.state().lateral_velocity_mps;
- snapshot_.estimated_yaw_rate_radps = estimation_system_.state().angular_velocity_radps;
- snapshot_.localization_confidence = estimation_system_.state().localization_confidence;
- snapshot_.localization_valid = estimation_system_.state().localization_valid;
- snapshot_.localization_age_s = estimation_system_.state().localization_age_s;
- snapshot_.localization_position_sigma_m = estimation_system_.state().position_sigma_m;
- snapshot_.localization_heading_sigma_rad = estimation_system_.state().heading_sigma_rad;
- snapshot_.localization_score = estimation_system_.state().localization_score;
- snapshot_.localization_overlap = estimation_system_.state().localization_overlap;
- snapshot_.localization_score_margin = estimation_system_.state().localization_score_margin;
+ snapshot_.estimated_position = autonomy_coordinator_->estimator().state().position;
+ snapshot_.estimated_heading = autonomy_coordinator_->estimator().state().heading_rad;
+ snapshot_.estimated_forward_mps = autonomy_coordinator_->estimator().state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = autonomy_coordinator_->estimator().state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = autonomy_coordinator_->estimator().state().angular_velocity_radps;
+ snapshot_.localization_confidence = autonomy_coordinator_->estimator().state().localization_confidence;
+ snapshot_.localization_valid = autonomy_coordinator_->estimator().state().localization_valid;
+ snapshot_.localization_age_s = autonomy_coordinator_->estimator().state().localization_age_s;
+ snapshot_.localization_position_sigma_m = autonomy_coordinator_->estimator().state().position_sigma_m;
+ snapshot_.localization_heading_sigma_rad = autonomy_coordinator_->estimator().state().heading_sigma_rad;
+ snapshot_.localization_score = autonomy_coordinator_->estimator().state().localization_score;
+ snapshot_.localization_overlap = autonomy_coordinator_->estimator().state().localization_overlap;
+ snapshot_.localization_score_margin = autonomy_coordinator_->estimator().state().localization_score_margin;
  update_frame_tree();
- result_.odometry_error_m = estimation_system_.position_error(candidate_position);
+ result_.odometry_error_m = autonomy_coordinator_->estimator().position_error(candidate_position);
  result_.max_odometry_error_m = std::max(result_.max_odometry_error_m, result_.odometry_error_m);
- result_.odometry_heading_error_rad = estimation_system_.heading_error_rad(candidate.theta);
+ result_.odometry_heading_error_rad = autonomy_coordinator_->estimator().heading_error_rad(candidate.theta);
  result_.max_odometry_heading_error_rad =
    std::max(result_.max_odometry_heading_error_rad, result_.odometry_heading_error_rad);
- result_.fused_pose_error_m = estimation_system_.fused_position_error(candidate_position);
+ result_.fused_pose_error_m = autonomy_coordinator_->estimator().fused_position_error(candidate_position);
  result_.max_fused_pose_error_m =
  std::max(result_.max_fused_pose_error_m, result_.fused_pose_error_m);
- result_.fused_heading_error_rad = estimation_system_.fused_heading_error_rad(candidate.theta);
+ result_.fused_heading_error_rad = autonomy_coordinator_->estimator().fused_heading_error_rad(candidate.theta);
  result_.max_fused_heading_error_rad =
  std::max(result_.max_fused_heading_error_rad, result_.fused_heading_error_rad);
 }

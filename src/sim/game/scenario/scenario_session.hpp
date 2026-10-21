@@ -35,7 +35,6 @@
 #include "robot/autonomy/behavior/high_level_policy.hpp"
 #include "robot/core/event_log.hpp"
 #include "robot/autonomy/control/follow.hpp"
-#include "robot/autonomy/localization/estimation_system.hpp"
 #include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/mapping/terrain.hpp"
 #include "sim/hardware/sensors/sensor_system.hpp"
@@ -564,7 +563,7 @@ class ScenarioSession {
   return frame_tree_.lookup(target_frame, source_frame);
  }
  std::vector<std::string> frame_ids() const { return frame_tree_.frame_ids(); }
- double frame_timestamp_s() const { return estimation_system_.state().timestamp_s; }
+ double frame_timestamp_s() const { return autonomy_coordinator_->estimator().state().timestamp_s; }
  const std::vector<sim::RoutePoint>& planned_route() const { return planned_route_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
  const PayloadState& payload_state() const { return payload_; }
@@ -733,7 +732,6 @@ class ScenarioSession {
 	// Loaded once from robot_data so the executable contains no tuned
 	// thresholds that a hardware integrator cannot audit or override.
 	sim::MotionPolicy motion_policy_;
-	sim::EstimationSystem estimation_system_;
  sim::physics::FrameTransformTree frame_tree_;
  sim::TerrainModel terrain_;
  sim::TerrainCapability terrain_capability_;

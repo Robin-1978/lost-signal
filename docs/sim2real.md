@@ -54,7 +54,8 @@ deployable upper-policy transaction is implemented by
 `src/robot/autonomy/pipeline/autonomy_coordinator.*`; the scenario supplies only its typed inputs. The remaining
 composition work is to move route-progress, dynamic-interaction and local-candidate assembly behind the same
 provider-neutral ROBOT boundary. The algorithm implementations, including route progress and its PID state, live in
-the autonomy target. The repository still needs a native
+the autonomy target; the coordinator also owns the estimator instance and route-tracking state used by that loop. The
+repository still needs a native
 lifecycle/configuration executable before it can run on a physical platform without custom integration. The
 `deployable_boundary` test prevents that remaining adapter work from being bypassed by importing game or simulator
 types into the reusable targets.

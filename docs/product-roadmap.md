@@ -909,7 +909,9 @@ transaction is now also ROBOT-owned by `src/robot/autonomy/pipeline/autonomy_coo
 the shared safety shield are applied together from estimated-state inputs, while SIM supplies only LSRI observations,
 task targets and a provider-neutral map feasibility callback. The stateful route tracker/PID is now also owned by the
 same ROBOT coordinator; SIM can configure it from the selected chassis profile and consume typed tracking results, but
-does not own its state. The scenario no longer calls a policy or safety shield directly. The runtime thresholds that
+does not own its state. The estimator instance is now owned by the coordinator as well; SIM feeds it LSRI observation
+frames and reads the resulting estimated state, without retaining a parallel estimator. The scenario no longer calls
+a policy or safety shield directly. The runtime thresholds that
 the decision loop previously hard-coded — gravity, physical stand-off, decision
 step, rollover risk limit, planning deadbands, committed progress floor, creep speed and the latch window — load from
 `robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
