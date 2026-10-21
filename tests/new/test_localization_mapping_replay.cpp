@@ -1,4 +1,5 @@
 #include "robot/autonomy/mapping/online_slam.hpp"
+#include "robot/autonomy/localization/global_map_localizer.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -88,6 +89,7 @@ int main() {
  double maximum_error = 0.0;
  std::uint64_t previous_revision = 0;
  std::size_t previous_known_cells = 0;
+ std::shared_ptr<const sim::runtime::MapSnapshot> final_map;
  for (std::uint64_t sequence = 0; sequence < 30; ++sequence) {
  const double stamp_s = 1.0 + 0.1 * static_cast<double>(sequence);
  const double truth_x = 0.1 * static_cast<double>(sequence);
@@ -102,6 +104,7 @@ int main() {
  observations, prior, sim::runtime::TimePoint::from_seconds(stamp_s));
  CHECK(update.state == sim::autonomy::MappingState::Mapping);
  CHECK(update.published_map);
+ final_map = update.published_map;
  CHECK(update.map_revision == sequence + 1);
  CHECK(update.map_revision > previous_revision);
  const auto error = std::hypot(update.pose.position.x - truth_x,
@@ -119,5 +122,25 @@ int main() {
  // performance or loop closure.
  CHECK(maximum_error < 0.12);
  CHECK(previous_known_cells > 100);
+
+ // The published immutable revision is also the recovery artifact: a later
+ // run with no initial pose can match a fresh scan against the built map.
+ CHECK(final_map && final_map->grid);
+ const auto recovery_scan = scan_at(*final_map->grid, {2.0, 0.0}, 10.0, 100);
+ sim::GlobalMapLocalizationConfig recovery_config;
+ recovery_config.grid_step_m = 0.3;
+ recovery_config.heading_step_rad = 0.35;
+ recovery_config.minimum_overlap = 0.15;
+ recovery_config.minimum_score_margin = 0.02;
+ recovery_config.minimum_returns = 12;
+ recovery_config.maximum_returns = 96;
+ recovery_config.maximum_evaluations = 250'000;
+ sim::GlobalMapLocalizer recovery(recovery_config);
+ const auto recovered = recovery.localize_unknown_start(
+ recovery_scan, *final_map, 10.0);
+ CHECK(recovered.accepted);
+ CHECK(recovered.state == sim::autonomy::LocalizationState::Localized);
+ CHECK(std::hypot(recovered.pose.position.x - 2.0,
+ recovered.pose.position.y) < 0.35);
  return 0;
 }
