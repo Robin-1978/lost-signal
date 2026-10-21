@@ -55,7 +55,8 @@ deployable upper-policy transaction is implemented by
 composition work is to move route-progress, dynamic-interaction and local-candidate assembly behind the same
 provider-neutral ROBOT boundary. The algorithm implementations, including route progress and its PID state, live in
 the autonomy target; the coordinator also owns the estimator instance and route-tracking state used by that loop. The
-global planner instance and localization recovery scheduler are owned there as well. The repository still needs a native
+global planner instance, localization recovery scheduler and stateful perception/planning pipeline are owned there as
+well. The repository still needs a native
 lifecycle/configuration executable before it can run on a physical platform without custom integration. The
 `deployable_boundary` test prevents that remaining adapter work from being bypassed by importing game or simulator
 types into the reusable targets.

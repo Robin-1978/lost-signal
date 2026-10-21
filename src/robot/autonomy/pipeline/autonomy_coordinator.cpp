@@ -76,4 +76,28 @@ const ::autonomy::GlobalPlanningSystem& AutonomyCoordinator::global_planning() c
  return *global_planning_;
 }
 
+void AutonomyCoordinator::configure_pipeline(
+ const GridMap& static_map, int width, int height, double resolution_m,
+ std::uint32_t seed, ObservedObstacleLayerConfig obstacle_config,
+ const runtime::IMapProvider* map_provider) {
+ pipeline_ = std::make_unique<AutonomyPipeline>(
+ static_map, width, height, resolution_m, seed, std::move(obstacle_config), map_provider);
+}
+
+AutonomyPipeline& AutonomyCoordinator::pipeline() {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return *pipeline_;
+}
+
+const AutonomyPipeline& AutonomyCoordinator::pipeline() const {
+ if (!pipeline_)
+ throw std::logic_error("autonomy pipeline has not been configured");
+ return *pipeline_;
+}
+
+void AutonomyCoordinator::reset_pipeline(std::uint32_t seed) {
+ pipeline().reset(seed);
+}
+
 } // namespace sim::autonomy

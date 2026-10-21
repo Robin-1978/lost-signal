@@ -6,6 +6,7 @@
 #include "robot/autonomy/localization/estimation_system.hpp"
 #include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/planning/global/global_planner.hpp"
+#include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -65,6 +66,15 @@ class AutonomyCoordinator {
  ::autonomy::GlobalPlanningSystem& global_planning();
  const ::autonomy::GlobalPlanningSystem& global_planning() const;
 
+ void configure_pipeline(const GridMap& static_map, int width, int height,
+ double resolution_m, std::uint32_t seed,
+ ObservedObstacleLayerConfig obstacle_config = {},
+ const runtime::IMapProvider* map_provider = nullptr);
+ bool has_pipeline() const { return pipeline_ != nullptr; }
+ AutonomyPipeline& pipeline();
+ const AutonomyPipeline& pipeline() const;
+ void reset_pipeline(std::uint32_t seed);
+
  const std::string& policy_name() const { return policy_name_; }
 
  private:
@@ -75,6 +85,7 @@ class AutonomyCoordinator {
  EstimationSystem estimator_;
  autonomy::LocalizationSupervisor localization_supervisor_;
  std::unique_ptr<::autonomy::GlobalPlanningSystem> global_planning_;
+ std::unique_ptr<AutonomyPipeline> pipeline_;
 };
 
 } // namespace sim::autonomy

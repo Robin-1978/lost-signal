@@ -921,6 +921,11 @@ The coordinator now also owns the localization supervisor and global planning sy
 selection remains a composition input, while planner instances and localization scheduling are ROBOT state. A SIM
 scenario may provide a map and task waypoints, but it cannot retain a second planner or localization scheduler.
 
+The stateful `AutonomyPipeline` is now owned by the same ROBOT coordinator. This keeps perception tracks, prediction,
+crossing behavior, local rollout validation and trajectory tracking in one replaceable ROBOT pipeline while SIM only
+provides sensor/map observations and consumes typed outputs. The coordinator is an ownership/lifecycle boundary, not a
+replacement for the individual perception, localization or planning modules.
+
 The coordinator extraction is a typed composition step, not the completion of SIM→ROBOT migration. Route-following,
 dynamic interaction and local candidate assembly still need the same extraction treatment before the gate can close.
 

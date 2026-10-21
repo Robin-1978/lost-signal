@@ -323,9 +323,8 @@ void ScenarioSession::reset() {
  if (sensor_system_) {
  sensor_system_->reset(effective_seed(), effective_seed() ^ 0x9e3779b9U);
  }
- if (autonomy_pipeline_) {
- autonomy_pipeline_->reset(effective_seed() ^ 0x9e3779b9U);
- }
+ if (autonomy_coordinator_->has_pipeline())
+ autonomy_coordinator_->reset_pipeline(effective_seed() ^ 0x9e3779b9U);
  // A level's spawn marker is the deployment initial-pose contract. It seeds
  // odom -> base_footprint; the first LiDAR frame still has to pass the local
  // known-map matcher before it can correct map -> odom. Do not run the
@@ -1085,14 +1084,14 @@ void ScenarioSession::build_world() {
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
  const auto* mapping_lidar = resolved_build_.lidar();
  const double mapping_period_s = mapping_lidar ? 1.0 / mapping_lidar->scan_hz : 0.1;
- autonomy_pipeline_ = std::make_unique<sim::AutonomyPipeline>(
+ autonomy_coordinator_->configure_pipeline(
  *truth_map_, width, height, map_definition_.grid_resolution_m,
  effective_seed() ^ 0x9e3779b9U,
  sim::ObservedObstacleLayerConfig{
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
  }, &map_manager_);
-	autonomy_pipeline_->set_motion_policy(motion_policy_);
+	autonomy_coordinator_->pipeline().set_motion_policy(motion_policy_);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -2084,8 +2083,8 @@ void ScenarioSession::consume_lidar_observation(
  snapshot_.localization_action = "not_scheduled";
  snapshot_.localization_reason = "mode=" + level_.localization_mode +
  (observation.lidar ? ";scan=present" : ";scan=absent") +
- (autonomy_pipeline_ ? ";pipeline=present" : ";pipeline=absent");
- if (level_.localization_mode == "known_map" && observation.lidar && autonomy_pipeline_) {
+ (autonomy_coordinator_->has_pipeline() ? ";pipeline=present" : ";pipeline=absent");
+ if (level_.localization_mode == "known_map" && observation.lidar && autonomy_coordinator_->has_pipeline()) {
  const auto map = map_manager_.current_snapshot();
  if (map) {
  const auto& odom = autonomy_coordinator_->estimator().state();
@@ -2103,7 +2102,7 @@ void ScenarioSession::consume_lidar_observation(
  autonomy_coordinator_->localization_supervisor().local_window(odom.position));
  if (view) {
  const auto local_map = snapshot_from_view(*view);
- match = autonomy_pipeline_->localize_known_map(
+ match = autonomy_coordinator_->pipeline().localize_known_map(
  *observation.lidar, odom.position, odom.heading_rad, local_map,
  observation.time_s);
  } else {
@@ -2112,7 +2111,7 @@ void ScenarioSession::consume_lidar_observation(
  autonomy_coordinator_->localization_supervisor().record_local(
  match.accepted, observation.time_s, match.pose);
  } else if (action == sim::autonomy::LocalizationAction::GlobalRelocalization) {
- match = autonomy_pipeline_->localize_known_map_global(
+ match = autonomy_coordinator_->pipeline().localize_known_map_global(
  *observation.lidar, *map, observation.time_s);
  autonomy_coordinator_->localization_supervisor().record_global(
  match.accepted, observation.time_s, match.pose);
@@ -2156,7 +2155,7 @@ void ScenarioSession::consume_lidar_observation(
  }
  const auto& estimate = autonomy_coordinator_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimate.position);
- const auto perception = autonomy_pipeline_->process_lidar(
+ const auto perception = autonomy_coordinator_->pipeline().process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
  estimate.lateral_velocity_mps,
@@ -2202,11 +2201,11 @@ if (first_detection && snapshot_.dynamic_object_detected) {
 
 void ScenarioSession::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
- if (!autonomy_pipeline_) {
+ if (!autonomy_coordinator_->has_pipeline()) {
   return;
  }
  const auto tracks =
- autonomy_pipeline_->dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
+ autonomy_coordinator_->pipeline().dynamic_obstacles().active_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
  if (track.motion_class == sim::TrackMotionClass::Unconfirmed)
  continue;

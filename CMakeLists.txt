@@ -216,7 +216,7 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_test(NAME autonomy_pipeline COMMAND test_autonomy_pipeline)
 
  add_executable(test_autonomy_coordinator tests/new/test_autonomy_coordinator.cpp)
- target_link_libraries(test_autonomy_coordinator PRIVATE lost_signal_robot_autonomy)
+ target_link_libraries(test_autonomy_coordinator PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME autonomy_coordinator COMMAND test_autonomy_coordinator)
 
  add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)
@@ -532,7 +532,7 @@ if(LOST_SIGNAL_BUILD_TESTS)
   add_test(NAME ${test_name} COMMAND ${target})
  endfunction()
  lost_signal_add_shared_robot_test(localization_supervisor test_localization_supervisor lost_signal_robot_autonomy)
- lost_signal_add_shared_robot_test(autonomy_coordinator test_autonomy_coordinator lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(autonomy_coordinator test_autonomy_coordinator lost_signal_robot_autonomy lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(localization_motion_authority test_localization_motion_authority lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(provider_conformance test_provider_conformance lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(diagnostic_log test_diagnostic_log lost_signal_robot_runtime)

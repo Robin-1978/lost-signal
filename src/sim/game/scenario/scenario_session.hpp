@@ -8,7 +8,6 @@
 #include "sim/game/mission/systems/collision_monitor.hpp"
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
 #include "sim/game/mission/systems/decision_evidence_system.hpp"
-#include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
 #include "robot/autonomy/pipeline/autonomy_coordinator.hpp"
 #include "sim/game/mission/systems/field_dispatch_system.hpp"
 #include "sim/game/mission/systems/field_operator_system.hpp"
@@ -703,7 +702,6 @@ class ScenarioSession {
  std::optional<sim::physics::RigidTransform> world_from_sensor_at_capture;
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
- std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;
