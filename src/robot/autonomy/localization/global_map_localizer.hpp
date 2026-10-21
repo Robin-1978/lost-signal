@@ -33,6 +33,12 @@ class GlobalMapLocalizer final : public autonomy::ILocalizationProvider {
  const Scan& scan, const Vec2& odom_position, double odom_heading_rad,
  const runtime::MapSnapshot& map, double timestamp_s) const override;
 
+ // Explicit cold-start entry point. The map search is global; the zero prior
+ // is only a finite API placeholder and is never used to constrain candidates.
+ autonomy::LocalizationResult localize_unknown_start(
+ const Scan& scan, const runtime::MapSnapshot& map,
+ double timestamp_s) const;
+
  private:
  GlobalMapLocalizationConfig config_;
 };

@@ -312,7 +312,10 @@ LiDAR observations and odometry/IMU motion are evaluated against the whole bound
 a similarly global scan matcher. It must support an unknown initial pose, reject symmetric or feature-poor ambiguity,
 and expose `UNLOCALIZED`, `LOCALIZED`, `DEGRADED` and `RELOCALIZING` states. The robot may perform a bounded in-place
 observation sweep before accepting a pose; this is a localization behavior and must not be hidden inside DWA. The
-current bounded `KnownMapLocalizer` remains only the local-correction component until this gate is implemented.
+`GlobalMapLocalizer` plus `StartupLocalization` now implement this bounded cold-start contract; the existing bounded
+`KnownMapLocalizer` remains the local-correction component. Startup tests cover no-scan waiting, unknown-origin global
+recovery, rejection without a fabricated pose, and the mapless fallback. AMCL/particle recovery and a physical
+in-place sweep remain P2 extensions for larger initial error, kidnapped-robot recovery and symmetric maps.
 
 The complementary **mapless online-SLAM path** starts with an arbitrary local origin, builds submaps while moving and
 estimates its own pose from LiDAR plus the IMU/encoder prior. It does not require RTK or GNSS for a small self-contained map.

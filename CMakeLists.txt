@@ -81,6 +81,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/localization/estimation_system.cpp
  src/robot/autonomy/localization/known_map_localizer.cpp
  src/robot/autonomy/localization/global_map_localizer.cpp
+ src/robot/autonomy/localization/startup_localization.cpp
  src/robot/autonomy/localization/dead_reckon.cpp
  src/robot/autonomy/perception/dynamic_obstacle_map.cpp
  src/robot/autonomy/perception/lidar_perception_system.cpp
@@ -203,6 +204,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_online_slam tests/new/test_online_slam.cpp)
  target_link_libraries(test_online_slam PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME online_slam COMMAND test_online_slam)
+
+ add_executable(test_startup_localization tests/new/test_startup_localization.cpp)
+ target_link_libraries(test_startup_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME startup_localization COMMAND test_startup_localization)
 
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
  target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)

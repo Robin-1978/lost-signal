@@ -224,4 +224,9 @@ autonomy::LocalizationResult GlobalMapLocalizer::localize(
  return result;
 }
 
+autonomy::LocalizationResult GlobalMapLocalizer::localize_unknown_start(
+ const Scan& scan, const runtime::MapSnapshot& map, double timestamp_s) const {
+ return localize(scan, {}, 0.0, map, timestamp_s);
+}
+
 } // namespace sim

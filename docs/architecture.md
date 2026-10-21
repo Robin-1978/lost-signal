@@ -115,8 +115,10 @@ ground rather than promoted to an obstacle merely because the robot is pitched o
 azimuths are searched within the localization uncertainty envelope instead of requiring an exact same-ray match.
 The ROBOT `KnownMapLocalizer` additionally provides a bounded deterministic occupancy scan-to-map correction around
 the wheel/IMU prior, with explicit overlap, timestamp and degeneracy rejection and a covariance-bearing pose result.
-It is known-map localization rather than map-building SLAM; full deskew, calibrated innovation gates and normal-level
-deployment evidence remain the P2 gate.
+`GlobalMapLocalizer` and `StartupLocalization` provide cold start: when a known map exists, an unknown initial pose is
+searched against the complete bounded map and rejected matches remain `RELOCALIZING`; no simulator absolute pose is
+substituted. With no map, the same startup contract delegates to `OnlineSlamMapBuilder` and publishes a local-origin
+pose. Full deskew, calibrated innovation gates and normal-level deployment evidence remain the P2 gate.
 
 A future camera provider follows the same boundary: LSRI carries timestamped image or depth observations with frame,
 calibration and exposure timing; ROBOT perception may publish class probability, extent, orientation and optional
