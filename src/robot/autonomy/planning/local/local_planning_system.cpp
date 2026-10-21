@@ -605,13 +605,27 @@ LocalPlanningOutput LocalPlanningSystem::plan(
  // Reserve the hold state for confidence below the minimum usable envelope or
  // an actually stale stream whose age has exceeded the recovery grace period.
 	const auto& authority = motion_policy_.localization_motion;
+	// `localization_valid` is the estimator's hard covariance/finite-state
+	// contract. A valid but low soft score is therefore limited to the cautious
+	// envelope, not the most severe reduced envelope; otherwise sparse-map
+	// scenes turn a bounded odometric estimate into an unnecessarily slow
+	// mission timeout. Invalid estimates still use the full reduced scale.
+	const double effective_localization_confidence = request.localization_valid
+		? std::max(localization_confidence, authority.reduced_confidence)
+		: localization_confidence;
+	// Age is already reflected in localization_confidence through the stale
+	// map-evidence term. Do not turn an old map fix into an unconditional stop
+	// when the independent covariance/IMU/encoder estimate remains valid; stop
+	// only when health is invalid, confidence is below the hold floor, or stale
+	// evidence has also fallen below the reduced-motion floor.
 	const bool localization_hold = !std::isfinite(localization_confidence) ||
 		localization_confidence < authority.hold_confidence ||
-		localization_age_s > authority.hold_max_age_s;
+		(localization_age_s > authority.hold_max_age_s &&
+		 effective_localization_confidence < authority.reduced_confidence);
 	const double localization_speed_scale = localization_hold ? 0.0
-		: !request.localization_valid || localization_confidence < authority.reduced_confidence
+		: !request.localization_valid || effective_localization_confidence < authority.reduced_confidence
 		? authority.reduced_speed_scale
-		: localization_confidence < authority.cautious_confidence
+		: effective_localization_confidence < authority.cautious_confidence
 		? authority.cautious_speed_scale : 1.0;
  request.max_speed_mps =
  std::max(0.0, request.max_speed_mps) * localization_speed_scale;

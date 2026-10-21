@@ -82,6 +82,17 @@ CHECK(!held.status.recovery_condition.empty());
  CHECK(stale.selection.trajectory.command.v <=
  0.70 * stale_request.max_speed_mps + 1e-9);
 
+ // A stale map correction with bounded encoder/IMU covariance is degraded,
+ // but it is not an unconditional stop. The planner retains the reduced
+ // envelope until the quality itself falls below the hold floor.
+ auto old_but_bounded = nominal_request;
+ old_but_bounded.localization_confidence = 0.50;
+ old_but_bounded.localization_age_s = 40.0;
+ const auto old_bounded = planner.plan(old_but_bounded, map, {});
+ CHECK(old_bounded.selection.validation.accepted());
+ CHECK(old_bounded.status.mode == sim::LocalMotionMode::LocalizationReduced);
+ CHECK(old_bounded.selection.trajectory.command.v > 0.0);
+
  // Invalid localization cannot be converted into ordinary motion by a
  // recovery branch. At standstill the safe command is zero.
  auto invalid_request = nominal_request;

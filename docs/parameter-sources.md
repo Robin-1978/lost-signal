@@ -224,7 +224,10 @@ The three sections have separate meanings:
 
 - `localization_quality` converts a pose measurement and its covariance into the published confidence and the
  valid/untrusted flag. The half-quality sigmas and the covariance/evidence blend describe how the localizer's
- demonstrated spread maps to a usable quality number; they are calibration values.
+ demonstrated spread maps to a usable quality number; they are calibration values. Observation age decays the
+ map-match evidence term; it does not erase independent wheel/IMU covariance evidence in a geometrically sparse
+ area. A valid but low soft score therefore enters the planner's cautious envelope, while invalid covariance still
+ causes a hold and a braking-tail check.
 - `localization_supervisor` schedules bounded local scan-to-map correction and rate-limited whole-map recovery. The
  intervals are compute and mission cadence choices; the sigmas describe when the current hypothesis is no longer
  trustworthy.

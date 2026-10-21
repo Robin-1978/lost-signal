@@ -915,10 +915,15 @@ hardware files as the source tree.
 ### Known failing tests at this checkpoint
 
 - `mission_simulation`: `slope_launch` still times out after `stability_hold` with a diverged odometry estimate.
-- `test_summon_recharge` fixture still predates the `known_map` sensor-slot rule and aborts at load; it needs a
- build that declares and equips the sensor slot.
-- `stop_whatif`, `entry_shadow_town`, `orchard_scramble`, `ff_sensitivity` and `run_artifact` were failing before
- this checkpoint and have not been re-diagnosed yet.
+- `orchard_scramble`: the balanced and constrained policies can still time out after a valid, collision-free run.
+ The latest evidence is no longer a soft-inflation deadlock: in sparse orchard geometry the known-map matcher often
+ has fewer than eight occupied returns, the correction age grows, and the estimator eventually loses its covariance
+ validity or limits the speed envelope before the task can finish. The ROBOT-side change now separates stale map
+ evidence from wheel/IMU covariance, treats valid sparse scans as a cautious envelope, and lowers the default local
+ geometric minimum to four returns. This removes the unconditional stale-age stop, but the mission still needs a
+ held-out orchard replay with free-space ray evidence and route-time budgeting before it can be marked green.
+- `stop_whatif`, `entry_shadow_town`, `ff_sensitivity` and `run_artifact` remain to be re-run after the planner and
+ localization changes; no failure is waived by this checkpoint.
 
 ### Slope-lab localization mode
 

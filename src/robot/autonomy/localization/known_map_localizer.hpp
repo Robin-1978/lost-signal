@@ -18,7 +18,11 @@ struct KnownMapLocalizationConfig {
  double heading_step_rad{0.035};
  double minimum_overlap{0.30};
  double minimum_score_margin{0.01};
- std::size_t minimum_returns{8};
+ // Open fields and orchard aisles can legitimately expose only a handful of
+ // occupied returns. Keep the geometric minimum low enough to avoid freezing
+ // on a sparse scan; overlap, score margin and covariance still gate whether
+ // the correction is accepted and its resulting speed envelope.
+ std::size_t minimum_returns{4};
  std::size_t maximum_returns{96};
  // Two candidates closer than this describe one physical hypothesis. The
  // score margin is measured between separated hypotheses only: the endpoint

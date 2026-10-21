@@ -266,9 +266,14 @@ void EstimationSystem::update(const ObservationFrame& observation, double dt_s) 
  std::min(state_.localization_score, state_.localization_overlap), 0.0, 1.0);
  const double age_factor = std::exp(
  -state_.localization_age_s / policy.localization_quality.confidence_decay_time_constant_s);
+ // Age belongs to the map-observation evidence term. It must not erase the
+ // independent wheel/IMU covariance evidence: an open, geometrically sparse
+ // area can legitimately provide no new scan match while bounded odometry
+ // remains usable at a reduced speed. The planner may still hold when the
+ // covariance or validity contract is lost.
  state_.localization_confidence = std::clamp(
- (policy.localization_quality.covariance_weight * covariance_quality +
- policy.localization_quality.evidence_weight * quality_evidence) * age_factor,
+ policy.localization_quality.covariance_weight * covariance_quality +
+ policy.localization_quality.evidence_weight * quality_evidence * age_factor,
  0.0, 1.0);
  state_.localization_valid = std::isfinite(state_.position_sigma_m) &&
  std::isfinite(state_.heading_sigma_rad) &&
