@@ -14,6 +14,8 @@ The campaign remains deterministic and fully usable without a language model. Kn
 the release foundation because normal autonomous runs must not depend on simulator-truth pose corrections. Full map-
 building SLAM, general scenario overlays, VLA, multi-process transport, HIL, and native robot drivers remain outside
 this release path until a concrete learning or deployment case requires them.
+SIM and ROBOT currently share one process through typed LSRI/provider interfaces. Multi-process transport is optional
+future infrastructure, not a boundary required by the product architecture.
 
 ## Content formats beyond point-to-point delivery
 

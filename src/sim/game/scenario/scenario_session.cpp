@@ -248,7 +248,6 @@ void ScenarioSession::reset() {
  lidar_delivery_queue_.clear();
  events_.clear();
  decision_evidence_system_.reset();
- vehicle_measurement_system_.reset();
  replay_.clear();
  shadow_episodes_.clear();
  shadow_episode_open_ = false;
@@ -333,11 +332,7 @@ void ScenarioSession::reset() {
  // explicit relocalization path.
  autonomy_coordinator_->localization_supervisor().reset(level_.localization_mode == "known_map");
  update_actors();
- slip_detector_.reset();
  slip_episode_times_.clear();
- slip_prev_tread_v_ = 0.0;
- slip_prev_body_v_ = 0.0;
- slip_have_prev_ = false;
  score_command_initialized_ = false;
  score_previous_command_v_mps_ = 0.0;
  score_previous_command_w_radps_ = 0.0;
@@ -2696,19 +2691,14 @@ void ScenarioSession::apply_motion() {
  // same sample interval.
  if (chassis_caps_.tread_slip_observable) {
   const double tread_v = (snapshot_.control.left_measured_mps + snapshot_.control.right_measured_mps) / 2.0;
-  if (slip_have_prev_) {
-   const double encoder_accel = (tread_v - slip_prev_tread_v_) / fixed_step_s;
-   const double body_accel = (candidate.v - slip_prev_body_v_) / fixed_step_s;
-   slip_detector_.step(encoder_accel, body_accel, fixed_step_s);
-   if (slip_detector_.episodes() > static_cast<int>(slip_episode_times_.size())) {
+ autonomy_coordinator_->diagnostics().update_slip(
+     true, tread_v, candidate.v, fixed_step_s);
+ if (autonomy_coordinator_->diagnostics().slip_episodes() >
+     static_cast<int>(slip_episode_times_.size())) {
     slip_episode_times_.push_back(snapshot_.time_s);
-   }
   }
-  slip_prev_tread_v_ = tread_v;
-  slip_prev_body_v_ = candidate.v;
-  slip_have_prev_ = true;
  }
- snapshot_.traction_slip_observed = slip_detector_.detected();
+ snapshot_.traction_slip_observed = autonomy_coordinator_->diagnostics().slip_detected();
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
@@ -2927,7 +2917,7 @@ void ScenarioSession::apply_motion() {
 
  snapshot_.robot = candidate;
  result_.path_length_m += distance({before.x, before.y}, candidate_position);
- snapshot_.braking = vehicle_measurement_system_.update(
+ snapshot_.braking = autonomy_coordinator_->diagnostics().update_braking(
  snapshot_.time_s + fixed_step_s, candidate_position, candidate.v, applied_command.target_v);
  if (snapshot_.braking.valid) {
  result_.braking_measurement_valid = true;

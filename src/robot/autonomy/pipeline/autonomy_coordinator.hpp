@@ -3,6 +3,7 @@
 #include "robot/autonomy/behavior/high_level_policy.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
 #include "robot/autonomy/control/controlled_stop_latch.hpp"
+#include "robot/autonomy/diagnostics/chassis_diagnostics.hpp"
 #include "robot/autonomy/localization/estimation_system.hpp"
 #include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/planning/global/global_planner.hpp"
@@ -48,6 +49,9 @@ class AutonomyCoordinator {
  const ControlledStopLatch::Config& config);
  void reset_controlled_stop();
 
+ ChassisDiagnosticsSystem& diagnostics() { return diagnostics_; }
+ const ChassisDiagnosticsSystem& diagnostics() const { return diagnostics_; }
+
  void set_estimator_motion_policy(const MotionPolicy& policy) {
  estimator_.set_motion_policy(policy);
  }
@@ -82,6 +86,7 @@ class AutonomyCoordinator {
  std::string policy_name_;
  std::unique_ptr<RouteTrackingSystem> route_tracking_;
  ControlledStopLatch controlled_stop_latch_;
+ ChassisDiagnosticsSystem diagnostics_;
  EstimationSystem estimator_;
  autonomy::LocalizationSupervisor localization_supervisor_;
  std::unique_ptr<::autonomy::GlobalPlanningSystem> global_planning_;

@@ -80,6 +80,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/local/local_planning_system.cpp
  src/robot/autonomy/validation/collision_monitor.cpp
  src/robot/autonomy/diagnostics/decision_evidence.cpp
+ src/robot/autonomy/diagnostics/chassis_diagnostics.cpp
  src/robot/autonomy/diagnostics/vehicle_measurement.cpp
  src/robot/autonomy/planning/path_smoothing.cpp
  src/robot/autonomy/planning/task/task_ordering.cpp
@@ -218,6 +219,10 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_autonomy_coordinator tests/new/test_autonomy_coordinator.cpp)
  target_link_libraries(test_autonomy_coordinator PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME autonomy_coordinator COMMAND test_autonomy_coordinator)
+
+ add_executable(test_chassis_diagnostics tests/new/test_chassis_diagnostics.cpp)
+ target_link_libraries(test_chassis_diagnostics PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME chassis_diagnostics COMMAND test_chassis_diagnostics)
 
  add_executable(test_safe_stop_limiter tests/new/test_safe_stop_limiter.cpp)
  target_link_libraries(test_safe_stop_limiter PRIVATE lost_signal_robot_autonomy)
@@ -536,6 +541,7 @@ if(LOST_SIGNAL_BUILD_TESTS)
  lost_signal_add_shared_robot_test(localization_motion_authority test_localization_motion_authority lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(provider_conformance test_provider_conformance lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(diagnostic_log test_diagnostic_log lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(chassis_diagnostics test_chassis_diagnostics lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(online_slam test_online_slam lost_signal_robot_autonomy lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(pose_graph test_pose_graph lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(slam_session test_slam_session lost_signal_robot_autonomy lost_signal_robot_runtime)

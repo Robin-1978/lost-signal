@@ -574,7 +574,7 @@ class ScenarioSession {
  void seek_replay(double time_s);
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
  bool shadow_episode_open() const { return shadow_episode_open_; }
- int slip_episodes() const { return slip_detector_.episodes(); }
+ int slip_episodes() const { return autonomy_coordinator_->diagnostics().slip_episodes(); }
  const std::vector<double>& slip_episode_times() const { return slip_episode_times_; }
  const char* physics_backend_name() const;
  const std::string& runtime_provider_id() const { return runtime_provider_id_; }
@@ -782,17 +782,12 @@ class ScenarioSession {
  MissionResult result_;
  std::vector<MissionEvent> events_;
  DecisionEvidenceSystem decision_evidence_system_;
- sim::autonomy::VehicleMeasurementSystem vehicle_measurement_system_;
  std::vector<ShadowEpisode> shadow_episodes_;
  std::vector<MissionSnapshot> replay_;
  // Shadow slip instrument (tracked only, see apply_motion): detector state
  // plus previous-step speeds. Observation only; no consumer yet (consumer
  // design is a behavior gate, not smuggled in here).
- sim::SlipDetector slip_detector_;
  std::vector<double> slip_episode_times_;
- double slip_prev_tread_v_{0.0};
- double slip_prev_body_v_{0.0};
- bool slip_have_prev_{false};
  bool score_command_initialized_{false};
  double score_previous_command_v_mps_{0.0};
  double score_previous_command_w_radps_{0.0};

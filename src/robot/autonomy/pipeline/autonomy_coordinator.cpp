@@ -15,6 +15,7 @@ AutonomyCoordinator::AutonomyCoordinator(std::shared_ptr<IHighLevelPolicy> polic
 void AutonomyCoordinator::reset(std::uint64_t seed) {
  policy_->reset(seed);
  policy_name_ = policy_->name();
+ diagnostics_.reset();
 }
 
 AutonomyCoordinatorOutput AutonomyCoordinator::update(

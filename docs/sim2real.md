@@ -29,6 +29,12 @@ robot-only build gate configures with `LOST_SIGNAL_BUILD_SIM=OFF`; it does not f
 timestamps, frames, measurements, and estimated state only. Simulation truth, authored actors, game goals, scoring,
 and rendering snapshots cannot appear in an autonomy interface.
 
+The current product does not require an IPC boundary between SIM and ROBOT. The simulator and ROBOT stack may run in
+one process and call the same typed C++ LSRI/provider interfaces directly. LSRI defines ownership, units, frames,
+timestamps, lifecycle, expiry and rejection semantics; it is not a requirement to serialize every in-process
+algorithm call. A future replay, remote, or hardware adapter may add transport behind the provider boundary without
+changing ROBOT algorithms, but no distributed runtime is part of the current execution path.
+
 Providers are selected per LSRI endpoint. A hardware-in-the-loop run may bind a native LiDAR to `lidar/front` while
 keeping IMU, encoders, actuators, terrain, and vehicle dynamics simulated. The inverse arrangement can feed virtual
 sensors to the deployable controller and command a real motor bench. Every binding declares its source, frame,
