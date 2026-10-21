@@ -22,12 +22,24 @@ bool finite_pose(const EstimatedState& state) {
 }
 
 bool finite_scan(const Scan& scan) {
- return scan.n_rays > 0 && scan.ranges.size() == static_cast<std::size_t>(scan.n_rays) &&
+ if (!(scan.n_rays > 0 &&
+ scan.ranges.size() == static_cast<std::size_t>(scan.n_rays) &&
  scan.hit.size() == scan.ranges.size() && std::isfinite(scan.max_range) &&
  scan.max_range > 0.0 && std::isfinite(scan.angle_min_rad) &&
  std::isfinite(scan.angle_increment_rad) &&
  (scan.ray_heights_m.empty() ||
- scan.ray_heights_m.size() == scan.ranges.size());
+ scan.ray_heights_m.size() == scan.ranges.size())))
+ return false;
+ for (const double offset : scan.ray_time_offsets_s) {
+ if (!std::isfinite(offset) || offset > 1e-9 ||
+ (scan.scan_period_s > 0.0 && offset < -scan.scan_period_s - 1e-9))
+ return false;
+ }
+ for (const double height : scan.ray_heights_m) {
+ if (!std::isfinite(height) && !std::isnan(height))
+ return false;
+ }
+ return true;
 }
 
 } // namespace
@@ -141,6 +153,8 @@ std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
  for (const auto& point : cloud.points) {
  if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
  !std::isfinite(point.z_m) ||
+ !std::isfinite(point.time_offset_s) || point.time_offset_s > 1e-9 ||
+ point.time_offset_s < -cloud.scan_period_s - 1e-9 ||
  (point.x_m == 0.0 && point.y_m == 0.0) ||
  point.z_m <= -config_.sensor_height_m + config_.ground_rejection_band_m)
  continue;
