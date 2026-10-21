@@ -68,7 +68,8 @@ bool MappingSession::trigger(const Pose2& pose, double stamp_s) const {
  stamp_s - previous.stamp_s >= config_.keyframes.maximum_interval_s;
 }
 
-MappingSessionUpdate MappingSession::ingest(Pose2 pose, Scan scan, double stamp_s) {
+MappingSessionUpdate MappingSession::ingest(Pose2 pose, Scan scan, double stamp_s,
+ EstimatedState motion) {
  MappingSessionUpdate output;
  std::string reason;
  if (!valid_config(&reason)) {
@@ -129,7 +130,7 @@ MappingSessionUpdate MappingSession::ingest(Pose2 pose, Scan scan, double stamp_
  return output;
  }
  }
- keyframes_.push_back({graph_keyframe, std::move(scan)});
+ keyframes_.push_back({graph_keyframe, std::move(scan), std::move(motion)});
  output.created_keyframe = true;
  output.keyframe_id = id;
  output.diagnostic = "keyframe created";
@@ -170,6 +171,26 @@ MappingSessionUpdate MappingSession::add_loop_closure(
  output.keyframe_id = to;
  output.diagnostic = decision.diagnostic;
  return output;
+}
+
+bool MappingSession::apply_optimized_poses(const PoseGraphBackend& optimized,
+ std::string* reason) {
+ const auto fail = [&](std::string message) {
+ if (reason)
+ *reason = std::move(message);
+ return false;
+ };
+ if (optimized.keyframe_count() != keyframes_.size())
+ return fail("optimized graph does not match this session");
+ if (graph_.keyframe_count() != keyframes_.size())
+ return fail("session graph does not match retained keyframes");
+ if (!graph_.apply_keyframe_poses(optimized.keyframes(), reason))
+ return false;
+ for (std::size_t index = 0; index < keyframes_.size(); ++index)
+ keyframes_[index].graph.initial_pose = graph_.keyframes()[index].initial_pose;
+ if (reason)
+ reason->clear();
+ return true;
 }
 
 } // namespace sim::autonomy

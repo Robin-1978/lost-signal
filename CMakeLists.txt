@@ -98,6 +98,8 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/mapping/pose_graph.cpp
  src/robot/autonomy/mapping/mapping_session.cpp
  src/robot/autonomy/mapping/loop_closure.cpp
+ src/robot/autonomy/mapping/keyframe_map_rebuilder.cpp
+ src/robot/autonomy/mapping/slam_map_publication.cpp
  src/robot/autonomy/mapping/observed_obstacle_layer.cpp
  src/robot/autonomy/planning/local/predictor.cpp
  src/robot/autonomy/localization/state_estimator.cpp
@@ -224,6 +226,13 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_mapping_session tests/new/test_mapping_session.cpp)
  target_link_libraries(test_mapping_session PRIVATE lost_signal_robot_autonomy)
  add_test(NAME mapping_session COMMAND test_mapping_session)
+
+ add_executable(test_keyframe_map_rebuilder tests/new/test_keyframe_map_rebuilder.cpp)
+ target_link_libraries(test_keyframe_map_rebuilder PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME keyframe_map_rebuilder COMMAND test_keyframe_map_rebuilder)
+ add_executable(test_slam_map_publication tests/new/test_slam_map_publication.cpp)
+ target_link_libraries(test_slam_map_publication PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME slam_map_publication COMMAND test_slam_map_publication)
 
  add_executable(test_startup_localization tests/new/test_startup_localization.cpp)
  target_link_libraries(test_startup_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)

@@ -100,6 +100,13 @@ class PoseGraphBackend {
  PoseGraphOptimizationConfig config = {});
  double total_error() const;
 
+ // Publishes poses produced by optimize() back into this graph. The caller
+ // passes the optimized keyframe list from the same session; identity,
+ // ordering and timestamps must match exactly so a correction can never be
+ // attached to the wrong node. Constraint measurements are untouched.
+ bool apply_keyframe_poses(const std::vector<PoseGraphKeyframe>& poses,
+ std::string* reason = nullptr);
+
  private:
  bool validate(std::string* reason) const;
  std::vector<PoseGraphKeyframe> keyframes_;

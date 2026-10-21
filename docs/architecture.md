@@ -49,6 +49,12 @@ observe `H`, and presentation reads immutable snapshots without changing the run
 
 The [Lost Signal Robot Interface (LSRI)](runtime-interface.md) is the project-owned robot boundary. Its ROBOT port reads validated observations and writes expiring body-motion or actuator commands. Its platform side can be composed from simulated, replay, remote, and native providers one endpoint at a time.
 
+LSRI is intentionally below the ROBOT algorithm graph. Localization, mapping, perception, planning, validation, control
+and executive modules use typed ROBOT interfaces that preserve the same units, frames, time, quality, lifecycle and failure
+semantics; they do not exchange opaque LSRI packets for every in-process call. This keeps high-rate modules replaceable
+without coupling them to a sensor driver or simulator transport. An out-of-process module is adapted to a versioned LSRI
+representation only at that process boundary, and the deployable boundary test keeps this graph ROBOT-owned.
+
 LSRI remains a small project standard with no external middleware, executor, discovery, or device-SDK dependency.
 
 ### Content

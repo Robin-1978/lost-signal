@@ -490,4 +490,28 @@ PoseGraphOptimizationResult PoseGraphBackend::optimize(
  return result;
 }
 
+bool PoseGraphBackend::apply_keyframe_poses(
+ const std::vector<PoseGraphKeyframe>& poses, std::string* reason) {
+ const auto fail = [&](std::string message) {
+ if (reason)
+ *reason = std::move(message);
+ return false;
+ };
+ if (poses.size() != keyframes_.size())
+ return fail("optimized pose set does not match the keyframe count");
+ for (std::size_t index = 0; index < poses.size(); ++index) {
+ if (poses[index].id != keyframes_[index].id)
+ return fail("optimized pose ids do not match this graph");
+ if (poses[index].stamp_s != keyframes_[index].stamp_s)
+ return fail("optimized pose timestamps do not match this graph");
+ if (!finite_pose(poses[index].initial_pose))
+ return fail("optimized pose set contains a non-finite pose");
+ }
+ for (std::size_t index = 0; index < poses.size(); ++index)
+ keyframes_[index].initial_pose = poses[index].initial_pose;
+ if (reason)
+ reason->clear();
+ return true;
+}
+
 } // namespace sim::autonomy

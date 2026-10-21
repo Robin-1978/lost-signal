@@ -344,10 +344,15 @@ third-party optimizer is considered.
 
 The next P2 gates are:
 
-1. **In progress:** `MappingSession` now selects bounded keyframes from motion, heading and time thresholds, retains
+1. **Completed component gate:** `MappingSession` now selects bounded keyframes from motion, heading and time thresholds, retains
  timestamped session scans, creates the sequential odometry chain, and applies a separate loop-closure evidence gate
  for temporal separation, spatial candidate distance, overlap, score margin and information validity. Complete
- reconstruction of an optimized map revision is still required;
+ reconstruction of an optimized map revision now has a separate rebuilder that regenerates occupancy/elevation from
+ retained keyframe scans and per-return motion. `SlamMapPublication` now optimizes a graph copy, rebuilds from corrected
+ poses, validates the candidate, and only then atomically calls `MapManager::replace`; old immutable revisions remain
+ available when optimization, reconstruction, or publication fails. The graph correction gate rejects non-finite,
+ non-improving, or implausibly large corrections. The production integration gate still requires dynamic filtering and
+ held-out replay evidence;
 2. calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and uncertainty;
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;

@@ -32,6 +32,9 @@ struct MappingSessionKeyframe {
  // navigation-map snapshot; a production recorder may replace it with a
  // content-addressed external reference.
  Scan scan;
+ // Body twist at the retained scan's end time, used by the reconstruction
+ // stage to restore per-return de-skew without storing frontend internals.
+ EstimatedState motion;
 };
 
 struct MappingSessionUpdate {
@@ -50,9 +53,17 @@ class MappingSession final {
  explicit MappingSession(MappingSessionConfig config = {});
 
  void reset();
- MappingSessionUpdate ingest(Pose2 pose, Scan scan, double stamp_s);
+ MappingSessionUpdate ingest(Pose2 pose, Scan scan, double stamp_s,
+ EstimatedState motion = {});
  MappingSessionUpdate add_loop_closure(std::uint64_t from, std::uint64_t to,
  LoopClosureEvidence evidence);
+
+ // Adopts corrected keyframe poses produced by optimizing a copy of this
+ // session's graph. It is called only after the matching map revision has
+ // been published, so the retained scans and raster semantics cannot diverge
+ // from the poses that produced them. Identity, order and stamps are checked.
+ bool apply_optimized_poses(const PoseGraphBackend& optimized,
+ std::string* reason = nullptr);
 
  const MappingSessionConfig& config() const { return config_; }
  const std::vector<MappingSessionKeyframe>& keyframes() const { return keyframes_; }

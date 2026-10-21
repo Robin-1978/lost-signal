@@ -25,6 +25,17 @@ behavior and control. This allows one real sensor to be mixed with simulated or 
 brain API. A SIM game adapter therefore sends a normal task request and supplies a provider; it never imports a game
 command into ROBOT.
 
+LSRI is the platform/provider contract, not a requirement that every ROBOT algorithm call another algorithm through a
+serialized wire packet. Inside ROBOT, replaceable modules use typed provider interfaces with the same semantic rules:
+timestamped SI values, explicit frames, covariance or quality, lifecycle and rejection reasons, immutable snapshots, and
+no SIM or world-truth types. `ILocalizationProvider`, `IMapProvider`, `IMapBuilder`, `IGlobalPlanner` and the perception,
+control and executive boundaries are the internal contracts. A module can therefore be replaced when it implements the
+same contract, while high-rate in-process calls avoid needless serialization and preserve deterministic ownership.
+
+The conformance rule is: platform data and commands cross through LSRI; algorithm products cross through their typed ROBOT
+interface; no module reaches around its interface to read a provider's private state. If a module must run out of process,
+its typed product is adapted to a versioned LSRI or wire representation at that boundary.
+
 The request boundary is deliberately separate from the sensor boundary. A request can be serialized over an operator
 API, submitted by a test harness, or created by a simulation adapter, but it contains no scenario actor, story, level,
 MuJoCo or renderer field. Completion and failure are reported as stable lifecycle results, while detailed sensor and

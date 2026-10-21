@@ -5,8 +5,10 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <vector>
 
 #define CHECK(condition) \
@@ -20,12 +22,30 @@
 namespace {
 
 constexpr double kResolution = 0.1;
+constexpr int kRepeatsPerLocation = 12;
 constexpr double kMapWidthM = 600.0;
 constexpr double kMapHeightM = 400.0;
 constexpr std::array<sim::Vec2, 8> kTestLocations{{
  { -170.0, 50.0 }, { -25.0, -60.0 }, { 115.0, 135.0 }, { 245.0, -110.0 },
  { -220.0, -130.0 }, { 40.0, 35.0 }, { 180.0, 70.0 }, { 260.0, 150.0 },
 }};
+
+// Peak resident set size in kibibytes, or zero where the platform does not
+// expose it. The benchmark records this so a future regression cannot hide a
+// per-fix allocation behind a passing latency number.
+long peak_rss_kib() {
+ FILE* status = std::fopen("/proc/self/status", "r");
+ if (status == nullptr)
+ return 0;
+ char line[256];
+ long value = 0;
+ while (std::fgets(line, sizeof(line), status) != nullptr) {
+ if (std::sscanf(line, "VmHWM: %ld kB", &value) == 1)
+ break;
+ }
+ std::fclose(status);
+ return value;
+}
 
 sim::runtime::MapSnapshot make_large_map() {
  sim::runtime::MapSnapshot snapshot;
@@ -154,11 +174,12 @@ int main() {
  double maximum_heading_error = 0.0;
  double maximum_latency_ms = 0.0;
  std::vector<std::size_t> window_cells;
+ std::vector<double> latencies_ms;
  for (std::size_t index = 0; index < pose_count; ++index) {
  const auto truth = kTestLocations[index];
  const double truth_heading = headings[index];
- const auto view = manager.query_region({truth.x - 8.0, truth.y - 8.0,
- truth.x + 8.0, truth.y + 8.0});
+ const auto view = manager.query_region(sim::runtime::MapBounds2D{
+ {truth.x - 8.0, truth.y - 8.0}, {truth.x + 8.0, truth.y + 8.0}});
  CHECK(view && view->grid);
  window_cells.push_back(view->grid->occupancy.size());
  // Exercise the same bounded provider result an online localization service
@@ -175,6 +196,7 @@ int main() {
  const auto elapsed = std::chrono::duration<double, std::milli>(
  std::chrono::steady_clock::now() - start).count();
  maximum_latency_ms = std::max(maximum_latency_ms, elapsed);
+ latencies_ms.push_back(elapsed);
  if (!located.accepted) std::cerr << "index=" << index << " reason=" << located.rejection_reason << " returns=" << located.usable_returns << " score=" << located.score << " margin=" << located.score_margin << "\n";
  CHECK(located.accepted);
  CHECK(located.state == sim::autonomy::LocalizationState::Localized);
@@ -195,15 +217,32 @@ int main() {
  CHECK(repeat.pose.position.x == located.pose.position.x);
  CHECK(repeat.pose.position.y == located.pose.position.y);
  CHECK(repeat.pose.heading_rad == located.pose.heading_rad);
+ // Repeated fixes on the same bounded window must stay flat: a per-fix
+ // allocation proportional to the map would show up here immediately.
+ for (int repetition = 1; repetition < kRepeatsPerLocation; ++repetition) {
+ const auto timing_start = std::chrono::steady_clock::now();
+ const auto timed = localizer.localize(scan, noisy_prior, noisy_heading,
+ local_snapshot, stamp_s);
+ latencies_ms.push_back(std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - timing_start).count());
+ CHECK(timed.accepted);
+ }
  }
  CHECK(std::all_of(window_cells.begin(), window_cells.end(),
  [](std::size_t cells) { return cells <= 300U * 300U; }));
  CHECK(maximum_position_error < 0.16);
  CHECK(maximum_heading_error < 0.06);
+ std::sort(latencies_ms.begin(), latencies_ms.end());
+ CHECK(!latencies_ms.empty());
+ const auto p95_index = static_cast<std::size_t>(
+ std::ceil(0.95 * static_cast<double>(latencies_ms.size()))) - 1U;
+ const double p95_latency_ms = latencies_ms[std::min(p95_index, latencies_ms.size() - 1U)];
+ const long peak_rss = peak_rss_kib();
  // This is a generously bounded component regression, not a production
- // real-time certification. A p95/deployment profile at 200,000 m² remains a
- // release gate and must run on the target compute profile.
+ // real-time certification. It runs on the development host; the deployment
+ // profile must repeat it on target compute at 200,000 m² or larger.
  CHECK(maximum_latency_ms < 5000.0);
+ CHECK(p95_latency_ms < 1000.0);
  std::cout << "large_map area_m2="
  << static_cast<double>(map.grid->width) * map.grid->height *
  map.grid->resolution_m * map.grid->resolution_m
@@ -211,6 +250,9 @@ int main() {
  << " window_cells=" << window_cells.front()
  << " max_position_error_m=" << maximum_position_error
  << " max_heading_error_rad=" << maximum_heading_error
- << " max_latency_ms=" << maximum_latency_ms << "\n";
+ << " max_latency_ms=" << maximum_latency_ms
+ << " p95_latency_ms=" << p95_latency_ms
+ << " samples=" << latencies_ms.size()
+ << " peak_rss_mib=" << static_cast<double>(peak_rss) / 1024.0 << "\n";
  return 0;
 }
