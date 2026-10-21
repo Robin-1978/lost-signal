@@ -315,16 +315,21 @@ observation sweep before accepting a pose; this is a localization behavior and m
 current bounded `KnownMapLocalizer` remains only the local-correction component until this gate is implemented.
 
 The complementary **mapless online-SLAM path** starts with an arbitrary local origin, builds submaps while moving and
-estimates its own pose from LiDAR, IMU and encoders. It does not require RTK or GNSS for a small self-contained map.
+estimates its own pose from LiDAR plus the IMU/encoder prior. It does not require RTK or GNSS for a small self-contained map.
 When the map is later saved, its local origin and provenance become the map anchor; a future run can use known-map
 global localization to recover that pose. Both paths publish the same pose/state contract, while mapless SLAM also
 publishes validated LSRM revisions and retains its pose graph/session data separately.
 
-The delivery order is intentional: **first complete known-map global localization, then add mapless online SLAM**.
-The first stage supplies a reliable pose/state contract, unknown-pose recovery behavior and planner replan semantics.
-The second stage reuses those contracts while adding a mapping session and a map-builder lifecycle; it must not create
-a second pose type or make Planner depend on a SLAM backend. In mapless mode there is no external localization input,
-but the SLAM backend still estimates its own pose internally from the first observation onward.
+The delivery order is intentional: the known-map provider supplies the recovery contract, and the mapless provider now
+reuses it through `OnlineSlamMapBuilder`. The online builder owns a bounded local submap and its local pose; it must
+not create a second pose type or make Planner depend on a SLAM backend. In mapless mode there is no external
+localization input, but the builder estimates its own pose internally from the first observation onward.
+
+The current implementation is the first executable SLAM slice: deterministic occupancy integration, bounded
+correlative scan alignment around the odometry/IMU prior, immutable map revisions, timestamp rejection and replayable
+diagnostics. It intentionally does not claim loop closure or 2.5D elevation from a planar scan. The next P2 gate is
+to add motion deskew, dynamic/ground filtering, multi-line point-time handling and held-out drift/loop-closure
+evidence before normal levels may rely on mapless SLAM for long runs.
 
 Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
 `ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable

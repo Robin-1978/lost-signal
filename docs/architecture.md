@@ -72,8 +72,9 @@ content into 3D collision geometry and contact state. The deployable [Lost Signa
 separate provider-neutral contract: occupancy, elevation, uncertainty, surface classes, vector semantics, and
 topology are composable layers. A snapshot requires spatial grid data or semantic content, but a large vector/HD map
 does not allocate a mandatory global raster. A bounded static view is combined with ray-cleared sensor observations,
-tracking, prediction, footprint, and inflation to produce the rolling local costmap. The scenario adapter, a future
-SLAM backend, survey conversion, or HD-map bridge can publish the same immutable revision. The editor exports the
+tracking, prediction, footprint, and inflation to produce the rolling local costmap. The scenario adapter, the
+ROBOT-owned `OnlineSlamMapBuilder`, a future survey conversion, or an HD-map bridge can publish the same immutable
+revision. The editor exports the
 checksummed `.lsmap` package as well as its complete scenario source. Actors, rendering materials, scripts, and
 physics truth never enter the Robot Map.
 
@@ -86,9 +87,11 @@ the visual/collision separation in SDFormat while preventing independently place
 
 The current collision proxies are authored boxes rather than triangle meshes, cylinders, or convex decomposition.
 They are deliberately inspectable and deterministic, but must be checked against each visible asset. The repository
-does not yet ship a SLAM backend or landmark extractor. It now supplies the prerequisite sensor-consistent static
-features: a SLAM implementation can consume timestamped LiDAR observations of the same structures that constrain
-physics, while the authored LSRM map remains a separate reference/provider output rather than hidden SLAM input.
+now ships a bounded `OnlineSlamMapBuilder` for small mapless sessions. It consumes only LSRI LiDAR and the estimated
+wheel/IMU prior, publishes immutable occupancy revisions through `IMapBuilder`, and keeps its local origin in the
+ROBOT map frame. It is a deterministic submap frontend, not a claim of loop-closed, calibrated production SLAM:
+dynamic filtering, scan deskew, multi-line elevation fusion, loop closure and long-run drift gates remain explicit
+validation work. The authored LSRM map remains a separate reference/provider output rather than hidden SLAM input.
 
 The shipped planar and 16-line LiDAR profiles are mounted in named 3D frames. In the
 production path they raycast the 3D physics world against terrain, static world objects, legacy authored boxes, and dynamic actors, include

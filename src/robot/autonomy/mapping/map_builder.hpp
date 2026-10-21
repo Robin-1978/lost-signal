@@ -16,9 +16,9 @@ enum class MappingState {
  Completed,
 };
 
-// Provider-neutral output for a future online SLAM backend. The pose is an
-// internal local-frame estimate even when no external localization exists;
-// published maps are immutable revisions and never mutate a planner's view.
+// Provider-neutral output for online SLAM backends. The pose is an internal
+// local-frame estimate even when no external localization exists; published
+// maps are immutable revisions and never mutate a planner's view.
 struct MapBuilderUpdate {
  MappingState state{MappingState::Uninitialized};
  PoseObservation pose;
