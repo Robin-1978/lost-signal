@@ -331,10 +331,11 @@ localization input, but the builder estimates its own pose internally from the f
 The current implementation is the first executable SLAM slice: deterministic occupancy integration, bounded
 correlative scan alignment around the odometry/IMU prior, per-ray motion deskew from scan timing and body twist,
 immutable map revisions, timestamp rejection, bounded 16-line point-cloud projection with height rejection and
-replayable diagnostics. It intentionally does not claim dynamic-object filtering, loop closure or 2.5D elevation
-fusion. The next P2 gate is to add a calibrated ground model and dynamic-return filtering, preserve per-point time and
-ring metadata into an elevation-capable layer, and produce held-out drift/loop-closure evidence before normal levels
-may rely on mapless SLAM for long runs.
+replayable diagnostics. The bounded `localization_mapping_replay` gate now exercises 30 fixed-timestamp scans with
+bounded wheel/IMU drift, revision monotonicity and map growth. This is evidence for the component contract only; it
+does not claim dynamic-object filtering, loop closure or 2.5D elevation fusion. The next P2 gate is to add a calibrated
+ground model and dynamic-return filtering, preserve per-point time and ring metadata into an elevation-capable layer,
+and produce longer held-out drift/loop-closure evidence before normal levels may rely on mapless SLAM for long runs.
 
 Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
 `ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable

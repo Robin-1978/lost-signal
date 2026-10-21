@@ -209,6 +209,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  target_link_libraries(test_startup_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME startup_localization COMMAND test_startup_localization)
 
+ add_executable(test_localization_mapping_replay tests/new/test_localization_mapping_replay.cpp)
+ target_link_libraries(test_localization_mapping_replay PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME localization_mapping_replay COMMAND test_localization_mapping_replay)
+
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
  target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)
  add_test(NAME robot_map_package COMMAND test_robot_map_package)
