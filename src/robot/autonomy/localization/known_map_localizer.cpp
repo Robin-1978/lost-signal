@@ -46,6 +46,29 @@ double endpoint_score(const runtime::MapGrid& grid, Vec2 point) {
  return value >= 50 ? 1.0 : -0.20;
 }
 
+double free_ray_score(const runtime::MapGrid& grid, Vec2 sensor,
+ double beam_angle, double max_range) {
+ const double step = std::max(0.05, grid.resolution_m * 0.5);
+ bool observed_known_cell = false;
+ for (double distance = step; distance < max_range; distance += step) {
+ const Vec2 point{sensor.x + distance * std::cos(beam_angle),
+ sensor.y + distance * std::sin(beam_angle)};
+ const auto cell = runtime::world_to_grid(grid, point);
+ if (!cell)
+ return observed_known_cell ? 0.0 : -0.25;
+ const auto index = static_cast<std::size_t>(cell->y) * grid.width + cell->x;
+ if (index >= grid.occupancy.size())
+ return observed_known_cell ? 0.0 : -0.25;
+ const int value = static_cast<int>(grid.occupancy[index]);
+ if (value < 0)
+ return observed_known_cell ? 0.0 : -0.25;
+ observed_known_cell = true;
+ if (value >= 50)
+ return -1.0;
+ }
+ return observed_known_cell ? 1.0 : 0.0;
+}
+
 } // namespace
 
 KnownMapLocalizationResult KnownMapLocalizer::localize(
@@ -86,18 +109,22 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  return result;
  }
 
- struct Return { double range; double angle; };
- std::vector<Return> returns;
- returns.reserve(scan.ranges.size());
+ struct Beam { double range; double angle; bool hit; };
+ std::vector<Beam> beams;
+ beams.reserve(scan.ranges.size());
+ std::size_t hit_returns = 0;
  for (std::size_t i = 0; i < scan.ranges.size(); ++i) {
  const double range = scan.ranges[i];
- if (!scan.hit[i] || !std::isfinite(range) || range <= 0.05 || range >= scan.max_range)
+  if (!std::isfinite(range) || range <= 0.05)
  continue;
- returns.push_back({range, scan.angle_min_rad +
- scan.angle_increment_rad * static_cast<double>(i)});
+  const bool hit = scan.hit[i] && range < scan.max_range;
+  beams.push_back({std::min(range, scan.max_range), scan.angle_min_rad +
+  scan.angle_increment_rad * static_cast<double>(i), hit});
+  if (hit)
+   ++hit_returns;
  }
- result.usable_returns = returns.size();
- if (returns.size() < config_.minimum_returns) {
+ result.usable_returns = hit_returns;
+ if (hit_returns < config_.minimum_returns) {
  result.rejection_reason = "insufficient geometric returns";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
@@ -107,15 +134,15 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  // perception and mapping providers. This keeps localization cost bounded as
  // sensor resolution increases and is the same coarse-signature principle as
  // the global recovery matcher.
- if (returns.size() > config_.maximum_returns) {
+ if (beams.size() > config_.maximum_returns) {
  const std::size_t stride =
- (returns.size() + config_.maximum_returns - 1) / config_.maximum_returns;
- std::vector<Return> selected;
+  (beams.size() + config_.maximum_returns - 1) / config_.maximum_returns;
+  std::vector<Beam> selected;
  selected.reserve(config_.maximum_returns);
- for (std::size_t index = 0; index < returns.size() &&
+  for (std::size_t index = 0; index < beams.size() &&
  selected.size() < config_.maximum_returns; index += stride)
- selected.push_back(returns[index]);
- returns = std::move(selected);
+  selected.push_back(beams[index]);
+  beams = std::move(selected);
  }
 
  const auto& grid = *map.grid;
@@ -150,25 +177,34 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  const double heading = wrap_angle(odom_heading_rad + ih * config_.heading_step_rad);
  const Vec2 sensor_position = sensor_world_position(candidate, heading, config_);
  double score = 0.0;
+ double total_weight = 0.0;
  std::size_t known = 0;
  std::size_t matches = 0;
- for (const auto& point : returns) {
- const auto local = rotate({point.range * std::cos(point.angle + config_.sensor_yaw_rad),
- point.range * std::sin(point.angle + config_.sensor_yaw_rad)}, heading);
- const double value = endpoint_score(grid,
- {sensor_position.x + local.x, sensor_position.y + local.y});
- score += value;
+ for (const auto& beam : beams) {
+ const double beam_angle = heading + beam.angle + config_.sensor_yaw_rad;
+ const auto local = rotate({beam.range * std::cos(beam.angle + config_.sensor_yaw_rad),
+ beam.range * std::sin(beam.angle + config_.sensor_yaw_rad)}, heading);
+ const double value = beam.hit
+ ? endpoint_score(grid,
+ {sensor_position.x + local.x, sensor_position.y + local.y})
+ : free_ray_score(grid, sensor_position, beam_angle, beam.range);
+ // A no-return ray is useful free-space evidence, but it is less precise than
+ // an occupied endpoint and must not pull a partially occluded scan away from
+ // the hit-supported pose.
+ const double weight = beam.hit ? 1.0 : 0.15;
+ score += weight * value;
+ total_weight += weight;
  if (value != 0.0) {
  ++known;
- if (value > 0.0)
+ if (value > 0.0 && beam.hit)
  ++matches;
  }
  }
  if (known == 0)
  continue;
  const double overlap = static_cast<double>(matches) /
- static_cast<double>(returns.size());
- score /= static_cast<double>(returns.size());
+ static_cast<double>(hit_returns);
+ score /= std::max(1e-9, total_weight);
  const Hypothesis hypothesis{candidate, heading, score, overlap};
  const auto existing = std::find_if(hypotheses.begin(), hypotheses.end(),
  [&](const auto& value) { return same_hypothesis(value, hypothesis); });
