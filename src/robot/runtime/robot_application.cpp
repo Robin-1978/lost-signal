@@ -77,6 +77,13 @@ RobotCycleOutput RobotApplication::step(const RobotCycleInput& input) {
  const auto autonomy_cycle = coordinator_.run_cycle({input.autonomy, input.local_planning});
  output.autonomy = autonomy_cycle.autonomy;
  output.local_planning = autonomy_cycle.local_planning;
+ // A body/actuator intent is only publishable after the ROBOT planner has
+ // proved the corresponding local transaction. This prevents a native or
+ // simulated adapter from bypassing trajectory validation by supplying a
+ // command beside an empty or rejected candidate set.
+ if (input.local_planning &&
+ (!output.local_planning || !output.local_planning->status.motion_authorized))
+ return output;
  if (!input.motion_intent)
  return output;
  if (!(input.dt_s > 0.0))
