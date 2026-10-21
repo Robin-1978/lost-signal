@@ -39,6 +39,7 @@ class HolonomicActuatorController {
  void reset();
  HolonomicActuatorControlOutput update(const DiffCmd& command, const HolonomicActuatorFeedback& feedback,
                                        double dt_s);
+ HolonomicControlKind kind() const { return config_.kind; }
 
  private:
  HolonomicActuatorControllerConfig config_;

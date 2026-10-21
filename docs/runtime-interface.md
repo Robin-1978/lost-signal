@@ -36,6 +36,39 @@ The conformance rule is: platform data and commands cross through LSRI; algorith
 interface; no module reaches around its interface to read a provider's private state. If a module must run out of process,
 its typed product is adapted to a versioned LSRI or wire representation at that boundary.
 
+### Chassis control and motor ownership
+
+The word “motor control” covers two different responsibilities and they must not be
+collapsed at the boundary:
+
+| Responsibility | Owner | Boundary |
+|---|---|---|
+| chassis kinematics, velocity/steering targets, PID/feedforward, rate limits, and trajectory/safety decisions | ROBOT | consumes LSRI encoder/joint feedback; produces `MotionCommand` or `ActuatorCommand` |
+| motor driver, PWM/current/torque application, gearbox, joint mechanics, tire/track contact, and rigid-body integration | platform provider | consumes the command through LSRI; publishes measured feedback through LSRI |
+
+The default articulated SIM path is therefore:
+
+```text
+SIM MuJoCo joints -> simulated actuator provider -> LSRI actuator feedback
+  -> ROBOT chassis controller -> LSRI actuator command
+  -> simulated actuator/motor plant -> MuJoCo joints and contact
+```
+
+The encoder position and velocity used by a ROBOT controller are the
+`ActuatorFeedbackObservation` delivered through LSRI. Body odometry, IMU, LiDAR,
+power and other hardware state follow the same observation path. A simulation
+adapter may read its own provider state in order to construct those observations,
+but that adapter is below the LSRI boundary; ROBOT code must never call a
+MuJoCo, `SimulatedPlatform`, or game API to obtain truth.
+
+There is one intentional alternative. A platform may declare a smart-drive
+capability and accept a body-level `MotionCommand`; its embedded drive then owns
+the low-level velocity/current loop. In that mode ROBOT still owns planning,
+feasibility and safety, while the provider owns the declared embedded loop and
+must return measured feedback. The composition root chooses exactly one command
+level from the negotiated capabilities; a provider must never reinterpret a body
+velocity as duty, torque or a joint target.
+
 The request boundary is deliberately separate from the sensor boundary. A request can be serialized over an operator
 API, submitted by a test harness, or created by a simulation adapter, but it contains no scenario actor, story, level,
 MuJoCo or renderer field. Completion and failure are reported as stable lifecycle results, while detailed sensor and
@@ -152,6 +185,23 @@ monitor verifies payload structure, endpoint source/frame identity, strictly inc
 numbers, sample freshness/future skew, declared-vs-observed rate, and source silence. It rejects an absolute map pose
 unless the provider explicitly declares that capability. This is a stream-level gate in addition to
 `valid_observation_frame()`, not a replacement for device-specific calibration or the independent emergency stop.
+
+`RobotApplication` is the composition-root convenience for this sequence: deployment
+configuration supplies an `EndpointRegistry` and conformance policy, the application
+registers observation-source expectations before activation, provider adapters call
+`publish_observation()`, and the application performs liveness checks from its
+runtime tick. A SIM provider and a native provider therefore share the same bring-up
+checks. They differ only in backend implementation and calibration/profile; ROBOT
+does not branch on `ProviderBackend` while making motion decisions.
+
+`RobotApplication::step()` is the provider-neutral cycle entry point for a native process
+and for an in-process SIM composition. It accepts an autonomy observation/safety input,
+an optional `DiffCmd` produced by the local planner, and explicit time validity. It runs
+the ROBOT policy transaction, then publishes either a body-motion command or the typed
+actuator command selected by negotiated capability. It reads actuator feedback only from
+LSRI. A simulator may wrap its MuJoCo provider with
+`SimulatedPlatformProviderAdapter`, but that adapter is outside ROBOT and is not visible
+to the cycle or controller.
 
 ### Native robot bring-up
 

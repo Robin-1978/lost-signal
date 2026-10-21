@@ -1,6 +1,7 @@
 #include "robot/autonomy/localization/known_map_localizer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -69,9 +70,20 @@ double free_ray_score(const GridProjector& projector, Vec2 sensor,
  const auto& grid = projector.grid;
  const double direction_x = std::cos(beam_angle);
  const double direction_y = std::sin(beam_angle);
- const double step = std::max(0.05, grid.resolution_m * 0.5);
+ // A no-return beam is weak evidence. Evaluating the full ray for every
+ // translation/heading hypothesis makes the matcher O(candidates * beams *
+ // range/resolution), which is not viable on a 200,000 m² map. Use a small
+ // deterministic set of interior probes plus the endpoint; occupied returns
+ // still use the exact endpoint score and dominate the match.
+ const std::array<double, 3> probes{
+ std::max(0.05, max_range * 0.5),
+ std::max(0.05, max_range * 0.8),
+ std::max(0.05, max_range - std::max(0.05, grid.resolution_m)),
+ };
  bool observed_known_cell = false;
- for (double distance = step; distance < max_range; distance += step) {
+ for (const double distance : probes) {
+ if (!(distance < max_range + 1e-9))
+ continue;
  const Vec2 point{sensor.x + distance * direction_x,
  sensor.y + distance * direction_y};
  const auto cell = projector.project(point);

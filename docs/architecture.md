@@ -170,6 +170,12 @@ speed alone.
 The source layout is also a dependency rule. Mission state and simulated actor behavior cannot enter the autonomy
 layer. Route following, waypoint progress, heading PID state, crossing behavior, prediction, and trajectory
 validation all live in `src/robot/autonomy`; simulation mission code only supplies task intent and world semantics.
+The per-cycle command lifetime, manual override, sequence counters, and crossing execution indices are also ROBOT
+state in `RobotMotionRuntime`. `ScenarioSession` exposes only narrow composition accessors while the native
+`RobotApplication::step()` and the SIM adapter use the same transaction. This prevents a game session from becoming a
+second command owner. Provider-native feedback translation is isolated in
+`SimulatedPlatformProviderAdapter`; it is the only SIM code that knows how MuJoCo joint names are reduced to LSRI
+actuator channels or how a typed actuator command is handed to the plant.
 The `deployable_boundary` test scans all of `src/robot`, rejects every `sim/` include, rejects SIM sources and SIM
 libraries from every `lost_signal_robot_*` target, and checks for the robot-only build gate.
 `lost_signal_robot_autonomy`, `lost_signal_robot_executive`, `lost_signal_robot_runtime`, and
@@ -336,9 +342,12 @@ LSRI provider and platform adapter and omits all game, world, MuJoCo, and render
 into neutral autonomy inputs and copies diagnostics into the game snapshot. It is not an algorithm provider. A
 native product uses the `lost_signal_robot` composition root, which links only `lost_signal_robot_stack` and owns the
 LSRI lifecycle in a standalone process. It currently provides the provider/startup gate; native hardware registration
-and the remaining full autonomy-cycle extraction are separate deployment work. SIM and ROBOT need not use IPC: both
-composition roots may call the same typed in-process interfaces, while an optional transport adapter can be added at
-the provider boundary later.
+and the full native cycle scheduler remain deployment work. The simulation adapter no longer invokes a ROBOT chassis
+controller directly: it publishes provider joint feedback through LSRI, asks the ROBOT coordinator for a typed
+`ActuatorCommand`, and gives only the delivered command to the simulated plant. Route/local candidate assembly and
+game snapshot projection are still adapter responsibilities until the provider-neutral cycle host is completed. SIM
+and ROBOT need not use IPC: both composition roots may call the same typed in-process interfaces, while an optional
+transport adapter can be added at the provider boundary later.
 
 Robot geometry has three independent meanings:
 

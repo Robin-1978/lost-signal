@@ -94,10 +94,11 @@ must follow this order:
    validation path. Waiting is rejected when a predicted participant can occupy the robot's current footprint, and
    `NO_SAFE_ACTION` remains an explicit result when no candidate is proven safe.
 2. **Finish the remaining SIM→ROBOT composition migration.** Move the autonomy coordinator that currently assembles
-   decisions in `ScenarioSession` behind a provider-neutral ROBOT interface. SIM may provide task intent, maps and LSRI
-   endpoints, but must not pass level, actor, scenario or simulator-truth types into that coordinator. Complete the
-   platform-profile split and the magic-number audit together; each moved field needs units, source, range and a focused
-   test.
+ decisions in `ScenarioSession` behind a provider-neutral ROBOT interface. SIM may provide task intent, maps and LSRI
+ endpoints, but must not pass level, actor, scenario or simulator-truth types into that coordinator. Complete the
+ platform-profile split and the magic-number audit together; each moved field needs units, source, range and a focused
+ test. The actuator-control transaction is now ROBOT-owned: `ScenarioSession` publishes provider joint feedback through
+ LSRI, receives a typed `ActuatorCommand` from the coordinator, and gives only the delivered command to the SIM plant.
 3. **Finish P2 localization and mapping integration.** Run all ordinary known-map levels through ROBOT localization,
    keep odometry-only only for explicitly teaching drift, and complete dynamic/ground return filtering, keyframe
    reconstruction after pose-graph correction, mapless online SLAM replay, cold-start global recovery and the 200,000
@@ -918,6 +919,27 @@ the decision loop previously hard-coded — gravity, physical stand-off, decisio
 step, rollover risk limit, planning deadbands, committed progress floor, creep speed and the latch window — load from
 `robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
 deployed file drifts from the compiled defaults. Remaining literals in the decision loop are catalogued below.
+
+The actuator-control slice is now complete for the represented differential/tracked, Ackermann and holonomic bases:
+`AutonomyCoordinator::update_chassis_actuators()` consumes only an LSRI `ObservationFrame` and produces an expiring
+typed actuator command. Provider-native joint state and motor-plant types stay in SIM. `RobotApplication` also binds
+endpoint expectations to `ProviderConformanceMonitor`, so simulated, replay and native observation providers share
+identity, timestamp, rate, freshness and silence gates. The remaining stage-1 work is the larger local-motion request
+assembly and crossing/recovery execution state, which still needs a provider-neutral cycle host.
+
+The execution-state slice is now closed: `RobotMotionRuntime` owns held/manual commands, command and observation
+sequence counters, and crossing execution/alignment indices. `ScenarioSession` no longer stores those algorithmic
+states. `RobotApplication::step()` is the common provider-neutral cycle entry point for native and in-process
+composition. SIM-only joint-name reduction and command delivery live in
+`SimulatedPlatformProviderAdapter`; they are provider code, not an autonomy shortcut. The remaining stage-1 work is
+the full local-motion request/trajectory assembly, which must be moved behind the same typed cycle input and output
+before this migration gate is declared green.
+
+The large-map localization benchmark now uses a bounded three-probe free-space check for no-return LiDAR beams.
+Occupied endpoints remain the strong evidence term; bounded probes preserve a conservative free-space signal without
+marching every ray at half-cell resolution for every pose hypothesis. On the 240,000 m² fixture this keeps the
+repeated known-map p95 latency below the 1 s component gate while retaining deterministic pose selection. This is an
+implementation bound, not a real-time certification; target hardware must repeat the benchmark.
 
 The coordinator now also owns the localization supervisor and global planning system. Chassis-specific global planner
 selection remains a composition input, while planner instances and localization scheduling are ROBOT state. A SIM

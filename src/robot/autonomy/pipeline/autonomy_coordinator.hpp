@@ -8,10 +8,17 @@
 #include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/planning/global/global_planner.hpp"
 #include "robot/autonomy/pipeline/autonomy_pipeline.hpp"
+#include "robot/autonomy/pipeline/robot_motion_runtime.hpp"
+#include "robot/autonomy/validation/collision_monitor.hpp"
+#include "robot/control/ackermann_actuator_controller.hpp"
+#include "robot/control/differential_wheel_controller.hpp"
+#include "robot/control/holonomic_actuator_controller.hpp"
+#include "robot/runtime/runtime_channel.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace sim::autonomy {
 
@@ -27,6 +34,14 @@ struct AutonomyCoordinatorInput {
 struct AutonomyCoordinatorOutput {
  StrategyDecision decision;
  std::string policy_name;
+};
+
+// The ROBOT-owned actuator transaction.  A composition adapter supplies only
+// timestamped LSRI feedback and a body-motion intent; this method performs the
+// chassis-specific control law and returns a typed, expiring LSRI command.
+// Provider and simulator types must not appear in this result.
+struct ChassisControlResult {
+ runtime::ActuatorCommand command;
 };
 
 class AutonomyCoordinator {
@@ -48,6 +63,32 @@ class AutonomyCoordinator {
  bool update_controlled_stop(bool carrying_stop, double peak_wheel_speed_mps,
  const ControlledStopLatch::Config& config);
  void reset_controlled_stop();
+
+ void configure_collision_monitor(Vec2 world_size, double robot_radius_m,
+ std::vector<CollisionBox> static_obstacles);
+ CollisionMonitor& collision_monitor();
+ const CollisionMonitor& collision_monitor() const;
+
+ void reset_chassis_controllers();
+ RobotMotionRuntime& motion_runtime() { return motion_runtime_; }
+ const RobotMotionRuntime& motion_runtime() const { return motion_runtime_; }
+ void configure_differential_controller(
+ DifferentialWheelControllerConfig config, WheelPidGains gains);
+ void configure_ackermann_controller(
+ AckermannActuatorControllerConfig config, WheelPidGains gains);
+ void configure_holonomic_controller(
+ HolonomicActuatorControllerConfig config, WheelPidGains gains);
+ bool has_differential_controller() const { return differential_controller_ != nullptr; }
+ bool has_ackermann_controller() const { return ackermann_controller_ != nullptr; }
+ bool has_holonomic_controller() const { return holonomic_controller_ != nullptr; }
+ DifferentialWheelController& differential_controller();
+ AckermannActuatorController& ackermann_controller();
+ HolonomicActuatorController& holonomic_controller();
+
+ ChassisControlResult update_chassis_actuators(
+ const DiffCmd& command, const ObservationFrame& feedback,
+ double dt_s, runtime::TimePoint now, runtime::TimePoint valid_until,
+ std::uint64_t sequence);
 
  ChassisDiagnosticsSystem& diagnostics() { return diagnostics_; }
  const ChassisDiagnosticsSystem& diagnostics() const { return diagnostics_; }
@@ -87,6 +128,11 @@ class AutonomyCoordinator {
  std::unique_ptr<RouteTrackingSystem> route_tracking_;
  ControlledStopLatch controlled_stop_latch_;
  ChassisDiagnosticsSystem diagnostics_;
+ std::unique_ptr<CollisionMonitor> collision_monitor_;
+ std::unique_ptr<DifferentialWheelController> differential_controller_;
+ std::unique_ptr<AckermannActuatorController> ackermann_controller_;
+ std::unique_ptr<HolonomicActuatorController> holonomic_controller_;
+ RobotMotionRuntime motion_runtime_;
  EstimationSystem estimator_;
  autonomy::LocalizationSupervisor localization_supervisor_;
  std::unique_ptr<::autonomy::GlobalPlanningSystem> global_planning_;

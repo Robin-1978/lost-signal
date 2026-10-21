@@ -101,6 +101,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/perception/perception_pipeline.cpp
  src/robot/autonomy/pipeline/autonomy_pipeline.cpp
  src/robot/autonomy/pipeline/autonomy_coordinator.cpp
+ src/robot/autonomy/pipeline/robot_motion_runtime.cpp
  src/robot/autonomy/planning/local/dwa.cpp
  src/robot/autonomy/mapping/grid_map.cpp
  src/robot/autonomy/mapping/online_slam.cpp
@@ -228,6 +229,10 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_autonomy_coordinator tests/new/test_autonomy_coordinator.cpp)
  target_link_libraries(test_autonomy_coordinator PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME autonomy_coordinator COMMAND test_autonomy_coordinator)
+
+ add_executable(test_robot_motion_runtime tests/new/test_robot_motion_runtime.cpp)
+ target_link_libraries(test_robot_motion_runtime PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME robot_motion_runtime COMMAND test_robot_motion_runtime)
 
  add_executable(test_robot_application tests/new/test_robot_application.cpp)
  target_link_libraries(test_robot_application PRIVATE lost_signal_robot_stack)
@@ -432,6 +437,7 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/mission/performance_score.cpp
  src/sim/game/mission/world_geometry.cpp
  src/sim/game/platform/simulated_platform.cpp
+ src/sim/game/platform/simulated_platform_provider.cpp
  src/sim/game/scenario/scenario_session.cpp
  src/sim/game/scenario/scenario_autonomy.cpp
  src/sim/game/mission/world/actor_behavior_registry.cpp
@@ -551,6 +557,7 @@ if(LOST_SIGNAL_BUILD_TESTS)
  endfunction()
  lost_signal_add_shared_robot_test(localization_supervisor test_localization_supervisor lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(autonomy_coordinator test_autonomy_coordinator lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(robot_motion_runtime test_robot_motion_runtime lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(robot_application test_robot_application lost_signal_robot_stack)
  lost_signal_add_shared_robot_test(localization_motion_authority test_localization_motion_authority lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(provider_conformance test_provider_conformance lost_signal_robot_runtime)

@@ -1246,6 +1246,9 @@ bool SimulatedPlatform::is_robot_body(::sim::physics::BodyHandle body) const {
  feedback.joints.reserve(actuator_bindings_.size());
  for (const auto& [channel, binding] : actuator_bindings_) {
  const auto state = world_.joint_state(binding.joint);
+ // The provider exposes MuJoCo's calibrated joint convention.  The
+ // articulation profile owns any axis/gear sign conversion; the runtime
+ // adapter must not infer it from a chassis type or channel spelling.
  feedback.joints.push_back({channel, state.position_rad, state.velocity_radps});
  }
  return feedback;

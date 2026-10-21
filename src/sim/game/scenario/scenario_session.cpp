@@ -255,10 +255,10 @@ void ScenarioSession::reset() {
  shadow_episode_first_reason_ = -1;
  shadow_episode_last_s_ = -1.0;
  shadow_episode_last_reason_ = -1;
- held_command_ = {};
+ held_command() = {};
  autonomy_coordinator_->reset_controlled_stop();
- manual_command_ = {};
- manual_control_active_ = false;
+ manual_command() = {};
+ manual_control_active() = false;
  endless_target_key_ = "uninitialized";
  goal_system_.reset(level_.objective, map_manager_);
  snapshot_.goals_reached = goal_system_.goals_reached();
@@ -271,16 +271,16 @@ void ScenarioSession::reset() {
  const auto* scheduled_lidar = resolved_build_.lidar();
  scheduler_.reset(scheduled_lidar ? 1.0 / scheduled_lidar->scan_hz : 0.0,
  1.0 / decision_hz(), 0.04);
- motion_sequence_ = 0;
- actuator_feedback_sequence_ = 0;
- command_sequence_ = 0;
+ motion_sequence() = 0;
+ actuator_feedback_sequence() = 0;
+ command_sequence() = 0;
  manipulator_feedback_sequence_ = 0;
  manipulator_command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
- crossing_execution_segment_ = 0;
- crossing_alignment_segment_ = 0;
- crossing_segment_alignment_complete_ = false;
+ crossing_execution_segment() = 0;
+ crossing_alignment_segment() = 0;
+ crossing_segment_alignment_complete() = false;
  was_saturated_ = false;
  rigid_rollover_exposure_s_ = 0.0;
  previous_payload_shock_mps2_ = 0.0;
@@ -691,7 +691,7 @@ void ScenarioSession::build_world() {
  sensor_system_ = std::make_unique<sim::SensorSystem>(
  effective_seed(), effective_seed() ^ 0x9e3779b9U);
  collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(robot_definition_.collision_radius_m));
- collision_monitor_ = std::make_unique<CollisionMonitor>(
+ autonomy_coordinator_->configure_collision_monitor(
  map_definition_.size_m, robot_definition_.collision_radius_m,
  std::move(collision_obstacles));
  std::vector<sim::HeightPatch> active_terrain;
@@ -883,9 +883,7 @@ void ScenarioSession::build_world() {
  chassis_caps_.geometry.support_polygon = convex_support_hull(std::move(support_contacts));
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
- differential_wheel_controller_.reset();
- ackermann_actuator_controller_.reset();
- holonomic_actuator_controller_.reset();
+ autonomy_coordinator_->reset_chassis_controllers();
  const auto has_actuator_channel = [&](const std::string& channel) {
  return std::any_of(robot_definition_.articulation.actuators.begin(),
  robot_definition_.articulation.actuators.end(),
@@ -902,8 +900,7 @@ void ScenarioSession::build_world() {
   const double control_track_width_m = robot_definition_.drive_type == "tracked"
                                          ? robot_definition_.effective_track_width_m
                                          : chassis_params.wheel_base_m;
-  differential_wheel_controller_ =
- std::make_unique<sim::DifferentialWheelController>(
+ autonomy_coordinator_->configure_differential_controller(
  sim::DifferentialWheelControllerConfig{
       control_track_width_m,
  chassis_params.wheel_radius_m,
@@ -927,8 +924,7 @@ void ScenarioSession::build_world() {
  has_actuator_channel("front_left_steer") &&
  has_actuator_channel("front_right_steer");
  if (deployable_ackermann_control) {
- ackermann_actuator_controller_ =
- std::make_unique<sim::AckermannActuatorController>(
+ autonomy_coordinator_->configure_ackermann_controller(
  sim::AckermannActuatorControllerConfig{
  chassis_params.wheel_base_m,
  chassis_params.track_width_m,
@@ -958,7 +954,7 @@ void ScenarioSession::build_world() {
     (has_actuator_channel("front_left_steer") && has_actuator_channel("front_right_steer") &&
      has_actuator_channel("rear_left_steer") && has_actuator_channel("rear_right_steer")));
  if (deployable_holonomic_control) {
-  holonomic_actuator_controller_ = std::make_unique<sim::HolonomicActuatorController>(
+ autonomy_coordinator_->configure_holonomic_controller(
     sim::HolonomicActuatorControllerConfig{
       robot_definition_.drive_type == "swerve" ? sim::HolonomicControlKind::Swerve
                                                : sim::HolonomicControlKind::Mecanum,
@@ -966,7 +962,7 @@ void ScenarioSession::build_world() {
       chassis_params.max_wheel_speed_mps, chassis_params.pwm_limit, chassis_params.integral_limit,
  1.0 / std::max(0.05, chassis_params.servo_response_s), 0.35,
  chassis_params.max_steer_rate_radps},
-    wheel_gains);
+ wheel_gains);
  }
 
  // LSRI composition root. The mission uses both ends because it contains the
@@ -978,17 +974,19 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
- if (differential_wheel_controller_ || ackermann_actuator_controller_ || holonomic_actuator_controller_) {
+ if (autonomy_coordinator_->has_differential_controller() ||
+ autonomy_coordinator_->has_ackermann_controller() ||
+ autonomy_coordinator_->has_holonomic_controller()) {
  runtime_config.capabilities.command_level =
  sim::runtime::PlatformCommandLevel::Actuator;
- if (differential_wheel_controller_) {
+ if (autonomy_coordinator_->has_differential_controller()) {
  runtime_config.capabilities.actuator_channels = {
  {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  };
- } else if (ackermann_actuator_controller_) {
+ } else if (autonomy_coordinator_->has_ackermann_controller()) {
  runtime_config.capabilities.actuator_channels = {
  {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
@@ -1172,7 +1170,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  planned_route_.clear();
  snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
  snapshot_.active_goal_id.clear();
- held_command_ = {};
+ held_command() = {};
  autonomy_coordinator_->route_tracking().reset();
  route_feasible_ = true;
  return;
@@ -1195,9 +1193,9 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  route_feasible_ = had_validated_route;
   return;
  }
- crossing_execution_segment_ = 0;
- crossing_alignment_segment_ = 0;
- crossing_segment_alignment_complete_ = false;
+ crossing_execution_segment() = 0;
+ crossing_alignment_segment() = 0;
+ crossing_segment_alignment_complete() = false;
  route_feasible_ = true;
  return_reserve_failure_ = false;
  planned_route_ = std::move(plan.path);
@@ -1405,9 +1403,9 @@ void ScenarioSession::start() {
  if (endless_mode_)
   refresh_operator_route();
  if (level_.control_mode == "operator_drive") {
- manual_control_active_ = true;
- held_command_ = {};
- manual_command_ = {};
+ manual_control_active() = true;
+ held_command() = {};
+ manual_command() = {};
  }
  record_event(endless_mode_ ? "field-session-start" : "mission-start",
               endless_mode_ ? catalog_.tr("event.field_session_start") : catalog_.tr("event.mission_start"));
@@ -1423,9 +1421,9 @@ void ScenarioSession::set_endless_mode(bool enabled) {
  if (enabled) {
   planned_route_.clear();
   route_feasible_ = true;
-  held_command_ = {};
-  manual_command_ = {};
-  manual_control_active_ = false;
+  held_command() = {};
+  manual_command() = {};
+  manual_control_active() = false;
   endless_target_key_ = "uninitialized";
  if (autonomy_coordinator_ && autonomy_coordinator_->has_route_tracking())
  autonomy_coordinator_->route_tracking().reset();
@@ -1443,8 +1441,8 @@ bool ScenarioSession::issue_field_intent(FieldIntentKind kind, std::optional<sim
  const bool operator_drive = level_.control_mode == "operator_drive";
  if ((!endless_mode_ && !operator_drive) || !field_operator_system_.issue_intent(kind, target))
   return false;
- manual_control_active_ = false;
- manual_command_ = {};
+ manual_control_active() = false;
+ manual_command() = {};
  endless_target_key_ = "uninitialized";
  refresh_operator_route();
  return true;
@@ -1503,13 +1501,13 @@ void ScenarioSession::set_manual_command(double forward, double turn) {
  // Neutral keyboard state must not cancel an active click-to-drive route.
  // Any non-neutral operator input takes authority immediately; after that
  // takeover, releasing the keys requests a physical stop.
- if (operator_drive && !manual_control_active_ &&
+ if (operator_drive && !manual_control_active() &&
  std::abs(forward) <= 1e-9 && std::abs(turn) <= 1e-9)
  return;
- manual_control_active_ = true;
+ manual_control_active() = true;
  const double cruise = cruise_speed_mps();
- manual_command_.target_v = std::clamp(forward, -0.65, 1.0) * cruise;
- manual_command_.target_w = std::clamp(turn, -1.0, 1.0) * chassis_caps_.turn_command_limit();
+ manual_command().target_v = std::clamp(forward, -0.65, 1.0) * cruise;
+ manual_command().target_w = std::clamp(turn, -1.0, 1.0) * chassis_caps_.turn_command_limit();
 }
 
 sim::EndEffectorPose ScenarioSession::manipulation_target_pose(double time_s) const {
@@ -1663,12 +1661,12 @@ void ScenarioSession::step() {
   scan_environment();
  }
  deliver_ready_lidar_observations();
- if (manual_control_active_) {
-  held_command_ = manual_command_;
+ if (manual_control_active()) {
+  held_command() = manual_command();
  } else if (scheduler_.decision_due(snapshot_.time_s)) {
   decide_control();
  }
- if (!manual_control_active_ && !endless_mode_)
+ if (!manual_control_active() && !endless_mode_)
   apply_goal_stop_constraint();
  apply_motion();
  snapshot_.time_s += fixed_step_s;
@@ -1833,16 +1831,16 @@ void ScenarioSession::apply_goal_stop_constraint() {
  const double stop_cap = std::sqrt(
  arrival_speed * arrival_speed + 2.0 * deceleration * remaining);
  if (remaining <= 0.04) {
-  held_command_.target_v = 0.0;
- held_command_.target_lateral_v = 0.0;
-  held_command_.target_w = 0.0;
+  held_command().target_v = 0.0;
+ held_command().target_lateral_v = 0.0;
+  held_command().target_w = 0.0;
  } else {
  const double requested_speed =
- std::hypot(held_command_.target_v, held_command_.target_lateral_v);
+ std::hypot(held_command().target_v, held_command().target_lateral_v);
  if (requested_speed > stop_cap && requested_speed > 1e-9) {
  const double scale = stop_cap / requested_speed;
- held_command_.target_v *= scale;
- held_command_.target_lateral_v *= scale;
+ held_command().target_v *= scale;
+ held_command().target_lateral_v *= scale;
  }
  }
 }
@@ -1870,7 +1868,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
  field_operator_system_.complete(intent.revision);
  planned_route_.clear();
  autonomy_coordinator_->route_tracking().reset();
- held_command_ = {};
+ held_command() = {};
  endless_target_key_ = "completed:" + std::to_string(intent.revision);
 }
 
@@ -2296,7 +2294,7 @@ void ScenarioSession::refresh_operator_route() {
  endless_target_key_ = target_key;
  planned_route_.clear();
  autonomy_coordinator_->route_tracking().reset();
- held_command_ = {};
+ held_command() = {};
  route_feasible_ = true;
  if (explicit_intent && (field_intent.kind == FieldIntentKind::Wait || follow_hold)) {
   field_operator_system_.acknowledge(field_intent.revision, true);
@@ -2328,7 +2326,7 @@ void ScenarioSession::apply_motion() {
   throw std::logic_error("mission has no active runtime channel");
  }
  const auto runtime_now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
- sim::DiffCmd applied_command = held_command_;
+ sim::DiffCmd applied_command = held_command();
  if (score_command_initialized_) {
  const double yaw_to_edge_m = 0.5 * std::max(0.0, chassis_caps_.geometry.support_width_m);
  result_.command_variation_mps +=
@@ -2348,286 +2346,42 @@ void ScenarioSession::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
- if (differential_wheel_controller_) {
+ if (autonomy_coordinator_->has_differential_controller() ||
+ autonomy_coordinator_->has_ackermann_controller() ||
+ autonomy_coordinator_->has_holonomic_controller()) {
  if (!platform_) {
- throw std::logic_error("actuator-level differential control requires a platform provider");
+ throw std::logic_error("actuator-level control requires a platform provider");
  }
-
- // The platform owns the joints. Publish their measured state through LSRI
- // before the deployable ROBOT controller sees it; simulator truth must not
- // cross this boundary through an in-process shortcut.
+ // This is the SIM provider adapter. It converts provider-native joint state
+ // into the neutral LSRI observation; the ROBOT controller below sees only
+ // the delivered ObservationFrame.
  const auto provider_feedback = platform_->actuator_feedback();
- const auto average_track_side =
-    [&](const char* front, const char* middle,
-        const char* rear) -> std::optional<sim::ChassisActuatorFeedback::JointSample> {
-   const auto* a = provider_feedback.find(front);
-   const auto* b = provider_feedback.find(middle);
-   const auto* c = provider_feedback.find(rear);
-   if (!a || !b || !c)
-    return std::nullopt;
-   return sim::ChassisActuatorFeedback::JointSample{
-     {},
-     (a->position_rad + b->position_rad + c->position_rad) / 3.0,
-     (a->velocity_radps + b->velocity_radps + c->velocity_radps) / 3.0};
-  };
-  const auto tracked_left = robot_definition_.drive_type == "tracked"
-                              ? average_track_side("front_left_drive", "middle_left_drive", "rear_left_drive")
-                              : std::nullopt;
-  const auto tracked_right =
-    robot_definition_.drive_type == "tracked"
-      ? average_track_side("front_right_drive", "middle_right_drive", "rear_right_drive")
-      : std::nullopt;
-  const auto* provider_left = tracked_left ? &*tracked_left : provider_feedback.find("left");
- const auto* provider_right = tracked_right ? &*tracked_right : provider_feedback.find("right");
- if (!provider_left || !provider_right) {
- throw std::runtime_error("differential platform did not provide both drive joint measurements");
- }
- sim::ObservationFrame feedback_frame;
- feedback_frame.time_s = snapshot_.time_s;
- feedback_frame.actuator_feedback.emplace();
- feedback_frame.actuator_feedback->channels = {
- {"left", provider_left->position_rad, provider_left->velocity_radps},
- {"right", provider_right->position_rad, provider_right->velocity_radps},
- };
- feedback_frame.actuator_feedback->header = {
- snapshot_.time_s, actuator_feedback_sequence_++, "base_link", 0.0,
- sim::kMeasurementSchemaVersion, "sim.actuator-feedback"};
- if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame))) {
- throw std::runtime_error("runtime channel rejected the actuator feedback observation");
- }
- const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
- if (!delivered_feedback || !delivered_feedback->actuator_feedback) {
- throw std::runtime_error("runtime channel did not deliver actuator feedback");
- }
- const auto* left = delivered_feedback->actuator_feedback->find("left");
- const auto* right = delivered_feedback->actuator_feedback->find("right");
- if (!left || !right) {
- throw std::runtime_error("delivered actuator feedback is missing a differential drive channel");
- }
- const sim::DifferentialWheelFeedback wheel_feedback{
- left->position_rad,
- right->position_rad,
- left->velocity_radps,
- right->velocity_radps,
- true,
- };
- auto wheel_control = differential_wheel_controller_->update(
- applied_command, wheel_feedback, fixed_step_s);
-
- sim::runtime::ActuatorCommand outbound_command;
- outbound_command.header = {
- sim::runtime::kMessageSchemaVersion,
- runtime_now,
- runtime_now,
- command_sequence_++,
- "base_link",
-    "controller.differential-wheel",
- };
- outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(
- snapshot_.time_s + fixed_step_s * 2.0);
- outbound_command.setpoints = {
- {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- wheel_control.left.normalized_duty},
- {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- wheel_control.right.normalized_duty},
- };
- if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
- sim::runtime::CommandWriteResult::Accepted) {
- throw std::runtime_error("runtime channel rejected the differential actuator command");
- }
- const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
- const auto delivered_duty = [&](const std::string& channel) {
- const auto found = std::find_if(
- delivered_command.setpoints.begin(), delivered_command.setpoints.end(),
- [&](const auto& setpoint) { return setpoint.channel_id == channel; });
- if (found == delivered_command.setpoints.end() ||
- found->mode != sim::runtime::ActuatorCommandMode::NormalizedDuty) {
- throw std::runtime_error("delivered actuator command is missing a normalized-duty channel");
- }
- return found->value;
- };
- wheel_control.left.normalized_duty = delivered_duty("left");
- wheel_control.right.normalized_duty = delivered_duty("right");
-
- // The SIM plant receives only the delivered actuator command and its own
- // provider-side joint state. Motor curves, joint effort, contact, and rigid
- // body integration remain below the LSRI boundary.
- chassis_->set_actuator_feedback(provider_feedback);
- (void)chassis_->step_actuator_duty(
- before, applied_command,
- sim::ChassisActuatorDutyCommand{{
- {"left", wheel_control.left.normalized_duty},
- {"right", wheel_control.right.normalized_duty},
- }},
- fixed_step_s, ground_contact);
- } else if (ackermann_actuator_controller_) {
- if (!platform_)
- throw std::logic_error("actuator-level Ackermann control requires a platform provider");
- const auto provider_feedback = platform_->actuator_feedback();
- const auto require_feedback = [&](const std::string& channel) {
- const auto* value = provider_feedback.find(channel);
- if (!value)
- throw std::runtime_error("RO-2 platform is missing actuator feedback channel '" + channel + "'");
- return value;
- };
- const auto* rear_left = require_feedback("rear_left_drive");
- const auto* rear_right = require_feedback("rear_right_drive");
- const auto* front_left = require_feedback("front_left_steer");
- const auto* front_right = require_feedback("front_right_steer");
-
- sim::ObservationFrame feedback_frame;
- feedback_frame.time_s = snapshot_.time_s;
- feedback_frame.actuator_feedback.emplace();
- feedback_frame.actuator_feedback->channels = {
- {"rear_left_drive", rear_left->position_rad, rear_left->velocity_radps},
- {"rear_right_drive", rear_right->position_rad, rear_right->velocity_radps},
- {"front_left_steer", front_left->position_rad, front_left->velocity_radps},
- {"front_right_steer", front_right->position_rad, front_right->velocity_radps},
- };
- feedback_frame.actuator_feedback->header = {
- snapshot_.time_s, actuator_feedback_sequence_++, "base_link", 0.0,
- sim::kMeasurementSchemaVersion, "sim.actuator-feedback"};
- if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame)))
- throw std::runtime_error("runtime channel rejected RO-2 actuator feedback");
+ if (!sim::platform::SimulatedPlatformProviderAdapter::publish_actuator_feedback(
+ *runtime_channel_, provider_feedback, robot_definition_.drive_type,
+ snapshot_.time_s, actuator_feedback_sequence()++))
+ throw std::runtime_error("runtime channel rejected actuator feedback");
  const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
  if (!delivered_feedback || !delivered_feedback->actuator_feedback)
- throw std::runtime_error("runtime channel did not deliver RO-2 actuator feedback");
- const auto& feedback = *delivered_feedback->actuator_feedback;
- const auto* delivered_rear_left = feedback.find("rear_left_drive");
- const auto* delivered_rear_right = feedback.find("rear_right_drive");
- const auto* delivered_front_left = feedback.find("front_left_steer");
- const auto* delivered_front_right = feedback.find("front_right_steer");
- if (!delivered_rear_left || !delivered_rear_right ||
- !delivered_front_left || !delivered_front_right)
- throw std::runtime_error("delivered RO-2 feedback is incomplete");
- auto control = ackermann_actuator_controller_->update(applied_command,
- {
- delivered_rear_left->position_rad,
- delivered_rear_right->position_rad,
- delivered_rear_left->velocity_radps,
- delivered_rear_right->velocity_radps,
- delivered_front_left->position_rad,
- delivered_front_right->position_rad,
- delivered_front_left->velocity_radps,
- delivered_front_right->velocity_radps,
- true,
- }, fixed_step_s);
-
- sim::runtime::ActuatorCommand outbound_command;
- outbound_command.header = {
- sim::runtime::kMessageSchemaVersion, runtime_now, runtime_now,
- command_sequence_++, "base_link", "controller.ro2"};
- outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(
- snapshot_.time_s + fixed_step_s * 2.0);
- outbound_command.setpoints = {
- {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- control.rear_left.normalized_duty},
- {"rear_right_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- control.rear_right.normalized_duty},
- {"front_left_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- control.front_left_steer.normalized_duty},
- {"front_right_steer", sim::runtime::ActuatorCommandMode::NormalizedDuty,
- control.front_right_steer.normalized_duty},
- };
- if (robot_definition_.service_brake.enabled) {
- outbound_command.setpoints.push_back(
- {"rear_left_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
- control.rear_left_brake_request});
- outbound_command.setpoints.push_back(
- {"rear_right_brake", sim::runtime::ActuatorCommandMode::NormalizedBrake,
- control.rear_right_brake_request});
- }
- if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
+ throw std::runtime_error("runtime channel did not deliver actuator feedback");
+ const auto control = autonomy_coordinator_->update_chassis_actuators(
+ applied_command, *delivered_feedback, fixed_step_s, runtime_now,
+ sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0),
+ command_sequence()++);
+ if (runtime_channel_->autonomy().write_actuators(control.command) !=
  sim::runtime::CommandWriteResult::Accepted)
- throw std::runtime_error("runtime channel rejected the RO-2 actuator command");
+ throw std::runtime_error("runtime channel rejected actuator command");
  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
- sim::ChassisActuatorDutyCommand plant_command;
- for (const auto& setpoint : delivered_command.setpoints) {
- const bool brake_channel = setpoint.channel_id == "rear_left_brake" ||
- setpoint.channel_id == "rear_right_brake";
- const auto expected_mode = brake_channel
- ? sim::runtime::ActuatorCommandMode::NormalizedBrake
- : sim::runtime::ActuatorCommandMode::NormalizedDuty;
- if (setpoint.mode != expected_mode)
- throw std::runtime_error("RO-2 received an actuator command with the wrong mode");
- plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
- }
- chassis_->set_actuator_feedback(provider_feedback);
- (void)chassis_->step_actuator_duty(
- before, applied_command, plant_command, fixed_step_s, ground_contact);
- } else if (holonomic_actuator_controller_) {
-  if (!platform_)
-   throw std::logic_error("actuator-level holonomic control requires a platform provider");
-  constexpr std::array<const char*, 4> drive_channels{"front_left_drive", "front_right_drive",
-                                                      "rear_left_drive", "rear_right_drive"};
-  constexpr std::array<const char*, 4> steer_channels{"front_left_steer", "front_right_steer",
-                                                      "rear_left_steer", "rear_right_steer"};
-  const auto provider_feedback = platform_->actuator_feedback();
-  sim::ObservationFrame feedback_frame;
-  feedback_frame.time_s = snapshot_.time_s;
-  feedback_frame.actuator_feedback.emplace();
-  for (const auto& joint : provider_feedback.joints) {
-   feedback_frame.actuator_feedback->channels.push_back(
-     {joint.channel, joint.position_rad, joint.velocity_radps});
-  }
-  feedback_frame.actuator_feedback->header = {
-    snapshot_.time_s,       actuator_feedback_sequence_++, "base_link", 0.0, sim::kMeasurementSchemaVersion,
-    "sim.actuator-feedback"};
-  if (!runtime_channel_->platform().publish_observation(std::move(feedback_frame)))
-   throw std::runtime_error("runtime channel rejected holonomic actuator feedback");
-  const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
-  if (!delivered_feedback || !delivered_feedback->actuator_feedback)
-   throw std::runtime_error("runtime channel did not deliver holonomic actuator feedback");
-  sim::HolonomicActuatorFeedback controller_feedback;
-  for (std::size_t i = 0; i < drive_channels.size(); ++i) {
-   const auto* drive = delivered_feedback->actuator_feedback->find(drive_channels[i]);
-   if (!drive)
-    throw std::runtime_error("holonomic drive feedback is incomplete");
-   controller_feedback.drive_velocity_radps[i] = drive->velocity_radps;
-   if (robot_definition_.drive_type == "swerve") {
-    const auto* steer = delivered_feedback->actuator_feedback->find(steer_channels[i]);
-    if (!steer)
-     throw std::runtime_error("swerve steering feedback is incomplete");
-    controller_feedback.steer_position_rad[i] = steer->position_rad;
- controller_feedback.steer_velocity_radps[i] = steer->velocity_radps;
-   }
-  }
-  const auto control =
-    holonomic_actuator_controller_->update(applied_command, controller_feedback, fixed_step_s);
-  sim::runtime::ActuatorCommand outbound_command;
-  outbound_command.header = {sim::runtime::kMessageSchemaVersion,
-                             runtime_now,
-                             runtime_now,
-                             command_sequence_++,
-                             "base_link",
-                             "controller.holonomic"};
-  outbound_command.valid_until = sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0);
-  for (std::size_t i = 0; i < drive_channels.size(); ++i) {
-   outbound_command.setpoints.push_back(
-     {drive_channels[i], sim::runtime::ActuatorCommandMode::NormalizedDuty, control.drive_duty[i]});
-  }
-  if (robot_definition_.drive_type == "swerve") {
-   for (std::size_t i = 0; i < steer_channels.size(); ++i) {
-    outbound_command.setpoints.push_back(
-      {steer_channels[i], sim::runtime::ActuatorCommandMode::NormalizedDuty, control.steer_duty[i]});
-   }
-  }
-  if (runtime_channel_->autonomy().write_actuators(outbound_command) !=
-      sim::runtime::CommandWriteResult::Accepted)
-   throw std::runtime_error("runtime channel rejected holonomic actuator command");
-  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
-  sim::ChassisActuatorDutyCommand plant_command;
-  for (const auto& setpoint : delivered_command.setpoints) {
-   if (setpoint.mode != sim::runtime::ActuatorCommandMode::NormalizedDuty)
-    throw std::runtime_error("holonomic actuator command has the wrong mode");
- plant_command.setpoints.push_back({setpoint.channel_id, setpoint.value});
- }
+ const auto plant_command =
+ sim::platform::SimulatedPlatformProviderAdapter::consume_actuator_command(
+ delivered_command);
+ // The provider consumes the delivered command and its provider-side state;
+ // it remains below LSRI and is never visible to ROBOT algorithms.
  chassis_->set_actuator_feedback(provider_feedback);
  (void)chassis_->step_actuator_duty(
  before, applied_command, plant_command, fixed_step_s, ground_contact);
  } else {
  const auto outbound_command = sim::runtime::make_motion_command(
- held_command_, chassis_caps_, runtime_now, command_sequence_++, fixed_step_s * 2.0);
+ held_command(), chassis_caps_, runtime_now, command_sequence()++, fixed_step_s * 2.0);
  if (runtime_channel_->autonomy().write_motion(outbound_command) !=
  sim::runtime::CommandWriteResult::Accepted) {
  throw std::runtime_error("runtime channel rejected the autonomous motion command");
@@ -2885,7 +2639,8 @@ void ScenarioSession::apply_motion() {
  rigid_contact,
  });
  }
- const auto collision = collision_monitor_->assess(collision_observation);
+ const auto collision = autonomy_coordinator_->collision_monitor().assess(
+ collision_observation);
  if (collision.static_clearance_m < result_.min_static_clearance_m) {
  result_.min_static_clearance_m = collision.static_clearance_m;
  result_.min_static_clearance_time_s = snapshot_.time_s;
@@ -2974,7 +2729,7 @@ void ScenarioSession::apply_motion() {
  motion_observation.encoders->angular_velocity_radps = encoder_w;
  motion_observation.encoders->slip_scale = slip;
  motion_observation.encoders->header = {
- motion_observation.time_s, motion_sequence_++, "base_link", 0.0,
+ motion_observation.time_s, motion_sequence()++, "base_link", 0.0,
  sim::kMeasurementSchemaVersion, "sim.encoder"};
  if (imu) {
   if (!sensor_system_)
@@ -3079,7 +2834,7 @@ void ScenarioSession::finish_success() {
  finish_failure("manipulator-target", catalog_.tr("event.manipulator_target_failure"));
  return;
  }
- held_command_ = {};
+ held_command() = {};
  snapshot_.waiting_for_clearance = false;
  update_shadow_episode();
  snapshot_.status = MissionStatus::Succeeded;
@@ -3153,7 +2908,7 @@ void ScenarioSession::finish_success() {
 }
 
 void ScenarioSession::finish_failure(std::string reason, std::string message) {
- held_command_ = {};
+ held_command() = {};
  snapshot_.status = MissionStatus::Failed;
  snapshot_.robot.v = 0.0;
  snapshot_.robot.w = 0.0;

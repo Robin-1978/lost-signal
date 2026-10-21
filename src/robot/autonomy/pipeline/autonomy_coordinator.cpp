@@ -2,6 +2,9 @@
 
 #include <stdexcept>
 #include <utility>
+#include <array>
+#include <algorithm>
+#include <cmath>
 
 namespace sim::autonomy {
 
@@ -16,6 +19,7 @@ void AutonomyCoordinator::reset(std::uint64_t seed) {
  policy_->reset(seed);
  policy_name_ = policy_->name();
  diagnostics_.reset();
+ motion_runtime_.reset();
 }
 
 AutonomyCoordinatorOutput AutonomyCoordinator::update(
@@ -56,6 +60,174 @@ bool AutonomyCoordinator::update_controlled_stop(
 
 void AutonomyCoordinator::reset_controlled_stop() {
  controlled_stop_latch_.reset();
+}
+
+void AutonomyCoordinator::configure_collision_monitor(
+ Vec2 world_size, double robot_radius_m,
+ std::vector<CollisionBox> static_obstacles) {
+ collision_monitor_ = std::make_unique<CollisionMonitor>(
+ world_size, robot_radius_m, std::move(static_obstacles));
+}
+
+CollisionMonitor& AutonomyCoordinator::collision_monitor() {
+ if (!collision_monitor_)
+ throw std::logic_error("collision monitor has not been configured");
+ return *collision_monitor_;
+}
+
+const CollisionMonitor& AutonomyCoordinator::collision_monitor() const {
+ if (!collision_monitor_)
+ throw std::logic_error("collision monitor has not been configured");
+ return *collision_monitor_;
+}
+
+void AutonomyCoordinator::reset_chassis_controllers() {
+ differential_controller_.reset();
+ ackermann_controller_.reset();
+ holonomic_controller_.reset();
+}
+
+void AutonomyCoordinator::configure_differential_controller(
+ DifferentialWheelControllerConfig config, WheelPidGains gains) {
+ reset_chassis_controllers();
+ differential_controller_ = std::make_unique<DifferentialWheelController>(
+ std::move(config), gains);
+}
+
+void AutonomyCoordinator::configure_ackermann_controller(
+ AckermannActuatorControllerConfig config, WheelPidGains gains) {
+ reset_chassis_controllers();
+ ackermann_controller_ = std::make_unique<AckermannActuatorController>(
+ std::move(config), gains);
+}
+
+void AutonomyCoordinator::configure_holonomic_controller(
+ HolonomicActuatorControllerConfig config, WheelPidGains gains) {
+ reset_chassis_controllers();
+ holonomic_controller_ = std::make_unique<HolonomicActuatorController>(
+ std::move(config), gains);
+}
+
+DifferentialWheelController& AutonomyCoordinator::differential_controller() {
+ if (!differential_controller_)
+ throw std::logic_error("differential controller has not been configured");
+ return *differential_controller_;
+}
+
+AckermannActuatorController& AutonomyCoordinator::ackermann_controller() {
+ if (!ackermann_controller_)
+ throw std::logic_error("Ackermann controller has not been configured");
+ return *ackermann_controller_;
+}
+
+HolonomicActuatorController& AutonomyCoordinator::holonomic_controller() {
+ if (!holonomic_controller_)
+ throw std::logic_error("holonomic controller has not been configured");
+ return *holonomic_controller_;
+}
+
+ChassisControlResult AutonomyCoordinator::update_chassis_actuators(
+ const DiffCmd& command, const ObservationFrame& feedback,
+ double dt_s, runtime::TimePoint now, runtime::TimePoint valid_until,
+ std::uint64_t sequence) {
+ if (!feedback.actuator_feedback)
+ throw std::invalid_argument("chassis actuator control requires actuator feedback");
+ if (!(dt_s > 0.0) || !std::isfinite(dt_s))
+ throw std::invalid_argument("chassis actuator control requires a finite positive timestep");
+
+ const auto& channels = *feedback.actuator_feedback;
+ const auto require = [&](const std::string& id) -> const ActuatorFeedbackObservation::Channel& {
+ const auto* value = channels.find(id);
+ if (!value)
+ throw std::runtime_error("actuator feedback is missing channel '" + id + "'");
+ return *value;
+ };
+ ChassisControlResult result;
+ result.command.header = {
+ runtime::kMessageSchemaVersion, now, now, sequence, "base_link", "robot.chassis-controller"};
+ result.command.valid_until = valid_until;
+
+ if (differential_controller_) {
+ const auto& left = require("left");
+ const auto& right = require("right");
+ const auto output = differential_controller_->update(
+ command, {left.position_rad, right.position_rad, left.velocity_radps,
+ right.velocity_radps, true}, dt_s);
+ result.command.setpoints = {
+ {"left", runtime::ActuatorCommandMode::NormalizedDuty, output.left.normalized_duty},
+ {"right", runtime::ActuatorCommandMode::NormalizedDuty, output.right.normalized_duty},
+ };
+ result.command.header.source_id = "robot.differential-controller";
+ return result;
+ }
+
+ if (ackermann_controller_) {
+ const auto& rear_left = require("rear_left_drive");
+ const auto& rear_right = require("rear_right_drive");
+ const auto& front_left = require("front_left_steer");
+ const auto& front_right = require("front_right_steer");
+ const auto output = ackermann_controller_->update(
+ command, {rear_left.position_rad, rear_right.position_rad,
+ rear_left.velocity_radps, rear_right.velocity_radps,
+ front_left.position_rad, front_right.position_rad,
+ front_left.velocity_radps, front_right.velocity_radps, true}, dt_s);
+ result.command.setpoints = {
+ {"rear_left_drive", runtime::ActuatorCommandMode::NormalizedDuty,
+ output.rear_left.normalized_duty},
+ {"rear_right_drive", runtime::ActuatorCommandMode::NormalizedDuty,
+ output.rear_right.normalized_duty},
+ {"front_left_steer", runtime::ActuatorCommandMode::NormalizedDuty,
+ output.front_left_steer.normalized_duty},
+ {"front_right_steer", runtime::ActuatorCommandMode::NormalizedDuty,
+ output.front_right_steer.normalized_duty},
+ };
+ if (ackermann_controller_->config().service_brake_enabled) {
+ result.command.setpoints.push_back({
+ "rear_left_brake", runtime::ActuatorCommandMode::NormalizedBrake,
+ output.rear_left_brake_request});
+ result.command.setpoints.push_back({
+ "rear_right_brake", runtime::ActuatorCommandMode::NormalizedBrake,
+ output.rear_right_brake_request});
+ }
+ result.command.header.source_id = "robot.ackermann-controller";
+ return result;
+ }
+
+ if (holonomic_controller_) {
+ constexpr std::array<const char*, 4> drive_channels{
+ "front_left_drive", "front_right_drive", "rear_left_drive", "rear_right_drive"};
+ constexpr std::array<const char*, 4> steer_channels{
+ "front_left_steer", "front_right_steer", "rear_left_steer", "rear_right_steer"};
+ HolonomicActuatorFeedback input;
+ for (std::size_t index = 0; index < drive_channels.size(); ++index) {
+ const auto& drive = require(drive_channels[index]);
+ input.drive_velocity_radps[index] = drive.velocity_radps;
+ // Mecanum has no steer feedback. The controller ignores these fields in
+ // that mode, while swerve requires all four channels below.
+ if (holonomic_controller_->kind() == HolonomicControlKind::Swerve) {
+ const auto& steer = require(steer_channels[index]);
+ input.steer_position_rad[index] = steer.position_rad;
+ input.steer_velocity_radps[index] = steer.velocity_radps;
+ }
+ }
+ const auto output = holonomic_controller_->update(command, input, dt_s);
+ for (std::size_t index = 0; index < drive_channels.size(); ++index) {
+ result.command.setpoints.push_back({
+ drive_channels[index], runtime::ActuatorCommandMode::NormalizedDuty,
+ output.drive_duty[index]});
+ }
+ if (holonomic_controller_->kind() == HolonomicControlKind::Swerve) {
+ for (std::size_t index = 0; index < steer_channels.size(); ++index) {
+ result.command.setpoints.push_back({
+ steer_channels[index], runtime::ActuatorCommandMode::NormalizedDuty,
+ output.steer_duty[index]});
+ }
+ }
+ result.command.header.source_id = "robot.holonomic-controller";
+ return result;
+ }
+
+ throw std::logic_error("no actuator controller has been configured");
 }
 
 void AutonomyCoordinator::configure_global_planner(

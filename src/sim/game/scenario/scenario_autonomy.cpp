@@ -43,7 +43,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control = {};
  if (autonomy_coordinator_->route_tracking().path_index() >= planned_route_.size()) {
   if (planned_route_.empty()) {
-   held_command_ = {0.0, 0.0};
+   held_command() = {0.0, 0.0};
    DecisionEvidence decision;
    decision.observation_time_s = snapshot_.time_s;
    decision.constraint_code = "route";
@@ -63,6 +63,21 @@ void ScenarioSession::decide_control() {
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
+ // Grade compensation is a body-motion safety input, not a map-frame truth
+ // lookup. When wheel slip has already made odometric yaw unreliable, using
+ // the drifting estimate to project the slope can reverse the gravity term
+ // and actively drive downhill. The route heading is the deployable motion
+ // intent and remains stable under that failure; fall back to the estimate
+ // only when no route heading is available.
+ const double grade_heading = [&] {
+ if (!planned_route_.empty()) {
+ const auto index = std::min(autonomy_coordinator_->route_tracking().path_index(),
+ planned_route_.size() - 1);
+ if (std::isfinite(planned_route_[index].heading_rad))
+ return planned_route_[index].heading_rad;
+ }
+ return nav_heading;
+ }();
  // The declared localization error is the physical uncertainty reserve. The
  // preferred static envelope is the normal planning margin; recovery is
  // allowed to consume that envelope, but never this hard stand-off. A small
@@ -109,7 +124,7 @@ void ScenarioSession::decide_control() {
  // rather than becoming a permanent detour in mission code.
  plan_route(&local_planning_map);
  if (planned_route_.empty()) {
- held_command_ = {};
+ held_command() = {};
  return;
  }
  }
@@ -160,8 +175,8 @@ void ScenarioSession::decide_control() {
   decision.constraint_code = std::move(constraint_code);
   decision.reason_code = std::move(reason_code);
   decision.action_code = std::move(action_code);
-  decision.target_speed_mps = held_command_.target_v;
-  decision.target_yaw_rate_radps = held_command_.target_w;
+  decision.target_speed_mps = held_command().target_v;
+  decision.target_yaw_rate_radps = held_command().target_w;
   publish_decision(std::move(decision));
  };
  sim::StrategyObservation strategy_observation;
@@ -287,7 +302,7 @@ void ScenarioSession::decide_control() {
  route_control.tv *= snapshot_.strategy.applied.speed_scale;
  const double unavailable = std::numeric_limits<double>::quiet_NaN();
  if (snapshot_.strategy.applied.mode == sim::StrategyMode::Hold) {
-  held_command_ = {};
+  held_command() = {};
   snapshot_.waiting_for_clearance = true;
   snapshot_.control.local_target = target;
   snapshot_.control.heading_error_rad = route_control.err;
@@ -371,7 +386,7 @@ void ScenarioSession::decide_control() {
  {nav_x, nav_y}, predicted_frames, prediction_step_s,
  robot_definition_.collision_radius_m);
  // Shadow departure assessment (gate 3): observe only. This block reads
- // tracker state and writes snapshot shadow fields; held_command_ (the actual
+ // tracker state and writes snapshot shadow fields; held_command() (the actual
  // control output) is untouched by everything in this block.
  std::vector<sim::Vec2> shadow_remaining{{nav_x, nav_y}};
  for (std::size_t i = autonomy_coordinator_->route_tracking().path_index(); i < planned_route_.size(); ++i) {
@@ -445,7 +460,7 @@ void ScenarioSession::decide_control() {
  1.0 / decision_hz(), snapshot_.time_s,
  [this, &local_planning_map, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
- collision_monitor_->static_motion_free(
+ autonomy_coordinator_->collision_monitor().static_motion_free(
  from, to, physical_execution_margin_m) &&
  local_planning_map.segmentIsFree(from, to);
  });
@@ -839,13 +854,13 @@ void ScenarioSession::decide_control() {
  execution_path.push_back(pose);
  }
  if (traffic_decision.phase_changed) {
- crossing_execution_segment_ = 0;
- crossing_alignment_segment_ = 0;
- crossing_segment_alignment_complete_ = false;
+ crossing_execution_segment() = 0;
+ crossing_alignment_segment() = 0;
+ crossing_segment_alignment_complete() = false;
  }
  if (execution_path.size() >= 2) {
- crossing_execution_segment_ = std::min(
- crossing_execution_segment_, execution_path.size() - 2);
+ crossing_execution_segment() = std::min(
+ crossing_execution_segment(), execution_path.size() - 2);
  const double waypoint_tolerance_m = std::max(
  sim::kCrossingPositionTrackingToleranceM,
  traffic_decision.control.tracking_corridor_m);
@@ -873,8 +888,8 @@ void ScenarioSession::decide_control() {
  // that behavior proved for it; otherwise the executor turns toward the
  // second leg while behavior waits forever for the first heading.
  while (!initial_alignment_pending &&
- crossing_execution_segment_ + 2 < execution_path.size() &&
- execution_waypoint_reached(crossing_execution_segment_) &&
+ crossing_execution_segment() + 2 < execution_path.size() &&
+ execution_waypoint_reached(crossing_execution_segment()) &&
  (continuous_execution ||
  std::abs(estimate.linear_velocity_mps) <= 0.10)) {
  // Planned time is a safety schedule, never proof that the physical body
@@ -883,14 +898,14 @@ void ScenarioSession::decide_control() {
  // required stop, then leave the admitted tracking tube. The timed
  // validator handles early/late safety; spatial execution advances only on
  // measured arrival and settling.
- ++crossing_execution_segment_;
+ ++crossing_execution_segment();
  if (!continuous_execution) {
- crossing_alignment_segment_ = crossing_execution_segment_;
- crossing_segment_alignment_complete_ = false;
+ crossing_alignment_segment() = crossing_execution_segment();
+ crossing_segment_alignment_complete() = false;
  }
  }
- const auto segment_start = execution_path[crossing_execution_segment_].p;
- target = execution_path[crossing_execution_segment_ + 1].p;
+ const auto segment_start = execution_path[crossing_execution_segment()].p;
+ target = execution_path[crossing_execution_segment() + 1].p;
  const double segment_heading = std::atan2(
  target.y - segment_start.y, target.x - segment_start.x);
  // A crossing leg is a pose-constrained stop-turn-go maneuver, not merely a
@@ -908,13 +923,13 @@ void ScenarioSession::decide_control() {
  // turn is never generated. The local validator still checks the stationary
  // footprint and dynamic forecast before publishing the turn.
  if (!continuous_execution &&
- crossing_alignment_segment_ != crossing_execution_segment_) {
- crossing_alignment_segment_ = crossing_execution_segment_;
- crossing_segment_alignment_complete_ = false;
+ crossing_alignment_segment() != crossing_execution_segment()) {
+ crossing_alignment_segment() = crossing_execution_segment();
+ crossing_segment_alignment_complete() = false;
  }
- if (!crossing_segment_alignment_complete_ &&
+ if (!crossing_segment_alignment_complete() &&
  heading_error <= sim::kCrossingInitialHeadingToleranceRad) {
- crossing_segment_alignment_complete_ = true;
+ crossing_segment_alignment_complete() = true;
  }
  // Segment alignment is a one-shot execution stage. Encoder lag just after
  // translation starts must not re-arm an in-place turn and alternate the
@@ -922,7 +937,7 @@ void ScenarioSession::decide_control() {
  const bool align_segment =
  (traffic_decision.control.execution_alignment_required &&
  !traffic_decision.control.execution_alignment_complete) ||
- (!continuous_execution && !crossing_segment_alignment_complete_);
+ (!continuous_execution && !crossing_segment_alignment_complete());
  if (align_segment) {
  speed_cap = 0.0;
  local_target_heading = segment_heading;
@@ -946,7 +961,7 @@ void ScenarioSession::decide_control() {
  (target.y - nav_y) * segment_direction.y);
  const bool final_crossing_segment =
  continuous_execution ||
- crossing_execution_segment_ + 2 == execution_path.size();
+ crossing_execution_segment() + 2 == execution_path.size();
  // Intermediate corners are explicit stop-turn-go poses. The final point is
  // a conflict-clear boundary: crossing control ends there and the canonical
  // route continues, so braking to zero would implement a different maneuver
@@ -960,8 +975,8 @@ void ScenarioSession::decide_control() {
  }
  if (continuous_execution) {
  const double planned_dt_s =
- execution_path[crossing_execution_segment_ + 1].t_s -
- execution_path[crossing_execution_segment_].t_s;
+ execution_path[crossing_execution_segment() + 1].t_s -
+ execution_path[crossing_execution_segment()].t_s;
  if (planned_dt_s > 1e-6) {
  speed_cap = std::min(speed_cap,
  segment_length_m / planned_dt_s);
@@ -978,7 +993,7 @@ void ScenarioSession::decide_control() {
  segment_start.x + projected_progress_m * segment_direction.x,
  segment_start.y + projected_progress_m * segment_direction.y,
  };
- std::size_t look_segment = crossing_execution_segment_;
+ std::size_t look_segment = crossing_execution_segment();
  while (look_segment + 1 < execution_path.size()) {
  const auto end = execution_path[look_segment + 1].p;
  const double available_m = distance(cursor, end);
@@ -1170,7 +1185,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  current_stop_limits.brake_decel_mps2 =
  resolved_build_.traction().brake_decel_mps2;
  current_stop_limits.longitudinal_grade =
- sim::longitudinal_grade(strategy_terrain, nav_heading);
+ sim::longitudinal_grade(strategy_terrain, grade_heading);
  current_stop_limits.center_of_mass_x_m = combined_center_x_m();
  current_stop_limits.center_of_mass_height_m = combined_center_height_m();
  const double safe_stop_decel_mps2 = sim::safe_stop_linear_decel_limit(
@@ -1289,7 +1304,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // both need the global path to distinguish useful motion from a rollout
  // that merely points toward the goal through an obstacle.
  if (local_request.command_space != sim::LocalCommandSpace::SteeringAngle) {
- local_request.reference.previous_angular_command_radps = held_command_.target_w;
+ local_request.reference.previous_angular_command_radps = held_command().target_w;
  local_request.reference.path.push_back({nav_x, nav_y});
  if (crossing_committed && !local_request.committed_reference_path.empty()) {
  for (const auto& point : local_request.committed_reference_path) {
@@ -1317,7 +1332,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  local_request, local_planning_map, local_predicted_frames,
  [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
- collision_monitor_->static_motion_free(
+ autonomy_coordinator_->collision_monitor().static_motion_free(
  from, to, physical_execution_margin_m);
  return feasible;
  }, &local_physical_collision_map,
@@ -1329,15 +1344,15 @@ if (!continuous_execution && remaining_m > 0.5) {
  // The localization reserve is physical uncertainty, not the comfort/policy
  // envelope that this recovery is allowed to relax.
  const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
- (collision_monitor_->static_motion_free(
+ (autonomy_coordinator_->collision_monitor().static_motion_free(
  from, to, physical_execution_margin_m) ||
  // A physical-map escape is entered only after the preferred inflation
  // envelope has stranded the measured pose. Permit a bounded, non-worsening
  // sweep through that reserve, while retaining exact footprint collision and
  // terrain checks; this is not a general planning relaxation.
- (collision_monitor_->static_motion_free(from, to, 0.0) &&
- collision_monitor_->static_clearance(to) + 0.01 >=
- collision_monitor_->static_clearance(from)));
+ (autonomy_coordinator_->collision_monitor().static_motion_free(from, to, 0.0) &&
+ autonomy_coordinator_->collision_monitor().static_clearance(to) + 0.01 >=
+ autonomy_coordinator_->collision_monitor().static_clearance(from)));
  return feasible;
  }, [this](sim::Vec2 position) { return terrain_.sample(position); });
  snapshot_.control.local_motion_mode = static_cast<int>(local_plan.status.mode);
@@ -1440,7 +1455,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  latch_config.settle_cycles =
  static_cast<int>(execution_policy.controlled_stop_settle_cycles);
  const bool controlled_stop_in_progress = autonomy_coordinator_->update_controlled_stop(
- held_command_.controlled_stop, measured_stop_wheel_mps, latch_config);
+ held_command().controlled_stop, measured_stop_wheel_mps, latch_config);
  const bool trajectory_accepted =
  trajectory_validation.accepted() && !controlled_stop_in_progress;
  const bool stability_rejection =
@@ -1455,7 +1470,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // over its short front support while leaving MuJoCo free to realize the
  // commanded torque, slip, and stopping distance.
  const auto stop_terrain = terrain_.sample({nav_x, nav_y});
- const double stop_grade = sim::longitudinal_grade(stop_terrain, nav_heading);
+ const double stop_grade = sim::longitudinal_grade(stop_terrain, grade_heading);
  const bool steering_command =
  local_request.command_space == sim::LocalCommandSpace::SteeringAngle;
  // A safety stop must start from the motion that the plant is actually
@@ -1472,20 +1487,20 @@ if (!continuous_execution && remaining_m > 0.5) {
  // makes a downhill disturbance raise the next target and prevents the
  // speed loop from developing braking error.
  const bool stop_target_initialized =
- std::abs(held_command_.target_v) > 1e-4 ||
- std::abs(held_command_.target_lateral_v) > 1e-4 ||
- std::abs(held_command_.target_w) > 1e-4;
+ std::abs(held_command().target_v) > 1e-4 ||
+ std::abs(held_command().target_lateral_v) > 1e-4 ||
+ std::abs(held_command().target_w) > 1e-4;
  // A zero stop target is not enough to prove that the ramp was initialized:
  // gravity can move the plant after the target has already reached zero.
  // Re-seed once from feedback when that happens, then continue the monotonic
  // ramp from the newly staged target.
  const bool continuing_controlled_stop =
- held_command_.controlled_stop && stop_target_initialized;
+ held_command().controlled_stop && stop_target_initialized;
  const sim::SafeStopMotion stop_motion{
- continuing_controlled_stop ? held_command_.target_v : measured_stop_forward_mps,
- continuing_controlled_stop ? held_command_.target_lateral_v : local_request.lateral_mps,
+ continuing_controlled_stop ? held_command().target_v : measured_stop_forward_mps,
+ continuing_controlled_stop ? held_command().target_lateral_v : local_request.lateral_mps,
  continuing_controlled_stop
- ? held_command_.target_w
+ ? held_command().target_w
  : (steering_command ? local_request.steering_angle_rad : local_request.yaw_rate_radps),
  };
  sim::SafeStopLimits stop_limits;
@@ -1509,11 +1524,11 @@ if (!continuous_execution && remaining_m > 0.5) {
  // the grade is arrested. Command the zero target directly; the controlled
  // stop flag makes the low-level controller reset stale effort and apply its
  // normal opposing feedback torque.
- held_command_.target_v = measured_stop_forward_mps < -kControlledStopLinearReleaseMps
+ held_command().target_v = measured_stop_forward_mps < -kControlledStopLinearReleaseMps
  ? 0.0 : stop_command.forward_mps;
- held_command_.target_lateral_v = stop_command.lateral_mps;
- held_command_.target_w = stop_command.turn;
- held_command_.controlled_stop = true;
+ held_command().target_lateral_v = stop_command.lateral_mps;
+ held_command().target_w = stop_command.turn;
+ held_command().controlled_stop = true;
   // A local-planner failure enters the zero-speed safety state. A recovery
   // planner needs its own dynamically validated trajectory and termination
   // contract; an unverified steering heuristic must never bypass DWA.
@@ -1539,9 +1554,9 @@ if (!continuous_execution && remaining_m > 0.5) {
   // This is the only command publication point for a validated local
   // trajectory. Every speed/turn cap was applied before rollout generation.
  const double kCreepSpeedMps = execution_policy.creep_speed_mps;
-  held_command_ = {command.v, command.w};
+  held_command() = {command.v, command.w};
  autonomy_coordinator_->reset_controlled_stop();
-  held_command_.target_lateral_v = command.lateral_v;
+  held_command().target_lateral_v = command.lateral_v;
  const double commanded_translation_mps =
  std::hypot(command.v, command.lateral_v);
  // Slow terminal settling is not a dynamic-obstacle wait. Clearance waiting
@@ -1575,9 +1590,9 @@ if (!continuous_execution && remaining_m > 0.5) {
  // this SI request through finite motor authority, while tire/contact physics
  // remains free to slip when the surface cannot carry the requested force.
  const auto current_terrain = terrain_.sample({nav_x, nav_y});
- const double current_grade = sim::longitudinal_grade(current_terrain, nav_heading);
+ const double current_grade = sim::longitudinal_grade(current_terrain, grade_heading);
  const auto& control_estimate = autonomy_coordinator_->estimator().state();
- held_command_.longitudinal_acceleration_feedforward_mps2 =
+ held_command().longitudinal_acceleration_feedforward_mps2 =
  control_estimate.attitude_valid
  ? -execution_policy.gravity_mps2 * std::sin(control_estimate.pitch_rad)
  : execution_policy.gravity_mps2 * current_grade /
@@ -1589,9 +1604,23 @@ if (!continuous_execution && remaining_m > 0.5) {
  // The support-polygon limit is the same physical bound used to stage a
  // controlled stop, so the request stays inside what the chassis can apply
  // without pitching over.
- held_command_.longitudinal_acceleration_feedforward_mps2 = std::clamp(
- held_command_.longitudinal_acceleration_feedforward_mps2,
- -local_request.emergency_decel_mps2, local_request.emergency_decel_mps2);
+ // The stability-aware emergency deceleration is a bound on a moving stop
+ // trajectory. It is not a bound on static grade-hold effort: applying it to
+ // gravity compensation can leave a capable motor below the force required
+ // to balance the slope, after which the real plant rolls back. Use the
+ // declared motor force and tire braking envelope for this actuator request;
+ // MuJoCo still decides whether contact can realize it.
+ const double motor_stall_force_N = resolved_build_.motor()
+ ? resolved_build_.motor()->stall_force_N
+ : robot_definition_.motor.stall_force_N;
+ const double motor_accel_limit_mps2 = motor_stall_force_N *
+ std::max(0.1, chassis_caps_.drive_force_units) /
+ std::max(0.5, total_mass_kg());
+ const double feedforward_limit_mps2 = std::max(
+ resolved_build_.traction().brake_decel_mps2, motor_accel_limit_mps2);
+ held_command().longitudinal_acceleration_feedforward_mps2 = std::clamp(
+ held_command().longitudinal_acceleration_feedforward_mps2,
+ -feedforward_limit_mps2, feedforward_limit_mps2);
  const double measured_control_forward_mps = local_request.measured_wheel_speeds
  ? 0.5 * (local_request.measured_wheel_speeds->left_mps +
  local_request.measured_wheel_speeds->right_mps)
@@ -1600,10 +1629,10 @@ if (!continuous_execution && remaining_m > 0.5) {
  // command in the same direction as the residual motion. Let the velocity
  // loop dissipate that motion; retain feedforward only when it assists the
  // stop or when the chassis is not in the stop state.
- if (held_command_.controlled_stop &&
- held_command_.longitudinal_acceleration_feedforward_mps2 *
+ if (held_command().controlled_stop &&
+ held_command().longitudinal_acceleration_feedforward_mps2 *
  measured_control_forward_mps > 0.0) {
- held_command_.longitudinal_acceleration_feedforward_mps2 = 0.0;
+ held_command().longitudinal_acceleration_feedforward_mps2 = 0.0;
  }
  const bool minimum_risk_escape = trajectory_validation.minimum_risk_escape();
  const bool committed_transit = trajectory_validation.committed_transit();

@@ -17,6 +17,7 @@
 #include "robot/config/motion_policy.hpp"
 #include "sim/game/mission/systems/world_activity_system.hpp"
 #include "sim/game/platform/simulated_platform.hpp"
+#include "sim/game/platform/simulated_platform_provider.hpp"
 #include "sim/game/mission/world/actor_behavior_registry.hpp"
 #include "robot/autonomy/behavior/entry_governor.hpp"
 #include "robot/autonomy/behavior/crossing_behavior.hpp"
@@ -522,7 +523,9 @@ class ScenarioSession {
  return map ? map->revision : 0;
  }
  void set_manual_command(double forward, double turn);
- bool manual_control_active() const { return manual_control_active_; }
+ bool manual_control_active() const {
+ return autonomy_coordinator_->motion_runtime().manual_control_active();
+ }
  void set_endless_mode(bool enabled);
  bool endless_mode() const { return endless_mode_; }
  void restore_endless_world(const WorldActivityCheckpoint& checkpoint);
@@ -657,6 +660,20 @@ class ScenarioSession {
  void refresh_operator_route();
  std::vector<sim::platform::ConstructedSupportBody> constructed_support_bodies() const;
 
+ // The per-cycle motion transaction is ROBOT-owned. These adapters keep the
+ // existing scenario composition readable while preventing mission state
+ // from becoming a second command owner.
+ sim::DiffCmd& held_command() { return autonomy_coordinator_->motion_runtime().held_command(); }
+ const sim::DiffCmd& held_command() const { return autonomy_coordinator_->motion_runtime().held_command(); }
+ sim::DiffCmd& manual_command() { return autonomy_coordinator_->motion_runtime().manual_command(); }
+ bool& manual_control_active() { return autonomy_coordinator_->motion_runtime().manual_control_active(); }
+ std::uint64_t& motion_sequence() { return autonomy_coordinator_->motion_runtime().motion_sequence(); }
+ std::uint64_t& actuator_feedback_sequence() { return autonomy_coordinator_->motion_runtime().actuator_feedback_sequence(); }
+ std::uint64_t& command_sequence() { return autonomy_coordinator_->motion_runtime().command_sequence(); }
+ std::size_t& crossing_execution_segment() { return autonomy_coordinator_->motion_runtime().crossing_execution_segment(); }
+ std::size_t& crossing_alignment_segment() { return autonomy_coordinator_->motion_runtime().crossing_alignment_segment(); }
+ bool& crossing_segment_alignment_complete() { return autonomy_coordinator_->motion_runtime().crossing_segment_alignment_complete(); }
+
  const ContentCatalog& catalog_;
  std::string level_id_;
  BuildSelection build_;
@@ -703,14 +720,10 @@ class ScenarioSession {
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
  std::unique_ptr<sim::GridMap> collision_map_;
- std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;
  double planning_clearance_m_{0.0};
  std::unique_ptr<sim::PlanarDiffDrivePlant> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
- std::unique_ptr<sim::DifferentialWheelController> differential_wheel_controller_;
- std::unique_ptr<sim::AckermannActuatorController> ackermann_actuator_controller_;
- std::unique_ptr<sim::HolonomicActuatorController> holonomic_actuator_controller_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> manipulator_channel_;
  std::unique_ptr<sim::ManipulatorJointController> manipulator_controller_;
@@ -791,7 +804,6 @@ class ScenarioSession {
  bool score_command_initialized_{false};
  double score_previous_command_v_mps_{0.0};
  double score_previous_command_w_radps_{0.0};
- sim::DiffCmd held_command_;
  // ROBOT-owned stop latch. A controlled stop must observe several consecutive
  // settled encoder samples before releasing authority; one low sample can be
  // followed by gravity rollback or contact rebound.
@@ -812,19 +824,11 @@ class ScenarioSession {
  double shadow_open_nearest_{-1.0};
  // Entry governor state (Phase-2 Behavior brake): hysteresis lives here,
  // reset every run like every other per-run state below.
- // Spatial execution indices are adapter state until the complete autonomy
- // control cycle moves behind the deployable ROBOT runner boundary.
- std::size_t crossing_execution_segment_{0};
- std::size_t crossing_alignment_segment_{0};
- bool crossing_segment_alignment_complete_{false};
+ // Spatial execution indices and command lifetimes are owned by the ROBOT
+ // motion runtime; this class only provides the SIM composition adapter.
  DeterministicScheduler scheduler_;
  double last_event_time_s_{-1000.0};
  std::string last_event_code_;
- std::uint64_t motion_sequence_{0};
- std::uint64_t actuator_feedback_sequence_{0};
- std::uint64_t command_sequence_{0};
- bool manual_control_active_{false};
- sim::DiffCmd manual_command_;
  std::string active_maneuver_id_;
 };
 
