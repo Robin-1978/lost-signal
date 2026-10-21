@@ -1170,7 +1170,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
  snapshot_.active_goal_id.clear();
  held_command() = {};
- autonomy_coordinator_->route_tracking().reset();
+ autonomy_coordinator_->reset_route_tracking();
  route_feasible_ = true;
  return;
  }
@@ -1198,7 +1198,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  route_feasible_ = true;
  return_reserve_failure_ = false;
  planned_route_ = std::move(plan.path);
- autonomy_coordinator_->route_tracking().reset();
+ autonomy_coordinator_->reset_route_tracking();
 }
 
 void ScenarioSession::select_next_goal(const Pose& start) {
@@ -1425,7 +1425,7 @@ void ScenarioSession::set_endless_mode(bool enabled) {
   manual_control_active() = false;
   endless_target_key_ = "uninitialized";
  if (autonomy_coordinator_ && autonomy_coordinator_->has_route_tracking())
- autonomy_coordinator_->route_tracking().reset();
+ autonomy_coordinator_->reset_route_tracking();
  }
 }
 
@@ -1866,7 +1866,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
 
  field_operator_system_.complete(intent.revision);
  planned_route_.clear();
- autonomy_coordinator_->route_tracking().reset();
+ autonomy_coordinator_->reset_route_tracking();
  held_command() = {};
  endless_target_key_ = "completed:" + std::to_string(intent.revision);
 }
@@ -2292,7 +2292,7 @@ void ScenarioSession::refresh_operator_route() {
   return;
  endless_target_key_ = target_key;
  planned_route_.clear();
- autonomy_coordinator_->route_tracking().reset();
+ autonomy_coordinator_->reset_route_tracking();
  held_command() = {};
  route_feasible_ = true;
  if (explicit_intent && (field_intent.kind == FieldIntentKind::Wait || follow_hold)) {
@@ -3075,7 +3075,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
- for (size_t i = autonomy_coordinator_->route_tracking().path_index() + 1; i < planned_route_.size(); ++i) {
+ for (size_t i = autonomy_coordinator_->route_path_index() + 1; i < planned_route_.size(); ++i) {
   along += distance(planned_route_[i].position, planned_route_[i - 1].position);
   if (along > preview) {
    break;
@@ -3089,7 +3089,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
   lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_route_, autonomy_coordinator_->route_tracking().path_index(), cruise, lateral_accel_limit,
+ return sim::corner_speed_cap(planned_route_, autonomy_coordinator_->route_path_index(), cruise, lateral_accel_limit,
  preview, yaw_cap_rads_);
 }
 

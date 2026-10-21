@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,12 +60,26 @@ struct RobotLocalPlanningInput {
  TerrainSampleQuery terrain_sample;
 };
 
+// One provider-neutral decision cycle. The ROBOT composition root may run
+// policy and local planning in the same transaction; SIM and native providers
+// only assemble these typed observations and consume the typed result.
+struct RobotAutonomyCycleInput {
+ AutonomyCoordinatorInput autonomy;
+ const RobotLocalPlanningInput* local_planning{nullptr};
+};
+
+struct RobotAutonomyCycleOutput {
+ AutonomyCoordinatorOutput autonomy;
+ std::optional<LocalPlanningOutput> local_planning;
+};
+
 class AutonomyCoordinator {
  public:
  explicit AutonomyCoordinator(std::shared_ptr<IHighLevelPolicy> policy = {});
 
  void reset(std::uint64_t seed);
  AutonomyCoordinatorOutput update(const AutonomyCoordinatorInput& input);
+ RobotAutonomyCycleOutput run_cycle(const RobotAutonomyCycleInput& input);
 
  // Route tracking is stateful actuator-facing autonomy. It is configured by
  // the composition root from the selected chassis profile, but its state is
@@ -74,6 +89,22 @@ class AutonomyCoordinator {
  bool has_route_tracking() const { return route_tracking_ != nullptr; }
  RouteTrackingSystem& route_tracking();
  const RouteTrackingSystem& route_tracking() const;
+ std::size_t route_path_index() const;
+ void set_route_path_index(std::size_t index);
+ bool route_reversing() const;
+ void set_route_reversing(bool reversing);
+ void reset_route_tracking();
+ sim::GuideOut follow_route(const std::vector<sim::RoutePoint>& path,
+ const sim::EstimatedState& estimate, double lookahead_m, double cruise_mps,
+ double dt_s, const GridMap& planning_map, const ChassisCaps& chassis_caps);
+ TravelDirection route_travel_direction(const std::vector<sim::RoutePoint>& path) const;
+ bool route_should_replan(const std::vector<sim::RoutePoint>& path,
+ const sim::EstimatedState& estimate, const GridMap& local_map,
+ const std::vector<DynamicTrack>& dynamic_tracks, double dt_s);
+ double route_heading_command(double error_rad, double dt_s);
+ double route_pid_p() const;
+ double route_pid_i() const;
+ double route_pid_d() const;
 
  bool update_controlled_stop(bool carrying_stop, double peak_wheel_speed_mps,
  const ControlledStopLatch::Config& config);

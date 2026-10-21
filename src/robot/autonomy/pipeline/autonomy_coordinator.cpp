@@ -34,6 +34,15 @@ AutonomyCoordinatorOutput AutonomyCoordinator::update(
  return output;
 }
 
+RobotAutonomyCycleOutput AutonomyCoordinator::run_cycle(
+ const RobotAutonomyCycleInput& input) {
+ RobotAutonomyCycleOutput output;
+ output.autonomy = update(input.autonomy);
+ if (input.local_planning)
+ output.local_planning = plan_local_motion(*input.local_planning);
+ return output;
+}
+
 void AutonomyCoordinator::configure_route_tracking(double kp, double ki,
  double kd, double output_limit, double integral_limit) {
  route_tracking_ = std::make_unique<RouteTrackingSystem>(
@@ -51,6 +60,35 @@ const RouteTrackingSystem& AutonomyCoordinator::route_tracking() const {
  throw std::logic_error("route tracking has not been configured");
  return *route_tracking_;
 }
+
+std::size_t AutonomyCoordinator::route_path_index() const { return route_tracking().path_index(); }
+void AutonomyCoordinator::set_route_path_index(std::size_t index) { route_tracking().set_path_index(index); }
+bool AutonomyCoordinator::route_reversing() const { return route_tracking().reversing(); }
+void AutonomyCoordinator::set_route_reversing(bool reversing) { route_tracking().set_reversing(reversing); }
+void AutonomyCoordinator::reset_route_tracking() { route_tracking().reset(); }
+sim::GuideOut AutonomyCoordinator::follow_route(
+ const std::vector<sim::RoutePoint>& path, const sim::EstimatedState& estimate,
+ double lookahead_m, double cruise_mps, double dt_s, const GridMap& planning_map,
+ const ChassisCaps& chassis_caps) {
+ return route_tracking().follow_route(path, estimate, lookahead_m, cruise_mps,
+ dt_s, planning_map, chassis_caps);
+}
+TravelDirection AutonomyCoordinator::route_travel_direction(
+ const std::vector<sim::RoutePoint>& path) const {
+ return route_tracking().travel_direction(path);
+}
+bool AutonomyCoordinator::route_should_replan(
+ const std::vector<sim::RoutePoint>& path, const sim::EstimatedState& estimate,
+ const GridMap& local_map, const std::vector<DynamicTrack>& dynamic_tracks,
+ double dt_s) {
+ return route_tracking().should_replan(path, estimate, local_map, dynamic_tracks, dt_s);
+}
+double AutonomyCoordinator::route_heading_command(double error_rad, double dt_s) {
+ return route_tracking().heading_command(error_rad, dt_s);
+}
+double AutonomyCoordinator::route_pid_p() const { return route_tracking().pid_p(); }
+double AutonomyCoordinator::route_pid_i() const { return route_tracking().pid_i(); }
+double AutonomyCoordinator::route_pid_d() const { return route_tracking().pid_d(); }
 
 bool AutonomyCoordinator::update_controlled_stop(
  bool carrying_stop, double peak_wheel_speed_mps,

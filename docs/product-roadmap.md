@@ -947,6 +947,12 @@ step, rollover risk limit, planning deadbands, committed progress floor, creep s
 `robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
 deployed file drifts from the compiled defaults. Remaining literals in the decision loop are catalogued below.
 
+The coordinator also exposes route-following, replan, direction and PID
+results through provider-neutral methods. Scenario code no longer reaches
+through the concrete `RouteTrackingSystem` object, so route state and its
+implementation can be replaced by a native composition root without changing
+the game adapter.
+
 The actuator-control slice is now complete for the represented differential/tracked, Ackermann and holonomic bases:
 `AutonomyCoordinator::update_chassis_actuators()` consumes only an LSRI `ObservationFrame` and produces an expiring
 typed actuator command. Provider-native joint state and motor-plant types stay in SIM. `RobotApplication` also binds
