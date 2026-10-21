@@ -320,6 +320,9 @@ autonomy::LocalizationResult GlobalMapLocalizer::localize(
  !(config_.final_heading_step_rad > 0.0) ||
  !(config_.minimum_overlap >= 0.0 && config_.minimum_overlap <= 1.0) ||
  !(config_.minimum_score_margin >= 0.0) || config_.minimum_returns == 0 ||
+ !(config_.equivalent_support_overlap_tolerance >= 0.0 &&
+ config_.equivalent_support_overlap_tolerance <= 1.0) ||
+ !(config_.equivalent_support_margin >= 0.0) ||
  config_.maximum_returns < config_.minimum_returns ||
  config_.maximum_evaluations == 0)
  return reject("invalid global matcher configuration");

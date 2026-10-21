@@ -47,9 +47,14 @@ LoopClosureDecision LoopClosureGate::validate(
  !std::isfinite(evidence.measured_relative_pose.position.y) ||
  !std::isfinite(evidence.measured_relative_pose.heading_rad))
  return reject("loop closure evidence is not finite");
- if (pose_translation_error(from.initial_pose, to.initial_pose) >
+ // The odometric poses may be metres apart after drift; that is exactly why
+ // a loop closure is needed. The spatial gate therefore applies to the
+ // scan-matcher's measured relative transform, not to the stale odometry
+ // separation between the keyframes.
+ if (std::hypot(evidence.measured_relative_pose.position.x,
+ evidence.measured_relative_pose.position.y) >
  config_.maximum_candidate_distance_m)
- return reject("loop closure candidate is outside spatial gate");
+ return reject("loop closure measurement is outside spatial gate");
  if (evidence.overlap < config_.minimum_overlap)
  return reject("loop closure scan overlap below gate");
  if (evidence.score_margin < config_.minimum_score_margin)

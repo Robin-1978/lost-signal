@@ -72,6 +72,8 @@ void OnlineSlamMapBuilder::reset() {
  last_stamp_s_ = -1.0;
  anchor_world_position_ = {};
  anchor_world_heading_rad_ = 0.0;
+ last_prior_position_ = {};
+ last_prior_heading_rad_ = 0.0;
  pose_ = {};
  heading_rad_ = 0.0;
  revision_ = 0;
@@ -294,6 +296,69 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  }
 }
 
+void OnlineSlamMapBuilder::apply_map_correction(Vec2 translation_m,
+ double heading_rad) {
+ if (!initialized_ || !std::isfinite(translation_m.x) ||
+ !std::isfinite(translation_m.y) || !std::isfinite(heading_rad))
+ return;
+ const double c = std::cos(heading_rad);
+ const double s = std::sin(heading_rad);
+ const auto forward = [&](Vec2 point) {
+ return Vec2{c * point.x - s * point.y + translation_m.x,
+ s * point.x + c * point.y + translation_m.y};
+ };
+ const auto inverse = [&](Vec2 point) {
+ const Vec2 shifted{point.x - translation_m.x, point.y - translation_m.y};
+ return Vec2{c * shifted.x + s * shifted.y,
+ -s * shifted.x + c * shifted.y};
+ };
+ std::vector<std::int8_t> occupancy(map_.occupancy.size(), -1);
+ std::vector<float> elevation(map_.occupancy.size(),
+ std::numeric_limits<float>::quiet_NaN());
+ std::vector<float> sigma(map_.occupancy.size(),
+ std::numeric_limits<float>::quiet_NaN());
+ const bool has_elevation = map_.elevation_m.size() == map_.occupancy.size() &&
+ map_.elevation_sigma_m.size() == map_.occupancy.size();
+ for (std::uint32_t y = 0; y < map_.height; ++y) {
+ for (std::uint32_t x = 0; x < map_.width; ++x) {
+ const auto destination = static_cast<std::size_t>(y) * map_.width + x;
+ const Vec2 centre = runtime::grid_cell_center(map_, {x, y});
+ const auto source = runtime::world_to_grid(map_, inverse(centre));
+ if (!source)
+ continue;
+ const auto index = static_cast<std::size_t>(source->y) * map_.width + source->x;
+ occupancy[destination] = map_.occupancy[index];
+ if (has_elevation) {
+ elevation[destination] = map_.elevation_m[index];
+ sigma[destination] = map_.elevation_sigma_m[index];
+ }
+ }
+ }
+ map_.occupancy = std::move(occupancy);
+ if (has_elevation) {
+ map_.elevation_m = std::move(elevation);
+ map_.elevation_sigma_m = std::move(sigma);
+ }
+ occupancy_.assign_values(map_.occupancy);
+ if (has_elevation) {
+ elevation_.reset(map_.occupancy.size());
+ for (std::size_t index = 0; index < map_.elevation_m.size(); ++index) {
+ if (!std::isfinite(map_.elevation_m[index]) ||
+ !std::isfinite(map_.elevation_sigma_m[index]))
+ continue;
+ elevation_.assign(index, map_.elevation_m[index], map_.elevation_sigma_m[index]);
+ }
+ }
+ pose_ = forward(pose_);
+ heading_rad_ = wrap_angle(heading_rad + heading_rad_);
+ // Keep the odometry-to-local mapping consistent with the corrected frame:
+ // the pose produced from the most recent prior must remain this pose.
+ anchor_world_heading_rad_ = wrap_angle(last_prior_heading_rad_ - heading_rad_);
+ const auto offset = rotate(pose_, anchor_world_heading_rad_);
+ anchor_world_position_ = {last_prior_position_.x - offset.x,
+ last_prior_position_.y - offset.y};
+}
+
 MapBuilderUpdate OnlineSlamMapBuilder::make_update(
  MappingState state, double stamp_s, std::string diagnostic) const {
  MapBuilderUpdate output;
@@ -352,6 +417,8 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  pose_ = world_to_local(prior.position);
  heading_rad_ = wrap_angle(prior.heading_rad - anchor_world_heading_rad_);
  }
+ last_prior_position_ = prior.position;
+ last_prior_heading_rad_ = prior.heading_rad;
 
  std::string diagnostic = "mapping";
  if (known_cells() > 0) {

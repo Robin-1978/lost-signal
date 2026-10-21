@@ -35,6 +35,10 @@ public:
     explicit OccupancyLogOdds(OccupancyLogOddsConfig config = {});
 
     void reset(std::size_t cells);
+ // Restores a previously published raster after a rigid submap correction.
+ // The hysteresis history is not preserved across the resample, but the
+ // published decision is, so a correction cannot erase confirmed obstacles.
+ void assign_values(const std::vector<std::int8_t>& values);
     std::size_t cell_count() const { return cells_.size(); }
 
     // Out-of-range cells and non-positive repeat counts are ignored. Repeats

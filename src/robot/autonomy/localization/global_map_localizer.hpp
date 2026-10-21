@@ -41,8 +41,8 @@ struct GlobalMapLocalizationConfig {
  // occupied returns is unobservable even when discrete raster scoring gives
  // it a small numerical edge. Both values are explicit so a symmetric hall
  // cannot be accepted by an accidental tie-break.
- double equivalent_support_overlap_tolerance{0.05};
- double equivalent_support_margin{0.03};
+ double equivalent_support_overlap_tolerance{0.15};
+ double equivalent_support_margin{0.05};
  double ambiguity_distance_m{0.75};
  double ambiguity_heading_rad{0.70};
  std::size_t minimum_returns{12};

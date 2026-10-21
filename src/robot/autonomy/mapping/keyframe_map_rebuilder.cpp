@@ -23,7 +23,11 @@ KeyframeMapRebuilder::KeyframeMapRebuilder(KeyframeMapRebuildConfig config)
  : config_(std::move(config)) {}
 
 bool KeyframeMapRebuilder::valid_config() const {
- return config_.width > 4 && config_.height > 4 &&
+ const bool raster_valid = config_.derive_extents_from_session
+ ? config_.maximum_width > 4 && config_.maximum_height > 4
+ : config_.width > 4 && config_.height > 4;
+ return raster_valid && std::isfinite(config_.extent_margin_m) &&
+ config_.extent_margin_m >= 0.0 &&
  std::isfinite(config_.resolution_m) && config_.resolution_m > 0.0 &&
  std::isfinite(config_.maximum_range_m) && config_.maximum_range_m > 0.0 &&
  std::isfinite(config_.sensor_x_m) && std::isfinite(config_.sensor_y_m) &&
@@ -50,11 +54,47 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  return output;
  }
  runtime::MapGrid map;
+ map.resolution_m = config_.resolution_m;
+ if (config_.derive_extents_from_session) {
+ double minimum_x = std::numeric_limits<double>::infinity();
+ double minimum_y = std::numeric_limits<double>::infinity();
+ double maximum_x = -std::numeric_limits<double>::infinity();
+ double maximum_y = -std::numeric_limits<double>::infinity();
+ for (const auto& keyframe : keyframes) {
+ const auto& pose = keyframe.graph.initial_pose;
+ if (!std::isfinite(pose.position.x) || !std::isfinite(pose.position.y)) {
+ output.diagnostic = "keyframe pose is not finite";
+ return output;
+ }
+ minimum_x = std::min(minimum_x, pose.position.x);
+ minimum_y = std::min(minimum_y, pose.position.y);
+ maximum_x = std::max(maximum_x, pose.position.x);
+ maximum_y = std::max(maximum_y, pose.position.y);
+ }
+ const double half_extent = config_.maximum_range_m + config_.extent_margin_m;
+ const double resolution = config_.resolution_m;
+ minimum_x = std::floor((minimum_x - half_extent) / resolution) * resolution;
+ minimum_y = std::floor((minimum_y - half_extent) / resolution) * resolution;
+ maximum_x = std::ceil((maximum_x + half_extent) / resolution) * resolution;
+ maximum_y = std::ceil((maximum_y + half_extent) / resolution) * resolution;
+ const auto width = static_cast<std::uint64_t>(std::max(1.0,
+ std::ceil((maximum_x - minimum_x) / resolution)));
+ const auto height = static_cast<std::uint64_t>(std::max(1.0,
+ std::ceil((maximum_y - minimum_y) / resolution)));
+ if (width > config_.maximum_width || height > config_.maximum_height) {
+ output.diagnostic = "mapping session exceeds rebuild raster bounds: " +
+ std::to_string(width) + "x" + std::to_string(height);
+ return output;
+ }
+ map.width = static_cast<std::uint32_t>(width);
+ map.height = static_cast<std::uint32_t>(height);
+ map.origin_m = {minimum_x, minimum_y};
+ } else {
  map.width = config_.width;
  map.height = config_.height;
- map.resolution_m = config_.resolution_m;
  map.origin_m = {-0.5 * static_cast<double>(config_.width) * config_.resolution_m,
  -0.5 * static_cast<double>(config_.height) * config_.resolution_m};
+ }
  map.occupancy.assign(static_cast<std::size_t>(map.width) * map.height, -1);
  if (config_.publish_elevation_layer) {
  map.elevation_m.assign(map.occupancy.size(),

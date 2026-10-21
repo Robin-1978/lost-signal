@@ -79,5 +79,19 @@ int main() {
  auto malformed = session.ingest({{0.0, 0.0}, 0.0}, scan(5.0, 8), 6.0);
  CHECK(!malformed.accepted);
  CHECK(session.keyframes().empty());
+
+ // A real loop can close after large odometric drift. The candidate gate must
+ // use the scan-matcher's measured transform, rather than rejecting it merely
+ // because the stale odometry poses are far apart.
+ sim::autonomy::MappingSession long_loop(config);
+ CHECK(long_loop.ingest({{0.0, 0.0}, 0.0}, scan(10.0, 9), 10.0).created_keyframe);
+ CHECK(long_loop.ingest({{30.0, 0.0}, 0.0}, scan(20.0, 10), 20.0).created_keyframe);
+ sim::autonomy::LoopClosureEvidence long_evidence;
+ long_evidence.match_score = 0.95;
+ long_evidence.overlap = 0.90;
+ long_evidence.score_margin = 0.20;
+ long_evidence.measured_relative_pose = {{0.0, 0.0}, 0.0};
+ long_evidence.information = sim::autonomy::pose_graph_information(0.05, 0.05);
+ CHECK(long_loop.add_loop_closure(2, 1, long_evidence).accepted);
  return 0;
 }

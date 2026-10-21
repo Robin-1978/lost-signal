@@ -1,6 +1,7 @@
 #include "robot/autonomy/mapping/keyframe_map_rebuilder.hpp"
 
 #include <algorithm>
+#include <string>
 #include <iostream>
 
 #define CHECK(condition) \
@@ -62,5 +63,32 @@ int main() {
  auto empty = rebuilder.rebuild({}, 8, 4.0);
  CHECK(!empty.success);
  CHECK(empty.diagnostic == "cannot rebuild a map without keyframes");
+
+ // A longer survey must not be clipped by the old fixed 240-cell box. Every
+ // corrected keyframe pose has to fall inside the rebuilt raster.
+ sim::autonomy::MappingSession long_session;
+ CHECK(long_session.ingest({{0.0, 0.0}, 0.0}, scan(1.0, 1, 3.0), 1.0).created_keyframe);
+ CHECK(long_session.ingest({{10.0, 0.0}, 0.0}, scan(2.0, 2, 3.0), 2.0).created_keyframe);
+ CHECK(long_session.ingest({{25.0, 4.0}, 0.3}, scan(3.0, 3, 3.0), 3.0).created_keyframe);
+ const auto long_rebuild = rebuilder.rebuild(long_session.keyframes(), 9, 5.0);
+ CHECK(long_rebuild.success);
+ CHECK(long_rebuild.snapshot && long_rebuild.snapshot->grid);
+ const auto& long_grid = *long_rebuild.snapshot->grid;
+ for (const auto& keyframe : long_session.keyframes()) {
+ const auto cell = sim::runtime::world_to_grid(long_grid,
+ keyframe.graph.initial_pose.position);
+ CHECK(cell.has_value());
+ }
+ CHECK(static_cast<double>(long_grid.width) * long_grid.resolution_m > 25.0);
+
+ // A session that would exceed the configured allocation must fail explicitly
+ // rather than publish a map that silently omits part of the survey.
+ sim::autonomy::KeyframeMapRebuildConfig bounded = config;
+ bounded.maximum_width = 200;
+ bounded.maximum_height = 200;
+ sim::autonomy::KeyframeMapRebuilder bounded_rebuilder(bounded);
+ const auto rejected = bounded_rebuilder.rebuild(long_session.keyframes(), 10, 6.0);
+ CHECK(!rejected.success);
+ CHECK(rejected.diagnostic.find("exceeds rebuild raster bounds") != std::string::npos);
  return 0;
 }

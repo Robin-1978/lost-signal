@@ -395,8 +395,9 @@ per-return elevation publication, plus a ROBOT-only SE(2) pose graph with fixed-
 loop-closure edges. Pose-graph tests cover a drifted square loop, anchor preservation, invalid information, unknown
 nodes, duplicate nodes, self edges and disconnected graphs. The bounded `localization_mapping_replay` gate exercises
 fixed-timestamp scans with bounded wheel/IMU drift. This is component evidence: it does not claim dynamic-object
-filtering, keyframe-triggered rerasterization after optimization, multi-view 2.5D elevation fusion or production large-map
-localization. This boundary follows the established SLAM Toolbox/Cartographer pattern: serialized pose-graph/session data
+filtering, calibrated multi-view 2.5D elevation fusion or production large-map localization. Keyframe-triggered
+rerasterization is now covered as a transactional component, but still needs long repeated-loop replay. This boundary
+follows the established SLAM Toolbox/Cartographer pattern: serialized pose-graph/session data
 is retained separately from an exported navigation map, loop closure updates poses, and the map is rebuilt from the
 associated scans. The project keeps the first solver small and provider-neutral, but adopts those contracts before any
 third-party optimizer is considered.
@@ -411,7 +412,12 @@ The next P2 gates are:
  poses, validates the candidate, and only then atomically calls `MapManager::replace`; old immutable revisions remain
  available when optimization, reconstruction, or publication fails. The graph correction gate rejects non-finite,
  non-improving, or implausibly large corrections. The production integration gate still requires dynamic filtering and
- held-out replay evidence;
+ held-out replay evidence. `SlamSession` now composes this transaction end to end: timestamped frontend keyframes feed
+ a bounded scan-based loop detector, accepted evidence enters the existing gate and pose graph, corrected keyframes
+ rebuild an immutable map revision, and the frontend adopts the same rigid correction. The active `MapProvider` supplies
+ the map identity to both frontend and rebuild configuration, so a caller cannot publish a revision under a different
+ `map_id`. `test_slam_session` covers drift, loop insertion, publication and identity preservation; this remains a
+ deterministic fixture, not evidence of long repeated-loop robustness;
 2. **In progress:** calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and
  uncertainty. The ROBOT `ElevationFusion` component now combines multi-view heights by inverse variance, includes pose
  uncertainty, bounds stale evidence with a forgetting factor, and exposes disagreement as uncertainty instead of

@@ -105,8 +105,10 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/mapping/pose_graph.cpp
  src/robot/autonomy/mapping/mapping_session.cpp
  src/robot/autonomy/mapping/loop_closure.cpp
+ src/robot/autonomy/mapping/loop_closure_detector.cpp
  src/robot/autonomy/mapping/keyframe_map_rebuilder.cpp
  src/robot/autonomy/mapping/slam_map_publication.cpp
+ src/robot/autonomy/mapping/slam_session.cpp
  src/robot/autonomy/mapping/elevation_fusion.cpp
  src/robot/autonomy/mapping/occupancy_log_odds.cpp
  src/robot/autonomy/mapping/observed_obstacle_layer.cpp
@@ -264,6 +266,14 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_mapping_session tests/new/test_mapping_session.cpp)
  target_link_libraries(test_mapping_session PRIVATE lost_signal_robot_autonomy)
  add_test(NAME mapping_session COMMAND test_mapping_session)
+
+ add_executable(test_slam_session tests/new/test_slam_session.cpp)
+ target_link_libraries(test_slam_session PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME slam_session COMMAND test_slam_session)
+
+ add_executable(test_loop_closure_detector tests/new/test_loop_closure_detector.cpp)
+ target_link_libraries(test_loop_closure_detector PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME loop_closure_detector COMMAND test_loop_closure_detector)
 
  add_executable(test_keyframe_map_rebuilder tests/new/test_keyframe_map_rebuilder.cpp)
  target_link_libraries(test_keyframe_map_rebuilder PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
@@ -522,6 +532,8 @@ if(LOST_SIGNAL_BUILD_TESTS)
  lost_signal_add_shared_robot_test(diagnostic_log test_diagnostic_log lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(online_slam test_online_slam lost_signal_robot_autonomy lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(pose_graph test_pose_graph lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(slam_session test_slam_session lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(loop_closure_detector test_loop_closure_detector lost_signal_robot_autonomy lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(mapping_session test_mapping_session lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(keyframe_map_rebuilder test_keyframe_map_rebuilder lost_signal_robot_autonomy lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(slam_map_publication test_slam_map_publication lost_signal_robot_autonomy lost_signal_robot_runtime)

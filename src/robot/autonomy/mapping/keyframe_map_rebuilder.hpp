@@ -12,6 +12,15 @@
 namespace sim::autonomy {
 
 struct KeyframeMapRebuildConfig {
+ // A rebuilt navigation map must cover the whole mapping session. When this
+ // is enabled the raster bounds come from every corrected keyframe pose plus
+ // the sensor range and a margin; a fixed 240-cell box would silently clip a
+ // longer survey. `width`/`height` are then only the fallback for a fixed
+ // raster, and `maximum_width`/`maximum_height` bound the derived allocation.
+ bool derive_extents_from_session{true};
+ double extent_margin_m{2.0};
+ std::uint32_t maximum_width{4096};
+ std::uint32_t maximum_height{4096};
  std::uint32_t width{240};
  std::uint32_t height{240};
  double resolution_m{0.05};

@@ -52,6 +52,11 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  explicit OnlineSlamMapBuilder(OnlineSlamConfig config = {});
 
  void reset() override;
+ // Rigid correction of the local map frame produced by a pose-graph solve.
+ // The submap raster, elevation and pose are all shifted so that later scans
+ // stay in the corrected frame; without this feedback a published loop
+ // closure would be followed by poses in the old frame.
+ void apply_map_correction(Vec2 translation_m, double heading_rad);
  MapBuilderUpdate update(const ObservationFrame& observations,
  const EstimatedState& prior, runtime::TimePoint sample_time) override;
 
@@ -62,6 +67,8 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  double last_stamp_s_{-1.0};
  Vec2 anchor_world_position_{};
  double anchor_world_heading_rad_{0.0};
+ Vec2 last_prior_position_{};
+ double last_prior_heading_rad_{0.0};
  Vec2 pose_{};
  double heading_rad_{0.0};
  std::uint64_t revision_{0};

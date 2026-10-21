@@ -49,6 +49,18 @@ ElevationEstimate ElevationFusion::estimate(std::size_t cell) const {
  return output;
 }
 
+void ElevationFusion::assign(std::size_t cell, double height_m,
+ double sigma_m) {
+ if (cell >= cells_.size() || !std::isfinite(height_m) || !(sigma_m > 0.0) ||
+ !std::isfinite(sigma_m))
+ return;
+ auto& stored = cells_[cell];
+ stored.mean_m = height_m;
+ stored.precision = 1.0 / (sigma_m * sigma_m);
+ stored.weighted_square = 0.0;
+ stored.observations = 1;
+}
+
 ElevationEstimate ElevationFusion::fuse(std::size_t cell, double height_m,
  double sigma_m) {
  if (!valid_config(config_) || cell >= cells_.size() || !std::isfinite(height_m) ||

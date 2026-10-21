@@ -9,8 +9,13 @@ namespace sim::autonomy {
 
 struct LoopClosureGateConfig {
  double minimum_temporal_separation_s{5.0};
+ // Maximum translation reported by the scan matcher. This is deliberately
+ // independent of odometric keyframe separation: a long loop can close after
+ // substantial drift.
  double maximum_candidate_distance_m{8.0};
- double minimum_overlap{0.45};
+ // Two-way scan support. A one-sided match can align part of a scan against
+ // unrelated geometry, so an accepted loop must be explained by both scans.
+ double minimum_overlap{0.65};
  double minimum_score_margin{0.05};
 };
 

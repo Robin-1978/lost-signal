@@ -55,6 +55,24 @@ void OccupancyLogOdds::update_publication(Cell& cell) const {
  cell.published = 0;
 }
 
+void OccupancyLogOdds::assign_values(const std::vector<std::int8_t>& values) {
+ cells_.assign(values.size(), {});
+ const auto log_odds_of = [](float probability) {
+ return std::log(probability / (1.0F - probability));
+ };
+ const float occupied = log_odds_of(config_.occupied_probability);
+ const float free = log_odds_of(config_.free_probability);
+ for (std::size_t index = 0; index < values.size(); ++index) {
+ const std::int8_t value = values[index];
+ if (value < 0)
+ continue;
+ auto& cell = cells_[index];
+ cell.observed = true;
+ cell.published = value;
+ cell.log_odds = value >= 50 ? occupied : free;
+ }
+}
+
 void OccupancyLogOdds::observe_free(std::size_t cell, int repeats) {
  if (!valid_config(config_) || cell >= cells_.size() || repeats <= 0)
  return;

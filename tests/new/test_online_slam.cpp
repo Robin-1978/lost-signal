@@ -134,6 +134,20 @@ int main() {
  CHECK(second.pose.header.source_id == "robot.online-slam");
  CHECK(second.pose.position.x >= 0.15 && second.pose.position.x <= 0.35);
 
+ // A pose-graph correction is fed back through the same provider boundary as
+ // a normal update. The next prior must remain in the corrected map frame and
+ // the raster must continue publishing instead of silently reverting to the
+ // pre-correction frame.
+ builder.apply_map_correction({0.20, -0.10}, 0.05);
+ const auto corrected = builder.update(
+ frame(scan_with_wall(2.1, 3, 4.75)), prior,
+ sim::runtime::TimePoint::from_seconds(2.1));
+ CHECK(corrected.state == sim::autonomy::MappingState::Mapping);
+ CHECK(corrected.map_revision == 3);
+ CHECK(corrected.published_map && corrected.published_map->grid);
+ CHECK(std::isfinite(corrected.pose.position.x));
+ CHECK(std::isfinite(corrected.pose.position.y));
+
  const auto stale = builder.update(frame(second_scan), prior,
  sim::runtime::TimePoint::from_seconds(1.5));
  CHECK(stale.state == sim::autonomy::MappingState::Degraded);

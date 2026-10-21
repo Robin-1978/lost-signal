@@ -44,6 +44,8 @@ class ElevationFusion final {
  // stored estimate is left untouched (the return value is then invalid).
  ElevationEstimate fuse(std::size_t cell, double height_m,
  double sigma_m = 0.0);
+ // Restores a fused estimate when a raster is rigidly resampled.
+ void assign(std::size_t cell, double height_m, double sigma_m);
  ElevationEstimate estimate(std::size_t cell) const;
 
  const ElevationFusionConfig& config() const { return config_; }
