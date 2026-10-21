@@ -145,6 +145,25 @@ The shipped provider is `channel.in-process`. `ReplayDriver` publishes ordered r
 
 Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v2 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
 
+### Native robot bring-up
+
+Moving from SIM to a real robot changes the provider backend and instance configuration, not the ROBOT algorithm
+contracts. A native bring-up must register the same endpoint kinds (`Lidar`, `Imu`, `Encoder`, `JointState`,
+`Actuator`, `Power`) with `ProviderBackend::Native`, stable source IDs, calibrated frame IDs and the robot clock. The
+provider converts the device SDK's packets into LSRI observations and owns device reconnects, queueing, timestamp
+translation, packet loss and hardware fault reporting.
+
+The robot profile must provide the measured values that simulation previously supplied from assets: `base_link` to
+sensor and wheel extrinsics, axis/sign conventions, LiDAR per-return timing and range limits, IMU bias/noise and axis
+mapping, wheel radius/track or steering geometry, encoder resolution and gear ratio, actuator modes and limits,
+command latency, watchdog safe values, mass/inertia and chassis capabilities. Calibration is versioned and hashed; a
+missing or incompatible calibration keeps the endpoint degraded rather than silently using a simulator default.
+
+The normal migration therefore consists of selecting native provider IDs, loading the real calibration/profile, checking
+capability negotiation and running the provider-conformance/replay tests. LSRI schema changes are needed only when the
+real device exposes a measurement that the current contract cannot represent; a device-specific field must not leak
+into planner or controller code.
+
 The provider boundary permits multi-threaded and multi-process execution, but v2 ships only the in-process channel transport. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
 
 Controller placement is therefore explicit. A provider never reinterprets a body-motion number as torque, PWM, or joint position. Future wire encodings must preserve the same command mode, units, expiry, and channel identity. The capability and feedback model is documented in [platform fidelity and hardware adaptation](platform-fidelity.md).

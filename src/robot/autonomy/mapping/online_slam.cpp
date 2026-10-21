@@ -272,7 +272,9 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  if (!cell)
  break;
  const auto cell_index = static_cast<std::size_t>(cell->y) * map_.width + cell->x;
- // Never clear a previously observed obstacle with a later ray.
+ // Never clear a previously observed obstacle with a later ray. Clearing a
+ // confirmed obstacle belongs to the pose-graph rebuild, which fuses every
+ // keyframe through OccupancyLogOdds.
  if (map_.occupancy[cell_index] < 50)
  map_.occupancy[cell_index] = 0;
  }

@@ -362,7 +362,11 @@ The next P2 gates are:
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;
-4. long-run drift/loop-closure replay on a held-out map before normal levels rely on mapless SLAM.
+4. **Component gate added:** `large_map_long_run` replays 64 repeated LiDAR corrections against a 200,000 m² map,
+ with a persistent 0.35 m odometry prior error, quarterly error tracking, p95 latency, peak RSS and kidnapped-prior
+ rejection. The current development result is 0 m maximum correction error for this synthetic fixture, p95 about
+ 176 ms and peak RSS about 61 MiB. This is a repeatability gate, not field evidence; long loop closure replay and
+ held-out terrain remain required before normal levels rely on mapless SLAM.
 
 Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
 map revision. Continuing mapping adds keyframes in a new or extended mapping session; editing or importing map geometry
