@@ -53,10 +53,29 @@ struct LocalizationMotionAuthorityPolicy {
  double cautious_speed_scale{0.70};
 };
 
+// Runtime motion limits used by the deployable planner and safety controller.
+// These are policy/calibration values, not map or game content.  Keeping them
+// here gives a real platform one auditable place to retune sensor age,
+// deadbands and stop-latch behavior without changing the SIM executable.
+struct MotionExecutionPolicy {
+ double gravity_mps2{9.81};
+ double physical_standoff_reserve_m{0.10};
+ double prediction_step_s{0.10};
+ double dynamic_rollover_risk_limit{0.85};
+ double planning_rest_deadband_mps{0.005};
+ double planning_pose_velocity_deadband_mps{0.03};
+ double committed_progress_floor_mps{0.15};
+ double controlled_stop_release_mps{0.04};
+ double creep_speed_mps{0.15};
+ std::size_t controlled_stop_settle_cycles{3};
+ std::size_t visible_dwa_candidates{24};
+};
+
 struct MotionPolicy {
  LocalizationQualityPolicy localization_quality;
  autonomy::LocalizationSupervisorConfig localization_supervisor;
  LocalizationMotionAuthorityPolicy localization_motion;
+ MotionExecutionPolicy execution;
 
  // Baseline used by unit tests and by explicit offline tools. Runtime
  // composition should load the deployed file so the values stay auditable.

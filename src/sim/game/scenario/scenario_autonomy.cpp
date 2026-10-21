@@ -15,12 +15,6 @@
 namespace mission {
 namespace {
 
-// Keep a measured margin below the analytic wheel-lift boundary. This is a
-// platform safety policy, independent of the player's speed preference.
-// It does not replace runtime roll/roll-rate monitoring or identified tire
-// and suspension models.
-constexpr double kLocalDynamicRolloverRiskLimit = 0.85;
-
 double distance(sim::Vec2 a, sim::Vec2 b) {
  return std::hypot(a.x - b.x, a.y - b.y);
 }
@@ -77,9 +71,9 @@ void ScenarioSession::decide_control() {
  // localization noise. Keep the preferred envelope (robot radius plus policy
  // margin) as the normal planning contract and use this floor only to stop a
  // recovery from spending the last centimetres before contact.
- constexpr double kPhysicalStandoffReserveM = 0.10;
+ const auto& execution_policy = motion_policy_.execution;
  const double physical_execution_margin_m = std::max(
-  level_.planning_localization_margin_m, kPhysicalStandoffReserveM);
+ level_.planning_localization_margin_m, execution_policy.physical_standoff_reserve_m);
  // The local planning view composes immutable authored occupancy with the
  // transient LiDAR obstacle layer. Dynamic target prediction remains a
  // separate time-indexed input below; an observed obstacle therefore cannot
@@ -363,7 +357,9 @@ void ScenarioSession::decide_control() {
  if (chassis_caps_.command_space != sim::ChassisCommandSpace::HolonomicTwist)
  speed_cap = std::min(speed_cap, std::abs(route_control.tv));
  const sim::DwaWeights weights{1.0, 1.3 + preferred_clearance * 1.8, 0.25};
- constexpr double prediction_step_s = 0.1;
+ // Decision-cycle reachability step. Deployment-owned: a native computer may
+ // run a different control period than the simulation baseline.
+ const double prediction_step_s = execution_policy.prediction_step_s;
  // Predictor module (src/robot/autonomy/predictor.*) owns future frames; the tracker
  // owns observations. known_tracks (age-advanced, for display) must not
  // feed prediction: map.predict() snapshots raw tracker state internally.
@@ -1051,7 +1047,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  }
  snapshot_.control.local_target = target;
  }
- constexpr double kCommittedProgressFloorMps = 0.15;
+ const double kCommittedProgressFloorMps = execution_policy.committed_progress_floor_mps;
  // The admitted trajectory may begin with an in-place alignment while the
  // body is still at the safe stop pose. Keep the floor disabled during that
  // stage, then require actuator-reachable progress as soon as alignment is
@@ -1108,13 +1104,14 @@ if (!continuous_execution && remaining_m > 0.5) {
  // recovery. Apply a narrow planning deadband only when the encoder common
  // mode reports no translation; differential tread motion remains available
  // to the yaw-reachability model.
- constexpr double kPlanningRestDeadbandMps = 0.005;
+ const double kPlanningRestDeadbandMps = execution_policy.planning_rest_deadband_mps;
  const double measured_encoder_forward_mps =
  0.5 * (measured_left_mps + measured_right_mps);
  // Opposite tread motion is an in-place turn, so its common mode is the
  // longitudinal observation. Requiring both treads to stop leaves fused-pose
  // centimetre noise looking like real forward/reverse travel during a pivot.
- constexpr double kPlanningPoseVelocityDeadbandMps = 0.03;
+ const double kPlanningPoseVelocityDeadbandMps =
+ execution_policy.planning_pose_velocity_deadband_mps;
  const bool encoder_translation_stopped =
  std::abs(measured_encoder_forward_mps) < kPlanningRestDeadbandMps;
  local_request.forward_mps = encoder_translation_stopped &&
@@ -1214,7 +1211,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  local_request.support_polygon = chassis_caps_.geometry.support_polygon;
  local_request.center_of_mass_x_m = combined_center_x_m();
  local_request.center_of_mass_height_m = combined_center_height_m();
- local_request.max_dynamic_rollover_risk = kLocalDynamicRolloverRiskLimit;
+ local_request.max_dynamic_rollover_risk = execution_policy.dynamic_rollover_risk_limit;
  local_request.preferred_direction = route_direction;
  local_request.route_is_reverse = reverse_route;
  local_request.crossing_relevant = mapped_crossing_relevant;
@@ -1399,7 +1396,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  double predicted_separation_m = std::isfinite(trajectory_validation.min_dynamic_clearance_m)
  ? trajectory_validation.min_dynamic_clearance_m
  : std::numeric_limits<double>::quiet_NaN();
- constexpr std::size_t kVisibleDwaCandidates = 24;
+ const std::size_t kVisibleDwaCandidates = execution_policy.visible_dwa_candidates;
  const std::size_t candidate_stride =
    std::max<std::size_t>(1, (dwa.rollouts.size() + kVisibleDwaCandidates - 1) / kVisibleDwaCandidates);
  for (std::size_t index = 0; index < dwa.rollouts.size(); index += candidate_stride) {
@@ -1421,7 +1418,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // planner can become nominally feasible one cycle after rejection while
  // the plant is still carrying the rejected maneuver's momentum; alternating
  // those two commands produces a brake/accelerate limit cycle on slopes.
- constexpr double kControlledStopLinearReleaseMps = 0.04;
+ const double kControlledStopLinearReleaseMps = execution_policy.controlled_stop_release_mps;
  // A stop latch belongs to the plant state, not to the filtered pose used by
  // the planner. The fused estimate may already be near zero while the wheel
  // joints still carry substantial speed, especially after a short safety
@@ -1435,18 +1432,14 @@ if (!continuous_execution && remaining_m > 0.5) {
  ? std::max(std::abs(local_request.measured_wheel_speeds->left_mps),
  std::abs(local_request.measured_wheel_speeds->right_mps))
  : std::abs(local_request.forward_mps);
- constexpr int kControlledStopSettleCycles = 3;
- if (!held_command_.controlled_stop) {
- controlled_stop_settle_cycles_ = 0;
- } else if (measured_stop_wheel_mps <= kControlledStopLinearReleaseMps) {
- controlled_stop_settle_cycles_ = std::min(
- kControlledStopSettleCycles, controlled_stop_settle_cycles_ + 1);
- } else {
- controlled_stop_settle_cycles_ = 0;
- }
- const bool controlled_stop_in_progress = held_command_.controlled_stop &&
-(controlled_stop_settle_cycles_ < kControlledStopSettleCycles ||
- measured_stop_wheel_mps > kControlledStopLinearReleaseMps);
+ // The release contract itself is ROBOT code; the deployment policy supplies
+ // only the calibrated thresholds.
+ sim::ControlledStopLatch::Config latch_config;
+ latch_config.release_speed_mps = execution_policy.controlled_stop_release_mps;
+ latch_config.settle_cycles =
+ static_cast<int>(execution_policy.controlled_stop_settle_cycles);
+ const bool controlled_stop_in_progress = controlled_stop_latch_.update(
+ held_command_.controlled_stop, measured_stop_wheel_mps, latch_config);
  const bool trajectory_accepted =
  trajectory_validation.accepted() && !controlled_stop_in_progress;
  const bool stability_rejection =
@@ -1544,9 +1537,9 @@ if (!continuous_execution && remaining_m > 0.5) {
   const auto& command = selected_trajectory.command;
   // This is the only command publication point for a validated local
   // trajectory. Every speed/turn cap was applied before rollout generation.
-  constexpr double kCreepSpeedMps = 0.15;
+ const double kCreepSpeedMps = execution_policy.creep_speed_mps;
   held_command_ = {command.v, command.w};
- controlled_stop_settle_cycles_ = 0;
+ controlled_stop_latch_.reset();
   held_command_.target_lateral_v = command.lateral_v;
  const double commanded_translation_mps =
  std::hypot(command.v, command.lateral_v);
@@ -1585,8 +1578,9 @@ if (!continuous_execution && remaining_m > 0.5) {
  const auto& control_estimate = estimation_system_.state();
  held_command_.longitudinal_acceleration_feedforward_mps2 =
  control_estimate.attitude_valid
- ? -9.81 * std::sin(control_estimate.pitch_rad)
- : 9.81 * current_grade / std::sqrt(1.0 + current_grade * current_grade);
+ ? -execution_policy.gravity_mps2 * std::sin(control_estimate.pitch_rad)
+ : execution_policy.gravity_mps2 * current_grade /
+ std::sqrt(1.0 + current_grade * current_grade);
  // Gravity compensation is a bounded actuator request, not an unbounded
  // estimate. An attitude estimate that lags or overshoots on a slide can
  // otherwise consume the whole duty range and cancel the velocity loop's

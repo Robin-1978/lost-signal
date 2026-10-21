@@ -257,7 +257,7 @@ void ScenarioSession::reset() {
  shadow_episode_last_s_ = -1.0;
  shadow_episode_last_reason_ = -1;
  held_command_ = {};
- controlled_stop_settle_cycles_ = 0;
+ controlled_stop_latch_.reset();
  manual_command_ = {};
  manual_control_active_ = false;
  endless_target_key_ = "uninitialized";

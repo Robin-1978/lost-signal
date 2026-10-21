@@ -5,6 +5,7 @@
 #include "sim/game/mission/construction_plan.hpp"
 #include "sim/game/mission/performance_score.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
+#include "robot/autonomy/control/controlled_stop_latch.hpp"
 #include "sim/game/mission/systems/collision_monitor.hpp"
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
 #include "sim/game/mission/systems/decision_evidence_system.hpp"
@@ -802,11 +803,10 @@ class ScenarioSession {
  double score_previous_command_v_mps_{0.0};
  double score_previous_command_w_radps_{0.0};
  sim::DiffCmd held_command_;
- // A controlled stop must observe several consecutive settled encoder
- // samples before releasing authority. One low sample can be followed by
- // gravity rollback or contact rebound; releasing on it would immediately
- // reapply a turn command while the chassis is still moving.
- int controlled_stop_settle_cycles_{0};
+ // ROBOT-owned stop latch. A controlled stop must observe several consecutive
+ // settled encoder samples before releasing authority; one low sample can be
+ // followed by gravity rollback or contact rebound.
+ sim::ControlledStopLatch controlled_stop_latch_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
  // a wait opens, vs the last assessment and the actual waited time when it
  // closes. Observation only; no control path reads these.

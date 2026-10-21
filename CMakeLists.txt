@@ -117,6 +117,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/localization/slip_observer.cpp
  src/robot/autonomy/localization/estimator_filter.cpp
  src/robot/autonomy/control/safe_stop_limiter.cpp
+ src/robot/autonomy/control/controlled_stop_latch.cpp
  src/robot/autonomy/control/route_tracking_system.cpp
  src/robot/autonomy/control/trajectory_tracking_system.cpp
 )
@@ -184,6 +185,11 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_localization_motion_authority tests/new/test_localization_motion_authority.cpp)
  target_link_libraries(test_localization_motion_authority PRIVATE lost_signal_robot_autonomy)
  add_test(NAME localization_motion_authority COMMAND test_localization_motion_authority)
+
+add_executable(test_motion_policy tests/new/test_motion_policy.cpp)
+target_link_libraries(test_motion_policy PRIVATE lost_signal_robot_autonomy)
+add_test(NAME motion_policy COMMAND test_motion_policy)
+set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
  add_executable(test_sha256 tests/new/test_sha256.cpp)
  target_link_libraries(test_sha256 PRIVATE lost_signal_robot_core)

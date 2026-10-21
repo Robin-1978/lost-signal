@@ -235,3 +235,27 @@ The three sections have separate meanings:
 Defaults equal the values used by the regression suite, so a deployment that ships the unmodified file behaves like
 the validated baseline. Hardware capabilities such as maximum wheel speed, braking torque or LiDAR range belong in
 the platform profile (`assets/robots/*.json`); they must never be expressed here.
+
+### Execution envelope
+
+The `execution` section holds the runtime thresholds the deployable planner and safety controller actually consume.
+They used to be anonymous literals inside the scenario decision loop, which meant a tuned value only existed in the
+simulation binary:
+
+| Field | Unit | Meaning |
+| --- | --- | --- |
+| `gravity_mps2` | m/s^2 | Gravity used for grade compensation on a platform without a live attitude estimate. |
+| `physical_standoff_reserve_m` | m | Non-localization reserve kept even when a map declares zero localization margin: tracker lag, offset axle, grade creep. |
+| `prediction_step_s` | s | Decision-cycle reachability and rollout step. Distinct from the physics integration step. |
+| `dynamic_rollover_risk_limit` | ratio | Fraction of the analytic wheel-lift moment at which a candidate is rejected. |
+| `planning_rest_deadband_mps` | m/s | Encoder common-mode speed below which translation counts as rest. |
+| `planning_pose_velocity_deadband_mps` | m/s | Filtered pose speed below which translation counts as rest. |
+| `committed_progress_floor_mps` | m/s | Minimum progress required once an admitted crossing has finished alignment. |
+| `controlled_stop_release_mps` | m/s | Peak tread speed at or below which a staged stop counts as settled. |
+| `controlled_stop_settle_cycles` | cycles | Consecutive settled decision cycles required before releasing authority. |
+| `creep_speed_mps` | m/s | Speed below which a validated command counts as waiting rather than driving. |
+| `visible_dwa_candidates` | count | Candidate rollouts retained for telemetry; it does not change selection. |
+
+The release rule itself is ROBOT code (`src/robot/autonomy/control/controlled_stop_latch.*`), so the same latch
+semantics run on a native platform. Only the calibrated thresholds come from the deployment file. `visible_dwa_candidates`
+is presentation-only and must never be used as a decision parameter.

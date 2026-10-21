@@ -113,7 +113,7 @@ MotionPolicy MotionPolicy::load(const std::filesystem::path& path) {
 
  static const std::unordered_set<std::string> top_level{
  "schema_version", "provenance", "localization_quality", "localization_supervisor",
- "localization_motion_authority"};
+ "localization_motion_authority", "execution"};
  for (const auto& item : document.items()) {
  if (!top_level.count(item.key())) {
  throw std::runtime_error("motion policy: unknown top-level key '" + item.key() + "'");
@@ -128,7 +128,7 @@ MotionPolicy MotionPolicy::load(const std::filesystem::path& path) {
  throw std::runtime_error("motion policy: 'provenance' must name the tuning record");
  }
  for (const char* section : {"localization_quality", "localization_supervisor",
- "localization_motion_authority"}) {
+ "localization_motion_authority", "execution"}) {
  if (!document.contains(section)) {
  throw std::runtime_error("motion policy: missing section '" + std::string(section) + "'");
  }
@@ -165,6 +165,20 @@ MotionPolicy MotionPolicy::load(const std::filesystem::path& path) {
  {"reduced_speed_scale", &motion.reduced_speed_scale},
  {"cautious_confidence", &motion.cautious_confidence},
  {"cautious_speed_scale", &motion.cautious_speed_scale}});
+
+ auto& execution = policy.execution;
+ apply_section(document.at("execution"), "execution",
+ {{"gravity_mps2", &execution.gravity_mps2},
+ {"physical_standoff_reserve_m", &execution.physical_standoff_reserve_m},
+ {"prediction_step_s", &execution.prediction_step_s},
+ {"dynamic_rollover_risk_limit", &execution.dynamic_rollover_risk_limit},
+ {"planning_rest_deadband_mps", &execution.planning_rest_deadband_mps},
+ {"planning_pose_velocity_deadband_mps", &execution.planning_pose_velocity_deadband_mps},
+ {"committed_progress_floor_mps", &execution.committed_progress_floor_mps},
+ {"controlled_stop_release_mps", &execution.controlled_stop_release_mps},
+ {"creep_speed_mps", &execution.creep_speed_mps}},
+ {{"controlled_stop_settle_cycles", &execution.controlled_stop_settle_cycles},
+ {"visible_dwa_candidates", &execution.visible_dwa_candidates}});
 
  policy.validate();
  return policy;
@@ -227,6 +241,27 @@ void MotionPolicy::validate() const {
  }
  if (!finite_positive(motion.hold_max_age_s)) {
  throw std::runtime_error("motion policy: localization hold age must be positive");
+ }
+
+ const auto& execution_policy = execution;
+ if (!finite_positive(execution_policy.gravity_mps2) ||
+ !std::isfinite(execution_policy.physical_standoff_reserve_m) ||
+ execution_policy.physical_standoff_reserve_m < 0.0 ||
+ !finite_positive(execution_policy.prediction_step_s) ||
+ !unit_interval(execution_policy.dynamic_rollover_risk_limit) ||
+ !std::isfinite(execution_policy.planning_rest_deadband_mps) ||
+ execution_policy.planning_rest_deadband_mps < 0.0 ||
+ !std::isfinite(execution_policy.planning_pose_velocity_deadband_mps) ||
+ execution_policy.planning_pose_velocity_deadband_mps < 0.0 ||
+ !std::isfinite(execution_policy.committed_progress_floor_mps) ||
+ execution_policy.committed_progress_floor_mps < 0.0 ||
+ !std::isfinite(execution_policy.controlled_stop_release_mps) ||
+ execution_policy.controlled_stop_release_mps < 0.0 ||
+ !std::isfinite(execution_policy.creep_speed_mps) ||
+ execution_policy.creep_speed_mps < 0.0 ||
+ execution_policy.controlled_stop_settle_cycles == 0 ||
+ execution_policy.visible_dwa_candidates == 0) {
+ throw std::runtime_error("motion policy: execution envelope is invalid");
  }
 }
 

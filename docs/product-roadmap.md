@@ -831,6 +831,38 @@ robot-facing decision code inside the game. The migration plan is:
 
 Each stage keeps the deployed boundary test green: a ROBOT target that links SIM fails the build.
 
+Progress on stage 1: the stop-authority latch, its release contract and its settle window now live in ROBOT
+(`src/robot/autonomy/control/controlled_stop_latch.*`) and the scenario only assembles inputs. The runtime thresholds
+that the decision loop previously hard-coded — gravity, physical stand-off, decision step, rollover risk limit,
+planning deadbands, committed progress floor, creep speed and the latch window — load from
+`robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
+deployed file drifts from the compiled defaults. Remaining literals in the decision loop are catalogued below.
+
+### Magic-number audit (decision loop)
+
+Values still inline in `src/sim/game/scenario/scenario_autonomy.cpp` and their intended owner. Nothing here is a
+silent default: each entry must either move to `robot_data/` or be justified as a fixed physical/algorithmic constant
+before the next migration slice.
+
+| Inline value | Meaning | Target owner |
+| --- | --- | --- |
+| `0.25` | Docking arrival radius and subgoal sampling stride | ROBOT docking policy |
+| `3.0`, `1.4`, `0.7` | Docking range window and reverse hysteresis | ROBOT docking policy |
+| `0.3` | Docking approach speed | ROBOT docking policy (platform-limited) |
+| `0.20` | Minimum schedule speed while tracking a valid heading | ROBOT speed schedule |
+| `0.5` | Ride excitation fraction of gravity | ROBOT ride-comfort policy |
+| `0.35` | Crossing lane half-width used for admission geometry | ROBOT crossing policy |
+| `1.2` | Fallback prediction horizon when a compute profile is absent | ROBOT compute profile |
+| `1.0`, `1.3`, `0.25` | DWA critic weights (path, clearance, heading) | ROBOT local-planner profile |
+| `0.18` | Inspect-goal terminal speed | ROBOT terminal-pose policy |
+| `0.05`, `0.10`, `0.5`, `1.0` | Local lookahead bounds on committed crossing legs | ROBOT crossing policy |
+| `2.0`, `0.01` | Local stop-plane activation distance and non-worsening clearance epsilon | ROBOT safety policy |
+| `0.65` | Legacy research-map conflict reserve | Game content, mapped stop-line placement |
+
+Fixed algorithmic constants that stay in code: numerical epsilons (`1e-9`, `1e-6`), rate expressions that only
+convert an interval to a per-cycle delta, and the `0.5` factor that converts two tread speeds to a common-mode
+longitudinal speed.
+
 ### Slope-lab localization mode
 
 The three slope lessons (`slope_launch`, `cross_slope`, `rain_descent`) run on the robot's own wheel/IMU odometry.
