@@ -503,6 +503,35 @@ if(LOST_SIGNAL_BUILD_TESTS)
  enable_testing()
  find_package(Threads REQUIRED)
 
+ # ROBOT-domain gates that must run in the full SIM build as well. The
+ # robot-only configuration defines them earlier; the TARGET guard keeps a
+ # single definition per test. Without this block the localization, mapping
+ # and provider-conformance suite silently drops out of the default build,
+ # and a release gate would report green while never exercising SLAM.
+ function(lost_signal_add_shared_robot_test test_name target)
+  if(TARGET ${target})
+   return()
+  endif()
+  add_executable(${target} tests/new/test_${test_name}.cpp)
+  target_link_libraries(${target} PRIVATE ${ARGN})
+  add_test(NAME ${test_name} COMMAND ${target})
+ endfunction()
+ lost_signal_add_shared_robot_test(localization_supervisor test_localization_supervisor lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(localization_motion_authority test_localization_motion_authority lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(provider_conformance test_provider_conformance lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(diagnostic_log test_diagnostic_log lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(online_slam test_online_slam lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(pose_graph test_pose_graph lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(mapping_session test_mapping_session lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(keyframe_map_rebuilder test_keyframe_map_rebuilder lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(slam_map_publication test_slam_map_publication lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(elevation_fusion test_elevation_fusion lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(occupancy_log_odds test_occupancy_log_odds lost_signal_robot_autonomy)
+ lost_signal_add_shared_robot_test(large_map_long_run test_large_map_long_run lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(startup_localization test_startup_localization lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(localization_mapping_replay test_localization_mapping_replay lost_signal_robot_autonomy lost_signal_robot_runtime)
+ set_tests_properties(large_map_long_run PROPERTIES TIMEOUT 600)
+
  add_executable(test_content_catalog tests/new/test_content_catalog.cpp)
  target_link_libraries(test_content_catalog PRIVATE lost_signal_sim_game)
  target_compile_definitions(test_content_catalog PRIVATE

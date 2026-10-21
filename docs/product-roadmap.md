@@ -420,7 +420,10 @@ The next P2 gates are:
  replay evidence;
  The `OccupancyLogOdds` component now provides bounded inverse-sensor-model evidence with hysteresis; it is used during
  keyframe map reconstruction and has an isolated transient-return regression. It is intentionally not yet enabled in the
- live online submap, because doing so without a calibrated dynamic/static classifier changed the validated replay path.
+live online submap until the evidence path below was validated. It now runs there as well: free-space carving clears a
+transient return only after the configured evidence accumulates, a confirmed wall survives a stray clearing ray, and
+elevation is fused only for endpoints that have earned occupied evidence. This remains sensor-only transient filtering;
+it does not claim semantic actor classification or replace the perception tracker.
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;

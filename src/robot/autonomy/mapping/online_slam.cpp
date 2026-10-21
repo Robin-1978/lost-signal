@@ -62,6 +62,8 @@ void OnlineSlamMapBuilder::initialize_map() {
  map_.elevation_m.clear();
  map_.elevation_sigma_m.clear();
  elevation_ = ElevationFusion(config_.elevation_fusion);
+ occupancy_ = OccupancyLogOdds(config_.occupancy);
+ occupancy_.reset(map_.occupancy.size());
 }
 
 void OnlineSlamMapBuilder::reset() {
@@ -272,11 +274,7 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  if (!cell)
  break;
  const auto cell_index = static_cast<std::size_t>(cell->y) * map_.width + cell->x;
- // Never clear a previously observed obstacle with a later ray. Clearing a
- // confirmed obstacle belongs to the pose-graph rebuild, which fuses every
- // keyframe through OccupancyLogOdds.
- if (map_.occupancy[cell_index] < 50)
- map_.occupancy[cell_index] = 0;
+	 occupancy_.observe_free(cell_index);
  }
  if (hit) {
  const Vec2 endpoint{sensor.x + range * std::cos(angle),
@@ -284,13 +282,15 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  const auto cell = runtime::world_to_grid(map_, endpoint);
  if (cell) {
  const auto cell_index = static_cast<std::size_t>(cell->y) * map_.width + cell->x;
- map_.occupancy[cell_index] = 100;
-  if (index < scan.ray_heights_m.size() &&
-  std::isfinite(scan.ray_heights_m[index]))
-  update_elevation(cell_index, config_.sensor_height_m +
-  scan.ray_heights_m[index]);
+	 occupancy_.observe_occupied(cell_index);
+	 if (occupancy_.value(cell_index) >= 50 && index < scan.ray_heights_m.size() &&
+	  std::isfinite(scan.ray_heights_m[index]))
+	  update_elevation(cell_index, config_.sensor_height_m +
+	  scan.ray_heights_m[index]);
  }
  }
+ for (std::size_t index = 0; index < map_.occupancy.size(); ++index)
+ map_.occupancy[index] = occupancy_.value(index);
  }
 }
 

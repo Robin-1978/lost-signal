@@ -2,6 +2,7 @@
 
 #include "robot/autonomy/mapping/map_builder.hpp"
 #include "robot/autonomy/mapping/elevation_fusion.hpp"
+#include "robot/autonomy/mapping/occupancy_log_odds.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,11 @@ struct OnlineSlamConfig {
  double minimum_match_margin{0.02};
  bool publish_elevation_layer{true};
  ElevationFusionConfig elevation_fusion{};
+ // The live submap fuses inverse-sensor-model evidence instead of
+ // overwriting cells. A passing person or cart must decay out of the map
+ // once rays pass through it again, while a real wall keeps accumulating
+ // endpoint evidence and survives an occasional spurious clearing ray.
+ OccupancyLogOddsConfig occupancy{-.10F, 2.40F, -2.5F, 3.5F, .65F, .35F};
  std::string map_id{"online-slam"};
 };
 
@@ -57,6 +63,7 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  double heading_rad_{0.0};
  std::uint64_t revision_{0};
  ElevationFusion elevation_;
+ OccupancyLogOdds occupancy_;
 
  void initialize_map();
  Vec2 world_to_local(Vec2 world) const;
