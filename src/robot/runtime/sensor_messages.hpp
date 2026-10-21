@@ -30,6 +30,9 @@ struct Scan {
  double angle_increment_rad{0.0};
  double scan_period_s{0.0};
  double time_increment_s{0.0};
+ // Optional per-ray acquisition offsets relative to the scan-end stamp.
+ // A point-cloud projection may preserve the selected return's firing time.
+ std::vector<double> ray_time_offsets_s;
  MeasurementHeader header;
 };
 

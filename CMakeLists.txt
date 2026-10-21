@@ -201,7 +201,7 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
 
  add_executable(test_online_slam tests/new/test_online_slam.cpp)
- target_link_libraries(test_online_slam PRIVATE lost_signal_robot_autonomy)
+ target_link_libraries(test_online_slam PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME online_slam COMMAND test_online_slam)
 
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)

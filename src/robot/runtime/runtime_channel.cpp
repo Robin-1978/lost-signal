@@ -427,10 +427,18 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
   const auto rays = static_cast<std::size_t>(std::max(0, scan.n_rays));
   if (scan.n_rays <= 0 || !finite_nonnegative(scan.max_range) || scan.max_range <= 0.0 ||
       scan.ranges.size() != rays || scan.hit.size() != rays ||
-      (!scan.intensities.empty() && scan.intensities.size() != rays)) {
+ (!scan.intensities.empty() && scan.intensities.size() != rays) ||
+ (!scan.ray_time_offsets_s.empty() && scan.ray_time_offsets_s.size() != rays)) {
    set_reason(reason, "lidar payload dimensions or range are invalid");
    return false;
   }
+ for (const double offset : scan.ray_time_offsets_s) {
+ if (!std::isfinite(offset) || offset > 1e-9 ||
+ (scan.scan_period_s > 0.0 && offset < -scan.scan_period_s - 1e-9)) {
+ set_reason(reason, "lidar ray time offset is invalid");
+ return false;
+ }
+ }
  }
  if (observation.lidar_point_cloud) {
  const auto& cloud = *observation.lidar_point_cloud;

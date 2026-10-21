@@ -337,6 +337,27 @@ int main() {
  CHECK(!valid_actuator_command(wrong_mode, actuator_config));
  CHECK(actuator_channel->autonomy().write_motion(command) == CommandWriteResult::Invalid);
 
+ sim::ObservationFrame point_cloud_frame;
+ point_cloud_frame.time_s = 3.0;
+ point_cloud_frame.lidar_point_cloud.emplace();
+ auto& point_cloud = *point_cloud_frame.lidar_point_cloud;
+ point_cloud.rings = 16;
+ point_cloud.azimuth_samples = 360;
+ point_cloud.max_range_m = 20.0;
+ point_cloud.scan_period_s = 0.1;
+ point_cloud.header = {3.0, 1, "lidar_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.16line"};
+ point_cloud.points.push_back({1.0, 0.0, 0.0, 0.5, -0.1, 0, 0});
+ std::string reason;
+ CHECK(valid_observation_frame(point_cloud_frame, &reason));
+ point_cloud.points.front().time_offset_s = 0.01;
+ CHECK(!valid_observation_frame(point_cloud_frame, &reason));
+ CHECK(reason == "lidar point cloud contains an invalid return");
+ point_cloud.points.front().time_offset_s = -0.1;
+ point_cloud.points.front().ring = 16;
+ CHECK(!valid_observation_frame(point_cloud_frame, &reason));
+ CHECK(reason == "lidar point cloud contains an invalid return");
+
  channel->deactivate();
  CHECK(channel->state() == LifecycleState::Inactive);
  CHECK(channel->platform().read_motion(TimePoint::from_seconds(1.0)).safe_stop);

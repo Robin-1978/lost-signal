@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace sim::autonomy {
@@ -21,6 +22,8 @@ struct OnlineSlamConfig {
  double sensor_x_m{0.0};
  double sensor_y_m{0.0};
  double sensor_yaw_rad{0.0};
+ double sensor_height_m{0.30};
+ double ground_rejection_band_m{0.06};
  double translation_search_m{0.30};
  double translation_step_m{0.05};
  double heading_search_rad{0.20};
@@ -55,9 +58,12 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  Vec2 sensor_position(Vec2 pose, double heading) const;
  bool valid_config() const;
  std::size_t known_cells() const;
- double match_score(const Scan& scan, Vec2 pose, double heading,
+ double match_score(const Scan& scan, const EstimatedState& motion,
+ Vec2 pose, double heading,
  std::size_t* matched_returns) const;
- void integrate_scan(const Scan& scan);
+ void integrate_scan(const Scan& scan, const EstimatedState& motion);
+ double ray_time_offset_s(const Scan& scan, std::size_t index) const;
+ std::optional<Scan> project_cloud(const LidarPointCloud& cloud) const;
  MapBuilderUpdate make_update(MappingState state, double stamp_s,
  std::string diagnostic) const;
 };

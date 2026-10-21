@@ -64,6 +64,9 @@ bool OnlineSlamMapBuilder::valid_config() const {
  std::isfinite(config_.maximum_range_m) && config_.maximum_range_m > 0.0 &&
  std::isfinite(config_.sensor_x_m) && std::isfinite(config_.sensor_y_m) &&
  std::isfinite(config_.sensor_yaw_rad) &&
+ std::isfinite(config_.sensor_height_m) && config_.sensor_height_m > 0.0 &&
+ std::isfinite(config_.ground_rejection_band_m) &&
+ config_.ground_rejection_band_m >= 0.0 &&
  std::isfinite(config_.translation_search_m) && config_.translation_search_m >= 0.0 &&
  std::isfinite(config_.translation_step_m) && config_.translation_step_m > 0.0 &&
  std::isfinite(config_.heading_search_rad) && config_.heading_search_rad >= 0.0 &&
@@ -93,6 +96,9 @@ std::size_t OnlineSlamMapBuilder::known_cells() const {
 
 double OnlineSlamMapBuilder::ray_time_offset_s(const Scan& scan,
  std::size_t index) const {
+ if (index < scan.ray_time_offsets_s.size() &&
+ std::isfinite(scan.ray_time_offsets_s[index]))
+ return scan.ray_time_offsets_s[index];
  if (scan.time_increment_s > 0.0 && std::isfinite(scan.time_increment_s)) {
  return -scan.time_increment_s *
  static_cast<double>(scan.n_rays - 1 - static_cast<int>(index));
@@ -104,6 +110,48 @@ double OnlineSlamMapBuilder::ray_time_offset_s(const Scan& scan,
  static_cast<double>(scan.n_rays - 1);
  }
  return 0.0;
+}
+
+std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
+ const LidarPointCloud& cloud) const {
+ if (cloud.rings == 0 || cloud.azimuth_samples == 0 ||
+ !std::isfinite(cloud.max_range_m) || cloud.max_range_m <= 0.0 ||
+ !std::isfinite(cloud.scan_period_s) || cloud.scan_period_s <= 0.0)
+ return std::nullopt;
+ Scan scan;
+ scan.n_rays = static_cast<int>(cloud.azimuth_samples);
+ scan.max_range = std::min(cloud.max_range_m, config_.maximum_range_m);
+ scan.angle_min_rad = 0.0;
+ scan.angle_increment_rad = 2.0 * kPi /
+ static_cast<double>(cloud.azimuth_samples);
+ scan.scan_period_s = cloud.scan_period_s;
+ scan.ranges.assign(cloud.azimuth_samples, scan.max_range);
+ scan.hit.assign(cloud.azimuth_samples, 0);
+ scan.intensities.assign(cloud.azimuth_samples, 0.0);
+ scan.ray_time_offsets_s.assign(cloud.azimuth_samples, -scan.scan_period_s);
+ scan.header = cloud.header;
+ for (const auto& point : cloud.points) {
+ if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
+ !std::isfinite(point.z_m) ||
+ (point.x_m == 0.0 && point.y_m == 0.0) ||
+ point.z_m <= -config_.sensor_height_m + config_.ground_rejection_band_m)
+ continue;
+ const double range = std::hypot(point.x_m, point.y_m);
+ if (!(range > 0.05) || range >= scan.max_range)
+ continue;
+ double angle = std::atan2(point.y_m, point.x_m);
+ if (angle < 0.0)
+ angle += 2.0 * kPi;
+ const auto bin = static_cast<std::size_t>(std::floor(
+ angle / (2.0 * kPi) * cloud.azimuth_samples)) % cloud.azimuth_samples;
+ if (!scan.hit[bin] || range < scan.ranges[bin]) {
+ scan.ranges[bin] = range;
+ scan.hit[bin] = 1;
+ scan.intensities[bin] = std::clamp(point.intensity, 0.0, 1.0);
+ scan.ray_time_offsets_s[bin] = point.time_offset_s;
+ }
+ }
+ return scan;
 }
 
 double OnlineSlamMapBuilder::match_score(const Scan& scan,
@@ -230,12 +278,21 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  (last_stamp_s_ >= 0.0 && stamp_s <= last_stamp_s_ + 1e-9)) {
  return make_update(MappingState::Degraded, stamp_s, "stale or invalid SLAM state");
  }
- if (!observations.lidar || !finite_scan(*observations.lidar) ||
- observations.lidar->header.stamp_s > stamp_s + 1e-6 ||
- stamp_s - observations.lidar->header.stamp_s > 0.25) {
+ std::optional<Scan> projected_cloud;
+ const Scan* scan_ptr = nullptr;
+ if (observations.lidar_point_cloud) {
+ projected_cloud = project_cloud(*observations.lidar_point_cloud);
+ if (projected_cloud)
+ scan_ptr = &*projected_cloud;
+ } else if (observations.lidar) {
+ scan_ptr = &*observations.lidar;
+ }
+ if (!scan_ptr || !finite_scan(*scan_ptr) ||
+ scan_ptr->header.stamp_s > stamp_s + 1e-6 ||
+ stamp_s - scan_ptr->header.stamp_s > 0.25) {
  return make_update(MappingState::Degraded, stamp_s, "missing or stale LiDAR observation");
  }
- const auto& scan = *observations.lidar;
+ const auto& scan = *scan_ptr;
  if (!initialized_) {
  anchor_world_position_ = prior.position;
  anchor_world_heading_rad_ = prior.heading_rad;

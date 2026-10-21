@@ -107,5 +107,41 @@ int main() {
  sim::runtime::TimePoint::from_seconds(3.0));
  CHECK(missing.state == sim::autonomy::MappingState::Degraded);
  CHECK(missing.diagnostic == "missing or stale LiDAR observation");
+
+ // A multi-beam provider is reduced to the planar layer only after the
+ // ROBOT-side height and timing contract is applied.  Ground returns must not
+ // become obstacles, while the selected obstacle returns retain their firing
+ // offsets for deskew.
+ sim::autonomy::OnlineSlamConfig cloud_config = config;
+ cloud_config.sensor_height_m = 0.30;
+ cloud_config.ground_rejection_band_m = 0.06;
+ sim::autonomy::OnlineSlamMapBuilder cloud_builder(cloud_config);
+ sim::LidarPointCloud cloud;
+ cloud.rings = 16;
+ cloud.azimuth_samples = 360;
+ cloud.max_range_m = 8.0;
+ cloud.scan_period_s = 0.10;
+ cloud.header = {4.0, 4, "lidar_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.16line"};
+ cloud.points = {
+ {3.0, -0.15, 0.0, 1.0, -0.10, 0, 0},
+ {3.0, 0.15, 0.0, 1.0, -0.05, 1, 0},
+ {1.0, 0.0, -0.30, 1.0, -0.025, 2, 0}, // ground return: reject
+ {2.0, 0.0, 0.35, 1.0, 0.0, 3, 0},
+ };
+ sim::ObservationFrame cloud_frame;
+ cloud_frame.time_s = 4.0;
+ cloud_frame.lidar_point_cloud = cloud;
+ prior.position = {0.0, 0.0};
+ prior.heading_rad = 0.0;
+ const auto cloud_update = cloud_builder.update(
+ cloud_frame, prior, sim::runtime::TimePoint::from_seconds(4.0));
+ CHECK(cloud_update.state == sim::autonomy::MappingState::Mapping);
+ CHECK(cloud_update.published_map);
+ bool cloud_obstacle = false;
+ for (const auto cell : cloud_update.published_map->grid->occupancy)
+ cloud_obstacle = cloud_obstacle || cell >= 50;
+ CHECK(cloud_obstacle);
+
  return 0;
 }
