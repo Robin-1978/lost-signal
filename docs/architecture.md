@@ -343,9 +343,10 @@ into neutral autonomy inputs and copies diagnostics into the game snapshot. It i
 native product uses the `lost_signal_robot` composition root, which links only `lost_signal_robot_stack` and owns the
 LSRI lifecycle in a standalone process. It currently provides the provider/startup gate; native hardware registration
 and the full native cycle scheduler remain deployment work. The simulation adapter no longer invokes a ROBOT chassis
-controller directly: it publishes provider joint feedback through LSRI, asks the ROBOT coordinator for a typed
-`ActuatorCommand`, and gives only the delivered command to the simulated plant. Route/local candidate assembly and
-game snapshot projection are still adapter responsibilities until the provider-neutral cycle host is completed. SIM
+controller directly: it publishes provider joint feedback through LSRI and enters the common
+`RobotApplication::execute_motion()` transaction, which asks the ROBOT coordinator for a typed `ActuatorCommand`
+and gives only the delivered command to the simulated plant. Route/local candidate assembly and game snapshot
+projection are still adapter responsibilities until the provider-neutral cycle host is completed. SIM
 and ROBOT need not use IPC: both composition roots may call the same typed in-process interfaces, while an optional
 transport adapter can be added at the provider boundary later.
 

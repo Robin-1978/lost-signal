@@ -1023,6 +1023,8 @@ void ScenarioSession::build_world() {
  runtime_config.maximum_command_ttl_s = 0.25;
  runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
  runtime_channel_->configure();
+ robot_application_ = std::make_unique<sim::robot::RobotApplication>(
+ *runtime_channel_, *autonomy_coordinator_);
  manipulator_channel_.reset();
  manipulator_controller_.reset();
  if (robot_definition_.manipulator) {
@@ -2351,6 +2353,9 @@ void ScenarioSession::apply_motion() {
  if (!platform_) {
  throw std::logic_error("actuator-level control requires a platform provider");
  }
+ if (!robot_application_) {
+ throw std::logic_error("actuator-level control requires the ROBOT application");
+ }
  // This is the SIM provider adapter. It converts provider-native joint state
  // into the neutral LSRI observation; the ROBOT controller below sees only
  // the delivered ObservationFrame.
@@ -2359,16 +2364,11 @@ void ScenarioSession::apply_motion() {
  *runtime_channel_, provider_feedback, robot_definition_.drive_type,
  snapshot_.time_s, actuator_feedback_sequence()++))
  throw std::runtime_error("runtime channel rejected actuator feedback");
- const auto delivered_feedback = runtime_channel_->autonomy().read_observation();
- if (!delivered_feedback || !delivered_feedback->actuator_feedback)
- throw std::runtime_error("runtime channel did not deliver actuator feedback");
- const auto control = autonomy_coordinator_->update_chassis_actuators(
- applied_command, *delivered_feedback, fixed_step_s, runtime_now,
- sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0),
- command_sequence()++);
- if (runtime_channel_->autonomy().write_actuators(control.command) !=
- sim::runtime::CommandWriteResult::Accepted)
- throw std::runtime_error("runtime channel rejected actuator command");
+ const auto control = robot_application_->execute_motion(
+ applied_command, fixed_step_s, runtime_now,
+ sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0));
+ if (!control.actuator_command)
+ throw std::runtime_error("ROBOT application did not produce actuator command");
  const auto delivered_command = runtime_channel_->platform().read_actuators(runtime_now);
  const auto plant_command =
  sim::platform::SimulatedPlatformProviderAdapter::consume_actuator_command(

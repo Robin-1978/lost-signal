@@ -45,6 +45,7 @@
 #include "sim/hardware/vehicle/motor_drive.hpp"
 #include "sim/hardware/sensors/sensor.hpp"
 #include "robot/runtime/runtime_channel.hpp"
+#include "robot/runtime/robot_application.hpp"
 #include "robot/runtime/map_provider.hpp"
 
 #include <array>
@@ -728,6 +729,11 @@ class ScenarioSession {
  std::unique_ptr<sim::PlanarDiffDrivePlant> drive_;
  std::unique_ptr<sim::ChassisModel> chassis_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> runtime_channel_;
+ // SIM owns the in-process provider channel; RobotApplication owns the
+ // provider-neutral ROBOT cycle and borrows that channel. This keeps the
+ // physical provider in SIM while preventing ScenarioSession from invoking
+ // the ROBOT controller transaction directly.
+ std::unique_ptr<sim::robot::RobotApplication> robot_application_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> manipulator_channel_;
  std::unique_ptr<sim::ManipulatorJointController> manipulator_controller_;
  sim::ManipulatorGeometry manipulator_geometry_;

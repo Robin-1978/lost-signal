@@ -52,6 +52,13 @@ struct RobotCycleOutput {
 class RobotApplication {
  public:
  explicit RobotApplication(RobotApplicationConfig config);
+ // In-process composition constructor. The SIM adapter owns the provider
+ // channel and supplies it here without transferring ownership. ROBOT still
+ // owns the cycle and controller transaction; this is the same boundary used
+ // by the native composition root, without requiring IPC.
+ RobotApplication(runtime::IRuntimeChannel& channel,
+  autonomy::AutonomyCoordinator& coordinator,
+  runtime::ProviderConformanceConfig conformance = {});
  ~RobotApplication();
 
  RobotApplication(const RobotApplication&) = delete;
@@ -72,19 +79,32 @@ class RobotApplication {
  bool publish_observation(ObservationFrame observation, runtime::TimePoint now);
  void check_provider_liveness(runtime::TimePoint now);
  RobotCycleOutput step(const RobotCycleInput& input);
+ // Execute an already selected body-motion intent through the ROBOT
+ // controller and LSRI provider. Planning must have produced the intent;
+ // this entry point only owns feedback ingestion, actuator conversion,
+ // expiry and command publication.
+ RobotCycleOutput execute_motion(const DiffCmd& motion_intent, double dt_s,
+ runtime::TimePoint now, runtime::TimePoint valid_until);
  const runtime::ProviderConformanceMonitor& conformance() const { return conformance_; }
  runtime::ProviderConformanceMonitor& conformance() { return conformance_; }
 
- autonomy::AutonomyCoordinator& coordinator() { return coordinator_; }
- const autonomy::AutonomyCoordinator& coordinator() const { return coordinator_; }
+ autonomy::AutonomyCoordinator& coordinator() { return active_coordinator(); }
+ const autonomy::AutonomyCoordinator& coordinator() const { return active_coordinator(); }
  executive::TaskExecutive& executive() { return executive_; }
  const executive::TaskExecutive& executive() const { return executive_; }
 
  private:
  std::unique_ptr<runtime::IRuntimeChannel> channel_;
+ runtime::IRuntimeChannel* borrowed_channel_{nullptr};
  runtime::ProviderConformanceMonitor conformance_;
  autonomy::AutonomyCoordinator coordinator_;
+ autonomy::AutonomyCoordinator* borrowed_coordinator_{nullptr};
  executive::TaskExecutive executive_;
+
+ runtime::IRuntimeChannel& active_channel();
+ const runtime::IRuntimeChannel& active_channel() const;
+ autonomy::AutonomyCoordinator& active_coordinator();
+ const autonomy::AutonomyCoordinator& active_coordinator() const;
 };
 
 } // namespace sim::robot

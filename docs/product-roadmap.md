@@ -960,6 +960,13 @@ endpoint expectations to `ProviderConformanceMonitor`, so simulated, replay and 
 identity, timestamp, rate, freshness and silence gates. The remaining stage-1 work is the larger local-motion request
 assembly and crossing/recovery execution state, which still needs a provider-neutral cycle host.
 
+The SIM actuator path now enters that runtime boundary through `RobotApplication::execute_motion()`. The simulation
+provider still owns the channel and MuJoCo plant, but `ScenarioSession` no longer calls the ROBOT actuator controller
+or writes its actuator command directly. `RobotApplication` can borrow an in-process provider channel while the native
+composition root continues to own its channel, so this cleanup does not require IPC or duplicate controller state.
+The remaining composition work is therefore explicitly limited to assembling the provider-neutral autonomy and local
+planning transaction; command conversion, expiry and publication have one ROBOT entry point.
+
 The execution-state slice is now closed: `RobotMotionRuntime` owns held/manual commands, command and observation
 sequence counters, and crossing execution/alignment indices. `ScenarioSession` no longer stores those algorithmic
 states. `RobotMotionRuntime` deliberately has no dependency on `AutonomyPipeline`; local planning is invoked by the
