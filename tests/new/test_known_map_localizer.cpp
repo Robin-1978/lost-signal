@@ -103,8 +103,9 @@ int main() {
  CHECK(stale_result.rejection_reason == "invalid or stale scan");
 
  sim::GlobalMapLocalizationConfig global_config;
- global_config.grid_step_m = 0.20;
- global_config.heading_step_rad = 0.35;
+ global_config.coarse_field_resolution_m = 0.1;
+ global_config.coarse_position_step_m = 0.20;
+ global_config.coarse_heading_step_rad = 0.35;
  global_config.minimum_overlap = 0.15;
  global_config.minimum_score_margin = 0.005;
  global_config.ambiguity_distance_m = 0.45;

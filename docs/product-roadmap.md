@@ -427,6 +427,12 @@ it does not claim semantic actor classification or replace the perception tracke
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;
+
+ The global recovery matcher now follows that contract structurally: it builds a bounded coarse distance field,
+ ranks map-wide place hypotheses with endpoint evidence, refines only the retained hypotheses, and validates the
+ final poses with free-space ray evidence. It rejects when the coarse budget is exceeded instead of treating a
+ partial sweep as a localization result. The large-map gate still covers repeated bounded-window corrections; a
+ held-out 200,000 m² cold-start timing and accuracy fixture on the deployment computer remains an exit gate.
 4. **Component gate added:** `large_map_long_run` replays 64 repeated LiDAR corrections against a 200,000 m² map,
  with a persistent 0.35 m odometry prior error, quarterly error tracking, p95 latency, peak RSS and kidnapped-prior
  rejection. The current development result is 0 m maximum correction error for this synthetic fixture, p95 about
@@ -456,6 +462,13 @@ it does not claim semantic actor classification or replace the perception tracke
 Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
 map revision. Continuing mapping adds keyframes in a new or extended mapping session; editing or importing map geometry
 creates a new map revision and rebuilds the index rather than silently rewriting historical session constraints.
+
+The SLAM audit keeps three gaps explicit. `OnlineSlamMapBuilder` is a bounded local mapping provider with deterministic
+replay evidence, but it is not yet the normal provider for every mapless level. Pose-graph optimization and keyframe
+rerasterization are transactional components, while loop-closure candidate generation and long repeated-loop replay are
+not yet a production gate. Dynamic-return filtering currently provides sensor-level transient evidence and elevation
+uncertainty; it does not claim semantic actor filtering or lidar-inertial observability. These are integration and
+evidence gaps, not reasons to reintroduce simulator-truth pose.
 
 Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
 `ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable

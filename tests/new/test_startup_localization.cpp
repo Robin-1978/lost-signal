@@ -71,7 +71,8 @@ int main() {
  const auto scan = scan_at(map, {2.8, 3.7});
 
  sim::autonomy::StartupLocalizationConfig config;
- config.known_map.grid_step_m = 0.2;
+ config.known_map.coarse_field_resolution_m = 0.1;
+ config.known_map.coarse_position_step_m = 0.2;
  config.known_map.minimum_overlap = 0.15;
 config.known_map.minimum_score_margin = 0.03;
  config.known_map.minimum_returns = 8;

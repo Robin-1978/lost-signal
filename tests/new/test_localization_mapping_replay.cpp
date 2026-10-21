@@ -128,8 +128,9 @@ int main() {
  CHECK(final_map && final_map->grid);
  const auto recovery_scan = scan_at(*final_map->grid, {2.0, 0.0}, 10.0, 100);
  sim::GlobalMapLocalizationConfig recovery_config;
- recovery_config.grid_step_m = 0.3;
- recovery_config.heading_step_rad = 0.35;
+ recovery_config.coarse_field_resolution_m = 0.1;
+ recovery_config.coarse_position_step_m = 0.3;
+ recovery_config.coarse_heading_step_rad = 0.35;
  recovery_config.minimum_overlap = 0.15;
  recovery_config.minimum_score_margin = 0.02;
  recovery_config.minimum_returns = 12;
