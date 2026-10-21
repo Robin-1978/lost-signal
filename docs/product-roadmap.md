@@ -920,8 +920,10 @@ hardware files as the source tree.
  has fewer than eight occupied returns, the correction age grows, and the estimator eventually loses its covariance
  validity or limits the speed envelope before the task can finish. The ROBOT-side change now separates stale map
  evidence from wheel/IMU covariance, treats valid sparse scans as a cautious envelope, and lowers the default local
- geometric minimum to four returns. This removes the unconditional stale-age stop, but the mission still needs a
- held-out orchard replay with free-space ray evidence and route-time budgeting before it can be marked green.
+ geometric minimum to four returns. Sparse scan matching now also scores free-space rays at a lower weight than
+ occupied endpoints, preserving hit-supported pose estimates under partial occlusion. This removes the unconditional
+ stale-age stop, but the mission still needs a held-out orchard replay with route-time budgeting and a measured
+ observability strategy before it can be marked green.
 - `stop_whatif`, `entry_shadow_town`, `ff_sensitivity` and `run_artifact` remain to be re-run after the planner and
  localization changes; no failure is waived by this checkpoint.
 
