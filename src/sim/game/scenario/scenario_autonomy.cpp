@@ -41,7 +41,7 @@ void ScenarioSession::decide_control() {
  const double measured_left_mps = snapshot_.control.left_measured_mps;
  const double measured_right_mps = snapshot_.control.right_measured_mps;
  snapshot_.control = {};
- if (route_tracking_system_->path_index() >= planned_route_.size()) {
+ if (autonomy_coordinator_->route_tracking().path_index() >= planned_route_.size()) {
   if (planned_route_.empty()) {
    held_command_ = {0.0, 0.0};
    DecisionEvidence decision;
@@ -57,7 +57,7 @@ void ScenarioSession::decide_control() {
   // distance, not by idx. Hold the last waypoint so normal tracking (reverse
   // hysteresis, watchdog, DWA arbitration below) docks the robot instead of
   // parking short with tv=0 until timeout.
-  route_tracking_system_->set_path_index(planned_route_.size() - 1);
+  autonomy_coordinator_->route_tracking().set_path_index(planned_route_.size() - 1);
  }
  const auto& estimate = estimation_system_.state();
  const double nav_x = estimate.position.x;
@@ -99,7 +99,7 @@ void ScenarioSession::decide_control() {
  const auto active_dynamic_tracks =
  autonomy_pipeline_->dynamic_obstacles().active_tracks(
  snapshot_.time_s, track_max_age_s());
- if (route_tracking_system_->should_replan(
+ if (autonomy_coordinator_->route_tracking().should_replan(
  planned_route_, estimate, local_planning_map, active_dynamic_tracks,
  1.0 / decision_hz())) {
  // Persistent unmodelled static occupancy invalidates the global route.
@@ -137,7 +137,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control.trajectory_speed_error_mps = tracking.speed_error_mps;
  const double chassis_cruise = cruise_speed_mps();
  auto route_control =
- route_tracking_system_->follow_route(planned_route_, estimate,
+ autonomy_coordinator_->route_tracking().follow_route(planned_route_, estimate,
  property(behavior_, "lookahead_m"), chassis_cruise,
  1.0 / decision_hz(), local_planning_map, chassis_caps_);
  // The target and control request must come from the same stateful route
@@ -223,15 +223,15 @@ void ScenarioSession::decide_control() {
   const double target_distance = distance({nav_x, nav_y}, target);
   const double subgoal_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
   route_control.tv = std::min(chassis_cruise, target_distance);
-  route_control.steer = route_tracking_system_->heading_command(subgoal_error, 1.0 / decision_hz());
+  route_control.steer = autonomy_coordinator_->route_tracking().heading_command(subgoal_error, 1.0 / decision_hz());
   route_control.err = subgoal_error;
   route_control.reached = target_distance < 0.25;
  }
  snapshot_.control.local_target = target;
  snapshot_.control.heading_error_rad = route_control.err;
- snapshot_.control.heading_pid_p = route_tracking_system_->pid_p();
- snapshot_.control.heading_pid_i = route_tracking_system_->pid_i();
- snapshot_.control.heading_pid_d = route_tracking_system_->pid_d();
+ snapshot_.control.heading_pid_p = autonomy_coordinator_->route_tracking().pid_p();
+ snapshot_.control.heading_pid_i = autonomy_coordinator_->route_tracking().pid_i();
+ snapshot_.control.heading_pid_d = autonomy_coordinator_->route_tracking().pid_d();
  // Docking controller: guide_step reports reached when waypoint bookkeeping
  // exhausts (accept/resync ran ahead of a lagging chassis), but mission
  // success is distance-to-goal. If the goal is still beyond tolerance yet
@@ -264,21 +264,21 @@ void ScenarioSession::decide_control() {
   // of docking — evidence for curation, not for a longer leash.)
   if (route_control.reached && dist_goal > tracking_arrival_radius && dist_goal < 3.0) {
    const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
-   if (!route_tracking_system_->reversing() && std::abs(dock_err) > 1.4)
-    route_tracking_system_->set_reversing(true);
-   else if (route_tracking_system_->reversing() && std::abs(dock_err) < 0.7)
-    route_tracking_system_->set_reversing(false);
+   if (!autonomy_coordinator_->route_tracking().reversing() && std::abs(dock_err) > 1.4)
+    autonomy_coordinator_->route_tracking().set_reversing(true);
+   else if (autonomy_coordinator_->route_tracking().reversing() && std::abs(dock_err) < 0.7)
+    autonomy_coordinator_->route_tracking().set_reversing(false);
    const double dock_dt = 1.0 / decision_hz();
-   if (!route_tracking_system_->reversing()) {
+   if (!autonomy_coordinator_->route_tracking().reversing()) {
     route_control.tv = std::min(0.3, dist_goal);
-    route_control.steer = route_tracking_system_->heading_command(dock_err, dock_dt);
+    route_control.steer = autonomy_coordinator_->route_tracking().heading_command(dock_err, dock_dt);
    } else if (chassis_->caps().can_rotate_about_base_link()) {
-    route_tracking_system_->set_reversing(false);
+    autonomy_coordinator_->route_tracking().set_reversing(false);
     route_control.tv = 0.0;
-    route_control.steer = route_tracking_system_->heading_command(dock_err, dock_dt);
+    route_control.steer = autonomy_coordinator_->route_tracking().heading_command(dock_err, dock_dt);
    } else {
     route_control.tv = -0.3;
-    route_control.steer = -route_tracking_system_->heading_command(dock_err, dock_dt);
+    route_control.steer = -autonomy_coordinator_->route_tracking().heading_command(dock_err, dock_dt);
    }
    route_control.err = dock_err;
    route_control.reached = false;
@@ -374,7 +374,7 @@ void ScenarioSession::decide_control() {
  // tracker state and writes snapshot shadow fields; held_command_ (the actual
  // control output) is untouched by everything in this block.
  std::vector<sim::Vec2> shadow_remaining{{nav_x, nav_y}};
- for (std::size_t i = route_tracking_system_->path_index(); i < planned_route_.size(); ++i) {
+ for (std::size_t i = autonomy_coordinator_->route_tracking().path_index(); i < planned_route_.size(); ++i) {
   shadow_remaining.push_back(planned_route_[i].position);
  }
  const double shadow_cruise = std::max(1e-6, cruise_speed_mps());
@@ -411,7 +411,7 @@ void ScenarioSession::decide_control() {
  const double stop_plane_tracking_tolerance_m =
  std::abs(chassis_caps_.geometry.drive_axle_x_m);
  const auto traffic_decision = autonomy_pipeline_->assess_crossing(
- planned_route_, route_tracking_system_->path_index(), {nav_x, nav_y},
+ planned_route_, autonomy_coordinator_->route_tracking().path_index(), {nav_x, nav_y},
  estimate.linear_velocity_mps, nav_heading, assessment_frames,
  prediction_step_s,
  {robot_definition_.collision_radius_m, hard_crossing_clearance,
@@ -790,7 +790,7 @@ void ScenarioSession::decide_control() {
  2.0 * dist / brake) - response_delay_s);
   speed_cap = std::min(speed_cap, v_allow);
  }
- const auto route_direction = route_tracking_system_->travel_direction(planned_route_);
+ const auto route_direction = autonomy_coordinator_->route_tracking().travel_direction(planned_route_);
  // Gear is owned by the global route for every chassis. The follower's
  // signed command is only a fallback once the route has no direction metadata
  // (for example after the terminal index); it may not silently reverse a
@@ -1306,7 +1306,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  local_request.reference.path.push_back(local_request.stop_point);
  } else if (!planned_route_.empty()) {
  const std::size_t guide_index = std::min(
- route_tracking_system_->path_index(), planned_route_.size() - 1);
+ autonomy_coordinator_->route_tracking().path_index(), planned_route_.size() - 1);
  const double reference_length_m =
  speed_cap * prediction_horizon + property(behavior_, "lookahead_m");
  local_request.reference.path = sim::forward_route_reference(

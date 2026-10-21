@@ -4,7 +4,6 @@
 #include "sim/game/mission/component_registry.hpp"
 #include "sim/game/mission/construction_plan.hpp"
 #include "sim/game/mission/performance_score.hpp"
-#include "robot/autonomy/control/route_tracking_system.hpp"
 #include "robot/autonomy/control/controlled_stop_latch.hpp"
 #include "sim/game/mission/systems/collision_monitor.hpp"
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
@@ -724,7 +723,6 @@ class ScenarioSession {
  sim::ManipulatorJointPosition manipulator_target_joints_;
  std::uint64_t manipulator_feedback_sequence_{0};
  std::uint64_t manipulator_command_sequence_{0};
- std::unique_ptr<sim::RouteTrackingSystem> route_tracking_system_;
  double heading_kp_{0.0};
  // Yaw-rate capability used by DWA/manual/clamps. Differential bases use
  // the configured platform limit.

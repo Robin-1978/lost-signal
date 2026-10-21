@@ -1107,9 +1107,9 @@ void ScenarioSession::build_world() {
  // Differential and tracked share yaw-rate output units; their caps differ
  // (geometry vs vendor spin spec) and both already sit in yaw_cap_rads_.
  const double heading_out_lim = chassis_caps_.turn_command_limit();
- route_tracking_system_ =
-   std::make_unique<sim::RouteTrackingSystem>(heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
-                                   robot_definition_.steering.integral_limit);
+ autonomy_coordinator_->configure_route_tracking(
+ heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
+ robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;
 
  agents_.clear();
@@ -1180,7 +1180,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
  snapshot_.active_goal_id.clear();
  held_command_ = {};
- route_tracking_system_->reset();
+ autonomy_coordinator_->route_tracking().reset();
  route_feasible_ = true;
  return;
  }
@@ -1208,7 +1208,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  route_feasible_ = true;
  return_reserve_failure_ = false;
  planned_route_ = std::move(plan.path);
- route_tracking_system_->reset();
+ autonomy_coordinator_->route_tracking().reset();
 }
 
 void ScenarioSession::select_next_goal(const Pose& start) {
@@ -1434,8 +1434,8 @@ void ScenarioSession::set_endless_mode(bool enabled) {
   manual_command_ = {};
   manual_control_active_ = false;
   endless_target_key_ = "uninitialized";
-  if (route_tracking_system_)
-   route_tracking_system_->reset();
+ if (autonomy_coordinator_ && autonomy_coordinator_->has_route_tracking())
+ autonomy_coordinator_->route_tracking().reset();
  }
 }
 
@@ -1876,7 +1876,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
 
  field_operator_system_.complete(intent.revision);
  planned_route_.clear();
- route_tracking_system_->reset();
+ autonomy_coordinator_->route_tracking().reset();
  held_command_ = {};
  endless_target_key_ = "completed:" + std::to_string(intent.revision);
 }
@@ -2264,7 +2264,7 @@ sim::Vec2 ScenarioSession::navigation_fallback_target() const {
 void ScenarioSession::refresh_operator_route() {
  const auto& field_intent = field_operator_system_.intent();
  const bool operator_drive = level_.control_mode == "operator_drive";
- if ((!endless_mode_ && !operator_drive) || !planning_map_ || !route_tracking_system_)
+ if ((!endless_mode_ && !operator_drive) || !planning_map_ || !autonomy_coordinator_->has_route_tracking())
   return;
  std::string target_key;
  sim::Vec2 target;
@@ -2302,7 +2302,7 @@ void ScenarioSession::refresh_operator_route() {
   return;
  endless_target_key_ = target_key;
  planned_route_.clear();
- route_tracking_system_->reset();
+ autonomy_coordinator_->route_tracking().reset();
  held_command_ = {};
  route_feasible_ = true;
  if (explicit_intent && (field_intent.kind == FieldIntentKind::Wait || follow_hold)) {
@@ -3317,7 +3317,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
- for (size_t i = route_tracking_system_->path_index() + 1; i < planned_route_.size(); ++i) {
+ for (size_t i = autonomy_coordinator_->route_tracking().path_index() + 1; i < planned_route_.size(); ++i) {
   along += distance(planned_route_[i].position, planned_route_[i - 1].position);
   if (along > preview) {
    break;
@@ -3331,7 +3331,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
   lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_route_, route_tracking_system_->path_index(), cruise, lateral_accel_limit,
+ return sim::corner_speed_cap(planned_route_, autonomy_coordinator_->route_tracking().path_index(), cruise, lateral_accel_limit,
  preview, yaw_cap_rads_);
 }
 

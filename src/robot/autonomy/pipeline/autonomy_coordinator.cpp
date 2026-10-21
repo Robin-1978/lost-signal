@@ -1,6 +1,7 @@
 #include "robot/autonomy/pipeline/autonomy_coordinator.hpp"
 
 #include <stdexcept>
+#include <utility>
 
 namespace sim::autonomy {
 
@@ -26,6 +27,24 @@ AutonomyCoordinatorOutput AutonomyCoordinator::update(
  output.decision = apply_strategy_safety(requested, input.observation, input.safety);
  output.policy_name = policy_name_;
  return output;
+}
+
+void AutonomyCoordinator::configure_route_tracking(double kp, double ki,
+ double kd, double output_limit, double integral_limit) {
+ route_tracking_ = std::make_unique<RouteTrackingSystem>(
+ kp, ki, kd, output_limit, integral_limit);
+}
+
+RouteTrackingSystem& AutonomyCoordinator::route_tracking() {
+ if (!route_tracking_)
+ throw std::logic_error("route tracking has not been configured");
+ return *route_tracking_;
+}
+
+const RouteTrackingSystem& AutonomyCoordinator::route_tracking() const {
+ if (!route_tracking_)
+ throw std::logic_error("route tracking has not been configured");
+ return *route_tracking_;
 }
 
 } // namespace sim::autonomy
