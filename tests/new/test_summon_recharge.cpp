@@ -22,12 +22,16 @@
 namespace fs = std::filesystem;
 
 const char kTestMap[] = R"({
-  "schema_version": 1,
+ "schema_version": 2,
   "id": "test_summon_map",
   "scene_3d": "scene.research_base",
   "size_m": [12.0, 12.0],
   "grid_resolution_m": 0.5,
-  "obstacles": [],
+ "obstacles": [
+ {"id": "landmark_a", "type": "box", "min": [2.0, 4.0], "max": [2.5, 6.5]},
+ {"id": "landmark_b", "type": "box", "min": [8.0, 4.5], "max": [8.5, 7.5]},
+ {"id": "landmark_c", "type": "box", "min": [4.0, 9.0], "max": [6.5, 9.5]}
+ ],
   "surfaces": [],
   "markers": {
     "test_start": [1.0, 1.0, 0.0],
@@ -82,7 +86,7 @@ const char kTestLevel[] = R"({
        "radius_m": 0.62}
     ]
   },
-  "loadout_rules": {"budget": 8, "required_slots": ["tires"]},
+ "loadout_rules": {"budget": 8, "required_slots": ["tires", "sensor"]},
   "teaching": {"concept": "test", "prediction_prompt": "t", "knowledge_card": "t"},
   "score": {"safe_min_clearance_m": 0.3, "fast_time_s": 100.0, "efficient_energy_wh": 10.0},
   "rewards": ["ability.basic_motion"]
@@ -120,9 +124,12 @@ int main() {
   pos = text.find("\"is_default\": true");
   CHECK(pos != std::string::npos);
   text.replace(pos, std::string("\"is_default\": true").size(), "\"is_default\": false");
+ nlohmann::json presentation = nlohmann::json::parse(text);
+ presentation.at("garage").at("default_build")["sensor"] = "sensor.standard_lidar";
+ presentation.at("garage").at("recommended_build")["sensor"] = "sensor.standard_lidar";
   std::ofstream out(overlay / "presentation" / "test_summon.json", std::ios::trunc);
   CHECK(static_cast<bool>(out));
-  out << text;
+ out << presentation.dump(2) << '\n';
  }
  // Campaign must list every level exactly once (overlay copy is editable).
  {
@@ -146,10 +153,12 @@ int main() {
  CHECK(objective.goals[1].recharge_wh == 5.0);
  CHECK(objective.goals[2].action == "complete");
 
- // Tires only (like boot): stock motor drives, no sensor needed —
- // summon/recharge/complete are positional goals, not perception ones.
+ // A known-map level must exercise the same ROBOT localization contract as
+ // production levels. The scenario supplies the scan; the test checks the
+ // summon/recharge lifecycle rather than simulator pose truth.
  mission::BuildSelection build;
  build.parts["tires"] = "tires.standard";
+ build.parts["sensor"] = "sensor.standard_lidar";
  build.style = 0.0;
  mission::ScenarioSession mission(catalog, "test_summon", build, 7u);
  mission.run_to_completion();
