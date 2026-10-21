@@ -337,15 +337,20 @@ loop-closure edges. Pose-graph tests cover a drifted square loop, anchor preserv
 nodes, duplicate nodes, self edges and disconnected graphs. The bounded `localization_mapping_replay` gate exercises
 fixed-timestamp scans with bounded wheel/IMU drift. This is component evidence: it does not claim dynamic-object
 filtering, keyframe-triggered rerasterization after optimization, multi-view 2.5D elevation fusion or production large-map
-localization.
+localization. This boundary follows the established SLAM Toolbox/Cartographer pattern: serialized pose-graph/session data
+is retained separately from an exported navigation map, loop closure updates poses, and the map is rebuilt from the
+associated scans. The project keeps the first solver small and provider-neutral, but adopts those contracts before any
+third-party optimizer is considered.
 
 The next P2 gates are:
 
-1. keyframe triggering, loop-candidate overlap validation and complete reconstruction of an optimized map revision;
+1. **In progress:** `MappingSession` now selects bounded keyframes from motion, heading and time thresholds, retains
+ timestamped session scans, and creates the sequential odometry chain. Loop-candidate overlap validation and complete
+ reconstruction of an optimized map revision are still required;
 2. calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and uncertainty;
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
-   repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
-   exhaustive global raster search is retained only as a small-map reference;
+ repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
+ exhaustive global raster search is retained only as a small-map reference;
 4. long-run drift/loop-closure replay on a held-out map before normal levels rely on mapless SLAM.
 
 Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
