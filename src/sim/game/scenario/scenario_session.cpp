@@ -174,9 +174,8 @@ ScenarioSession::ScenarioSession(
       planning_system_(global_planner ? global_planner : autonomy::default_global_planner()),
       custom_global_planner_(static_cast<bool>(global_planner)),
       custom_high_level_policy_(static_cast<bool>(high_level_policy)),
-      high_level_policy_(high_level_policy ? std::move(high_level_policy)
- : sim::make_route_baseline_policy()),
- autonomy_coordinator_(std::make_unique<sim::autonomy::AutonomyCoordinator>(high_level_policy_)) {
+ autonomy_coordinator_(std::make_unique<sim::autonomy::AutonomyCoordinator>(
+ high_level_policy ? std::move(high_level_policy) : sim::make_route_baseline_policy())) {
  catalog_.validate_build(level_id_, build_, owned_abilities);
 	// The motion policy belongs to the robot, not to this scenario. Applying it
 	// once here keeps the executable free of tuned thresholds and gives a

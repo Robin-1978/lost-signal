@@ -742,7 +742,6 @@ class ScenarioSession {
  bool custom_global_planner_{false};
  std::unique_ptr<sim::platform::SimulatedPlatform> platform_;
  bool custom_high_level_policy_{false};
- std::shared_ptr<sim::IHighLevelPolicy> high_level_policy_;
  // Robot-facing policy orchestration lives in ROBOT. The scenario only
  // assembles observations from LSRI and content-owned task facts.
  std::unique_ptr<sim::autonomy::AutonomyCoordinator> autonomy_coordinator_;
