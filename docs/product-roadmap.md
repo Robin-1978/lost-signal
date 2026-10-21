@@ -441,9 +441,11 @@ it does not claim semantic actor classification or replace the perception tracke
  held-out 200,000 m² cold-start timing and accuracy fixture on the deployment computer remains an exit gate.
 4. **Component gate added:** `large_map_long_run` replays 64 repeated LiDAR corrections against a 200,000 m² map,
  with a persistent 0.35 m odometry prior error, quarterly error tracking, p95 latency, peak RSS and kidnapped-prior
- rejection. The current development result is 0 m maximum correction error for this synthetic fixture, p95 about
- 176 ms and peak RSS about 61 MiB. This is a repeatability gate, not field evidence; long loop closure replay and
- held-out terrain remain required before normal levels rely on mapless SLAM.
+ rejection. The current development result is 0.05 m maximum correction error for this synthetic fixture, p95 about
+ 116 ms and peak RSS about 61 MiB. The localizer now precomputes the map-grid transform per call, and this stability
+ fixture uses a documented 32-return/10 cm bounded profile; the separate 180-return accuracy fixture remains intact.
+ This is a repeatability gate, not field evidence; long loop closure replay and held-out terrain remain required before
+ normal levels rely on mapless SLAM.
 
 5. **Component gate added:** `localization_environments` runs one matrix over six environments instead of one fixture:
  shelved warehouse convergence, a translation-invariant long corridor, a quarter-turn symmetric hall, a featureless

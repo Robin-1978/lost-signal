@@ -193,6 +193,12 @@ int main() {
  localization_config.minimum_overlap = 0.0;
  localization_config.search_translation_m = 0.75;
  localization_config.search_heading_rad = 0.5;
+ // This gate measures repeated correction stability, not maximum sensor
+ // resolution. Keep its work bounded so it can run in CI; the separate large
+ // map accuracy fixture retains the 180-return scan and tighter sampling.
+ localization_config.maximum_returns = 32;
+ localization_config.translation_step_m = 0.10;
+ localization_config.heading_step_rad = 0.05;
  sim::KnownMapLocalizer localizer_stress(localization_config);
  std::vector<double> latencies_ms;
  double maximum_error = 0.0;

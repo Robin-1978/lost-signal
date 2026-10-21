@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace sim {
@@ -24,20 +25,37 @@ Vec2 sensor_world_position(Vec2 base, double base_heading,
  return {base.x + offset.x, base.y + offset.y};
 }
 
-double endpoint_score(const runtime::MapGrid& grid, Vec2 point) {
- const double c = std::cos(grid.origin_yaw_rad);
- const double s = std::sin(grid.origin_yaw_rad);
+struct GridProjector {
+ explicit GridProjector(const runtime::MapGrid& source)
+ : grid(source), cosine(std::cos(source.origin_yaw_rad)),
+ sine(std::sin(source.origin_yaw_rad)) {}
+
+ std::optional<runtime::GridIndex> project(Vec2 point) const {
  const double dx = point.x - grid.origin_m.x;
  const double dy = point.y - grid.origin_m.y;
- const int cell_x = static_cast<int>(std::floor((c * dx + s * dy) /
- grid.resolution_m));
- const int cell_y = static_cast<int>(std::floor((-s * dx + c * dy) /
- grid.resolution_m));
+ const auto cell_x = static_cast<std::int64_t>(std::floor(
+ (cosine * dx + sine * dy) / grid.resolution_m));
+ const auto cell_y = static_cast<std::int64_t>(std::floor(
+ (-sine * dx + cosine * dy) / grid.resolution_m));
  if (cell_x < 0 || cell_y < 0 ||
- cell_x >= static_cast<int>(grid.width) || cell_y >= static_cast<int>(grid.height))
+ cell_x >= static_cast<std::int64_t>(grid.width) ||
+ cell_y >= static_cast<std::int64_t>(grid.height))
+ return std::nullopt;
+ return runtime::GridIndex{static_cast<std::uint32_t>(cell_x),
+ static_cast<std::uint32_t>(cell_y)};
+ }
+
+ const runtime::MapGrid& grid;
+ double cosine;
+ double sine;
+};
+
+double endpoint_score(const GridProjector& projector, Vec2 point) {
+ const auto& grid = projector.grid;
+ const auto cell = projector.project(point);
+ if (!cell)
  return -0.25; // outside map is evidence against this pose.
- const auto index = static_cast<std::size_t>(cell_y) * grid.width +
- static_cast<std::size_t>(cell_x);
+ const auto index = static_cast<std::size_t>(cell->y) * grid.width + cell->x;
  if (index >= grid.occupancy.size())
  return -0.25;
  const int value = static_cast<int>(grid.occupancy[index]);
@@ -46,14 +64,17 @@ double endpoint_score(const runtime::MapGrid& grid, Vec2 point) {
  return value >= 50 ? 1.0 : -0.20;
 }
 
-double free_ray_score(const runtime::MapGrid& grid, Vec2 sensor,
+double free_ray_score(const GridProjector& projector, Vec2 sensor,
  double beam_angle, double max_range) {
+ const auto& grid = projector.grid;
+ const double direction_x = std::cos(beam_angle);
+ const double direction_y = std::sin(beam_angle);
  const double step = std::max(0.05, grid.resolution_m * 0.5);
  bool observed_known_cell = false;
  for (double distance = step; distance < max_range; distance += step) {
- const Vec2 point{sensor.x + distance * std::cos(beam_angle),
- sensor.y + distance * std::sin(beam_angle)};
- const auto cell = runtime::world_to_grid(grid, point);
+ const Vec2 point{sensor.x + distance * direction_x,
+ sensor.y + distance * direction_y};
+ const auto cell = projector.project(point);
  if (!cell)
  return observed_known_cell ? 0.0 : -0.25;
  const auto index = static_cast<std::size_t>(cell->y) * grid.width + cell->x;
@@ -146,6 +167,7 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
 
  const auto& grid = *map.grid;
+ const GridProjector projector(grid);
  struct Hypothesis {
  Vec2 position;
  double heading_rad{0.0};
@@ -185,9 +207,9 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  const auto local = rotate({beam.range * std::cos(beam.angle + config_.sensor_yaw_rad),
  beam.range * std::sin(beam.angle + config_.sensor_yaw_rad)}, heading);
  const double value = beam.hit
- ? endpoint_score(grid,
+ ? endpoint_score(projector,
  {sensor_position.x + local.x, sensor_position.y + local.y})
- : free_ray_score(grid, sensor_position, beam_angle, beam.range);
+ : free_ray_score(projector, sensor_position, beam_angle, beam.range);
  // A no-return ray is useful free-space evidence, but it is less precise than
  // an occupied endpoint and must not pull a partially occluded scan away from
  // the hit-supported pose.
