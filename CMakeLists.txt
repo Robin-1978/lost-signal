@@ -148,6 +148,7 @@ target_link_libraries(lost_signal_robot_map_io PUBLIC
 
 add_library(lost_signal_robot_executive STATIC
  src/robot/executive/task_executive.cpp
+ src/robot/runtime/robot_application.cpp
 )
 target_link_libraries(lost_signal_robot_executive PUBLIC
  lost_signal_robot_core lost_signal_robot_runtime lost_signal_robot_autonomy)
@@ -160,6 +161,14 @@ target_link_libraries(lost_signal_robot_stack INTERFACE
  lost_signal_robot_autonomy
  lost_signal_robot_executive
  lost_signal_robot_map_io)
+
+# Native composition root. This executable contains no SIM, MuJoCo, renderer,
+# level, or scenario dependency and can be deployed on an industrial PC once
+# a native LSRI provider is registered by the deployment.
+add_executable(lost_signal_robot
+ src/robot/app/robot_main.cpp
+)
+target_link_libraries(lost_signal_robot PRIVATE lost_signal_robot_stack)
 
 # A robot-only configuration is the executable architecture gate: no MuJoCo,
 # renderer, scenario content, or virtual device is configured or fetched.
@@ -219,6 +228,10 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_autonomy_coordinator tests/new/test_autonomy_coordinator.cpp)
  target_link_libraries(test_autonomy_coordinator PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME autonomy_coordinator COMMAND test_autonomy_coordinator)
+
+ add_executable(test_robot_application tests/new/test_robot_application.cpp)
+ target_link_libraries(test_robot_application PRIVATE lost_signal_robot_stack)
+ add_test(NAME robot_application COMMAND test_robot_application)
 
  add_executable(test_chassis_diagnostics tests/new/test_chassis_diagnostics.cpp)
  target_link_libraries(test_chassis_diagnostics PRIVATE lost_signal_robot_autonomy)
@@ -538,6 +551,7 @@ if(LOST_SIGNAL_BUILD_TESTS)
  endfunction()
  lost_signal_add_shared_robot_test(localization_supervisor test_localization_supervisor lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(autonomy_coordinator test_autonomy_coordinator lost_signal_robot_autonomy lost_signal_robot_runtime)
+ lost_signal_add_shared_robot_test(robot_application test_robot_application lost_signal_robot_stack)
  lost_signal_add_shared_robot_test(localization_motion_authority test_localization_motion_authority lost_signal_robot_autonomy)
  lost_signal_add_shared_robot_test(provider_conformance test_provider_conformance lost_signal_robot_runtime)
  lost_signal_add_shared_robot_test(diagnostic_log test_diagnostic_log lost_signal_robot_runtime)

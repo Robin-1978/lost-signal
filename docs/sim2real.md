@@ -10,7 +10,7 @@ That distinction matters. A realistic renderer or a MuJoCo vehicle does not prov
 
 | Layer | Current state | Transfer outlook |
 |---|---|---|
-| Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | external operator/fleet API and a native lifecycle executable remain; game sim/scenario/progression is not deployed |
+| Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | `lost_signal_robot` supplies the native lifecycle composition root; an operator/fleet API, native hardware providers and closed-loop evidence remain |
 | Map management | LSRM v1, immutable revisions, semantic places, provider lifecycle, authored-map compiler, and checksummed package I/O are implemented | SLAM, survey, HD-map and remote providers still need concrete bridges and field evidence |
 | Global planning | A* and Hybrid A* consume maps and vehicle constraints | reusable when maps, footprint, and costs match the robot |
 | Local planning | trajectory evaluation uses obstacles, dynamics, and chassis limits | reusable only after latency, footprint, braking, and prediction calibration |
@@ -34,6 +34,12 @@ one process and call the same typed C++ LSRI/provider interfaces directly. LSRI 
 timestamps, lifecycle, expiry and rejection semantics; it is not a requirement to serialize every in-process
 algorithm call. A future replay, remote, or hardware adapter may add transport behind the provider boundary without
 changing ROBOT algorithms, but no distributed runtime is part of the current execution path.
+
+The repository now builds `lost_signal_robot` with `LOST_SIGNAL_BUILD_SIM=OFF`. It is a standalone industrial-PC
+process host for the ROBOT stack and LSRI lifecycle. The shipped provider is still the in-process reference channel;
+a native platform provider must be registered by the deployment before the process can drive hardware. The executable
+does not claim a complete hardware autonomy loop until the remaining SIM composition slices have moved behind the same
+ROBOT application boundary.
 
 Providers are selected per LSRI endpoint. A hardware-in-the-loop run may bind a native LiDAR to `lidar/front` while
 keeping IMU, encoders, actuators, terrain, and vehicle dynamics simulated. The inverse arrangement can feed virtual
@@ -62,8 +68,8 @@ composition work is to move route-progress, dynamic-interaction and local-candid
 provider-neutral ROBOT boundary. The algorithm implementations, including route progress and its PID state, live in
 the autonomy target; the coordinator also owns the estimator instance and route-tracking state used by that loop. The
 global planner instance, localization recovery scheduler and stateful perception/planning pipeline are owned there as
-well. The repository still needs a native
-lifecycle/configuration executable before it can run on a physical platform without custom integration. The
+well. The repository has a native lifecycle/configuration executable, but it still requires a native provider and the
+remaining full autonomy-cycle extraction before it can run a physical platform without custom integration. The
 `deployable_boundary` test prevents that remaining adapter work from being bypassed by importing game or simulator
 types into the reusable targets.
 

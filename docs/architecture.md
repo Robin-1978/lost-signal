@@ -334,8 +334,11 @@ LSRI provider and platform adapter and omits all game, world, MuJoCo, and render
 
 `scenario_autonomy.cpp` is the current simulation composition adapter: it translates loaded task/configuration data
 into neutral autonomy inputs and copies diagnostics into the game snapshot. It is not an algorithm provider. A
-native product still needs its own lifecycle/configuration entry point around the same autonomy classes; the
-repository does not yet ship a turnkey real-robot executable.
+native product uses the `lost_signal_robot` composition root, which links only `lost_signal_robot_stack` and owns the
+LSRI lifecycle in a standalone process. It currently provides the provider/startup gate; native hardware registration
+and the remaining full autonomy-cycle extraction are separate deployment work. SIM and ROBOT need not use IPC: both
+composition roots may call the same typed in-process interfaces, while an optional transport adapter can be added at
+the provider boundary later.
 
 Robot geometry has three independent meanings:
 
