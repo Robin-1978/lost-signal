@@ -1,3 +1,4 @@
+#include "robot/autonomy/localization/global_map_localizer.hpp"
 #include "robot/autonomy/localization/known_map_localizer.hpp"
 #include "robot/runtime/map_provider.hpp"
 
@@ -243,6 +244,61 @@ int main() {
  // profile must repeat it on target compute at 200,000 m² or larger.
  CHECK(maximum_latency_ms < 5000.0);
  CHECK(p95_latency_ms < 1000.0);
+ // Cold start is a separate contract: no odometry prior or cropped map is
+ // supplied. The coarse pass is deliberately bounded for this 240,000 m²
+ // fixture, then the retained hypotheses return to the full-resolution map.
+ sim::GlobalMapLocalizationConfig global_config;
+ global_config.coarse_field_resolution_m = 0.5;
+ global_config.coarse_position_step_m = 2.0;
+ global_config.coarse_heading_step_rad = 0.5;
+ global_config.coarse_returns = 16;
+ global_config.coarse_hypotheses = 8;
+ global_config.refine_translation_m = 1.0;
+ global_config.refine_translation_step_m = 0.2;
+ global_config.refine_heading_step_rad = 0.1;
+ global_config.final_translation_m = 0.3;
+ global_config.final_translation_step_m = 0.1;
+ global_config.final_heading_rad = 0.1;
+ global_config.final_heading_step_rad = 0.05;
+ global_config.minimum_score_margin = 0.0;
+ global_config.maximum_evaluations = 2000000;
+ sim::GlobalMapLocalizer global_localizer(global_config);
+ const auto cold_truth = kTestLocations.front();
+ const double cold_heading = headings.front();
+ const double cold_stamp = 40.0;
+ const auto cold_scan = scan_at(*map.grid, cold_truth, cold_heading, cold_stamp);
+ const auto cold_start = std::chrono::steady_clock::now();
+ const auto cold = global_localizer.localize_unknown_start(
+ cold_scan, map, cold_stamp);
+ const double cold_latency_ms = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - cold_start).count();
+ CHECK(cold.accepted);
+ CHECK(cold.state == sim::autonomy::LocalizationState::Localized);
+ const double cold_position_error = std::hypot(
+ cold.pose.position.x - cold_truth.x, cold.pose.position.y - cold_truth.y);
+ const double cold_heading_error = std::abs(sim::wrap_angle(
+ cold.pose.heading_rad - cold_heading));
+ CHECK(cold_position_error < 1.0);
+ CHECK(cold_heading_error < 0.25);
+ CHECK(cold_latency_ms < 30000.0);
+ std::vector<double> cold_latencies{cold_latency_ms};
+ for (int repetition = 0; repetition < 2; ++repetition) {
+ const auto repeat_start = std::chrono::steady_clock::now();
+ const auto repeat = global_localizer.localize_unknown_start(
+ cold_scan, map, cold_stamp);
+ cold_latencies.push_back(std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - repeat_start).count());
+ CHECK(repeat.accepted);
+ CHECK(repeat.pose.position.x == cold.pose.position.x);
+ CHECK(repeat.pose.position.y == cold.pose.position.y);
+ CHECK(repeat.pose.heading_rad == cold.pose.heading_rad);
+ }
+ std::sort(cold_latencies.begin(), cold_latencies.end());
+ const auto cold_p95_index = static_cast<std::size_t>(
+ std::ceil(0.95 * static_cast<double>(cold_latencies.size()))) - 1U;
+ const double cold_p95_latency_ms = cold_latencies[
+ std::min(cold_p95_index, cold_latencies.size() - 1U)];
+ CHECK(cold_p95_latency_ms < 30000.0);
  std::cout << "large_map area_m2="
  << static_cast<double>(map.grid->width) * map.grid->height *
  map.grid->resolution_m * map.grid->resolution_m
@@ -253,6 +309,10 @@ int main() {
  << " max_latency_ms=" << maximum_latency_ms
  << " p95_latency_ms=" << p95_latency_ms
  << " samples=" << latencies_ms.size()
- << " peak_rss_mib=" << static_cast<double>(peak_rss) / 1024.0 << "\n";
+ << " peak_rss_mib=" << static_cast<double>(peak_rss) / 1024.0
+ << " cold_start_position_error_m=" << cold_position_error
+ << " cold_start_heading_error_rad=" << cold_heading_error
+ << " cold_start_latency_ms=" << cold_latency_ms
+ << " cold_start_p95_latency_ms=" << cold_p95_latency_ms << "\n";
  return 0;
 }

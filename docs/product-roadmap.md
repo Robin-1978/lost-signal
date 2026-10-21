@@ -437,8 +437,10 @@ it does not claim semantic actor classification or replace the perception tracke
  The global recovery matcher now follows that contract structurally: it builds a bounded coarse distance field,
  ranks map-wide place hypotheses with endpoint evidence, refines only the retained hypotheses, and validates the
  final poses with free-space ray evidence. It rejects when the coarse budget is exceeded instead of treating a
- partial sweep as a localization result. The large-map gate still covers repeated bounded-window corrections; a
- held-out 200,000 m² cold-start timing and accuracy fixture on the deployment computer remains an exit gate.
+ partial sweep as a localization result. `test_large_map_localization` now also performs three deterministic
+ no-prior recoveries on a 240,000 m² map (0.071 m position error, 0.009 rad heading error, roughly 1.0 s p95),
+ including exact repeat agreement. This is an executable component gate; a held-out 200,000 m² cold-start timing and
+ accuracy fixture on the deployment computer remains an exit gate.
 4. **Component gate added:** `large_map_long_run` replays 64 repeated LiDAR corrections against a 200,000 m² map,
  with a persistent 0.35 m odometry prior error, quarterly error tracking, p95 latency, peak RSS and kidnapped-prior
  rejection. The current development result is 0.05 m maximum correction error for this synthetic fixture, p95 about
