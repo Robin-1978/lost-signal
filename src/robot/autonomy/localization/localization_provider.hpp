@@ -24,6 +24,9 @@ struct LocalizationResult {
  PoseObservation pose;
  double score{0.0};
  double overlap{0.0};
+ // Difference between the best and next separated hypothesis. A small
+ // margin is an ambiguity diagnostic, not a confidence score.
+ double score_margin{0.0};
  std::size_t usable_returns{0};
  std::string rejection_reason;
 };

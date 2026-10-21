@@ -207,6 +207,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
 
+ add_executable(test_large_map_localization tests/new/test_large_map_localization.cpp)
+ target_link_libraries(test_large_map_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME large_map_localization COMMAND test_large_map_localization)
+
  add_executable(test_online_slam tests/new/test_online_slam.cpp)
  target_link_libraries(test_online_slam PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME online_slam COMMAND test_online_slam)
@@ -773,6 +777,10 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
+
+ add_executable(test_large_map_localization tests/new/test_large_map_localization.cpp)
+ target_link_libraries(test_large_map_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME large_map_localization COMMAND test_large_map_localization)
 
  add_executable(test_robot_map_package tests/new/test_robot_map_package.cpp)
  target_link_libraries(test_robot_map_package PRIVATE lost_signal_robot_map_io)

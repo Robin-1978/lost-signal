@@ -418,6 +418,14 @@ origin. In particular, the simulated IMU lives in `src/sim/hardware/sensors/`: i
 and owns bias, random walk, white noise, timestamps, latency, and sequence numbers. Mission code only schedules the
 device and publishes its observation.
 
+The ROBOT side owns one versioned `RobotDescription/TransformTree` per physical configuration. It contains the rooted
+link tree, sensor mounts, calibration and frame conventions (the same kind of structure commonly expressed by URDF or
+SDFormat), but it is loaded as configuration rather than embedded in every LSRI packet. LSRI carries only the
+measurement, acquisition time, source and `frame_id`; a transform service resolves that frame into `base_link`,
+`odom` or `map` using the active description version. SIM and a native hardware provider implement the same seam, so
+replacing the provider does not change localization or perception code. A calibration change creates a new version and
+invalidates dependent estimates; it is never silently mixed into an existing session.
+
 The simulation advances at a fixed step. Sensors have independent sample rates and declared latency. LiDAR uses a
 bounded deterministic delivery queue; the other current observation paths publish at their scheduler tick and retain
 timing metadata for downstream evidence. A real-time or transport provider may apply the same contracts to every

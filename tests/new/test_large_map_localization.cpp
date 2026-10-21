@@ -1,0 +1,216 @@
+#include "robot/autonomy/localization/known_map_localizer.hpp"
+#include "robot/runtime/map_provider.hpp"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <iostream>
+#include <limits>
+#include <vector>
+
+#define CHECK(condition) \
+ do { \
+ if (!(condition)) { \
+ std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition "\n"; \
+ return 1; \
+ } \
+ } while (false)
+
+namespace {
+
+constexpr double kResolution = 0.1;
+constexpr double kMapWidthM = 600.0;
+constexpr double kMapHeightM = 400.0;
+constexpr std::array<sim::Vec2, 8> kTestLocations{{
+ { -170.0, 50.0 }, { -25.0, -60.0 }, { 115.0, 135.0 }, { 245.0, -110.0 },
+ { -220.0, -130.0 }, { 40.0, 35.0 }, { 180.0, 70.0 }, { 260.0, 150.0 },
+}};
+
+sim::runtime::MapSnapshot make_large_map() {
+ sim::runtime::MapSnapshot snapshot;
+ snapshot.map_id = "large-map-localization-gate";
+ snapshot.revision = 1;
+ snapshot.sample_time = sim::runtime::TimePoint::from_seconds(0.0);
+ snapshot.provenance = {"survey", "test.large-map", "1"};
+ sim::runtime::MapGrid grid;
+ grid.width = static_cast<std::uint32_t>(kMapWidthM / kResolution);
+ grid.height = static_cast<std::uint32_t>(kMapHeightM / kResolution);
+ grid.resolution_m = kResolution;
+ grid.origin_m = {-kMapWidthM / 2.0, -kMapHeightM / 2.0};
+ grid.occupancy.assign(static_cast<std::size_t>(grid.width) * grid.height, 0);
+ const auto occupy = [&](int x, int y) {
+ if (x < 0 || y < 0 || x >= static_cast<int>(grid.width) ||
+ y >= static_cast<int>(grid.height)) return;
+ grid.occupancy[static_cast<std::size_t>(y) * grid.width +
+ static_cast<std::size_t>(x)] = 100;
+ };
+ const auto box = [&](double x0, double y0, double x1, double y1) {
+ const int gx0 = static_cast<int>(std::floor((x0 - grid.origin_m.x) / kResolution));
+ const int gx1 = static_cast<int>(std::floor((x1 - grid.origin_m.x) / kResolution));
+ const int gy0 = static_cast<int>(std::floor((y0 - grid.origin_m.y) / kResolution));
+ const int gy1 = static_cast<int>(std::floor((y1 - grid.origin_m.y) / kResolution));
+ for (int y = gy0; y <= gy1; ++y)
+ for (int x = gx0; x <= gx1; ++x) occupy(x, y);
+ };
+ // The outer shell is 240,000 m². Internal walls and asymmetric blocks make
+ // each localization window distinctive without using actor truth.
+ box(-300.0, -200.0, 300.0, -199.6);
+ box(-300.0, 199.6, 300.0, 200.0);
+ box(-300.0, -200.0, -299.6, 200.0);
+ box(299.6, -200.0, 300.0, 200.0);
+ for (int i = 0; i < 9; ++i) {
+ const double x = -260.0 + 64.0 * i;
+ const double y0 = -160.0 + 11.0 * ((i * 7) % 9);
+ const double y1 = y0 + 45.0 + 8.0 * (i % 5);
+ box(x, y0, x + 0.8, std::min(y1, 150.0));
+ box(x + 13.0, y0 + 60.0, x + 18.0 + 2.0 * (i % 4), y0 + 62.0);
+ }
+ for (int i = 0; i < 12; ++i) {
+ const double x = -270.0 + 44.0 * i;
+ const double y = (i % 2 == 0 ? -120.0 : 105.0);
+ box(x, y, x + 7.0 + (i % 3) * 2.0, y + 2.5);
+ box(x + 18.0, y + 13.0, x + 19.2, y + 33.0 + i);
+ }
+ // Objects around the tested locations include corners at different scales,
+ // so the local matcher has real lever arms instead of a blank corridor.
+ // Distinct local geometry supplies the lever arms and scan overlap needed
+ // by repeated localization. The pattern is map data, never actor truth.
+ for (std::size_t location_index = 0; location_index < kTestLocations.size();
+ ++location_index) {
+ const auto centre = kTestLocations[location_index];
+ for (int object = 0; object < 14; ++object) {
+ const double angle = -2.8 + 0.41 * object + 0.07 * location_index;
+ const double distance = 2.4 + 0.42 * object;
+ const double half_width = 0.12 + 0.05 * ((object + location_index) % 4);
+ const double x = centre.x + distance * std::cos(angle);
+ const double y = centre.y + distance * std::sin(angle);
+ box(x - half_width, y - half_width, x + half_width, y + half_width);
+ if ((object + static_cast<int>(location_index)) % 3 == 0)
+ box(x + 0.8, y - 0.1, x + 2.1, y + 0.1);
+ }
+ }
+ snapshot.grid = std::move(grid);
+ return snapshot;
+}
+
+sim::Scan scan_at(const sim::runtime::MapGrid& grid, sim::Vec2 pose,
+ double heading, double stamp_s) {
+ sim::Scan scan;
+ scan.n_rays = 180;
+ scan.max_range = 10.0;
+ scan.angle_min_rad = -sim::kPi;
+ scan.angle_increment_rad = 2.0 * sim::kPi / scan.n_rays;
+ scan.scan_period_s = 0.1;
+ scan.header = {stamp_s, 1, "lidar_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.large-map"};
+ for (int i = 0; i < scan.n_rays; ++i) {
+ const double angle = heading + scan.angle_min_rad + scan.angle_increment_rad * i;
+ double range = scan.max_range;
+ for (double distance = 0.05; distance < scan.max_range; distance += 0.025) {
+ const auto cell = sim::runtime::world_to_grid(grid,
+ {pose.x + distance * std::cos(angle),
+ pose.y + distance * std::sin(angle)});
+ if (!cell) break;
+ const auto index = static_cast<std::size_t>(cell->y) * grid.width + cell->x;
+ if (grid.occupancy[index] >= 50) {
+ range = distance;
+ break;
+ }
+ }
+ scan.ranges.push_back(range);
+ scan.hit.push_back(range < scan.max_range ? 1 : 0);
+ scan.intensities.push_back(1.0);
+ }
+ return scan;
+}
+
+} // namespace
+
+int main() {
+ auto map = make_large_map();
+ CHECK(map.grid);
+ CHECK(static_cast<double>(map.grid->width) * map.grid->resolution_m >= kMapWidthM);
+ CHECK(static_cast<double>(map.grid->height) * map.grid->resolution_m >= kMapHeightM);
+ CHECK(static_cast<double>(map.grid->width) * map.grid->height *
+ map.grid->resolution_m * map.grid->resolution_m >= 200000.0);
+ CHECK(map.grid->occupancy.size() ==
+ static_cast<std::size_t>(map.grid->width) * map.grid->height);
+ std::string reason;
+ sim::runtime::MapManager manager;
+ CHECK(manager.configure(map, &reason));
+ CHECK(manager.activate());
+
+ sim::KnownMapLocalizationConfig config;
+ config.search_translation_m = 0.35;
+ config.search_heading_rad = 0.16;
+ config.translation_step_m = 0.05;
+ config.heading_step_rad = 0.02;
+ config.minimum_score_margin = 0.0;
+ sim::KnownMapLocalizer localizer(config);
+ const std::array<double, 8> headings = {0.3, 1.4, -2.1, 2.7, -0.6, 0.9, -1.3, 2.4};
+ const std::size_t pose_count = kTestLocations.size();
+ double maximum_position_error = 0.0;
+ double maximum_heading_error = 0.0;
+ double maximum_latency_ms = 0.0;
+ std::vector<std::size_t> window_cells;
+ for (std::size_t index = 0; index < pose_count; ++index) {
+ const auto truth = kTestLocations[index];
+ const double truth_heading = headings[index];
+ const auto view = manager.query_region({truth.x - 8.0, truth.y - 8.0,
+ truth.x + 8.0, truth.y + 8.0});
+ CHECK(view && view->grid);
+ window_cells.push_back(view->grid->occupancy.size());
+ // Exercise the same bounded provider result an online localization service
+ // consumes. It must not require a second global-map allocation per fix.
+ sim::runtime::MapSnapshot local_snapshot = map;
+ local_snapshot.grid = view->grid;
+ const double stamp_s = 10.0 + static_cast<double>(index);
+ const auto scan = scan_at(*map.grid, truth, truth_heading, stamp_s);
+ const sim::Vec2 noisy_prior{truth.x + 0.16, truth.y - 0.11};
+ const double noisy_heading = sim::wrap_angle(truth_heading + 0.07);
+ const auto start = std::chrono::steady_clock::now();
+ const auto located = localizer.localize(scan, noisy_prior, noisy_heading,
+ local_snapshot, stamp_s);
+ const auto elapsed = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - start).count();
+ maximum_latency_ms = std::max(maximum_latency_ms, elapsed);
+ if (!located.accepted) std::cerr << "index=" << index << " reason=" << located.rejection_reason << " returns=" << located.usable_returns << " score=" << located.score << " margin=" << located.score_margin << "\n";
+ CHECK(located.accepted);
+ CHECK(located.state == sim::autonomy::LocalizationState::Localized);
+ const double position_error = std::hypot(
+ located.pose.position.x - truth.x,
+ located.pose.position.y - truth.y);
+ const double heading_error = std::abs(sim::wrap_angle(
+ located.pose.heading_rad - truth_heading));
+ maximum_position_error = std::max(maximum_position_error, position_error);
+ maximum_heading_error = std::max(maximum_heading_error, heading_error);
+ CHECK(position_error < 0.16);
+ CHECK(heading_error < 0.06);
+ // Identical input must produce an identical pose. No hash-map iteration or
+ // floating tie is allowed to change the selected correction.
+ const auto repeat = localizer.localize(scan, noisy_prior, noisy_heading,
+ local_snapshot, stamp_s);
+ CHECK(repeat.accepted);
+ CHECK(repeat.pose.position.x == located.pose.position.x);
+ CHECK(repeat.pose.position.y == located.pose.position.y);
+ CHECK(repeat.pose.heading_rad == located.pose.heading_rad);
+ }
+ CHECK(std::all_of(window_cells.begin(), window_cells.end(),
+ [](std::size_t cells) { return cells <= 300U * 300U; }));
+ CHECK(maximum_position_error < 0.16);
+ CHECK(maximum_heading_error < 0.06);
+ // This is a generously bounded component regression, not a production
+ // real-time certification. A p95/deployment profile at 200,000 m² remains a
+ // release gate and must run on the target compute profile.
+ CHECK(maximum_latency_ms < 5000.0);
+ std::cout << "large_map area_m2="
+ << static_cast<double>(map.grid->width) * map.grid->height *
+ map.grid->resolution_m * map.grid->resolution_m
+ << " cells=" << map.grid->occupancy.size()
+ << " window_cells=" << window_cells.front()
+ << " max_position_error_m=" << maximum_position_error
+ << " max_heading_error_rad=" << maximum_heading_error
+ << " max_latency_ms=" << maximum_latency_ms << "\n";
+ return 0;
+}

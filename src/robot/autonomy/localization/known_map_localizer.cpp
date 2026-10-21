@@ -77,7 +77,8 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  return result;
  }
  if (!(config_.search_translation_m >= 0.0) || !(config_.search_heading_rad >= 0.0) ||
- !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0)) {
+ !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0) ||
+ !(config_.minimum_score_margin >= 0.0)) {
  result.rejection_reason = "invalid matcher configuration";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
@@ -156,7 +157,10 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
  // A nearly tied score is a degeneracy signal. Do not turn a repetitive
  // corridor into a confident global correction.
- if (std::isfinite(second_score) && best_score - second_score < 0.01) {
+ if (std::isfinite(second_score) && best_score - second_score < config_.minimum_score_margin) {
+ result.score = best_score;
+ result.overlap = best_overlap;
+ result.score_margin = best_score - second_score;
  result.rejection_reason = "map match is geometrically ambiguous";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
@@ -165,6 +169,7 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  result.state = autonomy::LocalizationState::Localized;
  result.score = best_score;
  result.overlap = best_overlap;
+ result.score_margin = std::isfinite(second_score) ? best_score - second_score : 1.0;
  result.pose.position = best_position;
  result.pose.heading_rad = best_heading;
  result.pose.position_sigma_m = std::max(0.02, grid.resolution_m * 0.75);

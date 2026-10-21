@@ -17,6 +17,7 @@ struct KnownMapLocalizationConfig {
  double translation_step_m{0.05};
  double heading_step_rad{0.035};
  double minimum_overlap{0.30};
+ double minimum_score_margin{0.01};
  std::size_t minimum_returns{8};
  double sensor_x_m{0.0};
  double sensor_y_m{0.0};
