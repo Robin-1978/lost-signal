@@ -199,6 +199,13 @@ profiles preserve one stable moving-object track within declared tolerances; all
 finish with zero collisions without longer time limits or weaker margins; and the coverage ledger has no unowned
 production subsystem.
 
+The latest GCC build passes the focused SLAM/localization set and all 16-line projection gates. A serial full-CTest
+probe reached `mission_simulation` and exposed an existing P1 failure in the recommended `slope_launch` build: after
+the mid-slope inspection stop, RO-1 rolls back under the physical plant and remains at zero command until timeout,
+with no collision. This is tracked as a real differential controlled-stop/grade-hold defect; it must be fixed in the
+ROBOT control/actuator contract or the level's physically declared capabilities, never by relaxing the mission timeout
+or treating simulator pose as localization.
+
 The active crossing implementation now treats the canonical path, a map-validated shortcut and a fully rechecked
 circular-fillet path as separate candidates. Static feasibility cannot erase a dynamically safer route. Fillet
 curvature is constructed in a shared ROBOT module, continuous curve samples carry explicit execution semantics, and
