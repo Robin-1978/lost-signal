@@ -46,6 +46,11 @@ target_include_directories(lost_signal_robot_core INTERFACE ${CMAKE_CURRENT_SOUR
 target_compile_features(lost_signal_robot_core INTERFACE cxx_std_20)
 target_link_libraries(lost_signal_robot_core INTERFACE lost_signal_project_options)
 
+# The pose-graph backend uses Eigen's header-only sparse Cholesky solver. It
+# remains an implementation dependency of ROBOT and is not exposed through
+# LSRI, map, localization or planner interfaces.
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 add_library(lost_signal_robot_platform STATIC
  src/robot/platform/ackermann_kinematics.cpp
  src/robot/platform/differential_kinematics.cpp
@@ -90,6 +95,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/local/dwa.cpp
  src/robot/autonomy/mapping/grid_map.cpp
  src/robot/autonomy/mapping/online_slam.cpp
+ src/robot/autonomy/mapping/pose_graph.cpp
  src/robot/autonomy/mapping/observed_obstacle_layer.cpp
  src/robot/autonomy/planning/local/predictor.cpp
  src/robot/autonomy/localization/state_estimator.cpp
@@ -103,7 +109,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/control/trajectory_tracking_system.cpp
 )
 target_link_libraries(lost_signal_robot_autonomy PUBLIC
- lost_signal_robot_core lost_signal_robot_platform)
+ lost_signal_robot_core lost_signal_robot_platform Eigen3::Eigen)
 
 add_library(lost_signal_robot_runtime STATIC
  src/robot/runtime/endpoint_registry.cpp
@@ -204,6 +210,10 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_online_slam tests/new/test_online_slam.cpp)
  target_link_libraries(test_online_slam PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME online_slam COMMAND test_online_slam)
+
+ add_executable(test_pose_graph tests/new/test_pose_graph.cpp)
+ target_link_libraries(test_pose_graph PRIVATE lost_signal_robot_autonomy)
+ add_test(NAME pose_graph COMMAND test_pose_graph)
 
  add_executable(test_startup_localization tests/new/test_startup_localization.cpp)
  target_link_libraries(test_startup_localization PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)

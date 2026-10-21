@@ -121,6 +121,47 @@ must never masquerade as that time.
 
 ## SLAM and live updates
 
+### Mapping sessions and keyframes
+
+The deployable Robot Map and a sensor-built Mapping Session are different
+artifacts. An authored map from the editor is already a navigation product; it
+does not need fabricated keyframes. If the editor wants faster cold-start
+localization, it may publish a derived landmark or scan-descriptor index with
+the same map revision and provenance, but that index is not a SLAM trajectory.
+
+A Mapping Session stores selected keyframes, timestamped scan references,
+calibration and relative constraints. A keyframe is created only when motion,
+heading, elapsed time or geometric change makes it useful; ordinary sensor
+frames remain front-end input and are not retained forever. Odometry and scan
+matching constraints connect neighboring keyframes. A separately validated
+loop-closure constraint can connect distant keyframes. The first fixed
+keyframe removes the SE(2) global gauge freedom, and the backend publishes
+optimized map-frame poses. It does not mutate a planner's map or expose solver
+types.
+
+Lost Signal's first backend is a ROBOT-only SE(2) pose graph with sparse
+Gauss--Newton and a robust Huber weight for loop closures. It is a small,
+deterministic baseline, not a claim that a hand-written solver covers every
+production SLAM case. Invalid information matrices, duplicate nodes, self
+edges, disconnected components and graphs without an anchor are rejected. The
+current numerical-Jacobian implementation is a correctness baseline; an
+analytic Jacobian may replace it only with a matching finite-difference test.
+
+After optimization, the mapping coordinator must rebuild affected submaps from
+retained keyframe observations and publish one complete, higher map revision.
+It must not move a trajectory while leaving old raster cells in place. If an
+editor or survey import changes the map, it creates a new map revision and
+rebuilds the localization index; old session keyframes remain historical
+evidence until explicitly re-associated.
+
+For large areas, a single fine global raster and exhaustive ray matching are
+not the deployment design. The map provider serves tiles or bounded windows,
+while localization uses a coarse-to-fine descriptor/index search followed by a
+local matcher. The acceptance gate includes a 200,000 m² synthetic map,
+repeated cold starts, bounded evaluation count, stable pose selection and
+measured latency and memory. A small-map global matcher passing does not
+satisfy that gate.
+
 A SLAM provider may first publish occupancy only. A multi-line LiDAR, RGB-D, or surveyed source can additionally
 publish elevation and uncertainty. Missing optional layers stay absent; a 2D mapper must not invent zero-height
 measurements. Dynamic-object filtering belongs to mapping/perception policy, and moving actors never become

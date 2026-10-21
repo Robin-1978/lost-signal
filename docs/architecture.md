@@ -89,10 +89,13 @@ The current collision proxies are authored boxes rather than triangle meshes, cy
 They are deliberately inspectable and deterministic, but must be checked against each visible asset. The repository
 now ships a bounded `OnlineSlamMapBuilder` for small mapless sessions. It consumes only LSRI LiDAR and the estimated
 wheel/IMU prior, publishes immutable occupancy revisions through `IMapBuilder`, and keeps its local origin in the
-ROBOT map frame. It is a deterministic submap frontend, not a claim of loop-closed, calibrated production SLAM:
-dynamic filtering, calibrated ground modeling, multi-view elevation fusion, loop closure and long-run drift gates remain
-explicit validation work. Point-cloud returns may publish a basic height/elevation layer, while planar scans leave that
-layer absent. The authored LSRM map remains a separate reference/provider output rather than hidden SLAM input.
+ROBOT map frame. It is a deterministic submap frontend. The separate `PoseGraphBackend` stores selected keyframes,
+odometry/scan-match edges and validated loop closures, optimizes SE(2) poses with a fixed anchor and sparse Gauss--Newton,
+and returns corrected poses for the builder to rerasterize. It does not mutate a published map or leak Eigen/solver types
+into LSRI, Planner or map APIs. Dynamic filtering, calibrated ground modeling, multi-view elevation fusion and long-run
+loop-closed reconstruction remain explicit validation work. Point-cloud returns may publish a basic height/elevation layer,
+while planar scans leave that layer absent. The authored LSRM map remains a separate reference/provider output rather than
+hidden SLAM input.
 
 The shipped planar and 16-line LiDAR profiles are mounted in named 3D frames. In the
 production path they raycast the 3D physics world against terrain, static world objects, legacy authored boxes, and dynamic actors, include

@@ -332,12 +332,25 @@ localization input, but the builder estimates its own pose internally from the f
 The current implementation is the first executable SLAM slice: deterministic occupancy integration, bounded
 correlative scan alignment around the odometry/IMU prior, per-ray motion deskew from scan timing and body twist,
 immutable map revisions, timestamp rejection, bounded 16-line point-cloud projection with height rejection and
-per-return elevation publication and
-replayable diagnostics. The bounded `localization_mapping_replay` gate now exercises 30 fixed-timestamp scans with
-bounded wheel/IMU drift, revision monotonicity and map growth. This is evidence for the component contract only; it
-does not claim dynamic-object filtering, loop closure or multi-view 2.5D elevation fusion. The next P2 gate is to add a
-calibrated ground model and dynamic-return filtering, fuse repeated point-cloud elevations with uncertainty, and
-produce longer held-out drift/loop-closure evidence before normal levels may rely on mapless SLAM for long runs.
+per-return elevation publication, plus a ROBOT-only SE(2) pose graph with fixed-anchor sparse Gauss--Newton and robust
+loop-closure edges. Pose-graph tests cover a drifted square loop, anchor preservation, invalid information, unknown
+nodes, duplicate nodes, self edges and disconnected graphs. The bounded `localization_mapping_replay` gate exercises
+fixed-timestamp scans with bounded wheel/IMU drift. This is component evidence: it does not claim dynamic-object
+filtering, keyframe-triggered rerasterization after optimization, multi-view 2.5D elevation fusion or production large-map
+localization.
+
+The next P2 gates are:
+
+1. keyframe triggering, loop-candidate overlap validation and complete reconstruction of an optimized map revision;
+2. calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and uncertainty;
+3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
+   repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
+   exhaustive global raster search is retained only as a small-map reference;
+4. long-run drift/loop-closure replay on a held-out map before normal levels rely on mapless SLAM.
+
+Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
+map revision. Continuing mapping adds keyframes in a new or extended mapping session; editing or importing map geometry
+creates a new map revision and rebuilds the index rather than silently rewriting historical session constraints.
 
 Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
 `ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable
