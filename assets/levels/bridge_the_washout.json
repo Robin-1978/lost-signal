@@ -5,7 +5,7 @@
   "title": "跨越冲毁路段",
   "map": "washout_canyon",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "prerequisites": [],
   "seed": 8117,
   "objective": {

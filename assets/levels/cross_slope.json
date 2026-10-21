@@ -5,7 +5,7 @@
   "title": "横坡货运",
   "map": "slope_lab",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 2,
   "prerequisites": [
     "blocked_route"

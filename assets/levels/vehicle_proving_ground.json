@@ -5,7 +5,7 @@
   "title": "综合试车场",
   "map": "proving_ground_map",
   "control_mode": "operator_drive",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 4,
   "mode": "playground",
   "prerequisites": [],

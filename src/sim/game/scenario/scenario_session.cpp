@@ -306,7 +306,13 @@ void ScenarioSession::reset() {
  if (autonomy_pipeline_) {
  autonomy_pipeline_->reset(effective_seed() ^ 0x9e3779b9U);
  }
- known_map_startup_localized_ = false;
+ // A level's spawn marker is the deployment initial-pose contract. It seeds
+ // odom -> base_footprint; the first LiDAR frame still has to pass the local
+ // known-map matcher before it can correct map -> odom. Do not run the
+ // expensive unknown-origin global search on every frame. Startup/recovery
+ // without this contract is exercised by StartupLocalization tests and the
+ // explicit relocalization path.
+ known_map_startup_localized_ = level_.localization_mode == "known_map";
  update_actors();
  slip_detector_.reset();
  slip_episode_times_.clear();
@@ -2941,11 +2947,10 @@ void ScenarioSession::apply_motion() {
   motion_observation.imu =
     sensor_system_->capture_imu(truth, motion_observation.time_s, fixed_step_s, config);
  }
- if (level_.localization_mode == "fused" && sensor_system_) {
-  sim::WorldTruth truth;
-  truth.robot = candidate;
-  motion_observation.absolute_pose = sensor_system_->capture_pose(truth, motion_observation.time_s);
- }
+ // ROBOT localization owns map-frame corrections in every production level.
+ // The simulator may still expose rigid-body truth to diagnostics and scoring,
+ // but it must never publish that truth as an absolute_pose observation. This
+ // keeps SIM -> ROBOT behavior identical to replay and native providers.
  if (!runtime_channel_->platform().publish_observation(std::move(motion_observation))) {
   throw std::runtime_error("runtime channel rejected the simulated motion observation");
  }

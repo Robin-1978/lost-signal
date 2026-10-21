@@ -515,7 +515,7 @@ struct LevelDefinition {
  std::string safe_clearance_scope{"all"};
  double max_localization_error_m{999.0};
  // Extra global-costmap inflation for known localization uncertainty. It is
- // content because a dead-reckoning lesson and a fused-pose lesson can use
+ // content because a dead-reckoning lesson and a known-map localization lesson can use
  // the same robot and geometry with different safety envelopes.
  double planning_localization_margin_m{0.0};
  double fast_time_s{0.0};

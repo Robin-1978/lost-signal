@@ -414,9 +414,10 @@ These are useful sim-to-real seams because a hardware adapter can replace actuat
 Frames follow the familiar `map → odom → base_footprint → base_link → sensor/wheel link` structure. This aligns with [ROS REP-105](https://www.ros.org/reps/rep-0105.html). Geometry, time, angles, velocity, and acceleration use SI units and conventions consistent with [ROS REP-103](https://www.ros.org/reps/rep-0103.html).
 
 `odom → base_footprint` is the continuous dead-reckoned motion and is never reset by a global correction.
-Localization updates change `map → odom`; the composed state in `map` is the fused pose consumed by planning.
-Headless artifacts therefore report raw odometry drift and fused map-pose error separately. Safety scoring uses the
-estimate that actually drives navigation, while the raw metric remains available for wheel-slip and odometry lessons.
+Localization updates change `map → odom`; the composed state in `map` is the corrected map pose consumed by planning.
+Headless artifacts report raw odometry drift and map-pose error separately. Safety scoring uses the estimate that
+actually drives navigation, while the raw metric remains available for wheel-slip and odometry lessons. No simulator
+absolute-pose truth is a ROBOT observation.
 
 `base_footprint` is the terrain projection; `base_link` is the physical root-body origin. Robot `mounts` are always
 calibrated in `base_link`. Physics owns centre-of-mass motion, then the shared transform tree evaluates each sensor

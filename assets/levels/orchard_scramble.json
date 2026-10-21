@@ -5,7 +5,7 @@
   "title": "果园争分夺秒",
   "map": "orchard_hillside",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 4,
   "mode": "playground",
   "prerequisites": [],

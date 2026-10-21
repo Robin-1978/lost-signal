@@ -5,7 +5,7 @@
   "title": "城镇首运",
   "map": "signal_town",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 3,
   "mode": "contract",
   "prerequisites": [

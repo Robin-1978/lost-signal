@@ -5,7 +5,7 @@
   "title": "标定新车",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 4,
   "prerequisites": [
     "signal_echo"

@@ -5,7 +5,7 @@
   "title": "移动操作实验室",
   "map": "proving_ground_map",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 4,
   "mode": "playground",
   "prerequisites": [],

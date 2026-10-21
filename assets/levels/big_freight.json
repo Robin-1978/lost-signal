@@ -5,7 +5,7 @@
   "title": "大镇货运",
   "map": "signal_town_big",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 3,
   "mode": "contract",
   "prerequisites": [

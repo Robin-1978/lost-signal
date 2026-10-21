@@ -43,6 +43,11 @@ planner-specific extension.
 8. **Enable autonomy gradually.** Start with odometry and stationary LiDAR checks, then known-map local correction, then
    controlled mapping, then planner and task execution. Keep simulator truth disabled in all native paths.
 
+At every stage, retain the `ProviderConformanceReport` and a JSONL diagnostic trace from `DiagnosticLog` beside the
+recorded LSRI observations. The trace is bounded in memory, can be drained while the robot runs, and is directly
+replayable with the same timestamps; it records component/event/fields rather than vendor packet blobs. This gives
+field debugging one common format without coupling ROBOT to a logging framework or device SDK.
+
 ## Device-specific acceptance checks
 
 **LiDAR:** verify range units and invalid values, scan period, per-point timing (including 16-line ring order), frame

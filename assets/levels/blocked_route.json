@@ -5,7 +5,7 @@
   "title": "门被堵住了",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "prerequisites": [
     "localization"
   ],

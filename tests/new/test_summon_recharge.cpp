@@ -57,7 +57,7 @@ const char kTestLevel[] = R"({
   "title": "Test Summon",
   "map": "test_summon_map",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+ "localization_mode": "known_map",
   "chapter": 1,
   "prerequisites": [],
   "seed": 7,

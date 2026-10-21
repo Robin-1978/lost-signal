@@ -5,7 +5,7 @@
   "title": "信号瞭望",
   "map": "research_base",
   "control_mode": "autonomous",
-  "localization_mode": "fused",
+  "localization_mode": "known_map",
   "chapter": 4,
   "mode": "experiment",
   "prerequisites": [

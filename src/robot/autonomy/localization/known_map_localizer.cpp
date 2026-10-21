@@ -78,7 +78,7 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  }
  if (!(config_.search_translation_m >= 0.0) || !(config_.search_heading_rad >= 0.0) ||
  !(config_.translation_step_m > 0.0) || !(config_.heading_step_rad > 0.0) ||
- !(config_.minimum_score_margin >= 0.0) ||
+ !(config_.minimum_score_margin >= 0.0) || config_.maximum_returns < config_.minimum_returns ||
  !(config_.ambiguity_distance_m > 0.0) ||
  !(config_.ambiguity_heading_rad > 0.0)) {
  result.rejection_reason = "invalid matcher configuration";
@@ -101,6 +101,21 @@ KnownMapLocalizationResult KnownMapLocalizer::localize(
  result.rejection_reason = "insufficient geometric returns";
  result.state = autonomy::LocalizationState::Degraded;
  return result;
+ }
+ // A spinning scan may contain 360/800 returns. A bounded matcher uses a
+ // deterministic angular subset; the full scan remains available to the
+ // perception and mapping providers. This keeps localization cost bounded as
+ // sensor resolution increases and is the same coarse-signature principle as
+ // the global recovery matcher.
+ if (returns.size() > config_.maximum_returns) {
+ const std::size_t stride =
+ (returns.size() + config_.maximum_returns - 1) / config_.maximum_returns;
+ std::vector<Return> selected;
+ selected.reserve(config_.maximum_returns);
+ for (std::size_t index = 0; index < returns.size() &&
+ selected.size() < config_.maximum_returns; index += stride)
+ selected.push_back(returns[index]);
+ returns = std::move(selected);
  }
 
  const auto& grid = *map.grid;

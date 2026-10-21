@@ -145,6 +145,14 @@ The shipped provider is `channel.in-process`. `ReplayDriver` publishes ordered r
 
 Third-party providers should be compiled against the versioned LSRI headers and registered at the application composition root. LSRI v2 does not promise a C++ shared-library ABI across compilers. A separately distributed binary plugin should use a versioned C ABI or an out-of-process transport and place the conversion behind a provider.
 
+Every native adapter should run `ProviderConformanceMonitor` during bring-up and replay. Register each expected
+`EndpointDescriptor`, feed the resulting `ObservationFrame` with the ROBOT monotonic receive time, call
+`check_liveness()` from the runtime tick, and keep the `ProviderConformanceReport` with the calibration record. The
+monitor verifies payload structure, endpoint source/frame identity, strictly increasing sample timestamps and sequence
+numbers, sample freshness/future skew, declared-vs-observed rate, and source silence. It rejects an absolute map pose
+unless the provider explicitly declares that capability. This is a stream-level gate in addition to
+`valid_observation_frame()`, not a replacement for device-specific calibration or the independent emergency stop.
+
 ### Native robot bring-up
 
 Moving from SIM to a real robot changes the provider backend and instance configuration, not the ROBOT algorithm

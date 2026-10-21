@@ -291,6 +291,12 @@ publishing a simulator absolute-pose correction. This is a component gate, not t
 filtering, covariance/innovation gates, held-out trajectory evidence and migration of normal recommended levels are
 still required.
 
+This migration is now applied to the shipped level catalog: every production level that previously selected `fused`
+selects `known_map`, and the SIM session no longer calls `capture_pose()` or publishes an `absolute_pose` measurement.
+The spawn marker is the declared initial-pose contract for a level; its first LiDAR scan still passes the local map
+matcher. Explicit `odometry` levels remain only for teaching estimator drift. `fused` is no longer a valid level
+localization mode.
+
 Focused gates use analytically generated scans on asymmetric maps, known SE(2) offsets, empty and symmetric geometry,
 occlusion/outliers, moving objects, scan motion distortion, slopes, latency, dropped scans and wrong initial guesses.
 Trajectory gates compare odometry-only drift with LiDAR-corrected error over distance and turns, verify that rejected
@@ -382,6 +388,14 @@ The next P2 gates are:
  margin, while the facility route accepts 10/10 poses with zero wrong accepts and 0.25 m worst error. The reported
  large-map p95 latency is one continuous local `localize()` call in a bounded 16 m window, measured on the development
  host; it excludes cold-start global search, map publication, sensor transport and scheduling.
+
+6. **Native provider gate added:** `ProviderConformanceMonitor` now runs on the ROBOT side of the LSRI boundary. It
+ checks endpoint source/frame identity, payload structure, monotonic timestamps and sequence numbers, freshness and
+ future skew, declared-versus-observed rate, and source silence; absolute pose input is rejected unless explicitly
+ enabled. `test_provider_conformance` covers a healthy mixed LiDAR/encoder/IMU/power stream, duplicate and reordered
+ samples, stale input, wrong frame, silence, rate mismatch and undeclared absolute pose. This makes the native guide's
+ conformance step executable without coupling ROBOT to a vendor SDK. Device calibration and emergency-stop evidence
+ remain deployment gates.
 
 Editor-authored maps do not fabricate SLAM keyframes. Their localization index is a derived artifact of the authored
 map revision. Continuing mapping adds keyframes in a new or extended mapping session; editing or importing map geometry

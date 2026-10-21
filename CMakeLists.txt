@@ -122,6 +122,8 @@ add_library(lost_signal_robot_runtime STATIC
  src/robot/runtime/map_provider.cpp
  src/robot/runtime/runtime_channel.cpp
  src/robot/runtime/replay_driver.cpp
+ src/robot/runtime/provider_conformance.cpp
+ src/robot/runtime/diagnostic_log.cpp
 )
 target_link_libraries(lost_signal_robot_runtime PUBLIC
  lost_signal_robot_core lost_signal_robot_platform)
@@ -212,6 +214,14 @@ add_test(NAME planar_odometry COMMAND test_planar_odometry)
  add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
  add_test(NAME known_map_localizer COMMAND test_known_map_localizer)
+
+ add_executable(test_provider_conformance tests/new/test_provider_conformance.cpp)
+ target_link_libraries(test_provider_conformance PRIVATE lost_signal_robot_runtime)
+ add_test(NAME provider_conformance COMMAND test_provider_conformance)
+
+ add_executable(test_diagnostic_log tests/new/test_diagnostic_log.cpp)
+ target_link_libraries(test_diagnostic_log PRIVATE lost_signal_robot_runtime)
+ add_test(NAME diagnostic_log COMMAND test_diagnostic_log)
 
  add_executable(test_localization_environments tests/new/test_localization_environments.cpp)
  target_link_libraries(test_localization_environments PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)

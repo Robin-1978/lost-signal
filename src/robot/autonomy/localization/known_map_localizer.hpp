@@ -19,6 +19,7 @@ struct KnownMapLocalizationConfig {
  double minimum_overlap{0.30};
  double minimum_score_margin{0.01};
  std::size_t minimum_returns{8};
+ std::size_t maximum_returns{96};
  // Two candidates closer than this describe one physical hypothesis. The
  // score margin is measured between separated hypotheses only: the endpoint
  // score is quantised, so adjacent samples of the same solution tie exactly
