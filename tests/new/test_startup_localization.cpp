@@ -1,5 +1,6 @@
 #include "robot/autonomy/localization/startup_localization.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -72,7 +73,7 @@ int main() {
  sim::autonomy::StartupLocalizationConfig config;
  config.known_map.grid_step_m = 0.2;
  config.known_map.minimum_overlap = 0.15;
- config.known_map.minimum_score_margin = 0.005;
+config.known_map.minimum_score_margin = 0.03;
  config.known_map.minimum_returns = 8;
  config.known_map.maximum_returns = 96;
  config.known_map.maximum_evaluations = 500000;
@@ -113,5 +114,26 @@ int main() {
  CHECK(built.localization.accepted);
  CHECK(built.localization.state == sim::autonomy::LocalizationState::Localized);
  CHECK(built.localization.pose.header.source_id == "robot.startup-mapless-slam");
+
+ // A symmetric boundary cannot establish a unique global pose. The startup
+ // contract must remain in recovery instead of turning a weak match into a
+ // map-frame correction.
+ auto symmetric_map = map;
+ std::fill(symmetric_map.grid->occupancy.begin(),
+ symmetric_map.grid->occupancy.end(), 0);
+ for (int i = 0; i < 70; ++i) {
+ symmetric_map.grid->occupancy[static_cast<std::size_t>(i)] = 100;
+ symmetric_map.grid->occupancy[static_cast<std::size_t>(69) * 70 + i] = 100;
+ symmetric_map.grid->occupancy[static_cast<std::size_t>(i) * 70] = 100;
+ symmetric_map.grid->occupancy[static_cast<std::size_t>(i) * 70 + 69] = 100;
+ }
+ sim::autonomy::StartupLocalization ambiguous_startup(config);
+ auto symmetric_observation = observation;
+ symmetric_observation.lidar = scan_at(symmetric_map, {3.5, 3.5});
+ const auto ambiguous = ambiguous_startup.update(
+ symmetric_observation, unknown_prior, &symmetric_map,
+ sim::runtime::TimePoint::from_seconds(5.0));
+ CHECK(!ambiguous.localization.accepted);
+ CHECK(ambiguous.localization.state == sim::autonomy::LocalizationState::Relocalizing);
  return 0;
 }
