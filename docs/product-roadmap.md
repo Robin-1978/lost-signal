@@ -326,10 +326,10 @@ not create a second pose type or make Planner depend on a SLAM backend. In maple
 localization input, but the builder estimates its own pose internally from the first observation onward.
 
 The current implementation is the first executable SLAM slice: deterministic occupancy integration, bounded
-correlative scan alignment around the odometry/IMU prior, immutable map revisions, timestamp rejection and replayable
-diagnostics. It intentionally does not claim loop closure or 2.5D elevation from a planar scan. The next P2 gate is
-to add motion deskew, dynamic/ground filtering, multi-line point-time handling and held-out drift/loop-closure
-evidence before normal levels may rely on mapless SLAM for long runs.
+correlative scan alignment around the odometry/IMU prior, per-ray motion deskew from scan timing and body twist,
+immutable map revisions, timestamp rejection and replayable diagnostics. It intentionally does not claim loop closure
+or 2.5D elevation from a planar scan. The next P2 gate is to add dynamic/ground filtering, multi-line point-time
+handling and held-out drift/loop-closure evidence before normal levels may rely on mapless SLAM for long runs.
 
 Interfaces are adapted before either implementation is considered complete: LSRI carries raw timestamped sensor data;
 `ILocalizationProvider` publishes pose, covariance and readiness/degradation state; `IMapProvider` serves immutable

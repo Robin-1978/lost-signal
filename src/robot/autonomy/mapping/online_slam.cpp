@@ -91,9 +91,24 @@ std::size_t OnlineSlamMapBuilder::known_cells() const {
  }));
 }
 
-double OnlineSlamMapBuilder::match_score(const Scan& scan, Vec2 pose,
- double heading, std::size_t* matched_returns) const {
- const auto sensor = sensor_position(pose, heading);
+double OnlineSlamMapBuilder::ray_time_offset_s(const Scan& scan,
+ std::size_t index) const {
+ if (scan.time_increment_s > 0.0 && std::isfinite(scan.time_increment_s)) {
+ return -scan.time_increment_s *
+ static_cast<double>(scan.n_rays - 1 - static_cast<int>(index));
+ }
+ if (scan.scan_period_s > 0.0 && std::isfinite(scan.scan_period_s) &&
+ scan.n_rays > 1) {
+ return -scan.scan_period_s *
+ static_cast<double>(scan.n_rays - 1 - static_cast<int>(index)) /
+ static_cast<double>(scan.n_rays - 1);
+ }
+ return 0.0;
+}
+
+double OnlineSlamMapBuilder::match_score(const Scan& scan,
+ const EstimatedState& motion, Vec2 pose, double heading,
+ std::size_t* matched_returns) const {
  const std::size_t stride = std::max<std::size_t>(
  1, (scan.ranges.size() + config_.maximum_matching_returns - 1) /
  config_.maximum_matching_returns);
@@ -105,7 +120,13 @@ double OnlineSlamMapBuilder::match_score(const Scan& scan, Vec2 pose,
  scan.ranges[index] <= 0.05 || scan.ranges[index] >= scan.max_range)
  continue;
  const double range = std::min(scan.ranges[index], config_.maximum_range_m);
- const double angle = heading + scan.angle_min_rad +
+ const double time_offset_s = ray_time_offset_s(scan, index);
+ const double ray_heading = heading + motion.angular_velocity_radps * time_offset_s;
+ const auto body_delta = rotate({motion.linear_velocity_mps * time_offset_s,
+ motion.lateral_velocity_mps * time_offset_s}, heading);
+ const auto sensor = sensor_position(
+ {pose.x + body_delta.x, pose.y + body_delta.y}, ray_heading);
+ const double angle = ray_heading + scan.angle_min_rad +
  scan.angle_increment_rad * static_cast<double>(index) + config_.sensor_yaw_rad;
  const Vec2 endpoint{sensor.x + range * std::cos(angle),
  sensor.y + range * std::sin(angle)};
@@ -132,8 +153,8 @@ double OnlineSlamMapBuilder::match_score(const Scan& scan, Vec2 pose,
  return compared == 0 ? 0.0 : score / static_cast<double>(compared);
 }
 
-void OnlineSlamMapBuilder::integrate_scan(const Scan& scan) {
- const auto sensor = sensor_position(pose_, heading_rad_);
+void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
+ const EstimatedState& motion) {
  const double max_range = std::min(scan.max_range, config_.maximum_range_m);
  const double ray_step = std::max(0.02, config_.resolution_m * 0.5);
  for (std::size_t index = 0; index < scan.ranges.size(); ++index) {
@@ -141,7 +162,13 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan) {
  continue;
  const bool hit = scan.hit[index] && scan.ranges[index] < scan.max_range;
  const double range = std::min(scan.ranges[index], max_range);
- const double angle = heading_rad_ + scan.angle_min_rad +
+ const double time_offset_s = ray_time_offset_s(scan, index);
+ const double ray_heading = heading_rad_ + motion.angular_velocity_radps * time_offset_s;
+ const auto body_delta = rotate({motion.linear_velocity_mps * time_offset_s,
+ motion.lateral_velocity_mps * time_offset_s}, heading_rad_);
+ const auto sensor = sensor_position(
+ {pose_.x + body_delta.x, pose_.y + body_delta.y}, ray_heading);
+ const double angle = ray_heading + scan.angle_min_rad +
  scan.angle_increment_rad * static_cast<double>(index) + config_.sensor_yaw_rad;
  const int subdivisions = std::max(1, static_cast<int>(std::ceil(range / ray_step)));
  const int free_subdivisions = hit ? std::max(0, subdivisions - 1) : subdivisions;
@@ -228,7 +255,7 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  config_.translation_search_m / config_.translation_step_m));
  const int heading_steps = static_cast<int>(std::ceil(
  config_.heading_search_rad / config_.heading_step_rad));
- double best_score = match_score(scan, predicted_pose, predicted_heading, nullptr);
+ double best_score = match_score(scan, prior, predicted_pose, predicted_heading, nullptr);
  double second_score = -std::numeric_limits<double>::infinity();
  Vec2 best_pose = predicted_pose;
  double best_heading = predicted_heading;
@@ -239,7 +266,7 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  predicted_pose.y + y * config_.translation_step_m};
  const double candidate_heading = wrap_angle(
  predicted_heading + h * config_.heading_step_rad);
- const double score = match_score(scan, candidate, candidate_heading, nullptr);
+ const double score = match_score(scan, prior, candidate, candidate_heading, nullptr);
  if (score > best_score) {
  second_score = best_score;
  best_score = score;
@@ -260,7 +287,7 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  diagnostic = "odometry prior retained; scan match weak";
  }
  }
- integrate_scan(scan);
+ integrate_scan(scan, prior);
  last_stamp_s_ = stamp_s;
  ++revision_;
  return make_update(MappingState::Mapping, stamp_s, std::move(diagnostic));

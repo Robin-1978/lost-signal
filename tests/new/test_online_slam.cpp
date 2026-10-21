@@ -19,6 +19,8 @@ sim::Scan scan_with_wall(double stamp_s, std::uint64_t sequence, double wall_x) 
  scan.max_range = 8.0;
  scan.angle_min_rad = -sim::kPi;
  scan.angle_increment_rad = 2.0 * sim::kPi / scan.n_rays;
+ scan.scan_period_s = 0.18;
+ scan.time_increment_s = scan.scan_period_s / scan.n_rays;
  scan.header = {stamp_s, sequence, "lidar_link", 0.0,
  sim::kMeasurementSchemaVersion, "test.lidar"};
  for (int i = 0; i < scan.n_rays; ++i) {
@@ -62,6 +64,8 @@ int main() {
  sim::EstimatedState prior;
  prior.position = {10.0, -4.0};
  prior.heading_rad = 0.0;
+ prior.linear_velocity_mps = 0.15;
+ prior.angular_velocity_radps = 0.08;
  prior.confidence = 1.0;
  const auto first_scan = scan_with_wall(1.0, 1, 5.0);
  const auto first = builder.update(frame(first_scan), prior,
