@@ -2,6 +2,7 @@
 
 #include "robot/autonomy/behavior/high_level_policy.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
+#include "robot/autonomy/control/controlled_stop_latch.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -39,12 +40,17 @@ class AutonomyCoordinator {
  RouteTrackingSystem& route_tracking();
  const RouteTrackingSystem& route_tracking() const;
 
+ bool update_controlled_stop(bool carrying_stop, double peak_wheel_speed_mps,
+ const ControlledStopLatch::Config& config);
+ void reset_controlled_stop();
+
  const std::string& policy_name() const { return policy_name_; }
 
  private:
  std::shared_ptr<IHighLevelPolicy> policy_;
  std::string policy_name_;
  std::unique_ptr<RouteTrackingSystem> route_tracking_;
+ ControlledStopLatch controlled_stop_latch_;
 };
 
 } // namespace sim::autonomy

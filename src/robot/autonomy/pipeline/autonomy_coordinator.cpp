@@ -47,4 +47,14 @@ const RouteTrackingSystem& AutonomyCoordinator::route_tracking() const {
  return *route_tracking_;
 }
 
+bool AutonomyCoordinator::update_controlled_stop(
+ bool carrying_stop, double peak_wheel_speed_mps,
+ const ControlledStopLatch::Config& config) {
+ return controlled_stop_latch_.update(carrying_stop, peak_wheel_speed_mps, config);
+}
+
+void AutonomyCoordinator::reset_controlled_stop() {
+ controlled_stop_latch_.reset();
+}
+
 } // namespace sim::autonomy

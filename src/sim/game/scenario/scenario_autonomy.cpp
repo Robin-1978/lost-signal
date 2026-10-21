@@ -1439,7 +1439,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  latch_config.release_speed_mps = execution_policy.controlled_stop_release_mps;
  latch_config.settle_cycles =
  static_cast<int>(execution_policy.controlled_stop_settle_cycles);
- const bool controlled_stop_in_progress = controlled_stop_latch_.update(
+ const bool controlled_stop_in_progress = autonomy_coordinator_->update_controlled_stop(
  held_command_.controlled_stop, measured_stop_wheel_mps, latch_config);
  const bool trajectory_accepted =
  trajectory_validation.accepted() && !controlled_stop_in_progress;
@@ -1540,7 +1540,7 @@ if (!continuous_execution && remaining_m > 0.5) {
   // trajectory. Every speed/turn cap was applied before rollout generation.
  const double kCreepSpeedMps = execution_policy.creep_speed_mps;
   held_command_ = {command.v, command.w};
- controlled_stop_latch_.reset();
+ autonomy_coordinator_->reset_controlled_stop();
   held_command_.target_lateral_v = command.lateral_v;
  const double commanded_translation_mps =
  std::hypot(command.v, command.lateral_v);

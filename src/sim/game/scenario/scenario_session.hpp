@@ -808,7 +808,6 @@ class ScenarioSession {
  // ROBOT-owned stop latch. A controlled stop must observe several consecutive
  // settled encoder samples before releasing authority; one low sample can be
  // followed by gravity rollback or contact rebound.
- sim::ControlledStopLatch controlled_stop_latch_;
  // Shadow wait episode bookkeeping (gate 3): first predicted departure when
  // a wait opens, vs the last assessment and the actual waited time when it
  // closes. Observation only; no control path reads these.
