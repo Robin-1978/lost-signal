@@ -81,6 +81,38 @@ Existing campaign chapters remain available. The Vehicle Proving Ground is an en
 systems prototype, Bridge is retained as a construction/map/physics regression, and Manipulation Lab demonstrates a
 platform capability. **Stormglass Protocol is the sole candidate for the first polished gameplay experience.**
 
+### Priority clarified from the current engineering review
+
+The recent design discussions add useful constraints, but they do not create parallel release tracks. The next work
+must follow this order:
+
+1. **Close P1 safety and interaction defects.** Finish the slope-lab odometry/traction failure without reintroducing
+   simulator truth, then close the Orchard, crossing, stop-what-if and dynamic-interaction cases. Every action —
+   continue, slow, wait, brake, retreat and detour — must enter the same ROBOT candidate and independent trajectory
+   validation path. Waiting is rejected when a predicted participant can occupy the robot's current footprint, and
+   `NO_SAFE_ACTION` remains an explicit result when no candidate is proven safe.
+2. **Finish the remaining SIM→ROBOT composition migration.** Move the autonomy coordinator that currently assembles
+   decisions in `ScenarioSession` behind a provider-neutral ROBOT interface. SIM may provide task intent, maps and LSRI
+   endpoints, but must not pass level, actor, scenario or simulator-truth types into that coordinator. Complete the
+   platform-profile split and the magic-number audit together; each moved field needs units, source, range and a focused
+   test.
+3. **Finish P2 localization and mapping integration.** Run all ordinary known-map levels through ROBOT localization,
+   keep odometry-only only for explicitly teaching drift, and complete dynamic/ground return filtering, keyframe
+   reconstruction after pose-graph correction, mapless online SLAM replay, cold-start global recovery and the 200,000
+   m² long-run benchmark. Planner code must remain provider-neutral; localization quality changes its constraints,
+   never its algorithm identity.
+4. **Run P3 release evidence.** Only after the first three gates are green: GCC 13, Clang 18, ASan/UBSan, deterministic
+   artifact replay, full CTest, provider-conformance traces, UI shutdown/input smoke and packaging from the one `build/`
+   tree.
+5. **Then improve the product loop.** Use the proving ground as the all-hardware manual/autonomy test instrument,
+   then validate Stormglass as the first game encounter. UI polish, score presentation, a new teaching mission and the
+   visual pass follow evidence from that vertical slice.
+
+TEB is not a current P1 task. The planner boundary is being kept replaceable so a TEB-style local planner can be added
+as a controlled comparison later, but it must first pass the same chassis-capability, actuator-reachability, dynamic
+occupancy and independent safety-validator contracts as DWA. Adding it now would add a second unvalidated motion policy
+while the existing policy still has open failures.
+
 Work proceeds through the following queue. A later package starts only when the preceding exit gate is met. Every
 production algorithm and physical model must first pass its smallest-layer contract gate; a successful mission cannot
 stand in for a kinematics, dynamics, sensing, estimation, planning, behavior, control, or interface test.
