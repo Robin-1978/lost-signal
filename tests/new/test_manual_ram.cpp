@@ -26,7 +26,7 @@
 namespace fs = std::filesystem;
 
 const char kRamMap[] = R"({
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "test_ram_map",
   "scene_3d": "scene.research_base",
   "size_m": [12.0, 12.0],
