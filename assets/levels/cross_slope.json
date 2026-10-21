@@ -1,75 +1,75 @@
 {
- "schema_version": 1,
- "id": "cross_slope",
- "order": 7,
- "title": "横坡货运",
- "map": "slope_lab",
- "control_mode": "autonomous",
- "localization_mode": "odometry",
- "chapter": 2,
- "prerequisites": [
-  "blocked_route"
- ],
- "seed": 261,
- "payload": {
-  "mass_kg": 18.0,
-  "cog_height_m": 0.72
- },
- "objective": {
-  "type": "reach",
-  "spawn": "cross_start",
-  "via": "mast_cradle",
-  "via_label": "天线固定架",
-  "via_radius_m": 0.7,
-  "goal": "cross_end",
-  "goal_label": "山脊中继站",
-  "goal_visual": "exit",
-  "time_limit_s": 120,
-  "max_collisions": 0,
-  "arrive_tolerance_m": 0.62,
-  "goals": [
-   {
-    "marker": "mast_cradle",
-    "label": "天线固定架",
-    "action": "pickup",
-    "radius_m": 0.9
-   },
-   {
-    "marker": "cross_turn",
-    "label": "横坡稳定检查点",
-    "action": "inspect",
-    "radius_m": 0.72,
-    "dwell_s": 1.0
-   },
-   {
-    "marker": "cross_end",
-    "label": "山脊中继站",
-    "action": "complete",
-    "radius_m": 0.62
-   }
+  "schema_version": 1,
+  "id": "cross_slope",
+  "order": 7,
+  "title": "横坡货运",
+  "map": "slope_lab",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "chapter": 2,
+  "prerequisites": [
+    "blocked_route"
   ],
-  "max_arrival_speed_mps": 0.2
- },
- "loadout_rules": {
-  "budget": 5,
-  "required_slots": [
-   "tires",
-   "motor"
-  ]
- },
- "teaching": {
-  "concept": "cross_slope",
-  "prediction_prompt": "高重心货物经过破损横坡，速度会怎样放大侧翻风险？",
-  "knowledge_card": "重心越高，静态余量越小；速度越高，转向与地面起伏产生的附加载荷越大。"
- },
- "score": {
-  "safe_min_clearance_m": 0.0,
-  "max_localization_error_m": 0.5,
-  "fast_time_s": 45.0,
-  "efficient_energy_wh": 1.2
- },
- "rewards": [
-  "ability.terrain"
- ],
- "mode": "mainline"
+  "seed": 261,
+  "payload": {
+    "mass_kg": 18.0,
+    "cog_height_m": 0.72
+  },
+  "objective": {
+    "type": "reach",
+    "spawn": "cross_start",
+    "via": "mast_cradle",
+    "via_label": "天线固定架",
+    "via_radius_m": 0.7,
+    "goal": "cross_end",
+    "goal_label": "山脊中继站",
+    "goal_visual": "exit",
+    "time_limit_s": 120,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "goals": [
+      {
+        "marker": "mast_cradle",
+        "label": "天线固定架",
+        "action": "pickup",
+        "radius_m": 0.9
+      },
+      {
+        "marker": "cross_turn",
+        "label": "横坡稳定检查点",
+        "action": "inspect",
+        "radius_m": 0.72,
+        "dwell_s": 1.0
+      },
+      {
+        "marker": "cross_end",
+        "label": "山脊中继站",
+        "action": "complete",
+        "radius_m": 0.62
+      }
+    ],
+    "max_arrival_speed_mps": 0.2
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "cross_slope",
+    "prediction_prompt": "高重心货物经过破损横坡，速度会怎样放大侧翻风险？",
+    "knowledge_card": "重心越高，静态余量越小；速度越高，转向与地面起伏产生的附加载荷越大。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "max_localization_error_m": 0.5,
+    "fast_time_s": 45.0,
+    "efficient_energy_wh": 1.2
+  },
+  "rewards": [
+    "ability.terrain"
+  ],
+  "mode": "mainline"
 }

@@ -1200,6 +1200,7 @@ material.contact_damping_ratio = item.value("contact_damping_ratio", 1.0);
  static_cast<sim::RobotDriveProfile&>(robot) =
  sim::parse_robot_drive(hardware_drive, path.string());
  robot.drive_label_key = drive.value("label_key", "garage.drive." + robot.drive_type);
+ robot.unlock_ability = value.value("unlock_ability", std::string{});
   Vec3 articulated_center_of_mass_in_base;
   double articulated_center_of_mass_height_m = 0.0;
   double articulated_base_link_height_m = 0.0;

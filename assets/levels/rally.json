@@ -32,9 +32,9 @@
       "motor"
     ]
   },
- "planning": {
- "localization_margin_m": 0.0
- },
+  "planning": {
+    "localization_margin_m": 0.0
+  },
   "teaching": {
     "concept": "combo_easy",
     "prediction_prompt": "集齐的零件第一次联手，最可能在哪里浪费时间？",

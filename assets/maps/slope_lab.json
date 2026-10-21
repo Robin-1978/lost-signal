@@ -30,7 +30,7 @@
       "id": "descent_wet_ramp",
       "type": "box",
       "min": [
- 0.0,
+        0.0,
         5.2
       ],
       "max": [
@@ -87,7 +87,7 @@
       "id": "descent_ramp",
       "type": "height_patch",
       "min": [
- 3.0,
+        3.0,
         4.2
       ],
       "max": [
@@ -113,7 +113,7 @@
         19.0,
         9.8
       ],
- "base_height_m": 1.96,
+      "base_height_m": 1.96,
       "grade_x": 0.0,
       "grade_y": 0.0,
       "roughness": 0.0,

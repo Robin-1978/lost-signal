@@ -15,7 +15,7 @@
   "objective": {
     "type": "reach",
     "spawn": "east_gate",
- "goal": "signal_cross_tower",
+    "goal": "signal_cross_tower",
     "goal_label": "信号塔",
     "goal_visual": "signal_tower",
     "time_limit_s": 150,

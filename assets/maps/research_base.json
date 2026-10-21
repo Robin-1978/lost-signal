@@ -1,1095 +1,1095 @@
 {
- "schema_version": 2,
- "id": "research_base",
- "scene_3d": "scene.research_base",
- "size_m": [
-  20.0,
-  14.0
- ],
- "grid_resolution_m": 0.25,
- "obstacles": [
-  {
-   "id": "west_shelf",
-   "type": "box",
-   "min": [
-    8.0,
-    0.0
-   ],
-   "max": [
-    9.0,
-    11.0
-   ]
-  },
-  {
-   "id": "east_shelf",
-   "type": "box",
-   "min": [
-    12.0,
-    3.0
-   ],
-   "max": [
-    13.0,
+  "schema_version": 2,
+  "id": "research_base",
+  "scene_3d": "scene.research_base",
+  "size_m": [
+    20.0,
     14.0
-   ]
-  },
-  {
-   "id": "glass_door",
-   "type": "box",
-   "min": [
-    7.0,
-    3.5
-   ],
-   "max": [
-    7.5,
-    4.5
-   ],
-   "active_in": [
-    "first_sight"
-   ]
-  }
- ],
- "surfaces": [
-  {
-   "id": "wet_floor",
-   "type": "box",
-   "min": [
-    3.0,
-    5.0
-   ],
-   "max": [
-    7.0,
-    7.0
-   ],
-   "material": "standing_water",
-   "label": "湿滑地面"
-  },
-  {
-   "id": "gravel_yard",
-   "type": "box",
-   "min": [
-    13.5,
-    7.5
-   ],
-   "max": [
-    18.5,
-    12.5
-   ],
-   "material": "gravel",
-   "label": "砂石地面",
-   "active_in": [
-    "loose_ground"
-   ]
-  },
-  {
-   "id": "sand_pit",
-   "type": "box",
-   "min": [
-    13.5,
-    1.0
-   ],
-   "max": [
-    17.5,
-    6.0
-   ],
-   "material": "sand",
-   "label": "沙地",
-   "active_in": [
-    "loose_ground",
-    "sand_track",
-    "sand_steer"
-   ]
-  }
- ],
- "conflict_zones": [
-  {
-   "id": "forklift_crossing",
-   "type": "box",
- "min": [
- 16.9,
- 6.1
- ],
- "max": [
- 17.35,
- 6.5
- ],
-   "authority": "control",
-   "observation_approaches": [
+  ],
+  "grid_resolution_m": 0.25,
+  "obstacles": [
     {
-     "centerline": [
-      [
- 16.9,
-       6.3
+      "id": "west_shelf",
+      "type": "box",
+      "min": [
+        8.0,
+        0.0
       ],
-      [
-       13.5,
-       6.3
+      "max": [
+        9.0,
+        11.0
       ]
-     ],
- "half_width_m": 0.45
     },
     {
-     "centerline": [
-      [
- 17.35,
-       6.3
+      "id": "east_shelf",
+      "type": "box",
+      "min": [
+        12.0,
+        3.0
       ],
-      [
-       20.0,
-       6.3
+      "max": [
+        13.0,
+        14.0
       ]
-     ],
- "half_width_m": 0.45
-    }
-   ],
-   "active_in": [
-    "lost_signal",
-    "signal_hold",
-    "signal_echo",
-    "signal_watch"
-   ]
-  }
- ],
- "world_objects": [
-  {
-   "id": "north_wall_01",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    1.8,
-    14.18,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    0.86
-   ],
-   "collisions": [
+    },
     {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
+      "id": "glass_door",
+      "type": "box",
+      "min": [
+        7.0,
+        3.5
+      ],
+      "max": [
+        7.5,
+        4.5
+      ],
+      "active_in": [
+        "first_sight"
+      ]
     }
-   ]
-  },
-  {
-   "id": "north_wall_02",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    5.8,
-    14.18,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.18
-   ],
-   "collisions": [
+  ],
+  "surfaces": [
     {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
+      "id": "wet_floor",
+      "type": "box",
+      "min": [
+        3.0,
+        5.0
+      ],
+      "max": [
+        7.0,
+        7.0
+      ],
+      "material": "standing_water",
+      "label": "湿滑地面"
+    },
+    {
+      "id": "gravel_yard",
+      "type": "box",
+      "min": [
+        13.5,
+        7.5
+      ],
+      "max": [
+        18.5,
+        12.5
+      ],
+      "material": "gravel",
+      "label": "砂石地面",
+      "active_in": [
+        "loose_ground"
+      ]
+    },
+    {
+      "id": "sand_pit",
+      "type": "box",
+      "min": [
+        13.5,
+        1.0
+      ],
+      "max": [
+        17.5,
+        6.0
+      ],
+      "material": "sand",
+      "label": "沙地",
+      "active_in": [
+        "loose_ground",
+        "sand_track",
+        "sand_steer"
+      ]
     }
-   ]
-  },
-  {
-   "id": "north_wall_03",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    9.8,
-    14.18,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    0.98
-   ],
-   "collisions": [
+  ],
+  "conflict_zones": [
     {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
+      "id": "forklift_crossing",
+      "type": "box",
+      "min": [
+        16.9,
+        6.1
+      ],
+      "max": [
+        17.35,
+        6.5
+      ],
+      "authority": "control",
+      "observation_approaches": [
+        {
+          "centerline": [
+            [
+              16.9,
+              6.3
+            ],
+            [
+              13.5,
+              6.3
+            ]
+          ],
+          "half_width_m": 0.45
+        },
+        {
+          "centerline": [
+            [
+              17.35,
+              6.3
+            ],
+            [
+              20.0,
+              6.3
+            ]
+          ],
+          "half_width_m": 0.45
+        }
+      ],
+      "active_in": [
+        "lost_signal",
+        "signal_hold",
+        "signal_echo",
+        "signal_watch"
+      ]
     }
-   ]
-  },
-  {
-   "id": "north_wall_04",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    13.8,
-    14.18,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.28
-   ],
-   "collisions": [
+  ],
+  "world_objects": [
     {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
+      "id": "north_wall_01",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        1.8,
+        14.18,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.86
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "north_wall_02",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        5.8,
+        14.18,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.18
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "north_wall_03",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        9.8,
+        14.18,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.98
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "north_wall_04",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        13.8,
+        14.18,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.28
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "north_wall_05",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        17.8,
+        14.18,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.82
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_wall_01",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        2.4,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.72
+      ],
+      "yaw_degrees": 90.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_wall_02",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        6.4,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.02
+      ],
+      "yaw_degrees": 90.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "east_wall_03",
+      "prefab": "prefab.wall_panel",
+      "position_m": [
+        20.18,
+        10.4,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        0.82
+      ],
+      "yaw_degrees": 90.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            3.5,
+            0.35,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "rubble_01",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        12.75,
+        4.0,
+        0.0
+      ],
+      "scale": [
+        1.2,
+        1.2,
+        1.0
+      ],
+      "yaw_degrees": 14.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.2
+          ],
+          "size_m": [
+            0.9,
+            0.8,
+            0.4
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "rubble_02",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        12.75,
+        6.5,
+        0.0
+      ],
+      "scale": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "yaw_degrees": 71.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.2
+          ],
+          "size_m": [
+            0.9,
+            0.8,
+            0.4
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "rubble_03",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        12.75,
+        9.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.1
+      ],
+      "yaw_degrees": 103.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.2
+          ],
+          "size_m": [
+            0.9,
+            0.8,
+            0.4
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "rubble_04",
+      "prefab": "prefab.rubble_cluster",
+      "position_m": [
+        12.75,
+        11.5,
+        0.0
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        0.9
+      ],
+      "yaw_degrees": 156.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.2
+          ],
+          "size_m": [
+            0.9,
+            0.8,
+            0.4
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_01",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        1.0,
+        0.0
+      ],
+      "scale": [
+        1.1,
+        1.1,
+        1.2
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_02",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        2.5,
+        0.0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_03",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        4.0,
+        0.0
+      ],
+      "scale": [
+        0.8,
+        0.8,
+        1.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_04",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        5.5,
+        0.0
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.3
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_05",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        7.0,
+        0.0
+      ],
+      "scale": [
+        0.95,
+        0.95,
+        1.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_06",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        8.5,
+        0.0
+      ],
+      "scale": [
+        1.25,
+        1.25,
+        1.4
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "plant_07",
+      "prefab": "prefab.plant_cluster",
+      "position_m": [
+        8.3,
+        10.0,
+        0.0
+      ],
+      "scale": [
+        0.7,
+        0.7,
+        0.8
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.35
+          ],
+          "size_m": [
+            0.55,
+            0.55,
+            0.7
+          ],
+          "material": "paved"
+        }
+      ]
+    },
+    {
+      "id": "service_light_01",
+      "prefab": "prefab.service_light",
+      "position_m": [
+        12.7,
+        5.0,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.36
+          ],
+          "size_m": [
+            0.28,
+            0.28,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "service_light_02",
+      "prefab": "prefab.service_light",
+      "position_m": [
+        12.7,
+        10.0,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.36
+          ],
+          "size_m": [
+            0.28,
+            0.28,
+            0.72
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "console_01",
+      "prefab": "prefab.control_console",
+      "position_m": [
+        12.3,
+        13.5,
+        0.0
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            0.9,
+            0.6,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "console_02",
+      "prefab": "prefab.control_console",
+      "position_m": [
+        12.7,
+        13.5,
+        0.0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.6
+          ],
+          "size_m": [
+            0.9,
+            0.6,
+            1.2
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "cable_reel_01",
+      "prefab": "prefab.cable_reel",
+      "position_m": [
+        8.7,
+        2.5,
+        0.0
+      ],
+      "yaw_degrees": 18.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.4
+          ],
+          "size_m": [
+            1.25,
+            0.75,
+            0.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "cable_reel_02",
+      "prefab": "prefab.cable_reel",
+      "position_m": [
+        8.7,
+        9.5,
+        0.0
+      ],
+      "scale": [
+        0.85,
+        0.85,
+        0.85
+      ],
+      "yaw_degrees": 88.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.4
+          ],
+          "size_m": [
+            1.25,
+            0.75,
+            0.8
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "maintenance_crates_01",
+      "prefab": "prefab.maintenance_crates",
+      "position_m": [
+        8.5,
+        10.7,
+        0.0
+      ],
+      "yaw_degrees": -8.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.48
+          ],
+          "size_m": [
+            1.5,
+            0.9,
+            0.96
+          ],
+          "material": "steel_deck"
+        }
+      ]
+    },
+    {
+      "id": "maintenance_crates_02",
+      "prefab": "prefab.maintenance_crates",
+      "position_m": [
+        12.5,
+        12.25,
+        0.0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "yaw_degrees": 90.0,
+      "collisions": [
+        {
+          "type": "box",
+          "position_m": [
+            0.0,
+            0.0,
+            0.48
+          ],
+          "size_m": [
+            1.5,
+            0.9,
+            0.96
+          ],
+          "material": "steel_deck"
+        }
+      ]
     }
-   ]
-  },
-  {
-   "id": "north_wall_05",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    17.8,
-    14.18,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    0.82
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "east_wall_01",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    20.18,
-    2.4,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    0.72
-   ],
-   "yaw_degrees": 90.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "east_wall_02",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    20.18,
-    6.4,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.02
-   ],
-   "yaw_degrees": 90.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "east_wall_03",
-   "prefab": "prefab.wall_panel",
-   "position_m": [
-    20.18,
-    10.4,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    0.82
-   ],
-   "yaw_degrees": 90.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      3.5,
-      0.35,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "rubble_01",
-   "prefab": "prefab.rubble_cluster",
-   "position_m": [
-    12.75,
-    4.0,
-    0.0
-   ],
-   "scale": [
-    1.2,
-    1.2,
-    1.0
-   ],
-   "yaw_degrees": 14.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.2
-     ],
-     "size_m": [
-      0.9,
-      0.8,
-      0.4
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "rubble_02",
-   "prefab": "prefab.rubble_cluster",
-   "position_m": [
-    12.75,
-    6.5,
-    0.0
-   ],
-   "scale": [
-    0.8,
-    0.8,
-    0.8
-   ],
-   "yaw_degrees": 71.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.2
-     ],
-     "size_m": [
-      0.9,
-      0.8,
-      0.4
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "rubble_03",
-   "prefab": "prefab.rubble_cluster",
-   "position_m": [
-    12.75,
-    9.0,
-    0.0
-   ],
-   "scale": [
-    1.0,
-    1.0,
-    1.1
-   ],
-   "yaw_degrees": 103.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.2
-     ],
-     "size_m": [
-      0.9,
-      0.8,
-      0.4
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "rubble_04",
-   "prefab": "prefab.rubble_cluster",
-   "position_m": [
-    12.75,
-    11.5,
-    0.0
-   ],
-   "scale": [
-    1.15,
-    1.15,
-    0.9
-   ],
-   "yaw_degrees": 156.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.2
-     ],
-     "size_m": [
-      0.9,
-      0.8,
-      0.4
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_01",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    1.0,
-    0.0
-   ],
-   "scale": [
-    1.1,
-    1.1,
-    1.2
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_02",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    2.5,
-    0.0
-   ],
-   "scale": [
-    0.9,
-    0.9,
-    0.9
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_03",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    4.0,
-    0.0
-   ],
-   "scale": [
-    0.8,
-    0.8,
-    1.0
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_04",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    5.5,
-    0.0
-   ],
-   "scale": [
-    1.15,
-    1.15,
-    1.3
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_05",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    7.0,
-    0.0
-   ],
-   "scale": [
-    0.95,
-    0.95,
-    1.0
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_06",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    8.5,
-    0.0
-   ],
-   "scale": [
-    1.25,
-    1.25,
-    1.4
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "plant_07",
-   "prefab": "prefab.plant_cluster",
-   "position_m": [
-    8.3,
-    10.0,
-    0.0
-   ],
-   "scale": [
-    0.7,
-    0.7,
-    0.8
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.35
-     ],
-     "size_m": [
-      0.55,
-      0.55,
-      0.7
-     ],
-     "material": "paved"
-    }
-   ]
-  },
-  {
-   "id": "service_light_01",
-   "prefab": "prefab.service_light",
-   "position_m": [
-    12.7,
-    5.0,
-    0.0
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.36
-     ],
-     "size_m": [
-      0.28,
-      0.28,
-      0.72
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "service_light_02",
-   "prefab": "prefab.service_light",
-   "position_m": [
-    12.7,
-    10.0,
-    0.0
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.36
-     ],
-     "size_m": [
-      0.28,
-      0.28,
-      0.72
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "console_01",
-   "prefab": "prefab.control_console",
-   "position_m": [
-    12.3,
-    13.5,
-    0.0
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      0.9,
-      0.6,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "console_02",
-   "prefab": "prefab.control_console",
-   "position_m": [
-    12.7,
-    13.5,
-    0.0
-   ],
-   "scale": [
-    0.9,
-    0.9,
-    0.9
-   ],
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.6
-     ],
-     "size_m": [
-      0.9,
-      0.6,
-      1.2
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "cable_reel_01",
-   "prefab": "prefab.cable_reel",
-   "position_m": [
-    8.7,
-    2.5,
-    0.0
-   ],
-   "yaw_degrees": 18.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.4
-     ],
-     "size_m": [
-      1.25,
-      0.75,
-      0.8
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "cable_reel_02",
-   "prefab": "prefab.cable_reel",
-   "position_m": [
-    8.7,
-    9.5,
-    0.0
-   ],
-   "scale": [
-    0.85,
-    0.85,
-    0.85
-   ],
-   "yaw_degrees": 88.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.4
-     ],
-     "size_m": [
-      1.25,
-      0.75,
-      0.8
-     ],
-     "material": "steel_deck"
-    }
-   ]
-  },
-  {
-   "id": "maintenance_crates_01",
-   "prefab": "prefab.maintenance_crates",
-   "position_m": [
-    8.5,
-    10.7,
-    0.0
-   ],
-   "yaw_degrees": -8.0,
-   "collisions": [
-    {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.48
-     ],
-     "size_m": [
+  ],
+  "markers": {
+    "calibration_pad": [
+      6.5,
+      6.5,
+      0.0
+    ],
+    "east_gate": [
+      14.0,
       1.5,
-      0.9,
-      0.96
-     ],
-     "material": "steel_deck"
-    }
-   ]
+      0.0
+    ],
+    "glass_door": [
+      6.0,
+      4.0,
+      0.0
+    ],
+    "loose_ground_start": [
+      14.5,
+      4.5,
+      1.5707963267948966
+    ],
+    "robot_bay": [
+      1.0,
+      1.0,
+      0.0
+    ],
+    "signal_cross_tower": [
+      17.8,
+      10.0,
+      0.0
+    ],
+    "signal_tower": [
+      17.0,
+      10.0,
+      0.0
+    ],
+    "supply_station": [
+      10.5,
+      12.5,
+      0.0
+    ],
+    "track_calibration": [
+      6.5,
+      7.0,
+      0.0
+    ],
+    "traffic_trigger": [
+      10.5,
+      12.5,
+      0.0
+    ],
+    "workshop_exit": [
+      3.5,
+      4.0,
+      0.0
+    ]
   },
-  {
-   "id": "maintenance_crates_02",
-   "prefab": "prefab.maintenance_crates",
-   "position_m": [
-    12.5,
-    12.25,
-    0.0
-   ],
-   "scale": [
-    0.9,
-    0.9,
-    0.9
-   ],
-   "yaw_degrees": 90.0,
-   "collisions": [
+  "actors": [
     {
-     "type": "box",
-     "position_m": [
-      0.0,
-      0.0,
-      0.48
-     ],
-     "size_m": [
-      1.5,
-      0.9,
-      0.96
-     ],
-     "material": "steel_deck"
+      "id": "forklift_a",
+      "type": "dwell",
+      "path": [
+        [
+          17.5,
+          6.3
+        ],
+        [
+          14.0,
+          6.3
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.45,
+      "active_in": [
+        "signal_echo",
+        "signal_hold",
+        "signal_watch"
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
+        "ref_radius_m": 0.45
+      },
+      "waits": [
+        3.0,
+        3.0
+      ]
+    },
+    {
+      "id": "forklift_b",
+      "type": "patrol",
+      "path": [
+        [
+          16.0,
+          6.5
+        ],
+        [
+          16.0,
+          12.0
+        ]
+      ],
+      "speed_mps": 0.5,
+      "radius_m": 0.45,
+      "active_in": [
+        "signal_cross"
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
+        "ref_radius_m": 0.45
+      }
+    },
+    {
+      "id": "forklift_finale",
+      "type": "dwell",
+      "path": [
+        [
+          17.5,
+          6.3
+        ],
+        [
+          13.5,
+          6.3
+        ]
+      ],
+      "speed_mps": 0.55,
+      "radius_m": 0.45,
+      "active_in": [
+        "lost_signal"
+      ],
+      "collision": "fatal",
+      "visual": {
+        "model": "models/actors/forklift.glb",
+        "kind": "vehicle",
+        "ref_radius_m": 0.45
+      },
+      "dormant_until_summoned": true,
+      "waits": [
+        0.0,
+        2.0
+      ]
     }
-   ]
-  }
- ],
- "markers": {
-  "calibration_pad": [
-   6.5,
-   6.5,
-   0.0
-  ],
-  "east_gate": [
-   14.0,
-   1.5,
-   0.0
-  ],
-  "glass_door": [
-   6.0,
-   4.0,
-   0.0
-  ],
-  "loose_ground_start": [
-   14.5,
-   4.5,
-   1.5707963267948966
-  ],
-  "robot_bay": [
-   1.0,
-   1.0,
-   0.0
-  ],
-  "signal_tower": [
-   17.0,
-   10.0,
-   0.0
-  ],
-  "signal_cross_tower": [
-   17.8,
-   10.0,
-   0.0
-  ],
-  "supply_station": [
-   10.5,
-   12.5,
-   0.0
-  ],
-  "track_calibration": [
-   6.5,
-   7.0,
-   0.0
-  ],
-  "traffic_trigger": [
-   10.5,
-   12.5,
-   0.0
-  ],
-  "workshop_exit": [
-   3.5,
-   4.0,
-   0.0
   ]
- },
- "actors": [
-  {
-   "id": "forklift_a",
-   "type": "dwell",
-   "path": [
-    [
-     17.5,
-     6.3
-    ],
-    [
-     14.0,
-     6.3
-    ]
-   ],
-   "speed_mps": 0.55,
-   "radius_m": 0.45,
-   "active_in": [
-    "signal_echo",
-    "signal_hold",
-    "signal_watch"
-   ],
-   "collision": "fatal",
-   "visual": {
-    "model": "models/actors/forklift.glb",
-    "kind": "vehicle",
-    "ref_radius_m": 0.45
-   },
-   "waits": [
-    3.0,
-    3.0
-   ]
-  },
-  {
-   "id": "forklift_b",
-   "type": "patrol",
-   "path": [
-    [
-     16.0,
-     6.5
-    ],
-    [
-     16.0,
-     12.0
-    ]
-   ],
-   "speed_mps": 0.5,
-   "radius_m": 0.45,
-   "active_in": [
-    "signal_cross"
-   ],
-   "collision": "fatal",
-   "visual": {
-    "model": "models/actors/forklift.glb",
-    "kind": "vehicle",
-    "ref_radius_m": 0.45
-   }
-  },
-  {
-   "id": "forklift_finale",
-   "type": "dwell",
-   "path": [
-    [
-     17.5,
-     6.3
-    ],
-    [
-     13.5,
-     6.3
-    ]
-   ],
-   "speed_mps": 0.55,
-   "radius_m": 0.45,
-   "active_in": [
-    "lost_signal"
-   ],
-   "collision": "fatal",
-   "visual": {
-    "model": "models/actors/forklift.glb",
-    "kind": "vehicle",
-    "ref_radius_m": 0.45
-   },
-   "dormant_until_summoned": true,
-   "waits": [
-    0.0,
-    2.0
-   ]
-  }
- ]
 }

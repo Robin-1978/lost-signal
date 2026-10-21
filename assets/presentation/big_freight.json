@@ -63,7 +63,7 @@
     ],
     "default_build": {
       "tires": "tires.eco",
- "sensor": "sensor.standard_lidar",
+      "sensor": "sensor.standard_lidar",
       "computer": "computer.light",
       "motor": "motor.standard",
       "imu": "imu.basic",
@@ -71,7 +71,7 @@
     },
     "recommended_build": {
       "tires": "tires.grip",
- "sensor": "sensor.standard_lidar",
+      "sensor": "sensor.standard_lidar",
       "computer": "computer.performance",
       "motor": "motor.standard",
       "imu": "imu.basic",

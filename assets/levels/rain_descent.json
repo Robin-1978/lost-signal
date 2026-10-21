@@ -1,51 +1,51 @@
 {
- "schema_version": 1,
- "id": "rain_descent",
- "order": 13,
- "title": "雨后下坡",
- "map": "slope_lab",
- "control_mode": "autonomous",
- "localization_mode": "odometry",
- "chapter": 4,
- "prerequisites": [
-  "slope_launch"
- ],
- "seed": 251,
- "payload": {
-  "mass_kg": 10.0,
-  "cog_height_m": 0.42
- },
- "objective": {
-  "type": "reach",
-  "spawn": "descent_start",
-  "goal": "descent_end",
-  "goal_label": "坡底卸货区",
-  "goal_visual": "stop_zone",
-  "time_limit_s": 90,
-  "max_collisions": 0,
-  "arrive_tolerance_m": 0.62,
-  "max_arrival_speed_mps": 0.18
- },
- "loadout_rules": {
-  "budget": 5,
-  "required_slots": [
-   "tires",
-   "motor"
-  ]
- },
- "teaching": {
-  "concept": "wet_descent",
-  "prediction_prompt": "雨后下坡，抓地和速度哪一个先决定停车距离？",
-  "knowledge_card": "下坡重力会持续补充速度；低抓地轮胎更早达到制动力上限。"
- },
- "score": {
-  "safe_min_clearance_m": 0.0,
-  "max_localization_error_m": 0.5,
-  "fast_time_s": 45.0,
-  "efficient_energy_wh": 1.2
- },
- "rewards": [
-  "ability.terrain"
- ],
- "mode": "experiment"
+  "schema_version": 1,
+  "id": "rain_descent",
+  "order": 13,
+  "title": "雨后下坡",
+  "map": "slope_lab",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "chapter": 4,
+  "prerequisites": [
+    "slope_launch"
+  ],
+  "seed": 251,
+  "payload": {
+    "mass_kg": 10.0,
+    "cog_height_m": 0.42
+  },
+  "objective": {
+    "type": "reach",
+    "spawn": "descent_start",
+    "goal": "descent_end",
+    "goal_label": "坡底卸货区",
+    "goal_visual": "stop_zone",
+    "time_limit_s": 90,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "max_arrival_speed_mps": 0.18
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "wet_descent",
+    "prediction_prompt": "雨后下坡，抓地和速度哪一个先决定停车距离？",
+    "knowledge_card": "下坡重力会持续补充速度；低抓地轮胎更早达到制动力上限。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "max_localization_error_m": 0.5,
+    "fast_time_s": 45.0,
+    "efficient_energy_wh": 1.2
+  },
+  "rewards": [
+    "ability.terrain"
+  ],
+  "mode": "experiment"
 }

@@ -49,7 +49,7 @@
     "localization_mode": {
       "enum": [
         "odometry",
- "known_map"
+        "known_map"
       ]
     },
     "planning": {

@@ -16,7 +16,7 @@
   ],
   "properties": {
     "schema_version": {
- "const": 2
+      "const": 2
     },
     "id": {
       "$ref": "#/$defs/id"
@@ -262,7 +262,7 @@
         "type",
         "min",
         "max",
- "authority"
+        "authority"
       ],
       "properties": {
         "id": {
@@ -285,13 +285,13 @@
         },
         "observation_approaches": {
           "type": "array",
- "description": "Geometric traffic approaches used for visibility diagnostics. Each centerline starts on the conflict-zone boundary and extends outward; it does not declare unknown participants' physical capabilities.",
+          "description": "Geometric traffic approaches used for visibility diagnostics. Each centerline starts on the conflict-zone boundary and extends outward; it does not declare unknown participants' physical capabilities.",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": [
               "centerline",
- "half_width_m"
+              "half_width_m"
             ],
             "properties": {
               "centerline": {
@@ -303,7 +303,7 @@
               },
               "half_width_m": {
                 "type": "number",
- "exclusiveMinimum": 0
+                "exclusiveMinimum": 0
               }
             }
           },

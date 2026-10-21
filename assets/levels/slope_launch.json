@@ -1,73 +1,73 @@
 {
- "schema_version": 1,
- "id": "slope_launch",
- "order": 4,
- "title": "坡道集结",
- "map": "slope_lab",
- "control_mode": "autonomous",
- "localization_mode": "odometry",
- "chapter": 2,
- "prerequisites": [
-  "first_sight"
- ],
- "seed": 241,
- "payload": {
-  "mass_kg": 15.0,
-  "cog_height_m": 0.45
- },
- "objective": {
-  "type": "reach",
-  "spawn": "slope_start",
-  "goal": "slope_top",
-  "goal_label": "通信桥集结点",
-  "goal_visual": "supply_station",
-  "time_limit_s": 180,
-  "max_collisions": 0,
-  "arrive_tolerance_m": 0.62,
-  "goals": [
-   {
-    "marker": "battery_cache",
-    "label": "备用电池箱",
-    "action": "pickup",
-    "radius_m": 0.9
-   },
-   {
-    "marker": "ramp_hold",
-    "label": "坡中牵引确认点",
-    "action": "inspect",
-    "radius_m": 0.7,
-    "dwell_s": 1.2
-   },
-   {
-    "marker": "slope_top",
-    "label": "通信桥集结点",
-    "action": "complete",
-    "radius_m": 0.62
-   }
+  "schema_version": 1,
+  "id": "slope_launch",
+  "order": 4,
+  "title": "坡道集结",
+  "map": "slope_lab",
+  "control_mode": "autonomous",
+  "localization_mode": "odometry",
+  "chapter": 2,
+  "prerequisites": [
+    "first_sight"
   ],
-  "max_arrival_speed_mps": 0.22
- },
- "loadout_rules": {
-  "budget": 5,
-  "required_slots": [
-   "tires",
-   "motor"
-  ]
- },
- "teaching": {
-  "concept": "slope_launch",
-  "prediction_prompt": "标准电机和扭矩电机，谁能带货从 20° 坡中起步？",
-  "knowledge_card": "坡道所需牵引力由总质量和坡角决定；扭矩余量不足时，提高极速没有帮助。"
- },
- "score": {
-  "safe_min_clearance_m": 0.0,
-  "max_localization_error_m": 0.5,
-  "fast_time_s": 60.0,
-  "efficient_energy_wh": 1.2
- },
- "rewards": [
-  "ability.terrain",
-  "imu.precise"
- ],
- "mode": "mainline"
+  "seed": 241,
+  "payload": {
+    "mass_kg": 15.0,
+    "cog_height_m": 0.45
+  },
+  "objective": {
+    "type": "reach",
+    "spawn": "slope_start",
+    "goal": "slope_top",
+    "goal_label": "通信桥集结点",
+    "goal_visual": "supply_station",
+    "time_limit_s": 180,
+    "max_collisions": 0,
+    "arrive_tolerance_m": 0.62,
+    "goals": [
+      {
+        "marker": "battery_cache",
+        "label": "备用电池箱",
+        "action": "pickup",
+        "radius_m": 0.9
+      },
+      {
+        "marker": "ramp_hold",
+        "label": "坡中牵引确认点",
+        "action": "inspect",
+        "radius_m": 0.7,
+        "dwell_s": 1.2
+      },
+      {
+        "marker": "slope_top",
+        "label": "通信桥集结点",
+        "action": "complete",
+        "radius_m": 0.62
+      }
+    ],
+    "max_arrival_speed_mps": 0.22
+  },
+  "loadout_rules": {
+    "budget": 5,
+    "required_slots": [
+      "tires",
+      "motor"
+    ]
+  },
+  "teaching": {
+    "concept": "slope_launch",
+    "prediction_prompt": "标准电机和扭矩电机，谁能带货从 20° 坡中起步？",
+    "knowledge_card": "坡道所需牵引力由总质量和坡角决定；扭矩余量不足时，提高极速没有帮助。"
+  },
+  "score": {
+    "safe_min_clearance_m": 0.0,
+    "max_localization_error_m": 0.5,
+    "fast_time_s": 60.0,
+    "efficient_energy_wh": 1.2
+  },
+  "rewards": [
+    "ability.terrain",
+    "imu.precise"
+  ],
+  "mode": "mainline"
 }
