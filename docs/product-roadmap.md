@@ -395,6 +395,11 @@ power telemetry has an explicit stale/missing policy for reserve enforcement, an
 `lost_signal_robot_executive`. Battery/charger physics remains a provider concern; the executive only consumes the
 typed LSRI power observation and publishes a mission-level resource directive.
 
+The native deployment workflow is documented in [Native hardware integration](native-hardware-integration.md): native
+providers, calibration and endpoint capabilities replace SIM providers at the composition root while ROBOT algorithms keep
+their typed contracts. The guide is a bring-up contract, not evidence that a particular vendor driver or real robot has
+already been validated.
+
 The design follows the useful boundaries in [REP-105](https://www.ros.org/reps/rep-0105.html), Nav2
 [AMCL](https://github.com/ros-navigation/navigation2/tree/main/nav2_amcl), Cartographer's
 [local/global SLAM split](https://google-cartographer-ros.readthedocs.io/en/latest/algo_walkthrough.html), Autoware's
