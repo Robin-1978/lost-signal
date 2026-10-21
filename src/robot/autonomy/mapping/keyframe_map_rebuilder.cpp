@@ -65,6 +65,8 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  const double ray_step = std::max(0.02, config_.resolution_m * 0.5);
  ElevationFusion elevation(config_.elevation);
  elevation.reset(map.occupancy.size());
+ OccupancyLogOdds occupancy(config_.occupancy);
+ occupancy.reset(map.occupancy.size());
  for (const auto& keyframe : keyframes) {
  const auto& pose = keyframe.graph.initial_pose;
  const auto& scan = keyframe.scan;
@@ -108,8 +110,7 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  if (!cell)
  break;
  const auto cell_index = static_cast<std::size_t>(cell->y) * map.width + cell->x;
- if (map.occupancy[cell_index] < 50)
- map.occupancy[cell_index] = 0;
+ occupancy.observe_free(cell_index);
  }
  if (!hit)
  continue;
@@ -119,7 +120,7 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  if (!cell)
  continue;
  const auto cell_index = static_cast<std::size_t>(cell->y) * map.width + cell->x;
- map.occupancy[cell_index] = 100;
+ occupancy.observe_occupied(cell_index);
  if (config_.publish_elevation_layer && index < scan.ray_heights_m.size() &&
  std::isfinite(scan.ray_heights_m[index])) {
  const auto estimate = elevation.fuse(
@@ -131,6 +132,7 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  }
  }
  }
+ map.occupancy = occupancy.values();
  auto snapshot = std::make_shared<runtime::MapSnapshot>();
  snapshot->map_id = config_.map_id;
  snapshot->revision = revision;

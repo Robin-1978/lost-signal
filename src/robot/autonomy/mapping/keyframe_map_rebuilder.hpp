@@ -2,6 +2,7 @@
 
 #include "robot/autonomy/mapping/mapping_session.hpp"
 #include "robot/autonomy/mapping/elevation_fusion.hpp"
+#include "robot/autonomy/mapping/occupancy_log_odds.hpp"
 #include "robot/runtime/map_provider.hpp"
 
 #include <cstdint>
@@ -24,6 +25,9 @@ struct KeyframeMapRebuildConfig {
  // Multi-view height fusion policy. A cell is published only while its fused
  // uncertainty stays inside these limits.
  ElevationFusionConfig elevation{};
+ // Occupancy evidence policy. Repeated free observations can clear a
+ // transient return instead of leaving a permanent ghost obstacle.
+ OccupancyLogOddsConfig occupancy{};
  std::string map_id{"online-slam"};
 };
 
