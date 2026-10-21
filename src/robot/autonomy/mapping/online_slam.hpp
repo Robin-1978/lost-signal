@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace sim::autonomy {
 
@@ -31,6 +32,7 @@ struct OnlineSlamConfig {
  std::size_t maximum_matching_returns{64};
  double minimum_match_score{0.30};
  double minimum_match_margin{0.02};
+ bool publish_elevation_layer{true};
  std::string map_id{"online-slam"};
 };
 
@@ -52,6 +54,7 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  Vec2 pose_{};
  double heading_rad_{0.0};
  std::uint64_t revision_{0};
+ std::vector<std::uint16_t> elevation_observations_;
 
  void initialize_map();
  Vec2 world_to_local(Vec2 world) const;
@@ -64,6 +67,7 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  void integrate_scan(const Scan& scan, const EstimatedState& motion);
  double ray_time_offset_s(const Scan& scan, std::size_t index) const;
  std::optional<Scan> project_cloud(const LidarPointCloud& cloud) const;
+ void update_elevation(std::size_t cell_index, double elevation_m);
  MapBuilderUpdate make_update(MappingState state, double stamp_s,
  std::string diagnostic) const;
 };

@@ -33,6 +33,9 @@ struct Scan {
  // Optional per-ray acquisition offsets relative to the scan-end stamp.
  // A point-cloud projection may preserve the selected return's firing time.
  std::vector<double> ray_time_offsets_s;
+ // Optional selected-return height in the sensor frame, in metres. NaN means
+ // that this ray has no height-bearing return; planar scans leave it empty.
+ std::vector<double> ray_heights_m;
  MeasurementHeader header;
 };
 

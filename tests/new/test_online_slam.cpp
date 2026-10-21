@@ -139,9 +139,15 @@ int main() {
  CHECK(cloud_update.state == sim::autonomy::MappingState::Mapping);
  CHECK(cloud_update.published_map);
  bool cloud_obstacle = false;
+ bool cloud_elevation = false;
  for (const auto cell : cloud_update.published_map->grid->occupancy)
  cloud_obstacle = cloud_obstacle || cell >= 50;
  CHECK(cloud_obstacle);
+ CHECK(cloud_update.published_map->grid->elevation_m.size() ==
+ cloud_update.published_map->grid->occupancy.size());
+ for (const auto elevation : cloud_update.published_map->grid->elevation_m)
+ cloud_elevation = cloud_elevation || std::isfinite(elevation);
+ CHECK(cloud_elevation);
 
  return 0;
 }

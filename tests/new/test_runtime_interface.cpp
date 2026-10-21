@@ -358,6 +358,21 @@ int main() {
  CHECK(!valid_observation_frame(point_cloud_frame, &reason));
  CHECK(reason == "lidar point cloud contains an invalid return");
 
+ sim::ObservationFrame height_frame;
+ height_frame.time_s = 3.0;
+ height_frame.lidar.emplace();
+ height_frame.lidar->n_rays = 1;
+ height_frame.lidar->max_range = 8.0;
+ height_frame.lidar->ranges = {2.0};
+ height_frame.lidar->hit = {1};
+ height_frame.lidar->ray_heights_m = {std::numeric_limits<double>::quiet_NaN()};
+ height_frame.lidar->header = {3.0, 2, "lidar_link", 0.0,
+ sim::kMeasurementSchemaVersion, "test.planar"};
+ CHECK(valid_observation_frame(height_frame, &reason));
+ height_frame.lidar->ray_heights_m = {std::numeric_limits<double>::infinity()};
+ CHECK(!valid_observation_frame(height_frame, &reason));
+ CHECK(reason == "lidar ray height is invalid");
+
  channel->deactivate();
  CHECK(channel->state() == LifecycleState::Inactive);
  CHECK(channel->platform().read_motion(TimePoint::from_seconds(1.0)).safe_stop);

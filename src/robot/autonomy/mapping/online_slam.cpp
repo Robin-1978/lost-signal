@@ -25,7 +25,9 @@ bool finite_scan(const Scan& scan) {
  return scan.n_rays > 0 && scan.ranges.size() == static_cast<std::size_t>(scan.n_rays) &&
  scan.hit.size() == scan.ranges.size() && std::isfinite(scan.max_range) &&
  scan.max_range > 0.0 && std::isfinite(scan.angle_min_rad) &&
- std::isfinite(scan.angle_increment_rad);
+ std::isfinite(scan.angle_increment_rad) &&
+ (scan.ray_heights_m.empty() ||
+ scan.ray_heights_m.size() == scan.ranges.size());
 }
 
 } // namespace
@@ -45,6 +47,9 @@ void OnlineSlamMapBuilder::initialize_map() {
  -0.5 * static_cast<double>(config_.height) * config_.resolution_m};
  map_.origin_yaw_rad = 0.0;
  map_.occupancy.assign(static_cast<std::size_t>(config_.width) * config_.height, -1);
+ map_.elevation_m.clear();
+ map_.elevation_sigma_m.clear();
+ elevation_observations_.clear();
 }
 
 void OnlineSlamMapBuilder::reset() {
@@ -129,6 +134,9 @@ std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
  scan.hit.assign(cloud.azimuth_samples, 0);
  scan.intensities.assign(cloud.azimuth_samples, 0.0);
  scan.ray_time_offsets_s.assign(cloud.azimuth_samples, -scan.scan_period_s);
+ if (config_.publish_elevation_layer)
+ scan.ray_heights_m.assign(cloud.azimuth_samples,
+ std::numeric_limits<double>::quiet_NaN());
  scan.header = cloud.header;
  for (const auto& point : cloud.points) {
  if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
@@ -149,9 +157,37 @@ std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
  scan.hit[bin] = 1;
  scan.intensities[bin] = std::clamp(point.intensity, 0.0, 1.0);
  scan.ray_time_offsets_s[bin] = point.time_offset_s;
+ if (!scan.ray_heights_m.empty())
+ scan.ray_heights_m[bin] = point.z_m;
  }
  }
  return scan;
+}
+
+void OnlineSlamMapBuilder::update_elevation(std::size_t cell_index,
+ double elevation_m) {
+ if (!config_.publish_elevation_layer || !std::isfinite(elevation_m) ||
+ cell_index >= map_.occupancy.size())
+ return;
+ if (map_.elevation_m.size() != map_.occupancy.size()) {
+ map_.elevation_m.assign(map_.occupancy.size(),
+ std::numeric_limits<float>::quiet_NaN());
+ map_.elevation_sigma_m.assign(map_.occupancy.size(),
+ std::numeric_limits<float>::quiet_NaN());
+ elevation_observations_.assign(map_.occupancy.size(), 0);
+ }
+ const auto count = elevation_observations_[cell_index];
+ if (count == 0 || !std::isfinite(map_.elevation_m[cell_index])) {
+ map_.elevation_m[cell_index] = static_cast<float>(elevation_m);
+ map_.elevation_sigma_m[cell_index] = 0.05F;
+ } else {
+ const double bounded_count = static_cast<double>(count);
+ map_.elevation_m[cell_index] = static_cast<float>(
+ (bounded_count * map_.elevation_m[cell_index] + elevation_m) /
+ (bounded_count + 1.0));
+ }
+ if (count < std::numeric_limits<std::uint16_t>::max())
+ ++elevation_observations_[cell_index];
 }
 
 double OnlineSlamMapBuilder::match_score(const Scan& scan,
@@ -240,6 +276,10 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  if (cell) {
  const auto cell_index = static_cast<std::size_t>(cell->y) * map_.width + cell->x;
  map_.occupancy[cell_index] = 100;
+  if (index < scan.ray_heights_m.size() &&
+  std::isfinite(scan.ray_heights_m[index]))
+  update_elevation(cell_index, config_.sensor_height_m +
+  scan.ray_heights_m[index]);
  }
  }
  }
