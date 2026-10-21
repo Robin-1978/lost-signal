@@ -161,10 +161,15 @@ KeyframeMapRebuildResult KeyframeMapRebuilder::rebuild(
  continue;
  const auto cell_index = static_cast<std::size_t>(cell->y) * map.width + cell->x;
  occupancy.observe_occupied(cell_index);
- if (config_.publish_elevation_layer && index < scan.ray_heights_m.size() &&
- std::isfinite(scan.ray_heights_m[index])) {
+ const bool has_gravity_height = index < scan.ray_gravity_heights_m.size() &&
+ std::isfinite(scan.ray_gravity_heights_m[index]);
+ const bool has_sensor_height = index < scan.ray_heights_m.size() &&
+ std::isfinite(scan.ray_heights_m[index]);
+ if (config_.publish_elevation_layer && (has_gravity_height || has_sensor_height)) {
  const auto estimate = elevation.fuse(
- cell_index, config_.sensor_height_m + scan.ray_heights_m[index]);
+ cell_index, config_.sensor_height_m +
+ (has_gravity_height ? scan.ray_gravity_heights_m[index]
+ : scan.ray_heights_m[index]));
  if (estimate.valid) {
  map.elevation_m[cell_index] = static_cast<float>(estimate.height_m);
  map.elevation_sigma_m[cell_index] = static_cast<float>(estimate.sigma_m);

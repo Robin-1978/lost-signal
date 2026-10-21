@@ -203,6 +203,43 @@ int main() {
  cloud_elevation = cloud_elevation || std::isfinite(elevation);
  CHECK(cloud_elevation);
 
+ // Ground rejection is gravity-referenced when ROBOT has a valid attitude.
+ // With a 0.2 rad nose-up pitch, this return is on level ground even though
+ // its sensor-frame z value alone would look like a raised obstacle. The
+ // elevated return must remain an occupied endpoint and publish its world
+ // height using the same gravity transform.
+ sim::autonomy::OnlineSlamMapBuilder inclined_builder(cloud_config);
+ sim::EstimatedState inclined_prior = prior;
+ inclined_prior.attitude_valid = true;
+ inclined_prior.pitch_rad = 0.20;
+ inclined_prior.roll_rad = 0.0;
+ sim::LidarPointCloud inclined_cloud = cloud;
+ inclined_cloud.header.stamp_s = 4.2;
+ inclined_cloud.header.sequence = 42;
+ inclined_cloud.points = {
+ {1.0, 0.0, -0.10, 1.0, -0.02, 0, 0}, // gravity height ~= -0.30 m: ground
+ {2.0, 0.0, 0.50, 1.0, -0.01, 1, 0}, // elevated obstacle
+ };
+ sim::ObservationFrame inclined_frame;
+ inclined_frame.time_s = 4.2;
+ inclined_frame.lidar_point_cloud = inclined_cloud;
+ const auto inclined_update = inclined_builder.update(
+ inclined_frame, inclined_prior, sim::runtime::TimePoint::from_seconds(4.2));
+ CHECK(inclined_update.state == sim::autonomy::MappingState::Mapping);
+ bool inclined_obstacle = false;
+ bool inclined_height = false;
+ for (std::size_t index = 0; index < inclined_update.published_map->grid->occupancy.size(); ++index) {
+ if (inclined_update.published_map->grid->occupancy[index] >= 50) {
+ inclined_obstacle = true;
+ if (index < inclined_update.published_map->grid->elevation_m.size() &&
+ std::isfinite(inclined_update.published_map->grid->elevation_m[index]) &&
+ std::abs(inclined_update.published_map->grid->elevation_m[index] - 0.39F) < 0.08F)
+ inclined_height = true;
+ }
+ }
+ CHECK(inclined_obstacle);
+ CHECK(inclined_height);
+
  // Multi-frame point-cloud replay: a stable elevated return should converge
  // to one uncertain-but-valid terrain height, while a return that disappears
  // is cleared by subsequent free-space rays. This exercises the complete

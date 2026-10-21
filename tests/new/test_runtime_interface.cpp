@@ -87,7 +87,7 @@ int main() {
  using namespace sim::runtime;
 
  CHECK(kApiVersion == 2);
- CHECK(kMessageSchemaVersion == 4);
+ CHECK(kMessageSchemaVersion == 5);
  CHECK(TimePoint::from_seconds(1.25).nanoseconds == 1'250'000'000);
  CHECK(std::abs(TimePoint::from_seconds(1.25).seconds() - 1.25) < 1e-12);
 

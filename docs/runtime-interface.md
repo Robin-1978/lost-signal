@@ -2,7 +2,7 @@
 
 The Lost Signal Robot Interface (LSRI) is the small, project-owned boundary between the deployable ROBOT stack and platform providers. The core does not depend on external robotics middleware, a device SDK, or a simulator API. MuJoCo, deterministic replay, and native hardware drivers all meet the same contract.
 
-LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 4`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 added named actuator-joint position and velocity feedback; schema 3 added timed, ring-indexed 3D LiDAR point clouds; schema 4 makes wheel odometry a complete body-frame planar twist so holonomic motion is not discarded.
+LSRI v2 is implemented by `src/robot/runtime/runtime_channel.*` and `endpoint_registry.*`. Its public constants are `kApiVersion == 2` and `kMessageSchemaVersion == 5`. API v2 adds per-device endpoint ownership and typed actuator command transport. Measurement schema 2 added named actuator-joint position and velocity feedback; schema 3 added timed, ring-indexed 3D LiDAR point clouds; schema 4 makes wheel odometry a complete body-frame planar twist so holonomic motion is not discarded; schema 5 adds an optional gravity-referenced per-ray height for scans projected while a valid ROBOT attitude estimate is available.
 
 ## Boundary
 

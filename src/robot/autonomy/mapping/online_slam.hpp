@@ -85,7 +85,8 @@ class OnlineSlamMapBuilder final : public IMapBuilder {
  std::size_t* matched_returns) const;
  void integrate_scan(const Scan& scan, const EstimatedState& motion);
  double ray_time_offset_s(const Scan& scan, std::size_t index) const;
- std::optional<Scan> project_cloud(const LidarPointCloud& cloud) const;
+ std::optional<Scan> project_cloud(const LidarPointCloud& cloud,
+ const EstimatedState& state) const;
  void update_elevation(std::size_t cell_index, double elevation_m);
  MapBuilderUpdate make_update(MappingState state, double stamp_s,
  std::string diagnostic) const;

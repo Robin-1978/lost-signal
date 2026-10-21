@@ -28,7 +28,9 @@ bool finite_scan(const Scan& scan) {
  scan.max_range > 0.0 && std::isfinite(scan.angle_min_rad) &&
  std::isfinite(scan.angle_increment_rad) &&
  (scan.ray_heights_m.empty() ||
- scan.ray_heights_m.size() == scan.ranges.size())))
+ scan.ray_heights_m.size() == scan.ranges.size()) &&
+ (scan.ray_gravity_heights_m.empty() ||
+ scan.ray_gravity_heights_m.size() == scan.ranges.size())))
  return false;
  for (const double offset : scan.ray_time_offsets_s) {
  if (!std::isfinite(offset) || offset > 1e-9 ||
@@ -36,6 +38,10 @@ bool finite_scan(const Scan& scan) {
  return false;
  }
  for (const double height : scan.ray_heights_m) {
+ if (!std::isfinite(height) && !std::isnan(height))
+ return false;
+ }
+ for (const double height : scan.ray_gravity_heights_m) {
  if (!std::isfinite(height) && !std::isnan(height))
  return false;
  }
@@ -134,7 +140,7 @@ double OnlineSlamMapBuilder::ray_time_offset_s(const Scan& scan,
 }
 
 std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
- const LidarPointCloud& cloud) const {
+ const LidarPointCloud& cloud, const EstimatedState& state) const {
  if (cloud.rings == 0 || cloud.azimuth_samples == 0 ||
  !std::isfinite(cloud.max_range_m) || cloud.max_range_m <= 0.0 ||
  !std::isfinite(cloud.scan_period_s) || cloud.scan_period_s <= 0.0)
@@ -153,14 +159,37 @@ std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
  if (config_.publish_elevation_layer)
  scan.ray_heights_m.assign(cloud.azimuth_samples,
  std::numeric_limits<double>::quiet_NaN());
+ if (config_.publish_elevation_layer)
+ scan.ray_gravity_heights_m.assign(cloud.azimuth_samples,
+ std::numeric_limits<double>::quiet_NaN());
  scan.header = cloud.header;
+ // The point cloud is expressed in the lidar frame, while the ground model
+ // is defined in the gravity frame. On a pitched or rolled chassis, sensor
+ // z alone is not a height measurement: a horizontal ground return can have
+ // a large positive/negative sensor z component. Use the same ZYX attitude
+ // convention as the ROBOT estimator/perception front end. If attitude is
+ // unavailable, retain the conservative sensor-frame rule rather than
+ // inventing a pose.
+ const bool use_attitude = state.attitude_valid &&
+ std::isfinite(state.roll_rad) && std::isfinite(state.pitch_rad);
+ const double cr = use_attitude ? std::cos(state.roll_rad) : 1.0;
+ const double sr = use_attitude ? std::sin(state.roll_rad) : 0.0;
+ const double cp = use_attitude ? std::cos(state.pitch_rad) : 1.0;
+ const double sp = use_attitude ? std::sin(state.pitch_rad) : 0.0;
+ const auto gravity_height = [&](const LidarPointReturn& point) {
+ // Rz(yaw) * Ry(pitch) * Rx(roll); yaw does not affect vertical height.
+ return -sp * point.x_m + cp * sr * point.y_m + cp * cr * point.z_m;
+ };
  for (const auto& point : cloud.points) {
  if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
  !std::isfinite(point.z_m) ||
  !std::isfinite(point.time_offset_s) || point.time_offset_s > 1e-9 ||
  point.time_offset_s < -cloud.scan_period_s - 1e-9 ||
- (point.x_m == 0.0 && point.y_m == 0.0) ||
- point.z_m <= -config_.sensor_height_m + config_.ground_rejection_band_m)
+ (point.x_m == 0.0 && point.y_m == 0.0))
+ continue;
+ const double endpoint_height_m = gravity_height(point);
+ if (endpoint_height_m <= -config_.sensor_height_m +
+ config_.ground_rejection_band_m)
  continue;
  const double range = std::hypot(point.x_m, point.y_m);
  if (!(range > 0.05) || range >= scan.max_range)
@@ -177,6 +206,8 @@ std::optional<Scan> OnlineSlamMapBuilder::project_cloud(
  scan.ray_time_offsets_s[bin] = point.time_offset_s;
  if (!scan.ray_heights_m.empty())
  scan.ray_heights_m[bin] = point.z_m;
+ if (use_attitude && !scan.ray_gravity_heights_m.empty())
+ scan.ray_gravity_heights_m[bin] = endpoint_height_m;
  }
  }
  return scan;
@@ -285,10 +316,16 @@ void OnlineSlamMapBuilder::integrate_scan(const Scan& scan,
  if (cell) {
  const auto cell_index = static_cast<std::size_t>(cell->y) * map_.width + cell->x;
 	 occupancy_.observe_occupied(cell_index);
-	 if (occupancy_.value(cell_index) >= 50 && index < scan.ray_heights_m.size() &&
-	  std::isfinite(scan.ray_heights_m[index]))
-	  update_elevation(cell_index, config_.sensor_height_m +
-	  scan.ray_heights_m[index]);
+	 if (occupancy_.value(cell_index) >= 50) {
+	 const bool has_gravity_height = index < scan.ray_gravity_heights_m.size() &&
+	 std::isfinite(scan.ray_gravity_heights_m[index]);
+	 const bool has_sensor_height = index < scan.ray_heights_m.size() &&
+	 std::isfinite(scan.ray_heights_m[index]);
+	 if (has_gravity_height || has_sensor_height)
+	 update_elevation(cell_index, config_.sensor_height_m +
+	 (has_gravity_height ? scan.ray_gravity_heights_m[index]
+	 : scan.ray_heights_m[index]));
+	 }
  }
  }
  for (std::size_t index = 0; index < map_.occupancy.size(); ++index)
@@ -395,7 +432,7 @@ MapBuilderUpdate OnlineSlamMapBuilder::update(
  std::optional<Scan> projected_cloud;
  const Scan* scan_ptr = nullptr;
  if (observations.lidar_point_cloud) {
- projected_cloud = project_cloud(*observations.lidar_point_cloud);
+ projected_cloud = project_cloud(*observations.lidar_point_cloud, prior);
  if (projected_cloud)
  scan_ptr = &*projected_cloud;
  } else if (observations.lidar) {

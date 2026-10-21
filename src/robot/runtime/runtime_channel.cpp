@@ -429,7 +429,9 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
       scan.ranges.size() != rays || scan.hit.size() != rays ||
  (!scan.intensities.empty() && scan.intensities.size() != rays) ||
  (!scan.ray_time_offsets_s.empty() && scan.ray_time_offsets_s.size() != rays) ||
- (!scan.ray_heights_m.empty() && scan.ray_heights_m.size() != rays)) {
+ (!scan.ray_heights_m.empty() && scan.ray_heights_m.size() != rays) ||
+ (!scan.ray_gravity_heights_m.empty() &&
+ scan.ray_gravity_heights_m.size() != rays)) {
    set_reason(reason, "lidar payload dimensions or range are invalid");
    return false;
   }
@@ -443,6 +445,12 @@ bool valid_observation_frame(const ObservationFrame& observation, std::string* r
  for (const double height : scan.ray_heights_m) {
  if (!std::isfinite(height) && !std::isnan(height)) {
  set_reason(reason, "lidar ray height is invalid");
+ return false;
+ }
+ }
+ for (const double height : scan.ray_gravity_heights_m) {
+ if (!std::isfinite(height) && !std::isnan(height)) {
+ set_reason(reason, "lidar gravity-referenced ray height is invalid");
  return false;
  }
  }

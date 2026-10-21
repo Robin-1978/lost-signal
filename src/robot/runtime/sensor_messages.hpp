@@ -6,7 +6,7 @@
 
 namespace sim {
 
-inline constexpr std::uint32_t kMeasurementSchemaVersion = 4;
+inline constexpr std::uint32_t kMeasurementSchemaVersion = 5;
 
 // Transport-neutral measurement header used by simulation, replay, native
 // drivers, and future IPC providers. stamp_s is acquisition time in the
@@ -36,6 +36,12 @@ struct Scan {
  // Optional selected-return height in the sensor frame, in metres. NaN means
  // that this ray has no height-bearing return; planar scans leave it empty.
  std::vector<double> ray_heights_m;
+ // Optional selected-return vertical offset from the sensor origin along the
+ // gravity-up axis, in metres. This differs from ray_heights_m whenever the
+ // chassis is pitched or rolled. It is populated only when the producer has
+ // a valid attitude estimate; elevation consumers prefer it over the
+ // sensor-frame height and fall back explicitly when it is absent.
+ std::vector<double> ray_gravity_heights_m;
  MeasurementHeader header;
 };
 

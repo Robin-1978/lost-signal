@@ -431,7 +431,11 @@ terrain evidence; calibrated ground classification and held-out 16-line replay r
 live online submap until the evidence path below was validated. It now runs there as well: free-space carving clears a
 transient return only after the configured evidence accumulates, a confirmed wall survives a stray clearing ray, and
 elevation is fused only for endpoints that have earned occupied evidence. This remains sensor-only transient filtering;
-it does not claim semantic actor classification or replace the perception tracker.
+it does not claim semantic actor classification or replace the perception tracker. The ROBOT point-cloud projection now
+consumes estimated gravity-referenced roll/pitch and publishes an optional per-ray gravity height through LSRI schema
+5. A sloped-platform component replay proves that a ground return is rejected while an elevated return remains occupied
+and receives the transformed elevation. This closes the attitude-transform contract; calibrated sensor mounting/terrain
+parameters and held-out 16-line long-duration replay remain open evidence gates.
 3. a 200,000 m² map-localization benchmark using tiled/windowed map access and a coarse place index. It must measure
  repeated cold-start accuracy, ambiguous-pose rejection, deterministic tie handling, p95 latency and peak memory;
  exhaustive global raster search is retained only as a small-map reference;
