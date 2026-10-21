@@ -99,6 +99,21 @@ Residual residual(const Pose2& from, const Pose2& to,
  (residual_error(from, to_plus, constraint) -
  residual_error(from, to_minus, constraint)) / (2.0 * epsilon);
  }
+ // The optimizer increment is a right/local SE(2) perturbation. The finite
+ // difference above is easiest to express in world coordinates, so rotate
+ // each pose's translational columns into its local tangent basis before
+ // assembling the normal equations.
+ const auto localize_translation_columns = [](Eigen::Matrix3d& jacobian,
+ double heading) {
+ const Eigen::Vector3d world_x = jacobian.col(0);
+ const Eigen::Vector3d world_y = jacobian.col(1);
+ const double cosine = std::cos(heading);
+ const double sine = std::sin(heading);
+ jacobian.col(0) = cosine * world_x + sine * world_y;
+ jacobian.col(1) = -sine * world_x + cosine * world_y;
+ };
+ localize_translation_columns(output.jacobian_from, from.heading_rad);
+ localize_translation_columns(output.jacobian_to, to.heading_rad);
  return output;
 }
 
@@ -415,7 +430,11 @@ PoseGraphOptimizationResult PoseGraphBackend::optimize(
  const int offset = variable_index[index];
  if (offset < 0)
  continue;
- const Vec2 correction{delta[offset], delta[offset + 1]};
+ const double cosine = std::cos(poses[index].heading_rad);
+ const double sine = std::sin(poses[index].heading_rad);
+ const Vec2 correction{
+ cosine * delta[offset] - sine * delta[offset + 1],
+ sine * delta[offset] + cosine * delta[offset + 1]};
  const double correction_heading = delta[offset + 2];
  trial[index].position.x += correction.x;
  trial[index].position.y += correction.y;
