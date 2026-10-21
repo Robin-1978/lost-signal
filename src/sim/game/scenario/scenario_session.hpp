@@ -35,7 +35,6 @@
 #include "robot/autonomy/behavior/high_level_policy.hpp"
 #include "robot/core/event_log.hpp"
 #include "robot/autonomy/control/follow.hpp"
-#include "robot/autonomy/localization/localization_supervisor.hpp"
 #include "robot/autonomy/mapping/terrain.hpp"
 #include "sim/hardware/sensors/sensor_system.hpp"
 #include "sim/hardware/sensors/deterministic_delivery_queue.hpp"
@@ -593,7 +592,7 @@ class ScenarioSession {
   return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
  }
  const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
- std::string_view global_planner_id() const { return planning_system_.planner().id(); }
+ std::string_view global_planner_id() const { return autonomy_coordinator_->global_planning().planner().id(); }
  std::string_view local_planner_id() const {
   switch (chassis_caps_.command_space) {
   case sim::ChassisCommandSpace::SteeringAngle:
@@ -705,7 +704,6 @@ class ScenarioSession {
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
  std::unique_ptr<sim::AutonomyPipeline> autonomy_pipeline_;
- sim::autonomy::LocalizationSupervisor localization_supervisor_;
  std::unique_ptr<sim::GridMap> collision_map_;
  std::unique_ptr<CollisionMonitor> collision_monitor_;
  std::unique_ptr<sim::GridMap> planning_map_;
@@ -736,7 +734,6 @@ class ScenarioSession {
  sim::TerrainModel terrain_;
  sim::TerrainCapability terrain_capability_;
  sim::ChassisCaps chassis_caps_;
- autonomy::GlobalPlanningSystem planning_system_;
  bool custom_global_planner_{false};
  std::unique_ptr<sim::platform::SimulatedPlatform> platform_;
  bool custom_high_level_policy_{false};

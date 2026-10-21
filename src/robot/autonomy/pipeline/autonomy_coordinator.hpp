@@ -4,6 +4,8 @@
 #include "robot/autonomy/control/route_tracking_system.hpp"
 #include "robot/autonomy/control/controlled_stop_latch.hpp"
 #include "robot/autonomy/localization/estimation_system.hpp"
+#include "robot/autonomy/localization/localization_supervisor.hpp"
+#include "robot/autonomy/planning/global/global_planner.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -51,6 +53,18 @@ class AutonomyCoordinator {
  EstimationSystem& estimator() { return estimator_; }
  const EstimationSystem& estimator() const { return estimator_; }
 
+ void set_localization_config(const autonomy::LocalizationSupervisorConfig& config) {
+ localization_supervisor_.set_config(config);
+ }
+ autonomy::LocalizationSupervisor& localization_supervisor() { return localization_supervisor_; }
+ const autonomy::LocalizationSupervisor& localization_supervisor() const {
+ return localization_supervisor_;
+ }
+
+ void configure_global_planner(std::shared_ptr<const ::autonomy::IGlobalPlanner> planner);
+ ::autonomy::GlobalPlanningSystem& global_planning();
+ const ::autonomy::GlobalPlanningSystem& global_planning() const;
+
  const std::string& policy_name() const { return policy_name_; }
 
  private:
@@ -59,6 +73,8 @@ class AutonomyCoordinator {
  std::unique_ptr<RouteTrackingSystem> route_tracking_;
  ControlledStopLatch controlled_stop_latch_;
  EstimationSystem estimator_;
+ autonomy::LocalizationSupervisor localization_supervisor_;
+ std::unique_ptr<::autonomy::GlobalPlanningSystem> global_planning_;
 };
 
 } // namespace sim::autonomy

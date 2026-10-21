@@ -57,4 +57,23 @@ void AutonomyCoordinator::reset_controlled_stop() {
  controlled_stop_latch_.reset();
 }
 
+void AutonomyCoordinator::configure_global_planner(
+ std::shared_ptr<const ::autonomy::IGlobalPlanner> planner) {
+ if (!planner)
+ throw std::invalid_argument("autonomy coordinator requires a global planner");
+ global_planning_ = std::make_unique<::autonomy::GlobalPlanningSystem>(std::move(planner));
+}
+
+::autonomy::GlobalPlanningSystem& AutonomyCoordinator::global_planning() {
+ if (!global_planning_)
+ throw std::logic_error("global planning has not been configured");
+ return *global_planning_;
+}
+
+const ::autonomy::GlobalPlanningSystem& AutonomyCoordinator::global_planning() const {
+ if (!global_planning_)
+ throw std::logic_error("global planning has not been configured");
+ return *global_planning_;
+}
+
 } // namespace sim::autonomy

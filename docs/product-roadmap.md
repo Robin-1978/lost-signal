@@ -917,6 +917,10 @@ step, rollover risk limit, planning deadbands, committed progress floor, creep s
 `robot_data/policy/motion_policy.json` under `execution`, with strict validation and a unit test that fails if the
 deployed file drifts from the compiled defaults. Remaining literals in the decision loop are catalogued below.
 
+The coordinator now also owns the localization supervisor and global planning system. Chassis-specific global planner
+selection remains a composition input, while planner instances and localization scheduling are ROBOT state. A SIM
+scenario may provide a map and task waypoints, but it cannot retain a second planner or localization scheduler.
+
 The coordinator extraction is a typed composition step, not the completion of SIM→ROBOT migration. Route-following,
 dynamic interaction and local candidate assembly still need the same extraction treatment before the gate can close.
 

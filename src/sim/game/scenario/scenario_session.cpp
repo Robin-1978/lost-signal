@@ -170,7 +170,6 @@ ScenarioSession::ScenarioSession(
       runtime_registry_(std::move(runtime_registry)), runtime_provider_id_(std::move(runtime_provider_id)),
 	behavior_(catalog_.style_behavior(build_.style)),
 	motion_policy_(sim::MotionPolicy::load(sim::MotionPolicy::resolve_path(catalog_.root()))),
-      planning_system_(global_planner ? global_planner : autonomy::default_global_planner()),
       custom_global_planner_(static_cast<bool>(global_planner)),
       custom_high_level_policy_(static_cast<bool>(high_level_policy)),
  autonomy_coordinator_(std::make_unique<sim::autonomy::AutonomyCoordinator>(
@@ -179,8 +178,10 @@ ScenarioSession::ScenarioSession(
 	// The motion policy belongs to the robot, not to this scenario. Applying it
 	// once here keeps the executable free of tuned thresholds and gives a
 	// native bring-up the same knobs through robot_data/policy.
- autonomy_coordinator_->set_estimator_motion_policy(motion_policy_);
-	localization_supervisor_.set_config(motion_policy_.localization_supervisor);
+	autonomy_coordinator_->set_estimator_motion_policy(motion_policy_);
+	autonomy_coordinator_->set_localization_config(motion_policy_.localization_supervisor);
+	autonomy_coordinator_->configure_global_planner(
+ global_planner ? std::move(global_planner) : autonomy::default_global_planner());
  if (!build_.task_policy.empty())
   level_.objective.task_policy = build_.task_policy;
  if (!contract_id.empty()) {
@@ -331,7 +332,7 @@ void ScenarioSession::reset() {
  // expensive unknown-origin global search on every frame. Startup/recovery
  // without this contract is exercised by StartupLocalization tests and the
  // explicit relocalization path.
- localization_supervisor_.reset(level_.localization_mode == "known_map");
+ autonomy_coordinator_->localization_supervisor().reset(level_.localization_mode == "known_map");
  update_actors();
  slip_detector_.reset();
  slip_episode_times_.clear();
@@ -1065,7 +1066,7 @@ void ScenarioSession::build_world() {
  manipulator_channel_->configure();
  }
  if (!custom_global_planner_) {
-  planning_system_ = autonomy::GlobalPlanningSystem(
+ autonomy_coordinator_->configure_global_planner(
     chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle
       ? autonomy::ackermann_global_planner(chassis_caps_.geometry.steering_wheel_base_m,
                                            chassis_caps_.geometry.max_steer_rad,
@@ -1192,7 +1193,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  std::vector<autonomy::PlanningPose> waypoints{{as_vec(start), start.theta},
                                                {as_vec(goal), goal.theta, next->radius_m}};
  const sim::GridMap& route_map = map_override ? *map_override : *planning_map_;
- auto plan = planning_system_.plan(route_map, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
+ auto plan = autonomy_coordinator_->global_planning().plan(route_map, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
   return navigation_traversal_cost(from, to);
  });
  result_.astar_expanded += plan.expanded;
@@ -1269,7 +1270,7 @@ void ScenarioSession::select_next_goal(const Pose& start) {
  for (const std::size_t index : eligible) {
   const auto& candidate = level_.objective.goals[index];
   const auto& marker = map_definition_.markers.at(candidate.marker);
-  const auto plan = planning_system_.plan(
+  const auto plan = autonomy_coordinator_->global_planning().plan(
     *planning_map_, {{as_vec(start), start.theta}, {as_vec(marker), marker.theta, candidate.radius_m}},
     [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
   result_.astar_expanded += plan.expanded;
@@ -1279,7 +1280,7 @@ void ScenarioSession::select_next_goal(const Pose& start) {
   if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
       terminal != level_.objective.goals.end()) {
    const auto& home = map_definition_.markers.at(terminal->marker);
-   const auto return_plan = planning_system_.plan(
+   const auto return_plan = autonomy_coordinator_->global_planning().plan(
      *planning_map_, {{as_vec(marker), marker.theta}, {as_vec(home), home.theta, terminal->radius_m}},
      [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
    result_.astar_expanded += return_plan.expanded;
@@ -2090,7 +2091,7 @@ void ScenarioSession::consume_lidar_observation(
  const auto& odom = autonomy_coordinator_->estimator().state();
  sim::KnownMapLocalizationResult match;
  std::string localization_reason;
- const auto action = localization_supervisor_.next(
+ const auto action = autonomy_coordinator_->localization_supervisor().next(
  observation.time_s, odom.position, odom.heading_rad,
  {odom.localization_valid, odom.position_sigma_m, odom.heading_sigma_rad,
  odom.localization_confidence, odom.localization_age_s},
@@ -2099,7 +2100,7 @@ void ScenarioSession::consume_lidar_observation(
  snapshot_.localization_reason = localization_reason;
  if (action == sim::autonomy::LocalizationAction::LocalCorrection) {
  const auto view = map_manager_.query_region(
- localization_supervisor_.local_window(odom.position));
+ autonomy_coordinator_->localization_supervisor().local_window(odom.position));
  if (view) {
  const auto local_map = snapshot_from_view(*view);
  match = autonomy_pipeline_->localize_known_map(
@@ -2108,12 +2109,12 @@ void ScenarioSession::consume_lidar_observation(
  } else {
  match.rejection_reason = "local map view unavailable";
  }
- localization_supervisor_.record_local(
+ autonomy_coordinator_->localization_supervisor().record_local(
  match.accepted, observation.time_s, match.pose);
  } else if (action == sim::autonomy::LocalizationAction::GlobalRelocalization) {
  match = autonomy_pipeline_->localize_known_map_global(
  *observation.lidar, *map, observation.time_s);
- localization_supervisor_.record_global(
+ autonomy_coordinator_->localization_supervisor().record_global(
  match.accepted, observation.time_s, match.pose);
  }
  snapshot_.localization_match_accepted = match.accepted;
@@ -2316,7 +2317,7 @@ void ScenarioSession::refresh_operator_route() {
    {start, snapshot_.robot.theta},
    {target, target_heading, 0.85},
  };
- auto plan = planning_system_.plan(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
+ auto plan = autonomy_coordinator_->global_planning().plan(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
   return navigation_traversal_cost(from, to);
  });
  result_.astar_expanded += plan.expanded;

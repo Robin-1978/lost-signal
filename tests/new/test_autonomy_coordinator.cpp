@@ -37,5 +37,11 @@ int main() {
  assert(output.policy_name == "test-subgoal");
  assert(output.decision.applied.has_subgoal);
  assert(output.decision.applied.subgoal.x == 1.0);
+
+ coordinator.configure_global_planner(::autonomy::default_global_planner());
+ assert(coordinator.global_planning().planner().id() == "astar-grid");
+ coordinator.set_localization_config({});
+ coordinator.estimator().reset(0.0, 0.0, 0.0, 7);
+ assert(coordinator.estimator().state().timestamp_s == 0.0);
  return 0;
 }
