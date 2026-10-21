@@ -416,8 +416,8 @@ The next P2 gates are:
  a bounded scan-based loop detector, accepted evidence enters the existing gate and pose graph, corrected keyframes
  rebuild an immutable map revision, and the frontend adopts the same rigid correction. The active `MapProvider` supplies
  the map identity to both frontend and rebuild configuration, so a caller cannot publish a revision under a different
- `map_id`. `test_slam_session` covers drift, loop insertion, publication and identity preservation; this remains a
- deterministic fixture, not evidence of long repeated-loop robustness;
+ `map_id`. `test_slam_session` covers drift, repeated loop insertion, monotonic revisions, publication and identity
+ preservation; this remains a deterministic short fixture, not evidence of long repeated-loop robustness;
 2. **In progress:** calibrated ground model and dynamic-return filtering, with repeated point-cloud elevation fusion and
  uncertainty. The ROBOT `ElevationFusion` component now combines multi-view heights by inverse variance, includes pose
  uncertainty, bounds stale evidence with a forgetting factor, and exposes disagreement as uncertainty instead of

@@ -143,6 +143,8 @@ int main() {
  double estimate_heading = 0.0;
  std::uint64_t revision_before_closure = 0;
  bool captured_before = false;
+ std::size_t accepted_closures = 0;
+ std::uint64_t last_published_revision = maps.current_snapshot()->revision;
  for (int step = 0; step < kSteps; ++step) {
  const double fraction = static_cast<double>(step) / kSteps;
  // Perimeter route around the room.
@@ -193,6 +195,10 @@ int main() {
  }
  if (update.loop_closure_accepted) {
  closed = true;
+ ++accepted_closures;
+ CHECK(update.map_revision > last_published_revision);
+ CHECK(update.published_map && update.published_map->map_id == world.map_id);
+ last_published_revision = update.map_revision;
  }
  if (closed) {
  revision_before_closure = update.map_revision;
@@ -207,6 +213,7 @@ int main() {
  CHECK(maps.current_snapshot());
  CHECK(maps.current_snapshot()->revision >= 2);
  CHECK(maps.current_snapshot()->map_id == world.map_id);
+ CHECK(accepted_closures >= 2);
  const auto& frames = session.session().keyframes();
  CHECK(frames.size() >= 8);
  // The loop closes back onto the first keyframe. After the pose graph solve the
