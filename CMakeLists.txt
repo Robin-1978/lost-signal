@@ -435,6 +435,11 @@ add_executable(lost_signal_headless
 add_dependencies(lost_signal_headless lost_signal_build_info)
 target_include_directories(lost_signal_headless PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(lost_signal_headless PRIVATE lost_signal_sim_game)
+add_custom_command(TARGET lost_signal_headless POST_BUILD
+ COMMAND ${CMAKE_COMMAND} -E copy_directory
+ ${CMAKE_CURRENT_SOURCE_DIR}/robot_data $<TARGET_FILE_DIR:lost_signal_headless>/robot_data
+ COMMENT "Copying robot deployment data"
+)
 
 if(LOST_SIGNAL_BUILD_CLIENT)
  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -487,6 +492,11 @@ if(LOST_SIGNAL_BUILD_CLIENT)
  ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:lost_signal>/assets
  COMMENT "Copying data-driven game content"
  )
+add_custom_command(TARGET lost_signal POST_BUILD
+ COMMAND ${CMAKE_COMMAND} -E copy_directory
+ ${CMAKE_CURRENT_SOURCE_DIR}/robot_data $<TARGET_FILE_DIR:lost_signal>/robot_data
+ COMMENT "Copying robot deployment data"
+)
 endif()
 
 if(LOST_SIGNAL_BUILD_TESTS)
@@ -499,6 +509,11 @@ if(LOST_SIGNAL_BUILD_TESTS)
  LOST_SIGNAL_TEST_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/assets"
  )
  add_test(NAME content_catalog COMMAND test_content_catalog)
+
+add_executable(test_motion_policy tests/new/test_motion_policy.cpp)
+target_link_libraries(test_motion_policy PRIVATE lost_signal_robot_autonomy)
+add_test(NAME motion_policy COMMAND test_motion_policy)
+set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
  add_executable(test_construction_plan tests/new/test_construction_plan.cpp)
  target_link_libraries(test_construction_plan PRIVATE lost_signal_sim_game)
