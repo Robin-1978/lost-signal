@@ -230,11 +230,21 @@ ChassisControlResult AutonomyCoordinator::update_chassis_actuators(
  throw std::logic_error("no actuator controller has been configured");
 }
 
+double AutonomyCoordinator::safe_stop_deceleration_limit(
+ const ChassisCaps& chassis, const SafeStopLimits& limits) const {
+ return safe_stop_linear_decel_limit(chassis, limits);
+}
+
 LocalPlanningOutput AutonomyCoordinator::plan_local_motion(
  const RobotLocalPlanningInput& input) {
  if (!pipeline_)
  throw std::logic_error("autonomy pipeline has not been configured");
- return motion_runtime_.plan_local(*pipeline_, input);
+ if (!input.request || !input.planning_map || !input.predicted_frames)
+ throw std::invalid_argument("robot local planning transaction has missing input");
+ return pipeline_->plan_local(*input.request, *input.planning_map,
+ *input.predicted_frames, input.terrain_feasible,
+ input.physical_collision_map, input.physical_terrain_feasible,
+ input.terrain_sample);
 }
 
 void AutonomyCoordinator::set_motion_policy(const MotionPolicy& policy) {

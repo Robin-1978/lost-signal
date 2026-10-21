@@ -3,6 +3,7 @@
 #include "robot/autonomy/behavior/high_level_policy.hpp"
 #include "robot/autonomy/control/route_tracking_system.hpp"
 #include "robot/autonomy/control/controlled_stop_latch.hpp"
+#include "robot/autonomy/control/safe_stop_limiter.hpp"
 #include "robot/autonomy/diagnostics/chassis_diagnostics.hpp"
 #include "robot/autonomy/localization/estimation_system.hpp"
 #include "robot/autonomy/localization/localization_supervisor.hpp"
@@ -42,6 +43,20 @@ struct AutonomyCoordinatorOutput {
 // Provider and simulator types must not appear in this result.
 struct ChassisControlResult {
  runtime::ActuatorCommand command;
+};
+
+// Provider-neutral local-planning transaction. Composition roots assemble
+// timestamped observations and map views, while the ROBOT coordinator owns
+// the planning call and its state. Pointers are non-owning and valid only for
+// the duration of plan_local_motion(); they avoid copying large maps per tick.
+struct RobotLocalPlanningInput {
+ const LocalPlanningRequest* request{nullptr};
+ const GridMap* planning_map{nullptr};
+ const std::vector<std::vector<DynamicObjectState>>* predicted_frames{nullptr};
+ StaticFeasibility terrain_feasible;
+ const GridMap* physical_collision_map{nullptr};
+ StaticFeasibility physical_terrain_feasible;
+ TerrainSampleQuery terrain_sample;
 };
 
 class AutonomyCoordinator {
@@ -89,6 +104,12 @@ class AutonomyCoordinator {
  const DiffCmd& command, const ObservationFrame& feedback,
  double dt_s, runtime::TimePoint now, runtime::TimePoint valid_until,
  std::uint64_t sequence);
+
+ // Safety limiting is a ROBOT-owned computation. A composition root may
+ // supply the current chassis profile and measured terrain/COM facts, but it
+ // must not call the limiter implementation directly from a simulator.
+ double safe_stop_deceleration_limit(
+ const ChassisCaps& chassis, const SafeStopLimits& limits) const;
 
  LocalPlanningOutput plan_local_motion(const RobotLocalPlanningInput& input);
  void set_motion_policy(const MotionPolicy& policy);

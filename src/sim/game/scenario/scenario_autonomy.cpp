@@ -1,5 +1,4 @@
 #include "sim/game/scenario/scenario_session.hpp"
-#include "robot/autonomy/control/safe_stop_limiter.hpp"
 #include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 
 #include <algorithm>
@@ -1188,7 +1187,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  sim::longitudinal_grade(strategy_terrain, grade_heading);
  current_stop_limits.center_of_mass_x_m = combined_center_x_m();
  current_stop_limits.center_of_mass_height_m = combined_center_height_m();
- const double safe_stop_decel_mps2 = sim::safe_stop_linear_decel_limit(
+ const double safe_stop_decel_mps2 = autonomy_coordinator_->safe_stop_deceleration_limit(
  chassis_caps_, current_stop_limits);
  // Candidate generation uses the normal drive/brake actuator envelope. The
  // separately modelled emergency tail uses the stricter stability-aware stop
@@ -1295,7 +1294,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  terrain_.sample(position), heading_rad);
  limits.center_of_mass_x_m = stop_center_x_m;
  limits.center_of_mass_height_m = stop_center_height_m;
- return sim::safe_stop_linear_decel_limit(chassis_caps_, limits);
+ return autonomy_coordinator_->safe_stop_deceleration_limit(chassis_caps_, limits);
  };
  }
  // Path/progress/oscillation critics are shared guidance for twist-space

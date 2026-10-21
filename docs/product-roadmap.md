@@ -956,11 +956,15 @@ assembly and crossing/recovery execution state, which still needs a provider-neu
 
 The execution-state slice is now closed: `RobotMotionRuntime` owns held/manual commands, command and observation
 sequence counters, and crossing execution/alignment indices. `ScenarioSession` no longer stores those algorithmic
-states. `RobotApplication::step()` is the common provider-neutral cycle entry point for native and in-process
-composition. SIM-only joint-name reduction and command delivery live in
+states. `RobotMotionRuntime` deliberately has no dependency on `AutonomyPipeline`; local planning is invoked by the
+ROBOT-owned `AutonomyCoordinator`, so motion transaction state cannot become a second pipeline owner.
+`RobotApplication::step()` is the common provider-neutral cycle entry point for native and in-process composition and
+now accepts the same optional `RobotLocalPlanningInput` used by the simulation adapter, returning a typed local-plan
+result before actuator publication. SIM-only joint-name reduction and command delivery live in
 `SimulatedPlatformProviderAdapter`; they are provider code, not an autonomy shortcut. The remaining stage-1 work is
-the full local-motion request/trajectory assembly, which must be moved behind the same typed cycle input and output
-before this migration gate is declared green.
+the scenario-specific assembly of route/governor facts into that typed request; the request itself, planning execution,
+trajectory validation and safety limiter are now ROBOT-owned. No simulator provider may call the concrete pipeline or
+the safety limiter directly.
 
 The large-map localization benchmark now uses a bounded three-probe free-space check for no-return LiDAR beams.
 Occupied endpoints remain the strong evidence term; bounded probes preserve a conservative free-space signal without

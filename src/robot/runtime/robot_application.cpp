@@ -75,6 +75,8 @@ RobotCycleOutput RobotApplication::step(const RobotCycleInput& input) {
  throw std::logic_error("robot cycle requires an active application");
  RobotCycleOutput output;
  output.autonomy = coordinator_.update(input.autonomy);
+ if (input.local_planning)
+ output.local_planning = coordinator_.plan_local_motion(*input.local_planning);
  if (!input.motion_intent)
  return output;
  if (!(input.dt_s > 0.0))

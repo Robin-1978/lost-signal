@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <utility>
+#include <vector>
 
 #define CHECK(condition) \
  do { \
@@ -39,6 +40,40 @@ int main() {
  CHECK(application.autonomy_port().read_observation().has_value());
  application.check_provider_liveness(sim::runtime::TimePoint::from_seconds(0.01));
  CHECK(application.conformance().report(sim::runtime::TimePoint::from_seconds(0.01)).failures.empty());
+
+ // The native composition root owns the same local-planning transaction used
+ // by SIM. This check intentionally supplies only provider-neutral ROBOT
+ // contracts; no scenario or physics type is needed to execute the cycle.
+ sim::GridMap planning_map(20, 20, 0.5);
+ application.coordinator().configure_pipeline(planning_map, 20, 20, 0.5, 17);
+ sim::LocalPlanningRequest request;
+ request.command_space = sim::LocalCommandSpace::DifferentialTwist;
+ request.position = {1.0, 1.0};
+ request.target = {3.0, 1.0};
+ request.max_speed_mps = 0.5;
+ request.max_yaw_rate_radps = 1.0;
+ request.max_accel_mps2 = 0.5;
+ request.max_decel_mps2 = 0.5;
+ request.max_yaw_accel_radps2 = 1.0;
+ request.prediction_horizon_s = 0.5;
+ request.step_s = 0.1;
+ request.robot_radius_m = 0.2;
+ std::vector<std::vector<sim::DynamicObjectState>> predicted;
+ sim::autonomy::RobotLocalPlanningInput local_input;
+ local_input.request = &request;
+ local_input.planning_map = &planning_map;
+ local_input.predicted_frames = &predicted;
+ sim::robot::RobotCycleInput cycle_input;
+ cycle_input.local_planning = &local_input;
+ cycle_input.autonomy.safety.fallback_target = request.target;
+ cycle_input.autonomy.safety.map_size = {10.0, 10.0};
+ cycle_input.autonomy.safety.subgoal_is_safe = [](sim::Vec2) { return true; };
+ cycle_input.dt_s = 0.02;
+ cycle_input.now = sim::runtime::TimePoint::from_seconds(0.02);
+ cycle_input.valid_until = sim::runtime::TimePoint::from_seconds(0.1);
+ const auto cycle = application.step(cycle_input);
+ CHECK(cycle.local_planning.has_value());
+
  application.deactivate();
  CHECK(application.state() == sim::runtime::LifecycleState::Inactive);
  return 0;

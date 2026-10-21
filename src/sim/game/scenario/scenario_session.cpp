@@ -4,7 +4,6 @@
 #include "robot/autonomy/planning/task/task_ordering.hpp"
 
 #include "robot/autonomy/planning/global/astar.hpp"
-#include "robot/autonomy/control/safe_stop_limiter.hpp"
 #include "robot/autonomy/planning/validation/trajectory_validator.hpp"
 #include "sim/game/mission/world/actor_behavior_registry.hpp"
 #include "sim/hardware/vehicle/chassis_factory.hpp"
@@ -3066,7 +3065,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  terrain_.sample({nav_x, nav_y}), snapshot_.estimated_heading);
  stop_limits.center_of_mass_x_m = combined_center_x_m();
  stop_limits.center_of_mass_height_m = combined_center_height_m();
- const double decel = sim::safe_stop_linear_decel_limit(
+ const double decel = autonomy_coordinator_->safe_stop_deceleration_limit(
  chassis_caps_, stop_limits);
  const double preview =
  std::max(lookahead, speed * speed / (2.0 * std::max(0.05, decel)) + speed * 2.0 / decision_hz());

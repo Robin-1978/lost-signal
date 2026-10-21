@@ -31,6 +31,11 @@ struct RobotApplicationConfig {
 // final ROBOT transaction and never accepts provider-native objects.
 struct RobotCycleInput {
  autonomy::AutonomyCoordinatorInput autonomy;
+ // Optional local-planning transaction. The caller provides only ROBOT
+ // contracts; the application runs it before publishing the actuator/body
+ // command. Native and simulated composition roots therefore share one
+ // autonomy cycle instead of duplicating planner orchestration.
+ const autonomy::RobotLocalPlanningInput* local_planning{nullptr};
  std::optional<DiffCmd> motion_intent;
  double dt_s{0.0};
  runtime::TimePoint now;
@@ -39,6 +44,7 @@ struct RobotCycleInput {
 
 struct RobotCycleOutput {
  autonomy::AutonomyCoordinatorOutput autonomy;
+ std::optional<LocalPlanningOutput> local_planning;
  std::optional<runtime::MotionCommand> motion_command;
  std::optional<runtime::ActuatorCommand> actuator_command;
 };
