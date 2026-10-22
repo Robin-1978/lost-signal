@@ -17,8 +17,11 @@ class IController {
                                      core::MonotonicNs now_ns) = 0;
 };
 
-// v1: emits the validated candidate verbatim with a 200 ms watchdog.
-// Chassis-specific clamping stays in the IChassis wrapper (DifferentialRobot).
+// Emits the validated candidate verbatim with a 200 ms watchdog.
+// Chassis-specific clamping stays in the IChassis wrapper.
+// Space selection is data-driven, never chassis-kind-driven: a nonzero
+// lateral (sampled only when the chassis envelope allows it) emits
+// kHolonomic; otherwise kYawRate. Zero motion is always canonical kStop.
 class DirectController : public IController {
  public:
   void reset() override {}
@@ -26,17 +29,23 @@ class DirectController : public IController {
                              const EstimatedState& /*est*/,
                              core::MonotonicNs now_ns) override {
     // One canonical representation: zero motion is always kStop, never a
-    // zero-valued kYawRate. Anything infeasible is also a safe stop.
+    // zero-valued motion space. Anything infeasible is also a safe stop.
     if (!candidate.feasible || (candidate.forward_mps == 0.0 &&
-                                candidate.yaw_rate_radps == 0.0)) {
+                                candidate.yaw_rate_radps == 0.0 &&
+                                candidate.lateral_mps == 0.0)) {
       return iface::MotionCommand::SafeStop(now_ns);
     }
     iface::MotionCommand cmd;
-    cmd.space = iface::CommandSpace::kYawRate;
     cmd.stamp_ns = now_ns;
     cmd.expiry_ns = now_ns + 200'000'000;
     cmd.forward_mps = candidate.forward_mps;
     cmd.yaw_rate_radps = candidate.yaw_rate_radps;
+    if (candidate.lateral_mps != 0.0) {
+      cmd.space = iface::CommandSpace::kHolonomic;
+      cmd.lateral_mps = candidate.lateral_mps;
+    } else {
+      cmd.space = iface::CommandSpace::kYawRate;
+    }
     return cmd;
   }
 };

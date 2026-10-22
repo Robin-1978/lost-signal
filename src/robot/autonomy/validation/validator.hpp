@@ -114,7 +114,8 @@ class ClearanceValidator : public IValidator {
       return out;
     }
     const bool hold = candidate.forward_mps == 0.0 &&
-                      candidate.yaw_rate_radps == 0.0;
+                      candidate.yaw_rate_radps == 0.0 &&
+                      candidate.lateral_mps == 0.0;
     if (!perception.scan_ok || !obs.scan_valid || obs.ranges_m.empty()) {
       if (hold) {
         out.accepted = true;
@@ -192,18 +193,22 @@ class ClearanceValidator : public IValidator {
     bool touches = false;
     for (int s = 1; s <= steps; ++s) {
       const double t = s * config_.rollout_dt_s;
-      // Exact constant-twist integration: straight line or arc.
+      // Exact constant-twist integration, body twist (v, lateral) rotated
+      // into the map frame. Matches the planner's rollout convention.
+      const double lat = candidate.lateral_mps;
       double ax = est.x_m, ay = est.y_m;
       if (std::abs(candidate.yaw_rate_radps) >= 1e-9) {
-        const double r = candidate.forward_mps / candidate.yaw_rate_radps;
-        const double d_yaw = candidate.yaw_rate_radps * t;
-        ax = est.x_m +
-             r * (std::sin(est.yaw_rad + d_yaw) - std::sin(est.yaw_rad));
-        ay = est.y_m -
-             r * (std::cos(est.yaw_rad + d_yaw) - std::cos(est.yaw_rad));
+        const double w = candidate.yaw_rate_radps;
+        const double h1 = est.yaw_rad + w * t;
+        ax = est.x_m + (candidate.forward_mps * (std::sin(h1) - std::sin(est.yaw_rad)) +
+                        lat * (std::cos(h1) - std::cos(est.yaw_rad))) / w;
+        ay = est.y_m + (-candidate.forward_mps * (std::cos(h1) - std::cos(est.yaw_rad)) +
+                        lat * (std::sin(h1) - std::sin(est.yaw_rad))) / w;
       } else {
-        ax = est.x_m + candidate.forward_mps * t * std::cos(est.yaw_rad);
-        ay = est.y_m + candidate.forward_mps * t * std::sin(est.yaw_rad);
+        ax = est.x_m + (candidate.forward_mps * std::cos(est.yaw_rad) -
+                        lat * std::sin(est.yaw_rad)) * t;
+        ay = est.y_m + (candidate.forward_mps * std::sin(est.yaw_rad) +
+                        lat * std::cos(est.yaw_rad)) * t;
       }
       double sample_min = std::numeric_limits<double>::infinity();
       for (const auto& e : endpoints) {

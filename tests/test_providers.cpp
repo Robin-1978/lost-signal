@@ -1,7 +1,11 @@
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 #include "robot/app/robot_application.hpp"
+#include "sim/eval/drive_profile_io.hpp"
 #include "sim/providers/sensor_suite.hpp"
 #include "sim/world/world.hpp"
 
@@ -49,6 +53,53 @@ int main() {
   assert(suite.poll_envelope(obs2));
   assert(obs2.drive_count == 2);
   assert(obs2.forward_mps > 2.9);
+
+  // Drive profile file: overrides merge over factory defaults; malformed
+  // files and unknown kinds fail closed without touching the output.
+  {
+    namespace eval = sim::eval;
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "test_drive_profile.json")
+            .string();
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"differential\",\"free_speed_mps\":4.0}";
+    }
+    robot::platform::DriveProfile prof;
+    std::string err;
+    assert(eval::load_drive_profile(path, prof, &err));
+    assert(prof.chassis_kind == "differential");
+    assert(prof.free_speed_mps == 4.0);
+    assert(prof.wheel_radius_m == 0.1);  // default kept
+    // Partial override drives the plant: higher free speed, same lag.
+    sim::world::MotorParams mp;
+    mp.free_speed_mps = prof.free_speed_mps;
+    mp.time_constant_s = prof.motor_time_constant_s;
+    mp.wheel_radius_m = prof.wheel_radius_m;
+    mp.track_width_m = prof.track_width_m;
+    sim::world::World tuned;
+    tuned.set_motor_params(mp);
+    robot::iface::ActuatorCommand cmd;
+    cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
+    cmd.stamp_ns = 0;
+    cmd.expiry_ns = 1'000'000'000;
+    cmd.drive[0] = cmd.drive[1] = 1.0;
+    tuned.apply(cmd);
+    for (int i = 0; i < 200; ++i) tuned.step(0.02);
+    assert(tuned.truth().forward_mps > 3.9);  // settles at 4 m/s, not 3
+    assert(!eval::load_drive_profile(path + ".missing", prof, &err));
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"nope\"}";
+    }
+    assert(!eval::load_drive_profile(path, prof, &err) && !err.empty());
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"differential\",\"free_speed_mps\":-1.0}";
+    }
+    assert(!eval::load_drive_profile(path, prof, &err));
+    std::filesystem::remove(path);
+  }
 
   std::printf("providers ok\n");
   return 0;

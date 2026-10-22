@@ -6,6 +6,7 @@
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
+#include "robot/autonomy/localization/startup_selector.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
 
 namespace {
@@ -298,6 +299,46 @@ int main() {
     assert(coord.localized());
     assert(std::abs(coord.estimate().x_m - 1.0) < 0.6);
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
+  }
+
+  // 8. Mapless startup: no static raster -> trust the odometry origin once,
+  // SLAM owns the drift. No teleport (seeded at the live estimate).
+  {
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    iface::MapSnapshot empty_map;  // vector-only: has_raster() == false
+    assert(!empty_map.has_raster());
+    for (int k = 1; k <= 3; ++k) {
+      iface::ObservationFrame o;
+      o.sequence = static_cast<std::uint64_t>(k);
+      o.stamp_ns = k * 20'000'000;
+      o.source = "t.lidar";
+      o.frame = core::Frame::kLidarLink;
+      o.odometry_valid = true;
+      o.forward_mps = 1.0;
+      o.scan_valid = true;
+      o.ranges_m.assign(72, 10.0f);
+      o.scan_angle_min_rad = -M_PI;
+      o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
+      coord.ingest_observation(o);
+      coord.update(empty_map, iface::ChannelHealth{}, o.stamp_ns);
+      if (k == 1) {
+        // First tick seeds the odometry origin and reports the mode.
+        assert(coord.last_localization_action() == "slam-only");
+      }
+    }
+    assert(coord.localized());
+    // Odometry ran 3x20 ms at 1 m/s from the origin: estimate tracks it,
+    // SLAM keyframed the motion.
+    assert(coord.estimate().valid);
+    assert(std::abs(coord.estimate().x_m - 0.06) < 1e-9);
+    assert(coord.slam_keyframes() >= 1);
+    // Selector contract, unit level.
+    assert(select_startup_mode(true, true).mode ==
+           StartupMode::kSeedAndTrack);
+    assert(select_startup_mode(true, false).mode ==
+           StartupMode::kGlobalSearch);
+    assert(select_startup_mode(false, false).mode == StartupMode::kSlamOnly);
   }
 
   std::printf("localization ok\n");

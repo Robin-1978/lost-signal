@@ -35,6 +35,7 @@ core::Status AutonomyCoordinator::configure() {
   active_route_ = Route{};
   supervisor_.reset(false);
   slam_.reset();
+  slam_origin_seeded_ = false;
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -79,6 +80,7 @@ core::Status AutonomyCoordinator::cleanup() {
   active_route_ = Route{};
   supervisor_.reset(false);
   slam_.reset();
+  slam_origin_seeded_ = false;
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -312,6 +314,21 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
   last_localization_action_ = localization_action_name(action);
   if (action == LocalizationAction::kDefer) return;
   const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
+  // Mapless startup: no static raster exists, so neither local matching nor
+  // the whole-map search can constrain the pose. Seed the odometry origin
+  // once (no teleport: the current estimate IS the origin) and let the SLAM
+  // session own the drift it can observe. Latched for the session.
+  if (attempted_global && !map.has_raster() && !slam_origin_seeded_) {
+    const StartupDecision startup =
+        select_startup_mode(false, /*has_prior_pose=*/false);
+    estimator_->seed_pose(est.x_m, est.y_m, est.yaw_rad, 0.1, 0.05,
+                          last_obs_.stamp_ns);
+    supervisor_.reset(true);
+    slam_origin_seeded_ = true;
+    last_localization_action_ = startup_mode_name(startup.mode);
+    supervisor_.record_global(true, ScanMatchResult{});
+    return;
+  }
   if (attempted_global) {
     // Whole-map search: kidnap recovery and cold start. An accepted global
     // fix establishes the estimate and marks the supervisor localized; a

@@ -121,6 +121,8 @@ class RobotApplication : public IRobot {
     autonomy::diagnostics::DecisionEvidence evidence;
     bool braking_active = false;
     double braking_distance_m = 0.0;
+    std::string slip_quality = "Invalid";
+    double slip_confidence = 0.0;
     bool localized = false;
     std::string localization_action = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;

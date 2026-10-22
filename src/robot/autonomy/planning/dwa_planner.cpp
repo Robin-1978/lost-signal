@@ -141,6 +141,14 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   const double v_max = limits.max_forward_mps;
   const double w_max = limits.max_yaw_rate_radps;
   if (!(v_max > 0.0) || !(w_max > 0.0)) return out;
+  // Holonomic lateral sampling, gated by the chassis envelope: diff and
+  // Ackermann bases carry max_lateral_mps == 0 and never sample sideways.
+  // No lateral state in the estimate, so the window opens fully every
+  // decision (conservative; the validator re-checks the exact candidate).
+  std::vector<double> lateral_samples{0.0};
+  if (limits.max_lateral_mps > 0.0) {
+    lateral_samples = {-limits.max_lateral_mps, 0.0, limits.max_lateral_mps};
+  }
 
   const double dt = config_.dt_s;
   const double predict_T = config_.predict_time_s;
@@ -199,6 +207,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         angular_window, 0.3,
         {est.yaw_rate_radps, 0.0, goal_directed_yaw_rate});
     for (double angular : angular_samples) {
+      for (double lateral : lateral_samples) {
       double x = est.x_m, y = est.y_m, heading = est.yaw_rad;
       double rollout_v = est.forward_mps, rollout_w = est.yaw_rate_radps;
       std::vector<core::Vec2> samples{{x, y}};
@@ -219,8 +228,11 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         rollout_w += core::clamp(angular - rollout_w,
                                  -config_.yaw_accel_radps2 * responsive_dt,
                                  config_.yaw_accel_radps2 * responsive_dt);
-        x += rollout_v * std::cos(heading) * step_dt;
-        y += rollout_v * std::sin(heading) * step_dt;
+        // Body-frame twist (v, lateral) rotated into the map frame.
+        x += (rollout_v * std::cos(heading) - lateral * std::sin(heading)) *
+             step_dt;
+        y += (rollout_v * std::sin(heading) + lateral * std::cos(heading)) *
+             step_dt;
         heading += rollout_w * step_dt;
         const double sample_time = time + step_dt;
         samples.push_back({x, y});
@@ -270,9 +282,11 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         best_score = score;
         best.forward_mps = velocity;
         best.yaw_rate_radps = angular;
+        best.lateral_mps = lateral;
         best.cost = -score;
         best.feasible = true;
       }
+      }  // lateral
     }
   }
   if (!best.feasible) return out;

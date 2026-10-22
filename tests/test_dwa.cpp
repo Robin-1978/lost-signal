@@ -2,9 +2,11 @@
 #include <cmath>
 #include <cstdio>
 
+#include "robot/autonomy/control/controller.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/autonomy/planning/prediction.hpp"
+#include "robot/iface/command.hpp"
 
 namespace {
 lost_signal::robot::autonomy::LocalMap make_map(int w, int h, double res,
@@ -131,6 +133,40 @@ int main() {
     assert(std::abs(frames[0][0].x_m - 0.0) < 1e-9);
     assert(std::abs(frames[1][0].x_m - 0.5) < 1e-9);
     assert(std::abs(frames[2][0].x_m - 1.0) < 1e-9);
+  }
+
+  // Holonomic DWA strafes: wall dead ahead, goal to the left, open flank.
+  // Lateral samples exist only when the envelope allows them.
+  {
+    LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+    fill_box(m, 2.0, -5.0, 3.0, 5.0);  // wall across the forward path
+    EstimatedState est;
+    est.valid = true;
+    est.stamp_ns = 1'000'000;
+    est.x_m = 0.0;
+    est.y_m = 0.0;
+    PerceptionResult perc;
+    perc.scan_ok = true;
+    StraightLinePlanner global;
+    Route route = global.plan(est, {0.0, 4.0, 0.0}, iface::MapSnapshot{});
+    assert(route.valid);
+    platform::ChassisLimits holo = limits;
+    holo.max_lateral_mps = 1.0;
+    DwaPlanner planner;
+    LocalPlan p = planner.plan(est, perc, m, route, holo);
+    assert(p.has_plan && p.best.feasible);
+    assert(p.best.lateral_mps > 0.0);  // strafes left around the wall
+    // Diff envelope on the same scene: no lateral sampled, ever.
+    LocalPlan d = planner.plan(est, perc, m, route, limits);
+    assert(d.has_plan && d.best.lateral_mps == 0.0);
+    // Controller maps the strafing candidate to the holonomic space.
+    DirectController ctl;
+    iface::MotionCommand holo_cmd = ctl.track(p.best, est, 1'000'000);
+    assert(holo_cmd.space == iface::CommandSpace::kHolonomic);
+    assert(holo_cmd.lateral_mps == p.best.lateral_mps);
+    assert(iface::valid_motion_command(holo_cmd, 1'000'000));
+    iface::MotionCommand yaw_cmd = ctl.track(d.best, est, 1'000'000);
+    assert(yaw_cmd.space == iface::CommandSpace::kYawRate);
   }
 
   std::printf("dwa ok\n");

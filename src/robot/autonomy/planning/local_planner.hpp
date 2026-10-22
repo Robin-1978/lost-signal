@@ -10,9 +10,13 @@ namespace lost_signal::robot::autonomy {
 
 // One chassis-feasible candidate with explicit cost. Position, heading,
 // velocity, and yaw rate travel together; never a geometry-only polyline.
+// lateral_mps is body-left velocity, nonzero only for holonomic bases
+// (sampled only when limits.max_lateral_mps > 0); steer intent travels as
+// yaw rate and the chassis resolves the bicycle angle.
 struct LocalCandidate {
   double forward_mps = 0.0;
   double yaw_rate_radps = 0.0;
+  double lateral_mps = 0.0;
   double cost = 0.0;
   bool feasible = false;
 };

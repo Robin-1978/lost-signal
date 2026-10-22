@@ -167,8 +167,12 @@ route, pre-activation hold).
   preempts the running goal, and arrival (estimate inside 0.5 m of the
   goal) completes it. SIM submits the same typed intents as an operator.
 - `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
-  samples trajectories; the validator and the independent safety monitor
-  keep their vetoes.
+  samples trajectories (forward/yaw always, lateral only when the chassis
+  envelope carries `max_lateral_mps > 0`); the controller emits `kHolonomic`
+  iff the winning candidate strafes, else `kYawRate` (ackermann converts
+  yaw to steer in the chassis via the bicycle model; `kSteerAngle` stays
+  the explicit operator/native space). The validator and the independent
+  safety monitor keep their vetoes.
 
 ## Localization (scan-matched, supervisor-gated)
 
@@ -185,6 +189,14 @@ route, pre-activation hold).
   Kalman-lite variance weighting and validates the estimate; `seed_pose`
   implements the deliberate deployment/operator initial pose (known dock).
   Both reject non-finite input.
+- `observe_slip` reports wheel-vs-body residual + confidence with honesty
+  states (Invalid / UnobservableLowSpeed / StaleEstimator / Observable);
+  the estimator's gyro-trust gate ORs the fast sensor-level disagreement
+  with the observable estimate-level residual, and exposes `last_slip()`
+  for diagnostics (consumers read quality/confidence, never thresholds).
+- `select_startup_mode` picks the init frontend from map/prior
+  availability (seed-and-track / global-search / slam-only); the
+  coordinator auto-seeds the odometry origin once when mapless.
 - `GlobalSearcher` (kidnap recovery / cold start): coarse pass over free
   raster cells x headings with a downsampled beam subset, top-K survivors
   each refined by the bounded local matcher, then a strict twin check —
@@ -212,6 +224,16 @@ route, pre-activation hold).
   robot that moved past the newest keyframe still corrects exactly) and
   rebuilds the rolling map from keyframes at their optimized poses; the
   decision branch refreshes on the corrected estimate.
+
+## Hardware contract (sim-native parity)
+
+- `DriveProfile` (`robot/platform/drive_profile.hpp`) is the single hardware
+  capability contract: geometry + first-order motor/steer parameters +
+  encoder resolution, with factory defaults per chassis kind (same numbers
+  `make_chassis` builds with; unknown kinds fail closed).
+- JSON loading lives on the SIM side (`sim/eval/drive_profile_io`): a file
+  merges over the defaults, so a measured step response can retune the
+  plant without forking geometry. ROBOT never parses files.
 
 ## Validation (trajectory verdicts with minimum-risk escape)
 

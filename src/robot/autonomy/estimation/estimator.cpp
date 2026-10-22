@@ -43,6 +43,7 @@ void FusedOdometryEstimator::reset() {
   attitude_ = Quaternion{};
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
+  last_slip_ = SlipObservation{};
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
@@ -68,12 +69,33 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
     return;
   }
   // Yaw fusion: gyro-led complementary blend; slip gate trusts the gyro.
+  // The observer compares wheel twist against the estimator body twist;
+  // when it cannot observe (low speed, no prior), the inline sensor-level
+  // residual (odom vs gyro in this frame) is the fallback. Same behavior
+  // as the old inline gate, now with a quality-carrying observation.
   double yaw_rate = estimate_.yaw_rate_radps;
   bool slipped = false;
+  WheelTwist wheel{obs.odometry_valid ? obs.forward_mps : estimate_.forward_mps,
+                   obs.odometry_valid ? obs.yaw_rate_radps
+                                      : estimate_.yaw_rate_radps};
+  SlipBodyView body{estimate_.forward_mps,
+                    estimate_.yaw_rate_radps,
+                    has_prior_ && estimate_.valid,
+                    false,  // prediction rate == sensor rate: never stale here
+                    estimate_.position_sigma_m + estimate_.heading_sigma_rad};
+  last_slip_ = observe_slip(wheel, body);
   if (obs.odometry_valid && obs.imu_valid) {
-    const double residual =
+    // Fast path: sensor-level disagreement inside this frame (odom vs gyro)
+    // reacts within one cycle to a step change. Estimate-level path: the
+    // observer residual catches drift the sensors agree on but the filter
+    // has not absorbed. Either trusts the gyro and inflates heading.
+    const double inline_residual =
         std::abs(obs.yaw_rate_radps - obs.imu_gyro_z_radps);
-    slipped = residual > config_.slip_yaw_residual_radps;
+    const bool observer_slip =
+        last_slip_.quality == SlipQuality::kObservable &&
+        std::abs(last_slip_.yaw_residual_rads) > config_.slip_yaw_residual_radps;
+    slipped = inline_residual > config_.slip_yaw_residual_radps ||
+              observer_slip;
     yaw_rate = slipped ? obs.imu_gyro_z_radps
                        : (1.0 - config_.gyro_weight) * obs.yaw_rate_radps +
                              config_.gyro_weight * obs.imu_gyro_z_radps;

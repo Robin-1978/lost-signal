@@ -186,6 +186,8 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   d.evidence = coordinator_.last_evidence();
   d.braking_active = measurement_.braking().active;
   d.braking_distance_m = measurement_.braking().distance_m;
+  d.slip_quality = autonomy::slip_quality_name(coordinator_.last_slip().quality);
+  d.slip_confidence = coordinator_.last_slip().confidence;
   d.goal = executive_.current_goal();
   d.health = channel_.health();
   return d;

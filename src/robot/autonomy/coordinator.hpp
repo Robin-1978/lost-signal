@@ -13,6 +13,7 @@
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
+#include "robot/autonomy/localization/startup_selector.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/mapping/slam.hpp"
@@ -85,6 +86,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
   const EstimatedState& estimate() const;
+  SlipObservation last_slip() const { return estimator_->last_slip(); }
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }
   SafetyVerdict last_safety() const { return safety_->last_verdict(); }
@@ -136,6 +138,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   bool replan_requested_ = false;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
   std::string last_localization_action_ = "init";
+  // Mapless startup latches once: trust the odometry origin, SLAM owns drift.
+  bool slam_origin_seeded_ = false;
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
   // Controlled-stop latch: withholds motion until measured tread settles.

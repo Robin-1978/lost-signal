@@ -4,6 +4,7 @@
 
 #include "robot/platform/chassis.hpp"
 #include "robot/platform/chassis_registry.hpp"
+#include "robot/platform/drive_profile.hpp"
 
 int main() {
   using namespace lost_signal::robot;
@@ -42,6 +43,20 @@ int main() {
   iface::MotionCommand stop = iface::MotionCommand::SafeStop(100);
   iface::MotionCommand kept = diff.clamp_command(stop, 100);
   assert(kept.is_safe_stop());
+
+  // Drive profile: factory defaults per kind, unknown fails closed.
+  {
+    platform::DriveProfile prof;
+    assert(platform::DriveProfile::for_chassis("differential", prof));
+    assert(prof.wheel_radius_m == 0.1 && prof.track_width_m == 0.5);
+    assert(prof.encoder_counts_per_revolution == 2048);
+    assert(platform::DriveProfile::for_chassis("ackermann", prof));
+    assert(prof.wheel_base_m == 0.62 && prof.track_width_m == 0.58);
+    assert(platform::DriveProfile::for_chassis("swerve", prof));
+    assert(prof.wheel_base_m == 0.56 && prof.track_width_m == 0.56);
+    assert(platform::DriveProfile::for_chassis("mecanum", prof));
+    assert(!platform::DriveProfile::for_chassis("nope", prof));
+  }
 
   // Plugin registry: builtins present, unknown fails closed, first wins,
   // and a native bring-up can register a new base without touching the

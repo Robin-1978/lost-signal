@@ -1,5 +1,6 @@
 #pragma once
 
+#include "robot/autonomy/estimation/slip_observer.hpp"
 #include "robot/core/time.hpp"
 #include "robot/iface/observation.hpp"
 
@@ -45,6 +46,10 @@ class IEstimator {
   virtual void seed_pose(double /*x_m*/, double /*y_m*/, double /*yaw_rad*/,
                          double /*pos_sigma_m*/, double /*yaw_sigma_rad*/,
                          core::MonotonicNs /*stamp_ns*/) {}
+  // Latest slip observation (wheel twist vs estimator body twist).
+  // Default reports Invalid; estimators with a slip observer override it.
+  // Consumers read quality/confidence, never thresholds.
+  virtual SlipObservation last_slip() const { return SlipObservation{}; }
   virtual const EstimatedState& estimate() const = 0;
 };
 
@@ -93,6 +98,9 @@ class FusedOdometryEstimator : public IEstimator {
                     double pos_sigma_m, double yaw_sigma_rad,
                     core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
+  // Latest slip observation (wheel twist vs estimator body twist). Updated
+  // on every predict; consumers read quality/confidence, never thresholds.
+  SlipObservation last_slip() const override { return last_slip_; }
 
  private:
   struct Quaternion {
@@ -107,6 +115,7 @@ class FusedOdometryEstimator : public IEstimator {
   EstimatedState estimate_{};
   Quaternion attitude_{};
   bool has_prior_ = false;
+  SlipObservation last_slip_{};
   iface::ObservationFrame prior_{};
 };
 

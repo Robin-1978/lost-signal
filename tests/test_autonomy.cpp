@@ -61,6 +61,57 @@ int main() {
            sigma_before + 0.19);  // slip inflation applied
   }
 
+  // Slip observer: wheel-vs-body residual with honesty states.
+  {
+    // Invalid body: refusal, never silent substitution.
+    SlipObservation bad = observe_slip({1.0, 0.0}, SlipBodyView{});
+    assert(bad.quality == SlipQuality::kInvalid && bad.confidence == 0.0);
+    // Below floor: unobservable, however large the disagreement.
+    SlipBodyView slow{0.0, 2.0, true, false, 0.1};
+    SlipObservation creep = observe_slip({0.0, 0.0}, slow);
+    assert(creep.quality == SlipQuality::kUnobservableLowSpeed);
+    // Observable: signed ratio + residual + confidence from trace.
+    SlipBodyView body{1.0, 0.1, true, false, 0.5};
+    SlipObservation spin = observe_slip({1.5, 0.6}, body);
+    assert(spin.quality == SlipQuality::kObservable);
+    assert(std::abs(spin.longitudinal_ratio - 0.5 / 1.5) < 1e-9);
+    assert(std::abs(spin.yaw_residual_rads - 0.5) < 1e-9);
+    assert(std::abs(spin.confidence - 1.0 / 1.5) < 1e-9);
+    // Stale body: still computed, confidence halved, never hidden.
+    SlipBodyView old = body;
+    old.stale = true;
+    SlipObservation stale = observe_slip({1.5, 0.6}, old);
+    assert(stale.quality == SlipQuality::kStaleEstimator);
+    assert(std::abs(stale.confidence - 0.5 / 1.5) < 1e-9);
+    assert(std::string(slip_quality_name(SlipQuality::kObservable)) ==
+           "Observable");
+  }
+
+  // Estimator exposes the latest slip observation for diagnostics.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    assert(est.last_slip().quality == SlipQuality::kInvalid);
+    auto o1 = make_odom(1, 0, 1.0);
+    o1.imu_valid = true;
+    o1.imu_gyro_z_radps = 0.0;
+    o1.imu_az_mps2 = 9.81;
+    est.predict(o1);
+    // Sustained disagreement: gyro says turning, wheels say straight.
+    // The inline sensor gate reacts first; after several cycles the
+    // estimate follows the gyro and the observer residual (wheel yaw 0
+    // vs estimator body yaw ~2) carries the same slip at estimate level.
+    for (int k = 2; k <= 12; ++k) {
+      auto o = make_odom(k, k * 20'000'000LL, 1.0);
+      o.imu_valid = true;
+      o.imu_gyro_z_radps = 2.0;
+      o.imu_az_mps2 = 9.81;
+      est.predict(o);
+    }
+    assert(est.last_slip().quality == SlipQuality::kObservable);
+    assert(est.last_slip().yaw_residual_rads < -0.5);  // wheels lag the body
+  }
+
   // Attitude: static tilt converges roll/pitch toward the gravity vector.
   {
     FusedOdometryEstimator est;

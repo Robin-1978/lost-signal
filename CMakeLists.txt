@@ -35,6 +35,7 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/differential_kinematics.cpp
   src/robot/platform/ackermann_kinematics.cpp
   src/robot/platform/holonomic_kinematics.cpp
+  src/robot/platform/drive_profile.cpp
   src/robot/platform/chassis_registry.cpp
   # Ackermann/holonomic controllers live here (not in robot_control) because
   # they call the canonical platform kinematics; robot_control must stay
@@ -58,6 +59,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
+  src/robot/autonomy/estimation/slip_observer.cpp
   src/robot/autonomy/localization/scan_matcher.cpp
   src/robot/autonomy/localization/global_search.cpp
   src/robot/autonomy/localization/supervisor.cpp
@@ -169,6 +171,7 @@ add_library(lost_signal_sim_eval STATIC
   src/sim/eval/scoring.cpp
   src/sim/eval/json.cpp
   src/sim/eval/recording.cpp
+  src/sim/eval/drive_profile_io.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -321,7 +324,7 @@ add_test(NAME chassis COMMAND test_chassis)
 add_executable(test_providers
   tests/test_providers.cpp
 )
-target_link_libraries(test_providers PRIVATE lost_signal_sim_providers)
+target_link_libraries(test_providers PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
 add_test(NAME providers COMMAND test_providers)
 
 add_executable(test_lidar
