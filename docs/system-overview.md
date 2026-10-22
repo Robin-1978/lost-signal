@@ -172,6 +172,20 @@ flowchart TB
 - 测试 `test_truth_isolation` 断言：估计存在、误差有限、reward 纯离线、
   无 obs 改真值不影响指令。
 
+## 6b. 回放流（record → JSONL → deterministic replay）
+
+- `export_episode` 把 `EpisodeRecorder` 落盘为 JSONL v1：一行 header
+  `{"v":1,"kind":"episode","map":"<id>","rev":<n>}`，之后每步一行
+  `step_to_json_line(record_step(obs))`（float `%.9g` / double `%.17g`，
+  bit-identical round-trip）。
+- `ReplayProvider::load` 读回 header + steps（坏行 fail-closed，不抛异常）；
+  `poll` 逐个吐出 live-equivalent `ObservationFrame`，播完返回 false。
+- 闭环回放：新鲜 `RobotApplication` + 新鲜 plant，吃回放 obs，`take_actuator`
+  驱动新 plant；确定性 stack 的指令序列应与录制 bit 一致，任何分歧都是
+  非确定性 bug（`tests/test_replay.cpp` 第 4 节断言）。
+- JSON 是手写最小子集（`sim/eval/json.{hpp,cpp}`，无第三方依赖），只支持
+  记录格式需要的 object/array/string/number/true/false/null。
+
 ## 7. 文件 → 模块对照表
 
 | 模块（CMake target） | 目录 | 关键文件 |

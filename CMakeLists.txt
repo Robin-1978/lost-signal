@@ -132,6 +132,7 @@ add_library(lost_signal_sim_providers STATIC
   src/sim/providers/lidar16.cpp
   src/sim/providers/sensor_suite.cpp
   src/sim/providers/static_map.cpp
+  src/sim/providers/replay.cpp
 )
 target_include_directories(lost_signal_sim_providers PUBLIC src)
 target_link_libraries(lost_signal_sim_providers PUBLIC
@@ -141,6 +142,8 @@ target_link_libraries(lost_signal_sim_providers PUBLIC
 
 add_library(lost_signal_sim_eval STATIC
   src/sim/eval/scoring.cpp
+  src/sim/eval/json.cpp
+  src/sim/eval/recording.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -197,6 +200,12 @@ add_executable(test_autonomy
 )
 target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy COMMAND test_autonomy)
+
+add_executable(test_replay
+  tests/test_replay.cpp
+)
+target_link_libraries(test_replay PRIVATE lost_signal_sim_scenario)
+add_test(NAME replay COMMAND test_replay)
 
 add_executable(test_task_ordering
   tests/test_task_ordering.cpp
