@@ -56,6 +56,25 @@ int main() {
   assert(suite.poll_envelope(obs2));
   assert(obs2.drive_count == 2);
   assert(obs2.forward_mps > 2.80 && obs2.forward_mps < 2.88);
+  // Traction flags ride the same poll: quiet in normal driving...
+  assert(!obs2.drive_slipping[0] && !obs2.drive_slipping[1]);
+  // ...and firing when stall force exceeds mu * load (low mu, standstill).
+  sim::world::World wslip;
+  sim::world::MotorParams low_mu = wslip.motor_params();
+  low_mu.tire_friction_mu = 0.05;
+  wslip.set_motor_params(low_mu);
+  sim::providers::SimSensorSuite suite2(&wslip);
+  robot::iface::ActuatorCommand c2;
+  c2.mode = robot::iface::ActuatorMode::kDiffDuty;
+  c2.stamp_ns = 20'000'000;
+  c2.expiry_ns = 220'000'000;
+  c2.drive[0] = 1.0;
+  c2.drive[1] = 1.0;
+  suite2.consume(c2);
+  wslip.step(0.02);
+  robot::iface::ObservationFrame obs3;
+  assert(suite2.poll_envelope(obs3));
+  assert(obs3.drive_slipping[0] && obs3.drive_slipping[1]);
 
   // Drive profile file: overrides merge over factory defaults; malformed
   // files and unknown kinds fail closed without touching the output.

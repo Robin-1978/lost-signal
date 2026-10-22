@@ -35,6 +35,10 @@ struct MotionFeedback {
   std::array<double, 4> drive_radps = {};  // mechanical rad/s, measured
   std::array<double, 4> steer_rad = {};    // measured steer angle, rad
   std::array<double, 4> steer_vel_radps = {};  // measured steer rate
+  // Per-wheel traction saturation (reported, never clamped): motor force
+  // past mu * load, main's motor_drive flag. Offline/label use only —
+  // the duty path never clamps on this, in either backend.
+  std::array<bool, 4> drive_slipping = {};
 
   bool has_joints() const { return drive_count > 0; }
 

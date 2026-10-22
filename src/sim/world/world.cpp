@@ -40,6 +40,8 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
         i < truth_.drive_count ? std::clamp(cmd.drive[i], -1.0, 1.0) : 0.0;
     truth_.steer_duty[i] =
         i < truth_.steer_count ? std::clamp(cmd.steer[i], -1.0, 1.0) : 0.0;
+    // Mode switch retires channels: stale slip flags must not linger.
+    if (i >= truth_.drive_count) truth_.drive_slipping[i] = false;
   }
 }
 
@@ -103,6 +105,7 @@ void World::step(double dt_s) {
       brakes_[i].reset();
       truth_.drive_radps[i] =
           truth_.drive_duty[i] * motor_.free_speed_mps / wheel_r;
+      truth_.drive_slipping[i] = false;  // teleport, no force applied
     }
   } else {
     // Force-driven wheels: motor + gravity - contact = accel. Stiction
@@ -127,6 +130,11 @@ void World::step(double dt_s) {
       const double motor_f = dc_motor_force_N(truth_.drive_duty[i], v,
                                               motor_.stall_force_N,
                                               motor_.free_speed_mps);
+      // Same report rule as the engine: motor force past mu * load flags
+      // saturation; the duty path never clamps on it.
+      truth_.drive_slipping[i] =
+          std::abs(motor_f) >
+          motor_.tire_friction_mu * contact.load_per_wheel_N;
       const double applied_f = motor_f + gravity_N;
       double v_new;
       if (std::abs(v) <= smooth_mps && std::abs(applied_f) <= capacity_N) {
