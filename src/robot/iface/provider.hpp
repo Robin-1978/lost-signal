@@ -20,7 +20,7 @@ class IProvider {
 
 // ISensorProvider<T>: typed poll contract for one message type.
 // Sim, replay, and native drivers implement the same seam:
-//   Sim2DLidar / Sim16Lidar / Real2DLidar are all ISensorProviders.
+//   Sim2DLidar / Real2DLidar are all ISensorProviders.
 template <typename MessageT>
 class ISensorProvider : public IProvider {
  public:

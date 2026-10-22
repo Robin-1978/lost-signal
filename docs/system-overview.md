@@ -30,7 +30,7 @@ flowchart TB
   subgraph SIM["SIM only — src/sim (may depend on robot)"]
     direction TB
     World["sim_world<br/>World + WorldTruth"]
-    SProv["sim_providers<br/>SimPlatform + Sim2DLidar + Sim16Lidar"]
+    SProv["sim_providers<br/>SimPlatform + Sim2DLidar + SimImu + SimMotion"]
     Eval["sim_eval<br/>EpisodeRecorder + scoring"]
     Scn["sim_scenario<br/>ScenarioSession + SimRobot"]
     World --> SProv
@@ -91,7 +91,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant W as World (sim)
-  participant L as Sim2DLidar / Sim16Lidar
+  participant L as Sim2DLidar / SimImu
   participant P as SimSensorSuite
   participant C as RuntimeChannel
   participant R as RobotApplication
@@ -200,7 +200,7 @@ flowchart TB
 | `robot_robots` | `src/robot/robots/` | `differential_robot.hpp/cpp` |
 | `robot_providers` | `src/robot/providers/` | `real_lidar2d.hpp/cpp` |
 | `sim_world` | `src/sim/world/` | `world.hpp/cpp` (`WorldTruth`, 真值唯一住所) |
-| `sim_providers` | `src/sim/providers/` | `sensor_suite.hpp/cpp` (composer) + `sim_motion.hpp/cpp`, `sim_imu.hpp/cpp`, `lidar2d.hpp/cpp`, `lidar16.hpp/cpp` |
+| `sim_providers` | `src/sim/providers/` | `sensor_suite.hpp/cpp` (composer) + `sim_motion.hpp/cpp`, `sim_imu.hpp/cpp`, `lidar2d.hpp/cpp` |
 | `sim_eval` | `src/sim/eval/` | `episode.hpp` (`EvalStep`, `EpisodeRecorder`), `scoring.hpp/cpp` |
 | `sim_scenario` | `src/sim/scenario/`, `src/sim/robot/` | `scenario_session.hpp/cpp`, `sim_robot.hpp/cpp` |
 | binaries | `src/robot/app/main.cpp`, `src/sim/scenario/sim_main.cpp` | `lost_signal_robot`, `lost_signal_sim` |

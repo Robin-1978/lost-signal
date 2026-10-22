@@ -24,7 +24,7 @@ engine binding.
 - `World`: force-driven truth (DC motor curve -> wheel accel, dissipative
   service brakes), diff/ackermann/swerve/mecanum rigid follow, static
   boxes + linear actors + named places.
-- Providers: motion/IMU/lidar2d/lidar16/suite/static-map/replay.
+- Providers: motion/IMU/lidar2d/suite/static-map/replay/package-map.
 - `SimRobot` + `ScenarioSession` (world-stepping HIL), eval
   (episode/scoring/JSONL recording/replay/drive-profile-io).
 - `DriveProfile`: robot-side contract struct + sim-side JSON merge.

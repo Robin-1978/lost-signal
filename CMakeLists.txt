@@ -160,7 +160,6 @@ add_library(lost_signal_sim_providers STATIC
   src/sim/providers/sim_motion.cpp
   src/sim/providers/sim_imu.cpp
   src/sim/providers/lidar2d.cpp
-  src/sim/providers/lidar16.cpp
   src/sim/providers/sensor_suite.cpp
   src/sim/providers/static_map.cpp
   src/sim/providers/replay.cpp

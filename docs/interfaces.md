@@ -44,7 +44,7 @@ bump on meaning change (`version.hpp`).
 `src/robot/iface/provider.hpp` + `motion.hpp`. Non-template `IProvider` base
 (`descriptor() + is_ready()`), then exactly two typed roles:
 
-- `ISensorProvider<T>::poll(T&)`: `Sim2DLidar`, `Sim16Lidar`, `SimImu`
+- `ISensorProvider<T>::poll(T&)`: `Sim2DLidar`, `SimImu` (+ `SimMotionEndpoint`)
   (`src/sim/providers/`), `Real2DLidar`
   (`src/robot/providers/`, replay/native, no SDK);
 - `IMotionEndpoint`: `consume_command(cmd)` + `poll_feedback(MotionFeedback)`
@@ -54,7 +54,7 @@ bump on meaning change (`version.hpp`).
 flowchart LR
   IP["IProvider"] --> SP["ISensorProvider<T><br/>lidar + imu messages"]
   IP --> ME["IMotionEndpoint<br/>body command + feedback"]
-  SP --> S2D["Sim2DLidar / Sim16Lidar / SimImu"]
+  SP --> S2D["Sim2DLidar / SimImu / SimMotion"]
   SP --> R2D["Real2DLidar (replay)"]
   ME --> SM["SimMotionEndpoint"]
 ```

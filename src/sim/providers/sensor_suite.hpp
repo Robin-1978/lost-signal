@@ -24,15 +24,9 @@ struct DeliveryConfig {
   double drop_probability = 0.0;
 };
 
-// Bounded IMU realism (SIM-side only). Bias is constant per run, noise is
-// white per poll, both seeded. Defaults are exact truth; the estimator
-// already tolerates the bounded error (gyro-led blend + slip gate).
-struct ImuRealismConfig {
-  std::uint64_t seed = 0;
-  double gyro_noise_radps = 0.0;   // white, per axis
-  double gyro_bias_radps = 0.0;    // constant z-bias for the run
-  double accel_noise_mps2 = 0.0;   // white, per axis
-};
+// Bounded IMU realism lives on the device model (SimImuProvider); the
+// suite only forwards the switch. Delivery shaping stays here: it is
+// envelope-level orchestration, not a device model.
 
 // SimSensorSuite: the single composer of sim sensing. Owns the motion
 // endpoint + lidar + imu providers, claims all three descriptors on the app,
@@ -61,10 +55,8 @@ class SimSensorSuite {
   Sim2DLidarProvider lidar_;
   SimImuProvider imu_;
   DeliveryConfig delivery_;
-  ImuRealismConfig imu_realism_;
   std::deque<robot::iface::ObservationFrame> delivery_queue_;
   std::uint64_t delivery_rng_ = 0;
-  std::uint64_t imu_rng_ = 0;
 };
 
 }  // namespace lost_signal::sim::providers

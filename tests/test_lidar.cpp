@@ -1,31 +1,94 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 
 #include "robot/iface/message.hpp"
 #include "robot/providers/real_lidar2d.hpp"
-#include "sim/providers/lidar16.hpp"
 #include "sim/providers/lidar2d.hpp"
+#include "sim/providers/sim_imu.hpp"
+#include "sim/world/world.hpp"
+
+using namespace lost_signal;
+
+namespace {
+
+// WorldTruth is SIM-owned; tests set poses directly (never a ROBOT input).
+sim::world::WorldTruth& mutable_truth(sim::world::World& w) {
+  return const_cast<sim::world::WorldTruth&>(w.truth());
+}
+
+int argmin_range(const robot::iface::Lidar2DScan& scan) {
+  int best = 0;
+  for (std::size_t i = 1; i < scan.ranges_m.size(); ++i) {
+    if (scan.ranges_m[i] < scan.ranges_m[static_cast<std::size_t>(best)]) {
+      best = static_cast<int>(i);
+    }
+  }
+  return best;
+}
+
+}  // namespace
 
 int main() {
-  using namespace lost_signal;
-
-  // Sim2D: typed message, deterministic, valid from first poll.
-  sim::providers::Sim2DLidarProvider sim2d("sim.lidar2d", 72, 10.0f);
-  sim2d.set_step(3, 60'000'000);
+  // Sim2D: typed message raycast from WorldTruth, bearings robot-frame.
+  sim::world::World w;
+  sim::world::StaticBox box{2.0, -0.5, 3.0, 0.5, 0.0};  // dead ahead, 2 m out
+  w.set_static_boxes({box});
+  sim::providers::Sim2DLidarProvider sim2d(&w, "sim.lidar2d", 72, 10.0f);
+  assert(sim2d.descriptor().backend == robot::iface::ProviderBackend::kSim);
   robot::iface::Lidar2DScan scan;
   assert(sim2d.poll(scan));
   assert(scan.valid());
   assert(scan.ranges_m.size() == 72);
-  assert(sim2d.descriptor().backend == robot::iface::ProviderBackend::kSim);
+  assert(scan.seq == 1);
+  // Box center bearing 0 -> beam 36 (angle_min -pi + 36*2pi/72 = 0).
+  const int hit = argmin_range(scan);
+  assert(hit >= 35 && hit <= 37);
+  assert(scan.ranges_m[static_cast<std::size_t>(hit)] < 3.0f);
+  assert(scan.ranges_m[0] == 10.0f);  // behind: max range
+  // Static-only pass renders geometry without actors.
+  sim::world::Actor actor;
+  actor.x = 1.0;
+  actor.y = 0.1;
+  actor.radius_m = 0.3;  // near edge at ~0.7: occludes the box behind it
+  w.add_actor(actor);
+  robot::iface::Lidar2DScan with_actor, static_only;
+  assert(sim2d.poll(with_actor, true));
+  assert(sim2d.poll(static_only, false));
+  // Foreground vs background: the actor occludes the box behind it.
+  assert(with_actor.ranges_m[static_cast<std::size_t>(hit)] <
+         static_only.ranges_m[static_cast<std::size_t>(hit)]);
+  assert(std::abs(static_only.ranges_m[static_cast<std::size_t>(hit)] - 2.0f) <
+         0.05f);  // box face at x = 2.0
+  assert(std::abs(with_actor.ranges_m[static_cast<std::size_t>(hit)] - 0.7f) <
+         0.15f);  // actor disc near edge occludes it
+  // Yaw-aware: facing north (+pi/2) moves the eastern dip by -18 beams.
+  // (A world-frame fan would leave it at 36: the loop-closure deadlock.)
+  mutable_truth(w).body_yaw_rad = M_PI_2;
+  robot::iface::Lidar2DScan turned;
+  assert(sim2d.poll(turned, false));
+  const int hit2 = argmin_range(turned);
+  assert(hit2 >= 17 && hit2 <= 21);
+  mutable_truth(w).body_yaw_rad = 0.0;
+  sim::providers::Sim2DLidarProvider null_world(nullptr, "x", 72, 10.0f);
+  assert(!null_world.is_ready());
+  assert(!null_world.poll(scan));
 
-  // Sim16: 16 rings x N azimuths, one rotation per poll.
-  sim::providers::Sim16LidarProvider sim16("sim.lidar16", 8);
-  sim16.set_step(1, 100'000'000);
-  robot::iface::Lidar3DCloud cloud;
-  assert(sim16.poll(cloud));
-  assert(cloud.valid());
-  assert(cloud.ring_count == 16);
-  assert(cloud.points.size() == 16 * 8);
+  // SimImu: truth yaw rate + specific force, exact by default.
+  sim::providers::SimImuProvider imu(&w);
+  mutable_truth(w).yaw_rate_radps = 0.5;
+  robot::iface::ImuMessage m;
+  assert(imu.poll(m));
+  assert(m.valid());
+  assert(m.gyro_z_radps == 0.5);
+  assert(m.accel_z_mps2 == 9.81);
+  // Realism switch: bias offsets exactly.
+  sim::providers::ImuRealismConfig cfg;
+  cfg.seed = 1;
+  cfg.gyro_bias_radps = 0.1;
+  imu.set_realism(cfg);
+  assert(imu.poll(m));
+  assert(m.gyro_z_radps == 0.6);
 
   // Real2D: same ISensorProvider seam, native backend, replay-fed.
   robot::providers::Real2DLidarProvider real("ro1.lidar",
@@ -39,9 +102,9 @@ int main() {
   assert(rscan.valid());
   assert(rscan.ranges_m.size() == 36);
 
-  // Polymorphism: all three behind ISensorProvider<IMessage>-compatible use.
-  robot::iface::IMessage* m = &scan;
-  assert(m->valid() && m->sequence() == 1);
+  // Polymorphism: typed messages behind IMessage-compatible use.
+  robot::iface::IMessage* msg = &scan;
+  assert(msg->valid() && msg->sequence() >= 1);
 
   std::printf("lidar ok\n");
   return 0;
