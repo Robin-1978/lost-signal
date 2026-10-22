@@ -1,0 +1,47 @@
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+
+#include "robot/platform/chassis.hpp"
+
+int main() {
+  using namespace lost_signal::robot;
+
+  platform::ChassisLimits limits{
+      .max_forward_mps = 2.0,
+      .max_yaw_rate_radps = 1.5,
+      .footprint_radius_m = 0.4,
+  };
+  platform::DifferentialChassis diff(0.1, 0.5, limits);
+  assert(diff.command_space() == iface::CommandSpace::kYawRate);
+
+  // Inverse then forward round-trips.
+  platform::WheelSpeeds w = diff.inverse(1.0, 0.5);
+  double v = 0.0, yaw = 0.0;
+  diff.forward(w, v, yaw);
+  assert(std::abs(v - 1.0) < 1e-9);
+  assert(std::abs(yaw - 0.5) < 1e-9);
+
+  // Straight motion: equal wheel speeds.
+  platform::WheelSpeeds s = diff.inverse(1.0, 0.0);
+  assert(std::abs(s.left_radps - s.right_radps) < 1e-9);
+  assert(std::abs(s.left_radps - 10.0) < 1e-9);  // v / r
+
+  // Clamp enforces the envelope; wrong space fails closed to safe stop.
+  iface::MotionCommand fast;
+  fast.space = iface::CommandSpace::kYawRate;
+  fast.stamp_ns = 100;
+  fast.expiry_ns = 500;
+  fast.forward_mps = 99.0;
+  fast.yaw_rate_radps = 99.0;
+  iface::MotionCommand clamped = diff.clamp_command(fast, 100);
+  assert(clamped.forward_mps == 2.0);
+  assert(clamped.yaw_rate_radps == 1.5);
+
+  iface::MotionCommand stop = iface::MotionCommand::SafeStop(100);
+  iface::MotionCommand kept = diff.clamp_command(stop, 100);
+  assert(kept.is_safe_stop());
+
+  std::printf("chassis ok\n");
+  return 0;
+}

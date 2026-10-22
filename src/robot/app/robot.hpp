@@ -1,0 +1,36 @@
+#pragma once
+
+#include <memory>
+#include <string>
+
+#include "robot/autonomy/coordinator.hpp"
+#include "robot/core/status.hpp"
+#include "robot/iface/channel.hpp"
+#include "robot/iface/command.hpp"
+#include "robot/iface/endpoint.hpp"
+#include "robot/iface/map.hpp"
+#include "robot/iface/observation.hpp"
+#include "robot/iface/task.hpp"
+#include "robot/platform/description.hpp"
+
+namespace lost_signal::robot::app {
+
+// IRobot: deployable robot facade. One interface, two deployment families:
+//   - DifferentialRobot / native bring-up: real drivers behind the same seam;
+//   - SimRobot (src/sim/robot/): same facade backed by World + sim providers.
+// Tests and tools program against IRobot*; they never branch on deployment.
+class IRobot {
+ public:
+  virtual ~IRobot() = default;
+  virtual core::Status submit_task(const iface::TaskRequest& req) = 0;
+  virtual core::Status request_map(const std::string& map_id) = 0;
+  virtual bool register_provider(const iface::EndpointDescriptor& desc) = 0;
+  virtual bool publish_observation(const iface::ObservationFrame& obs) = 0;
+  virtual iface::MotionCommand take_command(core::MonotonicNs now_ns) = 0;
+  virtual iface::MotionCommand tick(core::MonotonicNs now_ns) = 0;
+  virtual iface::TaskStatus task_status() const = 0;
+  virtual iface::MapSnapshot active_map() const = 0;
+  virtual iface::ChannelHealth channel_health() const = 0;
+};
+
+}  // namespace lost_signal::robot::app

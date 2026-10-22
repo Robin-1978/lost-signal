@@ -15,12 +15,14 @@ add_library(lost_signal_robot_iface STATIC
   src/robot/iface/iface.cpp
   src/robot/iface/endpoint.cpp
   src/robot/iface/channel.cpp
+  src/robot/iface/message.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
 
 add_library(lost_signal_robot_platform STATIC
   src/robot/platform/description.cpp
+  src/robot/platform/chassis.cpp
 )
 target_include_directories(lost_signal_robot_platform PUBLIC src)
 target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_iface)
@@ -47,9 +49,25 @@ target_link_libraries(lost_signal_robot_app PUBLIC
   lost_signal_robot_platform
 )
 
+# Deployable chassis robots (differential today, ackermann/holonomic later).
+add_library(lost_signal_robot_robots STATIC
+  src/robot/robots/differential_robot.cpp
+)
+target_include_directories(lost_signal_robot_robots PUBLIC src)
+target_link_libraries(lost_signal_robot_robots PUBLIC lost_signal_robot_app)
+
+# Deployable replay/native providers (no hardware SDK in this repo).
+add_library(lost_signal_robot_providers STATIC
+  src/robot/providers/real_lidar2d.cpp
+)
+target_include_directories(lost_signal_robot_providers PUBLIC src)
+target_link_libraries(lost_signal_robot_providers PUBLIC lost_signal_robot_iface)
+
 add_library(lost_signal_robot_stack INTERFACE)
 target_link_libraries(lost_signal_robot_stack INTERFACE
   lost_signal_robot_app
+  lost_signal_robot_robots
+  lost_signal_robot_providers
 )
 
 # Native robot binary: provider-neutral, links only the robot stack.
@@ -67,6 +85,8 @@ target_link_libraries(lost_signal_sim_world PUBLIC lost_signal_robot_core)
 
 add_library(lost_signal_sim_providers STATIC
   src/sim/providers/sim_platform.cpp
+  src/sim/providers/lidar2d.cpp
+  src/sim/providers/lidar16.cpp
 )
 target_include_directories(lost_signal_sim_providers PUBLIC src)
 target_link_libraries(lost_signal_sim_providers PUBLIC
@@ -85,6 +105,7 @@ target_link_libraries(lost_signal_sim_eval PUBLIC
 
 add_library(lost_signal_sim_game STATIC
   src/sim/game/scenario_session.cpp
+  src/sim/robot/sim_robot.cpp
 )
 target_include_directories(lost_signal_sim_game PUBLIC src)
 target_link_libraries(lost_signal_sim_game PUBLIC
@@ -119,6 +140,27 @@ add_executable(test_truth_isolation
 )
 target_link_libraries(test_truth_isolation PRIVATE lost_signal_sim_game)
 add_test(NAME truth_isolation COMMAND test_truth_isolation)
+
+add_executable(test_chassis
+  tests/test_chassis.cpp
+)
+target_link_libraries(test_chassis PRIVATE lost_signal_robot_platform)
+add_test(NAME chassis COMMAND test_chassis)
+
+add_executable(test_lidar
+  tests/test_lidar.cpp
+)
+target_link_libraries(test_lidar PRIVATE
+  lost_signal_robot_providers
+  lost_signal_sim_providers
+)
+add_test(NAME lidar COMMAND test_lidar)
+
+add_executable(test_sim_robot
+  tests/test_sim_robot.cpp
+)
+target_link_libraries(test_sim_robot PRIVATE lost_signal_sim_game)
+add_test(NAME sim_robot COMMAND test_sim_robot)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

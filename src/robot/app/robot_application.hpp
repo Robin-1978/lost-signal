@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "robot/app/robot.hpp"
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/core/status.hpp"
 #include "robot/executive/executive.hpp"
@@ -31,7 +32,7 @@ namespace lost_signal::robot::app {
 // SIM, replay, UI, and native drivers are adapters around this class. None
 // may reach AutonomyCoordinator or RobotExecutive directly, and none may
 // read simulator ground truth into this path.
-class RobotApplication {
+class RobotApplication : public IRobot {
  public:
   explicit RobotApplication(
       std::unique_ptr<iface::IMapProvider> maps,
@@ -45,23 +46,23 @@ class RobotApplication {
                      .footprint_radius_m = 0.4}});
 
   // Task / map intent (typed, no coordinates from SIM truth).
-  core::Status submit_task(const iface::TaskRequest& req);
-  core::Status request_map(const std::string& map_id);
+  core::Status submit_task(const iface::TaskRequest& req) override;
+  core::Status request_map(const std::string& map_id) override;
 
   // Provider bring-up: claim (endpoint_id, role) ownership.
-  bool register_provider(const iface::EndpointDescriptor& desc);
+  bool register_provider(const iface::EndpointDescriptor& desc) override;
 
   // Provider -> robot: validated + queued, false when rejected.
-  bool publish_observation(const iface::ObservationFrame& obs);
+  bool publish_observation(const iface::ObservationFrame& obs) override;
   // Robot -> provider: newest non-expired command, else safe stop.
-  iface::MotionCommand take_command(core::MonotonicNs now_ns);
+  iface::MotionCommand take_command(core::MonotonicNs now_ns) override;
 
   // One deterministic cycle. Always returns a valid command.
-  iface::MotionCommand tick(core::MonotonicNs now_ns);
+  iface::MotionCommand tick(core::MonotonicNs now_ns) override;
 
-  iface::TaskStatus task_status() const;
-  iface::MapSnapshot active_map() const;
-  iface::ChannelHealth channel_health() const;
+  iface::TaskStatus task_status() const override;
+  iface::MapSnapshot active_map() const override;
+  iface::ChannelHealth channel_health() const override;
   const platform::RobotDescription& description() const { return desc_; }
 
   // Read-only robot outputs for OFFLINE comparison only (SIM eval / logging).
