@@ -79,6 +79,15 @@ identification stay out: the `IChassis` wrapper owns the real base.
   one timescale above behavior; trajectory sampling stays below it.
 - Global planning is event-driven (goal/map change), not per-tick. It
   returns a `Route` of `RoutePoint{x, y, yaw}`; heading travels with position.
+  `AStarPlanner` searches the static `MapSnapshot` raster (unknown
+  traversable with penalty, occupied impassable, no corner cutting) and
+  degrades to a straight line when the map has no raster; a walled-in goal
+  yields an invalid route (fail closed upstream). The coordinator refreshes
+  the active route on goal/map change and the local planner only ever
+  consumes that route, never a raw goal. The static map itself arrives as
+  an immutable revision from a provider (`StaticMapProvider` rasterizes
+  authored geometry; SLAM/file/remote providers implement the same seam),
+  so replans track content revisions, never live sensor frames.
   The coordinator refreshes the active route on goal/map change and the
   local planner only ever consumes that route, never a raw goal.
 - Local planning is DWA at decision rate and returns one feasible
@@ -87,7 +96,8 @@ identification stay out: the `IChassis` wrapper owns the real base.
   funnels into one command with no early returns, so the safety gate below
   runs unconditionally.
 - Validation is independent: it re-checks the exact candidate against raw
-  scan evidence (missing/stale scan rejects motion, hold passes). Admission
+  scan evidence (missing/stale scan rejects motion, hold passes). Motion
+  needs footprint plus braking distance (`v^2/2a`) of clearance. Admission
   never waives clearance, and a rejection is always a safe stop, never a
   re-planned command.
 - Control emits the validated candidate verbatim with a 200 ms watchdog.

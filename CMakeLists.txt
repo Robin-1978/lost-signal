@@ -39,6 +39,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/estimation/estimator.cpp
   src/robot/autonomy/mapping/mapper.cpp
   src/robot/autonomy/perception/lidar_perception.cpp
+  src/robot/autonomy/planning/astar_planner.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
   src/robot/autonomy/planning/prediction.cpp
@@ -111,6 +112,7 @@ add_library(lost_signal_sim_providers STATIC
   src/sim/providers/lidar2d.cpp
   src/sim/providers/lidar16.cpp
   src/sim/providers/sensor_suite.cpp
+  src/sim/providers/static_map.cpp
 )
 target_include_directories(lost_signal_sim_providers PUBLIC src)
 target_link_libraries(lost_signal_sim_providers PUBLIC
@@ -188,6 +190,18 @@ add_executable(test_sim_actor
 )
 target_link_libraries(test_sim_actor PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_actor COMMAND test_sim_actor)
+
+add_executable(test_astar
+  tests/test_astar.cpp
+)
+target_link_libraries(test_astar PRIVATE lost_signal_robot_autonomy)
+add_test(NAME astar COMMAND test_astar)
+
+add_executable(test_sim_nav
+  tests/test_sim_nav.cpp
+)
+target_link_libraries(test_sim_nav PRIVATE lost_signal_sim_scenario)
+add_test(NAME sim_nav COMMAND test_sim_nav)
 
 add_executable(test_dwa
   tests/test_dwa.cpp

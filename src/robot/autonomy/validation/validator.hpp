@@ -28,9 +28,13 @@ class IValidator {
 };
 
 // v1: holds always pass; motion needs min-range clearance beyond the
-// commanded stopping distance. Conservative and explicit.
+// footprint plus the speed-dependent braking distance (v^2 / 2a).
+// Conservative and explicit.
 class ClearanceValidator : public IValidator {
  public:
+  explicit ClearanceValidator(double brake_decel_mps2 = 2.0)
+      : brake_decel_mps2_(brake_decel_mps2) {}
+
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& /*est*/,
                             const PerceptionResult& perception,
@@ -45,13 +49,19 @@ class ClearanceValidator : public IValidator {
     for (float r : obs.ranges_m) min_range = r < min_range ? r : min_range;
     double speed = candidate.forward_mps < 0 ? -candidate.forward_mps
                                              : candidate.forward_mps;
-    double need_m = 0.5 + speed * 1.0;  // footprint + one decision period
+    // Footprint plus braking distance: the distance needed to stop from the
+    // candidate speed at the configured deceleration.
+    const double need_m =
+        0.5 + (speed * speed) / (2.0 * brake_decel_mps2_);
     if (candidate.forward_mps == 0.0 && candidate.yaw_rate_radps == 0.0) {
       return {true, "hold"};
     }
     if (min_range < need_m) return {false, "insufficient clearance"};
     return {true, "clear"};
   }
+
+ private:
+  double brake_decel_mps2_;
 };
 
 }  // namespace lost_signal::robot::autonomy

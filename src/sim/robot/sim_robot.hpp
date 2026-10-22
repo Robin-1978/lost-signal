@@ -3,6 +3,7 @@
 #include "robot/app/robot.hpp"
 #include "robot/app/robot_application.hpp"
 #include "sim/providers/sensor_suite.hpp"
+#include "sim/providers/static_map.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::robot {

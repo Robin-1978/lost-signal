@@ -1,0 +1,65 @@
+#include "sim/providers/static_map.hpp"
+
+#include <algorithm>
+#include <cmath>
+
+namespace lost_signal::sim::providers {
+
+StaticMapProvider::StaticMapProvider(world::World* world, double min_x_m,
+                                     double min_y_m, double width_m,
+                                     double height_m, double resolution_m)
+    : world_(world),
+      min_x_m_(min_x_m),
+      min_y_m_(min_y_m),
+      width_m_(width_m),
+      height_m_(height_m),
+      resolution_m_(resolution_m) {
+  snapshot_.map_id = "sim-world";
+  snapshot_.frame_id = "map";
+}
+
+void StaticMapProvider::rebuild() const {
+  const int w = static_cast<int>(std::ceil(width_m_ / resolution_m_));
+  const int h = static_cast<int>(std::ceil(height_m_ / resolution_m_));
+  snapshot_.width = w;
+  snapshot_.height = h;
+  snapshot_.resolution_m = resolution_m_;
+  snapshot_.origin_x_m = min_x_m_;
+  snapshot_.origin_y_m = min_y_m_;
+  snapshot_.occupancy.assign(w * h, -1);
+  if (world_ != nullptr) {
+    for (int gy = 0; gy < h; ++gy) {
+      for (int gx = 0; gx < w; ++gx) {
+        const double cx = min_x_m_ + (gx + 0.5) * resolution_m_;
+        const double cy = min_y_m_ + (gy + 0.5) * resolution_m_;
+        bool occupied = false;
+        for (const auto& b : world_->static_boxes()) {
+          if (cx >= b.x0 && cx < b.x1 && cy >= b.y0 && cy < b.y1) {
+            occupied = true;
+            break;
+          }
+        }
+        // No static information outside authored boxes in v1: free space
+        // stays unknown until the mapper observes it. The global planner
+        // treats unknown as traversable-with-penalty; the local safety
+        // layers never do.
+        snapshot_.occupancy[gy * w + gx] = occupied ? 100 : -1;
+      }
+    }
+    snapshot_.revision = world_->geometry_version() + 1;
+    built_version_ = world_->geometry_version();
+  }
+  has_built_ = true;
+}
+
+robot::iface::MapSnapshot StaticMapProvider::active_snapshot() const {
+  const std::uint64_t v = world_ != nullptr ? world_->geometry_version() : 0;
+  if (!has_built_ || v != built_version_) rebuild();
+  return snapshot_;
+}
+
+bool StaticMapProvider::select_map(const std::string& map_id) {
+  return map_id == "sim-world" || map_id.empty();
+}
+
+}  // namespace lost_signal::sim::providers

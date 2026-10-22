@@ -4,6 +4,7 @@
 
 #include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/planning/astar_planner.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"

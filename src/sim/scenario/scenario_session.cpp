@@ -2,7 +2,10 @@
 
 namespace lost_signal::sim::scenario {
 
-ScenarioSession::ScenarioSession() : suite_(&world_), app_(nullptr) {
+ScenarioSession::ScenarioSession()
+    : suite_(&world_),
+      app_(std::make_unique<providers::StaticMapProvider>(
+          &world_, -10.0, -10.0, 20.0, 20.0, 0.25)) {
   // SIM bring-up: the suite claims motion + lidar + imu descriptors.
   // Same seam a native driver uses, only the backend flag differs.
   suite_.register_all(app_);

@@ -4,7 +4,10 @@ namespace lost_signal::sim::robot {
 
 namespace r = ::lost_signal::robot;
 
-SimRobot::SimRobot() : suite_(&world_), app_(nullptr) {
+SimRobot::SimRobot()
+    : suite_(&world_),
+      app_(std::make_unique<providers::StaticMapProvider>(
+          &world_, -10.0, -10.0, 20.0, 20.0, 0.25)) {
   suite_.register_all(app_);
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();

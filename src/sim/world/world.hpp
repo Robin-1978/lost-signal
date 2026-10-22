@@ -36,8 +36,10 @@ class World {
 
   void set_static_boxes(std::vector<StaticBox> boxes) {
     static_boxes_ = std::move(boxes);
+    ++geometry_version_;
   }
   const std::vector<StaticBox>& static_boxes() const { return static_boxes_; }
+  std::uint64_t geometry_version() const { return geometry_version_; }
   void add_actor(const Actor& actor) { actors_.push_back(actor); }
   const std::vector<Actor>& actors() const { return actors_; }
 
@@ -45,6 +47,7 @@ class World {
   WorldTruth truth_{};
   std::vector<StaticBox> static_boxes_;
   std::vector<Actor> actors_;
+  std::uint64_t geometry_version_ = 0;
 };
 
 }  // namespace lost_signal::sim::world
