@@ -30,7 +30,7 @@ namespace lost_signal::robot::app {
 //
 // SIM, replay, UI, and native drivers are adapters around this class. None
 // may reach AutonomyCoordinator or RobotExecutive directly, and none may
-// read WorldTruth (sim-owned) into this path.
+// read simulator ground truth into this path.
 class RobotApplication {
  public:
   explicit RobotApplication(
@@ -65,11 +65,14 @@ class RobotApplication {
   const platform::RobotDescription& description() const { return desc_; }
 
   // Read-only robot outputs for OFFLINE comparison only (SIM eval / logging).
-  // Never fed back into tick() or any same-cycle decision.
+  // Never fed back into tick() or any same-cycle decision. Carries the
+  // ROBOT estimate so SIM can score truth-vs-estimate after the run; truth
+  // must never flow the other way.
   struct Diagnostics {
     bool has_observation = false;
     core::MonotonicNs last_obs_stamp_ns = core::kInvalidTime;
     std::uint64_t last_obs_seq = 0;
+    autonomy::EstimatedState estimate;
     iface::TaskStatus task;
     iface::ChannelHealth health;
   };

@@ -4,6 +4,26 @@
 
 namespace lost_signal::sim::eval {
 
+namespace {
+double wrap_pi(double a) {
+  while (a > M_PI) a -= 2.0 * M_PI;
+  while (a < -M_PI) a += 2.0 * M_PI;
+  return a;
+}
+}  // namespace
+
+EstimateError estimate_error(const EvalStep& step) {
+  EstimateError e;
+  if (!step.diag.has_observation || !step.diag.estimate.valid) return e;
+  e.has_estimate = true;
+  double dx = step.diag.estimate.x_m - step.truth_after.body_x_m;
+  double dy = step.diag.estimate.y_m - step.truth_after.body_y_m;
+  e.pos_err_m = std::hypot(dx, dy);
+  e.yaw_err_rad =
+      std::abs(wrap_pi(step.diag.estimate.yaw_rad - step.truth_after.body_yaw_rad));
+  return e;
+}
+
 EpisodeScore score_episode(const EpisodeRecorder& episode) {
   EpisodeScore s;
   s.steps = episode.size();
@@ -14,6 +34,8 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   double x1 = steps.back().truth_after.body_x_m;
   double y1 = steps.back().truth_after.body_y_m;
   s.distance_m = std::hypot(x1 - x0, y1 - y0);
+  double pos_sum = 0.0;
+  double yaw_sum = 0.0;
   for (const auto& st : steps) {
     if (st.cmd.is_safe_stop()) s.safe_stop_steps += 1;
     if (st.obs_accepted) {
@@ -21,6 +43,18 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
     } else {
       s.obs_rejected += 1;
     }
+    EstimateError e = estimate_error(st);
+    if (e.has_estimate) {
+      s.estimate_samples += 1;
+      pos_sum += e.pos_err_m;
+      yaw_sum += e.yaw_err_rad;
+      if (e.pos_err_m > s.max_pos_err_m) s.max_pos_err_m = e.pos_err_m;
+      if (e.yaw_err_rad > s.max_yaw_err_rad) s.max_yaw_err_rad = e.yaw_err_rad;
+    }
+  }
+  if (s.estimate_samples > 0) {
+    s.mean_pos_err_m = pos_sum / s.estimate_samples;
+    s.mean_yaw_err_rad = yaw_sum / s.estimate_samples;
   }
   return s;
 }

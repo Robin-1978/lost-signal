@@ -82,6 +82,7 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   if (d.has_observation) {
     d.last_obs_stamp_ns = coordinator_.last_observation().stamp_ns;
     d.last_obs_seq = coordinator_.last_observation().sequence;
+    d.estimate = coordinator_.estimate();
   }
   d.task = executive_.status();
   d.health = channel_.health();
