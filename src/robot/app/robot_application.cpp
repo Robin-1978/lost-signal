@@ -76,4 +76,16 @@ iface::ChannelHealth RobotApplication::channel_health() const {
   return channel_.health();
 }
 
+RobotApplication::Diagnostics RobotApplication::diagnostics() const {
+  Diagnostics d;
+  d.has_observation = coordinator_.has_observation();
+  if (d.has_observation) {
+    d.last_obs_stamp_ns = coordinator_.last_observation().stamp_ns;
+    d.last_obs_seq = coordinator_.last_observation().sequence;
+  }
+  d.task = executive_.status();
+  d.health = channel_.health();
+  return d;
+}
+
 }  // namespace lost_signal::robot::app

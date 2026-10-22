@@ -21,12 +21,34 @@ void ScenarioSession::submit_task(const robot::iface::TaskRequest& req) {
 }
 
 void ScenarioSession::step_once() {
+  // Truth snapshot BEFORE the step: recorded offline only.
+  eval::EvalStep rec;
+  rec.truth_before = world_.truth();
+
   world_.step(0.02);
+
   robot::iface::ObservationFrame obs;
   if (!provider_.poll_observation(obs)) return;
-  if (!app_.publish_observation(obs)) return;  // rejected: never ticks on it
+  rec.obs = obs;
+  rec.obs_accepted = app_.publish_observation(obs);
+  if (!rec.obs_accepted) {
+    // Rejected observation still recorded with truth for offline analysis,
+    // but never ticks the robot on it.
+    rec.cmd = robot::iface::MotionCommand::SafeStop(obs.stamp_ns);
+    rec.diag = app_.diagnostics();
+    rec.truth_after = world_.truth();
+    rec.step = episode_.size();
+    episode_.record(rec);
+    return;
+  }
   robot::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
   provider_.consume_command(cmd);
+
+  rec.cmd = cmd;
+  rec.diag = app_.diagnostics();
+  rec.truth_after = world_.truth();
+  rec.step = episode_.size();
+  episode_.record(rec);
 }
 
 }  // namespace lost_signal::sim::game

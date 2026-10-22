@@ -74,6 +74,15 @@ target_link_libraries(lost_signal_sim_providers PUBLIC
   lost_signal_sim_world
 )
 
+add_library(lost_signal_sim_eval STATIC
+  src/sim/eval/scoring.cpp
+)
+target_include_directories(lost_signal_sim_eval PUBLIC src)
+target_link_libraries(lost_signal_sim_eval PUBLIC
+  lost_signal_robot_stack
+  lost_signal_sim_world
+)
+
 add_library(lost_signal_sim_game STATIC
   src/sim/game/scenario_session.cpp
 )
@@ -81,6 +90,7 @@ target_include_directories(lost_signal_sim_game PUBLIC src)
 target_link_libraries(lost_signal_sim_game PUBLIC
   lost_signal_robot_stack
   lost_signal_sim_providers
+  lost_signal_sim_eval
 )
 
 # Sim binary: the only target allowed to link sim + rendering/scoring later.
@@ -103,6 +113,12 @@ add_executable(test_transport
 )
 target_link_libraries(test_transport PRIVATE lost_signal_robot_stack)
 add_test(NAME transport COMMAND test_transport)
+
+add_executable(test_truth_isolation
+  tests/test_truth_isolation.cpp
+)
+target_link_libraries(test_truth_isolation PRIVATE lost_signal_sim_game)
+add_test(NAME truth_isolation COMMAND test_truth_isolation)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

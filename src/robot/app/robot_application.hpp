@@ -64,6 +64,17 @@ class RobotApplication {
   iface::ChannelHealth channel_health() const;
   const platform::RobotDescription& description() const { return desc_; }
 
+  // Read-only robot outputs for OFFLINE comparison only (SIM eval / logging).
+  // Never fed back into tick() or any same-cycle decision.
+  struct Diagnostics {
+    bool has_observation = false;
+    core::MonotonicNs last_obs_stamp_ns = core::kInvalidTime;
+    std::uint64_t last_obs_seq = 0;
+    iface::TaskStatus task;
+    iface::ChannelHealth health;
+  };
+  Diagnostics diagnostics() const;
+
  private:
   std::unique_ptr<iface::IMapProvider> maps_;
   platform::RobotDescription desc_;

@@ -13,6 +13,8 @@ class AutonomyCoordinator {
  public:
   void ingest_observation(const iface::ObservationFrame& obs);
   iface::MotionCommand update(iface::MapSnapshot map, core::MonotonicNs now_ns);
+  bool has_observation() const { return has_observation_; }
+  const iface::ObservationFrame& last_observation() const { return last_obs_; }
 
  private:
   bool has_observation_ = false;
