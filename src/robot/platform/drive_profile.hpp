@@ -20,6 +20,12 @@ struct DriveProfile {
   double free_speed_mps = 3.0;
   double stall_force_N = 54.0;
   double wheel_equiv_mass_kg = 3.0;
+  // Rolling contact, shared with the ROBOT feedforward form (single
+  // contract: one file configures both sides).
+  double vehicle_mass_kg = 24.0;
+  double rolling_resist = 0.01;
+  double viscous_drag_N_per_mps = 0.6;
+  double coulomb_smoothing_mps = 0.05;
   double max_steer_rad = 0.55;
   double max_steer_rate_radps = 2.0;
   double steer_time_constant_s = 0.08;

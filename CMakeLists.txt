@@ -146,6 +146,7 @@ add_library(lost_signal_sim_world STATIC
   src/sim/world/world.cpp
   src/sim/world/motor.cpp
   src/sim/world/service_brake.cpp
+  src/sim/world/contact.cpp
 )
 target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC
@@ -334,6 +335,12 @@ add_executable(test_motor
 )
 target_link_libraries(test_motor PRIVATE lost_signal_sim_eval)
 add_test(NAME motor COMMAND test_motor)
+
+add_executable(test_contact
+  tests/test_contact.cpp
+)
+target_link_libraries(test_contact PRIVATE lost_signal_sim_eval)
+add_test(NAME contact COMMAND test_contact)
 
 add_executable(test_lidar
   tests/test_lidar.cpp

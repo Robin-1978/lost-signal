@@ -43,7 +43,7 @@ Accept: step-response unit test pins the curve (stall force at 0 speed,
 zero at free speed, electrical braking authority on oppose); all HIL
 tests unchanged behaviorally (re-tune only if the curve moves settling).
 
-### S2 Tire contact (small)
+### S2 Tire contact (small) — landed
 Port `hardware/physics/tire_contact` (Coulomb + smoothing + viscous,
 gravity is physics): per-wheel contact force opposes slip, added to the
 motor force before integration. Same `DriveProfile` supplies the

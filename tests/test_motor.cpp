@@ -7,6 +7,7 @@
 
 #include "robot/platform/drive_profile.hpp"
 #include "sim/eval/drive_profile_io.hpp"
+#include "sim/world/contact.hpp"
 #include "sim/world/motor.hpp"
 #include "sim/world/service_brake.hpp"
 #include "sim/world/world.hpp"
@@ -98,18 +99,23 @@ int main() {
     assert(std::abs(w.truth().forward_mps - 0.36) < 1e-9);
     assert(std::abs(w.truth().body_x_m - 0.36 * 0.02) < 1e-9);
     for (int i = 0; i < 400; ++i) w.step(0.02);
-    assert(w.truth().forward_mps > 2.99);  // settled at free speed...
-    assert(w.truth().forward_mps <= 3.0 + 1e-9);  // ...never above it
-    // Oppose from speed: full electrical authority, slope -stall/m.
+    // Drag equilibrium: 54(1-v/3) = 1.18+0.6v -> v ~= 2.84. Below the
+    // drag-free no-load speed, never above it.
+    assert(w.truth().forward_mps > 2.80 && w.truth().forward_mps < 2.88);
+    // Oppose from speed: electrical authority plus drag, summed exactly.
     const double v0 = w.truth().forward_mps;
+    world::WheelContactParams cp;
+    cp.load_per_wheel_N = 24.0 * 9.81 / 2.0;
+    const double drag0 = world::contact_resistance_N(v0, cp);
     set_diff_duty(w, -1.0);
     w.step(0.02);
-    assert(std::abs((w.truth().forward_mps - v0) + 0.36) < 1e-9);
-    // Coast: zero duty is true coast in S1 (no drag yet; S2 adds contact).
+    const double expect_dv = (-54.0 + drag0) / 3.0 * 0.02;
+    assert(std::abs((w.truth().forward_mps - v0) - expect_dv) < 1e-9);
+    // Coast: zero duty decays through drag (S2 contact owns this now).
     set_diff_duty(w, 0.0);
     const double vc = w.truth().forward_mps;
     w.step(0.02);
-    assert(w.truth().forward_mps == vc);
+    assert(w.truth().forward_mps < vc && w.truth().forward_mps >= 0.0);
   }
 
   // Brake hook: dissipative only — stops, holds, never reverses.
@@ -120,7 +126,7 @@ int main() {
     w.set_motor_params(mp);
     set_diff_duty(w, 1.0);
     for (int i = 0; i < 200; ++i) w.step(0.02);
-    assert(w.truth().forward_mps > 2.9);
+    assert(w.truth().forward_mps > 2.80);  // drag equilibrium, not free speed
     set_diff_duty(w, 0.0);
     w.set_brake_request(0, 1.0);
     w.set_brake_request(1, 1.0);
@@ -152,16 +158,24 @@ int main() {
       if (w2.truth().forward_mps == 0.0) stopped = true;
     }
     assert(stopped);
-    // Disabled by default: requests with zero capacity are no-ops.
-    world::World w3 = make_diff_world();
-    for (int i = 0; i < 100; ++i) w3.step(0.02);
-    set_diff_duty(w3, 0.0);  // coast: motor contributes nothing now
-    w3.step(0.02);
-    const double v_before = w3.truth().forward_mps;
-    w3.set_brake_request(0, 1.0);
-    w3.set_brake_request(1, 1.0);
-    w3.step(0.02);
-    assert(w3.truth().forward_mps == v_before);
+    // Disabled by default: requests with zero capacity change nothing
+    // (a twin world without requests integrates identically).
+    world::World with_brake = make_diff_world();
+    world::World without_brake = make_diff_world();
+    for (int i = 0; i < 100; ++i) {
+      with_brake.step(0.02);
+      without_brake.step(0.02);
+    }
+    set_diff_duty(with_brake, 0.0);
+    set_diff_duty(without_brake, 0.0);
+    with_brake.set_brake_request(0, 1.0);
+    with_brake.set_brake_request(1, 1.0);
+    for (int i = 0; i < 20; ++i) {
+      with_brake.step(0.02);
+      without_brake.step(0.02);
+      assert(with_brake.truth().forward_mps ==
+             without_brake.truth().forward_mps);
+    }
   }
 
   // DriveProfile -> plant chain: one set of numbers, sim and native.

@@ -35,6 +35,10 @@ void World::set_brake_request(int wheel, double normalized) {
   brake_request_[wheel] = std::clamp(normalized, 0.0, 1.0);
 }
 
+void World::set_incline(double forward_grade) {
+  incline_grade_ = std::isfinite(forward_grade) ? forward_grade : 0.0;
+}
+
 void World::apply(const robot::iface::ActuatorCommand& cmd) {
   last_mode_ = cmd.mode;
   truth_.drive_count = robot::iface::actuator_drive_count(cmd.mode);
@@ -49,10 +53,9 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
 
 void World::step(double dt_s) {
   truth_.step += 1;
-  // Force-driven wheels: duty -> DC motor force (stall/free) -> accel.
-  // The lag is emergent (tau = m * free / stall), not a fitted constant.
-  // Service-brake capacity resolves against shaft velocity here and can
-  // only dissipate: it never reverses a wheel (holding is exact at rest).
+  // Force-driven wheels: motor + gravity - contact = accel, then the
+  // dissipative service brake. Stiction, drag, and brake each clamp to an
+  // exact zero instead of jittering across it.
   const double wheel_r = std::max(1e-6, motor_.wheel_radius_m);
   const double mass = std::max(1e-6, motor_.wheel_equiv_mass_kg);
   if (!(dt_s > 0.0)) {
@@ -62,23 +65,52 @@ void World::step(double dt_s) {
           truth_.drive_duty[i] * motor_.free_speed_mps / wheel_r;
     }
   } else {
+    // Force-driven wheels: motor + gravity - contact = accel. Stiction
+    // owns the patch below the smoothing speed (exact hold, no creep);
+    // rolling resistance is dissipative above it (never reverses motion).
+    const double total_mass = std::max(0.0, motor_.vehicle_mass_kg);
+    const double n_wheels = static_cast<double>(truth_.drive_count);
+    WheelContactParams contact;
+    contact.rolling_resist = motor_.rolling_resist;
+    contact.load_per_wheel_N = total_mass * kGravityMps2 / n_wheels;
+    contact.coulomb_smoothing_mps = motor_.coulomb_smoothing_mps;
+    contact.viscous_drag_N_per_mps = motor_.viscous_drag_N_per_mps;
+    const double gravity_N =
+        -total_mass * kGravityMps2 * incline_grade_ / n_wheels;
+    const double capacity_N = contact_static_capacity_N(contact);
+    const double smooth_mps =
+        std::max(1e-4, motor_.coulomb_smoothing_mps);
     for (int i = 0; i < truth_.drive_count; ++i) {
       const double v = truth_.drive_radps[i] * wheel_r;
       const double motor_f = dc_motor_force_N(truth_.drive_duty[i], v,
                                               motor_.stall_force_N,
                                               motor_.free_speed_mps);
-      const double v_motor = v + motor_f / mass * dt_s;
-      // Service brake resolves against shaft velocity and only dissipates:
-      // authority covering the stop lands exactly at zero (never reversed),
-      // anything less subtracts along the motion. Holding at rest is exact.
+      const double applied_f = motor_f + gravity_N;
+      double v_new;
+      if (std::abs(v) <= smooth_mps && std::abs(applied_f) <= capacity_N) {
+        v_new = 0.0;  // stiction holds (no creep, exact rest)
+      } else {
+        const double v_free = v + applied_f / mass * dt_s;
+        const double resist_N = contact_resistance_N(v, contact);
+        if (resist_N == 0.0 || v_free == 0.0) {
+          v_new = v_free;
+        } else if (((resist_N < 0.0) != (v_free < 0.0)) &&
+                   std::abs(resist_N) * dt_s >= mass * std::abs(v_free)) {
+          v_new = 0.0;  // drag covers the stop: exact, never reversed
+        } else {
+          v_new = v_free + resist_N / mass * dt_s;
+        }
+      }
+      // Service brake resolves against the contact-stage velocity and only
+      // dissipates: authority covering the stop lands exactly at zero
+      // (never reversed), anything less subtracts along the motion.
       const double capacity_Nm = brakes_[i].step(brake_request_[i], dt_s);
       const double brake_N = capacity_Nm / wheel_r;
-      double v_new = v_motor;
-      if (brake_N > 0.0 && v_motor != 0.0) {
-        if (brake_N * dt_s >= mass * std::abs(v_motor)) {
+      if (brake_N > 0.0 && v_new != 0.0) {
+        if (brake_N * dt_s >= mass * std::abs(v_new)) {
           v_new = 0.0;
         } else {
-          v_new = v_motor - std::copysign(brake_N * dt_s / mass, v_motor);
+          v_new -= std::copysign(brake_N * dt_s / mass, v_new);
         }
       }
       truth_.drive_radps[i] = v_new / wheel_r;

@@ -27,6 +27,10 @@ MotorParams motor_params_from_profile(
   out.free_speed_mps = profile.free_speed_mps;
   out.stall_force_N = profile.stall_force_N;
   out.wheel_equiv_mass_kg = profile.wheel_equiv_mass_kg;
+  out.vehicle_mass_kg = profile.vehicle_mass_kg;
+  out.rolling_resist = profile.rolling_resist;
+  out.viscous_drag_N_per_mps = profile.viscous_drag_N_per_mps;
+  out.coulomb_smoothing_mps = profile.coulomb_smoothing_mps;
   out.wheel_radius_m = profile.wheel_radius_m;
   out.track_width_m = profile.track_width_m;
   out.wheel_base_m = profile.wheel_base_m;

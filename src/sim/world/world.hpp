@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "robot/iface/motion.hpp"
+#include "sim/world/contact.hpp"
 #include "sim/world/service_brake.hpp"
 
 namespace lost_signal::sim::world {
@@ -62,6 +63,13 @@ struct MotorParams {
   // Per-wheel equivalent translational mass (wheel + reflected rotor).
   // Same numbers the ROBOT feedforward closes against (sim-native parity).
   double wheel_equiv_mass_kg = 3.0;
+  // Rolling contact (S2): Coulomb+viscous tire/ground model shared with the
+  // ROBOT feedforward form. Load derives from total mass (gravity is
+  // physics, applied below); rr folds tire+ground (no surface model yet).
+  double vehicle_mass_kg = 24.0;
+  double rolling_resist = 0.01;
+  double viscous_drag_N_per_mps = 0.6;
+  double coulomb_smoothing_mps = 0.05;
   double wheel_radius_m = 0.1;
   double track_width_m = 0.5;
   double wheel_base_m = 0.56;
@@ -85,6 +93,13 @@ class World {
   // Out-of-range wheels are ignored. Reconfiguring the motor params resets
   // the brake lag plants.
   void set_brake_request(int wheel, double normalized);
+  // SIM-side scenario/test hook (not a ROBOT channel): longitudinal grade
+  // (rise/run along body-forward, + means uphill forward). Gravity pulls
+  // through the contact patch: stiction holds gentle grades exactly,
+  // steep grades break away. Default 0 (flat). Lateral grade needs S3's
+  // lateral tire state and is rejected here (fail closed, never silently
+  // dropped into the longitudinal patch).
+  void set_incline(double forward_grade);
   // Actuator-level plant input: normalized duties per the command mode.
   // Wheel speeds first-order track duty-implied targets; steers servo
   // toward duty-implied angles; the body follows by chassis kinematics.
@@ -110,6 +125,7 @@ class World {
   MotorParams motor_{};
   std::array<ServiceBrakePlant, 4> brakes_;
   std::array<double, 4> brake_request_ = {};
+  double incline_grade_ = 0.0;  // longitudinal rise/run, SIM-side only
   robot::iface::ActuatorMode last_mode_ = robot::iface::ActuatorMode::kDiffDuty;
   std::vector<StaticBox> static_boxes_;
   std::vector<Actor> actors_;

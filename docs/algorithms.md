@@ -240,6 +240,11 @@ route, pre-activation hold).
   when joints are known (active electrical braking); blind stops stay
   SafeZero. The SIM service brake (`sim/world/service_brake.hpp`) is the
   dissipative counterpart, driven by a SIM-side hook, never a ROBOT channel.
+- Rolling contact (`sim/world/contact.hpp`) shares the ROBOT feedforward
+  form (`R = rr*load*tanh(v/s) + c*v`): stiction holds slow wheels exactly
+  (no creep; gentle longitudinal grades stick via a SIM-side incline hook),
+  drag is dissipative only (never reverses). Traction-limit wheelspin needs
+  wheel-vs-body slip state and waits for S3 force bodies.
 
 ## Validation (trajectory verdicts with minimum-risk escape)
 

@@ -45,15 +45,15 @@ int main() {
   const double dx1 = world.truth().body_x_m - x0;
   assert(dx1 > 0.005 && dx1 < 0.02);
   assert(world.truth().drive_radps[0] > 0.0);
-  // Settles near free speed after several time constants.
+  // Settles at the motor-vs-drag equilibrium (~2.84), never above free.
   for (int i = 0; i < 100; ++i) world.step(0.02);
-  assert(world.truth().forward_mps > 2.9);
+  assert(world.truth().forward_mps > 2.80 && world.truth().forward_mps < 2.88);
 
   // Feedback reflects the plant, and the envelope carries it through.
   robot::iface::ObservationFrame obs2;
   assert(suite.poll_envelope(obs2));
   assert(obs2.drive_count == 2);
-  assert(obs2.forward_mps > 2.9);
+  assert(obs2.forward_mps > 2.80 && obs2.forward_mps < 2.88);
 
   // Drive profile file: overrides merge over factory defaults; malformed
   // files and unknown kinds fail closed without touching the output.
@@ -82,7 +82,9 @@ int main() {
     cmd.drive[0] = cmd.drive[1] = 1.0;
     tuned.apply(cmd);
     for (int i = 0; i < 200; ++i) tuned.step(0.02);
-    assert(tuned.truth().forward_mps > 3.9);  // settles at 4 m/s, not 3
+    // Settles at the retuned equilibrium (free 4.0: 54(1-v/4) = 1.18+0.6v
+    // -> v ~= 3.75), not at the drag-free 4 m/s.
+    assert(tuned.truth().forward_mps > 3.70 && tuned.truth().forward_mps < 3.80);
     assert(!eval::load_drive_profile(path + ".missing", prof, &err));
     {
       std::ofstream out(path, std::ios::binary | std::ios::trunc);
