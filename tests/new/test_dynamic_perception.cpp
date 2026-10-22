@@ -421,6 +421,29 @@ CHECK(std::abs(anonymous_tracks.front().state.p.x - truth.dynamic_objects.front(
  }
  CHECK(shifted_wall_perception.dynamic_obstacles().active_tracks(1.7, 1.0).empty());
 
+ // A degraded map pose must not turn static geometry into anonymous moving
+ // actors. The raw foreground returns remain available to the local obstacle
+ // layer and localization-independent safety guard, but map-relative dynamic
+ // tracks are withheld until pose confidence recovers.
+ sim::LidarPerceptionSystem uncertain_wall_perception(wall_map, 31);
+ for (int frame_index = 0; frame_index < 4; ++frame_index) {
+ auto wall_frame = wall_sensors.capture_lidar(
+ wall_truth, 2.0 + 0.1 * frame_index, lidar_config,
+ sim::planar_lidar_truth(wall_map, {1.0, 5.0}, 0.0, 360, 10.0));
+ auto uncertain_state = wall_estimate;
+ uncertain_state.localization_confidence = 0.20;
+ uncertain_state.localization_valid = true;
+ const auto uncertain = uncertain_wall_perception.process(
+ *wall_frame.lidar, *wall_frame.lidar_static_reference,
+ {uncertain_state.position, uncertain_state.heading_rad,
+ uncertain_state.linear_velocity_mps, uncertain_state.lateral_velocity_mps,
+ uncertain_state.angular_velocity_radps, 0.0, 0.0, 0.0, false,
+ uncertain_state.localization_confidence, uncertain_state.localization_valid},
+ {}, 1.0);
+ CHECK(!uncertain.dynamic_object_detected);
+ }
+ CHECK(uncertain_wall_perception.dynamic_obstacles().active_tracks(2.3, 1.0).empty());
+
  // A pitched single-line scanner can intersect a slope or flat ground. The
  // endpoint is free in a 2D occupancy grid but lies on the 2.5D elevation
  // layer, so it must be ground rather than a moving object. The reference is

@@ -40,6 +40,37 @@ void ScenarioSession::decide_control() {
  const double measured_left_mps = snapshot_.control.left_measured_mps;
  const double measured_right_mps = snapshot_.control.right_measured_mps;
  snapshot_.control = {};
+ const auto& estimate = robot_application_->estimator().state();
+ const auto initial_lidar_safety = lidar_safety_available_
+ ? evaluate_lidar_safety(estimate.linear_velocity_mps)
+ : sim::autonomy::LidarSafetyAssessment{};
+ if (lidar_safety_available_) {
+ snapshot_.control.lidar_safety_stop_required =
+ initial_lidar_safety.stop_required;
+ snapshot_.control.lidar_safety_measurement_valid =
+ initial_lidar_safety.measurement_valid;
+ snapshot_.control.lidar_safety_forward_clearance_m =
+ initial_lidar_safety.forward_clearance_m;
+ snapshot_.control.lidar_safety_required_clearance_m =
+ initial_lidar_safety.required_forward_clearance_m;
+ }
+ if (lidar_safety_available_ && initial_lidar_safety.stop_required) {
+ // Fail closed before route following or DWA. Missing, stale and invalid
+ // sensor evidence is treated the same as a measured near-field obstacle;
+ // an old validated trajectory is not permission to keep moving.
+ held_command() = {};
+ held_command().controlled_stop = true;
+ snapshot_.waiting_for_clearance = true;
+ DecisionEvidence decision;
+ decision.observation_time_s = snapshot_.time_s;
+ decision.constraint_code = initial_lidar_safety.measurement_valid
+ ? "lidar-clearance" : "sensor-health";
+ decision.reason_code = initial_lidar_safety.measurement_valid
+ ? "sensor-frame-clearance" : "lidar-safety-unavailable";
+ decision.action_code = "wait";
+ publish_decision(std::move(decision));
+ return;
+ }
  if (robot_application_->route_path_index() >= planned_route_.size()) {
   if (planned_route_.empty()) {
    held_command() = {0.0, 0.0};
@@ -58,7 +89,6 @@ void ScenarioSession::decide_control() {
   // parking short with tv=0 until timeout.
   robot_application_->set_route_path_index(planned_route_.size() - 1);
  }
- const auto& estimate = robot_application_->estimator().state();
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
@@ -1217,6 +1247,16 @@ if (!continuous_execution && remaining_m > 0.5) {
  // into a permanent hard stop.
  local_request.required_clearance_m = hard_crossing_clearance;
  local_request.robot_radius_m = robot_definition_.collision_radius_m;
+ // DWA candidate validation receives the live sensor returns in base_link.
+ // The raster remains the route/soft-margin view; this guard prevents a
+ // localization error from relocating a measured obstacle into another map
+ // cell and silently authorizing a sweep through it.
+ local_request.live_obstacle_points_in_base =
+ robot_application_->latest_lidar_obstacle_points(
+ snapshot_.time_s, estimate.linear_velocity_mps, 3.0, 96);
+ local_request.live_obstacle_margin_m =
+ std::max(execution_policy.physical_standoff_reserve_m,
+ 0.5 * map_definition_.grid_resolution_m);
  local_request.differential_track_m = robot_definition_.drive_type == "tracked"        ? robot_definition_.effective_track_width_m
    : robot_definition_.drive_type == "differential"
  ? robot_definition_.wheel_base_m

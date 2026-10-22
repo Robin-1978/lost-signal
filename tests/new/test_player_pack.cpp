@@ -3,7 +3,7 @@
 // validator -> garage budget -> mission to completion. The overlay copies the
 // shipped tree (player packs never edit shipped files), adds one file, and
 // the catalog treats it identically. Algorithm components still need C++
-// (factory seams documented in docs/diy.md) — hardware is data, algorithms
+// (factory seams documented in docs/design/diy.md) — hardware is data, algorithms
 // are code, and this test pins exactly that boundary.
 
 #include "sim/game/mission/campaign_progress.hpp"

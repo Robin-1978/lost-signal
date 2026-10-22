@@ -5,7 +5,7 @@
     "fidelity": "typical",
     "basis": "typical interchangeable rubber-track contact packages for the RO-3 reference platform",
     "source_refs": [
-      "docs/reference-platform.md#ro-3-tracked-reference"
+      "docs/reference/reference-platform.md#ro-3-tracked-reference"
     ]
   },
   "components": [

@@ -80,4 +80,4 @@ For experimental content, copy `assets/` outside the repository and use it as an
 - sensor-facing algorithms may not read hidden actor truth;
 - physical values come from a source or measurement, not from tuning solely to pass a mission;
 - new telemetry must be represented in headless or automated checks when practical;
-- third-party assets require source and license records in `docs/asset-provenance.md` or `THIRD_PARTY_NOTICES.md`.
+- third-party assets require source and license records in `docs/reference/asset-provenance.md` or `THIRD_PARTY_NOTICES.md`.

@@ -74,7 +74,7 @@ The completed foundation includes:
 - deterministic headless execution, replay/run artifacts, content validation, localization, mapping, prediction,
  global planning, local rollout planning, independent trajectory validation and actuator control.
 
-The [reference platform](reference-platform.md) and [simulation model audit](simulation-model-audit.md) define the
+The [reference platform](reference/reference-platform.md) and [simulation model audit](design/simulation-model-audit.md) define the
 limits of these claims. Typical parameters are engineering assumptions until a named physical target supplies
 calibration data and held-out validation. The architecture supports transfer experiments; it does not prove
 sim-to-real accuracy.
@@ -195,7 +195,7 @@ prediction window and compares ego and target at the same time. A longer-range o
 because it observes a real target that will occupy the same place at a different time. A mission goal may not lie in a
 fatal actor's authored swept volume.
 
-Maintain a [production coverage ledger](verification-coverage.md) for every algorithm and model. Each row names its contract, units/frames/time
+Maintain a [production coverage ledger](operations/verification-coverage.md) for every algorithm and model. Each row names its contract, units/frames/time
 semantics, independent oracle, invariant/property cases, boundaries and faults, deterministic replay/system evidence,
 and remaining claim limit. Additions enter integration only after their focused gate exists. Tests must cover sensor
 density and cadence changes, stale/out-of-order data, degenerate and no-solution inputs, actuator saturation, low
@@ -543,7 +543,7 @@ power telemetry has an explicit stale/missing policy for reserve enforcement, an
 `lost_signal_robot_executive`. Battery/charger physics remains a provider concern; the executive only consumes the
 typed LSRI power observation and publishes a mission-level resource directive.
 
-The native deployment workflow is documented in [Native hardware integration](native-hardware-integration.md): native
+The native deployment workflow is documented in [Native hardware integration](design/native-hardware-integration.md): native
 providers, calibration and endpoint capabilities replace SIM providers at the composition root while ROBOT algorithms keep
 their typed contracts. The guide is a bring-up contract, not evidence that a particular vendor driver or real robot has
 already been validated.
@@ -576,7 +576,7 @@ the trajectory validator or the safety stop limiter.
 
 ### P3 — Re-establish the release candidate evidence
 
-After P1 and P2 are frozen, run the gates in [Validation](validation.md): GCC 13 Release and the complete CTest suite
+After P1 and P2 are frozen, run the gates in [Validation](operations/validation.md): GCC 13 Release and the complete CTest suite
 with parallelism 8; ROBOT-only build and tests; schema, content, locale and generated-artifact checks; identical-seed
 run artifact reproduction; graphical input, shutdown and recommended-experience smoke tests; Clang 18 compatibility;
 and ASan/UBSan last. Record the exact revision, commands, counts and results. A historical green baseline does not cover
@@ -1034,6 +1034,15 @@ data. Any environment friction or weather estimate used by planning must be
 declared as a map/provider observation or a robot-side estimate, never silently
 copied from the contact solver.
 
+The dynamic-perception path now has the corresponding localization firewall. A
+map-relative foreground residual is not enough to create an actor when pose
+confidence is degraded: ROBOT clears old map-frame tracks and keeps the raw
+return in the transient/local safety field until localization recovers. This
+prevents static orchard trees and walls from becoming phantom forklifts in the
+planner or the 2D diagnostic view. Anonymous tracks without an established
+actor class are rendered as unclassified hazards, never as forklifts. The
+focused test covers this failure separately from the raw LiDAR stop test.
+
 The truth firewall is now a documented invariant across every observable
 quantity, not only collision:
 
@@ -1049,6 +1058,11 @@ quantity, not only collision:
 - Unknown terrain is conservative. ROBOT estimates roughness and available
   traction from IMU, encoders, estimated speed and motion response; map roughness
   is only an optional prior with provenance and confidence.
+
+Sensor capability is explicit as well: a build without a LiDAR does not claim
+LiDAR safety coverage, while an equipped LiDAR fails closed until ROBOT receives
+a fresh valid scan. An intentionally sensorless teaching configuration is not
+silently treated as a missing-frame fault.
 
 The deployable adapter now omits simulator-authored roughness and physical
 surface coefficients. LSRM v2 validates an optional roughness prior only when a

@@ -114,6 +114,9 @@ class AutonomyCoordinator {
  std::vector<CollisionBox> static_obstacles);
  CollisionMonitor& collision_monitor();
  const CollisionMonitor& collision_monitor() const;
+ LidarSafetyAssessment assess_lidar_safety(
+ const LidarSafetyObservation& observation,
+ const LidarSafetyConfig& config) const;
 
  void reset_chassis_controllers();
  RobotMotionRuntime& motion_runtime() { return motion_runtime_; }
@@ -161,6 +164,12 @@ class AutonomyCoordinator {
  const Scan& scan, const Scan& static_reference,
  const LidarProjectionState& state, const LidarProjectionConfig& config,
  double track_max_age_s);
+ LidarSafetyAssessment assess_latest_lidar_safety(
+ double time_s, double forward_speed_mps,
+ const LidarSafetyConfig& config) const;
+ std::vector<Vec2> latest_lidar_obstacle_points(
+ double time_s, double forward_speed_mps, double maximum_range_m,
+ std::size_t maximum_points) const;
  KnownMapLocalizationResult localize_known_map(
  const Scan& scan, Vec2 odom_position, double odom_heading_rad,
  const runtime::MapSnapshot& map, double timestamp_s) const;

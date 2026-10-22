@@ -1034,6 +1034,8 @@ void WorldRenderer::draw_world(const mission::PresentationFrameView& mission) co
   const auto estimated = world_to_screen(shown);
   const auto position = estimated;
  const bool pedestrian = obstacle.visual_kind == "pedestrian";
+ const bool vehicle = obstacle.visual_kind == "vehicle" ||
+ obstacle.visual_kind == "forklift";
  const float radius = pedestrian
  ? clampf(static_cast<float>(obstacle.radius_m) * scale_, 14.0f, 25.0f)
  : clampf(static_cast<float>(obstacle.radius_m) * scale_, 25.0f, 42.0f);
@@ -1065,7 +1067,7 @@ void WorldRenderer::draw_world(const mission::PresentationFrameView& mission) co
  DrawLineEx(hips, left_foot, std::max(3.0f, radius * 0.15f), {49, 62, 60, 255});
  DrawLineEx(hips, right_foot, std::max(3.0f, radius * 0.15f), {49, 62, 60, 255});
  DrawCircleV(head, radius * 0.23f, {224, 185, 151, 255});
- } else {
+ } else if (vehicle) {
  const auto front = polar(position, radius * 0.94f, actor_radians);
  const auto fork_left = polar(front, radius * 0.37f, actor_radians + 1.5708f);
  const auto fork_right = polar(front, radius * 0.37f, actor_radians - 1.5708f);
@@ -1088,6 +1090,19 @@ void WorldRenderer::draw_world(const mission::PresentationFrameView& mission) co
  DrawCircleV(polar(position, radius * 0.50f, actor_radians - 1.5708f), radius * 0.13f,
  {24, 25, 23, 255});
  DrawCircleV(position, 3.0f + pulse * 1.4f, {255, 211, 106, 255});
+ } else {
+ // Anonymous perception tracks are intentionally rendered as unclassified
+ // hazards. A generic marker keeps the diagnostic honest: it may be a real
+ // temporary obstacle, but ROBOT has not established a vehicle class.
+ const float arm = radius * 0.68f;
+ DrawCircleV(position, radius * 0.76f, {92, 102, 98, 210});
+ DrawRing(position, radius * 0.76f, radius * 0.92f, 0, 360, 32, {255, 190, 86, 230});
+ DrawLineEx({position.x - arm, position.y - arm},
+ {position.x + arm, position.y + arm}, std::max(3.0f, radius * 0.12f),
+ {255, 219, 133, 245});
+ DrawLineEx({position.x - arm, position.y + arm},
+ {position.x + arm, position.y - arm}, std::max(3.0f, radius * 0.12f),
+ {255, 219, 133, 245});
  }
   const float separation =
     distance(estimated, robot_position) / scale_ - static_cast<float>(obstacle.radius_m) - 0.38f;

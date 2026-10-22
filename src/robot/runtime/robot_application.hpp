@@ -376,6 +376,18 @@ class RobotApplication {
  autonomy::CollisionAssessment assess_collision(const autonomy::CollisionObservation& observation) {
  return active_coordinator().collision_monitor().assess(observation);
  }
+ autonomy::LidarSafetyAssessment assess_latest_lidar_safety(
+ double time_s, double forward_speed_mps,
+ const autonomy::LidarSafetyConfig& config) const {
+ return active_coordinator().assess_latest_lidar_safety(
+ time_s, forward_speed_mps, config);
+ }
+ std::vector<Vec2> latest_lidar_obstacle_points(
+ double time_s, double forward_speed_mps, double maximum_range_m,
+ std::size_t maximum_points) const {
+ return active_coordinator().latest_lidar_obstacle_points(
+ time_s, forward_speed_mps, maximum_range_m, maximum_points);
+ }
  void configure_collision_monitor(Vec2 world_size, double robot_radius_m,
  std::vector<autonomy::CollisionBox> static_obstacles) {
  active_coordinator().configure_collision_monitor(world_size, robot_radius_m,

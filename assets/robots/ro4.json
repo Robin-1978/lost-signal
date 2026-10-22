@@ -6,7 +6,7 @@
     "fidelity": "typical",
     "basis": "independently validated rigid-body swerve reference",
     "source_refs": [
-      "docs/reference-platform.md#ro-4-swerve-reference"
+      "docs/reference/reference-platform.md#ro-4-swerve-reference"
     ]
   },
   "coordinates": {

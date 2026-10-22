@@ -185,6 +185,14 @@ learning may consume the recorded SIM outcome as a labelled reward/oracle
 stream, but a deployed policy must run from the same LSRI observations it will
 have on the real platform.
 
+The scan itself is also a first-class safety observation. ROBOT keeps the raw
+scan and calibrated `lidar_link` mount, derives near-field clearance without a
+map pose, and rejects local candidates that sweep through those returns. A
+missing or stale scan is unknown evidence and therefore a stop condition, not
+free space. This guard complements the map-based monitor and obstacle tracker:
+the former protects against localization drift, while the latter supports
+normal route planning and dynamic interaction.
+
 Power telemetry is optional at the channel level so a minimal replay or teaching provider can omit it. A
 `RobotExecutive` that must enforce an energy reserve treats missing or stale power data as an explicit degraded
 condition; it must not turn GAME's relative `energy_scale` into a battery state. The provider owns battery, charger and
@@ -278,7 +286,7 @@ into planner or controller code.
 
 The provider boundary permits multi-threaded and multi-process execution, but v2 ships only the in-process channel transport. A production out-of-process provider still needs a canonical wire encoding, clock-domain conversion, bounded backpressure, peer supervision, and compatibility tests. The [architecture guide](architecture.md#scheduling-and-concurrency) defines how deterministic, concurrent, and distributed executors share this contract.
 
-Controller placement is therefore explicit. A provider never reinterprets a body-motion number as torque, PWM, or joint position. Future wire encodings must preserve the same command mode, units, expiry, and channel identity. The capability and feedback model is documented in [platform fidelity and hardware adaptation](platform-fidelity.md).
+Controller placement is therefore explicit. A provider never reinterprets a body-motion number as torque, PWM, or joint position. Future wire encodings must preserve the same command mode, units, expiry, and channel identity. The capability and feedback model is documented in [platform fidelity and hardware adaptation](reference/platform-fidelity.md).
 
 ## Current evidence and limit
 

@@ -5,7 +5,7 @@
     "fidelity": "typical",
     "basis": "documented DC geared-motor engineering assumptions",
     "source_refs": [
-      "docs/parameter-sources.md#drive-motor-and-controller"
+      "docs/reference/parameter-sources.md#drive-motor-and-controller"
     ]
   },
   "components": [

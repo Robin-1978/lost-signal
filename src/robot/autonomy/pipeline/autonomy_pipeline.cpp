@@ -23,6 +23,8 @@ void AutonomyPipeline::reset(std::uint32_t seed) {
  crossing_behavior_.reset();
  entry_governor_.reset();
  crossing_execution_feedback_ = {};
+ latest_raw_lidar_.reset();
+ latest_lidar_config_ = {};
  refresh_crossing_semantics();
 }
 
@@ -30,6 +32,8 @@ LidarPerceptionFrame AutonomyPipeline::process_lidar(
  const Scan& scan, const Scan& static_reference,
  const LidarProjectionState& state, const LidarProjectionConfig& config,
  double track_max_age_s) {
+ latest_raw_lidar_ = scan;
+ latest_lidar_config_ = config;
  return perception_.process(
  scan, static_reference, state, config, track_max_age_s);
 }

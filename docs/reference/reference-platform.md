@@ -442,5 +442,5 @@ tests, with ASan/UBSan reserved for milestone and release-candidate gates.
 
 RO-1's gates passed before the completed 16-line LiDAR and RO-2 work began. New Playgrounds, additional chassis,
 solid-state LiDAR, SLAM, VLA, HIL, or other expansion still require their own scoped acceptance gates. The prioritized release and optional fidelity work is maintained in the
-[RO-1 post-baseline optimization backlog](product-roadmap.md#ro-1-post-baseline-optimization-backlog); this document
+[RO-1 post-baseline optimization backlog](../product-roadmap.md#ro-1-post-baseline-optimization-backlog); this document
 remains the acceptance source of truth for the physical reference model.

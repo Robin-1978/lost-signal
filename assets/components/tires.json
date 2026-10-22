@@ -5,7 +5,7 @@
     "fidelity": "typical",
     "basis": "documented contact deflection and damping-ratio assumptions",
     "source_refs": [
-      "docs/parameter-sources.md#wheel-ground-contact"
+      "docs/reference/parameter-sources.md#wheel-ground-contact"
     ]
   },
   "components": [

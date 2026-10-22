@@ -46,6 +46,15 @@ int main() {
  // contracts; no scenario or physics type is needed to execute the cycle.
  sim::GridMap planning_map(20, 20, 0.5);
  application.configure_pipeline(planning_map, 20, 20, 0.5, 17);
+
+ // The raw sensor safety field fails closed before the first scan. A default
+ // assessment must not claim that a healthy LiDAR measured clear space.
+ const auto missing_scan = application.assess_latest_lidar_safety(
+ 0.0, 0.0, sim::autonomy::LidarSafetyConfig{});
+ CHECK(missing_scan.stop_required);
+ CHECK(!missing_scan.measurement_valid);
+ CHECK(missing_scan.forward_clearance_m < 0.0);
+
 executive::TaskPlan task;
 task.request_id = "tick-task";
 task.goals.push_back({"goal", {3.0, 1.0}, 0.2, true, false, 0.0, 0.5});

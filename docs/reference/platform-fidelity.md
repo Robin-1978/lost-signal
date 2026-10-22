@@ -308,7 +308,7 @@ and brake blending remain future capabilities and are required before treating R
 These are class-level `typical` results; they do not identify a physical car.
 
 The subsystem boundary, industry references, data split, low-speed lock requirement, and staged acceptance matrix are
-specified in [braking architecture](braking-architecture.md).
+specified in [braking architecture](../design/braking-architecture.md).
 
 The `standard`, `torque`, `eco`, and `speed` catalog entries are currently parameter sets for the same plant. They
 change maximum wheel speed, stall force, free speed, and a separately named `energy_scale`. The first three fields

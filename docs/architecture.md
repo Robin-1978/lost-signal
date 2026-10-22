@@ -279,7 +279,7 @@ right duty travels back through LSRI. SIM owns only the motor curve, joint effor
 For Ackermann platforms, the command is an equivalent front-wheel steering angle from the local planner through
 LSRI to the steering position loop; no layer reinterprets it as yaw rate. Physical motor type, native drive command
 mode, controller placement, and mechanical load are separate platform concerns. The
-[platform-fidelity design](platform-fidelity.md) defines how a future native or HIL provider declares those
+[platform-fidelity design](reference/platform-fidelity.md) defines how a future native or HIL provider declares those
 capabilities without exposing PWM or device protocols to autonomy.
 
 ### RobotExecutive and external commands
@@ -389,6 +389,18 @@ ROBOT policy must not read the physical judge. Physical outcomes can later be
 exported as offline labels or reinforcement-learning rewards, but that training
 channel is separate from the deployable LSRI decision loop.
 
+ROBOT collision admissibility has a second, deliberately local safety path.
+The raw delivered LiDAR scan is retained inside the perception pipeline and
+evaluated for forward clearance before any world/map projection. That check
+uses the sensor-to-base mount, chassis footprint, measured forward speed,
+reaction delay and the platform's braking envelope. Missing, stale or malformed
+scan data fails closed. The same sensor-frame returns are passed to local
+trajectory validation, so DWA cannot select a candidate that sweeps through an
+observed return even when an incorrect localization correction put the return
+in a free cell of the raster. This guard does not replace the map, prediction
+or stability validators; it prevents their common input assumption, a correct
+global pose, from becoming a single point of failure.
+
 `MissionSnapshot` is likewise SIM-owned. It is the immutable evidence record for
 presentation, replay, scoring and truth-versus-estimate comparison. ROBOT code
 must not include or receive it. Task requests, Robot Map revisions, LSRI
@@ -408,7 +420,7 @@ for scoring and model identification.
 Task orchestration is moving toward a small data-driven Behavior Graph, while continuous commitments use focused
 deterministic state machines. The project does not embed a general-purpose behavior-tree runtime. The detailed
 contract and the incremental decomposition of the current composition root are recorded in
-[Behavior architecture](behavior-architecture.md).
+[Behavior architecture](design/behavior-architecture.md).
 
 Conflict-zone content carries `shadow` or `control` authority. Shadow evaluation can compare a route-level
 hypothesis without changing commands. Control authority supplies a stop, hold, or commit constraint. The
@@ -430,7 +442,7 @@ stable codes, so the field view, AI view, debrief, replay, and tests cannot inve
 
 MuJoCo 3.16.0 is the single production physics engine. There is no runtime backend selector, compatibility layer, or
 second production world. The complete decision, native model/data design, limits, and completed atomic cutover gate
-are defined in [Physics engine decision and migration](physics-engine-migration.md).
+are defined in [Physics engine decision and migration](design/physics-engine-migration.md).
 
 The simulation model compiler maps content geometry, native 2.5D terrain, complete robot assemblies, actors,
 contacts, and sensor sites into one immutable MuJoCo model. A simulation instance owns its corresponding mutable
@@ -545,7 +557,7 @@ The most important extension boundaries are:
 - `DecisionEvidence` for observation-to-action explanations and deterministic decision transitions;
 - immutable snapshots for rendering, replay, and external observation.
 
-The [autonomy extension guide](extending-autonomy.md) documents the global-planner v1 request/result contract, registry, directory boundaries, and a complete provider example.
+The [autonomy extension guide](design/extending-autonomy.md) documents the global-planner v1 request/result contract, registry, directory boundaries, and a complete provider example.
 
 These are useful sim-to-real seams because a hardware adapter can replace actuation and observation while keeping high-level logic testable. The seams do not eliminate the need for calibration, timing, safety, and hardware evidence.
 

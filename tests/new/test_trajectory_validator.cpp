@@ -64,6 +64,19 @@ int main() {
     return !(from.x < 1.5 && to.x >= 1.5);
    }).verdict == sim::TrajectoryVerdict::StaticCollision);
 
+ // A live LiDAR return is validated in the trajectory's starting body frame.
+ // This remains true when the global pose is wrong and the return lands in
+ // an apparently free map cell.
+ sim::TrajectoryConstraints live_guard;
+ live_guard.live_obstacle_points_in_base = {{0.8, 0.0}};
+ live_guard.live_obstacle_margin_m = 0.05;
+ CHECK(sim::validate_executable_trajectory(
+ trajectory, map, {}, 0.1, 0.2, 0.0, {}, live_guard).verdict ==
+ sim::TrajectoryVerdict::StaticCollision);
+ live_guard.live_obstacle_points_in_base = {{0.8, 0.5}};
+ CHECK(sim::validate_executable_trajectory(
+ trajectory, map, {}, 0.1, 0.2, 0.0, {}, live_guard).accepted());
+
  // Both discrete endpoints are clear, but ego and actor cross at the same
  // time between them. The swept same-time oracle must catch that collision.
  auto crossing = trajectory;

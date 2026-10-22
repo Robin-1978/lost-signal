@@ -258,6 +258,8 @@ ValidatedTrajectorySelection validate(const DwaResult& proposals,
  constraints.center_of_mass_x_m = request.center_of_mass_x_m;
  constraints.center_of_mass_height_m = request.center_of_mass_height_m;
  constraints.max_dynamic_rollover_risk = request.max_dynamic_rollover_risk;
+ constraints.live_obstacle_points_in_base = request.live_obstacle_points_in_base;
+ constraints.live_obstacle_margin_m = request.live_obstacle_margin_m;
  return select_executable_trajectory(
  proposals, planning_map, predicted_frames, request.step_s,
  request.robot_radius_m, required_clearance_m, terrain_feasible, constraints);
@@ -305,6 +307,8 @@ ValidatedTrajectorySelection select_static_margin_escape(
  constraints.center_of_mass_x_m = request.center_of_mass_x_m;
  constraints.center_of_mass_height_m = request.center_of_mass_height_m;
  constraints.max_dynamic_rollover_risk = request.max_dynamic_rollover_risk;
+ constraints.live_obstacle_points_in_base = request.live_obstacle_points_in_base;
+ constraints.live_obstacle_margin_m = request.live_obstacle_margin_m;
  for (const auto& rollout : proposals.rollouts) {
  if (rollout.collision || !rollout.trajectory.command.valid ||
  rollout.trajectory.samples.empty()) {

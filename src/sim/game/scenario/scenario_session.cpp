@@ -193,6 +193,7 @@ ScenarioSession::ScenarioSession(
  throw ContentError("cannot configure robot map: " + map_error);
  }
  resolved_build_ = component_registry.resolve(catalog_, build_);
+ lidar_safety_available_ = resolved_build_.lidar() != nullptr;
  reset();
 }
 
@@ -1703,6 +1704,14 @@ void ScenarioSession::step() {
  } else if (scheduler_.decision_due(snapshot_.time_s)) {
   decide_control();
  }
+ // The raw-sensor safety chain runs after any manual or autonomous command
+ // selection and immediately before the provider transaction. This ordering
+ // makes it impossible for a stale DWA rollout or direct-drive command to
+ // outrank an observed near-field obstacle.
+ if (lidar_safety_available_) {
+ enforce_lidar_safety_stop(
+ robot_application_ ? robot_application_->estimator().state().linear_velocity_mps : 0.0);
+ }
  apply_motion();
  snapshot_.time_s += fixed_step_s;
  result_.time_s = snapshot_.time_s;
@@ -2149,6 +2158,27 @@ void ScenarioSession::consume_lidar_observation(
  throw std::runtime_error("lidar observation is missing raw or static-reference scan");
  }
  const auto& estimate = robot_application_->estimator().state();
+ // ROBOT retains the raw delivered scan inside its perception pipeline. The
+ // safety query below consumes that ROBOT-owned observation before any map
+ // projection, so SIM never becomes the owner of sensor history.
+ lidar_safety_config_.half_angle_rad = 0.55;
+ lidar_safety_config_.reaction_time_s =
+ std::max(fixed_step_s, motion_policy_.execution.prediction_step_s);
+ lidar_safety_config_.braking_decel_mps2 =
+ std::max(0.10, resolved_build_.traction().brake_decel_mps2);
+ lidar_safety_config_.sensor_standoff_m =
+ std::max(0.05, motion_policy_.execution.physical_standoff_reserve_m);
+ latest_lidar_safety_ = robot_application_->assess_latest_lidar_safety(
+ observation.time_s, estimate.linear_velocity_mps, lidar_safety_config_);
+ lidar_safety_initialized_ = true;
+ snapshot_.control.lidar_safety_stop_required =
+ latest_lidar_safety_.stop_required;
+ snapshot_.control.lidar_safety_measurement_valid =
+ latest_lidar_safety_.measurement_valid;
+ snapshot_.control.lidar_safety_forward_clearance_m =
+ latest_lidar_safety_.forward_clearance_m;
+ snapshot_.control.lidar_safety_required_clearance_m =
+ latest_lidar_safety_.required_forward_clearance_m;
  const auto estimated_ground =
  robot_application_->estimated_terrain(estimate.position);
  const auto perception = robot_application_->process_lidar(
@@ -2157,12 +2187,14 @@ void ScenarioSession::consume_lidar_observation(
  estimate.lateral_velocity_mps,
  estimate.angular_velocity_radps,
  estimated_ground.height_m + robot_definition_.base_link_height_m,
- estimate.roll_rad, estimate.pitch_rad, estimate.attitude_valid},
+ estimate.roll_rad, estimate.pitch_rad, estimate.attitude_valid,
+ estimate.localization_confidence, estimate.localization_valid},
  {lidar_config.position_in_base, lidar_config.yaw_in_base_rad,
  lidar_config.noise.range_stddev_m,
  std::max(0.45, level_.planning_localization_margin_m),
  lidar_config.height_in_base_m, lidar_config.roll_in_base_rad,
- lidar_config.pitch_in_base_rad, 0.30},
+ lidar_config.pitch_in_base_rad, 0.30,
+ motion_policy_.localization_motion.reduced_confidence},
  track_max_age_s());
  const bool first_static_detection = !snapshot_.static_obstacle_detected;
  if (level_.objective.type == "observe_and_stop" && perception.static_obstacle_near) {
@@ -2194,6 +2226,39 @@ if (first_detection && snapshot_.dynamic_object_detected) {
   detected << std::fixed << std::setprecision(1) << first_range;
   record_event("dynamic-detected", catalog_.trf("event.dynamic_detected", {detected.str()}));
  }
+}
+
+sim::autonomy::LidarSafetyAssessment ScenarioSession::evaluate_lidar_safety(
+ double forward_speed_mps) const {
+ if (!robot_application_) {
+ return {};
+ }
+ return robot_application_->assess_latest_lidar_safety(
+ snapshot_.time_s, std::max(0.0, forward_speed_mps), lidar_safety_config_);
+}
+
+void ScenarioSession::enforce_lidar_safety_stop(double forward_speed_mps) {
+ if (!robot_application_) {
+ return;
+ }
+ const auto safety = evaluate_lidar_safety(forward_speed_mps);
+ latest_lidar_safety_ = safety;
+ snapshot_.control.lidar_safety_stop_required = safety.stop_required;
+ snapshot_.control.lidar_safety_measurement_valid = safety.measurement_valid;
+ snapshot_.control.lidar_safety_forward_clearance_m =
+ safety.forward_clearance_m;
+ snapshot_.control.lidar_safety_required_clearance_m =
+ safety.required_forward_clearance_m;
+ if (!safety.stop_required) {
+ return;
+ }
+ // Fail closed. Zeroing the held command and entering the controlled-stop
+ // state occurs before the controller transaction, so a stale accepted DWA
+ // rollout cannot keep driving the plant after this observation.
+ held_command() = {};
+ held_command().controlled_stop = true;
+ snapshot_.control.transient_obstacle_cells = std::max<std::size_t>(
+ snapshot_.control.transient_obstacle_cells, 0);
 }
 
 void ScenarioSession::refresh_dynamic_obstacles() {
@@ -2228,7 +2293,10 @@ void ScenarioSession::refresh_dynamic_obstacles() {
     track.state.radius,
     track.last_observed_s,
  track.learned_endpoint_dwell_s,
-    nearest_actor < agents_.size() ? agents_[nearest_actor].visual_kind : "vehicle",
+ // An anonymous ROBOT track has no SIM actor class. Keep it visually
+ // unclassified so the 2D view cannot turn a localization residual into a
+ // misleading forklift glyph.
+ nearest_actor < agents_.size() ? agents_[nearest_actor].visual_kind : "unknown",
     nearest_actor < agents_.size() ? agents_[nearest_actor].display_heading_rad
                                    : std::atan2(track.state.v.y, track.state.v.x),
   });

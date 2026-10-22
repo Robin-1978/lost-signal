@@ -297,6 +297,18 @@ LidarPerceptionFrame LidarPerceptionSystem::process(const Scan& scan, const Scan
  const LidarProjectionState& state, const LidarProjectionConfig& config,
  double track_max_age_s, double dynamic_occupancy_history_s) {
  validate_scan_pair(scan, static_reference);
+ const bool map_frame_dynamic_classification_valid =
+ state.localization_valid && std::isfinite(state.localization_confidence) &&
+  state.localization_confidence >=
+      std::clamp(config.min_dynamic_classification_confidence, 0.0, 1.0);
+ if (!map_frame_dynamic_classification_valid) {
+ // A stale/uncertain map pose invalidates foreground-vs-static classification
+ // in world coordinates. Preserve the raw scan and near-field safety path,
+ // but discard old map-frame tracks so they cannot become phantom actors in
+ // prediction or the crossing governor.
+ dynamic_obstacles_.clear();
+ pending_.clear();
+ }
  LidarPerceptionFrame output;
  output.obstacle_rays.reserve(static_cast<std::size_t>(scan.n_rays));
  const double roll = state.attitude_valid ? state.base_roll_rad : 0.0;
@@ -335,7 +347,9 @@ LidarPerceptionFrame LidarPerceptionSystem::process(const Scan& scan, const Scan
  output.static_obstacle_near = true;
  }
 
- const auto clusters = dynamic_clusters(scan, output.obstacle_rays, foreground);
+ const auto clusters = map_frame_dynamic_classification_valid
+ ? dynamic_clusters(scan, output.obstacle_rays, foreground)
+ : std::vector<Cluster>{};
  const double association_max_age_s = std::max(
  kAssociationCoastMinS,
  kAssociationCoastFactor * std::max(0.0, track_max_age_s));

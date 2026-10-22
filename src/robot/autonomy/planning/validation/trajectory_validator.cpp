@@ -446,6 +446,36 @@ validate_executable_trajectory(const ExecutableTrajectory& trajectory, const Gri
    out.diagnostic = "trajectory violates terrain feasibility";
    return out;
   }
+ if (!constraints.live_obstacle_points_in_base.empty()) {
+ const auto& origin = trajectory.samples.front();
+ const auto relative_point = [&](const auto& candidate) {
+ const double dx = candidate.position.x - origin.position.x;
+ const double dy = candidate.position.y - origin.position.y;
+ return Vec2{
+ std::cos(origin.heading_rad) * dx +
+ std::sin(origin.heading_rad) * dy,
+ -std::sin(origin.heading_rad) * dx +
+ std::cos(origin.heading_rad) * dy,
+ };
+ };
+ const Vec2 previous_relative = index > 0
+ ? relative_point(trajectory.samples[index - 1])
+ : relative_point(sample);
+ const Vec2 current_relative = relative_point(sample);
+ const double live_limit_m = robot_radius_m +
+ std::max(0.0, constraints.live_obstacle_margin_m);
+ for (const auto& point : constraints.live_obstacle_points_in_base) {
+ if (!std::isfinite(point.x) || !std::isfinite(point.y))
+ continue;
+ if (point_segment_distance(point, previous_relative,
+ current_relative) < live_limit_m) {
+ out.verdict = TrajectoryVerdict::StaticCollision;
+ out.diagnostic =
+ "trajectory enters a live sensor-frame obstacle";
+ return out;
+ }
+ }
+ }
  if (stability_active) {
  const auto* prior = index > 0 ? &trajectory.samples[index - 1] : nullptr;
  const double risk = stability_risk(prior, sample, constraints);

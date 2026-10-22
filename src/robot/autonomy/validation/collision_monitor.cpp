@@ -2,10 +2,26 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace sim::autonomy {
 namespace {
+
+constexpr double kLidarSafetyInvalidClearanceM = -1.0;
+
+bool lidar_scan_is_valid(const Scan& scan) {
+ if (!(scan.n_rays > 0) ||
+ scan.ranges.size() != static_cast<std::size_t>(scan.n_rays) ||
+ scan.hit.size() != static_cast<std::size_t>(scan.n_rays) ||
+ !(scan.max_range > 0.0) ||
+ !std::isfinite(scan.angle_min_rad) ||
+ !std::isfinite(scan.angle_increment_rad) ||
+ std::abs(scan.angle_increment_rad) < 1e-9) {
+ return false;
+ }
+ return true;
+}
 
 bool segment_intersects_box(Vec2 from, Vec2 to,
  Vec2 minimum, Vec2 maximum) {
@@ -164,6 +180,92 @@ out.static_collision = outside || footprint_outside || obstacle_overlap;
  else
  out.dynamic_collision = true;
  }
+ return out;
+}
+
+LidarSafetyAssessment CollisionMonitor::assess_lidar(
+ const LidarSafetyObservation& observation,
+ const LidarSafetyConfig& config) const {
+ LidarSafetyAssessment out;
+ if (observation.scan == nullptr) {
+ out.stop_required = true;
+ out.measurement_valid = false;
+ out.forward_clearance_m = kLidarSafetyInvalidClearanceM;
+ return out;
+ }
+ const Scan& scan = *observation.scan;
+ out.measurement_valid = observation.measurement_valid &&
+ observation.measurement_fresh && lidar_scan_is_valid(scan);
+ out.forward_clearance_m = kLidarSafetyInvalidClearanceM;
+ if (!out.measurement_valid) {
+ out.stop_required = true;
+ return out;
+ }
+
+ const double speed_mps = std::max(0.0, observation.forward_speed_mps);
+ const double braking_distance_m =
+ speed_mps * std::max(0.0, config.reaction_time_s) +
+ speed_mps * speed_mps /
+ (2.0 * std::max(1e-6, config.braking_decel_mps2));
+ out.braking_distance_m = braking_distance_m;
+ // Body relative motion over one scan. The scalar model is conservative for
+ // a rotating chassis: it enlarges the allowed travel instead of hiding a
+ // return that moved because of the scan's acquisition delay.
+ const double scan_clearance_m =
+ speed_mps * std::max(0.0, config.range_growth_m_per_mps) *
+ (std::max(0.0, scan.scan_period_s) +
+ std::max(0.0, config.reaction_time_s));
+ out.required_forward_clearance_m =
+ braking_distance_m + std::max(0.0, config.sensor_standoff_m) +
+ scan_clearance_m;
+
+ const double half_angle_rad = std::clamp(
+ config.half_angle_rad, 0.0, kPi * 0.5);
+ double nearest_body_clearance_m = std::numeric_limits<double>::infinity();
+ for (int ray = 0; ray < scan.n_rays; ++ray) {
+ const auto index = static_cast<std::size_t>(ray);
+ if (!scan.hit[index] || !std::isfinite(scan.ranges[index])) {
+ continue;
+ }
+ const double range_m = scan.ranges[index];
+ if (!(range_m > 0.0) || range_m >= scan.max_range) {
+ continue;
+ }
+ const double angle_in_sensor = scan.angle_min_rad +
+ scan.angle_increment_rad * static_cast<double>(ray);
+ const double angle_in_body = observation.yaw_in_base_rad + angle_in_sensor;
+ if (std::abs(std::remainder(angle_in_body, 2.0 * kPi)) >
+ half_angle_rad) {
+ continue;
+ }
+ const Vec2 local_point{
+ observation.position_in_base.x + range_m * std::cos(angle_in_body),
+ observation.position_in_base.y + range_m * std::sin(angle_in_body),
+ };
+ if (local_point.x <= config.zero_range_m) {
+ // A return behind the sensor origin cannot be reached by a forward track.
+ continue;
+ }
+ // The sensor is mounted on the chassis; a range is not yet body clearance.
+ // Use the circular footprint in the same body frame that owns the mount so
+ // the threshold is independent of where the LiDAR sits on the deck.
+ const double body_clearance_m =
+ std::hypot(local_point.x, local_point.y) - robot_radius_m_;
+ if (body_clearance_m < nearest_body_clearance_m) {
+ nearest_body_clearance_m = body_clearance_m;
+ out.nearest_target_in_base = local_point;
+ }
+ }
+ out.target_in_path = std::isfinite(nearest_body_clearance_m);
+ out.forward_clearance_m = out.target_in_path
+ ? nearest_body_clearance_m
+ : std::max(0.0, scan.max_range -
+ std::hypot(observation.position_in_base.x,
+ observation.position_in_base.y) -
+ robot_radius_m_);
+ out.stop_required =
+ out.target_in_path &&
+ out.forward_clearance_m < out.required_forward_clearance_m;
  return out;
 }
 

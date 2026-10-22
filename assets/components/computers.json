@@ -5,7 +5,7 @@
     "fidelity": "ideal",
     "basis": "deterministic scheduling profiles for controlled experiments",
     "source_refs": [
-      "docs/parameter-sources.md#compute-and-algorithm-cadence"
+      "docs/reference/parameter-sources.md#compute-and-algorithm-cadence"
     ]
   },
   "components": [

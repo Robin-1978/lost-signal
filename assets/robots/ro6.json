@@ -6,7 +6,7 @@
     "fidelity": "typical",
     "basis": "compact mobile manipulator geometry and bounded joint effort defaults; not hardware-identified",
     "source_refs": [
-      "docs/parameter-sources.md#mobile-manipulator"
+      "docs/reference/parameter-sources.md#mobile-manipulator"
     ]
   },
   "coordinates": {

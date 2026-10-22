@@ -22,6 +22,12 @@ struct LidarProjectionState {
  double base_roll_rad{0.0};
  double base_pitch_rad{0.0};
  bool attitude_valid{false};
+ // Dynamic classification is map-relative. When the pose is degraded, a
+ // static tree or wall can appear as a moving foreground cluster. Keep raw
+ // returns in the local obstacle layer, but do not publish map-frame tracks
+ // until the localization estimate is trustworthy again.
+ double localization_confidence{1.0};
+ bool localization_valid{true};
 };
 
 struct LidarProjectionConfig {
@@ -33,6 +39,10 @@ struct LidarProjectionConfig {
  double roll_in_base_rad{0.0};
  double pitch_in_base_rad{0.0};
  double ground_alignment_tolerance_m{0.30};
+ // Dynamic classification compares foreground geometry with the loaded map.
+ // Below this confidence the raw sensor frame remains usable for local
+ // safety, but map-frame tracks must not be published.
+ double min_dynamic_classification_confidence{0.35};
 };
 
 struct LidarPerceptionFrame {

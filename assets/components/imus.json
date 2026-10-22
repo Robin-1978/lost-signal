@@ -5,7 +5,7 @@
     "fidelity": "typical",
     "basis": "public MEMS specifications plus documented teaching variants",
     "source_refs": [
-      "docs/parameter-sources.md#imu"
+      "docs/reference/parameter-sources.md#imu"
     ]
   },
   "components": [

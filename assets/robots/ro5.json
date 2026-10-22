@@ -6,7 +6,7 @@
     "fidelity": "typical",
     "basis": "independently validated rigid-body mecanum reference",
     "source_refs": [
-      "docs/reference-platform.md#ro-5-mecanum-reference"
+      "docs/reference/reference-platform.md#ro-5-mecanum-reference"
     ]
   },
   "coordinates": {

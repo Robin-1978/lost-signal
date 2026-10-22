@@ -34,7 +34,7 @@ int main() {
   manual.start();
   CHECK(manual.runtime_state() == sim::runtime::LifecycleState::Active);
   manual.set_manual_command(1.0, 0.0);
-  for (int step = 0; step < 50; ++step)
+ for (int step = 0; step < 50; ++step)
    manual.step();
   CHECK(manual.result().path_length_m > 0.1);
  CHECK(std::abs(manual.snapshot().control.left_pwm) > 1e-6);

@@ -6,8 +6,8 @@
     "fidelity": "typical",
     "basis": "documented four-wheel articulated Ackermann reference assumptions",
     "source_refs": [
-      "docs/parameter-sources.md",
-      "docs/reference-platform.md"
+      "docs/reference/parameter-sources.md",
+      "docs/reference/reference-platform.md"
     ]
   },
   "unlock_ability": "ability.ackermann",

@@ -1,7 +1,7 @@
 # Validation guide
 
 Lost Signal treats a release as a reproducible set of source, content, and behavior checks. A green test suite supports the declared simulation scope; it does not certify physical-robot safety or sim-to-real accuracy. The
-[verification strategy](verification-strategy.md) defines the contract, invariant, independent-oracle, deterministic,
+[verification strategy](../verification-strategy.md) defines the contract, invariant, independent-oracle, deterministic,
 fault, and physical evidence required for stronger claims.
 
 ## Build profiles
@@ -199,7 +199,7 @@ Create a new record from a clean revision by running, in order:
 5. Clang 18 compatibility, followed by ASan/UBSan as the final expensive gate.
 
 Until that record exists, publish the repository only as an Alpha / Developer Preview and retain the claim limits in
-[Simulation model audit](simulation-model-audit.md).
+[Simulation model audit](../design/simulation-model-audit.md).
 
 ## Last completed release record
 
@@ -233,6 +233,6 @@ Historical baseline results for the five-chassis autonomy and platform revision 
 Automated tests demonstrate contracts and regressions represented in the repository. They do not establish gameplay enjoyment, accessibility, GPU compatibility beyond tested environments, numerical identity across every compiler, physical parameter accuracy, or safety for real hardware. Human learning feedback uses the optional protocol in [playtest-guide.md](playtest-guide.md) and is reported separately from automated gates.
 
 The detailed claim boundary and subsystem evidence matrix are maintained in
-[simulation-model-audit.md](simulation-model-audit.md). Release builds use GCC 13 explicitly; Clang 18 is a separate
+[simulation-model-audit.md](../design/simulation-model-audit.md). Release builds use GCC 13 explicitly; Clang 18 is a separate
 compatibility job. `tools/build.sh` rejects compilers that cannot compile the C++20 atomic wait/notify API and refuses
 to reuse a build directory configured by another compiler.

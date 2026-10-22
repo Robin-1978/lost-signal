@@ -74,5 +74,51 @@ CHECK(!monitor.assess(clear_corner).static_collision);
  CHECK(std::abs(social_only.dynamic_clearance_m + 0.4) < 1e-12);
  actors.actors[1].state.p = {2.4, 2.0};
  CHECK(monitor.assess(actors).dynamic_collision);
+
+ // Raw LiDAR safety is a localization-independent stop field. Its input is
+ // in base_link and never contains a map pose; invalid or stale data fails
+ // closed instead of becoming free space.
+ auto front_scan = [](double range_m) {
+ sim::Scan scan;
+ scan.n_rays = 1;
+ scan.max_range = 6.0;
+ scan.angle_min_rad = 0.0;
+ scan.angle_increment_rad = sim::kPi * 0.5;
+ scan.scan_period_s = 0.1;
+ scan.ranges = {range_m};
+ scan.hit = {1};
+ return scan;
+ };
+ const auto front_safe = front_scan(2.0);
+ sim::autonomy::LidarSafetyObservation lidar;
+ lidar.scan = &front_safe;
+ lidar.position_in_base = {0.20, 0.0};
+ lidar.forward_speed_mps = 0.4;
+ CHECK(!monitor.assess_lidar(lidar, {}).stop_required);
+ CHECK(monitor.assess_lidar(lidar, {}).measurement_valid);
+
+ const auto front_near = front_scan(0.5);
+ lidar.scan = &front_near;
+ lidar.forward_speed_mps = 1.0;
+ const auto near = monitor.assess_lidar(lidar, {});
+ CHECK(near.stop_required);
+ CHECK(near.measurement_valid);
+ CHECK(near.target_in_path);
+ CHECK(near.forward_clearance_m < near.required_forward_clearance_m);
+
+ lidar.measurement_fresh = false;
+ CHECK(monitor.assess_lidar(lidar, {}).stop_required);
+ lidar.measurement_fresh = true;
+ lidar.scan = nullptr;
+ CHECK(monitor.assess_lidar(lidar, {}).stop_required);
+
+ // A return behind the forward sector is not allowed to inject a false
+ // emergency stop merely because a spinning scanner also sees the rear.
+ auto rear_scan = front_scan(0.30);
+ rear_scan.angle_min_rad = sim::kPi;
+ lidar.scan = &rear_scan;
+ lidar.forward_speed_mps = 1.0;
+ CHECK(!monitor.assess_lidar(lidar, {}).stop_required);
+
  return 0;
 }

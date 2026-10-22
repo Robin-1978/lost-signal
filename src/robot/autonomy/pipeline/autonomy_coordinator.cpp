@@ -119,6 +119,14 @@ const CollisionMonitor& AutonomyCoordinator::collision_monitor() const {
  return *collision_monitor_;
 }
 
+LidarSafetyAssessment AutonomyCoordinator::assess_lidar_safety(
+ const LidarSafetyObservation& observation,
+ const LidarSafetyConfig& config) const {
+ if (!collision_monitor_)
+ throw std::logic_error("collision monitor has not been configured");
+ return collision_monitor_->assess_lidar(observation, config);
+}
+
 void AutonomyCoordinator::reset_chassis_controllers() {
  differential_controller_.reset();
  ackermann_controller_.reset();
@@ -324,6 +332,81 @@ LidarPerceptionFrame AutonomyCoordinator::process_lidar(
  if (!pipeline_)
  throw std::logic_error("autonomy pipeline has not been configured");
  return pipeline_->process_lidar(scan, static_reference, state, config, track_max_age_s);
+}
+
+std::vector<Vec2> AutonomyCoordinator::latest_lidar_obstacle_points(
+ double time_s, double forward_speed_mps, double maximum_range_m,
+ std::size_t maximum_points) const {
+ std::vector<Vec2> points;
+ if (!pipeline_ || !pipeline_->latest_raw_lidar() || maximum_points == 0)
+ return points;
+ const auto& scan = *pipeline_->latest_raw_lidar();
+ const auto& projection = pipeline_->latest_lidar_config();
+ const double age_s = std::clamp(
+ time_s - scan.header.stamp_s, 0.0, 0.35);
+ const double shift_forward_m =
+ -std::max(0.0, forward_speed_mps) * age_s;
+ const std::size_t stride = std::max<std::size_t>(
+ 1, (static_cast<std::size_t>(std::max(0, scan.n_rays)) +
+ maximum_points - 1) / maximum_points);
+ points.reserve(std::min<std::size_t>(maximum_points,
+ scan.ranges.size() / stride + 1));
+ for (int ray = 0; ray < scan.n_rays; ray += static_cast<int>(stride)) {
+ const auto index = static_cast<std::size_t>(ray);
+ if (!scan.hit[index] || !std::isfinite(scan.ranges[index]))
+ continue;
+ const double range_m = scan.ranges[index];
+ if (!(range_m > 0.05) || range_m > std::min(maximum_range_m, scan.max_range))
+ continue;
+ // Optional height evidence removes terrain and self returns from the
+ // horizontal obstacle guard. A planar scan without height still keeps the
+ // return, which is the conservative choice for a physical safety field.
+ if (!scan.ray_gravity_heights_m.empty() &&
+ index < scan.ray_gravity_heights_m.size() &&
+ std::isfinite(scan.ray_gravity_heights_m[index]) &&
+ scan.ray_gravity_heights_m[index] < -0.20) {
+ continue;
+ }
+ const double angle = projection.yaw_in_base_rad +
+ scan.angle_min_rad + scan.angle_increment_rad * static_cast<double>(ray);
+ points.push_back({
+ projection.position_in_base.x + range_m * std::cos(angle) +
+ shift_forward_m,
+ projection.position_in_base.y + range_m * std::sin(angle),
+ });
+ }
+ return points;
+}
+
+LidarSafetyAssessment AutonomyCoordinator::assess_latest_lidar_safety(
+ double time_s, double forward_speed_mps,
+ const LidarSafetyConfig& config) const {
+ // No scan or no configured safety monitor is an unknown sensor state. Keep
+ // this query total so a composition root can fail closed before its first
+ // provider frame instead of turning startup into an exception path.
+ if (!pipeline_ || !collision_monitor_) {
+ LidarSafetyAssessment unavailable;
+ unavailable.stop_required = true;
+ unavailable.measurement_valid = false;
+ unavailable.forward_clearance_m = -1.0;
+ return unavailable;
+ }
+ const auto& scan = pipeline_->latest_raw_lidar();
+ if (!scan)
+ return {};
+ const auto& projection = pipeline_->latest_lidar_config();
+ LidarSafetyObservation observation;
+ observation.scan = &*scan;
+ observation.position_in_base = projection.position_in_base;
+ observation.yaw_in_base_rad = projection.yaw_in_base_rad;
+ observation.forward_speed_mps = std::max(0.0, forward_speed_mps);
+ observation.measurement_valid = std::isfinite(scan->header.stamp_s);
+ const double scan_period_s = std::max(0.02, scan->scan_period_s);
+ observation.measurement_fresh =
+ observation.measurement_valid &&
+ time_s >= scan->header.stamp_s - 1e-6 &&
+ time_s - scan->header.stamp_s <= std::max(0.35, 2.0 * scan_period_s);
+ return collision_monitor_->assess_lidar(observation, config);
 }
 
 KnownMapLocalizationResult AutonomyCoordinator::localize_known_map(

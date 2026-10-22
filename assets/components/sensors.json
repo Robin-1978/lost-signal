@@ -5,7 +5,7 @@
     "fidelity": "typical",
     "basis": "public specifications plus documented teaching variants",
     "source_refs": [
-      "docs/parameter-sources.md#single-plane-lidar"
+      "docs/reference/parameter-sources.md#single-plane-lidar"
     ]
   },
   "components": [

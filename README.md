@@ -158,8 +158,8 @@ service brake, and four rolling wheels; RO-3 distributes two track commands over
 four independently steered and driven modules; RO-5 has four driven wheels plus a load-limited mecanum roller-contact
 provider. Link mass/inertia, pivots, axes, mount transforms, support loads, encoder feedback, actuator torque, and
 contact response are validated per platform. The shipped values are documented typical assumptions rather than an
-identified physical twin. See [reference platforms](docs/reference-platform.md) and
-[parameter profiles and sources](docs/parameter-sources.md).
+identified physical twin. See [reference platforms](docs/reference/reference-platform.md) and
+[parameter profiles and sources](docs/reference/parameter-sources.md).
 
 Authored simulation terrain is 2.5D: terrain patches define height, two-axis grade, and roughness, while surface
 definitions provide friction, rolling drag, and traction. MuJoCo turns them into a 3D collision world. The
@@ -174,7 +174,7 @@ Spinning LiDAR models sample individual beams at 5, 10, or 20 Hz and include min
 
 The 3D field view and 2D AI view read the same immutable simulation snapshot. Switching views cannot change the timestep or mission result. MuJoCo is the single authoritative rigid-body engine in graphical and headless runs. It advances at 1 ms internal substeps; fixed-step algorithm tests remain independent of the simulator engine.
 
-These interfaces create a useful path toward calibration, log replay, native hardware providers, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
+These interfaces create a useful path toward calibration, log replay, native hardware providers, and hardware-in-the-loop tests. They do not by themselves prove sim-to-real transfer. See the [architecture](docs/architecture.md), [platform-fidelity design](docs/reference/platform-fidelity.md), and [sim-to-real roadmap](docs/sim2real.md) for the exact boundary.
 
 ## Repository map
 
@@ -200,7 +200,7 @@ docs/ Design, learning, architecture, authoring, and validation guides
 tools/ Build, run, generation, and content-validation scripts
 ```
 
-Start with the [creative direction](docs/creative-direction.md), [product roadmap](docs/product-roadmap.md), [game design](docs/game-design.md), [architecture](docs/architecture.md), [physics engine migration](docs/physics-engine-migration.md), [autonomy extension guide](docs/extending-autonomy.md), [runtime interface](docs/runtime-interface.md), [platform-fidelity design](docs/platform-fidelity.md), [verification strategy](docs/verification-strategy.md), [Run Artifact](docs/run-artifacts.md), and [validation guide](docs/validation.md). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). Asset sources and generation methods are recorded in [asset provenance](docs/asset-provenance.md).
+Start with the [documentation index](docs/README.md), which keeps the primary contracts together and groups focused reference, design, operations, and creative material. The [product roadmap](docs/product-roadmap.md), [architecture](docs/architecture.md), [runtime interface](docs/runtime-interface.md), [SIM-to-real boundary](docs/sim2real.md), [robot map](docs/robot-map.md), [learning guide](docs/learning-guide.md), [game design](docs/game-design.md), and [verification strategy](docs/verification-strategy.md) are the canonical entry points. To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -173,6 +173,13 @@ struct ControlSnapshot {
  std::size_t transient_obstacle_cells{0};
  double nearest_transient_obstacle_m{
  std::numeric_limits<double>::infinity()};
+ // ROBOT sensor-frame safety evidence. This is distinct from the SIM
+ // physical collision judge and remains valid even when the map pose drifts.
+ bool lidar_safety_stop_required{false};
+ bool lidar_safety_measurement_valid{false};
+ double lidar_safety_forward_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ double lidar_safety_required_clearance_m{0.0};
  double nearest_dynamic_track_m{
  std::numeric_limits<double>::infinity()};
  bool local_map_pose_free{true};
@@ -636,6 +643,9 @@ class ScenarioSession {
  void consume_lidar_observation(const sim::ObservationFrame& observation,
  const sim::LidarConfig& lidar_config,
  const std::optional<sim::physics::RigidTransform>& world_from_sensor_at_capture);
+ sim::autonomy::LidarSafetyAssessment evaluate_lidar_safety(
+ double forward_speed_mps) const;
+ void enforce_lidar_safety_stop(double forward_speed_mps);
  void refresh_dynamic_obstacles();
  void decide_control();
  void apply_motion();
@@ -726,6 +736,10 @@ class ScenarioSession {
  std::optional<sim::physics::RigidTransform> world_from_sensor_at_capture;
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
+ sim::autonomy::LidarSafetyConfig lidar_safety_config_;
+ sim::autonomy::LidarSafetyAssessment latest_lidar_safety_;
+ bool lidar_safety_initialized_{false};
+ bool lidar_safety_available_{false};
  std::unique_ptr<PhysicalCollisionJudge> physical_collision_judge_;
  std::unique_ptr<sim::GridMap> planning_map_;
  double planning_clearance_m_{0.0};

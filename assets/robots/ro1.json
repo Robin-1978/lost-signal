@@ -6,8 +6,8 @@
     "fidelity": "typical",
     "basis": "documented reference geometry, inertia, collision and actuator assumptions",
     "source_refs": [
-      "docs/parameter-sources.md",
-      "docs/reference-platform.md"
+      "docs/reference/parameter-sources.md",
+      "docs/reference/reference-platform.md"
     ]
   },
   "coordinates": {

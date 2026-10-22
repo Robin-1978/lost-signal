@@ -58,6 +58,7 @@ representations in simulation:
 | Dynamic objects | anonymous perception tracks and predictions | scripted actor state and physical contacts | association, prediction and collision metrics |
 | Traction | encoder/IMU slip observation | contact-solver slip and impulse | slip detector calibration and score evidence |
 | Collision | map/track/trajectory safety verdict | physical contact verdict | false-positive/false-negative analysis and mission result |
+| Near-field sensor guard | raw LiDAR clearance in `base_link`, independent of global pose | true range/contact geometry | sensor-only stop coverage and false-stop analysis |
 | Terrain | map/provider surface and robot-side estimates | actual contact material, friction and wetness | terrain-model identification |
 
 The ROBOT column is the only input to a deployable decision. The SIM column is
@@ -66,6 +67,17 @@ the oracle, but must not publish the oracle itself as an observation. Error
 metrics are timestamped and frame-aware diagnostics; they are never hidden
 corrections to ROBOT state. Offline learning may use physical outcomes as
 labels or rewards, while an evaluated policy still receives only LSRI data.
+
+The near-field guard is intentionally evaluated in the delivered sensor frame
+rather than in map coordinates. A localization correction may move the
+estimated pose and the projected local map together, which can make a nearby
+obstacle appear somewhere else in the world. It cannot change the range and
+bearing reported by the current scan. If that scan is missing, stale or shows
+insufficient stopping clearance, ROBOT withdraws motion authority before the
+controller transaction and stages a stop. Local planning also receives the
+sampled returns in the current body frame for candidate rejection. Both use
+ROBOT policy values and chassis geometry; neither reads MuJoCo contacts or
+actor truth.
 
 This is a package-level rule, not a rule about selected convenient fields. Pose,
 velocity, acceleration, attitude, contact state, terrain height, roughness,
@@ -174,7 +186,7 @@ optical data, measured packets, jitter, or multi-return behavior.
 
 The staged sensor profiles, multi-line and solid-state extension boundary, Ackermann control cascade, and separation
 of physical motor types from actuator command modes are specified in
-[platform fidelity and hardware adaptation](platform-fidelity.md).
+[platform fidelity and hardware adaptation](reference/platform-fidelity.md).
 
 The articulated RO-2 path exercises the intended transfer boundary end to end: ROBOT owns the Ackermann geometry
 and closed loops, LSRI carries normalized-duty and brake channels plus joint

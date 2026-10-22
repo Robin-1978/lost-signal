@@ -47,6 +47,12 @@ struct LocalPlanningRequest {
  double step_s{0.1};
  double required_clearance_m{0.0};
  double robot_radius_m{0.0};
+ // Raw LiDAR returns expressed in the current base frame. These are a
+ // localization-independent guard for candidate trajectories; they remain
+ // separate from the map raster because a drifting pose may project the same
+ // return into the wrong world cell.
+ std::vector<Vec2> live_obstacle_points_in_base;
+ double live_obstacle_margin_m{0.05};
  // Differential-drive actuator feasibility. A body (v,w) candidate is valid
  // only when both v +/- w*track/2 remain within the selected motor speed.
  double differential_track_m{0.0};

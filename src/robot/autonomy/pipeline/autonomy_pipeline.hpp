@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 
 namespace sim {
@@ -57,6 +58,12 @@ class AutonomyPipeline {
  const ObservedObstacleLayer& observed_obstacles() const;
  const std::vector<ObservedRay2D>& latest_visibility_rays() const;
  double latest_visibility_stamp_s() const;
+ // Raw acquisition retained in ROBOT for the localization-independent safety
+ // field. It is not a map projection and never carries a simulator pose.
+ const std::optional<Scan>& latest_raw_lidar() const { return latest_raw_lidar_; }
+ const LidarProjectionConfig& latest_lidar_config() const {
+ return latest_lidar_config_;
+ }
 
  KnownMapLocalizationResult localize_known_map(
  const Scan& scan, Vec2 odom_position, double odom_heading_rad,
@@ -117,6 +124,8 @@ class AutonomyPipeline {
  CrossingBehaviorSystem crossing_behavior_;
  EntryGovernorSystem entry_governor_;
  CrossingExecutionFeedback crossing_execution_feedback_;
+ std::optional<Scan> latest_raw_lidar_;
+ LidarProjectionConfig latest_lidar_config_;
 
  void refresh_crossing_semantics();
 };

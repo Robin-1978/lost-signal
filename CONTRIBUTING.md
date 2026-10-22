@@ -38,7 +38,7 @@ For the graphical client, install the platform packages listed in the README and
 - `tests/new/`: C++ behavioral and integration tests
 - `tools/`: build, generation, and validation utilities
 
-See [docs/diy.md](docs/diy.md) before adding a mission, component, robot, or content pack. See [docs/extending-autonomy.md](docs/extending-autonomy.md) before adding or replacing a planner.
+See [docs/design/diy.md](docs/design/diy.md) before adding a mission, component, robot, or content pack. See [docs/design/extending-autonomy.md](docs/design/extending-autonomy.md) before adding or replacing a planner.
 
 ## Language and locale rules
 
@@ -66,7 +66,7 @@ git diff --check
 ```
 
 Changes to experiment identity or comparison behavior should also run `python3 tests/test_compare_runs.py` and
-the Run Artifact reproduction example in [docs/run-artifacts.md](docs/run-artifacts.md).
+the Run Artifact reproduction example in [docs/operations/run-artifacts.md](docs/operations/run-artifacts.md).
 
 A graphical change should also build the graphical client. Add focused tests for algorithms, physics contracts, serialization, content validation, or regressions where an automated check adds real confidence.
 

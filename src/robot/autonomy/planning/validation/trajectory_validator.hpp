@@ -85,6 +85,11 @@ struct TrajectoryConstraints {
  double center_of_mass_x_m{0.0};
  double center_of_mass_height_m{0.0};
  double max_dynamic_rollover_risk{0.0};
+ // Sensor-frame returns relative to the trajectory start pose. A candidate
+ // may not sweep through one even if a localization error placed the same
+ // return in an occupied or free map cell incorrectly.
+ std::vector<Vec2> live_obstacle_points_in_base;
+ double live_obstacle_margin_m{0.05};
 };
 
 struct TrajectoryValidation {
