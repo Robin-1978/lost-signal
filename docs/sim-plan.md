@@ -21,8 +21,9 @@ engine binding.
 
 ## Where we start (already on the chain)
 
-- `World`: kinematic truth, first-order motor lag plant, diff/ackermann/
-  swerve/mecanum rigid follow, static boxes + linear actors + named places.
+- `World`: force-driven truth (DC motor curve -> wheel accel, dissipative
+  service brakes), diff/ackermann/swerve/mecanum rigid follow, static
+  boxes + linear actors + named places.
 - Providers: motion/IMU/lidar2d/lidar16/suite/static-map/replay.
 - `SimRobot` + `ScenarioSession` (world-stepping HIL), eval
   (episode/scoring/JSONL recording/replay/drive-profile-io).
@@ -30,7 +31,7 @@ engine binding.
 
 ## Phases (in order; each lands green before the next starts)
 
-### S1 Motor physics (small)
+### S1 Motor physics (small) — landed
 Port `hardware/actuators/electric_drive` (current-limited 4-quadrant DC
 curve, ~30 lines) + `service_brake` (torque + apply/release lag).
 Replace the first-order lag in `World::step` with force integration:

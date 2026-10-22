@@ -7,6 +7,7 @@
 #include "robot/app/robot_application.hpp"
 #include "sim/eval/drive_profile_io.hpp"
 #include "sim/providers/sensor_suite.hpp"
+#include "sim/world/motor.hpp"
 #include "sim/world/world.hpp"
 
 int main() {
@@ -39,8 +40,8 @@ int main() {
   suite.consume(cmd);
   double x0 = world.truth().body_x_m;
   world.step(0.02);
-  // First-order lag: one 20 ms step at tau=0.1 s reaches ~18% of the
-  // 3 m/s free speed, so displacement is small but strictly positive.
+  // Force integration: one 20 ms step at stall accel (54 N / 3 kg) reaches
+  // 0.36 m/s, so displacement is small but strictly positive.
   const double dx1 = world.truth().body_x_m - x0;
   assert(dx1 > 0.005 && dx1 < 0.02);
   assert(world.truth().drive_radps[0] > 0.0);
@@ -71,14 +72,9 @@ int main() {
     assert(prof.chassis_kind == "differential");
     assert(prof.free_speed_mps == 4.0);
     assert(prof.wheel_radius_m == 0.1);  // default kept
-    // Partial override drives the plant: higher free speed, same lag.
-    sim::world::MotorParams mp;
-    mp.free_speed_mps = prof.free_speed_mps;
-    mp.time_constant_s = prof.motor_time_constant_s;
-    mp.wheel_radius_m = prof.wheel_radius_m;
-    mp.track_width_m = prof.track_width_m;
+    // Partial override drives the plant: higher free speed retunes settling.
     sim::world::World tuned;
-    tuned.set_motor_params(mp);
+    tuned.set_motor_params(sim::world::motor_params_from_profile(prof));
     robot::iface::ActuatorCommand cmd;
     cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
     cmd.stamp_ns = 0;

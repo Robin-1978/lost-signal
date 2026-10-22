@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "robot/iface/motion.hpp"
+#include "sim/world/service_brake.hpp"
 
 namespace lost_signal::sim::world {
 
@@ -56,20 +57,34 @@ struct NamedPlace {
 };
 
 struct MotorParams {
-  double free_speed_mps = 3.0;   // no-load linear speed at duty 1
-  double time_constant_s = 0.12;  // first-order lag to commanded speed
+  double free_speed_mps = 3.0;  // no-load linear speed at duty 1
+  double stall_force_N = 54.0;  // peak motor force at zero speed (duty 1)
+  // Per-wheel equivalent translational mass (wheel + reflected rotor).
+  // Same numbers the ROBOT feedforward closes against (sim-native parity).
+  double wheel_equiv_mass_kg = 3.0;
   double wheel_radius_m = 0.1;
   double track_width_m = 0.5;
   double wheel_base_m = 0.56;
   double max_steer_rad = 0.55;
   double max_steer_rate_radps = 2.0;
   double steer_time_constant_s = 0.08;  // servo lag to rate-implied angle
+  // Service-brake capacity; 0 disables (default). The lag plants still step
+  // but offer no torque, so untouched behavior is coast-only.
+  double brake_max_torque_Nm = 0.0;
+  double brake_apply_time_s = 0.12;
+  double brake_release_time_s = 0.08;
 };
 
 class World {
  public:
+  World();
   void step(double dt_s);
-  void set_motor_params(const MotorParams& params) { motor_ = params; }
+  void set_motor_params(const MotorParams& params);
+  // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
+  // e-stop style brake request per drive wheel, clamped to [0, 1].
+  // Out-of-range wheels are ignored. Reconfiguring the motor params resets
+  // the brake lag plants.
+  void set_brake_request(int wheel, double normalized);
   // Actuator-level plant input: normalized duties per the command mode.
   // Wheel speeds first-order track duty-implied targets; steers servo
   // toward duty-implied angles; the body follows by chassis kinematics.
@@ -93,6 +108,8 @@ class World {
  private:
   WorldTruth truth_{};
   MotorParams motor_{};
+  std::array<ServiceBrakePlant, 4> brakes_;
+  std::array<double, 4> brake_request_ = {};
   robot::iface::ActuatorMode last_mode_ = robot::iface::ActuatorMode::kDiffDuty;
   std::vector<StaticBox> static_boxes_;
   std::vector<Actor> actors_;

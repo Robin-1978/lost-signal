@@ -4,8 +4,36 @@
 #include <cmath>
 
 #include "robot/platform/holonomic_kinematics.hpp"
+#include "sim/world/motor.hpp"
 
 namespace lost_signal::sim::world {
+
+namespace {
+ServiceBrakeParams brake_params_from(const MotorParams& m) {
+  ServiceBrakeParams p;
+  p.maximum_torque_Nm = m.brake_max_torque_Nm;
+  p.apply_time_s = m.brake_apply_time_s;
+  p.release_time_s = m.brake_release_time_s;
+  return p;
+}
+}  // namespace
+
+World::World() : brakes_{ServiceBrakePlant{brake_params_from(motor_)},
+                         ServiceBrakePlant{brake_params_from(motor_)},
+                         ServiceBrakePlant{brake_params_from(motor_)},
+                         ServiceBrakePlant{brake_params_from(motor_)}} {}
+
+void World::set_motor_params(const MotorParams& params) {
+  motor_ = params;
+  const ServiceBrakeParams bp = brake_params_from(motor_);
+  for (auto& b : brakes_) b = ServiceBrakePlant{bp};
+  brake_request_ = {};
+}
+
+void World::set_brake_request(int wheel, double normalized) {
+  if (wheel < 0 || wheel >= 4) return;
+  brake_request_[wheel] = std::clamp(normalized, 0.0, 1.0);
+}
 
 void World::apply(const robot::iface::ActuatorCommand& cmd) {
   last_mode_ = cmd.mode;
@@ -21,15 +49,40 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
 
 void World::step(double dt_s) {
   truth_.step += 1;
-  // First-order motor lag toward the duty-implied wheel speeds.
-  const double free_radps =
-      motor_.free_speed_mps / std::max(1e-6, motor_.wheel_radius_m);
-  const double alpha =
-      dt_s <= 0.0 ? 1.0
-                  : 1.0 - std::exp(-dt_s / std::max(1e-6, motor_.time_constant_s));
-  for (int i = 0; i < truth_.drive_count; ++i) {
-    truth_.drive_radps[i] +=
-        (truth_.drive_duty[i] * free_radps - truth_.drive_radps[i]) * alpha;
+  // Force-driven wheels: duty -> DC motor force (stall/free) -> accel.
+  // The lag is emergent (tau = m * free / stall), not a fitted constant.
+  // Service-brake capacity resolves against shaft velocity here and can
+  // only dissipate: it never reverses a wheel (holding is exact at rest).
+  const double wheel_r = std::max(1e-6, motor_.wheel_radius_m);
+  const double mass = std::max(1e-6, motor_.wheel_equiv_mass_kg);
+  if (!(dt_s > 0.0)) {
+    for (int i = 0; i < truth_.drive_count; ++i) {
+      brakes_[i].reset();
+      truth_.drive_radps[i] =
+          truth_.drive_duty[i] * motor_.free_speed_mps / wheel_r;
+    }
+  } else {
+    for (int i = 0; i < truth_.drive_count; ++i) {
+      const double v = truth_.drive_radps[i] * wheel_r;
+      const double motor_f = dc_motor_force_N(truth_.drive_duty[i], v,
+                                              motor_.stall_force_N,
+                                              motor_.free_speed_mps);
+      const double v_motor = v + motor_f / mass * dt_s;
+      // Service brake resolves against shaft velocity and only dissipates:
+      // authority covering the stop lands exactly at zero (never reversed),
+      // anything less subtracts along the motion. Holding at rest is exact.
+      const double capacity_Nm = brakes_[i].step(brake_request_[i], dt_s);
+      const double brake_N = capacity_Nm / wheel_r;
+      double v_new = v_motor;
+      if (brake_N > 0.0 && v_motor != 0.0) {
+        if (brake_N * dt_s >= mass * std::abs(v_motor)) {
+          v_new = 0.0;
+        } else {
+          v_new = v_motor - std::copysign(brake_N * dt_s / mass, v_motor);
+        }
+      }
+      truth_.drive_radps[i] = v_new / wheel_r;
+    }
   }
   // Steering servo: duty implies a rate demand (P-controlled upstream);
   // the rate first-order tracks the demand and the angle integrates it,

@@ -144,6 +144,8 @@ target_link_libraries(lost_signal_robot PRIVATE lost_signal_robot_stack)
 # Sim side: owns world truth, physics, presentation. May depend on robot.
 add_library(lost_signal_sim_world STATIC
   src/sim/world/world.cpp
+  src/sim/world/motor.cpp
+  src/sim/world/service_brake.cpp
 )
 target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC
@@ -326,6 +328,12 @@ add_executable(test_providers
 )
 target_link_libraries(test_providers PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
 add_test(NAME providers COMMAND test_providers)
+
+add_executable(test_motor
+  tests/test_motor.cpp
+)
+target_link_libraries(test_motor PRIVATE lost_signal_sim_eval)
+add_test(NAME motor COMMAND test_motor)
 
 add_executable(test_lidar
   tests/test_lidar.cpp

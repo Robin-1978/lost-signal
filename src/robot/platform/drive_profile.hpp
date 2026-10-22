@@ -6,17 +6,20 @@ namespace lost_signal::robot::platform {
 
 // Hardware capability contract shared by native bring-up and SIM: one set
 // of numbers means sim and native close the same loops against the same
-// plant. Geometry matches the chassis factory defaults; motors are
-// first-order (free speed + time constant); steers are velocity servos.
-// JSON file loading lives on the SIM side (sim/eval/drive_profile_io),
-// which merges a file over these defaults — ROBOT never parses files.
+// plant. Geometry matches the chassis factory defaults; drive motors are
+// the DC force curve (stall force + free speed) integrated against the
+// per-wheel equivalent mass, so the speed lag is emergent, never fitted;
+// steers are velocity servos. JSON file loading lives on the SIM side
+// (sim/eval/drive_profile_io), which merges a file over these defaults —
+// ROBOT never parses files.
 struct DriveProfile {
   std::string chassis_kind = "differential";
   double wheel_radius_m = 0.1;
   double wheel_base_m = 0.56;
   double track_width_m = 0.5;
   double free_speed_mps = 3.0;
-  double motor_time_constant_s = 0.12;
+  double stall_force_N = 54.0;
+  double wheel_equiv_mass_kg = 3.0;
   double max_steer_rad = 0.55;
   double max_steer_rate_radps = 2.0;
   double steer_time_constant_s = 0.08;

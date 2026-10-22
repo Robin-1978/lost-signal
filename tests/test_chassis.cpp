@@ -44,6 +44,30 @@ int main() {
   iface::MotionCommand kept = diff.clamp_command(stop, 100);
   assert(kept.is_safe_stop());
 
+  // Stop with measured joints is a closed-loop hold at zero (active
+  // electrical braking), not open-loop zero duty: the force plant has no
+  // passive drag, so SafeZero would coast. Blind stops stay SafeZero.
+  {
+    iface::MotionFeedback moving;
+    moving.source = "test.enc";
+    moving.frame = core::Frame::kBaseLink;
+    moving.stamp_ns = 100;
+    moving.sequence = 1;
+    moving.odometry_valid = true;
+    moving.drive_count = 2;
+    moving.drive_radps[0] = moving.drive_radps[1] = 5.0;  // rolling forward
+    iface::MotionCommand stop_cmd = iface::MotionCommand::SafeStop(100);
+    iface::ActuatorCommand brake = diff.to_actuator(stop_cmd, moving, 100);
+    assert(brake.mode == iface::ActuatorMode::kDiffDuty);
+    assert(!brake.is_safe_zero());  // braking duties, not coast
+    assert(brake.drive[0] < 0.0 && brake.drive[1] < 0.0);  // oppose motion
+    assert(iface::valid_actuator_command(brake, 100));
+    // No joints: fail closed, loops never close on stale joints.
+    iface::MotionFeedback blind;
+    iface::ActuatorCommand zero = diff.to_actuator(stop_cmd, blind, 100);
+    assert(zero.is_safe_zero());
+  }
+
   // Drive profile: factory defaults per kind, unknown fails closed.
   {
     platform::DriveProfile prof;

@@ -73,18 +73,30 @@ void DifferentialChassis::forward(const WheelSpeeds& w, double& forward_mps,
 iface::ActuatorCommand DifferentialChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
-  // Stops and invalid feedback short-circuit to safe zero; the plant's own
-  // lag shapes the ramp, and the stop latch gates re-release upstream.
-  if (body.space != iface::CommandSpace::kYawRate || body.is_safe_stop() ||
-      !fb.has_joints() || fb.drive_count < 2) {
+  // No joints, no loop: fail closed. Never drive (or brake) blind.
+  if (!fb.has_joints() || fb.drive_count < 2) {
     wheels_.reset();
     return iface::ActuatorCommand::SafeZero(now_ns);
+  }
+  // Safe stop with measured joints is a closed-loop hold at zero: active
+  // electrical braking through the same wheel loops. The force plant has
+  // no passive drag, so open-loop zero duty would coast forever; the stop
+  // latch upstream still gates re-release. The loop stays warm to hold.
+  double target_v = 0.0;
+  double target_w = 0.0;
+  if (!body.is_safe_stop()) {
+    if (body.space != iface::CommandSpace::kYawRate) {
+      wheels_.reset();
+      return iface::ActuatorCommand::SafeZero(now_ns);
+    }
+    target_v = body.forward_mps;
+    target_w = body.yaw_rate_radps;
   }
   control::WheelFeedback wfb{fb.drive_radps[0], fb.drive_radps[1], true};
   // Fixed decision step matches the coordinator cadence contract.
   constexpr double kDtS = 0.1;
   control::WheelCommand wc =
-      wheels_.update(body.forward_mps, body.yaw_rate_radps, wfb, kDtS);
+      wheels_.update(target_v, target_w, wfb, kDtS);
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kDiffDuty;
   out.stamp_ns = now_ns;
@@ -138,21 +150,29 @@ iface::MotionCommand AckermannChassis::clamp_command(
 iface::ActuatorCommand AckermannChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
-  if (body.is_safe_stop() || !fb.has_joints() || fb.drive_count < 2) {
+  // No joints, no loop: fail closed. Never drive (or brake) blind.
+  if (!fb.has_joints() || fb.drive_count < 2) {
     controller_.reset();
     return iface::ActuatorCommand::SafeZero(
         now_ns, iface::ActuatorMode::kAckermannDuty);
   }
+  // Safe stop with measured joints: closed-loop hold at zero (brake the
+  // drives, center the steers). Same force-plant rationale as diff.
   double steer = 0.0;
-  if (body.space == iface::CommandSpace::kSteerAngle) {
-    steer = body.steer_angle_rad;
-  } else if (body.space == iface::CommandSpace::kYawRate) {
-    steer = steer_for_twist(body.yaw_rate_radps, body.forward_mps,
-                            wheel_base_m_, limits_.max_steer_rad);
-  } else {
-    controller_.reset();
-    return iface::ActuatorCommand::SafeZero(
-        now_ns, iface::ActuatorMode::kAckermannDuty);
+  double target_v = 0.0;
+  if (!body.is_safe_stop()) {
+    if (body.space == iface::CommandSpace::kSteerAngle) {
+      target_v = body.forward_mps;
+      steer = body.steer_angle_rad;
+    } else if (body.space == iface::CommandSpace::kYawRate) {
+      target_v = body.forward_mps;
+      steer = steer_for_twist(body.yaw_rate_radps, body.forward_mps,
+                              wheel_base_m_, limits_.max_steer_rad);
+    } else {
+      controller_.reset();
+      return iface::ActuatorCommand::SafeZero(
+          now_ns, iface::ActuatorMode::kAckermannDuty);
+    }
   }
   control::AckermannFeedback afb;
   afb.rear_left_radps = fb.drive_radps[0];
@@ -166,7 +186,7 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
   afb.valid = true;
   constexpr double kDtS = 0.1;
   control::AckermannCommand ac =
-      controller_.update(body.forward_mps, steer, afb, kDtS);
+      controller_.update(target_v, steer, afb, kDtS);
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kAckermannDuty;
   out.stamp_ns = now_ns;
@@ -227,17 +247,29 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   const iface::ActuatorMode mode =
       swerve ? iface::ActuatorMode::kSwerveDuty : iface::ActuatorMode::kMecanumDuty;
   const std::uint8_t need_steer = swerve ? 4 : 0;
-  if (body.is_safe_stop() || !fb.has_joints() || fb.drive_count < 4 ||
-      fb.steer_count < need_steer) {
+  // No joints, no loop: fail closed. Never drive (or brake) blind.
+  if (!fb.has_joints() || fb.drive_count < 4 || fb.steer_count < need_steer) {
     controller_.reset();
     return iface::ActuatorCommand::SafeZero(now_ns, mode);
   }
+  // Safe stop with measured joints: closed-loop hold at zero. Same
+  // force-plant rationale as diff (swerve modules hold their angles from
+  // the zero-twist inverse below).
   double lateral = 0.0;
-  if (body.space == iface::CommandSpace::kHolonomic) {
-    lateral = body.lateral_mps;
-  } else if (body.space != iface::CommandSpace::kYawRate) {
-    controller_.reset();
-    return iface::ActuatorCommand::SafeZero(now_ns, mode);
+  double target_v = 0.0;
+  double target_w = 0.0;
+  if (!body.is_safe_stop()) {
+    if (body.space == iface::CommandSpace::kHolonomic) {
+      lateral = body.lateral_mps;
+      target_v = body.forward_mps;
+      target_w = body.yaw_rate_radps;
+    } else if (body.space == iface::CommandSpace::kYawRate) {
+      target_v = body.forward_mps;
+      target_w = body.yaw_rate_radps;
+    } else {
+      controller_.reset();
+      return iface::ActuatorCommand::SafeZero(now_ns, mode);
+    }
   }
   control::HolonomicFeedback hfb;
   hfb.drive_radps = {fb.drive_radps[0], fb.drive_radps[1], fb.drive_radps[2],
@@ -249,7 +281,7 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   hfb.valid = true;
   constexpr double kDtS = 0.1;
   control::HolonomicCommand hc = controller_.update(
-      body.forward_mps, lateral, body.yaw_rate_radps, hfb, kDtS);
+      target_v, lateral, target_w, hfb, kDtS);
   iface::ActuatorCommand out;
   out.mode = mode;
   out.stamp_ns = now_ns;

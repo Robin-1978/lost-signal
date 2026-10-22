@@ -90,8 +90,11 @@ mecanum (`kMecanumDuty` 4 drives) flavors (`kYawRate` runs with lateral 0).
 Each `to_actuator` closes its own loops (rear/drive PID + model feedforward,
 steer position->rate cascade) against measured joints and returns a
 mode-correct safe zero without valid feedback. The sim plant mirrors the
-same four modes (first-order drive lag, velocity-servo steers, rigid-body
-follow per chassis kinematics).
+same four modes (motor-force integration per DC curve with emergent lag,
+dissipative service brakes, velocity-servo steers, rigid-body follow per
+chassis kinematics). Stops are closed-loop holds at zero through the wheel
+loops when joints are known (the force plant has no passive drag, so
+open-loop zero duty would coast); blind stops stay SafeZero.
 
 `src/robot/platform/chassis_registry.hpp`. `ChassisRegistry::global()` maps
 kind names to factories; builtins self-register via static

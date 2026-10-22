@@ -228,12 +228,18 @@ route, pre-activation hold).
 ## Hardware contract (sim-native parity)
 
 - `DriveProfile` (`robot/platform/drive_profile.hpp`) is the single hardware
-  capability contract: geometry + first-order motor/steer parameters +
-  encoder resolution, with factory defaults per chassis kind (same numbers
-  `make_chassis` builds with; unknown kinds fail closed).
+  capability contract: geometry + DC force-curve numbers (stall force +
+  free speed) + per-wheel equivalent mass + encoder resolution, with
+  factory defaults per chassis kind (same numbers `make_chassis` builds
+  with; unknown kinds fail closed). Speed lag is emergent
+  (tau = m * free / stall), never a fitted constant.
 - JSON loading lives on the SIM side (`sim/eval/drive_profile_io`): a file
   merges over the defaults, so a measured step response can retune the
   plant without forking geometry. ROBOT never parses files.
+- Stops are closed-loop: each chassis holds zero through its wheel loops
+  when joints are known (active electrical braking); blind stops stay
+  SafeZero. The SIM service brake (`sim/world/service_brake.hpp`) is the
+  dissipative counterpart, driven by a SIM-side hook, never a ROBOT channel.
 
 ## Validation (trajectory verdicts with minimum-risk escape)
 
