@@ -2,16 +2,14 @@
 
 namespace lost_signal::robot::iface {
 
-RuntimeChannel::RuntimeChannel(ChannelConfig cfg) : cfg_(cfg) {
-  obs_queue_.reserve(cfg_.obs_capacity);
-  cmd_queue_.reserve(cfg_.cmd_capacity);
-}
+RuntimeChannel::RuntimeChannel(ChannelConfig cfg)
+    : cfg_(cfg), obs_ring_(cfg_.obs_capacity), cmd_ring_(cfg_.cmd_capacity) {}
 
 void RuntimeChannel::deactivate() {
   std::lock_guard<std::mutex> lock(mutex_);
   active_ = false;
-  obs_queue_.clear();
-  cmd_queue_.clear();
+  obs_ring_.clear();
+  cmd_ring_.clear();
 }
 
 bool RuntimeChannel::publish_observation(const ObservationFrame& obs) {
@@ -34,11 +32,7 @@ bool RuntimeChannel::publish_observation(const ObservationFrame& obs) {
     health_.obs_rejected += 1;
     return false;
   }
-  if (obs_queue_.size() >= cfg_.obs_capacity) {
-    obs_queue_.erase(obs_queue_.begin());  // drop oldest, keep newest
-    health_.obs_dropped += 1;
-  }
-  obs_queue_.push_back(obs);
+  if (obs_ring_.push(obs)) health_.obs_dropped += 1;  // ring overwrite
   last_seq_[obs.source] = obs.sequence;
   last_stamp_[obs.source] = obs.stamp_ns;
   health_.obs_received += 1;
@@ -47,27 +41,22 @@ bool RuntimeChannel::publish_observation(const ObservationFrame& obs) {
 
 std::vector<ObservationFrame> RuntimeChannel::drain_observations() {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::vector<ObservationFrame> out;
-  out.swap(obs_queue_);
-  return out;
+  return obs_ring_.drain();
 }
 
 bool RuntimeChannel::publish_command(const MotionCommand& cmd) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!active_) return false;
-  if (cmd_queue_.size() >= cfg_.cmd_capacity) {
-    cmd_queue_.erase(cmd_queue_.begin());
-  }
-  cmd_queue_.push_back(cmd);
+  cmd_ring_.push(cmd);  // newest wins; oldest overwritten (no counter)
   health_.cmd_published += 1;
   return true;
 }
 
 MotionCommand RuntimeChannel::take_command(core::MonotonicNs now_ns) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (cmd_queue_.empty()) return MotionCommand::SafeStop(now_ns);
-  MotionCommand cmd = cmd_queue_.back();
-  cmd_queue_.clear();
+  auto cmds = cmd_ring_.drain();
+  if (cmds.empty()) return MotionCommand::SafeStop(now_ns);
+  MotionCommand cmd = cmds.back();
   if (!valid_motion_command(cmd, now_ns)) {
     health_.cmd_expired += 1;
     return MotionCommand::SafeStop(now_ns);
