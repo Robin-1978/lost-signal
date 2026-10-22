@@ -14,12 +14,7 @@ int main() {
   native->register_provider({"t.lidar", robot::iface::EndpointRole::kLidar,
                              robot::iface::ProviderBackend::kNative,
                              "lidar_link"});
-  robot::platform::DifferentialChassis chassis(
-      0.1, 0.5,
-      {.max_forward_mps = 2.0,
-       .max_yaw_rate_radps = 1.5,
-       .footprint_radius_m = 0.4});
-  robot::robots::DifferentialRobot diff(std::move(native), chassis);
+  robot::robots::DifferentialRobot diff(std::move(native));
 
   sim::robot::SimRobot sim;
   robot::app::IRobot* robots[2] = {&diff, &sim};
@@ -31,12 +26,12 @@ int main() {
            robot::lifecycle::ModuleState::kActive);
     robot::iface::TaskRequest req;
     req.request_id = "t";
-    req.place_id = "dock";
+    req.place_id = "";  // hold intent; place resolution is covered in test_places
     assert(r->submit_task(req));
     robot::iface::MotionCommand cmd = r->tick(1'000'000);
     // v1 skeleton holds position through the chassis envelope.
     assert(cmd.is_safe_stop());
-    assert(r->task_status().state == robot::iface::TaskState::kActive);
+    assert(r->task_status().state == robot::iface::TaskState::kIdle);
   }
   // SimRobot actually stepped its world while ticking.
   assert(sim.world().truth().step >= 1);

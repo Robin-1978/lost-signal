@@ -158,9 +158,65 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
 }
 
 void FusedOdometryEstimator::correct(const iface::ObservationFrame& obs) {
-  // v1: no map correction; a scan/map localizer writes the correction here
-  // and shrinks the sigmas. Never simulator truth.
+  // v1: no map correction; a scan/map localizer calls correct_pose()
+  // directly with its validated result. Never simulator truth.
   (void)obs;
+}
+
+void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
+                                          double yaw_rad, double pos_sigma_m,
+                                          double yaw_sigma_rad,
+                                          core::MonotonicNs stamp_ns) {
+  if (!std::isfinite(x_m) || !std::isfinite(y_m) ||
+      !std::isfinite(yaw_rad) || !(pos_sigma_m > 0.0) ||
+      !(yaw_sigma_rad > 0.0)) {
+    return;  // fail closed on malformed corrections
+  }
+  const double ev = std::max(1e-9, estimate_.position_sigma_m);
+  const double cv = std::max(1e-9, pos_sigma_m);
+  const double k = ev / (ev + cv);
+  estimate_.x_m += k * (x_m - estimate_.x_m);
+  estimate_.y_m += k * (y_m - estimate_.y_m);
+  estimate_.yaw_rad = core::wrap_angle(
+      estimate_.yaw_rad + k * core::wrap_angle(yaw_rad - estimate_.yaw_rad));
+  estimate_.position_sigma_m =
+      std::clamp(1.0 / (1.0 / ev + 1.0 / cv), config_.pos_sigma_min_m,
+                 config_.pos_sigma_max_m);
+  const double ey = std::max(1e-9, estimate_.heading_sigma_rad);
+  const double cy = std::max(1e-9, yaw_sigma_rad);
+  estimate_.heading_sigma_rad = std::clamp(
+      1.0 / (1.0 / ey + 1.0 / cy), config_.yaw_sigma_min_rad,
+      config_.yaw_sigma_max_rad);
+  estimate_.stamp_ns = stamp_ns;
+  estimate_.confidence =
+      1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+}
+
+void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
+                                       double pos_sigma_m, double yaw_sigma_rad,
+                                       core::MonotonicNs stamp_ns) {
+  if (!std::isfinite(x_m) || !std::isfinite(y_m) ||
+      !std::isfinite(yaw_rad) || !(pos_sigma_m > 0.0) ||
+      !(yaw_sigma_rad > 0.0)) {
+    return;  // fail closed on malformed seeds
+  }
+  estimate_.valid = true;
+  estimate_.x_m = x_m;
+  estimate_.y_m = y_m;
+  estimate_.yaw_rad = core::wrap_angle(yaw_rad);
+  estimate_.forward_mps = 0.0;
+  estimate_.yaw_rate_radps = 0.0;
+  estimate_.attitude_valid = false;
+  estimate_.position_sigma_m =
+      std::clamp(pos_sigma_m, config_.pos_sigma_min_m,
+                 config_.pos_sigma_max_m);
+  estimate_.heading_sigma_rad = std::clamp(
+      yaw_sigma_rad, config_.yaw_sigma_min_rad, config_.yaw_sigma_max_rad);
+  estimate_.stamp_ns = stamp_ns;
+  estimate_.confidence =
+      1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+  has_prior_ = true;
+  prior_ = iface::ObservationFrame{};
 }
 
 }  // namespace lost_signal::robot::autonomy

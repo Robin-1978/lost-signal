@@ -14,7 +14,7 @@ class SimMotionEndpoint : public robot::iface::IMotionEndpoint {
 
   const robot::iface::EndpointDescriptor& descriptor() const override;
   bool is_ready() const override { return world_ != nullptr; }
-  void consume_command(const robot::iface::MotionCommand& cmd) override;
+  void consume_command(const robot::iface::ActuatorCommand& cmd) override;
   bool poll_feedback(robot::iface::MotionFeedback& out) override;
 
  private:

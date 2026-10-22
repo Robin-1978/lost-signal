@@ -1,5 +1,7 @@
 #include "robot/autonomy/coordinator.hpp"
 
+#include <string>
+
 namespace lost_signal::robot::autonomy {
 
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
@@ -16,9 +18,7 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       validator_(std::make_unique<ClearanceValidator>(
           ClearanceValidatorConfig{limits.footprint_radius_m})),
       controller_(std::make_unique<DirectController>()),
-      safety_(std::make_unique<SafetyMonitor>(
-          500'000'000,
-          static_cast<float>(limits.footprint_radius_m - 0.1))) {}
+      safety_(std::make_unique<SafetyMonitor>()) {}
 
 core::Status AutonomyCoordinator::configure() {
   estimator_->reset();
@@ -33,10 +33,17 @@ core::Status AutonomyCoordinator::configure() {
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
+  supervisor_.reset(false);
+  last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
+  last_constraint_ = "none";
+  last_reason_ = "init";
+  latch_.reset();
+  last_published_stop_ = false;
+  evidence_.reset();
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
 }
@@ -69,10 +76,17 @@ core::Status AutonomyCoordinator::cleanup() {
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
+  supervisor_.reset(false);
+  last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
+  last_constraint_ = "none";
+  last_reason_ = "init";
+  latch_.reset();
+  last_published_stop_ = false;
+  evidence_.reset();
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
 }
@@ -82,6 +96,13 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
   has_goal_ = true;
   active_route_ = Route{};  // force refresh on the next update
   replan_requested_ = true;
+}
+
+void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
+  const core::MonotonicNs stamp =
+      has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
+  estimator_->seed_pose(x_m, y_m, yaw_rad, 0.1, 0.05, stamp);
+  supervisor_.reset(true);
 }
 
 void AutonomyCoordinator::ingest_observation(
@@ -116,6 +137,10 @@ iface::MotionCommand AutonomyCoordinator::update(
   bool due = last_decision_ns_ == core::kInvalidTime ||
              now_ns - last_decision_ns_ >= decision_period_ns_;
   bool map_changed = map.revision != last_map_revision_;
+  // Localization runs on every tick; the supervisor cadence-gates the
+  // matcher. Corrections feed the estimator only when accepted, so a hard
+  // scan never drags the pose.
+  run_localization(map, now_ns);
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
@@ -139,12 +164,16 @@ iface::MotionCommand AutonomyCoordinator::update(
         behavior_->decide(estimator_->estimate(), perception_, limits_);
     iface::MotionCommand decided =
         iface::MotionCommand::SafeStop(now_ns);
+    std::string reason = "no-plan";
+    std::string constraint =
+        decision_.must_hold ? "hold" : "speed_cap";
     if (decision_.must_hold) {
       LocalCandidate hold;
       hold.feasible = true;
       ValidationResult verdict =
           validator_->validate(hold, estimator_->estimate(), perception_,
                                last_obs_);
+      reason = verdict.reason;
       if (verdict.accepted) {
         decided = controller_->track(hold, estimator_->estimate(), now_ns);
       }
@@ -159,6 +188,7 @@ iface::MotionCommand AutonomyCoordinator::update(
       if (plan.has_plan) {
         ValidationResult verdict = validator_->validate(
             plan.best, estimator_->estimate(), perception_, last_obs_);
+        reason = verdict.reason;
         if (verdict.accepted) {
           decided =
               controller_->track(plan.best, estimator_->estimate(), now_ns);
@@ -169,17 +199,80 @@ iface::MotionCommand AutonomyCoordinator::update(
       decided = iface::MotionCommand::SafeStop(now_ns);
     }
     last_cmd_ = decided;
+    last_constraint_ = constraint;
+    last_reason_ = reason;
+  }
+  // Controlled-stop latch: once stopping, withhold motion until the measured
+  // tread settles, so a safety rejection on a grade cannot chatter into a
+  // brake/accelerate limit cycle. Independent of planner yaw intent.
+  const double tread_mps = std::abs(estimator_->estimate().forward_mps);
+  iface::MotionCommand gated = last_cmd_;
+  if (latch_.update(last_published_stop_, tread_mps,
+                    ControlledStopLatch::Config{})) {
+    gated = iface::MotionCommand::SafeStop(now_ns);
   }
   // Final independent gate, every tick: safety re-checks RAW evidence
   // (freshness, near-field scan, channel health) and can only downgrade to
   // safe stop. Critical faults latch until deliberate recovery.
   SafetyVerdict verdict = safety_->evaluate(estimator_->estimate(), perception_,
                                             last_obs_, channel, now_ns);
-  return safety_->gate(last_cmd_, verdict, now_ns);
+  iface::MotionCommand final_cmd = safety_->gate(gated, verdict, now_ns);
+  last_published_stop_ = final_cmd.is_safe_stop();
+  // One evidence record per distinct decision; repeats update in place.
+  diagnostics::DecisionEvidence evidence;
+  evidence.observation_time_s = last_obs_.stamp_ns * 1e-9;
+  evidence.observation_refs = {last_obs_.source + "#" +
+                               std::to_string(last_obs_.sequence)};
+  evidence.prediction_horizon_s = decision_period_ns_ * 1e-9;
+  evidence.constraint_code = last_constraint_;
+  evidence.reason_code = last_reason_;
+  if (verdict.state != SafetyState::kNominal) {
+    evidence.reason_code += "+safety:" + verdict.reason;
+  }
+  evidence.target_speed_mps = final_cmd.forward_mps;
+  evidence.target_yaw_rate_radps = final_cmd.yaw_rate_radps;
+  evidence.action_code = final_cmd.is_safe_stop() ? "stop" : "drive";
+  evidence_.publish(std::move(evidence), now_ns * 1e-9);
+  return final_cmd;
 }
 
 const EstimatedState& AutonomyCoordinator::estimate() const {
   return estimator_->estimate();
+}
+
+void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
+                                          core::MonotonicNs now_ns) {
+  const double now_s = now_ns * 1e-9;
+  const EstimatedState& est = estimator_->estimate();
+  LocalizationHealth health;
+  health.valid = est.valid;
+  health.position_sigma_m = est.position_sigma_m;
+  health.heading_sigma_rad = est.heading_sigma_rad;
+  health.confidence = est.confidence;
+  health.age_s = est.valid ? now_s - est.stamp_ns * 1e-9 : 1e9;
+  std::string reason;
+  LocalizationAction action = supervisor_.next(
+      now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
+  last_localization_action_ = localization_action_name(action);
+  if (action == LocalizationAction::kDefer) return;
+  // No whole-map search provider yet: a global request degrades to a bounded
+  // local attempt (documented). It cannot kidnap-recover; it also cannot
+  // corrupt the estimate, since rejections only feed the supervisor.
+  ScanMatchResult match = scan_matcher_.localize(
+      last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
+      last_obs_.scan_angle_increment_rad, est.x_m, est.y_m, est.yaw_rad, map,
+      now_ns);
+  const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
+  if (match.accepted) {
+    estimator_->correct_pose(match.x_m, match.y_m, match.yaw_rad,
+                             match.position_sigma_m, match.heading_sigma_rad,
+                             last_obs_.stamp_ns);
+  }
+  if (attempted_global) {
+    supervisor_.record_global(match.accepted, match);
+  } else {
+    supervisor_.record_local(match.accepted, match);
+  }
 }
 
 LocalMap AutonomyCoordinator::local_map() const {

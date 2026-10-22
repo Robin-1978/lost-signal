@@ -20,7 +20,7 @@ class SimSensorSuite {
 
   void register_all(robot::app::IRobot& app);
   bool poll_envelope(robot::iface::ObservationFrame& out);
-  void consume(const robot::iface::MotionCommand& cmd);
+  void consume(const robot::iface::ActuatorCommand& cmd);
 
   SimMotionEndpoint& motion() { return motion_; }
   Sim2DLidarProvider& lidar() { return lidar_; }

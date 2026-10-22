@@ -20,6 +20,9 @@ struct ObservationFrame {
   // Minimal planar scan. Empty + scan_valid=false means unknown, never free.
   std::vector<float> ranges_m;
   bool scan_valid = false;
+  // Scan layout: angle_min + i * increment covers the full rotation.
+  double scan_angle_min_rad = -3.141592653589793;
+  double scan_angle_increment_rad = 0.0;
 
   // Static-reference scan: expected returns from the static world (map
   // raycast or survey), same ordering as ranges_m. Lets perception split
@@ -43,7 +46,16 @@ struct ObservationFrame {
   double imu_ay_mps2 = 0.0;
   double imu_az_mps2 = 0.0;
 
-  bool empty() const { return !scan_valid && !odometry_valid && !imu_valid; }
+  // Joint truth (measured mechanical rad/s, per named wheel channel).
+  // Wheel controllers close their loops on this; body twist above stays
+  // the convenience projection a driver derives from the same joints.
+  bool wheels_valid = false;
+  double left_radps = 0.0;
+  double right_radps = 0.0;
+
+  bool empty() const {
+    return !scan_valid && !odometry_valid && !imu_valid && !wheels_valid;
+  }
 };
 
 bool valid_observation_frame(const ObservationFrame& frame);

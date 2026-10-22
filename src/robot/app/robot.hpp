@@ -4,6 +4,7 @@
 #include <string>
 
 #include "robot/autonomy/coordinator.hpp"
+#include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/core/status.hpp"
 #include "robot/iface/channel.hpp"
 #include "robot/iface/command.hpp"
@@ -38,10 +39,12 @@ class IRobot {
   virtual bool register_provider(const iface::EndpointDescriptor& desc) = 0;
   virtual bool publish_observation(const iface::ObservationFrame& obs) = 0;
   virtual iface::MotionCommand take_command(core::MonotonicNs now_ns) = 0;
+  virtual iface::ActuatorCommand take_actuator(core::MonotonicNs now_ns) = 0;
   virtual iface::MotionCommand tick(core::MonotonicNs now_ns) = 0;
   virtual iface::TaskStatus task_status() const = 0;
   virtual iface::MapSnapshot active_map() const = 0;
   virtual iface::ChannelHealth channel_health() const = 0;
+  virtual autonomy::diagnostics::DecisionEvidence last_evidence() const = 0;
 };
 
 }  // namespace lost_signal::robot::app

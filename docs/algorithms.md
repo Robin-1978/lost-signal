@@ -154,3 +154,33 @@ periodic work never runs on stale data.
 
 Tests: `tests/test_autonomy.cpp` (integration, validator table, straight-line
 route, pre-activation hold).
+
+## Deliberation layers (task -> motion -> trajectory)
+
+- `TaskOrderingRegistry` scores candidate tasks (`shortest`,
+  `value_density`, plus content-registered scorers); missions never branch
+  on policy names.
+- Semantic places (`place_id`) resolve through the ROBOT map provider into
+  estimated-frame goals; unknown ids fail closed. SIM submits the same
+  typed intents as an operator.
+- `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
+  samples trajectories; the validator and the independent safety monitor
+  keep their vetoes.
+
+## Localization (scan-matched, supervisor-gated)
+
+- `ScanMatcher` scores a bounded hypothesis grid around the odometric prior
+  against the static raster (occupied +1 / free +1-for-clearing / unknown 0
+  / outside -0.25), requires overlap and a margin over the next *separated*
+  hypothesis, and rejects ambiguity outright instead of dragging the pose
+  to a corridor twin.
+- `LocalizationSupervisor` schedules corrections (cadence + motion/idle
+  triggers, sigma/confidence/age gates) and rate-limits global recovery;
+  a rejected match is evidence, never an implicit correction.
+- `FusedOdometryEstimator::correct_pose` blends accepted corrections by
+  Kalman-lite variance weighting; `seed_pose` implements the deliberate
+  deployment/operator initial pose (known dock). Both reject non-finite
+  input.
+- A global whole-map search is the documented next piece: until it lands,
+  global requests degrade to bounded local attempts that cannot corrupt
+  the estimate.

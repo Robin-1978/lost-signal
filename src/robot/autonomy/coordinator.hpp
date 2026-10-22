@@ -1,13 +1,18 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/control/stop_latch.hpp"
+#include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/localization/scan_matcher.hpp"
+#include "robot/autonomy/localization/supervisor.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
@@ -62,25 +67,42 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // still enters via the executive; this is the deliberate operator path.
   void set_goal(const RoutePoint& goal);
   const Route& active_route() const { return active_route_; }
+  // Deployment seeding: known start pose (dock, operator initialpose).
+  // Snaps the estimator and marks the supervisor localized so the normal
+  // cadence path takes over; every later correction is still gated.
+  void seed_pose(double x_m, double y_m, double yaw_rad);
   // Event wakeup: force the decision branch on the next update, without
   // waiting for the decision period (goal arrival, operator override).
   void request_replan() { replan_requested_ = true; }
   void clear_safety() { safety_->clear_safety(); }
+  void clear_stop_latch() { latch_ = ControlledStopLatch{}; }
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
   const EstimatedState& estimate() const;
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }
   SafetyVerdict last_safety() const { return safety_->last_verdict(); }
+  bool localized() const { return supervisor_.localized(); }
+  const std::string& last_localization_action() const {
+    return last_localization_action_;
+  }
+  diagnostics::DecisionEvidence last_evidence() const {
+    return evidence_.current() != nullptr ? *evidence_.current()
+                                          : diagnostics::DecisionEvidence{};
+  }
   core::MonotonicNs last_decision_ns() const { return last_decision_ns_; }
   LocalMap local_map() const;
 
  private:
   lifecycle::ModuleState state_ = lifecycle::ModuleState::kUnconfigured;
   platform::ChassisLimits limits_;
+  void run_localization(const iface::MapSnapshot& map,
+                        core::MonotonicNs now_ns);
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;
+  ScanMatcher scan_matcher_;
+  LocalizationSupervisor supervisor_;
   std::unique_ptr<IBehaviorPolicy> behavior_;
   std::unique_ptr<IGlobalPlanner> global_planner_;
   std::unique_ptr<ILocalPlanner> local_planner_;
@@ -99,6 +121,15 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::uint64_t last_map_revision_ = 0;
   bool replan_requested_ = false;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
+  std::string last_localization_action_ = "init";
+  std::string last_constraint_ = "none";
+  std::string last_reason_ = "init";
+  // Controlled-stop latch: withholds motion until measured tread settles.
+  // Prevents a braking decision on a grade from chattering into a
+  // brake/accelerate limit cycle. Independent of planner yaw intent.
+  ControlledStopLatch latch_;
+  bool last_published_stop_ = false;
+  diagnostics::DecisionEvidenceSystem evidence_;
 };
 
 }  // namespace lost_signal::robot::autonomy

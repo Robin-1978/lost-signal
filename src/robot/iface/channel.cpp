@@ -3,13 +3,17 @@
 namespace lost_signal::robot::iface {
 
 RuntimeChannel::RuntimeChannel(ChannelConfig cfg)
-    : cfg_(cfg), obs_ring_(cfg_.obs_capacity), cmd_ring_(cfg_.cmd_capacity) {}
+    : cfg_(cfg),
+      obs_ring_(cfg_.obs_capacity),
+      cmd_ring_(cfg_.cmd_capacity),
+      act_ring_(cfg_.act_capacity) {}
 
 void RuntimeChannel::deactivate() {
   std::lock_guard<std::mutex> lock(mutex_);
   active_ = false;
   obs_ring_.clear();
   cmd_ring_.clear();
+  act_ring_.clear();
 }
 
 bool RuntimeChannel::publish_observation(const ObservationFrame& obs) {
@@ -60,6 +64,26 @@ MotionCommand RuntimeChannel::take_command(core::MonotonicNs now_ns) {
   if (!valid_motion_command(cmd, now_ns)) {
     health_.cmd_expired += 1;
     return MotionCommand::SafeStop(now_ns);
+  }
+  return cmd;
+}
+
+bool RuntimeChannel::publish_actuator(const ActuatorCommand& cmd) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!active_) return false;
+  act_ring_.push(cmd);  // newest wins; oldest overwritten (no counter)
+  health_.act_published += 1;
+  return true;
+}
+
+ActuatorCommand RuntimeChannel::take_actuator(core::MonotonicNs now_ns) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto cmds = act_ring_.drain();
+  if (cmds.empty()) return ActuatorCommand::SafeZero(now_ns);
+  ActuatorCommand cmd = cmds.back();
+  if (!valid_actuator_command(cmd, now_ns)) {
+    health_.act_expired += 1;
+    return ActuatorCommand::SafeZero(now_ns);
   }
   return cmd;
 }

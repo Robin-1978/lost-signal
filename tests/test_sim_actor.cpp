@@ -19,6 +19,7 @@ int main() {
   crosser.radius_m = 0.4;
   // Actors are sim-owned test setup: configured before the run.
   sim.setup_world().add_actor(crosser);
+  sim.setup_world().add_place({"dock", 0.0, 0.0, 0.0});
 
   robot::iface::TaskRequest req;
   req.request_id = "crossing";

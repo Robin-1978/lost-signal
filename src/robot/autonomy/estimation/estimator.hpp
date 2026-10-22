@@ -34,6 +34,17 @@ class IEstimator {
   virtual void reset() = 0;
   virtual void predict(const iface::ObservationFrame& obs) = 0;
   virtual void correct(const iface::ObservationFrame& obs) = 0;
+  // Map/scan correction with explicit pose + uncertainty. Default ignores:
+  // only estimators with a correction path override this.
+  virtual void correct_pose(double /*x_m*/, double /*y_m*/,
+                            double /*yaw_rad*/, double /*pos_sigma_m*/,
+                            double /*yaw_sigma_rad*/,
+                            core::MonotonicNs /*stamp_ns*/) {}
+  // Deliberate deployment seeding (known dock, operator initialpose).
+  // Default ignores; only estimators with a seed path override it.
+  virtual void seed_pose(double /*x_m*/, double /*y_m*/, double /*yaw_rad*/,
+                         double /*pos_sigma_m*/, double /*yaw_sigma_rad*/,
+                         core::MonotonicNs /*stamp_ns*/) {}
   virtual const EstimatedState& estimate() const = 0;
 };
 
@@ -69,6 +80,18 @@ class FusedOdometryEstimator : public IEstimator {
   void reset() override;
   void predict(const iface::ObservationFrame& obs) override;
   void correct(const iface::ObservationFrame& obs) override;
+  // Deliberate deployment seeding (e.g. known dock pose, operator
+  // initialpose): snaps the estimate and its uncertainty. The supervisor
+  // still gates every runtime correction; seeding never replaces matching.
+  void seed_pose(double x_m, double y_m, double yaw_rad,
+                 double pos_sigma_m, double yaw_sigma_rad,
+                 core::MonotonicNs stamp_ns) override;
+  // Map/scan correction with explicit pose + uncertainty: Kalman-lite blend
+  // of estimate and correction weighted by their variances. A rejected match
+  // never reaches here; the matcher owns acceptance.
+  void correct_pose(double x_m, double y_m, double yaw_rad,
+                    double pos_sigma_m, double yaw_sigma_rad,
+                    core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
 
  private:

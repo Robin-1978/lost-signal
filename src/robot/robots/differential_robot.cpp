@@ -4,9 +4,8 @@
 
 namespace lost_signal::robot::robots {
 
-DifferentialRobot::DifferentialRobot(std::unique_ptr<app::IRobot> inner,
-                                     platform::DifferentialChassis chassis)
-    : inner_(std::move(inner)), chassis_(chassis) {}
+DifferentialRobot::DifferentialRobot(std::unique_ptr<app::IRobot> inner)
+    : inner_(std::move(inner)) {}
 
 core::Status DifferentialRobot::configure() { return inner_->configure(); }
 
@@ -42,8 +41,9 @@ iface::MotionCommand DifferentialRobot::take_command(
 }
 
 iface::MotionCommand DifferentialRobot::tick(core::MonotonicNs now_ns) {
-  iface::MotionCommand cmd = inner_->tick(now_ns);
-  return chassis_.clamp_command(cmd, now_ns);
+  // The inner application owns the chassis: envelope clamp and actuator
+  // translation happen there. This facade only forwards the seam.
+  return inner_->tick(now_ns);
 }
 
 iface::TaskStatus DifferentialRobot::task_status() const {

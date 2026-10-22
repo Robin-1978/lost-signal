@@ -3,19 +3,17 @@
 #include <memory>
 
 #include "robot/app/robot.hpp"
-#include "robot/platform/chassis.hpp"
 
 namespace lost_signal::robot::robots {
 
 // DifferentialRobot: deployable IRobot for differential-drive bases.
-// Same facade as RobotApplication, plus chassis-envelope clamping on every
-// tick so a planner can never publish a yaw rate the base cannot track.
-// Owns its inner IRobot via unique_ptr because RobotApplication (mutex
-// channel) is non-movable.
+// Thin deployment facade: the inner RobotApplication owns the chassis
+// (selected by RobotDescription::chassis_kind), clamps the envelope, and
+// translates body commands to actuator setpoints. Owns its inner IRobot via
+// unique_ptr because RobotApplication (mutex channel) is non-movable.
 class DifferentialRobot : public app::IRobot {
  public:
-  DifferentialRobot(std::unique_ptr<app::IRobot> inner,
-                    platform::DifferentialChassis chassis);
+  explicit DifferentialRobot(std::unique_ptr<app::IRobot> inner);
 
   core::Status configure() override;
   core::Status activate() override;
@@ -32,16 +30,19 @@ class DifferentialRobot : public app::IRobot {
   bool register_provider(const iface::EndpointDescriptor& desc) override;
   bool publish_observation(const iface::ObservationFrame& obs) override;
   iface::MotionCommand take_command(core::MonotonicNs now_ns) override;
+  iface::ActuatorCommand take_actuator(core::MonotonicNs now_ns) override {
+    return inner_->take_actuator(now_ns);
+  }
+  autonomy::diagnostics::DecisionEvidence last_evidence() const override {
+    return inner_->last_evidence();
+  }
   iface::MotionCommand tick(core::MonotonicNs now_ns) override;
   iface::TaskStatus task_status() const override;
   iface::MapSnapshot active_map() const override;
   iface::ChannelHealth channel_health() const override;
 
-  const platform::DifferentialChassis& chassis() const { return chassis_; }
-
  private:
   std::unique_ptr<app::IRobot> inner_;
-  platform::DifferentialChassis chassis_;
 };
 
 }  // namespace lost_signal::robot::robots

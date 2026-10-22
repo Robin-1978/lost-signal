@@ -69,12 +69,13 @@ int main() {
   iface::MotionCommand expired = app.take_command(2'000'000'000);
   assert(expired.is_safe_stop());
 
-  // Task intent crosses as typed request only.
+  // Task intent crosses as typed request only. Empty place = hold.
+  // (Place resolution against a map with places is covered in test_places.)
   iface::TaskRequest req;
   req.request_id = "t1";
-  req.place_id = "dock";
+  req.place_id = "";
   assert(app.submit_task(req));
-  assert(app.task_status().state == iface::TaskState::kActive);
+  assert(app.task_status().state == iface::TaskState::kIdle);
 
   // Shutdown returns modules to Unconfigured; tick holds again.
   app.shutdown();

@@ -10,6 +10,7 @@ int main() {
 
   // 1. Episode records truth + obs + cmd + estimate, robot ticks safe-stop.
   sim::scenario::ScenarioSession session;
+  session.setup_world().add_place({"dock", 0.0, 0.0, 0.0});
   robot::iface::TaskRequest req;
   req.request_id = "eval";
   req.place_id = "dock";

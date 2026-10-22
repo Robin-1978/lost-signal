@@ -54,6 +54,12 @@ void StaticMapProvider::rebuild() const {
         }
       }
     }
+    if (world_ != nullptr) {
+      snapshot_.places.clear();
+      for (const auto& p : world_->places()) {
+        snapshot_.places.push_back({p.place_id, p.x_m, p.y_m, p.yaw_rad});
+      }
+    }
     snapshot_.revision = world_->geometry_version() + 1;
     built_version_ = world_->geometry_version();
   }

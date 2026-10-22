@@ -5,15 +5,19 @@
 
 #include "robot/app/robot.hpp"
 #include "robot/autonomy/coordinator.hpp"
+#include "robot/autonomy/diagnostics/decision_evidence.hpp"
+#include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 #include "robot/core/status.hpp"
 #include "robot/executive/executive.hpp"
 #include "robot/iface/channel.hpp"
 #include "robot/iface/command.hpp"
 #include "robot/iface/endpoint.hpp"
 #include "robot/iface/map.hpp"
+#include "robot/iface/motion.hpp"
 #include "robot/iface/observation.hpp"
 #include "robot/iface/task.hpp"
 #include "robot/lifecycle/bringup.hpp"
+#include "robot/platform/chassis.hpp"
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::app {
@@ -76,7 +80,15 @@ class RobotApplication : public IRobot {
 
   // Provider -> robot: validated + queued, false when rejected.
   bool publish_observation(const iface::ObservationFrame& obs) override;
-  // Robot -> provider: newest non-expired command, else safe stop.
+  // Robot -> plant: newest non-expired actuator setpoints, else safe zero.
+  // The chassis layer translates the validated body command using the latest
+  // joint feedback; loops never close on stale joints.
+  iface::ActuatorCommand take_actuator(core::MonotonicNs now_ns) override;
+  // Latest decision evidence (read-only ops/logging).
+  autonomy::diagnostics::DecisionEvidence last_evidence() const;
+  // Robot -> provider: newest non-expired body command, else safe stop.
+  // Retained for smart-drive placements and logging; the default plant
+  // consumes take_actuator().
   iface::MotionCommand take_command(core::MonotonicNs now_ns) override;
 
   // One deterministic cycle. Always returns a valid command; safe stop
@@ -99,6 +111,11 @@ class RobotApplication : public IRobot {
     autonomy::EstimatedState estimate;
     autonomy::SafetyState safety = autonomy::SafetyState::kStopped;
     std::string safety_reason = "init";
+    autonomy::diagnostics::DecisionEvidence evidence;
+    bool braking_active = false;
+    double braking_distance_m = 0.0;
+    bool localized = false;
+    std::string localization_action = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::TaskStatus task;
     iface::ChannelHealth health;
@@ -108,10 +125,12 @@ class RobotApplication : public IRobot {
  private:
   std::unique_ptr<iface::IMapProvider> maps_;
   platform::RobotDescription desc_;
+  std::unique_ptr<platform::IChassis> chassis_;
   iface::EndpointRegistry registry_;
   iface::RuntimeChannel channel_;
   autonomy::AutonomyCoordinator coordinator_;
   executive::RobotExecutive executive_;
+  autonomy::diagnostics::VehicleMeasurementSystem measurement_;
   lifecycle::BringupManager bringup_;
   bool bringup_wired_ = false;
 };

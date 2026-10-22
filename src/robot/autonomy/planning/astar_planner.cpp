@@ -95,6 +95,18 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
       const double step = ((dir % 2 == 0) ? 1.0 : 1.4142135623730951) * res;
       double cost = step;
       if (v < 0) cost += config_.unknown_cost_per_m * step;  // unknown
+      // Clearance preference: count occupied 8-neighbors (walls, not the
+      // target cell itself) so routes drift to corridor centers. This is a
+      // preference only; impassability stays binary above.
+      int occupied_neighbors = 0;
+      for (int ay = -1; ay <= 1; ++ay) {
+        for (int ax = -1; ax <= 1; ++ax) {
+          if (ax == 0 && ay == 0) continue;
+          if (cell_value(nx + ax, ny + ay) >= 50) ++occupied_neighbors;
+        }
+      }
+      cost += config_.clearance_cost_per_m * step * occupied_neighbors / 8.0;
+      // Grade: penalize |dh|/step; reject cliffs beyond max_grade.
       // Grade: penalize |dh|/step, reject cliffs beyond max_grade. Unknown
       // elevation pays no grade cost (surveyed prior may be sparse).
       const float h0 = cell_elevation(cx, cy);

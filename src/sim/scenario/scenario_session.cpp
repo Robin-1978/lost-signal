@@ -40,7 +40,8 @@ void ScenarioSession::step_once() {
     return;
   }
   robot::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
-  suite_.consume(cmd);
+  robot::iface::ActuatorCommand act = app_.take_actuator(obs.stamp_ns);
+  suite_.consume(act);
 
   rec.cmd = cmd;
   rec.diag = app_.diagnostics();

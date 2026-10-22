@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "robot/iface/command.hpp"
+#include "robot/iface/motion.hpp"
 #include "robot/iface/observation.hpp"
 
 namespace lost_signal::robot::iface {
@@ -15,6 +16,7 @@ namespace lost_signal::robot::iface {
 struct ChannelConfig {
   std::size_t obs_capacity = 64;
   std::size_t cmd_capacity = 16;
+  std::size_t act_capacity = 16;
 };
 
 struct ChannelHealth {
@@ -23,6 +25,8 @@ struct ChannelHealth {
   std::uint64_t obs_rejected = 0;   // invalid / stale / out-of-order
   std::uint64_t cmd_published = 0;
   std::uint64_t cmd_expired = 0;  // consumed after expiry
+  std::uint64_t act_published = 0;
+  std::uint64_t act_expired = 0;
 };
 
 // Fixed-capacity ring queue: O(1) push/pop, full push overwrites the oldest.
@@ -104,6 +108,11 @@ class RuntimeChannel {
   // Provider side: take the newest non-expired command, or safe stop.
   MotionCommand take_command(core::MonotonicNs now_ns);
 
+  // Robot side: publish the validated actuator setpoints for this tick.
+  bool publish_actuator(const ActuatorCommand& cmd);
+  // Plant side: take the newest non-expired setpoints, or safe zero.
+  ActuatorCommand take_actuator(core::MonotonicNs now_ns);
+
   ChannelHealth health() const;
 
  private:
@@ -112,6 +121,7 @@ class RuntimeChannel {
   mutable std::mutex mutex_;
   RingQueue<ObservationFrame> obs_ring_;
   RingQueue<MotionCommand> cmd_ring_;
+  RingQueue<ActuatorCommand> act_ring_;
   ChannelHealth health_{};
   // Per-source sequence / timestamp gate (strictly increasing).
   std::unordered_map<std::string, std::uint64_t> last_seq_;

@@ -1,5 +1,7 @@
 #include "sim/robot/sim_robot.hpp"
 
+#include <algorithm>
+
 namespace lost_signal::sim::robot {
 
 namespace r = ::lost_signal::robot;
@@ -56,7 +58,8 @@ r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
     return r::iface::MotionCommand::SafeStop(obs.stamp_ns);
   }
   r::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
-  suite_.consume(cmd);
+  r::iface::ActuatorCommand act = app_.take_actuator(obs.stamp_ns);
+  suite_.consume(act);
   return cmd;
 }
 

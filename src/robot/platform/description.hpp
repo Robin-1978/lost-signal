@@ -32,6 +32,7 @@ struct ChassisLimits {
 
 struct RobotDescription {
   std::string robot_id;      // e.g. "ro1"
+  std::string chassis_kind = "differential";  // selects the chassis factory
   std::uint64_t version = 1;  // bump on any mount/limit change
   std::vector<LinkMount> links;
   std::vector<SensorMount> sensors;

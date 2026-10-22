@@ -20,12 +20,24 @@ add_library(lost_signal_robot_iface STATIC
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
 
+add_library(lost_signal_robot_control STATIC
+  src/robot/control/pid.cpp
+  src/robot/control/feedforward.cpp
+  src/robot/control/wheel_controller.cpp
+)
+target_include_directories(lost_signal_robot_control PUBLIC src)
+target_link_libraries(lost_signal_robot_control PUBLIC lost_signal_robot_iface)
+
 add_library(lost_signal_robot_platform STATIC
   src/robot/platform/description.cpp
   src/robot/platform/chassis.cpp
+  src/robot/platform/differential_kinematics.cpp
 )
 target_include_directories(lost_signal_robot_platform PUBLIC src)
-target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_iface)
+target_link_libraries(lost_signal_robot_platform PUBLIC
+  lost_signal_robot_iface
+  lost_signal_robot_control
+)
 
 add_library(lost_signal_robot_lifecycle STATIC
   src/robot/lifecycle/bringup.cpp
@@ -37,12 +49,18 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
+  src/robot/autonomy/localization/scan_matcher.cpp
+  src/robot/autonomy/localization/supervisor.cpp
   src/robot/autonomy/mapping/mapper.cpp
   src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/astar_planner.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
   src/robot/autonomy/planning/prediction.cpp
+  src/robot/autonomy/planning/task/task_ordering.cpp
+  src/robot/autonomy/control/stop_latch.cpp
+  src/robot/autonomy/diagnostics/decision_evidence.cpp
+  src/robot/autonomy/diagnostics/vehicle_measurement.cpp
   src/robot/autonomy/safety/safety.cpp
 )
 target_include_directories(lost_signal_robot_autonomy PUBLIC src)
@@ -91,6 +109,7 @@ target_link_libraries(lost_signal_robot_stack INTERFACE
   lost_signal_robot_app
   lost_signal_robot_robots
   lost_signal_robot_providers
+  lost_signal_robot_control
 )
 
 # Native robot binary: provider-neutral, links only the robot stack.
@@ -179,6 +198,24 @@ add_executable(test_autonomy
 target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy COMMAND test_autonomy)
 
+add_executable(test_task_ordering
+  tests/test_task_ordering.cpp
+)
+target_link_libraries(test_task_ordering PRIVATE lost_signal_robot_autonomy)
+add_test(NAME task_ordering COMMAND test_task_ordering)
+
+add_executable(test_places
+  tests/test_places.cpp
+)
+target_link_libraries(test_places PRIVATE lost_signal_robot_stack)
+add_test(NAME places COMMAND test_places)
+
+add_executable(test_localization
+  tests/test_localization.cpp
+)
+target_link_libraries(test_localization PRIVATE lost_signal_robot_autonomy)
+add_test(NAME localization COMMAND test_localization)
+
 add_executable(test_perception
   tests/test_perception.cpp
 )
@@ -197,11 +234,19 @@ add_executable(test_astar
 target_link_libraries(test_astar PRIVATE lost_signal_robot_autonomy)
 add_test(NAME astar COMMAND test_astar)
 
+
+
 add_executable(test_sim_nav
   tests/test_sim_nav.cpp
 )
 target_link_libraries(test_sim_nav PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_nav COMMAND test_sim_nav)
+
+add_executable(test_actuation
+  tests/test_actuation.cpp
+)
+target_link_libraries(test_actuation PRIVATE lost_signal_robot_control lost_signal_robot_platform lost_signal_robot_iface lost_signal_robot_autonomy)
+add_test(NAME actuation COMMAND test_actuation)
 
 add_executable(test_dwa
   tests/test_dwa.cpp

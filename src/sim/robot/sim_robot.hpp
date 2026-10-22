@@ -35,6 +35,14 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
       const ::lost_signal::robot::iface::ObservationFrame& obs) override;
   ::lost_signal::robot::iface::MotionCommand take_command(
       ::lost_signal::robot::core::MonotonicNs now_ns) override;
+  ::lost_signal::robot::iface::ActuatorCommand take_actuator(
+      ::lost_signal::robot::core::MonotonicNs now_ns) override {
+    return app_.take_actuator(now_ns);
+  }
+  ::lost_signal::robot::autonomy::diagnostics::DecisionEvidence last_evidence()
+      const override {
+    return app_.last_evidence();
+  }
   // One self-stepping cycle: world -> suite envelope -> app.tick -> plant.
   ::lost_signal::robot::iface::MotionCommand tick(
       ::lost_signal::robot::core::MonotonicNs now_ns) override;

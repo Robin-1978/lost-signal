@@ -1,0 +1,69 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "robot/core/geometry.hpp"
+#include "robot/core/time.hpp"
+#include "robot/iface/map.hpp"
+
+namespace lost_signal::robot::autonomy {
+
+// Deterministic known-map scan matcher: planar LiDAR scan vs static raster,
+// searched around an odometric prior. No truth, no actor identities, no map
+// mutation. Unknown cells score 0 (never false certainty); outside-map is
+// evidence against the pose.
+struct ScanMatcherConfig {
+  double search_translation_m = 0.75;
+  double search_heading_rad = 0.35;
+  double translation_step_m = 0.05;
+  double heading_step_rad = 0.05;
+  double minimum_overlap = 0.30;
+  // Best match must beat the next separated hypothesis by this margin.
+  // Quantized endpoints tie exactly, so only separated hypotheses compete;
+  // a small margin in repetitive aisles would drag the correction away.
+  double minimum_score_margin = 0.05;
+  std::size_t minimum_returns = 4;
+  std::size_t maximum_returns = 96;
+  // Two candidates closer than this are one physical hypothesis.
+  double ambiguity_distance_m = 0.25;
+  double ambiguity_heading_rad = 0.15;
+  double sensor_x_m = 0.0;
+  double sensor_y_m = 0.0;
+  double sensor_yaw_rad = 0.0;
+  double max_range_m = 10.0;
+};
+
+struct ScanMatchResult {
+  bool accepted = false;
+  double x_m = 0.0;
+  double y_m = 0.0;
+  double yaw_rad = 0.0;
+  double position_sigma_m = 0.05;
+  double heading_sigma_rad = 0.02;
+  double score = 0.0;
+  double overlap = 0.0;
+  double score_margin = 0.0;
+  std::size_t usable_returns = 0;
+  std::string rejection_reason = "unassessed";
+};
+
+class ScanMatcher {
+ public:
+  explicit ScanMatcher(ScanMatcherConfig config = ScanMatcherConfig{});
+
+  // ranges: planar returns in sensor frame (angle_min + i*increment).
+  ScanMatchResult localize(const std::vector<float>& ranges, double angle_min_rad,
+                           double angle_increment_rad,
+                           double odom_x_m, double odom_y_m,
+                           double odom_heading_rad,
+                           const iface::MapSnapshot& map,
+                           core::MonotonicNs stamp_ns) const;
+
+ private:
+  ScanMatcherConfig config_;
+};
+
+}  // namespace lost_signal::robot::autonomy

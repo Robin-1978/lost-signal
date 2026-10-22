@@ -23,6 +23,11 @@ inline ObservationFrame make_envelope(const MotionFeedback& fb) {
   o.odometry_valid = fb.odometry_valid;
   o.forward_mps = fb.forward_mps;
   o.yaw_rate_radps = fb.yaw_rate_radps;
+  if (fb.wheels_valid) {
+    o.wheels_valid = true;
+    o.left_radps = fb.left_radps;
+    o.right_radps = fb.right_radps;
+  }
   return o;
 }
 
@@ -30,6 +35,8 @@ inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
   if (!scan.valid()) return false;
   o.ranges_m = scan.ranges_m;
   o.scan_valid = true;
+  o.scan_angle_min_rad = scan.angle_min_rad;
+  o.scan_angle_increment_rad = scan.angle_increment_rad;
   return true;
 }
 
@@ -42,6 +49,14 @@ inline bool set_imu(ObservationFrame& o, const ImuMessage& imu) {
   o.imu_ax_mps2 = imu.accel_x_mps2;
   o.imu_ay_mps2 = imu.accel_y_mps2;
   o.imu_az_mps2 = imu.accel_z_mps2;
+  return true;
+}
+
+inline bool set_wheels(ObservationFrame& o, const MotionFeedback& fb) {
+  if (!fb.wheels_valid) return false;
+  o.wheels_valid = true;
+  o.left_radps = fb.left_radps;
+  o.right_radps = fb.right_radps;
   return true;
 }
 

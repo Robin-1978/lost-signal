@@ -16,6 +16,7 @@ int main() {
       {4.0, -10.0, 5.0, -1.0},
       {4.0, 1.0, 5.0, 10.0},
   });
+  sim.setup_world().add_place({"far", 8.0, 0.0, 0.0});
 
   robot::iface::TaskRequest req;
   req.request_id = "nav";

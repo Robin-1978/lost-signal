@@ -10,6 +10,15 @@ namespace lost_signal::robot::iface {
 
 // Immutable published map revision. Robot Map layers are navigation priors,
 // never physics truth (no friction, contact, or live wetness here).
+// Named semantic place. Task intents reference places by id; the ROBOT map
+// provider resolves them to poses. Coordinates are navigation priors.
+struct Place {
+  std::string place_id;
+  double x_m = 0.0;
+  double y_m = 0.0;
+  double yaw_rad = 0.0;
+};
+
 struct MapSnapshot {
   std::string map_id;
   std::uint64_t revision = 0;
@@ -23,6 +32,8 @@ struct MapSnapshot {
   double origin_y_m = 0.0;
   std::vector<int8_t> occupancy;
   std::string frame_id = "map";
+  // Named semantic places for task resolution (may be empty).
+  std::vector<Place> places;
   // Optional 2.5D layers, same geometry as occupancy. NaN = unknown.
   // Elevation is surveyed prior (ramps, slopes, decks), never live physics.
   std::vector<float> elevation_m;

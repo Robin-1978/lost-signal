@@ -101,13 +101,16 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   out = robot::iface::make_envelope(fb);
   out.ranges_m = std::move(ranges);
   out.scan_valid = true;
+  // Layout matches the raycast loop below: angle_min + i * increment.
+  out.scan_angle_min_rad = -M_PI;
+  out.scan_angle_increment_rad = 2.0 * M_PI / kBeams;
   out.static_ranges_m = std::move(reference);
   out.scan_static_valid = true;
   if (!robot::iface::set_imu(out, imu)) return false;
   return robot::iface::valid_observation_frame(out);
 }
 
-void SimSensorSuite::consume(const robot::iface::MotionCommand& cmd) {
+void SimSensorSuite::consume(const robot::iface::ActuatorCommand& cmd) {
   motion_.consume_command(cmd);
 }
 

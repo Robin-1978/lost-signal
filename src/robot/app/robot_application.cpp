@@ -1,5 +1,9 @@
 #include "robot/app/robot_application.hpp"
 
+#include <cmath>
+
+#include "robot/core/geometry.hpp"
+
 namespace lost_signal::robot::app {
 
 namespace {
@@ -37,6 +41,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
                                    platform::RobotDescription desc)
     : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()),
       desc_(std::move(desc)),
+      chassis_(platform::make_chassis(desc_)),
       coordinator_(desc_.limits, 100'000'000,
                    perception_config_from(desc_)) {
   channel_.activate();
@@ -47,6 +52,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
 
 core::Status RobotApplication::configure() {
   if (!bringup_wired_) return core::Status::Fail("bringup not wired");
+  if (!chassis_) return core::Status::Fail("unknown chassis kind");
   return bringup_.configure_all();
 }
 
@@ -58,6 +64,24 @@ core::Status RobotApplication::activate() {
 void RobotApplication::shutdown() { bringup_.cleanup_all(); }
 
 core::Status RobotApplication::submit_task(const iface::TaskRequest& req) {
+  if (!req.place_id.empty()) {
+    // Semantic resolution through the ROBOT map provider: the place id
+    // becomes an estimated-frame goal for the coordinator. Unknown ids
+    // fail closed; raw coordinates never cross this boundary.
+    const iface::MapSnapshot snap = maps_->active_snapshot();
+    const iface::Place* found = nullptr;
+    for (const auto& p : snap.places) {
+      if (p.place_id == req.place_id) {
+        found = &p;
+        break;
+      }
+    }
+    if (found == nullptr) {
+      return core::Status::Fail("unknown place: " + req.place_id);
+    }
+    autonomy::RoutePoint goal{found->x_m, found->y_m, found->yaw_rad};
+    coordinator_.set_goal(goal);
+  }
   return executive_.submit(req);
 }
 
@@ -83,20 +107,48 @@ iface::MotionCommand RobotApplication::take_command(core::MonotonicNs now_ns) {
   return channel_.take_command(now_ns);
 }
 
+iface::ActuatorCommand RobotApplication::take_actuator(
+    core::MonotonicNs now_ns) {
+  return channel_.take_actuator(now_ns);
+}
+
+autonomy::diagnostics::DecisionEvidence RobotApplication::last_evidence()
+    const {
+  return coordinator_.last_evidence();
+}
+
 iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
-  if (bringup_.state() != lifecycle::ModuleState::kActive) {
+  if (bringup_.state() != lifecycle::ModuleState::kActive || !chassis_) {
     return iface::MotionCommand::SafeStop(now_ns);  // not brought up: hold
   }
   for (const auto& obs : channel_.drain_observations()) {
     coordinator_.ingest_observation(obs);
   }
-  iface::MotionCommand cmd =
-      coordinator_.update(maps_->active_snapshot(), channel_.health(), now_ns);
-  if (!iface::valid_motion_command(cmd, now_ns)) {
-    cmd = iface::MotionCommand::SafeStop(now_ns);
+  iface::MotionCommand body = coordinator_.update(
+      maps_->active_snapshot(), channel_.health(), now_ns);
+  if (!iface::valid_motion_command(body, now_ns)) {
+    body = iface::MotionCommand::SafeStop(now_ns);
   }
-  channel_.publish_command(cmd);
-  return cmd;
+  body = chassis_->clamp_command(body, now_ns);
+  // Closed-loop translation with the latest joint feedback. The chassis
+  // returns safe zero without valid feedback; loops never close on stale
+  // joints.
+  const iface::ObservationFrame& last = coordinator_.last_observation();
+  iface::MotionFeedback fb;
+  fb.wheels_valid = last.wheels_valid;
+  fb.left_radps = last.left_radps;
+  fb.right_radps = last.right_radps;
+  fb.source = "app.wheels";
+  fb.frame = core::Frame::kBaseLink;
+  fb.stamp_ns = last.stamp_ns;
+  iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);
+  channel_.publish_command(body);
+  channel_.publish_actuator(act);
+  // Passive braking instrumentation: command vs realized motion.
+  const autonomy::EstimatedState& est = coordinator_.estimate();
+  measurement_.update(now_ns * 1e-9, {est.x_m, est.y_m},
+                      std::abs(est.forward_mps), std::abs(body.forward_mps));
+  return body;
 }
 
 iface::TaskStatus RobotApplication::task_status() const {
@@ -120,8 +172,13 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
     d.estimate = coordinator_.estimate();
   }
   d.bringup = bringup_.state();
+  d.localized = coordinator_.localized();
+  d.localization_action = coordinator_.last_localization_action();
   d.safety = coordinator_.last_safety().state;
   d.safety_reason = coordinator_.last_safety().reason;
+  d.evidence = coordinator_.last_evidence();
+  d.braking_active = measurement_.braking().active;
+  d.braking_distance_m = measurement_.braking().distance_m;
   d.task = executive_.status();
   d.health = channel_.health();
   return d;

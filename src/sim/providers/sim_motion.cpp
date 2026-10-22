@@ -15,9 +15,10 @@ const robot::iface::EndpointDescriptor& SimMotionEndpoint::descriptor()
 }
 
 void SimMotionEndpoint::consume_command(
-    const robot::iface::MotionCommand& cmd) {
+    const robot::iface::ActuatorCommand& cmd) {
   if (world_ == nullptr) return;
-  world_->apply_command(cmd.forward_mps);
+  if (cmd.mode != robot::iface::ActuatorMode::kNormalizedDuty) return;
+  world_->apply_duty(cmd.left, cmd.right);
 }
 
 bool SimMotionEndpoint::poll_feedback(
@@ -31,7 +32,10 @@ bool SimMotionEndpoint::poll_feedback(
   out.frame = robot::core::Frame::kBaseLink;
   out.odometry_valid = true;
   out.forward_mps = world_->truth().forward_mps;
-  out.yaw_rate_radps = 0.0;
+  out.yaw_rate_radps = world_->truth().yaw_rate_radps;
+  out.wheels_valid = true;
+  out.left_radps = world_->truth().left_radps;
+  out.right_radps = world_->truth().right_radps;
   return out.valid();
 }
 

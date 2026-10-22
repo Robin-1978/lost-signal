@@ -120,12 +120,19 @@ int main() {
     assert(hold.is_safe_stop());
     assert(!coord.active_route().valid);
     coord.set_goal({2.0, 0.0, 0.0});
-    iface::MotionCommand drive =
-        coord.update(iface::MapSnapshot{}, ch, 1'100'000);
+    // The controlled-stop latch withholds motion until the tread settles:
+    // the pre-goal hold counts as carrying a stop, so the first post-goal
+    // decisions stay held and release once settled (3 cycles at 0 tread).
+    iface::MotionCommand drive = coord.update(iface::MapSnapshot{}, ch, 1'100'000);
+    assert(drive.is_safe_stop());
+    drive = coord.update(iface::MapSnapshot{}, ch, 1'200'000);
+    assert(drive.is_safe_stop());
+    // Third carrying tick reaches the settle count and releases.
+    drive = coord.update(iface::MapSnapshot{}, ch, 1'300'000);
     assert(coord.active_route().valid);
     assert(coord.active_route().points.size() >= 2);
     assert(drive.forward_mps > 0.0);  // DWA moves on the open map
-    assert(iface::valid_motion_command(drive, 1'100'000));
+    assert(iface::valid_motion_command(drive, 1'300'000));
   }
 
   // Pre-activation: ingest ignored, update holds.
@@ -197,12 +204,19 @@ int main() {
 
     PerceptionResult ok;
     ok.scan_ok = true;
+    // Eight-beam scans: beam 4 points straight ahead (angle 0).
     iface::ObservationFrame near = make_odom(1, 1, 0.0);
-    near.ranges_m = {0.3f};
+    near.ranges_m = {5.0f, 5.0f, 5.0f, 5.0f, 0.3f, 5.0f, 5.0f, 5.0f};
     assert(!v.validate(go, EstimatedState{}, ok, near).accepted);
     iface::ObservationFrame far = make_odom(1, 1, 0.0);
-    far.ranges_m = {5.0f};
+    far.ranges_m.assign(8, 5.0f);
     assert(v.validate(go, EstimatedState{}, ok, far).accepted);
+    // Side-only obstacle never vetoes forward motion: the rollout's own
+    // collision check owns the swept path, the validator owns the drive
+    // direction.
+    iface::ObservationFrame side = make_odom(1, 1, 0.0);
+    side.ranges_m = {0.2f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f};
+    assert(v.validate(go, EstimatedState{}, ok, side).accepted);
   }
 
   // Global planner: straight line from estimate to goal.

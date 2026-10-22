@@ -24,6 +24,9 @@ class ScenarioSession {
 
   const eval::EpisodeRecorder& episode() const { return episode_; }
   void clear_episode() { episode_.clear(); }
+  // Test/scenario setup only: configure geometry, actors, and places before
+  // the run. Never called by ROBOT code; never during a live tick.
+  world::World& setup_world() { return world_; }
 
  private:
   world::World world_;
