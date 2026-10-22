@@ -137,6 +137,11 @@ class World {
     places_.push_back(place);
     ++geometry_version_;
   }
+  // Editor/scene bulk replace (SIM-side only). Mirrors set_static_boxes.
+  void set_places(std::vector<NamedPlace> places) {
+    places_ = std::move(places);
+    ++geometry_version_;
+  }
   const std::vector<NamedPlace>& places() const { return places_; }
 
  private:

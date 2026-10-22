@@ -14,6 +14,7 @@
 
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/frame_builder.hpp"
+#include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/view_transform.hpp"
 
 namespace {
@@ -107,6 +108,24 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     DrawCircleLines(s.x_px, s.y_px,
                     static_cast<float>(a.radius_m * view.scale()), BLACK);
   }
+  // Editor selection handles: box corners + selected place ring.
+  for (const auto& b : f.boxes) {
+    if (!b.selected) continue;
+    const double cx[4] = {b.x0_m, b.x1_m, b.x1_m, b.x0_m};
+    const double cy[4] = {b.y0_m, b.y0_m, b.y1_m, b.y1_m};
+    for (int c = 0; c < 4; ++c) {
+      const auto s = view.world_to_screen(cx[c], cy[c]);
+      DrawCircleV({s.x_px, s.y_px}, c == b.selected_corner ? 7.0f : 5.0f,
+                  c == b.selected_corner ? RED : YELLOW);
+      DrawCircleLines(s.x_px, s.y_px, c == b.selected_corner ? 7.0f : 5.0f,
+                      BLACK);
+    }
+  }
+  for (const auto& p : f.places) {
+    if (!p.selected) continue;
+    const auto s = view.world_to_screen(p.x_m, p.y_m);
+    DrawCircleLines(s.x_px, s.y_px, 12.0f, RED);
+  }
   // Lidar hits.
   if (show_lidar && f.lidar_valid) {
     const auto o = view.world_to_screen(f.body.x_m, f.body.y_m);
@@ -171,8 +190,48 @@ int main() {
   int steps_per_frame = 4;
   Vector2 last_mouse{0, 0};
   bool dragging = false;
+  // Map editor: entering edit mode snapshots the world and pauses the sim;
+  // leaving keeps the applied geometry.
+  sim::viewer::MapEditor editor;
+  bool edit_mode = false;
+  std::string edit_msg;
 
   while (!WindowShouldClose()) {
+    view.set_screen(GetScreenWidth(), GetScreenHeight());
+    // Edit-mode toggle + keys (window thread only).
+    if (IsKeyPressed(KEY_M)) {
+      edit_mode = !edit_mode;
+      if (edit_mode) {
+        editor.load_from(session.setup_world());
+        paused = true;
+      } else {
+        editor.apply(session.setup_world());
+      }
+    }
+    if (edit_mode) {
+      const Vector2 m = GetMousePosition();
+      double wx = 0.0, wy = 0.0;
+      const bool on_map = view.screen_to_world(m.x, m.y, wx, wy);
+      if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && on_map) {
+        editor.press(wx, wy);
+      }
+      if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && on_map) {
+        editor.drag(wx, wy);
+      }
+      if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) editor.release();
+      if (IsKeyPressed(KEY_B) && on_map) editor.add_box(wx, wy);
+      if (IsKeyPressed(KEY_P) && on_map) editor.add_place(wx, wy);
+      if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
+        editor.remove_selected();
+      }
+      if (IsKeyPressed(KEY_S)) {
+        editor.save("viewer_map.json");
+        edit_msg = editor.message();
+      }
+      // Live preview: paused sim, so pushing every dirty frame costs only
+      // an engine model rebuild per edit, no stepping hazard.
+      if (editor.dirty()) editor.apply(session.setup_world());
+    }
     // Input (window thread only; sim stays deterministic).
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
     if (IsKeyPressed(KEY_N) && paused) session.step_once();
@@ -218,7 +277,11 @@ int main() {
     }
     const sim::viewer::Frame frame = sim::viewer::build_frame(
         session.setup_world(), last, reached,
-        {trail.begin(), trail.end()});
+        {trail.begin(), trail.end()},
+        edit_mode ? sim::viewer::EditorSelection{editor.selected_box(),
+                                                 editor.selected_corner(),
+                                                 editor.selected_place()}
+                  : sim::viewer::EditorSelection{});
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
@@ -241,6 +304,13 @@ int main() {
                   static_cast<int>(reached.size()), steps_per_frame,
                   GetFPS(), paused ? "PAUSED" : "RUN");
     DrawText(hud, 10, 10, 14, BLACK);
+    if (edit_mode) {
+      char ebuf[256];
+      std::snprintf(ebuf, sizeof(ebuf),
+                    "EDIT  click/drag move  B box  P place  Del remove  S save viewer_map.json  M exit  %s",
+                    edit_msg.c_str());
+      DrawText(ebuf, 10, 32, 14, RED);
+    }
     DrawText("space pause  N step  L lidar  E estimate  F follow  0 fit  +/- speed  right-drag pan  wheel zoom",
              10, GetScreenHeight() - 24, 12, DARKGRAY);
     EndDrawing();

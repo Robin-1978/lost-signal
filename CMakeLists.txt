@@ -236,6 +236,7 @@ add_library(lost_signal_sim_eval STATIC
   src/sim/eval/recording.cpp
   src/sim/eval/drive_profile_io.cpp
   src/sim/eval/map_package.cpp
+  src/sim/eval/world_io.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -267,6 +268,7 @@ target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 # this plus raylib; only the frontend opens a window.
 add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/frame_builder.cpp
+  src/sim/viewer/map_editor.cpp
 )
 target_include_directories(lost_signal_sim_viewer PUBLIC src)
 target_link_libraries(lost_signal_sim_viewer PUBLIC
@@ -482,6 +484,12 @@ add_executable(test_viewer_frame
 )
 target_link_libraries(test_viewer_frame PRIVATE lost_signal_sim_viewer)
 add_test(NAME viewer_frame COMMAND test_viewer_frame)
+
+add_executable(test_map_editor
+  tests/test_map_editor.cpp
+)
+target_link_libraries(test_map_editor PRIVATE lost_signal_sim_viewer)
+add_test(NAME map_editor COMMAND test_map_editor)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
