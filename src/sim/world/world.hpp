@@ -8,6 +8,7 @@
 #include "robot/iface/motion.hpp"
 #include "sim/world/actor_behavior.hpp"
 #include "sim/world/contact.hpp"
+#include "sim/world/mujoco_backend.hpp"
 #include "sim/world/service_brake.hpp"
 
 namespace lost_signal::sim::world {
@@ -25,6 +26,9 @@ struct WorldTruth {
   double forward_mps = 0.0;
   double lateral_mps = 0.0;   // holonomic body-left velocity
   double yaw_rate_radps = 0.0;  // derived from joints, like a driver
+  double body_z_m = 0.0;      // engine height (analytic plant: ground)
+  double body_roll_rad = 0.0;   // engine roll (analytic: level)
+  double body_pitch_rad = 0.0;  // engine pitch (analytic: level)
   std::uint8_t drive_count = 0;
   std::uint8_t steer_count = 0;
   std::array<double, 4> drive_radps = {};  // mechanical rad/s
@@ -94,10 +98,11 @@ struct MotorParams {
 
 class World {
  public:
-  World();
+  explicit World(PhysicsBackend backend = PhysicsBackend::kAnalytic);
   void step(double dt_s);
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
+  PhysicsBackend backend() const { return backend_; }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
   // e-stop style brake request per drive wheel, clamped to [0, 1].
   // Out-of-range wheels are ignored. Reconfiguring the motor params resets
@@ -133,6 +138,13 @@ class World {
  private:
   WorldTruth truth_{};
   MotorParams motor_{};
+  PhysicsBackend backend_ = PhysicsBackend::kAnalytic;
+  MujocoBackend mujoco_;
+  // MuJoCo branch (M1 diff only): syncs the engine model, integrates, and
+  // reads truth back. Invalid backend (unsupported mode, broken model, or
+  // MuJoCo disabled at configure time) leaves truth frozen — never silent
+  // analytic substitution. dt <= 0 holds state (no analytic-style snap).
+  void step_mujoco(double dt_s);
   std::array<ServiceBrakePlant, 4> brakes_;
   std::array<double, 4> brake_request_ = {};
   double incline_grade_ = 0.0;  // longitudinal rise/run, SIM-side only

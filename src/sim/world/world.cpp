@@ -8,24 +8,16 @@
 
 namespace lost_signal::sim::world {
 
-namespace {
-ServiceBrakeParams brake_params_from(const MotorParams& m) {
-  ServiceBrakeParams p;
-  p.maximum_torque_Nm = m.brake_max_torque_Nm;
-  p.apply_time_s = m.brake_apply_time_s;
-  p.release_time_s = m.brake_release_time_s;
-  return p;
-}
-}  // namespace
-
-World::World() : brakes_{ServiceBrakePlant{brake_params_from(motor_)},
-                         ServiceBrakePlant{brake_params_from(motor_)},
-                         ServiceBrakePlant{brake_params_from(motor_)},
-                         ServiceBrakePlant{brake_params_from(motor_)}} {}
+World::World(PhysicsBackend backend)
+    : backend_(backend),
+      brakes_{ServiceBrakePlant{brake_params_from_motor(motor_)},
+              ServiceBrakePlant{brake_params_from_motor(motor_)},
+              ServiceBrakePlant{brake_params_from_motor(motor_)},
+              ServiceBrakePlant{brake_params_from_motor(motor_)}} {}
 
 void World::set_motor_params(const MotorParams& params) {
   motor_ = params;
-  const ServiceBrakeParams bp = brake_params_from(motor_);
+  const ServiceBrakeParams bp = brake_params_from_motor(motor_);
   for (auto& b : brakes_) b = ServiceBrakePlant{bp};
   brake_request_ = {};
 }
@@ -51,8 +43,39 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
   }
 }
 
+void World::step_mujoco(double dt_s) {
+  mujoco_.sync(motor_, static_boxes_, geometry_version_, truth_.drive_count,
+               truth_.steer_count);
+  if (!mujoco_.valid() || !(dt_s > 0.0)) return;
+  mujoco_.step(dt_s, motor_, truth_.drive_duty, brake_request_, incline_grade_);
+  truth_.body_x_m = mujoco_.body_x();
+  truth_.body_y_m = mujoco_.body_y();
+  truth_.body_yaw_rad = mujoco_.body_yaw();
+  truth_.forward_mps = mujoco_.forward_mps();
+  truth_.lateral_mps = mujoco_.lateral_mps();
+  truth_.yaw_rate_radps = mujoco_.yaw_rate();
+  truth_.body_z_m = mujoco_.body_z();
+  truth_.body_roll_rad = mujoco_.body_roll();
+  truth_.body_pitch_rad = mujoco_.body_pitch();
+  for (int i = 0; i < truth_.drive_count && i < 4; ++i) {
+    truth_.drive_angle_rad[i] = mujoco_.drive_angle(i);
+    truth_.drive_radps[i] = mujoco_.drive_radps(i);
+  }
+}
+
 void World::step(double dt_s) {
   truth_.step += 1;
+  if (backend_ == PhysicsBackend::kMujoco) {
+    step_mujoco(dt_s);
+    // Actors stay kinematic-analytic in M1 (no engine bodies for them);
+    // the judge reads the same truth either way.
+    for (auto& a : actors_) {
+      step_actor(a, a.behavior, dt_s);
+      a.x += a.vx_mps * dt_s;
+      a.y += a.vy_mps * dt_s;
+    }
+    return;
+  }
   // Force-driven wheels: motor + gravity - contact = accel, then the
   // dissipative service brake. Stiction, drag, and brake each clamp to an
   // exact zero instead of jittering across it.

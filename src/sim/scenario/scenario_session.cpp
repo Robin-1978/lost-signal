@@ -5,8 +5,11 @@
 
 namespace lost_signal::sim::scenario {
 
-ScenarioSession::ScenarioSession()
-    : suite_(&world_),
+ScenarioSession::ScenarioSession() : ScenarioSession(world::PhysicsBackend::kAnalytic) {}
+
+ScenarioSession::ScenarioSession(world::PhysicsBackend backend)
+    : world_(backend),
+      suite_(&world_),
       app_(std::make_unique<providers::StaticMapProvider>(
           &world_, -10.0, -10.0, 20.0, 20.0, 0.25)) {
   // SIM bring-up: the suite claims motion + lidar + imu descriptors.

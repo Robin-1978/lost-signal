@@ -1,11 +1,26 @@
-# SIM Phase Plan (Phase 2: sim re-integration)
+# SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
 Robot side is done (clean rebuild, 24/24 green, boundary gate green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
-map editor / campaign visuals stay out. MuJoCo stays out: the analytic
-plant (motor curve + contact + rigid kinematics) is the sim, not a physics
-engine binding.
+map editor / campaign visuals stay out. The physics backend is now MuJoCo
+(M-track below); the analytic S1–S3 plant remains as the tested reference
+until the M2 cutover deletes its integration loop (effort math stays).
+
+## MuJoCo backend track (M0–M3, in progress)
+
+- M0 (done): MuJoCo builds from source (pinned 3.16.0, FetchContent),
+  link + drop determinism gate green.
+- M1 (done): `MujocoBackend` behind a `World(PhysicsBackend)` switch
+  (default analytic, ROBOT untouched): XML-generated diff base
+  (freejoint + 2 hinges + ball casters), duty-implied motor force +
+  smoothing service brake per main's duty path verbatim, 1 ms substeps,
+  truth read back for the unchanged providers. Parity gate:
+  `test_mujoco_backend` (behaviors + crossing HIL + determinism).
+- M2 (next): all chassis, traction/slip telemetry into providers,
+  slope P1 regression on the engine, then flip the default and delete the
+  analytic integration (tests stay as the witness).
+- M3: raylib viewer reading truth (SIM-side only).
 
 ## Standing rules (same as Phase 1)
 

@@ -4,7 +4,17 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "sim/world/world.hpp"
+
 namespace lost_signal::sim::world {
+
+ServiceBrakeParams brake_params_from_motor(const MotorParams& m) {
+  ServiceBrakeParams p;
+  p.maximum_torque_Nm = m.brake_max_torque_Nm;
+  p.apply_time_s = m.brake_apply_time_s;
+  p.release_time_s = m.brake_release_time_s;
+  return p;
+}
 
 ServiceBrakePlant::ServiceBrakePlant(ServiceBrakeParams params)
     : params_(params) {

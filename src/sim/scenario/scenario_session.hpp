@@ -24,6 +24,7 @@ namespace lost_signal::sim::scenario {
 class ScenarioSession {
  public:
   ScenarioSession();
+  explicit ScenarioSession(sim::world::PhysicsBackend backend);
 
   robot::iface::GoalHandle request_goal(const robot::iface::TaskRequest& req);
   robot::iface::GoalStatus goal_status(robot::iface::GoalHandle h) const;

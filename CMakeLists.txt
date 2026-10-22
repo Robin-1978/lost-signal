@@ -142,6 +142,37 @@ add_executable(lost_signal_robot
 target_link_libraries(lost_signal_robot PRIVATE lost_signal_robot_stack)
 
 # Sim side: owns world truth, physics, presentation. May depend on robot.
+option(LOST_SIGNAL_WITH_MUJOCO "Build MuJoCo physics backend (SIM-side only)" ON)
+if(LOST_SIGNAL_WITH_MUJOCO)
+  include(FetchContent)
+  set(MUJOCO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(MUJOCO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MUJOCO_BUILD_SIMULATE OFF CACHE BOOL "" FORCE)
+  set(MUJOCO_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    mujoco
+    GIT_REPOSITORY https://github.com/google-deepmind/mujoco.git
+    GIT_TAG 3.16.0
+  )
+  FetchContent_MakeAvailable(mujoco)
+endif()
+
+if(LOST_SIGNAL_WITH_MUJOCO)
+  add_executable(test_mujoco
+    tests/test_mujoco.cpp
+  )
+  target_link_libraries(test_mujoco PRIVATE mujoco::mujoco)
+  add_test(NAME mujoco COMMAND test_mujoco)
+endif()
+
+if(LOST_SIGNAL_WITH_MUJOCO)
+  add_executable(test_mujoco_backend
+    tests/test_mujoco_backend.cpp
+  )
+  target_link_libraries(test_mujoco_backend PRIVATE lost_signal_sim_scenario)
+  add_test(NAME mujoco_backend COMMAND test_mujoco_backend)
+endif()
+
 add_library(lost_signal_sim_world STATIC
   src/sim/world/world.cpp
   src/sim/world/motor.cpp
@@ -149,6 +180,11 @@ add_library(lost_signal_sim_world STATIC
   src/sim/world/contact.cpp
   src/sim/world/actor_behavior.cpp
 )
+if(LOST_SIGNAL_WITH_MUJOCO)
+  target_sources(lost_signal_sim_world PRIVATE src/sim/world/mujoco_backend.cpp)
+  target_link_libraries(lost_signal_sim_world PUBLIC mujoco::mujoco)
+  target_compile_definitions(lost_signal_sim_world PUBLIC LOST_SIGNAL_WITH_MUJOCO)
+endif()
 target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC
   lost_signal_robot_core

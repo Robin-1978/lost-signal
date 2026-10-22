@@ -16,6 +16,12 @@ struct ServiceBrakeParams {
   double low_speed_smoothing_radps{0.6};
 };
 
+// MotorParams -> brake-plant parameters (single mapping, shared by the
+// analytic plant and the MuJoCo backend so both shape the same lag).
+// Defined in service_brake.cpp (needs the full MotorParams type).
+struct MotorParams;
+ServiceBrakeParams brake_params_from_motor(const MotorParams& m);
+
 struct ServiceBrakeTelemetry {
   double requested{0.0};
   double applied{0.0};
