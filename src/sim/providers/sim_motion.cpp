@@ -86,12 +86,6 @@ bool SimMotionEndpoint::poll_feedback(
     out.steer_rad[i] = prev_steer_angle_rad_[i];
     out.steer_vel_radps[i] = prev_steer_vel_radps_[i];
   }
-  // Traction flags ride the same poll (reported, never clamped). Stale
-  // channels stay false: only the mode-implied drives carry a flag.
-  out.drive_slipping = {};
-  for (int i = 0; i < out.drive_count && i < 4; ++i) {
-    out.drive_slipping[i] = world_->truth().drive_slipping[i];
-  }
   have_prev_ = true;
   prev_stamp_ns_ = out.stamp_ns;
   return out.valid();

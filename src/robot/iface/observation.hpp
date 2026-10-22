@@ -57,9 +57,6 @@ struct ObservationFrame {
   std::array<double, 4> drive_radps = {};
   std::array<double, 4> steer_rad = {};
   std::array<double, 4> steer_vel_radps = {};
-  // Per-wheel traction saturation, verbatim from MotionFeedback (offline
-  // labels / scoring; the duty path never clamps on this).
-  std::array<bool, 4> drive_slipping = {};
 
   bool has_joints() const { return drive_count > 0; }
 

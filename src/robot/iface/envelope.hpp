@@ -28,7 +28,6 @@ inline ObservationFrame make_envelope(const MotionFeedback& fb) {
   o.drive_radps = fb.drive_radps;
   o.steer_rad = fb.steer_rad;
   o.steer_vel_radps = fb.steer_vel_radps;
-  o.drive_slipping = fb.drive_slipping;
   return o;
 }
 
@@ -60,7 +59,6 @@ inline bool set_joints(ObservationFrame& o, const MotionFeedback& fb) {
   o.drive_radps = fb.drive_radps;
   o.steer_rad = fb.steer_rad;
   o.steer_vel_radps = fb.steer_vel_radps;
-  o.drive_slipping = fb.drive_slipping;
   return true;
 }
 
