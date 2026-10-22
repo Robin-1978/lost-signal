@@ -5,8 +5,9 @@
 
 namespace lost_signal::robot::autonomy {
 
-// ROBOT-owned state estimate. Produced only from LSRI observations.
-// Never seeded or corrected by simulator truth.
+// ROBOT-owned state estimate: planar position + full 3D attitude (2.5D).
+// Produced only from LSRI observations. Never seeded or corrected by
+// simulator truth.
 struct EstimatedState {
   bool valid = false;
   core::MonotonicNs stamp_ns = core::kInvalidTime;
@@ -15,6 +16,10 @@ struct EstimatedState {
   double yaw_rad = 0.0;
   double forward_mps = 0.0;
   double yaw_rate_radps = 0.0;
+  // Gravity-referenced attitude from the gyro/accel complementary filter.
+  double roll_rad = 0.0;
+  double pitch_rad = 0.0;
+  bool attitude_valid = false;
   // Uncertainty grows with motion and time since correction, shrinks on
   // map/scan correction. Consumers gate behavior on these, never on hope.
   double position_sigma_m = 0.05;
@@ -32,9 +37,9 @@ class IEstimator {
   virtual const EstimatedState& estimate() const = 0;
 };
 
-// Fused odometry: wheel twist for translation, complementary yaw from gyro
-// and odometry, covariance growing with motion/time, slip gate that trusts
-// the IMU yaw and inflates uncertainty when wheels and gyro disagree.
+// Fused odometry + complementary attitude: wheel twist for translation,
+// gyro-led yaw with a slip gate, quaternion attitude from gyro integration
+// corrected toward the gravity tilt, covariance growing with motion/time.
 // Map/scan correction lands in correct(); until then covariance only grows.
 class FusedOdometryEstimator : public IEstimator {
  public:
@@ -45,6 +50,9 @@ class FusedOdometryEstimator : public IEstimator {
     // and inflates heading covariance.
     double slip_yaw_residual_radps = 0.5;
     double slip_heading_inflation_rad = 0.2;
+    // Attitude complementary time constant: gyro integration trusted below
+    // this horizon, gravity tilt above it.
+    double attitude_time_constant_s = 0.5;
     // Covariance growth per meter traveled / per second elapsed.
     double pos_growth_per_m = 0.01;
     double pos_growth_per_s = 0.005;
@@ -64,8 +72,17 @@ class FusedOdometryEstimator : public IEstimator {
   const EstimatedState& estimate() const override { return estimate_; }
 
  private:
+  struct Quaternion {
+    double w = 1.0, x = 0.0, y = 0.0, z = 0.0;
+  };
+  static Quaternion quaternion_from_euler(double roll, double pitch,
+                                          double yaw);
+  static void euler_from_quaternion(const Quaternion& q, double& roll,
+                                    double& pitch, double& yaw);
+
   Config config_;
   EstimatedState estimate_{};
+  Quaternion attitude_{};
   bool has_prior_ = false;
   iface::ObservationFrame prior_{};
 };

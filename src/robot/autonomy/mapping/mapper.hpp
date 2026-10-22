@@ -3,10 +3,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
-#include "robot/core/geometry.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
 #include "robot/iface/observation.hpp"
@@ -27,6 +27,22 @@ struct LocalMap {
   double origin_y_m = 0.0;
   core::MonotonicNs stamp_ns = core::kInvalidTime;
   std::vector<int8_t> occupancy;  // -1 unknown; size width*height when valid
+  // Optional 2.5D layer, same geometry. NaN = unknown (planar scans cannot
+  // observe height; a multi-line provider fills this, see docs).
+  std::vector<float> elevation_m;
+
+  bool has_elevation() const {
+    return valid && elevation_m.size() == width * height;
+  }
+  float elevation_at(double wx, double wy) const {
+    if (!has_elevation()) return std::numeric_limits<float>::quiet_NaN();
+    const int gx = static_cast<int>(
+        std::floor((wx - origin_x_m) / resolution_m));
+    const int gy = static_cast<int>(
+        std::floor((wy - origin_y_m) / resolution_m));
+    if (!inside(gx, gy)) return std::numeric_limits<float>::quiet_NaN();
+    return elevation_m[static_cast<std::size_t>(gy) * width + gx];
+  }
 
   bool inside(int gx, int gy) const {
     return gx >= 0 && gy >= 0 && gx < static_cast<int>(width) &&

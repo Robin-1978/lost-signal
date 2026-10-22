@@ -8,8 +8,14 @@
 
 namespace lost_signal::robot::autonomy {
 
+AStarPlanner::AStarPlanner(Config config) : config_(config) {}
+
+AStarPlanner::AStarPlanner() : config_() {}
+
 AStarPlanner::AStarPlanner(double unknown_cost_per_m)
-    : unknown_cost_per_m_(unknown_cost_per_m) {}
+    : config_() {
+  config_.unknown_cost_per_m = unknown_cost_per_m;
+}
 
 Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
                          const iface::MapSnapshot& map) {
@@ -27,6 +33,10 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
   auto cell_value = [&](int gx, int gy) -> int {
     if (gx < 0 || gy < 0 || gx >= w || gy >= h) return 100;  // outside: wall
     return map.occupancy[gy * w + gx];
+  };
+  auto cell_elevation = [&](int x, int y) -> float {
+    if (!map.has_elevation()) return std::numeric_limits<float>::quiet_NaN();
+    return map.elevation_m[y * w + x];
   };
   int sx, sy, gx, gy;
   to_grid(start.x_m, start.y_m, sx, sy);
@@ -84,7 +94,16 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
       }
       const double step = ((dir % 2 == 0) ? 1.0 : 1.4142135623730951) * res;
       double cost = step;
-      if (v < 0) cost += unknown_cost_per_m_ * step;  // unknown penalty
+      if (v < 0) cost += config_.unknown_cost_per_m * step;  // unknown
+      // Grade: penalize |dh|/step, reject cliffs beyond max_grade. Unknown
+      // elevation pays no grade cost (surveyed prior may be sparse).
+      const float h0 = cell_elevation(cx, cy);
+      const float h1 = cell_elevation(nx, ny);
+      if (!std::isnan(h0) && !std::isnan(h1) && step > 1e-9) {
+        const double grade = std::abs(h1 - h0) / step;
+        if (grade > config_.max_grade) continue;  // cliff: impassable
+        cost += config_.grade_cost_per_m * std::abs(h1 - h0);
+      }
       const double ng = nodes[cur].g + cost;
       if (ng < nodes[idx(nx, ny)].g) {
         nodes[idx(nx, ny)].g = ng;

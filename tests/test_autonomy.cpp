@@ -46,17 +46,48 @@ int main() {
     est.reset();
     auto o1 = make_odom(1, 0, 1.0);
     o1.imu_valid = true;
-    o1.imu_yaw_rate_radps = 0.0;
+    o1.imu_gyro_z_radps = 0.0;
+    o1.imu_az_mps2 = 9.81;
     est.predict(o1);
     auto o2 = make_odom(2, 20'000'000, 1.0);
     o2.imu_valid = true;
-    o2.imu_yaw_rate_radps = 2.0;  // spinning wheels vs turning body
+    o2.imu_gyro_z_radps = 2.0;  // spinning wheels vs turning body
+    o2.imu_az_mps2 = 9.81;
     const double sigma_before = est.estimate().heading_sigma_rad;
     est.predict(o2);
     // Gyro-led yaw: estimate follows the IMU, not the slipping wheels.
     assert(std::abs(est.estimate().yaw_rate_radps - 2.0) < 1e-9);
     assert(est.estimate().heading_sigma_rad >
            sigma_before + 0.19);  // slip inflation applied
+  }
+
+  // Attitude: static tilt converges roll/pitch toward the gravity vector.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    // 10-degree nose-up tilt, no rotation, 1 s of 50 Hz IMU.
+    const double ax = -std::sin(10.0 * M_PI / 180.0) * 9.81;
+    const double az = std::cos(10.0 * M_PI / 180.0) * 9.81;
+    for (int k = 1; k <= 50; ++k) {
+      iface::ObservationFrame o;
+      o.sequence = static_cast<std::uint64_t>(k);
+      o.stamp_ns = k * 20'000'000;
+      o.source = "t.imu";
+      o.frame = core::Frame::kImuLink;
+      o.odometry_valid = true;
+      o.forward_mps = 0.0;
+      o.imu_valid = true;
+      o.imu_gyro_x_radps = 0.0;
+      o.imu_gyro_y_radps = 0.0;
+      o.imu_gyro_z_radps = 0.0;
+      o.imu_ax_mps2 = ax;
+      o.imu_ay_mps2 = 0.0;
+      o.imu_az_mps2 = az;
+      est.predict(o);
+    }
+    assert(est.estimate().attitude_valid);
+    assert(std::abs(est.estimate().pitch_rad - 0.1745) < 0.05);
+    assert(std::abs(est.estimate().roll_rad) < 0.02);
   }
 
   // Coordinator pipeline: configure -> activate -> ingest -> update.

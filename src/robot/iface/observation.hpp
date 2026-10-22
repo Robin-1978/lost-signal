@@ -34,10 +34,14 @@ struct ObservationFrame {
   double forward_mps = 0.0;
   double yaw_rate_radps = 0.0;
 
-  // IMU (measured, SI).
+  // IMU (measured, SI, full 6-axis in imu_link).
   bool imu_valid = false;
-  double imu_yaw_rate_radps = 0.0;
+  double imu_gyro_x_radps = 0.0;
+  double imu_gyro_y_radps = 0.0;
+  double imu_gyro_z_radps = 0.0;
   double imu_ax_mps2 = 0.0;
+  double imu_ay_mps2 = 0.0;
+  double imu_az_mps2 = 0.0;
 
   bool empty() const { return !scan_valid && !odometry_valid && !imu_valid; }
 };

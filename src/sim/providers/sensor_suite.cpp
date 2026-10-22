@@ -91,6 +91,12 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   imu.stamp = stamp;
   imu.src = imu_.descriptor().endpoint_id;
   imu.frm = robot::core::Frame::kImuLink;
+  imu.gyro_x_radps = 0.0;
+  imu.gyro_y_radps = 0.0;
+  imu.gyro_z_radps = 0.0;
+  imu.accel_x_mps2 = 0.0;
+  imu.accel_y_mps2 = 0.0;
+  imu.accel_z_mps2 = 9.81;  // level: specific force opposes gravity
 
   out = robot::iface::make_envelope(fb);
   out.ranges_m = std::move(ranges);

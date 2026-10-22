@@ -68,15 +68,20 @@ struct Lidar3DCloud : public IMessage {
   bool valid() const override;
 };
 
-// IMU message: measured yaw rate + planar acceleration, SI. Noise and bias
-// belong to the provider's device model; the estimate never sees truth.
+// IMU message: full 6-axis measured motion in imu_link (gyro + accel).
+// Bias, noise, and mounting belong to the provider's device model;
+// the estimate never sees truth.
 struct ImuMessage : public IMessage {
   std::uint64_t seq = 0;
   core::MonotonicNs stamp = core::kInvalidTime;
   std::string src;
   core::Frame frm = core::Frame::kImuLink;
-  double yaw_rate_radps = 0.0;
-  double ax_mps2 = 0.0;
+  double gyro_x_radps = 0.0;
+  double gyro_y_radps = 0.0;
+  double gyro_z_radps = 0.0;
+  double accel_x_mps2 = 0.0;
+  double accel_y_mps2 = 0.0;
+  double accel_z_mps2 = 0.0;
 
   int schema_version() const override { return kMessageSchemaVersion; }
   core::MonotonicNs stamp_ns() const override { return stamp; }

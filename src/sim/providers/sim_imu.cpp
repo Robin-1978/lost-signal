@@ -25,8 +25,13 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   out.stamp = stamp_ns_;
   out.src = desc_.endpoint_id;
   out.frm = robot::core::Frame::kImuLink;
-  out.yaw_rate_radps = 0.0;
-  out.ax_mps2 = 0.0;
+  out.gyro_x_radps = 0.0;
+  out.gyro_y_radps = 0.0;
+  out.gyro_z_radps = 0.0;
+  // Level hover: specific force opposes gravity (+z up in imu_link).
+  out.accel_x_mps2 = 0.0;
+  out.accel_y_mps2 = 0.0;
+  out.accel_z_mps2 = 9.81;
   return out.valid();
 }
 

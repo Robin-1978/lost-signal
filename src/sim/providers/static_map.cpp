@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace lost_signal::sim::providers {
 
@@ -27,23 +28,30 @@ void StaticMapProvider::rebuild() const {
   snapshot_.origin_x_m = min_x_m_;
   snapshot_.origin_y_m = min_y_m_;
   snapshot_.occupancy.assign(w * h, -1);
+  snapshot_.elevation_m.assign(w * h,
+                               std::numeric_limits<float>::quiet_NaN());
+  snapshot_.elevation_sigma_m.assign(w * h, 0.0f);
   if (world_ != nullptr) {
     for (int gy = 0; gy < h; ++gy) {
       for (int gx = 0; gx < w; ++gx) {
         const double cx = min_x_m_ + (gx + 0.5) * resolution_m_;
         const double cy = min_y_m_ + (gy + 0.5) * resolution_m_;
         bool occupied = false;
+        float height = 0.0f;
         for (const auto& b : world_->static_boxes()) {
           if (cx >= b.x0 && cx < b.x1 && cy >= b.y0 && cy < b.y1) {
             occupied = true;
-            break;
+            height = std::max(height, static_cast<float>(b.height_m));
           }
         }
         // No static information outside authored boxes in v1: free space
         // stays unknown until the mapper observes it. The global planner
         // treats unknown as traversable-with-penalty; the local safety
         // layers never do.
-        snapshot_.occupancy[gy * w + gx] = occupied ? 100 : -1;
+        if (occupied) {
+          snapshot_.occupancy[gy * w + gx] = 100;
+          snapshot_.elevation_m[gy * w + gx] = height;
+        }
       }
     }
     snapshot_.revision = world_->geometry_version() + 1;

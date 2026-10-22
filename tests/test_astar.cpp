@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <vector>
 
 #include "robot/autonomy/planning/astar_planner.hpp"
@@ -17,6 +18,8 @@ lost_signal::robot::iface::MapSnapshot make_map(int w, int h, double res,
   m.origin_x_m = ox;
   m.origin_y_m = oy;
   m.occupancy.assign(w * h, -1);
+  m.elevation_m.assign(
+      w * h, std::numeric_limits<float>::quiet_NaN());  // unknown height
   m.frame_id = "map";
   return m;
 }
@@ -78,6 +81,46 @@ int main() {
     auto map = make_map(40, 40, 0.5, -10.0, -10.0);
     fill_box(map, 4.0, -10.0, 5.0, 10.0);
     Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+    assert(!r.valid);
+  }
+
+  // Grade: a hill between start and goal is skirted, not climbed.
+  {
+    auto map = make_map(30, 20, 1.0, 0.0, 0.0);
+    for (int gy = 0; gy < 20; ++gy)
+      for (int gx = 0; gx < 30; ++gx) {
+        map.occupancy[gy * 30 + gx] = 0;  // all free: isolate grade effect
+        const double cx = gx + 0.5, cy = gy + 0.5;
+        const double dx = cx - 15.0, dy = cy - 10.0;
+        map.elevation_m[gy * 30 + gx] =
+            static_cast<float>(5.0 * std::exp(-(dx * dx + dy * dy) / 18.0));
+      }
+    Route r = planner.plan(at(1.0, 10.0), {28.0, 10.0, 0.0}, map);
+    assert(r.valid);
+    // Went around the hill, not over it.
+    for (const auto& p : r.points) {
+      const double d =
+          std::hypot(p.x_m - 15.0, p.y_m - 10.0);
+      assert(d > 2.5);
+    }
+    // Detour is longer than the straight line.
+    double length = 0.0;
+    for (std::size_t i = 1; i < r.points.size(); ++i) {
+      length += std::hypot(r.points[i].x_m - r.points[i - 1].x_m,
+                           r.points[i].y_m - r.points[i - 1].y_m);
+    }
+    assert(length > 27.0 + 2.0);
+  }
+
+  // Cliff: a full-height elevation step is impassable, route invalid.
+  {
+    auto map = make_map(30, 20, 1.0, 0.0, 0.0);
+    for (int gy = 0; gy < 20; ++gy)
+      for (int gx = 0; gx < 30; ++gx) {
+        map.occupancy[gy * 30 + gx] = 0;
+        map.elevation_m[gy * 30 + gx] = gx < 10 ? 0.0f : 5.0f;
+      }
+    Route r = planner.plan(at(1.0, 10.0), {28.0, 10.0, 0.0}, map);
     assert(!r.valid);
   }
 

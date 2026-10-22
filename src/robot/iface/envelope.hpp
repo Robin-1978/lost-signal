@@ -36,8 +36,12 @@ inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
 inline bool set_imu(ObservationFrame& o, const ImuMessage& imu) {
   if (!imu.valid()) return false;
   o.imu_valid = true;
-  o.imu_yaw_rate_radps = imu.yaw_rate_radps;
-  o.imu_ax_mps2 = imu.ax_mps2;
+  o.imu_gyro_x_radps = imu.gyro_x_radps;
+  o.imu_gyro_y_radps = imu.gyro_y_radps;
+  o.imu_gyro_z_radps = imu.gyro_z_radps;
+  o.imu_ax_mps2 = imu.accel_x_mps2;
+  o.imu_ay_mps2 = imu.accel_y_mps2;
+  o.imu_az_mps2 = imu.accel_z_mps2;
   return true;
 }
 

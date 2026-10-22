@@ -12,11 +12,35 @@ FusedOdometryEstimator::FusedOdometryEstimator(Config config)
 
 FusedOdometryEstimator::FusedOdometryEstimator() : config_() {}
 
+FusedOdometryEstimator::Quaternion
+FusedOdometryEstimator::quaternion_from_euler(double roll, double pitch,
+                                              double yaw) {
+  const double cr = std::cos(roll * 0.5), sr = std::sin(roll * 0.5);
+  const double cp = std::cos(pitch * 0.5), sp = std::sin(pitch * 0.5);
+  const double cy = std::cos(yaw * 0.5), sy = std::sin(yaw * 0.5);
+  return {cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
+          cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy};
+}
+
+void FusedOdometryEstimator::euler_from_quaternion(const Quaternion& q,
+                                                  double& roll, double& pitch,
+                                                  double& yaw) {
+  const double sinr = 2.0 * (q.w * q.x + q.y * q.z);
+  const double cosr = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
+  roll = std::atan2(sinr, cosr);
+  const double sinp = std::clamp(2.0 * (q.w * q.y - q.z * q.x), -1.0, 1.0);
+  pitch = std::asin(sinp);
+  const double siny = 2.0 * (q.w * q.z + q.x * q.y);
+  const double cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+  yaw = std::atan2(siny, cosy);
+}
+
 void FusedOdometryEstimator::reset() {
   estimate_ = EstimatedState{};
   estimate_.position_sigma_m = 0.05;
   estimate_.heading_sigma_rad = 0.01;
   estimate_.confidence = 1.0;
+  attitude_ = Quaternion{};
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
 }
@@ -33,7 +57,7 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
       estimate_.yaw_rate_radps = obs.yaw_rate_radps;
     }
     if (obs.imu_valid) {
-      estimate_.yaw_rate_radps = obs.imu_yaw_rate_radps;
+      estimate_.yaw_rate_radps = obs.imu_gyro_z_radps;
     }
     return;
   }
@@ -48,13 +72,13 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   bool slipped = false;
   if (obs.odometry_valid && obs.imu_valid) {
     const double residual =
-        std::abs(obs.yaw_rate_radps - obs.imu_yaw_rate_radps);
+        std::abs(obs.yaw_rate_radps - obs.imu_gyro_z_radps);
     slipped = residual > config_.slip_yaw_residual_radps;
-    yaw_rate = slipped ? obs.imu_yaw_rate_radps
+    yaw_rate = slipped ? obs.imu_gyro_z_radps
                        : (1.0 - config_.gyro_weight) * obs.yaw_rate_radps +
-                             config_.gyro_weight * obs.imu_yaw_rate_radps;
+                             config_.gyro_weight * obs.imu_gyro_z_radps;
   } else if (obs.imu_valid) {
-    yaw_rate = obs.imu_yaw_rate_radps;
+    yaw_rate = obs.imu_gyro_z_radps;
   } else if (obs.odometry_valid) {
     yaw_rate = obs.yaw_rate_radps;
   }
@@ -68,6 +92,54 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   estimate_.forward_mps = forward;
   estimate_.yaw_rate_radps = yaw_rate;
   estimate_.stamp_ns = obs.stamp_ns;
+
+  // Attitude: integrate gyro rotation, correct roll/pitch toward the
+  // gravity tilt implied by specific force. Mount assumed aligned in v1;
+  // calibrated extrinsics rotate the measurement first (see description).
+  if (obs.imu_valid) {
+    const double wx = obs.imu_gyro_x_radps, wy = obs.imu_gyro_y_radps,
+                 wz = obs.imu_gyro_z_radps;
+    const double omega = std::hypot(wx, wy, wz);
+    Quaternion dq{1.0, 0.0, 0.0, 0.0};
+    if (omega > 1e-12) {
+      const double ha = omega * dt_s * 0.5;
+      const double s = std::sin(ha) / omega;
+      dq = {std::cos(ha), wx * s, wy * s, wz * s};
+    }
+    const Quaternion q = attitude_;
+    attitude_ = {q.w * dq.w - q.x * dq.x - q.y * dq.y - q.z * dq.z,
+                 q.w * dq.x + q.x * dq.w + q.y * dq.z - q.z * dq.y,
+                 q.w * dq.y - q.x * dq.z + q.y * dq.w + q.z * dq.x,
+                 q.w * dq.z + q.x * dq.y - q.y * dq.x + q.z * dq.w};
+    const double norm = std::hypot(attitude_.w,
+                                    std::hypot(attitude_.x, attitude_.y,
+                                               attitude_.z));
+    if (norm > 1e-12) {
+      attitude_.w /= norm;
+      attitude_.x /= norm;
+      attitude_.y /= norm;
+      attitude_.z /= norm;
+    }
+    // Gravity tilt from specific force (hover assumption: body accel << g
+    // in v1; a motion-compensated variant uses the fused velocity).
+    const double ax = obs.imu_ax_mps2, ay = obs.imu_ay_mps2,
+                 az = obs.imu_az_mps2;
+    const double acc_norm = std::hypot(ax, ay, az);
+    if (acc_norm > 1e-6) {
+      const double tilt_roll = std::atan2(ay, az);
+      const double tilt_pitch = std::atan2(-ax, std::hypot(ay, az));
+      double roll, pitch, yaw_ignored;
+      euler_from_quaternion(attitude_, roll, pitch, yaw_ignored);
+      const double alpha = dt_s / (config_.attitude_time_constant_s + dt_s);
+      roll += core::wrap_angle(tilt_roll - roll) * alpha;
+      pitch += core::wrap_angle(tilt_pitch - pitch) * alpha;
+      const double yaw_keep = estimate_.yaw_rad;
+      attitude_ = quaternion_from_euler(roll, pitch, yaw_keep);
+      estimate_.roll_rad = roll;
+      estimate_.pitch_rad = pitch;
+      estimate_.attitude_valid = true;
+    }
+  }
 
   // Covariance grows with motion and time; slip inflates heading now.
   estimate_.position_sigma_m = std::clamp(

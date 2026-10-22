@@ -46,7 +46,12 @@ identification stay out: the `IChassis` wrapper owns the real base.
 ## Ownership rules
 
 - Estimation consumes odometry/IMU prediction + scan/map correction only.
-  No truth, no map mutation, no command selection.
+  No truth, no map mutation, no command selection. `FusedOdometryEstimator`
+  blends gyro-led yaw (with a slip gate that trusts the IMU and inflates
+  covariance when wheels disagree), integrates a quaternion complementary
+  attitude filter (gyro propagation, gravity-tilt correction), and grows
+  sigmas with motion and time. Roll/pitch ride in `EstimatedState` with an
+  `attitude_valid` flag: planar position, full 3D attitude (2.5D).
 - Perception owns tracks + free-space evidence. `scan_ok == false` means
   unknown, never free space. No actor IDs cross. `LidarPerception` splits
   foreground by disagreeing with a static reference (map raycast or surveyed
@@ -88,8 +93,13 @@ identification stay out: the `IChassis` wrapper owns the real base.
   an immutable revision from a provider (`StaticMapProvider` rasterizes
   authored geometry; SLAM/file/remote providers implement the same seam),
   so replans track content revisions, never live sensor frames.
-  The coordinator refreshes the active route on goal/map change and the
-  local planner only ever consumes that route, never a raw goal.
+  The static provider publishes surveyed elevation alongside occupancy
+  (ramps, decks; NaN where unsurveyed). A* adds a grade cost per meter of
+  elevation change and rejects steps steeper than `max_grade` outright, so
+  hills are skirted and cliffs fail closed. Rolling local grade response
+  (DWA descent braking, rollover limits) waits for 3D sensing: planar
+  scans cannot observe height, so the mapper leaves the rolling elevation
+  layer absent rather than inventing it.
 - Local planning is DWA at decision rate and returns one feasible
   `LocalCandidate{forward, yaw_rate, cost}`. Score is a preference; only the
   validator decides admissibility. Every outcome (hold, plan, no-plan, veto)

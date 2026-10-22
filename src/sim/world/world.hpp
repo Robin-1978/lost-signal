@@ -20,6 +20,7 @@ struct WorldTruth {
 // scans (full raycast) and a static reference (static geometry only).
 struct StaticBox {
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+  double height_m = 0.0;  // surveyed deck height; ground is 0
 };
 
 struct Actor {

@@ -13,14 +13,27 @@ namespace lost_signal::robot::autonomy {
 // a raster with no path yields an invalid route (fail closed upstream).
 class AStarPlanner : public IGlobalPlanner {
  public:
-  // Extra traversal cost per meter through unknown cells.
-  explicit AStarPlanner(double unknown_cost_per_m = 0.5);
+  struct Config {
+    // Extra traversal cost per meter through unknown cells.
+    double unknown_cost_per_m = 0.5;
+    // Extra cost per meter of absolute elevation change (ramps cost more
+    // than flat ground; cliffs are rejected outright, see below).
+    // Cells whose elevation is unknown pay no grade cost.
+    double grade_cost_per_m = 2.0;
+    // Steps steeper than this rise/run ratio are impassable.
+    double max_grade = 0.5;
+  };
+
+  explicit AStarPlanner(Config config);
+  AStarPlanner();
+  // Back-compat single-knob ctor.
+  explicit AStarPlanner(double unknown_cost_per_m);
 
   Route plan(const EstimatedState& start, const RoutePoint& goal,
              const iface::MapSnapshot& map) override;
 
  private:
-  double unknown_cost_per_m_;
+  Config config_;
   StraightLinePlanner fallback_;
 };
 

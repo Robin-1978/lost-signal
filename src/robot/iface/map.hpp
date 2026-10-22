@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,25 @@ struct MapSnapshot {
   double origin_y_m = 0.0;
   std::vector<int8_t> occupancy;
   std::string frame_id = "map";
+  // Optional 2.5D layers, same geometry as occupancy. NaN = unknown.
+  // Elevation is surveyed prior (ramps, slopes, decks), never live physics.
+  std::vector<float> elevation_m;
+  std::vector<float> elevation_sigma_m;
+
+  bool has_elevation() const {
+    return has_raster() && elevation_m.size() == width * height;
+  }
+  // Nearest-cell elevation, NaN when unknown or absent.
+  float elevation_at(double wx, double wy) const {
+    if (!has_elevation()) return std::numeric_limits<float>::quiet_NaN();
+    int gx = static_cast<int>(std::floor((wx - origin_x_m) / resolution_m));
+    int gy = static_cast<int>(std::floor((wy - origin_y_m) / resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(width) ||
+        gy >= static_cast<int>(height)) {
+      return std::numeric_limits<float>::quiet_NaN();
+    }
+    return elevation_m[gy * width + gx];
+  }
 
   bool has_raster() const {
     return width > 0 && height > 0 && resolution_m > 0.0 &&
