@@ -29,6 +29,10 @@ class IRobot {
   virtual core::Status activate() = 0;
   virtual void shutdown() = 0;
   virtual lifecycle::ModuleState bringup_state() const = 0;
+  // Cartesian goal override (map frame). Feeds the coordinator's global
+  // planner and wakes the decision branch. Place-based tasking still enters
+  // via submit_task; this is the deliberate operator path.
+  virtual void set_goal(const autonomy::RoutePoint& goal) = 0;
   virtual core::Status submit_task(const iface::TaskRequest& req) = 0;
   virtual core::Status request_map(const std::string& map_id) = 0;
   virtual bool register_provider(const iface::EndpointDescriptor& desc) = 0;

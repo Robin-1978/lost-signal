@@ -10,6 +10,9 @@
 namespace lost_signal::robot::autonomy {
 
 // Anonymous dynamic track. No actor IDs, no simulator labels.
+// Carries the fields prediction and planning consume: geometry for the
+// current position, uncertainty envelope grown with forecast time, and a
+// readiness flag separating estimator maturity from motion capability.
 struct DynamicTrack {
   std::uint32_t id = 0;
   double x_m = 0.0;
@@ -17,6 +20,21 @@ struct DynamicTrack {
   double vx_mps = 0.0;
   double vy_mps = 0.0;
   double age_s = 0.0;
+  double radius_m = 0.45;
+  // Radial position-prediction uncertainty, kept separate from physical
+  // geometry so planners report physical and conservative clearance with one
+  // unambiguous contract. Predictors grow this value with forecast time.
+  double position_uncertainty_m = 0.0;
+  // True when perception has enough timestamp-distinct history for this
+  // track to participate in a behavior decision. Local avoidance still
+  // consumes unready tracks conservatively.
+  bool prediction_ready = false;
+
+  double occupied_radius_m() const {
+    double r = radius_m < 0.0 ? 0.0 : radius_m;
+    double u = position_uncertainty_m < 0.0 ? 0.0 : position_uncertainty_m;
+    return r + u;
+  }
 };
 
 struct PerceptionResult {

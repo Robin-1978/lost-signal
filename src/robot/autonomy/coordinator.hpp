@@ -4,6 +4,7 @@
 
 #include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
@@ -54,6 +55,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   iface::MotionCommand update(iface::MapSnapshot map,
                               const iface::ChannelHealth& channel,
                               core::MonotonicNs now_ns);
+  // Cartesian goal override (map frame). Refreshes the active route through
+  // the global planner and wakes the decision branch. Place-based tasking
+  // still enters via the executive; this is the deliberate operator path.
+  void set_goal(const RoutePoint& goal);
+  const Route& active_route() const { return active_route_; }
   // Event wakeup: force the decision branch on the next update, without
   // waiting for the decision period (goal arrival, operator override).
   void request_replan() { replan_requested_ = true; }
@@ -74,6 +80,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;
   std::unique_ptr<IBehaviorPolicy> behavior_;
+  std::unique_ptr<IGlobalPlanner> global_planner_;
   std::unique_ptr<ILocalPlanner> local_planner_;
   std::unique_ptr<IValidator> validator_;
   std::unique_ptr<IController> controller_;
@@ -82,6 +89,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   iface::ObservationFrame last_obs_{};
   PerceptionResult perception_{};
   BehaviorDecision decision_{};
+  RoutePoint goal_{};
+  bool has_goal_ = false;
+  Route active_route_{};
   core::MonotonicNs decision_period_ns_;
   core::MonotonicNs last_decision_ns_ = core::kInvalidTime;
   std::uint64_t last_map_revision_ = 0;

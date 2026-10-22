@@ -54,6 +54,28 @@ int main() {
     assert(coord.local_map().valid);
   }
 
+  // Route wiring: goal -> global plan -> local planner receives route.
+  // The coordinator holds position without a goal; with a goal on an open
+  // map the DWA drives toward it (validator + safety still gate raw scan).
+  {
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    assert(!coord.active_route().valid);
+    coord.ingest_observation(make_odom(1, 1'000'000, 0.0));
+    iface::ChannelHealth ch{};
+    iface::MotionCommand hold =
+        coord.update(iface::MapSnapshot{}, ch, 1'000'000);
+    assert(hold.is_safe_stop());
+    assert(!coord.active_route().valid);
+    coord.set_goal({2.0, 0.0, 0.0});
+    iface::MotionCommand drive =
+        coord.update(iface::MapSnapshot{}, ch, 1'100'000);
+    assert(coord.active_route().valid);
+    assert(coord.active_route().points.size() >= 2);
+    assert(drive.forward_mps > 0.0);  // DWA moves on the open map
+    assert(iface::valid_motion_command(drive, 1'100'000));
+  }
+
   // Pre-activation: ingest ignored, update holds.
   {
     AutonomyCoordinator coord;

@@ -22,6 +22,11 @@ class DifferentialRobot : public app::IRobot {
   void shutdown() override;
   lifecycle::ModuleState bringup_state() const override;
 
+  void set_goal(
+      const ::lost_signal::robot::autonomy::RoutePoint& goal) override {
+    inner_->set_goal(goal);
+  }
+
   core::Status submit_task(const iface::TaskRequest& req) override;
   core::Status request_map(const std::string& map_id) override;
   bool register_provider(const iface::EndpointDescriptor& desc) override;

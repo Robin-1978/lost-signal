@@ -19,6 +19,11 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
   void shutdown() override;
   ::lost_signal::robot::lifecycle::ModuleState bringup_state() const override;
 
+  void set_goal(
+      const ::lost_signal::robot::autonomy::RoutePoint& goal) override {
+    app_.set_goal(goal);
+  }
+
   ::lost_signal::robot::core::Status submit_task(
       const ::lost_signal::robot::iface::TaskRequest& req) override;
   ::lost_signal::robot::core::Status request_map(

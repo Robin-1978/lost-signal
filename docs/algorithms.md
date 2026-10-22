@@ -13,7 +13,7 @@ flowchart LR
   Obs --> Per
   Per -->|"PerceptionResult<br/>tracks + scan_ok"| Beh["IBehaviorPolicy<br/>behavior/behavior.hpp<br/>WaitOnIntrusionBehavior"]
   Est --> Beh
-  Beh -->|"BehaviorDecision<br/>hold / speed cap"| LP["ILocalPlanner<br/>planning/local_planner.hpp<br/>HoldPlanner"]
+  Beh -->|"BehaviorDecision<br/>hold / speed cap"| LP["ILocalPlanner<br/>planning/dwa_planner.hpp<br/>DwaPlanner"]
   Per -->|"PerceptionResult<br/>tracks + scan_ok"| Map["IMapper<br/>mapping/mapper.hpp<br/>NullMapper"]
   Obs --> Map
   Est --> Map
@@ -30,13 +30,18 @@ flowchart LR
   Per --> Safe
   Obs --> Safe
   Safe -->|"MotionCommand (or latched stop)"| Out["expiring body command"]
-  Goal["Route (event-driven)<br/>planning/global_planner.hpp<br/>StraightLinePlanner"] -.->|"future goal feed"| LP
+  Goal["Route (event-driven)<br/>planning/global_planner.hpp<br/>StraightLinePlanner"] -->|"active Route"| LP
 ```
 
-v1 holds position: `HoldPlanner` emits zero motion, `ClearanceValidator`
-accepts the hold, `DirectController` emits canonical `kStop`. A DWA/sampling
-planner replaces `HoldPlanner`'s body; the validator stays the independent
-authority and the controller never invents motion.
+`DwaPlanner` samples the dynamic window from measured twist, rolls out with
+response delay, checks static collision on the optimistic map view and
+dynamic collision on predicted track frames, and scores goal / heading /
+clearance / path / progress / oscillation. It emits one feasible
+`LocalCandidate` toward the route lookahead; without a goal there is no
+route and the chain holds. `ClearanceValidator` accepts the result against
+raw scan evidence, `DirectController` emits canonical `kStop`/command, and
+the safety gate has the last word. Wheel-space windows and actuator
+identification stay out: the `IChassis` wrapper owns the real base.
 
 ## Ownership rules
 
@@ -46,17 +51,29 @@ authority and the controller never invents motion.
   unknown, never free space. No actor IDs cross.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
+  `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
+  occupied) with origin-aware queries: conservative `is_free` /
+  `segment_is_free` (unknown counts as blocked) for admission/validation,
+  optimistic `is_blocked` / `segment_is_traversable` (only
+  observed-occupied blocks) for planner sampling. Unknown is the explicit
+  split: the planner may propose through it, the safety layers veto on raw
+  scan evidence instead.
 - Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
   estimate in, ONE constraint (hold / speed cap) out. It selects no
   trajectory and emits no command. A hold short-circuits sampling but still
-  passes validator + controller, so the evidence chain stays uniform.
+  passes validator + controller + safety, so the evidence chain stays
+  uniform.
   Task-level policy (which goal, return-to-charge) stays in `RobotExecutive`,
   one timescale above behavior; trajectory sampling stays below it.
 - Global planning is event-driven (goal/map change), not per-tick. It
   returns a `Route` of `RoutePoint{x, y, yaw}`; heading travels with position.
-- Local planning runs at decision rate and returns one feasible
+  The coordinator refreshes the active route on goal/map change and the
+  local planner only ever consumes that route, never a raw goal.
+- Local planning is DWA at decision rate and returns one feasible
   `LocalCandidate{forward, yaw_rate, cost}`. Score is a preference; only the
-  validator decides admissibility.
+  validator decides admissibility. Every outcome (hold, plan, no-plan, veto)
+  funnels into one command with no early returns, so the safety gate below
+  runs unconditionally.
 - Validation is independent: it re-checks the exact candidate against raw
   scan evidence (missing/stale scan rejects motion, hold passes). Admission
   never waives clearance, and a rejection is always a safe stop, never a

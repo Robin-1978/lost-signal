@@ -10,7 +10,8 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       perception_module_(std::make_unique<NullPerception>()),
       mapper_(std::make_unique<NullMapper>()),
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
-      local_planner_(std::make_unique<HoldPlanner>()),
+      global_planner_(std::make_unique<StraightLinePlanner>()),
+      local_planner_(std::make_unique<DwaPlanner>()),
       validator_(std::make_unique<ClearanceValidator>()),
       controller_(std::make_unique<DirectController>()),
       safety_(std::make_unique<SafetyMonitor>()) {}
@@ -27,6 +28,7 @@ core::Status AutonomyCoordinator::configure() {
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
+  active_route_ = Route{};
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
@@ -62,12 +64,20 @@ core::Status AutonomyCoordinator::cleanup() {
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
+  active_route_ = Route{};
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
+}
+
+void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
+  goal_ = goal;
+  has_goal_ = true;
+  active_route_ = Route{};  // force refresh on the next update
+  replan_requested_ = true;
 }
 
 void AutonomyCoordinator::ingest_observation(
@@ -103,42 +113,58 @@ iface::MotionCommand AutonomyCoordinator::update(
              now_ns - last_decision_ns_ >= decision_period_ns_;
   bool map_changed = map.revision != last_map_revision_;
   if (due || replan_requested_ || map_changed) {
+    // The decision branch ran: stamp it first so cadence, map tracking, and
+    // event flags stay consistent even when a stage below yields no plan.
+    last_decision_ns_ = now_ns;
+    last_map_revision_ = map.revision;
+    replan_requested_ = false;
+    // Route refresh first: a new goal, a new map revision, or no route yet
+    // re-runs the global planner from the current estimate. The local
+    // planner only ever consumes this active route, never a raw goal.
+    if (has_goal_ &&
+        (!active_route_.valid || map_changed)) {
+      active_route_ =
+          global_planner_->plan(estimator_->estimate(), goal_, map);
+    }
     // Dynamic decision first: behavior turns tracks + estimate into one
     // constraint. A hold short-circuits sampling but still passes the
     // independent validator + controller, so the evidence chain is uniform.
+    // Every path below funnels into `decided`; nothing returns early, so
+    // the safety gate at the end runs on every decision without exception.
     decision_ =
         behavior_->decide(estimator_->estimate(), perception_, limits_);
-    iface::MotionCommand decided;
+    iface::MotionCommand decided =
+        iface::MotionCommand::SafeStop(now_ns);
     if (decision_.must_hold) {
       LocalCandidate hold;
       hold.feasible = true;
       ValidationResult verdict =
           validator_->validate(hold, estimator_->estimate(), perception_,
                                last_obs_);
-      if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
-      decided = controller_->track(hold, estimator_->estimate(), now_ns);
+      if (verdict.accepted) {
+        decided = controller_->track(hold, estimator_->estimate(), now_ns);
+      }
     } else {
       platform::ChassisLimits effective = limits_;
       if (decision_.max_forward_mps < effective.max_forward_mps) {
         effective.max_forward_mps = decision_.max_forward_mps;
       }
-      LocalPlan plan = local_planner_->plan(estimator_->estimate(), perception_,
-                                            mapper_->local_map(), effective);
-      if (!plan.has_plan) return iface::MotionCommand::SafeStop(now_ns);
-      ValidationResult verdict =
-          validator_->validate(plan.best, estimator_->estimate(), perception_,
-                               last_obs_);
-      if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
-      decided =
-          controller_->track(plan.best, estimator_->estimate(), now_ns);
+      LocalPlan plan = local_planner_->plan(
+          estimator_->estimate(), perception_, mapper_->local_map(),
+          active_route_, effective);
+      if (plan.has_plan) {
+        ValidationResult verdict = validator_->validate(
+            plan.best, estimator_->estimate(), perception_, last_obs_);
+        if (verdict.accepted) {
+          decided =
+              controller_->track(plan.best, estimator_->estimate(), now_ns);
+        }
+      }
     }
     if (!iface::valid_motion_command(decided, now_ns)) {
-      return iface::MotionCommand::SafeStop(now_ns);
+      decided = iface::MotionCommand::SafeStop(now_ns);
     }
     last_cmd_ = decided;
-    last_decision_ns_ = now_ns;
-    last_map_revision_ = map.revision;
-    replan_requested_ = false;
   }
   // Final independent gate, every tick: safety re-checks RAW evidence
   // (freshness, near-field scan, channel health) and can only downgrade to

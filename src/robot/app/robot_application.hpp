@@ -63,6 +63,9 @@ class RobotApplication : public IRobot {
   lifecycle::ModuleState bringup_state() const override {
     return bringup_.state();
   }
+  void set_goal(const autonomy::RoutePoint& goal) override {
+    coordinator_.set_goal(goal);
+  }
 
   // Task / map intent (typed, no coordinates from SIM truth).
   core::Status submit_task(const iface::TaskRequest& req) override;
