@@ -174,9 +174,10 @@ flowchart TB
 
 ## 6b. 回放流（record → JSONL → deterministic replay）
 
-- `export_episode` 把 `EpisodeRecorder` 落盘为 JSONL v1：一行 header
-  `{"v":1,"kind":"episode","map":"<id>","rev":<n>}`，之后每步一行
+- `export_episode` 把 `EpisodeRecorder` 落盘为 JSONL v2：一行 header
+  `{"v":2,"kind":"episode","map":"<id>","rev":<n>}`，之后每步一行
   `step_to_json_line(record_step(obs))`（float `%.9g` / double `%.17g`，
+  joints 按 `drives:[...]` + `steers:{pos,vel}` 变长记录各底盘布局）。
   bit-identical round-trip）。
 - `ReplayProvider::load` 读回 header + steps（坏行 fail-closed，不抛异常）；
   `poll` 逐个吐出 live-equivalent `ObservationFrame`，播完返回 false。

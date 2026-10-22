@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include "robot/control/ackermann_controller.hpp"
+#include "robot/control/holonomic_controller.hpp"
 #include "robot/control/wheel_controller.hpp"
 #include "robot/iface/command.hpp"
 #include "robot/iface/motion.hpp"
@@ -67,9 +69,68 @@ class DifferentialChassis : public IChassis {
   mutable control::DifferentialWheelController wheels_;
 };
 
-// Build the chassis named by a RobotDescription ("differential" v1;
-// "ackermann" and "holonomic" follow the same factory when their providers
-// land). Unknown kinds fail closed to nullptr: no silent default chassis.
+// Ackermann: native space is (forward, steer-angle); a kYawRate body
+// command converts through the bicycle model with a low-speed floor
+// (a car cannot turn standing still). Rear drives close speed loops,
+// front steers close a position->rate cascade.
+class AckermannChassis : public IChassis {
+ public:
+  AckermannChassis(double wheel_radius_m, double wheel_base_m,
+                   double track_width_m, ChassisLimits limits,
+                   control::AckermannControllerConfig steer_config = {});
+
+  const char* chassis_id() const override { return "ackermann"; }
+  iface::CommandSpace command_space() const override;
+  ChassisLimits limits() const override { return limits_; }
+
+  iface::MotionCommand clamp_command(const iface::MotionCommand& cmd,
+                                     core::MonotonicNs now_ns) const override;
+  iface::ActuatorCommand to_actuator(
+      const iface::MotionCommand& body, const iface::MotionFeedback& fb,
+      core::MonotonicNs now_ns) const override;
+
+ private:
+  double wheel_radius_m_;
+  double wheel_base_m_;
+  double track_width_m_;
+  ChassisLimits limits_;
+  mutable control::AckermannController controller_;
+};
+
+// Holonomic: native space is (forward, lateral, yaw). Swerve modules
+// resolve speed + steer per corner; mecanum resolves 4 wheel speeds.
+// A kYawRate body command runs with lateral = 0.
+class HolonomicChassis : public IChassis {
+ public:
+  HolonomicChassis(double wheel_radius_m, double wheel_base_m,
+                   double track_width_m, ChassisLimits limits,
+                   control::HolonomicControllerConfig holonomic_config = {});
+
+  const char* chassis_id() const override {
+    return config_.kind == control::HolonomicKind::Swerve ? "swerve"
+                                                         : "mecanum";
+  }
+  iface::CommandSpace command_space() const override;
+  ChassisLimits limits() const override { return limits_; }
+
+  iface::MotionCommand clamp_command(const iface::MotionCommand& cmd,
+                                     core::MonotonicNs now_ns) const override;
+  iface::ActuatorCommand to_actuator(
+      const iface::MotionCommand& body, const iface::MotionFeedback& fb,
+      core::MonotonicNs now_ns) const override;
+
+ private:
+  double wheel_radius_m_;
+  double wheel_base_m_;
+  double track_width_m_;
+  ChassisLimits limits_;
+  control::HolonomicControllerConfig config_;
+  mutable control::HolonomicController controller_;
+};
+
+// Build the chassis named by a RobotDescription ("differential",
+// "ackermann", "swerve", "mecanum"). Unknown kinds fail closed to
+// nullptr: no silent default chassis.
 std::unique_ptr<IChassis> make_chassis(const RobotDescription& desc);
 
 }  // namespace lost_signal::robot::platform

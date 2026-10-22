@@ -23,11 +23,11 @@ inline ObservationFrame make_envelope(const MotionFeedback& fb) {
   o.odometry_valid = fb.odometry_valid;
   o.forward_mps = fb.forward_mps;
   o.yaw_rate_radps = fb.yaw_rate_radps;
-  if (fb.wheels_valid) {
-    o.wheels_valid = true;
-    o.left_radps = fb.left_radps;
-    o.right_radps = fb.right_radps;
-  }
+  o.drive_count = fb.drive_count;
+  o.steer_count = fb.steer_count;
+  o.drive_radps = fb.drive_radps;
+  o.steer_rad = fb.steer_rad;
+  o.steer_vel_radps = fb.steer_vel_radps;
   return o;
 }
 
@@ -52,11 +52,13 @@ inline bool set_imu(ObservationFrame& o, const ImuMessage& imu) {
   return true;
 }
 
-inline bool set_wheels(ObservationFrame& o, const MotionFeedback& fb) {
-  if (!fb.wheels_valid) return false;
-  o.wheels_valid = true;
-  o.left_radps = fb.left_radps;
-  o.right_radps = fb.right_radps;
+inline bool set_joints(ObservationFrame& o, const MotionFeedback& fb) {
+  if (!fb.has_joints()) return false;
+  o.drive_count = fb.drive_count;
+  o.steer_count = fb.steer_count;
+  o.drive_radps = fb.drive_radps;
+  o.steer_rad = fb.steer_rad;
+  o.steer_vel_radps = fb.steer_vel_radps;
   return true;
 }
 

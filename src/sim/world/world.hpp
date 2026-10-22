@@ -1,26 +1,39 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "robot/iface/motion.hpp"
 
 namespace lost_signal::sim::world {
 
 // SIM-owned ground truth. Must never be included from src/robot/.
 // Physics, actors, contacts, and scoring inputs live here.
+//
+// Joint layout mirrors the actuator mode that produced it: diff 2 drives,
+// ackermann 2 drives + 2 steers, swerve 4 + 4, mecanum 4 drives.
+// drive_count == 0 means the plant has not yet received a command.
 struct WorldTruth {
   double body_x_m = 0.0;
   double body_y_m = 0.0;
   double body_yaw_rad = 0.0;
   double forward_mps = 0.0;
-  double yaw_rate_radps = 0.0;  // derived from wheel speeds, like a driver
-  // Per-wheel joint truth (mechanical rad/s). The plant integrates these;
-  // providers publish them as measured feedback.
-  double left_radps = 0.0;
-  double right_radps = 0.0;
-  double duty_left = 0.0;
-  double duty_right = 0.0;
+  double lateral_mps = 0.0;   // holonomic body-left velocity
+  double yaw_rate_radps = 0.0;  // derived from joints, like a driver
+  std::uint8_t drive_count = 0;
+  std::uint8_t steer_count = 0;
+  std::array<double, 4> drive_radps = {};  // mechanical rad/s
+  std::array<double, 4> drive_duty = {};
+  std::array<double, 4> steer_rad = {};
+  std::array<double, 4> steer_duty = {};
+  std::array<double, 4> steer_vel_radps = {};
   std::uint64_t step = 0;
+
+  // Diff conveniences for legacy tests (drive_count == 2).
+  double left_radps() const { return drive_count > 0 ? drive_radps[0] : 0.0; }
+  double right_radps() const { return drive_count > 1 ? drive_radps[1] : 0.0; }
 };
 
 // Authored scenario geometry (static) and moving actors (dynamic).
@@ -47,18 +60,20 @@ struct MotorParams {
   double time_constant_s = 0.12;  // first-order lag to commanded speed
   double wheel_radius_m = 0.1;
   double track_width_m = 0.5;
+  double wheel_base_m = 0.56;
+  double max_steer_rad = 0.55;
+  double max_steer_rate_radps = 2.0;
+  double steer_time_constant_s = 0.08;  // servo lag to rate-implied angle
 };
 
 class World {
  public:
   void step(double dt_s);
   void set_motor_params(const MotorParams& params) { motor_ = params; }
-  // Actuator-level plant input: normalized duties. Wheel speeds first-order
-  // track duty-implied targets; the body follows by differential kinematics.
-  void apply_duty(double left, double right) {
-    truth_.duty_left = left;
-    truth_.duty_right = right;
-  }
+  // Actuator-level plant input: normalized duties per the command mode.
+  // Wheel speeds first-order track duty-implied targets; steers servo
+  // toward duty-implied angles; the body follows by chassis kinematics.
+  void apply(const robot::iface::ActuatorCommand& cmd);
   const WorldTruth& truth() const { return truth_; }
 
   void set_static_boxes(std::vector<StaticBox> boxes) {
@@ -78,6 +93,7 @@ class World {
  private:
   WorldTruth truth_{};
   MotorParams motor_{};
+  robot::iface::ActuatorMode last_mode_ = robot::iface::ActuatorMode::kDiffDuty;
   std::vector<StaticBox> static_boxes_;
   std::vector<Actor> actors_;
   std::vector<NamedPlace> places_;

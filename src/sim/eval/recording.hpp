@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -10,7 +11,8 @@ namespace lost_signal::sim::eval {
 
 // One recorded step, simulator-agnostic: observation in, command out.
 // Truth and diagnostics ride along for offline scoring but never enter the
-// replayed decision path.
+// replayed decision path. Joint state rides as variable-length arrays so
+// every chassis (diff 2/0 … swerve 4/4) replays bit-identical.
 struct RecordedStep {
   std::uint64_t sequence = 0;
   std::int64_t stamp_ns = 0;
@@ -27,13 +29,14 @@ struct RecordedStep {
   bool imu_valid = false;
   double gyro_x = 0.0, gyro_y = 0.0, gyro_z = 0.0;
   double ax = 0.0, ay = 0.0, az = 0.0;
-  bool wheels_valid = false;
-  double left_radps = 0.0;
-  double right_radps = 0.0;
+  std::vector<double> drives_radps;
+  std::vector<double> steers_rad;
+  std::vector<double> steers_vel_radps;
 };
 
-// JSONL v1: one header line then one step object per line.
-// schema: {"v":1,"map":"<id>","rev":<n>}
+// JSONL v2: one header line then one step object per line.
+// schema: {"v":2,"kind":"episode","map":"<id>","rev":<n>}
+// steps carry "drives":[...], "steers":{"pos":[...],"vel":[...]}.
 struct RecordedEpisode {
   std::string map_id;
   std::uint64_t map_revision = 0;

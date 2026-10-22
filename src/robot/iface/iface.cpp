@@ -18,22 +18,44 @@ bool valid_motion_command(const MotionCommand& cmd, core::MonotonicNs now_ns) {
   if (cmd.stamp_ns == core::kInvalidTime) return false;
   if (cmd.expiry_ns <= cmd.stamp_ns) return false;
   if (now_ns != core::kInvalidTime && now_ns > cmd.expiry_ns) return false;
-  if (cmd.space == CommandSpace::kStop) {
-    return cmd.is_safe_stop();
+  if (!std::isfinite(cmd.forward_mps) || !std::isfinite(cmd.yaw_rate_radps) ||
+      !std::isfinite(cmd.steer_angle_rad) || !std::isfinite(cmd.lateral_mps)) {
+    return false;
   }
-  return true;
+  switch (cmd.space) {
+    case CommandSpace::kStop:
+      return cmd.is_safe_stop();
+    case CommandSpace::kYawRate:
+      return cmd.steer_angle_rad == 0.0 && cmd.lateral_mps == 0.0;
+    case CommandSpace::kSteerAngle:
+      return cmd.yaw_rate_radps == 0.0 && cmd.lateral_mps == 0.0;
+    case CommandSpace::kHolonomic:
+      return cmd.steer_angle_rad == 0.0;
+  }
+  return false;
 }
 
 bool valid_actuator_command(const ActuatorCommand& cmd,
                             core::MonotonicNs now_ns) {
-  if (cmd.mode != ActuatorMode::kNormalizedDuty) return false;
   if (cmd.stamp_ns == core::kInvalidTime) return false;
   if (cmd.expiry_ns <= cmd.stamp_ns) return false;
   if (now_ns != core::kInvalidTime && now_ns > cmd.expiry_ns) return false;
-  if (!std::isfinite(cmd.left) || !std::isfinite(cmd.right)) return false;
-  if (cmd.left < -1.0 || cmd.left > 1.0 || cmd.right < -1.0 ||
-      cmd.right > 1.0) {
-    return false;
+  const std::uint8_t n_drive = actuator_drive_count(cmd.mode);
+  const std::uint8_t n_steer = actuator_steer_count(cmd.mode);
+  if (n_drive == 0) return false;
+  for (std::uint8_t i = 0; i < n_drive; ++i) {
+    if (!std::isfinite(cmd.drive[i])) return false;
+    if (cmd.drive[i] < -1.0 || cmd.drive[i] > 1.0) return false;
+  }
+  for (std::uint8_t i = n_drive; i < 4; ++i) {
+    if (cmd.drive[i] != 0.0) return false;  // unused channels stay zero
+  }
+  for (std::uint8_t i = 0; i < n_steer; ++i) {
+    if (!std::isfinite(cmd.steer[i])) return false;
+    if (cmd.steer[i] < -1.0 || cmd.steer[i] > 1.0) return false;
+  }
+  for (std::uint8_t i = n_steer; i < 4; ++i) {
+    if (cmd.steer[i] != 0.0) return false;
   }
   return true;
 }

@@ -42,9 +42,9 @@ lost_signal::robot::iface::ObservationFrame make_obs() {
   o.imu_ax_mps2 = 0.1;
   o.imu_ay_mps2 = 0.2;
   o.imu_az_mps2 = 9.81;
-  o.wheels_valid = true;
-  o.left_radps = 11.0;
-  o.right_radps = 13.5;
+  o.drive_count = 2;
+  o.drive_radps[0] = 11.0;
+  o.drive_radps[1] = 13.5;
   return o;
 }
 }  // namespace
@@ -102,7 +102,9 @@ int main() {
     assert(obs2.static_ranges_m == obs.static_ranges_m);
     assert(obs2.forward_mps == obs.forward_mps);
     assert(obs2.imu_gyro_z_radps == obs.imu_gyro_z_radps);
-    assert(obs2.left_radps == obs.left_radps);
+    assert(obs2.drive_count == 2);
+    assert(obs2.drive_radps[0] == obs.drive_radps[0]);
+    assert(obs2.drive_radps[1] == obs.drive_radps[1]);
   }
 
   // 4. Deterministic closed-loop replay: record a live run, export it,

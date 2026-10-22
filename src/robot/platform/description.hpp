@@ -28,6 +28,10 @@ struct ChassisLimits {
   double max_forward_mps = 0.0;
   double max_yaw_rate_radps = 0.0;
   double footprint_radius_m = 0.0;
+  // Ackermann steering envelope (clamp + twist conversion bound).
+  double max_steer_rad = 0.55;
+  // Holonomic lateral envelope.
+  double max_lateral_mps = 0.0;
 };
 
 struct RobotDescription {

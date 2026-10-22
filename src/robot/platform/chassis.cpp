@@ -3,7 +3,25 @@
 #include <algorithm>
 #include <cmath>
 
+#include "robot/platform/ackermann_kinematics.hpp"
+#include "robot/platform/holonomic_kinematics.hpp"
+
 namespace lost_signal::robot::platform {
+
+namespace {
+
+// Twist-to-curvature floor: below this speed the yaw->steer conversion
+// freezes at the low-speed geometry instead of dividing toward infinity.
+constexpr double kSteerSpeedFloorMps = 0.5;
+
+double steer_for_twist(double yaw_rate, double forward, double wheel_base_m,
+                       double max_steer_rad) {
+  const double raw = std::atan2(yaw_rate * wheel_base_m,
+                                std::max(std::abs(forward), kSteerSpeedFloorMps));
+  return std::clamp(raw, -max_steer_rad, max_steer_rad);
+}
+
+}  // namespace
 
 DifferentialChassis::DifferentialChassis(double wheel_radius_m,
                                          double track_width_m,
@@ -57,24 +75,189 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
   // Stops and invalid feedback short-circuit to safe zero; the plant's own
   // lag shapes the ramp, and the stop latch gates re-release upstream.
   if (body.space != iface::CommandSpace::kYawRate || body.is_safe_stop() ||
-      !fb.wheels_valid) {
+      !fb.has_joints() || fb.drive_count < 2) {
     wheels_.reset();
     return iface::ActuatorCommand::SafeZero(now_ns);
   }
-  control::WheelFeedback wfb{fb.left_radps, fb.right_radps, true};
+  control::WheelFeedback wfb{fb.drive_radps[0], fb.drive_radps[1], true};
   // Fixed decision step matches the coordinator cadence contract.
   constexpr double kDtS = 0.1;
   control::WheelCommand wc =
       wheels_.update(body.forward_mps, body.yaw_rate_radps, wfb, kDtS);
   iface::ActuatorCommand out;
-  out.mode = iface::ActuatorMode::kNormalizedDuty;
+  out.mode = iface::ActuatorMode::kDiffDuty;
   out.stamp_ns = now_ns;
   out.expiry_ns = now_ns + 200'000'000;
-  out.left = wc.left_duty;
-  out.right = wc.right_duty;
+  out.drive[0] = wc.left_duty;
+  out.drive[1] = wc.right_duty;
   if (!iface::valid_actuator_command(out, now_ns)) {
     wheels_.reset();
     return iface::ActuatorCommand::SafeZero(now_ns);
+  }
+  return out;
+}
+
+AckermannChassis::AckermannChassis(double wheel_radius_m, double wheel_base_m,
+                                   double track_width_m, ChassisLimits limits,
+                                   control::AckermannControllerConfig steer_config)
+    : wheel_radius_m_(wheel_radius_m),
+      wheel_base_m_(wheel_base_m),
+      track_width_m_(track_width_m),
+      limits_(limits),
+      controller_(std::move(steer_config)) {
+  controller_.reset();
+}
+
+iface::CommandSpace AckermannChassis::command_space() const {
+  return iface::CommandSpace::kSteerAngle;
+}
+
+iface::MotionCommand AckermannChassis::clamp_command(
+    const iface::MotionCommand& cmd, core::MonotonicNs now_ns) const {
+  if (cmd.space != iface::CommandSpace::kSteerAngle &&
+      cmd.space != iface::CommandSpace::kYawRate) {
+    return iface::MotionCommand::SafeStop(now_ns);
+  }
+  iface::MotionCommand out = cmd;
+  out.forward_mps =
+      std::clamp(cmd.forward_mps, -limits_.max_forward_mps, limits_.max_forward_mps);
+  if (cmd.space == iface::CommandSpace::kSteerAngle) {
+    out.yaw_rate_radps = 0.0;
+    out.steer_angle_rad = std::clamp(cmd.steer_angle_rad, -limits_.max_steer_rad,
+                                     limits_.max_steer_rad);
+  } else {
+    out.steer_angle_rad = 0.0;
+    out.yaw_rate_radps = std::clamp(cmd.yaw_rate_radps, -limits_.max_yaw_rate_radps,
+                                    limits_.max_yaw_rate_radps);
+  }
+  out.lateral_mps = 0.0;
+  return out;
+}
+
+iface::ActuatorCommand AckermannChassis::to_actuator(
+    const iface::MotionCommand& body, const iface::MotionFeedback& fb,
+    core::MonotonicNs now_ns) const {
+  if (body.is_safe_stop() || !fb.has_joints() || fb.drive_count < 2) {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(
+        now_ns, iface::ActuatorMode::kAckermannDuty);
+  }
+  double steer = 0.0;
+  if (body.space == iface::CommandSpace::kSteerAngle) {
+    steer = body.steer_angle_rad;
+  } else if (body.space == iface::CommandSpace::kYawRate) {
+    steer = steer_for_twist(body.yaw_rate_radps, body.forward_mps,
+                            wheel_base_m_, limits_.max_steer_rad);
+  } else {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(
+        now_ns, iface::ActuatorMode::kAckermannDuty);
+  }
+  control::AckermannFeedback afb;
+  afb.rear_left_radps = fb.drive_radps[0];
+  afb.rear_right_radps = fb.drive_radps[1];
+  if (fb.steer_count >= 2) {
+    afb.front_left_steer_rad = fb.steer_rad[0];
+    afb.front_right_steer_rad = fb.steer_rad[1];
+    afb.front_left_steer_vel_radps = fb.steer_vel_radps[0];
+    afb.front_right_steer_vel_radps = fb.steer_vel_radps[1];
+  }
+  afb.valid = true;
+  constexpr double kDtS = 0.1;
+  control::AckermannCommand ac =
+      controller_.update(body.forward_mps, steer, afb, kDtS);
+  iface::ActuatorCommand out;
+  out.mode = iface::ActuatorMode::kAckermannDuty;
+  out.stamp_ns = now_ns;
+  out.expiry_ns = now_ns + 200'000'000;
+  out.drive[0] = ac.rear_left_duty;
+  out.drive[1] = ac.rear_right_duty;
+  out.steer[0] = ac.front_left_steer_duty;
+  out.steer[1] = ac.front_right_steer_duty;
+  if (!iface::valid_actuator_command(out, now_ns)) {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(
+        now_ns, iface::ActuatorMode::kAckermannDuty);
+  }
+  return out;
+}
+
+HolonomicChassis::HolonomicChassis(double wheel_radius_m, double wheel_base_m,
+                                   double track_width_m, ChassisLimits limits,
+                                   control::HolonomicControllerConfig holonomic_config)
+    : wheel_radius_m_(wheel_radius_m),
+      wheel_base_m_(wheel_base_m),
+      track_width_m_(track_width_m),
+      limits_(limits),
+      config_(std::move(holonomic_config)),
+      controller_(config_) {
+  controller_.reset();
+}
+
+iface::CommandSpace HolonomicChassis::command_space() const {
+  return iface::CommandSpace::kHolonomic;
+}
+
+iface::MotionCommand HolonomicChassis::clamp_command(
+    const iface::MotionCommand& cmd, core::MonotonicNs now_ns) const {
+  if (cmd.space != iface::CommandSpace::kHolonomic &&
+      cmd.space != iface::CommandSpace::kYawRate) {
+    return iface::MotionCommand::SafeStop(now_ns);
+  }
+  iface::MotionCommand out = cmd;
+  out.forward_mps =
+      std::clamp(cmd.forward_mps, -limits_.max_forward_mps, limits_.max_forward_mps);
+  out.yaw_rate_radps = std::clamp(cmd.yaw_rate_radps, -limits_.max_yaw_rate_radps,
+                                  limits_.max_yaw_rate_radps);
+  if (cmd.space == iface::CommandSpace::kHolonomic) {
+    out.lateral_mps = std::clamp(cmd.lateral_mps, -limits_.max_lateral_mps,
+                                 limits_.max_lateral_mps);
+  } else {
+    out.lateral_mps = 0.0;
+  }
+  out.steer_angle_rad = 0.0;
+  return out;
+}
+
+iface::ActuatorCommand HolonomicChassis::to_actuator(
+    const iface::MotionCommand& body, const iface::MotionFeedback& fb,
+    core::MonotonicNs now_ns) const {
+  const bool swerve = config_.kind == control::HolonomicKind::Swerve;
+  const iface::ActuatorMode mode =
+      swerve ? iface::ActuatorMode::kSwerveDuty : iface::ActuatorMode::kMecanumDuty;
+  const std::uint8_t need_steer = swerve ? 4 : 0;
+  if (body.is_safe_stop() || !fb.has_joints() || fb.drive_count < 4 ||
+      fb.steer_count < need_steer) {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(now_ns, mode);
+  }
+  double lateral = 0.0;
+  if (body.space == iface::CommandSpace::kHolonomic) {
+    lateral = body.lateral_mps;
+  } else if (body.space != iface::CommandSpace::kYawRate) {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(now_ns, mode);
+  }
+  control::HolonomicFeedback hfb;
+  hfb.drive_radps = {fb.drive_radps[0], fb.drive_radps[1], fb.drive_radps[2],
+                     fb.drive_radps[3]};
+  hfb.steer_rad = {fb.steer_rad[0], fb.steer_rad[1], fb.steer_rad[2],
+                   fb.steer_rad[3]};
+  hfb.steer_vel_radps = {fb.steer_vel_radps[0], fb.steer_vel_radps[1],
+                         fb.steer_vel_radps[2], fb.steer_vel_radps[3]};
+  hfb.valid = true;
+  constexpr double kDtS = 0.1;
+  control::HolonomicCommand hc = controller_.update(
+      body.forward_mps, lateral, body.yaw_rate_radps, hfb, kDtS);
+  iface::ActuatorCommand out;
+  out.mode = mode;
+  out.stamp_ns = now_ns;
+  out.expiry_ns = now_ns + 200'000'000;
+  out.drive = hc.drive_duty;
+  out.steer = hc.steer_duty;
+  if (!iface::valid_actuator_command(out, now_ns)) {
+    controller_.reset();
+    return iface::ActuatorCommand::SafeZero(now_ns, mode);
   }
   return out;
 }
@@ -86,6 +269,28 @@ std::unique_ptr<IChassis> make_chassis(const RobotDescription& desc) {
     wc.track_width_m = 0.5;
     return std::make_unique<DifferentialChassis>(0.1, 0.5, desc.limits,
                                                 std::move(wc));
+  }
+  if (desc.chassis_kind == "ackermann") {
+    control::AckermannControllerConfig ac;
+    ac.wheel_base_m = 0.62;
+    ac.track_width_m = 0.58;
+    return std::make_unique<AckermannChassis>(0.1, ac.wheel_base_m,
+                                              ac.track_width_m, desc.limits,
+                                              std::move(ac));
+  }
+  if (desc.chassis_kind == "swerve") {
+    control::HolonomicControllerConfig hc;
+    hc.kind = control::HolonomicKind::Swerve;
+    return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
+                                              hc.track_width_m, desc.limits,
+                                              std::move(hc));
+  }
+  if (desc.chassis_kind == "mecanum") {
+    control::HolonomicControllerConfig hc;
+    hc.kind = control::HolonomicKind::Mecanum;
+    return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
+                                              hc.track_width_m, desc.limits,
+                                              std::move(hc));
   }
   return nullptr;  // unknown kind: fail closed, no silent default chassis
 }

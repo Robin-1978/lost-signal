@@ -1,12 +1,16 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <algorithm>
 
 #include "robot/autonomy/control/stop_latch.hpp"
+#include "robot/control/ackermann_controller.hpp"
 #include "robot/control/feedforward.hpp"
+#include "robot/control/holonomic_controller.hpp"
 #include "robot/control/pid.hpp"
 #include "robot/control/wheel_controller.hpp"
 #include "robot/platform/chassis.hpp"
+#include "sim/world/world.hpp"
 
 int main() {
   using namespace lost_signal::robot;
@@ -61,14 +65,14 @@ int main() {
     assert(v > 1.0);  // converged near the 2 m/s target
   }
 
-  // Chassis to_actuator: stop -> safe zero; motion without feedback -> zero.
+  // Diff chassis to_actuator: stop -> safe zero; motion without feedback -> zero.
   {
     platform::DifferentialChassis chassis(
         0.1, 0.5, {.max_forward_mps = 2.0, .max_yaw_rate_radps = 1.5,
                    .footprint_radius_m = 0.4});
     iface::MotionCommand stop = iface::MotionCommand::SafeStop(100);
     iface::MotionFeedback fb;
-    fb.wheels_valid = true;
+    fb.drive_count = 2;
     auto zero = chassis.to_actuator(stop, fb, 100);
     assert(zero.is_safe_zero());
     iface::MotionCommand go;
@@ -78,11 +82,252 @@ int main() {
     go.forward_mps = 1.0;
     iface::MotionFeedback nofb;  // invalid: no joints, no drive
     assert(chassis.to_actuator(go, nofb, 100).is_safe_zero());
-    fb.left_radps = 5.0;
-    fb.right_radps = 5.0;
+    fb.drive_radps[0] = 5.0;
+    fb.drive_radps[1] = 5.0;
     auto act = chassis.to_actuator(go, fb, 100);
+    assert(act.mode == iface::ActuatorMode::kDiffDuty);
     assert(iface::valid_actuator_command(act, 100));
-    assert(act.left > 0.0 && act.right > 0.0);
+    assert(act.drive[0] > 0.0 && act.drive[1] > 0.0);
+  }
+
+  // Ackermann controller: no feedback -> safe zero; closed loop drives
+  // forward with correct rear bias and steer polarity.
+  {
+    control::AckermannController ctl;
+    control::AckermannFeedback nofb;
+    auto zero = ctl.update(1.0, 0.2, nofb, 0.02);
+    assert(zero.rear_left_duty == 0.0 && zero.rear_right_duty == 0.0 &&
+           zero.front_left_steer_duty == 0.0 &&
+           zero.front_right_steer_duty == 0.0);
+    double rl = 0.0, rr = 0.0;  // rear wheel rad/s plant
+    double sl = 0.0, sr = 0.0;  // steer angle plant
+    control::AckermannCommand cmd;
+    for (int i = 0; i < 300; ++i) {
+      control::AckermannFeedback fb;
+      fb.rear_left_radps = rl;
+      fb.rear_right_radps = rr;
+      fb.front_left_steer_rad = sl;
+      fb.front_right_steer_rad = sr;
+      fb.valid = true;
+      cmd = ctl.update(1.5, 0.2, fb, 0.02);
+      rl += (cmd.rear_left_duty * 30.0 - rl) * (1.0 - std::exp(-0.02 / 0.1));
+      rr += (cmd.rear_right_duty * 30.0 - rr) * (1.0 - std::exp(-0.02 / 0.1));
+      // Velocity-servo plant mirror: duty -> rate demand -> angle.
+      sl = std::clamp(sl + cmd.front_left_steer_duty * 2.0 * 0.02, -0.55, 0.55);
+      sr = std::clamp(sr + cmd.front_right_steer_duty * 2.0 * 0.02, -0.55, 0.55);
+    }
+    assert(0.5 * (rl + rr) * 0.1 > 0.8);  // rear drives converged
+    assert(sl > 0.1 && sr > 0.1);        // steers track the left-turn demand
+    assert(sl > sr);  // inner (left) wheel steers more on a left turn
+    assert(rr > rl);  // outer rear wheel runs faster
+  }
+
+  // Ackermann chassis: native steer space + yaw-rate conversion + clamp.
+  {
+    platform::AckermannChassis chassis(
+        0.1, 0.62, 0.58,
+        {.max_forward_mps = 2.0,
+         .max_yaw_rate_radps = 1.5,
+         .footprint_radius_m = 0.4,
+         .max_steer_rad = 0.5});
+    iface::MotionFeedback fb;
+    fb.drive_count = 2;
+    fb.steer_count = 2;
+    fb.drive_radps[0] = 5.0;
+    fb.drive_radps[1] = 5.0;
+    // Native steer space passes through, clamped.
+    iface::MotionCommand steer;
+    steer.space = iface::CommandSpace::kSteerAngle;
+    steer.stamp_ns = 100;
+    steer.expiry_ns = 500;
+    steer.forward_mps = 1.0;
+    steer.steer_angle_rad = 2.0;  // beyond the limit
+    auto clamped = chassis.clamp_command(steer, 100);
+    assert(clamped.steer_angle_rad == 0.5);
+    auto act = chassis.to_actuator(clamped, fb, 100);
+    assert(act.mode == iface::ActuatorMode::kAckermannDuty);
+    assert(iface::valid_actuator_command(act, 100));
+    assert(act.drive[0] > 0.0 && act.drive[1] > 0.0);
+    assert(act.steer[0] > 0.0 && act.steer[1] > 0.0);
+    // Yaw-rate space converts through the bicycle model.
+    iface::MotionCommand yaw;
+    yaw.space = iface::CommandSpace::kYawRate;
+    yaw.stamp_ns = 100;
+    yaw.expiry_ns = 500;
+    yaw.forward_mps = 1.0;
+    yaw.yaw_rate_radps = 0.5;
+    auto act2 = chassis.to_actuator(yaw, fb, 100);
+    assert(iface::valid_actuator_command(act2, 100));
+    assert(act2.steer[0] > 0.0);
+    // Wrong space fails closed to mode-correct zero.
+    iface::MotionCommand holo;
+    holo.space = iface::CommandSpace::kHolonomic;
+    holo.stamp_ns = 100;
+    holo.expiry_ns = 500;
+    holo.forward_mps = 1.0;
+    auto zero = chassis.to_actuator(holo, fb, 100);
+    assert(zero.mode == iface::ActuatorMode::kAckermannDuty && zero.is_safe_zero());
+  }
+
+  // Holonomic swerve controller: lateral+yaw resolve to 4 duties; a pure
+  // spin gives symmetric magnitudes with mirrored steers.
+  {
+    control::HolonomicControllerConfig cfg;
+    cfg.kind = control::HolonomicKind::Swerve;
+    control::HolonomicController ctl(cfg);
+    control::HolonomicFeedback nofb;
+    auto zero = ctl.update(1.0, 0.0, 0.0, nofb, 0.02);
+    for (double d : zero.drive_duty) assert(d == 0.0);
+    control::HolonomicFeedback fb;
+    fb.valid = true;  // stationary joints, valid measurement
+    auto spin = ctl.update(0.0, 0.0, 1.0, fb, 0.02);
+    for (double d : spin.drive_duty) assert(std::isfinite(d));
+    // All four modules drive on a pure spin.
+    assert(std::abs(spin.drive_duty[0]) > 1e-6);
+    // Mecanum: strafe resolves with the expected sign pattern.
+    control::HolonomicControllerConfig mc;
+    mc.kind = control::HolonomicKind::Mecanum;
+    control::HolonomicController mctl(mc);
+    auto strafe = mctl.update(0.0, 1.0, 0.0, fb, 0.02);
+    assert(strafe.drive_duty[0] < 0.0 && strafe.drive_duty[1] > 0.0 &&
+           strafe.drive_duty[2] > 0.0 && strafe.drive_duty[3] < 0.0);
+  }
+
+  // Holonomic chassis: factory kinds, clamp, mode-correct zero.
+  {
+    platform::RobotDescription desc;
+    desc.chassis_kind = "swerve";
+    desc.limits = {.max_forward_mps = 2.0,
+                   .max_yaw_rate_radps = 1.5,
+                   .footprint_radius_m = 0.4,
+                   .max_steer_rad = 0.55,
+                   .max_lateral_mps = 1.0};
+    auto swerve = platform::make_chassis(desc);
+    assert(swerve && std::string(swerve->chassis_id()) == "swerve");
+    desc.chassis_kind = "mecanum";
+    auto mecanum = platform::make_chassis(desc);
+    assert(mecanum && std::string(mecanum->chassis_id()) == "mecanum");
+    desc.chassis_kind = "ackermann";
+    auto ack = platform::make_chassis(desc);
+    assert(ack && std::string(ack->chassis_id()) == "ackermann");
+    desc.chassis_kind = "nope";
+    assert(platform::make_chassis(desc) == nullptr);
+
+    iface::MotionFeedback fb;
+    fb.drive_count = 4;
+    fb.steer_count = 4;
+    iface::MotionCommand yaw;
+    yaw.space = iface::CommandSpace::kYawRate;
+    yaw.stamp_ns = 100;
+    yaw.expiry_ns = 500;
+    yaw.forward_mps = 1.0;
+    auto act = swerve->to_actuator(yaw, fb, 100);
+    assert(act.mode == iface::ActuatorMode::kSwerveDuty);
+    assert(iface::valid_actuator_command(act, 100));
+    auto mact = mecanum->to_actuator(yaw, fb, 100);
+    assert(mact.mode == iface::ActuatorMode::kMecanumDuty);
+    // Swerve without steer feedback fails closed (steers are safety-relevant).
+    iface::MotionFeedback no_steer;
+    no_steer.drive_count = 4;
+    assert(swerve->to_actuator(yaw, no_steer, 100).is_safe_zero());
+  }
+
+  // Sim plants: each mode integrates to the commanded body motion.
+  {
+    // Ackermann drives a left arc.
+    ::lost_signal::sim::world::World w;
+    ::lost_signal::sim::world::MotorParams mp;
+    mp.wheel_base_m = 0.62;
+    mp.track_width_m = 0.58;
+    w.set_motor_params(mp);
+    iface::ActuatorCommand cmd;
+    cmd.mode = iface::ActuatorMode::kAckermannDuty;
+    cmd.stamp_ns = 0;
+    cmd.expiry_ns = 1'000'000'000;
+    cmd.drive[0] = cmd.drive[1] = 0.5;
+    cmd.steer[0] = cmd.steer[1] = 0.5;
+    w.apply(cmd);
+    for (int i = 0; i < 200; ++i) w.step(0.02);
+    assert(w.truth().forward_mps > 0.8);
+    assert(w.truth().yaw_rate_radps > 0.1);  // positive steer -> left arc
+    assert(w.truth().body_yaw_rad > 0.0);
+    // Mecanum strafes left with ~zero forward.
+    ::lost_signal::sim::world::World m;
+    iface::ActuatorCommand mc;
+    mc.mode = iface::ActuatorMode::kMecanumDuty;
+    mc.stamp_ns = 0;
+    mc.expiry_ns = 1'000'000'000;
+    mc.drive = {-0.5, 0.5, 0.5, -0.5};
+    m.apply(mc);
+    for (int i = 0; i < 200; ++i) m.step(0.02);
+    assert(std::abs(m.truth().forward_mps) < 0.15);
+    assert(m.truth().lateral_mps > 0.5);
+    assert(m.truth().body_y_m > 0.3);
+  }
+
+  // Full HIL loop for the new chassis: chassis -> plant -> feedback.
+  {
+    // Ackermann closed loop drives a left arc.
+    ::lost_signal::sim::world::World w;
+    ::lost_signal::sim::world::MotorParams mp;
+    mp.wheel_base_m = 0.62;
+    mp.track_width_m = 0.58;
+    w.set_motor_params(mp);
+    platform::AckermannChassis chassis(
+        0.1, 0.62, 0.58,
+        {.max_forward_mps = 2.0,
+         .max_yaw_rate_radps = 1.5,
+         .footprint_radius_m = 0.4,
+         .max_steer_rad = 0.5});
+    iface::MotionCommand yaw;
+    yaw.space = iface::CommandSpace::kYawRate;
+    yaw.forward_mps = 1.0;
+    yaw.yaw_rate_radps = 0.4;
+    iface::MotionFeedback fb;  // starts empty: first call holds zero
+    for (int i = 0; i < 300; ++i) {
+      w.step(0.02);
+      fb.drive_count = w.truth().drive_count;
+      fb.steer_count = w.truth().steer_count;
+      fb.drive_radps = w.truth().drive_radps;
+      fb.steer_rad = w.truth().steer_rad;
+      fb.steer_vel_radps = w.truth().steer_vel_radps;
+      yaw.stamp_ns = i * 20'000'000;
+      yaw.expiry_ns = yaw.stamp_ns + 200'000'000;
+      auto act = chassis.to_actuator(chassis.clamp_command(yaw, yaw.stamp_ns),
+                                     fb, yaw.stamp_ns);
+      w.apply(act);
+    }
+    assert(w.truth().body_x_m > 1.0);
+    assert(w.truth().body_yaw_rad > 0.1);  // left arc, closed loop
+    // Swerve closed loop drives forward on a yaw-rate command.
+    ::lost_signal::sim::world::World s;
+    platform::HolonomicChassis swerve(
+        0.1, 0.56, 0.56,
+        {.max_forward_mps = 2.0,
+         .max_yaw_rate_radps = 1.5,
+         .footprint_radius_m = 0.4,
+         .max_steer_rad = 0.55,
+         .max_lateral_mps = 1.0},
+        [] {
+          control::HolonomicControllerConfig hc;
+          hc.kind = control::HolonomicKind::Swerve;
+          return hc;
+        }());
+    iface::MotionFeedback sfb;
+    for (int i = 0; i < 300; ++i) {
+      s.step(0.02);
+      sfb.drive_count = s.truth().drive_count;
+      sfb.steer_count = s.truth().steer_count;
+      sfb.drive_radps = s.truth().drive_radps;
+      sfb.steer_rad = s.truth().steer_rad;
+      sfb.steer_vel_radps = s.truth().steer_vel_radps;
+      yaw.stamp_ns = i * 20'000'000;
+      yaw.expiry_ns = yaw.stamp_ns + 200'000'000;
+      auto act = swerve.to_actuator(swerve.clamp_command(yaw, yaw.stamp_ns),
+                                    sfb, yaw.stamp_ns);
+      s.apply(act);
+    }
+    assert(s.truth().body_x_m > 0.5);
   }
 
   // Stop latch: withholds motion until tread settles, then releases.

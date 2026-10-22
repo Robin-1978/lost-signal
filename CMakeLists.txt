@@ -32,6 +32,13 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/description.cpp
   src/robot/platform/chassis.cpp
   src/robot/platform/differential_kinematics.cpp
+  src/robot/platform/ackermann_kinematics.cpp
+  src/robot/platform/holonomic_kinematics.cpp
+  # Ackermann/holonomic controllers live here (not in robot_control) because
+  # they call the canonical platform kinematics; robot_control must stay
+  # below robot_platform (cf. the inlined twist math in wheel_controller).
+  src/robot/control/ackermann_controller.cpp
+  src/robot/control/holonomic_controller.cpp
 )
 target_include_directories(lost_signal_robot_platform PUBLIC src)
 target_link_libraries(lost_signal_robot_platform PUBLIC
@@ -123,7 +130,10 @@ add_library(lost_signal_sim_world STATIC
   src/sim/world/world.cpp
 )
 target_include_directories(lost_signal_sim_world PUBLIC src)
-target_link_libraries(lost_signal_sim_world PUBLIC lost_signal_robot_core)
+target_link_libraries(lost_signal_sim_world PUBLIC
+  lost_signal_robot_core
+  lost_signal_robot_iface
+)
 
 add_library(lost_signal_sim_providers STATIC
   src/sim/providers/sim_motion.cpp
@@ -254,7 +264,7 @@ add_test(NAME sim_nav COMMAND test_sim_nav)
 add_executable(test_actuation
   tests/test_actuation.cpp
 )
-target_link_libraries(test_actuation PRIVATE lost_signal_robot_control lost_signal_robot_platform lost_signal_robot_iface lost_signal_robot_autonomy)
+target_link_libraries(test_actuation PRIVATE lost_signal_robot_control lost_signal_robot_platform lost_signal_robot_iface lost_signal_robot_autonomy lost_signal_sim_world)
 add_test(NAME actuation COMMAND test_actuation)
 
 add_executable(test_dwa

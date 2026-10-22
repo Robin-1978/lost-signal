@@ -1,6 +1,9 @@
 #include "sim/eval/recording.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdio>
+#include <vector>
 
 #include "sim/eval/json.hpp"
 
@@ -69,7 +72,7 @@ bool req_bool(const Json& obj, const char* key, bool& out,
 
 std::string step_to_json_line(const RecordedStep& step) {
   Json::Object o;
-  o.emplace_back("v", Json::Num(1));
+  o.emplace_back("v", Json::Num(2));
   o.emplace_back("seq", Json::Num(static_cast<double>(step.sequence)));
   o.emplace_back("t", Json::Num(static_cast<double>(step.stamp_ns)));
   o.emplace_back("src", Json::Str(step.source));
@@ -101,14 +104,16 @@ std::string step_to_json_line(const RecordedStep& step) {
   acc.push_back(Json::Num(step.az));
   imu.emplace_back("acc", Json::Arr(std::move(acc)));
   o.emplace_back("imu", Json::Obj(std::move(imu)));
-  if (step.wheels_valid) {
-    Json::Array w;
-    w.push_back(Json::Num(step.left_radps));
-    w.push_back(Json::Num(step.right_radps));
-    o.emplace_back("wheels", Json::Arr(std::move(w)));
-  } else {
-    o.emplace_back("wheels", Json::Null());
-  }
+  Json::Array drives;
+  for (double d : step.drives_radps) drives.push_back(Json::Num(d));
+  o.emplace_back("drives", Json::Arr(std::move(drives)));
+  Json::Object steers;
+  Json::Array spos, svel;
+  for (double s : step.steers_rad) spos.push_back(Json::Num(s));
+  for (double s : step.steers_vel_radps) svel.push_back(Json::Num(s));
+  steers.emplace_back("pos", Json::Arr(std::move(spos)));
+  steers.emplace_back("vel", Json::Arr(std::move(svel)));
+  o.emplace_back("steers", Json::Obj(std::move(steers)));
   return json_dump(Json::Obj(std::move(o)));
 }
 
@@ -124,7 +129,7 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   }
   const Json& obj = *root;
   double v = 0, seq = 0, stamp = 0;
-  if (!req_num(obj, "v", v, err) || v != 1.0) {
+  if (!req_num(obj, "v", v, err) || v != 2.0) {
     if (err.empty()) err = "unsupported schema version";
     return false;
   }
@@ -190,20 +195,47 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   };
   if (!triple(gyro, "gyro", step.gyro_x, step.gyro_y, step.gyro_z)) return false;
   if (!triple(acc, "acc", step.ax, step.ay, step.az)) return false;
-  const Json* wheels = req(obj, "wheels", err);
-  if (wheels == nullptr) return false;
-  if (wheels->is_null()) {
-    step.wheels_valid = false;
-  } else if (wheels->is_array() && wheels->as_array().size() == 2 &&
-             wheels->as_array()[0].is_num() &&
-             wheels->as_array()[1].is_num()) {
-    step.wheels_valid = true;
-    step.left_radps = wheels->as_array()[0].as_num();
-    step.right_radps = wheels->as_array()[1].as_num();
-  } else {
-    err = "key 'wheels' must be null or a [left, right] pair";
+  const Json* drives = req(obj, "drives", err);
+  if (drives == nullptr || !drives->is_array() ||
+      drives->as_array().size() > 4) {
+    if (drives != nullptr) err = "key 'drives' must be an array of <= 4 numbers";
     return false;
   }
+  step.drives_radps.clear();
+  for (const auto& item : drives->as_array()) {
+    if (!item.is_num()) {
+      err = "non-numeric drives element";
+      return false;
+    }
+    step.drives_radps.push_back(item.as_num());
+  }
+  const Json* steers = req(obj, "steers", err);
+  if (steers == nullptr || !steers->is_object()) {
+    if (steers != nullptr) err = "key 'steers' not an object";
+    return false;
+  }
+  const Json* spos = req(*steers, "pos", err);
+  const Json* svel = req(*steers, "vel", err);
+  auto num_array = [&](const Json* node, const char* name,
+                       std::vector<double>& out) {
+    if (node == nullptr || !node->is_array() ||
+        node->as_array().size() > 4) {
+      if (node != nullptr)
+        err = std::string("key '") + name + "' must be an array of <= 4 numbers";
+      return false;
+    }
+    out.clear();
+    for (const auto& item : node->as_array()) {
+      if (!item.is_num()) {
+        err = std::string("non-numeric '") + name + "' element";
+        return false;
+      }
+      out.push_back(item.as_num());
+    }
+    return true;
+  };
+  if (!num_array(spos, "pos", step.steers_rad)) return false;
+  if (!num_array(svel, "vel", step.steers_vel_radps)) return false;
   return true;
 }
 
@@ -228,9 +260,12 @@ RecordedStep record_step(const robot::iface::ObservationFrame& obs) {
   s.ax = obs.imu_ax_mps2;
   s.ay = obs.imu_ay_mps2;
   s.az = obs.imu_az_mps2;
-  s.wheels_valid = obs.wheels_valid;
-  s.left_radps = obs.left_radps;
-  s.right_radps = obs.right_radps;
+  s.drives_radps.assign(obs.drive_radps.begin(),
+                        obs.drive_radps.begin() + obs.drive_count);
+  s.steers_rad.assign(obs.steer_rad.begin(),
+                      obs.steer_rad.begin() + obs.steer_count);
+  s.steers_vel_radps.assign(obs.steer_vel_radps.begin(),
+                            obs.steer_vel_radps.begin() + obs.steer_count);
   return s;
 }
 
@@ -256,9 +291,13 @@ robot::iface::ObservationFrame step_to_observation(const RecordedStep& step) {
   o.imu_ax_mps2 = step.ax;
   o.imu_ay_mps2 = step.ay;
   o.imu_az_mps2 = step.az;
-  o.wheels_valid = step.wheels_valid;
-  o.left_radps = step.left_radps;
-  o.right_radps = step.right_radps;
+  o.drive_count = static_cast<std::uint8_t>(std::min<std::size_t>(step.drives_radps.size(), 4));
+  o.steer_count = static_cast<std::uint8_t>(std::min<std::size_t>(step.steers_rad.size(), 4));
+  for (std::size_t i = 0; i < o.drive_count; ++i) o.drive_radps[i] = step.drives_radps[i];
+  for (std::size_t i = 0; i < o.steer_count; ++i) {
+    o.steer_rad[i] = step.steers_rad[i];
+    if (i < step.steers_vel_radps.size()) o.steer_vel_radps[i] = step.steers_vel_radps[i];
+  }
   return o;
 }
 

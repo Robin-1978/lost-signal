@@ -17,8 +17,10 @@ const robot::iface::EndpointDescriptor& SimMotionEndpoint::descriptor()
 void SimMotionEndpoint::consume_command(
     const robot::iface::ActuatorCommand& cmd) {
   if (world_ == nullptr) return;
-  if (cmd.mode != robot::iface::ActuatorMode::kNormalizedDuty) return;
-  world_->apply_duty(cmd.left, cmd.right);
+  if (!robot::iface::valid_actuator_command(cmd, robot::core::kInvalidTime)) {
+    return;  // malformed duties never reach the plant
+  }
+  world_->apply(cmd);
 }
 
 bool SimMotionEndpoint::poll_feedback(
@@ -33,9 +35,11 @@ bool SimMotionEndpoint::poll_feedback(
   out.odometry_valid = true;
   out.forward_mps = world_->truth().forward_mps;
   out.yaw_rate_radps = world_->truth().yaw_rate_radps;
-  out.wheels_valid = true;
-  out.left_radps = world_->truth().left_radps;
-  out.right_radps = world_->truth().right_radps;
+  out.drive_count = world_->truth().drive_count;
+  out.steer_count = world_->truth().steer_count;
+  out.drive_radps = world_->truth().drive_radps;
+  out.steer_rad = world_->truth().steer_rad;
+  out.steer_vel_radps = world_->truth().steer_vel_radps;
   return out.valid();
 }
 

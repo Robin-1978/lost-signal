@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,15 +47,21 @@ struct ObservationFrame {
   double imu_ay_mps2 = 0.0;
   double imu_az_mps2 = 0.0;
 
-  // Joint truth (measured mechanical rad/s, per named wheel channel).
+  // Joint truth (measured joints, per chassis layout).
   // Wheel controllers close their loops on this; body twist above stays
   // the convenience projection a driver derives from the same joints.
-  bool wheels_valid = false;
-  double left_radps = 0.0;
-  double right_radps = 0.0;
+  // drive_count == 0 means absent; counts follow the actuator mode
+  // (diff 2/0, ackermann 2/2, swerve 4/4, mecanum 4/0).
+  std::uint8_t drive_count = 0;
+  std::uint8_t steer_count = 0;
+  std::array<double, 4> drive_radps = {};
+  std::array<double, 4> steer_rad = {};
+  std::array<double, 4> steer_vel_radps = {};
+
+  bool has_joints() const { return drive_count > 0; }
 
   bool empty() const {
-    return !scan_valid && !odometry_valid && !imu_valid && !wheels_valid;
+    return !scan_valid && !odometry_valid && !imu_valid && drive_count == 0;
   }
 };
 

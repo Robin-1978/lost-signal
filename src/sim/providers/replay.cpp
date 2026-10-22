@@ -30,7 +30,7 @@ bool export_episode(const std::string& path, const std::string& map_id,
                     std::uint64_t map_revision,
                     const eval::EpisodeRecorder& episode, std::string* error) {
   eval::Json::Object header;
-  header.emplace_back("v", eval::Json::Num(1));
+  header.emplace_back("v", eval::Json::Num(2));
   header.emplace_back("kind", eval::Json::Str("episode"));
   header.emplace_back("map", eval::Json::Str(map_id));
   header.emplace_back("rev", eval::Json::Num(static_cast<double>(map_revision)));
@@ -66,7 +66,7 @@ bool ReplayProvider::load(const std::string& path, std::string* error) {
   const eval::Json* v = header->find("v");
   if (kind == nullptr || !kind->is_str() || kind->as_str() != "episode" ||
       map == nullptr || !map->is_str() || rev == nullptr || !rev->is_num() ||
-      v == nullptr || !v->is_num() || v->as_num() != 1.0) {
+      v == nullptr || !v->is_num() || v->as_num() != 2.0) {
     if (error) *error = "unsupported episode header";
     return false;
   }

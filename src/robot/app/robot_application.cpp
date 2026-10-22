@@ -135,10 +135,12 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   // joints.
   const iface::ObservationFrame& last = coordinator_.last_observation();
   iface::MotionFeedback fb;
-  fb.wheels_valid = last.wheels_valid;
-  fb.left_radps = last.left_radps;
-  fb.right_radps = last.right_radps;
-  fb.source = "app.wheels";
+  fb.drive_count = last.drive_count;
+  fb.steer_count = last.steer_count;
+  fb.drive_radps = last.drive_radps;
+  fb.steer_rad = last.steer_rad;
+  fb.steer_vel_radps = last.steer_vel_radps;
+  fb.source = "app.joints";
   fb.frame = core::Frame::kBaseLink;
   fb.stamp_ns = last.stamp_ns;
   iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);

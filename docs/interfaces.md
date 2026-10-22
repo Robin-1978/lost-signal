@@ -66,9 +66,17 @@ helpers (`iface/envelope.hpp`: `make_envelope/set_scan/set_imu`) — no
 hand-packing in harnesses. The old whole-observation `IPlatformProvider` is
 gone: sensors are messages, motion is a twist, the envelope is packed once.
 
-## IChassis — chassis kinematics (bonus axis)
+## IChassis — chassis kinematics
 
-`src/robot/platform/chassis.hpp`. `DifferentialChassis` implements
-`inverse()` / `forward()` wheel kinematics and `clamp_command()` envelope.
-`DifferentialRobot` applies the clamp; a planner can never publish what the
-base cannot track.
+`src/robot/platform/chassis.hpp`. Four chassis behind one seam
+(`make_chassis` on `RobotDescription::chassis_kind`; unknown kinds fail
+closed to nullptr): `DifferentialChassis` (`inverse`/`forward` + envelope),
+`AckermannChassis` (native `kSteerAngle`; `kYawRate` converts through the
+bicycle model with a low-speed floor — a car cannot turn standing still),
+`HolonomicChassis` in swerve (`kSwerveDuty` 4+4, cosine-compensated) and
+mecanum (`kMecanumDuty` 4 drives) flavors (`kYawRate` runs with lateral 0).
+Each `to_actuator` closes its own loops (rear/drive PID + model feedforward,
+steer position->rate cascade) against measured joints and returns a
+mode-correct safe zero without valid feedback. The sim plant mirrors the
+same four modes (first-order drive lag, velocity-servo steers, rigid-body
+follow per chassis kinematics).

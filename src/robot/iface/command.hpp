@@ -4,11 +4,13 @@
 
 namespace lost_signal::robot::iface {
 
-// Single canonical body command space for v1. More spaces are added as new
-// enum values, never by reinterpreting these fields.
+// Body command spaces. New spaces arrive as new enum values with their own
+// named fields; existing fields are never reinterpreted across spaces.
 enum class CommandSpace {
   kStop = 0,
-  kYawRate = 1,  // forward_mps + yaw_rate_radps
+  kYawRate = 1,    // forward_mps + yaw_rate_radps (differential default)
+  kSteerAngle = 2,  // forward_mps + steer_angle_rad (ackermann native)
+  kHolonomic = 3,   // forward_mps + lateral_mps + yaw_rate_radps
 };
 
 struct MotionCommand {
@@ -16,7 +18,9 @@ struct MotionCommand {
   core::MonotonicNs stamp_ns = core::kInvalidTime;
   core::MonotonicNs expiry_ns = core::kInvalidTime;
   double forward_mps = 0.0;
-  double yaw_rate_radps = 0.0;
+  double yaw_rate_radps = 0.0;  // kYawRate + kHolonomic
+  double steer_angle_rad = 0.0;  // kSteerAngle: equivalent front-wheel angle
+  double lateral_mps = 0.0;      // kHolonomic: body-left velocity
 
   static MotionCommand SafeStop(core::MonotonicNs now_ns) {
     MotionCommand c;
@@ -28,7 +32,8 @@ struct MotionCommand {
 
   bool is_safe_stop() const {
     return space == CommandSpace::kStop && forward_mps == 0.0 &&
-           yaw_rate_radps == 0.0;
+           yaw_rate_radps == 0.0 && steer_angle_rad == 0.0 &&
+           lateral_mps == 0.0;
   }
 };
 
