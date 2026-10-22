@@ -42,7 +42,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
       platform::ChassisLimits limits = {.max_forward_mps = 2.0,
                                         .max_yaw_rate_radps = 2.0,
                                         .footprint_radius_m = 0.4},
-      core::MonotonicNs decision_period_ns = 100'000'000);  // 10 Hz default
+      core::MonotonicNs decision_period_ns = 100'000'000,  // 10 Hz default
+      LidarPerceptionConfig perception_config = {});
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;

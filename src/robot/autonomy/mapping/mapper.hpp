@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/core/geometry.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
 #include "robot/iface/observation.hpp"
@@ -70,22 +72,93 @@ class IMapper {
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
 // A ray-clearing mapper replaces this body; the query semantics above stay.
-class NullMapper : public IMapper {
+class RayClearingMapper : public IMapper {
  public:
   void reset() override { map_ = LocalMap{}; }
   void update(const iface::ObservationFrame& obs,
               const EstimatedState& est) override {
-    map_.valid = est.valid;
-    map_.width = 100;
-    map_.height = 100;
-    map_.origin_x_m = est.x_m - 5.0;
-    map_.origin_y_m = est.y_m - 5.0;
+    if (!est.valid) {
+      map_.valid = false;
+      return;
+    }
+    // Rolling window: recenter (dropping old content) when the estimate
+    // leaves the inner half. A mapping session with loop closure replaces
+    // this reset with submap re-rasterization; see docs.
+    const double half_w = map_.width * map_.resolution_m * 0.5;
+    const double half_h = map_.height * map_.resolution_m * 0.5;
+    bool need_window = !map_.valid || map_.occupancy.size() !=
+                                            map_.width * map_.height;
+    if (!need_window) {
+      const double cx = map_.origin_x_m + half_w;
+      const double cyy = map_.origin_y_m + half_h;
+      need_window = std::abs(est.x_m - cx) > half_w * 0.5 ||
+                    std::abs(est.y_m - cyy) > half_h * 0.5;
+    }
+    if (need_window) {
+      map_.valid = true;
+      map_.resolution_m = 0.1;
+      map_.width = 100;
+      map_.height = 100;
+      map_.origin_x_m = est.x_m - 5.0;
+      map_.origin_y_m = est.y_m - 5.0;
+      map_.occupancy.assign(map_.width * map_.height, -1);
+    }
     map_.stamp_ns = obs.stamp_ns;
-    map_.occupancy.assign(map_.width * map_.height, -1);
+    if (!obs.scan_valid || obs.ranges_m.empty()) return;
+    // Ray clearing from the estimate pose (v1: lidar ~ base center; the
+    // mount offset enters with calibrated extrinsics, see perception).
+    // Background beams paint endpoint cells occupied; foreground beams
+    // clear the ray but never paint (actors must not become static map).
+    const std::size_t n = obs.ranges_m.size();
+    const bool has_ref =
+        obs.scan_static_valid && obs.static_ranges_m.size() == n;
+    for (std::size_t i = 0; i < n; ++i) {
+      const float range = obs.ranges_m[i];
+      if (!(range > 0.0) || !std::isfinite(range)) continue;
+      const double angle = -core::kPi + 2.0 * core::kPi * i / n + est.yaw_rad;
+      const double ex = est.x_m + range * std::cos(angle);
+      const double ey = est.y_m + range * std::sin(angle);
+      clear_segment(est.x_m, est.y_m, ex, ey);
+      bool background = false;
+      if (has_ref) {
+        background =
+            std::abs(range - obs.static_ranges_m[i]) <= 0.30;
+      }
+      if (background) occupy(ex, ey);
+    }
   }
   LocalMap local_map() const override { return map_; }
 
  private:
+  void clear_segment(double x0, double y0, double x1, double y1) {
+    const double length = std::hypot(x1 - x0, y1 - y0);
+    const int steps = std::max(
+        1, static_cast<int>(
+               std::ceil(length / (0.5 * map_.resolution_m))));
+    for (int s = 0; s < steps; ++s) {  // exclude endpoint: actor cells stay
+      const double b = static_cast<double>(s) / steps;
+      set_cell(x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, 0);
+    }
+  }
+  void occupy(double wx, double wy) {
+    int gx, gy;
+    world_to_grid(wx, wy, gx, gy);
+    if (map_.inside(gx, gy)) {
+      map_.occupancy[gy * map_.width + gx] = 100;
+    }
+  }
+  void set_cell(double wx, double wy, int8_t v) {
+    int gx, gy;
+    world_to_grid(wx, wy, gx, gy);
+    if (map_.inside(gx, gy)) {
+      map_.occupancy[gy * map_.width + gx] = v;
+    }
+  }
+  void world_to_grid(double wx, double wy, int& gx, int& gy) const {
+    gx = static_cast<int>(std::floor((wx - map_.origin_x_m) / map_.resolution_m));
+    gy = static_cast<int>(std::floor((wy - map_.origin_y_m) / map_.resolution_m));
+  }
+
   LocalMap map_{};
 };
 

@@ -5,6 +5,10 @@ namespace lost_signal::sim::world {
 void World::step(double dt_s) {
   truth_.step += 1;
   truth_.body_x_m += truth_.forward_mps * dt_s;
+  for (auto& a : actors_) {
+    a.x += a.vx_mps * dt_s;
+    a.y += a.vy_mps * dt_s;
+  }
 }
 
 }  // namespace lost_signal::sim::world

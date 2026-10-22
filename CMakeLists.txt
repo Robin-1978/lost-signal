@@ -38,6 +38,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
   src/robot/autonomy/mapping/mapper.cpp
+  src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
   src/robot/autonomy/planning/prediction.cpp
@@ -175,6 +176,18 @@ add_executable(test_autonomy
 )
 target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy COMMAND test_autonomy)
+
+add_executable(test_perception
+  tests/test_perception.cpp
+)
+target_link_libraries(test_perception PRIVATE lost_signal_robot_autonomy)
+add_test(NAME perception COMMAND test_perception)
+
+add_executable(test_sim_actor
+  tests/test_sim_actor.cpp
+)
+target_link_libraries(test_sim_actor PRIVATE lost_signal_sim_scenario)
+add_test(NAME sim_actor COMMAND test_sim_actor)
 
 add_executable(test_dwa
   tests/test_dwa.cpp

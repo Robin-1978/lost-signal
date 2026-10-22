@@ -18,7 +18,8 @@ int main() {
   world.step(0.02);
   robot::iface::ObservationFrame obs;
   assert(suite.poll_envelope(obs));
-  assert(obs.odometry_valid && obs.scan_valid && obs.imu_valid);
+  assert(obs.odometry_valid && obs.scan_valid && obs.scan_static_valid &&
+         obs.imu_valid);
   assert(obs.ranges_m.size() == 72);
   assert(robot::iface::valid_observation_frame(obs));
   assert(app.publish_observation(obs));

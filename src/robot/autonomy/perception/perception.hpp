@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -26,8 +28,8 @@ struct DynamicTrack {
   // unambiguous contract. Predictors grow this value with forecast time.
   double position_uncertainty_m = 0.0;
   // True when perception has enough timestamp-distinct history for this
-  // track to participate in a behavior decision. Local avoidance still
-  // consumes unready tracks conservatively.
+  // track to participate in a behavior decision. Local collision avoidance
+  // still consumes unready tracks conservatively.
   bool prediction_ready = false;
 
   double occupied_radius_m() const {
@@ -52,20 +54,49 @@ class IPerception {
                                   const EstimatedState& est) = 0;
 };
 
-// v1: reports scan presence only, no tracks. Safe: unknown, never free.
-class NullPerception : public IPerception {
+struct LidarPerceptionConfig {
+  // Sensor mount in base_link (planar).
+  double sensor_x_m = 0.0;
+  double sensor_y_m = 0.0;
+  double sensor_yaw_rad = 0.0;
+  // Foreground test: |measured - expected| beyond this is not static world.
+  double foreground_threshold_m = 0.30;
+  // Clustering: adjacent foreground beams split past this range gap.
+  double cluster_range_gap_m = 0.5;
+  int min_beams_per_cluster = 2;
+  // Association gate + track lifetime.
+  double association_gate_m = 0.6;
+  int max_misses = 3;
+  int min_updates_for_ready = 3;
+};
+
+// Planar lidar foreground extraction + nearest-neighbor tracking.
+// Static reference present: beams disagreeing with it cluster into
+// candidates; clusters associate to tracks by distance gate.
+// Static reference absent: classification is unavailable -> no tracks, but
+// scan_ok stays true so raw safety coverage is retained (validator + safety
+// monitor consume the scan directly and never need tracks).
+class LidarPerception : public IPerception {
  public:
-  void reset() override { last_ = PerceptionResult{}; }
+  explicit LidarPerception(LidarPerceptionConfig config = {});
+
+  void reset() override;
   PerceptionResult update(const iface::ObservationFrame& obs,
-                          const EstimatedState& /*est*/) override {
-    last_.scan_ok = obs.scan_valid;
-    last_.stamp_ns = obs.stamp_ns;
-    last_.tracks.clear();
-    return last_;
-  }
+                          const EstimatedState& est) override;
 
  private:
-  PerceptionResult last_{};
+  struct TrackState {
+    DynamicTrack track;
+    int updates = 0;
+    int misses = 0;
+    double first_seen_s = 0.0;
+    double first_x_m = 0.0;
+    double first_y_m = 0.0;
+    double last_seen_s = 0.0;
+  };
+  LidarPerceptionConfig config_;
+  std::unordered_map<std::uint32_t, TrackState> tracks_;
+  std::uint32_t next_id_ = 1;
 };
 
 }  // namespace lost_signal::robot::autonomy

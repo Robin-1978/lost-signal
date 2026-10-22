@@ -42,6 +42,9 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
   ::lost_signal::robot::iface::ChannelHealth channel_health() const override;
 
   const world::World& world() const { return world_; }
+  // Test/scenario setup only: configure geometry and actors before the
+  // run. Never called by ROBOT code; never during a live tick.
+  world::World& setup_world() { return world_; }
 
  private:
   world::World world_;

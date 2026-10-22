@@ -3,12 +3,13 @@
 namespace lost_signal::robot::autonomy {
 
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
-                                         core::MonotonicNs decision_period_ns)
+                                         core::MonotonicNs decision_period_ns,
+                                         LidarPerceptionConfig perception_config)
     : limits_(limits),
       decision_period_ns_(decision_period_ns),
       estimator_(std::make_unique<DeadReckoningEstimator>()),
-      perception_module_(std::make_unique<NullPerception>()),
-      mapper_(std::make_unique<NullMapper>()),
+      perception_module_(std::make_unique<LidarPerception>(perception_config)),
+      mapper_(std::make_unique<RayClearingMapper>()),
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
       global_planner_(std::make_unique<StraightLinePlanner>()),
       local_planner_(std::make_unique<DwaPlanner>()),

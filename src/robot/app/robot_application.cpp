@@ -18,10 +18,27 @@ class NullMapProvider : public iface::IMapProvider {
 };
 }  // namespace
 
+namespace {
+
+autonomy::LidarPerceptionConfig perception_config_from(
+    const platform::RobotDescription& desc) {
+  autonomy::LidarPerceptionConfig config;
+  if (!desc.sensors.empty()) {
+    config.sensor_x_m = desc.sensors[0].xyz_m[0];
+    config.sensor_y_m = desc.sensors[0].xyz_m[1];
+    config.sensor_yaw_rad = desc.sensors[0].rpy_rad[2];
+  }
+  return config;
+}
+
+}  // namespace
+
 RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
                                    platform::RobotDescription desc)
     : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()),
-      desc_(std::move(desc)) {
+      desc_(std::move(desc)),
+      coordinator_(desc_.limits, 100'000'000,
+                   perception_config_from(desc_)) {
   channel_.activate();
   // Bringup order: autonomy state first, executive policy last.
   bringup_wired_ =

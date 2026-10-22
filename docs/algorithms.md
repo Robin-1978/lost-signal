@@ -48,16 +48,28 @@ identification stay out: the `IChassis` wrapper owns the real base.
 - Estimation consumes odometry/IMU prediction + scan/map correction only.
   No truth, no map mutation, no command selection.
 - Perception owns tracks + free-space evidence. `scan_ok == false` means
-  unknown, never free space. No actor IDs cross.
+  unknown, never free space. No actor IDs cross. `LidarPerception` splits
+  foreground by disagreeing with a static reference (map raycast or surveyed
+  scan); without one, classification is unavailable and no tracks publish,
+  while `scan_ok` stays true so raw safety coverage is retained. Foreground
+  beams cluster into candidates, nearest-neighbor association keeps
+  identities, and velocity is averaged since first sighting (finite
+  differences amplify centroid quantization into m/s noise). Tracks carry
+  `prediction_ready` once they have history; avoidance consumes unready
+  tracks conservatively.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
   `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
   occupied) with origin-aware queries: conservative `is_free` /
   `segment_is_free` (unknown counts as blocked) for admission/validation,
   optimistic `is_blocked` / `segment_is_traversable` (only
-  observed-occupied blocks) for planner sampling. Unknown is the explicit
-  split: the planner may propose through it, the safety layers veto on raw
-  scan evidence instead.
+  observed-occupied blocks) for planner sampling. `RayClearingMapper`
+  clears along every return and paints endpoints only for background beams;
+  foreground returns never enter the static layer (actors must not become
+  the map). The window re-centers on the estimate (dropping old content;
+  submap re-rasterization is SLAM work). Unknown is the explicit split:
+  the planner may propose through it, the safety layers veto on raw scan
+  evidence instead.
 - Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
   estimate in, ONE constraint (hold / speed cap) out. It selects no
   trajectory and emits no command. A hold short-circuits sampling but still

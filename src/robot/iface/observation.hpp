@@ -21,6 +21,14 @@ struct ObservationFrame {
   std::vector<float> ranges_m;
   bool scan_valid = false;
 
+  // Static-reference scan: expected returns from the static world (map
+  // raycast or survey), same ordering as ranges_m. Lets perception split
+  // foreground from background. Absent for providers that cannot produce
+  // it (scan_static_valid=false): classification is then unavailable while
+  // raw safety coverage is retained.
+  std::vector<float> static_ranges_m;
+  bool scan_static_valid = false;
+
   // Body-frame planar odometry twist (measured, SI).
   bool odometry_valid = false;
   double forward_mps = 0.0;
