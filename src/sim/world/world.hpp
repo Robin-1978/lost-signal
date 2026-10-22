@@ -27,6 +27,7 @@ struct WorldTruth {
   std::uint8_t drive_count = 0;
   std::uint8_t steer_count = 0;
   std::array<double, 4> drive_radps = {};  // mechanical rad/s
+  std::array<double, 4> drive_angle_rad = {};  // continuous joint angle
   std::array<double, 4> drive_duty = {};
   std::array<double, 4> steer_rad = {};
   std::array<double, 4> steer_duty = {};
@@ -81,6 +82,10 @@ struct MotorParams {
   double brake_max_torque_Nm = 0.0;
   double brake_apply_time_s = 0.12;
   double brake_release_time_s = 0.08;
+  // Encoder resolution for the joint measurement model (counts per
+  // revolution). The provider quantizes angles and differentiates; the
+  // ROBOT loop closes on the quantized joints, like native hardware.
+  int encoder_counts_per_revolution = 2048;
 };
 
 class World {
@@ -88,6 +93,7 @@ class World {
   World();
   void step(double dt_s);
   void set_motor_params(const MotorParams& params);
+  const MotorParams& motor_params() const { return motor_; }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
   // e-stop style brake request per drive wheel, clamped to [0, 1].
   // Out-of-range wheels are ignored. Reconfiguring the motor params resets

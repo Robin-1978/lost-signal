@@ -40,13 +40,15 @@ int main() {
   suite.consume(cmd);
   double x0 = world.truth().body_x_m;
   world.step(0.02);
-  // Force integration: one 20 ms step at stall accel (54 N / 3 kg) reaches
-  // 0.36 m/s, so displacement is small but strictly positive.
+  // Rigid coupling: one 20 ms step at ΣF/M = 4.5 m/s^2 reaches 0.09 m/s,
+  // so displacement is small but strictly positive.
   const double dx1 = world.truth().body_x_m - x0;
-  assert(dx1 > 0.005 && dx1 < 0.02);
+  assert(dx1 > 0.001 && dx1 < 0.005);
   assert(world.truth().drive_radps[0] > 0.0);
   // Settles at the motor-vs-drag equilibrium (~2.84), never above free.
-  for (int i = 0; i < 100; ++i) world.step(0.02);
+  // The rigid-coupling plant (ΣF/M) is lazier than the wheel-mass days,
+  // so settling takes longer; the equilibrium itself is unchanged.
+  for (int i = 0; i < 300; ++i) world.step(0.02);
   assert(world.truth().forward_mps > 2.80 && world.truth().forward_mps < 2.88);
 
   // Feedback reflects the plant, and the envelope carries it through.

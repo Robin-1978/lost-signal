@@ -342,6 +342,15 @@ add_executable(test_contact
 target_link_libraries(test_contact PRIVATE lost_signal_sim_eval)
 add_test(NAME contact COMMAND test_contact)
 
+add_executable(test_encoder
+  tests/test_encoder.cpp
+)
+target_link_libraries(test_encoder PRIVATE
+  lost_signal_sim_providers
+  lost_signal_robot_platform
+)
+add_test(NAME encoder COMMAND test_encoder)
+
 add_executable(test_lidar
   tests/test_lidar.cpp
 )

@@ -1,5 +1,11 @@
 #include "sim/providers/sim_motion.hpp"
 
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace lost_signal::sim::providers {
 
 SimMotionEndpoint::SimMotionEndpoint(world::World* world) : world_(world) {
@@ -37,9 +43,51 @@ bool SimMotionEndpoint::poll_feedback(
   out.yaw_rate_radps = world_->truth().yaw_rate_radps;
   out.drive_count = world_->truth().drive_count;
   out.steer_count = world_->truth().steer_count;
-  out.drive_radps = world_->truth().drive_radps;
-  out.steer_rad = world_->truth().steer_rad;
-  out.steer_vel_radps = world_->truth().steer_vel_radps;
+  // Encoder view: quantize angles to counts, differentiate over the stamp
+  // delta. The count quantum comes from the motor params (same DriveProfile
+  // contract the ROBOT side reads); non-positive counts mean no encoder.
+  const int counts = world_->motor_params().encoder_counts_per_revolution;
+  const double quantum_rad =
+      counts > 0 ? 2.0 * M_PI / static_cast<double>(counts) : 0.0;
+  const double dt_s =
+      have_prev_ ? static_cast<double>(out.stamp_ns - prev_stamp_ns_) * 1e-9
+                  : 0.0;
+  for (int i = 0; i < 4; ++i) {
+    const double drive_q =
+        quantum_rad > 0.0
+            ? std::round(world_->truth().drive_angle_rad[i] / quantum_rad) *
+                  quantum_rad
+            : world_->truth().drive_angle_rad[i];
+    const double steer_q =
+        quantum_rad > 0.0
+            ? std::round(world_->truth().steer_rad[i] / quantum_rad) *
+                  quantum_rad
+            : world_->truth().steer_rad[i];
+    if (have_prev_ && dt_s > 0.0) {
+      prev_drive_vel_radps_[i] =
+          (drive_q - prev_drive_angle_rad_[i]) / dt_s;
+      prev_steer_vel_radps_[i] =
+          (steer_q - prev_steer_angle_rad_[i]) / dt_s;
+    } else if (!have_prev_) {
+      prev_drive_vel_radps_[i] = 0.0;  // just powered: no history yet
+      prev_steer_vel_radps_[i] = 0.0;
+    }
+    // Repeated stamp: hold the previous velocity (never divide by zero).
+    prev_drive_angle_rad_[i] = drive_q;
+    prev_steer_angle_rad_[i] = steer_q;
+    out.drive_radps[i] = 0.0;
+    out.steer_rad[i] = 0.0;
+    out.steer_vel_radps[i] = 0.0;
+  }
+  for (int i = 0; i < out.drive_count; ++i) {
+    out.drive_radps[i] = prev_drive_vel_radps_[i];
+  }
+  for (int i = 0; i < out.steer_count; ++i) {
+    out.steer_rad[i] = prev_steer_angle_rad_[i];
+    out.steer_vel_radps[i] = prev_steer_vel_radps_[i];
+  }
+  have_prev_ = true;
+  prev_stamp_ns_ = out.stamp_ns;
   return out.valid();
 }
 

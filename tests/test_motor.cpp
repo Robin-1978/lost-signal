@@ -92,12 +92,13 @@ int main() {
     assert(threw);
   }
 
-  // World step response pins stall/mass exactly (a = 54/3 = 18 m/s^2).
+  // World step pins rigid-coupling mass: a wheel carries M/n, so symmetric
+  // motion integrates exactly ΣF/M. Full duty: a = 2*54/24 = 4.5 m/s^2.
   {
     world::World w = make_diff_world();
     w.step(0.02);
-    assert(std::abs(w.truth().forward_mps - 0.36) < 1e-9);
-    assert(std::abs(w.truth().body_x_m - 0.36 * 0.02) < 1e-9);
+    assert(std::abs(w.truth().forward_mps - 0.09) < 1e-9);
+    assert(std::abs(w.truth().body_x_m - 0.09 * 0.02) < 1e-9);
     for (int i = 0; i < 400; ++i) w.step(0.02);
     // Drag equilibrium: 54(1-v/3) = 1.18+0.6v -> v ~= 2.84. Below the
     // drag-free no-load speed, never above it.
@@ -109,7 +110,7 @@ int main() {
     const double drag0 = world::contact_resistance_N(v0, cp);
     set_diff_duty(w, -1.0);
     w.step(0.02);
-    const double expect_dv = (-54.0 + drag0) / 3.0 * 0.02;
+    const double expect_dv = (-54.0 + drag0) / 12.0 * 0.02;
     assert(std::abs((w.truth().forward_mps - v0) - expect_dv) < 1e-9);
     // Coast: zero duty decays through drag (S2 contact owns this now).
     set_diff_duty(w, 0.0);
@@ -203,7 +204,7 @@ int main() {
     w.set_motor_params(world::motor_params_from_profile(tuned));
     set_diff_duty(w, 1.0);
     w.step(0.02);
-    assert(std::abs(w.truth().forward_mps - 0.72) < 1e-9);
+    assert(std::abs(w.truth().forward_mps - 0.18) < 1e-9);
     std::filesystem::remove(path);
   }
 

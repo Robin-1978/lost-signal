@@ -56,8 +56,19 @@ void World::step(double dt_s) {
   // Force-driven wheels: motor + gravity - contact = accel, then the
   // dissipative service brake. Stiction, drag, and brake each clamp to an
   // exact zero instead of jittering across it.
+  //
+  // Mass model (rigid coupling, consistent with the main-stack vehicle):
+  // every patch force acts on the vehicle mass, split evenly over the
+  // driven wheels. A lone wheel carries M/n, so symmetric motion integrates
+  // exactly ΣF/M while per-wheel force balances (stiction thresholds, drag
+  // equilibrium, brake authority) stay untouched. Wheel spin inertia is
+  // neglected at body level — same as main; wheel_equiv_mass is retained
+  // for the native feedforward contract.
   const double wheel_r = std::max(1e-6, motor_.wheel_radius_m);
-  const double mass = std::max(1e-6, motor_.wheel_equiv_mass_kg);
+  const double n_wheels =
+      std::max(1, static_cast<int>(truth_.drive_count));
+  const double mass =
+      std::max(0.5, motor_.vehicle_mass_kg) / n_wheels;
   if (!(dt_s > 0.0)) {
     for (int i = 0; i < truth_.drive_count; ++i) {
       brakes_[i].reset();
@@ -68,8 +79,10 @@ void World::step(double dt_s) {
     // Force-driven wheels: motor + gravity - contact = accel. Stiction
     // owns the patch below the smoothing speed (exact hold, no creep);
     // rolling resistance is dissipative above it (never reverses motion).
+    // Load and gravity use the full vehicle mass (n_wheels is the outer
+    // M/n split); total_mass floors at 0 for the load model while the
+    // integration mass above floors at 0.5 kg (same as main).
     const double total_mass = std::max(0.0, motor_.vehicle_mass_kg);
-    const double n_wheels = static_cast<double>(truth_.drive_count);
     WheelContactParams contact;
     contact.rolling_resist = motor_.rolling_resist;
     contact.load_per_wheel_N = total_mass * kGravityMps2 / n_wheels;
@@ -114,6 +127,7 @@ void World::step(double dt_s) {
         }
       }
       truth_.drive_radps[i] = v_new / wheel_r;
+      truth_.drive_angle_rad[i] += truth_.drive_radps[i] * dt_s;
     }
   }
   // Steering servo: duty implies a rate demand (P-controlled upstream);

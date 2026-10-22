@@ -51,7 +51,7 @@ coefficients.
 Accept: standstill holds on grade without creep; breakaway + rolling
 covered by unit tests; sim_nav corridor run unchanged.
 
-### S3 Vehicle dynamics per chassis (medium)
+### S3 Vehicle dynamics per chassis (medium) — landed
 Replace the kinematic rigid-follow with force-driven rigid bodies per
 mode (diff / ackermann with servo + linkage / swerve / mecanum), adapted
 from main `hardware/vehicle/*` minus the MuJoCo/contact-truth internals.

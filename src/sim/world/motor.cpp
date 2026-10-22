@@ -37,6 +37,7 @@ MotorParams motor_params_from_profile(
   out.max_steer_rad = profile.max_steer_rad;
   out.max_steer_rate_radps = profile.max_steer_rate_radps;
   out.steer_time_constant_s = profile.steer_time_constant_s;
+  out.encoder_counts_per_revolution = profile.encoder_counts_per_revolution;
   return out;
 }
 

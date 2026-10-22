@@ -244,7 +244,15 @@ route, pre-activation hold).
   form (`R = rr*load*tanh(v/s) + c*v`): stiction holds slow wheels exactly
   (no creep; gentle longitudinal grades stick via a SIM-side incline hook),
   drag is dissipative only (never reverses). Traction-limit wheelspin needs
-  wheel-vs-body slip state and waits for S3 force bodies.
+  wheel-vs-body slip state and waits for S4+ force bodies.
+- Rigid coupling: every patch force acts on the vehicle mass, split evenly
+  over the driven wheels (a lone wheel carries M/n), so symmetric motion
+  integrates exactly ΣF/M; yaw stays kinematic (no yaw-inertia lag — the
+  HIL was tuned around instant response, and no fake inertia is added).
+- Joint feedback is the encoder view (`SimMotionEndpoint::poll_feedback`):
+  angles quantized to `encoder_counts_per_revolution`, velocities
+  differentiated over poll-stamp deltas; the ROBOT loop closes on it like
+  native. First sample reports zero velocity (no history yet).
 
 ## Validation (trajectory verdicts with minimum-risk escape)
 
