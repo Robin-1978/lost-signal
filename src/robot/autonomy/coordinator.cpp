@@ -7,6 +7,7 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits)
       estimator_(std::make_unique<DeadReckoningEstimator>()),
       perception_module_(std::make_unique<NullPerception>()),
       mapper_(std::make_unique<NullMapper>()),
+      behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
       local_planner_(std::make_unique<HoldPlanner>()),
       validator_(std::make_unique<ClearanceValidator>()),
       controller_(std::make_unique<DirectController>()) {}
@@ -15,11 +16,13 @@ core::Status AutonomyCoordinator::configure() {
   estimator_->reset();
   perception_module_->reset();
   mapper_->reset();
+  behavior_->reset();
   local_planner_->reset();
   controller_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
+  decision_ = BehaviorDecision{};
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
 }
@@ -43,11 +46,13 @@ core::Status AutonomyCoordinator::cleanup() {
   estimator_->reset();
   perception_module_->reset();
   mapper_->reset();
+  behavior_->reset();
   local_planner_->reset();
   controller_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
+  decision_ = BehaviorDecision{};
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
 }
@@ -73,8 +78,26 @@ iface::MotionCommand AutonomyCoordinator::update(
   if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
+  // Dynamic decision first: behavior turns tracks + estimate into one
+  // constraint. A hold short-circuits sampling but still passes the
+  // independent validator + controller, so the evidence chain is uniform.
+  decision_ =
+      behavior_->decide(estimator_->estimate(), perception_, limits_);
+  if (decision_.must_hold) {
+    LocalCandidate hold;
+    hold.feasible = true;
+    ValidationResult verdict =
+        validator_->validate(hold, estimator_->estimate(), perception_,
+                             last_obs_);
+    if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
+    return controller_->track(hold, estimator_->estimate(), now_ns);
+  }
+  platform::ChassisLimits effective = limits_;
+  if (decision_.max_forward_mps < effective.max_forward_mps) {
+    effective.max_forward_mps = decision_.max_forward_mps;
+  }
   LocalPlan plan = local_planner_->plan(estimator_->estimate(), perception_,
-                                        mapper_->local_map(), limits_);
+                                        mapper_->local_map(), effective);
   if (!plan.has_plan) return iface::MotionCommand::SafeStop(now_ns);
   ValidationResult verdict =
       validator_->validate(plan.best, estimator_->estimate(), perception_,

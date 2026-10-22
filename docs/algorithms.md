@@ -11,12 +11,14 @@ flowchart LR
   Obs["ObservationFrame<br/>(validated, sequenced)"] --> Est["IEstimator<br/>estimation/estimator.hpp<br/>DeadReckoningEstimator"]
   Est -->|"EstimatedState"| Per["IPerception<br/>perception/perception.hpp<br/>NullPerception"]
   Obs --> Per
+  Per -->|"PerceptionResult<br/>tracks + scan_ok"| Beh["IBehaviorPolicy<br/>behavior/behavior.hpp<br/>WaitOnIntrusionBehavior"]
+  Est --> Beh
+  Beh -->|"BehaviorDecision<br/>hold / speed cap"| LP["ILocalPlanner<br/>planning/local_planner.hpp<br/>HoldPlanner"]
   Per -->|"PerceptionResult<br/>tracks + scan_ok"| Map["IMapper<br/>mapping/mapper.hpp<br/>NullMapper"]
   Obs --> Map
   Est --> Map
-  Map -->|"LocalMap"| LP["ILocalPlanner<br/>planning/local_planner.hpp<br/>HoldPlanner"]
+  Map -->|"LocalMap"| LP
   Est --> LP
-  Per --> LP
   LP -->|"LocalCandidate"| Val["IValidator<br/>validation/validator.hpp<br/>ClearanceValidator"]
   Est --> Val
   Per --> Val
@@ -40,6 +42,12 @@ authority and the controller never invents motion.
   unknown, never free space. No actor IDs cross.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
+- Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
+  estimate in, ONE constraint (hold / speed cap) out. It selects no
+  trajectory and emits no command. A hold short-circuits sampling but still
+  passes validator + controller, so the evidence chain stays uniform.
+  Task-level policy (which goal, return-to-charge) stays in `RobotExecutive`,
+  one timescale above behavior; trajectory sampling stays below it.
 - Global planning is event-driven (goal/map change), not per-tick. It
   returns a `Route` of `RoutePoint{x, y, yaw}`; heading travels with position.
 - Local planning runs at decision rate and returns one feasible

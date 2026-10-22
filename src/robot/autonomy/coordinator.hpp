@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
@@ -21,7 +22,12 @@ namespace lost_signal::robot::autonomy {
 // one deterministic pipeline per update():
 //
 //   estimator (predict/correct) -> perception -> mapper ->
-//   local planner -> validator -> controller
+//   behavior (dynamic decision) -> local planner -> validator -> controller
+//
+// The behavior layer turns tracks + estimate into ONE constraint
+// (hold / speed cap) for the local planner. It selects no trajectory and
+// emits no command. Task-level policy (which goal, return-to-charge) stays
+// in RobotExecutive, one timescale above.
 //
 // The global planner is event-driven (goal/map change) and lives outside the
 // per-tick path; its Route feeds the local planner once a goal exists.
@@ -47,6 +53,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
   const EstimatedState& estimate() const;
   const PerceptionResult& perception() const { return perception_; }
+  const BehaviorDecision& last_decision() const { return decision_; }
   LocalMap local_map() const;
 
  private:
@@ -55,12 +62,14 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;
+  std::unique_ptr<IBehaviorPolicy> behavior_;
   std::unique_ptr<ILocalPlanner> local_planner_;
   std::unique_ptr<IValidator> validator_;
   std::unique_ptr<IController> controller_;
   bool has_observation_ = false;
   iface::ObservationFrame last_obs_{};
   PerceptionResult perception_{};
+  BehaviorDecision decision_{};
 };
 
 }  // namespace lost_signal::robot::autonomy
