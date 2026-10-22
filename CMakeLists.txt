@@ -38,6 +38,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
   src/robot/autonomy/planning/global_planner.cpp
+  src/robot/autonomy/safety/safety.cpp
 )
 target_include_directories(lost_signal_robot_autonomy PUBLIC src)
 target_link_libraries(lost_signal_robot_autonomy PUBLIC
@@ -169,6 +170,12 @@ add_executable(test_autonomy
 )
 target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy COMMAND test_autonomy)
+
+add_executable(test_safety
+  tests/test_safety.cpp
+)
+target_link_libraries(test_safety PRIVATE lost_signal_robot_autonomy)
+add_test(NAME safety COMMAND test_safety)
 
 add_executable(test_behavior
   tests/test_behavior.cpp

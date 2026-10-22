@@ -25,7 +25,11 @@ flowchart LR
   Obs --> Val
   Val -->|"ValidationResult"| Ctl["IController<br/>control/controller.hpp<br/>DirectController"]
   Est --> Ctl
-  Ctl -->|"MotionCommand"| Out["expiring body command"]
+  Ctl -->|"candidate command"| Safe["ISafetyMonitor<br/>safety/safety.hpp<br/>SafetyMonitor"]
+  Est --> Safe
+  Per --> Safe
+  Obs --> Safe
+  Safe -->|"MotionCommand (or latched stop)"| Out["expiring body command"]
   Goal["Route (event-driven)<br/>planning/global_planner.hpp<br/>StraightLinePlanner"] -.->|"future goal feed"| LP
 ```
 
@@ -60,6 +64,16 @@ authority and the controller never invents motion.
 - Control emits the validated candidate verbatim with a 200 ms watchdog.
   Zero motion is always canonical `kStop`, never zero-valued `kYawRate`.
   Chassis clamping lives one layer out (`DifferentialRobot` + `IChassis`).
+- Safety (`ISafetyMonitor`) is the last gate and the ONLY module allowed to
+  override a command after the controller. It re-checks RAW evidence only
+  (observation freshness, near-field scan range, channel health) — never
+  planner state — and can only downgrade to safe stop. Rules: stale obs
+  (> 500 ms) latches `STOPPED`; raw min-range inside the near-field envelope
+  latches `STOPPED`; fresh channel drops give transient `DEGRADED`
+  (auto-recovers); missing scan gives `DEGRADED`. A latch needs deliberate
+  recovery (`clear_safety`, or full shutdown -> configure -> activate) and
+  never auto-clears on fresh data. Safety state + reason ride in
+  `Diagnostics` for ops visibility and offline scoring.
 
 ## Cadence (target; current = per-tick)
 

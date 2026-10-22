@@ -10,7 +10,8 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits)
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
       local_planner_(std::make_unique<HoldPlanner>()),
       validator_(std::make_unique<ClearanceValidator>()),
-      controller_(std::make_unique<DirectController>()) {}
+      controller_(std::make_unique<DirectController>()),
+      safety_(std::make_unique<SafetyMonitor>()) {}
 
 core::Status AutonomyCoordinator::configure() {
   estimator_->reset();
@@ -19,6 +20,7 @@ core::Status AutonomyCoordinator::configure() {
   behavior_->reset();
   local_planner_->reset();
   controller_->reset();
+  safety_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
@@ -49,6 +51,7 @@ core::Status AutonomyCoordinator::cleanup() {
   behavior_->reset();
   local_planner_->reset();
   controller_->reset();
+  safety_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
@@ -73,7 +76,8 @@ void AutonomyCoordinator::ingest_observation(
 }
 
 iface::MotionCommand AutonomyCoordinator::update(
-    iface::MapSnapshot /*map*/, core::MonotonicNs now_ns) {
+    iface::MapSnapshot /*map*/, const iface::ChannelHealth& channel,
+    core::MonotonicNs now_ns) {
   // Missing observation is unknown evidence -> safe stop, never free space.
   if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
     return iface::MotionCommand::SafeStop(now_ns);
@@ -83,6 +87,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   // independent validator + controller, so the evidence chain is uniform.
   decision_ =
       behavior_->decide(estimator_->estimate(), perception_, limits_);
+  iface::MotionCommand candidate_cmd;
   if (decision_.must_hold) {
     LocalCandidate hold;
     hold.feasible = true;
@@ -90,20 +95,28 @@ iface::MotionCommand AutonomyCoordinator::update(
         validator_->validate(hold, estimator_->estimate(), perception_,
                              last_obs_);
     if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
-    return controller_->track(hold, estimator_->estimate(), now_ns);
+    candidate_cmd = controller_->track(hold, estimator_->estimate(), now_ns);
+  } else {
+    platform::ChassisLimits effective = limits_;
+    if (decision_.max_forward_mps < effective.max_forward_mps) {
+      effective.max_forward_mps = decision_.max_forward_mps;
+    }
+    LocalPlan plan = local_planner_->plan(estimator_->estimate(), perception_,
+                                          mapper_->local_map(), effective);
+    if (!plan.has_plan) return iface::MotionCommand::SafeStop(now_ns);
+    ValidationResult verdict =
+        validator_->validate(plan.best, estimator_->estimate(), perception_,
+                             last_obs_);
+    if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
+    candidate_cmd =
+        controller_->track(plan.best, estimator_->estimate(), now_ns);
   }
-  platform::ChassisLimits effective = limits_;
-  if (decision_.max_forward_mps < effective.max_forward_mps) {
-    effective.max_forward_mps = decision_.max_forward_mps;
-  }
-  LocalPlan plan = local_planner_->plan(estimator_->estimate(), perception_,
-                                        mapper_->local_map(), effective);
-  if (!plan.has_plan) return iface::MotionCommand::SafeStop(now_ns);
-  ValidationResult verdict =
-      validator_->validate(plan.best, estimator_->estimate(), perception_,
-                           last_obs_);
-  if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
-  return controller_->track(plan.best, estimator_->estimate(), now_ns);
+  // Final independent gate: safety re-checks RAW evidence (freshness,
+  // near-field scan, channel health) and can only downgrade to safe stop.
+  // Critical faults latch until deliberate recovery.
+  SafetyVerdict verdict = safety_->evaluate(estimator_->estimate(), perception_,
+                                            last_obs_, channel, now_ns);
+  return safety_->gate(candidate_cmd, verdict, now_ns);
 }
 
 const EstimatedState& AutonomyCoordinator::estimate() const {

@@ -74,7 +74,7 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
     coordinator_.ingest_observation(obs);
   }
   iface::MotionCommand cmd =
-      coordinator_.update(maps_->active_snapshot(), now_ns);
+      coordinator_.update(maps_->active_snapshot(), channel_.health(), now_ns);
   if (!iface::valid_motion_command(cmd, now_ns)) {
     cmd = iface::MotionCommand::SafeStop(now_ns);
   }
@@ -103,6 +103,8 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
     d.estimate = coordinator_.estimate();
   }
   d.bringup = bringup_.state();
+  d.safety = coordinator_.last_safety().state;
+  d.safety_reason = coordinator_.last_safety().reason;
   d.task = executive_.status();
   d.health = channel_.health();
   return d;

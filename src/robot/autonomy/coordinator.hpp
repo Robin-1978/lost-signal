@@ -4,6 +4,7 @@
 
 #include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
@@ -22,7 +23,8 @@ namespace lost_signal::robot::autonomy {
 // one deterministic pipeline per update():
 //
 //   estimator (predict/correct) -> perception -> mapper ->
-//   behavior (dynamic decision) -> local planner -> validator -> controller
+//   behavior (dynamic decision) -> local planner -> validator ->
+//   controller -> SAFETY (independent final gate, latch on critical)
 //
 // The behavior layer turns tracks + estimate into ONE constraint
 // (hold / speed cap) for the local planner. It selects no trajectory and
@@ -48,12 +50,16 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   lifecycle::ModuleState state() const override { return state_; }
 
   void ingest_observation(const iface::ObservationFrame& obs);
-  iface::MotionCommand update(iface::MapSnapshot map, core::MonotonicNs now_ns);
+  iface::MotionCommand update(iface::MapSnapshot map,
+                              const iface::ChannelHealth& channel,
+                              core::MonotonicNs now_ns);
+  void clear_safety() { safety_->clear_safety(); }
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
   const EstimatedState& estimate() const;
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }
+  SafetyVerdict last_safety() const { return safety_->last_verdict(); }
   LocalMap local_map() const;
 
  private:
@@ -66,6 +72,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::unique_ptr<ILocalPlanner> local_planner_;
   std::unique_ptr<IValidator> validator_;
   std::unique_ptr<IController> controller_;
+  std::unique_ptr<ISafetyMonitor> safety_;
   bool has_observation_ = false;
   iface::ObservationFrame last_obs_{};
   PerceptionResult perception_{};

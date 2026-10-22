@@ -45,7 +45,9 @@ int main() {
     assert(coord.configure().ok);
     assert(coord.activate().ok);
     coord.ingest_observation(make_odom(1, 1'000'000, 0.0));
-    iface::MotionCommand cmd = coord.update(iface::MapSnapshot{}, 1'000'000);
+    iface::ChannelHealth ch{};
+    iface::MotionCommand cmd =
+        coord.update(iface::MapSnapshot{}, ch, 1'000'000);
     assert(iface::valid_motion_command(cmd, 1'000'000));
     assert(cmd.is_safe_stop());
     assert(coord.perception().scan_ok);
@@ -57,7 +59,9 @@ int main() {
     AutonomyCoordinator coord;
     coord.ingest_observation(make_odom(1, 1'000'000, 1.0));
     assert(!coord.has_observation());
-    iface::MotionCommand cmd = coord.update(iface::MapSnapshot{}, 1'000'000);
+    iface::ChannelHealth ch{};
+    iface::MotionCommand cmd =
+        coord.update(iface::MapSnapshot{}, ch, 1'000'000);
     assert(cmd.is_safe_stop());
   }
 

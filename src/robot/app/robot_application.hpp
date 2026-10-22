@@ -94,6 +94,8 @@ class RobotApplication : public IRobot {
     core::MonotonicNs last_obs_stamp_ns = core::kInvalidTime;
     std::uint64_t last_obs_seq = 0;
     autonomy::EstimatedState estimate;
+    autonomy::SafetyState safety = autonomy::SafetyState::kStopped;
+    std::string safety_reason = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::TaskStatus task;
     iface::ChannelHealth health;
