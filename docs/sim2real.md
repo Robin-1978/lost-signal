@@ -11,7 +11,7 @@ That distinction matters. A realistic renderer or a MuJoCo vehicle does not prov
 | Layer | Current state | Transfer outlook |
 |---|---|---|
 | Task intent and behavior | deployable Task Executive owns goal ordering, arrival, dwell, pause/resume/cancel and outcomes | `lost_signal_robot` supplies the native lifecycle composition root; an operator/fleet API, native hardware providers and closed-loop evidence remain |
-| Map management | LSRM v1, immutable revisions, semantic places, provider lifecycle, authored-map compiler, and checksummed package I/O are implemented | SLAM, survey, HD-map and remote providers still need concrete bridges and field evidence |
+| Map management | LSRM v2, immutable revisions, semantic places, provider lifecycle, authored-map compiler, and checksummed package I/O are implemented | SLAM, survey, HD-map and remote providers still need concrete bridges and field evidence |
 | Global planning | A* and Hybrid A* consume maps and vehicle constraints | reusable when maps, footprint, and costs match the robot |
 | Local planning | trajectory evaluation uses obstacles, dynamics, and chassis limits | reusable only after latency, footprint, braking, and prediction calibration |
 | Kinematics | differential, tracked, Ackermann, swerve, and mecanum mappings are executable | reusable with measured geometry and sign conventions |
@@ -45,6 +45,72 @@ Providers are selected per LSRI endpoint. A hardware-in-the-loop run may bind a 
 keeping IMU, encoders, actuators, terrain, and vehicle dynamics simulated. The inverse arrangement can feed virtual
 sensors to the deployable controller and command a real motor bench. Every binding declares its source, frame,
 clock domain, rate, backend, and role; duplicate command ownership is rejected.
+
+## Two-state evaluation contract
+
+Every physical quantity that matters to autonomy has two distinct
+representations in simulation:
+
+| Quantity | ROBOT representation | SIM representation | Difference use |
+| --- | --- | --- | --- |
+| Pose and velocity | `EstimatedState` from LSRI encoders, IMU, LiDAR and localization | MuJoCo body state | drift, latency and estimator regression |
+| Attitude and stability | IMU-derived roll/pitch and robot-side stability model | rigid-body roll/pitch and contact state | rollover model validation and scoring |
+| Dynamic objects | anonymous perception tracks and predictions | scripted actor state and physical contacts | association, prediction and collision metrics |
+| Traction | encoder/IMU slip observation | contact-solver slip and impulse | slip detector calibration and score evidence |
+| Collision | map/track/trajectory safety verdict | physical contact verdict | false-positive/false-negative analysis and mission result |
+| Terrain | map/provider surface and robot-side estimates | actual contact material, friction and wetness | terrain-model identification |
+
+The ROBOT column is the only input to a deployable decision. The SIM column is
+an oracle for recording and evaluation. SIM may generate sensor packets from
+the oracle, but must not publish the oracle itself as an observation. Error
+metrics are timestamped and frame-aware diagnostics; they are never hidden
+corrections to ROBOT state. Offline learning may use physical outcomes as
+labels or rewards, while an evaluated policy still receives only LSRI data.
+
+This is a package-level rule, not a rule about selected convenient fields. Pose,
+velocity, acceleration, attitude, contact state, terrain height, roughness,
+friction, wetness, object identity, collision result and task progress each have
+a SIM truth and a ROBOT estimate or observation. A field may legitimately be
+missing on the ROBOT side when no sensor can observe it; the decision layer must
+then represent the uncertainty or choose a conservative action. Copying the SIM
+field into the ROBOT object to fill the gap is a boundary violation.
+
+`MissionSnapshot` is a SIM-only presentation, replay, scoring and evaluation
+record. It may contain both the MuJoCo truth and the latest ROBOT estimate so a
+reviewer can inspect their difference. It is created and owned by
+`ScenarioSession`; `src/robot` must not include, receive or construct it. A task
+request, map, LSRI observation, ROBOT diagnostic and read-only application status
+are the only data that may cross from SIM into ROBOT or back out to an operator.
+
+The difference between the two records is an engineering signal. Pose error,
+attitude error, estimated-versus-physical slip, predicted-versus-physical
+collision and estimated-versus-actual terrain response can drive calibration,
+regression, scoring and offline reinforcement learning. They must not be applied
+as same-cycle corrections to a deployed decision.
+
+### Terrain and contact priors
+
+A Robot Map describes static navigation knowledge, not the live contact matrix of
+the physics engine. Optional elevation and surface-class layers are useful static
+geometry or semantics. A surface class may select a calibrated ROBOT prior, but
+the map adapter must not copy the simulator's contact friction, rolling drag,
+roughness waveform or wetness into that prior.
+
+Terrain roughness is observable in motion. The deployed estimator may combine
+IMU vertical excitation and attitude rates, encoder-derived speed, traversed
+distance and map geometry. It maintains a timestamped local roughness belief and
+confidence. A surveyed map may publish a roughness prior, but it must carry map
+provenance and explicit confidence; absence means unknown, never smooth.
+
+The same rule applies to traction. Exact ground friction and the resulting slip
+belong to SIM. ROBOT estimates available grip from encoder/IMU slip, commanded
+effort, attitude, surface semantics and confidence. A low-confidence or stale
+surface belief must reduce speed or increase clearance rather than silently
+reuse the last value as current truth.
+
+The vehicle controller consumes these ROBOT beliefs to limit speed and validate
+trajectories. An operator UI may display the SIM-versus-ROBOT discrepancy, but the
+mission layer must not send a simulator truth value back as a correction.
 
 The RobotExecutive sits above autonomy and accepts validated task plans, cancels/pauses/resumes them,
 orders semantic goals, consumes the local planner's motion-capability report, and reports progress. Its

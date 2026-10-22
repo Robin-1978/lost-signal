@@ -55,6 +55,8 @@ sim::runtime::MapSnapshot source_map() {
  map.grid->occupancy = {-1, 0, 37, 100};
  map.grid->elevation_m = {std::numeric_limits<float>::quiet_NaN(), 0.1F, -0.2F, 1.5F};
  map.grid->elevation_sigma_m = {std::numeric_limits<float>::quiet_NaN(), 0.02F, 0.03F, 0.04F};
+ map.grid->roughness_m = {0.01F, 0.02F, std::numeric_limits<float>::quiet_NaN(), 0.03F};
+ map.grid->roughness_confidence = {0.9F, 0.6F, std::numeric_limits<float>::quiet_NaN(), 0.7F};
  map.grid->surface_classes = {"unknown", "concrete", "gravel"};
  map.grid->surface_class = {0, 1, 2, 1};
  map.places.emplace("dock", sim::runtime::SemanticPlace{{-3.0, 8.6}, 1.0});
@@ -89,6 +91,11 @@ int main() {
  CHECK(loaded.grid->elevation_m.size() == source.grid->elevation_m.size());
  CHECK(std::isnan(loaded.grid->elevation_m.front()));
  CHECK(loaded.grid->elevation_m[3] == source.grid->elevation_m[3]);
+ CHECK(loaded.grid->roughness_m.size() == source.grid->roughness_m.size());
+ CHECK(loaded.grid->roughness_confidence.size() == source.grid->roughness_confidence.size());
+ CHECK(loaded.grid->roughness_m[0] == source.grid->roughness_m[0]);
+ CHECK(std::isnan(loaded.grid->roughness_m[2]));
+ CHECK(loaded.grid->roughness_confidence[1] == source.grid->roughness_confidence[1]);
  CHECK(loaded.places.at("dock").heading_rad == 1.0);
  CHECK(loaded.features.front().attributes.at("source") == "operator");
  CHECK(loaded.relations.front().from_id == "dock");

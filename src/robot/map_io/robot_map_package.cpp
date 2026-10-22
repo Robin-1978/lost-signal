@@ -284,11 +284,20 @@ void save_robot_map_package(const runtime::MapSnapshot& map,
  };
  write_float_layer("elevation_m", grid.elevation_m);
  write_float_layer("elevation_sigma_m", grid.elevation_sigma_m);
+ write_float_layer("roughness_m", grid.roughness_m);
+ write_float_layer("roughness_confidence", grid.roughness_confidence);
  if (!grid.surface_class.empty()) {
  const auto bytes = encode_uint16(grid.surface_class);
  write_bytes(std::filesystem::path(temporary) / "layers/surface_class.u16", bytes);
  layers.push_back(layer_entry(
  "surface_class", "layers/surface_class.u16", "uint16", bytes, "0"));
+ }
+ Json surface_properties = Json::array();
+ for (const auto& properties : grid.surface_class_properties) {
+  surface_properties.push_back({
+  {"nominal_friction_mu", properties.nominal_friction_mu},
+  {"rolling_resistance", properties.rolling_resistance},
+  });
  }
  grid_manifest = {
  {"width", grid.width},
@@ -297,6 +306,7 @@ void save_robot_map_package(const runtime::MapSnapshot& map,
  {"origin", {grid.origin_m.x, grid.origin_m.y, grid.origin_yaw_rad}},
  {"layout", "row-major-x-fastest-y-up"},
  {"surface_classes", grid.surface_classes},
+  {"surface_class_properties", std::move(surface_properties)},
  };
  }
 
@@ -304,7 +314,7 @@ void save_robot_map_package(const runtime::MapSnapshot& map,
  write_bytes(std::filesystem::path(temporary) / "features.json", feature_text);
  Json manifest = {
  {"format", "lost-signal-robot-map"},
- {"schema_version", 1},
+ {"schema_version", 2},
  {"map_id", map.map_id},
  {"content_revision", map.revision},
  {"frame_id", map.frame_id},
@@ -337,7 +347,7 @@ runtime::MapSnapshot load_robot_map_package(const std::filesystem::path& package
  runtime::TimePoint publication_time) {
  const auto manifest = Json::parse(read_bytes(package_path / "manifest.json"));
  if (manifest.at("format").get<std::string>() != "lost-signal-robot-map" ||
- manifest.at("schema_version").get<int>() != 1) {
+ manifest.at("schema_version").get<int>() != 2) {
  throw std::runtime_error("unsupported robot-map package format");
  }
  runtime::MapSnapshot map;
@@ -365,6 +375,14 @@ runtime::MapSnapshot load_robot_map_package(const std::filesystem::path& package
  grid.origin_m = {origin.at(0).get<double>(), origin.at(1).get<double>()};
  grid.origin_yaw_rad = origin.at(2).get<double>();
  grid.surface_classes = description.at("surface_classes").get<std::vector<std::string>>();
+ if (description.contains("surface_class_properties")) {
+  for (const auto& item : description.at("surface_class_properties")) {
+   grid.surface_class_properties.push_back({
+   item.at("nominal_friction_mu").get<double>(),
+   item.at("rolling_resistance").get<double>(),
+   });
+  }
+ }
  const auto count = static_cast<std::size_t>(grid.width) * grid.height;
  std::set<std::string> layer_names;
  for (const auto& layer : manifest.at("layers")) {
@@ -385,6 +403,12 @@ runtime::MapSnapshot load_robot_map_package(const std::filesystem::path& package
  grid.elevation_m = decode_float32(checked_layer(package_path, layer, name, "float32"), count);
  } else if (name == "elevation_sigma_m") {
  grid.elevation_sigma_m = decode_float32(
+ checked_layer(package_path, layer, name, "float32"), count);
+ } else if (name == "roughness_m") {
+  grid.roughness_m = decode_float32(
+  checked_layer(package_path, layer, name, "float32"), count);
+ } else if (name == "roughness_confidence") {
+ grid.roughness_confidence = decode_float32(
  checked_layer(package_path, layer, name, "float32"), count);
  } else if (name == "surface_class") {
  grid.surface_class = decode_uint16(

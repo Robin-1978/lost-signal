@@ -2,6 +2,7 @@
 
 #include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 #include "robot/autonomy/localization/slip_detect.hpp"
+#include "robot/runtime/observation.hpp"
 
 namespace sim::autonomy {
 
@@ -21,6 +22,11 @@ class ChassisDiagnosticsSystem {
   // available, the detector is left unchanged and reports its last state.
   bool update_slip(bool tread_observable, double tread_speed_mps,
                    double body_speed_mps, double dt_s);
+ // Sensor-only path: compare encoder-derived acceleration with the measured
+ // IMU specific-force acceleration. No plant contact or simulator state is
+ // accepted by this API.
+ bool update_slip_from_sensors(const EncoderObservation& encoder,
+ const ImuObservation& imu, double dt_s);
 
   const BrakingMeasurement& braking() const { return braking_.braking(); }
   bool slip_detected() const { return slip_detector_.detected(); }

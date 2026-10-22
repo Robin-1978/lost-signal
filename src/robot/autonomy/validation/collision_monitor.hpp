@@ -7,8 +7,6 @@
 
 namespace sim::autonomy {
 
-enum class CollisionBackend { Occupancy, RigidBody };
-
 struct CollisionBox {
  Vec2 min;
  Vec2 max;
@@ -18,15 +16,12 @@ struct CollisionBox {
 struct CollisionActorObservation {
  DynamicObjectState state;
  bool social{false};
- bool rigid_contact{false};
 };
 
 struct CollisionObservation {
  Vec2 position;
  double time_s{0.0};
  double dt_s{0.0};
- CollisionBackend backend{CollisionBackend::Occupancy};
- bool rigid_static_contact{false};
  const GridMap* occupancy{nullptr};
  std::vector<CollisionActorObservation> actors;
 };
@@ -40,9 +35,9 @@ struct CollisionAssessment {
  Vec2 nearest_actor_position;
 };
 
-// Mission safety monitor. Physics and domain backends provide different
-// contact evidence, but use one footprint, world-boundary, clearance, social
-// contact and static-contact debounce contract.
+// ROBOT safety monitor. Inputs are deployment-map geometry and observed or
+// predicted tracks only. A simulator's rigid contacts are deliberately not a
+// valid input here; SIM owns the separate physical-world judge.
 class CollisionMonitor {
  public:
  CollisionMonitor(Vec2 world_size, double robot_radius_m,
@@ -61,7 +56,6 @@ class CollisionMonitor {
  Vec2 world_size_;
  double robot_radius_m_{0.0};
  std::vector<CollisionBox> static_obstacles_;
- double rigid_static_contact_s_{0.0};
 };
 
 } // namespace sim::autonomy

@@ -17,6 +17,16 @@ namespace sim::runtime {
 // Transport-neutral robot map. The same value may come from an authored-map
 // export, an offline mapping pipeline, SLAM, replay, or a remote map service.
 // It deliberately contains no actors, physics truth, rendering, or story data.
+struct SurfaceClassProperties {
+ // Static priors published with the map revision. They describe the nominal
+ // surface known to the robot, not the live contact coefficient in a physics
+ // engine. Online traction beliefs remain a ROBOT estimate.
+ double nominal_friction_mu{0.8};
+ double rolling_resistance{0.0};
+
+ bool operator==(const SurfaceClassProperties&) const = default;
+};
+
 struct MapGrid {
  std::uint32_t width{0};
  std::uint32_t height{0};
@@ -34,6 +44,15 @@ struct MapGrid {
  // Optional index into surface_classes. Index zero is provider-defined.
  std::vector<std::uint16_t> surface_class;
  std::vector<std::string> surface_classes;
+ // Optional per-class navigation priors aligned with surface_classes.
+ std::vector<SurfaceClassProperties> surface_class_properties;
+ // Optional surveyed ground-relief amplitude prior. NaN means unknown. This
+ // value is static map knowledge, never the physics provider's live contact
+ // response. A populated layer requires roughness_confidence.
+ std::vector<float> roughness_m;
+ // Per-cell confidence in [0, 1] for roughness_m. ROBOT fuses this prior with
+ // its own motion observations; zero means the cell has no usable prior.
+ std::vector<float> roughness_confidence;
 };
 
 struct GridIndex {
@@ -83,7 +102,7 @@ struct MapProvenance {
 };
 
 struct MapSnapshot {
- std::uint32_t schema_version{1};
+ std::uint32_t schema_version{2};
  std::string map_id;
  std::uint64_t revision{0};
  std::string frame_id{"map"};

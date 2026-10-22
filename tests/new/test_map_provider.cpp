@@ -34,6 +34,10 @@ sim::runtime::MapSnapshot map_snapshot() {
  std::numeric_limits<float>::quiet_NaN(), 0.01F, 0.01F};
  map.grid->surface_classes = {"unknown", "paved"};
  map.grid->surface_class = {1, 1, 1, 0, 1, 1};
+ map.grid->roughness_m = {0.01F, 0.02F, 0.03F,
+ std::numeric_limits<float>::quiet_NaN(), 0.01F, 0.01F};
+ map.grid->roughness_confidence = {0.8F, 0.7F, 0.6F,
+ std::numeric_limits<float>::quiet_NaN(), 0.9F, 0.5F};
  map.places.emplace("dock", sim::runtime::SemanticPlace{{9.5, -1.5}, 1.2});
  map.features.push_back({
  "keepout-1", "keepout", sim::runtime::SemanticGeometry::Polygon,
@@ -126,5 +130,11 @@ int main() {
  invalid.grid->occupancy[0] = 101;
  CHECK(!sim::runtime::valid_map_snapshot(invalid, &reason));
  CHECK(!reason.empty());
+ auto unqualified_prior = map_snapshot();
+ unqualified_prior.grid->roughness_confidence.clear();
+ CHECK(!sim::runtime::valid_map_snapshot(unqualified_prior, &reason));
+ auto invalid_confidence = map_snapshot();
+ invalid_confidence.grid->roughness_confidence[0] = 1.1F;
+ CHECK(!sim::runtime::valid_map_snapshot(invalid_confidence, &reason));
  return 0;
 }

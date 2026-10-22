@@ -6,7 +6,6 @@
 #include "robot/autonomy/validation/collision_monitor.hpp"
 
 namespace mission {
-using CollisionBackend = sim::autonomy::CollisionBackend;
 using CollisionBox = sim::autonomy::CollisionBox;
 using CollisionActorObservation = sim::autonomy::CollisionActorObservation;
 using CollisionObservation = sim::autonomy::CollisionObservation;

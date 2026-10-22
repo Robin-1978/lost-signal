@@ -103,7 +103,12 @@ std::optional<MapGrid> crop_grid(const MapGrid& grid, MapBounds2D bounds) {
  grid, x0, y0, cropped.width, cropped.height);
  crop_layer(grid.surface_class, cropped.surface_class, grid,
  x0, y0, cropped.width, cropped.height);
+ crop_layer(grid.roughness_m, cropped.roughness_m, grid,
+ x0, y0, cropped.width, cropped.height);
+ crop_layer(grid.roughness_confidence, cropped.roughness_confidence, grid,
+ x0, y0, cropped.width, cropped.height);
  cropped.surface_classes = grid.surface_classes;
+ cropped.surface_class_properties = grid.surface_class_properties;
  return cropped;
 }
 
@@ -153,7 +158,7 @@ Vec2 grid_cell_center(const MapGrid& grid, GridIndex cell) {
 }
 
 bool valid_map_snapshot(const MapSnapshot& snapshot, std::string* reason) {
- if (snapshot.schema_version != 1)
+ if (snapshot.schema_version != 2)
  return reject(reason, "unsupported robot-map schema version");
  if (snapshot.map_id.empty() || snapshot.frame_id.empty() || snapshot.revision == 0)
  return reject(reason, "map identity, frame, and positive revision are required");
@@ -173,6 +178,8 @@ bool valid_map_snapshot(const MapSnapshot& snapshot, std::string* reason) {
  if (grid.occupancy.size() != count ||
  !valid_optional_float_layer(grid.elevation_m, count, false) ||
  !valid_optional_float_layer(grid.elevation_sigma_m, count, true) ||
+ !valid_optional_float_layer(grid.roughness_m, count, true) ||
+ !valid_optional_float_layer(grid.roughness_confidence, count, true) ||
  (!grid.surface_class.empty() && grid.surface_class.size() != count)) {
  return reject(reason, "map layers do not match grid geometry or value contract");
  }
@@ -182,8 +189,26 @@ bool valid_map_snapshot(const MapSnapshot& snapshot, std::string* reason) {
  }
  if (!grid.elevation_sigma_m.empty() && grid.elevation_m.empty())
  return reject(reason, "elevation uncertainty requires an elevation layer");
+ if (!grid.roughness_confidence.empty() && grid.roughness_m.empty())
+ return reject(reason, "roughness confidence requires a roughness prior");
+ if (!grid.roughness_m.empty() && grid.roughness_confidence.empty())
+ return reject(reason, "roughness prior requires a confidence layer");
+ for (const auto confidence : grid.roughness_confidence) {
+ if (!std::isnan(confidence) && confidence > 1.0F)
+ return reject(reason, "roughness confidence must be within [0, 1]");
+ }
  if (!grid.surface_class.empty() && grid.surface_classes.empty())
  return reject(reason, "surface indices require a class table");
+ if (!grid.surface_class_properties.empty() &&
+ grid.surface_class_properties.size() != grid.surface_classes.size())
+ return reject(reason, "surface properties do not match the class table");
+ for (const auto& properties : grid.surface_class_properties) {
+ if (!std::isfinite(properties.nominal_friction_mu) ||
+ properties.nominal_friction_mu < 0.0 ||
+ !std::isfinite(properties.rolling_resistance) ||
+ properties.rolling_resistance < 0.0)
+ return reject(reason, "surface properties are invalid");
+ }
  for (const auto index : grid.surface_class) {
  if (index >= grid.surface_classes.size())
  return reject(reason, "surface class index is out of range");

@@ -29,6 +29,45 @@ class DeployableBoundaryTest(unittest.TestCase):
         self.assertEqual([], violations,
             "SIM scenario must use RobotApplication, not the concrete autonomy coordinator")
 
+    def test_sim_decision_adapter_does_not_call_robot_algorithms_directly(self) -> None:
+        """Decision math is exposed through the ROBOT application contract.
+
+        Scenario code may assemble observations and provider callbacks, but it
+        must not reach into the implementation headers through free-function
+        calls.  This keeps a future native/HTTP composition root on the same
+        transaction surface and makes the sim-to-real boundary mechanically
+        reviewable.
+        """
+        source = ROOT / "src/sim/game/scenario/scenario_autonomy.cpp"
+        forbidden = re.compile(
+            r'\bsim::(?:heading_err|sched_v|longitudinal_grade|lateral_grade|'
+            r'roughness_ride_speed_limit|flatten_prediction_frames|'
+            r'forward_route_reference|crossing_pose_approach|'
+            r'minimum_stationary_clearance|merge_entry_constraints|'
+            r'match_timed_trajectory_phase|remaining_timed_trajectory|'
+            r'corner_speed_cap|DwaWeights)\b'
+        )
+        violations = [
+            f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
+            for line_number, line in enumerate(source.read_text().splitlines(), 1)
+            if forbidden.search(line)
+        ]
+        self.assertEqual([], violations,
+        "SIM decision assembly must use RobotApplication typed methods")
+
+    def test_sim_physics_truth_is_not_passed_to_robot_collision_monitor(self) -> None:
+        source = ROOT / "src/sim/game/scenario/scenario_session.cpp"
+        text = source.read_text()
+        self.assertNotRegex(text, r"assess_collision\s*\(")
+        self.assertNotRegex(text, r"CollisionBackend::RigidBody")
+        self.assertIn("physical_collision_judge_->assess", text)
+
+    def test_robot_collision_monitor_has_no_rigidbody_backend(self) -> None:
+        header = (ROOT / "src/robot/autonomy/validation/collision_monitor.hpp").read_text()
+        implementation = (ROOT / "src/robot/autonomy/validation/collision_monitor.cpp").read_text()
+        self.assertNotIn("CollisionBackend", header + implementation)
+        self.assertNotIn("rigid_static_contact", header + implementation)
+
     def test_robot_sources_do_not_include_sim(self) -> None:
         include = re.compile(r'^\s*#\s*include\s*[<"]sim/')
         violations: list[str] = []
@@ -41,6 +80,33 @@ class DeployableBoundaryTest(unittest.TestCase):
                         f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
                     )
         self.assertEqual([], violations, "ROBOT code depends on SIM headers")
+
+    def test_robot_sources_do_not_use_mission_snapshot(self) -> None:
+        violations: list[str] = []
+        for source in sorted(ROBOT_DIR.rglob("*")):
+            if source.suffix not in {".h", ".hpp", ".c", ".cc", ".cpp"}:
+                continue
+            for line_number, line in enumerate(source.read_text().splitlines(), 1):
+                if "MissionSnapshot" in line:
+                    violations.append(
+                        f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}"
+                    )
+        self.assertEqual([], violations,
+                         "MissionSnapshot is a SIM evidence record, not a ROBOT input")
+
+    def test_sim_decision_path_does_not_read_physics_terrain(self) -> None:
+        source = ROOT / "src/sim/game/scenario/scenario_autonomy.cpp"
+        text = source.read_text()
+        self.assertNotRegex(text, r"terrain_\.sample\s*\(")
+        self.assertNotRegex(text, r"wheel_ground\s*\(")
+
+    def test_authored_contact_truth_is_not_exported_to_robot_map(self) -> None:
+        adapter = (ROOT / "src/sim/game/mission/deployable_map_adapter.cpp").read_text()
+        self.assertNotRegex(adapter, r"roughness_m\s*\[.*\]\s*=")
+        self.assertNotRegex(adapter, r"surface_class_properties\.push_back")
+        session = (ROOT / "src/sim/game/scenario/scenario_session.cpp").read_text()
+        self.assertNotIn("configure_pipeline(*truth_map_", session)
+        self.assertNotIn("apply_goal_stop_constraint", session)
 
     def test_sim_hardware_sources_do_not_include_game(self) -> None:
         include = re.compile(r'^\s*#\s*include\s*[<"]sim/game/')

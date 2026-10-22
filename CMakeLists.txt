@@ -118,6 +118,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/local/predictor.cpp
  src/robot/autonomy/localization/state_estimator.cpp
  src/robot/autonomy/mapping/terrain.cpp
+ src/robot/autonomy/mapping/raster_traversal.cpp
  src/robot/autonomy/planning/local/pocket_shadow.cpp
  src/robot/autonomy/localization/estimator_replay.cpp
  src/robot/autonomy/localization/slip_observer.cpp
@@ -267,6 +268,10 @@ set_tests_properties(motion_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
  add_test(NAME map_provider COMMAND test_map_provider)
+
+ add_executable(test_raster_traversal tests/new/test_raster_traversal.cpp)
+ target_link_libraries(test_raster_traversal PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME raster_traversal COMMAND test_raster_traversal)
 
  add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
@@ -446,6 +451,7 @@ add_library(lost_signal_sim_game STATIC
  src/sim/game/platform/simulated_platform_provider.cpp
  src/sim/game/scenario/scenario_session.cpp
  src/sim/game/scenario/scenario_autonomy.cpp
+ src/sim/game/scenario/physical_collision_judge.cpp
  src/sim/game/mission/world/actor_behavior_registry.cpp
  src/sim/game/mission/systems/field_dispatch_system.cpp
  src/sim/game/mission/systems/field_operator_system.cpp
@@ -844,6 +850,10 @@ add_executable(test_collision_monitor tests/new/test_collision_monitor.cpp)
 target_link_libraries(test_collision_monitor PRIVATE lost_signal_sim_game)
 add_test(NAME collision_monitor COMMAND test_collision_monitor)
 
+add_executable(test_physical_collision_judge tests/new/test_physical_collision_judge.cpp)
+target_link_libraries(test_physical_collision_judge PRIVATE lost_signal_sim_game)
+add_test(NAME physical_collision_judge COMMAND test_physical_collision_judge)
+
 add_executable(test_decision_evidence_system tests/new/test_decision_evidence_system.cpp)
 target_link_libraries(test_decision_evidence_system PRIVATE lost_signal_sim_game)
 add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
@@ -935,6 +945,10 @@ add_test(NAME decision_evidence_system COMMAND test_decision_evidence_system)
  add_executable(test_map_provider tests/new/test_map_provider.cpp)
  target_link_libraries(test_map_provider PRIVATE lost_signal_robot_runtime)
  add_test(NAME map_provider COMMAND test_map_provider)
+
+ add_executable(test_raster_traversal tests/new/test_raster_traversal.cpp)
+ target_link_libraries(test_raster_traversal PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)
+ add_test(NAME raster_traversal COMMAND test_raster_traversal)
 
  add_executable(test_known_map_localizer tests/new/test_known_map_localizer.cpp)
  target_link_libraries(test_known_map_localizer PRIVATE lost_signal_robot_autonomy lost_signal_robot_runtime)

@@ -37,4 +37,20 @@ bool ChassisDiagnosticsSystem::update_slip(bool tread_observable,
   return slip_detector_.detected();
 }
 
+bool ChassisDiagnosticsSystem::update_slip_from_sensors(
+ const EncoderObservation& encoder, const ImuObservation& imu, double dt_s) {
+ if (dt_s <= 0.0) {
+ return slip_detector_.detected();
+ }
+ if (have_previous_slip_sample_) {
+ const double encoder_accel =
+ (encoder.linear_velocity_mps - previous_tread_speed_mps_) / dt_s;
+ slip_detector_.step(encoder_accel, imu.forward_acceleration_mps2, dt_s);
+ }
+ previous_tread_speed_mps_ = encoder.linear_velocity_mps;
+ previous_body_speed_mps_ = 0.0;
+ have_previous_slip_sample_ = true;
+ return slip_detector_.detected();
+}
+
 }  // namespace sim::autonomy

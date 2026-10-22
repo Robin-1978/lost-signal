@@ -17,6 +17,7 @@
 #include "sim/game/mission/systems/world_activity_system.hpp"
 #include "sim/game/platform/simulated_platform.hpp"
 #include "sim/game/platform/simulated_platform_provider.hpp"
+#include "sim/game/scenario/physical_collision_judge.hpp"
 #include "sim/game/mission/world/actor_behavior_registry.hpp"
 #include "robot/autonomy/behavior/entry_governor.hpp"
 #include "robot/autonomy/behavior/crossing_behavior.hpp"
@@ -391,9 +392,9 @@ struct MissionSnapshot {
  double terrain_grade{0.0};
  double cross_slope{0.0};
  double rollover_risk{0.0};
- bool traction_saturated{false};
  // Onboard-observable estimate from encoder/IMU disagreement. Autonomy may
- // consume this; traction_saturated above remains simulator plant truth.
+ // consume this. SIM plant slip truth is retained only in MissionResult.
+ bool traction_saturated{false};
  bool traction_slip_observed{false};
  int rigid_contact_count{0};
  std::vector<std::string> ground_contact_links;
@@ -659,7 +660,6 @@ class ScenarioSession {
  void initialize_rigid_physics();
  void initialize_frame_tree();
  void update_frame_tree();
- void apply_goal_stop_constraint();
  void complete_operator_intent_if_arrived();
  void refresh_operator_route();
  std::vector<sim::platform::ConstructedSupportBody> constructed_support_bodies() const;
@@ -710,7 +710,11 @@ class ScenarioSession {
  // Continuous driving style, piecewise-interpolated across the policy anchors.
  Properties behavior_;
 
+ // Physics/sensor oracle and ROBOT map stay as separate objects even when
+ // built from the same authored source. The former may later acquire exact
+ // contact geometry; the latter can only receive the published Robot Map.
  std::unique_ptr<sim::GridMap> truth_map_;
+ std::unique_ptr<sim::GridMap> robot_static_map_;
  // Empty static base for recovery composition. Transient LiDAR obstacles are
  // still rasterized; authored geometry is checked analytically to avoid a
  // conservative occupied cell trapping a physically clear footprint.
@@ -722,7 +726,7 @@ class ScenarioSession {
  std::optional<sim::physics::RigidTransform> world_from_sensor_at_capture;
  };
  sim::DeterministicDeliveryQueue<PendingLidarObservation> lidar_delivery_queue_{64};
- std::unique_ptr<sim::GridMap> collision_map_;
+ std::unique_ptr<PhysicalCollisionJudge> physical_collision_judge_;
  std::unique_ptr<sim::GridMap> planning_map_;
  double planning_clearance_m_{0.0};
  std::unique_ptr<sim::PlanarDiffDrivePlant> drive_;

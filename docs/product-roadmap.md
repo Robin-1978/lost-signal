@@ -1008,6 +1008,57 @@ than ownership-only: the scenario still assembles route/governor facts and
 updates presentation evidence, so those provider-neutral facts must move into a
 single ROBOT autonomy transaction before the migration gate is declared closed.
 
+The next extraction slice has also removed direct free-function calls from the
+SIM decision adapter. Route heading/speed scheduling, route-reference creation,
+terrain and ride limits, prediction-frame flattening, stationary-clearance
+checks, entry-constraint merging, crossing pose correction, timed-trajectory
+phase matching and local critic weights are now exposed only through typed
+`RobotApplication` methods. `test_deployable_boundary.py` guards this rule. The
+scenario still owns authored route/task facts and diagnostic projection; the
+remaining semantic migration is to pass those facts as one autonomy transaction
+instead of composing multiple ROBOT calls in the game loop.
+
+The SIM/ROBOT truth firewall is now explicit. ROBOT's `CollisionMonitor` accepts
+only deployment geometry and observed/predicted tracks; its rigid-body backend
+and simulator-contact fields were removed. SIM owns `PhysicalCollisionJudge`,
+which consumes MuJoCo contacts and actor truth after each plant step for mission
+failure, scoring and replay evidence. The physical result is never fed back into
+the same ROBOT decision cycle. Recorded physical outcomes remain available as
+offline labels or reinforcement-learning rewards, provided the deployed policy
+training/evaluation path is restricted to LSRI observations.
+
+The same audit is being applied to other truth-like signals. MuJoCo roll,
+contact impulse, exact actor pose, and model slip are retained for SIM outcomes
+and diagnostics; ROBOT receives calibrated IMU, encoder, LiDAR and map-provider
+data. Any environment friction or weather estimate used by planning must be
+declared as a map/provider observation or a robot-side estimate, never silently
+copied from the contact solver.
+
+The truth firewall is now a documented invariant across every observable
+quantity, not only collision:
+
+- `MissionSnapshot` is created and consumed by SIM for presentation, replay,
+  scoring and paired truth-versus-estimate analysis; ROBOT cannot include or
+  receive it.
+- SIM truth and ROBOT observation/estimate are separate values even when they
+  describe the same physical quantity. Their timestamped difference is evidence,
+  calibration input or an offline reward, never a same-cycle correction.
+- Robot Map elevation and surface classes are static map knowledge. Authored
+  MuJoCo friction, rolling drag, roughness waveform and wetness are not copied
+  into Robot Map as live truth.
+- Unknown terrain is conservative. ROBOT estimates roughness and available
+  traction from IMU, encoders, estimated speed and motion response; map roughness
+  is only an optional prior with provenance and confidence.
+
+The deployable adapter now omits simulator-authored roughness and physical
+surface coefficients. LSRM v2 validates an optional roughness prior only when a
+same-sized confidence layer is present, and `RasterTraversalModel` maintains a
+per-cell ROBOT-side belief from IMU excitation, estimated speed and attitude.
+The belief is conservative when unknown and decays when observations become
+stale. Acceptance covers synthetic smooth, rough and stale-observation cases,
+package round trips, and a boundary test proving that removing map roughness
+does not recover a smooth-terrain assumption.
+
 The task/runtime relationship is now explicit in code. `RobotExecutive` (`src/robot/executive/robot_executive.*`) wraps
 the tested `TaskExecutive` lifecycle kernel and consumes a typed `MotionCapabilityReport` from local planning. It can
 report normal, reduced, hold and no-safe-action states to an operator or task policy, but it has no speed or actuator

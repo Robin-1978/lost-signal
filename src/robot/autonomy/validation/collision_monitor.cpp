@@ -56,7 +56,6 @@ CollisionMonitor::CollisionMonitor(Vec2 world_size, double robot_radius_m,
 }
 
 void CollisionMonitor::reset() {
- rigid_static_contact_s_ = 0.0;
 }
 
 bool CollisionMonitor::static_motion_free(Vec2 from, Vec2 to,
@@ -124,13 +123,9 @@ CollisionAssessment CollisionMonitor::assess(
  observation.position.y < 0.0 ||
  observation.position.x >= world_size_.x ||
  observation.position.y >= world_size_.y;
- if (observation.backend == CollisionBackend::RigidBody) {
- rigid_static_contact_s_ = observation.rigid_static_contact
- ? rigid_static_contact_s_ + std::max(0.0, observation.dt_s)
- : 0.0;
- out.static_collision = outside || rigid_static_contact_s_ >= 0.25;
- } else {
- rigid_static_contact_s_ = 0.0;
+ {
+ // A ROBOT decision uses its own footprint and deployment geometry. This is
+ // intentionally independent of the simulator's physical contact result.
 // The domain plant collides against authored geometry, not a rasterized
 // planning costmap. Grid inflation is deliberately conservative and can add
 // almost one cell around box corners; treating that approximation as contact
@@ -161,9 +156,7 @@ out.static_collision = outside || footprint_outside || obstacle_overlap;
  out.dynamic_clearance_m = clearance;
  out.nearest_actor_position = actor.state.p;
  }
- const bool contact = observation.backend == CollisionBackend::RigidBody
- ? actor.rigid_contact
- : clearance < 0.0;
+ const bool contact = clearance < 0.0;
  if (!contact)
  continue;
  if (actor.social)

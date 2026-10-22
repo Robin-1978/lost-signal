@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <stdexcept>
 
@@ -179,6 +180,8 @@ ConstructionWorldCommit prepare_construction_world_commit(
  if (material == grid.surface_classes.end()) {
  grid.surface_classes.push_back(piece.surface_material);
  material = std::prev(grid.surface_classes.end());
+ if (!grid.surface_class_properties.empty())
+ grid.surface_class_properties.push_back({});
  }
  const auto material_index = static_cast<std::uint16_t>(
  std::distance(grid.surface_classes.begin(), material));
@@ -200,6 +203,12 @@ ConstructionWorldCommit prepare_construction_world_commit(
  resolved.center_m.z + std::tan(resolved.pitch_rad) * local_x +
  piece.size_m.z * 0.5 * std::cos(resolved.pitch_rad));
  grid.surface_class[index] = material_index;
+ if (grid.roughness_m.size() ==
+ static_cast<std::size_t>(grid.width) * grid.height) {
+ grid.roughness_m[index] = std::numeric_limits<float>::quiet_NaN();
+ if (grid.roughness_confidence.size() == grid.roughness_m.size())
+ grid.roughness_confidence[index] = 0.0F;
+ }
  // A bridge deck is support terrain. Occupancy describes blocking volume
  // in the navigation projection, so committing one must not create a wall.
  grid.occupancy[index] = 0;

@@ -54,7 +54,7 @@ content. A SLAM backend may use sensor observations to produce a new global revi
 publication with provenance, validation, and revision semantics. Drawing the minimap is presentation of these
 products, not map generation.
 
-LSRM v1 implements complete immutable snapshots, an optional compact raster, vector-only packages, and a bounded
+LSRM v2 implements complete immutable snapshots, an optional compact raster, vector-only packages, and a bounded
 `query_region()` contract. The in-process provider crops its compact raster and filters semantic features while
 preserving the source revision. A future tiled or remote provider can satisfy the same request without allocating a
 global array. The current file provider still loads a complete package into memory, and the current small simulation
@@ -70,6 +70,10 @@ compiler intentionally emits one compact raster; true tile-backed I/O remains fu
  probability/occupancy;
 - optional elevation and elevation-uncertainty layers in meters, with NaN for unknown;
 - an optional surface-class layer and its stable string table;
+- an optional surveyed roughness prior and a same-sized confidence layer. A
+  missing or zero-confidence cell is unknown; it is never interpreted as
+  perfectly smooth. Live friction, rolling drag, wetness and contact response
+  are not Robot Map fields.
 - named semantic places with position and heading;
 - typed point, polyline, and polygon features with stable IDs and string attributes;
 - explicit typed relations among places/features for route connectivity and regulatory/topological meaning.

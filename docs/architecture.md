@@ -345,7 +345,7 @@ with operator/API adapters above it and LSRI platform adapters below autonomy. I
 validated goal ordering, arrival, dwell, pause, resume, cancel, failure, and completion lifecycle. The implemented
 **Lost Signal Map Interface** consists of `IMapProvider`, immutable `MapSnapshot` revisions and bounded `MapView`
 queries. `MapManager` is its in-process lifecycle implementation and semantic-place resolver, while
-`lost_signal_robot_map_io` loads and saves the checksummed LSRM v1 package. Simulation compilation, SLAM, survey/HD
+`lost_signal_robot_map_io` loads and saves the checksummed LSRM v2 package. Simulation compilation, SLAM, survey/HD
 map import and remote map services are provider adapters behind this ROBOT-owned boundary. These targets depend only
 on deployable contracts.
 
@@ -378,6 +378,32 @@ endpoint dwell into false outbound motion. An empty or stale prediction is expli
 a controlled crossing only when an independent, current and complete free-space observation proves every declared
 traffic approach clear for the executable interval. A separate physical-collision validator retains final veto
 authority.
+
+The boundary has two independent collision concepts. ROBOT's safety monitor
+uses deployment geometry, localization uncertainty, observed LiDAR tracks,
+predictions and chassis limits to decide whether a command is admissible. SIM's
+`PhysicalCollisionJudge` consumes the post-step MuJoCo contact result and exact
+actor truth only to determine mission failure, score and replay evidence. SIM
+must not call the ROBOT collision monitor with a `RigidBody` observation, and a
+ROBOT policy must not read the physical judge. Physical outcomes can later be
+exported as offline labels or reinforcement-learning rewards, but that training
+channel is separate from the deployable LSRI decision loop.
+
+`MissionSnapshot` is likewise SIM-owned. It is the immutable evidence record for
+presentation, replay, scoring and truth-versus-estimate comparison. ROBOT code
+must not include or receive it. Task requests, Robot Map revisions, LSRI
+observations and typed `RobotApplication` status are the supported interchange
+surface. This distinction keeps a convenient debug display from becoming an
+autonomy data source.
+
+The map and physics terrain have separate owners. A Robot Map may publish
+elevation geometry, surface classes, optional roughness priors and their
+confidence. It does not publish MuJoCo contact coefficients, live wetness or the
+authored relief waveform as exact current truth. `RasterTraversalModel` derives
+planning beliefs from the Robot Map and ROBOT observations. Unknown or stale
+terrain is conservative; the robot estimates roughness and traction from its own
+IMU, encoders, speed and motion response. Exact contact response remains in SIM
+for scoring and model identification.
 
 Task orchestration is moving toward a small data-driven Behavior Graph, while continuous commitments use focused
 deterministic state machines. The project does not embed a general-purpose behavior-tree runtime. The detailed
@@ -429,10 +455,15 @@ LSRI lifecycle in a standalone process. It currently provides the provider/start
 and the full native cycle scheduler remain deployment work. The simulation adapter no longer invokes a ROBOT chassis
 controller directly: it publishes provider joint feedback through LSRI and enters the common
 `RobotApplication::execute_motion()` transaction, which asks the ROBOT coordinator for a typed `ActuatorCommand`
-and gives only the delivered command to the simulated plant. Route/local candidate assembly and game snapshot
-projection are still adapter responsibilities until the provider-neutral cycle host is completed. SIM
-and ROBOT need not use IPC: both composition roots may call the same typed in-process interfaces, while an optional
-transport adapter can be added at the provider boundary later.
+and gives only the delivered command to the simulated plant. The scenario adapter
+still assembles route/governor facts and projects diagnostics into the game
+snapshot, but its shared tracking, prediction-frame, terrain-limit, crossing-pose,
+reference-path and local-critic operations now go through typed
+`RobotApplication` methods. This keeps the remaining extraction work explicit
+without allowing a free ROBOT algorithm call to return to SIM. SIM and ROBOT need
+not use IPC: both composition roots may call the same typed in-process interfaces,
+while an optional HTTP/ROS transport adapter can be added above the application
+boundary later.
 
 Robot geometry has three independent meanings:
 

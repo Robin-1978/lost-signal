@@ -74,6 +74,31 @@ API, submitted by a test harness, or created by a simulation adapter, but it con
 MuJoCo or renderer field. Completion and failure are reported as stable lifecycle results, while detailed sensor and
 decision evidence remains available through the ROBOT diagnostics/replay interfaces.
 
+### Application API adapters
+
+`RobotApplication` is the single in-process application boundary. SIM, a desktop UI,
+replay, HTTP, ROS 2, or another operator channel may each have a small adapter that
+translates its own request/response format into the same typed application calls:
+
+```text
+HTTP / ROS / UI / SIM adapter
+            |
+            v
+     RobotApplication::submit task/map request
+     RobotApplication::tick(RobotCycleInput)
+            |
+            v
+     RobotExecutive + AutonomyCoordinator + LSRI
+```
+
+These adapters are application-facing and therefore do not become LSRI providers.
+LSRI remains the sensor/actuator boundary below the ROBOT stack; HTTP or ROS must
+not publish a wheel command directly and must not expose an `AutonomyCoordinator`
+reference. A remote transport may eventually run out of process, but it only
+serializes the versioned typed request, status, map view and diagnostic contracts;
+it does not change scheduling or ownership inside ROBOT. The current SIM and native
+composition roots use the in-process adapter and need no IPC.
+
 The simulator owns both ends of an in-process channel because simulation and ROBOT currently run in one process. Its bounded queue is safe for concurrent sensor producers. A physical deployment gives platform endpoints to native drivers. `EndpointRegistry` assigns ownership per `(endpoint_id, role)`, so a real LiDAR can coexist with a simulated IMU and actuator plant while two providers cannot command the same actuator endpoint.
 
 ## Required conventions
@@ -132,6 +157,33 @@ the same observation frame and acquisition timestamp, so existing 2D autonomy ca
 without losing the raw 3D evidence.
 
 World truth is not an LSRI observation. A simulator may use truth internally to generate sensor packets, but autonomy receives only the resulting measurements.
+
+The same rule covers the presentation record. `MissionSnapshot` is a SIM-side,
+immutable tuple of world truth, ROBOT observations, estimates and evaluation
+evidence. It is never an LSRI packet and never enters `src/robot`. An operator
+UI or replay tool may read it from the SIM application; a robot task may carry
+only a provider-neutral goal, map revision, observations and bounded status.
+Neither an in-process pointer nor a serialized copy of a mission snapshot may be
+nested in `RobotCycleInput`.
+
+Robot Map layers are observations or priors, not physics truth. Optional
+elevation and surface-class data describe static navigation knowledge. A
+roughness layer is a surveyed prior and must be interpreted with its provenance
+and confidence; an absent layer is unknown. Ground friction, rolling drag, the
+contact solver's slip and wetness belong to the platform provider and SIM
+evaluation. ROBOT estimates traversability from its calibrated platform model,
+LSRI measurements and the current map revision.
+
+This rule also applies to collision outcomes. MuJoCo contacts, rigid-body actor
+IDs, exact pose, contact impulse, true slip and true rollover are SIM-side
+physical outcomes. The ROBOT safety monitor instead evaluates its own map,
+localization uncertainty, LiDAR tracks, dynamic predictions and chassis
+constraints. A physical collision may therefore disagree with a ROBOT
+prediction; that disagreement is recorded for validation and scoring and is
+not fed back as a same-cycle decision input. Offline training or reinforcement
+learning may consume the recorded SIM outcome as a labelled reward/oracle
+stream, but a deployed policy must run from the same LSRI observations it will
+have on the real platform.
 
 Power telemetry is optional at the channel level so a minimal replay or teaching provider can omit it. A
 `RobotExecutive` that must enforce an energy reserve treats missing or stale power data as an explicit degraded

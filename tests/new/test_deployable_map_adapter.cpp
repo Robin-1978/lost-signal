@@ -37,6 +37,11 @@ int main() {
  CHECK(map.provenance.source_kind == "authored");
  CHECK(map.grid->width == 8 && map.grid->height == 4);
  CHECK(map.grid->elevation_m.size() == 32);
+ // Authored MuJoCo relief and material coefficients stay in SIM. The deployable
+ // map carries geometry and semantic surface classes, not physical truth.
+ CHECK(map.grid->roughness_m.empty());
+ CHECK(map.grid->roughness_confidence.empty());
+ CHECK(map.grid->surface_class_properties.empty());
  const auto cell = sim::runtime::world_to_grid(*map.grid, {0.75, 0.25});
  CHECK(cell);
  const auto centre = sim::runtime::grid_cell_center(*map.grid, *cell);

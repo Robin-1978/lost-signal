@@ -9,6 +9,12 @@
 #include "robot/runtime/provider_conformance.hpp"
 #include "robot/autonomy/planning/local/predictor.hpp"
 #include "robot/autonomy/control/safe_stop_limiter.hpp"
+#include "robot/autonomy/control/follow.hpp"
+#include "robot/autonomy/mapping/terrain.hpp"
+#include "robot/autonomy/mapping/raster_traversal.hpp"
+#include "robot/autonomy/behavior/crossing_behavior.hpp"
+#include "robot/autonomy/behavior/entry_governor.hpp"
+#include "robot/autonomy/planning/local/dynamic_clearance.hpp"
 
 #include <memory>
 #include <optional>
@@ -113,6 +119,23 @@ class RobotApplication {
  runtime::IMapProvider& map_provider();
  const runtime::IMapProvider& map_provider() const;
 
+ // The terrain consumed by planning is reconstructed from the active Robot
+ // Map revision plus calibrated tire priors. Weather, authored contact
+ // coefficients and physics-engine state are deliberately absent.
+ void set_traversal_config(RasterTraversalConfig config) {
+ traversal_.set_config(std::move(config));
+ }
+ TerrainSample estimated_terrain(Vec2 position);
+ TraversalContactEstimate estimated_contact(Vec2 position);
+ double estimated_traversal_cost(Vec2 from, Vec2 to,
+ const TerrainCapability& capability);
+ // Feed only LSRI motion observations into the ROBOT terrain belief. SIM
+ // contact coefficients and authored relief never enter this method.
+ void observe_terrain_motion(const EstimatedState& estimate,
+ const ImuObservation& imu, double dt_s) {
+ traversal_.observe_motion(estimate, imu, dt_s);
+ }
+
  // Provider adapters should use these helpers instead of bypassing the
  // conformance monitor when publishing frames or checking liveness.
  bool publish_observation(ObservationFrame observation, runtime::TimePoint now);
@@ -147,6 +170,10 @@ class RobotApplication {
  bool update_slip_diagnostics(bool tread_observable, double tread_speed_mps,
  double body_speed_mps, double dt_s) {
  return active_coordinator().diagnostics().update_slip(tread_observable, tread_speed_mps, body_speed_mps, dt_s);
+ }
+ bool update_slip_from_sensors(const EncoderObservation& encoder,
+ const ImuObservation& imu, double dt_s) {
+ return active_coordinator().diagnostics().update_slip_from_sensors(encoder, imu, dt_s);
  }
  bool slip_detected() const { return active_coordinator().diagnostics().slip_detected(); }
  int slip_episodes() const { return active_coordinator().diagnostics().slip_episodes(); }
@@ -225,6 +252,72 @@ class RobotApplication {
  PredictionBatch predict_dynamic_objects(double time_s, double horizon_s,
  double frame_dt_s, double max_age_s) const {
  return active_coordinator().predict_dynamic_objects(time_s, horizon_s, frame_dt_s, max_age_s);
+ }
+ // Provider-neutral geometry and scheduling helpers. These keep the SIM
+ // adapter from including or invoking ROBOT algorithm implementations while
+ // retaining plain value contracts at the application boundary.
+ double heading_error(Vec2 target, Vec2 current, double heading_rad) const {
+ return sim::heading_err(target, current.x, current.y, heading_rad);
+ }
+ double scheduled_speed(double heading_error_rad, double cruise_mps) const {
+ return sim::sched_v(heading_error_rad, cruise_mps);
+ }
+ std::vector<Vec2> forward_route_reference(const std::vector<RoutePoint>& path,
+ std::size_t begin, Vec2 current, double maximum_length_m) const {
+ return sim::forward_route_reference(path, begin, current, maximum_length_m);
+ }
+ double longitudinal_grade(const TerrainSample& terrain, double heading_rad) const {
+ return sim::longitudinal_grade(terrain, heading_rad);
+ }
+ double lateral_grade(const TerrainSample& terrain, double heading_rad) const {
+ return sim::lateral_grade(terrain, heading_rad);
+ }
+ double static_rollover_angle(double support_width_m,
+ double center_of_mass_height_m) const {
+ return sim::static_rollover_angle(support_width_m, center_of_mass_height_m);
+ }
+ double ride_speed_limit(double roughness_m, double support_base_m,
+ double gravity_fraction) const {
+ return sim::roughness_ride_speed_limit(roughness_m, support_base_m, gravity_fraction);
+ }
+ double corner_speed_cap(const std::vector<RoutePoint>& path, std::size_t index,
+ double cruise_mps, double lateral_accel_mps2, double preview_m,
+ double yaw_rate_max_radps) const {
+ return sim::corner_speed_cap(path, index, cruise_mps, lateral_accel_mps2,
+ preview_m, yaw_rate_max_radps);
+ }
+ DwaWeights local_planner_weights(double preferred_clearance_m) const {
+ return {1.0, 1.3 + preferred_clearance_m * 1.8, 0.25};
+ }
+ std::vector<std::vector<DynamicObjectState>> flatten_prediction(
+ const PredictionBatch& prediction) const {
+ return sim::flatten_prediction_frames(prediction);
+ }
+ DynamicClearance minimum_stationary_clearance(Vec2 ego_position,
+ const std::vector<std::vector<DynamicObjectState>>& frames,
+ double frame_dt_s, double ego_radius_m) const {
+ return sim::minimum_stationary_clearance(ego_position, frames, frame_dt_s,
+ ego_radius_m);
+ }
+ GovernorOutput merge_entry_constraints(const GovernorOutput& first,
+ const GovernorOutput& second, const std::vector<Vec2>& route) const {
+ return sim::merge_entry_constraints(first, second, route);
+ }
+ double match_timed_trajectory_phase(const std::vector<TimedPose>& trajectory,
+ Vec2 measured_position, double nominal_elapsed_s,
+ double admitted_time_error_s) const {
+ return sim::match_timed_trajectory_phase(trajectory, measured_position,
+ nominal_elapsed_s, admitted_time_error_s);
+ }
+ std::vector<TimedPose> remaining_timed_trajectory(
+ const std::vector<TimedPose>& trajectory, double elapsed_s) const {
+ return sim::remaining_timed_trajectory(trajectory, elapsed_s);
+ }
+ CrossingPoseApproach crossing_pose_approach(Vec2 ego_position,
+ double ego_heading_rad, Vec2 stop_point, Vec2 stop_direction,
+ bool force_reverse, double drive_axle_x_m, double acquisition_radius_m) const {
+ return sim::crossing_pose_approach(ego_position, ego_heading_rad, stop_point,
+ stop_direction, force_reverse, drive_axle_x_m, acquisition_radius_m);
  }
  LidarPerceptionFrame process_lidar(const Scan& scan, const Scan& static_reference,
  const LidarProjectionState& state, const LidarProjectionConfig& config,
@@ -337,11 +430,14 @@ class RobotApplication {
  runtime::IMapProvider* map_provider_{nullptr};
  runtime::MapCatalog* map_catalog_{nullptr};
  runtime::MapManager* active_map_manager_{nullptr};
+ RasterTraversalModel traversal_;
+ std::shared_ptr<const runtime::MapSnapshot> traversal_map_;
 
  runtime::IRuntimeChannel& active_channel();
  const runtime::IRuntimeChannel& active_channel() const;
  autonomy::AutonomyCoordinator& active_coordinator();
  const autonomy::AutonomyCoordinator& active_coordinator() const;
+ void refresh_traversal_map();
 };
 
 } // namespace sim::robot

@@ -185,7 +185,14 @@ void ScenarioSession::decide_control() {
  const GoalStep* strategy_goal = active_goal();
  strategy_observation.goal = strategy_goal ? as_vec(map_definition_.markers.at(strategy_goal->marker))
                                            : as_vec(map_definition_.markers.at(level_.objective.goal));
- strategy_observation.rollover_risk = snapshot_.rollover_risk;
+ // ROBOT policy consumes only the attitude estimated from delivered IMU
+ // observations. MuJoCo's post-step roll and the mission rollover score are
+ // SIM truth and must not become a policy input.
+ const double estimated_rollover_angle = robot_application_->static_rollover_angle(
+ chassis_caps_.geometry.support_width_m, combined_center_height_m());
+ strategy_observation.rollover_risk = estimate.attitude_valid
+ ? std::abs(estimate.roll_rad) / std::max(0.05, estimated_rollover_angle)
+ : 0.0;
  strategy_observation.traction_slip_observed = snapshot_.traction_slip_observed;
  strategy_observation.goals_reached = static_cast<int>(snapshot_.goals_reached);
  for (const auto& hit : snapshot_.lidar_hits) {
@@ -197,10 +204,10 @@ void ScenarioSession::decide_control() {
  strategy_context.fallback_target = target;
  strategy_context.map_size = map_definition_.size_m;
  strategy_context.clearance_hold_enabled = custom_high_level_policy_;
- const auto strategy_terrain = terrain_.sample({nav_x, nav_y});
+ const auto strategy_terrain = robot_application_->estimated_terrain({nav_x, nav_y});
  const bool material_terrain_load =
-   std::abs(sim::longitudinal_grade(strategy_terrain, nav_heading)) >= 0.12 ||
-   std::abs(sim::lateral_grade(strategy_terrain, nav_heading)) >= 0.12;
+   std::abs(robot_application_->longitudinal_grade(strategy_terrain, nav_heading)) >= 0.12 ||
+   std::abs(robot_application_->lateral_grade(strategy_terrain, nav_heading)) >= 0.12;
  // A custom upper policy gets the complete safety shield. The validated
  // route baseline already owns flat-ground speed and obstacle arbitration;
  // its residual-based relief is reserved for a mapped slope, where reducing
@@ -239,7 +246,7 @@ void ScenarioSession::decide_control() {
   target = snapshot_.strategy.applied.subgoal;
  if (snapshot_.strategy.applied.has_subgoal) {
   const double target_distance = distance({nav_x, nav_y}, target);
-  const double subgoal_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
+  const double subgoal_error = robot_application_->heading_error(target, {nav_x, nav_y}, nav_heading);
   route_control.tv = std::min(chassis_cruise, target_distance);
   route_control.steer = robot_application_->route_heading_command(subgoal_error, 1.0 / decision_hz());
   route_control.err = subgoal_error;
@@ -281,7 +288,7 @@ void ScenarioSession::decide_control() {
   // (An unbounded trial stranded swift tracks in a reversing cycle instead
   // of docking — evidence for curation, not for a longer leash.)
   if (route_control.reached && dist_goal > tracking_arrival_radius && dist_goal < 3.0) {
-   const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
+   const double dock_err = robot_application_->heading_error(goal, {nav_x, nav_y}, nav_heading);
    if (!robot_application_->route_reversing() && std::abs(dock_err) > 1.4)
     robot_application_->set_route_reversing(true);
    else if (robot_application_->route_reversing() && std::abs(dock_err) < 0.7)
@@ -359,23 +366,23 @@ void ScenarioSession::decide_control() {
  // autonomy permission threshold. Doing so makes legitimate narrow or
  // time-critical maneuvers impossible and couples ROBOT behavior to GAME.
  const double hard_crossing_clearance = scan_motion_margin;
- const double heading_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
+ const double heading_error = robot_application_->heading_error(target, {nav_x, nav_y}, nav_heading);
  // Ride limit. Relief the chassis cannot tilt over lifts a contact instead
  // of steering the body, and the caster only retains the pitch restraint
  // while it carries weight. Hold the demanded vertical excitation below
  // half of g so a bump cannot unload the support that keeps the body level.
- const double ride_speed_limit_mps = sim::roughness_ride_speed_limit(
- terrain_.sample({nav_x, nav_y}).roughness,
+ const double ride_speed_limit_mps = robot_application_->ride_speed_limit(
+ robot_application_->estimated_terrain({nav_x, nav_y}).roughness,
  chassis_caps_.geometry.support_length_m, 0.5);
  const double route_independent_speed_cap =
- std::min({std::max(0.20, sim::sched_v(heading_error, cruise_speed_mps())),
+ std::min({std::max(0.20, robot_application_->scheduled_speed(heading_error, cruise_speed_mps())),
  corner_speed_cap(nav_x, nav_y), ride_speed_limit_mps});
  double speed_cap = route_independent_speed_cap * snapshot_.strategy.applied.speed_scale;
  // The selected rollout is the command contract. Feed route and corner caps
  // into candidate generation so mission code never rewrites its speed later.
  if (chassis_caps_.command_space != sim::ChassisCommandSpace::HolonomicTwist)
  speed_cap = std::min(speed_cap, std::abs(route_control.tv));
- const sim::DwaWeights weights{1.0, 1.3 + preferred_clearance * 1.8, 0.25};
+ const auto weights = robot_application_->local_planner_weights(preferred_clearance);
  // Decision-cycle reachability step. Deployment-owned: a native computer may
  // run a different control period than the simulation baseline.
  const double prediction_step_s = execution_policy.prediction_step_s;
@@ -384,8 +391,8 @@ void ScenarioSession::decide_control() {
  // feed prediction: map.predict() snapshots raw tracker state internally.
  const auto predicted_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
- const auto predicted_frames = sim::flatten_prediction_frames(predicted_batch);
- const auto stationary_forecast_clearance = sim::minimum_stationary_clearance(
+ const auto predicted_frames = robot_application_->flatten_prediction(predicted_batch);
+ const auto stationary_forecast_clearance = robot_application_->minimum_stationary_clearance(
  {nav_x, nav_y}, predicted_frames, prediction_step_s,
  robot_definition_.collision_radius_m);
  // Shadow departure assessment (gate 3): observe only. This block reads
@@ -414,7 +421,7 @@ void ScenarioSession::decide_control() {
  const double assessment_horizon = prediction_horizon;
  const auto assessment_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
- const auto assessment_frames = sim::flatten_prediction_frames(assessment_batch);
+ const auto assessment_frames = robot_application_->flatten_prediction(assessment_batch);
 
  // A map-semantic conflict zone is the high-level contract for crossing
  // traffic. It yields a stable route-derived stop point and a bounded path
@@ -619,7 +626,7 @@ void ScenarioSession::decide_control() {
  const auto entry_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s,
  sim::kEntryStaleBudgetS);
- const auto entry_frames = sim::flatten_prediction_frames(entry_batch);
+ const auto entry_frames = robot_application_->flatten_prediction(entry_batch);
  sim::EntryWindowRequest entry_request;
  entry_request.route = shadow_remaining;
  entry_request.cruise_speed_mps = shadow_cruise;
@@ -648,7 +655,7 @@ void ScenarioSession::decide_control() {
  // conflicts are an intersection of one-sided constraints. A semantic zone
  // cannot suppress a temporary object outside that zone, and the generic
  // detector cannot grant permission over a mapped stop/yield rule.
- governor_out = sim::merge_entry_constraints(
+ governor_out = robot_application_->merge_entry_constraints(
  *mapped_governor, generic_entry.control, shadow_remaining);
  governor_uses_mapped_geometry =
  mapped_governor->hold_active && governor_out.stop_valid &&
@@ -710,7 +717,7 @@ void ScenarioSession::decide_control() {
  // Differential kinematics are referenced at the driven axle. RO-1's axle
  // is offset from base_link, so controlling the body origin as if it were the
  // instantaneous rotation centre creates a circular chase during pure yaw.
- const auto pose_approach = sim::crossing_pose_approach(
+ const auto pose_approach = robot_application_->crossing_pose_approach(
  {nav_x, nav_y}, nav_heading, governor_out.stop_point,
  governor_out.stop_direction, crossing_reverse_recovery,
  chassis_caps_.geometry.drive_axle_x_m,
@@ -754,7 +761,7 @@ void ScenarioSession::decide_control() {
  const bool align_before_approach = chassis_caps_.can_rotate_about_base_link() &&
  std::abs(stop_heading_error) > kStopApproachHeadingToleranceRad;
  const double stop_approach_cap = std::min(
- std::max(0.20, sim::sched_v(stop_heading_error, chassis_cruise)),
+ std::max(0.20, robot_application_->scheduled_speed(stop_heading_error, chassis_cruise)),
  corner_speed_cap(nav_x, nav_y)) * snapshot_.strategy.applied.speed_scale;
  const bool stationary_hold_safe =
  stationary_forecast_clearance.conservative_m + 1e-9 >=
@@ -1188,7 +1195,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  current_stop_limits.brake_decel_mps2 =
  resolved_build_.traction().brake_decel_mps2;
  current_stop_limits.longitudinal_grade =
- sim::longitudinal_grade(strategy_terrain, grade_heading);
+ robot_application_->longitudinal_grade(strategy_terrain, grade_heading);
  current_stop_limits.center_of_mass_x_m = combined_center_x_m();
  current_stop_limits.center_of_mass_height_m = combined_center_height_m();
  const double safe_stop_decel_mps2 = robot_application_->safe_stop_deceleration_limit(
@@ -1258,12 +1265,12 @@ if (!continuous_execution && remaining_m > 0.5) {
  // rejected a platform that accelerated ahead of that edge; always choosing
  // nominal time incorrectly rejected ordinary actuator lag.
  const double matched_execution_phase_s =
- sim::match_timed_trajectory_phase(
+ robot_application_->match_timed_trajectory_phase(
  traffic_decision.control.execution_trajectory, {nav_x, nav_y},
  traffic_decision.control.execution_elapsed_s,
  sim::kCrossingTimeMarginS);
  local_request.committed_reference_trajectory =
- sim::remaining_timed_trajectory(
+ robot_application_->remaining_timed_trajectory(
  traffic_decision.control.execution_trajectory,
  matched_execution_phase_s);
  local_request.committed_reference_path.reserve(
@@ -1294,8 +1301,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  sim::Vec2 position, double heading_rad) {
  sim::SafeStopLimits limits;
  limits.brake_decel_mps2 = brake_decel_mps2;
- limits.longitudinal_grade = sim::longitudinal_grade(
- terrain_.sample(position), heading_rad);
+ limits.longitudinal_grade = robot_application_->longitudinal_grade(
+ robot_application_->estimated_terrain(position), heading_rad);
  limits.center_of_mass_x_m = stop_center_x_m;
  limits.center_of_mass_height_m = stop_center_height_m;
  return robot_application_->safe_stop_deceleration_limit(chassis_caps_, limits);
@@ -1327,7 +1334,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  robot_application_->route_path_index(), planned_route_.size() - 1);
  const double reference_length_m =
  speed_cap * prediction_horizon + property(behavior_, "lookahead_m");
- local_request.reference.path = sim::forward_route_reference(
+ local_request.reference.path = robot_application_->forward_route_reference(
  planned_route_, guide_index, {nav_x, nav_y}, reference_length_m);
  }
  }
@@ -1357,7 +1364,9 @@ if (!continuous_execution && remaining_m > 0.5) {
  robot_application_->static_clearance(to) + 0.01 >=
  robot_application_->static_clearance(from)));
  return feasible;
- }, [this](sim::Vec2 position) { return terrain_.sample(position); }};
+ }, [this](sim::Vec2 position) {
+ return robot_application_->estimated_terrain(position);
+ }};
  // The scenario owns only provider-neutral request assembly. ROBOT owns the
  // local planner invocation and trajectory validation through the common
  // application cycle; run_autonomy=false avoids updating the already applied
@@ -1483,8 +1492,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  // an otherwise harmless soft-margin failure from pitching a high-COM load
  // over its short front support while leaving MuJoCo free to realize the
  // commanded torque, slip, and stopping distance.
- const auto stop_terrain = terrain_.sample({nav_x, nav_y});
- const double stop_grade = sim::longitudinal_grade(stop_terrain, grade_heading);
+ const auto stop_terrain = robot_application_->estimated_terrain({nav_x, nav_y});
+ const double stop_grade = robot_application_->longitudinal_grade(stop_terrain, grade_heading);
  const bool steering_command =
  local_request.command_space == sim::LocalCommandSpace::SteeringAngle;
  // A safety stop must start from the motion that the plant is actually
@@ -1603,8 +1612,8 @@ if (!continuous_execution && remaining_m > 0.5) {
  // 2.5D terrain map supplies the local grade. The low-level controller maps
  // this SI request through finite motor authority, while tire/contact physics
  // remains free to slip when the surface cannot carry the requested force.
- const auto current_terrain = terrain_.sample({nav_x, nav_y});
- const double current_grade = sim::longitudinal_grade(current_terrain, grade_heading);
+ const auto current_terrain = robot_application_->estimated_terrain({nav_x, nav_y});
+ const double current_grade = robot_application_->longitudinal_grade(current_terrain, grade_heading);
  const auto& control_estimate = robot_application_->estimator().state();
  held_command().longitudinal_acceleration_feedforward_mps2 =
  control_estimate.attitude_valid

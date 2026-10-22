@@ -239,8 +239,6 @@ void ScenarioSession::reset() {
  update_environment();
  mount_roll_rad_.clear();
  reset_payload();
- robot_application_->reset(effective_seed() ^ 0x1f83d9abU);
- snapshot_.strategy_policy = robot_application_->policy_name();
  lidar_delivery_queue_.clear();
  events_.clear();
  decision_evidence_system_.reset();
@@ -251,10 +249,6 @@ void ScenarioSession::reset() {
  shadow_episode_first_reason_ = -1;
  shadow_episode_last_s_ = -1.0;
  shadow_episode_last_reason_ = -1;
- held_command() = {};
- robot_application_->reset_controlled_stop();
- manual_command() = {};
- manual_control_active() = false;
  endless_target_key_ = "uninitialized";
  snapshot_.payload = payload_;
  field_dispatch_system_.reset(effective_seed() ^ 0xbb67ae85U);
@@ -263,16 +257,10 @@ void ScenarioSession::reset() {
  const auto* scheduled_lidar = resolved_build_.lidar();
  scheduler_.reset(scheduled_lidar ? 1.0 / scheduled_lidar->scan_hz : 0.0,
  1.0 / decision_hz(), 0.04);
- motion_sequence() = 0;
- actuator_feedback_sequence() = 0;
- command_sequence() = 0;
  manipulator_feedback_sequence_ = 0;
  manipulator_command_sequence_ = 0;
  last_event_time_s_ = -1000.0;
  last_event_code_.clear();
- crossing_execution_segment() = 0;
- crossing_alignment_segment() = 0;
- crossing_segment_alignment_complete() = false;
  was_saturated_ = false;
  rigid_rollover_exposure_s_ = 0.0;
  previous_payload_shock_mps2_ = 0.0;
@@ -281,6 +269,23 @@ void ScenarioSession::reset() {
  build_world();
  if (!robot_application_)
  throw std::logic_error("world construction did not create the ROBOT application");
+ // The application is created by build_world() for the first session. Keep
+ // reset ordering deterministic: no SIM reset path may dereference a ROBOT
+ // composition root before its provider and coordinator have been composed.
+ robot_application_->reset(effective_seed() ^ 0x1f83d9abU);
+ snapshot_.strategy_policy = robot_application_->policy_name();
+ // These execution counters belong to the ROBOT motion runtime. Reset them
+ // only after build_world() has composed the application and its provider.
+ held_command() = {};
+ robot_application_->reset_controlled_stop();
+ manual_command() = {};
+ manual_control_active() = false;
+ motion_sequence() = 0;
+ actuator_feedback_sequence() = 0;
+ command_sequence() = 0;
+ crossing_execution_segment() = 0;
+ crossing_alignment_segment() = 0;
+ crossing_segment_alignment_complete() = false;
  goal_system_.bind(*robot_application_);
  goal_system_.reset(level_.objective, map_manager_);
  snapshot_.goals_reached = goal_system_.goals_reached();
@@ -602,14 +607,15 @@ void ScenarioSession::update_frame_tree() {
    });
  const auto odom_position = robot_application_->estimator().odometry_position();
  const auto& estimated_state = robot_application_->estimator().state();
- const auto estimated_ground = terrain_.sample(estimated_state.position);
+ const auto estimated_ground =
+ robot_application_->estimated_terrain(estimated_state.position);
  frame_tree_.set_transform(
    "odom", "base_footprint",
    {
      {odom_position.x, odom_position.y, estimated_ground.height_m},
      sim::physics::quaternion_from_euler(0.0, 0.0, robot_application_->estimator().odometry_heading_rad()),
    });
- const double base_height = snapshot_.robot_height_m - estimated_ground.height_m;
+ const double base_height = robot_definition_.base_link_height_m;
  const double estimated_roll = estimated_state.attitude_valid
  ? estimated_state.roll_rad
  : std::atan(sim::lateral_grade(estimated_ground, estimated_state.heading_rad));
@@ -652,6 +658,8 @@ void ScenarioSession::build_world() {
  const int width = static_cast<int>(std::ceil(map_definition_.size_m.x / map_definition_.grid_resolution_m));
  const int height = static_cast<int>(std::ceil(map_definition_.size_m.y / map_definition_.grid_resolution_m));
  truth_map_ = std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
+ robot_static_map_ = std::make_unique<sim::GridMap>(
+ width, height, map_definition_.grid_resolution_m);
  recovery_base_map_ =
  std::make_unique<sim::GridMap>(width, height, map_definition_.grid_resolution_m);
  std::vector<CollisionBox> collision_obstacles;
@@ -668,10 +676,13 @@ void ScenarioSession::build_world() {
  const float elevation_m = deployable_map->grid->elevation_m[index];
  if (std::isfinite(elevation_m))
  truth_map_->setElevation(center.x, center.y, elevation_m);
+ if (std::isfinite(elevation_m))
+ robot_static_map_->setElevation(center.x, center.y, elevation_m);
  }
  if (deployable_map->grid->occupancy[index] < 50)
  continue;
  truth_map_->setOccupied(center.x, center.y);
+ robot_static_map_->setOccupied(center.x, center.y);
  }
  }
  for (const auto& obstacle : map_definition_.obstacles) {
@@ -687,12 +698,23 @@ void ScenarioSession::build_world() {
  collision.yaw_rad,
  });
  }
+ std::vector<PhysicalCollisionBox> physical_obstacles;
+ physical_obstacles.reserve(collision_obstacles.size());
+ for (const auto& obstacle : collision_obstacles)
+ physical_obstacles.push_back({obstacle.min, obstacle.max, obstacle.yaw_rad});
  sensor_system_ = std::make_unique<sim::SensorSystem>(
  effective_seed(), effective_seed() ^ 0x9e3779b9U);
- collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(robot_definition_.collision_radius_m));
+ // The collision monitor is ROBOT-owned, but its static geometry is assembled
+ // from the SIM map here. Defer the bind until the application has been
+ // composed; no build-world step may call through a null application root.
+ auto configure_collision_monitor = [&] {
  robot_application_->configure_collision_monitor(
  map_definition_.size_m, robot_definition_.collision_radius_m,
  std::move(collision_obstacles));
+ };
+ physical_collision_judge_ = std::make_unique<PhysicalCollisionJudge>(
+ map_definition_.size_m, robot_definition_.collision_radius_m,
+ std::move(physical_obstacles));
  std::vector<sim::HeightPatch> active_terrain;
  for (const auto& patch : map_definition_.terrain) {
   if (!active_in_level(patch.active_in, level_id_)) {
@@ -882,7 +904,32 @@ void ScenarioSession::build_world() {
  chassis_caps_.geometry.support_polygon = convex_support_hull(std::move(support_contacts));
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
- robot_application_->reset_chassis_controllers();
+ const auto runtime_has_actuator_channel = [&](const std::string& channel) {
+ return std::any_of(robot_definition_.articulation.actuators.begin(),
+ robot_definition_.articulation.actuators.end(),
+ [&](const auto& actuator) { return actuator.channel == channel; });
+ };
+ const bool runtime_differential_control =
+ (robot_definition_.drive_type == "differential" || robot_definition_.drive_type == "tracked") &&
+ chassis_->accepts_actuator_duty() &&
+ ((runtime_has_actuator_channel("left") && runtime_has_actuator_channel("right")) ||
+ (runtime_has_actuator_channel("front_left_drive") && runtime_has_actuator_channel("middle_left_drive") &&
+ runtime_has_actuator_channel("rear_left_drive") && runtime_has_actuator_channel("front_right_drive") &&
+ runtime_has_actuator_channel("middle_right_drive") && runtime_has_actuator_channel("rear_right_drive")));
+ const bool runtime_ackermann_control =
+ robot_definition_.drive_type == "ackermann" && chassis_->accepts_actuator_duty() &&
+ runtime_has_actuator_channel("rear_left_drive") && runtime_has_actuator_channel("rear_right_drive") &&
+ runtime_has_actuator_channel("front_left_steer") && runtime_has_actuator_channel("front_right_steer");
+ const bool runtime_holonomic_control =
+ (robot_definition_.drive_type == "swerve" || robot_definition_.drive_type == "mecanum") &&
+ chassis_->accepts_actuator_duty() && runtime_has_actuator_channel("front_left_drive") &&
+ runtime_has_actuator_channel("front_right_drive") && runtime_has_actuator_channel("rear_left_drive") &&
+ runtime_has_actuator_channel("rear_right_drive") &&
+ (robot_definition_.drive_type == "mecanum" ||
+ (runtime_has_actuator_channel("front_left_steer") && runtime_has_actuator_channel("front_right_steer") &&
+ runtime_has_actuator_channel("rear_left_steer") && runtime_has_actuator_channel("rear_right_steer")));
+ auto configure_controllers = [&] {
+robot_application_->reset_chassis_controllers();
  const auto has_actuator_channel = [&](const std::string& channel) {
  return std::any_of(robot_definition_.articulation.actuators.begin(),
  robot_definition_.articulation.actuators.end(),
@@ -964,6 +1011,8 @@ void ScenarioSession::build_world() {
  wheel_gains);
  }
 
+  };
+
  // LSRI composition root. The mission uses both ends because it contains the
  // simulator and the autonomy loop in one process. A hardware runner gives
  // the platform end to a native driver or bridge instead.
@@ -973,19 +1022,18 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
- if (robot_application_->has_differential_controller() ||
- robot_application_->has_ackermann_controller() ||
- robot_application_->has_holonomic_controller()) {
+ if (runtime_differential_control || runtime_ackermann_control ||
+ runtime_holonomic_control) {
  runtime_config.capabilities.command_level =
  sim::runtime::PlatformCommandLevel::Actuator;
- if (robot_application_->has_differential_controller()) {
+ if (runtime_differential_control) {
  runtime_config.capabilities.actuator_channels = {
  {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  };
- } else if (robot_application_->has_ackermann_controller()) {
+ } else if (runtime_ackermann_control) {
  runtime_config.capabilities.actuator_channels = {
  {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
@@ -1032,6 +1080,8 @@ void ScenarioSession::build_world() {
  robot_application_ = std::make_unique<sim::robot::RobotApplication>(
  *runtime_channel_, high_level_policy_);
  }
+ configure_controllers();
+ configure_collision_monitor();
  robot_application_->bind_map_provider(map_manager_);
  manipulator_channel_.reset();
  manipulator_runtime_.reset();
@@ -1090,17 +1140,25 @@ void ScenarioSession::build_world() {
                                    chassis_caps_.planning_clearance_margin_m +
  level_.planning_localization_margin_m;
  planning_clearance_m_ = planning_clearance;
- planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
+ planning_map_ = std::make_unique<sim::GridMap>(robot_static_map_->inflated(planning_clearance));
  const auto* mapping_lidar = resolved_build_.lidar();
  const double mapping_period_s = mapping_lidar ? 1.0 / mapping_lidar->scan_hz : 0.1;
  robot_application_->configure_pipeline(
- *truth_map_, width, height, map_definition_.grid_resolution_m,
+ *robot_static_map_, width, height, map_definition_.grid_resolution_m,
  effective_seed() ^ 0x9e3779b9U,
  sim::ObservedObstacleLayerConfig{
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
  }, &map_manager_);
 	robot_application_->set_motion_policy(motion_policy_);
+ sim::RasterTraversalConfig traversal_config;
+ traversal_config.tire_friction_mu = resolved_build_.traction().friction_mu;
+ traversal_config.tire_rolling_resistance =
+ resolved_build_.traction().rolling_resistance;
+ traversal_config.brake_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
+ traversal_config.roughness_support_base_m =
+ chassis_caps_.geometry.support_length_m;
+ robot_application_->set_traversal_config(traversal_config);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -1165,9 +1223,13 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  if (snapshot_.status == MissionStatus::Ready)
   result_.astar_expanded = 0;
  const auto& spawn = map_definition_.markers.at(level_.objective.spawn);
+ // The SIM spawn is only the initial condition. Once the robot has started,
+ // route planning must use the pose estimated by ROBOT from LSRI observations;
+ // the MuJoCo pose is retained for scoring and replay only.
+ const auto& estimate = robot_application_->estimator().state();
  const Pose start = snapshot_.status == MissionStatus::Ready
-                      ? spawn
-                      : Pose{snapshot_.robot.x, snapshot_.robot.y, snapshot_.robot.theta};
+ ? spawn
+ : Pose{estimate.position.x, estimate.position.y, estimate.heading_rad};
  const auto* equipped_motor = resolved_build_.motor();
  const double stall_force =
    equipped_motor ? equipped_motor->stall_force_N : robot_definition_.motor.stall_force_N;
@@ -1252,8 +1314,8 @@ void ScenarioSession::select_next_goal(const Pose& start) {
    cost.traversal_cost += segment_distance * multiplier;
    cost.worst_multiplier = std::max(cost.worst_multiplier, multiplier);
  const sim::Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
- const double ride_speed = sim::roughness_ride_speed_limit(
- terrain_.sample(midpoint).roughness,
+ const double ride_speed = robot_application_->ride_speed_limit(
+ robot_application_->estimated_terrain(midpoint).roughness,
  chassis_caps_.geometry.support_length_m, 0.5);
  // Route cost expresses how choppy or demanding a segment is; it is not a
  // time estimate. The local planner also caps speed where relief shorter
@@ -1641,8 +1703,6 @@ void ScenarioSession::step() {
  } else if (scheduler_.decision_due(snapshot_.time_s)) {
   decide_control();
  }
- if (!manual_control_active() && !endless_mode_)
-  apply_goal_stop_constraint();
  apply_motion();
  snapshot_.time_s += fixed_step_s;
  result_.time_s = snapshot_.time_s;
@@ -1661,9 +1721,11 @@ void ScenarioSession::step() {
  }
 
  if (endless_mode_) {
+ const auto& estimate = robot_application_->estimator().state();
   const auto world_transitions =
     world_activity_system_.update(snapshot_.time_s, fixed_step_s, map_definition_,
-                                  {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.v);
+ estimate.position, std::hypot(estimate.linear_velocity_mps,
+ estimate.lateral_velocity_mps));
   snapshot_.world_activity = world_activity_system_.state();
   for (const auto& transition : world_transitions) {
    switch (transition.kind) {
@@ -1683,7 +1745,8 @@ void ScenarioSession::step() {
   }
   const auto transitions =
     field_dispatch_system_.update(snapshot_.time_s, fixed_step_s, map_definition_,
-                                  {snapshot_.robot.x, snapshot_.robot.y}, snapshot_.robot.v);
+ estimate.position, std::hypot(estimate.linear_velocity_mps,
+ estimate.lateral_velocity_mps));
   for (const auto& transition : transitions) {
    switch (transition.kind) {
    case FieldDispatchTransitionKind::Opened:
@@ -1709,8 +1772,10 @@ void ScenarioSession::step() {
  const auto arrival =
    endless_mode_
      ? std::optional<GoalArrival>{}
- : goal_system_.update(level_.objective, {snapshot_.robot.x, snapshot_.robot.y},
- std::hypot(snapshot_.robot.v, snapshot_.robot.lateral_v),
+ : goal_system_.update(level_.objective,
+ robot_application_->estimator().state().position,
+ std::hypot(robot_application_->estimator().state().linear_velocity_mps,
+ robot_application_->estimator().state().lateral_velocity_mps),
  completion_allowed, fixed_step_s);
  if (arrival) {
   const auto& goal = arrival->goal;
@@ -1779,44 +1844,6 @@ void ScenarioSession::step() {
   // The fixed simulation tick is 20 ms. A 40 ms replay cadence keeps every
   // seek gap within the UI's 50 ms contract without fabricating interpolated
   // states (50 ms would alias into occasional 60 ms gaps).
- }
-}
-
-void ScenarioSession::apply_goal_stop_constraint() {
- const GoalStep* goal = active_goal();
- if (!goal)
-  return;
- const double chassis_cruise = cruise_speed_mps();
- const double arrival_speed = goal->action == "inspect"
- ? 0.18
- : level_.objective.max_arrival_speed_mps;
- if (arrival_speed >= chassis_cruise)
- return;
- const auto marker = map_definition_.markers.find(goal->marker);
- if (marker == map_definition_.markers.end())
-  return;
- const double remaining = std::max(
-   0.0, distance({snapshot_.robot.x, snapshot_.robot.y}, as_vec(marker->second)) - goal->radius_m * 0.55);
- const auto terrain_state = terrain_.sample({snapshot_.robot.x, snapshot_.robot.y});
- const double grade = sim::longitudinal_grade(terrain_state, snapshot_.robot.theta);
- const double downhill_acceleration = std::max(
- 0.0, -9.81 * grade / std::sqrt(1.0 + grade * grade));
- const double deceleration = std::max(
- 0.10, resolved_build_.traction().brake_decel_mps2 - downhill_acceleration);
- const double stop_cap = std::sqrt(
- arrival_speed * arrival_speed + 2.0 * deceleration * remaining);
- if (remaining <= 0.04) {
-  held_command().target_v = 0.0;
- held_command().target_lateral_v = 0.0;
-  held_command().target_w = 0.0;
- } else {
- const double requested_speed =
- std::hypot(held_command().target_v, held_command().target_lateral_v);
- if (requested_speed > stop_cap && requested_speed > 1e-9) {
- const double scale = stop_cap / requested_speed;
- held_command().target_v *= scale;
- held_command().target_lateral_v *= scale;
- }
  }
 }
 
@@ -2122,7 +2149,8 @@ void ScenarioSession::consume_lidar_observation(
  throw std::runtime_error("lidar observation is missing raw or static-reference scan");
  }
  const auto& estimate = robot_application_->estimator().state();
- const auto estimated_ground = terrain_.sample(estimate.position);
+ const auto estimated_ground =
+ robot_application_->estimated_terrain(estimate.position);
  const auto perception = robot_application_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
@@ -2155,8 +2183,9 @@ void ScenarioSession::consume_lidar_observation(
 if (first_detection && snapshot_.dynamic_object_detected) {
   double first_range = 0.0;
   for (const auto& obstacle : snapshot_.dynamic_obstacles) {
-   const double range = std::hypot(obstacle.estimated_position.x - snapshot_.robot.x,
-                                   obstacle.estimated_position.y - snapshot_.robot.y);
+ const double range = std::hypot(
+ obstacle.estimated_position.x - snapshot_.estimated_position.x,
+ obstacle.estimated_position.y - snapshot_.estimated_position.y);
    if (first_range <= 0.0 || range < first_range) {
     first_range = range;
    }
@@ -2241,7 +2270,7 @@ void ScenarioSession::refresh_operator_route() {
   target_key =
     "intent:" + std::to_string(field_intent.revision) + ":" + field_intent_kind_id(field_intent.kind);
   if (field_intent.kind == FieldIntentKind::Follow) {
-   const sim::Vec2 robot{snapshot_.robot.x, snapshot_.robot.y};
+ const sim::Vec2 robot = robot_application_->estimator().state().position;
    const double separation = distance(robot, target);
    constexpr double kCompanionDistanceM = 1.15;
    constexpr double kCompanionHoldRadiusM = 1.35;
@@ -2278,10 +2307,11 @@ void ScenarioSession::refresh_operator_route() {
  if (target_key.empty())
   return;
 
- const sim::Vec2 start{snapshot_.robot.x, snapshot_.robot.y};
+ const auto& estimate = robot_application_->estimator().state();
+ const sim::Vec2 start = estimate.position;
  const double target_heading = std::atan2(target.y - start.y, target.x - start.x);
  const std::vector<autonomy::PlanningPose> waypoints{
-   {start, snapshot_.robot.theta},
+ {start, estimate.heading_rad},
    {target, target_heading, 0.85},
  };
  auto plan = robot_application_->plan_global(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
@@ -2413,21 +2443,9 @@ void ScenarioSession::apply_motion() {
  snapshot_.control.right_speed_pid_p = motors.differential ? motors.right.pid_p : 0.0;
  snapshot_.control.right_speed_pid_i = motors.differential ? motors.right.pid_i : 0.0;
  snapshot_.control.right_speed_pid_d = motors.differential ? motors.right.pid_d : 0.0;
- // Onboard-observable slip estimate. Articulated differential encoders now
- // read physical joint motion, so both they and tracked drives have tread
- // state independent of body motion. Candidate is the post-step body state;
- // comparing against the previous snapshot keeps both accelerations on the
- // same sample interval.
- if (chassis_caps_.tread_slip_observable) {
-  const double tread_v = (snapshot_.control.left_measured_mps + snapshot_.control.right_measured_mps) / 2.0;
- robot_application_->update_slip_diagnostics(
-     true, tread_v, candidate.v, fixed_step_s);
- if (robot_application_->slip_episodes() >
-     static_cast<int>(slip_episode_times_.size())) {
-    slip_episode_times_.push_back(snapshot_.time_s);
-  }
- }
- snapshot_.traction_slip_observed = robot_application_->slip_detected();
+ // ROBOT slip state is updated below from the delivered encoder and IMU
+ // observations. The MuJoCo plant's contact/slip flags remain SIM truth for
+ // scoring only and never alter the LSRI observation or estimator policy.
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
@@ -2594,28 +2612,20 @@ void ScenarioSession::apply_motion() {
   return;
  }
 
- CollisionObservation collision_observation;
- collision_observation.position = candidate_position;
- collision_observation.time_s = snapshot_.time_s;
- collision_observation.dt_s = fixed_step_s;
- collision_observation.backend = CollisionBackend::RigidBody;
- collision_observation.rigid_static_contact =
- have_rigid_state && rigid_state.static_collision;
- collision_observation.occupancy = collision_map_.get();
- collision_observation.actors.reserve(actual_actors_.size());
+ if (!physical_collision_judge_)
+ throw std::logic_error("SIM physical collision judge is not configured");
+ std::vector<PhysicalActorTruth> physical_actors;
+ physical_actors.reserve(actual_actors_.size());
  for (std::size_t index = 0; index < actual_actors_.size(); ++index) {
- const bool rigid_contact = have_rigid_state &&
- index < agents_.size() &&
- std::find(rigid_state.actor_collisions.begin(), rigid_state.actor_collisions.end(),
- agents_[index].id) != rigid_state.actor_collisions.end();
- collision_observation.actors.push_back({
- actual_actors_[index],
+ physical_actors.push_back({
+ index < agents_.size() ? agents_[index].id : std::to_string(index),
+ actual_actors_[index].p,
+ actual_actors_[index].radius,
  index < agents_.size() && agents_[index].social,
- rigid_contact,
  });
  }
- const auto collision = robot_application_->assess_collision(
- collision_observation);
+ const auto collision = physical_collision_judge_->assess(
+ candidate_position, rigid_state, physical_actors);
  if (collision.static_clearance_m < result_.min_static_clearance_m) {
  result_.min_static_clearance_m = collision.static_clearance_m;
  result_.min_static_clearance_time_s = snapshot_.time_s;
@@ -2678,38 +2688,14 @@ void ScenarioSession::apply_motion() {
  result_.energy_wh += estimated_total_power_w * fixed_step_s / 3600.0;
 
  double slip = resolved_build_.traction().slip_scale;
- const double traction = surface_traction(candidate_position);
- if (traction < 1.0) {
-  slip /= traction;
- }
- // Traction saturation (model-side contact state, like motor force: used for
- // odometry degradation, never displayed as a sensed reading). Rising edge
- // counts a slip episode for the debrief.
- // The provider may report a slip episode before its hysteretic boolean
- // latch is set. Publish that measured wheel/contact residual as degraded
- // odometry immediately; otherwise the estimator keeps integrating a free
- // spinning wheel for the confirmation window and can move the pose metres
- // ahead of the body on a steep grade.
- // Small tread/body residuals are expected while steering and during contact
- // settling. Treat them as traction saturation only once the residual is a
- // material fraction of wheel speed; otherwise the estimator would repeatedly
- // discard valid translation on ordinary turns and never converge on a goal.
- const bool saturated = motors.traction_saturated || rigid_state.drive_slipping ||
+ // This is a configured encoder uncertainty scale. It is not modified by
+ // MuJoCo contact truth; native providers publish their own measured quality.
+ const bool physical_saturated = motors.traction_saturated || rigid_state.drive_slipping ||
  rigid_state.max_drive_slip_ratio > 0.20;
- snapshot_.traction_saturated = saturated;
- if (saturated && !was_saturated_) {
+ if (physical_saturated && !was_saturated_) {
   ++result_.slip_events;
  }
- was_saturated_ = saturated;
- if (saturated) {
- // LSRI's slip_scale is an uncertainty multiplier, not the tire's nominal
- // material coefficient. A high-grip tire may have a nominal value below
- // one, but once the provider has actually observed traction saturation the
- // estimator must still receive an unambiguous elevated-slip observation.
- // Keep the material value for healthy contact and raise the saturated
- // sample above the estimator's recovery threshold.
- slip = std::max(2.0, std::max(1.0, slip) * 3.0);
- }
+ was_saturated_ = physical_saturated;
  const double encoder_v = motors.measured_forward_mps;
  const double encoder_w = motors.measured_yaw_radps;
  sim::ObservationFrame motion_observation;
@@ -2755,9 +2741,26 @@ void ScenarioSession::apply_motion() {
  if (!delivered_motion) {
   throw std::runtime_error("runtime channel did not deliver the simulated motion observation");
  }
+ if (delivered_motion->encoders && delivered_motion->imu &&
+ chassis_caps_.tread_slip_observable) {
+ robot_application_->update_slip_from_sensors(
+ *delivered_motion->encoders, *delivered_motion->imu, fixed_step_s);
+ }
+ snapshot_.traction_slip_observed = robot_application_->slip_detected();
+ // This field is an onboard diagnostic for policy/UI. Physical slip truth is
+ // retained separately in MissionResult::slip_events for SIM scoring.
+ snapshot_.traction_saturated = snapshot_.traction_slip_observed;
+ if (robot_application_->slip_episodes() >
+ static_cast<int>(slip_episode_times_.size())) {
+ slip_episode_times_.push_back(snapshot_.time_s);
+ }
  robot_application_->estimator().update(*delivered_motion, fixed_step_s);
  if (delivered_motion->absolute_pose) {
   robot_application_->estimator().correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
+ }
+ if (delivered_motion->imu) {
+ robot_application_->observe_terrain_motion(
+ robot_application_->estimator().state(), *delivered_motion->imu, fixed_step_s);
  }
  snapshot_.estimated_position = robot_application_->estimator().state().position;
  snapshot_.estimated_heading = robot_application_->estimator().state().heading_rad;
@@ -3034,21 +3037,21 @@ void ScenarioSession::seek_replay(double time_s) {
 double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double cruise = cruise_speed_mps();
  const double lookahead = property(behavior_, "lookahead_m");
- const double speed = std::abs(snapshot_.robot.v);
+ const double speed = std::abs(robot_application_->estimator().state().linear_velocity_mps);
  sim::SafeStopLimits stop_limits;
  stop_limits.brake_decel_mps2 = resolved_build_.traction().brake_decel_mps2;
- stop_limits.longitudinal_grade = sim::longitudinal_grade(
- terrain_.sample({nav_x, nav_y}), snapshot_.estimated_heading);
+ stop_limits.longitudinal_grade = robot_application_->longitudinal_grade(
+ robot_application_->estimated_terrain({nav_x, nav_y}), snapshot_.estimated_heading);
  stop_limits.center_of_mass_x_m = combined_center_x_m();
  stop_limits.center_of_mass_height_m = combined_center_height_m();
  const double decel = robot_application_->safe_stop_deceleration_limit(
  chassis_caps_, stop_limits);
  const double preview =
  std::max(lookahead, speed * speed / (2.0 * std::max(0.05, decel)) + speed * 2.0 / decision_hz());
- double grip = wheel_ground({nav_x, nav_y}).mu_eff;
+ double grip = robot_application_->estimated_contact({nav_x, nav_y}).friction_mu;
  const double support_width = chassis_caps_.geometry.support_width_m;
  const double center_height = combined_center_height_m();
- const double static_limit = sim::static_rollover_angle(support_width, center_height);
+ const double static_limit = robot_application_->static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
  for (size_t i = robot_application_->route_path_index() + 1; i < planned_route_.size(); ++i) {
@@ -3056,16 +3059,18 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
   if (along > preview) {
    break;
   }
-  grip = std::min(grip, wheel_ground(planned_route_[i].position).mu_eff);
+ grip = std::min(grip,
+ robot_application_->estimated_contact(planned_route_[i].position).friction_mu);
   const double route_heading = planned_route_[i].heading_rad;
-  const double cross_grade = sim::lateral_grade(terrain_.sample(planned_route_[i].position), route_heading);
+ const double cross_grade = robot_application_->lateral_grade(
+ robot_application_->estimated_terrain(planned_route_[i].position), route_heading);
   const double surface_angle = std::atan(std::abs(cross_grade));
   const double rollover_margin =
     9.81 * std::cos(surface_angle) * std::tan(static_limit) - 9.81 * std::sin(surface_angle);
   lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_route_, robot_application_->route_path_index(), cruise, lateral_accel_limit,
+ return robot_application_->corner_speed_cap(planned_route_, robot_application_->route_path_index(), cruise, lateral_accel_limit,
  preview, yaw_cap_rads_);
 }
 
@@ -3149,52 +3154,14 @@ sim::GroundContact ScenarioSession::wheel_ground(sim::Vec2 position) const {
 }
 
 double ScenarioSession::navigation_traversal_cost(sim::Vec2 from, sim::Vec2 to) const {
- const double segment_length = distance(from, to);
- if (segment_length < 1e-9) {
-  return 1.0;
- }
- const sim::Vec2 midpoint{(from.x + to.x) * 0.5, (from.y + to.y) * 0.5};
- const auto contact = wheel_ground(midpoint);
+ // Planning consumes the active Robot Map and ROBOT's calibrated terrain
+ // priors. The SIM contact resolver below is reserved for MuJoCo stepping;
+ // it must not let weather, exact material friction, or contact response
+ // alter the autonomous route decision in the same cycle.
  auto capability = terrain_capability_;
- capability.friction_mu = contact.mu_eff;
- const double terrain_cost = terrain_.traversal_cost(from, to, capability);
- if (!std::isfinite(terrain_cost)) {
-  return terrain_cost;
- }
-
- const auto from_sample = terrain_.sample(from);
- const auto to_sample = terrain_.sample(to);
- // Offset-axle rotation produces millimetre-scale segments. A secant over
- // that distance amplifies the authored roughness waveform into a fictitious
- // downhill grade and can reject even a zero-translation recovery command.
- // TerrainModel uses the same local-gradient rule for short segments; keep
- // the stopping/traction calculation on that contract as well.
- const double signed_grade = segment_length < 0.05
- ? sim::longitudinal_grade(from_sample, std::atan2(
- to.y - from.y, to.x - from.x))
- : (to_sample.height_m - from_sample.height_m) / segment_length;
- const double slope = std::atan(std::abs(signed_grade));
- const double downhill_gravity_mps2 = signed_grade < 0.0 ? 9.81 * std::sin(slope) : 0.0;
- const double grip_brake_mps2 = std::max(0.0, contact.mu_eff) * 9.81 * std::cos(slope);
- const double available_brake_mps2 =
- std::min(resolved_build_.traction().brake_decel_mps2, grip_brake_mps2);
- if (downhill_gravity_mps2 > available_brake_mps2 + 1e-9) {
-  return std::numeric_limits<double>::infinity();
- }
- const double brake_usage = downhill_gravity_mps2 / std::max(0.1, available_brake_mps2);
- const double dry_tire_mu = resolved_build_.traction().friction_mu / 0.8;
- const double low_grip_penalty = std::max(0.0, dry_tire_mu / std::max(0.08, contact.mu_eff) - 1.0);
- double extra_ground_drag = 0.0;
- if (const auto* material = constructed_surface_at(midpoint)) {
- extra_ground_drag = std::max(0.0, material->rolling_drag);
- } else for (const auto& surface : map_definition_.surfaces) {
-  if (active_in_level(surface.active_in, level_id_) && inside(midpoint, surface)) {
-   extra_ground_drag = std::max(0.0, surface.rolling_drag);
-   break;
-  }
- }
- const double rolling_penalty = extra_ground_drag * 5.0;
- return terrain_cost * (1.0 + 1.8 * brake_usage * brake_usage + 0.35 * low_grip_penalty + rolling_penalty);
+ capability.friction_mu = robot_application_->estimated_contact(
+ {(from.x + to.x) * 0.5, (from.y + to.y) * 0.5}).friction_mu;
+ return robot_application_->estimated_traversal_cost(from, to, capability);
 }
 
 } // namespace mission

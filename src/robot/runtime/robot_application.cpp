@@ -128,6 +128,33 @@ const runtime::IMapProvider& RobotApplication::map_provider() const {
  return *map_provider_;
 }
 
+void RobotApplication::refresh_traversal_map() {
+ if (!map_provider_)
+ return;
+ auto snapshot = map_provider_->current_snapshot();
+ if (!snapshot || snapshot.get() == traversal_map_.get())
+ return;
+ traversal_.bind(std::move(snapshot));
+ traversal_map_ = traversal_.ready() ?
+ map_provider_->current_snapshot() : nullptr;
+}
+
+TerrainSample RobotApplication::estimated_terrain(Vec2 position) {
+ refresh_traversal_map();
+ return traversal_.sample(position);
+}
+
+TraversalContactEstimate RobotApplication::estimated_contact(Vec2 position) {
+ refresh_traversal_map();
+ return traversal_.contact(position);
+}
+
+double RobotApplication::estimated_traversal_cost(Vec2 from, Vec2 to,
+ const TerrainCapability& capability) {
+ refresh_traversal_map();
+ return traversal_.traversal_cost(from, to, capability);
+}
+
 void RobotApplication::bind_map_catalog(
  runtime::MapCatalog& catalog, runtime::MapManager& active_map) {
  map_catalog_ = &catalog;
