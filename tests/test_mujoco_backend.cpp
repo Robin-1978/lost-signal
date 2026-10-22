@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "robot/iface/task.hpp"
@@ -53,28 +55,61 @@ int main() {
     assert(w.truth().forward_mps >= 0.0);
   }
 
-  // Brake holds; grade hold without rollback (main's slope-launch P1 shape).
+  // Slope P1 on the engine (mirrors test_contact, engine tolerances:
+  // contact stiction, never exact zeros — the engine owns the creep).
   {
+    // Gentle incline, zero duty: bounded creep, never the P1 runaway.
+    sim::world::World g = make_mujoco_diff();
+    g.set_incline(0.005);
+    set_diff_duty(g, 0.0);
+    for (int i = 0; i < 200; ++i) g.step(0.02);
+    assert(std::abs(g.truth().body_x_m) < 1.0);
+    assert(std::abs(g.truth().forward_mps) < 0.5);
+    // Steep grade, zero duty: breaks away backward, stays backward.
+    sim::world::World steep = make_mujoco_diff();
+    steep.set_incline(0.3);
+    set_diff_duty(steep, 0.0);
+    for (int i = 0; i < 100; ++i) steep.step(0.02);
+    assert(steep.truth().body_x_m < -1.0);
+    assert(steep.truth().forward_mps < -0.5);
+    // Service brake holds the steep grade once its lag ramps in.
     sim::world::MotorParams mp;
     mp.brake_max_torque_Nm = 5.0;
-    sim::world::World w = make_mujoco_diff();
-    w.set_motor_params(mp);
-    set_diff_duty(w, 1.0);
-    for (int i = 0; i < 200; ++i) w.step(0.02);
-    set_diff_duty(w, 0.0);
-    w.set_brake_request(0, 1.0);
-    w.set_brake_request(1, 1.0);
-    for (int i = 0; i < 200; ++i) w.step(0.02);
-    assert(std::abs(w.truth().forward_mps) < 0.05);
-    const double x_hold = w.truth().body_x_m;
-    w.set_incline(0.1);  // tilt gravity: held by the brake, no rollback
-    // Parking-brake-only grade hold (main-verbatim smoothing brake):
-    // bounded creep, never the P1 runaway. Exact standstill belongs to
-    // the analytic plant's stiction; the closed-loop chassis brake (the
-    // HIL norm) holds tighter than either.
-    for (int i = 0; i < 200; ++i) w.step(0.02);
-    assert(w.truth().body_x_m >= x_hold - 0.3);
-    assert(std::abs(w.truth().forward_mps) < 0.05);
+    sim::world::World held = make_mujoco_diff();
+    held.set_motor_params(mp);
+    held.set_incline(0.3);
+    set_diff_duty(held, 0.0);
+    held.set_brake_request(0, 1.0);
+    held.set_brake_request(1, 1.0);
+    for (int i = 0; i < 200; ++i) held.step(0.02);
+    assert(held.truth().body_x_m > -0.5);
+    assert(std::abs(held.truth().forward_mps) < 0.15);
+    // Non-finite grade fails closed to flat, never NaN-poisons.
+    held.set_incline(std::numeric_limits<double>::quiet_NaN());
+    held.step(0.02);
+    assert(std::isfinite(held.truth().body_x_m));
+    assert(std::isfinite(held.truth().forward_mps));
+    // Slope launch: held on grade by brake, duty on + brake off climbs
+    // without sustained rollback.
+    sim::world::World launch = make_mujoco_diff();
+    launch.set_motor_params(mp);
+    launch.set_incline(0.1);
+    set_diff_duty(launch, 0.0);
+    launch.set_brake_request(0, 1.0);
+    launch.set_brake_request(1, 1.0);
+    for (int i = 0; i < 100; ++i) launch.step(0.02);
+    const double x_pre = launch.truth().body_x_m;
+    set_diff_duty(launch, 1.0);
+    launch.set_brake_request(0, 0.0);
+    launch.set_brake_request(1, 0.0);
+    double x_min = x_pre;
+    for (int i = 0; i < 200; ++i) {
+      launch.step(0.02);
+      x_min = std::min(x_min, launch.truth().body_x_m);
+    }
+    assert(x_min >= x_pre - 0.05);  // no sustained rollback on release
+    assert(launch.truth().body_x_m > x_pre + 1.0);  // climbs the grade
+    assert(launch.truth().forward_mps > 0.5);
   }
 
   // Determinism: identical runs, identical truth (bit-identical replay).
