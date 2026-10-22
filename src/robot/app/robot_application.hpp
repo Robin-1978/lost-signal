@@ -6,36 +6,69 @@
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/core/status.hpp"
 #include "robot/executive/executive.hpp"
+#include "robot/iface/channel.hpp"
 #include "robot/iface/command.hpp"
+#include "robot/iface/endpoint.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 #include "robot/iface/task.hpp"
+#include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::app {
 
-// Composition root and single tick boundary for one robot process.
-// SIM, replay, UI, or native providers are adapters around this class;
-// none of them may reach AutonomyCoordinator or RobotExecutive directly.
+// Composition root for one robot process. Owns lifecycle and ordering of
+// Executive + AutonomyCoordinator + channel + map view + description.
+//
+// Provider model (Sim or Real, same seam):
+//   1. startup: register every endpoint via register_provider() with a stable
+//      endpoint_id, role, backend, and frame_id;
+//   2. run: providers push ObservationFrames via publish_observation()
+//      (validated, sequenced, queued in RuntimeChannel);
+//   3. tick(): drains the channel, runs the coordinator transaction, and
+//      publishes one validated MotionCommand back into the channel;
+//   4. providers pull the command via take_command() (expiry enforced).
+//
+// SIM, replay, UI, and native drivers are adapters around this class. None
+// may reach AutonomyCoordinator or RobotExecutive directly, and none may
+// read WorldTruth (sim-owned) into this path.
 class RobotApplication {
  public:
-  explicit RobotApplication(std::unique_ptr<iface::IMapProvider> maps);
+  explicit RobotApplication(
+      std::unique_ptr<iface::IMapProvider> maps,
+      platform::RobotDescription desc = platform::RobotDescription{
+          .robot_id = "ro1",
+          .version = 1,
+          .links = {{"base_link", "world"}, {"lidar_link", "base_link"}},
+          .sensors = {{"ro1.lidar", "lidar_link"}},
+          .limits = {.max_forward_mps = 2.0,
+                     .max_yaw_rate_radps = 2.0,
+                     .footprint_radius_m = 0.4}});
 
+  // Task / map intent (typed, no coordinates from SIM truth).
   core::Status submit_task(const iface::TaskRequest& req);
   core::Status request_map(const std::string& map_id);
 
-  // Provider-neutral ingestion: the only path from LSRI observations into
-  // estimator/perception state.
-  void publish_observation(const iface::ObservationFrame& obs);
+  // Provider bring-up: claim (endpoint_id, role) ownership.
+  bool register_provider(const iface::EndpointDescriptor& desc);
 
-  // One deterministic cycle: executive observation -> autonomy -> validated
-  // command. Always returns a valid command (safe stop on failure).
+  // Provider -> robot: validated + queued, false when rejected.
+  bool publish_observation(const iface::ObservationFrame& obs);
+  // Robot -> provider: newest non-expired command, else safe stop.
+  iface::MotionCommand take_command(core::MonotonicNs now_ns);
+
+  // One deterministic cycle. Always returns a valid command.
   iface::MotionCommand tick(core::MonotonicNs now_ns);
 
   iface::TaskStatus task_status() const;
   iface::MapSnapshot active_map() const;
+  iface::ChannelHealth channel_health() const;
+  const platform::RobotDescription& description() const { return desc_; }
 
  private:
   std::unique_ptr<iface::IMapProvider> maps_;
+  platform::RobotDescription desc_;
+  iface::EndpointRegistry registry_;
+  iface::RuntimeChannel channel_;
   autonomy::AutonomyCoordinator coordinator_;
   executive::RobotExecutive executive_;
 };

@@ -7,6 +7,8 @@ int main() {
   using namespace lost_signal::robot;
 
   app::RobotApplication app(nullptr);
+  assert(app.register_provider({"test.lidar", iface::EndpointRole::kLidar,
+                                iface::ProviderBackend::kNative, "lidar_link"}));
 
   // No observation yet -> must fail closed to safe stop.
   iface::MotionCommand cmd0 = app.tick(1'000'000);
@@ -14,9 +16,19 @@ int main() {
 
   // Invalid observation must not advance state.
   iface::ObservationFrame bad;
-  app.publish_observation(bad);
+  assert(!app.publish_observation(bad));
   iface::MotionCommand cmd1 = app.tick(2'000'000);
   assert(cmd1.is_safe_stop());
+
+  // Unregistered source must never enter the decision path.
+  iface::ObservationFrame rogue;
+  rogue.sequence = 1;
+  rogue.stamp_ns = 2'500'000;
+  rogue.source = "rogue.lidar";
+  rogue.frame = core::Frame::kLidarLink;
+  rogue.scan_valid = true;
+  rogue.ranges_m = {3.0f};
+  assert(!app.publish_observation(rogue));
 
   // Valid observation still safe-stops in v1 skeleton, but is accepted.
   iface::ObservationFrame good;
@@ -27,7 +39,7 @@ int main() {
   good.scan_valid = true;
   good.ranges_m = {3.0f};
   assert(iface::valid_observation_frame(good));
-  app.publish_observation(good);
+  assert(app.publish_observation(good));
   iface::MotionCommand cmd2 = app.tick(3'000'000);
   assert(cmd2.is_safe_stop());
   assert(iface::valid_motion_command(cmd2, 3'000'000));
@@ -36,9 +48,15 @@ int main() {
   iface::ObservationFrame stale = good;
   stale.sequence = 1;
   stale.stamp_ns = 4'000'000;
-  app.publish_observation(stale);
+  assert(!app.publish_observation(stale));
   iface::MotionCommand cmd3 = app.tick(4'000'000);
   assert(cmd3.is_safe_stop());
+
+  // Take path enforces expiry: command from t=4ms is dead at t=1s.
+  iface::MotionCommand taken = app.take_command(4'000'000 + 100'000'000);
+  assert(taken.is_safe_stop());
+  iface::MotionCommand expired = app.take_command(2'000'000'000);
+  assert(expired.is_safe_stop());
 
   // Task intent crosses as typed request only.
   iface::TaskRequest req;

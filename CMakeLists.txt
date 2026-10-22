@@ -13,9 +13,17 @@ target_include_directories(lost_signal_robot_core PUBLIC src)
 
 add_library(lost_signal_robot_iface STATIC
   src/robot/iface/iface.cpp
+  src/robot/iface/endpoint.cpp
+  src/robot/iface/channel.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
+
+add_library(lost_signal_robot_platform STATIC
+  src/robot/platform/description.cpp
+)
+target_include_directories(lost_signal_robot_platform PUBLIC src)
+target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_iface)
 
 add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
@@ -36,6 +44,7 @@ target_include_directories(lost_signal_robot_app PUBLIC src)
 target_link_libraries(lost_signal_robot_app PUBLIC
   lost_signal_robot_autonomy
   lost_signal_robot_executive
+  lost_signal_robot_platform
 )
 
 add_library(lost_signal_robot_stack INTERFACE)
@@ -88,6 +97,12 @@ add_executable(test_robot_cycle
 )
 target_link_libraries(test_robot_cycle PRIVATE lost_signal_robot_stack)
 add_test(NAME robot_cycle COMMAND test_robot_cycle)
+
+add_executable(test_transport
+  tests/test_transport.cpp
+)
+target_link_libraries(test_transport PRIVATE lost_signal_robot_stack)
+add_test(NAME transport COMMAND test_transport)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

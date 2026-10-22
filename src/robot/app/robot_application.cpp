@@ -18,8 +18,12 @@ class NullMapProvider : public iface::IMapProvider {
 };
 }  // namespace
 
-RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps)
-    : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()) {}
+RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
+                                   platform::RobotDescription desc)
+    : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()),
+      desc_(std::move(desc)) {
+  channel_.activate();
+}
 
 core::Status RobotApplication::submit_task(const iface::TaskRequest& req) {
   return executive_.submit(req);
@@ -30,15 +34,33 @@ core::Status RobotApplication::request_map(const std::string& map_id) {
   return core::Status::Ok();
 }
 
-void RobotApplication::publish_observation(const iface::ObservationFrame& obs) {
-  coordinator_.ingest_observation(obs);
+bool RobotApplication::register_provider(const iface::EndpointDescriptor& desc) {
+  return registry_.register_endpoint(desc);
+}
+
+bool RobotApplication::publish_observation(const iface::ObservationFrame& obs) {
+  if (!registry_.owns(obs.source, iface::EndpointRole::kLidar) &&
+      !registry_.owns(obs.source, iface::EndpointRole::kImu) &&
+      !registry_.owns(obs.source, iface::EndpointRole::kEncoder)) {
+    return false;  // unregistered source: never enters the decision path
+  }
+  return channel_.publish_observation(obs);
+}
+
+iface::MotionCommand RobotApplication::take_command(core::MonotonicNs now_ns) {
+  return channel_.take_command(now_ns);
 }
 
 iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
-  iface::MotionCommand cmd = coordinator_.update(maps_->active_snapshot(), now_ns);
-  if (!iface::valid_motion_command(cmd, now_ns)) {
-    return iface::MotionCommand::SafeStop(now_ns);
+  for (const auto& obs : channel_.drain_observations()) {
+    coordinator_.ingest_observation(obs);
   }
+  iface::MotionCommand cmd =
+      coordinator_.update(maps_->active_snapshot(), now_ns);
+  if (!iface::valid_motion_command(cmd, now_ns)) {
+    cmd = iface::MotionCommand::SafeStop(now_ns);
+  }
+  channel_.publish_command(cmd);
   return cmd;
 }
 
@@ -48,6 +70,10 @@ iface::TaskStatus RobotApplication::task_status() const {
 
 iface::MapSnapshot RobotApplication::active_map() const {
   return maps_->active_snapshot();
+}
+
+iface::ChannelHealth RobotApplication::channel_health() const {
+  return channel_.health();
 }
 
 }  // namespace lost_signal::robot::app
