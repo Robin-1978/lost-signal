@@ -173,6 +173,30 @@ if(LOST_SIGNAL_WITH_MUJOCO)
   add_test(NAME mujoco_backend COMMAND test_mujoco_backend)
 endif()
 
+# Viewer side: SIM-side presentation only (reads truth, never ROBOT input).
+# Same FetchContent pattern as MuJoCo; the viewer binary is excluded from
+# headless runs (needs a display) but frame logic is unit-tested.
+option(LOST_SIGNAL_WITH_VIEWER "Build raylib viewer + map editor (SIM-side only)" ON)
+if(LOST_SIGNAL_WITH_VIEWER)
+  include(FetchContent)
+  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    raylib
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    GIT_TAG 5.5
+  )
+  FetchContent_MakeAvailable(raylib)
+endif()
+
+if(LOST_SIGNAL_WITH_VIEWER)
+  add_executable(sim_viewer
+    src/sim/viewer/viewer_main.cpp
+  )
+  target_link_libraries(sim_viewer PRIVATE lost_signal_sim_viewer
+    lost_signal_sim_scenario raylib)
+endif()
+
 add_library(lost_signal_sim_world STATIC
   src/sim/world/world.cpp
   src/sim/world/motor.cpp
@@ -237,6 +261,18 @@ add_executable(lost_signal_sim
   src/sim/scenario/sim_main.cpp
 )
 target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
+
+# Viewer model library: frame building + map editing. Pure SIM-side logic,
+# no raylib dependency (headless unit-tested). The raylib frontend links
+# this plus raylib; only the frontend opens a window.
+add_library(lost_signal_sim_viewer STATIC
+  src/sim/viewer/frame_builder.cpp
+)
+target_include_directories(lost_signal_sim_viewer PUBLIC src)
+target_link_libraries(lost_signal_sim_viewer PUBLIC
+  lost_signal_sim_eval
+  lost_signal_sim_world
+)
 
 # Tests
 enable_testing()
@@ -440,6 +476,12 @@ add_executable(test_sim_robot
 )
 target_link_libraries(test_sim_robot PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_robot COMMAND test_sim_robot)
+
+add_executable(test_viewer_frame
+  tests/test_viewer_frame.cpp
+)
+target_link_libraries(test_viewer_frame PRIVATE lost_signal_sim_viewer)
+add_test(NAME viewer_frame COMMAND test_viewer_frame)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
