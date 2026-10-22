@@ -249,6 +249,11 @@ route, pre-activation hold).
   over the driven wheels (a lone wheel carries M/n), so symmetric motion
   integrates exactly ΣF/M; yaw stays kinematic (no yaw-inertia lag — the
   HIL was tuned around instant response, and no fake inertia is added).
+- Actors carry a motion policy (`sim/world/actor_behavior.hpp`): constant
+  velocity (default, yesterday's straight lines), waypoint follow (loop or
+  latched stop), seeded wander (splitmix64 stream per actor — same seed +
+  same dt sequence is bit-identical). A string registry names the kinds for
+  scenario authors; World evaluates the policy before integrating.
 - Joint feedback is the encoder view (`SimMotionEndpoint::poll_feedback`):
   angles quantized to `encoder_counts_per_revolution`, velocities
   differentiated over poll-stamp deltas; the ROBOT loop closes on it like

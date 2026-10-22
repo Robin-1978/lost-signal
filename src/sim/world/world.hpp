@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "robot/iface/motion.hpp"
+#include "sim/world/actor_behavior.hpp"
 #include "sim/world/contact.hpp"
 #include "sim/world/service_brake.hpp"
 
@@ -49,6 +50,9 @@ struct StaticBox {
 
 struct Actor {
   double x = 0.0, y = 0.0, vx_mps = 0.0, vy_mps = 0.0, radius_m = 0.4;
+  // Motion policy, evaluated every step before integration. Default flies
+  // the authored velocity (yesterday's straight lines, unchanged).
+  ActorBehavior behavior;
 };
 
 // Authored named place: semantic task target resolved by the ROBOT map

@@ -147,6 +147,7 @@ add_library(lost_signal_sim_world STATIC
   src/sim/world/motor.cpp
   src/sim/world/service_brake.cpp
   src/sim/world/contact.cpp
+  src/sim/world/actor_behavior.cpp
 )
 target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC
@@ -350,6 +351,12 @@ target_link_libraries(test_encoder PRIVATE
   lost_signal_robot_platform
 )
 add_test(NAME encoder COMMAND test_encoder)
+
+add_executable(test_actor_behavior
+  tests/test_actor_behavior.cpp
+)
+target_link_libraries(test_actor_behavior PRIVATE lost_signal_sim_scenario)
+add_test(NAME actor_behavior COMMAND test_actor_behavior)
 
 add_executable(test_lidar
   tests/test_lidar.cpp

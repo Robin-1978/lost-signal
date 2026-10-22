@@ -210,6 +210,7 @@ void World::step(double dt_s) {
                       truth_.lateral_mps * std::cos(heading_mid)) *
                      dt_s;
   for (auto& a : actors_) {
+    step_actor(a, a.behavior, dt_s);
     a.x += a.vx_mps * dt_s;
     a.y += a.vy_mps * dt_s;
   }

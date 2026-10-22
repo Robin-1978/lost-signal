@@ -62,7 +62,7 @@ Accept: per-chassis HIL loops (existing `test_actuation` plant sections)
 pinned to force-model trajectories; encoder quantization added to
 feedback (counts/round-trip, matching `encoder_counts_per_revolution`).
 
-### S4 Actor behaviors (medium)
+### S4 Actor behaviors (medium) — landed
 Today's actors fly straight lines. Add a behavior registry + motion
 policies on the SIM side only: waypoint follow, crossing (constant-speed
 pedestrian/vehicle cuts), wander with seeded RNG (deterministic per
