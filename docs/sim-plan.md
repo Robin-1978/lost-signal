@@ -21,7 +21,10 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   (SIM-side labels only), viscous drag via native joint damping, slope P1
   regression on the engine, analytic integration deleted (tests re-pinned
   to engine semantics as the witness).
-- M3: raylib viewer reading truth (SIM-side only).
+- M3: raylib viewer reading truth (SIM-side only). Done, in three cuts:
+  M3a 2D live viewer (frame model + sim_viewer binary, --shot smoke),
+  M3b map editor (world file + headless model + viewer edit mode),
+  M3c 3D orbit view over the same frame (--3d, V toggles).
 
 ## Standing rules (same as Phase 1)
 

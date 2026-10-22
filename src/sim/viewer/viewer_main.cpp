@@ -5,6 +5,7 @@
 // (needs a display); frame logic is unit-tested in test_viewer_frame.
 
 #include <raylib.h>
+#include <rlgl.h>
 
 #include <cmath>
 #include <cstdio>
@@ -170,9 +171,125 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     DrawLineV({s.x_px, s.y_px}, {hx, hy}, DARKBLUE);
   }
 }
+
+// 3D frontend over the same Frame model. World (x, y, z_up) maps to raylib
+// (x, z_up, -y): +y north goes away from the default camera, right-handed.
+struct CameraState {
+  double target_x = 2.0, target_y = 1.0;
+  float yaw_deg = 35.0f;    // orbit around the target
+  float pitch_deg = 50.0f;  // elevation above the ground plane
+  float dist_m = 12.0f;
+};
+
+inline Vector3 to_raylib(double x_m, double y_m, double z_m) {
+  return {static_cast<float>(x_m), static_cast<float>(z_m),
+          static_cast<float>(-y_m)};
+}
+
+inline Camera3D camera_from_state(const CameraState& st) {
+  const float yaw = st.yaw_deg * DEG2RAD;
+  const float pitch = st.pitch_deg * DEG2RAD;
+  Vector3 pos{static_cast<float>(st.target_x + st.dist_m * std::cos(pitch) * std::cos(yaw)),
+              static_cast<float>(st.dist_m * std::sin(pitch)),
+              static_cast<float>(-(st.target_y + st.dist_m * std::cos(pitch) * std::sin(yaw)))};
+  return {.position = pos,
+          .target = to_raylib(st.target_x, st.target_y, 0.0),
+          .up = {0.0f, 1.0f, 0.0f},
+          .fovy = 45.0f,
+          .projection = CAMERA_PERSPECTIVE};
+}
+
+// Ground-plane pick for 3D edit mode: intersect the mouse ray with z_up=0.
+inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
+                                double& x_m, double& y_m) {
+  const Ray ray = GetMouseRay(mouse, cam);
+  if (std::abs(ray.direction.y) < 1e-6f) return false;
+  const float t = -ray.position.y / ray.direction.y;
+  if (t < 0.0f) return false;
+  x_m = ray.position.x + t * ray.direction.x;
+  y_m = -(ray.position.z + t * ray.direction.z);
+  return true;
+}
+
+void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
+  DrawGrid(21, 1.0f);
+  // Trail at ground level.
+  for (std::size_t i = 1; i < f.trail.size(); ++i) {
+    DrawLine3D(to_raylib(f.trail[i - 1].first, f.trail[i - 1].second, 0.02),
+               to_raylib(f.trail[i].first, f.trail[i].second, 0.02), BLUE);
+  }
+  // Boxes as cubes (flat survey plates get a thin slab so they stay lit).
+  for (const auto& b : f.boxes) {
+    const float h = static_cast<float>(b.height_m > 0.02 ? b.height_m : 0.02);
+    const Vector3 center =
+        to_raylib((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5, h * 0.5);
+    const Vector3 size{static_cast<float>(std::abs(b.x1_m - b.x0_m)), h,
+                       static_cast<float>(std::abs(b.y1_m - b.y0_m))};
+    DrawCubeV(center, size,
+              b.selected ? YELLOW : (f.static_collision ? RED : DARKGRAY));
+    DrawCubeWiresV(center, size, BLACK);
+    if (b.selected) {
+      const double cx[4] = {b.x0_m, b.x1_m, b.x1_m, b.x0_m};
+      const double cy[4] = {b.y0_m, b.y0_m, b.y1_m, b.y1_m};
+      for (int c = 0; c < 4; ++c) {
+        DrawSphere(to_raylib(cx[c], cy[c], h),
+                   c == b.selected_corner ? 0.12f : 0.08f,
+                   c == b.selected_corner ? RED : YELLOW);
+      }
+    }
+  }
+  // Places as poles (green = objective done).
+  for (const auto& p : f.places) {
+    const Color col = p.reached ? GREEN : ORANGE;
+    DrawSphere(to_raylib(p.x_m, p.y_m, 0.15), 0.15f, col);
+    DrawLine3D(to_raylib(p.x_m, p.y_m, 0.0), to_raylib(p.x_m, p.y_m, 0.6),
+               BLACK);
+    if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, 0.15), 0.25f, 4,
+                                    4, RED);
+  }
+  // Actors as low cylinders with a velocity tick.
+  for (const auto& a : f.actors) {
+    DrawCylinder(to_raylib(a.x_m, a.y_m, 0.25), 0.25f, 0.25f,
+                 static_cast<float>(a.radius_m), 16, PURPLE);
+    DrawLine3D(to_raylib(a.x_m, a.y_m, 0.25),
+               to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps, 0.25), BLACK);
+  }
+  // Lidar rays from the body pose.
+  if (show_lidar && f.lidar_valid) {
+    const Vector3 o = to_raylib(f.body.x_m, f.body.y_m, f.body.z_m + 0.2);
+    for (const auto& hit : f.lidar_hits) {
+      DrawLine3D(o, to_raylib(hit.first, hit.second, f.body.z_m + 0.2),
+                 {255, 0, 0, 90});
+    }
+  }
+  // Estimate ghost: wireframe box at the ROBOT pose.
+  if (show_estimate && f.body.estimate_valid) {
+    DrawCubeWiresV(
+        to_raylib(f.body.est_x_m, f.body.est_y_m, 0.25),
+        {static_cast<float>(f.body.half_length_m * 2.0), 0.5f,
+         static_cast<float>(f.body.half_width_m * 2.0)},
+        DARKGREEN);
+  }
+  // Body: box at engine height, yaw about the up axis.
+  {
+    rlPushMatrix();
+    rlTranslatef(static_cast<float>(f.body.x_m),
+                 static_cast<float>(f.body.z_m + 0.25),
+                 static_cast<float>(-f.body.y_m));
+    rlRotatef(static_cast<float>(-f.body.yaw_rad * RAD2DEG), 0.0f, 1.0f,
+              0.0f);
+    DrawCube({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0), 0.5f,
+             static_cast<float>(f.body.half_width_m * 2.0),
+             f.static_collision ? RED : SKYBLUE);
+    DrawCubeWires({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0),
+                  0.5f, static_cast<float>(f.body.half_width_m * 2.0),
+                  DARKBLUE);
+    rlPopMatrix();
+  }
+}
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   using namespace lost_signal;
   sim::scenario::ScenarioSession session;
   setup_demo(session);
@@ -195,9 +312,36 @@ int main() {
   sim::viewer::MapEditor editor;
   bool edit_mode = false;
   std::string edit_msg;
+  // 3D orbit camera over the same frame (V toggles 2D/3D, --3d starts in 3D).
+  bool view3d = false;
+  // --shot N path: render N frames, screenshot, exit (visual smoke check).
+  int shot_frames = -1;
+  std::string shot_path;
+  for (int i = 1; i < argc; ++i) {
+    const std::string a = argv[i];
+    if (a == "--3d") view3d = true;
+    if (a == "--shot" && i + 2 < argc) {
+      shot_frames = std::atoi(argv[++i]);
+      shot_path = argv[++i];
+    }
+  }
+  CameraState cam_st;
 
   while (!WindowShouldClose()) {
     view.set_screen(GetScreenWidth(), GetScreenHeight());
+    if (IsKeyPressed(KEY_V)) view3d = !view3d;
+    // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
+    const Vector2 mpos = GetMousePosition();
+    double pick_x = 0.0, pick_y = 0.0;
+    bool on_map = false;
+    if (view3d) {
+      const Camera3D pick_cam =
+          camera_from_state(cam_st);
+      on_map = screen_to_ground_3d(pick_cam, mpos, pick_x,
+                                                pick_y);
+    } else {
+      on_map = view.screen_to_world(mpos.x, mpos.y, pick_x, pick_y);
+    }
     // Edit-mode toggle + keys (window thread only).
     if (IsKeyPressed(KEY_M)) {
       edit_mode = !edit_mode;
@@ -209,18 +353,15 @@ int main() {
       }
     }
     if (edit_mode) {
-      const Vector2 m = GetMousePosition();
-      double wx = 0.0, wy = 0.0;
-      const bool on_map = view.screen_to_world(m.x, m.y, wx, wy);
       if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && on_map) {
-        editor.press(wx, wy);
+        editor.press(pick_x, pick_y);
       }
       if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && on_map) {
-        editor.drag(wx, wy);
+        editor.drag(pick_x, pick_y);
       }
       if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) editor.release();
-      if (IsKeyPressed(KEY_B) && on_map) editor.add_box(wx, wy);
-      if (IsKeyPressed(KEY_P) && on_map) editor.add_place(wx, wy);
+      if (IsKeyPressed(KEY_B) && on_map) editor.add_box(pick_x, pick_y);
+      if (IsKeyPressed(KEY_P) && on_map) editor.add_place(pick_x, pick_y);
       if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) {
         editor.remove_selected();
       }
@@ -242,7 +383,13 @@ int main() {
     if (IsKeyPressed(KEY_MINUS) && steps_per_frame > 1) steps_per_frame /= 2;
     if (IsKeyPressed(KEY_ZERO)) view.fit(-4.0, -4.0, 8.0, 7.0);
     const float wheel = GetMouseWheelMove();
-    if (wheel != 0.0f) {
+    if (view3d) {
+      if (wheel != 0.0f) {
+        cam_st.dist_m *= wheel > 0.0f ? 1.0f / 1.15f : 1.15f;
+        if (cam_st.dist_m < 2.0f) cam_st.dist_m = 2.0f;
+        if (cam_st.dist_m > 60.0f) cam_st.dist_m = 60.0f;
+      }
+    } else if (wheel != 0.0f) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       view.zoom_at(GetMouseX(), GetMouseY(),
                    wheel > 0.0f ? 1.15f : 1.0f / 1.15f);
@@ -250,8 +397,15 @@ int main() {
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
       const Vector2 m = GetMousePosition();
       if (dragging) {
-        view.set_screen(GetScreenWidth(), GetScreenHeight());
-        view.pan_px(last_mouse.x - m.x, last_mouse.y - m.y);
+        if (view3d) {
+          cam_st.yaw_deg += (m.x - last_mouse.x) * 0.3f;
+          cam_st.pitch_deg += (last_mouse.y - m.y) * 0.3f;
+          if (cam_st.pitch_deg < 10.0f) cam_st.pitch_deg = 10.0f;
+          if (cam_st.pitch_deg > 85.0f) cam_st.pitch_deg = 85.0f;
+        } else {
+          view.set_screen(GetScreenWidth(), GetScreenHeight());
+          view.pan_px(last_mouse.x - m.x, last_mouse.y - m.y);
+        }
         follow = false;
       }
       last_mouse = m;
@@ -288,14 +442,23 @@ int main() {
       const auto cur =
           view.world_to_screen(last.truth_after.body_x_m,
                                last.truth_after.body_y_m);
-      view.pan_px(cur.x_px - GetScreenWidth() * 0.5f,
-                  cur.y_px - GetScreenHeight() * 0.5f);
+      view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
+                  GetScreenHeight() * 0.5f - cur.y_px);
+      cam_st.target_x = last.truth_after.body_x_m;
+      cam_st.target_y = last.truth_after.body_y_m;
     }
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    view.set_screen(GetScreenWidth(), GetScreenHeight());
-    draw_frame_2d(frame, view, show_lidar, show_estimate);
+    if (view3d) {
+      const Camera3D cam = camera_from_state(cam_st);
+      BeginMode3D(cam);
+      draw_frame_3d(frame, show_lidar, show_estimate);
+      EndMode3D();
+    } else {
+      view.set_screen(GetScreenWidth(), GetScreenHeight());
+      draw_frame_2d(frame, view, show_lidar, show_estimate);
+    }
     char hud[256];
     std::snprintf(hud, sizeof(hud),
                   "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/4  %dx%d %s",
@@ -311,9 +474,13 @@ int main() {
                     edit_msg.c_str());
       DrawText(ebuf, 10, 32, 14, RED);
     }
-    DrawText("space pause  N step  L lidar  E estimate  F follow  0 fit  +/- speed  right-drag pan  wheel zoom",
+    DrawText("space pause  N step  L lidar  E estimate  F follow  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
              10, GetScreenHeight() - 24, 12, DARKGRAY);
     EndDrawing();
+    if (shot_frames > 0 && --shot_frames == 0) {
+      TakeScreenshot(shot_path.c_str());
+      break;
+    }
   }
   CloseWindow();
   return 0;
