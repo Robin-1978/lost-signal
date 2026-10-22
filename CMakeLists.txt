@@ -16,6 +16,7 @@ add_library(lost_signal_robot_iface STATIC
   src/robot/iface/endpoint.cpp
   src/robot/iface/channel.cpp
   src/robot/iface/message.cpp
+  src/robot/iface/conformance.cpp
 )
 target_include_directories(lost_signal_robot_iface PUBLIC src)
 target_link_libraries(lost_signal_robot_iface PUBLIC lost_signal_robot_core)
@@ -34,6 +35,7 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/differential_kinematics.cpp
   src/robot/platform/ackermann_kinematics.cpp
   src/robot/platform/holonomic_kinematics.cpp
+  src/robot/platform/chassis_registry.cpp
   # Ackermann/holonomic controllers live here (not in robot_control) because
   # they call the canonical platform kinematics; robot_control must stay
   # below robot_platform (cf. the inlined twist math in wheel_controller).
@@ -57,8 +59,12 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
   src/robot/autonomy/localization/scan_matcher.cpp
+  src/robot/autonomy/localization/global_search.cpp
   src/robot/autonomy/localization/supervisor.cpp
   src/robot/autonomy/mapping/mapper.cpp
+  src/robot/autonomy/mapping/pose_graph.cpp
+  src/robot/autonomy/mapping/loop_closure.cpp
+  src/robot/autonomy/mapping/slam.cpp
   src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/astar_planner.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
@@ -71,6 +77,14 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/safety/safety.cpp
 )
 target_include_directories(lost_signal_robot_autonomy PUBLIC src)
+# Pose-graph backend solves sparse normal equations with Eigen (header-only,
+# deployment dependency only — no GTSAM/Ceres).
+find_path(EIGEN3_INCLUDE_DIR signature_of_eigen3_matrix_library
+  PATHS /usr/include/eigen3 /usr/include NO_DEFAULT_PATH)
+if(NOT EIGEN3_INCLUDE_DIR)
+  message(FATAL_ERROR "Eigen3 headers not found (need signature_of_eigen3_matrix_library)")
+endif()
+target_include_directories(lost_signal_robot_autonomy PRIVATE ${EIGEN3_INCLUDE_DIR})
 target_link_libraries(lost_signal_robot_autonomy PUBLIC
   lost_signal_robot_iface
   lost_signal_robot_lifecycle
@@ -133,6 +147,7 @@ target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC
   lost_signal_robot_core
   lost_signal_robot_iface
+  lost_signal_robot_platform
 )
 
 add_library(lost_signal_sim_providers STATIC
@@ -216,6 +231,18 @@ add_executable(test_replay
 )
 target_link_libraries(test_replay PRIVATE lost_signal_sim_scenario)
 add_test(NAME replay COMMAND test_replay)
+
+add_executable(test_conformance
+  tests/test_conformance.cpp
+)
+target_link_libraries(test_conformance PRIVATE lost_signal_sim_scenario lost_signal_robot_providers)
+add_test(NAME conformance COMMAND test_conformance)
+
+add_executable(test_slam
+  tests/test_slam.cpp
+)
+target_link_libraries(test_slam PRIVATE lost_signal_robot_autonomy)
+add_test(NAME slam COMMAND test_slam)
 
 add_executable(test_task_ordering
   tests/test_task_ordering.cpp

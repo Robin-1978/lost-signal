@@ -1,0 +1,350 @@
+#include "robot/autonomy/mapping/slam.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
+#include "robot/core/geometry.hpp"
+
+namespace lost_signal::robot::autonomy {
+
+SlamSession::SlamSession(SlamConfig config) : config_(config) {}
+
+void SlamSession::reset() {
+  graph_.clear();
+  keyframes_.clear();
+  next_id_ = 1;
+  loop_closures_ = 0;
+  last_attempt_s_ = -1.0e9;
+  keyframes_at_last_attempt_ = 0;
+  last_result_ = SlamLoopResult{};
+}
+
+bool SlamSession::keyframe_due(const EstimatedState& est) const {
+  if (keyframes_.empty()) return true;
+  const Pose2& last = keyframes_.back().pose;
+  const double dist =
+      std::hypot(est.x_m - last.position.x, est.y_m - last.position.y);
+  const double dh =
+      std::abs(core::wrap_angle(est.yaw_rad - last.heading_rad));
+  return dist >= config_.keyframe_translation_m ||
+         dh >= config_.keyframe_heading_rad;
+}
+
+void SlamSession::ingest(const EstimatedState& est,
+                         const iface::ObservationFrame& obs) {
+  if (!est.valid || !obs.scan_valid || obs.ranges_m.empty()) return;
+  if (!keyframe_due(est)) return;
+  SlamKeyframe kf;
+  kf.id = next_id_++;
+  kf.stamp_s = obs.stamp_ns * 1e-9;
+  kf.pose.position.x = est.x_m;
+  kf.pose.position.y = est.y_m;
+  kf.pose.heading_rad = est.yaw_rad;
+  kf.ranges_m = obs.ranges_m;
+  kf.static_ranges_m = obs.static_ranges_m;
+  kf.angle_min_rad = obs.scan_angle_min_rad;
+  kf.angle_increment_rad = obs.scan_angle_increment_rad;
+
+  PoseGraphKeyframe node;
+  node.id = kf.id;
+  node.stamp_s = kf.stamp_s;
+  node.initial_pose = kf.pose;
+  node.fixed = keyframes_.empty();  // anchor the gauge freedom at the start
+  std::string reason;
+  if (!graph_.add_keyframe(node, &reason)) return;
+  if (!keyframes_.empty()) {
+    const SlamKeyframe& prev = keyframes_.back();
+    PoseGraphConstraint odom;
+    odom.id = kf.id;
+    odom.from = prev.id;
+    odom.to = kf.id;
+    odom.measured_relative_pose = relative_pose(prev.pose, kf.pose);
+    odom.information = pose_graph_information(
+        std::max(0.02, est.position_sigma_m),
+        std::max(0.005, est.heading_sigma_rad));
+    odom.kind = PoseGraphConstraintKind::Odometry;
+    graph_.add_constraint(odom, nullptr);  // orphan node on failure: rare,
+                                           // optimizer skips disconnected parts
+  }
+  keyframes_.push_back(std::move(kf));
+  // Ring: drop the oldest node with its constraints once over budget. The
+  // backend has no removal, so rebuild the retained tail (bounded, rare).
+  if (keyframes_.size() > config_.max_keyframes && config_.max_keyframes > 1) {
+    keyframes_.erase(keyframes_.begin());
+    rebuild_graph();
+  }
+}
+
+void SlamSession::rebuild_graph() {
+  graph_.clear();
+  for (const auto& k : keyframes_) {
+    PoseGraphKeyframe n;
+    n.id = k.id;
+    n.stamp_s = k.stamp_s;
+    n.initial_pose = k.pose;
+    n.fixed = (k.id == keyframes_.front().id);
+    graph_.add_keyframe(n, nullptr);
+  }
+  for (std::size_t i = 1; i < keyframes_.size(); ++i) {
+    PoseGraphConstraint c;
+    c.id = keyframes_[i].id;
+    c.from = keyframes_[i - 1].id;
+    c.to = keyframes_[i].id;
+    c.measured_relative_pose =
+        relative_pose(keyframes_[i - 1].pose, keyframes_[i].pose);
+    c.information = pose_graph_information(0.05, 0.02);
+    c.kind = PoseGraphConstraintKind::Odometry;
+    graph_.add_constraint(c, nullptr);
+  }
+}
+
+iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
+  iface::MapSnapshot sub;
+  sub.map_id = "slam-submap";
+  sub.revision = kf.id;
+  sub.frame_id = "map";
+  // Extent: sensor range plus margin, centered on the keyframe pose.
+  float max_range = 0.0f;
+  for (float r : kf.ranges_m) {
+    if (std::isfinite(r)) max_range = std::max(max_range, r);
+  }
+  max_range = std::min(max_range, 10.0f) + 1.0f;
+  sub.resolution_m = 0.1;
+  sub.width = static_cast<std::uint32_t>(std::ceil(2 * max_range / sub.resolution_m));
+  sub.height = sub.width;
+  sub.origin_x_m = kf.pose.position.x - max_range;
+  sub.origin_y_m = kf.pose.position.y - max_range;
+  sub.occupancy.assign(sub.width * sub.height, -1);
+  const std::size_t n = kf.ranges_m.size();
+  // Two passes: ray interiors first, endpoints second. A single pass would
+  // let one beam's free interior overwrite another beam's occupied endpoint
+  // where rays cross near walls.
+  for (std::size_t i = 0; i < n; ++i) {
+    const float range = kf.ranges_m[i];
+    if (!(range > 0.0f) || !std::isfinite(range)) continue;
+    const double angle =
+        kf.angle_min_rad + kf.angle_increment_rad * i + kf.pose.heading_rad;
+    const double dx = std::cos(angle), dy = std::sin(angle);
+    const double hit = std::min<double>(range, 10.0);
+    // Ray interior: free (march at half-cell steps, endpoint excluded).
+    const int steps = std::max(
+        1, static_cast<int>(std::ceil(hit / (0.5 * sub.resolution_m))));
+    for (int s = 0; s < steps; ++s) {
+      const double b = static_cast<double>(s) / steps;
+      const double wx = kf.pose.position.x + hit * dx * b;
+      const double wy = kf.pose.position.y + hit * dy * b;
+      const int gx = static_cast<int>(
+          std::floor((wx - sub.origin_x_m) / sub.resolution_m));
+      const int gy = static_cast<int>(
+          std::floor((wy - sub.origin_y_m) / sub.resolution_m));
+      if (gx >= 0 && gy >= 0 && gx < static_cast<int>(sub.width) &&
+          gy < static_cast<int>(sub.height) &&
+          sub.occupancy[gy * sub.width + gx] != 100) {
+        sub.occupancy[gy * sub.width + gx] = 0;
+      }
+    }
+  }
+  // Endpoints splat 3x3: a scan endpoint is a quantized sample of a
+  // continuous surface, and the matcher evaluates hypotheses on a 0.15 m
+  // grid against 0.1 m cells, so a 1-cell shell would alias misses from
+  // sub-cell jitter. The splat models endpoint quantization uncertainty;
+  // walls stay thin (one cell + ring), free space stays free.
+  for (std::size_t i = 0; i < n; ++i) {
+    const float range = kf.ranges_m[i];
+    if (!(range > 0.0f) || !std::isfinite(range) || range >= 10.0f) continue;
+    const double angle =
+        kf.angle_min_rad + kf.angle_increment_rad * i + kf.pose.heading_rad;
+    const double wx = kf.pose.position.x + range * std::cos(angle);
+    const double wy = kf.pose.position.y + range * std::sin(angle);
+    const int cx = static_cast<int>(
+        std::floor((wx - sub.origin_x_m) / sub.resolution_m));
+    const int cy = static_cast<int>(
+        std::floor((wy - sub.origin_y_m) / sub.resolution_m));
+    for (int ay = -1; ay <= 1; ++ay) {
+      for (int ax = -1; ax <= 1; ++ax) {
+        const int gx = cx + ax, gy = cy + ay;
+        if (gx >= 0 && gy >= 0 && gx < static_cast<int>(sub.width) &&
+            gy < static_cast<int>(sub.height)) {
+          sub.occupancy[gy * sub.width + gx] = 100;
+        }
+      }
+    }
+  }
+  return sub;
+}
+
+SlamLoopResult SlamSession::try_close_loops(
+    const EstimatedState& est, const iface::ObservationFrame& obs) {
+  SlamLoopResult out;
+  if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
+      keyframes_.size() < 3) {
+    out.diagnostic = "insufficient session";
+    last_result_ = out;
+    return out;
+  }
+  const double now_s = obs.stamp_ns * 1e-9;
+  if (now_s - last_attempt_s_ < config_.loop_attempt_interval_s ||
+      keyframes_.size() == keyframes_at_last_attempt_) {
+    out.diagnostic = "attempt rate limited";
+    last_result_ = out;
+    return out;
+  }
+  last_attempt_s_ = now_s;
+  keyframes_at_last_attempt_ = keyframes_.size();
+
+  // Candidates: temporally separated, spatially near the current estimate.
+  // Nearest-first keeps the attempt bounded; the gate owns acceptance.
+  struct Candidate {
+    std::size_t index = 0;
+    double distance = 0.0;
+  };
+  std::vector<Candidate> candidates;
+  for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
+    const SlamKeyframe& kf = keyframes_[i];
+    if (now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
+      continue;
+    }
+    const double d = std::hypot(est.x_m - kf.pose.position.x,
+                                est.y_m - kf.pose.position.y);
+    if (d > config_.gate.maximum_candidate_distance_m) continue;
+    candidates.push_back({i, d});
+  }
+  std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate& a, const Candidate& b) {
+              return a.distance < b.distance;
+            });
+  if (candidates.size() > config_.max_candidates_per_attempt) {
+    candidates.resize(config_.max_candidates_per_attempt);
+  }
+  if (candidates.empty()) {
+    out.diagnostic = "no eligible candidates";
+    last_result_ = out;
+    return out;
+  }
+
+  ScanMatcherConfig match_cfg;
+  match_cfg.search_translation_m = config_.match_search_translation_m;
+  match_cfg.translation_step_m = config_.match_translation_step_m;
+  match_cfg.search_heading_rad = config_.match_search_heading_rad;
+  match_cfg.heading_step_rad = config_.match_heading_step_rad;
+  match_cfg.maximum_returns = config_.match_max_beams;
+  match_cfg.minimum_overlap = config_.match_minimum_overlap;
+  const ScanMatcher matcher(match_cfg);
+  const LoopClosureGate gate(config_.gate);
+
+  for (const auto& cand : candidates) {
+    const SlamKeyframe& old = keyframes_[cand.index];
+    PoseGraphKeyframe from;
+    from.id = old.id;
+    from.stamp_s = old.stamp_s;
+    from.initial_pose = old.pose;
+    PoseGraphKeyframe to;
+    to.id = keyframes_.back().id;
+    to.stamp_s = keyframes_.back().stamp_s;
+    to.initial_pose = keyframes_.back().pose;
+
+    // Forward: current scan against the old keyframe's submap.
+    const iface::MapSnapshot sub = submap_for(old);
+    ScanMatchResult fwd =
+        matcher.localize(obs.ranges_m, obs.scan_angle_min_rad,
+                         obs.scan_angle_increment_rad, est.x_m, est.y_m,
+                         est.yaw_rad, sub, obs.stamp_ns);
+    if (!fwd.accepted) continue;
+    // Reverse (two-way support): old scan against a submap from the
+    // current scan placed at the FORWARD solution. A one-sided alignment
+    // against unrelated geometry must not become a constraint; rendering
+    // at the drifted estimate instead would offset the submap by the
+    // very drift being measured and break the check.
+    SlamKeyframe now_kf;
+    now_kf.id = 0;
+    now_kf.stamp_s = now_s;
+    now_kf.pose.position.x = fwd.x_m;
+    now_kf.pose.position.y = fwd.y_m;
+    now_kf.pose.heading_rad = fwd.yaw_rad;
+    now_kf.ranges_m = obs.ranges_m;
+    now_kf.angle_min_rad = obs.scan_angle_min_rad;
+    now_kf.angle_increment_rad = obs.scan_angle_increment_rad;
+    const iface::MapSnapshot rsub = submap_for(now_kf);
+    ScanMatchResult rev =
+        matcher.localize(old.ranges_m, old.angle_min_rad,
+                         old.angle_increment_rad, old.pose.position.x,
+                         old.pose.position.y, old.pose.heading_rad, rsub,
+                         obs.stamp_ns);
+    if (!rev.accepted || rev.overlap < config_.gate.minimum_overlap) {
+        continue;
+    }
+    LoopClosureEvidence evidence;
+    evidence.match_score = fwd.score;
+    evidence.overlap = std::min(fwd.overlap, rev.overlap);
+    evidence.score_margin = fwd.score_margin;
+    evidence.measured_relative_pose = relative_pose(
+        old.pose, Pose2{core::Vec2{fwd.x_m, fwd.y_m}, fwd.yaw_rad});
+    evidence.information = pose_graph_information(fwd.position_sigma_m,
+                                                  fwd.heading_sigma_rad);
+    const LoopClosureDecision decision = gate.validate(from, to, evidence);
+    if (!decision.accepted) continue;
+
+    PoseGraphConstraint loop;
+    loop.id = to.id * 1000000u + from.id;  // unique without a counter
+    loop.from = from.id;
+    loop.to = to.id;
+    loop.measured_relative_pose = evidence.measured_relative_pose;
+    loop.information = evidence.information;
+    loop.kind = PoseGraphConstraintKind::LoopClosure;
+    std::string reason;
+    if (!graph_.add_constraint(loop, &reason)) continue;
+    // optimize() solves in place: graph keyframes carry the result.
+    const PoseGraphOptimizationResult opt = graph_.optimize();
+    if (!opt.success) {
+      out.diagnostic = "optimization failed: " + opt.diagnostic;
+      last_result_ = out;
+      return out;
+    }
+    const PoseGraphKeyframe* newest =
+        graph_.find_keyframe(keyframes_.back().id);
+    if (newest == nullptr) {
+      out.diagnostic = "optimized newest node missing";
+      last_result_ = out;
+      return out;
+    }
+    // Sync session keyframe poses with the optimized graph. The loop's
+    // correction is the newest node's delta; the live estimate may have
+    // moved past the last keyframe, so callers compose the delta onto it
+    // rather than snapping to the keyframe pose.
+    const Pose2 prior_newest = keyframes_.back().pose;
+    for (const auto& gkf : graph_.keyframes()) {
+      for (auto& kf : keyframes_) {
+        if (kf.id == gkf.id) kf.pose = gkf.initial_pose;
+      }
+    }
+    out.closed = true;
+    out.from_id = from.id;
+    out.to_id = to.id;
+    out.correction_delta =
+        relative_pose(prior_newest, newest->initial_pose);
+    {
+      // Rigid correction: same motion that moved the newest keyframe,
+      // applied to the live estimate (opt ⊕ prior⁻¹ ⊕ est).
+      const Pose2 corrected_here = compose_pose(
+          newest->initial_pose,
+          relative_pose(prior_newest, Pose2{core::Vec2{est.x_m, est.y_m},
+                                            est.yaw_rad}));
+      out.correction_m =
+          std::hypot(corrected_here.position.x - est.x_m,
+                     corrected_here.position.y - est.y_m);
+      out.correction_rad = std::abs(core::wrap_angle(corrected_here.heading_rad -
+                                                     est.yaw_rad));
+      out.corrected_pose = corrected_here;
+    }
+    out.diagnostic = "loop closed";
+    ++loop_closures_;
+    last_result_ = out;
+    return out;
+  }
+  out.diagnostic = "no candidate verified";
+  last_result_ = out;
+  return out;
+}
+
+}  // namespace lost_signal::robot::autonomy

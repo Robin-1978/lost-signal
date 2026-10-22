@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "robot/platform/ackermann_kinematics.hpp"
+#include "robot/platform/chassis_registry.hpp"
 #include "robot/platform/holonomic_kinematics.hpp"
 
 namespace lost_signal::robot::platform {
@@ -263,36 +264,53 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
 }
 
 std::unique_ptr<IChassis> make_chassis(const RobotDescription& desc) {
-  if (desc.chassis_kind == "differential") {
-    control::WheelControllerConfig wc;
-    wc.wheel_radius_m = 0.1;
-    wc.track_width_m = 0.5;
-    return std::make_unique<DifferentialChassis>(0.1, 0.5, desc.limits,
-                                                std::move(wc));
-  }
-  if (desc.chassis_kind == "ackermann") {
-    control::AckermannControllerConfig ac;
-    ac.wheel_base_m = 0.62;
-    ac.track_width_m = 0.58;
-    return std::make_unique<AckermannChassis>(0.1, ac.wheel_base_m,
-                                              ac.track_width_m, desc.limits,
-                                              std::move(ac));
-  }
-  if (desc.chassis_kind == "swerve") {
-    control::HolonomicControllerConfig hc;
-    hc.kind = control::HolonomicKind::Swerve;
-    return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
-                                              hc.track_width_m, desc.limits,
-                                              std::move(hc));
-  }
-  if (desc.chassis_kind == "mecanum") {
-    control::HolonomicControllerConfig hc;
-    hc.kind = control::HolonomicKind::Mecanum;
-    return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
-                                              hc.track_width_m, desc.limits,
-                                              std::move(hc));
-  }
-  return nullptr;  // unknown kind: fail closed, no silent default chassis
+  return ChassisRegistry::global().create(desc);
 }
+
+namespace {
+
+// Built-in chassis plugins. Static registration keeps make_chassis a pure
+// registry lookup; new bases register from their own translation unit
+// without touching this file. These live here (not a separate TU) so the
+// linker cannot drop them: chassis.cpp is always pulled for the chassis
+// methods the application references.
+const RegisterChassis kRegisterDifferential{
+    "differential", [](const RobotDescription& desc) {
+      control::WheelControllerConfig wc;
+      wc.wheel_radius_m = 0.1;
+      wc.track_width_m = 0.5;
+      return std::make_unique<DifferentialChassis>(0.1, 0.5, desc.limits,
+                                                  std::move(wc));
+    }};
+
+const RegisterChassis kRegisterAckermann{
+    "ackermann", [](const RobotDescription& desc) {
+      control::AckermannControllerConfig ac;
+      ac.wheel_base_m = 0.62;
+      ac.track_width_m = 0.58;
+      return std::make_unique<AckermannChassis>(0.1, ac.wheel_base_m,
+                                               ac.track_width_m, desc.limits,
+                                               std::move(ac));
+    }};
+
+const RegisterChassis kRegisterSwerve{
+    "swerve", [](const RobotDescription& desc) {
+      control::HolonomicControllerConfig hc;
+      hc.kind = control::HolonomicKind::Swerve;
+      return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
+                                               hc.track_width_m, desc.limits,
+                                               std::move(hc));
+    }};
+
+const RegisterChassis kRegisterMecanum{
+    "mecanum", [](const RobotDescription& desc) {
+      control::HolonomicControllerConfig hc;
+      hc.kind = control::HolonomicKind::Mecanum;
+      return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
+                                               hc.track_width_m, desc.limits,
+                                               std::move(hc));
+    }};
+
+}  // namespace
 
 }  // namespace lost_signal::robot::platform

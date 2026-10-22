@@ -74,8 +74,17 @@ int main() {
   iface::TaskRequest req;
   req.request_id = "t1";
   req.place_id = "";
-  assert(app.submit_task(req));
-  assert(app.task_status().state == iface::TaskState::kIdle);
+  iface::GoalHandle h = app.request_goal(req);
+  assert(h.valid());
+  assert(app.goal_status(h).state == iface::GoalState::kDone);  // hold acks at once
+
+  // Goal state machine: unknown handle fails; cancel of a non-active
+  // handle is false; a fresh app has no active goal to complete.
+  iface::GoalHandle bogus;
+  bogus.id = 999;
+  assert(app.goal_status(bogus).state == iface::GoalState::kFailed);
+  assert(!app.cancel_goal(bogus));
+  assert(!app.cancel_goal(h));  // terminal hold: nothing to withdraw
 
   // Shutdown returns modules to Unconfigured; tick holds again.
   app.shutdown();

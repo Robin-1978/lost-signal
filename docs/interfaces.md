@@ -10,7 +10,7 @@ interfaces, never the concrete classes.
 
 ```mermaid
 flowchart TB
-  IRobot["IRobot<br/>submit_task / request_map<br/>publish_observation / tick / take_command"]
+  IRobot["IRobot<br/>request_goal / goal_status / cancel_goal<br/>publish_observation / tick / take_command"]
   App["RobotApplication<br/>src/robot/app/<br/>composition root"]
   Diff["DifferentialRobot<br/>src/robot/robots/<br/>+ chassis clamp"]
   SimR["SimRobot<br/>src/sim/robot/<br/>world + sim providers"]
@@ -66,7 +66,19 @@ helpers (`iface/envelope.hpp`: `make_envelope/set_scan/set_imu`) — no
 hand-packing in harnesses. The old whole-observation `IPlatformProvider` is
 gone: sensors are messages, motion is a twist, the envelope is packed once.
 
-## IChassis — chassis kinematics
+## Provider conformance — one gate for every backend
+
+`src/robot/iface/conformance.hpp`. Structural checks live in
+`valid_observation_frame()`; `ProviderConformanceMonitor` adds what only a
+stream exhibits: identity, ordering, freshness, rate, silence. Sim, replay,
+and native adapters run the same monitor before frames reach ROBOT, so a
+vendor driver cannot pass bring-up with data that only looks valid one
+frame at a time. Durations are `MonotonicNs`; the nominal rate is passed
+explicitly (`expect(descriptor, nominal_rate_hz)`) because descriptors
+carry no rate. Map-frame poses are rejected unless opted in (a native
+adapter must not forward a device pose into ROBOT by accident).
+
+## IChassis — chassis kinematics + plugin registry
 
 `src/robot/platform/chassis.hpp`. Four chassis behind one seam
 (`make_chassis` on `RobotDescription::chassis_kind`; unknown kinds fail
@@ -80,3 +92,9 @@ steer position->rate cascade) against measured joints and returns a
 mode-correct safe zero without valid feedback. The sim plant mirrors the
 same four modes (first-order drive lag, velocity-servo steers, rigid-body
 follow per chassis kinematics).
+
+`src/robot/platform/chassis_registry.hpp`. `ChassisRegistry::global()` maps
+kind names to factories; builtins self-register via static
+`RegisterChassis` objects (kept in `chassis.cpp` so the linker cannot drop
+them). Native bring-ups register new bases from their own translation unit
+— no factory call-site edits, first registration wins, duplicates rejected.

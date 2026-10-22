@@ -27,11 +27,13 @@ int main() {
     robot::iface::TaskRequest req;
     req.request_id = "t";
     req.place_id = "";  // hold intent; place resolution is covered in test_places
-    assert(r->submit_task(req));
+    robot::iface::GoalHandle h = r->request_goal(req);
+    assert(h.valid());
+    assert(r->goal_status(h).state == robot::iface::GoalState::kDone);
     robot::iface::MotionCommand cmd = r->tick(1'000'000);
     // v1 skeleton holds position through the chassis envelope.
     assert(cmd.is_safe_stop());
-    assert(r->task_status().state == robot::iface::TaskState::kIdle);
+    assert(r->current_goal().state != robot::iface::GoalState::kActive);
   }
   // SimRobot actually stepped its world while ticking.
   assert(sim.world().truth().step >= 1);

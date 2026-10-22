@@ -11,9 +11,11 @@
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
+#include "robot/autonomy/mapping/slam.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
@@ -67,6 +69,10 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // still enters via the executive; this is the deliberate operator path.
   void set_goal(const RoutePoint& goal);
   const Route& active_route() const { return active_route_; }
+  // Arrival predicate for the executive: an estimated-frame goal exists,
+  // the route is live, and the estimate sits inside the arrival radius.
+  // The executive owns goal lifetime; this only reports progress.
+  bool route_complete(double arrival_radius_m = 0.5) const;
   // Deployment seeding: known start pose (dock, operator initialpose).
   // Snaps the estimator and marks the supervisor localized so the normal
   // cadence path takes over; every later correction is still gated.
@@ -86,6 +92,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   const std::string& last_localization_action() const {
     return last_localization_action_;
   }
+  std::size_t slam_keyframes() const { return slam_.keyframe_count(); }
+  std::size_t slam_loops_closed() const { return slam_.loop_closure_count(); }
+  const SlamLoopResult& last_slam_result() const {
+    return slam_.last_result();
+  }
   diagnostics::DecisionEvidence last_evidence() const {
     return evidence_.current() != nullptr ? *evidence_.current()
                                           : diagnostics::DecisionEvidence{};
@@ -98,10 +109,13 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   platform::ChassisLimits limits_;
   void run_localization(const iface::MapSnapshot& map,
                         core::MonotonicNs now_ns);
+  void run_slam(core::MonotonicNs now_ns);
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;
+  SlamSession slam_;
   ScanMatcher scan_matcher_;
+  GlobalSearcher global_search_;
   LocalizationSupervisor supervisor_;
   std::unique_ptr<IBehaviorPolicy> behavior_;
   std::unique_ptr<IGlobalPlanner> global_planner_;

@@ -34,6 +34,7 @@ core::Status AutonomyCoordinator::configure() {
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
   supervisor_.reset(false);
+  slam_.reset();
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -77,6 +78,7 @@ core::Status AutonomyCoordinator::cleanup() {
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
   supervisor_.reset(false);
+  slam_.reset();
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -103,6 +105,17 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
       has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
   estimator_->seed_pose(x_m, y_m, yaw_rad, 0.1, 0.05, stamp);
   supervisor_.reset(true);
+}
+
+bool AutonomyCoordinator::route_complete(double arrival_radius_m) const {
+  if (!has_goal_ || !active_route_.valid || active_route_.points.empty()) {
+    return false;
+  }
+  const EstimatedState& est = estimator_->estimate();
+  if (!est.valid) return false;
+  const double dx = est.x_m - goal_.x_m;
+  const double dy = est.y_m - goal_.y_m;
+  return std::hypot(dx, dy) <= arrival_radius_m;
 }
 
 void AutonomyCoordinator::ingest_observation(
@@ -141,6 +154,10 @@ iface::MotionCommand AutonomyCoordinator::update(
   // matcher. Corrections feed the estimator only when accepted, so a hard
   // scan never drags the pose.
   run_localization(map, now_ns);
+  // SLAM session runs on the post-localization estimate: keyframes chain
+  // odometry, accepted loop closures correct the estimate and rebuild the
+  // rolling map from keyframes at their optimized poses.
+  run_slam(now_ns);
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
@@ -240,6 +257,45 @@ const EstimatedState& AutonomyCoordinator::estimate() const {
   return estimator_->estimate();
 }
 
+void AutonomyCoordinator::run_slam(core::MonotonicNs now_ns) {
+  (void)now_ns;
+  if (!has_observation_ || !last_obs_.scan_valid) return;
+  slam_.ingest(estimator_->estimate(), last_obs_);
+  SlamLoopResult loop =
+      slam_.try_close_loops(estimator_->estimate(), last_obs_);
+  if (!loop.closed) return;
+  // Accepted closure: snap the estimate to the optimized pose and rebuild
+  // the rolling map from keyframes at their optimized poses. Past cells
+  // fed at drifted poses are stale; replaying keyframe scans re-registers
+  // them. The decision branch refreshes on the corrected estimate.
+  estimator_->seed_pose(loop.corrected_pose.position.x,
+                        loop.corrected_pose.position.y,
+                        loop.corrected_pose.heading_rad, 0.05, 0.02,
+                        last_obs_.stamp_ns);
+  mapper_->reset();
+  for (const auto& kf : slam_.keyframes()) {
+    iface::ObservationFrame obs;
+    obs.sequence = 1;  // rebuild order is keyframe order, not live sequence
+    obs.stamp_ns = static_cast<core::MonotonicNs>(kf.stamp_s * 1e9);
+    obs.source = last_obs_.source;
+    obs.frame = core::Frame::kLidarLink;
+    obs.scan_valid = true;
+    obs.ranges_m = kf.ranges_m;
+    obs.static_ranges_m = kf.static_ranges_m;
+    obs.scan_static_valid = !kf.static_ranges_m.empty();
+    obs.scan_angle_min_rad = kf.angle_min_rad;
+    obs.scan_angle_increment_rad = kf.angle_increment_rad;
+    EstimatedState est;
+    est.valid = true;
+    est.stamp_ns = obs.stamp_ns;
+    est.x_m = kf.pose.position.x;
+    est.y_m = kf.pose.position.y;
+    est.yaw_rad = kf.pose.heading_rad;
+    mapper_->update(obs, est);
+  }
+  replan_requested_ = true;
+}
+
 void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
                                           core::MonotonicNs now_ns) {
   const double now_s = now_ns * 1e-9;
@@ -255,24 +311,42 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
       now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
   last_localization_action_ = localization_action_name(action);
   if (action == LocalizationAction::kDefer) return;
-  // No whole-map search provider yet: a global request degrades to a bounded
-  // local attempt (documented). It cannot kidnap-recover; it also cannot
-  // corrupt the estimate, since rejections only feed the supervisor.
+  const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
+  if (attempted_global) {
+    // Whole-map search: kidnap recovery and cold start. An accepted global
+    // fix establishes the estimate and marks the supervisor localized; a
+    // rejection is evidence only and never moves the estimate.
+    GlobalSearchResult global = global_search_.search(
+        last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
+        last_obs_.scan_angle_increment_rad, map, now_ns);
+    if (global.accepted) {
+      if (!supervisor_.localized()) {
+        // No trustworthy prior exists (unknown start / kidnapped): snap
+        // like a deliberate initial pose instead of blending toward a
+        // confident-but-wrong dead-reckoned origin.
+        estimator_->seed_pose(global.x_m, global.y_m, global.yaw_rad,
+                              global.position_sigma_m,
+                              global.heading_sigma_rad, last_obs_.stamp_ns);
+      } else {
+        estimator_->correct_pose(global.x_m, global.y_m, global.yaw_rad,
+                                 global.position_sigma_m,
+                                 global.heading_sigma_rad,
+                                 last_obs_.stamp_ns);
+      }
+    }
+    supervisor_.record_global(global.accepted, ScanMatchResult{});
+    return;
+  }
   ScanMatchResult match = scan_matcher_.localize(
       last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
       last_obs_.scan_angle_increment_rad, est.x_m, est.y_m, est.yaw_rad, map,
       now_ns);
-  const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
   if (match.accepted) {
     estimator_->correct_pose(match.x_m, match.y_m, match.yaw_rad,
                              match.position_sigma_m, match.heading_sigma_rad,
                              last_obs_.stamp_ns);
   }
-  if (attempted_global) {
-    supervisor_.record_global(match.accepted, match);
-  } else {
-    supervisor_.record_local(match.accepted, match);
-  }
+  supervisor_.record_local(match.accepted, match);
 }
 
 LocalMap AutonomyCoordinator::local_map() const {

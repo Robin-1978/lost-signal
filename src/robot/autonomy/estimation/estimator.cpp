@@ -175,6 +175,10 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
   const double ev = std::max(1e-9, estimate_.position_sigma_m);
   const double cv = std::max(1e-9, pos_sigma_m);
   const double k = ev / (ev + cv);
+  // A validated map correction establishes the estimate: kidnapped or cold
+  // starts have no trustworthy prior, so the blend target (not the prior)
+  // is what makes this valid. Rejected matches never reach here.
+  estimate_.valid = true;
   estimate_.x_m += k * (x_m - estimate_.x_m);
   estimate_.y_m += k * (y_m - estimate_.y_m);
   estimate_.yaw_rad = core::wrap_angle(

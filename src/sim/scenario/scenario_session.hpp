@@ -19,7 +19,9 @@ class ScenarioSession {
  public:
   ScenarioSession();
 
-  void submit_task(const robot::iface::TaskRequest& req);
+  robot::iface::GoalHandle request_goal(const robot::iface::TaskRequest& req);
+  robot::iface::GoalStatus goal_status(robot::iface::GoalHandle h) const;
+  bool cancel_goal(robot::iface::GoalHandle h);
   void step_once();
 
   const eval::EpisodeRecorder& episode() const { return episode_; }

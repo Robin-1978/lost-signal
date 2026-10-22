@@ -26,9 +26,7 @@ r::lifecycle::ModuleState SimRobot::bringup_state() const {
   return app_.bringup_state();
 }
 
-r::core::Status SimRobot::submit_task(const r::iface::TaskRequest& req) {
-  return app_.submit_task(req);
-}
+
 
 r::core::Status SimRobot::request_map(const std::string& map_id) {
   return app_.request_map(map_id);
@@ -63,9 +61,7 @@ r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
   return cmd;
 }
 
-r::iface::TaskStatus SimRobot::task_status() const {
-  return app_.task_status();
-}
+
 
 r::iface::MapSnapshot SimRobot::active_map() const {
   return app_.active_map();

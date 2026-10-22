@@ -17,7 +17,7 @@ int main() {
   lost_signal::robot::iface::TaskRequest req;
   req.request_id = "bringup";
   req.place_id = "";
-  if (!app.submit_task(req)) return 1;
+  if (!app.request_goal(req).valid()) return 1;
   auto cmd = app.tick(0);
   std::printf("robot tick: safe_stop=%d\n", cmd.is_safe_stop() ? 1 : 0);
   return 0;

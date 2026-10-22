@@ -161,8 +161,11 @@ route, pre-activation hold).
   `value_density`, plus content-registered scorers); missions never branch
   on policy names.
 - Semantic places (`place_id`) resolve through the ROBOT map provider into
-  estimated-frame goals; unknown ids fail closed. SIM submits the same
-  typed intents as an operator.
+  estimated-frame goals; unknown ids return an invalid handle. Goals are
+  async: `request_goal` arms immediately, `goal_status` polls
+  (`active/done/failed/canceled`), `cancel_goal` withdraws, a new request
+  preempts the running goal, and arrival (estimate inside 0.5 m of the
+  goal) completes it. SIM submits the same typed intents as an operator.
 - `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
   samples trajectories; the validator and the independent safety monitor
   keep their vetoes.
@@ -173,14 +176,54 @@ route, pre-activation hold).
   against the static raster (occupied +1 / free +1-for-clearing / unknown 0
   / outside -0.25), requires overlap and a margin over the next *separated*
   hypothesis, and rejects ambiguity outright instead of dragging the pose
-  to a corridor twin.
+  to a corridor twin. `score_pose` exposes the same scoring per pose so the
+  global search and the SLAM submaps cannot diverge from it.
 - `LocalizationSupervisor` schedules corrections (cadence + motion/idle
   triggers, sigma/confidence/age gates) and rate-limits global recovery;
   a rejected match is evidence, never an implicit correction.
 - `FusedOdometryEstimator::correct_pose` blends accepted corrections by
-  Kalman-lite variance weighting; `seed_pose` implements the deliberate
-  deployment/operator initial pose (known dock). Both reject non-finite
-  input.
-- A global whole-map search is the documented next piece: until it lands,
-  global requests degrade to bounded local attempts that cannot corrupt
-  the estimate.
+  Kalman-lite variance weighting and validates the estimate; `seed_pose`
+  implements the deliberate deployment/operator initial pose (known dock).
+  Both reject non-finite input.
+- `GlobalSearcher` (kidnap recovery / cold start): coarse pass over free
+  raster cells x headings with a downsampled beam subset, top-K survivors
+  each refined by the bounded local matcher, then a strict twin check —
+  score margin plus an equivalent-support gate (runner-up overlap within
+  0.10 means unobservable, e.g. map-edge gradients along a uniform wall).
+  The evaluation budget rejects explicitly instead of truncating the map
+  silently. First fix after an unknown start snaps (no trustworthy prior
+  to blend toward); later fixes blend.
+
+## SLAM (pose-graph sessions with loop closure)
+
+- `PoseGraphBackend` (ported Gauss-Newton over sparse normal equations,
+  Eigen headers only, no GTSAM/Ceres): odometry chain + scan-match edges,
+  Huber-gated loop factors, first-fixed-node gauge anchor.
+- `SlamSession` keyframes on motion thresholds (ring-bounded), detects
+  loops against keyframe submaps (endpoint splat renders quantized scan
+  samples into raster cells; two-pass rasterize so ray interiors never
+  erase another beam's wall), and verifies both directions: the current
+  scan must match the old submap AND the old scan must match a submap
+  rendered at the forward solution (rendering at the drifted estimate
+  would offset the check by the drift being measured).
+- `LoopClosureGate` enforces temporal separation, candidate distance, and
+  two-way overlap/margin before any constraint reaches the graph.
+- An accepted closure snaps the live estimate (rigid delta compose, so a
+  robot that moved past the newest keyframe still corrects exactly) and
+  rebuilds the rolling map from keyframes at their optimized poses; the
+  decision branch refreshes on the corrected estimate.
+
+## Validation (trajectory verdicts with minimum-risk escape)
+
+- `ClearanceValidator` rolls out the exact candidate twist (constant-twist
+  arc integration, 2 s horizon) against raw scan endpoints in the map
+  frame and linearly predicted tracks — never planner state, never the
+  map it might validate against.
+- Verdicts: `Accepted`, `MinimumRiskEscape` (starts inside the margin but
+  a slow creep gains clearance where holding strands the base; capped at
+  0.3 m/s, needs +0.15 m gain), `StaticCollision` (swept footprint hits
+  observed geometry), `DynamicCollision` (rollout meets a predicted
+  track), `UnsafeEmergencyStop` (braking tail `v^2/2a` doesn't fit the
+  forward opening), `InvalidStructure`. Accepted = first two only.
+- Without a valid estimate the validator falls back to the forward-sector
+  check (dead-reckoning start, never a silent full validation).

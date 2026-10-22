@@ -14,7 +14,7 @@ int main() {
   robot::iface::TaskRequest req;
   req.request_id = "eval";
   req.place_id = "dock";
-  session.submit_task(req);
+  session.request_goal(req);
   for (int i = 0; i < 3; ++i) session.step_once();
   assert(session.episode().size() == 3);
 
@@ -45,7 +45,7 @@ int main() {
   // no truth tokens, no sim links in src/robot). Mutating sim truth without
   // publishing an observation cannot change the next command.
   sim::scenario::ScenarioSession session2;
-  session2.submit_task(req);
+  session2.request_goal(req);
   session2.step_once();
   assert(session2.episode().size() == 1);
   assert(session2.episode().steps()[0].cmd.is_safe_stop());

@@ -135,7 +135,7 @@ v1 骨架 planner 恒发 safe-stop；包络、过期、空队列全部 fail-clos
 flowchart LR
   Op["Operator / Scenario / Test"] -->|"TaskRequest{request_id, place_id}"| Exe["RobotExecutive::submit"]
   Op -->|"request_map(map_id)"| Map["IMapProvider::select_map"]
-  Exe -->|"TaskStatus"| Op
+  Exe -->|"GoalStatus"| Op
   Map -->|"MapSnapshot{map_id, revision}"| Coord["Coordinator::update"]
 ```
 

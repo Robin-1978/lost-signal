@@ -63,6 +63,79 @@ double free_ray_score(const GridProjector& projector, double sx, double sy,
 
 ScanMatcher::ScanMatcher(ScanMatcherConfig config) : config_(config) {}
 
+std::vector<ScanBeam> ScanMatcher::prepare_beams(
+    const std::vector<float>& ranges, double angle_min_rad,
+    double angle_increment_rad, std::size_t max_beams) const {
+  std::vector<ScanBeam> beams;
+  if (ranges.empty() || !(angle_increment_rad > 0.0) || max_beams == 0) {
+    return beams;
+  }
+  beams.reserve(ranges.size());
+  for (std::size_t i = 0; i < ranges.size(); ++i) {
+    const double range = ranges[i];
+    if (!std::isfinite(range) || range <= 0.05) continue;
+    const bool hit = range < config_.max_range_m;
+    beams.push_back({std::min(range, config_.max_range_m),
+                     angle_min_rad + angle_increment_rad * i, hit});
+  }
+  if (beams.size() > max_beams) {
+    const std::size_t stride =
+        (beams.size() + max_beams - 1) / max_beams;
+    std::vector<ScanBeam> selected;
+    selected.reserve(max_beams);
+    for (std::size_t i = 0; i < beams.size() && selected.size() < max_beams;
+         i += stride) {
+      selected.push_back(beams[i]);
+    }
+    beams = std::move(selected);
+  }
+  return beams;
+}
+
+PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
+                                  const std::vector<ScanBeam>& beams,
+                                  const iface::MapSnapshot& map) const {
+  PoseScore out;
+  std::size_t hit_returns = 0;
+  for (const auto& beam : beams) {
+    if (beam.hit) ++hit_returns;
+  }
+  out.usable_returns = hit_returns;
+  if (beams.empty()) return out;
+  const GridProjector projector(map);
+  const double mount = config_.sensor_yaw_rad;
+  const double sx = x_m + config_.sensor_x_m * std::cos(yaw_rad) -
+                    config_.sensor_y_m * std::sin(yaw_rad);
+  const double sy = y_m + config_.sensor_x_m * std::sin(yaw_rad) +
+                    config_.sensor_y_m * std::cos(yaw_rad);
+  double score = 0.0;
+  double total_weight = 0.0;
+  std::size_t known = 0, matches = 0;
+  for (const auto& beam : beams) {
+    const double beam_angle = yaw_rad + beam.angle + mount;
+    const double lx = beam.range * std::cos(beam.angle + mount);
+    const double ly = beam.range * std::sin(beam.angle + mount);
+    // Rotate local offset into the map frame.
+    const double wx = sx + lx * std::cos(yaw_rad) - ly * std::sin(yaw_rad);
+    const double wy = sy + lx * std::sin(yaw_rad) + ly * std::cos(yaw_rad);
+    const double value =
+        beam.hit ? endpoint_score(projector, wx, wy)
+                 : free_ray_score(projector, sx, sy, beam_angle, beam.range);
+    const double weight = beam.hit ? 1.0 : 0.15;
+    score += weight * value;
+    total_weight += weight;
+    if (value != 0.0) {
+      ++known;
+      if (value > 0.0 && beam.hit) ++matches;
+    }
+  }
+  if (known == 0 || hit_returns == 0) return out;
+  out.has_evidence = true;
+  out.overlap = static_cast<double>(matches) / static_cast<double>(hit_returns);
+  out.score = score / std::max(1e-9, total_weight);
+  return out;
+}
+
 ScanMatchResult ScanMatcher::localize(
     const std::vector<float>& ranges, double angle_min_rad,
     double angle_increment_rad, double odom_x_m, double odom_y_m,
@@ -94,41 +167,19 @@ ScanMatchResult ScanMatcher::localize(
     return result;
   }
 
-  struct Beam {
-    double range = 0.0;
-    double angle = 0.0;
-    bool hit = false;
-  };
-  std::vector<Beam> beams;
-  beams.reserve(ranges.size());
+  std::vector<ScanBeam> beams =
+      prepare_beams(ranges, angle_min_rad, angle_increment_rad,
+                    config_.maximum_returns);
   std::size_t hit_returns = 0;
-  for (std::size_t i = 0; i < ranges.size(); ++i) {
-    const double range = ranges[i];
-    if (!std::isfinite(range) || range <= 0.05) continue;
-    const bool hit = range < config_.max_range_m;
-    beams.push_back({std::min(range, config_.max_range_m),
-                     angle_min_rad + angle_increment_rad * i, hit});
-    if (hit) ++hit_returns;
+  for (const auto& beam : beams) {
+    if (beam.hit) ++hit_returns;
   }
   result.usable_returns = hit_returns;
   if (hit_returns < config_.minimum_returns) {
     result.rejection_reason = "insufficient geometric returns";
     return result;
   }
-  // Deterministic angular subset: bounded cost at any sensor resolution.
-  if (beams.size() > config_.maximum_returns) {
-    const std::size_t stride =
-        (beams.size() + config_.maximum_returns - 1) / config_.maximum_returns;
-    std::vector<Beam> selected;
-    selected.reserve(config_.maximum_returns);
-    for (std::size_t i = 0; i < beams.size() && selected.size() < config_.maximum_returns;
-         i += stride) {
-      selected.push_back(beams[i]);
-    }
-    beams = std::move(selected);
-  }
 
-  const GridProjector projector(map);
   struct Hypothesis {
     double x = 0.0, y = 0.0, heading = 0.0;
     double score = -std::numeric_limits<double>::infinity();
@@ -153,38 +204,9 @@ ScanMatchResult ScanMatcher::localize(
         const double cy = odom_y_m + iy * config_.translation_step_m;
         const double heading =
             core::wrap_angle(odom_heading_rad + ih * config_.heading_step_rad);
-        const double mount = config_.sensor_yaw_rad;
-        const double sx = cx + config_.sensor_x_m * std::cos(heading) -
-                          config_.sensor_y_m * std::sin(heading);
-        const double sy = cy + config_.sensor_x_m * std::sin(heading) +
-                          config_.sensor_y_m * std::cos(heading);
-        double score = 0.0;
-        double total_weight = 0.0;
-        std::size_t known = 0, matches = 0;
-        for (const auto& beam : beams) {
-          const double beam_angle = heading + beam.angle + mount;
-          const double lx = beam.range * std::cos(beam.angle + mount);
-          const double ly = beam.range * std::sin(beam.angle + mount);
-          // Rotate local offset into the map frame.
-          const double wx = sx + lx * std::cos(heading) - ly * std::sin(heading);
-          const double wy = sy + lx * std::sin(heading) + ly * std::cos(heading);
-          const double value =
-              beam.hit ? endpoint_score(projector, wx, wy)
-                       : free_ray_score(projector, sx, sy, beam_angle,
-                                        beam.range);
-          const double weight = beam.hit ? 1.0 : 0.15;
-          score += weight * value;
-          total_weight += weight;
-          if (value != 0.0) {
-            ++known;
-            if (value > 0.0 && beam.hit) ++matches;
-          }
-        }
-        if (known == 0) continue;
-        const double overlap =
-            static_cast<double>(matches) / static_cast<double>(hit_returns);
-        score /= std::max(1e-9, total_weight);
-        Hypothesis h{cx, cy, heading, score, overlap};
+        const PoseScore pose = score_pose(cx, cy, heading, beams, map);
+        if (!pose.has_evidence) continue;
+        Hypothesis h{cx, cy, heading, pose.score, pose.overlap};
         const auto existing = std::find_if(
             hypotheses.begin(), hypotheses.end(),
             [&](const Hypothesis& v) { return same_hypothesis(v, h); });

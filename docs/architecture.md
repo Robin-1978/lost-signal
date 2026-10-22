@@ -35,7 +35,7 @@ flowchart TB
   World --> SimProv
   SimProv <-->|"ObservationFrame / MotionCommand<br/>+ EndpointRegistry"| Chan
   RealProv <-->|"ObservationFrame / MotionCommand<br/>+ EndpointRegistry"| Chan
-  Sess -->|"submit_task / request_map<br/>typed intent only"| App
+  Sess -->|"request_goal / request_map<br/>typed intent only"| App
   Sess --> World
   Sess --> Snap
   App -->|"validated MotionCommand"| SimProv
@@ -91,7 +91,7 @@ consume time, `kStop` implies zero motion. Anything else -> safe stop.
 
 | Call | Payload |
 |---|---|
-| `submit_task(TaskRequest{request_id, place_id})` | semantic place only, resolved via `IMapProvider` |
+| `request_goal(TaskRequest{request_id, place_id}) -> GoalHandle` | semantic place only, resolved via `IMapProvider`; poll `goal_status`, `cancel_goal` |
 | `request_map(map_id)` | map selection, fulfilled at a safe switching point |
 | `IMapProvider::active_snapshot()` | immutable `{map_id, revision, raster?, frame_id}` |
 

@@ -25,7 +25,15 @@ class DifferentialRobot : public app::IRobot {
     inner_->set_goal(goal);
   }
 
-  core::Status submit_task(const iface::TaskRequest& req) override;
+  iface::GoalHandle request_goal(const iface::TaskRequest& req) override {
+    return inner_->request_goal(req);
+  }
+  iface::GoalStatus goal_status(iface::GoalHandle handle) const override {
+    return inner_->goal_status(handle);
+  }
+  bool cancel_goal(iface::GoalHandle handle) override {
+    return inner_->cancel_goal(handle);
+  }
   core::Status request_map(const std::string& map_id) override;
   bool register_provider(const iface::EndpointDescriptor& desc) override;
   bool publish_observation(const iface::ObservationFrame& obs) override;
@@ -37,7 +45,9 @@ class DifferentialRobot : public app::IRobot {
     return inner_->last_evidence();
   }
   iface::MotionCommand tick(core::MonotonicNs now_ns) override;
-  iface::TaskStatus task_status() const override;
+  iface::GoalStatus current_goal() const override {
+    return inner_->current_goal();
+  }
   iface::MapSnapshot active_map() const override;
   iface::ChannelHealth channel_health() const override;
 

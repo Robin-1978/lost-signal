@@ -17,9 +17,7 @@ lifecycle::ModuleState DifferentialRobot::bringup_state() const {
   return inner_->bringup_state();
 }
 
-core::Status DifferentialRobot::submit_task(const iface::TaskRequest& req) {
-  return inner_->submit_task(req);
-}
+
 
 core::Status DifferentialRobot::request_map(const std::string& map_id) {
   return inner_->request_map(map_id);
@@ -46,9 +44,7 @@ iface::MotionCommand DifferentialRobot::tick(core::MonotonicNs now_ns) {
   return inner_->tick(now_ns);
 }
 
-iface::TaskStatus DifferentialRobot::task_status() const {
-  return inner_->task_status();
-}
+
 
 iface::MapSnapshot DifferentialRobot::active_map() const {
   return inner_->active_map();

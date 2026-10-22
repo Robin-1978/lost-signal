@@ -25,8 +25,18 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
     app_.set_goal(goal);
   }
 
-  ::lost_signal::robot::core::Status submit_task(
-      const ::lost_signal::robot::iface::TaskRequest& req) override;
+  ::lost_signal::robot::iface::GoalHandle request_goal(
+      const ::lost_signal::robot::iface::TaskRequest& req) override {
+    return app_.request_goal(req);
+  }
+  ::lost_signal::robot::iface::GoalStatus goal_status(
+      ::lost_signal::robot::iface::GoalHandle handle) const override {
+    return app_.goal_status(handle);
+  }
+  bool cancel_goal(
+      ::lost_signal::robot::iface::GoalHandle handle) override {
+    return app_.cancel_goal(handle);
+  }
   ::lost_signal::robot::core::Status request_map(
       const std::string& map_id) override;
   bool register_provider(
@@ -46,7 +56,9 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
   // One self-stepping cycle: world -> suite envelope -> app.tick -> plant.
   ::lost_signal::robot::iface::MotionCommand tick(
       ::lost_signal::robot::core::MonotonicNs now_ns) override;
-  ::lost_signal::robot::iface::TaskStatus task_status() const override;
+  ::lost_signal::robot::iface::GoalStatus current_goal() const override {
+    return app_.current_goal();
+  }
   ::lost_signal::robot::iface::MapSnapshot active_map() const override;
   ::lost_signal::robot::iface::ChannelHealth channel_health() const override;
 

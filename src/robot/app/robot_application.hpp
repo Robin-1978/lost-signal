@@ -72,7 +72,14 @@ class RobotApplication : public IRobot {
   }
 
   // Task / map intent (typed, no coordinates from SIM truth).
-  core::Status submit_task(const iface::TaskRequest& req) override;
+  // Async: returns a handle immediately; poll goal_status, cancel_goal.
+  iface::GoalHandle request_goal(const iface::TaskRequest& req) override;
+  iface::GoalStatus goal_status(iface::GoalHandle handle) const override {
+    return executive_.goal_status(handle);
+  }
+  bool cancel_goal(iface::GoalHandle handle) override {
+    return executive_.cancel_goal(handle);
+  }
   core::Status request_map(const std::string& map_id) override;
 
   // Provider bring-up: claim (endpoint_id, role) ownership.
@@ -95,7 +102,7 @@ class RobotApplication : public IRobot {
   // without processing while not Active.
   iface::MotionCommand tick(core::MonotonicNs now_ns) override;
 
-  iface::TaskStatus task_status() const override;
+  iface::GoalStatus current_goal() const override;
   iface::MapSnapshot active_map() const override;
   iface::ChannelHealth channel_health() const override;
   const platform::RobotDescription& description() const { return desc_; }
@@ -117,7 +124,7 @@ class RobotApplication : public IRobot {
     bool localized = false;
     std::string localization_action = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
-    iface::TaskStatus task;
+    iface::GoalStatus goal;
     iface::ChannelHealth health;
   };
   Diagnostics diagnostics() const;

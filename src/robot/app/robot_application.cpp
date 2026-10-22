@@ -63,11 +63,13 @@ core::Status RobotApplication::activate() {
 
 void RobotApplication::shutdown() { bringup_.cleanup_all(); }
 
-core::Status RobotApplication::submit_task(const iface::TaskRequest& req) {
+iface::GoalHandle RobotApplication::request_goal(
+    const iface::TaskRequest& req) {
   if (!req.place_id.empty()) {
     // Semantic resolution through the ROBOT map provider: the place id
     // becomes an estimated-frame goal for the coordinator. Unknown ids
-    // fail closed; raw coordinates never cross this boundary.
+    // fail closed with an invalid handle; raw coordinates never cross
+    // this boundary.
     const iface::MapSnapshot snap = maps_->active_snapshot();
     const iface::Place* found = nullptr;
     for (const auto& p : snap.places) {
@@ -77,12 +79,12 @@ core::Status RobotApplication::submit_task(const iface::TaskRequest& req) {
       }
     }
     if (found == nullptr) {
-      return core::Status::Fail("unknown place: " + req.place_id);
+      return iface::GoalHandle{};  // unknown place: nothing armed
     }
     autonomy::RoutePoint goal{found->x_m, found->y_m, found->yaw_rad};
     coordinator_.set_goal(goal);
   }
-  return executive_.submit(req);
+  return executive_.request_goal(req.place_id, req.request_id);
 }
 
 core::Status RobotApplication::request_map(const std::string& map_id) {
@@ -150,11 +152,14 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   const autonomy::EstimatedState& est = coordinator_.estimate();
   measurement_.update(now_ns * 1e-9, {est.x_m, est.y_m},
                       std::abs(est.forward_mps), std::abs(body.forward_mps));
+  // Goal lifetime: arrival completes the active goal; motion continues
+  // under the next request (or holds when none is active).
+  executive_.note_arrival(coordinator_.route_complete());
   return body;
 }
 
-iface::TaskStatus RobotApplication::task_status() const {
-  return executive_.status();
+iface::GoalStatus RobotApplication::current_goal() const {
+  return executive_.current_goal();
 }
 
 iface::MapSnapshot RobotApplication::active_map() const {
@@ -181,7 +186,7 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   d.evidence = coordinator_.last_evidence();
   d.braking_active = measurement_.braking().active;
   d.braking_distance_m = measurement_.braking().distance_m;
-  d.task = executive_.status();
+  d.goal = executive_.current_goal();
   d.health = channel_.health();
   return d;
 }

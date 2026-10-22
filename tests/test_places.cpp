@@ -37,15 +37,16 @@ int main() {
   iface::TaskRequest bad;
   bad.request_id = "b1";
   bad.place_id = "nowhere";
-  assert(!app.submit_task(bad));
-  assert(app.task_status().state == iface::TaskState::kIdle);
+  assert(!app.request_goal(bad).valid());
+  assert(app.current_goal().state != iface::GoalState::kActive);
 
   // Known place resolves to a coordinator goal through the map provider.
   iface::TaskRequest req;
   req.request_id = "t1";
   req.place_id = "dock";
-  assert(app.submit_task(req));
-  assert(app.task_status().state == iface::TaskState::kActive);
+  iface::GoalHandle h = app.request_goal(req);
+  assert(h.valid());
+  assert(app.goal_status(h).state == iface::GoalState::kActive);
 
   // With an observation flowing, the resolved goal becomes a real route and
   // the DWA drives toward it (place -> map -> route -> command).

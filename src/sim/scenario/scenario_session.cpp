@@ -14,8 +14,18 @@ ScenarioSession::ScenarioSession()
   (void)app_.activate();
 }
 
-void ScenarioSession::submit_task(const robot::iface::TaskRequest& req) {
-  (void)app_.submit_task(req);
+robot::iface::GoalHandle ScenarioSession::request_goal(
+    const robot::iface::TaskRequest& req) {
+  return app_.request_goal(req);
+}
+
+robot::iface::GoalStatus ScenarioSession::goal_status(
+    robot::iface::GoalHandle h) const {
+  return app_.goal_status(h);
+}
+
+bool ScenarioSession::cancel_goal(robot::iface::GoalHandle h) {
+  return app_.cancel_goal(h);
 }
 
 void ScenarioSession::step_once() {

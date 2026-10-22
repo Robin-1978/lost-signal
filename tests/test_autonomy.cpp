@@ -219,6 +219,57 @@ int main() {
     assert(v.validate(go, EstimatedState{}, ok, side).accepted);
   }
 
+  // Trajectory verdicts (valid estimate => full rollout validation).
+  {
+    ClearanceValidator v;
+    PerceptionResult ok;
+    ok.scan_ok = true;
+    EstimatedState est;
+    est.valid = true;  // x=y=yaw=0
+    LocalCandidate go;
+    go.feasible = true;
+    go.forward_mps = 1.0;
+
+    // Static collision: wall 1 m dead ahead, rollout drives through it.
+    iface::ObservationFrame wall = make_odom(1, 1, 0.0);
+    wall.ranges_m.assign(8, 10.0f);
+    wall.ranges_m[4] = 1.0f;  // beam 4: straight ahead
+    ValidationResult hit = v.validate(go, est, ok, wall);
+    assert(!hit.accepted &&
+           hit.verdict == TrajectoryVerdict::kStaticCollision);
+
+    // Dynamic collision: track crossing the rollout centerline.
+    iface::ObservationFrame open = make_odom(2, 2, 0.0);
+    open.ranges_m.assign(8, 10.0f);
+    PerceptionResult traffic = ok;
+    DynamicTrack crosser;
+    crosser.x_m = 2.0;
+    crosser.vx_mps = -1.0;  // closing at 2 m/s vs the 1 m/s candidate
+    traffic.tracks.push_back(crosser);
+    ValidationResult dyn = v.validate(go, est, traffic, open);
+    assert(!dyn.accepted &&
+           dyn.verdict == TrajectoryVerdict::kDynamicCollision);
+
+    // Minimum-risk escape: obstacle inside the margin behind the base
+    // (beam 0 points straight back), slow creep forward gains clearance
+    // where holding would strand the base inside the margin.
+    iface::ObservationFrame behind = make_odom(3, 3, 0.0);
+    behind.ranges_m.assign(8, 10.0f);
+    behind.ranges_m[0] = 0.2f;  // 0.2 m dead astern: inside every margin
+    LocalCandidate creep;
+    creep.feasible = true;
+    creep.forward_mps = 0.2;
+    ValidationResult mre = v.validate(creep, est, ok, behind);
+    assert(mre.accepted &&
+           mre.verdict == TrajectoryVerdict::kMinimumRiskEscape);
+    assert(mre.escape_clearance_gain_m > 0.15);
+    // Same scene at speed is no escape: fast inside the margin rejects.
+    LocalCandidate fast = creep;
+    fast.forward_mps = 1.0;
+    ValidationResult noesc = v.validate(fast, est, ok, behind);
+    assert(!noesc.accepted);
+  }
+
   // Global planner: straight line from estimate to goal.
   {
     StraightLinePlanner planner;

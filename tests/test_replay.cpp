@@ -115,7 +115,7 @@ int main() {
     robot::iface::TaskRequest req;
     req.request_id = "replay";
     req.place_id = "dock";
-    session.submit_task(req);
+    session.request_goal(req);
     for (int i = 0; i < 60; ++i) session.step_once();
     assert(session.episode().size() == 60);
 
@@ -141,7 +141,7 @@ int main() {
     robot::iface::TaskRequest replay_req;
     replay_req.request_id = "replay";
     replay_req.place_id = "dock";
-    assert(app.submit_task(replay_req).ok);
+    assert(app.request_goal(replay_req).valid());
     sim::world::World plant;
     sim::providers::SimMotionEndpoint motion(&plant);
 

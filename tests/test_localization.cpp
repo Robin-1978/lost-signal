@@ -4,6 +4,7 @@
 
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
 
@@ -239,6 +240,64 @@ int main() {
     assert(coord.localized());
     assert(coord.estimate().position_sigma_m < 0.2);
     assert(std::abs(coord.estimate().x_m - 1.0) < 0.5);
+  }
+
+  // 6. Global search: kidnap recovery from an unknown start. The true
+  // pose is (1,0,0) but no prior is given; the whole-map search must
+  // accept near the true pose. A uniform-wall map stays ambiguous and
+  // must reject rather than guess.
+  {
+    auto map = make_wall_map();
+    auto ranges = scan_from(1.0, 0.0, 0.0, map);
+    GlobalSearcher searcher;
+    GlobalSearchResult r = searcher.search(
+        ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 1);
+    assert(r.accepted);
+    assert(std::abs(r.x_m - 1.0) < 0.5);
+    assert(std::abs(r.y_m - 0.0) < 0.5);
+    assert(std::abs(r.yaw_rad) < 0.2);
+    assert(r.coarse_evaluations > 0);
+
+    // Uniform wall: every y-shifted hypothesis ties, so the global
+    // search must refuse instead of kidnapping the estimate to a twin.
+    auto uniform = make_wall_map();
+    for (std::size_t i = 0; i < uniform.occupancy.size(); ++i) {
+      int gx = i % 40, gy = i / 40;
+      double cx = -10.0 + (gx + 0.5) * 0.5;
+      double cy = -10.0 + (gy + 0.5) * 0.5;
+      bool occ = (cx >= 4.0 && cx < 5.0);
+      uniform.occupancy[i] = occ ? 100 : 0;
+    }
+    auto uranges = scan_from(1.0, 0.0, 0.0, uniform);
+    GlobalSearchResult u = searcher.search(
+        uranges, -M_PI, 2.0 * M_PI / uranges.size(), uniform, 1);
+    assert(!u.accepted);
+  }
+
+  // 7. Coordinator kidnap path: unlocalized start takes the global branch
+  // and lands localized near the true pose.
+  {
+    auto map = make_wall_map();
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    // No seed_pose: the supervisor starts unlocalized and the first tick
+    // runs the whole-map search.
+    iface::ObservationFrame o;
+    o.sequence = 1;
+    o.stamp_ns = 20'000'000;
+    o.source = "t.lidar";
+    o.frame = core::Frame::kLidarLink;
+    o.odometry_valid = true;
+    o.scan_valid = true;
+    o.ranges_m = scan_from(1.0, 0.0, 0.0, map);
+    o.scan_angle_min_rad = -M_PI;
+    o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
+    o.imu_valid = true;
+    coord.ingest_observation(o);
+    coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+    assert(coord.localized());
+    assert(std::abs(coord.estimate().x_m - 1.0) < 0.6);
+    assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
   std::printf("localization ok\n");

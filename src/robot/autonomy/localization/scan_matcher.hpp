@@ -50,6 +50,23 @@ struct ScanMatchResult {
   std::string rejection_reason = "unassessed";
 };
 
+// One prepared beam: validated range in sensor frame. Shared by the bounded
+// local matcher and the whole-map global search so both score identically.
+struct ScanBeam {
+  double range = 0.0;  // clamped to max_range_m
+  double angle = 0.0;  // sensor-frame angle, rad
+  bool hit = false;    // true return (range < max_range_m)
+};
+
+struct PoseScore {
+  double score = 0.0;
+  double overlap = 0.0;
+  std::size_t usable_returns = 0;
+  // False when every beam scored exactly 0 (all unknown): no evidence either
+  // way. Callers skip such hypotheses instead of ranking them at 0.
+  bool has_evidence = false;
+};
+
 class ScanMatcher {
  public:
   explicit ScanMatcher(ScanMatcherConfig config = ScanMatcherConfig{});
@@ -61,6 +78,18 @@ class ScanMatcher {
                            double odom_heading_rad,
                            const iface::MapSnapshot& map,
                            core::MonotonicNs stamp_ns) const;
+
+  // Filter + deterministic angular downsample to at most max_beams.
+  // Empty output means no usable geometry (caller rejects).
+  std::vector<ScanBeam> prepare_beams(const std::vector<float>& ranges,
+                                      double angle_min_rad,
+                                      double angle_increment_rad,
+                                      std::size_t max_beams) const;
+  // Score one pose hypothesis with prepared beams. Pure function of
+  // (pose, beams, map); the global search calls this per coarse candidate.
+  PoseScore score_pose(double x_m, double y_m, double yaw_rad,
+                       const std::vector<ScanBeam>& beams,
+                       const iface::MapSnapshot& map) const;
 
  private:
   ScanMatcherConfig config_;

@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "robot/platform/chassis.hpp"
+#include "robot/platform/chassis_registry.hpp"
 
 int main() {
   using namespace lost_signal::robot;
@@ -41,6 +42,33 @@ int main() {
   iface::MotionCommand stop = iface::MotionCommand::SafeStop(100);
   iface::MotionCommand kept = diff.clamp_command(stop, 100);
   assert(kept.is_safe_stop());
+
+  // Plugin registry: builtins present, unknown fails closed, first wins,
+  // and a native bring-up can register a new base without touching the
+  // factory call site.
+  platform::ChassisRegistry& registry = platform::ChassisRegistry::global();
+  assert(registry.contains("differential"));
+  assert(registry.contains("ackermann"));
+  assert(registry.contains("swerve"));
+  assert(registry.contains("mecanum"));
+  assert(!registry.contains("nope"));
+  assert(!registry.register_factory("", [](const platform::RobotDescription&) {
+    return nullptr;
+  }));
+  assert(!registry.register_factory(
+      "differential", [](const platform::RobotDescription&) { return nullptr; }));
+  platform::RobotDescription custom;
+  custom.chassis_kind = "test-trike";
+  custom.limits = limits;
+  assert(registry.create(custom) == nullptr);
+  assert(registry.register_factory(
+      "test-trike", [](const platform::RobotDescription& desc) {
+        return std::make_unique<platform::DifferentialChassis>(0.2, 0.6,
+                                                              desc.limits);
+      }));
+  auto trike = registry.create(custom);
+  assert(trike && std::string(trike->chassis_id()) == "differential");
+  assert(trike->command_space() == iface::CommandSpace::kYawRate);
 
   std::printf("chassis ok\n");
   return 0;

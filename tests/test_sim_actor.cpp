@@ -24,7 +24,7 @@ int main() {
   robot::iface::TaskRequest req;
   req.request_id = "crossing";
   req.place_id = "dock";
-  assert(sim.submit_task(req));
+  assert(sim.request_goal(req).valid());
   sim.set_goal({6.0, 0.0, 0.0});
 
   std::vector<double> xs;
@@ -35,7 +35,7 @@ int main() {
   assert(xs[8] > 0.02);               // drove toward the goal initially
   assert(xs[60] < 0.5);               // held while the actor was near
   assert(xs[279] > 2.0);              // resumed after the actor passed
-  assert(sim.task_status().state == robot::iface::TaskState::kActive);
+  assert(sim.current_goal().state == robot::iface::GoalState::kActive);
 
   std::printf("sim_actor ok: x8=%.2f x60=%.2f x_end=%.2f\n", xs[8], xs[60],
               xs[279]);
