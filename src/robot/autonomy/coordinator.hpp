@@ -40,7 +40,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   explicit AutonomyCoordinator(
       platform::ChassisLimits limits = {.max_forward_mps = 2.0,
                                         .max_yaw_rate_radps = 2.0,
-                                        .footprint_radius_m = 0.4});
+                                        .footprint_radius_m = 0.4},
+      core::MonotonicNs decision_period_ns = 100'000'000);  // 10 Hz default
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;
@@ -53,6 +54,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   iface::MotionCommand update(iface::MapSnapshot map,
                               const iface::ChannelHealth& channel,
                               core::MonotonicNs now_ns);
+  // Event wakeup: force the decision branch on the next update, without
+  // waiting for the decision period (goal arrival, operator override).
+  void request_replan() { replan_requested_ = true; }
   void clear_safety() { safety_->clear_safety(); }
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
@@ -60,6 +64,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }
   SafetyVerdict last_safety() const { return safety_->last_verdict(); }
+  core::MonotonicNs last_decision_ns() const { return last_decision_ns_; }
   LocalMap local_map() const;
 
  private:
@@ -77,6 +82,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   iface::ObservationFrame last_obs_{};
   PerceptionResult perception_{};
   BehaviorDecision decision_{};
+  core::MonotonicNs decision_period_ns_;
+  core::MonotonicNs last_decision_ns_ = core::kInvalidTime;
+  std::uint64_t last_map_revision_ = 0;
+  bool replan_requested_ = false;
+  iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
 };
 
 }  // namespace lost_signal::robot::autonomy

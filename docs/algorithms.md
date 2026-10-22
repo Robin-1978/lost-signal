@@ -75,20 +75,22 @@ authority and the controller never invents motion.
   never auto-clears on fresh data. Safety state + reason ride in
   `Diagnostics` for ops visibility and offline scoring.
 
-## Cadence (target; current = per-tick)
+## Cadence (implemented)
 
 | Module | Trigger |
 |---|---|
-| Estimator predict | every IMU/encoder observation |
-| Estimator correct | every scan (local) / recovery event (global) |
-| Perception / mapping | sensor delivery rate |
-| Local planner + validator + controller | decision rate (e.g. 10 Hz) |
-| Global planner | goal change, map revision, route invalidation |
+| Estimator predict/correct | every ingested observation (sensor rate) |
+| Perception / mapping | scan-bearing observations only (`scan_valid`) |
+| Behavior + local planner + validator + controller | decision period, default 10 Hz (`decision_period_ns`), or event wakeup |
+| Safety gate | every `update()` tick, on the held or fresh command |
+| Global planner | event-driven (goal/map change), outside the per-tick path |
 
-Today `ingest_observation()` advances estimator/perception/mapper and
-`update()` runs plan/validate/control in one tick. Splitting cadences is
-scheduler work in `RobotApplication`; module contracts already carry the
-timestamps to support it.
+`ingest_observation()` advances estimator always and perception/mapper at
+scan rate. `update()` runs the decision branch when due, on
+`request_replan()`, or on a `MapSnapshot` revision change; otherwise it holds
+the last validated command (inside its watchdog expiry) while safety keeps
+gating every tick. Event inputs therefore never wait for the period, and
+periodic work never runs on stale data.
 
 ## Fail-closed summary
 

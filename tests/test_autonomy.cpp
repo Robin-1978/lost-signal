@@ -65,6 +65,48 @@ int main() {
     assert(cmd.is_safe_stop());
   }
 
+  // Cadence: decision branch runs at the decision period; safety gates
+  // every tick; replan request and map revision force an early decision.
+  {
+    platform::ChassisLimits lim{.max_forward_mps = 2.0,
+                                .max_yaw_rate_radps = 1.5,
+                                .footprint_radius_m = 0.4};
+    AutonomyCoordinator coord(lim, 100'000'000);
+    assert(coord.configure().ok && coord.activate().ok);
+    coord.ingest_observation(make_odom(1, 0, 0.0));
+    iface::ChannelHealth ch{};
+    iface::MapSnapshot map;
+    coord.update(map, ch, 0);
+    assert(coord.last_decision_ns() == 0);
+    coord.update(map, ch, 10'000'000);  // 10 ms later: hold last, no replan
+    assert(coord.last_decision_ns() == 0);
+    coord.request_replan();  // event wakeup
+    coord.update(map, ch, 10'000'000);
+    assert(coord.last_decision_ns() == 10'000'000);
+    map.revision = 1;  // new map revision forces a decision
+    coord.update(map, ch, 20'000'000);
+    assert(coord.last_decision_ns() == 20'000'000);
+    coord.update(map, ch, 120'000'000);  // period elapsed: due again
+    assert(coord.last_decision_ns() == 120'000'000);
+  }
+
+  // Scan-rate gating: odometry-only frames advance estimation but never
+  // perception; without scan evidence the planner has no plan.
+  {
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    auto odom_only = make_odom(1, 1'000'000, 0.5);
+    odom_only.scan_valid = false;
+    odom_only.ranges_m.clear();
+    coord.ingest_observation(odom_only);
+    assert(coord.has_observation());
+    assert(!coord.perception().scan_ok);
+    iface::ChannelHealth ch{};
+    iface::MotionCommand cmd =
+        coord.update(iface::MapSnapshot{}, ch, 1'000'000);
+    assert(cmd.is_safe_stop());
+  }
+
   // Validator: hold passes without scan; motion needs clearance.
   {
     ClearanceValidator v;
