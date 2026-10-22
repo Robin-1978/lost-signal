@@ -5,15 +5,13 @@
 
 namespace lost_signal::sim::scenario {
 
-ScenarioSession::ScenarioSession() : ScenarioSession(world::PhysicsBackend::kAnalytic) {}
-
-ScenarioSession::ScenarioSession(world::PhysicsBackend backend)
-    : world_(backend),
+ScenarioSession::ScenarioSession()
+    : world_(),
       suite_(&world_),
       app_(std::make_unique<providers::StaticMapProvider>(
           &world_, -10.0, -10.0, 20.0, 20.0, 0.25)) {
   // SIM bring-up: the suite claims motion + lidar + imu descriptors.
-  // Same seam a native driver uses, only the backend flag differs.
+  // Same seam a native driver uses.
   suite_.register_all(app_);
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();

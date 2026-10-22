@@ -1,11 +1,10 @@
 #pragma once
 
-// MuJoCo physics backend (SIM internals, never ROBOT input). M1 covers the
-// differential base; other modes arrive in M2. The backend owns rigid-body
-// integration ONLY: duties become joint efforts through the same
-// electric-drive + service-brake math as the analytic plant (single
-// behavior, two integrators), contacts resolve in the engine, and truth is
-// read back from engine state for the providers to translate.
+// MuJoCo physics backend (SIM internals, never ROBOT input). The backend
+// owns rigid-body integration: duties become joint efforts through the
+// main-stack electric-drive + service-brake math, contacts resolve in the
+// engine, and truth is read back from engine state for the providers to
+// translate.
 //
 // Determinism contract: fixed 1 ms substeps, single-threaded, no noise.
 // Same duties + same steps = bit-identical truth, verified by the M1
@@ -23,11 +22,6 @@ namespace lost_signal::sim::world {
 struct MotorParams;
 struct StaticBox;
 struct Actor;
-
-enum class PhysicsBackend {
-  kAnalytic,  // force integration in World::step (S1-S3 plant)
-  kMujoco,    // rigid-body integration in the engine (M-track)
-};
 
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
@@ -104,8 +98,8 @@ class MujocoBackend {
 #else  // !LOST_SIGNAL_WITH_MUJOCO
 
 // MuJoCo disabled at configure time: the backend exists as a typed
-// placeholder that reports invalid, so World code compiles either way and
-// kMujoco can never silently behave as analytic.
+// placeholder that reports invalid, so World code compiles either way.
+// The engine is the only plant; there is no fallback integration.
 class MujocoBackend {
  public:
   bool valid() const { return false; }

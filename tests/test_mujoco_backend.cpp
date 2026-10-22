@@ -1,6 +1,6 @@
-// M1 parity gate: the MuJoCo backend must reproduce deployable behavior,
-// not analytic numbers. Pins are behavioral (moves, stops, holds grade,
-// deterministic); exact transients belong to the effort-model unit tests.
+// Engine behavior gate: the plant must reproduce deployable behavior.
+// Pins are behavioral (moves, stops, holds grade, deterministic); exact
+// transients belong to the effort-model unit tests.
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -16,9 +16,7 @@ using namespace lost_signal;
 
 namespace {
 
-sim::world::World make_mujoco_diff() {
-  return sim::world::World(sim::world::PhysicsBackend::kMujoco);
-}
+sim::world::World make_mujoco_diff() { return sim::world::World(); }
 
 void set_diff_duty(sim::world::World& w, double duty) {
   robot::iface::ActuatorCommand cmd;
@@ -36,7 +34,6 @@ int main() {
   // Spin-up: moves, settles below free speed, level attitude.
   {
     sim::world::World w = make_mujoco_diff();
-    assert(w.backend() == sim::world::PhysicsBackend::kMujoco);
     set_diff_duty(w, 1.0);
     for (int i = 0; i < 200; ++i) w.step(0.02);
     assert(std::isfinite(w.truth().forward_mps));
@@ -45,9 +42,9 @@ int main() {
     assert(std::abs(w.truth().body_roll_rad) < 0.05);
     assert(std::abs(w.truth().body_pitch_rad) < 0.05);
     assert(w.truth().body_z_m > 0.0);  // off the ground plane, on wheels
-    // Coast: the engine glides (rolling loss ~0 at these speeds, same as
-    // main's duty path). Pin no-energy-creation and no-reversal, not a
-    // decay rate — the analytic R(v) rate belongs to the analytic plant.
+    // Coast: joint damping bleeds speed over tens of seconds; over 100
+    // steps it glides. Pin no-energy-creation and no-reversal, not a
+    // decay rate — the engine owns the transient.
     set_diff_duty(w, 0.0);
     const double v0 = w.truth().forward_mps;
     for (int i = 0; i < 100; ++i) w.step(0.02);
@@ -131,11 +128,11 @@ int main() {
   }
 
   // Other chassis on the engine: ackermann left arc, mecanum strafe,
-  // swerve straight. Mirrors the analytic plant pins, engine-appropriate
-  // tolerances (no exact numbers — the engine owns the transients).
+  // swerve straight. Engine-appropriate tolerances throughout (no exact
+  // numbers — the engine owns the transients).
   {
     // Ackermann drives a left arc.
-    sim::world::World w(sim::world::PhysicsBackend::kMujoco);
+    sim::world::World w;
     sim::world::MotorParams mp;
     mp.wheel_base_m = 0.62;
     mp.track_width_m = 0.58;
@@ -152,7 +149,7 @@ int main() {
     assert(w.truth().yaw_rate_radps > 0.05);  // positive steer -> left arc
     assert(w.truth().body_yaw_rad > 0.0);
     // Mecanum strafes left with ~zero forward.
-    sim::world::World m(sim::world::PhysicsBackend::kMujoco);
+    sim::world::World m;
     robot::iface::ActuatorCommand mc;
     mc.mode = robot::iface::ActuatorMode::kMecanumDuty;
     mc.stamp_ns = 0;
@@ -164,7 +161,7 @@ int main() {
     assert(m.truth().lateral_mps > 0.3);
     assert(m.truth().body_y_m > 0.1);
     // Swerve drives straight with centered modules.
-    sim::world::World s(sim::world::PhysicsBackend::kMujoco);
+    sim::world::World s;
     robot::iface::ActuatorCommand sc;
     sc.mode = robot::iface::ActuatorMode::kSwerveDuty;
     sc.stamp_ns = 0;
@@ -180,8 +177,7 @@ int main() {
 
   // HIL mission on the engine: crossing crosser, hold, resume, arrive.
   {
-    sim::scenario::ScenarioSession session(
-        sim::world::PhysicsBackend::kMujoco);
+    sim::scenario::ScenarioSession session;
     session.setup_world().add_place({"dock", 6.0, 0.0, 0.0});
     sim::world::Actor crosser;
     crosser.x = 2.0;
@@ -210,7 +206,7 @@ int main() {
 #else
   // MuJoCo disabled: backend exists but reports invalid, never steps.
   {
-    sim::world::World w(sim::world::PhysicsBackend::kMujoco);
+    sim::world::World w;
     set_diff_duty(w, 1.0);
     w.step(0.02);
     assert(w.truth().forward_mps == 0.0);

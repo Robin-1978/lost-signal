@@ -118,8 +118,9 @@ void MujocoBackend::sync(const MotorParams& motor,
       << motor.brake_max_torque_Nm << "|" << motor.brake_apply_time_s << "|"
       << motor.brake_release_time_s << "|" << motor.steer_stall_torque_Nm
       << "|" << motor.max_steer_rad << "|" << motor.max_steer_rate_radps
-      << "|" << motor.tire_friction_mu << "|" << drive_count << "|"
-      << steer_count << "|" << boxes.size() << "|";
+      << "|" << motor.tire_friction_mu << "|" << motor.viscous_drag_N_per_mps
+      << "|" << drive_count << "|" << steer_count << "|" << boxes.size()
+      << "|";
   for (const auto& b : boxes) {
     sig << b.x0 << "," << b.y0 << "," << b.x1 << "," << b.y1 << "," << b.height_m
         << ";";
@@ -179,7 +180,7 @@ void MujocoBackend::sync(const MotorParams& motor,
     modules = {{0.0, track / 2, false}, {0.0, -track / 2, false}};
   } else if (drive_count == 2 && steer_count == 2) {
     // Rear drives + front steered IDLERS (free-spinning, no torque):
-    // the two drive duties are the rear axle, like the analytic plant.
+    // the two drive duties are the rear axle, like the main stack.
     modules = {{-base_len / 2, track / 2, false},
                {-base_len / 2, -track / 2, false},
                {base_len / 2, track / 2, true},
@@ -257,8 +258,13 @@ void MujocoBackend::sync(const MotorParams& motor,
     if (is_drive) {
       mjsBody* wheel =
           add_body(parent, "wheel" + std::to_string(drive_idx), px, py, 0.0);
-      add_hinge(wheel, "drive" + std::to_string(drive_idx), 0.0, 1.0, 0.0,
-                std::max(1e-6, motor.wheel_equiv_mass_kg * r * r));
+      mjsJoint* drive = add_hinge(wheel, "drive" + std::to_string(drive_idx),
+                                  0.0, 1.0, 0.0,
+                                  std::max(1e-6, motor.wheel_equiv_mass_kg * r * r));
+      // S2 viscous drag, native mechanism: patch force c*v becomes joint
+      // damping torque c*r^2*w. Coulomb/rolling stay in the contact pair.
+      drive->damping[0] =
+          std::max(0.0, motor.viscous_drag_N_per_mps) * r * r;
       mjsGeom* tire = add_geom(wheel, "tire" + std::to_string(drive_idx),
                                mjGEOM_CYLINDER, r, 0.04, 0.0);
       tire->quat[0] = kQuatX90[0];
@@ -346,7 +352,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   impl_->model = model;
   impl_->data = data;
-  // Brake lag shapes from the motor contract (same mapping as analytic).
+  // Brake lag shapes from the motor contract (main-stack mapping).
   const ServiceBrakeParams bp = brake_params_from_motor(motor);
   for (auto& b : impl_->brakes) b = ServiceBrakePlant{bp};
   int found_drives = 0, found_steers = 0;
@@ -391,8 +397,8 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   mjModel* model = impl_->model;
   mjData* data = impl_->data;
   const double r = std::max(1e-6, motor.wheel_radius_m);
-  // Grade as gravity tilt around the current heading (same body-forward
-  // semantics as the analytic plant: uphill forward pulls backward).
+  // Grade as gravity tilt around the current heading (main-stack
+  // body-forward semantics: uphill forward pulls backward).
   const double g = 9.81;
   const double grade = std::isfinite(incline_grade) ? incline_grade : 0.0;
   model->opt.gravity[0] = -g * grade * std::cos(body_yaw_);

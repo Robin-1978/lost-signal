@@ -3,9 +3,9 @@
 Robot side is done (clean rebuild, 24/24 green, boundary gate green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
-map editor / campaign visuals stay out. The physics backend is now MuJoCo
-(M-track below); the analytic S1–S3 plant remains as the tested reference
-until the M2 cutover deletes its integration loop (effort math stays).
+map editor / campaign visuals stay out. The physics backend is MuJoCo
+(M-track below); the M2 cutover deleted the analytic S1–S3 integration
+loop (effort math stays as the tested spec in contact/motor unit tests).
 
 ## MuJoCo backend track (M0–M3, in progress)
 
@@ -17,9 +17,10 @@ until the M2 cutover deletes its integration loop (effort math stays).
   smoothing service brake per main's duty path verbatim, 1 ms substeps,
   truth read back for the unchanged providers. Parity gate:
   `test_mujoco_backend` (behaviors + crossing HIL + determinism).
-- M2 (next): all chassis, traction/slip telemetry into providers,
-  slope P1 regression on the engine, then flip the default and delete the
-  analytic integration (tests stay as the witness).
+- M2 (done): all chassis on the engine, traction/slip flags in WorldTruth
+  (SIM-side labels only), viscous drag via native joint damping, slope P1
+  regression on the engine, analytic integration deleted (tests re-pinned
+  to engine semantics as the witness).
 - M3: raylib viewer reading truth (SIM-side only).
 
 ## Standing rules (same as Phase 1)
