@@ -170,7 +170,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   const double now_s = est.stamp_ns * 1e-9;
   const auto frames =
       predict_frames(inputs, now_s, predict_T, dt, /*max_age_s=*/5.0);
-  const double ego_radius = config_.robot_radius_m + config_.safety_margin_m;
+  const double ego_radius =
+      limits.footprint_radius_m + config_.safety_margin_m;
 
   auto dynamic_hit = [&](double x, double y, double t) {
     if (frames.empty()) return false;

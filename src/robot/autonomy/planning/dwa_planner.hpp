@@ -38,9 +38,10 @@ struct DwaPlannerConfig {
   double yaw_accel_radps2 = 8.0;
   double predict_time_s = 1.5;
   double dt_s = 0.1;
-  double robot_radius_m = 0.38;
-  double response_delay_s = 0.0;
+  // Extra margin added to the chassis footprint for rollout collision.
+  // The footprint itself comes from ChassisLimits at plan() time.
   double safety_margin_m = 0.0;
+  double response_delay_s = 0.0;
   double lookahead_m = 2.0;
 };
 

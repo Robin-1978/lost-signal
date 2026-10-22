@@ -16,6 +16,14 @@ struct ValidationResult {
   std::string reason;
 };
 
+// Clearance policy, derived from the chassis — never a bare literal:
+// need = footprint_radius + extra_margin + braking distance v^2/2a.
+struct ClearanceValidatorConfig {
+  double footprint_radius_m = 0.4;
+  double extra_margin_m = 0.1;
+  double brake_decel_mps2 = 2.0;
+};
+
 // IValidator: candidate + estimate + perception + raw scan -> verdict.
 // Missing or stale scan is unknown evidence -> reject motion (hold ok).
 class IValidator {
@@ -27,13 +35,12 @@ class IValidator {
                                     const iface::ObservationFrame& obs) = 0;
 };
 
-// v1: holds always pass; motion needs min-range clearance beyond the
-// footprint plus the speed-dependent braking distance (v^2 / 2a).
-// Conservative and explicit.
+// v1: holds always pass; motion needs footprint + margin + braking distance
+// of clearance. Conservative and explicit.
 class ClearanceValidator : public IValidator {
  public:
-  explicit ClearanceValidator(double brake_decel_mps2 = 2.0)
-      : brake_decel_mps2_(brake_decel_mps2) {}
+  explicit ClearanceValidator(ClearanceValidatorConfig config = {})
+      : config_(config) {}
 
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& /*est*/,
@@ -49,10 +56,11 @@ class ClearanceValidator : public IValidator {
     for (float r : obs.ranges_m) min_range = r < min_range ? r : min_range;
     double speed = candidate.forward_mps < 0 ? -candidate.forward_mps
                                              : candidate.forward_mps;
-    // Footprint plus braking distance: the distance needed to stop from the
-    // candidate speed at the configured deceleration.
-    const double need_m =
-        0.5 + (speed * speed) / (2.0 * brake_decel_mps2_);
+    // Footprint plus margin plus braking distance: the distance needed to
+    // stop from the candidate speed at the configured deceleration.
+    const double need_m = config_.footprint_radius_m +
+                          config_.extra_margin_m +
+                          (speed * speed) / (2.0 * config_.brake_decel_mps2);
     if (candidate.forward_mps == 0.0 && candidate.yaw_rate_radps == 0.0) {
       return {true, "hold"};
     }
@@ -61,7 +69,7 @@ class ClearanceValidator : public IValidator {
   }
 
  private:
-  double brake_decel_mps2_;
+  ClearanceValidatorConfig config_;
 };
 
 }  // namespace lost_signal::robot::autonomy

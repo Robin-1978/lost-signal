@@ -7,15 +7,18 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          LidarPerceptionConfig perception_config)
     : limits_(limits),
       decision_period_ns_(decision_period_ns),
-      estimator_(std::make_unique<DeadReckoningEstimator>()),
+      estimator_(std::make_unique<FusedOdometryEstimator>()),
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
       mapper_(std::make_unique<RayClearingMapper>()),
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
       global_planner_(std::make_unique<AStarPlanner>()),
       local_planner_(std::make_unique<DwaPlanner>()),
-      validator_(std::make_unique<ClearanceValidator>()),
+      validator_(std::make_unique<ClearanceValidator>(
+          ClearanceValidatorConfig{limits.footprint_radius_m})),
       controller_(std::make_unique<DirectController>()),
-      safety_(std::make_unique<SafetyMonitor>()) {}
+      safety_(std::make_unique<SafetyMonitor>(
+          500'000'000,
+          static_cast<float>(limits.footprint_radius_m - 0.1))) {}
 
 core::Status AutonomyCoordinator::configure() {
   estimator_->reset();

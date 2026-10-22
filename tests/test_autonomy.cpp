@@ -28,14 +28,35 @@ int main() {
   using namespace lost_signal::robot;
   using namespace lost_signal::robot::autonomy;
 
-  // Estimator: integrates measured twist, no truth involved.
+  // Estimator: integrates measured twist, fuses gyro yaw, grows covariance.
   {
-    DeadReckoningEstimator est;
+    FusedOdometryEstimator est;
     est.reset();
     est.predict(make_odom(1, 0, 1.0));
     est.predict(make_odom(2, 20'000'000, 1.0));  // 20 ms at 1 m/s
     assert(est.estimate().valid);
     assert(std::abs(est.estimate().x_m - 0.02) < 1e-9);
+    assert(est.estimate().position_sigma_m > 0.05);  // grew with motion
+    assert(est.estimate().confidence < 1.0);
+  }
+
+  // Slip gate: wheels and gyro disagree -> trust gyro, inflate yaw sigma.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    auto o1 = make_odom(1, 0, 1.0);
+    o1.imu_valid = true;
+    o1.imu_yaw_rate_radps = 0.0;
+    est.predict(o1);
+    auto o2 = make_odom(2, 20'000'000, 1.0);
+    o2.imu_valid = true;
+    o2.imu_yaw_rate_radps = 2.0;  // spinning wheels vs turning body
+    const double sigma_before = est.estimate().heading_sigma_rad;
+    est.predict(o2);
+    // Gyro-led yaw: estimate follows the IMU, not the slipping wheels.
+    assert(std::abs(est.estimate().yaw_rate_radps - 2.0) < 1e-9);
+    assert(est.estimate().heading_sigma_rad >
+           sigma_before + 0.19);  // slip inflation applied
   }
 
   // Coordinator pipeline: configure -> activate -> ingest -> update.
