@@ -35,11 +35,14 @@ target_link_libraries(lost_signal_robot_lifecycle PUBLIC lost_signal_robot_core)
 
 add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
+  src/robot/autonomy/estimation/estimator.cpp
+  src/robot/autonomy/planning/global_planner.cpp
 )
 target_include_directories(lost_signal_robot_autonomy PUBLIC src)
 target_link_libraries(lost_signal_robot_autonomy PUBLIC
   lost_signal_robot_iface
   lost_signal_robot_lifecycle
+  lost_signal_robot_platform
 )
 
 add_library(lost_signal_robot_executive STATIC
@@ -159,6 +162,12 @@ add_executable(test_lifecycle
 )
 target_link_libraries(test_lifecycle PRIVATE lost_signal_robot_lifecycle)
 add_test(NAME lifecycle COMMAND test_lifecycle)
+
+add_executable(test_autonomy
+  tests/test_autonomy.cpp
+)
+target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
+add_test(NAME autonomy COMMAND test_autonomy)
 
 add_executable(test_chassis
   tests/test_chassis.cpp

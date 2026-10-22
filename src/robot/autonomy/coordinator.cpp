@@ -1,13 +1,25 @@
 #include "robot/autonomy/coordinator.hpp"
 
-#include <cmath>
-
 namespace lost_signal::robot::autonomy {
 
+AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits)
+    : limits_(limits),
+      estimator_(std::make_unique<DeadReckoningEstimator>()),
+      perception_module_(std::make_unique<NullPerception>()),
+      mapper_(std::make_unique<NullMapper>()),
+      local_planner_(std::make_unique<HoldPlanner>()),
+      validator_(std::make_unique<ClearanceValidator>()),
+      controller_(std::make_unique<DirectController>()) {}
+
 core::Status AutonomyCoordinator::configure() {
+  estimator_->reset();
+  perception_module_->reset();
+  mapper_->reset();
+  local_planner_->reset();
+  controller_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
-  estimate_ = EstimatedState{};
+  perception_ = PerceptionResult{};
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
 }
@@ -28,57 +40,55 @@ core::Status AutonomyCoordinator::deactivate() {
 }
 
 core::Status AutonomyCoordinator::cleanup() {
+  estimator_->reset();
+  perception_module_->reset();
+  mapper_->reset();
+  local_planner_->reset();
+  controller_->reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
-  estimate_ = EstimatedState{};
+  perception_ = PerceptionResult{};
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
 }
 
-void AutonomyCoordinator::ingest_observation(const iface::ObservationFrame& obs) {
+void AutonomyCoordinator::ingest_observation(
+    const iface::ObservationFrame& obs) {
   if (state_ != lifecycle::ModuleState::kActive) return;
   if (!iface::valid_observation_frame(obs)) return;
   // Fail-closed: stale or repeated input never advances state.
   if (has_observation_ && obs.sequence <= last_obs_.sequence) return;
   if (has_observation_ && obs.stamp_ns <= last_obs_.stamp_ns) return;
-  // v1 dead-reckoning placeholder: integrates ONLY the measured odometry twist.
-  // No truth, no map correction here; real estimator modules replace this body.
-  if (!has_observation_) {
-    estimate_.valid = true;
-    estimate_.stamp_ns = obs.stamp_ns;
-    estimate_.x_m = 0.0;
-    estimate_.y_m = 0.0;
-    estimate_.yaw_rad = 0.0;
-  } else if (obs.odometry_valid && last_obs_.odometry_valid) {
-    double dt_s =
-        static_cast<double>(obs.stamp_ns - last_obs_.stamp_ns) * 1e-9;
-    if (dt_s > 0.0 && dt_s < 1.0) {
-      double yaw_mid = estimate_.yaw_rad +
-                       0.5 * last_obs_.yaw_rate_radps * dt_s;
-      estimate_.x_m += last_obs_.forward_mps * std::cos(yaw_mid) * dt_s;
-      estimate_.y_m += last_obs_.forward_mps * std::sin(yaw_mid) * dt_s;
-      estimate_.yaw_rad += last_obs_.yaw_rate_radps * dt_s;
-      estimate_.stamp_ns = obs.stamp_ns;
-    }
-  } else {
-    estimate_.stamp_ns = obs.stamp_ns;
-  }
-  if (obs.odometry_valid) {
-    estimate_.forward_mps = obs.forward_mps;
-    estimate_.yaw_rate_radps = obs.yaw_rate_radps;
-  }
+  estimator_->predict(obs);
+  estimator_->correct(obs);
+  perception_ = perception_module_->update(obs, estimator_->estimate());
+  mapper_->update(obs, estimator_->estimate());
   last_obs_ = obs;
   has_observation_ = true;
 }
 
-iface::MotionCommand AutonomyCoordinator::update(iface::MapSnapshot /*map*/,
-                                                 core::MonotonicNs now_ns) {
-  // v1 skeleton: hold position until real modules land here.
+iface::MotionCommand AutonomyCoordinator::update(
+    iface::MapSnapshot /*map*/, core::MonotonicNs now_ns) {
   // Missing observation is unknown evidence -> safe stop, never free space.
   if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
-  return iface::MotionCommand::SafeStop(now_ns);
+  LocalPlan plan = local_planner_->plan(estimator_->estimate(), perception_,
+                                        mapper_->local_map(), limits_);
+  if (!plan.has_plan) return iface::MotionCommand::SafeStop(now_ns);
+  ValidationResult verdict =
+      validator_->validate(plan.best, estimator_->estimate(), perception_,
+                           last_obs_);
+  if (!verdict.accepted) return iface::MotionCommand::SafeStop(now_ns);
+  return controller_->track(plan.best, estimator_->estimate(), now_ns);
+}
+
+const EstimatedState& AutonomyCoordinator::estimate() const {
+  return estimator_->estimate();
+}
+
+LocalMap AutonomyCoordinator::local_map() const {
+  return mapper_->local_map();
 }
 
 }  // namespace lost_signal::robot::autonomy

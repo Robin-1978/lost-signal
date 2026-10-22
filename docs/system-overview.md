@@ -179,7 +179,7 @@ flowchart TB
 | `robot_core` | `src/robot/core/` | `time.hpp`, `frames.hpp`, `status.hpp` |
 | `robot_iface` | `src/robot/iface/` | `version.hpp`, `message.hpp/cpp` (`IMessage`, `Lidar2DScan`, `Lidar3DCloud`), `observation.hpp`, `command.hpp`, `endpoint.hpp/cpp`, `channel.hpp/cpp`, `platform.hpp` (`IPlatformProvider`), `provider.hpp` (`IProvider`, `ISensorProvider`), `task.hpp`, `map.hpp` |
 | `robot_platform` | `src/robot/platform/` | `description.hpp/cpp` (`RobotDescription`), `chassis.hpp/cpp` (`IChassis`, `DifferentialChassis`) |
-| `robot_autonomy` | `src/robot/autonomy/` | `coordinator.hpp/cpp` (`AutonomyCoordinator`, `EstimatedState`) |
+| `robot_autonomy` | `src/robot/autonomy/` | `coordinator.hpp/cpp` (pipeline order) + `estimation/` (`IEstimator`) + `perception/` (`IPerception`) + `mapping/` (`IMapper`) + `planning/` (`IGlobalPlanner`, `ILocalPlanner`) + `validation/` (`IValidator`) + `control/` (`IController`). 详见 `docs/algorithms.md` |
 | `robot_executive` | `src/robot/executive/` | `executive.hpp/cpp` (`RobotExecutive`) |
 | `robot_app` | `src/robot/app/` | `robot.hpp` (`IRobot`), `robot_application.hpp/cpp` (+`Diagnostics`) |
 | `robot_robots` | `src/robot/robots/` | `differential_robot.hpp/cpp` |
