@@ -37,6 +37,8 @@ class MujocoBackend {
   ~MujocoBackend();
   MujocoBackend(const MujocoBackend&) = delete;
   MujocoBackend& operator=(const MujocoBackend&) = delete;
+  MujocoBackend(MujocoBackend&&);
+  MujocoBackend& operator=(MujocoBackend&&);
 
   bool valid() const { return ready_; }
   // Rebuilds the model when geometry or plant numbers change; no-op
@@ -50,6 +52,7 @@ class MujocoBackend {
   // the longitudinal grade around the current heading, 1 ms substeps.
   void step(double dt_s, const MotorParams& motor,
             const std::array<double, 4>& drive_duty,
+            const std::array<double, 4>& steer_duty,
             const std::array<double, 4>& brake_request, double incline_grade);
 
   // Engine state read-back (world frame, SI). Called after step().
@@ -61,6 +64,9 @@ class MujocoBackend {
   double yaw_rate() const { return yaw_rate_; }
   double drive_angle(int i) const { return drive_angle_[i]; }
   double drive_radps(int i) const { return drive_radps_[i]; }
+  bool drive_slipping(int i) const { return drive_slipping_[i]; }
+  double steer_angle(int i) const { return steer_angle_[i]; }
+  double steer_vel(int i) const { return steer_vel_[i]; }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
@@ -74,9 +80,15 @@ class MujocoBackend {
   std::string built_signature_;
   std::uint64_t built_geometry_version_ = 0;
   bool ever_built_ = false;
-  // Drive joint DOF addresses (drive_count <= 2 in M1).
+  // Geometry needed by the per-step roller wrench.
+  double track_m_ = 0.5;
+  double base_len_m_ = 0.56;
+  // Drive joint DOF addresses (drive_count <= 4 in M2).
   int drive_dof_[4] = {-1, -1, -1, -1};
   int drive_count_ = 0;
+  // Steer joint DOF addresses (swerve/ackermann knuckles, M2).
+  int steer_dof_[4] = {-1, -1, -1, -1};
+  int steer_count_ = 0;
   bool ready_ = false;
   // Latest read-back.
   double body_x_ = 0.0, body_y_ = 0.0, body_yaw_ = 0.0;
@@ -84,6 +96,9 @@ class MujocoBackend {
   double body_z_ = 0.0, body_roll_ = 0.0, body_pitch_ = 0.0;
   std::array<double, 4> drive_angle_ = {};
   std::array<double, 4> drive_radps_ = {};
+  std::array<bool, 4> drive_slipping_ = {};
+  std::array<double, 4> steer_angle_ = {};
+  std::array<double, 4> steer_vel_ = {};
 };
 
 #else  // !LOST_SIGNAL_WITH_MUJOCO
@@ -97,7 +112,8 @@ class MujocoBackend {
   void sync(const MotorParams&, const std::vector<StaticBox>&, std::uint64_t,
             int, int) {}
   void step(double, const MotorParams&, const std::array<double, 4>&,
-            const std::array<double, 4>&, double) {}
+            const std::array<double, 4>&, const std::array<double, 4>&,
+            double) {}
   double body_x() const { return 0.0; }
   double body_y() const { return 0.0; }
   double body_yaw() const { return 0.0; }
@@ -106,6 +122,9 @@ class MujocoBackend {
   double yaw_rate() const { return 0.0; }
   double drive_angle(int) const { return 0.0; }
   double drive_radps(int) const { return 0.0; }
+  bool drive_slipping(int) const { return false; }
+  double steer_angle(int) const { return 0.0; }
+  double steer_vel(int) const { return 0.0; }
   double body_z() const { return 0.0; }
   double body_roll() const { return 0.0; }
   double body_pitch() const { return 0.0; }

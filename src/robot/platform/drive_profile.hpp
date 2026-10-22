@@ -30,6 +30,10 @@ struct DriveProfile {
   double max_steer_rate_radps = 2.0;
   double steer_time_constant_s = 0.08;
   int encoder_counts_per_revolution = 2048;
+  // Steering servo stall + tire-road friction (engine contact pair and
+  // slip-flag threshold). Defaults mirror main's Ackermann/GroundContact.
+  double steer_stall_torque_Nm = 8.0;
+  double tire_friction_mu = 0.7;
 
   // Factory defaults per chassis kind (same numbers make_chassis builds
   // with). False when kind is unknown: no silent default hardware.

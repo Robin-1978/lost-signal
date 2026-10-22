@@ -47,7 +47,8 @@ void World::step_mujoco(double dt_s) {
   mujoco_.sync(motor_, static_boxes_, geometry_version_, truth_.drive_count,
                truth_.steer_count);
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
-  mujoco_.step(dt_s, motor_, truth_.drive_duty, brake_request_, incline_grade_);
+  mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
+               brake_request_, incline_grade_);
   truth_.body_x_m = mujoco_.body_x();
   truth_.body_y_m = mujoco_.body_y();
   truth_.body_yaw_rad = mujoco_.body_yaw();
@@ -60,6 +61,11 @@ void World::step_mujoco(double dt_s) {
   for (int i = 0; i < truth_.drive_count && i < 4; ++i) {
     truth_.drive_angle_rad[i] = mujoco_.drive_angle(i);
     truth_.drive_radps[i] = mujoco_.drive_radps(i);
+    truth_.drive_slipping[i] = mujoco_.drive_slipping(i);
+  }
+  for (int i = 0; i < truth_.steer_count && i < 4; ++i) {
+    truth_.steer_rad[i] = mujoco_.steer_angle(i);
+    truth_.steer_vel_radps[i] = mujoco_.steer_vel(i);
   }
 }
 

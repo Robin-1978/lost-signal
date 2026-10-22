@@ -95,6 +95,54 @@ int main() {
     for (std::size_t i = 0; i < a.size(); ++i) assert(a[i] == b[i]);
   }
 
+  // Other chassis on the engine: ackermann left arc, mecanum strafe,
+  // swerve straight. Mirrors the analytic plant pins, engine-appropriate
+  // tolerances (no exact numbers — the engine owns the transients).
+  {
+    // Ackermann drives a left arc.
+    sim::world::World w(sim::world::PhysicsBackend::kMujoco);
+    sim::world::MotorParams mp;
+    mp.wheel_base_m = 0.62;
+    mp.track_width_m = 0.58;
+    w.set_motor_params(mp);
+    robot::iface::ActuatorCommand cmd;
+    cmd.mode = robot::iface::ActuatorMode::kAckermannDuty;
+    cmd.stamp_ns = 0;
+    cmd.expiry_ns = 1'000'000'000;
+    cmd.drive[0] = cmd.drive[1] = 0.5;
+    cmd.steer[0] = cmd.steer[1] = 0.5;
+    w.apply(cmd);
+    for (int i = 0; i < 200; ++i) w.step(0.02);
+    assert(w.truth().forward_mps > 0.5);
+    assert(w.truth().yaw_rate_radps > 0.05);  // positive steer -> left arc
+    assert(w.truth().body_yaw_rad > 0.0);
+    // Mecanum strafes left with ~zero forward.
+    sim::world::World m(sim::world::PhysicsBackend::kMujoco);
+    robot::iface::ActuatorCommand mc;
+    mc.mode = robot::iface::ActuatorMode::kMecanumDuty;
+    mc.stamp_ns = 0;
+    mc.expiry_ns = 1'000'000'000;
+    mc.drive = {-0.5, 0.5, 0.5, -0.5};
+    m.apply(mc);
+    for (int i = 0; i < 200; ++i) m.step(0.02);
+    assert(std::abs(m.truth().forward_mps) < 0.3);
+    assert(m.truth().lateral_mps > 0.3);
+    assert(m.truth().body_y_m > 0.1);
+    // Swerve drives straight with centered modules.
+    sim::world::World s(sim::world::PhysicsBackend::kMujoco);
+    robot::iface::ActuatorCommand sc;
+    sc.mode = robot::iface::ActuatorMode::kSwerveDuty;
+    sc.stamp_ns = 0;
+    sc.expiry_ns = 1'000'000'000;
+    sc.drive = {0.5, 0.5, 0.5, 0.5};
+    s.apply(sc);
+    for (int i = 0; i < 200; ++i) s.step(0.02);
+    assert(s.truth().forward_mps > 0.5);
+    assert(std::abs(s.truth().yaw_rate_radps) < 0.3);
+    // Slip telemetry stays quiet in normal driving (reported, not clamped).
+    assert(!w.truth().drive_slipping[0] && !w.truth().drive_slipping[1]);
+  }
+
   // HIL mission on the engine: crossing crosser, hold, resume, arrive.
   {
     sim::scenario::ScenarioSession session(

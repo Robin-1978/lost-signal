@@ -34,6 +34,10 @@ struct WorldTruth {
   std::array<double, 4> drive_radps = {};  // mechanical rad/s
   std::array<double, 4> drive_angle_rad = {};  // continuous joint angle
   std::array<double, 4> drive_duty = {};
+  // Per-wheel traction saturation flag (engine truth, offline only):
+  // motor force exceeded mu * load. Reported, never clamped (main's duty
+  // path is pure motor curve; clamping lives on its PID path, not here).
+  std::array<bool, 4> drive_slipping = {};
   std::array<double, 4> steer_rad = {};
   std::array<double, 4> steer_duty = {};
   std::array<double, 4> steer_vel_radps = {};
@@ -90,6 +94,12 @@ struct MotorParams {
   double brake_max_torque_Nm = 0.0;
   double brake_apply_time_s = 0.12;
   double brake_release_time_s = 0.08;
+  // Steering servo stall torque (velocity-servo model, same form as main's
+  // Ackermann steering_torque). DriveProfile default mirrors main.
+  double steer_stall_torque_Nm = 8.0;
+  // Tire-road sliding friction for the engine contact pair and the slip
+  // flag threshold (mu * load per wheel). Mirrors main's GroundContact.
+  double tire_friction_mu = 0.7;
   // Encoder resolution for the joint measurement model (counts per
   // revolution). The provider quantizes angles and differentiates; the
   // ROBOT loop closes on the quantized joints, like native hardware.

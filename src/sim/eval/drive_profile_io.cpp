@@ -73,6 +73,8 @@ bool load_drive_profile(const std::string& path,
                         "rolling_resist",
                         "viscous_drag_N_per_mps",
                         "coulomb_smoothing_mps",
+                        "steer_stall_torque_Nm",
+                        "tire_friction_mu",
                         "max_steer_rad",
                         "max_steer_rate_radps",
                         "steer_time_constant_s"};
@@ -86,10 +88,12 @@ bool load_drive_profile(const std::string& path,
                      &merged.rolling_resist,
                      &merged.viscous_drag_N_per_mps,
                      &merged.coulomb_smoothing_mps,
+                     &merged.steer_stall_torque_Nm,
+                     &merged.tire_friction_mu,
                      &merged.max_steer_rad,
                      &merged.max_steer_rate_radps,
                      &merged.steer_time_constant_s};
-  for (int i = 0; i < 13; ++i) {
+  for (int i = 0; i < 15; ++i) {
     if (!take_num(obj, keys[i], v, present, err)) return false;
     if (present) {
       if (!std::isfinite(v) || v <= 0.0) {
