@@ -34,10 +34,10 @@ class IRobot {
   // planner and wakes the decision branch. Place-based tasking still enters
   // via request_goal; this is the deliberate operator path.
   virtual void set_goal(const autonomy::RoutePoint& goal) = 0;
-  // Async goal request: resolves place_id through the map provider, arms
-  // the coordinator route, and returns a handle immediately. Unknown ids
-  // fail closed with an invalid handle. Poll goal_status; cancel_goal
-  // withdraws an active goal.
+  // Async goal request: resolves place_id through the map provider, and —
+  // only once the executive accepts — arms the coordinator route, returning
+  // a handle immediately. Unknown ids fail closed with an invalid handle
+  // and arm nothing. Poll goal_status; cancel_goal withdraws an active goal.
   virtual iface::GoalHandle request_goal(const iface::TaskRequest& req) = 0;
   virtual iface::GoalStatus goal_status(iface::GoalHandle handle) const = 0;
   virtual bool cancel_goal(iface::GoalHandle handle) = 0;

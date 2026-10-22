@@ -102,6 +102,13 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
   replan_requested_ = true;
 }
 
+void AutonomyCoordinator::clear_goal() {
+  goal_ = RoutePoint{};
+  has_goal_ = false;
+  active_route_ = Route{};
+  replan_requested_ = false;
+}
+
 void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
   const core::MonotonicNs stamp =
       has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;

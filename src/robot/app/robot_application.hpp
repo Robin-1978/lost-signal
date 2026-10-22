@@ -78,7 +78,12 @@ class RobotApplication : public IRobot {
     return executive_.goal_status(handle);
   }
   bool cancel_goal(iface::GoalHandle handle) override {
-    return executive_.cancel_goal(handle);
+    if (!executive_.cancel_goal(handle)) return false;
+    // Successful cancel withdraws the coordinator's active route: the next
+    // tick holds instead of driving a dead goal. Failed cancels (unknown
+    // or terminal handle) leave the route untouched.
+    coordinator_.clear_goal();
+    return true;
   }
   core::Status request_map(const std::string& map_id) override;
 

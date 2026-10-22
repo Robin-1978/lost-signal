@@ -70,6 +70,10 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // still enters via the executive; this is the deliberate operator path.
   void set_goal(const RoutePoint& goal);
   const Route& active_route() const { return active_route_; }
+  // Withdraws the active route (executive cancel path). Drops the goal and
+  // invalidates the route so update() holds instead of driving a dead
+  // goal. Only the executive decides lifetime; this just executes it.
+  void clear_goal();
   // Arrival predicate for the executive: an estimated-frame goal exists,
   // the route is live, and the estimate sits inside the arrival radius.
   // The executive owns goal lifetime; this only reports progress.

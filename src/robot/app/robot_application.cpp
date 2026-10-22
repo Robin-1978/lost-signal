@@ -81,8 +81,17 @@ iface::GoalHandle RobotApplication::request_goal(
     if (found == nullptr) {
       return iface::GoalHandle{};  // unknown place: nothing armed
     }
+    // Authorization first: the executive accepts before anything plans.
+    // A rejected request (inactive executive, empty request id) arms no
+    // route — the coordinator never drives an unaccepted goal.
+    const iface::GoalHandle handle =
+        executive_.request_goal(req.place_id, req.request_id);
+    if (!handle.valid()) {
+      return handle;
+    }
     autonomy::RoutePoint goal{found->x_m, found->y_m, found->yaw_rad};
     coordinator_.set_goal(goal);
+    return handle;
   }
   return executive_.request_goal(req.place_id, req.request_id);
 }

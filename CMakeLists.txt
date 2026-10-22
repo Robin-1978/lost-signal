@@ -301,6 +301,12 @@ add_executable(test_places
 target_link_libraries(test_places PRIVATE lost_signal_robot_stack)
 add_test(NAME places COMMAND test_places)
 
+add_executable(test_goal_auth
+  tests/test_goal_auth.cpp
+)
+target_link_libraries(test_goal_auth PRIVATE lost_signal_robot_stack)
+add_test(NAME goal_auth COMMAND test_goal_auth)
+
 add_executable(test_localization
   tests/test_localization.cpp
 )
