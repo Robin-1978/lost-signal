@@ -180,6 +180,8 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
   }
   d.bringup = bringup_.state();
   d.localized = coordinator_.localized();
+  d.slam_keyframes = coordinator_.slam_keyframes();
+  d.slam_loops_closed = coordinator_.slam_loops_closed();
   d.localization_action = coordinator_.last_localization_action();
   d.safety = coordinator_.last_safety().state;
   d.safety_reason = coordinator_.last_safety().reason;

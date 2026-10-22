@@ -62,13 +62,19 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   // Dual raycast from the same geometry: measured sees static + actors,
   // static reference sees static geometry only. Their difference is the
   // foreground the perception layer classifies; nothing else crosses.
+  // Bearings are ROBOT-frame (angle_min + i*increment, forward = beam 36):
+  // the cast adds the true body yaw so a turning base scans the world,
+  // not a frozen world-frame fan. Downstream projects with +est.yaw, which
+  // inverts exactly this rotation; yaw ~ 0 missions never noticed.
   static constexpr int kBeams = 72;
   static constexpr float kMaxRange = 10.0f;
   const double ox = world_->truth().body_x_m;
   const double oy = world_->truth().body_y_m;
+  const double base_yaw = world_->truth().body_yaw_rad;
   std::vector<float> ranges(kBeams), reference(kBeams);
   for (int i = 0; i < kBeams; ++i) {
-    const double angle = -M_PI + 2.0 * M_PI * i / kBeams;
+    const double angle =
+        -M_PI + 2.0 * M_PI * i / kBeams + base_yaw;
     const double dx = std::cos(angle), dy = std::sin(angle);
     double t_static = kMaxRange, t_all = kMaxRange;
     for (const auto& b : world_->static_boxes()) {
@@ -93,7 +99,11 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   imu.frm = robot::core::Frame::kImuLink;
   imu.gyro_x_radps = 0.0;
   imu.gyro_y_radps = 0.0;
-  imu.gyro_z_radps = 0.0;
+  // Yaw rate is truth here (S7 adds bounded noise/bias, seeded). It must be
+  // truthful, not zero: the estimator's slip gate trusts the gyro over
+  // wheel odometry on disagreement, so a hard zero would freeze the
+  // heading estimate through every turn. Planar motion: no roll/pitch rate.
+  imu.gyro_z_radps = world_->truth().yaw_rate_radps;
   imu.accel_x_mps2 = 0.0;
   imu.accel_y_mps2 = 0.0;
   imu.accel_z_mps2 = 9.81;  // level: specific force opposes gravity

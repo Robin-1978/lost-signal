@@ -125,6 +125,9 @@ class RobotApplication : public IRobot {
     double slip_confidence = 0.0;
     bool localized = false;
     std::string localization_action = "init";
+    // Offline SLAM session signals (mapless drift + loop-closure evidence).
+    std::size_t slam_keyframes = 0;
+    std::size_t slam_loops_closed = 0;
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::GoalStatus goal;
     iface::ChannelHealth health;

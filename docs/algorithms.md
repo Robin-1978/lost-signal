@@ -224,6 +224,13 @@ route, pre-activation hold).
   robot that moved past the newest keyframe still corrects exactly) and
   rebuilds the rolling map from keyframes at their optimized poses; the
   decision branch refreshes on the corrected estimate.
+- Mapless loop missions close the loop in the headless scenario
+  (`tests/test_loop_closure.cpp`): a 4x4 m square past landmark boxes,
+  keyframed, closures counted in the offline diagnostics; the body returns
+  to the start dock with bounded truth miss.
+- SIM sensor honesty: the suite reports the true yaw rate (the estimator's
+  slip gate trusts gyro over odometry, so a hard-zero gyro would freeze the
+  heading through every turn); bounded noise/bias arrives with S7.
 
 ## Hardware contract (sim-native parity)
 

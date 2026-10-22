@@ -366,6 +366,12 @@ add_executable(test_scenario
 target_link_libraries(test_scenario PRIVATE lost_signal_sim_scenario)
 add_test(NAME scenario COMMAND test_scenario)
 
+add_executable(test_loop_closure
+  tests/test_loop_closure.cpp
+)
+target_link_libraries(test_loop_closure PRIVATE lost_signal_sim_scenario)
+add_test(NAME loop_closure COMMAND test_loop_closure)
+
 add_executable(test_lidar
   tests/test_lidar.cpp
 )
