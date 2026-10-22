@@ -227,6 +227,12 @@ LidarSafetyAssessment CollisionMonitor::assess_lidar(
  if (!scan.hit[index] || !std::isfinite(scan.ranges[index])) {
  continue;
  }
+ if (!scan.ray_gravity_heights_m.empty() &&
+ index < scan.ray_gravity_heights_m.size() &&
+ std::isfinite(scan.ray_gravity_heights_m[index]) &&
+ scan.ray_gravity_heights_m[index] < config.ground_return_min_height_m) {
+ continue;
+ }
  const double range_m = scan.ranges[index];
  if (!(range_m > 0.0) || range_m >= scan.max_range) {
  continue;

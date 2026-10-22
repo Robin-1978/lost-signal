@@ -46,6 +46,10 @@ struct LidarSafetyConfig {
  double sensor_standoff_m{0.05};
  double range_growth_m_per_mps{0.10};
  double zero_range_m{0.01};
+ // Known returns below this gravity-frame height are terrain/self returns,
+ // not a vertical obstacle in the forward safety slice. Empty height data is
+ // retained conservatively and is never treated as ground.
+ double ground_return_min_height_m{-0.20};
 };
 
 struct LidarSafetyObservation {
