@@ -171,8 +171,9 @@ ScenarioSession::ScenarioSession(
 	motion_policy_(sim::MotionPolicy::load(sim::MotionPolicy::resolve_path(catalog_.root()))),
       custom_global_planner_(static_cast<bool>(global_planner)),
       custom_high_level_policy_(static_cast<bool>(high_level_policy)),
- autonomy_coordinator_(std::make_unique<sim::autonomy::AutonomyCoordinator>(
+ autonomy_coordinator_owner_(std::make_unique<sim::autonomy::AutonomyCoordinator>(
  high_level_policy ? std::move(high_level_policy) : sim::make_route_baseline_policy())) {
+ autonomy_coordinator_ = autonomy_coordinator_owner_.get();
  catalog_.validate_build(level_id_, build_, owned_abilities);
 	// The motion policy belongs to the robot, not to this scenario. Applying it
 	// once here keeps the executable free of tuned thresholds and gives a
@@ -1024,10 +1025,20 @@ void ScenarioSession::build_world() {
  }
  }
  runtime_config.maximum_command_ttl_s = 0.25;
+ // The ROBOT application owns the autonomy graph for the whole session.
+ // Reset rebuilds SIM providers and world state, but must not manufacture a
+ // second coordinator or lose the first application's state owner.
+ if (!runtime_channel_) {
  runtime_channel_ = runtime_registry_.create(runtime_provider_id_, runtime_config);
  runtime_channel_->configure();
+ }
+ if (!robot_application_) {
+ if (!autonomy_coordinator_owner_)
+ throw std::logic_error("robot application lost its autonomy owner");
  robot_application_ = std::make_unique<sim::robot::RobotApplication>(
- *runtime_channel_, *autonomy_coordinator_);
+ *runtime_channel_, std::move(autonomy_coordinator_owner_));
+ }
+ autonomy_coordinator_ = &robot_application_->coordinator();
  manipulator_channel_.reset();
  manipulator_controller_.reset();
  if (robot_definition_.manipulator) {

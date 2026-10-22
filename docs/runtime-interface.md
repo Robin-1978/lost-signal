@@ -194,8 +194,10 @@ runtime tick. A SIM provider and a native provider therefore share the same brin
 checks. They differ only in backend implementation and calibration/profile; ROBOT
 does not branch on `ProviderBackend` while making motion decisions.
 
-`RobotApplication::step()` is the provider-neutral cycle entry point for a native process
-and for an in-process SIM composition. It accepts an autonomy observation/safety input,
+`RobotApplication::tick()` is the provider-neutral cycle entry point for a native process
+and for an in-process SIM composition. It advances the optional executive task observation,
+runs the autonomy/coordinator transaction, reports motion capability, and then accepts an autonomy
+observation/safety input,
 an optional `DiffCmd` produced by the local planner, and explicit time validity. It runs
 the ROBOT policy transaction, then publishes either a body-motion command or the typed
 actuator command selected by negotiated capability. It reads actuator feedback only from

@@ -28,6 +28,16 @@ RobotApplication::RobotApplication(
  : borrowed_channel_(&channel), conformance_(std::move(conformance)),
  borrowed_coordinator_(&coordinator) {}
 
+RobotApplication::RobotApplication(
+ runtime::IRuntimeChannel& channel,
+ std::unique_ptr<autonomy::AutonomyCoordinator> coordinator,
+ runtime::ProviderConformanceConfig conformance)
+ : borrowed_channel_(&channel), conformance_(std::move(conformance)),
+ owned_coordinator_(std::move(coordinator)) {
+ if (!owned_coordinator_)
+ throw std::invalid_argument("robot application requires an autonomy coordinator");
+}
+
 RobotApplication::~RobotApplication() {
  if (channel_ && channel_->state() == runtime::LifecycleState::Active)
  channel_->deactivate();
@@ -50,11 +60,19 @@ const runtime::IRuntimeChannel& RobotApplication::active_channel() const {
 }
 
 autonomy::AutonomyCoordinator& RobotApplication::active_coordinator() {
- return borrowed_coordinator_ ? *borrowed_coordinator_ : coordinator_;
+ if (borrowed_coordinator_)
+ return *borrowed_coordinator_;
+ if (owned_coordinator_)
+ return *owned_coordinator_;
+ return coordinator_;
 }
 
 const autonomy::AutonomyCoordinator& RobotApplication::active_coordinator() const {
- return borrowed_coordinator_ ? *borrowed_coordinator_ : coordinator_;
+ if (borrowed_coordinator_)
+ return *borrowed_coordinator_;
+ if (owned_coordinator_)
+ return *owned_coordinator_;
+ return coordinator_;
 }
 
 void RobotApplication::configure() {
@@ -101,10 +119,12 @@ void RobotApplication::check_provider_liveness(runtime::TimePoint now) {
  conformance_.check_liveness(now);
 }
 
-RobotCycleOutput RobotApplication::step(const RobotCycleInput& input) {
+RobotCycleOutput RobotApplication::tick(const RobotCycleInput& input) {
  if (state() != runtime::LifecycleState::Active)
  throw std::logic_error("robot cycle requires an active application");
  RobotCycleOutput output;
+ if (input.task_observation)
+ executive_.update(*input.task_observation);
  auto& coordinator = active_coordinator();
  if (input.run_autonomy) {
  const auto autonomy_cycle = coordinator.run_cycle({input.autonomy, input.local_planning});

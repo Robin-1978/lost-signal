@@ -172,8 +172,10 @@ layer. Route following, waypoint progress, heading PID state, crossing behavior,
 validation all live in `src/robot/autonomy`; simulation mission code only supplies task intent and world semantics.
 The per-cycle command lifetime, manual override, sequence counters, and crossing execution indices are also ROBOT
 state in `RobotMotionRuntime`. `ScenarioSession` exposes only narrow composition accessors while the native
-`RobotApplication::step()` and the SIM adapter use the same transaction. This prevents a game session from becoming a
-second command owner. Provider-native feedback translation is isolated in
+`RobotApplication::tick()` and the SIM adapter use the same transaction. The tick has one deterministic ordering:
+executive task observation, coordinator autonomy/local planning, capability report back to the executive, then
+controller/safety/LSRI publication. Executive and coordinator are independent state holders, not independent schedulers.
+This prevents a game session from becoming a second command owner. Provider-native feedback translation is isolated in
 `SimulatedPlatformProviderAdapter`; it is the only SIM code that knows how MuJoCo joint names are reduced to LSRI
 actuator channels or how a typed actuator command is handed to the plant.
 The `deployable_boundary` test scans all of `src/robot`, rejects every `sim/` include, rejects SIM sources and SIM
@@ -245,11 +247,19 @@ write a stop pose, classify an actor, or inject a simulated absolute pose. In a 
 omitted and a native/operator API submits the same requests over the ROBOT service boundary.
 
 `RobotApplication` is the runtime composition root below the executive. It owns LSRI lifecycle, cycle scheduling,
-provider conformance, controller invocation, command expiry and publication. Its `step()` method may receive a typed
-local-planning transaction during the incremental SIM migration, but that transaction is data, not an executive
-decision: `AutonomyCoordinator` still owns local planning and validation. `execute_motion()` is the single ROBOT
-entry point for publishing either a body-motion command or an actuator command. The application therefore connects
-the executive and autonomy layers; it does not become a second task or speed authority.
+provider conformance, controller invocation, command expiry and publication. Its canonical entry point is `tick()`;
+the tick advances an optional executive task observation, runs the coordinator transaction, reports the resulting
+motion capability back to the executive, and publishes only a validated command. Executive and coordinator are
+independent state holders with one scheduler. `AutonomyCoordinator` still owns local planning and validation, while
+`RobotExecutive` owns task lifecycle and resource policy. `execute_motion()` is the single ROBOT entry point for
+publishing either a body-motion command or an actuator command.
+
+The coordinator is not one monolithic algorithm. Its localization/SLAM frontend, perception and tracking, behavior
+prediction, global planner, local planner, trajectory validator, controller, and safety supervisor each keep their own
+state and timestamped update contract. Their cadences are different: physics/feedback and control may run at the
+platform rate, perception at sensor delivery, local planning at its decision rate, global planning on route/map
+events, and pose-graph optimization on keyframe/loop-closure events. `RobotApplication` is the only runtime owner that
+decides when a due module is advanced, so different cadences do not create competing command loops.
 
 ### Mission systems
 

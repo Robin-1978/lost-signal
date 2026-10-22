@@ -759,7 +759,11 @@ class ScenarioSession {
  bool custom_high_level_policy_{false};
  // Robot-facing policy orchestration lives in ROBOT. The scenario only
  // assembles observations from LSRI and content-owned task facts.
- std::unique_ptr<sim::autonomy::AutonomyCoordinator> autonomy_coordinator_;
+ // The autonomy graph is ROBOT-owned. This raw view is retained only as a
+ // narrow composition handle for legacy scenario assembly; its lifetime is
+ // held by RobotApplication after the runtime channel is created.
+ sim::autonomy::AutonomyCoordinator* autonomy_coordinator_{nullptr};
+ std::unique_ptr<sim::autonomy::AutonomyCoordinator> autonomy_coordinator_owner_;
  const ContractJob* active_contract_{nullptr};
  GoalSystem goal_system_;
  PayloadState payload_;

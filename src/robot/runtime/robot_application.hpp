@@ -42,6 +42,11 @@ struct RobotCycleInput {
  // owns local planning and validation, but must not update the policy twice
  // in one decision tick.
  bool run_autonomy{true};
+ // Optional task observation for the executive.  When present, the same
+ // application tick updates task lifecycle before autonomy runs.  Keeping
+ // this here makes the ordering explicit without making the executive a
+ // second scheduler or asking SIM to call it separately.
+ std::optional<executive::TaskObservation> task_observation;
  std::optional<DiffCmd> motion_intent;
  double dt_s{0.0};
  runtime::TimePoint now;
@@ -65,6 +70,11 @@ class RobotApplication {
  RobotApplication(runtime::IRuntimeChannel& channel,
   autonomy::AutonomyCoordinator& coordinator,
   runtime::ProviderConformanceConfig conformance = {});
+ // Owning composition constructor used by SIM and native deployment roots.
+ // The coordinator lifetime is then unambiguously inside ROBOT.
+ RobotApplication(runtime::IRuntimeChannel& channel,
+  std::unique_ptr<autonomy::AutonomyCoordinator> coordinator,
+  runtime::ProviderConformanceConfig conformance = {});
  ~RobotApplication();
 
  RobotApplication(const RobotApplication&) = delete;
@@ -84,7 +94,10 @@ class RobotApplication {
  // conformance monitor when publishing frames or checking liveness.
  bool publish_observation(ObservationFrame observation, runtime::TimePoint now);
  void check_provider_liveness(runtime::TimePoint now);
- RobotCycleOutput step(const RobotCycleInput& input);
+ // The single ROBOT cycle entry point for native and in-process composition.
+ // Executive and autonomy are ordered here; callers do not schedule either
+ // object independently.
+ RobotCycleOutput tick(const RobotCycleInput& input);
  // Execute an already selected body-motion intent through the ROBOT
  // controller and LSRI provider. Planning must have produced the intent;
  // this entry point only owns feedback ingestion, actuator conversion,
@@ -104,6 +117,7 @@ class RobotApplication {
  runtime::IRuntimeChannel* borrowed_channel_{nullptr};
  runtime::ProviderConformanceMonitor conformance_;
  autonomy::AutonomyCoordinator coordinator_;
+ std::unique_ptr<autonomy::AutonomyCoordinator> owned_coordinator_;
  autonomy::AutonomyCoordinator* borrowed_coordinator_{nullptr};
  RobotExecutive executive_;
 

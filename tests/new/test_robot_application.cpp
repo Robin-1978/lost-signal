@@ -46,6 +46,10 @@ int main() {
  // contracts; no scenario or physics type is needed to execute the cycle.
  sim::GridMap planning_map(20, 20, 0.5);
  application.coordinator().configure_pipeline(planning_map, 20, 20, 0.5, 17);
+executive::TaskPlan task;
+task.request_id = "tick-task";
+task.goals.push_back({"goal", {3.0, 1.0}, 0.2, true, false, 0.0, 0.5});
+CHECK(application.executive().submit(std::move(task)));
  sim::LocalPlanningRequest request;
  request.command_space = sim::LocalCommandSpace::DifferentialTwist;
  request.position = {1.0, 1.0};
@@ -68,11 +72,14 @@ int main() {
  cycle_input.autonomy.safety.fallback_target = request.target;
  cycle_input.autonomy.safety.map_size = {10.0, 10.0};
  cycle_input.autonomy.safety.subgoal_is_safe = [](sim::Vec2) { return true; };
+cycle_input.task_observation = executive::TaskObservation{
+ {1.0, 1.0}, 0.0, true, 0.02, true, 1.0, 0.0};
  cycle_input.dt_s = 0.02;
  cycle_input.now = sim::runtime::TimePoint::from_seconds(0.02);
  cycle_input.valid_until = sim::runtime::TimePoint::from_seconds(0.1);
- const auto cycle = application.step(cycle_input);
+ const auto cycle = application.tick(cycle_input);
  CHECK(cycle.local_planning.has_value());
+CHECK(application.executive().status().task_state == executive::TaskState::Active);
 
  application.deactivate();
  CHECK(application.state() == sim::runtime::LifecycleState::Inactive);

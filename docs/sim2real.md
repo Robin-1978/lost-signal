@@ -52,6 +52,11 @@ orders semantic goals, consumes the local planner's motion-capability report, an
 trajectory and safety validation. Scenario actors, score thresholds, scripted surprises and story state belong to a separate
 simulation-only Scenario/Game Session layer under `src/sim/game/`.
 
+`RobotApplication::tick()` is the single cycle boundary for both native and in-process composition. It advances the
+executive task observation first, runs the coordinator and local planner second, feeds the resulting capability report
+back to the executive, and only then invokes the controller and publishes an expiring LSRI command. Executive and
+coordinator are independent state holders with one scheduler; neither is allowed to create a competing motion loop.
+
 The [Lost Signal Robot Map](robot-map.md) is likewise source-neutral. An editor, SLAM backend, survey compiler, or HD-map
 bridge publishes validated revisions through `IMapProvider`; planning and the Task Executive never import the
 source format. The persisted LSRM package is a navigation product and does not pretend to preserve a SLAM pose graph,
@@ -62,7 +67,7 @@ Conflict-zone behavior follows the same rule. A map may provide a semantic confl
 the stop pose from the current route, footprint, localization margin, actuator delay, and braking capability. A
 mission file cannot prescribe a dynamic-world parking coordinate or grant permanent permission to cross.
 
-The simulator currently assembles these neutral inputs in `src/sim/game/scenario/scenario_autonomy.cpp`. The
+The simulator currently assembles some neutral inputs in `src/sim/game/scenario/scenario_autonomy.cpp`. The
 deployable upper-policy transaction is implemented by
 `src/robot/autonomy/pipeline/autonomy_coordinator.*`; the scenario supplies only its typed inputs. The remaining
 composition work is to move route-progress, dynamic-interaction and local-candidate assembly behind the same

@@ -971,7 +971,7 @@ The execution-state slice is now closed: `RobotMotionRuntime` owns held/manual c
 sequence counters, and crossing execution/alignment indices. `ScenarioSession` no longer stores those algorithmic
 states. `RobotMotionRuntime` deliberately has no dependency on `AutonomyPipeline`; local planning is invoked by the
 ROBOT-owned `AutonomyCoordinator`, so motion transaction state cannot become a second pipeline owner.
-`RobotApplication::step()` is the common provider-neutral cycle entry point for native and in-process composition and
+`RobotApplication::tick()` is the common provider-neutral cycle entry point for native and in-process composition and
 now accepts the same optional `RobotLocalPlanningInput` used by the simulation adapter, returning a typed local-plan
 result before actuator publication. SIM-only joint-name reduction and command delivery live in
 `SimulatedPlatformProviderAdapter`; they are provider code, not an autonomy shortcut. The remaining stage-1 work is
@@ -1000,8 +1000,8 @@ dynamic interaction and local candidate assembly still need the same extraction 
 The task/runtime relationship is now explicit in code. `RobotExecutive` (`src/robot/executive/robot_executive.*`) wraps
 the tested `TaskExecutive` lifecycle kernel and consumes a typed `MotionCapabilityReport` from local planning. It can
 report normal, reduced, hold and no-safe-action states to an operator or task policy, but it has no speed or actuator
-authority. `RobotApplication` owns the facade and remains the runtime/LSRI composition root; its `step()` and
-`execute_motion()` methods schedule ROBOT cycles and publish expiring commands. This prevents the executive from
+authority. `RobotApplication` owns the facade and remains the runtime/LSRI composition root; its `tick()` and
+`execute_motion()` methods publish expiring commands. `tick()` is the only scheduler: it advances the executive, runs the coordinator, feeds back the capability result, and then publishes the command. This prevents the executive from
 competing with local planning while giving the task layer a stable capability result to consume.
 
 ### Magic-number audit (decision loop)
