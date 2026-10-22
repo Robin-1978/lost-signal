@@ -142,7 +142,7 @@ app.take_command(now);         // provider pulls, expiry enforced
 ```
 
 - `lost_signal_robot` links only `lost_signal_robot_stack` (native bring-up).
-- `lost_signal_sim` links `lost_signal_sim_game` (world + sim provider +
+- `lost_signal_sim` links `lost_signal_sim_scenario` (world + sim provider +
   session driving the same `RobotApplication`).
 - Mixed backends are allowed per endpoint; one `(endpoint_id, role)` has
   exactly one owner.
@@ -160,7 +160,7 @@ configuration, not physics:
 
 It answers the same questions as URDF/SDFormat links + joints + sensors
 (frames, mounts, limits) in a smaller auditable form. It deliberately holds
-no MuJoCo bodies, contacts, motor curves, meshes, or game upgrades:
+no MuJoCo bodies, contacts, motor curves, meshes, or scenario presentation assets:
 
 - SIM physics adapter: `robot_id -> MuJoCo joints/contacts`.
 - GAME presentation adapter: `robot_id -> meshes/colors/prices`.

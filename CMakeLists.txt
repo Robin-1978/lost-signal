@@ -103,12 +103,12 @@ target_link_libraries(lost_signal_sim_eval PUBLIC
   lost_signal_sim_world
 )
 
-add_library(lost_signal_sim_game STATIC
-  src/sim/game/scenario_session.cpp
+add_library(lost_signal_sim_scenario STATIC
+  src/sim/scenario/scenario_session.cpp
   src/sim/robot/sim_robot.cpp
 )
-target_include_directories(lost_signal_sim_game PUBLIC src)
-target_link_libraries(lost_signal_sim_game PUBLIC
+target_include_directories(lost_signal_sim_scenario PUBLIC src)
+target_link_libraries(lost_signal_sim_scenario PUBLIC
   lost_signal_robot_stack
   lost_signal_sim_providers
   lost_signal_sim_eval
@@ -116,9 +116,9 @@ target_link_libraries(lost_signal_sim_game PUBLIC
 
 # Sim binary: the only target allowed to link sim + rendering/scoring later.
 add_executable(lost_signal_sim
-  src/sim/game/sim_main.cpp
+  src/sim/scenario/sim_main.cpp
 )
-target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_game)
+target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 
 # Tests
 enable_testing()
@@ -138,7 +138,7 @@ add_test(NAME transport COMMAND test_transport)
 add_executable(test_truth_isolation
   tests/test_truth_isolation.cpp
 )
-target_link_libraries(test_truth_isolation PRIVATE lost_signal_sim_game)
+target_link_libraries(test_truth_isolation PRIVATE lost_signal_sim_scenario)
 add_test(NAME truth_isolation COMMAND test_truth_isolation)
 
 add_executable(test_chassis
@@ -159,7 +159,7 @@ add_test(NAME lidar COMMAND test_lidar)
 add_executable(test_sim_robot
   tests/test_sim_robot.cpp
 )
-target_link_libraries(test_sim_robot PRIVATE lost_signal_sim_game)
+target_link_libraries(test_sim_robot PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_robot COMMAND test_sim_robot)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.

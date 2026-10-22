@@ -1,9 +1,9 @@
 #include <cstdio>
 
-#include "sim/game/scenario_session.hpp"
+#include "sim/scenario/scenario_session.hpp"
 
 int main() {
-  lost_signal::sim::game::ScenarioSession session;
+  lost_signal::sim::scenario::ScenarioSession session;
   lost_signal::robot::iface::TaskRequest req;
   req.request_id = "demo";
   req.place_id = "dock";

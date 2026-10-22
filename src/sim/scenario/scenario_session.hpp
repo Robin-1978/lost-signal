@@ -5,7 +5,7 @@
 #include "sim/providers/sim_platform.hpp"
 #include "sim/world/world.hpp"
 
-namespace lost_signal::sim::game {
+namespace lost_signal::sim::scenario {
 
 // SIM composition root. Owns world truth and presentation state; drives the
 // robot only through RobotApplication + LSRI. Must never call autonomy,
@@ -31,4 +31,4 @@ class ScenarioSession {
   eval::EpisodeRecorder episode_;
 };
 
-}  // namespace lost_signal::sim::game
+}  // namespace lost_signal::sim::scenario

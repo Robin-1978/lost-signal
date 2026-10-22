@@ -32,10 +32,10 @@ flowchart TB
     World["sim_world<br/>World + WorldTruth"]
     SProv["sim_providers<br/>SimPlatform + Sim2DLidar + Sim16Lidar"]
     Eval["sim_eval<br/>EpisodeRecorder + scoring"]
-    Game["sim_game<br/>ScenarioSession + SimRobot"]
+    Scn["sim_scenario<br/>ScenarioSession + SimRobot"]
     World --> SProv
-    World --> Game
-    SProv --> Game
+    World --> Scn
+    SProv --> Scn
   end
 
   Stack["robot_stack (INTERFACE)<br/>app + robots + providers"]
@@ -43,14 +43,14 @@ flowchart TB
   Rob -.-> Stack
   Prov -.-> Stack
 
-  Game -->|"depends on"| Stack
+  Scn -->|"depends on"| Stack
   SProv -->|"depends on"| Stack
   Eval -->|"depends on"| Stack
 
   BinR["lost_signal_robot<br/>native binary, links stack only"]
-  BinS["lost_signal_sim<br/>sim binary, links sim_game"]
+  BinS["lost_signal_sim<br/>sim binary, links sim_scenario"]
   Stack --> BinR
-  Game --> BinS
+  Scn --> BinS
 
   Tests["tests/<br/>robot_cycle, transport, truth_isolation,<br/>chassis, lidar, sim_robot<br/>+ check_boundary gate"]
   Tests -.->|"asserts boundary"| ROBOT
@@ -129,11 +129,11 @@ sequenceDiagram
 
 v1 骨架 planner 恒发 safe-stop；包络、过期、空队列全部 fail-closed。
 
-## 5. 任务意图流（operator / game → robot）
+## 5. 任务意图流（operator / scenario → robot）
 
 ```mermaid
 flowchart LR
-  Op["Operator / Game / Test"] -->|"TaskRequest{request_id, place_id}"| Exe["RobotExecutive::submit"]
+  Op["Operator / Scenario / Test"] -->|"TaskRequest{request_id, place_id}"| Exe["RobotExecutive::submit"]
   Op -->|"request_map(map_id)"| Map["IMapProvider::select_map"]
   Exe -->|"TaskStatus"| Op
   Map -->|"MapSnapshot{map_id, revision}"| Coord["Coordinator::update"]
@@ -187,8 +187,8 @@ flowchart TB
 | `sim_world` | `src/sim/world/` | `world.hpp/cpp` (`WorldTruth`, 真值唯一住所) |
 | `sim_providers` | `src/sim/providers/` | `sim_platform.hpp/cpp`, `lidar2d.hpp/cpp`, `lidar16.hpp/cpp` |
 | `sim_eval` | `src/sim/eval/` | `episode.hpp` (`EvalStep`, `EpisodeRecorder`), `scoring.hpp/cpp` |
-| `sim_game` | `src/sim/game/`, `src/sim/robot/` | `scenario_session.hpp/cpp`, `sim_robot.hpp/cpp` |
-| binaries | `src/robot/app/main.cpp`, `src/sim/game/sim_main.cpp` | `lost_signal_robot`, `lost_signal_sim` |
+| `sim_scenario` | `src/sim/scenario/`, `src/sim/robot/` | `scenario_session.hpp/cpp`, `sim_robot.hpp/cpp` |
+| binaries | `src/robot/app/main.cpp`, `src/sim/scenario/sim_main.cpp` | `lost_signal_robot`, `lost_signal_sim` |
 | tests | `tests/` | `test_robot_cycle/transport/truth_isolation/chassis/lidar/sim_robot` + `check_boundary.py` |
 
 新增模块时：ROBOT 侧只加 `src/robot/` + `robot_*` target + 接口测试；

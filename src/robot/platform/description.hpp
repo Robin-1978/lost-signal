@@ -8,8 +8,8 @@ namespace lost_signal::robot::platform {
 
 // Minimal URDF-like description, ROBOT-owned and versioned.
 // This is configuration, not physics: no MuJoCo bodies, contacts, motors,
-// rendering meshes, or game upgrades here. SIM physics and GAME presentation
-// each keep their own adapter keyed by robot_id.
+// rendering meshes, or scenario presentation assets here. SIM physics and
+// scenario presentation each keep their own adapter keyed by robot_id.
 struct LinkMount {
   std::string link;         // e.g. "base_link", "lidar_link"
   std::string parent;       // parent link; "world" only for base

@@ -1,6 +1,6 @@
-#include "sim/game/scenario_session.hpp"
+#include "sim/scenario/scenario_session.hpp"
 
-namespace lost_signal::sim::game {
+namespace lost_signal::sim::scenario {
 
 ScenarioSession::ScenarioSession() : provider_(&world_), app_(nullptr) {
   // SIM bring-up: claim the sim endpoints before any observation flows.
@@ -51,4 +51,4 @@ void ScenarioSession::step_once() {
   episode_.record(rec);
 }
 
-}  // namespace lost_signal::sim::game
+}  // namespace lost_signal::sim::scenario

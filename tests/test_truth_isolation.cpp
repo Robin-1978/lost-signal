@@ -3,13 +3,13 @@
 #include <cstdio>
 
 #include "sim/eval/scoring.hpp"
-#include "sim/game/scenario_session.hpp"
+#include "sim/scenario/scenario_session.hpp"
 
 int main() {
   using namespace lost_signal;
 
   // 1. Episode records truth + obs + cmd + estimate, robot ticks safe-stop.
-  sim::game::ScenarioSession session;
+  sim::scenario::ScenarioSession session;
   robot::iface::TaskRequest req;
   req.request_id = "eval";
   req.place_id = "dock";
@@ -43,7 +43,7 @@ int main() {
   // RobotApplication (enforced by the robot_boundary gate: no sim includes,
   // no truth tokens, no sim links in src/robot). Mutating sim truth without
   // publishing an observation cannot change the next command.
-  sim::game::ScenarioSession session2;
+  sim::scenario::ScenarioSession session2;
   session2.submit_task(req);
   session2.step_once();
   assert(session2.episode().size() == 1);

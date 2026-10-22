@@ -9,7 +9,7 @@ must build without any `src/sim/` header, source, or library.
 
 ```
 src/robot/   deployable: core, iface, autonomy, executive, app
-src/sim/     non-deployable: world truth, providers, game/session
+src/sim/     non-deployable: world truth, providers, scenario/session
 tests/       boundary gate + robot cycle test
 ```
 
