@@ -8,6 +8,16 @@ DifferentialRobot::DifferentialRobot(std::unique_ptr<app::IRobot> inner,
                                      platform::DifferentialChassis chassis)
     : inner_(std::move(inner)), chassis_(chassis) {}
 
+core::Status DifferentialRobot::configure() { return inner_->configure(); }
+
+core::Status DifferentialRobot::activate() { return inner_->activate(); }
+
+void DifferentialRobot::shutdown() { inner_->shutdown(); }
+
+lifecycle::ModuleState DifferentialRobot::bringup_state() const {
+  return inner_->bringup_state();
+}
+
 core::Status DifferentialRobot::submit_task(const iface::TaskRequest& req) {
   return inner_->submit_task(req);
 }

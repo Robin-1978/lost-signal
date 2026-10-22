@@ -25,6 +25,10 @@ int main() {
   robot::app::IRobot* robots[2] = {&diff, &sim};
 
   for (auto* r : robots) {
+    assert(r->configure());
+    assert(r->activate());
+    assert(r->bringup_state() ==
+           robot::lifecycle::ModuleState::kActive);
     robot::iface::TaskRequest req;
     req.request_id = "t";
     req.place_id = "dock";

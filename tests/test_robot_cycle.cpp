@@ -10,6 +10,17 @@ int main() {
   assert(app.register_provider({"test.lidar", iface::EndpointRole::kLidar,
                                 iface::ProviderBackend::kNative, "lidar_link"}));
 
+  // Pre-bringup tick: safe stop without processing (modules not Active).
+  assert(app.bringup_state() == lifecycle::ModuleState::kUnconfigured);
+  iface::MotionCommand pre = app.tick(500'000);
+  assert(pre.is_safe_stop());
+
+  // Ordered bringup.
+  assert(app.configure());
+  assert(app.bringup_state() == lifecycle::ModuleState::kInactive);
+  assert(app.activate());
+  assert(app.bringup_state() == lifecycle::ModuleState::kActive);
+
   // No observation yet -> must fail closed to safe stop.
   iface::MotionCommand cmd0 = app.tick(1'000'000);
   assert(cmd0.is_safe_stop());
@@ -64,6 +75,12 @@ int main() {
   req.place_id = "dock";
   assert(app.submit_task(req));
   assert(app.task_status().state == iface::TaskState::kActive);
+
+  // Shutdown returns modules to Unconfigured; tick holds again.
+  app.shutdown();
+  assert(app.bringup_state() == lifecycle::ModuleState::kUnconfigured);
+  iface::MotionCommand post = app.tick(5'000'000);
+  assert(post.is_safe_stop());
 
   std::printf("robot_cycle ok\n");
   return 0;

@@ -4,6 +4,7 @@
 #include "robot/iface/command.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
+#include "robot/lifecycle/lifecycle.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -22,8 +23,16 @@ struct EstimatedState {
 // ROBOT-owned autonomy transaction. One entry point for estimation,
 // perception, planning, validation, and control state. SIM must never call
 // these algorithms directly; it goes through RobotApplication.
-class AutonomyCoordinator {
+// A lifecycle module: ingest/update run only while Active.
+class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  public:
+  const char* name() const override { return "autonomy"; }
+  core::Status configure() override;
+  core::Status activate() override;
+  core::Status deactivate() override;
+  core::Status cleanup() override;
+  lifecycle::ModuleState state() const override { return state_; }
+
   void ingest_observation(const iface::ObservationFrame& obs);
   iface::MotionCommand update(iface::MapSnapshot map, core::MonotonicNs now_ns);
   bool has_observation() const { return has_observation_; }
@@ -31,6 +40,7 @@ class AutonomyCoordinator {
   const EstimatedState& estimate() const { return estimate_; }
 
  private:
+  lifecycle::ModuleState state_ = lifecycle::ModuleState::kUnconfigured;
   bool has_observation_ = false;
   iface::ObservationFrame last_obs_{};
   EstimatedState estimate_{};

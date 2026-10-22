@@ -27,17 +27,29 @@ add_library(lost_signal_robot_platform STATIC
 target_include_directories(lost_signal_robot_platform PUBLIC src)
 target_link_libraries(lost_signal_robot_platform PUBLIC lost_signal_robot_iface)
 
+add_library(lost_signal_robot_lifecycle STATIC
+  src/robot/lifecycle/bringup.cpp
+)
+target_include_directories(lost_signal_robot_lifecycle PUBLIC src)
+target_link_libraries(lost_signal_robot_lifecycle PUBLIC lost_signal_robot_core)
+
 add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
 )
 target_include_directories(lost_signal_robot_autonomy PUBLIC src)
-target_link_libraries(lost_signal_robot_autonomy PUBLIC lost_signal_robot_iface)
+target_link_libraries(lost_signal_robot_autonomy PUBLIC
+  lost_signal_robot_iface
+  lost_signal_robot_lifecycle
+)
 
 add_library(lost_signal_robot_executive STATIC
   src/robot/executive/executive.cpp
 )
 target_include_directories(lost_signal_robot_executive PUBLIC src)
-target_link_libraries(lost_signal_robot_executive PUBLIC lost_signal_robot_iface)
+target_link_libraries(lost_signal_robot_executive PUBLIC
+  lost_signal_robot_iface
+  lost_signal_robot_lifecycle
+)
 
 add_library(lost_signal_robot_app STATIC
   src/robot/app/robot_application.cpp
@@ -47,6 +59,7 @@ target_link_libraries(lost_signal_robot_app PUBLIC
   lost_signal_robot_autonomy
   lost_signal_robot_executive
   lost_signal_robot_platform
+  lost_signal_robot_lifecycle
 )
 
 # Deployable chassis robots (differential today, ackermann/holonomic later).
@@ -140,6 +153,12 @@ add_executable(test_truth_isolation
 )
 target_link_libraries(test_truth_isolation PRIVATE lost_signal_sim_scenario)
 add_test(NAME truth_isolation COMMAND test_truth_isolation)
+
+add_executable(test_lifecycle
+  tests/test_lifecycle.cpp
+)
+target_link_libraries(test_lifecycle PRIVATE lost_signal_robot_lifecycle)
+add_test(NAME lifecycle COMMAND test_lifecycle)
 
 add_executable(test_chassis
   tests/test_chassis.cpp

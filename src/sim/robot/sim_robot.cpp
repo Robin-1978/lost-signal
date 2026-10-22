@@ -19,6 +19,19 @@ SimRobot::SimRobot()
   app_.register_provider({"sim.platform",
                           r::iface::EndpointRole::kLidar,
                           r::iface::ProviderBackend::kSim, "lidar_link"});
+  // Harness bringup: ordered configure -> activate; a failed module blocks.
+  (void)app_.configure();
+  (void)app_.activate();
+}
+
+r::core::Status SimRobot::configure() { return app_.configure(); }
+
+r::core::Status SimRobot::activate() { return app_.activate(); }
+
+void SimRobot::shutdown() { app_.shutdown(); }
+
+r::lifecycle::ModuleState SimRobot::bringup_state() const {
+  return app_.bringup_state();
 }
 
 r::core::Status SimRobot::submit_task(const r::iface::TaskRequest& req) {

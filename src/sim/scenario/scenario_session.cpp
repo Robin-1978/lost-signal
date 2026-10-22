@@ -14,6 +14,9 @@ ScenarioSession::ScenarioSession() : provider_(&world_), app_(nullptr) {
   app_.register_provider({"sim.platform",
                           robot::iface::EndpointRole::kEncoder,
                           robot::iface::ProviderBackend::kSim, "base_link"});
+  // Harness bringup: ordered configure -> activate; a failed module blocks.
+  (void)app_.configure();
+  (void)app_.activate();
 }
 
 void ScenarioSession::submit_task(const robot::iface::TaskRequest& req) {

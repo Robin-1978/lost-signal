@@ -4,7 +4,39 @@
 
 namespace lost_signal::robot::autonomy {
 
+core::Status AutonomyCoordinator::configure() {
+  has_observation_ = false;
+  last_obs_ = iface::ObservationFrame{};
+  estimate_ = EstimatedState{};
+  state_ = lifecycle::ModuleState::kInactive;
+  return core::Status::Ok();
+}
+
+core::Status AutonomyCoordinator::activate() {
+  if (state_ != lifecycle::ModuleState::kInactive) {
+    return core::Status::Fail("autonomy: activate requires Inactive");
+  }
+  state_ = lifecycle::ModuleState::kActive;
+  return core::Status::Ok();
+}
+
+core::Status AutonomyCoordinator::deactivate() {
+  if (state_ == lifecycle::ModuleState::kActive) {
+    state_ = lifecycle::ModuleState::kInactive;
+  }
+  return core::Status::Ok();
+}
+
+core::Status AutonomyCoordinator::cleanup() {
+  has_observation_ = false;
+  last_obs_ = iface::ObservationFrame{};
+  estimate_ = EstimatedState{};
+  state_ = lifecycle::ModuleState::kUnconfigured;
+  return core::Status::Ok();
+}
+
 void AutonomyCoordinator::ingest_observation(const iface::ObservationFrame& obs) {
+  if (state_ != lifecycle::ModuleState::kActive) return;
   if (!iface::valid_observation_frame(obs)) return;
   // Fail-closed: stale or repeated input never advances state.
   if (has_observation_ && obs.sequence <= last_obs_.sequence) return;
@@ -43,7 +75,9 @@ iface::MotionCommand AutonomyCoordinator::update(iface::MapSnapshot /*map*/,
                                                  core::MonotonicNs now_ns) {
   // v1 skeleton: hold position until real modules land here.
   // Missing observation is unknown evidence -> safe stop, never free space.
-  if (!has_observation_) return iface::MotionCommand::SafeStop(now_ns);
+  if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
+    return iface::MotionCommand::SafeStop(now_ns);
+  }
   return iface::MotionCommand::SafeStop(now_ns);
 }
 

@@ -11,6 +11,7 @@
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 #include "robot/iface/task.hpp"
+#include "robot/lifecycle/lifecycle.hpp"
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::app {
@@ -22,6 +23,12 @@ namespace lost_signal::robot::app {
 class IRobot {
  public:
   virtual ~IRobot() = default;
+  // Ordered bringup: configure -> activate must succeed before tick()
+  // processes anything. A failed module blocks the whole robot.
+  virtual core::Status configure() = 0;
+  virtual core::Status activate() = 0;
+  virtual void shutdown() = 0;
+  virtual lifecycle::ModuleState bringup_state() const = 0;
   virtual core::Status submit_task(const iface::TaskRequest& req) = 0;
   virtual core::Status request_map(const std::string& map_id) = 0;
   virtual bool register_provider(const iface::EndpointDescriptor& desc) = 0;

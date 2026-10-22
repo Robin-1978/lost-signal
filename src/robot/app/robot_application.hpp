@@ -13,12 +13,23 @@
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 #include "robot/iface/task.hpp"
+#include "robot/lifecycle/bringup.hpp"
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::app {
 
 // Composition root for one robot process. Owns lifecycle and ordering of
 // Executive + AutonomyCoordinator + channel + map view + description.
+//
+// Bringup (Nav2-style, ordered):
+//   0. register endpoints via register_provider() (may precede configure);
+//   1. configure(): brings every module Unconfigured -> Inactive, in order.
+//      Any failure blocks the whole bringup.
+//   2. activate(): brings every module Inactive -> Active, in order, with
+//      reverse-order rollback on the first failure.
+//   3. tick() runs only while Active; otherwise it returns safe stop without
+//      touching algorithm state.
+//   4. shutdown(): deactivate + cleanup, reverse order.
 //
 // Provider model (Sim or Real, same seam):
 //   1. startup: register every endpoint via register_provider() with a stable
@@ -45,6 +56,14 @@ class RobotApplication : public IRobot {
                      .max_yaw_rate_radps = 2.0,
                      .footprint_radius_m = 0.4}});
 
+  // Ordered bringup. Must succeed before tick() processes anything.
+  core::Status configure() override;
+  core::Status activate() override;
+  void shutdown() override;
+  lifecycle::ModuleState bringup_state() const override {
+    return bringup_.state();
+  }
+
   // Task / map intent (typed, no coordinates from SIM truth).
   core::Status submit_task(const iface::TaskRequest& req) override;
   core::Status request_map(const std::string& map_id) override;
@@ -57,7 +76,8 @@ class RobotApplication : public IRobot {
   // Robot -> provider: newest non-expired command, else safe stop.
   iface::MotionCommand take_command(core::MonotonicNs now_ns) override;
 
-  // One deterministic cycle. Always returns a valid command.
+  // One deterministic cycle. Always returns a valid command; safe stop
+  // without processing while not Active.
   iface::MotionCommand tick(core::MonotonicNs now_ns) override;
 
   iface::TaskStatus task_status() const override;
@@ -74,6 +94,7 @@ class RobotApplication : public IRobot {
     core::MonotonicNs last_obs_stamp_ns = core::kInvalidTime;
     std::uint64_t last_obs_seq = 0;
     autonomy::EstimatedState estimate;
+    lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::TaskStatus task;
     iface::ChannelHealth health;
   };
@@ -86,6 +107,8 @@ class RobotApplication : public IRobot {
   iface::RuntimeChannel channel_;
   autonomy::AutonomyCoordinator coordinator_;
   executive::RobotExecutive executive_;
+  lifecycle::BringupManager bringup_;
+  bool bringup_wired_ = false;
 };
 
 }  // namespace lost_signal::robot::app

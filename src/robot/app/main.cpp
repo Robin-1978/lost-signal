@@ -5,6 +5,15 @@
 int main() {
   // Native robot process: no sim headers, no world truth.
   lost_signal::robot::app::RobotApplication app(nullptr);
+  // Ordered bringup: a failed module blocks the whole process.
+  if (!app.configure()) {
+    std::printf("robot: configure failed\n");
+    return 1;
+  }
+  if (!app.activate()) {
+    std::printf("robot: activate failed\n");
+    return 1;
+  }
   lost_signal::robot::iface::TaskRequest req;
   req.request_id = "bringup";
   req.place_id = "";

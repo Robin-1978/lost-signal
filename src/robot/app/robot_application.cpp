@@ -23,7 +23,22 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
     : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()),
       desc_(std::move(desc)) {
   channel_.activate();
+  // Bringup order: autonomy state first, executive policy last.
+  bringup_wired_ =
+      bringup_.add_module(&coordinator_) && bringup_.add_module(&executive_);
 }
+
+core::Status RobotApplication::configure() {
+  if (!bringup_wired_) return core::Status::Fail("bringup not wired");
+  return bringup_.configure_all();
+}
+
+core::Status RobotApplication::activate() {
+  if (!bringup_wired_) return core::Status::Fail("bringup not wired");
+  return bringup_.activate_all();
+}
+
+void RobotApplication::shutdown() { bringup_.cleanup_all(); }
 
 core::Status RobotApplication::submit_task(const iface::TaskRequest& req) {
   return executive_.submit(req);
@@ -52,6 +67,9 @@ iface::MotionCommand RobotApplication::take_command(core::MonotonicNs now_ns) {
 }
 
 iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
+  if (bringup_.state() != lifecycle::ModuleState::kActive) {
+    return iface::MotionCommand::SafeStop(now_ns);  // not brought up: hold
+  }
   for (const auto& obs : channel_.drain_observations()) {
     coordinator_.ingest_observation(obs);
   }
@@ -84,6 +102,7 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
     d.last_obs_seq = coordinator_.last_observation().sequence;
     d.estimate = coordinator_.estimate();
   }
+  d.bringup = bringup_.state();
   d.task = executive_.status();
   d.health = channel_.health();
   return d;

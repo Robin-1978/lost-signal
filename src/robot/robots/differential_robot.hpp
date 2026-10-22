@@ -17,6 +17,11 @@ class DifferentialRobot : public app::IRobot {
   DifferentialRobot(std::unique_ptr<app::IRobot> inner,
                     platform::DifferentialChassis chassis);
 
+  core::Status configure() override;
+  core::Status activate() override;
+  void shutdown() override;
+  lifecycle::ModuleState bringup_state() const override;
+
   core::Status submit_task(const iface::TaskRequest& req) override;
   core::Status request_map(const std::string& map_id) override;
   bool register_provider(const iface::EndpointDescriptor& desc) override;
