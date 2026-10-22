@@ -31,9 +31,11 @@ tests/       boundary gate + robot cycle test
 
 ## Build
 
+Requires gcc-13 (full C++20). The default preset pins the compiler:
+
 ```sh
-cmake -S . -B build
-cmake --build build -j8
+cmake --preset default
+cmake --build --preset default
 ctest --test-dir build -V
 ```
 
