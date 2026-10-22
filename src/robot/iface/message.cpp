@@ -21,4 +21,11 @@ bool Lidar3DCloud::valid() const {
   return true;
 }
 
+bool ImuMessage::valid() const {
+  if (src.empty()) return false;
+  if (stamp == core::kInvalidTime) return false;
+  if (seq == 0) return false;
+  return true;
+}
+
 }  // namespace lost_signal::robot::iface

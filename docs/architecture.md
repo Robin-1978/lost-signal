@@ -22,7 +22,7 @@ flowchart TB
   end
 
   subgraph PROV["Providers (same LSRI seam)"]
-    SimProv["SimPlatformProvider<br/>WorldTruth -> Observation"]
+    SimProv["SimSensorSuite<br/>WorldTruth -> typed messages -> envelope"]
     RealProv["NativeDriver<br/>SDK -> Observation"]
   end
 
@@ -118,7 +118,7 @@ Typical step (SIM, same for native):
 
 ```text
 world.step(20ms)
-  -> SimPlatformProvider.poll_observation()   # truth -> measurement
+  -> SimSensorSuite.poll_envelope()    # typed messages -> envelope
   -> app.publish_observation(obs)             # registry + channel gate
   -> app.tick(now)                            # drain -> coordinator -> cmd
   -> provider.consume_command(cmd)            # validated -> plant
@@ -130,7 +130,7 @@ Replay uses the same path: recorded frames are republished through
 ## RobotApplication: Sim or Real?
 
 Yes — exactly that. `RobotApplication` is the composition root; Sim and Real
-are just providers behind `IPlatformProvider` + `EndpointRegistry`.
+are all `IProvider`s behind `EndpointRegistry`: sensors poll typed messages, the motion endpoint consumes commands and polls body feedback.
 
 ```cpp
 RobotApplication app(std::move(maps), desc);

@@ -25,8 +25,7 @@ class IMessage {
 };
 
 // 2D planar scan message. Missing return = absent, never max-range fill.
-struct Lidar2DScan : public IMessage {
-  std::uint64_t seq = 0;
+struct Lidar2DScan : public IMessage {  std::uint64_t seq = 0;
   core::MonotonicNs stamp = core::kInvalidTime;
   std::string src;
   core::Frame frm = core::Frame::kLidarLink;
@@ -60,6 +59,24 @@ struct Lidar3DCloud : public IMessage {
   std::uint16_t ring_count = 0;
   float scan_period_s = 0.0f;
   std::vector<Lidar3DPoint> points;
+
+  int schema_version() const override { return kMessageSchemaVersion; }
+  core::MonotonicNs stamp_ns() const override { return stamp; }
+  const std::string& source() const override { return src; }
+  std::uint64_t sequence() const override { return seq; }
+  core::Frame frame() const override { return frm; }
+  bool valid() const override;
+};
+
+// IMU message: measured yaw rate + planar acceleration, SI. Noise and bias
+// belong to the provider's device model; the estimate never sees truth.
+struct ImuMessage : public IMessage {
+  std::uint64_t seq = 0;
+  core::MonotonicNs stamp = core::kInvalidTime;
+  std::string src;
+  core::Frame frm = core::Frame::kImuLink;
+  double yaw_rate_radps = 0.0;
+  double ax_mps2 = 0.0;
 
   int schema_version() const override { return kMessageSchemaVersion; }
   core::MonotonicNs stamp_ns() const override { return stamp; }

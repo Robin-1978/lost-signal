@@ -102,9 +102,11 @@ target_include_directories(lost_signal_sim_world PUBLIC src)
 target_link_libraries(lost_signal_sim_world PUBLIC lost_signal_robot_core)
 
 add_library(lost_signal_sim_providers STATIC
-  src/sim/providers/sim_platform.cpp
+  src/sim/providers/sim_motion.cpp
+  src/sim/providers/sim_imu.cpp
   src/sim/providers/lidar2d.cpp
   src/sim/providers/lidar16.cpp
+  src/sim/providers/sensor_suite.cpp
 )
 target_include_directories(lost_signal_sim_providers PUBLIC src)
 target_link_libraries(lost_signal_sim_providers PUBLIC
@@ -188,6 +190,12 @@ add_executable(test_chassis
 )
 target_link_libraries(test_chassis PRIVATE lost_signal_robot_platform)
 add_test(NAME chassis COMMAND test_chassis)
+
+add_executable(test_providers
+  tests/test_providers.cpp
+)
+target_link_libraries(test_providers PRIVATE lost_signal_sim_providers)
+add_test(NAME providers COMMAND test_providers)
 
 add_executable(test_lidar
   tests/test_lidar.cpp

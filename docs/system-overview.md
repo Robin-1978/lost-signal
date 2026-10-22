@@ -92,7 +92,7 @@ flowchart LR
 sequenceDiagram
   participant W as World (sim)
   participant L as Sim2DLidar / Sim16Lidar
-  participant P as SimPlatformProvider
+  participant P as SimSensorSuite
   participant C as RuntimeChannel
   participant R as RobotApplication
   W->>L: truth (sim-internal)
@@ -177,7 +177,7 @@ flowchart TB
 | 模块（CMake target） | 目录 | 关键文件 |
 |---|---|---|
 | `robot_core` | `src/robot/core/` | `time.hpp`, `frames.hpp`, `status.hpp` |
-| `robot_iface` | `src/robot/iface/` | `version.hpp`, `message.hpp/cpp` (`IMessage`, `Lidar2DScan`, `Lidar3DCloud`), `observation.hpp`, `command.hpp`, `endpoint.hpp/cpp`, `channel.hpp/cpp`, `platform.hpp` (`IPlatformProvider`), `provider.hpp` (`IProvider`, `ISensorProvider`), `task.hpp`, `map.hpp` |
+| `robot_iface` | `src/robot/iface/` | `version.hpp`, `message.hpp/cpp` (`IMessage`, `Lidar2DScan`, `Lidar3DCloud`, `ImuMessage`), `observation.hpp`, `command.hpp`, `endpoint.hpp/cpp`, `channel.hpp/cpp`, `motion.hpp` (`IMotionEndpoint`), `provider.hpp` (`IProvider`, `ISensorProvider`), `envelope.hpp` (canonical pack), `task.hpp`, `map.hpp` |
 | `robot_platform` | `src/robot/platform/` | `description.hpp/cpp` (`RobotDescription`), `chassis.hpp/cpp` (`IChassis`, `DifferentialChassis`) |
 | `robot_autonomy` | `src/robot/autonomy/` | `coordinator.hpp/cpp` (pipeline order) + `estimation/` (`IEstimator`) + `perception/` (`IPerception`) + `mapping/` (`IMapper`) + `planning/` (`IGlobalPlanner`, `ILocalPlanner`) + `validation/` (`IValidator`) + `control/` (`IController`). 详见 `docs/algorithms.md` |
 | `robot_executive` | `src/robot/executive/` | `executive.hpp/cpp` (`RobotExecutive`) |
@@ -185,7 +185,7 @@ flowchart TB
 | `robot_robots` | `src/robot/robots/` | `differential_robot.hpp/cpp` |
 | `robot_providers` | `src/robot/providers/` | `real_lidar2d.hpp/cpp` |
 | `sim_world` | `src/sim/world/` | `world.hpp/cpp` (`WorldTruth`, 真值唯一住所) |
-| `sim_providers` | `src/sim/providers/` | `sim_platform.hpp/cpp`, `lidar2d.hpp/cpp`, `lidar16.hpp/cpp` |
+| `sim_providers` | `src/sim/providers/` | `sensor_suite.hpp/cpp` (composer) + `sim_motion.hpp/cpp`, `sim_imu.hpp/cpp`, `lidar2d.hpp/cpp`, `lidar16.hpp/cpp` |
 | `sim_eval` | `src/sim/eval/` | `episode.hpp` (`EvalStep`, `EpisodeRecorder`), `scoring.hpp/cpp` |
 | `sim_scenario` | `src/sim/scenario/`, `src/sim/robot/` | `scenario_session.hpp/cpp`, `sim_robot.hpp/cpp` |
 | binaries | `src/robot/app/main.cpp`, `src/sim/scenario/sim_main.cpp` | `lost_signal_robot`, `lost_signal_sim` |

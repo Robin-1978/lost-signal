@@ -39,21 +39,32 @@ flowchart TB
 Wire-agnostic: in-process struct today, serialized form tomorrow. Version
 bump on meaning change (`version.hpp`).
 
-## IProvider — sensor providers
+## IProvider — one provider story
 
-`src/robot/iface/provider.hpp`. Non-template `IProvider` base
-(`descriptor() + is_ready()`) plus `ISensorProvider<T>` typed `poll()`.
+`src/robot/iface/provider.hpp` + `motion.hpp`. Non-template `IProvider` base
+(`descriptor() + is_ready()`), then exactly two typed roles:
+
+- `ISensorProvider<T>::poll(T&)`: `Sim2DLidar`, `Sim16Lidar`, `SimImu`
+  (`src/sim/providers/`), `Real2DLidar`
+  (`src/robot/providers/`, replay/native, no SDK);
+- `IMotionEndpoint`: `consume_command(cmd)` + `poll_feedback(MotionFeedback)`
+  (`SimMotionEndpoint`, body twist only — per-joint modes are future work).
 
 ```mermaid
 flowchart LR
-  IP["ISensorProvider<T>"] --> S2D["Sim2DLidar<br/>src/sim/providers/"]
-  IP --> S16["Sim16Lidar<br/>src/sim/providers/"]
-  IP --> R2D["Real2DLidar<br/>src/robot/providers/<br/>replay/native, no SDK"]
+  IP["IProvider"] --> SP["ISensorProvider<T><br/>lidar + imu messages"]
+  IP --> ME["IMotionEndpoint<br/>body command + feedback"]
+  SP --> S2D["Sim2DLidar / Sim16Lidar / SimImu"]
+  SP --> R2D["Real2DLidar (replay)"]
+  ME --> SM["SimMotionEndpoint"]
 ```
 
-Same seam, backend flag differs (`kSim` vs `kNative`). `SimRobot` packs the
-typed scan into the LSRI `ObservationFrame`; `Real2DLidar` replays recorded
-rotations (nothing polled before `feed()`).
+Same seam, backend flag differs (`kSim` vs `kNative`). `SimSensorSuite`
+(`src/sim/providers/sensor_suite.hpp`) owns the three sim providers and packs
+their typed messages into ONE envelope through the canonical robot-owned
+helpers (`iface/envelope.hpp`: `make_envelope/set_scan/set_imu`) — no
+hand-packing in harnesses. The old whole-observation `IPlatformProvider` is
+gone: sensors are messages, motion is a twist, the envelope is packed once.
 
 ## IChassis — chassis kinematics (bonus axis)
 

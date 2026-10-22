@@ -2,18 +2,10 @@
 
 namespace lost_signal::sim::scenario {
 
-ScenarioSession::ScenarioSession() : provider_(&world_), app_(nullptr) {
-  // SIM bring-up: claim the sim endpoints before any observation flows.
+ScenarioSession::ScenarioSession() : suite_(&world_), app_(nullptr) {
+  // SIM bring-up: the suite claims motion + lidar + imu descriptors.
   // Same seam a native driver uses, only the backend flag differs.
-  app_.register_provider({"sim.platform",
-                          robot::iface::EndpointRole::kLidar,
-                          robot::iface::ProviderBackend::kSim, "lidar_link"});
-  app_.register_provider({"sim.platform",
-                          robot::iface::EndpointRole::kImu,
-                          robot::iface::ProviderBackend::kSim, "imu_link"});
-  app_.register_provider({"sim.platform",
-                          robot::iface::EndpointRole::kEncoder,
-                          robot::iface::ProviderBackend::kSim, "base_link"});
+  suite_.register_all(app_);
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();
   (void)app_.activate();
@@ -31,7 +23,7 @@ void ScenarioSession::step_once() {
   world_.step(0.02);
 
   robot::iface::ObservationFrame obs;
-  if (!provider_.poll_observation(obs)) return;
+  if (!suite_.poll_envelope(obs)) return;
   rec.obs = obs;
   rec.obs_accepted = app_.publish_observation(obs);
   if (!rec.obs_accepted) {
@@ -45,7 +37,7 @@ void ScenarioSession::step_once() {
     return;
   }
   robot::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
-  provider_.consume_command(cmd);
+  suite_.consume(cmd);
 
   rec.cmd = cmd;
   rec.diag = app_.diagnostics();

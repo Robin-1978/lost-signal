@@ -2,8 +2,7 @@
 
 #include "robot/app/robot.hpp"
 #include "robot/app/robot_application.hpp"
-#include "sim/providers/lidar2d.hpp"
-#include "sim/providers/sim_platform.hpp"
+#include "sim/providers/sensor_suite.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::robot {
@@ -30,7 +29,7 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
       const ::lost_signal::robot::iface::ObservationFrame& obs) override;
   ::lost_signal::robot::iface::MotionCommand take_command(
       ::lost_signal::robot::core::MonotonicNs now_ns) override;
-  // One self-stepping cycle: world -> messages -> app.tick -> plant.
+  // One self-stepping cycle: world -> suite envelope -> app.tick -> plant.
   ::lost_signal::robot::iface::MotionCommand tick(
       ::lost_signal::robot::core::MonotonicNs now_ns) override;
   ::lost_signal::robot::iface::TaskStatus task_status() const override;
@@ -41,8 +40,7 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
 
  private:
   world::World world_;
-  providers::SimPlatformProvider platform_;
-  providers::Sim2DLidarProvider lidar_;
+  providers::SimSensorSuite suite_;
   ::lost_signal::robot::app::RobotApplication app_;
 };
 

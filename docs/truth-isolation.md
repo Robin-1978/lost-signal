@@ -17,7 +17,7 @@ recorded truth vs recorded estimate, scored after the run.
 
 ```mermaid
 flowchart LR
-  Truth["WorldTruth (sim)"] --> Prov["SimPlatformProvider<br/>truth -> measurement"]
+  Truth["WorldTruth (sim)"] --> Prov["SimSensorSuite<br/>truth -> typed messages"]
   Prov -->|"ObservationFrame"| App["RobotApplication<br/>tick -> MotionCommand"]
   App -->|"MotionCommand"| Prov
   Truth --> Rec["EpisodeRecorder<br/>truth_before/after + obs + cmd + diag"]

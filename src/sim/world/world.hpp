@@ -17,6 +17,9 @@ struct WorldTruth {
 class World {
  public:
   void step(double dt_s);
+  // Kinematic plant v1: the body tracks the last delivered command exactly.
+  // A dynamic motor/contact model replaces this body, not its callers.
+  void apply_command(double forward_mps) { truth_.forward_mps = forward_mps; }
   const WorldTruth& truth() const { return truth_; }
 
  private:

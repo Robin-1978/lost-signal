@@ -2,7 +2,7 @@
 
 #include "robot/app/robot_application.hpp"
 #include "sim/eval/episode.hpp"
-#include "sim/providers/sim_platform.hpp"
+#include "sim/providers/sensor_suite.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::scenario {
@@ -26,7 +26,7 @@ class ScenarioSession {
 
  private:
   world::World world_;
-  providers::SimPlatformProvider provider_;
+  providers::SimSensorSuite suite_;
   robot::app::RobotApplication app_;
   eval::EpisodeRecorder episode_;
 };
