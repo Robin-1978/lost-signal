@@ -71,7 +71,7 @@ Accept: scripted crossing scenario in `ScenarioSession` produces tracks;
 perception + behavior + validator chain reacts; replay of the episode
 reproduces the same decision sequence.
 
-### S5 Scenario systems (medium)
+### S5 Scenario systems (medium) — landed
 Port the orchestration that makes scenarios more than a world step:
 - `deterministic_scheduler` (multi-rate sim-time deadlines: scan /
   decision / replay cadences from sim time, never wall clock).

@@ -14,6 +14,13 @@ namespace lost_signal::sim::eval {
 // One offline step. Truth is recorded here for post-run comparison, scoring,
 // and RL labels. It must never be passed to publish_observation(), tick(),
 // or any ROBOT input.
+struct CollisionOutcome {
+  bool static_collision = false;
+  bool dynamic_collision = false;
+  double static_clearance_m = 999.0;   // robot-center-to-box minus radius
+  double dynamic_clearance_m = 999.0;  // center-to-center minus both radii
+};
+
 struct EvalStep {
   std::uint64_t step = 0;
   world::WorldTruth truth_before{};
@@ -22,6 +29,8 @@ struct EvalStep {
   bool obs_accepted = false;
   robot::iface::MotionCommand cmd{};
   robot::app::RobotApplication::Diagnostics diag{};
+  // Truth-side judge outcome (SIM orchestration fills it; scoring reads it).
+  CollisionOutcome judge{};
 };
 
 // Append-only episode log, SIM-owned. Export is an offline artifact

@@ -252,7 +252,14 @@ route, pre-activation hold).
 - Actors carry a motion policy (`sim/world/actor_behavior.hpp`): constant
   velocity (default, yesterday's straight lines), waypoint follow (loop or
   latched stop), seeded wander (splitmix64 stream per actor — same seed +
-  same dt sequence is bit-identical). A string registry names the kinds for
+  same dt sequence is bit-identical).
+- Scenario orchestration (`sim/scenario/`): sim-time multi-rate scheduler
+  (scan/decision/record deadlines; defaults run everything every plant
+  step), objective driver (place list through the operator `request_goal`
+  seam; ROBOT Done/Failed advances, truth arrival counted offline only),
+  truth-side collision judge (circle-vs-box/actor contact + clearances,
+  recorded per step into the episode for scoring — never a ROBOT input).
+  `EpisodeScore` counts judge-fired steps. A string registry names the kinds for
   scenario authors; World evaluates the policy before integrating.
 - Joint feedback is the encoder view (`SimMotionEndpoint::poll_feedback`):
   angles quantized to `encoder_counts_per_revolution`, velocities

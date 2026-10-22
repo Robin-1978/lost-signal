@@ -23,6 +23,7 @@ struct EpisodeScore {
   std::size_t safe_stop_steps = 0;
   std::size_t obs_accepted = 0;
   std::size_t obs_rejected = 0;
+  std::size_t collision_steps = 0;  // truth-side judge fired this step
   double distance_m = 0.0;  // truth displacement over the episode
   // Estimate quality (offline truth-vs-estimate, for optimizer reference):
   std::size_t estimate_samples = 0;

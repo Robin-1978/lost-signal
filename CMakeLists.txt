@@ -185,6 +185,8 @@ target_link_libraries(lost_signal_sim_eval PUBLIC
 
 add_library(lost_signal_sim_scenario STATIC
   src/sim/scenario/scenario_session.cpp
+  src/sim/scenario/collision_judge.cpp
+  src/sim/scenario/objectives.cpp
   src/sim/robot/sim_robot.cpp
 )
 target_include_directories(lost_signal_sim_scenario PUBLIC src)
@@ -357,6 +359,12 @@ add_executable(test_actor_behavior
 )
 target_link_libraries(test_actor_behavior PRIVATE lost_signal_sim_scenario)
 add_test(NAME actor_behavior COMMAND test_actor_behavior)
+
+add_executable(test_scenario
+  tests/test_scenario.cpp
+)
+target_link_libraries(test_scenario PRIVATE lost_signal_sim_scenario)
+add_test(NAME scenario COMMAND test_scenario)
 
 add_executable(test_lidar
   tests/test_lidar.cpp
