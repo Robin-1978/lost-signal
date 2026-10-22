@@ -161,4 +161,22 @@ class MapManager final : public IMapProvider {
  std::shared_ptr<const MapSnapshot> snapshot_;
 };
 
+// A deployment may keep several immutable map products available. The
+// catalog owns no active robot state; it validates and indexes packages, then
+// atomically selects one into a MapManager when the application has proved a
+// safe switching point. Revision updates within the selected map still use
+// MapManager::replace().
+class MapCatalog {
+ public:
+ bool register_map(MapSnapshot snapshot, std::string* reason = nullptr);
+ bool contains(std::string_view map_id) const;
+ std::vector<std::string> map_ids() const;
+ std::shared_ptr<const MapSnapshot> snapshot(std::string_view map_id) const;
+ bool select(MapManager& active_map, std::string_view map_id,
+ std::string* reason = nullptr) const;
+
+ private:
+ std::map<std::string, std::shared_ptr<const MapSnapshot>> maps_;
+};
+
 } // namespace sim::runtime

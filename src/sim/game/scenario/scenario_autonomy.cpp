@@ -40,7 +40,7 @@ void ScenarioSession::decide_control() {
  const double measured_left_mps = snapshot_.control.left_measured_mps;
  const double measured_right_mps = snapshot_.control.right_measured_mps;
  snapshot_.control = {};
- if (autonomy_coordinator_->route_path_index() >= planned_route_.size()) {
+ if (robot_application_->route_path_index() >= planned_route_.size()) {
   if (planned_route_.empty()) {
    held_command() = {0.0, 0.0};
    DecisionEvidence decision;
@@ -56,9 +56,9 @@ void ScenarioSession::decide_control() {
   // distance, not by idx. Hold the last waypoint so normal tracking (reverse
   // hysteresis, watchdog, DWA arbitration below) docks the robot instead of
   // parking short with tv=0 until timeout.
-  autonomy_coordinator_->set_route_path_index(planned_route_.size() - 1);
+  robot_application_->set_route_path_index(planned_route_.size() - 1);
  }
- const auto& estimate = autonomy_coordinator_->estimator().state();
+ const auto& estimate = robot_application_->estimator().state();
  const double nav_x = estimate.position.x;
  const double nav_y = estimate.position.y;
  const double nav_heading = estimate.heading_rad;
@@ -70,7 +70,7 @@ void ScenarioSession::decide_control() {
  // only when no route heading is available.
  const double grade_heading = [&] {
  if (!planned_route_.empty()) {
- const auto index = std::min(autonomy_coordinator_->route_path_index(),
+ const auto index = std::min(robot_application_->route_path_index(),
  planned_route_.size() - 1);
  if (std::isfinite(planned_route_[index].heading_rad))
  return planned_route_[index].heading_rad;
@@ -93,10 +93,10 @@ void ScenarioSession::decide_control() {
  // separate time-indexed input below; an observed obstacle therefore cannot
  // become a permanent global wall or disappear merely because tracking lost
  // its identity.
- const sim::GridMap local_planning_map = autonomy_coordinator_->compose_local_map(
+ const sim::GridMap local_planning_map = robot_application_->compose_local_map(
  *planning_map_, snapshot_.time_s, planning_clearance_m_);
  const auto transient_obstacles =
- autonomy_coordinator_->active_observed_obstacles(
+ robot_application_->active_observed_obstacles(
  snapshot_.time_s);
  snapshot_.control.transient_obstacle_cells = transient_obstacles.size();
  snapshot_.control.nearest_transient_obstacle_m =
@@ -111,9 +111,9 @@ void ScenarioSession::decide_control() {
  snapshot_.control.local_map_pose_clearance_m =
  local_planning_map.clearance(nav_x, nav_y);
  const auto active_dynamic_tracks =
- autonomy_coordinator_->active_dynamic_tracks(
+ robot_application_->active_dynamic_tracks(
  snapshot_.time_s, track_max_age_s());
- if (autonomy_coordinator_->route_should_replan(
+ if (robot_application_->route_should_replan(
  planned_route_, estimate, local_planning_map, active_dynamic_tracks,
  1.0 / decision_hz())) {
  // Persistent unmodelled static occupancy invalidates the global route.
@@ -138,10 +138,10 @@ void ScenarioSession::decide_control() {
  // estimated pose a centimetre inside the map can authorize a trajectory
  // whose true body crosses a wall or map boundary. This margin is deployable
  // configuration, not simulator ground truth.
- const sim::GridMap local_physical_collision_map = autonomy_coordinator_->compose_local_map(
+ const sim::GridMap local_physical_collision_map = robot_application_->compose_local_map(
  *recovery_base_map_, snapshot_.time_s,
  robot_definition_.collision_radius_m + level_.planning_localization_margin_m);
- const auto tracking = autonomy_coordinator_->observe_trajectory(
+ const auto tracking = robot_application_->observe_trajectory(
  snapshot_.time_s, estimate.position, estimate.heading_rad, estimate.linear_velocity_mps);
  snapshot_.control.trajectory_sequence = tracking.sequence;
  snapshot_.control.trajectory_tracking_active = tracking.active;
@@ -151,7 +151,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control.trajectory_speed_error_mps = tracking.speed_error_mps;
  const double chassis_cruise = cruise_speed_mps();
  auto route_control =
- autonomy_coordinator_->follow_route(planned_route_, estimate,
+ robot_application_->follow_route(planned_route_, estimate,
  property(behavior_, "lookahead_m"), chassis_cruise,
  1.0 / decision_hz(), local_planning_map, chassis_caps_);
  // The target and control request must come from the same stateful route
@@ -226,26 +226,30 @@ void ScenarioSession::decide_control() {
  };
  // The policy and its common safety shield are ROBOT-owned. SIM supplies
  // only the timestamped estimate, task target and provider-neutral map
- // feasibility callback through the coordinator boundary.
- const auto strategy_output = autonomy_coordinator_->update(
- sim::autonomy::AutonomyCoordinatorInput{strategy_observation, strategy_context});
- snapshot_.strategy = strategy_output.decision;
- snapshot_.strategy_policy = strategy_output.policy_name;
+ // feasibility callback through the application cycle; it does not invoke
+ // the coordinator policy directly.
+ if (!robot_application_)
+ throw std::logic_error("strategy evaluation requires the ROBOT application");
+ sim::robot::RobotCycleInput strategy_cycle;
+ strategy_cycle.autonomy = {strategy_observation, strategy_context};
+ const auto strategy_cycle_output = robot_application_->tick(strategy_cycle);
+ snapshot_.strategy = strategy_cycle_output.autonomy.decision;
+ snapshot_.strategy_policy = strategy_cycle_output.autonomy.policy_name;
  if (snapshot_.strategy.applied.has_subgoal)
   target = snapshot_.strategy.applied.subgoal;
  if (snapshot_.strategy.applied.has_subgoal) {
   const double target_distance = distance({nav_x, nav_y}, target);
   const double subgoal_error = sim::heading_err(target, nav_x, nav_y, nav_heading);
   route_control.tv = std::min(chassis_cruise, target_distance);
-  route_control.steer = autonomy_coordinator_->route_heading_command(subgoal_error, 1.0 / decision_hz());
+  route_control.steer = robot_application_->route_heading_command(subgoal_error, 1.0 / decision_hz());
   route_control.err = subgoal_error;
   route_control.reached = target_distance < 0.25;
  }
  snapshot_.control.local_target = target;
  snapshot_.control.heading_error_rad = route_control.err;
- snapshot_.control.heading_pid_p = autonomy_coordinator_->route_pid_p();
- snapshot_.control.heading_pid_i = autonomy_coordinator_->route_pid_i();
- snapshot_.control.heading_pid_d = autonomy_coordinator_->route_pid_d();
+ snapshot_.control.heading_pid_p = robot_application_->route_pid_p();
+ snapshot_.control.heading_pid_i = robot_application_->route_pid_i();
+ snapshot_.control.heading_pid_d = robot_application_->route_pid_d();
  // Docking controller: guide_step reports reached when waypoint bookkeeping
  // exhausts (accept/resync ran ahead of a lagging chassis), but mission
  // success is distance-to-goal. If the goal is still beyond tolerance yet
@@ -278,21 +282,21 @@ void ScenarioSession::decide_control() {
   // of docking — evidence for curation, not for a longer leash.)
   if (route_control.reached && dist_goal > tracking_arrival_radius && dist_goal < 3.0) {
    const double dock_err = sim::heading_err(goal, nav_x, nav_y, nav_heading);
-   if (!autonomy_coordinator_->route_reversing() && std::abs(dock_err) > 1.4)
-    autonomy_coordinator_->set_route_reversing(true);
-   else if (autonomy_coordinator_->route_reversing() && std::abs(dock_err) < 0.7)
-    autonomy_coordinator_->set_route_reversing(false);
+   if (!robot_application_->route_reversing() && std::abs(dock_err) > 1.4)
+    robot_application_->set_route_reversing(true);
+   else if (robot_application_->route_reversing() && std::abs(dock_err) < 0.7)
+    robot_application_->set_route_reversing(false);
    const double dock_dt = 1.0 / decision_hz();
-   if (!autonomy_coordinator_->route_reversing()) {
+   if (!robot_application_->route_reversing()) {
     route_control.tv = std::min(0.3, dist_goal);
-    route_control.steer = autonomy_coordinator_->route_heading_command(dock_err, dock_dt);
+    route_control.steer = robot_application_->route_heading_command(dock_err, dock_dt);
    } else if (chassis_->caps().can_rotate_about_base_link()) {
-    autonomy_coordinator_->set_route_reversing(false);
+    robot_application_->set_route_reversing(false);
     route_control.tv = 0.0;
-    route_control.steer = autonomy_coordinator_->route_heading_command(dock_err, dock_dt);
+    route_control.steer = robot_application_->route_heading_command(dock_err, dock_dt);
    } else {
     route_control.tv = -0.3;
-    route_control.steer = -autonomy_coordinator_->route_heading_command(dock_err, dock_dt);
+    route_control.steer = -robot_application_->route_heading_command(dock_err, dock_dt);
    }
    route_control.err = dock_err;
    route_control.reached = false;
@@ -311,7 +315,7 @@ void ScenarioSession::decide_control() {
   return;
  }
  const auto all_tracks =
- autonomy_coordinator_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
+ robot_application_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
  std::vector<sim::DynamicTrack> known_tracks;
  std::copy_if(all_tracks.begin(), all_tracks.end(), std::back_inserter(known_tracks), [](const auto& track) {
  return track.motion_class != sim::TrackMotionClass::Unconfirmed;
@@ -378,7 +382,7 @@ void ScenarioSession::decide_control() {
  // Predictor module (src/robot/autonomy/predictor.*) owns future frames; the tracker
  // owns observations. known_tracks (age-advanced, for display) must not
  // feed prediction: map.predict() snapshots raw tracker state internally.
- const auto predicted_batch = autonomy_coordinator_->predict_dynamic_objects(
+ const auto predicted_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s, track_max_age_s());
  const auto predicted_frames = sim::flatten_prediction_frames(predicted_batch);
  const auto stationary_forecast_clearance = sim::minimum_stationary_clearance(
@@ -388,7 +392,7 @@ void ScenarioSession::decide_control() {
  // tracker state and writes snapshot shadow fields; held_command() (the actual
  // control output) is untouched by everything in this block.
  std::vector<sim::Vec2> shadow_remaining{{nav_x, nav_y}};
- for (std::size_t i = autonomy_coordinator_->route_path_index(); i < planned_route_.size(); ++i) {
+ for (std::size_t i = robot_application_->route_path_index(); i < planned_route_.size(); ++i) {
   shadow_remaining.push_back(planned_route_[i].position);
  }
  const double shadow_cruise = std::max(1e-6, cruise_speed_mps());
@@ -408,7 +412,7 @@ void ScenarioSession::decide_control() {
  // crossing whose complete execution does not fit this declared computer
  // horizon is explicitly HorizonShort and remains closed.
  const double assessment_horizon = prediction_horizon;
- const auto assessment_batch = autonomy_coordinator_->predict_dynamic_objects(
+ const auto assessment_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, assessment_horizon, prediction_step_s, track_max_age_s());
  const auto assessment_frames = sim::flatten_prediction_frames(assessment_batch);
 
@@ -424,8 +428,8 @@ void ScenarioSession::decide_control() {
  // physically necessary pose correction without spending safety clearance.
  const double stop_plane_tracking_tolerance_m =
  std::abs(chassis_caps_.geometry.drive_axle_x_m);
- const auto traffic_decision = autonomy_coordinator_->assess_crossing(
- planned_route_, autonomy_coordinator_->route_path_index(), {nav_x, nav_y},
+ const auto traffic_decision = robot_application_->assess_crossing(
+ planned_route_, robot_application_->route_path_index(), {nav_x, nav_y},
  estimate.linear_velocity_mps, nav_heading, assessment_frames,
  prediction_step_s,
  {robot_definition_.collision_radius_m, hard_crossing_clearance,
@@ -459,7 +463,7 @@ void ScenarioSession::decide_control() {
  1.0 / decision_hz(), snapshot_.time_s,
  [this, &local_planning_map, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  return std::isfinite(navigation_traversal_cost(from, to)) &&
- autonomy_coordinator_->collision_monitor().static_motion_free(
+ robot_application_->static_motion_free(
  from, to, physical_execution_margin_m) &&
  local_planning_map.segmentIsFree(from, to);
  });
@@ -481,7 +485,7 @@ void ScenarioSession::decide_control() {
  snapshot_.control.crossing_committed = traffic_decision.control.committed;
  snapshot_.control.crossing_body_in_conflict = crossing.body_in_conflict;
  snapshot_.control.crossing_execution_blocked =
- autonomy_coordinator_->crossing_execution_feedback().blocked;
+ robot_application_->crossing_execution_feedback().blocked;
  snapshot_.control.crossing_recovery_to_stop =
  traffic_decision.control.recovery_to_stop;
  snapshot_.control.crossing_recovery_reverse =
@@ -540,7 +544,7 @@ void ScenarioSession::decide_control() {
   // a new knob): waits beyond what the computer predicts are unassessable by
   // construction (kHorizonShort) — which is itself shadow data.
   const auto assessment =
-    sim::assess_departure(shadow_remaining, 0, shadow_cruise, assessment_frames, prediction_step_s,
+    robot_application_->assess_departure(shadow_remaining, 0, shadow_cruise, assessment_frames, prediction_step_s,
  robot_definition_.collision_radius_m, preferred_clearance);
   snapshot_.control.shadow_assessed = true;
   snapshot_.control.shadow_depart_s = assessment.wait_s;
@@ -564,7 +568,7 @@ void ScenarioSession::decide_control() {
   pocket_params.min_downstream_m = 3.0;
   pocket_params.min_pocket_dist_m = 0.3;
   pocket_params.max_candidates = 12;
-  const auto search = sim::sample_pockets(
+  const auto search = robot_application_->sample_pockets(
  local_planning_map, shadow_remaining, {nav_x, nav_y}, nav_heading, shadow_cruise,
     sim::ChassisExecCaps{chassis_caps_.can_spin, chassis_caps_.max_yaw_rate_radps,
                          chassis_caps_.geometry.steering_wheel_base_m, chassis_caps_.geometry.max_steer_rad,
@@ -612,7 +616,7 @@ void ScenarioSession::decide_control() {
  // Always evaluate the map-independent conflict path. A mapped behavior may
  // own the current stop/commit contract, but its presence must not disable
  // ROBOT's generic perception-to-trajectory conflict detector elsewhere.
- const auto entry_batch = autonomy_coordinator_->predict_dynamic_objects(
+ const auto entry_batch = robot_application_->predict_dynamic_objects(
  snapshot_.time_s, prediction_horizon, prediction_step_s,
  sim::kEntryStaleBudgetS);
  const auto entry_frames = sim::flatten_prediction_frames(entry_batch);
@@ -625,9 +629,9 @@ void ScenarioSession::decide_control() {
  entry_request.clearance_m = hard_crossing_clearance;
  entry_request.braking_deceleration_mps2 =
  resolved_build_.traction().brake_decel_mps2;
- const bool generic_was_hold = autonomy_coordinator_->entry_governor_holding();
+ const bool generic_was_hold = robot_application_->entry_governor_holding();
  const auto generic_entry =
- autonomy_coordinator_->assess_entry_window(entry_request);
+ robot_application_->assess_entry_window(entry_request);
  if (mapped_governor && !crossing_committed &&
  !traffic_decision.control.no_return_started) {
  if (mapped_governor->hold_active && mapped_governor->stop_valid) {
@@ -804,7 +808,7 @@ void ScenarioSession::decide_control() {
  2.0 * dist / brake) - response_delay_s);
   speed_cap = std::min(speed_cap, v_allow);
  }
- const auto route_direction = autonomy_coordinator_->route_travel_direction(planned_route_);
+ const auto route_direction = robot_application_->route_travel_direction(planned_route_);
  // Gear is owned by the global route for every chassis. The follower's
  // signed command is only a fallback once the route has no direction metadata
  // (for example after the terminal index); it may not silently reverse a
@@ -1187,7 +1191,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  sim::longitudinal_grade(strategy_terrain, grade_heading);
  current_stop_limits.center_of_mass_x_m = combined_center_x_m();
  current_stop_limits.center_of_mass_height_m = combined_center_height_m();
- const double safe_stop_decel_mps2 = autonomy_coordinator_->safe_stop_deceleration_limit(
+ const double safe_stop_decel_mps2 = robot_application_->safe_stop_deceleration_limit(
  chassis_caps_, current_stop_limits);
  // Candidate generation uses the normal drive/brake actuator envelope. The
  // separately modelled emergency tail uses the stricter stability-aware stop
@@ -1294,7 +1298,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  terrain_.sample(position), heading_rad);
  limits.center_of_mass_x_m = stop_center_x_m;
  limits.center_of_mass_height_m = stop_center_height_m;
- return autonomy_coordinator_->safe_stop_deceleration_limit(chassis_caps_, limits);
+ return robot_application_->safe_stop_deceleration_limit(chassis_caps_, limits);
  };
  }
  // Path/progress/oscillation critics are shared guidance for twist-space
@@ -1320,7 +1324,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  local_request.reference.path.push_back(local_request.stop_point);
  } else if (!planned_route_.empty()) {
  const std::size_t guide_index = std::min(
- autonomy_coordinator_->route_path_index(), planned_route_.size() - 1);
+ robot_application_->route_path_index(), planned_route_.size() - 1);
  const double reference_length_m =
  speed_cap * prediction_horizon + property(behavior_, "lookahead_m");
  local_request.reference.path = sim::forward_route_reference(
@@ -1331,7 +1335,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  &local_request, &local_planning_map, &local_predicted_frames,
  [this, physical_execution_margin_m](sim::Vec2 from, sim::Vec2 to) {
  const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
- autonomy_coordinator_->collision_monitor().static_motion_free(
+ robot_application_->static_motion_free(
  from, to, physical_execution_margin_m);
  return feasible;
  }, &local_physical_collision_map,
@@ -1343,15 +1347,15 @@ if (!continuous_execution && remaining_m > 0.5) {
  // The localization reserve is physical uncertainty, not the comfort/policy
  // envelope that this recovery is allowed to relax.
  const bool feasible = std::isfinite(navigation_traversal_cost(from, to)) &&
- (autonomy_coordinator_->collision_monitor().static_motion_free(
+ (robot_application_->static_motion_free(
  from, to, physical_execution_margin_m) ||
  // A physical-map escape is entered only after the preferred inflation
  // envelope has stranded the measured pose. Permit a bounded, non-worsening
  // sweep through that reserve, while retaining exact footprint collision and
  // terrain checks; this is not a general planning relaxation.
- (autonomy_coordinator_->collision_monitor().static_motion_free(from, to, 0.0) &&
- autonomy_coordinator_->collision_monitor().static_clearance(to) + 0.01 >=
- autonomy_coordinator_->collision_monitor().static_clearance(from)));
+ (robot_application_->static_motion_free(from, to, 0.0) &&
+ robot_application_->static_clearance(to) + 0.01 >=
+ robot_application_->static_clearance(from)));
  return feasible;
  }, [this](sim::Vec2 position) { return terrain_.sample(position); }};
  // The scenario owns only provider-neutral request assembly. ROBOT owns the
@@ -1398,11 +1402,11 @@ if (!continuous_execution && remaining_m > 0.5) {
  const auto& trajectory_validation = validated_selection.validation;
  // Local collision freedom is weaker than the time-indexed crossing proof.
  // Reassess an admitted schedule whenever its validated continuation is lost.
- autonomy_coordinator_->report_crossing_execution(
+ robot_application_->report_crossing_execution(
  crossing_committed, trajectory_validation,
  snapshot_.control.trajectory_sequence, snapshot_.time_s);
  snapshot_.control.crossing_execution_blocked =
- autonomy_coordinator_->crossing_execution_feedback().blocked;
+ robot_application_->crossing_execution_feedback().blocked;
  snapshot_.control.trajectory_validated = trajectory_validation.accepted();
  snapshot_.control.trajectory_verdict = static_cast<int>(trajectory_validation.verdict);
  snapshot_.control.trajectory_diagnostic = trajectory_validation.diagnostic;
@@ -1464,7 +1468,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  latch_config.release_speed_mps = execution_policy.controlled_stop_release_mps;
  latch_config.settle_cycles =
  static_cast<int>(execution_policy.controlled_stop_settle_cycles);
- const bool controlled_stop_in_progress = autonomy_coordinator_->update_controlled_stop(
+ const bool controlled_stop_in_progress = robot_application_->update_controlled_stop(
  held_command().controlled_stop, measured_stop_wheel_mps, latch_config);
  const bool trajectory_accepted =
  trajectory_validation.accepted() && !controlled_stop_in_progress;
@@ -1526,7 +1530,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  stop_limits.longitudinal_grade = stop_grade;
  stop_limits.center_of_mass_x_m = combined_center_x_m();
  stop_limits.center_of_mass_height_m = combined_center_height_m();
- const auto stop_command = sim::stage_safe_stop(
+ const auto stop_command = robot_application_->stage_safe_stop(
  chassis_caps_, stop_motion, stop_limits);
  // A negative measured velocity is already motion away from the requested
  // route. A less-negative velocity target still asks the motor loop to track
@@ -1565,7 +1569,7 @@ if (!continuous_execution && remaining_m > 0.5) {
   // trajectory. Every speed/turn cap was applied before rollout generation.
  const double kCreepSpeedMps = execution_policy.creep_speed_mps;
   held_command() = {command.v, command.w};
- autonomy_coordinator_->reset_controlled_stop();
+ robot_application_->reset_controlled_stop();
   held_command().target_lateral_v = command.lateral_v;
  const double commanded_translation_mps =
  std::hypot(command.v, command.lateral_v);
@@ -1581,7 +1585,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  std::max(0.10, 2.0 * resolved_build_.traction().brake_decel_mps2 / decision_hz()),
   };
   snapshot_.control.trajectory_sequence =
- autonomy_coordinator_->accept_trajectory(snapshot_.time_s, selected_trajectory, tracking_limits);
+ robot_application_->accept_trajectory(snapshot_.time_s, selected_trajectory, tracking_limits);
   if (snapshot_.waiting_for_clearance) {
    std::ostringstream waiting;
    waiting << std::fixed << std::setprecision(1) << nearest_actor;
@@ -1601,7 +1605,7 @@ if (!continuous_execution && remaining_m > 0.5) {
  // remains free to slip when the surface cannot carry the requested force.
  const auto current_terrain = terrain_.sample({nav_x, nav_y});
  const double current_grade = sim::longitudinal_grade(current_terrain, grade_heading);
- const auto& control_estimate = autonomy_coordinator_->estimator().state();
+ const auto& control_estimate = robot_application_->estimator().state();
  held_command().longitudinal_acceleration_feedforward_mps2 =
  control_estimate.attitude_valid
  ? -execution_policy.gravity_mps2 * std::sin(control_estimate.pitch_rad)

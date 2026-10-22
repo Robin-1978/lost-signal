@@ -37,6 +37,14 @@ struct RobotExecutiveStatus {
  std::string motion_reason;
  std::string recovery_condition;
  double status_stamp_s{0.0};
+ std::string active_map_id;
+ std::string map_request_id;
+ std::string map_request_reason;
+};
+
+struct MapSelectionRequest {
+ std::string request_id;
+ std::string map_id;
 };
 
 // Deployable task/health facade above autonomy. RobotExecutive owns task
@@ -70,6 +78,15 @@ class RobotExecutive {
 
  void report_motion(const MotionCapabilityReport& report);
 
+ // Map selection is a resource/task request owned by the executive. The
+ // application consumes it only after its safety gate and reports the result;
+ // this method never mutates a MapManager or loads a file.
+ bool request_map(std::string map_id, std::string request_id = {});
+ std::optional<MapSelectionRequest> pending_map_request() const {
+ return pending_map_request_;
+ }
+ void report_map_selection(std::string map_id, bool accepted, std::string reason = {});
+
  const RobotExecutiveStatus& status() const { return status_; }
  executive::TaskState state() const { return tasks_.state(); }
  std::size_t goals_reached() const { return tasks_.goals_reached(); }
@@ -89,6 +106,7 @@ class RobotExecutive {
 
  executive::TaskExecutive tasks_;
  RobotExecutiveStatus status_;
+ std::optional<MapSelectionRequest> pending_map_request_;
 };
 
 } // namespace sim::robot

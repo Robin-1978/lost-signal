@@ -3,6 +3,7 @@
 #include "robot/executive/robot_executive.hpp"
 #include "sim/game/mission/content.hpp"
 #include "robot/runtime/map_provider.hpp"
+#include "robot/runtime/robot_application.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -23,6 +24,13 @@ struct GoalArrival {
 class GoalSystem {
  public:
  void bind(sim::robot::RobotExecutive& executive) { executive_ = &executive; }
+ // The normal SIM composition binds the application host. This keeps the
+ // scenario adapter on the same public boundary as a future UI instead of
+ // retaining a separate Executive ownership path.
+ void bind(sim::robot::RobotApplication& application) {
+ application_ = &application;
+ executive_ = nullptr;
+ }
  void reset(const ObjectiveDefinition& objective, const sim::runtime::IMapProvider& maps);
  std::size_t goals_reached() const { return robot_executive().goals_reached(); }
  std::optional<std::size_t> active_goal_index() const { return robot_executive().active_goal_index(); }
@@ -41,13 +49,20 @@ class GoalSystem {
  double localization_age_s) const;
 
  private:
- sim::robot::RobotExecutive& robot_executive() { return executive_ ? *executive_ : fallback_; }
+ sim::robot::RobotExecutive& robot_executive() {
+ if (application_)
+ return application_->executive();
+ return executive_ ? *executive_ : fallback_;
+ }
  const sim::robot::RobotExecutive& robot_executive() const {
+ if (application_)
+ return application_->executive();
  return executive_ ? *executive_ : fallback_;
  }
 
  sim::robot::RobotExecutive fallback_;
  sim::robot::RobotExecutive* executive_{nullptr};
+ sim::robot::RobotApplication* application_{nullptr};
 };
 
 } // namespace mission

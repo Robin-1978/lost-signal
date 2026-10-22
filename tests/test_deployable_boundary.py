@@ -12,6 +12,23 @@ SIM_HARDWARE_DIR = ROOT / "src/sim/hardware"
 
 
 class DeployableBoundaryTest(unittest.TestCase):
+    def test_sim_scenario_uses_robot_application_boundary(self) -> None:
+        scenario_dir = ROOT / "src/sim/game/scenario"
+        violations: list[str] = []
+        forbidden = re.compile(
+            r'(?:robot/autonomy/pipeline/autonomy_coordinator\.hpp|'
+            r'\bAutonomyCoordinator\s*[&*]|\bcoordinator\s*\(\)|'
+            r'autonomy_coordinator_)'
+        )
+        for source in sorted(scenario_dir.rglob("*")):
+            if source.suffix not in {".h", ".hpp", ".c", ".cc", ".cpp"}:
+                continue
+            for line_number, line in enumerate(source.read_text().splitlines(), 1):
+                if forbidden.search(line):
+                    violations.append(f"{source.relative_to(ROOT)}:{line_number}: {line.strip()}")
+        self.assertEqual([], violations,
+            "SIM scenario must use RobotApplication, not the concrete autonomy coordinator")
+
     def test_robot_sources_do_not_include_sim(self) -> None:
         include = re.compile(r'^\s*#\s*include\s*[<"]sim/')
         violations: list[str] = []

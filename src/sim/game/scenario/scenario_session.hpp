@@ -8,7 +8,6 @@
 #include "sim/game/mission/systems/collision_monitor.hpp"
 #include "sim/game/mission/systems/deterministic_scheduler.hpp"
 #include "sim/game/mission/systems/decision_evidence_system.hpp"
-#include "robot/autonomy/pipeline/autonomy_coordinator.hpp"
 #include "sim/game/mission/systems/field_dispatch_system.hpp"
 #include "sim/game/mission/systems/field_operator_system.hpp"
 #include "sim/game/mission/systems/goal_system.hpp"
@@ -25,7 +24,6 @@
 #include "robot/control/differential_wheel_controller.hpp"
 #include "robot/control/ackermann_actuator_controller.hpp"
 #include "robot/control/holonomic_actuator_controller.hpp"
-#include "robot/control/manipulator_joint_controller.hpp"
 #include "robot/platform/serial_manipulator.hpp"
 #include "robot/platform/differential_kinematics.hpp"
 #include "sim/hardware/vehicle/planar_diff_drive.hpp"
@@ -46,6 +44,7 @@
 #include "sim/hardware/sensors/sensor.hpp"
 #include "robot/runtime/runtime_channel.hpp"
 #include "robot/runtime/robot_application.hpp"
+#include "robot/runtime/manipulator_runtime.hpp"
 #include "robot/runtime/map_provider.hpp"
 
 #include <array>
@@ -525,12 +524,12 @@ class ScenarioSession {
  }
  void set_manual_command(double forward, double turn);
  bool manual_control_active() const {
- return autonomy_coordinator_->motion_runtime().manual_control_active();
+ return robot_application_->motion_runtime().manual_control_active();
  }
  // Mutable control state is exposed to the scenario composition root only so
  // input adapters can update the ROBOT-owned motion transaction. Tests and
  // UI callers should use set_manual_command()/manual_control_active().
- bool& manual_control_active() { return autonomy_coordinator_->motion_runtime().manual_control_active(); }
+ bool& manual_control_active() { return robot_application_->motion_runtime().manual_control_active(); }
  void set_endless_mode(bool enabled);
  bool endless_mode() const { return endless_mode_; }
  void restore_endless_world(const WorldActivityCheckpoint& checkpoint);
@@ -569,7 +568,7 @@ class ScenarioSession {
   return frame_tree_.lookup(target_frame, source_frame);
  }
  std::vector<std::string> frame_ids() const { return frame_tree_.frame_ids(); }
- double frame_timestamp_s() const { return autonomy_coordinator_->estimator().state().timestamp_s; }
+ double frame_timestamp_s() const { return robot_application_->estimator().state().timestamp_s; }
  const std::vector<sim::RoutePoint>& planned_route() const { return planned_route_; }
  const MissionSnapshot& snapshot() const { return snapshot_; }
  const PayloadState& payload_state() const { return payload_; }
@@ -582,7 +581,7 @@ class ScenarioSession {
  void seek_replay(double time_s);
  const std::vector<ShadowEpisode>& shadow_episodes() const { return shadow_episodes_; }
  bool shadow_episode_open() const { return shadow_episode_open_; }
- int slip_episodes() const { return autonomy_coordinator_->diagnostics().slip_episodes(); }
+ int slip_episodes() const { return robot_application_->slip_episodes(); }
  const std::vector<double>& slip_episode_times() const { return slip_episode_times_; }
  const char* physics_backend_name() const;
  const std::string& runtime_provider_id() const { return runtime_provider_id_; }
@@ -599,7 +598,7 @@ class ScenarioSession {
   return runtime_channel_ ? runtime_channel_->health() : sim::runtime::RuntimeHealth{};
  }
  const std::string& strategy_policy_name() const { return snapshot_.strategy_policy; }
- std::string_view global_planner_id() const { return autonomy_coordinator_->global_planning().planner().id(); }
+ std::string_view global_planner_id() const { return robot_application_->global_planner_id(); }
  std::string_view local_planner_id() const {
   switch (chassis_caps_.command_space) {
   case sim::ChassisCommandSpace::SteeringAngle:
@@ -668,15 +667,15 @@ class ScenarioSession {
  // The per-cycle motion transaction is ROBOT-owned. These adapters keep the
  // existing scenario composition readable while preventing mission state
  // from becoming a second command owner.
- sim::DiffCmd& held_command() { return autonomy_coordinator_->motion_runtime().held_command(); }
- const sim::DiffCmd& held_command() const { return autonomy_coordinator_->motion_runtime().held_command(); }
- sim::DiffCmd& manual_command() { return autonomy_coordinator_->motion_runtime().manual_command(); }
- std::uint64_t& motion_sequence() { return autonomy_coordinator_->motion_runtime().motion_sequence(); }
- std::uint64_t& actuator_feedback_sequence() { return autonomy_coordinator_->motion_runtime().actuator_feedback_sequence(); }
- std::uint64_t& command_sequence() { return autonomy_coordinator_->motion_runtime().command_sequence(); }
- std::size_t& crossing_execution_segment() { return autonomy_coordinator_->motion_runtime().crossing_execution_segment(); }
- std::size_t& crossing_alignment_segment() { return autonomy_coordinator_->motion_runtime().crossing_alignment_segment(); }
- bool& crossing_segment_alignment_complete() { return autonomy_coordinator_->motion_runtime().crossing_segment_alignment_complete(); }
+ sim::DiffCmd& held_command() { return robot_application_->motion_runtime().held_command(); }
+ const sim::DiffCmd& held_command() const { return robot_application_->motion_runtime().held_command(); }
+ sim::DiffCmd& manual_command() { return robot_application_->motion_runtime().manual_command(); }
+ std::uint64_t& motion_sequence() { return robot_application_->motion_runtime().motion_sequence(); }
+ std::uint64_t& actuator_feedback_sequence() { return robot_application_->motion_runtime().actuator_feedback_sequence(); }
+ std::uint64_t& command_sequence() { return robot_application_->motion_runtime().command_sequence(); }
+ std::size_t& crossing_execution_segment() { return robot_application_->motion_runtime().crossing_execution_segment(); }
+ std::size_t& crossing_alignment_segment() { return robot_application_->motion_runtime().crossing_alignment_segment(); }
+ bool& crossing_segment_alignment_complete() { return robot_application_->motion_runtime().crossing_segment_alignment_complete(); }
 
  const ContentCatalog& catalog_;
  std::string level_id_;
@@ -735,9 +734,8 @@ class ScenarioSession {
  // the ROBOT controller transaction directly.
  std::unique_ptr<sim::robot::RobotApplication> robot_application_;
  std::unique_ptr<sim::runtime::IRuntimeChannel> manipulator_channel_;
- std::unique_ptr<sim::ManipulatorJointController> manipulator_controller_;
+ std::unique_ptr<sim::robot::ManipulatorRuntime> manipulator_runtime_;
  sim::ManipulatorGeometry manipulator_geometry_;
- sim::ManipulatorJointPosition manipulator_target_joints_;
  std::uint64_t manipulator_feedback_sequence_{0};
  std::uint64_t manipulator_command_sequence_{0};
  double heading_kp_{0.0};
@@ -755,15 +753,13 @@ class ScenarioSession {
  sim::TerrainCapability terrain_capability_;
  sim::ChassisCaps chassis_caps_;
  bool custom_global_planner_{false};
+ std::shared_ptr<const autonomy::IGlobalPlanner> global_planner_;
  std::unique_ptr<sim::platform::SimulatedPlatform> platform_;
  bool custom_high_level_policy_{false};
- // Robot-facing policy orchestration lives in ROBOT. The scenario only
- // assembles observations from LSRI and content-owned task facts.
- // The autonomy graph is ROBOT-owned. This raw view is retained only as a
- // narrow composition handle for legacy scenario assembly; its lifetime is
- // held by RobotApplication after the runtime channel is created.
- sim::autonomy::AutonomyCoordinator* autonomy_coordinator_{nullptr};
- std::unique_ptr<sim::autonomy::AutonomyCoordinator> autonomy_coordinator_owner_;
+ // The policy is an input to RobotApplication construction. The scenario
+ // keeps only the shared policy object needed to create the ROBOT host; it
+ // never owns an AutonomyCoordinator.
+ std::shared_ptr<sim::IHighLevelPolicy> high_level_policy_;
  const ContractJob* active_contract_{nullptr};
  GoalSystem goal_system_;
  PayloadState payload_;

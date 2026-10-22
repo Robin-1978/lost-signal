@@ -170,18 +170,14 @@ ScenarioSession::ScenarioSession(
 	behavior_(catalog_.style_behavior(build_.style)),
 	motion_policy_(sim::MotionPolicy::load(sim::MotionPolicy::resolve_path(catalog_.root()))),
       custom_global_planner_(static_cast<bool>(global_planner)),
-      custom_high_level_policy_(static_cast<bool>(high_level_policy)),
- autonomy_coordinator_owner_(std::make_unique<sim::autonomy::AutonomyCoordinator>(
- high_level_policy ? std::move(high_level_policy) : sim::make_route_baseline_policy())) {
- autonomy_coordinator_ = autonomy_coordinator_owner_.get();
+ global_planner_(std::move(global_planner)),
+ custom_high_level_policy_(static_cast<bool>(high_level_policy)),
+ high_level_policy_(high_level_policy ? std::move(high_level_policy)
+ : sim::make_route_baseline_policy()) {
  catalog_.validate_build(level_id_, build_, owned_abilities);
-	// The motion policy belongs to the robot, not to this scenario. Applying it
-	// once here keeps the executable free of tuned thresholds and gives a
-	// native bring-up the same knobs through robot_data/policy.
-	autonomy_coordinator_->set_estimator_motion_policy(motion_policy_);
-	autonomy_coordinator_->set_localization_config(motion_policy_.localization_supervisor);
-	autonomy_coordinator_->configure_global_planner(
- global_planner ? std::move(global_planner) : autonomy::default_global_planner());
+	// The motion policy and global-planner selection are applied after the
+	// ROBOT application is composed in build_world(). This constructor only
+	// stores deployment inputs; it does not create or own autonomy state.
  if (!build_.task_policy.empty())
   level_.objective.task_policy = build_.task_policy;
  if (!contract_id.empty()) {
@@ -243,8 +239,8 @@ void ScenarioSession::reset() {
  update_environment();
  mount_roll_rad_.clear();
  reset_payload();
- autonomy_coordinator_->reset(effective_seed() ^ 0x1f83d9abU);
- snapshot_.strategy_policy = autonomy_coordinator_->policy_name();
+ robot_application_->reset(effective_seed() ^ 0x1f83d9abU);
+ snapshot_.strategy_policy = robot_application_->policy_name();
  lidar_delivery_queue_.clear();
  events_.clear();
  decision_evidence_system_.reset();
@@ -256,7 +252,7 @@ void ScenarioSession::reset() {
  shadow_episode_last_s_ = -1.0;
  shadow_episode_last_reason_ = -1;
  held_command() = {};
- autonomy_coordinator_->reset_controlled_stop();
+ robot_application_->reset_controlled_stop();
  manual_command() = {};
  manual_control_active() = false;
  endless_target_key_ = "uninitialized";
@@ -285,7 +281,7 @@ void ScenarioSession::reset() {
  build_world();
  if (!robot_application_)
  throw std::logic_error("world construction did not create the ROBOT application");
- goal_system_.bind(robot_application_->executive());
+ goal_system_.bind(*robot_application_);
  goal_system_.reset(level_.objective, map_manager_);
  snapshot_.goals_reached = goal_system_.goals_reached();
  snapshot_.completed_goal_ids = goal_system_.completed_goal_ids(level_.objective);
@@ -312,12 +308,12 @@ void ScenarioSession::reset() {
  snapshot_.estimated_position = {spawn.x, spawn.y};
  snapshot_.estimated_heading = spawn.theta;
  snapshot_.status = MissionStatus::Ready;
- autonomy_coordinator_->estimator().reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
+ robot_application_->estimator().reset(spawn.x, spawn.y, spawn.theta, effective_seed() ^ 0x6a09e667U);
  if (resolved_build_.imu()) {
  // Seed from the deployed elevation map, then let calibrated IMU rates and
  // gravity observations track the live chassis attitude. Physical body truth
  // is deliberately excluded from this estimator initialization.
- autonomy_coordinator_->estimator().initialize_attitude(
+ robot_application_->estimator().initialize_attitude(
  std::atan(sim::lateral_grade(spawn_terrain, spawn.theta)),
  -std::atan(sim::longitudinal_grade(spawn_terrain, spawn.theta)));
  }
@@ -325,15 +321,15 @@ void ScenarioSession::reset() {
  if (sensor_system_) {
  sensor_system_->reset(effective_seed(), effective_seed() ^ 0x9e3779b9U);
  }
- if (autonomy_coordinator_->has_pipeline())
- autonomy_coordinator_->reset_pipeline(effective_seed() ^ 0x9e3779b9U);
+ if (robot_application_->has_pipeline())
+ robot_application_->reset_pipeline(effective_seed() ^ 0x9e3779b9U);
  // A level's spawn marker is the deployment initial-pose contract. It seeds
  // odom -> base_footprint; the first LiDAR frame still has to pass the local
  // known-map matcher before it can correct map -> odom. Do not run the
  // expensive unknown-origin global search on every frame. Startup/recovery
  // without this contract is exercised by StartupLocalization tests and the
  // explicit relocalization path.
- autonomy_coordinator_->localization_supervisor().reset(level_.localization_mode == "known_map");
+ robot_application_->localization_supervisor().reset(level_.localization_mode == "known_map");
  update_actors();
  slip_episode_times_.clear();
  score_command_initialized_ = false;
@@ -584,7 +580,7 @@ void ScenarioSession::initialize_frame_tree() {
                                                                   mount.rotation_deg.z * kDegreesToRadians),
                             });
  if (mount.frame_id == "imu_link") {
- autonomy_coordinator_->estimator().set_imu_mount_rpy(
+ robot_application_->estimator().set_imu_mount_rpy(
  mount.rotation_deg.x * kDegreesToRadians,
  mount.rotation_deg.y * kDegreesToRadians,
  mount.rotation_deg.z * kDegreesToRadians);
@@ -597,21 +593,21 @@ void ScenarioSession::initialize_frame_tree() {
 }
 
 void ScenarioSession::update_frame_tree() {
- const auto map_from_odom = autonomy_coordinator_->estimator().map_from_odom_translation();
+ const auto map_from_odom = robot_application_->estimator().map_from_odom_translation();
  frame_tree_.set_transform(
    "map", "odom",
    {
      {map_from_odom.x, map_from_odom.y, 0.0},
-     sim::physics::quaternion_from_euler(0.0, 0.0, autonomy_coordinator_->estimator().map_from_odom_heading_rad()),
+     sim::physics::quaternion_from_euler(0.0, 0.0, robot_application_->estimator().map_from_odom_heading_rad()),
    });
- const auto odom_position = autonomy_coordinator_->estimator().odometry_position();
- const auto& estimated_state = autonomy_coordinator_->estimator().state();
+ const auto odom_position = robot_application_->estimator().odometry_position();
+ const auto& estimated_state = robot_application_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimated_state.position);
  frame_tree_.set_transform(
    "odom", "base_footprint",
    {
      {odom_position.x, odom_position.y, estimated_ground.height_m},
-     sim::physics::quaternion_from_euler(0.0, 0.0, autonomy_coordinator_->estimator().odometry_heading_rad()),
+     sim::physics::quaternion_from_euler(0.0, 0.0, robot_application_->estimator().odometry_heading_rad()),
    });
  const double base_height = snapshot_.robot_height_m - estimated_ground.height_m;
  const double estimated_roll = estimated_state.attitude_valid
@@ -694,7 +690,7 @@ void ScenarioSession::build_world() {
  sensor_system_ = std::make_unique<sim::SensorSystem>(
  effective_seed(), effective_seed() ^ 0x9e3779b9U);
  collision_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(robot_definition_.collision_radius_m));
- autonomy_coordinator_->configure_collision_monitor(
+ robot_application_->configure_collision_monitor(
  map_definition_.size_m, robot_definition_.collision_radius_m,
  std::move(collision_obstacles));
  std::vector<sim::HeightPatch> active_terrain;
@@ -886,7 +882,7 @@ void ScenarioSession::build_world() {
  chassis_caps_.geometry.support_polygon = convex_support_hull(std::move(support_contacts));
  yaw_cap_rads_ = chassis_caps_.max_yaw_rate_radps;
 
- autonomy_coordinator_->reset_chassis_controllers();
+ robot_application_->reset_chassis_controllers();
  const auto has_actuator_channel = [&](const std::string& channel) {
  return std::any_of(robot_definition_.articulation.actuators.begin(),
  robot_definition_.articulation.actuators.end(),
@@ -903,7 +899,7 @@ void ScenarioSession::build_world() {
   const double control_track_width_m = robot_definition_.drive_type == "tracked"
                                          ? robot_definition_.effective_track_width_m
                                          : chassis_params.wheel_base_m;
- autonomy_coordinator_->configure_differential_controller(
+ robot_application_->configure_differential_controller(
  sim::DifferentialWheelControllerConfig{
       control_track_width_m,
  chassis_params.wheel_radius_m,
@@ -927,7 +923,7 @@ void ScenarioSession::build_world() {
  has_actuator_channel("front_left_steer") &&
  has_actuator_channel("front_right_steer");
  if (deployable_ackermann_control) {
- autonomy_coordinator_->configure_ackermann_controller(
+ robot_application_->configure_ackermann_controller(
  sim::AckermannActuatorControllerConfig{
  chassis_params.wheel_base_m,
  chassis_params.track_width_m,
@@ -957,7 +953,7 @@ void ScenarioSession::build_world() {
     (has_actuator_channel("front_left_steer") && has_actuator_channel("front_right_steer") &&
      has_actuator_channel("rear_left_steer") && has_actuator_channel("rear_right_steer")));
  if (deployable_holonomic_control) {
- autonomy_coordinator_->configure_holonomic_controller(
+ robot_application_->configure_holonomic_controller(
     sim::HolonomicActuatorControllerConfig{
       robot_definition_.drive_type == "swerve" ? sim::HolonomicControlKind::Swerve
                                                : sim::HolonomicControlKind::Mecanum,
@@ -977,19 +973,19 @@ void ScenarioSession::build_world() {
  runtime_config.capabilities.max_forward_speed_mps = motor_vmax;
  runtime_config.capabilities.max_lateral_speed_mps =
    chassis_caps_.command_space == sim::ChassisCommandSpace::HolonomicTwist ? motor_vmax : 0.0;
- if (autonomy_coordinator_->has_differential_controller() ||
- autonomy_coordinator_->has_ackermann_controller() ||
- autonomy_coordinator_->has_holonomic_controller()) {
+ if (robot_application_->has_differential_controller() ||
+ robot_application_->has_ackermann_controller() ||
+ robot_application_->has_holonomic_controller()) {
  runtime_config.capabilities.command_level =
  sim::runtime::PlatformCommandLevel::Actuator;
- if (autonomy_coordinator_->has_differential_controller()) {
+ if (robot_application_->has_differential_controller()) {
  runtime_config.capabilities.actuator_channels = {
  {"left", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  {"right", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
  };
- } else if (autonomy_coordinator_->has_ackermann_controller()) {
+ } else if (robot_application_->has_ackermann_controller()) {
  runtime_config.capabilities.actuator_channels = {
  {"rear_left_drive", sim::runtime::ActuatorCommandMode::NormalizedDuty,
  -chassis_params.pwm_limit, chassis_params.pwm_limit, 0.0},
@@ -1033,14 +1029,12 @@ void ScenarioSession::build_world() {
  runtime_channel_->configure();
  }
  if (!robot_application_) {
- if (!autonomy_coordinator_owner_)
- throw std::logic_error("robot application lost its autonomy owner");
  robot_application_ = std::make_unique<sim::robot::RobotApplication>(
- *runtime_channel_, std::move(autonomy_coordinator_owner_));
+ *runtime_channel_, high_level_policy_);
  }
- autonomy_coordinator_ = &robot_application_->coordinator();
+ robot_application_->bind_map_provider(map_manager_);
  manipulator_channel_.reset();
- manipulator_controller_.reset();
+ manipulator_runtime_.reset();
  if (robot_definition_.manipulator) {
  const auto& arm = *robot_definition_.manipulator;
  manipulator_geometry_ = {
@@ -1051,11 +1045,6 @@ void ScenarioSession::build_world() {
  arm.lower_rad,
  arm.upper_rad,
  };
- manipulator_target_joints_.rad = arm.home_rad;
- manipulator_controller_ = std::make_unique<sim::ManipulatorJointController>(
- sim::ManipulatorJointControllerConfig{
- arm.kp, arm.kd, arm.maximum_effort_Nm, arm.maximum_velocity_radps,
- arm.gravity_moment_Nm});
  sim::runtime::RuntimeChannelConfig arm_config;
  arm_config.instance_id = robot_definition_.id + ".manipulator";
  arm_config.capabilities.chassis = chassis_caps_;
@@ -1071,14 +1060,26 @@ void ScenarioSession::build_world() {
  arm_config.maximum_command_ttl_s = 0.25;
  manipulator_channel_ = runtime_registry_.create(runtime_provider_id_, arm_config);
  manipulator_channel_->configure();
+ sim::robot::ManipulatorRuntimeConfig manipulator_config;
+ manipulator_config.geometry = manipulator_geometry_;
+ manipulator_config.initial_joints.rad = arm.home_rad;
+ manipulator_config.controller = {
+ arm.kp, arm.kd, arm.maximum_effort_Nm, arm.maximum_velocity_radps,
+ arm.gravity_moment_Nm};
+ manipulator_config.channels.assign(arm.channels.begin(), arm.channels.end());
+ manipulator_config.source_id = robot_definition_.id + ".manipulator.controller";
+ manipulator_runtime_ = std::make_unique<sim::robot::ManipulatorRuntime>(
+ *manipulator_channel_, std::move(manipulator_config));
  }
  if (!custom_global_planner_) {
- autonomy_coordinator_->configure_global_planner(
+ robot_application_->configure_global_planner(
     chassis_caps_.command_space == sim::ChassisCommandSpace::SteeringAngle
       ? autonomy::ackermann_global_planner(chassis_caps_.geometry.steering_wheel_base_m,
                                            chassis_caps_.geometry.max_steer_rad,
                                            map_definition_.grid_resolution_m)
  : autonomy::default_global_planner());
+ } else {
+ robot_application_->configure_global_planner(global_planner_);
  }
  // The global costmap reserves the physical envelope plus a small numerical
  // margin. Policy clearance belongs to the local planner, which can trade it
@@ -1092,14 +1093,14 @@ void ScenarioSession::build_world() {
  planning_map_ = std::make_unique<sim::GridMap>(truth_map_->inflated(planning_clearance));
  const auto* mapping_lidar = resolved_build_.lidar();
  const double mapping_period_s = mapping_lidar ? 1.0 / mapping_lidar->scan_hz : 0.1;
- autonomy_coordinator_->configure_pipeline(
+ robot_application_->configure_pipeline(
  *truth_map_, width, height, map_definition_.grid_resolution_m,
  effective_seed() ^ 0x9e3779b9U,
  sim::ObservedObstacleLayerConfig{
  std::max(0.30, 3.0 * mapping_period_s),
  mapping_period_s,
  }, &map_manager_);
-	autonomy_coordinator_->set_motion_policy(motion_policy_);
+	robot_application_->set_motion_policy(motion_policy_);
  // Heading loop auto-tune: gain normalized by speed and wheelbase so the same
  // rule serves every DIY assembly. Kp = w_max / (2 * cruise * base) reproduces
  // the validated RO-1 feel; the integral/derivative ratios are method constants
@@ -1113,7 +1114,7 @@ void ScenarioSession::build_world() {
  // Differential and tracked share yaw-rate output units; their caps differ
  // (geometry vs vendor spin spec) and both already sit in yaw_cap_rads_.
  const double heading_out_lim = chassis_caps_.turn_command_limit();
- autonomy_coordinator_->configure_route_tracking(
+ robot_application_->configure_route_tracking(
  heading_kp, heading_kp / 125.0, heading_kp * 0.05, heading_out_lim,
  robot_definition_.steering.integral_limit);
  heading_kp_ = heading_kp;
@@ -1186,7 +1187,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  snapshot_.active_goal_index = std::numeric_limits<std::size_t>::max();
  snapshot_.active_goal_id.clear();
  held_command() = {};
- autonomy_coordinator_->reset_route_tracking();
+ robot_application_->reset_route_tracking();
  route_feasible_ = true;
  return;
  }
@@ -1200,7 +1201,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  std::vector<autonomy::PlanningPose> waypoints{{as_vec(start), start.theta},
                                                {as_vec(goal), goal.theta, next->radius_m}};
  const sim::GridMap& route_map = map_override ? *map_override : *planning_map_;
- auto plan = autonomy_coordinator_->global_planning().plan(route_map, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
+ auto plan = robot_application_->plan_global(route_map, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
   return navigation_traversal_cost(from, to);
  });
  result_.astar_expanded += plan.expanded;
@@ -1214,7 +1215,7 @@ void ScenarioSession::plan_route(const sim::GridMap* map_override) {
  route_feasible_ = true;
  return_reserve_failure_ = false;
  planned_route_ = std::move(plan.path);
- autonomy_coordinator_->reset_route_tracking();
+ robot_application_->reset_route_tracking();
 }
 
 void ScenarioSession::select_next_goal(const Pose& start) {
@@ -1277,7 +1278,7 @@ void ScenarioSession::select_next_goal(const Pose& start) {
  for (const std::size_t index : eligible) {
   const auto& candidate = level_.objective.goals[index];
   const auto& marker = map_definition_.markers.at(candidate.marker);
-  const auto plan = autonomy_coordinator_->global_planning().plan(
+  const auto plan = robot_application_->plan_global(
     *planning_map_, {{as_vec(start), start.theta}, {as_vec(marker), marker.theta, candidate.radius_m}},
     [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
   result_.astar_expanded += plan.expanded;
@@ -1287,7 +1288,7 @@ void ScenarioSession::select_next_goal(const Pose& start) {
   if (candidate.action != "complete" && level_.objective.return_reserve_s > 0.0 &&
       terminal != level_.objective.goals.end()) {
    const auto& home = map_definition_.markers.at(terminal->marker);
-   const auto return_plan = autonomy_coordinator_->global_planning().plan(
+   const auto return_plan = robot_application_->plan_global(
      *planning_map_, {{as_vec(marker), marker.theta}, {as_vec(home), home.theta, terminal->radius_m}},
      [this](sim::Vec2 from, sim::Vec2 to) { return navigation_traversal_cost(from, to); });
    result_.astar_expanded += return_plan.expanded;
@@ -1440,8 +1441,8 @@ void ScenarioSession::set_endless_mode(bool enabled) {
   manual_command() = {};
   manual_control_active() = false;
   endless_target_key_ = "uninitialized";
- if (autonomy_coordinator_ && autonomy_coordinator_->has_route_tracking())
- autonomy_coordinator_->reset_route_tracking();
+ if (robot_application_ && robot_application_->has_route_tracking())
+ robot_application_->reset_route_tracking();
  }
 }
 
@@ -1560,13 +1561,12 @@ sim::EndEffectorPose ScenarioSession::manipulation_target_pose(double time_s) co
 }
 
 void ScenarioSession::append_manipulator_efforts(sim::ChassisTelemetry& telemetry) {
- if (!robot_definition_.manipulator || !manipulator_channel_ || !manipulator_controller_)
+ if (!robot_definition_.manipulator || !manipulator_channel_ || !manipulator_runtime_)
  return;
  if (!platform_)
  throw std::logic_error("a simulated manipulator requires the articulated platform provider");
  const auto& arm = *robot_definition_.manipulator;
  const auto provider = platform_->actuator_feedback();
- sim::ManipulatorJointFeedback controller_feedback;
  sim::ObservationFrame frame;
  frame.time_s = snapshot_.time_s;
  frame.actuator_feedback.emplace();
@@ -1575,66 +1575,26 @@ void ScenarioSession::append_manipulator_efforts(sim::ChassisTelemetry& telemetr
  if (!joint)
  throw std::runtime_error("manipulator platform feedback is missing channel '" +
  arm.channels[index] + "'");
- controller_feedback.position_rad[index] = joint->position_rad;
- controller_feedback.velocity_radps[index] = joint->velocity_radps;
  frame.actuator_feedback->channels.push_back(
  {arm.channels[index], joint->position_rad, joint->velocity_radps});
  }
- controller_feedback.valid = true;
  frame.actuator_feedback->header = {
  snapshot_.time_s, manipulator_feedback_sequence_++, "base_link", 0.0,
  sim::kMeasurementSchemaVersion, "sim.manipulator-feedback"};
  if (!manipulator_channel_->platform().publish_observation(std::move(frame)))
  throw std::runtime_error("manipulator channel rejected actuator feedback");
- const auto delivered_feedback = manipulator_channel_->autonomy().read_observation();
- if (!delivered_feedback || !delivered_feedback->actuator_feedback)
- throw std::runtime_error("manipulator channel did not deliver actuator feedback");
- for (std::size_t index = 0; index < arm.channels.size(); ++index) {
- const auto* joint = delivered_feedback->actuator_feedback->find(arm.channels[index]);
- if (!joint)
- throw std::runtime_error("delivered manipulator feedback is incomplete");
- controller_feedback.position_rad[index] = joint->position_rad;
- controller_feedback.velocity_radps[index] = joint->velocity_radps;
- }
 
  const auto target_pose = manipulation_target_pose(snapshot_.time_s);
- const auto solution = sim::manipulator_inverse_kinematics(
- manipulator_geometry_, target_pose, manipulator_target_joints_);
  snapshot_.manipulator.target_pose = target_pose;
- snapshot_.manipulator.target_reachable = solution.has_value();
- if (solution)
- manipulator_target_joints_ = solution->joints;
-
  const auto now = sim::runtime::TimePoint::from_seconds(snapshot_.time_s);
- sim::runtime::ActuatorCommand command;
- command.header = {sim::runtime::kMessageSchemaVersion, now, now,
- manipulator_command_sequence_++, "base_link", "controller.serial-manipulator"};
- command.valid_until = sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0);
- for (std::size_t index = 0; index < arm.channels.size(); ++index) {
- command.setpoints.push_back({arm.channels[index],
- sim::runtime::ActuatorCommandMode::PositionRad,
- manipulator_target_joints_.rad[index]});
- }
- if (manipulator_channel_->autonomy().write_actuators(command) !=
- sim::runtime::CommandWriteResult::Accepted)
- throw std::runtime_error("manipulator channel rejected position command");
- const auto delivered_command = manipulator_channel_->platform().read_actuators(now);
- std::array<double, 4> delivered_target{};
- for (std::size_t index = 0; index < arm.channels.size(); ++index) {
- const auto setpoint = std::find_if(delivered_command.setpoints.begin(),
- delivered_command.setpoints.end(), [&](const auto& candidate) {
- return candidate.channel_id == arm.channels[index];
- });
- if (setpoint == delivered_command.setpoints.end() ||
- setpoint->mode != sim::runtime::ActuatorCommandMode::PositionRad)
- throw std::runtime_error("delivered manipulator command is incomplete");
- delivered_target[index] = setpoint->value;
- }
- const auto control = manipulator_controller_->update(
- delivered_target, controller_feedback, fixed_step_s);
- snapshot_.manipulator.target_joint_rad = control.target_rad;
+ const auto output = manipulator_runtime_->tick({
+ target_pose, fixed_step_s, now,
+ sim::runtime::TimePoint::from_seconds(snapshot_.time_s + fixed_step_s * 2.0),
+ manipulator_command_sequence_++});
+ snapshot_.manipulator.target_reachable = output.target_reachable;
+ snapshot_.manipulator.target_joint_rad = output.control.target_rad;
  for (std::size_t index = 0; index < arm.channels.size(); ++index)
- telemetry.joint_efforts.push_back({arm.channels[index], control.effort_Nm[index]});
+ telemetry.joint_efforts.push_back({arm.channels[index], output.control.effort_Nm[index]});
 }
 
 void ScenarioSession::refresh_manipulator_snapshot() {
@@ -1866,7 +1826,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
  (intent.kind != FieldIntentKind::GoTo && intent.kind != FieldIntentKind::Return)) {
  return;
  }
- const auto& estimate = autonomy_coordinator_->estimator().state();
+ const auto& estimate = robot_application_->estimator().state();
  const bool requires_heading = !planned_route_.empty();
  const double required_heading = requires_heading ? planned_route_.back().heading_rad : 0.0;
  if (distance(estimate.position, intent.target) >
@@ -1882,7 +1842,7 @@ void ScenarioSession::complete_operator_intent_if_arrived() {
 
  field_operator_system_.complete(intent.revision);
  planned_route_.clear();
- autonomy_coordinator_->reset_route_tracking();
+ robot_application_->reset_route_tracking();
  held_command() = {};
  endless_target_key_ = "completed:" + std::to_string(intent.revision);
 }
@@ -1994,7 +1954,7 @@ void ScenarioSession::scan_environment() {
  }
  sim::LidarRaycastTruth lidar_truth;
  std::optional<sim::LidarPointCloudRaycastTruth> point_cloud_truth;
- const auto& estimated_state = autonomy_coordinator_->estimator().state();
+ const auto& estimated_state = robot_application_->estimator().state();
  const std::optional<sim::platform::BaseAttitudeEstimate> estimated_attitude =
  estimated_state.attitude_valid
  ? std::optional<sim::platform::BaseAttitudeEstimate>{{
@@ -2091,14 +2051,14 @@ void ScenarioSession::consume_lidar_observation(
  snapshot_.localization_action = "not_scheduled";
  snapshot_.localization_reason = "mode=" + level_.localization_mode +
  (observation.lidar ? ";scan=present" : ";scan=absent") +
- (autonomy_coordinator_->has_pipeline() ? ";pipeline=present" : ";pipeline=absent");
- if (level_.localization_mode == "known_map" && observation.lidar && autonomy_coordinator_->has_pipeline()) {
+ (robot_application_->has_pipeline() ? ";pipeline=present" : ";pipeline=absent");
+ if (level_.localization_mode == "known_map" && observation.lidar && robot_application_->has_pipeline()) {
  const auto map = map_manager_.current_snapshot();
  if (map) {
- const auto& odom = autonomy_coordinator_->estimator().state();
+ const auto& odom = robot_application_->estimator().state();
  sim::KnownMapLocalizationResult match;
  std::string localization_reason;
- const auto action = autonomy_coordinator_->localization_supervisor().next(
+ const auto action = robot_application_->localization_supervisor().next(
  observation.time_s, odom.position, odom.heading_rad,
  {odom.localization_valid, odom.position_sigma_m, odom.heading_sigma_rad,
  odom.localization_confidence, odom.localization_age_s},
@@ -2107,21 +2067,21 @@ void ScenarioSession::consume_lidar_observation(
  snapshot_.localization_reason = localization_reason;
  if (action == sim::autonomy::LocalizationAction::LocalCorrection) {
  const auto view = map_manager_.query_region(
- autonomy_coordinator_->localization_supervisor().local_window(odom.position));
+ robot_application_->localization_supervisor().local_window(odom.position));
  if (view) {
  const auto local_map = snapshot_from_view(*view);
- match = autonomy_coordinator_->localize_known_map(
+ match = robot_application_->localize_known_map(
  *observation.lidar, odom.position, odom.heading_rad, local_map,
  observation.time_s);
  } else {
  match.rejection_reason = "local map view unavailable";
  }
- autonomy_coordinator_->localization_supervisor().record_local(
+ robot_application_->localization_supervisor().record_local(
  match.accepted, observation.time_s, match.pose);
  } else if (action == sim::autonomy::LocalizationAction::GlobalRelocalization) {
- match = autonomy_coordinator_->localize_known_map_global(
+ match = robot_application_->localize_known_map_global(
  *observation.lidar, *map, observation.time_s);
- autonomy_coordinator_->localization_supervisor().record_global(
+ robot_application_->localization_supervisor().record_global(
  match.accepted, observation.time_s, match.pose);
  }
  snapshot_.localization_match_accepted = match.accepted;
@@ -2132,8 +2092,8 @@ void ScenarioSession::consume_lidar_observation(
  if (!match.accepted && !match.rejection_reason.empty())
  snapshot_.localization_reason = match.rejection_reason;
  if (match.accepted)
- autonomy_coordinator_->estimator().correct(match.pose, observation.time_s);
- const auto& corrected = autonomy_coordinator_->estimator().state();
+ robot_application_->estimator().correct(match.pose, observation.time_s);
+ const auto& corrected = robot_application_->estimator().state();
  snapshot_.estimated_position = corrected.position;
  snapshot_.estimated_heading = corrected.heading_rad;
  snapshot_.estimated_forward_mps = corrected.linear_velocity_mps;
@@ -2150,20 +2110,20 @@ void ScenarioSession::consume_lidar_observation(
  }
  }
  if (observation.absolute_pose) {
-  autonomy_coordinator_->estimator().correct(*observation.absolute_pose, observation.time_s);
-  snapshot_.estimated_position = autonomy_coordinator_->estimator().state().position;
-  snapshot_.estimated_heading = autonomy_coordinator_->estimator().state().heading_rad;
- snapshot_.estimated_forward_mps = autonomy_coordinator_->estimator().state().linear_velocity_mps;
- snapshot_.estimated_lateral_mps = autonomy_coordinator_->estimator().state().lateral_velocity_mps;
- snapshot_.estimated_yaw_rate_radps = autonomy_coordinator_->estimator().state().angular_velocity_radps;
+  robot_application_->estimator().correct(*observation.absolute_pose, observation.time_s);
+  snapshot_.estimated_position = robot_application_->estimator().state().position;
+  snapshot_.estimated_heading = robot_application_->estimator().state().heading_rad;
+ snapshot_.estimated_forward_mps = robot_application_->estimator().state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = robot_application_->estimator().state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = robot_application_->estimator().state().angular_velocity_radps;
   update_frame_tree();
  }
  if (!observation.lidar || !observation.lidar_static_reference) {
  throw std::runtime_error("lidar observation is missing raw or static-reference scan");
  }
- const auto& estimate = autonomy_coordinator_->estimator().state();
+ const auto& estimate = robot_application_->estimator().state();
  const auto estimated_ground = terrain_.sample(estimate.position);
- const auto perception = autonomy_coordinator_->process_lidar(
+ const auto perception = robot_application_->process_lidar(
  *observation.lidar, *observation.lidar_static_reference,
  {estimate.position, estimate.heading_rad, estimate.linear_velocity_mps,
  estimate.lateral_velocity_mps,
@@ -2209,11 +2169,11 @@ if (first_detection && snapshot_.dynamic_object_detected) {
 
 void ScenarioSession::refresh_dynamic_obstacles() {
  snapshot_.dynamic_obstacles.clear();
- if (!autonomy_coordinator_->has_pipeline()) {
+ if (!robot_application_->has_pipeline()) {
   return;
  }
  const auto tracks =
- autonomy_coordinator_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
+ robot_application_->active_dynamic_tracks(snapshot_.time_s, track_max_age_s());
  for (const auto& track : tracks) {
  if (track.motion_class == sim::TrackMotionClass::Unconfirmed)
  continue;
@@ -2270,7 +2230,7 @@ sim::Vec2 ScenarioSession::navigation_fallback_target() const {
 void ScenarioSession::refresh_operator_route() {
  const auto& field_intent = field_operator_system_.intent();
  const bool operator_drive = level_.control_mode == "operator_drive";
- if ((!endless_mode_ && !operator_drive) || !planning_map_ || !autonomy_coordinator_->has_route_tracking())
+ if ((!endless_mode_ && !operator_drive) || !planning_map_ || !robot_application_->has_route_tracking())
   return;
  std::string target_key;
  sim::Vec2 target;
@@ -2308,7 +2268,7 @@ void ScenarioSession::refresh_operator_route() {
   return;
  endless_target_key_ = target_key;
  planned_route_.clear();
- autonomy_coordinator_->reset_route_tracking();
+ robot_application_->reset_route_tracking();
  held_command() = {};
  route_feasible_ = true;
  if (explicit_intent && (field_intent.kind == FieldIntentKind::Wait || follow_hold)) {
@@ -2324,7 +2284,7 @@ void ScenarioSession::refresh_operator_route() {
    {start, snapshot_.robot.theta},
    {target, target_heading, 0.85},
  };
- auto plan = autonomy_coordinator_->global_planning().plan(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
+ auto plan = robot_application_->plan_global(*planning_map_, waypoints, [this](sim::Vec2 from, sim::Vec2 to) {
   return navigation_traversal_cost(from, to);
  });
  result_.astar_expanded += plan.expanded;
@@ -2361,9 +2321,9 @@ void ScenarioSession::apply_motion() {
  // per-step shadow compute remains in this hot path.
  const auto before = snapshot_.robot;
  const auto ground_contact = wheel_ground({before.x, before.y});
- if (autonomy_coordinator_->has_differential_controller() ||
- autonomy_coordinator_->has_ackermann_controller() ||
- autonomy_coordinator_->has_holonomic_controller()) {
+ if (robot_application_->has_differential_controller() ||
+ robot_application_->has_ackermann_controller() ||
+ robot_application_->has_holonomic_controller()) {
  if (!platform_) {
  throw std::logic_error("actuator-level control requires a platform provider");
  }
@@ -2460,14 +2420,14 @@ void ScenarioSession::apply_motion() {
  // same sample interval.
  if (chassis_caps_.tread_slip_observable) {
   const double tread_v = (snapshot_.control.left_measured_mps + snapshot_.control.right_measured_mps) / 2.0;
- autonomy_coordinator_->diagnostics().update_slip(
+ robot_application_->update_slip_diagnostics(
      true, tread_v, candidate.v, fixed_step_s);
- if (autonomy_coordinator_->diagnostics().slip_episodes() >
+ if (robot_application_->slip_episodes() >
      static_cast<int>(slip_episode_times_.size())) {
     slip_episode_times_.push_back(snapshot_.time_s);
   }
  }
- snapshot_.traction_slip_observed = autonomy_coordinator_->diagnostics().slip_detected();
+ snapshot_.traction_slip_observed = robot_application_->slip_detected();
  snapshot_.control.steer_target_rad = motors.differential ? 0.0 : motors.steer.target_rad;
  snapshot_.control.steer_angle_rad = motors.differential ? 0.0 : motors.steer.angle_rad;
  snapshot_.control.steer_pwm = motors.differential ? 0.0 : motors.steer.pwm;
@@ -2654,7 +2614,7 @@ void ScenarioSession::apply_motion() {
  rigid_contact,
  });
  }
- const auto collision = autonomy_coordinator_->collision_monitor().assess(
+ const auto collision = robot_application_->assess_collision(
  collision_observation);
  if (collision.static_clearance_m < result_.min_static_clearance_m) {
  result_.min_static_clearance_m = collision.static_clearance_m;
@@ -2687,7 +2647,7 @@ void ScenarioSession::apply_motion() {
 
  snapshot_.robot = candidate;
  result_.path_length_m += distance({before.x, before.y}, candidate_position);
- snapshot_.braking = autonomy_coordinator_->diagnostics().update_braking(
+ snapshot_.braking = robot_application_->update_braking_diagnostics(
  snapshot_.time_s + fixed_step_s, candidate_position, candidate.v, applied_command.target_v);
  if (snapshot_.braking.valid) {
  result_.braking_measurement_valid = true;
@@ -2795,33 +2755,33 @@ void ScenarioSession::apply_motion() {
  if (!delivered_motion) {
   throw std::runtime_error("runtime channel did not deliver the simulated motion observation");
  }
- autonomy_coordinator_->estimator().update(*delivered_motion, fixed_step_s);
+ robot_application_->estimator().update(*delivered_motion, fixed_step_s);
  if (delivered_motion->absolute_pose) {
-  autonomy_coordinator_->estimator().correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
+  robot_application_->estimator().correct(*delivered_motion->absolute_pose, delivered_motion->time_s);
  }
- snapshot_.estimated_position = autonomy_coordinator_->estimator().state().position;
- snapshot_.estimated_heading = autonomy_coordinator_->estimator().state().heading_rad;
- snapshot_.estimated_forward_mps = autonomy_coordinator_->estimator().state().linear_velocity_mps;
- snapshot_.estimated_lateral_mps = autonomy_coordinator_->estimator().state().lateral_velocity_mps;
- snapshot_.estimated_yaw_rate_radps = autonomy_coordinator_->estimator().state().angular_velocity_radps;
- snapshot_.localization_confidence = autonomy_coordinator_->estimator().state().localization_confidence;
- snapshot_.localization_valid = autonomy_coordinator_->estimator().state().localization_valid;
- snapshot_.localization_age_s = autonomy_coordinator_->estimator().state().localization_age_s;
- snapshot_.localization_position_sigma_m = autonomy_coordinator_->estimator().state().position_sigma_m;
- snapshot_.localization_heading_sigma_rad = autonomy_coordinator_->estimator().state().heading_sigma_rad;
- snapshot_.localization_score = autonomy_coordinator_->estimator().state().localization_score;
- snapshot_.localization_overlap = autonomy_coordinator_->estimator().state().localization_overlap;
- snapshot_.localization_score_margin = autonomy_coordinator_->estimator().state().localization_score_margin;
+ snapshot_.estimated_position = robot_application_->estimator().state().position;
+ snapshot_.estimated_heading = robot_application_->estimator().state().heading_rad;
+ snapshot_.estimated_forward_mps = robot_application_->estimator().state().linear_velocity_mps;
+ snapshot_.estimated_lateral_mps = robot_application_->estimator().state().lateral_velocity_mps;
+ snapshot_.estimated_yaw_rate_radps = robot_application_->estimator().state().angular_velocity_radps;
+ snapshot_.localization_confidence = robot_application_->estimator().state().localization_confidence;
+ snapshot_.localization_valid = robot_application_->estimator().state().localization_valid;
+ snapshot_.localization_age_s = robot_application_->estimator().state().localization_age_s;
+ snapshot_.localization_position_sigma_m = robot_application_->estimator().state().position_sigma_m;
+ snapshot_.localization_heading_sigma_rad = robot_application_->estimator().state().heading_sigma_rad;
+ snapshot_.localization_score = robot_application_->estimator().state().localization_score;
+ snapshot_.localization_overlap = robot_application_->estimator().state().localization_overlap;
+ snapshot_.localization_score_margin = robot_application_->estimator().state().localization_score_margin;
  update_frame_tree();
- result_.odometry_error_m = autonomy_coordinator_->estimator().position_error(candidate_position);
+ result_.odometry_error_m = robot_application_->estimator().position_error(candidate_position);
  result_.max_odometry_error_m = std::max(result_.max_odometry_error_m, result_.odometry_error_m);
- result_.odometry_heading_error_rad = autonomy_coordinator_->estimator().heading_error_rad(candidate.theta);
+ result_.odometry_heading_error_rad = robot_application_->estimator().heading_error_rad(candidate.theta);
  result_.max_odometry_heading_error_rad =
    std::max(result_.max_odometry_heading_error_rad, result_.odometry_heading_error_rad);
- result_.fused_pose_error_m = autonomy_coordinator_->estimator().fused_position_error(candidate_position);
+ result_.fused_pose_error_m = robot_application_->estimator().fused_position_error(candidate_position);
  result_.max_fused_pose_error_m =
  std::max(result_.max_fused_pose_error_m, result_.fused_pose_error_m);
- result_.fused_heading_error_rad = autonomy_coordinator_->estimator().fused_heading_error_rad(candidate.theta);
+ result_.fused_heading_error_rad = robot_application_->estimator().fused_heading_error_rad(candidate.theta);
  result_.max_fused_heading_error_rad =
  std::max(result_.max_fused_heading_error_rad, result_.fused_heading_error_rad);
 }
@@ -3081,7 +3041,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  terrain_.sample({nav_x, nav_y}), snapshot_.estimated_heading);
  stop_limits.center_of_mass_x_m = combined_center_x_m();
  stop_limits.center_of_mass_height_m = combined_center_height_m();
- const double decel = autonomy_coordinator_->safe_stop_deceleration_limit(
+ const double decel = robot_application_->safe_stop_deceleration_limit(
  chassis_caps_, stop_limits);
  const double preview =
  std::max(lookahead, speed * speed / (2.0 * std::max(0.05, decel)) + speed * 2.0 / decision_hz());
@@ -3091,7 +3051,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
  const double static_limit = sim::static_rollover_angle(support_width, center_height);
  double lateral_accel_limit = 0.5 * grip * 9.81;
  double along = 0.0;
- for (size_t i = autonomy_coordinator_->route_path_index() + 1; i < planned_route_.size(); ++i) {
+ for (size_t i = robot_application_->route_path_index() + 1; i < planned_route_.size(); ++i) {
   along += distance(planned_route_[i].position, planned_route_[i - 1].position);
   if (along > preview) {
    break;
@@ -3105,7 +3065,7 @@ double ScenarioSession::corner_speed_cap(double nav_x, double nav_y) const {
   lateral_accel_limit = std::min(lateral_accel_limit, std::max(0.05, 0.45 * rollover_margin));
  }
  lateral_accel_limit = std::min(lateral_accel_limit, 0.5 * grip * 9.81);
- return sim::corner_speed_cap(planned_route_, autonomy_coordinator_->route_path_index(), cruise, lateral_accel_limit,
+ return sim::corner_speed_cap(planned_route_, robot_application_->route_path_index(), cruise, lateral_accel_limit,
  preview, yaw_cap_rads_);
 }
 

@@ -313,4 +313,65 @@ std::optional<MapView> MapManager::query_region(MapBounds2D bounds) const {
  return make_map_view(*snapshot_, bounds);
 }
 
+bool MapCatalog::register_map(MapSnapshot snapshot, std::string* reason) {
+ if (!valid_map_snapshot(snapshot, reason))
+ return false;
+ const auto id = snapshot.map_id;
+ if (id.empty()) {
+ if (reason)
+ *reason = "map catalog requires a non-empty map id";
+ return false;
+ }
+ maps_[id] = std::make_shared<const MapSnapshot>(std::move(snapshot));
+ return true;
+}
+
+bool MapCatalog::contains(std::string_view map_id) const {
+ return maps_.find(std::string(map_id)) != maps_.end();
+}
+
+std::vector<std::string> MapCatalog::map_ids() const {
+ std::vector<std::string> ids;
+ ids.reserve(maps_.size());
+ for (const auto& [id, snapshot] : maps_)
+ ids.push_back(id);
+ return ids;
+}
+
+std::shared_ptr<const MapSnapshot> MapCatalog::snapshot(std::string_view map_id) const {
+ const auto found = maps_.find(std::string(map_id));
+ return found == maps_.end() ? nullptr : found->second;
+}
+
+bool MapCatalog::select(MapManager& active_map, std::string_view map_id,
+ std::string* reason) const {
+ const auto selected = snapshot(map_id);
+ if (!selected) {
+ if (reason)
+ *reason = "map catalog does not contain '" + std::string(map_id) + "'";
+ return false;
+ }
+ const auto previous = active_map.current_snapshot();
+ if (previous && previous->map_id == selected->map_id &&
+ previous->revision == selected->revision)
+ return true;
+ if (active_map.state() == LifecycleState::Active)
+ active_map.deactivate();
+ active_map.cleanup();
+ if (active_map.configure(*selected, reason) && active_map.activate())
+ return true;
+ // A failed selection must not leave an empty map service if a previous
+ // revision was available. Best-effort restoration preserves the last valid
+ // provider state while returning false to the executive.
+ if (previous) {
+ std::string restore_reason;
+ active_map.cleanup();
+ if (active_map.configure(*previous, &restore_reason))
+ active_map.activate();
+ }
+ if (reason && reason->empty())
+ *reason = "map catalog selection failed to activate the requested map";
+ return false;
+}
+
 } // namespace sim::runtime

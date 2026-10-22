@@ -13,4 +13,23 @@ void RobotExecutive::report_motion(const MotionCapabilityReport& report) {
  status_.task_state = tasks_.state();
 }
 
+bool RobotExecutive::request_map(std::string map_id, std::string request_id) {
+ if (map_id.empty())
+ return false;
+ pending_map_request_ = MapSelectionRequest{
+ std::move(request_id), std::move(map_id)};
+ status_.map_request_id = pending_map_request_->request_id;
+ status_.map_request_reason = "pending";
+ return true;
+}
+
+void RobotExecutive::report_map_selection(
+ std::string map_id, bool accepted, std::string reason) {
+ if (accepted)
+ status_.active_map_id = std::move(map_id);
+ status_.map_request_reason = accepted ? "accepted" : std::move(reason);
+ pending_map_request_.reset();
+ status_.map_request_id.clear();
+}
+
 } // namespace sim::robot

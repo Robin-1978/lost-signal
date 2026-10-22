@@ -57,6 +57,12 @@ executive task observation first, runs the coordinator and local planner second,
 back to the executive, and only then invokes the controller and publishes an expiring LSRI command. Executive and
 coordinator are independent state holders with one scheduler; neither is allowed to create a competing motion loop.
 
+An operator UI uses two public surfaces: task commands and lifecycle status from `RobotExecutive`, plus read-only map
+data from the bound `IMapProvider` (`current_snapshot()` or bounded `MapView` queries). `MapView` is an immutable
+revision-tagged value for one display/query operation; it is not Coordinator state. The UI never calls DWA, SLAM,
+controllers, or simulator providers. A same-process UI can use these typed C++ surfaces directly, while a future remote
+UI can expose the same methods through a versioned adapter without changing ROBOT algorithms.
+
 The [Lost Signal Robot Map](robot-map.md) is likewise source-neutral. An editor, SLAM backend, survey compiler, or HD-map
 bridge publishes validated revisions through `IMapProvider`; planning and the Task Executive never import the
 source format. The persisted LSRM package is a navigation product and does not pretend to preserve a SLAM pose graph,

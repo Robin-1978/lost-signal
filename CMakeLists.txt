@@ -137,6 +137,7 @@ add_library(lost_signal_robot_runtime STATIC
  src/robot/runtime/replay_driver.cpp
  src/robot/runtime/provider_conformance.cpp
  src/robot/runtime/diagnostic_log.cpp
+ src/robot/runtime/manipulator_runtime.cpp
 )
 target_link_libraries(lost_signal_robot_runtime PUBLIC
  lost_signal_robot_core lost_signal_robot_platform)

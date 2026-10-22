@@ -997,6 +997,17 @@ replacement for the individual perception, localization or planning modules.
 The coordinator extraction is a typed composition step, not the completion of SIM→ROBOT migration. Route-following,
 dynamic interaction and local candidate assembly still need the same extraction treatment before the gate can close.
 
+The current boundary-cleanup slice has now removed the remaining SIM-owned
+coordinator lifetime and direct coordinator handle. `RobotApplication` creates
+and owns the Coordinator, and exposes the ROBOT-facing route, localization,
+prediction, collision, safety-stop, global-planning and diagnostic operations as
+typed application methods. SIM and future UI/API adapters therefore use the
+same host surface; the simulator no longer calls `AutonomyCoordinator` or the
+standalone safety helpers directly. The remaining migration is semantic rather
+than ownership-only: the scenario still assembles route/governor facts and
+updates presentation evidence, so those provider-neutral facts must move into a
+single ROBOT autonomy transaction before the migration gate is declared closed.
+
 The task/runtime relationship is now explicit in code. `RobotExecutive` (`src/robot/executive/robot_executive.*`) wraps
 the tested `TaskExecutive` lifecycle kernel and consumes a typed `MotionCapabilityReport` from local planning. It can
 report normal, reduced, hold and no-safe-action states to an operator or task policy, but it has no speed or actuator

@@ -55,6 +55,67 @@ observe `H`, and presentation reads immutable snapshots without changing the run
 
 ### Runtime boundary
 
+#### Terminology: application runtime versus `robot/runtime`
+
+In this document, **RobotApplication is the application runtime host**. It is the
+composition root and scheduler for one robot process (or one in-process SIM
+composition). It owns the lifecycle and ordering of the Executive, autonomy
+coordinator, map bindings, controller transaction, provider health checks and
+expiring command publication. It is the object that provides the single
+`tick()` boundary.
+
+`RobotExecutive` and `AutonomyCoordinator` therefore run *inside* the
+application runtime, but neither is the runtime itself and neither schedules a
+second independent loop. The Executive owns task, resource and mission
+lifecycle policy. The coordinator owns the provider-neutral autonomy pipeline
+and its algorithm state. The application only composes and orders them; it does
+not replace their responsibilities.
+
+The `src/robot/runtime/` directory is a lower-level infrastructure namespace,
+not another robot brain. It contains LSRI channels, provider contracts,
+lifecycle/conformance monitoring, map-provider contracts and small execution
+adapters such as `RobotMotionRuntime` and `ManipulatorRuntime`. Those adapters
+hold state needed to execute a subsystem transaction; they do not accept tasks
+or choose missions.
+
+At the logical architecture level, the primary objects are therefore:
+
+1. **RobotExecutive** — task and resource authority;
+2. **AutonomyCoordinator** — SLAM/localization, perception, prediction,
+   planning, validation and control orchestration;
+3. **Map service** — the map catalog and active-map/provider view (`MapCatalog`,
+   `MapManager` and `IMapProvider`).
+
+`RobotApplication` hosts these objects and supplies the cycle boundary. In the
+current implementation the map service is injected/bound because deployment,
+SIM, replay and a future map server may own its storage differently; that does
+not move map ownership into SIM or into the coordinator. The LSRI channel and
+hardware/sim providers are infrastructure dependencies of the host, not a
+fourth mission authority.
+
+The application is also the public in-process API boundary. SIM, replay tools,
+an operator UI and a future HTTP/ROS adapter submit task and map requests to
+`RobotApplication`, read its status/map views, and call the same `tick()`
+contract when they own the process loop. They do not obtain an
+`AutonomyCoordinator` reference. A transport adapter may serialize these same
+typed requests and status values later; transport choice does not change the
+ROBOT algorithm graph.
+
+The normal cycle is consequently:
+
+```text
+external/UI request -> RobotExecutive
+                         |
+RobotApplication::tick() +--> map-service request/selection gate
+                         +--> AutonomyCoordinator due modules
+                         +--> controller + safety validation
+                         +--> LSRI provider command and status
+```
+
+This naming is intentional: “application runtime” refers to the running
+composition and scheduler, while `robot/runtime` refers to reusable boundary
+and execution infrastructure.
+
 The [Lost Signal Robot Interface (LSRI)](runtime-interface.md) is the project-owned robot boundary. Its ROBOT port reads validated observations and writes expiring body-motion or actuator commands. Its platform side can be composed from simulated, replay, remote, and native providers one endpoint at a time.
 
 LSRI is intentionally below the ROBOT algorithm graph. Localization, mapping, perception, planning, validation, control
@@ -260,6 +321,12 @@ state and timestamped update contract. Their cadences are different: physics/fee
 platform rate, perception at sensor delivery, local planning at its decision rate, global planning on route/map
 events, and pose-graph optimization on keyframe/loop-closure events. `RobotApplication` is the only runtime owner that
 decides when a due module is advanced, so different cadences do not create competing command loops.
+
+`MapSnapshot` is the immutable revision owned by an `IMapProvider`; `MapView` is a separate bounded value returned by
+`query_region()`. A view carries the map identity, revision, frame and spatial bounds, and is consumed for one planning
+or display operation. It is not Coordinator state and it is not a mutable SIM map object. A UI may read the provider's
+current snapshot or bounded views for display, while task submission still goes through `RobotExecutive`; neither path
+calls a planner or edits map state directly.
 
 ### Mission systems
 

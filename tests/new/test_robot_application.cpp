@@ -45,7 +45,7 @@ int main() {
  // by SIM. This check intentionally supplies only provider-neutral ROBOT
  // contracts; no scenario or physics type is needed to execute the cycle.
  sim::GridMap planning_map(20, 20, 0.5);
- application.coordinator().configure_pipeline(planning_map, 20, 20, 0.5, 17);
+ application.configure_pipeline(planning_map, 20, 20, 0.5, 17);
 executive::TaskPlan task;
 task.request_id = "tick-task";
 task.goals.push_back({"goal", {3.0, 1.0}, 0.2, true, false, 0.0, 0.5});

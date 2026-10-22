@@ -9,7 +9,9 @@ namespace sim::robot {
 RobotApplication::RobotApplication(RobotApplicationConfig config)
  : channel_(config.runtime_registry.create(
  config.runtime_provider_id, config.channel)),
- conformance_(std::move(config.conformance)) {
+ conformance_(std::move(config.conformance)),
+ coordinator_(std::move(config.high_level_policy)),
+ map_provider_(config.map_provider) {
  if (!channel_)
  throw std::runtime_error("robot application could not create its LSRI provider");
  // Endpoint descriptors are immutable deployment expectations. Register them
@@ -37,6 +39,13 @@ RobotApplication::RobotApplication(
  if (!owned_coordinator_)
  throw std::invalid_argument("robot application requires an autonomy coordinator");
 }
+
+RobotApplication::RobotApplication(
+ runtime::IRuntimeChannel& channel,
+ std::shared_ptr<::sim::IHighLevelPolicy> policy,
+ runtime::ProviderConformanceConfig conformance)
+ : borrowed_channel_(&channel), conformance_(std::move(conformance)),
+ owned_coordinator_(std::make_unique<autonomy::AutonomyCoordinator>(std::move(policy))) {}
 
 RobotApplication::~RobotApplication() {
  if (channel_ && channel_->state() == runtime::LifecycleState::Active)
@@ -107,6 +116,25 @@ runtime::IPlatformPort& RobotApplication::platform_port() {
  return active_channel().platform();
 }
 
+runtime::IMapProvider& RobotApplication::map_provider() {
+ if (!map_provider_)
+ throw std::logic_error("robot application has no map provider");
+ return *map_provider_;
+}
+
+const runtime::IMapProvider& RobotApplication::map_provider() const {
+ if (!map_provider_)
+ throw std::logic_error("robot application has no map provider");
+ return *map_provider_;
+}
+
+void RobotApplication::bind_map_catalog(
+ runtime::MapCatalog& catalog, runtime::MapManager& active_map) {
+ map_catalog_ = &catalog;
+ active_map_manager_ = &active_map;
+ map_provider_ = &active_map;
+}
+
 bool RobotApplication::publish_observation(
  ObservationFrame observation, runtime::TimePoint now) {
  const bool accepted = active_channel().platform().publish_observation(observation);
@@ -125,6 +153,22 @@ RobotCycleOutput RobotApplication::tick(const RobotCycleInput& input) {
  RobotCycleOutput output;
  if (input.task_observation)
  executive_.update(*input.task_observation);
+ if (const auto request = executive_.pending_map_request()) {
+ // An active task must first report a hold capability. The request remains
+ // queued while the planner is still moving, so a UI command cannot race a
+ // live trajectory or silently discard the user's selection.
+ const bool task_allows_switch =
+ executive_.state() != executive::TaskState::Active ||
+ executive_.status().motion_capability == MotionCapability::Hold;
+ if (task_allows_switch && map_catalog_ && active_map_manager_) {
+ std::string reason;
+ if (map_catalog_->select(*active_map_manager_, request->map_id, &reason)) {
+ executive_.report_map_selection(request->map_id, true);
+ } else {
+ executive_.report_map_selection({}, false, reason);
+ }
+ }
+ }
  auto& coordinator = active_coordinator();
  if (input.run_autonomy) {
  const auto autonomy_cycle = coordinator.run_cycle({input.autonomy, input.local_planning});
