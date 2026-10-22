@@ -49,6 +49,13 @@ class ScenarioSession {
   void set_judge_radius_m(double radius_m) {
     judge_radius_m_ = radius_m >= 0.0 ? radius_m : 0.4;
   }
+  // Sensor realism switches (S7): delivery shaping + IMU noise/bias.
+  // Default off (exact truth); scenario-owned orchestration config.
+  void set_sensor_realism(providers::DeliveryConfig delivery,
+                          providers::ImuRealismConfig imu) {
+    suite_.set_delivery(delivery);
+    suite_.set_imu_realism(imu);
+  }
   const ObjectiveDriver& objectives() const { return driver_; }
 
  private:

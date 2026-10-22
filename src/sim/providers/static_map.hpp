@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/iface/map.hpp"
+#include "sim/eval/map_package.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::providers {
@@ -9,10 +10,15 @@ namespace lost_signal::sim::providers {
 // immutable MapSnapshot revision per geometry version. Actors never enter
 // the map; the revision only moves when static geometry changes, so the
 // coordinator replans on content change, not on every tick.
+//
+// Package mode serves a stored survey instead of live geometry (offline
+// interchange, `sim/eval/map_package`): same snapshot seam, revision
+// pinned at 1, map selection by package id.
 class StaticMapProvider : public robot::iface::IMapProvider {
  public:
   StaticMapProvider(world::World* world, double min_x_m, double min_y_m,
                     double width_m, double height_m, double resolution_m);
+  explicit StaticMapProvider(const eval::MapPackage& package);
 
   robot::iface::MapSnapshot active_snapshot() const override;
   bool select_map(const std::string& map_id) override;
@@ -21,7 +27,10 @@ class StaticMapProvider : public robot::iface::IMapProvider {
   void rebuild() const;
 
   world::World* world_ = nullptr;
-  double min_x_m_, min_y_m_, width_m_, height_m_, resolution_m_;
+  double min_x_m_ = 0.0, min_y_m_ = 0.0, width_m_ = 0.0, height_m_ = 0.0,
+         resolution_m_ = 0.1;
+  eval::MapPackage package_;
+  bool from_package_ = false;
   mutable robot::iface::MapSnapshot snapshot_;
   mutable std::uint64_t built_version_ = 0;
   mutable bool has_built_ = false;

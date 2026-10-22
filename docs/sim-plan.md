@@ -87,7 +87,7 @@ Accept: multi-goal scenario runs headless to completion with a score;
 judge disagreements (robot thinks clear, truth says contact) recorded
 as eval signals, never as tick inputs.
 
-### S6 Map persistence (small-medium)
+### S6 Map persistence (small-medium) — landed
 The deferred map-package gap: versioned survey persistence (manifest +
 checksummed raster layers + semantics + places) over our JSONL subset,
 load/save round-trip byte-identical. Backs survey/offline interchange
@@ -95,7 +95,7 @@ and the static-map provider from files.
 Accept: save -> load round-trip test; `StaticMapProvider` can source
 from a package file.
 
-### S7 Sensor realism (medium)
+### S7 Sensor realism (medium) — landed
 Close the honesty gaps in feedback: encoder quantization (already in
 S3), deterministic delivery queue (latency + dropout injection in
 providers, seeded), IMU noise/bias (bounded, documented; attitude

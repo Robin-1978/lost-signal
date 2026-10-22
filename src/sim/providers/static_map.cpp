@@ -19,7 +19,31 @@ StaticMapProvider::StaticMapProvider(world::World* world, double min_x_m,
   snapshot_.frame_id = "map";
 }
 
+StaticMapProvider::StaticMapProvider(const eval::MapPackage& package)
+    : package_(package), from_package_(true) {
+  snapshot_.map_id = package_.map_id;
+  snapshot_.frame_id = "map";
+}
+
 void StaticMapProvider::rebuild() const {
+  if (from_package_) {
+    // Stored survey: raster + places verbatim, revision pinned (immutable).
+    snapshot_.map_id = package_.map_id;
+    snapshot_.frame_id = "map";
+    snapshot_.width = package_.width;
+    snapshot_.height = package_.height;
+    snapshot_.resolution_m = package_.resolution_m;
+    snapshot_.origin_x_m = package_.origin_x_m;
+    snapshot_.origin_y_m = package_.origin_y_m;
+    snapshot_.occupancy = package_.occupancy;
+    snapshot_.places = package_.places;
+    snapshot_.elevation_m.assign(package_.occupancy.size(),
+                                 std::numeric_limits<float>::quiet_NaN());
+    snapshot_.elevation_sigma_m.assign(package_.occupancy.size(), 0.0f);
+    snapshot_.revision = 1;
+    has_built_ = true;
+    return;
+  }
   const int w = static_cast<int>(std::ceil(width_m_ / resolution_m_));
   const int h = static_cast<int>(std::ceil(height_m_ / resolution_m_));
   snapshot_.width = w;
@@ -73,6 +97,7 @@ robot::iface::MapSnapshot StaticMapProvider::active_snapshot() const {
 }
 
 bool StaticMapProvider::select_map(const std::string& map_id) {
+  if (from_package_) return map_id == package_.map_id || map_id.empty();
   return map_id == "sim-world" || map_id.empty();
 }
 

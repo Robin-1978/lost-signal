@@ -43,6 +43,29 @@ double ray_circle(double ox, double oy, double dx, double dy, double cx,
   return t > 0.0 ? t : std::numeric_limits<double>::infinity();
 }
 
+// Deterministic streams (splitmix64): explicit per-suite state, no global
+// RNG, no platform variance. Same seed + call sequence = identical.
+std::uint64_t splitmix64(std::uint64_t& state) {
+  std::uint64_t z = (state += 0x9E3779B97F4A7C15ULL);
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+  return z ^ (z >> 31);
+}
+
+double rand01(std::uint64_t& state) {
+  return static_cast<double>(splitmix64(state) >> 11) *
+         (1.0 / 9007199254740992.0);
+}
+
+// Exact standard normal, fixed 2-draw consumption (Box-Muller, spare
+// discarded). Deterministic per stream position by construction.
+double randn(std::uint64_t& state) {
+  const double u1 = std::max(rand01(state), 1e-300);
+  const double u2 = rand01(state);
+  return std::sqrt(-2.0 * std::log(u1)) *
+         std::cos(2.0 * 3.14159265358979323846 * u2);
+}
+
 }  // namespace
 
 SimSensorSuite::SimSensorSuite(world::World* world)
@@ -103,10 +126,16 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   // truthful, not zero: the estimator's slip gate trusts the gyro over
   // wheel odometry on disagreement, so a hard zero would freeze the
   // heading estimate through every turn. Planar motion: no roll/pitch rate.
-  imu.gyro_z_radps = world_->truth().yaw_rate_radps;
-  imu.accel_x_mps2 = 0.0;
-  imu.accel_y_mps2 = 0.0;
-  imu.accel_z_mps2 = 9.81;  // level: specific force opposes gravity
+  imu.gyro_z_radps = world_->truth().yaw_rate_radps +
+                     imu_realism_.gyro_bias_radps +
+                     imu_realism_.gyro_noise_radps * randn(imu_rng_);
+  imu.gyro_x_radps = imu_realism_.gyro_noise_radps * randn(imu_rng_);
+  imu.gyro_y_radps = imu_realism_.gyro_noise_radps * randn(imu_rng_);
+  imu.accel_x_mps2 = imu_realism_.accel_noise_mps2 * randn(imu_rng_);
+  imu.accel_y_mps2 = imu_realism_.accel_noise_mps2 * randn(imu_rng_);
+  imu.accel_z_mps2 =
+      9.81 + imu_realism_.accel_noise_mps2 * randn(imu_rng_);
+  // Level: specific force opposes gravity; noise rides on top when enabled.
 
   out = robot::iface::make_envelope(fb);
   out.ranges_m = std::move(ranges);
@@ -117,7 +146,41 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   out.static_ranges_m = std::move(reference);
   out.scan_static_valid = true;
   if (!robot::iface::set_imu(out, imu)) return false;
-  return robot::iface::valid_observation_frame(out);
+  if (!robot::iface::valid_observation_frame(out)) return false;
+  // S7 delivery shaping (default off = passthrough, byte-identical path).
+  if (delivery_.latency_steps <= 0 && delivery_.drop_probability <= 0.0) {
+    return true;
+  }
+  if (rand01(delivery_rng_) < delivery_.drop_probability) {
+    return false;  // dropped: never delivers, existing no-data path
+  }
+  delivery_queue_.push_back(out);
+  if (static_cast<int>(delivery_queue_.size()) <= delivery_.latency_steps) {
+    return false;  // filling the hold-back: nothing due yet
+  }
+  out = delivery_queue_.front();
+  delivery_queue_.pop_front();
+  return true;
+}
+
+void SimSensorSuite::set_delivery(DeliveryConfig config) {
+  if (config.latency_steps < 0 || !(config.drop_probability >= 0.0) ||
+      !(config.drop_probability <= 1.0)) {
+    return;  // fail closed: keep previous settings
+  }
+  delivery_ = config;
+  delivery_queue_.clear();
+  delivery_rng_ = config.seed ^ 0x9E3779B97F4A7C15ULL;
+}
+
+void SimSensorSuite::set_imu_realism(ImuRealismConfig config) {
+  if (!(config.gyro_noise_radps >= 0.0) ||
+      !std::isfinite(config.gyro_bias_radps) ||
+      !(config.accel_noise_mps2 >= 0.0)) {
+    return;  // fail closed: keep previous settings
+  }
+  imu_realism_ = config;
+  imu_rng_ = config.seed ^ 0x9E3779B97F4A7C15ULL;
 }
 
 void SimSensorSuite::consume(const robot::iface::ActuatorCommand& cmd) {

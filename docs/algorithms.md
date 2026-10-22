@@ -230,7 +230,12 @@ route, pre-activation hold).
   to the start dock with bounded truth miss.
 - SIM sensor honesty: the suite reports the true yaw rate (the estimator's
   slip gate trusts gyro over odometry, so a hard-zero gyro would freeze the
-  heading through every turn); bounded noise/bias arrives with S7.
+  heading through every turn); S7 adds seeded delivery shaping (whole-tick
+  latency with preserved stamps + dropout) and bounded IMU noise/bias.
+- Survey interchange (`sim/eval/map_package.hpp`): versioned JSON survey
+  (manifest + FNV-1a checksummed raster + places), save->load->save
+  byte-identical with fail-closed validation; `StaticMapProvider` serves a
+  package from files under the same seam.
 
 ## Hardware contract (sim-native parity)
 

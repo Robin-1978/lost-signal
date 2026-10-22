@@ -176,6 +176,7 @@ add_library(lost_signal_sim_eval STATIC
   src/sim/eval/json.cpp
   src/sim/eval/recording.cpp
   src/sim/eval/drive_profile_io.cpp
+  src/sim/eval/map_package.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -371,6 +372,18 @@ add_executable(test_loop_closure
 )
 target_link_libraries(test_loop_closure PRIVATE lost_signal_sim_scenario)
 add_test(NAME loop_closure COMMAND test_loop_closure)
+
+add_executable(test_map_package
+  tests/test_map_package.cpp
+)
+target_link_libraries(test_map_package PRIVATE lost_signal_sim_scenario)
+add_test(NAME map_package COMMAND test_map_package)
+
+add_executable(test_realism
+  tests/test_realism.cpp
+)
+target_link_libraries(test_realism PRIVATE lost_signal_sim_scenario)
+add_test(NAME realism COMMAND test_realism)
 
 add_executable(test_lidar
   tests/test_lidar.cpp
