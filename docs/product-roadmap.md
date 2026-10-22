@@ -1034,6 +1034,49 @@ data. Any environment friction or weather estimate used by planning must be
 declared as a map/provider observation or a robot-side estimate, never silently
 copied from the contact solver.
 
+### Remaining data and runtime-boundary audit
+
+The target libraries are now compile-time separable: no `src/robot` target
+includes or links a `src/sim` target, and the deployable-boundary test guards
+that property. The semantic migration is not yet complete. The remaining items
+are explicit:
+
+1. `ScenarioSession::decide_control()` still assembles route progress,
+   crossing/governor facts, dynamic prediction batches, terrain limits and the
+   `RobotLocalPlanningInput` on every decision cycle. The algorithms it calls
+   live in ROBOT, but the composition of their inputs and the crossing execution
+   state are still SIM-owned. This is the largest remaining code migration.
+2. `ScenarioSession::consume_lidar_observation()` still schedules localization,
+   invokes local/global scan matching and applies estimator corrections; the
+   motion path likewise updates estimator and terrain-belief state directly.
+   These must become one ROBOT observation-ingestion transaction so a native
+   provider cannot require a SIM-side coordinator.
+3. The native `lost_signal_robot` process currently proves lifecycle and LSRI
+   conformance only. It does not yet load a native map/profile, configure the
+   planner and perception pipeline, or run a complete observation-to-command
+   cycle. Hardware provider replacement is therefore documented, but the native
+   autonomy composition is not finished.
+4. `ObservationFrame::lidar_static_reference` is a useful simulation/map
+   residual aid, but SIM currently synthesizes it from the physics world and the
+   scenario requires it to be present. Real LiDAR providers will normally
+   deliver raw scans, not an ideal expected scan. The ROBOT perception contract
+   must either generate the reference from its pinned map or make dynamic
+   classification explicitly optional when no reference is available.
+5. The SIM encoder provider currently fills `EncoderObservation::slip_scale`
+   from the selected game tire component. That is a simulated measurement-quality
+   model, not a physical truth value, but its source is mixed with tire traction
+   and the estimator consumes it directly. Sensor uncertainty/quality must be
+   separated from friction, brake and contact parameters before hardware reuse.
+6. `assets/robots/*.json` and `ResolvedBuild` still mix deployable geometry,
+   actuator/sensor capability, game component upgrades, energy estimates and
+   render/mesh data. A typed ROBOT hardware profile plus a SIM presentation and
+   game-build adapter is required; otherwise a native process still depends on
+   catalog assembly choices even though the algorithm libraries are reusable.
+
+These are boundary tasks, not reasons to weaken safety or to pass simulator
+truth into planning. `MissionSnapshot`, MuJoCo contacts, actor truth, physical
+collision judging and presentation transforms remain SIM-only by design.
+
 The dynamic-perception path now has the corresponding localization firewall. A
 map-relative foreground residual is not enough to create an actor when pose
 confidence is degraded: ROBOT clears old map-frame tracks and keeps the raw
