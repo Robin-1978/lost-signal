@@ -31,6 +31,7 @@ Mapping (documented assumptions, all warned on stdout):
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -65,6 +66,53 @@ def keep(entry, variant):
         return True
     active = entry.get("active_in")
     return not active or variant in active
+
+
+# Goal geometry assertions (localization-aware content gate). A converted
+# marker is only a coordinate; the robot must arrive at it with a drifting
+# estimate and verify arrival with a scan. These checks flag the markers
+# most likely to wedge a mission, without failing the conversion (warned
+# on stdout; the mission scores truth-arrival separately):
+# - clearance: goal closer than CLEARANCE_M to a box leaves no room for
+#   estimate error inside the arrival radius (dock_door class);
+# - flat-wall adjacency: goal beside a long flat face in an otherwise open
+#   area is unobservable along the wall (scan matching ties), so the last
+#   half meter cannot be verified from any single viewpoint;
+# - grade: goal on a graded patch needs traction the arrival hold may not
+#   have (informational; slope missions keep such goals deliberately).
+def check_places(boxes, places, patches):
+    found = []
+    for p in places:
+        px, py = p["x_m"], p["y_m"]
+        nearest, face_len = None, 0.0
+        for b in boxes:
+            dx = max(b["x0"] - px, 0.0, px - b["x1"])
+            dy = max(b["y0"] - py, 0.0, py - b["y1"])
+            d = math.hypot(dx, dy)
+            if nearest is None or d < nearest:
+                nearest = d
+                # Tangent extent of the closest face (ambiguity lever arm).
+                if dx >= dy:
+                    face_len = b["x1"] - b["x0"]
+                else:
+                    face_len = b["y1"] - b["y0"]
+        if nearest is not None and nearest < 1.0:
+            found.append(
+                f"place {p['place_id']}: {nearest:.2f} m from nearest box "
+                f"(< 1.0 m clearance; arrival needs estimate room)")
+            if face_len > 3.0:
+                found.append(
+                    f"place {p['place_id']}: beside a {face_len:.1f} m flat "
+                    f"face (along-wall ambiguity: the final approach cannot "
+                    f"be verified from one viewpoint)")
+        for t in patches:
+            if (t["x0"] <= px <= t["x1"] and t["y0"] <= py <= t["y1"]
+                    and math.hypot(t.get("grade_x", 0.0),
+                                    t.get("grade_y", 0.0)) > 0.05):
+                found.append(
+                    f"place {p['place_id']}: on graded patch "
+                    f"{t['patch_id']} (arrival hold needs traction)")
+    return found
 
 
 def main():
@@ -238,6 +286,8 @@ def convert_one(mid, m, matlib, args, out_dir):
     world = {"format": WORLD_FORMAT, "boxes": boxes, "places": places,
              "materials": list(materials.values()), "zones": zones,
              "terrain": patches, "slabs": [], "environment": []}
+    for w in check_places(boxes, places, patches):
+        warn.append(w)
     suffix = f".{args.variant}" if args.variant else ""
     wpath = out_dir / f"{mid}{suffix}.json"
     wpath.write_text(json.dumps(world, indent=1) + "\n")
