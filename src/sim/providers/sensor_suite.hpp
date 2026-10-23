@@ -7,6 +7,7 @@
 #include "robot/iface/envelope.hpp"
 #include "robot/platform/description.hpp"
 #include "sim/providers/lidar2d.hpp"
+#include "sim/providers/lidar3d.hpp"
 #include "sim/providers/sim_imu.hpp"
 #include "sim/providers/sim_motion.hpp"
 #include "sim/world/world.hpp"
@@ -49,6 +50,7 @@ class SimSensorSuite {
   // Rejected (non-finite) input keeps the previous mount. Default zeros.
   void set_lidar_mount(const double xyz_m[3], const double rpy_rad[3]) {
     lidar_.set_mount(xyz_m, rpy_rad);
+    lidar3d_.set_mount(xyz_m, rpy_rad);
   }
   void set_imu_mount(const double xyz_m[3], const double rpy_rad[3]) {
     imu_.set_mount(xyz_m, rpy_rad);
@@ -61,12 +63,14 @@ class SimSensorSuite {
 
   SimMotionEndpoint& motion() { return motion_; }
   Sim2DLidarProvider& lidar() { return lidar_; }
+  Sim3DLidarProvider& lidar3d() { return lidar3d_; }
   SimImuProvider& imu() { return imu_; }
 
  private:
   world::World* world_;
   SimMotionEndpoint motion_;
   Sim2DLidarProvider lidar_;
+  Sim3DLidarProvider lidar3d_;
   SimImuProvider imu_;
   DeliveryConfig delivery_;
   std::deque<robot::iface::ObservationFrame> delivery_queue_;

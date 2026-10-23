@@ -26,11 +26,13 @@ SimSensorSuite::SimSensorSuite(world::World* world)
     : world_(world),
       motion_(world),
       lidar_(world, "sim.lidar2d", 72, 10.0f),
+      lidar3d_(world, "sim.lidar3d", 16, 72, 10.0f),
       imu_(world) {}
 
 void SimSensorSuite::register_all(robot::app::IRobot& app) {
   app.register_provider(motion_.descriptor());
   app.register_provider(lidar_.descriptor());
+  app.register_provider(lidar3d_.descriptor());
   app.register_provider(imu_.descriptor());
 }
 
@@ -89,6 +91,7 @@ void SimSensorSuite::set_mounts(
   for (const auto& s : sensors) {
     if (s.link == lidar_.descriptor().frame_id) {
       lidar_.set_mount(s.xyz_m, s.rpy_rad);
+      lidar3d_.set_mount(s.xyz_m, s.rpy_rad);
     } else if (s.link == imu_.descriptor().frame_id) {
       imu_.set_mount(s.xyz_m, s.rpy_rad);
     }

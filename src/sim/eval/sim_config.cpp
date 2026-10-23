@@ -190,6 +190,15 @@ bool load_sim_config(const std::string& path, SimConfig& config,
       }
       out.lidar_max_range_m = static_cast<float>(v);
     }
+    const Json* rings = lidar->find("rings");
+    if (rings != nullptr) {
+      if (!rings->is_num() || rings->as_num() <= 0.0 ||
+          rings->as_num() != std::floor(rings->as_num())) {
+        err = "lidar.'rings' must be a positive integer";
+        return false;
+      }
+      out.lidar_rings = static_cast<int>(rings->as_num());
+    }
   }
   config = out;
   err.clear();

@@ -26,6 +26,7 @@ struct SimConfig {
   providers::ImuRealismConfig imu_realism;  // all zeros = exact truth
   int lidar_beams = 72;
   float lidar_max_range_m = 10.0f;
+  int lidar_rings = 16;  // 3D producer ring count; azimuths reuse beams
 };
 
 // Fail-closed load: untouched output on any mismatch.

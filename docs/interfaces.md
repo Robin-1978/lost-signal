@@ -34,7 +34,9 @@ flowchart TB
 - `Lidar2DScan`: planar ranges + angular spacing. Absent return, never
   max-range fill.
 - `Lidar3DCloud`: one rotation, `ring_count` rings, per-point
-  `time_offset_s` in `[-scan_period, 0]`.
+  `time_offset_s` in `[-scan_period, 0]`. Produced SIM-side by
+  `Sim3DLidarProvider` (16 rings over ±15° default, sensor-frame points,
+  misses dropped); no ROBOT consumer yet.
 
 Wire-agnostic: in-process struct today, serialized form tomorrow. Version
 bump on meaning change (`version.hpp`).

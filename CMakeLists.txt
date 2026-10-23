@@ -224,6 +224,7 @@ add_library(lost_signal_sim_providers STATIC
   src/sim/providers/sim_motion.cpp
   src/sim/providers/sim_imu.cpp
   src/sim/providers/lidar2d.cpp
+  src/sim/providers/lidar3d.cpp
   src/sim/providers/sensor_suite.cpp
   src/sim/providers/static_map.cpp
   src/sim/providers/replay.cpp
@@ -477,6 +478,14 @@ target_link_libraries(test_lidar PRIVATE
   lost_signal_sim_providers
 )
 add_test(NAME lidar COMMAND test_lidar)
+
+add_executable(test_lidar3d
+  tests/test_lidar3d.cpp
+)
+target_link_libraries(test_lidar3d PRIVATE
+  lost_signal_sim_providers
+)
+add_test(NAME lidar3d COMMAND test_lidar3d)
 
 add_executable(test_sim_robot
   tests/test_sim_robot.cpp

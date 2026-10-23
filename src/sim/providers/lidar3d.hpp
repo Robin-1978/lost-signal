@@ -1,0 +1,64 @@
+#pragma once
+
+#include <cstdint>
+
+#include "robot/core/transform.hpp"
+#include "robot/iface/message.hpp"
+#include "robot/iface/provider.hpp"
+
+// Sim3DLidar: true 3D multi-line raycast from the sensor pose through
+// WorldTruth (SIM-owned generation). ROBOT only sees the typed
+// Lidar3DCloud. Same scene split as the 2D producer: static geometry via
+// the engine (mj_ray vs floor + boxes, robot geoms excluded), actors via
+// the analytic upright cylinder. Points are sensor-frame (x forward,
+// y left, z up), azimuth-major (all rings per azimuth step, like a
+// rotating scanner); misses are dropped (real-driver behavior, never
+// max-range fill); intensity is constant 1.0 (no reflectance model).
+namespace lost_signal::sim::world {
+class World;
+}  // namespace lost_signal::sim::world
+
+namespace lost_signal::sim::providers {
+
+class Sim3DLidarProvider
+    : public robot::iface::ISensorProvider<robot::iface::Lidar3DCloud> {
+ public:
+  // VLP-16-like defaults: 16 rings over [-15, +15] deg, 72 azimuths.
+  Sim3DLidarProvider(world::World* world, const char* endpoint_id,
+                     int ring_count = 16, int azimuth_beams = 72,
+                     float max_range_m = 10.0f);
+
+  const robot::iface::EndpointDescriptor& descriptor() const override;
+  bool is_ready() const override { return world_ != nullptr; }
+  bool poll(robot::iface::Lidar3DCloud& out) override {
+    return poll(out, true);
+  }
+  // include_actors=false renders static geometry only. Same rays, same
+  // stamps (mirrors the 2D reference pass).
+  bool poll(robot::iface::Lidar3DCloud& out, bool include_actors);
+  // Sensor mount extrinsics in the base frame (xyz meters, RPY rad,
+  // REP-103). Non-finite input is rejected, previous mount kept.
+  void set_mount(const double xyz_m[3], const double rpy_rad[3]);
+  // Pre-run geometry tuning (SIM harness only): positive counts/ranges,
+  // finite FOV with min < max; otherwise rejected with previous kept.
+  void set_rings(int ring_count);
+  void set_azimuths(int azimuth_beams);
+  void set_vertical_fov(double min_elev_rad, double max_elev_rad);
+  void set_max_range(float max_range_m);
+  void set_scan_period(float scan_period_s);
+
+ private:
+  world::World* world_ = nullptr;
+  robot::iface::EndpointDescriptor desc_;
+  int ring_count_ = 16;
+  int azimuth_beams_ = 72;
+  double min_elev_rad_ = -0.2617993877991494;  // -15 deg
+  double max_elev_rad_ = 0.2617993877991494;   // +15 deg
+  float max_range_m_ = 10.0f;
+  float scan_period_s_ = 0.1f;
+  std::uint64_t seq_ = 0;
+  double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
+  double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};
+};
+
+}  // namespace lost_signal::sim::providers

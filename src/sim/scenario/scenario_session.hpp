@@ -74,6 +74,9 @@ class ScenarioSession {
     set_sensor_realism(sim.delivery, sim.imu_realism);
     suite_.lidar().set_beams(sim.lidar_beams);
     suite_.lidar().set_max_range(sim.lidar_max_range_m);
+    suite_.lidar3d().set_rings(sim.lidar_rings);
+    suite_.lidar3d().set_azimuths(sim.lidar_beams);
+    suite_.lidar3d().set_max_range(sim.lidar_max_range_m);
   }
   const ObjectiveDriver& objectives() const { return driver_; }
 
