@@ -37,8 +37,8 @@ flowchart LR
 
 ## ROBOT estimate vs SIM truth (optimizer reference)
 
-- ROBOT estimate: `AutonomyCoordinator::estimate()` (v1: odometry
-  dead-reckoning from measured twists only) is exposed read-only via
+- ROBOT estimate: `AutonomyCoordinator::estimate()` (fused odometry:
+  gyro-led yaw plus scan-match/SLAM corrections) is exposed read-only via
   `RobotApplication::diagnostics().estimate`. No truth seeds or corrects it.
 - SIM truth: `WorldTruth{body_x_m, body_y_m, body_yaw_rad, ...}` recorded per
   step in the episode.

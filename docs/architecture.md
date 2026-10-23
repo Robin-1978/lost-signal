@@ -29,7 +29,7 @@ flowchart TB
   subgraph SIM["SIM only (src/sim)"]
     World["World / physics<br/>WorldTruth, contacts"]
     Sess["ScenarioSession<br/>steps world, submits tasks"]
-    Snap["MissionSnapshot<br/>render / score / replay"]
+    Snap["EpisodeRecorder<br/>EvalStep: score / replay / viewer"]
   end
 
   World --> SimProv
@@ -45,7 +45,7 @@ flowchart TB
 Rules:
 
 - SIM owns world truth, physics, actors, scenario facts, rendering, scoring,
-  replay truth, `MissionSnapshot`.
+  replay truth, recorded episodes (`EvalStep` / `EpisodeRecorder`).
 - ROBOT owns estimation, perception, mapping, prediction, planning,
   validation, control, safety, task policy.
 - Truth may be logged as an offline label/score. It must never enter the
@@ -80,7 +80,7 @@ ROBOT -> provider. One command space, explicit units, expiring.
 
 | Field | Meaning |
 |---|---|
-| `space` | `kStop` or `kYawRate` (new spaces are new enum values) |
+| `space` | `kStop` / `kYawRate` / `kSteerAngle` / `kHolonomic` (new spaces are new enum values) |
 | `stamp_ns / expiry_ns` | issue time + watchdog deadline (v1: 200 ms) |
 | `forward_mps / yaw_rate_radps` | SI; all zero when `kStop` |
 
@@ -121,7 +121,7 @@ world.step(20ms)
   -> SimSensorSuite.poll_envelope()    # typed messages -> envelope
   -> app.publish_observation(obs)             # registry + channel gate
   -> app.tick(now)                            # drain -> coordinator -> cmd
-  -> provider.consume_command(cmd)            # validated -> plant
+  -> app.take_actuator(now) -> suite.consume(act)  # validated joints -> plant
 ```
 
 Replay uses the same path: recorded frames are republished through

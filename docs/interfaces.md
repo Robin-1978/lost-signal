@@ -47,13 +47,15 @@ bump on meaning change (`version.hpp`).
 - `ISensorProvider<T>::poll(T&)`: `Sim2DLidar`, `SimImu` (+ `SimMotionEndpoint`)
   (`src/sim/providers/`), `Real2DLidar`
   (`src/robot/providers/`, replay/native, no SDK);
-- `IMotionEndpoint`: `consume_command(cmd)` + `poll_feedback(MotionFeedback)`
-  (`SimMotionEndpoint`, body twist only — per-joint modes are future work).
+- `IMotionEndpoint`: `consume_command(ActuatorCommand)` +
+  `poll_feedback(MotionFeedback)` (`SimMotionEndpoint`; per-joint duties
+  for all four modes — diff 2 / ackermann 2+2 / swerve 4+4 / mecanum 4 —
+  with quantized joint feedback, `StaticMap` + replay alongside).
 
 ```mermaid
 flowchart LR
   IP["IProvider"] --> SP["ISensorProvider<T><br/>lidar + imu messages"]
-  IP --> ME["IMotionEndpoint<br/>body command + feedback"]
+  IP --> ME["IMotionEndpoint<br/>per-joint command + feedback"]
   SP --> S2D["Sim2DLidar / SimImu / SimMotion"]
   SP --> R2D["Real2DLidar (replay)"]
   ME --> SM["SimMotionEndpoint"]
@@ -88,13 +90,16 @@ bicycle model with a low-speed floor — a car cannot turn standing still),
 `HolonomicChassis` in swerve (`kSwerveDuty` 4+4, cosine-compensated) and
 mecanum (`kMecanumDuty` 4 drives) flavors (`kYawRate` runs with lateral 0).
 Each `to_actuator` closes its own loops (rear/drive PID + model feedforward,
-steer position->rate cascade) against measured joints and returns a
-mode-correct safe zero without valid feedback. The sim plant mirrors the
-same four modes (motor-force integration per DC curve with emergent lag,
-dissipative service brakes, velocity-servo steers, rigid-body follow per
-chassis kinematics). Stops are closed-loop holds at zero through the wheel
-loops when joints are known (the force plant has no passive drag, so
-open-loop zero duty would coast); blind stops stay SafeZero.
+steer position->rate cascade) against measured joints, stepping on measured
+dt (stamp-derived per call, nominal plant step on first call, clamped to
+the command watchdog — never the old fixed 0.1 s), and returns a
+mode-correct safe zero without valid feedback. The sim plant is the MuJoCo
+engine: duties become joint efforts through the same DC-curve +
+service-brake math, contacts resolve in the engine (viscous drag as native
+joint damping), truth is read back from engine state. Stops are
+closed-loop holds at zero through the wheel loops when joints are known
+(open loop coasts down on joint damping over tens of seconds); blind stops
+stay SafeZero.
 
 `src/robot/platform/chassis_registry.hpp`. `ChassisRegistry::global()` maps
 kind names to factories; builtins self-register via static

@@ -30,7 +30,7 @@ flowchart TB
   subgraph SIM["SIM only — src/sim (may depend on robot)"]
     direction TB
     World["sim_world<br/>World + WorldTruth"]
-    SProv["sim_providers<br/>SimPlatform + Sim2DLidar + SimImu + SimMotion"]
+    SProv["sim_providers<br/>SimSensorSuite + SimMotion + Sim2DLidar + SimImu"]
     Eval["sim_eval<br/>EpisodeRecorder + scoring"]
     Scn["sim_scenario<br/>ScenarioSession + SimRobot"]
     World --> SProv
@@ -65,7 +65,7 @@ flowchart TB
 flowchart LR
   subgraph Live["Live loop (same-cycle, in-process)"]
     direction LR
-    W["WorldTruth"] -->|"truth → measurement"| P["Providers<br/>SimPlatform / Sim2DLidar"]
+    W["WorldTruth"] -->|"truth → measurement"| P["Providers<br/>SimSensorSuite / SimMotion / Sim2DLidar / SimImu"]
     P -->|"ObservationFrame<br/>typed, validated"| Ch(["RuntimeChannel<br/>bounded queue"])
     Ch -->|"drain"| A["RobotApplication::tick()<br/>Coordinator → safe command"]
     A -->|"MotionCommand<br/>expiry enforced"| Ch2(["RuntimeChannel<br/>cmd queue"])
@@ -127,7 +127,11 @@ sequenceDiagram
   P->>W: apply to plant
 ```
 
-v1 骨架 planner 恒发 safe-stop；包络、过期、空队列全部 fail-closed。
+`AutonomyCoordinator` runs the full pipeline every decision
+(estimator → perception → mapper/SLAM → behavior → local planner → validator
+→ controller → safety gate); safe stop comes out of the gates (no
+observation, invalid command, safety trip, controlled-stop latch), never
+from a skeleton stub. 包络、过期、空队列全部 fail-closed。
 
 ## 5. 任务意图流（operator / scenario → robot）
 
@@ -166,7 +170,8 @@ flowchart TB
   RW --> Train["Train RL out-of-process"]
 ```
 
-- `AutonomyCoordinator::estimate`（v1 里程计航位推算）随 `diagnostics()` 只读带出。
+- `AutonomyCoordinator::estimate`（fused odometry：gyro-led yaw +
+  scan-match/SLAM corrections）随 `diagnostics()` 只读带出。
 - 对比公式：`pos_err = hypot(est.x - truth.x, est.y - truth.y)`，
   `yaw_err = |wrap_pi(est.yaw - truth.yaw)|`（`sim/eval/scoring.cpp`）。
 - 测试 `test_truth_isolation` 断言：估计存在、误差有限、reward 纯离线、

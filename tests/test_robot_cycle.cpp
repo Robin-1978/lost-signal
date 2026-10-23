@@ -41,7 +41,8 @@ int main() {
   rogue.ranges_m = {3.0f};
   assert(!app.publish_observation(rogue));
 
-  // Valid observation still safe-stops in v1 skeleton, but is accepted.
+  // Valid observation but no goal yet: holds safe stop while the
+  // observation is accepted into the channel.
   iface::ObservationFrame good;
   good.sequence = 1;
   good.stamp_ns = 3'000'000;

@@ -8,7 +8,7 @@ module directly.
 
 ```mermaid
 flowchart LR
-  Obs["ObservationFrame<br/>(validated, sequenced)"] --> Est["IEstimator<br/>estimation/estimator.hpp<br/>DeadReckoningEstimator"]
+  Obs["ObservationFrame<br/>(validated, sequenced)"] --> Est["IEstimator<br/>estimation/estimator.hpp<br/>FusedOdometryEstimator"]
   Est -->|"EstimatedState"| Per["IPerception<br/>perception/perception.hpp<br/>NullPerception"]
   Obs --> Per
   Per -->|"PerceptionResult<br/>tracks + scan_ok"| Beh["IBehaviorPolicy<br/>behavior/behavior.hpp<br/>WaitOnIntrusionBehavior"]
@@ -162,8 +162,11 @@ route, pre-activation hold).
   on policy names.
 - Semantic places (`place_id`) resolve through the ROBOT map provider into
   estimated-frame goals; unknown ids return an invalid handle. Goals are
-  async: `request_goal` arms immediately, `goal_status` polls
-  (`active/done/failed/canceled`), `cancel_goal` withdraws, a new request
+  async: `request_goal` arms only once the executive accepts (rejected
+  requests — unknown place, inactive executive, empty request id — arm
+  nothing and the coordinator never plans), `goal_status` polls
+  (`active/done/failed/canceled`), successful `cancel_goal` withdraws the
+  coordinator's route (failed cancels leave it untouched), a new request
   preempts the running goal, and arrival (estimate inside 0.5 m of the
   goal) completes it. SIM submits the same typed intents as an operator.
 - `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
@@ -227,7 +230,7 @@ route, pre-activation hold).
 - Mapless loop missions close the loop in the headless scenario
   (`tests/test_loop_closure.cpp`): a 4x4 m square past landmark boxes,
   keyframed, closures counted in the offline diagnostics; the body returns
-  to the start dock with bounded truth miss.
+  to the start dock with bounded truth miss and zero judge-fired steps.
 - SIM sensor honesty: the suite reports the true yaw rate (the estimator's
   slip gate trusts gyro over odometry, so a hard-zero gyro would freeze the
   heading through every turn); S7 adds seeded delivery shaping (whole-tick
@@ -253,21 +256,25 @@ route, pre-activation hold).
   SafeZero. The SIM service brake (`sim/world/service_brake.hpp`) is the
   dissipative counterpart, driven by a SIM-side hook, never a ROBOT channel.
 - Rolling contact (`sim/world/contact.hpp`) shares the ROBOT feedforward
-  form (`R = rr*load*tanh(v/s) + c*v`): stiction holds slow wheels exactly
-  (no creep; gentle longitudinal grades stick via a SIM-side incline hook),
-  drag is dissipative only (never reverses). Traction-limit wheelspin needs
-  wheel-vs-body slip state and waits for S4+ force bodies.
-- Rigid coupling: every patch force acts on the vehicle mass, split evenly
-  over the driven wheels (a lone wheel carries M/n), so symmetric motion
-  integrates exactly ΣF/M; yaw stays kinematic (no yaw-inertia lag — the
-  HIL was tuned around instant response, and no fake inertia is added).
+  form (`R = rr*load*tanh(v/s) + c*v`) as the tested effort spec (unit
+  tests pin the math); the live plant is the MuJoCo engine, where viscous
+  drag arrives as native joint damping and truth is read back from engine
+  state. Wheel-vs-body slip is reported engine-side
+  (`WorldTruth.drive_slipping`, SIM-side offline labels only — never a
+  ROBOT channel).
+- Rigid coupling (S1–S3 analytic plant, deleted in the M2 cutover): every
+  patch force acted on the vehicle mass, split evenly over the driven
+  wheels, so symmetric motion integrated exactly ΣF/M with kinematic yaw.
+  The effort numbers survive as the tested spec above; the engine owns
+  integration now and no exact-zero semantics are pinned on live truth.
 - Actors carry a motion policy (`sim/world/actor_behavior.hpp`): constant
   velocity (default, yesterday's straight lines), waypoint follow (loop or
   latched stop), seeded wander (splitmix64 stream per actor — same seed +
   same dt sequence is bit-identical).
 - Scenario orchestration (`sim/scenario/`): sim-time multi-rate scheduler
-  (scan/decision/record deadlines; defaults run everything every plant
-  step), objective driver (place list through the operator `request_goal`
+  (scan/record taps run every plant step by default; the decision tap is
+  inert — the ROBOT decision branch is gated by the coordinator's own
+  10 Hz), objective driver (place list through the operator `request_goal`
   seam; ROBOT Done/Failed advances, truth arrival counted offline only),
   truth-side collision judge (circle-vs-box/actor contact + clearances,
   recorded per step into the episode for scoring — never a ROBOT input).

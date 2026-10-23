@@ -7,16 +7,17 @@ map editor / campaign visuals stay out. The physics backend is MuJoCo
 (M-track below); the M2 cutover deleted the analytic S1–S3 integration
 loop (effort math stays as the tested spec in contact/motor unit tests).
 
-## MuJoCo backend track (M0–M3, in progress)
+## MuJoCo backend track (M0–M3, done)
 
 - M0 (done): MuJoCo builds from source (pinned 3.16.0, FetchContent),
   link + drop determinism gate green.
-- M1 (done): `MujocoBackend` behind a `World(PhysicsBackend)` switch
-  (default analytic, ROBOT untouched): XML-generated diff base
+- M1 (done, historical): `MujocoBackend` behind a `World(PhysicsBackend)`
+  switch (default analytic, ROBOT untouched): XML-generated diff base
   (freejoint + 2 hinges + ball casters), duty-implied motor force +
   smoothing service brake per main's duty path verbatim, 1 ms substeps,
   truth read back for the unchanged providers. Parity gate:
-  `test_mujoco_backend` (behaviors + crossing HIL + determinism).
+  `test_mujoco_backend` (behaviors + crossing HIL + determinism). The
+  switch itself was deleted in M2 — engine-only since.
 - M2 (done): all chassis on the engine, traction/slip flags in WorldTruth
   (SIM-side labels only), viscous drag via native joint damping, slope P1
   regression on the engine, analytic integration deleted (tests re-pinned
@@ -40,9 +41,12 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
 
 ## Where we start (already on the chain)
 
-- `World`: force-driven truth (DC motor curve -> wheel accel, dissipative
-  service brakes), diff/ackermann/swerve/mecanum rigid follow, static
-  boxes + linear actors + named places.
+- `World`: engine-owned truth (MuJoCo integrates; duties become joint
+  efforts through the DC-curve + service-brake math, viscous drag as
+  native joint damping), all four chassis on the engine, static boxes +
+  linear actors + named places. The S1–S3 analytic force-integration loop
+  is deleted (effort math kept as the tested spec in contact/motor unit
+  tests).
 - Providers: motion/IMU/lidar2d/suite/static-map/replay/package-map.
 - `SimRobot` + `ScenarioSession` (world-stepping HIL), eval
   (episode/scoring/JSONL recording/replay/drive-profile-io).
@@ -50,7 +54,7 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
 
 ## Phases (in order; each lands green before the next starts)
 
-### S1 Motor physics (small) — landed
+### S1 Motor physics (small) — landed (historical: analytic integration loop deleted in M2; effort math kept as the tested spec)
 Port `hardware/actuators/electric_drive` (current-limited 4-quadrant DC
 curve, ~30 lines) + `service_brake` (torque + apply/release lag).
 Replace the first-order lag in `World::step` with force integration:
@@ -62,7 +66,7 @@ Accept: step-response unit test pins the curve (stall force at 0 speed,
 zero at free speed, electrical braking authority on oppose); all HIL
 tests unchanged behaviorally (re-tune only if the curve moves settling).
 
-### S2 Tire contact (small) — landed
+### S2 Tire contact (small) — landed (historical: analytic integration loop deleted in M2; effort math kept as the tested spec)
 Port `hardware/physics/tire_contact` (Coulomb + smoothing + viscous,
 gravity is physics): per-wheel contact force opposes slip, added to the
 motor force before integration. Same `DriveProfile` supplies the
@@ -70,7 +74,7 @@ coefficients.
 Accept: standstill holds on grade without creep; breakaway + rolling
 covered by unit tests; sim_nav corridor run unchanged.
 
-### S3 Vehicle dynamics per chassis (medium) — landed
+### S3 Vehicle dynamics per chassis (medium) — landed (historical: analytic integration loop deleted in M2; effort math kept as the tested spec)
 Replace the kinematic rigid-follow with force-driven rigid bodies per
 mode (diff / ackermann with servo + linkage / swerve / mecanum), adapted
 from main `hardware/vehicle/*` minus the MuJoCo/contact-truth internals.
@@ -93,7 +97,8 @@ reproduces the same decision sequence.
 ### S5 Scenario systems (medium) — landed
 Port the orchestration that makes scenarios more than a world step:
 - `deterministic_scheduler` (multi-rate sim-time deadlines: scan /
-  decision / replay cadences from sim time, never wall clock).
+  record taps from sim time, never wall clock; the decision tap is inert —
+  the ROBOT branch gates on the coordinator's own 10 Hz).
 - Scenario goal driver (objective list -> place goals through the same
   `request_goal` seam an operator uses; arrival/completion counted
   truth-side for scoring, never fed back into ROBOT).
@@ -124,9 +129,13 @@ Accept: dropout/latency unit tests; HIL tests pass with realism on
 
 ## Explicitly OUT (not deployable sim)
 
-- `game/client/*` (UI, renderers, audio, map editor), campaign visuals,
-  `VisualDefinition`/model assets.
-- MuJoCo bindings (`mujoco_simulation`): analytic plant is the model.
+- `game/client/*` on main (game UI, audio, campaign visuals, mission
+  content stack), `VisualDefinition`/model assets. Our own SIM-side
+  viewer + map editor (`src/sim/viewer/`, M3) are IN: truth-reading debug
+  tooling with no game assets and no ROBOT input — not a port of the game
+  client.
+- MuJoCo bindings (`mujoco_simulation`): the engine is the model since M2
+  (this bullet predates the cutover).
 - Manipulator (whole stack, both sides).
 - `world_activity` weather/incidents, `field_dispatch`/`field_operator`
   game logic, replay shadow/observation-only models (unwired on main).

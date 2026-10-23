@@ -162,7 +162,10 @@ int main() {
     auto run = []() {
       sim::scenario::ScenarioSession session;
       session.setup_world().add_place({"dock", 4.0, 0.0, 0.0});
-      session.set_cadence(0.02, 0.1, 0.02);  // decide at 10 Hz, rest 50 Hz
+      // NOTE: the 0.1 decision arg is currently inert (the coordinator
+      // gates its own decision branch at 10 Hz); this run only proves
+      // same-args determinism of the scan/record taps.
+      session.set_cadence(0.02, 0.1, 0.02);
       session.set_objectives({"dock"});
       std::vector<robot::iface::MotionCommand> cmds;
       for (int i = 0; i < 100; ++i) {

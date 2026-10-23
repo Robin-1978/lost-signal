@@ -16,8 +16,11 @@ ScenarioSession::ScenarioSession()
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();
   (void)app_.activate();
-  // Default cadence runs every tap each 20 ms plant step: identical to the
-  // pre-scheduler session. Scenarios opt into slower taps explicitly.
+  // Default cadence runs the scan/record taps each 20 ms plant step:
+  // identical to the pre-scheduler session. The ROBOT decision branch
+  // still runs at the coordinator's own 10 Hz (decision_period_s is
+  // accepted but currently inert). Scenarios opt into slower taps
+  // explicitly.
   scheduler_.reset(0.02, 0.02, 0.02);
 }
 
