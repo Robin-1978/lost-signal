@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Robot stack: deployable, must never depend on sim.
 add_library(lost_signal_robot_core STATIC
   src/robot/core/version.cpp
+  src/robot/core/transform.cpp
 )
 target_include_directories(lost_signal_robot_core PUBLIC src)
 
@@ -37,6 +38,7 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/holonomic_kinematics.cpp
   src/robot/platform/drive_profile.cpp
   src/robot/platform/chassis_registry.cpp
+  src/robot/platform/transform_tree.cpp
   # Ackermann/holonomic controllers live here (not in robot_control) because
   # they call the canonical platform kinematics; robot_control must stay
   # below robot_platform (cf. the inlined twist math in wheel_controller).
@@ -490,6 +492,12 @@ add_executable(test_map_editor
 )
 target_link_libraries(test_map_editor PRIVATE lost_signal_sim_viewer)
 add_test(NAME map_editor COMMAND test_map_editor)
+
+add_executable(test_transform_tree
+  tests/test_transform_tree.cpp
+)
+target_link_libraries(test_transform_tree PRIVATE lost_signal_robot_platform)
+add_test(NAME transform_tree COMMAND test_transform_tree)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
