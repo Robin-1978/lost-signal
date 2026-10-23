@@ -24,6 +24,10 @@ struct ObservationFrame {
   // Scan layout: angle_min + i * increment covers the full rotation.
   double scan_angle_min_rad = -3.141592653589793;
   double scan_angle_increment_rad = 0.0;
+  // Return strength per beam, parallel to ranges_m when intensity_valid.
+  // Sensing metadata only: the ROBOT never maps it back to materials.
+  std::vector<float> intensities;
+  bool intensity_valid = false;
 
   // Static-reference scan: expected returns from the static world (map
   // raycast or survey), same ordering as ranges_m. Lets perception split

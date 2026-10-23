@@ -6,6 +6,8 @@
 #include "robot/iface/message.hpp"
 #include "robot/providers/real_lidar2d.hpp"
 #include "sim/providers/lidar2d.hpp"
+#include "sim/providers/lidar3d.hpp"
+#include "sim/providers/reflectivity.hpp"
 #include "sim/providers/sim_imu.hpp"
 #include "sim/world/world.hpp"
 
@@ -199,6 +201,71 @@ int main() {
   // Polymorphism: typed messages behind IMessage-compatible use.
   robot::iface::IMessage* msg = &scan;
   assert(msg->valid() && msg->sequence() >= 1);
+
+  // Reflectivity (SIM-side synthesis, measurement-only downstream):
+  // helper pins first, then provider beams, then the envelope carry.
+  {
+    using sim::providers::detail::return_intensity;
+    using sim::providers::detail::surface_reflectivity;
+    sim::world::World wr;
+    assert(std::abs(surface_reflectivity(wr, 0.0, 0.0, 0.0) - 0.30) < 1e-12);
+    wr.set_materials({{"ice", 0.2, 0.005, 0.006, 1.0, 0.1}});
+    wr.set_material_zones({{"slick", -5.0, -5.0, 5.0, 5.0, "ice"}});
+    assert(std::abs(surface_reflectivity(wr, 0.0, 0.0, 0.0) - 0.1) < 1e-12);
+    assert(std::abs(surface_reflectivity(wr, 9.0, 9.0, 0.0) - 0.30) < 1e-12);
+    wr.set_static_boxes({{2.0, -0.5, 3.0, 0.5, 1.0}});
+    assert(std::abs(surface_reflectivity(wr, 2.5, 0.0, 0.5) - 0.68) < 1e-12);
+    // Attenuation: nearer is brighter; misses read exactly 0.
+    const float near = return_intensity(wr, 0.0, 0.0, 0.0, 1.0, false, false);
+    const float far = return_intensity(wr, 0.0, 0.0, 0.0, 5.0, false, false);
+    assert(near > far && far > 0.0f);
+    assert(std::abs(near - 0.1f / (1.0f + 0.015f)) < 1e-6);
+    assert(return_intensity(wr, 0.0, 0.0, 0.0, 2.0, false, true) == 0.0f);
+    const float actor =
+        return_intensity(wr, 0.0, 0.0, 0.5, 2.0, true, false);
+    assert(std::abs(actor - 0.52f / (1.0f + 0.015f * 4.0f)) < 1e-6);
+  }
+  // Provider beams: box return strong, miss zero, sizes parallel.
+  {
+    sim::world::World wb;
+    robot::iface::ActuatorCommand enable;
+    enable.mode = robot::iface::ActuatorMode::kDiffDuty;
+    wb.apply(enable);
+    wb.step(0.02);
+    wb.set_static_boxes({{2.0, -0.5, 3.0, 0.5, 1.0}});
+    wb.step(0.02);
+    sim::providers::Sim2DLidarProvider sim2d(&wb, "sim.lidar2d", 72, 10.0f);
+    robot::iface::Lidar2DScan s2;
+    assert(sim2d.poll(s2));
+    assert(s2.intensities.size() == s2.ranges_m.size());
+    const int hit = argmin_range(s2);
+    assert(s2.ranges_m[static_cast<std::size_t>(hit)] < 3.0f);
+    const float expect =
+        0.68f /
+        (1.0f + 0.015f * s2.ranges_m[static_cast<std::size_t>(hit)] *
+                    s2.ranges_m[static_cast<std::size_t>(hit)]);
+    assert(std::abs(s2.intensities[static_cast<std::size_t>(hit)] - expect) <
+           1e-5);
+    // A side beam missing everything reads max range with zero intensity.
+    assert(s2.intensities[0] == 0.0f);
+    // 3D cloud: same model per point (no constant-1.0 fill).
+    sim::providers::Sim3DLidarProvider sim3d(&wb, "sim.lidar3d", 16, 72,
+                                             10.0f);
+    robot::iface::Lidar3DCloud cloud;
+    assert(sim3d.poll(cloud));
+    assert(!cloud.points.empty());
+    bool strong_seen = false;
+    for (const auto& p : cloud.points) {
+      assert(p.intensity >= 0.0f && p.intensity <= 1.0f);
+      strong_seen |= p.intensity > 0.3f;  // box face up close
+    }
+    assert(strong_seen);
+    // Composite carries the winning beam's intensity per azimuth.
+    std::vector<float> cr, ci;
+    assert(sim3d.poll_composite(cr, ci, true));
+    assert(cr.size() == 72 && ci.size() == 72);
+    assert(ci[static_cast<std::size_t>(hit)] > 0.3f);
+  }
 
   std::printf("lidar ok\n");
   return 0;

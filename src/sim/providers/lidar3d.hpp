@@ -15,7 +15,8 @@
 // the analytic upright cylinder. Points are sensor-frame (x forward,
 // y left, z up), azimuth-major (all rings per azimuth step, like a
 // rotating scanner); misses are dropped (real-driver behavior, never
-// max-range fill); intensity is constant 1.0 (no reflectance model).
+// max-range fill); intensity follows the shared return-strength model
+// (material reflectivity + distance attenuation, SIM-side only).
 namespace lost_signal::sim::world {
 class World;
 }  // namespace lost_signal::sim::world
@@ -43,8 +44,11 @@ class Sim3DLidarProvider
   // (angle_min -pi, even spacing, `azimuth_beams` bins). Ground = world
   // hit height below `kGroundCutM` (floor/paint excluded, plates kept).
   // Misses (all rings ground or out of range) read max range. Same
-  // generation as poll(), same stamps.
+  // generation as poll(), same stamps. The intensities overload reports
+  // the winning beam's return strength per azimuth (0 on misses).
   bool poll_composite(std::vector<float>& ranges_m, bool include_actors);
+  bool poll_composite(std::vector<float>& ranges_m,
+                      std::vector<float>& intensities_m, bool include_actors);
   // Sensor mount extrinsics in the base frame (xyz meters, RPY rad,
   // REP-103). Non-finite input is rejected, previous mount kept.
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);

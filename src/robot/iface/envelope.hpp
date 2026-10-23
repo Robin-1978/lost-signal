@@ -37,6 +37,16 @@ inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
   o.scan_valid = true;
   o.scan_angle_min_rad = scan.angle_min_rad;
   o.scan_angle_increment_rad = scan.angle_increment_rad;
+  // Intensities ride parallel when the provider synthesized them; absent
+  // (legacy/unknown) leaves the flag false, never a zero-filled guess.
+  if (!scan.intensities.empty() &&
+      scan.intensities.size() == scan.ranges_m.size()) {
+    o.intensities = scan.intensities;
+    o.intensity_valid = true;
+  } else {
+    o.intensities.clear();
+    o.intensity_valid = false;
+  }
   return true;
 }
 

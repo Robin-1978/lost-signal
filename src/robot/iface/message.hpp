@@ -25,11 +25,16 @@ class IMessage {
 };
 
 // 2D planar scan message. Missing return = absent, never max-range fill.
+// Parallel intensities carry the return strength per beam (sensing
+// quantity from the provider's reflectance model; empty = unknown).
+// The ROBOT never maps intensity back to ground truth (no material
+// lookup): it rides along as measurement metadata.
 struct Lidar2DScan : public IMessage {  std::uint64_t seq = 0;
   core::MonotonicNs stamp = core::kInvalidTime;
   std::string src;
   core::Frame frm = core::Frame::kLidarLink;
   std::vector<float> ranges_m;
+  std::vector<float> intensities;
   float angle_min_rad = 0.0f;
   float angle_increment_rad = 0.0f;
 

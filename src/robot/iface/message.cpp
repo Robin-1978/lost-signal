@@ -8,6 +8,10 @@ bool Lidar2DScan::valid() const {
   if (seq == 0) return false;
   if (ranges_m.empty()) return false;
   if (angle_increment_rad <= 0.0f) return false;
+  // Intensities ride parallel when present; empty means unknown (legacy).
+  if (!intensities.empty() && intensities.size() != ranges_m.size()) {
+    return false;
+  }
   return true;
 }
 

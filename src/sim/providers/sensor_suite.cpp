@@ -51,9 +51,9 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   robot::iface::Lidar2DScan reference;
   if (composite_scan_) {
     // Composite front end: same message, same layout, multi-line source.
-    std::vector<float> ranges, ref;
-    if (!lidar3d_.poll_composite(ranges, true)) return false;
-    if (!lidar3d_.poll_composite(ref, false)) return false;
+    std::vector<float> ranges, ref, intensities, ref_intensities;
+    if (!lidar3d_.poll_composite(ranges, intensities, true)) return false;
+    if (!lidar3d_.poll_composite(ref, ref_intensities, false)) return false;
     scan.src = lidar3d_.descriptor().endpoint_id;
     scan.frm = robot::core::Frame::kLidarLink;
     scan.seq = ++composite_seq_;
@@ -61,6 +61,7 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
     scan.stamp = static_cast<robot::core::MonotonicNs>(world_->truth().step *
                                                        20'000'000);
     scan.ranges_m = std::move(ranges);
+    scan.intensities = std::move(intensities);
     scan.angle_min_rad = -static_cast<float>(M_PI);
     scan.angle_increment_rad =
         static_cast<float>(2.0 * M_PI / scan.ranges_m.size());

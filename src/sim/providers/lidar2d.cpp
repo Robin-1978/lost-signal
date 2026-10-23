@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "sim/providers/raycast_util.hpp"
+#include "sim/providers/reflectivity.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::providers {
@@ -59,6 +60,7 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
   out.src = desc_.endpoint_id;
   out.frm = robot::core::Frame::kLidarLink;
   out.ranges_m.assign(static_cast<std::size_t>(beam_count_), max_range_m_);
+  out.intensities.assign(static_cast<std::size_t>(beam_count_), 0.0f);
   out.angle_min_rad = -static_cast<float>(M_PI);
   out.angle_increment_rad =
       static_cast<float>(2.0 * M_PI / beam_count_);
@@ -81,19 +83,32 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
     const robot::core::Vec3 d =
         robot::core::rotate_vector(sensor_q, {std::cos(a), std::sin(a), 0.0});
     double dist = max_range_m_;
+    bool engine_hit = false;
     double hit = 0.0;
     if (world_->raycast(ox, oy, oz, d.x, d.y, d.z, max_range_m_, hit)) {
       dist = hit;
+      engine_hit = true;
     }
+    bool actor_hit = false;
     if (include_actors) {
       for (const auto& actor : world_->actors()) {
-        dist = std::min(dist,
-                        detail::ray_actor_cylinder(ox, oy, oz, d.x, d.y, d.z, actor.x,
-                                           actor.y, actor.radius_m,
-                                           actor.height_m, max_range_m_));
+        const double ad = detail::ray_actor_cylinder(
+            ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y, actor.radius_m,
+            actor.height_m, max_range_m_);
+        if (ad < dist) {
+          dist = ad;
+          actor_hit = true;
+        }
       }
     }
     out.ranges_m[static_cast<std::size_t>(i)] = static_cast<float>(dist);
+    const bool missed = !engine_hit && !actor_hit;
+    const double hx = ox + d.x * dist;
+    const double hy = oy + d.y * dist;
+    const double hz = oz + d.z * dist;
+    out.intensities[static_cast<std::size_t>(i)] =
+        detail::return_intensity(*world_, hx, hy, hz, dist, actor_hit,
+                                 missed);
   }
   return out.valid();
 }

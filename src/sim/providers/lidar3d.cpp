@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "sim/providers/raycast_util.hpp"
+#include "sim/providers/reflectivity.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::providers {
@@ -116,16 +117,22 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
       const robot::core::Vec3 d = robot::core::rotate_vector(
           sensor_q, {ce * std::cos(az), ce * std::sin(az), std::sin(elev)});
       double dist = max_range_m_;
+      bool engine_hit = false;
       double hit = 0.0;
       if (world_->raycast(ox, oy, oz, d.x, d.y, d.z, max_range_m_, hit)) {
         dist = hit;
+        engine_hit = true;
       }
+      bool actor_hit = false;
       if (include_actors) {
         for (const auto& actor : world_->actors()) {
-          dist = std::min(dist,
-                          detail::ray_actor_cylinder(
-                              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y,
-                              actor.radius_m, actor.height_m, max_range_m_));
+          const double ad = detail::ray_actor_cylinder(
+              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y, actor.radius_m,
+              actor.height_m, max_range_m_);
+          if (ad < dist) {
+            dist = ad;
+            actor_hit = true;
+          }
         }
       }
       if (!(dist < max_range_m_)) continue;  // miss: dropped, never filled
@@ -134,7 +141,9 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
       p.x_m = static_cast<float>(dist * ce_az * std::cos(az));
       p.y_m = static_cast<float>(dist * ce_az * std::sin(az));
       p.z_m = static_cast<float>(dist * std::sin(elev));
-      p.intensity = 1.0f;
+      p.intensity = detail::return_intensity(
+          *world_, ox + d.x * dist, oy + d.y * dist, oz + d.z * dist, dist,
+          actor_hit, !engine_hit && !actor_hit);
       p.ring = static_cast<std::uint16_t>(j);
       p.time_offset_s = time_offset_s;
       out.points.push_back(p);
@@ -145,11 +154,19 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
 
 bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
                                         bool include_actors) {
+  std::vector<float> ignored;
+  return poll_composite(ranges_m, ignored, include_actors);
+}
+
+bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
+                                        std::vector<float>& intensities_m,
+                                        bool include_actors) {
   if (world_ == nullptr || ring_count_ <= 0 || azimuth_beams_ <= 0) {
     return false;
   }
   const world::WorldTruth& t = world_->truth();
   ranges_m.assign(static_cast<std::size_t>(azimuth_beams_), max_range_m_);
+  intensities_m.assign(static_cast<std::size_t>(azimuth_beams_), 0.0f);
   // Same sensor pose as poll(): body + attitude composed with the mount.
   const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
       t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
@@ -166,6 +183,7 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
     const double az =
         -M_PI + 2.0 * M_PI * static_cast<double>(i) / azimuth_beams_;
     float best = max_range_m_;
+    float best_intensity = 0.0f;
     for (int j = 0; j < ring_count_; ++j) {
       const double elev =
           (ring_count_ == 1)
@@ -176,25 +194,37 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
       const robot::core::Vec3 d = robot::core::rotate_vector(
           sensor_q, {ce * std::cos(az), ce * std::sin(az), std::sin(elev)});
       double dist = max_range_m_;
+      bool engine_hit = false;
       double hit = 0.0;
       if (world_->raycast(ox, oy, oz, d.x, d.y, d.z, max_range_m_, hit)) {
         dist = hit;
+        engine_hit = true;
       }
+      bool actor_hit = false;
       if (include_actors) {
         for (const auto& actor : world_->actors()) {
-          dist = std::min(dist,
-                          detail::ray_actor_cylinder(
-                              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y,
-                              actor.radius_m, actor.height_m, max_range_m_));
+          const double ad = detail::ray_actor_cylinder(
+              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y, actor.radius_m,
+              actor.height_m, max_range_m_);
+          if (ad < dist) {
+            dist = ad;
+            actor_hit = true;
+          }
         }
       }
       if (!(dist < max_range_m_)) continue;
       // Ground filter on the world hit height (d is unit): floor excluded.
       const double hit_z = oz + d.z * dist;
       if (hit_z < ground_cut_m_) continue;
-      best = std::min(best, static_cast<float>(dist));
+      if (static_cast<float>(dist) < best) {
+        best = static_cast<float>(dist);
+        best_intensity = detail::return_intensity(
+            *world_, ox + d.x * dist, oy + d.y * dist, hit_z, dist, actor_hit,
+            !engine_hit && !actor_hit);
+      }
     }
     ranges_m[static_cast<std::size_t>(i)] = best;
+    intensities_m[static_cast<std::size_t>(i)] = best_intensity;
   }
   return true;
 }

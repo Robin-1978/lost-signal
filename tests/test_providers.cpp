@@ -60,6 +60,10 @@ int main() {
   }
   assert(obs2.drive_count == 2);
   assert(obs2.forward_mps > 2.80 && obs2.forward_mps <= 3.0);
+  // Return-strength channel rides the envelope parallel to ranges
+  // (measurement metadata; the ROBOT never maps it back to materials).
+  assert(obs2.scan_valid && obs2.intensity_valid);
+  assert(obs2.intensities.size() == obs2.ranges_m.size());
   // Traction flags stay SIM-side (WorldTruth, offline labels only — the
   // ROBOT side only ever sees what its own estimators can compute).
   // Quiet in normal driving...
