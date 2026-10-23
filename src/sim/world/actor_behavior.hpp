@@ -38,6 +38,11 @@ struct ActorBehavior {
   // doctrine, adapted to the incremental stepper: velocity zero while the
   // latch counts down). 0 = today's behavior exactly (no pause).
   double dwell_s = 0.0;
+  // Per-point waits (master's waits[] doctrine): waits_s[i] overrides
+  // dwell_s at waypoints[i]; shorter lists fall back to dwell_s per
+  // index, longer tails are ignored. Empty = uniform dwell_s (legacy).
+  // Negative/non-finite entries read 0 (never time travel).
+  std::vector<double> waits_s;
   // Wander: explicit stream, seeded on first step.
   std::uint64_t seed = 1;
   double turn_rate_radps = 0.6;  // max heading rate, clamped >= 0

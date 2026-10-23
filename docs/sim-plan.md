@@ -256,15 +256,24 @@ traversable — pricing only, never a veto). Pinned: memory reroutes
 through the clean gap at default weights, stale expires, clamps hold.
 Actor lifecycle richness (landed, last item): waypoint dwell (timed stop
 per arrival, velocity zero + position frozen, composes with loop/stop, 0
-= legacy exactly — master's dwell doctrine on the incremental stepper,
-no pure-time-function port); objective step budget (a live goal older
+= legacy exactly; per-point waits[] overrides dwell_s per index, short
+lists fall back, negative reads 0 — master's dwell doctrine on the
+incremental stepper, no pure-time-function port); objective step budget (a live goal older
 than N world steps is recorded as abandoned with the truth miss kept,
 canceled through the seam so a late Done cannot leak into the next
 objective, next dispatched — 0 = legacy, mission budget stays the outer
 backstop). Pinned: dwell-then-proceed + loop pauses eat distance;
 far-abandon advances onto dock which completes cleanly.
+Lidar generation dedup (landed): the three poll paths (2D/3D/composite)
+share one shutter-pose + actor-hit helper (raycast_util.hpp) — same
+strict-less-than winner rule, bit-identical output, all legacy pins
+green untouched. Incidence angular response (landed, closed the audit
+table): head-on full, grazing floored at 0.15 (master default), normals
+analytic per hit class (actor cylinder radial/top, box faces, canonical
+terrain gradient — synthesis and contact share the source). Pinned:
+grazing floor ratio exact, backface reads 0, box-top full.
 Next slices:
-(none — capability parity reached; see program record below).
+(none — capability parity reached, audit table clean).
 
 ## Explicitly OUT (not deployable sim)
 

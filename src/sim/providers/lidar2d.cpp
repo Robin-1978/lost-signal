@@ -65,42 +65,30 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
   out.angle_min_rad = -static_cast<float>(M_PI);
   out.angle_increment_rad =
       static_cast<float>(2.0 * M_PI / beam_count_);
-  // True 3D sensor pose: body position + attitude (engine roll/pitch/yaw)
-  // composed with the mount extrinsics. RPY follows REP-103
-  // (R = Rz(yaw) * Ry(pitch) * Rx(roll)).
-  const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
-      t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
-  const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
-                            mount_xyz_m_[2]};
-  const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
-  const double oz = t.body_z_m + off.z;
+  // True 3D sensor pose per beam: shared shutter discipline (body +
+  // mount); RPY follows REP-103 (R = Rz(yaw) * Ry(pitch) * Rx(roll)).
+  const detail::ShutterBody body{t.body_x_m,
+                                t.body_y_m,
+                                t.body_z_m,
+                                t.body_roll_rad,
+                                t.body_pitch_rad,
+                                t.body_yaw_rad,
+                                t.yaw_rate_radps,
+                                t.forward_mps,
+                                t.lateral_mps};
   for (int i = 0; i < beam_count_; ++i) {
     const double a = -M_PI + 2.0 * M_PI * i / beam_count_;
-    // Rolling shutter (SIM-side generation): each beam acquires at its own
-    // offset (beam 0 oldest, stamp = scan end). Body translation advances
-    // by the truth twist, yaw advances by the yaw rate; height/roll/pitch
-    // ride frozen at the stamp (master's form, same stated limits).
+    // Rolling shutter: beam 0 oldest, stamp = scan end.
     const double toff =
         -scan_period_s_ + scan_period_s_ * i / beam_count_;
     out.time_offsets_s[static_cast<std::size_t>(i)] =
         static_cast<float>(toff);
-    const double yaw_i = t.body_yaw_rad + t.yaw_rate_radps * toff;
-    const double cy = std::cos(t.body_yaw_rad), sy = std::sin(t.body_yaw_rad);
-    const double ox =
-        t.body_x_m + off.x +
-        (t.forward_mps * cy - t.lateral_mps * sy) * toff;
-    const double oy =
-        t.body_y_m + off.y +
-        (t.forward_mps * sy + t.lateral_mps * cy) * toff;
-    const robot::core::Quaternion body_qi =
-        robot::core::quaternion_from_rpy(t.body_roll_rad, t.body_pitch_rad,
-                                         yaw_i);
-    const robot::core::Vec3 d = robot::core::rotate_vector(
-        robot::core::quaternion_multiply(
-            body_qi, robot::core::quaternion_from_rpy(
-                         mount_rpy_rad_[0], mount_rpy_rad_[1],
-                         mount_rpy_rad_[2])),
-        {std::cos(a), std::sin(a), 0.0});
+    const detail::AcquisitionPose pose =
+        detail::acquisition_pose(body, mount_xyz_m_, mount_rpy_rad_, toff);
+    const double ox = pose.ox, oy = pose.oy, oz = pose.oz;
+    const robot::core::Vec3 d =
+        robot::core::rotate_vector(pose.sensor_q, {std::cos(a), std::sin(a),
+                                                   0.0});
     double dist = max_range_m_;
     bool engine_hit = false;
     double hit = 0.0;
@@ -109,17 +97,15 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
       engine_hit = true;
     }
     bool actor_hit = false;
+    double win_ax = 0.0, win_ay = 0.0, win_ah = 0.0;  // winning cylinder
     if (include_actors) {
-      for (const auto& actor : world_->actors()) {
-        // Actors propagate over the beam offset (same shutter discipline).
-        const double ad = detail::ray_actor_cylinder(
-            ox, oy, oz, d.x, d.y, d.z, actor.x + actor.vx_mps * toff,
-            actor.y + actor.vy_mps * toff, actor.radius_m, actor.height_m,
-            max_range_m_);
-        if (ad < dist) {
-          dist = ad;
-          actor_hit = true;
-        }
+      double adist = max_range_m_;
+      if (detail::actor_beam_hit(world_->actors(), ox, oy, oz, d.x, d.y, d.z,
+                                 toff, max_range_m_, adist, win_ax, win_ay,
+                                 win_ah) &&
+          adist < dist) {
+        dist = adist;
+        actor_hit = true;
       }
     }
     // Device observation model (SIM-side synthesis): an ideal hit passes
@@ -132,8 +118,9 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
     const double hx = ox + d.x * dist;
     const double hy = oy + d.y * dist;
     const double hz = oz + d.z * dist;
-    const float intensity = detail::return_intensity(*world_, hx, hy, hz,
-                                                    dist, actor_hit, missed);
+    const float intensity = detail::return_intensity(
+        *world_, hx, hy, hz, dist, actor_hit, missed, d.x, d.y, d.z, win_ax,
+        win_ay, win_ah);
     if (!missed) {
       double measured = dist;
       if (device_range(dist, max_range_m_, device_, rng_, measured)) {

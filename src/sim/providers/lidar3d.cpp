@@ -86,14 +86,17 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
   out.points.clear();
   out.points.reserve(static_cast<std::size_t>(ring_count_) *
                      static_cast<std::size_t>(azimuth_beams_));
-  // True 3D sensor pose: body position + attitude composed with the mount
-  // (same math as the 2D producer; REP-103 RPY).
-  const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
-      t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
-  const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
-                            mount_xyz_m_[2]};
-  const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
-  const double oz = t.body_z_m + off.z;
+  // True 3D sensor pose per azimuth: shared shutter discipline (body +
+  // mount); REP-103 RPY.
+  const detail::ShutterBody body{t.body_x_m,
+                                t.body_y_m,
+                                t.body_z_m,
+                                t.body_roll_rad,
+                                t.body_pitch_rad,
+                                t.body_yaw_rad,
+                                t.yaw_rate_radps,
+                                t.forward_mps,
+                                t.lateral_mps};
   // Azimuth-major: all rings per azimuth step. Ring elevations are uniform
   // over the FOV (a single ring sits at 0 elevation).
   for (int i = 0; i < azimuth_beams_; ++i) {
@@ -103,21 +106,10 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
     const double toff =
         -scan_period_s_ + scan_period_s_ * i / azimuth_beams_;
     const float time_offset_s = static_cast<float>(toff);
-    const double yaw_i = t.body_yaw_rad + t.yaw_rate_radps * toff;
-    const double cy = std::cos(t.body_yaw_rad), sy = std::sin(t.body_yaw_rad);
-    const double ox =
-        t.body_x_m + off.x +
-        (t.forward_mps * cy - t.lateral_mps * sy) * toff;
-    const double oy =
-        t.body_y_m + off.y +
-        (t.forward_mps * sy + t.lateral_mps * cy) * toff;
-    const robot::core::Quaternion body_qi =
-        robot::core::quaternion_from_rpy(t.body_roll_rad, t.body_pitch_rad,
-                                         yaw_i);
-    const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
-        body_qi, robot::core::quaternion_from_rpy(
-                     mount_rpy_rad_[0], mount_rpy_rad_[1],
-                     mount_rpy_rad_[2]));
+    const detail::AcquisitionPose pose =
+        detail::acquisition_pose(body, mount_xyz_m_, mount_rpy_rad_, toff);
+    const double ox = pose.ox, oy = pose.oy, oz = pose.oz;
+    const robot::core::Quaternion& sensor_q = pose.sensor_q;
     for (int j = 0; j < ring_count_; ++j) {
       const double elev =
           (ring_count_ == 1)
@@ -135,16 +127,15 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
         engine_hit = true;
       }
       bool actor_hit = false;
+      double win_ax = 0.0, win_ay = 0.0, win_ah = 0.0;
       if (include_actors) {
-        for (const auto& actor : world_->actors()) {
-          const double ad = detail::ray_actor_cylinder(
-              ox, oy, oz, d.x, d.y, d.z, actor.x + actor.vx_mps * toff,
-              actor.y + actor.vy_mps * toff, actor.radius_m, actor.height_m,
-              max_range_m_);
-          if (ad < dist) {
-            dist = ad;
-            actor_hit = true;
-          }
+        double adist = max_range_m_;
+        if (detail::actor_beam_hit(world_->actors(), ox, oy, oz, d.x, d.y,
+                                   d.z, toff, max_range_m_, adist, win_ax,
+                                   win_ay, win_ah) &&
+            adist < dist) {
+          dist = adist;
+          actor_hit = true;
         }
       }
       if (!(dist < max_range_m_)) continue;  // miss: dropped, never filled
@@ -154,7 +145,8 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
       const double ce_az = std::cos(elev);
       const float intensity = detail::return_intensity(
           *world_, ox + d.x * dist, oy + d.y * dist, oz + d.z * dist, dist,
-          actor_hit, !engine_hit && !actor_hit);
+          actor_hit, !engine_hit && !actor_hit, d.x, d.y, d.z, win_ax,
+          win_ay, win_ah);
       double measured = dist;
       if (!device_range(dist, max_range_m_, device_, rng_, measured)) {
         continue;  // driven no-return: dropped like a miss
@@ -191,13 +183,16 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
   if (time_offsets_s != nullptr) {
     time_offsets_s->assign(static_cast<std::size_t>(azimuth_beams_), 0.0f);
   }
-  // Same sensor pose as poll(): body + attitude composed with the mount.
-  const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
-      t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
-  const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
-                            mount_xyz_m_[2]};
-  const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
-  const double oz = t.body_z_m + off.z;
+  // Same sensor pose as poll(): shared shutter discipline (body + mount).
+  const detail::ShutterBody body{t.body_x_m,
+                                t.body_y_m,
+                                t.body_z_m,
+                                t.body_roll_rad,
+                                t.body_pitch_rad,
+                                t.body_yaw_rad,
+                                t.yaw_rate_radps,
+                                t.forward_mps,
+                                t.lateral_mps};
   for (int i = 0; i < azimuth_beams_; ++i) {
     const double az =
         -M_PI + 2.0 * M_PI * static_cast<double>(i) / azimuth_beams_;
@@ -208,21 +203,10 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
       (*time_offsets_s)[static_cast<std::size_t>(i)] =
           static_cast<float>(toff);
     }
-    const double yaw_i = t.body_yaw_rad + t.yaw_rate_radps * toff;
-    const double cy = std::cos(t.body_yaw_rad), sy = std::sin(t.body_yaw_rad);
-    const double ox =
-        t.body_x_m + off.x +
-        (t.forward_mps * cy - t.lateral_mps * sy) * toff;
-    const double oy =
-        t.body_y_m + off.y +
-        (t.forward_mps * sy + t.lateral_mps * cy) * toff;
-    const robot::core::Quaternion body_qi =
-        robot::core::quaternion_from_rpy(t.body_roll_rad, t.body_pitch_rad,
-                                         yaw_i);
-    const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
-        body_qi, robot::core::quaternion_from_rpy(
-                     mount_rpy_rad_[0], mount_rpy_rad_[1],
-                     mount_rpy_rad_[2]));
+    const detail::AcquisitionPose pose =
+        detail::acquisition_pose(body, mount_xyz_m_, mount_rpy_rad_, toff);
+    const double ox = pose.ox, oy = pose.oy, oz = pose.oz;
+    const robot::core::Quaternion& sensor_q = pose.sensor_q;
     float best = max_range_m_;
     float best_intensity = 0.0f;
     for (int j = 0; j < ring_count_; ++j) {
@@ -242,16 +226,15 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
         engine_hit = true;
       }
       bool actor_hit = false;
+      double win_ax = 0.0, win_ay = 0.0, win_ah = 0.0;
       if (include_actors) {
-        for (const auto& actor : world_->actors()) {
-          const double ad = detail::ray_actor_cylinder(
-              ox, oy, oz, d.x, d.y, d.z, actor.x + actor.vx_mps * toff,
-              actor.y + actor.vy_mps * toff, actor.radius_m, actor.height_m,
-              max_range_m_);
-          if (ad < dist) {
-            dist = ad;
-            actor_hit = true;
-          }
+        double adist = max_range_m_;
+        if (detail::actor_beam_hit(world_->actors(), ox, oy, oz, d.x, d.y,
+                                   d.z, toff, max_range_m_, adist, win_ax,
+                                   win_ay, win_ah) &&
+            adist < dist) {
+          dist = adist;
+          actor_hit = true;
         }
       }
       if (!(dist < max_range_m_)) continue;
@@ -276,7 +259,7 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
         best = static_cast<float>(dist);
         best_intensity = detail::return_intensity(
             *world_, ox + d.x * dist, oy + d.y * dist, hit_z, dist, actor_hit,
-            !engine_hit && !actor_hit);
+            !engine_hit && !actor_hit, d.x, d.y, d.z, win_ax, win_ay, win_ah);
       }
     }
     ranges_m[static_cast<std::size_t>(i)] = best;

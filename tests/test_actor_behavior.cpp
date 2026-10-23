@@ -127,10 +127,96 @@ int main() {
       assert(p.x == dx && p.y == dy);  // frozen, not drifting
     }
     assert(step_until_near(2.0, 2.0, 300) < 300);  // dwell over, proceeded
-    for (int i = 0; i < 100; ++i) w.step(0.02);    // final dwell + latch
+    for (int i = 0; i < 100; ++i) w.step(0.02);    // final latches stopped
     const auto& p = w.actors()[0];
     assert(dist(p.x, p.y, 2.0, 2.0) < 0.3);
     assert(p.vx_mps == 0.0 && p.vy_mps == 0.0);  // stays stopped
+  }
+
+  // Per-point waits: waits[i] overrides dwell_s at waypoints[i];
+  // short lists fall back to dwell_s, negative entries read 0.
+  {
+    sim::world::World w;
+    sim::world::Actor a;
+    ActorBehaviorRegistry::global().create("waypoints", a.behavior);
+    a.behavior.waypoints = {{2.0, 0.0}, {2.0, 2.0}};
+    a.behavior.speed_mps = 1.0;
+    a.behavior.loop = false;
+    a.behavior.dwell_s = 1.0;            // fallback for points past waits
+    a.behavior.waits_s = {0.5, -1.0};    // wp1: 25 steps; wp2: final stop
+    w.add_actor(a);
+    auto step_until_near = [&](double tx, double ty, int cap) {
+      int used = 0;
+      while (used < cap &&
+             dist(w.actors()[0].x, w.actors()[0].y, tx, ty) >= 0.3) {
+        w.step(0.02);
+        ++used;
+      }
+      return used;
+    };
+    assert(step_until_near(2.0, 0.0, 200) < 200);
+    int frozen = 0;  // wp1 wait is 0.5 s = 25 steps, not the 1.0 fallback
+    for (int i = 0; i < 30; ++i) {
+      w.step(0.02);
+      const auto& p = w.actors()[0];
+      if (p.vx_mps == 0.0 && p.vy_mps == 0.0) ++frozen;
+      else break;
+    }
+    assert(frozen >= 20 && frozen <= 26);
+    assert(step_until_near(2.0, 2.0, 300) < 300);  // proceeded onward
+    // Short-list fallback: waits[1] is negative (reads 0), but the final
+    // point latches stopped either way; prove fallback with a loop below.
+    for (int i = 0; i < 60; ++i) w.step(0.02);
+    const auto& p = w.actors()[0];
+    assert(dist(p.x, p.y, 2.0, 2.0) < 0.3);
+    assert(p.vx_mps == 0.0 && p.vy_mps == 0.0);
+  }
+
+  // Fallback: waits shorter than the list reads dwell_s per index.
+  {
+    sim::world::World w;
+    sim::world::Actor a;
+    ActorBehaviorRegistry::global().create("waypoints", a.behavior);
+    a.behavior.waypoints = {{2.0, 0.0}, {4.0, 0.0}};
+    a.behavior.speed_mps = 1.0;
+    a.behavior.loop = true;
+    a.behavior.dwell_s = 1.0;      // wp2 (past waits) dwells the full 1 s
+    a.behavior.waits_s = {0.5};    // wp1 dwells 0.5 s
+    w.add_actor(a);
+    auto step_until_near = [&](double tx, double ty, int cap) {
+      int used = 0;
+      while (used < cap &&
+             dist(w.actors()[0].x, w.actors()[0].y, tx, ty) >= 0.3) {
+        w.step(0.02);
+        ++used;
+      }
+      return used;
+    };
+    assert(step_until_near(2.0, 0.0, 200) < 200);
+    int frozen1 = 0;  // per-point 0.5 s
+    for (int i = 0; i < 60; ++i) {
+      w.step(0.02);
+      const auto& p = w.actors()[0];
+      if (p.vx_mps == 0.0 && p.vy_mps == 0.0 &&
+          dist(p.x, p.y, 2.0, 0.0) < 0.3) {
+        ++frozen1;
+      } else {
+        break;
+      }
+    }
+    assert(frozen1 >= 20 && frozen1 <= 26);
+    assert(step_until_near(4.0, 0.0, 300) < 300);
+    int frozen2 = 0;  // fallback 1.0 s = 50 steps
+    for (int i = 0; i < 60; ++i) {
+      w.step(0.02);
+      const auto& p = w.actors()[0];
+      if (p.vx_mps == 0.0 && p.vy_mps == 0.0) {
+        ++frozen2;
+      } else {
+        break;
+      }
+    }
+    assert(frozen2 >= 45 && frozen2 <= 51);
   }
 
   // Dwell on a loop: pauses eat distance but every corner is still visited.

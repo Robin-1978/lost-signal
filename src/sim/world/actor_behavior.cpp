@@ -82,13 +82,17 @@ void step_actor(Actor& actor, ActorBehavior& behavior, double dt) {
       const std::size_t n = behavior.waypoints.size();
       behavior.waypoint_index %= n;
       // Advance past reached points (capped: clustered points can't spin).
+      // The final point of a non-loop latches stopped here (stop is
+      // infinite dwell: no timed stop served at the terminus).
       std::size_t arrivals = 0;
+      std::size_t last_reached = n;  // sentinel: none yet
       for (std::size_t k = 0; k <= n; ++k) {
         const ActorWaypoint& wp = behavior.waypoints[behavior.waypoint_index];
         const double dx = wp.x_m - actor.x;
         const double dy = wp.y_m - actor.y;
         if (std::hypot(dx, dy) > arrive) break;
         ++arrivals;
+        last_reached = behavior.waypoint_index;
         if (!behavior.loop &&
             behavior.waypoint_index + 1 >= n) {
           actor.vx_mps = 0.0;  // final point reached: latched stop
@@ -102,14 +106,22 @@ void step_actor(Actor& actor, ActorBehavior& behavior, double dt) {
       // Fresh arrival + configured dwell: latch the timed stop now (the
       // post-countdown fall-through above moves past afterwards). Already
       // dwelling is impossible here (early return above), so sitting
-      // inside the radius never re-triggers — no eternal dwell.
-      if (arrivals > 0 && !skip_latch && behavior.dwell_s > 0.0 &&
-          std::isfinite(behavior.dwell_s)) {
-        behavior.dwelling_ = true;
-        behavior.dwell_remaining_s = behavior.dwell_s;
-        actor.vx_mps = 0.0;
-        actor.vy_mps = 0.0;
-        return;
+      // inside the radius never re-triggers — no eternal dwell. Duration
+      // is the reached point's wait (per-point override, else uniform).
+      if (arrivals > 0 && !skip_latch && last_reached < n) {
+        double dur = std::max(0.0, behavior.dwell_s);
+        if (!std::isfinite(dur)) dur = 0.0;
+        if (last_reached < behavior.waits_s.size()) {
+          const double w = behavior.waits_s[last_reached];
+          dur = (std::isfinite(w) ? std::max(0.0, w) : 0.0);
+        }
+        if (dur > 0.0) {
+          behavior.dwelling_ = true;
+          behavior.dwell_remaining_s = dur;
+          actor.vx_mps = 0.0;
+          actor.vy_mps = 0.0;
+          return;
+        }
       }
       const ActorWaypoint& wp = behavior.waypoints[behavior.waypoint_index];
       const double dx = wp.x_m - actor.x;

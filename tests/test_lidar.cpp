@@ -288,15 +288,44 @@ int main() {
     assert(std::abs(surface_reflectivity(wr, 9.0, 9.0, 0.0) - 0.30) < 1e-12);
     wr.set_static_boxes({{2.0, -0.5, 3.0, 0.5, 1.0}});
     assert(std::abs(surface_reflectivity(wr, 2.5, 0.0, 0.5) - 0.68) < 1e-12);
-    // Attenuation: nearer is brighter; misses read exactly 0.
-    const float near = return_intensity(wr, 0.0, 0.0, 0.0, 1.0, false, false);
-    const float far = return_intensity(wr, 0.0, 0.0, 0.0, 5.0, false, false);
+    // Attenuation: nearer is brighter; misses read exactly 0. Head-on rays
+    // (dir into the surface normal) keep the legacy values exactly.
+    const float near =
+        return_intensity(wr, 0.0, 0.0, 0.0, 1.0, false, false, 0.0, 0.0, -1.0,
+                         0.0, 0.0, 0.0);
+    const float far =
+        return_intensity(wr, 0.0, 0.0, 0.0, 5.0, false, false, 0.0, 0.0, -1.0,
+                         0.0, 0.0, 0.0);
     assert(near > far && far > 0.0f);
     assert(std::abs(near - 0.1f / (1.0f + 0.015f)) < 1e-6);
-    assert(return_intensity(wr, 0.0, 0.0, 0.0, 2.0, false, true) == 0.0f);
-    const float actor =
-        return_intensity(wr, 0.0, 0.0, 0.5, 2.0, true, false);
+    assert(return_intensity(wr, 0.0, 0.0, 0.0, 2.0, false, true, 0.0, 0.0,
+                            -1.0, 0.0, 0.0, 0.0) == 0.0f);
+    const float actor = return_intensity(wr, -0.4, 0.0, 0.5, 2.0, true, false,
+                                         1.0, 0.0, 0.0, 0.0, 0.0, 1.5);
     assert(std::abs(actor - 0.52f / (1.0f + 0.015f * 4.0f)) < 1e-6);
+    // Incidence (master's angular response, floor 0.15): a level ray
+    // grazing flat ground dims to the floor; head-on reads full.
+    const float graze = return_intensity(wr, 0.0, 0.0, 0.0, 1.0, false, false,
+                                         1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    assert(std::abs(graze - near * 0.15f) < 1e-6);
+    // Box faces: head-on front face full, tangent ray floored, top full.
+    const float face =
+        return_intensity(wr, 2.0, 0.0, 0.5, 2.0, false, false, 1.0, 0.0, 0.0,
+                         0.0, 0.0, 0.0);
+    assert(std::abs(face - 0.68f / (1.0f + 0.015f * 4.0f)) < 1e-6);
+    const float edge =
+        return_intensity(wr, 2.0, 0.0, 0.5, 2.0, false, false, 0.0, 1.0, 0.0,
+                         0.0, 0.0, 0.0);
+    assert(std::abs(edge - face * 0.15f) < 1e-6);
+    const float top =
+        return_intensity(wr, 2.5, 0.0, 1.0, 2.0, false, false, 0.0, 0.0, -1.0,
+                         0.0, 0.0, 0.0);
+    assert(std::abs(top - 0.68f / (1.0f + 0.015f * 4.0f)) < 1e-6);
+    // Actor wall: head-on side full, tangent floored (same floor doctrine).
+    const float side =
+        return_intensity(wr, 0.4, 0.0, 0.5, 2.0, true, false, 0.0, -1.0, 0.0,
+                         0.0, 0.0, 1.5);
+    assert(std::abs(side - actor * 0.15f) < 1e-6);
   }
   // Provider beams: box return strong, miss zero, sizes parallel.
   {
