@@ -169,6 +169,38 @@ struct MotorParams {
   // behavior bit-identical. From the DriveProfile track contract.
   double yaw_scrub_coulomb_Nm = 0.0;
   double yaw_scrub_viscous_Nm_per_radps = 0.0;
+  // Chassis hard geometry (from the DriveProfile chassis contract; the
+  // engine build reads these, never hardcoded per-layout constants).
+  // Defaults reproduce the legacy plant bit-identically.
+  double body_half_height_m = 0.05;  // deck ballast half height
+  double body_half_width_m = 0.12;   // deck ballast half extent
+  double drive_axle_x_m = 0.0;       // drive axle line offset (base frame)
+  double tire_half_width_m = 0.04;   // cylinder tread half width
+  // Static mass budget (deck conserves the total, floor 0.5).
+  double wheel_mass_kg = 0.2;        // per-drive-wheel static budget
+  double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
+  double tire_density_kgpm3 = 400.0;  // tire rubber density
+  // Effective COM height above ground (0 = follow the axle at convert).
+  double com_height_m = 0.0;
+  // Static payload (declared loadout; folded master-style at the build).
+  double payload_mass_kg = 0.0;
+  double payload_height_m = 0.0;  // 0 = chassis COM (pure ballast)
+  // Ackermann idler trail (wheel center behind the kingpin).
+  double idler_trail_m = 0.02;
+  // Unpowered supports (base frame, explicit). Empty = legacy fore/aft
+  // ball pair, resolved at conversion from wheel_base_m.
+  struct SupportParams {
+    std::string kind = "ball";
+    double x_m = 0.0;
+    double radius_m = 0.03;
+    double mass_kg = 0.1;
+    double friction_mu = 0.05;
+    double torsional = 0.005;
+    double rolling = 0.0005;
+  };
+  static constexpr int kMaxSupports = 4;
+  SupportParams supports[kMaxSupports];
+  int support_count = 0;  // 0 = legacy default pair (conversion fills it)
   // Encoder resolution for the joint measurement model (counts per
   // revolution). The provider quantizes angles and differentiates; the
   // ROBOT loop closes on the quantized joints, like native hardware.

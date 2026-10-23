@@ -34,6 +34,19 @@ struct ChassisLimits {
   double max_lateral_mps = 0.0;
 };
 
+// Declared plant loadout for autonomy envelopes (rollover support/COM,
+// ride height, mass) — description from the machine file, never measured
+// truth. COM height folds the declared payload master-style (weighted
+// average); the SIM plant folds the identical numbers engine-side, so
+// the two cannot disagree about what the loadout is.
+struct PlantGeometry {
+  double wheel_radius_m = 0.1;  // ride height (body origin above ground)
+  double track_width_m = 0.5;   // rollover support width
+  double wheel_base_m = 0.56;
+  double com_height_m = 0.1;    // effective (payload-folded) COM height
+  double total_mass_kg = 24.0;  // chassis + declared payload
+};
+
 struct RobotDescription {
   std::string robot_id;      // e.g. "ro1"
   std::string chassis_kind = "differential";  // selects the chassis factory
@@ -41,6 +54,8 @@ struct RobotDescription {
   std::vector<LinkMount> links;
   std::vector<SensorMount> sensors;
   ChassisLimits limits;
+  PlantGeometry plant;  // declared loadout for autonomy envelopes (COM,
+                        // ride, support, mass) — description, never truth
 };
 
 bool valid_robot_description(const RobotDescription& desc);

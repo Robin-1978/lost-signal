@@ -9,6 +9,10 @@ bool valid_robot_description(const RobotDescription& desc) {
   if (desc.limits.max_forward_mps <= 0.0) return false;
   if (desc.limits.max_yaw_rate_radps <= 0.0) return false;
   if (desc.limits.footprint_radius_m <= 0.0) return false;
+  if (desc.plant.track_width_m <= 0.0) return false;
+  if (desc.plant.wheel_radius_m <= 0.0) return false;
+  if (desc.plant.com_height_m <= 0.0) return false;
+  if (desc.plant.total_mass_kg <= 0.0) return false;
   return true;
 }
 
@@ -31,6 +35,12 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
     mix(s.sensor_id);
     mix(s.link);
   }
+  // Plant loadout pins the calibration too: a COM/mass change without a
+  // version bump still hashes differently (never a stale envelope).
+  mix(std::to_string(desc.plant.track_width_m));
+  mix(std::to_string(desc.plant.wheel_radius_m));
+  mix(std::to_string(desc.plant.com_height_m));
+  mix(std::to_string(desc.plant.total_mass_kg));
   return h;
 }
 

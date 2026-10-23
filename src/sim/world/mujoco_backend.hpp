@@ -97,11 +97,14 @@ class MujocoBackend {
   double steer_vel(int i) const { return steer_vel_[i]; }
   // Full wheel table for presentation (drives by drive_idx, then steering
   // idlers): positions from the shared layout table, spin/steer from live
-  // joint read-back, slip from the traction flags. One source for viz —
-  // the same joints the encoder provider and the physics read, so the
-  // three cannot disagree. Returns filled count (cap 6: 4 drives + 2
-  // idlers, the largest layout). Idlers report driven=false, slipping=
-  // false (unpowered, unflagged — honest, never invented).
+  // joint read-back, slip from the traction flags. Ball supports are
+  // SIM-internal (normal load only) and stay out of this robot-facing
+  // table — the ROBOT sees driven/idler wheels, never support state.
+  // One source for viz — the same joints the encoder provider and the
+  // physics read, so the three cannot disagree. Returns filled count
+  // (cap 6: 4 drives + 2 idlers, the largest layout). Idlers report
+  // driven=false, slipping=false (unpowered, unflagged — honest, never
+  // invented).
   int wheels(WheelViz* out, int cap) const {
     if (out == nullptr || cap <= 0) return 0;
     int n = 0;
@@ -166,6 +169,9 @@ class MujocoBackend {
   int idler_count_ = 0;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};
+  // Idler tire geom ids (per-step zone follow, same doctrine as drives —
+  // a frozen baseline would anchor the plant on slick ground).
+  int idler_geom_[2] = {-1, -1};
   // Zone floor geom ids in zone order (per-step environment writes).
   std::vector<int> zone_geom_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).

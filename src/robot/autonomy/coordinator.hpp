@@ -79,6 +79,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // scan matcher, global search, SLAM matcher, validator, safety).
   // Algorithm configs carry thresholds only; unknown mount = identity.
   void set_static_frames(const core::FrameTransformTree& tree);
+  // Declared plant loadout (support/COM/ride/mass, description never
+  // truth): fans support width + COM into the validator envelope and
+  // latches the ride height for the survey context. Called once with the
+  // machine file's plant, like set_static_frames.
+  void set_plant_geometry(const platform::PlantGeometry& plant);
   const core::FrameTransformTree& tf() const { return tf_; }
   // Cartesian goal override (map frame). Refreshes the active route through
   // the global planner and wakes the decision branch. Place-based tasking
@@ -146,6 +151,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Lidar mount height above the body origin (TF fan-out; the validator's
   // surveyed sensor height rides on it).
   double lidar_mount_z_m_ = 0.35;
+  // Body origin above ground (declared ride = wheel radius; the survey
+  // context's absolute sensor height rides on it, like the mount).
+  double ride_height_m_ = 0.10;
   // Traversal observer cadence (IMU stamp deltas, never wall clock).
   core::MonotonicNs last_traverse_ns_ = core::kInvalidTime;
   // Localization subsystem (supervisor-sequenced corrections + SLAM):

@@ -211,6 +211,8 @@ add_library(lost_signal_sim_world STATIC
 )
 if(LOST_SIGNAL_WITH_MUJOCO)
   target_sources(lost_signal_sim_world PRIVATE src/sim/world/mujoco_backend.cpp)
+  target_sources(lost_signal_sim_world PRIVATE src/sim/world/mujoco_build.cpp)
+  target_sources(lost_signal_sim_world PRIVATE src/sim/world/mujoco_step.cpp)
   target_link_libraries(lost_signal_sim_world PUBLIC mujoco::mujoco)
   target_compile_definitions(lost_signal_sim_world PUBLIC LOST_SIGNAL_WITH_MUJOCO)
 endif()

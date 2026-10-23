@@ -1,7 +1,57 @@
 {
   "format": "lost-signal-robot/1",
   "chassis_kind": "differential",
-  "drive": {},
+  "drive": {
+    "wheel_radius_m": 0.1,
+    "wheel_base_m": 0.56,
+    "track_width_m": 0.5,
+    "free_speed_mps": 3.0,
+    "stall_force_N": 54.0,
+    "wheel_equiv_mass_kg": 3.0,
+    "vehicle_mass_kg": 24.0,
+    "rolling_resist": 0.01,
+    "viscous_drag_N_per_mps": 0.6,
+    "coulomb_smoothing_mps": 0.05,
+    "max_steer_rad": 0.55,
+    "max_steer_rate_radps": 2.0,
+    "steer_time_constant_s": 0.08,
+    "encoder_counts_per_revolution": 2048,
+    "steer_stall_torque_Nm": 8.0,
+    "tire_friction_mu": 0.7
+  },
+  "chassis": {
+    "body_half_height_m": 0.05,
+    "body_half_width_m": 0.12,
+    "drive_axle_x_m": 0.0,
+    "tire_half_width_m": 0.04,
+    "wheel_mass_kg": 0.2,
+    "knuckle_mass_kg": 0.1,
+    "tire_density_kgpm3": 400.0,
+    "com_height_m": 0.1,
+    "payload_mass_kg": 0.0,
+    "payload_height_m": 0.0,
+    "idler_trail_m": 0.02,
+    "supports": [
+      {
+        "kind": "ball",
+        "x_m": 0.252,
+        "radius_m": 0.03,
+        "mass_kg": 0.1,
+        "friction_mu": 0.05,
+        "torsional": 0.005,
+        "rolling": 0.0005
+      },
+      {
+        "kind": "ball",
+        "x_m": -0.252,
+        "radius_m": 0.03,
+        "mass_kg": 0.1,
+        "friction_mu": 0.05,
+        "torsional": 0.005,
+        "rolling": 0.0005
+      }
+    ]
+  },
   "limits": {
     "max_forward_mps": 2.0,
     "max_yaw_rate_radps": 2.0,

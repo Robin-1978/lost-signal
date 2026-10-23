@@ -85,8 +85,11 @@ struct ClearanceValidatorConfig {
   double escape_gain_floor_m = 0.15;
   // Rollover envelope (dynamic stability on side-slopes, master's form):
   // support width shares the traversal belief's support envelope (one
-  // doctrine); COM height is the stock-chassis assumption, tunable per
-  // platform. Risk 1.0 = static tip-over; the cap holds margin below it.
+  // doctrine); COM height follows the declared plant loadout via
+  // set_plant_geometry (payload-folded, description never truth) — the
+  // struct defaults below are the pre-wiring stock assumption, kept so
+  // direct-constructed validators behave exactly as before.
+  // Risk 1.0 = static tip-over; the cap holds margin below it.
   double support_width_m = 0.435;
   double com_height_m = 0.30;
   double max_dynamic_rollover_risk = 0.8;
@@ -150,6 +153,13 @@ class IValidator {
                                     const iface::ObservationFrame& obs) = 0;
   // Lidar yaw from the TF tree (coordinator fans out). Default ignore.
   virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
+  // Declared plant geometry for stability envelopes (support width + COM
+  // height, description from the machine file, never measured truth).
+  // Default ignore (stock envelope); the concrete validator re-resolves.
+  virtual void set_plant_geometry(double support_width_m, double com_height_m) {
+    (void)support_width_m;
+    (void)com_height_m;
+  }
   // Survey-aware validation (default ignores the survey: planar behavior).
   // The concrete validator classifies surveyed-ground returns out of the
   // obstacle set and gates the rollout on the surveyed grade.
@@ -176,6 +186,13 @@ class ClearanceValidator : public IValidator {
       : config_(config) {}
 
   void set_lidar_yaw(double yaw_rad) override { sensor_yaw_rad_ = yaw_rad; }
+  // Declared plant envelope (support width + COM height replace the
+  // stock-chassis assumption; non-positive inputs are ignored, never
+  // partially applied — the envelope stays internally consistent).
+  void set_plant_geometry(double support_width_m, double com_height_m) override {
+    if (support_width_m > 0.0) config_.support_width_m = support_width_m;
+    if (com_height_m > 0.0) config_.com_height_m = com_height_m;
+  }
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& est,
                             const PerceptionResult& perception,

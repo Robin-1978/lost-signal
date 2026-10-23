@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include "robot/core/json.hpp"
+#include "robot/platform/robot_config.hpp"
 
 namespace lost_signal::sim::eval {
 using robot::core::Json;
@@ -22,19 +23,6 @@ bool read_text(const std::string& path, std::string& text, std::string* error) {
   std::ostringstream ss;
   ss << in.rdbuf();
   text = ss.str();
-  return true;
-}
-
-bool take_num(const Json& obj, const char* key, double& out, bool& present,
-              std::string& err) {
-  const Json* node = obj.find(key);
-  present = (node != nullptr);
-  if (!present) return true;
-  if (!node->is_num()) {
-    err = std::string("key '") + key + "' not a number";
-    return false;
-  }
-  out = node->as_num();
   return true;
 }
 
@@ -64,72 +52,15 @@ bool load_drive_profile(const std::string& path,
     err = "unknown chassis kind: " + kind->as_str();
     return false;
   }
-  double v = 0.0;
-  bool present = false;
-  const char* keys[] = {"wheel_radius_m",
-                        "wheel_base_m",
-                        "track_width_m",
-                        "free_speed_mps",
-                        "stall_force_N",
-                        "wheel_equiv_mass_kg",
-                        "vehicle_mass_kg",
-                        "rolling_resist",
-                        "viscous_drag_N_per_mps",
-                        "coulomb_smoothing_mps",
-                        "steer_stall_torque_Nm",
-                        "tire_friction_mu",
-                        "max_steer_rad",
-                        "max_steer_rate_radps",
-                        "steer_time_constant_s"};
-  double* slots[] = {&merged.wheel_radius_m,
-                     &merged.wheel_base_m,
-                     &merged.track_width_m,
-                     &merged.free_speed_mps,
-                     &merged.stall_force_N,
-                     &merged.wheel_equiv_mass_kg,
-                     &merged.vehicle_mass_kg,
-                     &merged.rolling_resist,
-                     &merged.viscous_drag_N_per_mps,
-                     &merged.coulomb_smoothing_mps,
-                     &merged.steer_stall_torque_Nm,
-                     &merged.tire_friction_mu,
-                     &merged.max_steer_rad,
-                     &merged.max_steer_rate_radps,
-                     &merged.steer_time_constant_s};
-  for (int i = 0; i < 15; ++i) {
-    if (!take_num(obj, keys[i], v, present, err)) return false;
-    if (present) {
-      if (!std::isfinite(v) || v <= 0.0) {
-        err = std::string("key '") + keys[i] + "' must be finite positive";
-        return false;
-      }
-      *slots[i] = v;
-    }
+  // One contract: the machine file and legacy flat profiles share the
+  // identical merge (drive keys + chassis object). Flat files predate the
+  // chassis block; absent = documented defaults, never zeros.
+  if (!robot::platform::merge_drive_profile_keys(obj, merged, err)) {
+    return false;
   }
-  const Json* enc = obj.find("encoder_counts_per_revolution");
-  if (enc != nullptr) {
-    if (!enc->is_num() || enc->as_num() <= 0.0 ||
-        enc->as_num() != std::floor(enc->as_num())) {
-      err = "key 'encoder_counts_per_revolution' must be a positive integer";
-      return false;
-    }
-    merged.encoder_counts_per_revolution = static_cast<int>(enc->as_num());
-  }
-  // Yaw scrub (tracked): zero is valid, so outside the positive-only loop.
-  const char* scrub_keys[] = {"yaw_scrub_coulomb_Nm",
-                              "yaw_scrub_viscous_Nm_per_radps"};
-  double* scrub_slots[] = {&merged.yaw_scrub_coulomb_Nm,
-                           &merged.yaw_scrub_viscous_Nm_per_radps};
-  for (int i = 0; i < 2; ++i) {
-    if (!take_num(obj, scrub_keys[i], v, present, err)) return false;
-    if (present) {
-      if (!std::isfinite(v) || v < 0.0) {
-        err = std::string("key '") + scrub_keys[i] +
-              "' must be finite non-negative";
-        return false;
-      }
-      *scrub_slots[i] = v;
-    }
+  if (!robot::platform::merge_chassis_config(obj.find("chassis"), merged,
+                                             err)) {
+    return false;
   }
   profile = merged;
   return true;

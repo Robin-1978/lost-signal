@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "robot/core/json.hpp"
 #include "robot/platform/description.hpp"
 #include "robot/platform/drive_profile.hpp"
 
@@ -42,6 +43,15 @@ struct RobotConfig {
 bool load_robot_config(const std::string& path, RobotConfig& config,
                        std::string* error);
 RobotDescription description_from_config(const RobotConfig& config);
+// Shared merge primitives: ONE contract for the machine file ("drive" /
+// "chassis" objects) and legacy flat drive profiles (flat keys + "kind").
+// merge_drive_profile_keys takes flat drive keys + encoder + scrub;
+// merge_chassis_config takes the "chassis" object or null (absent block =
+// validate the defaulted geometry only). Fail-closed throughout.
+bool merge_drive_profile_keys(const core::Json& obj, DriveProfile& merged,
+                              std::string& err);
+bool merge_chassis_config(const core::Json* chassis_obj, DriveProfile& merged,
+                          std::string& err);
 // Tool/bring-up default chain: explicit path wins; otherwise
 // ./configs/robot/differential.json when it exists; otherwise nullopt and
 // the caller falls back to code defaults. Never fails hard.

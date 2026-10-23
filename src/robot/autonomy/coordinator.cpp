@@ -127,6 +127,19 @@ core::Status AutonomyCoordinator::cleanup() {
   return core::Status::Ok();
 }
 
+void AutonomyCoordinator::set_plant_geometry(
+    const platform::PlantGeometry& plant) {
+  // Declared loadout only (machine file, never measured truth): support
+  // width + COM re-resolve the validator's rollover envelope; the ride
+  // height latches for the survey context below. Non-positive inputs are
+  // ignored field-wise (validator-side rule), so the envelope stays
+  // internally consistent — never half-applied.
+  if (validator_ != nullptr) {
+    validator_->set_plant_geometry(plant.track_width_m, plant.com_height_m);
+  }
+  if (plant.wheel_radius_m > 0.0) ride_height_m_ = plant.wheel_radius_m;
+}
+
 void AutonomyCoordinator::set_static_frames(
     const core::FrameTransformTree& tree) {
   tf_ = tree;
@@ -326,6 +339,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   survey_ctx.live.origin_x_m = live_map_.origin_x_m;
   survey_ctx.live.origin_y_m = live_map_.origin_y_m;
   survey_ctx.sensor_height_m = lidar_mount_z_m_;
+  survey_ctx.ride_height_m = ride_height_m_;
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.

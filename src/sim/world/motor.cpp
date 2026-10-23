@@ -42,6 +42,50 @@ MotorParams motor_params_from_profile(
   out.tire_friction_mu = profile.tire_friction_mu;
   out.yaw_scrub_coulomb_Nm = profile.yaw_scrub_coulomb_Nm;
   out.yaw_scrub_viscous_Nm_per_radps = profile.yaw_scrub_viscous_Nm_per_radps;
+  // Chassis hard geometry: verbatim copy, plus the legacy support default
+  // (empty profile list = fore/aft ball pair at +-0.9*wheel_base/2 — the
+  // real differential base doctrine, previously hardcoded in the build).
+  out.body_half_height_m = profile.body_half_height_m;
+  out.body_half_width_m = profile.body_half_width_m;
+  out.drive_axle_x_m = profile.drive_axle_x_m;
+  out.tire_half_width_m = profile.tire_half_width_m;
+  out.wheel_mass_kg = profile.wheel_mass_kg;
+  out.knuckle_mass_kg = profile.knuckle_mass_kg;
+  out.tire_density_kgpm3 = profile.tire_density_kgpm3;
+  // Effective COM: 0 = follow the axle (single rule, same as the loader).
+  out.com_height_m = profile.com_height_m > 0.0
+                         ? profile.com_height_m
+                         : profile.wheel_radius_m;
+  out.payload_mass_kg = profile.payload_mass_kg;
+  out.payload_height_m = profile.payload_height_m;
+  out.support_count = 0;
+  if (profile.supports.empty()) {
+    const double sx = 0.9 * profile.wheel_base_m / 2;
+    MotorParams::SupportParams b;
+    b.kind = "ball";
+    b.mass_kg = 0.1;
+    b.radius_m = 0.03;
+    b.friction_mu = 0.05;
+    b.torsional = 0.005;
+    b.rolling = 0.0005;
+    b.x_m = sx;
+    out.supports[out.support_count++] = b;
+    b.x_m = -sx;
+    out.supports[out.support_count++] = b;
+  } else {
+    for (const auto& s : profile.supports) {
+      if (out.support_count >= MotorParams::kMaxSupports) break;
+      MotorParams::SupportParams b;
+      b.kind = s.kind;
+      b.x_m = s.x_m;
+      b.radius_m = s.radius_m;
+      b.mass_kg = s.mass_kg;
+      b.friction_mu = s.friction_mu;
+      b.torsional = s.torsional;
+      b.rolling = s.rolling;
+      out.supports[out.support_count++] = b;
+    }
+  }
   return out;
 }
 

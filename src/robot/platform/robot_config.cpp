@@ -1,5 +1,6 @@
 #include "robot/platform/robot_config.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -7,8 +8,6 @@
 #include "robot/core/json.hpp"
 
 namespace lost_signal::robot::platform {
-
-namespace {
 
 using core::Json;
 
@@ -50,8 +49,8 @@ bool take_str(const Json& obj, const char* key, std::string& out,
   return true;
 }
 
-// Same plant keys as the drive-profile loader (one contract).
-bool merge_drive_keys(const Json& obj, DriveProfile& merged, std::string& err) {
+bool merge_drive_profile_keys(const Json& obj, DriveProfile& merged,
+                              std::string& err) {
   double v = 0.0;
   bool present = false;
   const char* keys[] = {"wheel_radius_m",
@@ -123,6 +122,160 @@ bool merge_drive_keys(const Json& obj, DriveProfile& merged, std::string& err) {
   return true;
 }
 
+// Chassis hard geometry ("chassis" object): body/deck size, drive axle
+// offset, tire width, unpowered supports. Fail closed on any malformed
+// entry (a typo'd support must refuse, never silently drop a contact).
+// Pure range validation, shared by the merge path and the absent-block
+// path (defaults still checked against the merged wheel radius).
+bool validate_chassis_geometry(const DriveProfile& merged, std::string& err) {
+  // Effective COM (0 = follow the axle — resolved here so every caller
+  // sees one number, never two rules). Negative is refused (typo guard;
+  // auto is spelled 0, exactly).
+  if (!(merged.com_height_m >= 0.0)) {
+    err = "chassis.'com_height_m' must be >= 0 (0 = follow the axle)";
+    return false;
+  }
+  const double com_h =
+      merged.com_height_m > 0.0 ? merged.com_height_m : merged.wheel_radius_m;
+  if (!(merged.body_half_height_m > 0.0) ||
+      !(merged.body_half_height_m < merged.wheel_radius_m)) {
+    err = "chassis.'body_half_height_m' must be in (0, wheel_radius_m)";
+    return false;
+  }
+  if (!(com_h > merged.body_half_height_m)) {
+    err = "chassis COM must clear the deck (belly = com - half_h > 0)";
+    return false;
+  }
+  if (!(merged.body_half_width_m > 0.0)) {
+    err = "chassis.'body_half_width_m' must be positive";
+    return false;
+  }
+  if (!(merged.tire_half_width_m > 0.0)) {
+    err = "chassis.'tire_half_width_m' must be positive";
+    return false;
+  }
+  if (!(merged.wheel_mass_kg > 0.0)) {
+    err = "chassis.'wheel_mass_kg' must be positive";
+    return false;
+  }
+  if (!(merged.knuckle_mass_kg > 0.0)) {
+    err = "chassis.'knuckle_mass_kg' must be positive";
+    return false;
+  }
+  if (!(merged.tire_density_kgpm3 > 0.0)) {
+    err = "chassis.'tire_density_kgpm3' must be positive";
+    return false;
+  }
+  if (!(merged.payload_mass_kg >= 0.0) ||
+      !std::isfinite(merged.payload_mass_kg)) {
+    err = "chassis.'payload_mass_kg' must be finite non-negative";
+    return false;
+  }
+  if (!(merged.payload_height_m >= 0.0) ||
+      !std::isfinite(merged.payload_height_m)) {
+    err = "chassis.'payload_height_m' must be finite non-negative";
+    return false;
+  }
+  if (!(merged.idler_trail_m >= 0.0) ||
+      !std::isfinite(merged.idler_trail_m)) {
+    err = "chassis.'idler_trail_m' must be finite non-negative";
+    return false;
+  }
+  return true;
+}
+
+bool merge_chassis_keys(const Json& obj, DriveProfile& merged,
+                        std::string& err) {
+  double v = 0.0;
+  bool present = false;
+  const char* keys[] = {"body_half_height_m", "body_half_width_m",
+                        "drive_axle_x_m", "tire_half_width_m",
+                        "wheel_mass_kg", "knuckle_mass_kg",
+                        "tire_density_kgpm3", "com_height_m",
+                        "payload_mass_kg", "payload_height_m",
+                        "idler_trail_m"};
+  double* slots[] = {&merged.body_half_height_m, &merged.body_half_width_m,
+                     &merged.drive_axle_x_m, &merged.tire_half_width_m,
+                     &merged.wheel_mass_kg, &merged.knuckle_mass_kg,
+                     &merged.tire_density_kgpm3, &merged.com_height_m,
+                     &merged.payload_mass_kg, &merged.payload_height_m,
+                     &merged.idler_trail_m};
+  for (int i = 0; i < 11; ++i) {
+    if (!take_num(obj, keys[i], v, present, err)) return false;
+    if (present) {
+      if (!std::isfinite(v)) {
+        err = std::string("chassis.'") + keys[i] + "' must be finite";
+        return false;
+      }
+      *slots[i] = v;
+    }
+  }
+  // Range doctrine (checked again engine-side at build; the loader rejects
+  // nonsense early so bad authoring fails at parse, not at first step):
+  // deck must clear the floor (belly = com - half_h > 0), tub positive,
+  // tire width positive. Axle offset is bounded at build against base_len.
+  if (!validate_chassis_geometry(merged, err)) return false;
+  const Json* sup = obj.find("supports");
+  if (sup == nullptr) return true;  // absent = legacy ball pair at convert
+  if (!sup->is_array()) {
+    err = "'chassis.supports' must be an array";
+    return false;
+  }
+  std::vector<DriveProfile::SupportSpec> parsed;
+  for (const auto& e : sup->as_array()) {
+    if (!e.is_object()) {
+      err = "support entry must be an object";
+      return false;
+    }
+    DriveProfile::SupportSpec s;
+    std::string kind;
+    bool has_kind = false;
+    if (!take_str(e, "kind", kind, has_kind, err)) return false;
+    if (has_kind) s.kind = kind;
+    if (s.kind != "ball") {
+      err = std::string("support kind '") + s.kind +
+            "' unsupported (only 'ball')";
+      return false;
+    }
+    const char* skeys[] = {"x_m", "radius_m", "mass_kg", "friction_mu",
+                           "torsional", "rolling"};
+    double* sslots[] = {&s.x_m, &s.radius_m, &s.mass_kg, &s.friction_mu,
+                        &s.torsional, &s.rolling};
+    for (int i = 0; i < 6; ++i) {
+      if (!take_num(e, skeys[i], v, present, err)) return false;
+      if (present) {
+        if (!std::isfinite(v)) {
+          err = std::string("support.'") + skeys[i] + "' must be finite";
+          return false;
+        }
+        *sslots[i] = v;
+      }
+    }
+    if (!(s.radius_m > 0.0) || !(s.mass_kg > 0.0) || !(s.friction_mu >= 0.0) ||
+        !(s.torsional >= 0.0) || !(s.rolling >= 0.0)) {
+      err = "support needs radius_m/mass_kg > 0, frictions >= 0";
+      return false;
+    }
+    parsed.push_back(s);
+  }
+  if (parsed.size() > 4) {
+    err = "'chassis.supports' holds at most 4 entries";
+    return false;
+  }
+  merged.supports = std::move(parsed);
+  return true;
+}
+
+bool merge_chassis_config(const Json* chassis_obj, DriveProfile& merged,
+                          std::string& err) {
+  if (chassis_obj == nullptr) return validate_chassis_geometry(merged, err);
+  if (!chassis_obj->is_object()) {
+    err = "'chassis' must be an object";
+    return false;
+  }
+  return merge_chassis_keys(*chassis_obj, merged, err);
+}
+
 bool load_vec3(const Json& obj, const char* key, double out[3],
                std::string& err) {
   const Json* node = obj.find(key);
@@ -142,8 +295,6 @@ bool load_vec3(const Json& obj, const char* key, double out[3],
   }
   return true;
 }
-
-}  // namespace
 
 bool load_robot_config(const std::string& path, RobotConfig& config,
                        std::string* error) {
@@ -176,14 +327,19 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
     err = "unknown chassis kind: " + want;
     return false;
   }
-  if (!merge_drive_keys(obj, out.profile, err)) return false;
+  if (!merge_drive_profile_keys(obj, out.profile, err)) return false;
   const Json* drive = obj.find("drive");
   if (drive != nullptr) {
     if (!drive->is_object()) {
       err = "'drive' must be an object";
       return false;
     }
-    if (!merge_drive_keys(*drive, out.profile, err)) return false;
+    if (!merge_drive_profile_keys(*drive, out.profile, err)) return false;
+  }
+  // Present block merges, absent block validates the defaulted geometry
+  // against the merged wheel radius — one call, both paths.
+  if (!merge_chassis_config(obj.find("chassis"), out.profile, err)) {
+    return false;
   }
   const Json* lim = obj.find("limits");
   if (lim != nullptr) {
@@ -335,6 +491,24 @@ RobotDescription description_from_config(const RobotConfig& config) {
   desc.sensors = config.sensors;
   desc.limits = config.limits;
   desc.chassis_kind = config.profile.chassis_kind;
+  // Declared plant loadout for autonomy envelopes (description, never
+  // truth): COM folds the declared payload master-style (weighted
+  // average; payload at chassis COM when unset = pure ballast). The SIM
+  // plant folds the identical declared numbers engine-side.
+  {
+    const auto& p = config.profile;
+    const double com_eff =
+        p.com_height_m > 0.0 ? p.com_height_m : p.wheel_radius_m;
+    const double pcom =
+        p.payload_height_m > 0.0 ? p.payload_height_m : com_eff;
+    desc.plant.wheel_radius_m = p.wheel_radius_m;
+    desc.plant.track_width_m = p.track_width_m;
+    desc.plant.wheel_base_m = p.wheel_base_m;
+    desc.plant.total_mass_kg = p.vehicle_mass_kg + p.payload_mass_kg;
+    desc.plant.com_height_m =
+        (p.vehicle_mass_kg * com_eff + p.payload_mass_kg * pcom) /
+        std::max(0.5, desc.plant.total_mass_kg);
+  }
   return desc;
 }
 

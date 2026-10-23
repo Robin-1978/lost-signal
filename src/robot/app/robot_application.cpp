@@ -41,6 +41,9 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
       chassis_(platform::make_chassis(desc_)),
       coordinator_(desc_.limits, 100'000'000,
                    perception_config_from(desc_)) {
+  // Declared plant loadout fans into the autonomy envelopes once, with
+  // the machine file (validator rollover support/COM + survey ride).
+  coordinator_.set_plant_geometry(desc_.plant);
   channel_.activate();
   // Bringup order: autonomy state first, executive policy last.
   bringup_wired_ =
