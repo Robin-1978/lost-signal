@@ -89,6 +89,8 @@ int main() {
     assert(f.boxes[0].selected && f.boxes[0].selected_corner == 2);
     assert(std::abs(f.boxes[0].height_m - 0.5) < 1e-12);
     assert(f.actors.size() == 1);
+    assert(!f.actors[0].pedestrian);  // default 1.5 m vehicle height
+    assert(std::abs(f.actors[0].height_m - 1.5) < 1e-12);
     assert(f.places.size() == 1 && f.places[0].reached);
     assert(!f.places[0].selected);
     assert(f.lidar_valid && f.lidar_hits.size() == 5);
@@ -106,6 +108,30 @@ int main() {
     auto legacy = sim::viewer::lidar_endpoints(1.0, 2.0, 0.5, step.obs);
     assert(legacy.size() == 5);
     assert(std::abs(legacy[0].first - ex) < 1e-9);
+  }
+
+  // Ground-truth overlays ride the frame (SIM paint, never ROBOT input):
+  // material zones with ids, terrain footprints, pedestrian split.
+  {
+    sim::world::World w;
+    w.set_materials(
+        {{"ice", 0.1, 0.005, 0.006, 1.0, 0.3}, {"sand", 0.55, 0.03, 0.02, 1.2, 0.22}});
+    w.set_material_zones({{"slick", -2.0, -2.0, 12.0, 2.0, "ice"}});
+    w.set_terrain_patches(
+        {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.14, 0.0, 0.0, 0.0}});
+    sim::world::Actor walker;
+    walker.x = 1.0;
+    walker.height_m = 1.8;
+    w.add_actor(walker);
+    sim::eval::EvalStep s;
+    s.truth_after = w.truth();
+    const sim::viewer::Frame f = sim::viewer::build_frame(w, s, {}, {});
+    assert(f.zones.size() == 1);
+    assert(f.zones[0].material_id == "ice");
+    assert(std::abs(f.zones[0].x1_m - 12.0) < 1e-12);
+    assert(f.patches.size() == 1);
+    assert(std::abs(f.patches[0].y0_m + 3.0) < 1e-12);
+    assert(f.actors.size() == 1 && f.actors[0].pedestrian);
   }
 
   // Wheel table per chassis (backend layout + live joints, same sources

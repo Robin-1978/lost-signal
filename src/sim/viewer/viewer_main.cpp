@@ -10,9 +10,12 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
+#include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
@@ -21,6 +24,8 @@
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/view_transform.hpp"
+#include "sim/world/actor_behavior.hpp"
+#include "sim/world/terrain.hpp"
 
 namespace {
 using lost_signal::sim::viewer::Frame;
@@ -28,6 +33,153 @@ using lost_signal::sim::viewer::ViewTransform;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
+
+// Ground-material paint (master's drive_effect colors, SIM-side display
+// only — physics never reads these; unknown ids fall back to asphalt).
+Color material_color(const std::string& id, unsigned char alpha = 255) {
+  if (id == "standing_water") return {0x7B, 0xCE, 0xD2, alpha};
+  if (id == "sand") return {0xD8, 0xB9, 0x78, alpha};
+  if (id == "gravel") return {0xB3, 0xA1, 0x7A, alpha};
+  if (id == "mud") return {0x79, 0x60, 0x44, alpha};
+  if (id == "paved") return {0x89, 0x91, 0x8B, alpha};
+  if (id == "grip_grating") return {0x4E, 0xE7, 0xC5, alpha};
+  if (id == "steel_deck") return {0xB8, 0xC4, 0xCA, alpha};
+  if (id == "ice") return {0xC4, 0xE8, 0xF2, alpha};
+  if (id == "asphalt") return {0x52, 0x64, 0x6A, alpha};
+  return {0x52, 0x64, 0x6A, alpha};  // weathered_asphalt fallback
+}
+
+// Terrain height tint (low grass -> dry earth -> rock).
+Color height_color(double h, double hmax) {
+  const double t = hmax > 1e-6 ? std::min(1.0, std::max(0.0, h / hmax)) : 0.0;
+  if (t < 0.5) {
+    const float k = static_cast<float>(t * 2.0);
+    return {static_cast<unsigned char>(126 + 110 * k),
+            static_cast<unsigned char>(178 - 20 * k),
+            static_cast<unsigned char>(120 - 30 * k), 255};
+  }
+  const float k = static_cast<float>((t - 0.5) * 2.0);
+  return {static_cast<unsigned char>(236 - 60 * k),
+          static_cast<unsigned char>(158 - 50 * k),
+          static_cast<unsigned char>(90 - 10 * k), 255};
+}
+
+// Flat fake shadow: a dark translucent disc under bodies/props. No shadow
+// map, no shader — 80% of the depth cue for 1% of the cost.
+inline void blob_shadow_3d(double x_m, double y_m, double r_m) {
+  DrawCylinder({static_cast<float>(x_m), 0.012f,
+                static_cast<float>(-y_m)},
+               static_cast<float>(r_m), static_cast<float>(r_m), 0.012f, 20,
+               {20, 20, 25, 50});
+}
+
+// Actors sidecar from tools/convert_master_map.py (<map>.actors.json):
+// patrol/dwell -> waypoints (+waits), seeded-wander -> wander. Missing
+// file = no actors (demo legacy), never an error.
+void load_actors_sidecar(const std::string& map_path,
+                         lost_signal::sim::scenario::ScenarioSession& session) {
+  const std::string::size_type dot = map_path.rfind('.');
+  const std::string side =
+      (dot == std::string::npos ? map_path : map_path.substr(0, dot)) +
+      ".actors.json";
+  std::ifstream in(side, std::ios::binary);
+  if (!in.is_open()) return;
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  std::string err;
+  auto root = lost_signal::robot::core::json_parse(ss.str(), &err);
+  if (root == nullptr || !root->is_object()) return;
+  const auto* arr = root->find("actors");
+  if (arr == nullptr || !arr->is_array()) return;
+  int loaded = 0;
+  for (const auto& e : arr->as_array()) {
+    if (!e.is_object()) continue;
+    const auto* wx = e.find("x");
+    const auto* wy = e.find("y");
+    if (wx == nullptr || wy == nullptr || !wx->is_num() || !wy->is_num()) {
+      continue;
+    }
+    lost_signal::sim::world::Actor a;
+    a.x = wx->as_num();
+    a.y = wy->as_num();
+    const auto* r = e.find("radius_m");
+    if (r != nullptr && r->is_num()) a.radius_m = r->as_num();
+    const auto* h = e.find("height_m");
+    if (h != nullptr && h->is_num()) a.height_m = h->as_num();
+    const auto* beh = e.find("behavior");
+    const std::string kind =
+        (beh != nullptr && beh->is_str()) ? beh->as_str() : "waypoints";
+    if (!lost_signal::sim::world::ActorBehaviorRegistry::global().create(
+            kind == "wander" ? "wander" : "waypoints", a.behavior)) {
+      continue;
+    }
+    const auto* sp = e.find("speed_mps");
+    if (sp != nullptr && sp->is_num()) a.behavior.speed_mps = sp->as_num();
+    const auto* lp = e.find("loop");
+    if (lp != nullptr && lp->is_bool()) a.behavior.loop = lp->as_bool();
+    const auto* sd = e.find("seed");
+    if (sd != nullptr && sd->is_num()) {
+      a.behavior.seed = static_cast<std::uint64_t>(sd->as_num());
+    }
+    const auto* wps = e.find("waypoints");
+    if (wps != nullptr && wps->is_array()) {
+      for (const auto& w : wps->as_array()) {
+        const auto* qx = w.find("x");
+        const auto* qy = w.find("y");
+        if (qx == nullptr || qy == nullptr || !qx->is_num() ||
+            !qy->is_num()) {
+          continue;
+        }
+        a.behavior.waypoints.push_back({qx->as_num(), qy->as_num()});
+      }
+    }
+    const auto* wt = e.find("waits");
+    if (wt != nullptr && wt->is_array()) {
+      for (const auto& v : wt->as_array()) {
+        if (v.is_num()) a.behavior.waits_s.push_back(v.as_num());
+      }
+    }
+    session.setup_world().add_actor(a);
+    ++loaded;
+  }
+  std::fprintf(stderr, "actors sidecar: %s (%d actors)\n", side.c_str(),
+               loaded);
+}
+
+// Map extents over every authored layer (auto-fit on --map load).
+void map_bounds(const lost_signal::sim::world::World& w, double& x0,
+                double& y0, double& x1, double& y1) {
+  x0 = y0 = 1e9;
+  x1 = y1 = -1e9;
+  auto eat = [&](double x, double y) {
+    x0 = std::min(x0, x);
+    y0 = std::min(y0, y);
+    x1 = std::max(x1, x);
+    y1 = std::max(y1, y);
+  };
+  eat(0.0, 0.0);
+  for (const auto& b : w.static_boxes()) {
+    eat(b.x0, b.y0);
+    eat(b.x1, b.y1);
+  }
+  for (const auto& p : w.places()) eat(p.x_m, p.y_m);
+  for (const auto& z : w.material_zones()) {
+    eat(z.x0, z.y0);
+    eat(z.x1, z.y1);
+  }
+  for (const auto& p : w.terrain_patches()) {
+    eat(p.x0, p.y0);
+    eat(p.x1, p.y1);
+  }
+  if (x1 - x0 < 8.0) {
+    x0 -= (8.0 - (x1 - x0)) * 0.5;
+    x1 += (8.0 - (x1 - x0)) * 0.5;
+  }
+  if (y1 - y0 < 8.0) {
+    y0 -= (8.0 - (y1 - y0)) * 0.5;
+    y1 += (8.0 - (y1 - y0)) * 0.5;
+  }
+}
 
 void setup_demo(lost_signal::sim::scenario::ScenarioSession& session) {
   session.setup_world().set_static_boxes({
@@ -75,6 +227,23 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
       const auto b = view.world_to_screen(gx1, gy);
       DrawLineV({a.x_px, a.y_px}, {b.x_px, b.y_px}, {220, 220, 220, 255});
     }
+  }
+  // Ground-material paint + terrain tint (SIM truth overlay, same colors
+  // as the 3D frontend below).
+  for (const auto& z : f.zones) {
+    const auto a = view.world_to_screen(z.x0_m, z.y0_m);
+    const auto c = view.world_to_screen(z.x1_m, z.y1_m);
+    const float x = std::min(a.x_px, c.x_px), y = std::min(a.y_px, c.y_px);
+    const float w = std::abs(c.x_px - a.x_px), h = std::abs(c.y_px - a.y_px);
+    DrawRectangle(x, y, w, h, material_color(z.material_id, 70));
+  }
+  for (const auto& p : f.patches) {
+    const auto a = view.world_to_screen(p.x0_m, p.y0_m);
+    const auto c = view.world_to_screen(p.x1_m, p.y1_m);
+    const float x = std::min(a.x_px, c.x_px), y = std::min(a.y_px, c.y_px);
+    const float w = std::abs(c.x_px - a.x_px), h = std::abs(c.y_px - a.y_px);
+    DrawRectangle(x, y, w, h, {190, 150, 100, 60});
+    DrawRectangleLines(x, y, w, h, {150, 110, 70, 160});
   }
   // Trail (truth history, oldest first).
   for (std::size_t i = 1; i < f.trail.size(); ++i) {
@@ -255,23 +424,104 @@ inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
   return true;
 }
 
-void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
-  DrawGrid(21, 1.0f);
+void draw_frame_3d(const Frame& f,
+                   const lost_signal::sim::world::World& world,
+                   bool show_lidar, bool show_estimate) {
+  namespace world_ns = lost_signal::sim::world;
+  // Ground base sized to the authored map (concrete apron under everything).
+  double gx0, gy0, gx1, gy1;
+  map_bounds(world, gx0, gy0, gx1, gy1);
+  {
+    const float w = static_cast<float>(gx1 - gx0 + 8.0);
+    const float h = static_cast<float>(gy1 - gy0 + 8.0);
+    DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.02),
+              {w, h}, {198, 203, 196, 255});
+  }
+  DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);
+  // Material zones as translucent paint quads (slick water reads blue,
+  // sand/gravel warm — same table as the 2D overlay).
+  for (const auto& z : f.zones) {
+    const Vector3 center = to_raylib((z.x0_m + z.x1_m) * 0.5,
+                                     (z.y0_m + z.y1_m) * 0.5, 0.005);
+    const Vector3 size{static_cast<float>(std::abs(z.x1_m - z.x0_m)), 0.006f,
+                       static_cast<float>(std::abs(z.y1_m - z.y0_m))};
+    DrawCubeV(center, size, material_color(z.material_id, 150));
+  }
+  // Terrain patches as a height-tinted mesh sampling the SAME canonical
+  // function the engine builds and the survey rasterizes — the slope you
+  // see is the slope the robot climbs.
+  {
+    double hmax = 0.2;
+    for (const auto& p : f.patches) {
+      for (double x = p.x0_m; x < p.x1_m; x += 0.5) {
+        for (double y = p.y0_m; y < p.y1_m; y += 0.5) {
+          const auto s = world_ns::sample_terrain(
+              world.terrain_patches(), world.support_slabs(), x, y);
+          hmax = std::max(hmax, s.height_m);
+        }
+      }
+    }
+    for (const auto& p : f.patches) {
+      for (double x = p.x0_m; x < p.x1_m; x += 0.5) {
+        for (double y = p.y0_m; y < p.y1_m; y += 0.5) {
+          const double x2 = std::min(x + 0.5, p.x1_m);
+          const double y2 = std::min(y + 0.5, p.y1_m);
+          const double h00 = world_ns::sample_terrain(
+                                 world.terrain_patches(),
+                                 world.support_slabs(), x, y)
+                                 .height_m;
+          const double h10 = world_ns::sample_terrain(
+                                 world.terrain_patches(),
+                                 world.support_slabs(), x2, y)
+                                 .height_m;
+          const double h01 = world_ns::sample_terrain(
+                                 world.terrain_patches(),
+                                 world.support_slabs(), x, y2)
+                                 .height_m;
+          const double h11 = world_ns::sample_terrain(
+                                 world.terrain_patches(),
+                                 world.support_slabs(), x2, y2)
+                                 .height_m;
+          const double hm = (h00 + h10 + h01 + h11) * 0.25 + 0.012;
+          const Color col = height_color(hm, hmax);
+          // Winding faces up in raylib space (x, z_up, -y): culling eats
+          // downward triangles, so p00 -> p10 -> p01, never the reverse.
+          DrawTriangle3D(to_raylib(x, y, h00 + 0.012),
+                         to_raylib(x2, y, h10 + 0.012),
+                         to_raylib(x, y2, h01 + 0.012), col);
+          DrawTriangle3D(to_raylib(x2, y, h10 + 0.012),
+                         to_raylib(x2, y2, h11 + 0.012),
+                         to_raylib(x, y2, h01 + 0.012), col);
+        }
+      }
+    }
+  }
   // Trail at ground level.
   for (std::size_t i = 1; i < f.trail.size(); ++i) {
     DrawLine3D(to_raylib(f.trail[i - 1].first, f.trail[i - 1].second, 0.02),
                to_raylib(f.trail[i].first, f.trail[i].second, 0.02), BLUE);
   }
-  // Boxes as cubes (flat survey plates get a thin slab so they stay lit).
+  // Boxes as two-tone blocks (light cap, dark walls) with blob shadows.
   for (const auto& b : f.boxes) {
     const float h = static_cast<float>(b.height_m > 0.02 ? b.height_m : 0.02);
     const Vector3 center =
         to_raylib((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5, h * 0.5);
     const Vector3 size{static_cast<float>(std::abs(b.x1_m - b.x0_m)), h,
                        static_cast<float>(std::abs(b.y1_m - b.y0_m))};
-    DrawCubeV(center, size,
-              b.selected ? YELLOW : (f.static_collision ? RED : DARKGRAY));
+    const Color wall =
+        b.selected ? YELLOW
+                   : (f.static_collision ? RED
+                                         : Color{110, 118, 128, 255});
+    DrawCubeV(center, size, wall);
     DrawCubeWiresV(center, size, BLACK);
+    // Sun-lit cap: thin slab on top, warm white.
+    DrawCubeV(to_raylib((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5,
+                        h + 0.008),
+              {size.x, 0.016f, size.z},
+              b.selected ? Color{255, 240, 160, 255}
+                         : Color{168, 175, 184, 255});
+    blob_shadow_3d((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5,
+                   std::max(size.x, size.z) * 0.75);
     if (b.selected) {
       const double cx[4] = {b.x0_m, b.x1_m, b.x1_m, b.x0_m};
       const double cy[4] = {b.y0_m, b.y0_m, b.y1_m, b.y1_m};
@@ -282,21 +532,49 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
       }
     }
   }
-  // Places as poles (green = objective done).
+  // Places as beacon poles with a ground ring (green = objective done).
   for (const auto& p : f.places) {
     const Color col = p.reached ? GREEN : ORANGE;
-    DrawSphere(to_raylib(p.x_m, p.y_m, 0.15), 0.15f, col);
-    DrawLine3D(to_raylib(p.x_m, p.y_m, 0.0), to_raylib(p.x_m, p.y_m, 0.6),
-               BLACK);
-    if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, 0.15), 0.25f, 4,
-                                    4, RED);
+    DrawCylinder(to_raylib(p.x_m, p.y_m, 0.3), 0.05f, 0.05f, 0.6f, 10,
+                 DARKGRAY);
+    DrawSphere(to_raylib(p.x_m, p.y_m, 0.68), 0.13f, col);
+    DrawCircle3D(to_raylib(p.x_m, p.y_m, 0.02), 0.45f, {1, 0, 0}, 90.0f,
+                 p.reached ? Color{40, 180, 80, 200} : Color{230, 140, 40, 200});
+    if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, 0.68), 0.25f, 8,
+                                    8, RED);
   }
-  // Actors as low cylinders with a velocity tick.
+  // Actors: forklift-orange vehicles, pedestrian-blue walkers, true height,
+  // heading tick, blob shadow. Patrol routes draw as ground polylines.
   for (const auto& a : f.actors) {
-    DrawCylinder(to_raylib(a.x_m, a.y_m, 0.25), 0.25f, 0.25f,
-                 static_cast<float>(a.radius_m), 16, PURPLE);
-    DrawLine3D(to_raylib(a.x_m, a.y_m, 0.25),
-               to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps, 0.25), BLACK);
+    const Color body =
+        a.pedestrian ? Color{70, 130, 220, 255} : Color{235, 130, 40, 255};
+    const float h = static_cast<float>(a.height_m > 0.1 ? a.height_m : 0.5);
+    blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3);
+    DrawCylinder(to_raylib(a.x_m, a.y_m, h * 0.5), static_cast<float>(h),
+                 static_cast<float>(h),
+                 static_cast<float>(a.radius_m), 16, body);
+    DrawCylinder(to_raylib(a.x_m, a.y_m, h + 0.03), 0.06f, 0.06f, 0.12f, 8,
+                 DARKGRAY);  // roof beacon
+    DrawLine3D(to_raylib(a.x_m, a.y_m, h * 0.5),
+               to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps, h * 0.5), BLACK);
+  }
+  for (const auto& a : world.actors()) {
+    if (a.behavior.kind !=
+            lost_signal::sim::world::ActorBehaviorKind::kWaypoints ||
+        a.behavior.waypoints.empty()) {
+      continue;
+    }
+    Vector3 prev = to_raylib(a.x, a.y, 0.03);
+    for (const auto& wp : a.behavior.waypoints) {
+      const Vector3 cur = to_raylib(wp.x_m, wp.y_m, 0.03);
+      DrawLine3D(prev, cur, {150, 100, 220, 180});
+      prev = cur;
+    }
+    if (a.behavior.loop && a.behavior.waypoints.size() > 1) {
+      DrawLine3D(prev, to_raylib(a.behavior.waypoints.front().x_m,
+                                 a.behavior.waypoints.front().y_m, 0.03),
+                 {150, 100, 220, 180});
+    }
   }
   // Lidar rays from the TRUE sensor origin (mount-composed, same source
   // generation runs). Endpoints stay planar-projected (see builder).
@@ -343,17 +621,41 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
         static_cast<float>(-r01), static_cast<float>(-r21),
         static_cast<float>(r11), 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f};
+    blob_shadow_3d(f.body.x_m, f.body.y_m,
+                   std::max(f.body.half_length_m, f.body.half_width_m) * 1.4);
     rlPushMatrix();
     rlTranslatef(static_cast<float>(f.body.x_m),
                  static_cast<float>(f.body.z_m + 0.25),
                  static_cast<float>(-f.body.y_m));
     rlMultMatrixf(m);
-    DrawCube({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0), 0.5f,
-             static_cast<float>(f.body.half_width_m * 2.0),
-             f.static_collision ? RED : SKYBLUE);
-    DrawCubeWires({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0),
-                  0.5f, static_cast<float>(f.body.half_width_m * 2.0),
-                  DARKBLUE);
+    {
+      // Layered shop model (local frame, y up): charcoal skirt, pearl
+      // hull, orange deck stripe, lidar mast + puck, headlights, status
+      // LED (red while any wheel slips). Collision still flashes red.
+      const float bl = static_cast<float>(f.body.half_length_m * 2.0);
+      const float bw = static_cast<float>(f.body.half_width_m * 2.0);
+      const Color hull = f.static_collision
+                             ? RED
+                             : Color{238, 241, 244, 255};
+      bool slipping = false;
+      for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
+      DrawCube({0, -0.20f, 0}, bl, 0.12f, bw, Color{45, 48, 55, 255});
+      DrawCube({0, -0.03f, 0}, bl, 0.24f, bw, hull);
+      DrawCubeWires({0, -0.03f, 0}, bl, 0.24f, bw, DARKBLUE);
+      DrawCube({0, 0.105f, 0}, bl * 0.7f, 0.03f, bw * 0.55f,
+               Color{235, 120, 35, 255});  // deck stripe
+      const float mx = -bl * 0.32f;
+      DrawCylinder({mx, 0.26f, 0}, 0.035f, 0.035f, 0.3f, 10,
+                   Color{45, 48, 55, 255});  // mast
+      DrawCylinder({mx, 0.44f, 0}, 0.075f, 0.075f, 0.07f, 14,
+                   Color{200, 208, 215, 255});  // lidar puck
+      DrawSphere({mx, 0.50f, 0}, 0.025f,
+                 slipping ? RED : Color{50, 200, 90, 255});  // status LED
+      DrawSphere({bl * 0.5f, -0.02f, bw * 0.30f}, 0.035f,
+                 Color{255, 242, 200, 255});  // headlights
+      DrawSphere({bl * 0.5f, -0.02f, -bw * 0.30f}, 0.035f,
+                 Color{255, 242, 200, 255});
+    }
     // Wheels from live joints (drive spin + steer yaw per module, same
     // sources as physics/encoders). A spoke makes spin visible; slipping
     // wheels draw red from the engine traction flags. Mecanum modules get
@@ -482,6 +784,8 @@ int main(int argc, char** argv) {
     session->setup_world().set_support_slabs(std::move(content.slabs));
     session->setup_world().set_environment(std::move(content.environment));
     session->set_objectives(std::move(ids));
+    // Converted master maps ship patrols beside the world file.
+    load_actors_sidecar(map_path, *session);
   } else {
     setup_demo(*session);
   }
@@ -518,6 +822,17 @@ int main(int argc, char** argv) {
     }
   }
   CameraState cam_st;
+  if (!map_path.empty()) {
+    // Frame the authored map instead of the demo window.
+    double bx0, by0, bx1, by1;
+    map_bounds(session->setup_world(), bx0, by0, bx1, by1);
+    view.fit(bx0 - 2.0, by0 - 2.0, bx1 + 2.0, by1 + 2.0);
+    cam_st.target_x = (bx0 + bx1) * 0.5;
+    cam_st.target_y = (by0 + by1) * 0.5;
+    cam_st.dist_m = static_cast<float>(
+        std::min(60.0, std::max(10.0, std::max(bx1 - bx0, by1 - by0) * 0.9)));
+    follow = false;  // start on the map overview, not glued to the robot
+  }
 
   while (!WindowShouldClose()) {
     view.set_screen(GetScreenWidth(), GetScreenHeight());
@@ -642,11 +957,11 @@ int main(int argc, char** argv) {
     }
 
     BeginDrawing();
-    ClearBackground(RAYWHITE);
+    ClearBackground(view3d ? Color{168, 204, 228, 255} : RAYWHITE);
     if (view3d) {
       const Camera3D cam = camera_from_state(cam_st);
       BeginMode3D(cam);
-      draw_frame_3d(frame, show_lidar, show_estimate);
+      draw_frame_3d(frame, session->setup_world(), show_lidar, show_estimate);
       EndMode3D();
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());

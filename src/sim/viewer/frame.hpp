@@ -55,6 +55,20 @@ struct FrameBox {
 struct FrameActor {
   double x_m = 0.0, y_m = 0.0, radius_m = 0.4;
   double vx_mps = 0.0, vy_mps = 0.0;
+  double height_m = 1.5;  // sensor cylinder height (vehicle 1.5, pedestrian 1.8)
+  bool pedestrian = false;  // height > 1.6: drawn blue, else forklift orange
+};
+
+// Ground-material zone overlay (SIM truth paint, never ROBOT input): the
+// frontend tints the ground per zone so slick/sand reads visually.
+struct FrameZone {
+  double x0_m = 0.0, y0_m = 0.0, x1_m = 0.0, y1_m = 0.0;
+  std::string material_id;
+};
+
+// Terrain patch footprint (frontend samples heights itself for the mesh).
+struct FramePatch {
+  double x0_m = 0.0, y0_m = 0.0, x1_m = 0.0, y1_m = 0.0;
 };
 
 struct FramePlace {
@@ -70,6 +84,8 @@ struct Frame {
   std::vector<FrameBox> boxes;
   std::vector<FrameActor> actors;
   std::vector<FramePlace> places;
+  std::vector<FrameZone> zones;
+  std::vector<FramePatch> patches;
   std::vector<std::pair<double, double>> lidar_hits;  // world-space endpoints
   bool lidar_valid = false;
   bool static_collision = false;

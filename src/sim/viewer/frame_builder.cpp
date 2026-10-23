@@ -114,7 +114,28 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     fa.radius_m = a.radius_m;
     fa.vx_mps = a.vx_mps;
     fa.vy_mps = a.vy_mps;
+    fa.height_m = a.height_m;
+    // No kind field on the SIM actor: the map converter writes 1.8 m for
+    // pedestrians, 1.5 m for vehicles — the split reads that convention.
+    fa.pedestrian = a.height_m > 1.6;
     f.actors.push_back(fa);
+  }
+  for (const auto& z : world.material_zones()) {
+    FrameZone fz;
+    fz.x0_m = std::min(z.x0, z.x1);
+    fz.y0_m = std::min(z.y0, z.y1);
+    fz.x1_m = std::max(z.x0, z.x1);
+    fz.y1_m = std::max(z.y0, z.y1);
+    fz.material_id = z.material_id;
+    f.zones.push_back(fz);
+  }
+  for (const auto& p : world.terrain_patches()) {
+    FramePatch fp;
+    fp.x0_m = std::min(p.x0, p.x1);
+    fp.y0_m = std::min(p.y0, p.y1);
+    fp.x1_m = std::max(p.x0, p.x1);
+    fp.y1_m = std::max(p.y0, p.y1);
+    f.patches.push_back(fp);
   }
   const auto& places = world.places();
   f.places.reserve(places.size());
