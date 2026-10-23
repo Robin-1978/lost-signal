@@ -293,9 +293,20 @@ iface::MotionCommand AutonomyCoordinator::update(
   // Surveyed-elevation context for the terrain-aware layers (prior, never
   // live physics): validator ground-classification + grade gates. The map
   // outlives the decision branch (by-value parameter), so the pointer is
-  // valid for both validate() calls below.
+  // valid for both validate() calls below. The live overlay rides from the
+  // mapper's published layer (measurement heights where confident):
+  // refreshed here, owned by the member copy, valid for both calls below.
+  live_map_ = mapper_ != nullptr ? mapper_->local_map() : LocalMap{};
   SurveyContext survey_ctx;
   survey_ctx.map = &map;
+  survey_ctx.live.height_m = live_map_.has_elevation()
+                                 ? live_map_.elevation_m.data()
+                                 : nullptr;
+  survey_ctx.live.width = live_map_.width;
+  survey_ctx.live.height = live_map_.height;
+  survey_ctx.live.resolution_m = live_map_.resolution_m;
+  survey_ctx.live.origin_x_m = live_map_.origin_x_m;
+  survey_ctx.live.origin_y_m = live_map_.origin_y_m;
   survey_ctx.sensor_height_m = lidar_mount_z_m_;
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and

@@ -173,6 +173,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   RoutePoint goal_{};
   bool has_goal_ = false;
   Route active_route_{};
+  // Mapper snapshot owning the live elevation overlay for the validator
+  // (coordinator wires, holds no policy; refreshed per decision branch).
+  LocalMap live_map_{};
   core::MonotonicNs decision_period_ns_;
   core::MonotonicNs last_decision_ns_ = core::kInvalidTime;
   std::uint64_t last_map_revision_ = 0;

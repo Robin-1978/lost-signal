@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/elevation.hpp"
 #include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
@@ -107,6 +108,28 @@ struct SurveyContext {
   double sensor_z(const EstimatedState& est) const {
     return est.z_m + sensor_height_m + ride_height_m;
   }
+  // Live elevation overlay (mapper output, measurement heights where
+  // confident, NaN elsewhere). The validator prefers live where present
+  // and falls back to the survey prior — same ground doctrine, two
+  // sources. Live confirms ground only, never invents obstacles: obstacle
+  // evidence stays raw-scan. Empty (unattached) disables live exactly.
+  LiveElevationView live;
+  // Ground test for one endpoint: live surface meets the sensor plane, else
+  // the survey prior decides. Both sources share the tolerance.
+  bool is_ground(double end_x_m, double end_y_m, double sensor_z_m) const {
+    return endpoint_is_live_ground(
+        live, end_x_m, end_y_m, sensor_z_m, ground_tol_m, [&] {
+          return map != nullptr &&
+                 endpoint_is_survey_ground(*map, end_x_m, end_y_m,
+                                           sensor_z_m, ground_tol_m);
+        });
+  }
+  // Context carries evidence when the estimate is valid and either source
+  // is present (live alone suffices: survey gaps/revisions still validate).
+  bool usable(const EstimatedState& est) const {
+    return est.valid &&
+           ((map != nullptr && map->has_elevation()) || live.attached());
+  }
 };
 
 // IValidator: candidate + estimate + perception + raw scan -> verdict.
@@ -162,9 +185,7 @@ class ClearanceValidator : public IValidator {
                             const iface::ObservationFrame& obs,
                             const SurveyContext& survey) override {
     const SurveyContext* ctx =
-        (survey.map != nullptr && survey.map->has_elevation() && est.valid)
-            ? &survey
-            : nullptr;
+        survey.usable(est) ? &survey : nullptr;
     return validate_impl(candidate, est, perception, obs, ctx);
   }
 
@@ -219,9 +240,7 @@ class ClearanceValidator : public IValidator {
       const double ex = est.x_m + local.x * cyaw - local.y * syaw;
       const double ey = est.y_m + local.x * syaw + local.y * cyaw;
       if (survey != nullptr) {
-        if (endpoint_is_survey_ground(*survey->map, ex, ey,
-                                      survey->sensor_z(est),
-                                      survey->ground_tol_m)) {
+        if (survey->is_ground(ex, ey, survey->sensor_z(est))) {
           ++forward_ground;
           continue;
         }
@@ -284,9 +303,7 @@ class ClearanceValidator : public IValidator {
       const double ex = est.x_m + local.x * cyaw - local.y * syaw;
       const double ey = est.y_m + local.x * syaw + local.y * cyaw;
       if (survey != nullptr &&
-          endpoint_is_survey_ground(*survey->map, ex, ey,
-                                    survey->sensor_z(est),
-                                    survey->ground_tol_m)) {
+          survey->is_ground(ex, ey, survey->sensor_z(est))) {
         continue;
       }
       endpoints.push_back({ex, ey});

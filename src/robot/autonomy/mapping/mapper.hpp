@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/elevation.hpp"
 #include "robot/autonomy/mapping/log_odds.hpp"
 #include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/core/geometry.hpp"
@@ -108,6 +109,7 @@ class RayClearingMapper : public IMapper {
   void reset() override {
     map_ = LocalMap{};
     fusion_.reset(0);
+    elevation_.reset(0);
   }
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
@@ -143,9 +145,17 @@ class RayClearingMapper : public IMapper {
       // Rolling window drops history with the raster (documented; a mapping
       // session with loop closure replaces this reset with submap fusion).
       fusion_.reset(map_.width * map_.height);
+      elevation_.reset(map_.width * map_.height);
+      map_.elevation_m.assign(map_.width * map_.height,
+                              std::numeric_limits<float>::quiet_NaN());
     }
     if (fusion_.cell_count() != map_.width * map_.height) {
       fusion_.reset(map_.width * map_.height);  // fail closed, never alias
+    }
+    if (elevation_.cell_count() != map_.width * map_.height) {
+      elevation_.reset(map_.width * map_.height);
+      map_.elevation_m.assign(map_.width * map_.height,
+                              std::numeric_limits<float>::quiet_NaN());
     }
     map_.stamp_ns = obs.stamp_ns;
     if (!obs.scan_valid || obs.ranges_m.empty()) return;
@@ -158,6 +168,7 @@ class RayClearingMapper : public IMapper {
         core::compose(map_from_base, base_from_lidar_);
     const double ssx = map_from_sensor.translation_m.x;
     const double ssy = map_from_sensor.translation_m.y;
+    const double ssz = map_from_sensor.translation_m.z;
     // Surveyed sensor height for the ground classifier (estimate z rides
     // above the spawn plane; mount + ride complete the absolute height).
     // No survey (or no elevation layer) paints as before, exactly.
@@ -196,14 +207,32 @@ class RayClearingMapper : public IMapper {
         if (use_survey &&
             endpoint_is_survey_ground(survey_, ex, ey, survey_sensor_z,
                                       0.15)) {
+          // Live elevation: this return measured the surface at (ex, ey)
+          // (reconstructed 3D endpoint height, TF sensor height + rotated
+          // beam). Fuses only survey-confirmed ground — actor heights and
+          // wall faces never enter the terrain layer. Pose uncertainty
+          // rides from the estimate (correlated across the scan, never
+          // averaged away); the device assumption is documented config.
+          int gx, gy;
+          world_to_grid(ex, ey, gx, gy);
+          if (map_.inside(gx, gy)) {
+            elevation_.fuse(static_cast<std::size_t>(gy) * map_.width + gx,
+                            ssz + off.z, est.position_sigma_m);
+          }
           continue;  // surveyed ground: cleared above, never painted
         }
         occupy(ex, ey);
       }
     }
-    // Publish the fused raster (hysteresis inside: one noisy frame cannot
-    // flip a confirmed wall).
+    // Publish the fused rasters (hysteresis inside: one noisy frame cannot
+    // flip a confirmed wall; disagreement beyond the sigma cap publishes
+    // unknown so downstream falls back to the survey prior, never a guess).
     map_.occupancy = fusion_.values();
+    for (std::size_t c = 0; c < map_.elevation_m.size(); ++c) {
+      const ElevationEstimate e = elevation_.estimate(c);
+      map_.elevation_m[c] = e.valid ? static_cast<float>(e.height_m)
+                                    : std::numeric_limits<float>::quiet_NaN();
+    }
   }
   LocalMap local_map() const override { return map_; }
 
@@ -241,6 +270,11 @@ class RayClearingMapper : public IMapper {
 
   LocalMap map_{};
   OccupancyLogOdds fusion_{};
+  // Live terrain heights from surveyed-ground returns. The 0.03 m device
+  // assumption is the ROBOT's documented ranging model (same order as the
+  // lidar device noise); pose uncertainty adds per observation from the
+  // estimate. Never SIM truth: inputs are ranges + estimate + prior.
+  ElevationFusion elevation_{};
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
   iface::MapSnapshot survey_;  // empty until set_survey (no elevation)
 };

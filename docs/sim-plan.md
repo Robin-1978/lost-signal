@@ -231,10 +231,15 @@ for bias-robustness probes; full 3D lever arm (attitude-delta roll/pitch
 rates + first-class truth yaw + vertical body accel, planar motion reduces
 to the legacy form exactly); three independent RNG streams (gyro/accel/
 bias draw order never cross-couples); ROBOT untouched (estimator already
-consumes 6-axis). Next slices:
-live
-elevation fusion, log-odds mapping, DWA terrain gate, validator rollover
-envelope, traction memory, actor lifecycle richness.
+consumes 6-axis). Live elevation fusion (landed): surveyed-ground returns
+fuse reconstructed endpoint heights by inverse variance with forgetting
+(master's math, new framework) into the mapper's dormant elevation layer
+— actor/wall returns never enter; validator prefers live where confident
+and falls back to the survey prior (live confirms ground only, never
+invents obstacles; coordinator wires the overlay, holds no policy).
+Next slices:
+DWA terrain gate + validator rollover envelope (math already in
+terrain_math, wiring only), traction memory, actor lifecycle richness.
 
 ## Explicitly OUT (not deployable sim)
 

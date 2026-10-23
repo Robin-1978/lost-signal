@@ -394,6 +394,33 @@ int main() {
     ValidationResult grade = v.validate(slow, est, ok, open, cliff_ctx);
     assert(!grade.accepted &&
            grade.verdict == TrajectoryVerdict::kTerrainInfeasible);
+    // Live bridge: survey lost elevation at the face (stale revision with
+    // a NaN crater reads wall), but the mapper's live layer measured the
+    // surface there — the validator prefers live where confident.
+    iface::MapSnapshot crater = ramp;
+    for (std::uint32_t gx = 10; gx < 24; ++gx) {
+      crater.elevation_m[4 * 80 + gx] =
+          std::numeric_limits<float>::quiet_NaN();
+    }
+    SurveyContext crater_ctx = ctx;
+    crater_ctx.map = &crater;
+    ValidationResult stale = v.validate(drive, est, ok, face, crater_ctx);
+    assert(!stale.accepted);  // no live: crater reads wall, correctly
+    // Live raster in the mapper window geometry (0.1 m, origin -5, -5):
+    // surface measured at the sensor-crossing height along the face.
+    std::vector<float> live_h(100 * 100,
+                              std::numeric_limits<float>::quiet_NaN());
+    for (int gx = 85; gx < 95; ++gx) {
+      live_h[50 * 100 + gx] = 0.42f;  // |(0.42-0.45)| within tol
+    }
+    crater_ctx.live.height_m = live_h.data();
+    crater_ctx.live.width = 100;
+    crater_ctx.live.height = 100;
+    crater_ctx.live.resolution_m = 0.1;
+    crater_ctx.live.origin_x_m = -5.0;
+    crater_ctx.live.origin_y_m = -5.0;
+    ValidationResult bridged = v.validate(drive, est, ok, face, crater_ctx);
+    assert(bridged.accepted);  // live bridges the survey gap
   }
 
   // Survey-aware mapper: background ramp returns clear but never paint;
@@ -443,6 +470,28 @@ int main() {
       assert(m.valid && m.occupancy[fi] != 100);  // ground: never painted
       assert(!m.is_blocked(4.0, 0.0));  // unknown reads traversable (DWA)
       assert(m.segment_is_traversable(0.0, 0.0, 4.0, 0.0));
+      // Live elevation: the surveyed-ground return measured the surface
+      // (TF sensor height 0.35, level beam) into the dormant layer.
+      assert(m.has_elevation());
+      assert(std::abs(m.elevation_m[fi] - 0.35f) < 1e-6);
+      // Actor returns never enter the terrain layer: foreground-only scans
+      // (no static match) fuse nothing.
+      iface::ObservationFrame fg = face;
+      fg.static_ranges_m.assign(8, 10.0f);  // all foreground vs reference
+      mapper.update(fg, est);
+      LocalMap m2 = mapper.local_map();
+      assert(m2.occupancy[fi] != 100);
+      // Foreground clears occupancy rays but never touches terrain heights.
+      assert(std::abs(m2.elevation_m[fi] - 0.35f) < 1e-6);
+    }
+    {
+      // No survey: no ground definition, live layer stays unknown (NaN).
+      RayClearingMapper mapper;
+      mapper.set_lidar_mount(mount);
+      mapper.update(face, est);
+      LocalMap m = mapper.local_map();
+      assert(m.valid && m.occupancy[fi] == 100);  // no survey: painted
+      assert(!std::isfinite(m.elevation_at(4.0, 0.0)));
     }
   }
 
@@ -572,6 +621,44 @@ int main() {
     assert(mapper.local_map().occupancy[idx(4.0, 0.0)] == 100);
     for (int k = 0; k < 3; ++k) mapper.update(wall_scan(10.0f), est);
     assert(mapper.local_map().occupancy[idx(4.0, 0.0)] == 0);
+  }
+
+  // Live elevation fusion (pure belief update over measurement heights):
+  // first return publishes, sustained disagreement invalidates, the
+  // estimate follows real changes (forgetting) instead of freezing.
+  {
+    ElevationFusion fusion;
+    assert(fusion.cell_count() == 0);
+    fusion.reset(4);
+    assert(!fusion.estimate(0).valid);  // unseen
+    ElevationEstimate e1 = fusion.fuse(0, 0.35);
+    assert(e1.valid && std::abs(e1.height_m - 0.35) < 1e-12);
+    assert(e1.observations == 1);
+    // Agreeing views tighten toward the mean.
+    ElevationEstimate e2 = fusion.fuse(0, 0.37);
+    assert(e2.valid && e2.height_m > 0.35 && e2.height_m < 0.37);
+    // A wildly disagreeing view blows the sigma cap: reported unreliable,
+    // evidence kept (later agreement can still recover the cell).
+    ElevationEstimate bad = fusion.fuse(0, 5.0);
+    assert(!bad.valid);
+    assert(fusion.estimate(9).valid == false);  // out of range: rejected
+    // NaN rejected with stored evidence untouched (still 3 observations).
+    assert(!fusion.fuse(0, std::numeric_limits<double>::quiet_NaN()).valid);
+    assert(fusion.estimate(0).observations == 3);
+    // Forgetting: sustained new evidence moves a settled cell.
+    ElevationFusion follow;
+    follow.reset(1);
+    for (int k = 0; k < 100; ++k) follow.fuse(0, 0.0);
+    assert(follow.estimate(0).valid);
+    for (int k = 0; k < 40; ++k) follow.fuse(0, 1.0);
+    ElevationEstimate moved = follow.estimate(0);
+    assert(moved.valid && moved.height_m > 0.5);
+    // Invalid config fails closed (never fuses, never publishes).
+    ElevationFusionConfig broken_cfg;
+    broken_cfg.return_sigma_m = -1.0;
+    ElevationFusion broken(broken_cfg);
+    broken.reset(2);
+    assert(!broken.fuse(0, 1.0).valid);
   }
 
   // Global planner: straight line from estimate to goal.
