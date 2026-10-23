@@ -156,6 +156,17 @@ std::vector<PlacedModule> layout_modules(int drive_count, int steer_count,
 // makes the pair take the larger). Tire carries min(global, local x env)
 // so zones at/below the tire rating resolve exactly; grippier ground wins
 // upward through the ground side, like the legacy floor.
+//
+// Audit note (friction doctrine, pinned in test_mujoco_backend): given the
+// engine's max() rule this assignment is optimal — (T, L) would read
+// max(T, L) and mask slick zones behind the tire rating, while (min, L)
+// resolves the zone exactly in every case. Residual known limit: a worn
+// tire (low T) on grippier ground reads the ground value (upward mask);
+// no max-rule assignment can express a tire cap upward without lying
+// about the zone, so it stays documented, never papered over with a
+// plant-side clamp (that would saturate twice on top of the solver;
+// report-only stands). The slip label thresholds on the same max() pair
+// value the solver enforces, so evidence and physics cannot disagree.
 void resolve_wheel_mu(double mu_tire_base,
                       const std::vector<MaterialZone>& zones,
                       const std::vector<MaterialEntry>& materials,

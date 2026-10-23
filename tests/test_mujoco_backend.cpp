@@ -203,6 +203,62 @@ int main() {
     assert(held);  // held while the actor was near
     assert(xs.back() > 2.0);  // resumed after the actor passed
   }
+
+  // Friction-pair audit (drawbar doctrine): full-duty launch from
+  // standstill, slip label watched over the run. Stall 54 N against
+  // 117.7 N/wheel load: ice (0.15 -> 17.7 N) must slip, the 0.7 floor
+  // (82 N) must hold, a worn tire (0.4 -> 47 N) must slip off-zone.
+  // The worn-tire-on-grippy-ground case documents the engine max() rule:
+  // the pair follows the ground side (1.0), masking the worn tire. No
+  // max-rule assignment can express a tire cap upward without lying
+  // about the zone — known limit, pinned, not fixed. A plant-side clamp
+  // would double-saturate on top of the solver; report-only stands.
+  {
+    auto any_slip = [](sim::world::World& w, int steps) {
+      bool slipped = false;
+      for (int i = 0; i < steps; ++i) {
+        w.step(0.02);
+        for (bool s : w.truth().drive_slipping) slipped |= s;
+      }
+      return slipped;
+    };
+    // Slick zone pulls DOWN through the tire rating (the min() on the
+    // tire side; without it the pair would read max(0.7, 0.15) = 0.7).
+    {
+      sim::world::World w = make_mujoco_diff();
+      w.set_materials({{"ice", 0.15, 0.005, 0.006, 1.0, 0.3}});
+      w.set_material_zones({{"belt", -2.0, -3.0, 8.0, 3.0, "ice"}});
+      set_diff_duty(w, 1.0);
+      assert(any_slip(w, 100));
+    }
+    // Bare floor holds the same launch (control: demand < capacity).
+    {
+      sim::world::World w = make_mujoco_diff();
+      set_diff_duty(w, 1.0);
+      assert(!any_slip(w, 200));
+    }
+    // Worn tire governs off-zone (rating path works where allowed).
+    {
+      sim::world::World w = make_mujoco_diff();
+      sim::world::MotorParams mp;
+      mp.tire_friction_mu = 0.4;
+      w.set_motor_params(mp);
+      set_diff_duty(w, 1.0);
+      assert(any_slip(w, 100));
+    }
+    // Worn tire on grippy ground: pair follows the ground (documented
+    // upward mask — engine max() rule, no plant clamp papers over it).
+    {
+      sim::world::World w = make_mujoco_diff();
+      sim::world::MotorParams mp;
+      mp.tire_friction_mu = 0.4;
+      w.set_motor_params(mp);
+      w.set_materials({{"asphalt", 1.0, 0.005, 0.006, 1.0, 0.3}});
+      w.set_material_zones({{"pad", -2.0, -3.0, 8.0, 3.0, "asphalt"}});
+      set_diff_duty(w, 1.0);
+      assert(!any_slip(w, 200));
+    }
+  }
 #else
   // MuJoCo disabled: backend exists but reports invalid, never steps.
   {
