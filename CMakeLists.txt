@@ -339,6 +339,12 @@ add_executable(test_task_ordering
 target_link_libraries(test_task_ordering PRIVATE lost_signal_robot_autonomy)
 add_test(NAME task_ordering COMMAND test_task_ordering)
 
+add_executable(test_traversal
+  tests/test_traversal.cpp
+)
+target_link_libraries(test_traversal PRIVATE lost_signal_robot_autonomy)
+add_test(NAME traversal COMMAND test_traversal)
+
 add_executable(test_places
   tests/test_places.cpp
 )
