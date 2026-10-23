@@ -152,6 +152,43 @@ int main() {
     for (double x = 2.0; x < 5.0; x += 0.05) {
       assert(model.feasible(x, 1.0, x + 0.05, 1.0, 0.0));
     }
+
+  // Traction memory (beyond main): measured slip latches per cell, prices
+  // route cost, expires to the prior. Slip never vetoes (ice traverses).
+  {
+    robot::autonomy::TraversalModel model;
+    double conf = -1.0;
+    assert(model.slip_at(3.0, 1.0, &conf) == 0.0 && conf == 0.0);
+    model.observe_slip(3.0, 1.0, 0.5, 1.0);  // unbound: ignored
+    assert(model.slip_at(3.0, 1.0) == 0.0);
+    model.bind(ramp_map());
+    const auto clean =
+        model.cost(2.5, 1.0, 3.5, 1.0, 0.0);
+    assert(clean.feasible);
+    model.observe_slip(3.0, 1.0, 0.5, 1.0);
+    double c = -1.0;
+    assert(model.slip_at(3.0, 1.0, &c) == 0.5 && c == 1.0);
+    const auto priced =
+        model.cost(2.5, 1.0, 3.5, 1.0, 0.0);
+    assert(priced.feasible);  // priced, never vetoed
+    assert(priced.cost > clean.cost);
+    // Worst latches: a milder later report never dilutes the memory.
+    model.observe_slip(3.0, 1.0, 0.1, 1.5);
+    assert(model.slip_at(3.0, 1.0) == 0.5);
+    // Severity clamps into [0, 1]; out-of-window cells are ignored.
+    model.observe_slip(4.0, 1.0, 2.0, 2.0);
+    assert(model.slip_at(4.0, 1.0) == 1.0);
+    model.observe_slip(5.0, 1.0, -1.0, 2.0);
+    assert(model.slip_at(5.0, 1.0) == 0.0);
+    model.observe_slip(500.0, 500.0, 0.9, 2.0);
+    assert(model.slip_at(500.0, 500.0) == 0.0);
+    // Stale memory expires to the prior (clock advances elsewhere).
+    model.observe_slip(7.0, 1.0, 0.0, 5.0);
+    assert(model.slip_at(3.0, 1.0) == 0.0);
+    const auto expired =
+        model.cost(2.5, 1.0, 3.5, 1.0, 0.0);
+    assert(expired.cost == clean.cost);
+  }
     assert(rough_seg.cost > smooth_seg.cost);
     // Cliff: 1 m rise over 1 m run refuses.
     robot::iface::MapSnapshot cliff = ramp_map();

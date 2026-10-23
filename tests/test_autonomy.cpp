@@ -742,21 +742,25 @@ int main() {
     g.update(0, o, est, no_slip, 0.0);  // stamps the clock
     g.update(500'000'000, o, est, no_slip, 0.0);  // 0.5 s at 0.4/s
     assert(std::abs(g.factor() - 0.8) < 1e-9);
+    assert(g.slip_firing());  // own threshold fired: memory-grade evidence
     // Hysteresis band: residual between release (0.2) and slip (0.5)
     // freezes the factor.
     o.imu_gyro_z_radps = 0.3;
     g.update(1'000'000'000, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.8) < 1e-9);
+    assert(!g.slip_firing());  // hysteresis band: frozen, not firing
     // Clean rolling relaxes back toward 1.0 slowly (0.08/s).
     o.imu_gyro_z_radps = 0.0;
     g.update(1'500'000'000, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.84) < 1e-9);
+    assert(!g.slip_firing());  // clean: relaxing, not firing
     // Floor: sustained slip pins at min_grip, never below.
     o.imu_gyro_z_radps = 2.0;
     for (int k = 2; k <= 12; ++k) {
       g.update(k * 500'000'000LL, o, est, no_slip, 0.0);
     }
     assert(std::abs(g.factor() - 0.4) < 1e-9);
+    assert(g.slip_firing());  // sustained slip still firing at the floor
     g.update(7'000'000'000LL, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.4) < 1e-9);
   }
@@ -777,12 +781,14 @@ int main() {
     g.update(0, o, still, none, 0.0);
     g.update(500'000'000, o, still, none, 0.0);
     assert(std::abs(g.factor() - 1.0) < 1e-9);
+    assert(!g.slip_firing());  // standstill: gated off, not evidence
     // Observer fired (its own 0.5 m/s floor already proved motion).
     SlipObservation slip;
     slip.quality = SlipQuality::kObservable;
     slip.yaw_residual_rads = 1.0;
     g.update(1'000'000'000, o, still, slip, 0.0);
     assert(g.factor() < 1.0);
+    assert(g.slip_firing());  // observer evidence fires even at low speed
     // Invalid estimate freezes regardless of evidence.
     GripAdapter h;
     EstimatedState bad;  // valid == false
@@ -790,6 +796,7 @@ int main() {
     h.update(0, o, bad, slip, 0.0);
     h.update(500'000'000, o, bad, slip, 0.0);
     assert(std::abs(h.factor() - 1.0) < 1e-9);
+    assert(!h.slip_firing());  // invalid estimate freezes, never fires
   }
 
   // GripAdapter::effective_limits: scales every speed cap, applies the

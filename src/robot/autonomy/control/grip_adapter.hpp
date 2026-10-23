@@ -70,6 +70,7 @@ class GripAdapter {
     has_prev_wheel_v_ = false;
     long_residual_mps2_ = 0.0;
     long_fire_count_ = 0;
+    slip_firing_ = false;
   }
 
   void update(core::MonotonicNs now_ns,
@@ -81,12 +82,19 @@ class GripAdapter {
         prev_wheel_v_mps_ = obs.forward_mps;
         has_prev_wheel_v_ = true;
       }
+      slip_firing_ = false;
       return;
     }
     const double dt_s = static_cast<double>(now_ns - last_ns_) * 1e-9;
     last_ns_ = now_ns;
-    if (!(dt_s > 0.0) || dt_s > 1.0) return;  // freeze
-    if (!est.valid) return;                   // freeze: no belief to adapt
+    if (!(dt_s > 0.0) || dt_s > 1.0) {
+      slip_firing_ = false;
+      return;  // freeze
+    }
+    if (!est.valid) {
+      slip_firing_ = false;
+      return;  // freeze: no belief to adapt
+    }
     double yaw_residual = 0.0;
     bool yaw_observable = false;
     const bool has_motion =
@@ -134,6 +142,7 @@ class GripAdapter {
     const double long_residual = std::abs(long_residual_mps2_);
     if (!yaw_observable && !long_observable) {
       long_fire_count_ = 0;  // no evidence: confirmation lapses too
+      slip_firing_ = false;
       return;
     }
     if (long_observable && long_residual > config_.long_tighten_accel_mps2) {
@@ -145,6 +154,7 @@ class GripAdapter {
         (yaw_observable &&
          yaw_residual > config_.slip_residual_threshold_radps) ||
         long_fire_count_ >= config_.long_confirm_ticks;
+    slip_firing_ = slip_fire;  // owning module's verdict, exposed for memory
     // Relax needs EVERY observed channel clean: tightening on one channel
     // while relaxing on the other would dither the envelope.
     const bool clean =
@@ -163,6 +173,10 @@ class GripAdapter {
   }
 
   double factor() const { return factor_; }
+  // Whether the last update fired on either channel (the module's own
+  // confirmation logic). Traction memory records the cell while this is
+  // true; a tightened-but-quiet envelope is not slip evidence.
+  bool slip_firing() const { return slip_firing_; }
 
   // Tightened envelope: scale the chassis speed caps (forward, yaw, and
   // lateral when present) by the adapted factor, then apply the behavior
@@ -186,6 +200,7 @@ class GripAdapter {
  private:
   GripAdapterConfig config_;
   double factor_ = 1.0;
+  bool slip_firing_ = false;
   core::MonotonicNs last_ns_ = core::kInvalidTime;
   double prev_wheel_v_mps_ = 0.0;
   bool has_prev_wheel_v_ = false;

@@ -6,10 +6,12 @@
 // from its own hardware contract and estimates only what it can observe:
 // roughness, from the IMU vertical-excitation observer below (main's
 // RasterTraversalModel deadband form, adapted to our estimate/message
-// types). Cost and feasibility feed route choice (A* roughness hook) and
-// task evidence; the speed envelope stays with the slip governor
-// (measured slip, not roughness — bumpy but gripped ground must not read
-// as slip).
+// types), and traction, from measured slip events latched per cell
+// (beyond main: main prices the survey prior + roughness only; slipped-on
+// cells cost more here until the memory expires). Cost and feasibility
+// feed route choice (A* roughness hook) and task evidence; the speed
+// envelope stays with the slip governor (measured slip, not roughness —
+// bumpy but gripped ground must not read as slip).
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +45,11 @@ struct TraversalConfig {
   double max_cross_grade = 0.4;  // steeper side-slope is impassable
   double grade_cost_per_m = 2.0;
   double roughness_cost_per_m = 8.0;
+  // Traction memory pricing: slipped-on cells cost more per meter until
+  // the memory expires (same spatial-staleness doctrine as roughness, own
+  // age so the two beliefs tune independently).
+  double slip_cost_per_m = 8.0;
+  double slip_belief_max_age_s = 3.0;
 };
 
 struct TraversalCost {
@@ -169,8 +176,79 @@ class TraversalModel {
     return it->second.roughness_m;
   }
 
+  // Traction memory: latch measured slip per cell (the grip governor's
+  // fire verdict + severity, never re-thresholded here). Worst latches
+  // (like roughness rises fast): genuine traction loss persists, and the
+  // age cap expires the memory back to the prior. Slip prices route cost
+  // only — ice is traversable, never infeasible (the DWA gate owns the
+  // binary veto on grade, never on traction).
+  void observe_slip(double x_m, double y_m, double severity01,
+                    double stamp_s) {
+    if (!ready() || !std::isfinite(x_m) || !std::isfinite(y_m) ||
+        !std::isfinite(stamp_s)) {
+      return;
+    }
+    const int gx = static_cast<int>(
+        std::floor((x_m - map_.origin_x_m) / map_.resolution_m));
+    const int gy = static_cast<int>(
+        std::floor((y_m - map_.origin_y_m) / map_.resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
+        gy >= static_cast<int>(map_.height)) {
+      return;
+    }
+    if (std::isfinite(stamp_s)) {
+      if (!have_observation_time_ || stamp_s > latest_observation_time_s_) {
+        latest_observation_time_s_ = stamp_s;
+      }
+      have_observation_time_ = true;
+    }
+    const std::uint64_t key =
+        static_cast<std::uint64_t>(static_cast<std::uint32_t>(gy)) << 32 |
+        static_cast<std::uint64_t>(static_cast<std::uint32_t>(gx));
+    auto [it, inserted] = beliefs_.try_emplace(key);
+    RoughnessBelief& belief = it->second;
+    if (inserted) {
+      belief.roughness_m = config_.default_roughness_m;
+      belief.confidence = 0.0;
+    }
+    belief.slip_01 =
+        std::max(belief.slip_01, std::clamp(severity01, 0.0, 1.0));
+    belief.slip_observed_at_s = latest_observation_time_s_;
+  }
+
+  // Traction memory at a point: worst latched severity, or 0 (unknown,
+  // expired, or unbound map). Same grid and staleness doctrine as
+  // roughness, independent age.
+  double slip_at(double x_m, double y_m, double* confidence = nullptr) const {
+    if (confidence != nullptr) *confidence = 0.0;
+    if (!ready()) return 0.0;
+    const int gx = static_cast<int>(
+        std::floor((x_m - map_.origin_x_m) / map_.resolution_m));
+    const int gy = static_cast<int>(
+        std::floor((y_m - map_.origin_y_m) / map_.resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
+        gy >= static_cast<int>(map_.height)) {
+      return 0.0;
+    }
+    const std::uint64_t key =
+        static_cast<std::uint64_t>(static_cast<std::uint32_t>(gy)) << 32 |
+        static_cast<std::uint64_t>(static_cast<std::uint32_t>(gx));
+    const auto it = beliefs_.find(key);
+    if (it == beliefs_.end()) return 0.0;
+    if (have_observation_time_ &&
+        latest_observation_time_s_ - it->second.slip_observed_at_s >
+            config_.slip_belief_max_age_s) {
+      return 0.0;  // stale: back to the prior
+    }
+    // A latched fire event is decisive evidence (unlike accumulated
+    // roughness): fresh memory reports full confidence.
+    if (confidence != nullptr) *confidence = 1.0;
+    return it->second.slip_01;
+  }
+
   // Segment cost for route choice: distance times (1 + uphill grade cost
-  // + cross-slope cost + believed-roughness cost). Infeasible (cliff or
+  // + cross-slope cost + believed-roughness cost + traction-memory cost).
+  // Infeasible (cliff or
   // side-slope beyond the caps) reads infinite cost, never a number.
   TraversalCost cost(double x0_m, double y0_m, double x1_m, double y1_m,
                      double yaw_rad) const {
@@ -195,9 +273,11 @@ class TraversalModel {
     const double cross = std::abs(
         survey_lateral_grade(map_, 0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m),
                              yaw_rad));
+    const double slip = slip_at(0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m));
     out.feasible = true;
     out.cost = dist * (1.0 + config_.grade_cost_per_m * rise / dist +
-                       config_.roughness_cost_per_m * rough + cross);
+                       config_.roughness_cost_per_m * rough + cross +
+                       config_.slip_cost_per_m * slip);
     return out;
   }
 
@@ -225,6 +305,10 @@ class TraversalModel {
     double roughness_m = 0.0;
     double confidence = 0.0;
     double observed_at_s = 0.0;
+    // Traction memory: worst latched slip severity in [0, 1] + its clock.
+    // Same cell, same spatial-staleness doctrine, independent age.
+    double slip_01 = 0.0;
+    double slip_observed_at_s = 0.0;
   };
 
   TraversalConfig config_;

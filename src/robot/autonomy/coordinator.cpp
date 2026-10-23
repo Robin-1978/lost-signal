@@ -286,6 +286,17 @@ iface::MotionCommand AutonomyCoordinator::update(
   }
   grip_.update(now_ns, last_obs_, estimator_->estimate(),
                estimator_->last_slip(), survey_pitch);
+  // Traction memory (beyond main): while the governor fires on measured
+  // slip, the cell is latched into the traversal belief (severity from the
+  // tightened factor) so route choice prices slipped-on ground until the
+  // memory expires. Fire verdict + severity come from the owning module;
+  // the coordinator only wires position and time, holds no threshold.
+  if (grip_.slip_firing() && estimator_->estimate().valid) {
+    traversal_.observe_slip(estimator_->estimate().x_m,
+                            estimator_->estimate().y_m,
+                            1.0 - grip_.factor(),
+                            last_obs_.stamp_ns * 1e-9);
+  }
   // Traversal belief (mapping layer): roughness from IMU motion evidence
   // over the surveyed prior. Cadence from the tick clock; the observer
   // skips internally without IMU or a valid estimate.

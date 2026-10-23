@@ -176,6 +176,49 @@ int main() {
     }
   }
 
+
+  // Traction memory (beyond main): slipped-on bands with a clean gap
+  // route through the gap; without the memory the same map goes straight.
+  // Slip is measured fire evidence, never the author's friction.
+  {
+    auto map = make_map(40, 40, 0.5, -10.0, -10.0);
+    for (auto& c : map.occupancy) c = 0;  // all free: isolate traction
+    TraversalModel model;
+    model.bind(map);
+    // Fire latched along the bands (severity 0.5); the gap stays prior.
+    for (int gx = 28; gx <= 29; ++gx) {
+      for (int gy = 0; gy < 40; ++gy) {
+        const double cx = -10.0 + (gx + 0.5) * 0.5;
+        const double cy = -10.0 + (gy + 0.5) * 0.5;
+        if (cy >= -1.0 && cy < 1.0) continue;  // clean gap
+        model.observe_slip(cx, cy, 0.5, 1.0 + gx * 0.01 + gy * 0.001);
+      }
+    }
+    double conf = 0.0;
+    assert(model.slip_at(4.25, 5.0, &conf) == 0.5 && conf == 1.0);
+    assert(model.slip_at(4.25, 0.0, &conf) == 0.0 && conf == 0.0);
+    // No memory: straight through (shortest).
+    {
+      Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+      assert(r.valid);
+    }
+    // With the memory: threads the clean gap.
+    {
+      AStarPlanner slip_planner;
+      slip_planner.set_traversal(&model);
+      Route r = slip_planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+      assert(r.valid);
+      bool in_gap = false;
+      for (const auto& p : r.points) {
+        if (p.x_m > 3.5 && p.x_m < 5.5) {
+          assert(p.y_m > -1.5 && p.y_m < 1.5);
+          in_gap = true;
+        }
+      }
+      assert(in_gap);
+    }
+  }
+
   std::printf("astar ok\n");
   return 0;
 }

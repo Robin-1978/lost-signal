@@ -246,9 +246,16 @@ beside the static grade caps. Fixed a real stall found by the suite: the
 traversal feasibility grade now reads through the survey-resolution
 window (same quantity the validator gates on) so nearest-cell stairsteps
 never alias into phantom cliffs on short rollout steps — icy climb and
-ridge missions green with pre-change separations.
+ridge missions green with pre-change separations. Traction memory
+(landed, beyond main): the grip governor exposes its own fire verdict
+(slip_firing, thresholds stay in the owning module); the coordinator
+latches firing cells into the traversal belief with severity from the
+tightened factor (position+time wired only, no policy). Slipped cells
+price A* routes + segment cost until expiry (worst latches, ice stays
+traversable — pricing only, never a veto). Pinned: memory reroutes
+through the clean gap at default weights, stale expires, clamps hold.
 Next slices:
-traction memory, actor lifecycle richness.
+actor lifecycle richness (last capability item).
 
 ## Explicitly OUT (not deployable sim)
 

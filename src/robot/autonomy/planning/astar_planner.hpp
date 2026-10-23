@@ -31,6 +31,10 @@ class AStarPlanner : public IGlobalPlanner {
     // ROBOT's own IMU observer via the traversal model, never the author's
     // amplitude). Zero model (unbound) pays nothing.
     double roughness_cost_per_m = 8.0;
+    // Traction-memory price per meter of latched slip severity (measured
+    // slip events via the traversal model, beyond main's prior+roughness).
+    // Slipped-on cells route around until the memory expires.
+    double slip_cost_per_m = 8.0;
   };
 
   explicit AStarPlanner(Config config);
