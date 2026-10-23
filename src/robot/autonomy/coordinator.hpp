@@ -13,13 +13,8 @@
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
-#include "robot/autonomy/localization/global_search.hpp"
-#include "robot/autonomy/localization/scan_matcher.hpp"
-#include "robot/autonomy/localization/startup_selector.hpp"
-#include "robot/autonomy/localization/startup_tracker.hpp"
-#include "robot/autonomy/localization/supervisor.hpp"
+#include "robot/autonomy/localization/localization_system.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
-#include "robot/autonomy/mapping/slam.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
@@ -118,14 +113,16 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }
   SafetyVerdict last_safety() const { return safety_->last_verdict(); }
-  bool localized() const { return supervisor_.localized(); }
+  bool localized() const { return localization_.localized(); }
   const std::string& last_localization_action() const {
     return last_localization_action_;
   }
-  std::size_t slam_keyframes() const { return slam_.keyframe_count(); }
-  std::size_t slam_loops_closed() const { return slam_.loop_closure_count(); }
+  std::size_t slam_keyframes() const { return localization_.slam_keyframes(); }
+  std::size_t slam_loops_closed() const {
+    return localization_.slam_loops_closed();
+  }
   const SlamLoopResult& last_slam_result() const {
-    return slam_.last_result();
+    return localization_.last_slam_result();
   }
   diagnostics::DecisionEvidence last_evidence() const {
     return evidence_.current() != nullptr ? *evidence_.current()
@@ -151,17 +148,14 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   double lidar_mount_z_m_ = 0.35;
   // Traversal observer cadence (IMU stamp deltas, never wall clock).
   core::MonotonicNs last_traverse_ns_ = core::kInvalidTime;
-  void run_localization(const iface::MapSnapshot& map,
-                        core::MonotonicNs now_ns);
-  void run_slam(core::MonotonicNs now_ns);
+  // Localization subsystem (supervisor-sequenced corrections + SLAM):
+  // the coordinator wires estimator/mapper/observations in and consumes
+  // the action name + replan flag out. No matcher/supervisor/tracker
+  // state lives here.
+  LocalizationSystem localization_;
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;
-  SlamSession slam_;
-  ScanMatcher scan_matcher_;
-  GlobalSearcher global_search_;
-  StartupHypotheses startup_hyps_;
-  LocalizationSupervisor supervisor_;
   std::unique_ptr<IBehaviorPolicy> behavior_;
   std::unique_ptr<IGlobalPlanner> global_planner_;
   std::unique_ptr<ILocalPlanner> local_planner_;
@@ -184,8 +178,6 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   bool replan_requested_ = false;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
   std::string last_localization_action_ = "init";
-  // Mapless startup latches once: trust the odometry origin, SLAM owns drift.
-  bool slam_origin_seeded_ = false;
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
   // Controlled-stop latch: withholds motion until measured tread settles.

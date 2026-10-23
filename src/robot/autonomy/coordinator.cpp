@@ -61,10 +61,7 @@ core::Status AutonomyCoordinator::configure() {
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
-  supervisor_.reset(false);
-  startup_hyps_.reset();
-  slam_.reset();
-  slam_origin_seeded_ = false;
+  localization_.reset();
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -111,10 +108,7 @@ core::Status AutonomyCoordinator::cleanup() {
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
-  supervisor_.reset(false);
-  startup_hyps_.reset();
-  slam_.reset();
-  slam_origin_seeded_ = false;
+  localization_.reset();
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
@@ -150,10 +144,7 @@ void AutonomyCoordinator::set_static_frames(
   }
   if (mapper_ != nullptr) mapper_->set_lidar_mount(base_from_lidar);
   lidar_mount_z_m_ = base_from_lidar.translation_m.z;
-  scan_matcher_.set_lidar_mount(base_from_lidar);
-  global_search_.set_lidar_mount(base_from_lidar);
-  startup_hyps_.set_lidar_mount(base_from_lidar);
-  slam_.set_lidar_mount(base_from_lidar);
+  localization_.set_lidar_mount(base_from_lidar);
   const double yaw = yaw_from_quaternion(base_from_lidar.rotation);
   if (validator_ != nullptr) validator_->set_lidar_yaw(yaw);
   if (safety_ != nullptr) safety_->set_lidar_yaw(yaw);
@@ -177,7 +168,7 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
   const core::MonotonicNs stamp =
       has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
   estimator_->seed_pose(x_m, y_m, yaw_rad, 0.1, 0.05, stamp);
-  supervisor_.reset(true);
+  localization_.mark_localized();
 }
 
 bool AutonomyCoordinator::route_complete(double arrival_radius_m) const {
@@ -251,11 +242,14 @@ iface::MotionCommand AutonomyCoordinator::update(
   // matcher. Corrections feed the estimator only when accepted, so a hard
   // scan never drags the pose.
   const EstimatedState pre = estimator_->estimate();
-  run_localization(map, now_ns);
-  // SLAM session runs on the post-localization estimate: keyframes chain
-  // odometry, accepted loop closures correct the estimate and rebuild the
-  // rolling map from keyframes at their optimized poses.
-  run_slam(now_ns);
+  // Localization subsystem (supervisor-sequenced corrections + SLAM):
+  // estimator/mapper/observations in, action name + replan flag out.
+  // Corrections feed the estimator only when accepted, so a hard scan
+  // never drags the pose.
+  LocalizationSystem::TickResult loc = localization_.update(
+      map, last_obs_, now_ns, has_observation_, *estimator_, *mapper_);
+  last_localization_action_ = loc.action;
+  if (loc.replan_requested) replan_requested_ = true;
   // TF publisher: odom->base is the continuous pre-correction prediction
   // in full 3D (x/y/z + roll/pitch/yaw — slopes ride here); map->odom is
   // the per-tick SE(2) correction delta (identity when nothing corrected).
@@ -289,15 +283,16 @@ iface::MotionCommand AutonomyCoordinator::update(
   }
   grip_.update(now_ns, last_obs_, estimator_->estimate(),
                estimator_->last_slip(), survey_pitch);
-  // Traction memory (beyond main): while the governor fires on measured
-  // slip, the cell is latched into the traversal belief (severity from the
-  // tightened factor) so route choice prices slipped-on ground until the
-  // memory expires. Fire verdict + severity come from the owning module;
-  // the coordinator only wires position and time, holds no threshold.
-  if (grip_.slip_firing() && estimator_->estimate().valid) {
-    traversal_.observe_slip(estimator_->estimate().x_m,
-                            estimator_->estimate().y_m,
-                            1.0 - grip_.factor(),
+  // Traction memory (beyond main): the governor's fire verdict + severity
+  // latch the cell into the traversal belief so route choice prices
+  // slipped-on ground until the memory expires. Verdict and scale come
+  // from the owning module (slip_severity is 0 when quiet); the
+  // coordinator only wires position and time — the est.valid guard is
+  // plumbing (no position without a belief), same as the imu_valid guard
+  // on the roughness observer below.
+  if (estimator_->estimate().valid) {
+    const EstimatedState& loc = estimator_->estimate();
+    traversal_.observe_slip(loc.x_m, loc.y_m, grip_.slip_severity(),
                             last_obs_.stamp_ns * 1e-9);
   }
   // Traversal belief (mapping layer): roughness from IMU motion evidence
@@ -437,145 +432,6 @@ iface::MotionCommand AutonomyCoordinator::update(
 
 const EstimatedState& AutonomyCoordinator::estimate() const {
   return estimator_->estimate();
-}
-
-void AutonomyCoordinator::run_slam(core::MonotonicNs now_ns) {
-  (void)now_ns;
-  if (!has_observation_ || !last_obs_.scan_valid) return;
-  slam_.ingest(estimator_->estimate(), last_obs_);
-  SlamLoopResult loop =
-      slam_.try_close_loops(estimator_->estimate(), last_obs_);
-  if (!loop.closed) return;
-  // Accepted closure: snap the estimate to the optimized pose and rebuild
-  // the rolling map from keyframes at their optimized poses. Past cells
-  // fed at drifted poses are stale; replaying keyframe scans re-registers
-  // them. The decision branch refreshes on the corrected estimate.
-  estimator_->seed_pose(loop.corrected_pose.position.x,
-                        loop.corrected_pose.position.y,
-                        loop.corrected_pose.heading_rad, 0.05, 0.02,
-                        last_obs_.stamp_ns);
-  mapper_->reset();
-  for (const auto& kf : slam_.keyframes()) {
-    iface::ObservationFrame obs;
-    obs.sequence = 1;  // rebuild order is keyframe order, not live sequence
-    obs.stamp_ns = static_cast<core::MonotonicNs>(kf.stamp_s * 1e9);
-    obs.source = last_obs_.source;
-    obs.frame = core::Frame::kLidarLink;
-    obs.scan_valid = true;
-    obs.ranges_m = kf.ranges_m;
-    obs.static_ranges_m = kf.static_ranges_m;
-    obs.scan_static_valid = !kf.static_ranges_m.empty();
-    obs.scan_angle_min_rad = kf.angle_min_rad;
-    obs.scan_angle_increment_rad = kf.angle_increment_rad;
-    EstimatedState est;
-    est.valid = true;
-    est.stamp_ns = obs.stamp_ns;
-    est.x_m = kf.pose.position.x;
-    est.y_m = kf.pose.position.y;
-    est.yaw_rad = kf.pose.heading_rad;
-    mapper_->update(obs, est);
-  }
-  replan_requested_ = true;
-}
-
-void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
-                                          core::MonotonicNs now_ns) {
-  const double now_s = now_ns * 1e-9;
-  const EstimatedState& est = estimator_->estimate();
-  LocalizationHealth health;
-  health.valid = est.valid;
-  health.position_sigma_m = est.position_sigma_m;
-  health.heading_sigma_rad = est.heading_sigma_rad;
-  health.confidence = est.confidence;
-  health.age_s = est.valid ? now_s - est.stamp_ns * 1e-9 : 1e9;
-  std::string reason;
-  LocalizationAction action = supervisor_.next(
-      now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
-  last_localization_action_ = localization_action_name(action);
-  // Deferred startup disambiguation: an ambiguous whole-map search seeds
-  // hypotheses instead of guessing; later scans promote or drop them.
-  // Runs while unlocalized regardless of the supervisor action (tracking
-  // owns the unlocalized scans); the supervisor retry still backstops.
-  if (supervisor_.localized()) startup_hyps_.reset();
-  if (!supervisor_.localized() && !startup_hyps_.empty() &&
-      last_obs_.scan_valid && !last_obs_.ranges_m.empty()) {
-    StartupTrackResult tracked = startup_hyps_.update(
-        last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
-        last_obs_.scan_angle_increment_rad, map, now_ns);
-    if (tracked.status == StartupTrackStatus::kPromoted) {
-      estimator_->seed_pose(tracked.x_m, tracked.y_m, tracked.yaw_rad, 0.05,
-                            0.02, last_obs_.stamp_ns);
-      supervisor_.record_global(true, ScanMatchResult{});
-      last_localization_action_ = "startup-promoted";
-      return;
-    }
-    if (tracked.status == StartupTrackStatus::kTracking) {
-      last_localization_action_ = "startup-tracking";
-      return;
-    }
-    // kLost: fall through — the supervisor cadence (or this tick's
-    // global branch) re-runs the whole-map search with fresh evidence.
-  }
-  if (action == LocalizationAction::kDefer) return;
-  const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
-  // Mapless startup: no static raster exists, so neither local matching nor
-  // the whole-map search can constrain the pose. Seed the odometry origin
-  // once (no teleport: the current estimate IS the origin) and let the SLAM
-  // session own the drift it can observe. Latched for the session.
-  if (attempted_global && !map.has_raster() && !slam_origin_seeded_) {
-    const StartupDecision startup =
-        select_startup_mode(false, /*has_prior_pose=*/false);
-    estimator_->seed_pose(est.x_m, est.y_m, est.yaw_rad, 0.1, 0.05,
-                          last_obs_.stamp_ns);
-    supervisor_.reset(true);
-    slam_origin_seeded_ = true;
-    last_localization_action_ = startup_mode_name(startup.mode);
-    supervisor_.record_global(true, ScanMatchResult{});
-    return;
-  }
-  if (attempted_global) {
-    // Whole-map search: kidnap recovery and cold start. An accepted global
-    // fix establishes the estimate and marks the supervisor localized; a
-    // rejection is evidence only and never moves the estimate. An
-    // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
-    // next scans disambiguate) instead of guessing now.
-    GlobalSearchResult global = global_search_.search(
-        last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
-        last_obs_.scan_angle_increment_rad, map, now_ns, est.roll_rad,
-        est.pitch_rad, est.z_m);
-    if (global.accepted) {
-      if (!supervisor_.localized()) {
-        // No trustworthy prior exists (unknown start / kidnapped): snap
-        // like a deliberate initial pose instead of blending toward a
-        // confident-but-wrong dead-reckoned origin.
-        estimator_->seed_pose(global.x_m, global.y_m, global.yaw_rad,
-                              global.position_sigma_m,
-                              global.heading_sigma_rad, last_obs_.stamp_ns);
-      } else {
-        estimator_->correct_pose(global.x_m, global.y_m, global.yaw_rad,
-                                 global.position_sigma_m,
-                                 global.heading_sigma_rad,
-                                 last_obs_.stamp_ns);
-      }
-    }
-    supervisor_.record_global(global.accepted, ScanMatchResult{});
-    if (!global.accepted && !global.runner_ups.empty() &&
-        !supervisor_.localized()) {
-      startup_hyps_.seed(global);
-      last_localization_action_ = "startup-seeded";
-    }
-    return;
-  }
-  ScanMatchResult match = scan_matcher_.localize(
-      last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
-      last_obs_.scan_angle_increment_rad, est.x_m, est.y_m, est.yaw_rad, map,
-      now_ns, est.roll_rad, est.pitch_rad, est.z_m);
-  if (match.accepted) {
-    estimator_->correct_pose(match.x_m, match.y_m, match.yaw_rad,
-                             match.position_sigma_m, match.heading_sigma_rad,
-                             last_obs_.stamp_ns);
-  }
-  supervisor_.record_local(match.accepted, match);
 }
 
 LocalMap AutonomyCoordinator::local_map() const {

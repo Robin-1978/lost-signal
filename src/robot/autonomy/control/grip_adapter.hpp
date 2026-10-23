@@ -177,6 +177,13 @@ class GripAdapter {
   // confirmation logic). Traction memory records the cell while this is
   // true; a tightened-but-quiet envelope is not slip evidence.
   bool slip_firing() const { return slip_firing_; }
+  // Fire severity in [0, 1] for traction memory (0 when quiet: a
+  // structured no-op the belief clamps, never a threshold here). Owned
+  // here so the scale stays with the verdict — callers wire, never judge.
+  double slip_severity() const {
+    if (!slip_firing_) return 0.0;
+    return std::clamp(1.0 - factor_, 0.0, 1.0);
+  }
 
   // Tightened envelope: scale the chassis speed caps (forward, yaw, and
   // lateral when present) by the adapted factor, then apply the behavior

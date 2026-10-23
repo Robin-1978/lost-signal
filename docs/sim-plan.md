@@ -202,7 +202,12 @@ no friction, contact, or live wetness).
   prove it: dry ridge drives (no grind, grip stays 1.00), icy stop-go
   climb still ratchets the governor to the floor on measured slip.
   Coordinator doctrine kept: pure wiring (evidence in, envelope out),
-  every threshold lives in the owning module.
+  every threshold lives in the owning module. Localization orchestration
+  extracted to LocalizationSystem (supervisor sequencing, seed-vs-blend,
+  startup modes, deferred tracking, loop-closure replay — coordinator
+  wires estimator/mapper/obs in, consumes action + replan out); grip fire
+  severity owned by the governor (slip_severity, coordinator wires
+  position/time only).
 
 ### S9 Sensor realism parity (landed) — capabilities match-or-exceed
 master, framework/data/architecture stay new
