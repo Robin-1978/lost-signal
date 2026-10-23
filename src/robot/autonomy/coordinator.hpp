@@ -24,6 +24,7 @@
 #include "robot/iface/command.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
+#include "robot/core/transform.hpp"
 #include "robot/lifecycle/lifecycle.hpp"
 #include "robot/platform/description.hpp"
 
@@ -65,6 +66,18 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   iface::MotionCommand update(iface::MapSnapshot map,
                               const iface::ChannelHealth& channel,
                               core::MonotonicNs now_ns);
+  // TF publisher (REP-105 semantics). Static edges come from the
+  // description (set once before ticking; replaces the whole tree, so
+  // dynamic edges reset). Every update() then refreshes two dynamic
+  // edges from the pre/post-correction estimate: odom->base_link is the
+  // continuous prediction pose, map->odom is the per-tick correction
+  // delta (identity when nothing corrected — the offline drift signal).
+  // This class is the only odom publisher: the estimator keeps a single
+  // fused pose and never splits odom from map itself.
+  void set_static_frames(const core::FrameTransformTree& tree) {
+    tf_ = tree;
+  }
+  const core::FrameTransformTree& tf() const { return tf_; }
   // Cartesian goal override (map frame). Refreshes the active route through
   // the global planner and wakes the decision branch. Place-based tasking
   // still enters via the executive; this is the deliberate operator path.
@@ -87,6 +100,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   void request_replan() { replan_requested_ = true; }
   void clear_safety() { safety_->clear_safety(); }
   void clear_stop_latch() { latch_ = ControlledStopLatch{}; }
+  core::FrameTransformTree tf_;
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
   const EstimatedState& estimate() const;

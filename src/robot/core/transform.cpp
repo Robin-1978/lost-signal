@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "robot/core/geometry.hpp"
+
 namespace lost_signal::robot::core {
 
 namespace {
@@ -95,6 +97,15 @@ Quaternion quaternion_from_rpy(double roll_rad, double pitch_rad,
       cr * cp * sy - sr * sp * cy,
       cr * cp * cy + sr * sp * sy,
   });
+}
+
+RigidTransform map_from_odom_delta(double pre_x_m, double pre_y_m,
+                                   double pre_yaw_rad, double post_x_m,
+                                   double post_y_m, double post_yaw_rad) {
+  const double d_yaw = wrap_angle(post_yaw_rad - pre_yaw_rad);
+  const Quaternion rot = quaternion_from_rpy(0.0, 0.0, d_yaw);
+  const Vec3 rotated = rotate_vector(rot, {pre_x_m, pre_y_m, 0.0});
+  return {{post_x_m - rotated.x, post_y_m - rotated.y, 0.0}, rot};
 }
 
 void FrameTransformTree::clear() {

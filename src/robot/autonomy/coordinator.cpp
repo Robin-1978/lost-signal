@@ -134,15 +134,39 @@ void AutonomyCoordinator::ingest_observation(
   // Fail-closed: stale or repeated input never advances state.
   if (has_observation_ && obs.sequence <= last_obs_.sequence) return;
   if (has_observation_ && obs.stamp_ns <= last_obs_.stamp_ns) return;
-  // Estimator runs on every observation (prediction rate = sensor rate).
-  estimator_->predict(obs);
-  estimator_->correct(obs);
-  // Perception + mapping run at scan rate, not on every odometry frame.
-  if (obs.scan_valid) {
-    perception_ = perception_module_->update(obs, estimator_->estimate());
-    mapper_->update(obs, estimator_->estimate());
+  // IMU arrives in its device frame (imu_link by message contract): rotate
+  // into base_link through the static TF before the estimator integrates
+  // it as body rates. Unknown mount = identity, i.e. aligned behavior.
+  iface::ObservationFrame shaped = obs;
+  if (shaped.imu_valid) {
+    if (const auto base_from_imu = tf_.lookup("base_link", "imu_link")) {
+      const core::Vec3 gyro =
+          core::rotate_vector(base_from_imu->rotation,
+                              {shaped.imu_gyro_x_radps, shaped.imu_gyro_y_radps,
+                               shaped.imu_gyro_z_radps});
+      const core::Vec3 accel =
+          core::rotate_vector(base_from_imu->rotation,
+                              {shaped.imu_ax_mps2, shaped.imu_ay_mps2,
+                               shaped.imu_az_mps2});
+      shaped.imu_gyro_x_radps = gyro.x;
+      shaped.imu_gyro_y_radps = gyro.y;
+      shaped.imu_gyro_z_radps = gyro.z;
+      shaped.imu_ax_mps2 = accel.x;
+      shaped.imu_ay_mps2 = accel.y;
+      shaped.imu_az_mps2 = accel.z;
+    }
   }
-  last_obs_ = obs;
+  // Estimator runs on every observation (prediction rate = sensor rate).
+  estimator_->predict(shaped);
+  estimator_->correct(shaped);
+  // Perception + mapping run at scan rate, not on every odometry frame.
+  // They see the shaped frame (base-frame IMU); scans pass through
+  // untouched.
+  if (shaped.scan_valid) {
+    perception_ = perception_module_->update(shaped, estimator_->estimate());
+    mapper_->update(shaped, estimator_->estimate());
+  }
+  last_obs_ = shaped;
   has_observation_ = true;
 }
 
@@ -162,11 +186,27 @@ iface::MotionCommand AutonomyCoordinator::update(
   // Localization runs on every tick; the supervisor cadence-gates the
   // matcher. Corrections feed the estimator only when accepted, so a hard
   // scan never drags the pose.
+  const EstimatedState pre = estimator_->estimate();
   run_localization(map, now_ns);
   // SLAM session runs on the post-localization estimate: keyframes chain
   // odometry, accepted loop closures correct the estimate and rebuild the
   // rolling map from keyframes at their optimized poses.
   run_slam(now_ns);
+  // TF publisher: odom->base is the continuous pre-correction prediction,
+  // map->odom the per-tick correction delta (identity when nothing
+  // corrected). Skipped until the estimate is valid.
+  const EstimatedState post = estimator_->estimate();
+  if (post.valid) {
+    const EstimatedState& odom = pre.valid ? pre : post;
+    tf_.set_transform(
+        "odom", "base_link",
+        {{odom.x_m, odom.y_m, 0.0},
+         core::quaternion_from_rpy(0.0, 0.0, odom.yaw_rad)});
+    tf_.set_transform("map", "odom",
+                      core::map_from_odom_delta(odom.x_m, odom.y_m,
+                                               odom.yaw_rad, post.x_m,
+                                               post.y_m, post.yaw_rad));
+  }
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.

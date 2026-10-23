@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "robot/core/geometry.hpp"
+#include "robot/platform/transform_tree.hpp"
 
 namespace lost_signal::robot::app {
 
@@ -53,6 +54,10 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
 core::Status RobotApplication::configure() {
   if (!bringup_wired_) return core::Status::Fail("bringup not wired");
   if (!chassis_) return core::Status::Fail("unknown chassis kind");
+  // Static TF from the description (mount extrinsics); the coordinator
+  // refreshes the dynamic map->odom / odom->base edges every update.
+  coordinator_.set_static_frames(
+      platform::static_transform_tree(desc_));
   return bringup_.configure_all();
 }
 

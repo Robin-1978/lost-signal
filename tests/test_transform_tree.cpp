@@ -74,6 +74,31 @@ int main() {
     assert(tree.frame_ids().size() == 3);
   }
 
+  // SE(2) correction delta: identity when poses agree, exact hand values.
+  {
+    using lost_signal::robot::core::map_from_odom_delta;
+    using lost_signal::robot::core::transform_point;
+    auto id = map_from_odom_delta(1.0, 2.0, 0.3, 1.0, 2.0, 0.3);
+    assert(near(id.translation_m.x, 0.0) && near(id.translation_m.y, 0.0) &&
+           near(id.rotation.w, 1.0));
+    // Pure translation, no rotation: delta is the difference.
+    auto tr = map_from_odom_delta(1.0, 0.0, 0.0, 4.0, 0.0, 0.0);
+    const core::Vec3 pt = transform_point(tr, {1.0, 0.0, 0.0});
+    assert(near(pt.x, 4.0) && near(pt.y, 0.0));
+    // Pure yaw about the origin.
+    auto yw = map_from_odom_delta(0.0, 0.0, 0.0, 0.0, 0.0, kPi / 2);
+    const core::Vec3 pr = transform_point(yw, {1.0, 0.0, 0.0});
+    assert(near(pr.x, 0.0) && near(pr.y, 1.0));
+    // Combined: pre (1,0,0) corrected to (1,0,pi/2) rotates the point
+    // around the corrected origin: t = post - R(d)*pre = (1,-1), and the
+    // pre origin lands exactly on post.
+    auto cb = map_from_odom_delta(1.0, 0.0, 0.0, 1.0, 0.0, kPi / 2);
+    const core::Vec3 pc = transform_point(cb, {1.0, 0.0, 0.0});
+    assert(near(pc.x, 1.0) && near(pc.y, 0.0));
+    const core::Vec3 qc = transform_point(cb, {0.0, 0.0, 0.0});
+    assert(near(qc.x, 1.0) && near(qc.y, -1.0));
+  }
+
   // Static tree from the robot description: links compose, bad links skip.
   {
     platform::RobotDescription desc;

@@ -239,6 +239,7 @@ add_library(lost_signal_sim_eval STATIC
   src/sim/eval/drive_profile_io.cpp
   src/sim/eval/map_package.cpp
   src/sim/eval/world_io.cpp
+  src/sim/eval/robot_config.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -498,6 +499,21 @@ add_executable(test_transform_tree
 )
 target_link_libraries(test_transform_tree PRIVATE lost_signal_robot_platform)
 add_test(NAME transform_tree COMMAND test_transform_tree)
+
+add_executable(test_coordinator_tf
+  tests/test_coordinator_tf.cpp
+)
+target_link_libraries(test_coordinator_tf PRIVATE lost_signal_robot_autonomy)
+add_test(NAME coordinator_tf COMMAND test_coordinator_tf)
+
+add_executable(test_robot_config
+  tests/test_robot_config.cpp
+)
+target_compile_definitions(test_robot_config PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_robot_config PRIVATE lost_signal_sim_scenario)
+add_test(NAME robot_config COMMAND test_robot_config)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

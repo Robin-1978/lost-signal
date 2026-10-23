@@ -38,6 +38,12 @@ RigidTransform inverse(const RigidTransform& target_from_source);
 // RPY (rad) to unit quaternion. Throws on non-finite input.
 Quaternion quaternion_from_rpy(double roll_rad, double pitch_rad,
                                double yaw_rad);
+// SE(2) correction delta: the map_T_odom edge that carries a corrected pose
+// (post) onto a prediction pose (pre). Translation lives in the plane
+// (z = 0); identity when both poses agree.
+RigidTransform map_from_odom_delta(double pre_x_m, double pre_y_m,
+                                   double pre_yaw_rad, double post_x_m,
+                                   double post_y_m, double post_yaw_rad);
 
 class FrameTransformTree {
  public:
