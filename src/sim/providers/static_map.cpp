@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "sim/world/terrain.hpp"
+
 namespace lost_signal::sim::providers {
 
 StaticMapProvider::StaticMapProvider(world::World* world, double min_x_m,
@@ -56,6 +58,16 @@ void StaticMapProvider::rebuild() const {
                                std::numeric_limits<float>::quiet_NaN());
   snapshot_.elevation_sigma_m.assign(w * h, 0.0f);
   if (world_ != nullptr) {
+    // Surveyed elevation from the SAME canonical height function the
+    // engine builds contact geometry from: map and plant agree exactly.
+    // Material zones are deliberately NOT published (unobservable physics
+    // truth — the ROBOT estimates traction from its own slip evidence).
+    // Occupancy keeps its v1 doctrine: terrain stays unknown (-1) until
+    // the mapper observes it; the global planner penalizes unknown, the
+    // safety layers never assume free.
+    const std::vector<world::TerrainPatch>& patches =
+        world_->terrain_patches();
+    const std::vector<world::SupportSlab>& slabs = world_->support_slabs();
     for (int gy = 0; gy < h; ++gy) {
       for (int gx = 0; gx < w; ++gx) {
         const double cx = min_x_m_ + (gx + 0.5) * resolution_m_;
@@ -76,6 +88,11 @@ void StaticMapProvider::rebuild() const {
         if (occupied) {
           snapshot_.occupancy[gy * w + gx] = 100;
           snapshot_.elevation_m[gy * w + gx] = height;
+        } else {
+          const world::TerrainSample sample =
+              world::sample_terrain(patches, slabs, cx, cy);
+          snapshot_.elevation_m[gy * w + gx] =
+              static_cast<float>(sample.height_m);
         }
       }
     }

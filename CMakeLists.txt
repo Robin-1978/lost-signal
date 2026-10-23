@@ -514,6 +514,12 @@ add_executable(test_map_editor
 target_link_libraries(test_map_editor PRIVATE lost_signal_sim_viewer)
 add_test(NAME map_editor COMMAND test_map_editor)
 
+add_executable(test_terrain
+  tests/test_terrain.cpp
+)
+target_link_libraries(test_terrain PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
+add_test(NAME terrain COMMAND test_terrain)
+
 add_executable(test_transform_tree
   tests/test_transform_tree.cpp
 )

@@ -77,6 +77,63 @@ struct NamedPlace {
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
 };
 
+// Ground material library entry (SIM-side physics truth, never ROBOT
+// input). One entry resolves all contact + sensing numbers for every zone
+// carrying its id: zones store the id only, values resolve at load, so a
+// retune touches one record. Presentation (textures, effects) is out:
+// physics contact + lidar reflectivity only.
+struct MaterialEntry {
+  std::string material_id;
+  double friction_mu = 0.8;  // tire-road sliding friction (engine pair)
+  double rolling_resist = 0.0;  // combined tire+ground Coulomb coefficient
+  double contact_time_constant_s = 0.006;  // solver softness (main default)
+  double contact_damping_ratio = 1.0;
+  double lidar_reflectivity = 0.30;  // return strength (provider-side only)
+};
+
+// Rectangular ground-material override. Later entries win on overlap.
+// Values live in the library; the zone only names the material.
+struct MaterialZone {
+  std::string zone_id;
+  double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+  std::string material_id;
+};
+
+// Authored terrain height patch (SIM-side truth). Plane + bilinear
+// cross-slope, sampled by the single canonical function in terrain.hpp
+// (engine geometry and survey elevation share it, never drift apart).
+// Roughness needs mesh support (T2): files may carry it, the engine
+// refuses roughness > 0 fail-closed until then.
+struct TerrainPatch {
+  std::string patch_id;
+  double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+  double base_height_m = 0.0;
+  double grade_x = 0.0;
+  double grade_y = 0.0;
+  double grade_xy_per_m = 0.0;  // bilinear cross-slope transition
+  double roughness = 0.0;       // T2: relief waveform amplitude
+};
+
+// Bounded oriented support slab (bridge/deck): later revisions overlay
+// authored patches wherever the footprint exists. Static authored
+// geometry only — no construction gameplay (out of scope).
+struct SupportSlab {
+  std::string slab_id;
+  double center_x_m = 0.0, center_y_m = 0.0;
+  double half_length_m = 0.0, half_width_m = 0.0;
+  double yaw_rad = 0.0;
+  double center_height_m = 0.0;
+  double grade_along_local_x = 0.0;
+};
+
+// Environment keyframe: simulation-time-interpolated grip multiplier per
+// material (live wetness, SIM-side only — never a ROBOT field). Missing
+// materials stay 1.0; ends clamp.
+struct EnvironmentKeyframe {
+  double time_s = 0.0;
+  std::vector<std::pair<std::string, double>> material_grip;
+};
+
 struct MotorParams {
   double free_speed_mps = 3.0;  // no-load linear speed at duty 1
   double stall_force_N = 54.0;  // peak motor force at zero speed (duty 1)
@@ -117,6 +174,7 @@ class World {
  public:
   World();
   void step(double dt_s);
+  double sim_time_s() const { return sim_time_s_; }
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
@@ -147,6 +205,41 @@ class World {
   }
   const std::vector<StaticBox>& static_boxes() const { return static_boxes_; }
   std::uint64_t geometry_version() const { return geometry_version_; }
+  // Authored terrain + materials (SIM-side truth, same revision discipline:
+  // every setter bumps the geometry version, rebuilding engine + survey).
+  void set_materials(std::vector<MaterialEntry> materials) {
+    materials_ = std::move(materials);
+    ++geometry_version_;
+  }
+  const std::vector<MaterialEntry>& materials() const { return materials_; }
+  void set_material_zones(std::vector<MaterialZone> zones) {
+    material_zones_ = std::move(zones);
+    ++geometry_version_;
+  }
+  const std::vector<MaterialZone>& material_zones() const {
+    return material_zones_;
+  }
+  void set_terrain_patches(std::vector<TerrainPatch> patches) {
+    terrain_patches_ = std::move(patches);
+    ++geometry_version_;
+  }
+  const std::vector<TerrainPatch>& terrain_patches() const {
+    return terrain_patches_;
+  }
+  void set_support_slabs(std::vector<SupportSlab> slabs) {
+    support_slabs_ = std::move(slabs);
+    ++geometry_version_;
+  }
+  const std::vector<SupportSlab>& support_slabs() const {
+    return support_slabs_;
+  }
+  void set_environment(std::vector<EnvironmentKeyframe> environment) {
+    environment_ = std::move(environment);
+    ++geometry_version_;
+  }
+  const std::vector<EnvironmentKeyframe>& environment() const {
+    return environment_;
+  }
   void add_actor(const Actor& actor) { actors_.push_back(actor); }
   const std::vector<Actor>& actors() const { return actors_; }
   void add_place(const NamedPlace& place) {
@@ -164,6 +257,7 @@ class World {
   WorldTruth truth_{};
   MotorParams motor_{};
   MujocoBackend mujoco_;
+  double sim_time_s_ = 0.0;  // accumulated plant dt: environment grip clock
   // The engine owns integration: syncs the model, steps, reads truth back.
   // Unsupported mode, broken model, or MuJoCo disabled at configure time
   // leaves truth frozen; dt <= 0 holds state. Actors stay kinematic
@@ -172,6 +266,11 @@ class World {
   std::array<double, 4> brake_request_ = {};
   double incline_grade_ = 0.0;  // longitudinal rise/run, SIM-side only
   std::vector<StaticBox> static_boxes_;
+  std::vector<MaterialEntry> materials_;
+  std::vector<MaterialZone> material_zones_;
+  std::vector<TerrainPatch> terrain_patches_;
+  std::vector<SupportSlab> support_slabs_;
+  std::vector<EnvironmentKeyframe> environment_;
   std::vector<Actor> actors_;
   std::vector<NamedPlace> places_;
   std::uint64_t geometry_version_ = 0;

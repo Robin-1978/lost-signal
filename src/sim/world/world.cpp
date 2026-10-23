@@ -35,11 +35,13 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
 }
 
 void World::step_engine(double dt_s) {
-  mujoco_.sync(motor_, static_boxes_, geometry_version_, truth_.drive_count,
-               truth_.steer_count);
+  mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
+               terrain_patches_, support_slabs_, geometry_version_,
+               truth_.drive_count, truth_.steer_count);
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
-               brake_request_, incline_grade_);
+               brake_request_, incline_grade_, material_zones_, materials_,
+               environment_, sim_time_s_);
   truth_.body_x_m = mujoco_.body_x();
   truth_.body_y_m = mujoco_.body_y();
   truth_.body_yaw_rad = mujoco_.body_yaw();
@@ -62,6 +64,7 @@ void World::step_engine(double dt_s) {
 
 void World::step(double dt_s) {
   truth_.step += 1;
+  if (dt_s > 0.0 && std::isfinite(dt_s)) sim_time_s_ += dt_s;
   step_engine(dt_s);
   // Actors stay kinematic (no engine bodies for them); the judge reads
   // the same truth.

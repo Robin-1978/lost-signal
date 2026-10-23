@@ -60,6 +60,7 @@ int main() {
   assert(!world.truth().drive_slipping[0] &&
          !world.truth().drive_slipping[1]);
   // ...and firing when stall force exceeds mu * load (low mu, standstill).
+  // Confirmation hysteresis: one transient step never latches the label.
   sim::world::World wslip;
   sim::world::MotorParams low_mu = wslip.motor_params();
   low_mu.tire_friction_mu = 0.05;
@@ -71,6 +72,9 @@ int main() {
   c2.drive[0] = 1.0;
   c2.drive[1] = 1.0;
   wslip.apply(c2);
+  wslip.step(0.02);
+  assert(!wslip.truth().drive_slipping[0] &&
+         !wslip.truth().drive_slipping[1]);
   wslip.step(0.02);
   assert(wslip.truth().drive_slipping[0] &&
          wslip.truth().drive_slipping[1]);

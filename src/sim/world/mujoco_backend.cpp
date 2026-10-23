@@ -14,6 +14,7 @@
 
 #include "sim/world/motor.hpp"
 #include "sim/world/service_brake.hpp"
+#include "sim/world/terrain.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::world {
@@ -59,7 +60,8 @@ mjsJoint* add_hinge(mjsBody* parent, const std::string& name, double ax,
 }
 
 mjsGeom* add_geom(mjsBody* parent, const std::string& name, mjtGeom type,
-                 double sx, double sy, double sz, int group = 0) {
+                 double sx, double sy, double sz, int group = 0,
+                 const double* quat = nullptr) {
   mjsGeom* geom = mjs_addGeom(parent, nullptr);
   set_name(geom->element, name);
   geom->type = type;
@@ -67,11 +69,110 @@ mjsGeom* add_geom(mjsBody* parent, const std::string& name, mjtGeom type,
   geom->size[0] = sx;
   geom->size[1] = sy;
   geom->size[2] = sz;
-  geom->quat[0] = kQuatIdentity[0];
-  geom->quat[1] = kQuatIdentity[1];
-  geom->quat[2] = kQuatIdentity[2];
-  geom->quat[3] = kQuatIdentity[3];
+  if (quat != nullptr) {
+    geom->quat[0] = quat[0];
+    geom->quat[1] = quat[1];
+    geom->quat[2] = quat[2];
+    geom->quat[3] = quat[3];
+  } else {
+    geom->quat[0] = kQuatIdentity[0];
+    geom->quat[1] = kQuatIdentity[1];
+    geom->quat[2] = kQuatIdentity[2];
+    geom->quat[3] = kQuatIdentity[3];
+  }
   return geom;
+}
+
+// Quaternion multiply, (w,x,y,z) convention.
+void quat_mul(const double a[4], const double b[4], double out[4]) {
+  out[0] = a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3];
+  out[1] = a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2];
+  out[2] = a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1];
+  out[3] = a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0];
+}
+
+// Orientation leveling a slab top onto the authored grade. Sign check:
+// R_y(-a) sends +X upward with slope tan(a); R_x(b) sends +Y upward with
+// slope tan(b). Applied as q = qy * qx (pitch first in the local frame).
+void grade_quat(double grade_x, double grade_y, double out[4]) {
+  const double p = -std::atan(grade_x);
+  const double r = std::atan(grade_y);
+  const double qy[4] = {std::cos(p * 0.5), 0.0, std::sin(p * 0.5), 0.0};
+  const double qx[4] = {std::cos(r * 0.5), std::sin(r * 0.5), 0.0, 0.0};
+  quat_mul(qy, qx, out);
+}
+
+// Wheel modules per layout: (x, y, steered) in base frame, with drive and
+// steer channel assignment in loop order. Shared by the build (bodies) and
+// the step (wheel world positions for the zone lookup): one table, no drift.
+struct PlacedModule {
+  double x = 0.0, y = 0.0;
+  bool steered = false;
+  bool idle = false;  // free-spinning idler (ackermann fronts)
+  bool is_drive = false;
+  bool is_steer = false;
+  int drive_idx = -1;
+  int steer_idx = -1;
+};
+
+std::vector<PlacedModule> layout_modules(int drive_count, int steer_count,
+                                         double track, double base_len) {
+  std::vector<PlacedModule> modules;
+  if (drive_count == 2 && steer_count == 0) {
+    modules.push_back({0.0, track / 2});
+    modules.push_back({0.0, -track / 2});
+  } else if (drive_count == 2 && steer_count == 2) {
+    // Rear drives + front steered IDLERS (free-spinning, no torque):
+    // the two drive duties are the rear axle, like the main stack.
+    modules.push_back({-base_len / 2, track / 2});
+    modules.push_back({-base_len / 2, -track / 2});
+    modules.push_back({base_len / 2, track / 2, true, true});
+    modules.push_back({base_len / 2, -track / 2, true, true});
+  } else {
+    const double sx[4] = {base_len / 2, base_len / 2, -base_len / 2,
+                          -base_len / 2};
+    const double sy[4] = {track / 2, -track / 2, track / 2, -track / 2};
+    for (int i = 0; i < 4; ++i) {
+      modules.push_back({sx[i], sy[i], steer_count == 4});
+    }
+  }
+  int drive_idx = 0, steer_idx = 0;
+  for (std::size_t m = 0; m < modules.size(); ++m) {
+    const bool is_drive = !modules[m].idle && (drive_idx < drive_count) &&
+                          ((drive_count == 2 && steer_count == 2)
+                               ? (static_cast<int>(m) < 2)
+                               : true);
+    const bool is_steer =
+        modules[m].steered && steer_idx < steer_count;
+    modules[m].is_drive = is_drive;
+    modules[m].is_steer = is_steer;
+    if (is_drive) modules[m].drive_idx = drive_idx++;
+    if (is_steer) modules[m].steer_idx = steer_idx++;
+  }
+  return modules;
+}
+
+// Tire-side target + ground-side value for one wheel (engine max() rule
+// makes the pair take the larger). Tire carries min(global, local x env)
+// so zones at/below the tire rating resolve exactly; grippier ground wins
+// upward through the ground side, like the legacy floor.
+void resolve_wheel_mu(double mu_tire_base,
+                      const std::vector<MaterialZone>& zones,
+                      const std::vector<MaterialEntry>& materials,
+                      const std::vector<EnvironmentKeyframe>& environment,
+                      double sim_time_s, double wx, double wy,
+                      double& tire_target, double& ground_mu) {
+  tire_target = mu_tire_base;
+  ground_mu = mu_tire_base;
+  const MaterialZone* zone = material_zone_at(zones, wx, wy);
+  if (zone == nullptr) return;
+  const MaterialEntry* mat = find_material(materials, zone->material_id);
+  if (mat == nullptr) return;
+  const double grip =
+      environment_grip_at(environment, mat->material_id, sim_time_s);
+  const double local = std::max(0.0, mat->friction_mu) * std::max(0.0, grip);
+  ground_mu = local;
+  tire_target = std::min(mu_tire_base, local);
 }
 
 }  // namespace
@@ -95,9 +196,13 @@ MujocoBackend::MujocoBackend(MujocoBackend&&) = default;
 MujocoBackend& MujocoBackend::operator=(MujocoBackend&&) = default;
 
 void MujocoBackend::sync(const MotorParams& motor,
-                         const std::vector<StaticBox>& boxes,
-                         std::uint64_t geometry_version, int drive_count,
-                         int steer_count) {
+                          const std::vector<StaticBox>& boxes,
+                          const std::vector<MaterialEntry>& materials,
+                          const std::vector<MaterialZone>& zones,
+                          const std::vector<TerrainPatch>& patches,
+                          const std::vector<SupportSlab>& slabs,
+                          std::uint64_t geometry_version, int drive_count,
+                          int steer_count) {
   // Supported layouts mirror the actuator modes: (2,0) diff, (2,2)
   // ackermann, (4,4) swerve, (4,0) mecanum. Anything else is not
   // approximated.
@@ -112,6 +217,38 @@ void MujocoBackend::sync(const MotorParams& motor,
     ready_ = false;
     return;
   }
+  // Mesh-only features refuse the build fail-closed: a silently smoothed
+  // surface would lie to both the contact solver and the survey.
+  for (const auto& p : patches) {
+    if (p.roughness > 0.0 || std::abs(p.grade_xy_per_m) > 1e-12) {
+      if (!refuse_reported_) {
+        std::fprintf(stderr,
+                     "mujoco_backend: terrain patch '%s' needs mesh support "
+                     "(roughness/bilinear); build refused\n",
+                     p.patch_id.c_str());
+        refuse_reported_ = true;
+      }
+      drive_count_ = 0;
+      steer_count_ = 0;
+      ready_ = false;
+      return;
+    }
+  }
+  for (const auto& z : zones) {
+    if (find_material(materials, z.material_id) == nullptr) {
+      if (!refuse_reported_) {
+        std::fprintf(stderr,
+                     "mujoco_backend: zone '%s' references unknown material "
+                     "'%s'; build refused\n",
+                     z.zone_id.c_str(), z.material_id.c_str());
+        refuse_reported_ = true;
+      }
+      drive_count_ = 0;
+      steer_count_ = 0;
+      ready_ = false;
+      return;
+    }
+  }
   std::ostringstream sig;
   sig << motor.free_speed_mps << "|" << motor.stall_force_N << "|"
       << motor.vehicle_mass_kg << "|" << motor.wheel_radius_m << "|"
@@ -125,6 +262,29 @@ void MujocoBackend::sync(const MotorParams& motor,
   for (const auto& b : boxes) {
     sig << b.x0 << "," << b.y0 << "," << b.x1 << "," << b.y1 << "," << b.height_m
         << ";";
+  }
+  sig << "M|";
+  for (const auto& m : materials) {
+    sig << m.material_id << "," << m.friction_mu << "," << m.rolling_resist
+        << "," << m.contact_time_constant_s << "," << m.contact_damping_ratio
+        << ";";
+  }
+  sig << "Z|";
+  for (const auto& z : zones) {
+    sig << z.zone_id << "," << z.x0 << "," << z.y0 << "," << z.x1 << ","
+        << z.y1 << "," << z.material_id << ";";
+  }
+  sig << "T|";
+  for (const auto& p : patches) {
+    sig << p.patch_id << "," << p.x0 << "," << p.y0 << "," << p.x1 << ","
+        << p.y1 << "," << p.base_height_m << "," << p.grade_x << ","
+        << p.grade_y << ";";
+  }
+  sig << "S|";
+  for (const auto& s : slabs) {
+    sig << s.slab_id << "," << s.center_x_m << "," << s.center_y_m << ","
+        << s.half_length_m << "," << s.half_width_m << "," << s.yaw_rad << ","
+        << s.center_height_m << "," << s.grade_along_local_x << ";";
   }
   const std::string signature = sig.str();
   if (ever_built_ && signature == built_signature_ &&
@@ -169,31 +329,21 @@ void MujocoBackend::sync(const MotorParams& motor,
   // virtual-work wrench. Keep drive grip via the wrench, drop the scrub.
   const double mu_tire =
       (drive_count == 4 && steer_count == 0) ? 0.05 : mu;
+  mu_tire_base_ = mu_tire;
+  for (int i = 0; i < 4; ++i) {
+    slip_count_[i] = 0;  // fresh model: reconfirm traction, never inherit
+    tire_geom_[i] = -1;
+  }
+  zone_geom_.clear();
 
-  // Wheel modules per layout: (x, y, steered) in base frame.
-  struct Module {
-    double x, y;
-    bool steered;
-    bool idle = false;  // free-spinning idler (ackermann fronts)
-  };
-  std::vector<Module> modules;
-  if (drive_count == 2 && steer_count == 0) {
-    modules = {{0.0, track / 2, false}, {0.0, -track / 2, false}};
-  } else if (drive_count == 2 && steer_count == 2) {
-    // Rear drives + front steered IDLERS (free-spinning, no torque):
-    // the two drive duties are the rear axle, like the main stack.
-    modules = {{-base_len / 2, track / 2, false},
-               {-base_len / 2, -track / 2, false},
-               {base_len / 2, track / 2, true},
-               {base_len / 2, -track / 2, true}};
-    for (int i = 2; i < 4; ++i) modules[static_cast<std::size_t>(i)].idle = true;
-  } else {
-    const double sx[4] = {base_len / 2, base_len / 2, -base_len / 2,
-                          -base_len / 2};
-    const double sy[4] = {track / 2, -track / 2, track / 2, -track / 2};
-    for (int i = 0; i < 4; ++i) {
-      modules.push_back(
-          {sx[i], sy[i], steer_count == 4 && i >= 0});
+  // Wheel modules per layout: one shared table for the build (bodies)
+  // and the step (wheel world positions for the zone lookup).
+  const std::vector<PlacedModule> modules =
+      layout_modules(drive_count, steer_count, track, base_len);
+  for (const auto& mod : modules) {
+    if (mod.is_drive && mod.drive_idx >= 0 && mod.drive_idx < 4) {
+      drive_mod_x_[mod.drive_idx] = mod.x;
+      drive_mod_y_[mod.drive_idx] = mod.y;
     }
   }
   // Drive joint i follows module i for the first drive_count modules;
@@ -229,13 +379,12 @@ void MujocoBackend::sync(const MotorParams& motor,
   mjsGeom* deck =
       add_geom(base, "deck", mjGEOM_BOX, tub_half_xy, tub_half_xy, deck_half_h, 1);
   deck->mass = base_mass;
-  int drive_idx = 0, steer_idx = 0, idle_idx = 0;
+  int idle_idx = 0;
   for (std::size_t m = 0; m < modules.size(); ++m) {
-    const bool is_drive = !modules[m].idle && (drive_idx < drive_count) &&
-                          ((drive_count == 2 && steer_count == 2)
-                               ? (static_cast<int>(m) < 2)
-                               : true);
-    const bool is_steer = modules[m].steered && steer_idx < steer_count;
+    const bool is_drive = modules[m].is_drive;
+    const bool is_steer = modules[m].is_steer;
+    const int drive_idx = modules[m].drive_idx;
+    const int steer_idx = modules[m].steer_idx;
     mjsBody* knuckle = nullptr;
     if (is_steer) {
       knuckle = add_body(base, "knuckle" + std::to_string(steer_idx),
@@ -251,7 +400,6 @@ void MujocoBackend::sync(const MotorParams& motor,
                                   "kingpin" + std::to_string(steer_idx),
                                   mjGEOM_SPHERE, 0.02, 0.0, 0.0, 1);
       kingpin->mass = 0.1;
-      ++steer_idx;
     }
     mjsBody* parent = is_steer ? knuckle : base;
     const double px = is_steer ? 0.0 : modules[m].x;
@@ -276,7 +424,6 @@ void MujocoBackend::sync(const MotorParams& motor,
       tire->friction[0] = mu_tire;
       tire->friction[1] = kWheelTorsionalFriction;
       tire->friction[2] = kWheelRollingFriction;
-      ++drive_idx;
     } else if (modules[m].idle) {
       // Ackermann front idlers: free-spinning wheels inside the steering
       // knuckles (no torque — the two drive duties are the rear axle).
@@ -341,6 +488,83 @@ void MujocoBackend::sync(const MotorParams& motor,
     wall->friction[2] = 0.001;
     ++bi;
   }
+  // Material zones: thin floor slabs (top 1 mm above the plane, avoiding
+  // coplanar contact ambiguity) carrying the library friction + contact
+  // numbers. The pair takes the max, so the tire side (per-step, per-wheel)
+  // governs at/below its rating and grippier ground wins upward — the same
+  // relationship the legacy floor (1.0) has with the tire rating.
+  for (std::size_t zi = 0; zi < zones.size(); ++zi) {
+    const MaterialZone& z = zones[zi];
+    if (!(z.x1 > z.x0 && z.y1 > z.y0)) continue;  // zero area covers nothing
+    const MaterialEntry* mat = find_material(materials, z.material_id);
+    if (mat == nullptr) continue;  // refused at sync head; defensive
+    const double hx = (z.x1 - z.x0) / 2;
+    const double hy = (z.y1 - z.y0) / 2;
+    mjsGeom* zg = add_geom(world, "zone" + std::to_string(zi), mjGEOM_BOX,
+                           hx, hy, 0.025);
+    zg->pos[0] = (z.x0 + z.x1) / 2;
+    zg->pos[1] = (z.y0 + z.y1) / 2;
+    zg->pos[2] = 0.001 - 0.025;
+    zg->friction[0] = std::max(0.0, mat->friction_mu);
+    zg->friction[1] = 0.01;
+    // Engine-native rolling parameter fed from the material: Coulomb rr is
+    // a force ratio, the solver wants a torque arm — scale by the wheel
+    // radius (rr 0.015 at r 0.1 lands at the legacy 0.002 neighborhood).
+    zg->friction[2] =
+        std::clamp(mat->rolling_resist * r, 0.0, 0.05);
+    zg->solref[0] = std::max(1e-4, mat->contact_time_constant_s);
+    zg->solref[1] = std::max(0.0, mat->contact_damping_ratio);
+  }
+  // Terrain patches: oriented slabs whose top face coincides with the
+  // canonical height plane (same grade through the center point the survey
+  // rasterizes, so engine contact and map elevation agree exactly on the
+  // footprint). Patch borders are retaining walls, never ramps.
+  for (std::size_t pi = 0; pi < patches.size(); ++pi) {
+    const TerrainPatch& p = patches[pi];
+    if (!(p.x1 > p.x0 && p.y1 > p.y0)) continue;
+    const double hx = (p.x1 - p.x0) / 2;
+    const double hy = (p.y1 - p.y0) / 2;
+    const double cx = (p.x0 + p.x1) / 2;
+    const double cy = (p.y0 + p.y1) / 2;
+    TerrainSample center = sample_terrain(patches, slabs, cx, cy);
+    const double half_t = (center.height_m + 0.5) / 2;
+    double q[4];
+    grade_quat(p.grade_x, p.grade_y, q);
+    mjsGeom* pg = add_geom(world, "terrain" + std::to_string(pi), mjGEOM_BOX,
+                           hx, hy, std::max(0.05, half_t), 0, q);
+    pg->pos[0] = cx;
+    pg->pos[1] = cy;
+    // Tilt-corrected so the top face passes through the surveyed center.
+    pg->pos[2] = center.height_m -
+                 std::max(0.05, half_t) * std::cos(std::atan(p.grade_x)) *
+                     std::cos(std::atan(p.grade_y));
+    pg->friction[0] = kFloorSlidingFriction;
+    pg->friction[1] = 0.01;
+    pg->friction[2] = 0.001;
+  }
+  // Support slabs: thin oriented decks (same top-coincidence construction).
+  for (std::size_t si = 0; si < slabs.size(); ++si) {
+    const SupportSlab& s = slabs[si];
+    if (!(s.half_length_m > 0.0 && s.half_width_m > 0.0)) continue;
+    TerrainSample center = sample_terrain(patches, slabs, s.center_x_m,
+                                          s.center_y_m);
+    double qg[4];
+    grade_quat(s.grade_along_local_x, 0.0, qg);
+    const double yaw_q[4] = {std::cos(s.yaw_rad * 0.5), 0.0, 0.0,
+                             std::sin(s.yaw_rad * 0.5)};
+    double q[4];
+    quat_mul(yaw_q, qg, q);
+    constexpr double kSlabHalfT = 0.03;
+    mjsGeom* sg = add_geom(world, "slab" + std::to_string(si), mjGEOM_BOX,
+                           s.half_length_m, s.half_width_m, kSlabHalfT, 0, q);
+    sg->pos[0] = s.center_x_m;
+    sg->pos[1] = s.center_y_m;
+    sg->pos[2] = center.height_m -
+                 kSlabHalfT * std::cos(std::atan(s.grade_along_local_x));
+    sg->friction[0] = kFloorSlidingFriction;
+    sg->friction[1] = 0.01;
+    sg->friction[2] = 0.001;
+  }
 
   mjModel* model = mj_compile(spec, nullptr);
   if (model == nullptr) {
@@ -371,6 +595,13 @@ void MujocoBackend::sync(const MotorParams& motor,
     const int sid = mj_name2id(model, mjOBJ_JOINT, name);
     steer_dof_[i] = (sid >= 0) ? model->jnt_dofadr[sid] : -1;
     if (steer_dof_[i] >= 0) ++found_steers;
+    std::snprintf(name, sizeof(name), "tire%d", i);
+    tire_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
+  }
+  zone_geom_.clear();
+  for (std::size_t zi = 0; zi < zones.size(); ++zi) {
+    const std::string name = "zone" + std::to_string(zi);
+    zone_geom_.push_back(mj_name2id(model, mjOBJ_GEOM, name.c_str()));
   }
   if (found_drives != drive_count || found_steers != steer_count) {
     return;  // incomplete model: frozen, never silent substitution
@@ -378,6 +609,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   drive_count_ = drive_count;
   steer_count_ = steer_count;
   ready_ = true;
+  refuse_reported_ = false;
   track_m_ = track;
   base_len_m_ = base_len;
   built_signature_ = signature;
@@ -397,10 +629,45 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
                          const std::array<double, 4>& drive_duty,
                          const std::array<double, 4>& steer_duty,
                          const std::array<double, 4>& brake_request,
-                         double incline_grade) {
+                         double incline_grade,
+                         const std::vector<MaterialZone>& zones,
+                         const std::vector<MaterialEntry>& materials,
+                         const std::vector<EnvironmentKeyframe>& environment,
+                         double sim_time_s) {
   if (!valid() || drive_count_ <= 0 || !(dt_s > 0.0)) return;
   mjModel* model = impl_->model;
   mjData* data = impl_->data;
+  // Per-step ground truth: zone friction follows the environment grip
+  // (live model-array writes, no rebuild), tire sides follow the local
+  // zone at each wheel. Stale (20 ms) body pose is fine — zones are meters.
+  const double cy = std::cos(body_yaw_), sy = std::sin(body_yaw_);
+  double tire_target[4] = {mu_tire_base_, mu_tire_base_, mu_tire_base_,
+                           mu_tire_base_};
+  double ground_mu[4] = {mu_tire_base_, mu_tire_base_, mu_tire_base_,
+                         mu_tire_base_};
+  for (int d = 0; d < drive_count_ && d < 4; ++d) {
+    const double wx =
+        body_x_ + drive_mod_x_[d] * cy - drive_mod_y_[d] * sy;
+    const double wy =
+        body_y_ + drive_mod_x_[d] * sy + drive_mod_y_[d] * cy;
+    resolve_wheel_mu(mu_tire_base_, zones, materials, environment, sim_time_s,
+                     wx, wy, tire_target[d], ground_mu[d]);
+    if (tire_geom_[d] >= 0) {
+      model->geom_friction[tire_geom_[d] * 3 + 0] = tire_target[d];
+    }
+  }
+  for (std::size_t zi = 0; zi < zones.size() && zi < zone_geom_.size();
+       ++zi) {
+    if (zone_geom_[zi] < 0) continue;
+    const MaterialEntry* mat =
+        find_material(materials, zones[zi].material_id);
+    if (mat == nullptr) continue;
+    model->geom_friction[zone_geom_[zi] * 3 + 0] =
+        std::max(0.0, mat->friction_mu) *
+        std::max(0.0,
+                 environment_grip_at(environment, mat->material_id,
+                                     sim_time_s));
+  }
   const double r = std::max(1e-6, motor.wheel_radius_m);
   // Grade as gravity tilt around the current heading (main-stack
   // body-forward semantics: uphill forward pulls backward).
@@ -424,8 +691,11 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   const double step_dt = dt_s / n;
   const double load_N =
       std::max(0.0, motor.vehicle_mass_kg) * g / std::max(1, drive_count_);
-  const double traction_N =
-      std::max(0.0, motor.tire_friction_mu) * load_N;
+  // Traction evidence, main's motor_drive flag: the applied force
+  // past the local pair capacity reports slipping. Reported only — the
+  // duty path never clamps (verbatim main). Capacity is the engine max()
+  // rule over the tire/ground sides resolved above.
+  //
   // Brake lag state advances at the outer 20 ms cadence (same as main's
   // per-tick plant step); capacity resolves per substep below.
   double brake_capacity_Nm[4] = {0.0, 0.0, 0.0, 0.0};
@@ -445,6 +715,7 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   // ~0 fore-aft). Explicit roller bodies are M3 work.
   constexpr double kRollerCos = 0.7071067811865476;
   const bool is_mecanum = (drive_count_ == 4 && steer_count_ == 0);
+  double motor_N_last[4] = {0.0, 0.0, 0.0, 0.0};
   for (int s = 0; s < n; ++s) {
     model->opt.timestep = step_dt;
     mj_step1(model, data);
@@ -458,16 +729,12 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
                                               motor.stall_force_N,
                                               motor.free_speed_mps);
       data->qfrc_applied[dof] = motor_N * r;
+      motor_N_last[d] = motor_N;
       if (brake_capacity_Nm[d] > 0.0) {
         const double direction = std::clamp(
             data->qvel[dof] / kBrakeLowSpeedSmoothingRadps, -1.0, 1.0);
         data->qfrc_applied[dof] -= direction * brake_capacity_Nm[d];
       }
-      // Traction evidence, main's motor_drive flag: the applied force
-      // past mu * load reports slipping. Reported only — the duty path
-      // never clamps (verbatim main).
-      drive_slipping_[static_cast<std::size_t>(d)] =
-          std::abs(motor_N) > traction_N;
       if (is_mecanum) {
         // Roller signs follow the mecanum map rows (fore, left, yaw):
         // Fx = F0+F1+F2+F3, Fy = -F0+F1+F2-F3,
@@ -511,6 +778,20 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
       data->qfrc_applied[5] = roller_t;
     }
     mj_step2(model, data);
+  }
+  // Traction evidence, main's motor_drive flag: the settled (last-substep)
+  // applied force past the local pair capacity reports slipping. Reported
+  // only — the duty path never clamps (verbatim main). Confirmed over two
+  // consecutive steps so one transient step cannot latch the label.
+  for (int d = 0; d < drive_count_ && d < 4; ++d) {
+    const double traction_N =
+        std::max(tire_target[d], ground_mu[d]) * load_N;
+    if (std::abs(motor_N_last[d]) > traction_N) {
+      slip_count_[d] = std::min(slip_count_[d] + 1, 3);
+    } else {
+      slip_count_[d] = 0;
+    }
+    drive_slipping_[static_cast<std::size_t>(d)] = slip_count_[d] >= 2;
   }
   model->opt.timestep = 0.001;
   for (int i = 0; i < model->nv; ++i) data->qfrc_applied[i] = 0.0;

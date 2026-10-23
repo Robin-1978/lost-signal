@@ -150,6 +150,31 @@ estimator already tolerates it). All seeded and replay-deterministic.
 Accept: dropout/latency unit tests; HIL tests pass with realism on
 (default off) and off (default).
 
+### S8 Terrain & ground materials (medium) — T1a/T1b landed, T1c next
+Import complex terrain + ground materials SIM-side to test robot
+boundaries. ROBOT sees only measurements (scans/IMU/slip) plus the
+surveyed elevation prior; material truth never crosses (map.hpp:
+no friction, contact, or live wetness).
+- T1a (landed): `sim/world/terrain.hpp` single canonical height function
+  (engine + survey share it), `World` holds materials/zones/patches/
+  slabs/environment, `lost-signal-world/2` interchange with fail-closed
+  load, editor carry-through, `test_map_editor` roundtrip pins.
+- T1b (landed): engine per-zone friction/rolling/contact (pair takes the
+  max: tire carries min(global, local) x environment grip per wheel,
+  ground carries the zone value), oriented ramp/slab contact slabs with
+  tops coinciding with the surveyed plane, 2-step slip hysteresis with
+  zone-aware thresholds, survey elevation rasterization, grip factor in
+  `Diagnostics` (ROBOT's own belief, offline only). `test_terrain` pins
+  math/engine/survey/refusals. Roughness + bilinear cross-slope refuse
+  the build fail-closed until mesh support (T2).
+- T1c (next): low-mu + ramp boundary missions, terrain editing handles,
+  `sim_robot` HIL through the same seams.
+- T2 (planned): heightfield/relief import, tracked chassis, engine-contact
+  judge, lidar reflectivity decision (needs an LSRI intensity channel).
+- T3 (planned): ROBOT beliefs (traversal model, elevation fusion, terrain
+  math, planner cost hooks) — only if T1 missions prove adaptation
+  insufficient.
+
 ## Explicitly OUT (not deployable sim)
 
 - `game/client/*` on main (game UI, audio, campaign visuals, mission
@@ -162,7 +187,9 @@ Accept: dropout/latency unit tests; HIL tests pass with realism on
 - Manipulator (whole stack, both sides).
 - `world_activity` weather/incidents, `field_dispatch`/`field_operator`
   game logic, replay shadow/observation-only models (unwired on main).
-- `terrain_relief`/mesh helpers, sha256/random/event-log utilities.
+- Mesh import (heightfield/relief waveform): deferred to S8-T2; prismatic
+  terrain + material zones are in, roughness/bilinear refuse fail-closed.
+  sha256/random/event-log utilities.
 
 ## Order rationale
 

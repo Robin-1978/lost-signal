@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "sim/eval/world_io.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::viewer {
@@ -23,8 +24,13 @@ class MapEditor {
   bool dirty() const { return dirty_; }
   const std::string& message() const { return message_; }
 
-  const std::vector<world::StaticBox>& boxes() const { return boxes_; }
-  const std::vector<world::NamedPlace>& places() const { return places_; }
+  const std::vector<world::StaticBox>& boxes() const { return content_.boxes; }
+  const std::vector<world::NamedPlace>& places() const {
+    return content_.places;
+  }
+  // v2 sections without edit handles yet (materials/zones/terrain/slabs/
+  // environment): carried through load/apply/save untouched so editing
+  // boxes never drops authored terrain facts.
 
   // Selection: box index + grabbed corner 0..3
   // (min/min, max/min, max/max, min/max), -1 body-grab; place index, -1 none.
@@ -73,8 +79,7 @@ class MapEditor {
   bool active_ = false;
   bool dirty_ = false;
   std::string message_;
-  std::vector<world::StaticBox> boxes_;
-  std::vector<world::NamedPlace> places_;
+  eval::WorldFileContent content_;
   int sel_box_ = -1;
   int sel_corner_ = -1;  // -1 body, 0..3 corner
   int sel_place_ = -1;

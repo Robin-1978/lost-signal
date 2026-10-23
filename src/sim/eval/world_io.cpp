@@ -1,9 +1,11 @@
 #include "sim/eval/world_io.hpp"
 
+#include <cmath>
 #include <fstream>
 #include <sstream>
 
 #include "robot/core/json.hpp"
+#include "sim/world/terrain.hpp"
 
 namespace lost_signal::sim::eval {
 using robot::core::Json;
@@ -40,6 +42,33 @@ bool write_text(const std::string& path, const std::string& text,
   return true;
 }
 
+bool num_field(const Json& j, const char* key, double& out, std::string& err) {
+  const Json* n = j.find(key);
+  if (n == nullptr || !n->is_num() || !std::isfinite(n->as_num())) {
+    err = std::string("key '") + key + "' missing or not a finite number";
+    return false;
+  }
+  out = n->as_num();
+  return true;
+}
+
+bool str_field(const Json& j, const char* key, std::string& out,
+               std::string& err) {
+  const Json* n = j.find(key);
+  if (n == nullptr || !n->is_str() || n->as_str().empty()) {
+    err = std::string("key '") + key + "' missing or empty";
+    return false;
+  }
+  out = n->as_str();
+  return true;
+}
+
+bool rect_fields(const Json& j, double& x0, double& y0, double& x1,
+                 double& y1, std::string& err) {
+  return num_field(j, "x0", x0, err) && num_field(j, "y0", y0, err) &&
+         num_field(j, "x1", x1, err) && num_field(j, "y1", y1, err);
+}
+
 Json box_to_json(const world::StaticBox& b) {
   return Json::Obj({{"x0", Json::Num(b.x0)},
                     {"y0", Json::Num(b.y0)},
@@ -53,19 +82,9 @@ bool box_from_json(const Json& j, world::StaticBox& b, std::string& err) {
     err = "box not an object";
     return false;
   }
-  for (const char* k : {"x0", "y0", "x1", "y1", "height_m"}) {
-    const Json* n = j.find(k);
-    if (n == nullptr || !n->is_num()) {
-      err = std::string("box key '") + k + "' missing or not a number";
-      return false;
-    }
-  }
-  b.x0 = j.find("x0")->as_num();
-  b.y0 = j.find("y0")->as_num();
-  b.x1 = j.find("x1")->as_num();
-  b.y1 = j.find("y1")->as_num();
-  b.height_m = j.find("height_m")->as_num();
-  return true;
+  return num_field(j, "x0", b.x0, err) && num_field(j, "y0", b.y0, err) &&
+         num_field(j, "x1", b.x1, err) && num_field(j, "y1", b.y1, err) &&
+         num_field(j, "height_m", b.height_m, err);
 }
 
 Json place_to_json(const world::NamedPlace& p) {
@@ -80,49 +99,193 @@ bool place_from_json(const Json& j, world::NamedPlace& p, std::string& err) {
     err = "place not an object";
     return false;
   }
-  const Json* id = j.find("place_id");
-  if (id == nullptr || !id->is_str() || id->as_str().empty()) {
-    err = "place_id missing or empty";
+  return str_field(j, "place_id", p.place_id, err) &&
+         num_field(j, "x_m", p.x_m, err) &&
+         num_field(j, "y_m", p.y_m, err) &&
+         num_field(j, "yaw_rad", p.yaw_rad, err);
+}
+
+Json material_to_json(const world::MaterialEntry& m) {
+  return Json::Obj({{"material_id", Json::Str(m.material_id)},
+                    {"friction_mu", Json::Num(m.friction_mu)},
+                    {"rolling_resist", Json::Num(m.rolling_resist)},
+                    {"contact_time_constant_s",
+                     Json::Num(m.contact_time_constant_s)},
+                    {"contact_damping_ratio",
+                     Json::Num(m.contact_damping_ratio)},
+                    {"lidar_reflectivity",
+                     Json::Num(m.lidar_reflectivity)}});
+}
+
+bool material_from_json(const Json& j, world::MaterialEntry& m,
+                        std::string& err) {
+  if (!j.is_object()) {
+    err = "material not an object";
     return false;
   }
-  for (const char* k : {"x_m", "y_m", "yaw_rad"}) {
-    const Json* n = j.find(k);
-    if (n == nullptr || !n->is_num()) {
-      err = std::string("place key '") + k + "' missing or not a number";
+  if (!str_field(j, "material_id", m.material_id, err)) return false;
+  if (!num_field(j, "friction_mu", m.friction_mu, err) ||
+      !num_field(j, "rolling_resist", m.rolling_resist, err) ||
+      !num_field(j, "contact_time_constant_s",
+                 m.contact_time_constant_s, err) ||
+      !num_field(j, "contact_damping_ratio", m.contact_damping_ratio,
+                 err) ||
+      !num_field(j, "lidar_reflectivity", m.lidar_reflectivity, err)) {
+    return false;
+  }
+  if (m.friction_mu < 0.0 || m.rolling_resist < 0.0 ||
+      m.contact_time_constant_s <= 0.0 || m.contact_damping_ratio < 0.0 ||
+      m.lidar_reflectivity < 0.0) {
+    err = "material '" + m.material_id + "' has a negative/nonphysical value";
+    return false;
+  }
+  return true;
+}
+
+Json zone_to_json(const world::MaterialZone& z) {
+  return Json::Obj({{"zone_id", Json::Str(z.zone_id)},
+                    {"x0", Json::Num(z.x0)},
+                    {"y0", Json::Num(z.y0)},
+                    {"x1", Json::Num(z.x1)},
+                    {"y1", Json::Num(z.y1)},
+                    {"material", Json::Str(z.material_id)}});
+}
+
+bool zone_from_json(const Json& j, world::MaterialZone& z, std::string& err) {
+  if (!j.is_object()) {
+    err = "zone not an object";
+    return false;
+  }
+  return str_field(j, "zone_id", z.zone_id, err) &&
+         rect_fields(j, z.x0, z.y0, z.x1, z.y1, err) &&
+         str_field(j, "material", z.material_id, err);
+}
+
+Json patch_to_json(const world::TerrainPatch& p) {
+  return Json::Obj({{"patch_id", Json::Str(p.patch_id)},
+                    {"x0", Json::Num(p.x0)},
+                    {"y0", Json::Num(p.y0)},
+                    {"x1", Json::Num(p.x1)},
+                    {"y1", Json::Num(p.y1)},
+                    {"base_height_m", Json::Num(p.base_height_m)},
+                    {"grade_x", Json::Num(p.grade_x)},
+                    {"grade_y", Json::Num(p.grade_y)},
+                    {"grade_xy_per_m", Json::Num(p.grade_xy_per_m)},
+                    {"roughness", Json::Num(p.roughness)}});
+}
+
+bool patch_from_json(const Json& j, world::TerrainPatch& p,
+                     std::string& err) {
+  if (!j.is_object()) {
+    err = "terrain patch not an object";
+    return false;
+  }
+  return str_field(j, "patch_id", p.patch_id, err) &&
+         rect_fields(j, p.x0, p.y0, p.x1, p.y1, err) &&
+         num_field(j, "base_height_m", p.base_height_m, err) &&
+         num_field(j, "grade_x", p.grade_x, err) &&
+         num_field(j, "grade_y", p.grade_y, err) &&
+         num_field(j, "grade_xy_per_m", p.grade_xy_per_m, err) &&
+         num_field(j, "roughness", p.roughness, err);
+}
+
+Json slab_to_json(const world::SupportSlab& s) {
+  return Json::Obj({{"slab_id", Json::Str(s.slab_id)},
+                    {"center_x_m", Json::Num(s.center_x_m)},
+                    {"center_y_m", Json::Num(s.center_y_m)},
+                    {"half_length_m", Json::Num(s.half_length_m)},
+                    {"half_width_m", Json::Num(s.half_width_m)},
+                    {"yaw_rad", Json::Num(s.yaw_rad)},
+                    {"center_height_m", Json::Num(s.center_height_m)},
+                    {"grade_along_local_x",
+                     Json::Num(s.grade_along_local_x)}});
+}
+
+bool slab_from_json(const Json& j, world::SupportSlab& s, std::string& err) {
+  if (!j.is_object()) {
+    err = "slab not an object";
+    return false;
+  }
+  return str_field(j, "slab_id", s.slab_id, err) &&
+         num_field(j, "center_x_m", s.center_x_m, err) &&
+         num_field(j, "center_y_m", s.center_y_m, err) &&
+         num_field(j, "half_length_m", s.half_length_m, err) &&
+         num_field(j, "half_width_m", s.half_width_m, err) &&
+         num_field(j, "yaw_rad", s.yaw_rad, err) &&
+         num_field(j, "center_height_m", s.center_height_m, err) &&
+         num_field(j, "grade_along_local_x", s.grade_along_local_x, err);
+}
+
+Json environment_to_json(const world::EnvironmentKeyframe& k) {
+  Json::Object grip;
+  for (const auto& [id, mult] : k.material_grip) {
+    grip.emplace_back(id, Json::Num(mult));
+  }
+  return Json::Obj({{"time_s", Json::Num(k.time_s)},
+                    {"material_grip", Json::Obj(std::move(grip))}});
+}
+
+bool environment_from_json(const Json& j, world::EnvironmentKeyframe& k,
+                           std::string& err) {
+  if (!j.is_object()) {
+    err = "environment keyframe not an object";
+    return false;
+  }
+  if (!num_field(j, "time_s", k.time_s, err)) return false;
+  if (k.time_s < 0.0) {
+    err = "environment time_s negative";
+    return false;
+  }
+  const Json* g = j.find("material_grip");
+  if (g == nullptr || !g->is_object()) {
+    err = "environment material_grip missing or not an object";
+    return false;
+  }
+  for (const auto& [id, v] : g->as_object()) {
+    if (id.empty() || !v.is_num() || !std::isfinite(v.as_num()) ||
+        v.as_num() < 0.0) {
+      err = "environment material_grip has a bad entry";
       return false;
     }
+    k.material_grip.emplace_back(id, v.as_num());
   }
-  p.place_id = id->as_str();
-  p.x_m = j.find("x_m")->as_num();
-  p.y_m = j.find("y_m")->as_num();
-  p.yaw_rad = j.find("yaw_rad")->as_num();
   return true;
 }
 
 }  // namespace
 
-bool save_world_file(const std::string& path,
-                     const std::vector<world::StaticBox>& boxes,
-                     const std::vector<world::NamedPlace>& places,
-                     std::string* error) {
+bool save_world_file(const std::string& path, const WorldFileContent& content,
+                      std::string* error) {
   std::string err_local;
   std::string& err = error ? *error : err_local;
-  Json::Array box_arr;
-  for (const auto& b : boxes) box_arr.push_back(box_to_json(b));
-  Json::Array place_arr;
-  for (const auto& p : places) place_arr.push_back(place_to_json(p));
-  const Json root = Json::Obj({{"format", Json::Str(kWorldFileFormat)},
-                               {"boxes", Json::Arr(std::move(box_arr))},
-                               {"places", Json::Arr(std::move(place_arr))}});
+  Json::Array box_arr, place_arr, mat_arr, zone_arr, patch_arr, slab_arr,
+      env_arr;
+  for (const auto& b : content.boxes) box_arr.push_back(box_to_json(b));
+  for (const auto& p : content.places) place_arr.push_back(place_to_json(p));
+  for (const auto& m : content.materials)
+    mat_arr.push_back(material_to_json(m));
+  for (const auto& z : content.zones) zone_arr.push_back(zone_to_json(z));
+  for (const auto& p : content.patches)
+    patch_arr.push_back(patch_to_json(p));
+  for (const auto& s : content.slabs) slab_arr.push_back(slab_to_json(s));
+  for (const auto& k : content.environment)
+    env_arr.push_back(environment_to_json(k));
+  const Json root =
+      Json::Obj({{"format", Json::Str(kWorldFileFormat)},
+                 {"boxes", Json::Arr(std::move(box_arr))},
+                 {"places", Json::Arr(std::move(place_arr))},
+                 {"materials", Json::Arr(std::move(mat_arr))},
+                 {"zones", Json::Arr(std::move(zone_arr))},
+                 {"terrain", Json::Arr(std::move(patch_arr))},
+                 {"slabs", Json::Arr(std::move(slab_arr))},
+                 {"environment", Json::Arr(std::move(env_arr))}});
   if (!write_text(path, json_dump(root), error)) return false;
   err.clear();
   return true;
 }
 
-bool load_world_file(const std::string& path,
-                     std::vector<world::StaticBox>& boxes,
-                     std::vector<world::NamedPlace>& places,
-                     std::string* error) {
+bool load_world_file(const std::string& path, WorldFileContent& content,
+                      std::string* error) {
   std::string err_local;
   std::string& err = error ? *error : err_local;
   std::string text;
@@ -136,30 +299,74 @@ bool load_world_file(const std::string& path,
   const Json* fmt = root->find("format");
   if (fmt == nullptr || !fmt->is_str() ||
       fmt->as_str() != kWorldFileFormat) {
-    err = "unsupported world format";
+    err = "unsupported world format (want " + std::string(kWorldFileFormat) +
+          ")";
     return false;
   }
   const Json* bj = root->find("boxes");
   const Json* pj = root->find("places");
+  const Json* mj = root->find("materials");
+  const Json* zj = root->find("zones");
+  const Json* tj = root->find("terrain");
+  const Json* sj = root->find("slabs");
+  const Json* ej = root->find("environment");
   if (bj == nullptr || !bj->is_array() || pj == nullptr ||
-      !pj->is_array()) {
-    err = "world file needs boxes[] and places[]";
+      !pj->is_array() || mj == nullptr || !mj->is_array() ||
+      zj == nullptr || !zj->is_array() || tj == nullptr ||
+      !tj->is_array() || sj == nullptr || !sj->is_array() ||
+      ej == nullptr || !ej->is_array()) {
+    err = "world file needs boxes/places/materials/zones/terrain/slabs/"
+          "environment arrays";
     return false;
   }
-  std::vector<world::StaticBox> b_out;
+  WorldFileContent out;
   for (const auto& e : bj->as_array()) {
     world::StaticBox b;
     if (!box_from_json(e, b, err)) return false;
-    b_out.push_back(b);
+    out.boxes.push_back(b);
   }
-  std::vector<world::NamedPlace> p_out;
   for (const auto& e : pj->as_array()) {
     world::NamedPlace p;
     if (!place_from_json(e, p, err)) return false;
-    p_out.push_back(p);
+    out.places.push_back(p);
   }
-  boxes = std::move(b_out);
-  places = std::move(p_out);
+  for (const auto& e : mj->as_array()) {
+    world::MaterialEntry m;
+    if (!material_from_json(e, m, err)) return false;
+    for (const auto& prev : out.materials) {
+      if (prev.material_id == m.material_id) {
+        err = "duplicate material '" + m.material_id + "'";
+        return false;
+      }
+    }
+    out.materials.push_back(m);
+  }
+  for (const auto& e : zj->as_array()) {
+    world::MaterialZone z;
+    if (!zone_from_json(e, z, err)) return false;
+    if (world::find_material(out.materials, z.material_id) == nullptr) {
+      err = "zone '" + z.zone_id + "' references unknown material '" +
+            z.material_id + "'";
+      return false;
+    }
+    out.zones.push_back(z);
+  }
+  for (const auto& e : tj->as_array()) {
+    world::TerrainPatch p;
+    if (!patch_from_json(e, p, err)) return false;
+    out.patches.push_back(p);
+  }
+  for (const auto& e : sj->as_array()) {
+    world::SupportSlab s;
+    if (!slab_from_json(e, s, err)) return false;
+    out.slabs.push_back(s);
+  }
+  for (const auto& e : ej->as_array()) {
+    world::EnvironmentKeyframe k;
+    if (!environment_from_json(e, k, err)) return false;
+    out.environment.push_back(k);
+  }
+  content = std::move(out);
   err.clear();
   return true;
 }

@@ -49,15 +49,13 @@ int main(int argc, char** argv) {
     session->apply_sim_config(*sim_config);
   }
   if (!map_path.empty()) {
-    std::vector<sim::world::StaticBox> boxes;
-    std::vector<sim::world::NamedPlace> places;
+    sim::eval::WorldFileContent content;
     std::string err;
-    if (!sim::eval::load_world_file(map_path, boxes, places, &err)) {
+    if (!sim::eval::load_world_file(map_path, content, &err)) {
       std::fprintf(stderr, "bad --map file: %s\n", err.c_str());
       return 1;
     }
-    session->setup_world().set_static_boxes(std::move(boxes));
-    session->setup_world().set_places(std::move(places));
+    sim::eval::apply_world_content(session->setup_world(), content);
     robot::iface::TaskRequest req;
     req.request_id = "demo";
     req.place_id =

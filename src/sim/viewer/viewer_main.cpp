@@ -333,17 +333,21 @@ int main(int argc, char** argv) {
     session->apply_sim_config(*sim_config);
   }
   if (!map_path.empty()) {
-    std::vector<sim::world::StaticBox> boxes;
-    std::vector<sim::world::NamedPlace> places;
+    sim::eval::WorldFileContent content;
     std::string err;
-    if (!sim::eval::load_world_file(map_path, boxes, places, &err)) {
+    if (!sim::eval::load_world_file(map_path, content, &err)) {
       std::fprintf(stderr, "bad --map file: %s\n", err.c_str());
       return 1;
     }
-    session->setup_world().set_static_boxes(std::move(boxes));
+    session->setup_world().set_static_boxes(std::move(content.boxes));
     std::vector<std::string> ids;
-    for (const auto& p : places) ids.push_back(p.place_id);
-    session->setup_world().set_places(std::move(places));
+    for (const auto& p : content.places) ids.push_back(p.place_id);
+    session->setup_world().set_places(std::move(content.places));
+    session->setup_world().set_materials(std::move(content.materials));
+    session->setup_world().set_material_zones(std::move(content.zones));
+    session->setup_world().set_terrain_patches(std::move(content.patches));
+    session->setup_world().set_support_slabs(std::move(content.slabs));
+    session->setup_world().set_environment(std::move(content.environment));
     session->set_objectives(std::move(ids));
   } else {
     setup_demo(*session);

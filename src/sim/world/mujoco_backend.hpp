@@ -22,6 +22,11 @@ namespace lost_signal::sim::world {
 struct MotorParams;
 struct StaticBox;
 struct Actor;
+struct MaterialEntry;
+struct MaterialZone;
+struct TerrainPatch;
+struct SupportSlab;
+struct EnvironmentKeyframe;
 
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
@@ -39,15 +44,34 @@ class MujocoBackend {
   // otherwise. M1: differential bases only (2 drives, 0 steers); anything
   // else leaves valid() false and the base frozen (M2), never silently
   // approximated.
+  // Terrain/material import (SIM-side truth only): authored patches become
+  // oriented contact slabs, material zones become per-zone floor slabs with
+  // the library friction/contact numbers. Roughness and bilinear
+  // cross-slope need mesh support (T2): either present refuses the build
+  // fail-closed (frozen, never silently smoothed). Environment keyframes
+  // are NOT build inputs — time-varying grip applies per step, live.
   void sync(const MotorParams& motor, const std::vector<StaticBox>& boxes,
+            const std::vector<MaterialEntry>& materials,
+            const std::vector<MaterialZone>& zones,
+            const std::vector<TerrainPatch>& patches,
+            const std::vector<SupportSlab>& slabs,
             std::uint64_t geometry_version, int drive_count, int steer_count);
   // One plant tick: efforts from duties (duty-implied motor force + brake
   // capacity against shaft velocity, dissipative only), gravity tilted by
   // the longitudinal grade around the current heading, 1 ms substeps.
+  // Per-wheel tire friction follows the local material zone (main's
+  // tire-x-ground resolution, engine-native: the pair takes the max, so
+  // the tire side carries min(global, local) and the ground side the zone
+  // value) times the environment grip at sim_time_s. Slip flags confirm
+  // over two consecutive steps (hysteresis against single-substep spikes).
   void step(double dt_s, const MotorParams& motor,
             const std::array<double, 4>& drive_duty,
             const std::array<double, 4>& steer_duty,
-            const std::array<double, 4>& brake_request, double incline_grade);
+            const std::array<double, 4>& brake_request, double incline_grade,
+            const std::vector<MaterialZone>& zones,
+            const std::vector<MaterialEntry>& materials,
+            const std::vector<EnvironmentKeyframe>& environment,
+            double sim_time_s);
 
   // Engine state read-back (world frame, SI). Called after step().
   double body_x() const { return body_x_; }
@@ -86,6 +110,19 @@ class MujocoBackend {
   // Geometry needed by the per-step roller wrench.
   double track_m_ = 0.5;
   double base_len_m_ = 0.56;
+  // Drive-wheel module positions in the base frame (per-step zone lookup).
+  double drive_mod_x_[4] = {0.0, 0.0, 0.0, 0.0};
+  double drive_mod_y_[4] = {0.0, 0.0, 0.0, 0.0};
+  // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
+  int tire_geom_[4] = {-1, -1, -1, -1};
+  // Zone floor geom ids in zone order (per-step environment writes).
+  std::vector<int> zone_geom_;
+  // Tire-side sliding baseline (min(global, local) anchor for the step).
+  double mu_tire_base_ = 0.7;
+  // Slip confirmation hysteresis: consecutive over-traction steps.
+  int slip_count_[4] = {0, 0, 0, 0};
+  // Fail-closed refuse reporting: loud once per bad authoring, quiet after.
+  bool refuse_reported_ = false;
   // Drive joint DOF addresses (drive_count <= 4 in M2).
   int drive_dof_[4] = {-1, -1, -1, -1};
   int drive_count_ = 0;
@@ -112,11 +149,14 @@ class MujocoBackend {
 class MujocoBackend {
  public:
   bool valid() const { return false; }
-  void sync(const MotorParams&, const std::vector<StaticBox>&, std::uint64_t,
-            int, int) {}
+  void sync(const MotorParams&, const std::vector<StaticBox>&,
+            const std::vector<MaterialEntry>&, const std::vector<MaterialZone>&,
+            const std::vector<TerrainPatch>&, const std::vector<SupportSlab>&,
+            std::uint64_t, int, int) {}
   void step(double, const MotorParams&, const std::array<double, 4>&,
-            const std::array<double, 4>&, const std::array<double, 4>&,
-            double) {}
+            const std::array<double, 4>&, const std::array<double, 4>&, double,
+            const std::vector<MaterialZone>&, const std::vector<MaterialEntry>&,
+            const std::vector<EnvironmentKeyframe>&, double) {}
   bool raycast(double, double, double, double, double, double, double,
                double&) const {
     return false;
