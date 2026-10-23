@@ -64,6 +64,15 @@ class MujocoBackend {
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
+  // True 3D raycast against the compiled static scene (floor + boxes),
+  // for sensor simulation. Robot geoms live in group 1 and are excluded,
+  // so a sensor mounted on the body never self-hits; actors have no engine
+  // bodies and are supplemented analytically by the caller (same split as
+  // main's game lidar). False when the model is invalid or nothing is hit
+  // within max_m (caller falls back to max range). Deterministic for the
+  // same compiled state; call between steps like everything else.
+  bool raycast(double ox, double oy, double oz, double dx, double dy,
+               double dz, double max_m, double& dist_m) const;
 
  private:
   void read_back();
@@ -108,6 +117,10 @@ class MujocoBackend {
   void step(double, const MotorParams&, const std::array<double, 4>&,
             const std::array<double, 4>&, const std::array<double, 4>&,
             double) {}
+  bool raycast(double, double, double, double, double, double, double,
+               double&) const {
+    return false;
+  }
   double body_x() const { return 0.0; }
   double body_y() const { return 0.0; }
   double body_yaw() const { return 0.0; }

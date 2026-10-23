@@ -59,10 +59,11 @@ mjsJoint* add_hinge(mjsBody* parent, const std::string& name, double ax,
 }
 
 mjsGeom* add_geom(mjsBody* parent, const std::string& name, mjtGeom type,
-                 double sx, double sy, double sz) {
+                 double sx, double sy, double sz, int group = 0) {
   mjsGeom* geom = mjs_addGeom(parent, nullptr);
   set_name(geom->element, name);
   geom->type = type;
+  geom->group = group;
   geom->size[0] = sx;
   geom->size[1] = sy;
   geom->size[2] = sz;
@@ -226,7 +227,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   mjsBody* base = add_body(world, "base", 0.0, 0.0, r);
   mjs_addFreeJoint(base);
   mjsGeom* deck =
-      add_geom(base, "deck", mjGEOM_BOX, tub_half_xy, tub_half_xy, deck_half_h);
+      add_geom(base, "deck", mjGEOM_BOX, tub_half_xy, tub_half_xy, deck_half_h, 1);
   deck->mass = base_mass;
   int drive_idx = 0, steer_idx = 0, idle_idx = 0;
   for (std::size_t m = 0; m < modules.size(); ++m) {
@@ -248,7 +249,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       }
       mjsGeom* kingpin = add_geom(knuckle,
                                   "kingpin" + std::to_string(steer_idx),
-                                  mjGEOM_SPHERE, 0.02, 0.0, 0.0);
+                                  mjGEOM_SPHERE, 0.02, 0.0, 0.0, 1);
       kingpin->mass = 0.1;
       ++steer_idx;
     }
@@ -266,7 +267,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       drive->damping[0] =
           std::max(0.0, motor.viscous_drag_N_per_mps) * r * r;
       mjsGeom* tire = add_geom(wheel, "tire" + std::to_string(drive_idx),
-                               mjGEOM_CYLINDER, r, 0.04, 0.0);
+                               mjGEOM_CYLINDER, r, 0.04, 0.0, 1);
       tire->quat[0] = kQuatX90[0];
       tire->quat[1] = kQuatX90[1];
       tire->quat[2] = kQuatX90[2];
@@ -288,7 +289,7 @@ void MujocoBackend::sync(const MotorParams& motor,
                                 -kMechanicalTrailM, 0.0, 0.0);
       add_hinge(idler, "idlerj" + std::to_string(idle_idx), 0.0, 1.0, 0.0);
       mjsGeom* itire = add_geom(idler, "idlertire" + std::to_string(idle_idx),
-                                mjGEOM_CYLINDER, r, 0.04, 0.0);
+                                mjGEOM_CYLINDER, r, 0.04, 0.0, 1);
       itire->quat[0] = kQuatX90[0];
       itire->quat[1] = kQuatX90[1];
       itire->quat[2] = kQuatX90[2];
@@ -314,7 +315,7 @@ void MujocoBackend::sync(const MotorParams& motor,
     set_name(ball->element, i == 0 ? "casterj0" : "casterj1");
     ball->type = mjJNT_BALL;
     mjsGeom* ball_g = add_geom(caster, i == 0 ? "ball0" : "ball1",
-                               mjGEOM_SPHERE, caster_r, 0.0, 0.0);
+                               mjGEOM_SPHERE, caster_r, 0.0, 0.0, 1);
     ball_g->mass = 0.1;
     ball_g->friction[0] = 0.05;
     ball_g->friction[1] = 0.005;
@@ -511,6 +512,30 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   for (int i = 0; i < model->nv; ++i) data->qfrc_applied[i] = 0.0;
   mj_forward(model, data);
   read_back();
+}
+
+bool MujocoBackend::raycast(double ox, double oy, double oz, double dx,
+                           double dy, double dz, double max_m,
+                           double& dist_m) const {
+  if (!valid() || !(max_m > 0.0)) return false;
+  const double len =
+      std::sqrt(dx * dx + dy * dy + dz * dz);
+  if (!(len > 1e-12) || !std::isfinite(len)) return false;
+  mjModel* model = impl_->model;
+  mjData* data = impl_->data;
+  if (model == nullptr || data == nullptr) return false;
+  const mjtNum pnt[3] = {ox, oy, oz};
+  const mjtNum vec[3] = {dx / len, dy / len, dz / len};
+  // Group 0 only: floor + static boxes. Group 1 (deck, wheels, casters)
+  // is the querying robot itself and stays out of its own sensor.
+  const mjtByte groups[mjNGROUP] = {1, 0, 0, 0, 0, 0};
+  int geomid = -1;
+  mjtNum dist[3] = {0, 0, 0};
+  const mjtNum d =
+      mj_ray(model, data, pnt, vec, groups, 1, -1, &geomid, dist);
+  if (d < 0.0 || geomid < 0 || d > max_m) return false;
+  dist_m = static_cast<double>(d);
+  return true;
 }
 
 void MujocoBackend::read_back() {

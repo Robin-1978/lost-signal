@@ -13,6 +13,9 @@ namespace lost_signal::sim::providers {
 // history and reports zero velocity (a just-powered encoder); repeated
 // stamps hold the previous velocity. Truth angles stay continuous; only the
 // measurement is quantized, and the ROBOT loop closes on it like native.
+// No mount extrinsics apply here by construction: joints are joint-space
+// (encoders sit on the shafts they measure) and the odometry twist is the
+// base-frame twist by definition (frame_id base_link).
 class SimMotionEndpoint : public robot::iface::IMotionEndpoint {
  public:
   explicit SimMotionEndpoint(world::World* world);

@@ -44,6 +44,14 @@ class SimSensorSuite {
   // settings kept, never half-applied). Default off = exact truth.
   void set_delivery(DeliveryConfig config);
   void set_imu_realism(ImuRealismConfig config);
+  // Sensor mount extrinsics in the base frame (xyz meters, RPY rad).
+  // Rejected (non-finite) input keeps the previous mount. Default zeros.
+  void set_lidar_mount(const double xyz_m[3], const double rpy_rad[3]) {
+    lidar_.set_mount(xyz_m, rpy_rad);
+  }
+  void set_imu_mount(const double xyz_m[3], const double rpy_rad[3]) {
+    imu_.set_mount(xyz_m, rpy_rad);
+  }
 
   SimMotionEndpoint& motion() { return motion_; }
   Sim2DLidarProvider& lidar() { return lidar_; }

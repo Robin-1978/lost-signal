@@ -56,6 +56,9 @@ struct StaticBox {
 
 struct Actor {
   double x = 0.0, y = 0.0, vx_mps = 0.0, vy_mps = 0.0, radius_m = 0.4;
+  double height_m = 1.5;  // vertical extent for sensor raycast (upright
+                          // cylinder z in [0, height]); physics stays planar
+                          // (actors are kinematic, no engine bodies).
   // Motion policy, evaluated every step before integration. Default flies
   // the authored velocity (yesterday's straight lines, unchanged).
   ActorBehavior behavior;
@@ -124,6 +127,13 @@ class World {
   // Resolved in the engine at 1 ms substeps; the body follows from contact.
   void apply(const robot::iface::ActuatorCommand& cmd);
   const WorldTruth& truth() const { return truth_; }
+  // Sensor raycast against the compiled static scene (floor + boxes) for
+  // provider simulation. False when the engine is invalid or nothing is
+  // hit within max_m. Actors are supplemented analytically by the caller.
+  bool raycast(double ox, double oy, double oz, double dx, double dy,
+               double dz, double max_m, double& dist_m) const {
+    return mujoco_.raycast(ox, oy, oz, dx, dy, dz, max_m, dist_m);
+  }
 
   void set_static_boxes(std::vector<StaticBox> boxes) {
     static_boxes_ = std::move(boxes);

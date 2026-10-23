@@ -52,6 +52,19 @@ void SimImuProvider::set_realism(ImuRealismConfig config) {
   rng_state_ = config.seed ^ 0x9E3779B97F4A7C15ULL;
 }
 
+void SimImuProvider::set_mount(const double xyz_m[3],
+                               const double rpy_rad[3]) {
+  for (int i = 0; i < 3; ++i) {
+    if (!std::isfinite(xyz_m[i]) || !std::isfinite(rpy_rad[i])) {
+      return;  // fail closed: keep previous mount
+    }
+  }
+  for (int i = 0; i < 3; ++i) {
+    mount_xyz_m_[i] = xyz_m[i];
+    mount_rpy_rad_[i] = rpy_rad[i];
+  }
+}
+
 bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   if (world_ == nullptr) return false;
   seq_ += 1;
@@ -64,15 +77,48 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   // slip gate trusts the gyro over wheel odometry on disagreement, so a
   // hard zero would freeze the heading estimate through every turn.
   // Planar motion: no roll/pitch rate. Level: specific force opposes
-  // gravity; noise rides on top when enabled.
-  out.gyro_z_radps = world_->truth().yaw_rate_radps +
-                     realism_.gyro_bias_radps +
+  // gravity; noise rides on top when enabled. Everything below is
+  // expressed in the SENSOR frame: body rates rotate through the mount
+  // orientation, and the yaw-acceleration lever arm at the mount offset is
+  // exact planar rigid-body kinematics (alpha x r - w^2 r). Linear body
+  // acceleration stays out (was and is zero here — gravity only).
+  const double stamp_s =
+      static_cast<double>(world_->truth().step) * 0.02;
+  const double w = world_->truth().yaw_rate_radps;
+  double alpha = 0.0;
+  if (prev_stamp_s_ >= 0.0 && stamp_s > prev_stamp_s_) {
+    alpha = (w - prev_yaw_rate_radps_) / (stamp_s - prev_stamp_s_);
+  }
+  prev_yaw_rate_radps_ = w;
+  prev_stamp_s_ = stamp_s;
+  const robot::core::Vec3 body_w{0.0, 0.0, w};
+  const robot::core::Quaternion mount_q = robot::core::quaternion_from_rpy(
+      mount_rpy_rad_[0], mount_rpy_rad_[1], mount_rpy_rad_[2]);
+  // Inverse mount rotation: body-frame vector -> sensor-frame vector.
+  // (R^-1 v, computed as rotation by the conjugate.)
+  const robot::core::Quaternion mount_q_inv{
+      -mount_q.x, -mount_q.y, -mount_q.z, mount_q.w};
+  const robot::core::Vec3 gyro_s =
+      robot::core::rotate_vector(mount_q_inv, body_w);
+  const double rx = mount_xyz_m_[0], ry = mount_xyz_m_[1];
+  // Lever arm in the BASE frame, then rotated into the sensor frame.
+  const robot::core::Vec3 lever_b{-alpha * ry - w * w * rx,
+                                  alpha * rx - w * w * ry, 0.0};
+  const robot::core::Vec3 lever_s =
+      robot::core::rotate_vector(mount_q_inv, lever_b);
+  const robot::core::Vec3 grav_b{0.0, 0.0, 9.81};
+  const robot::core::Vec3 grav_s =
+      robot::core::rotate_vector(mount_q_inv, grav_b);
+  out.gyro_z_radps = gyro_s.z + realism_.gyro_bias_radps +
                      realism_.gyro_noise_radps * randn(rng_state_);
-  out.gyro_x_radps = realism_.gyro_noise_radps * randn(rng_state_);
-  out.gyro_y_radps = realism_.gyro_noise_radps * randn(rng_state_);
-  out.accel_x_mps2 = realism_.accel_noise_mps2 * randn(rng_state_);
-  out.accel_y_mps2 = realism_.accel_noise_mps2 * randn(rng_state_);
-  out.accel_z_mps2 = 9.81 + realism_.accel_noise_mps2 * randn(rng_state_);
+  out.gyro_x_radps = gyro_s.x + realism_.gyro_noise_radps * randn(rng_state_);
+  out.gyro_y_radps = gyro_s.y + realism_.gyro_noise_radps * randn(rng_state_);
+  out.accel_x_mps2 = lever_s.x + grav_s.x +
+                     realism_.accel_noise_mps2 * randn(rng_state_);
+  out.accel_y_mps2 = lever_s.y + grav_s.y +
+                     realism_.accel_noise_mps2 * randn(rng_state_);
+  out.accel_z_mps2 = lever_s.z + grav_s.z +
+                     realism_.accel_noise_mps2 * randn(rng_state_);
   return out.valid();
 }
 
