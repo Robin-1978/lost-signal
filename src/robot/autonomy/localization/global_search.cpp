@@ -120,6 +120,14 @@ GlobalSearchResult GlobalSearcher::search(
       const int8_t cell =
           map.occupancy[static_cast<std::size_t>(gy) * map.width + gx];
       if (cell < 0 || cell >= 50) continue;  // hypotheses live in free space
+      // (mirrors master's free_cell seeding. The live survey marks
+      // everything outside authored boxes unknown, never free, so this
+      // loop is vacuous on live surveys and global search stays a
+      // kidnap-recovery path for explicitly free maps only. Seeding
+      // unknown cells was tried: without master's distance field +
+      // raycast validation + minimum_returns=12, sparse ambiguous scans
+      // refine alone and teleport (see signal_town_big). Extending
+      // recovery to unknown surveys needs that validation work first.)
       const double cx = map.origin_x_m + (gx + 0.5) * map.resolution_m;
       const double cy = map.origin_y_m + (gy + 0.5) * map.resolution_m;
       for (int ih = 0; ih < n_headings; ++ih) {

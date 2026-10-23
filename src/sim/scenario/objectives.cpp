@@ -36,8 +36,8 @@ std::size_t ObjectiveDriver::truth_arrivals() const {
 
 const std::string& ObjectiveDriver::active_place() const {
   static const std::string kNone;
-  if (!requesting_ || next_ == 0 || next_ > objectives_.size()) return kNone;
-  return objectives_[next_ - 1];
+  if (!requesting_ || next_ >= objectives_.size()) return kNone;
+  return objectives_[next_];
 }
 
 const world::NamedPlace* ObjectiveDriver::find_place(

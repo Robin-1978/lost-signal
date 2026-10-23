@@ -575,12 +575,14 @@ void MujocoBackend::sync(const MotorParams& motor,
     const auto& leg = legs[i];
     if (leg.kind != "ball") {
       refuse_chassis("support kind must be 'ball'");
+      mj_deleteSpec(spec);
       return;
     }
     if (!(leg.radius_m > 0.0) || !(leg.radius_m <= r) ||
         !(leg.mass_kg > 0.0) || !(leg.friction_mu >= 0.0) ||
         !(leg.torsional >= 0.0) || !(leg.rolling >= 0.0)) {
       refuse_chassis("support needs radius in (0, r], mass > 0");
+      mj_deleteSpec(spec);
       return;
     }
     const double cz = -(r - leg.radius_m);  // feet level with tire feet
@@ -791,6 +793,15 @@ void MujocoBackend::sync(const MotorParams& motor,
     zone_geom_.push_back(mj_name2id(model, mjOBJ_GEOM, name.c_str()));
   }
   if (found_drives != drive_count || found_steers != steer_count) {
+    // The compiled model is still local until the joint census succeeds.
+    // Release both allocations on this fail-closed path; otherwise every
+    // refused/incomplete rebuild leaks a complete model and its data arena.
+    // Null the installed handles: ~Impl() frees non-null members, and a
+    // dangling install would double-free on the next sync or at teardown.
+    mj_deleteData(data);
+    mj_deleteModel(model);
+    impl_->model = nullptr;
+    impl_->data = nullptr;
     return;  // incomplete model: frozen, never silent substitution
   }
   drive_count_ = drive_count;
