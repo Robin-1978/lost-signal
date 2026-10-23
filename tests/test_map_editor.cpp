@@ -49,6 +49,7 @@ int main() {
     ed.load_from(w);
     ed.add_box(0.0, 0.0);
     assert(ed.boxes().size() == 2 && ed.selected_box() == 1);
+    assert(ed.boxes()[1].height_m > 0.0);  // new wall stands, scan sees it
     ed.remove_selected();
     assert(ed.boxes().size() == 1);
     ed.add_place(1.0, 1.0);

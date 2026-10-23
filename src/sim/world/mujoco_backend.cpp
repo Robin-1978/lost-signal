@@ -322,11 +322,15 @@ void MujocoBackend::sync(const MotorParams& motor,
     ball_g->friction[2] = 0.0005;
   }
   // Surveyed static geometry: fixed worldbody boxes (no joints).
+  // Height <= 0 means flat paint (floor marking, survey plate): no engine
+  // body, no contact, no ray hit. Never silently substitute a default
+  // height — that turned paint into walls.
   int bi = 0;
   for (const auto& b : boxes) {
+    if (!(b.height_m > 0.0)) continue;  // flat paint: skip the engine body
     const double hx = std::max(0.01, (b.x1 - b.x0) / 2);
     const double hy = std::max(0.01, (b.y1 - b.y0) / 2);
-    const double hh = std::max(0.05, (b.height_m > 0.0 ? b.height_m : 0.5) / 2);
+    const double hh = std::max(0.05, b.height_m / 2);
     mjsGeom* wall = add_geom(world, "static" + std::to_string(bi),
                              mjGEOM_BOX, hx, hy, hh);
     wall->pos[0] = (b.x0 + b.x1) / 2;

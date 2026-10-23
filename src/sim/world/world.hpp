@@ -49,9 +49,15 @@ struct WorldTruth {
 // Authored scenario geometry (static) and moving actors (dynamic).
 // Raycast sources, never ROBOT inputs: the suite turns them into measured
 // scans (full raycast) and a static reference (static geometry only).
+// A box is a true 3D prism: footprint [x0,x1]x[y0,y1] extruded to z in
+// [0, height_m] above the ground plane. The engine builds that prism,
+// the lidar raycasts it from the true 3D sensor pose; the ROBOT only
+// ever sees the resulting ranges and must perceive the shape itself.
 struct StaticBox {
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
-  double height_m = 0.0;  // surveyed deck height; ground is 0
+  double height_m = 0.0;  // prism top above ground; <= 0 = flat paint
+                          // (floor marking, no volume: no contact, no ray
+                          // hit, no map occupancy, no judge collision).
 };
 
 struct Actor {

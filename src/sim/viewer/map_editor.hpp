@@ -59,6 +59,9 @@ class MapEditor {
   static constexpr double kGrabRadiusM = 0.35;
   static constexpr double kMapBoundM = 50.0;
   static constexpr double kDefaultBoxM = 0.8;
+  // New boxes stand 1.0 m tall: above the ~0.4 m lidar so the scan sees
+  // them (flat paint is authored by zeroing the height afterwards).
+  static constexpr double kDefaultHeightM = 1.0;
 
   static double clamp_to_map(double v) {
     if (v < -kMapBoundM) return -kMapBoundM;

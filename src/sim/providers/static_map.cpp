@@ -63,6 +63,7 @@ void StaticMapProvider::rebuild() const {
         bool occupied = false;
         float height = 0.0f;
         for (const auto& b : world_->static_boxes()) {
+          if (!(b.height_m > 0.0)) continue;  // flat paint: free space
           if (cx >= b.x0 && cx < b.x1 && cy >= b.y0 && cy < b.y1) {
             occupied = true;
             height = std::max(height, static_cast<float>(b.height_m));

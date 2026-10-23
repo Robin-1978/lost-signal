@@ -24,10 +24,10 @@ int main() {
   // Lanes keep >= 1 m clearance for the 0.4 m footprint (single-horizon
   // DWA cannot thread tighter gaps; that is planner scope, not this test).
   session.setup_world().set_static_boxes({
-      {5.2, 1.0, 6.0, 1.8, 0.0},     // east of A->B
-      {2.5, 5.0, 3.3, 5.8, 0.0},     // north of B->C
-      {-2.4, 2.0, -1.6, 2.8, 0.0},   // west of C->D
-      {1.0, -2.4, 1.8, -1.6, 0.0},   // south of D->A
+      {5.2, 1.0, 6.0, 1.8, 1.0},     // east of A->B
+      {2.5, 5.0, 3.3, 5.8, 1.0},     // north of B->C
+      {-2.4, 2.0, -1.6, 2.8, 1.0},   // west of C->D
+      {1.0, -2.4, 1.8, -1.6, 1.0},   // south of D->A
   });
   session.set_objectives({"loopA", "loopB", "loopC", "loopD"}, 1.0);
 

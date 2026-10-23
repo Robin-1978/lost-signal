@@ -130,7 +130,7 @@ void MapEditor::add_box(double world_x, double world_y) {
   const double x = clamp_to_map(world_x), y = clamp_to_map(world_y);
   const double h = kDefaultBoxM * 0.5;
   boxes_.push_back(
-      {x - h, y - h, x + h, y + h, 0.0});
+      {x - h, y - h, x + h, y + h, kDefaultHeightM});
   sel_box_ = static_cast<int>(boxes_.size()) - 1;
   sel_corner_ = -1;
   sel_place_ = -1;

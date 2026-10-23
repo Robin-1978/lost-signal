@@ -13,8 +13,8 @@ int main() {
   sim::robot::SimRobot sim;
   assert(sim.configure().ok && sim.activate().ok);
   sim.setup_world().set_static_boxes({
-      {4.0, -10.0, 5.0, -1.0},
-      {4.0, 1.0, 5.0, 10.0},
+      {4.0, -10.0, 5.0, -1.0, 1.5},
+      {4.0, 1.0, 5.0, 10.0, 1.5},
   });
   sim.setup_world().add_place({"far", 8.0, 0.0, 0.0});
   sim.setup_world().add_place({"near", 2.0, 0.0, 0.0});

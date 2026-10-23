@@ -12,6 +12,7 @@ eval::CollisionOutcome assess_collision(
   eval::CollisionOutcome out;
   const double radius = std::max(0.0, robot_radius_m);
   for (const auto& b : boxes) {
+    if (!(b.height_m > 0.0)) continue;  // flat paint: no collision volume
     // Closest point on the (axis-aligned) box to the robot center.
     const double cx =
         std::clamp(body_x_m, std::min(b.x0, b.x1), std::max(b.x0, b.x1));

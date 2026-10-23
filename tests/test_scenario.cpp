@@ -59,7 +59,7 @@ int main() {
   // Judge: circle-vs-box/actor assessment, honest clearances.
   {
     using sim::scenario::assess_collision;
-    std::vector<sim::world::StaticBox> boxes{{1.0, 1.0, 2.0, 2.0, 0.0}};
+    std::vector<sim::world::StaticBox> boxes{{1.0, 1.0, 2.0, 2.0, 1.0}};
     std::vector<sim::world::Actor> actors;
     // Clear: nearest box corner (1,1) is sqrt(2) away, minus radius.
     auto clear = assess_collision(0.0, 0.0, 0.4, boxes, actors);
@@ -82,9 +82,13 @@ int main() {
     auto bump = assess_collision(0.5, 0.0, 0.4, {}, actors);
     assert(bump.dynamic_collision);
     // Degenerate box (inverted corners) still assesses by clamp, no NaN.
-    std::vector<sim::world::StaticBox> weird{{2.0, 2.0, 1.0, 1.0, 0.0}};
+    std::vector<sim::world::StaticBox> weird{{2.0, 2.0, 1.0, 1.0, 1.0}};
     auto w = assess_collision(0.0, 0.0, 0.4, weird, {});
     assert(!w.static_collision && std::isfinite(w.static_clearance_m));
+    // Flat paint (height <= 0): no volume — judge, engine, map all ignore.
+    std::vector<sim::world::StaticBox> paint{{0.5, -0.5, 1.5, 0.5, 0.0}};
+    auto p = assess_collision(1.0, 0.0, 0.4, paint, {});
+    assert(!p.static_collision && p.static_clearance_m > 900.0);
   }
 
   // Full mission: two docks, a crosser, an off-path box. Headless to
@@ -99,6 +103,7 @@ int main() {
     box.y0 = 1.0;
     box.x1 = 2.0;
     box.y1 = 2.0;
+    box.height_m = 1.0;  // true prism: the scan must see it off-path
     session.setup_world().set_static_boxes({box});
     // Crosser cuts the corridor early, then leaves (S4 behavior).
     sim::world::Actor crosser;

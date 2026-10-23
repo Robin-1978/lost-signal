@@ -2,14 +2,87 @@
   "format": "lost-signal-robot/1",
   "chassis_kind": "swerve",
   "drive": {},
-  "limits": {"max_forward_mps": 2.0, "max_yaw_rate_radps": 2.0, "footprint_radius_m": 0.4, "max_steer_rad": 0.55, "max_lateral_mps": 0.0},
+  "limits": {
+    "max_forward_mps": 2.0,
+    "max_yaw_rate_radps": 2.0,
+    "footprint_radius_m": 0.4,
+    "max_steer_rad": 0.55,
+    "max_lateral_mps": 0.0
+  },
   "links": [
-    {"link": "base_link", "parent": "world", "xyz_m": [0, 0, 0], "rpy_rad": [0, 0, 0]},
-    {"link": "lidar_link", "parent": "base_link", "xyz_m": [0, 0, 0], "rpy_rad": [0, 0, 0]}
+    {
+      "link": "base_link",
+      "parent": "world",
+      "xyz_m": [
+        0,
+        0,
+        0
+      ],
+      "rpy_rad": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "link": "lidar_link",
+      "parent": "base_link",
+      "xyz_m": [
+        0.25,
+        0,
+        0.35
+      ],
+      "rpy_rad": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "link": "imu_link",
+      "parent": "base_link",
+      "xyz_m": [
+        0.0,
+        0,
+        0.15
+      ],
+      "rpy_rad": [
+        0,
+        0,
+        0
+      ]
+    }
   ],
   "sensors": [
-    {"sensor_id": "ro1.lidar", "link": "lidar_link", "xyz_m": [0, 0, 0], "rpy_rad": [0, 0, 0]}
+    {
+      "sensor_id": "ro1.lidar",
+      "link": "lidar_link",
+      "xyz_m": [
+        0.25,
+        0,
+        0.35
+      ],
+      "rpy_rad": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sensor_id": "ro1.imu",
+      "link": "imu_link",
+      "xyz_m": [
+        0.0,
+        0,
+        0.15
+      ],
+      "rpy_rad": [
+        0,
+        0,
+        0
+      ]
+    }
   ],
   "robot_id": "ro1",
-  "version": 1
+  "version": 2
 }
