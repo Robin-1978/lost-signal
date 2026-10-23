@@ -148,14 +148,22 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
         }
       }
       if (!(dist < max_range_m_)) continue;  // miss: dropped, never filled
+      // Device observation model on the hit (radial): dropout/near-field
+      // drops the point; noise rescales it along the ray. Intensity stays
+      // at the ideal surface (range noise never alters return strength).
       const double ce_az = std::cos(elev);
-      robot::iface::Lidar3DPoint p;
-      p.x_m = static_cast<float>(dist * ce_az * std::cos(az));
-      p.y_m = static_cast<float>(dist * ce_az * std::sin(az));
-      p.z_m = static_cast<float>(dist * std::sin(elev));
-      p.intensity = detail::return_intensity(
+      const float intensity = detail::return_intensity(
           *world_, ox + d.x * dist, oy + d.y * dist, oz + d.z * dist, dist,
           actor_hit, !engine_hit && !actor_hit);
+      double measured = dist;
+      if (!device_range(dist, max_range_m_, device_, rng_, measured)) {
+        continue;  // driven no-return: dropped like a miss
+      }
+      robot::iface::Lidar3DPoint p;
+      p.x_m = static_cast<float>(measured * ce_az * std::cos(az));
+      p.y_m = static_cast<float>(measured * ce_az * std::sin(az));
+      p.z_m = static_cast<float>(measured * std::sin(elev));
+      p.intensity = intensity;
       p.ring = static_cast<std::uint16_t>(j);
       p.time_offset_s = time_offset_s;
       out.points.push_back(p);
@@ -273,6 +281,19 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
     }
     ranges_m[static_cast<std::size_t>(i)] = best;
     intensities_m[static_cast<std::size_t>(i)] = best_intensity;
+    // Device observation model on the winning return (receiver-side, after
+    // geometry — same layering as the 2D producer). Driven no-return
+    // publishes miss/max-range with zero intensity, never a clamped value.
+    // Misses (all rings ground or out of range) stay absent.
+    if (best < max_range_m_) {
+      double measured = best;
+      if (device_range(best, max_range_m_, device_, rng_, measured)) {
+        ranges_m[static_cast<std::size_t>(i)] = static_cast<float>(measured);
+      } else {
+        ranges_m[static_cast<std::size_t>(i)] = max_range_m_;
+        intensities_m[static_cast<std::size_t>(i)] = 0.0f;
+      }
+    }
   }
   return true;
 }

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/log_odds.hpp"
 #include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
@@ -100,10 +101,14 @@ class IMapper {
 };
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
-// A ray-clearing mapper replaces this body; the query semantics above stay.
+// Evidence fuses through log-odds (transient returns fade, static walls
+// persist); the published raster keeps the query semantics above.
 class RayClearingMapper : public IMapper {
  public:
-  void reset() override { map_ = LocalMap{}; }
+  void reset() override {
+    map_ = LocalMap{};
+    fusion_.reset(0);
+  }
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
   }
@@ -135,6 +140,12 @@ class RayClearingMapper : public IMapper {
       map_.origin_x_m = est.x_m - 5.0;
       map_.origin_y_m = est.y_m - 5.0;
       map_.occupancy.assign(map_.width * map_.height, -1);
+      // Rolling window drops history with the raster (documented; a mapping
+      // session with loop closure replaces this reset with submap fusion).
+      fusion_.reset(map_.width * map_.height);
+    }
+    if (fusion_.cell_count() != map_.width * map_.height) {
+      fusion_.reset(map_.width * map_.height);  // fail closed, never alias
     }
     map_.stamp_ns = obs.stamp_ns;
     if (!obs.scan_valid || obs.ranges_m.empty()) return;
@@ -190,6 +201,9 @@ class RayClearingMapper : public IMapper {
         occupy(ex, ey);
       }
     }
+    // Publish the fused raster (hysteresis inside: one noisy frame cannot
+    // flip a confirmed wall).
+    map_.occupancy = fusion_.values();
   }
   LocalMap local_map() const override { return map_; }
 
@@ -199,23 +213,25 @@ class RayClearingMapper : public IMapper {
     const int steps = std::max(
         1, static_cast<int>(
                std::ceil(length / (0.5 * map_.resolution_m))));
+    std::size_t last = map_.width * map_.height;  // sentinel: no cell
     for (int s = 0; s < steps; ++s) {  // exclude endpoint: actor cells stay
       const double b = static_cast<double>(s) / steps;
-      set_cell(x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, 0);
+      int gx, gy;
+      world_to_grid(x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, gx, gy);
+      if (!map_.inside(gx, gy)) continue;
+      const std::size_t idx =
+          static_cast<std::size_t>(gy) * map_.width + gx;
+      if (idx == last) continue;  // one vote per cell per scan, no pile-up
+      last = idx;
+      fusion_.observe_free(idx);
     }
   }
   void occupy(double wx, double wy) {
     int gx, gy;
     world_to_grid(wx, wy, gx, gy);
     if (map_.inside(gx, gy)) {
-      map_.occupancy[gy * map_.width + gx] = 100;
-    }
-  }
-  void set_cell(double wx, double wy, int8_t v) {
-    int gx, gy;
-    world_to_grid(wx, wy, gx, gy);
-    if (map_.inside(gx, gy)) {
-      map_.occupancy[gy * map_.width + gx] = v;
+      fusion_.observe_occupied(static_cast<std::size_t>(gy) * map_.width +
+                               gx);
     }
   }
   void world_to_grid(double wx, double wy, int& gx, int& gy) const {
@@ -224,6 +240,7 @@ class RayClearingMapper : public IMapper {
   }
 
   LocalMap map_{};
+  OccupancyLogOdds fusion_{};
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
   iface::MapSnapshot survey_;  // empty until set_survey (no elevation)
 };

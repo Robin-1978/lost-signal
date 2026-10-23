@@ -265,6 +265,21 @@ int main() {
     assert(sim3d.poll_composite(cr, ci, true));
     assert(cr.size() == 72 && ci.size() == 72);
     assert(ci[static_cast<std::size_t>(hit)] > 0.3f);
+    // 3D device model: dropout 1.0 drops every point — the message-layer
+    // representation is exactly an all-miss scene (empty cloud reads
+    // invalid per the standing contract, same as legacy with no geometry).
+    sim::providers::LidarDeviceModel drop3d;
+    drop3d.dropout_probability = 1.0;
+    sim3d.set_device_model(drop3d);
+    robot::iface::Lidar3DCloud empty;
+    assert(!sim3d.poll(empty));
+    assert(empty.points.empty());
+    // The composite front end (what the suite consumes) stays valid with
+    // all-max-range: no-return = blanked, never an invented boundary hit.
+    std::vector<float> dr, di;
+    assert(sim3d.poll_composite(dr, di, true));
+    for (float r : dr) assert(r == 10.0f);
+    for (float s : di) assert(s == 0.0f);
   }
 
   // Rolling shutter (SIM-side generation): offsets ride parallel, beam 0
@@ -308,6 +323,83 @@ int main() {
     robot::iface::Lidar2DScan kept;
     assert(sim2d.poll(kept));
     assert(kept.time_offsets_s == frozen.time_offsets_s);
+  }
+
+  // Device observation model (SIM-side synthesis, seeded determinism).
+  // Scene above: box dead ahead (~2 m), open sky behind (max range).
+  {
+    sim::providers::Sim2DLidarProvider dev(&w, "sim.lidar2d", 72, 10.0f);
+    dev.set_scan_period(0.0);  // frozen: isolate the device layer
+    robot::iface::Lidar2DScan exact;
+    assert(dev.poll(exact));
+    // Invalid model rejected (fail closed): negative stddev keeps exact.
+    sim::providers::LidarDeviceModel bad;
+    bad.range_stddev_m = -1.0;
+    dev.set_device_model(bad);
+    robot::iface::Lidar2DScan still_exact;
+    assert(dev.poll(still_exact));
+    assert(still_exact.ranges_m == exact.ranges_m);
+    // Bias shifts hits, misses stay absent (never filled, never clamped).
+    sim::providers::LidarDeviceModel bias;
+    bias.range_bias_m = 0.5;
+    dev.set_device_model(bias);
+    dev.set_noise_seed(42);
+    robot::iface::Lidar2DScan biased;
+    assert(dev.poll(biased));
+    const int hub = argmin_range(exact);
+    assert(std::abs(biased.ranges_m[static_cast<std::size_t>(hub)] -
+                    (exact.ranges_m[static_cast<std::size_t>(hub)] + 0.5f)) <
+           1e-6);
+    assert(biased.ranges_m[0] == 10.0f);  // miss stays miss
+    // Quantization snaps hits to the grid.
+    sim::providers::LidarDeviceModel quant;
+    quant.range_resolution_m = 1.0;
+    dev.set_device_model(quant);
+    dev.set_noise_seed(7);
+    robot::iface::Lidar2DScan snapped;
+    assert(dev.poll(snapped));
+    for (float r : snapped.ranges_m) {
+      if (r < 10.0f) assert(std::abs(r - std::round(r)) < 1e-6);
+    }
+    // White noise: seeded repeat reproduces, stream differs from exact,
+    // misses stay absent.
+    sim::providers::LidarDeviceModel noisy;
+    noisy.range_stddev_m = 0.05;
+    dev.set_device_model(noisy);
+    dev.set_noise_seed(1234);
+    robot::iface::Lidar2DScan n1;
+    assert(dev.poll(n1));
+    dev.set_noise_seed(1234);
+    robot::iface::Lidar2DScan n2;
+    assert(dev.poll(n2));
+    assert(n1.ranges_m == n2.ranges_m);  // deterministic
+    assert(n1.ranges_m != exact.ranges_m);
+    assert(n1.ranges_m[0] == 10.0f);
+    // Dropout 1.0: every hit becomes a no-return with zero intensity —
+    // no obstacle invented at any boundary.
+    sim::providers::LidarDeviceModel drop;
+    drop.dropout_probability = 1.0;
+    dev.set_device_model(drop);
+    dev.set_noise_seed(99);
+    robot::iface::Lidar2DScan gone;
+    assert(dev.poll(gone));
+    for (float r : gone.ranges_m) assert(r == 10.0f);
+    for (float s : gone.intensities) assert(s == 0.0f);
+    // Near-field: a 5 m blind zone blanks the 2 m box, never clamps it
+    // to 5 m (no invented obstacle at the boundary).
+    sim::providers::LidarDeviceModel blind;
+    blind.min_range_m = 5.0;
+    dev.set_device_model(blind);
+    robot::iface::Lidar2DScan blanked;
+    assert(dev.poll(blanked));
+    for (float r : blanked.ranges_m) assert(r == 10.0f || r >= 5.0f);
+    // Intensity survives device range noise (synthesized at the ideal
+    // surface); only driven no-returns zero it.
+    dev.set_device_model(noisy);
+    dev.set_noise_seed(1234);
+    robot::iface::Lidar2DScan ni;
+    assert(dev.poll(ni));
+    assert(ni.intensities[static_cast<std::size_t>(hub)] > 0.0f);
   }
 
   std::printf("lidar ok\n");

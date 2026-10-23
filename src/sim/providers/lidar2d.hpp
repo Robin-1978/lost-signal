@@ -6,6 +6,7 @@
 #include "robot/core/transform.hpp"
 #include "robot/iface/message.hpp"
 #include "robot/iface/provider.hpp"
+#include "sim/providers/lidar_noise.hpp"
 
 // Sim2DLidar: true 3D raycast from the sensor pose through WorldTruth
 // (SIM-owned generation). ROBOT only sees the typed Lidar2DScan. The
@@ -49,6 +50,14 @@ class Sim2DLidarProvider
       scan_period_s_ = scan_period_s;
     }
   }
+  // Device observation model (SIM harness only): bias/white-noise per
+  // return, range quantization, random dropout, near-field blanking.
+  // Invalid input is rejected with previous kept (fail closed). Default is
+  // exact: legacy behavior bit-identical.
+  void set_device_model(const LidarDeviceModel& model) {
+    if (valid_device_model(model)) device_ = model;
+  }
+  void set_noise_seed(std::uint64_t seed) { rng_.reseed(seed); }
   // Pre-run geometry tuning (SIM harness only): positive beam count and
   // range, otherwise rejected with previous kept.
   void set_beams(int beam_count);
@@ -60,6 +69,8 @@ class Sim2DLidarProvider
   int beam_count_ = 72;
   float max_range_m_ = 10.0f;
   double scan_period_s_ = 0.1;
+  LidarDeviceModel device_{};
+  DeviceRng rng_{};
   std::uint64_t seq_ = 0;
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};

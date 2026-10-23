@@ -122,14 +122,30 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
         }
       }
     }
-    out.ranges_m[static_cast<std::size_t>(i)] = static_cast<float>(dist);
+    // Device observation model (SIM-side synthesis): an ideal hit passes
+    // through bias/white-noise/quantization/dropout/near-field; a driven
+    // no-return publishes miss/max-range, never a clamped value. Misses
+    // stay absent. The exact default model leaves dist untouched.
+    // Intensity synthesizes at the ideal surface (device range noise never
+    // alters return strength — same layering as master's sensor model).
     const bool missed = !engine_hit && !actor_hit;
     const double hx = ox + d.x * dist;
     const double hy = oy + d.y * dist;
     const double hz = oz + d.z * dist;
-    out.intensities[static_cast<std::size_t>(i)] =
-        detail::return_intensity(*world_, hx, hy, hz, dist, actor_hit,
-                                 missed);
+    const float intensity = detail::return_intensity(*world_, hx, hy, hz,
+                                                    dist, actor_hit, missed);
+    if (!missed) {
+      double measured = dist;
+      if (device_range(dist, max_range_m_, device_, rng_, measured)) {
+        dist = measured;
+      } else {
+        out.ranges_m[static_cast<std::size_t>(i)] = max_range_m_;
+        out.intensities[static_cast<std::size_t>(i)] = 0.0f;
+        continue;
+      }
+    }
+    out.ranges_m[static_cast<std::size_t>(i)] = static_cast<float>(dist);
+    out.intensities[static_cast<std::size_t>(i)] = intensity;
   }
   return out.valid();
 }

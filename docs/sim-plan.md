@@ -214,8 +214,18 @@ MEASURED twist through one shared pure helper (`robot/core/deskew.hpp`,
 exact inverse of generation, proven by a same-contract round-trip test);
 perception/mapper/validator all consume it (mapper paints the true cell
 while yawing, pinned — no smear). Frozen scans (empty offsets) read every
-beam at the stamp pose: legacy behavior bit-identical. Next slices:
-lidar device noise/bias/quant/dropout + min-range (master sensor.cpp),
+beam at the stamp pose: legacy behavior bit-identical. Lidar device
+noise + log-odds mapping (landed): SIM applies a seeded device model per
+hit (bias/white-noise/quantization/dropout/near-field blanking; driven
+no-returns publish miss/max-range, never a clamped boundary value;
+intensity stays at the ideal surface; exact default = legacy
+bit-identical) on 2D/3D/composite alike. ROBOT fuses evidence through a
+pure log-odds layer (`robot/autonomy/mapping/log_odds.hpp`, master's math
+in the new framework: +1.6/-0.4, clamp [-2.5, 3.5], 0.65/0.35 hysteresis
+— first-sight walls still paint promptly, stray clears need 6 sustained
+votes, pinned exactly). Mapper keeps all doctrines (foreground clears but
+never paints, surveyed ground never paints, one vote per cell per scan).
+Next slices:
 IMU per-axis bias/walk + 3D lever arm, incidence intensity, live
 elevation fusion, log-odds mapping, DWA terrain gate, validator rollover
 envelope, traction memory, actor lifecycle richness.

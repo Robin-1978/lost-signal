@@ -517,6 +517,63 @@ int main() {
     }
   }
 
+  // Log-odds fusion (pure belief update over observation evidence):
+  // first-sight walls paint promptly, confirmed walls ride out noise.
+  {
+    OccupancyLogOdds fusion;
+    assert(fusion.cell_count() == 0);
+    fusion.reset(4);
+    assert(fusion.value(0) == -1);  // unseen
+    fusion.observe_free(0);
+    assert(fusion.value(0) == 0);  // one passage frees an unseen cell
+    fusion.observe_occupied(1);
+    assert(fusion.value(1) == 100);  // one endpoint confirms (+1.6->p .83)
+    // Hysteresis: a confirmed wall survives stray clears (1.6 - 0.4k
+    // stays above the p = 0.35 floor until the 6th free vote).
+    for (int k = 0; k < 3; ++k) fusion.observe_free(1);
+    assert(fusion.value(1) == 100);
+    for (int k = 0; k < 3; ++k) fusion.observe_free(1);
+    assert(fusion.value(1) == 0);  // sustained evidence clears it
+    fusion.observe_occupied(1);
+    assert(fusion.value(1) == 100);  // prompt re-confirmation
+    fusion.observe_free(99);          // out of range: ignored, never traps
+    assert(fusion.log_odds(99) == 0.0f);
+    LogOddsConfig bad{-1.0f, -1.0f, 1.0f, -1.0f, 0.9f, 0.1f};
+    OccupancyLogOdds broken(bad);
+    broken.reset(4);
+    broken.observe_occupied(2);
+    assert(broken.value(2) == -1);  // invalid config: fail closed
+  }
+
+  // Mapper hysteresis end-to-end (measurement evidence only, no truth):
+  // a painted wall survives 3 noisy clears, sustained clears erase it.
+  {
+    EstimatedState est;
+    est.valid = true;
+    auto wall_scan = [&](float beam_range) {
+      iface::ObservationFrame o = make_odom(20, 20, 0.0);
+      o.ranges_m.assign(8, 10.0f);
+      o.ranges_m[4] = beam_range;  // forward beam
+      o.static_ranges_m = o.ranges_m;
+      o.scan_static_valid = true;
+      return o;
+    };
+    RayClearingMapper mapper;
+    mapper.update(wall_scan(4.0f), est);  // wall face at (4, 0)
+    LocalMap m0 = mapper.local_map();
+    assert(m0.valid);
+    const auto idx = [&](double wx, double wy) {
+      const int gx = static_cast<int>(std::floor((wx - m0.origin_x_m) / 0.1));
+      const int gy = static_cast<int>(std::floor((wy - m0.origin_y_m) / 0.1));
+      return static_cast<std::size_t>(gy) * 100 + gx;
+    };
+    assert(m0.occupancy[idx(4.0, 0.0)] == 100);  // first sight paints
+    for (int k = 0; k < 3; ++k) mapper.update(wall_scan(10.0f), est);
+    assert(mapper.local_map().occupancy[idx(4.0, 0.0)] == 100);
+    for (int k = 0; k < 3; ++k) mapper.update(wall_scan(10.0f), est);
+    assert(mapper.local_map().occupancy[idx(4.0, 0.0)] == 0);
+  }
+
   // Global planner: straight line from estimate to goal.
   {
     StraightLinePlanner planner;

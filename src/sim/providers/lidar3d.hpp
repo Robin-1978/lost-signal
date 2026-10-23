@@ -7,6 +7,7 @@
 #include "robot/core/transform.hpp"
 #include "robot/iface/message.hpp"
 #include "robot/iface/provider.hpp"
+#include "sim/providers/lidar_noise.hpp"
 
 // Sim3DLidar: true 3D multi-line raycast from the sensor pose through
 // WorldTruth (SIM-owned generation). ROBOT only sees the typed
@@ -66,6 +67,13 @@ class Sim3DLidarProvider
   void set_vertical_fov(double min_elev_rad, double max_elev_rad);
   void set_max_range(float max_range_m);
   void set_scan_period(float scan_period_s);
+  // Device observation model (SIM harness only): same doctrine as the 2D
+  // producer — bias/noise/quant/dropout/near-field on hits, no-return on
+  // driven misses. Invalid input rejected, previous kept. Default exact.
+  void set_device_model(const LidarDeviceModel& model) {
+    if (valid_device_model(model)) device_ = model;
+  }
+  void set_noise_seed(std::uint64_t seed) { rng_.reseed(seed); }
   // World height below which a return counts as ground (floor/paint).
   // Must be finite in (0, 1); rejected otherwise with previous kept.
   void set_ground_cut(float ground_cut_m) {
@@ -85,6 +93,8 @@ class Sim3DLidarProvider
   float max_range_m_ = 10.0f;
   float scan_period_s_ = 0.1f;
   float ground_cut_m_ = 0.05f;
+  LidarDeviceModel device_{};
+  DeviceRng rng_{};
   std::uint64_t seq_ = 0;
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};
