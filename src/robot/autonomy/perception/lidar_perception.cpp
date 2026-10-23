@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "robot/core/geometry.hpp"
+#include "robot/core/transform.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -43,15 +44,18 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     return out;
   }
 
-  // Beam world positions (planar TF mount + estimate pose). The angular
-  // layout matches the provider contract: angle_min + i * increment, even
-  // spacing over the full rotation.
-  const double cy = std::cos(est.yaw_rad), sy = std::sin(est.yaw_rad);
-  const double sensor_wx =
-      est.x_m + mount_x_m_ * cy - mount_y_m_ * sy;
-  const double sensor_wy =
-      est.y_m + mount_x_m_ * sy + mount_y_m_ * cy;
-  const double sensor_yaw = est.yaw_rad + mount_yaw_rad_;
+  // Beam endpoints in the map frame from the true 3D sensor pose:
+  // map<-base from the estimate (x/y/z + roll/pitch/yaw) composed with the
+  // TF mount base<-lidar; each beam leaves the tilted scan plane along its
+  // 3D direction. Clustering/tracking use the x/y projection (the maps are
+  // 2D); the range itself is the tilted-beam measurement, never flattened.
+  // The angular layout matches the provider contract.
+  const core::RigidTransform map_from_base{
+      {est.x_m, est.y_m, est.z_m},
+      core::quaternion_from_rpy(est.roll_rad, est.pitch_rad, est.yaw_rad)};
+  const core::RigidTransform map_from_sensor =
+      core::compose(map_from_base, base_from_lidar_);
+  const core::Vec3 sensor_p = map_from_sensor.translation_m;
 
   struct Beam {
     bool foreground = false;
@@ -64,10 +68,12 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     if (std::abs(range - obs.static_ranges_m[i]) <=
         config_.foreground_threshold_m)
       continue;
-    const double angle = -core::kPi + 2.0 * core::kPi * i / n + sensor_yaw;
+    const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+    const core::Vec3 dir = core::rotate_vector(
+        map_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
     beams[i].foreground = true;
-    beams[i].wx = sensor_wx + range * std::cos(angle);
-    beams[i].wy = sensor_wy + range * std::sin(angle);
+    beams[i].wx = sensor_p.x + range * dir.x;
+    beams[i].wy = sensor_p.y + range * dir.y;
   }
 
   // Pass 1: maximal runs of index-adjacent foreground beams.

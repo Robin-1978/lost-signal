@@ -44,7 +44,12 @@ struct SlamConfig {
 struct SlamKeyframe {
   std::uint64_t id = 0;
   double stamp_s = 0.0;
-  Pose2 pose;  // corrected estimate at creation (map frame)
+  Pose2 pose;  // SE(2) graph pose (x, y, heading); the graph stays planar
+  // Slope attitude at creation (rendering only): submap rasterization and
+  // matcher scoring place endpoints through the full 3D sensor pose.
+  double roll_rad = 0.0;
+  double pitch_rad = 0.0;
+  double z_m = 0.0;
   std::vector<float> ranges_m;
   std::vector<float> static_ranges_m;
   double angle_min_rad = 0.0;
@@ -69,11 +74,9 @@ class SlamSession {
  public:
   explicit SlamSession(SlamConfig config = SlamConfig{});
 
-  // Planar lidar mount from the TF tree (coordinator fans out).
-  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
-    mount_x_m_ = x_m;
-    mount_y_m_ = y_m;
-    mount_yaw_rad_ = yaw_rad;
+  // Full lidar mount from the TF tree (coordinator fans out).
+  void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
+    base_from_lidar_ = base_from_lidar;
   }
   void reset();
   // Feed the post-localization estimate + latest scan. Adds keyframes on
@@ -104,9 +107,7 @@ class SlamSession {
   void rebuild_graph();
 
   SlamConfig config_;
-  double mount_x_m_ = 0.0;
-  double mount_y_m_ = 0.0;
-  double mount_yaw_rad_ = 0.0;
+  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
   PoseGraphBackend graph_;
   std::vector<SlamKeyframe> keyframes_;
   std::uint64_t next_id_ = 1;

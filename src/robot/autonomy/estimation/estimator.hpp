@@ -8,12 +8,14 @@ namespace lost_signal::robot::autonomy {
 
 // ROBOT-owned state estimate: planar position + full 3D attitude (2.5D).
 // Produced only from LSRI observations. Never seeded or corrected by
-// simulator truth.
+// simulator truth. z is dead-reckoned from pitch (no map correction
+// observes it — the raster is 2D); slopes need it for the sensor height.
 struct EstimatedState {
   bool valid = false;
   core::MonotonicNs stamp_ns = core::kInvalidTime;
   double x_m = 0.0;
   double y_m = 0.0;
+  double z_m = 0.0;
   double yaw_rad = 0.0;
   double forward_mps = 0.0;
   double yaw_rate_radps = 0.0;

@@ -110,6 +110,9 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   const double step_m = forward * dt_s;
   estimate_.x_m += step_m * std::cos(yaw_mid);
   estimate_.y_m += step_m * std::sin(yaw_mid);
+  // Slope z: dead-reckoned climb from the current pitch (gravity-filtered
+  // attitude below). No map correction observes z — the raster is 2D.
+  estimate_.z_m += step_m * std::sin(estimate_.pitch_rad);
   estimate_.yaw_rad = core::wrap_angle(estimate_.yaw_rad + yaw_rate * dt_s);
   estimate_.forward_mps = forward;
   estimate_.yaw_rate_radps = yaw_rate;
@@ -229,6 +232,7 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
   estimate_.valid = true;
   estimate_.x_m = x_m;
   estimate_.y_m = y_m;
+  estimate_.z_m = 0.0;  // dock/operator seed is ground truth in plane only
   estimate_.yaw_rad = core::wrap_angle(yaw_rad);
   estimate_.forward_mps = 0.0;
   estimate_.yaw_rate_radps = 0.0;

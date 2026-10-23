@@ -5,6 +5,8 @@
 #include <limits>
 #include <vector>
 
+#include "robot/core/transform.hpp"
+
 namespace lost_signal::robot::autonomy {
 
 namespace {
@@ -94,7 +96,10 @@ std::vector<ScanBeam> ScanMatcher::prepare_beams(
 
 PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
                                   const std::vector<ScanBeam>& beams,
-                                  const iface::MapSnapshot& map) const {
+                                  const iface::MapSnapshot& map,
+                                  double body_roll_rad,
+                                  double body_pitch_rad,
+                                  double body_z_m) const {
   PoseScore out;
   std::size_t hit_returns = 0;
   for (const auto& beam : beams) {
@@ -103,21 +108,25 @@ PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
   out.usable_returns = hit_returns;
   if (beams.empty()) return out;
   const GridProjector projector(map);
-  const double mount = mount_yaw_rad_;
-  const double sx = x_m + mount_x_m_ * std::cos(yaw_rad) -
-                    mount_y_m_ * std::sin(yaw_rad);
-  const double sy = y_m + mount_x_m_ * std::sin(yaw_rad) +
-                    mount_y_m_ * std::cos(yaw_rad);
+  // 3D sensor pose for this hypothesis: SE(2) hypothesis + slope attitude.
+  const core::RigidTransform map_from_base{
+      {x_m, y_m, body_z_m},
+      core::quaternion_from_rpy(body_roll_rad, body_pitch_rad, yaw_rad)};
+  const core::RigidTransform map_from_sensor =
+      core::compose(map_from_base, base_from_lidar_);
+  const double sx = map_from_sensor.translation_m.x;
+  const double sy = map_from_sensor.translation_m.y;
   double score = 0.0;
   double total_weight = 0.0;
   std::size_t known = 0, matches = 0;
   for (const auto& beam : beams) {
-    const double beam_angle = yaw_rad + beam.angle + mount;
-    const double lx = beam.range * std::cos(beam.angle + mount);
-    const double ly = beam.range * std::sin(beam.angle + mount);
-    // Rotate local offset into the map frame.
-    const double wx = sx + lx * std::cos(yaw_rad) - ly * std::sin(yaw_rad);
-    const double wy = sy + lx * std::sin(yaw_rad) + ly * std::cos(yaw_rad);
+    const core::Vec3 dir = core::rotate_vector(
+        map_from_sensor.rotation, {std::cos(beam.angle), std::sin(beam.angle),
+                                   0.0});
+    const double wx = sx + beam.range * dir.x;
+    const double wy = sy + beam.range * dir.y;
+    // Free-ray azimuth: projection of the tilted beam onto the ground.
+    const double beam_angle = std::atan2(dir.y, dir.x);
     const double value =
         beam.hit ? endpoint_score(projector, wx, wy)
                  : free_ray_score(projector, sx, sy, beam_angle, beam.range);
@@ -140,7 +149,8 @@ ScanMatchResult ScanMatcher::localize(
     const std::vector<float>& ranges, double angle_min_rad,
     double angle_increment_rad, double odom_x_m, double odom_y_m,
     double odom_heading_rad, const iface::MapSnapshot& map,
-    core::MonotonicNs stamp_ns) const {
+    core::MonotonicNs stamp_ns, double body_roll_rad, double body_pitch_rad,
+    double body_z_m) const {
   ScanMatchResult result;
   (void)stamp_ns;
   if (!std::isfinite(odom_x_m) || !std::isfinite(odom_y_m) ||
@@ -204,7 +214,9 @@ ScanMatchResult ScanMatcher::localize(
         const double cy = odom_y_m + iy * config_.translation_step_m;
         const double heading =
             core::wrap_angle(odom_heading_rad + ih * config_.heading_step_rad);
-        const PoseScore pose = score_pose(cx, cy, heading, beams, map);
+        const PoseScore pose = score_pose(cx, cy, heading, beams, map,
+                                          body_roll_rad, body_pitch_rad,
+                                          body_z_m);
         if (!pose.has_evidence) continue;
         Hypothesis h{cx, cy, heading, pose.score, pose.overlap};
         const auto existing = std::find_if(

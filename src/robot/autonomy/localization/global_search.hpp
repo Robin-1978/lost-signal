@@ -82,25 +82,24 @@ class GlobalSearcher {
  public:
   explicit GlobalSearcher(GlobalSearchConfig config = GlobalSearchConfig{});
 
-  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
-    mount_x_m_ = x_m;
-    mount_y_m_ = y_m;
-    mount_yaw_rad_ = yaw_rad;
+  void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
+    base_from_lidar_ = base_from_lidar;
   }
 
-  // Whole-map search. The zero prior is only a finite API placeholder and
-  // never constrains candidates; every free cell is searched.
+  // Whole-map search. roll/pitch/z carry the slope attitude (estimate
+  // values); hypotheses stay SE(2). Defaults keep flat tests exact.
   GlobalSearchResult search(const std::vector<float>& ranges,
                             double angle_min_rad,
                             double angle_increment_rad,
                             const iface::MapSnapshot& map,
-                            core::MonotonicNs stamp_ns) const;
+                            core::MonotonicNs stamp_ns,
+                            double body_roll_rad = 0.0,
+                            double body_pitch_rad = 0.0,
+                            double body_z_m = 0.0) const;
 
  private:
   GlobalSearchConfig config_;
-  double mount_x_m_ = 0.0;
-  double mount_y_m_ = 0.0;
-  double mount_yaw_rad_ = 0.0;
+  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
 };
 
 }  // namespace lost_signal::robot::autonomy

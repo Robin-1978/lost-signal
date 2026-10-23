@@ -76,7 +76,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // fused pose and never splits odom from map itself.
   //
   // Single extrinsic source: set_static_frames also resolves base<-lidar
-  // and fans its planar x/y/yaw out to every consumer (perception,
+  // and fans its full transform out to every consumer (perception, mapper,
   // scan matcher, global search, SLAM matcher, validator, safety).
   // Algorithm configs carry thresholds only; unknown mount = identity.
   void set_static_frames(const core::FrameTransformTree& tree);

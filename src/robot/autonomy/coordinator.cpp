@@ -110,22 +110,25 @@ core::Status AutonomyCoordinator::cleanup() {
 void AutonomyCoordinator::set_static_frames(
     const core::FrameTransformTree& tree) {
   tf_ = tree;
-  // Fan out the planar lidar mount to every consumer. Unknown mount =
+  // Fan out the full lidar mount to every consumer. Unknown mount =
   // identity (aligned), never a stale copy of a previous description.
-  double mx = 0.0, my = 0.0, myaw = 0.0;
-  if (const auto base_from_lidar = tf_.lookup("base_link", "lidar_link")) {
-    mx = base_from_lidar->translation_m.x;
-    my = base_from_lidar->translation_m.y;
-    myaw = yaw_from_quaternion(base_from_lidar->rotation);
+  // Validator/safety keep the yaw projection (forward-sector azimuth);
+  // the deproject path takes the whole transform so slopes tilt the
+  // scan plane instead of silently staying flat.
+  core::RigidTransform base_from_lidar{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
+  if (const auto hit = tf_.lookup("base_link", "lidar_link")) {
+    base_from_lidar = *hit;
   }
   if (perception_module_ != nullptr) {
-    perception_module_->set_lidar_mount(mx, my, myaw);
+    perception_module_->set_lidar_mount(base_from_lidar);
   }
-  scan_matcher_.set_lidar_mount(mx, my, myaw);
-  global_search_.set_lidar_mount(mx, my, myaw);
-  slam_.set_lidar_mount(mx, my, myaw);
-  if (validator_ != nullptr) validator_->set_lidar_yaw(myaw);
-  if (safety_ != nullptr) safety_->set_lidar_yaw(myaw);
+  if (mapper_ != nullptr) mapper_->set_lidar_mount(base_from_lidar);
+  scan_matcher_.set_lidar_mount(base_from_lidar);
+  global_search_.set_lidar_mount(base_from_lidar);
+  slam_.set_lidar_mount(base_from_lidar);
+  const double yaw = yaw_from_quaternion(base_from_lidar.rotation);
+  if (validator_ != nullptr) validator_->set_lidar_yaw(yaw);
+  if (safety_ != nullptr) safety_->set_lidar_yaw(yaw);
 }
 
 void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
@@ -225,16 +228,18 @@ iface::MotionCommand AutonomyCoordinator::update(
   // odometry, accepted loop closures correct the estimate and rebuild the
   // rolling map from keyframes at their optimized poses.
   run_slam(now_ns);
-  // TF publisher: odom->base is the continuous pre-correction prediction,
-  // map->odom the per-tick correction delta (identity when nothing
-  // corrected). Skipped until the estimate is valid.
+  // TF publisher: odom->base is the continuous pre-correction prediction
+  // in full 3D (x/y/z + roll/pitch/yaw — slopes ride here); map->odom is
+  // the per-tick SE(2) correction delta (identity when nothing corrected).
+  // Skipped until the estimate is valid.
   const EstimatedState post = estimator_->estimate();
   if (post.valid) {
     const EstimatedState& odom = pre.valid ? pre : post;
     tf_.set_transform(
         "odom", "base_link",
-        {{odom.x_m, odom.y_m, 0.0},
-         core::quaternion_from_rpy(0.0, 0.0, odom.yaw_rad)});
+        {{odom.x_m, odom.y_m, odom.z_m},
+         core::quaternion_from_rpy(odom.roll_rad, odom.pitch_rad,
+                                    odom.yaw_rad)});
     tf_.set_transform("map", "odom",
                       core::map_from_odom_delta(odom.x_m, odom.y_m,
                                                odom.yaw_rad, post.x_m,
@@ -415,7 +420,8 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
     // rejection is evidence only and never moves the estimate.
     GlobalSearchResult global = global_search_.search(
         last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
-        last_obs_.scan_angle_increment_rad, map, now_ns);
+        last_obs_.scan_angle_increment_rad, map, now_ns, est.roll_rad,
+        est.pitch_rad, est.z_m);
     if (global.accepted) {
       if (!supervisor_.localized()) {
         // No trustworthy prior exists (unknown start / kidnapped): snap
@@ -437,7 +443,7 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
   ScanMatchResult match = scan_matcher_.localize(
       last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
       last_obs_.scan_angle_increment_rad, est.x_m, est.y_m, est.yaw_rad, map,
-      now_ns);
+      now_ns, est.roll_rad, est.pitch_rad, est.z_m);
   if (match.accepted) {
     estimator_->correct_pose(match.x_m, match.y_m, match.yaw_rad,
                              match.position_sigma_m, match.heading_sigma_rad,

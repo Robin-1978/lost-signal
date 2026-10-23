@@ -7,6 +7,7 @@
 
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
+#include "robot/core/transform.hpp"
 #include "robot/iface/map.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -69,20 +70,24 @@ class ScanMatcher {
  public:
   explicit ScanMatcher(ScanMatcherConfig config = ScanMatcherConfig{});
 
-  // Planar lidar mount from the TF tree (coordinator fans out).
-  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
-    mount_x_m_ = x_m;
-    mount_y_m_ = y_m;
-    mount_yaw_rad_ = yaw_rad;
+  // Full lidar mount from the TF tree (coordinator fans out).
+  void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
+    base_from_lidar_ = base_from_lidar;
   }
 
   // ranges: planar returns in sensor frame (angle_min + i*increment).
+  // roll/pitch/z carry the slope attitude (estimate values at the call
+  // site); hypotheses stay SE(2) — the raster is 2D. Defaults keep
+  // flat-ground tests exact.
   ScanMatchResult localize(const std::vector<float>& ranges, double angle_min_rad,
                            double angle_increment_rad,
                            double odom_x_m, double odom_y_m,
                            double odom_heading_rad,
                            const iface::MapSnapshot& map,
-                           core::MonotonicNs stamp_ns) const;
+                           core::MonotonicNs stamp_ns,
+                           double body_roll_rad = 0.0,
+                           double body_pitch_rad = 0.0,
+                           double body_z_m = 0.0) const;
 
   // Filter + deterministic angular downsample to at most max_beams.
   // Empty output means no usable geometry (caller rejects).
@@ -90,17 +95,19 @@ class ScanMatcher {
                                       double angle_min_rad,
                                       double angle_increment_rad,
                                       std::size_t max_beams) const;
-  // Score one pose hypothesis with prepared beams. Pure function of
+  // Score one SE(2) hypothesis with prepared beams; roll/pitch/z are the
+  // slope attitude at the call site (estimate values). Pure function of
   // (pose, beams, map); the global search calls this per coarse candidate.
   PoseScore score_pose(double x_m, double y_m, double yaw_rad,
                        const std::vector<ScanBeam>& beams,
-                       const iface::MapSnapshot& map) const;
+                       const iface::MapSnapshot& map,
+                       double body_roll_rad = 0.0,
+                       double body_pitch_rad = 0.0,
+                       double body_z_m = 0.0) const;
 
  private:
   ScanMatcherConfig config_;
-  double mount_x_m_ = 0.0;
-  double mount_y_m_ = 0.0;
-  double mount_yaw_rad_ = 0.0;
+  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
 };
 
 }  // namespace lost_signal::robot::autonomy

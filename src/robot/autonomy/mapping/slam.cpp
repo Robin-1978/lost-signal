@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "robot/core/geometry.hpp"
+#include "robot/core/transform.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -41,6 +42,9 @@ void SlamSession::ingest(const EstimatedState& est,
   kf.pose.position.x = est.x_m;
   kf.pose.position.y = est.y_m;
   kf.pose.heading_rad = est.yaw_rad;
+  kf.roll_rad = est.roll_rad;
+  kf.pitch_rad = est.pitch_rad;
+  kf.z_m = est.z_m;
   kf.ranges_m = obs.ranges_m;
   kf.static_ranges_m = obs.static_ranges_m;
   kf.angle_min_rad = obs.scan_angle_min_rad;
@@ -116,6 +120,17 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   sub.origin_x_m = kf.pose.position.x - max_range;
   sub.origin_y_m = kf.pose.position.y - max_range;
   sub.occupancy.assign(sub.width * sub.height, -1);
+  // 3D sensor pose for this keyframe: position + slope attitude composed
+  // with the TF mount. Endpoints project to x/y (the submap is 2D).
+  core::RigidTransform kf_from_base;
+  kf_from_base.translation_m = {kf.pose.position.x, kf.pose.position.y,
+                                kf.z_m};
+  kf_from_base.rotation = core::quaternion_from_rpy(
+      kf.roll_rad, kf.pitch_rad, kf.pose.heading_rad);
+  const core::RigidTransform kf_from_sensor =
+      core::compose(kf_from_base, base_from_lidar_);
+  const double ksx = kf_from_sensor.translation_m.x;
+  const double ksy = kf_from_sensor.translation_m.y;
   const std::size_t n = kf.ranges_m.size();
   // Two passes: ray interiors first, endpoints second. A single pass would
   // let one beam's free interior overwrite another beam's occupied endpoint
@@ -123,17 +138,19 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   for (std::size_t i = 0; i < n; ++i) {
     const float range = kf.ranges_m[i];
     if (!(range > 0.0f) || !std::isfinite(range)) continue;
-    const double angle =
-        kf.angle_min_rad + kf.angle_increment_rad * i + kf.pose.heading_rad;
-    const double dx = std::cos(angle), dy = std::sin(angle);
+    const double angle = kf.angle_min_rad + kf.angle_increment_rad * i;
+    const core::Vec3 dir = core::rotate_vector(
+        kf_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
+    const double az = std::atan2(dir.y, dir.x);
+    const double dx = std::cos(az), dy = std::sin(az);
     const double hit = std::min<double>(range, 10.0);
     // Ray interior: free (march at half-cell steps, endpoint excluded).
     const int steps = std::max(
         1, static_cast<int>(std::ceil(hit / (0.5 * sub.resolution_m))));
     for (int s = 0; s < steps; ++s) {
       const double b = static_cast<double>(s) / steps;
-      const double wx = kf.pose.position.x + hit * dx * b;
-      const double wy = kf.pose.position.y + hit * dy * b;
+      const double wx = ksx + hit * dx * b;
+      const double wy = ksy + hit * dy * b;
       const int gx = static_cast<int>(
           std::floor((wx - sub.origin_x_m) / sub.resolution_m));
       const int gy = static_cast<int>(
@@ -153,10 +170,11 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   for (std::size_t i = 0; i < n; ++i) {
     const float range = kf.ranges_m[i];
     if (!(range > 0.0f) || !std::isfinite(range) || range >= 10.0f) continue;
-    const double angle =
-        kf.angle_min_rad + kf.angle_increment_rad * i + kf.pose.heading_rad;
-    const double wx = kf.pose.position.x + range * std::cos(angle);
-    const double wy = kf.pose.position.y + range * std::sin(angle);
+    const double angle = kf.angle_min_rad + kf.angle_increment_rad * i;
+    const core::Vec3 dir = core::rotate_vector(
+        kf_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
+    const double wx = ksx + range * dir.x;
+    const double wy = ksy + range * dir.y;
     const int cx = static_cast<int>(
         std::floor((wx - sub.origin_x_m) / sub.resolution_m));
     const int cy = static_cast<int>(
@@ -231,7 +249,7 @@ SlamLoopResult SlamSession::try_close_loops(
   match_cfg.maximum_returns = config_.match_max_beams;
   match_cfg.minimum_overlap = config_.match_minimum_overlap;
   ScanMatcher matcher(match_cfg);
-  matcher.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
+  matcher.set_lidar_mount(base_from_lidar_);
   const LoopClosureGate gate(config_.gate);
 
   for (const auto& cand : candidates) {
@@ -247,10 +265,10 @@ SlamLoopResult SlamSession::try_close_loops(
 
     // Forward: current scan against the old keyframe's submap.
     const iface::MapSnapshot sub = submap_for(old);
-    ScanMatchResult fwd =
-        matcher.localize(obs.ranges_m, obs.scan_angle_min_rad,
-                         obs.scan_angle_increment_rad, est.x_m, est.y_m,
-                         est.yaw_rad, sub, obs.stamp_ns);
+    ScanMatchResult fwd = matcher.localize(
+        obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+        est.x_m, est.y_m, est.yaw_rad, sub, obs.stamp_ns, est.roll_rad,
+        est.pitch_rad, est.z_m);
     if (!fwd.accepted) continue;
     // Reverse (two-way support): old scan against a submap from the
     // current scan placed at the FORWARD solution. A one-sided alignment
@@ -263,15 +281,17 @@ SlamLoopResult SlamSession::try_close_loops(
     now_kf.pose.position.x = fwd.x_m;
     now_kf.pose.position.y = fwd.y_m;
     now_kf.pose.heading_rad = fwd.yaw_rad;
+    now_kf.roll_rad = est.roll_rad;
+    now_kf.pitch_rad = est.pitch_rad;
+    now_kf.z_m = est.z_m;
     now_kf.ranges_m = obs.ranges_m;
     now_kf.angle_min_rad = obs.scan_angle_min_rad;
     now_kf.angle_increment_rad = obs.scan_angle_increment_rad;
     const iface::MapSnapshot rsub = submap_for(now_kf);
-    ScanMatchResult rev =
-        matcher.localize(old.ranges_m, old.angle_min_rad,
-                         old.angle_increment_rad, old.pose.position.x,
-                         old.pose.position.y, old.pose.heading_rad, rsub,
-                         obs.stamp_ns);
+    ScanMatchResult rev = matcher.localize(
+        old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
+        old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
+        obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
     if (!rev.accepted || rev.overlap < config_.gate.minimum_overlap) {
         continue;
     }

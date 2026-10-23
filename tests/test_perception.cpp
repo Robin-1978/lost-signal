@@ -89,7 +89,7 @@ int main() {
   // TF mount: forward-shifted lidar moves the track +x by the mount.
   {
     LidarPerception perc;
-    perc.set_lidar_mount(1.0, 0.0, 0.0);
+    perc.set_lidar_mount({{1.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}});
     auto obs = make_scan(1'000'000, 10.0f, 34, 38, 3.0f);
     PerceptionResult r = perc.update(obs, origin());
     assert(r.tracks.size() == 1);

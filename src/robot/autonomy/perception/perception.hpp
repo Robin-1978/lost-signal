@@ -7,6 +7,7 @@
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/core/time.hpp"
+#include "robot/core/transform.hpp"
 #include "robot/iface/observation.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -52,12 +53,10 @@ class IPerception {
   virtual void reset() = 0;
   virtual PerceptionResult update(const iface::ObservationFrame& obs,
                                   const EstimatedState& est) = 0;
-  // Planar lidar mount from the TF tree (base<-lidar x/y/yaw). Default
-  // identity = aligned mount. The coordinator is the only caller.
-  virtual void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
-    (void)x_m;
-    (void)y_m;
-    (void)yaw_rad;
+  // Full lidar mount from the TF tree (base<-lidar). Default identity.
+  // The coordinator is the only caller.
+  virtual void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
+    (void)base_from_lidar;
   }
 };
 
@@ -89,10 +88,8 @@ class LidarPerception : public IPerception {
   void reset() override;
   PerceptionResult update(const iface::ObservationFrame& obs,
                           const EstimatedState& est) override;
-  void set_lidar_mount(double x_m, double y_m, double yaw_rad) override {
-    mount_x_m_ = x_m;
-    mount_y_m_ = y_m;
-    mount_yaw_rad_ = yaw_rad;
+  void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
+    base_from_lidar_ = base_from_lidar;
   }
 
  private:
@@ -106,10 +103,8 @@ class LidarPerception : public IPerception {
     double last_seen_s = 0.0;
   };
   LidarPerceptionConfig config_;
-  // Planar mount from the TF tree (set by the coordinator, default 0).
-  double mount_x_m_ = 0.0;
-  double mount_y_m_ = 0.0;
-  double mount_yaw_rad_ = 0.0;
+  // Full mount from the TF tree (set by the coordinator, default identity).
+  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
   std::unordered_map<std::uint32_t, TrackState> tracks_;
   std::uint32_t next_id_ = 1;
 };

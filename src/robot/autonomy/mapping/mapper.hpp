@@ -9,6 +9,7 @@
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
+#include "robot/core/transform.hpp"
 #include "robot/iface/observation.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -84,6 +85,10 @@ class IMapper {
   virtual void update(const iface::ObservationFrame& obs,
                       const EstimatedState& est) = 0;
   virtual LocalMap local_map() const = 0;
+  // Full lidar mount from the TF tree (coordinator fans out).
+  virtual void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
+    (void)base_from_lidar;
+  }
 };
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
@@ -91,6 +96,9 @@ class IMapper {
 class RayClearingMapper : public IMapper {
  public:
   void reset() override { map_ = LocalMap{}; }
+  void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
+    base_from_lidar_ = base_from_lidar;
+  }
   void update(const iface::ObservationFrame& obs,
               const EstimatedState& est) override {
     if (!est.valid) {
@@ -121,8 +129,15 @@ class RayClearingMapper : public IMapper {
     }
     map_.stamp_ns = obs.stamp_ns;
     if (!obs.scan_valid || obs.ranges_m.empty()) return;
-    // Ray clearing from the estimate pose (v1: lidar ~ base center; the
-    // mount offset enters with calibrated extrinsics, see perception).
+    // Ray clearing from the true 3D sensor pose (estimate + TF mount);
+    // endpoints project to x/y (the rolling map is 2D).
+    const core::RigidTransform map_from_base{
+        {est.x_m, est.y_m, est.z_m},
+        core::quaternion_from_rpy(est.roll_rad, est.pitch_rad, est.yaw_rad)};
+    const core::RigidTransform map_from_sensor =
+        core::compose(map_from_base, base_from_lidar_);
+    const double ssx = map_from_sensor.translation_m.x;
+    const double ssy = map_from_sensor.translation_m.y;
     // Background beams paint endpoint cells occupied; foreground beams
     // clear the ray but never paint (actors must not become static map).
     const std::size_t n = obs.ranges_m.size();
@@ -131,10 +146,12 @@ class RayClearingMapper : public IMapper {
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0) || !std::isfinite(range)) continue;
-      const double angle = -core::kPi + 2.0 * core::kPi * i / n + est.yaw_rad;
-      const double ex = est.x_m + range * std::cos(angle);
-      const double ey = est.y_m + range * std::sin(angle);
-      clear_segment(est.x_m, est.y_m, ex, ey);
+      const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+      const core::Vec3 dir = core::rotate_vector(
+          map_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
+      const double ex = ssx + range * dir.x;
+      const double ey = ssy + range * dir.y;
+      clear_segment(ssx, ssy, ex, ey);
       bool background = false;
       if (has_ref) {
         background =
@@ -176,6 +193,7 @@ class RayClearingMapper : public IMapper {
   }
 
   LocalMap map_{};
+  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
 };
 
 }  // namespace lost_signal::robot::autonomy

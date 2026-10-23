@@ -14,7 +14,8 @@ GlobalSearcher::GlobalSearcher(GlobalSearchConfig config) : config_(config) {}
 GlobalSearchResult GlobalSearcher::search(
     const std::vector<float>& ranges, double angle_min_rad,
     double angle_increment_rad, const iface::MapSnapshot& map,
-    core::MonotonicNs stamp_ns) const {
+    core::MonotonicNs stamp_ns, double body_roll_rad, double body_pitch_rad,
+    double body_z_m) const {
   GlobalSearchResult result;
   (void)stamp_ns;
   if (ranges.empty() || !(angle_increment_rad > 0.0)) {
@@ -36,7 +37,7 @@ GlobalSearchResult GlobalSearcher::search(
   coarse_cfg.max_range_m = config_.max_range_m;
   coarse_cfg.minimum_returns = config_.minimum_returns;
   ScanMatcher coarse_matcher(coarse_cfg);
-  coarse_matcher.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
+  coarse_matcher.set_lidar_mount(base_from_lidar_);
   const std::vector<ScanBeam> beams = coarse_matcher.prepare_beams(
       ranges, angle_min_rad, angle_increment_rad, config_.coarse_beams);
   std::size_t hit_returns = 0;
@@ -104,8 +105,9 @@ GlobalSearchResult GlobalSearcher::search(
         }
         const double heading =
             core::wrap_angle(-core::kPi + ih * config_.coarse_heading_step_rad);
-        const PoseScore pose =
-            coarse_matcher.score_pose(cx, cy, heading, beams, map);
+        const PoseScore pose = coarse_matcher.score_pose(
+            cx, cy, heading, beams, map, body_roll_rad, body_pitch_rad,
+            body_z_m);
         if (!pose.has_evidence) continue;
         consider({cx, cy, heading, pose.score, pose.overlap});
       }
@@ -135,13 +137,14 @@ GlobalSearchResult GlobalSearcher::search(
   refine_cfg.max_range_m = config_.max_range_m;
   refine_cfg.minimum_returns = config_.minimum_returns;
   ScanMatcher refiner(refine_cfg);
-  refiner.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
+  refiner.set_lidar_mount(base_from_lidar_);
 
   std::vector<ScanMatchResult> refined;
   for (const auto& s : survivors) {
     ScanMatchResult r =
         refiner.localize(ranges, angle_min_rad, angle_increment_rad, s.x,
-                         s.y, s.heading, map, stamp_ns);
+                         s.y, s.heading, map, stamp_ns, body_roll_rad,
+                         body_pitch_rad, body_z_m);
     if (!r.accepted) continue;
     // Survivors refining to the same physical pose are one hypothesis;
     // without this merge they would false-trigger the twin check below.
