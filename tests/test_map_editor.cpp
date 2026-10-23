@@ -179,6 +179,44 @@ int main() {
     std::filesystem::remove(path2);
   }
 
+  // Terrain handles: add/select/move/remove patches + zones; save keeps
+  // every section (materials resolve at load, zones carry the id only).
+  {
+    sim::world::World w2;
+    w2.set_materials({{"ice", 0.25, 0.0, 0.006, 1.0, 0.3}});
+    sim::viewer::MapEditor ed;
+    ed.load_from(w2);
+    ed.add_patch(5.0, 5.0);
+    assert(ed.selected_patch() == 0);
+    ed.press(5.0, 5.0);
+    assert(ed.selected_patch() == 0);
+    ed.drag(6.0, 6.0);
+    ed.release();
+    ed.add_zone(0.0, 0.0, "ice");
+    assert(ed.selected_zone() == 0);
+    ed.press(0.0, 0.0);
+    assert(ed.selected_zone() == 0);
+    ed.remove_selected();
+    // Reload-prove through a temp file: patch moved, zone removed.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "test_world_t.json")
+            .string();
+    assert(ed.save(path));
+    sim::eval::WorldFileContent rc;
+    std::string err;
+    assert(sim::eval::load_world_file(path, rc, &err));
+    assert(rc.patches.size() == 1 && rc.zones.empty());
+    assert(rc.patches[0].x0 > 0.9 && rc.patches[0].grade_x == 0.2);
+    // Zone with unknown material fails closed at load (save is unvalidating
+    // by design; the loader owns the reference check). The save-time
+    // validity proof catches it too.
+    ed.add_zone(10.0, 10.0, "nope");
+    assert(!ed.save(path));
+    sim::eval::WorldFileContent bad;
+    assert(!sim::eval::load_world_file(path, bad, &err));
+    std::filesystem::remove(path);
+  }
+
   std::printf("map_editor ok\n");
   return 0;
 }

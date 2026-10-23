@@ -1,0 +1,125 @@
+// Terrain boundary missions (SIM-side HIL through the standard seams).
+// Low-mu traverse: the grip governor tightens on measured slip, the
+// mission still completes with zero judge steps. Ridge traverse: real
+// contact geometry (not the gravity hack) climbs and descends with zero
+// judge steps. Truth is asserted offline only; the ROBOT saw measurements.
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <string>
+
+#include "robot/platform/robot_config.hpp"
+#include "sim/eval/robot_config.hpp"
+#include "sim/eval/scoring.hpp"
+#include "sim/eval/sim_config.hpp"
+#include "sim/scenario/scenario_session.hpp"
+
+using namespace lost_signal;
+
+namespace {
+
+robot::platform::RobotDescription seed_diff_desc() {
+  const std::string dir = std::string(TEST_CONFIG_DIR) + "/robot";
+  robot::platform::RobotConfig cfg;
+  std::string err;
+  assert(robot::platform::load_robot_config(dir + "/differential.json", cfg,
+                                            &err));
+  return robot::platform::description_from_config(cfg);
+}
+
+sim::world::MotorParams seed_diff_motor() {
+  const std::string dir = std::string(TEST_CONFIG_DIR) + "/robot";
+  robot::platform::RobotConfig cfg;
+  std::string err;
+  assert(robot::platform::load_robot_config(dir + "/differential.json", cfg,
+                                            &err));
+  return sim::eval::motor_from_config(cfg);
+}
+
+void drive_until_done(sim::scenario::ScenarioSession& session, int max_steps) {
+  for (int i = 0; i < max_steps && !session.objectives_done(); ++i) {
+    session.step_once();
+  }
+}
+
+}  // namespace
+
+int main() {
+  // Icy climb: 0.1 up-ramp with a 0.15-mu belt over launch + climb, goal
+  // past the ridge. Climbing demands sustained force, so traction
+  // saturation (and the wheel-vs-IMU residual) persists instead of
+  // flashing by in a launch transient the closed wheel loops would
+  // absorb. The ROBOT gets no material notice; adaptation is purely
+  // measured slip -> grip.
+  {
+    sim::scenario::ScenarioSession session(seed_diff_desc(),
+                                           seed_diff_motor());
+    session.setup_world().add_place({"past", 9.0, 0.0, 0.0});
+    session.setup_world().set_terrain_patches(
+        {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.1, 0.0, 0.0, 0.0},
+         {"down", 6.0, -3.0, 10.0, 3.0, 0.4, -0.1, 0.0, 0.0, 0.0}});
+    session.setup_world().set_materials(
+        {{"ice", 0.15, 0.005, 0.006, 1.0, 0.3}});
+    session.setup_world().set_material_zones(
+        {{"belt", -2.0, -3.0, 6.5, 3.0, "ice"}});
+    session.set_objectives({"past"}, 1.0);
+    sim::eval::SimConfig sim;
+    sim.lidar_composite = true;
+    session.apply_sim_config(sim);
+    drive_until_done(session, 2500);
+    const auto score = sim::eval::score_episode(session.episode());
+    double min_grip = 1.0, max_z = 0.0;
+    bool slip_seen = false;
+    for (const auto& step : session.episode().steps()) {
+      min_grip = std::min(min_grip, step.diag.grip_factor);
+      max_z = std::max(max_z, step.truth_after.body_z_m);
+      for (bool s : step.truth_after.drive_slipping) slip_seen |= s;
+    }
+    std::printf("icy climb done=%d collisions=%d min_grip=%.2f max_z=%.2f "
+                "slip=%d\n",
+                session.objectives_done(), score.collision_steps, min_grip,
+                max_z, slip_seen);
+    assert(session.objectives_done());
+    assert(score.collision_steps == 0);
+    assert(min_grip < 0.95);  // governor tightened on measured slip
+    assert(slip_seen);        // plant reported traction saturation offline
+    assert(max_z > 0.2);      // physically climbed (offline truth)
+  }
+
+  // Ridge traverse on real contact geometry: 0.1 up-ramp, 0.1 down-ramp,
+  // goal past the ridge. Pins climb + descent under the survey elevation
+  // (grade cost, passable) with the composite front end watching the face.
+  // No grip assert here: the validator reads the ramp face as a wall
+  // (planar rollout, T3 gap), so the approach grinds with genuine
+  // stall-spin the governor rightly answers. Discrimination (gripped
+  // transients stay clean) is pinned in test_autonomy, not here.
+  {
+    sim::scenario::ScenarioSession session(seed_diff_desc(),
+                                           seed_diff_motor());
+    session.setup_world().add_place({"past", 9.0, 0.0, 0.0});
+    session.setup_world().set_terrain_patches(
+        {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.1, 0.0, 0.0, 0.0},
+         {"down", 6.0, -3.0, 10.0, 3.0, 0.4, -0.1, 0.0, 0.0, 0.0}});
+    session.set_objectives({"past"}, 1.0);
+    sim::eval::SimConfig sim;
+    sim.lidar_composite = true;
+    session.apply_sim_config(sim);
+    drive_until_done(session, 2500);
+    const auto score = sim::eval::score_episode(session.episode());
+    double max_z = 0.0, min_grip = 1.0;
+    for (const auto& step : session.episode().steps()) {
+      max_z = std::max(max_z, step.truth_after.body_z_m);
+      min_grip = std::min(min_grip, step.diag.grip_factor);
+    }
+    std::printf("ridge done=%d collisions=%d max_z=%.2f min_grip=%.2f\n",
+                session.objectives_done(), score.collision_steps, max_z,
+                min_grip);
+    assert(session.objectives_done());
+    assert(score.collision_steps == 0);
+    assert(max_z > 0.25);  // physically climbed (offline truth)
+    // min_grip printed above for ops, not asserted (see note above).
+  }
+
+  std::printf("terrain_mission ok\n");
+  return 0;
+}

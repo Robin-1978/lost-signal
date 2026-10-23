@@ -37,6 +37,8 @@ class MapEditor {
   int selected_box() const { return sel_box_; }
   int selected_corner() const { return sel_corner_; }
   int selected_place() const { return sel_place_; }
+  int selected_patch() const { return sel_patch_; }
+  int selected_zone() const { return sel_zone_; }
 
   // Snapshots the live world into the working copy (entering edit mode).
   void load_from(const world::World& world);
@@ -54,6 +56,12 @@ class MapEditor {
 
   void add_box(double world_x, double world_y);
   void add_place(double world_x, double world_y);
+  // Terrain authoring (T1c): default 2x2 ramp (grade 0.2, main's default)
+  // and 2x2 material zone (explicit material id — zones store the id only,
+  // values resolve at load). Selection/move/delete below cover all rect
+  // kinds; slabs stay file-authored.
+  void add_patch(double world_x, double world_y);
+  void add_zone(double world_x, double world_y, const std::string& material);
   void remove_selected();
 
   // Serialize the working copy, write the file, then reload the whole file
@@ -75,6 +83,7 @@ class MapEditor {
     return v;
   }
   static void normalize(world::StaticBox& b);
+  static void normalize_rect(double& x0, double& y0, double& x1, double& y1);
 
   bool active_ = false;
   bool dirty_ = false;
@@ -83,9 +92,13 @@ class MapEditor {
   int sel_box_ = -1;
   int sel_corner_ = -1;  // -1 body, 0..3 corner
   int sel_place_ = -1;
+  int sel_patch_ = -1;
+  int sel_zone_ = -1;
   bool pressing_ = false;
   double press_x_ = 0.0, press_y_ = 0.0;
   int place_seq_ = 0;
+  int patch_seq_ = 0;
+  int zone_seq_ = 0;
 };
 
 }  // namespace lost_signal::sim::viewer

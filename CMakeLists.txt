@@ -520,6 +520,15 @@ add_executable(test_terrain
 target_link_libraries(test_terrain PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
 add_test(NAME terrain COMMAND test_terrain)
 
+add_executable(test_terrain_mission
+  tests/test_terrain_mission.cpp
+)
+target_compile_definitions(test_terrain_mission PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_terrain_mission PRIVATE lost_signal_sim_scenario)
+add_test(NAME terrain_mission COMMAND test_terrain_mission)
+
 add_executable(test_transform_tree
   tests/test_transform_tree.cpp
 )
@@ -564,3 +573,4 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME robot_boundary
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/check_boundary.py
 )
+

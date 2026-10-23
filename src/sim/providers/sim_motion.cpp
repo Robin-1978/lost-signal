@@ -39,8 +39,6 @@ bool SimMotionEndpoint::poll_feedback(
   out.source = desc_.endpoint_id;
   out.frame = robot::core::Frame::kBaseLink;
   out.odometry_valid = true;
-  out.forward_mps = world_->truth().forward_mps;
-  out.yaw_rate_radps = world_->truth().yaw_rate_radps;
   out.drive_count = world_->truth().drive_count;
   out.steer_count = world_->truth().steer_count;
   // Encoder view: quantize angles to counts, differentiate over the stamp
@@ -85,6 +83,65 @@ bool SimMotionEndpoint::poll_feedback(
   for (int i = 0; i < out.steer_count; ++i) {
     out.steer_rad[i] = prev_steer_angle_rad_[i];
     out.steer_vel_radps[i] = prev_steer_vel_radps_[i];
+  }
+  // Body twist from MEASURED joints (native-driver parity): the ROBOT
+  // never sees truth body rates here. Wheel-derived through the same
+  // geometry the plant was built with, so slip shows up downstream as
+  // wheel-vs-IMU disagreement instead of being laundered through truth.
+  // First poll (or repeated stamp) reports zero, like power-on.
+  {
+    const double r =
+        std::max(1e-6, world_->motor_params().wheel_radius_m);
+    const double track =
+        std::max(0.1, world_->motor_params().track_width_m);
+    const double base =
+        std::max(0.1, world_->motor_params().wheel_base_m);
+    const double* w = out.drive_radps.data();
+    double fwd = 0.0, yaw = 0.0;
+    if (out.drive_count == 2 && out.steer_count == 0) {
+      // Differential: idx0 left (+y), idx1 right.
+      fwd = 0.5 * (w[0] + w[1]) * r;
+      yaw = (w[1] - w[0]) * r / track;
+    } else if (out.drive_count == 2 && out.steer_count == 2) {
+      // Ackermann: rear drive axle + bicycle yaw from measured steer.
+      fwd = 0.5 * (w[0] + w[1]) * r;
+      yaw = fwd * std::tan(0.5 * (out.steer_rad[0] + out.steer_rad[1])) /
+            base;
+    } else if (out.drive_count == 4 && out.steer_count == 4) {
+      // Swerve: rigid-body fit over measured module vectors (speed along
+      // the measured steer angle at each corner module position,
+      // translation removed before fitting yaw).
+      const double sx[4] = {base / 2, base / 2, -base / 2, -base / 2};
+      const double sy[4] = {track / 2, -track / 2, track / 2, -track / 2};
+      double vx = 0.0, vy = 0.0;
+      for (int i = 0; i < 4; ++i) {
+        vx += w[i] * r * std::cos(out.steer_rad[i]);
+        vy += w[i] * r * std::sin(out.steer_rad[i]);
+      }
+      vx /= 4.0;
+      vy /= 4.0;
+      fwd = vx;
+      double num = 0.0, den = 0.0;
+      for (int i = 0; i < 4; ++i) {
+        const double mvx =
+            w[i] * r * std::cos(out.steer_rad[i]) - vx;
+        const double mvy =
+            w[i] * r * std::sin(out.steer_rad[i]) - vy;
+        num += sx[i] * mvy - sy[i] * mvx;
+        den += sx[i] * sx[i] + sy[i] * sy[i];
+      }
+      yaw = den > 1e-9 ? num / den : 0.0;
+    } else if (out.drive_count == 4 && out.steer_count == 0) {
+      // Mecanum: roller-map rows dual to the engine wrench (same
+      // coefficients as the plant's virtual-work map, power-consistent).
+      const double arm = (track + base) / 4.0;
+      fwd = 0.25 * (w[0] + w[1] + w[2] + w[3]) * r;
+      yaw = arm > 1e-9
+                ? 0.25 * (-w[0] + w[1] - w[2] + w[3]) * r / arm
+                : 0.0;
+    }
+    out.forward_mps = (have_prev_ && dt_s > 0.0) ? fwd : 0.0;
+    out.yaw_rate_radps = (have_prev_ && dt_s > 0.0) ? yaw : 0.0;
   }
   have_prev_ = true;
   prev_stamp_ns_ = out.stamp_ns;

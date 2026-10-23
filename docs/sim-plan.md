@@ -167,8 +167,19 @@ no friction, contact, or live wetness).
   `Diagnostics` (ROBOT's own belief, offline only). `test_terrain` pins
   math/engine/survey/refusals. Roughness + bilinear cross-slope refuse
   the build fail-closed until mesh support (T2).
-- T1c (next): low-mu + ramp boundary missions, terrain editing handles,
-  `sim_robot` HIL through the same seams.
+- T1c (landed): icy-climb + dry-ridge boundary missions (`test_terrain_mission`:
+  both complete with zero judge steps; ice tightens the governor to the
+  floor on measured slip, ridge pins the climb), terrain editing handles
+  (patch/zone add/select/move/delete, `test_map_editor` pins), provider
+  honesty for the traction chain: IMU reports true specific force (body
+  accel + true-attitude gravity) and odometry derives from measured joints
+  through layout kinematics (native-driver parity — truth body rates no
+  longer launder slip). Longitudinal evidence (wheel-vs-IMU accel, survey
+  grade compensation, 15-tick confirmation) lives in the control-layer
+  governor; gripped transients stay clean per `test_autonomy`. Known gap
+  found by the missions: the validator reads ramp faces as walls (planar
+  rollout vs 3D grade) so approaches grind — no collision, but slow; proper
+  terrain-aware validation is T3.
 - T2 (planned): heightfield/relief import, tracked chassis, engine-contact
   judge, lidar reflectivity decision (needs an LSRI intensity channel).
 - T3 (planned): ROBOT beliefs (traversal model, elevation fusion, terrain

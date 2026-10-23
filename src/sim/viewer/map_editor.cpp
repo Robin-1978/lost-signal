@@ -13,6 +13,12 @@ void MapEditor::normalize(world::StaticBox& b) {
   if (b.y1 < b.y0) std::swap(b.y0, b.y1);
 }
 
+void MapEditor::normalize_rect(double& x0, double& y0, double& x1,
+                               double& y1) {
+  if (x1 < x0) std::swap(x0, x1);
+  if (y1 < y0) std::swap(y0, y1);
+}
+
 void MapEditor::load_from(const world::World& world) {
   content_.boxes = world.static_boxes();
   content_.places = world.places();
@@ -22,13 +28,23 @@ void MapEditor::load_from(const world::World& world) {
   content_.slabs = world.support_slabs();
   content_.environment = world.environment();
   for (auto& b : content_.boxes) normalize(b);
+  for (auto& p : content_.patches) {
+    normalize_rect(p.x0, p.y0, p.x1, p.y1);
+  }
+  for (auto& z : content_.zones) {
+    normalize_rect(z.x0, z.y0, z.x1, z.y1);
+  }
   sel_box_ = -1;
   sel_corner_ = -1;
   sel_place_ = -1;
+  sel_patch_ = -1;
+  sel_zone_ = -1;
   pressing_ = false;
   dirty_ = false;
   message_.clear();
   place_seq_ = static_cast<int>(content_.places.size());
+  patch_seq_ = static_cast<int>(content_.patches.size());
+  zone_seq_ = static_cast<int>(content_.zones.size());
 }
 
 void MapEditor::apply(world::World& world) {
@@ -56,6 +72,8 @@ void MapEditor::press(double world_x, double world_y) {
       if (std::hypot(world_x - cx[c], world_y - cy[c]) <= kGrabRadiusM) {
         sel_corner_ = c;
         sel_place_ = -1;
+        sel_patch_ = -1;
+        sel_zone_ = -1;
         return;
       }
     }
@@ -79,6 +97,47 @@ void MapEditor::press(double world_x, double world_y) {
     sel_box_ = best_box;
     sel_corner_ = -1;
     sel_place_ = -1;
+    sel_patch_ = -1;
+    sel_zone_ = -1;
+    return;
+  }
+  // Nearest patch, then zone (rect bodies; same grab radius discipline).
+  int best_patch = -1;
+  for (std::size_t i = 0; i < content_.patches.size(); ++i) {
+    const auto& p = content_.patches[i];
+    const double cx =
+        std::clamp(world_x, std::min(p.x0, p.x1), std::max(p.x0, p.x1));
+    const double cy =
+        std::clamp(world_y, std::min(p.y0, p.y1), std::max(p.y0, p.y1));
+    if (std::hypot(world_x - cx, world_y - cy) <= kGrabRadiusM) {
+      best_patch = static_cast<int>(i);
+    }
+  }
+  if (best_patch >= 0) {
+    sel_patch_ = best_patch;
+    sel_box_ = -1;
+    sel_corner_ = -1;
+    sel_place_ = -1;
+    sel_zone_ = -1;
+    return;
+  }
+  int best_zone = -1;
+  for (std::size_t i = 0; i < content_.zones.size(); ++i) {
+    const auto& z = content_.zones[i];
+    const double cx =
+        std::clamp(world_x, std::min(z.x0, z.x1), std::max(z.x0, z.x1));
+    const double cy =
+        std::clamp(world_y, std::min(z.y0, z.y1), std::max(z.y0, z.y1));
+    if (std::hypot(world_x - cx, world_y - cy) <= kGrabRadiusM) {
+      best_zone = static_cast<int>(i);
+    }
+  }
+  if (best_zone >= 0) {
+    sel_zone_ = best_zone;
+    sel_box_ = -1;
+    sel_corner_ = -1;
+    sel_place_ = -1;
+    sel_patch_ = -1;
     return;
   }
   // Nearest place.
@@ -95,6 +154,8 @@ void MapEditor::press(double world_x, double world_y) {
   sel_box_ = -1;
   sel_corner_ = -1;
   sel_place_ = best_place;
+  sel_patch_ = -1;
+  sel_zone_ = -1;
 }
 
 void MapEditor::drag(double world_x, double world_y) {
@@ -123,6 +184,24 @@ void MapEditor::drag(double world_x, double world_y) {
     }
     normalize(b);
     dirty_ = true;
+  } else if (sel_patch_ >= 0 &&
+             sel_patch_ < static_cast<int>(content_.patches.size())) {
+    auto& p = content_.patches[static_cast<std::size_t>(sel_patch_)];
+    p.x0 = clamp_to_map(p.x0 + dx);
+    p.x1 = clamp_to_map(p.x1 + dx);
+    p.y0 = clamp_to_map(p.y0 + dy);
+    p.y1 = clamp_to_map(p.y1 + dy);
+    normalize_rect(p.x0, p.y0, p.x1, p.y1);
+    dirty_ = true;
+  } else if (sel_zone_ >= 0 &&
+             sel_zone_ < static_cast<int>(content_.zones.size())) {
+    auto& z = content_.zones[static_cast<std::size_t>(sel_zone_)];
+    z.x0 = clamp_to_map(z.x0 + dx);
+    z.x1 = clamp_to_map(z.x1 + dx);
+    z.y0 = clamp_to_map(z.y0 + dy);
+    z.y1 = clamp_to_map(z.y1 + dy);
+    normalize_rect(z.x0, z.y0, z.x1, z.y1);
+    dirty_ = true;
   } else if (sel_place_ >= 0 &&
              sel_place_ < static_cast<int>(content_.places.size())) {
     auto& p = content_.places[static_cast<std::size_t>(sel_place_)];
@@ -144,6 +223,8 @@ void MapEditor::add_box(double world_x, double world_y) {
   sel_box_ = static_cast<int>(content_.boxes.size()) - 1;
   sel_corner_ = -1;
   sel_place_ = -1;
+  sel_patch_ = -1;
+  sel_zone_ = -1;
   dirty_ = true;
   message_ = "box added";
 }
@@ -158,8 +239,50 @@ void MapEditor::add_place(double world_x, double world_y) {
   sel_place_ = static_cast<int>(content_.places.size()) - 1;
   sel_box_ = -1;
   sel_corner_ = -1;
+  sel_patch_ = -1;
+  sel_zone_ = -1;
   dirty_ = true;
   message_ = "place added: " + p.place_id;
+}
+
+void MapEditor::add_patch(double world_x, double world_y) {
+  const double x = clamp_to_map(world_x), y = clamp_to_map(world_y);
+  world::TerrainPatch p;
+  p.patch_id = "edit_patch_" + std::to_string(patch_seq_++);
+  p.x0 = x - 1.0;
+  p.y0 = y - 1.0;
+  p.x1 = x + 1.0;
+  p.y1 = y + 1.0;
+  p.base_height_m = 0.0;
+  p.grade_x = 0.2;  // default ramp, main's map-editor default
+  content_.patches.push_back(p);
+  sel_patch_ = static_cast<int>(content_.patches.size()) - 1;
+  sel_box_ = -1;
+  sel_corner_ = -1;
+  sel_place_ = -1;
+  sel_zone_ = -1;
+  dirty_ = true;
+  message_ = "patch added: " + p.patch_id;
+}
+
+void MapEditor::add_zone(double world_x, double world_y,
+                         const std::string& material) {
+  const double x = clamp_to_map(world_x), y = clamp_to_map(world_y);
+  world::MaterialZone z;
+  z.zone_id = "edit_zone_" + std::to_string(zone_seq_++);
+  z.x0 = x - 1.0;
+  z.y0 = y - 1.0;
+  z.x1 = x + 1.0;
+  z.y1 = y + 1.0;
+  z.material_id = material;
+  content_.zones.push_back(z);
+  sel_zone_ = static_cast<int>(content_.zones.size()) - 1;
+  sel_box_ = -1;
+  sel_corner_ = -1;
+  sel_place_ = -1;
+  sel_patch_ = -1;
+  dirty_ = true;
+  message_ = "zone added: " + z.zone_id;
 }
 
 void MapEditor::remove_selected() {
@@ -169,6 +292,21 @@ void MapEditor::remove_selected() {
     sel_corner_ = -1;
     dirty_ = true;
     message_ = "box removed";
+  } else if (sel_patch_ >= 0 &&
+             sel_patch_ < static_cast<int>(content_.patches.size())) {
+    message_ =
+        "patch removed: " +
+        content_.patches[static_cast<std::size_t>(sel_patch_)].patch_id;
+    content_.patches.erase(content_.patches.begin() + sel_patch_);
+    sel_patch_ = -1;
+    dirty_ = true;
+  } else if (sel_zone_ >= 0 &&
+             sel_zone_ < static_cast<int>(content_.zones.size())) {
+    message_ = "zone removed: " +
+               content_.zones[static_cast<std::size_t>(sel_zone_)].zone_id;
+    content_.zones.erase(content_.zones.begin() + sel_zone_);
+    sel_zone_ = -1;
+    dirty_ = true;
   } else if (sel_place_ >= 0 &&
              sel_place_ < static_cast<int>(content_.places.size())) {
     message_ = "place removed: " + content_.places[static_cast<std::size_t>(sel_place_)].place_id;

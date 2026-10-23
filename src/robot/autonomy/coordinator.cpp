@@ -1,6 +1,7 @@
 #include "robot/autonomy/coordinator.hpp"
 
 #include <cmath>
+#include <limits>
 #include <string>
 
 namespace lost_signal::robot::autonomy {
@@ -253,8 +254,25 @@ iface::MotionCommand AutonomyCoordinator::update(
   // decisions: the speed envelope must tighten within a second of slip
   // evidence, not at the next 10 Hz boundary. The coordinator only wires
   // measured evidence in and consumes the tightened envelope below.
+  // Survey grade along the estimated heading feeds the governor's gravity
+  // compensation (published navigation prior, never live physics).
+  // NaN = unsurveyed = flat assumption, erring toward caution on grades
+  // the survey never measured.
+  double survey_pitch = std::numeric_limits<double>::quiet_NaN();
+  const EstimatedState& est_for_grade = estimator_->estimate();
+  if (est_for_grade.valid && map.has_elevation()) {
+    const double c = std::cos(est_for_grade.yaw_rad);
+    const double s = std::sin(est_for_grade.yaw_rad);
+    const float ahead = map.elevation_at(est_for_grade.x_m + 0.5 * c,
+                                         est_for_grade.y_m + 0.5 * s);
+    const float behind = map.elevation_at(est_for_grade.x_m - 0.5 * c,
+                                          est_for_grade.y_m - 0.5 * s);
+    if (std::isfinite(ahead) && std::isfinite(behind)) {
+      survey_pitch = std::atan2(static_cast<double>(ahead - behind), 1.0);
+    }
+  }
   grip_.update(now_ns, last_obs_, estimator_->estimate(),
-               estimator_->last_slip());
+               estimator_->last_slip(), survey_pitch);
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.

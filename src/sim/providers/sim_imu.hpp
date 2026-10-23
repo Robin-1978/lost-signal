@@ -49,9 +49,12 @@ class SimImuProvider
   std::uint64_t rng_state_ = 0;
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};
-  // Previous yaw rate + stamp for the lever-arm angular acceleration.
-  // First poll (or repeated stamp) contributes no angular acceleration.
+  // Previous twist + stamp for differentiated accelerations (lever-arm
+  // angular accel + body linear accel). First poll (or repeated stamp)
+  // contributes no acceleration.
   double prev_yaw_rate_radps_ = 0.0;
+  double prev_fwd_mps_ = 0.0;
+  double prev_lat_mps_ = 0.0;
   double prev_stamp_s_ = -1.0;
 };
 

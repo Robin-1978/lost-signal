@@ -76,20 +76,30 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   // Yaw rate is truth here. It must be truthful, not zero: the estimator's
   // slip gate trusts the gyro over wheel odometry on disagreement, so a
   // hard zero would freeze the heading estimate through every turn.
-  // Planar motion: no roll/pitch rate. Level: specific force opposes
-  // gravity; noise rides on top when enabled. Everything below is
-  // expressed in the SENSOR frame: body rates rotate through the mount
-  // orientation, and the yaw-acceleration lever arm at the mount offset is
-  // exact planar rigid-body kinematics (alpha x r - w^2 r). Linear body
-  // acceleration stays out (was and is zero here — gravity only).
+  // Specific force is the full hardware quantity: body linear acceleration
+  // (differentiated truth twist at poll cadence) plus gravity in the TRUE
+  // body attitude, plus the yaw lever arm at the mount offset (exact planar
+  // rigid-body kinematics). Everything below is expressed in the SENSOR
+  // frame: body vectors rotate through the mount orientation. Noise rides
+  // on top when enabled. The longitudinal traction observer closes on the
+  // linear terms — without them straight-line wheelspin is unobservable.
   const double stamp_s =
       static_cast<double>(world_->truth().step) * 0.02;
   const double w = world_->truth().yaw_rate_radps;
-  double alpha = 0.0;
+  const double fwd = world_->truth().forward_mps;
+  const double lat = world_->truth().lateral_mps;
+  double alpha = 0.0, acc_f = 0.0, acc_l = 0.0;
   if (prev_stamp_s_ >= 0.0 && stamp_s > prev_stamp_s_) {
     alpha = (w - prev_yaw_rate_radps_) / (stamp_s - prev_stamp_s_);
+    if (std::isfinite(fwd) && std::isfinite(lat) &&
+        std::isfinite(prev_fwd_mps_) && std::isfinite(prev_lat_mps_)) {
+      acc_f = (fwd - prev_fwd_mps_) / (stamp_s - prev_stamp_s_);
+      acc_l = (lat - prev_lat_mps_) / (stamp_s - prev_stamp_s_);
+    }
   }
   prev_yaw_rate_radps_ = w;
+  prev_fwd_mps_ = fwd;
+  prev_lat_mps_ = lat;
   prev_stamp_s_ = stamp_s;
   const robot::core::Vec3 body_w{0.0, 0.0, w};
   const robot::core::Quaternion mount_q = robot::core::quaternion_from_rpy(
@@ -101,12 +111,19 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   const robot::core::Vec3 gyro_s =
       robot::core::rotate_vector(mount_q_inv, body_w);
   const double rx = mount_xyz_m_[0], ry = mount_xyz_m_[1];
-  // Lever arm in the BASE frame, then rotated into the sensor frame.
-  const robot::core::Vec3 lever_b{-alpha * ry - w * w * rx,
-                                  alpha * rx - w * w * ry, 0.0};
+  // Base-frame specific force: yaw lever arm + body linear accel.
+  const robot::core::Vec3 lever_b{-alpha * ry - w * w * rx + acc_f,
+                                  alpha * rx - w * w * ry + acc_l, 0.0};
   const robot::core::Vec3 lever_s =
       robot::core::rotate_vector(mount_q_inv, lever_b);
-  const robot::core::Vec3 grav_b{0.0, 0.0, 9.81};
+  // Gravity in the true body attitude (specific force opposes gravity):
+  // level reads +g on z; pitch/roll project it onto x/y. Derived as
+  // -(R_y(pitch) R_x(roll) (0,0,-g)): yaw never moves the gravity vector.
+  const double pitch = world_->truth().body_pitch_rad;
+  const double roll = world_->truth().body_roll_rad;
+  const robot::core::Vec3 grav_b{9.81 * std::cos(roll) * std::sin(pitch),
+                                 -9.81 * std::sin(roll),
+                                 9.81 * std::cos(pitch) * std::cos(roll)};
   const robot::core::Vec3 grav_s =
       robot::core::rotate_vector(mount_q_inv, grav_b);
   out.gyro_z_radps = gyro_s.z + realism_.gyro_bias_radps +

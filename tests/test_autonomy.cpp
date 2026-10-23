@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 #include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/coordinator.hpp"
@@ -349,25 +350,25 @@ int main() {
     est.valid = true;
     est.forward_mps = 1.0;
     SlipObservation no_slip;  // Invalid: sensor pair is the evidence
-    g.update(0, o, est, no_slip);  // stamps the clock
-    g.update(500'000'000, o, est, no_slip);  // 0.5 s at 0.4/s
+    g.update(0, o, est, no_slip, 0.0);  // stamps the clock
+    g.update(500'000'000, o, est, no_slip, 0.0);  // 0.5 s at 0.4/s
     assert(std::abs(g.factor() - 0.8) < 1e-9);
     // Hysteresis band: residual between release (0.2) and slip (0.5)
     // freezes the factor.
     o.imu_gyro_z_radps = 0.3;
-    g.update(1'000'000'000, o, est, no_slip);
+    g.update(1'000'000'000, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.8) < 1e-9);
     // Clean rolling relaxes back toward 1.0 slowly (0.08/s).
     o.imu_gyro_z_radps = 0.0;
-    g.update(1'500'000'000, o, est, no_slip);
+    g.update(1'500'000'000, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.84) < 1e-9);
     // Floor: sustained slip pins at min_grip, never below.
     o.imu_gyro_z_radps = 2.0;
     for (int k = 2; k <= 12; ++k) {
-      g.update(k * 500'000'000LL, o, est, no_slip);
+      g.update(k * 500'000'000LL, o, est, no_slip, 0.0);
     }
     assert(std::abs(g.factor() - 0.4) < 1e-9);
-    g.update(7'000'000'000LL, o, est, no_slip);
+    g.update(7'000'000'000LL, o, est, no_slip, 0.0);
     assert(std::abs(g.factor() - 0.4) < 1e-9);
   }
 
@@ -384,21 +385,21 @@ int main() {
     still.valid = true;
     still.forward_mps = 0.0;  // standstill: sensor pair gated off
     SlipObservation none;
-    g.update(0, o, still, none);
-    g.update(500'000'000, o, still, none);
+    g.update(0, o, still, none, 0.0);
+    g.update(500'000'000, o, still, none, 0.0);
     assert(std::abs(g.factor() - 1.0) < 1e-9);
     // Observer fired (its own 0.5 m/s floor already proved motion).
     SlipObservation slip;
     slip.quality = SlipQuality::kObservable;
     slip.yaw_residual_rads = 1.0;
-    g.update(1'000'000'000, o, still, slip);
+    g.update(1'000'000'000, o, still, slip, 0.0);
     assert(g.factor() < 1.0);
     // Invalid estimate freezes regardless of evidence.
     GripAdapter h;
     EstimatedState bad;  // valid == false
     bad.forward_mps = 1.0;
-    h.update(0, o, bad, slip);
-    h.update(500'000'000, o, bad, slip);
+    h.update(0, o, bad, slip, 0.0);
+    h.update(500'000'000, o, bad, slip, 0.0);
     assert(std::abs(h.factor() - 1.0) < 1e-9);
   }
 
@@ -425,8 +426,8 @@ int main() {
     EstimatedState est;
     est.valid = true;
     est.forward_mps = 1.0;
-    g.update(0, o, est, SlipObservation{});
-    g.update(500'000'000, o, est, SlipObservation{});
+    g.update(0, o, est, SlipObservation{}, 0.0);
+    g.update(500'000'000, o, est, SlipObservation{}, 0.0);
     platform::ChassisLimits tight = g.effective_limits(base, 99.0);
     assert(std::abs(tight.max_forward_mps - 1.6) < 1e-9);
     assert(std::abs(tight.max_yaw_rate_radps - 1.2) < 1e-9);
@@ -434,6 +435,122 @@ int main() {
     // reset() restores nominal.
     g.reset();
     assert(std::abs(g.factor() - 1.0) < 1e-9);
+  }
+
+  // Longitudinal channel (adapter-owned): wheel accel vs IMU body accel
+  // with survey-grade gravity compensation. Straight-line wheelspin the
+  // yaw gate cannot see.
+  {
+    auto spin_obs = [](double forward, double ax) {
+      iface::ObservationFrame o;
+      o.odometry_valid = true;
+      o.forward_mps = forward;
+      o.yaw_rate_radps = 0.0;
+      o.imu_valid = true;
+      o.imu_gyro_z_radps = 0.0;
+      o.imu_ax_mps2 = ax;
+      o.imu_az_mps2 = 9.81;
+      return o;
+    };
+    auto run_ramp = [&](double wheel_accel, double body_ax, double survey,
+                        int n) {
+      GripAdapter g;
+      EstimatedState est;
+      est.valid = true;
+      est.forward_mps = 1.0;
+      g.update(0, spin_obs(0.0, body_ax), est, SlipObservation{}, survey);
+      for (int k = 1; k <= n; ++k) {
+        const double v = std::min(8.0, k * 0.02 * wheel_accel);
+        g.update(k * 20'000'000LL, spin_obs(v, body_ax), est,
+                 SlipObservation{}, survey);
+      }
+      return g.factor();
+    };
+    // Gripped launch (wheels and body accelerate together): clean, nominal.
+    assert(std::abs(run_ramp(4.0, 4.0, 0.0, 60) - 1.0) < 1e-9);
+    // Ice launch (wheels spin up, body lags): confirms, tightens hard.
+    assert(run_ramp(4.0, 0.5, 0.0, 80) < 0.7);
+    // Steady surveyed grade at constant speed: tilt cancels, no tighten.
+    {
+      GripAdapter g;
+      EstimatedState est;
+      est.valid = true;
+      est.forward_mps = 1.0;
+      const double grade = 0.1;
+      const double ax = 9.81 * std::sin(grade);
+      g.update(0, spin_obs(1.0, ax), est, SlipObservation{}, grade);
+      for (int k = 1; k <= 50; ++k) {
+        g.update(k * 20'000'000LL, spin_obs(1.0, ax), est, SlipObservation{},
+                 grade);
+      }
+      assert(std::abs(g.factor() - 1.0) < 1e-9);
+    }
+    // Unsurveyed grade (NaN): flat assumption errs toward caution.
+    {
+      GripAdapter g;
+      EstimatedState est;
+      est.valid = true;
+      est.forward_mps = 1.0;
+      const double ax = 9.81 * std::sin(0.3);
+      const double nan = std::numeric_limits<double>::quiet_NaN();
+      g.update(0, spin_obs(1.0, ax), est, SlipObservation{}, nan);
+      for (int k = 1; k <= 50; ++k) {
+        g.update(k * 20'000'000LL, spin_obs(1.0, ax), est, SlipObservation{},
+                 nan);
+      }
+      assert(g.factor() < 1.0);
+    }
+    // No IMU: longitudinal frozen, yaw-only behavior preserved.
+    {
+      GripAdapter g;
+      EstimatedState est;
+      est.valid = true;
+      est.forward_mps = 1.0;
+      iface::ObservationFrame o;
+      o.odometry_valid = true;
+      o.forward_mps = 1.0;
+      o.imu_valid = false;
+      g.update(0, o, est, SlipObservation{}, 0.0);
+      g.update(500'000'000, o, est, SlipObservation{}, 0.0);
+      assert(std::abs(g.factor() - 1.0) < 1e-9);
+    }
+  }
+
+  // GripAdapter relax needs every observed channel clean (no dither),
+  // and the longitudinal channel confirms over consecutive ticks.
+  {
+    GripAdapter g;
+    EstimatedState est;
+    est.valid = true;
+    est.forward_mps = 1.0;
+    iface::ObservationFrame o;
+    o.odometry_valid = true;
+    o.forward_mps = 1.0;  // wheels steady
+    o.yaw_rate_radps = 0.0;
+    o.imu_valid = true;
+    o.imu_gyro_z_radps = 0.0;
+    o.imu_ax_mps2 = 5.0;  // ...body still: spin residual, sustained
+    g.update(0, o, est, SlipObservation{}, 0.0);
+    // 14 over-threshold ticks: confirmation pending, envelope untouched.
+    for (int k = 1; k <= 14; ++k) {
+      g.update(k * 100'000'000LL, o, est, SlipObservation{}, 0.0);
+    }
+    assert(std::abs(g.factor() - 1.0) < 1e-9);
+    // 15th consecutive tick confirms: tightens from the next one on.
+    g.update(1'500'000'000LL, o, est, SlipObservation{}, 0.0);
+    assert(std::abs(g.factor() - 1.0) < 1e-9);  // counter just completed
+    g.update(1'600'000'000LL, o, est, SlipObservation{}, 0.0);
+    const double tight = g.factor();
+    assert(tight < 1.0);
+    g.update(1'700'000'000LL, o, est, SlipObservation{}, 0.0);
+    assert(g.factor() < tight);  // still firing, never relaxing
+    // Body catches up (ax back to ~0): residual decays, envelope recovers.
+    // Slow relax (0.08/s) needs a long runway back.
+    o.imu_ax_mps2 = 0.0;
+    for (int k = 18; k <= 150; ++k) {
+      g.update(k * 100'000'000LL, o, est, SlipObservation{}, 0.0);
+    }
+    assert(g.factor() > tight);
   }
 
   // Coordinator probe: grip starts nominal, resets on configure.

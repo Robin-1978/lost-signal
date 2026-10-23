@@ -50,8 +50,14 @@ int main() {
   assert(world.truth().forward_mps > 2.80 && world.truth().forward_mps <= 3.0);
 
   // Feedback reflects the plant, and the envelope carries it through.
+  // Encoder velocities differentiate over the poll cadence (native-driver
+  // parity): poll at rate, like the live loop does — a sparse poll reads
+  // the honest time-average, never an instantaneous sample.
   robot::iface::ObservationFrame obs2;
-  assert(suite.poll_envelope(obs2));
+  for (int i = 0; i < 5; ++i) {
+    world.step(0.02);
+    assert(suite.poll_envelope(obs2));
+  }
   assert(obs2.drive_count == 2);
   assert(obs2.forward_mps > 2.80 && obs2.forward_mps <= 3.0);
   // Traction flags stay SIM-side (WorldTruth, offline labels only — the
