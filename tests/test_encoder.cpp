@@ -199,7 +199,9 @@ int main() {
       max_drift =
           std::max(max_drift, std::abs(w.truth().body_x_m - x_settled));
     }
-    assert(max_fb <= 2.0 * kQuantumRadps);
+    // Quantized velocity is an integer number of quanta: allow the exact
+    // two-count dither plus floating-point slop.
+    assert(max_fb <= 2.0 * kQuantumRadps + 1e-9);
     assert(max_drift <= 0.005);
   }
 

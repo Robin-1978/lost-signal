@@ -22,6 +22,24 @@ double steer_for_twist(double yaw_rate, double forward, double wheel_base_m,
   return std::clamp(raw, -max_steer_rad, max_steer_rad);
 }
 
+// Closed-loop step from wall/stamp time. to_actuator runs per tick (every
+// scan-due step, nominally the 20 ms plant rate), NOT per coordinator
+// decision (10 Hz) — the old fixed 0.1 s integrated 5x too much per call
+// and silently broke under any custom decision_period_ns. First call (or a
+// repeated stamp inside one instant) uses the nominal plant step; the
+// result is clamped to one command-watchdog horizon so a long pause can't
+// inject a huge integral step (derivative divides by this; never zero).
+double controller_dt(core::MonotonicNs& last_ns, core::MonotonicNs now_ns) {
+  constexpr double kNominalDtS = 0.02;
+  double dt_s = kNominalDtS;
+  if (last_ns != core::kInvalidTime && now_ns > last_ns) {
+    dt_s = std::clamp(static_cast<double>(now_ns - last_ns) * 1e-9, 1e-3,
+                      0.2);
+  }
+  last_ns = now_ns;
+  return dt_s;
+}
+
 }  // namespace
 
 DifferentialChassis::DifferentialChassis(double wheel_radius_m,
@@ -73,6 +91,7 @@ void DifferentialChassis::forward(const WheelSpeeds& w, double& forward_mps,
 iface::ActuatorCommand DifferentialChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
+  const double dt_s = controller_dt(last_update_ns_, now_ns);
   // No joints, no loop: fail closed. Never drive (or brake) blind.
   if (!fb.has_joints() || fb.drive_count < 2) {
     wheels_.reset();
@@ -93,10 +112,8 @@ iface::ActuatorCommand DifferentialChassis::to_actuator(
     target_w = body.yaw_rate_radps;
   }
   control::WheelFeedback wfb{fb.drive_radps[0], fb.drive_radps[1], true};
-  // Fixed decision step matches the coordinator cadence contract.
-  constexpr double kDtS = 0.1;
   control::WheelCommand wc =
-      wheels_.update(target_v, target_w, wfb, kDtS);
+      wheels_.update(target_v, target_w, wfb, dt_s);
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kDiffDuty;
   out.stamp_ns = now_ns;
@@ -150,6 +167,7 @@ iface::MotionCommand AckermannChassis::clamp_command(
 iface::ActuatorCommand AckermannChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
+  const double dt_s = controller_dt(last_update_ns_, now_ns);
   // No joints, no loop: fail closed. Never drive (or brake) blind.
   if (!fb.has_joints() || fb.drive_count < 2) {
     controller_.reset();
@@ -184,9 +202,8 @@ iface::ActuatorCommand AckermannChassis::to_actuator(
     afb.front_right_steer_vel_radps = fb.steer_vel_radps[1];
   }
   afb.valid = true;
-  constexpr double kDtS = 0.1;
   control::AckermannCommand ac =
-      controller_.update(target_v, steer, afb, kDtS);
+      controller_.update(target_v, steer, afb, dt_s);
   iface::ActuatorCommand out;
   out.mode = iface::ActuatorMode::kAckermannDuty;
   out.stamp_ns = now_ns;
@@ -243,6 +260,7 @@ iface::MotionCommand HolonomicChassis::clamp_command(
 iface::ActuatorCommand HolonomicChassis::to_actuator(
     const iface::MotionCommand& body, const iface::MotionFeedback& fb,
     core::MonotonicNs now_ns) const {
+  const double dt_s = controller_dt(last_update_ns_, now_ns);
   const bool swerve = config_.kind == control::HolonomicKind::Swerve;
   const iface::ActuatorMode mode =
       swerve ? iface::ActuatorMode::kSwerveDuty : iface::ActuatorMode::kMecanumDuty;
@@ -279,9 +297,8 @@ iface::ActuatorCommand HolonomicChassis::to_actuator(
   hfb.steer_vel_radps = {fb.steer_vel_radps[0], fb.steer_vel_radps[1],
                          fb.steer_vel_radps[2], fb.steer_vel_radps[3]};
   hfb.valid = true;
-  constexpr double kDtS = 0.1;
   control::HolonomicCommand hc = controller_.update(
-      target_v, lateral, target_w, hfb, kDtS);
+      target_v, lateral, target_w, hfb, dt_s);
   iface::ActuatorCommand out;
   out.mode = mode;
   out.stamp_ns = now_ns;

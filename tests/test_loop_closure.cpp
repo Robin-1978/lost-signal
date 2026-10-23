@@ -59,26 +59,13 @@ int main() {
   assert(last.place_id == "loopD");
   assert(last.truth_miss_m < 1.0);
 
-  // No meaningful collisions on a landmark-lined loop. Engine note:
-  // the D->A turn overshoots east (autonomy arc tuned on the analytic
-  // plant; retune is planner scope) and grazes the east box's
-  // conservative judge circle (r=0.4) by millimeters on the A->B leg —
-  // the real box body still clears. Bound steps and depth instead of
-  // pretending the graze is zero.
-  const auto& steps = session.episode().steps();
-  std::size_t static_hits = 0;
-  double min_clearance = 0.0;
-  for (const auto& st : steps) {
-    if (st.judge.static_collision) {
-      ++static_hits;
-      min_clearance = std::min(min_clearance, st.judge.static_clearance_m);
-    }
-    assert(!st.judge.dynamic_collision);
-  }
-  assert(static_hits <= 50);
-  assert(min_clearance > -0.01);
+  // No collisions on a landmark-lined loop; estimate stayed sane. History:
+  // the M2 engine cutover grazed the east box's conservative judge circle
+  // (r=0.4) for 39 sub-centimeter steps because the chassis PID integrated
+  // with a fixed 0.1 s step at the 20 ms tick (5x over-integration, wide
+  // arcs). Measuring dt per call healed the arc; the strict pin is back.
   const auto score = sim::eval::score_episode(session.episode());
-  assert(score.collision_steps == static_hits);
+  assert(score.collision_steps == 0);
   assert(score.max_pos_err_m < 1.0);
   // Closed loop, geometrically: truth displacement start->end is ~0 while
   // the mission traveled ~16 m through 4 docks (keyframed above).

@@ -19,7 +19,10 @@ struct WheelControllerConfig {
   double integral_limit = 0.5;
   double lead_time_s = 0.15;
   // Default PID gains suit the sim plant (small direct-drive wheels);
-  // native bring-up re-tunes against measured step response.
+  // native bring-up re-tunes against measured step response. ki is
+  // per-second and matches main's tuning: the chassis used to (wrongly)
+  // step the loop with a fixed dt of 0.1 s at the 20 ms tick, i.e. 5x
+  // over-integration, which is also what widened the autonomy's turn arcs.
   double kp = 0.6;
   double ki = 2.0;
   double kd = 0.0;

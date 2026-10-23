@@ -23,6 +23,8 @@ struct HolonomicControllerConfig {
   double duty_limit = 1.0;
   double integral_limit = 2.0;
   double lead_time_s = 0.15;
+  // ki is per-second, matching main's tuning (see the wheel loop note:
+  // the old fixed 0.1 s step at 20 ms cadence meant 5x over-integration).
   double kp = 0.6;
   double ki = 2.0;
   double kd = 0.0;

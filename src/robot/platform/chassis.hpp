@@ -67,6 +67,9 @@ class DifferentialChassis : public IChassis {
   // Mutable: closed-loop state advances on every to_actuator call, which is
   // logically const (same command + same feedback = same setpoints).
   mutable control::DifferentialWheelController wheels_;
+  // Last to_actuator stamp for the measured controller step (nominal plant
+  // rate on first call / repeated stamps; clamped to the command watchdog).
+  mutable core::MonotonicNs last_update_ns_ = core::kInvalidTime;
 };
 
 // Ackermann: native space is (forward, steer-angle); a kYawRate body
@@ -95,6 +98,7 @@ class AckermannChassis : public IChassis {
   double track_width_m_;
   ChassisLimits limits_;
   mutable control::AckermannController controller_;
+  mutable core::MonotonicNs last_update_ns_ = core::kInvalidTime;
 };
 
 // Holonomic: native space is (forward, lateral, yaw). Swerve modules
@@ -126,6 +130,7 @@ class HolonomicChassis : public IChassis {
   ChassisLimits limits_;
   control::HolonomicControllerConfig config_;
   mutable control::HolonomicController controller_;
+  mutable core::MonotonicNs last_update_ns_ = core::kInvalidTime;
 };
 
 // Build the chassis named by a RobotDescription ("differential",
