@@ -24,6 +24,20 @@ ScenarioSession::ScenarioSession()
   scheduler_.reset(0.02, 0.02, 0.02);
 }
 
+ScenarioSession::ScenarioSession(
+    robot::platform::RobotDescription desc, world::MotorParams motor)
+    : world_(),
+      suite_(&world_),
+      app_(std::make_unique<providers::StaticMapProvider>(
+               &world_, -10.0, -10.0, 20.0, 20.0, 0.25),
+           std::move(desc)) {
+  world_.set_motor_params(motor);
+  suite_.register_all(app_);
+  (void)app_.configure();
+  (void)app_.activate();
+  scheduler_.reset(0.02, 0.02, 0.02);
+}
+
 void ScenarioSession::set_cadence(double scan_period_s,
                                   double decision_period_s,
                                   double record_period_s) {

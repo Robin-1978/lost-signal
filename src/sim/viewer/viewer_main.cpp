@@ -10,9 +10,11 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
-
+#include "sim/eval/robot_config.hpp"
+#include "sim/eval/world_io.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
@@ -291,8 +293,45 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
 
 int main(int argc, char** argv) {
   using namespace lost_signal;
-  sim::scenario::ScenarioSession session;
-  setup_demo(session);
+  // Optional single-source configuration: --robot <config> builds the
+  // session from one RobotConfig file (ROBOT description + SIM motor
+  // numbers), --map <world file> replaces the demo geometry.
+  std::string robot_path, map_path;
+  for (int i = 1; i < argc; ++i) {
+    const std::string a = argv[i];
+    if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
+    if (a == "--map" && i + 1 < argc) map_path = argv[++i];
+  }
+  std::unique_ptr<sim::scenario::ScenarioSession> session;
+  if (!robot_path.empty()) {
+    sim::eval::RobotConfig config;
+    std::string err;
+    if (!sim::eval::load_robot_config(robot_path, config, &err)) {
+      std::fprintf(stderr, "bad --robot file: %s\n", err.c_str());
+      return 1;
+    }
+    session = std::make_unique<sim::scenario::ScenarioSession>(
+        sim::eval::description_from_config(config),
+        sim::eval::motor_from_config(config));
+  } else {
+    session = std::make_unique<sim::scenario::ScenarioSession>();
+  }
+  if (!map_path.empty()) {
+    std::vector<sim::world::StaticBox> boxes;
+    std::vector<sim::world::NamedPlace> places;
+    std::string err;
+    if (!sim::eval::load_world_file(map_path, boxes, places, &err)) {
+      std::fprintf(stderr, "bad --map file: %s\n", err.c_str());
+      return 1;
+    }
+    session->setup_world().set_static_boxes(std::move(boxes));
+    std::vector<std::string> ids;
+    for (const auto& p : places) ids.push_back(p.place_id);
+    session->setup_world().set_places(std::move(places));
+    session->set_objectives(std::move(ids));
+  } else {
+    setup_demo(*session);
+  }
 
   InitWindow(kScreenW, kScreenH, "robot_simu viewer (SIM truth, 2D)");
   SetTargetFPS(60);
@@ -346,10 +385,10 @@ int main(int argc, char** argv) {
     if (IsKeyPressed(KEY_M)) {
       edit_mode = !edit_mode;
       if (edit_mode) {
-        editor.load_from(session.setup_world());
+        editor.load_from(session->setup_world());
         paused = true;
       } else {
-        editor.apply(session.setup_world());
+        editor.apply(session->setup_world());
       }
     }
     if (edit_mode) {
@@ -371,11 +410,11 @@ int main(int argc, char** argv) {
       }
       // Live preview: paused sim, so pushing every dirty frame costs only
       // an engine model rebuild per edit, no stepping hazard.
-      if (editor.dirty()) editor.apply(session.setup_world());
+      if (editor.dirty()) editor.apply(session->setup_world());
     }
     // Input (window thread only; sim stays deterministic).
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
-    if (IsKeyPressed(KEY_N) && paused) session.step_once();
+    if (IsKeyPressed(KEY_N) && paused) session->step_once();
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
     if (IsKeyPressed(KEY_F)) follow = !follow;
@@ -414,23 +453,23 @@ int main(int argc, char** argv) {
       dragging = false;
     }
 
-    if (!paused && !session.objectives_done()) {
+    if (!paused && !session->objectives_done()) {
       for (int i = 0; i < steps_per_frame; ++i) {
-        session.step_once();
-        if (session.objectives_done()) break;
+        session->step_once();
+        if (session->objectives_done()) break;
       }
     }
-    const auto& steps = session.episode().steps();
+    const auto& steps = session->episode().steps();
     if (steps.empty()) continue;
     const sim::eval::EvalStep& last = steps.back();
     trail.emplace_back(last.truth_after.body_x_m, last.truth_after.body_y_m);
     while (trail.size() > 600) trail.pop_front();
     std::vector<std::string> reached;
-    for (const auto& r : session.objectives().results()) {
+    for (const auto& r : session->objectives().results()) {
       if (r.robot_done) reached.push_back(r.place_id);
     }
     const sim::viewer::Frame frame = sim::viewer::build_frame(
-        session.setup_world(), last, reached,
+        session->setup_world(), last, reached,
         {trail.begin(), trail.end()},
         edit_mode ? sim::viewer::EditorSelection{editor.selected_box(),
                                                  editor.selected_corner(),

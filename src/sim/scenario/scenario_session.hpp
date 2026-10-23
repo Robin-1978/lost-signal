@@ -24,6 +24,10 @@ namespace lost_signal::sim::scenario {
 class ScenarioSession {
  public:
   ScenarioSession();
+  // Config-driven bring-up: the ROBOT side runs the given description, the
+  // SIM side the given motor numbers (both from one RobotConfig file).
+  ScenarioSession(robot::platform::RobotDescription desc,
+                  world::MotorParams motor);
 
   robot::iface::GoalHandle request_goal(const robot::iface::TaskRequest& req);
   robot::iface::GoalStatus goal_status(robot::iface::GoalHandle h) const;
