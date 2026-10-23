@@ -221,6 +221,8 @@ int main() {
     const double yaw_free = pivot(free);
     assert(std::abs(yaw_free) > std::abs(yaw_tracked));  // scrub resists
     // Straight-line parity: scrub is yaw-only, forward untouched.
+    // Both configs stand on the same plant (free balls carry normal load
+    // only, no tangential braking), so this pins the scrub path.
     auto straight = [](sim::world::MotorParams motor) {
       sim::world::World w;
       w.set_motor_params(motor);

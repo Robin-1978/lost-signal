@@ -259,6 +259,99 @@ int main() {
       assert(!any_slip(w, 200));
     }
   }
+
+  // Chassis hard geometry (config, never constants): axle offset lands in
+  // the wheel table, explicit supports build and stand, bad geometry
+  // refuses with frozen truth (same fail-closed contract as bad zones).
+  {
+    // Axle offset shifts the drive pair (default 0 = legacy plant).
+    sim::world::World w = make_mujoco_diff();
+    sim::world::MotorParams mp;
+    mp.drive_axle_x_m = 0.1;
+    w.set_motor_params(mp);
+    set_diff_duty(w, 0.5);
+    for (int i = 0; i < 10; ++i) w.step(0.02);
+    sim::world::WheelViz table[6];
+    const int n = w.wheels(table, 6);
+    assert(n == 2);
+    assert(table[0].x_m == 0.1 && table[1].x_m == 0.1);
+    // Explicit single rear support (tripod-ish): builds, stands, drives.
+    sim::world::World t = make_mujoco_diff();
+    sim::world::MotorParams mt;
+    mt.support_count = 1;
+    mt.supports[0].kind = "ball";
+    mt.supports[0].x_m = -0.2;
+    mt.supports[0].radius_m = 0.03;
+    mt.supports[0].mass_kg = 0.1;
+    mt.supports[0].friction_mu = 0.05;
+    mt.supports[0].torsional = 0.005;
+    mt.supports[0].rolling = 0.0005;
+    t.set_motor_params(mt);
+    set_diff_duty(t, 0.6);
+    for (int i = 0; i < 50; ++i) t.step(0.02);
+    assert(t.truth().body_z_m > 0.05);  // stands, never tips through
+    assert(std::abs(t.truth().body_pitch_rad) < 0.1);
+    assert(t.truth().body_x_m > 0.1);  // drives, not beached
+    // Bad deck (belly at/below the floor): refused, truth frozen.
+    sim::world::World bad = make_mujoco_diff();
+    sim::world::MotorParams mb;
+    mb.body_half_height_m = 0.5;
+    bad.set_motor_params(mb);
+    set_diff_duty(bad, 0.6);
+    for (int i = 0; i < 10; ++i) bad.step(0.02);
+    assert(bad.truth().forward_mps == 0.0);
+    // Bad support kind: refused, truth frozen.
+    sim::world::World bad2 = make_mujoco_diff();
+    sim::world::MotorParams mb2;
+    mb2.support_count = 1;
+    mb2.supports[0].kind = "swivel";
+    mb2.supports[0].x_m = -0.2;
+    mb2.supports[0].radius_m = 0.03;
+    mb2.supports[0].mass_kg = 0.1;
+    bad2.set_motor_params(mb2);
+    set_diff_duty(bad2, 0.6);
+    for (int i = 0; i < 10; ++i) bad2.step(0.02);
+    assert(bad2.truth().forward_mps == 0.0);
+    // Config switch rebuilds (signature covers every build input): an
+    // axle shift on a live world moves the drive pair in the wheel table
+    // (previously the stale model survived silently).
+    {
+      sim::world::World w = make_mujoco_diff();
+      set_diff_duty(w, 0.5);
+      for (int i = 0; i < 5; ++i) w.step(0.02);
+      sim::world::MotorParams ms = w.motor_params();
+      ms.drive_axle_x_m = -0.1;
+      w.set_motor_params(ms);
+      for (int i = 0; i < 5; ++i) w.step(0.02);
+      sim::world::WheelViz table[6];
+      assert(w.wheels(table, 6) == 2);
+      assert(table[0].x_m == -0.1 && table[1].x_m == -0.1);
+    }
+    // Declared payload (5 kg at 0.3 m): builds, stands, covers less
+    // ground in fixed time (same stall force, more mass — the transient
+    // lag integrates to a persistent distance gap, deterministic).
+    sim::world::World laden = make_mujoco_diff();
+    sim::world::MotorParams ml;
+    ml.payload_mass_kg = 5.0;
+    ml.payload_height_m = 0.3;
+    laden.set_motor_params(ml);
+    set_diff_duty(laden, 1.0);
+    for (int i = 0; i < 100; ++i) laden.step(0.02);
+    assert(laden.truth().body_z_m > 0.05);
+    sim::world::World bare = make_mujoco_diff();
+    set_diff_duty(bare, 1.0);
+    for (int i = 0; i < 100; ++i) bare.step(0.02);
+    assert(laden.truth().body_x_m < bare.truth().body_x_m);
+    assert(bare.truth().body_x_m > 0.5);  // control actually drove
+    // COM below the deck (belly breach): refused, truth frozen.
+    sim::world::World bad3 = make_mujoco_diff();
+    sim::world::MotorParams mb3;
+    mb3.com_height_m = 0.04;
+    bad3.set_motor_params(mb3);
+    set_diff_duty(bad3, 0.6);
+    for (int i = 0; i < 10; ++i) bad3.step(0.02);
+    assert(bad3.truth().forward_mps == 0.0);
+  }
 #else
   // MuJoCo disabled: backend exists but reports invalid, never steps.
   {

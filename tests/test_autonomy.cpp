@@ -472,6 +472,19 @@ int main() {
     // No survey: planar legacy, envelope sleeps (same candidate passes).
     ValidationResult planar = v.validate(hot, est, ok, open);
     assert(planar.accepted);
+    // Declared plant re-resolves the envelope (diff loadout: wider
+    // support, lower COM): the same hot candidate now fits the cap.
+    ClearanceValidator w;
+    w.set_plant_geometry(0.5, 0.1);
+    ValidationResult declared =
+        w.validate(hot, est, ok, open, ctx);
+    assert(declared.accepted);
+    // Non-positive inputs are ignored field-wise (stock envelope kept).
+    ClearanceValidator s;
+    s.set_plant_geometry(-1.0, -1.0);
+    ValidationResult stock = s.validate(hot, est, ok, open, ctx);
+    assert(!stock.accepted &&
+           stock.verdict == TrajectoryVerdict::kTerrainInfeasible);
   }
 
   // Survey-aware mapper: background ramp returns clear but never paint;

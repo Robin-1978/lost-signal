@@ -50,6 +50,53 @@ int main() {
         sim::eval::motor_from_config(ack));
     assert(session.setup_world().motor_params().track_width_m == 0.58);
   }
+  // Chassis hard geometry: explicit in differential.json (fore/aft ball
+  // pair, COM at the axle, unladen), defaults rule in tracked.json (no
+  // supports block -> legacy pair from wheel_base).
+  {
+    robot::platform::RobotConfig diff, tracked;
+    std::string err;
+    assert(robot::platform::load_robot_config(dir + "/robot/differential.json", diff,
+                                        &err));
+    assert(diff.profile.body_half_height_m == 0.05);
+    assert(diff.profile.body_half_width_m == 0.12);
+    assert(diff.profile.drive_axle_x_m == 0.0);
+    assert(diff.profile.tire_half_width_m == 0.04);
+    assert(diff.profile.com_height_m == 0.1);
+    assert(diff.profile.payload_mass_kg == 0.0);
+    assert(diff.profile.payload_height_m == 0.0);
+    assert(diff.profile.idler_trail_m == 0.02);
+    assert(diff.profile.supports.size() == 2);
+    assert(diff.profile.supports[0].kind == "ball");
+    assert(std::abs(diff.profile.supports[0].x_m - 0.252) < 1e-12);
+    assert(std::abs(diff.profile.supports[1].x_m + 0.252) < 1e-12);
+    const auto md = sim::eval::motor_from_config(diff);
+    assert(md.body_half_height_m == 0.05);
+    assert(md.drive_axle_x_m == 0.0);
+    assert(md.wheel_mass_kg == 0.2);
+    assert(md.knuckle_mass_kg == 0.1);
+    assert(md.tire_density_kgpm3 == 400.0);
+    assert(md.com_height_m == 0.1);  // explicit COM carries through
+    assert(md.payload_mass_kg == 0.0);
+    assert(md.idler_trail_m == 0.02);
+    assert(md.support_count == 2);
+    assert(md.supports[0].x_m == diff.profile.supports[0].x_m);
+    // Declared plant loadout reaches the autonomy description (never
+    // truth): ride/support from geometry, COM unfolded (unladen), mass.
+    const auto dd = robot::platform::description_from_config(diff);
+    assert(dd.plant.wheel_radius_m == 0.1);
+    assert(dd.plant.track_width_m == 0.5);
+    assert(std::abs(dd.plant.com_height_m - 0.1) < 1e-12);
+    assert(dd.plant.total_mass_kg == 24.0);
+    assert(robot::platform::valid_robot_description(dd));
+    assert(robot::platform::load_robot_config(dir + "/robot/tracked.json", tracked,
+                                        &err));
+    assert(tracked.profile.supports.empty());  // rule path, not explicit
+    const auto mt = sim::eval::motor_from_config(tracked);
+    assert(mt.support_count == 2);  // legacy pair resolved at conversion
+    assert(std::abs(mt.supports[0].x_m - 0.9 * 0.7 / 2) < 1e-12);
+    assert(mt.com_height_m == 0.1);  // omitted com follows the axle
+  }
   // End-to-end: mounts from the config shift the live rays. A forward
   // lidar mount sees the box face sooner (same engine, same truth).
   {
@@ -106,6 +153,54 @@ int main() {
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "sensors": [{"sensor_id": "x"}]})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));  // no link/pose
+    // Chassis fail-closed: bad kind, bad deck (belly at/below floor),
+    // non-array supports, oversized support list all refuse.
+    write(R"({"kind": "differential",
+              "chassis": {"supports": [{"kind": "nope", "x_m": 0.2}]}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"supports": [{"kind": "ball", "radius_m": -1}]}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"body_half_height_m": 0.5}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"supports": {"kind": "ball"}}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential", "chassis": "ball"})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"wheel_mass_kg": -1}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"supports": [{"kind": "ball", "mass_kg": 0}]}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    // COM/payload/trail fail-closed: belly breach, negative COM, laden
+    // without placement defaults refused... (payload height 0 = chassis
+    // COM is legal ballast; negative mass/height and COM below the deck
+    // are not).
+    write(R"({"kind": "differential",
+              "chassis": {"body_half_height_m": 0.09,
+                          "com_height_m": 0.05}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"com_height_m": -1}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"payload_mass_kg": -2}})");
+    assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+    write(R"({"kind": "differential",
+              "chassis": {"payload_mass_kg": 5, "payload_height_m": 0.3}})");
+    assert(robot::platform::load_robot_config(tmp, cfg, &err));
+    assert(cfg.profile.payload_mass_kg == 5.0);
+    assert(cfg.profile.payload_height_m == 0.3);
+    // Laden fold (master-style weighted average, description-side):
+    // (24*0.1 + 5*0.3)/29 reduces the envelope COM exactly.
+    {
+      const auto dd = robot::platform::description_from_config(cfg);
+      assert(dd.plant.total_mass_kg == 29.0);
+      assert(std::abs(dd.plant.com_height_m - 3.9 / 29.0) < 1e-12);
+    }
     write(R"({bad json)");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     std::filesystem::remove(tmp);

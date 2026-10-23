@@ -194,12 +194,50 @@ int main() {
     assert(eval::load_drive_profile(path, tuned, &err));
     assert(tuned.stall_force_N == 108.0);
     assert(tuned.wheel_equiv_mass_kg == 3.0);  // default kept
-    world::World w;
-    w.set_motor_params(world::motor_params_from_profile(tuned));
-    set_diff_duty(w, 1.0);
-    w.step(0.02);
-    // Doubled stall scales the launch (engine owns the exact transient).
-    assert(w.truth().forward_mps > 0.09 && w.truth().forward_mps < 0.2);
+    // Doubled stall scales the launch: the tuned plant (stall 108,
+    // applied — the historical pin read the default plant by mistake)
+    // outruns the default plant (stall 54) over 50 steps. Comparative in
+    // one process: both worlds share history, so the ratio is immune to
+    // absolute-transient wobble (single-step exact bands are not pinned
+    // here — file doctrine: exact transients belong to effort units).
+    world::World w_tuned;
+    w_tuned.set_motor_params(world::motor_params_from_profile(tuned));
+    set_diff_duty(w_tuned, 1.0);
+    world::World w_def;
+    set_diff_duty(w_def, 1.0);
+    for (int i = 0; i < 50; ++i) {
+      w_tuned.step(0.02);
+      w_def.step(0.02);
+    }
+    assert(std::isfinite(w_tuned.truth().body_x_m));
+    assert(w_def.truth().body_x_m > 0.5);  // control actually drove
+    assert(w_tuned.truth().body_x_m > w_def.truth().body_x_m * 1.3);
+    // Legacy flat files share the chassis contract: a nested chassis
+    // block merges identically, absent keys stay defaulted.
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"differential\",\"stall_force_N\":108.0,"
+             "\"chassis\":{\"drive_axle_x_m\":0.05,"
+             "\"supports\":[{\"kind\":\"ball\",\"x_m\":-0.2}]}}";
+    }
+    assert(eval::load_drive_profile(path, tuned, &err));
+    assert(tuned.drive_axle_x_m == 0.05);
+    assert(tuned.supports.size() == 1);
+    assert(tuned.supports[0].x_m == -0.2);
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"differential\","
+             "\"chassis\":{\"supports\":[{\"kind\":\"nope\"}]}}";
+    }
+    assert(!eval::load_drive_profile(path, tuned, &err) && !err.empty());
+    // Refused loads leave the profile untouched (chassis values above
+    // kept): reload the clean file for the engine run below.
+    {
+      std::ofstream out(path, std::ios::binary | std::ios::trunc);
+      out << "{\"kind\":\"differential\",\"stall_force_N\":108.0}";
+    }
+    assert(eval::load_drive_profile(path, tuned, &err));
+
     std::filesystem::remove(path);
   }
 
