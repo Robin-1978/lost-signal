@@ -91,6 +91,11 @@ class ScenarioSession {
     suite_.set_composite_scan(sim.lidar_composite);
   }
   const ObjectiveDriver& objectives() const { return driver_; }
+  // Applied lidar mount for presentation (viewer ray origins, same source
+  // the suite generates from — never a separately authored copy).
+  void lidar_mount(double xyz_m[3], double rpy_rad[3]) const {
+    suite_.lidar_mount(xyz_m, rpy_rad);
+  }
 
  private:
   world::World world_;

@@ -23,19 +23,32 @@ struct EditorSelection {
   int place = -1;
 };
 
+// Lidar mount for ray-origin projection (base frame, xyz meters + RPY
+// rad, same extrinsics generation runs). Identity = sensor at the base
+// origin (legacy approximation).
+struct LidarMount {
+  double xyz_m[3] = {0.0, 0.0, 0.0};
+  double rpy_rad[3] = {0.0, 0.0, 0.0};
+};
+
 // reached_ids: place ids the objective driver reports done (frontend reads
 // session.objectives().results()). trail: past truth positions, oldest
 // first (frontend-owned history, capped by the caller).
 Frame build_frame(const world::World& world, const eval::EvalStep& step,
                   const std::vector<std::string>& reached_ids,
                   const std::vector<std::pair<double, double>>& trail,
-                  const EditorSelection& sel = EditorSelection{});
+                  const EditorSelection& sel = EditorSelection{},
+                  const LidarMount& mount = LidarMount{});
 
-// World-space lidar endpoints from truth body pose + recorded scan.
-// Sensor-offset ignored (documented viz approximation); invalid scan or
+// World-space lidar endpoints from the TRUE sensor pose (body pose
+// composed with the mount, same math as generation) + recorded scan.
+// Planar projection: beam tilt from body/mount pitch is not deprojected
+// (same stated limit as the frozen legacy path); the ORIGIN is exact, so
+// a misconfigured mount shows up instead of hiding. Invalid scan or
 // non-finite ranges yield no hits.
 std::vector<std::pair<double, double>> lidar_endpoints(
     double body_x_m, double body_y_m, double body_yaw_rad,
-    const robot::iface::ObservationFrame& obs);
+    const robot::iface::ObservationFrame& obs,
+    const LidarMount& mount = LidarMount{});
 
 }  // namespace lost_signal::sim::viewer

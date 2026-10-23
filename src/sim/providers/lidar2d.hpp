@@ -42,6 +42,12 @@ class Sim2DLidarProvider
   // REP-103). Non-finite input is rejected, previous mount kept. Default
   // zeros = sensor at the base origin (legacy behavior).
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);
+  void mount(double xyz_m[3], double rpy_rad[3]) const {
+    for (int i = 0; i < 3; ++i) {
+      xyz_m[i] = mount_xyz_m_[i];
+      rpy_rad[i] = mount_rpy_rad_[i];
+    }
+  }
   // Scan period for the rolling shutter (s): beam i acquires at
   // -period + period*i/beams (beam 0 oldest, stamp = scan end). Must be
   // finite >= 0; 0 freezes the scan (legacy). Rejected otherwise.

@@ -15,6 +15,9 @@ lost_signal::sim::eval::EvalStep make_step() {
   s.truth_after.body_x_m = 1.0;
   s.truth_after.body_y_m = 2.0;
   s.truth_after.body_yaw_rad = 0.5;
+  s.truth_after.body_roll_rad = 0.1;
+  s.truth_after.body_pitch_rad = -0.05;
+  s.truth_after.body_z_m = 0.12;
   s.obs.scan_valid = true;
   s.obs.scan_angle_min_rad = -1.0;
   s.obs.scan_angle_increment_rad = 0.5;
@@ -96,6 +99,38 @@ int main() {
     assert(std::abs(f.lidar_hits[0].second - ey) < 1e-9);
     assert(!f.static_collision);
     assert(std::abs(f.static_clearance_m - 0.3) < 1e-12);
+    // Live attitude rides the frame (ramps tilt the viz).
+    assert(std::abs(f.body.roll_rad - 0.1) < 1e-12);
+    assert(std::abs(f.body.pitch_rad + 0.05) < 1e-12);
+    // Legacy overload: identity mount reads the body-frame fan exactly.
+    auto legacy = sim::viewer::lidar_endpoints(1.0, 2.0, 0.5, step.obs);
+    assert(legacy.size() == 5);
+    assert(std::abs(legacy[0].first - ex) < 1e-9);
+  }
+
+  // Mount-aware fan: origin shifted by the yaw-rotated offset, beams
+  // steered by the mount yaw. A misconfigured mount shows up here.
+  {
+    sim::world::World w;
+    auto step = make_step();
+    sim::viewer::LidarMount mount;
+    mount.xyz_m[0] = 0.25;
+    mount.xyz_m[2] = 0.35;
+    mount.rpy_rad[2] = 0.5;  // fan steered 0.5 rad off the body axis
+    const sim::viewer::Frame f = sim::viewer::build_frame(
+        w, step, {}, {}, sim::viewer::EditorSelection{}, mount);
+    // Origin: (1, 2) + R(0.5) * (0.25, 0).
+    const double ox = 1.0 + 0.25 * std::cos(0.5);
+    const double oy = 2.0 + 0.25 * std::sin(0.5);
+    // First ray: origin + 2 m along (body yaw + mount yaw + angle_min).
+    const double ex = ox + 2.0 * std::cos(0.5 + 0.5 - 1.0);
+    const double ey = oy + 2.0 * std::sin(0.5 + 0.5 - 1.0);
+    assert(std::abs(f.lidar_hits[0].first - ex) < 1e-9);
+    assert(std::abs(f.lidar_hits[0].second - ey) < 1e-9);
+    // True 3D sensor origin rides the frame for the 3D fan.
+    assert(std::abs(f.body.sens_x_m - ox) < 1e-9);
+    assert(std::abs(f.body.sens_y_m - oy) < 1e-9);
+    assert(std::abs(f.body.sens_z_m - (0.12 + 0.35)) < 1e-9);
   }
 
   // Degenerate scans yield no hits, never NaN endpoints.

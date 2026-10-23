@@ -258,11 +258,13 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
     DrawLine3D(to_raylib(a.x_m, a.y_m, 0.25),
                to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps, 0.25), BLACK);
   }
-  // Lidar rays from the body pose.
+  // Lidar rays from the TRUE sensor origin (mount-composed, same source
+  // generation runs). Endpoints stay planar-projected (see builder).
   if (show_lidar && f.lidar_valid) {
-    const Vector3 o = to_raylib(f.body.x_m, f.body.y_m, f.body.z_m + 0.2);
+    const Vector3 o = to_raylib(f.body.sens_x_m, f.body.sens_y_m,
+                                f.body.sens_z_m);
     for (const auto& hit : f.lidar_hits) {
-      DrawLine3D(o, to_raylib(hit.first, hit.second, f.body.z_m + 0.2),
+      DrawLine3D(o, to_raylib(hit.first, hit.second, f.body.sens_z_m),
                  {255, 0, 0, 90});
     }
   }
@@ -274,14 +276,38 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
          static_cast<float>(f.body.half_width_m * 2.0)},
         DARKGREEN);
   }
-  // Body: box at engine height, yaw about the up axis.
+  // Body: box at engine pose with live attitude. Exact world->raylib
+  // rotation M = Q*R*Q' for R = Rz(yaw)*Ry(pitch)*Rx(roll) — no Euler
+  // folklore, slopes tilt the viz exactly as the engine holds them. (This
+  // also fixes a latent mirror: the old -yaw drew the nose south for a
+  // north truth; actors/spheres carry no heading so nobody noticed.)
   {
+    const double cr = std::cos(f.body.roll_rad),
+                 sr = std::sin(f.body.roll_rad);
+    const double cp = std::cos(f.body.pitch_rad),
+                 sp = std::sin(f.body.pitch_rad);
+    const double cy = std::cos(f.body.yaw_rad),
+                 sy = std::sin(f.body.yaw_rad);
+    // R = Rz*Ry*Rx, row-major.
+    const double r00 = cy * cp, r01 = cy * sp * sr - sy * cr,
+                 r02 = cy * sp * cr + sy * sr;
+    const double r10 = sy * cp, r11 = sy * sp * sr + cy * cr,
+                 r12 = sy * sp * cr - cy * sr;
+    const double r20 = -sp, r21 = cp * sr, r22 = cp * cr;
+    // M = Q*R*Q' with Q:(x,y,z)->(x,z,-y); column-major for rlMultMatrixf.
+    float m[16] = {
+        static_cast<float>(r00), static_cast<float>(r20),
+        static_cast<float>(-r10), 0.0f,
+        static_cast<float>(r02), static_cast<float>(r22),
+        static_cast<float>(-r12), 0.0f,
+        static_cast<float>(-r01), static_cast<float>(-r21),
+        static_cast<float>(r11), 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f};
     rlPushMatrix();
     rlTranslatef(static_cast<float>(f.body.x_m),
                  static_cast<float>(f.body.z_m + 0.25),
                  static_cast<float>(-f.body.y_m));
-    rlRotatef(static_cast<float>(-f.body.yaw_rad * RAD2DEG), 0.0f, 1.0f,
-              0.0f);
+    rlMultMatrixf(m);
     DrawCube({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0), 0.5f,
              static_cast<float>(f.body.half_width_m * 2.0),
              f.static_collision ? RED : SKYBLUE);
@@ -321,6 +347,11 @@ int main(int argc, char** argv) {
   } else {
     session = std::make_unique<sim::scenario::ScenarioSession>();
   }
+  // Applied lidar mount for the viz ray fan: read back from the session
+  // (the exact extrinsics generation runs — never a separately authored
+  // copy, so a misconfigured mount shows up instead of hiding).
+  sim::viewer::LidarMount session_lidar_mount;
+  session->lidar_mount(session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
   std::string used_sim, sim_err;
   auto sim_config = sim::eval::load_default_sim_config(sim_path, &used_sim,
                                                        &sim_err);
@@ -494,7 +525,8 @@ int main(int argc, char** argv) {
         edit_mode ? sim::viewer::EditorSelection{editor.selected_box(),
                                                  editor.selected_corner(),
                                                  editor.selected_place()}
-                  : sim::viewer::EditorSelection{});
+                  : sim::viewer::EditorSelection{},
+        session_lidar_mount);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.

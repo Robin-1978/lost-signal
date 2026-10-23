@@ -70,6 +70,12 @@ class SimSensorSuite {
   Sim2DLidarProvider& lidar() { return lidar_; }
   Sim3DLidarProvider& lidar3d() { return lidar3d_; }
   SimImuProvider& imu() { return imu_; }
+  // Applied lidar mount for presentation (viewer ray origins): the exact
+  // extrinsics generation runs, so a misconfigured mount shows up in the
+  // viz instead of hiding behind a body-frame approximation.
+  void lidar_mount(double xyz_m[3], double rpy_rad[3]) const {
+    lidar_.mount(xyz_m, rpy_rad);
+  }
 
  private:
   world::World* world_;

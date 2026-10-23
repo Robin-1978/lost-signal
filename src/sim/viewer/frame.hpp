@@ -17,6 +17,11 @@ struct FrameBody {
   double half_length_m = 0.3;  // body-forward extent (wheel_base/2 floor)
   double half_width_m = 0.25;  // body-left extent (track/2 floor)
   double z_m = 0.0;            // engine height (3D frontend only)
+  double roll_rad = 0.0;       // live body attitude (ramps tilt the viz)
+  double pitch_rad = 0.0;
+  // True sensor origin in world (body pose composed with the mount — the
+  // ray fan starts here, never at the body center).
+  double sens_x_m = 0.0, sens_y_m = 0.0, sens_z_m = 0.0;
   // ROBOT estimate at the same tick (offline truth-vs-estimate overlay).
   // estimate_valid=false hides the ghost.
   bool estimate_valid = false;
