@@ -49,9 +49,11 @@ identification stay out: the `IChassis` wrapper owns the real base.
   No truth, no map mutation, no command selection. `FusedOdometryEstimator`
   blends gyro-led yaw (with a slip gate that trusts the IMU and inflates
   covariance when wheels disagree), integrates a quaternion complementary
-  attitude filter (gyro propagation, gravity-tilt correction), and grows
-  sigmas with motion and time. Roll/pitch ride in `EstimatedState` with an
-  `attitude_valid` flag: planar position, full 3D attitude (2.5D).
+  attitude filter (gyro propagation, gravity-tilt correction), dead-reckons
+  z from pitch (`dz = forward·sin(pitch)` — no map correction observes it,
+  the raster is 2D), and grows sigmas with motion and time. Roll/pitch/z
+  ride in `EstimatedState` with an `attitude_valid` flag: planar position +
+  z, full 3D attitude (2.5D).
 - Perception owns tracks + free-space evidence. `scan_ok == false` means
   unknown, never free space. No actor IDs cross. `LidarPerception` splits
   foreground by disagreeing with a static reference (map raycast or surveyed
@@ -96,10 +98,13 @@ identification stay out: the `IChassis` wrapper owns the real base.
   The static provider publishes surveyed elevation alongside occupancy
   (ramps, decks; NaN where unsurveyed). A* adds a grade cost per meter of
   elevation change and rejects steps steeper than `max_grade` outright, so
-  hills are skirted and cliffs fail closed. Rolling local grade response
-  (DWA descent braking, rollover limits) waits for 3D sensing: planar
-  scans cannot observe height, so the mapper leaves the rolling elevation
-  layer absent rather than inventing it.
+  hills are skirted and cliffs fail closed. Sensing is slope-correct: the
+  estimate carries roll/pitch/z, `odom->base` publishes the full 3D pose,
+  and every deprojection path (perception, rolling mapper, scan matcher,
+  global search, SLAM submaps) composes `map<-base` with the full TF mount
+  `base<-lidar` before projecting endpoints to the 2D raster. Rolling local
+  grade response (DWA descent braking, rollover limits) builds on this;
+  the pose graph itself stays SE(2).
 - Local planning is DWA at decision rate and returns one feasible
   `LocalCandidate{forward, yaw_rate, cost}`. Score is a preference; only the
   validator decides admissibility. Every outcome (hold, plan, no-plan, veto)

@@ -26,6 +26,21 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   M3a 2D live viewer (frame model + sim_viewer binary, --shot smoke),
   M3b map editor (world file + headless model + viewer edit mode),
   M3c 3D orbit view over the same frame (--3d, V toggles).
+- M4 (done): post-viewer hardening, four cuts.
+  M4a TF tree (`robot/core/transform`, `platform/static_transform_tree`;
+  coordinator is the only odom publisher and the only TF reader/writer).
+  M4b true-pose sensing (mj_ray lidar vs compiled scene + actor cylinders,
+  mount-aware IMU, mount-matched suite wiring) with true-height prisms
+  (height <= 0 is flat paint everywhere: no engine body, ray, map cell,
+  or judge contact; real obstacles carry explicit heights; seeds carry
+  true mast extrinsics).
+  M4c robot/sim config split (ROBOT parses its hardware contract via
+  `robot::platform::load_robot_config`, native-deployable; SIM knobs live
+  in their own file; extrinsics have one source — the TF fan-out, no
+  per-algorithm copies).
+  M4d slope-correct 3D sensing (estimate dead-reckons z, odom->base is full
+  3D, every deprojection path composes map<-base with the full TF mount;
+  graph stays SE(2)).
 
 ## Standing rules (same as Phase 1)
 
