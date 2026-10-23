@@ -61,6 +61,11 @@ struct GlobalSearchConfig {
   double refine_score_margin = 0.01;
   double refine_ambiguity_distance_m = 0.25;
   double refine_ambiguity_heading_rad = 0.15;
+  // Refine beam budget (bounded local match per survivor): the window's job
+  // is to snap to the local optimum, not to recount every return — coarse
+  // already ranked with a subset. 24 keeps the ambiguity gates green at a
+  // third of the default cost (measured, not tuned).
+  std::size_t refine_max_returns = 96;
 };
 
 struct GlobalSearchResult {
@@ -75,6 +80,9 @@ struct GlobalSearchResult {
   double score_margin = 0.0;
   std::size_t usable_returns = 0;
   std::size_t coarse_evaluations = 0;
+  // Refine calls actually executed (post-dedupe survivors). Observability
+  // only: bounded by coarse_hypotheses, never a decision input.
+  std::size_t refined_poses = 0;
   std::string rejection_reason = "unassessed";
 };
 

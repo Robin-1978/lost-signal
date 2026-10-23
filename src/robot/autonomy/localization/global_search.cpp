@@ -120,6 +120,12 @@ GlobalSearchResult GlobalSearcher::search(
   }
 
   // Refine each survivor with the bounded local matcher, best-first.
+  // NOTE (measured): no pre-refine dedupe here by design. Coarse survivors
+  // live on a 1.0 m x 0.35 rad grid, so any two are farther apart than one
+  // ambiguity cell — and the twin check below NEEDS multiple refined
+  // runner-ups to compare margins against. Merging early would only weaken
+  // ambiguity protection while saving nothing (verified: 16 in, 16 out on
+  // wall, T-junction and 50 m maps alike).
   std::sort(survivors.begin(), survivors.end(),
             [](const Coarse& a, const Coarse& b) {
               if (a.score != b.score) return a.score > b.score;
@@ -136,11 +142,14 @@ GlobalSearchResult GlobalSearcher::search(
   refine_cfg.minimum_score_margin = config_.refine_score_margin;
   refine_cfg.max_range_m = config_.max_range_m;
   refine_cfg.minimum_returns = config_.minimum_returns;
+  refine_cfg.maximum_returns =
+      std::max(config_.refine_max_returns, config_.minimum_returns);
   ScanMatcher refiner(refine_cfg);
   refiner.set_lidar_mount(base_from_lidar_);
 
   std::vector<ScanMatchResult> refined;
   for (const auto& s : survivors) {
+    ++result.refined_poses;
     ScanMatchResult r =
         refiner.localize(ranges, angle_min_rad, angle_increment_rad, s.x,
                          s.y, s.heading, map, stamp_ns, body_roll_rad,
