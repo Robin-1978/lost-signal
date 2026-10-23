@@ -78,6 +78,17 @@ struct GlobalSearchResult {
   double score = 0.0;
   double overlap = 0.0;
   double score_margin = 0.0;
+  // Runner-up refined hypotheses (best-first after [0] = the published
+  // pose above, at most 3): the startup tracker disambiguates these over
+  // later scans instead of forcing a guess now. Empty unless refined
+  // runner-ups exist (accepted or ambiguous alike).
+  struct RunnerUp {
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double yaw_rad = 0.0;
+    double score = 0.0;
+  };
+  std::vector<RunnerUp> runner_ups;
   std::size_t usable_returns = 0;
   std::size_t coarse_evaluations = 0;
   // Refine calls actually executed (post-dedupe survivors). Observability

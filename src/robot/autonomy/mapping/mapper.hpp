@@ -121,9 +121,12 @@ class RayClearingMapper : public IMapper {
       map_.valid = false;
       return;
     }
-    // Rolling window: recenter (dropping old content) when the estimate
-    // leaves the inner half. A mapping session with loop closure replaces
-    // this reset with submap re-rasterization; see docs.
+    // Rolling window: recenter (shifting old content) when the estimate
+    // leaves the inner half. Evidence is world-frame: the correction's
+    // translational part remaps cell beliefs rigidly (nearest cell, error
+    // <= half a cell, absorbed by later fusion); rotation never moves
+    // cells (the grid has no heading — yaw only moves the robot within
+    // it). Fresh windows (invalid/empty/resized) reset, exactly as before.
     const double half_w = map_.width * map_.resolution_m * 0.5;
     const double half_h = map_.height * map_.resolution_m * 0.5;
     bool need_window = !map_.valid || map_.occupancy.size() !=
@@ -135,19 +138,64 @@ class RayClearingMapper : public IMapper {
                     std::abs(est.y_m - cyy) > half_h * 0.5;
     }
     if (need_window) {
+      const double new_ox = est.x_m - 5.0;
+      const double new_oy = est.y_m - 5.0;
+      const bool can_shift =
+          map_.valid && map_.resolution_m == 0.1 && map_.width == 100 &&
+          map_.height == 100 &&
+          fusion_.cell_count() == map_.width * map_.height &&
+          elevation_.cell_count() == map_.width * map_.height;
       map_.valid = true;
       map_.resolution_m = 0.1;
       map_.width = 100;
       map_.height = 100;
-      map_.origin_x_m = est.x_m - 5.0;
-      map_.origin_y_m = est.y_m - 5.0;
-      map_.occupancy.assign(map_.width * map_.height, -1);
-      // Rolling window drops history with the raster (documented; a mapping
-      // session with loop closure replaces this reset with submap fusion).
-      fusion_.reset(map_.width * map_.height);
-      elevation_.reset(map_.width * map_.height);
-      map_.elevation_m.assign(map_.width * map_.height,
-                              std::numeric_limits<float>::quiet_NaN());
+      if (can_shift) {
+        // Rigid remap of both belief layers by world coordinates (new
+        // cells with no old source read default = unknown, never a guess).
+        // Snapshot first: overlapping shifts would otherwise read cells
+        // an earlier write already overwrote.
+        std::vector<OccupancyLogOdds::CellState> old_occ(
+            map_.width * map_.height);
+        std::vector<ElevationFusion::CellState> old_elv(
+            map_.width * map_.height);
+        for (std::size_t c = 0; c < old_occ.size(); ++c) {
+          old_occ[c] = fusion_.cell_state(c);
+          old_elv[c] = elevation_.cell_state(c);
+        }
+        const double old_ox = map_.origin_x_m;
+        const double old_oy = map_.origin_y_m;
+        for (std::uint32_t gy = 0; gy < 100; ++gy) {
+          for (std::uint32_t gx = 0; gx < 100; ++gx) {
+            const double wx = new_ox + (gx + 0.5) * 0.1;
+            const double wy = new_oy + (gy + 0.5) * 0.1;
+            const int ogx =
+                static_cast<int>(std::floor((wx - old_ox) / 0.1));
+            const int ogy =
+                static_cast<int>(std::floor((wy - old_oy) / 0.1));
+            const std::size_t ni = static_cast<std::size_t>(gy) * 100 + gx;
+            if (ogx < 0 || ogy < 0 || ogx >= 100 || ogy >= 100) {
+              fusion_.set_cell_state(ni, OccupancyLogOdds::CellState{});
+              elevation_.set_cell_state(ni, ElevationFusion::CellState{});
+              continue;
+            }
+            const std::size_t oi =
+                static_cast<std::size_t>(ogy) * 100 + ogx;
+            fusion_.set_cell_state(ni, old_occ[oi]);
+            elevation_.set_cell_state(ni, old_elv[oi]);
+          }
+        }
+      } else {
+        map_.occupancy.assign(map_.width * map_.height, -1);
+        fusion_.reset(map_.width * map_.height);
+        elevation_.reset(map_.width * map_.height);
+        map_.elevation_m.assign(map_.width * map_.height,
+                                std::numeric_limits<float>::quiet_NaN());
+      }
+      map_.origin_x_m = new_ox;
+      map_.origin_y_m = new_oy;
+      // Published rasters refresh now (the early return on missing scans
+      // below must never serve the old window's values under new origins).
+      publish();
     }
     if (fusion_.cell_count() != map_.width * map_.height) {
       fusion_.reset(map_.width * map_.height);  // fail closed, never alias
@@ -227,16 +275,23 @@ class RayClearingMapper : public IMapper {
     // Publish the fused rasters (hysteresis inside: one noisy frame cannot
     // flip a confirmed wall; disagreement beyond the sigma cap publishes
     // unknown so downstream falls back to the survey prior, never a guess).
+    publish();
+  }
+  LocalMap local_map() const override { return map_; }
+
+ private:
+  void publish() {
     map_.occupancy = fusion_.values();
+    if (map_.elevation_m.size() != map_.width * map_.height) {
+      map_.elevation_m.assign(map_.width * map_.height,
+                              std::numeric_limits<float>::quiet_NaN());
+    }
     for (std::size_t c = 0; c < map_.elevation_m.size(); ++c) {
       const ElevationEstimate e = elevation_.estimate(c);
       map_.elevation_m[c] = e.valid ? static_cast<float>(e.height_m)
                                     : std::numeric_limits<float>::quiet_NaN();
     }
   }
-  LocalMap local_map() const override { return map_; }
-
- private:
   void clear_segment(double x0, double y0, double x1, double y1) {
     const double length = std::hypot(x1 - x0, y1 - y0);
     const int steps = std::max(

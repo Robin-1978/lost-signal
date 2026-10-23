@@ -9,6 +9,27 @@
 
 namespace lost_signal::robot::autonomy {
 
+namespace {
+
+// Runner-ups for deferred startup disambiguation: refined[0] is the
+// published pose; up to 3 following distinct hypotheses ride along
+// (best-first, already sorted). Bounded and deterministic.
+void fill_runner_ups(GlobalSearchResult& result,
+                     const std::vector<ScanMatchResult>& refined) {
+  result.runner_ups.clear();
+  for (std::size_t i = 1; i < refined.size() && result.runner_ups.size() < 3;
+       ++i) {
+    GlobalSearchResult::RunnerUp ru;
+    ru.x_m = refined[i].x_m;
+    ru.y_m = refined[i].y_m;
+    ru.yaw_rad = refined[i].yaw_rad;
+    ru.score = refined[i].score;
+    result.runner_ups.push_back(ru);
+  }
+}
+
+}  // namespace
+
 GlobalSearcher::GlobalSearcher(GlobalSearchConfig config) : config_(config) {}
 
 GlobalSearchResult GlobalSearcher::search(
@@ -193,6 +214,7 @@ GlobalSearchResult GlobalSearcher::search(
       result.overlap = best.overlap;
       result.score_margin = best.score - second_score;
       result.rejection_reason = "global match is geometrically ambiguous";
+      fill_runner_ups(result, refined);
       return result;
     }
     if (best.overlap - second_overlap <
@@ -201,6 +223,7 @@ GlobalSearchResult GlobalSearcher::search(
       result.overlap = best.overlap;
       result.score_margin = best.score - second_score;
       result.rejection_reason = "global match has equivalent support";
+      fill_runner_ups(result, refined);
       return result;
     }
   }
@@ -214,6 +237,7 @@ GlobalSearchResult GlobalSearcher::search(
   result.overlap = best.overlap;
   result.score_margin =
       refined.size() > 1 ? best.score - refined[1].score : 1.0;
+  fill_runner_ups(result, refined);
   return result;
 }
 

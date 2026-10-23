@@ -92,8 +92,7 @@ class ElevationFusion {
     return estimate(cell);
   }
 
-  ElevationEstimate estimate(std::size_t cell) const {
-    ElevationEstimate out;
+  ElevationEstimate estimate(std::size_t cell) const {    ElevationEstimate out;
     if (cell >= cells_.size()) return out;
     const Cell& c = cells_[cell];
     if (c.observations == 0) return out;
@@ -116,6 +115,35 @@ class ElevationFusion {
   }
 
   const ElevationFusionConfig& config() const { return config_; }
+
+  // Full belief state per cell (grid owner remaps it on window recenter;
+  // out-of-range reads default). Round-trips exactly by construction.
+  struct CellState {
+    double mean_m = 0.0;
+    double precision = 0.0;
+    double weighted_square = 0.0;
+    std::uint16_t observations = 0;
+  };
+  CellState cell_state(std::size_t cell) const {
+    if (cell >= cells_.size()) return CellState{};
+    const Cell& c = cells_[cell];
+    return CellState{c.mean_m, c.precision, c.weighted_square,
+                     c.observations};
+  }
+  void set_cell_state(std::size_t cell, CellState state) {
+    if (cell >= cells_.size()) return;
+    Cell& c = cells_[cell];
+    c.mean_m = std::isfinite(state.mean_m) ? state.mean_m : 0.0;
+    c.precision =
+        (std::isfinite(state.precision) && state.precision >= 0.0)
+            ? state.precision
+            : 0.0;
+    c.weighted_square =
+        (std::isfinite(state.weighted_square) && state.weighted_square >= 0.0)
+            ? state.weighted_square
+            : 0.0;
+    c.observations = state.observations;
+  }
 
  private:
   struct Cell {

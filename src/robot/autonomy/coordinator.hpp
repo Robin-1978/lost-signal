@@ -16,6 +16,7 @@
 #include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/localization/startup_selector.hpp"
+#include "robot/autonomy/localization/startup_tracker.hpp"
 #include "robot/autonomy/localization/supervisor.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/mapping/slam.hpp"
@@ -159,6 +160,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   SlamSession slam_;
   ScanMatcher scan_matcher_;
   GlobalSearcher global_search_;
+  StartupHypotheses startup_hyps_;
   LocalizationSupervisor supervisor_;
   std::unique_ptr<IBehaviorPolicy> behavior_;
   std::unique_ptr<IGlobalPlanner> global_planner_;

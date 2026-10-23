@@ -546,6 +546,81 @@ int main() {
     }
   }
 
+  // Recenter shifts (never drops) confirmed evidence: paint a wall,
+  // teleport the estimate across the recenter threshold, the wall stays
+  // at its WORLD position with hysteresis intact (still needs sustained
+  // clears — proof the belief STATE moved, not a repaint).
+  {
+    EstimatedState est;
+    est.valid = true;
+    auto wall_scan = [&](float beam_range) {
+      iface::ObservationFrame o = make_odom(20, 20, 0.0);
+      o.ranges_m.assign(8, 10.0f);
+      o.ranges_m[4] = beam_range;
+      o.static_ranges_m = o.ranges_m;
+      o.scan_static_valid = true;
+      return o;
+    };
+    RayClearingMapper mapper;
+    mapper.update(wall_scan(4.0f), est);  // wall face at (4, 0)
+    assert(mapper.local_map().is_blocked(4.0, 0.0));
+    EstimatedState moved = est;
+    moved.x_m = 3.0;  // |3 - 0| > 2.5: forces a recenter, origin -> (-2,-5)
+    iface::ObservationFrame quiet;
+    quiet.scan_valid = false;  // pure shift, no new evidence
+    mapper.update(quiet, moved);
+    LocalMap m = mapper.local_map();
+    assert(m.origin_x_m == -2.0 && m.origin_y_m == -5.0);
+    assert(m.is_blocked(4.0, 0.0));   // wall survived at WORLD (4, 0)
+    assert(!m.is_free(7.5, 4.5));     // unknown stayed unknown
+    // Hysteresis rides along: 3 clears keep the wall, 6 erase it.
+    for (int k = 0; k < 3; ++k) mapper.update(wall_scan(10.0f), moved);
+    assert(mapper.local_map().is_blocked(4.0, 0.0));
+    for (int k = 0; k < 3; ++k) mapper.update(wall_scan(10.0f), moved);
+    assert(!mapper.local_map().is_blocked(4.0, 0.0));
+  }
+
+  // Recenter shifts live elevation too (world-anchored heights ride along).
+  {
+    iface::MapSnapshot ramp;
+    ramp.map_id = "test-ramp";
+    ramp.revision = 3;
+    ramp.width = 80;
+    ramp.height = 8;
+    ramp.resolution_m = 0.25;
+    ramp.origin_x_m = 0.0;
+    ramp.origin_y_m = -1.0;
+    ramp.occupancy.assign(80 * 8, -1);
+    ramp.elevation_m.assign(80 * 8, 0.0f);
+    for (std::uint32_t gy = 0; gy < 8; ++gy) {
+      for (std::uint32_t gx = 0; gx < 80; ++gx) {
+        const double cx = (gx + 0.5) * 0.25;
+        ramp.elevation_m[gy * 80 + gx] =
+            static_cast<float>(std::clamp((cx - 0.5) * 0.1, 0.0, 0.6));
+      }
+    }
+    EstimatedState est;
+    est.valid = true;
+    iface::ObservationFrame face = make_odom(10, 10, 0.0);
+    face.ranges_m.assign(8, 4.0f);
+    face.static_ranges_m = face.ranges_m;
+    face.scan_static_valid = true;
+    core::RigidTransform mount{{0.0, 0.0, 0.35}, {0.0, 0.0, 0.0, 1.0}};
+    RayClearingMapper mapper;
+    mapper.set_lidar_mount(mount);
+    mapper.set_survey(ramp);
+    mapper.update(face, est);  // live height 0.35 fused at (4, 0)
+    assert(std::abs(mapper.local_map().elevation_at(4.0, 0.0) - 0.35f) <
+           1e-6);
+    EstimatedState moved = est;
+    moved.x_m = 3.0;
+    iface::ObservationFrame quiet;
+    quiet.scan_valid = false;
+    mapper.update(quiet, moved);
+    const float h = mapper.local_map().elevation_at(4.0, 0.0);
+    assert(std::isfinite(h) && std::abs(h - 0.35f) < 1e-6);
+  }
+
   // Deskewed mapper: a yawing scan of a static box paints the TRUE cell
   // (acquisition pose), not the stamp-pose projection. Uniform -0.1 s
   // offsets at yaw rate 1.0 isolate the yaw term.

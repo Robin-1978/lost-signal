@@ -272,8 +272,21 @@ table): head-on full, grazing floored at 0.15 (master default), normals
 analytic per hit class (actor cylinder radial/top, box faces, canonical
 terrain gradient — synthesis and contact share the source). Pinned:
 grazing floor ratio exact, backface reads 0, box-top full.
+Post-parity hardening (landed): global-search perf audit (50 m map
+measured 1.1 s — refine-bound, NOT coarse; beam-count/margin coupling
+proven by experiment so the default stays legacy, refined_poses
+observability added, premature pre-refine dedupe designed out with the
+reason written down); mapper recenter shifts belief state rigidly
+(log-odds + elevation CellState round-trip, snapshot-first, published
+rasters refresh before the early return — loop-closure replay keeps
+ownership of stale-frame evidence, shift owns motion); deferred startup
+disambiguation (ambiguous global seeds hypotheses, bounded local match
+per scan, merge/drop/promote/timeout rules, supervisor retry backstops —
+uniform-wall coordinator run refuses to guess for 25 ticks).
 Next slices:
-(none — capability parity reached, audit table clean).
+ROI-first search (local window, whole-map fallback) + matcher hot-loop
+restructure — only if real-time deployment demands it; sim-time needs
+neither.
 
 ## Explicitly OUT (not deployable sim)
 

@@ -62,6 +62,7 @@ core::Status AutonomyCoordinator::configure() {
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
   supervisor_.reset(false);
+  startup_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;
   last_localization_action_ = "init";
@@ -111,6 +112,7 @@ core::Status AutonomyCoordinator::cleanup() {
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
   supervisor_.reset(false);
+  startup_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;
   last_localization_action_ = "init";
@@ -150,6 +152,7 @@ void AutonomyCoordinator::set_static_frames(
   lidar_mount_z_m_ = base_from_lidar.translation_m.z;
   scan_matcher_.set_lidar_mount(base_from_lidar);
   global_search_.set_lidar_mount(base_from_lidar);
+  startup_hyps_.set_lidar_mount(base_from_lidar);
   slam_.set_lidar_mount(base_from_lidar);
   const double yaw = yaw_from_quaternion(base_from_lidar.rotation);
   if (validator_ != nullptr) validator_->set_lidar_yaw(yaw);
@@ -489,6 +492,30 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
   LocalizationAction action = supervisor_.next(
       now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
   last_localization_action_ = localization_action_name(action);
+  // Deferred startup disambiguation: an ambiguous whole-map search seeds
+  // hypotheses instead of guessing; later scans promote or drop them.
+  // Runs while unlocalized regardless of the supervisor action (tracking
+  // owns the unlocalized scans); the supervisor retry still backstops.
+  if (supervisor_.localized()) startup_hyps_.reset();
+  if (!supervisor_.localized() && !startup_hyps_.empty() &&
+      last_obs_.scan_valid && !last_obs_.ranges_m.empty()) {
+    StartupTrackResult tracked = startup_hyps_.update(
+        last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
+        last_obs_.scan_angle_increment_rad, map, now_ns);
+    if (tracked.status == StartupTrackStatus::kPromoted) {
+      estimator_->seed_pose(tracked.x_m, tracked.y_m, tracked.yaw_rad, 0.05,
+                            0.02, last_obs_.stamp_ns);
+      supervisor_.record_global(true, ScanMatchResult{});
+      last_localization_action_ = "startup-promoted";
+      return;
+    }
+    if (tracked.status == StartupTrackStatus::kTracking) {
+      last_localization_action_ = "startup-tracking";
+      return;
+    }
+    // kLost: fall through — the supervisor cadence (or this tick's
+    // global branch) re-runs the whole-map search with fresh evidence.
+  }
   if (action == LocalizationAction::kDefer) return;
   const bool attempted_global = action == LocalizationAction::kGlobalRelocalization;
   // Mapless startup: no static raster exists, so neither local matching nor
@@ -509,7 +536,9 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
   if (attempted_global) {
     // Whole-map search: kidnap recovery and cold start. An accepted global
     // fix establishes the estimate and marks the supervisor localized; a
-    // rejection is evidence only and never moves the estimate.
+    // rejection is evidence only and never moves the estimate. An
+    // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
+    // next scans disambiguate) instead of guessing now.
     GlobalSearchResult global = global_search_.search(
         last_obs_.ranges_m, last_obs_.scan_angle_min_rad,
         last_obs_.scan_angle_increment_rad, map, now_ns, est.roll_rad,
@@ -530,6 +559,11 @@ void AutonomyCoordinator::run_localization(const iface::MapSnapshot& map,
       }
     }
     supervisor_.record_global(global.accepted, ScanMatchResult{});
+    if (!global.accepted && !global.runner_ups.empty() &&
+        !supervisor_.localized()) {
+      startup_hyps_.seed(global);
+      last_localization_action_ = "startup-seeded";
+    }
     return;
   }
   ScanMatchResult match = scan_matcher_.localize(

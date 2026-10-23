@@ -59,6 +59,28 @@ class OccupancyLogOdds {
     if (cell >= cells_.size() || !cells_[cell].observed) return 0.0f;
     return cells_[cell].log_odds;
   }
+  // Full belief state per cell (grid owner remaps it on window recenter so
+  // confirmed evidence survives motion; out-of-range reads default).
+  struct CellState {
+    float log_odds = 0.0f;
+    bool observed = false;
+    std::int8_t published = -1;
+  };
+  CellState cell_state(std::size_t cell) const {
+    if (cell >= cells_.size()) return CellState{};
+    const Cell& c = cells_[cell];
+    return CellState{c.log_odds, c.observed, c.published};
+  }
+  void set_cell_state(std::size_t cell, CellState state) {
+    if (cell >= cells_.size()) return;
+    Cell& c = cells_[cell];
+    c.log_odds = std::isfinite(state.log_odds) ? state.log_odds : 0.0f;
+    c.observed = state.observed;
+    c.published =
+        (state.published == 100 || state.published == 0) ? state.published
+        : state.observed                                 ? 0
+                                                        : -1;
+  }
   // -1 unseen, 0 free, 100 occupied (hysteresis on the last decision).
   std::int8_t value(std::size_t cell) const {
     if (cell >= cells_.size()) return -1;

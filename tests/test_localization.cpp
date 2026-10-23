@@ -301,6 +301,133 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
+  // 9. Deferred startup disambiguation: fabricated ambiguous seed (true
+  // pose + far decoy) promotes the true pose once the decoy drops; close
+  // twins merge instead of deadlocking; hopeless seeds time out.
+  {
+    auto map = make_wall_map();
+    auto ranges = scan_from(1.0, 0.0, 0.0, map);
+    // Sole-survivor promote: the decoy sits outside the raster (local
+    // matches reject), the true pose confirms twice and promotes.
+    {
+      StartupHypotheses tracker;
+      GlobalSearchResult amb;
+      amb.x_m = 1.3;
+      amb.y_m = -0.2;
+      amb.yaw_rad = 0.08;
+      amb.score = 0.8;
+      GlobalSearchResult::RunnerUp decoy{50.0, 50.0, 0.0, 0.78};
+      amb.runner_ups.push_back(decoy);
+      tracker.seed(amb);
+      assert(tracker.size() == 2);
+      auto r1 = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+                               map, 1);
+      assert(r1.status == StartupTrackStatus::kTracking);
+      assert(r1.hypotheses == 2);  // one miss tolerated, decoy kept once
+
+
+      auto r2 = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+                               map, 2);
+      // Decoy rejected twice -> dropped; true pose confirmed twice.
+      assert(r2.status == StartupTrackStatus::kPromoted);
+      assert(std::abs(r2.x_m - 1.0) < 0.6);
+      assert(std::abs(r2.y_m - 0.0) < 0.6);
+      assert(tracker.empty());  // consumed on promotion
+    }
+    // Merge: near twins converge to one hypothesis and promote.
+    {
+      StartupHypotheses tracker;
+      GlobalSearchResult amb;
+      amb.x_m = 1.3;
+      amb.y_m = -0.2;
+      amb.yaw_rad = 0.08;
+      amb.score = 0.8;
+      GlobalSearchResult::RunnerUp twin{1.4, -0.1, 0.05, 0.79};
+      amb.runner_ups.push_back(twin);
+      tracker.seed(amb);
+      auto r1 = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+                               map, 1);
+      auto r2 = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+                               map, 2);
+      assert(r2.status == StartupTrackStatus::kPromoted);
+      assert(std::abs(r2.x_m - 1.0) < 0.6);
+    }
+    // Timeout: hopeless seeds (all outside the raster) give up; the
+    // supervisor retry backstops, the tracker never guesses.
+    {
+      StartupTrackerConfig cfg;
+      cfg.max_scans = 3;
+      StartupHypotheses tracker(cfg);
+      GlobalSearchResult amb;
+      amb.x_m = 50.0;
+      amb.y_m = 50.0;
+      amb.score = 0.5;
+      GlobalSearchResult::RunnerUp decoy{60.0, 60.0, 0.0, 0.49};
+      amb.runner_ups.push_back(decoy);
+      tracker.seed(amb);
+      StartupTrackResult last{StartupTrackStatus::kTracking, 0, 0, 0, 0, 0};
+      for (int k = 1; k <= 3; ++k) {
+        last = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+                              map, k);
+      }
+      assert(last.status == StartupTrackStatus::kLost);
+      assert(tracker.empty());
+    }
+    // Single-hypothesis seeds track nothing (no ambiguity to resolve).
+    {
+      StartupHypotheses tracker;
+      GlobalSearchResult solo;
+      solo.x_m = 1.0;
+      tracker.seed(solo);
+      assert(tracker.empty());
+    }
+  }
+
+  // 10. Coordinator deferred startup: on a uniform wall the whole-map
+  // search rejects WITH runner-ups (twins tie) -> tracker seeds, tracks
+  // without ever teleporting the estimate to a twin, and stays honest
+  // (unlocalized) while the geometry cannot disambiguate.
+  {
+    auto uniform = make_wall_map();
+    for (std::size_t i = 0; i < uniform.occupancy.size(); ++i) {
+      int gx = i % 40, gy = i / 40;
+      double cx = -10.0 + (gx + 0.5) * 0.5;
+      uniform.occupancy[i] = (cx >= 4.0 && cx < 5.0) ? 100 : 0;
+    }
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    auto ranges = scan_from(1.0, 0.0, 0.0, uniform);
+    for (int k = 1; k <= 25; ++k) {
+      iface::ObservationFrame o;
+      o.sequence = static_cast<std::uint64_t>(k);
+      o.stamp_ns = k * 20'000'000;
+      o.source = "t.lidar";
+      o.frame = core::Frame::kLidarLink;
+      o.odometry_valid = true;
+      o.forward_mps = 0.0;  // holding: twins never separate
+      o.yaw_rate_radps = 0.0;
+      o.scan_valid = true;
+      o.ranges_m = ranges;
+      o.scan_angle_min_rad = -M_PI;
+      o.scan_angle_increment_rad = 2.0 * M_PI / ranges.size();
+      o.imu_valid = true;
+      coord.ingest_observation(o);
+      coord.update(uniform, iface::ChannelHealth{}, o.stamp_ns);
+      if (k == 1) {
+        // Ambiguous global seeds deferred tracking instead of guessing.
+        assert(coord.last_localization_action() == "startup-seeded");
+      }
+      if (k == 2) {
+        assert(coord.last_localization_action() == "startup-tracking");
+      }
+    }
+    // Genuinely unobservable: still unlocalized, estimate never teleported
+    // to a corridor twin (odometry holding near the origin).
+    assert(!coord.localized());
+    assert(std::abs(coord.estimate().x_m) < 1.0);
+    assert(std::abs(coord.estimate().y_m) < 1.0);
+  }
+
   // 8. Mapless startup: no static raster -> trust the odometry origin once,
   // SLAM owns the drift. No teleport (seeded at the live estimate).
   {
