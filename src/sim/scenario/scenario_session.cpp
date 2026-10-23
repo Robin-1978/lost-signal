@@ -89,6 +89,18 @@ void ScenarioSession::step_once() {
   rec.judge = assess_collision(world_.truth().body_x_m,
                                world_.truth().body_y_m, judge_radius_m_,
                                world_.static_boxes(), world_.actors());
+  // Belly / high-center contact against the authored surface (same
+  // truth-side discipline; the ROBOT never sees this outcome). Needs a live
+  // engine height: an uncommanded plant (drive_count == 0) reports frozen
+  // zero truth, and z = 0 is "no data", never "body at ground level".
+  if (world_.truth().drive_count > 0) {
+    eval::CollisionOutcome terrain = assess_terrain_contact(
+        world_.truth().body_x_m, world_.truth().body_y_m,
+        world_.truth().body_z_m, judge_radius_m_, world_.terrain_patches(),
+        world_.support_slabs(), terrain_clearance_m_);
+    rec.judge.terrain_collision = terrain.terrain_collision;
+    rec.judge.terrain_clearance_m = terrain.terrain_clearance_m;
+  }
 
   bool have_obs = false;
   robot::iface::ObservationFrame obs;

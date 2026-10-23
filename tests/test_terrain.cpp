@@ -13,6 +13,7 @@
 #include "robot/platform/robot_config.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/providers/static_map.hpp"
+#include "sim/scenario/collision_judge.hpp"
 #include "sim/world/terrain.hpp"
 #include "sim/world/world.hpp"
 
@@ -233,6 +234,46 @@ int main() {
       return w.truth().body_x_m;
     };
     assert(std::abs(straight(tracked) - straight(free)) < 0.3);
+  }
+
+  // Engine high-center: a center ridge between the wheel tracks beaches
+  // the belly while the wheels spin on clean floor (no box, no static or
+  // dynamic contact — geometry alone does it). The spawn straddles the
+  // ridge deliberately (solver settles the belly onto it); duties drive,
+  // the body stays beached, and the truth-side judge reports terrain
+  // contact offline. Flat control stays clear.
+  {
+    auto ride = []() {
+      sim::world::World w = make_diff(0.6);
+      for (int i = 0; i < 50; ++i) w.step(0.02);
+      return w;
+    };
+    sim::world::World flat = ride();
+    const double ride_z = flat.truth().body_z_m;
+    assert(ride_z > 0.06);  // sane ride height, else the test is vacuous
+    auto flat_judge = sim::scenario::assess_terrain_contact(
+        flat.truth().body_x_m, flat.truth().body_y_m, ride_z, 0.4,
+        flat.terrain_patches(), flat.support_slabs(), 0.05);
+    assert(!flat_judge.terrain_collision);
+    // Ridge 2 cm above the ride-minus-clearance line: guaranteed scrape.
+    const double spine_h = ride_z - 0.05 + 0.02;
+    sim::world::World w = make_diff(0.6);
+    w.set_terrain_patches(
+        {{"spine", -2.0, -0.1, 8.0, 0.1, spine_h, 0.0, 0.0, 0.0, 0.0}});
+    bool scraped = false;
+    double min_clear = 999.0;
+    for (int i = 0; i < 200; ++i) {
+      w.step(0.02);
+      auto j = sim::scenario::assess_terrain_contact(
+          w.truth().body_x_m, w.truth().body_y_m, w.truth().body_z_m, 0.4,
+          w.terrain_patches(), w.support_slabs(), 0.05);
+      min_clear = std::min(min_clear, j.terrain_clearance_m);
+      scraped |= j.terrain_collision;
+    }
+    assert(w.truth().body_x_m < 0.5);  // beached, not parked: wheels spin,
+    assert(std::abs(w.truth().drive_radps[0]) > 3.0);  // duties still drive
+    assert(scraped);                   // belly reports contact offline
+    assert(min_clear < 0.0);
   }
 #else
   // MuJoCo disabled: truth frozen, math above still pins the contract.

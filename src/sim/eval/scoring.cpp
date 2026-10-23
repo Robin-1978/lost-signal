@@ -38,7 +38,8 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   double yaw_sum = 0.0;
   for (const auto& st : steps) {
     if (st.cmd.is_safe_stop()) s.safe_stop_steps += 1;
-    if (st.judge.static_collision || st.judge.dynamic_collision) {
+    if (st.judge.static_collision || st.judge.dynamic_collision ||
+        st.judge.terrain_collision) {
       s.collision_steps += 1;
     }
     if (st.obs_accepted) {

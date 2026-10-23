@@ -91,6 +91,32 @@ int main() {
     assert(!p.static_collision && p.static_clearance_m > 900.0);
   }
 
+  // Terrain-contact judge: belly clearance vs the authored surface (pure
+  // function, same numbers the scenario composes into the episode judge).
+  {
+    using sim::scenario::assess_terrain_contact;
+    std::vector<sim::world::TerrainPatch> flat;
+    std::vector<sim::world::SupportSlab> no_slabs;
+    // Flat floor at ride height: clear with margin.
+    auto clear = assess_terrain_contact(0.0, 0.0, 0.15, 0.4, flat, no_slabs,
+                                        0.05);
+    assert(!clear.terrain_collision);
+    assert(std::abs(clear.terrain_clearance_m - 0.10) < 1e-9);
+    // Center ridge under the belly: scrape.
+    std::vector<sim::world::TerrainPatch> ridge = {
+        {"spine", -2.0, -0.1, 8.0, 0.1, 0.12, 0.0, 0.0, 0.0, 0.0}};
+    auto scrape = assess_terrain_contact(1.0, 0.0, 0.15, 0.4, ridge, no_slabs,
+                                         0.05);
+    assert(scrape.terrain_collision);
+    assert(scrape.terrain_clearance_m < 0.0);
+    // Deck slab counts as surface too.
+    std::vector<sim::world::SupportSlab> deck = {
+        {"deck", 1.0, 0.0, 1.0, 1.0, 0.0, 0.14, 0.0}};
+    auto deck_hit = assess_terrain_contact(1.0, 0.0, 0.15, 0.4, flat, deck,
+                                           0.05);
+    assert(deck_hit.terrain_collision);
+  }
+
   // Full mission: two docks, a crosser, an off-path box. Headless to
   // completion, judged every step, scored at the end.
   {

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "sim/world/terrain.hpp"
+
 namespace lost_signal::sim::scenario {
 
 eval::CollisionOutcome assess_collision(
@@ -28,6 +30,34 @@ eval::CollisionOutcome assess_collision(
     out.dynamic_clearance_m = std::min(out.dynamic_clearance_m, clearance);
     if (clearance < 0.0) out.dynamic_collision = true;
   }
+  return out;
+}
+
+eval::CollisionOutcome assess_terrain_contact(
+    double body_x_m, double body_y_m, double body_z_m,
+    double footprint_radius_m,
+    const std::vector<world::TerrainPatch>& patches,
+    const std::vector<world::SupportSlab>& slabs,
+    double ground_clearance_m) {
+  eval::CollisionOutcome out;
+  const double r = std::max(0.0, footprint_radius_m) / std::sqrt(2.0);
+  double surface_m = -999.0;
+  const double taps[5][2] = {
+      {body_x_m, body_y_m},
+      {body_x_m + r, body_y_m},
+      {body_x_m - r, body_y_m},
+      {body_x_m, body_y_m + r},
+      {body_x_m, body_y_m - r},
+  };
+  for (const auto& tap : taps) {
+    const world::TerrainSample s =
+        world::sample_terrain(patches, slabs, tap[0], tap[1]);
+    surface_m = std::max(surface_m, s.height_m);
+  }
+  const double clearance =
+      body_z_m - surface_m - std::max(0.0, ground_clearance_m);
+  out.terrain_clearance_m = clearance;
+  out.terrain_collision = clearance < 0.0;
   return out;
 }
 

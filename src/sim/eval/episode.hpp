@@ -19,6 +19,10 @@ struct CollisionOutcome {
   bool dynamic_collision = false;
   double static_clearance_m = 999.0;   // robot-center-to-box minus radius
   double dynamic_clearance_m = 999.0;  // center-to-center minus both radii
+  // Belly / high-center contact (engine truth-side, offline only): the
+  // authored surface under the footprint nears the engine body height.
+  bool terrain_collision = false;
+  double terrain_clearance_m = 999.0;  // body_z minus surface minus clearance
 };
 
 struct EvalStep {

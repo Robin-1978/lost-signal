@@ -57,6 +57,12 @@ class ScenarioSession {
   void set_judge_radius_m(double radius_m) {
     judge_radius_m_ = radius_m >= 0.0 ? radius_m : 0.4;
   }
+  // Truth-side belly clearance for the terrain-contact judge (scenario
+  // config, not a ROBOT parameter): the engine body must stay this far
+  // above the authored surface. Non-positive falls back to the default.
+  void set_terrain_clearance_m(double clearance_m) {
+    terrain_clearance_m_ = clearance_m > 0.0 ? clearance_m : 0.05;
+  }
   // Sensor realism switches (S7): delivery shaping + IMU noise/bias.
   // Default off (exact truth); scenario-owned orchestration config.
   void set_sensor_realism(providers::DeliveryConfig delivery,
@@ -90,6 +96,7 @@ class ScenarioSession {
   ObjectiveDriver driver_;
   double sim_time_s_ = 0.0;
   double judge_radius_m_ = 0.4;
+  double terrain_clearance_m_ = 0.05;
 };
 
 }  // namespace lost_signal::sim::scenario

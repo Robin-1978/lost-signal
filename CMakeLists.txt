@@ -520,7 +520,7 @@ add_executable(test_terrain
 target_compile_definitions(test_terrain PRIVATE
   TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
 )
-target_link_libraries(test_terrain PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
+target_link_libraries(test_terrain PRIVATE lost_signal_sim_providers lost_signal_sim_eval lost_signal_sim_scenario)
 add_test(NAME terrain COMMAND test_terrain)
 
 add_executable(test_terrain_mission
