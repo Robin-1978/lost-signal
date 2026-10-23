@@ -18,8 +18,10 @@ double yaw_from_quaternion(const core::Quaternion& q) {
 
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
-                                         LidarPerceptionConfig perception_config)
+                                         LidarPerceptionConfig perception_config,
+                                         GripAdapterConfig grip_config)
     : limits_(limits),
+      grip_(grip_config),
       decision_period_ns_(decision_period_ns),
       estimator_(std::make_unique<FusedOdometryEstimator>()),
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
@@ -57,6 +59,7 @@ core::Status AutonomyCoordinator::configure() {
   last_reason_ = "init";
   latch_.reset();
   last_published_stop_ = false;
+  grip_.reset();
   evidence_.reset();
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
@@ -102,6 +105,7 @@ core::Status AutonomyCoordinator::cleanup() {
   last_reason_ = "init";
   latch_.reset();
   last_published_stop_ = false;
+  grip_.reset();
   evidence_.reset();
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
@@ -245,6 +249,12 @@ iface::MotionCommand AutonomyCoordinator::update(
                                                odom.yaw_rad, post.x_m,
                                                post.y_m, post.yaw_rad));
   }
+  // Grip governor (control layer) runs every tick, not only on
+  // decisions: the speed envelope must tighten within a second of slip
+  // evidence, not at the next 10 Hz boundary. The coordinator only wires
+  // measured evidence in and consumes the tightened envelope below.
+  grip_.update(now_ns, last_obs_, estimator_->estimate(),
+               estimator_->last_slip());
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
@@ -282,10 +292,12 @@ iface::MotionCommand AutonomyCoordinator::update(
         decided = controller_->track(hold, estimator_->estimate(), now_ns);
       }
     } else {
-      platform::ChassisLimits effective = limits_;
-      if (decision_.max_forward_mps < effective.max_forward_mps) {
-        effective.max_forward_mps = decision_.max_forward_mps;
-      }
+      // Grip-tightened envelope from the control-layer governor: the
+      // planner samples within the adapted speed cap. Behavior still
+      // decides hold/cap on full limits; grip can only tighten further,
+      // never override a hold or widen anything.
+      platform::ChassisLimits effective =
+          grip_.effective_limits(limits_, decision_.max_forward_mps);
       LocalPlan plan = local_planner_->plan(
           estimator_->estimate(), perception_, mapper_->local_map(),
           active_route_, effective);

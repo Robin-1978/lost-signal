@@ -5,6 +5,7 @@
 
 #include "robot/autonomy/behavior/behavior.hpp"
 #include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/control/stop_latch.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
@@ -53,7 +54,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
                                         .max_yaw_rate_radps = 2.0,
                                         .footprint_radius_m = 0.4},
       core::MonotonicNs decision_period_ns = 100'000'000,  // 10 Hz default
-      LidarPerceptionConfig perception_config = {});
+      LidarPerceptionConfig perception_config = {},
+      GripAdapterConfig grip_config = {});
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;
@@ -103,6 +105,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   void request_replan() { replan_requested_ = true; }
   void clear_safety() { safety_->clear_safety(); }
   void clear_stop_latch() { latch_ = ControlledStopLatch{}; }
+  // Online grip factor in [min_grip, 1.0]: 1.0 is nominal (typical grip
+  // assumed), lower is slip-tightened. Read-only probe for tests/logs.
+  double grip_factor() const { return grip_.factor(); }
   core::FrameTransformTree tf_;
   bool has_observation() const { return has_observation_; }
   const iface::ObservationFrame& last_observation() const { return last_obs_; }
@@ -130,6 +135,10 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  private:
   lifecycle::ModuleState state_ = lifecycle::ModuleState::kUnconfigured;
   platform::ChassisLimits limits_;
+  // Speed-envelope governor (control layer): owns the grip factor and the
+  // limit-shaping policy. The coordinator only wires observations into it
+  // and consumes the tightened envelope; no adaptation state lives here.
+  GripAdapter grip_;
   void run_localization(const iface::MapSnapshot& map,
                         core::MonotonicNs now_ns);
   void run_slam(core::MonotonicNs now_ns);

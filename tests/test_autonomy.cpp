@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
@@ -333,6 +334,113 @@ int main() {
     assert(std::abs(r.points.back().x_m - 2.0) < 1e-9);
     EstimatedState bad;
     assert(!planner.plan(bad, goal, iface::MapSnapshot{}).valid);
+  }
+
+  // GripAdapter (control layer): slip-tightened speed envelope.
+  {
+    // Tighten on measured sensor disagreement while moving.
+    GripAdapter g;
+    iface::ObservationFrame o;
+    o.odometry_valid = true;
+    o.imu_valid = true;
+    o.yaw_rate_radps = 0.0;
+    o.imu_gyro_z_radps = 2.0;  // > 0.5 slip threshold
+    EstimatedState est;
+    est.valid = true;
+    est.forward_mps = 1.0;
+    SlipObservation no_slip;  // Invalid: sensor pair is the evidence
+    g.update(0, o, est, no_slip);  // stamps the clock
+    g.update(500'000'000, o, est, no_slip);  // 0.5 s at 0.4/s
+    assert(std::abs(g.factor() - 0.8) < 1e-9);
+    // Hysteresis band: residual between release (0.2) and slip (0.5)
+    // freezes the factor.
+    o.imu_gyro_z_radps = 0.3;
+    g.update(1'000'000'000, o, est, no_slip);
+    assert(std::abs(g.factor() - 0.8) < 1e-9);
+    // Clean rolling relaxes back toward 1.0 slowly (0.08/s).
+    o.imu_gyro_z_radps = 0.0;
+    g.update(1'500'000'000, o, est, no_slip);
+    assert(std::abs(g.factor() - 0.84) < 1e-9);
+    // Floor: sustained slip pins at min_grip, never below.
+    o.imu_gyro_z_radps = 2.0;
+    for (int k = 2; k <= 12; ++k) {
+      g.update(k * 500'000'000LL, o, est, no_slip);
+    }
+    assert(std::abs(g.factor() - 0.4) < 1e-9);
+    g.update(7'000'000'000LL, o, est, no_slip);
+    assert(std::abs(g.factor() - 0.4) < 1e-9);
+  }
+
+  // GripAdapter: observer evidence tightens even at low estimated speed;
+  // standstill sensor disagreement is not evidence.
+  {
+    GripAdapter g;
+    iface::ObservationFrame o;
+    o.odometry_valid = true;
+    o.imu_valid = true;
+    o.yaw_rate_radps = 0.0;
+    o.imu_gyro_z_radps = 2.0;
+    EstimatedState still;
+    still.valid = true;
+    still.forward_mps = 0.0;  // standstill: sensor pair gated off
+    SlipObservation none;
+    g.update(0, o, still, none);
+    g.update(500'000'000, o, still, none);
+    assert(std::abs(g.factor() - 1.0) < 1e-9);
+    // Observer fired (its own 0.5 m/s floor already proved motion).
+    SlipObservation slip;
+    slip.quality = SlipQuality::kObservable;
+    slip.yaw_residual_rads = 1.0;
+    g.update(1'000'000'000, o, still, slip);
+    assert(g.factor() < 1.0);
+    // Invalid estimate freezes regardless of evidence.
+    GripAdapter h;
+    EstimatedState bad;  // valid == false
+    bad.forward_mps = 1.0;
+    h.update(0, o, bad, slip);
+    h.update(500'000'000, o, bad, slip);
+    assert(std::abs(h.factor() - 1.0) < 1e-9);
+  }
+
+  // GripAdapter::effective_limits: scales every speed cap, applies the
+  // behavior cap on top, never widens.
+  {
+    GripAdapter g;
+    platform::ChassisLimits base{.max_forward_mps = 2.0,
+                                 .max_yaw_rate_radps = 1.5,
+                                 .footprint_radius_m = 0.4,
+                                 .max_steer_rad = 0.55,
+                                 .max_lateral_mps = 1.0};
+    // Untightened: behavior cap is the only constraint.
+    platform::ChassisLimits full = g.effective_limits(base, 1.0);
+    assert(std::abs(full.max_forward_mps - 1.0) < 1e-9);
+    assert(std::abs(full.max_yaw_rate_radps - 1.5) < 1e-9);
+    assert(std::abs(full.max_lateral_mps - 1.0) < 1e-9);
+    // Tighten to ~0.8 via one slip tick, then check proportional shrink.
+    iface::ObservationFrame o;
+    o.odometry_valid = true;
+    o.imu_valid = true;
+    o.yaw_rate_radps = 0.0;
+    o.imu_gyro_z_radps = 2.0;
+    EstimatedState est;
+    est.valid = true;
+    est.forward_mps = 1.0;
+    g.update(0, o, est, SlipObservation{});
+    g.update(500'000'000, o, est, SlipObservation{});
+    platform::ChassisLimits tight = g.effective_limits(base, 99.0);
+    assert(std::abs(tight.max_forward_mps - 1.6) < 1e-9);
+    assert(std::abs(tight.max_yaw_rate_radps - 1.2) < 1e-9);
+    assert(std::abs(tight.max_lateral_mps - 0.8) < 1e-9);
+    // reset() restores nominal.
+    g.reset();
+    assert(std::abs(g.factor() - 1.0) < 1e-9);
+  }
+
+  // Coordinator probe: grip starts nominal, resets on configure.
+  {
+    AutonomyCoordinator coord;
+    assert(coord.configure().ok && coord.activate().ok);
+    assert(std::abs(coord.grip_factor() - 1.0) < 1e-9);
   }
 
   std::printf("autonomy ok\n");
