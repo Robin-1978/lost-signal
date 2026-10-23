@@ -52,6 +52,12 @@ class ScenarioSession {
   // the operator seam; arrival counted truth-side for scoring only.
   void set_objectives(std::vector<std::string> place_ids,
                       double arrive_tol_m = 0.5);
+  // Startup mode passthrough (SIM orchestration, pre-run): mapless
+  // missions skip the global-retry cadence; SLAM still establishes the
+  // frame through loop closures.
+  void set_startup_mode(robot::autonomy::StartupMode mode) {
+    app_.set_startup_mode(mode);
+  }
   bool objectives_done() const { return driver_.done(); }
   // Per-objective step budget (0 = none, legacy): a live goal older than
   // this is abandoned (recorded + canceled, next dispatched). Pre-run.

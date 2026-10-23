@@ -225,6 +225,59 @@ int main() {
     assert(session.loop_closure_count() == 1);
   }
 
+  // 6. Incremental tracking: live scan against the newest keyframe submap
+  // in a small window. Bounds incremental drift without establishing the
+  // frame (no loop event needed); empty scans reject instead of guessing.
+  {
+    std::vector<Box> boxes{{-2.0, -2.0, 3.0, -1.8},
+                           {-2.0, -2.0, -1.8, 3.0},
+                           {2.6, -1.0, 3.0, 2.0},
+                           {0.5, 0.5, 0.9, 0.9}};
+    SlamConfig cfg;
+    SlamSession session(cfg);
+    EstimatedState kf;
+    kf.valid = true;
+    kf.stamp_ns = 1'000'000'000LL;
+    iface::ObservationFrame kobs;
+    kobs.scan_valid = true;
+    kobs.ranges_m = scan_from(0.0, 0.0, 0.0, boxes);
+    kobs.scan_angle_min_rad = -M_PI;
+    kobs.scan_angle_increment_rad = 2.0 * M_PI / 72;
+    kobs.stamp_ns = kf.stamp_ns;
+    session.ingest(kf, kobs);
+    assert(session.keyframe_count() == 1);
+    // Robot truly moved to B; the prior carries drift inside the window.
+    const double bx = 0.25, by = 0.05, byaw = 0.02;
+    EstimatedState prior;
+    prior.valid = true;
+    prior.x_m = bx + 0.10;
+    prior.y_m = by - 0.06;
+    prior.yaw_rad = byaw + 0.03;
+    prior.stamp_ns = 1'200'000'000LL;
+    iface::ObservationFrame obs;
+    obs.scan_valid = true;
+    obs.ranges_m = scan_from(bx, by, byaw, boxes);
+    obs.scan_angle_min_rad = -M_PI;
+    obs.scan_angle_increment_rad = 2.0 * M_PI / 72;
+    obs.stamp_ns = prior.stamp_ns;
+    SlamTrackResult tr = session.track(prior, obs);
+    assert(tr.attempted);
+    assert(tr.accepted);
+    assert(std::hypot(tr.x_m - bx, tr.y_m - by) < 0.1);
+    assert(std::abs(core::wrap_angle(tr.yaw_rad - byaw)) < 0.1);
+    assert(session.track_corrections() == 1);
+    // Empty scan: no geometric returns, must reject, never snap.
+    iface::ObservationFrame blank = obs;
+    blank.ranges_m.assign(72, 10.0f);
+    blank.stamp_ns = 1'500'000'000LL;
+    EstimatedState still = prior;
+    still.stamp_ns = blank.stamp_ns;
+    still.x_m += 0.3;
+    SlamTrackResult tr2 = session.track(still, blank);
+    assert(tr2.attempted);
+    assert(!tr2.accepted);
+  }
+
   std::printf("slam ok\n");
   return 0;
 }

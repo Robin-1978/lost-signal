@@ -67,6 +67,10 @@ class RobotApplication : public IRobot {
   void set_goal(const autonomy::RoutePoint& goal) override {
     coordinator_.set_goal(goal);
   }
+  // Startup mode passthrough (mapless missions skip global retries).
+  void set_startup_mode(autonomy::StartupMode mode) {
+    coordinator_.set_startup_mode(mode);
+  }
 
   // Task / map intent (typed, no coordinates from SIM truth).
   // Async: returns a handle immediately; poll goal_status, cancel_goal.
@@ -134,6 +138,9 @@ class RobotApplication : public IRobot {
     // Offline SLAM session signals (mapless drift + loop-closure evidence).
     std::size_t slam_keyframes = 0;
     std::size_t slam_loops_closed = 0;
+    // Incremental tracking counters (scan-to-submap, bounded window).
+    std::size_t slam_tracks = 0;
+    std::string track_diagnostic = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::GoalStatus goal;
     iface::ChannelHealth health;

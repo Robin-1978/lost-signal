@@ -38,6 +38,10 @@ LocalizationAction LocalizationSupervisor::next(
   const bool retry_due =
       now_s - last_global_attempt_s_ >= config_.global_retry_interval_s;
   if (!localized_) {
+    if (mode_ == StartupMode::kSlamOnly) {
+      if (reason) *reason = "slam-only startup: no surveyed map to search";
+      return LocalizationAction::kDefer;
+    }
     if (retry_due) {
       last_global_attempt_s_ = now_s;
       last_run_s_ = now_s;

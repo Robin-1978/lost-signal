@@ -19,6 +19,12 @@ void SlamSession::reset() {
   last_attempt_s_ = -1.0e9;
   keyframes_at_last_attempt_ = 0;
   last_result_ = SlamLoopResult{};
+  track_corrections_ = 0;
+  last_track_s_ = -1.0e9;
+  have_tracked_ = false;
+  last_track_ = SlamTrackResult{};
+  track_submap_ = iface::MapSnapshot{};
+  track_submap_id_ = 0;
 }
 
 bool SlamSession::keyframe_due(const EstimatedState& est) const {
@@ -190,6 +196,111 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
     }
   }
   return sub;
+}
+
+SlamTrackResult SlamSession::track(const EstimatedState& est,
+                                    const iface::ObservationFrame& obs) {
+  SlamTrackResult out;
+  if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
+      keyframes_.empty()) {
+    out.diagnostic = "tracking not due (invalid or no keyframes)";
+    last_track_ = out;
+    return out;
+  }
+  const double now_s = obs.stamp_ns * 1e-9;
+  const bool interval_due =
+      !have_tracked_ || now_s - last_track_s_ >= config_.track_interval_s;
+  const double moved_m = have_tracked_
+                             ? std::hypot(est.x_m - last_track_x_m_,
+                                          est.y_m - last_track_y_m_)
+                             : std::numeric_limits<double>::infinity();
+  const double turned_rad =
+      have_tracked_ ? std::abs(core::wrap_angle(est.yaw_rad -
+                                                last_track_yaw_rad_))
+                    : std::numeric_limits<double>::infinity();
+  if (!interval_due ||
+      (moved_m < config_.track_min_translation_m &&
+       turned_rad < config_.track_min_heading_rad)) {
+    out.diagnostic = "track rate limited";
+    last_track_ = out;
+    return out;
+  }
+  out.attempted = true;
+  last_track_s_ = now_s;
+  last_track_x_m_ = est.x_m;
+  last_track_y_m_ = est.y_m;
+  last_track_yaw_rad_ = est.yaw_rad;
+  have_tracked_ = true;
+  // Submap of the newest keyframe (cached per keyframe id): endpoints
+  // observed occupied, ray interiors free — the survey's unknown cells
+  // never appear here, so free-space evidence discriminates.
+  const SlamKeyframe& anchor = keyframes_.back();
+  if (track_submap_id_ != anchor.id) {
+    track_submap_ = submap_for(anchor);
+    track_submap_id_ = anchor.id;
+  }
+  ScanMatcherConfig match_cfg;
+  match_cfg.search_translation_m = config_.track_window_m;
+  match_cfg.search_heading_rad = config_.track_heading_rad;
+  match_cfg.translation_step_m = config_.track_step_m;
+  match_cfg.heading_step_rad = config_.track_heading_step_rad;
+  match_cfg.minimum_overlap = config_.track_min_overlap;
+  match_cfg.minimum_score_margin = config_.track_min_margin;
+  match_cfg.minimum_returns = 4;
+  match_cfg.maximum_returns = config_.track_max_beams;
+  ScanMatcher matcher(match_cfg);
+  matcher.set_lidar_mount(base_from_lidar_);
+  ScanMatchResult match = matcher.localize(
+      obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+      est.x_m, est.y_m, est.yaw_rad, track_submap_, obs.stamp_ns,
+      est.roll_rad, est.pitch_rad, est.z_m);
+  if (!match.accepted) {
+    out.diagnostic = std::string("track rejected: ") + match.rejection_reason;
+    last_track_ = out;
+    return out;
+  }
+  // Reverse verification (same two-sided check loop closures use): the old
+  // keyframe scan must also match a submap rendered from the CURRENT scan
+  // at the FORWARD solution. A one-sided alignment against unrelated
+  // geometry (viewpoint change, repetitive boxes) must not become a
+  // correction. Rendered at the forward pose, not the drifted estimate,
+  // so the check cannot be offset by the very drift being measured.
+  SlamKeyframe now_kf;
+  now_kf.id = 0;
+  now_kf.stamp_s = obs.stamp_ns * 1e-9;
+  now_kf.pose.position.x = match.x_m;
+  now_kf.pose.position.y = match.y_m;
+  now_kf.pose.heading_rad = match.yaw_rad;
+  now_kf.roll_rad = est.roll_rad;
+  now_kf.pitch_rad = est.pitch_rad;
+  now_kf.z_m = est.z_m;
+  now_kf.ranges_m = obs.ranges_m;
+  now_kf.angle_min_rad = obs.scan_angle_min_rad;
+  now_kf.angle_increment_rad = obs.scan_angle_increment_rad;
+  const iface::MapSnapshot rsub = submap_for(now_kf);
+  const SlamKeyframe& old = keyframes_.back();
+  ScanMatchResult rev = matcher.localize(
+      old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
+      old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
+      obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
+  if (!rev.accepted || rev.overlap < config_.track_min_overlap) {
+    out.diagnostic = "track rejected: reverse verification failed";
+    last_track_ = out;
+    return out;
+  }
+  out.accepted = true;
+  out.x_m = match.x_m;
+  out.y_m = match.y_m;
+  out.yaw_rad = match.yaw_rad;
+  out.position_sigma_m = match.position_sigma_m;
+  out.heading_sigma_rad = match.heading_sigma_rad;
+  out.score = match.score;
+  out.overlap = std::min(match.overlap, rev.overlap);
+  out.score_margin = match.score_margin;
+  out.diagnostic = "track corrected";
+  ++track_corrections_;
+  last_track_ = out;
+  return out;
 }
 
 SlamLoopResult SlamSession::try_close_loops(

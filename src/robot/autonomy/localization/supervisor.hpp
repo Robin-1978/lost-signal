@@ -4,6 +4,7 @@
 #include <string>
 
 #include "robot/autonomy/localization/scan_matcher.hpp"
+#include "robot/autonomy/localization/startup_selector.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -16,6 +17,12 @@ enum class LocalizationAction {
   kLocalCorrection = 1,     // bounded scan-to-map correction around the prior
   kGlobalRelocalization = 2,  // whole-map hypothesis search (rate-limited)
 };
+
+// Startup mode selects which recovery path may run while unlocalized
+// (see startup_selector.hpp for the vocabulary): kGlobalSearch is the
+// standard cadence; kSlamOnly disables the global branch for missions
+// with no surveyed map to search (SLAM loop closures still establish the
+// frame through the normal record path).
 
 inline const char* localization_action_name(LocalizationAction action) {
   switch (action) {
@@ -66,6 +73,8 @@ class LocalizationSupervisor {
     config_ = config;
   }
   void reset(bool localized_at_start);
+  void set_startup_mode(StartupMode mode) { mode_ = mode; }
+  StartupMode startup_mode() const { return mode_; }
 
   LocalizationAction next(double now_s, double odom_x_m, double odom_y_m,
                           double odom_heading_rad,
@@ -87,6 +96,7 @@ class LocalizationSupervisor {
   void accept();
 
   LocalizationSupervisorConfig config_;
+  StartupMode mode_ = StartupMode::kGlobalSearch;
   bool localized_ = false;
   bool have_run_ = false;
   double last_run_s_ = 0.0;

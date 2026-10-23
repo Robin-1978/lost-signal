@@ -30,6 +30,11 @@ int main() {
       {1.0, -2.4, 1.8, -1.6, 1.0},   // south of D->A
   });
   session.set_objectives({"loopA", "loopB", "loopC", "loopD"}, 1.0);
+  // Mapless mission: no surveyed map to search, so skip the global-retry
+  // cadence; SLAM loop closures establish the frame (same as before, the
+  // vacuous survey never accepted anyway — now explicit, not accidental).
+  session.set_startup_mode(
+      lost_signal::robot::autonomy::StartupMode::kSlamOnly);
 
   std::size_t max_loops = 0;
   std::size_t max_keyframes = 0;

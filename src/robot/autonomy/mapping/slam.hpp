@@ -39,6 +39,24 @@ struct SlamConfig {
   std::size_t match_max_beams = 48;
   double match_minimum_overlap = 0.30;
   LoopClosureGateConfig gate;
+  // Incremental scan-to-submap tracking (the workhorse between loop
+  // events): match the live scan against the most recent keyframe's
+  // submap in a small window. Bounded (a few cells) so it can never
+  // kidnap; gated by the same overlap/margin contract as the local
+  // matcher, plus a reverse verification (old scan vs submap rendered at
+  // the forward solution — the same two-sided check loop closures use).
+  // Independent of supervisor trust: it bounds drift, it does not
+  // establish the frame (loop closures still do that).
+  double track_window_m = 0.30;
+  double track_step_m = 0.05;
+  double track_heading_rad = 0.20;
+  double track_heading_step_rad = 0.05;
+  std::size_t track_max_beams = 64;
+  double track_min_overlap = 0.30;
+  double track_min_margin = 0.02;
+  double track_interval_s = 0.2;
+  double track_min_translation_m = 0.05;
+  double track_min_heading_rad = 0.02;
 };
 
 struct SlamKeyframe {
@@ -70,6 +88,24 @@ struct SlamLoopResult {
   std::string diagnostic = "no attempt";
 };
 
+// Incremental tracking outcome: scan-to-most-recent-submap match. Same
+// evidence contract as loop closure (overlap + margin gates), but the
+// window is small and the chain frame is the drifted keyframe chain, so
+// a correction bounds incremental drift without establishing the frame.
+struct SlamTrackResult {
+  bool attempted = false;
+  bool accepted = false;
+  double x_m = 0.0;
+  double y_m = 0.0;
+  double yaw_rad = 0.0;
+  double position_sigma_m = 0.0;
+  double heading_sigma_rad = 0.0;
+  double score = 0.0;
+  double overlap = 0.0;
+  double score_margin = 0.0;
+  std::string diagnostic = "no attempt";
+};
+
 class SlamSession {
  public:
   explicit SlamSession(SlamConfig config = SlamConfig{});
@@ -87,13 +123,22 @@ class SlamSession {
   // No static map required: candidates match against keyframe submaps.
   SlamLoopResult try_close_loops(const EstimatedState& est,
                                  const iface::ObservationFrame& obs);
+  // Incremental tracking: match the live scan against the most recent
+  // keyframe's submap in a small window. Rate-limited by interval +
+  // movement. The caller applies accepted corrections through correct_pose;
+  // the supervisor trust state is untouched (tracking bounds drift, loop
+  // closures establish the frame).
+  SlamTrackResult track(const EstimatedState& est,
+                        const iface::ObservationFrame& obs);
 
   bool empty() const { return keyframes_.empty(); }
   std::size_t keyframe_count() const { return keyframes_.size(); }
   std::size_t loop_closure_count() const { return loop_closures_; }
+  std::size_t track_corrections() const { return track_corrections_; }
   const std::vector<SlamKeyframe>& keyframes() const { return keyframes_; }
   const PoseGraphBackend& graph() const { return graph_; }
   const SlamLoopResult& last_result() const { return last_result_; }
+  const SlamTrackResult& last_track_result() const { return last_track_; }
 
  private:
   // Render one keyframe's scan into a small occupancy raster in the map
@@ -115,6 +160,18 @@ class SlamSession {
   double last_attempt_s_ = -1.0e9;
   std::size_t keyframes_at_last_attempt_ = 0;
   SlamLoopResult last_result_;
+  // Incremental tracking state: submap cache keys on the newest keyframe
+  // id (render once per keyframe, not once per tick); attempt pose/time
+  // gate the cadence. All ROBOT-side: scans, submaps, odometry prior.
+  std::size_t track_corrections_ = 0;
+  double last_track_s_ = -1.0e9;
+  double last_track_x_m_ = 0.0;
+  double last_track_y_m_ = 0.0;
+  double last_track_yaw_rad_ = 0.0;
+  bool have_tracked_ = false;
+  SlamTrackResult last_track_;
+  mutable iface::MapSnapshot track_submap_;
+  mutable std::uint64_t track_submap_id_ = 0;
 };
 
 }  // namespace lost_signal::robot::autonomy

@@ -30,6 +30,12 @@ class LocalizationSystem {
  public:
   void reset();
   void set_lidar_mount(const core::RigidTransform& base_from_lidar);
+  // Startup mode passthrough (see supervisor): Mapless disables the global
+  // branch for missions with no surveyed map. Reset never changes the mode
+  // (configuration, not bringup state).
+  void set_startup_mode(StartupMode mode) {
+    supervisor_.set_startup_mode(mode);
+  }
   // Operator seeding (dock initialpose): the estimate is trustworthy by
   // declaration — mark localized and drop stale startup hypotheses.
   void mark_localized() {
@@ -53,12 +59,20 @@ class LocalizationSystem {
   std::size_t slam_loops_closed() const;
   const SlamLoopResult& last_slam_result() const;
   std::size_t slam_keyframes() const;
+  // Incremental tracking observability (same discipline, no policy).
+  std::size_t slam_tracks() const { return slam_.track_corrections(); }
+  const SlamTrackResult& last_track_result() const {
+    return slam_.last_track_result();
+  }
 
  private:
   void run_localization(const iface::MapSnapshot& map,
                         const iface::ObservationFrame& obs,
                         core::MonotonicNs now_ns, IEstimator& estimator,
                         std::string& action);
+  // Bounded scan-to-submap tracking ahead of supervised corrections.
+  void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
+                    IEstimator& estimator);
   // Returns true when a loop closure rebuilt the map (caller replans).
   bool run_slam(const iface::ObservationFrame& obs, bool has_observation,
                 IEstimator& estimator, IMapper& mapper);

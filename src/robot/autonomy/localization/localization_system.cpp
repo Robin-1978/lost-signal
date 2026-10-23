@@ -38,11 +38,29 @@ LocalizationSystem::TickResult LocalizationSystem::update(
     core::MonotonicNs now_ns, bool has_observation, IEstimator& estimator,
     IMapper& mapper) {
   TickResult out;
+  run_tracking(obs, has_observation, estimator);
   run_localization(map, obs, now_ns, estimator, out.action);
   if (run_slam(obs, has_observation, estimator, mapper)) {
     out.replan_requested = true;
   }
   return out;
+}
+
+// Incremental scan-to-submap tracking, ahead of the supervisor-sequenced
+// corrections. Bounded window (±track_window_m) so it can never kidnap;
+// applied through correct_pose only — the supervisor trust state is
+// untouched (tracking bounds drift, loop closures establish the frame).
+// Runs whether or not the estimate is localized: a slipped estimate with
+// blown covariance would otherwise starve every correction behind the
+// global-retry backoff.
+void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
+                                     bool has_observation,
+                                     IEstimator& estimator) {
+  if (!has_observation || !obs.scan_valid) return;
+  SlamTrackResult tr = slam_.track(estimator.estimate(), obs);
+  if (!tr.accepted) return;
+  estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad, tr.position_sigma_m,
+                         tr.heading_sigma_rad, obs.stamp_ns);
 }
 
 bool LocalizationSystem::run_slam(const iface::ObservationFrame& obs,

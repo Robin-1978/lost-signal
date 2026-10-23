@@ -102,6 +102,11 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Snaps the estimator and marks the supervisor localized so the normal
   // cadence path takes over; every later correction is still gated.
   void seed_pose(double x_m, double y_m, double yaw_rad);
+  // Startup mode passthrough (see supervisor::StartupMode): mapless
+  // missions disable the global branch; SLAM still establishes the frame.
+  void set_startup_mode(StartupMode mode) {
+    localization_.set_startup_mode(mode);
+  }
   // Event wakeup: force the decision branch on the next update, without
   // waiting for the decision period (goal arrival, operator override).
   void request_replan() { replan_requested_ = true; }
@@ -125,6 +130,10 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::size_t slam_keyframes() const { return localization_.slam_keyframes(); }
   std::size_t slam_loops_closed() const {
     return localization_.slam_loops_closed();
+  }
+  std::size_t slam_tracks() const { return localization_.slam_tracks(); }
+  const SlamTrackResult& last_track_result() const {
+    return localization_.last_track_result();
   }
   const SlamLoopResult& last_slam_result() const {
     return localization_.last_slam_result();
