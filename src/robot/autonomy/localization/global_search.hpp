@@ -15,13 +15,18 @@ namespace lost_signal::robot::autonomy {
 // start. The cold-start contract is bounded work over the complete map with
 // no silent truncation:
 //
-//   1. coarse pass: every free raster cell on a coarse grid x headings,
-//      scored with a downsampled beam subset (same scoring as the local
-//      matcher, via ScanMatcher::score_pose);
+//   1. coarse pass: every non-occupied raster cell on a coarse grid x
+//      headings, scored with a downsampled beam subset (same scoring as the
+//      local matcher, via ScanMatcher::score_pose). Unknown cells seed too:
+//      live surveys mark everything outside authored boxes unknown (never
+//      free), so free-only seeding would be vacuous there. Occupied cells
+//      are the only excluded prior; unknown scores 0, never certainty.
 //   2. refine: the top-K coarse survivors each get a bounded local match
 //      around their pose;
-//   3. accept the best refined hypothesis only with overlap and a margin
-//      over the next accepted refine.
+//   3. validate: each refined survivor is re-checked in a tight window with
+//      expected-range raycast scoring (would the map produce this scan
+//      from this pose?), then the best validated hypothesis is accepted
+//      only with overlap and a margin over the next accepted one.
 //
 // If the evaluation budget cannot cover the coarse pass, the result is an
 // explicit rejection, never a partial search reported as a match. Unknown
@@ -47,7 +52,12 @@ struct GlobalSearchConfig {
   double equivalent_support_overlap_tolerance = 0.10;
   // Mount lives in the TF tree; set via set_lidar_mount(). No copy here.
   double max_range_m = 10.0;
-  std::size_t minimum_returns = 4;
+  // Sparse-scan guard (master: 12). A handful of hits can match an
+  // unrelated aisle by chance and refine alone; below this count the
+  // search reports insufficient evidence instead of a confident fix.
+  // Unknown-background surveys make this load-bearing: without it the
+  // raycast stage never sees enough rays to disagree.
+  std::size_t minimum_returns = 12;
   // Bounded refinement window around each coarse survivor.
   double refine_translation_m = 1.0;
   double refine_translation_step_m = 0.10;
@@ -66,6 +76,22 @@ struct GlobalSearchConfig {
   // already ranked with a subset. 24 keeps the ambiguity gates green at a
   // third of the default cost (measured, not tuned).
   std::size_t refine_max_returns = 96;
+  // Final raycast validation window around each refined survivor (master's
+  // third pass). Endpoint scoring degrades gracefully on unknown cells
+  // (unknown = 0, neutral), so a wrong aisle can outscore the true pose on
+  // sparse evidence; the raycast stage re-asks every surviving hypothesis
+  // the stronger question — would the map actually produce this scan from
+  // this pose? — with expected-range marching that treats unknown as free
+  // space to see through (occupied ends the ray). Tight window: refine
+  // already snapped; this stage validates, it does not search.
+  double final_translation_m = 0.25;
+  double final_translation_step_m = 0.05;
+  double final_heading_rad = 0.06;
+  double final_heading_step_rad = 0.02;
+  // Final beam budget (hits only, stride-downsampled like the coarse set):
+  // the final stage recounts with evidence, so it may spend more beams
+  // than the coarse ranking pass.
+  std::size_t final_max_returns = 96;
 };
 
 struct GlobalSearchResult {
