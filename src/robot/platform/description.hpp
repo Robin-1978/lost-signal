@@ -47,4 +47,13 @@ bool valid_robot_description(const RobotDescription& desc);
 // FNV-1a hash of the canonical fields, for calibration/version pinning.
 std::uint64_t hash_robot_description(const RobotDescription& desc);
 
+// Canonical mast (single source for code defaults): the lidar rides a
+// 0.35 m mast 0.25 m forward, the IMU low on the deck. Seed files carry
+// the same numbers explicitly; the loader fills absent sections from here
+// so a bare `{"kind": ...}` never silently parks the lidar at the deck.
+std::vector<LinkMount> default_link_mounts();
+std::vector<SensorMount> default_sensor_mounts();
+// Full canonical description (ro1 differential + limits + mast).
+RobotDescription default_robot_description();
+
 }  // namespace lost_signal::robot::platform

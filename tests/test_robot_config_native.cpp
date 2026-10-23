@@ -48,6 +48,42 @@ int main() {
     assert(ack.profile.track_width_m == 0.58);
     assert(ack.profile.wheel_base_m == 0.62);
   }
+  // Single source: factory mast == seed files == app default. A bare
+  // file (no links/sensors sections) falls back to the factory instead
+  // of silently parking the lidar at the deck.
+  {
+    const auto factory = platform::default_robot_description();
+    assert(factory.links.size() == 3 && factory.sensors.size() == 2);
+    platform::RobotConfig bare;
+    std::string err;
+    // Bare kind via temp file: sections absent -> factory mast.
+    {
+      const char* body = R"({"kind": "differential"})";
+      std::FILE* fp = std::fopen("/tmp/test_bare_kind.json", "wb");
+      assert(fp != nullptr);
+      std::fputs(body, fp);
+      std::fclose(fp);
+      assert(platform::load_robot_config("/tmp/test_bare_kind.json", bare,
+                                         &err));
+      assert(bare.sensors.size() == factory.sensors.size());
+      assert(bare.links.size() == factory.links.size());
+      assert(bare.sensors[0].xyz_m[0] == 0.25);
+      assert(bare.sensors[0].xyz_m[2] == 0.35);
+      std::remove("/tmp/test_bare_kind.json");
+    }
+    // Seeds carry the same numbers explicitly.
+    platform::RobotConfig diff;
+    assert(platform::load_robot_config(
+        dir + "/differential.json", diff, &err));
+    assert(diff.sensors.size() == factory.sensors.size());
+    for (std::size_t i = 0; i < factory.sensors.size(); ++i) {
+      assert(diff.sensors[i].sensor_id == factory.sensors[i].sensor_id);
+      assert(diff.sensors[i].link == factory.sensors[i].link);
+      for (int k = 0; k < 3; ++k) {
+        assert(diff.sensors[i].xyz_m[k] == factory.sensors[i].xyz_m[k]);
+      }
+    }
+  }
   // Fail-closed: unknown kind, disagreement, bad numbers, bad JSON.
   {
     platform::RobotConfig cfg;

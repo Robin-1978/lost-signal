@@ -34,4 +34,45 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
   return h;
 }
 
+std::vector<LinkMount> default_link_mounts() {
+  LinkMount base, lidar, imu;
+  base.link = "base_link";
+  base.parent = "world";
+  lidar.link = "lidar_link";
+  lidar.parent = "base_link";
+  lidar.xyz_m[0] = 0.25;
+  lidar.xyz_m[2] = 0.35;
+  imu.link = "imu_link";
+  imu.parent = "base_link";
+  imu.xyz_m[2] = 0.15;
+  return {base, lidar, imu};
+}
+
+std::vector<SensorMount> default_sensor_mounts() {
+  SensorMount lidar, imu;
+  lidar.sensor_id = "ro1.lidar";
+  lidar.link = "lidar_link";
+  lidar.xyz_m[0] = 0.25;
+  lidar.xyz_m[2] = 0.35;
+  imu.sensor_id = "ro1.imu";
+  imu.link = "imu_link";
+  imu.xyz_m[2] = 0.15;
+  return {lidar, imu};
+}
+
+RobotDescription default_robot_description() {
+  RobotDescription desc;
+  desc.robot_id = "ro1";
+  desc.version = 2;
+  desc.links = default_link_mounts();
+  desc.sensors = default_sensor_mounts();
+  desc.limits.max_forward_mps = 2.0;
+  desc.limits.max_yaw_rate_radps = 2.0;
+  desc.limits.footprint_radius_m = 0.4;
+  desc.limits.max_steer_rad = 0.55;
+  desc.limits.max_lateral_mps = 0.0;
+  desc.chassis_kind = "differential";
+  return desc;
+}
+
 }  // namespace lost_signal::robot::platform

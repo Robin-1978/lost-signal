@@ -51,14 +51,11 @@ class RobotApplication : public IRobot {
  public:
   explicit RobotApplication(
       std::unique_ptr<iface::IMapProvider> maps,
-      platform::RobotDescription desc = platform::RobotDescription{
-          .robot_id = "ro1",
-          .version = 1,
-          .links = {{"base_link", "world"}, {"lidar_link", "base_link"}},
-          .sensors = {{"ro1.lidar", "lidar_link"}},
-          .limits = {.max_forward_mps = 2.0,
-                     .max_yaw_rate_radps = 2.0,
-                     .footprint_radius_m = 0.4}});
+      // Default bring-up is the canonical hardware contract (mast up:
+      // lidar rides 0.35 m over the deck). Single source in
+      // platform::default_robot_description — no literal copy here.
+      platform::RobotDescription desc =
+          platform::default_robot_description());
 
   // Ordered bringup. Must succeed before tick() processes anything.
   core::Status configure() override;

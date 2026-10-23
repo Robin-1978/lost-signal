@@ -198,7 +198,9 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
     }
   }
   const Json* sens = obj.find("sensors");
-  if (sens != nullptr) {
+  if (sens == nullptr) {
+    out.sensors = default_sensor_mounts();  // bare file keeps the mast
+  } else {
     if (!sens->is_array()) {
       err = "'sensors' must be an array";
       return false;
@@ -227,7 +229,9 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
     }
   }
   const Json* links = obj.find("links");
-  if (links != nullptr) {
+  if (links == nullptr) {
+    out.links = default_link_mounts();  // bare file keeps the mast
+  } else {
     if (!links->is_array()) {
       err = "'links' must be an array";
       return false;
