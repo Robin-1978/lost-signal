@@ -131,9 +131,9 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     const auto s = view.world_to_screen(p.x_m, p.y_m);
     DrawCircleLines(s.x_px, s.y_px, 12.0f, RED);
   }
-  // Lidar hits.
+  // Lidar hits (from the true sensor origin, same as the 3D fan).
   if (show_lidar && f.lidar_valid) {
-    const auto o = view.world_to_screen(f.body.x_m, f.body.y_m);
+    const auto o = view.world_to_screen(f.body.sens_x_m, f.body.sens_y_m);
     for (const auto& hit : f.lidar_hits) {
       const auto s = view.world_to_screen(hit.first, hit.second);
       DrawLineV({o.x_px, o.y_px}, {s.x_px, s.y_px}, {255, 0, 0, 60});
@@ -173,6 +173,46 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     const float hx = s.x_px + (hl + 10.0f) * c;
     const float hy = s.y_px - (hl + 10.0f) * sn;
     DrawLineV({s.x_px, s.y_px}, {hx, hy}, DARKBLUE);
+  }
+  // Wheels (simplified, default on): short segments at the module
+  // positions, steered by the live joint (ackermann fronts read visibly),
+  // red while the engine flags traction saturation (per side on tracks).
+  // Screen is y-flipped: world angle t draws along (cos t, -sin t).
+  {
+    const float yaw = static_cast<float>(f.body.yaw_rad);
+    const float c = std::cos(yaw), sn = std::sin(yaw);
+    const float sc = static_cast<float>(view.scale());
+    const auto bs = view.world_to_screen(f.body.x_m, f.body.y_m);
+    auto to_screen = [&](double bx, double by) {
+      return Vector2{bs.x_px + static_cast<float>(bx) * c * sc -
+                         static_cast<float>(by) * sn * sc,
+                     bs.y_px - (static_cast<float>(bx) * sn * sc +
+                               static_cast<float>(by) * c * sc)};
+    };
+    if (f.body.tracked) {
+      // Skid-steer slabs: side lines, red per side from the drive flags.
+      for (int k = 0; k < 2; ++k) {
+        const double wy = (k == 0 ? 1.0 : -1.0) * f.body.half_width_m;
+        const Vector2 a = to_screen(-f.body.half_length_m, wy);
+        const Vector2 b = to_screen(f.body.half_length_m, wy);
+        const bool slip = k < static_cast<int>(f.body.wheels.size()) &&
+                          f.body.wheels[static_cast<std::size_t>(k)].slipping;
+        DrawLineEx(a, b, 3.0f, slip ? RED : DARKGRAY);
+      }
+    } else {
+      for (const auto& w : f.body.wheels) {
+        const Vector2 m = to_screen(w.x_m, w.y_m);
+        const float t =
+            yaw + static_cast<float>(w.steer_rad);  // steered heading
+        const float half =
+            static_cast<float>(w.radius_m * 2.0 * sc * 0.5);
+        const Vector2 a{m.x - half * std::cos(t),
+                        m.y + half * std::sin(t)};
+        const Vector2 b{m.x + half * std::cos(t),
+                        m.y - half * std::sin(t)};
+        DrawLineEx(a, b, 3.0f, w.slipping ? RED : DARKGRAY);
+      }
+    }
   }
 }
 
