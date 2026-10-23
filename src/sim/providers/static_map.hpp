@@ -22,6 +22,13 @@ class StaticMapProvider : public robot::iface::IMapProvider {
 
   robot::iface::MapSnapshot active_snapshot() const override;
   bool select_map(const std::string& map_id) override;
+  // SIM-side orchestration only (scenario fits the survey to authored
+  // geometry after a --map load): re-windows the raster and retires the
+  // cached revision so the coordinator replans on the new content.
+  // Non-positive sizes are ignored (window kept, never half-applied).
+  // Never called by ROBOT code; never during a live tick.
+  void set_window(double min_x_m, double min_y_m, double width_m,
+                  double height_m);
 
  private:
   void rebuild() const;
@@ -31,6 +38,11 @@ class StaticMapProvider : public robot::iface::IMapProvider {
          resolution_m_ = 0.1;
   eval::MapPackage package_;
   bool from_package_ = false;
+  // Window epoch: every set_window moves the revision even when the
+  // geometry version stands still, so a re-windowed survey always reads
+  // as new content downstream. Zero until the first call (legacy pins
+  // see identical revisions).
+  std::uint64_t window_epoch_ = 0;
   mutable robot::iface::MapSnapshot snapshot_;
   mutable std::uint64_t built_version_ = 0;
   mutable bool has_built_ = false;

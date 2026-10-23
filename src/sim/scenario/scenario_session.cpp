@@ -1,5 +1,6 @@
 #include "sim/scenario/scenario_session.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -8,8 +9,12 @@ namespace lost_signal::sim::scenario {
 ScenarioSession::ScenarioSession()
     : world_(),
       suite_(&world_),
-      app_(std::make_unique<providers::StaticMapProvider>(
-          &world_, -10.0, -10.0, 20.0, 20.0, 0.25)) {
+      app_([this]() {
+        auto maps = std::make_unique<providers::StaticMapProvider>(
+            &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
+        map_provider_ = maps.get();
+        return robot::app::RobotApplication(std::move(maps));
+      }()) {
   // SIM bring-up: the suite claims motion + lidar + imu descriptors.
   // Same seam a native driver uses.
   suite_.register_all(app_);
@@ -31,9 +36,12 @@ ScenarioSession::ScenarioSession(
     robot::platform::RobotDescription desc, world::MotorParams motor)
     : world_(),
       suite_(&world_),
-      app_(std::make_unique<providers::StaticMapProvider>(
-               &world_, -10.0, -10.0, 20.0, 20.0, 0.25),
-           std::move(desc)) {
+      app_([this, &desc]() {
+        auto maps = std::make_unique<providers::StaticMapProvider>(
+            &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
+        map_provider_ = maps.get();
+        return robot::app::RobotApplication(std::move(maps), std::move(desc));
+      }()) {
   world_.set_motor_params(motor);
   suite_.register_all(app_);
   (void)app_.configure();
@@ -130,6 +138,33 @@ void ScenarioSession::step_once() {
   rec.truth_after = world_.truth();
   rec.step = episode_.size();
   if (scheduler_.record_due(sim_time_s_)) episode_.record(rec);
+}
+
+void ScenarioSession::fit_map_window_to_world(double margin_m) {
+  if (map_provider_ == nullptr) return;
+  const double m = (std::isfinite(margin_m) && margin_m > 0.0) ? margin_m : 4.0;
+  double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;  // robot starts at origin
+  auto eat = [&](double x, double y) {
+    x0 = std::min(x0, x);
+    y0 = std::min(y0, y);
+    x1 = std::max(x1, x);
+    y1 = std::max(y1, y);
+  };
+  for (const auto& b : world_.static_boxes()) {
+    eat(b.x0, b.y0);
+    eat(b.x1, b.y1);
+  }
+  for (const auto& p : world_.places()) eat(p.x_m, p.y_m);
+  for (const auto& z : world_.material_zones()) {
+    eat(z.x0, z.y0);
+    eat(z.x1, z.y1);
+  }
+  for (const auto& p : world_.terrain_patches()) {
+    eat(p.x0, p.y0);
+    eat(p.x1, p.y1);
+  }
+  map_provider_->set_window(x0 - m, y0 - m, (x1 - x0) + 2.0 * m,
+                            (y1 - y0) + 2.0 * m);
 }
 
 }  // namespace lost_signal::sim::scenario

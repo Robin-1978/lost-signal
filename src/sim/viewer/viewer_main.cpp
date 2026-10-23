@@ -784,6 +784,8 @@ int main(int argc, char** argv) {
     session->setup_world().set_support_slabs(std::move(content.slabs));
     session->setup_world().set_environment(std::move(content.environment));
     session->set_objectives(std::move(ids));
+    // Survey covers the authored map (far-field goals need a route).
+    session->fit_map_window_to_world();
     // Converted master maps ship patrols beside the world file.
     load_actors_sidecar(map_path, *session);
   } else {

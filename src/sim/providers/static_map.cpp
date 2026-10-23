@@ -102,10 +102,26 @@ void StaticMapProvider::rebuild() const {
         snapshot_.places.push_back({p.place_id, p.x_m, p.y_m, p.yaw_rad});
       }
     }
-    snapshot_.revision = world_->geometry_version() + 1;
+    snapshot_.revision = world_->geometry_version() + 1 + window_epoch_;
     built_version_ = world_->geometry_version();
   }
   has_built_ = true;
+}
+
+void StaticMapProvider::set_window(double min_x_m, double min_y_m,
+                                   double width_m, double height_m) {
+  if (from_package_) return;  // stored surveys are immutable
+  if (!(std::isfinite(min_x_m) && std::isfinite(min_y_m) &&
+        width_m > 0.0 && height_m > 0.0 && std::isfinite(width_m) &&
+        std::isfinite(height_m))) {
+    return;
+  }
+  min_x_m_ = min_x_m;
+  min_y_m_ = min_y_m;
+  width_m_ = width_m;
+  height_m_ = height_m;
+  ++window_epoch_;
+  has_built_ = false;  // retire the cache; the next poll rebuilds
 }
 
 robot::iface::MapSnapshot StaticMapProvider::active_snapshot() const {

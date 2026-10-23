@@ -90,6 +90,11 @@ class ScenarioSession {
     suite_.lidar3d().set_max_range(sim.lidar_max_range_m);
     suite_.set_composite_scan(sim.lidar_composite);
   }
+  // Survey re-window (SIM orchestration, pre-run): fits the static-map
+  // raster to the authored world (plus margin_m) so far-field goals on
+  // big maps get a route. Default 20x20 window is kept unless this runs —
+  // every legacy mission behaves bit-identically without it.
+  void fit_map_window_to_world(double margin_m = 4.0);
   const ObjectiveDriver& objectives() const { return driver_; }
   // Applied lidar mount for presentation (viewer ray origins, same source
   // the suite generates from — never a separately authored copy).
@@ -100,7 +105,13 @@ class ScenarioSession {
  private:
   world::World world_;
   providers::SimSensorSuite suite_;
+  // Declared BEFORE app_: the ctors capture the provider address in
+  // app_'s initializer, and members init in declaration order — after
+  // app_ the default nullptr would overwrite the captured address.
+  providers::StaticMapProvider* map_provider_ = nullptr;
   robot::app::RobotApplication app_;
+  // Owned by the app (moved at construction); the session keeps the raw
+  // handle for SIM-side orchestration only (survey re-window, never tick).
   eval::EpisodeRecorder episode_;
   DeterministicScheduler scheduler_;
   ObjectiveDriver driver_;

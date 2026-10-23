@@ -56,6 +56,8 @@ int main(int argc, char** argv) {
       return 1;
     }
     sim::eval::apply_world_content(session->setup_world(), content);
+    // Survey covers the authored map (far-field goals need a route).
+    session->fit_map_window_to_world();
     robot::iface::TaskRequest req;
     req.request_id = "demo";
     req.place_id =
