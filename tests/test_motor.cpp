@@ -194,13 +194,13 @@ int main() {
     assert(eval::load_drive_profile(path, tuned, &err));
     assert(tuned.stall_force_N == 108.0);
     assert(tuned.wheel_equiv_mass_kg == 3.0);  // default kept
-    // Doubled stall scales the launch: the tuned plant (stall 108,
-    // applied — the historical pin read the default plant by mistake)
-    // outruns the default plant (stall 54) over 50 steps. Comparative in
-    // one process: both worlds share history, so the ratio is immune to
-    // absolute-transient wobble (single-step exact bands are not pinned
-    // here — file doctrine: exact transients belong to effort units).
-    world::World w_tuned;
+ // Doubled stall scales the launch: the tuned plant (stall 108) must
+ // outrun the default plant (stall 54) from identical initial contact
+ // state. Compare accumulated travel over 50 steps: the first-substep
+ // transient (fresh contacts are unresolved, so the drive acts
+ // unconstrained for 1 ms) is engine-owned, and an absolute single-step
+ // value would pin that startup detail instead of the parameter.
+ world::World w_tuned;
     w_tuned.set_motor_params(world::motor_params_from_profile(tuned));
     set_diff_duty(w_tuned, 1.0);
     world::World w_def;
