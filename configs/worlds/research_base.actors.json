@@ -1,0 +1,53 @@
+{
+ "actors": [
+  {
+   "id": "forklift_a",
+   "x": 17.5,
+   "y": 6.3,
+   "radius_m": 0.45,
+   "height_m": 1.5,
+   "speed_mps": 0.55,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 17.5,
+     "y": 6.3
+    },
+    {
+     "x": 14.0,
+     "y": 6.3
+    }
+   ],
+   "loop": false,
+   "waits": [
+    3.0,
+    3.0
+   ],
+   "seed": 1370993988,
+   "visual_kind": "vehicle"
+  },
+  {
+   "id": "forklift_b",
+   "x": 16.0,
+   "y": 6.5,
+   "radius_m": 0.45,
+   "height_m": 1.5,
+   "speed_mps": 0.5,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 16.0,
+     "y": 6.5
+    },
+    {
+     "x": 16.0,
+     "y": 12.0
+    }
+   ],
+   "loop": true,
+   "waits": [],
+   "seed": 1275962773,
+   "visual_kind": "vehicle"
+  }
+ ]
+}

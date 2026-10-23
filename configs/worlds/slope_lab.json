@@ -1,0 +1,222 @@
+{
+ "format": "lost-signal-world/2",
+ "boxes": [
+  {
+   "x0": 3.33,
+   "y0": 0.38,
+   "x1": 3.67,
+   "y1": 0.7200000000000001,
+   "height_m": 1.52
+  },
+  {
+   "x0": 18.229999999999997,
+   "y0": 1.08,
+   "x1": 18.57,
+   "y1": 1.42,
+   "height_m": 3.7039999999999997
+  },
+  {
+   "x0": 3.625,
+   "y0": 4.575,
+   "x1": 4.375,
+   "y1": 4.7250000000000005,
+   "height_m": 1.44
+  },
+  {
+   "x0": 1.525,
+   "y0": 4.375,
+   "x1": 2.475,
+   "y1": 4.925000000000001,
+   "height_m": 0.6
+  },
+  {
+   "x0": 18.229999999999997,
+   "y0": 5.28,
+   "x1": 18.57,
+   "y1": 5.62,
+   "height_m": 3.5199999999999996
+  },
+  {
+   "x0": 3.625,
+   "y0": 10.125,
+   "x1": 4.375,
+   "y1": 10.274999999999999,
+   "height_m": 1.44
+  },
+  {
+   "x0": 1.1300000000000001,
+   "y0": 8.83,
+   "x1": 1.47,
+   "y1": 9.17,
+   "height_m": 1.52
+  },
+  {
+   "x0": 18.529999999999998,
+   "y0": 13.13,
+   "x1": 18.87,
+   "y1": 13.47,
+   "height_m": 1.52
+  },
+  {
+   "x0": 9.125,
+   "y0": 13.275,
+   "x1": 9.875,
+   "y1": 13.424999999999999,
+   "height_m": 1.44
+  }
+ ],
+ "places": [
+  {
+   "place_id": "battery_cache",
+   "x_m": 2.7,
+   "y_m": 2.9,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "cross_end",
+   "x_m": 15.0,
+   "y_m": 11.1,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "cross_start",
+   "x_m": 2.0,
+   "y_m": 11.1,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "cross_turn",
+   "x_m": 8.0,
+   "y_m": 10.7,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "descent_end",
+   "x_m": 2.0,
+   "y_m": 7.0,
+   "yaw_rad": 3.141592653589793
+  },
+  {
+   "place_id": "descent_start",
+   "x_m": 15.0,
+   "y_m": 7.0,
+   "yaw_rad": 3.141592653589793
+  },
+  {
+   "place_id": "mast_cradle",
+   "x_m": 2.8,
+   "y_m": 11.1,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "ramp_hold",
+   "x_m": 7.0,
+   "y_m": 2.9,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "slope_start",
+   "x_m": 2.0,
+   "y_m": 2.9,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "slope_top",
+   "x_m": 15.0,
+   "y_m": 2.9,
+   "yaw_rad": 0.0
+  }
+ ],
+ "materials": [
+  {
+   "material_id": "standing_water",
+   "friction_mu": 0.35,
+   "rolling_resist": 0.02,
+   "contact_time_constant_s": 0.0025,
+   "contact_damping_ratio": 1.0,
+   "lidar_reflectivity": 0.1
+  }
+ ],
+ "zones": [
+  {
+   "zone_id": "descent_wet_highland",
+   "x0": 10.0,
+   "y0": 5.2,
+   "x1": 19.0,
+   "y1": 8.8,
+   "material": "standing_water"
+  },
+  {
+   "zone_id": "descent_wet_ramp",
+   "x0": 0.0,
+   "y0": 5.2,
+   "x1": 10.0,
+   "y1": 8.8,
+   "material": "standing_water"
+  }
+ ],
+ "terrain": [
+  {
+   "patch_id": "launch_ramp",
+   "x0": 4.0,
+   "y0": 1.0,
+   "x1": 10.0,
+   "y1": 4.8,
+   "base_height_m": 0.0,
+   "grade_x": 0.364,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.0
+  },
+  {
+   "patch_id": "launch_highland",
+   "x0": 10.0,
+   "y0": 1.0,
+   "x1": 19.0,
+   "y1": 4.8,
+   "base_height_m": 2.184,
+   "grade_x": 0.0,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.0
+  },
+  {
+   "patch_id": "descent_ramp",
+   "x0": 3.0,
+   "y0": 4.2,
+   "x1": 10.0,
+   "y1": 9.8,
+   "base_height_m": 0.0,
+   "grade_x": 0.28,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.01
+  },
+  {
+   "patch_id": "descent_highland",
+   "x0": 10.0,
+   "y0": 4.2,
+   "x1": 19.0,
+   "y1": 9.8,
+   "base_height_m": 1.96,
+   "grade_x": 0.0,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.0
+  },
+  {
+   "patch_id": "cross_slope_lane",
+   "x0": 1.0,
+   "y0": 9.3,
+   "x1": 19.0,
+   "y1": 13.0,
+   "base_height_m": 0.0,
+   "grade_x": 0.0,
+   "grade_y": 0.24,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.015
+  }
+ ],
+ "slabs": [],
+ "environment": []
+}

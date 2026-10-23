@@ -1,0 +1,114 @@
+{
+ "actors": [
+  {
+   "id": "big_cart_a",
+   "x": 9.0,
+   "y": 18.0,
+   "radius_m": 0.45,
+   "height_m": 1.5,
+   "speed_mps": 0.45,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 9.0,
+     "y": 18.0
+    },
+    {
+     "x": 39.0,
+     "y": 18.0
+    }
+   ],
+   "loop": true,
+   "waits": [],
+   "seed": 1770174958,
+   "visual_kind": "vehicle"
+  },
+  {
+   "id": "big_cart_b",
+   "x": 44.5,
+   "y": 4.0,
+   "radius_m": 0.45,
+   "height_m": 1.5,
+   "speed_mps": 0.5,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 44.5,
+     "y": 4.0
+    },
+    {
+     "x": 44.5,
+     "y": 19.0
+    }
+   ],
+   "loop": true,
+   "waits": [],
+   "seed": 1381325837,
+   "visual_kind": "vehicle"
+  },
+  {
+   "id": "big_ped_lane",
+   "x": 7.5,
+   "y": 12.0,
+   "radius_m": 0.25,
+   "height_m": 1.8,
+   "speed_mps": 0.5,
+   "behavior": "wander",
+   "waypoints": [],
+   "loop": false,
+   "waits": [],
+   "seed": 4159727041,
+   "visual_kind": "pedestrian"
+  },
+  {
+   "id": "big_ped_plaza",
+   "x": 12.0,
+   "y": 2.0,
+   "radius_m": 0.25,
+   "height_m": 1.8,
+   "speed_mps": 0.5,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 12.0,
+     "y": 2.0
+    },
+    {
+     "x": 28.0,
+     "y": 2.0
+    },
+    {
+     "x": 28.0,
+     "y": 11.0
+    },
+    {
+     "x": 12.0,
+     "y": 11.0
+    }
+   ],
+   "loop": false,
+   "waits": [
+    0.0,
+    0.0,
+    4.0,
+    4.0
+   ],
+   "seed": 4043610630,
+   "visual_kind": "pedestrian"
+  },
+  {
+   "id": "big_ped_market",
+   "x": 29.5,
+   "y": 20.5,
+   "radius_m": 0.25,
+   "height_m": 1.8,
+   "speed_mps": 0.5,
+   "behavior": "wander",
+   "waypoints": [],
+   "loop": false,
+   "waits": [],
+   "seed": 3119908054,
+   "visual_kind": "pedestrian"
+  }
+ ]
+}

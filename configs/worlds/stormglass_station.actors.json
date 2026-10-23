@@ -1,0 +1,30 @@
+{
+ "actors": [
+  {
+   "id": "service_cart_alpha",
+   "x": 22.2,
+   "y": 2.0,
+   "radius_m": 0.4,
+   "height_m": 1.5,
+   "speed_mps": 0.55,
+   "behavior": "waypoints",
+   "waypoints": [
+    {
+     "x": 22.2,
+     "y": 2.0
+    },
+    {
+     "x": 22.2,
+     "y": 7.2
+    }
+   ],
+   "loop": true,
+   "waits": [
+    0.6,
+    0.4
+   ],
+   "seed": 1260242859,
+   "visual_kind": "vehicle"
+  }
+ ]
+}

@@ -1,0 +1,200 @@
+{
+ "format": "lost-signal-world/2",
+ "boxes": [
+  {
+   "x0": 1.775,
+   "y0": 1.775,
+   "x1": 2.225,
+   "y1": 2.225,
+   "height_m": 2.8
+  },
+  {
+   "x0": 1.6848986300301483,
+   "y0": 15.684898630030148,
+   "x1": 2.3151013699698515,
+   "y1": 16.315101369969852,
+   "height_m": 2.8
+  },
+  {
+   "x0": 21.721697713355052,
+   "y0": 1.7216977133550535,
+   "x1": 22.278302286644948,
+   "y1": 2.2783022866449465,
+   "height_m": 2.8
+  },
+  {
+   "x0": 21.709311615390437,
+   "y0": 15.709311615390437,
+   "x1": 22.290688384609563,
+   "y1": 16.290688384609563,
+   "height_m": 2.8
+  },
+  {
+   "x0": 20.94766738964664,
+   "y0": 8.24766738964664,
+   "x1": 22.252332610353363,
+   "y1": 9.55233261035336,
+   "height_m": 2.2
+  },
+  {
+   "x0": 14.561986253228639,
+   "y0": 1.4921527329151774,
+   "x1": 16.038013746771362,
+   "y1": 2.1078472670848227,
+   "height_m": 0.7
+  },
+  {
+   "x0": 17.249756364184226,
+   "y0": 1.265814423827976,
+   "x1": 18.750243635815774,
+   "y1": 1.734185576172024,
+   "height_m": 0.7
+  },
+  {
+   "x0": 19.847502331027492,
+   "y0": 1.5909792465088257,
+   "x1": 21.35249766897251,
+   "y1": 2.0090207534911744,
+   "height_m": 0.7
+  },
+  {
+   "x0": 16.825,
+   "y0": 5.4,
+   "x1": 17.175,
+   "y1": 7.6,
+   "height_m": 1.05
+  },
+  {
+   "x0": 20.525,
+   "y0": 5.4,
+   "x1": 20.875,
+   "y1": 7.6,
+   "height_m": 1.05
+  },
+  {
+   "x0": 17.150000000000002,
+   "y0": 7.475,
+   "x1": 20.55,
+   "y1": 7.725,
+   "height_m": 1.05
+  }
+ ],
+ "places": [
+  {
+   "place_id": "flood_core",
+   "x_m": 5.2,
+   "y_m": 4.2,
+   "yaw_rad": 0.0
+  },
+  {
+   "place_id": "ridge_core",
+   "x_m": 18.4,
+   "y_m": 15.8,
+   "yaw_rad": 3.141592653589793
+  },
+  {
+   "place_id": "shadow_core",
+   "x_m": 18.8,
+   "y_m": 4.0,
+   "yaw_rad": 3.141592653589793
+  },
+  {
+   "place_id": "stormglass_base",
+   "x_m": 12.0,
+   "y_m": 9.0,
+   "yaw_rad": -1.5707963267948966
+  }
+ ],
+ "materials": [
+  {
+   "material_id": "standing_water",
+   "friction_mu": 0.35,
+   "rolling_resist": 0.02,
+   "contact_time_constant_s": 0.0025,
+   "contact_damping_ratio": 1.0,
+   "lidar_reflectivity": 0.1
+  },
+  {
+   "material_id": "gravel",
+   "friction_mu": 0.7,
+   "rolling_resist": 0.015,
+   "contact_time_constant_s": 0.01,
+   "contact_damping_ratio": 1.15,
+   "lidar_reflectivity": 0.28
+  },
+  {
+   "material_id": "paved",
+   "friction_mu": 1.0,
+   "rolling_resist": 0.0,
+   "contact_time_constant_s": 0.0025,
+   "contact_damping_ratio": 1.0,
+   "lidar_reflectivity": 0.35
+  }
+ ],
+ "zones": [
+  {
+   "zone_id": "stormglass_flooded_basin",
+   "x0": 1.0,
+   "y0": 1.0,
+   "x1": 10.0,
+   "y1": 7.2,
+   "material": "standing_water"
+  },
+  {
+   "zone_id": "stormglass_ridge_gravel",
+   "x0": 14.0,
+   "y0": 10.5,
+   "x1": 22.5,
+   "y1": 17.0,
+   "material": "gravel"
+  },
+  {
+   "zone_id": "stormglass_antenna_apron",
+   "x0": 14.0,
+   "y0": 1.0,
+   "x1": 23.0,
+   "y1": 8.5,
+   "material": "paved"
+  }
+ ],
+ "terrain": [
+  {
+   "patch_id": "stormglass_flood_ripples",
+   "x0": 1.0,
+   "y0": 1.0,
+   "x1": 10.0,
+   "y1": 7.2,
+   "base_height_m": -0.03,
+   "grade_x": 0.0,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.018
+  },
+  {
+   "patch_id": "stormglass_ridge_ramp",
+   "x0": 0.0,
+   "y0": 10.5,
+   "x1": 24.0,
+   "y1": 15.5,
+   "base_height_m": 0.0,
+   "grade_x": 0.0,
+   "grade_y": 0.075,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.018
+  },
+  {
+   "patch_id": "stormglass_ridge_crown",
+   "x0": 0.0,
+   "y0": 15.5,
+   "x1": 24.0,
+   "y1": 17.0,
+   "base_height_m": 0.375,
+   "grade_x": 0.0,
+   "grade_y": 0.0,
+   "grade_xy_per_m": 0.0,
+   "roughness": 0.012
+  }
+ ],
+ "slabs": [],
+ "environment": []
+}
