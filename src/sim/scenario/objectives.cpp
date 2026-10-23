@@ -22,6 +22,8 @@ void ObjectiveDriver::clear() {
   next_ = 0;
   results_.clear();
   requesting_ = false;
+  live_handle_ = robot::iface::GoalHandle{};
+  dispatched_step_ = 0;
 }
 
 std::size_t ObjectiveDriver::truth_arrivals() const {
@@ -54,7 +56,8 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
     robot::iface::TaskRequest req;
     req.request_id = "scenario-objective-" + std::to_string(next_);
     req.place_id = objectives_[next_];
-    if (!app.request_goal(req).valid()) {
+    const auto handle = app.request_goal(req);
+    if (!handle.valid()) {
       // Unknown place (map provider fails closed): record the miss and
       // move on so one bad objective cannot wedge a headless run.
       ObjectiveResult r;
@@ -65,13 +68,37 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
       return;
     }
     requesting_ = true;
+    live_handle_ = handle;
+    dispatched_step_ = world.truth().step;
     return;
   }
-  // A goal is live: only the ROBOT's report advances the mission.
+  // A goal is live: only the ROBOT's report advances the mission — unless
+  // the step budget expired first (abandon: record, cancel, move on so one
+  // stuck objective cannot wedge the mission; the mission budget stays the
+  // outer backstop). A terminal report on the expiry step wins over
+  // abandon (the robot did finish in time).
   const auto state = app.current_goal().state;
   if (state != robot::iface::GoalState::kDone &&
       state != robot::iface::GoalState::kFailed &&
       state != robot::iface::GoalState::kCanceled) {
+    if (step_budget_ > 0 &&
+        world.truth().step - dispatched_step_ > step_budget_) {
+      app.cancel_goal(live_handle_);  // withdraw; a late Done must not
+                                      // leak into the next objective
+      ObjectiveResult r;
+      r.place_id = objectives_[next_];
+      r.abandoned = true;
+      if (const world::NamedPlace* place = find_place(world, r.place_id)) {
+        r.truth_miss_m =
+            std::hypot(world.truth().body_x_m - place->x_m,
+                       world.truth().body_y_m - place->y_m);
+        r.truth_arrived = r.truth_miss_m <= arrive_tol_m_;
+      }
+      results_.push_back(r);
+      ++next_;
+      requesting_ = false;
+      live_handle_ = robot::iface::GoalHandle{};
+    }
     return;
   }
   ObjectiveResult r;

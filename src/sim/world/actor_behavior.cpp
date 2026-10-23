@@ -62,16 +62,33 @@ void step_actor(Actor& actor, ActorBehavior& behavior, double dt) {
         actor.vy_mps = 0.0;
         return;
       }
+      // Serving a timed stop: velocity zero, latch counts down. Expiry
+      // falls through to the advance logic (the dwelled point is already
+      // reached, so it moves past it — or latches the final stop), but
+      // must not re-latch on the same step (eternal dwell): the skip
+      // below covers exactly the countdown-expiry step.
+      bool skip_latch = false;
+      if (behavior.dwelling_) {
+        behavior.dwell_remaining_s -= dt;
+        actor.vx_mps = 0.0;
+        actor.vy_mps = 0.0;
+        if (behavior.dwell_remaining_s > 0.0) return;
+        behavior.dwelling_ = false;
+        behavior.dwell_remaining_s = 0.0;
+        skip_latch = true;
+      }
       const double speed = std::max(0.0, behavior.speed_mps);
       const double arrive = std::max(1e-3, behavior.arrive_radius_m);
       const std::size_t n = behavior.waypoints.size();
       behavior.waypoint_index %= n;
       // Advance past reached points (capped: clustered points can't spin).
+      std::size_t arrivals = 0;
       for (std::size_t k = 0; k <= n; ++k) {
         const ActorWaypoint& wp = behavior.waypoints[behavior.waypoint_index];
         const double dx = wp.x_m - actor.x;
         const double dy = wp.y_m - actor.y;
         if (std::hypot(dx, dy) > arrive) break;
+        ++arrivals;
         if (!behavior.loop &&
             behavior.waypoint_index + 1 >= n) {
           actor.vx_mps = 0.0;  // final point reached: latched stop
@@ -81,6 +98,18 @@ void step_actor(Actor& actor, ActorBehavior& behavior, double dt) {
         behavior.waypoint_index =
             behavior.loop ? (behavior.waypoint_index + 1) % n
                           : behavior.waypoint_index + 1;
+      }
+      // Fresh arrival + configured dwell: latch the timed stop now (the
+      // post-countdown fall-through above moves past afterwards). Already
+      // dwelling is impossible here (early return above), so sitting
+      // inside the radius never re-triggers — no eternal dwell.
+      if (arrivals > 0 && !skip_latch && behavior.dwell_s > 0.0 &&
+          std::isfinite(behavior.dwell_s)) {
+        behavior.dwelling_ = true;
+        behavior.dwell_remaining_s = behavior.dwell_s;
+        actor.vx_mps = 0.0;
+        actor.vy_mps = 0.0;
+        return;
       }
       const ActorWaypoint& wp = behavior.waypoints[behavior.waypoint_index];
       const double dx = wp.x_m - actor.x;

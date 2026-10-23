@@ -230,6 +230,30 @@ int main() {
     assert(results[1].robot_done && results[1].truth_arrived);
   }
 
+  // Step budget abandons a stuck objective: unreachable-in-time "far" is
+  // recorded (not done, truth miss kept), its goal canceled through the
+  // seam, and the mission continues onto "dock" instead of wedging. Zero
+  // budget is legacy (no abandon): covered by every mission above.
+  {
+    sim::scenario::ScenarioSession session;
+    session.setup_world().add_place({"far", 40.0, 0.0, 0.0});
+    session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+    session.set_objectives({"far", "dock"}, 1.0);
+    // Budget between dock's natural completion (~300 steps) and far's
+    // reach (~1500+): far abandons, dock completes normally.
+    session.set_objective_step_budget(400);
+    for (int i = 0; i < 1500 && !session.objectives_done(); ++i) {
+      session.step_once();
+    }
+    assert(session.objectives_done());
+    const auto& results = session.objectives().results();
+    assert(results.size() == 2);
+    assert(results[0].abandoned && !results[0].robot_done);
+    assert(results[0].truth_miss_m > 20.0);  // miss kept at abandon time
+    assert(!results[1].abandoned && results[1].robot_done &&
+           results[1].truth_arrived);  // mission continued cleanly
+  }
+
   std::printf("scenario ok\n");
   return 0;
 }

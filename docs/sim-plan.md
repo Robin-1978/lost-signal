@@ -204,7 +204,7 @@ no friction, contact, or live wetness).
   Coordinator doctrine kept: pure wiring (evidence in, envelope out),
   every threshold lives in the owning module.
 
-### S9 Sensor realism parity (in progress) — capabilities match-or-exceed
+### S9 Sensor realism parity (landed) — capabilities match-or-exceed
 master, framework/data/architecture stay new
 Rolling-shutter lidar + ROBOT deskew (landed): SIM casts every beam from
 its acquisition pose (truth twist x offset, yaw advanced, actors
@@ -254,8 +254,17 @@ tightened factor (position+time wired only, no policy). Slipped cells
 price A* routes + segment cost until expiry (worst latches, ice stays
 traversable — pricing only, never a veto). Pinned: memory reroutes
 through the clean gap at default weights, stale expires, clamps hold.
+Actor lifecycle richness (landed, last item): waypoint dwell (timed stop
+per arrival, velocity zero + position frozen, composes with loop/stop, 0
+= legacy exactly — master's dwell doctrine on the incremental stepper,
+no pure-time-function port); objective step budget (a live goal older
+than N world steps is recorded as abandoned with the truth miss kept,
+canceled through the seam so a late Done cannot leak into the next
+objective, next dispatched — 0 = legacy, mission budget stays the outer
+backstop). Pinned: dwell-then-proceed + loop pauses eat distance;
+far-abandon advances onto dock which completes cleanly.
 Next slices:
-actor lifecycle richness (last capability item).
+(none — capability parity reached; see program record below).
 
 ## Explicitly OUT (not deployable sim)
 

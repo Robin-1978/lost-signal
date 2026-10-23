@@ -22,6 +22,7 @@ struct ObjectiveResult {
   bool robot_done = false;      // ROBOT reported Done through the goal seam
   bool truth_arrived = false;   // truth body within tolerance at completion
   double truth_miss_m = 999.0;  // truth distance to the place at completion
+  bool abandoned = false;       // step budget expired before any report
 };
 
 class ObjectiveDriver {
@@ -29,6 +30,11 @@ class ObjectiveDriver {
   void set_objectives(std::vector<std::string> place_ids,
                       double arrive_tol_m = 0.5);
   void clear();
+  // Per-objective step budget (world steps): a live goal older than this
+  // is abandoned (recorded, canceled through the seam, next dispatched).
+  // 0 = no budget (today's behavior exactly: the mission budget backstops).
+  void set_step_budget(std::uint64_t steps) { step_budget_ = steps; }
+  std::uint64_t step_budget() const { return step_budget_; }
   // One orchestration step (after the app tick): requests the next place
   // when idle, records the result when the ROBOT reports completion.
   void update(robot::app::RobotApplication& app, const world::World& world);
@@ -47,6 +53,9 @@ class ObjectiveDriver {
   std::size_t next_ = 0;
   std::vector<ObjectiveResult> results_;
   double arrive_tol_m_ = 0.5;
+  std::uint64_t step_budget_ = 0;
+  std::uint64_t dispatched_step_ = 0;  // world step at dispatch
+  robot::iface::GoalHandle live_handle_{};  // canceled on abandon
 };
 
 }  // namespace lost_signal::sim::scenario

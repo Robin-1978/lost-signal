@@ -98,6 +98,72 @@ int main() {
     assert(w.actors()[0].vx_mps == 0.0);  // stays stopped
   }
 
+  // Dwell: timed stop at each arrival (velocity zero, position frozen),
+  // then proceeds; final point dwells once, then latches stopped.
+  {
+    sim::world::World w;
+    sim::world::Actor a;
+    ActorBehaviorRegistry::global().create("waypoints", a.behavior);
+    a.behavior.waypoints = {{2.0, 0.0}, {2.0, 2.0}};
+    a.behavior.speed_mps = 1.0;
+    a.behavior.loop = false;
+    a.behavior.dwell_s = 1.0;  // 50 steps at 0.02 s
+    w.add_actor(a);
+    auto step_until_near = [&](double tx, double ty, int cap) {
+      int used = 0;
+      while (used < cap &&
+             dist(w.actors()[0].x, w.actors()[0].y, tx, ty) >= 0.3) {
+        w.step(0.02);
+        ++used;
+      }
+      return used;
+    };
+    assert(step_until_near(2.0, 0.0, 200) < 200);  // reached wp1
+    const double dx = w.actors()[0].x, dy = w.actors()[0].y;
+    for (int i = 0; i < 40; ++i) {  // inside the 50-step dwell
+      w.step(0.02);
+      const auto& p = w.actors()[0];
+      assert(p.vx_mps == 0.0 && p.vy_mps == 0.0);
+      assert(p.x == dx && p.y == dy);  // frozen, not drifting
+    }
+    assert(step_until_near(2.0, 2.0, 300) < 300);  // dwell over, proceeded
+    for (int i = 0; i < 100; ++i) w.step(0.02);    // final dwell + latch
+    const auto& p = w.actors()[0];
+    assert(dist(p.x, p.y, 2.0, 2.0) < 0.3);
+    assert(p.vx_mps == 0.0 && p.vy_mps == 0.0);  // stays stopped
+  }
+
+  // Dwell on a loop: pauses eat distance but every corner is still visited.
+  {
+    sim::world::World w;
+    sim::world::Actor a;
+    a.x = 0.0;
+    a.y = 0.0;
+    assert(ActorBehaviorRegistry::global().create("waypoints", a.behavior));
+    a.behavior.waypoints = {{4.0, 0.0}, {4.0, 4.0}, {0.0, 4.0}, {0.0, 0.0}};
+    a.behavior.speed_mps = 1.0;
+    a.behavior.dwell_s = 0.5;
+    w.add_actor(a);
+    double min_corner = 1e9;
+    double path_length = 0.0;
+    double prev_x = 0.0, prev_y = 0.0;
+    int stopped_steps = 0;
+    for (int i = 0; i < 1600; ++i) {  // 32 s wall clock, less motion
+      w.step(0.02);
+      const auto& p = w.actors()[0];
+      min_corner =
+          std::min({min_corner, dist(p.x, p.y, 4.0, 0.0),
+                    dist(p.x, p.y, 4.0, 4.0), dist(p.x, p.y, 0.0, 4.0)});
+      path_length += dist(prev_x, prev_y, p.x, p.y);
+      prev_x = p.x;
+      prev_y = p.y;
+      if (p.vx_mps == 0.0 && p.vy_mps == 0.0) ++stopped_steps;
+    }
+    assert(min_corner < 0.3);  // every corner still visited
+    assert(path_length < 31.0);  // pauses ate distance (no-dwell: 32 +- .5)
+    assert(stopped_steps > 100);  // timed stops actually served
+  }
+
   // Misconfigured waypoints (empty list): stops, never invents motion.
   {
     sim::world::World w;

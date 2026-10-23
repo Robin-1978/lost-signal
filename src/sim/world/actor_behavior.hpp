@@ -34,6 +34,10 @@ struct ActorBehavior {
   double speed_mps = 1.0;  // clamped >= 0
   bool loop = true;        // false: stop at the final point
   double arrive_radius_m = 0.3;
+  // Dwell: pause this long at each waypoint arrival (master's timed-stop
+  // doctrine, adapted to the incremental stepper: velocity zero while the
+  // latch counts down). 0 = today's behavior exactly (no pause).
+  double dwell_s = 0.0;
   // Wander: explicit stream, seeded on first step.
   std::uint64_t seed = 1;
   double turn_rate_radps = 0.6;  // max heading rate, clamped >= 0
@@ -42,6 +46,9 @@ struct ActorBehavior {
   double heading_rad = 0.0;
   bool initialized = false;
   std::uint64_t rng_state = 0;
+  // Dwell latch: true while serving a timed stop.
+  bool dwelling_ = false;
+  double dwell_remaining_s = 0.0;
 };
 
 // One deterministic step: sets the actor velocity from its behavior.

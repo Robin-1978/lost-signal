@@ -53,6 +53,11 @@ class ScenarioSession {
   void set_objectives(std::vector<std::string> place_ids,
                       double arrive_tol_m = 0.5);
   bool objectives_done() const { return driver_.done(); }
+  // Per-objective step budget (0 = none, legacy): a live goal older than
+  // this is abandoned (recorded + canceled, next dispatched). Pre-run.
+  void set_objective_step_budget(std::uint64_t steps) {
+    driver_.set_step_budget(steps);
+  }
   // Truth-side judge radius (scenario config, not a ROBOT parameter).
   void set_judge_radius_m(double radius_m) {
     judge_radius_m_ = radius_m >= 0.0 ? radius_m : 0.4;
