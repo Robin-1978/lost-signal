@@ -80,6 +80,15 @@ int main() {
     assert(prof.wheel_base_m == 0.56 && prof.track_width_m == 0.56);
     assert(platform::DriveProfile::for_chassis("mecanum", prof));
     assert(!platform::DriveProfile::for_chassis("nope", prof));
+    // Tracked: wide skid-steer stance with yaw scrub from track shear.
+    assert(platform::DriveProfile::for_chassis("tracked", prof));
+    assert(prof.track_width_m == 0.6 && prof.wheel_base_m == 0.7);
+    assert(prof.yaw_scrub_coulomb_Nm == 8.0);
+    assert(prof.yaw_scrub_viscous_Nm_per_radps == 6.0);
+    // Wheeled kinds pivot freely (zero scrub).
+    assert(platform::DriveProfile::for_chassis("differential", prof));
+    assert(prof.yaw_scrub_coulomb_Nm == 0.0);
+    assert(prof.yaw_scrub_viscous_Nm_per_radps == 0.0);
   }
 
   // Plugin registry: builtins present, unknown fails closed, first wins,
@@ -90,6 +99,7 @@ int main() {
   assert(registry.contains("ackermann"));
   assert(registry.contains("swerve"));
   assert(registry.contains("mecanum"));
+  assert(registry.contains("tracked"));
   assert(!registry.contains("nope"));
   assert(!registry.register_factory("", [](const platform::RobotDescription&) {
     return nullptr;
@@ -108,6 +118,16 @@ int main() {
   auto trike = registry.create(custom);
   assert(trike && std::string(trike->chassis_id()) == "differential");
   assert(trike->command_space() == iface::CommandSpace::kYawRate);
+
+  // Tracked builds on the skid-steer path (yaw-rate space, wide stance).
+  {
+    platform::RobotDescription td;
+    td.chassis_kind = "tracked";
+    td.limits = limits;
+    auto tracked = registry.create(td);
+    assert(tracked && std::string(tracked->chassis_id()) == "differential");
+    assert(tracked->command_space() == iface::CommandSpace::kYawRate);
+  }
 
   std::printf("chassis ok\n");
   return 0;

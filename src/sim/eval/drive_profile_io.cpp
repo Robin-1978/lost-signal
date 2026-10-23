@@ -115,6 +115,22 @@ bool load_drive_profile(const std::string& path,
     }
     merged.encoder_counts_per_revolution = static_cast<int>(enc->as_num());
   }
+  // Yaw scrub (tracked): zero is valid, so outside the positive-only loop.
+  const char* scrub_keys[] = {"yaw_scrub_coulomb_Nm",
+                              "yaw_scrub_viscous_Nm_per_radps"};
+  double* scrub_slots[] = {&merged.yaw_scrub_coulomb_Nm,
+                           &merged.yaw_scrub_viscous_Nm_per_radps};
+  for (int i = 0; i < 2; ++i) {
+    if (!take_num(obj, scrub_keys[i], v, present, err)) return false;
+    if (present) {
+      if (!std::isfinite(v) || v < 0.0) {
+        err = std::string("key '") + scrub_keys[i] +
+              "' must be finite non-negative";
+        return false;
+      }
+      *scrub_slots[i] = v;
+    }
+  }
   profile = merged;
   return true;
 }

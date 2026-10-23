@@ -815,6 +815,26 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
       data->qfrc_applied[1] = roller_fx * s + roller_fy * c;
       data->qfrc_applied[5] = roller_t;
     }
+    // Tracked skid-steer scrub (main's TrackedDrive yaw scrub): Coulomb +
+    // viscous torque opposing yaw from track shear. Zero params (wheeled
+    // chassis) write zero — today's behavior bit-identical. Assigned, never
+    // accumulated: qfrc_applied[5] is ours alone on non-mecanum layouts
+    // (mecanum adds its roller torque above first).
+    {
+      const double scrub_c = std::max(0.0, motor.yaw_scrub_coulomb_Nm);
+      const double scrub_v =
+          std::max(0.0, motor.yaw_scrub_viscous_Nm_per_radps);
+      if (scrub_c > 0.0 || scrub_v > 0.0) {
+        const double wyaw = data->qvel[5];
+        const double scrub_t =
+            scrub_c * std::tanh(wyaw / 0.1) + scrub_v * wyaw;
+        if (is_mecanum) {
+          data->qfrc_applied[5] -= scrub_t;
+        } else {
+          data->qfrc_applied[5] = -scrub_t;
+        }
+      }
+    }
     mj_step2(model, data);
   }
   // Traction evidence, main's motor_drive flag: the settled (last-substep)

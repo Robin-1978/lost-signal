@@ -40,6 +40,8 @@ MotorParams motor_params_from_profile(
   out.encoder_counts_per_revolution = profile.encoder_counts_per_revolution;
   out.steer_stall_torque_Nm = profile.steer_stall_torque_Nm;
   out.tire_friction_mu = profile.tire_friction_mu;
+  out.yaw_scrub_coulomb_Nm = profile.yaw_scrub_coulomb_Nm;
+  out.yaw_scrub_viscous_Nm_per_radps = profile.yaw_scrub_viscous_Nm_per_radps;
   return out;
 }
 

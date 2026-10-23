@@ -36,6 +36,11 @@ struct DriveProfile {
   // slip-flag threshold). Defaults mirror main's Ackermann/GroundContact.
   double steer_stall_torque_Nm = 8.0;
   double tire_friction_mu = 0.7;
+  // Skid-steer yaw scrub (tracked only, main's TrackedDrive scrub model):
+  // Coulomb + viscous torque opposing yaw from track scrub. Zero for
+  // wheel chassis (differential pivots freely); tracked sets both.
+  double yaw_scrub_coulomb_Nm = 0.0;
+  double yaw_scrub_viscous_Nm_per_radps = 0.0;
 
   // Factory defaults per chassis kind (same numbers make_chassis builds
   // with). False when kind is unknown: no silent default hardware.

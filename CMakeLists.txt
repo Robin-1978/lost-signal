@@ -517,6 +517,9 @@ add_test(NAME map_editor COMMAND test_map_editor)
 add_executable(test_terrain
   tests/test_terrain.cpp
 )
+target_compile_definitions(test_terrain PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
 target_link_libraries(test_terrain PRIVATE lost_signal_sim_providers lost_signal_sim_eval)
 add_test(NAME terrain COMMAND test_terrain)
 

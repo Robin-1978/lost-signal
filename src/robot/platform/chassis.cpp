@@ -360,6 +360,18 @@ const RegisterChassis kRegisterMecanum{
                                                std::move(hc));
     }};
 
+const RegisterChassis kRegisterTracked{
+    "tracked", [](const RobotDescription& desc) {
+      // Skid-steer tracks on the differential path: one duty channel per
+      // side, yaw-rate command space, wide stance. Track shear (scrub)
+      // lives in the plant (MotorParams), not here.
+      control::WheelControllerConfig wc;
+      wc.wheel_radius_m = 0.1;
+      wc.track_width_m = 0.6;
+      return std::make_unique<DifferentialChassis>(0.1, 0.6, desc.limits,
+                                                  std::move(wc));
+    }};
+
 }  // namespace
 
 }  // namespace lost_signal::robot::platform

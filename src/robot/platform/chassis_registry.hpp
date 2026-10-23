@@ -12,7 +12,8 @@
 namespace lost_signal::robot::platform {
 
 // Plugin registry for chassis factories, keyed by RobotDescription
-// chassis_kind ("differential", "ackermann", "swerve", "mecanum").
+// chassis_kind ("differential", "ackermann", "swerve", "mecanum",
+// "tracked").
 // Native bring-ups register new bases without touching the factory call
 // site; unknown kinds fail closed to nullptr (no silent default chassis).
 class ChassisRegistry {

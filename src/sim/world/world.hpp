@@ -164,6 +164,11 @@ struct MotorParams {
   // Tire-road sliding friction for the engine contact pair and the slip
   // flag threshold (mu * load per wheel). Mirrors main's GroundContact.
   double tire_friction_mu = 0.7;
+  // Skid-steer yaw scrub torque (tracked): Coulomb + viscous, opposing yaw.
+  // Zero for wheeled chassis (differential pivots freely) — today's
+  // behavior bit-identical. From the DriveProfile track contract.
+  double yaw_scrub_coulomb_Nm = 0.0;
+  double yaw_scrub_viscous_Nm_per_radps = 0.0;
   // Encoder resolution for the joint measurement model (counts per
   // revolution). The provider quantizes angles and differentiates; the
   // ROBOT loop closes on the quantized joints, like native hardware.
