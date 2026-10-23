@@ -1,12 +1,14 @@
 // Terrain + material import gate: authored facts drive the engine and the
 // survey from one canonical function, and ROBOT sees only measurements.
-// Pins: height math, engine contact geometry (raycast), per-zone friction
-// effect + slip labels, survey elevation, environment grip, fail-closed
-// refuses. Engine sections need MuJoCo; math/survey run anywhere.
+// Pins: height math (plane + bilinear + relief), engine contact geometry
+// (raycast, planar + tiled mesh), per-zone friction effect + slip labels,
+// survey elevation, environment grip, fail-closed refuses. Engine sections
+// need MuJoCo; math/survey run anywhere.
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 
+#include "robot/core/relief.hpp"
 #include "robot/iface/task.hpp"
 #include "sim/providers/static_map.hpp"
 #include "sim/world/terrain.hpp"
@@ -61,6 +63,32 @@ int main() {
     assert(std::abs(environment_grip_at(env, "ice", 20.0) - 0.5) < 1e-12);
     assert(std::abs(environment_grip_at(env, "ice", -1.0) - 1.0) < 1e-12);
     assert(std::abs(environment_grip_at(env, "dry", 5.0) - 1.0) < 1e-12);
+    // Relief: zero outside the footprint and at the borders (sine fade),
+    // deterministic, gradient matches finite differences.
+    {
+      using robot::core::rough_relief;
+      assert(rough_relief(0.05, 4.0, 2.0, -0.5, 1.0).height_m == 0.0);
+      assert(rough_relief(0.05, 4.0, 2.0, 5.0, 1.0).height_m == 0.0);
+      assert(rough_relief(0.0, 4.0, 2.0, 1.0, 1.0).height_m == 0.0);
+      assert(rough_relief(0.05, 4.0, 2.0, 0.0, 1.0).height_m == 0.0);
+      const auto r0 = rough_relief(0.05, 4.0, 2.0, 1.0, 0.5);
+      const auto rx = rough_relief(0.05, 4.0, 2.0, 1.001, 0.5);
+      const auto ry = rough_relief(0.05, 4.0, 2.0, 1.0, 0.501);
+      assert(std::abs(r0.gradient_x - (rx.height_m - r0.height_m) / 0.001) <
+             1e-3);
+      assert(std::abs(r0.gradient_y - (ry.height_m - r0.height_m) / 0.001) <
+             1e-3);
+      assert(std::abs(r0.height_m) <= 0.05);  // bounded by the amplitude
+      // Canonical sample carries relief on top of the plane.
+      std::vector<TerrainPatch> rp = {
+          {"rough", 2.0, -1.0, 6.0, 1.0, 0.0, 0.1, 0.0, 0.0, 0.05}};
+      std::vector<SupportSlab> no_slabs;
+      TerrainSample rs = sample_terrain(rp, no_slabs, 3.0, 0.0);
+      const auto expect =
+          rough_relief(0.05, 4.0, 2.0, 1.0, 1.0);
+      assert(std::abs(rs.height_m - (0.1 + expect.height_m)) < 1e-12);
+      assert(std::abs(rs.grade_x - (0.1 + expect.gradient_x)) < 1e-12);
+    }
   }
 
   // Survey: elevation follows the authored function; materials unpublished.
@@ -118,14 +146,38 @@ int main() {
            !base.truth().drive_slipping[1]);
   }
 
-  // Fail-closed: roughness and bilinear cross-slope refuse the build
-  // (frozen truth, never silently smoothed); unknown zone material too.
+  // Mesh patches build (no refuse): rough + bilinear ride on tile grids
+  // sampling the same canonical height the survey rasterizes. Raycast
+  // agrees with the survey within tile tolerance; the base plane dominates
+  // (relief is cm-scale on a dm-scale grade).
   {
-    sim::world::World w = make_diff(0.5);
+    sim::world::World w = make_diff(0.0);
     w.set_terrain_patches(
-        {{"rough", 2.0, -1.0, 6.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.05}});
-    for (int i = 0; i < 10; ++i) w.step(0.02);
-    assert(w.truth().forward_mps == 0.0);
+        {{"rough", 2.0, -1.0, 6.0, 1.0, 0.0, 0.1, 0.0, 0.0, 0.05},
+         {"twist", 2.0, 2.0, 6.0, 4.0, 0.5, 0.0, 0.0, 0.02, 0.0}});
+    w.step(0.02);  // builds the model (must not refuse)
+    for (int i = 0; i < 50; ++i) w.step(0.02);
+    assert(std::abs(w.truth().body_x_m) < 0.01);  // parked: no drive, no creep
+    double d = 0.0;
+    assert(w.raycast(3.0, 0.0, 5.0, 0.0, 0.0, -1.0, 10.0, d));
+    sim::world::TerrainSample expect = sim::world::sample_terrain(
+        w.terrain_patches(), w.support_slabs(), 3.0, 0.0);
+    assert(std::abs(d - (5.0 - expect.height_m)) < 0.05);
+    assert(w.raycast(4.0, 3.0, 5.0, 0.0, 0.0, -1.0, 10.0, d));
+    expect = sim::world::sample_terrain(w.terrain_patches(),
+                                        w.support_slabs(), 4.0, 3.0);
+    assert(std::abs(d - (5.0 - expect.height_m)) < 0.05);
+    // A wheel drive over relief actually rolls (not frozen, not refused).
+    sim::world::World wr = make_diff(0.6);
+    wr.set_terrain_patches(
+        {{"rough", -2.0, -2.0, 8.0, 2.0, 0.0, 0.02, 0.0, 0.0, 0.02}});
+    for (int i = 0; i < 50; ++i) wr.step(0.02);
+    assert(wr.truth().body_x_m > 0.1);
+  }
+
+  // Fail-closed: unknown zone material refuses the build (frozen truth,
+  // never silently defaulted).
+  {
     sim::world::World w2 = make_diff(0.5);
     w2.set_materials({{"ice", 0.25, 0.0, 0.006, 1.0, 0.3}});
     w2.set_material_zones({{"bad", 0.0, 0.0, 1.0, 1.0, "nope"}});

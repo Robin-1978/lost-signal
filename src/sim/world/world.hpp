@@ -100,10 +100,10 @@ struct MaterialZone {
 };
 
 // Authored terrain height patch (SIM-side truth). Plane + bilinear
-// cross-slope, sampled by the single canonical function in terrain.hpp
-// (engine geometry and survey elevation share it, never drift apart).
-// Roughness needs mesh support (T2): files may carry it, the engine
-// refuses roughness > 0 fail-closed until then.
+// cross-slope + deterministic relief, sampled by the single canonical
+// function in terrain.hpp (engine geometry and survey elevation share it,
+// never drift apart). Mesh patches (roughness > 0 or cross-slope) build as
+// engine tile grids; planar patches build as one slab.
 struct TerrainPatch {
   std::string patch_id;
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;

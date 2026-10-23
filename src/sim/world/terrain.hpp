@@ -3,9 +3,10 @@
 // SIM-owned authored-terrain sampling (World internals, never ROBOT input).
 // Single canonical height function: the engine builds contact geometry from
 // it and the survey rasterizes elevation from it, so the two cannot drift
-// apart. Plane math ported verbatim from main's TerrainModel::sample (minus
-// the roughness waveform, which needs mesh support — T2):
-//   height = base + gx*dx + gy*dy + gxy*dx*dy (bilinear cross-slope included).
+// apart. Plane math ported verbatim from main's TerrainModel::sample, plus
+// the deterministic relief waveform (shared primitive in robot/core: pure
+// math, no truth — the ROBOT never evaluates it):
+//   height = base + gx*dx + gy*dy + gxy*dx*dy + relief(roughness, dx, dy).
 // Later revisions win: support slabs override patches, and within one list
 // the later entry wins. Outside everything the height is 0 (flat floor).
 
@@ -14,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "robot/core/relief.hpp"
 #include "sim/world/world.hpp"
 
 namespace lost_signal::sim::world {
@@ -58,14 +60,15 @@ inline TerrainSample sample_terrain(
     }
     const double dx = x - patch.x0;
     const double dy = y - patch.y0;
-    // T2: + rough_relief(patch.roughness, w, d, dx, dy) height + gradient.
-    // Until mesh support lands the engine refuses roughness > 0 fail-closed,
-    // so reaching here with nonzero roughness is an authoring error, never
-    // a silently smoothed surface.
+    // Deterministic relief (shared primitive): zero at/beyond the border
+    // by construction (sine fade), so rough patches join the floor
+    // continuously and the survey needs no special casing.
+    const robot::core::ReliefSample relief = robot::core::rough_relief(
+        patch.roughness, patch.x1 - patch.x0, patch.y1 - patch.y0, dx, dy);
     return {patch.base_height_m + patch.grade_x * dx + patch.grade_y * dy +
-                patch.grade_xy_per_m * dx * dy,
-            patch.grade_x + patch.grade_xy_per_m * dy,
-            patch.grade_y + patch.grade_xy_per_m * dx};
+                patch.grade_xy_per_m * dx * dy + relief.height_m,
+            patch.grade_x + patch.grade_xy_per_m * dy + relief.gradient_x,
+            patch.grade_y + patch.grade_xy_per_m * dx + relief.gradient_y};
   }
   return {};
 }

@@ -217,23 +217,10 @@ void MujocoBackend::sync(const MotorParams& motor,
     ready_ = false;
     return;
   }
-  // Mesh-only features refuse the build fail-closed: a silently smoothed
-  // surface would lie to both the contact solver and the survey.
-  for (const auto& p : patches) {
-    if (p.roughness > 0.0 || std::abs(p.grade_xy_per_m) > 1e-12) {
-      if (!refuse_reported_) {
-        std::fprintf(stderr,
-                     "mujoco_backend: terrain patch '%s' needs mesh support "
-                     "(roughness/bilinear); build refused\n",
-                     p.patch_id.c_str());
-        refuse_reported_ = true;
-      }
-      drive_count_ = 0;
-      steer_count_ = 0;
-      ready_ = false;
-      return;
-    }
-  }
+  // Mesh patches (roughness > 0 or bilinear cross-slope) build as tile
+  // grids below (piecewise-planar, same top-coincidence construction per
+  // tile): the surface is authored, never silently smoothed. Only unknown
+  // zone materials refuse the build fail-closed.
   for (const auto& z : zones) {
     if (find_material(materials, z.material_id) == nullptr) {
       if (!refuse_reported_) {
@@ -278,7 +265,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   for (const auto& p : patches) {
     sig << p.patch_id << "," << p.x0 << "," << p.y0 << "," << p.x1 << ","
         << p.y1 << "," << p.base_height_m << "," << p.grade_x << ","
-        << p.grade_y << ";";
+        << p.grade_y << "," << p.grade_xy_per_m << "," << p.roughness << ";";
   }
   sig << "S|";
   for (const auto& s : slabs) {
@@ -519,28 +506,79 @@ void MujocoBackend::sync(const MotorParams& motor,
   // canonical height plane (same grade through the center point the survey
   // rasterizes, so engine contact and map elevation agree exactly on the
   // footprint). Patch borders are retaining walls, never ramps.
+  // Mesh patches (roughness or bilinear cross-slope: no single plane fits)
+  // build as tile grids instead — each tile samples the canonical height +
+  // gradient at its center through the full patch/slab stack (later wins),
+  // so overlaps resolve identically in engine and survey. Tile pitch is
+  // capped at 1/4 of the shortest relief wavelength (0.95 m); larger
+  // patches coarsen with a one-time notice, never silently.
   for (std::size_t pi = 0; pi < patches.size(); ++pi) {
     const TerrainPatch& p = patches[pi];
     if (!(p.x1 > p.x0 && p.y1 > p.y0)) continue;
-    const double hx = (p.x1 - p.x0) / 2;
-    const double hy = (p.y1 - p.y0) / 2;
-    const double cx = (p.x0 + p.x1) / 2;
-    const double cy = (p.y0 + p.y1) / 2;
-    TerrainSample center = sample_terrain(patches, slabs, cx, cy);
-    const double half_t = (center.height_m + 0.5) / 2;
-    double q[4];
-    grade_quat(p.grade_x, p.grade_y, q);
-    mjsGeom* pg = add_geom(world, "terrain" + std::to_string(pi), mjGEOM_BOX,
-                           hx, hy, std::max(0.05, half_t), 0, q);
-    pg->pos[0] = cx;
-    pg->pos[1] = cy;
-    // Tilt-corrected so the top face passes through the surveyed center.
-    pg->pos[2] = center.height_m -
-                 std::max(0.05, half_t) * std::cos(std::atan(p.grade_x)) *
-                     std::cos(std::atan(p.grade_y));
-    pg->friction[0] = kFloorSlidingFriction;
-    pg->friction[1] = 0.01;
-    pg->friction[2] = 0.001;
+    const bool mesh = p.roughness > 0.0 ||
+                      std::abs(p.grade_xy_per_m) > 1e-12;
+    if (!mesh) {
+      const double hx = (p.x1 - p.x0) / 2;
+      const double hy = (p.y1 - p.y0) / 2;
+      const double cx = (p.x0 + p.x1) / 2;
+      const double cy = (p.y0 + p.y1) / 2;
+      TerrainSample center = sample_terrain(patches, slabs, cx, cy);
+      const double half_t = (center.height_m + 0.5) / 2;
+      double q[4];
+      grade_quat(p.grade_x, p.grade_y, q);
+      mjsGeom* pg = add_geom(world, "terrain" + std::to_string(pi), mjGEOM_BOX,
+                             hx, hy, std::max(0.05, half_t), 0, q);
+      pg->pos[0] = cx;
+      pg->pos[1] = cy;
+      // Tilt-corrected so the top face passes through the surveyed center.
+      pg->pos[2] = center.height_m -
+                   std::max(0.05, half_t) * std::cos(std::atan(p.grade_x)) *
+                       std::cos(std::atan(p.grade_y));
+      pg->friction[0] = kFloorSlidingFriction;
+      pg->friction[1] = 0.01;
+      pg->friction[2] = 0.001;
+      continue;
+    }
+    const double w = p.x1 - p.x0, h = p.y1 - p.y0;
+    int nx = std::max(1, static_cast<int>(std::ceil(w / 0.25)));
+    int ny = std::max(1, static_cast<int>(std::ceil(h / 0.25)));
+    if (nx > 48 || ny > 48) {
+      if (!refuse_reported_) {
+        std::fprintf(stderr,
+                     "mujoco_backend: terrain patch '%s' tiles coarsened "
+                     "(%dx%d capped at 48/side)\n",
+                     p.patch_id.c_str(), nx, ny);
+        refuse_reported_ = true;
+      }
+      nx = std::min(nx, 48);
+      ny = std::min(ny, 48);
+    }
+    const double dx = w / nx, dy = h / ny;
+    for (int ix = 0; ix < nx; ++ix) {
+      for (int iy = 0; iy < ny; ++iy) {
+        const double cx = p.x0 + (ix + 0.5) * dx;
+        const double cy = p.y0 + (iy + 0.5) * dy;
+        TerrainSample center = sample_terrain(patches, slabs, cx, cy);
+        const double half_t = (center.height_m + 0.5) / 2;
+        double q[4];
+        grade_quat(center.grade_x, center.grade_y, q);
+        mjsGeom* tg =
+            add_geom(world,
+                     "terrain" + std::to_string(pi) + "t" + std::to_string(ix) +
+                         "_" + std::to_string(iy),
+                     mjGEOM_BOX, dx / 2, dy / 2, std::max(0.05, half_t), 0,
+                     q);
+        tg->pos[0] = cx;
+        tg->pos[1] = cy;
+        tg->pos[2] = center.height_m -
+                     std::max(0.05, half_t) *
+                         std::cos(std::atan(center.grade_x)) *
+                         std::cos(std::atan(center.grade_y));
+        tg->friction[0] = kFloorSlidingFriction;
+        tg->friction[1] = 0.01;
+        tg->friction[2] = 0.001;
+      }
+    }
   }
   // Support slabs: thin oriented decks (same top-coincidence construction).
   for (std::size_t si = 0; si < slabs.size(); ++si) {

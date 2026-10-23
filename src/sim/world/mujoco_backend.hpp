@@ -46,10 +46,10 @@ class MujocoBackend {
   // approximated.
   // Terrain/material import (SIM-side truth only): authored patches become
   // oriented contact slabs, material zones become per-zone floor slabs with
-  // the library friction/contact numbers. Roughness and bilinear
-  // cross-slope need mesh support (T2): either present refuses the build
-  // fail-closed (frozen, never silently smoothed). Environment keyframes
-  // are NOT build inputs — time-varying grip applies per step, live.
+  // the library friction/contact numbers. Mesh patches (roughness or
+  // bilinear cross-slope) build as tile grids sampling the same canonical
+  // height the survey rasterizes — authored, never smoothed. Environment
+  // keyframes are NOT build inputs — time-varying grip applies per step.
   void sync(const MotorParams& motor, const std::vector<StaticBox>& boxes,
             const std::vector<MaterialEntry>& materials,
             const std::vector<MaterialZone>& zones,
