@@ -143,4 +143,60 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
   return out.valid();
 }
 
+bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
+                                        bool include_actors) {
+  if (world_ == nullptr || ring_count_ <= 0 || azimuth_beams_ <= 0) {
+    return false;
+  }
+  const world::WorldTruth& t = world_->truth();
+  ranges_m.assign(static_cast<std::size_t>(azimuth_beams_), max_range_m_);
+  // Same sensor pose as poll(): body + attitude composed with the mount.
+  const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
+      t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
+  const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
+                            mount_xyz_m_[2]};
+  const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
+  const double ox = t.body_x_m + off.x;
+  const double oy = t.body_y_m + off.y;
+  const double oz = t.body_z_m + off.z;
+  const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
+      body_q, robot::core::quaternion_from_rpy(
+                  mount_rpy_rad_[0], mount_rpy_rad_[1], mount_rpy_rad_[2]));
+  for (int i = 0; i < azimuth_beams_; ++i) {
+    const double az =
+        -M_PI + 2.0 * M_PI * static_cast<double>(i) / azimuth_beams_;
+    float best = max_range_m_;
+    for (int j = 0; j < ring_count_; ++j) {
+      const double elev =
+          (ring_count_ == 1)
+              ? 0.0
+              : min_elev_rad_ +
+                    (max_elev_rad_ - min_elev_rad_) * j / (ring_count_ - 1);
+      const double ce = std::cos(elev);
+      const robot::core::Vec3 d = robot::core::rotate_vector(
+          sensor_q, {ce * std::cos(az), ce * std::sin(az), std::sin(elev)});
+      double dist = max_range_m_;
+      double hit = 0.0;
+      if (world_->raycast(ox, oy, oz, d.x, d.y, d.z, max_range_m_, hit)) {
+        dist = hit;
+      }
+      if (include_actors) {
+        for (const auto& actor : world_->actors()) {
+          dist = std::min(dist,
+                          detail::ray_actor_cylinder(
+                              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y,
+                              actor.radius_m, actor.height_m, max_range_m_));
+        }
+      }
+      if (!(dist < max_range_m_)) continue;
+      // Ground filter on the world hit height (d is unit): floor excluded.
+      const double hit_z = oz + d.z * dist;
+      if (hit_z < ground_cut_m_) continue;
+      best = std::min(best, static_cast<float>(dist));
+    }
+    ranges_m[static_cast<std::size_t>(i)] = best;
+  }
+  return true;
+}
+
 }  // namespace lost_signal::sim::providers

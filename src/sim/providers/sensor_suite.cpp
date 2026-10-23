@@ -1,6 +1,8 @@
 #include "sim/providers/sensor_suite.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace lost_signal::sim::providers {
 
@@ -46,9 +48,29 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
   robot::iface::ImuMessage imu;
   if (!imu_.poll(imu)) return false;
   robot::iface::Lidar2DScan scan;
-  if (!lidar_.poll(scan, true)) return false;
   robot::iface::Lidar2DScan reference;
-  if (!lidar_.poll(reference, false)) return false;
+  if (composite_scan_) {
+    // Composite front end: same message, same layout, multi-line source.
+    std::vector<float> ranges, ref;
+    if (!lidar3d_.poll_composite(ranges, true)) return false;
+    if (!lidar3d_.poll_composite(ref, false)) return false;
+    scan.src = lidar3d_.descriptor().endpoint_id;
+    scan.frm = robot::core::Frame::kLidarLink;
+    scan.seq = ++composite_seq_;
+    if (scan.seq == 0) scan.seq = ++composite_seq_;  // never zero
+    scan.stamp = static_cast<robot::core::MonotonicNs>(world_->truth().step *
+                                                       20'000'000);
+    scan.ranges_m = std::move(ranges);
+    scan.angle_min_rad = -static_cast<float>(M_PI);
+    scan.angle_increment_rad =
+        static_cast<float>(2.0 * M_PI / scan.ranges_m.size());
+    reference = scan;
+    reference.ranges_m = std::move(ref);
+    reference.src = lidar3d_.descriptor().endpoint_id;
+  } else {
+    if (!lidar_.poll(scan, true)) return false;
+    if (!lidar_.poll(reference, false)) return false;
+  }
 
   out = robot::iface::make_envelope(fb);
   if (!robot::iface::set_scan(out, scan)) return false;

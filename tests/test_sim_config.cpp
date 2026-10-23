@@ -21,6 +21,7 @@ int main() {
     assert(cfg.judge_radius_m == 0.4);
     assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
     assert(cfg.lidar_rings == 16);
+    assert(!cfg.lidar_composite);  // opt-in front end, default off
     assert(cfg.delivery.latency_steps == 0);
     assert(cfg.delivery.drop_probability == 0.0);
     assert(cfg.imu_realism.gyro_bias_radps == 0.0);
@@ -63,6 +64,11 @@ int main() {
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"lidar": {"rings": 0}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"lidar": {"composite": 1}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"lidar": {"composite": true}})");
+    assert(sim::eval::load_sim_config(tmp, cfg, &err));
+    assert(cfg.lidar_composite);
     write(R"({"imu_realism": {"gyro_noise_radps": -0.1}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({bad json)");
@@ -71,6 +77,7 @@ int main() {
     assert(sim::eval::load_sim_config(tmp, cfg, &err));
     assert(cfg.lidar_beams == 72 && cfg.judge_radius_m == 0.4);
     assert(cfg.lidar_rings == 16);
+    assert(!cfg.lidar_composite);
     std::filesystem::remove(tmp);
   }
 

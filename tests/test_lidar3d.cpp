@@ -163,9 +163,43 @@ int main() {
     assert(t.poll(c) && c.ring_count == 4);
     for (const auto& p : c.points) assert(p.ring < 4);
   }
+  // Composite scan: per-azimuth min over non-ground rings at the 2D
+  // layout. A low plate the horizontal ring flies over shows up here.
+  {
+    sim::world::World pw;
+    arm(pw);
+    pw.set_static_boxes({{2.0, -0.5, 3.0, 0.5, 0.2}});  // 0.2 m plate
+    pw.step(0.02);
+    sim::providers::Sim3DLidarProvider comp(&pw, "c", 16, 72, 10.0f);
+    const double mast[3] = {0.0, 0.0, 0.35};  // seed-like mast: eye at ~0.45
+    const double norot[3] = {0.0, 0.0, 0.0};
+    comp.set_mount(mast, norot);
+    std::vector<float> ranges, ref;
+    assert(comp.poll_composite(ranges, true));
+    assert(comp.poll_composite(ref, false));
+    assert(ranges.size() == 72 && ref.size() == 72);
+    // Forward bin (angle 0 = index 36): plate face at ~2.0, not max range.
+    assert(ranges[36] < 2.1f && ranges[36] > 1.9f);
+    assert(ref[36] < 2.1f && ref[36] > 1.9f);
+    // Floor excluded everywhere: no bin reads the near-floor strike
+    // (~0.4 m for the lowest ring) — minimum over bins stays sane.
+    float min_all = 10.0f;
+    for (float r : ranges) min_all = std::min(min_all, r);
+    assert(min_all > 1.0f);
+    // The 2D horizontal ring from the same mast flies over the plate.
+    sim::providers::Sim2DLidarProvider flat2d(&pw, "f", 72, 10.0f);
+    flat2d.set_mount(mast, norot);
+    robot::iface::Lidar2DScan scan2d;
+    assert(flat2d.poll(scan2d, false));
+    assert(scan2d.ranges_m[36] == 10.0f);  // blind: only the mast sees it
+  }
   sim::providers::Sim3DLidarProvider null_world(nullptr, "x", 16, 72, 10.0f);
   assert(!null_world.is_ready());
   assert(!null_world.poll(cloud));
+  {
+    std::vector<float> no_ranges;
+    assert(!null_world.poll_composite(no_ranges, true));
+  }
   // Empty cloud is invalid (misses are dropped, never filled).
   {
     robot::iface::Lidar3DCloud empty;

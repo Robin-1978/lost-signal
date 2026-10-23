@@ -41,6 +41,14 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   M4d slope-correct 3D sensing (estimate dead-reckons z, odom->base is full
   3D, every deprojection path composes map<-base with the full TF mount;
   graph stays SE(2)).
+- M5 (done): 16-line 3D lidar (`Sim3DLidarProvider`, ±15° fan, same static
+  + actor split as 2D, sensor-frame points, misses dropped) with a
+  suite-side composite front end (`lidar.composite`, opt-in):
+  ground-filtered min-per-azimuth feeds the unchanged 2D chain, so low
+  plates the horizontal ring flies over become visible. No
+  `ObservationFrame`/recording changes — the envelope still carries 2D
+  ranges. Proven by a plate pair (sensor: 2D blind vs composite 2.0;
+  mission: surveyed wall holds either way) and a 0.1-grade loop mission.
 
 ## Standing rules (same as Phase 1)
 

@@ -55,6 +55,11 @@ class SimSensorSuite {
   void set_imu_mount(const double xyz_m[3], const double rpy_rad[3]) {
     imu_.set_mount(xyz_m, rpy_rad);
   }
+  // Scan source: single horizontal ring (default, legacy) or the
+  // multi-line composite (ground-filtered min-per-azimuth from the 16-line
+  // cloud — sees low plates the horizontal ring flies over). Pre-run only.
+  void set_composite_scan(bool on) { composite_scan_ = on; }
+  bool composite_scan() const { return composite_scan_; }
   // Bulk mounts from the robot description: matched by link name against
   // each provider's frame_id (lidar_link, imu_link). Unmatched sensors
   // are ignored; motion needs no mount (joint-space + base twist).
@@ -72,6 +77,8 @@ class SimSensorSuite {
   Sim2DLidarProvider lidar_;
   Sim3DLidarProvider lidar3d_;
   SimImuProvider imu_;
+  bool composite_scan_ = false;
+  std::uint64_t composite_seq_ = 0;
   DeliveryConfig delivery_;
   std::deque<robot::iface::ObservationFrame> delivery_queue_;
   std::uint64_t delivery_rng_ = 0;

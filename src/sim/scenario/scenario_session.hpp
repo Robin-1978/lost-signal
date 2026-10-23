@@ -77,6 +77,7 @@ class ScenarioSession {
     suite_.lidar3d().set_rings(sim.lidar_rings);
     suite_.lidar3d().set_azimuths(sim.lidar_beams);
     suite_.lidar3d().set_max_range(sim.lidar_max_range_m);
+    suite_.set_composite_scan(sim.lidar_composite);
   }
   const ObjectiveDriver& objectives() const { return driver_; }
 

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include "robot/core/transform.hpp"
 #include "robot/iface/message.hpp"
@@ -36,6 +38,13 @@ class Sim3DLidarProvider
   // include_actors=false renders static geometry only. Same rays, same
   // stamps (mirrors the 2D reference pass).
   bool poll(robot::iface::Lidar3DCloud& out, bool include_actors);
+  // Composite 2D scan from the multi-line cloud (suite-side front end):
+  // per-azimuth minimum over non-ground rings at the 2D layout
+  // (angle_min -pi, even spacing, `azimuth_beams` bins). Ground = world
+  // hit height below `kGroundCutM` (floor/paint excluded, plates kept).
+  // Misses (all rings ground or out of range) read max range. Same
+  // generation as poll(), same stamps.
+  bool poll_composite(std::vector<float>& ranges_m, bool include_actors);
   // Sensor mount extrinsics in the base frame (xyz meters, RPY rad,
   // REP-103). Non-finite input is rejected, previous mount kept.
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);
@@ -43,9 +52,18 @@ class Sim3DLidarProvider
   // finite FOV with min < max; otherwise rejected with previous kept.
   void set_rings(int ring_count);
   void set_azimuths(int azimuth_beams);
+  // Vertical FOV for the ring fan (uniform spacing; single ring = 0).
   void set_vertical_fov(double min_elev_rad, double max_elev_rad);
   void set_max_range(float max_range_m);
   void set_scan_period(float scan_period_s);
+  // World height below which a return counts as ground (floor/paint).
+  // Must be finite in (0, 1); rejected otherwise with previous kept.
+  void set_ground_cut(float ground_cut_m) {
+    if (std::isfinite(ground_cut_m) && ground_cut_m > 0.0f &&
+        ground_cut_m < 1.0f) {
+      ground_cut_m_ = ground_cut_m;
+    }
+  }
 
  private:
   world::World* world_ = nullptr;
@@ -56,6 +74,7 @@ class Sim3DLidarProvider
   double max_elev_rad_ = 0.2617993877991494;   // +15 deg
   float max_range_m_ = 10.0f;
   float scan_period_s_ = 0.1f;
+  float ground_cut_m_ = 0.05f;
   std::uint64_t seq_ = 0;
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};

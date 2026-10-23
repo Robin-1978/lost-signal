@@ -27,6 +27,7 @@ struct SimConfig {
   int lidar_beams = 72;
   float lidar_max_range_m = 10.0f;
   int lidar_rings = 16;  // 3D producer ring count; azimuths reuse beams
+  bool lidar_composite = false;  // multi-line composite scan (opt-in front end)
 };
 
 // Fail-closed load: untouched output on any mismatch.

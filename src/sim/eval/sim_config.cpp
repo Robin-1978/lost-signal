@@ -199,6 +199,14 @@ bool load_sim_config(const std::string& path, SimConfig& config,
       }
       out.lidar_rings = static_cast<int>(rings->as_num());
     }
+    const Json* composite = lidar->find("composite");
+    if (composite != nullptr) {
+      if (!composite->is_bool()) {
+        err = "lidar.'composite' must be a boolean";
+        return false;
+      }
+      out.lidar_composite = composite->as_bool();
+    }
   }
   config = out;
   err.clear();

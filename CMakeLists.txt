@@ -487,6 +487,15 @@ target_link_libraries(test_lidar3d PRIVATE
 )
 add_test(NAME lidar3d COMMAND test_lidar3d)
 
+add_executable(test_composite_mission
+  tests/test_composite_mission.cpp
+)
+target_compile_definitions(test_composite_mission PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_composite_mission PRIVATE lost_signal_sim_scenario)
+add_test(NAME composite_mission COMMAND test_composite_mission)
+
 add_executable(test_sim_robot
   tests/test_sim_robot.cpp
 )
