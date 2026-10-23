@@ -113,6 +113,8 @@ int main() {
   {
     sim::world::World w;
     auto step = make_step();
+    step.truth_after.body_roll_rad = 0.0;  // level: yaw-only rotation exact
+    step.truth_after.body_pitch_rad = 0.0;
     sim::viewer::LidarMount mount;
     mount.xyz_m[0] = 0.25;
     mount.xyz_m[2] = 0.35;
