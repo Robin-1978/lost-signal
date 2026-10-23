@@ -64,6 +64,10 @@ int main() {
   // (measurement metadata; the ROBOT never maps it back to materials).
   assert(obs2.scan_valid && obs2.intensity_valid);
   assert(obs2.intensities.size() == obs2.ranges_m.size());
+  // Rolling-shutter offsets ride parallel too (scan-end frame).
+  assert(obs2.time_offset_valid);
+  assert(obs2.time_offsets_s.size() == obs2.ranges_m.size());
+  assert(obs2.time_offsets_s.front() < 0.0f);
   // Traction flags stay SIM-side (WorldTruth, offline labels only — the
   // ROBOT side only ever sees what its own estimators can compute).
   // Quiet in normal driving...

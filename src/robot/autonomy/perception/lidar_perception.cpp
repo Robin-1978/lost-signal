@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "robot/core/deskew.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/transform.hpp"
 
@@ -61,6 +62,12 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     bool foreground = false;
     double wx = 0.0, wy = 0.0;
   };
+  // Rolling-shutter deskew (measured twist only): each beam re-expressed
+  // in the scan-end sensor frame. Frozen scans (no offsets) read every
+  // beam at the stamp pose, today's behavior exactly.
+  const bool has_toff =
+      obs.time_offset_valid && obs.time_offsets_s.size() == n;
+  const core::DeskewTwist twist{est.forward_mps, est.yaw_rate_radps};
   std::vector<Beam> beams(n);
   for (std::size_t i = 0; i < n; ++i) {
     const double range = obs.ranges_m[i];
@@ -69,11 +76,16 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
         config_.foreground_threshold_m)
       continue;
     const double angle = -core::kPi + 2.0 * core::kPi * i / n;
-    const core::Vec3 dir = core::rotate_vector(
-        map_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
+    const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
+    // Deskewed endpoint in the scan-end sensor frame (a rigid correction
+    // of the true endpoint for a static world — used directly, never
+    // renormalized to the acquisition range).
+    const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
+    const core::Vec3 off = core::rotate_vector(
+        map_from_sensor.rotation, {local.x, local.y, 0.0});
     beams[i].foreground = true;
-    beams[i].wx = sensor_p.x + range * dir.x;
-    beams[i].wy = sensor_p.y + range * dir.y;
+    beams[i].wx = sensor_p.x + off.x;
+    beams[i].wy = sensor_p.y + off.y;
   }
 
   // Pass 1: maximal runs of index-adjacent foreground beams.

@@ -48,10 +48,13 @@ class Sim3DLidarProvider
   // cylinders stand on the floor plane, no engine surface under them).
   // Misses (all rings ground or out of range) read max range. Same
   // generation as poll(), same stamps. The intensities overload reports
-  // the winning beam's return strength per azimuth (0 on misses).
+  // the winning beam's return strength per azimuth (0 on misses); with a
+  // non-null offsets sink it also reports each azimuth's acquisition
+  // offset (rolling shutter, scan-end frame).
   bool poll_composite(std::vector<float>& ranges_m, bool include_actors);
   bool poll_composite(std::vector<float>& ranges_m,
-                      std::vector<float>& intensities_m, bool include_actors);
+                      std::vector<float>& intensities_m, bool include_actors,
+                      std::vector<float>* time_offsets_s = nullptr);
   // Sensor mount extrinsics in the base frame (xyz meters, RPY rad,
   // REP-103). Non-finite input is rejected, previous mount kept.
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);

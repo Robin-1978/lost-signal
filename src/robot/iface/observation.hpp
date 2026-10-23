@@ -28,6 +28,11 @@ struct ObservationFrame {
   // Sensing metadata only: the ROBOT never maps it back to materials.
   std::vector<float> intensities;
   bool intensity_valid = false;
+  // Per-beam acquisition offsets (s, <= 0, scan-end frame), parallel to
+  // ranges_m when time_offset_valid. Empty/absent = frozen scan (legacy):
+  // consumers read every beam at the stamp pose.
+  std::vector<float> time_offsets_s;
+  bool time_offset_valid = false;
 
   // Static-reference scan: expected returns from the static world (map
   // raycast or survey), same ordering as ranges_m. Lets perception split

@@ -204,6 +204,22 @@ no friction, contact, or live wetness).
   Coordinator doctrine kept: pure wiring (evidence in, envelope out),
   every threshold lives in the owning module.
 
+### S9 Sensor realism parity (in progress) — capabilities match-or-exceed
+master, framework/data/architecture stay new
+Rolling-shutter lidar + ROBOT deskew (landed): SIM casts every beam from
+its acquisition pose (truth twist x offset, yaw advanced, actors
+propagated; height/roll/pitch frozen — master's stated limits), stamps
+per-beam offsets (scan-end frame). ROBOT re-expresses endpoints with the
+MEASURED twist through one shared pure helper (`robot/core/deskew.hpp`,
+exact inverse of generation, proven by a same-contract round-trip test);
+perception/mapper/validator all consume it (mapper paints the true cell
+while yawing, pinned — no smear). Frozen scans (empty offsets) read every
+beam at the stamp pose: legacy behavior bit-identical. Next slices:
+lidar device noise/bias/quant/dropout + min-range (master sensor.cpp),
+IMU per-axis bias/walk + 3D lever arm, incidence intensity, live
+elevation fusion, log-odds mapping, DWA terrain gate, validator rollover
+envelope, traction memory, actor lifecycle richness.
+
 ## Explicitly OUT (not deployable sim)
 
 - `game/client/*` on main (game UI, audio, campaign visuals, mission

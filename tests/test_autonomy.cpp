@@ -446,6 +446,77 @@ int main() {
     }
   }
 
+  // Deskewed mapper: a yawing scan of a static box paints the TRUE cell
+  // (acquisition pose), not the stamp-pose projection. Uniform -0.1 s
+  // offsets at yaw rate 1.0 isolate the yaw term.
+  {
+    EstimatedState est;
+    est.valid = true;
+    est.yaw_rate_radps = 1.0;
+    iface::ObservationFrame spin = make_odom(20, 20, 0.0);
+    spin.ranges_m.assign(8, 10.0f);
+    spin.ranges_m[4] = 4.0f;  // forward beam saw the box face
+    spin.static_ranges_m = spin.ranges_m;
+    spin.scan_static_valid = true;
+    spin.time_offsets_s.assign(8, -0.1f);
+    spin.time_offset_valid = true;
+    RayClearingMapper mapper;
+    mapper.update(spin, est);
+    LocalMap m = mapper.local_map();
+    assert(m.valid);
+    // True cell: R(-0.1) * (4, 0) = (3.98, -0.40), computed exactly
+    // (decimal literals would floor the boundary cell wrong).
+    const double tex = 4.0 * std::cos(-0.1), tey = 4.0 * std::sin(-0.1);
+    const int tx = static_cast<int>(std::floor((tex + 5.0) / 0.1));
+    const int ty = static_cast<int>(std::floor((tey + 5.0) / 0.1));
+    assert(m.occupancy[static_cast<std::size_t>(ty) * 100 + tx] == 100);
+    // Frozen projection (4, 0) stays unpainted: no smear.
+    const int fx = static_cast<int>(std::floor((4.0 + 5.0) / 0.1));
+    const int fy = static_cast<int>(std::floor((0.0 + 5.0) / 0.1));
+    assert(fx != tx || fy != ty);
+    assert(m.occupancy[static_cast<std::size_t>(fy) * 100 + fx] != 100);
+  }
+
+  // Scan deskew (shared pure helper): frozen reads identity, spin and
+  // translation invert the provider's acquisition shift exactly.
+  {
+    using core::deskew_beam;
+    using core::DeskewTwist;
+    // Identity without offsets.
+    core::Vec2 id = deskew_beam(5.0, 0.5, 0.0, {1.0, 2.0});
+    assert(std::abs(id.x - 5.0 * std::cos(0.5)) < 1e-12);
+    assert(std::abs(id.y - 5.0 * std::sin(0.5)) < 1e-12);
+    // Pure spin: beam ahead, w = 1, dt = 0.1.
+    core::Vec2 spin = deskew_beam(5.0, 0.0, -0.1, {0.0, 1.0});
+    assert(std::abs(spin.x - 5.0 * std::cos(0.1)) < 1e-9);
+    assert(std::abs(spin.y + 5.0 * std::sin(0.1)) < 1e-9);
+    // Pure translation: v = 2, dt = 0.1, beam ahead.
+    core::Vec2 lin = deskew_beam(5.0, 0.0, -0.1, {2.0, 0.0});
+    assert(std::abs(lin.x - 4.8) < 1e-9 && std::abs(lin.y) < 1e-12);
+    // Round-trip with the provider convention (same-contract proof, pure
+    // math both sides): world endpoint from the acquisition pose equals
+    // the deskewed endpoint from the end pose.
+    {
+      const double yaw_end = 0.5, v = 1.0, w = 0.5, dt = 0.1;
+      const double beam = 1.0, range = 3.0;
+      const double sx = 2.0, sy = -1.0;  // end pose
+      // Provider convention: displacement rotates by the stamp yaw.
+      const double acq_x =
+          sx + (v * std::cos(yaw_end)) * -dt;
+      const double acq_y =
+          sy + (v * std::sin(yaw_end)) * -dt;
+      const double yaw_acq = yaw_end + w * -dt;
+      const double wx = acq_x + range * std::cos(yaw_acq + beam);
+      const double wy = acq_y + range * std::sin(yaw_acq + beam);
+      core::Vec2 local = deskew_beam(range, beam, -dt, {v, w});
+      const double dx = sx + local.x * std::cos(yaw_end) -
+                        local.y * std::sin(yaw_end);
+      const double dy = sy + local.x * std::sin(yaw_end) +
+                        local.y * std::cos(yaw_end);
+      assert(std::hypot(dx - wx, dy - wy) < 1e-9);
+    }
+  }
+
   // Global planner: straight line from estimate to goal.
   {
     StraightLinePlanner planner;

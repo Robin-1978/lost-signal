@@ -267,6 +267,49 @@ int main() {
     assert(ci[static_cast<std::size_t>(hit)] > 0.3f);
   }
 
+  // Rolling shutter (SIM-side generation): offsets ride parallel, beam 0
+  // oldest at -period, last beam at the stamp; frozen scans read zeros.
+  {
+    sim::world::World w;
+    robot::iface::ActuatorCommand enable;
+    enable.mode = robot::iface::ActuatorMode::kDiffDuty;
+    w.apply(enable);
+    w.step(0.02);
+    w.set_static_boxes({{2.0, -0.5, 3.0, 0.5, 1.0}});
+    w.step(0.02);
+    sim::providers::Sim2DLidarProvider sim2d(&w, "sim.lidar2d", 72, 10.0f);
+    robot::iface::Lidar2DScan still;
+    assert(sim2d.poll(still));
+    assert(still.time_offsets_s.size() == 72);
+    assert(std::abs(still.time_offsets_s[0] + 0.1f) < 1e-6);
+    assert(std::abs(still.time_offsets_s[71]) < 0.002f);
+    // Spinning truth distorts the scan (same pose, yaw rate only).
+    mutable_truth(w).yaw_rate_radps = 2.0;
+    robot::iface::Lidar2DScan spin;
+    assert(sim2d.poll(spin));
+    bool differ = false;
+    for (std::size_t i = 0; i < 72; ++i) {
+      if (std::abs(spin.ranges_m[i] - still.ranges_m[i]) > 1e-6) {
+        differ = true;
+        break;
+      }
+    }
+    assert(differ);  // 0.2 rad of shutter skew moves box-edge returns
+    mutable_truth(w).yaw_rate_radps = 0.0;
+    robot::iface::Lidar2DScan again;
+    assert(sim2d.poll(again));
+    assert(again.ranges_m == still.ranges_m);  // deterministic
+    // Frozen period: legacy behavior, zero offsets, scan matches still.
+    sim2d.set_scan_period(0.0);
+    robot::iface::Lidar2DScan frozen;
+    assert(sim2d.poll(frozen));
+    for (float t : frozen.time_offsets_s) assert(t == 0.0f);
+    sim2d.set_scan_period(-1.0);  // rejected: previous kept
+    robot::iface::Lidar2DScan kept;
+    assert(sim2d.poll(kept));
+    assert(kept.time_offsets_s == frozen.time_offsets_s);
+  }
+
   std::printf("lidar ok\n");
   return 0;
 }

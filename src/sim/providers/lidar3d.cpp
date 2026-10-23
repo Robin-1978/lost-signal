@@ -93,20 +93,31 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
   const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
                             mount_xyz_m_[2]};
   const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
-  const double ox = t.body_x_m + off.x;
-  const double oy = t.body_y_m + off.y;
   const double oz = t.body_z_m + off.z;
-  const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
-      body_q, robot::core::quaternion_from_rpy(
-                  mount_rpy_rad_[0], mount_rpy_rad_[1], mount_rpy_rad_[2]));
   // Azimuth-major: all rings per azimuth step. Ring elevations are uniform
   // over the FOV (a single ring sits at 0 elevation).
   for (int i = 0; i < azimuth_beams_; ++i) {
     const double az =
         -M_PI + 2.0 * M_PI * static_cast<double>(i) / azimuth_beams_;
-    const float time_offset_s = static_cast<float>(
-        -scan_period_s_ *
-        (1.0 - static_cast<double>(i) / azimuth_beams_));
+    // Rolling shutter per azimuth (beam 0 oldest, stamp = scan end).
+    const double toff =
+        -scan_period_s_ + scan_period_s_ * i / azimuth_beams_;
+    const float time_offset_s = static_cast<float>(toff);
+    const double yaw_i = t.body_yaw_rad + t.yaw_rate_radps * toff;
+    const double cy = std::cos(t.body_yaw_rad), sy = std::sin(t.body_yaw_rad);
+    const double ox =
+        t.body_x_m + off.x +
+        (t.forward_mps * cy - t.lateral_mps * sy) * toff;
+    const double oy =
+        t.body_y_m + off.y +
+        (t.forward_mps * sy + t.lateral_mps * cy) * toff;
+    const robot::core::Quaternion body_qi =
+        robot::core::quaternion_from_rpy(t.body_roll_rad, t.body_pitch_rad,
+                                         yaw_i);
+    const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
+        body_qi, robot::core::quaternion_from_rpy(
+                     mount_rpy_rad_[0], mount_rpy_rad_[1],
+                     mount_rpy_rad_[2]));
     for (int j = 0; j < ring_count_; ++j) {
       const double elev =
           (ring_count_ == 1)
@@ -127,8 +138,9 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
       if (include_actors) {
         for (const auto& actor : world_->actors()) {
           const double ad = detail::ray_actor_cylinder(
-              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y, actor.radius_m,
-              actor.height_m, max_range_m_);
+              ox, oy, oz, d.x, d.y, d.z, actor.x + actor.vx_mps * toff,
+              actor.y + actor.vy_mps * toff, actor.radius_m, actor.height_m,
+              max_range_m_);
           if (ad < dist) {
             dist = ad;
             actor_hit = true;
@@ -155,33 +167,54 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
 bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
                                         bool include_actors) {
   std::vector<float> ignored;
-  return poll_composite(ranges_m, ignored, include_actors);
+  return poll_composite(ranges_m, ignored, include_actors, nullptr);
 }
 
 bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
                                         std::vector<float>& intensities_m,
-                                        bool include_actors) {
+                                        bool include_actors,
+                                        std::vector<float>* time_offsets_s) {
   if (world_ == nullptr || ring_count_ <= 0 || azimuth_beams_ <= 0) {
     return false;
   }
   const world::WorldTruth& t = world_->truth();
   ranges_m.assign(static_cast<std::size_t>(azimuth_beams_), max_range_m_);
   intensities_m.assign(static_cast<std::size_t>(azimuth_beams_), 0.0f);
+  if (time_offsets_s != nullptr) {
+    time_offsets_s->assign(static_cast<std::size_t>(azimuth_beams_), 0.0f);
+  }
   // Same sensor pose as poll(): body + attitude composed with the mount.
   const robot::core::Quaternion body_q = robot::core::quaternion_from_rpy(
       t.body_roll_rad, t.body_pitch_rad, t.body_yaw_rad);
   const robot::core::Vec3 m{mount_xyz_m_[0], mount_xyz_m_[1],
                             mount_xyz_m_[2]};
   const robot::core::Vec3 off = robot::core::rotate_vector(body_q, m);
-  const double ox = t.body_x_m + off.x;
-  const double oy = t.body_y_m + off.y;
   const double oz = t.body_z_m + off.z;
-  const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
-      body_q, robot::core::quaternion_from_rpy(
-                  mount_rpy_rad_[0], mount_rpy_rad_[1], mount_rpy_rad_[2]));
   for (int i = 0; i < azimuth_beams_; ++i) {
     const double az =
         -M_PI + 2.0 * M_PI * static_cast<double>(i) / azimuth_beams_;
+    // Rolling shutter per azimuth (same discipline as the 2D producer).
+    const double toff =
+        -scan_period_s_ + scan_period_s_ * i / azimuth_beams_;
+    if (time_offsets_s != nullptr) {
+      (*time_offsets_s)[static_cast<std::size_t>(i)] =
+          static_cast<float>(toff);
+    }
+    const double yaw_i = t.body_yaw_rad + t.yaw_rate_radps * toff;
+    const double cy = std::cos(t.body_yaw_rad), sy = std::sin(t.body_yaw_rad);
+    const double ox =
+        t.body_x_m + off.x +
+        (t.forward_mps * cy - t.lateral_mps * sy) * toff;
+    const double oy =
+        t.body_y_m + off.y +
+        (t.forward_mps * sy + t.lateral_mps * cy) * toff;
+    const robot::core::Quaternion body_qi =
+        robot::core::quaternion_from_rpy(t.body_roll_rad, t.body_pitch_rad,
+                                         yaw_i);
+    const robot::core::Quaternion sensor_q = robot::core::quaternion_multiply(
+        body_qi, robot::core::quaternion_from_rpy(
+                     mount_rpy_rad_[0], mount_rpy_rad_[1],
+                     mount_rpy_rad_[2]));
     float best = max_range_m_;
     float best_intensity = 0.0f;
     for (int j = 0; j < ring_count_; ++j) {
@@ -204,8 +237,9 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
       if (include_actors) {
         for (const auto& actor : world_->actors()) {
           const double ad = detail::ray_actor_cylinder(
-              ox, oy, oz, d.x, d.y, d.z, actor.x, actor.y, actor.radius_m,
-              actor.height_m, max_range_m_);
+              ox, oy, oz, d.x, d.y, d.z, actor.x + actor.vx_mps * toff,
+              actor.y + actor.vy_mps * toff, actor.radius_m, actor.height_m,
+              max_range_m_);
           if (ad < dist) {
             dist = ad;
             actor_hit = true;

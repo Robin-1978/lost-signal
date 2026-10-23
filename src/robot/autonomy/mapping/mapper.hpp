@@ -13,6 +13,7 @@
 #include "robot/core/transform.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
+#include "robot/core/deskew.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -159,14 +160,21 @@ class RayClearingMapper : public IMapper {
     const std::size_t n = obs.ranges_m.size();
     const bool has_ref =
         obs.scan_static_valid && obs.static_ranges_m.size() == n;
+    // Rolling-shutter deskew (measured twist only; frozen scans read every
+    // beam at the stamp pose). Same helper as perception, one doctrine.
+    const bool has_toff =
+        obs.time_offset_valid && obs.time_offsets_s.size() == n;
+    const core::DeskewTwist twist{est.forward_mps, est.yaw_rate_radps};
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0) || !std::isfinite(range)) continue;
       const double angle = -core::kPi + 2.0 * core::kPi * i / n;
-      const core::Vec3 dir = core::rotate_vector(
-          map_from_sensor.rotation, {std::cos(angle), std::sin(angle), 0.0});
-      const double ex = ssx + range * dir.x;
-      const double ey = ssy + range * dir.y;
+      const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
+      const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
+      const core::Vec3 off = core::rotate_vector(
+          map_from_sensor.rotation, {local.x, local.y, 0.0});
+      const double ex = ssx + off.x;
+      const double ey = ssy + off.y;
       clear_segment(ssx, ssy, ex, ey);
       bool background = false;
       if (has_ref) {

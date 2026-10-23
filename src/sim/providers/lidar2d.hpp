@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 #include "robot/core/transform.hpp"
@@ -40,6 +41,14 @@ class Sim2DLidarProvider
   // REP-103). Non-finite input is rejected, previous mount kept. Default
   // zeros = sensor at the base origin (legacy behavior).
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);
+  // Scan period for the rolling shutter (s): beam i acquires at
+  // -period + period*i/beams (beam 0 oldest, stamp = scan end). Must be
+  // finite >= 0; 0 freezes the scan (legacy). Rejected otherwise.
+  void set_scan_period(double scan_period_s) {
+    if (std::isfinite(scan_period_s) && scan_period_s >= 0.0) {
+      scan_period_s_ = scan_period_s;
+    }
+  }
   // Pre-run geometry tuning (SIM harness only): positive beam count and
   // range, otherwise rejected with previous kept.
   void set_beams(int beam_count);
@@ -50,6 +59,7 @@ class Sim2DLidarProvider
   robot::iface::EndpointDescriptor desc_;
   int beam_count_ = 72;
   float max_range_m_ = 10.0f;
+  double scan_period_s_ = 0.1;
   std::uint64_t seq_ = 0;
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};

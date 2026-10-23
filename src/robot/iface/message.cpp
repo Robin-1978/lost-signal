@@ -12,6 +12,10 @@ bool Lidar2DScan::valid() const {
   if (!intensities.empty() && intensities.size() != ranges_m.size()) {
     return false;
   }
+  // Time offsets ride parallel when present; empty means frozen (legacy).
+  if (!time_offsets_s.empty() && time_offsets_s.size() != ranges_m.size()) {
+    return false;
+  }
   return true;
 }
 

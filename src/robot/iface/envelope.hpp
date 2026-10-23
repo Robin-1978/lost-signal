@@ -47,6 +47,16 @@ inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
     o.intensities.clear();
     o.intensity_valid = false;
   }
+  // Time offsets ride parallel when the provider scanned over time; absent
+  // (frozen legacy) leaves consumers at the stamp pose, never a guess.
+  if (!scan.time_offsets_s.empty() &&
+      scan.time_offsets_s.size() == scan.ranges_m.size()) {
+    o.time_offsets_s = scan.time_offsets_s;
+    o.time_offset_valid = true;
+  } else {
+    o.time_offsets_s.clear();
+    o.time_offset_valid = false;
+  }
   return true;
 }
 

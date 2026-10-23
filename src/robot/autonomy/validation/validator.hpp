@@ -13,6 +13,7 @@
 #include "robot/core/geometry.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
+#include "robot/core/deskew.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -192,10 +193,16 @@ class ClearanceValidator : public IValidator {
     }
     // Forward-sector minimum range (braking-tail check below). Surveyed
     // ground returns are not obstacle evidence (counted separately so an
-    // all-ground sector reads open, never blind).
+    // all-ground sector reads open, never blind). Endpoints are deskewed
+    // to the stamp pose with the measured twist (same helper as
+    // perception/mapper, one doctrine).
     float sector_min = std::numeric_limits<float>::infinity();
     std::size_t forward_beams = 0, forward_ground = 0;
     const std::size_t n = obs.ranges_m.size();
+    const bool has_toff =
+        obs.time_offset_valid && obs.time_offsets_s.size() == n;
+    const core::DeskewTwist twist{est.forward_mps, est.yaw_rate_radps};
+    const double cyaw = std::cos(est.yaw_rad), syaw = std::sin(est.yaw_rad);
     for (std::size_t i = 0; i < n; ++i) {
       // Even beam layout over [-pi, pi); forward is index n/2.
       const double angle =
@@ -207,10 +214,11 @@ class ClearanceValidator : public IValidator {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
       ++forward_beams;
+      const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
+      const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
+      const double ex = est.x_m + local.x * cyaw - local.y * syaw;
+      const double ey = est.y_m + local.x * syaw + local.y * cyaw;
       if (survey != nullptr) {
-        const double ea = angle + est.yaw_rad;
-        const double ex = est.x_m + range * std::cos(ea);
-        const double ey = est.y_m + range * std::sin(ea);
         if (endpoint_is_survey_ground(*survey->map, ex, ey,
                                       survey->sensor_z(est),
                                       survey->ground_tol_m)) {
@@ -270,9 +278,11 @@ class ClearanceValidator : public IValidator {
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
-      const double angle = -core::kPi + 2.0 * core::kPi * i / n + est.yaw_rad;
-      const double ex = est.x_m + range * std::cos(angle);
-      const double ey = est.y_m + range * std::sin(angle);
+      const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+      const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
+      const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
+      const double ex = est.x_m + local.x * cyaw - local.y * syaw;
+      const double ey = est.y_m + local.x * syaw + local.y * cyaw;
       if (survey != nullptr &&
           endpoint_is_survey_ground(*survey->map, ex, ey,
                                     survey->sensor_z(est),
