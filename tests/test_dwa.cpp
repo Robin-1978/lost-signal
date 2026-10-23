@@ -169,6 +169,47 @@ int main() {
     assert(yaw_cmd.space == iface::CommandSpace::kYawRate);
   }
 
+  // Terrain gate (master's StaticFeasibility doctrine): reject-all reads as
+  // no admissible rollout (hold upstream); a fence gate holds the base
+  // rather than entering bad terrain; empty gate is legacy exactly.
+  {
+    LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+    EstimatedState est;
+    est.valid = true;
+    est.stamp_ns = 1'000'000;
+    est.x_m = 1.0;
+    est.y_m = 1.0;
+    PerceptionResult perc;
+    perc.scan_ok = true;
+    StraightLinePlanner global;
+    Route route = global.plan(est, {8.0, 1.0, 0.0}, iface::MapSnapshot{});
+    // Reject-all: every rollout collides at the first segment.
+    DwaPlanner shut;
+    shut.set_terrain_gate(
+        [](double, double, double, double, double) { return false; });
+    LocalPlan none = shut.plan(est, perc, m, route, limits);
+    assert(!none.has_plan);
+    // Fence at x = 1.2: any forward motion is inadmissible, turning in
+    // place is not — the planner holds (v = 0) instead of crossing.
+    DwaPlanner fenced;
+    int calls = 0;
+    bool yaw_seen_finite = false;
+    fenced.set_terrain_gate([&](double x0, double, double x1, double,
+                                double yaw) {
+      ++calls;
+      yaw_seen_finite |= std::isfinite(yaw) && std::isfinite(x0);
+      return x0 <= 1.2 && x1 <= 1.2;
+    });
+    LocalPlan held = fenced.plan(est, perc, m, route, limits);
+    assert(calls > 0 && yaw_seen_finite);  // gate sees every segment + yaw
+    assert(held.has_plan && held.best.feasible);
+    assert(held.best.forward_mps == 0.0);  // hold, never cross the fence
+    // Empty gate: legacy behavior bit-identical (drives, deterministic).
+    DwaPlanner legacy;
+    LocalPlan a = legacy.plan(est, perc, m, route, limits);
+    assert(a.has_plan && a.best.forward_mps > 0.0);
+  }
+
   std::printf("dwa ok\n");
   return 0;
 }

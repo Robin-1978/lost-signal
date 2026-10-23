@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
@@ -7,6 +9,14 @@
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::autonomy {
+
+// Terrain gate for rollout sampling (master's StaticFeasibility doctrine):
+// one segment of a rollout is admissible only when the terrain belief
+// agrees. The planner owns sampling, the belief owns the grade math; the
+// coordinator wires them. Empty gate = pure obstacle sampling (legacy).
+using TerrainGate =
+    std::function<bool(double x0_m, double y0_m, double x1_m, double y1_m,
+                       double yaw_rad)>;
 
 // One chassis-feasible candidate with explicit cost. Position, heading,
 // velocity, and yaw rate travel together; never a geometry-only polyline.
@@ -36,6 +46,9 @@ class ILocalPlanner {
                          const PerceptionResult& perception,
                          const LocalMap& map, const Route& route,
                          const platform::ChassisLimits& limits) = 0;
+  // Terrain gate for rollout sampling (default ignores: pure obstacle
+  // sampling, legacy behavior exactly).
+  virtual void set_terrain_gate(TerrainGate gate) { (void)gate; }
 };
 
 }  // namespace lost_signal::robot::autonomy

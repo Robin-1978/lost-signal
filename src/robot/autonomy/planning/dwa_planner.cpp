@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace lost_signal::robot::autonomy {
@@ -237,7 +238,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         const double sample_time = time + step_dt;
         samples.push_back({x, y});
         if (!map.segment_is_traversable(previous_x, previous_y, x, y) ||
-            dynamic_hit(x, y, sample_time)) {
+            dynamic_hit(x, y, sample_time) ||
+            (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
           collision = true;
           free_time = time;
           break;

@@ -423,6 +423,57 @@ int main() {
     assert(bridged.accepted);  // live bridges the survey gap
   }
 
+  // Dynamic rollover envelope (surface tilt + cornering load over the
+  // support envelope): a 0.35 side-slope within the static cap passes slow
+  // and straight, but carrying speed into a turn on it trips the risk cap.
+  {
+    // Side-slope survey: elevation = 0.35 * y over the 80x8 window.
+    iface::MapSnapshot slope;
+    slope.map_id = "test-slope";
+    slope.revision = 1;
+    slope.width = 80;
+    slope.height = 8;
+    slope.resolution_m = 0.25;
+    slope.origin_x_m = 0.0;
+    slope.origin_y_m = -1.0;
+    slope.occupancy.assign(80 * 8, -1);
+    slope.elevation_m.assign(80 * 8, 0.0f);
+    for (std::uint32_t gy = 0; gy < 8; ++gy) {
+      for (std::uint32_t gx = 0; gx < 80; ++gx) {
+        const double cy = (gy + 0.5) * 0.25 - 1.0;
+        slope.elevation_m[gy * 80 + gx] = static_cast<float>(0.35 * cy);
+      }
+    }
+    EstimatedState est;
+    est.valid = true;  // origin, yaw 0, z 0
+    PerceptionResult ok;
+    ok.scan_ok = true;
+    SurveyContext ctx;
+    ctx.map = &slope;
+    ctx.sensor_height_m = 0.35;
+    iface::ObservationFrame open = make_odom(12, 12, 0.0);
+    open.ranges_m.assign(8, 10.0f);  // open sector, far wall at 10 m
+    ClearanceValidator v;
+    // Slow and straight: static risk 0.54 < 0.8 cap, accepted.
+    LocalCandidate cruise;
+    cruise.feasible = true;
+    cruise.forward_mps = 1.0;
+    ValidationResult steady = v.validate(cruise, est, ok, open, ctx);
+    assert(steady.accepted);
+    // Fast into a turn (v*w = 3.0 cornering load): risk 0.95 > 0.8 cap.
+    LocalCandidate hot;
+    hot.feasible = true;
+    hot.forward_mps = 2.5;
+    hot.yaw_rate_radps = 1.2;
+    ValidationResult tippy = v.validate(hot, est, ok, open, ctx);
+    assert(!tippy.accepted &&
+           tippy.verdict == TrajectoryVerdict::kTerrainInfeasible);
+    assert(tippy.reason == "dynamic rollover risk");
+    // No survey: planar legacy, envelope sleeps (same candidate passes).
+    ValidationResult planar = v.validate(hot, est, ok, open);
+    assert(planar.accepted);
+  }
+
   // Survey-aware mapper: background ramp returns clear but never paint;
   // wall returns still paint. Same classifier as the validator.
   {

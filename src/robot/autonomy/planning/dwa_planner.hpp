@@ -54,9 +54,12 @@ class DwaPlanner : public ILocalPlanner {
                  const PerceptionResult& perception, const LocalMap& map,
                  const Route& route,
                  const platform::ChassisLimits& limits) override;
+  // Terrain gate: consulted per rollout segment (empty = obstacle-only).
+  void set_terrain_gate(TerrainGate gate) override { gate_ = std::move(gate); }
 
  private:
   DwaPlannerConfig config_;
+  TerrainGate gate_;
   double previous_w_ = 0.0;
 };
 

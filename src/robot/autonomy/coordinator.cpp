@@ -37,6 +37,15 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
   // The traversal belief prices roughness for route choice for the life of
   // the coordinator (the model object is a member: rebinds never dangle).
   global_planner_->set_traversal(&traversal_);
+  // The same belief gates DWA rollout sampling on the surveyed grade
+  // (master's StaticFeasibility doctrine): untraversable segments read as
+  // collisions at plan time, the validator still owns the veto. Unknown
+  // elevation reads feasible (optimistic sampling); the gate opens fully
+  // before the first survey bind, legacy behavior exactly.
+  local_planner_->set_terrain_gate([this](double x0, double y0, double x1,
+                                          double y1, double yaw) {
+    return traversal_.feasible(x0, y0, x1, y1, yaw);
+  });
 }
 
 core::Status AutonomyCoordinator::configure() {

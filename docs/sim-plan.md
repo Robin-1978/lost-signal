@@ -237,9 +237,18 @@ fuse reconstructed endpoint heights by inverse variance with forgetting
 — actor/wall returns never enter; validator prefers live where confident
 and falls back to the survey prior (live confirms ground only, never
 invents obstacles; coordinator wires the overlay, holds no policy).
+DWA terrain gate + validator rollover envelope (landed): DWA samples
+through an optional TerrainGate (master's StaticFeasibility doctrine,
+empty = legacy) wired by the coordinator to the traversal belief;
+validator adds the dynamic rollover envelope (surface tilt + v*w
+cornering load over the support envelope, master's stability-risk form)
+beside the static grade caps. Fixed a real stall found by the suite: the
+traversal feasibility grade now reads through the survey-resolution
+window (same quantity the validator gates on) so nearest-cell stairsteps
+never alias into phantom cliffs on short rollout steps — icy climb and
+ridge missions green with pre-change separations.
 Next slices:
-DWA terrain gate + validator rollover envelope (math already in
-terrain_math, wiring only), traction memory, actor lifecycle richness.
+traction memory, actor lifecycle richness.
 
 ## Explicitly OUT (not deployable sim)
 

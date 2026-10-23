@@ -203,23 +203,20 @@ class TraversalModel {
 
   // Segment feasibility on the surveyed grade: cliff and side-slope caps.
   // Unknown elevation is feasible (optimistic sampling; the validator owns
-  // the conservative veto on raw evidence).
+  // the conservative veto on raw evidence). The along-track grade reads
+  // through the fixed survey-resolution window (same quantity the validator
+  // gates on, one doctrine): raw endpoint differences over short rollout
+  // steps would alias the survey's nearest-cell stairsteps into phantom
+  // cliffs.
   bool feasible(double x0_m, double y0_m, double x1_m, double y1_m,
                 double yaw_rad) const {
-    if (!ready()) return true;
-    const float h0 = map_.has_elevation() ? map_.elevation_at(x0_m, y0_m)
-                                          : std::numeric_limits<float>::quiet_NaN();
-    const float h1 = map_.has_elevation() ? map_.elevation_at(x1_m, y1_m)
-                                          : std::numeric_limits<float>::quiet_NaN();
-    if (std::isfinite(h0) && std::isfinite(h1)) {
-      const double dist = std::hypot(x1_m - x0_m, y1_m - y0_m);
-      if (dist > 1e-9 &&
-          std::abs(static_cast<double>(h1 - h0)) / dist > config_.max_grade) {
-        return false;
-      }
+    if (!ready() || !map_.has_elevation()) return true;
+    const double mx = 0.5 * (x0_m + x1_m), my = 0.5 * (y0_m + y1_m);
+    if (std::abs(survey_longitudinal_grade(map_, mx, my, yaw_rad)) >
+        config_.max_grade) {
+      return false;
     }
-    const double cross = std::abs(survey_lateral_grade(
-        map_, 0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m), yaw_rad));
+    const double cross = std::abs(survey_lateral_grade(map_, mx, my, yaw_rad));
     return cross <= config_.max_cross_grade;
   }
 

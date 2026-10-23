@@ -145,6 +145,13 @@ int main() {
     const auto rough_seg = model.cost(0.5, 1.0, 1.5, 1.0, 0.0);
     const auto smooth_seg = model.cost(7.0, 1.0, 8.0, 1.0, 0.0);
     assert(rough_seg.feasible && smooth_seg.feasible);
+    // Short rollout steps across a cell boundary on the gentle grade stay
+    // feasible: the grade reads through the survey-resolution window, so
+    // nearest-cell stairsteps never alias into phantom cliffs (DWA steps
+    // at ~0.1 s cadence; regression pin for the icy-climb stall).
+    for (double x = 2.0; x < 5.0; x += 0.05) {
+      assert(model.feasible(x, 1.0, x + 0.05, 1.0, 0.0));
+    }
     assert(rough_seg.cost > smooth_seg.cost);
     // Cliff: 1 m rise over 1 m run refuses.
     robot::iface::MapSnapshot cliff = ramp_map();

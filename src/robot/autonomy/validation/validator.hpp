@@ -83,6 +83,13 @@ struct ClearanceValidatorConfig {
   // escape. A fast candidate inside the margin is rejected, never escaped.
   double escape_speed_cap_mps = 0.3;
   double escape_gain_floor_m = 0.15;
+  // Rollover envelope (dynamic stability on side-slopes, master's form):
+  // support width shares the traversal belief's support envelope (one
+  // doctrine); COM height is the stock-chassis assumption, tunable per
+  // platform. Risk 1.0 = static tip-over; the cap holds margin below it.
+  double support_width_m = 0.435;
+  double com_height_m = 0.30;
+  double max_dynamic_rollover_risk = 0.8;
 };
 
 // Surveyed-elevation context for terrain-aware validation (navigation
@@ -374,6 +381,22 @@ class ClearanceValidator : public IValidator {
           out.verdict = TrajectoryVerdict::kTerrainInfeasible;
           out.min_clearance_m = min_clear;
           out.reason = "cross-slope exceeds capability";
+          return out;
+        }
+        // Dynamic rollover envelope: surface tilt plus cornering load over
+        // the support envelope (master's stability-risk form). Straight and
+        // slow on a legal slope passes; carrying speed into a turn on the
+        // same slope trips the cap. Lateral load is v*w for the constant
+        // candidate twist (rotating-frame exact; yaw accel is zero).
+        const double lateral_accel_mps2 =
+            candidate.forward_mps * candidate.yaw_rate_radps;
+        const double risk = dynamic_rollover_risk(
+            cross, lateral_accel_mps2, config_.support_width_m,
+            config_.com_height_m);
+        if (risk > config_.max_dynamic_rollover_risk) {
+          out.verdict = TrajectoryVerdict::kTerrainInfeasible;
+          out.min_clearance_m = min_clear;
+          out.reason = "dynamic rollover risk";
           return out;
         }
       }
