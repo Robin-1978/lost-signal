@@ -196,6 +196,11 @@ class World {
   // Resolved in the engine at 1 ms substeps; the body follows from contact.
   void apply(const robot::iface::ActuatorCommand& cmd);
   const WorldTruth& truth() const { return truth_; }
+  // Full wheel table for presentation (backend layout + live joints, same
+  // sources as physics/encoders). Returns filled count.
+  int wheels(WheelViz* out, int cap) const {
+    return mujoco_.wheels(out, cap);
+  }
   // Sensor raycast against the compiled static scene (floor + boxes) for
   // provider simulation. False when the engine is invalid or nothing is
   // hit within max_m. Actors are supplemented analytically by the caller.

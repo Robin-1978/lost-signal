@@ -12,6 +12,17 @@
 
 namespace lost_signal::sim::viewer {
 
+struct FrameWheel {
+  double x_m = 0.0, y_m = 0.0;  // module position in the base frame
+  double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
+  double spin_rad = 0.0;        // live joint angle (turns visibly)
+  double radius_m = 0.1;
+  bool slipping = false;        // engine traction flag: drawn red
+  // Mecanum rollers are NOT simulated state (analytic wrench, rollers not
+  // meshed): static 45-degree tread stripes, honest decoration only.
+  bool mecanum_rollers = false;
+};
+
 struct FrameBody {
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
   double half_length_m = 0.3;  // body-forward extent (wheel_base/2 floor)
@@ -22,6 +33,12 @@ struct FrameBody {
   // True sensor origin in world (body pose composed with the mount — the
   // ray fan starts here, never at the body center).
   double sens_x_m = 0.0, sens_y_m = 0.0, sens_z_m = 0.0;
+  // Wheels in drive order (empty for skid-steer slabs, see tracked below);
+  // module positions read the backend layout table, angles read truth.
+  std::vector<FrameWheel> wheels;
+  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
+  // chassis params, slip-reddening per side from the traction flags.
+  bool tracked = false;
   // ROBOT estimate at the same tick (offline truth-vs-estimate overlay).
   // estimate_valid=false hides the ghost.
   bool estimate_valid = false;

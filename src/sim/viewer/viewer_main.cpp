@@ -314,6 +314,68 @@ void draw_frame_3d(const Frame& f, bool show_lidar, bool show_estimate) {
     DrawCubeWires({0, 0, 0}, static_cast<float>(f.body.half_length_m * 2.0),
                   0.5f, static_cast<float>(f.body.half_width_m * 2.0),
                   DARKBLUE);
+    // Wheels from live joints (drive spin + steer yaw per module, same
+    // sources as physics/encoders). A spoke makes spin visible; slipping
+    // wheels draw red from the engine traction flags. Mecanum modules get
+    // static 45-degree tread stripes (rollers are analytic-wrench state,
+    // never meshed — honest decoration, documented in the frame).
+    // Skid-steer bases draw track slabs instead (wheels hide under tracks,
+    // like the real machine); slab color per side from the same flags.
+    if (f.body.tracked) {
+      // Track slabs sized from the chassis params; per-side color from
+      // the traction flags (wheels[0] = left drive). Local Z = -bodyY, so
+      // the left slab draws at negative Z (mirroring would swap the red
+      // sides — pinned by the drive convention, not by symmetry).
+      const float slab_len =
+          static_cast<float>(f.body.half_length_m * 2.0f * 0.9f);
+      const float slab_z =
+          static_cast<float>(0.06 - f.body.z_m - 0.25);
+      for (int s = -1; s <= 1; s += 2) {
+        const bool slip = s > 0 ? (f.body.wheels.size() > 1 &&
+                                   f.body.wheels[1].slipping)
+                                : (f.body.wheels.size() > 0 &&
+                                   f.body.wheels[0].slipping);
+        DrawCube({0.0f, slab_z,
+                  static_cast<float>(s * (f.body.half_width_m - 0.075))},
+                 slab_len, 0.12f, 0.15f, slip ? RED : DARKGRAY);
+      }
+    } else {
+      // Draw-local axes are raylib-world (Y up, Z = -bodyY): steer yaws
+      // about Y (truth + = left, verified by the ackermann left-arc pin),
+      // the axle lies lateral (Z) so the cylinder rolls 90 deg about X
+      // first, spin follows about the laid-down axle. Spoke + slip-red
+      // from live joints/flags; mecanum tread stripes sit in the steer
+      // frame (rollers are passive analytic state — static decoration).
+      for (const auto& w : f.body.wheels) {
+        const float axle =
+            static_cast<float>(w.radius_m - f.body.z_m - 0.25);
+        rlPushMatrix();
+        rlTranslatef(static_cast<float>(w.x_m), axle,
+                     static_cast<float>(-w.y_m));
+        rlRotatef(static_cast<float>(w.steer_rad * RAD2DEG), 0.0f, 1.0f,
+                  0.0f);
+        rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+        if (w.mecanum_rollers) {
+          for (int k = -1; k <= 1; ++k) {
+            rlPushMatrix();
+            rlTranslatef(static_cast<float>(k) * 0.03f, 0.0f, 0.0f);
+            rlRotatef(45.0f, 0.0f, 0.0f, 1.0f);
+            DrawCube({0.0f, 0.0f, 0.0f}, 0.012f, 0.02f,
+                     2.0f * static_cast<float>(w.radius_m), DARKGRAY);
+            rlPopMatrix();
+          }
+        }
+        rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 1.0f,
+                  0.0f);
+        const Color tire =
+            w.slipping ? RED : Color{40, 40, 40, 255};
+        DrawCylinder({0.0f, 0.0f, 0.0f}, static_cast<float>(w.radius_m),
+                     static_cast<float>(w.radius_m), 0.08f, 12, tire);
+        DrawCube({0.0f, 0.0f, 0.0f}, 2.0f * static_cast<float>(w.radius_m),
+                 0.02f, 0.03f, YELLOW);  // spoke: spin reads visually
+        rlPopMatrix();
+      }
+    }
     rlPopMatrix();
   }
 }

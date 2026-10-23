@@ -28,6 +28,16 @@ struct TerrainPatch;
 struct SupportSlab;
 struct EnvironmentKeyframe;
 
+// One wheel module for presentation (base frame): position from the shared
+// layout table, spin/steer from live joint read-back. Idlers (ackermann
+// fronts) report driven=false. Rollers are not state (mecanum is an
+// analytic wrench) and stay out — the viewer decorates those statically.
+struct WheelViz {
+  double x_m = 0.0, y_m = 0.0;
+  double spin_rad = 0.0, steer_rad = 0.0;
+  bool slipping = false, driven = false;
+};
+
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
 class MujocoBackend {
@@ -85,6 +95,37 @@ class MujocoBackend {
   bool drive_slipping(int i) const { return drive_slipping_[i]; }
   double steer_angle(int i) const { return steer_angle_[i]; }
   double steer_vel(int i) const { return steer_vel_[i]; }
+  // Full wheel table for presentation (drives by drive_idx, then steering
+  // idlers): positions from the shared layout table, spin/steer from live
+  // joint read-back, slip from the traction flags. One source for viz —
+  // the same joints the encoder provider and the physics read, so the
+  // three cannot disagree. Returns filled count (cap 6: 4 drives + 2
+  // idlers, the largest layout). Idlers report driven=false, slipping=
+  // false (unpowered, unflagged — honest, never invented).
+  int wheels(WheelViz* out, int cap) const {
+    if (out == nullptr || cap <= 0) return 0;
+    int n = 0;
+    for (int d = 0; d < drive_count_ && d < 4 && n < cap; ++d) {
+      WheelViz w;
+      w.x_m = drive_mod_x_[d];
+      w.y_m = drive_mod_y_[d];
+      w.spin_rad = drive_angle_[d];
+      const int s = (d < 4) ? drive_steer_[d] : -1;
+      w.steer_rad = (s >= 0 && s < 4) ? steer_angle_[s] : 0.0;
+      w.slipping = drive_slipping_[static_cast<std::size_t>(d)];
+      w.driven = true;
+      out[n++] = w;
+    }
+    for (int j = 0; j < idler_count_ && j < 2 && n < cap; ++j) {
+      WheelViz w;
+      w.x_m = idler_mod_x_[j];
+      w.y_m = idler_mod_y_[j];
+      w.spin_rad = idler_angle_[j];
+      w.steer_rad = (j < 4) ? steer_angle_[j] : 0.0;
+      out[n++] = w;
+    }
+    return n;
+  }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
@@ -113,6 +154,16 @@ class MujocoBackend {
   // Drive-wheel module positions in the base frame (per-step zone lookup).
   double drive_mod_x_[4] = {0.0, 0.0, 0.0, 0.0};
   double drive_mod_y_[4] = {0.0, 0.0, 0.0, 0.0};
+  // Steer joint per drive module (-1 = fixed wheel), from the shared
+  // layout table (swerve aligns by construction; ackermann rears read -1).
+  int drive_steer_[4] = {-1, -1, -1, -1};
+  // Steering-idler modules (ackermann fronts): knuckle positions for viz
+  // + free-spin read-back (idlerj hinges, same order as the steer joints).
+  double idler_mod_x_[2] = {0.0, 0.0};
+  double idler_mod_y_[2] = {0.0, 0.0};
+  double idler_angle_[2] = {0.0, 0.0};
+  int idler_dof_[2] = {-1, -1};
+  int idler_count_ = 0;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};
   // Zone floor geom ids in zone order (per-step environment writes).
@@ -172,6 +223,7 @@ class MujocoBackend {
   bool drive_slipping(int) const { return false; }
   double steer_angle(int) const { return 0.0; }
   double steer_vel(int) const { return 0.0; }
+  int wheels(WheelViz*, int) const { return 0; }
   double body_z() const { return 0.0; }
   double body_roll() const { return 0.0; }
   double body_pitch() const { return 0.0; }

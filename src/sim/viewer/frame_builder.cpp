@@ -45,6 +45,32 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.body.z_m = t.body_z_m;
   f.body.roll_rad = t.body_roll_rad;
   f.body.pitch_rad = t.body_pitch_rad;
+  // Wheels from the backend wheel table (layout + live joints + slip
+  // flags — the same sources physics and the encoder provider read).
+  // Layouts: (2,0)+scrub = skid-steer slabs, (2,0) diff, (2,2) ackermann
+  // (rears driven, fronts steered idlers with live spin), (4,4) swerve,
+  // (4,0) mecanum (+ static 45-degree roller stripes: rollers are
+  // analytic-wrench state, never meshed, never drawn live).
+  {
+    const int nd = static_cast<int>(t.drive_count);
+    const int ns = static_cast<int>(t.steer_count);
+    const double scrub = world.motor_params().yaw_scrub_coulomb_Nm;
+    f.body.tracked = (nd == 2 && ns == 0 && scrub > 0.0);
+    const bool mecanum = (nd == 4 && ns == 0);
+    world::WheelViz table[6];
+    const int nw = world.wheels(table, 6);
+    for (int i = 0; i < nw; ++i) {
+      FrameWheel w;
+      w.x_m = table[i].x_m;
+      w.y_m = table[i].y_m;
+      w.steer_rad = table[i].steer_rad;
+      w.spin_rad = table[i].spin_rad;
+      w.radius_m = world.motor_params().wheel_radius_m;
+      w.slipping = table[i].slipping;
+      w.mecanum_rollers = mecanum;
+      f.body.wheels.push_back(w);
+    }
+  }
   // True 3D sensor origin (body + attitude composed with the mount — the
   // same composition generation runs, so the viz fan starts where the
   // beams do).

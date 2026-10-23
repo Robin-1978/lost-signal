@@ -108,6 +108,111 @@ int main() {
     assert(std::abs(legacy[0].first - ex) < 1e-9);
   }
 
+  // Wheel table per chassis (backend layout + live joints, same sources
+  // as physics/encoders): diff spins 2 fixed wheels; ackermann steers 2
+  // idlers with live spin; mecanum spins 4 + roller stripes; tracked draws
+  // slabs (flagged, wheels still reported).
+  {
+    auto frame_from = [](sim::world::World& w) {
+      sim::eval::EvalStep s;
+      s.truth_after = w.truth();
+      return sim::viewer::build_frame(w, s, {}, {});
+    };
+    // Diff: 2 fixed wheels, spin tracks the joints, slip flags honest.
+    {
+      sim::world::World w;
+      robot::iface::ActuatorCommand cmd;
+      cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
+      cmd.stamp_ns = 0;
+      cmd.expiry_ns = 1'000'000'000;
+      cmd.drive[0] = cmd.drive[1] = 0.7;
+      w.apply(cmd);
+      for (int i = 0; i < 50; ++i) w.step(0.02);
+      const auto f = frame_from(w);
+      assert(!f.body.tracked);
+      assert(f.body.wheels.size() == 2);
+      const double track =
+          w.motor_params().track_width_m * 0.5;
+      assert(std::abs(f.body.wheels[0].y_m - track) < 1e-9);  // left
+      assert(std::abs(f.body.wheels[1].y_m + track) < 1e-9);  // right
+      for (const auto& wh : f.body.wheels) {
+        assert(wh.steer_rad == 0.0);
+        assert(!wh.mecanum_rollers);
+      }
+      assert(f.body.wheels[0].spin_rad ==
+             w.truth().drive_angle_rad[0]);
+      assert(f.body.wheels[0].slipping == w.truth().drive_slipping[0]);
+      assert(std::abs(f.body.wheels[0].radius_m -
+                      w.motor_params().wheel_radius_m) < 1e-12);
+    }
+    // Ackermann: rear drives fixed, front idlers steered with live spin.
+    {
+      sim::world::World w;
+      robot::iface::ActuatorCommand cmd;
+      cmd.mode = robot::iface::ActuatorMode::kAckermannDuty;
+      cmd.stamp_ns = 0;
+      cmd.expiry_ns = 1'000'000'000;
+      cmd.drive[0] = cmd.drive[1] = 0.5;
+      cmd.steer[0] = cmd.steer[1] = 0.4;
+      w.apply(cmd);
+      for (int i = 0; i < 50; ++i) w.step(0.02);
+      const auto f = frame_from(w);
+      assert(f.body.wheels.size() == 4);
+
+      const double half_base = w.motor_params().wheel_base_m * 0.5;
+      assert(f.body.wheels[0].steer_rad == 0.0);  // rear drives fixed
+      assert(f.body.wheels[1].steer_rad == 0.0);
+      assert(f.body.wheels[0].x_m < 0.0 && f.body.wheels[2].x_m > 0.0);
+      assert(std::abs(f.body.wheels[2].x_m - half_base) < 1e-9);
+      // Idlers follow the measured servo joints (effort duty, no position
+      // loop in the plant — the ROBOT closes on measured angle). Both
+      // fronts agree and turn the car left (+steer = left, yaw grows).
+      assert(f.body.wheels[2].steer_rad ==
+             w.truth().steer_rad[0]);
+      assert(f.body.wheels[2].steer_rad > 0.01);
+      assert(std::abs(f.body.wheels[2].steer_rad -
+                      f.body.wheels[3].steer_rad) < 0.01);
+      assert(w.truth().body_yaw_rad > 0.0);
+      assert(std::isfinite(f.body.wheels[2].spin_rad));
+    }
+    // Mecanum: 4 spinning wheels, fixed modules, roller stripes on.
+    {
+      sim::world::World w;
+      robot::iface::ActuatorCommand cmd;
+      cmd.mode = robot::iface::ActuatorMode::kMecanumDuty;
+      cmd.stamp_ns = 0;
+      cmd.expiry_ns = 1'000'000'000;
+      cmd.drive = {-0.5, 0.5, 0.5, -0.5};
+      w.apply(cmd);
+      for (int i = 0; i < 50; ++i) w.step(0.02);
+      const auto f = frame_from(w);
+      assert(f.body.wheels.size() == 4);
+      for (const auto& wh : f.body.wheels) {
+        assert(wh.steer_rad == 0.0);
+        assert(wh.mecanum_rollers);
+      }
+      assert(f.body.wheels[0].spin_rad != 0.0);  // strafing spins wheels
+    }
+    // Tracked: slab flag on (wheels still reported underneath).
+    {
+      sim::world::World w;
+      sim::world::MotorParams mp;
+      mp.yaw_scrub_coulomb_Nm = 8.0;
+      mp.yaw_scrub_viscous_Nm_per_radps = 6.0;
+      w.set_motor_params(mp);
+      robot::iface::ActuatorCommand cmd;
+      cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
+      cmd.stamp_ns = 0;
+      cmd.expiry_ns = 1'000'000'000;
+      cmd.drive[0] = cmd.drive[1] = 0.5;
+      w.apply(cmd);
+      for (int i = 0; i < 50; ++i) w.step(0.02);
+      const auto f = frame_from(w);
+      assert(f.body.tracked);
+      assert(f.body.wheels.size() == 2);
+    }
+  }
+
   // Mount-aware fan: origin shifted by the yaw-rotated offset, beams
   // steered by the mount yaw. A misconfigured mount shows up here.
   {

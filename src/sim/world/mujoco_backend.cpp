@@ -307,6 +307,12 @@ void MujocoBackend::sync(const MotorParams& motor,
   drive_count_ = 0;
   steer_count_ = 0;
   for (int i = 0; i < 4; ++i) drive_dof_[i] = steer_dof_[i] = -1;
+  for (int i = 0; i < 4; ++i) drive_steer_[i] = -1;
+  for (int i = 0; i < 2; ++i) {
+    idler_dof_[i] = -1;
+    idler_angle_[i] = 0.0;
+  }
+  idler_count_ = 0;
 
   const double r = std::max(1e-3, motor.wheel_radius_m);
   const double track = std::max(0.1, motor.track_width_m);
@@ -338,10 +344,23 @@ void MujocoBackend::sync(const MotorParams& motor,
   // and the step (wheel world positions for the zone lookup).
   const std::vector<PlacedModule> modules =
       layout_modules(drive_count, steer_count, track, base_len);
+  idler_count_ = 0;
   for (const auto& mod : modules) {
     if (mod.is_drive && mod.drive_idx >= 0 && mod.drive_idx < 4) {
       drive_mod_x_[mod.drive_idx] = mod.x;
       drive_mod_y_[mod.drive_idx] = mod.y;
+      drive_steer_[mod.drive_idx] =
+          (mod.is_steer && mod.steer_idx >= 0 && mod.steer_idx < 4)
+              ? mod.steer_idx
+              : -1;
+    }
+    // Steering idlers (ackermann fronts): knuckle position for viz (the
+    // 2 cm mechanical trail shifts the contact, not the drawn module).
+    if (mod.idle && mod.is_steer && mod.steer_idx >= 0 &&
+        mod.steer_idx < 2) {
+      idler_mod_x_[mod.steer_idx] = mod.x;
+      idler_mod_y_[mod.steer_idx] = mod.y;
+      ++idler_count_;
     }
   }
   // Drive joint i follows module i for the first drive_count modules;
@@ -646,6 +665,11 @@ void MujocoBackend::sync(const MotorParams& motor,
     if (steer_dof_[i] >= 0) ++found_steers;
     std::snprintf(name, sizeof(name), "tire%d", i);
     tire_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
+    if (i < 2) {
+      std::snprintf(name, sizeof(name), "idlerj%d", i);
+      const int iid = mj_name2id(model, mjOBJ_JOINT, name);
+      idler_dof_[i] = (iid >= 0) ? model->jnt_dofadr[iid] : -1;
+    }
   }
   zone_geom_.clear();
   for (std::size_t zi = 0; zi < zones.size(); ++zi) {
@@ -935,6 +959,16 @@ void MujocoBackend::read_back() {
     const int qadr = (jid >= 0) ? model->jnt_qposadr[jid] : -1;
     if (qadr >= 0) steer_angle_[t] = data->qpos[qadr];
     steer_vel_[t] = data->qvel[dof];
+  }
+  // Ackermann idler spin (free-spinning fronts): same hinge read-back
+  // pattern as the drives (DOF address == qpos address here).
+  for (int j = 0; j < idler_count_ && j < 2; ++j) {
+    const int dof = idler_dof_[j];
+    if (dof < 0) continue;
+    const int jid = mj_name2id(model, mjOBJ_JOINT,
+                               j == 0 ? "idlerj0" : "idlerj1");
+    const int qadr = (jid >= 0) ? model->jnt_qposadr[jid] : -1;
+    if (qadr >= 0) idler_angle_[j] = data->qpos[qadr];
   }
 }
 
