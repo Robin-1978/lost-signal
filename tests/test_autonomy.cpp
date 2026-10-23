@@ -63,6 +63,60 @@ int main() {
            sigma_before + 0.19);  // slip inflation applied
   }
 
+  // Slip inflation is bounded and forgets: sustained slip holds the extra
+  // (capped, never pi), clean rolling relaxes it, and a validated
+  // correction clears it outright. A latched heading sigma would wedge
+  // the supervisor in global-only retries.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    auto mk = [&](int k, double gyro) {
+      auto o = make_odom(static_cast<std::uint64_t>(k),
+                         k * 20'000'000LL, 1.0);
+      o.imu_valid = true;
+      o.imu_gyro_z_radps = gyro;
+      o.imu_az_mps2 = 9.81;
+      return o;
+    };
+    est.predict(mk(1, 0.0));
+    for (int k = 2; k <= 61; ++k) est.predict(mk(k, 2.0));  // 1.2 s of slip
+    const double slipped = est.estimate().heading_sigma_rad;
+    assert(slipped > 0.99 && slipped <= 1.03);  // capped, not pi
+    for (int k = 62; k <= 311; ++k) est.predict(mk(k, 0.0));  // 5 s clean
+    const double relaxed = est.estimate().heading_sigma_rad;
+    assert(relaxed < 0.3 * slipped);  // decayed toward the motion baseline
+    assert(relaxed < 0.45);           // below the lost-pose tripwire again
+  }
+
+  // A validated correction resolves slip doubt immediately.
+  {
+    FusedOdometryEstimator est;
+    est.reset();
+    auto mk = [&](int k, double gyro) {
+      auto o = make_odom(static_cast<std::uint64_t>(k),
+                         k * 20'000'000LL, 1.0);
+      o.imu_valid = true;
+      o.imu_gyro_z_radps = gyro;
+      o.imu_az_mps2 = 9.81;
+      return o;
+    };
+    est.predict(mk(1, 0.0));
+    for (int k = 2; k <= 6; ++k) est.predict(mk(k, 2.0));
+    assert(est.estimate().heading_sigma_rad > 0.5);
+    est.correct_pose(est.estimate().x_m, est.estimate().y_m,
+                     est.estimate().yaw_rad, 0.05, 0.05,
+                     6 * 20'000'000LL);
+    const double fixed = est.estimate().heading_sigma_rad;
+    assert(fixed < 0.1);
+    // Sensors agree from here (wheels and gyro both turn at 2.0): the stale
+    // estimator yaw from the slip settles separately and must not re-add a
+    // cleared extra. One truly clean tick adds nothing back.
+    auto clean = mk(7, 2.0);
+    clean.yaw_rate_radps = 2.0;
+    est.predict(clean);
+    assert(est.estimate().heading_sigma_rad < fixed + 0.05);
+  }
+
   // Slip observer: wheel-vs-body residual with honesty states.
   {
     // Invalid body: refusal, never silent substitution.

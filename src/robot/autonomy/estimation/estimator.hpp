@@ -68,6 +68,13 @@ class FusedOdometryEstimator : public IEstimator {
     // and inflates heading covariance.
     double slip_yaw_residual_radps = 0.5;
     double slip_heading_inflation_rad = 0.2;
+    // Slip inflation is bounded and forgets: sustained slip holds the extra
+    // uncertainty (the heading really is untrusted), but clean rolling
+    // relaxes it toward the motion-grown baseline instead of latching at pi
+    // forever — a latched heading sigma wedges the supervisor in
+    // global-only retries with no local correction ever scheduled.
+    double slip_heading_inflation_cap_rad = 1.0;
+    double slip_heading_relax_s = 2.0;
     // Attitude complementary time constant: gyro integration trusted below
     // this horizon, gravity tilt above it.
     double attitude_time_constant_s = 0.5;
@@ -119,6 +126,10 @@ class FusedOdometryEstimator : public IEstimator {
   bool has_prior_ = false;
   SlipObservation last_slip_{};
   iface::ObservationFrame prior_{};
+  // Slip-inflation contribution currently baked into heading_sigma_rad.
+  // Tracked separately so clean rolling can relax exactly what slip added
+  // (a validated correction or reset clears it outright).
+  double slip_heading_extra_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

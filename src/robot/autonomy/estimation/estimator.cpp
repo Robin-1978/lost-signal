@@ -44,6 +44,7 @@ void FusedOdometryEstimator::reset() {
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
   last_slip_ = SlipObservation{};
+  slip_heading_extra_rad_ = 0.0;
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
@@ -171,11 +172,24 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
       estimate_.position_sigma_m + config_.pos_growth_per_m * std::abs(step_m) +
           config_.pos_growth_per_s * dt_s,
       config_.pos_sigma_min_m, config_.pos_sigma_max_m);
-  double yaw_growth =
-      config_.yaw_growth_per_s * dt_s +
-      (slipped ? config_.slip_heading_inflation_rad : 0.0);
+  // Recover the motion-grown baseline, grow it, then re-apply the live
+  // slip extra (bounded; relaxed on clean ticks). A validated correction
+  // or seed clears the extra outright (see correct_pose/seed_pose/reset),
+  // so uncertainty relaxes instead of latching once slip stops.
+  double heading_base =
+      estimate_.heading_sigma_rad - slip_heading_extra_rad_;
+  heading_base += config_.yaw_growth_per_s * dt_s;
+  if (slipped) {
+    slip_heading_extra_rad_ =
+        std::min(slip_heading_extra_rad_ + config_.slip_heading_inflation_rad,
+                 std::max(0.0, config_.slip_heading_inflation_cap_rad));
+  } else if (config_.slip_heading_relax_s > 0.0) {
+    slip_heading_extra_rad_ *=
+        std::exp(-dt_s / config_.slip_heading_relax_s);
+    if (!(slip_heading_extra_rad_ > 1e-12)) slip_heading_extra_rad_ = 0.0;
+  }
   estimate_.heading_sigma_rad = std::clamp(
-      estimate_.heading_sigma_rad + yaw_growth, config_.yaw_sigma_min_rad,
+      heading_base + slip_heading_extra_rad_, config_.yaw_sigma_min_rad,
       config_.yaw_sigma_max_rad);
   estimate_.confidence =
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
@@ -219,6 +233,9 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
   estimate_.stamp_ns = stamp_ns;
   estimate_.confidence =
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+  // A validated correction resolves slip doubt: clear the extra so the
+  // next ticks grow from the motion baseline instead of re-adding doubt.
+  slip_heading_extra_rad_ = 0.0;
 }
 
 void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
@@ -247,6 +264,7 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
   has_prior_ = true;
   prior_ = iface::ObservationFrame{};
+  slip_heading_extra_rad_ = 0.0;
 }
 
 }  // namespace lost_signal::robot::autonomy
