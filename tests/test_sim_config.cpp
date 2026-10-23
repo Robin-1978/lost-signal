@@ -24,7 +24,7 @@ int main() {
     assert(!cfg.lidar_composite);  // opt-in front end, default off
     assert(cfg.delivery.latency_steps == 0);
     assert(cfg.delivery.drop_probability == 0.0);
-    assert(cfg.imu_realism.gyro_bias_radps == 0.0);
+    assert(cfg.imu_realism.gyro_trim_radps[2] == 0.0);
   }
   // Overrides + session apply: record disabled empties the episode,
   // lidar geometry reaches the provider.

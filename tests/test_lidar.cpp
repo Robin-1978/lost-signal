@@ -129,10 +129,10 @@ int main() {
   assert(m.valid());
   assert(m.gyro_z_radps == 0.5);
   assert(m.accel_z_mps2 == 9.81);
-  // Realism switch: bias offsets exactly.
+  // Realism switch: trim offsets exactly, per axis.
   sim::providers::ImuRealismConfig cfg;
   cfg.seed = 1;
-  cfg.gyro_bias_radps = 0.1;
+  cfg.gyro_trim_radps[2] = 0.1;
   imu.set_realism(cfg);
   assert(imu.poll(m));
   assert(m.gyro_z_radps == 0.6);
@@ -183,6 +183,79 @@ int main() {
     // Euler: -alpha*ry = 0 on x; alpha*rx = -25 on y. Centripetal -0.25.
     assert(std::abs(lm.accel_x_mps2 - -0.25) < 1e-9);
     assert(std::abs(lm.accel_y_mps2 - -25.0) < 1e-6);
+    mutable_truth(w).yaw_rate_radps = 0.5;
+  }
+  // Per-axis bias draw + walk (seeded device imperfection, never truth).
+  {
+    mutable_truth(w).yaw_rate_radps = 0.0;
+    sim::providers::SimImuProvider a(&w), b(&w);
+    sim::providers::ImuRealismConfig dc;
+    dc.seed = 77;
+    dc.gyro_bias_stddev_radps = 0.01;
+    a.set_realism(dc);
+    b.set_realism(dc);
+    robot::iface::ImuMessage ma, mb;
+    assert(a.poll(ma) && b.poll(mb));
+    // Same seed: identical per-axis draws (exact replay, not statistical).
+    assert(ma.gyro_x_radps == mb.gyro_x_radps);
+    assert(ma.gyro_y_radps == mb.gyro_y_radps);
+    assert(ma.gyro_z_radps == mb.gyro_z_radps);
+    // Independent per-axis draws (vanishing chance all three coincide).
+    assert(ma.gyro_x_radps != ma.gyro_y_radps ||
+           ma.gyro_y_radps != ma.gyro_z_radps);
+    // Drawn bias is bounded (6 sigma) and rides all axes, not just z.
+    assert(std::abs(ma.gyro_x_radps) <= 0.06);
+    assert(std::abs(ma.gyro_z_radps) <= 0.06);
+    // Random walk accumulates across steps (seeded, deterministic).
+    sim::providers::ImuRealismConfig wk = dc;
+    wk.gyro_bias_walk_radps_sqrt_s = 0.01;
+    a.set_realism(wk);
+    b.set_realism(wk);
+    assert(a.poll(ma));
+    const double z0 = ma.gyro_z_radps;
+    for (int i = 0; i < 50; ++i) {
+      w.step(0.02);
+      assert(a.poll(ma) && b.poll(mb));
+      assert(ma.gyro_z_radps == mb.gyro_z_radps);  // streams stay locked
+    }
+    assert(ma.gyro_z_radps != z0);  // walk moved the bias
+    assert(std::abs(ma.gyro_z_radps) <= 6.0 * 0.06);  // bounded drift
+    // Invalid config rejected (fail closed): negative walk keeps behavior.
+    sim::providers::ImuRealismConfig bad = wk;
+    bad.gyro_bias_walk_radps_sqrt_s = -1.0;
+    a.set_realism(bad);
+    assert(a.poll(ma));
+    assert(ma.gyro_z_radps == mb.gyro_z_radps);  // previous stream kept
+  }
+  // 3D lever arm: z-offset under yaw spin reads no phantom (centripetal
+  // and Euler arms vanish along the spin axis); gravity norm is preserved
+  // under any mount orientation.
+  {
+    mutable_truth(w).yaw_rate_radps = 1.0;
+    sim::providers::SimImuProvider up(&w);
+    const double zoff[3] = {0.0, 0.0, 1.0};
+    const double no_rot[3] = {0.0, 0.0, 0.0};
+    up.set_mount(zoff, no_rot);
+    robot::iface::ImuMessage um;
+    assert(up.poll(um));
+    assert(up.poll(um));
+    assert(std::abs(um.accel_x_mps2) < 1e-9);
+    assert(std::abs(um.accel_y_mps2) < 1e-9);
+    assert(std::abs(um.accel_z_mps2 - 9.81) < 1e-9);
+    // Level at rest: no phantom roll/pitch rates from the attitude delta
+    // (quaternion-delta residue is numerically zero, never a live rate).
+    mutable_truth(w).yaw_rate_radps = 0.0;
+    w.step(0.02);
+    assert(up.poll(um));
+    assert(std::abs(um.gyro_x_radps) < 1e-9);
+    assert(std::abs(um.gyro_y_radps) < 1e-9);
+    const double tilt[3] = {0.3, -0.2, 1.1};
+    up.set_mount(zoff, tilt);
+    assert(up.poll(um));
+    const double anorm = std::sqrt(um.accel_x_mps2 * um.accel_x_mps2 +
+                                   um.accel_y_mps2 * um.accel_y_mps2 +
+                                   um.accel_z_mps2 * um.accel_z_mps2);
+    assert(std::abs(anorm - 9.81) < 1e-9);
     mutable_truth(w).yaw_rate_radps = 0.5;
   }
 

@@ -151,7 +151,11 @@ bool load_sim_config(const std::string& path, SimConfig& config,
     };
     Slot slots[] = {
         {"gyro_noise_radps", &out.imu_realism.gyro_noise_radps},
-        {"gyro_bias_radps", &out.imu_realism.gyro_bias_radps},
+        {"gyro_trim_z_radps", &out.imu_realism.gyro_trim_radps[2]},
+        {"gyro_bias_stddev_radps",
+         &out.imu_realism.gyro_bias_stddev_radps},
+        {"gyro_bias_walk_radps_sqrt_s",
+         &out.imu_realism.gyro_bias_walk_radps_sqrt_s},
         {"accel_noise_mps2", &out.imu_realism.accel_noise_mps2},
     };
     for (const auto& s : slots) {

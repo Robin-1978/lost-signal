@@ -225,8 +225,14 @@ in the new framework: +1.6/-0.4, clamp [-2.5, 3.5], 0.65/0.35 hysteresis
 — first-sight walls still paint promptly, stray clears need 6 sustained
 votes, pinned exactly). Mapper keeps all doctrines (foreground clears but
 never paints, surveyed ground never paints, one vote per cell per scan).
-Next slices:
-IMU per-axis bias/walk + 3D lever arm, incidence intensity, live
+IMU device model (landed): per-axis bias drawn per run (seeded) + random
+walk per poll (sigma*sqrt(dt), master's form) + exact per-axis trim knob
+for bias-robustness probes; full 3D lever arm (attitude-delta roll/pitch
+rates + first-class truth yaw + vertical body accel, planar motion reduces
+to the legacy form exactly); three independent RNG streams (gyro/accel/
+bias draw order never cross-couples); ROBOT untouched (estimator already
+consumes 6-axis). Next slices:
+live
 elevation fusion, log-odds mapping, DWA terrain gate, validator rollover
 envelope, traction memory, actor lifecycle richness.
 

@@ -23,11 +23,11 @@ sim::providers::DeliveryConfig delivery(std::uint64_t seed, int latency,
 }
 
 sim::providers::ImuRealismConfig imu(std::uint64_t seed, double noise,
-                                     double bias, double accel) {
+                                     double trim_z, double accel) {
   sim::providers::ImuRealismConfig c;
   c.seed = seed;
   c.gyro_noise_radps = noise;
-  c.gyro_bias_radps = bias;
+  c.gyro_trim_radps[2] = trim_z;
   c.accel_noise_mps2 = accel;
   return c;
 }

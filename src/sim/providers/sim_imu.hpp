@@ -20,9 +20,16 @@ namespace lost_signal::sim::providers {
 
 struct ImuRealismConfig {
   std::uint64_t seed = 0;
-  double gyro_noise_radps = 0.0;   // white, per axis
-  double gyro_bias_radps = 0.0;    // constant z-bias for the run
-  double accel_noise_mps2 = 0.0;   // white, per axis
+  double gyro_noise_radps = 0.0;  // white, per axis
+  // Exact calibration trim, per axis (x, y, z): harness knob for
+  // bias-robustness probes, adds without scaling. Zero by default.
+  double gyro_trim_radps[3] = {0.0, 0.0, 0.0};
+  // Device imperfection (seeded, never truth): per-run bias drawn once per
+  // axis from N(0, stddev) at set_realism, then a random walk per poll
+  // (sigma * sqrt(dt)). Both zero by default = exact.
+  double gyro_bias_stddev_radps = 0.0;
+  double gyro_bias_walk_radps_sqrt_s = 0.0;
+  double accel_noise_mps2 = 0.0;  // white, per axis
 };
 
 class SimImuProvider
@@ -34,7 +41,8 @@ class SimImuProvider
   bool is_ready() const override { return world_ != nullptr; }
   bool poll(robot::iface::ImuMessage& out) override;
   // Device-model tuning (S7). Invalid configs are ignored (previous
-  // settings kept, never half-applied).
+  // settings kept, never half-applied). Setting realism redraws the
+  // per-run gyro bias (seeded determinism: same seed, same bias).
   void set_realism(ImuRealismConfig config);
   // Sensor mount extrinsics in the base frame (xyz meters, RPY rad,
   // REP-103). Non-finite input is rejected, previous mount kept. Default
@@ -46,16 +54,28 @@ class SimImuProvider
   robot::iface::EndpointDescriptor desc_;
   std::uint64_t seq_ = 0;
   ImuRealismConfig realism_;
-  std::uint64_t rng_state_ = 0;
+  // Independent seeded streams (draw order never couples gyro/accel/bias).
+  std::uint64_t gyro_state_ = 0;
+  std::uint64_t accel_state_ = 0;
+  std::uint64_t bias_state_ = 0;
+  // Per-run drawn bias, per axis (x, y, z) + walk on top. Redrawn at
+  // set_realism; trim (config) adds separately as the exact harness knob.
+  double bias_draw_radps_[3] = {0.0, 0.0, 0.0};
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};
-  // Previous twist + stamp for differentiated accelerations (lever-arm
-  // angular accel + body linear accel). First poll (or repeated stamp)
-  // contributes no acceleration.
+  // Previous twist + attitude + stamp for differentiated quantities:
+  // angular acceleration, body linear acceleration (incl. vertical from
+  // body height), and roll/pitch rates from the attitude delta (truth
+  // carries no roll/pitch rate channel; yaw rides the first-class truth
+  // rate). First poll (or repeated stamp) contributes no derivatives.
   double prev_yaw_rate_radps_ = 0.0;
   double prev_fwd_mps_ = 0.0;
   double prev_lat_mps_ = 0.0;
+  double prev_body_z_m_ = 0.0;
   double prev_stamp_s_ = -1.0;
+  bool has_prev_attitude_ = false;
+  robot::core::Quaternion prev_body_q_{0.0, 0.0, 0.0, 1.0};
+  double prev_omega_x_ = 0.0, prev_omega_y_ = 0.0;
 };
 
 }  // namespace lost_signal::sim::providers
