@@ -32,6 +32,10 @@ class ScenarioSession {
 
   robot::iface::GoalHandle request_goal(const robot::iface::TaskRequest& req);
   robot::iface::GoalStatus goal_status(robot::iface::GoalHandle h) const;
+ robot::iface::GoalStatus current_goal() const { return app_.current_goal(); }
+ robot::autonomy::diagnostics::DecisionEvidence last_evidence() const {
+ return app_.last_evidence();
+ }
   bool cancel_goal(robot::iface::GoalHandle h);
   void step_once();
 

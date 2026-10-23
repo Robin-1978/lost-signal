@@ -30,6 +30,7 @@ struct Options {
  long steps = -1;
  double duration_s = -1.0;
  bool no_actors = false;
+ bool verbose = false;
  bool help = false;
 };
 
@@ -76,6 +77,8 @@ bool parse_args(int argc, char** argv, Options& opt) {
  if (!value(opt.actors_path)) return false;
  } else if (a == "--no-actors") {
  opt.no_actors = true;
+ } else if (a == "--verbose") {
+ opt.verbose = true;
  } else if (a == "--objectives") {
  std::string list;
  if (!value(list)) return false;
@@ -232,6 +235,15 @@ int main(int argc, char** argv) {
  long ran = 0;
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
+ if (opt.verbose && ran % 100 == 0) {
+ const auto ev = session->last_evidence();
+ std::fprintf(stderr,
+ "step=%ld goal=%s reason=%s action=%s v=%.2f w=%.2f\n",
+ ran, session->current_goal().state ==
+ robot::iface::GoalState::kActive ? "active" : "idle",
+ ev.reason_code.c_str(), ev.action_code.c_str(),
+ ev.target_speed_mps, ev.target_yaw_rate_radps);
+ }
  }
  const sim::eval::EpisodeScore score =
  sim::eval::score_episode(session->episode());

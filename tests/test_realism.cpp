@@ -148,7 +148,23 @@ int main() {
     }
   }
 
-  // HIL with realism on: latency + dropout + IMU noise still completes a
+  // Delivery latency is measured against the current plant clock. A
+ // latency above the 500 ms freshness budget must produce safe stops.
+ {
+ sim::scenario::ScenarioSession stale;
+ stale.setup_world().add_place({"dock", 5.0, 0.0, 0.0});
+ stale.set_sensor_realism(delivery(3, 30, 0.0), imu(4, 0.0, 0.0, 0.0));
+ stale.set_objectives({"dock"}, 1.0);
+ bool saw_stale_stop = false;
+ for (int i = 0; i < 80; ++i) {
+ stale.step_once();
+ const auto& step = stale.episode().steps().back();
+ if (step.obs_accepted && step.cmd.is_safe_stop()) saw_stale_stop = true;
+ }
+ assert(saw_stale_stop);
+ }
+
+ // HIL with realism on: latency + dropout + IMU noise still completes a
   // straight mission with no collisions.
   {
     auto run = []() {
