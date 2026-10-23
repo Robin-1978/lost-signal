@@ -7,9 +7,11 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
 #include "robot/core/geometry.hpp"
+#include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -27,6 +29,7 @@ enum class TrajectoryVerdict {
   kDynamicCollision = 3,       // rollout meets a predicted track
   kUnsafeEmergencyStop = 4,    // braking tail from candidate speed doesn't fit
   kInvalidStructure = 5,       // infeasible candidate / missing evidence
+  kTerrainInfeasible = 6,      // surveyed grade beyond climb/side capability
 };
 
 inline const char* trajectory_verdict_name(TrajectoryVerdict verdict) {
@@ -43,6 +46,8 @@ inline const char* trajectory_verdict_name(TrajectoryVerdict verdict) {
       return "unsafe-emergency-stop";
     case TrajectoryVerdict::kInvalidStructure:
       return "invalid-structure";
+    case TrajectoryVerdict::kTerrainInfeasible:
+      return "terrain-infeasible";
   }
   return "unknown";
 }
@@ -78,6 +83,31 @@ struct ClearanceValidatorConfig {
   double escape_gain_floor_m = 0.15;
 };
 
+// Surveyed-elevation context for terrain-aware validation (navigation
+// prior, never live physics). Null/absent map degrades to the planar
+// behavior exactly: every return is a potential obstacle.
+struct SurveyContext {
+  const iface::MapSnapshot* map = nullptr;
+  // Lidar plane above the body origin (TF mount height, fanned out by the
+  // coordinator; a horizontal beam meets an up-ramp where the surface
+  // crosses this plane).
+  double sensor_height_m = 0.35;
+  // Body origin above ground at spawn (chassis ride height, measured 0.10
+  // on the engine): the estimate dead-reckons z above the spawn plane, so
+  // the absolute sensor height is est.z + mount + ride.
+  double ride_height_m = 0.10;
+  // Endpoint-vs-survey agreement to call a return surveyed ground.
+  double ground_tol_m = 0.15;
+  // Steeper along-track grade is unclimbable; steeper side-slope risks
+  // rollover (same caps as route choice, one doctrine).
+  double max_grade = 0.5;
+  double max_cross_grade = 0.4;
+
+  double sensor_z(const EstimatedState& est) const {
+    return est.z_m + sensor_height_m + ride_height_m;
+  }
+};
+
 // IValidator: candidate + estimate + perception + raw scan -> verdict.
 // Missing or stale scan is unknown evidence -> reject motion (hold ok).
 class IValidator {
@@ -89,6 +119,17 @@ class IValidator {
                                     const iface::ObservationFrame& obs) = 0;
   // Lidar yaw from the TF tree (coordinator fans out). Default ignore.
   virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
+  // Survey-aware validation (default ignores the survey: planar behavior).
+  // The concrete validator classifies surveyed-ground returns out of the
+  // obstacle set and gates the rollout on the surveyed grade.
+  virtual ValidationResult validate(const LocalCandidate& candidate,
+                                    const EstimatedState& est,
+                                    const PerceptionResult& perception,
+                                    const iface::ObservationFrame& obs,
+                                    const SurveyContext& survey) {
+    (void)survey;
+    return validate(candidate, est, perception, obs);
+  }
 };
 
 // Trajectory validator: constant-twist rollout of the exact candidate,
@@ -108,6 +149,29 @@ class ClearanceValidator : public IValidator {
                             const EstimatedState& est,
                             const PerceptionResult& perception,
                             const iface::ObservationFrame& obs) override {
+    return validate_impl(candidate, est, perception, obs, nullptr);
+  }
+  // Survey-aware validation: endpoints consistent with surveyed ground are
+  // not obstacles, and the rollout is gated on the surveyed grade (same
+  // caps as route choice). Needs a valid estimate (sensor height rides on
+  // it); otherwise degrades to the planar behavior exactly.
+  ValidationResult validate(const LocalCandidate& candidate,
+                            const EstimatedState& est,
+                            const PerceptionResult& perception,
+                            const iface::ObservationFrame& obs,
+                            const SurveyContext& survey) override {
+    const SurveyContext* ctx =
+        (survey.map != nullptr && survey.map->has_elevation() && est.valid)
+            ? &survey
+            : nullptr;
+    return validate_impl(candidate, est, perception, obs, ctx);
+  }
+
+  ValidationResult validate_impl(const LocalCandidate& candidate,
+                                 const EstimatedState& est,
+                                 const PerceptionResult& perception,
+                                 const iface::ObservationFrame& obs,
+                                 const SurveyContext* survey) {
     ValidationResult out;
     if (!candidate.feasible) {
       out.reason = "infeasible candidate";
@@ -126,8 +190,11 @@ class ClearanceValidator : public IValidator {
       out.reason = "no scan evidence for motion";
       return out;
     }
-    // Forward-sector minimum range (braking-tail check below).
+    // Forward-sector minimum range (braking-tail check below). Surveyed
+    // ground returns are not obstacle evidence (counted separately so an
+    // all-ground sector reads open, never blind).
     float sector_min = std::numeric_limits<float>::infinity();
+    std::size_t forward_beams = 0, forward_ground = 0;
     const std::size_t n = obs.ranges_m.size();
     for (std::size_t i = 0; i < n; ++i) {
       // Even beam layout over [-pi, pi); forward is index n/2.
@@ -137,7 +204,21 @@ class ClearanceValidator : public IValidator {
           config_.forward_half_angle_rad) {
         continue;
       }
-      if (obs.ranges_m[i] < sector_min) sector_min = obs.ranges_m[i];
+      const float range = obs.ranges_m[i];
+      if (!(range > 0.0f) || !std::isfinite(range)) continue;
+      ++forward_beams;
+      if (survey != nullptr) {
+        const double ea = angle + est.yaw_rad;
+        const double ex = est.x_m + range * std::cos(ea);
+        const double ey = est.y_m + range * std::sin(ea);
+        if (endpoint_is_survey_ground(*survey->map, ex, ey,
+                                      survey->sensor_z(est),
+                                      survey->ground_tol_m)) {
+          ++forward_ground;
+          continue;
+        }
+      }
+      if (range < sector_min) sector_min = range;
     }
     if (!std::isfinite(sector_min)) {
       if (hold) {
@@ -146,8 +227,14 @@ class ClearanceValidator : public IValidator {
         out.reason = "hold";
         return out;
       }
-      out.reason = "no forward returns";
-      return out;
+      if (survey != nullptr && forward_ground > 0 &&
+          forward_beams == forward_ground) {
+        // Every forward return is surveyed ground: open sector, infinite
+        // clearance. Falls through (the braking-need check below passes).
+      } else {
+        out.reason = "no forward returns";
+        return out;
+      }
     }
     if (hold) {
       out.accepted = true;
@@ -176,14 +263,23 @@ class ClearanceValidator : public IValidator {
     }
     // Full trajectory validation from a valid estimate.
     // Endpoints in the map frame: raw evidence, independent of the mapper.
+    // Surveyed ground returns are excluded (same classifier as the sector
+    // above, so the two cannot disagree on what counts as ground).
     std::vector<core::Vec2> endpoints;
     endpoints.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
       const double angle = -core::kPi + 2.0 * core::kPi * i / n + est.yaw_rad;
-      endpoints.push_back(
-          {est.x_m + range * std::cos(angle), est.y_m + range * std::sin(angle)});
+      const double ex = est.x_m + range * std::cos(angle);
+      const double ey = est.y_m + range * std::sin(angle);
+      if (survey != nullptr &&
+          endpoint_is_survey_ground(*survey->map, ex, ey,
+                                    survey->sensor_z(est),
+                                    survey->ground_tol_m)) {
+        continue;
+      }
+      endpoints.push_back({ex, ey});
     }
     // Rollout the exact candidate twist; sample the swept footprint.
     const int steps = std::max(
@@ -227,6 +323,30 @@ class ClearanceValidator : public IValidator {
           out.verdict = TrajectoryVerdict::kDynamicCollision;
           out.min_clearance_m = min_clear;
           out.reason = "dynamic collision on rollout";
+          return out;
+        }
+      }
+      // Surveyed grade gates (same caps as route choice, one doctrine):
+      // unclimbable along-track grade or rollover-risk cross-slope rejects
+      // the rollout. Unknown survey reads flat and passes (the raw-scan
+      // veto above still owns unmapped obstacles).
+      if (survey != nullptr) {
+        const double heading_t =
+            est.yaw_rad + candidate.yaw_rate_radps * t;
+        const double along =
+            survey_longitudinal_grade(*survey->map, ax, ay, heading_t);
+        if (std::abs(along) > survey->max_grade) {
+          out.verdict = TrajectoryVerdict::kTerrainInfeasible;
+          out.min_clearance_m = min_clear;
+          out.reason = "grade exceeds capability";
+          return out;
+        }
+        const double cross =
+            survey_lateral_grade(*survey->map, ax, ay, heading_t);
+        if (std::abs(cross) > survey->max_cross_grade) {
+          out.verdict = TrajectoryVerdict::kTerrainInfeasible;
+          out.min_clearance_m = min_clear;
+          out.reason = "cross-slope exceeds capability";
           return out;
         }
       }

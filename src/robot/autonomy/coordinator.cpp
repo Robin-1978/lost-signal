@@ -33,7 +33,11 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       validator_(std::make_unique<ClearanceValidator>(
           ClearanceValidatorConfig{limits.footprint_radius_m})),
       controller_(std::make_unique<DirectController>()),
-      safety_(std::make_unique<SafetyMonitor>()) {}
+      safety_(std::make_unique<SafetyMonitor>()) {
+  // The traversal belief prices roughness for route choice for the life of
+  // the coordinator (the model object is a member: rebinds never dangle).
+  global_planner_->set_traversal(&traversal_);
+}
 
 core::Status AutonomyCoordinator::configure() {
   estimator_->reset();
@@ -61,6 +65,9 @@ core::Status AutonomyCoordinator::configure() {
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
+  traversal_ = TraversalModel{};
+  last_traverse_ns_ = core::kInvalidTime;
+  lidar_mount_z_m_ = 0.35;
   evidence_.reset();
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
@@ -107,6 +114,9 @@ core::Status AutonomyCoordinator::cleanup() {
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
+  traversal_ = TraversalModel{};
+  last_traverse_ns_ = core::kInvalidTime;
+  lidar_mount_z_m_ = 0.35;
   evidence_.reset();
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
@@ -128,6 +138,7 @@ void AutonomyCoordinator::set_static_frames(
     perception_module_->set_lidar_mount(base_from_lidar);
   }
   if (mapper_ != nullptr) mapper_->set_lidar_mount(base_from_lidar);
+  lidar_mount_z_m_ = base_from_lidar.translation_m.z;
   scan_matcher_.set_lidar_mount(base_from_lidar);
   global_search_.set_lidar_mount(base_from_lidar);
   slam_.set_lidar_mount(base_from_lidar);
@@ -255,30 +266,49 @@ iface::MotionCommand AutonomyCoordinator::update(
   // evidence, not at the next 10 Hz boundary. The coordinator only wires
   // measured evidence in and consumes the tightened envelope below.
   // Survey grade along the estimated heading feeds the governor's gravity
-  // compensation (published navigation prior, never live physics).
-  // NaN = unsurveyed = flat assumption, erring toward caution on grades
-  // the survey never measured.
+  // compensation (pure transform over the published prior, owned by the
+  // mapping layer — the coordinator holds no adaptation policy).
   double survey_pitch = std::numeric_limits<double>::quiet_NaN();
   const EstimatedState& est_for_grade = estimator_->estimate();
-  if (est_for_grade.valid && map.has_elevation()) {
-    const double c = std::cos(est_for_grade.yaw_rad);
-    const double s = std::sin(est_for_grade.yaw_rad);
-    const float ahead = map.elevation_at(est_for_grade.x_m + 0.5 * c,
-                                         est_for_grade.y_m + 0.5 * s);
-    const float behind = map.elevation_at(est_for_grade.x_m - 0.5 * c,
-                                          est_for_grade.y_m - 0.5 * s);
-    if (std::isfinite(ahead) && std::isfinite(behind)) {
-      survey_pitch = std::atan2(static_cast<double>(ahead - behind), 1.0);
-    }
+  if (est_for_grade.valid) {
+    survey_pitch = survey_pitch_along(map, est_for_grade.x_m,
+                                      est_for_grade.y_m,
+                                      est_for_grade.yaw_rad);
   }
   grip_.update(now_ns, last_obs_, estimator_->estimate(),
                estimator_->last_slip(), survey_pitch);
+  // Traversal belief (mapping layer): roughness from IMU motion evidence
+  // over the surveyed prior. Cadence from the tick clock; the observer
+  // skips internally without IMU or a valid estimate.
+  if (last_obs_.imu_valid) {
+    if (last_traverse_ns_ != core::kInvalidTime && now_ns > last_traverse_ns_) {
+      const double dt_s = std::min(
+          1.0, static_cast<double>(now_ns - last_traverse_ns_) * 1e-9);
+      traversal_.observe_motion(estimator_->estimate(),
+                                last_obs_.imu_az_mps2,
+                                last_obs_.stamp_ns * 1e-9, dt_s);
+    }
+    last_traverse_ns_ = now_ns;
+  }
+  // Surveyed-elevation context for the terrain-aware layers (prior, never
+  // live physics): validator ground-classification + grade gates. The map
+  // outlives the decision branch (by-value parameter), so the pointer is
+  // valid for both validate() calls below.
+  SurveyContext survey_ctx;
+  survey_ctx.map = &map;
+  survey_ctx.sensor_height_m = lidar_mount_z_m_;
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
     last_decision_ns_ = now_ns;
     last_map_revision_ = map.revision;
     replan_requested_ = false;
+    // Survey revision: rebind the traversal belief and push the prior to
+    // the mapper (ground classification for occupancy painting).
+    if (map_changed) {
+      traversal_.bind(map);
+      if (mapper_ != nullptr) mapper_->set_survey(map);
+    }
     // Route refresh first: a new goal, a new map revision, or no route yet
     // re-runs the global planner from the current estimate. The local
     // planner only ever consumes this active route, never a raw goal.
@@ -304,7 +334,7 @@ iface::MotionCommand AutonomyCoordinator::update(
       hold.feasible = true;
       ValidationResult verdict =
           validator_->validate(hold, estimator_->estimate(), perception_,
-                               last_obs_);
+                               last_obs_, survey_ctx);
       reason = verdict.reason;
       if (verdict.accepted) {
         decided = controller_->track(hold, estimator_->estimate(), now_ns);
@@ -321,7 +351,8 @@ iface::MotionCommand AutonomyCoordinator::update(
           active_route_, effective);
       if (plan.has_plan) {
         ValidationResult verdict = validator_->validate(
-            plan.best, estimator_->estimate(), perception_, last_obs_);
+            plan.best, estimator_->estimate(), perception_, last_obs_,
+            survey_ctx);
         reason = verdict.reason;
         if (verdict.accepted) {
           decided =

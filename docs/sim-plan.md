@@ -180,11 +180,29 @@ no friction, contact, or live wetness).
   found by the missions: the validator reads ramp faces as walls (planar
   rollout vs 3D grade) so approaches grind — no collision, but slow; proper
   terrain-aware validation is T3.
-- T2 (planned): heightfield/relief import, tracked chassis, engine-contact
-  judge, lidar reflectivity decision (needs an LSRI intensity channel).
-- T3 (planned): ROBOT beliefs (traversal model, elevation fusion, terrain
-  math, planner cost hooks) — only if T1 missions prove adaptation
-  insufficient.
+- T2 (landed): heightfield/relief import (T2a: shared relief primitive in
+  `robot/core`, canonical height carries relief, mesh patches build as tile
+  grids sampling the same function the survey rasterizes), tracked chassis
+  (T2b: skid-steer on the (2,0) path with yaw-scrub torque, own config +
+  registry entry), engine-contact judge (T2c: belly/high-center clearance
+  vs the authored surface, truth-side only, gated on a live plant),
+  lidar reflectivity (T2d: return-strength synthesis SIM-side, intensity
+  channel through LSRI as measurement metadata — the ROBOT never maps it
+  back to materials).
+- T3 (landed): ROBOT beliefs over the surveyed elevation prior + motion
+  evidence only (materials stay unpublished). `mapping/terrain_math.hpp`
+  pure grade/rollover/bump math (+ `survey_pitch_along` so the coordinator
+  holds no policy); `mapping/traversal.hpp` roughness belief from the IMU
+  vertical-excitation observer with per-cell confidence + expiry, segment
+  cost/feasibility on grade; A* prices believed roughness (null model =
+  today's behavior); validator is terrain-aware (surveyed-ground returns
+  are not obstacles, rollout gated on surveyed grade, new
+  `kTerrainInfeasible` verdict); mapper skips painting surveyed ground;
+  composite ground-cut is surface-relative (SIM-side synthesis). Missions
+  prove it: dry ridge drives (no grind, grip stays 1.00), icy stop-go
+  climb still ratchets the governor to the floor on measured slip.
+  Coordinator doctrine kept: pure wiring (evidence in, envelope out),
+  every threshold lives in the owning module.
 
 ## Explicitly OUT (not deployable sim)
 

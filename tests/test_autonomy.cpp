@@ -323,6 +323,129 @@ int main() {
     assert(!noesc.accepted);
   }
 
+  // Terrain-aware validation (surveyed elevation prior, never SIM truth):
+  // ramp faces read as ground, walls still read as walls, cliffs refuse.
+  {
+    // Surveyed 0.1 ramp over x in [0.5, 6.5] (top 0.6), 80x8 at 0.25 m.
+    iface::MapSnapshot ramp;
+    ramp.map_id = "test-ramp";
+    ramp.revision = 3;
+    ramp.width = 80;
+    ramp.height = 8;
+    ramp.resolution_m = 0.25;
+    ramp.origin_x_m = 0.0;
+    ramp.origin_y_m = -1.0;
+    ramp.frame_id = "map";
+    ramp.occupancy.assign(80 * 8, -1);
+    ramp.elevation_m.assign(80 * 8, 0.0f);
+    ramp.elevation_sigma_m.assign(80 * 8, 0.0f);
+    for (std::uint32_t gy = 0; gy < 8; ++gy) {
+      for (std::uint32_t gx = 0; gx < 80; ++gx) {
+        const double cx = (gx + 0.5) * 0.25;
+        ramp.elevation_m[gy * 80 + gx] =
+            static_cast<float>(std::clamp((cx - 0.5) * 0.1, 0.0, 0.6));
+      }
+    }
+    assert(ramp.has_elevation());
+    EstimatedState est;
+    est.valid = true;  // origin, yaw 0, z 0 (spawn plane)
+    PerceptionResult ok;
+    ok.scan_ok = true;
+    SurveyContext ctx;
+    ctx.map = &ramp;
+    ctx.sensor_height_m = 0.35;  // TF mount: sensor plane at 0.45 absolute
+    // Ramp face 4 m dead ahead (survey reads 0.35 there — the sensor
+    // crossing contour, |0.35 - 0.45| within tol): fast rollout reaches
+    // it, planar reads wall, survey reads ground.
+    iface::ObservationFrame face = make_odom(10, 10, 0.0);
+    face.ranges_m.assign(8, 4.0f);
+    LocalCandidate drive;
+    drive.feasible = true;
+    drive.forward_mps = 2.5;
+    ClearanceValidator v;
+    ValidationResult planar = v.validate(drive, est, ok, face);
+    assert(!planar.accepted &&
+           planar.verdict == TrajectoryVerdict::kStaticCollision);
+    ValidationResult survey = v.validate(drive, est, ok, face, ctx);
+    assert(survey.accepted);
+    // Same returns over a FLAT survey are still a wall (no blind pass).
+    iface::MapSnapshot flat = ramp;
+    std::fill(flat.elevation_m.begin(), flat.elevation_m.end(), 0.0f);
+    SurveyContext flat_ctx = ctx;
+    flat_ctx.map = &flat;
+    ValidationResult wall = v.validate(drive, est, ok, face, flat_ctx);
+    assert(!wall.accepted &&
+           wall.verdict == TrajectoryVerdict::kStaticCollision);
+    // Cliff across the rollout refuses as terrain (open scan, grade gate).
+    iface::MapSnapshot cliff = ramp;
+    for (std::uint32_t gy = 0; gy < 8; ++gy) {
+      for (std::uint32_t gx = 0; gx < 80; ++gx) {
+        const double cx = (gx + 0.5) * 0.25;
+        cliff.elevation_m[gy * 80 + gx] = cx < 1.0 ? 0.0f : 1.0f;
+      }
+    }
+    iface::ObservationFrame open = make_odom(11, 11, 0.0);
+    open.ranges_m.assign(8, 10.0f);
+    LocalCandidate slow;
+    slow.feasible = true;
+    slow.forward_mps = 1.0;
+    SurveyContext cliff_ctx = ctx;
+    cliff_ctx.map = &cliff;
+    ValidationResult grade = v.validate(slow, est, ok, open, cliff_ctx);
+    assert(!grade.accepted &&
+           grade.verdict == TrajectoryVerdict::kTerrainInfeasible);
+  }
+
+  // Survey-aware mapper: background ramp returns clear but never paint;
+  // wall returns still paint. Same classifier as the validator.
+  {
+    iface::MapSnapshot ramp;
+    ramp.map_id = "test-ramp";
+    ramp.revision = 3;
+    ramp.width = 80;
+    ramp.height = 8;
+    ramp.resolution_m = 0.25;
+    ramp.origin_x_m = 0.0;
+    ramp.origin_y_m = -1.0;
+    ramp.occupancy.assign(80 * 8, -1);
+    ramp.elevation_m.assign(80 * 8, 0.0f);
+    for (std::uint32_t gy = 0; gy < 8; ++gy) {
+      for (std::uint32_t gx = 0; gx < 80; ++gx) {
+        const double cx = (gx + 0.5) * 0.25;
+        ramp.elevation_m[gy * 80 + gx] =
+            static_cast<float>(std::clamp((cx - 0.5) * 0.1, 0.0, 0.6));
+      }
+    }
+    EstimatedState est;
+    est.valid = true;
+    iface::ObservationFrame face = make_odom(10, 10, 0.0);
+    face.ranges_m.assign(8, 4.0f);
+    face.static_ranges_m = face.ranges_m;  // background: matches reference
+    face.scan_static_valid = true;
+    core::RigidTransform mount{{0.0, 0.0, 0.35}, {0.0, 0.0, 0.0, 1.0}};
+    // Endpoint cell of the forward beam (4, 0) in the 0.1 rolling window.
+    const int fx = static_cast<int>(std::floor((4.0 + 5.0) / 0.1));
+    const int fy = static_cast<int>(std::floor((0.0 + 5.0) / 0.1));
+    const std::size_t fi = static_cast<std::size_t>(fy) * 100 + fx;
+    {
+      RayClearingMapper mapper;
+      mapper.set_lidar_mount(mount);
+      mapper.update(face, est);
+      LocalMap m = mapper.local_map();
+      assert(m.valid && m.occupancy[fi] == 100);  // no survey: painted
+    }
+    {
+      RayClearingMapper mapper;
+      mapper.set_lidar_mount(mount);
+      mapper.set_survey(ramp);
+      mapper.update(face, est);
+      LocalMap m = mapper.local_map();
+      assert(m.valid && m.occupancy[fi] != 100);  // ground: never painted
+      assert(!m.is_blocked(4.0, 0.0));  // unknown reads traversable (DWA)
+      assert(m.segment_is_traversable(0.0, 0.0, 4.0, 0.0));
+    }
+  }
+
   // Global planner: straight line from estimate to goal.
   {
     StraightLinePlanner planner;

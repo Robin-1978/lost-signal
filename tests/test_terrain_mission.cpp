@@ -45,24 +45,29 @@ void drive_until_done(sim::scenario::ScenarioSession& session, int max_steps) {
 }  // namespace
 
 int main() {
-  // Icy climb: 0.1 up-ramp with a 0.15-mu belt over launch + climb, goal
-  // past the ridge. Climbing demands sustained force, so traction
-  // saturation (and the wheel-vs-IMU residual) persists instead of
-  // flashing by in a launch transient the closed wheel loops would
-  // absorb. The ROBOT gets no material notice; adaptation is purely
-  // measured slip -> grip.
+  // Icy climb: 0.14 up-ramp with a 0.15-mu belt over launch + climb, goal
+  // past the ridge via a mid-ramp stop. Steady climbing at this grade
+  // needs ~16 N/wheel against ~18 N of ice traction: the margin is thin
+  // enough that every launch/restart demand spike saturates, and the
+  // mid-ramp stop manufactures a restart on grade. Saturation still pulls
+  // past the grade need, so the climb progresses WHILE slipping (force
+  // margin, not speed — a steeper grade would beach force-limited, which
+  // no governor can fix). The ROBOT gets no material notice; adaptation is
+  // purely measured slip -> grip, ratcheted by stop-go (fast tighten, slow
+  // relax).
   {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
+    session.setup_world().add_place({"mid", 4.0, 0.0, 0.0});
     session.setup_world().add_place({"past", 9.0, 0.0, 0.0});
     session.setup_world().set_terrain_patches(
-        {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.1, 0.0, 0.0, 0.0},
-         {"down", 6.0, -3.0, 10.0, 3.0, 0.4, -0.1, 0.0, 0.0, 0.0}});
+        {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.14, 0.0, 0.0, 0.0},
+         {"down", 6.0, -3.0, 10.0, 3.0, 0.56, -0.14, 0.0, 0.0, 0.0}});
     session.setup_world().set_materials(
         {{"ice", 0.15, 0.005, 0.006, 1.0, 0.3}});
     session.setup_world().set_material_zones(
         {{"belt", -2.0, -3.0, 6.5, 3.0, "ice"}});
-    session.set_objectives({"past"}, 1.0);
+    session.set_objectives({"mid", "past"}, 1.0);
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
     session.apply_sim_config(sim);
@@ -89,10 +94,9 @@ int main() {
   // Ridge traverse on real contact geometry: 0.1 up-ramp, 0.1 down-ramp,
   // goal past the ridge. Pins climb + descent under the survey elevation
   // (grade cost, passable) with the composite front end watching the face.
-  // No grip assert here: the validator reads the ramp face as a wall
-  // (planar rollout, T3 gap), so the approach grinds with genuine
-  // stall-spin the governor rightly answers. Discrimination (gripped
-  // transients stay clean) is pinned in test_autonomy, not here.
+  // Terrain-aware validation reads the ramp face as surveyed ground (not a
+  // wall), so the approach drives instead of grinding. Discrimination
+  // (gripped transients stay clean) is pinned in test_autonomy, not here.
   {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());

@@ -8,6 +8,7 @@
 #include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/control/stop_latch.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
+#include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
@@ -139,6 +140,16 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // limit-shaping policy. The coordinator only wires observations into it
   // and consumes the tightened envelope; no adaptation state lives here.
   GripAdapter grip_;
+  // Traversal belief (mapping layer): roughness from IMU motion evidence
+  // over the surveyed elevation prior. Bound on map revision, observed
+  // every tick; the global planner prices it, the validator gates on the
+  // surveyed grade. Never SIM truth (materials stay unpublished).
+  TraversalModel traversal_;
+  // Lidar mount height above the body origin (TF fan-out; the validator's
+  // surveyed sensor height rides on it).
+  double lidar_mount_z_m_ = 0.35;
+  // Traversal observer cadence (IMU stamp deltas, never wall clock).
+  core::MonotonicNs last_traverse_ns_ = core::kInvalidTime;
   void run_localization(const iface::MapSnapshot& map,
                         core::MonotonicNs now_ns);
   void run_slam(core::MonotonicNs now_ns);

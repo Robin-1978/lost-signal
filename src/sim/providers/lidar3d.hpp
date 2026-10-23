@@ -41,8 +41,11 @@ class Sim3DLidarProvider
   bool poll(robot::iface::Lidar3DCloud& out, bool include_actors);
   // Composite 2D scan from the multi-line cloud (suite-side front end):
   // per-azimuth minimum over non-ground rings at the 2D layout
-  // (angle_min -pi, even spacing, `azimuth_beams` bins). Ground = world
-  // hit height below `kGroundCutM` (floor/paint excluded, plates kept).
+  // (angle_min -pi, even spacing, `azimuth_beams` bins). Ground = return
+  // height within `kGroundCutM` above the local authored surface
+  // (floor/paint/ramps excluded; plates and walls stand proud of the
+  // surface and are kept). Actor returns keep the absolute cut (kinematic
+  // cylinders stand on the floor plane, no engine surface under them).
   // Misses (all rings ground or out of range) read max range. Same
   // generation as poll(), same stamps. The intensities overload reports
   // the winning beam's return strength per azimuth (0 on misses).

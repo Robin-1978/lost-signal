@@ -47,6 +47,25 @@ inline double survey_lateral_grade(const iface::MapSnapshot& map, double x_m,
   return survey_longitudinal_grade(map, x_m, y_m, yaw_rad + core::kPi / 2.0);
 }
 
+// Surveyed grade along the estimated heading (navigation prior, never
+// live physics). NaN = unsurveyed = flat assumption, erring toward caution
+// on grades the survey never measured. Pure transform for the coordinator
+// to wire (it owns no adaptation policy); the governor owns the evidence.
+inline double survey_pitch_along(const iface::MapSnapshot& map,
+                                 double x_m, double y_m, double yaw_rad) {
+  if (!map.has_elevation()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double c = std::cos(yaw_rad);
+  const double s = std::sin(yaw_rad);
+  const float ahead = map.elevation_at(x_m + 0.5 * c, y_m + 0.5 * s);
+  const float behind = map.elevation_at(x_m - 0.5 * c, y_m - 0.5 * s);
+  if (!std::isfinite(ahead) || !std::isfinite(behind)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return std::atan2(static_cast<double>(ahead - behind), 1.0);
+}
+
 // Ground-return classifier: a scan endpoint is surveyed ground (not an
 // obstacle) when the survey elevation under it agrees with the sensor
 // height within tolerance. A horizontal beam meets an up-ramp where the

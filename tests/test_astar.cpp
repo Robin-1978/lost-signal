@@ -124,6 +124,58 @@ int main() {
     assert(!r.valid);
   }
 
+  // Believed roughness (traversal model hook): rough bands with a smooth
+  // gap route through the gap; without the model the same map goes
+  // straight. Roughness is the ROBOT's own IMU belief, never the author's.
+  {
+    auto map = make_map(40, 40, 0.5, -10.0, -10.0);
+    for (auto& c : map.occupancy) c = 0;  // all free: isolate roughness
+    TraversalModel model;
+    model.bind(map);
+    // Observe the bands rough (bump hits at 0.5 m/s); the gap stays prior.
+    for (int gx = 28; gx <= 29; ++gx) {
+      for (int gy = 0; gy < 40; ++gy) {
+        const double cy = -10.0 + (gy + 0.5) * 0.5;
+        if (cy >= -1.0 && cy < 1.0) continue;  // smooth gap
+        EstimatedState est;
+        est.valid = true;
+        est.attitude_valid = true;
+        est.x_m = -10.0 + (gx + 0.5) * 0.5;
+        est.y_m = cy;
+        est.forward_mps = 0.5;
+        for (int k = 1; k <= 50; ++k) {
+          model.observe_motion(est, 9.81 + 4.5, k * 0.02, 0.02);
+        }
+      }
+    }
+    double conf = 0.0;
+    assert(model.roughness_at(4.25, 5.0, &conf) > 0.05);
+    assert(model.roughness_at(4.25, 0.0, &conf) == 0.02 && conf == 0.0);
+    // No model: straight through (shortest).
+    {
+      Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+      assert(r.valid);
+    }
+    // With the belief: threads the smooth gap.
+    {
+      AStarPlanner rough_planner;
+      AStarPlanner::Config cfg;
+      cfg.roughness_cost_per_m = 30.0;  // test knob: price the belief hard
+      rough_planner = AStarPlanner(cfg);
+      rough_planner.set_traversal(&model);
+      Route r = rough_planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+      assert(r.valid);
+      bool in_gap = false;
+      for (const auto& p : r.points) {
+        if (p.x_m > 3.5 && p.x_m < 5.5) {
+          assert(p.y_m > -1.5 && p.y_m < 1.5);
+          in_gap = true;
+        }
+      }
+      assert(in_gap);
+    }
+  }
+
   std::printf("astar ok\n");
   return 0;
 }

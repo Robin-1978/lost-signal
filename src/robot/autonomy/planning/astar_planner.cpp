@@ -116,6 +116,17 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
         if (grade > config_.max_grade) continue;  // cliff: impassable
         cost += config_.grade_cost_per_m * std::abs(h1 - h0);
       }
+      // Believed roughness (the ROBOT's own IMU observer, null when no
+      // model is bound): rough cells cost more, so equal-grade routes
+      // prefer smooth ground. Surveyed elevation still owns the grade
+      // term above; this only prices what the survey cannot see.
+      if (traversal_ != nullptr && step > 1e-9) {
+        const double wx = map.origin_x_m + (nx + 0.5) * res;
+        const double wy = map.origin_y_m + (ny + 0.5) * res;
+        cost += config_.roughness_cost_per_m * traversal_->roughness_at(wx,
+                                                                        wy) *
+                step;
+      }
       const double ng = nodes[cur].g + cost;
       if (ng < nodes[idx(nx, ny)].g) {
         nodes[idx(nx, ny)].g = ng;

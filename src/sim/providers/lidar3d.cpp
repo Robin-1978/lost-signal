@@ -213,9 +213,23 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
         }
       }
       if (!(dist < max_range_m_)) continue;
-      // Ground filter on the world hit height (d is unit): floor excluded.
+      // Ground filter relative to the local authored surface (SIM-side
+      // synthesis: the driver equivalent rejects the local ground plane,
+      // which on a grade is the surface, not world z = 0). Engine hits
+      // compare against the canonical height; actor hits keep the absolute
+      // cut (kinematic cylinders stand on the floor plane).
       const double hit_z = oz + d.z * dist;
-      if (hit_z < ground_cut_m_) continue;
+      const double hx = ox + d.x * dist, hy = oy + d.y * dist;
+      bool is_ground = false;
+      if (actor_hit && !engine_hit) {
+        is_ground = hit_z < ground_cut_m_;
+      } else {
+        const world::TerrainSample surface =
+            world::sample_terrain(world_->terrain_patches(),
+                                  world_->support_slabs(), hx, hy);
+        is_ground = (hit_z - surface.height_m) < ground_cut_m_;
+      }
+      if (is_ground) continue;
       if (static_cast<float>(dist) < best) {
         best = static_cast<float>(dist);
         best_intensity = detail::return_intensity(

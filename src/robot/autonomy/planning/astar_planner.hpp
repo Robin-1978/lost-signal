@@ -27,6 +27,10 @@ class AStarPlanner : public IGlobalPlanner {
     // corridors so the follower keeps clearance; the validator still owns
     // the hard veto.
     double clearance_cost_per_m = 1.0;
+    // Believed-roughness price per meter of roughness amplitude (the
+    // ROBOT's own IMU observer via the traversal model, never the author's
+    // amplitude). Zero model (unbound) pays nothing.
+    double roughness_cost_per_m = 8.0;
   };
 
   explicit AStarPlanner(Config config);
@@ -36,10 +40,14 @@ class AStarPlanner : public IGlobalPlanner {
 
   Route plan(const EstimatedState& start, const RoutePoint& goal,
              const iface::MapSnapshot& map) override;
+  void set_traversal(const TraversalModel* model) override {
+    traversal_ = model;
+  }
 
  private:
   Config config_;
   StraightLinePlanner fallback_;
+  const TraversalModel* traversal_ = nullptr;
 };
 
 }  // namespace lost_signal::robot::autonomy

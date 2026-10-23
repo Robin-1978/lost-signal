@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/iface/map.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -26,6 +27,13 @@ class IGlobalPlanner {
   virtual ~IGlobalPlanner() = default;
   virtual Route plan(const EstimatedState& start, const RoutePoint& goal,
                      const iface::MapSnapshot& map) = 0;
+  // Traversal-belief hook (optional): the coordinator hands its live
+  // TraversalModel here; planners that price roughness read it. Default
+  // ignores (no belief, today's behavior). Never owned, never stored
+  // beyond the pointer (the coordinator owns the model).
+  virtual void set_traversal(const TraversalModel* model) {
+    (void)model;
+  }
 };
 
 // v1: straight line sampled every 0.5 m. No obstacle awareness;

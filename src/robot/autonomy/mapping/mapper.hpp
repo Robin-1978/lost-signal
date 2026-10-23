@@ -7,9 +7,11 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
 #include "robot/core/transform.hpp"
+#include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -89,6 +91,11 @@ class IMapper {
   virtual void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
     (void)base_from_lidar;
   }
+  // Surveyed-elevation prior for ground classification (coordinator pushes
+  // on map revision; default ignores). With a survey, background returns
+  // consistent with surveyed ground clear the ray but never paint occupied
+  // (ramps stay traversable); without, today's behavior exactly.
+  virtual void set_survey(const iface::MapSnapshot& map) { (void)map; }
 };
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
@@ -99,6 +106,7 @@ class RayClearingMapper : public IMapper {
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
   }
+  void set_survey(const iface::MapSnapshot& map) override { survey_ = map; }
   void update(const iface::ObservationFrame& obs,
               const EstimatedState& est) override {
     if (!est.valid) {
@@ -138,8 +146,16 @@ class RayClearingMapper : public IMapper {
         core::compose(map_from_base, base_from_lidar_);
     const double ssx = map_from_sensor.translation_m.x;
     const double ssy = map_from_sensor.translation_m.y;
+    // Surveyed sensor height for the ground classifier (estimate z rides
+    // above the spawn plane; mount + ride complete the absolute height).
+    // No survey (or no elevation layer) paints as before, exactly.
+    const bool use_survey = survey_.has_elevation();
+    const double survey_sensor_z =
+        est.z_m + base_from_lidar_.translation_m.z + 0.10;
     // Background beams paint endpoint cells occupied; foreground beams
     // clear the ray but never paint (actors must not become static map).
+    // Surveyed-ground background beams clear but never paint (ramps stay
+    // traversable — same classifier as the validator, one doctrine).
     const std::size_t n = obs.ranges_m.size();
     const bool has_ref =
         obs.scan_static_valid && obs.static_ranges_m.size() == n;
@@ -157,7 +173,14 @@ class RayClearingMapper : public IMapper {
         background =
             std::abs(range - obs.static_ranges_m[i]) <= 0.30;
       }
-      if (background) occupy(ex, ey);
+      if (background) {
+        if (use_survey &&
+            endpoint_is_survey_ground(survey_, ex, ey, survey_sensor_z,
+                                      0.15)) {
+          continue;  // surveyed ground: cleared above, never painted
+        }
+        occupy(ex, ey);
+      }
     }
   }
   LocalMap local_map() const override { return map_; }
@@ -194,6 +217,7 @@ class RayClearingMapper : public IMapper {
 
   LocalMap map_{};
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
+  iface::MapSnapshot survey_;  // empty until set_survey (no elevation)
 };
 
 }  // namespace lost_signal::robot::autonomy
