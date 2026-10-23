@@ -30,9 +30,7 @@ struct ScanMatcherConfig {
   // Two candidates closer than this are one physical hypothesis.
   double ambiguity_distance_m = 0.25;
   double ambiguity_heading_rad = 0.15;
-  double sensor_x_m = 0.0;
-  double sensor_y_m = 0.0;
-  double sensor_yaw_rad = 0.0;
+  // Mount lives in the TF tree; set via set_lidar_mount(). No copy here.
   double max_range_m = 10.0;
 };
 
@@ -71,6 +69,13 @@ class ScanMatcher {
  public:
   explicit ScanMatcher(ScanMatcherConfig config = ScanMatcherConfig{});
 
+  // Planar lidar mount from the TF tree (coordinator fans out).
+  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
+    mount_x_m_ = x_m;
+    mount_y_m_ = y_m;
+    mount_yaw_rad_ = yaw_rad;
+  }
+
   // ranges: planar returns in sensor frame (angle_min + i*increment).
   ScanMatchResult localize(const std::vector<float>& ranges, double angle_min_rad,
                            double angle_increment_rad,
@@ -93,6 +98,9 @@ class ScanMatcher {
 
  private:
   ScanMatcherConfig config_;
+  double mount_x_m_ = 0.0;
+  double mount_y_m_ = 0.0;
+  double mount_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

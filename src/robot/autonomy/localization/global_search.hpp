@@ -45,9 +45,7 @@ struct GlobalSearchConfig {
   // Calibrated: edge artifacts move <7% of explained returns; the
   // T-junction's stub/pillar/clutter move >14%. The 0.10 line sits between.
   double equivalent_support_overlap_tolerance = 0.10;
-  double sensor_x_m = 0.0;
-  double sensor_y_m = 0.0;
-  double sensor_yaw_rad = 0.0;
+  // Mount lives in the TF tree; set via set_lidar_mount(). No copy here.
   double max_range_m = 10.0;
   std::size_t minimum_returns = 4;
   // Bounded refinement window around each coarse survivor.
@@ -84,6 +82,12 @@ class GlobalSearcher {
  public:
   explicit GlobalSearcher(GlobalSearchConfig config = GlobalSearchConfig{});
 
+  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
+    mount_x_m_ = x_m;
+    mount_y_m_ = y_m;
+    mount_yaw_rad_ = yaw_rad;
+  }
+
   // Whole-map search. The zero prior is only a finite API placeholder and
   // never constrains candidates; every free cell is searched.
   GlobalSearchResult search(const std::vector<float>& ranges,
@@ -94,6 +98,9 @@ class GlobalSearcher {
 
  private:
   GlobalSearchConfig config_;
+  double mount_x_m_ = 0.0;
+  double mount_y_m_ = 0.0;
+  double mount_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

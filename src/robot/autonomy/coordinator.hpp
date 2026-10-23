@@ -74,9 +74,12 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // delta (identity when nothing corrected — the offline drift signal).
   // This class is the only odom publisher: the estimator keeps a single
   // fused pose and never splits odom from map itself.
-  void set_static_frames(const core::FrameTransformTree& tree) {
-    tf_ = tree;
-  }
+  //
+  // Single extrinsic source: set_static_frames also resolves base<-lidar
+  // and fans its planar x/y/yaw out to every consumer (perception,
+  // scan matcher, global search, SLAM matcher, validator, safety).
+  // Algorithm configs carry thresholds only; unknown mount = identity.
+  void set_static_frames(const core::FrameTransformTree& tree);
   const core::FrameTransformTree& tf() const { return tf_; }
   // Cartesian goal override (map frame). Refreshes the active route through
   // the global planner and wakes the decision branch. Place-based tasking

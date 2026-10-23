@@ -1,8 +1,20 @@
 #include "robot/autonomy/coordinator.hpp"
 
+#include <cmath>
 #include <string>
 
 namespace lost_signal::robot::autonomy {
+
+namespace {
+
+// Planar yaw from a quaternion (REP-103 R = Rz*Ry*Rx): the TF mount may
+// carry roll/pitch, but planar consumers use the yaw projection only.
+double yaw_from_quaternion(const core::Quaternion& q) {
+  return std::atan2(2.0 * (q.w * q.z + q.x * q.y),
+                    1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+}
+
+}  // namespace
 
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
@@ -93,6 +105,27 @@ core::Status AutonomyCoordinator::cleanup() {
   evidence_.reset();
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
+}
+
+void AutonomyCoordinator::set_static_frames(
+    const core::FrameTransformTree& tree) {
+  tf_ = tree;
+  // Fan out the planar lidar mount to every consumer. Unknown mount =
+  // identity (aligned), never a stale copy of a previous description.
+  double mx = 0.0, my = 0.0, myaw = 0.0;
+  if (const auto base_from_lidar = tf_.lookup("base_link", "lidar_link")) {
+    mx = base_from_lidar->translation_m.x;
+    my = base_from_lidar->translation_m.y;
+    myaw = yaw_from_quaternion(base_from_lidar->rotation);
+  }
+  if (perception_module_ != nullptr) {
+    perception_module_->set_lidar_mount(mx, my, myaw);
+  }
+  scan_matcher_.set_lidar_mount(mx, my, myaw);
+  global_search_.set_lidar_mount(mx, my, myaw);
+  slam_.set_lidar_mount(mx, my, myaw);
+  if (validator_ != nullptr) validator_->set_lidar_yaw(myaw);
+  if (safety_ != nullptr) safety_->set_lidar_yaw(myaw);
 }
 
 void AutonomyCoordinator::set_goal(const RoutePoint& goal) {

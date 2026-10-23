@@ -33,12 +33,10 @@ GlobalSearchResult GlobalSearcher::search(
   }
 
   ScanMatcherConfig coarse_cfg;
-  coarse_cfg.sensor_x_m = config_.sensor_x_m;
-  coarse_cfg.sensor_y_m = config_.sensor_y_m;
-  coarse_cfg.sensor_yaw_rad = config_.sensor_yaw_rad;
   coarse_cfg.max_range_m = config_.max_range_m;
   coarse_cfg.minimum_returns = config_.minimum_returns;
-  const ScanMatcher coarse_matcher(coarse_cfg);
+  ScanMatcher coarse_matcher(coarse_cfg);
+  coarse_matcher.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
   const std::vector<ScanBeam> beams = coarse_matcher.prepare_beams(
       ranges, angle_min_rad, angle_increment_rad, config_.coarse_beams);
   std::size_t hit_returns = 0;
@@ -134,12 +132,10 @@ GlobalSearchResult GlobalSearcher::search(
   refine_cfg.heading_step_rad = config_.refine_heading_step_rad;
   refine_cfg.minimum_overlap = config_.minimum_overlap;
   refine_cfg.minimum_score_margin = config_.refine_score_margin;
-  refine_cfg.sensor_x_m = config_.sensor_x_m;
-  refine_cfg.sensor_y_m = config_.sensor_y_m;
-  refine_cfg.sensor_yaw_rad = config_.sensor_yaw_rad;
   refine_cfg.max_range_m = config_.max_range_m;
   refine_cfg.minimum_returns = config_.minimum_returns;
-  const ScanMatcher refiner(refine_cfg);
+  ScanMatcher refiner(refine_cfg);
+  refiner.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
 
   std::vector<ScanMatchResult> refined;
   for (const auto& s : survivors) {

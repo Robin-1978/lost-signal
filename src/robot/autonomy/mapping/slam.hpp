@@ -69,6 +69,12 @@ class SlamSession {
  public:
   explicit SlamSession(SlamConfig config = SlamConfig{});
 
+  // Planar lidar mount from the TF tree (coordinator fans out).
+  void set_lidar_mount(double x_m, double y_m, double yaw_rad) {
+    mount_x_m_ = x_m;
+    mount_y_m_ = y_m;
+    mount_yaw_rad_ = yaw_rad;
+  }
   void reset();
   // Feed the post-localization estimate + latest scan. Adds keyframes on
   // motion thresholds and chains odometry constraints. Never matches.
@@ -98,6 +104,9 @@ class SlamSession {
   void rebuild_graph();
 
   SlamConfig config_;
+  double mount_x_m_ = 0.0;
+  double mount_y_m_ = 0.0;
+  double mount_yaw_rad_ = 0.0;
   PoseGraphBackend graph_;
   std::vector<SlamKeyframe> keyframes_;
   std::uint64_t next_id_ = 1;

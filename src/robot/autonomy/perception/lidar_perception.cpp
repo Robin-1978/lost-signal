@@ -43,15 +43,15 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     return out;
   }
 
-  // Beam world positions (sensor mount in base + estimate pose). The angular
+  // Beam world positions (planar TF mount + estimate pose). The angular
   // layout matches the provider contract: angle_min + i * increment, even
   // spacing over the full rotation.
   const double cy = std::cos(est.yaw_rad), sy = std::sin(est.yaw_rad);
   const double sensor_wx =
-      est.x_m + config_.sensor_x_m * cy - config_.sensor_y_m * sy;
+      est.x_m + mount_x_m_ * cy - mount_y_m_ * sy;
   const double sensor_wy =
-      est.y_m + config_.sensor_x_m * sy + config_.sensor_y_m * cy;
-  const double sensor_yaw = est.yaw_rad + config_.sensor_yaw_rad;
+      est.y_m + mount_x_m_ * sy + mount_y_m_ * cy;
+  const double sensor_yaw = est.yaw_rad + mount_yaw_rad_;
 
   struct Beam {
     bool foreground = false;

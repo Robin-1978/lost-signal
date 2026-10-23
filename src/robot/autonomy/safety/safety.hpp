@@ -42,6 +42,7 @@ class ISafetyMonitor {
                                     core::MonotonicNs now_ns) = 0;
   virtual void clear_safety() = 0;  // deliberate recovery from a latch
   virtual SafetyVerdict last_verdict() const = 0;
+  virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
 };
 
 // v1 rules (all independent of planner/validator state):
@@ -61,13 +62,13 @@ struct SafetyConfig {
   float contact_radius_m = 0.15f;  // omnidirectional last-resort latch
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
-  double sensor_yaw_rad = 0.0;
+  // Sensor yaw lives in the TF tree; set via set_lidar_yaw(). No copy here.
 };
 
 class SafetyMonitor : public ISafetyMonitor {
  public:
   explicit SafetyMonitor(SafetyConfig config = {});
-
+  void set_lidar_yaw(double yaw_rad) override { sensor_yaw_rad_ = yaw_rad; }
   void reset() override;
   SafetyVerdict evaluate(const EstimatedState& est,
                          const PerceptionResult& perception,
@@ -82,6 +83,7 @@ class SafetyMonitor : public ISafetyMonitor {
 
  private:
   SafetyConfig config_;
+  double sensor_yaw_rad_ = 0.0;
   bool latched_ = false;
   std::string latch_reason_;
   std::uint64_t last_drops_ = 0;

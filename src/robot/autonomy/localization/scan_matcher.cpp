@@ -103,11 +103,11 @@ PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
   out.usable_returns = hit_returns;
   if (beams.empty()) return out;
   const GridProjector projector(map);
-  const double mount = config_.sensor_yaw_rad;
-  const double sx = x_m + config_.sensor_x_m * std::cos(yaw_rad) -
-                    config_.sensor_y_m * std::sin(yaw_rad);
-  const double sy = y_m + config_.sensor_x_m * std::sin(yaw_rad) +
-                    config_.sensor_y_m * std::cos(yaw_rad);
+  const double mount = mount_yaw_rad_;
+  const double sx = x_m + mount_x_m_ * std::cos(yaw_rad) -
+                    mount_y_m_ * std::sin(yaw_rad);
+  const double sy = y_m + mount_x_m_ * std::sin(yaw_rad) +
+                    mount_y_m_ * std::cos(yaw_rad);
   double score = 0.0;
   double total_weight = 0.0;
   std::size_t known = 0, matches = 0;

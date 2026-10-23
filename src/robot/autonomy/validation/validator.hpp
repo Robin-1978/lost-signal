@@ -68,10 +68,7 @@ struct ClearanceValidatorConfig {
   double extra_margin_m = 0.1;
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
-  // Sensor yaw in base_link (mount calibration). Forward-sector beams are
-  // measured relative to it; native bring-ups with rotated mounts set this
-  // instead of silently validating the wrong sector.
-  double sensor_yaw_rad = 0.0;
+  // Sensor yaw lives in the TF tree; set via set_lidar_yaw(). No copy here.
   // Rollout horizon for swept-path checks.
   double rollout_horizon_s = 2.0;
   double rollout_dt_s = 0.1;
@@ -90,6 +87,8 @@ class IValidator {
                                     const EstimatedState& est,
                                     const PerceptionResult& perception,
                                     const iface::ObservationFrame& obs) = 0;
+  // Lidar yaw from the TF tree (coordinator fans out). Default ignore.
+  virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
 };
 
 // Trajectory validator: constant-twist rollout of the exact candidate,
@@ -104,6 +103,7 @@ class ClearanceValidator : public IValidator {
   explicit ClearanceValidator(ClearanceValidatorConfig config = {})
       : config_(config) {}
 
+  void set_lidar_yaw(double yaw_rad) override { sensor_yaw_rad_ = yaw_rad; }
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& est,
                             const PerceptionResult& perception,
@@ -133,7 +133,7 @@ class ClearanceValidator : public IValidator {
       // Even beam layout over [-pi, pi); forward is index n/2.
       const double angle =
           -core::kPi + 2.0 * core::kPi * static_cast<double>(i) / n;
-      if (std::abs(core::wrap_angle(angle - config_.sensor_yaw_rad)) >
+      if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) >
           config_.forward_half_angle_rad) {
         continue;
       }
@@ -274,6 +274,8 @@ class ClearanceValidator : public IValidator {
   }
 
   ClearanceValidatorConfig config_;
+  // Lidar yaw from the TF tree (default 0 = aligned mount).
+  double sensor_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

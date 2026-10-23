@@ -27,12 +27,8 @@ namespace {
 
 autonomy::LidarPerceptionConfig perception_config_from(
     const platform::RobotDescription& desc) {
+  (void)desc;  // extrinsics live in the TF tree, not here; thresholds only
   autonomy::LidarPerceptionConfig config;
-  if (!desc.sensors.empty()) {
-    config.sensor_x_m = desc.sensors[0].xyz_m[0];
-    config.sensor_y_m = desc.sensors[0].xyz_m[1];
-    config.sensor_yaw_rad = desc.sensors[0].rpy_rad[2];
-  }
   return config;
 }
 

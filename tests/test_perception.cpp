@@ -86,6 +86,16 @@ int main() {
     }
   }
 
+  // TF mount: forward-shifted lidar moves the track +x by the mount.
+  {
+    LidarPerception perc;
+    perc.set_lidar_mount(1.0, 0.0, 0.0);
+    auto obs = make_scan(1'000'000, 10.0f, 34, 38, 3.0f);
+    PerceptionResult r = perc.update(obs, origin());
+    assert(r.tracks.size() == 1);
+    assert(std::abs(r.tracks[0].x_m - 4.0) < 0.4);  // 3.0 range + 1.0 mount
+  }
+
   // No static reference: classification unavailable, coverage retained.
   {
     LidarPerception perc;

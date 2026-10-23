@@ -230,7 +230,8 @@ SlamLoopResult SlamSession::try_close_loops(
   match_cfg.heading_step_rad = config_.match_heading_step_rad;
   match_cfg.maximum_returns = config_.match_max_beams;
   match_cfg.minimum_overlap = config_.match_minimum_overlap;
-  const ScanMatcher matcher(match_cfg);
+  ScanMatcher matcher(match_cfg);
+  matcher.set_lidar_mount(mount_x_m_, mount_y_m_, mount_yaw_rad_);
   const LoopClosureGate gate(config_.gate);
 
   for (const auto& cand : candidates) {
