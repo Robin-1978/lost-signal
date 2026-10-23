@@ -9,6 +9,16 @@
 
 namespace lost_signal::robot::autonomy {
 
+namespace {
+// Providers predating the explicit layout leave the increment at zero:
+// keep the legacy full-rotation interpretation instead of collapsing every
+// beam onto one angle.
+double normalized_scan_increment(double increment, std::size_t n) {
+ if (std::isfinite(increment) && increment != 0.0) return increment;
+ return 2.0 * core::kPi / static_cast<double>(n > 0 ? n : 1);
+}
+} // namespace
+
 SlamSession::SlamSession(SlamConfig config) : config_(config) {}
 
 void SlamSession::reset() {
@@ -54,7 +64,8 @@ void SlamSession::ingest(const EstimatedState& est,
   kf.ranges_m = obs.ranges_m;
   kf.static_ranges_m = obs.static_ranges_m;
   kf.angle_min_rad = obs.scan_angle_min_rad;
-  kf.angle_increment_rad = obs.scan_angle_increment_rad;
+  kf.angle_increment_rad = normalized_scan_increment(
+ obs.scan_angle_increment_rad, obs.ranges_m.size());
 
   PoseGraphKeyframe node;
   node.id = kf.id;
@@ -111,15 +122,30 @@ void SlamSession::rebuild_graph() {
 
 iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   iface::MapSnapshot sub;
+ // Dynamic returns are evidence for tracking, not static-map geometry.
+ // With a static reference, retain only returns consistent with it;
+ // absent a reference, preserve the legacy raw-scan behavior.
+ auto static_range = [&](std::size_t i) -> float {
+ const float r = kf.ranges_m[i];
+ if (!(r > 0.0f) || !std::isfinite(r)) return 0.0f;
+ if (kf.static_ranges_m.size() != kf.ranges_m.size()) return r;
+ const float sr = kf.static_ranges_m[i];
+ if (!(sr > 0.0f) || !std::isfinite(sr) ||
+ std::abs(r - sr) > 0.30f) {
+ return 0.0f;
+ }
+ return r;
+ };
   sub.map_id = "slam-submap";
   sub.revision = kf.id;
   sub.frame_id = "map";
-  // Extent: sensor range plus margin, centered on the keyframe pose.
-  float max_range = 0.0f;
-  for (float r : kf.ranges_m) {
-    if (std::isfinite(r)) max_range = std::max(max_range, r);
-  }
-  max_range = std::min(max_range, 10.0f) + 1.0f;
+  // Extent: static evidence range plus margin, centered on the keyframe.
+ float max_range = 0.0f;
+ for (std::size_t i = 0; i < kf.ranges_m.size(); ++i) {
+ const float r = static_range(i);
+ if (r > 0.0f) max_range = std::max(max_range, r);
+ }
+ max_range = std::min(max_range, 10.0f) + 1.0f;
   sub.resolution_m = 0.1;
   sub.width = static_cast<std::uint32_t>(std::ceil(2 * max_range / sub.resolution_m));
   sub.height = sub.width;
@@ -142,7 +168,7 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   // let one beam's free interior overwrite another beam's occupied endpoint
   // where rays cross near walls.
   for (std::size_t i = 0; i < n; ++i) {
-    const float range = kf.ranges_m[i];
+    const float range = static_range(i);
     if (!(range > 0.0f) || !std::isfinite(range)) continue;
     const double angle = kf.angle_min_rad + kf.angle_increment_rad * i;
     const core::Vec3 dir = core::rotate_vector(
@@ -174,7 +200,7 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   // sub-cell jitter. The splat models endpoint quantization uncertainty;
   // walls stay thin (one cell + ring), free space stays free.
   for (std::size_t i = 0; i < n; ++i) {
-    const float range = kf.ranges_m[i];
+    const float range = static_range(i);
     if (!(range > 0.0f) || !std::isfinite(range) || range >= 10.0f) continue;
     const double angle = kf.angle_min_rad + kf.angle_increment_rad * i;
     const core::Vec3 dir = core::rotate_vector(
@@ -196,6 +222,13 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
     }
   }
   return sub;
+}
+
+iface::MapSnapshot SlamSession::submap(std::uint64_t keyframe_id) const {
+ for (const auto& kf : keyframes_) {
+ if (kf.id == keyframe_id) return submap_for(kf);
+ }
+ return {};
 }
 
 SlamTrackResult SlamSession::track(const EstimatedState& est,
@@ -276,7 +309,8 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   now_kf.z_m = est.z_m;
   now_kf.ranges_m = obs.ranges_m;
   now_kf.angle_min_rad = obs.scan_angle_min_rad;
-  now_kf.angle_increment_rad = obs.scan_angle_increment_rad;
+  now_kf.angle_increment_rad = normalized_scan_increment(
+ obs.scan_angle_increment_rad, obs.ranges_m.size());
   const iface::MapSnapshot rsub = submap_for(now_kf);
   const SlamKeyframe& old = keyframes_.back();
   ScanMatchResult rev = matcher.localize(
@@ -397,7 +431,8 @@ SlamLoopResult SlamSession::try_close_loops(
     now_kf.z_m = est.z_m;
     now_kf.ranges_m = obs.ranges_m;
     now_kf.angle_min_rad = obs.scan_angle_min_rad;
-    now_kf.angle_increment_rad = obs.scan_angle_increment_rad;
+    now_kf.angle_increment_rad = normalized_scan_increment(
+ obs.scan_angle_increment_rad, obs.ranges_m.size());
     const iface::MapSnapshot rsub = submap_for(now_kf);
     ScanMatchResult rev = matcher.localize(
         old.ranges_m, old.angle_min_rad, old.angle_increment_rad,

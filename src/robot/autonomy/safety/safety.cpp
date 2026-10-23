@@ -39,8 +39,7 @@ SafetyVerdict SafetyMonitor::evaluate(
       const float r = obs.ranges_m[i];
       if (!(r > 0.0f) || !std::isfinite(r)) continue;
       omni_min = std::min(omni_min, r);
-      const double angle =
-          -core::kPi + 2.0 * core::kPi * static_cast<double>(i) / n;
+      const double angle = iface::scan_beam_angle_rad(obs, i);
       if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) <=
           config_.forward_half_angle_rad) {
         fwd_min = std::min(fwd_min, r);

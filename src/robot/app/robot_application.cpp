@@ -97,7 +97,12 @@ iface::GoalHandle RobotApplication::request_goal(
     coordinator_.set_goal(goal);
     return handle;
   }
-  return executive_.request_goal(req.place_id, req.request_id);
+ // Empty place is a hold: acknowledge it and withdraw the route so the
+ // coordinator cannot keep driving the previous goal.
+ const iface::GoalHandle hold =
+ executive_.request_goal(req.place_id, req.request_id);
+ if (hold.valid()) coordinator_.clear_goal();
+ return hold;
 }
 
 core::Status RobotApplication::request_map(const std::string& map_id) {
@@ -138,8 +143,15 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   }
   for (const auto& obs : channel_.drain_observations()) {
     coordinator_.ingest_observation(obs);
-  }
-  iface::MotionCommand body = coordinator_.update(
+ }
+ // Arrival is terminal: complete the goal and withdraw the route BEFORE
+ // planning, so the arrival tick already holds instead of publishing one
+ // more route-following command.
+ if (coordinator_.route_complete()) {
+ executive_.note_arrival(true);
+ coordinator_.clear_goal();
+ }
+ iface::MotionCommand body = coordinator_.update(
       maps_->active_snapshot(), channel_.health(), now_ns);
   if (!iface::valid_motion_command(body, now_ns)) {
     body = iface::MotionCommand::SafeStop(now_ns);
@@ -165,9 +177,6 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   const autonomy::EstimatedState& est = coordinator_.estimate();
   measurement_.update(now_ns * 1e-9, {est.x_m, est.y_m},
                       std::abs(est.forward_mps), std::abs(body.forward_mps));
-  // Goal lifetime: arrival completes the active goal; motion continues
-  // under the next request (or holds when none is active).
-  executive_.note_arrival(coordinator_.route_complete());
   return body;
 }
 

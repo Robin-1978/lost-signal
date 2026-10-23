@@ -49,7 +49,43 @@ int main() {
     assert(!r.tracks[0].prediction_ready);  // single sighting: not ready
   }
 
-  // Association: same bump next frame keeps identity, then goes ready.
+  // Non-zero scan start with an explicit increment: beams 0..4 point +x.
+ // The old hardcoded [-pi, pi) layout put them near -x.
+ {
+ LidarPerception perc;
+ auto obs = make_scan(1'000'000, 10.0f, 0, 4, 3.0f);
+ obs.scan_angle_min_rad = 0.0;
+ obs.scan_angle_increment_rad = 2.0 * M_PI / 72.0;
+ PerceptionResult r = perc.update(obs, origin());
+ assert(r.scan_ok);
+ assert(r.tracks.size() == 1);
+ assert(std::abs(r.tracks[0].x_m - 3.0) < 0.4);
+ assert(r.tracks[0].y_m > 0.2 && r.tracks[0].y_m < 0.9);
+ }
+
+ // A local forward sector uses the same start/increment contract.
+ {
+ LidarPerception perc;
+ auto obs = make_scan(1'000'000, 10.0f, 0, 4, 3.0f);
+ obs.scan_angle_min_rad = -0.02;
+ obs.scan_angle_increment_rad = 0.01;
+ PerceptionResult r = perc.update(obs, origin());
+ assert(r.tracks.size() == 1);
+ assert(std::abs(r.tracks[0].x_m - 3.0) < 0.4);
+ assert(std::abs(r.tracks[0].y_m) < 0.1);
+ }
+
+ // Cluster extent drives the conservative occupied radius.
+ {
+ LidarPerception perc;
+ auto obs = make_scan(1'000'000, 10.0f, 34, 38, 3.0f);
+ PerceptionResult r = perc.update(obs, origin());
+ assert(r.tracks.size() == 1);
+ assert(r.tracks[0].radius_m >= 0.15);
+ assert(r.tracks[0].radius_m <= 0.9);
+ }
+
+ // Association: same bump next frame keeps identity, then goes ready.
   {
     LidarPerception perc;
     std::uint32_t id = 0;

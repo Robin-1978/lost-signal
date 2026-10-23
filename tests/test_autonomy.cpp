@@ -278,7 +278,26 @@ int main() {
     assert(coord.last_decision_ns() == 120'000'000);
   }
 
-  // Scan-rate gating: odometry-only frames advance estimation but never
+  // Configurable decision cadence: 20 ms replaces the 100 ms default.
+ {
+ platform::ChassisLimits lim{.max_forward_mps = 2.0,
+ .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4};
+ AutonomyCoordinator coord(lim);
+ assert(coord.configure().ok && coord.activate().ok);
+ coord.set_decision_period(20'000'000);
+ coord.ingest_observation(make_odom(1, 0, 0.0));
+ iface::ChannelHealth ch{};
+ iface::MapSnapshot map;
+ coord.update(map, ch, 0);
+ assert(coord.last_decision_ns() == 0);
+ coord.update(map, ch, 10'000'000);
+ assert(coord.last_decision_ns() == 0);
+ coord.update(map, ch, 20'000'000);
+ assert(coord.last_decision_ns() == 20'000'000);
+ }
+
+ // Scan-rate gating: odometry-only frames advance estimation but never
   // perception; without scan evidence the planner has no plan.
   {
     AutonomyCoordinator coord;
@@ -356,6 +375,31 @@ int main() {
     ValidationResult dyn = v.validate(go, est, traffic, open);
     assert(!dyn.accepted &&
            dyn.verdict == TrajectoryVerdict::kDynamicCollision);
+
+ // Swept footprint: a thin obstacle between two rollout samples must
+ // still collide. Samples are 0.2 m apart; the obstacle sits 0.092 m
+ // off the path, farther than the 0.1 m footprint from both sample
+ // centers but inside the swept segment.
+ {
+ ClearanceValidatorConfig cfg;
+ cfg.footprint_radius_m = 0.1;
+ cfg.extra_margin_m = 0.0;
+ cfg.brake_decel_mps2 = 100.0;
+ cfg.rollout_dt_s = 0.2;
+ cfg.rollout_horizon_s = 0.6;
+ ClearanceValidator sweep(cfg);
+ iface::ObservationFrame thin = make_odom(9, 9, 0.0);
+ thin.ranges_m.assign(16, 10.0f);
+ thin.ranges_m[10] = 0.13f; // ~45 deg, outside the forward sector
+ thin.scan_angle_min_rad = -3.141592653589793;
+ thin.scan_angle_increment_rad = 2.0 * 3.141592653589793 / 16.0;
+ LocalCandidate skim;
+ skim.feasible = true;
+ skim.forward_mps = 1.0;
+ ValidationResult swept = sweep.validate(skim, est, ok, thin);
+ assert(!swept.accepted &&
+ swept.verdict == TrajectoryVerdict::kStaticCollision);
+ }
 
     // Minimum-risk escape: obstacle inside the margin behind the base
     // (beam 0 points straight back), slow creep forward gains clearance

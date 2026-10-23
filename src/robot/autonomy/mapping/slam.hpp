@@ -136,6 +136,10 @@ class SlamSession {
   std::size_t loop_closure_count() const { return loop_closures_; }
   std::size_t track_corrections() const { return track_corrections_; }
   const std::vector<SlamKeyframe>& keyframes() const { return keyframes_; }
+ // Render one stored keyframe as a static submap (diagnostics/tests).
+ // Dynamic returns are excluded when the keyframe carried a static
+ // reference; an empty snapshot means no such keyframe.
+ iface::MapSnapshot submap(std::uint64_t keyframe_id) const;
   const PoseGraphBackend& graph() const { return graph_; }
   const SlamLoopResult& last_result() const { return last_result_; }
   const SlamTrackResult& last_track_result() const { return last_track_; }

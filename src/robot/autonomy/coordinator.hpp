@@ -88,7 +88,13 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Cartesian goal override (map frame). Refreshes the active route through
   // the global planner and wakes the decision branch. Place-based tasking
   // still enters via the executive; this is the deliberate operator path.
-  void set_goal(const RoutePoint& goal);
+  // Decision cadence (SIM config / deployment tuning). Non-positive is
+ // ignored so a bad config can never disable the control loop.
+ void set_decision_period(core::MonotonicNs period_ns) {
+ if (period_ns > 0) decision_period_ns_ = period_ns;
+ }
+
+ void set_goal(const RoutePoint& goal);
   const Route& active_route() const { return active_route_; }
   // Withdraws the active route (executive cancel path). Drops the goal and
   // invalidates the route so update() holds instead of driving a dead

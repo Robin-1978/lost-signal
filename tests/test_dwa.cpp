@@ -99,7 +99,29 @@ int main() {
     assert(p.best.forward_mps > 0.0);
   }
 
-  // DWA with a track sitting on the ego pose: every rollout collides.
+  // Reverse: a rear goal with a yaw envelope too small to turn requires
+ // negative velocity. Forward-only sampling cannot produce this.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.0;
+ est.y_m = 0.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ StraightLinePlanner global;
+ Route route = global.plan(est, {-2.0, 0.0, 0.0}, iface::MapSnapshot{});
+ assert(route.valid);
+ platform::ChassisLimits reverse_limits = limits;
+ reverse_limits.max_yaw_rate_radps = 0.001;
+ DwaPlanner planner;
+ LocalPlan p = planner.plan(est, perc, m, route, reverse_limits);
+ assert(p.has_plan && p.best.feasible);
+ assert(p.best.forward_mps < 0.0);
+ }
+
+ // DWA with a track sitting on the ego pose: every rollout collides.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
     EstimatedState est;
@@ -189,7 +211,7 @@ int main() {
         [](double, double, double, double, double) { return false; });
     LocalPlan none = shut.plan(est, perc, m, route, limits);
     assert(!none.has_plan);
-    // Fence at x = 1.2: any forward motion is inadmissible, turning in
+    // Fence at x = 1.05: any forward motion is inadmissible, turning in
     // place is not — the planner holds (v = 0) instead of crossing.
     DwaPlanner fenced;
     int calls = 0;
@@ -198,12 +220,12 @@ int main() {
                                 double yaw) {
       ++calls;
       yaw_seen_finite |= std::isfinite(yaw) && std::isfinite(x0);
-      return x0 <= 1.2 && x1 <= 1.2;
+      return x0 <= 1.05 && x1 <= 1.05;
     });
     LocalPlan held = fenced.plan(est, perc, m, route, limits);
     assert(calls > 0 && yaw_seen_finite);  // gate sees every segment + yaw
     assert(held.has_plan && held.best.feasible);
-    assert(held.best.forward_mps == 0.0);  // hold, never cross the fence
+    assert(held.best.forward_mps <= 0.0);  // hold, never cross the fence
     // Empty gate: legacy behavior bit-identical (drives, deterministic).
     DwaPlanner legacy;
     LocalPlan a = legacy.plan(est, perc, m, route, limits);

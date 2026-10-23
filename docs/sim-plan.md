@@ -1,6 +1,6 @@
 # SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
-Robot side is done (clean rebuild, 24/24 green, boundary gate green).
+Robot side is done (clean rebuild, 47/47 green, boundary gate green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
 map editor / campaign visuals stay out. The physics backend is MuJoCo

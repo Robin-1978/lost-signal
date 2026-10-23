@@ -7,11 +7,11 @@
 namespace {
 class PlacesMap : public lost_signal::robot::iface::IMapProvider {
  public:
-  PlacesMap() {
+  explicit PlacesMap(double dock_x_m = 5.0) {
     snap_.map_id = "test";
     snap_.revision = 1;
     snap_.frame_id = "map";
-    snap_.places.push_back({"dock", 5.0, 0.0, 0.0});
+    snap_.places.push_back({"dock", dock_x_m, 0.0, 0.0});
   }
   lost_signal::robot::iface::MapSnapshot active_snapshot() const override {
     return snap_;
@@ -105,6 +105,64 @@ int main() {
     assert(feed.tick(app).is_safe_stop());  // dead goal drives nothing
   }
 
-  std::printf("goal_auth ok\n");
+  // --- Hold withdraws the active route immediately. ---
+ {
+ iface::TaskRequest again;
+ again.request_id = "t2";
+ again.place_id = "dock";
+ const iface::GoalHandle h2 = app.request_goal(again);
+ assert(h2.valid());
+ bool moving = false;
+ for (int i = 0; i < 8 && !moving; ++i) {
+ moving = feed.tick(app).forward_mps > 0.0;
+ }
+ assert(moving);
+ iface::TaskRequest hold;
+ hold.request_id = "hold1"; // empty place = hold
+ const iface::GoalHandle hh = app.request_goal(hold);
+ assert(hh.valid());
+ assert(app.goal_status(hh).state == iface::GoalState::kDone);
+ for (int i = 0; i < 6; ++i) {
+ assert(feed.tick(app).is_safe_stop());
+ }
+ }
+
+ // --- Arrival completes the goal and stops on the arrival tick. ---
+ {
+ app::RobotApplication near(std::make_unique<PlacesMap>(1.0));
+ assert(near.configure().ok && near.activate().ok);
+ near.register_provider({"t.lidar", iface::EndpointRole::kLidar,
+ iface::ProviderBackend::kNative, "lidar_link"});
+ iface::TaskRequest task;
+ task.request_id = "arrive";
+ task.place_id = "dock";
+ const iface::GoalHandle h = near.request_goal(task);
+ assert(h.valid());
+ Feeder nf;
+ bool arrived = false;
+ for (int i = 0; i < 40; ++i) {
+ iface::ObservationFrame obs;
+ obs.sequence = static_cast<std::uint64_t>(nf.seq++);
+ obs.stamp_ns = nf.t_ns;
+ obs.source = "t.lidar";
+ obs.frame = core::Frame::kLidarLink;
+ obs.scan_valid = true;
+ obs.ranges_m.assign(72, 10.0f);
+ obs.odometry_valid = true;
+ obs.forward_mps = 0.5;
+ assert(near.publish_observation(obs));
+ const auto cmd = near.tick(nf.t_ns);
+ nf.t_ns += 100'000'000;
+ if (near.current_goal().state == iface::GoalState::kDone) {
+ assert(cmd.is_safe_stop());
+ arrived = true;
+ break;
+ }
+ }
+ assert(arrived);
+ assert(near.current_goal().state == iface::GoalState::kDone);
+ }
+
+ std::printf("goal_auth ok\n");
   return 0;
 }

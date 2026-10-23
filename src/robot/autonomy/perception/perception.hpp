@@ -73,6 +73,11 @@ struct LidarPerceptionConfig {
   double association_gate_m = 0.6;
   int max_misses = 3;
   int min_updates_for_ready = 3;
+ // Object extent estimate from the cluster's world-space bounding box.
+ // One beam (or a tiny cluster) clamps up to the minimum; long walls clamp
+ // down so they stay conservative without swallowing the whole corridor.
+ double min_object_radius_m = 0.15;
+ double max_object_radius_m = 0.9;
 };
 
 // Planar lidar foreground extraction + nearest-neighbor tracking.

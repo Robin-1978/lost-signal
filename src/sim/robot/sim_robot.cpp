@@ -45,18 +45,27 @@ r::iface::MotionCommand SimRobot::take_command(r::core::MonotonicNs now_ns) {
 }
 
 r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
-  (void)now_ns;
-  world_.step(0.02);
+  // Decision time is the caller's simulation time; the observation keeps
+ // its acquisition stamp so delivery latency remains visible.
+ world_.step(0.02);
+ const r::core::MonotonicNs plant_ns =
+ static_cast<r::core::MonotonicNs>(world_.truth().step * 20'000'000);
+ // The world just stepped, so the decision clock is the plant clock. A
+ // caller clock ahead of the plant is honored; a lagging one is not
+ // allowed to make a fresh scan look like it came from the future.
+ const r::core::MonotonicNs decision_ns =
+ (now_ns != r::core::kInvalidTime && now_ns > plant_ns) ? now_ns
+ : plant_ns;
   r::iface::ObservationFrame obs;
   if (!suite_.poll_envelope(obs)) {
     return r::iface::MotionCommand::SafeStop(
         static_cast<r::core::MonotonicNs>(world_.truth().step * 20'000'000));
   }
   if (!app_.publish_observation(obs)) {
-    return r::iface::MotionCommand::SafeStop(obs.stamp_ns);
+    return r::iface::MotionCommand::SafeStop(decision_ns);
   }
-  r::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
-  r::iface::ActuatorCommand act = app_.take_actuator(obs.stamp_ns);
+  r::iface::MotionCommand cmd = app_.tick(decision_ns);
+  r::iface::ActuatorCommand act = app_.take_actuator(decision_ns);
   suite_.consume(act);
   return cmd;
 }

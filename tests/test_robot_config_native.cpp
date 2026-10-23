@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "robot/platform/chassis.hpp"
 #include "robot/platform/description.hpp"
 #include "robot/platform/robot_config.hpp"
 
@@ -84,7 +85,50 @@ int main() {
       }
     }
   }
-  // Fail-closed: unknown kind, disagreement, bad numbers, bad JSON.
+  // Declared geometry must reach the chassis factory unchanged. This is
+ // the ROBOT-side hardware contract; no SIM state is involved.
+ {
+ platform::RobotDescription d = platform::default_robot_description();
+ d.plant.wheel_radius_m = 0.23;
+ d.plant.track_width_m = 0.91;
+ d.plant.wheel_base_m = 1.37;
+ d.limits.max_forward_mps = 2.0;
+ d.limits.max_yaw_rate_radps = 1.5;
+ d.limits.footprint_radius_m = 0.5;
+ for (const char* kind : {"differential", "ackermann", "swerve", "mecanum"}) {
+ d.chassis_kind = kind;
+ auto chassis = platform::make_chassis(d);
+ assert(chassis != nullptr);
+ if (auto* diff =
+ dynamic_cast<platform::DifferentialChassis*>(chassis.get())) {
+ assert(diff->wheel_radius_m() == 0.23);
+ assert(diff->track_width_m() == 0.91);
+ } else if (auto* ack =
+ dynamic_cast<platform::AckermannChassis*>(chassis.get())) {
+ assert(ack->wheel_radius_m() == 0.23);
+ assert(ack->track_width_m() == 0.91);
+ assert(ack->wheel_base_m() == 1.37);
+ } else if (auto* hol =
+ dynamic_cast<platform::HolonomicChassis*>(chassis.get())) {
+ assert(hol->wheel_radius_m() == 0.23);
+ assert(hol->track_width_m() == 0.91);
+ assert(hol->wheel_base_m() == 1.37);
+ } else {
+ assert(false);
+ }
+ }
+ d.chassis_kind = "tracked";
+ auto tracked = platform::make_chassis(d);
+ assert(tracked != nullptr);
+ auto* td = dynamic_cast<platform::DifferentialChassis*>(tracked.get());
+ assert(td != nullptr && td->wheel_radius_m() == 0.23 &&
+ td->track_width_m() == 0.91);
+ // Bad declared geometry refuses the machine instead of falling back.
+ d.chassis_kind = "differential";
+ d.plant.wheel_radius_m = 0.0;
+ assert(platform::make_chassis(d) == nullptr);
+ }
+ // Fail-closed: unknown kind, disagreement, bad numbers, bad JSON.
   {
     platform::RobotConfig cfg;
     std::string err;

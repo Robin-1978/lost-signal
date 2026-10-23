@@ -238,7 +238,7 @@ class RayClearingMapper : public IMapper {
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0) || !std::isfinite(range)) continue;
-      const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+      const double angle = iface::scan_beam_angle_rad(obs, i);
       const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
       const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
       const core::Vec3 off = core::rotate_vector(

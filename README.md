@@ -43,4 +43,40 @@ ctest --test-dir build -V
 
 `tests/check_boundary.py` fails the build if any file under `src/robot/`
 includes a `sim/` header or if a `lost_signal_robot_*` target links a
-`lost_signal_sim_*` library.
+`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 47
+tests.
+
+## Headless run
+
+```sh
+./build/lost_signal_sim --map configs/worlds/signal_town.json \
+  --steps 600 --out /tmp/run.json
+./build/lost_signal_sim --map configs/worlds/signal_town.json \
+  --objectives place_a,place_b --duration 60 --out /tmp/run.json
+```
+
+`--robot` and `--sim` select the declared hardware contract and the SIM
+cadence. `--actors` overrides the sibling `<map>.actors.json` sidecar
+(loaded automatically by default), `--no-actors` disables it. The runner
+prints steps, objective completion, collisions, distance, and estimate
+error; `--out` writes the same data plus per-objective results as JSON.
+Without `--steps` or `--duration`, an explicit objective list gets a 4000
+step budget and a single implicit goal keeps the legacy 5 step smoke run.
+
+## Capability notes
+
+- Differential and tracked bases run the full mission path. Ackermann and
+  holonomic bases have controllers and MuJoCo plants; Ackermann still uses
+  the generic grid/global and DWA local planner, and mecanum/swerve need a
+  non-zero `max_lateral_mps` to sample sideways motion.
+- DWA samples forward and reverse velocity. The validator checks a
+  continuous swept footprint (point-to-segment), not just discrete poses.
+- Scan consumers share the `angle_min + i * increment` layout helper;
+  an unset increment falls back to the legacy full rotation.
+- SLAM submaps exclude returns that disagree with the static reference, so
+  moving actors do not become map geometry.
+- Sensor delivery realism is opt-in. Decision time is the plant clock;
+  observation stamps stay at acquisition, so latency can trip freshness.
+- Scoring is an offline summary (distance, stops, collisions, estimate
+  error). It is not a full mission score; conflict-zone behavior, resource
+  policy, and Hybrid A* path smoothing remain roadmap items.

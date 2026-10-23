@@ -20,6 +20,7 @@
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
+#include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
@@ -71,79 +72,6 @@ inline void blob_shadow_3d(double x_m, double y_m, double r_m) {
                 static_cast<float>(-y_m)},
                static_cast<float>(r_m), static_cast<float>(r_m), 0.012f, 20,
                {20, 20, 25, 50});
-}
-
-// Actors sidecar from tools/convert_master_map.py (<map>.actors.json):
-// patrol/dwell -> waypoints (+waits), seeded-wander -> wander. Missing
-// file = no actors (demo legacy), never an error.
-void load_actors_sidecar(const std::string& map_path,
-                         lost_signal::sim::scenario::ScenarioSession& session) {
-  const std::string::size_type dot = map_path.rfind('.');
-  const std::string side =
-      (dot == std::string::npos ? map_path : map_path.substr(0, dot)) +
-      ".actors.json";
-  std::ifstream in(side, std::ios::binary);
-  if (!in.is_open()) return;
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  std::string err;
-  auto root = lost_signal::robot::core::json_parse(ss.str(), &err);
-  if (root == nullptr || !root->is_object()) return;
-  const auto* arr = root->find("actors");
-  if (arr == nullptr || !arr->is_array()) return;
-  int loaded = 0;
-  for (const auto& e : arr->as_array()) {
-    if (!e.is_object()) continue;
-    const auto* wx = e.find("x");
-    const auto* wy = e.find("y");
-    if (wx == nullptr || wy == nullptr || !wx->is_num() || !wy->is_num()) {
-      continue;
-    }
-    lost_signal::sim::world::Actor a;
-    a.x = wx->as_num();
-    a.y = wy->as_num();
-    const auto* r = e.find("radius_m");
-    if (r != nullptr && r->is_num()) a.radius_m = r->as_num();
-    const auto* h = e.find("height_m");
-    if (h != nullptr && h->is_num()) a.height_m = h->as_num();
-    const auto* beh = e.find("behavior");
-    const std::string kind =
-        (beh != nullptr && beh->is_str()) ? beh->as_str() : "waypoints";
-    if (!lost_signal::sim::world::ActorBehaviorRegistry::global().create(
-            kind == "wander" ? "wander" : "waypoints", a.behavior)) {
-      continue;
-    }
-    const auto* sp = e.find("speed_mps");
-    if (sp != nullptr && sp->is_num()) a.behavior.speed_mps = sp->as_num();
-    const auto* lp = e.find("loop");
-    if (lp != nullptr && lp->is_bool()) a.behavior.loop = lp->as_bool();
-    const auto* sd = e.find("seed");
-    if (sd != nullptr && sd->is_num()) {
-      a.behavior.seed = static_cast<std::uint64_t>(sd->as_num());
-    }
-    const auto* wps = e.find("waypoints");
-    if (wps != nullptr && wps->is_array()) {
-      for (const auto& w : wps->as_array()) {
-        const auto* qx = w.find("x");
-        const auto* qy = w.find("y");
-        if (qx == nullptr || qy == nullptr || !qx->is_num() ||
-            !qy->is_num()) {
-          continue;
-        }
-        a.behavior.waypoints.push_back({qx->as_num(), qy->as_num()});
-      }
-    }
-    const auto* wt = e.find("waits");
-    if (wt != nullptr && wt->is_array()) {
-      for (const auto& v : wt->as_array()) {
-        if (v.is_num()) a.behavior.waits_s.push_back(v.as_num());
-      }
-    }
-    session.setup_world().add_actor(a);
-    ++loaded;
-  }
-  std::fprintf(stderr, "actors sidecar: %s (%d actors)\n", side.c_str(),
-               loaded);
 }
 
 // Map extents over every authored layer (auto-fit on --map load).
@@ -787,7 +715,7 @@ int main(int argc, char** argv) {
     // Survey covers the authored map (far-field goals need a route).
     session->fit_map_window_to_world();
     // Converted master maps ship patrols beside the world file.
-    load_actors_sidecar(map_path, *session);
+    lost_signal::sim::scenario::load_actors_sidecar(map_path, *session);
   } else {
     setup_demo(*session);
   }

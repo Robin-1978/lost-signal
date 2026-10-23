@@ -74,7 +74,12 @@ class RobotApplication : public IRobot {
 
   // Task / map intent (typed, no coordinates from SIM truth).
   // Async: returns a handle immediately; poll goal_status, cancel_goal.
-  iface::GoalHandle request_goal(const iface::TaskRequest& req) override;
+  // Deployment/SIM decision cadence. Must be set before the first tick.
+ void set_decision_period(core::MonotonicNs period_ns) {
+ coordinator_.set_decision_period(period_ns);
+ }
+
+ iface::GoalHandle request_goal(const iface::TaskRequest& req) override;
   iface::GoalStatus goal_status(iface::GoalHandle handle) const override {
     return executive_.goal_status(handle);
   }

@@ -1,8 +1,11 @@
 #include <cassert>
 #include <cstdio>
+#include <fstream>
 #include <vector>
 
 #include "robot/iface/task.hpp"
+#include "sim/scenario/actor_sidecar.hpp"
+#include "sim/scenario/scenario_session.hpp"
 #include "sim/robot/sim_robot.hpp"
 
 int main() {
@@ -39,6 +42,23 @@ int main() {
   assert(xs[60] < 0.5);               // held while the actor was near
   assert(xs[279] > 2.0);              // resumed after the actor passed
   assert(sim.current_goal().state == robot::iface::GoalState::kActive);
+
+ // Headless sidecar: the same loader used by lost_signal_sim.
+ {
+ std::ofstream out("/tmp/test_actors_sidecar.json");
+ out << R"({"actors":[{"x":1.5,"y":2.0,"radius_m":0.3,
+ "behavior":"wander","speed_mps":0.7,"seed":4}]})";
+ out.close();
+ sim::scenario::ScenarioSession session;
+ std::string err;
+ const int n = sim::scenario::load_actors_sidecar(
+ "/tmp/test_map.json", session, "/tmp/test_actors_sidecar.json", &err);
+ assert(n == 1);
+ assert(session.setup_world().actors().size() == 1);
+ assert(session.setup_world().actors()[0].radius_m == 0.3);
+ assert(session.setup_world().actors()[0].behavior.speed_mps == 0.7);
+ std::remove("/tmp/test_actors_sidecar.json");
+ }
 
   std::printf("sim_actor ok: x8=%.2f x60=%.2f x_end=%.2f\n", xs[8], xs[60],
               xs[279]);

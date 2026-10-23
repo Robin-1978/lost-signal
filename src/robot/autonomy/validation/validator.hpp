@@ -249,9 +249,9 @@ class ClearanceValidator : public IValidator {
     const core::DeskewTwist twist{est.forward_mps, est.yaw_rate_radps};
     const double cyaw = std::cos(est.yaw_rad), syaw = std::sin(est.yaw_rad);
     for (std::size_t i = 0; i < n; ++i) {
-      // Even beam layout over [-pi, pi); forward is index n/2.
-      const double angle =
-          -core::kPi + 2.0 * core::kPi * static_cast<double>(i) / n;
+      // Use the observation's explicit scan layout (one definition shared
+        // with perception and mapping).
+        const double angle = iface::scan_beam_angle_rad(obs, i);
       if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) >
           config_.forward_half_angle_rad) {
         continue;
@@ -321,7 +321,7 @@ class ClearanceValidator : public IValidator {
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
-      const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+      const double angle = iface::scan_beam_angle_rad(obs, i);
       const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
       const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
       const double ex = est.x_m + local.x * cyaw - local.y * syaw;
@@ -338,7 +338,11 @@ class ClearanceValidator : public IValidator {
     double min_clear = std::numeric_limits<double>::infinity();
     double end_clear = std::numeric_limits<double>::infinity();
     bool touches = false;
-    for (int s = 1; s <= steps; ++s) {
+        // Keep the previous center: the footprint sweeps the segment between
+        // rollout samples, so a thin obstacle cannot disappear between them.
+        double prev_x = est.x_m;
+        double prev_y = est.y_m;
+        for (int s = 1; s <= steps; ++s) {
       const double t = s * config_.rollout_dt_s;
       // Exact constant-twist integration, body twist (v, lateral) rotated
       // into the map frame. Matches the planner's rollout convention.
@@ -358,12 +362,27 @@ class ClearanceValidator : public IValidator {
                         lat * std::cos(est.yaw_rad)) * t;
       }
       double sample_min = std::numeric_limits<double>::infinity();
-      for (const auto& e : endpoints) {
-        const double d = std::hypot(e.x - ax, e.y - ay);
-        if (d < sample_min) sample_min = d;
-        if (d < config_.footprint_radius_m) touches = true;
-      }
-      min_clear = std::min(min_clear, sample_min);
+      const double vx = ax - prev_x;
+                const double vy = ay - prev_y;
+                const double seg2 = vx * vx + vy * vy;
+                for (const auto& e : endpoints) {
+                    const double d = std::hypot(e.x - ax, e.y - ay);
+                    const double u =
+                        seg2 > 1e-12
+                            ? std::clamp(((e.x - prev_x) * vx +
+                                          (e.y - prev_y) * vy) / seg2,
+                                         0.0, 1.0)
+                            : 0.0;
+                    const double qx = prev_x + u * vx;
+                    const double qy = prev_y + u * vy;
+                    const double swept_d = std::hypot(e.x - qx, e.y - qy);
+                    if (d < sample_min) sample_min = d;
+                    if (swept_d < sample_min) sample_min = swept_d;
+                    if (swept_d < config_.footprint_radius_m) touches = true;
+                }
+                min_clear = std::min(min_clear, sample_min);
+                prev_x = ax;
+                prev_y = ay;
       if (s == steps) end_clear = sample_min;
       // Dynamic: tracks propagated linearly to the sample time.
       for (const auto& track : perception.tracks) {

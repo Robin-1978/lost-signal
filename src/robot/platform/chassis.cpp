@@ -323,54 +323,73 @@ namespace {
 // without touching this file. These live here (not a separate TU) so the
 // linker cannot drop them: chassis.cpp is always pulled for the chassis
 // methods the application references.
+bool valid_plant_geometry(const PlantGeometry& g) {
+ return std::isfinite(g.wheel_radius_m) && g.wheel_radius_m > 0.0 &&
+ std::isfinite(g.track_width_m) && g.track_width_m > 0.0 &&
+ std::isfinite(g.wheel_base_m) && g.wheel_base_m > 0.0;
+}
+
+// All chassis geometry comes from the ROBOT-owned description. This is the
+// declared hardware contract shared with SIM; no truth or engine object is
+// consulted here.
 const RegisterChassis kRegisterDifferential{
-    "differential", [](const RobotDescription& desc) {
-      control::WheelControllerConfig wc;
-      wc.wheel_radius_m = 0.1;
-      wc.track_width_m = 0.5;
-      return std::make_unique<DifferentialChassis>(0.1, 0.5, desc.limits,
-                                                  std::move(wc));
-    }};
+ "differential", [](const RobotDescription& desc) -> std::unique_ptr<IChassis> {
+ if (!valid_plant_geometry(desc.plant)) return std::unique_ptr<IChassis>{};
+ control::WheelControllerConfig wc;
+ wc.wheel_radius_m = desc.plant.wheel_radius_m;
+ wc.track_width_m = desc.plant.track_width_m;
+ return std::make_unique<DifferentialChassis>(desc.plant.wheel_radius_m,
+ desc.plant.track_width_m, desc.limits, std::move(wc));
+ }};
 
 const RegisterChassis kRegisterAckermann{
-    "ackermann", [](const RobotDescription& desc) {
-      control::AckermannControllerConfig ac;
-      ac.wheel_base_m = 0.62;
-      ac.track_width_m = 0.58;
-      return std::make_unique<AckermannChassis>(0.1, ac.wheel_base_m,
-                                               ac.track_width_m, desc.limits,
-                                               std::move(ac));
-    }};
+ "ackermann", [](const RobotDescription& desc) -> std::unique_ptr<IChassis> {
+ if (!valid_plant_geometry(desc.plant)) return std::unique_ptr<IChassis>{};
+ control::AckermannControllerConfig ac;
+ ac.wheel_radius_m = desc.plant.wheel_radius_m;
+ ac.wheel_base_m = desc.plant.wheel_base_m;
+ ac.track_width_m = desc.plant.track_width_m;
+ ac.max_steer_rad = desc.limits.max_steer_rad;
+ return std::make_unique<AckermannChassis>(desc.plant.wheel_radius_m,
+ desc.plant.wheel_base_m, desc.plant.track_width_m, desc.limits,
+ std::move(ac));
+ }};
 
 const RegisterChassis kRegisterSwerve{
-    "swerve", [](const RobotDescription& desc) {
-      control::HolonomicControllerConfig hc;
-      hc.kind = control::HolonomicKind::Swerve;
-      return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
-                                               hc.track_width_m, desc.limits,
-                                               std::move(hc));
-    }};
+ "swerve", [](const RobotDescription& desc) -> std::unique_ptr<IChassis> {
+ if (!valid_plant_geometry(desc.plant)) return std::unique_ptr<IChassis>{};
+ control::HolonomicControllerConfig hc;
+ hc.kind = control::HolonomicKind::Swerve;
+ hc.wheel_radius_m = desc.plant.wheel_radius_m;
+ hc.wheel_base_m = desc.plant.wheel_base_m;
+ hc.track_width_m = desc.plant.track_width_m;
+ return std::make_unique<HolonomicChassis>(desc.plant.wheel_radius_m,
+ desc.plant.wheel_base_m, desc.plant.track_width_m, desc.limits,
+ std::move(hc));
+ }};
 
 const RegisterChassis kRegisterMecanum{
-    "mecanum", [](const RobotDescription& desc) {
-      control::HolonomicControllerConfig hc;
-      hc.kind = control::HolonomicKind::Mecanum;
-      return std::make_unique<HolonomicChassis>(0.1, hc.wheel_base_m,
-                                               hc.track_width_m, desc.limits,
-                                               std::move(hc));
-    }};
+ "mecanum", [](const RobotDescription& desc) -> std::unique_ptr<IChassis> {
+ if (!valid_plant_geometry(desc.plant)) return std::unique_ptr<IChassis>{};
+ control::HolonomicControllerConfig hc;
+ hc.kind = control::HolonomicKind::Mecanum;
+ hc.wheel_radius_m = desc.plant.wheel_radius_m;
+ hc.wheel_base_m = desc.plant.wheel_base_m;
+ hc.track_width_m = desc.plant.track_width_m;
+ return std::make_unique<HolonomicChassis>(desc.plant.wheel_radius_m,
+ desc.plant.wheel_base_m, desc.plant.track_width_m, desc.limits,
+ std::move(hc));
+ }};
 
 const RegisterChassis kRegisterTracked{
-    "tracked", [](const RobotDescription& desc) {
-      // Skid-steer tracks on the differential path: one duty channel per
-      // side, yaw-rate command space, wide stance. Track shear (scrub)
-      // lives in the plant (MotorParams), not here.
-      control::WheelControllerConfig wc;
-      wc.wheel_radius_m = 0.1;
-      wc.track_width_m = 0.6;
-      return std::make_unique<DifferentialChassis>(0.1, 0.6, desc.limits,
-                                                  std::move(wc));
-    }};
+ "tracked", [](const RobotDescription& desc) -> std::unique_ptr<IChassis> {
+ if (!valid_plant_geometry(desc.plant)) return std::unique_ptr<IChassis>{};
+ control::WheelControllerConfig wc;
+ wc.wheel_radius_m = desc.plant.wheel_radius_m;
+ wc.track_width_m = desc.plant.track_width_m;
+ return std::make_unique<DifferentialChassis>(desc.plant.wheel_radius_m,
+ desc.plant.track_width_m, desc.limits, std::move(wc));
+ }};
 
 }  // namespace
 

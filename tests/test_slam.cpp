@@ -278,6 +278,45 @@ int main() {
     assert(!tr2.accepted);
   }
 
-  std::printf("slam ok\n");
+  // Dynamic actor returns must not enter the static submap. A static wall
+ // behind the robot stays occupied; an actor 1 m ahead does not.
+ {
+ SlamSession slam;
+ EstimatedState est;
+ est.valid = true;
+ est.x_m = 0.0;
+ est.y_m = 0.0;
+ est.yaw_rad = 0.0;
+ est.z_m = 0.0;
+ est.stamp_ns = 1'000'000'000LL;
+ iface::ObservationFrame obs;
+ obs.scan_valid = true;
+ obs.frame = core::Frame::kLidarLink;
+ obs.stamp_ns = est.stamp_ns;
+ obs.ranges_m.assign(72, 10.0f);
+ obs.static_ranges_m.assign(72, 10.0f);
+ obs.scan_static_valid = true;
+ obs.ranges_m[0] = 2.0f; // static wall at -x
+ obs.static_ranges_m[0] = 2.0f;
+ obs.ranges_m[36] = 1.0f; // dynamic actor at +x
+ slam.ingest(est, obs);
+ assert(slam.keyframe_count() == 1);
+ const iface::MapSnapshot sub = slam.submap(1);
+ assert(sub.width > 0 && sub.occupancy.size() ==
+ static_cast<std::size_t>(sub.width) * sub.height);
+ auto at = [&](double x, double y) {
+ const int gx = static_cast<int>(
+ std::floor((x - sub.origin_x_m) / sub.resolution_m));
+ const int gy = static_cast<int>(
+ std::floor((y - sub.origin_y_m) / sub.resolution_m));
+ assert(gx >= 0 && gy >= 0 && gx < static_cast<int>(sub.width) &&
+ gy < static_cast<int>(sub.height));
+ return sub.occupancy[gy * sub.width + gx];
+ };
+ assert(at(-2.0, 0.0) == 100);
+ assert(at(1.0, 0.0) != 100);
+ }
+
+ std::printf("slam ok\n");
   return 0;
 }

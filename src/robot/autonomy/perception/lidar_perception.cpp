@@ -75,7 +75,7 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
     if (std::abs(range - obs.static_ranges_m[i]) <=
         config_.foreground_threshold_m)
       continue;
-    const double angle = -core::kPi + 2.0 * core::kPi * i / n;
+    const double angle = iface::scan_beam_angle_rad(obs, i);
     const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
     // Deskewed endpoint in the scan-end sensor frame (a rigid correction
     // of the true endpoint for a static world — used directly, never
@@ -105,9 +105,11 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
   }
   // Pass 2: split runs on world-space range gaps;wrap seam merges later.
   struct Cluster {
-    double sx = 0.0, sy = 0.0;
-    int count = 0;
-  };
+ double sx = 0.0, sy = 0.0;
+ int count = 0;
+ double min_x = 0.0, max_x = 0.0;
+ double min_y = 0.0, max_y = 0.0;
+ };
   std::vector<Cluster> clusters;
   for (const auto& run : runs) {
     Cluster open{};
@@ -121,10 +123,19 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
           open = Cluster{};
         }
       }
-      open.sx += beams[i].wx;
-      open.sy += beams[i].wy;
-      open.count += 1;
-      has_open = true;
+      if (!has_open) {
+ open.min_x = open.max_x = beams[i].wx;
+ open.min_y = open.max_y = beams[i].wy;
+ } else {
+ open.min_x = std::min(open.min_x, beams[i].wx);
+ open.max_x = std::max(open.max_x, beams[i].wx);
+ open.min_y = std::min(open.min_y, beams[i].wy);
+ open.max_y = std::max(open.max_y, beams[i].wy);
+ }
+ open.sx += beams[i].wx;
+ open.sy += beams[i].wy;
+ open.count += 1;
+ has_open = true;
     }
     if (has_open) clusters.push_back(open);
   }
@@ -142,8 +153,12 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
       if (gap <= config_.cluster_range_gap_m) {
         Cluster merged = last;
         merged.sx += first.sx;
-        merged.sy += first.sy;
-        merged.count += first.count;
+ merged.sy += first.sy;
+ merged.count += first.count;
+ merged.min_x = std::min(first.min_x, last.min_x);
+ merged.max_x = std::max(first.max_x, last.max_x);
+ merged.min_y = std::min(first.min_y, last.min_y);
+ merged.max_y = std::max(first.max_y, last.max_y);
         clusters.front() = merged;
         clusters.pop_back();
       }
@@ -160,7 +175,11 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
   std::unordered_map<std::uint32_t, bool> matched;
   for (const auto& c : clusters) {
     const double cx = c.sx / c.count, cyy = c.sy / c.count;
-    std::uint32_t best_id = 0;
+ const double extent =
+ 0.5 * std::hypot(c.max_x - c.min_x, c.max_y - c.min_y);
+ const double radius = std::clamp(extent, config_.min_object_radius_m,
+ config_.max_object_radius_m);
+ std::uint32_t best_id = 0;
     double best_d = config_.association_gate_m;
     for (auto& [id, st] : tracks_) {
       const double d =
@@ -180,8 +199,9 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
       st.track.vx_mps = (cx - st.first_x_m) / span;
       st.track.vy_mps = (cyy - st.first_y_m) / span;
       st.track.x_m = cx;
-      st.track.y_m = cyy;
-      st.updates += 1;
+ st.track.y_m = cyy;
+ st.track.radius_m = 0.7 * st.track.radius_m + 0.3 * radius;
+ st.updates += 1;
       st.misses = 0;
       st.last_seen_s = now_s;
       st.track.prediction_ready = st.updates >= config_.min_updates_for_ready;
@@ -190,8 +210,9 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
       TrackState st;
       st.track.id = next_id_++;
       st.track.x_m = cx;
-      st.track.y_m = cyy;
-      st.first_x_m = cx;
+ st.track.y_m = cyy;
+ st.track.radius_m = radius;
+ st.first_x_m = cx;
       st.first_y_m = cyy;
       st.updates = 1;
       st.misses = 0;

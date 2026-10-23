@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -73,6 +75,22 @@ struct ObservationFrame {
     return !scan_valid && !odometry_valid && !imu_valid && drive_count == 0;
   }
 };
+
+// Angle of beam i in the sensor frame. An unset increment (0) keeps the
+// legacy full-rotation layout for providers that predate explicit layout;
+// every consumer uses this one definition so a frame cannot be interpreted
+// two different ways.
+inline double scan_beam_angle_rad(const ObservationFrame& obs,
+ std::size_t i) {
+ const double inc = obs.scan_angle_increment_rad;
+ if (std::isfinite(inc) && inc != 0.0) {
+ return obs.scan_angle_min_rad + inc * static_cast<double>(i);
+ }
+ const std::size_t n = obs.ranges_m.size();
+ const double count = static_cast<double>(n > 0 ? n : 1);
+ return obs.scan_angle_min_rad +
+ 2.0 * 3.141592653589793 * static_cast<double>(i) / count;
+}
 
 bool valid_observation_frame(const ObservationFrame& frame);
 

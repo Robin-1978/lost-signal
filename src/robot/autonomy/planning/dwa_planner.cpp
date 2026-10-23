@@ -159,10 +159,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
 
   // Dynamic window from measured twist: reachable by the NEXT decision, not
   // by the end of the horizon. Never publish the rollout's terminal target.
-  const auto velocity_window = next_velocity_window(
-      est.forward_mps, 0.0, v_max, accel * dt, decel * dt);
-  const auto velocity_samples =
-      command_samples(velocity_window, 0.25, {est.forward_mps, 0.0, v_max});
+  // Reverse is a first-class motion primitive: blocked-forward escapes,
+ // rear goals, and tight docks need negative velocity. Symmetric with the
+ // chassis forward limit (clamp_command already accepts the full range).
+ const auto velocity_window = next_velocity_window(
+ est.forward_mps, -v_max, v_max, accel * dt, decel * dt);
+ const auto velocity_samples = command_samples(
+ velocity_window, 0.25, {est.forward_mps, 0.0, v_max, -v_max});
 
   const core::Vec2 goal =
       route_goal(route, est.x_m, est.y_m, config_.lookahead_m);

@@ -257,6 +257,7 @@ add_library(lost_signal_sim_scenario STATIC
   src/sim/scenario/scenario_session.cpp
   src/sim/scenario/collision_judge.cpp
   src/sim/scenario/objectives.cpp
+ src/sim/scenario/actor_sidecar.cpp
   src/sim/robot/sim_robot.cpp
 )
 target_include_directories(lost_signal_sim_scenario PUBLIC src)

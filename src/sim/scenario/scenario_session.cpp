@@ -61,6 +61,12 @@ void ScenarioSession::set_cadence(double scan_period_s,
     return;  // fail closed: keep the previous cadence, never half-apply
   }
   scheduler_.reset(scan_period_s, decision_period_s, record_period_s);
+ // Make the configured decision cadence real: the coordinator gates its
+ // planning branch on this period. Zero keeps the deployment default.
+ if (decision_period_s > 0.0) {
+ app_.set_decision_period(static_cast<robot::core::MonotonicNs>(
+ decision_period_s * 1e9));
+ }
 }
 
 void ScenarioSession::set_objectives(std::vector<std::string> place_ids,
@@ -85,13 +91,16 @@ bool ScenarioSession::cancel_goal(robot::iface::GoalHandle h) {
 void ScenarioSession::step_once() {
   constexpr double kDtS = 0.02;  // plant base rate; deadlines read sim time
   sim_time_s_ += kDtS;
-  const auto sim_stamp_ns = static_cast<robot::core::MonotonicNs>(
-      static_cast<std::int64_t>(sim_time_s_ * 1e9));
   // Truth snapshot BEFORE the step: recorded offline only.
   eval::EvalStep rec;
   rec.truth_before = world_.truth();
 
   world_.step(kDtS);
+ // Decision time follows the plant clock exactly (no accumulated-double
+ // jitter): the observation keeps its acquisition stamp, so latency is
+ // visible as a stamp older than now, while a fresh scan ticks at now.
+ const auto sim_stamp_ns = static_cast<robot::core::MonotonicNs>(
+ static_cast<std::int64_t>(world_.truth().step) * 20'000'000);
   // Truth-side judge AFTER the plant steps: mission failure, scoring, and
   // replay diagnostics. Never a ROBOT input (see collision_judge.hpp).
   rec.judge = assess_collision(world_.truth().body_x_m,
@@ -128,8 +137,8 @@ void ScenarioSession::step_once() {
     driver_.update(app_, world_);
     return;
   }
-  robot::iface::MotionCommand cmd = app_.tick(obs.stamp_ns);
-  robot::iface::ActuatorCommand act = app_.take_actuator(obs.stamp_ns);
+  robot::iface::MotionCommand cmd = app_.tick(sim_stamp_ns);
+  robot::iface::ActuatorCommand act = app_.take_actuator(sim_stamp_ns);
   suite_.consume(act);
   driver_.update(app_, world_);
 

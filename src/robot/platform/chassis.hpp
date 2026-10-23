@@ -86,6 +86,10 @@ class AckermannChassis : public IChassis {
   iface::CommandSpace command_space() const override;
   ChassisLimits limits() const override { return limits_; }
 
+ double wheel_radius_m() const { return wheel_radius_m_; }
+ double wheel_base_m() const { return wheel_base_m_; }
+ double track_width_m() const { return track_width_m_; }
+
   iface::MotionCommand clamp_command(const iface::MotionCommand& cmd,
                                      core::MonotonicNs now_ns) const override;
   iface::ActuatorCommand to_actuator(
@@ -116,6 +120,10 @@ class HolonomicChassis : public IChassis {
   }
   iface::CommandSpace command_space() const override;
   ChassisLimits limits() const override { return limits_; }
+
+ double wheel_radius_m() const { return wheel_radius_m_; }
+ double wheel_base_m() const { return wheel_base_m_; }
+ double track_width_m() const { return track_width_m_; }
 
   iface::MotionCommand clamp_command(const iface::MotionCommand& cmd,
                                      core::MonotonicNs now_ns) const override;
