@@ -22,6 +22,9 @@ ScenarioSession::ScenarioSession()
   // accepted but currently inert). Scenarios opt into slower taps
   // explicitly.
   scheduler_.reset(0.02, 0.02, 0.02);
+  // Mounts from the same description the app runs: SIM generation and the
+  // ROBOT-side TF rotate by identical extrinsics (never double/single).
+  suite_.set_mounts(app_.description().sensors);
 }
 
 ScenarioSession::ScenarioSession(
@@ -36,6 +39,7 @@ ScenarioSession::ScenarioSession(
   (void)app_.configure();
   (void)app_.activate();
   scheduler_.reset(0.02, 0.02, 0.02);
+  suite_.set_mounts(app_.description().sensors);
 }
 
 void ScenarioSession::set_cadence(double scan_period_s,

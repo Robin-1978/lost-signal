@@ -13,7 +13,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "robot/platform/robot_config.hpp"
 #include "sim/eval/robot_config.hpp"
+#include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/frame_builder.hpp"
@@ -296,25 +298,39 @@ int main(int argc, char** argv) {
   // Optional single-source configuration: --robot <config> builds the
   // session from one RobotConfig file (ROBOT description + SIM motor
   // numbers), --map <world file> replaces the demo geometry.
-  std::string robot_path, map_path;
+  std::string robot_path, sim_path, map_path;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
+    if (a == "--sim" && i + 1 < argc) sim_path = argv[++i];
     if (a == "--map" && i + 1 < argc) map_path = argv[++i];
   }
+  std::string used_config, config_err;
+  auto robot_config = robot::platform::load_default_robot_config(
+      robot_path, &used_config, &config_err);
+  if (!robot_path.empty() && !robot_config.has_value()) {
+    std::fprintf(stderr, "bad --robot file: %s\n", config_err.c_str());
+    return 1;
+  }
   std::unique_ptr<sim::scenario::ScenarioSession> session;
-  if (!robot_path.empty()) {
-    sim::eval::RobotConfig config;
-    std::string err;
-    if (!sim::eval::load_robot_config(robot_path, config, &err)) {
-      std::fprintf(stderr, "bad --robot file: %s\n", err.c_str());
-      return 1;
-    }
+  if (robot_config.has_value()) {
+    std::fprintf(stderr, "robot config: %s\n", used_config.c_str());
     session = std::make_unique<sim::scenario::ScenarioSession>(
-        sim::eval::description_from_config(config),
-        sim::eval::motor_from_config(config));
+        robot::platform::description_from_config(*robot_config),
+        sim::eval::motor_from_config(*robot_config));
   } else {
     session = std::make_unique<sim::scenario::ScenarioSession>();
+  }
+  std::string used_sim, sim_err;
+  auto sim_config = sim::eval::load_default_sim_config(sim_path, &used_sim,
+                                                       &sim_err);
+  if (!sim_path.empty() && !sim_config.has_value()) {
+    std::fprintf(stderr, "bad --sim file: %s\n", sim_err.c_str());
+    return 1;
+  }
+  if (sim_config.has_value()) {
+    std::fprintf(stderr, "sim config: %s\n", used_sim.c_str());
+    session->apply_sim_config(*sim_config);
   }
   if (!map_path.empty()) {
     std::vector<sim::world::StaticBox> boxes;

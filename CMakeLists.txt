@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Robot stack: deployable, must never depend on sim.
 add_library(lost_signal_robot_core STATIC
   src/robot/core/version.cpp
+  src/robot/core/json.cpp
   src/robot/core/transform.cpp
 )
 target_include_directories(lost_signal_robot_core PUBLIC src)
@@ -39,6 +40,7 @@ add_library(lost_signal_robot_platform STATIC
   src/robot/platform/drive_profile.cpp
   src/robot/platform/chassis_registry.cpp
   src/robot/platform/transform_tree.cpp
+  src/robot/platform/robot_config.cpp
   # Ackermann/holonomic controllers live here (not in robot_control) because
   # they call the canonical platform kinematics; robot_control must stay
   # below robot_platform (cf. the inlined twist math in wheel_controller).
@@ -234,12 +236,12 @@ target_link_libraries(lost_signal_sim_providers PUBLIC
 
 add_library(lost_signal_sim_eval STATIC
   src/sim/eval/scoring.cpp
-  src/sim/eval/json.cpp
   src/sim/eval/recording.cpp
   src/sim/eval/drive_profile_io.cpp
   src/sim/eval/map_package.cpp
   src/sim/eval/world_io.cpp
   src/sim/eval/robot_config.cpp
+  src/sim/eval/sim_config.cpp
 )
 target_include_directories(lost_signal_sim_eval PUBLIC src)
 target_link_libraries(lost_signal_sim_eval PUBLIC
@@ -514,6 +516,24 @@ target_compile_definitions(test_robot_config PRIVATE
 )
 target_link_libraries(test_robot_config PRIVATE lost_signal_sim_scenario)
 add_test(NAME robot_config COMMAND test_robot_config)
+
+add_executable(test_robot_config_native
+  tests/test_robot_config_native.cpp
+)
+target_compile_definitions(test_robot_config_native PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_robot_config_native PRIVATE lost_signal_robot_platform)
+add_test(NAME robot_config_native COMMAND test_robot_config_native)
+
+add_executable(test_sim_config
+  tests/test_sim_config.cpp
+)
+target_compile_definitions(test_sim_config PRIVATE
+  TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_sim_config PRIVATE lost_signal_sim_scenario)
+add_test(NAME sim_config COMMAND test_sim_config)
 
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

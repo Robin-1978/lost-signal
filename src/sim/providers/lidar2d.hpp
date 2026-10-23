@@ -40,6 +40,10 @@ class Sim2DLidarProvider
   // REP-103). Non-finite input is rejected, previous mount kept. Default
   // zeros = sensor at the base origin (legacy behavior).
   void set_mount(const double xyz_m[3], const double rpy_rad[3]);
+  // Pre-run geometry tuning (SIM harness only): positive beam count and
+  // range, otherwise rejected with previous kept.
+  void set_beams(int beam_count);
+  void set_max_range(float max_range_m);
 
  private:
   world::World* world_ = nullptr;

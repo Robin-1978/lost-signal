@@ -7,7 +7,7 @@
 #include <variant>
 #include <vector>
 
-namespace lost_signal::sim::eval {
+namespace lost_signal::robot::core {
 
 // Minimal JSON value: exactly the subset the recorder emits and reads.
 // No third-party dependency; the parser rejects anything outside the
@@ -71,4 +71,4 @@ std::string json_dump(const Json& value);
 // error text goes to `*error` when non-null.
 std::unique_ptr<Json> json_parse(const std::string& text, std::string* error);
 
-}  // namespace lost_signal::sim::eval
+}  // namespace lost_signal::robot::core

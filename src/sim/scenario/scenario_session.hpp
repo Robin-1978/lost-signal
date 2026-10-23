@@ -5,6 +5,7 @@
 
 #include "robot/app/robot_application.hpp"
 #include "sim/eval/episode.hpp"
+#include "sim/eval/sim_config.hpp"
 #include "sim/providers/sensor_suite.hpp"
 #include "sim/providers/static_map.hpp"
 #include "sim/scenario/collision_judge.hpp"
@@ -62,6 +63,17 @@ class ScenarioSession {
                           providers::ImuRealismConfig imu) {
     suite_.set_delivery(delivery);
     suite_.set_imu_realism(imu);
+  }
+  // Whole SIM-side setup from one sim config file (cadence, judge,
+  // realism, lidar geometry). Pre-run only: lidar geometry must precede
+  // the first step.
+  void apply_sim_config(const eval::SimConfig& sim) {
+    set_cadence(sim.scan_period_s, sim.decision_period_s,
+                sim.record_period_s);
+    set_judge_radius_m(sim.judge_radius_m);
+    set_sensor_realism(sim.delivery, sim.imu_realism);
+    suite_.lidar().set_beams(sim.lidar_beams);
+    suite_.lidar().set_max_range(sim.lidar_max_range_m);
   }
   const ObjectiveDriver& objectives() const { return driver_; }
 

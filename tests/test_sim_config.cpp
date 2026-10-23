@@ -1,0 +1,75 @@
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <string>
+
+#include "sim/eval/sim_config.hpp"
+#include "sim/scenario/scenario_session.hpp"
+
+int main() {
+  using namespace lost_signal;
+  const std::string dir =
+      std::string(TEST_CONFIG_DIR);  // CMake-injected configs path
+
+  // Default seed loads with code-default values.
+  {
+    sim::eval::SimConfig cfg;
+    std::string err;
+    assert(sim::eval::load_sim_config(dir + "/sim/default.json", cfg, &err));
+    assert(cfg.scan_period_s == 0.02 && cfg.record_period_s == 0.02);
+    assert(cfg.judge_radius_m == 0.4);
+    assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
+    assert(cfg.delivery.latency_steps == 0);
+    assert(cfg.delivery.drop_probability == 0.0);
+    assert(cfg.imu_realism.gyro_bias_radps == 0.0);
+  }
+  // Overrides + session apply: record disabled empties the episode,
+  // lidar geometry reaches the provider.
+  {
+    sim::eval::SimConfig cfg;
+    std::string err;
+    assert(sim::eval::load_sim_config(dir + "/sim/default.json", cfg, &err));
+    cfg.record_period_s = 0.0;  // record tap off
+    cfg.lidar_beams = 36;
+    sim::scenario::ScenarioSession session;
+    session.setup_world().add_place({"dock", 6.0, 0.0, 0.0});
+    robot::iface::TaskRequest req;
+    req.request_id = "s1";
+    req.place_id = "dock";
+    assert(session.request_goal(req).valid());
+    session.apply_sim_config(cfg);
+    for (int i = 0; i < 10; ++i) session.step_once();
+    assert(session.episode().steps().empty());  // nothing recorded
+  }
+  // Fail-closed cases.
+  {
+    const std::string tmp =
+        (std::filesystem::temp_directory_path() / "test_sim_cfg.json")
+            .string();
+    auto write = [&](const std::string& body) {
+      std::FILE* fp = std::fopen(tmp.c_str(), "wb");
+      std::fputs(body.c_str(), fp);
+      std::fclose(fp);
+    };
+    sim::eval::SimConfig cfg;
+    std::string err;
+    write(R"({"cadence": {"scan_s": -1}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"delivery": {"drop_probability": 1.5}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"lidar": {"beams": 0}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({"imu_realism": {"gyro_noise_radps": -0.1}})");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({bad json)");
+    assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+    write(R"({})");  // empty = all defaults
+    assert(sim::eval::load_sim_config(tmp, cfg, &err));
+    assert(cfg.lidar_beams == 72 && cfg.judge_radius_m == 0.4);
+    std::filesystem::remove(tmp);
+  }
+
+  std::printf("sim_config ok\n");
+  return 0;
+}

@@ -1,11 +1,11 @@
-#include "sim/eval/json.hpp"
+#include "robot/core/json.hpp"
 
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <stdexcept>
 
-namespace lost_signal::sim::eval {
+namespace lost_signal::robot::core {
 
 const Json* Json::find(const std::string& key) const {
   if (!is_object()) return nullptr;
@@ -319,4 +319,4 @@ std::unique_ptr<Json> json_parse(const std::string& text, std::string* error) {
   return root;
 }
 
-}  // namespace lost_signal::sim::eval
+}  // namespace lost_signal::robot::core

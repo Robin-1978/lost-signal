@@ -84,6 +84,19 @@ void SimSensorSuite::set_imu_realism(ImuRealismConfig config) {
   imu_.set_realism(config);  // validated device-side, fail closed there
 }
 
+void SimSensorSuite::set_mounts(
+    const std::vector<robot::platform::SensorMount>& sensors) {
+  for (const auto& s : sensors) {
+    if (s.link == lidar_.descriptor().frame_id) {
+      lidar_.set_mount(s.xyz_m, s.rpy_rad);
+    } else if (s.link == imu_.descriptor().frame_id) {
+      imu_.set_mount(s.xyz_m, s.rpy_rad);
+    }
+    // Motion needs no mount (joint-space + base twist, documented on the
+    // endpoint); anything else has no provider yet and is ignored.
+  }
+}
+
 void SimSensorSuite::consume(const robot::iface::ActuatorCommand& cmd) {
   motion_.consume_command(cmd);
 }

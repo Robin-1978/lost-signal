@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "sim/eval/json.hpp"
+#include "robot/core/json.hpp"
 
 namespace lost_signal::sim::providers {
 namespace {
@@ -29,12 +29,12 @@ bool write_all(const std::string& path, const std::string& content,
 bool export_episode(const std::string& path, const std::string& map_id,
                     std::uint64_t map_revision,
                     const eval::EpisodeRecorder& episode, std::string* error) {
-  eval::Json::Object header;
-  header.emplace_back("v", eval::Json::Num(2));
-  header.emplace_back("kind", eval::Json::Str("episode"));
-  header.emplace_back("map", eval::Json::Str(map_id));
-  header.emplace_back("rev", eval::Json::Num(static_cast<double>(map_revision)));
-  std::string content = eval::json_dump(eval::Json::Obj(std::move(header)));
+  robot::core::Json::Object header;
+  header.emplace_back("v", robot::core::Json::Num(2));
+  header.emplace_back("kind", robot::core::Json::Str("episode"));
+  header.emplace_back("map", robot::core::Json::Str(map_id));
+  header.emplace_back("rev", robot::core::Json::Num(static_cast<double>(map_revision)));
+  std::string content = robot::core::json_dump(robot::core::Json::Obj(std::move(header)));
   content += "\n";
   for (const auto& step : episode.steps()) {
     content +=
@@ -55,15 +55,15 @@ bool ReplayProvider::load(const std::string& path, std::string* error) {
     return false;
   }
   std::string header_error;
-  auto header = eval::json_parse(line, &header_error);
+  auto header = robot::core::json_parse(line, &header_error);
   if (header == nullptr || !header->is_object()) {
     if (error) *error = "invalid header: " + header_error;
     return false;
   }
-  const eval::Json* kind = header->find("kind");
-  const eval::Json* map = header->find("map");
-  const eval::Json* rev = header->find("rev");
-  const eval::Json* v = header->find("v");
+  const robot::core::Json* kind = header->find("kind");
+  const robot::core::Json* map = header->find("map");
+  const robot::core::Json* rev = header->find("rev");
+  const robot::core::Json* v = header->find("v");
   if (kind == nullptr || !kind->is_str() || kind->as_str() != "episode" ||
       map == nullptr || !map->is_str() || rev == nullptr || !rev->is_num() ||
       v == nullptr || !v->is_num() || v->as_num() != 2.0) {

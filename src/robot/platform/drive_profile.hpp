@@ -9,9 +9,11 @@ namespace lost_signal::robot::platform {
 // plant. Geometry matches the chassis factory defaults; drive motors are
 // the DC force curve (stall force + free speed) integrated against the
 // per-wheel equivalent mass, so the speed lag is emergent, never fitted;
-// steers are velocity servos. JSON file loading lives on the SIM side
-// (sim/eval/drive_profile_io), which merges a file over these defaults —
-// ROBOT never parses files.
+// steers are velocity servos. The hardware contract file
+// ("lost-signal-robot/1") loads on both sides: native via
+// robot::platform::load_robot_config, SIM-side via sim/eval translation
+// (drive_profile_io merges legacy flat files the same way). ROBOT never
+// reads SIM truth — only this contract.
 struct DriveProfile {
   std::string chassis_kind = "differential";
   double wheel_radius_m = 0.1;

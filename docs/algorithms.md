@@ -248,9 +248,11 @@ route, pre-activation hold).
   factory defaults per chassis kind (same numbers `make_chassis` builds
   with; unknown kinds fail closed). Speed lag is emergent
   (tau = m * free / stall), never a fitted constant.
-- JSON loading lives on the SIM side (`sim/eval/drive_profile_io`): a file
-  merges over the defaults, so a measured step response can retune the
-  plant without forking geometry. ROBOT never parses files.
+- The hardware contract file (`configs/robot/*.json`) loads on both sides
+  (native via `robot::platform::load_robot_config`, SIM via translation),
+  so a measured step response can retune the plant without forking
+  geometry. Config files carry the hardware contract only;
+  ROBOT never reads SIM truth.
 - Stops are closed-loop: each chassis holds zero through its wheel loops
   when joints are known (active electrical braking); blind stops stay
   SafeZero. The SIM service brake (`sim/world/service_brake.hpp`) is the

@@ -87,6 +87,16 @@ void Sim2DLidarProvider::set_mount(const double xyz_m[3],
   }
 }
 
+void Sim2DLidarProvider::set_beams(int beam_count) {
+  if (beam_count > 0) beam_count_ = beam_count;
+}
+
+void Sim2DLidarProvider::set_max_range(float max_range_m) {
+  if (std::isfinite(max_range_m) && max_range_m > 0.0f) {
+    max_range_m_ = max_range_m;
+  }
+}
+
 bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
                               bool include_actors) {
   if (world_ == nullptr || beam_count_ <= 0) return false;

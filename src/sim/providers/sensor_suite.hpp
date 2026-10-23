@@ -5,6 +5,7 @@
 
 #include "robot/app/robot.hpp"
 #include "robot/iface/envelope.hpp"
+#include "robot/platform/description.hpp"
 #include "sim/providers/lidar2d.hpp"
 #include "sim/providers/sim_imu.hpp"
 #include "sim/providers/sim_motion.hpp"
@@ -52,6 +53,11 @@ class SimSensorSuite {
   void set_imu_mount(const double xyz_m[3], const double rpy_rad[3]) {
     imu_.set_mount(xyz_m, rpy_rad);
   }
+  // Bulk mounts from the robot description: matched by link name against
+  // each provider's frame_id (lidar_link, imu_link). Unmatched sensors
+  // are ignored; motion needs no mount (joint-space + base twist).
+  void set_mounts(
+      const std::vector<robot::platform::SensorMount>& sensors);
 
   SimMotionEndpoint& motion() { return motion_; }
   Sim2DLidarProvider& lidar() { return lidar_; }

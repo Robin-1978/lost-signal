@@ -7,9 +7,12 @@
 #include <limits>
 #include <sstream>
 
-#include "sim/eval/json.hpp"
+#include "robot/core/json.hpp"
 
 namespace lost_signal::sim::eval {
+using robot::core::Json;
+using robot::core::json_dump;
+using robot::core::json_parse;
 
 namespace {
 

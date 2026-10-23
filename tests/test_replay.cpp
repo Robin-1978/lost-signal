@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "robot/app/robot_application.hpp"
-#include "sim/eval/json.hpp"
+#include "robot/core/json.hpp"
 #include "sim/eval/recording.hpp"
 #include "sim/providers/replay.hpp"
 #include "sim/providers/sim_motion.hpp"
@@ -54,31 +54,31 @@ int main() {
 
   // 1. JSON subset: round trip incl. escapes, unicode, nesting.
   {
-    sim::eval::Json::Object inner;
-    inner.emplace_back("x", sim::eval::Json::Num(3.25));
-    sim::eval::Json::Object o;
-    o.emplace_back("s", sim::eval::Json::Str("a\"b\\c\n\xc3\xa9"));
-    o.emplace_back("n", sim::eval::Json::Null());
-    o.emplace_back("b", sim::eval::Json::Bool(true));
-    o.emplace_back("nested", sim::eval::Json::Obj(std::move(inner)));
-    std::string text = sim::eval::json_dump(sim::eval::Json::Obj(o));
+    robot::core::Json::Object inner;
+    inner.emplace_back("x", robot::core::Json::Num(3.25));
+    robot::core::Json::Object o;
+    o.emplace_back("s", robot::core::Json::Str("a\"b\\c\n\xc3\xa9"));
+    o.emplace_back("n", robot::core::Json::Null());
+    o.emplace_back("b", robot::core::Json::Bool(true));
+    o.emplace_back("nested", robot::core::Json::Obj(std::move(inner)));
+    std::string text = robot::core::json_dump(robot::core::Json::Obj(o));
     std::string err;
-    auto back = sim::eval::json_parse(text, &err);
+    auto back = robot::core::json_parse(text, &err);
     assert(back && back->is_object());
     assert(back->find("s")->as_str() == "a\"b\\c\n\xc3\xa9");
-    assert(sim::eval::json_dump(*back) == text);  // canonical re-dump
+    assert(robot::core::json_dump(*back) == text);  // canonical re-dump
   }
 
   // 2. Malformed documents are rejected with a reason, never throw.
   {
     std::string err;
-    assert(!sim::eval::json_parse("{bad", &err) && !err.empty());
-    assert(!sim::eval::json_parse("[1,]", &err));
-    assert(!sim::eval::json_parse("{\"a\":0x10}", &err));
-    assert(!sim::eval::json_parse("{\"a\":1e}", &err));
-    assert(!sim::eval::json_parse("{\"a\":\"\\q\"}", &err));
-    assert(!sim::eval::json_parse("{\"a\":1} trailing", &err));
-    assert(!sim::eval::json_parse("", &err));
+    assert(!robot::core::json_parse("{bad", &err) && !err.empty());
+    assert(!robot::core::json_parse("[1,]", &err));
+    assert(!robot::core::json_parse("{\"a\":0x10}", &err));
+    assert(!robot::core::json_parse("{\"a\":1e}", &err));
+    assert(!robot::core::json_parse("{\"a\":\"\\q\"}", &err));
+    assert(!robot::core::json_parse("{\"a\":1} trailing", &err));
+    assert(!robot::core::json_parse("", &err));
     sim::eval::RecordedStep s;
     std::string rerr;
     assert(!sim::eval::step_from_json_line("not json", s, &rerr));
