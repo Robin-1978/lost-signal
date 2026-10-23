@@ -108,6 +108,10 @@ GlobalSearchResult GlobalSearcher::search(
   const double step = config_.coarse_position_step_m;
   const int gx0 = 0, gy0 = 0;
   const int gx1 = static_cast<int>(map.width), gy1 = static_cast<int>(map.height);
+  // Batched scoring (slot = ih — stable per heading, traversal order
+  // untouched so survivor ranking cannot change).
+  ScanMatcher::Batch batch(coarse_matcher, beams, body_roll_rad,
+                           body_pitch_rad);
   // Stride in cells so visited centers sit ~step apart regardless of raster.
   const int cell_stride =
       std::max(1, static_cast<int>(std::round(step / map.resolution_m)));
@@ -126,9 +130,8 @@ GlobalSearchResult GlobalSearcher::search(
         }
         const double heading =
             core::wrap_angle(-core::kPi + ih * config_.coarse_heading_step_rad);
-        const PoseScore pose = coarse_matcher.score_pose(
-            cx, cy, heading, beams, map, body_roll_rad, body_pitch_rad,
-            body_z_m);
+        const PoseScore pose = batch.score(static_cast<std::size_t>(ih), cx,
+                                           cy, heading, map, body_z_m);
         if (!pose.has_evidence) continue;
         consider({cx, cy, heading, pose.score, pose.overlap});
       }

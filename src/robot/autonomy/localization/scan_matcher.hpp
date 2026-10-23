@@ -105,6 +105,47 @@ class ScanMatcher {
                        double body_pitch_rad = 0.0,
                        double body_z_m = 0.0) const;
 
+  // Batched scorer: same math as score_pose, pose-invariant work hoisted
+  // (beam trig per batch, rotations per heading slot). Scores are
+  // bitwise identical to score_pose — only redundant libm calls are gone.
+  // Slots name heading cells (caller passes a stable slot per heading);
+  // a slot re-fills when its yaw differs, so misuse degrades to today's
+  // cost, never to wrong rotations.
+  class Batch {
+   public:
+    Batch(const ScanMatcher& matcher, const std::vector<ScanBeam>& beams,
+          double body_roll_rad, double body_pitch_rad);
+    std::size_t usable_returns() const { return usable_returns_; }
+    PoseScore score(std::size_t slot, double x_m, double y_m, double yaw_rad,
+                    const iface::MapSnapshot& map, double body_z_m);
+
+   private:
+    struct BeamT {
+      double range = 0.0, cb = 1.0, sb = 0.0;
+      bool hit = false;
+    };
+    struct RotSet {
+      bool ready = false;
+      double yaw_rad = 0.0;
+      core::Quaternion sensor_q{0.0, 0.0, 0.0, 1.0};
+      core::Vec3 mount_off{0.0, 0.0, 0.0};
+      std::vector<double> dx, dy, free_c, free_s;
+    };
+    RotSet& rot_for(std::size_t slot, double yaw_rad);
+    const core::RigidTransform& mount() const { return *mount_; }
+    const core::RigidTransform* mount_ = nullptr;
+    double roll_rad_ = 0.0, pitch_rad_ = 0.0;
+    std::vector<BeamT> beams_;
+    std::size_t usable_returns_ = 0;
+    std::vector<RotSet> rots_;
+  };
+  // Batch over prepared beams for one search call (roll/pitch fixed for
+  // the call, as in every current caller).
+  Batch begin_batch(const std::vector<ScanBeam>& beams, double body_roll_rad,
+                    double body_pitch_rad) const {
+    return Batch(*this, beams, body_roll_rad, body_pitch_rad);
+  }
+
  private:
   ScanMatcherConfig config_;
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};

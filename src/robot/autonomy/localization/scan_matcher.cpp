@@ -34,8 +34,9 @@ double endpoint_score(const GridProjector& projector, double wx, double wy) {
   return value >= 50 ? 1.0 : -0.20;
 }
 
-double free_ray_score(const GridProjector& projector, double sx, double sy,
-                      double beam_angle, double max_range) {
+double free_ray_score_cs(const GridProjector& projector, double sx,
+                           double sy, double beam_cos, double beam_sin,
+                           double max_range) {
   // No-return beams are weak evidence: probe a few interior points plus the
   // endpoint instead of marching the whole ray per hypothesis.
   const double probes[3] = {
@@ -46,8 +47,8 @@ double free_ray_score(const GridProjector& projector, double sx, double sy,
   for (double distance : probes) {
     if (!(distance < max_range + 1e-9)) continue;
     int gx, gy;
-    if (!projector.project(sx + distance * std::cos(beam_angle),
-                           sy + distance * std::sin(beam_angle), gx, gy)) {
+    if (!projector.project(sx + distance * beam_cos,
+                           sy + distance * beam_sin, gx, gy)) {
       return observed_known ? 0.0 : -0.25;
     }
     const int value = projector.at(gx, gy);
@@ -61,9 +62,100 @@ double free_ray_score(const GridProjector& projector, double sx, double sy,
   return observed_known ? 1.0 : 0.0;
 }
 
+double free_ray_score(const GridProjector& projector, double sx, double sy,
+                      double beam_angle, double max_range) {
+  return free_ray_score_cs(projector, sx, sy, std::cos(beam_angle),
+                           std::sin(beam_angle), max_range);
+}
+
 }  // namespace
 
 ScanMatcher::ScanMatcher(ScanMatcherConfig config) : config_(config) {}
+
+ScanMatcher::Batch::Batch(const ScanMatcher& matcher,
+                           const std::vector<ScanBeam>& beams,
+                           double body_roll_rad, double body_pitch_rad)
+    : mount_(&matcher.base_from_lidar_),
+      roll_rad_(body_roll_rad),
+      pitch_rad_(body_pitch_rad) {
+  beams_.reserve(beams.size());
+  for (const auto& b : beams) {
+    BeamT t;
+    t.range = b.range;
+    t.cb = std::cos(b.angle);
+    t.sb = std::sin(b.angle);
+    t.hit = b.hit;
+    beams_.push_back(t);
+    if (b.hit) ++usable_returns_;
+  }
+}
+
+ScanMatcher::Batch::RotSet& ScanMatcher::Batch::rot_for(std::size_t slot,
+                                                        double yaw_rad) {
+  if (slot >= rots_.size()) rots_.resize(slot + 1);
+  RotSet& r = rots_[slot];
+  if (r.ready && r.yaw_rad == yaw_rad) return r;  // stable slot: reuse
+  r.yaw_rad = yaw_rad;
+  const core::Quaternion body_q =
+      core::quaternion_from_rpy(roll_rad_, pitch_rad_, yaw_rad);
+  r.sensor_q =
+      core::quaternion_multiply(body_q, mount().rotation);
+  r.mount_off =
+      core::rotate_vector(body_q, mount().translation_m);
+  r.dx.assign(beams_.size(), 0.0);
+  r.dy.assign(beams_.size(), 0.0);
+  r.free_c.assign(beams_.size(), 1.0);
+  r.free_s.assign(beams_.size(), 0.0);
+  for (std::size_t i = 0; i < beams_.size(); ++i) {
+    const core::Vec3 d = core::rotate_vector(
+        r.sensor_q, {beams_[i].cb, beams_[i].sb, 0.0});
+    r.dx[i] = d.x;
+    r.dy[i] = d.y;
+    const double az = std::atan2(d.y, d.x);
+    r.free_c[i] = std::cos(az);
+    r.free_s[i] = std::sin(az);
+  }
+  r.ready = true;
+  return r;
+}
+
+PoseScore ScanMatcher::Batch::score(std::size_t slot, double x_m, double y_m,
+                                    double yaw_rad,
+                                    const iface::MapSnapshot& map,
+                                    double body_z_m) {
+  (void)body_z_m;  // 2D raster: height rides the sensor pose, not the score
+  PoseScore out;
+  out.usable_returns = usable_returns_;
+  if (beams_.empty()) return out;
+  RotSet& r = rot_for(slot, yaw_rad);
+  const GridProjector projector(map);
+  const double sx = x_m + r.mount_off.x;
+  const double sy = y_m + r.mount_off.y;
+  double score = 0.0;
+  double total_weight = 0.0;
+  std::size_t known = 0, matches = 0;
+  for (std::size_t i = 0; i < beams_.size(); ++i) {
+    const BeamT& beam = beams_[i];
+    const double wx = sx + beam.range * r.dx[i];
+    const double wy = sy + beam.range * r.dy[i];
+    const double value =
+        beam.hit ? endpoint_score(projector, wx, wy)
+                 : free_ray_score_cs(projector, sx, sy, r.free_c[i],
+                                     r.free_s[i], beam.range);
+    const double weight = beam.hit ? 1.0 : 0.15;
+    score += weight * value;
+    total_weight += weight;
+    if (value != 0.0) {
+      ++known;
+      if (value > 0.0 && beam.hit) ++matches;
+    }
+  }
+  if (known == 0 || usable_returns_ == 0) return out;
+  out.has_evidence = true;
+  out.overlap = static_cast<double>(matches) / static_cast<double>(usable_returns_);
+  out.score = score / std::max(1e-9, total_weight);
+  return out;
+}
 
 std::vector<ScanBeam> ScanMatcher::prepare_beams(
     const std::vector<float>& ranges, double angle_min_rad,
@@ -100,49 +192,11 @@ PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
                                   double body_roll_rad,
                                   double body_pitch_rad,
                                   double body_z_m) const {
-  PoseScore out;
-  std::size_t hit_returns = 0;
-  for (const auto& beam : beams) {
-    if (beam.hit) ++hit_returns;
-  }
-  out.usable_returns = hit_returns;
-  if (beams.empty()) return out;
-  const GridProjector projector(map);
-  // 3D sensor pose for this hypothesis: SE(2) hypothesis + slope attitude.
-  const core::RigidTransform map_from_base{
-      {x_m, y_m, body_z_m},
-      core::quaternion_from_rpy(body_roll_rad, body_pitch_rad, yaw_rad)};
-  const core::RigidTransform map_from_sensor =
-      core::compose(map_from_base, base_from_lidar_);
-  const double sx = map_from_sensor.translation_m.x;
-  const double sy = map_from_sensor.translation_m.y;
-  double score = 0.0;
-  double total_weight = 0.0;
-  std::size_t known = 0, matches = 0;
-  for (const auto& beam : beams) {
-    const core::Vec3 dir = core::rotate_vector(
-        map_from_sensor.rotation, {std::cos(beam.angle), std::sin(beam.angle),
-                                   0.0});
-    const double wx = sx + beam.range * dir.x;
-    const double wy = sy + beam.range * dir.y;
-    // Free-ray azimuth: projection of the tilted beam onto the ground.
-    const double beam_angle = std::atan2(dir.y, dir.x);
-    const double value =
-        beam.hit ? endpoint_score(projector, wx, wy)
-                 : free_ray_score(projector, sx, sy, beam_angle, beam.range);
-    const double weight = beam.hit ? 1.0 : 0.15;
-    score += weight * value;
-    total_weight += weight;
-    if (value != 0.0) {
-      ++known;
-      if (value > 0.0 && beam.hit) ++matches;
-    }
-  }
-  if (known == 0 || hit_returns == 0) return out;
-  out.has_evidence = true;
-  out.overlap = static_cast<double>(matches) / static_cast<double>(hit_returns);
-  out.score = score / std::max(1e-9, total_weight);
-  return out;
+  // Single implementation: one-shot batch scores identically (same ops,
+  // same order), so the public path and the batched search path cannot
+  // disagree.
+  Batch batch(*this, beams, body_roll_rad, body_pitch_rad);
+  return batch.score(0, x_m, y_m, yaw_rad, map, body_z_m);
 }
 
 ScanMatchResult ScanMatcher::localize(
@@ -207,6 +261,10 @@ ScanMatchResult ScanMatcher::localize(
       std::ceil(config_.search_translation_m / config_.translation_step_m));
   const int h_steps = static_cast<int>(
       std::ceil(config_.search_heading_rad / config_.heading_step_rad));
+  // Batched scoring: beam trig once per call, rotations once per heading
+  // slot (slot = ih + h_steps — stable per heading, traversal order
+  // untouched so hypothesis ranking cannot change).
+  Batch batch(*this, beams, body_roll_rad, body_pitch_rad);
   for (int iy = -t_steps; iy <= t_steps; ++iy) {
     for (int ix = -t_steps; ix <= t_steps; ++ix) {
       for (int ih = -h_steps; ih <= h_steps; ++ih) {
@@ -214,9 +272,9 @@ ScanMatchResult ScanMatcher::localize(
         const double cy = odom_y_m + iy * config_.translation_step_m;
         const double heading =
             core::wrap_angle(odom_heading_rad + ih * config_.heading_step_rad);
-        const PoseScore pose = score_pose(cx, cy, heading, beams, map,
-                                          body_roll_rad, body_pitch_rad,
-                                          body_z_m);
+        const PoseScore pose = batch.score(
+            static_cast<std::size_t>(ih + h_steps), cx, cy, heading, map,
+            body_z_m);
         if (!pose.has_evidence) continue;
         Hypothesis h{cx, cy, heading, pose.score, pose.overlap};
         const auto existing = std::find_if(
