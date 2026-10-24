@@ -45,11 +45,9 @@ class ScenarioSession {
   // the run. Never called by ROBOT code; never during a live tick.
   world::World& setup_world() { return world_; }
   // Multi-rate cadences (sim seconds; 0 disables a task). Scan and record
-  // are scheduler taps; the decision tap is currently inert — the ROBOT
-  // decision branch rate is gated inside AutonomyCoordinator by its own
-  // decision_period_ns (default 10 Hz), not by decision_period_s here.
-  // Scenarios may slow the scan/record taps without touching
-  // wall-clock-free determinism.
+ // are independent scheduler taps. The decision tap gates ROBOT ticks while
+ // scan delivery remains independent, so stale observations exercise the
+ // same freshness path as deployment. All timing stays wall-clock-free.
   void set_cadence(double scan_period_s, double decision_period_s,
                    double record_period_s);
   // Objective list: place_ids resolved by the ROBOT map provider through

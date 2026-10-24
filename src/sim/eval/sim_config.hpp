@@ -19,7 +19,7 @@ inline constexpr char kSimConfigFormat[] = "lost-signal-sim/1";
 
 struct SimConfig {
   double scan_period_s = 0.02;
-  double decision_period_s = 0.02;  // accepted, currently inert (see scheduler)
+ double decision_period_s = 0.02;  // ROBOT decision cadence in simulation time
   double record_period_s = 0.02;
   double judge_radius_m = 0.4;
   providers::DeliveryConfig delivery;      // all zeros = passthrough
