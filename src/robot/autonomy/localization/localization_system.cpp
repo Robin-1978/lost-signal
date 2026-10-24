@@ -6,6 +6,7 @@ namespace lost_signal::robot::autonomy {
 
 void LocalizationSystem::reset() {
   supervisor_.reset(false);
+ global_search_.cancel();
   startup_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;
@@ -163,13 +164,16 @@ void LocalizationSystem::run_localization(
     // kLost: fall through — the supervisor cadence (or this tick's
     // global branch) re-runs the whole-map search with fresh evidence.
   }
-  if (act == LocalizationAction::kDefer) return;
-  const bool attempted_global = act == LocalizationAction::kGlobalRelocalization;
+ // An in-flight whole-map search advances on every localization tick even
+ // while the supervisor's retry cadence says "defer". The cadence starts a
+ // search; it must not throttle the bounded slices inside that search.
+ if (act == LocalizationAction::kDefer && !global_search_.active()) return;
+ const bool requested_global = act == LocalizationAction::kGlobalRelocalization;
   // Mapless startup: no static raster exists, so neither local matching nor
   // the whole-map search can constrain the pose. Seed the odometry origin
   // once (no teleport: the current estimate IS the origin) and let the SLAM
   // session own the drift it can observe. Latched for the session.
- if (attempted_global && !map.has_known_occupancy() &&
+ if (requested_global && !map.has_known_occupancy() &&
  !slam_origin_seeded_) {
     const StartupDecision startup =
         select_startup_mode(false, /*has_prior_pose=*/false);
@@ -181,15 +185,23 @@ void LocalizationSystem::run_localization(
     supervisor_.record_global(true, ScanMatchResult{});
     return;
   }
-  if (attempted_global) {
+ if (requested_global || global_search_.active()) {
     // Whole-map search: kidnap recovery and cold start. An accepted global
     // fix establishes the estimate and marks the supervisor localized; a
     // rejection is evidence only and never moves the estimate. An
     // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
     // next scans disambiguate) instead of guessing now.
-    GlobalSearchResult global = global_search_.search(
-        obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
-        map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
+ if (!global_search_.active()) {
+ global_search_.begin(
+ obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+ map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
+ }
+ const std::optional<GlobalSearchResult> update = global_search_.advance();
+ if (!update.has_value()) {
+ action = "global_relocalization:search pending";
+ return;
+ }
+ GlobalSearchResult global = *update;
  bool accept_global = global.accepted;
  bool require_temporal_confirmation = false;
  if (global.accepted && !supervisor_.localized()) {

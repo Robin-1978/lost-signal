@@ -57,9 +57,9 @@ struct LocalizationSupervisorConfig {
  // the maximum trusted jump allowed from a whole-map candidate.
  double trusted_global_jump_m = 0.75;
  double trusted_global_jump_sigma_factor = 3.0;
-  // Repeated independent rejections are evidence the local hypothesis is
-  // unusable and may request the rate-limited global path. A single
-  // rejection is not.
+ // Diagnostic threshold retained for telemetry compatibility. Rejections
+ // never trigger global recovery by themselves; fused covariance must cross
+ // the loss threshold first.
   std::size_t local_failure_recovery_threshold = 3;
 };
 

@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -126,6 +128,12 @@ struct GlobalSearchResult {
 class GlobalSearcher {
  public:
   explicit GlobalSearcher(GlobalSearchConfig config = GlobalSearchConfig{});
+ ~GlobalSearcher();
+
+ GlobalSearcher(const GlobalSearcher&) = delete;
+ GlobalSearcher& operator=(const GlobalSearcher&) = delete;
+ GlobalSearcher(GlobalSearcher&&) noexcept;
+ GlobalSearcher& operator=(GlobalSearcher&&) noexcept;
 
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
     base_from_lidar_ = base_from_lidar;
@@ -142,9 +150,24 @@ class GlobalSearcher {
                             double body_pitch_rad = 0.0,
                             double body_z_m = 0.0) const;
 
+ // Cooperative whole-map search for real-time callers. begin() freezes one
+ // scan and map revision; advance() evaluates a deterministic bounded slice
+ // and returns a result only when every coarse/refine/final candidate has
+ // been considered. Splitting work changes latency, never ranking or gates.
+ void begin(const std::vector<float>& ranges, double angle_min_rad,
+ double angle_increment_rad, const iface::MapSnapshot& map,
+ core::MonotonicNs stamp_ns, double body_roll_rad = 0.0,
+ double body_pitch_rad = 0.0, double body_z_m = 0.0);
+ std::optional<GlobalSearchResult> advance(
+ std::size_t work_budget = 512);
+ bool active() const;
+ void cancel();
+
  private:
+ struct WorkState;
   GlobalSearchConfig config_;
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
+ std::unique_ptr<WorkState> work_;
 };
 
 }  // namespace lost_signal::robot::autonomy

@@ -191,7 +191,8 @@ int main() {
   }
 
   // 4. Supervisor: unknown start -> global attempt; accept -> localized;
-  // cadence gates local corrections; repeated rejections escalate.
+ // cadence gates local corrections; rejected local matches alone do not
+ // trigger a whole-map search while fused covariance remains bounded.
   {
     LocalizationSupervisor sup;
     sup.reset(false);
@@ -210,8 +211,11 @@ int main() {
     sup.record_local(false, bad);
     sup.record_local(false, bad);
     sup.record_local(false, bad);
-    assert(sup.next(10.0, 2.0, 0.0, 0.0, h) ==
-           LocalizationAction::kGlobalRelocalization);
+ assert(sup.next(10.0, 2.0, 0.0, 0.0, h) ==
+ LocalizationAction::kLocalCorrection);
+ h.position_sigma_m = 0.5;
+ assert(sup.next(12.1, 2.0, 0.0, 0.0, h) ==
+ LocalizationAction::kGlobalRelocalization);
   }
 
   // 5. Coordinator wiring: seeded start localizes on the first match,
@@ -258,6 +262,21 @@ int main() {
     assert(std::abs(r.y_m - 0.0) < 0.5);
     assert(std::abs(r.yaw_rad) < 0.2);
     assert(r.coarse_evaluations > 0);
+ // Cooperative execution visits the same candidates in the same order and
+ // therefore returns the bit-identical decision without one long tick.
+ searcher.begin(ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 1);
+ std::optional<GlobalSearchResult> incremental;
+ int slices = 0;
+ while (!incremental.has_value() && slices < 2000) {
+ incremental = searcher.advance(256);
+ ++slices;
+ }
+ assert(incremental.has_value() && slices > 1);
+ assert(incremental->accepted == r.accepted);
+ assert(incremental->x_m == r.x_m && incremental->y_m == r.y_m);
+ assert(incremental->yaw_rad == r.yaw_rad);
+ assert(incremental->score == r.score);
+ assert(incremental->coarse_evaluations == r.coarse_evaluations);
 
  // A sparse prior may contain occupied returns but no surveyed free cells.
  // Unknown cells remain eligible seeds; they are neutral until the measured
@@ -295,7 +314,7 @@ int main() {
     AutonomyCoordinator coord;
     assert(coord.configure().ok && coord.activate().ok);
     // No seed_pose: the supervisor starts unlocalized and the first tick
-    // runs the whole-map search.
+ // begins the whole-map search. Work is spread over bounded updates.
     iface::ObservationFrame o;
     o.sequence = 1;
     o.stamp_ns = 20'000'000;
@@ -307,8 +326,12 @@ int main() {
     o.scan_angle_min_rad = -M_PI;
     o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
     o.imu_valid = true;
-    coord.ingest_observation(o);
-    coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+ for (int i = 0; i < 1000 && !coord.localized(); ++i) {
+ o.sequence = static_cast<std::uint64_t>(i + 1);
+ o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+ coord.ingest_observation(o);
+ coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+ }
     assert(coord.localized());
     assert(std::abs(coord.estimate().x_m - 1.0) < 0.6);
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
@@ -410,7 +433,9 @@ int main() {
     AutonomyCoordinator coord;
     assert(coord.configure().ok && coord.activate().ok);
     auto ranges = scan_from(1.0, 0.0, 0.0, uniform);
-    for (int k = 1; k <= 25; ++k) {
+ bool saw_seeded = false;
+ bool saw_tracking = false;
+ for (int k = 1; k <= 600 && !saw_tracking; ++k) {
       iface::ObservationFrame o;
       o.sequence = static_cast<std::uint64_t>(k);
       o.stamp_ns = k * 20'000'000;
@@ -426,14 +451,16 @@ int main() {
       o.imu_valid = true;
       coord.ingest_observation(o);
       coord.update(uniform, iface::ChannelHealth{}, o.stamp_ns);
-      if (k == 1) {
-        // Ambiguous global seeds deferred tracking instead of guessing.
-        assert(coord.last_localization_action() == "startup-seeded");
-      }
-      if (k == 2) {
-        assert(coord.last_localization_action() == "startup-tracking");
-      }
+ // Ambiguous global seeds deferred tracking instead of guessing. The
+ // cooperative search may need many bounded ticks before that decision.
+ if (coord.last_localization_action() == "startup-seeded") {
+ saw_seeded = true;
+ } else if (saw_seeded &&
+ coord.last_localization_action() == "startup-tracking") {
+ saw_tracking = true;
+ }
     }
+ assert(saw_seeded && saw_tracking);
     // Genuinely unobservable: still unlocalized, estimate never teleported
     // to a corridor twin (odometry holding near the origin).
     assert(!coord.localized());

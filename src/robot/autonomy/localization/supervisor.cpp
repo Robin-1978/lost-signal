@@ -62,14 +62,12 @@ LocalizationAction LocalizationSupervisor::next(
       !finite_uncertainty ||
       health.position_sigma_m >= config_.lost_position_sigma_m ||
       health.heading_sigma_rad >= config_.lost_heading_sigma_rad;
-  const bool repeated_local_failure =
-      config_.local_failure_recovery_threshold > 0 &&
-      consecutive_local_failures_ >= config_.local_failure_recovery_threshold;
-  const bool evidence_untrusted =
-      !health.valid || !std::isfinite(health.confidence) ||
-      !std::isfinite(health.age_s) || health.confidence < 0.35 ||
-      health.age_s > 2.0;
-  if (pose_uncertain || evidence_untrusted || repeated_local_failure) {
+ // A rejected scan match is weak negative evidence: wheel/IMU odometry can
+ // remain well constrained in feature-poor space. Global recovery begins
+ // only when the fused state is invalid or its covariance says the local
+ // frame is actually lost. Confidence/age and the rejection counter remain
+ // diagnostics; neither may independently cause a whole-map search.
+ if (pose_uncertain || !health.valid) {
     if (retry_due) {
       last_global_attempt_s_ = now_s;
       last_run_s_ = now_s;
@@ -82,13 +80,9 @@ LocalizationAction LocalizationSupervisor::next(
                       ? "pose covariance is invalid"
                       : pose_uncertain
                             ? "pose covariance exceeded recovery threshold"
-                            : repeated_local_failure
-                                  ? "local correction rejected repeatedly"
-                                  : !health.valid
+ : !health.valid
                                         ? "localization invalid"
-                                        : health.age_s > 2.0
-                                              ? "localization evidence is stale"
-                                              : "localization confidence below recovery threshold";
+ : "pose covariance exceeded recovery threshold";
       }
       return LocalizationAction::kGlobalRelocalization;
     }
