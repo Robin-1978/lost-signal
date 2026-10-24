@@ -24,6 +24,9 @@ int main() {
         platform::description_from_config(cfg);
     assert(desc.chassis_kind == kind);
     assert(desc.limits.max_forward_mps == 2.0);
+ if (std::string(kind) == "swerve" || std::string(kind) == "mecanum") {
+ assert(desc.limits.max_lateral_mps > 0.0);
+ }
     assert(!desc.sensors.empty() && !desc.links.empty());
     // Real mast heights: lidar rides 0.35 m above base 0.25 m forward,
     // IMU low on the deck — the true 3D sensor pose raycasts from there.

@@ -342,6 +342,7 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
     return false;
   }
   const Json* lim = obj.find("limits");
+ bool lateral_limit_present = false;
   if (lim != nullptr) {
     if (!lim->is_object()) {
       err = "'limits' must be an object";
@@ -367,8 +368,17 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
           return false;
         }
         *s.slot = v;
+ if (std::string(s.key) == "max_lateral_mps") {
+ lateral_limit_present = present;
+ }
       }
     }
+ if (!lateral_limit_present &&
+ (want == "swerve" || want == "mecanum")) {
+ // Holonomic bases are laterally capable by default. A machine file may
+ // still set max_lateral_mps to zero deliberately to disable strafing.
+ out.limits.max_lateral_mps = out.limits.max_forward_mps;
+ }
   }
   const Json* sens = obj.find("sensors");
   if (sens == nullptr) {
