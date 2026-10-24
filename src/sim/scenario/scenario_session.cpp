@@ -180,6 +180,21 @@ void ScenarioSession::fit_map_window_to_world(double margin_m) {
     eat(p.x0, p.y0);
     eat(p.x1, p.y1);
   }
+ // Oriented support slabs are authored world geometry too. Include all four
+ // corners so the ROBOT survey window cannot clip a bridge/deck out of the
+ // map before sensing begins.
+ for (const auto& s : world_.support_slabs()) {
+ const double c = std::cos(s.yaw_rad);
+ const double sn = std::sin(s.yaw_rad);
+ for (const auto& corner : {std::pair<double, double>{-s.half_length_m,
+ -s.half_width_m},
+ std::pair<double, double>{-s.half_length_m, s.half_width_m},
+ std::pair<double, double>{s.half_length_m, -s.half_width_m},
+ std::pair<double, double>{s.half_length_m, s.half_width_m}}) {
+ eat(s.center_x_m + c * corner.first - sn * corner.second,
+ s.center_y_m + sn * corner.first + c * corner.second);
+ }
+ }
   map_provider_->set_window(x0 - m, y0 - m, (x1 - x0) + 2.0 * m,
                             (y1 - y0) + 2.0 * m);
 }
