@@ -41,8 +41,11 @@ bool LocalMap::is_blocked(double wx, double wy) const {
   if (!valid || occupancy.size() != width * height) return true;
   int gx, gy;
   world_to_grid(*this, wx, wy, gx, gy);
-  if (!inside(gx, gy)) return false;
-  return occupancy[gy * width + gx] >= 50;
+ if (!inside(gx, gy)) return true;
+ // Unknown is conservative for planning as well as safety. A cell becomes
+ // traversable only after a sensor ray or a rebuilt SLAM submap marks it
+ // free; no mapless mission may infer free space from an empty window.
+ return occupancy[gy * width + gx] < 0 || occupancy[gy * width + gx] >= 50;
 }
 
 bool LocalMap::segment_is_traversable(double x0, double y0, double x1,

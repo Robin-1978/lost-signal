@@ -680,8 +680,8 @@ int main() {
       mapper.update(face, est);
       LocalMap m = mapper.local_map();
       assert(m.valid && m.occupancy[fi] != 100);  // ground: never painted
-      assert(!m.is_blocked(4.0, 0.0));  // unknown reads traversable (DWA)
-      assert(m.segment_is_traversable(0.0, 0.0, 4.0, 0.0));
+ assert(m.is_blocked(4.0, 0.0)); // unknown remains blocked for planning
+      assert(!m.segment_is_traversable(0.0, 0.0, 4.0, 0.0));
       // Live elevation: the surveyed-ground return measured the surface
       // (TF sensor height 0.35, level beam) into the dormant layer.
       assert(m.has_elevation());

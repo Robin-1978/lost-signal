@@ -159,14 +159,16 @@ int main() {
     // Mid-ray of that beam is cleared free.
     assert(m.is_free(-2.0, 0.0));
     // Foreground bump at ~3 m: ray cleared, endpoint NOT painted.
-    assert(!m.is_blocked(3.0, 0.0));
+ // The foreground endpoint is not painted as static, so it remains
+ // unknown. Unknown space is conservative for planning.
+ assert(m.is_blocked(3.0, 0.0));
     assert(m.is_free(2.0, 0.0));
     // Recenter on teleport: window follows, old content dropped.
     est.x_m = 100.0;
     mapper.update(obs, est);
     LocalMap m2 = mapper.local_map();
     assert(m2.valid);
-    assert(!m2.is_blocked(4.0, 0.0));
+ assert(m2.is_blocked(4.0, 0.0));
   }
 
   std::printf("perception ok\n");

@@ -21,9 +21,8 @@ namespace lost_signal::robot::autonomy {
 
 // Rolling local world model derived from the sensor stream. Occupancy is
 // -1 unknown, 0 free, 100 occupied (row-major, x fastest). Unknown is
-// optimistic for sampling (the planner proposes) and conservative for safety
-// (the validator + safety monitor veto on raw scan evidence) — the split is
-// deliberate: one layer proposes, independent layers dispose.
+// conservative for planning and safety: a cell becomes traversable only
+// after a sensor ray or SLAM replay marks it free.
 struct LocalMap {
   bool valid = false;
   double resolution_m = 0.1;
@@ -54,22 +53,15 @@ struct LocalMap {
     return gx >= 0 && gy >= 0 && gx < static_cast<int>(width) &&
            gy < static_cast<int>(height);
   }
-  // Free means observed-free. Unknown is NOT free here; callers choose the
-  // policy (planner sampling treats unknown as traversable, the safety
-  // layers never do).
+ // Free means observed-free. Unknown is never free.
   bool is_free(double wx, double wy) const;
-  // Blocked means observed-occupied only. The planner's optimistic
-  // counterpart to is_free: unknown and out-of-window read as traversable
-  // so sampling works on partially observed maps. Safety layers must never
-  // use this; they read raw scan evidence instead.
+ // Blocked includes unknown and out-of-window cells. A planner may only
+ // enter space explicitly cleared by a sensor ray or SLAM replay.
   bool is_blocked(double wx, double wy) const;
-  // Continuous line-of-travel query, sampled at <= half a cell so a segment
-  // cannot jump a lethal cell. Admission and validation share this
-  // primitive so they cannot disagree on static traversability.
-  // Conservative: unknown counts as blocked.
+ // Continuous line-of-travel query, sampled at <= half a cell so a segment
+ // cannot jump an occupied or unknown cell.
   bool segment_is_free(double x0, double y0, double x1, double y1) const;
-  // Optimistic twin: only observed-occupied cells block. For planner
-  // sampling on partially observed maps; safety layers never use this.
+ // Planner admission query. Unknown and outside-window cells are blocked.
   bool segment_is_traversable(double x0, double y0, double x1,
                               double y1) const;
   // Exact world-space distance to the occupied set. Occupied cells own

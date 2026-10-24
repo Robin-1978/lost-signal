@@ -47,9 +47,9 @@ int main() {
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, -1);
     assert(!m.is_free(0.0, 0.0));      // unknown is not free (conservative)
-    assert(!m.is_blocked(0.0, 0.0));   // unknown is not blocked (optimistic)
+ assert(m.is_blocked(0.0, 0.0)); // unknown is blocked (conservative)
     assert(!m.segment_is_free(0.0, 0.0, 3.0, 0.0));  // conservative
-    assert(m.segment_is_traversable(0.0, 0.0, 3.0, 0.0));  // optimistic
+ assert(!m.segment_is_traversable(0.0, 0.0, 3.0, 0.0)); // conservative
     fill_box(m, 4.0, -5.0, 5.0, 5.0);
     assert(!m.is_free(4.5, 0.0));
     assert(m.is_blocked(4.5, 0.0));
@@ -82,17 +82,19 @@ int main() {
   // DWA threads a gap: wall with a 2 m opening, goal straight through.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
-    fill_box(m, 4.0, -5.0, 5.0, 4.0);
-    fill_box(m, 4.0, 6.0, 5.0, 5.0);
+ fill_box(m, 4.0, -5.0, 5.0, -1.0);
+ fill_box(m, 4.0, 1.0, 5.0, 5.0);
     EstimatedState est;
     est.valid = true;
     est.stamp_ns = 1'000'000;
     est.x_m = 1.0;
-    est.y_m = 5.0;
+ // Keep the start inside the finite rolling window. The boundary itself is
+ // unknown/out-of-window and therefore conservatively blocked.
+ est.y_m = 0.0;
     PerceptionResult perc;
     perc.scan_ok = true;
     StraightLinePlanner global;
-    Route route = global.plan(est, {8.0, 5.0, 0.0}, iface::MapSnapshot{});
+ Route route = global.plan(est, {8.0, 0.0, 0.0}, iface::MapSnapshot{});
     DwaPlanner planner;
     LocalPlan p = planner.plan(est, perc, m, route, limits);
     assert(p.has_plan && p.best.feasible);
