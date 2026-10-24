@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "robot/autonomy/planning/astar_planner.hpp"
+#include "robot/autonomy/planning/route_pipeline.hpp"
 
 namespace {
 lost_signal::robot::iface::MapSnapshot make_map(int w, int h, double res,
@@ -45,6 +46,21 @@ lost_signal::robot::autonomy::EstimatedState at(double x, double y) {
 }
 }  // namespace
 
+class CountingPlanner : public lost_signal::robot::autonomy::IGlobalPlanner {
+ public:
+ lost_signal::robot::autonomy::Route plan(
+ const lost_signal::robot::autonomy::EstimatedState& start,
+ const lost_signal::robot::autonomy::RoutePoint& goal,
+ const lost_signal::robot::iface::MapSnapshot&) override {
+ ++calls;
+ lost_signal::robot::autonomy::Route out;
+ out.valid = start.valid;
+ out.points = {{start.x_m, start.y_m, start.yaw_rad}, goal};
+ return out;
+ }
+ int calls = 0;
+};
+
 int main() {
   using namespace lost_signal::robot;
   using namespace lost_signal::robot::autonomy;
@@ -56,6 +72,23 @@ int main() {
     Route r = planner.plan(at(0.0, 0.0), {2.0, 0.0, 0.0}, iface::MapSnapshot{});
     assert(r.valid && r.points.size() >= 2);
   }
+
+ // Route refresh policy is module-owned: an explicit replan calls the
+ // planner even when an existing route is still valid.
+ {
+ CountingPlanner counting;
+ Route active;
+ const auto map = iface::MapSnapshot{};
+ assert(RoutePlanningPipeline::refresh(counting, at(0.0, 0.0),
+ {2.0, 0.0, 0.0}, true, map, false, active));
+ assert(counting.calls == 1 && active.valid);
+ assert(!RoutePlanningPipeline::refresh(counting, at(0.0, 0.0),
+ {2.0, 0.0, 0.0}, true, map, false, active));
+ assert(counting.calls == 1);
+ assert(RoutePlanningPipeline::refresh(counting, at(0.0, 0.0),
+ {2.0, 0.0, 0.0}, true, map, true, active));
+ assert(counting.calls == 2);
+ }
 
   // Wall with a gap: route threads the gap, never through occupied cells.
   {
