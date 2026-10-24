@@ -24,7 +24,8 @@ Mapping (documented assumptions, all warned on stdout):
     wander (seed = fnv1a(id), start = path[0]). dormant_until_summoned
     entries are skipped. Patrol loop=true is an assumption (master loops
     patrols); dwell loops only on closed paths.
-  conflict_zones (game authority logic) -> dropped, warned.
+ conflict_zones (game authority logic) -> SIM-only semantics sidecar;
+ they are retained for scoring/replay and never copied into the ROBOT map.
   active_in filtering: --variant keeps entries with no active_in or with the
     variant listed; default keeps everything.
 """
@@ -167,6 +168,12 @@ def main():
 def convert_one(mid, m, matlib, args, out_dir):
     warn = []
     boxes, places, materials, zones, patches = [], [], {}, [], []
+    semantics = {
+    "format": "lost-signal-world-semantics/1",
+    "conflict_zones": [],
+    "non_box_collisions": [],
+    "dormant_actors": [],
+    }
     actors = []
 
     for o in m.get("obstacles", []):
@@ -190,6 +197,8 @@ def convert_one(mid, m, matlib, args, out_dir):
         for c in o.get("collisions", []):
             if c.get("type") != "box":
                 warn.append(f"{o['id']}: non-box collision dropped")
+                semantics["non_box_collisions"].append({"object_id": o["id"],
+                "collision": c})
                 continue
             ox, oy, oz = c["position_m"]
             dx, dy, dz = (c["size_m"][0] * sx, c["size_m"][1] * sy,
@@ -255,6 +264,7 @@ def convert_one(mid, m, matlib, args, out_dir):
     for a in m.get("actors", []):
         if a.get("dormant_until_summoned"):
             warn.append(f"actor {a['id']}: dormant, skipped")
+            semantics["dormant_actors"].append(a)
             continue
         if not keep(a, args.variant):
             continue
@@ -279,13 +289,16 @@ def convert_one(mid, m, matlib, args, out_dir):
             "seed": seed,
             "visual_kind": (a.get("visual", {}) or {}).get("kind", "vehicle"),
         })
-    if m.get("conflict_zones"):
-        warn.append(f"{len(m['conflict_zones'])} conflict_zones dropped "
-                    "(game authority logic, no SIM counterpart)")
+    for z in m.get("conflict_zones", []):
+        if keep(z, args.variant):
+            semantics["conflict_zones"].append(z)
+    if semantics["conflict_zones"]:
+        warn.append(f"{len(semantics['conflict_zones'])} conflict_zones retained "
+        "in SIM-only semantics sidecar")
 
     world = {"format": WORLD_FORMAT, "boxes": boxes, "places": places,
-             "materials": list(materials.values()), "zones": zones,
-             "terrain": patches, "slabs": [], "environment": []}
+        "materials": list(materials.values()), "zones": zones,
+        "terrain": patches, "slabs": [], "environment": []}
     for w in check_places(boxes, places, patches):
         warn.append(w)
     suffix = f".{args.variant}" if args.variant else ""
@@ -293,6 +306,8 @@ def convert_one(mid, m, matlib, args, out_dir):
     wpath.write_text(json.dumps(world, indent=1) + "\n")
     apath = out_dir / f"{mid}{suffix}.actors.json"
     apath.write_text(json.dumps({"actors": actors}, indent=1) + "\n")
+    spath = out_dir / f"{mid}{suffix}.semantics.json"
+    spath.write_text(json.dumps(semantics, indent=1) + "\n")
 
     print(f"{mid}: boxes={len(boxes)} places={len(places)} "
           f"materials={len(materials)} zones={len(zones)} "

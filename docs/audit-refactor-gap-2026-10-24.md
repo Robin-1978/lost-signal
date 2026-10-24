@@ -1,6 +1,7 @@
 ## 修复进展（2026-10-24）
 
-以下问题已经在当前分支修复并带回归测试：
+以下问题已经在当前分支修复并带回归测试（本文件下方的旧分段保留为
+审计证据，若与此处冲突以本节和源码为准）：
 
 - P0-1 配置几何：`make_chassis` 全部读取 `RobotDescription::plant`，非法几何 fail closed。
 - P0-2 扫描角度：新增 `iface::scan_beam_angle_rad()`，感知、建图、校验、安全统一使用；非零起始角与局部扇区已覆盖。
@@ -9,10 +10,21 @@
 - P1-3 仿真时钟：决策时刻使用 plant 时钟，观测保留采集时间，delivery latency 可触发 freshness。
 - P1-4 DWA：速度窗口支持负速度，补了后方目标倒车用例。
 - P1-6 目标生命周期：hold 清除 route；arrival 先完成目标并清 route，再规划，到点即停。
+- P1-2/P1-3 多速率、plant-clock tick、延迟/dropout freshness：已接入
+  `ScenarioSession::set_sensor_cadence()`、独立 scheduler taps 和真实
+  `sim_stamp_ns`，见 `tests/test_realism.cpp`。
+- P1-5 Ackermann/Holonomic：Hybrid-A*、gear 贯通、曲率门控和
+  `DecisionCyclePipeline` 已接入；`tests/test_ackermann_planner.cpp` 与
+  `tests/test_multichassis_mission.cpp` 覆盖四种底盘端到端。
+- P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
+  `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
+  和 dormant actor，不把游戏 authority 穿透给 ROBOT。
+- 当前验证基线：`ctest --test-dir build --output-on-failure` 49/49，
+  `tests/check_boundary.py` 通过。
 
-仍待处理：多速率传感器拆分、Holonomic 专用规划、Ackermann path smoothing
-与完整 mission E2E、headless artifact 的完整 episode/replay 导出、行为冲突区
-语义、感知对象几何、地图语义保留、完整 mission score。
+仍待处理：独立 Ackermann path smoothing、将 semantics sidecar 接入更高层
+SIM scoring schema、完整 mission score 的 per-objective 明细，以及旧段落中
+尚未逐项重写的审计文字。
 
 # 重构分支算法与仿真能力适配审计
 
