@@ -281,17 +281,27 @@ void MujocoBackend::sync(const MotorParams& motor,
   ready_ = false;
   drive_count_ = 0;
   steer_count_ = 0;
-  for (int i = 0; i < 4; ++i) drive_dof_[i] = steer_dof_[i] = -1;
+ for (int i = 0; i < 4; ++i) {
+ drive_dof_[i] = steer_dof_[i] = -1;
+ drive_body_[i] = -1;
+ drive_pose_[i] = LinkPoseViz{};
+ }
   for (int i = 0; i < 4; ++i) drive_steer_[i] = -1;
   for (int i = 0; i < 2; ++i) {
     idler_dof_[i] = -1;
+ idler_body_[i] = -1;
     idler_angle_[i] = 0.0;
+ idler_pose_[i] = LinkPoseViz{};
   }
   idler_count_ = 0;
  support_count_ = 0;
  for (int i = 0; i < 4; ++i) {
  support_swivel_dof_[i] = -1;
  support_roll_dof_[i] = -1;
+ support_fork_body_[i] = -1;
+ support_wheel_body_[i] = -1;
+ support_fork_pose_[i] = LinkPoseViz{};
+ support_wheel_pose_[i] = LinkPoseViz{};
  support_geom_[i] = -1;
  support_shoulder_geom_[i][0] = -1;
  support_shoulder_geom_[i][1] = -1;
@@ -974,10 +984,14 @@ void MujocoBackend::sync(const MotorParams& motor,
     if (steer_dof_[i] >= 0) ++found_steers;
     std::snprintf(name, sizeof(name), "tire%d", i);
     tire_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
+ std::snprintf(name, sizeof(name), "wheel%d", i);
+ drive_body_[i] = mj_name2id(model, mjOBJ_BODY, name);
     if (i < 2) {
       std::snprintf(name, sizeof(name), "idlerj%d", i);
       const int iid = mj_name2id(model, mjOBJ_JOINT, name);
       idler_dof_[i] = (iid >= 0) ? model->jnt_dofadr[iid] : -1;
+ std::snprintf(name, sizeof(name), "idler%d", i);
+ idler_body_[i] = mj_name2id(model, mjOBJ_BODY, name);
       // Idler friction target (per-step zone follow, same as drives).
       std::snprintf(name, sizeof(name), "idlertire%d", i);
       idler_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
@@ -989,6 +1003,10 @@ void MujocoBackend::sync(const MotorParams& motor,
  std::snprintf(name, sizeof(name), "casterroll%d", i);
  const int rid = mj_name2id(model, mjOBJ_JOINT, name);
  support_roll_dof_[i] = (rid >= 0) ? model->jnt_dofadr[rid] : -1;
+ std::snprintf(name, sizeof(name), "caster%d", i);
+ support_fork_body_[i] = mj_name2id(model, mjOBJ_BODY, name);
+ std::snprintf(name, sizeof(name), "casterwheel%d", i);
+ support_wheel_body_[i] = mj_name2id(model, mjOBJ_BODY, name);
  std::snprintf(name, sizeof(name), "castertire%d", i);
  support_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
  std::snprintf(name, sizeof(name), "castertire%d_shoulder_l", i);

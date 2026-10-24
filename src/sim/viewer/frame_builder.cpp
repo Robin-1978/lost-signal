@@ -82,6 +82,10 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  w.steer_rate_radps = t.steer_vel_radps[static_cast<std::size_t>(i)];
  }
       w.mecanum_rollers = mecanum;
+ w.pose = {table[i].pose.valid,
+ table[i].pose.x_m, table[i].pose.y_m, table[i].pose.z_m,
+ table[i].pose.qw, table[i].pose.qx, table[i].pose.qy,
+ table[i].pose.qz};
       f.body.wheels.push_back(w);
     }
   }
@@ -111,6 +115,16 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  caster.radius_m = table[i].radius_m;
  caster.yaw_rad = table[i].swivel_rad;
  caster.spin_rad = table[i].roll_rad;
+ caster.fork_pose = {table[i].fork_pose.valid,
+ table[i].fork_pose.x_m, table[i].fork_pose.y_m,
+ table[i].fork_pose.z_m, table[i].fork_pose.qw,
+ table[i].fork_pose.qx, table[i].fork_pose.qy,
+ table[i].fork_pose.qz};
+ caster.wheel_pose = {table[i].wheel_pose.valid,
+ table[i].wheel_pose.x_m, table[i].wheel_pose.y_m,
+ table[i].wheel_pose.z_m, table[i].wheel_pose.qw,
+ table[i].wheel_pose.qx, table[i].wheel_pose.qy,
+ table[i].wheel_pose.qz};
  } else {
  caster.pivot_x_m = world.motor_params().support_count > 0
  ? support.x_m : (i == 0 ? 0.9 * world.motor_params().wheel_base_m * 0.5

@@ -35,6 +35,7 @@
 namespace {
 using lost_signal::sim::viewer::Frame;
 using lost_signal::sim::viewer::FrameBody;
+using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 
 constexpr int kScreenW = 1100;
@@ -350,6 +351,27 @@ void draw_model_quaternion(const Model& model, Vector3 position,
  DrawModelEx(model, position, axis, angle * RAD2DEG, scale, tint);
 }
 
+Vector3 link_position(const FrameLinkPose& pose) {
+ return {static_cast<float>(pose.x_m), static_cast<float>(pose.z_m),
+ static_cast<float>(-pose.y_m)};
+}
+
+// MuJoCo links use x-forward/y-left/z-up. Inside the already transformed
+// base frame, raylib consumes x-forward/y-up/z-right. Raw joint assets are
+// authored in the MuJoCo link frame, so their draw rotation is Q*R_link.
+// Globally converted Z-up assets already carry Q in Model::transform and
+// therefore need the conjugated Q*R_link*Q^-1 rotation instead.
+Quaternion link_rotation(const FrameLinkPose& pose, bool converted_asset) {
+ const Quaternion q_link{static_cast<float>(pose.qx),
+ static_cast<float>(pose.qy), static_cast<float>(pose.qz),
+ static_cast<float>(pose.qw)};
+ const Quaternion q_basis = QuaternionFromAxisAngle(
+ {1.0f, 0.0f, 0.0f}, -PI * 0.5f);
+ if (!converted_asset) return QuaternionMultiply(q_basis, q_link);
+ return QuaternionMultiply(q_basis,
+ QuaternionMultiply(q_link, QuaternionInvert(q_basis)));
+}
+
 // Wheel GLBs are authored at a reference size (RO-1 uses a 100 mm radius
 // and the caster a 55 mm radius). Fit the radial and axle dimensions to the
 // live plant configuration independently; a future profile therefore cannot
@@ -360,6 +382,9 @@ Vector3 wheel_asset_scale(const Model& model, double radius_m,
  const float ex = std::max(1e-4f, b.max.x - b.min.x);
  const float ey = std::max(1e-4f, b.max.y - b.min.y);
  const float ez = std::max(1e-4f, b.max.z - b.min.z);
+ // Blender authors the joint in robot coordinates (X forward, Y axle,
+ // Z up); glTF's Y-up export maps that axle to runtime +Z. Keep this one
+ // asset-boundary convention for every wheel GLB: radial X/Y, axle Z.
  const float radial = std::max(ex, ey) * 0.5f;
  return {static_cast<float>(radius_m / radial),
  static_cast<float>(radius_m / radial),
@@ -378,13 +403,12 @@ void draw_crowned_tire(double radius_m, double half_width_m, Color color) {
  const float shoulder_offset = centre_half + shoulder_half;
  // Raylib cylinders are Y-axis by default. The caster axle is local Z.
  rlPushMatrix();
- rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
  DrawCylinder({0.0f, 0.0f, 0.0f}, radius, radius,
  2.0f * centre_half, 20, color);
- rlTranslatef(0.0f, 0.0f, shoulder_offset);
+ rlTranslatef(0.0f, shoulder_offset, 0.0f);
  DrawCylinder({0.0f, 0.0f, 0.0f}, shoulder_radius, shoulder_radius,
  2.0f * shoulder_half, 20, color);
- rlTranslatef(0.0f, 0.0f, -2.0f * shoulder_offset);
+ rlTranslatef(0.0f, -2.0f * shoulder_offset, 0.0f);
  DrawCylinder({0.0f, 0.0f, 0.0f}, shoulder_radius, shoulder_radius,
  2.0f * shoulder_half, 20, color);
  rlPopMatrix();
@@ -951,28 +975,6 @@ void draw_frame_3d(const Frame& f,
  static_cast<float>(f.body.z_m),
                  static_cast<float>(-f.body.y_m));
     rlMultMatrixf(m);
- // MuJoCo's soft contact solver can leave a sub-millimetre tire-plane
- // penetration while the body settles. Keep the rendered tread tangent to
- // the same canonical terrain sample without altering physics or ROBOT data.
- const auto contact_lift = [&](double bx, double by, double radius) {
- const double cyaw = std::cos(f.body.yaw_rad), syaw = std::sin(f.body.yaw_rad);
- const double wx = f.body.x_m + cyaw * bx - syaw * by;
- const double wy = f.body.y_m + syaw * bx + cyaw * by;
- const auto sample = world_ns::sample_terrain(
- world.terrain_patches(), world.support_slabs(), wx, wy);
- // A tangent wheel on a graded plane needs the normal-distance radius,
- // not the flat-ground radius. Using the grade norm is conservative for a
- // cylinder and removes the last visible blackwall penetration on ramps.
- const double grade_norm = std::sqrt(
- 1.0 + sample.grade_x * sample.grade_x + sample.grade_y * sample.grade_y);
- const double local_z = -by;
- const double wheel_world_y =
- f.body.z_m + static_cast<double>(m[1]) * bx +
- static_cast<double>(m[9]) * local_z;
- return static_cast<float>(std::max(0.0, sample.height_m + 0.001 +
- radius * grade_norm -
- wheel_world_y));
- };
  bool slipping = false;
  for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
     {
@@ -1048,13 +1050,46 @@ void draw_frame_3d(const Frame& f,
  // Passive caster assemblies: swivel and roll come from the MuJoCo joints;
  // the fork pivot and wheel contact remain separate when trail is non-zero.
  for (const auto& caster : f.body.casters) {
+ if (caster.fork_pose.valid && caster.wheel_pose.valid) {
+ const double caster_half_width = std::min(
+ static_cast<double>(world.motor_params().tire_half_width_m),
+ caster.radius_m * 0.75);
+ const float caster_scale = static_cast<float>(caster.radius_m / 0.055);
+ if (assets != nullptr && model_ready(assets->caster_fork)) {
+ draw_model_quaternion(assets->caster_fork,
+ link_position(caster.fork_pose),
+ link_rotation(caster.fork_pose, true),
+ {caster_scale, caster_scale, caster_scale}, WHITE);
+ }
+ if (assets != nullptr && model_ready(assets->caster_wheel)) {
+ draw_model_quaternion(assets->caster_wheel,
+ link_position(caster.wheel_pose),
+ link_rotation(caster.wheel_pose, true),
+ wheel_asset_scale(assets->caster_wheel, caster.radius_m,
+ caster_half_width), WHITE);
+ } else {
+ const Quaternion rotation = QuaternionMultiply(
+ link_rotation(caster.wheel_pose, true),
+ QuaternionFromAxisAngle({1.0f, 0.0f, 0.0f}, PI * 0.5f));
+ Vector3 axis{0.0f, 1.0f, 0.0f};
+ float angle = 0.0f;
+ QuaternionToAxisAngle(rotation, &axis, &angle);
+ rlPushMatrix();
+ const Vector3 p = link_position(caster.wheel_pose);
+ rlTranslatef(p.x, p.y, p.z);
+ rlRotatef(angle * RAD2DEG, axis.x, axis.y, axis.z);
+ draw_crowned_tire(caster.radius_m, caster_half_width,
+ Color{36, 38, 43, 255});
+ rlPopMatrix();
+ }
+ continue;
+ }
  // MuJoCo places the caster wheel below the drive axle by (r-R). Keep the
  // offset in the body frame so slopes and engine body height are preserved;
  // anchoring at an absolute radius made supports detach on terrain.
  const float axle = static_cast<float>(
  -(world.motor_params().wheel_radius_m - caster.radius_m));
- const float caster_lift = contact_lift(caster.x_m, caster.y_m,
- caster.radius_m);
+ const float caster_lift = 0.0f;
  const double caster_half_width = std::min(
  static_cast<double>(world.motor_params().tire_half_width_m),
  caster.radius_m * 0.75);
@@ -1187,11 +1222,42 @@ void draw_frame_3d(const Frame& f,
       // from live joints/flags; mecanum tread stripes sit in the steer
       // frame (rollers are passive analytic state — static decoration).
       for (const auto& w : f.body.wheels) {
+ if (w.pose.valid) {
+ const Vector3 position = link_position(w.pose);
+ Quaternion rotation = link_rotation(w.pose, true);
+ if (assets != nullptr && model_ready(assets->wheel)) {
+ draw_model_quaternion(assets->wheel, position, rotation,
+ wheel_asset_scale(assets->wheel, w.radius_m,
+ world.motor_params().tire_half_width_m),
+ w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ } else {
+ rotation = QuaternionMultiply(rotation,
+ QuaternionFromAxisAngle({1.0f, 0.0f, 0.0f}, PI * 0.5f));
+ Vector3 axis{0.0f, 1.0f, 0.0f};
+ float angle = 0.0f;
+ QuaternionToAxisAngle(rotation, &axis, &angle);
+ rlPushMatrix();
+ rlTranslatef(position.x, position.y, position.z);
+ rlRotatef(angle * RAD2DEG, axis.x, axis.y, axis.z);
+ const Color tire = w.slipping ? RED
+ : (w.driven ? Color{40, 40, 40, 255}
+ : Color{86, 86, 90, 255});
+ DrawCylinder({0.0f, 0.0f, 0.0f},
+ static_cast<float>(w.radius_m), static_cast<float>(w.radius_m),
+ static_cast<float>(2.0 * world.motor_params().tire_half_width_m),
+ 20, tire);
+ DrawCube({0.0f, 0.0f, 0.0f},
+ 2.0f * static_cast<float>(w.radius_m), 0.02f, 0.03f,
+ YELLOW);
+ rlPopMatrix();
+ }
+ continue;
+ }
  // MuJoCo wheel bodies are children of the base at local z=0; the base
  // qpos already is the live axle height. Re-applying radius-body_z here
  // detached wheels whenever the engine body rose on a terrain patch.
  const float axle = 0.0f;
- const float wheel_lift = contact_lift(w.x_m, w.y_m, w.radius_m);
+ const float wheel_lift = 0.0f;
  if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
  // The wheel asset stays in its authored joint frame (+Z axle). Rx(180)
  // lays it on horizontal raylib Z. A differential module has steer_rad=0;

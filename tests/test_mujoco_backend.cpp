@@ -42,7 +42,24 @@ int main() {
     assert(std::abs(w.truth().body_roll_rad) < 0.05);
     assert(std::abs(w.truth().body_pitch_rad) < 0.05);
     assert(w.truth().body_z_m > 0.0);  // off the ground plane, on wheels
- // Passive supports are a real SIM assembly: the wheel position includes
+    // Rendering reads the exact MuJoCo link transforms. Differential wheel
+    // centers stay on the base axle plane and roll about the physical lateral
+    // Y hinge; there is no terrain lift or reconstructed vertical-axis spin.
+    sim::world::WheelViz wheels[6];
+    const int wheel_count = w.wheels(wheels, 6);
+    assert(wheel_count == 2);
+    for (int i = 0; i < wheel_count; ++i) {
+    assert(wheels[i].pose.valid);
+    assert(std::abs(wheels[i].pose.z_m) < 1e-9);
+    const double qnorm = std::sqrt(
+    wheels[i].pose.qw * wheels[i].pose.qw +
+    wheels[i].pose.qx * wheels[i].pose.qx +
+    wheels[i].pose.qy * wheels[i].pose.qy +
+    wheels[i].pose.qz * wheels[i].pose.qz);
+    assert(std::abs(qnorm - 1.0) < 1e-9);
+    assert(std::abs(wheels[i].pose.qy) > 1e-3);
+    }
+    // Passive supports are a real SIM assembly: the wheel position includes
  // configured trail and both joint angles are finite engine read-back.
  sim::world::CasterViz casters[4];
  const int caster_count = w.casters(casters, 4);
@@ -56,8 +73,12 @@ int main() {
  const double ey = casters[i].pivot_y_m - 0.02 *
  std::sin(casters[i].swivel_rad);
  assert(std::abs(casters[i].x_m - ex) < 1e-12);
- assert(std::abs(casters[i].y_m - ey) < 1e-12);
- }
+    assert(std::abs(casters[i].y_m - ey) < 1e-12);
+    assert(casters[i].fork_pose.valid);
+    assert(casters[i].wheel_pose.valid);
+    assert(std::abs(casters[i].wheel_pose.z_m +
+    (w.motor_params().wheel_radius_m - casters[i].radius_m)) < 1e-9);
+    }
  // A compatible geometry rebuild must not restore the old root height after
  // the wheel radius or authored terrain changes. The base frame is the drive
  // axle frame, so the new minimum is terrain height + new wheel radius.

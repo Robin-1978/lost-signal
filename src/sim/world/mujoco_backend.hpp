@@ -29,6 +29,16 @@ struct TerrainPatch;
 struct SupportSlab;
 struct EnvironmentKeyframe;
 
+// Rigid link pose expressed in the MuJoCo base-body frame. This is SIM-only
+// presentation state read from mjData::xpos/xquat after stepping; renderers
+// must consume it directly instead of reconstructing joints or lifting parts
+// against a separately sampled terrain surface.
+struct LinkPoseViz {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
+};
+
 // One wheel module for presentation (base frame): position from the shared
 // layout table, spin/steer from live joint read-back. Idlers (ackermann
 // fronts) report driven=false. Rollers are not state (mecanum is an
@@ -37,6 +47,7 @@ struct WheelViz {
   double x_m = 0.0, y_m = 0.0;
   double spin_rad = 0.0, steer_rad = 0.0;
   bool slipping = false, driven = false;
+ LinkPoseViz pose;
 };
 
 // One passive caster assembly for presentation.  The pivot and wheel
@@ -48,6 +59,8 @@ struct CasterViz {
  double x_m = 0.0, y_m = 0.0;
  double radius_m = 0.03;
  double swivel_rad = 0.0, roll_rad = 0.0;
+ LinkPoseViz fork_pose;
+ LinkPoseViz wheel_pose;
 };
 
 #ifdef LOST_SIGNAL_WITH_MUJOCO
@@ -130,6 +143,7 @@ class MujocoBackend {
       w.steer_rad = (s >= 0 && s < 4) ? steer_angle_[s] : 0.0;
       w.slipping = drive_slipping_[static_cast<std::size_t>(d)];
       w.driven = true;
+ w.pose = drive_pose_[d];
       out[n++] = w;
     }
     for (int j = 0; j < idler_count_ && j < 2 && n < cap; ++j) {
@@ -138,6 +152,7 @@ class MujocoBackend {
       w.y_m = idler_mod_y_[j];
       w.spin_rad = idler_angle_[j];
       w.steer_rad = (j < 4) ? steer_angle_[j] : 0.0;
+ w.pose = idler_pose_[j];
       out[n++] = w;
     }
     return n;
@@ -156,6 +171,8 @@ class MujocoBackend {
  const double st = std::sin(c.swivel_rad);
  c.x_m = c.pivot_x_m - support_trail_[i] * ct;
  c.y_m = c.pivot_y_m - support_trail_[i] * st;
+ c.fork_pose = support_fork_pose_[i];
+ c.wheel_pose = support_wheel_pose_[i];
  out[n++] = c;
  }
  return n;
@@ -197,6 +214,8 @@ class MujocoBackend {
   double idler_mod_y_[2] = {0.0, 0.0};
   double idler_angle_[2] = {0.0, 0.0};
   int idler_dof_[2] = {-1, -1};
+ int idler_body_[2] = {-1, -1};
+ LinkPoseViz idler_pose_[2];
   int idler_count_ = 0;
  // Passive caster assemblies.  The fork swivel and wheel roll are real
  // MuJoCo hinges; these values are read back for SIM presentation only.
@@ -208,6 +227,10 @@ class MujocoBackend {
  double support_roll_[4] = {0.0, 0.0, 0.0, 0.0};
  int support_swivel_dof_[4] = {-1, -1, -1, -1};
  int support_roll_dof_[4] = {-1, -1, -1, -1};
+ int support_fork_body_[4] = {-1, -1, -1, -1};
+ int support_wheel_body_[4] = {-1, -1, -1, -1};
+ LinkPoseViz support_fork_pose_[4];
+ LinkPoseViz support_wheel_pose_[4];
  int support_geom_[4] = {-1, -1, -1, -1};
  int support_shoulder_geom_[4][2] = {{-1, -1}, {-1, -1}, {-1, -1},
  {-1, -1}};
@@ -228,6 +251,8 @@ class MujocoBackend {
   bool refuse_reported_ = false;
   // Drive joint DOF addresses (drive_count <= 4 in M2).
   int drive_dof_[4] = {-1, -1, -1, -1};
+ int drive_body_[4] = {-1, -1, -1, -1};
+ LinkPoseViz drive_pose_[4];
   int drive_count_ = 0;
   // Steer joint DOF addresses (swerve/ackermann knuckles, M2).
   int steer_dof_[4] = {-1, -1, -1, -1};

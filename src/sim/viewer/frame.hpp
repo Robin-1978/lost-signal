@@ -12,6 +12,12 @@
 
 namespace lost_signal::sim::viewer {
 
+struct FrameLinkPose {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
+};
+
 struct FrameWheel {
   double x_m = 0.0, y_m = 0.0;  // module position in the base frame
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
@@ -25,6 +31,9 @@ struct FrameWheel {
  double duty = 0.0;
  bool driven = false;
  bool mecanum_rollers = false;
+ // Exact MuJoCo wheel-body pose in the base frame. The joint angles above
+ // remain useful diagnostics; 3D rendering uses this pose when valid.
+ FrameLinkPose pose;
 };
 
 struct FrameCaster {
@@ -33,6 +42,8 @@ struct FrameCaster {
  double radius_m = 0.03;
  double yaw_rad = 0.0; // MuJoCo swivel joint angle
  double spin_rad = 0.0; // MuJoCo passive wheel roll angle
+ FrameLinkPose fork_pose;
+ FrameLinkPose wheel_pose;
 };
 
 struct FrameBody {
