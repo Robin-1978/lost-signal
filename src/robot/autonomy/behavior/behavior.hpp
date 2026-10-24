@@ -33,7 +33,7 @@ class IBehaviorPolicy {
 class WaitOnIntrusionBehavior : public IBehaviorPolicy {
  public:
  explicit WaitOnIntrusionBehavior(double hold_radius_m = 2.0,
- double prediction_horizon_s = 1.5);
+ double prediction_horizon_s = 2.5);
 
   void reset() override {}
   BehaviorDecision decide(const EstimatedState& est,

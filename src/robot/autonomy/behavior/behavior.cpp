@@ -42,11 +42,11 @@ BehaviorDecision WaitOnIntrusionBehavior::decide(
  lateral <= radius;
  if (!in_forward_envelope) continue;
 
- // A stationary object in the commanded forward corridor is an occupied
- // conflict zone even without a velocity history. Objects outside that
- // corridor (for example, behind or beside the base) do not stop the robot.
- if (std::abs(rvx) < 1e-6 && std::abs(rvy) < 1e-6 &&
- longitudinal >= 0.0 && longitudinal <= hold_radius_m_ + radius) {
+ // Anything already in the commanded forward corridor is an occupied
+ // conflict zone. Objects outside that corridor (for example, behind or
+ // beside the base) do not stop the robot. Velocity prediction below also
+ // catches a moving object before it enters this near corridor.
+ if (longitudinal >= 0.0 && longitudinal <= hold_radius_m_ + radius) {
  return {true, 0.0, "track-conflict-hold"};
  }
 
