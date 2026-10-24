@@ -296,7 +296,12 @@ iface::MotionCommand AutonomyCoordinator::update(
  // Feed the measured-only traction envelope back into odometry prediction
  // for the next observation. This bounds wheel-spin integration without
  // exposing plant truth to ROBOT; nominal grip leaves odometry unchanged.
- estimator_->set_motion_scale(grip_.factor());
+ // Grip adaptation constrains the command envelope. It must not silently
+ // rescale the pose integration: wheel slip is a measurement uncertainty,
+ // not a known travelled-distance ratio, and applying the factor to odometry
+ // made mapless goals permanently lag behind the physical chassis. The
+ // estimator owns covariance/slip inflation and scan corrections; it only
+ // consumes the measured encoder twist here.
   // Surveyed-elevation context for the terrain-aware layers (prior, never
   // live physics): validator ground-classification + grade gates. The map
   // outlives the decision branch (by-value parameter), so the pointer is
@@ -332,12 +337,15 @@ iface::MotionCommand AutonomyCoordinator::update(
       if (mapper_ != nullptr) mapper_->set_survey(map);
     }
  const LocalMap robot_local_map = mapper_->local_map();
+ const bool forward_blocked =
+ safety_->last_verdict().reason == "forward-proximity" ||
+ safety_->last_verdict().reason == "forward-recovery";
  MotionDecisionResult motion = DecisionCyclePipeline::run(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
  estimator_->estimate(), perception_, robot_local_map, active_route_, goal_,
  has_goal_, map, force_route_refresh,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_, last_obs_,
- survey_ctx, now_ns);
+ survey_ctx, now_ns, forward_blocked);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;

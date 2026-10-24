@@ -59,7 +59,11 @@ MotorParams motor_params_from_profile(
   out.payload_mass_kg = profile.payload_mass_kg;
   out.payload_height_m = profile.payload_height_m;
   out.support_count = 0;
-  if (profile.supports.empty()) {
+  if (profile.supports.empty() && profile.chassis_kind == "tracked") {
+ // Tracks are the support surface; adding a free caster pair would inject
+ // an unmodelled yaw scrub torque into skid-steer pivot tests.
+ out.support_count = -1;
+ } else if (profile.supports.empty()) {
     const double sx = 0.9 * profile.wheel_base_m / 2;
     MotorParams::SupportParams b;
     b.kind = "ball";

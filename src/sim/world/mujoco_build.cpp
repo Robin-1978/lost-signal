@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -287,6 +288,16 @@ void MujocoBackend::sync(const MotorParams& motor,
     idler_angle_[i] = 0.0;
   }
   idler_count_ = 0;
+ support_count_ = 0;
+ for (int i = 0; i < 4; ++i) {
+ support_swivel_dof_[i] = -1;
+ support_roll_dof_[i] = -1;
+ support_geom_[i] = -1;
+ support_shoulder_geom_[i][0] = -1;
+ support_shoulder_geom_[i][1] = -1;
+ support_swivel_[i] = 0.0;
+ support_roll_[i] = 0.0;
+ }
 
   const double r = std::max(1e-3, motor.wheel_radius_m);
   const double track = std::max(0.1, motor.track_width_m);
@@ -363,14 +374,19 @@ void MujocoBackend::sync(const MotorParams& motor,
     return;
   }
   // (traction load uses chassis + payload at step time — see load_N.)
-  // Unpowered supports resolved up front (pure data, no model calls):
-  // support_count == 0 = legacy fore/aft ball pair — the conversion fills
-  // it, direct-built params use this same rule, so exactly one default.
-  // Only "ball" exists: free spheres carrying normal load only
-  // (near-zero tangential by authoring). Anything else refuses below.
+ // Unpowered supports resolved up front (pure data, no model calls):
+ // support_count == 0 = legacy fore/aft pair — the conversion fills it;
+ // a negative count is an explicit no-support tracked chassis. The
+ // authored kind remains "ball" for config compatibility, while the plant
+ // uses a low-friction fork swivel + passive wheel roll so the visual caster
+ // state is genuine engine state rather than a viewer animation.
   MotorParams::SupportParams legs[MotorParams::kMaxSupports];
   int leg_count = 0;
-  if (motor.support_count <= 0) {
+  if (motor.support_count < 0) {
+ // Tracked chassis carry their load on the two drive tracks; no caster
+ // assembly is present unless the machine config explicitly declares one.
+ leg_count = 0;
+ } else if (motor.support_count == 0) {
     const double dx = base_len / 2 * 0.9;
     for (int i = 0; i < 2; ++i) {
       legs[leg_count].kind = "ball";
@@ -439,7 +455,23 @@ void MujocoBackend::sync(const MotorParams& motor,
       ++idler_count_;
     }
   }
-  // Drive joint i follows module i for the first drive_count modules;
+  // The free-joint base frame is the drive axle, so terrain revalidation
+ // must use actual wheel contact footprints. Sampling the body centre lifts
+ // the whole chassis over a narrow centre ridge and hides a genuine belly
+ // scrape; sampling support wheels preserves that physical distinction.
+ auto support_ground_height = [&](double bx, double by, double yaw) {
+ double h = 0.0;
+ const double c = std::cos(yaw), sn = std::sin(yaw);
+ auto sample_at = [&](double lx, double ly) {
+ const double wx = bx + lx * c - ly * sn;
+ const double wy = by + lx * sn + ly * c;
+ h = std::max(h, sample_terrain(patches, slabs, wx, wy).height_m);
+ };
+ for (const auto& mod : modules) sample_at(mod.x, mod.y);
+ for (int i = 0; i < leg_count; ++i) sample_at(legs[i].x_m, 0.0);
+ return h;
+ };
+ // Drive joint i follows module i for the first drive_count modules;
   // steer joint i follows the i-th steered module. Ackermann orders its
   // arrays [rear, rear, front, front]: drives are modules 0,1 and steers
   // are modules 2,3.
@@ -453,20 +485,38 @@ void MujocoBackend::sync(const MotorParams& motor,
   spec->option.timestep = 0.001;
   mjsBody* world = mjs_findBody(spec, "world");
   const bool is_mecanum_layout = (drive_count == 4 && steer_count == 0);
-  mjsGeom* floor = mjs_addGeom(world, nullptr);
-  set_name(floor->element, "floor");
-  floor->type = mjGEOM_PLANE;
-  floor->size[0] = 20.0;
-  floor->size[1] = 20.0;
-  floor->size[2] = 0.1;
-  // Mecanum contacts carry weight only (rollers are not meshed); planar
-  // motion comes from the analytic roller wrench below. The floor must
-  // slide as freely as the roller stand-ins or the pair friction pins the
-  // body against the wrench. Other layouts keep full grip.
-  floor->friction[0] =
-      is_mecanum_layout ? mu_tire : kFloorSlidingFriction;
-  floor->friction[1] = 0.01;
-  floor->friction[2] = 0.001;
+ const bool use_heightfield = std::any_of(
+ patches.begin(), patches.end(), [](const TerrainPatch& p) {
+ if (p.roughness > 0.0 || std::abs(p.grade_xy_per_m) > 1e-12) {
+ return true;
+ }
+ const double width = p.x1 - p.x0;
+ const double height = p.y1 - p.y0;
+ const double h00 = p.base_height_m;
+ const double h10 = h00 + p.grade_x * width;
+ const double h01 = h00 + p.grade_y * height;
+ const double h11 = h10 + p.grade_y * height;
+ return std::min({h00, h10, h01, h11}) < -1e-6;
+ });
+ // Planar terrain can sit on MuJoCo's infinite plane and uses exact analytic
+ // slabs below. Nonlinear relief, cross terms, and depressions replace the
+ // complete scenario ground with one continuous height field.
+ if (!use_heightfield) {
+ mjsGeom* floor = mjs_addGeom(world, nullptr);
+ set_name(floor->element, "floor");
+ floor->type = mjGEOM_PLANE;
+ floor->size[0] = 20.0;
+ floor->size[1] = 20.0;
+ floor->size[2] = 0.1;
+ // Mecanum contacts carry weight only (rollers are not meshed); planar
+ // motion comes from the analytic roller wrench below. The floor must
+ // slide as freely as the roller stand-ins or the pair friction pins the
+ // body against the wrench. Other layouts keep full grip.
+ floor->friction[0] =
+ is_mecanum_layout ? mu_tire : kFloorSlidingFriction;
+ floor->friction[1] = 0.01;
+ floor->friction[2] = 0.001;
+ }
   mjsBody* base = add_body(world, "base", 0.0, 0.0, r);
   mjs_addFreeJoint(base);
   mjsGeom* deck =
@@ -531,6 +581,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       tire->quat[2] = kQuatX90[2];
       tire->quat[3] = kQuatX90[3];
       tire->density = motor.tire_density_kgpm3;
+ tire->priority = 2;
       tire->friction[0] = mu_tire;
       tire->friction[1] = kWheelTorsionalFriction;
       tire->friction[2] = kWheelRollingFriction;
@@ -551,24 +602,21 @@ void MujocoBackend::sync(const MotorParams& motor,
       itire->quat[2] = kQuatX90[2];
       itire->quat[3] = kQuatX90[3];
       itire->density = motor.tire_density_kgpm3;
+ itire->priority = 2;
       itire->friction[0] = mu;
       itire->friction[1] = kWheelTorsionalFriction;
       itire->friction[2] = kWheelRollingFriction;
       ++idle_idx;
     }
   }
-  // Ball casters fore/aft, like the real differential base: unactuated
-  // balls that roll instead of gripping, so motor reaction torque settles
-  // into weight transfer instead of slamming the deck onto the floor.
+ // Passive caster assemblies: unactuated fork swivel and wheel roll are
+ // engine joints. Their authored low friction carries normal load without
+ // becoming a hidden drive channel.
   //
-  // Deliberately NOT forked swivel wheels (measured, kept honest): a
-  // trailed fork transmits tangential force into the deck — on the thin-
-  // margin icy climb the undriven forks steal normal force AND brake the
-  // crest pivot (stuck at x=6.0 with both drives spinning), and on 2 cm
-  // relief the small fork wheels plow and beach the plant. Free balls
-  // carry normal load only (near-zero tangential by authoring below), so
-  // both pinned missions pass; the fork+wheel doctrine from master stays
-  // where master uses it — animation mounts, never contact.
+ // The authored kind remains "ball" for config compatibility; a
+ // trailed wheel still uses the configured support friction and damping, so
+ // the result remains a physical passive support rather than a kinematic
+ // viewer animation.
   // Build loop over the legs resolved up front (validation first — a bad
   // support refuses before any body exists).
   for (int i = 0; i < leg_count; ++i) {
@@ -586,17 +634,80 @@ void MujocoBackend::sync(const MotorParams& motor,
       return;
     }
     const double cz = -(r - leg.radius_m);  // feet level with tire feet
-    mjsBody* caster = add_body(base, "caster" + std::to_string(i), leg.x_m,
-                               0.0, cz);
-    mjsJoint* ball = mjs_addJoint(caster, nullptr);
-    set_name(ball->element, ("casterj" + std::to_string(i)).c_str());
-    ball->type = mjJNT_BALL;
-    mjsGeom* ball_g = add_geom(caster, "ball" + std::to_string(i),
-                               mjGEOM_SPHERE, leg.radius_m, 0.0, 0.0, 1);
-    ball_g->mass = leg.mass_kg;
-    ball_g->friction[0] = leg.friction_mu;
-    ball_g->friction[1] = leg.torsional;
-    ball_g->friction[2] = leg.rolling;
+ const double trail = std::max(0.0, motor.idler_trail_m);
+ support_anchor_x_[i] = leg.x_m;
+ support_anchor_y_[i] = 0.0;
+ support_radius_[i] = leg.radius_m;
+ support_trail_[i] = trail;
+ // Passive casters should carry normal load without becoming a second
+ // powered axle. Their lateral slip is deliberately low; the wheel-roll
+ // hinge and trail provide the physical caster response while keeping the
+ // legacy drive force budget independent of support tire authoring.
+ support_mu_base_[i] = std::min(leg.friction_mu, 0.01);
+ mjsBody* fork = add_body(base, "caster" + std::to_string(i), leg.x_m,
+ 0.0, cz);
+ mjsJoint* swivel = add_hinge(fork, "casterswivel" + std::to_string(i),
+ 0.0, 0.0, 1.0);
+ swivel->damping[0] = std::max(0.0, leg.torsional);
+ swivel->frictionloss = std::max(0.0, leg.torsional);
+ mjsGeom* bearing = add_geom(fork,
+ "casterbearing" + std::to_string(i), mjGEOM_SPHERE,
+ std::max(0.008, leg.radius_m * 0.35), 0.0, 0.0, 1);
+ bearing->mass = leg.mass_kg * 0.25;
+ bearing->contype = 0;
+ bearing->conaffinity = 0;
+ mjsBody* wheel = add_body(fork, "casterwheel" + std::to_string(i),
+ -trail, 0.0, 0.0);
+ mjsJoint* roll = add_hinge(wheel, "casterroll" + std::to_string(i),
+ 0.0, 1.0, 0.0,
+ std::max(1e-7, leg.mass_kg * leg.radius_m * leg.radius_m * 0.25));
+ roll->damping[0] = 0.0;
+ roll->frictionloss = 0.0;
+ const double caster_hw = std::max(1e-4,
+ std::min(tire_hw, leg.radius_m * 0.75));
+ // Crowned tread: the centre rib has the nominal radius and carries the
+ // normal load on straight travel; the two shoulders are a few millimetres
+ // smaller and only engage under lean/side load. This is a compact physical
+ // approximation of a real passive caster tire and avoids making a flat,
+ // full-width cylinder scrub laterally across the floor.
+ const double crown_halfwidth = caster_hw * 0.5;
+ const double shoulder_halfwidth = caster_hw * 0.25;
+ const double shoulder_offset = crown_halfwidth + shoulder_halfwidth;
+ const double shoulder_drop = std::max(1.0e-4, leg.radius_m * 0.10);
+ const double shoulder_radius =
+ std::max(1.0e-4, leg.radius_m - shoulder_drop);
+ const auto configure_tire = [&](mjsGeom* geom, double mass) {
+ geom->quat[0] = kQuatX90[0];
+ geom->quat[1] = kQuatX90[1];
+ geom->quat[2] = kQuatX90[2];
+ geom->quat[3] = kQuatX90[3];
+ geom->mass = mass;
+ // MuJoCo combines equal-priority contact friction with a max rule. Give
+ // the passive tire a higher contact priority so its authored low scrub
+ // coefficient wins against the high-grip floor while still carrying the
+ // normal load. Drive tires remain on the regular floor priority.
+ geom->priority = 2;
+ geom->friction[0] = std::min(leg.friction_mu, 0.01);
+ // The roll hinge and the contact tangent resolve rolling. Explicit
+ // torsional/rolling losses here would double-count resistance and make the
+ // passive support steal drive force from the powered axle.
+ geom->friction[1] = 0.0;
+ geom->friction[2] = 0.0;
+ };
+ mjsGeom* tire = add_geom(wheel, "castertire" + std::to_string(i),
+ mjGEOM_CYLINDER, leg.radius_m, crown_halfwidth, 0.0, 1);
+ configure_tire(tire, leg.mass_kg * 0.50);
+ mjsGeom* shoulder_l = add_geom(
+ wheel, "castertire" + std::to_string(i) + "_shoulder_l",
+ mjGEOM_CYLINDER, shoulder_radius, shoulder_halfwidth, 0.0, 1);
+ shoulder_l->pos[1] = shoulder_offset;
+ configure_tire(shoulder_l, leg.mass_kg * 0.125);
+ mjsGeom* shoulder_r = add_geom(
+ wheel, "castertire" + std::to_string(i) + "_shoulder_r",
+ mjGEOM_CYLINDER, shoulder_radius, shoulder_halfwidth, 0.0, 1);
+ shoulder_r->pos[1] = -shoulder_offset;
+ configure_tire(shoulder_r, leg.mass_kg * 0.125);
+ ++support_count_;
   }
   // Surveyed static geometry: fixed worldbody boxes (no joints).
   // Height <= 0 means flat paint (floor marking, survey plate): no engine
@@ -618,49 +729,98 @@ void MujocoBackend::sync(const MotorParams& motor,
     wall->friction[2] = 0.001;
     ++bi;
   }
-  // Material zones: thin floor slabs (top 1 mm above the plane, avoiding
+ // Material zones: thin floor slabs (top 1 mm above the plane, avoiding
   // coplanar contact ambiguity) carrying the library friction + contact
   // numbers. The pair takes the max, so the tire side (per-step, per-wheel)
   // governs at/below its rating and grippier ground wins upward — the same
   // relationship the legacy floor (1.0) has with the tire rating.
-  for (std::size_t zi = 0; zi < zones.size(); ++zi) {
-    const MaterialZone& z = zones[zi];
-    if (!(z.x1 > z.x0 && z.y1 > z.y0)) continue;  // zero area covers nothing
-    const MaterialEntry* mat = find_material(materials, z.material_id);
-    if (mat == nullptr) continue;  // refused at sync head; defensive
-    const double hx = (z.x1 - z.x0) / 2;
-    const double hy = (z.y1 - z.y0) / 2;
-    mjsGeom* zg = add_geom(world, "zone" + std::to_string(zi), mjGEOM_BOX,
-                           hx, hy, 0.025);
-    zg->pos[0] = (z.x0 + z.x1) / 2;
-    zg->pos[1] = (z.y0 + z.y1) / 2;
-    zg->pos[2] = 0.001 - 0.025;
-    zg->friction[0] = std::max(0.0, mat->friction_mu);
-    zg->friction[1] = 0.01;
-    // Engine-native rolling parameter fed from the material: Coulomb rr is
-    // a force ratio, the solver wants a torque arm — scale by the wheel
-    // radius (rr 0.015 at r 0.1 lands at the legacy 0.002 neighborhood).
-    zg->friction[2] =
-        std::clamp(mat->rolling_resist * r, 0.0, 0.05);
-    zg->solref[0] = std::max(1e-4, mat->contact_time_constant_s);
-    zg->solref[1] = std::max(0.0, mat->contact_damping_ratio);
-  }
-  // Terrain patches: oriented slabs whose top face coincides with the
+  // Material properties are applied directly to live contacts in step().
+ // Nonlinear or below-grade authored terrain is one height field over the
+ // complete map footprint. Adjacent patches share vertices and contact
+ // normals; there are no internal tile seams, and negative relief is not
+ // masked by an infinite floor at z=0.
+ if (use_heightfield) {
+ double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+ auto include = [&](double ax0, double ay0, double ax1, double ay1) {
+ x0 = std::min(x0, ax0);
+ y0 = std::min(y0, ay0);
+ x1 = std::max(x1, ax1);
+ y1 = std::max(y1, ay1);
+ };
+ for (const auto& p : patches) include(p.x0, p.y0, p.x1, p.y1);
+ for (const auto& b : boxes) include(b.x0, b.y0, b.x1, b.y1);
+ for (const auto& z : zones) include(z.x0, z.y0, z.x1, z.y1);
+ for (const auto& s : slabs) {
+ const double extent = std::hypot(s.half_length_m, s.half_width_m);
+ include(s.center_x_m - extent, s.center_y_m - extent,
+ s.center_x_m + extent, s.center_y_m + extent);
+ }
+ constexpr double kGroundMarginM = 2.0;
+ x0 -= kGroundMarginM;
+ y0 -= kGroundMarginM;
+ x1 += kGroundMarginM;
+ y1 += kGroundMarginM;
+ const double width = std::max(0.1, x1 - x0);
+ const double height = std::max(0.1, y1 - y0);
+ constexpr double kTargetCellM = 0.10;
+ constexpr int kMaxCellsPerSide = 256;
+ const int nx = std::clamp(
+ static_cast<int>(std::ceil(width / kTargetCellM)), 2,
+ kMaxCellsPerSide);
+ const int ny = std::clamp(
+ static_cast<int>(std::ceil(height / kTargetCellM)), 2,
+ kMaxCellsPerSide);
+ std::vector<float> elevation;
+ elevation.reserve(static_cast<std::size_t>(nx + 1) *
+ static_cast<std::size_t>(ny + 1));
+ double min_h = std::numeric_limits<double>::infinity();
+ double max_h = -std::numeric_limits<double>::infinity();
+ // mjsHField userdata is already row-major from minimum Y to maximum Y.
+ // (Only MJCF's inline text reader performs the image-row flip used by the
+ // main branch's XML writer.)
+ for (int iy = 0; iy <= ny; ++iy) {
+ const double y = y0 + height * static_cast<double>(iy) / ny;
+ for (int ix = 0; ix <= nx; ++ix) {
+ const double x = x0 + width * static_cast<double>(ix) / nx;
+ const double h = sample_terrain(patches, {}, x, y).height_m;
+ elevation.push_back(static_cast<float>(h));
+ min_h = std::min(min_h, h);
+ max_h = std::max(max_h, h);
+ }
+ }
+ mjsHField* field = mjs_addHField(spec);
+ set_name(field->element, "terrain_surface");
+ field->nrow = ny + 1;
+ field->ncol = nx + 1;
+ field->size[0] = width * 0.5;
+ field->size[1] = height * 0.5;
+ field->size[2] = std::max(1e-4, max_h - min_h);
+ field->size[3] = std::max(0.10, std::abs(min_h) + 0.10);
+ mjs_setFloat(field->userdata, elevation.data(),
+ static_cast<int>(elevation.size()));
+ mjsGeom* ground = add_geom(world, "terrain_ground", mjGEOM_HFIELD,
+ 0.0, 0.0, 0.0);
+ mjs_setString(ground->hfieldname, "terrain_surface");
+ ground->pos[0] = (x0 + x1) * 0.5;
+ ground->pos[1] = (y0 + y1) * 0.5;
+ ground->pos[2] = min_h;
+ ground->friction[0] =
+ is_mecanum_layout ? mu_tire : kFloorSlidingFriction;
+ ground->friction[1] = 0.01;
+ ground->friction[2] = 0.001;
+
+ }
+
+ if (!use_heightfield) {
+ // Planar patches use exact oriented slabs whose top face coincides with the
   // canonical height plane (same grade through the center point the survey
   // rasterizes, so engine contact and map elevation agree exactly on the
   // footprint). Patch borders are retaining walls, never ramps.
-  // Mesh patches (roughness or bilinear cross-slope: no single plane fits)
-  // build as tile grids instead — each tile samples the canonical height +
-  // gradient at its center through the full patch/slab stack (later wins),
-  // so overlaps resolve identically in engine and survey. Tile pitch is
-  // capped at 1/4 of the shortest relief wavelength (0.95 m); larger
-  // patches coarsen with a one-time notice, never silently.
+ // Nonlinear patches never enter this path; the single height field above
+ // owns those surfaces.
   for (std::size_t pi = 0; pi < patches.size(); ++pi) {
     const TerrainPatch& p = patches[pi];
     if (!(p.x1 > p.x0 && p.y1 > p.y0)) continue;
-    const bool mesh = p.roughness > 0.0 ||
-                      std::abs(p.grade_xy_per_m) > 1e-12;
-    if (!mesh) {
       const double hx = (p.x1 - p.x0) / 2;
       const double hy = (p.y1 - p.y0) / 2;
       const double cx = (p.x0 + p.x1) / 2;
@@ -680,50 +840,67 @@ void MujocoBackend::sync(const MotorParams& motor,
       pg->friction[0] = kFloorSlidingFriction;
       pg->friction[1] = 0.01;
       pg->friction[2] = 0.001;
-      continue;
-    }
-    const double w = p.x1 - p.x0, h = p.y1 - p.y0;
-    int nx = std::max(1, static_cast<int>(std::ceil(w / 0.25)));
-    int ny = std::max(1, static_cast<int>(std::ceil(h / 0.25)));
-    if (nx > 48 || ny > 48) {
-      if (!refuse_reported_) {
-        std::fprintf(stderr,
-                     "mujoco_backend: terrain patch '%s' tiles coarsened "
-                     "(%dx%d capped at 48/side)\n",
-                     p.patch_id.c_str(), nx, ny);
-        refuse_reported_ = true;
-      }
-      nx = std::min(nx, 48);
-      ny = std::min(ny, 48);
-    }
-    const double dx = w / nx, dy = h / ny;
-    for (int ix = 0; ix < nx; ++ix) {
-      for (int iy = 0; iy < ny; ++iy) {
-        const double cx = p.x0 + (ix + 0.5) * dx;
-        const double cy = p.y0 + (iy + 0.5) * dy;
-        TerrainSample center = sample_terrain(patches, slabs, cx, cy);
-        const double half_t = (center.height_m + 0.5) / 2;
-        double q[4];
-        grade_quat(center.grade_x, center.grade_y, q);
-        mjsGeom* tg =
-            add_geom(world,
-                     "terrain" + std::to_string(pi) + "t" + std::to_string(ix) +
-                         "_" + std::to_string(iy),
-                     mjGEOM_BOX, dx / 2, dy / 2, std::max(0.05, half_t), 0,
-                     q);
-        tg->pos[0] = cx;
-        tg->pos[1] = cy;
-        tg->pos[2] = center.height_m -
-                     std::max(0.05, half_t) *
-                         std::cos(std::atan(center.grade_x)) *
-                         std::cos(std::atan(center.grade_y));
-        tg->friction[0] = kFloorSlidingFriction;
-        tg->friction[1] = 0.01;
-        tg->friction[2] = 0.001;
-      }
-    }
   }
-  // Support slabs: thin oriented decks (same top-coincidence construction).
+  // Continuous patch seams receive a small beveled contact cap. The
+ // authored elevation remains piecewise (and the lidar/map still report
+ // it), while the engine gets a wheelable transition instead of two
+ // coplanar box faces whose solver edge behaves like a curb. A height step
+ // above the tolerance is intentionally left as a retaining wall.
+ auto seam_plane_height = [](const TerrainPatch& t, double x, double y) {
+ const double dx = x - t.x0, dy = y - t.y0;
+ return t.base_height_m + t.grade_x * dx + t.grade_y * dy;
+ };
+ int seam_index = 0;
+ for (std::size_t ai = 0; ai < patches.size(); ++ai) {
+ const TerrainPatch& a = patches[ai];
+ if (a.roughness > 0.0 || std::abs(a.grade_xy_per_m) > 1e-12) continue;
+ for (std::size_t bi = ai + 1; bi < patches.size(); ++bi) {
+ const TerrainPatch& b = patches[bi];
+ if (b.roughness > 0.0 || std::abs(b.grade_xy_per_m) > 1e-12) continue;
+ bool x_seam = false;
+ double edge = 0.0;
+ if (std::abs(a.x1 - b.x0) < 1e-9) { x_seam = true; edge = a.x1; }
+ else if (std::abs(b.x1 - a.x0) < 1e-9) { x_seam = true; edge = b.x1; }
+ else if (std::abs(a.y1 - b.y0) < 1e-9) { edge = a.y1; }
+ else if (std::abs(b.y1 - a.y0) < 1e-9) { edge = b.y1; }
+ else continue;
+ const double lo = x_seam ? std::max(a.y0, b.y0)
+ : std::max(a.x0, b.x0);
+ const double hi = x_seam ? std::min(a.y1, b.y1)
+ : std::min(a.x1, b.x1);
+ if (!(hi - lo > 0.04)) continue;
+ const double mid = 0.5 * (lo + hi);
+ const double sx = x_seam ? edge : mid;
+ const double sy = x_seam ? mid : edge;
+ const double ha = seam_plane_height(a, sx, sy);
+ const double hb = seam_plane_height(b, sx, sy);
+ if (std::abs(ha - hb) > 0.01) continue;
+ // A sharp grade reversal is an authored ridge, not a numerical seam;
+ // leave its retaining contact explicit so the wheel does not acquire an
+ // artificial bridge over a feature larger than the chassis can climb.
+ if (std::abs(a.grade_x - b.grade_x) > 0.20 ||
+ std::abs(a.grade_y - b.grade_y) > 0.20) continue;
+ const double h = 0.5 * (ha + hb);
+ const double gx = 0.5 * (a.grade_x + b.grade_x);
+ const double gy = 0.5 * (a.grade_y + b.grade_y);
+ const double half_len = 0.03;
+ const double half_width = 0.5 * (hi - lo);
+ const double half_t = std::max(0.05, (h + 0.5) / 2);
+ double q[4]; grade_quat(gx, gy, q);
+ mjsGeom* cap = add_geom(world, "terrain_seam" + std::to_string(seam_index++),
+ mjGEOM_BOX, x_seam ? half_len : half_width,
+ x_seam ? half_width : half_len, half_t, 0, q);
+ cap->pos[0] = x_seam ? edge : mid;
+ cap->pos[1] = x_seam ? mid : edge;
+ cap->pos[2] = h - half_t * std::cos(std::atan(gx)) *
+ std::cos(std::atan(gy));
+ cap->friction[0] = kFloorSlidingFriction;
+ cap->friction[1] = 0.01;
+ cap->friction[2] = 0.001;
+ }
+ }
+ }
+ // Support slabs: thin oriented decks (same top-coincidence construction).
   for (std::size_t si = 0; si < slabs.size(); ++si) {
     const SupportSlab& s = slabs[si];
     if (!(s.half_length_m > 0.0 && s.half_width_m > 0.0)) continue;
@@ -762,12 +939,31 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   impl_->model = model;
   impl_->data = data;
+ // A free joint defaults to the world origin, which puts the axle and every
+ // tire below the floor until the first solver step lifts the chassis.  That
+ // transient is observable in the viewer (and can leave a wheel apparently
+ // embedded when the first command changes the joint layout and rebuilds the
+ // model).  The base frame is the drive axle frame, so a level spawn is
+ // exactly one configured drive radius above the canonical ground plane.
+ // Seed the engine state before restoring a compatible rebuild snapshot. The
+ // snapshot remains authoritative for x/y, attitude, velocities, and joint
+ // angles, while root z is revalidated against the new wheel radius and the
+ // canonical authored terrain below.
+ if (model->nq >= 7) {
+ data->qpos[0] = 0.0;
+ data->qpos[1] = 0.0;
+ data->qpos[2] = support_ground_height(0.0, 0.0, 0.0) + r;
+ data->qpos[3] = 1.0;
+ data->qpos[4] = 0.0;
+ data->qpos[5] = 0.0;
+ data->qpos[6] = 0.0;
+ }
   // Brake lag shapes from the motor contract (main-stack mapping).
   const ServiceBrakeParams bp = brake_params_from_motor(motor);
   for (auto& b : impl_->brakes) b = ServiceBrakePlant{bp};
   int found_drives = 0, found_steers = 0;
   for (int i = 0; i < 4; ++i) {
-    char name[16];
+ char name[64];
     std::snprintf(name, sizeof(name), "drive%d", i);
     const int jid = mj_name2id(model, mjOBJ_JOINT, name);
     drive_dof_[i] = (jid >= 0) ? model->jnt_dofadr[jid] : -1;
@@ -786,6 +982,20 @@ void MujocoBackend::sync(const MotorParams& motor,
       std::snprintf(name, sizeof(name), "idlertire%d", i);
       idler_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
     }
+ if (i < support_count_) {
+ std::snprintf(name, sizeof(name), "casterswivel%d", i);
+ const int sid = mj_name2id(model, mjOBJ_JOINT, name);
+ support_swivel_dof_[i] = (sid >= 0) ? model->jnt_dofadr[sid] : -1;
+ std::snprintf(name, sizeof(name), "casterroll%d", i);
+ const int rid = mj_name2id(model, mjOBJ_JOINT, name);
+ support_roll_dof_[i] = (rid >= 0) ? model->jnt_dofadr[rid] : -1;
+ std::snprintf(name, sizeof(name), "castertire%d", i);
+ support_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);
+ std::snprintf(name, sizeof(name), "castertire%d_shoulder_l", i);
+ support_shoulder_geom_[i][0] = mj_name2id(model, mjOBJ_GEOM, name);
+ std::snprintf(name, sizeof(name), "castertire%d_shoulder_r", i);
+ support_shoulder_geom_[i][1] = mj_name2id(model, mjOBJ_GEOM, name);
+ }
   }
   zone_geom_.clear();
   for (std::size_t zi = 0; zi < zones.size(); ++zi) {
@@ -813,12 +1023,33 @@ void MujocoBackend::sync(const MotorParams& motor,
   built_signature_ = signature;
   built_geometry_version_ = geometry_version;
   ever_built_ = true;
-  if (!saved_qpos.empty() && !saved_qvel.empty() &&
+ bool restored_snapshot = false;
+ if (!saved_qpos.empty() && !saved_qvel.empty() &&
       static_cast<int>(saved_qpos.size()) == model->nq &&
       static_cast<int>(saved_qvel.size()) == model->nv) {
     std::copy(saved_qpos.begin(), saved_qpos.end(), data->qpos);
     std::copy(saved_qvel.begin(), saved_qvel.end(), data->qvel);
-    mj_forward(model, data);
+ restored_snapshot = true;
+ }
+ if (model->nq >= 7) {
+ // Preserve a live vehicle's elevation when it is above the new contact
+ // plane (for example while riding a box edge), but never restore a root
+ // pose below the lowest wheel contact. Starting at the exact boundary lets
+ // MuJoCo's contact solver settle without carrying an obsolete penetration.
+ const double qw = data->qpos[3], qx = data->qpos[4],
+ qy = data->qpos[5], qz = data->qpos[6];
+ const double yaw = std::atan2(2.0 * (qw * qz + qx * qy),
+ 1.0 - 2.0 * (qy * qy + qz * qz));
+ const double ground = support_ground_height(data->qpos[0], data->qpos[1], yaw);
+ const double minimum_z = ground + r;
+ if (!std::isfinite(data->qpos[2]) || data->qpos[2] < minimum_z) {
+ data->qpos[2] = minimum_z;
+ }
+ }
+ // Refresh kinematics for both a fresh spawn and a restored snapshot before
+ // the first integration step, so read-back and raycasts see the same state.
+ if (model->nq >= 7 || restored_snapshot) {
+ mj_forward(model, data);
   }
   read_back();
 }

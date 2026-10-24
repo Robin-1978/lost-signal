@@ -85,29 +85,46 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       f.body.wheels.push_back(w);
     }
   }
- // Render the unpowered supports as swivel casters. Their yaw follows the
- // measured body velocity only for presentation; no support state enters
- // the robot-facing encoder or actuator channels.
+ // Render the unpowered supports from the passive caster joints. The
+ // backend read-back is SIM-only; no support state enters the robot-facing
+ // encoder or actuator channels. The fallback is used only when the plant is
+ // unavailable (for example a frame assembled in a disabled-MuJoCo build).
  {
+ world::CasterViz table[lost_signal::sim::world::MotorParams::kMaxSupports];
+ const int physical_count = world.casters(
+ table, lost_signal::sim::world::MotorParams::kMaxSupports);
  const double speed = std::hypot(t.forward_mps, t.lateral_mps);
- const double caster_yaw = speed > 1e-6
- ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
- const int count = world.motor_params().support_count > 0
- ? world.motor_params().support_count : 2;
+ const int count = physical_count > 0 ? physical_count
+ : (world.motor_params().support_count > 0
+ ? world.motor_params().support_count : 2);
  for (int i = 0; i < count &&
  i < lost_signal::sim::world::MotorParams::kMaxSupports; ++i) {
  const auto& support = world.motor_params().support_count > 0
  ? world.motor_params().supports[i]
  : world::MotorParams::SupportParams{};
  FrameCaster caster;
- caster.x_m = world.motor_params().support_count > 0
+ if (physical_count > 0) {
+ caster.pivot_x_m = table[i].pivot_x_m;
+ caster.pivot_y_m = table[i].pivot_y_m;
+ caster.x_m = table[i].x_m;
+ caster.y_m = table[i].y_m;
+ caster.radius_m = table[i].radius_m;
+ caster.yaw_rad = table[i].swivel_rad;
+ caster.spin_rad = table[i].roll_rad;
+ } else {
+ caster.pivot_x_m = world.motor_params().support_count > 0
  ? support.x_m : (i == 0 ? 0.9 * world.motor_params().wheel_base_m * 0.5
  : -0.9 * world.motor_params().wheel_base_m * 0.5);
+ caster.pivot_y_m = 0.0;
+ caster.x_m = caster.pivot_x_m;
+ caster.y_m = caster.pivot_y_m;
  caster.radius_m = world.motor_params().support_count > 0
  ? support.radius_m : 0.03;
- caster.yaw_rad = caster_yaw;
+ caster.yaw_rad = speed > 1e-6
+ ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
  caster.spin_rad = speed * static_cast<double>(t.step) * 0.02 /
  std::max(1e-3, caster.radius_m);
+ }
  f.body.casters.push_back(caster);
  }
  }

@@ -31,6 +31,11 @@ struct StartupTrackerConfig {
   // for this many consecutive scans (mirrors the matcher twin doctrine).
   double promotion_margin = 0.05;
   int promotion_confirms = 2;
+ // A distant single-scan winner remains a hypothesis until measured wheel
+ // motion supplies a useful temporal baseline. Repeated stationary copies
+ // of one sparse scan add no observability.
+ double promotion_translation_m = 0.30;
+ double promotion_rotation_rad = 0.20;
   // A hypothesis failing the local match this often in a row is dropped
   // (one transient miss is tolerated, never two).
   int drop_after_rejects = 2;
@@ -59,7 +64,13 @@ class StartupHypotheses {
   explicit StartupHypotheses(StartupTrackerConfig config = {})
       : config_(config) {}
 
-  void reset() { hyps_.clear(); }
+ void reset() {
+ hyps_.clear();
+ require_motion_ = false;
+ last_stamp_ns_ = core::kInvalidTime;
+ accumulated_translation_m_ = 0.0;
+ accumulated_rotation_rad_ = 0.0;
+ }
   bool empty() const { return hyps_.empty(); }
   std::size_t size() const { return hyps_.size(); }
 
@@ -67,10 +78,12 @@ class StartupHypotheses {
     matcher_.set_lidar_mount(base_from_lidar);
   }
 
-  // Seed from an ambiguous whole-map result: the published pose plus its
-  // runner-ups, best-first. Empty runner-ups (decisive single or no
-  // evidence) seed nothing — the caller only tracks genuine ambiguity.
-  void seed(const GlobalSearchResult& ambiguous) {
+ // Seed from a whole-map result: the published pose plus runner-ups,
+ // best-first. Ambiguous tracking requires runner-ups; a decisive but
+ // distant candidate can be retained when motion confirmation is required.
+ void seed(const GlobalSearchResult& ambiguous,
+ core::MonotonicNs stamp_ns = core::kInvalidTime,
+ bool require_motion = false) {
     reset();
     hyps_.push_back(
         Hyp{ambiguous.x_m, ambiguous.y_m, ambiguous.yaw_rad,
@@ -78,24 +91,49 @@ class StartupHypotheses {
     for (const auto& ru : ambiguous.runner_ups) {
       hyps_.push_back(Hyp{ru.x_m, ru.y_m, ru.yaw_rad, ru.score, 0, 0});
     }
-    if (hyps_.size() <= 1) reset();  // nothing to disambiguate
+ require_motion_ = require_motion;
+ last_stamp_ns_ = stamp_ns;
+ if (hyps_.size() <= 1 && !require_motion_) reset();
   }
 
   // One scan: local-match every hypothesis, drop losers, promote winner.
-  // The match window (default 0.75 m / 0.35 rad) absorbs inter-scan motion
-  // at decision rate; poses follow accepted matches, so the track coasts
-  // through driving without an odometry input.
+ // Measured odometry first propagates every candidate by the same relative
+ // motion, then the bounded match window corrects each prediction.
   StartupTrackResult update(const std::vector<float>& ranges,
                            double angle_min_rad, double angle_increment_rad,
                            const iface::MapSnapshot& map,
-                           core::MonotonicNs stamp_ns) {
+ core::MonotonicNs stamp_ns,
+ double forward_mps = 0.0, double yaw_rate_radps = 0.0,
+ bool odometry_valid = false) {
     StartupTrackResult out;
     if (hyps_.empty() || !map.has_raster() || ranges.empty()) {
       out.status = StartupTrackStatus::kLost;
       reset();
       return out;
     }
-    for (auto& h : hyps_) {
+ double motion_dt_s = 0.0;
+ if (odometry_valid && last_stamp_ns_ != core::kInvalidTime &&
+ stamp_ns > last_stamp_ns_) {
+ motion_dt_s = static_cast<double>(stamp_ns - last_stamp_ns_) * 1e-9;
+ if (!(motion_dt_s > 0.0) || motion_dt_s > 1.0 ||
+ !std::isfinite(forward_mps) || !std::isfinite(yaw_rate_radps)) {
+ motion_dt_s = 0.0;
+ }
+ }
+ if (motion_dt_s > 0.0) {
+ const double distance = forward_mps * motion_dt_s;
+ const double delta_yaw = yaw_rate_radps * motion_dt_s;
+ accumulated_translation_m_ += std::abs(distance);
+ accumulated_rotation_rad_ += std::abs(delta_yaw);
+ for (auto& h : hyps_) {
+ const double yaw_mid = h.yaw + 0.5 * delta_yaw;
+ h.x += distance * std::cos(yaw_mid);
+ h.y += distance * std::sin(yaw_mid);
+ h.yaw = core::wrap_angle(h.yaw + delta_yaw);
+ }
+ }
+ last_stamp_ns_ = stamp_ns;
+ for (auto& h : hyps_) {
       ++h.age;
       ScanMatchResult m = matcher_.localize(
           ranges, angle_min_rad, angle_increment_rad, h.x, h.y, h.yaw, map,
@@ -150,7 +188,11 @@ class StartupHypotheses {
     // over a live runner-up (stale seconds don't count: the runner-up
     // must have matched this round... tracked via confirms > 0).
     const Hyp& best = hyps_.front();
-    if (best.confirms >= config_.promotion_confirms) {
+ const bool motion_confirmed =
+ !require_motion_ ||
+ accumulated_translation_m_ >= config_.promotion_translation_m ||
+ accumulated_rotation_rad_ >= config_.promotion_rotation_rad;
+ if (best.confirms >= config_.promotion_confirms && motion_confirmed) {
       if (hyps_.size() == 1) {
         return promoted(best);
       }
@@ -188,6 +230,10 @@ class StartupHypotheses {
   StartupTrackerConfig config_;
   ScanMatcher matcher_;
   std::vector<Hyp> hyps_;
+ bool require_motion_ = false;
+ core::MonotonicNs last_stamp_ns_ = core::kInvalidTime;
+ double accumulated_translation_m_ = 0.0;
+ double accumulated_rotation_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

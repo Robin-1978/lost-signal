@@ -259,6 +259,19 @@ int main() {
     assert(std::abs(r.yaw_rad) < 0.2);
     assert(r.coarse_evaluations > 0);
 
+ // A sparse prior may contain occupied returns but no surveyed free cells.
+ // Unknown cells remain eligible seeds; they are neutral until the measured
+ // returns, overlap, margin, and final raycast gates validate the pose.
+ auto sparse = make_wall_map();
+ for (auto& cell : sparse.occupancy) {
+ if (cell < 50) cell = -1;
+ }
+ auto sparse_ranges = scan_from(1.0, 0.0, 0.0, sparse);
+ GlobalSearchResult sr = searcher.search(
+ sparse_ranges, -M_PI, 2.0 * M_PI / sparse_ranges.size(), sparse, 1);
+ assert(sr.accepted);
+ assert(std::abs(sr.x_m - 1.0) < 0.6);
+
     // Uniform wall: every y-shifted hypothesis ties, so the global
     // search must refuse instead of kidnapping the estimate to a twin.
     auto uniform = make_wall_map();

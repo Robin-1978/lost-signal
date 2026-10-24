@@ -1,7 +1,7 @@
 # SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
 Robot side is continuously gated by a clean rebuild, the full CTest suite,
-and the boundary check (currently 49/49 green).
+and the boundary check (currently 51/51 green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
 map editor / campaign visuals stay out. The physics backend is MuJoCo
@@ -14,8 +14,9 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   link + drop determinism gate green.
 - M1 (done, historical): `MujocoBackend` behind a `World(PhysicsBackend)`
   switch (default analytic, ROBOT untouched): XML-generated diff base
-  (freejoint + 2 hinges + ball casters), duty-implied motor force +
-  smoothing service brake per main's duty path verbatim, 1 ms substeps,
+ (programmatic mjSpec: freejoint + drive/steer hinges + passive caster
+ swivel/roll hinges), duty-implied motor force + smoothing service brake per
+ main's duty path verbatim, 1 ms substeps,
   truth read back for the unchanged providers. Parity gate:
   `test_mujoco_backend` (behaviors + crossing HIL + determinism). The
   switch itself was deleted in M2 — engine-only since.
@@ -47,10 +48,63 @@ decorative mesh: chassis scale comes from the configured footprint/deck,
 drive wheels are mounted at the live MuJoCo wheel links and use their spin and
 steer joints, caster fork/wheel assemblies use the support radius and the
 body-frame axle offset, and the lidar model is mounted at the same configured
-extrinsic that produces the scan origin. Actor models retain their authored
-ground anchor and content reference radius, then follow the canonical SIM
-terrain height. The renderer does not replace any of these poses with a
-wall-clock animation or a ROBOT estimate.
+extrinsic that produces the scan origin. Wheel-link assets use an explicit
+authored `+Z` axle contract; installation and live roll/steer rotations are
+composed once, so a differential wheel cannot acquire a spurious vertical
+steering axis. Actor models retain their authored ground anchor and content
+reference radius, then follow the canonical SIM terrain height. Terrain mesh
+rendering stays within 1 mm of the engine contact surface, preventing visible
+tire interpenetration. The renderer does not replace any of these poses with
+a wall-clock animation or a ROBOT estimate.
+
+Unpowered supports keep the existing `kind: "ball"` configuration spelling
+for compatibility, but the MuJoCo plant now realizes each one as a
+low-friction fork swivel plus passive wheel-roll hinge. The viewer reads those
+joint angles and the wheel footprint back from the engine, so caster motion is
+physical SIM state rather than a time or body-velocity animation. The support
+table remains SIM-only and never enters ROBOT observations or actuator
+channels.
+
+### Recovery and pose/rendering invariants
+
+Whole-map localization is a recovery operation, not a periodic pose filter.
+When a localized estimate has finite covariance below the loss thresholds and
+the local scan matcher is producing accepted corrections, the supervisor only
+runs the bounded local matcher at its motion cadence. A global search is due
+for an unlocalized start, invalid or stale localization evidence, covariance
+above the recovery threshold, or repeated independent local-match failures.
+The last condition is deliberately independent of covariance: an overconfident
+odometry covariance can remain small while the scan evidence has become
+inconsistent. The global retry is rate-limited, and a candidate that would make
+a trusted low-covariance trajectory jump beyond its uncertainty-scaled limit is
+rejected. Simulator truth is never used in any of these gates.
+
+Unknown cells in a sparse prior or a live SLAM raster are eligible search
+hypotheses because rejecting them makes a map with unobserved space
+unlocalizable. Unknown space contributes neutral endpoint score only. A global
+fix still needs measured returns, overlap, score margin, and the final
+occupied-cell raycast check; unknown cells cannot manufacture confidence.
+
+The physical/rendering contract follows the same single-source rule. MuJoCo
+`qpos`/`qvel`, wheel hinges, steering hinges, and caster swivel/roll joints are
+the only pose inputs to the SIM frame. Rendering composes them in this order:
+body pose, fixed GLB authored-frame correction, steering/swivel, then wheel
+spin/roll. A differential wheel has no steering transform; an Ackermann or
+swerve module uses its measured steering joint. GLB scale and axis correction
+are fixed asset metadata, never inferred from the current pose. On a model
+rebuild, x/y, attitude, velocities, and joint angles are restored, while root z
+is revalidated against the new wheel radius and the canonical terrain contact
+height so an old snapshot cannot reintroduce an embedded tire. The viewer may
+apply only the documented sub-millimetre contact presentation guard; it does
+not replace engine pose with a ROBOT estimate or a wall-clock animation.
+
+Master parity boundary: the deployable simulation pieces are carried over
+(MuJoCo plant, terrain/material contacts, 2D/3D LiDAR, actor sidecars,
+multi-goal headless runs, scoring/artifacts, GLB component rendering, camera
+follow and deterministic effects). The old game client's campaign/audio stack,
+content catalog, HDR/bloom/shadow-map renderer, and manipulator articulation
+remain outside this SIM boundary. They require their own SIM-side adapters;
+they must not be copied into ROBOT configuration or used as hidden truth.
 - M4 (done): post-viewer hardening, four cuts.
   M4a TF tree (`robot/core/transform`, `platform/static_transform_tree`;
   coordinator is the only odom publisher and the only TF reader/writer).

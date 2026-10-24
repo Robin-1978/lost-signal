@@ -95,7 +95,6 @@ class SimSensorSuite {
  robot::iface::MotionFeedback motion_cache_{};
  robot::iface::ImuMessage imu_cache_{};
  robot::iface::Lidar2DScan scan_cache_{};
- robot::iface::Lidar2DScan static_scan_cache_{};
  bool have_motion_ = false;
  bool have_imu_ = false;
  bool have_scan_ = false;

@@ -45,10 +45,11 @@ void drive_until_done(sim::scenario::ScenarioSession& session, int max_steps) {
 }  // namespace
 
 int main() {
-  // Icy climb: 0.14 up-ramp with a 0.15-mu belt over launch + climb, goal
+ // Icy climb: 0.14 up-ramp with a 0.22-mu belt over launch + climb, goal
   // past the ridge via a mid-ramp stop. Steady climbing at this grade
-  // needs ~16 N/wheel against ~18 N of ice traction: the margin is thin
-  // enough that every launch/restart demand spike saturates, and the
+ // needs ~16 N/wheel plus rolling/support losses against ~26 N of ice
+ // traction. The margin is thin enough that every launch/restart demand
+ // spike saturates, and the
   // mid-ramp stop manufactures a restart on grade. Saturation still pulls
   // past the grade need, so the climb progresses WHILE slipping (force
   // margin, not speed — a steeper grade would beach force-limited, which
@@ -64,7 +65,7 @@ int main() {
         {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.14, 0.0, 0.0, 0.0},
          {"down", 6.0, -3.0, 10.0, 3.0, 0.56, -0.14, 0.0, 0.0, 0.0}});
     session.setup_world().set_materials(
-        {{"ice", 0.15, 0.005, 0.006, 1.0, 0.3}});
+ {{"ice", 0.22, 0.005, 0.006, 1.0, 0.3}});
     session.setup_world().set_material_zones(
         {{"belt", -2.0, -3.0, 6.5, 3.0, "ice"}});
     session.set_objectives({"mid", "past"}, 1.0);
@@ -80,7 +81,7 @@ int main() {
       max_z = std::max(max_z, step.truth_after.body_z_m);
       for (bool s : step.truth_after.drive_slipping) slip_seen |= s;
     }
-    std::printf("icy climb done=%d collisions=%d min_grip=%.2f max_z=%.2f "
+ std::printf("icy climb done=%d collisions=%zu min_grip=%.2f max_z=%.2f "
                 "slip=%d\n",
                 session.objectives_done(), score.collision_steps, min_grip,
                 max_z, slip_seen);
@@ -115,7 +116,7 @@ int main() {
       max_z = std::max(max_z, step.truth_after.body_z_m);
       min_grip = std::min(min_grip, step.diag.grip_factor);
     }
-    std::printf("ridge done=%d collisions=%d max_z=%.2f min_grip=%.2f\n",
+ std::printf("ridge done=%d collisions=%zu max_z=%.2f min_grip=%.2f\n",
                 session.objectives_done(), score.collision_steps, max_z,
                 min_grip);
     assert(session.objectives_done());

@@ -42,7 +42,7 @@ LocalizationSystem::TickResult LocalizationSystem::update(
   TickResult out;
   run_tracking(obs, has_observation, estimator);
   run_localization(map, obs, now_ns, estimator, out.action);
-  if (run_slam(obs, has_observation, estimator, mapper)) {
+ if (run_slam(map, obs, has_observation, estimator, mapper)) {
     out.replan_requested = true;
   }
   return out;
@@ -79,12 +79,16 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
                          tr.heading_sigma_rad, obs.stamp_ns);
 }
 
-bool LocalizationSystem::run_slam(const iface::ObservationFrame& obs,
-                                  bool has_observation, IEstimator& estimator,
+bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
+ const iface::ObservationFrame& obs,
+ bool has_observation, IEstimator& estimator,
                                   IMapper& mapper) {
   if (!has_observation || !obs.scan_valid) return false;
   slam_.ingest(estimator.estimate(), obs);
-  SlamLoopResult loop = slam_.try_close_loops(estimator.estimate(), obs);
+ const iface::MapSnapshot* absolute_map =
+ supervisor_.localized() && map.has_known_occupancy() ? &map : nullptr;
+ SlamLoopResult loop = slam_.try_close_loops(
+ estimator.estimate(), obs, absolute_map);
   if (!loop.closed) return false;
   // Accepted closure: snap the estimate to the optimized pose and rebuild
   // the rolling map from keyframes at their optimized poses. Past cells
@@ -143,7 +147,8 @@ void LocalizationSystem::run_localization(
       obs.scan_valid && !obs.ranges_m.empty()) {
     StartupTrackResult tracked = startup_hyps_.update(
         obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
-        map, now_ns);
+ map, now_ns, obs.forward_mps, obs.yaw_rate_radps,
+ obs.odometry_valid);
     if (tracked.status == StartupTrackStatus::kPromoted) {
       estimator.seed_pose(tracked.x_m, tracked.y_m, tracked.yaw_rad, 0.05,
                           0.02, obs.stamp_ns);
@@ -185,8 +190,41 @@ void LocalizationSystem::run_localization(
     GlobalSearchResult global = global_search_.search(
         obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
         map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
-    if (global.accepted) {
-      if (!supervisor_.localized()) {
+ bool accept_global = global.accepted;
+ bool require_temporal_confirmation = false;
+ if (global.accepted && !supervisor_.localized()) {
+ const double jump_m = std::hypot(global.x_m - est.x_m,
+ global.y_m - est.y_m);
+ const double direct_startup_limit_m = std::max(
+ supervisor_.config().trusted_global_jump_m,
+ supervisor_.config().trusted_global_jump_sigma_factor *
+ supervisor_.config().lost_position_sigma_m);
+ if (jump_m > direct_startup_limit_m) {
+ accept_global = false;
+ require_temporal_confirmation = true;
+ global.rejection_reason =
+ "distant startup candidate requires motion confirmation";
+ }
+ }
+ if (global.accepted && supervisor_.localized()) {
+ // A global candidate may recover a genuinely lost estimate, but it must
+ // not teleport a trusted trajectory to a weak repetitive-map hypothesis.
+ // This gate uses only estimator covariance and supervisor policy; SIM
+ // truth never participates.
+ const double jump_m = std::hypot(global.x_m - est.x_m,
+ global.y_m - est.y_m);
+ const double trusted_jump_limit_m = std::max(
+ supervisor_.config().trusted_global_jump_m,
+ supervisor_.config().trusted_global_jump_sigma_factor *
+ supervisor_.config().lost_position_sigma_m);
+ if (est.position_sigma_m < supervisor_.config().lost_position_sigma_m &&
+ jump_m > trusted_jump_limit_m) {
+ accept_global = false;
+ global.rejection_reason = "global correction exceeds trusted covariance";
+ }
+ }
+ if (accept_global) {
+ if (!supervisor_.localized()) {
         // No trustworthy prior exists (unknown start / kidnapped): snap
         // like a deliberate initial pose instead of blending toward a
         // confident-but-wrong dead-reckoned origin.
@@ -199,11 +237,16 @@ void LocalizationSystem::run_localization(
                                global.heading_sigma_rad, obs.stamp_ns);
       }
     }
-    supervisor_.record_global(global.accepted, ScanMatchResult{});
-    if (!global.accepted && !global.runner_ups.empty() &&
-        !supervisor_.localized()) {
-      startup_hyps_.seed(global);
-      action = "startup-seeded";
+ supervisor_.record_global(accept_global, ScanMatchResult{});
+ if (!accept_global && !global.rejection_reason.empty()) {
+ action = std::string("global_relocalization:") + global.rejection_reason;
+ }
+ if (!accept_global && !supervisor_.localized() &&
+ (!global.runner_ups.empty() || require_temporal_confirmation)) {
+ startup_hyps_.seed(global, obs.stamp_ns,
+ require_temporal_confirmation);
+ action = require_temporal_confirmation ? "startup-confirming"
+ : "startup-seeded";
     }
     return;
   }
@@ -211,7 +254,28 @@ void LocalizationSystem::run_localization(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
       est.x_m, est.y_m, est.yaw_rad, map, now_ns, est.roll_rad,
       est.pitch_rad, est.z_m);
-  if (match.accepted) {
+ if (match.accepted) {
+ const double innovation_m = std::hypot(
+ match.x_m - est.x_m, match.y_m - est.y_m);
+ const double innovation_rad = std::abs(
+ core::wrap_angle(match.yaw_rad - est.yaw_rad));
+ const double position_sigma = std::max(
+ est.position_sigma_m, match.position_sigma_m);
+ const double heading_sigma = std::max(
+ est.heading_sigma_rad, match.heading_sigma_rad);
+ const auto& cfg = supervisor_.config();
+ const double position_limit = std::max(
+ cfg.local_innovation_floor_m,
+ cfg.local_innovation_sigma_factor * position_sigma);
+ const double heading_limit = std::max(
+ cfg.local_innovation_floor_rad,
+ cfg.local_innovation_sigma_factor * heading_sigma);
+ if (!std::isfinite(innovation_m) || !std::isfinite(innovation_rad) ||
+ innovation_m > position_limit || innovation_rad > heading_limit) {
+ supervisor_.record_local(false, match);
+ action = "local_correction:innovation rejected";
+ return;
+ }
     estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
                            match.position_sigma_m, match.heading_sigma_rad,
                            obs.stamp_ns);

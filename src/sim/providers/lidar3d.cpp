@@ -207,7 +207,9 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
         detail::acquisition_pose(body, mount_xyz_m_, mount_rpy_rad_, toff);
     const double ox = pose.ox, oy = pose.oy, oz = pose.oz;
     const robot::core::Quaternion& sensor_q = pose.sensor_q;
-    float best = max_range_m_;
+ float best_horizontal = max_range_m_;
+ double best_slant = max_range_m_;
+ double best_cos_elevation = 1.0;
     float best_intensity = 0.0f;
     for (int j = 0; j < ring_count_; ++j) {
       const double elev =
@@ -255,23 +257,31 @@ bool Sim3DLidarProvider::poll_composite(std::vector<float>& ranges_m,
         is_ground = (hit_z - surface.height_m) < ground_cut_m_;
       }
       if (is_ground) continue;
-      if (static_cast<float>(dist) < best) {
-        best = static_cast<float>(dist);
+ const double horizontal = dist * ce;
+ if (static_cast<float>(horizontal) < best_horizontal) {
+ best_horizontal = static_cast<float>(horizontal);
+ best_slant = dist;
+ best_cos_elevation = ce;
         best_intensity = detail::return_intensity(
             *world_, ox + d.x * dist, oy + d.y * dist, hit_z, dist, actor_hit,
             !engine_hit && !actor_hit, d.x, d.y, d.z, win_ax, win_ay, win_ah);
       }
     }
-    ranges_m[static_cast<std::size_t>(i)] = best;
+ ranges_m[static_cast<std::size_t>(i)] = best_horizontal;
     intensities_m[static_cast<std::size_t>(i)] = best_intensity;
     // Device observation model on the winning return (receiver-side, after
     // geometry — same layering as the 2D producer). Driven no-return
     // publishes miss/max-range with zero intensity, never a clamped value.
     // Misses (all rings ground or out of range) stay absent.
-    if (best < max_range_m_) {
-      double measured = best;
-      if (device_range(best, max_range_m_, device_, rng_, measured)) {
-        ranges_m[static_cast<std::size_t>(i)] = static_cast<float>(measured);
+ if (best_slant < max_range_m_) {
+ double measured = best_slant;
+ if (device_range(best_slant, max_range_m_, device_, rng_, measured)) {
+ // A planar consumer needs the radial XY norm of the measured 3-D point,
+ // not the beam's slant range. Passing slant range here stretches every
+ // non-zero ring and can make a valid global scan match prefer a distant
+ // map alias.
+ ranges_m[static_cast<std::size_t>(i)] =
+ static_cast<float>(measured * best_cos_elevation);
       } else {
         ranges_m[static_cast<std::size_t>(i)] = max_range_m_;
         intensities_m[static_cast<std::size_t>(i)] = 0.0f;

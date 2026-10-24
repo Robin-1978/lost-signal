@@ -28,10 +28,11 @@ struct FrameWheel {
 };
 
 struct FrameCaster {
+ double pivot_x_m = 0.0, pivot_y_m = 0.0;
  double x_m = 0.0, y_m = 0.0;
  double radius_m = 0.03;
- double yaw_rad = 0.0; // swivel orientation from measured body motion
- double spin_rad = 0.0; // visual roll phase, presentation only
+ double yaw_rad = 0.0; // MuJoCo swivel joint angle
+ double spin_rad = 0.0; // MuJoCo passive wheel roll angle
 };
 
 struct FrameBody {
@@ -50,8 +51,8 @@ struct FrameBody {
   // Wheels in drive order (empty for skid-steer slabs, see tracked below);
   // module positions read the backend layout table, angles read truth.
   std::vector<FrameWheel> wheels;
- // Unpowered ball/caster supports. They carry the body visually but never
- // become drive channels or traction evidence.
+ // Unpowered physical caster supports. They are SIM-only presentation state,
+ // never drive channels, traction evidence, or ROBOT observations.
  std::vector<FrameCaster> casters;
   // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
   // chassis params, slip-reddening per side from the traction flags.

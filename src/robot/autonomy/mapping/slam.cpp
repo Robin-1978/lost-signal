@@ -35,6 +35,10 @@ void SlamSession::reset() {
   last_track_ = SlamTrackResult{};
   track_submap_ = iface::MapSnapshot{};
   track_submap_id_ = 0;
+ pending_loop_valid_ = false;
+ pending_loop_s_ = 0.0;
+ pending_loop_transform_ = Pose2{};
+ pending_loop_observer_pose_ = Pose2{};
 }
 
 bool SlamSession::keyframe_due(const EstimatedState& est) const {
@@ -317,11 +321,26 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
       old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
       old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
       obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
-  if (!rev.accepted || rev.overlap < config_.track_min_overlap) {
+ if (!rev.accepted || rev.overlap < config_.track_min_overlap ||
+ rev.score < config_.track_min_score ||
+ rev.score_margin < config_.track_min_margin) {
     out.diagnostic = "track rejected: reverse verification failed";
     last_track_ = out;
     return out;
   }
+ const double correction_m = std::hypot(
+ match.x_m - est.x_m, match.y_m - est.y_m);
+ const double correction_rad = std::abs(
+ core::wrap_angle(match.yaw_rad - est.yaw_rad));
+ if (!std::isfinite(correction_m) || !std::isfinite(correction_rad) ||
+ correction_m > config_.track_max_correction_m ||
+ correction_rad > config_.track_max_correction_rad ||
+ match.score < config_.track_min_score ||
+ match.score_margin < config_.track_min_margin) {
+ out.diagnostic = "track rejected: weak or oversized correction";
+ last_track_ = out;
+ return out;
+ }
   out.accepted = true;
   out.x_m = match.x_m;
   out.y_m = match.y_m;
@@ -331,6 +350,8 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   out.score = match.score;
   out.overlap = std::min(match.overlap, rev.overlap);
   out.score_margin = match.score_margin;
+ out.correction_m = correction_m;
+ out.correction_rad = correction_rad;
   out.diagnostic = "track corrected";
   ++track_corrections_;
   last_track_ = out;
@@ -338,7 +359,8 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
 }
 
 SlamLoopResult SlamSession::try_close_loops(
-    const EstimatedState& est, const iface::ObservationFrame& obs) {
+ const EstimatedState& est, const iface::ObservationFrame& obs,
+ const iface::MapSnapshot* absolute_map) {
   SlamLoopResult out;
   if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
       keyframes_.size() < 3) {
@@ -347,6 +369,13 @@ SlamLoopResult SlamSession::try_close_loops(
     return out;
   }
   const double now_s = obs.stamp_ns * 1e-9;
+ const double pending_timeout_s = std::max(
+ config_.gate.minimum_temporal_separation_s,
+ 2.0 * config_.loop_attempt_interval_s);
+ if (pending_loop_valid_ &&
+ now_s - pending_loop_s_ > pending_timeout_s) {
+ pending_loop_valid_ = false;
+ }
   if (now_s - last_attempt_s_ < config_.loop_attempt_interval_s ||
       keyframes_.size() == keyframes_at_last_attempt_) {
     out.diagnostic = "attempt rate limited";
@@ -365,6 +394,10 @@ SlamLoopResult SlamSession::try_close_loops(
   std::vector<Candidate> candidates;
   for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
     const SlamKeyframe& kf = keyframes_[i];
+ const std::size_t index_separation = keyframes_.size() - 1 - i;
+ if (index_separation < config_.minimum_loop_keyframe_separation) {
+ continue;
+ }
     if (now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
       continue;
     }
@@ -414,7 +447,7 @@ SlamLoopResult SlamSession::try_close_loops(
         obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
         est.x_m, est.y_m, est.yaw_rad, sub, obs.stamp_ns, est.roll_rad,
         est.pitch_rad, est.z_m);
-    if (!fwd.accepted) continue;
+ if (!fwd.accepted) continue;
     // Reverse (two-way support): old scan against a submap from the
     // current scan placed at the FORWARD solution. A one-sided alignment
     // against unrelated geometry must not become a constraint; rendering
@@ -438,9 +471,7 @@ SlamLoopResult SlamSession::try_close_loops(
         old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
         old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
         obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
-    if (!rev.accepted || rev.overlap < config_.gate.minimum_overlap) {
-        continue;
-    }
+ if (!rev.accepted || rev.overlap < config_.gate.minimum_overlap) continue;
     LoopClosureEvidence evidence;
     evidence.match_score = fwd.score;
     evidence.overlap = std::min(fwd.overlap, rev.overlap);
@@ -450,36 +481,152 @@ SlamLoopResult SlamSession::try_close_loops(
     evidence.information = pose_graph_information(fwd.position_sigma_m,
                                                   fwd.heading_sigma_rad);
     const LoopClosureDecision decision = gate.validate(from, to, evidence);
-    if (!decision.accepted) continue;
+ if (!decision.accepted) continue;
 
-    PoseGraphConstraint loop;
-    loop.id = to.id * 1000000u + from.id;  // unique without a counter
-    loop.from = from.id;
-    loop.to = to.id;
-    loop.measured_relative_pose = evidence.measured_relative_pose;
-    loop.information = evidence.information;
-    loop.kind = PoseGraphConstraintKind::LoopClosure;
-    std::string reason;
-    if (!graph_.add_constraint(loop, &reason)) continue;
-    // optimize() solves in place: graph keyframes carry the result.
-    const PoseGraphOptimizationResult opt = graph_.optimize();
-    if (!opt.success) {
-      out.diagnostic = "optimization failed: " + opt.diagnostic;
-      last_result_ = out;
-      return out;
-    }
-    const PoseGraphKeyframe* newest =
-        graph_.find_keyframe(keyframes_.back().id);
-    if (newest == nullptr) {
-      out.diagnostic = "optimized newest node missing";
-      last_result_ = out;
-      return out;
-    }
+ // Optimize a candidate graph transactionally. Association gates below use
+ // the correction the solver would actually publish, and a rejected loop
+ // leaves the live graph and keyframes byte-for-byte untouched.
+ PoseGraphConstraint loop;
+ loop.id = to.id * 1000000u + from.id; // unique without a counter
+ loop.from = from.id;
+ loop.to = to.id;
+ loop.measured_relative_pose = evidence.measured_relative_pose;
+ loop.information = evidence.information;
+ loop.kind = PoseGraphConstraintKind::LoopClosure;
+ PoseGraphBackend candidate_graph = graph_;
+ std::string reason;
+ if (!candidate_graph.add_constraint(loop, &reason)) continue;
+ const PoseGraphOptimizationResult opt = candidate_graph.optimize();
+ if (!opt.success) {
+ out.diagnostic = "optimization failed: " + opt.diagnostic;
+ last_result_ = out;
+ return out;
+ }
+ const PoseGraphKeyframe* candidate_newest =
+ candidate_graph.find_keyframe(keyframes_.back().id);
+ if (candidate_newest == nullptr) {
+ out.diagnostic = "optimized newest node missing";
+ last_result_ = out;
+ return out;
+ }
+ const Pose2 prior_newest = keyframes_.back().pose;
+ const Pose2 optimized_newest = candidate_newest->initial_pose;
+ const Pose2 current_pose{{est.x_m, est.y_m}, est.yaw_rad};
+ const Pose2 corrected_here = compose_pose(
+ optimized_newest, relative_pose(prior_newest, current_pose));
+ const double prospective_m = std::hypot(
+ corrected_here.position.x - current_pose.position.x,
+ corrected_here.position.y - current_pose.position.y);
+ const double prospective_rad = std::abs(core::wrap_angle(
+ corrected_here.heading_rad - current_pose.heading_rad));
+
+ // A loop beyond the local tracking window changes the global frame. In a
+ // surveyed region it must independently improve the scan's fit to that
+ // ROBOT-side map. Unknown survey cells are inconclusive rather than free or
+ // occupied; in that case (and in mapless SLAM) require the same rigid map
+ // correction to recur after the robot has moved. This prevents one sparse,
+ // repetitive view from becoming an irreversible pose-graph constraint.
+ const Pose2 matched_pose = corrected_here;
+ const bool large_correction =
+ prospective_m > config_.track_window_m ||
+ prospective_rad > config_.track_heading_rad;
+ if (large_correction) {
+ enum class AbsoluteEvidence { kInconclusive, kConfirms, kConflicts };
+ AbsoluteEvidence absolute = AbsoluteEvidence::kInconclusive;
+ if (absolute_map != nullptr && absolute_map->has_raster()) {
+ const auto beams = matcher.prepare_beams(
+ obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+ config_.match_max_beams);
+ const PoseScore current_score = matcher.score_pose(
+ est.x_m, est.y_m, est.yaw_rad, beams, *absolute_map,
+ est.roll_rad, est.pitch_rad, est.z_m);
+ const PoseScore matched_score = matcher.score_pose(
+ corrected_here.position.x, corrected_here.position.y,
+ corrected_here.heading_rad, beams, *absolute_map,
+ est.roll_rad, est.pitch_rad, est.z_m);
+ if (current_score.has_evidence || matched_score.has_evidence) {
+ const bool candidate_supported = matched_score.has_evidence &&
+ matched_score.overlap >= config_.match_minimum_overlap &&
+ matched_score.score >= config_.track_min_score;
+ const bool improves_absolute_fit = !current_score.has_evidence ||
+ matched_score.score - current_score.score >=
+ config_.gate.minimum_score_margin;
+ absolute = candidate_supported && improves_absolute_fit
+ ? AbsoluteEvidence::kConfirms : AbsoluteEvidence::kConflicts;
+ }
+ }
+ if (absolute == AbsoluteEvidence::kConflicts) {
+ out.diagnostic = "loop rejected: conflicts with surveyed-map evidence";
+ last_result_ = out;
+ continue;
+ }
+ // Rigid transform C with matched_pose = C * current_pose. Comparing C,
+ // rather than raw pose deltas, remains valid after the robot translates or
+ // rotates between confirmation scans.
+ Pose2 correction;
+ correction.heading_rad = core::wrap_angle(
+ matched_pose.heading_rad - current_pose.heading_rad);
+ const double cc = std::cos(correction.heading_rad);
+ const double cs = std::sin(correction.heading_rad);
+ correction.position.x = matched_pose.position.x -
+ (cc * current_pose.position.x - cs * current_pose.position.y);
+ correction.position.y = matched_pose.position.y -
+ (cs * current_pose.position.x + cc * current_pose.position.y);
+ const double observed_motion_m = pending_loop_valid_
+ ? std::hypot(current_pose.position.x -
+ pending_loop_observer_pose_.position.x,
+ current_pose.position.y - pending_loop_observer_pose_.position.y)
+ : 0.0;
+ const double observed_motion_rad = pending_loop_valid_
+ ? std::abs(core::wrap_angle(current_pose.heading_rad -
+ pending_loop_observer_pose_.heading_rad))
+ : 0.0;
+ const double correction_disagreement_m = pending_loop_valid_
+ ? std::hypot(correction.position.x -
+ pending_loop_transform_.position.x,
+ correction.position.y - pending_loop_transform_.position.y)
+ : std::numeric_limits<double>::infinity();
+ const double correction_disagreement_rad = pending_loop_valid_
+ ? std::abs(core::wrap_angle(correction.heading_rad -
+ pending_loop_transform_.heading_rad))
+ : std::numeric_limits<double>::infinity();
+ const double required_motion_m = std::max(
+ config_.match_translation_step_m,
+ 0.5 * config_.keyframe_translation_m);
+ const double required_motion_rad = std::max(
+ config_.match_heading_step_rad,
+ 0.5 * config_.keyframe_heading_rad);
+ const bool independent_view =
+ observed_motion_m >= required_motion_m ||
+ observed_motion_rad >= required_motion_rad;
+ const bool consistent =
+ correction_disagreement_m <= 2.0 * config_.match_translation_step_m &&
+ correction_disagreement_rad <= 2.0 * config_.match_heading_step_rad;
+ if (!pending_loop_valid_ || !independent_view || !consistent) {
+ if (!pending_loop_valid_ || !consistent) {
+ pending_loop_valid_ = true;
+ pending_loop_s_ = now_s;
+ pending_loop_transform_ = correction;
+ pending_loop_observer_pose_ = current_pose;
+ }
+ out.diagnostic = "loop candidate pending temporal confirmation";
+ last_result_ = out;
+ continue;
+ }
+ pending_loop_valid_ = false;
+ }
+
+ out.forward_score = fwd.score;
+ out.reverse_score = rev.score;
+ out.overlap = std::min(fwd.overlap, rev.overlap);
+ out.forward_margin = fwd.score_margin;
+ out.reverse_margin = rev.score_margin;
+
+ graph_ = std::move(candidate_graph);
     // Sync session keyframe poses with the optimized graph. The loop's
     // correction is the newest node's delta; the live estimate may have
     // moved past the last keyframe, so callers compose the delta onto it
     // rather than snapping to the keyframe pose.
-    const Pose2 prior_newest = keyframes_.back().pose;
     for (const auto& gkf : graph_.keyframes()) {
       for (auto& kf : keyframes_) {
         if (kf.id == gkf.id) kf.pose = gkf.initial_pose;
@@ -489,21 +636,15 @@ SlamLoopResult SlamSession::try_close_loops(
     out.from_id = from.id;
     out.to_id = to.id;
     out.correction_delta =
-        relative_pose(prior_newest, newest->initial_pose);
-    {
+ relative_pose(prior_newest, optimized_newest);
       // Rigid correction: same motion that moved the newest keyframe,
       // applied to the live estimate (opt ⊕ prior⁻¹ ⊕ est).
-      const Pose2 corrected_here = compose_pose(
-          newest->initial_pose,
-          relative_pose(prior_newest, Pose2{core::Vec2{est.x_m, est.y_m},
-                                            est.yaw_rad}));
       out.correction_m =
           std::hypot(corrected_here.position.x - est.x_m,
                      corrected_here.position.y - est.y_m);
       out.correction_rad = std::abs(core::wrap_angle(corrected_here.heading_rad -
                                                      est.yaw_rad));
       out.corrected_pose = corrected_here;
-    }
     out.diagnostic = "loop closed";
     ++loop_closures_;
     last_result_ = out;

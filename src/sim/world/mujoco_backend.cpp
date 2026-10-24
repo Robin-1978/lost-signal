@@ -111,6 +111,20 @@ void MujocoBackend::read_back() {
     const int qadr = (jid >= 0) ? model->jnt_qposadr[jid] : -1;
     if (qadr >= 0) idler_angle_[j] = data->qpos[qadr];
   }
+ for (int i = 0; i < support_count_ && i < 4; ++i) {
+ const int sdof = support_swivel_dof_[i];
+ if (sdof >= 0) {
+ const int sjid = model->dof_jntid[sdof];
+ const int sqadr = sjid >= 0 ? model->jnt_qposadr[sjid] : -1;
+ if (sqadr >= 0) support_swivel_[i] = data->qpos[sqadr];
+ }
+ const int rdof = support_roll_dof_[i];
+ if (rdof >= 0) {
+ const int rjid = model->dof_jntid[rdof];
+ const int rqadr = rjid >= 0 ? model->jnt_qposadr[rjid] : -1;
+ if (rqadr >= 0) support_roll_[i] = data->qpos[rqadr];
+ }
+ }
 }
 
 }  // namespace lost_signal::sim::world

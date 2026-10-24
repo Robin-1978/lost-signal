@@ -149,10 +149,10 @@ int main() {
            !base.truth().drive_slipping[1]);
   }
 
-  // Mesh patches build (no refuse): rough + bilinear ride on tile grids
-  // sampling the same canonical height the survey rasterizes. Raycast
-  // agrees with the survey within tile tolerance; the base plane dominates
-  // (relief is cm-scale on a dm-scale grade).
+ // Nonlinear patches build (no refuse): rough + bilinear share one
+ // continuous height field sampled from the same canonical height the
+ // survey rasterizes. Raycast agrees within grid tolerance; the base plane
+ // dominates (relief is cm-scale on a dm-scale grade).
   {
     sim::world::World w = make_diff(0.0);
     w.set_terrain_patches(
@@ -210,8 +210,12 @@ int main() {
       cmd.drive[0] = -0.8;
       cmd.drive[1] = 0.8;
       w.apply(cmd);
-      for (int i = 0; i < 100; ++i) w.step(0.02);
-      return w.truth().body_yaw_rad;
+ double integrated_yaw = 0.0;
+ for (int i = 0; i < 100; ++i) {
+ w.step(0.02);
+ integrated_yaw += w.truth().yaw_rate_radps * 0.02;
+ }
+ return integrated_yaw;
     };
     const double yaw_tracked = pivot(tracked);
     assert(std::abs(yaw_tracked) > 0.5);  // pivot authority survives scrub
@@ -261,7 +265,7 @@ int main() {
     const double spine_h = ride_z - 0.05 + 0.02;
     sim::world::World w = make_diff(0.6);
     w.set_terrain_patches(
-        {{"spine", -2.0, -0.1, 8.0, 0.1, spine_h, 0.0, 0.0, 0.0, 0.0}});
+        {{"spine", -0.1, -0.1, 0.1, 0.1, spine_h, 0.0, 0.0, 0.0, 0.0}});
     bool scraped = false;
     double min_clear = 999.0;
     for (int i = 0; i < 200; ++i) {

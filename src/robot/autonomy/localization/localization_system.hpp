@@ -74,8 +74,9 @@ class LocalizationSystem {
   void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
                     IEstimator& estimator);
   // Returns true when a loop closure rebuilt the map (caller replans).
-  bool run_slam(const iface::ObservationFrame& obs, bool has_observation,
-                IEstimator& estimator, IMapper& mapper);
+ bool run_slam(const iface::MapSnapshot& map,
+ const iface::ObservationFrame& obs, bool has_observation,
+ IEstimator& estimator, IMapper& mapper);
 
   LocalizationSupervisor supervisor_;
   ScanMatcher scan_matcher_;

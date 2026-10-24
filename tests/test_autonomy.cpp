@@ -193,7 +193,7 @@ int main() {
       est.predict(o);
     }
     assert(est.estimate().attitude_valid);
-    assert(std::abs(est.estimate().pitch_rad - 0.1745) < 0.05);
+ assert(std::abs(est.estimate().pitch_rad - 0.1745) < 0.05);
     assert(std::abs(est.estimate().roll_rad) < 0.02);
   }
 

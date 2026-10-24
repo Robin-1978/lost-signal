@@ -15,7 +15,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const SurveyContext& survey, core::MonotonicNs now_ns,
  IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
- IController& controller) {
+ IController& controller, bool forward_blocked) {
  MotionDecisionResult out;
  out.command = iface::MotionCommand::SafeStop(now_ns);
  out.behavior = behavior.decide(est, perception, behavior_limits);
@@ -77,7 +77,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  LocalCandidate chosen;
  bool have_recovery = false;
  double best_recovery_score = -std::numeric_limits<double>::infinity();
- if (plan.has_plan) {
+ // Once the independent safety monitor has reported a forward obstacle, a
+ // fresh planner result is deliberately not allowed to win this cycle. The
+ // route may still point through the obstacle; recovery must first create
+ // clearance using the robot's own scan evidence.
+ if (plan.has_plan && !forward_blocked) {
  best_recovery = validator.validate(
  plan.best, est, perception, observation, survey);
  out.reason = best_recovery.reason;
@@ -92,8 +96,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  est.position_sigma_m <= 0.5 && est.heading_sigma_rad <= 0.75;
  const bool local_evidence =
  local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
- if (planner_rejected && local_evidence && recovery_localized) {
+ const bool recovery_required = planner_rejected || forward_blocked;
+ if (recovery_required && (local_evidence || forward_blocked) &&
+     recovery_localized) {
  for (std::size_t i = 0; i < recovery_count; ++i) {
+ if (forward_blocked && recovery[i].forward_mps >= -1e-6) continue;
  const ValidationResult verdict = validator.validate(
  recovery[i], est, perception, observation, survey);
  if (!verdict.accepted) continue;

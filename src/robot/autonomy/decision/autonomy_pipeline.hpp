@@ -26,7 +26,7 @@ class DecisionCyclePipeline {
  const platform::ChassisLimits& limits,
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation, const SurveyContext& survey,
- core::MonotonicNs now_ns);
+ core::MonotonicNs now_ns, bool forward_blocked = false);
 };
 
 } // namespace lost_signal::robot::autonomy

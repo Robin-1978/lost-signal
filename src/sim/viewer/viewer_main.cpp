@@ -73,14 +73,30 @@ void bind_lighting(Model& model, Shader shader) {
  model.materials[i].shader = shader;
 }
 
-Model load_optional_model(const std::filesystem::path& path) {
+BoundingBox raylib_asset_bounds(const Model& model, bool zup_converted) {
+ (void)zup_converted;
+ const BoundingBox b = GetModelBoundingBox(model);
+ const float x0 = std::min(b.min.x, b.max.x);
+ const float x1 = std::max(b.min.x, b.max.x);
+ const float y0 = std::min(b.min.y, b.max.y);
+ const float y1 = std::max(b.min.y, b.max.y);
+ const float z0 = std::min(b.min.z, b.max.z);
+ const float z1 = std::max(b.min.z, b.max.z);
+ // raylib's GetModelBoundingBox already applies Model::transform. Keep the
+ // normalized bounds in raylib coordinates; manually applying the GLB axis
+ // permutation here would convert the same asset twice.
+ return {{x0, y0, z0}, {x1, y1, z1}};
+}
+
+Model load_optional_model(const std::filesystem::path& path,
+ bool convert_zup = true) {
  if (!std::filesystem::is_regular_file(path)) return {};
  Model model = LoadModel(path.string().c_str());
  if (!model_ready(model)) return {};
  // Content GLBs use Z-up; the SIM viewer uses raylib's Y-up convention.
  // Keep this conversion at the asset boundary so every component shares
  // the same upright frame.
- model.transform = MatrixRotateX(-PI / 2.0f);
+ if (convert_zup) model.transform = MatrixRotateX(-PI / 2.0f);
  return model;
 }
 
@@ -88,21 +104,40 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  const std::string& robot_id) {
  if (root.empty()) return;
  const std::filesystem::path base(root);
- const auto robot_dir = base / "models" / "robots" / robot_id;
+ std::filesystem::path robot_dir = base / "models" / "robots" / robot_id;
+ // Legacy robot configs use descriptive ids (ro1-tracked, ro1-mecanum,
+ // ...), while the content tree keys models by the master asset family.
+ // Resolve that alias at the SIM asset boundary so every chassis gets its
+ // authored GLB without changing the hardware contract or leaking content
+ // ids into ROBOT.
+ if (!std::filesystem::is_directory(robot_dir)) {
+ const auto has = [&](const char* token) {
+ return robot_id.find(token) != std::string::npos;
+ };
+ const char* family = has("tracked") ? "ro3"
+ : has("mecanum") ? "ro5"
+ : has("swerve") ? "ro4"
+ : has("ackermann") ? "ro2"
+ : "ro1";
+ robot_dir = base / "models" / "robots" / family;
+ }
  const auto actor_dir = base / "models" / "actors";
  assets.chassis = load_optional_model(robot_dir / "chassis.glb");
  if (!model_ready(assets.chassis))
  assets.chassis = load_optional_model(robot_dir / "hull.glb");
- assets.wheel = load_optional_model(robot_dir / "wheel_standard.glb");
+ // Wheel links are authored in their physical joint frame (+Z axle). Keep
+ // their transform explicit in the joint renderer; do not hide it in the
+ // global asset conversion used by chassis/actors.
+ assets.wheel = load_optional_model(robot_dir / "wheel_standard.glb", false);
  if (!model_ready(assets.wheel))
- assets.wheel = load_optional_model(robot_dir / "swerve_module.glb");
+ assets.wheel = load_optional_model(robot_dir / "swerve_module.glb", false);
  if (!model_ready(assets.wheel))
- assets.wheel = load_optional_model(robot_dir / "roller_left.glb");
+ assets.wheel = load_optional_model(robot_dir / "roller_left.glb", false);
  assets.lidar = load_optional_model(robot_dir / "lidar_standard.glb");
  if (!model_ready(assets.lidar))
  assets.lidar = load_optional_model(robot_dir / "lidar_long.glb");
  assets.caster_fork = load_optional_model(robot_dir / "caster_fork.glb");
- assets.caster_wheel = load_optional_model(robot_dir / "caster_wheel.glb");
+ assets.caster_wheel = load_optional_model(robot_dir / "caster_wheel.glb", false);
  assets.track = load_optional_model(robot_dir / "track.glb");
  assets.forklift = load_optional_model(actor_dir / "forklift.glb");
  assets.worker = load_optional_model(actor_dir / "worker.glb");
@@ -202,11 +237,9 @@ void unload_visual_assets(VisualAssets& assets) {
 void draw_fitted_model(const Model& model, Vector3 position, float radius,
  float height, Color tint, float rotation_deg = 0.0f) {
  if (!model_ready(model)) return;
- const BoundingBox bounds = GetModelBoundingBox(model);
- const Vector3 lo{std::min(bounds.min.x, bounds.max.x),
- std::min(bounds.min.y, bounds.max.y), std::min(bounds.min.z, bounds.max.z)};
- const Vector3 hi{std::max(bounds.min.x, bounds.max.x),
- std::max(bounds.min.y, bounds.max.y), std::max(bounds.min.z, bounds.max.z)};
+ const BoundingBox bounds = raylib_asset_bounds(model, true);
+ const Vector3 lo{bounds.min.x, bounds.min.y, bounds.min.z};
+ const Vector3 hi{bounds.max.x, bounds.max.y, bounds.max.z};
  const float sx = std::max(1e-3f, hi.x - lo.x);
  const float sy = std::max(1e-3f, hi.y - lo.y);
  const float sz = std::max(1e-3f, hi.z - lo.z);
@@ -233,8 +266,8 @@ void draw_actor_model_grounded(const Model& model, double x_m, double y_m,
  const float reference_radius = pedestrian ? 0.25f : 0.45f;
  const float scale = static_cast<float>(radius_m) /
  std::max(1e-3f, reference_radius);
- const BoundingBox bounds = GetModelBoundingBox(model);
- const float min_y = std::min(bounds.min.y, bounds.max.y);
+ const BoundingBox bounds = raylib_asset_bounds(model, true);
+ const float min_y = bounds.min.y;
  // Model origins in the asset pack are ground anchors.  The min-y correction
  // keeps that invariant true even when a future asset has a small negative
  // bevel below its authored origin.
@@ -307,6 +340,66 @@ inline Vector3 body_to_world(const FrameBody& body, double bx, double by,
  return {static_cast<float>(body.x_m + c * bx - s * by),
  static_cast<float>(z),
  static_cast<float>(-(body.y_m + s * bx + c * by))};
+}
+
+void draw_model_quaternion(const Model& model, Vector3 position,
+ Quaternion rotation, Vector3 scale, Color tint) {
+ Vector3 axis{0.0f, 1.0f, 0.0f};
+ float angle = 0.0f;
+ QuaternionToAxisAngle(rotation, &axis, &angle);
+ DrawModelEx(model, position, axis, angle * RAD2DEG, scale, tint);
+}
+
+// Wheel GLBs are authored at a reference size (RO-1 uses a 100 mm radius
+// and the caster a 55 mm radius). Fit the radial and axle dimensions to the
+// live plant configuration independently; a future profile therefore cannot
+// put a decorative blackwall below the physical contact patch.
+Vector3 wheel_asset_scale(const Model& model, double radius_m,
+ double half_width_m) {
+ const BoundingBox b = raylib_asset_bounds(model, false);
+ const float ex = std::max(1e-4f, b.max.x - b.min.x);
+ const float ey = std::max(1e-4f, b.max.y - b.min.y);
+ const float ez = std::max(1e-4f, b.max.z - b.min.z);
+ const float radial = std::max(ex, ey) * 0.5f;
+ return {static_cast<float>(radius_m / radial),
+ static_cast<float>(radius_m / radial),
+ static_cast<float>((2.0 * half_width_m) / ez)};
+}
+
+// Presentation companion to the MuJoCo caster tire: a full-radius centre rib
+// with smaller shoulders. The same dimensions are used by the physical
+// compound geoms, so a GLB wheel cannot hide a flat, high-scrub tire profile.
+void draw_crowned_tire(double radius_m, double half_width_m, Color color) {
+ const float radius = static_cast<float>(radius_m);
+ const float centre_half = static_cast<float>(half_width_m * 0.5);
+ const float shoulder_half = static_cast<float>(half_width_m * 0.25);
+ const float shoulder_radius =
+ std::max(0.001f, radius * 0.90f);
+ const float shoulder_offset = centre_half + shoulder_half;
+ // Raylib cylinders are Y-axis by default. The caster axle is local Z.
+ rlPushMatrix();
+ rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+ DrawCylinder({0.0f, 0.0f, 0.0f}, radius, radius,
+ 2.0f * centre_half, 20, color);
+ rlTranslatef(0.0f, 0.0f, shoulder_offset);
+ DrawCylinder({0.0f, 0.0f, 0.0f}, shoulder_radius, shoulder_radius,
+ 2.0f * shoulder_half, 20, color);
+ rlTranslatef(0.0f, 0.0f, -2.0f * shoulder_offset);
+ DrawCylinder({0.0f, 0.0f, 0.0f}, shoulder_radius, shoulder_radius,
+ 2.0f * shoulder_half, 20, color);
+ rlPopMatrix();
+}
+
+// DrawModelEx post-multiplies the live rotation after Model::transform. For
+// globally converted GLB parts (the caster fork, chassis attachments),
+// A=Rx(-90) maps Z-up to raylib Y-up, so a world-frame yaw must be conjugated
+// into the asset frame before it is composed with the authored mount.
+Quaternion asset_frame_rotation(Quaternion world_rotation) {
+ const Quaternion asset_to_world = QuaternionFromAxisAngle(
+ {1.0f, 0.0f, 0.0f}, -PI * 0.5f);
+ return QuaternionMultiply(
+ QuaternionInvert(asset_to_world),
+ QuaternionMultiply(world_rotation, asset_to_world));
 }
 
 void draw_motion_particles_3d(const Frame& f) {
@@ -641,7 +734,7 @@ void draw_frame_3d(const Frame& f,
   {
     const float w = static_cast<float>(gx1 - gx0 + 8.0);
     const float h = static_cast<float>(gy1 - gy0 + 8.0);
-    DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.02),
+ DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.001),
               {w, h}, {198, 203, 196, 255});
   }
   DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);
@@ -689,16 +782,18 @@ void draw_frame_3d(const Frame& f,
                                  world.terrain_patches(),
                                  world.support_slabs(), x2, y2)
                                  .height_m;
-          const double hm = (h00 + h10 + h01 + h11) * 0.25 + 0.012;
+ // Keep the visual surface within 1 mm of the engine's contact surface.
+ // A former 12 mm lift made tire blackwalls visibly sink into ramps.
+ const double hm = (h00 + h10 + h01 + h11) * 0.25 + 0.001;
           const Color col = height_color(hm, hmax);
           // Winding faces up in raylib space (x, z_up, -y): culling eats
           // downward triangles, so p00 -> p10 -> p01, never the reverse.
-          DrawTriangle3D(to_raylib(x, y, h00 + 0.012),
-                         to_raylib(x2, y, h10 + 0.012),
-                         to_raylib(x, y2, h01 + 0.012), col);
-          DrawTriangle3D(to_raylib(x2, y, h10 + 0.012),
-                         to_raylib(x2, y2, h11 + 0.012),
-                         to_raylib(x, y2, h01 + 0.012), col);
+ DrawTriangle3D(to_raylib(x, y, h00 + 0.001),
+ to_raylib(x2, y, h10 + 0.001),
+ to_raylib(x, y2, h01 + 0.001), col);
+ DrawTriangle3D(to_raylib(x2, y, h10 + 0.001),
+ to_raylib(x2, y2, h11 + 0.001),
+ to_raylib(x, y2, h01 + 0.001), col);
         }
       }
     }
@@ -856,6 +951,28 @@ void draw_frame_3d(const Frame& f,
  static_cast<float>(f.body.z_m),
                  static_cast<float>(-f.body.y_m));
     rlMultMatrixf(m);
+ // MuJoCo's soft contact solver can leave a sub-millimetre tire-plane
+ // penetration while the body settles. Keep the rendered tread tangent to
+ // the same canonical terrain sample without altering physics or ROBOT data.
+ const auto contact_lift = [&](double bx, double by, double radius) {
+ const double cyaw = std::cos(f.body.yaw_rad), syaw = std::sin(f.body.yaw_rad);
+ const double wx = f.body.x_m + cyaw * bx - syaw * by;
+ const double wy = f.body.y_m + syaw * bx + cyaw * by;
+ const auto sample = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), wx, wy);
+ // A tangent wheel on a graded plane needs the normal-distance radius,
+ // not the flat-ground radius. Using the grade norm is conservative for a
+ // cylinder and removes the last visible blackwall penetration on ramps.
+ const double grade_norm = std::sqrt(
+ 1.0 + sample.grade_x * sample.grade_x + sample.grade_y * sample.grade_y);
+ const double local_z = -by;
+ const double wheel_world_y =
+ f.body.z_m + static_cast<double>(m[1]) * bx +
+ static_cast<double>(m[9]) * local_z;
+ return static_cast<float>(std::max(0.0, sample.height_m + 0.001 +
+ radius * grade_norm -
+ wheel_world_y));
+ };
  bool slipping = false;
  for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
     {
@@ -868,17 +985,17 @@ void draw_frame_3d(const Frame& f,
                              ? RED
                              : Color{238, 241, 244, 255};
  if (assets != nullptr && model_ready(assets->chassis)) {
- const BoundingBox cb = GetModelBoundingBox(assets->chassis);
- const float csx = std::max(1e-3f, std::abs(cb.max.x - cb.min.x));
- const float csy = std::max(1e-3f, std::abs(cb.max.y - cb.min.y));
- const float csz = std::max(1e-3f, std::abs(cb.max.z - cb.min.z));
+ const BoundingBox cb = raylib_asset_bounds(assets->chassis, true);
+ const float csx = std::max(1e-3f, cb.max.x - cb.min.x);
+ const float csy = std::max(1e-3f, cb.max.y - cb.min.y);
+ const float csz = std::max(1e-3f, cb.max.z - cb.min.z);
  // GLB is a body component: preserve the configured footprint and deck
  // height independently instead of fitting it into one sphere.
  const Vector3 chassis_scale{
  std::max(0.01f, bl / csx),
  std::max(0.01f, 0.18f / csy),
  std::max(0.01f, bw / csz)};
- const float cmin_y = std::min(cb.min.y, cb.max.y);
+ const float cmin_y = cb.min.y;
  const float deck_bottom =
  -static_cast<float>(world.motor_params().body_half_height_m);
  DrawModelEx(assets->chassis,
@@ -928,19 +1045,67 @@ void draw_frame_3d(const Frame& f,
  static_cast<float>(mount_z + 0.11), static_cast<float>(-mount_y)},
  0.025f, slipping ? RED : Color{50, 200, 90, 255}); // status LED
  draw_motion_particles_3d(f);
- // Unpowered caster assemblies: swivel fork follows measured motion, the
- // small wheel rolls on the ground while the robot deck stays elevated.
+ // Passive caster assemblies: swivel and roll come from the MuJoCo joints;
+ // the fork pivot and wheel contact remain separate when trail is non-zero.
  for (const auto& caster : f.body.casters) {
- // MuJoCo places the ball support below the wheel axle by (r-R). Keep the
+ // MuJoCo places the caster wheel below the drive axle by (r-R). Keep the
  // offset in the body frame so slopes and engine body height are preserved;
  // anchoring at an absolute radius made supports detach on terrain.
  const float axle = static_cast<float>(
  -(world.motor_params().wheel_radius_m - caster.radius_m));
- rlPushMatrix();
- rlTranslatef(static_cast<float>(caster.x_m), axle,
- static_cast<float>(-caster.y_m));
- rlRotatef(static_cast<float>(caster.yaw_rad * RAD2DEG), 0.0f, 1.0f, 0.0f);
+ const float caster_lift = contact_lift(caster.x_m, caster.y_m,
+ caster.radius_m);
+ const double caster_half_width = std::min(
+ static_cast<double>(world.motor_params().tire_half_width_m),
+ caster.radius_m * 0.75);
+ Vector3 caster_wheel_scale{static_cast<float>(caster.radius_m / 0.055),
+ static_cast<float>(caster.radius_m / 0.055),
+ static_cast<float>(caster.radius_m / 0.055)};
+ if (assets != nullptr && model_ready(assets->caster_wheel)) {
+ caster_wheel_scale = wheel_asset_scale(assets->caster_wheel,
+ caster.radius_m, caster_half_width);
+ }
  const float caster_scale = static_cast<float>(caster.radius_m / 0.055);
+ if (assets != nullptr && model_ready(assets->caster_wheel)) {
+ const Quaternion swivel = QuaternionFromAxisAngle(
+ {0.0f, 1.0f, 0.0f}, static_cast<float>(caster.yaw_rad));
+ // Wheel assets stay in their authored joint frame (+Z axle). Rx(180) is
+ // the complete fixed installation into raylib and lays that axle on
+ // horizontal raylib Z; swivel and roll remain separate live joints.
+ const Quaternion mount = QuaternionFromAxisAngle(
+ {1.0f, 0.0f, 0.0f}, PI);
+ const Quaternion spin = QuaternionFromAxisAngle(
+ {0.0f, 0.0f, 1.0f}, static_cast<float>(caster.spin_rad));
+ const Quaternion swivel_asset = asset_frame_rotation(swivel);
+ if (assets != nullptr && model_ready(assets->caster_fork)) {
+ draw_model_quaternion(assets->caster_fork,
+ {static_cast<float>(caster.pivot_x_m), axle - 0.30f * axle + caster_lift,
+ static_cast<float>(-caster.pivot_y_m)}, swivel_asset,
+ {caster_scale, caster_scale, caster_scale}, WHITE);
+ }
+ draw_model_quaternion(assets->caster_wheel,
+ {static_cast<float>(caster.x_m), axle + caster_lift,
+ static_cast<float>(-caster.y_m)},
+ QuaternionMultiply(swivel, QuaternionMultiply(mount, spin)),
+ caster_wheel_scale, WHITE);
+ // Keep the authored GLB detail and add the physical crowned centre rib so
+ // the visible tire profile matches the compound contact geometry.
+ rlPushMatrix();
+ rlTranslatef(static_cast<float>(caster.x_m), axle + caster_lift,
+ static_cast<float>(-caster.y_m));
+ rlRotatef(static_cast<float>(caster.yaw_rad * RAD2DEG), 0.0f, 1.0f,
+ 0.0f);
+ rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
+ 1.0f);
+ draw_crowned_tire(caster.radius_m, caster_half_width,
+ Color{36, 38, 43, 255});
+ rlPopMatrix();
+ continue;
+ }
+ rlPushMatrix();
+ rlTranslatef(static_cast<float>(caster.pivot_x_m), axle + caster_lift,
+ static_cast<float>(-caster.pivot_y_m));
+ rlRotatef(static_cast<float>(caster.yaw_rad * RAD2DEG), 0.0f, 1.0f, 0.0f);
  if (assets != nullptr && model_ready(assets->caster_fork)) {
  DrawModelEx(assets->caster_fork,
  {0.0f, -0.30f * axle, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.0f,
@@ -951,6 +1116,8 @@ void draw_frame_3d(const Frame& f,
  }
  if (assets != nullptr && model_ready(assets->caster_wheel)) {
  rlPushMatrix();
+ rlTranslatef(static_cast<float>(-world.motor_params().idler_trail_m),
+ 0.0f, 0.0f);
  rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
  rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
  1.0f);
@@ -959,11 +1126,11 @@ void draw_frame_3d(const Frame& f,
  {caster_scale, caster_scale, caster_scale}, WHITE);
  rlPopMatrix();
  } else {
- rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+ rlTranslatef(static_cast<float>(-world.motor_params().idler_trail_m),
+ 0.0f, 0.0f);
  rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
  1.0f);
- DrawCylinder({0.0f, 0.0f, 0.0f}, static_cast<float>(caster.radius_m),
- static_cast<float>(caster.radius_m), 0.045f, 12,
+ draw_crowned_tire(caster.radius_m, caster_half_width,
  Color{72, 72, 78, 255});
  }
  rlPopMatrix();
@@ -1024,17 +1191,44 @@ void draw_frame_3d(const Frame& f,
  // qpos already is the live axle height. Re-applying radius-body_z here
  // detached wheels whenever the engine body rose on a terrain patch.
  const float axle = 0.0f;
+ const float wheel_lift = contact_lift(w.x_m, w.y_m, w.radius_m);
+ if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
+ // The wheel asset stays in its authored joint frame (+Z axle). Rx(180)
+ // lays it on horizontal raylib Z. A differential module has steer_rad=0;
+ // only a true steering module adds the live Y-axis yaw.
+ const Quaternion steer = QuaternionFromAxisAngle(
+ {0.0f, 1.0f, 0.0f}, static_cast<float>(w.steer_rad));
+ // Ackermann/swerve modules add their measured Y steering before the same
+ // horizontal axle roll; differential modules keep this yaw at zero.
+ const Quaternion mount = QuaternionFromAxisAngle(
+ {1.0f, 0.0f, 0.0f}, PI);
+ const Quaternion spin = QuaternionFromAxisAngle(
+ {0.0f, 0.0f, 1.0f}, static_cast<float>(w.spin_rad));
+ const Quaternion rotation = QuaternionMultiply(
+ steer, QuaternionMultiply(mount, spin));
+ const Vector3 wheel_scale = wheel_asset_scale(
+ assets->wheel, w.radius_m, world.motor_params().tire_half_width_m);
+ draw_model_quaternion(assets->wheel,
+ {static_cast<float>(w.x_m), axle + wheel_lift, static_cast<float>(-w.y_m)},
+ rotation, wheel_scale,
+ w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
+ DrawSphere({static_cast<float>(w.x_m), axle,
+ static_cast<float>(-w.y_m)}, 0.035f, Color{210, 170, 70, 255});
+ }
+ continue;
+ }
         rlPushMatrix();
-        rlTranslatef(static_cast<float>(w.x_m), axle,
+ rlTranslatef(static_cast<float>(w.x_m), axle + wheel_lift,
                      static_cast<float>(-w.y_m));
         rlRotatef(static_cast<float>(w.steer_rad * RAD2DEG), 0.0f, 1.0f,
                   0.0f);
  if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
- // wheel_standard.glb is a component in the wheel link frame. The asset
- // conversion leaves its axle along local Y; the authored -90 degree
- // mount puts that axle across the robot, and the live joint angle then
- // rolls around the resulting local Z axis.
- rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+ // The raw authored wheel link uses +Z as its axle. In raylib's mapped
+ // vehicle frame that local Z is already the horizontal depth axis; the
+ // fixed link mount above lays the wheel plane vertical. A second -90
+ // degree conversion would make the axle vertical and is intentionally
+ // absent.
  rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
  DrawModelEx(assets->wheel, {0.0f, 0.0f, 0.0f},
  {0.0f, 1.0f, 0.0f}, 0.0f,
@@ -1185,6 +1379,8 @@ int main(int argc, char** argv) {
   int shot_frames = -1;
   std::string shot_path;
  float camera_dist = 0.0f;
+ float camera_yaw = 0.0f, camera_pitch = 0.0f;
+ bool camera_angle_set = false;
  bool camera_target_set = false;
  double camera_target_x = 0.0, camera_target_y = 0.0;
   for (int i = 1; i < argc; ++i) {
@@ -1197,6 +1393,14 @@ int main(int argc, char** argv) {
  camera_target_set = true;
  camera_target_x = std::atof(argv[++i]);
  camera_target_y = std::atof(argv[++i]);
+ }
+ if (a == "--camera-yaw" && i + 1 < argc) {
+  camera_yaw = static_cast<float>(std::atof(argv[++i]));
+  camera_angle_set = true;
+ }
+ if (a == "--camera-pitch" && i + 1 < argc) {
+  camera_pitch = static_cast<float>(std::atof(argv[++i]));
+  camera_angle_set = true;
  }
     if (a == "--shot" && i + 2 < argc) {
       shot_frames = std::atoi(argv[++i]);
@@ -1220,6 +1424,10 @@ int main(int argc, char** argv) {
  cam_st.target_z = 0.20;
  }
  if (camera_dist > 0.0f) cam_st.dist_m = camera_dist;
+ if (camera_angle_set) {
+  if (camera_yaw != 0.0f) cam_st.yaw_deg = camera_yaw;
+  if (camera_pitch != 0.0f) cam_st.pitch_deg = camera_pitch;
+ }
  if (camera_target_set) {
  cam_st.target_x = camera_target_x;
  cam_st.target_y = camera_target_y;

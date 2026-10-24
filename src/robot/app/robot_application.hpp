@@ -143,8 +143,20 @@ class RobotApplication : public IRobot {
     // Offline SLAM session signals (mapless drift + loop-closure evidence).
     std::size_t slam_keyframes = 0;
     std::size_t slam_loops_closed = 0;
+ std::uint64_t slam_loop_from_id = 0;
+ std::uint64_t slam_loop_to_id = 0;
+ double slam_loop_correction_m = 0.0;
+ double slam_loop_correction_rad = 0.0;
+ double slam_loop_forward_score = 0.0;
+ double slam_loop_reverse_score = 0.0;
+ double slam_loop_overlap = 0.0;
+ double slam_loop_forward_margin = 0.0;
+ double slam_loop_reverse_margin = 0.0;
+ std::string slam_loop_diagnostic = "init";
     // Incremental tracking counters (scan-to-submap, bounded window).
     std::size_t slam_tracks = 0;
+ double track_correction_m = 0.0;
+ double track_correction_rad = 0.0;
     std::string track_diagnostic = "init";
     lifecycle::ModuleState bringup = lifecycle::ModuleState::kUnconfigured;
     iface::GoalStatus goal;

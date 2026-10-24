@@ -336,17 +336,57 @@ int main(int argc, char** argv) {
  } else {
  budget = opt.objectives.empty() ? 5 : 4000;
  }
- long ran = 0;
+long ran = 0;
+ std::size_t verbose_loop_count = 0;
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
+ if (opt.verbose) {
+ const auto& recorded = session->episode().steps();
+ if (!recorded.empty()) {
+ const auto& diag = recorded.back().diag;
+ if (diag.slam_loops_closed > verbose_loop_count) {
+ std::fprintf(stderr,
+ "step=%ld loop-closed from=%llu to=%llu correction=%.3fm/%.3frad "
+ "score=%.3f/%.3f overlap=%.3f margin=%.3f/%.3f "
+ "est=(%.3f,%.3f,%.3f) evidence=%s\n",
+ ran,
+ static_cast<unsigned long long>(diag.slam_loop_from_id),
+ static_cast<unsigned long long>(diag.slam_loop_to_id),
+ diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
+ diag.slam_loop_forward_score, diag.slam_loop_reverse_score,
+ diag.slam_loop_overlap, diag.slam_loop_forward_margin,
+ diag.slam_loop_reverse_margin,
+ diag.estimate.x_m, diag.estimate.y_m, diag.estimate.yaw_rad,
+ diag.slam_loop_diagnostic.c_str());
+ verbose_loop_count = diag.slam_loops_closed;
+ }
+ }
+ }
  if (opt.verbose && ran % 100 == 0) {
  const auto ev = session->last_evidence();
+ const auto& recorded = session->episode().steps();
+ const auto& truth = recorded.empty()
+ ? sim::world::WorldTruth{}
+ : recorded.back().truth_after;
+ const auto diag = recorded.empty()
+ ? robot::app::RobotApplication::Diagnostics{}
+ : recorded.back().diag;
  std::fprintf(stderr,
- "step=%ld goal=%s reason=%s action=%s v=%.2f w=%.2f\n",
+ "step=%ld goal=%s reason=%s action=%s v=%.2f w=%.2f "
+ "truth=(%.2f,%.2f) est=(%.2f,%.2f) clr=%.2f safety=%s loc=%s "
+ "localized=%s loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
+ "track_corr=%.3f/%.3f grip=%.2f slip=%s\n",
  ran, session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
  ev.reason_code.c_str(), ev.action_code.c_str(),
- ev.target_speed_mps, ev.target_yaw_rate_radps);
+ ev.target_speed_mps, ev.target_yaw_rate_radps, truth.body_x_m,
+ truth.body_y_m, diag.estimate.x_m, diag.estimate.y_m,
+ recorded.empty() ? 999.0 : recorded.back().judge.static_clearance_m,
+ diag.safety_reason.c_str(), diag.localization_action.c_str(),
+ diag.localized ? "yes" : "no", diag.slam_loops_closed,
+ diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
+ diag.slam_tracks, diag.track_correction_m,
+ diag.track_correction_rad, diag.grip_factor, diag.slip_quality.c_str());
  }
  }
  const sim::eval::EpisodeScore score =

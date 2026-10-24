@@ -11,6 +11,7 @@
 // parity tests. Anything nondeterministic fails the backend, not the test.
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -38,6 +39,17 @@ struct WheelViz {
   bool slipping = false, driven = false;
 };
 
+// One passive caster assembly for presentation.  The pivot and wheel
+// positions are in the base frame; swivel/roll are read directly from the
+// MuJoCo joints.  This is SIM-only state and is deliberately absent from the
+// ROBOT observation/actuator contract.
+struct CasterViz {
+ double pivot_x_m = 0.0, pivot_y_m = 0.0;
+ double x_m = 0.0, y_m = 0.0;
+ double radius_m = 0.03;
+ double swivel_rad = 0.0, roll_rad = 0.0;
+};
+
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
 class MujocoBackend {
@@ -50,16 +62,17 @@ class MujocoBackend {
   MujocoBackend& operator=(MujocoBackend&&);
 
   bool valid() const { return ready_; }
-  // Rebuilds the model when geometry or plant numbers change; no-op
-  // otherwise. M1: differential bases only (2 drives, 0 steers); anything
-  // else leaves valid() false and the base frozen (M2), never silently
-  // approximated.
-  // Terrain/material import (SIM-side truth only): authored patches become
-  // oriented contact slabs, material zones become per-zone floor slabs with
-  // the library friction/contact numbers. Mesh patches (roughness or
-  // bilinear cross-slope) build as tile grids sampling the same canonical
-  // height the survey rasterizes — authored, never smoothed. Environment
-  // keyframes are NOT build inputs — time-varying grip applies per step.
+ // Rebuilds the model when geometry or plant numbers change; no-op
+ // otherwise. Supported layouts are differential (2,0), Ackermann (2,2),
+ // swerve (4,4), mecanum (4,0), plus passive caster assemblies. Unsupported
+ // layouts leave valid() false and the plant frozen; they are never silently
+ // approximated.
+ // Terrain/material import (SIM-side truth only): exact planar patches use
+ // analytic slabs; nonlinear relief, cross-slope, and depressions use one
+ // continuous height field sampled from the same canonical function as the
+ // survey. Material zones are contact properties resolved at each wheel,
+ // never coplanar collision slabs. Environment keyframes are not build
+ // inputs; time-varying grip applies per step.
   void sync(const MotorParams& motor, const std::vector<StaticBox>& boxes,
             const std::vector<MaterialEntry>& materials,
             const std::vector<MaterialZone>& zones,
@@ -129,6 +142,24 @@ class MujocoBackend {
     }
     return n;
   }
+ int casters(CasterViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ int n = 0;
+ for (int i = 0; i < support_count_ && i < 4 && n < cap; ++i) {
+ CasterViz c;
+ c.pivot_x_m = support_anchor_x_[i];
+ c.pivot_y_m = support_anchor_y_[i];
+ c.swivel_rad = support_swivel_[i];
+ c.roll_rad = support_roll_[i];
+ c.radius_m = support_radius_[i];
+ const double ct = std::cos(c.swivel_rad);
+ const double st = std::sin(c.swivel_rad);
+ c.x_m = c.pivot_x_m - support_trail_[i] * ct;
+ c.y_m = c.pivot_y_m - support_trail_[i] * st;
+ out[n++] = c;
+ }
+ return n;
+ }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
@@ -167,6 +198,21 @@ class MujocoBackend {
   double idler_angle_[2] = {0.0, 0.0};
   int idler_dof_[2] = {-1, -1};
   int idler_count_ = 0;
+ // Passive caster assemblies.  The fork swivel and wheel roll are real
+ // MuJoCo hinges; these values are read back for SIM presentation only.
+ double support_anchor_x_[4] = {0.0, 0.0, 0.0, 0.0};
+ double support_anchor_y_[4] = {0.0, 0.0, 0.0, 0.0};
+ double support_radius_[4] = {0.03, 0.03, 0.03, 0.03};
+ double support_trail_[4] = {0.02, 0.02, 0.02, 0.02};
+ double support_swivel_[4] = {0.0, 0.0, 0.0, 0.0};
+ double support_roll_[4] = {0.0, 0.0, 0.0, 0.0};
+ int support_swivel_dof_[4] = {-1, -1, -1, -1};
+ int support_roll_dof_[4] = {-1, -1, -1, -1};
+ int support_geom_[4] = {-1, -1, -1, -1};
+ int support_shoulder_geom_[4][2] = {{-1, -1}, {-1, -1}, {-1, -1},
+ {-1, -1}};
+ double support_mu_base_[4] = {0.05, 0.05, 0.05, 0.05};
+ int support_count_ = 0;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};
   // Idler tire geom ids (per-step zone follow, same doctrine as drives —
@@ -233,6 +279,7 @@ class MujocoBackend {
   double body_z() const { return 0.0; }
   double body_roll() const { return 0.0; }
   double body_pitch() const { return 0.0; }
+ int casters(CasterViz*, int) const { return 0; }
 };
 
 #endif  // LOST_SIGNAL_WITH_MUJOCO

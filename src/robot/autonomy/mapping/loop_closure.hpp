@@ -15,7 +15,12 @@ struct LoopClosureGateConfig {
  double maximum_candidate_distance_m{8.0};
  // Two-way scan support. A one-sided match can align part of a scan against
  // unrelated geometry, so an accepted loop must be explained by both scans.
- double minimum_overlap{0.65};
+ // A sparse revisit can expose only a few stable returns (for example an
+ // off-path pallet seen from opposite scan headings).  Two-way verification
+ // and the score-margin gate remain mandatory; the overlap gate therefore
+ // uses the conservative evidence floor supported by the scanner rather
+ // than requiring almost the entire scan to agree.
+ double minimum_overlap{0.45};
  double minimum_score_margin{0.05};
 };
 

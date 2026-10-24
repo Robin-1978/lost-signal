@@ -30,6 +30,10 @@ struct SlamConfig {
   // Loop attempts run at most this often and only after a new keyframe.
   double loop_attempt_interval_s = 2.0;
   std::size_t max_candidates_per_attempt = 3;
+ // Exclude the recent odometry chain even when the robot moved slowly long
+ // enough to satisfy the time gate. A loop factor must add nonlocal
+ // topology, not duplicate an adjacent keyframe constraint.
+ std::size_t minimum_loop_keyframe_separation = 4;
   // Widened match window: loops close after drift the local tracker could
   // never span. Cost is bounded by beam downsampling + attempt rate.
   double match_search_translation_m = 2.0;
@@ -54,6 +58,15 @@ struct SlamConfig {
   std::size_t track_max_beams = 64;
   double track_min_overlap = 0.30;
   double track_min_margin = 0.02;
+ // The master frontend also required an absolute match score. Overlap alone
+ // is unsafe on repetitive/unknown submaps because a weak partial alignment
+ // can still explain the same fraction of returns.
+ double track_min_score = 0.30;
+ // Tracking is a drift bound, not a teleport/relocalization path. Keep one
+ // accepted correction inside a fraction of the bounded search window; a
+ // larger innovation must wait for supervised map/global localization.
+ double track_max_correction_m = 0.15;
+ double track_max_correction_rad = 0.15;
   double track_interval_s = 0.2;
   double track_min_translation_m = 0.05;
   double track_min_heading_rad = 0.02;
@@ -85,6 +98,11 @@ struct SlamLoopResult {
   Pose2 correction_delta;
   double correction_m = 0.0;
   double correction_rad = 0.0;
+ double forward_score = 0.0;
+ double reverse_score = 0.0;
+ double overlap = 0.0;
+ double forward_margin = 0.0;
+ double reverse_margin = 0.0;
   std::string diagnostic = "no attempt";
 };
 
@@ -103,6 +121,8 @@ struct SlamTrackResult {
   double score = 0.0;
   double overlap = 0.0;
   double score_margin = 0.0;
+ double correction_m = 0.0;
+ double correction_rad = 0.0;
   std::string diagnostic = "no attempt";
 };
 
@@ -122,7 +142,8 @@ class SlamSession {
   // apply (caller feeds it through correct_pose + map rebuild when closed).
   // No static map required: candidates match against keyframe submaps.
   SlamLoopResult try_close_loops(const EstimatedState& est,
-                                 const iface::ObservationFrame& obs);
+ const iface::ObservationFrame& obs,
+ const iface::MapSnapshot* absolute_map = nullptr);
   // Incremental tracking: match the live scan against the most recent
   // keyframe's submap in a small window. Rate-limited by interval +
   // movement. The caller applies accepted corrections through correct_pose;
@@ -176,6 +197,13 @@ class SlamSession {
   SlamTrackResult last_track_;
   mutable iface::MapSnapshot track_submap_;
   mutable std::uint64_t track_submap_id_ = 0;
+ // A correction larger than the local tracking window is never committed
+ // from one scan in an unmapped region. The pending rigid transform must
+ // recur after independently observed motion before it may enter the graph.
+ bool pending_loop_valid_ = false;
+ double pending_loop_s_ = 0.0;
+ Pose2 pending_loop_transform_;
+ Pose2 pending_loop_observer_pose_;
 };
 
 }  // namespace lost_signal::robot::autonomy

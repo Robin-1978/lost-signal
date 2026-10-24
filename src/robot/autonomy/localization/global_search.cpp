@@ -177,7 +177,7 @@ GlobalSearchResult GlobalSearcher::search(
     }
   }
 
-  // Coarse pass over free raster cells. Row-major order with ascending
+ // Coarse pass over non-occupied raster cells. Row-major order with ascending
   // headings keeps the search deterministic; ties break by (x, y, heading).
   struct Coarse {
     double x = 0.0, y = 0.0, heading = 0.0, score = 0.0, overlap = 0.0;
@@ -225,15 +225,13 @@ GlobalSearchResult GlobalSearcher::search(
     for (int gx = gx0; gx < gx1; gx += cell_stride) {
       const int8_t cell =
           map.occupancy[static_cast<std::size_t>(gy) * map.width + gx];
-      if (cell < 0 || cell >= 50) continue;  // hypotheses live in free space
-      // Free-only seeding is load-bearing, not incidental. Unknown seeding
-      // was tried: on sparse unknown surveys a lone wrong aisle refines
-      // alone and the overlap gate (even raycast-validated) cannot tell
-      // "explains one landmark" from the true pose — loop_closure proved
-      // it with teleports. Unknown recovery needs the recall half first
-      // (denser coarse grid / more survivors so twins compete and the
-      // ambiguity gates engage), plus the SLAM-tracking path. Until then
-      // global search stays a kidnap-recovery path for free maps only.
+        if (cell >= 50) continue; // known occupied cells are invalid pose seeds
+ // Unknown cells remain eligible hypotheses. A live survey deliberately
+ // publishes unobserved space as unknown, so requiring an explicitly free
+ // cell makes whole-map recovery empty on a sparse or freshly built map.
+ // Unknown endpoints still score neutrally in the matcher; overlap, margin,
+ // and final raycast gates below still require measured geometry before a
+ // correction can be accepted.
       const double cx = map.origin_x_m + (gx + 0.5) * map.resolution_m;
       const double cy = map.origin_y_m + (gy + 0.5) * map.resolution_m;
       for (int ih = 0; ih < n_headings; ++ih) {
@@ -406,14 +404,23 @@ GlobalSearchResult GlobalSearcher::search(
               return a.yaw_rad < b.yaw_rad;
             });
   const ScanMatchResult& best = checked.front();
+ // Preserve the best validated pose even when observability gates reject
+ // publication. Startup tracking needs the actual winner plus runner-ups;
+ // leaving the primary at the default origin silently dropped the best
+ // hypothesis from every ambiguous cold start.
+ result.x_m = best.x_m;
+ result.y_m = best.y_m;
+ result.yaw_rad = best.yaw_rad;
+ result.position_sigma_m = best.position_sigma_m;
+ result.heading_sigma_rad = best.heading_sigma_rad;
+ result.score = best.score;
+ result.overlap = best.overlap;
   // Overlap applies to a lone winner too (master): a single surviving
   // hypothesis that explains too little of the scan is unobservable, not
   // a confident fix. Without this, one wrong aisle refining alone with a
   // mediocre raycast score would publish a teleport with margin 1.0.
   if (!std::isfinite(best.score) ||
       best.overlap < config_.minimum_overlap) {
-    result.score = best.score;
-    result.overlap = best.overlap;
     result.rejection_reason = "global map overlap below acceptance gate";
     return result;
   }
@@ -423,8 +430,6 @@ GlobalSearchResult GlobalSearcher::search(
     const double second_score = checked[1].score;
     const double second_overlap = checked[1].overlap;
     if (best.score - second_score < config_.minimum_score_margin) {
-      result.score = best.score;
-      result.overlap = best.overlap;
       result.score_margin = best.score - second_score;
       result.rejection_reason = "global match is geometrically ambiguous";
       fill_runner_ups(result, checked);
@@ -432,8 +437,6 @@ GlobalSearchResult GlobalSearcher::search(
     }
     if (best.overlap - second_overlap <
         config_.equivalent_support_overlap_tolerance) {
-      result.score = best.score;
-      result.overlap = best.overlap;
       result.score_margin = best.score - second_score;
       result.rejection_reason = "global match has equivalent support";
       fill_runner_ups(result, checked);
@@ -441,13 +444,6 @@ GlobalSearchResult GlobalSearcher::search(
     }
   }
   result.accepted = true;
-  result.x_m = best.x_m;
-  result.y_m = best.y_m;
-  result.yaw_rad = best.yaw_rad;
-  result.position_sigma_m = best.position_sigma_m;
-  result.heading_sigma_rad = best.heading_sigma_rad;
-  result.score = best.score;
-  result.overlap = best.overlap;
   result.score_margin =
       checked.size() > 1 ? best.score - checked[1].score : 1.0;
   fill_runner_ups(result, checked);

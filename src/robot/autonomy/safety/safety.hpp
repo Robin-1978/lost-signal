@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 #include <string>
 
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -67,6 +68,18 @@ struct SafetyConfig {
   float contact_radius_m = 0.15f;  // omnidirectional last-resort latch
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
+ // Once a front veto has stopped the base, keep the reverse escape active
+ // until the measured front sector has cleared this release distance. This
+ // hysteresis is expressed in the same near-field units as the braking
+ // policy, so scan jitter cannot immediately hand control back to a route
+ // that still points at the obstacle.
+ float recovery_release_m = 0.6f;
+ // Dynamic tracks are ROBOT-owned scan estimates. A ready track with a
+ // measured velocity is checked over this short horizon so a crossing actor
+ // cannot appear safe merely because it is currently outside the forward
+ // ray. No SIM actor identity or truth state enters this gate.
+ double dynamic_lookahead_s = 1.0;
+ double dynamic_speed_gate_mps = 0.1;
  // Lidar extrinsics live in the TF tree; the full rotation is used when
  // classifying beam directions. The yaw setter remains for old callers.
 };
@@ -100,8 +113,15 @@ class SafetyMonitor : public ISafetyMonitor {
  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0},
  {0.0, 0.0, 0.0, 1.0}};
   bool latched_ = false;
+ bool reverse_recovery_ = false;
   std::string latch_reason_;
   std::uint64_t last_drops_ = 0;
+ // Directional minima from the last raw scan. The final gate uses the rear
+ // value only to admit a validator-approved reverse escape while a front
+ // proximity veto is active; no simulator state enters this path.
+ float rear_min_m_ = std::numeric_limits<float>::infinity();
+ float front_min_m_ = std::numeric_limits<float>::infinity();
+ float omni_min_m_ = std::numeric_limits<float>::infinity();
   SafetyVerdict last_{false, SafetyState::kStopped, "init"};
 };
 

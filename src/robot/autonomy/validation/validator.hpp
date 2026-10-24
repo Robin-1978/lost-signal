@@ -160,9 +160,16 @@ struct SurveyContext {
  !((map != nullptr && map->has_elevation()) || live.attached())) {
  return false;
  }
+ // The footprint radius bounds lateral association; the same measured
+ // ground tolerance used by endpoint classification is an additional
+ // spatial margin. Keeping it in the scale avoids a discontinuous switch
+ // from surveyed-ground handling to raw-wall handling as covariance grows
+ // slightly beyond the chassis radius.
+ const double association_margin = std::max(0.0, ground_tol_m);
  const double survey_scale = std::max(
  1e-3, std::max(map != nullptr && map->resolution_m > 0.0
- ? map->resolution_m : 0.0, footprint_radius_m));
+ ? map->resolution_m : 0.0,
+ footprint_radius_m + association_margin));
  const double projected_sigma = est.position_sigma_m +
  survey_scale * std::sin(std::min(
  std::abs(est.heading_sigma_rad), 0.5 * core::kPi));
@@ -275,11 +282,16 @@ class ClearanceValidator : public IValidator {
       out.reason = "no scan evidence for motion";
       return out;
     }
-    // Forward-sector minimum range (braking-tail check below). Surveyed
-    // ground returns are not obstacle evidence (counted separately so an
-    // all-ground sector reads open, never blind). Endpoints are deskewed
-    // to the stamp pose with the measured twist (same helper as
-    // perception/mapper, one doctrine).
+ // Directional-sector minimum range (braking-tail check below). A
+ // candidate travelling backwards is checked against the rear sector;
+ // using the forward sector for every candidate makes a valid escape
+ // impossible when the robot is stopped by a wall in front of it.
+ // Surveyed ground returns are not obstacle evidence (counted separately
+ // so an all-ground sector reads open, never blind). Endpoints are
+ // deskewed to the stamp pose with the measured twist (same helper as
+ // perception/mapper, one doctrine).
+ const double travel_sector_center =
+ candidate.forward_mps < -1e-6 ? core::kPi : 0.0;
     float sector_min = std::numeric_limits<float>::infinity();
     std::size_t forward_beams = 0, forward_ground = 0;
     const std::size_t n = obs.ranges_m.size();
@@ -299,7 +311,7 @@ class ClearanceValidator : public IValidator {
  const core::Vec3 beam_dir = core::rotate_vector(
  base_from_lidar_.rotation, {std::cos(angle), std::sin(angle), 0.0});
  const double base_angle = std::atan2(beam_dir.y, beam_dir.x);
- if (std::abs(core::wrap_angle(base_angle)) >
+ if (std::abs(core::wrap_angle(base_angle - travel_sector_center)) >
           config_.forward_half_angle_rad) {
         continue;
       }
@@ -450,7 +462,15 @@ class ClearanceValidator : public IValidator {
                     const double swept_d = std::hypot(e.x - qx, e.y - qy);
                     if (d < sample_min) sample_min = d;
                     if (swept_d < sample_min) sample_min = swept_d;
-                    if (swept_d < config_.footprint_radius_m) touches = true;
+ // Treat the declared static margin as part of the swept rejection
+ // envelope. Checking only the geometric footprint lets a candidate skim a
+ // wall at exactly the distance the braking/sector policy says is unsafe;
+ // that is how a corner can still be entered while the forward ray looks
+ // open. Minimum-risk escape may still use this flag when it demonstrably
+ // increases clearance at crawl speed.
+ if (swept_d < config_.footprint_radius_m + config_.extra_margin_m) {
+ touches = true;
+ }
                 }
                 min_clear = std::min(min_clear, sample_min);
                 prev_x = ax;

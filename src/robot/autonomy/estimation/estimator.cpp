@@ -157,8 +157,15 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
                  az = obs.imu_az_mps2;
     const double acc_norm = std::hypot(ax, ay, az);
     if (acc_norm > 1e-6) {
-      const double tilt_roll = std::atan2(ay, az);
-      const double tilt_pitch = std::atan2(-ax, std::hypot(ay, az));
+ // Specific force points opposite the world gravity vector.  With the
+ // REP-103 body frame and R = Rz(yaw) Ry(pitch) Rx(roll), a positive body
+ // roll produces a negative Y specific-force component and a positive body
+ // pitch produces a positive X component.  Keeping these signs aligned with
+ // the transform tree is essential: otherwise a level robot on a MuJoCo
+ // ramp appears upside down to the ROBOT and every 3-D scan deprojection is
+ // mirrored.
+ const double tilt_roll = std::atan2(ay, az);
+ const double tilt_pitch = std::atan2(-ax, std::hypot(ay, az));
       double roll, pitch, yaw_ignored;
       euler_from_quaternion(attitude_, roll, pitch, yaw_ignored);
       const double alpha = dt_s / (config_.attitude_time_constant_s + dt_s);

@@ -33,7 +33,7 @@ class MotionDecisionPipeline {
  const SurveyContext& survey, core::MonotonicNs now_ns,
  IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
- IController& controller);
+ IController& controller, bool forward_blocked = false);
 };
 
 } // namespace lost_signal::robot::autonomy

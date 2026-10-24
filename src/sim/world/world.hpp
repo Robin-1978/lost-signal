@@ -102,8 +102,8 @@ struct MaterialZone {
 // Authored terrain height patch (SIM-side truth). Plane + bilinear
 // cross-slope + deterministic relief, sampled by the single canonical
 // function in terrain.hpp (engine geometry and survey elevation share it,
-// never drift apart). Mesh patches (roughness > 0 or cross-slope) build as
-// engine tile grids; planar patches build as one slab.
+// never drift apart). Nonlinear patches share one engine height field;
+// planar patches use exact analytic slabs.
 struct TerrainPatch {
   std::string patch_id;
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
@@ -233,6 +233,11 @@ class World {
   int wheels(WheelViz* out, int cap) const {
     return mujoco_.wheels(out, cap);
   }
+ // Passive caster state for the SIM viewer. This never enters the ROBOT
+ // observation or actuator path.
+ int casters(CasterViz* out, int cap) const {
+ return mujoco_.casters(out, cap);
+ }
   // Sensor raycast against the compiled static scene (floor + boxes) for
   // provider simulation. False when the engine is invalid or nothing is
   // hit within max_m. Actors are supplemented analytically by the caller.

@@ -26,38 +26,40 @@ namespace lost_signal::sim::world {
 namespace {
 
 
-// Tire-side target + ground-side value for one wheel (engine max() rule
-// makes the pair take the larger). Tire carries min(global, local x env)
-// so zones at/below the tire rating resolve exactly; grippier ground wins
-// upward through the ground side, like the legacy floor.
-//
-// Audit note (friction doctrine, pinned in test_mujoco_backend): given the
-// engine's max() rule this assignment is optimal — (T, L) would read
-// max(T, L) and mask slick zones behind the tire rating, while (min, L)
-// resolves the zone exactly in every case. Residual known limit: a worn
-// tire (low T) on grippier ground reads the ground value (upward mask);
-// no max-rule assignment can express a tire cap upward without lying
-// about the zone, so it stays documented, never papered over with a
-// plant-side clamp (that would saturate twice on top of the solver;
-// report-only stands). The slip label thresholds on the same max() pair
-// value the solver enforces, so evidence and physics cannot disagree.
-void resolve_wheel_mu(double mu_tire_base,
+// Tire-side target + ground observation for one wheel. Tire geoms have
+// higher MuJoCo contact priority, so the resolved coefficient is the
+// physical series limit min(tire, ground x environment) on every surface,
+// including a height field. Material zones therefore remain properties,
+// never raised coplanar collision slabs. Slip thresholds use the same
+// tire_target the solver uses.
+struct ResolvedContactMaterial {
+ double tire_mu = 0.0;
+ double rolling_arm_m = 0.0;
+ double time_constant_s = 0.02;
+ double damping_ratio = 1.0;
+};
+
+ResolvedContactMaterial resolve_wheel_contact(double mu_tire_base,
+ double default_rolling_arm_m,
                       const std::vector<MaterialZone>& zones,
                       const std::vector<MaterialEntry>& materials,
                       const std::vector<EnvironmentKeyframe>& environment,
-                      double sim_time_s, double wx, double wy,
-                      double& tire_target, double& ground_mu) {
-  tire_target = mu_tire_base;
-  ground_mu = mu_tire_base;
+ double sim_time_s, double wx, double wy) {
+ ResolvedContactMaterial out;
+ out.tire_mu = mu_tire_base;
+ out.rolling_arm_m = default_rolling_arm_m;
   const MaterialZone* zone = material_zone_at(zones, wx, wy);
-  if (zone == nullptr) return;
+ if (zone == nullptr) return out;
   const MaterialEntry* mat = find_material(materials, zone->material_id);
-  if (mat == nullptr) return;
+ if (mat == nullptr) return out;
   const double grip =
       environment_grip_at(environment, mat->material_id, sim_time_s);
   const double local = std::max(0.0, mat->friction_mu) * std::max(0.0, grip);
-  ground_mu = local;
-  tire_target = std::min(mu_tire_base, local);
+ out.tire_mu = std::min(mu_tire_base, local);
+ out.rolling_arm_m = std::max(0.0, mat->rolling_resist);
+ out.time_constant_s = std::max(1e-4, mat->contact_time_constant_s);
+ out.damping_ratio = std::max(0.0, mat->contact_damping_ratio);
+ return out;
 }
 
 }  // namespace
@@ -74,55 +76,71 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   if (!valid() || drive_count_ <= 0 || !(dt_s > 0.0)) return;
   mjModel* model = impl_->model;
   mjData* data = impl_->data;
+ const double r = std::max(1e-6, motor.wheel_radius_m);
+ auto apply_contact_material = [&](int geom_id,
+ const ResolvedContactMaterial& contact) {
+ if (geom_id < 0) return;
+ model->geom_friction[geom_id * 3 + 0] = contact.tire_mu;
+ model->geom_friction[geom_id * 3 + 2] =
+ std::clamp(contact.rolling_arm_m * r, 0.0, 0.05);
+ model->geom_solref[geom_id * mjNREF + 0] = contact.time_constant_s;
+ model->geom_solref[geom_id * mjNREF + 1] = contact.damping_ratio;
+ };
   // Per-step ground truth: zone friction follows the environment grip
   // (live model-array writes, no rebuild), tire sides follow the local
   // zone at each wheel. Stale (20 ms) body pose is fine — zones are meters.
   const double cy = std::cos(body_yaw_), sy = std::sin(body_yaw_);
   double tire_target[4] = {mu_tire_base_, mu_tire_base_, mu_tire_base_,
                            mu_tire_base_};
-  double ground_mu[4] = {mu_tire_base_, mu_tire_base_, mu_tire_base_,
-                         mu_tire_base_};
   for (int d = 0; d < drive_count_ && d < 4; ++d) {
     const double wx =
         body_x_ + drive_mod_x_[d] * cy - drive_mod_y_[d] * sy;
     const double wy =
         body_y_ + drive_mod_x_[d] * sy + drive_mod_y_[d] * cy;
-    resolve_wheel_mu(mu_tire_base_, zones, materials, environment, sim_time_s,
-                     wx, wy, tire_target[d], ground_mu[d]);
-    if (tire_geom_[d] >= 0) {
-      model->geom_friction[tire_geom_[d] * 3 + 0] = tire_target[d];
-    }
+ const auto contact = resolve_wheel_contact(
+ mu_tire_base_, motor.rolling_resist, zones, materials, environment,
+ sim_time_s, wx, wy);
+ tire_target[d] = contact.tire_mu;
+ apply_contact_material(tire_geom_[d], contact);
   }
   // Ackermann front idlers are unpowered rolling contacts: they resolve
   // the same zone lookup at their own footprints, never a frozen baseline
   // (a gripping idler would anchor the plant on slick ground while the
   // drives slide — same doctrine as the drives, see header audit note).
-  // Ball supports keep their authored near-zero friction (normal load
-  // only, deliberately ungripped).
+ // Passive caster friction stays at the authored low baseline until the
+ // footprint-specific material lookup below is applied.
   {
-    double tire_target = mu_tire_base_, ground_mu = mu_tire_base_;
     for (int j = 0; j < idler_count_ && j < 2; ++j) {
       if (idler_geom_[j] < 0) continue;
       const double wx = body_x_ + idler_mod_x_[j] * cy - idler_mod_y_[j] * sy;
       const double wy = body_y_ + idler_mod_x_[j] * sy + idler_mod_y_[j] * cy;
-      resolve_wheel_mu(mu_tire_base_, zones, materials, environment,
-                       sim_time_s, wx, wy, tire_target, ground_mu);
-      model->geom_friction[idler_geom_[j] * 3 + 0] = tire_target;
+ const auto contact = resolve_wheel_contact(
+ mu_tire_base_, motor.rolling_resist, zones, materials, environment,
+ sim_time_s, wx, wy);
+ apply_contact_material(idler_geom_[j], contact);
     }
   }
-  for (std::size_t zi = 0; zi < zones.size() && zi < zone_geom_.size();
-       ++zi) {
-    if (zone_geom_[zi] < 0) continue;
-    const MaterialEntry* mat =
-        find_material(materials, zones[zi].material_id);
-    if (mat == nullptr) continue;
-    model->geom_friction[zone_geom_[zi] * 3 + 0] =
-        std::max(0.0, mat->friction_mu) *
-        std::max(0.0,
-                 environment_grip_at(environment, mat->material_id,
-                                     sim_time_s));
-  }
-  const double r = std::max(1e-6, motor.wheel_radius_m);
+ // Passive caster tires follow the same material/environment contact lookup
+ // as drive and Ackermann idler tires. Their footprint includes the live
+ // fork swivel and configured trail, so engine contact and visual contact
+ // remain on the same authored patch.
+ for (int i = 0; i < support_count_ && i < 4; ++i) {
+ if (support_geom_[i] < 0) continue;
+ const double ct = std::cos(support_swivel_[i]);
+ const double st = std::sin(support_swivel_[i]);
+ const double bx = support_anchor_x_[i] - support_trail_[i] * ct;
+ const double by = support_anchor_y_[i] - support_trail_[i] * st;
+ const double wx = body_x_ + bx * cy - by * sy;
+ const double wy = body_y_ + bx * sy + by * cy;
+ const auto contact = resolve_wheel_contact(
+ support_mu_base_[i], 0.0, zones, materials, environment,
+ sim_time_s, wx, wy);
+ apply_contact_material(support_geom_[i], contact);
+ for (int shoulder = 0; shoulder < 2; ++shoulder) {
+ const int gid = support_shoulder_geom_[i][shoulder];
+ apply_contact_material(gid, contact);
+ }
+ }
   // Grade as gravity tilt around the current heading (main-stack
   // body-forward semantics: uphill forward pulls backward).
   const double g = 9.81;
@@ -262,8 +280,7 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   // only — the duty path never clamps (verbatim main). Confirmed over two
   // consecutive steps so one transient step cannot latch the label.
   for (int d = 0; d < drive_count_ && d < 4; ++d) {
-    const double traction_N =
-        std::max(tire_target[d], ground_mu[d]) * load_N;
+ const double traction_N = tire_target[d] * load_N;
     if (std::abs(motor_N_last[d]) > traction_N) {
       slip_count_[d] = std::min(slip_count_[d] + 1, 3);
     } else {

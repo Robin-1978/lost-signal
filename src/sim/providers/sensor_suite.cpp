@@ -58,15 +58,11 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
  }
  if (sample_scan) {
  robot::iface::Lidar2DScan scan;
- robot::iface::Lidar2DScan reference;
  if (composite_scan_) {
     // Composite front end: same message, same layout, multi-line source.
-    std::vector<float> ranges, ref, intensities, ref_intensities;
-    std::vector<float> offsets, ref_offsets;
+ std::vector<float> ranges, intensities;
+ std::vector<float> offsets;
     if (!lidar3d_.poll_composite(ranges, intensities, true, &offsets)) {
-      return false;
-    }
-    if (!lidar3d_.poll_composite(ref, ref_intensities, false, &ref_offsets)) {
       return false;
     }
     scan.src = lidar3d_.descriptor().endpoint_id;
@@ -81,15 +77,10 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
     scan.angle_min_rad = -static_cast<float>(M_PI);
     scan.angle_increment_rad =
         static_cast<float>(2.0 * M_PI / scan.ranges_m.size());
-    reference = scan;
-    reference.ranges_m = std::move(ref);
-    reference.src = lidar3d_.descriptor().endpoint_id;
   } else {
     if (!lidar_.poll(scan, true)) return false;
-    if (!lidar_.poll(reference, false)) return false;
   }
  scan_cache_ = std::move(scan);
- static_scan_cache_ = std::move(reference);
  fresh_scan = true;
  have_scan_ = true;
  }
@@ -124,10 +115,11 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
  out.intensity_valid = false;
  out.time_offset_valid = false;
  }
- if (fresh_scan && static_scan_cache_.valid()) {
- out.static_ranges_m = static_scan_cache_.ranges_m;
- out.scan_static_valid = true;
- }
+ // A real lidar cannot provide an actor-free rendering of the same frame.
+ // Dynamic/static classification belongs to ROBOT perception and temporal
+ // tracking; SIM must not publish a truth-side reference scan.
+ out.static_ranges_m.clear();
+ out.scan_static_valid = false;
  if (fresh_imu && have_imu_) {
  if (!robot::iface::set_imu(out, imu_cache_)) return false;
  } else {

@@ -29,6 +29,8 @@ int main() {
   for (const auto& st : session.episode().steps()) {
     assert(st.diag.has_observation);
     assert(st.diag.estimate.valid);
+ assert(!st.obs.scan_static_valid);
+ assert(st.obs.static_ranges_m.empty());
     sim::eval::EstimateError e = sim::eval::estimate_error(st);
     assert(e.has_estimate);
     assert(std::isfinite(e.pos_err_m) && std::isfinite(e.yaw_err_rad));

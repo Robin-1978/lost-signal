@@ -46,6 +46,17 @@ struct LocalizationSupervisorConfig {
   double local_window_half_extent_m = 30.0;
   double lost_position_sigma_m = 0.45;
   double lost_heading_sigma_rad = 0.25;
+ // Innovation gates for corrections from a trusted odometry prior. A scan
+ // match that exceeds these uncertainty-scaled bounds is evidence to count
+ // as a failed local correction, not a pose to blend in blindly.
+ double local_innovation_sigma_factor = 4.0;
+ double local_innovation_floor_m = 0.35;
+ double local_innovation_floor_rad = 0.20;
+ // A localized trajectory may accept a wider global jump only after its
+ // covariance has crossed the loss threshold. Below that threshold this is
+ // the maximum trusted jump allowed from a whole-map candidate.
+ double trusted_global_jump_m = 0.75;
+ double trusted_global_jump_sigma_factor = 3.0;
   // Repeated independent rejections are evidence the local hypothesis is
   // unusable and may request the rate-limited global path. A single
   // rejection is not.

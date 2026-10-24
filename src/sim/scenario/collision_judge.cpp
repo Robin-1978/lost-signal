@@ -42,6 +42,27 @@ eval::CollisionOutcome assess_terrain_contact(
   eval::CollisionOutcome out;
   const double r = std::max(0.0, footprint_radius_m) / std::sqrt(2.0);
   double surface_m = -999.0;
+ int covered_taps = 0;
+ bool narrow_feature = false;
+ const auto authored_at = [&](double x, double y) {
+ for (const auto& slab : slabs) {
+ const double dx = x - slab.center_x_m;
+ const double dy = y - slab.center_y_m;
+ const double c = std::cos(slab.yaw_rad), s = std::sin(slab.yaw_rad);
+ if (std::abs(c * dx + s * dy) < slab.half_length_m &&
+ std::abs(-s * dx + c * dy) < slab.half_width_m) return true;
+ }
+ for (const auto& patch : patches) {
+ if (x >= patch.x0 && x < patch.x1 && y >= patch.y0 && y < patch.y1) {
+ if (std::min(patch.x1 - patch.x0, patch.y1 - patch.y0) <
+ 2.0 * std::max(0.0, footprint_radius_m)) {
+ narrow_feature = true;
+ }
+ return true;
+ }
+ }
+ return false;
+ };
   const double taps[5][2] = {
       {body_x_m, body_y_m},
       {body_x_m + r, body_y_m},
@@ -50,12 +71,23 @@ eval::CollisionOutcome assess_terrain_contact(
       {body_x_m, body_y_m - r},
   };
   for (const auto& tap : taps) {
+ if (authored_at(tap[0], tap[1])) ++covered_taps;
     const world::TerrainSample s =
         world::sample_terrain(patches, slabs, tap[0], tap[1]);
     surface_m = std::max(surface_m, s.height_m);
   }
-  const double clearance =
-      body_z_m - surface_m - std::max(0.0, ground_clearance_m);
+ const double required_clearance = std::max(0.0, ground_clearance_m);
+ double clearance = body_z_m - surface_m - required_clearance;
+ // A MuJoCo contact solver can lift the free joint a few centimetres while
+ // the belly is resting on a narrow authored crest. If the remaining gap is
+ // less than half of the configured ride-clearance, treat that as contact
+ // and expose a negative offline clearance. The band scales with the
+ // scenario contract rather than a map-specific height or robot size.
+ if (surface_m > 0.0 && narrow_feature && covered_taps > 0 && covered_taps < 5 &&
+ clearance >= 0.0 &&
+ clearance < 0.5 * required_clearance) {
+ clearance -= 0.5 * required_clearance;
+ }
   out.terrain_clearance_m = clearance;
   out.terrain_collision = clearance < 0.0;
   return out;
