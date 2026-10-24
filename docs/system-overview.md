@@ -127,9 +127,10 @@ sequenceDiagram
   P->>W: apply to plant
 ```
 
-`AutonomyCoordinator` runs the full pipeline every decision
-(estimator → perception → mapper/SLAM → behavior → local planner → validator
-→ controller → safety gate); safe stop comes out of the gates (no
+`AutonomyCoordinator` is the ROBOT composition and sequencing seam. It wires
+the full pipeline (estimator → perception → mapper/SLAM → behavior → local
+planner → validator → controller → safety gate) and holds module state;
+policy lives in those modules and in `RoutePlanningPipeline`. Safe stop comes out of the gates (no
 observation, invalid command, safety trip, controlled-stop latch), never
 from a skeleton stub. 包络、过期、空队列全部 fail-closed。
 

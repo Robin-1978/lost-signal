@@ -1,6 +1,7 @@
 # SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
-Robot side is done (clean rebuild, 47/47 green, boundary gate green).
+Robot side is continuously gated by a clean rebuild, the full CTest suite,
+and the boundary check (currently 47/47 green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
 map editor / campaign visuals stay out. The physics backend is MuJoCo
@@ -74,6 +75,13 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
 - `SimRobot` + `ScenarioSession` (world-stepping HIL), eval
   (episode/scoring/JSONL recording/replay/drive-profile-io).
 - `DriveProfile`: robot-side contract struct + sim-side JSON merge.
+
+The scenario scheduler keeps independent scan, encoder/motion, IMU, decision,
+and record deadlines. A single transport envelope may contain only sections
+acquired on that tap; stale scan/IMU/twist sections are invalid and are never
+reintegrated by ROBOT. `lost_signal_sim --episode` exports the observation
+stream as deterministic JSONL v2, while `--out` writes an offline mission
+summary with elapsed time, clearance, and energy proxy metrics.
 
 ## Phases (in order; each lands green before the next starts)
 

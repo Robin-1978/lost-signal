@@ -38,7 +38,10 @@ response delay, checks static collision on the optimistic map view and
 dynamic collision on predicted track frames, and scores goal / heading /
 clearance / path / progress / oscillation. It emits one feasible
 `LocalCandidate` toward the route lookahead; without a goal there is no
-route and the chain holds. `ClearanceValidator` accepts the result against
+route and the chain holds. Ackermann candidates are bounded by the declared
+wheelbase/steering curvature and cannot turn in place; holonomic lateral
+commands use a slew-limited command window instead of reopening the full
+sideways range on every decision. `ClearanceValidator` accepts the result against
 raw scan evidence, `DirectController` emits canonical `kStop`/command, and
 the safety gate has the last word. Wheel-space windows and actuator
 identification stay out: the `IChassis` wrapper owns the real base.
@@ -60,10 +63,10 @@ identification stay out: the `IChassis` wrapper owns the real base.
   scan); without one, classification is unavailable and no tracks publish,
   while `scan_ok` stays true so raw safety coverage is retained. Foreground
   beams cluster into candidates, nearest-neighbor association keeps
-  identities, and velocity is averaged since first sighting (finite
-  differences amplify centroid quantization into m/s noise). Tracks carry
-  `prediction_ready` once they have history; avoidance consumes unready
-  tracks conservatively.
+ identities, and velocity is averaged since first sighting (finite
+ differences amplify centroid quantization into m/s noise). Tracks carry
+ `prediction_ready` once they have history; avoidance consumes unready
+ tracks conservatively.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
   `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
@@ -78,20 +81,23 @@ identification stay out: the `IChassis` wrapper owns the real base.
  replays keyframes into the same mapper; simulator terrain and contact
  truth never enter this path.
 - Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
-  estimate in, ONE constraint (hold / speed cap) out. It selects no
-  trajectory and emits no command. A hold short-circuits sampling but still
-  passes validator + controller + safety, so the evidence chain stays
-  uniform.
+ estimate in, ONE constraint (hold / speed cap) out. The default policy
+ predicts closest relative approach over a short horizon using track
+ geometry, velocity, and the declared ego footprint; objects behind or beside
+ the base do not cause a global stop. It selects no trajectory and emits no
+ command. A hold short-circuits sampling but still passes validator +
+ controller + safety, so the evidence chain stays uniform.
   Task-level policy (which goal, return-to-charge) stays in `RobotExecutive`,
   one timescale above behavior; trajectory sampling stays below it.
 - Global planning is event-driven (goal/map change), not per-tick. It
   returns a `Route` of `RoutePoint{x, y, yaw}`; heading travels with position.
-  `AStarPlanner` searches the static `MapSnapshot` raster (unknown
+ `AStarPlanner` searches the static `MapSnapshot` raster (unknown
   traversable with penalty, occupied impassable, no corner cutting) and
   degrades to a straight line when the map has no raster; a walled-in goal
-  yields an invalid route (fail closed upstream). The coordinator refreshes
-  the active route on goal/map change and the local planner only ever
-  consumes that route, never a raw goal. The static map itself arrives as
+ yields an invalid route (fail closed upstream). `RoutePlanningPipeline`
+ refreshes the active route on goal/map change or an explicit replan event;
+ the coordinator only wires the event and module inputs. The local planner
+ only ever consumes that route, never a raw goal. The static map itself arrives as
   an immutable revision from a provider (`StaticMapProvider` rasterizes
   authored geometry; SLAM/file/remote providers implement the same seam),
   so replans track content revisions, never live sensor frames.
@@ -137,7 +143,7 @@ identification stay out: the `IChassis` wrapper owns the real base.
 | Perception / mapping | scan-bearing observations only (`scan_valid`) |
 | Behavior + local planner + validator + controller | decision period, default 10 Hz (`decision_period_ns`), or event wakeup |
 | Safety gate | every `update()` tick, on the held or fresh command |
-| Global planner | event-driven (goal/map change), outside the per-tick path |
+| RoutePlanningPipeline / global planner | event-driven (goal/map change or explicit replan), outside the per-tick path |
 
 `ingest_observation()` advances estimator always and perception/mapper at
 scan rate. `update()` runs the decision branch when due, on
