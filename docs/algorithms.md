@@ -309,7 +309,8 @@ route, pre-activation hold).
  (scan/motion/IMU/decision/record taps run independently; the decision tap
  gates the ROBOT branch at the configured cadence), objective driver (place
  list through the operator `request_goal`
-  seam; ROBOT Done/Failed advances, truth arrival counted offline only),
+ seam; ROBOT Done/Failed advances sequencing, while SIM success additionally
+ requires independent physical-truth arrival and never feeds that verdict back),
   truth-side collision judge (circle-vs-box/actor contact + clearances,
   recorded per step into the episode for scoring — never a ROBOT input).
   `EpisodeScore` counts judge-fired steps. A string registry names the kinds for

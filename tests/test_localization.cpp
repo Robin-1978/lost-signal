@@ -337,6 +337,36 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
+ // A cooperative whole-map search freezes its first scan while odometry
+ // continues. The accepted pose must be advanced by the intervening ROBOT
+ // motion; applying the old scan pose at completion would jump backwards.
+ {
+ auto map = make_wall_map();
+ AutonomyCoordinator coord;
+ assert(coord.configure().ok && coord.activate().ok);
+ double true_x = 1.0;
+ iface::ObservationFrame o;
+ o.source = "t.moving-lidar";
+ o.frame = core::Frame::kLidarLink;
+ o.odometry_valid = true;
+ o.forward_mps = 0.5;
+ o.scan_angle_min_rad = -M_PI;
+ o.scan_angle_increment_rad = 2.0 * M_PI / 72;
+ o.imu_valid = true;
+ for (int i = 0; i < 1000 && !coord.localized(); ++i) {
+ if (i > 0) true_x += 0.5 * 0.02;
+ o.sequence = static_cast<std::uint64_t>(i + 1);
+ o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+ o.scan_valid = true;
+ o.ranges_m = scan_from(true_x, 0.0, 0.0, map);
+ coord.ingest_observation(o);
+ coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+ }
+ assert(coord.localized());
+ assert(std::abs(coord.estimate().x_m - true_x) < 0.6);
+ assert(std::abs(coord.estimate().y_m) < 0.6);
+ }
+
   // 9. Deferred startup disambiguation: fabricated ambiguous seed (true
   // pose + far decoy) promotes the true pose once the decoy drops; close
   // twins merge instead of deadlocking; hopeless seeds time out.

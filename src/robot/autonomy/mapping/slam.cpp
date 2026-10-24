@@ -530,7 +530,6 @@ SlamLoopResult SlamSession::try_close_loops(
  const bool large_correction =
  prospective_m > config_.track_window_m ||
  prospective_rad > config_.track_heading_rad;
- if (large_correction) {
  enum class AbsoluteEvidence { kInconclusive, kConfirms, kConflicts };
  AbsoluteEvidence absolute = AbsoluteEvidence::kInconclusive;
  if (absolute_map != nullptr && absolute_map->has_raster()) {
@@ -555,11 +554,17 @@ SlamLoopResult SlamSession::try_close_loops(
  ? AbsoluteEvidence::kConfirms : AbsoluteEvidence::kConflicts;
  }
  }
+ // A surveyed-map frame is already an absolute constraint. Any loop that
+ // would move the live pose in a region with survey evidence must improve
+ // that independent fit, even when each individual correction is smaller
+ // than the local tracking window. Otherwise several plausible-looking
+ // small loops can cumulatively walk the robot away from the map.
  if (absolute == AbsoluteEvidence::kConflicts) {
  out.diagnostic = "loop rejected: conflicts with surveyed-map evidence";
  last_result_ = out;
  continue;
  }
+ if (large_correction) {
  // Rigid transform C with matched_pose = C * current_pose. Comparing C,
  // rather than raw pose deltas, remains valid after the robot translates or
  // rotates between confirmation scans.

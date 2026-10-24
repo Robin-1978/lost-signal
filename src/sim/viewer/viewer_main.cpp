@@ -1619,7 +1619,7 @@ int main(int argc, char** argv) {
     while (trail.size() > 600) trail.pop_front();
     std::vector<std::string> reached;
     for (const auto& r : session->objectives().results()) {
-      if (r.robot_done) reached.push_back(r.place_id);
+      if (r.successful()) reached.push_back(r.place_id);
     }
     const sim::viewer::Frame frame = sim::viewer::build_frame(
         session->setup_world(), last, reached,
@@ -1655,11 +1655,16 @@ int main(int argc, char** argv) {
     }
     char hud[256];
     std::snprintf(hud, sizeof(hud),
-                  "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/4  %dx%d cam=%s %s",
+                  "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/%zu  %dx%d cam=%s %s",
                   static_cast<unsigned long long>(frame.step), frame.body.x_m,
                   frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
-                  static_cast<int>(reached.size()), steps_per_frame,
-                  GetFPS(), follow ? "FOLLOW" : "FREE", paused ? "PAUSED" : "RUN");
+                  static_cast<int>(reached.size()), session->objectives().total(),
+ steps_per_frame,
+ GetFPS(), follow ? "FOLLOW" : "FREE",
+ paused ? "PAUSED"
+ : session->objectives_done()
+ ? (session->objectives_passed() ? "PASSED" : "FAILED")
+ : "RUN");
     DrawText(hud, 10, 10, 14, BLACK);
     if (edit_mode) {
       char ebuf[256];

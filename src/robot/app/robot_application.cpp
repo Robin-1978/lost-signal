@@ -161,21 +161,16 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   for (const auto& obs : channel_.drain_observations()) {
     coordinator_.ingest_observation(obs);
  }
- // Arrival is terminal: complete the goal and withdraw the route BEFORE
- // planning, so the arrival tick already holds instead of publishing one
- // more route-following command.
- // Arrival is a chassis-envelope decision: a footprint-sized stop band
- // avoids holding forever when the final controller sample settles just
- // outside the point target. The radius is derived from the declared robot
- // geometry and remains independent of simulation truth.
- const double arrival_radius_m = std::max(
- 0.5, 2.0 * desc_.limits.footprint_radius_m);
- if (coordinator_.route_complete(arrival_radius_m)) {
- executive_.note_arrival(true);
- coordinator_.clear_goal();
- }
  iface::MotionCommand body = coordinator_.update(
       maps_->active_snapshot(), channel_.health(), now_ns);
+ // Autonomy owns pose and settling policy; the application only sequences
+ // its terminal result into the executive. The policy sees ROBOT estimates
+ // and map goals only, never simulator truth.
+ if (coordinator_.goal_arrived()) {
+ executive_.note_arrival(true);
+ coordinator_.clear_goal();
+ body = iface::MotionCommand::SafeStop(now_ns);
+ }
   if (!iface::valid_motion_command(body, now_ns)) {
     body = iface::MotionCommand::SafeStop(now_ns);
   }

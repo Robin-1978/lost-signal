@@ -66,7 +66,7 @@ class LocalizationSystem {
   }
 
  private:
-  void run_localization(const iface::MapSnapshot& map,
+ bool run_localization(const iface::MapSnapshot& map,
                         const iface::ObservationFrame& obs,
                         core::MonotonicNs now_ns, IEstimator& estimator,
                         std::string& action);
@@ -84,6 +84,10 @@ class LocalizationSystem {
   StartupHypotheses startup_hyps_;
   SlamSession slam_;
   bool slam_origin_seeded_ = false;
+ bool global_origin_valid_ = false;
+ double global_origin_x_m_ = 0.0;
+ double global_origin_y_m_ = 0.0;
+ double global_origin_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

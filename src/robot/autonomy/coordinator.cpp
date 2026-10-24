@@ -18,9 +18,11 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
                                          LidarPerceptionConfig perception_config,
  GripAdapterConfig grip_config,
- double wheel_base_m)
+ double wheel_base_m,
+ GoalArrivalConfig arrival_config)
     : limits_(limits),
       grip_(grip_config),
+ goal_arrival_(arrival_config),
       decision_period_ns_(decision_period_ns),
       estimator_(std::make_unique<FusedOdometryEstimator>()),
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
@@ -63,6 +65,8 @@ core::Status AutonomyCoordinator::configure() {
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
+ goal_arrival_.reset();
+ goal_arrival_decision_ = GoalArrivalDecision{};
   localization_.reset();
   last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
@@ -167,6 +171,8 @@ void AutonomyCoordinator::set_static_frames(
 }
 
 void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
+ goal_arrival_.reset();
+ goal_arrival_decision_ = GoalArrivalDecision{};
   goal_ = goal;
   has_goal_ = true;
   active_route_ = Route{};  // force refresh on the next update
@@ -174,6 +180,8 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
 }
 
 void AutonomyCoordinator::clear_goal() {
+ goal_arrival_.reset();
+ goal_arrival_decision_ = GoalArrivalDecision{};
   goal_ = RoutePoint{};
   has_goal_ = false;
   active_route_ = Route{};
@@ -185,17 +193,6 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
       has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
   estimator_->seed_pose(x_m, y_m, yaw_rad, 0.1, 0.05, stamp);
   localization_.mark_localized();
-}
-
-bool AutonomyCoordinator::route_complete(double arrival_radius_m) const {
-  if (!has_goal_ || !active_route_.valid || active_route_.points.empty()) {
-    return false;
-  }
-  const EstimatedState& est = estimator_->estimate();
-  if (!est.valid) return false;
-  const double dx = est.x_m - goal_.x_m;
-  const double dy = est.y_m - goal_.y_m;
-  return std::hypot(dx, dy) <= arrival_radius_m;
 }
 
 void AutonomyCoordinator::ingest_observation(
@@ -356,6 +353,17 @@ iface::MotionCommand AutonomyCoordinator::update(
  last_cmd_ = decided;
  last_constraint_ = constraint;
  last_reason_ = reason;
+ }
+ // Goal completion is an autonomy policy, not coordinator arithmetic. The
+ // coordinator supplies the latest estimated state and active route, then
+ // applies the policy's hold while the measured chassis settles.
+ goal_arrival_decision_ = goal_arrival_.evaluate(
+ estimator_->estimate(), goal_,
+ has_goal_ && active_route_.valid && !active_route_.points.empty());
+ if (goal_arrival_decision_.hold) {
+ last_cmd_ = iface::MotionCommand::SafeStop(now_ns);
+ last_constraint_ = "goal_hold";
+ last_reason_ = goal_arrival_decision_.reason;
  }
   // Controlled-stop latch: once stopping, withhold motion until the measured
   // tread settles, so a safety rejection on a grade cannot chatter into a

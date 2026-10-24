@@ -147,12 +147,15 @@ int main() {
     session.set_objectives({"dockA", "dockB"}, 1.0);
 
     std::vector<double> dyn_clear;
-    for (int i = 0; i < 700 && !session.objectives_done(); ++i) {
+ // Precise arrival now brakes, settles, and confirms each pose instead of
+ // declaring Done at a footprint-sized distance. Budget the two full stops.
+ for (int i = 0; i < 1000 && !session.objectives_done(); ++i) {
       session.step_once();
       dyn_clear.push_back(
           session.episode().steps().back().judge.dynamic_clearance_m);
     }
     assert(session.objectives_done());
+ assert(session.objectives_passed());
     // Score: completion with a score, zero collision steps.
     const auto score = sim::eval::score_episode(session.episode());
     // Estimator health over the mission (offline truth-vs-estimate): the
@@ -224,11 +227,34 @@ int main() {
       session.step_once();
     }
     assert(session.objectives_done());
+ assert(!session.objectives_passed());
     const auto& results = session.objectives().results();
     assert(results.size() == 2);
     assert(!results[0].robot_done && !results[0].truth_arrived);
     assert(results[1].robot_done && results[1].truth_arrived);
+ assert(session.objectives().successful() == 1);
+ assert(session.objectives().completion_ratio() == 0.5);
   }
+
+ // A ROBOT Done report cannot pass a SIM objective by itself. Use a truth
+ // tolerance tighter than the ROBOT arrival radius so the estimate can
+ // legitimately finish while the physical body remains outside the SIM
+ // acceptance circle.
+ {
+ sim::scenario::ScenarioSession session;
+ session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+ session.set_objectives({"dock"}, 0.01);
+ for (int i = 0; i < 500 && !session.objectives_done(); ++i) {
+ session.step_once();
+ }
+ assert(session.objectives_done());
+ assert(!session.objectives_passed());
+ const auto& result = session.objectives().results().front();
+ assert(result.robot_done);
+ assert(!result.truth_arrived);
+ assert(!result.successful());
+ assert(session.objectives().completion_ratio() == 0.0);
+ }
 
   // Step budget abandons a stuck objective: unreachable-in-time "far" is
   // recorded (not done, truth miss kept), its goal canceled through the
@@ -246,6 +272,7 @@ int main() {
       session.step_once();
     }
     assert(session.objectives_done());
+ assert(!session.objectives_passed());
     const auto& results = session.objectives().results();
     assert(results.size() == 2);
     assert(results[0].abandoned && !results[0].robot_done);

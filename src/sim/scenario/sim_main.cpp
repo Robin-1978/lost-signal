@@ -190,6 +190,8 @@ bool write_summary(const std::string& path, const std::string& map_path,
  root.emplace_back("elapsed_s", Json::Num(score.elapsed_s));
  root.emplace_back("objectives_done",
  Json::Bool(session.objectives_done()));
+ root.emplace_back("objectives_passed",
+ Json::Bool(session.objectives_passed()));
  root.emplace_back("objectives_total",
  Json::Num(static_cast<double>(session.objectives().total())));
  root.emplace_back("objectives_completed",
@@ -197,7 +199,9 @@ bool write_summary(const std::string& path, const std::string& map_path,
  root.emplace_back("objective_completion_ratio",
  Json::Num(session.objectives().completion_ratio()));
  root.emplace_back("mission_status",
- Json::Str(session.objectives_done() ? "completed" : "incomplete"));
+ Json::Str(!session.objectives_done()
+ ? "incomplete"
+ : session.objectives_passed() ? "completed" : "failed"));
  Json::Object s;
  s.emplace_back("safe_stop_steps",
  Json::Num(static_cast<double>(score.safe_stop_steps)));
@@ -227,6 +231,7 @@ bool write_summary(const std::string& path, const std::string& map_path,
  o.emplace_back("place_id", Json::Str(r.place_id));
  o.emplace_back("robot_done", Json::Bool(r.robot_done));
  o.emplace_back("truth_arrived", Json::Bool(r.truth_arrived));
+ o.emplace_back("successful", Json::Bool(r.successful()));
  o.emplace_back("truth_miss_m", Json::Num(r.truth_miss_m));
  o.emplace_back("abandoned", Json::Bool(r.abandoned));
  results.push_back(Json::Obj(std::move(o)));
@@ -395,9 +400,10 @@ long ran = 0;
  const bool have_semantics = load_semantics_sidecar(opt.map_path, semantics);
  if (have_semantics) score_semantics(*session, semantics);
  std::printf(
- "sim ran %ld steps; done=%s collisions=%zu distance=%.2f m "
+ "sim ran %ld steps; done=%s passed=%s collisions=%zu distance=%.2f m "
  "max_pos_err=%.3f m\n",
- ran, session->objectives_done() ? "yes" : "no", score.collision_steps,
+ ran, session->objectives_done() ? "yes" : "no",
+ session->objectives_passed() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
  if (!opt.out_path.empty() &&
  !write_summary(opt.out_path, opt.map_path, *session,

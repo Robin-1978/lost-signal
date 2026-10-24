@@ -140,7 +140,9 @@ int main() {
  assert(h.valid());
  Feeder nf;
  bool arrived = false;
- for (int i = 0; i < 40; ++i) {
+ bool settling_stop_seen = false;
+ double measured_speed_mps = 0.5;
+ for (int i = 0; i < 80; ++i) {
  iface::ObservationFrame obs;
  obs.sequence = static_cast<std::uint64_t>(nf.seq++);
  obs.stamp_ns = nf.t_ns;
@@ -149,16 +151,24 @@ int main() {
  obs.scan_valid = true;
  obs.ranges_m.assign(72, 10.0f);
  obs.odometry_valid = true;
- obs.forward_mps = 0.5;
+ obs.forward_mps = measured_speed_mps;
  assert(near.publish_observation(obs));
  const auto cmd = near.tick(nf.t_ns);
  nf.t_ns += 100'000'000;
+ // Model the plant response to the arrival hold. A moving observation must
+ // never complete the task; once the command stops near the goal, publish
+ // settled wheel motion on subsequent samples.
+ if (near.diagnostics().estimate.x_m > 0.70 && cmd.is_safe_stop()) {
+ settling_stop_seen = true;
+ measured_speed_mps = 0.0;
+ }
  if (near.current_goal().state == iface::GoalState::kDone) {
  assert(cmd.is_safe_stop());
  arrived = true;
  break;
  }
  }
+ assert(settling_stop_seen);
  assert(arrived);
  assert(near.current_goal().state == iface::GoalState::kDone);
  }

@@ -3,10 +3,10 @@
 // Scenario goal driver (SIM orchestration, never ROBOT input). Sequences an
 // objective list through the SAME request_goal seam an operator uses; the
 // ROBOT map provider resolves every place_id, SIM never hands coordinates
-// to the robot. Arrival/completion is counted truth-side for scoring (did
-// the body actually get there?) but never fed back into any tick: the
-// driver only requests the next goal when the ROBOT reports the active one
-// done/failed, and only reads truth for the offline record.
+// to the robot. ROBOT Done comes only from its estimate. SIM independently
+// records whether the physical body arrived; only both together pass an
+// objective. This verdict remains in scenario/eval and is never fed back into
+// a ROBOT tick.
 
 #include <cstddef>
 #include <string>
@@ -23,6 +23,9 @@ struct ObjectiveResult {
   bool truth_arrived = false;   // truth body within tolerance at completion
   double truth_miss_m = 999.0;  // truth distance to the place at completion
   bool abandoned = false;       // step budget expired before any report
+ bool successful() const {
+ return robot_done && truth_arrived && !abandoned;
+ }
 };
 
 class ObjectiveDriver {
@@ -42,12 +45,12 @@ class ObjectiveDriver {
   bool done() const { return next_ >= objectives_.size(); }
  std::size_t total() const { return objectives_.size(); }
   std::size_t completed() const { return results_.size(); }
- double completion_ratio() const {
- return objectives_.empty()
- ? 1.0
- : static_cast<double>(results_.size()) /
- static_cast<double>(objectives_.size());
- }
+ // Processing every request and passing the scenario are different: ROBOT
+ // can report Done from a drifted estimate, while SIM must independently
+ // verify that the physical body reached the authored place.
+ bool passed() const;
+ std::size_t successful() const;
+ double completion_ratio() const;
   std::size_t truth_arrivals() const;
   const std::vector<ObjectiveResult>& results() const { return results_; }
   const std::string& active_place() const;

@@ -10,6 +10,7 @@ void LocalizationSystem::reset() {
   startup_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;
+ global_origin_valid_ = false;
 }
 
 void LocalizationSystem::set_lidar_mount(
@@ -42,8 +43,18 @@ LocalizationSystem::TickResult LocalizationSystem::update(
     IMapper& mapper) {
   TickResult out;
   run_tracking(obs, has_observation, estimator);
-  run_localization(map, obs, now_ns, estimator, out.action);
- if (run_slam(map, obs, has_observation, estimator, mapper)) {
+ const bool frame_reanchored =
+ run_localization(map, obs, now_ns, estimator, out.action);
+ if (frame_reanchored) {
+ // Keyframes and the rolling raster were authored in the old map frame.
+ // Keeping either after an absolute global fix lets local SLAM pull the
+ // estimator back toward the obsolete frame on the next tick.
+ slam_.reset();
+ mapper.reset();
+ out.replan_requested = true;
+ }
+ if (supervisor_.localized() &&
+ run_slam(map, obs, has_observation, estimator, mapper)) {
     out.replan_requested = true;
   }
   return out;
@@ -53,13 +64,18 @@ LocalizationSystem::TickResult LocalizationSystem::update(
 // corrections. Bounded window (±track_window_m) so it can never kidnap;
 // applied through correct_pose only — the supervisor trust state is
 // untouched (tracking bounds drift, loop closures establish the frame).
-// Runs whether or not the estimate is localized: a slipped estimate with
-// blown covariance would otherwise starve every correction behind the
-// global-retry backoff.
+// Runs after the supervisor establishes a map frame. A known-map cold start
+// must not feed arbitrary odometry-frame SLAM corrections into a concurrent
+// global search; mapless startup establishes its odometry origin immediately.
 void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
                                      bool has_observation,
                                      IEstimator& estimator) {
-  if (!has_observation || !obs.scan_valid) return;
+ // Before the global/mapless startup branch establishes a map frame, the
+ // SLAM submap has only an arbitrary odometry-frame anchor. Feeding those
+ // corrections into a known-map startup can bias the motion delta used to
+ // advance an incremental global-search result. Start tracking once the
+ // supervisor has established the frame; mapless startup does so immediately.
+ if (!supervisor_.localized() || !has_observation || !obs.scan_valid) return;
   SlamTrackResult tr = slam_.track(estimator.estimate(), obs);
   if (!tr.accepted) return;
  // A moving foreground return can produce a locally convincing but wrong
@@ -124,7 +140,7 @@ bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
   return true;
 }
 
-void LocalizationSystem::run_localization(
+bool LocalizationSystem::run_localization(
     const iface::MapSnapshot& map, const iface::ObservationFrame& obs,
     core::MonotonicNs now_ns, IEstimator& estimator, std::string& action) {
   const double now_s = now_ns * 1e-9;
@@ -141,8 +157,8 @@ void LocalizationSystem::run_localization(
   action = localization_action_name(act);
   // Deferred startup disambiguation: an ambiguous whole-map search seeds
   // hypotheses instead of guessing; later scans promote or drop them.
-  // Runs while unlocalized regardless of the supervisor action (tracking
-  // owns the unlocalized scans); the supervisor retry still backstops.
+ // Deferred hypotheses own their unlocalized scans; ordinary local SLAM
+ // remains gated until one hypothesis establishes the map frame.
   if (supervisor_.localized()) startup_hyps_.reset();
   if (!supervisor_.localized() && !startup_hyps_.empty() &&
       obs.scan_valid && !obs.ranges_m.empty()) {
@@ -155,11 +171,11 @@ void LocalizationSystem::run_localization(
                           0.02, obs.stamp_ns);
       supervisor_.record_global(true, ScanMatchResult{});
       action = "startup-promoted";
-      return;
+ return true;
     }
     if (tracked.status == StartupTrackStatus::kTracking) {
       action = "startup-tracking";
-      return;
+ return false;
     }
     // kLost: fall through — the supervisor cadence (or this tick's
     // global branch) re-runs the whole-map search with fresh evidence.
@@ -167,7 +183,7 @@ void LocalizationSystem::run_localization(
  // An in-flight whole-map search advances on every localization tick even
  // while the supervisor's retry cadence says "defer". The cadence starts a
  // search; it must not throttle the bounded slices inside that search.
- if (act == LocalizationAction::kDefer && !global_search_.active()) return;
+ if (act == LocalizationAction::kDefer && !global_search_.active()) return false;
  const bool requested_global = act == LocalizationAction::kGlobalRelocalization;
   // Mapless startup: no static raster exists, so neither local matching nor
   // the whole-map search can constrain the pose. Seed the odometry origin
@@ -183,7 +199,7 @@ void LocalizationSystem::run_localization(
     slam_origin_seeded_ = true;
     action = startup_mode_name(startup.mode);
     supervisor_.record_global(true, ScanMatchResult{});
-    return;
+ return false; // same odometry frame: no map/keyframe transform to retire
   }
  if (requested_global || global_search_.active()) {
     // Whole-map search: kidnap recovery and cold start. An accepted global
@@ -192,6 +208,10 @@ void LocalizationSystem::run_localization(
     // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
     // next scans disambiguate) instead of guessing now.
  if (!global_search_.active()) {
+ global_origin_valid_ = est.valid;
+ global_origin_x_m_ = est.x_m;
+ global_origin_y_m_ = est.y_m;
+ global_origin_yaw_rad_ = est.yaw_rad;
  global_search_.begin(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
@@ -199,9 +219,36 @@ void LocalizationSystem::run_localization(
  const std::optional<GlobalSearchResult> update = global_search_.advance();
  if (!update.has_value()) {
  action = "global_relocalization:search pending";
- return;
+ return false;
  }
  GlobalSearchResult global = *update;
+ // The cooperative search scores a frozen scan over many control ticks.
+ // Its winning pose belongs to that scan's acquisition pose, not to the
+ // robot's current pose. Carry every hypothesis forward by the ROBOT-only
+ // relative motion accumulated while the search was running. Applying the
+ // stale pose directly made a moving robot jump backwards after an otherwise
+ // correct search and poisoned the following SLAM graph.
+ if (global_origin_valid_ && est.valid) {
+ const double c0 = std::cos(global_origin_yaw_rad_);
+ const double s0 = std::sin(global_origin_yaw_rad_);
+ const double wx = est.x_m - global_origin_x_m_;
+ const double wy = est.y_m - global_origin_y_m_;
+ const double dx = c0 * wx + s0 * wy;
+ const double dy = -s0 * wx + c0 * wy;
+ const double dyaw = core::wrap_angle(est.yaw_rad - global_origin_yaw_rad_);
+ const auto advance_pose = [&](double& x, double& y, double& yaw) {
+ const double c = std::cos(yaw);
+ const double s = std::sin(yaw);
+ x += c * dx - s * dy;
+ y += s * dx + c * dy;
+ yaw = core::wrap_angle(yaw + dyaw);
+ };
+ advance_pose(global.x_m, global.y_m, global.yaw_rad);
+ for (auto& runner_up : global.runner_ups) {
+ advance_pose(runner_up.x_m, runner_up.y_m, runner_up.yaw_rad);
+ }
+ }
+ global_origin_valid_ = false;
  bool accept_global = global.accepted;
  bool require_temporal_confirmation = false;
  if (global.accepted && !supervisor_.localized()) {
@@ -260,7 +307,7 @@ void LocalizationSystem::run_localization(
  action = require_temporal_confirmation ? "startup-confirming"
  : "startup-seeded";
     }
-    return;
+ return accept_global;
   }
   ScanMatchResult match = scan_matcher_.localize(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
@@ -286,13 +333,14 @@ void LocalizationSystem::run_localization(
  innovation_m > position_limit || innovation_rad > heading_limit) {
  supervisor_.record_local(false, match);
  action = "local_correction:innovation rejected";
- return;
+ return false;
  }
     estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
                            match.position_sigma_m, match.heading_sigma_rad,
                            obs.stamp_ns);
   }
   supervisor_.record_local(match.accepted, match);
+ return false;
 }
 
 }  // namespace lost_signal::robot::autonomy

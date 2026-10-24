@@ -7,6 +7,7 @@
 #include "robot/autonomy/control/controller.hpp"
 #include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/control/stop_latch.hpp"
+#include "robot/autonomy/decision/goal_arrival.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
@@ -52,7 +53,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
       core::MonotonicNs decision_period_ns = 100'000'000,  // 10 Hz default
       LidarPerceptionConfig perception_config = {},
  GripAdapterConfig grip_config = {},
- double wheel_base_m = 0.56);
+ double wheel_base_m = 0.56,
+ GoalArrivalConfig arrival_config = {});
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;
@@ -100,10 +102,12 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // invalidates the route so update() holds instead of driving a dead
   // goal. Only the executive decides lifetime; this just executes it.
   void clear_goal();
-  // Arrival predicate for the executive: an estimated-frame goal exists,
-  // the route is live, and the estimate sits inside the arrival radius.
-  // The executive owns goal lifetime; this only reports progress.
-  bool route_complete(double arrival_radius_m = 0.5) const;
+ // Result of the autonomy-owned arrival policy. The executive owns goal
+ // lifetime; the coordinator only exposes the pipeline result.
+ bool goal_arrived() const { return goal_arrival_decision_.arrived; }
+ const GoalArrivalDecision& goal_arrival_decision() const {
+ return goal_arrival_decision_;
+ }
   // Deployment seeding: known start pose (dock, operator initialpose).
   // Snaps the estimator and marks the supervisor localized so the normal
   // cadence path takes over; every later correction is still gated.
@@ -158,6 +162,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // limit-shaping policy. The coordinator only wires observations into it
   // and consumes the tightened envelope; no adaptation state lives here.
   GripAdapter grip_;
+ GoalArrivalPolicy goal_arrival_;
+ GoalArrivalDecision goal_arrival_decision_;
   // Traversal belief (mapping layer): roughness from IMU motion evidence
   // over the surveyed elevation prior. Bound on map revision, observed
   // every tick; the global planner prices it, the validator gates on the

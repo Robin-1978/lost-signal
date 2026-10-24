@@ -151,6 +151,16 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
     cur = nodes[cur].parent;
   }
   std::reverse(route.points.begin(), route.points.end());
+ // The goal lies inside the accepted free raster cell, whose interior is
+ // convex. Finish at the authored pose instead of its cell center so local
+ // control does not inherit up to half a cell of avoidable terminal error.
+ const RoutePoint cell_goal = route.points.back();
+ if (std::hypot(cell_goal.x_m - goal.x_m,
+ cell_goal.y_m - goal.y_m) > 1e-9) {
+ route.points.push_back(goal);
+ } else {
+ route.points.back().yaw_rad = goal.yaw_rad;
+ }
   // Headings follow the path; the terminal inherits the goal heading.
   for (std::size_t i = 0; i + 1 < route.points.size(); ++i) {
     route.points[i].yaw_rad = std::atan2(

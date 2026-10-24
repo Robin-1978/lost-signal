@@ -34,6 +34,26 @@ std::size_t ObjectiveDriver::truth_arrivals() const {
   return n;
 }
 
+std::size_t ObjectiveDriver::successful() const {
+ std::size_t n = 0;
+ for (const auto& r : results_) {
+ if (r.successful()) ++n;
+ }
+ return n;
+}
+
+bool ObjectiveDriver::passed() const {
+ return done() && results_.size() == objectives_.size() &&
+ successful() == objectives_.size();
+}
+
+double ObjectiveDriver::completion_ratio() const {
+ return objectives_.empty()
+ ? 1.0
+ : static_cast<double>(successful()) /
+ static_cast<double>(objectives_.size());
+}
+
 const std::string& ObjectiveDriver::active_place() const {
   static const std::string kNone;
   if (!requesting_ || next_ >= objectives_.size()) return kNone;

@@ -68,16 +68,27 @@ channels.
 ### Recovery and pose/rendering invariants
 
 Whole-map localization is a recovery operation, not a periodic pose filter.
-When a localized estimate has finite covariance below the loss thresholds and
-the local scan matcher is producing accepted corrections, the supervisor only
-runs the bounded local matcher at its motion cadence. A global search is due
-for an unlocalized start, invalid or stale localization evidence, covariance
-above the recovery threshold, or repeated independent local-match failures.
-The last condition is deliberately independent of covariance: an overconfident
-odometry covariance can remain small while the scan evidence has become
-inconsistent. The global retry is rate-limited, and a candidate that would make
-a trusted low-covariance trajectory jump beyond its uncertainty-scaled limit is
-rejected. Simulator truth is never used in any of these gates.
+When a localized estimate has finite covariance below the loss thresholds, the
+supervisor only runs the bounded local matcher at its motion cadence. A global
+search is due only for an unlocalized start, an invalid estimate, or covariance
+above the recovery threshold. A rejected local scan match is diagnostic
+evidence, not proof that the pose is globally lost: while local corrections are
+absent, prediction uncertainty grows through the estimator and recovery starts
+only if that fused covariance crosses the threshold. Confidence, evidence age,
+and consecutive local-match failures cannot bypass this covariance gate. The
+global retry is rate-limited, and a candidate that would make a trusted
+low-covariance trajectory jump beyond its uncertainty-scaled limit is rejected.
+Simulator truth is never used in any of these gates.
+
+The incremental whole-map search freezes one scan, so its winning pose belongs
+to that scan's acquisition time. Before applying it, localization composes the
+ROBOT estimator's relative SE(2) motion accumulated while the search was in
+flight. A successful absolute fix resets SLAM keyframes and the rolling map,
+because those products belong to the previous frame. With a surveyed map,
+local SLAM starts only after that frame is established; mapless startup first
+declares the current odometry origin and then starts SLAM. These rules prevent
+a delayed result or arbitrary pre-localization SLAM frame from pulling a moving
+robot backwards, without consulting simulator truth.
 
 Unknown cells in a sparse prior or a live SLAM raster are eligible search
 hypotheses because rejecting them makes a map with unobserved space
@@ -209,8 +220,10 @@ Port the orchestration that makes scenarios more than a world step:
  motion/IMU/decision/record taps from sim time, never wall clock; the
  decision tap gates the ROBOT branch at the configured cadence).
 - Scenario goal driver (objective list -> place goals through the same
-  `request_goal` seam an operator uses; arrival/completion counted
-  truth-side for scoring, never fed back into ROBOT).
+ `request_goal` seam an operator uses). ROBOT reports Done from its own
+ estimate; SIM independently accepts the objective only when the physical
+ body is within the authored tolerance. A disagreement fails the scenario
+ result and is never fed back into ROBOT.
 - `physical_collision_judge` (truth-side contact/clearance assessment for
   mission failure + scoring + replay diagnostics; NOT reachable from
   `RobotApplication`).

@@ -57,8 +57,9 @@ class ScenarioSession {
  void set_sensor_cadence(double scan_period_s, double motion_period_s,
  double imu_period_s, double decision_period_s,
  double record_period_s);
-  // Objective list: place_ids resolved by the ROBOT map provider through
-  // the operator seam; arrival counted truth-side for scoring only.
+ // Objective list: place_ids resolved by the ROBOT map provider through
+ // the operator seam. ROBOT completion uses its estimate; SIM acceptance
+ // independently requires the physical body to arrive.
   void set_objectives(std::vector<std::string> place_ids,
                       double arrive_tol_m = 0.5);
   // Startup mode passthrough (SIM orchestration, pre-run): mapless
@@ -68,6 +69,7 @@ class ScenarioSession {
     app_.set_startup_mode(mode);
   }
   bool objectives_done() const { return driver_.done(); }
+ bool objectives_passed() const { return driver_.passed(); }
   // Per-objective step budget (0 = none, legacy): a live goal older than
   // this is abandoned (recorded + canceled, next dispatched). Pre-run.
   void set_objective_step_budget(std::uint64_t steps) {
