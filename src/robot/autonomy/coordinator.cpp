@@ -6,6 +6,7 @@
 #include <string>
 
 #include "robot/autonomy/decision/motion_pipeline.hpp"
+#include "robot/autonomy/decision/terrain_pipeline.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -289,47 +290,9 @@ iface::MotionCommand AutonomyCoordinator::update(
                                                odom.yaw_rad, post.x_m,
                                                post.y_m, post.yaw_rad));
   }
-  // Grip governor (control layer) runs every tick, not only on
-  // decisions: the speed envelope must tighten within a second of slip
-  // evidence, not at the next 10 Hz boundary. The coordinator only wires
-  // measured evidence in and consumes the tightened envelope below.
-  // Survey grade along the estimated heading feeds the governor's gravity
-  // compensation (pure transform over the published prior, owned by the
-  // mapping layer — the coordinator holds no adaptation policy).
-  double survey_pitch = std::numeric_limits<double>::quiet_NaN();
-  const EstimatedState& est_for_grade = estimator_->estimate();
-  if (est_for_grade.valid) {
-    survey_pitch = survey_pitch_along(map, est_for_grade.x_m,
-                                      est_for_grade.y_m,
-                                      est_for_grade.yaw_rad);
-  }
-  grip_.update(now_ns, last_obs_, estimator_->estimate(),
-               estimator_->last_slip(), survey_pitch);
-  // Traction memory (beyond main): the governor's fire verdict + severity
-  // latch the cell into the traversal belief so route choice prices
-  // slipped-on ground until the memory expires. Verdict and scale come
-  // from the owning module (slip_severity is 0 when quiet); the
-  // coordinator only wires position and time — the est.valid guard is
-  // plumbing (no position without a belief), same as the imu_valid guard
-  // on the roughness observer below.
-  if (estimator_->estimate().valid) {
-    const EstimatedState& loc = estimator_->estimate();
-    traversal_.observe_slip(loc.x_m, loc.y_m, grip_.slip_severity(),
-                            last_obs_.stamp_ns * 1e-9);
-  }
-  // Traversal belief (mapping layer): roughness from IMU motion evidence
-  // over the surveyed prior. Cadence from the tick clock; the observer
-  // skips internally without IMU or a valid estimate.
-  if (last_obs_.imu_valid) {
-    if (last_traverse_ns_ != core::kInvalidTime && now_ns > last_traverse_ns_) {
-      const double dt_s = std::min(
-          1.0, static_cast<double>(now_ns - last_traverse_ns_) * 1e-9);
-      traversal_.observe_motion(estimator_->estimate(),
-                                last_obs_.imu_az_mps2,
-                                last_obs_.stamp_ns * 1e-9, dt_s);
-    }
-    last_traverse_ns_ = now_ns;
-  }
+ TerrainAdaptationPipeline::update(
+ now_ns, last_obs_, map, estimator_->estimate(), estimator_->last_slip(),
+ last_traverse_ns_, grip_, traversal_);
   // Surveyed-elevation context for the terrain-aware layers (prior, never
   // live physics): validator ground-classification + grade gates. The map
   // outlives the decision branch (by-value parameter), so the pointer is
