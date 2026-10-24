@@ -2,7 +2,9 @@
 
 `src/robot/autonomy/` follows one data flow with replaceable typed modules.
 The coordinator owns the stack and the per-tick order; SIM never calls a
-module directly.
+module directly. Planner selection and route policy live in the planning
+module (`make_global_planner` + `RoutePlanningPipeline`); the coordinator
+only wires their typed inputs and outputs.
 
 ## Module graph
 
@@ -31,7 +33,7 @@ flowchart LR
   Obs --> Safe
   Safe -->|"MotionCommand (or latched stop)"| Out["expiring body command"]
  Goal["Goal + map event"] --> RP["RoutePlanningPipeline<br/>event-driven refresh"]
- RP -->|"planner input"| GP["IGlobalPlanner<br/>AStarPlanner"]
+ RP -->|"planner input"| GP["IGlobalPlanner<br/>AStarPlanner / AckermannPlanner"]
  GP -->|"active Route"| LP
 ```
 
@@ -92,7 +94,10 @@ identification stay out: the `IChassis` wrapper owns the real base.
   Task-level policy (which goal, return-to-charge) stays in `RobotExecutive`,
   one timescale above behavior; trajectory sampling stays below it.
 - Global planning is event-driven (goal/map change), not per-tick. It
-  returns a `Route` of `RoutePoint{x, y, yaw}`; heading travels with position.
+ returns a `Route` of `RoutePoint{x, y, yaw, gear}`; heading and an optional
+ signed travel gear travel with position. Legacy grid routes leave gear
+ unspecified, while Ackermann Hybrid-A* emits explicit forward/reverse gear
+ that DWA preserves during local sampling.
  `AStarPlanner` searches the static `MapSnapshot` raster (unknown
   traversable with penalty, occupied impassable, no corner cutting) and
   degrades to a straight line when the map has no raster; a walled-in goal
@@ -102,7 +107,14 @@ identification stay out: the `IChassis` wrapper owns the real base.
  only ever consumes that route, never a raw goal. The static map itself arrives as
   an immutable revision from a provider (`StaticMapProvider` rasterizes
   authored geometry; SLAM/file/remote providers implement the same seam),
-  so replans track content revisions, never live sensor frames.
+ so replans track content revisions, never live sensor frames.
+ For an Ackermann envelope, `AckermannPlanner` replaces grid A* with a
+ bounded Hybrid-A* search over heading bins and forward/reverse bicycle
+ primitives. Every primitive is swept through the ROBOT occupancy raster;
+ reverse and gear-change costs are explicit, and the planner fails closed
+ when its kinematic configuration or state budget is invalid. It never
+ falls back to a holonomic path. A vector-only map receives a straight-line
+ seed and still requires local-map and validator admission.
   The static provider publishes surveyed elevation alongside occupancy
   (ramps, decks; NaN where unsurveyed). A* adds a grade cost per meter of
   elevation change and rejects steps steeper than `max_grade` outright, so

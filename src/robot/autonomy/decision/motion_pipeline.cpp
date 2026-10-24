@@ -55,8 +55,13 @@ MotionDecisionResult MotionDecisionPipeline::run(
  };
  add_recovery(-crawl, 0.0, 0.0);
  add_recovery(crawl, 0.0, 0.0);
+ // A car-like base cannot pivot in place. Keep pure yaw recovery for
+ // differential/holonomic envelopes only; Ackermann recovery uses a moving
+ // arc below, and DWA itself enforces the same curvature bound.
+ if (!(effective.max_curvature_inv_m > 0.0)) {
  add_recovery(0.0, turn, 0.0);
  add_recovery(0.0, -turn, 0.0);
+ }
  add_recovery(crawl, turn, 0.0);
  add_recovery(crawl, -turn, 0.0);
  add_recovery(-crawl, turn, 0.0);

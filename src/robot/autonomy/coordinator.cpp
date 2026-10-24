@@ -18,7 +18,8 @@ namespace {
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
                                          LidarPerceptionConfig perception_config,
-                                         GripAdapterConfig grip_config)
+ GripAdapterConfig grip_config,
+ double wheel_base_m)
     : limits_(limits),
       grip_(grip_config),
       decision_period_ns_(decision_period_ns),
@@ -26,7 +27,7 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
       mapper_(std::make_unique<RayClearingMapper>()),
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
-      global_planner_(std::make_unique<AStarPlanner>()),
+ global_planner_(make_global_planner(limits, wheel_base_m)),
       local_planner_(std::make_unique<DwaPlanner>()),
       validator_(std::make_unique<ClearanceValidator>(
           ClearanceValidatorConfig{limits.footprint_radius_m})),

@@ -9,7 +9,6 @@
 #include "robot/autonomy/control/stop_latch.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
-#include "robot/autonomy/planning/astar_planner.hpp"
 #include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -52,7 +51,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
                                         .footprint_radius_m = 0.4},
       core::MonotonicNs decision_period_ns = 100'000'000,  // 10 Hz default
       LidarPerceptionConfig perception_config = {},
-      GripAdapterConfig grip_config = {});
+ GripAdapterConfig grip_config = {},
+ double wheel_base_m = 0.56);
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;

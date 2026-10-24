@@ -104,9 +104,17 @@ PathProjection project_to_path(core::Vec2 point,
   return best;
 }
 
+struct RouteTarget {
+ core::Vec2 position;
+ double yaw_rad = 0.0;
+ int gear = 0;
+};
+
 // Route lookahead: closest route point, then advance lookahead_m along it.
-core::Vec2 route_goal(const Route& route, double x, double y,
-                      double lookahead_m) {
+// Preserve the planner's body heading and gear annotation at the selected
+// segment so a Hybrid-A* reverse decision is not lost in local sampling.
+RouteTarget route_goal(const Route& route, double x, double y,
+ double lookahead_m) {
   std::vector<core::Vec2> pts;
   pts.reserve(route.points.size());
   for (const auto& p : route.points) pts.push_back({p.x_m, p.y_m});
@@ -118,12 +126,14 @@ core::Vec2 route_goal(const Route& route, double x, double y,
         std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
     if (accumulated_m + seg >= target_along && seg > 1e-9) {
       const double s = (target_along - accumulated_m) / seg;
-      return {pts[i].x + s * (pts[i + 1].x - pts[i].x),
-              pts[i].y + s * (pts[i + 1].y - pts[i].y)};
+ return {{pts[i].x + s * (pts[i + 1].x - pts[i].x),
+ pts[i].y + s * (pts[i + 1].y - pts[i].y)},
+ route.points[i].yaw_rad, route.points[i].gear};
     }
     accumulated_m += seg;
   }
-  return pts.back();
+ return {pts.back(), route.points.back().yaw_rad,
+ route.points.back().gear};
 }
 
 }  // namespace
@@ -174,9 +184,12 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const auto velocity_samples = command_samples(
  velocity_window, 0.25, {est.forward_mps, 0.0, v_max, -v_max});
 
-  const core::Vec2 goal =
-      route_goal(route, est.x_m, est.y_m, config_.lookahead_m);
-  const double heading_target = std::atan2(goal.y - est.y_m, goal.x - est.x_m);
+ const RouteTarget target =
+ route_goal(route, est.x_m, est.y_m, config_.lookahead_m);
+ const core::Vec2 goal = target.position;
+ const double heading_target = std::isfinite(target.yaw_rad)
+ ? target.yaw_rad
+ : std::atan2(goal.y - est.y_m, goal.x - est.x_m);
   const double goal_directed_yaw_rate = core::clamp(
       core::wrap_angle(heading_target - est.yaw_rad) /
           std::max(dt, predict_T),
@@ -212,6 +225,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   double best_score = -1e18;
 
   for (double velocity : velocity_samples) {
+ if (target.gear < 0 && velocity > 1e-9) continue;
+ if (target.gear > 0 && velocity < -1e-9) continue;
     const auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
                                             config_.yaw_accel_radps2 * dt);
     const auto angular_samples = command_samples(

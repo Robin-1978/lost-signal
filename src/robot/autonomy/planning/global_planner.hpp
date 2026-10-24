@@ -1,10 +1,12 @@
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/iface/map.hpp"
+#include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -13,6 +15,10 @@ struct RoutePoint {
   double x_m = 0.0;
   double y_m = 0.0;
   double yaw_rad = 0.0;
+ // Signed travel direction for car-like routes: +1 forward, -1 reverse.
+ // Zero means unspecified (legacy grid/straight planners); local planning
+ // keeps an explicit Hybrid-A* gear decision intact through the pipeline.
+ int gear = 0;
 };
 
 struct Route {
@@ -43,5 +49,8 @@ class StraightLinePlanner : public IGlobalPlanner {
   Route plan(const EstimatedState& start, const RoutePoint& goal,
              const iface::MapSnapshot& /*map*/) override;
 };
+
+std::unique_ptr<IGlobalPlanner> make_global_planner(
+ const platform::ChassisLimits& limits, double wheel_base_m);
 
 }  // namespace lost_signal::robot::autonomy

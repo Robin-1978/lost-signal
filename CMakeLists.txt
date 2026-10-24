@@ -76,6 +76,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/mapping/slam.cpp
   src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/astar_planner.cpp
+ src/robot/autonomy/planning/ackermann_planner.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
  src/robot/autonomy/planning/route_pipeline.cpp
@@ -387,6 +388,12 @@ add_executable(test_astar
 )
 target_link_libraries(test_astar PRIVATE lost_signal_robot_autonomy)
 add_test(NAME astar COMMAND test_astar)
+
+add_executable(test_ackermann_planner
+ tests/test_ackermann_planner.cpp
+)
+target_link_libraries(test_ackermann_planner PRIVATE lost_signal_robot_autonomy)
+add_test(NAME ackermann_planner COMMAND test_ackermann_planner)
 
 
 

@@ -10,7 +10,9 @@
 - P1-4 DWA：速度窗口支持负速度，补了后方目标倒车用例。
 - P1-6 目标生命周期：hold 清除 route；arrival 先完成目标并清 route，再规划，到点即停。
 
-仍待处理：多速率传感器拆分、Ackermann/Holonomic 专用规划、headless artifact 的完整 episode/replay 导出、行为冲突区语义、感知对象几何、地图语义保留、完整 mission score。
+仍待处理：多速率传感器拆分、Holonomic 专用规划、Ackermann path smoothing
+与完整 mission E2E、headless artifact 的完整 episode/replay 导出、行为冲突区
+语义、感知对象几何、地图语义保留、完整 mission score。
 
 # 重构分支算法与仿真能力适配审计
 
@@ -179,29 +181,23 @@ if (now_ns - obs.stamp_ns > stale_timeout_ns)
 
 `src/sim/robot/sim_robot.cpp:47-61` 更直接：`tick(now_ns)` 完全忽略入参，内部继续使用 `obs.stamp_ns`。这会让延迟和 dropout 注入在安全层失去意义。
 
-### P1-4 DWA 只能前进，不能倒车
+### P1-4 DWA 速度窗口（已修复）
 
-`src/robot/autonomy/planning/dwa_planner.cpp:160-165`：
+`DwaPlanner` 现在按测量速度生成对称的正/负动态窗口；RoutePoint 的显式
+Ackermann gear 会继续约束局部采样方向，未标注 gear 的旧路线仍保留原有
+前后向可达性。
 
-```cpp
-next_velocity_window(est.forward_mps, 0.0, v_max, ...)
-```
+### P1-5 Ackermann/Holonomic 规划适配不足（Ackermann 已补齐主路径）
 
-速度下界固定为 `0.0`，所有采样速度非负。影响：
+Ackermann 现在由 planning factory 按声明的曲率包络接入
+`AckermannPlanner`：全局采用带航向离散、前进/倒车 gear 和自行车模型
+primitive 的 Hybrid-A*，局部 DWA 继续施加 `v·kappa` 曲率约束；Coordinator
+只负责把模块串起来。无效运动学配置会 fail closed，不会退回不满足车辆
+约束的通用 A* 路径；vector-only map 只产生待验证的直线 seed。
 
-- differential/tracked/Ackermann 均无主动倒车；
-- 目标在后方时只能绕行或原地转向；
-- 狭窄区、靠墙脱困能力显著下降；
-- 与旧 `main` 的 forward/reverse reachability、倒车 gear、Hybrid A* 能力不一致。
-
-### P1-5 Ackermann/Holonomic 规划适配不足
-
-Ackermann 当前使用通用栅格 A* + 通用 DWA：
-
-- 没有 Hybrid A*；
-- 没有专用曲率约束采样；
-- 没有 path smoothing；
-- 没有倒车 gear。
+仍未完成的 Ackermann 增强项是独立 path smoothing（当前 primitive 路径由
+局部 DWA 追踪）以及完整 RobotApplication -> provider -> MuJoCo mission
+覆盖。Holonomic 方面：
 
 旧 `main` 中存在：
 
@@ -316,7 +312,7 @@ box 数虽保留，但 conflict zones 等语义丢失，sidecar 仅 viewer 使�
 | 能力 | 当前实现 | 端到端接入 | 相对 main | 优先级 |
 |---|---|---|---|---|
 | 差速底盘 | 控制器、MuJoCo、HIL 均有 | 是，默认主路径 | 几何契约断链，部分保持 | P0 |
-| Ackermann | 有低层控制与 plant | 无专用全局/局部规划 | 明显退化 | P1 |
+| Ackermann | Hybrid-A*、曲率约束 DWA、低层控制与 plant | 主路径已接入，缺 mission E2E | path smoothing/任务覆盖待补 | P1 |
 | Swerve/Mecanum | 有控制器与 plant | 无 mission E2E，默认 lateral=0 | 部分适配 | P1 |
 | Tracked | plant 与注册存在 | 主要在 terrain 测试 | 基础能力保留 | P2 |
 | 动态避障 | track + DWA 预测 | 有最小链路 | 行为策略退化 | P1/P2 |
@@ -343,8 +339,10 @@ box 数虽保留，但 conflict zones 等语义丢失，sidecar 仅 viewer 使�
 
 ### 第三阶段：规划能力
 
-9. DWA 支持负速度窗口与倒车 gear，补后方目标、狭窄区、靠墙脱困测试。
-10. Ackermann 引入 Hybrid A*、曲率约束局部采样、path smoothing 和前进/倒车 gear。
+9. DWA 负速度窗口与未标注路线的倒车能力已落地；Ackermann 显式 gear
+ 已接入，后续补狭窄区、靠墙脱困和任务级回归。
+10. Ackermann Hybrid A*、曲率约束局部采样、前进/倒车 gear 已落地；后续补独立
+    path smoothing 与多底盘 mission E2E。
 11. Holonomic 增加横向速度状态与平滑采样，修正默认配置，补 mecanum/swerve 的 mission E2E。
 
 ### 第四阶段：行为、感知与交付质量

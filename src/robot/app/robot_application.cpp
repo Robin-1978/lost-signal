@@ -56,7 +56,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
       desc_(std::move(desc)),
       chassis_(platform::make_chassis(desc_)),
  coordinator_(autonomy_limits_from_description(desc_), 100'000'000,
-                   perception_config_from(desc_)) {
+ perception_config_from(desc_), {}, desc_.plant.wheel_base_m) {
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
   coordinator_.set_plant_geometry(desc_.plant);
