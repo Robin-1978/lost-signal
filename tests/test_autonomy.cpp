@@ -672,6 +672,7 @@ int main() {
       mapper.update(face, est);
       LocalMap m = mapper.local_map();
       assert(m.valid && m.occupancy[fi] == 100);  // no survey: painted
+ assert(m.provenance == LocalMapProvenance::kSensorRays);
     }
     {
       RayClearingMapper mapper;
@@ -680,6 +681,7 @@ int main() {
       mapper.update(face, est);
       LocalMap m = mapper.local_map();
       assert(m.valid && m.occupancy[fi] != 100);  // ground: never painted
+ assert(m.provenance == LocalMapProvenance::kSensorRays);
  assert(m.is_blocked(4.0, 0.0)); // unknown remains blocked for planning
       assert(!m.segment_is_traversable(0.0, 0.0, 4.0, 0.0));
       // Live elevation: the surveyed-ground return measured the surface
@@ -695,6 +697,9 @@ int main() {
       assert(m2.occupancy[fi] != 100);
       // Foreground clears occupancy rays but never touches terrain heights.
       assert(std::abs(m2.elevation_m[fi] - 0.35f) < 1e-6);
+ mapper.mark_slam_replay(7);
+ assert(mapper.local_map().provenance == LocalMapProvenance::kSlamReplay);
+ assert(mapper.local_map().provenance_revision == 7);
     }
     {
       // No survey: no ground definition, live layer stays unknown (NaN).

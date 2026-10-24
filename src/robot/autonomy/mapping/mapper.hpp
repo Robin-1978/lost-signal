@@ -20,12 +20,20 @@
 
 namespace lost_signal::robot::autonomy {
 
+enum class LocalMapProvenance : std::uint8_t {
+ kUnknown = 0,
+ kSensorRays = 1,
+ kSlamReplay = 2,
+};
+
 // Rolling local world model derived from the sensor stream. Occupancy is
 // -1 unknown, 0 free, 100 occupied (row-major, x fastest). Unknown is
 // conservative for planning and safety: a cell becomes traversable only
 // after a sensor ray or SLAM replay marks it free.
 struct LocalMap {
   bool valid = false;
+ LocalMapProvenance provenance = LocalMapProvenance::kUnknown;
+ std::uint64_t provenance_revision = 0;
   double resolution_m = 0.1;
   std::uint32_t width = 0;
   std::uint32_t height = 0;
@@ -97,6 +105,9 @@ class IMapper {
  virtual void set_dynamic_tracks(const std::vector<DynamicTrack>& tracks) {
  (void)tracks;
  }
+ // Marks the published raster after ROBOT-side SLAM keyframe replay. This
+ // is provenance only; it never imports simulator truth.
+ virtual void mark_slam_replay(std::uint64_t revision) { (void)revision; }
 };
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
@@ -116,6 +127,10 @@ class RayClearingMapper : public IMapper {
   void set_survey(const iface::MapSnapshot& map) override { survey_ = map; }
  void set_dynamic_tracks(const std::vector<DynamicTrack>& tracks) override {
  dynamic_tracks_ = tracks;
+ }
+ void mark_slam_replay(std::uint64_t revision) override {
+  map_.provenance = LocalMapProvenance::kSlamReplay;
+  map_.provenance_revision = revision;
  }
   void update(const iface::ObservationFrame& obs,
               const EstimatedState& est) override {
@@ -208,6 +223,8 @@ class RayClearingMapper : public IMapper {
                               std::numeric_limits<float>::quiet_NaN());
     }
     map_.stamp_ns = obs.stamp_ns;
+ map_.provenance = LocalMapProvenance::kSensorRays;
+ map_.provenance_revision = obs.sequence;
     if (!obs.scan_valid || obs.ranges_m.empty()) return;
     // Ray clearing from the true 3D sensor pose (estimate + TF mount);
     // endpoints project to x/y (the rolling map is 2D).

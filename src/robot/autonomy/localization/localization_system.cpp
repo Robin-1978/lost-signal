@@ -99,6 +99,7 @@ bool LocalizationSystem::run_slam(const iface::ObservationFrame& obs,
     est.yaw_rad = kf.pose.heading_rad;
     mapper.update(kobs, est);
   }
+ mapper.mark_slam_replay(loop.to_id);
   return true;
 }
 
