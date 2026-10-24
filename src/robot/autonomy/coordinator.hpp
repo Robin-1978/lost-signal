@@ -111,6 +111,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Startup mode passthrough (see supervisor::StartupMode): mapless
   // missions disable the global branch; SLAM still establishes the frame.
   void set_startup_mode(StartupMode mode) {
+ startup_mode_ = mode;
     localization_.set_startup_mode(mode);
   }
   // Event wakeup: force the decision branch on the next update, without
@@ -191,6 +192,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   BehaviorDecision decision_{};
   RoutePoint goal_{};
   bool has_goal_ = false;
+ StartupMode startup_mode_ = StartupMode::kGlobalSearch;
   Route active_route_{};
   // Mapper snapshot owning the live elevation overlay for the validator
   // (coordinator wires, holds no policy; refreshed per decision branch).

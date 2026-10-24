@@ -15,6 +15,7 @@
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
 #include "robot/core/deskew.hpp"
+#include "robot/core/transform.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -75,14 +76,22 @@ struct ClearanceValidatorConfig {
   double extra_margin_m = 0.1;
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
-  // Sensor yaw lives in the TF tree; set via set_lidar_yaw(). No copy here.
+ // Sensor mount lives in the TF tree; set via set_lidar_mount().
   // Rollout horizon for swept-path checks.
   double rollout_horizon_s = 2.0;
   double rollout_dt_s = 0.1;
   // MRE escape cap: only slow creep may be admitted as a minimum-risk
   // escape. A fast candidate inside the margin is rejected, never escaped.
   double escape_speed_cap_mps = 0.3;
-  double escape_gain_floor_m = 0.15;
+ // Minimum measured clearance improvement for a low-speed escape. This is
+ // deliberately below the normal margin: when already inside the footprint
+ // envelope, requiring a full margin gain deadlocks the robot at corners.
+ // The speed cap and monotonic gain remain hard gates.
+ double escape_gain_floor_m = 0.05;
+ // A beam this far from its static reference is a foreground return.
+ // Perception predicts and tracks it; the static rollout must not also
+ // treat the same endpoint as fixed geometry.
+ double foreground_threshold_m = 0.30;
   // Rollover envelope (dynamic stability on side-slopes, master's form):
   // support width shares the traversal belief's support envelope (one
   // doctrine); COM height follows the declared plant loadout via
@@ -151,8 +160,11 @@ class IValidator {
                                     const EstimatedState& est,
                                     const PerceptionResult& perception,
                                     const iface::ObservationFrame& obs) = 0;
-  // Lidar yaw from the TF tree (coordinator fans out). Default ignore.
-  virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
+ // Lidar mount from the TF tree (coordinator fans out). Default ignore.
+ virtual void set_lidar_mount(const core::RigidTransform& mount) {
+ (void)mount;
+ }
+ virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
   // Declared plant geometry for stability envelopes (support width + COM
   // height, description from the machine file, never measured truth).
   // Default ignore (stock envelope); the concrete validator re-resolves.
@@ -185,7 +197,17 @@ class ClearanceValidator : public IValidator {
   explicit ClearanceValidator(ClearanceValidatorConfig config = {})
       : config_(config) {}
 
-  void set_lidar_yaw(double yaw_rad) override { sensor_yaw_rad_ = yaw_rad; }
+ void set_lidar_mount(const core::RigidTransform& mount) override {
+ base_from_lidar_ = mount;
+ sensor_yaw_rad_ = std::atan2(
+ 2.0 * (mount.rotation.w * mount.rotation.z +
+ mount.rotation.x * mount.rotation.y),
+ 1.0 - 2.0 * (mount.rotation.y * mount.rotation.y +
+ mount.rotation.z * mount.rotation.z));
+ }
+ void set_lidar_yaw(double yaw_rad) override {
+ if (std::isfinite(yaw_rad)) sensor_yaw_rad_ = yaw_rad;
+ }
   // Declared plant envelope (support width + COM height replace the
   // stock-chassis assumption; non-positive inputs are ignored, never
   // partially applied — the envelope stays internally consistent).
@@ -247,12 +269,17 @@ class ClearanceValidator : public IValidator {
     const bool has_toff =
         obs.time_offset_valid && obs.time_offsets_s.size() == n;
     const core::DeskewTwist twist{est.forward_mps, est.yaw_rate_radps};
-    const double cyaw = std::cos(est.yaw_rad), syaw = std::sin(est.yaw_rad);
+ const core::RigidTransform map_from_base{
+ {est.x_m, est.y_m, est.z_m},
+ core::quaternion_from_rpy(est.roll_rad, est.pitch_rad, est.yaw_rad)};
+ const core::RigidTransform map_from_sensor =
+ core::compose(map_from_base, base_from_lidar_);
+ const core::Vec3 sensor_p = map_from_sensor.translation_m;
     for (std::size_t i = 0; i < n; ++i) {
       // Use the observation's explicit scan layout (one definition shared
         // with perception and mapping).
         const double angle = iface::scan_beam_angle_rad(obs, i);
-      if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) >
+ if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) >
           config_.forward_half_angle_rad) {
         continue;
       }
@@ -261,8 +288,10 @@ class ClearanceValidator : public IValidator {
       ++forward_beams;
       const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
       const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
-      const double ex = est.x_m + local.x * cyaw - local.y * syaw;
-      const double ey = est.y_m + local.x * syaw + local.y * cyaw;
+ const core::Vec3 off = core::rotate_vector(
+ map_from_sensor.rotation, {local.x, local.y, 0.0});
+ const double ex = sensor_p.x + off.x;
+ const double ey = sensor_p.y + off.y;
       if (survey != nullptr) {
         if (survey->is_ground(ex, ey, survey->sensor_z(est))) {
           ++forward_ground;
@@ -318,14 +347,25 @@ class ClearanceValidator : public IValidator {
     // above, so the two cannot disagree on what counts as ground).
     std::vector<core::Vec2> endpoints;
     endpoints.reserve(n);
+ const bool has_static_ref =
+ obs.scan_static_valid && obs.static_ranges_m.size() == n;
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
+ if (has_static_ref) {
+ const float expected = obs.static_ranges_m[i];
+ if (std::isfinite(expected) && expected > 0.0f &&
+ std::abs(range - expected) > config_.foreground_threshold_m) {
+ continue;
+ }
+ }
       const double angle = iface::scan_beam_angle_rad(obs, i);
       const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
       const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
-      const double ex = est.x_m + local.x * cyaw - local.y * syaw;
-      const double ey = est.y_m + local.x * syaw + local.y * cyaw;
+ const core::Vec3 off = core::rotate_vector(
+ map_from_sensor.rotation, {local.x, local.y, 0.0});
+ const double ex = sensor_p.x + off.x;
+ const double ey = sensor_p.y + off.y;
       if (survey != nullptr &&
           survey->is_ground(ex, ey, survey->sensor_z(est))) {
         continue;
@@ -480,8 +520,10 @@ class ClearanceValidator : public IValidator {
   }
 
   ClearanceValidatorConfig config_;
-  // Lidar yaw from the TF tree (default 0 = aligned mount).
-  double sensor_yaw_rad_ = 0.0;
+ // Lidar mount from the TF tree (default identity).
+ core::RigidTransform base_from_lidar_{
+ {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
+ double sensor_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

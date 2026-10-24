@@ -376,6 +376,56 @@ int main() {
     assert(!dyn.accepted &&
            dyn.verdict == TrajectoryVerdict::kDynamicCollision);
 
+ // A foreground beam is actor evidence, not static geometry. The same
+ // rollout must be judged against its track; an unmatched static beam
+ // remains a collision when no background reference is available.
+ {
+ ClearanceValidatorConfig cfg;
+ cfg.footprint_radius_m = 0.1;
+ cfg.extra_margin_m = 0.0;
+ cfg.brake_decel_mps2 = 100.0;
+ iface::ObservationFrame actor = make_odom(8, 8, 0.0);
+ actor.ranges_m.assign(8, 10.0f);
+ actor.ranges_m[4] = 1.0f;
+ actor.static_ranges_m.assign(8, 10.0f);
+ actor.scan_static_valid = true;
+ PerceptionResult actor_track = ok;
+ DynamicTrack surface;
+ surface.x_m = 1.3; // measured return is the near face of this actor
+ surface.radius_m = 0.2;
+ actor_track.tracks.push_back(surface);
+ ClearanceValidator foreground(cfg);
+ ValidationResult avoided =
+ foreground.validate(go, est, actor_track, actor);
+ assert(avoided.verdict == TrajectoryVerdict::kDynamicCollision);
+ actor.scan_static_valid = false;
+ actor.static_ranges_m.clear();
+ ValidationResult unclassified =
+ foreground.validate(go, est, actor_track, actor);
+ assert(unclassified.verdict == TrajectoryVerdict::kStaticCollision);
+ }
+
+ // Static endpoints use the full lidar TF, not just its yaw. A beam one
+ // metre ahead from a sensor offset 0.25 m to the side stays beside the
+ // 0.1 m footprint; dropping that translation would put it on the path.
+ {
+ ClearanceValidatorConfig cfg;
+ cfg.footprint_radius_m = 0.1;
+ cfg.extra_margin_m = 0.0;
+ cfg.brake_decel_mps2 = 100.0;
+ ClearanceValidator mounted(cfg);
+ mounted.set_lidar_mount(
+ core::RigidTransform{{0.0, 0.25, 0.35},
+ core::quaternion_from_rpy(0.0, 0.0, 0.0)});
+ iface::ObservationFrame offset = make_odom(10, 10, 0.0);
+ offset.ranges_m.assign(8, 10.0f);
+ offset.ranges_m[4] = 1.0f;
+ offset.static_ranges_m = offset.ranges_m;
+ offset.scan_static_valid = true;
+ ValidationResult clear = mounted.validate(go, est, ok, offset);
+ assert(clear.accepted);
+ }
+
  // Swept footprint: a thin obstacle between two rollout samples must
  // still collide. Samples are 0.2 m apart; the obstacle sits 0.092 m
  // off the path, farther than the 0.1 m footprint from both sample
