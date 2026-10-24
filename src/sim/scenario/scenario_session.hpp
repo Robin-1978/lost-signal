@@ -126,6 +126,8 @@ class ScenarioSession {
   DeterministicScheduler scheduler_;
   ObjectiveDriver driver_;
   double sim_time_s_ = 0.0;
+ robot::iface::MotionCommand last_cmd_ =
+ robot::iface::MotionCommand::SafeStop(0);
   double judge_radius_m_ = 0.4;
   double terrain_clearance_m_ = 0.05;
 };

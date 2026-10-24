@@ -21,11 +21,9 @@ ScenarioSession::ScenarioSession()
   // Harness bringup: ordered configure -> activate; a failed module blocks.
   (void)app_.configure();
   (void)app_.activate();
-  // Default cadence runs the scan/record taps each 20 ms plant step:
-  // identical to the pre-scheduler session. The ROBOT decision branch
-  // still runs at the coordinator's own 10 Hz (decision_period_s is
-  // accepted but currently inert). Scenarios opt into slower taps
-  // explicitly.
+ // Default cadence runs all taps at the 20 ms plant step. The scheduler
+ // still keeps scan, decision, and record deadlines independent so slower
+ // sensor streams exercise the same stale-data path as deployment.
   scheduler_.reset(0.02, 0.02, 0.02);
   // Mounts from the same description the app runs: SIM generation and the
   // ROBOT-side TF rotate by identical extrinsics (never double/single).
@@ -119,30 +117,27 @@ void ScenarioSession::step_once() {
     rec.judge.terrain_clearance_m = terrain.terrain_clearance_m;
   }
 
-  bool have_obs = false;
+ const bool decision_due = scheduler_.decision_due(sim_time_s_);
+ bool have_obs = false;
   robot::iface::ObservationFrame obs;
-  if (scheduler_.scan_due(sim_time_s_)) {
+ if (scheduler_.scan_due(sim_time_s_)) {
     have_obs = suite_.poll_envelope(obs) && app_.publish_observation(obs);
   }
   rec.obs = obs;
   rec.obs_accepted = have_obs;
-  if (!have_obs) {
-    // Rejected (or skipped) observation still records truth + judge for
-    // offline analysis, but never ticks the robot on it.
-    rec.cmd = robot::iface::MotionCommand::SafeStop(sim_stamp_ns);
-    rec.diag = app_.diagnostics();
-    rec.truth_after = world_.truth();
-    rec.step = episode_.size();
-    if (scheduler_.record_due(sim_time_s_)) episode_.record(rec);
-    driver_.update(app_, world_);
-    return;
-  }
-  robot::iface::MotionCommand cmd = app_.tick(sim_stamp_ns);
+ robot::iface::MotionCommand cmd = last_cmd_;
+ if (decision_due) {
+ // A decision tick is allowed to run without a newly acquired scan. The
+ // channel retains the latest accepted frame and the ROBOT freshness gate
+ // decides whether it is still safe to use; no-data remains fail-closed.
+ cmd = app_.tick(sim_stamp_ns);
+ last_cmd_ = cmd;
+ }
   robot::iface::ActuatorCommand act = app_.take_actuator(sim_stamp_ns);
   suite_.consume(act);
   driver_.update(app_, world_);
 
-  rec.cmd = cmd;
+ rec.cmd = cmd;
   rec.diag = app_.diagnostics();
   rec.truth_after = world_.truth();
   rec.step = episode_.size();
