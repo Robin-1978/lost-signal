@@ -69,11 +69,11 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
 
 ## Capability notes
 
-- Differential and tracked bases run the full mission path. Ackermann and
- holonomic bases have controllers and MuJoCo plants; Ackermann DWA candidates
- obey the declared steering curvature and cannot turn in place. Mecanum and
- swerve use a slew-limited lateral command window when their declared
- `max_lateral_mps` is non-zero.
+- Differential and tracked bases run the full mission path. Ackermann now uses
+ a ROBOT-side Hybrid-A* global route plus DWA candidates bounded by the
+ declared steering curvature; it never turns in place. Mecanum and swerve use
+ a slew-limited lateral command window when their declared `max_lateral_mps`
+ is non-zero.
 - DWA samples forward and reverse velocity. The validator checks a
   continuous swept footprint (point-to-segment), not just discrete poses.
 - Scan consumers share the `angle_min + i * increment` layout helper;
