@@ -61,6 +61,7 @@ target_link_libraries(lost_signal_robot_lifecycle PUBLIC lost_signal_robot_core)
 
 add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/coordinator.cpp
+ src/robot/autonomy/decision/motion_pipeline.cpp
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
   src/robot/autonomy/estimation/slip_observer.cpp

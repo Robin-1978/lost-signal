@@ -5,6 +5,8 @@
 #include <limits>
 #include <string>
 
+#include "robot/autonomy/decision/motion_pipeline.hpp"
+
 namespace lost_signal::robot::autonomy {
 
 namespace {
@@ -161,8 +163,10 @@ void AutonomyCoordinator::set_static_frames(
   localization_.set_lidar_mount(base_from_lidar);
   const double yaw = yaw_from_quaternion(base_from_lidar.rotation);
  // The validator consumes the scan's declared forward azimuth in the
- // sensor frame; fan out the mount yaw for that sector gate. Its endpoint
- // deprojection remains mount-aware when a caller supplies the full mount.
+ // sensor frame; fan out the mount yaw for that sector gate. Full endpoint
+ // deprojection remains available to direct validator users through the
+ // complete mount setter; the live compatibility path keeps the established
+ // base-frame obstacle contract until the terrain survey is re-baselined.
  if (validator_ != nullptr) validator_->set_lidar_yaw(yaw);
   if (safety_ != nullptr) safety_->set_lidar_yaw(yaw);
 }
@@ -365,146 +369,23 @@ iface::MotionCommand AutonomyCoordinator::update(
       active_route_ =
           global_planner_->plan(estimator_->estimate(), goal_, map);
     }
-    // Dynamic decision first: behavior turns tracks + estimate into one
-    // constraint. A hold short-circuits sampling but still passes the
-    // independent validator + controller, so the evidence chain is uniform.
-    // Every path below funnels into `decided`; nothing returns early, so
-    // the safety gate at the end runs on every decision without exception.
-    decision_ =
-        behavior_->decide(estimator_->estimate(), perception_, limits_);
-    iface::MotionCommand decided =
-        iface::MotionCommand::SafeStop(now_ns);
-    std::string reason = "no-plan";
-    std::string constraint =
-        decision_.must_hold ? "hold" : "speed_cap";
-    if (decision_.must_hold) {
-      LocalCandidate hold;
-      hold.feasible = true;
-      ValidationResult verdict =
-          validator_->validate(hold, estimator_->estimate(), perception_,
-                               last_obs_, survey_ctx);
-      reason = verdict.reason;
-      if (verdict.accepted) {
-        decided = controller_->track(hold, estimator_->estimate(), now_ns);
-      }
-    } else {
-      // Grip-tightened envelope from the control-layer governor: the
-      // planner samples within the adapted speed cap. Behavior still
-      // decides hold/cap on full limits; grip can only tighten further,
-      // never override a hold or widen anything.
-      platform::ChassisLimits effective =
-          grip_.effective_limits(limits_, decision_.max_forward_mps);
-      LocalPlan plan = local_planner_->plan(
-          estimator_->estimate(), perception_, mapper_->local_map(),
-          active_route_, effective);
- // The local planner deliberately returns one preferred candidate. A
- // candidate can still be rejected by the independent validator because
- // the raw scan arrived after planning or because the braking/terrain
- // envelope changed. Do not turn that disagreement into a permanent stop:
- // try a small, chassis-neutral recovery set and run every member through
- // the same validator. These are body twists derived only from declared
- // limits and current sensor evidence; no simulator pose or map truth is
- // consulted.
- std::array<LocalCandidate, 12> recovery{};
- const double crawl = std::min(0.25, std::max(0.0, effective.max_forward_mps));
- const double turn = std::min(0.6, std::max(0.0, effective.max_yaw_rate_radps));
- std::size_t recovery_count = 0;
- auto add_recovery = [&](double forward, double yaw, double lateral) {
-  if (recovery_count >= recovery.size()) return;
-  if (std::abs(forward) < 1e-9 && std::abs(yaw) < 1e-9 &&
-      std::abs(lateral) < 1e-9) return;
-  LocalCandidate c;
-  c.forward_mps = forward;
-  c.yaw_rate_radps = yaw;
-  c.lateral_mps = lateral;
-  c.feasible = true;
-  recovery[recovery_count++] = c;
- };
- // Reverse and a slow forward creep clear common bumper/corner traps;
- // opposite in-place turns preserve a differential/holonomic escape.
- add_recovery(-crawl, 0.0, 0.0);
- add_recovery(crawl, 0.0, 0.0);
- add_recovery(0.0, turn, 0.0);
- add_recovery(0.0, -turn, 0.0);
- add_recovery(crawl, turn, 0.0);
- add_recovery(crawl, -turn, 0.0);
- add_recovery(-crawl, turn, 0.0);
- add_recovery(-crawl, -turn, 0.0);
- if (effective.max_lateral_mps > 0.0) {
-  const double slide = std::min(0.25, effective.max_lateral_mps);
-  add_recovery(0.0, 0.0, slide);
-  add_recovery(0.0, 0.0, -slide);
+ MotionDecisionResult motion = MotionDecisionPipeline::run(
+ estimator_->estimate(), perception_, mapper_->local_map(), active_route_,
+ grip_.effective_limits(limits_, limits_.max_forward_mps), limits_, last_obs_,
+ survey_ctx, now_ns,
+ map.has_raster() && startup_mode_ != StartupMode::kSlamOnly,
+ *behavior_, *local_planner_, *validator_, *controller_);
+ decision_ = motion.behavior;
+ iface::MotionCommand decided = motion.command;
+ std::string reason = motion.reason;
+ std::string constraint = motion.constraint;
+ if (!iface::valid_motion_command(decided, now_ns)) {
+ decided = iface::MotionCommand::SafeStop(now_ns);
  }
-
- bool planner_rejected = false;
- ValidationResult best_recovery;
- LocalCandidate chosen;
- bool have_recovery = false;
- double best_recovery_score = -std::numeric_limits<double>::infinity();
- if (plan.has_plan) {
-  best_recovery = validator_->validate(
-      plan.best, estimator_->estimate(), perception_, last_obs_, survey_ctx);
-  reason = best_recovery.reason;
-  if (best_recovery.accepted) {
-   decided = controller_->track(plan.best, estimator_->estimate(), now_ns);
-   planner_rejected = false;
- } else {
-  planner_rejected = true;
-  }
+ last_cmd_ = decided;
+ last_constraint_ = constraint;
+ last_reason_ = reason;
  }
- const EstimatedState& recovery_est = estimator_->estimate();
- const bool recovery_localized = recovery_est.valid &&
- recovery_est.confidence >= 0.75 && recovery_est.position_sigma_m <= 0.5 &&
- recovery_est.heading_sigma_rad <= 0.75;
- const bool recovery_context = map.has_raster() &&
- startup_mode_ != StartupMode::kSlamOnly;
- if (planner_rejected && recovery_localized && recovery_context) {
-  for (std::size_t i = 0; i < recovery_count; ++i) {
-   ValidationResult verdict = validator_->validate(
-       recovery[i], estimator_->estimate(), perception_, last_obs_, survey_ctx);
-   if (!verdict.accepted) continue;
- // Keep route intent when several low-speed escapes are safe. Clearance is
- // still a tie-breaker, but it must not make a pure turn win forever in an
- // open corridor where a forward crawl is the useful recovery.
- const double horizon_s = 1.0;
- const double px = estimator_->estimate().x_m +
- (recovery[i].forward_mps * std::cos(estimator_->estimate().yaw_rad) -
- recovery[i].lateral_mps * std::sin(estimator_->estimate().yaw_rad)) * horizon_s;
- const double py = estimator_->estimate().y_m +
- (recovery[i].forward_mps * std::sin(estimator_->estimate().yaw_rad) +
- recovery[i].lateral_mps * std::cos(estimator_->estimate().yaw_rad)) * horizon_s;
- double route_score = 0.0;
- if (active_route_.valid && !active_route_.points.empty()) {
- const auto& target = active_route_.points.back();
- route_score = -std::hypot(target.x_m - px, target.y_m - py);
- }
- const double clearance = std::isfinite(verdict.min_clearance_m)
- ? std::min(2.0, verdict.min_clearance_m) : 2.0;
- const double score = route_score + 0.05 * clearance;
- if (!have_recovery || score > best_recovery_score) {
-    have_recovery = true;
-  best_recovery_score = score;
-    best_recovery = verdict;
-    chosen = recovery[i];
-   }
-  }
-  if (have_recovery) {
-   decided = controller_->track(chosen, estimator_->estimate(), now_ns);
-   reason = "recovery:" + best_recovery.reason;
-  } else if (!plan.has_plan) {
-   reason = "no-plan; recovery rejected";
-  } else {
-   reason = "planner candidate rejected; recovery rejected";
-  }
- }
-    }
-    if (!iface::valid_motion_command(decided, now_ns)) {
-      decided = iface::MotionCommand::SafeStop(now_ns);
-    }
-    last_cmd_ = decided;
-    last_constraint_ = constraint;
-    last_reason_ = reason;
-  }
   // Controlled-stop latch: once stopping, withhold motion until the measured
   // tread settles, so a safety rejection on a grade cannot chatter into a
   // brake/accelerate limit cycle. Independent of planner yaw intent.
