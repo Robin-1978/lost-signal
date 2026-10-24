@@ -148,7 +148,8 @@ void LocalizationSystem::run_localization(
   // the whole-map search can constrain the pose. Seed the odometry origin
   // once (no teleport: the current estimate IS the origin) and let the SLAM
   // session own the drift it can observe. Latched for the session.
-  if (attempted_global && !map.has_raster() && !slam_origin_seeded_) {
+ if (attempted_global && !map.has_known_occupancy() &&
+ !slam_origin_seeded_) {
     const StartupDecision startup =
         select_startup_mode(false, /*has_prior_pose=*/false);
     estimator.seed_pose(est.x_m, est.y_m, est.yaw_rad, 0.1, 0.05,

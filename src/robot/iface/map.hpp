@@ -58,6 +58,16 @@ struct MapSnapshot {
     return width > 0 && height > 0 && resolution_m > 0.0 &&
            occupancy.size() == width * height;
   }
+ // A raster filled entirely with -1 is a transport-sized window, not a
+ // surveyed map. Localization must enter mapless/SLAM startup until at
+ // least one cell carries known occupancy evidence.
+ bool has_known_occupancy() const {
+ if (!has_raster()) return false;
+ for (const auto cell : occupancy) {
+  if (cell >= 0) return true;
+ }
+ return false;
+ }
   // Unknown counts as blocked here; planners that assume unknown-free
   // implement their own policy on top of cell().
   bool blocked(double wx, double wy) const {
