@@ -32,6 +32,9 @@ struct ChassisLimits {
   double max_steer_rad = 0.55;
   // Holonomic lateral envelope.
   double max_lateral_mps = 0.0;
+ // Optional Ackermann curvature envelope (1/m). Zero leaves the
+ // differential/holonomic yaw-rate window unchanged.
+ double max_curvature_inv_m = 0.0;
 };
 
 // Declared plant loadout for autonomy envelopes (rollover support/COM,

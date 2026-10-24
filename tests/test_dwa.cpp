@@ -123,6 +123,31 @@ int main() {
  assert(p.best.forward_mps < 0.0);
  }
 
+ // Ackermann envelope: yaw rate follows v*kappa and zero speed cannot
+ // generate an in-place turn. The same planner remains unchanged when the
+ // optional curvature field is zero (differential/holonomic).
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.0;
+ est.y_m = 0.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ StraightLinePlanner global;
+ Route route = global.plan(est, {8.0, 1.0, 0.0}, iface::MapSnapshot{});
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 0.2;
+ DwaPlanner planner;
+ LocalPlan p = planner.plan(est, perc, m, route, ack);
+ assert(p.has_plan && p.best.feasible);
+ assert(std::abs(p.best.yaw_rate_radps) <=
+ std::abs(p.best.forward_mps) * ack.max_curvature_inv_m + 1e-9);
+ if (std::abs(p.best.forward_mps) < 1e-9)
+ assert(std::abs(p.best.yaw_rate_radps) < 1e-9);
+ }
+
  // DWA with a track sitting on the ego pose: every rollout collides.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);

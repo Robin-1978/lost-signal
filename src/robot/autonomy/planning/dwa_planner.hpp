@@ -43,6 +43,9 @@ struct DwaPlannerConfig {
   double safety_margin_m = 0.0;
   double response_delay_s = 0.0;
   double lookahead_m = 2.0;
+ // Holonomic lateral command slew limit. Lateral velocity is a command
+ // state even when the estimator has no independent lateral sensor.
+ double lateral_accel_mps2 = 2.0;
 };
 
 class DwaPlanner : public ILocalPlanner {
@@ -61,6 +64,7 @@ class DwaPlanner : public ILocalPlanner {
   DwaPlannerConfig config_;
   TerrainGate gate_;
   double previous_w_ = 0.0;
+ double previous_lateral_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

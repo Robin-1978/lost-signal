@@ -130,7 +130,10 @@ core::Vec2 route_goal(const Route& route, double x, double y,
 
 DwaPlanner::DwaPlanner(DwaPlannerConfig config) : config_(config) {}
 
-void DwaPlanner::reset() { previous_w_ = 0.0; }
+void DwaPlanner::reset() {
+ previous_w_ = 0.0;
+ previous_lateral_ = 0.0;
+}
 
 LocalPlan DwaPlanner::plan(const EstimatedState& est,
                            const PerceptionResult& perception,
@@ -142,20 +145,24 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   const double v_max = limits.max_forward_mps;
   const double w_max = limits.max_yaw_rate_radps;
   if (!(v_max > 0.0) || !(w_max > 0.0)) return out;
+ const double dt = config_.dt_s;
+ const double predict_T = config_.predict_time_s;
+ const double accel = config_.accel_mps2;
+ const double decel = config_.decel_mps2 > 0.0 ? config_.decel_mps2 : accel;
+ if (dt <= 0.0) return out;
   // Holonomic lateral sampling, gated by the chassis envelope: diff and
   // Ackermann bases carry max_lateral_mps == 0 and never sample sideways.
-  // No lateral state in the estimate, so the window opens fully every
-  // decision (conservative; the validator re-checks the exact candidate).
+ // The previous command supplies the lateral state between measurements.
   std::vector<double> lateral_samples{0.0};
   if (limits.max_lateral_mps > 0.0) {
-    lateral_samples = {-limits.max_lateral_mps, 0.0, limits.max_lateral_mps};
+ const double lateral_delta = std::max(0.0, config_.lateral_accel_mps2) * dt;
+ const CommandWindow lateral_window = next_window(
+ previous_lateral_, -limits.max_lateral_mps, limits.max_lateral_mps,
+ lateral_delta);
+ lateral_samples = command_samples(lateral_window, 0.25,
+ {previous_lateral_, 0.0, limits.max_lateral_mps,
+ -limits.max_lateral_mps});
   }
-
-  const double dt = config_.dt_s;
-  const double predict_T = config_.predict_time_s;
-  const double accel = config_.accel_mps2;
-  const double decel = config_.decel_mps2 > 0.0 ? config_.decel_mps2 : accel;
-  if (dt <= 0.0) return out;
 
   // Dynamic window from measured twist: reachable by the NEXT decision, not
   // by the end of the horizon. Never publish the rollout's terminal target.
@@ -211,6 +218,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         angular_window, 0.3,
         {est.yaw_rate_radps, 0.0, goal_directed_yaw_rate});
     for (double angular : angular_samples) {
+ // Ackermann candidates are bounded by steering curvature and cannot turn
+ // in place. Differential and holonomic bases leave this envelope at zero.
+ if (limits.max_curvature_inv_m > 0.0) {
+ const double max_angular = std::abs(velocity) *
+ limits.max_curvature_inv_m;
+ if (std::abs(angular) > max_angular + 1e-9) continue;
+ }
       for (double lateral : lateral_samples) {
       double x = est.x_m, y = est.y_m, heading = est.yaw_rad;
       double rollout_v = est.forward_mps, rollout_w = est.yaw_rate_radps;
@@ -296,6 +310,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   }
   if (!best.feasible) return out;
   previous_w_ = best.yaw_rate_radps;
+ previous_lateral_ = best.lateral_mps;
   out.has_plan = true;
   out.best = best;
   return out;

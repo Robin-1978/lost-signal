@@ -8,6 +8,22 @@
 namespace lost_signal::robot::app {
 
 namespace {
+platform::ChassisLimits autonomy_limits_from_description(
+ const platform::RobotDescription& desc) {
+ platform::ChassisLimits limits = desc.limits;
+ if (desc.chassis_kind == "ackermann" &&
+ desc.plant.wheel_base_m > 0.0 &&
+ std::isfinite(desc.plant.wheel_base_m) &&
+ std::isfinite(desc.limits.max_steer_rad)) {
+ const double tan_steer = std::tan(desc.limits.max_steer_rad);
+ if (std::isfinite(tan_steer)) {
+ limits.max_curvature_inv_m =
+ std::abs(tan_steer) / desc.plant.wheel_base_m;
+ }
+ }
+ return limits;
+}
+
 class NullMapProvider : public iface::IMapProvider {
  public:
   iface::MapSnapshot active_snapshot() const override { return snapshot_; }
@@ -39,7 +55,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
     : maps_(maps ? std::move(maps) : std::make_unique<NullMapProvider>()),
       desc_(std::move(desc)),
       chassis_(platform::make_chassis(desc_)),
-      coordinator_(desc_.limits, 100'000'000,
+ coordinator_(autonomy_limits_from_description(desc_), 100'000'000,
                    perception_config_from(desc_)) {
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
