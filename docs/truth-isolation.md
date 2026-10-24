@@ -13,6 +13,17 @@ or links any `lost_signal_sim_*` library.
 Truth is not an algorithm input. It is an offline optimizer reference:
 recorded truth vs recorded estimate, scored after the run.
 
+## Terrain boundary
+
+Authored elevation and traversability in a published `MapSnapshot` are
+navigation priors and may be consumed by ROBOT for route cost, grade limits,
+and ground-return classification. They are not live physics state. MuJoCo
+terrain height, material/friction, contact, slip flags, support slabs, and
+collision/judge outcomes remain SIM-only and must stay on the recorded or
+offline scoring side of the boundary. A simulation may use its authored
+terrain to generate sensor returns, but it never publishes the engine's true
+height or contact result as a ROBOT measurement.
+
 ## Data flow
 
 ```mermaid
@@ -27,9 +38,11 @@ flowchart LR
 ```
 
 - Live path: `ScenarioSession::step_once()` snapshots `truth_before`, steps
-  the world, polls one `ObservationFrame`, publishes it, ticks once, consumes
-  the command, then appends `truth_after` plus `diagnostics()`. Rejected
-  observations are still recorded but never ticked on.
+ the world, polls sensors on their configured deadlines, publishes accepted
+ observations, ticks ROBOT on the independent decision deadline, consumes
+ the current actuator command, then appends `truth_after` plus
+ `diagnostics()`. Rejected observations are still recorded but never become
+ ROBOT measurements.
 - Offline path: `estimate_error()` compares recorded `diag.estimate` against
   recorded `truth_after`; `score_episode()` aggregates mean/max position and
   yaw error; `reward_step()` is the RL label. Training loaders read exported
