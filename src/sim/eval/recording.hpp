@@ -18,8 +18,12 @@ struct RecordedStep {
   std::int64_t stamp_ns = 0;
   std::string source;
   std::vector<float> ranges_m;
+ std::vector<float> intensities;
+ std::vector<float> time_offsets_s;
   std::vector<float> static_ranges_m;
   bool scan_valid = false;
+ bool intensity_valid = false;
+ bool time_offset_valid = false;
   bool scan_static_valid = false;
   double angle_min_rad = 0.0;
   double angle_increment_rad = 0.0;

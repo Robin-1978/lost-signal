@@ -31,7 +31,7 @@ class MotionDecisionPipeline {
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation,
  const SurveyContext& survey, core::MonotonicNs now_ns,
- bool allow_recovery, IBehaviorPolicy& behavior,
+ IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
  IController& controller);
 };

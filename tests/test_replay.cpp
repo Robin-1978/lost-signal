@@ -28,6 +28,10 @@ lost_signal::robot::iface::ObservationFrame make_obs() {
   o.frame = lost_signal::robot::core::Frame::kBaseLink;
   o.scan_valid = true;
   o.ranges_m = {1.0f, 2.5f, 10.0f};
+ o.intensity_valid = true;
+ o.intensities = {0.1f, 0.2f, 0.3f};
+ o.time_offset_valid = true;
+ o.time_offsets_s = {-0.01f, 0.0f, 0.01f};
   o.scan_static_valid = true;
   o.static_ranges_m = {1.0f, 2.5f, 10.0f};
   o.scan_angle_min_rad = -3.141592653589793;
@@ -99,6 +103,10 @@ int main() {
     assert(obs2.stamp_ns == obs.stamp_ns);
     assert(obs2.source == obs.source);
     assert(obs2.ranges_m == obs.ranges_m);
+ assert(obs2.intensity_valid == obs.intensity_valid);
+ assert(obs2.intensities == obs.intensities);
+ assert(obs2.time_offset_valid == obs.time_offset_valid);
+ assert(obs2.time_offsets_s == obs.time_offsets_s);
     assert(obs2.static_ranges_m == obs.static_ranges_m);
     assert(obs2.forward_mps == obs.forward_mps);
     assert(obs2.imu_gyro_z_radps == obs.imu_gyro_z_radps);

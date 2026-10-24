@@ -13,7 +13,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation,
  const SurveyContext& survey, core::MonotonicNs now_ns,
- bool allow_recovery, IBehaviorPolicy& behavior,
+ IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
  IController& controller) {
  MotionDecisionResult out;
@@ -85,7 +85,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
 
  const bool recovery_localized = est.valid && est.confidence >= 0.75 &&
  est.position_sigma_m <= 0.5 && est.heading_sigma_rad <= 0.75;
- if (planner_rejected && allow_recovery && recovery_localized) {
+ const bool local_evidence =
+ local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
+ if (planner_rejected && local_evidence && recovery_localized) {
  for (std::size_t i = 0; i < recovery_count; ++i) {
  const ValidationResult verdict = validator.validate(
  recovery[i], est, perception, observation, survey);

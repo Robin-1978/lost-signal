@@ -80,6 +80,16 @@ std::string step_to_json_line(const RecordedStep& step) {
   o.emplace_back("t", Json::Num(static_cast<double>(step.stamp_ns)));
   o.emplace_back("src", Json::Str(step.source));
   o.emplace_back("ranges", Json::Arr(floats_to_json(step.ranges_m)));
+ if (step.intensity_valid) {
+ o.emplace_back("intensity_ref", Json::Arr(floats_to_json(step.intensities)));
+ } else {
+ o.emplace_back("intensity_ref", Json::Null());
+ }
+ if (step.time_offset_valid) {
+ o.emplace_back("time_offsets", Json::Arr(floats_to_json(step.time_offsets_s)));
+ } else {
+ o.emplace_back("time_offsets", Json::Null());
+ }
   if (step.scan_static_valid) {
     o.emplace_back("static_ref",
                    Json::Arr(floats_to_json(step.static_ranges_m)));
@@ -150,6 +160,20 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   step.source = src->as_str();
   const Json* ranges = req(obj, "ranges", err);
   if (!floats_from_json(ranges, step.ranges_m, err)) return false;
+ step.intensity_valid = false;
+ step.intensities.clear();
+ if (const Json* intensity = obj.find("intensity_ref"); intensity != nullptr &&
+ !intensity->is_null()) {
+ if (!floats_from_json(intensity, step.intensities, err)) return false;
+ step.intensity_valid = true;
+ }
+ step.time_offset_valid = false;
+ step.time_offsets_s.clear();
+ if (const Json* offsets = obj.find("time_offsets"); offsets != nullptr &&
+ !offsets->is_null()) {
+ if (!floats_from_json(offsets, step.time_offsets_s, err)) return false;
+ step.time_offset_valid = true;
+ }
   const Json* sref = req(obj, "static_ref", err);
   if (sref == nullptr) return false;
   if (sref->is_null()) {
@@ -248,6 +272,10 @@ RecordedStep record_step(const robot::iface::ObservationFrame& obs) {
   s.stamp_ns = obs.stamp_ns;
   s.source = obs.source;
   s.ranges_m = obs.ranges_m;
+ s.intensities = obs.intensities;
+ s.intensity_valid = obs.intensity_valid;
+ s.time_offsets_s = obs.time_offsets_s;
+ s.time_offset_valid = obs.time_offset_valid;
   s.static_ranges_m = obs.static_ranges_m;
   s.scan_valid = obs.scan_valid;
   s.scan_static_valid = obs.scan_static_valid;
@@ -280,6 +308,10 @@ robot::iface::ObservationFrame step_to_observation(const RecordedStep& step) {
   o.frame = robot::core::Frame::kUnknown;
   o.ranges_m = step.ranges_m;
   o.scan_valid = step.scan_valid;
+ o.intensities = step.intensities;
+ o.intensity_valid = step.intensity_valid;
+ o.time_offsets_s = step.time_offsets_s;
+ o.time_offset_valid = step.time_offset_valid;
   o.static_ranges_m = step.static_ranges_m;
   o.scan_static_valid = step.scan_static_valid;
   o.scan_angle_min_rad = step.angle_min_rad;

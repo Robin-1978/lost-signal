@@ -332,11 +332,11 @@ iface::MotionCommand AutonomyCoordinator::update(
       active_route_ =
           global_planner_->plan(estimator_->estimate(), goal_, map);
     }
+ const LocalMap robot_local_map = mapper_->local_map();
  MotionDecisionResult motion = MotionDecisionPipeline::run(
- estimator_->estimate(), perception_, mapper_->local_map(), active_route_,
+ estimator_->estimate(), perception_, robot_local_map, active_route_,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_, last_obs_,
  survey_ctx, now_ns,
- map.has_known_occupancy() && startup_mode_ != StartupMode::kSlamOnly,
  *behavior_, *local_planner_, *validator_, *controller_);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
