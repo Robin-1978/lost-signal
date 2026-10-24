@@ -143,6 +143,30 @@ int main() {
     assert(r.tracks.empty());
   }
 
+ // Unknown environment: raw returns build static occupancy, while a
+ // currently associated dynamic return is kept out of the persistent map.
+ {
+ RayClearingMapper mapper;
+ auto obs = make_scan(1'000'000, 4.0f, 36, 36, 3.0f);
+ obs.scan_static_valid = false;
+ obs.static_ranges_m.clear();
+ DynamicTrack actor;
+ actor.x_m = 3.0;
+ actor.radius_m = 0.25;
+ mapper.set_dynamic_tracks({actor});
+ mapper.update(obs, origin());
+ const LocalMap m = mapper.local_map();
+ auto cell = [&](double x, double y) -> int8_t {
+  const int gx = static_cast<int>(std::floor((x - m.origin_x_m) /
+                                             m.resolution_m));
+  const int gy = static_cast<int>(std::floor((y - m.origin_y_m) /
+                                             m.resolution_m));
+  return m.occupancy[static_cast<std::size_t>(gy) * m.width + gx];
+ };
+ assert(cell(-3.95, -0.05) == 100);
+ assert(cell(3.0, 0.0) != 100);
+ }
+
   // Mapper: background paints occupied, foreground clears but never paints.
   {
     RayClearingMapper mapper;

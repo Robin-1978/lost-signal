@@ -236,6 +236,7 @@ void AutonomyCoordinator::ingest_observation(
   // untouched.
   if (shaped.scan_valid) {
     perception_ = perception_module_->update(shaped, estimator_->estimate());
+ mapper_->set_dynamic_tracks(perception_.tracks);
     mapper_->update(shaped, estimator_->estimate());
   }
   last_obs_ = shaped;

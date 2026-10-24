@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/mapping/elevation.hpp"
 #include "robot/autonomy/mapping/log_odds.hpp"
 #include "robot/autonomy/mapping/terrain_math.hpp"
@@ -91,6 +92,11 @@ class IMapper {
   // consistent with surveyed ground clear the ray but never paint occupied
   // (ramps stay traversable); without, today's behavior exactly.
   virtual void set_survey(const iface::MapSnapshot& map) { (void)map; }
+ // Dynamic tracks are ROBOT-side evidence used to keep associated
+ // foreground returns out of the persistent static layer.
+ virtual void set_dynamic_tracks(const std::vector<DynamicTrack>& tracks) {
+ (void)tracks;
+ }
 };
 
 // v1: fixed-size window centered on the estimate, all cells unknown.
@@ -102,11 +108,15 @@ class RayClearingMapper : public IMapper {
     map_ = LocalMap{};
     fusion_.reset(0);
     elevation_.reset(0);
+ dynamic_tracks_.clear();
   }
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
   }
   void set_survey(const iface::MapSnapshot& map) override { survey_ = map; }
+ void set_dynamic_tracks(const std::vector<DynamicTrack>& tracks) override {
+ dynamic_tracks_ = tracks;
+ }
   void update(const iface::ObservationFrame& obs,
               const EstimatedState& est) override {
     if (!est.valid) {
@@ -215,8 +225,10 @@ class RayClearingMapper : public IMapper {
     const bool use_survey = survey_.has_elevation();
     const double survey_sensor_z =
         est.z_m + base_from_lidar_.translation_m.z + 0.10;
-    // Background beams paint endpoint cells occupied; foreground beams
-    // clear the ray but never paint (actors must not become static map).
+ // With a static reference, only matching returns paint endpoint cells. In
+ // an unknown environment there is no reference to compare against, so a
+ // return is occupied evidence unless it is associated with a ROBOT-side
+ // dynamic track. Unmatched returns remain conservative.
     // Surveyed-ground background beams clear but never paint (ramps stay
     // traversable — same classifier as the validator, one doctrine).
     const std::size_t n = obs.ranges_m.size();
@@ -238,11 +250,21 @@ class RayClearingMapper : public IMapper {
       const double ex = ssx + off.x;
       const double ey = ssy + off.y;
       clear_segment(ssx, ssy, ex, ey);
-      bool background = false;
+ bool background = !has_ref;
       if (has_ref) {
         background =
             std::abs(range - obs.static_ranges_m[i]) <= 0.30;
       }
+ if (background) {
+ for (const auto& track : dynamic_tracks_) {
+ const double track_radius =
+ std::max(0.05, track.occupied_radius_m() + 0.20);
+ if (std::hypot(ex - track.x_m, ey - track.y_m) <= track_radius) {
+ background = false;
+ break;
+ }
+ }
+ }
       if (background) {
         if (use_survey &&
             endpoint_is_survey_ground(survey_, ex, ey, survey_sensor_z,
@@ -324,6 +346,7 @@ class RayClearingMapper : public IMapper {
   ElevationFusion elevation_{};
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
   iface::MapSnapshot survey_;  // empty until set_survey (no elevation)
+ std::vector<DynamicTrack> dynamic_tracks_;
 };
 
 }  // namespace lost_signal::robot::autonomy
