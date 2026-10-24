@@ -78,6 +78,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/planning/astar_planner.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
+ src/robot/autonomy/planning/route_pipeline.cpp
   src/robot/autonomy/planning/prediction.cpp
   src/robot/autonomy/planning/task/task_ordering.cpp
   src/robot/autonomy/control/stop_latch.cpp

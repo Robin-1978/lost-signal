@@ -7,6 +7,7 @@
 
 #include "robot/autonomy/decision/motion_pipeline.hpp"
 #include "robot/autonomy/decision/terrain_pipeline.hpp"
+#include "robot/autonomy/planning/route_pipeline.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -317,7 +318,9 @@ iface::MotionCommand AutonomyCoordinator::update(
     // event flags stay consistent even when a stage below yields no plan.
     last_decision_ns_ = now_ns;
     last_map_revision_ = map.revision;
-    replan_requested_ = false;
+ const bool force_route_refresh =
+ replan_requested_ || map_changed || !active_route_.valid;
+ replan_requested_ = false;
     // Survey revision: rebind the traversal belief and push the prior to
     // the mapper (ground classification for occupancy painting).
     if (map_changed) {
@@ -327,11 +330,9 @@ iface::MotionCommand AutonomyCoordinator::update(
     // Route refresh first: a new goal, a new map revision, or no route yet
     // re-runs the global planner from the current estimate. The local
     // planner only ever consumes this active route, never a raw goal.
-    if (has_goal_ &&
-        (!active_route_.valid || map_changed)) {
-      active_route_ =
-          global_planner_->plan(estimator_->estimate(), goal_, map);
-    }
+ RoutePlanningPipeline::refresh(
+ *global_planner_, estimator_->estimate(), goal_, has_goal_, map,
+ force_route_refresh, active_route_);
  const LocalMap robot_local_map = mapper_->local_map();
  MotionDecisionResult motion = MotionDecisionPipeline::run(
  estimator_->estimate(), perception_, robot_local_map, active_route_,
