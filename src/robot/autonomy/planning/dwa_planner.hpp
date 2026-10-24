@@ -16,12 +16,12 @@ namespace lost_signal::robot::autonomy {
 // DWA local planner on native chain types. Same rollout + critic math as the
 // main-stack DWA (dynamic window, response-delay rollout, goal / heading /
 // clearance / path / progress / oscillation critics), but:
-//   - map queries go to LocalMap (optimistic is_blocked; safety layers own
-//     the conservative veto on raw scan);
-//   - dynamic checks consume predicted DynamicTrack frames;
-//   - output is one LocalCandidate, never a trajectory object;
-//   - wheel-space windows and actuator identification stay out: the
-//     IChassis wrapper owns feasibility against the real base.
+// - map queries go to LocalMap; unknown and out-of-window cells are blocked
+//   until a sensor ray or ROBOT-side SLAM replay marks them free;
+// - dynamic checks consume predicted DynamicTrack frames;
+// - output is one LocalCandidate, never a trajectory object;
+// - wheel-space windows and actuator identification stay out: the IChassis
+// wrapper owns feasibility against the real base.
 struct DwaWeights {
   double w_goal = 1.0;
   double w_clear = 2.0;

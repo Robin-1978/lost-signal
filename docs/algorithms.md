@@ -69,14 +69,14 @@ identification stay out: the `IChassis` wrapper owns the real base.
   `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
   occupied) with origin-aware queries: conservative `is_free` /
   `segment_is_free` (unknown counts as blocked) for admission/validation,
-  optimistic `is_blocked` / `segment_is_traversable` (only
-  observed-occupied blocks) for planner sampling. `RayClearingMapper`
-  clears along every return and paints endpoints only for background beams;
-  foreground returns never enter the static layer (actors must not become
-  the map). The window re-centers on the estimate (dropping old content;
-  submap re-rasterization is SLAM work). Unknown is the explicit split:
-  the planner may propose through it, the safety layers veto on raw scan
-  evidence instead.
+ `is_blocked` / `segment_is_traversable` are conservative for planner
+ sampling: unknown and out-of-window cells are blocked until a sensor ray
+ or ROBOT-side SLAM replay marks them free. Without a static reference,
+ lidar endpoints become occupied evidence unless associated with a
+ perception track; unmatched returns remain conservative. The map exposes
+ sensor-versus-SLAM provenance for diagnostics. Accepted SLAM loop closure
+ replays keyframes into the same mapper; simulator terrain and contact
+ truth never enter this path.
 - Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
   estimate in, ONE constraint (hold / speed cap) out. It selects no
   trajectory and emits no command. A hold short-circuits sampling but still
