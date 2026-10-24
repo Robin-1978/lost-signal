@@ -30,7 +30,9 @@ flowchart LR
   Per --> Safe
   Obs --> Safe
   Safe -->|"MotionCommand (or latched stop)"| Out["expiring body command"]
-  Goal["Route (event-driven)<br/>planning/global_planner.hpp<br/>StraightLinePlanner"] -->|"active Route"| LP
+ Goal["Goal + map event"] --> RP["RoutePlanningPipeline<br/>event-driven refresh"]
+ RP -->|"planner input"| GP["IGlobalPlanner<br/>AStarPlanner"]
+ GP -->|"active Route"| LP
 ```
 
 `DwaPlanner` samples the dynamic window from measured twist, rolls out with
