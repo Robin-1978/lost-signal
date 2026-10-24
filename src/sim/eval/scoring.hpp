@@ -20,6 +20,7 @@ struct EstimateError {
 
 struct EpisodeScore {
   std::size_t steps = 0;
+ double elapsed_s = 0.0;
   std::size_t safe_stop_steps = 0;
   std::size_t obs_accepted = 0;
   std::size_t obs_rejected = 0;
@@ -31,6 +32,9 @@ struct EpisodeScore {
   double max_pos_err_m = 0.0;
   double mean_yaw_err_rad = 0.0;
   double max_yaw_err_rad = 0.0;
+ double min_clearance_m = 999.0;
+ double mean_clearance_m = 999.0;
+ double energy_proxy = 0.0; // offline duty x measured wheel speed integral
 };
 
 EpisodeScore score_episode(const EpisodeRecorder& episode);

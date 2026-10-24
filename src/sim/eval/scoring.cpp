@@ -1,5 +1,6 @@
 #include "sim/eval/scoring.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace lost_signal::sim::eval {
@@ -28,6 +29,7 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   EpisodeScore s;
   s.steps = episode.size();
   if (s.steps == 0) return s;
+ s.elapsed_s = static_cast<double>(s.steps) * 0.02;
   const auto& steps = episode.steps();
   double x0 = steps.front().truth_before.body_x_m;
   double y0 = steps.front().truth_before.body_y_m;
@@ -36,12 +38,27 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   s.distance_m = std::hypot(x1 - x0, y1 - y0);
   double pos_sum = 0.0;
   double yaw_sum = 0.0;
+ double clearance_sum = 0.0;
+ std::size_t clearance_samples = 0;
   for (const auto& st : steps) {
     if (st.cmd.is_safe_stop()) s.safe_stop_steps += 1;
     if (st.judge.static_collision || st.judge.dynamic_collision ||
         st.judge.terrain_collision) {
       s.collision_steps += 1;
     }
+ const double clearance = std::min({st.judge.static_clearance_m,
+ st.judge.dynamic_clearance_m, st.judge.terrain_clearance_m});
+ if (std::isfinite(clearance)) {
+ s.min_clearance_m = std::min(s.min_clearance_m, clearance);
+ clearance_sum += clearance;
+ ++clearance_samples;
+ }
+ double wheel_power = 0.0;
+ for (std::size_t i = 0; i < st.truth_after.drive_count; ++i) {
+ wheel_power += std::abs(st.truth_after.drive_duty[i] *
+ st.truth_after.drive_radps[i]);
+ }
+ s.energy_proxy += wheel_power * 0.02;
     if (st.obs_accepted) {
       s.obs_accepted += 1;
     } else {
@@ -60,6 +77,8 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
     s.mean_pos_err_m = pos_sum / s.estimate_samples;
     s.mean_yaw_err_rad = yaw_sum / s.estimate_samples;
   }
+ if (clearance_samples > 0) s.mean_clearance_m =
+ clearance_sum / static_cast<double>(clearance_samples);
   return s;
 }
 

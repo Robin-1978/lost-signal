@@ -15,6 +15,7 @@
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
+#include "sim/providers/replay.hpp"
 
 namespace {
 
@@ -25,6 +26,7 @@ struct Options {
  std::string sim_path;
  std::string map_path;
  std::string out_path;
+ std::string episode_path;
  std::string actors_path;
  std::vector<std::string> objectives;
  long steps = -1;
@@ -39,7 +41,8 @@ void usage() {
  stderr,
  "usage: lost_signal_sim [--robot FILE] [--sim FILE] [--map FILE]\n"
  " [--objectives a,b,...] [--steps N | --duration S]\n"
- " [--actors FILE] [--no-actors] [--out FILE.json]\n");
+ " [--actors FILE] [--no-actors] [--out FILE.json]\n"
+ " [--episode FILE.jsonl]\n");
 }
 
 std::vector<std::string> split_csv(const std::string& text) {
@@ -73,6 +76,8 @@ bool parse_args(int argc, char** argv, Options& opt) {
  if (!value(opt.map_path)) return false;
  } else if (a == "--out") {
  if (!value(opt.out_path)) return false;
+ } else if (a == "--episode") {
+ if (!value(opt.episode_path)) return false;
  } else if (a == "--actors") {
  if (!value(opt.actors_path)) return false;
  } else if (a == "--no-actors") {
@@ -114,6 +119,7 @@ bool write_summary(const std::string& path, const std::string& map_path,
  Json::Object root;
  root.emplace_back("map", Json::Str(map_path));
  root.emplace_back("steps", Json::Num(static_cast<double>(score.steps)));
+ root.emplace_back("elapsed_s", Json::Num(score.elapsed_s));
  root.emplace_back("objectives_done",
  Json::Bool(session.objectives_done()));
  Json::Object s;
@@ -130,6 +136,9 @@ bool write_summary(const std::string& path, const std::string& map_path,
  s.emplace_back("max_pos_err_m", Json::Num(score.max_pos_err_m));
  s.emplace_back("mean_yaw_err_rad", Json::Num(score.mean_yaw_err_rad));
  s.emplace_back("max_yaw_err_rad", Json::Num(score.max_yaw_err_rad));
+ s.emplace_back("min_clearance_m", Json::Num(score.min_clearance_m));
+ s.emplace_back("mean_clearance_m", Json::Num(score.mean_clearance_m));
+ s.emplace_back("energy_proxy", Json::Num(score.energy_proxy));
  root.emplace_back("score", Json::Obj(std::move(s)));
  Json::Array results;
  for (const auto& r : session.objectives().results()) {
@@ -257,6 +266,16 @@ int main(int argc, char** argv) {
  std::fprintf(stderr, "cannot write --out file: %s\n",
  opt.out_path.c_str());
  return 1;
+ }
+ if (!opt.episode_path.empty()) {
+ std::string episode_err;
+ const auto map = session->active_map();
+ if (!sim::providers::export_episode(opt.episode_path, map.map_id,
+ map.revision, session->episode(), &episode_err)) {
+ std::fprintf(stderr, "cannot write --episode file: %s\n",
+ episode_err.c_str());
+ return 1;
+ }
  }
  return 0;
 }
