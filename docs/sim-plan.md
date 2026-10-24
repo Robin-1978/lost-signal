@@ -128,8 +128,8 @@ reproduces the same decision sequence.
 ### S5 Scenario systems (medium) — landed
 Port the orchestration that makes scenarios more than a world step:
 - `deterministic_scheduler` (multi-rate sim-time deadlines: scan /
-  record taps from sim time, never wall clock; the decision tap is inert —
-  the ROBOT branch gates on the coordinator's own 10 Hz).
+ motion/IMU/decision/record taps from sim time, never wall clock; the
+ decision tap gates the ROBOT branch at the configured cadence).
 - Scenario goal driver (objective list -> place goals through the same
   `request_goal` seam an operator uses; arrival/completion counted
   truth-side for scoring, never fed back into ROBOT).

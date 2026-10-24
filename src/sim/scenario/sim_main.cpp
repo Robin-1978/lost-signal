@@ -122,6 +122,14 @@ bool write_summary(const std::string& path, const std::string& map_path,
  root.emplace_back("elapsed_s", Json::Num(score.elapsed_s));
  root.emplace_back("objectives_done",
  Json::Bool(session.objectives_done()));
+ root.emplace_back("objectives_total",
+ Json::Num(static_cast<double>(session.objectives().total())));
+ root.emplace_back("objectives_completed",
+ Json::Num(static_cast<double>(session.objectives().completed())));
+ root.emplace_back("objective_completion_ratio",
+ Json::Num(session.objectives().completion_ratio()));
+ root.emplace_back("mission_status",
+ Json::Str(session.objectives_done() ? "completed" : "incomplete"));
  Json::Object s;
  s.emplace_back("safe_stop_steps",
  Json::Num(static_cast<double>(score.safe_stop_steps)));
@@ -132,6 +140,11 @@ bool write_summary(const std::string& path, const std::string& map_path,
  s.emplace_back("collision_steps",
  Json::Num(static_cast<double>(score.collision_steps)));
  s.emplace_back("distance_m", Json::Num(score.distance_m));
+ s.emplace_back("path_length_m", Json::Num(score.path_length_m));
+ s.emplace_back("dynamic_hold_steps",
+ Json::Num(static_cast<double>(score.dynamic_hold_steps)));
+ s.emplace_back("terrain_collision_steps",
+ Json::Num(static_cast<double>(score.terrain_collision_steps)));
  s.emplace_back("mean_pos_err_m", Json::Num(score.mean_pos_err_m));
  s.emplace_back("max_pos_err_m", Json::Num(score.max_pos_err_m));
  s.emplace_back("mean_yaw_err_rad", Json::Num(score.mean_yaw_err_rad));

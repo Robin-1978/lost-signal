@@ -82,8 +82,9 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
   moving actors do not become map geometry.
 - Sensor delivery realism is opt-in. Decision time is the plant clock;
   observation stamps stay at acquisition, so latency can trip freshness.
-- Scoring is offline only and includes distance, stops, collisions, estimate
- error, elapsed time, clearance, and a duty/speed energy proxy. Coordinator
- remains a sequencing seam; route refresh, motion decisions, and conflict
- prediction live in autonomy modules. Conflict-zone resource policy and
- Hybrid A* path smoothing remain roadmap items.
+- Scoring is offline only and includes displacement, path length, stops,
+ dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
+ time, clearance, objective completion ratio, and a duty/speed energy proxy.
+ Coordinator remains a sequencing seam; route refresh, motion decisions, and
+ conflict prediction live in autonomy modules. Conflict-zone resource policy
+ and Hybrid A* path smoothing remain separate extension points.

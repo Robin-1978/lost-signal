@@ -193,9 +193,9 @@ int main() {
     auto run = []() {
       sim::scenario::ScenarioSession session;
       session.setup_world().add_place({"dock", 4.0, 0.0, 0.0});
-      // NOTE: the 0.1 decision arg is currently inert (the coordinator
-      // gates its own decision branch at 10 Hz); this run only proves
-      // same-args determinism of the scan/record taps.
+ // The decision tap is an independent sim-time deadline and is applied to
+ // the coordinator's planning branch; this run also proves deterministic
+ // command output under the slower cadence.
       session.set_cadence(0.02, 0.1, 0.02);
       session.set_objectives({"dock"});
       std::vector<robot::iface::MotionCommand> cmds;

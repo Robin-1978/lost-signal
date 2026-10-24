@@ -26,6 +26,9 @@ struct EpisodeScore {
   std::size_t obs_rejected = 0;
   std::size_t collision_steps = 0;  // truth-side judge fired this step
   double distance_m = 0.0;  // truth displacement over the episode
+ double path_length_m = 0.0; // accumulated truth path length
+ std::size_t dynamic_hold_steps = 0; // stop while dynamic clearance is tight
+ std::size_t terrain_collision_steps = 0;
   // Estimate quality (offline truth-vs-estimate, for optimizer reference):
   std::size_t estimate_samples = 0;
   double mean_pos_err_m = 0.0;

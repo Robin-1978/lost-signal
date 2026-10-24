@@ -41,11 +41,19 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
  double clearance_sum = 0.0;
  std::size_t clearance_samples = 0;
   for (const auto& st : steps) {
+ s.path_length_m += std::hypot(
+ st.truth_after.body_x_m - st.truth_before.body_x_m,
+ st.truth_after.body_y_m - st.truth_before.body_y_m);
     if (st.cmd.is_safe_stop()) s.safe_stop_steps += 1;
     if (st.judge.static_collision || st.judge.dynamic_collision ||
         st.judge.terrain_collision) {
       s.collision_steps += 1;
     }
+ if (st.judge.terrain_collision) s.terrain_collision_steps += 1;
+ if (st.cmd.is_safe_stop() &&
+ st.judge.dynamic_clearance_m < 1.0) {
+ s.dynamic_hold_steps += 1;
+ }
  const double clearance = std::min({st.judge.static_clearance_m,
  st.judge.dynamic_clearance_m, st.judge.terrain_clearance_m});
  if (std::isfinite(clearance)) {

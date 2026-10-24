@@ -40,7 +40,14 @@ class ObjectiveDriver {
   void update(robot::app::RobotApplication& app, const world::World& world);
 
   bool done() const { return next_ >= objectives_.size(); }
+ std::size_t total() const { return objectives_.size(); }
   std::size_t completed() const { return results_.size(); }
+ double completion_ratio() const {
+ return objectives_.empty()
+ ? 1.0
+ : static_cast<double>(results_.size()) /
+ static_cast<double>(objectives_.size());
+ }
   std::size_t truth_arrivals() const;
   const std::vector<ObjectiveResult>& results() const { return results_; }
   const std::string& active_place() const;

@@ -306,9 +306,9 @@ route, pre-activation hold).
   latched stop), seeded wander (splitmix64 stream per actor — same seed +
   same dt sequence is bit-identical).
 - Scenario orchestration (`sim/scenario/`): sim-time multi-rate scheduler
-  (scan/record taps run every plant step by default; the decision tap is
-  inert — the ROBOT decision branch is gated by the coordinator's own
-  10 Hz), objective driver (place list through the operator `request_goal`
+ (scan/motion/IMU/decision/record taps run independently; the decision tap
+ gates the ROBOT branch at the configured cadence), objective driver (place
+ list through the operator `request_goal`
   seam; ROBOT Done/Failed advances, truth arrival counted offline only),
   truth-side collision judge (circle-vs-box/actor contact + clearances,
   recorded per step into the episode for scoring — never a ROBOT input).
