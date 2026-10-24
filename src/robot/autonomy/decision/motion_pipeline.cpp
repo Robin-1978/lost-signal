@@ -18,14 +18,21 @@ MotionDecisionResult MotionDecisionPipeline::run(
  IController& controller, bool forward_blocked) {
  MotionDecisionResult out;
  out.command = iface::MotionCommand::SafeStop(now_ns);
- out.behavior = behavior.decide(est, perception, behavior_limits);
+ const PredictionBatch prediction = predict_perception(
+ perception, now_ns * 1e-9);
+ out.prediction_horizon_s = prediction.future_times_s.empty()
+ ? 0.0 : prediction.future_times_s.back();
+ out.prediction_hypotheses = prediction.hypotheses.size();
+ out.behavior = behavior.decide(
+ est, perception, prediction, route, behavior_limits);
  out.constraint = out.behavior.must_hold ? "hold" : "speed_cap";
 
  if (out.behavior.must_hold) {
  LocalCandidate hold;
  hold.feasible = true;
  const ValidationResult verdict =
- validator.validate(hold, est, perception, observation, survey);
+ validator.validate(
+ hold, est, perception, prediction, observation, survey);
  out.reason = verdict.reason;
  if (verdict.accepted) out.command = controller.track(hold, est, now_ns);
  return out;
@@ -37,7 +44,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  std::min(effective.max_forward_mps, out.behavior.max_forward_mps);
  }
  const LocalPlan plan =
- local_planner.plan(est, perception, local_map, route, effective);
+ local_planner.plan(
+ est, perception, prediction, local_map, route, effective);
  std::array<LocalCandidate, 12> recovery{};
  const double crawl = std::min(0.25, std::max(0.0, effective.max_forward_mps));
  const double turn = std::min(0.6, std::max(0.0, effective.max_yaw_rate_radps));
@@ -83,7 +91,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  // clearance using the robot's own scan evidence.
  if (plan.has_plan && !forward_blocked) {
  best_recovery = validator.validate(
- plan.best, est, perception, observation, survey);
+ plan.best, est, perception, prediction, observation, survey);
  out.reason = best_recovery.reason;
  if (best_recovery.accepted) {
  out.command = controller.track(plan.best, est, now_ns);
@@ -102,7 +110,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  for (std::size_t i = 0; i < recovery_count; ++i) {
  if (forward_blocked && recovery[i].forward_mps >= -1e-6) continue;
  const ValidationResult verdict = validator.validate(
- recovery[i], est, perception, observation, survey);
+ recovery[i], est, perception, prediction, observation, survey);
  if (!verdict.accepted) continue;
  const double horizon_s = 1.0;
  const double px = est.x_m +

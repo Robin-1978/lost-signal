@@ -1,4 +1,4 @@
-## 修复进展（2026-10-24）
+## 修复进展（更新至 2026-10-25）
 
 以下问题已经在当前分支修复并带回归测试（本文件下方的旧分段保留为
 审计证据，若与此处冲突以本节和源码为准）：
@@ -16,22 +16,69 @@
 - P1-5 Ackermann/Holonomic：Hybrid-A*、gear 贯通、曲率门控和
   `DecisionCyclePipeline` 已接入；`tests/test_ackermann_planner.cpp` 与
   `tests/test_multichassis_mission.cpp` 覆盖四种底盘端到端。
+- P2-1/P2-2 动态理解：无静态参考时按机器人估计位姿关联连续激光点簇，
+ 只有重复运动确认后才发布匿名动态轨迹；速度改为预测关联、alpha-beta
+ 修正和近期时间窗拟合，跟踪状态携带采集时刻与确定性不确定度包络。
+- 统一预测链：行为、DWA、TEB 和独立 Validator 共用同一批 ROBOT 侧
+ 多假设预测；每个区间做连续相对运动最小距离检查，不再漏掉预测帧之间
+ 的快速横穿。预测不读取 actor id、物理 body、接触状态或仿真未来轨迹。
+- 局部规划器：新增新框架原生 timed elastic band，可由机器人配置
+ `"local_planner": "dwa" | "teb"` 选择；工厂和算法均位于 planning
+ 模块，Coordinator 只持有接口并串联。非法值 fail closed，默认仍为 DWA。
+- 路线级动态进入约束：Behavior 用当前 ROBOT 估计、活动路线、底盘限速、
+ 制动能力和共享预测批次生成 hold/speed cap；不再只检查当前朝向的直线
+ 走廊。静止等待若会被预测目标撞上，则不发布 hold，让局部规划器和独立
+ Validator 选择退让轨迹。该能力不读取关卡 conflict zone 或 actor 身份。
+- 终点约束：DWA/TEB 均先到达目标位置，再在位置容差内跟踪最终 yaw；
+ Ackermann 继续服从曲率约束，不能伪造原地转向。
+- Ackermann 精确目标：Hybrid-A* 的终止姿态增加剩余距离可实现曲率约束，
+ 并在平滑前追加逐点占用检查的精确目标连接段。
+- 定位/SLAM：显式 SLAM-only 用当前 ROBOT 估计建立里程计原点；回环粗搜索
+ 将一个关键帧间距内的相邻候选视作同一峰，保留具体匹配拒绝原因。
+- IMU/姿态：修正相对四元数方向、最短弧角速度、REP-103 重力投影和高度
+ 二阶差分；姿态滤波按加速度模长降权并限制单周期倾角修正，seed 同步
+ 重置内部四元数。
+- 制动：MuJoCo 轮轴使用被动 `frictionloss` 约束，强制动在零速处不会因
+ 显式反向力矩越零而交替驱动轮轴。
 - P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
   `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
   和 dormant actor，不把游戏 authority 穿透给 ROBOT。
-- 当前验证基线：`ctest --test-dir build --output-on-failure`（包含 artifact、
- 地图语义转换回归）以及
-  `tests/check_boundary.py` 通过。
+- 当前验证基线：`ctest --test-dir build --output-on-failure` 为 52/52
+ （包含 DWA/TEB 对比、artifact、地图语义转换回归），
+ `tests/check_boundary.py` 通过。当前机器 100 次同输入对比约为 DWA
+ 0.11 s、TEB 0.87 s，故默认仍为 DWA。
+
+`signal_town` 的同一 `energy_hub` 任务（保留两个动态 actor）也完成了端到端
+对比：DWA 在 1160 步 / 23.2 s 完成，0 碰撞，真值终点误差 0.110 m；TEB
+在 2478 步 / 49.56 s 完成，0 碰撞，真值终点误差 0.241 m。TEB 从静止启动
+时按下一周期可达速度确定 band 长度，避免把尚未观测的远处局部图当成启动
+前提；其滚动图策略仍明显更保守，因此配置默认保持 DWA。
 
 本轮又补齐：独立 Ackermann path smoothing（仍由 planning 模块负责）、
 episode artifact/replay round-trip、地图语义 sidecar round-trip，以及
-SIM viewer 的底盘部件运动和确定性尘雾/打滑粒子。旧框架的游戏 authority、
+SIM viewer 的底盘部件运动和确定性尘雾/打滑粒子；随后补齐 mapless
+动态跟踪、统一连续预测查询及 DWA/TEB 可选局部规划。旧框架的游戏 authority、
 材质真值、接触真值和渲染状态仍只停留在 SIM 展示/评分侧。
 
 下方章节保留为初始审计证据；其中标注“未完成”的条目若与本节冲突，
-以本节和源码/测试为准。剩余工作集中在更高层 SIM scoring 对语义 sidecar
-的可选统计接入和更完整的展示环境覆盖；GLB、纹理和 shader 资产已经迁移
-到当前分支并由 viewer 可选加载。这些都不改变 ROBOT 输入契约。
+以本节和源码/测试为准。GLB、纹理和 shader 资产已经迁移到当前分支并由
+viewer 可选加载。这些都不改变 ROBOT 输入契约。
+
+### `main` 算法能力迁移结论
+
+| `main` 能力 | 新框架落点 | 结论 |
+|---|---|---|
+| `dynamic_obstacle_map` | `LidarPerception` 匿名轨迹、尺寸、运动边界与不确定度 | 等价替代；输入仅来自 ROBOT 扫描与估计 |
+| `planning/local/predictor` | `planning/prediction.*` 与连续查询 | 已迁入；Behavior、DWA、TEB、Validator 共用一批预测 |
+| `dynamic_clearance` | `minimum_predicted_clearance()` | 已迁入；逐预测区间求相对运动最小距离 |
+| `trajectory_validator` | `ClearanceValidator` | 已迁入；静态扫掠、动态连续检查及 braking tail 独立裁决 |
+| `observed_obstacle_layer` | `RayClearingMapper`、log-odds、动态轨迹排除和观测衰减 | 等价替代；unknown 不会被当成 free |
+| `crossing_behavior` / `entry_governor` | route-aware `WaitOnIntrusionBehavior` | 通用能力已迁入；从路线和在线预测推导进入约束，不迁入关卡语义或通行权真值 |
+| `high_level_policy` | `RobotExecutive` + `IBehaviorPolicy` 扩展缝 | 旧文件主要是空基类/扩展接口；保留有效职责，不复制无运行逻辑的层 |
+
+这里的“不迁入关卡语义”是边界要求：旧版 authored conflict zones、actor
+身份和未来脚本属于 SIM 真值。若真实部署以后由 ROBOT 地图或 V2X 获得语义，
+可作为带来源的额外 ROBOT 观测接入，但不能从 SIM sidecar 反向注入算法。
 
 # 重构分支算法与仿真能力适配审计
 
@@ -46,11 +93,13 @@ SIM viewer 的底盘部件运动和确定性尘雾/打滑粒子。旧框架的�
 
 但“算法能力和仿真能力已经完整适配新框架”这个判断不成立。当前存在四类 P0 缺陷，分别破坏了几何契约、扫描角度契约、碰撞校验语义和 SLAM 静态地图假设；此外 headless 任务执行、传感器时序、倒车与多底盘规划、目标生命周期等主路径存在明显能力缺口。
 
-`47/47` CTest 通过只说明已有测试覆盖的路径稳定。现有测试没有覆盖下面列出的关键契约，因此不能作为完整适配的背书。
+审计启动时的 `47/47` CTest 只说明当时已有测试覆盖的路径稳定。现有
+修复状态与 52 项基线见文件顶部。
 
 ## 2. 已验证的通过项
 
-- `ctest --test-dir build --output-on-failure -j4`：47/47 通过。
+- 审计启动基线 `ctest --test-dir build --output-on-failure -j4`：47/47；
+ 当前修复基线见文件顶部。
 - `tests/check_boundary.py`：通过，输出 `robot boundary ok: no sim includes, no truth tokens, no sim links`。
 - `git status --short`：审计开始时为空。
 - 真值隔离设计清楚：仿真真值只进入 `WorldTruth`、碰撞判定、评分与记录，不进入 ROBOT 输入。

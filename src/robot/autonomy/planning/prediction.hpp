@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <vector>
 
 #include "robot/autonomy/perception/perception.hpp"
@@ -32,6 +34,15 @@ struct PredictionBatch {
   double frame_dt_s = 0.0;
   std::vector<double> future_times_s;
   std::vector<PredictedHypothesis> hypotheses;
+};
+
+// One ROBOT-side forecast policy shared by behavior, DWA and the independent
+// validator. A single batch prevents three consumers from assigning different
+// ages or horizons to the same sensor track.
+struct DynamicPredictionConfig {
+ double horizon_s = 2.5;
+ double frame_dt_s = 0.1;
+ double max_track_age_s = 0.75;
 };
 
 // Predictor input: one track plus forecaster parameters. Bounds/dwell come
@@ -69,12 +80,48 @@ std::vector<std::vector<DynamicTrack>> predict_frames(
     const std::vector<PredictInput>& inputs, double time_s, double horizon_s,
     double frame_dt_s, double max_age_s);
 
+PredictionBatch predict_perception(
+ const PerceptionResult& perception, double decision_time_s,
+ DynamicPredictionConfig config = {});
+
+// Continuous-time state and clearance queries over a discrete forecast.
+// States interpolate within each hypothesis; clearance minimizes relative
+// linear motion over the whole interval, so a fast crossing between frames
+// cannot pass through a DWA rollout undetected.
+std::optional<DynamicTrack> predicted_state_at(
+ const PredictedHypothesis& hypothesis, const PredictionBatch& prediction,
+ double future_time_s);
+
+struct PredictedClearance {
+ double clearance_m = std::numeric_limits<double>::infinity();
+ double time_s = std::numeric_limits<double>::infinity();
+ std::uint32_t track_id = 0;
+ std::size_t hypothesis_id = 0;
+};
+
+PredictedClearance minimum_predicted_clearance(
+ const PredictionBatch& prediction, core::Vec2 ego_start,
+ core::Vec2 ego_end, double interval_start_s, double interval_end_s,
+ double ego_radius_m);
+
 inline PredictInput predict_input_from_track(const DynamicTrack& track,
                                              double last_observed_s) {
   PredictInput in;
   in.track_id = track.id;
   in.state = track;
   in.last_observed_s = last_observed_s;
+ in.position_uncertainty_growth_mps =
+ track.position_uncertainty_growth_mps;
+ in.position_uncertainty_cap_m = track.position_uncertainty_cap_m;
+ in.velocity_uncertainty_mps = track.velocity_uncertainty_mps;
+ in.alternate_velocity = track.alternate_velocity;
+ in.alternate_velocity_valid = track.alternate_velocity_valid;
+ in.min_observed = track.min_observed;
+ in.max_observed = track.max_observed;
+ in.bounded_x = track.bounded_x;
+ in.bounded_y = track.bounded_y;
+ in.endpoint_dwell_s = track.endpoint_dwell_s;
+ in.initial_dwell_remaining_s = track.initial_dwell_remaining_s;
   return in;
 }
 

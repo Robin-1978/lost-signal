@@ -155,6 +155,21 @@ bool LocalizationSystem::run_localization(
   LocalizationAction act = supervisor_.next(
       now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
   action = localization_action_name(act);
+ // An explicit SLAM-only deployment trusts the current odometry origin even
+ // when a sparse navigation prior exists. Waiting for a global-search action
+ // here deadlocks because the supervisor deliberately suppresses that action
+ // in this mode, so no keyframe session would ever start.
+ if (!supervisor_.localized() &&
+ supervisor_.startup_mode() == StartupMode::kSlamOnly &&
+ !slam_origin_seeded_) {
+ estimator.seed_pose(est.x_m, est.y_m, est.yaw_rad, 0.1, 0.05,
+ obs.stamp_ns);
+ supervisor_.reset(true);
+ slam_origin_seeded_ = true;
+ action = startup_mode_name(StartupMode::kSlamOnly);
+ supervisor_.record_global(true, ScanMatchResult{});
+ return false;
+ }
   // Deferred startup disambiguation: an ambiguous whole-map search seeds
   // hypotheses instead of guessing; later scans promote or drop them.
  // Deferred hypotheses own their unlocalized scans; ordinary local SLAM

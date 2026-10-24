@@ -147,6 +147,7 @@ void DwaPlanner::reset() {
 
 LocalPlan DwaPlanner::plan(const EstimatedState& est,
                            const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                            const LocalMap& map, const Route& route,
                            const platform::ChassisLimits& limits) {
   LocalPlan out;
@@ -193,8 +194,11 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // the switch: approach the point by bearing, then settle the requested yaw.
  const double goal_distance = std::hypot(goal.x - est.x_m, goal.y - est.y_m);
  const double goal_bearing = std::atan2(goal.y - est.y_m, goal.x - est.x_m);
+ const bool car_like = limits.max_curvature_inv_m > 0.0;
  const double heading_target =
- goal_distance > std::max(0.0, config_.terminal_position_tolerance_m)
+ car_like && std::isfinite(target.yaw_rad)
+ ? target.yaw_rad
+ : goal_distance > std::max(0.0, config_.terminal_position_tolerance_m)
  ? goal_bearing
  : (std::isfinite(target.yaw_rad) ? target.yaw_rad : goal_bearing);
   const double goal_directed_yaw_rate = core::clamp(
@@ -202,25 +206,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
           std::max(dt, predict_T),
       -w_max, w_max);
 
-  // Predict dynamic tracks once per decision; rollouts index into frames.
-  std::vector<PredictInput> inputs;
-  for (const auto& t : perception.tracks)
-    inputs.push_back(predict_input_from_track(t, est.stamp_ns * 1e-9));
-  const double now_s = est.stamp_ns * 1e-9;
-  const auto frames =
-      predict_frames(inputs, now_s, predict_T, dt, /*max_age_s=*/5.0);
   const double ego_radius =
       limits.footprint_radius_m + config_.safety_margin_m;
 
-  auto dynamic_hit = [&](double x, double y, double t) {
-    if (frames.empty()) return false;
-    std::size_t k = static_cast<std::size_t>(t / dt);
-    if (k >= frames.size()) k = frames.size() - 1;
-    for (const auto& s : frames[k]) {
-      const double d = std::hypot(x - s.x_m, y - s.y_m);
-      if (d < ego_radius + s.occupied_radius_m()) return true;
-    }
-    return false;
+ auto dynamic_hit = [&](double x0, double y0, double x1, double y1,
+ double t0, double t1) {
+ return minimum_predicted_clearance(
+ prediction, {x0, y0}, {x1, y1}, t0, t1, ego_radius).clearance_m < 0.0;
   };
 
   std::vector<core::Vec2> reference;
@@ -277,7 +269,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         const double sample_time = time + step_dt;
         samples.push_back({x, y});
         if (!map.segment_is_traversable(previous_x, previous_y, x, y) ||
-            dynamic_hit(x, y, sample_time) ||
+ dynamic_hit(previous_x, previous_y, x, y, time, sample_time) ||
             (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
           collision = true;
           free_time = time;
@@ -303,9 +295,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         distance_sum_m += project_to_path(s, reference).distance_m;
       const auto start_projection = project_to_path({est.x_m, est.y_m}, reference);
       const auto end_projection = project_to_path({x, y}, reference);
+ const double path_heading_target =
+ goal_distance <= std::max(0.0, config_.terminal_position_tolerance_m)
+ ? heading_target
+ : end_projection.tangent_rad;
       const double path_score =
           -distance_sum_m / static_cast<double>(samples.size()) +
-          0.35 * std::cos(core::wrap_angle(end_projection.tangent_rad - heading));
+ 0.35 * std::cos(core::wrap_angle(path_heading_target - heading));
       const double progress_score =
           end_projection.along_m - start_projection.along_m;
       const bool angular_reversal = angular * previous_w_ < -0.04;

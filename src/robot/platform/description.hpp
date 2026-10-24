@@ -53,6 +53,9 @@ struct PlantGeometry {
 struct RobotDescription {
   std::string robot_id;      // e.g. "ro1"
   std::string chassis_kind = "differential";  // selects the chassis factory
+ // ROBOT autonomy selection. Both planners consume the same estimates,
+ // local map and dynamic prediction contract.
+ std::string local_planner_kind = "dwa";
   std::uint64_t version = 1;  // bump on any mount/limit change
   std::vector<LinkMount> links;
   std::vector<SensorMount> sensors;

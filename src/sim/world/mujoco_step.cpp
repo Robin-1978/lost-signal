@@ -180,9 +180,16 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
         impl_->brakes[static_cast<std::size_t>(i)].step(brake_request[i],
                                                         dt_s);
   }
-  // Low-speed smoothing for the brake fade (matches the ServiceBrakePlant
-  // default; M2 feeds it from the drive profile like main's content data).
-  constexpr double kBrakeLowSpeedSmoothingRadps = 0.6;
+  // A service brake is a bounded passive joint-friction constraint. Let
+  // MuJoCo resolve sticking at zero speed: applying an explicit signed
+  // torque from the pre-step velocity can cross zero inside a substep and
+  // make a strong brake alternate direction, injecting a low-speed creep.
+  // frictionloss has torque units for a hinge and enforces exactly the
+  // requested Coulomb capacity without ever driving the shaft.
+  for (int d = 0; d < drive_count_; ++d) {
+    const int dof = drive_dof_[d];
+    if (dof >= 0) model->dof_frictionloss[dof] = brake_capacity_Nm[d];
+  }
   // Mecanum roller stand-in (documented simplification): plain cylinders
   // cannot push sideways, so the 45-degree rollers' lateral effect is
   // applied as a body wrench with the virtual-work dual of the mecanum
@@ -206,11 +213,6 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
                                               motor.free_speed_mps);
       data->qfrc_applied[dof] = motor_N * r;
       motor_N_last[d] = motor_N;
-      if (brake_capacity_Nm[d] > 0.0) {
-        const double direction = std::clamp(
-            data->qvel[dof] / kBrakeLowSpeedSmoothingRadps, -1.0, 1.0);
-        data->qfrc_applied[dof] -= direction * brake_capacity_Nm[d];
-      }
       if (is_mecanum) {
         // Roller signs follow the mecanum map rows (fore, left, yaw):
         // Fx = F0+F1+F2+F3, Fy = -F0+F1+F2-F3,

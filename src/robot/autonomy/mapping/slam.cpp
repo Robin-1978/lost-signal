@@ -426,9 +426,21 @@ SlamLoopResult SlamSession::try_close_loops(
   match_cfg.heading_step_rad = config_.match_heading_step_rad;
   match_cfg.maximum_returns = config_.match_max_beams;
   match_cfg.minimum_overlap = config_.match_minimum_overlap;
+ // The coarse loop lattice deliberately has wider cells than local
+ // tracking. Treat candidates inside one keyframe-spacing neighbourhood as
+ // the same physical mode; otherwise the raster endpoint splat produces
+ // several adjacent, nearly tied cells and the ambiguity gate mistakes a
+ // single broad optimum for two different places.
+ match_cfg.ambiguity_distance_m = std::max(
+ config_.keyframe_translation_m,
+ 2.0 * config_.match_translation_step_m);
+ match_cfg.ambiguity_heading_rad = std::max(
+ config_.keyframe_heading_rad,
+ 2.0 * config_.match_heading_step_rad);
   ScanMatcher matcher(match_cfg);
   matcher.set_lidar_mount(base_from_lidar_);
   const LoopClosureGate gate(config_.gate);
+ std::string last_rejection = "no candidate reached the matcher";
 
   for (const auto& cand : candidates) {
     const SlamKeyframe& old = keyframes_[cand.index];
@@ -447,7 +459,10 @@ SlamLoopResult SlamSession::try_close_loops(
         obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
         est.x_m, est.y_m, est.yaw_rad, sub, obs.stamp_ns, est.roll_rad,
         est.pitch_rad, est.z_m);
- if (!fwd.accepted) continue;
+ if (!fwd.accepted) {
+ last_rejection = "forward match rejected: " + fwd.rejection_reason;
+ continue;
+ }
     // Reverse (two-way support): old scan against a submap from the
     // current scan placed at the FORWARD solution. A one-sided alignment
     // against unrelated geometry must not become a constraint; rendering
@@ -471,7 +486,14 @@ SlamLoopResult SlamSession::try_close_loops(
         old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
         old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
         obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
- if (!rev.accepted || rev.overlap < config_.gate.minimum_overlap) continue;
+ if (!rev.accepted) {
+ last_rejection = "reverse match rejected: " + rev.rejection_reason;
+ continue;
+ }
+ if (rev.overlap < config_.gate.minimum_overlap) {
+ last_rejection = "reverse overlap below loop gate";
+ continue;
+ }
     LoopClosureEvidence evidence;
     evidence.match_score = fwd.score;
     evidence.overlap = std::min(fwd.overlap, rev.overlap);
@@ -481,7 +503,10 @@ SlamLoopResult SlamSession::try_close_loops(
     evidence.information = pose_graph_information(fwd.position_sigma_m,
                                                   fwd.heading_sigma_rad);
     const LoopClosureDecision decision = gate.validate(from, to, evidence);
- if (!decision.accepted) continue;
+ if (!decision.accepted) {
+ last_rejection = decision.diagnostic;
+ continue;
+ }
 
  // Optimize a candidate graph transactionally. Association gates below use
  // the correction the solver would actually publish, and a rejected loop
@@ -495,7 +520,10 @@ SlamLoopResult SlamSession::try_close_loops(
  loop.kind = PoseGraphConstraintKind::LoopClosure;
  PoseGraphBackend candidate_graph = graph_;
  std::string reason;
- if (!candidate_graph.add_constraint(loop, &reason)) continue;
+ if (!candidate_graph.add_constraint(loop, &reason)) {
+ last_rejection = "constraint rejected: " + reason;
+ continue;
+ }
  const PoseGraphOptimizationResult opt = candidate_graph.optimize();
  if (!opt.success) {
  out.diagnostic = "optimization failed: " + opt.diagnostic;
@@ -655,7 +683,7 @@ SlamLoopResult SlamSession::try_close_loops(
     last_result_ = out;
     return out;
   }
-  out.diagnostic = "no candidate verified";
+ out.diagnostic = "no candidate verified: " + last_rejection;
   last_result_ = out;
   return out;
 }

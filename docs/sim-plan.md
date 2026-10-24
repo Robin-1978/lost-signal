@@ -172,6 +172,15 @@ reintegrated by ROBOT. `lost_signal_sim --episode` exports the observation
 stream as deterministic JSONL v2, while `--out` writes an offline mission
 summary with elapsed time, clearance, and energy proxy metrics.
 
+The current MuJoCo brake uses hinge `frictionloss`: a bounded passive
+constraint that can hold zero speed without an explicit torque overshooting
+through zero and injecting reverse creep. IMU synthesis computes
+`q_prev^-1 * q_now` with shortest-arc axis/angle, differentiates world planar
+velocity before rotating acceleration into the body, and obtains vertical
+acceleration from the second derivative of height. REP-103 gravity projection
+uses `R^T(0,0,g)`. The ROBOT attitude filter downweights non-gravity
+acceleration and rate-limits tilt correction while continuing gyro propagation.
+
 ## Phases (in order; each lands green before the next starts)
 
 ### S1 Motor physics (small) — landed (historical: analytic integration loop deleted in M2; effort math kept as the tested spec)
@@ -387,6 +396,31 @@ ownership of stale-frame evidence, shift owns motion); deferred startup
 disambiguation (ambiguous global seeds hypotheses, bounded local match
 per scan, merge/drop/promote/timeout rules, supervisor retry backstops —
 uniform-wall coordinator run refuses to guess for 25 ticks).
+Dynamic prediction and local-planner parity (landed): perception can confirm
+anonymous moving clusters from scan history when no static reference exists;
+every track preserves its acquisition timestamp and bounded uncertainty.
+Behavior, DWA, the new timed-elastic-band planner, and the independent
+validator consume one `PredictionBatch`. Relative motion is checked
+continuously inside each interval, including fast crossings between forecast
+frames. Behavior evaluates a timed suffix of the active route and derives its
+hold/speed cap from braking distance; it refuses to hold when a forecast target
+would collide with a stationary robot, leaving escape selection to the local
+planner and validator. Robot JSON selects `dwa` or `teb`; DWA remains the
+default because a 100-call deterministic comparison measured about 0.11 s for
+DWA and 0.87 s for TEB on the audit machine (TEB about 8 times slower).
+Both planners enforce the declared differential/holonomic/Ackermann
+envelope and receive terrain feasibility through the same planning interface.
+No predictor input comes from actor identity, MuJoCo state, contact truth, or
+scenario future waypoints.
+
+The same `signal_town` `energy_hub` mission with both authored actors provides
+an end-to-end comparison. DWA completed in 1160 steps / 23.2 s with 0
+collisions and 0.110 m truth miss. TEB completed in 2478 steps / 49.56 s with
+0 collisions and 0.241 m truth miss. TEB is intentionally optional: its
+conservative rolling-map band produces more stop cycles, while DWA remains the
+faster default. From standstill, TEB sizes the initial band from the next
+acceleration-reachable command instead of requiring a top-speed multi-metre
+corridor before it can move.
 Next slices:
 ROI-first search (local window, whole-map fallback) + matcher hot-loop
 restructure — only if real-time deployment demands it; sim-time needs

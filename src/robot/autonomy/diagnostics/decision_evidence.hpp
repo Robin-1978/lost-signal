@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -16,6 +17,7 @@ struct DecisionEvidence {
  double observation_time_s{std::numeric_limits<double>::quiet_NaN()};
  std::vector<std::string> observation_refs;
  double prediction_horizon_s{0.0};
+    std::size_t prediction_hypotheses{0};
  double measured_separation_m{std::numeric_limits<double>::quiet_NaN()};
  double predicted_separation_m{std::numeric_limits<double>::quiet_NaN()};
  std::string constraint_code{"none"};

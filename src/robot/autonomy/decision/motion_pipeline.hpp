@@ -20,6 +20,8 @@ struct MotionDecisionResult {
  BehaviorDecision behavior;
  std::string constraint = "none";
  std::string reason = "no-plan";
+ double prediction_horizon_s = 0.0;
+ std::size_t prediction_hypotheses = 0;
 };
 
 class MotionDecisionPipeline {

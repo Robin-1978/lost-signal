@@ -10,7 +10,6 @@
 #include "robot/autonomy/decision/goal_arrival.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
-#include "robot/autonomy/planning/dwa_planner.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/localization/localization_system.hpp"
@@ -54,7 +53,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
       LidarPerceptionConfig perception_config = {},
  GripAdapterConfig grip_config = {},
  double wheel_base_m = 0.56,
- GoalArrivalConfig arrival_config = {});
+ GoalArrivalConfig arrival_config = {},
+ std::string local_planner_kind = "dwa");
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;
@@ -209,6 +209,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::string last_localization_action_ = "init";
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
+ double last_prediction_horizon_s_ = 0.0;
+ std::size_t last_prediction_hypotheses_ = 0;
   // Controlled-stop latch: withholds motion until measured tread settles.
   // Prevents a braking decision on a grade from chattering into a
   // brake/accelerate limit cycle. Independent of planner yaw intent.

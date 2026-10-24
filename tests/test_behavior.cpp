@@ -2,15 +2,17 @@
 #include <cstdio>
 
 #include "robot/autonomy/behavior/behavior.hpp"
+#include "robot/autonomy/planning/prediction.hpp"
 
 int main() {
+ using namespace lost_signal::robot;
   using namespace lost_signal::robot::autonomy;
   using limits_t = lost_signal::robot::platform::ChassisLimits;
 
   limits_t limits{.max_forward_mps = 2.0,
                   .max_yaw_rate_radps = 1.5,
                   .footprint_radius_m = 0.4};
-  WaitOnIntrusionBehavior behavior(2.0);
+ WaitOnIntrusionBehavior behavior;
 
   EstimatedState est;
   est.valid = true;
@@ -48,6 +50,69 @@ int main() {
  crossing.tracks.push_back({10, 0.3, 0.45, 0.0, -0.4, 0.1});
  BehaviorDecision d_cross = behavior.decide(est, crossing, limits);
  assert(d_cross.must_hold);
+
+ // The object starts beside the route and later crosses the robot's current
+ // position. Holding would be unsafe; the route timing moves clear, so the
+ // one-sided behavior layer leaves escape selection to the planner/validator.
+ PerceptionResult approaching_side = clear;
+ DynamicTrack side_track;
+ side_track.id = 11;
+ side_track.x_m = 0.3;
+ side_track.y_m = 1.6;
+ side_track.vy_mps = -1.0;
+ side_track.prediction_ready = true;
+ approaching_side.tracks.push_back(side_track);
+ BehaviorDecision d_side = behavior.decide(est, approaching_side, limits);
+ assert(!d_side.must_hold);
+ assert(d_side.reason == "clear");
+
+ // Conflict geometry follows the route rather than the robot's current
+ // heading. This measured object is straight ahead, but the active route
+ // turns north immediately and does not intersect it.
+ Route north;
+ north.valid = true;
+ north.points.push_back({0.0, 0.0, 0.5 * core::kPi, 1});
+ north.points.push_back({0.0, 3.0, 0.5 * core::kPi, 1});
+ PerceptionResult off_route = clear;
+ DynamicTrack off_route_track;
+ off_route_track.id = 12;
+ off_route_track.x_m = 1.0;
+ off_route_track.y_m = 0.0;
+ off_route_track.radius_m = 0.1;
+ off_route.tracks.push_back(off_route_track);
+ const PredictionBatch off_route_prediction = predict_perception(
+ off_route, 0.0, {.horizon_s = 2.5, .frame_dt_s = 0.1});
+ const BehaviorDecision d_off_route = behavior.decide(
+ est, off_route, off_route_prediction, north, limits);
+ assert(!d_off_route.must_hold);
+
+ // A mature target that will cross the northbound route produces a
+ // braking-derived cap before it becomes an immediate hold. The behavior
+ // has no map labels or simulator identity; route and ROBOT forecast suffice.
+ PerceptionResult route_crossing = clear;
+ DynamicTrack route_track;
+ route_track.id = 13;
+ route_track.x_m = 0.40;
+ route_track.y_m = 0.80;
+ route_track.vx_mps = -1.0;
+ route_track.radius_m = 0.05;
+ route_track.prediction_ready = true;
+ route_crossing.tracks.push_back(route_track);
+ const PredictionBatch route_prediction = predict_perception(
+ route_crossing, 0.0, {.horizon_s = 2.5, .frame_dt_s = 0.1});
+ const BehaviorDecision d_route = behavior.decide(
+ est, route_crossing, route_prediction, north, limits);
+ assert(!d_route.must_hold);
+ assert(d_route.max_forward_mps > 0.0);
+ assert(d_route.max_forward_mps < limits.max_forward_mps);
+ assert(d_route.reason == "route-conflict-speed-cap");
+
+ est.forward_mps = limits.max_forward_mps;
+ const BehaviorDecision d_route_fast = behavior.decide(
+ est, route_crossing, route_prediction, north, limits);
+ assert(d_route_fast.must_hold);
+ assert(d_route_fast.reason == "route-conflict-hold");
+ est.forward_mps = 0.0;
 
   // Unknown evidence (no scan) -> hold, never free space.
   PerceptionResult blind;

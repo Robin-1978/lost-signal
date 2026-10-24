@@ -43,7 +43,7 @@ ctest --test-dir build -V
 
 `tests/check_boundary.py` fails the build if any file under `src/robot/`
 includes a `sim/` header or if a `lost_signal_robot_*` target links a
-`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 47
+`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 52
 tests.
 
 ## Headless run
@@ -70,24 +70,39 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
 ## Capability notes
 
 - Differential and tracked bases run the full mission path. Ackermann now uses
- a ROBOT-side Hybrid-A* global route plus DWA candidates bounded by the
- declared steering curvature; it never turns in place. Mecanum and swerve use
+ a ROBOT-side Hybrid-A* global route plus local candidates bounded by the
+ declared steering curvature; it never turns in place. Robot JSON selects
+ `"local_planner": "dwa"` (default) or `"teb"`; both consume the same
+ ROBOT-side dynamic prediction and independent validator. Mecanum and swerve use
  a slew-limited lateral command window when their declared `max_lateral_mps`
  is non-zero.
-- DWA samples forward and reverse velocity. The validator checks a
-  continuous swept footprint (point-to-segment), not just discrete poses.
+- DWA samples forward and reverse velocity. TEB optimizes a short route-aligned
+ position/time band. The validator checks both static swept footprint and
+ continuous relative motion against predicted tracks, not just discrete poses.
+ Position and yaw remain separate terminal constraints. Differential and
+ holonomic bases settle the requested final yaw inside the position tolerance;
+ Ackermann follows the route heading and remains bounded by
+ `|yaw_rate| <= |speed| * curvature`.
+- Behavior time-parameterizes the active route against the same anonymous
+ dynamic hypotheses, then derives a hold or speed cap from braking distance.
+ A hold is emitted only when staying still is also forecast safe; otherwise
+ the local planner remains free to choose a retreat or lateral escape.
 - Scan consumers share the `angle_min + i * increment` layout helper;
   an unset increment falls back to the legacy full rotation.
 - SLAM submaps exclude returns that disagree with the static reference, so
   moving actors do not become map geometry.
+ Explicit SLAM-only startup anchors the ROBOT odometry estimate once and then
+ builds/localizes in its own map; unknown cells remain unknown until sensor
+ rays or SLAM observations clear them.
 - Sensor delivery realism is opt-in. Decision time is the plant clock;
   observation stamps stay at acquisition, so latency can trip freshness.
 - Scoring is offline only and includes displacement, path length, stops,
  dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
  time, clearance, objective completion ratio, and a duty/speed energy proxy.
  Coordinator remains a sequencing seam; route refresh, motion decisions, and
- conflict prediction live in autonomy modules. Conflict-zone resource policy
- and Hybrid A* path smoothing remain separate extension points.
+ conflict prediction live in autonomy modules. The old authored conflict-zone
+ authority stays SIM-only; its deployable equivalent is the route/prediction
+ entry constraint above. Hybrid A* path smoothing remains in planning.
 - The SIM viewer is presentation-only. It loads optional GLB assets from
   `assets/models` automatically (or `--assets DIR`), with deterministic
   procedural fallbacks. Chassis parts use live MuJoCo joint angles/velocities;

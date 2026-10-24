@@ -3,7 +3,9 @@
 namespace lost_signal::robot::platform {
 
 bool valid_robot_description(const RobotDescription& desc) {
-  if (desc.robot_id.empty()) return false;
+ if (desc.robot_id.empty()) return false;
+ if (desc.local_planner_kind != "dwa" &&
+ desc.local_planner_kind != "teb") return false;
   if (desc.version == 0) return false;
   if (desc.links.empty()) return false;
   if (desc.limits.max_forward_mps <= 0.0) return false;
@@ -25,7 +27,8 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
       h *= 1099511628211ULL;
     }
   };
-  mix(desc.robot_id);
+ mix(desc.robot_id);
+ mix(desc.local_planner_kind);
   mix(std::to_string(desc.version));
   for (const auto& l : desc.links) {
     mix(l.link);
@@ -81,7 +84,8 @@ RobotDescription default_robot_description() {
   desc.limits.footprint_radius_m = 0.4;
   desc.limits.max_steer_rad = 0.55;
   desc.limits.max_lateral_mps = 0.0;
-  desc.chassis_kind = "differential";
+ desc.chassis_kind = "differential";
+ desc.local_planner_kind = "dwa";
   return desc;
 }
 

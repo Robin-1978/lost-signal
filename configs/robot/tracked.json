@@ -97,6 +97,7 @@
       ]
     }
   ],
-  "robot_id": "ro1-tracked",
+ "robot_id": "ro1-tracked",
+ "local_planner": "dwa",
   "version": 2
 }

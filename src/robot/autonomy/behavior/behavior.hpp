@@ -4,6 +4,8 @@
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/perception/perception.hpp"
+#include "robot/autonomy/planning/global_planner.hpp"
+#include "robot/autonomy/planning/prediction.hpp"
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -24,25 +26,47 @@ class IBehaviorPolicy {
   virtual void reset() = 0;
   virtual BehaviorDecision decide(const EstimatedState& est,
                                   const PerceptionResult& perception,
+ const PredictionBatch& prediction,
+ const Route& route,
                                   const platform::ChassisLimits& limits) = 0;
 };
 
-// Hold only for an anonymous track whose measured/predicted footprint
-// conflicts with the ego footprint over a short horizon. The policy uses
-// ROBOT estimate + track state only; it has no simulator or actor semantics.
+struct RouteConflictBehaviorConfig {
+ double near_route_hold_m = 2.0;
+ double prediction_horizon_s = 2.5;
+ double brake_deceleration_mps2 = 2.0;
+ double extra_clearance_m = 0.10;
+};
+
+// Hold or cap only for an anonymous track whose measured/predicted footprint
+// conflicts with the active route. All distances and dynamics are explicit
+// configuration; the policy uses ROBOT estimate + track state only and has no
+// simulator or actor semantics.
 class WaitOnIntrusionBehavior : public IBehaviorPolicy {
  public:
- explicit WaitOnIntrusionBehavior(double hold_radius_m = 2.0,
- double prediction_horizon_s = 2.5);
+ explicit WaitOnIntrusionBehavior(RouteConflictBehaviorConfig config = {});
 
   void reset() override {}
   BehaviorDecision decide(const EstimatedState& est,
                           const PerceptionResult& perception,
+ const PredictionBatch& prediction,
+ const Route& route,
                           const platform::ChassisLimits& limits) override;
+ // Direct-use convenience for unit tests and small integrations. Production
+ // constructs one shared batch in MotionDecisionPipeline.
+ BehaviorDecision decide(const EstimatedState& est,
+ const PerceptionResult& perception,
+ const platform::ChassisLimits& limits) {
+ const double now_s = est.stamp_ns != core::kInvalidTime
+ ? est.stamp_ns * 1e-9
+ : perception.stamp_ns * 1e-9;
+ return decide(est, perception,
+ predict_perception(perception, now_s,
+ {.horizon_s = config_.prediction_horizon_s}), Route{}, limits);
+ }
 
  private:
-  double hold_radius_m_;
- double prediction_horizon_s_;
+ RouteConflictBehaviorConfig config_;
 };
 
 }  // namespace lost_signal::robot::autonomy

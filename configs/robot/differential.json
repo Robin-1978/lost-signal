@@ -133,6 +133,7 @@
       ]
     }
   ],
-  "robot_id": "ro1",
+ "robot_id": "ro1",
+ "local_planner": "dwa",
   "version": 2
 }

@@ -141,6 +141,8 @@ Route AckermannPlanner::plan(const EstimatedState& start,
 
  const std::array<double, 5> steer_factors{-1.0, -0.5, 0.0, 0.5, 1.0};
  const std::array<int, 2> gears{1, -1};
+ const double maximum_curvature =
+ std::tan(config_.max_steer_rad) / config_.wheel_base_m;
  int goal_node = -1;
  int expanded = 0;
  while (!open.empty() && expanded < config_.max_expansions) {
@@ -154,9 +156,12 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  ++expanded;
  const double distance = std::hypot(goal.x_m - current.x,
  goal.y_m - current.y);
+ const double connector_heading_limit = std::min(
+ config_.goal_heading_tolerance_rad,
+ maximum_curvature * std::max(distance, 1e-6));
  if (index != 0 && distance <= config_.goal_position_tolerance_m &&
  std::abs(core::wrap_angle(goal.yaw_rad - current.yaw)) <=
- config_.goal_heading_tolerance_rad) {
+ connector_heading_limit + 1e-9) {
  goal_node = index;
  break;
  }
@@ -226,9 +231,29 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  std::reverse(path.begin(), path.end());
  Route out;
  out.valid = path.size() >= 2;
- out.points.reserve(path.size());
+ out.points.reserve(path.size() + 1);
  for (const auto& node : path)
  out.points.push_back({node.x, node.y, node.yaw, node.gear});
+ const auto& last = out.points.back();
+ const double connector_distance =
+ std::hypot(goal.x_m - last.x_m, goal.y_m - last.y_m);
+ if (connector_distance > 1e-6) {
+ const int samples = std::max(2, static_cast<int>(std::ceil(
+ connector_distance / std::max(0.05, 0.45 * res))));
+ for (int sample = 1; sample <= samples; ++sample) {
+ const double u = static_cast<double>(sample) / samples;
+ if (map.blocked(last.x_m + u * (goal.x_m - last.x_m),
+ last.y_m + u * (goal.y_m - last.y_m))) {
+ return Route{};
+ }
+ }
+ out.points.push_back({goal.x_m, goal.y_m,
+ core::wrap_angle(goal.yaw_rad), last.gear});
+ } else {
+ out.points.back().x_m = goal.x_m;
+ out.points.back().y_m = goal.y_m;
+ out.points.back().yaw_rad = core::wrap_angle(goal.yaw_rad);
+ }
  if (!smooth_ackermann_route(out, {config_.wheel_base_m,
  config_.max_steer_rad, 0.55, 2.0})) {
  return Route{};

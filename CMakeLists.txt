@@ -82,8 +82,11 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/planning/route_smoothing.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
+ src/robot/autonomy/planning/local_planner.cpp
  src/robot/autonomy/planning/route_pipeline.cpp
+ src/robot/autonomy/planning/teb_planner.cpp
   src/robot/autonomy/planning/prediction.cpp
+ src/robot/autonomy/planning/prediction_queries.cpp
   src/robot/autonomy/planning/task/task_ordering.cpp
   src/robot/autonomy/control/stop_latch.cpp
   src/robot/autonomy/diagnostics/decision_evidence.cpp
@@ -417,6 +420,12 @@ add_executable(test_dwa
 )
 target_link_libraries(test_dwa PRIVATE lost_signal_robot_autonomy)
 add_test(NAME dwa COMMAND test_dwa)
+
+add_executable(test_local_planner_compare
+ tests/test_local_planner_compare.cpp
+)
+target_link_libraries(test_local_planner_compare PRIVATE lost_signal_robot_autonomy)
+add_test(NAME local_planner_compare COMMAND test_local_planner_compare)
 
 add_executable(test_safety
   tests/test_safety.cpp

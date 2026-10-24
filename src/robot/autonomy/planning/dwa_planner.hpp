@@ -57,9 +57,22 @@ class DwaPlanner : public ILocalPlanner {
 
   void reset() override;
   LocalPlan plan(const EstimatedState& est,
-                 const PerceptionResult& perception, const LocalMap& map,
+ const PerceptionResult& perception,
+ const PredictionBatch& prediction,
+ const LocalMap& map,
                  const Route& route,
                  const platform::ChassisLimits& limits) override;
+ LocalPlan plan(const EstimatedState& est,
+ const PerceptionResult& perception, const LocalMap& map,
+ const Route& route, const platform::ChassisLimits& limits) {
+ const double now_s = est.stamp_ns != core::kInvalidTime
+ ? est.stamp_ns * 1e-9
+ : perception.stamp_ns * 1e-9;
+ return plan(est, perception,
+ predict_perception(perception, now_s,
+ {.horizon_s = config_.predict_time_s, .frame_dt_s = config_.dt_s}),
+ map, route, limits);
+ }
   // Terrain gate: consulted per rollout segment (empty = obstacle-only).
   void set_terrain_gate(TerrainGate gate) override { gate_ = std::move(gate); }
 

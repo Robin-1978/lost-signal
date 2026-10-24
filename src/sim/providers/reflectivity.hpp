@@ -26,11 +26,19 @@ namespace lost_signal::sim::providers::detail {
 
 inline double surface_reflectivity(const world::World& world, double hx,
                                    double hy, double hit_z_m) {
+  // mj_ray returns a point on the analytic face within solver precision.
+  // Classify that point with a small geometric tolerance: requiring exact
+  // half-open membership can turn a front-face hit a few micrometres before
+  // x0 into a ground return, which also assigns the wrong surface normal.
+  constexpr double kHitToleranceM = 1e-3;
   for (const auto& b : world.static_boxes()) {
     if (!(b.height_m > 0.0)) continue;
-    if (hx >= std::min(b.x0, b.x1) && hx < std::max(b.x0, b.x1) &&
-        hy >= std::min(b.y0, b.y1) && hy < std::max(b.y0, b.y1) &&
-        hit_z_m <= b.height_m + 1e-3) {
+    if (hx >= std::min(b.x0, b.x1) - kHitToleranceM &&
+        hx <= std::max(b.x0, b.x1) + kHitToleranceM &&
+        hy >= std::min(b.y0, b.y1) - kHitToleranceM &&
+        hy <= std::max(b.y0, b.y1) + kHitToleranceM &&
+        hit_z_m >= -kHitToleranceM &&
+        hit_z_m <= b.height_m + kHitToleranceM) {
       return 0.68;  // obstacle prism
     }
   }
@@ -66,13 +74,16 @@ inline float return_intensity(const world::World& world, double hx,
       nz = 0.0;
     }
   } else {
+    constexpr double kHitToleranceM = 1e-3;
     bool on_box = false;
     for (const auto& b : world.static_boxes()) {
       if (!(b.height_m > 0.0)) continue;
       const double xlo = std::min(b.x0, b.x1), xhi = std::max(b.x0, b.x1);
       const double ylo = std::min(b.y0, b.y1), yhi = std::max(b.y0, b.y1);
-      if (hx >= xlo && hx < xhi && hy >= ylo && hy < yhi &&
-          hit_z_m <= b.height_m + 1e-3) {
+      if (hx >= xlo - kHitToleranceM && hx <= xhi + kHitToleranceM &&
+          hy >= ylo - kHitToleranceM && hy <= yhi + kHitToleranceM &&
+          hit_z_m >= -kHitToleranceM &&
+          hit_z_m <= b.height_m + kHitToleranceM) {
         // Axis-aligned prism: the hit face is the nearest boundary plane.
         const double px = std::min(hx - xlo, xhi - hx);
         const double py = std::min(hy - ylo, yhi - hy);

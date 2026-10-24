@@ -57,7 +57,8 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
       desc_(std::move(desc)),
       chassis_(platform::make_chassis(desc_)),
  coordinator_(autonomy_limits_from_description(desc_), 100'000'000,
- perception_config_from(desc_), {}, desc_.plant.wheel_base_m) {
+ perception_config_from(desc_), {}, desc_.plant.wheel_base_m, {},
+ desc_.local_planner_kind) {
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
   coordinator_.set_plant_geometry(desc_.plant);
@@ -69,6 +70,9 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
 
 core::Status RobotApplication::configure() {
   if (!bringup_wired_) return core::Status::Fail("bringup not wired");
+ if (!platform::valid_robot_description(desc_)) {
+ return core::Status::Fail("invalid robot description");
+ }
   if (!chassis_) return core::Status::Fail("unknown chassis kind");
   // Static TF from the description (mount extrinsics); the coordinator
   // refreshes the dynamic map->odom / odom->base edges every update.

@@ -469,7 +469,19 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
       }
     }
   }
-  std::string rid;
+ std::string planner;
+ bool planner_present = false;
+ if (!take_str(obj, "local_planner", planner, planner_present, err)) {
+ return false;
+ }
+ if (planner_present) {
+ if (planner != "dwa" && planner != "teb") {
+ err = "'local_planner' must be 'dwa' or 'teb'";
+ return false;
+ }
+ out.local_planner_kind = planner;
+ }
+ std::string rid;
   bool pr = false;
   if (!take_str(obj, "robot_id", rid, pr, err)) return false;
   if (pr) {
@@ -500,7 +512,8 @@ RobotDescription description_from_config(const RobotConfig& config) {
   desc.links = config.links;
   desc.sensors = config.sensors;
   desc.limits = config.limits;
-  desc.chassis_kind = config.profile.chassis_kind;
+ desc.chassis_kind = config.profile.chassis_kind;
+ desc.local_planner_kind = config.local_planner_kind;
   // Declared plant loadout for autonomy envelopes (description, never
   // truth): COM folds the declared payload master-style (weighted
   // average; payload at chassis COM when unset = pure ballast). The SIM

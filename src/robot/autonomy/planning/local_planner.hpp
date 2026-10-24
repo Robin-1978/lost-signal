@@ -1,11 +1,14 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <string>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
+#include "robot/autonomy/planning/prediction.hpp"
 #include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -44,11 +47,17 @@ class ILocalPlanner {
   virtual void reset() = 0;
   virtual LocalPlan plan(const EstimatedState& est,
                          const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                          const LocalMap& map, const Route& route,
                          const platform::ChassisLimits& limits) = 0;
   // Terrain gate for rollout sampling (default ignores: pure obstacle
   // sampling, legacy behavior exactly).
   virtual void set_terrain_gate(TerrainGate gate) { (void)gate; }
 };
+
+// Planner construction belongs to the planning module. Unknown names fail
+// closed with nullptr; the coordinator only owns and sequences the result.
+std::unique_ptr<ILocalPlanner> make_local_planner(
+ const std::string& planner_kind);
 
 }  // namespace lost_signal::robot::autonomy

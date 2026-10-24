@@ -143,6 +143,70 @@ int main() {
     assert(r.tracks.empty());
   }
 
+ // A ROBOT occupancy prior supplies the static reference without a simulator
+ // actor-free scan. Returns on the mapped wall stay static; a closer return is
+ // foreground. Unknown cells would fall back to temporal scan tracking.
+ {
+ LidarPerception perc;
+ lost_signal::robot::iface::MapSnapshot map;
+ map.map_id = "prior";
+ map.revision = 1;
+ map.width = 200;
+ map.height = 200;
+ map.resolution_m = 0.1;
+ map.origin_x_m = -10.0;
+ map.origin_y_m = -10.0;
+ map.occupancy.assign(map.width * map.height, 0);
+ for (int gy = 85; gy <= 115; ++gy) {
+ map.occupancy[static_cast<std::size_t>(gy) * map.width + 130] = 100;
+ }
+ perc.set_static_map(map);
+ for (int frame = 0; frame < 4; ++frame) {
+ auto wall = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38, 3.0f);
+ wall.scan_static_valid = false;
+ wall.static_ranges_m.clear();
+ assert(perc.update(wall, origin()).tracks.empty());
+ }
+ auto nearer = make_scan(500'000'000LL, 10.0f, 34, 38, 2.0f);
+ nearer.scan_static_valid = false;
+ nearer.static_ranges_m.clear();
+ assert(perc.update(nearer, origin()).tracks.size() == 1);
+ }
+
+ // Mapless/SLAM startup: static compact returns remain unpublished, while a
+ // repeatedly moving cluster becomes an anonymous dynamic track using only
+ // scan history in the estimated map frame.
+ {
+ LidarPerception perc;
+ PerceptionResult result;
+ for (int frame = 0; frame < 6; ++frame) {
+ auto obs = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38,
+ 3.0f + 0.10f * static_cast<float>(frame));
+ obs.scan_static_valid = false;
+ obs.static_ranges_m.clear();
+ result = perc.update(obs, origin());
+ if (frame < 3) assert(result.tracks.empty());
+ }
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().prediction_ready);
+ assert(result.tracks.front().vx_mps > 0.3);
+ assert(result.tracks.front().last_observed_ns == 600'000'000LL);
+ }
+ {
+ LidarPerception perc;
+ PerceptionResult result;
+ for (int frame = 0; frame < 8; ++frame) {
+ auto obs = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38, 3.0f);
+ obs.scan_static_valid = false;
+ obs.static_ranges_m.clear();
+ result = perc.update(obs, origin());
+ }
+ assert(result.tracks.empty());
+ }
+
  // Unknown environment: raw returns build static occupancy, while a
  // currently associated dynamic return is kept out of the persistent map.
  {

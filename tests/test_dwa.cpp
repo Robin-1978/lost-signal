@@ -79,7 +79,28 @@ int main() {
            a.best.yaw_rate_radps == b.best.yaw_rate_radps);
   }
 
-  // DWA threads a gap: wall with a 2 m opening, goal straight through.
+ // Inside the final position tolerance, terminal yaw owns heading authority.
+ // The last route segment may point elsewhere after grid quantization; it
+ // must not make the planner hold forever beside a correctly reached goal.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.05;
+ est.yaw_rad = -0.6;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{1.0, 0.0, M_PI, 0}, {0.0, 0.0, 0.0, 0}};
+ DwaPlanner planner;
+ const LocalPlan p = planner.plan(est, perc, m, route, limits);
+ assert(p.has_plan);
+ assert(p.best.yaw_rate_radps > 0.05);
+ }
+
+ // DWA threads a gap: wall with a 2 m opening, goal straight through.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
  fill_box(m, 4.0, -5.0, 5.0, -1.0);

@@ -525,10 +525,11 @@ int main() {
       }
     }
     assert(coord.localized());
-    // Odometry ran 3x20 ms at 1 m/s from the origin: estimate tracks it,
-    // SLAM keyframed the motion.
+ // The first sample establishes the time origin. Two subsequent 20 ms
+ // intervals at 1 m/s produce 0.04 m; startup must not invent motion before
+ // the first timestamp or discard motion after it.
     assert(coord.estimate().valid);
-    assert(std::abs(coord.estimate().x_m - 0.06) < 1e-9);
+ assert(std::abs(coord.estimate().x_m - 0.04) < 1e-9);
     assert(coord.slam_keyframes() >= 1);
     // Selector contract, unit level.
     assert(select_startup_mode(true, true).mode ==
@@ -537,6 +538,34 @@ int main() {
            StartupMode::kGlobalSearch);
     assert(select_startup_mode(false, false).mode == StartupMode::kSlamOnly);
   }
+
+ // 9. An explicit SLAM-only deployment does not wait for global search even
+ // if a known raster is available. The raster may be a sparse navigation
+ // prior rather than a localization authority; the ROBOT odometry origin is
+ // established once and SLAM starts immediately.
+ {
+ AutonomyCoordinator coord;
+ coord.set_startup_mode(StartupMode::kSlamOnly);
+ assert(coord.configure().ok && coord.activate().ok);
+ auto map = make_wall_map();
+ iface::ObservationFrame o;
+ o.sequence = 1;
+ o.stamp_ns = 20'000'000;
+ o.source = "t.lidar";
+ o.frame = core::Frame::kLidarLink;
+ o.odometry_valid = true;
+ o.forward_mps = 0.5;
+ o.scan_valid = true;
+ o.ranges_m.assign(72, 10.0f);
+ o.scan_angle_min_rad = -M_PI;
+ o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
+ coord.ingest_observation(o);
+ coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+ assert(coord.localized());
+ assert(coord.last_localization_action() == "slam-only");
+ assert(std::abs(coord.estimate().x_m) < 1e-12);
+ assert(coord.slam_keyframes() >= 1);
+ }
 
   std::printf("localization ok\n");
   return 0;

@@ -14,17 +14,20 @@ flowchart LR
   Obs["ObservationFrame<br/>(validated, sequenced)"] --> Est["IEstimator<br/>estimation/estimator.hpp<br/>FusedOdometryEstimator"]
   Est -->|"EstimatedState"| Per["IPerception<br/>perception/perception.hpp<br/>NullPerception"]
   Obs --> Per
-  Per -->|"PerceptionResult<br/>tracks + scan_ok"| Beh["IBehaviorPolicy<br/>behavior/behavior.hpp<br/>WaitOnIntrusionBehavior"]
+ Per -->|"PerceptionResult<br/>tracks + scan_ok"| Pred["Dynamic predictor<br/>planning/prediction.hpp<br/>shared hypotheses"]
+ Pred --> Beh["IBehaviorPolicy<br/>behavior/behavior.hpp<br/>WaitOnIntrusionBehavior"]
   Est --> Beh
-  Beh -->|"BehaviorDecision<br/>hold / speed cap"| LP["ILocalPlanner<br/>planning/dwa_planner.hpp<br/>DwaPlanner"]
+ Beh -->|"BehaviorDecision<br/>hold / speed cap"| LP["ILocalPlanner<br/>DwaPlanner / TebPlanner"]
   Per -->|"PerceptionResult<br/>tracks + scan_ok"| Map["IMapper<br/>mapping/mapper.hpp<br/>NullMapper"]
   Obs --> Map
   Est --> Map
   Map -->|"LocalMap"| LP
   Est --> LP
+ Pred --> LP
   LP -->|"LocalCandidate"| Val["IValidator<br/>validation/validator.hpp<br/>ClearanceValidator"]
   Est --> Val
   Per --> Val
+ Pred --> Val
   Obs --> Val
   Val -->|"ValidationResult"| Ctl["IController<br/>control/controller.hpp<br/>DirectController"]
   Est --> Ctl
@@ -38,26 +41,26 @@ flowchart LR
  GP -->|"active Route"| LP
 ```
 
-`DwaPlanner` samples the dynamic window from measured twist, rolls out with
-response delay, checks static collision on the optimistic map view and
-dynamic collision on predicted track frames, and scores goal / heading /
-clearance / path / progress / oscillation. It emits one feasible
-`LocalCandidate` toward the route lookahead; without a goal there is no
-route and the chain holds. Ackermann candidates are bounded by the declared
-wheelbase/steering curvature and cannot turn in place; holonomic lateral
-commands use a slew-limited command window instead of reopening the full
-sideways range on every decision. `ClearanceValidator` accepts the result against
-raw scan evidence, `DirectController` emits canonical `kStop`/command, and
-the safety gate has the last word. Wheel-space windows and actuator
-identification stay out: the `IChassis` wrapper owns the real base.
+`local_planner` in the robot configuration selects `dwa` (default) or `teb`.
+Both planners consume the same estimate, local map, route, chassis limits and
+ROBOT-side `PredictionBatch`, and both emit one reachable `LocalCandidate`.
+`DwaPlanner` samples the measured-twist dynamic window and scores complete
+rollouts. `TebPlanner` optimizes a short route-aligned band in position and
+time against smoothness, static clearance and dynamic hypotheses, then derives
+only the first chassis-reachable command. Ackermann curvature and holonomic
+lateral limits apply to both. `ClearanceValidator` independently checks the
+result against raw scan evidence and the same continuous-time prediction;
+`DirectController` emits canonical `kStop`/command, and the safety gate has the
+last word. Unknown planner names fail configuration.
 
 ## Ownership rules
 
 - Estimation consumes odometry/IMU prediction + scan/map correction only.
   No truth, no map mutation, no command selection. `FusedOdometryEstimator`
   blends gyro-led yaw (with a slip gate that trusts the IMU and inflates
-  covariance when wheels disagree), integrates a quaternion complementary
-  attitude filter (gyro propagation, gravity-tilt correction), dead-reckons
+ covariance when wheels disagree), integrates a quaternion complementary
+ attitude filter (gyro propagation plus magnitude-gated, rate-limited
+ gravity-tilt correction), dead-reckons
   z from pitch (`dz = forward·sin(pitch)` — no map correction observes it,
   the raster is 2D), and grows sigmas with motion and time. Roll/pitch/z
   ride in `EstimatedState` with an `attitude_valid` flag: planar position +
@@ -67,15 +70,14 @@ identification stay out: the `IChassis` wrapper owns the real base.
  unchanged. The scale is never derived from simulator contact or material
  truth.
 - Perception owns tracks + free-space evidence. `scan_ok == false` means
-  unknown, never free space. No actor IDs cross. `LidarPerception` splits
-  foreground by disagreeing with a static reference (map raycast or surveyed
-  scan); without one, classification is unavailable and no tracks publish,
-  while `scan_ok` stays true so raw safety coverage is retained. Foreground
-  beams cluster into candidates, nearest-neighbor association keeps
- identities, and velocity is averaged since first sighting (finite
- differences amplify centroid quantization into m/s noise). Tracks carry
- `prediction_ready` once they have history; avoidance consumes unready
- tracks conservatively.
+ unknown, never free space. No actor IDs cross. With a static reference,
+ `LidarPerception` extracts foreground from scan disagreement. Without one,
+ it associates compact return clusters across scans in the estimated map
+ frame and publishes only after repeated measured motion; static clusters
+ remain map evidence. One-to-one predicted association, alpha-beta correction
+ and a recent time-window fit estimate velocity and uncertainty. Tracks carry
+ their actual last acquisition time and `prediction_ready`; local collision
+ checks still consume immature tracks conservatively.
 - Mapping owns the rolling local model. It never writes the static
   `MapSnapshot` revision; that is an explicit provider publication.
   `LocalMap` carries real occupancy (`-1` unknown, `0` free, `100`
@@ -89,12 +91,15 @@ identification stay out: the `IChassis` wrapper owns the real base.
  sensor-versus-SLAM provenance for diagnostics. Accepted SLAM loop closure
  replays keyframes into the same mapper; simulator terrain and contact
  truth never enter this path.
-- Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: tracks +
- estimate in, ONE constraint (hold / speed cap) out. The default policy
- predicts closest relative approach over a short horizon using track
- geometry, velocity, and the declared ego footprint; objects behind or beside
- the base do not cause a global stop. It selects no trajectory and emits no
- command. A hold short-circuits sampling but still passes validator +
+- Behavior (`IBehaviorPolicy`) is the dynamic-decision layer: active route +
+ estimate + the shared prediction batch in, ONE constraint (hold / speed cap)
+ out. The default policy projects the ROBOT-estimated pose onto the route,
+ time-parameterizes its suffix at the declared speed, and checks continuous
+ relative motion on every forecast interval. A braking-distance calculation
+ determines the cap or hold. If staying still is itself forecast to collide,
+ behavior emits no one-sided hold and lets the local planner choose a retreat
+ or lateral escape. Objects outside the route envelope do not cause a global
+ stop. It selects no trajectory and emits no command. A hold short-circuits sampling but still passes validator +
  controller + safety, so the evidence chain stays uniform.
   Task-level policy (which goal, return-to-charge) stays in `RobotExecutive`,
   one timescale above behavior; trajectory sampling stays below it.
@@ -121,6 +126,10 @@ identification stay out: the `IChassis` wrapper owns the real base.
  when its kinematic configuration or state budget is invalid. It never
  falls back to a holonomic path. A vector-only map receives a straight-line
  seed and still requires local-map and validator admission.
+ Goal admission also checks whether the remaining heading error is reachable
+ over the remaining distance at the declared maximum curvature. An accepted
+ path receives an occupancy-checked connector to the exact goal pose before
+ smoothing, so a tolerance hit cannot end beside the requested point.
   The static provider publishes surveyed elevation alongside occupancy
   (ramps, decks; NaN where unsurveyed). A* adds a grade cost per meter of
   elevation change and rejects steps steeper than `max_grade` outright, so
@@ -131,13 +140,21 @@ identification stay out: the `IChassis` wrapper owns the real base.
   `base<-lidar` before projecting endpoints to the 2D raster. Rolling local
   grade response (DWA descent braking, rollover limits) builds on this;
   the pose graph itself stays SE(2).
-- Local planning is DWA at decision rate and returns one feasible
-  `LocalCandidate{forward, yaw_rate, cost}`. Score is a preference; only the
-  validator decides admissibility. Every outcome (hold, plan, no-plan, veto)
+- Local planning is selected per robot as DWA or timed elastic band at
+ decision rate and returns one feasible
+ `LocalCandidate{forward, lateral, yaw_rate, cost}`. DWA score and TEB band
+ cost are preferences; only the validator decides admissibility. Every outcome (hold, plan, no-plan, veto)
   funnels into one command with no early returns, so the safety gate below
   runs unconditionally.
+ Both planners treat terminal position and yaw as separate constraints.
+ Differential and holonomic bases track the final route yaw inside the
+ terminal position tolerance. Ackermann follows the route heading and cannot
+ rotate in place because its curvature bound is applied after heading
+ selection.
 - Validation is independent: it re-checks the exact candidate against raw
-  scan evidence (missing/stale scan rejects motion, hold passes). Motion
+ scan evidence and the shared dynamic hypotheses. Relative ego/object motion
+ is minimized continuously on every prediction interval, so a fast crossing
+ between two frames cannot disappear. Missing/stale scan rejects motion; hold passes. Motion
   needs footprint plus braking distance (`v^2/2a`) of clearance. Admission
   never waives clearance, and a rejection is always a safe stop, never a
   re-planned command.
@@ -201,8 +218,9 @@ route, pre-activation hold).
  preempts the running goal, and arrival inside a footprint-derived stop band
  (at least 0.5 m) completes it. SIM submits the same typed intents as an
  operator.
-- `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
-  samples trajectories (forward/yaw always, lateral only when the chassis
+- `BehaviorPolicy` turns tracks + estimate + shared prediction into one
+ constraint; the selected `DWA` or `TEB` planner produces a candidate
+ (forward/yaw always, lateral only when the chassis
   envelope carries `max_lateral_mps > 0`); the controller emits `kHolonomic`
   iff the winning candidate strafes, else `kYawRate` (ackermann converts
   yaw to steer in the chassis via the bicycle model; `kSteerAngle` stays
@@ -231,7 +249,8 @@ route, pre-activation hold).
   for diagnostics (consumers read quality/confidence, never thresholds).
 - `select_startup_mode` picks the init frontend from map/prior
   availability (seed-and-track / global-search / slam-only); the
-  coordinator auto-seeds the odometry origin once when mapless.
+ localization system auto-seeds the current ROBOT odometry origin once for an
+ explicit SLAM-only deployment, even if a sparse prior object is present.
 - `GlobalSearcher` (kidnap recovery / cold start): coarse pass over free
   raster cells x headings with a downsampled beam subset, top-K survivors
   each refined by the bounded local matcher, then a strict twin check —
@@ -253,6 +272,10 @@ route, pre-activation hold).
   scan must match the old submap AND the old scan must match a submap
   rendered at the forward solution (rendering at the drifted estimate
   would offset the check by the drift being measured).
+ Adjacent coarse-lattice hypotheses inside one keyframe-spacing neighborhood
+ count as one physical mode, preventing a broad peak from being rejected as
+ two distinct places. Matcher and loop-gate rejection reasons remain in
+ diagnostics.
 - `LoopClosureGate` enforces temporal separation, candidate distance, and
   two-way overlap/margin before any constraint reaches the graph.
 - An accepted closure snaps the live estimate (rigid delta compose, so a
@@ -323,9 +346,10 @@ route, pre-activation hold).
 ## Validation (trajectory verdicts with minimum-risk escape)
 
 - `ClearanceValidator` rolls out the exact candidate twist (constant-twist
-  arc integration, 2 s horizon) against raw scan endpoints in the map
-  frame and linearly predicted tracks — never planner state, never the
-  map it might validate against.
+ arc integration, 2 s horizon) against raw scan endpoints in the map frame
+ and the same timestamped multi-hypothesis prediction used by behavior and
+ local planning. It checks continuous relative motion over each interval,
+ never planner state or simulator truth.
 - Verdicts: `Accepted`, `MinimumRiskEscape` (starts inside the margin but
   a slow creep gains clearance where holding strands the base; capped at
   0.3 m/s, needs +0.15 m gain), `StaticCollision` (swept footprint hits

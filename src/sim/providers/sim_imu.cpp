@@ -113,7 +113,13 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   const robot::core::Quaternion body_q =
       robot::core::quaternion_from_rpy(roll, pitch,
                                        world_->truth().body_yaw_rad);
-  double alpha_z = 0.0, acc_f = 0.0, acc_l = 0.0, acc_u = 0.0;
+  const double yaw = world_->truth().body_yaw_rad;
+  const double cy = std::cos(yaw), sy = std::sin(yaw);
+  const double world_vx = cy * fwd - sy * lat;
+  const double world_vy = sy * fwd + cy * lat;
+  double world_vz = 0.0;
+  double alpha_z = 0.0;
+  robot::core::Vec3 origin_accel_b{};
   double omegax = 0.0, omegay = 0.0, alphax = 0.0, alphay = 0.0;
   const bool stepped =
       has_prev_attitude_ && prev_stamp_s_ >= 0.0 && stamp_s > prev_stamp_s_;
@@ -121,35 +127,65 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
     const double dt = stamp_s - prev_stamp_s_;
     alpha_z = (w - prev_yaw_rate_radps_) / dt;
     if (std::isfinite(fwd) && std::isfinite(lat) &&
-        std::isfinite(prev_fwd_mps_) && std::isfinite(prev_lat_mps_)) {
-      acc_f = (fwd - prev_fwd_mps_) / dt;
-      acc_l = (lat - prev_lat_mps_) / dt;
+        std::isfinite(world_vx) && std::isfinite(world_vy) &&
+        std::isfinite(prev_world_vx_mps_) &&
+        std::isfinite(prev_world_vy_mps_)) {
+      const robot::core::Vec3 accel_w{
+          (world_vx - prev_world_vx_mps_) / dt,
+          (world_vy - prev_world_vy_mps_) / dt, 0.0};
+      const robot::core::Quaternion body_q_inv{
+          -body_q.x, -body_q.y, -body_q.z, body_q.w};
+      origin_accel_b = robot::core::rotate_vector(body_q_inv, accel_w);
     }
     if (std::isfinite(bz) && std::isfinite(prev_body_z_m_)) {
-      acc_u = (bz - prev_body_z_m_) / dt;
+      world_vz = (bz - prev_body_z_m_) / dt;
+      if (has_prev_vertical_velocity_ && std::isfinite(world_vz) &&
+          std::isfinite(prev_world_vz_mps_)) {
+        const robot::core::Vec3 vertical_accel_w{
+            0.0, 0.0, (world_vz - prev_world_vz_mps_) / dt};
+        const robot::core::Quaternion body_q_inv{
+            -body_q.x, -body_q.y, -body_q.z, body_q.w};
+        const robot::core::Vec3 vertical_accel_b =
+            robot::core::rotate_vector(body_q_inv, vertical_accel_w);
+        origin_accel_b.x += vertical_accel_b.x;
+        origin_accel_b.y += vertical_accel_b.y;
+        origin_accel_b.z += vertical_accel_b.z;
+      }
+      has_prev_vertical_velocity_ = true;
     }
     // Body-frame roll/pitch rates from the attitude delta: dq = q_prev^-1
     // q_now, axis-angle / dt. Small-angle form (poll cadence, MEMS grade).
     const robot::core::Quaternion dq{
-        prev_body_q_.w * body_q.x + prev_body_q_.x * body_q.w +
-            prev_body_q_.y * body_q.z - prev_body_q_.z * body_q.y,
-        prev_body_q_.w * body_q.y - prev_body_q_.x * body_q.z +
-            prev_body_q_.y * body_q.w + prev_body_q_.z * body_q.x,
-        prev_body_q_.w * body_q.z + prev_body_q_.x * body_q.y -
-            prev_body_q_.y * body_q.x + prev_body_q_.z * body_q.w,
+        prev_body_q_.w * body_q.x - prev_body_q_.x * body_q.w -
+            prev_body_q_.y * body_q.z + prev_body_q_.z * body_q.y,
+        prev_body_q_.w * body_q.y + prev_body_q_.x * body_q.z -
+            prev_body_q_.y * body_q.w - prev_body_q_.z * body_q.x,
+        prev_body_q_.w * body_q.z - prev_body_q_.x * body_q.y +
+            prev_body_q_.y * body_q.x - prev_body_q_.z * body_q.w,
         prev_body_q_.w * body_q.w + prev_body_q_.x * body_q.x +
             prev_body_q_.y * body_q.y + prev_body_q_.z * body_q.z};
     if (std::isfinite(dq.x) && std::isfinite(dq.y) &&
-        std::isfinite(dq.w)) {
-      omegax = 2.0 * dq.x / dt;
-      omegay = 2.0 * dq.y / dt;
+ std::isfinite(dq.z) && std::isfinite(dq.w)) {
+ // Exact shortest-arc axis/angle. q and -q encode the same attitude;
+ // choosing w >= 0 prevents a representation sign flip from appearing as
+ // an almost-2pi angular-rate impulse.
+ const double sign = dq.w < 0.0 ? -1.0 : 1.0;
+ const double vx = sign * dq.x, vy = sign * dq.y, vz = sign * dq.z;
+ const double vw = sign * dq.w;
+ const double vector_norm = std::hypot(vx, vy, vz);
+ const double rate_scale = vector_norm > 1e-12
+ ? 2.0 * std::atan2(vector_norm, vw) / (vector_norm * dt)
+ : 2.0 / dt;
+ omegax = vx * rate_scale;
+ omegay = vy * rate_scale;
       alphax = (omegax - prev_omega_x_) / dt;
       alphay = (omegay - prev_omega_y_) / dt;
     }
   }
   prev_yaw_rate_radps_ = w;
-  prev_fwd_mps_ = fwd;
-  prev_lat_mps_ = lat;
+  prev_world_vx_mps_ = world_vx;
+  prev_world_vy_mps_ = world_vy;
+  if (stepped && std::isfinite(world_vz)) prev_world_vz_mps_ = world_vz;
   prev_body_z_m_ = bz;
   prev_body_q_ = body_q;
   prev_omega_x_ = omegax;
@@ -194,15 +230,18 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   const double ce_x = wy * iz - wz * iy;
   const double ce_y = wz * ix - wx * iz;
   const double ce_z = wx * iy - wy * ix;
-  const robot::core::Vec3 lever_b{acc_f + er_x + ce_x, acc_l + er_y + ce_y,
-                                  acc_u + er_z + ce_z};
+  const robot::core::Vec3 lever_b{
+      origin_accel_b.x + er_x + ce_x,
+      origin_accel_b.y + er_y + ce_y,
+      origin_accel_b.z + er_z + ce_z};
   const robot::core::Vec3 lever_s =
       robot::core::rotate_vector(mount_q_inv, lever_b);
-  // Gravity in the true body attitude (specific force opposes gravity):
-  // level reads +g on z; pitch/roll project it onto x/y. Derived as
-  // -(R_y(pitch) R_x(roll) (0,0,-g)): yaw never moves the gravity vector.
-  const robot::core::Vec3 grav_b{9.81 * std::cos(roll) * std::sin(pitch),
-                                 -9.81 * std::sin(roll),
+ // Gravity in the true body attitude (specific force opposes gravity):
+ // level reads +g on z; pitch/roll project it onto x/y. For
+ // R = Rz(yaw) Ry(pitch) Rx(roll), body specific force is
+ // R^T(0, 0, g). Yaw therefore drops out exactly.
+ const robot::core::Vec3 grav_b{-9.81 * std::sin(pitch),
+ 9.81 * std::sin(roll) * std::cos(pitch),
                                  9.81 * std::cos(pitch) * std::cos(roll)};
   const robot::core::Vec3 grav_s =
       robot::core::rotate_vector(mount_q_inv, grav_b);

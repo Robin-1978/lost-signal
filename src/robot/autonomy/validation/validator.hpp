@@ -11,6 +11,7 @@
 #include "robot/autonomy/mapping/terrain_math.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
+#include "robot/autonomy/planning/prediction.hpp"
 #include "robot/core/geometry.hpp"
 #include "robot/iface/map.hpp"
 #include "robot/iface/observation.hpp"
@@ -185,7 +186,16 @@ class IValidator {
   virtual ValidationResult validate(const LocalCandidate& candidate,
                                     const EstimatedState& est,
                                     const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                                     const iface::ObservationFrame& obs) = 0;
+ ValidationResult validate(const LocalCandidate& candidate,
+ const EstimatedState& est, const PerceptionResult& perception,
+ const iface::ObservationFrame& obs) {
+ const double now_s = est.stamp_ns != core::kInvalidTime
+ ? est.stamp_ns * 1e-9 : perception.stamp_ns * 1e-9;
+ return validate(candidate, est, perception,
+ predict_perception(perception, now_s), obs);
+ }
  // Lidar mount from the TF tree (coordinator fans out). Default ignore.
  virtual void set_lidar_mount(const core::RigidTransform& mount) {
  (void)mount;
@@ -204,10 +214,19 @@ class IValidator {
   virtual ValidationResult validate(const LocalCandidate& candidate,
                                     const EstimatedState& est,
                                     const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                                     const iface::ObservationFrame& obs,
                                     const SurveyContext& survey) {
     (void)survey;
-    return validate(candidate, est, perception, obs);
+ return validate(candidate, est, perception, prediction, obs);
+ }
+ ValidationResult validate(const LocalCandidate& candidate,
+ const EstimatedState& est, const PerceptionResult& perception,
+ const iface::ObservationFrame& obs, const SurveyContext& survey) {
+ const double now_s = est.stamp_ns != core::kInvalidTime
+ ? est.stamp_ns * 1e-9 : perception.stamp_ns * 1e-9;
+ return validate(candidate, est, perception,
+ predict_perception(perception, now_s), obs, survey);
   }
 };
 
@@ -220,6 +239,7 @@ class IValidator {
 // check (dead-reckoning start, never a silent full validation).
 class ClearanceValidator : public IValidator {
  public:
+ using IValidator::validate;
   explicit ClearanceValidator(ClearanceValidatorConfig config = {})
       : config_(config) {}
 
@@ -242,8 +262,9 @@ class ClearanceValidator : public IValidator {
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& est,
                             const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                             const iface::ObservationFrame& obs) override {
-    return validate_impl(candidate, est, perception, obs, nullptr);
+ return validate_impl(candidate, est, perception, prediction, obs, nullptr);
   }
   // Survey-aware validation: endpoints consistent with surveyed ground are
   // not obstacles, and the rollout is gated on the surveyed grade (same
@@ -252,16 +273,18 @@ class ClearanceValidator : public IValidator {
   ValidationResult validate(const LocalCandidate& candidate,
                             const EstimatedState& est,
                             const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                             const iface::ObservationFrame& obs,
                             const SurveyContext& survey) override {
     const SurveyContext* ctx =
         survey.usable(est) ? &survey : nullptr;
-    return validate_impl(candidate, est, perception, obs, ctx);
+ return validate_impl(candidate, est, perception, prediction, obs, ctx);
   }
 
   ValidationResult validate_impl(const LocalCandidate& candidate,
                                  const EstimatedState& est,
                                  const PerceptionResult& perception,
+ const PredictionBatch& prediction,
                                  const iface::ObservationFrame& obs,
                                  const SurveyContext* survey) {
     ValidationResult out;
@@ -473,21 +496,22 @@ class ClearanceValidator : public IValidator {
  }
                 }
                 min_clear = std::min(min_clear, sample_min);
-                prev_x = ax;
-                prev_y = ay;
       if (s == steps) end_clear = sample_min;
-      // Dynamic: tracks propagated linearly to the sample time.
-      for (const auto& track : perception.tracks) {
-        const double tx = track.x_m + track.vx_mps * t;
-        const double ty = track.y_m + track.vy_mps * t;
-        if (std::hypot(tx - ax, ty - ay) <
-            config_.footprint_radius_m + track.occupied_radius_m()) {
+ // Dynamic: use the same hypotheses and acquisition clock as behavior and
+ // DWA, minimizing relative motion continuously over this rollout interval.
+ // Point samples alone miss a fast pedestrian crossing between frames.
+ const PredictedClearance dynamic_clearance = minimum_predicted_clearance(
+ prediction, {prev_x, prev_y}, {ax, ay},
+ (s - 1) * config_.rollout_dt_s, t,
+ config_.footprint_radius_m);
+ if (dynamic_clearance.clearance_m < 0.0) {
           out.verdict = TrajectoryVerdict::kDynamicCollision;
           out.min_clearance_m = min_clear;
           out.reason = "dynamic collision on rollout";
           return out;
-        }
-      }
+ }
+ prev_x = ax;
+ prev_y = ay;
       // Surveyed grade gates (same caps as route choice, one doctrine):
       // unclimbable along-track grade or rollover-risk cross-slope rejects
       // the rollout. Unknown survey reads flat and passes (the raw-scan

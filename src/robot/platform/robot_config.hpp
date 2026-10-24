@@ -35,6 +35,7 @@ struct RobotConfig {
   double brake_apply_time_s = 0.12;
   double brake_release_time_s = 0.08;
   std::string robot_id = "ro1";
+ std::string local_planner_kind = "dwa";
   std::uint64_t version = 1;
 };
 

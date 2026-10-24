@@ -10,16 +10,13 @@
 
 namespace lost_signal::robot::autonomy {
 
-namespace {
-
-}  // namespace
-
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
                                          LidarPerceptionConfig perception_config,
  GripAdapterConfig grip_config,
  double wheel_base_m,
- GoalArrivalConfig arrival_config)
+ GoalArrivalConfig arrival_config,
+ std::string local_planner_kind)
     : limits_(limits),
       grip_(grip_config),
  goal_arrival_(arrival_config),
@@ -29,7 +26,7 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       mapper_(std::make_unique<RayClearingMapper>()),
       behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
  global_planner_(make_global_planner(limits, wheel_base_m)),
-      local_planner_(std::make_unique<DwaPlanner>()),
+      local_planner_(make_local_planner(local_planner_kind)),
       validator_(std::make_unique<ClearanceValidator>(
           ClearanceValidatorConfig{limits.footprint_radius_m})),
       controller_(std::make_unique<DirectController>()),
@@ -42,7 +39,8 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
   // collisions at plan time, the validator still owns the veto. Unknown
   // elevation reads feasible (optimistic sampling); the gate opens fully
   // before the first survey bind, legacy behavior exactly.
-  local_planner_->set_terrain_gate([this](double x0, double y0, double x1,
+    if (local_planner_) local_planner_->set_terrain_gate(
+        [this](double x0, double y0, double x1,
                                           double y1, double yaw) {
  if (!traversal_.terrain_gate_resolved(estimator_->estimate(),
  limits_.footprint_radius_m)) {
@@ -53,6 +51,9 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
 }
 
 core::Status AutonomyCoordinator::configure() {
+    if (!local_planner_) {
+        return core::Status::Fail("autonomy: unknown local planner");
+    }
   estimator_->reset();
   perception_module_->reset();
   mapper_->reset();
@@ -75,6 +76,8 @@ core::Status AutonomyCoordinator::configure() {
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
+ last_prediction_horizon_s_ = 0.0;
+ last_prediction_hypotheses_ = 0;
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
@@ -122,6 +125,8 @@ core::Status AutonomyCoordinator::cleanup() {
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
+ last_prediction_horizon_s_ = 0.0;
+ last_prediction_hypotheses_ = 0;
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
@@ -252,6 +257,10 @@ iface::MotionCommand AutonomyCoordinator::update(
   if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
+ // Publish the latest ROBOT map prior to perception for the next scan. The
+ // perception module raycasts only known occupancy; unknown cells remain a
+ // scan-history problem. This is map/SLAM evidence, never simulator truth.
+ perception_module_->set_static_map(map);
   // Decision branch runs at the decision period, or on event wakeup:
   // explicit replan request, or a new map revision. Everything else holds
   // the last validated command while safety keeps gating every tick.
@@ -347,6 +356,8 @@ iface::MotionCommand AutonomyCoordinator::update(
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;
  std::string constraint = motion.constraint;
+ last_prediction_horizon_s_ = motion.prediction_horizon_s;
+ last_prediction_hypotheses_ = motion.prediction_hypotheses;
  if (!iface::valid_motion_command(decided, now_ns)) {
  decided = iface::MotionCommand::SafeStop(now_ns);
  }
@@ -386,7 +397,8 @@ iface::MotionCommand AutonomyCoordinator::update(
   evidence.observation_time_s = last_obs_.stamp_ns * 1e-9;
   evidence.observation_refs = {last_obs_.source + "#" +
                                std::to_string(last_obs_.sequence)};
-  evidence.prediction_horizon_s = decision_period_ns_ * 1e-9;
+ evidence.prediction_horizon_s = last_prediction_horizon_s_;
+    evidence.prediction_hypotheses = last_prediction_hypotheses_;
   evidence.constraint_code = last_constraint_;
   evidence.reason_code = last_reason_;
   if (verdict.state != SafetyState::kNominal) {

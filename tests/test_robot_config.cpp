@@ -93,8 +93,9 @@ int main() {
                                         &err));
     assert(tracked.profile.supports.empty());  // rule path, not explicit
     const auto mt = sim::eval::motor_from_config(tracked);
-    assert(mt.support_count == 2);  // legacy pair resolved at conversion
-    assert(std::abs(mt.supports[0].x_m - 0.9 * 0.7 / 2) < 1e-12);
+    // Tracks provide their own support surface. A synthetic caster pair would
+    // add unmodelled contact and corrupt skid-steer yaw dynamics.
+    assert(mt.support_count == -1);
     assert(mt.com_height_m == 0.1);  // omitted com follows the axle
   }
   // End-to-end: mounts from the config shift the live rays. A forward
@@ -149,6 +150,13 @@ int main() {
     write(R"({"chassis_kind": "differential"})");  // kind alias works
     assert(robot::platform::load_robot_config(tmp, cfg, &err));
     assert(cfg.profile.chassis_kind == "differential");
+ write(R"({"kind": "differential", "local_planner": "teb"})");
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.local_planner_kind == "teb");
+ assert(robot::platform::description_from_config(cfg).local_planner_kind ==
+ "teb");
+ write(R"({"kind": "differential", "local_planner": "magic"})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "limits": {"max_forward_mps": -1}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "sensors": [{"sensor_id": "x"}]})");

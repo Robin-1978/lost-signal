@@ -63,15 +63,19 @@ class SimImuProvider
   double bias_draw_radps_[3] = {0.0, 0.0, 0.0};
   double mount_xyz_m_[3] = {0.0, 0.0, 0.0};
   double mount_rpy_rad_[3] = {0.0, 0.0, 0.0};
-  // Previous twist + attitude + stamp for differentiated quantities:
-  // angular acceleration, body linear acceleration (incl. vertical from
-  // body height), and roll/pitch rates from the attitude delta (truth
-  // carries no roll/pitch rate channel; yaw rides the first-class truth
-  // rate). First poll (or repeated stamp) contributes no derivatives.
+  // Previous world velocity + attitude + stamp for differentiated
+  // quantities: body-origin linear acceleration, angular acceleration, and
+  // roll/pitch rates from the attitude delta (truth carries no roll/pitch
+  // rate channel; yaw rides the first-class truth rate). Height must be
+  // differentiated twice before it is acceleration; the intermediate
+  // vertical velocity is retained explicitly. First/repeated stamps
+  // contribute no derivatives.
   double prev_yaw_rate_radps_ = 0.0;
-  double prev_fwd_mps_ = 0.0;
-  double prev_lat_mps_ = 0.0;
+  double prev_world_vx_mps_ = 0.0;
+  double prev_world_vy_mps_ = 0.0;
+  double prev_world_vz_mps_ = 0.0;
   double prev_body_z_m_ = 0.0;
+  bool has_prev_vertical_velocity_ = false;
   double prev_stamp_s_ = -1.0;
   bool has_prev_attitude_ = false;
   robot::core::Quaternion prev_body_q_{0.0, 0.0, 0.0, 1.0};

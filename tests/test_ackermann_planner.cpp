@@ -70,7 +70,8 @@ int main() {
  }
  assert(explicit_gear);
  assert(std::hypot(route.points.back().x_m - 5.0,
- route.points.back().y_m - 2.0) <= config.goal_position_tolerance_m + 1e-9);
+ route.points.back().y_m - 2.0) <= 1e-9);
+ assert(std::abs(route.points.back().yaw_rad) <= 1e-9);
  for (std::size_t i = 1; i < route.points.size(); ++i) {
  if (route.points[i].gear != route.points[i - 1].gear) continue;
  const double ds = std::hypot(route.points[i].x_m - route.points[i - 1].x_m,

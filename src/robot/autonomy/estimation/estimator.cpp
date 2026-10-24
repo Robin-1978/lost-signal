@@ -156,27 +156,38 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
     const double ax = obs.imu_ax_mps2, ay = obs.imu_ay_mps2,
                  az = obs.imu_az_mps2;
     const double acc_norm = std::hypot(ax, ay, az);
-    if (acc_norm > 1e-6) {
+ double roll, pitch, yaw_ignored;
+ euler_from_quaternion(attitude_, roll, pitch, yaw_ignored);
+    if (acc_norm > 1e-6 && config_.gravity_mps2 > 0.0 &&
+        config_.accel_trust_band_mps2 > 0.0 &&
+        config_.max_accel_tilt_correction_radps > 0.0) {
  // Specific force points opposite the world gravity vector.  With the
  // REP-103 body frame and R = Rz(yaw) Ry(pitch) Rx(roll), a positive body
- // roll produces a negative Y specific-force component and a positive body
- // pitch produces a positive X component.  Keeping these signs aligned with
+ // roll produces a positive Y specific-force component and a positive body
+ // pitch produces a negative X component.  Keeping these signs aligned with
  // the transform tree is essential: otherwise a level robot on a MuJoCo
  // ramp appears upside down to the ROBOT and every 3-D scan deprojection is
  // mirrored.
  const double tilt_roll = std::atan2(ay, az);
  const double tilt_pitch = std::atan2(-ax, std::hypot(ay, az));
-      double roll, pitch, yaw_ignored;
-      euler_from_quaternion(attitude_, roll, pitch, yaw_ignored);
-      const double alpha = dt_s / (config_.attitude_time_constant_s + dt_s);
-      roll += core::wrap_angle(tilt_roll - roll) * alpha;
-      pitch += core::wrap_angle(tilt_pitch - pitch) * alpha;
-      const double yaw_keep = estimate_.yaw_rad;
-      attitude_ = quaternion_from_euler(roll, pitch, yaw_keep);
-      estimate_.roll_rad = roll;
-      estimate_.pitch_rad = pitch;
-      estimate_.attitude_valid = true;
+      const double magnitude_error =
+          std::abs(acc_norm - config_.gravity_mps2);
+      const double accel_weight = std::clamp(
+          1.0 - magnitude_error / config_.accel_trust_band_mps2, 0.0, 1.0);
+      const double alpha = accel_weight * dt_s /
+                           (config_.attitude_time_constant_s + dt_s);
+      const double max_correction =
+          config_.max_accel_tilt_correction_radps * dt_s;
+      roll += std::clamp(core::wrap_angle(tilt_roll - roll) * alpha,
+                         -max_correction, max_correction);
+      pitch += std::clamp(core::wrap_angle(tilt_pitch - pitch) * alpha,
+                          -max_correction, max_correction);
     }
+ const double yaw_keep = estimate_.yaw_rad;
+ attitude_ = quaternion_from_euler(roll, pitch, yaw_keep);
+ estimate_.roll_rad = roll;
+ estimate_.pitch_rad = pitch;
+ estimate_.attitude_valid = true;
   }
 
   // Covariance grows with motion and time; slip inflates heading now.
@@ -270,6 +281,8 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
   estimate_.yaw_rad = core::wrap_angle(yaw_rad);
   estimate_.forward_mps = 0.0;
   estimate_.yaw_rate_radps = 0.0;
+  estimate_.roll_rad = 0.0;
+  estimate_.pitch_rad = 0.0;
   estimate_.attitude_valid = false;
   estimate_.position_sigma_m =
       std::clamp(pos_sigma_m, config_.pos_sigma_min_m,
@@ -281,6 +294,8 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
   has_prior_ = true;
   prior_ = iface::ObservationFrame{};
+ prior_.stamp_ns = stamp_ns;
+  attitude_ = quaternion_from_euler(0.0, 0.0, estimate_.yaw_rad);
   slip_heading_extra_rad_ = 0.0;
 }
 

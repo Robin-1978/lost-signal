@@ -186,9 +186,9 @@ int main() {
     // projection doctrine as above — the arm math keeps 1e-9 teeth).
     {
       const double r = w.truth().body_roll_rad, q = w.truth().body_pitch_rad;
-      assert(std::abs(lm.accel_x_mps2 - (-1.0 + 9.81 * std::cos(r) * std::sin(q))) <
+      assert(std::abs(lm.accel_x_mps2 - (-1.0 - 9.81 * std::sin(q))) <
              1e-9);  // -w^2 * rx + gravity pitch projection
-      assert(std::abs(lm.accel_y_mps2 - -9.81 * std::sin(r)) < 1e-9);
+      assert(std::abs(lm.accel_y_mps2 - 9.81 * std::sin(r) * std::cos(q)) < 1e-9);
       assert(std::abs(lm.accel_z_mps2 - 9.81 * std::cos(q) * std::cos(r)) <
              1e-9);
     }
@@ -204,12 +204,49 @@ int main() {
       // Both are measured body motion, not device error — teeth stay on
       // the Euler (-25, exact below) and the centripetal (-0.25 core).
       assert(std::abs(lm.accel_x_mps2 -
-                      (-0.25 + 9.81 * std::cos(r) * std::sin(q))) < 5e-3);
-      assert(std::abs(lm.accel_y_mps2 - (-25.0 - 9.81 * std::sin(r))) <
+                      (-0.25 - 9.81 * std::sin(q))) < 5e-3);
+ assert(std::abs(lm.accel_y_mps2 -
+ (-25.0 + 9.81 * std::sin(r) * std::cos(q))) <
              1e-6);
     }
     mutable_truth(w).yaw_rate_radps = 0.5;
   }
+ // Attitude delta uses q_prev^-1*q_now with the shortest quaternion arc.
+ // A positive pitch step therefore reports a positive Y gyro rate instead
+ // of the sign-reversed/product artifact that previously destabilized
+ // terrain deprojection.
+ {
+ sim::world::World attitude_world;
+ sim::providers::SimImuProvider attitude(&attitude_world);
+ robot::iface::ImuMessage am;
+ assert(attitude.poll(am));
+ mutable_truth(attitude_world).step += 1;
+ mutable_truth(attitude_world).body_pitch_rad = 0.02;
+ assert(attitude.poll(am));
+ assert(std::abs(am.gyro_x_radps) < 1e-9);
+ assert(std::abs(am.gyro_y_radps - 1.0) < 1e-9);
+ }
+ // Height is position: two differences are required before it contributes
+ // vertical acceleration. Constant 1 m/s climb still reads gravity only;
+ // changing to 2 m/s contributes the resulting +50 m/s^2 acceleration.
+ {
+ sim::world::World vertical_world;
+ sim::providers::SimImuProvider vertical(&vertical_world);
+ robot::iface::ImuMessage vm;
+ assert(vertical.poll(vm));
+ mutable_truth(vertical_world).step += 1;
+ mutable_truth(vertical_world).body_z_m = 0.02;
+ assert(vertical.poll(vm));
+ assert(std::abs(vm.accel_z_mps2 - 9.81) < 1e-9);
+ mutable_truth(vertical_world).step += 1;
+ mutable_truth(vertical_world).body_z_m = 0.04;
+ assert(vertical.poll(vm));
+ assert(std::abs(vm.accel_z_mps2 - 9.81) < 1e-9);
+ mutable_truth(vertical_world).step += 1;
+ mutable_truth(vertical_world).body_z_m = 0.08;
+ assert(vertical.poll(vm));
+ assert(std::abs(vm.accel_z_mps2 - 59.81) < 1e-9);
+ }
   // Per-axis bias draw + walk (seeded device imperfection, never truth).
   {
     mutable_truth(w).yaw_rate_radps = 0.0;
@@ -268,9 +305,9 @@ int main() {
     // axis; gravity rides the resting attitude (same projection doctrine).
     {
       const double r = w.truth().body_roll_rad, q = w.truth().body_pitch_rad;
-      assert(std::abs(um.accel_x_mps2 - 9.81 * std::cos(r) * std::sin(q)) <
+      assert(std::abs(um.accel_x_mps2 - -9.81 * std::sin(q)) <
              1e-9);
-      assert(std::abs(um.accel_y_mps2 - -9.81 * std::sin(r)) < 1e-9);
+      assert(std::abs(um.accel_y_mps2 - 9.81 * std::sin(r) * std::cos(q)) < 1e-9);
       assert(std::abs(um.accel_z_mps2 - 9.81 * std::cos(q) * std::cos(r)) <
              1e-9);
     }

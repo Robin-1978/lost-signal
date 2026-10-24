@@ -195,6 +195,34 @@ int main() {
     assert(est.estimate().attitude_valid);
  assert(std::abs(est.estimate().pitch_rad - 0.1745) < 0.05);
     assert(std::abs(est.estimate().roll_rad) < 0.02);
+ // A non-gravitational impact has the wrong norm and must not be treated as
+ // a new gravity direction. Gyro propagation remains live while the accel
+ // correction weight falls to zero.
+ iface::ObservationFrame impact;
+ impact.stamp_ns = 1'020'000'000;
+ impact.odometry_valid = true;
+ impact.imu_valid = true;
+ impact.imu_ay_mps2 = 15.0;
+ impact.imu_az_mps2 = -19.0;
+ const double pitch_before_impact = est.estimate().pitch_rad;
+ est.predict(impact);
+ assert(est.estimate().attitude_valid);
+ assert(std::abs(est.estimate().pitch_rad - pitch_before_impact) < 1e-9);
+ // A deliberate planar seed resets the hidden quaternion as well as the
+ // published attitude. The next level sample must restart from level rather
+ // than revive the old tilt.
+ est.seed_pose(2.0, 3.0, 0.4, 0.1, 0.05, 2'000'000'000);
+ assert(!est.estimate().attitude_valid);
+ assert(est.estimate().roll_rad == 0.0 && est.estimate().pitch_rad == 0.0);
+ iface::ObservationFrame level;
+ level.stamp_ns = 2'020'000'000;
+ level.odometry_valid = true;
+ level.imu_valid = true;
+ level.imu_az_mps2 = 9.80665;
+ est.predict(level);
+ assert(est.estimate().attitude_valid);
+ assert(std::abs(est.estimate().roll_rad) < 1e-9);
+ assert(std::abs(est.estimate().pitch_rad) < 1e-9);
   }
 
   // Coordinator pipeline: configure -> activate -> ingest -> update.

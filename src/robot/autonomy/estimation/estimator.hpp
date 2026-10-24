@@ -80,6 +80,13 @@ class FusedOdometryEstimator : public IEstimator {
     // Attitude complementary time constant: gyro integration trusted below
     // this horizon, gravity tilt above it.
     double attitude_time_constant_s = 0.5;
+    // Accelerometer correction is downweighted as |a|-g departs from the
+    // gravity reference, then rate-limited. These are physical sensor-model
+    // parameters rather than map/scenario thresholds: translation and
+    // impacts must not be integrated as attitude in one sample.
+    double gravity_mps2 = 9.80665;
+    double accel_trust_band_mps2 = 1.96133; // 0.2 g
+    double max_accel_tilt_correction_radps = 0.7;
     // Covariance growth per meter traveled / per second elapsed.
     double pos_growth_per_m = 0.01;
     double pos_growth_per_s = 0.005;
