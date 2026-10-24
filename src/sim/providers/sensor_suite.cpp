@@ -39,17 +39,27 @@ void SimSensorSuite::register_all(robot::app::IRobot& app) {
 }
 
 bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
+ return poll_envelope(true, true, true, out);
+}
+
+bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
+ bool sample_imu, robot::iface::ObservationFrame& out) {
   if (world_ == nullptr) return false;
-  // Pure composition: typed messages from owned providers, packed through
-  // the canonical robot-owned helpers. The suite adds no sensing of its
-  // own; the static reference is a second raycast pass without actors.
-  robot::iface::MotionFeedback fb;
-  if (!motion_.poll_feedback(fb)) return false;
-  robot::iface::ImuMessage imu;
-  if (!imu_.poll(imu)) return false;
-  robot::iface::Lidar2DScan scan;
-  robot::iface::Lidar2DScan reference;
-  if (composite_scan_) {
+ bool fresh_motion = false;
+ bool fresh_imu = false;
+ bool fresh_scan = false;
+ if (sample_motion) {
+ fresh_motion = motion_.poll_feedback(motion_cache_);
+ if (fresh_motion) have_motion_ = true;
+ }
+ if (sample_imu) {
+ fresh_imu = imu_.poll(imu_cache_);
+ if (fresh_imu) have_imu_ = true;
+ }
+ if (sample_scan) {
+ robot::iface::Lidar2DScan scan;
+ robot::iface::Lidar2DScan reference;
+ if (composite_scan_) {
     // Composite front end: same message, same layout, multi-line source.
     std::vector<float> ranges, ref, intensities, ref_intensities;
     std::vector<float> offsets, ref_offsets;
@@ -78,12 +88,51 @@ bool SimSensorSuite::poll_envelope(robot::iface::ObservationFrame& out) {
     if (!lidar_.poll(scan, true)) return false;
     if (!lidar_.poll(reference, false)) return false;
   }
+ scan_cache_ = std::move(scan);
+ static_scan_cache_ = std::move(reference);
+ fresh_scan = true;
+ have_scan_ = true;
+ }
+ if (!fresh_motion && !fresh_imu && !fresh_scan) return false;
 
-  out = robot::iface::make_envelope(fb);
-  if (!robot::iface::set_scan(out, scan)) return false;
-  out.static_ranges_m = reference.ranges_m;
-  out.scan_static_valid = true;
-  if (!robot::iface::set_imu(out, imu)) return false;
+ // One envelope remains the transport unit, but each validity bit denotes a
+ // newly acquired section. Stale encoder values are retained only as joint
+ // feedback for the actuator loop; stale twist/IMU/scan data are invalid and
+ // cannot be reintegrated by ROBOT.
+ robot::iface::MotionFeedback fb = motion_cache_;
+ if (!have_motion_) {
+ fb.source = motion_.descriptor().endpoint_id;
+ fb.frame = robot::core::Frame::kBaseLink;
+ fb.stamp_ns = world_->truth().step * 20'000'000;
+ }
+ out = robot::iface::make_envelope(fb);
+ out.sequence = ++envelope_seq_;
+ if (out.sequence == 0) out.sequence = ++envelope_seq_;
+ out.stamp_ns = robot::core::kInvalidTime;
+ if (fresh_motion && have_motion_) out.stamp_ns = motion_cache_.stamp_ns;
+ if (fresh_imu && have_imu_)
+ out.stamp_ns = std::max(out.stamp_ns, imu_cache_.stamp);
+ if (fresh_scan && have_scan_)
+ out.stamp_ns = std::max(out.stamp_ns, scan_cache_.stamp);
+ out.odometry_valid = fresh_motion && motion_cache_.odometry_valid;
+ if (fresh_scan && !robot::iface::set_scan(out, scan_cache_)) return false;
+ if (!fresh_scan) {
+ out.ranges_m.clear();
+ out.intensities.clear();
+ out.time_offsets_s.clear();
+ out.scan_valid = false;
+ out.intensity_valid = false;
+ out.time_offset_valid = false;
+ }
+ if (fresh_scan && static_scan_cache_.valid()) {
+ out.static_ranges_m = static_scan_cache_.ranges_m;
+ out.scan_static_valid = true;
+ }
+ if (fresh_imu && have_imu_) {
+ if (!robot::iface::set_imu(out, imu_cache_)) return false;
+ } else {
+ out.imu_valid = false;
+ }
   if (!robot::iface::valid_observation_frame(out)) return false;
   // S7 delivery shaping (default off = passthrough, byte-identical path).
   if (delivery_.latency_steps <= 0 && delivery_.drop_probability <= 0.0) {

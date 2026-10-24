@@ -68,6 +68,35 @@ int main() {
   assert(obs2.time_offset_valid);
   assert(obs2.time_offsets_s.size() == obs2.ranges_m.size());
   assert(obs2.time_offsets_s.front() < 0.0f);
+
+ // Independent provider deadlines must not manufacture fresh data for the
+ // other sections. One transport sequence remains monotonic while the
+ // section validity flags describe acquisition on this tap.
+ const auto seq0 = obs2.sequence;
+ const auto stamp0 = obs2.stamp_ns;
+ robot::iface::ObservationFrame scan_only;
+ world.step(0.02);
+ assert(suite.poll_envelope(true, false, false, scan_only));
+ assert(scan_only.sequence > seq0 && scan_only.stamp_ns >= stamp0);
+ assert(scan_only.scan_valid && scan_only.intensity_valid);
+ assert(!scan_only.odometry_valid && !scan_only.imu_valid);
+ assert(scan_only.drive_count == obs2.drive_count);
+
+ robot::iface::ObservationFrame motion_only;
+ world.step(0.02);
+ assert(suite.poll_envelope(false, true, false, motion_only));
+ assert(motion_only.sequence > scan_only.sequence);
+ assert(!motion_only.scan_valid && !motion_only.intensity_valid);
+ assert(motion_only.odometry_valid && !motion_only.imu_valid);
+ assert(motion_only.stamp_ns >= scan_only.stamp_ns);
+
+ robot::iface::ObservationFrame imu_only;
+ world.step(0.02);
+ assert(suite.poll_envelope(false, false, true, imu_only));
+ assert(imu_only.sequence > motion_only.sequence);
+ assert(!imu_only.scan_valid && !imu_only.odometry_valid);
+ assert(imu_only.imu_valid);
+ assert(imu_only.stamp_ns >= motion_only.stamp_ns);
   // Traction flags stay SIM-side (WorldTruth, offline labels only — the
   // ROBOT side only ever sees what its own estimators can compute).
   // Quiet in normal driving...

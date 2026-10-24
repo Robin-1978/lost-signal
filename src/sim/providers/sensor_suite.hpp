@@ -41,6 +41,12 @@ class SimSensorSuite {
 
   void register_all(robot::app::IRobot& app);
   bool poll_envelope(robot::iface::ObservationFrame& out);
+ // Sample only the providers whose deadlines fired. The returned envelope
+ // keeps one monotonic transport sequence while validity flags identify the
+ // sections acquired on this tap; stale sections remain available only as
+ // actuator feedback and are never reintegrated as fresh measurements.
+ bool poll_envelope(bool sample_scan, bool sample_motion, bool sample_imu,
+ robot::iface::ObservationFrame& out);
   void consume(const robot::iface::ActuatorCommand& cmd);
   // Sensor realism switches (S7). Invalid configs are ignored (previous
   // settings kept, never half-applied). Default off = exact truth.
@@ -85,6 +91,14 @@ class SimSensorSuite {
   SimImuProvider imu_;
   bool composite_scan_ = false;
   std::uint64_t composite_seq_ = 0;
+ std::uint64_t envelope_seq_ = 0;
+ robot::iface::MotionFeedback motion_cache_{};
+ robot::iface::ImuMessage imu_cache_{};
+ robot::iface::Lidar2DScan scan_cache_{};
+ robot::iface::Lidar2DScan static_scan_cache_{};
+ bool have_motion_ = false;
+ bool have_imu_ = false;
+ bool have_scan_ = false;
   DeliveryConfig delivery_;
   std::deque<robot::iface::ObservationFrame> delivery_queue_;
   std::uint64_t delivery_rng_ = 0;

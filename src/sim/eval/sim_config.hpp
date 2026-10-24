@@ -18,7 +18,9 @@ namespace lost_signal::sim::eval {
 inline constexpr char kSimConfigFormat[] = "lost-signal-sim/1";
 
 struct SimConfig {
-  double scan_period_s = 0.02;
+ double scan_period_s = 0.02;
+ double motion_period_s = 0.02; // encoder/twist sample cadence
+ double imu_period_s = 0.02; // IMU sample cadence
  double decision_period_s = 0.02;  // ROBOT decision cadence in simulation time
   double record_period_s = 0.02;
   double judge_radius_m = 0.4;

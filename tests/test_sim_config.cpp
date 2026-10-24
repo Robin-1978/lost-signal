@@ -17,7 +17,8 @@ int main() {
     sim::eval::SimConfig cfg;
     std::string err;
     assert(sim::eval::load_sim_config(dir + "/sim/default.json", cfg, &err));
-    assert(cfg.scan_period_s == 0.02 && cfg.record_period_s == 0.02);
+ assert(cfg.scan_period_s == 0.02 && cfg.motion_period_s == 0.02 &&
+ cfg.imu_period_s == 0.02 && cfg.record_period_s == 0.02);
     assert(cfg.judge_radius_m == 0.4);
     assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
     assert(cfg.lidar_rings == 16);
@@ -58,6 +59,13 @@ int main() {
     std::string err;
     write(R"({"cadence": {"scan_s": -1}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ write(R"({"cadence": {"motion_s": -1}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ write(R"({"cadence": {"imu_s": -1}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ write(R"({"cadence": {"motion_s": 0.05, "imu_s": 0.01}})");
+ assert(sim::eval::load_sim_config(tmp, cfg, &err));
+ assert(cfg.motion_period_s == 0.05 && cfg.imu_period_s == 0.01);
     write(R"({"delivery": {"drop_probability": 1.5}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"lidar": {"beams": 0}})");

@@ -50,6 +50,12 @@ class ScenarioSession {
  // same freshness path as deployment. All timing stays wall-clock-free.
   void set_cadence(double scan_period_s, double decision_period_s,
                    double record_period_s);
+ // Independent provider taps. The legacy set_cadence() keeps motion and IMU
+ // at scan cadence; this overload lets sparse LiDAR coexist with faster
+ // encoder/IMU observations without fabricating repeated measurements.
+ void set_sensor_cadence(double scan_period_s, double motion_period_s,
+ double imu_period_s, double decision_period_s,
+ double record_period_s);
   // Objective list: place_ids resolved by the ROBOT map provider through
   // the operator seam; arrival counted truth-side for scoring only.
   void set_objectives(std::vector<std::string> place_ids,
@@ -87,8 +93,8 @@ class ScenarioSession {
   // realism, lidar geometry). Pre-run only: lidar geometry must precede
   // the first step.
   void apply_sim_config(const eval::SimConfig& sim) {
-    set_cadence(sim.scan_period_s, sim.decision_period_s,
-                sim.record_period_s);
+ set_sensor_cadence(sim.scan_period_s, sim.motion_period_s,
+ sim.imu_period_s, sim.decision_period_s, sim.record_period_s);
     set_judge_radius_m(sim.judge_radius_m);
     set_sensor_realism(sim.delivery, sim.imu_realism);
     suite_.lidar().set_beams(sim.lidar_beams);

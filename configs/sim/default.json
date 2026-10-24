@@ -1,6 +1,6 @@
 {
   "format": "lost-signal-sim/1",
-  "cadence": {"scan_s": 0.02, "decision_s": 0.02, "record_s": 0.02},
+ "cadence": {"scan_s": 0.02, "motion_s": 0.02, "imu_s": 0.02, "decision_s": 0.02, "record_s": 0.02},
   "judge_radius_m": 0.4,
   "delivery": {"seed": 0, "latency_steps": 0, "drop_probability": 0.0},
   "imu_realism": {"seed": 0, "gyro_noise_radps": 0.0, "gyro_trim_z_radps": 0.0, "gyro_bias_stddev_radps": 0.0, "gyro_bias_walk_radps_sqrt_s": 0.0, "accel_noise_mps2": 0.0},

@@ -50,15 +50,24 @@ ScenarioSession::ScenarioSession(
 
 void ScenarioSession::set_cadence(double scan_period_s,
                                   double decision_period_s,
-                                  double record_period_s) {
+ double record_period_s) {
+ set_sensor_cadence(scan_period_s, scan_period_s, scan_period_s,
+ decision_period_s, record_period_s);
+}
+
+void ScenarioSession::set_sensor_cadence(double scan_period_s,
+ double motion_period_s, double imu_period_s, double decision_period_s,
+ double record_period_s) {
   auto valid = [](double p) {
     return std::isfinite(p) && p >= 0.0;
   };
-  if (!valid(scan_period_s) || !valid(decision_period_s) ||
+ if (!valid(scan_period_s) || !valid(motion_period_s) ||
+ !valid(imu_period_s) || !valid(decision_period_s) ||
       !valid(record_period_s)) {
     return;  // fail closed: keep the previous cadence, never half-apply
   }
-  scheduler_.reset(scan_period_s, decision_period_s, record_period_s);
+ scheduler_.reset(scan_period_s, motion_period_s, imu_period_s,
+ decision_period_s, record_period_s);
  // Make the configured decision cadence real: the coordinator gates its
  // planning branch on this period. Zero keeps the deployment default.
  if (decision_period_s > 0.0) {
@@ -118,10 +127,14 @@ void ScenarioSession::step_once() {
   }
 
  const bool decision_due = scheduler_.decision_due(sim_time_s_);
+ const bool motion_due = scheduler_.motion_due(sim_time_s_);
+ const bool imu_due = scheduler_.imu_due(sim_time_s_);
  bool have_obs = false;
   robot::iface::ObservationFrame obs;
- if (scheduler_.scan_due(sim_time_s_)) {
-    have_obs = suite_.poll_envelope(obs) && app_.publish_observation(obs);
+ const bool scan_due = scheduler_.scan_due(sim_time_s_);
+ if (scan_due || motion_due || imu_due) {
+ have_obs = suite_.poll_envelope(scan_due, motion_due, imu_due, obs) &&
+ app_.publish_observation(obs);
   }
   rec.obs = obs;
   rec.obs_accepted = have_obs;

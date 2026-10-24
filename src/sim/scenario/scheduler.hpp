@@ -40,21 +40,35 @@ class DeterministicScheduler {
  public:
   void reset(double scan_period_s, double decision_period_s,
              double record_period_s) {
+ reset(scan_period_s, scan_period_s, scan_period_s, decision_period_s,
+ record_period_s);
+ }
+
+ void reset(double scan_period_s, double motion_period_s,
+ double imu_period_s, double decision_period_s, double record_period_s) {
     scan_.reset(scan_period_s);
+ motion_.reset(motion_period_s);
+ imu_.reset(imu_period_s);
     decision_.reset(decision_period_s);
     record_.reset(record_period_s);
   }
 
   bool scan_due(double now_s) { return scan_.due(now_s); }
+ bool motion_due(double now_s) { return motion_.due(now_s); }
+ bool imu_due(double now_s) { return imu_.due(now_s); }
   bool decision_due(double now_s) { return decision_.due(now_s); }
   bool record_due(double now_s) { return record_.due(now_s); }
 
   const PeriodicDeadline& scan() const { return scan_; }
+ const PeriodicDeadline& motion() const { return motion_; }
+ const PeriodicDeadline& imu() const { return imu_; }
   const PeriodicDeadline& decision() const { return decision_; }
   const PeriodicDeadline& record() const { return record_; }
 
  private:
   PeriodicDeadline scan_;
+ PeriodicDeadline motion_;
+ PeriodicDeadline imu_;
   PeriodicDeadline decision_;
   PeriodicDeadline record_;
 };
