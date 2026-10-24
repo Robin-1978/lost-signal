@@ -35,6 +35,20 @@ int main() {
   BehaviorDecision d2 = behavior.decide(est, far, limits);
   assert(!d2.must_hold);
 
+ // A track behind the base is outside the forward conflict corridor and
+ // must not turn the behavior layer into a global stop switch.
+ PerceptionResult behind = clear;
+ behind.tracks.push_back({9, -1.0, 0.0, 0.0, 0.0, 0.1});
+ BehaviorDecision d_back = behavior.decide(est, behind, limits);
+ assert(!d_back.must_hold);
+
+ // A crossing track is held when its ROBOT-side constant-velocity forecast
+ // reaches the ego footprint during the prediction horizon.
+ PerceptionResult crossing = clear;
+ crossing.tracks.push_back({10, 0.3, 0.45, 0.0, -0.4, 0.1});
+ BehaviorDecision d_cross = behavior.decide(est, crossing, limits);
+ assert(d_cross.must_hold);
+
   // Unknown evidence (no scan) -> hold, never free space.
   PerceptionResult blind;
   BehaviorDecision d3 = behavior.decide(est, blind, limits);

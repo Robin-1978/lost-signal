@@ -27,12 +27,13 @@ class IBehaviorPolicy {
                                   const platform::ChassisLimits& limits) = 0;
 };
 
-// v1: hold while any anonymous track is inside the hold radius around the
-// estimate; otherwise allow full chassis speed. Deterministic, no prediction
-// beyond current track positions (a predictor enriches this input later).
+// Hold only for an anonymous track whose measured/predicted footprint
+// conflicts with the ego footprint over a short horizon. The policy uses
+// ROBOT estimate + track state only; it has no simulator or actor semantics.
 class WaitOnIntrusionBehavior : public IBehaviorPolicy {
  public:
-  explicit WaitOnIntrusionBehavior(double hold_radius_m = 2.0);
+ explicit WaitOnIntrusionBehavior(double hold_radius_m = 2.0,
+ double prediction_horizon_s = 1.5);
 
   void reset() override {}
   BehaviorDecision decide(const EstimatedState& est,
@@ -41,6 +42,7 @@ class WaitOnIntrusionBehavior : public IBehaviorPolicy {
 
  private:
   double hold_radius_m_;
+ double prediction_horizon_s_;
 };
 
 }  // namespace lost_signal::robot::autonomy
