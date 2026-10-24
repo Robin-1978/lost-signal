@@ -27,6 +27,30 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   M3a 2D live viewer (frame model + sim_viewer binary, --shot smoke),
   M3b map editor (world file + headless model + viewer edit mode),
   M3c 3D orbit view over the same frame (--3d, V toggles).
+- M3d (done): presentation hardening against the old game's viewer.
+ The new viewer keeps the new `ScenarioSession`/`Frame` seam, but must reach
+ parity on the visible contract: chassis-specific component geometry, live
+ wheel/steering/track motion, terrain-conforming placement, authored actor
+ models where available, deterministic dust/slip/impact particles, and a
+ lit 3D pass with stable camera/fog/shadow cues. These are SIM-only draw
+ products. They consume recorded `WorldTruth` for presentation and never
+ publish material, contact, actor identity, or renderer state to ROBOT.
+ `assets/models`, `assets/textures`, and `assets/shaders` are carried in this
+ branch. `sim_viewer` auto-loads the matching GLB set and accepts `--assets`
+ for an alternate SIM content root; missing files fall back to procedural
+ geometry. Acceptance is a headless frame-model regression plus a display
+ smoke shot;
+ particle lifetime and placement are deterministic from the SIM step, while
+ rendering may interpolate between frames without changing the episode.
+GLBs are assembled as physical components rather than dropped in as a single
+decorative mesh: chassis scale comes from the configured footprint/deck,
+drive wheels are mounted at the live MuJoCo wheel links and use their spin and
+steer joints, caster fork/wheel assemblies use the support radius and the
+body-frame axle offset, and the lidar model is mounted at the same configured
+extrinsic that produces the scan origin. Actor models retain their authored
+ground anchor and content reference radius, then follow the canonical SIM
+terrain height. The renderer does not replace any of these poses with a
+wall-clock animation or a ROBOT estimate.
 - M4 (done): post-viewer hardening, four cuts.
   M4a TF tree (`robot/core/transform`, `platform/static_transform_tree`;
   coordinator is the only odom publisher and the only TF reader/writer).

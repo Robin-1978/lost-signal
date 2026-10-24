@@ -164,6 +164,15 @@ no MuJoCo bodies, contacts, motor curves, meshes, or scenario presentation asset
 
 - SIM physics adapter: `robot_id -> MuJoCo joints/contacts`.
 - GAME presentation adapter: `robot_id -> meshes/colors/prices`.
+
+The rebuilt viewer follows the same boundary. `sim/viewer/frame_builder` is
+the only conversion from recorded SIM truth to presentation state; the
+raylib frontend may add models, lighting, terrain meshes, wheel articulation,
+and deterministic visual particles after that conversion. Those effects are
+diagnostic/presentation state and are never placed in `ObservationFrame`,
+`MapSnapshot`, task intent, or any ROBOT-owned type. A particle or material
+effect can therefore improve visual fidelity without becoming a hidden
+truth channel for autonomy.
 - ROBOT consumes only frames, mounts, and limits.
 
 Changing calibration creates a new `version` and invalidates dependent

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "robot/core/geometry.hpp"
+#include "robot/autonomy/planning/route_smoothing.hpp"
 
 namespace lost_signal::robot::autonomy {
 namespace {
@@ -228,6 +229,10 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  out.points.reserve(path.size());
  for (const auto& node : path)
  out.points.push_back({node.x, node.y, node.yaw, node.gear});
+ if (!smooth_ackermann_route(out, {config_.wheel_base_m,
+ config_.max_steer_rad, 0.55, 2.0})) {
+ return Route{};
+ }
  return out;
 }
 

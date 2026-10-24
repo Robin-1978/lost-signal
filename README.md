@@ -88,3 +88,10 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  Coordinator remains a sequencing seam; route refresh, motion decisions, and
  conflict prediction live in autonomy modules. Conflict-zone resource policy
  and Hybrid A* path smoothing remain separate extension points.
+- The SIM viewer is presentation-only. It loads optional GLB assets from
+  `assets/models` automatically (or `--assets DIR`), with deterministic
+  procedural fallbacks. Chassis parts use live MuJoCo joint angles/velocities;
+  dust and slip particles are derived from the recorded SIM step and never
+  enter ROBOT observations.
+Press `F` to toggle the camera's robot-follow mode; right-drag or middle-drag
+ releases follow for free orbit/pan, and `R` restores the default orbit.

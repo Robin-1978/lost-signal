@@ -20,10 +20,24 @@ struct FrameWheel {
   bool slipping = false;        // engine traction flag: drawn red
   // Mecanum rollers are NOT simulated state (analytic wrench, rollers not
   // meshed): static 45-degree tread stripes, honest decoration only.
-  bool mecanum_rollers = false;
+ double spin_rate_radps = 0.0;
+ double steer_rate_radps = 0.0;
+ double duty = 0.0;
+ bool driven = false;
+ bool mecanum_rollers = false;
+};
+
+struct FrameCaster {
+ double x_m = 0.0, y_m = 0.0;
+ double radius_m = 0.03;
+ double yaw_rad = 0.0; // swivel orientation from measured body motion
+ double spin_rad = 0.0; // visual roll phase, presentation only
 };
 
 struct FrameBody {
+ double forward_mps = 0.0;
+ double lateral_mps = 0.0;
+ double yaw_rate_radps = 0.0;
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
   double half_length_m = 0.3;  // body-forward extent (wheel_base/2 floor)
   double half_width_m = 0.25;  // body-left extent (track/2 floor)
@@ -36,6 +50,9 @@ struct FrameBody {
   // Wheels in drive order (empty for skid-steer slabs, see tracked below);
   // module positions read the backend layout table, angles read truth.
   std::vector<FrameWheel> wheels;
+ // Unpowered ball/caster supports. They carry the body visually but never
+ // become drive channels or traction evidence.
+ std::vector<FrameCaster> casters;
   // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
   // chassis params, slip-reddening per side from the traction flags.
   bool tracked = false;
@@ -55,6 +72,7 @@ struct FrameBox {
 struct FrameActor {
   double x_m = 0.0, y_m = 0.0, radius_m = 0.4;
   double vx_mps = 0.0, vy_mps = 0.0;
+ double heading_rad = 0.0;
   double height_m = 1.5;  // sensor cylinder height (vehicle 1.5, pedestrian 1.8)
   bool pedestrian = false;  // height > 1.6: drawn blue, else forklift orange
 };

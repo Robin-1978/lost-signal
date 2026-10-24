@@ -5,12 +5,16 @@
 // (needs a display); frame logic is unit-tested in test_viewer_frame.
 
 #include <raylib.h>
+#include <raymath.h>
 #include <rlgl.h>
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <fstream>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -30,10 +34,218 @@
 
 namespace {
 using lost_signal::sim::viewer::Frame;
+using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::ViewTransform;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
+
+struct VisualAssets {
+ Shader lighting{};
+ Model chassis{};
+ Model wheel{};
+ Model lidar{};
+ Model caster_fork{};
+ Model caster_wheel{};
+ Model track{};
+ Model forklift{};
+ Model worker{};
+ bool loaded = false;
+};
+
+bool model_ready(const Model& model) { return model.meshCount > 0; }
+
+void log_model_bounds(const char* label, const Model& model) {
+ if (!model_ready(model)) return;
+ const BoundingBox b = GetModelBoundingBox(model);
+ const Vector3 lo{std::min(b.min.x, b.max.x), std::min(b.min.y, b.max.y),
+ std::min(b.min.z, b.max.z)};
+ const Vector3 hi{std::max(b.min.x, b.max.x), std::max(b.min.y, b.max.y),
+ std::max(b.min.z, b.max.z)};
+ std::fprintf(stderr,
+ "[viewer] %s meshes=%d bounds x=%.3f..%.3f y=%.3f..%.3f z=%.3f..%.3f\n",
+ label, model.meshCount, lo.x, hi.x, lo.y, hi.y, lo.z, hi.z);
+}
+
+void bind_lighting(Model& model, Shader shader) {
+ if (!model_ready(model) || !IsShaderValid(shader)) return;
+ for (int i = 0; i < model.materialCount; ++i)
+ model.materials[i].shader = shader;
+}
+
+Model load_optional_model(const std::filesystem::path& path) {
+ if (!std::filesystem::is_regular_file(path)) return {};
+ Model model = LoadModel(path.string().c_str());
+ if (!model_ready(model)) return {};
+ // Content GLBs use Z-up; the SIM viewer uses raylib's Y-up convention.
+ // Keep this conversion at the asset boundary so every component shares
+ // the same upright frame.
+ model.transform = MatrixRotateX(-PI / 2.0f);
+ return model;
+}
+
+void load_visual_assets(VisualAssets& assets, const std::string& root,
+ const std::string& robot_id) {
+ if (root.empty()) return;
+ const std::filesystem::path base(root);
+ const auto robot_dir = base / "models" / "robots" / robot_id;
+ const auto actor_dir = base / "models" / "actors";
+ assets.chassis = load_optional_model(robot_dir / "chassis.glb");
+ if (!model_ready(assets.chassis))
+ assets.chassis = load_optional_model(robot_dir / "hull.glb");
+ assets.wheel = load_optional_model(robot_dir / "wheel_standard.glb");
+ if (!model_ready(assets.wheel))
+ assets.wheel = load_optional_model(robot_dir / "swerve_module.glb");
+ if (!model_ready(assets.wheel))
+ assets.wheel = load_optional_model(robot_dir / "roller_left.glb");
+ assets.lidar = load_optional_model(robot_dir / "lidar_standard.glb");
+ if (!model_ready(assets.lidar))
+ assets.lidar = load_optional_model(robot_dir / "lidar_long.glb");
+ assets.caster_fork = load_optional_model(robot_dir / "caster_fork.glb");
+ assets.caster_wheel = load_optional_model(robot_dir / "caster_wheel.glb");
+ assets.track = load_optional_model(robot_dir / "track.glb");
+ assets.forklift = load_optional_model(actor_dir / "forklift.glb");
+ assets.worker = load_optional_model(actor_dir / "worker.glb");
+ log_model_bounds("chassis", assets.chassis);
+ log_model_bounds("wheel", assets.wheel);
+ log_model_bounds("lidar", assets.lidar);
+ log_model_bounds("caster_fork", assets.caster_fork);
+ log_model_bounds("caster_wheel", assets.caster_wheel);
+ log_model_bounds("track", assets.track);
+ log_model_bounds("forklift", assets.forklift);
+ log_model_bounds("worker", assets.worker);
+ const auto shader_root = base / "shaders";
+ if (std::filesystem::is_regular_file(shader_root / "scene_lighting.vs") &&
+ std::filesystem::is_regular_file(shader_root / "scene_lighting.fs")) {
+ assets.lighting = LoadShader(
+ (shader_root / "scene_lighting.vs").string().c_str(),
+ (shader_root / "scene_lighting.fs").string().c_str());
+ }
+ if (IsShaderValid(assets.lighting)) {
+ const Vector3 light_dir{-0.48f, -1.0f, -0.32f};
+ const Vector3 light_color{1.08f, 0.98f, 0.82f};
+ const Vector3 ambient{0.24f, 0.29f, 0.28f};
+ const Vector3 fog_color{0.035f, 0.055f, 0.052f};
+ const Vector3 point0{4.0f, 5.0f, -3.0f};
+ const Vector3 point1{-4.0f, 3.0f, 2.0f};
+ const float fog_start = 12.0f, fog_end = 31.0f;
+ const float shadow_strength = 0.0f;
+ const int shadow_resolution = 1;
+ const Matrix light_vp = MatrixIdentity();
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "lightDirection"), &light_dir,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "lightColor"), &light_color,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "ambient"), &ambient,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogColor"), &fog_color,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight0Position"), &point0,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight0Color"), &light_color,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight1Position"), &point1,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight1Color"), &ambient,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogStart"), &fog_start,
+ SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogEnd"), &fog_end,
+ SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "shadowStrength"), &shadow_strength,
+ SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "shadowMapResolution"),
+ &shadow_resolution, SHADER_UNIFORM_INT);
+ SetShaderValueMatrix(assets.lighting,
+ GetShaderLocation(assets.lighting, "lightVP"), light_vp);
+ bind_lighting(assets.chassis, assets.lighting);
+ bind_lighting(assets.wheel, assets.lighting);
+ bind_lighting(assets.lidar, assets.lighting);
+ bind_lighting(assets.caster_fork, assets.lighting);
+ bind_lighting(assets.caster_wheel, assets.lighting);
+ bind_lighting(assets.track, assets.lighting);
+ bind_lighting(assets.forklift, assets.lighting);
+ bind_lighting(assets.worker, assets.lighting);
+ }
+ assets.loaded = model_ready(assets.chassis) || model_ready(assets.wheel) ||
+ model_ready(assets.lidar) || model_ready(assets.caster_fork) ||
+ model_ready(assets.caster_wheel) ||
+ model_ready(assets.track) || model_ready(assets.forklift) ||
+ model_ready(assets.worker);
+}
+
+void unload_visual_assets(VisualAssets& assets) {
+ if (model_ready(assets.chassis)) UnloadModel(assets.chassis);
+ if (model_ready(assets.wheel)) UnloadModel(assets.wheel);
+ if (model_ready(assets.lidar)) UnloadModel(assets.lidar);
+ if (model_ready(assets.caster_fork)) UnloadModel(assets.caster_fork);
+ if (model_ready(assets.caster_wheel)) UnloadModel(assets.caster_wheel);
+ if (model_ready(assets.track)) UnloadModel(assets.track);
+ if (model_ready(assets.forklift)) UnloadModel(assets.forklift);
+ if (model_ready(assets.worker)) UnloadModel(assets.worker);
+ if (IsShaderValid(assets.lighting)) UnloadShader(assets.lighting);
+ assets = {};
+}
+
+void draw_fitted_model(const Model& model, Vector3 position, float radius,
+ float height, Color tint, float rotation_deg = 0.0f) {
+ if (!model_ready(model)) return;
+ const BoundingBox bounds = GetModelBoundingBox(model);
+ const Vector3 lo{std::min(bounds.min.x, bounds.max.x),
+ std::min(bounds.min.y, bounds.max.y), std::min(bounds.min.z, bounds.max.z)};
+ const Vector3 hi{std::max(bounds.min.x, bounds.max.x),
+ std::max(bounds.min.y, bounds.max.y), std::max(bounds.min.z, bounds.max.z)};
+ const float sx = std::max(1e-3f, hi.x - lo.x);
+ const float sy = std::max(1e-3f, hi.y - lo.y);
+ const float sz = std::max(1e-3f, hi.z - lo.z);
+ const float scale = std::min({2.0f * radius / sx, height / sy,
+ 2.0f * radius / sz});
+ const Vector3 center{(lo.x + hi.x) * 0.5f,
+ (lo.y + hi.y) * 0.5f, (lo.z + hi.z) * 0.5f};
+ const Vector3 centered{position.x - center.x * scale,
+ position.y - center.y * scale, position.z - center.z * scale};
+ DrawModelEx(model, centered, {0.0f, 1.0f, 0.0f}, rotation_deg,
+ {scale, scale, scale}, tint);
+}
+
+// Actor GLBs are authored with their local origin on the ground and with a
+// content reference radius (forklift=0.45 m, worker=0.25 m).  Keep that
+// contract instead of fitting the model into a collision cylinder: fitting
+// all three axes to the radius made the forklift half-height and visually
+// detached its wheels from the chassis.  The actor pose remains the SIM
+// kinematic pose; this helper only converts the asset's z-up coordinates to
+// raylib's y-up frame and guarantees that its lowest vertex touches terrain.
+void draw_actor_model_grounded(const Model& model, double x_m, double y_m,
+ double ground_z_m, double radius_m, bool pedestrian, double heading_rad) {
+ if (!model_ready(model)) return;
+ const float reference_radius = pedestrian ? 0.25f : 0.45f;
+ const float scale = static_cast<float>(radius_m) /
+ std::max(1e-3f, reference_radius);
+ const BoundingBox bounds = GetModelBoundingBox(model);
+ const float min_y = std::min(bounds.min.y, bounds.max.y);
+ // Model origins in the asset pack are ground anchors.  The min-y correction
+ // keeps that invariant true even when a future asset has a small negative
+ // bevel below its authored origin.
+ const Vector3 position{
+ static_cast<float>(x_m),
+ static_cast<float>(ground_z_m - min_y * scale),
+ static_cast<float>(-y_m)};
+ DrawModelEx(model, position, {0.0f, 1.0f, 0.0f},
+ static_cast<float>(-heading_rad * RAD2DEG),
+ {scale, scale, scale}, WHITE);
+}
 
 // Ground-material paint (master's drive_effect colors, SIM-side display
 // only — physics never reads these; unknown ids fall back to asphalt).
@@ -67,11 +279,75 @@ Color height_color(double h, double hmax) {
 
 // Flat fake shadow: a dark translucent disc under bodies/props. No shadow
 // map, no shader — 80% of the depth cue for 1% of the cost.
-inline void blob_shadow_3d(double x_m, double y_m, double r_m) {
-  DrawCylinder({static_cast<float>(x_m), 0.012f,
+inline void blob_shadow_3d(double x_m, double y_m, double r_m,
+ double ground_z_m = 0.0) {
+ DrawCylinder({static_cast<float>(x_m), static_cast<float>(ground_z_m + 0.012),
                 static_cast<float>(-y_m)},
                static_cast<float>(r_m), static_cast<float>(r_m), 0.012f, 20,
                {20, 20, 25, 50});
+}
+
+// Presentation-only particles. The phase is derived from the recorded SIM
+// step and live wheel state, so screenshots and replay views are stable while
+// dust/slip still follows the actual plant motion. Nothing here is fed back
+// to the sensor suite or ROBOT.
+inline float visual_hash(std::uint64_t step, int a, int b) {
+ std::uint64_t v = step * 0x9e3779b97f4a7c15ULL;
+ v ^= static_cast<std::uint64_t>(a + 17) * 0xbf58476d1ce4e5b9ULL;
+ v ^= static_cast<std::uint64_t>(b + 31) * 0x94d049bb133111ebULL;
+ v ^= v >> 30;
+ v *= 0xbf58476d1ce4e5b9ULL;
+ v ^= v >> 27;
+ return static_cast<float>((v & 0xffffU) / 65535.0);
+}
+
+inline Vector3 body_to_world(const FrameBody& body, double bx, double by,
+ double z) {
+ const double c = std::cos(body.yaw_rad), s = std::sin(body.yaw_rad);
+ return {static_cast<float>(body.x_m + c * bx - s * by),
+ static_cast<float>(z),
+ static_cast<float>(-(body.y_m + s * bx + c * by))};
+}
+
+void draw_motion_particles_3d(const Frame& f) {
+ const double speed = std::hypot(f.body.forward_mps, f.body.lateral_mps);
+ BeginBlendMode(BLEND_ALPHA);
+ for (std::size_t wi = 0; wi < f.body.wheels.size(); ++wi) {
+ const auto& w = f.body.wheels[wi];
+ const int count = w.slipping ? 12 : (speed > 0.25 && w.driven ? 4 : 0);
+ if (count == 0) continue;
+ for (int k = 0; k < count; ++k) {
+ const float phase = std::fmod(
+ static_cast<float>(f.step) * 0.17f + visual_hash(f.step,
+ static_cast<int>(wi), k) * 0.83f, 1.0f);
+ const float spread = (visual_hash(f.step, static_cast<int>(wi), k + 41) - 0.5f) *
+ static_cast<float>(w.radius_m * 1.4);
+ const float lift = 0.025f + phase * (w.slipping ? 0.42f : 0.20f);
+ const double bx = w.x_m - std::copysign(
+ static_cast<double>(phase) * w.radius_m * (w.slipping ? 1.4 : 0.8),
+ f.body.forward_mps == 0.0 ? 1.0 : f.body.forward_mps);
+ const double by = w.y_m + spread;
+ const Vector3 p = body_to_world(f.body, bx, by,
+ std::max(0.01, f.body.z_m - w.radius_m + lift));
+ const float size = static_cast<float>(w.slipping ? 0.025 + 0.04 * phase
+ : 0.012 + 0.025 * phase);
+ const unsigned char alpha = static_cast<unsigned char>(
+ std::max(0.0f, 180.0f * (1.0f - phase)));
+ DrawSphere(p, size, w.slipping ? Color{244, 96, 52, alpha}
+ : Color{190, 166, 126, alpha});
+ }
+ }
+ // A low, expanding exhaust/dust veil behind a moving body gives the
+ // viewer a speed cue even when the wheel modules are occluded by terrain.
+ if (speed > 0.35) {
+ const float phase = std::fmod(static_cast<float>(f.step) * 0.11f, 1.0f);
+ const double bx = -f.body.half_length_m * (0.7 + phase);
+ const Vector3 p = body_to_world(f.body, bx, 0.0,
+ std::max(0.015, f.body.z_m - 0.18 + 0.10 * phase));
+ DrawSphere(p, static_cast<float>(0.08 + 0.18 * phase),
+ {180, 165, 145, static_cast<unsigned char>(90 * (1.0f - phase))});
+ }
+ EndBlendMode();
 }
 
 // Map extents over every authored layer (auto-fit on --map load).
@@ -317,6 +593,7 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
 // (x, z_up, -y): +y north goes away from the default camera, right-handed.
 struct CameraState {
   double target_x = 2.0, target_y = 1.0;
+ double target_z = 0.0;
   float yaw_deg = 35.0f;    // orbit around the target
   float pitch_deg = 50.0f;  // elevation above the ground plane
   float dist_m = 12.0f;
@@ -334,7 +611,7 @@ inline Camera3D camera_from_state(const CameraState& st) {
               static_cast<float>(st.dist_m * std::sin(pitch)),
               static_cast<float>(-(st.target_y + st.dist_m * std::cos(pitch) * std::sin(yaw)))};
   return {.position = pos,
-          .target = to_raylib(st.target_x, st.target_y, 0.0),
+ .target = to_raylib(st.target_x, st.target_y, st.target_z),
           .up = {0.0f, 1.0f, 0.0f},
           .fovy = 45.0f,
           .projection = CAMERA_PERSPECTIVE};
@@ -354,7 +631,9 @@ inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
 
 void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
-                   bool show_lidar, bool show_estimate) {
+ bool show_lidar, bool show_estimate,
+ const VisualAssets* assets = nullptr,
+ const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr) {
   namespace world_ns = lost_signal::sim::world;
   // Ground base sized to the authored map (concrete apron under everything).
   double gx0, gy0, gx1, gy1;
@@ -463,12 +742,16 @@ void draw_frame_3d(const Frame& f,
   // Places as beacon poles with a ground ring (green = objective done).
   for (const auto& p : f.places) {
     const Color col = p.reached ? GREEN : ORANGE;
-    DrawCylinder(to_raylib(p.x_m, p.y_m, 0.3), 0.05f, 0.05f, 0.6f, 10,
+ const double place_ground = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), p.x_m, p.y_m).height_m;
+ // DrawCylinder is base-anchored; keep the objective marker on the same
+ // authored ground as the robot and actors.
+ DrawCylinder(to_raylib(p.x_m, p.y_m, place_ground), 0.05f, 0.05f, 0.6f, 10,
                  DARKGRAY);
-    DrawSphere(to_raylib(p.x_m, p.y_m, 0.68), 0.13f, col);
-    DrawCircle3D(to_raylib(p.x_m, p.y_m, 0.02), 0.45f, {1, 0, 0}, 90.0f,
+ DrawSphere(to_raylib(p.x_m, p.y_m, place_ground + 0.68), 0.13f, col);
+ DrawCircle3D(to_raylib(p.x_m, p.y_m, place_ground + 0.02), 0.45f, {1, 0, 0}, 90.0f,
                  p.reached ? Color{40, 180, 80, 200} : Color{230, 140, 40, 200});
-    if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, 0.68), 0.25f, 8,
+ if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, place_ground + 0.68), 0.25f, 8,
                                     8, RED);
   }
   // Actors: forklift-orange vehicles, pedestrian-blue walkers, true height,
@@ -477,14 +760,28 @@ void draw_frame_3d(const Frame& f,
     const Color body =
         a.pedestrian ? Color{70, 130, 220, 255} : Color{235, 130, 40, 255};
     const float h = static_cast<float>(a.height_m > 0.1 ? a.height_m : 0.5);
-    blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3);
-    DrawCylinder(to_raylib(a.x_m, a.y_m, h * 0.5), static_cast<float>(h),
-                 static_cast<float>(h),
-                 static_cast<float>(a.radius_m), 16, body);
-    DrawCylinder(to_raylib(a.x_m, a.y_m, h + 0.03), 0.06f, 0.06f, 0.12f, 8,
+ const double ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), a.x_m, a.y_m).height_m;
+ blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3, ground_z);
+ const Model* actor_model = nullptr;
+ if (assets != nullptr) actor_model = a.pedestrian ? &assets->worker
+ : &assets->forklift;
+ if (actor_model != nullptr && model_ready(*actor_model)) {
+ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, ground_z,
+ a.radius_m, a.pedestrian, a.heading_rad);
+ } else {
+ // raylib's DrawCylinder position is the base center (not the geometric
+ // center). Passing ground+h/2 made the procedural pedestrian float by half
+ // its height; the SIM terrain sample is the sole contact anchor.
+ DrawCylinder(to_raylib(a.x_m, a.y_m, ground_z),
+ static_cast<float>(a.radius_m), static_cast<float>(a.radius_m),
+ static_cast<float>(h), 16, body);
+ }
+ DrawCylinder(to_raylib(a.x_m, a.y_m, ground_z + h + 0.03), 0.06f, 0.06f, 0.12f, 8,
                  DARKGRAY);  // roof beacon
-    DrawLine3D(to_raylib(a.x_m, a.y_m, h * 0.5),
-               to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps, h * 0.5), BLACK);
+ DrawLine3D(to_raylib(a.x_m, a.y_m, ground_z + h * 0.5),
+ to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps,
+ ground_z + h * 0.5), BLACK);
   }
   for (const auto& a : world.actors()) {
     if (a.behavior.kind !=
@@ -549,13 +846,18 @@ void draw_frame_3d(const Frame& f,
         static_cast<float>(-r01), static_cast<float>(-r21),
         static_cast<float>(r11), 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f};
-    blob_shadow_3d(f.body.x_m, f.body.y_m,
-                   std::max(f.body.half_length_m, f.body.half_width_m) * 1.4);
+ const double robot_ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), f.body.x_m, f.body.y_m).height_m;
+ blob_shadow_3d(f.body.x_m, f.body.y_m,
+ std::max(f.body.half_length_m, f.body.half_width_m) * 1.4,
+ robot_ground_z);
     rlPushMatrix();
     rlTranslatef(static_cast<float>(f.body.x_m),
-                 static_cast<float>(f.body.z_m + 0.25),
+ static_cast<float>(f.body.z_m),
                  static_cast<float>(-f.body.y_m));
     rlMultMatrixf(m);
+ bool slipping = false;
+ for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
     {
       // Layered shop model (local frame, y up): charcoal skirt, pearl
       // hull, orange deck stripe, lidar mast + puck, headlights, status
@@ -565,26 +867,108 @@ void draw_frame_3d(const Frame& f,
       const Color hull = f.static_collision
                              ? RED
                              : Color{238, 241, 244, 255};
-      bool slipping = false;
-      for (const auto& sw : f.body.wheels) slipping = slipping || sw.slipping;
+ if (assets != nullptr && model_ready(assets->chassis)) {
+ const BoundingBox cb = GetModelBoundingBox(assets->chassis);
+ const float csx = std::max(1e-3f, std::abs(cb.max.x - cb.min.x));
+ const float csy = std::max(1e-3f, std::abs(cb.max.y - cb.min.y));
+ const float csz = std::max(1e-3f, std::abs(cb.max.z - cb.min.z));
+ // GLB is a body component: preserve the configured footprint and deck
+ // height independently instead of fitting it into one sphere.
+ const Vector3 chassis_scale{
+ std::max(0.01f, bl / csx),
+ std::max(0.01f, 0.18f / csy),
+ std::max(0.01f, bw / csz)};
+ const float cmin_y = std::min(cb.min.y, cb.max.y);
+ const float deck_bottom =
+ -static_cast<float>(world.motor_params().body_half_height_m);
+ DrawModelEx(assets->chassis,
+ {0.0f, deck_bottom - cmin_y * chassis_scale.y, 0.0f},
+ {0.0f, 1.0f, 0.0f}, 0.0f, chassis_scale, WHITE);
+ } else {
       DrawCube({0, -0.20f, 0}, bl, 0.12f, bw, Color{45, 48, 55, 255});
       DrawCube({0, -0.03f, 0}, bl, 0.24f, bw, hull);
       DrawCubeWires({0, -0.03f, 0}, bl, 0.24f, bw, DARKBLUE);
-      DrawCube({0, 0.105f, 0}, bl * 0.7f, 0.03f, bw * 0.55f,
+ }
+ const float deck_top = static_cast<float>(world.motor_params().body_half_height_m);
+ DrawCube({0, deck_top + 0.01f, 0}, bl * 0.7f, 0.03f, bw * 0.55f,
                Color{235, 120, 35, 255});  // deck stripe
-      const float mx = -bl * 0.32f;
-      DrawCylinder({mx, 0.26f, 0}, 0.035f, 0.035f, 0.3f, 10,
-                   Color{45, 48, 55, 255});  // mast
-      DrawCylinder({mx, 0.44f, 0}, 0.075f, 0.075f, 0.07f, 14,
-                   Color{200, 208, 215, 255});  // lidar puck
-      DrawSphere({mx, 0.50f, 0}, 0.025f,
-                 slipping ? RED : Color{50, 200, 90, 255});  // status LED
-      DrawSphere({bl * 0.5f, -0.02f, bw * 0.30f}, 0.035f,
+ DrawSphere({bl * 0.5f, -0.02f, bw * 0.30f}, 0.035f,
                  Color{255, 242, 200, 255});  // headlights
       DrawSphere({bl * 0.5f, -0.02f, -bw * 0.30f}, 0.035f,
                  Color{255, 242, 200, 255});
     }
-    // Wheels from live joints (drive spin + steer yaw per module, same
+ // The lidar is a mounted component, not a decorative mast. Its origin is
+ // the configured sensor mount, so its height stays identical to the sensor
+ // rays and the ROBOT TF when a profile changes.
+ const double mount_x = lidar_mount != nullptr ? lidar_mount->xyz_m[0] : 0.25;
+ const double mount_y = lidar_mount != nullptr ? lidar_mount->xyz_m[1] : 0.0;
+ const double mount_z = lidar_mount != nullptr ? lidar_mount->xyz_m[2] : 0.35;
+ const double mount_yaw = lidar_mount != nullptr ? lidar_mount->rpy_rad[2] : 0.0;
+ const float mast_base = static_cast<float>(world.motor_params().body_half_height_m) + 0.01f;
+ const float mast_top = static_cast<float>(mount_z);
+ if (mast_top > mast_base) {
+ DrawCylinderEx({static_cast<float>(mount_x), mast_base,
+ static_cast<float>(-mount_y)},
+ {static_cast<float>(mount_x), mast_top,
+ static_cast<float>(-mount_y)}, 0.025f, 0.025f, 10,
+ Color{45, 48, 55, 255});
+ }
+ if (assets != nullptr && model_ready(assets->lidar)) {
+ DrawModelEx(assets->lidar,
+ {static_cast<float>(mount_x), static_cast<float>(mount_z),
+ static_cast<float>(-mount_y)},
+ {0.0f, 1.0f, 0.0f}, static_cast<float>(-mount_yaw * RAD2DEG),
+ {1.0f, 1.0f, 1.0f}, WHITE);
+ } else {
+ DrawCylinder({static_cast<float>(mount_x), mast_top,
+ static_cast<float>(-mount_y)}, 0.075f, 0.075f, 0.07f, 14,
+ Color{200, 208, 215, 255});
+ }
+ DrawSphere({static_cast<float>(mount_x),
+ static_cast<float>(mount_z + 0.11), static_cast<float>(-mount_y)},
+ 0.025f, slipping ? RED : Color{50, 200, 90, 255}); // status LED
+ draw_motion_particles_3d(f);
+ // Unpowered caster assemblies: swivel fork follows measured motion, the
+ // small wheel rolls on the ground while the robot deck stays elevated.
+ for (const auto& caster : f.body.casters) {
+ // MuJoCo places the ball support below the wheel axle by (r-R). Keep the
+ // offset in the body frame so slopes and engine body height are preserved;
+ // anchoring at an absolute radius made supports detach on terrain.
+ const float axle = static_cast<float>(
+ -(world.motor_params().wheel_radius_m - caster.radius_m));
+ rlPushMatrix();
+ rlTranslatef(static_cast<float>(caster.x_m), axle,
+ static_cast<float>(-caster.y_m));
+ rlRotatef(static_cast<float>(caster.yaw_rad * RAD2DEG), 0.0f, 1.0f, 0.0f);
+ const float caster_scale = static_cast<float>(caster.radius_m / 0.055);
+ if (assets != nullptr && model_ready(assets->caster_fork)) {
+ DrawModelEx(assets->caster_fork,
+ {0.0f, -0.30f * axle, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.0f,
+ {caster_scale, caster_scale, caster_scale}, WHITE);
+ } else {
+ DrawCube({0.0f, 0.075f, 0.0f}, 0.025f, 0.15f, 0.025f,
+ Color{65, 68, 74, 255});
+ }
+ if (assets != nullptr && model_ready(assets->caster_wheel)) {
+ rlPushMatrix();
+ rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+ rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
+ 1.0f);
+ DrawModelEx(assets->caster_wheel, {0.0f, 0.0f, 0.0f},
+ {0.0f, 1.0f, 0.0f}, 0.0f,
+ {caster_scale, caster_scale, caster_scale}, WHITE);
+ rlPopMatrix();
+ } else {
+ rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+ rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
+ 1.0f);
+ DrawCylinder({0.0f, 0.0f, 0.0f}, static_cast<float>(caster.radius_m),
+ static_cast<float>(caster.radius_m), 0.045f, 12,
+ Color{72, 72, 78, 255});
+ }
+ rlPopMatrix();
+ }
+ // Wheels from live joints (drive spin + steer yaw per module, same
     // sources as physics/encoders). A spoke makes spin visible; slipping
     // wheels draw red from the engine traction flags. Mecanum modules get
     // static 45-degree tread stripes (rollers are analytic-wrench state,
@@ -598,16 +982,35 @@ void draw_frame_3d(const Frame& f,
       // sides — pinned by the drive convention, not by symmetry).
       const float slab_len =
           static_cast<float>(f.body.half_length_m * 2.0f * 0.9f);
-      const float slab_z =
-          static_cast<float>(0.06 - f.body.z_m - 0.25);
+ // Track mesh is attached to the base frame. The engine base origin is the
+ // drive axle height, so this fixed local offset keeps the 0.12 m slab
+ // tangent to the same wheel contact envelope on ramps.
+ const float slab_z = -0.04f;
       for (int s = -1; s <= 1; s += 2) {
         const bool slip = s > 0 ? (f.body.wheels.size() > 1 &&
                                    f.body.wheels[1].slipping)
                                 : (f.body.wheels.size() > 0 &&
                                    f.body.wheels[0].slipping);
-        DrawCube({0.0f, slab_z,
-                  static_cast<float>(s * (f.body.half_width_m - 0.075))},
-                 slab_len, 0.12f, 0.15f, slip ? RED : DARKGRAY);
+ const Vector3 track_pos{0.0f, slab_z,
+ static_cast<float>(s * (f.body.half_width_m - 0.075))};
+ if (assets != nullptr && model_ready(assets->track)) {
+ draw_fitted_model(assets->track, track_pos,
+ static_cast<float>(f.body.half_width_m * 0.35), 0.18f,
+ slip ? Color{220, 70, 55, 255} : WHITE);
+ } else {
+ DrawCube(track_pos, slab_len, 0.12f, 0.15f, slip ? RED : DARKGRAY);
+ }
+ const double phase = f.body.wheels.empty() ? 0.0
+ : f.body.wheels[static_cast<std::size_t>(s > 0 ? 1 : 0)].spin_rad;
+ for (int pad = 0; pad < 8; ++pad) {
+ const double u = (static_cast<double>(pad) +
+ std::fmod(phase / (2.0 * 3.141592653589793), 1.0)) / 8.0;
+ const float x = static_cast<float>((u - 0.5) * slab_len);
+ DrawCube({x, slab_z + 0.067f,
+ static_cast<float>(s * (f.body.half_width_m - 0.075))},
+ slab_len / 8.8f, 0.018f, 0.17f,
+ slip ? Color{180, 50, 48, 255} : Color{92, 96, 99, 255});
+ }
       }
     } else {
       // Draw-local axes are raylib-world (Y up, Z = -bodyY): steer yaws
@@ -617,28 +1020,56 @@ void draw_frame_3d(const Frame& f,
       // from live joints/flags; mecanum tread stripes sit in the steer
       // frame (rollers are passive analytic state — static decoration).
       for (const auto& w : f.body.wheels) {
-        const float axle =
-            static_cast<float>(w.radius_m - f.body.z_m - 0.25);
+ // MuJoCo wheel bodies are children of the base at local z=0; the base
+ // qpos already is the live axle height. Re-applying radius-body_z here
+ // detached wheels whenever the engine body rose on a terrain patch.
+ const float axle = 0.0f;
         rlPushMatrix();
         rlTranslatef(static_cast<float>(w.x_m), axle,
                      static_cast<float>(-w.y_m));
         rlRotatef(static_cast<float>(w.steer_rad * RAD2DEG), 0.0f, 1.0f,
                   0.0f);
+ if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
+ // wheel_standard.glb is a component in the wheel link frame. The asset
+ // conversion leaves its axle along local Y; the authored -90 degree
+ // mount puts that axle across the robot, and the live joint angle then
+ // rolls around the resulting local Z axis.
+ rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+ rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
+ DrawModelEx(assets->wheel, {0.0f, 0.0f, 0.0f},
+ {0.0f, 1.0f, 0.0f}, 0.0f,
+ {1.0f, 1.0f, 1.0f}, w.slipping ? Color{210, 60, 48, 255} : WHITE);
+ if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
+ DrawSphere({0.0f, 0.0f, 0.0f}, 0.035f, Color{210, 170, 70, 255});
+ }
+ rlPopMatrix();
+ continue;
+ }
         rlRotatef(90.0f, 1.0f, 0.0f, 0.0f);
         if (w.mecanum_rollers) {
-          for (int k = -1; k <= 1; ++k) {
+ for (int k = -2; k <= 2; ++k) {
             rlPushMatrix();
-            rlTranslatef(static_cast<float>(k) * 0.03f, 0.0f, 0.0f);
-            rlRotatef(45.0f, 0.0f, 0.0f, 1.0f);
-            DrawCube({0.0f, 0.0f, 0.0f}, 0.012f, 0.02f,
-                     2.0f * static_cast<float>(w.radius_m), DARKGRAY);
+ rlTranslatef(static_cast<float>(k) * 0.026f, 0.0f, 0.0f);
+ rlRotatef(static_cast<float>((k & 1) == 0 ? 45.0f : -45.0f),
+ 0.0f, 0.0f, 1.0f);
+ rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f, 1.0f);
+ DrawCube({0.0f, 0.0f, 0.0f}, 0.018f, 0.024f,
+ 2.0f * static_cast<float>(w.radius_m),
+ w.slipping ? Color{168, 55, 52, 255} : DARKGRAY);
             rlPopMatrix();
           }
         }
-        rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 1.0f,
-                  0.0f);
-        const Color tire =
-            w.slipping ? RED : Color{40, 40, 40, 255};
+ rlRotatef(static_cast<float>(w.spin_rad * RAD2DEG), 0.0f, 0.0f,
+ 1.0f);
+ const Color tire = w.slipping ? RED
+ : (w.driven ? Color{40, 40, 40, 255} : Color{86, 86, 90, 255});
+ if (std::abs(w.steer_rad) > 1e-3 || std::abs(w.steer_rate_radps) > 1e-3) {
+ DrawSphere({0.0f, 0.0f, 0.0f}, 0.035f, Color{210, 170, 70, 255});
+ const float arm = 0.16f * std::clamp(
+ static_cast<float>(std::abs(w.steer_rate_radps) / 2.0), 0.0f, 1.0f);
+ DrawLine3D({0.0f, 0.0f, 0.0f}, {arm, 0.0f, 0.0f},
+ Color{240, 180, 70, 220});
+ }
         DrawCylinder({0.0f, 0.0f, 0.0f}, static_cast<float>(w.radius_m),
                      static_cast<float>(w.radius_m), 0.08f, 12, tire);
         DrawCube({0.0f, 0.0f, 0.0f}, 2.0f * static_cast<float>(w.radius_m),
@@ -653,15 +1084,18 @@ void draw_frame_3d(const Frame& f,
 
 int main(int argc, char** argv) {
   using namespace lost_signal;
-  // Optional single-source configuration: --robot <config> builds the
-  // session from one RobotConfig file (ROBOT description + SIM motor
-  // numbers), --map <world file> replaces the demo geometry.
-  std::string robot_path, sim_path, map_path;
+ // Optional single-source configuration: --robot <config> builds the
+ // session from one RobotConfig file (ROBOT description + SIM motor
+ // numbers), --map <world file> replaces the demo geometry. `--assets`
+ // enables optional SIM-only GLB presentation models from the old content
+ // tree; procedural parts remain the deterministic fallback.
+ std::string robot_path, sim_path, map_path, assets_path;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
     if (a == "--sim" && i + 1 < argc) sim_path = argv[++i];
     if (a == "--map" && i + 1 < argc) map_path = argv[++i];
+ if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
   }
   std::string used_config, config_err;
   auto robot_config = robot::platform::load_default_robot_config(
@@ -720,7 +1154,12 @@ int main(int argc, char** argv) {
     setup_demo(*session);
   }
 
-  InitWindow(kScreenW, kScreenH, "robot_simu viewer (SIM truth, 2D)");
+ InitWindow(kScreenW, kScreenH, "robot_simu viewer (SIM truth, 2D)");
+ if (assets_path.empty() && std::filesystem::is_directory("assets"))
+ assets_path = "assets";
+ VisualAssets visual_assets;
+ load_visual_assets(visual_assets, assets_path,
+ robot_config.has_value() ? robot_config->robot_id : "ro1");
   SetTargetFPS(60);
 
   sim::viewer::ViewTransform view(50.0f, 2.0, 1.0, kScreenW, kScreenH);
@@ -732,7 +1171,9 @@ int main(int argc, char** argv) {
   bool follow = true;
   int steps_per_frame = 4;
   Vector2 last_mouse{0, 0};
-  bool dragging = false;
+ bool dragging = false;
+ bool middle_dragging = false;
+ Vector2 last_middle_mouse{0, 0};
   // Map editor: entering edit mode snapshots the world and pauses the sim;
   // leaving keeps the applied geometry.
   sim::viewer::MapEditor editor;
@@ -743,9 +1184,20 @@ int main(int argc, char** argv) {
   // --shot N path: render N frames, screenshot, exit (visual smoke check).
   int shot_frames = -1;
   std::string shot_path;
+ float camera_dist = 0.0f;
+ bool camera_target_set = false;
+ double camera_target_x = 0.0, camera_target_y = 0.0;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--3d") view3d = true;
+ if (a == "--camera-dist" && i + 1 < argc) {
+ camera_dist = std::max(0.6f, static_cast<float>(std::atof(argv[++i])));
+ }
+ if (a == "--camera-target" && i + 2 < argc) {
+ camera_target_set = true;
+ camera_target_x = std::atof(argv[++i]);
+ camera_target_y = std::atof(argv[++i]);
+ }
     if (a == "--shot" && i + 2 < argc) {
       shot_frames = std::atoi(argv[++i]);
       shot_path = argv[++i];
@@ -762,9 +1214,19 @@ int main(int argc, char** argv) {
     cam_st.dist_m = static_cast<float>(
         std::min(60.0, std::max(10.0, std::max(bx1 - bx0, by1 - by0) * 0.9)));
     follow = false;  // start on the map overview, not glued to the robot
-  }
+ } else {
+ cam_st.dist_m = 5.0f;
+ cam_st.pitch_deg = 35.0f;
+ cam_st.target_z = 0.20;
+ }
+ if (camera_dist > 0.0f) cam_st.dist_m = camera_dist;
+ if (camera_target_set) {
+ cam_st.target_x = camera_target_x;
+ cam_st.target_y = camera_target_y;
+ follow = false;
+ }
 
-  while (!WindowShouldClose()) {
+ while (!WindowShouldClose()) {
     view.set_screen(GetScreenWidth(), GetScreenHeight());
     if (IsKeyPressed(KEY_V)) view3d = !view3d;
     // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
@@ -816,6 +1278,12 @@ int main(int argc, char** argv) {
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
     if (IsKeyPressed(KEY_F)) follow = !follow;
+ if (IsKeyPressed(KEY_R)) {
+ cam_st.yaw_deg = 35.0f;
+ cam_st.pitch_deg = 50.0f;
+ cam_st.dist_m = 12.0f;
+ follow = false;
+ }
     if (IsKeyPressed(KEY_EQUAL) && steps_per_frame < 40) steps_per_frame *= 2;
     if (IsKeyPressed(KEY_MINUS) && steps_per_frame > 1) steps_per_frame /= 2;
     if (IsKeyPressed(KEY_ZERO)) view.fit(-4.0, -4.0, 8.0, 7.0);
@@ -823,7 +1291,7 @@ int main(int argc, char** argv) {
     if (view3d) {
       if (wheel != 0.0f) {
         cam_st.dist_m *= wheel > 0.0f ? 1.0f / 1.15f : 1.15f;
-        if (cam_st.dist_m < 2.0f) cam_st.dist_m = 2.0f;
+ if (cam_st.dist_m < 0.6f) cam_st.dist_m = 0.6f;
         if (cam_st.dist_m > 60.0f) cam_st.dist_m = 60.0f;
       }
     } else if (wheel != 0.0f) {
@@ -850,6 +1318,19 @@ int main(int argc, char** argv) {
     } else {
       dragging = false;
     }
+ if (view3d && IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+ const Vector2 m = GetMousePosition();
+ if (middle_dragging) {
+ const float scale = cam_st.dist_m * 0.0025f;
+ cam_st.target_x -= (m.x - last_middle_mouse.x) * scale;
+ cam_st.target_y += (m.y - last_middle_mouse.y) * scale;
+ follow = false;
+ }
+ last_middle_mouse = m;
+ middle_dragging = true;
+ } else {
+ middle_dragging = false;
+ }
 
     if (!paused && !session->objectives_done()) {
       for (int i = 0; i < steps_per_frame; ++i) {
@@ -891,7 +1372,8 @@ int main(int argc, char** argv) {
     if (view3d) {
       const Camera3D cam = camera_from_state(cam_st);
       BeginMode3D(cam);
-      draw_frame_3d(frame, session->setup_world(), show_lidar, show_estimate);
+ draw_frame_3d(frame, session->setup_world(), show_lidar, show_estimate,
+ &visual_assets, &session_lidar_mount);
       EndMode3D();
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
@@ -899,11 +1381,11 @@ int main(int argc, char** argv) {
     }
     char hud[256];
     std::snprintf(hud, sizeof(hud),
-                  "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/4  %dx%d %s",
+                  "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/4  %dx%d cam=%s %s",
                   static_cast<unsigned long long>(frame.step), frame.body.x_m,
                   frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
                   static_cast<int>(reached.size()), steps_per_frame,
-                  GetFPS(), paused ? "PAUSED" : "RUN");
+                  GetFPS(), follow ? "FOLLOW" : "FREE", paused ? "PAUSED" : "RUN");
     DrawText(hud, 10, 10, 14, BLACK);
     if (edit_mode) {
       char ebuf[256];
@@ -920,6 +1402,7 @@ int main(int argc, char** argv) {
       break;
     }
   }
-  CloseWindow();
+ unload_visual_assets(visual_assets);
+ CloseWindow();
   return 0;
 }

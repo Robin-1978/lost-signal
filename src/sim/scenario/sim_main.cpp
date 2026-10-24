@@ -1,4 +1,5 @@
 #include <cmath>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,6 +36,72 @@ struct Options {
  bool verbose = false;
  bool help = false;
 };
+
+struct SemanticsStats {
+ std::size_t conflict_zones = 0;
+ std::size_t non_box_collisions = 0;
+ std::size_t dormant_actors = 0;
+ std::size_t conflict_zone_steps = 0;
+ std::size_t conflict_zone_entries = 0;
+ std::vector<std::array<double, 4>> conflict_boxes;
+};
+
+bool load_semantics_sidecar(const std::string& map_path,
+ SemanticsStats& out) {
+ if (map_path.empty()) return false;
+ std::string path = map_path;
+ const std::size_t suffix = path.rfind(".json");
+ if (suffix != std::string::npos) path.replace(suffix, 5, ".semantics.json");
+ else path += ".semantics.json";
+ std::ifstream in(path);
+ if (!in.is_open()) return false;
+ std::string text((std::istreambuf_iterator<char>(in)), {});
+ std::string error;
+ const auto json = robot::core::json_parse(text, &error);
+ if (json == nullptr || !json->is_object()) return false;
+ auto array_size = [&](const char* key) {
+ const auto* value = json->find(key);
+ return value != nullptr && value->is_array() ? value->as_array().size() : 0U;
+ };
+ out.non_box_collisions = array_size("non_box_collisions");
+ out.dormant_actors = array_size("dormant_actors");
+ const auto* zones = json->find("conflict_zones");
+ if (zones == nullptr || !zones->is_array()) return true;
+ for (const auto& zone : zones->as_array()) {
+ const auto* min = zone.find("min");
+ const auto* max = zone.find("max");
+ if (min == nullptr || max == nullptr || !min->is_array() ||
+ !max->is_array() || min->as_array().size() < 2 ||
+ max->as_array().size() < 2 || !min->as_array()[0].is_num() ||
+ !min->as_array()[1].is_num() || !max->as_array()[0].is_num() ||
+ !max->as_array()[1].is_num()) continue;
+ out.conflict_boxes.push_back({min->as_array()[0].as_num(),
+ min->as_array()[1].as_num(), max->as_array()[0].as_num(),
+ max->as_array()[1].as_num()});
+ }
+ out.conflict_zones = out.conflict_boxes.size();
+ return true;
+}
+
+void score_semantics(const sim::scenario::ScenarioSession& session,
+ SemanticsStats& stats) {
+ bool was_inside = false;
+ for (const auto& step : session.episode().steps()) {
+ bool inside = false;
+ for (const auto& box : stats.conflict_boxes) {
+ if (step.truth_after.body_x_m >= std::min(box[0], box[2]) &&
+ step.truth_after.body_x_m <= std::max(box[0], box[2]) &&
+ step.truth_after.body_y_m >= std::min(box[1], box[3]) &&
+ step.truth_after.body_y_m <= std::max(box[1], box[3])) {
+ inside = true;
+ break;
+ }
+ }
+ if (inside) ++stats.conflict_zone_steps;
+ if (inside && !was_inside) ++stats.conflict_zone_entries;
+ was_inside = inside;
+ }
+}
 
 void usage() {
  std::fprintf(
@@ -113,7 +180,8 @@ bool parse_args(int argc, char** argv, Options& opt) {
 }
 
 bool write_summary(const std::string& path, const std::string& map_path,
- const sim::scenario::ScenarioSession& session) {
+ const sim::scenario::ScenarioSession& session,
+ const SemanticsStats* semantics) {
  using robot::core::Json;
  const sim::eval::EpisodeScore score = sim::eval::score_episode(session.episode());
  Json::Object root;
@@ -164,6 +232,20 @@ bool write_summary(const std::string& path, const std::string& map_path,
  results.push_back(Json::Obj(std::move(o)));
  }
  root.emplace_back("objectives", Json::Arr(std::move(results)));
+ if (semantics != nullptr) {
+ Json::Object semantic;
+ semantic.emplace_back("conflict_zones",
+ Json::Num(static_cast<double>(semantics->conflict_zones)));
+ semantic.emplace_back("conflict_zone_steps",
+ Json::Num(static_cast<double>(semantics->conflict_zone_steps)));
+ semantic.emplace_back("conflict_zone_entries",
+ Json::Num(static_cast<double>(semantics->conflict_zone_entries)));
+ semantic.emplace_back("non_box_collisions",
+ Json::Num(static_cast<double>(semantics->non_box_collisions)));
+ semantic.emplace_back("dormant_actors",
+ Json::Num(static_cast<double>(semantics->dormant_actors)));
+ root.emplace_back("sim_semantics", Json::Obj(std::move(semantic)));
+ }
  const std::string text = robot::core::json_dump(Json::Obj(std::move(root)));
  std::ofstream out(path, std::ios::binary | std::ios::trunc);
  if (!out.is_open()) return false;
@@ -269,13 +351,17 @@ int main(int argc, char** argv) {
  }
  const sim::eval::EpisodeScore score =
  sim::eval::score_episode(session->episode());
+ SemanticsStats semantics;
+ const bool have_semantics = load_semantics_sidecar(opt.map_path, semantics);
+ if (have_semantics) score_semantics(*session, semantics);
  std::printf(
  "sim ran %ld steps; done=%s collisions=%zu distance=%.2f m "
  "max_pos_err=%.3f m\n",
  ran, session->objectives_done() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
  if (!opt.out_path.empty() &&
- !write_summary(opt.out_path, opt.map_path, *session)) {
+ !write_summary(opt.out_path, opt.map_path, *session,
+ have_semantics ? &semantics : nullptr)) {
  std::fprintf(stderr, "cannot write --out file: %s\n",
  opt.out_path.c_str());
  return 1;

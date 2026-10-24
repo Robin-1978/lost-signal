@@ -42,6 +42,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.body.x_m = t.body_x_m;
   f.body.y_m = t.body_y_m;
   f.body.yaw_rad = t.body_yaw_rad;
+ f.body.forward_mps = t.forward_mps;
+ f.body.lateral_mps = t.lateral_mps;
+ f.body.yaw_rate_radps = t.yaw_rate_radps;
   f.body.z_m = t.body_z_m;
   f.body.roll_rad = t.body_roll_rad;
   f.body.pitch_rad = t.body_pitch_rad;
@@ -67,10 +70,47 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       w.spin_rad = table[i].spin_rad;
       w.radius_m = world.motor_params().wheel_radius_m;
       w.slipping = table[i].slipping;
+ w.driven = table[i].driven;
+ if (i < nd) {
+ w.spin_rate_radps = t.drive_radps[static_cast<std::size_t>(i)];
+ w.duty = t.drive_duty[static_cast<std::size_t>(i)];
+ } else {
+ w.spin_rate_radps = 0.0;
+ w.duty = 0.0;
+ }
+ if (i < ns) {
+ w.steer_rate_radps = t.steer_vel_radps[static_cast<std::size_t>(i)];
+ }
       w.mecanum_rollers = mecanum;
       f.body.wheels.push_back(w);
     }
   }
+ // Render the unpowered supports as swivel casters. Their yaw follows the
+ // measured body velocity only for presentation; no support state enters
+ // the robot-facing encoder or actuator channels.
+ {
+ const double speed = std::hypot(t.forward_mps, t.lateral_mps);
+ const double caster_yaw = speed > 1e-6
+ ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
+ const int count = world.motor_params().support_count > 0
+ ? world.motor_params().support_count : 2;
+ for (int i = 0; i < count &&
+ i < lost_signal::sim::world::MotorParams::kMaxSupports; ++i) {
+ const auto& support = world.motor_params().support_count > 0
+ ? world.motor_params().supports[i]
+ : world::MotorParams::SupportParams{};
+ FrameCaster caster;
+ caster.x_m = world.motor_params().support_count > 0
+ ? support.x_m : (i == 0 ? 0.9 * world.motor_params().wheel_base_m * 0.5
+ : -0.9 * world.motor_params().wheel_base_m * 0.5);
+ caster.radius_m = world.motor_params().support_count > 0
+ ? support.radius_m : 0.03;
+ caster.yaw_rad = caster_yaw;
+ caster.spin_rad = speed * static_cast<double>(t.step) * 0.02 /
+ std::max(1e-3, caster.radius_m);
+ f.body.casters.push_back(caster);
+ }
+ }
   // True 3D sensor origin (body + attitude composed with the mount — the
   // same composition generation runs, so the viz fan starts where the
   // beams do).
@@ -114,6 +154,8 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     fa.radius_m = a.radius_m;
     fa.vx_mps = a.vx_mps;
     fa.vy_mps = a.vy_mps;
+ if (std::hypot(a.vx_mps, a.vy_mps) > 1e-6)
+ fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
     fa.height_m = a.height_m;
     // No kind field on the SIM actor: the map converter writes 1.8 m for
     // pedestrians, 1.5 m for vehicles — the split reads that convention.

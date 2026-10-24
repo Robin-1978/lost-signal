@@ -19,19 +19,26 @@
 - P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
   `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
   和 dormant actor，不把游戏 authority 穿透给 ROBOT。
-- 当前验证基线：`ctest --test-dir build --output-on-failure` 49/49，
+- 当前验证基线：`ctest --test-dir build --output-on-failure`（包含 artifact、
+ 地图语义转换回归）以及
   `tests/check_boundary.py` 通过。
 
-仍待处理：独立 Ackermann path smoothing、将 semantics sidecar 接入更高层
-SIM scoring schema、完整 mission score 的 per-objective 明细，以及旧段落中
-尚未逐项重写的审计文字。
+本轮又补齐：独立 Ackermann path smoothing（仍由 planning 模块负责）、
+episode artifact/replay round-trip、地图语义 sidecar round-trip，以及
+SIM viewer 的底盘部件运动和确定性尘雾/打滑粒子。旧框架的游戏 authority、
+材质真值、接触真值和渲染状态仍只停留在 SIM 展示/评分侧。
+
+下方章节保留为初始审计证据；其中标注“未完成”的条目若与本节冲突，
+以本节和源码/测试为准。剩余工作集中在更高层 SIM scoring 对语义 sidecar
+的可选统计接入和更完整的展示环境覆盖；GLB、纹理和 shader 资产已经迁移
+到当前分支并由 viewer 可选加载。这些都不改变 ROBOT 输入契约。
 
 # 重构分支算法与仿真能力适配审计
 
 审计对象：`refactor/clean-rebuild`
 对照基线：本地 `main` 分支（仓库没有 `master` 分支）
 审计日期：2026-10-24
-工作区状态：审计期间未修改源码
+工作区状态：审计记录持续更新；源码改动均在后续提交中验证
 
 ## 1. 总体判断
 

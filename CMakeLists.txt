@@ -78,6 +78,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/perception/lidar_perception.cpp
   src/robot/autonomy/planning/astar_planner.cpp
  src/robot/autonomy/planning/ackermann_planner.cpp
+ src/robot/autonomy/planning/route_smoothing.cpp
   src/robot/autonomy/planning/dwa_planner.cpp
   src/robot/autonomy/planning/global_planner.cpp
  src/robot/autonomy/planning/route_pipeline.cpp
@@ -601,8 +602,18 @@ target_compile_definitions(test_sim_config PRIVATE
 target_link_libraries(test_sim_config PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_config COMMAND test_sim_config)
 
+add_executable(test_artifact
+ tests/test_artifact.cpp
+)
+target_link_libraries(test_artifact PRIVATE lost_signal_sim_scenario
+ lost_signal_sim_providers lost_signal_sim_eval)
+add_test(NAME artifact COMMAND test_artifact)
+
 # Boundary gate: robot/ must never include sim/ or link sim libs.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME convert_master_map
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_convert_master_map.py
+)
 add_test(NAME robot_boundary
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/check_boundary.py
 )

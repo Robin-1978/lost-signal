@@ -5,6 +5,7 @@
 
 #include "robot/autonomy/planning/ackermann_planner.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
+#include "robot/autonomy/planning/route_smoothing.hpp"
 
 using lost_signal::robot::autonomy::AckermannPlanner;
 using lost_signal::robot::autonomy::EstimatedState;
@@ -70,6 +71,21 @@ int main() {
  assert(explicit_gear);
  assert(std::hypot(route.points.back().x_m - 5.0,
  route.points.back().y_m - 2.0) <= config.goal_position_tolerance_m + 1e-9);
+ for (std::size_t i = 1; i < route.points.size(); ++i) {
+ if (route.points[i].gear != route.points[i - 1].gear) continue;
+ const double ds = std::hypot(route.points[i].x_m - route.points[i - 1].x_m,
+ route.points[i].y_m - route.points[i - 1].y_m);
+ if (ds > 1e-6) {
+ const double dyaw = std::abs(lost_signal::robot::core::wrap_angle(
+ route.points[i].yaw_rad - route.points[i - 1].yaw_rad));
+ assert(dyaw <= 0.55 + 1e-6);
+ }
+ }
+ Route smoothed;
+ smoothed.valid = true;
+ smoothed.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.2, 0.1, 1},
+ {2.0, 0.5, 0.2, 1}};
+ assert(smooth_ackermann_route(smoothed, {0.56, 0.55, 0.55, 2.0}));
 
  // Invalid kinematic configuration fails closed on a raster instead of
  // returning a generic A* route that the chassis cannot realize.
