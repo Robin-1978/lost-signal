@@ -199,14 +199,12 @@ class ClearanceValidator : public IValidator {
 
  void set_lidar_mount(const core::RigidTransform& mount) override {
  base_from_lidar_ = mount;
- sensor_yaw_rad_ = std::atan2(
- 2.0 * (mount.rotation.w * mount.rotation.z +
- mount.rotation.x * mount.rotation.y),
- 1.0 - 2.0 * (mount.rotation.y * mount.rotation.y +
- mount.rotation.z * mount.rotation.z));
  }
  void set_lidar_yaw(double yaw_rad) override {
- if (std::isfinite(yaw_rad)) sensor_yaw_rad_ = yaw_rad;
+ if (std::isfinite(yaw_rad)) {
+ base_from_lidar_ = {{0.0, 0.0, 0.0},
+ core::quaternion_from_rpy(0.0, 0.0, yaw_rad)};
+ }
  }
   // Declared plant envelope (support width + COM height replace the
   // stock-chassis assumption; non-positive inputs are ignored, never
@@ -279,7 +277,10 @@ class ClearanceValidator : public IValidator {
       // Use the observation's explicit scan layout (one definition shared
         // with perception and mapping).
         const double angle = iface::scan_beam_angle_rad(obs, i);
- if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) >
+ const core::Vec3 beam_dir = core::rotate_vector(
+ base_from_lidar_.rotation, {std::cos(angle), std::sin(angle), 0.0});
+ const double base_angle = std::atan2(beam_dir.y, beam_dir.x);
+ if (std::abs(core::wrap_angle(base_angle)) >
           config_.forward_half_angle_rad) {
         continue;
       }
@@ -535,7 +536,6 @@ class ClearanceValidator : public IValidator {
  // Lidar mount from the TF tree (default identity).
  core::RigidTransform base_from_lidar_{
  {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
- double sensor_yaw_rad_ = 0.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

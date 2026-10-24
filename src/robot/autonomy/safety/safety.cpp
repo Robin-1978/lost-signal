@@ -39,8 +39,11 @@ SafetyVerdict SafetyMonitor::evaluate(
       const float r = obs.ranges_m[i];
       if (!(r > 0.0f) || !std::isfinite(r)) continue;
       omni_min = std::min(omni_min, r);
-      const double angle = iface::scan_beam_angle_rad(obs, i);
-      if (std::abs(core::wrap_angle(angle - sensor_yaw_rad_)) <=
+ const double angle = iface::scan_beam_angle_rad(obs, i);
+ const core::Vec3 dir = core::rotate_vector(
+ base_from_lidar_.rotation, {std::cos(angle), std::sin(angle), 0.0});
+ const double base_angle = std::atan2(dir.y, dir.x);
+ if (std::abs(core::wrap_angle(base_angle)) <=
           config_.forward_half_angle_rad) {
         fwd_min = std::min(fwd_min, r);
       }

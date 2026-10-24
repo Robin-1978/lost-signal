@@ -13,13 +13,6 @@ namespace lost_signal::robot::autonomy {
 
 namespace {
 
-// Planar yaw from a quaternion (REP-103 R = Rz*Ry*Rx): the TF mount may
-// carry roll/pitch, but planar consumers use the yaw projection only.
-double yaw_from_quaternion(const core::Quaternion& q) {
-  return std::atan2(2.0 * (q.w * q.z + q.x * q.y),
-                    1.0 - 2.0 * (q.y * q.y + q.z * q.z));
-}
-
 }  // namespace
 
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
@@ -163,14 +156,10 @@ void AutonomyCoordinator::set_static_frames(
   if (mapper_ != nullptr) mapper_->set_lidar_mount(base_from_lidar);
   lidar_mount_z_m_ = base_from_lidar.translation_m.z;
   localization_.set_lidar_mount(base_from_lidar);
-  const double yaw = yaw_from_quaternion(base_from_lidar.rotation);
- // The validator consumes the scan's declared forward azimuth in the
- // sensor frame; fan out the mount yaw for that sector gate. Full endpoint
- // deprojection remains available to direct validator users through the
- // complete mount setter; the live compatibility path keeps the established
- // base-frame obstacle contract until the terrain survey is re-baselined.
- if (validator_ != nullptr) validator_->set_lidar_yaw(yaw);
-  if (safety_ != nullptr) safety_->set_lidar_yaw(yaw);
+ // Forward-sector gates use the same full rotation as endpoint
+ // deprojection; roll/pitch-mounted lidars no longer take a yaw-only path.
+ if (validator_ != nullptr) validator_->set_lidar_mount(base_from_lidar);
+ if (safety_ != nullptr) safety_->set_lidar_mount(base_from_lidar);
 }
 
 void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
@@ -216,6 +205,12 @@ void AutonomyCoordinator::ingest_observation(
   // into base_link through the static TF before the estimator integrates
   // it as body rates. Unknown mount = identity, i.e. aligned behavior.
   iface::ObservationFrame shaped = obs;
+ if (shaped.scan_valid) {
+ // Normalize the legacy zero-increment form once at the ROBOT boundary so
+ // scan matching/SLAM and direct beam consumers share one layout contract.
+ shaped.scan_angle_increment_rad =
+ iface::scan_angle_increment_rad(shaped);
+ }
   if (shaped.imu_valid) {
     if (const auto base_from_imu = tf_.lookup("base_link", "imu_link")) {
       const core::Vec3 gyro =

@@ -204,6 +204,8 @@ int main() {
     assert(coord.configure().ok);
     assert(coord.activate().ok);
     coord.ingest_observation(make_odom(1, 1'000'000, 0.0));
+ assert(std::abs(coord.last_observation().scan_angle_increment_rad - M_PI) <
+ 1e-12); // legacy zero increment normalized at the ROBOT boundary
     iface::ChannelHealth ch{};
     iface::MotionCommand cmd =
         coord.update(iface::MapSnapshot{}, ch, 1'000'000);

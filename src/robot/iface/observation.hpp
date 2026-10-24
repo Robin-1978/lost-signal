@@ -80,9 +80,17 @@ struct ObservationFrame {
 // legacy full-rotation layout for providers that predate explicit layout;
 // every consumer uses this one definition so a frame cannot be interpreted
 // two different ways.
+inline double scan_angle_increment_rad(const ObservationFrame& obs) {
+ const double inc = obs.scan_angle_increment_rad;
+ if (std::isfinite(inc) && inc != 0.0) return inc;
+ const std::size_t n = obs.ranges_m.size();
+ return n > 0 ? 2.0 * 3.14159265358979323846 /
+ static_cast<double>(n) : 0.0;
+}
+
 inline double scan_beam_angle_rad(const ObservationFrame& obs,
  std::size_t i) {
- const double inc = obs.scan_angle_increment_rad;
+ const double inc = scan_angle_increment_rad(obs);
  if (std::isfinite(inc) && inc != 0.0) {
  return obs.scan_angle_min_rad + inc * static_cast<double>(i);
  }

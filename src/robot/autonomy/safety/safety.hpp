@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cmath>
 #include <string>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/core/time.hpp"
+#include "robot/core/transform.hpp"
 #include "robot/iface/channel.hpp"
 #include "robot/iface/command.hpp"
 #include "robot/iface/observation.hpp"
@@ -42,7 +44,10 @@ class ISafetyMonitor {
                                     core::MonotonicNs now_ns) = 0;
   virtual void clear_safety() = 0;  // deliberate recovery from a latch
   virtual SafetyVerdict last_verdict() const = 0;
-  virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
+ virtual void set_lidar_mount(const core::RigidTransform& mount) {
+ (void)mount;
+ }
+ virtual void set_lidar_yaw(double yaw_rad) { (void)yaw_rad; }
 };
 
 // v1 rules (all independent of planner/validator state):
@@ -62,13 +67,22 @@ struct SafetyConfig {
   float contact_radius_m = 0.15f;  // omnidirectional last-resort latch
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
-  // Sensor yaw lives in the TF tree; set via set_lidar_yaw(). No copy here.
+ // Lidar extrinsics live in the TF tree; the full rotation is used when
+ // classifying beam directions. The yaw setter remains for old callers.
 };
 
 class SafetyMonitor : public ISafetyMonitor {
  public:
   explicit SafetyMonitor(SafetyConfig config = {});
-  void set_lidar_yaw(double yaw_rad) override { sensor_yaw_rad_ = yaw_rad; }
+ void set_lidar_mount(const core::RigidTransform& mount) override {
+ base_from_lidar_ = mount;
+ }
+ void set_lidar_yaw(double yaw_rad) override {
+ if (std::isfinite(yaw_rad)) {
+ base_from_lidar_ = {{0.0, 0.0, 0.0},
+ core::quaternion_from_rpy(0.0, 0.0, yaw_rad)};
+ }
+ }
   void reset() override;
   SafetyVerdict evaluate(const EstimatedState& est,
                          const PerceptionResult& perception,
@@ -83,7 +97,8 @@ class SafetyMonitor : public ISafetyMonitor {
 
  private:
   SafetyConfig config_;
-  double sensor_yaw_rad_ = 0.0;
+ core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0},
+ {0.0, 0.0, 0.0, 1.0}};
   bool latched_ = false;
   std::string latch_reason_;
   std::uint64_t last_drops_ = 0;

@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -99,6 +100,26 @@ int main() {
                                     2'000'000);
     assert(ok.state == SafetyState::kNominal);
   }
+
+ // Forward-sector classification follows the complete base<-lidar
+ // rotation. With a 90-degree pitch, a beam near sensor-forward projects
+ // vertically/sideways and must not be mistaken for a base-forward obstacle.
+ {
+ SafetyMonitor mon;
+ mon.reset();
+ mon.set_lidar_mount({{0.0, 0.0, 0.0},
+ core::quaternion_from_rpy(0.0, M_PI * 0.5, 0.0)});
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 5.0f);
+ o.ranges_m.assign(16, 5.0f);
+ o.ranges_m[1] = 0.2f; // angle = pi/8, within old yaw-only sector
+ o.scan_angle_min_rad = 0.0;
+ o.scan_angle_increment_rad = M_PI / 8.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ SafetyVerdict v = mon.evaluate(EstimatedState{}, perc, o, ch, 1'000'000);
+ assert(v.state == SafetyState::kNominal && v.allow_motion);
+ }
 
   // End to end: coordinator pipeline passes the safety gate on good evidence.
   {
