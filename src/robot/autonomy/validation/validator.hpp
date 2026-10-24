@@ -349,16 +349,18 @@ class ClearanceValidator : public IValidator {
     endpoints.reserve(n);
  const bool has_static_ref =
  obs.scan_static_valid && obs.static_ranges_m.size() == n;
+ auto tracked_foreground = [&](double x, double y) {
+ for (const auto& track : perception.tracks) {
+ if (std::hypot(track.x_m - x, track.y_m - y) <=
+ track.occupied_radius_m() + 0.5) {
+ return true;
+ }
+ }
+ return false;
+ };
     for (std::size_t i = 0; i < n; ++i) {
       const float range = obs.ranges_m[i];
       if (!(range > 0.0f) || !std::isfinite(range)) continue;
- if (has_static_ref) {
- const float expected = obs.static_ranges_m[i];
- if (std::isfinite(expected) && expected > 0.0f &&
- std::abs(range - expected) > config_.foreground_threshold_m) {
- continue;
- }
- }
       const double angle = iface::scan_beam_angle_rad(obs, i);
       const double toff = has_toff ? obs.time_offsets_s[i] : 0.0;
       const core::Vec2 local = core::deskew_beam(range, angle, toff, twist);
@@ -366,6 +368,16 @@ class ClearanceValidator : public IValidator {
  map_from_sensor.rotation, {local.x, local.y, 0.0});
  const double ex = sensor_p.x + off.x;
  const double ey = sensor_p.y + off.y;
+ if (has_static_ref) {
+ const float expected = obs.static_ranges_m[i];
+ const bool foreground = std::isfinite(expected) && expected > 0.0f &&
+ std::abs(range - expected) > config_.foreground_threshold_m;
+ // A foreground return is removed from the static rollout only after the
+ // perception layer has a matching predicted track. An unmatched return
+ // remains a conservative static obstacle; missing association is not a
+ // license to drive through raw evidence.
+ if (foreground && tracked_foreground(ex, ey)) continue;
+ }
       if (survey != nullptr &&
           survey->is_ground(ex, ey, survey->sensor_z(est))) {
         continue;
