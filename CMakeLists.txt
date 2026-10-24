@@ -553,6 +553,15 @@ target_compile_definitions(test_terrain_mission PRIVATE
 target_link_libraries(test_terrain_mission PRIVATE lost_signal_sim_scenario)
 add_test(NAME terrain_mission COMMAND test_terrain_mission)
 
+add_executable(test_multichassis_mission
+ tests/test_multichassis_mission.cpp
+)
+target_compile_definitions(test_multichassis_mission PRIVATE
+ TEST_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_multichassis_mission PRIVATE lost_signal_sim_scenario)
+add_test(NAME multichassis_mission COMMAND test_multichassis_mission)
+
 add_executable(test_transform_tree
   tests/test_transform_tree.cpp
 )
