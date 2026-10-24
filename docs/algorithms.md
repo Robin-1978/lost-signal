@@ -1,10 +1,11 @@
 # Algorithm modules (autonomy)
 
 `src/robot/autonomy/` follows one data flow with replaceable typed modules.
-The coordinator owns the stack and the per-tick order; SIM never calls a
-module directly. Planner selection and route policy live in the planning
-module (`make_global_planner` + `RoutePlanningPipeline`); the coordinator
-only wires their typed inputs and outputs.
+The coordinator owns lifecycle, timing, and publication order; SIM never
+calls a module directly. Planner selection and route policy live in the
+planning module (`make_global_planner` + `RoutePlanningPipeline`).
+`DecisionCyclePipeline` owns route refresh, local planning, validation, and
+control selection; the coordinator only wires typed inputs and outputs.
 
 ## Module graph
 
@@ -60,7 +61,11 @@ identification stay out: the `IChassis` wrapper owns the real base.
   z from pitch (`dz = forward·sin(pitch)` — no map correction observes it,
   the raster is 2D), and grows sigmas with motion and time. Roll/pitch/z
   ride in `EstimatedState` with an `attitude_valid` flag: planar position +
-  z, full 3D attitude (2.5D).
+ z, full 3D attitude (2.5D). When the control-layer grip observer has
+ measured longitudinal slip, the estimator receives that ROBOT-side
+ envelope and scales only dead-reckoned translation; nominal rolling remains
+ unchanged. The scale is never derived from simulator contact or material
+ truth.
 - Perception owns tracks + free-space evidence. `scan_ok == false` means
   unknown, never free space. No actor IDs cross. `LidarPerception` splits
   foreground by disagreeing with a static reference (map raycast or surveyed
@@ -103,7 +108,8 @@ identification stay out: the `IChassis` wrapper owns the real base.
   degrades to a straight line when the map has no raster; a walled-in goal
  yields an invalid route (fail closed upstream). `RoutePlanningPipeline`
  refreshes the active route on goal/map change or an explicit replan event;
- the coordinator only wires the event and module inputs. The local planner
+ `DecisionCyclePipeline` then hands that route to local planning, validation,
+ and control. The coordinator only wires the event and module inputs. The local planner
  only ever consumes that route, never a raw goal. The static map itself arrives as
   an immutable revision from a provider (`StaticMapProvider` rasterizes
   authored geometry; SLAM/file/remote providers implement the same seam),
@@ -192,8 +198,9 @@ route, pre-activation hold).
   nothing and the coordinator never plans), `goal_status` polls
   (`active/done/failed/canceled`), successful `cancel_goal` withdraws the
   coordinator's route (failed cancels leave it untouched), a new request
-  preempts the running goal, and arrival (estimate inside 0.5 m of the
-  goal) completes it. SIM submits the same typed intents as an operator.
+ preempts the running goal, and arrival inside a footprint-derived stop band
+ (at least 0.5 m) completes it. SIM submits the same typed intents as an
+ operator.
 - `BehaviorPolicy` turns tracks + estimate into one constraint; `DWA`
   samples trajectories (forward/yaw always, lateral only when the chassis
   envelope carries `max_lateral_mps > 0`); the controller emits `kHolonomic`

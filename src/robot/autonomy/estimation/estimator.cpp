@@ -45,6 +45,7 @@ void FusedOdometryEstimator::reset() {
   prior_ = iface::ObservationFrame{};
   last_slip_ = SlipObservation{};
   slip_heading_extra_rad_ = 0.0;
+ motion_scale_ = 1.0;
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
@@ -105,8 +106,12 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   } else if (obs.odometry_valid) {
     yaw_rate = obs.yaw_rate_radps;
   }
-  const double forward =
-      obs.odometry_valid ? obs.forward_mps : estimate_.forward_mps;
+ // Wheel odometry is a commanded/encoder twist. When the control governor
+ // has measured longitudinal slip it supplies a bounded scale so the pose
+ // estimate does not integrate wheel spin as travelled distance. The slip
+ // observer above still consumes the raw twist; only translation is scaled.
+ const double forward =
+ obs.odometry_valid ? obs.forward_mps * motion_scale_ : estimate_.forward_mps;
   const double yaw_mid = estimate_.yaw_rad + 0.5 * yaw_rate * dt_s;
   const double step_m = forward * dt_s;
   estimate_.x_m += step_m * std::cos(yaw_mid);
@@ -194,6 +199,11 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   estimate_.confidence =
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
   prior_ = obs;
+}
+
+void FusedOdometryEstimator::set_motion_scale(double scale) {
+ if (!std::isfinite(scale)) return;
+ motion_scale_ = std::clamp(scale, 0.1, 1.0);
 }
 
 void FusedOdometryEstimator::correct(const iface::ObservationFrame& obs) {

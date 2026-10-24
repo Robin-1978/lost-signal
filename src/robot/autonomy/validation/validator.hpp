@@ -116,7 +116,10 @@ struct SurveyContext {
   // Body origin above ground at spawn (chassis ride height, measured 0.10
   // on the engine): the estimate dead-reckons z above the spawn plane, so
   // the absolute sensor height is est.z + mount + ride.
-  double ride_height_m = 0.10;
+ double ride_height_m = 0.10;
+ // Spatial scale used to decide whether the terrain prior is resolvable.
+ // Filled from the declared chassis footprint.
+ double footprint_radius_m = 0.4;
   // Endpoint-vs-survey agreement to call a return surveyed ground.
   double ground_tol_m = 0.15;
   // Steeper along-track grade is unclimbable; steeper side-slope risks
@@ -146,8 +149,24 @@ struct SurveyContext {
   // Context carries evidence when the estimate is valid and either source
   // is present (live alone suffices: survey gaps/revisions still validate).
   bool usable(const EstimatedState& est) const {
-    return est.valid &&
-           ((map != nullptr && map->has_elevation()) || live.attached());
+ // Elevation is a navigation prior.  Applying a sharp finite-difference
+ // grade gate while the pose is uncertain turns localization drift into a
+ // false terrain veto (and can strand the vehicle).  Keep raw scan safety
+ // active, but let the validator use surveyed grade only once the fused
+ // estimate is trustworthy enough to associate the footprint with the
+ // survey cell.
+ if (!est.valid || !std::isfinite(est.position_sigma_m) ||
+ !std::isfinite(est.heading_sigma_rad) ||
+ !((map != nullptr && map->has_elevation()) || live.attached())) {
+ return false;
+ }
+ const double survey_scale = std::max(
+ 1e-3, std::max(map != nullptr && map->resolution_m > 0.0
+ ? map->resolution_m : 0.0, footprint_radius_m));
+ const double projected_sigma = est.position_sigma_m +
+ survey_scale * std::sin(std::min(
+ std::abs(est.heading_sigma_rad), 0.5 * core::kPi));
+ return projected_sigma <= survey_scale;
   }
 };
 

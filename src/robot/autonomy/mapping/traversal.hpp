@@ -71,6 +71,25 @@ class TraversalModel {
   bool ready() const { return map_.has_raster(); }
   std::uint64_t revision() const { return map_.revision; }
 
+ // A surveyed grade is a local spatial derivative. It is only a valid hard
+ // gate when the fused pose uncertainty fits inside the survey scale and the
+ // chassis footprint. Unknown association falls back to the local scan
+ // validator instead of turning localization drift into a terrain wall.
+ bool terrain_gate_resolved(const EstimatedState& est,
+ double footprint_radius_m) const {
+ if (!ready() || !map_.has_elevation() || !est.valid ||
+ !std::isfinite(est.position_sigma_m) ||
+ !std::isfinite(est.heading_sigma_rad)) {
+ return false;
+ }
+ const double scale = std::max(
+ 1e-3, std::max(map_.resolution_m, footprint_radius_m));
+ const double projected_sigma = est.position_sigma_m +
+ scale * std::sin(std::min(
+ std::abs(est.heading_sigma_rad), 0.5 * core::kPi));
+ return projected_sigma <= scale;
+ }
+
   // Roughness belief update from LSRI motion observations (estimate +
   // vertical specific force). No simulator contact or authored terrain
   // value is accepted here. Vertical excitation beyond the gravity

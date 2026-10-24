@@ -118,8 +118,13 @@ class GripAdapter {
     if (obs.odometry_valid && obs.imu_valid && has_prev_wheel_v_ &&
         std::isfinite(obs.forward_mps) &&
         std::isfinite(obs.imu_ax_mps2)) {
-      const double grade =
-          std::isfinite(survey_pitch_rad) ? survey_pitch_rad : 0.0;
+ // The IMU gravity estimate is the primary compensation. The surveyed
+ // grade is only a prior for startup/attitude dropout; using it as the
+ // dominant term turns a legitimate ramp transition into wheel-slip
+ // evidence when localization is imperfect.
+ const double grade = est.attitude_valid && std::isfinite(est.pitch_rad)
+ ? est.pitch_rad
+ : (std::isfinite(survey_pitch_rad) ? survey_pitch_rad : 0.0);
       const double wheel_accel =
           (obs.forward_mps - prev_wheel_v_mps_) / dt_s;
       const double body_accel =

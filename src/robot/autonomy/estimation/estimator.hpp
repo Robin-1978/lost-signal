@@ -52,6 +52,8 @@ class IEstimator {
   // Default reports Invalid; estimators with a slip observer override it.
   // Consumers read quality/confidence, never thresholds.
   virtual SlipObservation last_slip() const { return SlipObservation{}; }
+ // Optional traction-aware scale for dead-reckoned translation.
+ virtual void set_motion_scale(double /*scale*/) {}
   virtual const EstimatedState& estimate() const = 0;
 };
 
@@ -110,6 +112,7 @@ class FusedOdometryEstimator : public IEstimator {
   // Latest slip observation (wheel twist vs estimator body twist). Updated
   // on every predict; consumers read quality/confidence, never thresholds.
   SlipObservation last_slip() const override { return last_slip_; }
+ void set_motion_scale(double scale) override;
 
  private:
   struct Quaternion {
@@ -130,6 +133,7 @@ class FusedOdometryEstimator : public IEstimator {
   // Tracked separately so clean rolling can relax exactly what slip added
   // (a validated correction or reset clears it outright).
   double slip_heading_extra_rad_ = 0.0;
+ double motion_scale_ = 1.0;
 };
 
 }  // namespace lost_signal::robot::autonomy

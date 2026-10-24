@@ -1,5 +1,6 @@
 #include "robot/app/robot_application.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "robot/core/geometry.hpp"
@@ -163,7 +164,13 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
  // Arrival is terminal: complete the goal and withdraw the route BEFORE
  // planning, so the arrival tick already holds instead of publishing one
  // more route-following command.
- if (coordinator_.route_complete()) {
+ // Arrival is a chassis-envelope decision: a footprint-sized stop band
+ // avoids holding forever when the final controller sample settles just
+ // outside the point target. The radius is derived from the declared robot
+ // geometry and remains independent of simulation truth.
+ const double arrival_radius_m = std::max(
+ 0.5, 2.0 * desc_.limits.footprint_radius_m);
+ if (coordinator_.route_complete(arrival_radius_m)) {
  executive_.note_arrival(true);
  coordinator_.clear_goal();
  }

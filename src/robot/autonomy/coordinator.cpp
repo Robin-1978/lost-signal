@@ -5,9 +5,8 @@
 #include <limits>
 #include <string>
 
-#include "robot/autonomy/decision/motion_pipeline.hpp"
+#include "robot/autonomy/decision/autonomy_pipeline.hpp"
 #include "robot/autonomy/decision/terrain_pipeline.hpp"
-#include "robot/autonomy/planning/route_pipeline.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -43,6 +42,10 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
   // before the first survey bind, legacy behavior exactly.
   local_planner_->set_terrain_gate([this](double x0, double y0, double x1,
                                           double y1, double yaw) {
+ if (!traversal_.terrain_gate_resolved(estimator_->estimate(),
+ limits_.footprint_radius_m)) {
+ return true;
+ }
     return traversal_.feasible(x0, y0, x1, y1, yaw);
   });
 }
@@ -290,6 +293,10 @@ iface::MotionCommand AutonomyCoordinator::update(
  TerrainAdaptationPipeline::update(
  now_ns, last_obs_, map, estimator_->estimate(), estimator_->last_slip(),
  last_traverse_ns_, grip_, traversal_);
+ // Feed the measured-only traction envelope back into odometry prediction
+ // for the next observation. This bounds wheel-spin integration without
+ // exposing plant truth to ROBOT; nominal grip leaves odometry unchanged.
+ estimator_->set_motion_scale(grip_.factor());
   // Surveyed-elevation context for the terrain-aware layers (prior, never
   // live physics): validator ground-classification + grade gates. The map
   // outlives the decision branch (by-value parameter), so the pointer is
@@ -309,6 +316,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   survey_ctx.live.origin_y_m = live_map_.origin_y_m;
   survey_ctx.sensor_height_m = lidar_mount_z_m_;
   survey_ctx.ride_height_m = ride_height_m_;
+ survey_ctx.footprint_radius_m = limits_.footprint_radius_m;
   if (due || replan_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
@@ -323,18 +331,13 @@ iface::MotionCommand AutonomyCoordinator::update(
       traversal_.bind(map);
       if (mapper_ != nullptr) mapper_->set_survey(map);
     }
-    // Route refresh first: a new goal, a new map revision, or no route yet
-    // re-runs the global planner from the current estimate. The local
-    // planner only ever consumes this active route, never a raw goal.
- RoutePlanningPipeline::refresh(
- *global_planner_, estimator_->estimate(), goal_, has_goal_, map,
- force_route_refresh, active_route_);
  const LocalMap robot_local_map = mapper_->local_map();
- MotionDecisionResult motion = MotionDecisionPipeline::run(
- estimator_->estimate(), perception_, robot_local_map, active_route_,
+ MotionDecisionResult motion = DecisionCyclePipeline::run(
+ *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
+ estimator_->estimate(), perception_, robot_local_map, active_route_, goal_,
+ has_goal_, map, force_route_refresh,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_, last_obs_,
- survey_ctx, now_ns,
- *behavior_, *local_planner_, *validator_, *controller_);
+ survey_ctx, now_ns);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;

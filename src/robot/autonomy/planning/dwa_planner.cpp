@@ -187,9 +187,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const RouteTarget target =
  route_goal(route, est.x_m, est.y_m, config_.lookahead_m);
  const core::Vec2 goal = target.position;
- const double heading_target = std::isfinite(target.yaw_rad)
- ? target.yaw_rad
- : std::atan2(goal.y - est.y_m, goal.x - est.x_m);
+ // Route points may carry a terminal yaw of zero even when the route is a
+ // long straight segment. While far from the goal, steer toward the actual
+ // goal bearing so cross-track drift is corrected instead of relying on a
+ // weak endpoint score; honor the requested terminal yaw near arrival.
+ const double goal_distance = std::hypot(goal.x - est.x_m, goal.y - est.y_m);
+ const double goal_bearing = std::atan2(goal.y - est.y_m, goal.x - est.x_m);
+ const double heading_target =
+ goal_distance > std::max(config_.lookahead_m, 0.5)
+ ? goal_bearing
+ : (std::isfinite(target.yaw_rad) ? target.yaw_rad : goal_bearing);
   const double goal_directed_yaw_rate = core::clamp(
       core::wrap_angle(heading_target - est.yaw_rad) /
           std::max(dt, predict_T),
