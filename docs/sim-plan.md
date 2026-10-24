@@ -1,7 +1,7 @@
 # SIM Phase Plan (Phase 2: sim re-integration — now with MuJoCo backend track, see below)
 
 Robot side is continuously gated by a clean rebuild, the full CTest suite,
-and the boundary check (currently 47/47 green).
+and the boundary check (currently 49/49 green).
 This phase ports the **deployable** sim algorithms from `main` onto the new
 chain. Presentation never crosses: game UI / client / renderers / audio /
 map editor / campaign visuals stay out. The physics backend is MuJoCo
