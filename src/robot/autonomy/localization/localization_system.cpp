@@ -274,9 +274,23 @@ bool LocalizationSystem::run_localization(
  global_origin_x_m_ = est.x_m;
  global_origin_y_m_ = est.y_m;
  global_origin_yaw_rad_ = est.yaw_rad;
+ if (supervisor_.localized()) {
+ const double prior_sigma_m = std::isfinite(est.position_sigma_m)
+ ? std::max(0.0, est.position_sigma_m)
+ : supervisor_.config().lost_position_sigma_m;
+ const double recovery_radius_m = std::max(
+ supervisor_.config().trusted_global_jump_m,
+ supervisor_.config().trusted_global_jump_sigma_factor *
+ prior_sigma_m);
+ global_search_.begin_near(
+ obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+ map, now_ns, est.x_m, est.y_m, recovery_radius_m,
+ est.roll_rad, est.pitch_rad, est.z_m);
+ } else {
  global_search_.begin(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, est.roll_rad, est.pitch_rad, est.z_m);
+ }
  }
  const std::optional<GlobalSearchResult> update = global_search_.advance();
  if (!update.has_value()) {

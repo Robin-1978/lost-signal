@@ -298,6 +298,18 @@ int main() {
  r.coarse_positions_considered);
  assert(incremental->coarse_positions_skipped_unobservable ==
  r.coarse_positions_skipped_unobservable);
+ // Once a map frame exists, recovery uses its covariance-supported region
+ // rather than allowing a repeated structure elsewhere in the survey to
+ // compete with the prior. It must retain the same true local solution with
+ // fewer coarse evaluations.
+ searcher.begin_near(ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 1,
+ 1.0, 0.0, 2.0);
+ std::optional<GlobalSearchResult> regional;
+ while (!regional.has_value()) regional = searcher.advance(256);
+ assert(regional->accepted);
+ assert(std::abs(regional->x_m - 1.0) < 0.5);
+ assert(std::abs(regional->y_m) < 0.5);
+ assert(regional->coarse_evaluations < r.coarse_evaluations);
 
  // A sparse prior may contain occupied returns but no surveyed free cells.
  // Unknown cells remain eligible seeds; they are neutral until the measured
@@ -397,10 +409,9 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
- // An established map frame never loses its innovation gate abruptly when
- // covariance crosses the global-recovery threshold. Repetitive maps can
- // yield a strong but distant one-scan peak; reject that peak until ROBOT
- // uncertainty is large enough to support the displacement.
+ // An established map frame never searches beyond the region supported by
+ // its covariance. A geometrically strong scan from a distant place must
+ // complete as a rejection without teleporting the trusted prior.
  {
  auto map = make_wall_map();
  auto ranges = scan_from(1.0, 0.0, 0.0, map);
@@ -410,8 +421,8 @@ int main() {
  estimator.reset();
  estimator.seed_pose(-8.0, -8.0, 0.0, 0.50, 0.10, 1);
  RayClearingMapper mapper;
- bool rejected_distant_peak = false;
- for (int i = 0; i < 1000 && !rejected_distant_peak; ++i) {
+ bool bounded_recovery_completed = false;
+ for (int i = 0; i < 1000 && !bounded_recovery_completed; ++i) {
  iface::ObservationFrame o;
  o.sequence = static_cast<std::uint64_t>(i + 1);
  o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
@@ -424,10 +435,11 @@ int main() {
  o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
  const auto result = localization.update(
  map, o, o.stamp_ns, true, estimator, mapper);
- rejected_distant_peak = result.action.find(
- "global correction exceeds trusted covariance") != std::string::npos;
+ bounded_recovery_completed =
+ result.action.rfind("global_relocalization:", 0) == 0 &&
+ result.action != "global_relocalization:search pending";
  }
- assert(rejected_distant_peak);
+ assert(bounded_recovery_completed);
  assert(estimator.estimate().x_m == -8.0);
  assert(estimator.estimate().y_m == -8.0);
  }

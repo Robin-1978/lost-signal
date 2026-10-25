@@ -169,6 +169,14 @@ class GlobalSearcher {
  double angle_increment_rad, const iface::MapSnapshot& map,
  core::MonotonicNs stamp_ns, double body_roll_rad = 0.0,
  double body_pitch_rad = 0.0, double body_z_m = 0.0);
+ // Recovery with an established map frame searches only the covariance
+ // supported neighbourhood. This keeps a strong repeated structure on the
+ // far side of a large map from displacing a still informative ROBOT prior.
+ void begin_near(const std::vector<float>& ranges, double angle_min_rad,
+ double angle_increment_rad, const iface::MapSnapshot& map,
+ core::MonotonicNs stamp_ns, double center_x_m, double center_y_m,
+ double radius_m, double body_roll_rad = 0.0,
+ double body_pitch_rad = 0.0, double body_z_m = 0.0);
  std::optional<GlobalSearchResult> advance(
  std::size_t work_budget = 8192);
  bool active() const;

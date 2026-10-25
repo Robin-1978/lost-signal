@@ -137,7 +137,9 @@ struct GlobalSearcher::WorkState {
  const core::RigidTransform& mount_value,
  const std::vector<float>& range_values, double angle_min,
  double angle_increment, const iface::MapSnapshot& map_value,
- core::MonotonicNs stamp, double roll, double pitch, double z)
+ core::MonotonicNs stamp, double roll, double pitch, double z,
+ bool bound_position, double bound_x_m, double bound_y_m,
+ double bound_radius_m)
  : config(cfg), mount(mount_value), ranges(range_values), map(map_value),
  angle_min_rad(angle_min), angle_increment_rad(angle_increment),
  stamp_ns(stamp), body_roll_rad(roll), body_pitch_rad(pitch), body_z_m(z) {
@@ -224,6 +226,43 @@ struct GlobalSearcher::WorkState {
  }
  cell_stride = std::max(1, static_cast<int>(std::round(
  config.coarse_position_step_m / map.resolution_m)));
+ coarse_max_gx = static_cast<int>(map.width);
+ coarse_max_gy = static_cast<int>(map.height);
+ if (bound_position) {
+ if (!std::isfinite(bound_x_m) || !std::isfinite(bound_y_m) ||
+ !(bound_radius_m > 0.0)) {
+ finish("invalid bounded search region");
+ return;
+ }
+ position_bounded = true;
+ bound_center_x_m = bound_x_m;
+ bound_center_y_m = bound_y_m;
+ bound_radius_m_ = bound_radius_m;
+ const auto lower_grid = [&](double world, double origin, int limit) {
+ const int raw = static_cast<int>(std::floor(
+ (world - origin) / map.resolution_m));
+ const int clamped = std::clamp(raw, 0, limit - 1);
+ return ((clamped + cell_stride - 1) / cell_stride) * cell_stride;
+ };
+ const auto upper_grid_exclusive = [&](double world, double origin,
+ int limit) {
+ const int raw = static_cast<int>(std::floor(
+ (world - origin) / map.resolution_m));
+ const int clamped = std::clamp(raw, 0, limit - 1);
+ return std::min(limit,
+ (clamped / cell_stride + 1) * cell_stride);
+ };
+ coarse_min_gx = lower_grid(bound_x_m - bound_radius_m,
+ map.origin_x_m, static_cast<int>(map.width));
+ coarse_max_gx = upper_grid_exclusive(bound_x_m + bound_radius_m,
+ map.origin_x_m, static_cast<int>(map.width));
+ coarse_min_gy = lower_grid(bound_y_m - bound_radius_m,
+ map.origin_y_m, static_cast<int>(map.height));
+ coarse_max_gy = upper_grid_exclusive(bound_y_m + bound_radius_m,
+ map.origin_y_m, static_cast<int>(map.height));
+ coarse_gx = coarse_min_gx;
+ coarse_gy = coarse_min_gy;
+ }
  const std::size_t prefix_width =
  static_cast<std::size_t>(map.width) + 1;
  const std::size_t prefix_height =
@@ -593,6 +632,11 @@ struct GlobalSearcher::WorkState {
  std::vector<double> coarse_mount_x, coarse_mount_y;
  int n_headings = 1, cell_stride = 1;
  int coarse_gx = 0, coarse_gy = 0, coarse_ih = 0;
+ int coarse_min_gx = 0, coarse_min_gy = 0;
+ int coarse_max_gx = 0, coarse_max_gy = 0;
+ bool position_bounded = false;
+ double bound_center_x_m = 0.0, bound_center_y_m = 0.0;
+ double bound_radius_m_ = 0.0;
  std::size_t evaluations = 0;
  std::vector<Coarse> survivors;
  std::size_t refine_index = 0;
@@ -622,7 +666,20 @@ void GlobalSearcher::begin(const std::vector<float>& ranges,
  double body_roll_rad, double body_pitch_rad, double body_z_m) {
  work_ = std::make_unique<WorkState>(
  config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
- stamp_ns, body_roll_rad, body_pitch_rad, body_z_m);
+ stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
+ false, 0.0, 0.0, 0.0);
+}
+
+void GlobalSearcher::begin_near(
+ const std::vector<float>& ranges, double angle_min_rad,
+ double angle_increment_rad, const iface::MapSnapshot& map,
+ core::MonotonicNs stamp_ns, double center_x_m, double center_y_m,
+ double radius_m, double body_roll_rad, double body_pitch_rad,
+ double body_z_m) {
+ work_ = std::make_unique<WorkState>(
+ config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
+ stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
+ true, center_x_m, center_y_m, radius_m);
 }
 
 bool GlobalSearcher::active() const { return work_ != nullptr; }
@@ -736,14 +793,26 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  continue;
  }
  if (w.phase == WorkState::Phase::kCoarse) {
- if (w.coarse_gy >= static_cast<int>(w.map.height)) {
+ if (w.coarse_gy >= w.coarse_max_gy) {
  w.begin_refine();
  continue;
  }
- if (w.coarse_gx >= static_cast<int>(w.map.width)) {
- w.coarse_gx = 0;
+ if (w.coarse_gx >= w.coarse_max_gx) {
+ w.coarse_gx = w.coarse_min_gx;
  w.coarse_gy += w.cell_stride;
  w.coarse_ih = 0;
+ continue;
+ }
+ const double cx = w.map.origin_x_m +
+ (w.coarse_gx + 0.5) * w.map.resolution_m;
+ const double cy = w.map.origin_y_m +
+ (w.coarse_gy + 0.5) * w.map.resolution_m;
+ if (w.position_bounded &&
+ std::hypot(cx - w.bound_center_x_m, cy - w.bound_center_y_m) >
+ w.bound_radius_m_) {
+ w.coarse_gx += w.cell_stride;
+ w.coarse_ih = 0;
+ spend(1);
  continue;
  }
  const std::size_t cell_index = static_cast<std::size_t>(w.coarse_gy) *
@@ -767,10 +836,6 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.finish("evaluation budget exceeded");
  continue;
  }
- const double cx = w.map.origin_x_m +
- (w.coarse_gx + 0.5) * w.map.resolution_m;
- const double cy = w.map.origin_y_m +
- (w.coarse_gy + 0.5) * w.map.resolution_m;
  const double heading = core::wrap_angle(
  -core::kPi + w.coarse_ih * w.config.coarse_heading_step_rad);
  const double score = w.score_coarse(w.coarse_ih, cx, cy);
