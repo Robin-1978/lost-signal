@@ -26,79 +26,89 @@ EstimateError estimate_error(const EvalStep& step) {
 }
 
 EpisodeScore score_episode(const EpisodeRecorder& episode) {
-  EpisodeScore s;
-  s.steps = episode.size();
-  if (s.steps == 0) return s;
- s.elapsed_s = static_cast<double>(s.steps) * 0.02;
-  const auto& steps = episode.steps();
-  double x0 = steps.front().truth_before.body_x_m;
-  double y0 = steps.front().truth_before.body_y_m;
-  double x1 = steps.back().truth_after.body_x_m;
-  double y1 = steps.back().truth_after.body_y_m;
-  s.distance_m = std::hypot(x1 - x0, y1 - y0);
-  double pos_sum = 0.0;
-  double yaw_sum = 0.0;
- double clearance_sum = 0.0;
- std::size_t clearance_samples = 0;
- double terrain_clearance_sum = 0.0;
- std::size_t terrain_clearance_samples = 0;
-  for (const auto& st : steps) {
- s.path_length_m += std::hypot(
- st.truth_after.body_x_m - st.truth_before.body_x_m,
- st.truth_after.body_y_m - st.truth_before.body_y_m);
-    if (st.cmd.is_safe_stop()) s.safe_stop_steps += 1;
-    if (st.judge.static_collision || st.judge.dynamic_collision ||
-        st.judge.terrain_collision) {
-      s.collision_steps += 1;
-    }
- if (st.judge.terrain_collision) s.terrain_collision_steps += 1;
- if (st.cmd.is_safe_stop() &&
- st.judge.dynamic_clearance_m < 1.0) {
- s.dynamic_hold_steps += 1;
+ EpisodeScoreAccumulator accumulator;
+ for (const auto& step : episode.steps()) accumulator.record(step);
+ return accumulator.score();
+}
+
+void EpisodeScoreAccumulator::reset() {
+ *this = EpisodeScoreAccumulator{};
+}
+
+void EpisodeScoreAccumulator::record(const EvalStep& step) {
+ if (!have_origin_) {
+ have_origin_ = true;
+ origin_x_m_ = step.truth_before.body_x_m;
+ origin_y_m_ = step.truth_before.body_y_m;
  }
- const double clearance = std::min(st.judge.static_clearance_m,
- st.judge.dynamic_clearance_m);
+ final_x_m_ = step.truth_after.body_x_m;
+ final_y_m_ = step.truth_after.body_y_m;
+ ++score_.steps;
+ score_.elapsed_s = static_cast<double>(score_.steps) * 0.02;
+ score_.distance_m = std::hypot(
+ final_x_m_ - origin_x_m_, final_y_m_ - origin_y_m_);
+ score_.path_length_m += std::hypot(
+ step.truth_after.body_x_m - step.truth_before.body_x_m,
+ step.truth_after.body_y_m - step.truth_before.body_y_m);
+ if (step.cmd.is_safe_stop()) ++score_.safe_stop_steps;
+ if (step.judge.static_collision || step.judge.dynamic_collision ||
+ step.judge.terrain_collision) {
+ ++score_.collision_steps;
+ }
+ if (step.judge.terrain_collision) ++score_.terrain_collision_steps;
+ if (step.cmd.is_safe_stop() && step.judge.dynamic_clearance_m < 1.0) {
+ ++score_.dynamic_hold_steps;
+ }
+ const double clearance = std::min(
+ step.judge.static_clearance_m, step.judge.dynamic_clearance_m);
  if (std::isfinite(clearance) && clearance < 999.0) {
- s.min_clearance_m = std::min(s.min_clearance_m, clearance);
- clearance_sum += clearance;
- ++clearance_samples;
+ score_.min_clearance_m = std::min(score_.min_clearance_m, clearance);
+ clearance_sum_m_ += clearance;
+ ++clearance_samples_;
  }
- const double terrain_clearance = st.judge.terrain_clearance_m;
+ const double terrain_clearance = step.judge.terrain_clearance_m;
  if (std::isfinite(terrain_clearance) && terrain_clearance < 999.0) {
- s.min_terrain_clearance_m = std::min(
- s.min_terrain_clearance_m, terrain_clearance);
- terrain_clearance_sum += terrain_clearance;
- ++terrain_clearance_samples;
+ score_.min_terrain_clearance_m = std::min(
+ score_.min_terrain_clearance_m, terrain_clearance);
+ terrain_clearance_sum_m_ += terrain_clearance;
+ ++terrain_clearance_samples_;
  }
  double wheel_power = 0.0;
- for (std::size_t i = 0; i < st.truth_after.drive_count; ++i) {
- wheel_power += std::abs(st.truth_after.drive_duty[i] *
- st.truth_after.drive_radps[i]);
+ for (std::size_t i = 0; i < step.truth_after.drive_count; ++i) {
+ wheel_power += std::abs(step.truth_after.drive_duty[i] *
+ step.truth_after.drive_radps[i]);
  }
- s.energy_proxy += wheel_power * 0.02;
-    if (st.obs_accepted) {
-      s.obs_accepted += 1;
-    } else {
-      s.obs_rejected += 1;
-    }
-    EstimateError e = estimate_error(st);
-    if (e.has_estimate) {
-      s.estimate_samples += 1;
-      pos_sum += e.pos_err_m;
-      yaw_sum += e.yaw_err_rad;
-      if (e.pos_err_m > s.max_pos_err_m) s.max_pos_err_m = e.pos_err_m;
-      if (e.yaw_err_rad > s.max_yaw_err_rad) s.max_yaw_err_rad = e.yaw_err_rad;
-    }
-  }
-  if (s.estimate_samples > 0) {
-    s.mean_pos_err_m = pos_sum / s.estimate_samples;
-    s.mean_yaw_err_rad = yaw_sum / s.estimate_samples;
-  }
- if (clearance_samples > 0) s.mean_clearance_m =
- clearance_sum / static_cast<double>(clearance_samples);
- if (terrain_clearance_samples > 0) s.mean_terrain_clearance_m =
- terrain_clearance_sum / static_cast<double>(terrain_clearance_samples);
-  return s;
+ score_.energy_proxy += wheel_power * 0.02;
+ if (step.obs_accepted) ++score_.obs_accepted;
+ else ++score_.obs_rejected;
+ const EstimateError error = estimate_error(step);
+ if (error.has_estimate) {
+ ++score_.estimate_samples;
+ position_error_sum_m_ += error.pos_err_m;
+ yaw_error_sum_rad_ += error.yaw_err_rad;
+ score_.max_pos_err_m = std::max(score_.max_pos_err_m, error.pos_err_m);
+ score_.max_yaw_err_rad = std::max(
+ score_.max_yaw_err_rad, error.yaw_err_rad);
+ }
+}
+
+EpisodeScore EpisodeScoreAccumulator::score() const {
+ EpisodeScore result = score_;
+ if (result.estimate_samples > 0) {
+ result.mean_pos_err_m = position_error_sum_m_ /
+ static_cast<double>(result.estimate_samples);
+ result.mean_yaw_err_rad = yaw_error_sum_rad_ /
+ static_cast<double>(result.estimate_samples);
+ }
+ if (clearance_samples_ > 0) {
+ result.mean_clearance_m = clearance_sum_m_ /
+ static_cast<double>(clearance_samples_);
+ }
+ if (terrain_clearance_samples_ > 0) {
+ result.mean_terrain_clearance_m = terrain_clearance_sum_m_ /
+ static_cast<double>(terrain_clearance_samples_);
+ }
+ return result;
 }
 
 double reward_step(const EvalStep& step) {

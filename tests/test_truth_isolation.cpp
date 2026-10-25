@@ -37,6 +37,27 @@ int main() {
   }
   assert(std::isfinite(score.mean_pos_err_m));
   assert(std::isfinite(score.max_pos_err_m));
+ const sim::eval::EpisodeScore online = session.score();
+ assert(online.steps == score.steps);
+ assert(online.elapsed_s == score.elapsed_s);
+ assert(online.safe_stop_steps == score.safe_stop_steps);
+ assert(online.obs_accepted == score.obs_accepted);
+ assert(online.obs_rejected == score.obs_rejected);
+ assert(online.collision_steps == score.collision_steps);
+ assert(online.distance_m == score.distance_m);
+ assert(online.path_length_m == score.path_length_m);
+ assert(online.dynamic_hold_steps == score.dynamic_hold_steps);
+ assert(online.terrain_collision_steps == score.terrain_collision_steps);
+ assert(online.estimate_samples == score.estimate_samples);
+ assert(online.mean_pos_err_m == score.mean_pos_err_m);
+ assert(online.max_pos_err_m == score.max_pos_err_m);
+ assert(online.mean_yaw_err_rad == score.mean_yaw_err_rad);
+ assert(online.max_yaw_err_rad == score.max_yaw_err_rad);
+ assert(online.min_clearance_m == score.min_clearance_m);
+ assert(online.mean_clearance_m == score.mean_clearance_m);
+ assert(online.min_terrain_clearance_m == score.min_terrain_clearance_m);
+ assert(online.mean_terrain_clearance_m == score.mean_terrain_clearance_m);
+ assert(online.energy_proxy == score.energy_proxy);
 
   // 3. Offline RL reward is a pure function of the recorded transition.
   double r0 = sim::eval::reward_step(session.episode().steps()[0]);
@@ -51,6 +72,16 @@ int main() {
   session2.step_once();
   assert(session2.episode().size() == 1);
   assert(session2.episode().steps()[0].cmd.is_safe_stop());
+
+ // Summary-only mode remains constant-memory while retaining the exact
+ // aggregate and latest diagnostics needed by long headless benchmarks.
+ sim::scenario::ScenarioSession streaming;
+ streaming.set_episode_history_enabled(false);
+ for (int i = 0; i < 100; ++i) streaming.step_once();
+ assert(streaming.episode().steps().empty());
+ assert(streaming.score().steps == 100);
+ assert(streaming.last_eval_step() != nullptr);
+ assert(streaming.last_eval_step()->step == 99);
 
   std::printf("truth_isolation ok: steps=%zu mean_pos_err=%f reward=%f\n",
               score.steps, score.mean_pos_err_m, r0);

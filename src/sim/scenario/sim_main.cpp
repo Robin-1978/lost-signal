@@ -85,10 +85,8 @@ bool load_semantics_sidecar(const std::string& map_path,
  return true;
 }
 
-void score_semantics(const sim::scenario::ScenarioSession& session,
- SemanticsStats& stats) {
- bool was_inside = false;
- for (const auto& step : session.episode().steps()) {
+void score_semantics_step(const sim::eval::EvalStep& step,
+ SemanticsStats& stats, bool& was_inside) {
  bool inside = false;
  for (const auto& box : stats.conflict_boxes) {
  if (step.truth_after.body_x_m >= std::min(box[0], box[2]) &&
@@ -102,7 +100,6 @@ void score_semantics(const sim::scenario::ScenarioSession& session,
  if (inside) ++stats.conflict_zone_steps;
  if (inside && !was_inside) ++stats.conflict_zone_entries;
  was_inside = inside;
- }
 }
 
 void usage() {
@@ -187,7 +184,7 @@ bool write_summary(const std::string& path, const std::string& map_path,
  const sim::scenario::ScenarioSession& session,
  const SemanticsStats* semantics) {
  using robot::core::Json;
- const sim::eval::EpisodeScore score = sim::eval::score_episode(session.episode());
+ const sim::eval::EpisodeScore score = session.score();
  Json::Object root;
  root.emplace_back("map", Json::Str(map_path));
  root.emplace_back("steps", Json::Num(static_cast<double>(score.steps)));
@@ -267,9 +264,42 @@ bool write_summary(const std::string& path, const std::string& map_path,
  return out.good();
 }
 
+struct SlowTimingSample {
+ std::size_t step = 0;
+ sim::scenario::ScenarioSession::StepTiming timing;
+ std::string localization = "unrecorded";
+ std::string reason = "unrecorded";
+ std::string track = "unrecorded";
+ std::string slam = "unrecorded";
+ double position_sigma_m = -1.0;
+};
+
+void retain_slowest(
+ std::vector<SlowTimingSample>& slowest, std::size_t step,
+ const sim::scenario::ScenarioSession::StepTiming& timing,
+ const sim::eval::EvalStep* recorded) {
+ SlowTimingSample sample;
+ sample.step = step;
+ sample.timing = timing;
+ if (recorded != nullptr) {
+ sample.localization = recorded->diag.localization_action;
+ sample.reason = recorded->diag.evidence.reason_code;
+ sample.track = recorded->diag.track_diagnostic;
+ sample.slam = recorded->diag.slam_loop_diagnostic;
+ sample.position_sigma_m = recorded->diag.estimate.position_sigma_m;
+ }
+ slowest.push_back(std::move(sample));
+ std::stable_sort(slowest.begin(), slowest.end(),
+ [](const SlowTimingSample& a, const SlowTimingSample& b) {
+ return a.timing.robot_tick_ms > b.timing.robot_tick_ms;
+ });
+ constexpr std::size_t kSlowestCount = 5;
+ if (slowest.size() > kSlowestCount) slowest.resize(kSlowestCount);
+}
+
 void print_timing_profile(
  const std::vector<sim::scenario::ScenarioSession::StepTiming>& samples,
- const sim::scenario::ScenarioSession& session) {
+ const std::vector<SlowTimingSample>& slowest) {
  using Timing = sim::scenario::ScenarioSession::StepTiming;
  if (samples.empty()) return;
  struct Stage {
@@ -300,32 +330,15 @@ void print_timing_profile(
  stage.name, percentile(0.50), percentile(0.95), percentile(0.99),
  values.back());
  }
- std::vector<std::size_t> slowest(samples.size());
- for (std::size_t i = 0; i < slowest.size(); ++i) slowest[i] = i;
- std::stable_sort(slowest.begin(), slowest.end(),
- [&](std::size_t a, std::size_t b) {
- return samples[a].robot_tick_ms > samples[b].robot_tick_ms;
- });
- const std::size_t count = std::min<std::size_t>(5, slowest.size());
- for (std::size_t rank = 0; rank < count; ++rank) {
- const std::size_t index = slowest[rank];
- const auto& recorded = session.episode().steps();
- const char* localization = index < recorded.size()
- ? recorded[index].diag.localization_action.c_str() : "unrecorded";
- const char* reason = index < recorded.size()
- ? recorded[index].diag.evidence.reason_code.c_str() : "unrecorded";
- const double position_sigma = index < recorded.size()
- ? recorded[index].diag.estimate.position_sigma_m : -1.0;
- const char* track = index < recorded.size()
- ? recorded[index].diag.track_diagnostic.c_str() : "unrecorded";
- const char* slam = index < recorded.size()
- ? recorded[index].diag.slam_loop_diagnostic.c_str() : "unrecorded";
+ for (std::size_t rank = 0; rank < slowest.size(); ++rank) {
+ const auto& sample = slowest[rank];
  std::fprintf(stderr,
  "timing_slowest rank=%zu step=%zu robot_tick_ms=%.3f total_ms=%.3f "
  "localization=%s sigma=%.3f track=%s slam=%s reason=%s\n",
- rank + 1, index, samples[index].robot_tick_ms,
- samples[index].total_ms, localization, position_sigma, track, slam,
- reason);
+ rank + 1, sample.step, sample.timing.robot_tick_ms,
+ sample.timing.total_ms, sample.localization.c_str(),
+ sample.position_sigma_m, sample.track.c_str(), sample.slam.c_str(),
+ sample.reason.c_str());
  }
 }
 
@@ -374,6 +387,11 @@ int main(int argc, char** argv) {
  std::fprintf(stderr, "sim config: %s\n", used_sim.c_str());
  session->apply_sim_config(*sim_config);
  }
+ // A headless score/profile run is a streaming reduction. Preserve the
+ // append-only episode only when the caller explicitly requests a replay
+ // artifact; the viewer and direct ScenarioSession users retain it by
+ // default. The latest step remains available for live diagnostics.
+ session->set_episode_history_enabled(!opt.episode_path.empty());
 
  if (!opt.map_path.empty()) {
  sim::eval::WorldFileContent content;
@@ -414,15 +432,32 @@ int main(int argc, char** argv) {
  long ran = 0;
  std::vector<sim::scenario::ScenarioSession::StepTiming> timing_samples;
  if (opt.profile) timing_samples.reserve(static_cast<std::size_t>(budget));
+ std::vector<SlowTimingSample> slowest_timing;
+ SemanticsStats semantics;
+ const bool have_semantics = load_semantics_sidecar(opt.map_path, semantics);
+ bool was_inside_semantic_zone = false;
+ std::size_t semantic_steps = 0;
  std::size_t verbose_loop_count = 0;
  std::string verbose_localization_event;
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
- if (opt.profile) timing_samples.push_back(session->last_step_timing());
+ const sim::eval::EvalStep* recorded = session->last_eval_step();
+ if (recorded != nullptr && recorded->step >= semantic_steps) {
+ if (have_semantics) {
+ score_semantics_step(
+ *recorded, semantics, was_inside_semantic_zone);
+ }
+ semantic_steps = recorded->step + 1;
+ }
+ if (opt.profile) {
+ const auto timing = session->last_step_timing();
+ timing_samples.push_back(timing);
+ retain_slowest(
+ slowest_timing, static_cast<std::size_t>(ran), timing, recorded);
+ }
  if (opt.verbose) {
- const auto& recorded = session->episode().steps();
- if (!recorded.empty()) {
- const auto& diag = recorded.back().diag;
+ if (recorded != nullptr) {
+ const auto& diag = recorded->diag;
  if (diag.slam_loops_closed > verbose_loop_count) {
  std::fprintf(stderr,
  "step=%ld loop-closed from=%llu to=%llu correction=%.3fm/%.3frad "
@@ -441,26 +476,25 @@ int main(int argc, char** argv) {
  }
  }
  }
- const auto& recorded = session->episode().steps();
- const bool collision_now = !recorded.empty() &&
- (recorded.back().judge.static_collision ||
- recorded.back().judge.dynamic_collision ||
- recorded.back().judge.terrain_collision);
- const std::string localization_action = recorded.empty()
+ const bool collision_now = recorded != nullptr &&
+ (recorded->judge.static_collision ||
+ recorded->judge.dynamic_collision ||
+ recorded->judge.terrain_collision);
+ const std::string localization_action = recorded == nullptr
  ? std::string{}
- : recorded.back().diag.localization_action;
+ : recorded->diag.localization_action;
  const bool localization_event =
  localization_action.rfind("global_relocalization:", 0) == 0 &&
  localization_action != "global_relocalization:search pending" &&
  localization_action != verbose_localization_event;
  if (opt.verbose && (ran % 100 == 0 || collision_now || localization_event)) {
  const auto ev = session->last_evidence();
- const auto& truth = recorded.empty()
+ const auto& truth = recorded == nullptr
  ? sim::world::WorldTruth{}
- : recorded.back().truth_after;
- const auto diag = recorded.empty()
+ : recorded->truth_after;
+ const auto diag = recorded == nullptr
  ? robot::app::RobotApplication::Diagnostics{}
- : recorded.back().diag;
+ : recorded->diag;
  std::fprintf(stderr,
  "step=%ld objective=%s goal=%s reason=%s action=%s v=%.2f w=%.2f "
  "truth=(%.2f,%.2f) est=(%.2f,%.2f) clr=%.2f safety=%s loc=%s "
@@ -473,12 +507,12 @@ int main(int argc, char** argv) {
  ev.reason_code.c_str(), ev.action_code.c_str(),
  ev.target_speed_mps, ev.target_yaw_rate_radps, truth.body_x_m,
  truth.body_y_m, diag.estimate.x_m, diag.estimate.y_m,
- recorded.empty() ? 999.0 : recorded.back().judge.static_clearance_m,
+ recorded == nullptr ? 999.0 : recorded->judge.static_clearance_m,
  diag.safety_reason.c_str(), diag.localization_action.c_str(),
- recorded.empty() || !recorded.back().judge.static_collision ? "no" : "static",
- recorded.empty() || !recorded.back().judge.dynamic_collision ? "no" : "dynamic",
- recorded.empty() || !recorded.back().judge.terrain_collision ? "no" : "terrain",
- recorded.empty() ? 999.0 : recorded.back().judge.dynamic_clearance_m,
+ recorded == nullptr || !recorded->judge.static_collision ? "no" : "static",
+ recorded == nullptr || !recorded->judge.dynamic_collision ? "no" : "dynamic",
+ recorded == nullptr || !recorded->judge.terrain_collision ? "no" : "terrain",
+ recorded == nullptr ? 999.0 : recorded->judge.dynamic_clearance_m,
  diag.localized ? "yes" : "no", diag.slam_loops_closed,
  diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
  diag.slam_tracks, diag.track_correction_m,
@@ -486,18 +520,14 @@ int main(int argc, char** argv) {
  if (localization_event) verbose_localization_event = localization_action;
  }
  }
- const sim::eval::EpisodeScore score =
- sim::eval::score_episode(session->episode());
- SemanticsStats semantics;
- const bool have_semantics = load_semantics_sidecar(opt.map_path, semantics);
- if (have_semantics) score_semantics(*session, semantics);
+ const sim::eval::EpisodeScore score = session->score();
  std::printf(
  "sim ran %ld steps; done=%s passed=%s collisions=%zu distance=%.2f m "
  "max_pos_err=%.3f m\n",
  ran, session->objectives_done() ? "yes" : "no",
  session->objectives_passed() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
- if (opt.profile) print_timing_profile(timing_samples, *session);
+ if (opt.profile) print_timing_profile(timing_samples, slowest_timing);
  if (!opt.out_path.empty() &&
  !write_summary(opt.out_path, opt.map_path, *session,
  have_semantics ? &semantics : nullptr)) {

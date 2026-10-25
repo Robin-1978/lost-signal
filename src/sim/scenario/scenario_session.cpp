@@ -163,8 +163,12 @@ void ScenarioSession::step_once() {
  rec.cmd = cmd;
   rec.diag = app_.diagnostics();
   rec.truth_after = world_.truth();
-  rec.step = episode_.size();
-  if (scheduler_.record_due(sim_time_s_)) episode_.record(rec);
+ if (scheduler_.record_due(sim_time_s_)) {
+ rec.step = score_accumulator_.score().steps;
+ score_accumulator_.record(rec);
+ last_eval_step_ = rec;
+ if (retain_episode_history_) episode_.record(std::move(rec));
+ }
  const auto record_end = Clock::now();
  last_step_timing_.physics_ms = elapsed_ms(total_begin, physics_end);
  last_step_timing_.sensors_ms = elapsed_ms(physics_end, sensors_end);

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "robot/app/robot_application.hpp"
 #include "sim/eval/episode.hpp"
+#include "sim/eval/scoring.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/providers/sensor_suite.hpp"
 #include "sim/providers/static_map.hpp"
@@ -52,7 +54,22 @@ class ScenarioSession {
  const StepTiming& last_step_timing() const { return last_step_timing_; }
 
   const eval::EpisodeRecorder& episode() const { return episode_; }
-  void clear_episode() { episode_.clear(); }
+ const eval::EvalStep* last_eval_step() const {
+ return last_eval_step_ ? &*last_eval_step_ : nullptr;
+ }
+ eval::EpisodeScore score() const { return score_accumulator_.score(); }
+ // Long headless benchmarks need aggregate score and the latest diagnostic,
+ // not an O(steps) replay buffer. Viewer/tests retain history by default;
+ // CLI disables it unless --episode explicitly requests an export.
+ void set_episode_history_enabled(bool enabled) {
+ retain_episode_history_ = enabled;
+ if (!enabled) episode_.clear();
+ }
+ void clear_episode() {
+ episode_.clear();
+ score_accumulator_.reset();
+ last_eval_step_.reset();
+ }
   // Test/scenario setup only: configure geometry, actors, and places before
   // the run. Never called by ROBOT code; never during a live tick.
   world::World& setup_world() { return world_; }
@@ -145,6 +162,9 @@ class ScenarioSession {
   // Owned by the app (moved at construction); the session keeps the raw
   // handle for SIM-side orchestration only (survey re-window, never tick).
   eval::EpisodeRecorder episode_;
+ eval::EpisodeScoreAccumulator score_accumulator_;
+ std::optional<eval::EvalStep> last_eval_step_;
+ bool retain_episode_history_ = true;
   DeterministicScheduler scheduler_;
   ObjectiveDriver driver_;
   double sim_time_s_ = 0.0;

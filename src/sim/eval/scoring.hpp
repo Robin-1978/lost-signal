@@ -45,6 +45,30 @@ struct EpisodeScore {
  double energy_proxy = 0.0; // offline duty x measured wheel speed integral
 };
 
+// Constant-memory score reduction for long benchmarks. The accumulator is
+// SIM-owned and consumes the same completed EvalStep as the offline scorer;
+// none of its truth-side fields can flow back into RobotApplication.
+class EpisodeScoreAccumulator {
+ public:
+ void reset();
+ void record(const EvalStep& step);
+ EpisodeScore score() const;
+
+ private:
+ EpisodeScore score_;
+ bool have_origin_ = false;
+ double origin_x_m_ = 0.0;
+ double origin_y_m_ = 0.0;
+ double final_x_m_ = 0.0;
+ double final_y_m_ = 0.0;
+ double position_error_sum_m_ = 0.0;
+ double yaw_error_sum_rad_ = 0.0;
+ double clearance_sum_m_ = 0.0;
+ std::size_t clearance_samples_ = 0;
+ double terrain_clearance_sum_m_ = 0.0;
+ std::size_t terrain_clearance_samples_ = 0;
+};
+
 EpisodeScore score_episode(const EpisodeRecorder& episode);
 
 // Per-step truth-vs-estimate error for one recorded step (offline only).
