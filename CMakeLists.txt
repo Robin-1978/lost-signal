@@ -167,6 +167,10 @@ if(LOST_SIGNAL_WITH_MUJOCO)
   set(MUJOCO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(MUJOCO_BUILD_SIMULATE OFF CACHE BOOL "" FORCE)
   set(MUJOCO_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+ # GCC LTO objects linked through lld can produce a tiny shared library that
+ # exports only __gnu_lto_slim. Keep release builds portable across the
+ # toolchains used by the simulator and let normal -O3 optimize MuJoCo.
+ set(MUJOCO_ENABLE_LTO OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(
     mujoco
     GIT_REPOSITORY https://github.com/google-deepmind/mujoco.git
@@ -292,6 +296,7 @@ target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/frame_builder.cpp
   src/sim/viewer/map_editor.cpp
+ src/sim/viewer/playback_controller.cpp
 )
 target_include_directories(lost_signal_sim_viewer PUBLIC src)
 target_link_libraries(lost_signal_sim_viewer PUBLIC
@@ -603,6 +608,13 @@ add_executable(test_viewer_frame
 )
 target_link_libraries(test_viewer_frame PRIVATE lost_signal_sim_viewer)
 add_test(NAME viewer_frame COMMAND test_viewer_frame)
+
+add_executable(test_playback_controller
+ tests/test_playback_controller.cpp
+)
+target_link_libraries(test_playback_controller PRIVATE
+ lost_signal_sim_viewer lost_signal_sim_scenario)
+add_test(NAME playback_controller COMMAND test_playback_controller)
 
 add_executable(test_map_editor
   tests/test_map_editor.cpp

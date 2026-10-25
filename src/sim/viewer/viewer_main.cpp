@@ -29,6 +29,7 @@
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
+#include "sim/viewer/playback_controller.hpp"
 #include "sim/viewer/view_transform.hpp"
 #include "sim/world/actor_behavior.hpp"
 #include "sim/world/terrain.hpp"
@@ -1351,12 +1352,25 @@ int main(int argc, char** argv) {
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
  std::string robot_path, sim_path, map_path, assets_path;
+ double initial_playback_rate = 1.0;
+ bool initial_turbo = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
     if (a == "--sim" && i + 1 < argc) sim_path = argv[++i];
     if (a == "--map" && i + 1 < argc) map_path = argv[++i];
  if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
+ if (a == "--turbo") initial_turbo = true;
+ if (a == "--rate" && i + 1 < argc) {
+ char* end = nullptr;
+ const double parsed = std::strtod(argv[++i], &end);
+ if (end == argv[i] || *end != '\0' || !std::isfinite(parsed) ||
+ parsed < 0.05 || parsed > 64.0) {
+ std::fprintf(stderr, "bad --rate: expected a value in [0.05, 64]\n");
+ return 1;
+ }
+ initial_playback_rate = parsed;
+ }
   }
   std::string used_config, config_err;
   auto robot_config = robot::platform::load_default_robot_config(
@@ -1440,11 +1454,11 @@ int main(int argc, char** argv) {
  // Drive deterministic 20 ms simulation time from elapsed wall time. The
  // old fixed four-steps-per-frame loop demanded 4.8x real time at 60 FPS and
  // stacked periodic localization/planning work into the window thread.
- double playback_rate = 1.0;
- double sim_debt_s = 0.0;
+ sim::viewer::PlaybackController::Config playback_config;
+ playback_config.requested_rate = initial_playback_rate;
+ sim::viewer::PlaybackController playback(playback_config);
+ playback.set_turbo(initial_turbo);
  double previous_wall_s = GetTime();
- double last_step_ms = 0.0;
- double peak_step_ms = 0.0;
   Vector2 last_mouse{0, 0};
  bool dragging = false;
  bool middle_dragging = false;
@@ -1568,11 +1582,7 @@ int main(int argc, char** argv) {
     // Input (window thread only; sim stays deterministic).
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
  if (IsKeyPressed(KEY_N) && paused) {
- const auto begin = std::chrono::steady_clock::now();
  session->step_once();
- last_step_ms = std::chrono::duration<double, std::milli>(
- std::chrono::steady_clock::now() - begin).count();
- peak_step_ms = std::max(peak_step_ms, last_step_ms);
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
@@ -1583,8 +1593,17 @@ int main(int argc, char** argv) {
  cam_st.dist_m = 12.0f;
  follow = false;
  }
- if (IsKeyPressed(KEY_EQUAL) && playback_rate < 8.0) playback_rate *= 2.0;
- if (IsKeyPressed(KEY_MINUS) && playback_rate > 0.25) playback_rate *= 0.5;
+ if (IsKeyPressed(KEY_T)) playback.set_turbo(!playback.turbo());
+ if (IsKeyPressed(KEY_EQUAL) && playback.requested_rate() < 64.0) {
+ playback.set_turbo(false);
+ playback.set_requested_rate(
+ std::min(64.0, playback.requested_rate() * 2.0));
+ }
+ if (IsKeyPressed(KEY_MINUS) && playback.requested_rate() > 0.125) {
+ playback.set_turbo(false);
+ playback.set_requested_rate(
+ std::max(0.125, playback.requested_rate() * 0.5));
+ }
     if (IsKeyPressed(KEY_ZERO)) view.fit(-4.0, -4.0, 8.0, 7.0);
     const float wheel = GetMouseWheelMove();
     if (view3d) {
@@ -1631,34 +1650,25 @@ int main(int argc, char** argv) {
  middle_dragging = false;
  }
 
-    if (!paused && !session->objectives_done()) {
- constexpr double kSimStepS = 0.02;
- constexpr int kMaxStepsPerFrame = 4;
- constexpr double kFrameWorkBudgetMs = 10.0;
- // Keep bounded debt so a debugger stop or dragged window cannot trigger a
- // catch-up spiral. Remaining debt carries across frames; the deterministic
- // simulation clock never depends on rendering time.
- sim_debt_s = std::min(0.5, sim_debt_s + wall_dt_s * playback_rate);
+ playback.begin_frame(wall_dt_s);
+ if (!paused && !session->objectives_done()) {
  const auto frame_work_begin = std::chrono::steady_clock::now();
- int steps_this_frame = 0;
- while (sim_debt_s + 1e-12 >= kSimStepS &&
- steps_this_frame < kMaxStepsPerFrame) {
- const auto step_begin = std::chrono::steady_clock::now();
-        session->step_once();
- last_step_ms = std::chrono::duration<double, std::milli>(
- std::chrono::steady_clock::now() - step_begin).count();
- peak_step_ms = std::max(peak_step_ms, last_step_ms);
- sim_debt_s -= kSimStepS;
- ++steps_this_frame;
-        if (session->objectives_done()) break;
+ while (true) {
  const double work_ms = std::chrono::duration<double, std::milli>(
  std::chrono::steady_clock::now() - frame_work_begin).count();
- if (work_ms >= kFrameWorkBudgetMs) break;
+ if (!playback.step_due(work_ms)) break;
+ const auto step_begin = std::chrono::steady_clock::now();
+        session->step_once();
+ const double step_ms = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - step_begin).count();
+ playback.on_step(step_ms);
+        if (session->objectives_done()) break;
       }
  } else {
  // Paused wall time is not simulation debt.
- sim_debt_s = 0.0;
+ playback.discard_debt();
     }
+ playback.end_frame();
     const auto& steps = session->episode().steps();
     if (steps.empty()) continue;
     const sim::eval::EvalStep& last = steps.back();
@@ -1700,14 +1710,28 @@ int main(int argc, char** argv) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       draw_frame_2d(frame, view, show_lidar, show_estimate);
     }
-    char hud[384];
-    std::snprintf(hud, sizeof(hud),
- "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %.2fx %dfps tick=%.1f/%.1fms cam=%s %s",
-                  static_cast<unsigned long long>(frame.step), frame.body.x_m,
-                  frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
-                  static_cast<int>(reached.size()), session->objectives().total(),
- playback_rate, GetFPS(), last_step_ms, peak_step_ms,
- follow ? "FOLLOW" : "FREE",
+ const auto playback_stats = playback.statistics();
+ char speed[160];
+ if (playback_stats.turbo) {
+ std::snprintf(speed, sizeof(speed),
+ "req=TURBO actual=%.2fx %.0fstep/s p99=%.1fms%s",
+ playback_stats.actual_rtf, playback_stats.steps_per_s,
+ playback_stats.tick_p99_ms,
+ playback_stats.throttled ? " LIMIT" : "");
+ } else {
+ std::snprintf(speed, sizeof(speed),
+ "req=%.2fx actual=%.2fx %.0fstep/s p99=%.1fms%s",
+ playback_stats.requested_rate, playback_stats.actual_rtf,
+ playback_stats.steps_per_s, playback_stats.tick_p99_ms,
+ playback_stats.throttled ? " LIMIT" : "");
+ }
+ char hud[512];
+ std::snprintf(hud, sizeof(hud),
+ "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %s %dfps cam=%s %s",
+ static_cast<unsigned long long>(frame.step), frame.body.x_m,
+ frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
+ static_cast<int>(reached.size()), session->objectives().total(), speed,
+ GetFPS(), follow ? "FOLLOW" : "FREE",
  paused ? "PAUSED"
  : session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")
@@ -1722,6 +1746,8 @@ int main(int argc, char** argv) {
     }
     DrawText("space pause  N step  L lidar  E estimate  F follow  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
              10, GetScreenHeight() - 24, 12, DARKGRAY);
+ DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
+ 12, DARKGRAY);
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {
       TakeScreenshot(shot_path.c_str());

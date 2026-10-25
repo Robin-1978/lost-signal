@@ -123,6 +123,9 @@ completion ratio, and a duty/speed energy proxy.
   enter ROBOT observations.
 Press `F` to toggle the camera's robot-follow mode; right-drag or middle-drag
  releases follow for free orbit/pan, and `R` restores the default orbit.
-The viewer advances from a real-time accumulator at 1x by default; `+`/`-`
-changes playback rate. Per-frame step and work budgets prevent catch-up bursts,
-and the HUD reports current/peak tick time for diagnosing stalls.
+The viewer advances in deterministic 20 ms simulation steps at 1x by default.
+Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
+as fast as the per-frame work budget allows. Playback never changes physics,
+sensor stamps, or ROBOT control periods. The HUD reports requested rate,
+measured real-time factor, steps/s, sliding-window tick p99, and `LIMIT` when
+the rendering budget throttles simulation work.
