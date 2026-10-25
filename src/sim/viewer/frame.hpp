@@ -122,6 +122,16 @@ struct FramePlace {
   bool selected = false;
 };
 
+// Contact evidence produced by MuJoCo and consumed only by presentation.
+// The impulse is integrated over the public plant step; the ROBOT never
+// receives this structure or any field derived from it.
+struct FrameImpact {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double normal_impulse_Ns = 0.0;
+ double relative_speed_mps = 0.0;
+};
+
 struct Frame {
   FrameBody body;
   std::vector<std::pair<double, double>> trail;  // past truth (x, y), oldest first
@@ -135,6 +145,7 @@ struct Frame {
   bool static_collision = false;
   bool dynamic_collision = false;
   double static_clearance_m = 999.0;
+ FrameImpact impact;
   std::uint64_t step = 0;
 };
 

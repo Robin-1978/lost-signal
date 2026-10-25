@@ -14,6 +14,7 @@ enum class ParticleKind {
  kMud,
  kWater,
  kTireSmoke,
+ kImpactSpark,
 };
 
 struct Particle {
@@ -38,6 +39,9 @@ struct ParticlePresentationConfig {
  double loose_particles_per_m = 32.0;
  double water_particles_per_m = 46.0;
  double smoke_particles_per_m = 24.0;
+ double impact_min_relative_speed_mps = 0.35;
+ double impact_particles_per_Ns = 18.0;
+ std::size_t maximum_impact_particles_per_step = 24;
  double maximum_emission_catchup_s = 0.10;
 };
 
@@ -58,6 +62,7 @@ class ParticleSystem {
  void integrate(double elapsed_s);
  void emit(const Frame& frame, std::size_t wheel_index, ParticleKind kind,
  double activity_mps, double elapsed_s);
+ void emit_impact(const Frame& frame);
  std::size_t acquire_slot();
 
  ParticlePresentationConfig config_;

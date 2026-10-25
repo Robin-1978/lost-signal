@@ -80,6 +80,29 @@ int main() {
  assert(std::abs(bare.compiled_mass_kg() - 29.0) < 1e-9);
  assert(std::abs(bare.system_com_z_m() - 3.9 / 29.0) < 1e-9);
  }
+ // Collision presentation is driven by an integrated MuJoCo contact
+ // impulse against authored static geometry. Ordinary wheel/ground load
+ // is excluded, and the evidence remains entirely on the SIM side.
+ {
+ sim::world::World w = make_mujoco_diff();
+ w.set_static_boxes({{0.70, -1.0, 0.80, 1.0, 0.6, "impact_wall"}});
+ w.prepare();
+ assert(!w.impact().valid);
+ set_diff_duty(w, 1.0);
+ bool saw_impact = false;
+ for (int i = 0; i < 200 && !saw_impact; ++i) {
+ w.step(0.02);
+ const sim::world::ImpactViz& impact = w.impact();
+ if (!impact.valid) continue;
+ assert(impact.normal_impulse_Ns > 0.0);
+ assert(impact.relative_speed_mps > 0.0);
+ assert(std::isfinite(impact.x_m));
+ assert(std::isfinite(impact.y_m));
+ assert(std::isfinite(impact.z_m));
+ saw_impact = true;
+ }
+ assert(saw_impact);
+ }
   // Spin-up: moves, settles below free speed, level attitude.
   {
     sim::world::World w = make_mujoco_diff();

@@ -578,6 +578,19 @@ void draw_motion_particles_3d(const ParticleSystem& particles,
  (particle.end_size_m - particle.start_size_m) * phase);
  const unsigned char alpha = static_cast<unsigned char>(
  std::clamp(190.0f * (1.0f - phase), 0.0f, 190.0f));
+ if (particle.kind == ParticleKind::kImpactSpark) {
+ const Vector3 head{
+ static_cast<float>(particle.position_m[0]),
+ static_cast<float>(particle.position_m[2]),
+ static_cast<float>(-particle.position_m[1])};
+ const Vector3 tail{
+ head.x - static_cast<float>(particle.velocity_mps[0]) * 0.025f,
+ head.y - static_cast<float>(particle.velocity_mps[2]) * 0.025f,
+ head.z + static_cast<float>(particle.velocity_mps[1]) * 0.025f};
+ DrawLine3D(tail, head, Color{255, 176, 54, alpha});
+ DrawSphere(head, size, Color{255, 238, 170, alpha});
+ continue;
+ }
  const bool water = particle.kind == ParticleKind::kWater;
  const Color tint = water
  ? Color{150, 225, 245, alpha}

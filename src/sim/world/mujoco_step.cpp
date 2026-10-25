@@ -73,7 +73,8 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
                          const std::vector<MaterialEntry>& materials,
                          const std::vector<EnvironmentKeyframe>& environment,
                          double sim_time_s) {
-  if (!valid() || drive_count_ <= 0 || !(dt_s > 0.0)) return;
+ impact_ = ImpactViz{};
+ if (!valid() || drive_count_ <= 0 || !(dt_s > 0.0)) return;
   mjModel* model = impl_->model;
   mjData* data = impl_->data;
  const double r = std::max(1e-6, motor.wheel_radius_m);
@@ -271,6 +272,49 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
       }
     }
     mj_step2(model, data);
+ // Integrate only robot-to-authored-static contact forces. Ground,
+ // terrain, material zones and support slabs are deliberately absent from
+ // static_geom_, so normal wheel loading can never masquerade as a crash.
+ // This is presentation truth only and has no route into ROBOT inputs.
+ for (int ci = 0; ci < data->ncon; ++ci) {
+ const mjContact& contact = data->contact[ci];
+ const bool first_static = std::find(static_geom_.begin(), static_geom_.end(),
+ contact.geom1) != static_geom_.end();
+ const bool second_static = std::find(static_geom_.begin(), static_geom_.end(),
+ contact.geom2) != static_geom_.end();
+ if (first_static == second_static) continue;
+ const int robot_geom = first_static ? contact.geom2 : contact.geom1;
+ const int robot_body = model->geom_bodyid[robot_geom];
+ if (robot_body <= 0) continue;
+ mjtNum force[6] = {};
+ mj_contactForce(model, data, ci, force);
+ const double normal_N = std::max(0.0, static_cast<double>(force[0]));
+ const double impulse_Ns = normal_N * step_dt;
+ if (!(impulse_Ns > 0.0)) continue;
+
+ mjtNum spatial[6] = {};
+ mj_objectVelocity(model, data, mjOBJ_BODY, robot_body, spatial, 0);
+ const mjtNum* center = data->xpos + 3 * robot_body;
+ const double rx = contact.pos[0] - center[0];
+ const double ry = contact.pos[1] - center[1];
+ const double rz = contact.pos[2] - center[2];
+ const double vx = spatial[3] + spatial[1] * rz - spatial[2] * ry;
+ const double vy = spatial[4] + spatial[2] * rx - spatial[0] * rz;
+ const double vz = spatial[5] + spatial[0] * ry - spatial[1] * rx;
+ const double relative_speed = std::sqrt(vx * vx + vy * vy + vz * vz);
+ const double accumulated = impact_.normal_impulse_Ns;
+ const double total = accumulated + impulse_Ns;
+ impact_.x_m =
+ (impact_.x_m * accumulated + contact.pos[0] * impulse_Ns) / total;
+ impact_.y_m =
+ (impact_.y_m * accumulated + contact.pos[1] * impulse_Ns) / total;
+ impact_.z_m =
+ (impact_.z_m * accumulated + contact.pos[2] * impulse_Ns) / total;
+ impact_.normal_impulse_Ns = total;
+ impact_.relative_speed_mps =
+ std::max(impact_.relative_speed_mps, relative_speed);
+ impact_.valid = true;
+ }
  // Contacts can make and break inside the public 20 ms plant step. Inspect
  // every resolved 1 ms force solve so a sliding wheel is not relabelled
  // merely because the final substep happens to be unloaded. This tight loop

@@ -527,6 +527,8 @@ void MujocoBackend::sync(const MotorParams& motor,
     idler_geom_[i] = -1;
   }
   zone_geom_.clear();
+ static_geom_.clear();
+ impact_ = ImpactViz{};
 
  // Wheel modules use the same table for build and per-step zone lookup.
   idler_count_ = 0;
@@ -1153,6 +1155,12 @@ void MujocoBackend::sync(const MotorParams& motor,
     const std::string name = "zone" + std::to_string(zi);
     zone_geom_.push_back(mj_name2id(model, mjOBJ_GEOM, name.c_str()));
   }
+ static_geom_.clear();
+ for (int i = 0; i < bi; ++i) {
+ const std::string name = "static" + std::to_string(i);
+ const int geom_id = mj_name2id(model, mjOBJ_GEOM, name.c_str());
+ if (geom_id >= 0) static_geom_.push_back(geom_id);
+ }
   if (found_drives != drive_count || found_steers != steer_count) {
     // The compiled model is still local until the joint census succeeds.
     // Release both allocations on this fail-closed path; otherwise every

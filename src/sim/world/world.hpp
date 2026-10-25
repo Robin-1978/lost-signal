@@ -276,6 +276,10 @@ class World {
  int casters(CasterViz* out, int cap) const {
  return mujoco_.casters(out, cap);
  }
+ // Aggregated non-ground contact impulse from the last completed physics
+ // step. This is SIM-only presentation evidence and never enters a ROBOT
+ // observation, estimate, planner, controller, or safety decision.
+ const ImpactViz& impact() const { return mujoco_.impact(); }
   // Sensor raycast against the compiled static scene (floor + boxes) for
   // provider simulation. False when the engine is invalid or nothing is
   // hit within max_m. Actors are supplemented analytically by the caller.

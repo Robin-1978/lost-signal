@@ -89,5 +89,46 @@ int main() {
  }
  }
  assert(found_water);
+
+ Frame impact;
+ impact.step = 100;
+ impact.impact.valid = true;
+ impact.impact.x_m = 2.0;
+ impact.impact.y_m = -1.0;
+ impact.impact.z_m = 0.2;
+ impact.impact.normal_impulse_Ns = 1.0;
+ impact.impact.relative_speed_mps = 0.1;
+ ParticleSystem sparks(config);
+ sparks.advance(impact);
+ assert(sparks.active_count() == 0);
+ impact.step = 101;
+ impact.impact.relative_speed_mps = 1.0;
+ sparks.advance(impact);
+ assert(sparks.active_count() > 0);
+ bool found_spark = false;
+ for (const auto& particle : sparks.particles()) {
+ if (particle.active && particle.kind == ParticleKind::kImpactSpark) {
+ found_spark = true;
+ assert(particle.position_m[0] == 2.0);
+ }
+ }
+ assert(found_spark);
+ const std::size_t spark_count = sparks.active_count();
+ sparks.advance(impact); // a paused/repeated frame never emits twice
+ assert(sparks.active_count() == spark_count);
+
+ ParticleSystem sparks_again(config);
+ sparks_again.advance(impact);
+ assert(sparks_again.active_count() == spark_count);
+ for (std::size_t i = 0; i < sparks.particles().size(); ++i) {
+ const auto& a = sparks.particles()[i];
+ const auto& b = sparks_again.particles()[i];
+ assert(a.active == b.active);
+ assert(a.kind == b.kind);
+ for (int axis = 0; axis < 3; ++axis) {
+ assert(a.position_m[axis] == b.position_m[axis]);
+ assert(a.velocity_mps[axis] == b.velocity_mps[axis]);
+ }
+ }
  return 0;
 }

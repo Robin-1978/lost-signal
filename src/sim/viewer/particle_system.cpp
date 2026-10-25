@@ -56,6 +56,11 @@ ParticleSystem::ParticleSystem(ParticlePresentationConfig config)
  config.water_particles_per_m < 0.0 ||
  !std::isfinite(config.smoke_particles_per_m) ||
  config.smoke_particles_per_m < 0.0 ||
+ !std::isfinite(config.impact_min_relative_speed_mps) ||
+ config.impact_min_relative_speed_mps < 0.0 ||
+ !std::isfinite(config.impact_particles_per_Ns) ||
+ config.impact_particles_per_Ns < 0.0 ||
+ config.maximum_impact_particles_per_step == 0 ||
  !std::isfinite(config.maximum_emission_catchup_s) ||
  config.maximum_emission_catchup_s < config.sim_step_s) {
  throw std::invalid_argument("invalid particle presentation config");
@@ -87,8 +92,10 @@ void ParticleSystem::integrate(double elapsed_s) {
  particle.position_m[0] += particle.velocity_mps[0] * elapsed_s;
  particle.position_m[1] += particle.velocity_mps[1] * elapsed_s;
  particle.position_m[2] += particle.velocity_mps[2] * elapsed_s;
- if (particle.kind == ParticleKind::kWater) {
- particle.velocity_mps[2] -= 4.0 * elapsed_s;
+ if (particle.kind == ParticleKind::kWater ||
+ particle.kind == ParticleKind::kImpactSpark) {
+ particle.velocity_mps[2] -=
+ (particle.kind == ParticleKind::kImpactSpark ? 9.81 : 4.0) * elapsed_s;
  if (particle.position_m[2] <= particle.minimum_z_m) {
  particle.active = false;
  }
@@ -97,6 +104,42 @@ void ParticleSystem::integrate(double elapsed_s) {
  particle.velocity_mps[1] *= std::exp(-1.8 * elapsed_s);
  particle.velocity_mps[2] *= std::exp(-1.2 * elapsed_s);
  }
+ }
+}
+
+void ParticleSystem::emit_impact(const Frame& frame) {
+ const FrameImpact& impact = frame.impact;
+ if (!impact.valid || !(impact.normal_impulse_Ns > 0.0) ||
+ impact.relative_speed_mps < config_.impact_min_relative_speed_mps ||
+ !(config_.impact_particles_per_Ns > 0.0)) {
+ return;
+ }
+ const double requested =
+ impact.normal_impulse_Ns * config_.impact_particles_per_Ns;
+ const std::size_t count = std::min(
+ config_.maximum_impact_particles_per_step,
+ static_cast<std::size_t>(std::max(1.0, std::floor(requested))));
+ for (std::size_t index = 0; index < count; ++index) {
+ const double azimuth = 6.283185307179586 *
+ stable_unit(frame.step, 97U, index + 401U);
+ const double speed_scale = 0.35 + 0.65 *
+ stable_unit(frame.step, 97U, index + 503U);
+ const double speed = std::clamp(
+ impact.relative_speed_mps * speed_scale, 0.25, 4.0);
+ Particle particle;
+ particle.kind = ParticleKind::kImpactSpark;
+ particle.active = true;
+ particle.position_m = {impact.x_m, impact.y_m, impact.z_m};
+ particle.velocity_mps = {
+ std::cos(azimuth) * speed,
+ std::sin(azimuth) * speed,
+ 0.25 * speed + 0.45 * stable_unit(frame.step, 97U, index + 607U)};
+ particle.lifetime_s = 0.12 + 0.10 *
+ stable_unit(frame.step, 97U, index + 701U);
+ particle.minimum_z_m = 0.0;
+ particle.start_size_m = 0.014;
+ particle.end_size_m = 0.002;
+ particles_[acquire_slot()] = particle;
  }
 }
 
@@ -213,6 +256,7 @@ void ParticleSystem::advance(const Frame& frame) {
  if (activity < config_.motion_threshold_mps) continue;
  emit(frame, index, kind, activity, emission_s);
  }
+ emit_impact(frame);
  last_step_ = frame.step;
  has_step_ = true;
 }

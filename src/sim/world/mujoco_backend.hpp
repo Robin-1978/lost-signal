@@ -73,6 +73,17 @@ struct CasterViz {
  LinkPoseViz wheel_pose;
 };
 
+// Aggregate non-ground impact over one public plant step. MuJoCo contact
+// forces are integrated across every fixed substep, yielding a true normal
+// impulse rather than a collision boolean. Presentation may consume this;
+// ROBOT interfaces never expose it.
+struct ImpactViz {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double normal_impulse_Ns = 0.0;
+ double relative_speed_mps = 0.0;
+};
+
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
 class MujocoBackend {
@@ -209,6 +220,7 @@ class MujocoBackend {
  }
  return n;
  }
+ const ImpactViz& impact() const { return impact_; }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
@@ -291,6 +303,7 @@ class MujocoBackend {
   int idler_geom_[2] = {-1, -1};
   // Zone floor geom ids in zone order (per-step environment writes).
   std::vector<int> zone_geom_;
+ std::vector<int> static_geom_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).
   double mu_tire_base_ = 0.7;
  // Slip confirmation hysteresis: consecutive outer steps whose resolved
@@ -326,6 +339,7 @@ class MujocoBackend {
  double drive_contact_friction_utilization_[4] = {0.0, 0.0, 0.0, 0.0};
   std::array<double, 4> steer_angle_ = {};
   std::array<double, 4> steer_vel_ = {};
+ ImpactViz impact_;
 };
 
 #else  // !LOST_SIGNAL_WITH_MUJOCO
@@ -366,6 +380,10 @@ class MujocoBackend {
  double total_mass_kg() const { return 0.0; }
  double system_com_z_m() const { return 0.0; }
  int casters(CasterViz*, int) const { return 0; }
+ const ImpactViz& impact() const { return impact_; }
+
+ private:
+ ImpactViz impact_;
 };
 
 #endif  // LOST_SIGNAL_WITH_MUJOCO

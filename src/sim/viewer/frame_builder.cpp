@@ -265,6 +265,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.static_collision = step.judge.static_collision;
   f.dynamic_collision = step.judge.dynamic_collision;
   f.static_clearance_m = step.judge.static_clearance_m;
+ const world::ImpactViz& impact = world.impact();
+ f.impact = {impact.valid, impact.x_m, impact.y_m, impact.z_m,
+ impact.normal_impulse_Ns, impact.relative_speed_mps};
   return f;
 }
 
