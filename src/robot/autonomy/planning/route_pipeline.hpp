@@ -11,10 +11,34 @@ namespace lost_signal::robot::autonomy {
 // is called and replaces the active route atomically.
 class RoutePlanningPipeline {
  public:
+ void reset() {
+ pending_ = false;
+ failed_ = false;
+ has_request_ = false;
+ }
+ bool advance(IGlobalPlanner& planner, const EstimatedState& start,
+ const RoutePoint& goal, bool has_goal,
+ const iface::MapSnapshot& map, bool force_replan,
+ Route& active_route);
   static bool refresh(IGlobalPlanner& planner, const EstimatedState& start,
                       const RoutePoint& goal, bool has_goal,
                       const iface::MapSnapshot& map, bool force_replan,
                       Route& active_route);
+
+ private:
+ bool same_request(const RoutePoint& goal,
+ const iface::MapSnapshot& map) const;
+ bool failed_start_changed(const EstimatedState& start,
+ const iface::MapSnapshot& map) const;
+ bool pending_ = false;
+ bool failed_ = false;
+ bool has_request_ = false;
+ RoutePoint requested_goal_;
+ std::string requested_map_id_;
+ std::uint64_t requested_map_revision_ = 0;
+ double failed_start_x_m_ = 0.0;
+ double failed_start_y_m_ = 0.0;
+ bool failed_start_valid_ = false;
 };
 
 }  // namespace lost_signal::robot::autonomy

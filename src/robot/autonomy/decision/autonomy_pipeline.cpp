@@ -15,7 +15,7 @@ MotionDecisionResult DecisionCyclePipeline::run(
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation, const SurveyContext& survey,
  core::MonotonicNs now_ns, bool forward_blocked) {
- RoutePlanningPipeline::refresh(global_planner, estimate, goal, has_goal,
+ route_.advance(global_planner, estimate, goal, has_goal,
  map, force_route_refresh, active_route);
  return motion_.run(
  estimate, perception, local_map, active_route, limits, behavior_limits,

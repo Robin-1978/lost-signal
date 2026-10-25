@@ -7,6 +7,7 @@
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/autonomy/planning/local_planner.hpp"
+#include "robot/autonomy/planning/route_pipeline.hpp"
 #include "robot/autonomy/validation/validator.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -17,7 +18,10 @@ namespace lost_signal::robot::autonomy {
 // this pipeline.
 class DecisionCyclePipeline {
  public:
- void reset() { motion_.reset(); }
+ void reset() {
+ motion_.reset();
+ route_.reset();
+ }
  MotionDecisionResult run(
  IGlobalPlanner& global_planner, ILocalPlanner& local_planner,
  IBehaviorPolicy& behavior, IValidator& validator, IController& controller,
@@ -30,6 +34,7 @@ class DecisionCyclePipeline {
  core::MonotonicNs now_ns, bool forward_blocked = false);
 
  private:
+ RoutePlanningPipeline route_;
  MotionDecisionPipeline motion_;
 };
 

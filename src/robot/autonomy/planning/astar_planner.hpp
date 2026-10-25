@@ -15,6 +15,13 @@ namespace lost_signal::robot::autonomy {
 class AStarPlanner : public IGlobalPlanner {
  public:
   struct Config {
+ // Deterministic cooperative-search work per decision cycle. This bounds
+ // control-loop latency independently of host speed and wall-clock timing.
+ std::size_t expansions_per_cycle = 8192;
+ // Raster preparation is cheaper than graph expansion but still O(cells).
+ // Bound it separately so multi-million-cell revisions cannot monopolize
+ // the decision cycle while still becoming ready in a finite tick count.
+ std::size_t preparation_cells_per_cycle = 1048576;
     // Extra traversal cost per meter through unknown cells.
     double unknown_cost_per_m = 0.5;
     // Extra cost per meter of absolute elevation change (ramps cost more
@@ -45,19 +52,37 @@ class AStarPlanner : public IGlobalPlanner {
 
   explicit AStarPlanner(Config config);
   AStarPlanner();
+ ~AStarPlanner() override;
+ AStarPlanner(AStarPlanner&& other) noexcept;
+ AStarPlanner& operator=(AStarPlanner&& other) noexcept;
+ AStarPlanner(const AStarPlanner&) = delete;
+ AStarPlanner& operator=(const AStarPlanner&) = delete;
   // Back-compat single-knob ctor.
   explicit AStarPlanner(double unknown_cost_per_m);
 
   Route plan(const EstimatedState& start, const RoutePoint& goal,
              const iface::MapSnapshot& map) override;
+ bool supports_incremental_plan() const override { return true; }
+ std::size_t incremental_plan_budget() const override {
+ return config_.expansions_per_cycle;
+ }
+ void begin_plan(const EstimatedState& start, const RoutePoint& goal,
+ const iface::MapSnapshot& map) override;
+ GlobalPlanProgress continue_plan(std::size_t expansion_budget) override;
+ void cancel_plan() override;
   void set_traversal(const TraversalModel* model) override {
     traversal_ = model;
   }
 
  private:
+ struct SearchState;
+
   Config config_;
   StraightLinePlanner fallback_;
   const TraversalModel* traversal_ = nullptr;
+ std::unique_ptr<SearchState> search_;
+ GlobalPlanProgress completed_;
+ bool completed_ready_ = false;
  // Static inflation depends only on immutable map revision + planner
  // geometry. Long missions replan many goals on the same survey, so retain
  // this O(cells) layer instead of rebuilding millions of cells per goal.
@@ -65,6 +90,7 @@ class AStarPlanner : public IGlobalPlanner {
  std::string cached_map_id_;
  std::uint64_t cached_map_revision_ = 0;
  bool costmap_cached_ = false;
+ bool cached_has_known_free_ = false;
 };
 
 }  // namespace lost_signal::robot::autonomy

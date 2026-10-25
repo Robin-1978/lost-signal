@@ -70,6 +70,59 @@ class CountingPlanner : public lost_signal::robot::autonomy::IGlobalPlanner {
  int calls = 0;
 };
 
+class IncrementalCountingPlanner
+ : public lost_signal::robot::autonomy::IGlobalPlanner {
+ public:
+ lost_signal::robot::autonomy::Route plan(
+ const lost_signal::robot::autonomy::EstimatedState&,
+ const lost_signal::robot::autonomy::RoutePoint&,
+ const lost_signal::robot::iface::MapSnapshot&) override {
+ assert(false && "incremental planner must not use synchronous plan");
+ return {};
+ }
+ bool supports_incremental_plan() const override { return true; }
+ std::size_t incremental_plan_budget() const override { return 1; }
+ void begin_plan(
+ const lost_signal::robot::autonomy::EstimatedState& start,
+ const lost_signal::robot::autonomy::RoutePoint& goal,
+ const lost_signal::robot::iface::MapSnapshot&) override {
+ ++begin_calls;
+ advances = 0;
+ start_ = start;
+ goal_ = goal;
+ }
+ lost_signal::robot::autonomy::GlobalPlanProgress continue_plan(
+ std::size_t budget) override {
+ assert(budget == 1);
+ ++continue_calls;
+ ++advances;
+ if (fail) {
+ return {lost_signal::robot::autonomy::GlobalPlanStatus::kFailed, {}};
+ }
+ if (advances < advances_to_finish) {
+ return {lost_signal::robot::autonomy::GlobalPlanStatus::kPending, {}};
+ }
+ lost_signal::robot::autonomy::Route route;
+ route.valid = true;
+ route.points = {
+ {start_.x_m, start_.y_m, start_.yaw_rad}, goal_};
+ return {lost_signal::robot::autonomy::GlobalPlanStatus::kSucceeded,
+ std::move(route)};
+ }
+ void cancel_plan() override { ++cancel_calls; }
+
+ int begin_calls = 0;
+ int continue_calls = 0;
+ int cancel_calls = 0;
+ int advances = 0;
+ int advances_to_finish = 3;
+ bool fail = false;
+
+ private:
+ lost_signal::robot::autonomy::EstimatedState start_;
+ lost_signal::robot::autonomy::RoutePoint goal_;
+};
+
 int main() {
   using namespace lost_signal::robot;
   using namespace lost_signal::robot::autonomy;
@@ -106,6 +159,87 @@ int main() {
  assert(RoutePlanningPipeline::refresh(counting, at(0.0, 0.0),
  {2.0, 0.0, 0.0}, true, map, true, active));
  assert(counting.calls == 2);
+ }
+
+ // Cooperative A* obeys its expansion budget and converges to exactly the
+ // same route as the synchronous compatibility API.
+ {
+ AStarPlanner::Config config;
+ config.expansions_per_cycle = 1;
+ AStarPlanner incremental(config);
+ auto map = make_map(80, 80, 0.25, -10.0, -10.0);
+ for (auto& cell : map.occupancy) cell = 0;
+ fill_box(map, -0.5, -10.0, 0.5, -1.0);
+ fill_box(map, -0.5, 1.0, 0.5, 10.0);
+ const EstimatedState start = at(-8.0, 0.0);
+ const RoutePoint goal{8.0, 0.0, 0.0};
+ const Route synchronous = incremental.plan(start, goal, map);
+ assert(synchronous.valid);
+ incremental.begin_plan(start, goal, map);
+ GlobalPlanProgress progress = incremental.continue_plan(1);
+ assert(progress.status == GlobalPlanStatus::kPending);
+ int cycles = 1;
+ while (progress.status == GlobalPlanStatus::kPending && cycles < 10000) {
+ progress = incremental.continue_plan(1);
+ ++cycles;
+ }
+ assert(cycles > 1);
+ assert(progress.status == GlobalPlanStatus::kSucceeded);
+ assert(progress.route.valid);
+ assert(progress.route.points.size() == synchronous.points.size());
+ for (std::size_t i = 0; i < synchronous.points.size(); ++i) {
+ assert(progress.route.points[i].x_m == synchronous.points[i].x_m);
+ assert(progress.route.points[i].y_m == synchronous.points[i].y_m);
+ }
+ }
+
+ // The route pipeline retains one in-flight request across decision cycles,
+ // atomically publishes success, and cancels it when the goal changes.
+ {
+ IncrementalCountingPlanner counting;
+ RoutePlanningPipeline pipeline;
+ Route active;
+ auto map = make_map(20, 20, 0.5, -5.0, -5.0);
+ const RoutePoint first_goal{2.0, 0.0, 0.0};
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), first_goal, true, map, true, active));
+ assert(counting.begin_calls == 1 && counting.continue_calls == 1);
+ assert(!active.valid);
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), first_goal, true, map, false, active));
+ assert(counting.begin_calls == 1 && counting.continue_calls == 2);
+ assert(!active.valid);
+ const RoutePoint second_goal{3.0, 0.0, 0.0};
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), second_goal, true, map, false, active));
+ assert(counting.cancel_calls == 1 && counting.begin_calls == 2);
+ assert(!active.valid);
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), second_goal, true, map, false, active));
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), second_goal, true, map, false, active));
+ assert(active.valid && active.points.back().x_m == second_goal.x_m);
+ }
+
+ // A failed request is latched instead of creating a planning storm. Moving
+ // into another raster cell supplies a meaningfully different start and
+ // permits one retry.
+ {
+ IncrementalCountingPlanner counting;
+ counting.fail = true;
+ RoutePlanningPipeline pipeline;
+ Route active;
+ auto map = make_map(20, 20, 0.5, -5.0, -5.0);
+ const RoutePoint goal{2.0, 0.0, 0.0};
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), goal, true, map, false, active));
+ assert(counting.begin_calls == 1 && !active.valid);
+ assert(!pipeline.advance(
+ counting, at(0.1, 0.1), goal, true, map, false, active));
+ assert(counting.begin_calls == 1);
+ assert(pipeline.advance(
+ counting, at(0.6, 0.0), goal, true, map, false, active));
+ assert(counting.begin_calls == 2);
  }
 
   // Wall with a gap: route threads the gap, never through occupied cells.

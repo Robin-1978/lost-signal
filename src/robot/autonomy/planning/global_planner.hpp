@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -26,6 +27,17 @@ struct Route {
   std::vector<RoutePoint> points;
 };
 
+enum class GlobalPlanStatus {
+ kPending,
+ kSucceeded,
+ kFailed,
+};
+
+struct GlobalPlanProgress {
+ GlobalPlanStatus status = GlobalPlanStatus::kFailed;
+ Route route;
+};
+
 // IGlobalPlanner: estimate + semantic goal + map snapshot -> route.
 // Event-driven (goal/map change), not per-tick.
 class IGlobalPlanner {
@@ -33,6 +45,16 @@ class IGlobalPlanner {
   virtual ~IGlobalPlanner() = default;
   virtual Route plan(const EstimatedState& start, const RoutePoint& goal,
                      const iface::MapSnapshot& map) = 0;
+ // Large planners may cooperatively expand a deterministic number of states
+ // per decision cycle. Synchronous planners keep the default seam.
+ virtual bool supports_incremental_plan() const { return false; }
+ virtual std::size_t incremental_plan_budget() const { return 0; }
+ virtual void begin_plan(const EstimatedState&, const RoutePoint&,
+ const iface::MapSnapshot&) {}
+ virtual GlobalPlanProgress continue_plan(std::size_t) {
+ return {GlobalPlanStatus::kFailed, {}};
+ }
+ virtual void cancel_plan() {}
   // Traversal-belief hook (optional): the coordinator hands its live
   // TraversalModel here; planners that price roughness read it. Default
   // ignores (no belief, today's behavior). Never owned, never stored

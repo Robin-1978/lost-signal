@@ -373,8 +373,7 @@ iface::MotionCommand AutonomyCoordinator::update(
     // event flags stay consistent even when a stage below yields no plan.
     last_decision_ns_ = now_ns;
     last_map_revision_ = map.revision;
- const bool force_route_refresh =
- replan_requested_ || map_changed || !active_route_.valid;
+ const bool force_route_refresh = replan_requested_ || map_changed;
  replan_requested_ = false;
     // Survey revision: rebind the traversal belief and push the prior to
     // the mapper (ground classification for occupancy painting).
