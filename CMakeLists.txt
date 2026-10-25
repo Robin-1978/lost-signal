@@ -668,3 +668,20 @@ add_test(NAME robot_boundary
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/check_boundary.py
 )
 
+# The native tests use assert() as their check primitive, and several tests
+# intentionally place state-changing setup calls inside those expressions.
+# Release flags define NDEBUG globally; undo that definition for test
+# executables so release validation executes the same checks and setup as a
+# debug build. Production libraries and binaries retain their normal release
+# flags.
+get_property(LOST_SIGNAL_DIRECTORY_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(target IN LISTS LOST_SIGNAL_DIRECTORY_TARGETS)
+ if(target MATCHES "^test_")
+ if(MSVC)
+ target_compile_options(${target} PRIVATE /UNDEBUG)
+ else()
+ target_compile_options(${target} PRIVATE -UNDEBUG)
+ endif()
+ endif()
+endforeach()
+

@@ -171,7 +171,7 @@ int main() {
     est.predict(o);
     for (int k = 2; k <= 6; ++k) {
       o.sequence = static_cast<std::uint64_t>(k);
-      o.stamp_ns = (k - 1) * 20'000'000;  // 20 ms steps at 1 m/s
+      o.stamp_ns = static_cast<core::MonotonicNs>(k - 1) * 20'000'000LL;
       est.predict(o);
     }
     const double drifted_x = est.estimate().x_m;
@@ -245,7 +245,7 @@ int main() {
     for (int k = 1; k <= 6; ++k) {
       iface::ObservationFrame o;
       o.sequence = static_cast<std::uint64_t>(k);
-      o.stamp_ns = k * 20'000'000;
+    o.stamp_ns = static_cast<core::MonotonicNs>(k) * 20'000'000LL;
       o.source = "t.lidar";
       o.frame = core::Frame::kLidarLink;
       o.odometry_valid = true;
@@ -400,7 +400,7 @@ int main() {
     o.imu_valid = true;
  for (int i = 0; i < 1000 && !coord.localized(); ++i) {
  o.sequence = static_cast<std::uint64_t>(i + 1);
- o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+    o.stamp_ns = static_cast<core::MonotonicNs>(i + 1) * 20'000'000LL;
  coord.ingest_observation(o);
  coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
  }
@@ -425,7 +425,7 @@ int main() {
  for (int i = 0; i < 1000 && !bounded_recovery_completed; ++i) {
  iface::ObservationFrame o;
  o.sequence = static_cast<std::uint64_t>(i + 1);
- o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+    o.stamp_ns = static_cast<core::MonotonicNs>(i + 1) * 20'000'000LL;
  o.source = "t.recovery-lidar";
  o.frame = core::Frame::kLidarLink;
  o.odometry_valid = true;
@@ -463,7 +463,7 @@ int main() {
  for (int i = 0; i < 1000 && !coord.localized(); ++i) {
  if (i > 0) true_x += 0.5 * 0.02;
  o.sequence = static_cast<std::uint64_t>(i + 1);
- o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+    o.stamp_ns = static_cast<core::MonotonicNs>(i + 1) * 20'000'000LL;
  o.scan_valid = true;
  o.ranges_m = scan_from(true_x, 0.0, 0.0, map);
  coord.ingest_observation(o);
@@ -576,7 +576,7 @@ int main() {
  for (int k = 1; k <= 600 && !saw_tracking; ++k) {
       iface::ObservationFrame o;
       o.sequence = static_cast<std::uint64_t>(k);
-      o.stamp_ns = k * 20'000'000;
+    o.stamp_ns = static_cast<core::MonotonicNs>(k) * 20'000'000LL;
       o.source = "t.lidar";
       o.frame = core::Frame::kLidarLink;
       o.odometry_valid = true;
@@ -620,7 +620,7 @@ int main() {
     for (int k = 1; k <= 3; ++k) {
       iface::ObservationFrame o;
       o.sequence = static_cast<std::uint64_t>(k);
-      o.stamp_ns = k * 20'000'000;
+    o.stamp_ns = static_cast<core::MonotonicNs>(k) * 20'000'000LL;
       o.source = "t.lidar";
       o.frame = core::Frame::kLidarLink;
       o.odometry_valid = true;

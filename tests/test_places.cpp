@@ -62,7 +62,8 @@ int main() {
   // Settling takes a few decision cycles (controlled-stop latch).
   iface::MotionCommand cmd = app.tick(1'000'000);
   for (int i = 0; i < 4 && cmd.forward_mps <= 0.0; ++i) {
-    cmd = app.tick(1'000'000 + (i + 1) * 100'000'000);
+ cmd = app.tick(1'000'000LL +
+ static_cast<core::MonotonicNs>(i + 1) * 100'000'000LL);
   }
   assert(cmd.forward_mps > 0.0);
 

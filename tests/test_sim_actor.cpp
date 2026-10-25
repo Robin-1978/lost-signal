@@ -32,7 +32,7 @@ int main() {
 
   std::vector<double> xs;
   for (int i = 0; i < 280; ++i) {
-    sim.tick(static_cast<robot::core::MonotonicNs>(i * 20'000'000));
+ sim.tick(static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL);
     xs.push_back(sim.world().truth().body_x_m);
   }
   // Rigid-coupling plant accelerates at ΣF/M (4.5 m/s^2 full duty), so

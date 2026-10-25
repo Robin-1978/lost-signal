@@ -154,11 +154,11 @@ int main() {
       assert(ep.poll_feedback(fb));
       robot::iface::MotionFeedback loop = fb;
       auto act = chassis.to_actuator(robot::iface::MotionCommand::SafeStop(
-                                         static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1)),
+ static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1),
                                      loop,
-                                     static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1));
+ static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1);
       assert(robot::iface::valid_actuator_command(
-          act, static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1)));
+ act, static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1));
       w.apply(act);
       if (std::abs(w.truth().forward_mps) < 0.01) {
         stopped = true;
@@ -178,8 +178,8 @@ int main() {
       assert(ep.poll_feedback(hold_fb));
       auto hold_act = chassis.to_actuator(
           robot::iface::MotionCommand::SafeStop(
-              static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1)),
-          hold_fb, static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1));
+ static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1),
+ hold_fb, static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1);
       w.apply(hold_act);
     }
     const double x_settled = w.truth().body_x_m;
@@ -193,8 +193,8 @@ int main() {
                             std::abs(hold_fb.drive_radps[1])));
       auto hold_act = chassis.to_actuator(
           robot::iface::MotionCommand::SafeStop(
-              static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1)),
-          hold_fb, static_cast<robot::core::MonotonicNs>(i * 20'000'000 + 1));
+ static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1),
+ hold_fb, static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL + 1);
       w.apply(hold_act);
       max_drift =
           std::max(max_drift, std::abs(w.truth().body_x_m - x_settled));

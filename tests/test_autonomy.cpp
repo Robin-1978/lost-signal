@@ -202,7 +202,7 @@ int main() {
     for (int k = 1; k <= 50; ++k) {
       iface::ObservationFrame o;
       o.sequence = static_cast<std::uint64_t>(k);
-      o.stamp_ns = k * 20'000'000;
+ o.stamp_ns = static_cast<core::MonotonicNs>(k) * 20'000'000LL;
       o.source = "t.imu";
       o.frame = core::Frame::kImuLink;
       o.odometry_valid = true;

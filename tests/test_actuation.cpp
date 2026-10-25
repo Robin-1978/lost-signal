@@ -291,7 +291,7 @@ int main() {
       fb.drive_radps = w.truth().drive_radps;
       fb.steer_rad = w.truth().steer_rad;
       fb.steer_vel_radps = w.truth().steer_vel_radps;
-      yaw.stamp_ns = i * 20'000'000;
+ yaw.stamp_ns = static_cast<core::MonotonicNs>(i) * 20'000'000LL;
       yaw.expiry_ns = yaw.stamp_ns + 200'000'000;
       auto act = chassis.to_actuator(chassis.clamp_command(yaw, yaw.stamp_ns),
                                      fb, yaw.stamp_ns);
@@ -321,7 +321,7 @@ int main() {
       sfb.drive_radps = s.truth().drive_radps;
       sfb.steer_rad = s.truth().steer_rad;
       sfb.steer_vel_radps = s.truth().steer_vel_radps;
-      yaw.stamp_ns = i * 20'000'000;
+ yaw.stamp_ns = static_cast<core::MonotonicNs>(i) * 20'000'000LL;
       yaw.expiry_ns = yaw.stamp_ns + 200'000'000;
       auto act = swerve.to_actuator(swerve.clamp_command(yaw, yaw.stamp_ns),
                                     sfb, yaw.stamp_ns);
