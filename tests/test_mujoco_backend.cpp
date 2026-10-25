@@ -50,6 +50,11 @@ int main() {
     assert(wheel_count == 2);
     for (int i = 0; i < wheel_count; ++i) {
     assert(wheels[i].pose.valid);
+ assert(wheels[i].contact_valid);
+ assert(std::isfinite(wheels[i].contact_slip_speed_mps));
+ assert(wheels[i].contact_slip_speed_mps >= 0.0);
+ assert(wheels[i].contact_normal_force_N > 0.0);
+ assert(std::abs(wheels[i].contact_z_m) < 0.01);
     assert(std::abs(wheels[i].pose.z_m) < 1e-9);
     const double qnorm = std::sqrt(
     wheels[i].pose.qw * wheels[i].pose.qw +

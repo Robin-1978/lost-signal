@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "robot/core/transform.hpp"
+#include "sim/world/terrain.hpp"
 
 namespace lost_signal::sim::viewer {
 
@@ -68,24 +69,48 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       w.y_m = table[i].y_m;
       w.steer_rad = table[i].steer_rad;
       w.spin_rad = table[i].spin_rad;
+      w.spin_rate_radps = table[i].spin_rate_radps;
       w.radius_m = world.motor_params().wheel_radius_m;
       w.slipping = table[i].slipping;
- w.driven = table[i].driven;
- if (i < nd) {
- w.spin_rate_radps = t.drive_radps[static_cast<std::size_t>(i)];
- w.duty = t.drive_duty[static_cast<std::size_t>(i)];
- } else {
- w.spin_rate_radps = 0.0;
- w.duty = 0.0;
- }
- if (i < ns) {
- w.steer_rate_radps = t.steer_vel_radps[static_cast<std::size_t>(i)];
- }
+      w.driven = table[i].driven;
+      w.duty = i < nd ? t.drive_duty[static_cast<std::size_t>(i)] : 0.0;
+      w.steer_rate_radps = table[i].steer_rate_radps;
       w.mecanum_rollers = mecanum;
- w.pose = {table[i].pose.valid,
- table[i].pose.x_m, table[i].pose.y_m, table[i].pose.z_m,
- table[i].pose.qw, table[i].pose.qx, table[i].pose.qy,
- table[i].pose.qz};
+
+      const double module_vx = t.forward_mps - t.yaw_rate_radps * w.y_m;
+      const double module_vy = t.lateral_mps + t.yaw_rate_radps * w.x_m;
+      const double wheel_c = std::cos(w.steer_rad);
+      const double wheel_s = std::sin(w.steer_rad);
+      w.contact_speed_mps = module_vx * wheel_c + module_vy * wheel_s;
+      const double longitudinal_slip =
+        w.contact_speed_mps - w.radius_m * w.spin_rate_radps;
+      const double lateral_slip =
+        -module_vx * wheel_s + module_vy * wheel_c;
+      // Mecanum lateral motion is resolved by passive rollers. Treating that
+      // intended velocity as tire slip would make the visual effect lie.
+      const double kinematic_slip = mecanum ? std::abs(longitudinal_slip)
+        : std::hypot(longitudinal_slip, lateral_slip);
+      w.contact_valid = table[i].contact_valid;
+      w.contact_x_m = table[i].contact_x_m;
+      w.contact_y_m = table[i].contact_y_m;
+      w.contact_z_m = table[i].contact_z_m;
+      w.contact_normal_force_N = table[i].contact_normal_force_N;
+      w.slip_speed_mps = table[i].contact_valid
+        ? table[i].contact_slip_speed_mps : kinematic_slip;
+      const double body_c = std::cos(t.body_yaw_rad);
+      const double body_s = std::sin(t.body_yaw_rad);
+      const double contact_x = w.contact_valid ? w.contact_x_m
+        : t.body_x_m + body_c * w.x_m - body_s * w.y_m;
+      const double contact_y = w.contact_valid ? w.contact_y_m
+        : t.body_y_m + body_s * w.x_m + body_c * w.y_m;
+      if (const auto* zone = world::material_zone_at(
+        world.material_zones(), contact_x, contact_y)) {
+        w.contact_material_id = zone->material_id;
+      }
+      w.pose = {table[i].pose.valid,
+        table[i].pose.x_m, table[i].pose.y_m, table[i].pose.z_m,
+        table[i].pose.qw, table[i].pose.qx, table[i].pose.qy,
+        table[i].pose.qz};
       f.body.wheels.push_back(w);
     }
   }

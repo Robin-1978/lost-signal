@@ -114,6 +114,59 @@ void MujocoBackend::read_back() {
  out.qz /= qn;
  out.valid = true;
  };
+ const auto point_velocity = [&](int body_id, const mjtNum* point,
+ double* velocity) {
+ velocity[0] = velocity[1] = velocity[2] = 0.0;
+ if (body_id <= 0 || body_id >= model->nbody) return;
+ mjtNum spatial[6] = {};
+ mj_objectVelocity(model, data, mjOBJ_BODY, body_id, spatial, 0);
+ const mjtNum* center = data->xpos + 3 * body_id;
+ const double rx = point[0] - center[0];
+ const double ry = point[1] - center[1];
+ const double rz = point[2] - center[2];
+ velocity[0] = spatial[3] + spatial[1] * rz - spatial[2] * ry;
+ velocity[1] = spatial[4] + spatial[2] * rx - spatial[0] * rz;
+ velocity[2] = spatial[5] + spatial[0] * ry - spatial[1] * rx;
+ };
+ const auto read_contact = [&](int geom_id, bool& valid, double& x,
+ double& y, double& z, double& slip_mps, double& normal_N) {
+ valid = false;
+ x = y = z = slip_mps = normal_N = 0.0;
+ double weight_sum = 0.0;
+ for (int ci = 0; ci < data->ncon; ++ci) {
+ const mjContact& contact = data->contact[ci];
+ if (contact.geom1 != geom_id && contact.geom2 != geom_id) continue;
+ const int body1 = model->geom_bodyid[contact.geom1];
+ const int body2 = model->geom_bodyid[contact.geom2];
+ double velocity1[3], velocity2[3];
+ point_velocity(body1, contact.pos, velocity1);
+ point_velocity(body2, contact.pos, velocity2);
+ const double rvx = velocity1[0] - velocity2[0];
+ const double rvy = velocity1[1] - velocity2[1];
+ const double rvz = velocity1[2] - velocity2[2];
+ const double normal_v = rvx * contact.frame[0] +
+ rvy * contact.frame[1] + rvz * contact.frame[2];
+ const double tx = rvx - normal_v * contact.frame[0];
+ const double ty = rvy - normal_v * contact.frame[1];
+ const double tz = rvz - normal_v * contact.frame[2];
+ mjtNum force[6] = {};
+ mj_contactForce(model, data, ci, force);
+ const double contact_normal_N = std::max(0.0, static_cast<double>(force[0]));
+ const double weight = std::max(1e-9, contact_normal_N);
+ x += weight * contact.pos[0];
+ y += weight * contact.pos[1];
+ z += weight * contact.pos[2];
+ slip_mps += weight * std::sqrt(tx * tx + ty * ty + tz * tz);
+ normal_N += contact_normal_N;
+ weight_sum += weight;
+ }
+ if (weight_sum <= 0.0) return;
+ x /= weight_sum;
+ y /= weight_sum;
+ z /= weight_sum;
+ slip_mps /= weight_sum;
+ valid = true;
+ };
   for (int d = 0; d < drive_count_; ++d) {
     const int dof = drive_dof_[d];
     if (dof < 0) continue;
@@ -149,6 +202,7 @@ void MujocoBackend::read_back() {
                                j == 0 ? "idlerj0" : "idlerj1");
     const int qadr = (jid >= 0) ? model->jnt_qposadr[jid] : -1;
     if (qadr >= 0) idler_angle_[j] = data->qpos[qadr];
+ idler_radps_[j] = data->qvel[dof];
  read_relative_body_pose(idler_body_[j], idler_pose_[j]);
   }
  for (int i = 0; i < support_count_ && i < 4; ++i) {
@@ -166,6 +220,16 @@ void MujocoBackend::read_back() {
  }
  read_relative_body_pose(support_fork_body_[i], support_fork_pose_[i]);
  read_relative_body_pose(support_wheel_body_[i], support_wheel_pose_[i]);
+ }
+ for (int d = 0; d < 4; ++d) {
+ read_contact(tire_geom_[d], drive_contact_valid_[d],
+ drive_contact_x_[d], drive_contact_y_[d], drive_contact_z_[d],
+ drive_contact_slip_mps_[d], drive_contact_normal_N_[d]);
+ }
+ for (int j = 0; j < 2; ++j) {
+ read_contact(idler_geom_[j], idler_contact_valid_[j],
+ idler_contact_x_[j], idler_contact_y_[j], idler_contact_z_[j],
+ idler_contact_slip_mps_[j], idler_contact_normal_N_[j]);
  }
 }
 

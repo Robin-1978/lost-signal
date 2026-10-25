@@ -171,6 +171,11 @@ int main() {
       assert(f.body.wheels[0].slipping == w.truth().drive_slipping[0]);
       assert(std::abs(f.body.wheels[0].radius_m -
                       w.motor_params().wheel_radius_m) < 1e-12);
+      assert(std::isfinite(f.body.wheels[0].contact_speed_mps));
+      assert(std::isfinite(f.body.wheels[0].slip_speed_mps));
+      assert(f.body.wheels[0].slip_speed_mps >= 0.0);
+      assert(f.body.wheels[0].contact_valid);
+      assert(f.body.wheels[0].contact_normal_force_N > 0.0);
     }
     // Ackermann: rear drives fixed, front idlers steered with live spin.
     {
@@ -201,6 +206,28 @@ int main() {
                       f.body.wheels[3].steer_rad) < 0.01);
       assert(w.truth().body_yaw_rad > 0.0);
       assert(std::isfinite(f.body.wheels[2].spin_rad));
+      assert(std::isfinite(f.body.wheels[2].spin_rate_radps));
+      assert(f.body.wheels[0].steer_rate_radps == 0.0);
+      assert(f.body.wheels[2].steer_rate_radps ==
+             w.truth().steer_vel_radps[0]);
+    }
+    // Material is sampled independently at each physical module. This is
+    // SIM-only visual evidence and never enters an ObservationFrame.
+    {
+      sim::world::World w;
+      w.set_materials(
+        {{"sand", 0.55, 0.03, 0.02, 1.2, 0.22}});
+      w.set_material_zones(
+        {{"left_sand", -0.3, 0.0, 0.3, 1.0, "sand"}});
+      robot::iface::ActuatorCommand cmd;
+      cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
+      cmd.expiry_ns = 1'000'000'000;
+      w.apply(cmd);
+      w.step(0.02);
+      const auto f = frame_from(w);
+      assert(f.body.wheels.size() == 2);
+      assert(f.body.wheels[0].contact_material_id == "sand");
+      assert(f.body.wheels[1].contact_material_id.empty());
     }
     // Mecanum: 4 spinning wheels, fixed modules, roller stripes on.
     {

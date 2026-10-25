@@ -19,6 +19,15 @@ struct FrameLinkPose {
 };
 
 struct FrameWheel {
+  bool contact_valid = false;
+  double contact_x_m = 0.0, contact_y_m = 0.0, contact_z_m = 0.0;
+  double contact_normal_force_N = 0.0;
+  // Continuous SIM presentation evidence. Slip comes from MuJoCo contact
+  // point relative velocity when contact exists; the joint/body calculation
+  // is a startup fallback. Neither value is exposed to ROBOT.
+  double contact_speed_mps = 0.0;
+  double slip_speed_mps = 0.0;
+  std::string contact_material_id;
   double x_m = 0.0, y_m = 0.0;  // module position in the base frame
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
   double spin_rad = 0.0;        // live joint angle (turns visibly)

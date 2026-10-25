@@ -45,8 +45,13 @@ struct LinkPoseViz {
 // analytic wrench) and stay out — the viewer decorates those statically.
 struct WheelViz {
   double x_m = 0.0, y_m = 0.0;
-  double spin_rad = 0.0, steer_rad = 0.0;
+ double spin_rad = 0.0, spin_rate_radps = 0.0, steer_rad = 0.0;
+ double steer_rate_radps = 0.0;
   bool slipping = false, driven = false;
+ bool contact_valid = false;
+ double contact_x_m = 0.0, contact_y_m = 0.0, contact_z_m = 0.0;
+ double contact_slip_speed_mps = 0.0;
+ double contact_normal_force_N = 0.0;
  LinkPoseViz pose;
 };
 
@@ -139,10 +144,18 @@ class MujocoBackend {
       w.x_m = drive_mod_x_[d];
       w.y_m = drive_mod_y_[d];
       w.spin_rad = drive_angle_[d];
+ w.spin_rate_radps = drive_radps_[d];
       const int s = (d < 4) ? drive_steer_[d] : -1;
       w.steer_rad = (s >= 0 && s < 4) ? steer_angle_[s] : 0.0;
+ w.steer_rate_radps = (s >= 0 && s < 4) ? steer_vel_[s] : 0.0;
       w.slipping = drive_slipping_[static_cast<std::size_t>(d)];
       w.driven = true;
+ w.contact_valid = drive_contact_valid_[d];
+ w.contact_x_m = drive_contact_x_[d];
+ w.contact_y_m = drive_contact_y_[d];
+ w.contact_z_m = drive_contact_z_[d];
+ w.contact_slip_speed_mps = drive_contact_slip_mps_[d];
+ w.contact_normal_force_N = drive_contact_normal_N_[d];
  w.pose = drive_pose_[d];
       out[n++] = w;
     }
@@ -151,7 +164,15 @@ class MujocoBackend {
       w.x_m = idler_mod_x_[j];
       w.y_m = idler_mod_y_[j];
       w.spin_rad = idler_angle_[j];
+ w.spin_rate_radps = idler_radps_[j];
       w.steer_rad = (j < 4) ? steer_angle_[j] : 0.0;
+ w.steer_rate_radps = (j < 4) ? steer_vel_[j] : 0.0;
+ w.contact_valid = idler_contact_valid_[j];
+ w.contact_x_m = idler_contact_x_[j];
+ w.contact_y_m = idler_contact_y_[j];
+ w.contact_z_m = idler_contact_z_[j];
+ w.contact_slip_speed_mps = idler_contact_slip_mps_[j];
+ w.contact_normal_force_N = idler_contact_normal_N_[j];
  w.pose = idler_pose_[j];
       out[n++] = w;
     }
@@ -213,6 +234,13 @@ class MujocoBackend {
   double idler_mod_x_[2] = {0.0, 0.0};
   double idler_mod_y_[2] = {0.0, 0.0};
   double idler_angle_[2] = {0.0, 0.0};
+ double idler_radps_[2] = {0.0, 0.0};
+ bool idler_contact_valid_[2] = {false, false};
+ double idler_contact_x_[2] = {0.0, 0.0};
+ double idler_contact_y_[2] = {0.0, 0.0};
+ double idler_contact_z_[2] = {0.0, 0.0};
+ double idler_contact_slip_mps_[2] = {0.0, 0.0};
+ double idler_contact_normal_N_[2] = {0.0, 0.0};
   int idler_dof_[2] = {-1, -1};
  int idler_body_[2] = {-1, -1};
  LinkPoseViz idler_pose_[2];
@@ -265,6 +293,12 @@ class MujocoBackend {
   std::array<double, 4> drive_angle_ = {};
   std::array<double, 4> drive_radps_ = {};
   std::array<bool, 4> drive_slipping_ = {};
+ bool drive_contact_valid_[4] = {false, false, false, false};
+ double drive_contact_x_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_y_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_z_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_normal_N_[4] = {0.0, 0.0, 0.0, 0.0};
   std::array<double, 4> steer_angle_ = {};
   std::array<double, 4> steer_vel_ = {};
 };

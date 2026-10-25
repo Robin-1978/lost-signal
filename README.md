@@ -119,10 +119,16 @@ completion ratio, and a duty/speed energy proxy.
 - The SIM viewer is presentation-only. It loads optional GLB assets from
   `assets/models` automatically (or `--assets DIR`), with deterministic
   procedural fallbacks. Chassis parts use live MuJoCo joint angles/velocities;
-  dust and slip particles are derived from the recorded SIM step and never
-  enter ROBOT observations.
-Press `F` to toggle the camera's robot-follow mode; right-drag or middle-drag
- releases follow for free orbit/pan, and `R` restores the default orbit.
+  wheel effects use MuJoCo contact-point slip, normal force, and the SIM-only
+  ground material. Dry paving stays clean during ordinary rolling; sand,
+  gravel, mud, water, and tire slip render distinct deterministic effects.
+  These values never enter ROBOT observations.
+In 3D map mode the viewer starts with a close robot-follow camera and a clean
+world view. Press `F` to toggle follow; right-drag or middle-drag releases
+follow for free orbit/pan, and `R` restores the default orbit. `L` shows a
+sparse LiDAR diagnostic, `E` shows truth/estimate history, and `K` reveals
+SIM-only actor script routes. Script routes are hidden by default because they
+are not information available to ROBOT.
 The viewer advances in deterministic 20 ms simulation steps at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
 as fast as the per-frame work budget allows. Playback never changes physics,
