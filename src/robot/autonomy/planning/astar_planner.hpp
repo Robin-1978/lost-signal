@@ -1,6 +1,7 @@
 #pragma once
 
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/iface/map.hpp"
 
@@ -57,6 +58,13 @@ class AStarPlanner : public IGlobalPlanner {
   Config config_;
   StraightLinePlanner fallback_;
   const TraversalModel* traversal_ = nullptr;
+ // Static inflation depends only on immutable map revision + planner
+ // geometry. Long missions replan many goals on the same survey, so retain
+ // this O(cells) layer instead of rebuilding millions of cells per goal.
+ LocalCostmap cached_costmap_;
+ std::string cached_map_id_;
+ std::uint64_t cached_map_revision_ = 0;
+ bool costmap_cached_ = false;
 };
 
 }  // namespace lost_signal::robot::autonomy

@@ -13,7 +13,8 @@ lost_signal::robot::iface::MapSnapshot make_map(int w, int h, double res,
                                                  double ox, double oy) {
   lost_signal::robot::iface::MapSnapshot m;
   m.map_id = "test";
-  m.revision = 1;
+ static std::uint64_t next_revision = 1;
+ m.revision = next_revision++;
   m.width = w;
   m.height = h;
   m.resolution_m = res;

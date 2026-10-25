@@ -64,8 +64,15 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
  // Unknown space is intentionally traversable at a configured penalty. It
  // never seeds footprint inflation; newly observed occupied cells will
  // trigger a new map revision and route refresh.
- const LocalCostmap planning_map = make_global_costmap(
+ if (!costmap_cached_ || cached_map_id_ != map.map_id ||
+ cached_map_revision_ != map.revision) {
+ cached_costmap_ = make_global_costmap(
  map, hard_radius, soft_radius, true);
+ cached_map_id_ = map.map_id;
+ cached_map_revision_ = map.revision;
+ costmap_cached_ = true;
+ }
+ const LocalCostmap& planning_map = cached_costmap_;
  if (!planning_map.valid()) return Route{};
   auto to_grid = [&](double wx, double wy, int& gx, int& gy) {
     gx = static_cast<int>(std::floor((wx - map.origin_x_m) / res));
