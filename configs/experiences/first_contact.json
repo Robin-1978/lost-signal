@@ -22,6 +22,15 @@
  {"component_id":"lidar","title":"LIDAR / TIMED RANGES","lesson":"The blue scanner reports ranges from this configured sensor frame. It measures surfaces; it does not reveal actor identities, scripts, or world truth."},
  {"component_id":"chassis","title":"COMPUTE, SAFETY, AND CHASSIS","lesson":"The onboard robot turns timestamped measurements into estimates and commands. A separate fresh-observation safety layer may stop motion before higher-level planning reacts."}
  ],
+ "experiments": [
+ {
+ "experiment_id": "scan_cadence",
+ "title": "WHAT CHANGES WHEN LIDAR UPDATES FIVE TIMES SLOWER?",
+ "controlled_variable": "lidar.scan_period_s",
+ "variant_value": 0.10,
+ "step_budget": 1200
+ }
+ ],
  "prediction": {
  "question": "What evidence may independently command the final safety stop?",
  "choices": [

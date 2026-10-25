@@ -29,6 +29,11 @@ int main() {
  assert(experience.choices.size() == 3);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
+ assert(experience.experiments.size() == 1);
+ assert(experience.experiments.front().controlled_variable ==
+ "lidar.scan_period_s");
+ assert(experience.experiments.front().variant_value == 0.10);
+ assert(experience.experiments.front().step_budget == 1200);
  int correct = 0;
  for (const auto& choice : experience.choices) {
  if (choice.correct) ++correct;
@@ -51,6 +56,12 @@ int main() {
  assert(!lost_signal::sim::viewer::load_experience_manifest(
  bad.string(), experience, &error));
  assert(error == "experience walkaround component ids must be unique");
+
+ write_text(bad,
+ R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"experiments":[{"experiment_id":"bad","title":"bad","controlled_variable":"sim.truth_pose","variant_value":1.0,"step_budget":10}],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":false}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");
+ assert(!lost_signal::sim::viewer::load_experience_manifest(
+ bad.string(), experience, &error));
+ assert(error.find("supported variable") != std::string::npos);
  std::filesystem::remove(bad);
  return 0;
 }

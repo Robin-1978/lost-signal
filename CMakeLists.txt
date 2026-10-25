@@ -316,6 +316,10 @@ target_include_directories(lost_signal_sim_experiment PUBLIC src)
 target_link_libraries(lost_signal_sim_experiment PUBLIC
  lost_signal_sim_scenario lost_signal_sim_viewer)
 
+if(TARGET sim_viewer)
+ target_link_libraries(sim_viewer PRIVATE lost_signal_sim_experiment)
+endif()
+
 add_executable(sim_ab_experiment
  src/sim/experiment/ab_experiment_main.cpp
 )

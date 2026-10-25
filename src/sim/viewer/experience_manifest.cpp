@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <cmath>
 #include <set>
 #include <sstream>
 
@@ -178,6 +179,45 @@ bool load_experience_manifest(const std::string& path,
  return false;
  }
  parsed.walkaround.push_back(std::move(stop));
+ }
+ }
+ const Json* experiments = root->find("experiments");
+ if (experiments != nullptr) {
+ if (!experiments->is_array() || experiments->as_array().empty() ||
+ experiments->as_array().size() > 4) {
+ out_error = "experience experiments must contain one to four entries";
+ return false;
+ }
+ std::set<std::string> experiment_ids;
+ for (const Json& node : experiments->as_array()) {
+ if (!node.is_object()) {
+ out_error = "experience experiment must be an object";
+ return false;
+ }
+ ExperienceExperiment experiment;
+ if (!take_string(node, "experiment_id", experiment.experiment_id,
+ out_error) ||
+ !take_string(node, "title", experiment.title, out_error) ||
+ !take_string(node, "controlled_variable",
+ experiment.controlled_variable, out_error)) {
+ return false;
+ }
+ const Json* variant = node.find("variant_value");
+ const Json* budget = node.find("step_budget");
+ if (!experiment_ids.insert(experiment.experiment_id).second ||
+ experiment.controlled_variable != "lidar.scan_period_s" ||
+ variant == nullptr || !variant->is_num() ||
+ !std::isfinite(variant->as_num()) || !(variant->as_num() > 0.0) ||
+ budget == nullptr || !budget->is_num() ||
+ !std::isfinite(budget->as_num()) || budget->as_num() < 1.0 ||
+ std::floor(budget->as_num()) != budget->as_num()) {
+ out_error = "experience experiment needs a unique id, supported variable, "
+ "positive variant, and integer step budget";
+ return false;
+ }
+ experiment.variant_value = variant->as_num();
+ experiment.step_budget = static_cast<long>(budget->as_num());
+ parsed.experiments.push_back(std::move(experiment));
  }
  }
  const std::filesystem::path manifest_root =

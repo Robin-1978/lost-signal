@@ -20,6 +20,14 @@ struct ExperienceWalkaroundStop {
  std::string lesson;
 };
 
+struct ExperienceExperiment {
+ std::string experiment_id;
+ std::string title;
+ std::string controlled_variable;
+ double variant_value = 0.0;
+ long step_budget = 0;
+};
+
 struct ExperienceManifest {
  std::string experience_id;
  std::string title;
@@ -31,6 +39,7 @@ struct ExperienceManifest {
  std::vector<std::string> objectives;
  std::vector<std::string> briefing;
  std::vector<ExperienceWalkaroundStop> walkaround;
+ std::vector<ExperienceExperiment> experiments;
  std::string prediction_question;
  std::vector<ExperienceChoice> choices;
  std::string running_prompt;

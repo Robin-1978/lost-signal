@@ -18,12 +18,14 @@
 #include <deque>
 #include <fstream>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
+#include "sim/experiment/ab_experiment.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
@@ -613,6 +615,20 @@ void draw_motion_particles_3d(const ParticleSystem& particles,
 
 enum class ExperiencePhase { kBriefing, kPrediction, kRunning, kDebrief };
 
+enum class ExperimentRunState { kIdle, kRunning, kComplete, kFailed };
+
+struct ExperimentUiState {
+ ExperimentRunState state = ExperimentRunState::kIdle;
+ lost_signal::sim::experiment::ScanPeriodComparison comparison;
+ std::string error;
+};
+
+struct ExperimentAsyncResult {
+ bool ok = false;
+ lost_signal::sim::experiment::ScanPeriodComparison comparison;
+ std::string error;
+};
+
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
  const Font font = GetFontDefault();
@@ -643,7 +659,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const std::vector<ReviewKeyframe>& review_keyframes,
  int selected_review_keyframe,
  bool objectives_done,
- bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score) {
+ bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
+ const ExperimentUiState* experiment_ui) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
  constexpr Color kText{226, 235, 230, 255};
@@ -772,6 +789,42 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
  y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
  safe ? kText : kRed) + 12.0f;
+ if (!experience.experiments.empty() && experiment_ui != nullptr) {
+ const auto& experiment = experience.experiments.front();
+ DrawText("CONTROLLED RE-RUN / PRESS A", static_cast<int>(x + 34),
+ static_cast<int>(y), 14, kAmber);
+ y += 22.0f;
+ if (experiment_ui->state == ExperimentRunState::kRunning) {
+ y = draw_wrapped_text(
+ "Running baseline and variant headless with identical authored files and seeds...",
+ x + 34, y, panel_width - 68, 14, 4, kMuted) + 8.0f;
+ } else if (experiment_ui->state == ExperimentRunState::kComplete) {
+ const auto& baseline = experiment_ui->comparison.baseline;
+ const auto& variant = experiment_ui->comparison.variant;
+ char comparison[320];
+ std::snprintf(comparison, sizeof(comparison),
+ "LiDAR %.0f ms -> %.0f ms | pass %s/%s | time %.2f/%.2f s | collisions %zu/%zu | clearance %.2f/%.2f m",
+ baseline.scan_period_s * 1000.0, variant.scan_period_s * 1000.0,
+ baseline.objectives_passed ? "YES" : "NO",
+ variant.objectives_passed ? "YES" : "NO",
+ baseline.score.elapsed_s, variant.score.elapsed_s,
+ baseline.score.collision_steps, variant.score.collision_steps,
+ baseline.score.min_clearance_m, variant.score.min_clearance_m);
+ y = draw_wrapped_text(comparison, x + 34, y, panel_width - 68, 14, 4,
+ kText) + 8.0f;
+ } else if (experiment_ui->state == ExperimentRunState::kFailed) {
+ y = draw_wrapped_text("Experiment failed: " + experiment_ui->error,
+ x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
+ } else {
+ char invitation[256];
+ std::snprintf(invitation, sizeof(invitation),
+ "%s Change only %s to %.3f s; all seeds stay fixed.",
+ experiment.title.c_str(), experiment.controlled_variable.c_str(),
+ experiment.variant_value);
+ y = draw_wrapped_text(invitation, x + 34, y, panel_width - 68, 14, 4,
+ kMuted) + 8.0f;
+ }
+ }
  if (!review_keyframes.empty()) {
  const int count = static_cast<int>(review_keyframes.size());
  const int index = std::clamp(selected_review_keyframe, 0, count - 1);
@@ -812,7 +865,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
  kText) + 6.0f;
  }
- DrawText("LEFT/RIGHT KEYFRAMES / ROBOT never received SIM truth.",
+ DrawText("LEFT/RIGHT KEYFRAMES / A RE-RUN / ROBOT never received SIM truth.",
  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 42),
  14, kAmber);
 }
@@ -2006,6 +2059,8 @@ int main(int argc, char** argv) {
  int walkaround_stop = 0;
  std::vector<ReviewKeyframe> review_keyframes;
  int selected_review_keyframe = 0;
+ ExperimentUiState experiment_ui;
+ std::future<ExperimentAsyncResult> experiment_future;
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
@@ -2105,6 +2160,20 @@ int main(int argc, char** argv) {
  const double wall_dt_s = std::clamp(
  wall_now_s - previous_wall_s, 0.0, 0.25);
  previous_wall_s = wall_now_s;
+ if (experiment_future.valid() &&
+ experiment_future.wait_for(std::chrono::seconds(0)) ==
+ std::future_status::ready) {
+ try {
+ const ExperimentAsyncResult result = experiment_future.get();
+ experiment_ui.comparison = result.comparison;
+ experiment_ui.error = result.error;
+ experiment_ui.state = result.ok ? ExperimentRunState::kComplete
+ : ExperimentRunState::kFailed;
+ } catch (const std::exception& exception) {
+ experiment_ui.state = ExperimentRunState::kFailed;
+ experiment_ui.error = exception.what();
+ }
+ }
     view.set_screen(GetScreenWidth(), GetScreenHeight());
     if (IsKeyPressed(KEY_V)) view3d = !view3d;
     // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
@@ -2166,6 +2235,21 @@ int main(int argc, char** argv) {
  if (IsKeyPressed(KEY_LEFT)) {
  selected_review_keyframe =
  (selected_review_keyframe + count - 1) % count;
+ }
+ if (IsKeyPressed(KEY_A) && !experience.experiments.empty() &&
+ experiment_ui.state != ExperimentRunState::kRunning) {
+ const auto definition = experience.experiments.front();
+ const std::string manifest_path = experience_path;
+ experiment_ui = ExperimentUiState{};
+ experiment_ui.state = ExperimentRunState::kRunning;
+ experiment_future = std::async(std::launch::async,
+ [manifest_path, definition]() {
+ ExperimentAsyncResult result;
+ result.ok = lost_signal::sim::experiment::run_scan_period_comparison(
+ manifest_path, definition.variant_value, definition.step_budget,
+ result.comparison, &result.error);
+ return result;
+ });
  }
  }
  }
@@ -2335,7 +2419,7 @@ int main(int argc, char** argv) {
  }
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, walkaround_stop, review_keyframes,
- selected_review_keyframe, false, false, {});
+ selected_review_keyframe, false, false, {}, &experiment_ui);
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
  TakeScreenshot(shot_path.c_str());
@@ -2427,7 +2511,7 @@ int main(int argc, char** argv) {
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, walkaround_stop, review_keyframes,
  selected_review_keyframe, session->objectives_done(),
- session->objectives_passed(), session->score());
+ session->objectives_passed(), session->score(), &experiment_ui);
  }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {
