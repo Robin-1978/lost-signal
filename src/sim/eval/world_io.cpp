@@ -152,8 +152,10 @@ Json material_to_json(const world::MaterialEntry& m) {
                      Json::Num(m.contact_time_constant_s)},
                     {"contact_damping_ratio",
                      Json::Num(m.contact_damping_ratio)},
-                    {"lidar_reflectivity",
-                     Json::Num(m.lidar_reflectivity)}});
+ {"lidar_reflectivity",
+ Json::Num(m.lidar_reflectivity)},
+ {"surface_effect", Json::Str(m.surface_effect)},
+ {"fluid_depth_m", Json::Num(m.fluid_depth_m)}});
 }
 
 bool material_from_json(const Json& j, world::MaterialEntry& m,
@@ -178,6 +180,33 @@ bool material_from_json(const Json& j, world::MaterialEntry& m,
     err = "material '" + m.material_id + "' has a negative/nonphysical value";
     return false;
   }
+ const Json* surface_effect = j.find("surface_effect");
+ if (surface_effect != nullptr) {
+ if (!surface_effect->is_str()) {
+ err = "material '" + m.material_id + "' surface_effect must be a string";
+ return false;
+ }
+ m.surface_effect = surface_effect->as_str();
+ }
+ const Json* fluid_depth = j.find("fluid_depth_m");
+ if (fluid_depth != nullptr) {
+ if (!fluid_depth->is_num() || !std::isfinite(fluid_depth->as_num())) {
+ err = "material '" + m.material_id + "' fluid_depth_m must be finite";
+ return false;
+ }
+ m.fluid_depth_m = fluid_depth->as_num();
+ }
+ if (m.surface_effect != "none" && m.surface_effect != "dust" &&
+ m.surface_effect != "mud" && m.surface_effect != "water") {
+ err = "material '" + m.material_id + "' has unknown surface_effect";
+ return false;
+ }
+ if (m.fluid_depth_m < 0.0 || m.fluid_depth_m > 0.25 ||
+ (m.surface_effect == "water" && !(m.fluid_depth_m > 0.0)) ||
+ (m.surface_effect != "water" && m.fluid_depth_m != 0.0)) {
+ err = "material '" + m.material_id + "' has invalid fluid_depth_m";
+ return false;
+ }
   return true;
 }
 

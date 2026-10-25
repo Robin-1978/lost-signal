@@ -115,7 +115,8 @@ int main() {
   {
     sim::world::World w;
     w.set_materials(
-        {{"ice", 0.1, 0.005, 0.006, 1.0, 0.3}, {"sand", 0.55, 0.03, 0.02, 1.2, 0.22}});
+ {{"ice", 0.1, 0.005, 0.006, 1.0, 0.3, "water", 0.012},
+ {"sand", 0.55, 0.03, 0.02, 1.2, 0.22, "dust", 0.0}});
     w.set_material_zones({{"slick", -2.0, -2.0, 12.0, 2.0, "ice"}});
     w.set_terrain_patches(
         {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.14, 0.0, 0.0, 0.0}});
@@ -129,6 +130,8 @@ int main() {
     const sim::viewer::Frame f = sim::viewer::build_frame(w, s, {}, {});
     assert(f.zones.size() == 1);
     assert(f.zones[0].material_id == "ice");
+ assert(f.zones[0].surface_effect == "water");
+ assert(f.zones[0].fluid_depth_m == 0.012);
     assert(std::abs(f.zones[0].x1_m - 12.0) < 1e-12);
     assert(f.patches.size() == 1);
     assert(std::abs(f.patches[0].y0_m + 3.0) < 1e-12);
@@ -216,7 +219,7 @@ int main() {
     {
       sim::world::World w;
       w.set_materials(
-        {{"sand", 0.55, 0.03, 0.02, 1.2, 0.22}});
+ {{"sand", 0.55, 0.03, 0.02, 1.2, 0.22, "dust", 0.0}});
       w.set_material_zones(
         {{"left_sand", -0.3, 0.0, 0.3, 1.0, "sand"}});
       robot::iface::ActuatorCommand cmd;
@@ -227,6 +230,7 @@ int main() {
       const auto f = frame_from(w);
       assert(f.body.wheels.size() == 2);
       assert(f.body.wheels[0].contact_material_id == "sand");
+ assert(f.body.wheels[0].contact_surface_effect == "dust");
       assert(f.body.wheels[1].contact_material_id.empty());
     }
     // Mecanum: 4 spinning wheels, fixed modules, roller stripes on.

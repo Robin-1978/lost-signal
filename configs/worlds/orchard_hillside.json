@@ -201,7 +201,8 @@
    "rolling_resist": 0.025,
    "contact_time_constant_s": 0.025,
    "contact_damping_ratio": 1.25,
-   "lidar_reflectivity": 0.18
+ "lidar_reflectivity": 0.18,
+ "surface_effect": "mud"
   },
   {
    "material_id": "gravel",
@@ -209,7 +210,8 @@
    "rolling_resist": 0.015,
    "contact_time_constant_s": 0.01,
    "contact_damping_ratio": 1.15,
-   "lidar_reflectivity": 0.28
+ "lidar_reflectivity": 0.28,
+ "surface_effect": "dust"
   }
  ],
  "zones": [

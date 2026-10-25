@@ -31,6 +31,8 @@ struct FrameWheel {
  double lateral_slip_mps = 0.0;
  double friction_utilization = 0.0;
   std::string contact_material_id;
+ std::string contact_surface_effect;
+ double contact_fluid_depth_m = 0.0;
   double x_m = 0.0, y_m = 0.0;  // module position in the base frame
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)
   double spin_rad = 0.0;        // live joint angle (turns visibly)
@@ -108,6 +110,8 @@ struct FrameActor {
 struct FrameZone {
   double x0_m = 0.0, y0_m = 0.0, x1_m = 0.0, y1_m = 0.0;
   std::string material_id;
+ std::string surface_effect;
+ double fluid_depth_m = 0.0;
 };
 
 // Terrain patch footprint (frontend samples heights itself for the mesh).

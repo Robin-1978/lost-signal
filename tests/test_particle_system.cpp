@@ -7,7 +7,8 @@
 namespace {
 
 lost_signal::sim::viewer::Frame contact_frame(
- std::uint64_t step, const char* material, bool slipping = false) {
+ std::uint64_t step, const char* material, bool slipping = false,
+ const char* surface_effect = "none", double fluid_depth_m = 0.0) {
  lost_signal::sim::viewer::Frame frame;
  frame.step = step;
  frame.body.x_m = 10.0;
@@ -25,6 +26,8 @@ lost_signal::sim::viewer::Frame contact_frame(
  wheel.steer_rad = -0.1;
  wheel.radius_m = 0.1;
  wheel.contact_material_id = material;
+ wheel.contact_surface_effect = surface_effect;
+ wheel.contact_fluid_depth_m = fluid_depth_m;
  frame.body.wheels.push_back(wheel);
  return frame;
 }
@@ -52,14 +55,16 @@ int main() {
  ParticleSystem dry(config);
  dry.advance(contact_frame(1, "paved"));
  assert(dry.active_count() == 0);
- dry.advance(contact_frame(2, "paved", true));
+ dry.advance(contact_frame(2, "looks_wet_but_is_not_authored"));
+ assert(dry.active_count() == 0);
+ dry.advance(contact_frame(3, "paved", true));
  assert(dry.active_count() > 0);
  assert(dry.active_count() <= dry.capacity());
 
  ParticleSystem first(config);
  ParticleSystem second(config);
  for (std::uint64_t step = 10; step < 30; ++step) {
- const auto frame = contact_frame(step, "gravel");
+ const auto frame = contact_frame(step, "gravel", false, "dust");
  first.advance(frame);
  second.advance(frame);
  }
@@ -77,15 +82,15 @@ int main() {
  }
 
  const std::size_t before_pause = first.active_count();
- first.advance(contact_frame(29, "gravel"));
+ first.advance(contact_frame(29, "gravel", false, "dust"));
  assert(first.active_count() == before_pause);
- first.advance(contact_frame(3, "standing_water"));
+ first.advance(contact_frame(3, "standing_water", false, "water", 0.02));
  assert(first.active_count() > 0);
  bool found_water = false;
  for (const auto& particle : first.particles()) {
  if (particle.active && particle.kind == ParticleKind::kWater) {
  found_water = true;
- assert(particle.position_m[2] >= 0.02);
+ assert(particle.position_m[2] >= 0.04);
  }
  }
  assert(found_water);

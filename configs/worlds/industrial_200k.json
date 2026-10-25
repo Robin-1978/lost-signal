@@ -104,8 +104,8 @@
  {"place_id": "south_yard", "x_m": 440.0, "y_m": -150.0, "yaw_rad": -1.5707963268}
  ],
  "materials": [
- {"material_id": "industrial_gravel", "friction_mu": 0.68, "rolling_resist": 0.018, "contact_time_constant_s": 0.01, "contact_damping_ratio": 1.1, "lidar_reflectivity": 0.3},
- {"material_id": "loading_wet", "friction_mu": 0.42, "rolling_resist": 0.02, "contact_time_constant_s": 0.004, "contact_damping_ratio": 1.0, "lidar_reflectivity": 0.16}
+ {"material_id": "industrial_gravel", "friction_mu": 0.68, "rolling_resist": 0.018, "contact_time_constant_s": 0.01, "contact_damping_ratio": 1.1, "lidar_reflectivity": 0.3, "surface_effect": "dust"},
+ {"material_id": "loading_wet", "friction_mu": 0.42, "rolling_resist": 0.02, "contact_time_constant_s": 0.004, "contact_damping_ratio": 1.0, "lidar_reflectivity": 0.16, "surface_effect": "water", "fluid_depth_m": 0.008}
  ],
  "zones": [
  {"zone_id": "central_gravel", "x0": 205.0, "y0": -28.0, "x1": 315.0, "y1": 28.0, "material": "industrial_gravel"},

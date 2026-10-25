@@ -267,7 +267,9 @@
    "rolling_resist": 0.02,
    "contact_time_constant_s": 0.0025,
    "contact_damping_ratio": 1.0,
-   "lidar_reflectivity": 0.1
+ "lidar_reflectivity": 0.1,
+ "surface_effect": "water",
+ "fluid_depth_m": 0.015
   },
   {
    "material_id": "sand",
@@ -275,7 +277,8 @@
    "rolling_resist": 0.03,
    "contact_time_constant_s": 0.02,
    "contact_damping_ratio": 1.2,
-   "lidar_reflectivity": 0.22
+ "lidar_reflectivity": 0.22,
+ "surface_effect": "dust"
   },
   {
    "material_id": "gravel",
@@ -283,7 +286,8 @@
    "rolling_resist": 0.015,
    "contact_time_constant_s": 0.01,
    "contact_damping_ratio": 1.15,
-   "lidar_reflectivity": 0.28
+ "lidar_reflectivity": 0.28,
+ "surface_effect": "dust"
   },
   {
    "material_id": "steel_deck",
@@ -291,7 +295,8 @@
    "rolling_resist": 0.002,
    "contact_time_constant_s": 0.0025,
    "contact_damping_ratio": 0.9,
-   "lidar_reflectivity": 0.75
+ "lidar_reflectivity": 0.75,
+ "surface_effect": "none"
   },
   {
    "material_id": "mud",
@@ -299,7 +304,8 @@
    "rolling_resist": 0.025,
    "contact_time_constant_s": 0.025,
    "contact_damping_ratio": 1.25,
-   "lidar_reflectivity": 0.18
+ "lidar_reflectivity": 0.18,
+ "surface_effect": "mud"
   }
  ],
  "zones": [

@@ -106,8 +106,8 @@ int main() {
  1.0, -2.0, 0.25, 0.12, 0.06};
  content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5, "fixture_box"}};
     content.places = {{"dock", 2.0, 0.0, 0.0}};
-    content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
-                         {"gravel", 0.7, 0.015, 0.01, 1.15, 0.28}};
+content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
+ {"gravel", 0.7, 0.015, 0.01, 1.15, 0.28, "dust", 0.0}};
     content.zones = {{"slick", 3.0, -1.0, 6.0, 1.0, "ice"}};
     content.patches = {
         {"ramp", 6.0, -1.0, 9.0, 1.0, 0.0, 0.1, 0.0, 0.0, 0.0}};
@@ -128,6 +128,7 @@ int main() {
  assert(rc.boxes[0].box_id == "fixture_box");
     assert(rc.materials[0].material_id == "ice");
     assert(std::abs(rc.materials[0].friction_mu - 0.25) < 1e-12);
+ assert(rc.materials[1].surface_effect == "dust");
     assert(rc.zones[0].material_id == "ice");
     assert(std::abs(rc.patches[0].grade_x - 0.1) < 1e-12);
     assert(std::abs(rc.slabs[0].center_height_m - 0.3) < 1e-12);
@@ -182,6 +183,11 @@ int main() {
       bad.materials.push_back(bad.materials[0]);
       assert(sim::eval::save_world_file(path2, bad, &err));
       assert(!sim::eval::load_world_file(path2, tmp, &err));
+ bad = content;
+ bad.materials[0].surface_effect = "water";
+ bad.materials[0].fluid_depth_m = 0.0;
+ assert(sim::eval::save_world_file(path2, bad, &err));
+ assert(!sim::eval::load_world_file(path2, tmp, &err));
     }
     std::filesystem::remove(path);
     std::filesystem::remove(path2);

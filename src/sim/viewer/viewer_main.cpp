@@ -1557,8 +1557,10 @@ void draw_frame_3d(const Frame& f,
   // Material zones as translucent paint quads (slick water reads blue,
   // sand/gravel warm — same table as the 2D overlay).
  if (presentation_effects) for (const auto& z : f.zones) {
+ const double surface_z = z.surface_effect == "water"
+ ? z.fluid_depth_m : 0.005;
     const Vector3 center = to_raylib((z.x0_m + z.x1_m) * 0.5,
-                                     (z.y0_m + z.y1_m) * 0.5, 0.005);
+ (z.y0_m + z.y1_m) * 0.5, surface_z);
     const Vector3 size{static_cast<float>(std::abs(z.x1_m - z.x0_m)), 0.006f,
                        static_cast<float>(std::abs(z.y1_m - z.y0_m))};
     DrawCubeV(center, size, material_color(z.material_id, 150));

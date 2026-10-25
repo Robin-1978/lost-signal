@@ -112,6 +112,11 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       if (const auto* zone = world::material_zone_at(
         world.material_zones(), contact_x, contact_y)) {
         w.contact_material_id = zone->material_id;
+ if (const auto* material = world::find_material(
+ world.materials(), zone->material_id)) {
+ w.contact_surface_effect = material->surface_effect;
+ w.contact_fluid_depth_m = material->fluid_depth_m;
+ }
       }
       w.pose = {table[i].pose.valid,
         table[i].pose.x_m, table[i].pose.y_m, table[i].pose.z_m,
@@ -236,6 +241,11 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     fz.x1_m = std::max(z.x0, z.x1);
     fz.y1_m = std::max(z.y0, z.y1);
     fz.material_id = z.material_id;
+ if (const auto* material = world::find_material(
+ world.materials(), z.material_id)) {
+ fz.surface_effect = material->surface_effect;
+ fz.fluid_depth_m = material->fluid_depth_m;
+ }
     f.zones.push_back(fz);
   }
   for (const auto& p : world.terrain_patches()) {

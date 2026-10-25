@@ -103,8 +103,9 @@ struct InitialPosePrior {
 // Ground material library entry (SIM-side physics truth, never ROBOT
 // input). One entry resolves all contact + sensing numbers for every zone
 // carrying its id: zones store the id only, values resolve at load, so a
-// retune touches one record. Presentation (textures, effects) is out:
-// physics contact + lidar reflectivity only.
+// retune touches one record. Texture assets stay in the scene manifest;
+// explicit surface category/depth are SIM truth shared by physical-medium
+// modeling and presentation effects.
 struct MaterialEntry {
   std::string material_id;
   double friction_mu = 0.8;  // tire-road sliding friction (engine pair)
@@ -112,6 +113,11 @@ struct MaterialEntry {
   double contact_time_constant_s = 0.006;  // solver softness (main default)
   double contact_damping_ratio = 1.0;
   double lidar_reflectivity = 0.30;  // return strength (provider-side only)
+  // Explicit SIM surface classification. Effects must never infer physical
+  // meaning from material_id. A positive fluid depth places the authored
+  // shallow-water surface above the ground contact plane.
+  std::string surface_effect = "none";  // none, dust, mud, water
+  double fluid_depth_m = 0.0;
 };
 
 // Rectangular ground-material override. Later entries win on overlap.

@@ -114,7 +114,8 @@
    "rolling_resist": 0.004,
    "contact_time_constant_s": 0.003,
    "contact_damping_ratio": 1.0,
-   "lidar_reflectivity": 0.3
+ "lidar_reflectivity": 0.3,
+ "surface_effect": "none"
   },
   {
    "material_id": "standing_water",
@@ -122,7 +123,9 @@
    "rolling_resist": 0.02,
    "contact_time_constant_s": 0.0025,
    "contact_damping_ratio": 1.0,
-   "lidar_reflectivity": 0.1
+ "lidar_reflectivity": 0.1,
+ "surface_effect": "water",
+ "fluid_depth_m": 0.04
   }
  ],
  "zones": [

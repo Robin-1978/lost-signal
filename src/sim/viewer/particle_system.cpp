@@ -18,19 +18,12 @@ double stable_unit(std::uint64_t step, std::size_t wheel, std::size_t sample) {
  return static_cast<double>(value & 0xffffU) / 65535.0;
 }
 
-bool contains(const std::string& value, const char* token) {
- return value.find(token) != std::string::npos;
-}
-
 ParticleKind effect_for(const FrameWheel& wheel,
  const ParticlePresentationConfig& config, bool& enabled) {
- const bool water = contains(wheel.contact_material_id, "water") ||
- contains(wheel.contact_material_id, "wet");
- const bool mud = contains(wheel.contact_material_id, "mud");
- const bool loose = mud || contains(wheel.contact_material_id, "sand") ||
- contains(wheel.contact_material_id, "gravel") ||
- contains(wheel.contact_material_id, "dirt") ||
- contains(wheel.contact_material_id, "soil");
+ const bool water = wheel.contact_surface_effect == "water" &&
+ wheel.contact_fluid_depth_m > 0.0;
+ const bool mud = wheel.contact_surface_effect == "mud";
+ const bool loose = mud || wheel.contact_surface_effect == "dust";
  enabled = water || loose ||
  (wheel.slipping && wheel.slip_speed_mps >=
  config.tire_smoke_slip_mps);
@@ -54,6 +47,8 @@ ParticleSystem::ParticleSystem(ParticlePresentationConfig config)
  config.loose_particles_per_m < 0.0 ||
  !std::isfinite(config.water_particles_per_m) ||
  config.water_particles_per_m < 0.0 ||
+ !std::isfinite(config.water_reference_depth_m) ||
+ !(config.water_reference_depth_m > 0.0) ||
  !std::isfinite(config.smoke_particles_per_m) ||
  config.smoke_particles_per_m < 0.0 ||
  !std::isfinite(config.impact_min_relative_speed_mps) ||
@@ -164,7 +159,12 @@ void ParticleSystem::emit(const Frame& frame, std::size_t wheel_index,
  }
  const FrameWheel& wheel = frame.body.wheels[wheel_index];
  double density = config_.loose_particles_per_m;
- if (kind == ParticleKind::kWater) density = config_.water_particles_per_m;
+ const double water_depth_scale = kind == ParticleKind::kWater
+ ? std::clamp(wheel.contact_fluid_depth_m /
+ config_.water_reference_depth_m, 0.25, 2.0) : 1.0;
+ if (kind == ParticleKind::kWater) {
+ density = config_.water_particles_per_m * water_depth_scale;
+ }
  if (kind == ParticleKind::kTireSmoke) density = config_.smoke_particles_per_m;
  emission_carry_[wheel_index] += activity_mps * density * elapsed_s;
  const int count = std::min(16, static_cast<int>(emission_carry_[wheel_index]));
@@ -187,17 +187,18 @@ void ParticleSystem::emit(const Frame& frame, std::size_t wheel_index,
  particle.active = true;
  particle.position_m = {wheel.contact_x_m + side_x * spread * wheel.radius_m,
  wheel.contact_y_m + side_y * spread * wheel.radius_m,
- wheel.contact_z_m + 0.008};
- particle.minimum_z_m = wheel.contact_z_m;
+ wheel.contact_z_m + wheel.contact_fluid_depth_m + 0.008};
+ particle.minimum_z_m = wheel.contact_z_m + wheel.contact_fluid_depth_m;
  const double backward_mps = activity_mps *
- (kind == ParticleKind::kWater ? 0.22 : 0.12) * speed_variation;
+ (kind == ParticleKind::kWater ? 0.22 * water_depth_scale : 0.12) *
+ speed_variation;
  const double sideways_mps = spread * activity_mps *
- (kind == ParticleKind::kWater ? 0.28 : 0.10);
+ (kind == ParticleKind::kWater ? 0.28 * water_depth_scale : 0.10);
  particle.velocity_mps = {
  -forward_x * backward_mps + side_x * sideways_mps,
  -forward_y * backward_mps + side_y * sideways_mps,
  kind == ParticleKind::kWater
- ? 0.16 + 0.10 * speed_variation
+ ? (0.16 + 0.10 * speed_variation) * std::sqrt(water_depth_scale)
  : 0.06 + 0.08 * speed_variation};
  if (kind == ParticleKind::kWater) {
  particle.lifetime_s = 0.34;

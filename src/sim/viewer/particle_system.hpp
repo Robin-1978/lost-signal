@@ -38,6 +38,7 @@ struct ParticlePresentationConfig {
  double tire_smoke_slip_mps = 0.25;
  double loose_particles_per_m = 32.0;
  double water_particles_per_m = 46.0;
+ double water_reference_depth_m = 0.02;
  double smoke_particles_per_m = 24.0;
  double impact_min_relative_speed_mps = 0.35;
  double impact_particles_per_Ns = 18.0;
