@@ -3,9 +3,11 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/localization/global_search.hpp"
+#include "robot/autonomy/localization/scan_matcher.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
@@ -49,6 +51,35 @@ void assert_route_clear(
  assert(!lethal.is_blocked(x_m, y_m));
  }
  }
+}
+
+std::vector<float> scan_from_survey(
+ const lost_signal::robot::iface::MapSnapshot& map,
+ double x_m, double y_m, double yaw_rad) {
+ constexpr std::size_t kRays = 180;
+ constexpr double kMaxRangeM = 10.0;
+ std::vector<float> ranges(kRays, static_cast<float>(kMaxRangeM));
+ for (std::size_t ray = 0; ray < kRays; ++ray) {
+ const double angle = yaw_rad - M_PI +
+ 2.0 * M_PI * static_cast<double>(ray) / kRays;
+ for (double distance = 0.05; distance < kMaxRangeM; distance += 0.05) {
+ const int gx = static_cast<int>(std::floor(
+ (x_m + distance * std::cos(angle) - map.origin_x_m) /
+ map.resolution_m));
+ const int gy = static_cast<int>(std::floor(
+ (y_m + distance * std::sin(angle) - map.origin_y_m) /
+ map.resolution_m));
+ if (gx < 0 || gy < 0 || gx >= static_cast<int>(map.width) ||
+ gy >= static_cast<int>(map.height)) {
+ break;
+ }
+ if (map.occupancy[static_cast<std::size_t>(gy) * map.width + gx] >= 50) {
+ ranges[ray] = static_cast<float>(distance);
+ break;
+ }
+ }
+ }
+ return ranges;
 }
 
 } // namespace
@@ -111,31 +142,57 @@ int main() {
  assert(std::hypot(startup.x_m, startup.y_m) < 0.35);
  assert(std::abs(startup.yaw_rad) < 0.10);
 
- robot::autonomy::AStarPlanner planner;
- const auto& central = place(map, "central_gate");
- const auto& east = place(map, "east_terminal");
- const robot::autonomy::Route to_central = planner.plan(
- at(0.0, 0.0),
- {central.x_m, central.y_m, central.yaw_rad}, map);
- const robot::autonomy::Route to_east = planner.plan(
- at(central.x_m, central.y_m),
- {east.x_m, east.y_m, east.yaw_rad}, map);
- assert(to_central.valid);
- assert(to_east.valid);
+ // Named work areas represent physical docks and gates, so each has
+ // asymmetric surveyed structure within lidar range. A bounded correction
+ // from a realistic odometry error must be observable at every endpoint.
+ robot::autonomy::ScanMatcher local_matcher;
+ for (const auto& goal : map.places) {
+ const std::vector<float> ranges = scan_from_survey(
+ map, goal.x_m, goal.y_m, goal.yaw_rad);
+ const auto match = local_matcher.localize(
+ ranges, -M_PI, 2.0 * M_PI / ranges.size(),
+ goal.x_m + 0.18, goal.y_m - 0.12, goal.yaw_rad + 0.06,
+ map, 1);
+ const double match_error_m = std::hypot(
+ match.x_m - goal.x_m, match.y_m - goal.y_m);
+ if (!match.accepted || match_error_m >= 0.30) {
+ std::fprintf(stderr,
+ "endpoint localization failed place=%s reason=%s score=%.3f "
+ "overlap=%.3f margin=%.3f returns=%zu error=%.3f pose=(%.3f,%.3f)\n",
+ goal.place_id.c_str(), match.rejection_reason.c_str(), match.score,
+ match.overlap, match.score_margin, match.usable_returns, match_error_m,
+ match.x_m, match.y_m);
+ }
+ assert(match.accepted);
+ assert(match_error_m < 0.30);
+ }
 
+ robot::autonomy::AStarPlanner planner;
  const robot::autonomy::LocalCostmap costmap =
  robot::autonomy::make_global_costmap(
  map, 0.4 + robot::platform::kDefaultNavigationClearanceMarginM,
  robot::platform::kDefaultNavigationSoftInflationRadiusM, true);
  assert(costmap.valid());
- assert_route_clear(to_central, costmap.lethal);
- assert_route_clear(to_east, costmap.lethal);
+ const std::vector<std::string> mission{
+ "west_hub", "north_depot", "central_gate",
+ "east_terminal", "south_yard"};
+ auto current = at(0.0, 0.0);
+ std::size_t route_points = 0;
+ for (const auto& place_id : mission) {
+ const auto& goal = place(map, place_id);
+ const auto route = planner.plan(
+ current, {goal.x_m, goal.y_m, goal.yaw_rad}, map);
+ assert_route_clear(route, costmap.lethal);
+ route_points += route.points.size();
+ current = at(goal.x_m, goal.y_m);
+ current.yaw_rad = goal.yaw_rad;
+ }
 
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
- "routes=%zu,%zu startup=(%.3f,%.3f,%.3f)\n",
+ "route_points=%zu startup=(%.3f,%.3f,%.3f)\n",
  max_x - min_x, max_y - min_y, map.width, map.height,
- session.setup_world().actors().size(), to_central.points.size(),
- to_east.points.size(), startup.x_m, startup.y_m, startup.yaw_rad);
+ session.setup_world().actors().size(), route_points,
+ startup.x_m, startup.y_m, startup.yaw_rad);
  return 0;
 }
