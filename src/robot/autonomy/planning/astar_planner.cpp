@@ -110,8 +110,14 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
  // Octile distance is the exact empty-grid cost for this 8-connected
  // motion set. If every traversable survey cell is unknown, its configured
  // per-metre penalty is unavoidable and strengthens the admissible bound.
+ const double minimum_roughness_m = traversal_ != nullptr
+ ? traversal_->minimum_roughness_m()
+ : 0.0;
  const double minimum_cost_per_m =
- 1.0 + (has_known_free ? 0.0 : config_.unknown_cost_per_m);
+ 1.0 + (has_known_free ? 0.0 : config_.unknown_cost_per_m) +
+ config_.roughness_cost_per_m * minimum_roughness_m;
+ const bool uniform_traversal_prior =
+ traversal_ != nullptr && !traversal_->has_spatial_beliefs();
  auto heuristic = [&](int x, int y) {
  const int dx = std::abs(x - gx);
  const int dy = std::abs(y - gy);
@@ -120,10 +126,23 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
  return minimum_cost_per_m * res *
  (straight + diagonal * 1.4142135623730951);
  };
-  using Entry = std::pair<double, int>;  // (f, index)
-  std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
- g_score[idx(sx, sy)] = 0.0f;
- open.emplace(heuristic(sx, sy), idx(sx, sy));
+  struct Entry {
+ float f = 0.0f;
+ float g = 0.0f;
+    int index = -1;
+  };
+  struct EntryGreater {
+    bool operator()(const Entry& a, const Entry& b) const {
+      if (a.f != b.f) return a.f > b.f;
+      // Equal lower bounds remain optimal; prefer greater progress so an
+      // open grid does not expand a broad equal-cost wavefront.
+      return a.g < b.g;
+    }
+  };
+  std::priority_queue<Entry, std::vector<Entry>, EntryGreater> open;
+  g_score[idx(sx, sy)] = 0.0f;
+ open.push({static_cast<float>(heuristic(sx, sy)), 0.0f,
+ idx(sx, sy)});
 
   // 8-connected, no corner cutting through occupied cells.
   const int kDx[8] = {1, 1, 0, -1, -1, -1, 0, 1};
@@ -132,9 +151,10 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
   const int kMaxExpansions = w * h;
   int found = -1;
   while (!open.empty() && expansions < kMaxExpansions) {
-    auto [f, cur] = open.top();
+    const Entry entry = open.top();
     open.pop();
- if (closed[cur]) continue;
+    const int cur = entry.index;
+    if (entry.g > g_score[cur] || closed[cur]) continue;
  closed[cur] = 1;
     ++expansions;
     const int cx = cur % w, cy = cur / w;
@@ -177,17 +197,22 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
       // Traction memory prices slipped-on cells the same way (measured
       // slip, never the author's friction): routes prefer gripped ground.
       if (traversal_ != nullptr && step > 1e-9) {
-        cost += config_.roughness_cost_per_m * traversal_->roughness_at(wx,
-                                                                        wy) *
-                step;
-        cost += config_.slip_cost_per_m * traversal_->slip_at(wx, wy) * step;
+ if (uniform_traversal_prior) {
+ cost += config_.roughness_cost_per_m *
+ traversal_->default_roughness_m() * step;
+ } else {
+ cost += config_.roughness_cost_per_m * traversal_->roughness_at(wx,
+ wy) * step;
+ cost += config_.slip_cost_per_m * traversal_->slip_at(wx, wy) * step;
+ }
       }
  const double ng = static_cast<double>(g_score[cur]) + cost;
  const int next = idx(nx, ny);
  if (ng < g_score[next]) {
  g_score[next] = static_cast<float>(ng);
  parent[next] = cur;
- open.emplace(ng + heuristic(nx, ny), next);
+ open.push({static_cast<float>(ng + heuristic(nx, ny)),
+ static_cast<float>(ng), next});
       }
     }
   }

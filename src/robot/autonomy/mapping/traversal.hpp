@@ -62,14 +62,30 @@ class TraversalModel {
   explicit TraversalModel(TraversalConfig config = {}) : config_(config) {}
 
   void set_config(TraversalConfig config) { config_ = config; }
-  void bind(iface::MapSnapshot map) {
-    map_ = std::move(map);
+  void bind(const iface::MapSnapshot& map) {
+ owned_map_ = iface::MapSnapshot{};
+    map_ = &map;
     beliefs_.clear();
     latest_observation_time_s_ = 0.0;
     have_observation_time_ = false;
   }
-  bool ready() const { return map_.has_raster(); }
-  std::uint64_t revision() const { return map_.revision; }
+ void bind(iface::MapSnapshot&& map) {
+ owned_map_ = std::move(map);
+ map_ = &owned_map_;
+ beliefs_.clear();
+ latest_observation_time_s_ = 0.0;
+ have_observation_time_ = false;
+ }
+  bool ready() const { return map_ != nullptr && map_->has_raster(); }
+  std::uint64_t revision() const { return map_ != nullptr ? map_->revision : 0; }
+ bool has_spatial_beliefs() const { return !beliefs_.empty(); }
+ double default_roughness_m() const {
+ return std::max(0.0, config_.default_roughness_m);
+ }
+ double minimum_roughness_m() const {
+ return std::max(0.0, std::min(config_.default_roughness_m,
+ config_.roughness_observation_floor_m));
+ }
 
  // A surveyed grade is a local spatial derivative. It is only a valid hard
  // gate when the fused pose uncertainty fits inside the survey scale and the
@@ -77,13 +93,13 @@ class TraversalModel {
  // validator instead of turning localization drift into a terrain wall.
  bool terrain_gate_resolved(const EstimatedState& est,
  double footprint_radius_m) const {
- if (!ready() || !map_.has_elevation() || !est.valid ||
+ if (!ready() || !map_->has_elevation() || !est.valid ||
  !std::isfinite(est.position_sigma_m) ||
  !std::isfinite(est.heading_sigma_rad)) {
  return false;
  }
  const double scale = std::max(
- 1e-3, std::max(map_.resolution_m, footprint_radius_m));
+ 1e-3, std::max(map_->resolution_m, footprint_radius_m));
  const double projected_sigma = est.position_sigma_m +
  scale * std::sin(std::min(
  std::abs(est.heading_sigma_rad), 0.5 * core::kPi));
@@ -116,11 +132,11 @@ class TraversalModel {
       return;
     }
     const int gx = static_cast<int>(
-        std::floor((est.x_m - map_.origin_x_m) / map_.resolution_m));
+        std::floor((est.x_m - map_->origin_x_m) / map_->resolution_m));
     const int gy = static_cast<int>(
-        std::floor((est.y_m - map_.origin_y_m) / map_.resolution_m));
-    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
-        gy >= static_cast<int>(map_.height)) {
+        std::floor((est.y_m - map_->origin_y_m) / map_->resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_->width) ||
+        gy >= static_cast<int>(map_->height)) {
       return;
     }
     // Specific force minus the gravity projection from the ROBOT attitude
@@ -174,11 +190,11 @@ class TraversalModel {
     if (confidence != nullptr) *confidence = 0.0;
     if (!ready()) return config_.default_roughness_m;
     const int gx = static_cast<int>(
-        std::floor((x_m - map_.origin_x_m) / map_.resolution_m));
+        std::floor((x_m - map_->origin_x_m) / map_->resolution_m));
     const int gy = static_cast<int>(
-        std::floor((y_m - map_.origin_y_m) / map_.resolution_m));
-    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
-        gy >= static_cast<int>(map_.height)) {
+        std::floor((y_m - map_->origin_y_m) / map_->resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_->width) ||
+        gy >= static_cast<int>(map_->height)) {
       return config_.default_roughness_m;
     }
     const std::uint64_t key =
@@ -208,11 +224,11 @@ class TraversalModel {
       return;
     }
     const int gx = static_cast<int>(
-        std::floor((x_m - map_.origin_x_m) / map_.resolution_m));
+        std::floor((x_m - map_->origin_x_m) / map_->resolution_m));
     const int gy = static_cast<int>(
-        std::floor((y_m - map_.origin_y_m) / map_.resolution_m));
-    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
-        gy >= static_cast<int>(map_.height)) {
+        std::floor((y_m - map_->origin_y_m) / map_->resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_->width) ||
+        gy >= static_cast<int>(map_->height)) {
       return;
     }
     if (std::isfinite(stamp_s)) {
@@ -242,11 +258,11 @@ class TraversalModel {
     if (confidence != nullptr) *confidence = 0.0;
     if (!ready()) return 0.0;
     const int gx = static_cast<int>(
-        std::floor((x_m - map_.origin_x_m) / map_.resolution_m));
+        std::floor((x_m - map_->origin_x_m) / map_->resolution_m));
     const int gy = static_cast<int>(
-        std::floor((y_m - map_.origin_y_m) / map_.resolution_m));
-    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_.width) ||
-        gy >= static_cast<int>(map_.height)) {
+        std::floor((y_m - map_->origin_y_m) / map_->resolution_m));
+    if (gx < 0 || gy < 0 || gx >= static_cast<int>(map_->width) ||
+        gy >= static_cast<int>(map_->height)) {
       return 0.0;
     }
     const std::uint64_t key =
@@ -279,9 +295,11 @@ class TraversalModel {
       return out;
     }
     if (!feasible(x0_m, y0_m, x1_m, y1_m, yaw_rad)) return out;
-    const float h0 = map_.has_elevation() ? map_.elevation_at(x0_m, y0_m)
+ const float h0 = map_ != nullptr && map_->has_elevation()
+ ? map_->elevation_at(x0_m, y0_m)
                                           : std::numeric_limits<float>::quiet_NaN();
-    const float h1 = map_.has_elevation() ? map_.elevation_at(x1_m, y1_m)
+ const float h1 = map_ != nullptr && map_->has_elevation()
+ ? map_->elevation_at(x1_m, y1_m)
                                           : std::numeric_limits<float>::quiet_NaN();
     const double rise =
         (std::isfinite(h0) && std::isfinite(h1))
@@ -289,9 +307,10 @@ class TraversalModel {
             : 0.0;
     const double rough =
         roughness_at(0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m));
-    const double cross = std::abs(
-        survey_lateral_grade(map_, 0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m),
-                             yaw_rad));
+ const double cross = ready()
+ ? std::abs(survey_lateral_grade(
+ *map_, 0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m), yaw_rad))
+ : 0.0;
     const double slip = slip_at(0.5 * (x0_m + x1_m), 0.5 * (y0_m + y1_m));
     out.feasible = true;
     out.cost = dist * (1.0 + config_.grade_cost_per_m * rise / dist +
@@ -309,13 +328,13 @@ class TraversalModel {
   // cliffs.
   bool feasible(double x0_m, double y0_m, double x1_m, double y1_m,
                 double yaw_rad) const {
-    if (!ready() || !map_.has_elevation()) return true;
+    if (!ready() || !map_->has_elevation()) return true;
     const double mx = 0.5 * (x0_m + x1_m), my = 0.5 * (y0_m + y1_m);
-    if (std::abs(survey_longitudinal_grade(map_, mx, my, yaw_rad)) >
+    if (std::abs(survey_longitudinal_grade(*map_, mx, my, yaw_rad)) >
         config_.max_grade) {
       return false;
     }
-    const double cross = std::abs(survey_lateral_grade(map_, mx, my, yaw_rad));
+    const double cross = std::abs(survey_lateral_grade(*map_, mx, my, yaw_rad));
     return cross <= config_.max_cross_grade;
   }
 
@@ -331,7 +350,10 @@ class TraversalModel {
   };
 
   TraversalConfig config_;
-  iface::MapSnapshot map_;
+ iface::MapSnapshot owned_map_;
+  // Published revisions are immutable and provider-owned. The traversal
+ // belief owns only evidence keyed into that survey.
+ const iface::MapSnapshot* map_ = nullptr;
   std::unordered_map<std::uint64_t, RoughnessBelief> beliefs_;
   double latest_observation_time_s_ = 0.0;
   bool have_observation_time_ = false;

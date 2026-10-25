@@ -121,9 +121,8 @@ LidarPerception::LidarPerception(LidarPerceptionConfig config)
 void LidarPerception::reset() {
   tracks_.clear();
   next_id_ = 1;
- static_map_ = iface::MapSnapshot{};
+ static_map_ = nullptr;
  static_map_has_known_occupancy_ = false;
- static_map_revision_valid_ = false;
 }
 
 PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
@@ -198,7 +197,7 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  } else {
  const auto expected = static_map_has_known_occupancy_
  ? raycast_static_map(
- static_map_, sensor_p,
+ *static_map_, sensor_p,
  {off.x / range, off.y / range, off.z / range},
  inferred_no_return_m)
  : std::optional<double>{};
@@ -208,8 +207,8 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  if (!(range + config_.foreground_threshold_m < *expected)) continue;
  reference_backed = true;
  } else if (static_map_has_known_occupancy_ && endpoint_matches_static_map(
- static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
- config_.foreground_threshold_m + static_map_.resolution_m)) {
+ *static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
+ config_.foreground_threshold_m + static_map_->resolution_m)) {
  // Sparse priors legitimately keep free space unknown. Matching a measured
  // endpoint to known occupied geometry does not require assuming the unknown
  // cells before it are free, and prevents wall fragments from becoming

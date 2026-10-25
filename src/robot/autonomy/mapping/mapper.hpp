@@ -147,11 +147,12 @@ class RayClearingMapper : public IMapper {
     fusion_.reset(0);
     elevation_.reset(0);
  dynamic_tracks_.clear();
+ survey_ = nullptr;
   }
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) override {
     base_from_lidar_ = base_from_lidar;
   }
-  void set_survey(const iface::MapSnapshot& map) override { survey_ = map; }
+  void set_survey(const iface::MapSnapshot& map) override { survey_ = &map; }
  void set_dynamic_tracks(const std::vector<DynamicTrack>& tracks) override {
  dynamic_tracks_ = tracks;
  }
@@ -266,7 +267,7 @@ class RayClearingMapper : public IMapper {
     // Surveyed sensor height for the ground classifier (estimate z rides
     // above the spawn plane; mount + ride complete the absolute height).
     // No survey (or no elevation layer) paints as before, exactly.
-    const bool use_survey = survey_.has_elevation();
+    const bool use_survey = survey_ != nullptr && survey_->has_elevation();
     const double survey_sensor_z =
         est.z_m + base_from_lidar_.translation_m.z + 0.10;
  // With a static reference, only matching returns paint endpoint cells. In
@@ -311,7 +312,7 @@ class RayClearingMapper : public IMapper {
  }
       if (background) {
         if (use_survey &&
-            endpoint_is_survey_ground(survey_, ex, ey, survey_sensor_z,
+            endpoint_is_survey_ground(*survey_, ex, ey, survey_sensor_z,
                                       0.15)) {
           // Live elevation: this return measured the surface at (ex, ey)
           // (reconstructed 3D endpoint height, TF sensor height + rotated
@@ -389,7 +390,9 @@ class RayClearingMapper : public IMapper {
   // estimate. Never SIM truth: inputs are ranges + estimate + prior.
   ElevationFusion elevation_{};
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
-  iface::MapSnapshot survey_;  // empty until set_survey (no elevation)
+ // Published revisions are immutable and provider-owned. Retaining the
+ // view avoids duplicating survey-scale elevation and occupancy layers.
+ const iface::MapSnapshot* survey_ = nullptr;
  std::vector<DynamicTrack> dynamic_tracks_;
 };
 
