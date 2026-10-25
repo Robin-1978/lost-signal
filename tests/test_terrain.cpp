@@ -149,6 +149,19 @@ int main() {
            !base.truth().drive_slipping[1]);
   }
 
+ // Two planar patches that meet at the same height are one continuous
+ // contact surface even when their slopes form a ridge. The finite support
+ // slabs used by the engine must not expose their vertical side faces as an
+ // invisible wall at the authored seam.
+ {
+ sim::world::World w = make_diff(0.6);
+ w.set_terrain_patches(
+ {{"up", 2.0, -2.0, 6.0, 2.0, 0.0, 0.14, 0.0, 0.0, 0.0},
+ {"down", 6.0, -2.0, 10.0, 2.0, 0.56, -0.14, 0.0, 0.0, 0.0}});
+ for (int i = 0; i < 500; ++i) w.step(0.02);
+ assert(w.truth().body_x_m > 6.5);
+ }
+
  // Nonlinear patches build (no refuse): rough + bilinear share one
  // continuous height field sampled from the same canonical height the
  // survey rasterizes. Raycast agrees within grid tolerance; the base plane

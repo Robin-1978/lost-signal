@@ -88,9 +88,24 @@ int main() {
       for (bool s : step.truth_after.drive_slipping) slip_seen |= s;
     }
  std::printf("icy climb done=%d collisions=%zu min_grip=%.2f max_z=%.2f "
-                "slip=%d\n",
+ "slip=%d\n",
                 session.objectives_done(), score.collision_steps, min_grip,
-                max_z, slip_seen);
+ max_z, slip_seen);
+ if (!session.objectives_done() && !session.episode().steps().empty()) {
+ const auto& last = session.episode().steps().back();
+ std::fprintf(stderr,
+ "icy climb stalled: active=%s completed=%zu truth=(%.3f,%.3f) "
+ "estimate=(%.3f,%.3f) sigma=%.3f safety=%s localization=%s tracks=%zu "
+ "track=%s score=%.3f reverse=%.3f overlap=%.3f\n",
+ session.objectives().active_place().c_str(),
+ session.objectives().completed(), last.truth_after.body_x_m,
+ last.truth_after.body_y_m, last.diag.estimate.x_m,
+ last.diag.estimate.y_m, last.diag.estimate.position_sigma_m,
+ last.diag.safety_reason.c_str(),
+ last.diag.localization_action.c_str(), last.diag.slam_tracks,
+ last.diag.track_diagnostic.c_str(), last.diag.slam_loop_forward_score,
+ last.diag.slam_loop_reverse_score, last.diag.slam_loop_overlap);
+ }
     assert(session.objectives_done());
     assert(score.collision_steps == 0);
     assert(min_grip < 0.95);  // governor tightened on measured slip

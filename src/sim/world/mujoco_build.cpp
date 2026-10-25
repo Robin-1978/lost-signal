@@ -1013,11 +1013,11 @@ void MujocoBackend::sync(const MotorParams& motor,
  const double ha = seam_plane_height(a, sx, sy);
  const double hb = seam_plane_height(b, sx, sy);
  if (std::abs(ha - hb) > 0.01) continue;
- // A sharp grade reversal is an authored ridge, not a numerical seam;
- // leave its retaining contact explicit so the wheel does not acquire an
- // artificial bridge over a feature larger than the chassis can climb.
- if (std::abs(a.grade_x - b.grade_x) > 0.20 ||
- std::abs(a.grade_y - b.grade_y) > 0.20) continue;
+ // Equal seam heights define one continuous surface even when its slope
+ // changes abruptly (a ridge or valley). The vertical side faces of the
+ // two finite slabs are construction artifacts, not authored retaining
+ // walls, so cover them with the local tangent transition below. True
+ // height discontinuities were rejected by the height check above.
  const double h = 0.5 * (ha + hb);
  const double gx = 0.5 * (a.grade_x + b.grade_x);
  const double gy = 0.5 * (a.grade_y + b.grade_y);
