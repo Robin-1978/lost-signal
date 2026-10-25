@@ -166,7 +166,9 @@ completion ratio, and a duty/speed energy proxy.
  validation covers the complete model inventory. Chassis parts use live MuJoCo joint angles/velocities;
   wheel effects use MuJoCo contact-point slip, normal force, and the SIM-only
   ground material. Dry paving stays clean during ordinary rolling; sand,
-  gravel, mud, water, and tire slip render distinct deterministic effects.
+ gravel, mud, water, and tire slip render distinct deterministic effects.
+ A fixed-capacity presentation pool advances particles by simulation step,
+ suppresses duplicate emission while paused, and resets on replay rewind.
   These values never enter ROBOT observations.
 In 3D map mode the viewer starts with a close robot-follow camera and a clean
 world view. Press `F` to toggle follow; right-drag or middle-drag releases

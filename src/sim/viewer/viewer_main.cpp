@@ -33,6 +33,7 @@
 #include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
+#include "sim/viewer/particle_system.hpp"
 #include "sim/viewer/playback_controller.hpp"
 #include "sim/viewer/scene_manifest.hpp"
 #include "sim/viewer/view_transform.hpp"
@@ -41,12 +42,13 @@
 
 namespace {
 using lost_signal::sim::viewer::Frame;
-using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::ExperienceManifest;
+using lost_signal::sim::viewer::ParticleKind;
+using lost_signal::sim::viewer::ParticleSystem;
 using lost_signal::sim::viewer::SceneInstance;
 using lost_signal::sim::viewer::SceneManifest;
 
@@ -478,39 +480,6 @@ inline void box_shadow_3d(double x0_m, double y0_m, double x1_m,
  DrawCubeV(center, size, {20, 20, 25, 45});
 }
 
-// Presentation-only particles. The phase is derived from the recorded SIM
-// step and live wheel state, so screenshots and replay views are stable while
-// dust/slip still follows the actual plant motion. Nothing here is fed back
-// to the sensor suite or ROBOT.
-inline float visual_hash(std::uint64_t step, int a, int b) {
- std::uint64_t v = step * 0x9e3779b97f4a7c15ULL;
- v ^= static_cast<std::uint64_t>(a + 17) * 0xbf58476d1ce4e5b9ULL;
- v ^= static_cast<std::uint64_t>(b + 31) * 0x94d049bb133111ebULL;
- v ^= v >> 30;
- v *= 0xbf58476d1ce4e5b9ULL;
- v ^= v >> 27;
- return static_cast<float>((v & 0xffffU) / 65535.0);
-}
-
-inline Vector3 body_local_to_world(const FrameBody& body, double bx,
- double by, double bz) {
- const double cr = std::cos(body.roll_rad);
- const double sr = std::sin(body.roll_rad);
- const double cp = std::cos(body.pitch_rad);
- const double sp = std::sin(body.pitch_rad);
- const double cy = std::cos(body.yaw_rad);
- const double sy = std::sin(body.yaw_rad);
- const double wx = body.x_m + cy * cp * bx +
- (cy * sp * sr - sy * cr) * by +
- (cy * sp * cr + sy * sr) * bz;
- const double wy = body.y_m + sy * cp * bx +
- (sy * sp * sr + cy * cr) * by +
- (sy * sp * cr - cy * sr) * bz;
- const double wz = body.z_m - sp * bx + cp * sr * by + cp * cr * bz;
- return {static_cast<float>(wx), static_cast<float>(wz),
- static_cast<float>(-wy)};
-}
-
 void draw_model_quaternion(const Model& model, Vector3 position,
  Quaternion rotation, Vector3 scale, Color tint) {
  Vector3 axis{0.0f, 1.0f, 0.0f};
@@ -594,98 +563,33 @@ Quaternion asset_frame_rotation(Quaternion world_rotation) {
  QuaternionMultiply(world_rotation, asset_to_world));
 }
 
-void draw_motion_particles_3d(const Frame& f, const Camera3D& camera,
- const VisualAssets* assets) {
- constexpr double kMotionThresholdMps = 0.08;
- constexpr double kTireSmokeSlipMps = 0.25;
- const auto contains = [](const std::string& value, const char* token) {
- return value.find(token) != std::string::npos;
- };
- double total_normal_N = 0.0;
- int loaded_wheels = 0;
- for (const auto& wheel : f.body.wheels) {
- if (!wheel.contact_valid || !(wheel.contact_normal_force_N > 0.0)) continue;
- total_normal_N += wheel.contact_normal_force_N;
- ++loaded_wheels;
- }
- const double average_normal_N =
- loaded_wheels > 0 ? total_normal_N / loaded_wheels : 0.0;
+void draw_motion_particles_3d(const ParticleSystem& particles,
+ const Camera3D& camera, const VisualAssets* assets) {
  BeginBlendMode(BLEND_ALPHA);
- for (std::size_t wi = 0; wi < f.body.wheels.size(); ++wi) {
- const auto& w = f.body.wheels[wi];
- const bool water = contains(w.contact_material_id, "water") ||
- contains(w.contact_material_id, "wet");
- const bool mud = contains(w.contact_material_id, "mud");
- const bool loose = mud || contains(w.contact_material_id, "sand") ||
- contains(w.contact_material_id, "gravel") ||
- contains(w.contact_material_id, "dirt") ||
- contains(w.contact_material_id, "soil");
- const bool tire_smoke = !water && !loose && w.slipping &&
- w.slip_speed_mps >= kTireSmokeSlipMps;
- const double load_scale = average_normal_N > 0.0
- ? std::clamp(std::sqrt(w.contact_normal_force_N / average_normal_N),
- 0.5, 2.0)
- : 1.0;
- const double activity = load_scale *
- (std::abs(w.contact_speed_mps) + 2.0 * w.slip_speed_mps);
- if ((!water && !loose && !tire_smoke) ||
- activity < kMotionThresholdMps) {
- continue;
- }
- const int count = std::clamp(
- static_cast<int>(std::ceil(activity * (w.slipping ? 7.0 : 4.0))),
- 2, 14);
- const double direction_source =
- std::abs(w.contact_speed_mps) >= kMotionThresholdMps
- ? w.contact_speed_mps
- : w.radius_m * w.spin_rate_radps;
- const double direction = direction_source < 0.0 ? -1.0 : 1.0;
- const double wheel_c = std::cos(w.steer_rad);
- const double wheel_s = std::sin(w.steer_rad);
- const double wheel_x = w.pose.valid ? w.pose.x_m : w.x_m;
- const double wheel_y = w.pose.valid ? w.pose.y_m : w.y_m;
- const double wheel_z = w.pose.valid ? w.pose.z_m : 0.0;
- for (int k = 0; k < count; ++k) {
- const float phase = std::fmod(
- static_cast<float>(f.step) * 0.17f +
- visual_hash(f.step, static_cast<int>(wi), k) * 0.83f, 1.0f);
- const double trail = phase * w.radius_m *
- (w.slipping ? 2.1 : 1.2);
- const double spread =
- (visual_hash(f.step, static_cast<int>(wi), k + 41) - 0.5) *
- w.radius_m * (water ? 2.2 : 1.5);
- const double bx =
- wheel_x - direction * trail * wheel_c - spread * wheel_s;
- const double by =
- wheel_y - direction * trail * wheel_s + spread * wheel_c;
- const double lift = water ? 0.01 + phase * 0.08
- : 0.02 + phase * (w.slipping ? 0.34 : 0.20);
- Vector3 position = body_local_to_world(
- f.body, bx, by, wheel_z - w.radius_m + lift);
- if (w.contact_valid) {
- const Vector3 approximate_contact = body_local_to_world(
- f.body, wheel_x, wheel_y, wheel_z - w.radius_m);
- const Vector3 physical_contact{
- static_cast<float>(w.contact_x_m),
- static_cast<float>(w.contact_z_m),
- static_cast<float>(-w.contact_y_m)};
- position = Vector3Add(
- physical_contact, Vector3Subtract(position, approximate_contact));
- }
+ for (const auto& particle : particles.particles()) {
+ if (!particle.active || !(particle.lifetime_s > 0.0)) continue;
+ const float phase = static_cast<float>(std::clamp(
+ particle.age_s / particle.lifetime_s, 0.0, 1.0));
  const float size = static_cast<float>(
- (water ? 0.025 : 0.055) + phase * (water ? 0.045 : 0.16));
+ particle.start_size_m +
+ (particle.end_size_m - particle.start_size_m) * phase);
  const unsigned char alpha = static_cast<unsigned char>(
  std::clamp(190.0f * (1.0f - phase), 0.0f, 190.0f));
+ const bool water = particle.kind == ParticleKind::kWater;
  const Color tint = water
  ? Color{150, 225, 245, alpha}
- : mud ? Color{105, 76, 48, alpha}
- : tire_smoke ? Color{175, 180, 184, alpha}
+ : particle.kind == ParticleKind::kMud ? Color{105, 76, 48, alpha}
+ : particle.kind == ParticleKind::kTireSmoke
+ ? Color{175, 180, 184, alpha}
  : Color{198, 173, 121, alpha};
+ const Vector3 position{
+ static_cast<float>(particle.position_m[0]),
+ static_cast<float>(particle.position_m[2]),
+ static_cast<float>(-particle.position_m[1])};
  if (!water && assets != nullptr && assets->dust.id > 0) {
  DrawBillboard(camera, assets->dust, position, size * 2.0f, tint);
  } else {
  DrawSphere(position, size * (water ? 0.45f : 0.65f), tint);
- }
  }
  }
  EndBlendMode();
@@ -1126,7 +1030,8 @@ inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
 
 void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
- const Camera3D& camera, bool show_lidar, bool show_estimate,
+ const Camera3D& camera, const ParticleSystem& particles,
+ bool show_lidar, bool show_estimate,
  bool show_actor_routes,
  const VisualAssets* assets = nullptr,
  const SceneManifest* scene = nullptr,
@@ -1787,7 +1692,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them
   // twice.
-  draw_motion_particles_3d(f, camera, assets);
+ draw_motion_particles_3d(particles, camera, assets);
 }
 }  // namespace
 
@@ -2049,6 +1954,7 @@ int main(int argc, char** argv) {
  cam_st.target_y = camera_target_y;
  follow = false;
  }
+ ParticleSystem motion_particles;
 
  while (!WindowShouldClose()) {
  const double wall_now_s = GetTime();
@@ -2244,6 +2150,7 @@ int main(int argc, char** argv) {
                                                  editor.selected_place()}
                   : sim::viewer::EditorSelection{},
         session_lidar_mount);
+ motion_particles.advance(frame);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
@@ -2261,7 +2168,8 @@ int main(int argc, char** argv) {
     if (view3d) {
       const Camera3D cam = camera_from_state(cam_st);
       BeginMode3D(cam);
- draw_frame_3d(frame, session->setup_world(), cam, show_lidar,
+ draw_frame_3d(frame, session->setup_world(), cam, motion_particles,
+ show_lidar,
  show_estimate, show_actor_routes, &visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
       EndMode3D();

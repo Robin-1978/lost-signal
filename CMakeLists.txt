@@ -298,6 +298,7 @@ add_library(lost_signal_sim_viewer STATIC
  src/sim/viewer/experience_manifest.cpp
   src/sim/viewer/frame_builder.cpp
   src/sim/viewer/map_editor.cpp
+ src/sim/viewer/particle_system.cpp
  src/sim/viewer/playback_controller.cpp
  src/sim/viewer/scene_manifest.cpp
 )
@@ -664,6 +665,12 @@ add_executable(test_playback_controller
 target_link_libraries(test_playback_controller PRIVATE
  lost_signal_sim_viewer lost_signal_sim_scenario)
 add_test(NAME playback_controller COMMAND test_playback_controller)
+
+add_executable(test_particle_system
+ tests/test_particle_system.cpp
+)
+target_link_libraries(test_particle_system PRIVATE lost_signal_sim_viewer)
+add_test(NAME particle_system COMMAND test_particle_system)
 
 add_executable(test_map_editor
   tests/test_map_editor.cpp
