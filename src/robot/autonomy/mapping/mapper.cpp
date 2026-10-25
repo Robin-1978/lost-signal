@@ -117,6 +117,22 @@ LocalMap LocalMap::inflated(double radius_m) const {
   for (int gy = 0; gy < static_cast<int>(height); ++gy) {
     for (int gx = 0; gx < static_cast<int>(width); ++gx) {
       if (occupancy[gy * width + gx] < 50) continue;
+ // Interior occupied cells cannot be the closest obstacle for any free
+ // destination. Expanding only the occupied/free boundary preserves the
+ // exact Euclidean envelope while avoiding massive redundant work for a
+ // warehouse-sized solid region.
+ bool borders_free = false;
+ for (int ay = -1; ay <= 1 && !borders_free; ++ay) {
+ for (int ax = -1; ax <= 1; ++ax) {
+ if (ax == 0 && ay == 0) continue;
+ const int bx = gx + ax, by = gy + ay;
+ if (inside(bx, by) && occupancy[by * width + bx] < 50) {
+ borders_free = true;
+ break;
+ }
+ }
+ }
+ if (!borders_free) continue;
       for (int dy = -r_cells; dy <= r_cells; ++dy) {
         for (int dx = -r_cells; dx <= r_cells; ++dx) {
           int nx = gx + dx, ny = gy + dy;
@@ -172,6 +188,21 @@ LocalCostmap make_local_costmap(const LocalMap& source,
  static_cast<std::size_t>(gy) * out.lethal.width + gx] < 50) {
  continue;
  }
+ bool borders_free = false;
+ for (int ay = -1; ay <= 1 && !borders_free; ++ay) {
+ for (int ax = -1; ax <= 1; ++ax) {
+ if (ax == 0 && ay == 0) continue;
+ const int bx = gx + ax, by = gy + ay;
+ if (!out.lethal.inside(bx, by)) continue;
+ const int8_t neighbor = out.lethal.occupancy[
+ static_cast<std::size_t>(by) * out.lethal.width + bx];
+ if (neighbor >= 0 && neighbor < 50) {
+ borders_free = true;
+ break;
+ }
+ }
+ }
+ if (!borders_free) continue;
  for (int dy = -r_cells; dy <= r_cells; ++dy) {
  for (int dx = -r_cells; dx <= r_cells; ++dx) {
  const int nx = gx + dx, ny = gy + dy;
