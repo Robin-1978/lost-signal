@@ -55,8 +55,15 @@
 - 定位实时性：全局搜索精配准与 SLAM 回环的粗配准、精配准、反向验证均按
  预算跨 tick 推进；局部绝对匹配窗口由估计协方差和创新门共同约束。有先验
  地图时由地图定位唯一拥有全局坐标系，mapless/显式 SLAM-only 才提交回环
- 图修正。`signal_town` 五目标长测的 ROBOT tick 为 p99 17.49 ms、最大
- 42.56 ms，已消除原先约 2 秒一次、最高 357 ms 的同步搜索峰值。
+ 图修正。最终 `signal_town` 五目标长测的 ROBOT tick 为 p99 3.862 ms、最大
+ 5.229 ms，已消除原先约 2 秒一次、最高 357 ms 的同步搜索峰值。
+- 定位启动：surveyed mission 可在 world 中声明带协方差的 `initial_pose`，经
+ ROBOT 公共 `set_initial_pose()` 接口进入 estimator/supervisor。它表示部署时
+ operator/dock 提供的显式先验，不读取 `WorldTruth`；非法或缺失先验仍走正常
+ 全局定位，SLAM-only 也不会借用 survey 坐标。
+- 高协方差恢复：传感器局部恢复只依赖当前 ROBOT 扫描、局部地图和匿名动态
+ 预测，不再被全局位姿协方差错误禁用；每条恢复轨迹仍须通过静态扫掠、连续
+ 动态预测、制动尾迹与地形 validator，避免重定位期间形成永久停车死锁。
 - IMU/姿态：修正相对四元数方向、最短弧角速度、REP-103 重力投影和高度
  二阶差分；姿态滤波按加速度模长降权并限制单周期倾角修正，seed 同步
  重置内部四元数。
@@ -65,9 +72,11 @@
 - P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
   `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
   和 dormant actor，不把游戏 authority 穿透给 ROBOT。
-- 当前验证基线：`ctest --test-dir build --output-on-failure -j4` 为 56/56
+- 当前验证基线：`ctest --test-dir build --output-on-failure -j4` 为 57/57
  （包含 DWA/TEB 对比、artifact、地图语义转换回归），
- `tests/check_boundary.py` 通过。当前机器 100 次同输入对比约为 DWA
+ `tests/check_boundary.py` 通过并报告
+ `robot boundary ok: no sim includes, no truth tokens, no sim links`。当前机器
+ 100 次同输入对比约为 DWA
  0.045 s、TEB 0.059 s；DWA 的任务级行为更快且停顿更少，故默认仍为 DWA。
 
 `signal_town` 的同一 `energy_hub` 任务（保留两个动态 actor）也完成了端到端
@@ -76,18 +85,19 @@
 时按下一周期可达速度确定 band 长度，避免把尚未观测的远处局部图当成启动
 前提；其滚动图策略仍明显更保守，因此配置默认保持 DWA。
 
-五目标验收也已完成：
-`energy_hub,freight_yard,housing_door,market_gate,town_gate` 在 6751 步内
-完成 5/5，`collision_steps=0`，真值路径长 107.69 m，最大离线定位误差
-0.430 m。评分中的平面障碍净空与 terrain/belly 净空已拆开；原先约 0.05 m
-的 `mean_clearance` 是额定离地间隙长期占据 `min()` 的指标混义，不是墙距。
-同一五目标在预算式定位调度后的最新结果为 5/5、0 碰撞、最大离线定位误差
-0.390 m、最小平面障碍净空 0.322 m。墙角回归同时逐段采样全局路线，证明
+`signal_town` 五目标最终发布验收使用
+`energy_hub,freight_yard,housing_door,market_gate,town_gate`，在 5879 步内
+完成 5/5，`collision_steps=0`，路径长 104.88 m，`safe_stop_steps=357`，
+`dynamic_hold_steps=31`，最大离线定位误差 0.241 m；逐目标真值误差均不超过
+0.219 m。ROBOT tick p50/p95/p99/max 分别为
+1.413/3.241/3.862/5.229 ms，峰值 RSS 为 11,380 KB。评分中的平面障碍
+净空与 terrain/belly 净空已拆开；原先约 0.05 m 的 `mean_clearance` 是额定
+离地间隙长期占据 `min()` 的指标混义，不是墙距。墙角回归同时逐段采样全局路线，证明
 `footprint + clearance_margin` 的硬包络围绕完整栅格方形形成欧氏圆弧；局部
 soft layer 在硬包络外按距离单调衰减，DWA 对完整 rollout 和制动尾迹取最坏
 soft cost，不以终点净空替代沿途净空。
 
-### 20 万平方米发布验收（执行计划）
+### 20 万平方米发布验收结果
 
 发布前新增约 `500 m × 400 m = 200,000 m²` 的稀疏工业园地图，包含长通道、
 仓库、开阔区、重复结构、窄门、动态车辆和行人横穿，并设置多个长程目标。
@@ -95,11 +105,30 @@ soft cost，不以终点净空替代沿途净空。
 静态地图、传感器观测和自身估计；actor 轨迹、接触、物理真值和离线评分绝不
 进入 ROBOT。
 
-验收同时记录地图初始化时间、峰值 RSS、全局规划延迟、全局定位完成延迟、
-ROBOT tick p50/p95/p99/max、任务完成率、碰撞、定位误差和最小净空。重点
-检查 0.25 m 分辨率下约 320 万栅格不会被逐 tick 复制、扫描或重复膨胀；地图
-revision 不变时必须复用不可变快照和规划 costmap。CI 使用缩短路线检查功能和
-有界资源，完整发布命令保留长程多目标与峰值内存测量。
+完整发布命令为：
+
+```bash
+/usr/bin/time -v ./build-release/lost_signal_sim \
+  --map configs/worlds/industrial_200k.json \
+  --objectives west_hub,north_depot,central_gate,east_terminal,south_yard \
+  --steps 70000 --profile \
+  --out /tmp/industrial_200k_full_streaming.json
+```
+
+任务在 51,467 步完成 5/5，`passed=yes`，0 碰撞，真值位移 465.01 m，路径长
+1260.31 m，`safe_stop_steps=1391`，最大离线定位误差 2.101 m。五个目标的
+真值终点误差依次为 0.201/0.171/0.095/0.332/0.212 m。ROBOT tick
+p50/p95/p99/max 分别为 1.175/3.210/4.610/13.483 ms，峰值 RSS 为
+90,128 KB，总 wall time 为 1:52.55。最慢的动态交互 tick 仍按“局部规划动态
+碰撞拒绝 -> Safety 动态接近 -> validator 认可恢复轨迹”执行，没有绕过安全链。
+
+`EpisodeScoreAccumulator` 现在在线累计完整 score；普通 `--out`/`--profile`
+只保留最后一步与固定 top-5 慢 tick，显式 `--episode` 才保存逐步历史。在线和
+离线评分逐字段一致，显式 episode 仍完整导出。相同长测的旧失败基线是
+70,000 步仅完成 3/5、峰值 RSS 396,800 KB、ROBOT tick p50/p99 为
+4.195/11.321 ms；当前结果消除了逐步 `EvalStep` 留存造成的线性内存增长。
+地图 revision 不变时继续复用不可变快照和规划 costmap，0.25 m 分辨率约
+320 万栅格不会被逐 tick 复制、扫描或重复膨胀。
 
 本轮又补齐：独立 Ackermann path smoothing（仍由 planning 模块负责）、
 episode artifact/replay round-trip、地图语义 sidecar round-trip，以及
@@ -122,6 +151,11 @@ viewer 可选加载。这些都不改变 ROBOT 输入契约。
 | `observed_obstacle_layer` | `RayClearingMapper`、log-odds、动态轨迹排除和观测衰减 | 等价替代；unknown 不会被当成 free |
 | `crossing_behavior` / `entry_governor` | route-aware `WaitOnIntrusionBehavior` | 通用能力已迁入；从路线和在线预测推导进入约束，不迁入关卡语义或通行权真值 |
 | `high_level_policy` | `RobotExecutive` + `IBehaviorPolicy` 扩展缝 | 旧文件主要是空基类/扩展接口；保留有效职责，不复制无运行逻辑的层 |
+| `route_tracking_system` | `RoutePipeline` + DWA/TEB + `GoalArrivalTracker` | 已拆入规划/决策模块；路线推进、曲率/倒车约束和到点停车均有端到端覆盖 |
+| `safe_stop_limiter` | `StopLatch` + `SafetyMonitor` + 底盘闭环控制 | 等价职责已迁入；制动使用 ROBOT 观测、配置制动能力和可达命令，不读取物理接触真值 |
+| `chassis_diagnostics` | `SlipObserver` + `VehicleMeasurementSystem` + decision evidence | 已迁入；编码器/IMU 残差、制动测量和决策证据均由 ROBOT 传感器产生 |
+| `pocket_shadow` | artifact/replay、profile 与端到端多底盘测试 | 旧模块仅作离线轨迹模型比较且不参与决策；以确定性回放和真实执行链测试替代 |
+| `manipulator_joint_controller` | 尚无机械臂命令/反馈契约 | 暂不复制孤立 4 关节实现；应在通用关节描述、接口和 provider 建立后作为独立子系统接入 |
 
 这里的“不迁入关卡语义”是边界要求：旧版 authored conflict zones、actor
 身份和未来脚本属于 SIM 真值。若真实部署以后由 ROBOT 地图或 V2X 获得语义，
@@ -141,7 +175,7 @@ viewer 可选加载。这些都不改变 ROBOT 输入契约。
 但“算法能力和仿真能力已经完整适配新框架”这个判断不成立。当前存在四类 P0 缺陷，分别破坏了几何契约、扫描角度契约、碰撞校验语义和 SLAM 静态地图假设；此外 headless 任务执行、传感器时序、倒车与多底盘规划、目标生命周期等主路径存在明显能力缺口。
 
 审计启动时的 `47/47` CTest 只说明当时已有测试覆盖的路径稳定。现有
-修复状态与 52 项基线见文件顶部。
+修复状态与 57 项基线见文件顶部。
 
 ## 2. 已验证的通过项
 
