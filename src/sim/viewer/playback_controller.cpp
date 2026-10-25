@@ -19,7 +19,7 @@ PlaybackController::PlaybackController() : PlaybackController(Config{}) {}
 PlaybackController::PlaybackController(Config config) : config_(config) {
   if (!positive_finite(config_.step_s) ||
       !positive_finite(config_.requested_rate) ||
-      !positive_finite(config_.max_debt_s) ||
+ !positive_finite(config_.max_backlog_wall_s) ||
       !positive_finite(config_.frame_work_budget_ms) ||
  !positive_finite(config_.turbo_frame_work_budget_ms) ||
       config_.max_steps_per_frame <= 0 ||
@@ -42,13 +42,24 @@ void PlaybackController::set_turbo(bool enabled) {
 
 void PlaybackController::begin_frame(double wall_dt_s) {
   if (!std::isfinite(wall_dt_s) || wall_dt_s < 0.0) wall_dt_s = 0.0;
-  frame_wall_s_ = std::min(wall_dt_s, 0.25);
+ frame_wall_s_ = wall_dt_s;
   wall_s_ += frame_wall_s_;
   frame_steps_ = 0;
   frame_throttled_ = false;
   if (!turbo_) {
-    debt_s_ = std::min(config_.max_debt_s,
-                       debt_s_ + frame_wall_s_ * config_.requested_rate);
+ const double maximum_backlog_s =
+ config_.max_backlog_wall_s * config_.requested_rate;
+ if (debt_s_ > maximum_backlog_s) {
+ debt_s_ = maximum_backlog_s;
+ frame_throttled_ = true;
+ }
+ // Long UI stalls must not become unbounded catch-up work. Account their
+ // full duration in throughput statistics, while explicitly reporting that
+ // simulation demand beyond the input window was dropped.
+ constexpr double kMaximumDemandWallS = 0.25;
+ const double demand_wall_s = std::min(frame_wall_s_, kMaximumDemandWallS);
+ if (frame_wall_s_ > kMaximumDemandWallS) frame_throttled_ = true;
+ debt_s_ += demand_wall_s * config_.requested_rate;
   }
 }
 

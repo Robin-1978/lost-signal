@@ -87,6 +87,33 @@ int main() {
   assert(stats.tick_p99_ms > 1.45 && stats.tick_p99_ms < 1.50);
   assert(!stats.throttled);
 
+ // High requested rates keep the full current-frame demand. Backlog limits
+ // scale in wall time and therefore cannot silently turn 64x into ~30x.
+ const auto scheduled_steps = [](double rate) {
+ PlaybackController::Config config;
+ config.requested_rate = rate;
+ config.frame_work_budget_ms = 1000.0;
+ config.max_steps_per_frame = 1000;
+ PlaybackController controller(config);
+ int count = 0;
+ for (int frame = 0; frame < 60; ++frame) {
+ controller.begin_frame(1.0 / 60.0);
+ while (controller.step_due(0.0)) {
+ controller.on_step(0.0);
+ ++count;
+ }
+ controller.end_frame();
+ }
+ return std::pair<int, PlaybackController::Statistics>{
+ count, controller.statistics()};
+ };
+ const auto scheduled_thirty_two_x = scheduled_steps(32.0);
+ const auto scheduled_sixty_four_x = scheduled_steps(64.0);
+ assert(scheduled_thirty_two_x.first == 1600);
+ assert(scheduled_sixty_four_x.first == 3200);
+ assert(std::abs(scheduled_thirty_two_x.second.actual_rtf - 32.0) < 1e-9);
+ assert(std::abs(scheduled_sixty_four_x.second.actual_rtf - 64.0) < 1e-9);
+
   // Work limits keep the UI responsive and are observable in the HUD.
   PlaybackController::Config limited_config;
   limited_config.requested_rate = 8.0;
@@ -114,6 +141,26 @@ int main() {
  assert(turbo_budget.step_due(2.0));
  turbo_budget.on_step(1.0);
  assert(!turbo_budget.step_due(5.0));
+
+ // Dropped historical backlog and long wall stalls are visible as LIMIT.
+ PlaybackController::Config backlog_config;
+ backlog_config.max_backlog_wall_s = 0.05;
+ backlog_config.frame_work_budget_ms = 1000.0;
+ PlaybackController backlog(backlog_config);
+ backlog.begin_frame(0.25);
+ backlog.end_frame();
+ backlog.begin_frame(0.01);
+ backlog.end_frame();
+ assert(backlog.statistics().throttled);
+
+ PlaybackController long_frame;
+ long_frame.begin_frame(0.75);
+ assert(long_frame.step_due(0.0));
+ long_frame.on_step(0.0);
+ long_frame.end_frame();
+ const auto long_stats = long_frame.statistics();
+ assert(long_stats.throttled);
+ assert(std::abs(long_stats.actual_rtf - (0.02 / 0.75)) < 1e-12);
 
   // Playback rate and turbo alter wall-time throughput only. Fixed-step
   // physics, sensor stamps, ROBOT decisions, truth, and score stay identical.

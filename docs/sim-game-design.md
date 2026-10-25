@@ -192,6 +192,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 - A/B 实验固定世界、随机 seed 和 observation replay，只改变被研究的算法或参数。
 - 比较结果并排显示轨迹、动态净空、命令、CPU 分位数和结构化失败原因。
 - 导出的实验报告记录 git revision、配置 hash、资产版本、MuJoCo 版本、seed、平台和是否 Turbo；Turbo 不改变任何仿真时间语义。
+- Viewer 倍率调度按墙钟时长保留自适应 backlog：倍率只增加固定物理 step 的执行数量，不改变 step 大小。当前帧需求不会被固定“仿真秒”上限截断；机器跟不上、历史 backlog 被丢弃或窗口长时间停顿时必须显示 `LIMIT` 和实际倍率。最大吞吐使用 headless runner，不把渲染吞吐冒充物理吞吐。
 
 ## 8. 视觉与声音方向
 

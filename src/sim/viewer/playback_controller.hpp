@@ -14,7 +14,10 @@ class PlaybackController {
   struct Config {
     double step_s = 0.02;
     double requested_rate = 1.0;
-    double max_debt_s = 0.5;
+ // Maximum retained backlog expressed in wall seconds. The corresponding
+ // simulation-time debt scales with the requested rate, so a 64x request
+ // is not silently capped to the same 0.5 simulated seconds as 1x.
+ double max_backlog_wall_s = 0.5;
     double frame_work_budget_ms = 12.0;
  // Turbo may spend more time between input polls while remaining bounded.
  // Physics dt, sensor cadence, and ROBOT cadence are unchanged.
@@ -70,7 +73,7 @@ class PlaybackController {
   bool turbo_ = false;
   double debt_s_ = 0.0;
   double wall_s_ = 0.0;
-  double frame_wall_s_ = 0.0;
+ double frame_wall_s_ = 0.0;
   int frame_steps_ = 0;
   bool frame_throttled_ = false;
   std::deque<FrameSample> frames_;
