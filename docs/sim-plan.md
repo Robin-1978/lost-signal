@@ -303,8 +303,11 @@ no friction, contact, or live wetness).
   rollout vs 3D grade) so approaches grind — no collision, but slow; proper
   terrain-aware validation is T3.
 - T2 (landed): heightfield/relief import (T2a: shared relief primitive in
-  `robot/core`, canonical height carries relief, mesh patches build as tile
-  grids sampling the same function the survey rasterizes), tracked chassis
+ `robot/core`, canonical height carries relief, nonlinear contact uses
+ fixed-world heightfield tiles with shared boundary vertices, 10 cm cells
+ on authored terrain and four-corner flat tiles; map extent no longer
+ dilutes local contact resolution, and every tile samples the same function
+ the survey rasterizes), tracked chassis
   (T2b: skid-steer on the (2,0) path with yaw-scrub torque, own config +
   registry entry), engine-contact judge (T2c: belly/high-center clearance
   vs the authored surface, truth-side only, gated on a live plant),

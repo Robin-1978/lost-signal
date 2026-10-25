@@ -178,6 +178,26 @@ int main() {
     assert(wr.truth().body_x_m > 0.1);
   }
 
+ // A far-away object must not dilute a local nonlinear surface into a
+ // metre-scale height grid. Large worlds retain centimetre-scale contact
+ // fidelity where authored relief exists.
+ {
+ sim::world::World w = make_diff(0.0);
+ w.set_static_boxes({{495.0, -1.0, 500.0, 1.0, 0.0}});
+ w.set_terrain_patches(
+ {{"local_rough", -2.0, -2.0, 8.0, 2.0,
+ 0.0, 0.0, 0.0, 0.0, 0.05}});
+ w.step(0.02);
+ for (double x = -1.75; x <= 7.75; x += 0.17) {
+ double distance_m = 0.0;
+ assert(w.raycast(x, 0.37, 5.0, 0.0, 0.0, -1.0, 10.0,
+ distance_m));
+ const double expected_height_m = sim::world::sample_terrain(
+ w.terrain_patches(), w.support_slabs(), x, 0.37).height_m;
+ assert(std::abs((5.0 - distance_m) - expected_height_m) < 0.005);
+ }
+ }
+
   // Fail-closed: unknown zone material refuses the build (frozen truth,
   // never silently defaulted).
   {

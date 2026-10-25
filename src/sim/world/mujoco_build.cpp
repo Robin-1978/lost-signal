@@ -866,52 +866,86 @@ void MujocoBackend::sync(const MotorParams& motor,
  y1 += kGroundMarginM;
  const double width = std::max(0.1, x1 - x0);
  const double height = std::max(0.1, y1 - y0);
+ // Keep nonlinear contact geometry at the authored spatial scale even when
+ // a scenario spans hundreds of metres. One globally capped height field
+ // made its cell width grow with map extent, while the survey and renderer
+ // continued sampling the canonical surface at full fidelity. Fixed-world
+ // tiles share boundary vertices and allocate a fine grid only where an
+ // authored terrain patch is present; flat tiles need four corners.
  constexpr double kTargetCellM = 0.10;
- constexpr int kMaxCellsPerSide = 256;
- const int nx = std::clamp(
- static_cast<int>(std::ceil(width / kTargetCellM)), 2,
- kMaxCellsPerSide);
- const int ny = std::clamp(
- static_cast<int>(std::ceil(height / kTargetCellM)), 2,
- kMaxCellsPerSide);
+ constexpr int kMaximumFineCellsPerTile = 255;
+ constexpr double kMaximumTileSpanM =
+ kTargetCellM * kMaximumFineCellsPerTile;
+ const int tile_columns = std::max(
+ 1, static_cast<int>(std::ceil(width / kMaximumTileSpanM)));
+ const int tile_rows = std::max(
+ 1, static_cast<int>(std::ceil(height / kMaximumTileSpanM)));
+ for (int tile_y = 0; tile_y < tile_rows; ++tile_y) {
+ const double tile_y0 = y0 + tile_y * kMaximumTileSpanM;
+ const double tile_y1 = std::min(y1, tile_y0 + kMaximumTileSpanM);
+ for (int tile_x = 0; tile_x < tile_columns; ++tile_x) {
+ const double tile_x0 = x0 + tile_x * kMaximumTileSpanM;
+ const double tile_x1 = std::min(x1, tile_x0 + kMaximumTileSpanM);
+ const bool contains_terrain = std::any_of(
+ patches.begin(), patches.end(), [&](const TerrainPatch& patch) {
+ return patch.x1 > tile_x0 && patch.x0 < tile_x1 &&
+ patch.y1 > tile_y0 && patch.y0 < tile_y1;
+ });
+ const double tile_width = tile_x1 - tile_x0;
+ const double tile_height = tile_y1 - tile_y0;
+ const int nx = contains_terrain
+ ? std::clamp(static_cast<int>(std::ceil(
+ tile_width / kTargetCellM)), 1, kMaximumFineCellsPerTile)
+ : 1;
+ const int ny = contains_terrain
+ ? std::clamp(static_cast<int>(std::ceil(
+ tile_height / kTargetCellM)), 1, kMaximumFineCellsPerTile)
+ : 1;
  std::vector<float> elevation;
  elevation.reserve(static_cast<std::size_t>(nx + 1) *
  static_cast<std::size_t>(ny + 1));
  double min_h = std::numeric_limits<double>::infinity();
  double max_h = -std::numeric_limits<double>::infinity();
- // mjsHField userdata is already row-major from minimum Y to maximum Y.
- // (Only MJCF's inline text reader performs the image-row flip used by the
- // main branch's XML writer.)
+ // mjsHField userdata is row-major from minimum Y to maximum Y. Only
+ // MJCF's inline text reader performs an image-row flip.
  for (int iy = 0; iy <= ny; ++iy) {
- const double y = y0 + height * static_cast<double>(iy) / ny;
+ const double y = tile_y0 +
+ tile_height * static_cast<double>(iy) / ny;
  for (int ix = 0; ix <= nx; ++ix) {
- const double x = x0 + width * static_cast<double>(ix) / nx;
+ const double x = tile_x0 +
+ tile_width * static_cast<double>(ix) / nx;
  const double h = sample_terrain(patches, {}, x, y).height_m;
  elevation.push_back(static_cast<float>(h));
  min_h = std::min(min_h, h);
  max_h = std::max(max_h, h);
  }
  }
+ const std::string suffix = std::to_string(tile_y) + "_" +
+ std::to_string(tile_x);
+ const std::string field_name = "terrain_surface_" + suffix;
  mjsHField* field = mjs_addHField(spec);
- set_name(field->element, "terrain_surface");
+ set_name(field->element, field_name);
  field->nrow = ny + 1;
  field->ncol = nx + 1;
- field->size[0] = width * 0.5;
- field->size[1] = height * 0.5;
+ field->size[0] = tile_width * 0.5;
+ field->size[1] = tile_height * 0.5;
  field->size[2] = std::max(1e-4, max_h - min_h);
  field->size[3] = std::max(0.10, std::abs(min_h) + 0.10);
  mjs_setFloat(field->userdata, elevation.data(),
  static_cast<int>(elevation.size()));
- mjsGeom* ground = add_geom(world, "terrain_ground", mjGEOM_HFIELD,
+ mjsGeom* ground = add_geom(
+ world, "terrain_ground_" + suffix, mjGEOM_HFIELD,
  0.0, 0.0, 0.0);
- mjs_setString(ground->hfieldname, "terrain_surface");
- ground->pos[0] = (x0 + x1) * 0.5;
- ground->pos[1] = (y0 + y1) * 0.5;
+ mjs_setString(ground->hfieldname, field_name.c_str());
+ ground->pos[0] = (tile_x0 + tile_x1) * 0.5;
+ ground->pos[1] = (tile_y0 + tile_y1) * 0.5;
  ground->pos[2] = min_h;
  ground->friction[0] =
  is_mecanum_layout ? mu_tire : kFloorSlidingFriction;
  ground->friction[1] = 0.01;
  ground->friction[2] = 0.001;
+ }
+ }
 
  }
 
