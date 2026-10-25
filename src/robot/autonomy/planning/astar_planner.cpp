@@ -95,23 +95,35 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
   if (!inside(sx, sy) || !inside(gx, gy)) return Route{};
   if (cell_value(sx, sy) >= 50 || cell_value(gx, gy) >= 50) return Route{};
 
-  struct Node {
-    double f = std::numeric_limits<double>::infinity();
-    double g = std::numeric_limits<double>::infinity();
-    int parent = -1;
-    bool closed = false;
-  };
-  std::vector<Node> nodes(w * h);
+ // Search state dominates transient memory on survey-scale maps. The queue
+ // already owns f; split the remaining fields to avoid per-node padding.
+ // Float g retains sub-millimetre resolution across this map scale.
+ const std::size_t cell_count = static_cast<std::size_t>(w) * h;
+ std::vector<float> g_score(
+ cell_count, std::numeric_limits<float>::infinity());
+ std::vector<int> parent(cell_count, -1);
+ std::vector<std::uint8_t> closed(cell_count, 0);
   auto idx = [&](int x, int y) { return y * w + x; };
-  auto heuristic = [&](int x, int y) {
-    const double dx = (x - gx) * res, dy = (y - gy) * res;
-    return std::hypot(dx, dy);
-  };
+ const bool has_known_free = std::any_of(
+ map.occupancy.begin(), map.occupancy.end(),
+ [](int8_t value) { return value >= 0 && value < 50; });
+ // Octile distance is the exact empty-grid cost for this 8-connected
+ // motion set. If every traversable survey cell is unknown, its configured
+ // per-metre penalty is unavoidable and strengthens the admissible bound.
+ const double minimum_cost_per_m =
+ 1.0 + (has_known_free ? 0.0 : config_.unknown_cost_per_m);
+ auto heuristic = [&](int x, int y) {
+ const int dx = std::abs(x - gx);
+ const int dy = std::abs(y - gy);
+ const int diagonal = std::min(dx, dy);
+ const int straight = std::max(dx, dy) - diagonal;
+ return minimum_cost_per_m * res *
+ (straight + diagonal * 1.4142135623730951);
+ };
   using Entry = std::pair<double, int>;  // (f, index)
   std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
-  nodes[idx(sx, sy)].g = 0.0;
-  nodes[idx(sx, sy)].f = heuristic(sx, sy);
-  open.emplace(nodes[idx(sx, sy)].f, idx(sx, sy));
+ g_score[idx(sx, sy)] = 0.0f;
+ open.emplace(heuristic(sx, sy), idx(sx, sy));
 
   // 8-connected, no corner cutting through occupied cells.
   const int kDx[8] = {1, 1, 0, -1, -1, -1, 0, 1};
@@ -122,8 +134,8 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
   while (!open.empty() && expansions < kMaxExpansions) {
     auto [f, cur] = open.top();
     open.pop();
-    if (nodes[cur].closed) continue;
-    nodes[cur].closed = true;
+ if (closed[cur]) continue;
+ closed[cur] = 1;
     ++expansions;
     const int cx = cur % w, cy = cur / w;
     if (cx == gx && cy == gy) {
@@ -170,12 +182,12 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
                 step;
         cost += config_.slip_cost_per_m * traversal_->slip_at(wx, wy) * step;
       }
-      const double ng = nodes[cur].g + cost;
-      if (ng < nodes[idx(nx, ny)].g) {
-        nodes[idx(nx, ny)].g = ng;
-        nodes[idx(nx, ny)].f = ng + heuristic(nx, ny);
-        nodes[idx(nx, ny)].parent = cur;
-        open.emplace(nodes[idx(nx, ny)].f, idx(nx, ny));
+ const double ng = static_cast<double>(g_score[cur]) + cost;
+ const int next = idx(nx, ny);
+ if (ng < g_score[next]) {
+ g_score[next] = static_cast<float>(ng);
+ parent[next] = cur;
+ open.emplace(ng + heuristic(nx, ny), next);
       }
     }
   }
@@ -188,7 +200,7 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
         {map.origin_x_m + (cx + 0.5) * res,
          map.origin_y_m + (cyy + 0.5) * res, goal.yaw_rad});
     if (cur == idx(sx, sy)) break;
-    cur = nodes[cur].parent;
+ cur = parent[cur];
   }
   std::reverse(route.points.begin(), route.points.end());
  // The goal lies inside the accepted free raster cell, whose interior is
