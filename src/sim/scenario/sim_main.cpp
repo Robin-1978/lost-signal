@@ -415,6 +415,7 @@ int main(int argc, char** argv) {
  std::vector<sim::scenario::ScenarioSession::StepTiming> timing_samples;
  if (opt.profile) timing_samples.reserve(static_cast<std::size_t>(budget));
  std::size_t verbose_loop_count = 0;
+ std::string verbose_localization_event;
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
  if (opt.profile) timing_samples.push_back(session->last_step_timing());
@@ -445,7 +446,14 @@ int main(int argc, char** argv) {
  (recorded.back().judge.static_collision ||
  recorded.back().judge.dynamic_collision ||
  recorded.back().judge.terrain_collision);
- if (opt.verbose && (ran % 100 == 0 || collision_now)) {
+ const std::string localization_action = recorded.empty()
+ ? std::string{}
+ : recorded.back().diag.localization_action;
+ const bool localization_event =
+ localization_action.rfind("global_relocalization:", 0) == 0 &&
+ localization_action != "global_relocalization:search pending" &&
+ localization_action != verbose_localization_event;
+ if (opt.verbose && (ran % 100 == 0 || collision_now || localization_event)) {
  const auto ev = session->last_evidence();
  const auto& truth = recorded.empty()
  ? sim::world::WorldTruth{}
@@ -475,6 +483,7 @@ int main(int argc, char** argv) {
  diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
  diag.slam_tracks, diag.track_correction_m,
  diag.track_correction_rad, diag.grip_factor, diag.slip_quality.c_str());
+ if (localization_event) verbose_localization_event = localization_action;
  }
  }
  const sim::eval::EpisodeScore score =
