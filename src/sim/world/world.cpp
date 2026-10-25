@@ -62,6 +62,13 @@ void World::prepare() {
  if (mujoco_.valid()) read_engine_truth();
 }
 
+void World::begin_fixed_transition() {
+ aggregating_impact_ = true;
+ presented_impact_ = {};
+}
+
+void World::end_fixed_transition() { aggregating_impact_ = false; }
+
 void World::step_engine(double dt_s) {
   mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
                terrain_patches_, support_slabs_, geometry_version_,
@@ -69,14 +76,50 @@ void World::step_engine(double dt_s) {
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
                brake_request_, incline_grade_, material_zones_, materials_,
-               environment_, sim_time_s_);
+ environment_, sim_time_s());
  read_engine_truth();
 }
 
 void World::step(double dt_s) {
-  truth_.step += 1;
-  if (dt_s > 0.0 && std::isfinite(dt_s)) sim_time_s_ += dt_s;
-  step_engine(dt_s);
+ if (!std::isfinite(dt_s)) return;
+ if (!(dt_s > 0.0)) {
+ // A zero-duration call is a supported configuration rebuild/read-back.
+ // It advances neither the canonical clock nor dynamic actors.
+ step_engine(dt_s);
+ presented_impact_ = mujoco_.impact();
+ return;
+ }
+ constexpr double kNsPerSecond = 1e9;
+ constexpr robot::core::MonotonicNs kPublicStepNs = 20'000'000;
+ const auto dt_ns = static_cast<robot::core::MonotonicNs>(
+ std::llround(dt_s * kNsPerSecond));
+ if (dt_ns <= 0) return;
+ const double effective_dt_s = static_cast<double>(dt_ns) / kNsPerSecond;
+ sim_time_ns_ += dt_ns;
+ // WorldTruth.step is the public 20 ms scenario transition count, not the
+ // number of internal physics/sensor partitions.
+ truth_.step = static_cast<std::uint64_t>(sim_time_ns_ / kPublicStepNs);
+ step_engine(effective_dt_s);
+ const ImpactViz& impact = mujoco_.impact();
+ if (!aggregating_impact_) {
+ presented_impact_ = impact;
+ } else if (impact.valid && impact.normal_impulse_Ns > 0.0) {
+ const double previous = presented_impact_.normal_impulse_Ns;
+ const double total = previous + impact.normal_impulse_Ns;
+ presented_impact_.x_m =
+ (presented_impact_.x_m * previous +
+ impact.x_m * impact.normal_impulse_Ns) / total;
+ presented_impact_.y_m =
+ (presented_impact_.y_m * previous +
+ impact.y_m * impact.normal_impulse_Ns) / total;
+ presented_impact_.z_m =
+ (presented_impact_.z_m * previous +
+ impact.z_m * impact.normal_impulse_Ns) / total;
+ presented_impact_.normal_impulse_Ns = total;
+ presented_impact_.relative_speed_mps = std::max(
+ presented_impact_.relative_speed_mps, impact.relative_speed_mps);
+ presented_impact_.valid = true;
+ }
  // Actors stay kinematic (no engine bodies for them); the judge reads
  // the same truth. An explicitly yielding actor runs its own continuous
  // collision predictor against the physical robot state before integration;
@@ -89,12 +132,12 @@ void World::step(double dt_s) {
  std::max(0.0, motor_.body_half_length_m),
  std::max(0.0, motor_.body_half_width_m));
   for (auto& a : actors_) {
-    step_actor(a, a.behavior, dt_s);
+ step_actor(a, a.behavior, effective_dt_s);
  apply_actor_robot_yield(a, a.behavior,
  truth_.body_x_m, truth_.body_y_m, robot_vx, robot_vy,
- robot_radius, dt_s);
-    a.x += a.vx_mps * dt_s;
-    a.y += a.vy_mps * dt_s;
+ robot_radius, effective_dt_s);
+ a.x += a.vx_mps * effective_dt_s;
+ a.y += a.vy_mps * effective_dt_s;
   }
 }
 

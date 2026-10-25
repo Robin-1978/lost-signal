@@ -361,7 +361,7 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  ContactWindow& out = contact_window[d];
  out.saturated_time_s += step_dt;
  out.confirmation_time_s = std::max(
- out.confirmation_time_s, std::min(dt_s, response_time_s));
+ out.confirmation_time_s, response_time_s);
  }
  }
  }
@@ -374,17 +374,26 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  // that contact's actual normal load/friction cone. This captures load
  // transfer, split-mu and loss of contact; declared total mass divided by
  // wheel count cannot. The cone boundary comes from the active solver
- // tolerance, the persistence horizon from contact solref, and two outer
- // steps provide label hysteresis.
+ // tolerance and the persistence horizon from contact solref. Accumulating
+ // seconds instead of outer-call counts keeps the label invariant when a
+ // sensor cadence changes how completed physics ticks are sampled.
  for (int d = 0; d < drive_count_ && d < 4; ++d) {
  const bool saturated = contact_window[d].valid &&
  contact_window[d].peak_normal > 0.0 &&
- contact_window[d].peak_utilization >= utilization_threshold &&
- contact_window[d].saturated_time_s +
+ contact_window[d].peak_utilization >= utilization_threshold;
+ if (saturated) {
+ slip_saturated_time_s_[d] += contact_window[d].saturated_time_s;
+ slip_confirmation_time_s_[d] = std::max(
+ slip_confirmation_time_s_[d], contact_window[d].confirmation_time_s);
+ } else {
+ slip_saturated_time_s_[d] = 0.0;
+ slip_confirmation_time_s_[d] = 0.0;
+ }
+ drive_slipping_[static_cast<std::size_t>(d)] =
+ slip_confirmation_time_s_[d] > 0.0 &&
+ slip_saturated_time_s_[d] +
  std::numeric_limits<double>::epsilon() * dt_s >=
- contact_window[d].confirmation_time_s;
- slip_count_[d] = saturated ? std::min(slip_count_[d] + 1, 3) : 0;
- drive_slipping_[static_cast<std::size_t>(d)] = slip_count_[d] >= 2;
+ slip_confirmation_time_s_[d];
  }
 }
 

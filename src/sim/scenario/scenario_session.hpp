@@ -84,10 +84,11 @@ class ScenarioSession {
   // Test/scenario setup only: configure geometry, actors, and places before
   // the run. Never called by ROBOT code; never during a live tick.
   world::World& setup_world() { return world_; }
-  // Multi-rate cadences (sim seconds; 0 disables a task). Scan and record
- // are independent scheduler taps. The decision tap gates ROBOT ticks while
- // scan delivery remains independent, so stale observations exercise the
- // same freshness path as deployment. All timing stays wall-clock-free.
+ // Multi-rate cadences (sim seconds; 0 disables a task). Every enabled
+ // period must be an integer multiple of the 1 ms physics quantum. Scan and
+ // record are independent scheduler taps. The decision tap gates ROBOT ticks
+ // while scan delivery remains independent, so stale observations exercise
+ // the same freshness path as deployment. All timing stays wall-clock-free.
   void set_cadence(double scan_period_s, double decision_period_s,
                    double record_period_s);
  // Independent provider taps. The legacy set_cadence() keeps motion and IMU
@@ -180,7 +181,7 @@ class ScenarioSession {
  bool retain_episode_history_ = true;
   DeterministicScheduler scheduler_;
   ObjectiveDriver driver_;
-  double sim_time_s_ = 0.0;
+ SimTimeNs sim_time_ns_ = 0;
  robot::iface::MotionCommand last_cmd_ =
  robot::iface::MotionCommand::SafeStop(0);
   double judge_radius_m_ = 0.4;

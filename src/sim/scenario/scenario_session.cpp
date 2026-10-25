@@ -36,7 +36,8 @@ ScenarioSession::ScenarioSession()
  // Default cadence runs all taps at the 20 ms plant step. The scheduler
  // still keeps scan, decision, and record deadlines independent so slower
  // sensor streams exercise the same stale-data path as deployment.
- scheduler_.reset_after(0.0, 0.02, 0.02, 0.02, 0.02, 0.02);
+ scheduler_.reset_after_ns(0, kOuterStepNs, kOuterStepNs, kOuterStepNs,
+ kOuterStepNs, kOuterStepNs);
   // Mounts from the same description the app runs: SIM generation and the
   // ROBOT-side TF rotate by identical extrinsics (never double/single).
   suite_.set_mounts(app_.description().sensors);
@@ -57,7 +58,8 @@ ScenarioSession::ScenarioSession(
   suite_.register_all(app_);
   (void)app_.configure();
   (void)app_.activate();
- scheduler_.reset_after(0.0, 0.02, 0.02, 0.02, 0.02, 0.02);
+ scheduler_.reset_after_ns(0, kOuterStepNs, kOuterStepNs, kOuterStepNs,
+ kOuterStepNs, kOuterStepNs);
   suite_.set_mounts(app_.description().sensors);
 }
 
@@ -77,9 +79,7 @@ void ScenarioSession::set_cadence(double scan_period_s,
 void ScenarioSession::set_sensor_cadence(double scan_period_s,
  double motion_period_s, double imu_period_s, double decision_period_s,
  double record_period_s) {
-  auto valid = [](double p) {
-    return std::isfinite(p) && p >= 0.0;
-  };
+ auto valid = [](double p) { return on_physics_grid(p); };
  if (!valid(scan_period_s) || !valid(motion_period_s) ||
  !valid(imu_period_s) || !valid(decision_period_s) ||
       !valid(record_period_s)) {
@@ -88,16 +88,22 @@ void ScenarioSession::set_sensor_cadence(double scan_period_s,
  // Recording is the public transition cadence. It cannot run faster than
  // the 20 ms ScenarioSession step; sensors and decisions use exact sub-step
  // deadlines and may run faster.
- constexpr double kOuterStepS = 0.02;
- if (record_period_s > 0.0 && record_period_s + 1e-12 < kOuterStepS) {
+ constexpr double kOuterStepS =
+ static_cast<double>(kOuterStepNs) / static_cast<double>(kNsPerSecond);
+ if (record_period_s > 0.0 && record_period_s < kOuterStepS) {
  return;
  }
  if (record_period_s > 0.0) {
  const double outer_steps = record_period_s / kOuterStepS;
- if (std::abs(outer_steps - std::round(outer_steps)) > 1e-9) return;
+ if (std::abs(outer_steps - std::round(outer_steps)) > 1e-12) return;
  }
- scheduler_.reset_after(sim_time_s_, scan_period_s, motion_period_s,
- imu_period_s, decision_period_s, record_period_s);
+ const SimTimeNs scan_period_ns = seconds_to_sim_ns(scan_period_s);
+ const SimTimeNs motion_period_ns = seconds_to_sim_ns(motion_period_s);
+ const SimTimeNs imu_period_ns = seconds_to_sim_ns(imu_period_s);
+ const SimTimeNs decision_period_ns = seconds_to_sim_ns(decision_period_s);
+ const SimTimeNs record_period_ns = seconds_to_sim_ns(record_period_s);
+ scheduler_.reset_after_ns(sim_time_ns_, scan_period_ns, motion_period_ns,
+ imu_period_ns, decision_period_ns, record_period_ns);
  suite_.lidar().set_scan_period(scan_period_s);
  if (scan_period_s > 0.0) {
  suite_.lidar3d().set_scan_period(static_cast<float>(scan_period_s));
@@ -105,8 +111,7 @@ void ScenarioSession::set_sensor_cadence(double scan_period_s,
  // Make the configured decision cadence real: the coordinator gates its
  // planning branch on this period. Zero keeps the deployment default.
  if (decision_period_s > 0.0) {
- app_.set_decision_period(static_cast<robot::core::MonotonicNs>(
- decision_period_s * 1e9));
+ app_.set_decision_period(decision_period_ns);
  }
 }
 
@@ -135,8 +140,7 @@ void ScenarioSession::step_once() {
  const auto elapsed_ms = [](Clock::time_point begin, Clock::time_point end) {
  return std::chrono::duration<double, std::milli>(end - begin).count();
  };
- constexpr double kDtS = 0.02;
- const double outer_end_s = sim_time_s_ + kDtS;
+ const SimTimeNs outer_end_ns = sim_time_ns_ + kOuterStepNs;
  eval::EvalStep rec;
  rec.truth_before = world_.truth();
  double physics_ms = 0.0;
@@ -147,21 +151,20 @@ void ScenarioSession::step_once() {
  robot::iface::ObservationFrame last_observation;
  robot::iface::MotionCommand cmd = last_cmd_;
 
- // Step the plant to every sensor/control deadline. For example, a 100 Hz
- // IMU samples at 10 ms and 20 ms within this public 20 ms transition.
- // Every acquisition keeps its own timestamp and reaches the ROBOT queue.
- while (sim_time_s_ + 1e-12 < outer_end_s) {
- const double event_s = std::min(
- outer_end_s, scheduler_.next_runtime_event_s());
- const double dt_s = event_s - sim_time_s_;
+ // The plant always advances on the canonical 1 ms grid. Sensor/control
+ // cadence changes which completed ticks are sampled; it never repartitions
+ // MuJoCo integration, actor motion, contact hysteresis, or material lookup.
+ // A 100 Hz IMU therefore samples ticks 10 and 20 inside this transition.
+ world_.begin_fixed_transition();
+ while (sim_time_ns_ < outer_end_ns) {
  const auto physics_begin = Clock::now();
- if (dt_s > 1e-12) world_.step(dt_s);
- sim_time_s_ = event_s;
+ world_.step(sim_ns_to_seconds(kPhysicsQuantumNs));
+ sim_time_ns_ += kPhysicsQuantumNs;
  physics_ms += elapsed_ms(physics_begin, Clock::now());
 
- const bool scan_due = scheduler_.scan_due(sim_time_s_);
- const bool motion_due = scheduler_.motion_due(sim_time_s_);
- const bool imu_due = scheduler_.imu_due(sim_time_s_);
+ const bool scan_due = scheduler_.scan_due_ns(sim_time_ns_);
+ const bool motion_due = scheduler_.motion_due_ns(sim_time_ns_);
+ const bool imu_due = scheduler_.imu_due_ns(sim_time_ns_);
  if (scan_due || motion_due || imu_due) {
  const auto sensors_begin = Clock::now();
  robot::iface::ObservationFrame observation;
@@ -173,7 +176,7 @@ void ScenarioSession::step_once() {
  accepted_observation = accepted_observation || accepted;
  }
 
- if (scheduler_.decision_due(sim_time_s_)) {
+ if (scheduler_.decision_due_ns(sim_time_ns_)) {
  const robot::core::MonotonicNs sim_stamp_ns = world_.sim_time_ns();
  const auto robot_begin = Clock::now();
  cmd = app_.tick(sim_stamp_ns);
@@ -184,9 +187,10 @@ void ScenarioSession::step_once() {
  actuation_ms += elapsed_ms(actuation_begin, Clock::now());
  }
  }
- // The World clock is canonical for sensor stamps; copy it back to avoid
- // accumulated floating-point drift in the orchestration deadline loop.
- sim_time_s_ = world_.sim_time_s();
+ world_.end_fixed_transition();
+ // The World clock is canonical for sensor stamps. Integer clocks must
+ // remain identical after every public transition.
+ sim_time_ns_ = world_.sim_time_ns();
  rec.obs = std::move(last_observation);
  rec.obs_accepted = accepted_observation;
 
@@ -216,7 +220,7 @@ void ScenarioSession::step_once() {
  rec.cmd = cmd;
  rec.diag = app_.diagnostics();
  rec.truth_after = world_.truth();
- if (scheduler_.record_due(sim_time_s_)) {
+ if (scheduler_.record_due_ns(sim_time_ns_)) {
  rec.step = score_accumulator_.score().steps;
  score_accumulator_.record(rec);
  last_eval_step_ = rec;

@@ -520,7 +520,8 @@ void MujocoBackend::sync(const MotorParams& motor,
       (drive_count == 4 && steer_count == 0) ? 0.05 : mu;
   mu_tire_base_ = mu_tire;
   for (int i = 0; i < 4; ++i) {
-    slip_count_[i] = 0;  // fresh model: reconfirm traction, never inherit
+    slip_saturated_time_s_[i] = 0.0;  // fresh model: never inherit traction
+    slip_confirmation_time_s_[i] = 0.0;
     tire_geom_[i] = -1;
   }
   for (int i = 0; i < 2; ++i) {

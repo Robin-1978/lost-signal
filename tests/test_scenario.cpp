@@ -71,6 +71,8 @@ int main() {
       threw = true;
     }
     assert(threw);
+ assert(sim::scenario::on_physics_grid(0.007));
+ assert(!sim::scenario::on_physics_grid(0.0065));
   }
 
   // Judge: circle-vs-box/actor assessment, honest clearances.
@@ -264,6 +266,32 @@ int main() {
       assert(a[i].yaw_rate_radps == b[i].yaw_rate_radps);
     }
   }
+
+ // Sensor cadence selects samples from the canonical 1 ms physics grid; it
+ // cannot repartition integration. With no motion task, radically different
+ // legal sensor rates therefore leave every physical state bit-identical.
+ {
+ auto settle = [](double scan_s, double motion_s, double imu_s) {
+ sim::scenario::ScenarioSession session;
+ session.set_sensor_cadence(scan_s, motion_s, imu_s, 0.02, 0.02);
+ for (int i = 0; i < 50; ++i) session.step_once();
+ return session.setup_world().truth();
+ };
+ const auto regular = settle(0.02, 0.02, 0.02);
+ const auto staggered = settle(0.007, 0.011, 0.013);
+ assert(regular.step == 50 && staggered.step == 50);
+ assert(regular.body_x_m == staggered.body_x_m);
+ assert(regular.body_y_m == staggered.body_y_m);
+ assert(regular.body_z_m == staggered.body_z_m);
+ assert(regular.body_yaw_rad == staggered.body_yaw_rad);
+ assert(regular.body_roll_rad == staggered.body_roll_rad);
+ assert(regular.body_pitch_rad == staggered.body_pitch_rad);
+ assert(regular.forward_mps == staggered.forward_mps);
+ assert(regular.lateral_mps == staggered.lateral_mps);
+ assert(regular.yaw_rate_radps == staggered.yaw_rate_radps);
+ assert(regular.drive_angle_rad == staggered.drive_angle_rad);
+ assert(regular.drive_radps == staggered.drive_radps);
+ }
 
  // Real asynchronous rates: a 10 Hz scan remains valid evidence between
  // 50 Hz decisions while 50 Hz motion and 100 Hz IMU continue updating the

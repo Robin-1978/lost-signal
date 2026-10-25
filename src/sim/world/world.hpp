@@ -248,12 +248,16 @@ class World {
  // use this for a truthful pre-run walkaround after applying a safe-zero
  // actuator mode. No sensor or ROBOT input is produced here.
  void prepare();
-  void step(double dt_s);
-  double sim_time_s() const { return sim_time_s_; }
- robot::core::MonotonicNs sim_time_ns() const {
- return static_cast<robot::core::MonotonicNs>(
- std::llround(sim_time_s_ * 1e9));
+ void step(double dt_s);
+ // A ScenarioSession transition contains fixed 1 ms physics ticks. These
+ // brackets preserve one aggregate contact impulse for presentation; they
+ // do not alter integration or expose truth to ROBOT.
+ void begin_fixed_transition();
+ void end_fixed_transition();
+ double sim_time_s() const {
+ return static_cast<double>(sim_time_ns_) * 1e-9;
  }
+ robot::core::MonotonicNs sim_time_ns() const { return sim_time_ns_; }
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
  double compiled_mass_kg() const { return mujoco_.total_mass_kg(); }
@@ -285,7 +289,7 @@ class World {
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT
  // observation, estimate, planner, controller, or safety decision.
- const ImpactViz& impact() const { return mujoco_.impact(); }
+ const ImpactViz& impact() const { return presented_impact_; }
   // Sensor raycast against the compiled static scene (floor + boxes) for
   // provider simulation. False when the engine is invalid or nothing is
   // hit within max_m. Actors are supplemented analytically by the caller.
@@ -358,8 +362,13 @@ class World {
   WorldTruth truth_{};
   MotorParams motor_{};
   MujocoBackend mujoco_;
-  double sim_time_s_ = 0.0;  // accumulated plant dt: environment grip clock
-  // The engine owns integration: syncs the model, steps, reads truth back.
+  // Integer canonical plant clock. Public double durations are quantized to
+  // nanoseconds once at the boundary so sensor timestamps cannot drift from
+  // physics time.
+ robot::core::MonotonicNs sim_time_ns_ = 0; // canonical integer plant clock
+ ImpactViz presented_impact_{};
+ bool aggregating_impact_ = false;
+ // The engine owns integration: syncs the model, steps, reads truth back.
   // Unsupported mode, broken model, or MuJoCo disabled at configure time
   // leaves truth frozen; dt <= 0 holds state. Actors stay kinematic
   // (no engine bodies for them); the judge reads the same truth.

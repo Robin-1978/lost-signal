@@ -47,6 +47,13 @@ bool finite_non_negative(double v, const char* what, std::string& err) {
   return true;
 }
 
+bool on_physics_grid(double seconds) {
+ if (seconds == 0.0) return true;
+ constexpr double kPhysicsTickS = 0.001;
+ const double ticks = seconds / kPhysicsTickS;
+ return std::abs(ticks - std::round(ticks)) <= 1e-9;
+}
+
 }  // namespace
 
 bool load_sim_config(const std::string& path, SimConfig& config,
@@ -86,6 +93,11 @@ bool load_sim_config(const std::string& path, SimConfig& config,
       if (!take_num(*cad, s.key, v, present, err)) return false;
       if (present) {
         if (!finite_non_negative(v, s.key, err)) return false;
+ if (!on_physics_grid(v)) {
+ err = std::string("cadence '") + s.key +
+ "' must be an integer multiple of the 1 ms physics tick";
+ return false;
+ }
         *s.slot = v;
       }
     }

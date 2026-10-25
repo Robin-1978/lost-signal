@@ -119,8 +119,8 @@ class MujocoBackend {
   // Per-wheel tire friction follows the local material zone (main's
   // tire-x-ground resolution, engine-native: the pair takes the max, so
   // the tire side carries min(global, local) and the ground side the zone
-  // value) times the environment grip at sim_time_s. Slip flags confirm
-  // over two consecutive steps (hysteresis against single-substep spikes).
+ // value) times the environment grip at sim_time_s. Slip flags require
+ // saturation for the contact response duration, filtering transients.
   void step(double dt_s, const MotorParams& motor,
             const std::array<double, 4>& drive_duty,
             const std::array<double, 4>& steer_duty,
@@ -306,9 +306,10 @@ class MujocoBackend {
  std::vector<int> static_geom_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).
   double mu_tire_base_ = 0.7;
- // Slip confirmation hysteresis: consecutive outer steps whose resolved
- // contact saturation persists for the contact response horizon.
-  int slip_count_[4] = {0, 0, 0, 0};
+ // Slip confirmation is a physical duration, independent of how callers
+ // group canonical engine ticks around sensor deadlines.
+ double slip_saturated_time_s_[4] = {0.0, 0.0, 0.0, 0.0};
+ double slip_confirmation_time_s_[4] = {0.0, 0.0, 0.0, 0.0};
   // Fail-closed refuse reporting: loud once per bad authoring, quiet after.
   bool refuse_reported_ = false;
   // Drive joint DOF addresses (drive_count <= 4 in M2).

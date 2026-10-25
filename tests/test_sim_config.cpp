@@ -67,6 +67,9 @@ int main() {
  write(R"({"cadence": {"motion_s": 0.05, "imu_s": 0.01}})");
  assert(sim::eval::load_sim_config(tmp, cfg, &err));
  assert(cfg.motion_period_s == 0.05 && cfg.imu_period_s == 0.01);
+ write(R"({"cadence": {"scan_s": 0.0065}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ assert(err.find("1 ms physics tick") != std::string::npos);
  write(R"({"cadence": {"planning_s": -0.1}})");
  assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"delivery": {"drop_probability": 1.5}})");

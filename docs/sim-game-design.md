@@ -193,6 +193,7 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 - 比较结果并排显示轨迹、动态净空、命令、CPU 分位数和结构化失败原因。
 - 导出的实验报告记录 git revision、配置 hash、资产版本、MuJoCo 版本、seed、平台和是否 Turbo；Turbo 不改变任何仿真时间语义。
 - Viewer 倍率调度按墙钟时长保留自适应 backlog：倍率只增加固定物理 step 的执行数量，不改变 step 大小。当前帧需求不会被固定“仿真秒”上限截断；机器跟不上、历史 backlog 被丢弃或窗口长时间停顿时必须显示 `LIMIT` 和实际倍率。最大吞吐使用 headless runner，不把渲染吞吐冒充物理吞吐。
+- 场景内部使用整数 1 ms 物理时基。20 ms episode transition 由 20 个相同 MuJoCo tick 组成，传感器与控制 cadence 只在已完成 tick 上采样，不能重新切分物理积分；所有 cadence 必须是 1 ms 的整数倍。接触冲量跨 20 个 tick 聚合，打滑确认按接触响应的物理持续时间累计，不能依赖一次外层调用包含多少子步。
 
 ## 8. 视觉与声音方向
 
