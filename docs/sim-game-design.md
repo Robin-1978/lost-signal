@@ -320,6 +320,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 加速验收使用同一 seed 和配置分别运行 1×、8×、64×、Turbo 与 headless；逐项比较最终 truth、每个 ROBOT command、goal 状态、碰撞和 score hash。性能报告同时给出 physics、sensor、ROBOT、actuation、record 分项，视觉 LOD 可以降低，但 1 ms 物理子步、传感器采集时刻和算法 cadence 不得改变。
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。
 - 已将跟随镜头的平滑时间、前视时间、速度拉远增益和距离范围放入 scene manifest；相机按墙钟平滑而不改变仿真状态，倒车沿真实运动方向前视，玩家缩放会成为新的跟随基准距离。场景光方向、环境光、雾和局部任务灯也由 manifest 控制；shader 每帧读取真实相机位置，机器人灯跟随 MuJoCo body，目标灯只消费 Viewer 的任务表现数据。
+- 已迁移 `main` 的 HDR 后处理骨架并适配当前 Viewer：3D 场景先进入半浮点渲染目标，再做亮区提取、半分辨率双向高斯模糊、ACES tone mapping、曝光与暗角；所有表现参数归 scene manifest 管理，窗口尺寸变化时安全重建目标，无 shader 时保持直接渲染回退。后处理发生在 HUD 之前，也不参与仿真步进、传感器或 ROBOT 状态。
 - 补齐暂停时间轴、单步、关键事件、真值/认知 overlay 开关和 replay seek。
 - 验收：同 seed 的 1×、8×、Turbo、headless 最终 truth、command、score 一致；UI 连续响应。
 

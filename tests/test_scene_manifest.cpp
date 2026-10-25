@@ -37,6 +37,8 @@ int main() {
  assert(scene.camera.maximum_distance_m == 8.0);
  assert(scene.lighting.fog_start_m == 12.0);
  assert(scene.lighting.direction_xyz[2] == -1.0);
+ assert(scene.lighting.exposure == 0.92);
+ assert(scene.lighting.bloom_strength == 0.20);
  assert(scene.instances.size() == 35);
  assert(scene.visual_for_box("north_wall_01") != nullptr);
  assert(scene.visual_for_box("west_shelf") != nullptr);

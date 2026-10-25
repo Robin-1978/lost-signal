@@ -258,7 +258,15 @@ bool load_scene_manifest(const std::string& path,
  !take_number(*lighting, "fog_start_m", parsed.lighting.fog_start_m,
  out_error) ||
  !take_number(*lighting, "fog_end_m", parsed.lighting.fog_end_m,
- out_error))) {
+ out_error) ||
+ !take_optional_number(*lighting, "exposure",
+ parsed.lighting.exposure, out_error) ||
+ !take_optional_number(*lighting, "bloom_threshold",
+ parsed.lighting.bloom_threshold, out_error) ||
+ !take_optional_number(*lighting, "bloom_strength",
+ parsed.lighting.bloom_strength, out_error) ||
+ !take_optional_number(*lighting, "vignette_strength",
+ parsed.lighting.vignette_strength, out_error))) {
  return false;
  }
  if (parsed.camera.distance_m < 0.6 || parsed.camera.distance_m > 100.0 ||
@@ -277,6 +285,13 @@ bool load_scene_manifest(const std::string& path,
  parsed.lighting.ambient_intensity > 4.0 ||
  !(parsed.lighting.fog_start_m >= 0.0) ||
  !(parsed.lighting.fog_end_m > parsed.lighting.fog_start_m) ||
+ parsed.lighting.exposure < 0.25 || parsed.lighting.exposure > 4.0 ||
+ parsed.lighting.bloom_threshold < 0.0 ||
+ parsed.lighting.bloom_threshold > 4.0 ||
+ parsed.lighting.bloom_strength < 0.0 ||
+ parsed.lighting.bloom_strength > 1.0 ||
+ parsed.lighting.vignette_strength < 0.0 ||
+ parsed.lighting.vignette_strength > 1.0 ||
  !(parsed.floor.grid_spacing_m > 0.0) ||
  parsed.floor.grid_spacing_m > 20.0) {
  out_error = "scene camera or floor values are outside supported bounds";

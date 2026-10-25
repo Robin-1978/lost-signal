@@ -68,6 +68,21 @@ struct VisualAssets {
  };
  Texture2D dust{};
  Shader lighting{};
+ Shader bloom_extract{};
+ Shader bloom_blur{};
+ Shader composite{};
+ RenderTexture2D scene_target{};
+ RenderTexture2D bloom_target_a{};
+ RenderTexture2D bloom_target_b{};
+ int target_width = 0;
+ int target_height = 0;
+ int bloom_threshold_loc = -1;
+ int blur_texel_size_loc = -1;
+ int blur_direction_loc = -1;
+ int composite_bloom_texture_loc = -1;
+ int composite_exposure_loc = -1;
+ int composite_bloom_strength_loc = -1;
+ int composite_vignette_strength_loc = -1;
  AssetManifest manifest;
  Model chassis{};
  const AssetDefinition* chassis_definition = nullptr;
@@ -90,6 +105,80 @@ struct VisualAssets {
 };
 
 bool model_ready(const Model& model) { return model.meshCount > 0; }
+
+RenderTexture2D load_hdr_target(int width, int height) {
+ RenderTexture2D target{};
+ target.id = rlLoadFramebuffer();
+ if (target.id == 0) return target;
+ rlEnableFramebuffer(target.id);
+ target.texture.id = rlLoadTexture(
+ nullptr, width, height, RL_PIXELFORMAT_UNCOMPRESSED_R16G16B16A16, 1);
+ target.texture.width = width;
+ target.texture.height = height;
+ target.texture.format = PIXELFORMAT_UNCOMPRESSED_R16G16B16A16;
+ target.texture.mipmaps = 1;
+ target.depth.id = rlLoadTextureDepth(width, height, true);
+ target.depth.width = width;
+ target.depth.height = height;
+ target.depth.format = 19;
+ target.depth.mipmaps = 1;
+ rlFramebufferAttach(target.id, target.texture.id,
+ RL_ATTACHMENT_COLOR_CHANNEL0, RL_ATTACHMENT_TEXTURE2D, 0);
+ rlFramebufferAttach(target.id, target.depth.id,
+ RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_RENDERBUFFER, 0);
+ if (!rlFramebufferComplete(target.id)) {
+ UnloadRenderTexture(target);
+ return LoadRenderTexture(width, height);
+ }
+ SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+ return target;
+}
+
+void release_post_targets(VisualAssets& assets) {
+ if (assets.scene_target.id > 0) UnloadRenderTexture(assets.scene_target);
+ if (assets.bloom_target_a.id > 0)
+ UnloadRenderTexture(assets.bloom_target_a);
+ if (assets.bloom_target_b.id > 0)
+ UnloadRenderTexture(assets.bloom_target_b);
+ assets.scene_target = {};
+ assets.bloom_target_a = {};
+ assets.bloom_target_b = {};
+ assets.target_width = 0;
+ assets.target_height = 0;
+}
+
+bool ensure_post_targets(VisualAssets& assets, int width, int height) {
+ if (width == assets.target_width && height == assets.target_height &&
+ assets.scene_target.id > 0 && assets.bloom_target_a.id > 0 &&
+ assets.bloom_target_b.id > 0) {
+ return true;
+ }
+ release_post_targets(assets);
+ if (width <= 0 || height <= 0) return false;
+ assets.scene_target = load_hdr_target(width, height);
+ const int bloom_width = std::max(1, width / 2);
+ const int bloom_height = std::max(1, height / 2);
+ assets.bloom_target_a = LoadRenderTexture(bloom_width, bloom_height);
+ assets.bloom_target_b = LoadRenderTexture(bloom_width, bloom_height);
+ if (assets.scene_target.id == 0 || assets.bloom_target_a.id == 0 ||
+ assets.bloom_target_b.id == 0) {
+ release_post_targets(assets);
+ return false;
+ }
+ SetTextureFilter(assets.bloom_target_a.texture, TEXTURE_FILTER_BILINEAR);
+ SetTextureFilter(assets.bloom_target_b.texture, TEXTURE_FILTER_BILINEAR);
+ assets.target_width = width;
+ assets.target_height = height;
+ return true;
+}
+
+void draw_render_texture(const RenderTexture2D& target,
+ float width, float height) {
+ DrawTexturePro(target.texture,
+ {0.0f, 0.0f, static_cast<float>(target.texture.width),
+ -static_cast<float>(target.texture.height)},
+ {0.0f, 0.0f, width, height}, {0.0f, 0.0f}, 0.0f, WHITE);
+}
 
 void log_model_bounds(const char* label, const Model& model) {
  if (!model_ready(model)) return;
@@ -277,6 +366,38 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  (shader_root / "scene_lighting.vs").string().c_str(),
  (shader_root / "scene_lighting.fs").string().c_str());
  }
+ if (std::filesystem::is_regular_file(shader_root / "bloom_extract.fs")) {
+ assets.bloom_extract = LoadShader(
+ nullptr, (shader_root / "bloom_extract.fs").string().c_str());
+ }
+ if (std::filesystem::is_regular_file(shader_root / "bloom_blur.fs")) {
+ assets.bloom_blur = LoadShader(
+ nullptr, (shader_root / "bloom_blur.fs").string().c_str());
+ }
+ if (std::filesystem::is_regular_file(shader_root / "scene_composite.fs")) {
+ assets.composite = LoadShader(
+ nullptr, (shader_root / "scene_composite.fs").string().c_str());
+ }
+ if (IsShaderValid(assets.bloom_extract)) {
+ assets.bloom_threshold_loc = GetShaderLocation(
+ assets.bloom_extract, "threshold");
+ }
+ if (IsShaderValid(assets.bloom_blur)) {
+ assets.blur_texel_size_loc = GetShaderLocation(
+ assets.bloom_blur, "texelSize");
+ assets.blur_direction_loc = GetShaderLocation(
+ assets.bloom_blur, "direction");
+ }
+ if (IsShaderValid(assets.composite)) {
+ assets.composite_bloom_texture_loc = GetShaderLocation(
+ assets.composite, "bloomTexture");
+ assets.composite_exposure_loc = GetShaderLocation(
+ assets.composite, "exposure");
+ assets.composite_bloom_strength_loc = GetShaderLocation(
+ assets.composite, "bloomStrength");
+ assets.composite_vignette_strength_loc = GetShaderLocation(
+ assets.composite, "vignetteStrength");
+ }
  if (IsShaderValid(assets.lighting)) {
  const Vector3 light_dir{-0.48f, -1.0f, -0.32f};
  const Vector3 light_color{1.08f, 0.98f, 0.82f};
@@ -346,6 +467,7 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
 }
 
 void unload_visual_assets(VisualAssets& assets) {
+ release_post_targets(assets);
  if (assets.dust.id > 0) UnloadTexture(assets.dust);
  if (model_ready(assets.chassis)) UnloadModel(assets.chassis);
  if (model_ready(assets.wheel)) UnloadModel(assets.wheel);
@@ -359,6 +481,9 @@ void unload_visual_assets(VisualAssets& assets) {
  if (model_ready(environment.model)) UnloadModel(environment.model);
  }
  if (IsShaderValid(assets.lighting)) UnloadShader(assets.lighting);
+ if (IsShaderValid(assets.bloom_extract)) UnloadShader(assets.bloom_extract);
+ if (IsShaderValid(assets.bloom_blur)) UnloadShader(assets.bloom_blur);
+ if (IsShaderValid(assets.composite)) UnloadShader(assets.composite);
  assets = {};
 }
 
@@ -1961,6 +2086,99 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
   // twice.
  draw_motion_particles_3d(particles, camera, assets);
 }
+
+bool draw_frame_3d_postprocessed(const Frame& frame,
+ const lost_signal::sim::world::World& world, const Camera3D& camera,
+ const ParticleSystem& particles, bool show_lidar, bool show_estimate,
+ bool show_actor_routes, bool show_places, VisualAssets& assets,
+ const SceneManifest* scene,
+ const lost_signal::sim::viewer::LidarMount* lidar_mount) {
+ if (!IsShaderValid(assets.lighting) ||
+ !IsShaderValid(assets.bloom_extract) ||
+ !IsShaderValid(assets.bloom_blur) ||
+ !IsShaderValid(assets.composite) ||
+ !ensure_post_targets(assets, GetScreenWidth(), GetScreenHeight())) {
+ return false;
+ }
+ const lost_signal::sim::viewer::SceneLighting defaults;
+ const auto& lighting = scene != nullptr ? scene->lighting : defaults;
+ BeginTextureMode(assets.scene_target);
+ ClearBackground(scene_background(scene));
+ BeginMode3D(camera);
+ BeginShaderMode(assets.lighting);
+ draw_frame_3d(frame, world, camera, particles, show_lidar, show_estimate,
+ show_actor_routes, show_places, &assets, scene, lidar_mount);
+ EndShaderMode();
+ EndMode3D();
+ EndTextureMode();
+
+ const float bloom_strength = static_cast<float>(lighting.bloom_strength);
+ if (bloom_strength > 0.001f) {
+ const float threshold = static_cast<float>(lighting.bloom_threshold);
+ SetShaderValue(assets.bloom_extract, assets.bloom_threshold_loc,
+ &threshold, SHADER_UNIFORM_FLOAT);
+ BeginTextureMode(assets.bloom_target_a);
+ ClearBackground(BLACK);
+ BeginShaderMode(assets.bloom_extract);
+ draw_render_texture(assets.scene_target,
+ static_cast<float>(assets.bloom_target_a.texture.width),
+ static_cast<float>(assets.bloom_target_a.texture.height));
+ EndShaderMode();
+ EndTextureMode();
+
+ const Vector2 texel_size{
+ 1.0f / static_cast<float>(assets.bloom_target_a.texture.width),
+ 1.0f / static_cast<float>(assets.bloom_target_a.texture.height)};
+ SetShaderValue(assets.bloom_blur, assets.blur_texel_size_loc,
+ &texel_size, SHADER_UNIFORM_VEC2);
+ for (int pass = 0; pass < 2; ++pass) {
+ const Vector2 horizontal{1.0f, 0.0f};
+ SetShaderValue(assets.bloom_blur, assets.blur_direction_loc,
+ &horizontal, SHADER_UNIFORM_VEC2);
+ BeginTextureMode(assets.bloom_target_b);
+ ClearBackground(BLACK);
+ BeginShaderMode(assets.bloom_blur);
+ draw_render_texture(assets.bloom_target_a,
+ static_cast<float>(assets.bloom_target_b.texture.width),
+ static_cast<float>(assets.bloom_target_b.texture.height));
+ EndShaderMode();
+ EndTextureMode();
+
+ const Vector2 vertical{0.0f, 1.0f};
+ SetShaderValue(assets.bloom_blur, assets.blur_direction_loc,
+ &vertical, SHADER_UNIFORM_VEC2);
+ BeginTextureMode(assets.bloom_target_a);
+ ClearBackground(BLACK);
+ BeginShaderMode(assets.bloom_blur);
+ draw_render_texture(assets.bloom_target_b,
+ static_cast<float>(assets.bloom_target_a.texture.width),
+ static_cast<float>(assets.bloom_target_a.texture.height));
+ EndShaderMode();
+ EndTextureMode();
+ }
+ } else {
+ BeginTextureMode(assets.bloom_target_a);
+ ClearBackground(BLACK);
+ EndTextureMode();
+ }
+
+ const float exposure = static_cast<float>(lighting.exposure);
+ const float vignette = static_cast<float>(lighting.vignette_strength);
+ SetShaderValue(assets.composite, assets.composite_exposure_loc,
+ &exposure, SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.composite, assets.composite_bloom_strength_loc,
+ &bloom_strength, SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.composite, assets.composite_vignette_strength_loc,
+ &vignette, SHADER_UNIFORM_FLOAT);
+ SetShaderValueTexture(assets.composite,
+ assets.composite_bloom_texture_loc, assets.bloom_target_a.texture);
+ BeginShaderMode(assets.composite);
+ draw_render_texture(assets.scene_target,
+ static_cast<float>(assets.target_width),
+ static_cast<float>(assets.target_height));
+ EndShaderMode();
+ return true;
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2484,12 +2702,16 @@ int main(int argc, char** argv) {
  preview, component_id, cam_st);
  configure_scene_lighting(visual_assets,
  scene_loaded ? &visual_scene : nullptr, preview, walkaround.camera);
+ if (!draw_frame_3d_postprocessed(
+ preview, session->setup_world(), walkaround.camera,
+ motion_particles, false, false, false, false, visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  BeginMode3D(walkaround.camera);
  draw_frame_3d(preview, session->setup_world(), walkaround.camera,
- motion_particles,
- false, false, false, false, &visual_assets,
+ motion_particles, false, false, false, false, &visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  EndMode3D();
+ }
  const Vector2 marker = GetWorldToScreen(
  walkaround.focus, walkaround.camera);
  if (marker.x >= 0.0f && marker.x < GetScreenWidth() &&
@@ -2567,12 +2789,16 @@ int main(int argc, char** argv) {
       const Camera3D cam = camera_from_state(cam_st);
  configure_scene_lighting(visual_assets,
  scene_loaded ? &visual_scene : nullptr, frame, cam);
-      BeginMode3D(cam);
+ if (!draw_frame_3d_postprocessed(
+ frame, session->setup_world(), cam, motion_particles,
+ show_lidar, show_estimate, show_actor_routes, true, visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
+ BeginMode3D(cam);
  draw_frame_3d(frame, session->setup_world(), cam, motion_particles,
- show_lidar,
- show_estimate, show_actor_routes, true, &visual_assets,
+ show_lidar, show_estimate, show_actor_routes, true, &visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
-      EndMode3D();
+ EndMode3D();
+ }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       draw_frame_2d(frame, view, show_lidar, show_estimate);

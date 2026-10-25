@@ -20,7 +20,11 @@
  "directional_intensity": 1.08,
  "ambient_intensity": 0.90,
  "fog_start_m": 12.0,
- "fog_end_m": 31.0
+ "fog_end_m": 31.0,
+ "exposure": 0.92,
+ "bloom_threshold": 0.78,
+ "bloom_strength": 0.20,
+ "vignette_strength": 0.14
  },
  "floor": {
  "base_rgba": [43, 49, 48, 255],

@@ -31,6 +31,10 @@ struct SceneLighting {
  double ambient_intensity = 0.90;
  double fog_start_m = 12.0;
  double fog_end_m = 31.0;
+ double exposure = 0.92;
+ double bloom_threshold = 0.78;
+ double bloom_strength = 0.20;
+ double vignette_strength = 0.14;
 };
 
 struct SceneFloor {
