@@ -161,6 +161,24 @@ int main() {
     assert(!r.accepted);
   }
 
+ // 2c. A local search whose best score still improves beyond its bounded
+ // window is clipped, not converged. It must refuse the correction so a
+ // high-covariance supervisor can retain the wider global recovery instead
+ // of walking the map pose through repeated window-edge updates.
+ {
+ auto map = make_wall_map();
+ auto ranges = scan_from(1.0, 0.0, 0.0, map);
+ ScanMatcherConfig config;
+ config.search_translation_m = 0.50;
+ config.translation_step_m = 0.25;
+ ScanMatcher matcher(config);
+ const ScanMatchResult r = matcher.localize(
+ ranges, -M_PI, 2.0 * M_PI / 72,
+ 1.75, 0.0, 0.0, map, 1);
+ assert(!r.accepted);
+ assert(r.rejection_reason == "map optimum reaches search boundary");
+ }
+
   // 3. correct_pose blends by variance and shrinks sigma.
   {
     FusedOdometryEstimator est;

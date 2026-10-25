@@ -425,6 +425,18 @@ ScanMatchResult ScanMatcher::localize(
       hypotheses.size() > 1
           ? hypotheses[1].score
           : -std::numeric_limits<double>::infinity();
+ const auto likelihood_score = [&](double x, double y, double heading) {
+ if (config_.expected_range_validation) {
+ const ExpectedRangeEvidence evidence = expected_range_evidence(
+ map, beams, x, y, heading, body_roll_rad, body_pitch_rad,
+ base_from_lidar_, config_.max_range_m);
+ return evidence.valid ? evidence.score
+ : -std::numeric_limits<double>::infinity();
+ }
+ const PoseScore pose = batch.score(0, x, y, heading, map, body_z_m);
+ return pose.has_evidence ? pose.score
+ : -std::numeric_limits<double>::infinity();
+ };
   if (!std::isfinite(best.score) || best.overlap < config_.minimum_overlap) {
     result.rejection_reason = "map overlap below acceptance gate";
     return result;
@@ -439,6 +451,51 @@ ScanMatchResult ScanMatcher::localize(
     result.rejection_reason = "map match is geometrically ambiguous";
     return result;
   }
+ // A winner on the edge of the bounded search is not necessarily a local
+ // optimum. Probe one lattice step farther in every clipped direction. If
+ // the score stays within the same ambiguity margin (or improves), the peak
+ // lies outside the trusted local window and this scan must not be applied as
+ // a sequence of small map-frame corrections. The supervisor's covariance
+ // policy can start the wider, temporally confirmed recovery path instead.
+ const double searched_translation_m = t_steps * config_.translation_step_m;
+ const double searched_heading_rad = h_steps * config_.heading_step_rad;
+ const double dx = best.x - odom_x_m;
+ const double dy = best.y - odom_y_m;
+ const double dh = core::wrap_angle(best.heading - odom_heading_rad);
+ bool clipped_peak = false;
+ const auto unresolved_outside = [&](double x, double y, double heading) {
+ const double outside_score = likelihood_score(x, y, heading);
+ return std::isfinite(outside_score) &&
+ best.score - outside_score < config_.minimum_score_margin;
+ };
+ if (t_steps > 0 &&
+ std::abs(dx) + 1e-9 >= searched_translation_m) {
+ clipped_peak = unresolved_outside(
+ best.x + std::copysign(config_.translation_step_m, dx),
+ best.y, best.heading);
+ }
+ if (!clipped_peak && t_steps > 0 &&
+ std::abs(dy) + 1e-9 >= searched_translation_m) {
+ clipped_peak = unresolved_outside(
+ best.x,
+ best.y + std::copysign(config_.translation_step_m, dy),
+ best.heading);
+ }
+ if (!clipped_peak && h_steps > 0 &&
+ std::abs(dh) + 1e-9 >= searched_heading_rad) {
+ clipped_peak = unresolved_outside(
+ best.x, best.y,
+ core::wrap_angle(best.heading +
+ std::copysign(config_.heading_step_rad, dh)));
+ }
+ if (clipped_peak) {
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = std::isfinite(second_score)
+ ? best.score - second_score : 1.0;
+ result.rejection_reason = "map optimum reaches search boundary";
+ return result;
+ }
   result.accepted = true;
   result.x_m = best.x;
   result.y_m = best.y;
@@ -455,18 +512,6 @@ ScanMatchResult ScanMatcher::localize(
  config_.heading_step_rad,
  std::atan2(map.resolution_m, std::max(map.resolution_m,
  config_.max_range_m)));
- const auto likelihood_score = [&](double x, double y, double heading) {
- if (config_.expected_range_validation) {
- const ExpectedRangeEvidence evidence = expected_range_evidence(
- map, beams, x, y, heading, body_roll_rad, body_pitch_rad,
- base_from_lidar_, config_.max_range_m);
- return evidence.valid ? evidence.score
- : -std::numeric_limits<double>::infinity();
- }
- const PoseScore pose = batch.score(0, x, y, heading, map, body_z_m);
- return pose.has_evidence ? pose.score
- : -std::numeric_limits<double>::infinity();
- };
  const auto cost = [](double score) {
  return std::isfinite(score)
  ? -std::log(std::max(1e-6, score))
