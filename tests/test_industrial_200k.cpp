@@ -5,6 +5,7 @@
 #include <string>
 
 #include "robot/autonomy/mapping/mapper.hpp"
+#include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
@@ -90,6 +91,26 @@ int main() {
  assert(static_cast<std::size_t>(map.width) * map.height > 3200000);
  assert(map.places.size() == 5);
 
+ // The authored startup structure must provide a globally observable scan.
+ // The first MuJoCo step builds geometry; the second publishes the first
+ // settled lidar frame. Localization consumes only that ROBOT observation
+ // and the surveyed raster, never the recorded truth alongside it.
+ session.step_once();
+ session.step_once();
+ assert(!session.episode().steps().empty());
+ const robot::iface::ObservationFrame& startup_scan =
+ session.episode().steps().back().obs;
+ assert(startup_scan.scan_valid);
+ robot::autonomy::GlobalSearcher global_search;
+ global_search.set_lidar_mount(
+ {{0.25, 0.0, 0.35}, {0.0, 0.0, 0.0, 1.0}});
+ const robot::autonomy::GlobalSearchResult startup = global_search.search(
+ startup_scan.ranges_m, startup_scan.scan_angle_min_rad,
+ startup_scan.scan_angle_increment_rad, map, startup_scan.stamp_ns);
+ assert(startup.accepted);
+ assert(std::hypot(startup.x_m, startup.y_m) < 0.35);
+ assert(std::abs(startup.yaw_rad) < 0.10);
+
  robot::autonomy::AStarPlanner planner;
  const auto& central = place(map, "central_gate");
  const auto& east = place(map, "east_terminal");
@@ -112,9 +133,9 @@ int main() {
 
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
- "routes=%zu,%zu\n",
+ "routes=%zu,%zu startup=(%.3f,%.3f,%.3f)\n",
  max_x - min_x, max_y - min_y, map.width, map.height,
  session.setup_world().actors().size(), to_central.points.size(),
- to_east.points.size());
+ to_east.points.size(), startup.x_m, startup.y_m, startup.yaw_rad);
  return 0;
 }
