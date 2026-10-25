@@ -25,6 +25,9 @@ int main() {
     assert(cfg.limits.max_forward_mps == 2.0);
  assert(cfg.navigation.clearance_margin_m == 0.1);
  assert(cfg.navigation.soft_inflation_radius_m == 0.2);
+ assert(cfg.motion.acceleration_mps2 == 2.0);
+ assert(cfg.motion.brake_deceleration_mps2 == 2.0);
+ assert(cfg.motion.yaw_acceleration_radps2 == 8.0);
     assert(!cfg.sensors.empty() && !cfg.links.empty());
     assert(cfg.robot_id == "ro1");
     // Both sides from one config.
@@ -33,6 +36,9 @@ int main() {
     assert(desc.limits.max_forward_mps == 2.0);
  assert(desc.navigation.clearance_margin_m == 0.1);
  assert(desc.navigation.soft_inflation_radius_m == 0.2);
+ assert(desc.motion.acceleration_mps2 == cfg.motion.acceleration_mps2);
+ assert(desc.motion.brake_deceleration_mps2 ==
+ cfg.motion.brake_deceleration_mps2);
     assert(desc.sensors.size() == cfg.sensors.size());
     const auto motor = sim::eval::motor_from_config(cfg);
     assert(motor.wheel_radius_m == 0.1);
@@ -170,6 +176,32 @@ int main() {
  assert(cfg.navigation.soft_inflation_radius_m == 0.31);
  write(R"({"kind": "differential", "navigation": {
  "clearance_margin_m": -0.1}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "motion": {
+ "acceleration_mps2": 1.25, "brake_deceleration_mps2": 1.5,
+ "lateral_acceleration_mps2": 0.75,
+ "yaw_acceleration_radps2": 4.0,
+ "actuator_response_delay_s": 0.15,
+ "safety_reaction_time_s": 0.25}})");
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.motion.acceleration_mps2 == 1.25);
+ assert(cfg.motion.brake_deceleration_mps2 == 1.5);
+ assert(cfg.motion.lateral_acceleration_mps2 == 0.75);
+ assert(cfg.motion.yaw_acceleration_radps2 == 4.0);
+ assert(cfg.motion.actuator_response_delay_s == 0.15);
+ assert(cfg.motion.safety_reaction_time_s == 0.25);
+ const auto motion_desc = robot::platform::description_from_config(cfg);
+ assert(motion_desc.motion.brake_deceleration_mps2 == 1.5);
+ assert(robot::platform::valid_robot_description(motion_desc));
+ write(R"({"kind": "differential", "motion": {
+ "brake_deceleration_mps2": 0}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "motion": {
+ "actuator_response_delay_s": -0.1}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "drive": {
+ "stall_force_N": 1.0}, "motion": {
+ "acceleration_mps2": 2.0}})");
  assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "sensors": [{"sensor_id": "x"}]})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));  // no link/pose

@@ -406,6 +406,68 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
  *slot.slot = value;
  }
  }
+
+ const Json* motion = obj.find("motion");
+ if (motion != nullptr) {
+ if (!motion->is_object()) {
+ err = "'motion' must be an object";
+ return false;
+ }
+ double value = 0.0;
+ bool present = false;
+ struct MotionSlot {
+ const char* key;
+ double* slot;
+ bool positive;
+ };
+ MotionSlot slots[] = {
+ {"acceleration_mps2", &out.motion.acceleration_mps2, true},
+ {"brake_deceleration_mps2",
+ &out.motion.brake_deceleration_mps2, true},
+ {"lateral_acceleration_mps2",
+ &out.motion.lateral_acceleration_mps2, true},
+ {"yaw_acceleration_radps2",
+ &out.motion.yaw_acceleration_radps2, true},
+ {"actuator_response_delay_s",
+ &out.motion.actuator_response_delay_s, false},
+ {"safety_reaction_time_s",
+ &out.motion.safety_reaction_time_s, false}};
+ for (const auto& slot : slots) {
+ if (!take_num(*motion, slot.key, value, present, err)) return false;
+ if (!present) continue;
+ if (!std::isfinite(value) ||
+ (slot.positive ? value <= 0.0 : value < 0.0)) {
+ err = std::string("motion.'") + slot.key +
+ (slot.positive ? "' must be finite positive"
+ : "' must be finite non-negative");
+ return false;
+ }
+ *slot.slot = value;
+ }
+ }
+ // The motion block is a guaranteed envelope, not an aspirational tuning
+ // value. Refuse contracts that the declared motor/traction/mass plant cannot
+ // meet even with two driven contacts. Four-wheel bases retain extra margin.
+ constexpr double kGravityMps2 = 9.80665;
+ const double declared_mass_kg =
+ out.profile.vehicle_mass_kg + out.profile.payload_mass_kg;
+ const double traction_limit_mps2 =
+ out.profile.tire_friction_mu * kGravityMps2;
+ const double drive_limit_mps2 =
+ 2.0 * out.profile.stall_force_N / declared_mass_kg;
+ const double longitudinal_limit_mps2 =
+ std::min(traction_limit_mps2, drive_limit_mps2);
+ if (out.motion.acceleration_mps2 > longitudinal_limit_mps2 + 1e-9 ||
+ out.motion.brake_deceleration_mps2 >
+ longitudinal_limit_mps2 + 1e-9) {
+ err = "motion longitudinal capability exceeds declared motor/traction plant";
+ return false;
+ }
+ if (out.motion.lateral_acceleration_mps2 >
+ traction_limit_mps2 + 1e-9) {
+ err = "motion lateral capability exceeds declared tire traction";
+ return false;
+ }
   const Json* sens = obj.find("sensors");
   if (sens == nullptr) {
     out.sensors = default_sensor_mounts();  // bare file keeps the mast
@@ -539,6 +601,7 @@ RobotDescription description_from_config(const RobotConfig& config) {
   desc.sensors = config.sensors;
   desc.limits = config.limits;
  desc.navigation = config.navigation;
+ desc.motion = config.motion;
  desc.chassis_kind = config.profile.chassis_kind;
  desc.local_planner_kind = config.local_planner_kind;
   // Declared plant loadout for autonomy envelopes (description, never

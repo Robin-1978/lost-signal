@@ -27,6 +27,7 @@ struct RobotConfig {
   // 2 rad/s, 0.4 m footprint, 0.55 rad steer, holonomic lateral closed.
  ChassisLimits limits = {2.0, 2.0, 0.4, 0.55, 0.0};
  NavigationSafetyPolicy navigation;
+ MotionDynamicsPolicy motion;
   std::vector<SensorMount> sensors;
   std::vector<LinkMount> links;
   // Service-brake capability (peak holding torque + lag shaping).

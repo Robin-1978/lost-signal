@@ -58,6 +58,23 @@ int main() {
         nullptr);
     assert(make_local_planner("magic") == nullptr);
 
+ // The factory propagates one declared dynamics policy into both planners.
+ // A low acceleration contract bounds the first 0.1 s command identically;
+ // planner-local defaults cannot silently override the machine file.
+ platform::MotionDynamicsPolicy slow_motion;
+ slow_motion.acceleration_mps2 = 0.5;
+ auto slow_dwa = make_local_planner("dwa", {}, slow_motion);
+ auto slow_teb = make_local_planner("teb", {}, slow_motion);
+ const LocalPlan slow_dwa_plan = slow_dwa->plan(
+ est, perception, empty_prediction, map, route, limits);
+ const LocalPlan slow_teb_plan = slow_teb->plan(
+ est, perception, empty_prediction, map, route, limits);
+ assert(slow_dwa_plan.has_plan && slow_teb_plan.has_plan);
+ assert(slow_dwa_plan.best.forward_mps > 0.0);
+ assert(slow_teb_plan.best.forward_mps > 0.0);
+ assert(slow_dwa_plan.best.forward_mps <= 0.05 + 1e-9);
+ assert(slow_teb_plan.best.forward_mps <= 0.05 + 1e-9);
+
  // Same open route and limits: both planners must return a reachable forward
  // command, and neither may jump by more than a single 0.1 s acceleration
  // interval from standstill.

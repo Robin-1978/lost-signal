@@ -24,6 +24,8 @@ int main() {
         platform::description_from_config(cfg);
     assert(desc.chassis_kind == kind);
     assert(desc.limits.max_forward_mps == 2.0);
+ assert(desc.motion.acceleration_mps2 == 2.0);
+ assert(desc.motion.brake_deceleration_mps2 == 2.0);
  if (std::string(kind) == "swerve" || std::string(kind) == "mecanum") {
  assert(desc.limits.max_lateral_mps > 0.0);
  }

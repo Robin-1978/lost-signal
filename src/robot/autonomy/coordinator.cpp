@@ -14,29 +14,36 @@ namespace {
 
 SafetyConfig safety_config_for(
  const platform::ChassisLimits& limits,
- const platform::NavigationSafetyPolicy& navigation) {
+ const platform::NavigationSafetyPolicy& navigation,
+ const platform::MotionDynamicsPolicy& motion) {
  SafetyConfig config;
  if (std::isfinite(limits.footprint_radius_m) &&
  limits.footprint_radius_m > 0.0) {
  config.footprint_radius_m = limits.footprint_radius_m;
  }
  config.static_margin_m = navigation.clearance_margin_m;
+ config.brake_decel_mps2 = motion.brake_deceleration_mps2;
+ config.command_reaction_time_s = motion.safety_reaction_time_s;
  return config;
 }
 
 ClearanceValidatorConfig validator_config_for(
  const platform::ChassisLimits& limits,
- const platform::NavigationSafetyPolicy& navigation) {
+ const platform::NavigationSafetyPolicy& navigation,
+ const platform::MotionDynamicsPolicy& motion) {
  ClearanceValidatorConfig config;
  config.footprint_radius_m = limits.footprint_radius_m;
  config.extra_margin_m = navigation.clearance_margin_m;
+ config.brake_decel_mps2 = motion.brake_deceleration_mps2;
  return config;
 }
 
 RouteConflictBehaviorConfig behavior_config_for(
- const platform::NavigationSafetyPolicy& navigation) {
+ const platform::NavigationSafetyPolicy& navigation,
+ const platform::MotionDynamicsPolicy& motion) {
  RouteConflictBehaviorConfig config;
  config.extra_clearance_m = navigation.clearance_margin_m;
+ config.brake_deceleration_mps2 = motion.brake_deceleration_mps2;
  return config;
 }
 
@@ -49,7 +56,8 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
  double wheel_base_m,
  GoalArrivalConfig arrival_config,
  std::string local_planner_kind,
- platform::NavigationSafetyPolicy navigation_policy)
+ platform::NavigationSafetyPolicy navigation_policy,
+ platform::MotionDynamicsPolicy motion_policy)
     : limits_(limits),
       grip_(grip_config),
  goal_arrival_(arrival_config),
@@ -58,16 +66,16 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
       mapper_(std::make_unique<RayClearingMapper>()),
  behavior_(std::make_unique<WaitOnIntrusionBehavior>(
- behavior_config_for(navigation_policy))),
+ behavior_config_for(navigation_policy, motion_policy))),
  global_planner_(make_global_planner(limits, wheel_base_m,
  navigation_policy)),
  local_planner_(make_local_planner(local_planner_kind,
- navigation_policy)),
+ navigation_policy, motion_policy)),
       validator_(std::make_unique<ClearanceValidator>(
- validator_config_for(limits, navigation_policy))),
+ validator_config_for(limits, navigation_policy, motion_policy))),
       controller_(std::make_unique<DirectController>()),
  safety_(std::make_unique<SafetyMonitor>(
- safety_config_for(limits, navigation_policy))) {
+ safety_config_for(limits, navigation_policy, motion_policy))) {
  const double decision_period_s =
  std::max(1e-9, static_cast<double>(decision_period_ns_) * 1e-9);
  const double tracking_margin_m =

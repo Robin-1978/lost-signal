@@ -53,6 +53,19 @@ struct NavigationSafetyPolicy {
  double soft_inflation_radius_m = kDefaultNavigationSoftInflationRadiusM;
 };
 
+// Declared closed-loop motion capability shared by every ROBOT algorithm
+// that projects reachability or stopping distance. These are conservative
+// deployable guarantees, not simulator measurements. A real driver and the
+// simulated plant must both be able to meet the configured envelope.
+struct MotionDynamicsPolicy {
+ double acceleration_mps2 = 2.0;
+ double brake_deceleration_mps2 = 2.0;
+ double lateral_acceleration_mps2 = 2.0;
+ double yaw_acceleration_radps2 = 8.0;
+ double actuator_response_delay_s = 0.1;
+ double safety_reaction_time_s = 0.2;
+};
+
 // Declared plant loadout for autonomy envelopes (rollover support/COM,
 // ride height, mass) — description from the machine file, never measured
 // truth. COM height folds the declared payload master-style (weighted
@@ -77,6 +90,7 @@ struct RobotDescription {
   std::vector<SensorMount> sensors;
  ChassisLimits limits;
  NavigationSafetyPolicy navigation;
+ MotionDynamicsPolicy motion;
   PlantGeometry plant;  // declared loadout for autonomy envelopes (COM,
                         // ride, support, mass) — description, never truth
 };

@@ -57,7 +57,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  double wheel_base_m = 0.56,
  GoalArrivalConfig arrival_config = {},
  std::string local_planner_kind = "dwa",
- platform::NavigationSafetyPolicy navigation_policy = {});
+ platform::NavigationSafetyPolicy navigation_policy = {},
+ platform::MotionDynamicsPolicy motion_policy = {});
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;

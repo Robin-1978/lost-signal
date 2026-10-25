@@ -17,6 +17,18 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.navigation.clearance_margin_m < 0.0) return false;
  if (!std::isfinite(desc.navigation.soft_inflation_radius_m) ||
  desc.navigation.soft_inflation_radius_m < 0.0) return false;
+ if (!std::isfinite(desc.motion.acceleration_mps2) ||
+ desc.motion.acceleration_mps2 <= 0.0) return false;
+ if (!std::isfinite(desc.motion.brake_deceleration_mps2) ||
+ desc.motion.brake_deceleration_mps2 <= 0.0) return false;
+ if (!std::isfinite(desc.motion.lateral_acceleration_mps2) ||
+ desc.motion.lateral_acceleration_mps2 <= 0.0) return false;
+ if (!std::isfinite(desc.motion.yaw_acceleration_radps2) ||
+ desc.motion.yaw_acceleration_radps2 <= 0.0) return false;
+ if (!std::isfinite(desc.motion.actuator_response_delay_s) ||
+ desc.motion.actuator_response_delay_s < 0.0) return false;
+ if (!std::isfinite(desc.motion.safety_reaction_time_s) ||
+ desc.motion.safety_reaction_time_s < 0.0) return false;
   if (desc.plant.track_width_m <= 0.0) return false;
   if (desc.plant.wheel_radius_m <= 0.0) return false;
   if (desc.plant.com_height_m <= 0.0) return false;
@@ -52,6 +64,12 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
   mix(std::to_string(desc.plant.total_mass_kg));
  mix(std::to_string(desc.navigation.clearance_margin_m));
  mix(std::to_string(desc.navigation.soft_inflation_radius_m));
+ mix(std::to_string(desc.motion.acceleration_mps2));
+ mix(std::to_string(desc.motion.brake_deceleration_mps2));
+ mix(std::to_string(desc.motion.lateral_acceleration_mps2));
+ mix(std::to_string(desc.motion.yaw_acceleration_radps2));
+ mix(std::to_string(desc.motion.actuator_response_delay_s));
+ mix(std::to_string(desc.motion.safety_reaction_time_s));
   return h;
 }
 

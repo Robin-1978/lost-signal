@@ -65,6 +65,7 @@ class ILocalPlanner {
 // closed with nullptr; the coordinator only owns and sequences the result.
 std::unique_ptr<ILocalPlanner> make_local_planner(
  const std::string& planner_kind,
- const platform::NavigationSafetyPolicy& navigation = {});
+ const platform::NavigationSafetyPolicy& navigation = {},
+ const platform::MotionDynamicsPolicy& motion = {});
 
 }  // namespace lost_signal::robot::autonomy
