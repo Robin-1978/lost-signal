@@ -16,6 +16,9 @@ class PlaybackController {
     double requested_rate = 1.0;
     double max_debt_s = 0.5;
     double frame_work_budget_ms = 12.0;
+ // Turbo may spend more time between input polls while remaining bounded.
+ // Physics dt, sensor cadence, and ROBOT cadence are unchanged.
+ double turbo_frame_work_budget_ms = 24.0;
     int max_steps_per_frame = 256;
     double statistics_window_s = 2.0;
   };

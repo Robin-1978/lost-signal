@@ -101,6 +101,20 @@ int main() {
   limited.end_frame();
   assert(limited.statistics().throttled);
 
+ // Turbo has its own bounded work allowance so it can spend less wall time
+ // rendering without making ordinary playback unresponsive.
+ PlaybackController::Config turbo_budget_config;
+ turbo_budget_config.frame_work_budget_ms = 2.0;
+ turbo_budget_config.turbo_frame_work_budget_ms = 5.0;
+ PlaybackController turbo_budget(turbo_budget_config);
+ turbo_budget.set_turbo(true);
+ turbo_budget.begin_frame(1.0 / 60.0);
+ assert(turbo_budget.step_due(0.0));
+ turbo_budget.on_step(1.0);
+ assert(turbo_budget.step_due(2.0));
+ turbo_budget.on_step(1.0);
+ assert(!turbo_budget.step_due(5.0));
+
   // Playback rate and turbo alter wall-time throughput only. Fixed-step
   // physics, sensor stamps, ROBOT decisions, truth, and score stay identical.
   const Result one_x = run_with_schedule(1.0, false);

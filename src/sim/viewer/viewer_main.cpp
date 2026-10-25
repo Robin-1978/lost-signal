@@ -60,6 +60,12 @@ using lost_signal::sim::viewer::SceneManifest;
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
 
+enum class RenderQuality { kFast, kHigh };
+
+const char* render_quality_name(RenderQuality quality) {
+ return quality == RenderQuality::kHigh ? "HIGH" : "FAST";
+}
+
 struct VisualAssets {
  struct EnvironmentModel {
  std::string asset_id;
@@ -2315,6 +2321,22 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  EndShaderMode();
  return true;
 }
+
+void draw_frame_3d_direct(const Frame& frame,
+ const lost_signal::sim::world::World& world, const Camera3D& camera,
+ const ParticleSystem& particles, bool show_lidar, bool show_estimate,
+ bool show_actor_routes, bool show_places, VisualAssets& assets,
+ const SceneManifest* scene,
+ const lost_signal::sim::viewer::LidarMount* lidar_mount) {
+ release_shadow_map(assets);
+ configure_scene_lighting(assets, scene, frame, camera);
+ BeginMode3D(camera);
+ if (IsShaderValid(assets.lighting)) BeginShaderMode(assets.lighting);
+ draw_frame_3d(frame, world, camera, particles, show_lidar, show_estimate,
+ show_actor_routes, show_places, &assets, scene, lidar_mount);
+ if (IsShaderValid(assets.lighting)) EndShaderMode();
+ EndMode3D();
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2328,6 +2350,7 @@ int main(int argc, char** argv) {
  experience_path;
  double initial_playback_rate = 1.0;
  bool initial_turbo = false;
+ RenderQuality render_quality = RenderQuality::kHigh;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
@@ -2337,6 +2360,15 @@ int main(int argc, char** argv) {
  if (a == "--scene" && i + 1 < argc) scene_path = argv[++i];
  if (a == "--experience" && i + 1 < argc) experience_path = argv[++i];
  if (a == "--turbo") initial_turbo = true;
+ if (a == "--quality" && i + 1 < argc) {
+ const std::string quality = argv[++i];
+ if (quality == "fast") render_quality = RenderQuality::kFast;
+ else if (quality == "high") render_quality = RenderQuality::kHigh;
+ else {
+ std::fprintf(stderr, "bad --quality: expected fast or high\n");
+ return 1;
+ }
+ }
  if (a == "--rate" && i + 1 < argc) {
  char* end = nullptr;
  const double parsed = std::strtod(argv[++i], &end);
@@ -2731,6 +2763,10 @@ int main(int argc, char** argv) {
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
     if (IsKeyPressed(KEY_K)) show_actor_routes = !show_actor_routes;
+ if (IsKeyPressed(KEY_Q)) {
+ render_quality = render_quality == RenderQuality::kHigh
+ ? RenderQuality::kFast : RenderQuality::kHigh;
+ }
     if (IsKeyPressed(KEY_F)) follow = !follow;
  if (IsKeyPressed(KEY_R)) {
  cam_st.yaw_deg = 35.0f;
@@ -2836,17 +2872,22 @@ int main(int argc, char** argv) {
  }
  const WalkaroundView walkaround = walkaround_view(
  preview, component_id, cam_st);
- configure_scene_lighting(visual_assets,
- scene_loaded ? &visual_scene : nullptr, preview, walkaround.camera);
- if (!draw_frame_3d_postprocessed(
+ const RenderQuality active_quality = playback.turbo()
+ ? RenderQuality::kFast : render_quality;
+ if (active_quality == RenderQuality::kHigh &&
+ !draw_frame_3d_postprocessed(
  preview, session->setup_world(), walkaround.camera,
  motion_particles, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
- BeginMode3D(walkaround.camera);
- draw_frame_3d(preview, session->setup_world(), walkaround.camera,
- motion_particles, false, false, false, false, &visual_assets,
+ draw_frame_3d_direct(
+ preview, session->setup_world(), walkaround.camera,
+ motion_particles, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
- EndMode3D();
+ } else if (active_quality == RenderQuality::kFast) {
+ draw_frame_3d_direct(
+ preview, session->setup_world(), walkaround.camera,
+ motion_particles, false, false, false, false, visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  const Vector2 marker = GetWorldToScreen(
  walkaround.focus, walkaround.camera);
@@ -2923,23 +2964,30 @@ int main(int argc, char** argv) {
  scene_loaded ? &visual_scene : nullptr) : RAYWHITE);
     if (view3d) {
       const Camera3D cam = camera_from_state(cam_st);
- configure_scene_lighting(visual_assets,
- scene_loaded ? &visual_scene : nullptr, frame, cam);
- if (!draw_frame_3d_postprocessed(
+ const RenderQuality active_quality = playback.turbo()
+ ? RenderQuality::kFast : render_quality;
+ if (active_quality == RenderQuality::kHigh &&
+ !draw_frame_3d_postprocessed(
  frame, session->setup_world(), cam, motion_particles,
  show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
- BeginMode3D(cam);
- draw_frame_3d(frame, session->setup_world(), cam, motion_particles,
- show_lidar, show_estimate, show_actor_routes, true, &visual_assets,
+ draw_frame_3d_direct(
+ frame, session->setup_world(), cam, motion_particles,
+ show_lidar, show_estimate, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
- EndMode3D();
+ } else if (active_quality == RenderQuality::kFast) {
+ draw_frame_3d_direct(
+ frame, session->setup_world(), cam, motion_particles,
+ show_lidar, show_estimate, show_actor_routes, true, visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       draw_frame_2d(frame, view, show_lidar, show_estimate);
     }
  const auto playback_stats = playback.statistics();
+ const RenderQuality active_quality = playback_stats.turbo
+ ? RenderQuality::kFast : render_quality;
  char speed[160];
  if (playback_stats.turbo) {
  std::snprintf(speed, sizeof(speed),
@@ -2956,11 +3004,12 @@ int main(int argc, char** argv) {
  }
  char hud[512];
  std::snprintf(hud, sizeof(hud),
- "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %s %dfps cam=%s %s",
+ "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %s %dfps cam=%s quality=%s %s",
  static_cast<unsigned long long>(frame.step), frame.body.x_m,
  frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
  static_cast<int>(reached.size()), session->objectives().total(), speed,
  GetFPS(), follow ? "FOLLOW" : "FREE",
+ render_quality_name(active_quality),
  paused ? "PAUSED"
  : session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")
@@ -2973,7 +3022,7 @@ int main(int argc, char** argv) {
                     edit_msg.c_str());
       DrawText(ebuf, 10, 32, 14, RED);
     }
-    DrawText("space pause  N step  L lidar  E estimate  K SIM routes  F follow  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
+    DrawText("space pause  N step  L lidar  E estimate  K SIM routes  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
              10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
@@ -2989,6 +3038,14 @@ int main(int argc, char** argv) {
       break;
     }
   }
+ const auto final_playback_stats = playback.statistics();
+ std::fprintf(stderr,
+ "viewer performance: requested=%s actual=%.2fx steps=%.0f/s tick_p99=%.2fms quality=%s\n",
+ final_playback_stats.turbo ? "turbo" : "rate",
+ final_playback_stats.actual_rtf, final_playback_stats.steps_per_s,
+ final_playback_stats.tick_p99_ms,
+ render_quality_name(final_playback_stats.turbo
+ ? RenderQuality::kFast : render_quality));
  unload_visual_assets(visual_assets);
  CloseWindow();
   return 0;

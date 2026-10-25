@@ -209,7 +209,12 @@ with Blender 5.2 using `tools/modeling/build_research_base_kit.py`, then run
 bounds before committing generated GLBs.
 The viewer advances in deterministic 20 ms simulation steps at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
-as fast as the per-frame work budget allows. Playback never changes physics,
-sensor stamps, or ROBOT control periods. The HUD reports requested rate,
-measured real-time factor, steps/s, sliding-window tick p99, and `LIMIT` when
-the rendering budget throttles simulation work.
+as fast as the bounded Turbo work budget allows. Use `--quality high|fast` or
+`Q` to choose the Viewer pipeline; Turbo selects Fast while active, then
+restores the chosen quality. Fast skips shadow/HDR passes but keeps physical
+link poses and simulation events. Playback never changes physics, sensor
+stamps, or ROBOT control periods. The HUD and exit summary report requested
+rate, measured real-time factor, steps/s, sliding-window tick p99, active
+quality, and `LIMIT` when the rendering budget throttles simulation work.
+For unattended parameter sweeps and CI, use `lost_signal_sim` directly so no
+graphics work competes with the fixed-step simulation.

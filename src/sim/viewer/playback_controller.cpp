@@ -21,6 +21,7 @@ PlaybackController::PlaybackController(Config config) : config_(config) {
       !positive_finite(config_.requested_rate) ||
       !positive_finite(config_.max_debt_s) ||
       !positive_finite(config_.frame_work_budget_ms) ||
+ !positive_finite(config_.turbo_frame_work_budget_ms) ||
       config_.max_steps_per_frame <= 0 ||
       !positive_finite(config_.statistics_window_s)) {
     throw std::invalid_argument("invalid playback controller configuration");
@@ -54,8 +55,10 @@ void PlaybackController::begin_frame(double wall_dt_s) {
 bool PlaybackController::step_due(double elapsed_work_ms) {
   const bool demand = turbo_ || debt_s_ + 1e-12 >= config_.step_s;
   if (!demand) return false;
-  if (frame_steps_ >= config_.max_steps_per_frame ||
-      elapsed_work_ms >= config_.frame_work_budget_ms) {
+ const double work_budget_ms = turbo_
+ ? config_.turbo_frame_work_budget_ms : config_.frame_work_budget_ms;
+ if (frame_steps_ >= config_.max_steps_per_frame ||
+ elapsed_work_ms >= work_budget_ms) {
     frame_throttled_ = true;
     return false;
   }
