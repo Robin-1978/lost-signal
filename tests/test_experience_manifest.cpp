@@ -27,6 +27,8 @@ int main() {
  assert(experience.objectives.size() == 1);
  assert(experience.objectives.front() == "glass_door");
  assert(experience.choices.size() == 3);
+ assert(experience.walkaround.size() == 4);
+ assert(experience.walkaround.front().component_id == "drive_wheel");
  int correct = 0;
  for (const auto& choice : experience.choices) {
  if (choice.correct) ++correct;
@@ -41,6 +43,14 @@ int main() {
  assert(!lost_signal::sim::viewer::load_experience_manifest(
  bad.string(), experience, &error));
  assert(!error.empty());
+
+ // Presentation manifests cannot silently bind two cards to the same
+ // physical component; ambiguous camera targets are rejected at load time.
+ write_text(bad,
+ R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"walkaround":[{"component_id":"wheel","title":"a","lesson":"a"},{"component_id":"wheel","title":"b","lesson":"b"}],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":false}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");
+ assert(!lost_signal::sim::viewer::load_experience_manifest(
+ bad.string(), experience, &error));
+ assert(error == "experience walkaround component ids must be unique");
  std::filesystem::remove(bad);
  return 0;
 }

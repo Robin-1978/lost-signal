@@ -12,6 +12,14 @@ struct ExperienceChoice {
  bool correct = false;
 };
 
+struct ExperienceWalkaroundStop {
+ // Presentation-only semantic selector. The Viewer resolves it to a
+ // prepared MuJoCo link pose; it is never forwarded to RobotApplication.
+ std::string component_id;
+ std::string title;
+ std::string lesson;
+};
+
 struct ExperienceManifest {
  std::string experience_id;
  std::string title;
@@ -22,6 +30,7 @@ struct ExperienceManifest {
  std::string sim_path;
  std::vector<std::string> objectives;
  std::vector<std::string> briefing;
+ std::vector<ExperienceWalkaroundStop> walkaround;
  std::string prediction_question;
  std::vector<ExperienceChoice> choices;
  std::string running_prompt;

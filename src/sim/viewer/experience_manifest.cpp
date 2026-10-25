@@ -77,6 +77,7 @@ bool load_experience_manifest(const std::string& path,
  ExperienceManifest& experience, std::string* error) {
  std::string local_error;
  std::string& out_error = error != nullptr ? *error : local_error;
+ out_error.clear();
  std::string text;
  if (!read_text(path, text, out_error)) return false;
  std::string parse_error;
@@ -152,6 +153,32 @@ bool load_experience_manifest(const std::string& path,
  if (correct_choices != 1) {
  out_error = "experience prediction must have exactly one correct choice";
  return false;
+ }
+ const Json* walkaround = root->find("walkaround");
+ if (walkaround != nullptr) {
+ if (!walkaround->is_array() || walkaround->as_array().size() < 2 ||
+ walkaround->as_array().size() > 8) {
+ out_error = "experience walkaround must contain two to eight stops";
+ return false;
+ }
+ std::set<std::string> component_ids;
+ for (const Json& node : walkaround->as_array()) {
+ if (!node.is_object()) {
+ out_error = "experience walkaround stop must be an object";
+ return false;
+ }
+ ExperienceWalkaroundStop stop;
+ if (!take_string(node, "component_id", stop.component_id, out_error) ||
+ !take_string(node, "title", stop.title, out_error) ||
+ !take_string(node, "lesson", stop.lesson, out_error) ||
+ !component_ids.insert(stop.component_id).second) {
+ if (out_error.empty()) {
+ out_error = "experience walkaround component ids must be unique";
+ }
+ return false;
+ }
+ parsed.walkaround.push_back(std::move(stop));
+ }
  }
  const std::filesystem::path manifest_root =
  std::filesystem::absolute(std::filesystem::path(path)).parent_path();

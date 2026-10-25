@@ -42,6 +42,7 @@
 
 namespace {
 using lost_signal::sim::viewer::Frame;
+using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
@@ -623,7 +624,8 @@ float draw_wrapped_text(const std::string& text, float x, float y,
 }
 
 void draw_experience_overlay(const ExperienceManifest& experience,
- ExperiencePhase phase, int selected_choice, bool objectives_done,
+ ExperiencePhase phase, int selected_choice, int walkaround_stop,
+ bool objectives_done,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
@@ -682,13 +684,34 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  DrawText("MISSION BRIEF / COMPONENT WALKAROUND",
  static_cast<int>(x + 34), static_cast<int>(y), 15, kAmber);
  y += 32.0f;
+ if (!experience.walkaround.empty()) {
+ const int count = static_cast<int>(experience.walkaround.size());
+ const int index = std::clamp(walkaround_stop, 0, count - 1);
+ const auto& stop = experience.walkaround[static_cast<std::size_t>(index)];
+ char progress[64];
+ std::snprintf(progress, sizeof(progress), "PHYSICAL COMPONENT %02d / %02d",
+ index + 1, count);
+ DrawText(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
+ kMuted);
+ y += 28.0f;
+ y = draw_wrapped_text(stop.title, x + 34, y, panel_width - 68, 20, 5,
+ kCyan) + 16.0f;
+ y = draw_wrapped_text(stop.lesson, x + 34, y, panel_width - 68, 17, 7,
+ kText) + 20.0f;
+ DrawText("POSE SOURCE", static_cast<int>(x + 34), static_cast<int>(y),
+ 13, kAmber);
+ y += 22.0f;
+ const std::string source = stop.component_id + " / MuJoCo body + joint";
+ draw_wrapped_text(source, x + 34, y, panel_width - 68, 14, 5, kMuted);
+ } else {
  for (const auto& line : experience.briefing) {
  DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 8), 4.0f,
  kCyan);
  y = draw_wrapped_text(line, x + 58, y, panel_width - 102, 16, 6,
  kText) + 7.0f;
  }
- DrawText("ENTER  COMMIT A PREDICTION BEFORE THE RUN",
+ }
+ DrawText("LEFT/RIGHT INSPECT ENTER CONTINUE",
  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 46),
  15, kAmber);
  return;
@@ -1019,6 +1042,72 @@ inline Camera3D camera_from_state(const CameraState& st) {
           .up = {0.0f, 1.0f, 0.0f},
           .fovy = 45.0f,
           .projection = CAMERA_PERSPECTIVE};
+}
+
+struct WalkaroundView {
+ Camera3D camera;
+ Vector3 focus;
+};
+
+Vector3 body_local_to_world(const FrameBody& body, const FrameLinkPose& local) {
+ const double cr = std::cos(body.roll_rad), sr = std::sin(body.roll_rad);
+ const double cp = std::cos(body.pitch_rad), sp = std::sin(body.pitch_rad);
+ const double cy = std::cos(body.yaw_rad), sy = std::sin(body.yaw_rad);
+ const double x = body.x_m + cy * cp * local.x_m +
+ (cy * sp * sr - sy * cr) * local.y_m +
+ (cy * sp * cr + sy * sr) * local.z_m;
+ const double y = body.y_m + sy * cp * local.x_m +
+ (sy * sp * sr + cy * cr) * local.y_m +
+ (sy * sp * cr - cy * sr) * local.z_m;
+ const double z = body.z_m - sp * local.x_m + cp * sr * local.y_m +
+ cp * cr * local.z_m;
+ return to_raylib(x, y, z);
+}
+
+WalkaroundView walkaround_view(const Frame& frame,
+ const std::string& component_id, CameraState state) {
+ double focus_x = frame.body.x_m;
+ double focus_y = frame.body.y_m;
+ double focus_z = frame.body.z_m + 0.08;
+ state.dist_m = 1.55f;
+ state.pitch_deg = 27.0f;
+ if (component_id == "drive_wheel" && !frame.body.wheels.empty() &&
+ frame.body.wheels.front().pose.valid) {
+ const Vector3 p = body_local_to_world(
+ frame.body, frame.body.wheels.front().pose);
+ focus_x = p.x;
+ focus_y = -p.z;
+ focus_z = p.y;
+ state.dist_m = 0.95f;
+ state.pitch_deg = 18.0f;
+ state.yaw_deg = 100.0f;
+ } else if (component_id == "caster" && !frame.body.casters.empty() &&
+ frame.body.casters.front().wheel_pose.valid) {
+ const Vector3 p = body_local_to_world(
+ frame.body, frame.body.casters.front().wheel_pose);
+ focus_x = p.x;
+ focus_y = -p.z;
+ focus_z = p.y;
+ state.dist_m = 0.82f;
+ state.pitch_deg = 16.0f;
+ state.yaw_deg = 20.0f;
+ } else if (component_id == "lidar") {
+ focus_x = frame.body.sens_x_m;
+ focus_y = frame.body.sens_y_m;
+ focus_z = frame.body.sens_z_m;
+ state.dist_m = 0.82f;
+ state.pitch_deg = 8.0f;
+ state.yaw_deg = 35.0f;
+ }
+ state.target_x = focus_x;
+ state.target_y = focus_y;
+ state.target_z = focus_z;
+ // Compose the highlighted part in the clear right-hand viewport.
+ const double yaw_rad = state.yaw_deg * DEG2RAD;
+ const double optical_offset_m = 0.22 * std::min(1.0f, state.dist_m);
+ state.target_x += optical_offset_m * std::sin(yaw_rad);
+ state.target_y -= optical_offset_m * std::cos(yaw_rad);
+ return {camera_from_state(state), to_raylib(focus_x, focus_y, focus_z)};
 }
 
 // Ground-plane pick for 3D edit mode: intersect the mouse ray with z_up=0.
@@ -1874,6 +1963,7 @@ int main(int argc, char** argv) {
  bool paused = experience_loaded;
  ExperiencePhase experience_phase = ExperiencePhase::kBriefing;
  int selected_experience_choice = -1;
+ int walkaround_stop = 0;
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
@@ -1991,6 +2081,15 @@ int main(int argc, char** argv) {
  if (experience_phase == ExperiencePhase::kBriefing &&
  IsKeyPressed(KEY_ENTER)) {
  experience_phase = ExperiencePhase::kPrediction;
+ } else if (experience_phase == ExperiencePhase::kBriefing &&
+ !experience.walkaround.empty()) {
+ const int count = static_cast<int>(experience.walkaround.size());
+ if (IsKeyPressed(KEY_RIGHT)) {
+ walkaround_stop = (walkaround_stop + 1) % count;
+ }
+ if (IsKeyPressed(KEY_LEFT)) {
+ walkaround_stop = (walkaround_stop + count - 1) % count;
+ }
  } else if (experience_phase == ExperiencePhase::kPrediction) {
  for (std::size_t i = 0; i < experience.choices.size(); ++i) {
  const int key = KEY_ONE + static_cast<int>(i);
@@ -2144,26 +2243,35 @@ int main(int argc, char** argv) {
  ClearBackground(view3d ? Color{168, 204, 228, 255}
  : Color{18, 31, 34, 255});
  if (view3d) {
- CameraState preview_camera_state = cam_st;
- preview_camera_state.dist_m = std::min(preview_camera_state.dist_m, 2.2f);
- preview_camera_state.target_z = 0.16;
- // Reserve the left side for the briefing panel while keeping the physical
- // assembly large enough to inspect. Offset the optical target along the
- // camera's screen-left ground axis; the robot then composes on the right.
- const double preview_yaw_rad = preview_camera_state.yaw_deg * DEG2RAD;
- preview_camera_state.target_x += 0.55 * std::sin(preview_yaw_rad);
- preview_camera_state.target_y -= 0.55 * std::cos(preview_yaw_rad);
- const Camera3D cam = camera_from_state(preview_camera_state);
- BeginMode3D(cam);
- draw_frame_3d(preview, session->setup_world(), cam, motion_particles,
+ std::string component_id = "chassis";
+ if (!experience.walkaround.empty()) {
+ const int index = std::clamp(walkaround_stop, 0,
+ static_cast<int>(experience.walkaround.size()) - 1);
+ component_id = experience.walkaround[static_cast<std::size_t>(index)]
+ .component_id;
+ }
+ const WalkaroundView walkaround = walkaround_view(
+ preview, component_id, cam_st);
+ BeginMode3D(walkaround.camera);
+ draw_frame_3d(preview, session->setup_world(), walkaround.camera,
+ motion_particles,
  false, false, false, false, &visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  EndMode3D();
+ const Vector2 marker = GetWorldToScreen(
+ walkaround.focus, walkaround.camera);
+ if (marker.x >= 0.0f && marker.x < GetScreenWidth() &&
+ marker.y >= 0.0f && marker.y < GetScreenHeight()) {
+ DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
+ 19.0f, Color{55, 218, 202, 230});
+ DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
+ 25.0f, Color{55, 218, 202, 110});
+ }
  } else {
  draw_frame_2d(preview, view, false, false);
  }
  draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, false, false, {});
+ selected_experience_choice, walkaround_stop, false, false, {});
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
  TakeScreenshot(shot_path.c_str());
@@ -2253,7 +2361,7 @@ int main(int argc, char** argv) {
  12, DARKGRAY);
  if (experience_loaded) {
  draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, session->objectives_done(),
+ selected_experience_choice, walkaround_stop, session->objectives_done(),
  session->objectives_passed(), session->score());
  }
     EndDrawing();

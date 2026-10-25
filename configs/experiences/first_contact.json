@@ -16,6 +16,12 @@
  "The emergency safety layer uses fresh observations and the robot's own braking model.",
  "Reach the marked stop pose before the glass door and remain stable."
  ],
+ "walkaround": [
+ {"component_id":"drive_wheel","title":"DRIVE WHEELS / TRACTION","lesson":"Each drive wheel has one rolling joint. Differential steering comes from left-right wheel speed, so these wheels never swivel like steering wheels."},
+ {"component_id":"caster","title":"PASSIVE CASTER / SUPPORT","lesson":"The caster carries load through two passive joints: a vertical swivel and a horizontal wheel roll. Neither joint is a drive command."},
+ {"component_id":"lidar","title":"LIDAR / TIMED RANGES","lesson":"The blue scanner reports ranges from this configured sensor frame. It measures surfaces; it does not reveal actor identities, scripts, or world truth."},
+ {"component_id":"chassis","title":"COMPUTE, SAFETY, AND CHASSIS","lesson":"The onboard robot turns timestamped measurements into estimates and commands. A separate fresh-observation safety layer may stop motion before higher-level planning reacts."}
+ ],
  "prediction": {
  "question": "What evidence may independently command the final safety stop?",
  "choices": [
