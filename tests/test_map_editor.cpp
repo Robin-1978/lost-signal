@@ -102,6 +102,8 @@ int main() {
         (std::filesystem::temp_directory_path() / "test_world_v2.json")
             .string();
     sim::eval::WorldFileContent content;
+ content.initial_pose = sim::world::InitialPosePrior{
+ 1.0, -2.0, 0.25, 0.12, 0.06};
     content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5}};
     content.places = {{"dock", 2.0, 0.0, 0.0}};
     content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
@@ -120,6 +122,9 @@ int main() {
     assert(rc.materials.size() == 2 && rc.zones.size() == 1 &&
            rc.patches.size() == 1 && rc.slabs.size() == 1 &&
            rc.environment.size() == 2);
+ assert(rc.initial_pose.has_value());
+ assert(rc.initial_pose->x_m == 1.0 && rc.initial_pose->y_m == -2.0);
+ assert(rc.initial_pose->position_sigma_m == 0.12);
     assert(rc.materials[0].material_id == "ice");
     assert(std::abs(rc.materials[0].friction_mu - 0.25) < 1e-12);
     assert(rc.zones[0].material_id == "ice");
@@ -152,6 +157,8 @@ int main() {
     assert(sim::eval::load_world_file(path2, rc2, &err));
     assert(rc2.boxes.size() == 2 && rc2.materials.size() == 2 &&
            rc2.zones.size() == 1 && rc2.patches.size() == 1);
+ assert(rc2.initial_pose.has_value() &&
+ rc2.initial_pose->heading_sigma_rad == 0.06);
     // v1 tag fails closed (no silent partial load across versions).
     {
       std::FILE* fp = std::fopen(path2.c_str(), "wb");

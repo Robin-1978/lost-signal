@@ -113,7 +113,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Deployment seeding: known start pose (dock, operator initialpose).
   // Snaps the estimator and marks the supervisor localized so the normal
   // cadence path takes over; every later correction is still gated.
-  void seed_pose(double x_m, double y_m, double yaw_rad);
+ void seed_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m = 0.10, double heading_sigma_rad = 0.05);
   // Startup mode passthrough (see supervisor::StartupMode): mapless
   // missions disable the global branch; SLAM still establishes the frame.
   void set_startup_mode(StartupMode mode) {

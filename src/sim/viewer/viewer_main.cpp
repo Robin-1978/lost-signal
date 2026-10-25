@@ -1406,6 +1406,13 @@ int main(int argc, char** argv) {
     session->setup_world().set_terrain_patches(std::move(content.patches));
     session->setup_world().set_support_slabs(std::move(content.slabs));
     session->setup_world().set_environment(std::move(content.environment));
+ session->setup_world().set_initial_pose_prior(content.initial_pose);
+ if (content.initial_pose.has_value()) {
+ const auto& prior = *content.initial_pose;
+ session->set_initial_pose(
+ prior.x_m, prior.y_m, prior.yaw_rad, prior.position_sigma_m,
+ prior.heading_sigma_rad);
+ }
     session->set_objectives(std::move(ids));
     // Survey covers the authored map (far-field goals need a route).
     session->fit_map_window_to_world();

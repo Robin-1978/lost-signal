@@ -401,6 +401,12 @@ int main(int argc, char** argv) {
  return 1;
  }
  sim::eval::apply_world_content(session->setup_world(), content);
+ if (content.initial_pose.has_value()) {
+ const auto& prior = *content.initial_pose;
+ session->set_initial_pose(
+ prior.x_m, prior.y_m, prior.yaw_rad, prior.position_sigma_m,
+ prior.heading_sigma_rad);
+ }
  // Survey covers the authored map (far-field goals need a route).
  session->fit_map_window_to_world();
  if (!opt.no_actors) {

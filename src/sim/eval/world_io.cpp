@@ -105,6 +105,34 @@ bool place_from_json(const Json& j, world::NamedPlace& p, std::string& err) {
          num_field(j, "yaw_rad", p.yaw_rad, err);
 }
 
+Json initial_pose_to_json(const world::InitialPosePrior& p) {
+ return Json::Obj({{"x_m", Json::Num(p.x_m)},
+ {"y_m", Json::Num(p.y_m)},
+ {"yaw_rad", Json::Num(p.yaw_rad)},
+ {"position_sigma_m", Json::Num(p.position_sigma_m)},
+ {"heading_sigma_rad", Json::Num(p.heading_sigma_rad)}});
+}
+
+bool initial_pose_from_json(const Json& j, world::InitialPosePrior& p,
+ std::string& err) {
+ if (!j.is_object()) {
+ err = "initial_pose not an object";
+ return false;
+ }
+ if (!num_field(j, "x_m", p.x_m, err) ||
+ !num_field(j, "y_m", p.y_m, err) ||
+ !num_field(j, "yaw_rad", p.yaw_rad, err) ||
+ !num_field(j, "position_sigma_m", p.position_sigma_m, err) ||
+ !num_field(j, "heading_sigma_rad", p.heading_sigma_rad, err)) {
+ return false;
+ }
+ if (!(p.position_sigma_m > 0.0) || !(p.heading_sigma_rad > 0.0)) {
+ err = "initial_pose uncertainty must be positive";
+ return false;
+ }
+ return true;
+}
+
 Json material_to_json(const world::MaterialEntry& m) {
   return Json::Obj({{"material_id", Json::Str(m.material_id)},
                     {"friction_mu", Json::Num(m.friction_mu)},
@@ -270,16 +298,22 @@ bool save_world_file(const std::string& path, const WorldFileContent& content,
   for (const auto& s : content.slabs) slab_arr.push_back(slab_to_json(s));
   for (const auto& k : content.environment)
     env_arr.push_back(environment_to_json(k));
-  const Json root =
-      Json::Obj({{"format", Json::Str(kWorldFileFormat)},
-                 {"boxes", Json::Arr(std::move(box_arr))},
-                 {"places", Json::Arr(std::move(place_arr))},
-                 {"materials", Json::Arr(std::move(mat_arr))},
-                 {"zones", Json::Arr(std::move(zone_arr))},
-                 {"terrain", Json::Arr(std::move(patch_arr))},
-                 {"slabs", Json::Arr(std::move(slab_arr))},
-                 {"environment", Json::Arr(std::move(env_arr))}});
-  if (!write_text(path, json_dump(root), error)) return false;
+ Json::Object root;
+ root.emplace_back("format", Json::Str(kWorldFileFormat));
+ if (content.initial_pose.has_value()) {
+ root.emplace_back(
+ "initial_pose", initial_pose_to_json(*content.initial_pose));
+ }
+ root.emplace_back("boxes", Json::Arr(std::move(box_arr)));
+ root.emplace_back("places", Json::Arr(std::move(place_arr)));
+ root.emplace_back("materials", Json::Arr(std::move(mat_arr)));
+ root.emplace_back("zones", Json::Arr(std::move(zone_arr)));
+ root.emplace_back("terrain", Json::Arr(std::move(patch_arr)));
+ root.emplace_back("slabs", Json::Arr(std::move(slab_arr)));
+ root.emplace_back("environment", Json::Arr(std::move(env_arr)));
+ if (!write_text(path, json_dump(Json::Obj(std::move(root))), error)) {
+ return false;
+ }
   err.clear();
   return true;
 }
@@ -320,6 +354,11 @@ bool load_world_file(const std::string& path, WorldFileContent& content,
     return false;
   }
   WorldFileContent out;
+ if (const Json* initial = root->find("initial_pose")) {
+ world::InitialPosePrior prior;
+ if (!initial_pose_from_json(*initial, prior, err)) return false;
+ out.initial_pose = prior;
+ }
   for (const auto& e : bj->as_array()) {
     world::StaticBox b;
     if (!box_from_json(e, b, err)) return false;

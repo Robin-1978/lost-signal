@@ -8,6 +8,7 @@
 // output) on any mismatch. ROBOT never parses files.
 
 #include <string>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -20,6 +21,7 @@ inline constexpr char kWorldFileFormat[] = "lost-signal-world/2";
 // Whole-file content aggregate: one canonical representation from disk to
 // World to engine/survey, so authored facts cannot diverge per consumer.
 struct WorldFileContent {
+ std::optional<world::InitialPosePrior> initial_pose;
   std::vector<world::StaticBox> boxes;
   std::vector<world::NamedPlace> places;
   std::vector<world::MaterialEntry> materials;
@@ -42,6 +44,7 @@ inline bool save_world_file(const std::string& path, const world::World& world,
   content.patches = world.terrain_patches();
   content.slabs = world.support_slabs();
   content.environment = world.environment();
+ content.initial_pose = world.initial_pose_prior();
   return save_world_file(path, content, error);
 }
 // Load into the output content; content untouched on failure. After a
@@ -59,6 +62,7 @@ inline void apply_world_content(world::World& world,
   world.set_terrain_patches(content.patches);
   world.set_support_slabs(content.slabs);
   world.set_environment(content.environment);
+ world.set_initial_pose_prior(content.initial_pose);
 }
 
 }  // namespace lost_signal::sim::eval

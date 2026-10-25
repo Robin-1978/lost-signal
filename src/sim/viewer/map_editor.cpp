@@ -27,6 +27,7 @@ void MapEditor::load_from(const world::World& world) {
   content_.patches = world.terrain_patches();
   content_.slabs = world.support_slabs();
   content_.environment = world.environment();
+ content_.initial_pose = world.initial_pose_prior();
   for (auto& b : content_.boxes) normalize(b);
   for (auto& p : content_.patches) {
     normalize_rect(p.x0, p.y0, p.x1, p.y1);
@@ -55,6 +56,7 @@ void MapEditor::apply(world::World& world) {
   world.set_terrain_patches(content_.patches);
   world.set_support_slabs(content_.slabs);
   world.set_environment(content_.environment);
+ world.set_initial_pose_prior(content_.initial_pose);
   dirty_ = false;
   message_ = "applied";
 }

@@ -67,6 +67,11 @@ class RobotApplication : public IRobot {
   void set_goal(const autonomy::RoutePoint& goal) override {
     coordinator_.set_goal(goal);
   }
+ void set_initial_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m, double heading_sigma_rad) override {
+ coordinator_.seed_pose(x_m, y_m, yaw_rad, position_sigma_m,
+ heading_sigma_rad);
+ }
   // Startup mode passthrough (mapless missions skip global retries).
   void set_startup_mode(autonomy::StartupMode mode) {
     coordinator_.set_startup_mode(mode);

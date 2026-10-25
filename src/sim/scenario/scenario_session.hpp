@@ -41,6 +41,14 @@ class ScenarioSession {
                   world::MotorParams motor);
 
   robot::iface::GoalHandle request_goal(const robot::iface::TaskRequest& req);
+ // Explicit map-frame prior supplied by an operator/dock/world file. The
+ // values cross the normal ROBOT API; ScenarioSession never derives them
+ // from WorldTruth.
+ void set_initial_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m, double heading_sigma_rad) {
+ app_.set_initial_pose(x_m, y_m, yaw_rad, position_sigma_m,
+ heading_sigma_rad);
+ }
   robot::iface::GoalStatus goal_status(robot::iface::GoalHandle h) const;
  robot::iface::GoalStatus current_goal() const { return app_.current_goal(); }
  robot::iface::MapSnapshot active_map() const { return app_.active_map(); }

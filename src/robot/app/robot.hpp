@@ -34,6 +34,10 @@ class IRobot {
   // planner and wakes the decision branch. Place-based tasking still enters
   // via request_goal; this is the deliberate operator path.
   virtual void set_goal(const autonomy::RoutePoint& goal) = 0;
+ // Operator/dock initial pose in the selected map frame. This is explicit
+ // deployment input with uncertainty, never inferred from simulator truth.
+ virtual void set_initial_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m, double heading_sigma_rad) = 0;
   // Async goal request: resolves place_id through the map provider, and —
   // only once the executive accepts — arms the coordinator route, returning
   // a handle immediately. Unknown ids fail closed with an invalid handle

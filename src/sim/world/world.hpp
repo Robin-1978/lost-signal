@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +76,18 @@ struct Actor {
 struct NamedPlace {
   std::string place_id;
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
+};
+
+// Authored operator/dock prior for the ROBOT map frame. This is deployment
+// configuration, not runtime physics truth: ScenarioSession may publish it
+// through the same initial-pose API used on a real robot. The physical plant
+// is never queried to fill or correct this value.
+struct InitialPosePrior {
+ double x_m = 0.0;
+ double y_m = 0.0;
+ double yaw_rad = 0.0;
+ double position_sigma_m = 0.10;
+ double heading_sigma_rad = 0.05;
 };
 
 // Ground material library entry (SIM-side physics truth, never ROBOT
@@ -299,6 +312,12 @@ class World {
     ++geometry_version_;
   }
   const std::vector<NamedPlace>& places() const { return places_; }
+ void set_initial_pose_prior(std::optional<InitialPosePrior> prior) {
+ initial_pose_prior_ = std::move(prior);
+ }
+ const std::optional<InitialPosePrior>& initial_pose_prior() const {
+ return initial_pose_prior_;
+ }
 
  private:
   WorldTruth truth_{};
@@ -320,6 +339,7 @@ class World {
   std::vector<EnvironmentKeyframe> environment_;
   std::vector<Actor> actors_;
   std::vector<NamedPlace> places_;
+ std::optional<InitialPosePrior> initial_pose_prior_;
   std::uint64_t geometry_version_ = 0;
 };
 

@@ -232,10 +232,18 @@ void AutonomyCoordinator::clear_goal() {
   replan_requested_ = false;
 }
 
-void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad) {
+void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m, double heading_sigma_rad) {
+ if (!std::isfinite(x_m) || !std::isfinite(y_m) ||
+ !std::isfinite(yaw_rad) || !(position_sigma_m > 0.0) ||
+ !std::isfinite(position_sigma_m) || !(heading_sigma_rad > 0.0) ||
+ !std::isfinite(heading_sigma_rad)) {
+ return;
+ }
   const core::MonotonicNs stamp =
       has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
-  estimator_->seed_pose(x_m, y_m, yaw_rad, 0.1, 0.05, stamp);
+ estimator_->seed_pose(x_m, y_m, yaw_rad, position_sigma_m,
+ heading_sigma_rad, stamp);
   localization_.mark_localized();
 }
 

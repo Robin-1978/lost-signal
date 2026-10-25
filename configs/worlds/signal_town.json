@@ -1,5 +1,12 @@
 {
  "format": "lost-signal-world/2",
+ "initial_pose": {
+ "x_m": 0.0,
+ "y_m": 0.0,
+ "yaw_rad": 0.0,
+ "position_sigma_m": 0.1,
+ "heading_sigma_rad": 0.05
+ },
  "boxes": [
   {
    "x0": 4.0,

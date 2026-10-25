@@ -24,6 +24,11 @@ class DifferentialRobot : public app::IRobot {
       const ::lost_signal::robot::autonomy::RoutePoint& goal) override {
     inner_->set_goal(goal);
   }
+ void set_initial_pose(double x_m, double y_m, double yaw_rad,
+ double position_sigma_m, double heading_sigma_rad) override {
+ inner_->set_initial_pose(x_m, y_m, yaw_rad, position_sigma_m,
+ heading_sigma_rad);
+ }
 
   iface::GoalHandle request_goal(const iface::TaskRequest& req) override {
     return inner_->request_goal(req);
