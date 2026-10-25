@@ -33,9 +33,11 @@ int main() {
  (root / "configs/worlds/research_base.scene.json").string(), assets,
  world.boxes, scene, &error));
  assert(scene.scene_id == "research_base");
- assert(scene.instances.size() == 31);
+ assert(scene.instances.size() == 35);
  assert(scene.visual_for_box("north_wall_01") != nullptr);
- assert(scene.visual_for_box("west_shelf") == nullptr);
+ assert(scene.visual_for_box("west_shelf") != nullptr);
+ assert(scene.visual_for_box("east_shelf") != nullptr);
+ assert(scene.visual_for_box("glass_door") != nullptr);
 
  const auto temporary = std::filesystem::temp_directory_path() /
  "lost_signal_bad_scene.json";

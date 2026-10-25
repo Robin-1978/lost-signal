@@ -179,6 +179,11 @@ When `<map>.scene.json` exists, the viewer loads it automatically (or accepts
 world file, while floor paint must declare `surface_only`; invalid, missing,
 or multiply bound collision proxies fail closed. This scene data remains on
 the SIM presentation side and cannot enter ROBOT observations.
+The research-base kit now includes collision-bound 11 m storage racks and a
+glass safety gate plus a surface-only charging pad. Regenerate those assets
+with Blender 5.2 using `tools/modeling/build_research_base_kit.py`, then run
+`tools/modeling/inspect_assets.py` to verify the complete inventory and exact
+bounds before committing generated GLBs.
 The viewer advances in deterministic 20 ms simulation steps at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
 as fast as the per-frame work budget allows. Playback never changes physics,

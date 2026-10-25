@@ -13,6 +13,10 @@
  "grid_spacing_m": 1.0
  },
  "instances": [
+ {"instance_id":"west_shelf_visual","asset_id":"environment.research_base.storage_rack_11m","collision_box_id":"west_shelf","position_m":[8.5,5.5,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"east_shelf_visual","asset_id":"environment.research_base.storage_rack_11m","collision_box_id":"east_shelf","position_m":[12.5,8.5,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"glass_door_visual","asset_id":"environment.research_base.glass_safety_gate","collision_box_id":"glass_door","position_m":[7.25,4.0,0.0],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"maintenance_bay_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[0.0,0.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
  {"instance_id":"north_wall_01_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"north_wall_01","position_m":[1.8,14.18,0.0],"scale":[1.0,1.0,0.86],"yaw_deg":0.0},
  {"instance_id":"north_wall_02_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"north_wall_02","position_m":[5.8,14.18,0.0],"scale":[1.0,1.0,1.18],"yaw_deg":0.0},
  {"instance_id":"north_wall_03_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"north_wall_03","position_m":[9.8,14.18,0.0],"scale":[1.0,1.0,0.98],"yaw_deg":0.0},
