@@ -10,6 +10,7 @@
 #include "robot/autonomy/decision/goal_arrival.hpp"
 #include "robot/autonomy/decision/autonomy_pipeline.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
+#include "robot/autonomy/diagnostics/trajectory_tracking.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -95,7 +96,13 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Decision cadence (SIM config / deployment tuning). Non-positive is
  // ignored so a bad config can never disable the control loop.
  void set_decision_period(core::MonotonicNs period_ns) {
- if (period_ns > 0) decision_period_ns_ = period_ns;
+ if (period_ns <= 0) return;
+ decision_period_ns_ = period_ns;
+ const double period_s = static_cast<double>(period_ns) * 1e-9;
+ trajectory_tracking_limits_.forward_speed_mps =
+ trajectory_tracking_limits_.position_m / period_s;
+ trajectory_tracking_limits_.yaw_rate_radps =
+ trajectory_tracking_limits_.heading_rad / period_s;
  }
 
  void set_goal(const RoutePoint& goal);
@@ -155,6 +162,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
     return evidence_.current() != nullptr ? *evidence_.current()
                                           : diagnostics::DecisionEvidence{};
   }
+ diagnostics::TrajectoryTrackingReport last_trajectory_tracking() const {
+ return trajectory_tracking_report_;
+ }
   core::MonotonicNs last_decision_ns() const { return last_decision_ns_; }
   LocalMap local_map() const;
 
@@ -221,6 +231,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   ControlledStopLatch latch_;
   bool last_published_stop_ = false;
   diagnostics::DecisionEvidenceSystem evidence_;
+ diagnostics::TrajectoryTrackingSystem trajectory_tracking_;
+ diagnostics::TrajectoryTrackingReport trajectory_tracking_report_;
+ diagnostics::TrajectoryTrackingLimits trajectory_tracking_limits_;
 };
 
 }  // namespace lost_signal::robot::autonomy

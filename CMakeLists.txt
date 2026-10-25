@@ -90,6 +90,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/planning/task/task_ordering.cpp
   src/robot/autonomy/control/stop_latch.cpp
   src/robot/autonomy/diagnostics/decision_evidence.cpp
+ src/robot/autonomy/diagnostics/trajectory_tracking.cpp
   src/robot/autonomy/diagnostics/vehicle_measurement.cpp
   src/robot/autonomy/safety/safety.cpp
 )
@@ -453,6 +454,12 @@ add_executable(test_motion_pipeline
 )
 target_link_libraries(test_motion_pipeline PRIVATE lost_signal_robot_autonomy)
 add_test(NAME motion_pipeline COMMAND test_motion_pipeline)
+
+add_executable(test_trajectory_tracking
+ tests/test_trajectory_tracking.cpp
+)
+target_link_libraries(test_trajectory_tracking PRIVATE lost_signal_robot_autonomy)
+add_test(NAME trajectory_tracking COMMAND test_trajectory_tracking)
 
 add_executable(test_prediction
  tests/test_prediction.cpp

@@ -6,6 +6,7 @@
 #include "robot/app/robot.hpp"
 #include "robot/autonomy/coordinator.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
+#include "robot/autonomy/diagnostics/trajectory_tracking.hpp"
 #include "robot/autonomy/diagnostics/vehicle_measurement.hpp"
 #include "robot/core/status.hpp"
 #include "robot/executive/executive.hpp"
@@ -135,6 +136,7 @@ class RobotApplication : public IRobot {
     autonomy::SafetyState safety = autonomy::SafetyState::kStopped;
     std::string safety_reason = "init";
     autonomy::diagnostics::DecisionEvidence evidence;
+ autonomy::diagnostics::TrajectoryTrackingReport trajectory_tracking;
     bool braking_active = false;
     double braking_distance_m = 0.0;
     std::string slip_quality = "Invalid";

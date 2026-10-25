@@ -68,6 +68,17 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       controller_(std::make_unique<DirectController>()),
  safety_(std::make_unique<SafetyMonitor>(
  safety_config_for(limits, navigation_policy))) {
+ const double decision_period_s =
+ std::max(1e-9, static_cast<double>(decision_period_ns_) * 1e-9);
+ const double tracking_margin_m =
+ std::max(0.0, navigation_policy.clearance_margin_m);
+ trajectory_tracking_limits_.position_m = tracking_margin_m;
+ trajectory_tracking_limits_.heading_rad = std::atan2(
+ tracking_margin_m, std::max(1e-9, limits_.footprint_radius_m));
+ trajectory_tracking_limits_.forward_speed_mps =
+ tracking_margin_m / decision_period_s;
+ trajectory_tracking_limits_.yaw_rate_radps =
+ trajectory_tracking_limits_.heading_rad / decision_period_s;
   // The traversal belief prices roughness for route choice for the life of
   // the coordinator (the model object is a member: rebinds never dangle).
   global_planner_->set_traversal(&traversal_);
@@ -123,6 +134,8 @@ core::Status AutonomyCoordinator::configure() {
   last_traverse_ns_ = core::kInvalidTime;
   lidar_mount_z_m_ = 0.35;
   evidence_.reset();
+ trajectory_tracking_.reset();
+ trajectory_tracking_report_ = {};
   state_ = lifecycle::ModuleState::kInactive;
   return core::Status::Ok();
 }
@@ -173,6 +186,8 @@ core::Status AutonomyCoordinator::cleanup() {
   last_traverse_ns_ = core::kInvalidTime;
   lidar_mount_z_m_ = 0.35;
   evidence_.reset();
+ trajectory_tracking_.reset();
+ trajectory_tracking_report_ = {};
   state_ = lifecycle::ModuleState::kUnconfigured;
   return core::Status::Ok();
 }
@@ -331,6 +346,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   // the per-tick SE(2) correction delta (identity when nothing corrected).
   // Skipped until the estimate is valid.
   const EstimatedState post = estimator_->estimate();
+ trajectory_tracking_report_ = trajectory_tracking_.observe(post);
   if (post.valid) {
     const EstimatedState& odom = pre.valid ? pre : post;
     tf_.set_transform(
@@ -467,6 +483,8 @@ iface::MotionCommand AutonomyCoordinator::update(
   evidence.target_yaw_rate_radps = final_cmd.yaw_rate_radps;
   evidence.action_code = final_cmd.is_safe_stop() ? "stop" : "drive";
   evidence_.publish(std::move(evidence), now_ns * 1e-9);
+ trajectory_tracking_.accept(
+ final_cmd, estimator_->estimate(), trajectory_tracking_limits_);
   return final_cmd;
 }
 
