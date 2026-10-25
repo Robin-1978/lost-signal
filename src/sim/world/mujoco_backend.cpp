@@ -122,59 +122,6 @@ void MujocoBackend::read_back() {
  out.qz /= qn;
  out.valid = true;
  };
- const auto point_velocity = [&](int body_id, const mjtNum* point,
- double* velocity) {
- velocity[0] = velocity[1] = velocity[2] = 0.0;
- if (body_id <= 0 || body_id >= model->nbody) return;
- mjtNum spatial[6] = {};
- mj_objectVelocity(model, data, mjOBJ_BODY, body_id, spatial, 0);
- const mjtNum* center = data->xpos + 3 * body_id;
- const double rx = point[0] - center[0];
- const double ry = point[1] - center[1];
- const double rz = point[2] - center[2];
- velocity[0] = spatial[3] + spatial[1] * rz - spatial[2] * ry;
- velocity[1] = spatial[4] + spatial[2] * rx - spatial[0] * rz;
- velocity[2] = spatial[5] + spatial[0] * ry - spatial[1] * rx;
- };
- const auto read_contact = [&](int geom_id, bool& valid, double& x,
- double& y, double& z, double& slip_mps, double& normal_N) {
- valid = false;
- x = y = z = slip_mps = normal_N = 0.0;
- double weight_sum = 0.0;
- for (int ci = 0; ci < data->ncon; ++ci) {
- const mjContact& contact = data->contact[ci];
- if (contact.geom1 != geom_id && contact.geom2 != geom_id) continue;
- const int body1 = model->geom_bodyid[contact.geom1];
- const int body2 = model->geom_bodyid[contact.geom2];
- double velocity1[3], velocity2[3];
- point_velocity(body1, contact.pos, velocity1);
- point_velocity(body2, contact.pos, velocity2);
- const double rvx = velocity1[0] - velocity2[0];
- const double rvy = velocity1[1] - velocity2[1];
- const double rvz = velocity1[2] - velocity2[2];
- const double normal_v = rvx * contact.frame[0] +
- rvy * contact.frame[1] + rvz * contact.frame[2];
- const double tx = rvx - normal_v * contact.frame[0];
- const double ty = rvy - normal_v * contact.frame[1];
- const double tz = rvz - normal_v * contact.frame[2];
- mjtNum force[6] = {};
- mj_contactForce(model, data, ci, force);
- const double contact_normal_N = std::max(0.0, static_cast<double>(force[0]));
- const double weight = std::max(1e-9, contact_normal_N);
- x += weight * contact.pos[0];
- y += weight * contact.pos[1];
- z += weight * contact.pos[2];
- slip_mps += weight * std::sqrt(tx * tx + ty * ty + tz * tz);
- normal_N += contact_normal_N;
- weight_sum += weight;
- }
- if (weight_sum <= 0.0) return;
- x /= weight_sum;
- y /= weight_sum;
- z /= weight_sum;
- slip_mps /= weight_sum;
- valid = true;
- };
   for (int d = 0; d < drive_count_; ++d) {
     const int dof = drive_dof_[d];
     if (dof < 0) continue;
@@ -229,15 +176,135 @@ void MujocoBackend::read_back() {
  read_relative_body_pose(support_fork_body_[i], support_fork_pose_[i]);
  read_relative_body_pose(support_wheel_body_[i], support_wheel_pose_[i]);
  }
+ read_contacts();
+}
+
+void MujocoBackend::read_contacts() {
+ if (!valid()) return;
+ mjModel* model = impl_->model;
+ mjData* data = impl_->data;
+ const auto point_velocity = [&](int body_id, const mjtNum* point,
+ double* velocity) {
+ velocity[0] = velocity[1] = velocity[2] = 0.0;
+ if (body_id <= 0 || body_id >= model->nbody) return;
+ mjtNum spatial[6] = {};
+ mj_objectVelocity(model, data, mjOBJ_BODY, body_id, spatial, 0);
+ const mjtNum* center = data->xpos + 3 * body_id;
+ const double rx = point[0] - center[0];
+ const double ry = point[1] - center[1];
+ const double rz = point[2] - center[2];
+ velocity[0] = spatial[3] + spatial[1] * rz - spatial[2] * ry;
+ velocity[1] = spatial[4] + spatial[2] * rx - spatial[0] * rz;
+ velocity[2] = spatial[5] + spatial[0] * ry - spatial[1] * rx;
+ };
+ const auto read_contact = [&](int geom_id, int wheel_body_id,
+ bool& valid, double& x, double& y, double& z, double& slip_mps,
+ double& longitudinal_slip_mps, double& lateral_slip_mps,
+ double& normal_N, double& friction_utilization) {
+ valid = false;
+ x = y = z = slip_mps = longitudinal_slip_mps =
+ lateral_slip_mps = normal_N = friction_utilization = 0.0;
+ if (geom_id < 0 || wheel_body_id <= 0 || wheel_body_id >= model->nbody) {
+ return;
+ }
+ double weight_sum = 0.0;
+ for (int ci = 0; ci < data->ncon; ++ci) {
+ const mjContact& contact = data->contact[ci];
+ if (contact.geom1 != geom_id && contact.geom2 != geom_id) continue;
+ const int body1 = model->geom_bodyid[contact.geom1];
+ const int body2 = model->geom_bodyid[contact.geom2];
+ double velocity1[3], velocity2[3];
+ point_velocity(body1, contact.pos, velocity1);
+ point_velocity(body2, contact.pos, velocity2);
+ const bool tire_is_first = contact.geom1 == geom_id;
+ const double rvx = tire_is_first
+ ? velocity1[0] - velocity2[0]
+ : velocity2[0] - velocity1[0];
+ const double rvy = tire_is_first
+ ? velocity1[1] - velocity2[1]
+ : velocity2[1] - velocity1[1];
+ const double rvz = tire_is_first
+ ? velocity1[2] - velocity2[2]
+ : velocity2[2] - velocity1[2];
+ double nx = contact.frame[0];
+ double ny = contact.frame[1];
+ double nz = contact.frame[2];
+ if (nz < 0.0) {
+ nx = -nx;
+ ny = -ny;
+ nz = -nz;
+ }
+ const double normal_v = rvx * nx + rvy * ny + rvz * nz;
+ const double tx = rvx - normal_v * nx;
+ const double ty = rvy - normal_v * ny;
+ const double tz = rvz - normal_v * nz;
+ const mjtNum* wheel_matrix = data->xmat + 9 * wheel_body_id;
+ const double axle_x = wheel_matrix[1];
+ const double axle_y = wheel_matrix[4];
+ const double axle_z = wheel_matrix[7];
+ double forward_x = axle_y * nz - axle_z * ny;
+ double forward_y = axle_z * nx - axle_x * nz;
+ double forward_z = axle_x * ny - axle_y * nx;
+ const double forward_norm = std::sqrt(
+ forward_x * forward_x + forward_y * forward_y +
+ forward_z * forward_z);
+ if (forward_norm > 1e-12) {
+ forward_x /= forward_norm;
+ forward_y /= forward_norm;
+ forward_z /= forward_norm;
+ }
+ const double side_x = ny * forward_z - nz * forward_y;
+ const double side_y = nz * forward_x - nx * forward_z;
+ const double side_z = nx * forward_y - ny * forward_x;
+ mjtNum force[6] = {};
+ mj_contactForce(model, data, ci, force);
+ const double contact_normal_N =
+ std::max(0.0, static_cast<double>(force[0]));
+ const double weight = std::max(1e-9, contact_normal_N);
+ x += weight * contact.pos[0];
+ y += weight * contact.pos[1];
+ z += weight * contact.pos[2];
+ slip_mps += weight * std::sqrt(tx * tx + ty * ty + tz * tz);
+ longitudinal_slip_mps += weight *
+ (tx * forward_x + ty * forward_y + tz * forward_z);
+ lateral_slip_mps += weight *
+ (tx * side_x + ty * side_y + tz * side_z);
+ normal_N += contact_normal_N;
+ if (contact_normal_N > 1e-9 && contact.dim >= 3) {
+ const double mu1 = std::max(1e-9, contact.friction[0]);
+ const double mu2 = std::max(1e-9, contact.friction[1]);
+ const double scaled1 = std::abs(static_cast<double>(force[1])) / mu1;
+ const double scaled2 = std::abs(static_cast<double>(force[2])) / mu2;
+ const double demand = model->opt.cone == mjCONE_ELLIPTIC
+ ? std::hypot(scaled1, scaled2)
+ : scaled1 + scaled2;
+ friction_utilization = std::max(
+ friction_utilization, demand / contact_normal_N);
+ }
+ weight_sum += weight;
+ }
+ if (weight_sum <= 0.0) return;
+ x /= weight_sum;
+ y /= weight_sum;
+ z /= weight_sum;
+ slip_mps /= weight_sum;
+ longitudinal_slip_mps /= weight_sum;
+ lateral_slip_mps /= weight_sum;
+ valid = true;
+ };
  for (int d = 0; d < 4; ++d) {
- read_contact(tire_geom_[d], drive_contact_valid_[d],
+ read_contact(tire_geom_[d], drive_body_[d], drive_contact_valid_[d],
  drive_contact_x_[d], drive_contact_y_[d], drive_contact_z_[d],
- drive_contact_slip_mps_[d], drive_contact_normal_N_[d]);
+ drive_contact_slip_mps_[d], drive_contact_longitudinal_slip_mps_[d],
+ drive_contact_lateral_slip_mps_[d], drive_contact_normal_N_[d],
+ drive_contact_friction_utilization_[d]);
  }
  for (int j = 0; j < 2; ++j) {
- read_contact(idler_geom_[j], idler_contact_valid_[j],
+ read_contact(idler_geom_[j], idler_body_[j], idler_contact_valid_[j],
  idler_contact_x_[j], idler_contact_y_[j], idler_contact_z_[j],
- idler_contact_slip_mps_[j], idler_contact_normal_N_[j]);
+ idler_contact_slip_mps_[j], idler_contact_longitudinal_slip_mps_[j],
+ idler_contact_lateral_slip_mps_[j], idler_contact_normal_N_[j],
+ idler_contact_friction_utilization_[j]);
  }
 }
 

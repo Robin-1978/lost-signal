@@ -97,6 +97,12 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       w.contact_normal_force_N = table[i].contact_normal_force_N;
       w.slip_speed_mps = table[i].contact_valid
         ? table[i].contact_slip_speed_mps : kinematic_slip;
+ w.longitudinal_slip_mps = table[i].contact_valid
+ ? table[i].contact_longitudinal_slip_mps : longitudinal_slip;
+ w.lateral_slip_mps = table[i].contact_valid
+ ? table[i].contact_lateral_slip_mps : lateral_slip;
+ w.friction_utilization = table[i].contact_valid
+ ? table[i].contact_friction_utilization : 0.0;
       const double body_c = std::cos(t.body_yaw_rad);
       const double body_s = std::sin(t.body_yaw_rad);
       const double contact_x = w.contact_valid ? w.contact_x_m

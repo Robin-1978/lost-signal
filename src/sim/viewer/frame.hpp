@@ -27,6 +27,9 @@ struct FrameWheel {
   // is a startup fallback. Neither value is exposed to ROBOT.
   double contact_speed_mps = 0.0;
   double slip_speed_mps = 0.0;
+ double longitudinal_slip_mps = 0.0;
+ double lateral_slip_mps = 0.0;
+ double friction_utilization = 0.0;
   std::string contact_material_id;
   double x_m = 0.0, y_m = 0.0;  // module position in the base frame
   double steer_rad = 0.0;       // module yaw (fixed wheels read 0)

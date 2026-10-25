@@ -51,7 +51,12 @@ struct WheelViz {
  bool contact_valid = false;
  double contact_x_m = 0.0, contact_y_m = 0.0, contact_z_m = 0.0;
  double contact_slip_speed_mps = 0.0;
+ double contact_longitudinal_slip_mps = 0.0;
+ double contact_lateral_slip_mps = 0.0;
  double contact_normal_force_N = 0.0;
+ // Tangential contact force divided by the active MuJoCo friction-cone
+ // capacity. One means the contact is saturated. SIM truth only.
+ double contact_friction_utilization = 0.0;
  LinkPoseViz pose;
 };
 
@@ -155,7 +160,10 @@ class MujocoBackend {
  w.contact_y_m = drive_contact_y_[d];
  w.contact_z_m = drive_contact_z_[d];
  w.contact_slip_speed_mps = drive_contact_slip_mps_[d];
+ w.contact_longitudinal_slip_mps = drive_contact_longitudinal_slip_mps_[d];
+ w.contact_lateral_slip_mps = drive_contact_lateral_slip_mps_[d];
  w.contact_normal_force_N = drive_contact_normal_N_[d];
+ w.contact_friction_utilization = drive_contact_friction_utilization_[d];
  w.pose = drive_pose_[d];
       out[n++] = w;
     }
@@ -172,7 +180,10 @@ class MujocoBackend {
  w.contact_y_m = idler_contact_y_[j];
  w.contact_z_m = idler_contact_z_[j];
  w.contact_slip_speed_mps = idler_contact_slip_mps_[j];
+ w.contact_longitudinal_slip_mps = idler_contact_longitudinal_slip_mps_[j];
+ w.contact_lateral_slip_mps = idler_contact_lateral_slip_mps_[j];
  w.contact_normal_force_N = idler_contact_normal_N_[j];
+ w.contact_friction_utilization = idler_contact_friction_utilization_[j];
  w.pose = idler_pose_[j];
       out[n++] = w;
     }
@@ -215,6 +226,7 @@ class MujocoBackend {
 
  private:
   void read_back();
+ void read_contacts();
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
@@ -244,7 +256,10 @@ class MujocoBackend {
  double idler_contact_y_[2] = {0.0, 0.0};
  double idler_contact_z_[2] = {0.0, 0.0};
  double idler_contact_slip_mps_[2] = {0.0, 0.0};
+ double idler_contact_longitudinal_slip_mps_[2] = {0.0, 0.0};
+ double idler_contact_lateral_slip_mps_[2] = {0.0, 0.0};
  double idler_contact_normal_N_[2] = {0.0, 0.0};
+ double idler_contact_friction_utilization_[2] = {0.0, 0.0};
   int idler_dof_[2] = {-1, -1};
  int idler_body_[2] = {-1, -1};
  LinkPoseViz idler_pose_[2];
@@ -278,7 +293,8 @@ class MujocoBackend {
   std::vector<int> zone_geom_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).
   double mu_tire_base_ = 0.7;
-  // Slip confirmation hysteresis: consecutive over-traction steps.
+ // Slip confirmation hysteresis: consecutive outer steps whose resolved
+ // contact saturation persists for the contact response horizon.
   int slip_count_[4] = {0, 0, 0, 0};
   // Fail-closed refuse reporting: loud once per bad authoring, quiet after.
   bool refuse_reported_ = false;
@@ -304,7 +320,10 @@ class MujocoBackend {
  double drive_contact_y_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_z_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_longitudinal_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_lateral_slip_mps_[4] = {0.0, 0.0, 0.0, 0.0};
  double drive_contact_normal_N_[4] = {0.0, 0.0, 0.0, 0.0};
+ double drive_contact_friction_utilization_[4] = {0.0, 0.0, 0.0, 0.0};
   std::array<double, 4> steer_angle_ = {};
   std::array<double, 4> steer_vel_ = {};
 };

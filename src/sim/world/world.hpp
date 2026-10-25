@@ -34,9 +34,10 @@ struct WorldTruth {
   std::array<double, 4> drive_radps = {};  // mechanical rad/s
   std::array<double, 4> drive_angle_rad = {};  // continuous joint angle
   std::array<double, 4> drive_duty = {};
-  // Per-wheel traction saturation flag (engine truth, offline only):
-  // motor force exceeded mu * load. Reported, never clamped (main's duty
-  // path is pure motor curve; clamping lives on its PID path, not here).
+ // Per-wheel sustained traction-saturation flag (engine truth, offline
+ // only): derived from resolved contact forces, each contact's live normal
+ // load and friction cone over its solver response time. Reported, never
+ // used to clamp the duty path or published to ROBOT.
   std::array<bool, 4> drive_slipping = {};
   std::array<double, 4> steer_rad = {};
   std::array<double, 4> steer_duty = {};
@@ -179,8 +180,9 @@ struct MotorParams {
   // Steering servo stall torque (velocity-servo model, same form as main's
   // Ackermann steering_torque). DriveProfile default mirrors main.
   double steer_stall_torque_Nm = 8.0;
-  // Tire-road sliding friction for the engine contact pair and the slip
-  // flag threshold (mu * load per wheel). Mirrors main's GroundContact.
+ // Tire-road sliding friction for the engine contact pair. Offline slip
+ // labels read the resolved friction cone; this value is not a second
+ // analytical threshold.
   double tire_friction_mu = 0.7;
   // Skid-steer yaw scrub torque (tracked): Coulomb + viscous, opposing yaw.
   // Zero for wheeled chassis (differential pivots freely) — today's

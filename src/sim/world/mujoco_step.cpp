@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -30,8 +31,7 @@ namespace {
 // higher MuJoCo contact priority, so the resolved coefficient is the
 // physical series limit min(tire, ground x environment) on every surface,
 // including a height field. Material zones therefore remain properties,
-// never raised coplanar collision slabs. Slip thresholds use the same
-// tire_target the solver uses.
+// never raised coplanar collision slabs.
 struct ResolvedContactMaterial {
  double tire_mu = 0.0;
  double rolling_arm_m = 0.0;
@@ -90,8 +90,6 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   // (live model-array writes, no rebuild), tire sides follow the local
   // zone at each wheel. Stale (20 ms) body pose is fine — zones are meters.
   const double cy = std::cos(body_yaw_), sy = std::sin(body_yaw_);
-  double tire_target[4] = {mu_tire_base_, mu_tire_base_, mu_tire_base_,
-                           mu_tire_base_};
   for (int d = 0; d < drive_count_ && d < 4; ++d) {
     const double wx =
         body_x_ + drive_mod_x_[d] * cy - drive_mod_y_[d] * sy;
@@ -100,7 +98,6 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  const auto contact = resolve_wheel_contact(
  mu_tire_base_, motor.rolling_resist, zones, materials, environment,
  sim_time_s, wx, wy);
- tire_target[d] = contact.tire_mu;
  apply_contact_material(tire_geom_[d], contact);
   }
   // Ackermann front idlers are unpowered rolling contacts: they resolve
@@ -161,17 +158,6 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   const double n_sub = std::round(dt_s / 0.001);
   const int n = std::max(1, std::min(static_cast<int>(n_sub), 1000));
   const double step_dt = dt_s / n;
-  // Traction load rides the TOTAL mass (chassis + declared payload),
-  // master-style: heavier plants grip more and demand more, like the
-  // engine (payload 0 today: bit-identical).
-  const double load_N = (std::max(0.0, motor.vehicle_mass_kg) +
-                         std::max(0.0, motor.payload_mass_kg)) *
-                        g / std::max(1, drive_count_);
-  // Traction evidence, main's motor_drive flag: the applied force
-  // past the local pair capacity reports slipping. Reported only — the
-  // duty path never clamps (verbatim main). Capacity is the engine max()
-  // rule over the tire/ground sides resolved above.
-  //
   // Brake lag state advances at the outer 20 ms cadence (same as main's
   // per-tick plant step); capacity resolves per substep below.
   double brake_capacity_Nm[4] = {0.0, 0.0, 0.0, 0.0};
@@ -198,7 +184,15 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   // ~0 fore-aft). Explicit roller bodies are M3 work.
   constexpr double kRollerCos = 0.7071067811865476;
   const bool is_mecanum = (drive_count_ == 4 && steer_count_ == 0);
-  double motor_N_last[4] = {0.0, 0.0, 0.0, 0.0};
+ const double utilization_threshold = 1.0 - std::sqrt(std::clamp(
+ model->opt.tolerance, 1e-12, 1e-2));
+ struct ContactWindow {
+ bool valid = false;
+ double peak_normal = 0.0;
+ double peak_utilization = 0.0;
+ double saturated_time_s = 0.0;
+ double confirmation_time_s = 0.0;
+ } contact_window[4];
   for (int s = 0; s < n; ++s) {
     model->opt.timestep = step_dt;
     mj_step1(model, data);
@@ -212,7 +206,6 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
                                               motor.stall_force_N,
                                               motor.free_speed_mps);
       data->qfrc_applied[dof] = motor_N * r;
-      motor_N_last[d] = motor_N;
       if (is_mecanum) {
         // Roller signs follow the mecanum map rows (fore, left, yaw):
         // Fx = F0+F1+F2+F3, Fy = -F0+F1+F2-F3,
@@ -278,24 +271,77 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
       }
     }
     mj_step2(model, data);
-  }
-  // Traction evidence, main's motor_drive flag: the settled (last-substep)
-  // applied force past the local pair capacity reports slipping. Reported
-  // only — the duty path never clamps (verbatim main). Confirmed over two
-  // consecutive steps so one transient step cannot latch the label.
-  for (int d = 0; d < drive_count_ && d < 4; ++d) {
- const double traction_N = tire_target[d] * load_N;
-    if (std::abs(motor_N_last[d]) > traction_N) {
-      slip_count_[d] = std::min(slip_count_[d] + 1, 3);
-    } else {
-      slip_count_[d] = 0;
-    }
-    drive_slipping_[static_cast<std::size_t>(d)] = slip_count_[d] >= 2;
+ // Contacts can make and break inside the public 20 ms plant step. Inspect
+ // every resolved 1 ms force solve so a sliding wheel is not relabelled
+ // merely because the final substep happens to be unloaded. This tight loop
+ // reads only contact forces; full velocity/pose telemetry is sampled once
+ // below, keeping accelerated headless runs cheap.
+ for (int d = 0; d < drive_count_ && d < 4; ++d) {
+ const int geom_id = tire_geom_[d];
+ if (geom_id < 0) continue;
+ bool saturated_this_substep = false;
+ double response_time_s = step_dt;
+ for (int ci = 0; ci < data->ncon; ++ci) {
+ const mjContact& contact = data->contact[ci];
+ if (contact.geom1 != geom_id && contact.geom2 != geom_id) continue;
+ mjtNum force[6] = {};
+ mj_contactForce(model, data, ci, force);
+ const double normal = std::max(0.0, static_cast<double>(force[0]));
+ if (!(normal > 0.0)) continue;
+ ContactWindow& out = contact_window[d];
+ out.valid = true;
+ out.peak_normal = std::max(out.peak_normal, normal);
+ if (contact.dim >= 3) {
+ const double mu1 = std::max(1e-9, contact.friction[0]);
+ const double mu2 = std::max(1e-9, contact.friction[1]);
+ const double scaled1 = std::abs(static_cast<double>(force[1])) / mu1;
+ const double scaled2 = std::abs(static_cast<double>(force[2])) / mu2;
+ const double demand = model->opt.cone == mjCONE_ELLIPTIC
+ ? std::hypot(scaled1, scaled2)
+ : scaled1 + scaled2;
+ const double utilization = demand / normal;
+ out.peak_utilization = std::max(out.peak_utilization, utilization);
+ if (utilization >= utilization_threshold) {
+ saturated_this_substep = true;
+ // Positive solref[0] is MuJoCo's contact time constant. A boundary touch
+ // shorter than one contact response is solver settling, not sustained
+ // traction loss. Direct-format (negative) solref has no time constant,
+ // so the public plant step is the confirmation horizon.
+ const double contact_response_s = contact.solref[0] > 0.0
+ ? static_cast<double>(contact.solref[0])
+ : dt_s;
+ response_time_s = std::max(response_time_s, contact_response_s);
+ }
+ }
+ if (saturated_this_substep) {
+ ContactWindow& out = contact_window[d];
+ out.saturated_time_s += step_dt;
+ out.confirmation_time_s = std::max(
+ out.confirmation_time_s, std::min(dt_s, response_time_s));
+ }
+ }
+ }
   }
   model->opt.timestep = 0.001;
   for (int i = 0; i < model->nv; ++i) data->qfrc_applied[i] = 0.0;
   mj_forward(model, data);
   read_back();
+ // Traction saturation is read from the resolved MuJoCo contact force and
+ // that contact's actual normal load/friction cone. This captures load
+ // transfer, split-mu and loss of contact; declared total mass divided by
+ // wheel count cannot. The cone boundary comes from the active solver
+ // tolerance, the persistence horizon from contact solref, and two outer
+ // steps provide label hysteresis.
+ for (int d = 0; d < drive_count_ && d < 4; ++d) {
+ const bool saturated = contact_window[d].valid &&
+ contact_window[d].peak_normal > 0.0 &&
+ contact_window[d].peak_utilization >= utilization_threshold &&
+ contact_window[d].saturated_time_s +
+ std::numeric_limits<double>::epsilon() * dt_s >=
+ contact_window[d].confirmation_time_s;
+ slip_count_[d] = saturated ? std::min(slip_count_[d] + 1, 3) : 0;
+ drive_slipping_[static_cast<std::size_t>(d)] = slip_count_[d] >= 2;
+ }
 }
 
 }  // namespace lost_signal::sim::world

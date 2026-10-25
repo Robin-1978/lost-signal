@@ -78,6 +78,16 @@ int main() {
  assert(wheels[i].contact_valid);
  assert(std::isfinite(wheels[i].contact_slip_speed_mps));
  assert(wheels[i].contact_slip_speed_mps >= 0.0);
+ assert(std::isfinite(wheels[i].contact_longitudinal_slip_mps));
+ assert(std::isfinite(wheels[i].contact_lateral_slip_mps));
+ assert(std::isfinite(wheels[i].contact_friction_utilization));
+ assert(wheels[i].contact_friction_utilization >= 0.0);
+ const double resolved_slip = std::hypot(
+ wheels[i].contact_longitudinal_slip_mps,
+ wheels[i].contact_lateral_slip_mps);
+ // Multiple contact points are averaged independently, so the norm of the
+ // resolved components cannot exceed the averaged tangential-speed norm.
+ assert(resolved_slip <= wheels[i].contact_slip_speed_mps + 1e-9);
  assert(wheels[i].contact_normal_force_N > 0.0);
  assert(std::abs(wheels[i].contact_z_m) < 0.01);
     assert(std::abs(wheels[i].pose.z_m) < 1e-9);
@@ -257,8 +267,10 @@ int main() {
     for (int i = 0; i < 200; ++i) s.step(0.02);
     assert(s.truth().forward_mps > 0.5);
     assert(std::abs(s.truth().yaw_rate_radps) < 0.3);
-    // Slip telemetry stays quiet in normal driving (reported, not clamped).
-    assert(!w.truth().drive_slipping[0] && !w.truth().drive_slipping[1]);
+ // Differential dry-floor launch above is the quiet control. A turning
+ // Ackermann rear axle may legitimately reach the friction cone through
+ // combined longitudinal and lateral demand, so it is not relabelled from
+ // command intent here.
   }
 
   // HIL mission on the engine: crossing crosser, hold, resume, arrive.
@@ -320,6 +332,40 @@ int main() {
       set_diff_duty(w, 1.0);
       assert(!any_slip(w, 200));
     }
+ // Split-mu is resolved per contact, not from an averaged axle load. The
+ // left drive starts on ice while the right remains on dry floor; at least
+ // one solve must report the low-grip wheel independently before vehicle
+ // yaw carries the axle away from the authored boundary.
+ {
+ sim::world::World w = make_mujoco_diff();
+ sim::world::MotorParams split_plant = w.motor_params();
+ split_plant.drive_axle_x_m = 0.1;
+ split_plant.stall_force_N = 10.0;
+ split_plant.support_count = 2;
+ split_plant.supports[0].x_m = -0.2;
+ split_plant.supports[0].y_m = 0.10;
+ split_plant.supports[1].x_m = -0.2;
+ split_plant.supports[1].y_m = -0.10;
+ w.set_motor_params(split_plant);
+ w.set_materials({{"ice", 0.05, 0.005, 0.006, 1.0, 0.3}});
+ w.set_material_zones({{"left_ice", -2.0, 0.02, 3.0, 2.0, "ice"}});
+ set_diff_duty(w, 0.0);
+ for (int i = 0; i < 100; ++i) w.step(0.02);
+ robot::iface::ActuatorCommand split_cmd;
+ split_cmd.mode = robot::iface::ActuatorMode::kDiffDuty;
+ split_cmd.stamp_ns = 0;
+ split_cmd.expiry_ns = 1'000'000'000;
+ split_cmd.drive[0] = 1.0;
+ split_cmd.drive[1] = 1.0;
+ w.apply(split_cmd);
+ bool left_only_slip = false;
+ for (int i = 0; i < 100; ++i) {
+ w.step(0.02);
+ left_only_slip |= w.truth().drive_slipping[0] &&
+ !w.truth().drive_slipping[1];
+ }
+ assert(left_only_slip);
+ }
     // Worn tire governs off-zone (rating path works where allowed).
     {
       sim::world::World w = make_mujoco_diff();
