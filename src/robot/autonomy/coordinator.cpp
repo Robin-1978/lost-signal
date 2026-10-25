@@ -6,7 +6,6 @@
 #include <string>
 
 #include "robot/autonomy/decision/autonomy_pipeline.hpp"
-#include "robot/autonomy/decision/terrain_pipeline.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -118,14 +117,11 @@ core::Status AutonomyCoordinator::configure() {
   controller_->reset();
   safety_->reset();
  decision_pipeline_.reset();
- measurements_.reset();
-  perception_ = PerceptionResult{};
+ observations_.reset();
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
  goal_arrival_.reset();
  goal_arrival_decision_ = GoalArrivalDecision{};
-  localization_.reset();
-  last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
@@ -138,7 +134,6 @@ core::Status AutonomyCoordinator::configure() {
   last_published_stop_ = false;
   grip_.reset();
   traversal_ = TraversalModel{};
-  last_traverse_ns_ = core::kInvalidTime;
   lidar_mount_z_m_ = 0.35;
   evidence_.reset();
  trajectory_tracking_.reset();
@@ -171,12 +166,9 @@ core::Status AutonomyCoordinator::cleanup() {
   controller_->reset();
   safety_->reset();
  decision_pipeline_.reset();
- measurements_.reset();
-  perception_ = PerceptionResult{};
+ observations_.reset();
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
-  localization_.reset();
-  last_localization_action_ = "init";
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
@@ -189,7 +181,6 @@ core::Status AutonomyCoordinator::cleanup() {
   last_published_stop_ = false;
   grip_.reset();
   traversal_ = TraversalModel{};
-  last_traverse_ns_ = core::kInvalidTime;
   lidar_mount_z_m_ = 0.35;
   evidence_.reset();
  trajectory_tracking_.reset();
@@ -228,7 +219,7 @@ void AutonomyCoordinator::set_static_frames(
   }
   if (mapper_ != nullptr) mapper_->set_lidar_mount(base_from_lidar);
   lidar_mount_z_m_ = base_from_lidar.translation_m.z;
-  localization_.set_lidar_mount(base_from_lidar);
+ observations_.set_lidar_mount(base_from_lidar);
  // Forward-sector gates use the same full rotation as endpoint
  // deprojection; roll/pitch-mounted lidars no longer take a yaw-only path.
  if (validator_ != nullptr) validator_->set_lidar_mount(base_from_lidar);
@@ -262,29 +253,18 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad,
  return;
  }
   const core::MonotonicNs stamp =
- measurements_.has_observation() ? measurements_.latest().stamp_ns
+ observations_.has_observation() ? observations_.latest().stamp_ns
  : estimate().stamp_ns;
  estimator_->seed_pose(x_m, y_m, yaw_rad, position_sigma_m,
  heading_sigma_rad, stamp);
-  localization_.mark_localized();
+ observations_.mark_localized();
 }
 
 void AutonomyCoordinator::ingest_observation(
     const iface::ObservationFrame& obs) {
   if (state_ != lifecycle::ModuleState::kActive) return;
- MeasurementBatch batch = measurements_.ingest(obs, tf_);
- if (!batch.accepted) return;
- for (const iface::ObservationFrame& event : batch.estimator_events) {
- estimator_->predict(event);
- estimator_->correct(event);
- }
-  // Perception + mapping run at scan rate, not on every odometry frame.
- if (batch.scan_event.has_value()) {
- perception_ = perception_module_->update(*batch.scan_event,
- estimator_->estimate());
- mapper_->set_dynamic_tracks(perception_.tracks);
- mapper_->update(*batch.scan_event, estimator_->estimate());
- }
+ observations_.ingest(
+ obs, tf_, *estimator_, *perception_module_, *mapper_);
 }
 
 iface::MotionCommand AutonomyCoordinator::update(
@@ -292,33 +272,19 @@ iface::MotionCommand AutonomyCoordinator::update(
     core::MonotonicNs now_ns) {
   // Missing observation is unknown evidence -> safe stop, never free space.
  if (state_ != lifecycle::ModuleState::kActive ||
- !measurements_.has_observation()) {
+ !observations_.has_observation()) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
- const iface::ObservationFrame& latest_observation = measurements_.latest();
- // Publish the latest ROBOT map prior to perception for the next scan. The
- // perception module raycasts only known occupancy; unknown cells remain a
- // scan-history problem. This is map/SLAM evidence, never simulator truth.
- perception_module_->set_static_map(map);
+ const iface::ObservationFrame& latest_observation = observations_.latest();
   // Decision branch runs at the decision period, or on event wakeup:
   // explicit replan request, or a new map revision. Everything else holds
   // the last validated command while safety keeps gating every tick.
   bool due = last_decision_ns_ == core::kInvalidTime ||
              now_ns - last_decision_ns_ >= decision_period_ns_;
   bool map_changed = map.revision != last_map_revision_;
-  // Localization runs on every tick; the supervisor cadence-gates the
-  // matcher. Corrections feed the estimator only when accepted, so a hard
-  // scan never drags the pose.
-  // Localization subsystem (supervisor-sequenced corrections + SLAM):
-  // estimator/mapper/observations in, action name + replan flag out.
-  // Corrections feed the estimator only when accepted, so a hard scan
-  // never drags the pose.
- iface::ObservationFrame localization_obs =
- measurements_.take_localization_observation();
- LocalizationSystem::TickResult loc = localization_.update(
- map, localization_obs, now_ns, measurements_.has_observation(),
- *estimator_, *mapper_);
-  last_localization_action_ = loc.action;
+ const ObservationPipeline::TickResult observation_tick = observations_.update(
+ map, now_ns, *estimator_, *perception_module_, *mapper_, grip_, traversal_);
+ const LocalizationSystem::TickResult& loc = observation_tick.localization;
   if (loc.replan_requested) replan_requested_ = true;
  // TF publisher follows REP-105. The estimator owns a continuous odom pose
  // that localization never rewrites; absolute corrections update only the
@@ -338,12 +304,6 @@ iface::MotionCommand AutonomyCoordinator::update(
                                                odom.yaw_rad, post.x_m,
                                                post.y_m, post.yaw_rad));
   }
- if (const auto adaptation =
- measurements_.take_adaptation_observation()) {
- TerrainAdaptationPipeline::update(
- now_ns, *adaptation, map, estimator_->estimate(),
- estimator_->last_slip(), last_traverse_ns_, grip_, traversal_);
- }
  // Feed the measured-only traction envelope back into odometry prediction
  // for the next observation. This bounds wheel-spin integration without
  // exposing plant truth to ROBOT; nominal grip leaves odometry unchanged.
@@ -396,7 +356,8 @@ iface::MotionCommand AutonomyCoordinator::update(
  safety_reason == "static-swept-proximity";
  MotionDecisionResult motion = decision_pipeline_.run(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
- estimator_->estimate(), perception_, robot_local_map, active_route_, goal_,
+ estimator_->estimate(), observations_.perception(), robot_local_map,
+ active_route_, goal_,
  has_goal_, map, force_route_refresh,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_,
  latest_observation,
@@ -445,8 +406,9 @@ iface::MotionCommand AutonomyCoordinator::update(
   // Final independent gate, every tick: safety re-checks RAW evidence
   // (freshness, near-field scan, channel health) and can only downgrade to
   // safe stop. Critical faults latch until deliberate recovery.
-  SafetyVerdict verdict = safety_->evaluate(estimator_->estimate(), perception_,
- latest_observation, channel, now_ns);
+ SafetyVerdict verdict = safety_->evaluate(
+ estimator_->estimate(), observations_.perception(), latest_observation,
+ channel, now_ns);
   iface::MotionCommand final_cmd = safety_->gate(gated, verdict, now_ns);
  verdict = safety_->last_verdict();
   last_published_stop_ = final_cmd.is_safe_stop();
@@ -459,13 +421,13 @@ iface::MotionCommand AutonomyCoordinator::update(
  header.source + "#" + std::to_string(header.sequence));
  }
  };
- if (measurements_.has_scan()) {
+ if (observations_.has_scan()) {
  add_observation_ref(latest_observation.scan_header);
  }
- if (measurements_.has_motion()) {
+ if (observations_.has_motion()) {
  add_observation_ref(latest_observation.motion_header);
  }
- if (measurements_.has_imu()) {
+ if (observations_.has_imu()) {
  add_observation_ref(latest_observation.imu_header);
  }
  evidence.prediction_horizon_s = last_prediction_horizon_s_;

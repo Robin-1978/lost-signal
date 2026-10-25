@@ -9,13 +9,15 @@ source, or library. The boundary gate (`tests/check_boundary.py`) enforces it.
 flowchart TB
   subgraph ROBOT["ROBOT deployable (src/robot)"]
     Exec["RobotExecutive<br/>task / resource policy"]
-    Coord["AutonomyCoordinator<br/>estimate / perceive / plan / validate / control"]
+ Coord["AutonomyCoordinator<br/>lifecycle + module wiring"]
+ Obs["ObservationPipeline<br/>async order / estimate / perceive / map / localize"]
     Maps["IMapProvider<br/>MapSnapshot revisions"]
     Desc["RobotDescription<br/>links + mounts + limits"]
     Chan["RuntimeChannel<br/>bounded obs/cmd queues"]
     App["RobotApplication<br/>composition root + tick"]
     Exec --- App
     Coord --- App
+ Obs --- Coord
     Maps --- App
     Desc --- App
     Chan --- App
@@ -77,8 +79,12 @@ transport stamp, `sequence > 0`, at least one valid section, and a complete
 header for every populated section in an aggregate envelope. A headerless
 legacy frame may contain exactly one endpoint section. Channel rejects
 stale/repeated transport sequence or timestamp per source;
-`MeasurementSynchronizer` rejects stale/repeated sections independently,
-orders estimator events by acquisition time and never rewinds estimator time.
+`ObservationPipeline` owns the `MeasurementSynchronizer`, rejects
+stale/repeated sections independently, orders estimator events by acquisition
+time and never rewinds estimator time. It also owns the one-shot localization
+and terrain-adaptation views, scan-rate perception/mapping dispatch,
+localization state, and perception result. `AutonomyCoordinator` only wires
+the subsystem result into planning, validation, control, and safety.
 
 ### MotionCommand (`iface/command.hpp`)
 

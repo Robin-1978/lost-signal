@@ -68,6 +68,7 @@ add_library(lost_signal_robot_autonomy STATIC
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
  src/robot/autonomy/estimation/measurement_synchronizer.cpp
+ src/robot/autonomy/estimation/observation_pipeline.cpp
   src/robot/autonomy/estimation/slip_observer.cpp
   src/robot/autonomy/localization/scan_matcher.cpp
   src/robot/autonomy/localization/global_search.cpp

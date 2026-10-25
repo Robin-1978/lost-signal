@@ -14,8 +14,7 @@
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
-#include "robot/autonomy/estimation/measurement_synchronizer.hpp"
-#include "robot/autonomy/localization/localization_system.hpp"
+#include "robot/autonomy/estimation/observation_pipeline.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
@@ -127,7 +126,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Startup mode passthrough (see supervisor::StartupMode): mapless
   // missions disable the global branch; SLAM still establishes the frame.
   void set_startup_mode(StartupMode mode) {
-    localization_.set_startup_mode(mode);
+ observations_.set_startup_mode(mode);
   }
   // Event wakeup: force the decision branch on the next update, without
   // waiting for the decision period (goal arrival, operator override).
@@ -138,32 +137,36 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // assumed), lower is slip-tightened. Read-only probe for tests/logs.
   double grip_factor() const { return grip_.factor(); }
   core::FrameTransformTree tf_;
- bool has_observation() const { return measurements_.has_observation(); }
+ bool has_observation() const { return observations_.has_observation(); }
  const iface::ObservationFrame& last_observation() const {
- return measurements_.latest();
+ return observations_.latest();
  }
   const EstimatedState& estimate() const;
  const EstimatedState& odometry_estimate() const {
  return estimator_->odometry_estimate();
  }
   SlipObservation last_slip() const { return estimator_->last_slip(); }
-  const PerceptionResult& perception() const { return perception_; }
+ const PerceptionResult& perception() const {
+ return observations_.perception();
+ }
   const BehaviorDecision& last_decision() const { return decision_; }
   SafetyVerdict last_safety() const { return safety_->last_verdict(); }
-  bool localized() const { return localization_.localized(); }
+ bool localized() const { return observations_.localized(); }
   const std::string& last_localization_action() const {
-    return last_localization_action_;
+ return observations_.last_localization_action();
   }
-  std::size_t slam_keyframes() const { return localization_.slam_keyframes(); }
+ std::size_t slam_keyframes() const {
+ return observations_.slam_keyframes();
+ }
   std::size_t slam_loops_closed() const {
-    return localization_.slam_loops_closed();
+ return observations_.slam_loops_closed();
   }
-  std::size_t slam_tracks() const { return localization_.slam_tracks(); }
+ std::size_t slam_tracks() const { return observations_.slam_tracks(); }
   const SlamTrackResult& last_track_result() const {
-    return localization_.last_track_result();
+ return observations_.last_track_result();
   }
   const SlamLoopResult& last_slam_result() const {
-    return localization_.last_slam_result();
+ return observations_.last_slam_result();
   }
   diagnostics::DecisionEvidence last_evidence() const {
     return evidence_.current() != nullptr ? *evidence_.current()
@@ -195,13 +198,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // Body origin above ground (declared ride = wheel radius; the survey
   // context's absolute sensor height rides on it, like the mount).
   double ride_height_m_ = 0.10;
-  // Traversal observer cadence (IMU stamp deltas, never wall clock).
-  core::MonotonicNs last_traverse_ns_ = core::kInvalidTime;
-  // Localization subsystem (supervisor-sequenced corrections + SLAM):
-  // the coordinator wires estimator/mapper/observations in and consumes
-  // the action name + replan flag out. No matcher/supervisor/tracker
-  // state lives here.
-  LocalizationSystem localization_;
+ // ROBOT-side sensor pipeline owns normalization, one-shot async views,
+ // estimator/perception dispatch, localization and adaptation cadence.
+ ObservationPipeline observations_;
  DecisionCyclePipeline decision_pipeline_;
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
@@ -212,8 +211,6 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::unique_ptr<IValidator> validator_;
   std::unique_ptr<IController> controller_;
   std::unique_ptr<ISafetyMonitor> safety_;
- MeasurementSynchronizer measurements_;
-  PerceptionResult perception_{};
   BehaviorDecision decision_{};
   RoutePoint goal_{};
   bool has_goal_ = false;
@@ -226,7 +223,6 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::uint64_t last_map_revision_ = 0;
   bool replan_requested_ = false;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
-  std::string last_localization_action_ = "init";
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
  double last_prediction_horizon_s_ = 0.0;

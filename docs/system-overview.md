@@ -102,7 +102,7 @@ sequenceDiagram
   L->>R: scan ranges packed into ObservationFrame
   P->>C: publish_observation (registry + seq/stamp gate)
   C->>R: drain_observations in tick()
- R->>R: coordinator sequences MeasurementSynchronizer and modules
+ R->>R: ObservationPipeline dispatches acquisition-time events
 ```
 
 - 注册门：`register_provider` 先占位，未注册 source 直接拒收。
@@ -128,11 +128,13 @@ sequenceDiagram
   P->>W: apply to plant
 ```
 
-`AutonomyCoordinator` is the ROBOT sequencing seam. Measurement ordering,
-deduplication, caching, IMU frame conversion and one-shot consumption live in
-`MeasurementSynchronizer`; planning policy lives in the planning and decision
-modules. The coordinator only passes module outputs to the next module and
-holds lifecycle state. Safe stop comes out of the gates (no
+`AutonomyCoordinator` is the ROBOT lifecycle and module-wiring seam.
+`ObservationPipeline` owns measurement ordering, scan-rate dispatch,
+localization/adaptation consumption and their state; its
+`MeasurementSynchronizer` owns section deduplication, caching and IMU frame
+conversion. Planning policy lives in the planning and decision modules. The
+coordinator passes subsystem outputs to the next subsystem. Safe stop comes
+out of the gates (no
 observation, invalid command, safety trip, controlled-stop latch), never
 from a skeleton stub. 包络、过期、空队列全部 fail-closed。
 
