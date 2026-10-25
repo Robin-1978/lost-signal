@@ -75,10 +75,15 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
 ## First playable field lab
 
 ```sh
-./build/sim_viewer --experience configs/experiences/first_contact.json
+./build/sim_viewer
+# Equivalent explicit entry:
+./build/sim_viewer --play
 ```
 
-The field lab pauses before simulation time advances. Its briefing camera
+With no authored source arguments, the viewer opens the First Contact field
+lab. Use `--sandbox` for the open engineering demo, or `--experience FILE`
+for another authored mission. The field lab pauses before simulation time
+advances. Its briefing camera
 shows the assembled robot from MuJoCo's zero-time body and joint transforms;
 this preparation publishes no sensor sample, ROBOT tick, episode step, or
 score. Use `Left`/`Right` to inspect drive-wheel, caster, LiDAR, and chassis

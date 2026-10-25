@@ -2373,14 +2373,45 @@ int main(int argc, char** argv) {
  double initial_playback_rate = 1.0;
  bool initial_turbo = false;
  RenderQuality render_quality = RenderQuality::kHigh;
+ bool sandbox_requested = false;
+ bool play_requested = false;
+ bool source_requested = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
-    if (a == "--robot" && i + 1 < argc) robot_path = argv[++i];
-    if (a == "--sim" && i + 1 < argc) sim_path = argv[++i];
-    if (a == "--map" && i + 1 < argc) map_path = argv[++i];
+ if (a == "--help" || a == "-h") {
+ std::puts(
+ "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
+ " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
+ " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
+ "\n"
+ "No arguments starts the First Contact field lab. --sandbox keeps the\n"
+ "open engineering demo. During a run: Space pause, N step, F follow,\n"
+ "Q quality, +/- rate, T turbo, V 2D/3D, right-drag orbit, wheel zoom.");
+ return 0;
+ }
+ if (a == "--play") play_requested = true;
+ if (a == "--sandbox") sandbox_requested = true;
+ if (a == "--robot" && i + 1 < argc) {
+ robot_path = argv[++i];
+ source_requested = true;
+ }
+ if (a == "--sim" && i + 1 < argc) {
+ sim_path = argv[++i];
+ source_requested = true;
+ }
+ if (a == "--map" && i + 1 < argc) {
+ map_path = argv[++i];
+ source_requested = true;
+ }
  if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
- if (a == "--scene" && i + 1 < argc) scene_path = argv[++i];
- if (a == "--experience" && i + 1 < argc) experience_path = argv[++i];
+ if (a == "--scene" && i + 1 < argc) {
+ scene_path = argv[++i];
+ source_requested = true;
+ }
+ if (a == "--experience" && i + 1 < argc) {
+ experience_path = argv[++i];
+ source_requested = true;
+ }
  if (a == "--turbo") initial_turbo = true;
  if (a == "--quality" && i + 1 < argc) {
  const std::string quality = argv[++i];
@@ -2402,6 +2433,9 @@ int main(int argc, char** argv) {
  initial_playback_rate = parsed;
  }
   }
+ if (play_requested || (!source_requested && !sandbox_requested)) {
+ experience_path = "configs/experiences/first_contact.json";
+ }
  ExperienceManifest experience;
  bool experience_loaded = false;
  if (!experience_path.empty()) {
@@ -2507,7 +2541,8 @@ int main(int argc, char** argv) {
  // actors, sensors, ROBOT cadence, or score.
  session->prepare_world();
 
- InitWindow(kScreenW, kScreenH, "robot_simu viewer (SIM truth, 2D)");
+ InitWindow(kScreenW, kScreenH, experience_loaded
+ ? "Robot Simu - First Contact" : "Robot Simu - Simulation Lab");
  if (assets_path.empty() && std::filesystem::is_directory("assets"))
  assets_path = "assets";
  VisualAssets visual_assets;
