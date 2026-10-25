@@ -243,35 +243,37 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
           steer_duty[t] * motor.steer_stall_torque_Nm * curve;
     }
     if (is_mecanum) {
-      // Body-frame wrench -> world frame via the current yaw. The free
-      // joint owns dofs 0..5 (x,y,z,roll,pitch,yaw); nothing else writes
-      // them, so assign (not accumulate) each substep.
-      const double qw = data->qpos[3], qx = data->qpos[4],
-                   qy = data->qpos[5], qz = data->qpos[6];
+ // Body-frame wrench -> world frame via the current yaw. The named base
+ // free joint owns six consecutive dofs; nothing else writes them, so
+ // assign (not accumulate) each substep.
+    const double qw = data->qpos[base_qpos_ + 3];
+    const double qx = data->qpos[base_qpos_ + 4];
+    const double qy = data->qpos[base_qpos_ + 5];
+    const double qz = data->qpos[base_qpos_ + 6];
       const double yaw = std::atan2(2.0 * (qw * qz + qx * qy),
                                     1.0 - 2.0 * (qy * qy + qz * qz));
       const double c = std::cos(yaw), s = std::sin(yaw);
-      data->qfrc_applied[0] = roller_fx * c - roller_fy * s;
-      data->qfrc_applied[1] = roller_fx * s + roller_fy * c;
-      data->qfrc_applied[5] = roller_t;
+    data->qfrc_applied[base_dof_ + 0] = roller_fx * c - roller_fy * s;
+    data->qfrc_applied[base_dof_ + 1] = roller_fx * s + roller_fy * c;
+    data->qfrc_applied[base_dof_ + 5] = roller_t;
     }
     // Tracked skid-steer scrub (main's TrackedDrive yaw scrub): Coulomb +
     // viscous torque opposing yaw from track shear. Zero params (wheeled
     // chassis) write zero — today's behavior bit-identical. Assigned, never
-    // accumulated: qfrc_applied[5] is ours alone on non-mecanum layouts
+ // accumulated: the base yaw wrench is ours alone on non-mecanum layouts
     // (mecanum adds its roller torque above first).
     {
       const double scrub_c = std::max(0.0, motor.yaw_scrub_coulomb_Nm);
       const double scrub_v =
           std::max(0.0, motor.yaw_scrub_viscous_Nm_per_radps);
       if (scrub_c > 0.0 || scrub_v > 0.0) {
-        const double wyaw = data->qvel[5];
+    const double wyaw = data->qvel[base_dof_ + 5];
         const double scrub_t =
             scrub_c * std::tanh(wyaw / 0.1) + scrub_v * wyaw;
         if (is_mecanum) {
-          data->qfrc_applied[5] -= scrub_t;
+      data->qfrc_applied[base_dof_ + 5] -= scrub_t;
         } else {
-          data->qfrc_applied[5] = -scrub_t;
+      data->qfrc_applied[base_dof_ + 5] = -scrub_t;
         }
       }
     }

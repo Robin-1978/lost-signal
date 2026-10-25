@@ -13,6 +13,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <mujoco/mujoco.h>
@@ -38,6 +39,73 @@ constexpr double kQuatIdentity[4] = {1.0, 0.0, 0.0, 0.0};
 // 90 degrees about X (w,x,y,z): lays a z-axis cylinder onto the y axle.
 constexpr double kQuatX90[4] = {0.7071067811865476, 0.7071067811865476, 0.0,
                                 0.0};
+
+struct JointStateSnapshot {
+  std::string name;
+  int type = -1;
+  std::vector<double> qpos;
+  std::vector<double> qvel;
+};
+
+int joint_qpos_width(int type) {
+  switch (type) {
+    case mjJNT_FREE: return 7;
+    case mjJNT_BALL: return 4;
+    case mjJNT_SLIDE:
+    case mjJNT_HINGE: return 1;
+    default: return 0;
+  }
+}
+
+int joint_qvel_width(int type) {
+  switch (type) {
+    case mjJNT_FREE: return 6;
+    case mjJNT_BALL: return 3;
+    case mjJNT_SLIDE:
+    case mjJNT_HINGE: return 1;
+    default: return 0;
+  }
+}
+
+std::vector<JointStateSnapshot> capture_joint_state(
+    const mjModel* model, const mjData* data) {
+  std::vector<JointStateSnapshot> out;
+  if (model == nullptr || data == nullptr) return out;
+  out.reserve(static_cast<std::size_t>(model->njnt));
+  for (int joint = 0; joint < model->njnt; ++joint) {
+    const char* name = mj_id2name(model, mjOBJ_JOINT, joint);
+    if (name == nullptr || name[0] == '\0') continue;
+    const int type = model->jnt_type[joint];
+    const int nq = joint_qpos_width(type);
+    const int nv = joint_qvel_width(type);
+    if (nq <= 0 || nv <= 0) continue;
+    const int qpos = model->jnt_qposadr[joint];
+    const int qvel = model->jnt_dofadr[joint];
+    JointStateSnapshot state;
+    state.name = name;
+    state.type = type;
+    state.qpos.assign(data->qpos + qpos, data->qpos + qpos + nq);
+    state.qvel.assign(data->qvel + qvel, data->qvel + qvel + nv);
+    out.push_back(std::move(state));
+  }
+  return out;
+}
+
+void restore_joint_state(const std::vector<JointStateSnapshot>& snapshots,
+    const mjModel* model, mjData* data) {
+  for (const auto& state : snapshots) {
+    const int joint = mj_name2id(model, mjOBJ_JOINT, state.name.c_str());
+    if (joint < 0 || model->jnt_type[joint] != state.type) continue;
+    const int nq = joint_qpos_width(state.type);
+    const int nv = joint_qvel_width(state.type);
+    if (static_cast<int>(state.qpos.size()) != nq ||
+        static_cast<int>(state.qvel.size()) != nv) continue;
+    std::copy(state.qpos.begin(), state.qpos.end(),
+        data->qpos + model->jnt_qposadr[joint]);
+    std::copy(state.qvel.begin(), state.qvel.end(),
+        data->qvel + model->jnt_dofadr[joint]);
+  }
+}
 
 void set_name(mjsElement* element, const std::string& name) {
   mjs_setName(element, name.c_str());
@@ -276,23 +344,19 @@ void MujocoBackend::sync(const MotorParams& motor,
       geometry_version == built_geometry_version_ && valid()) {
     return;
   }
-  // Preserve the dynamic state across a motor-only rebuild (same bodies,
-  // same DOFs: boxes are static, layout is fixed by the mode).
-  std::vector<double> saved_qpos, saved_qvel;
+  // Preserve every compatible named joint independently. Topology changes
+  // may add or remove caster and future arm joints without teleporting the
+  // base or resetting wheel/steering state.
+  std::vector<JointStateSnapshot> saved_joint_state;
   if (valid()) {
-    mjModel* old_model = impl_->model;
-    mjData* old_data = impl_->data;
-    if (old_model->nq == 0) {
-      (void)old_data;
-    } else {
-      saved_qpos.assign(old_data->qpos, old_data->qpos + old_model->nq);
-      saved_qvel.assign(old_data->qvel, old_data->qvel + old_model->nv);
-    }
+    saved_joint_state = capture_joint_state(impl_->model, impl_->data);
   }
   impl_.reset(new Impl());
   ready_ = false;
   drive_count_ = 0;
   steer_count_ = 0;
+  base_qpos_ = -1;
+  base_dof_ = -1;
  for (int i = 0; i < 4; ++i) {
  drive_dof_[i] = steer_dof_[i] = -1;
  drive_body_[i] = -1;
@@ -547,7 +611,8 @@ void MujocoBackend::sync(const MotorParams& motor,
  floor->friction[2] = 0.001;
  }
   mjsBody* base = add_body(world, "base", 0.0, 0.0, r);
-  mjs_addFreeJoint(base);
+  mjsJoint* base_free = mjs_addFreeJoint(base);
+  set_name(base_free->element, "base_free");
  // Collision geometry and inertia are separate. COM tuning therefore moves
  // only the contactless ballast, never the visible/physical belly shell.
  mjsGeom* shell = add_geom(base, "body_shell", mjGEOM_BOX,
@@ -976,6 +1041,13 @@ void MujocoBackend::sync(const MotorParams& motor,
     mj_deleteModel(model);
     return;
   }
+ const int base_joint = mj_name2id(model, mjOBJ_JOINT, "base_free");
+ if (base_joint < 0 || model->jnt_type[base_joint] != mjJNT_FREE) {
+  mj_deleteData(data);
+  mj_deleteModel(model);
+  return;
+ }
+ const int base_qpos = model->jnt_qposadr[base_joint];
   impl_->model = model;
   impl_->data = data;
  // A free joint defaults to the world origin, which puts the axle and every
@@ -988,15 +1060,13 @@ void MujocoBackend::sync(const MotorParams& motor,
  // snapshot remains authoritative for x/y, attitude, velocities, and joint
  // angles, while root z is revalidated against the new wheel radius and the
  // canonical authored terrain below.
- if (model->nq >= 7) {
- data->qpos[0] = 0.0;
- data->qpos[1] = 0.0;
- data->qpos[2] = support_ground_height(0.0, 0.0, 0.0) + r;
- data->qpos[3] = 1.0;
- data->qpos[4] = 0.0;
- data->qpos[5] = 0.0;
- data->qpos[6] = 0.0;
- }
+ data->qpos[base_qpos + 0] = 0.0;
+ data->qpos[base_qpos + 1] = 0.0;
+ data->qpos[base_qpos + 2] = support_ground_height(0.0, 0.0, 0.0) + r;
+ data->qpos[base_qpos + 3] = 1.0;
+ data->qpos[base_qpos + 4] = 0.0;
+ data->qpos[base_qpos + 5] = 0.0;
+ data->qpos[base_qpos + 6] = 0.0;
   // Brake lag shapes from the motor contract (main-stack mapping).
   const ServiceBrakeParams bp = brake_params_from_motor(motor);
   for (auto& b : impl_->brakes) b = ServiceBrakePlant{bp};
@@ -1067,37 +1137,34 @@ void MujocoBackend::sync(const MotorParams& motor,
   refuse_reported_ = false;
   track_m_ = track;
   base_len_m_ = base_len;
+  base_qpos_ = base_qpos;
+  base_dof_ = model->jnt_dofadr[base_joint];
   built_signature_ = signature;
   built_geometry_version_ = geometry_version;
   ever_built_ = true;
- bool restored_snapshot = false;
- if (!saved_qpos.empty() && !saved_qvel.empty() &&
-      static_cast<int>(saved_qpos.size()) == model->nq &&
-      static_cast<int>(saved_qvel.size()) == model->nv) {
-    std::copy(saved_qpos.begin(), saved_qpos.end(), data->qpos);
-    std::copy(saved_qvel.begin(), saved_qvel.end(), data->qvel);
- restored_snapshot = true;
- }
- if (model->nq >= 7) {
+ restore_joint_state(saved_joint_state, model, data);
+ {
  // Preserve a live vehicle's elevation when it is above the new contact
  // plane (for example while riding a box edge), but never restore a root
  // pose below the lowest wheel contact. Starting at the exact boundary lets
  // MuJoCo's contact solver settle without carrying an obsolete penetration.
- const double qw = data->qpos[3], qx = data->qpos[4],
- qy = data->qpos[5], qz = data->qpos[6];
+  const double qw = data->qpos[base_qpos + 3];
+  const double qx = data->qpos[base_qpos + 4];
+  const double qy = data->qpos[base_qpos + 5];
+  const double qz = data->qpos[base_qpos + 6];
  const double yaw = std::atan2(2.0 * (qw * qz + qx * qy),
  1.0 - 2.0 * (qy * qy + qz * qz));
- const double ground = support_ground_height(data->qpos[0], data->qpos[1], yaw);
+  const double ground = support_ground_height(
+      data->qpos[base_qpos + 0], data->qpos[base_qpos + 1], yaw);
  const double minimum_z = ground + r;
- if (!std::isfinite(data->qpos[2]) || data->qpos[2] < minimum_z) {
- data->qpos[2] = minimum_z;
+  if (!std::isfinite(data->qpos[base_qpos + 2]) ||
+      data->qpos[base_qpos + 2] < minimum_z) {
+    data->qpos[base_qpos + 2] = minimum_z;
  }
  }
  // Refresh kinematics for both a fresh spawn and a restored snapshot before
  // the first integration step, so read-back and raycasts see the same state.
- if (model->nq >= 7 || restored_snapshot) {
  mj_forward(model, data);
-  }
   read_back();
 }
 

@@ -61,21 +61,25 @@ void MujocoBackend::read_back() {
   if (!valid()) return;
   mjModel* model = impl_->model;
   mjData* data = impl_->data;
-  body_x_ = data->qpos[0];
-  body_y_ = data->qpos[1];
-  body_z_ = data->qpos[2];
-  const double qw = data->qpos[3], qx = data->qpos[4], qy = data->qpos[5],
-               qz = data->qpos[6];
+  if (base_qpos_ < 0 || base_dof_ < 0) return;
+  body_x_ = data->qpos[base_qpos_ + 0];
+  body_y_ = data->qpos[base_qpos_ + 1];
+  body_z_ = data->qpos[base_qpos_ + 2];
+  const double qw = data->qpos[base_qpos_ + 3];
+  const double qx = data->qpos[base_qpos_ + 4];
+  const double qy = data->qpos[base_qpos_ + 5];
+  const double qz = data->qpos[base_qpos_ + 6];
   body_yaw_ = std::atan2(2.0 * (qw * qz + qx * qy),
                          1.0 - 2.0 * (qy * qy + qz * qz));
   body_roll_ = std::atan2(2.0 * (qw * qx + qy * qz),
                           1.0 - 2.0 * (qx * qx + qy * qy));
   const double sinp = std::clamp(2.0 * (qw * qy - qz * qx), -1.0, 1.0);
   body_pitch_ = std::asin(sinp);
-  const double vx = data->qvel[0], vy = data->qvel[1];
+  const double vx = data->qvel[base_dof_ + 0];
+  const double vy = data->qvel[base_dof_ + 1];
   forward_mps_ = vx * std::cos(body_yaw_) + vy * std::sin(body_yaw_);
   lateral_mps_ = -vx * std::sin(body_yaw_) + vy * std::cos(body_yaw_);
-  yaw_rate_ = data->qvel[5];
+  yaw_rate_ = data->qvel[base_dof_ + 5];
  const int base_body = mj_name2id(model, mjOBJ_BODY, "base");
  total_mass_kg_ = mj_getTotalmass(model);
  system_com_z_m_ = base_body >= 0

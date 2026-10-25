@@ -223,6 +223,8 @@ class MujocoBackend {
   std::uint64_t built_geometry_version_ = 0;
   bool ever_built_ = false;
   // Geometry needed by the per-step roller wrench.
+  int base_qpos_ = -1;
+  int base_dof_ = -1;
   double track_m_ = 0.5;
   double base_len_m_ = 0.56;
   // Drive-wheel module positions in the base frame (per-step zone lookup).

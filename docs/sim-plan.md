@@ -103,9 +103,11 @@ body pose, fixed GLB authored-frame correction, steering/swivel, then wheel
 spin/roll. A differential wheel has no steering transform; an Ackermann or
 swerve module uses its measured steering joint. GLB scale and axis correction
 are fixed asset metadata, never inferred from the current pose. On a model
-rebuild, x/y, attitude, velocities, and joint angles are restored, while root z
-is revalidated against the new wheel radius and the canonical terrain contact
-height so an old snapshot cannot reintroduce an embedded tire. The viewer may
+rebuild, compatible state is restored independently by stable joint name, type,
+and state dimension. Added caster or future arm joints keep authored defaults;
+removed joints are discarded without resetting the base or remaining wheels.
+Root z is revalidated against the new wheel radius and the canonical terrain
+contact height so an old snapshot cannot reintroduce an embedded tire. The viewer may
 apply only the documented sub-millimetre contact presentation guard; it does
 not replace engine pose with a ROBOT estimate or a wall-clock animation.
 

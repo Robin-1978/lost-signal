@@ -120,6 +120,11 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  swivel damping, and swivel friction. MuJoCo owns fork swivel and wheel roll;
  the Viewer reads those joint poses. Ackermann idler trail is a separate
  parameter and can no longer alter caster geometry.
+- A MuJoCo rebuild restores state by stable joint name, joint type, and state
+  dimension. Compatible base, drive, steering, caster, and future arm joints
+  keep their positions and velocities when topology changes; new joints retain
+  their authored defaults and removed joints are discarded. Root height alone
+  is raised when required to clear the rebuilt terrain/contact envelope.
 - Scoring is offline only and includes displacement, path length, stops,
  dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
 time, planar obstacle clearance, separate terrain/belly clearance, objective

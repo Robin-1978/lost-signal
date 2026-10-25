@@ -418,6 +418,25 @@ int main() {
       sim::world::WheelViz table[6];
       assert(w.wheels(table, 6) == 2);
       assert(table[0].x_m == -0.1 && table[1].x_m == -0.1);
+    // A topology-changing rebuild preserves every compatible named joint.
+    // Removing one caster must not teleport the base or reset drive motion;
+    // future arm joints follow the same name/type/dimension contract.
+    const double x_before_topology = w.truth().body_x_m;
+    const double v_before_topology = w.truth().forward_mps;
+    const double drive_before_topology = w.truth().drive_angle_rad[0];
+    ms.support_count = 1;
+    ms.supports[0] = sim::world::MotorParams::SupportParams{};
+    ms.supports[0].x_m = -0.2;
+    ms.supports[0].y_m = 0.04;
+    ms.supports[0].trail_m = 0.03;
+    w.set_motor_params(ms);
+    w.step(1e-6);
+    assert(std::abs(w.truth().body_x_m - x_before_topology) < 1e-3);
+    assert(std::abs(w.truth().forward_mps - v_before_topology) < 0.05);
+    assert(std::abs(w.truth().drive_angle_rad[0] - drive_before_topology) < 0.01);
+    sim::world::CasterViz rebuilt_caster[2];
+    assert(w.casters(rebuilt_caster, 2) == 1);
+    assert(std::abs(rebuilt_caster[0].pivot_y_m - 0.04) < 1e-12);
     }
     // Declared payload (5 kg at 0.3 m): builds, stands, covers less
     // ground in fixed time (same stall force, more mass — the transient
