@@ -66,10 +66,22 @@ void World::step(double dt_s) {
   truth_.step += 1;
   if (dt_s > 0.0 && std::isfinite(dt_s)) sim_time_s_ += dt_s;
   step_engine(dt_s);
-  // Actors stay kinematic (no engine bodies for them); the judge reads
-  // the same truth.
+ // Actors stay kinematic (no engine bodies for them); the judge reads
+ // the same truth. An explicitly yielding actor runs its own continuous
+ // collision predictor against the physical robot state before integration;
+ // this changes the simulated environment, never a ROBOT decision input.
+ const double c = std::cos(truth_.body_yaw_rad);
+ const double s = std::sin(truth_.body_yaw_rad);
+ const double robot_vx = truth_.forward_mps * c - truth_.lateral_mps * s;
+ const double robot_vy = truth_.forward_mps * s + truth_.lateral_mps * c;
+ const double robot_radius = std::hypot(
+ std::max(0.0, motor_.body_half_length_m),
+ std::max(0.0, motor_.body_half_width_m));
   for (auto& a : actors_) {
     step_actor(a, a.behavior, dt_s);
+ apply_actor_robot_yield(a, a.behavior,
+ truth_.body_x_m, truth_.body_y_m, robot_vx, robot_vy,
+ robot_radius, dt_s);
     a.x += a.vx_mps * dt_s;
     a.y += a.vy_mps * dt_s;
   }

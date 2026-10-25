@@ -50,7 +50,10 @@ int main() {
  std::ofstream out("/tmp/test_actors_sidecar.json");
  out << R"({"actors":[{"id":"walker","visual_kind":"pedestrian",
  "x":1.5,"y":2.0,"radius_m":0.3,
- "behavior":"wander","speed_mps":0.7,"seed":4}]})";
+ "behavior":"wander","speed_mps":0.7,"seed":4,
+ "yield_to_robot":true,"reaction_time_s":0.3,
+ "acceleration_mps2":1.1,"brake_deceleration_mps2":1.8,
+ "clearance_m":0.25}]})";
  out.close();
  sim::scenario::ScenarioSession session;
  std::string err;
@@ -60,6 +63,9 @@ int main() {
  assert(session.setup_world().actors().size() == 1);
  assert(session.setup_world().actors()[0].radius_m == 0.3);
  assert(session.setup_world().actors()[0].behavior.speed_mps == 0.7);
+ assert(session.setup_world().actors()[0].behavior.yield_to_robot);
+ assert(session.setup_world().actors()[0].behavior.reaction_time_s == 0.3);
+ assert(session.setup_world().actors()[0].behavior.clearance_m == 0.25);
  assert(session.setup_world().actors()[0].id == "walker");
  assert(session.setup_world().actors()[0].visual_kind == "pedestrian");
  std::remove("/tmp/test_actors_sidecar.json");

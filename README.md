@@ -113,6 +113,12 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  rays or SLAM observations clear them.
 - Sensor delivery realism is opt-in. Decision time is the plant clock;
   observation stamps stay at acquisition, so latency can trip freshness.
+- Scripted actors may explicitly declare their own reaction time,
+ acceleration, braking deceleration, clearance, and `yield_to_robot` policy.
+ Their SIM-only controller solves continuous relative-motion envelope entry
+ and brakes with the declared capability, preventing a cooperative pedestrian
+ from tunnelling through a stopped robot. Unaware actors remain available for
+ avoidance tests. Actor motion never enters ROBOT except through sensors.
 - The robot JSON is the shared geometry and inertia contract for the physical
   shell, Viewer body, planner footprint, wheel mass, payload, and centre of
   mass. MuJoCo compiles a fixed collision shell plus a contactless internal

@@ -186,6 +186,37 @@ int load_actors_sidecar(const std::string& map_path,
  if (error) *error = "actor " + actor.id + " has invalid speed";
  return -1;
  }
+ const auto* yields = e.find("yield_to_robot");
+ if (yields != nullptr) {
+ if (!yields->is_bool()) {
+ if (error) *error = "actor " + actor.id + " has invalid yield_to_robot";
+ return -1;
+ }
+ actor.behavior.yield_to_robot = yields->as_bool();
+ }
+ struct ResponseField {
+ const char* key;
+ double* value;
+ bool positive;
+ };
+ ResponseField response_fields[] = {
+ {"reaction_time_s", &actor.behavior.reaction_time_s, false},
+ {"acceleration_mps2", &actor.behavior.acceleration_mps2, true},
+ {"brake_deceleration_mps2",
+ &actor.behavior.brake_deceleration_mps2, true},
+ {"clearance_m", &actor.behavior.clearance_m, false}};
+ for (const auto& field : response_fields) {
+ const auto* value = e.find(field.key);
+ if (value == nullptr) continue;
+ if (!value->is_num() || !finite(value->as_num()) ||
+ (field.positive ? value->as_num() <= 0.0 : value->as_num() < 0.0)) {
+ if (error) {
+ *error = "actor " + actor.id + " has invalid " + field.key;
+ }
+ return -1;
+ }
+ *field.value = value->as_num();
+ }
  const auto* loop = e.find("loop");
  if (loop != nullptr && loop->is_bool()) {
  actor.behavior.loop = loop->as_bool();

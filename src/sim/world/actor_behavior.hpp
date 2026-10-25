@@ -53,12 +53,32 @@ struct ActorBehavior {
   std::uint64_t rng_state = 0;
   // Dwell latch: true while serving a timed stop.
   bool dwelling_ = false;
-  double dwell_remaining_s = 0.0;
+ double dwell_remaining_s = 0.0;
+ // Optional SIM actor-agent response. Scripted motion remains the desired
+ // path, while continuous relative-motion prediction brakes the actor before
+ // it reaches the physical robot envelope. These are actor capabilities,
+ // never ROBOT inputs; false preserves an unaware/hostile obstacle.
+ bool yield_to_robot = false;
+ double reaction_time_s = 0.25;
+ double acceleration_mps2 = 1.0;
+ double brake_deceleration_mps2 = 1.5;
+ double clearance_m = 0.20;
+ bool yield_initialized_ = false;
+ double yield_speed_mps_ = 0.0;
 };
 
 // One deterministic step: sets the actor velocity from its behavior.
 // dt <= 0 is a no-op (no time passes, no stream consumed).
 void step_actor(Actor& actor, ActorBehavior& behavior, double dt);
+
+// Apply the actor's declared collision-response model to the nominal
+// velocity produced by step_actor(). The robot pose/velocity are SIM physics
+// state used only to evolve the other simulated agent; no result crosses the
+// ROBOT observation seam except through ordinary sensors.
+void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
+ double robot_x_m, double robot_y_m,
+ double robot_vx_mps, double robot_vy_mps,
+ double robot_radius_m, double dt);
 
 // String registry for scenario authors (S5 files name behaviors; the World
 // fills parameters afterwards). Builtins self-register below; first

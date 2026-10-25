@@ -324,6 +324,41 @@ int main() {
     assert(std::abs(w.actors()[0].y - 1.0) < 1e-9);
   }
 
+ // A yielding actor uses continuous relative-motion prediction and its
+ // declared braking capability. It stops outside the combined envelopes,
+ // then accelerates along the authored path after the robot leaves.
+ {
+ sim::world::Actor actor;
+ actor.x = 0.0;
+ actor.y = -3.0;
+ actor.radius_m = 0.3;
+ actor.behavior.yield_to_robot = true;
+ actor.behavior.reaction_time_s = 0.2;
+ actor.behavior.acceleration_mps2 = 1.0;
+ actor.behavior.brake_deceleration_mps2 = 2.0;
+ actor.behavior.clearance_m = 0.2;
+ double nearest = 1e9;
+ for (int step = 0; step < 250; ++step) {
+ actor.vx_mps = 0.0;
+ actor.vy_mps = 1.0; // nominal scripted velocity
+ sim::world::apply_actor_robot_yield(
+ actor, actor.behavior, 0.0, 0.0, 0.0, 0.0, 0.4, 0.02);
+ actor.x += actor.vx_mps * 0.02;
+ actor.y += actor.vy_mps * 0.02;
+ nearest = std::min(nearest, std::hypot(actor.x, actor.y));
+ }
+ assert(nearest >= 0.3 + 0.4 + 0.2 - 0.03);
+ const double stopped_y = actor.y;
+ for (int step = 0; step < 100; ++step) {
+ actor.vx_mps = 0.0;
+ actor.vy_mps = 1.0;
+ sim::world::apply_actor_robot_yield(
+ actor, actor.behavior, 10.0, 0.0, 0.0, 0.0, 0.4, 0.02);
+ actor.y += actor.vy_mps * 0.02;
+ }
+ assert(actor.y > stopped_y + 0.5);
+ }
+
   // Scenario acceptance: waypoint crosser cuts the corridor; the chain
   // holds, resumes, and replay reproduces the exact decision sequence.
   {

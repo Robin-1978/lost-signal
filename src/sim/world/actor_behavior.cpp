@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "sim/world/world.hpp"
 
@@ -159,6 +160,68 @@ void step_actor(Actor& actor, ActorBehavior& behavior, double dt) {
   }
   actor.vx_mps = 0.0;  // unreachable kind: stop rather than drift
   actor.vy_mps = 0.0;
+}
+
+void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
+ double robot_x_m, double robot_y_m,
+ double robot_vx_mps, double robot_vy_mps,
+ double robot_radius_m, double dt) {
+ if (!(dt > 0.0) || !behavior.yield_to_robot) return;
+ const double desired_speed = std::hypot(actor.vx_mps, actor.vy_mps);
+ if (!behavior.yield_initialized_) {
+ behavior.yield_speed_mps_ = desired_speed;
+ behavior.yield_initialized_ = true;
+ }
+
+ // Solve |relative_position + relative_velocity * t| = combined_radius.
+ // The first non-negative root is the continuous time to envelope entry;
+ // comparing it with reaction + braking time prevents discrete-step
+ // tunnelling without peeking into any ROBOT estimate or plan.
+ const double px = robot_x_m - actor.x;
+ const double py = robot_y_m - actor.y;
+ const double rvx = robot_vx_mps - actor.vx_mps;
+ const double rvy = robot_vy_mps - actor.vy_mps;
+ const double combined_radius = std::max(0.0, actor.radius_m) +
+ std::max(0.0, robot_radius_m) +
+ std::max(0.0, behavior.clearance_m);
+ const double a = rvx * rvx + rvy * rvy;
+ const double b = 2.0 * (px * rvx + py * rvy);
+ const double c = px * px + py * py - combined_radius * combined_radius;
+ bool conflict = c <= 0.0;
+ double first_contact_s = conflict
+ ? 0.0 : std::numeric_limits<double>::infinity();
+ if (!conflict && a > 1e-12) {
+ const double discriminant = b * b - 4.0 * a * c;
+ if (discriminant >= 0.0) {
+ const double root = std::sqrt(discriminant);
+ const double enter = (-b - root) / (2.0 * a);
+ const double leave = (-b + root) / (2.0 * a);
+ if (leave >= 0.0) first_contact_s = std::max(0.0, enter);
+ }
+ }
+ const double brake = std::max(1e-6, behavior.brake_deceleration_mps2);
+ const double stopping_horizon_s =
+ std::max(0.0, behavior.reaction_time_s) +
+ behavior.yield_speed_mps_ / brake;
+ conflict = conflict || first_contact_s <= stopping_horizon_s;
+
+ if (conflict) {
+ behavior.yield_speed_mps_ = std::max(
+ 0.0, behavior.yield_speed_mps_ - brake * dt);
+ } else {
+ behavior.yield_speed_mps_ = std::min(
+ desired_speed,
+ behavior.yield_speed_mps_ +
+ std::max(0.0, behavior.acceleration_mps2) * dt);
+ }
+ if (desired_speed <= 1e-12 || behavior.yield_speed_mps_ <= 0.0) {
+ actor.vx_mps = 0.0;
+ actor.vy_mps = 0.0;
+ return;
+ }
+ const double scale = std::min(1.0, behavior.yield_speed_mps_ / desired_speed);
+ actor.vx_mps *= scale;
+ actor.vy_mps *= scale;
 }
 
 ActorBehaviorRegistry& ActorBehaviorRegistry::global() {
