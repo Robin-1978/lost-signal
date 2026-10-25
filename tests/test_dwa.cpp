@@ -106,6 +106,47 @@ int main() {
            a.best.yaw_rate_radps == b.best.yaw_rate_radps);
   }
 
+ // Local decisions depend on the reachable route neighborhood, not on the
+ // total mission length. Appending kilometres of identical route beyond the
+ // prediction and braking horizon must leave every DWA proposal unchanged.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 1.0;
+ est.y_m = 1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route short_route;
+ short_route.valid = true;
+ for (int i = 0; i <= 80; ++i) {
+ short_route.points.push_back(
+ {0.25 * static_cast<double>(i), 1.0, 0.0, 1});
+ }
+ Route long_route = short_route;
+ for (int i = 81; i <= 8000; ++i) {
+ long_route.points.push_back(
+ {0.25 * static_cast<double>(i), 1.0, 0.0, 1});
+ }
+ DwaPlanner short_planner;
+ DwaPlanner long_planner;
+ const LocalPlan short_plan =
+ short_planner.plan(est, perc, m, short_route, limits);
+ const LocalPlan long_plan =
+ long_planner.plan(est, perc, m, long_route, limits);
+ assert(short_plan.has_plan && long_plan.has_plan);
+ assert(short_plan.candidates.size() == long_plan.candidates.size());
+ for (std::size_t i = 0; i < short_plan.candidates.size(); ++i) {
+ const auto& a = short_plan.candidates[i];
+ const auto& b = long_plan.candidates[i];
+ assert(a.forward_mps == b.forward_mps);
+ assert(a.yaw_rate_radps == b.yaw_rate_radps);
+ assert(a.lateral_mps == b.lateral_mps);
+ assert(std::abs(a.cost - b.cost) < 1e-12);
+ }
+ }
+
  // Inside the final position tolerance, terminal yaw owns heading authority.
  // The last route segment may point elsewhere after grid quantization; it
  // must not make the planner hold forever beside a correctly reached goal.

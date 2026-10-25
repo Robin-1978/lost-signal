@@ -70,6 +70,8 @@ struct PathProjection {
   double distance_m{std::numeric_limits<double>::infinity()};
   double along_m{0.0};
   double tangent_rad{0.0};
+ std::size_t segment{0};
+ double fraction{0.0};
 };
 
 PathProjection project_to_path(core::Vec2 point,
@@ -98,10 +100,47 @@ PathProjection project_to_path(core::Vec2 point,
       best.distance_m = distance_m;
       best.along_m = accumulated_m + projection * length_m;
       best.tangent_rad = std::atan2(delta.y, delta.x);
+ best.segment = i;
+ best.fraction = projection;
     }
     accumulated_m += length_m;
   }
   return best;
+}
+
+PathProjection project_to_route(core::Vec2 point, const Route& route) {
+ PathProjection best;
+ if (route.points.empty()) return best;
+ if (route.points.size() == 1) {
+ best.distance_m = std::hypot(point.x - route.points.front().x_m,
+ point.y - route.points.front().y_m);
+ return best;
+ }
+ double accumulated_m = 0.0;
+ for (std::size_t i = 0; i + 1 < route.points.size(); ++i) {
+ const auto& a = route.points[i];
+ const auto& b = route.points[i + 1];
+ const double dx = b.x_m - a.x_m;
+ const double dy = b.y_m - a.y_m;
+ const double length_m = std::hypot(dx, dy);
+ if (length_m < 1e-9) continue;
+ const double fraction = std::clamp(
+ ((point.x - a.x_m) * dx + (point.y - a.y_m) * dy) /
+ (length_m * length_m),
+ 0.0, 1.0);
+ const double distance_m = std::hypot(
+ point.x - (a.x_m + fraction * dx),
+ point.y - (a.y_m + fraction * dy));
+ if (distance_m < best.distance_m) {
+ best.distance_m = distance_m;
+ best.along_m = accumulated_m + fraction * length_m;
+ best.tangent_rad = std::atan2(dy, dx);
+ best.segment = i;
+ best.fraction = fraction;
+ }
+ accumulated_m += length_m;
+ }
+ return best;
 }
 
 struct RouteTarget {
@@ -113,27 +152,117 @@ struct RouteTarget {
 // Route lookahead: closest route point, then advance lookahead_m along it.
 // Preserve the planner's body heading and gear annotation at the selected
 // segment so a Hybrid-A* reverse decision is not lost in local sampling.
-RouteTarget route_goal(const Route& route, double x, double y,
+RouteTarget route_goal(const Route& route, const PathProjection& projection,
  double lookahead_m) {
-  std::vector<core::Vec2> pts;
-  pts.reserve(route.points.size());
-  for (const auto& p : route.points) pts.push_back({p.x_m, p.y_m});
-  PathProjection proj = project_to_path({x, y}, pts);
-  double target_along = proj.along_m + lookahead_m;
-  double accumulated_m = 0.0;
-  for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
-    const double seg =
-        std::hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-    if (accumulated_m + seg >= target_along && seg > 1e-9) {
-      const double s = (target_along - accumulated_m) / seg;
- return {{pts[i].x + s * (pts[i + 1].x - pts[i].x),
- pts[i].y + s * (pts[i + 1].y - pts[i].y)},
- route.points[i].yaw_rad, route.points[i].gear};
-    }
-    accumulated_m += seg;
-  }
- return {pts.back(), route.points.back().yaw_rad,
- route.points.back().gear};
+ if (route.points.size() == 1) {
+ return {{route.points.front().x_m, route.points.front().y_m},
+ route.points.front().yaw_rad, route.points.front().gear};
+ }
+ std::size_t segment = std::min(
+ projection.segment, route.points.size() - 2);
+ double fraction = std::clamp(projection.fraction, 0.0, 1.0);
+ double remaining_m = std::max(0.0, lookahead_m);
+ while (segment + 1 < route.points.size()) {
+ const auto& a = route.points[segment];
+ const auto& b = route.points[segment + 1];
+ const double length_m = std::hypot(b.x_m - a.x_m, b.y_m - a.y_m);
+ const double available_m = length_m * (1.0 - fraction);
+ if (length_m > 1e-9 && remaining_m <= available_m) {
+ const double target_fraction = fraction + remaining_m / length_m;
+ return {{a.x_m + target_fraction * (b.x_m - a.x_m),
+ a.y_m + target_fraction * (b.y_m - a.y_m)},
+ a.yaw_rad, a.gear};
+ }
+ remaining_m -= available_m;
+ ++segment;
+ fraction = 0.0;
+ }
+ const auto& last = route.points.back();
+ return {{last.x_m, last.y_m}, last.yaw_rad, last.gear};
+}
+
+struct RouteLocation {
+ std::size_t segment{0};
+ double fraction{0.0};
+};
+
+RouteLocation move_on_route(const Route& route, RouteLocation location,
+ double distance_m) {
+ if (route.points.size() < 2) return location;
+ location.segment = std::min(location.segment, route.points.size() - 2);
+ location.fraction = std::clamp(location.fraction, 0.0, 1.0);
+ double remaining_m = std::abs(distance_m);
+ if (distance_m >= 0.0) {
+ while (location.segment + 1 < route.points.size()) {
+ const auto& a = route.points[location.segment];
+ const auto& b = route.points[location.segment + 1];
+ const double length_m = std::hypot(b.x_m - a.x_m, b.y_m - a.y_m);
+ const double available_m = length_m * (1.0 - location.fraction);
+ if (length_m > 1e-9 && remaining_m <= available_m) {
+ location.fraction += remaining_m / length_m;
+ return location;
+ }
+ remaining_m -= available_m;
+ if (location.segment + 2 >= route.points.size()) {
+ location.fraction = 1.0;
+ return location;
+ }
+ ++location.segment;
+ location.fraction = 0.0;
+ }
+ return location;
+ }
+ while (true) {
+ const auto& a = route.points[location.segment];
+ const auto& b = route.points[location.segment + 1];
+ const double length_m = std::hypot(b.x_m - a.x_m, b.y_m - a.y_m);
+ const double available_m = length_m * location.fraction;
+ if (length_m > 1e-9 && remaining_m <= available_m) {
+ location.fraction -= remaining_m / length_m;
+ return location;
+ }
+ remaining_m -= available_m;
+ if (location.segment == 0) {
+ location.fraction = 0.0;
+ return location;
+ }
+ --location.segment;
+ location.fraction = 1.0;
+ }
+}
+
+core::Vec2 position_on_route(const Route& route, RouteLocation location) {
+ const auto& a = route.points[location.segment];
+ const auto& b = route.points[location.segment + 1];
+ return {a.x_m + location.fraction * (b.x_m - a.x_m),
+ a.y_m + location.fraction * (b.y_m - a.y_m)};
+}
+
+std::vector<core::Vec2> local_route_reference(
+ const Route& route, const PathProjection& projection,
+ double backward_m, double forward_m) {
+ std::vector<core::Vec2> reference;
+ if (route.points.empty()) return reference;
+ if (route.points.size() == 1) {
+ reference.push_back({route.points.front().x_m, route.points.front().y_m});
+ return reference;
+ }
+ const RouteLocation current{projection.segment, projection.fraction};
+ const RouteLocation first = move_on_route(
+ route, current, -std::max(0.0, backward_m));
+ const RouteLocation last = move_on_route(
+ route, current, std::max(0.0, forward_m));
+ reference.push_back(position_on_route(route, first));
+ for (std::size_t point = first.segment + 1;
+ point <= last.segment && point < route.points.size(); ++point) {
+ reference.push_back({route.points[point].x_m, route.points[point].y_m});
+ }
+ const core::Vec2 last_position = position_on_route(route, last);
+ if (std::hypot(reference.back().x - last_position.x,
+ reference.back().y - last_position.y) > 1e-9) {
+ reference.push_back(last_position);
+ }
+ return reference;
 }
 
 }  // namespace
@@ -187,8 +316,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
  {est.forward_mps, 0.0, v_max, -v_max});
 
+ const PathProjection route_projection =
+ project_to_route({est.x_m, est.y_m}, route);
  const RouteTarget target =
- route_goal(route, est.x_m, est.y_m, config_.lookahead_m);
+ route_goal(route, route_projection, config_.lookahead_m);
  const core::Vec2 goal = target.position;
  // Position comes first at the terminal point. Switching to final yaw at the
  // lookahead distance made a differential base align early and stop beside
@@ -217,9 +348,28 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  map, std::max(0.0, ego_radius),
  std::max(0.0, config_.soft_inflation_radius_m));
 
-  std::vector<core::Vec2> reference;
-  reference.reserve(route.points.size());
-  for (const auto& p : route.points) reference.push_back({p.x_m, p.y_m});
+ // Only the current route neighborhood can affect a finite rollout. Find
+ // progress once on the complete route, then score every candidate against
+ // a window derived from the chassis reach and full braking tail. This
+ // keeps local-planning work bounded as global missions grow to kilometres.
+ const double forward_braking_m = decel > 0.0
+ ? v_max * v_max / (2.0 * decel)
+ : 0.0;
+ const double lateral_max = std::max(0.0, limits.max_lateral_mps);
+ const double lateral_braking_m = config_.lateral_accel_mps2 > 0.0
+ ? lateral_max * lateral_max /
+ (2.0 * config_.lateral_accel_mps2)
+ : 0.0;
+ const double reachable_m = std::hypot(
+ v_max * predict_T + forward_braking_m,
+ lateral_max * predict_T + lateral_braking_m);
+ const double route_window_m =
+ std::max(std::max(0.0, config_.lookahead_m), reachable_m) +
+ std::max(0.0, map.resolution_m);
+ const std::vector<core::Vec2> reference = local_route_reference(
+ route, route_projection, route_window_m, route_window_m);
+ const PathProjection start_projection =
+ project_to_path({est.x_m, est.y_m}, reference);
 
  std::vector<LocalCandidate> proposals;
 
@@ -387,7 +537,6 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
       double distance_sum_m = 0.0;
       for (const auto& s : samples)
         distance_sum_m += project_to_path(s, reference).distance_m;
-      const auto start_projection = project_to_path({est.x_m, est.y_m}, reference);
       const auto end_projection = project_to_path({x, y}, reference);
  const double path_heading_target =
  goal_distance <= std::max(0.0, config_.terminal_position_tolerance_m)
