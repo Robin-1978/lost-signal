@@ -64,6 +64,10 @@
 - 高协方差恢复：传感器局部恢复只依赖当前 ROBOT 扫描、局部地图和匿名动态
  预测，不再被全局位姿协方差错误禁用；每条恢复轨迹仍须通过静态扫掠、连续
  动态预测、制动尾迹与地形 validator，避免重定位期间形成永久停车死锁。
+- 轨迹执行监测：Coordinator 将最终发布的 body-twist 命令交给 ROBOT 侧
+ `TrajectoryTrackingSystem`，下一周期用自身估计计算位置、航向、速度和角速度
+ 偏差。传感器延迟先用测得里程外推到命令时刻，同一 stamped command 幂等；
+ 包络由导航余量、底盘尺寸、决策周期和估计协方差推导，仅作诊断，不参与放行。
 - IMU/姿态：修正相对四元数方向、最短弧角速度、REP-103 重力投影和高度
  二阶差分；姿态滤波按加速度模长降权并限制单周期倾角修正，seed 同步
  重置内部四元数。
@@ -72,7 +76,7 @@
 - P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
   `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
   和 dormant actor，不把游戏 authority 穿透给 ROBOT。
-- 当前验证基线：`ctest --test-dir build --output-on-failure -j4` 为 57/57
+- 当前验证基线：`ctest --test-dir build --output-on-failure -j4` 为 58/58
  （包含 DWA/TEB 对比、artifact、地图语义转换回归），
  `tests/check_boundary.py` 通过并报告
  `robot boundary ok: no sim includes, no truth tokens, no sim links`。当前机器
@@ -152,6 +156,7 @@ viewer 可选加载。这些都不改变 ROBOT 输入契约。
 | `crossing_behavior` / `entry_governor` | route-aware `WaitOnIntrusionBehavior` | 通用能力已迁入；从路线和在线预测推导进入约束，不迁入关卡语义或通行权真值 |
 | `high_level_policy` | `RobotExecutive` + `IBehaviorPolicy` 扩展缝 | 旧文件主要是空基类/扩展接口；保留有效职责，不复制无运行逻辑的层 |
 | `route_tracking_system` | `RoutePipeline` + DWA/TEB + `GoalArrivalTracker` | 已拆入规划/决策模块；路线推进、曲率/倒车约束和到点停车均有端到端覆盖 |
+| `trajectory_tracking_system` | `diagnostics::TrajectoryTrackingSystem` | 已适配；比较已发布命令与后续 ROBOT 估计，只发布执行偏差诊断，不形成绕过 Validator 的隐式门控 |
 | `safe_stop_limiter` | `StopLatch` + `SafetyMonitor` + 底盘闭环控制 | 等价职责已迁入；制动使用 ROBOT 观测、配置制动能力和可达命令，不读取物理接触真值 |
 | `chassis_diagnostics` | `SlipObserver` + `VehicleMeasurementSystem` + decision evidence | 已迁入；编码器/IMU 残差、制动测量和决策证据均由 ROBOT 传感器产生 |
 | `pocket_shadow` | artifact/replay、profile 与端到端多底盘测试 | 旧模块仅作离线轨迹模型比较且不参与决策；以确定性回放和真实执行链测试替代 |
@@ -175,7 +180,7 @@ viewer 可选加载。这些都不改变 ROBOT 输入契约。
 但“算法能力和仿真能力已经完整适配新框架”这个判断不成立。当前存在四类 P0 缺陷，分别破坏了几何契约、扫描角度契约、碰撞校验语义和 SLAM 静态地图假设；此外 headless 任务执行、传感器时序、倒车与多底盘规划、目标生命周期等主路径存在明显能力缺口。
 
 审计启动时的 `47/47` CTest 只说明当时已有测试覆盖的路径稳定。现有
-修复状态与 57 项基线见文件顶部。
+修复状态与 58 项基线见文件顶部。
 
 ## 2. 已验证的通过项
 
