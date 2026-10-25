@@ -44,6 +44,7 @@ void plate_world(sim::scenario::ScenarioSession& session) {
 
 int run_plate(bool composite) {
   sim::scenario::ScenarioSession session(seed_diff_desc(), seed_diff_motor());
+ session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
   plate_world(session);
   sim::eval::SimConfig sim;
   sim.lidar_composite = composite;
@@ -72,6 +73,7 @@ int main() {
   {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
+ session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
     plate_world(session);
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
@@ -90,6 +92,7 @@ int main() {
   // pins the autonomy loop under downhill overshoot + uphill load.
   {
     sim::scenario::ScenarioSession session;
+ session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
     session.setup_world().add_place({"loopA", 4.0, 0.0, 0.0});
     session.setup_world().add_place({"loopB", 4.0, 4.0, 0.0});
     session.setup_world().add_place({"loopC", 0.0, 4.0, 0.0});

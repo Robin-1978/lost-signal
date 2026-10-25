@@ -89,7 +89,10 @@ class FusedOdometryEstimator : public IEstimator {
     double max_accel_tilt_correction_radps = 0.7;
     // Covariance growth per meter traveled / per second elapsed.
     double pos_growth_per_m = 0.01;
-    double pos_growth_per_s = 0.005;
+ // Wheel-odometry position uncertainty is distance-dominated. Keep a small
+ // time random walk for unmodelled bias without making a stationary robot
+ // lose metres of confidence during a long safety hold.
+ double pos_growth_per_s = 0.001;
     double yaw_growth_per_s = 0.002;
     double pos_sigma_min_m = 0.005;
     double pos_sigma_max_m = 100.0;

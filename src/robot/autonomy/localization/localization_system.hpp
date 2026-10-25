@@ -46,6 +46,9 @@ class LocalizationSystem {
   struct TickResult {
     std::string action = "init";
     bool replan_requested = false;
+ // Navigation in a surveyed map requires an established map frame. Mapless
+ // startup authorizes motion as soon as it seeds its odometry/SLAM frame.
+ bool motion_authorized = false;
   };
   // One decision tick over the estimate. Corrections feed the estimator
   // only when accepted, so a hard scan never drags the pose.

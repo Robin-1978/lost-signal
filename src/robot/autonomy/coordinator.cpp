@@ -418,6 +418,14 @@ iface::MotionCommand AutonomyCoordinator::update(
  last_constraint_ = "goal_hold";
  last_reason_ = goal_arrival_decision_.reason;
  }
+ // The localization subsystem owns map-frame authority. Until a surveyed
+ // startup establishes that frame, a route expressed in map coordinates
+ // cannot safely command motion. The coordinator only applies its verdict.
+ if (!loc.motion_authorized) {
+ last_cmd_ = iface::MotionCommand::SafeStop(now_ns);
+ last_constraint_ = "localization_hold";
+ last_reason_ = "map-frame-unresolved";
+ }
   // Controlled-stop latch: once stopping, withhold motion until the measured
   // tread settles, so a safety rejection on a grade cannot chatter into a
   // brake/accelerate limit cycle. Independent of planner yaw intent.

@@ -505,6 +505,7 @@ int main() {
     }
     AutonomyCoordinator coord;
     assert(coord.configure().ok && coord.activate().ok);
+ coord.set_goal({0.0, 5.0, 0.0});
     auto ranges = scan_from(1.0, 0.0, 0.0, uniform);
  bool saw_seeded = false;
  bool saw_tracking = false;
@@ -523,7 +524,11 @@ int main() {
       o.scan_angle_increment_rad = 2.0 * M_PI / ranges.size();
       o.imu_valid = true;
       coord.ingest_observation(o);
-      coord.update(uniform, iface::ChannelHealth{}, o.stamp_ns);
+ const iface::MotionCommand cmd =
+ coord.update(uniform, iface::ChannelHealth{}, o.stamp_ns);
+ // A map-frame route exists, but the ambiguous scan has not established
+ // that frame. Navigation must remain stopped until localization succeeds.
+ assert(cmd.is_safe_stop());
  // Ambiguous global seeds deferred tracking instead of guessing. The
  // cooperative search may need many bounded ticks before that decision.
  if (coord.last_localization_action() == "startup-seeded") {

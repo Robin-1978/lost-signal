@@ -78,6 +78,7 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  estimator, mapper)) {
     out.replan_requested = true;
   }
+ out.motion_authorized = supervisor_.localized();
   return out;
 }
 
@@ -350,7 +351,13 @@ bool LocalizationSystem::run_localization(
     }
  supervisor_.record_global(accept_global, ScanMatchResult{});
  if (!accept_global && !global.rejection_reason.empty()) {
- action = std::string("global_relocalization:") + global.rejection_reason;
+ action = std::string("global_relocalization:") + global.rejection_reason +
+ " score=" + std::to_string(global.score) +
+ " overlap=" + std::to_string(global.overlap) +
+ " margin=" + std::to_string(global.score_margin) +
+ " returns=" + std::to_string(global.usable_returns) +
+ " coarse=" + std::to_string(global.coarse_evaluations) +
+ " refined=" + std::to_string(global.refined_poses);
  }
  if (!accept_global && !supervisor_.localized() &&
  (!global.runner_ups.empty() || require_temporal_confirmation)) {

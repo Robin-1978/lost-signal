@@ -138,6 +138,9 @@ int main() {
   // completion, judged every step, scored at the end.
   {
     sim::scenario::ScenarioSession session;
+ // This mission deliberately has no globally localizable survey; its single
+ // off-path box is live obstacle context, not an initial-pose source.
+ session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
     session.setup_world().add_place({"dockA", 3.0, 0.0, 0.0});
     session.setup_world().add_place({"dockB", 6.0, 0.0, 0.0});
     // Off-path box: finite clearance, never a collision.
