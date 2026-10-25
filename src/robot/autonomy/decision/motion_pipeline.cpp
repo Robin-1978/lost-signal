@@ -173,8 +173,6 @@ MotionDecisionResult MotionDecisionPipeline::run(
  add_recovery(-crawl, 0.0, -slide);
  }
 
- const bool recovery_localized = est.valid && est.confidence >= 0.75 &&
- est.position_sigma_m <= 0.5 && est.heading_sigma_rad <= 0.75;
  const bool local_evidence =
  local_map.valid && local_map.provenance != LocalMapProvenance::kUnknown;
  ValidatedCandidate best_recovery;
@@ -217,8 +215,16 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
  return greater(a.static_clearance_m, b.static_clearance_m);
  };
- if (recovery_required && (local_evidence || forward_blocked) &&
- recovery_localized) {
+ // Recovery is expressed and validated in the current sensor-local frame:
+ // raw scan endpoints, ego rollout and tracked objects all undergo the same
+ // map-frame transform. Global map covariance therefore cannot make their
+ // relative clearance less observable. Requiring a small global sigma here
+ // used to create a permanent stop exactly when motion was needed to expose
+ // geometry for relocalization. Keep the valid-pose and local-evidence gates;
+ // every crawl candidate still passes the independent static, dynamic,
+ // braking and terrain validator before it can reach the controller.
+ if (recovery_required && est.valid &&
+ (local_evidence || forward_blocked)) {
  for (std::size_t i = 0; i < recovery_count; ++i) {
  const ValidationResult verdict = validator.validate(
  recovery[i], est, perception, prediction, observation, survey);

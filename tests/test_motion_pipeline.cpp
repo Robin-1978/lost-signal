@@ -136,6 +136,22 @@ int main() {
  assert(!recovered.command.is_safe_stop());
  assert(recovered.reason.find("recovery:") == 0);
 
+ // Global map uncertainty must not disable a recovery that is validated
+ // entirely from current local sensor evidence. A robot waiting for global
+ // relocalization can otherwise deadlock: it cannot move to reveal geometry,
+ // while every ordinary planner candidate remains blocked. The recovery is
+ // still crawl-speed and passes the independent validator before publication.
+ EstimatedState globally_uncertain = estimate;
+ globally_uncertain.position_sigma_m = 1.5;
+ globally_uncertain.heading_sigma_rad = 0.4;
+ globally_uncertain.confidence = 0.35;
+ pipeline.reset();
+ const MotionDecisionResult uncertain_recovery = pipeline.run(
+ globally_uncertain, perception, map, route, limits, limits, observation,
+ survey, estimate.stamp_ns, behavior, empty, validator, controller);
+ assert(!uncertain_recovery.command.is_safe_stop());
+ assert(uncertain_recovery.reason.find("recovery:") == 0);
+
  Route no_route;
  pipeline.reset();
  const MotionDecisionResult held = pipeline.run(
