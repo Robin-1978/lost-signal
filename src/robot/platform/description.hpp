@@ -53,6 +53,20 @@ struct NavigationSafetyPolicy {
  double soft_inflation_radius_m = kDefaultNavigationSoftInflationRadiusM;
 };
 
+// Deployable task-completion contract. Tolerances describe the requested
+// base pose; confidence_probability turns estimator covariance into a
+// confidence radius before ROBOT may claim completion.
+struct ArrivalPolicy {
+ double position_tolerance_m = 0.30;
+ double heading_tolerance_rad = 0.20;
+ double confidence_probability = 0.95;
+ double maximum_position_sigma_m = 0.25;
+ double maximum_heading_sigma_rad = 0.15;
+ double maximum_forward_speed_mps = 0.08;
+ double maximum_yaw_rate_radps = 0.08;
+ int settle_cycles = 3;
+};
+
 // Declared closed-loop motion capability shared by every ROBOT algorithm
 // that projects reachability or stopping distance. These are conservative
 // deployable guarantees, not simulator measurements. A real driver and the
@@ -93,6 +107,7 @@ struct RobotDescription {
   std::vector<SensorMount> sensors;
  ChassisLimits limits;
  NavigationSafetyPolicy navigation;
+ ArrivalPolicy arrival;
  MotionDynamicsPolicy motion;
   PlantGeometry plant;  // declared loadout for autonomy envelopes (COM,
                         // ride, support, mass) — description, never truth

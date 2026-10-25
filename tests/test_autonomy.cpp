@@ -56,6 +56,25 @@ int main() {
  decision = arrival.evaluate(estimate, goal, true);
  }
  assert(decision.arrived);
+
+ // Geometric tolerance alone is not a completion proof. The configured
+ // confidence region must also fit inside the requested pose envelope.
+ arrival.reset();
+ estimate.x_m = 1.18;
+ estimate.y_m = 2.0;
+ for (int cycle = 0; cycle < 3; ++cycle) {
+ decision = arrival.evaluate(estimate, goal, true);
+ }
+ assert(!decision.arrived);
+ assert(decision.reason == "approaching");
+ assert(decision.position_error_m < 0.25);
+ assert(decision.position_error_m +
+ decision.position_confidence_radius_m > 0.25);
+ estimate.x_m = 1.10;
+ for (int cycle = 0; cycle < 3; ++cycle) {
+ decision = arrival.evaluate(estimate, goal, true);
+ }
+ assert(decision.arrived);
  }
 
   // Estimator: integrates measured twist, fuses gyro yaw, grows covariance.

@@ -415,6 +415,63 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
  }
  }
 
+ const Json* arrival = obj.find("arrival");
+ if (arrival != nullptr) {
+ if (!arrival->is_object()) {
+ err = "'arrival' must be an object";
+ return false;
+ }
+ double value = 0.0;
+ bool present = false;
+ struct ArrivalSlot {
+ const char* key;
+ double* slot;
+ bool allow_zero;
+ };
+ ArrivalSlot slots[] = {
+ {"position_tolerance_m", &out.arrival.position_tolerance_m, false},
+ {"heading_tolerance_rad", &out.arrival.heading_tolerance_rad, false},
+ {"maximum_position_sigma_m",
+ &out.arrival.maximum_position_sigma_m, false},
+ {"maximum_heading_sigma_rad",
+ &out.arrival.maximum_heading_sigma_rad, false},
+ {"maximum_forward_speed_mps",
+ &out.arrival.maximum_forward_speed_mps, true},
+ {"maximum_yaw_rate_radps",
+ &out.arrival.maximum_yaw_rate_radps, true}};
+ for (const auto& slot : slots) {
+ if (!take_num(*arrival, slot.key, value, present, err)) return false;
+ if (!present) continue;
+ if (!std::isfinite(value) ||
+ (slot.allow_zero ? value < 0.0 : value <= 0.0)) {
+ err = std::string("arrival.'") + slot.key +
+ (slot.allow_zero ? "' must be finite non-negative"
+ : "' must be finite positive");
+ return false;
+ }
+ *slot.slot = value;
+ }
+ if (!take_num(*arrival, "confidence_probability", value, present, err)) {
+ return false;
+ }
+ if (present) {
+ if (!std::isfinite(value) || value <= 0.0 || value >= 1.0) {
+ err = "arrival.'confidence_probability' must be in (0, 1)";
+ return false;
+ }
+ out.arrival.confidence_probability = value;
+ }
+ const Json* settle = arrival->find("settle_cycles");
+ if (settle != nullptr) {
+ if (!settle->is_num() || settle->as_num() <= 0.0 ||
+ settle->as_num() != std::floor(settle->as_num())) {
+ err = "arrival.'settle_cycles' must be a positive integer";
+ return false;
+ }
+ out.arrival.settle_cycles = static_cast<int>(settle->as_num());
+ }
+ }
+
  const Json* motion = obj.find("motion");
  if (motion != nullptr) {
  if (!motion->is_object()) {
@@ -609,6 +666,7 @@ RobotDescription description_from_config(const RobotConfig& config) {
   desc.sensors = config.sensors;
   desc.limits = config.limits;
  desc.navigation = config.navigation;
+ desc.arrival = config.arrival;
  desc.motion = config.motion;
  desc.chassis_kind = config.profile.chassis_kind;
  desc.local_planner_kind = config.local_planner_kind;

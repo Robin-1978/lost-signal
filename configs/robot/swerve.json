@@ -30,6 +30,16 @@
  "clearance_margin_m": 0.1,
  "soft_inflation_radius_m": 0.2
  },
+ "arrival": {
+ "position_tolerance_m": 0.25,
+ "heading_tolerance_rad": 0.2,
+ "confidence_probability": 0.95,
+ "maximum_position_sigma_m": 0.25,
+ "maximum_heading_sigma_rad": 0.15,
+ "maximum_forward_speed_mps": 0.08,
+ "maximum_yaw_rate_radps": 0.08,
+ "settle_cycles": 3
+ },
   "links": [
     {
       "link": "base_link",
@@ -106,5 +116,5 @@
   ],
  "robot_id": "ro1",
  "local_planner": "dwa",
- "version": 3
+ "version": 4
 }

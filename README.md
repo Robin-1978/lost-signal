@@ -88,6 +88,11 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  holonomic bases settle the requested final yaw inside the position tolerance;
  Ackermann follows the route heading and remains bounded by
  `|yaw_rate| <= |speed| * curvature`.
+- Arrival is a versioned ROBOT machine policy rather than a scenario radius.
+ The declared probability converts estimator covariance to position/heading
+ confidence radii; error plus confidence radius must fit the configured pose
+ tolerance while measured motion remains below the configured settle limits.
+ SIM independently records physical miss distance after ROBOT reports Done.
 - Global A*, Hybrid-A*, DWA, and TEB share a two-stage costmap. The hard layer
  expands known obstacles by the declared footprint plus the robot JSON
  `navigation.clearance_margin_m`; the outer

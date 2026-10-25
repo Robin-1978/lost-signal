@@ -11,6 +11,7 @@ std::unique_ptr<ILocalPlanner> make_local_planner(
  const platform::MotionDynamicsPolicy& motion,
  double terminal_position_tolerance_m,
  double terminal_heading_tolerance_rad,
+ double terminal_confidence_probability,
  double terminal_maximum_position_sigma_m,
  double terminal_maximum_heading_sigma_rad,
  int terminal_replan_settle_cycles) {
@@ -25,6 +26,7 @@ std::unique_ptr<ILocalPlanner> make_local_planner(
  config.response_delay_s = motion.actuator_response_delay_s;
  config.terminal_position_tolerance_m = terminal_position_tolerance_m;
  config.terminal_heading_tolerance_rad = terminal_heading_tolerance_rad;
+ config.terminal_confidence_probability = terminal_confidence_probability;
  config.terminal_maximum_position_sigma_m =
  terminal_maximum_position_sigma_m;
  config.terminal_maximum_heading_sigma_rad =
@@ -41,6 +43,7 @@ std::unique_ptr<ILocalPlanner> make_local_planner(
  config.lateral_accel_mps2 = motion.lateral_acceleration_mps2;
  config.yaw_accel_radps2 = motion.yaw_acceleration_radps2;
  config.terminal_position_tolerance_m = terminal_position_tolerance_m;
+ config.terminal_confidence_probability = terminal_confidence_probability;
  return std::make_unique<TebPlanner>(config);
  }
  return nullptr;

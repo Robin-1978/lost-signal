@@ -260,6 +260,11 @@ route, pre-activation hold).
  coordinator's route (failed cancels leave it untouched), a new request
  preempts the running goal, and arrival requires the configured position and
  heading tolerances, covariance bounds, and consecutive stopped estimates.
+ The ROBOT machine contract also declares an arrival confidence probability.
+ Position uses the radial 2-D Gaussian quantile and heading the two-sided 1-D
+ quantile; estimated error plus that confidence radius must fit inside the
+ requested tolerance. DWA and TEB consume the same reduced terminal envelope,
+ so a planner cannot stop at a pose the task layer is unable to certify.
  Low covariance confidence cannot authorize motion by itself: the goal policy
  holds unless localization explicitly requests a supervised observation
  manoeuvre. SIM submits the same typed intents as an operator.

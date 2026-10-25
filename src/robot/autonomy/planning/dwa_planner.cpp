@@ -6,6 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "robot/autonomy/decision/arrival_confidence.hpp"
+
 namespace lost_signal::robot::autonomy {
 
 namespace {
@@ -496,9 +498,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal.x_m - est.x_m, terminal.y_m - est.y_m);
  const double terminal_heading_error_rad = std::abs(core::wrap_angle(
  terminal.yaw_rad - est.yaw_rad));
+ const double terminal_position_tolerance_m = confidence_bounded_tolerance(
+ config_.terminal_position_tolerance_m,
+ position_confidence_radius(est.position_sigma_m,
+ config_.terminal_confidence_probability));
+ const double terminal_heading_tolerance_rad = confidence_bounded_tolerance(
+ config_.terminal_heading_tolerance_rad,
+ heading_confidence_radius(est.heading_sigma_rad,
+ config_.terminal_confidence_probability));
  const bool terminal_position_reached =
- terminal_distance_m <=
- std::max(0.0, config_.terminal_position_tolerance_m);
+ terminal_distance_m <= terminal_position_tolerance_m;
  const auto& tracked_a = route.points[route_segment_];
  const auto& tracked_b = route.points[route_segment_ + 1];
  const double tracked_remaining_m = (1.0 - route_fraction_) * std::hypot(
@@ -513,7 +522,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  goal_distance <=
  std::max(0.0, config_.terminal_position_tolerance_m) &&
  terminal_heading_error_rad >
- std::max(0.0, config_.terminal_heading_tolerance_rad) &&
+ terminal_heading_tolerance_rad &&
  std::abs(est.forward_mps) <= decel * dt + 1e-9;
  terminal_mismatch_settle_count_ = stopped_terminal_mismatch
  ? terminal_mismatch_settle_count_ + 1 : 0;
@@ -542,7 +551,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  const double heading_target = car_like
  ? car_like_tracking_heading
- : goal_distance > std::max(0.0, config_.terminal_position_tolerance_m)
+ : goal_distance > terminal_position_tolerance_m
  ? goal_bearing
  : std::isfinite(target.yaw_rad)
  ? target.yaw_rad
@@ -836,7 +845,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
       const auto end_projection = project_to_path({x, y}, reference);
  const double path_heading_target = car_like
  ? heading_target
- : goal_distance <= std::max(0.0, config_.terminal_position_tolerance_m)
+ : goal_distance <= terminal_position_tolerance_m
  ? heading_target
  : end_projection.tangent_rad;
       const double path_score =
@@ -876,9 +885,9 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   }
  if (proposals.empty()) return out;
  const bool route_motion_required =
- goal_distance > std::max(0.0, config_.terminal_position_tolerance_m) ||
+ goal_distance > terminal_position_tolerance_m ||
  terminal_heading_error_rad >
- std::max(0.0, config_.terminal_heading_tolerance_rad);
+ terminal_heading_tolerance_rad;
  // Safety feasibility is already a hard generation constraint and every
  // proposal still passes the independent validator. Within that admissible
  // set, an active route is a lexicographic progress objective: a stationary

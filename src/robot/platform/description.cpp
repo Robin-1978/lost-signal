@@ -17,6 +17,22 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.navigation.clearance_margin_m < 0.0) return false;
  if (!std::isfinite(desc.navigation.soft_inflation_radius_m) ||
  desc.navigation.soft_inflation_radius_m < 0.0) return false;
+ if (!std::isfinite(desc.arrival.position_tolerance_m) ||
+ desc.arrival.position_tolerance_m <= 0.0) return false;
+ if (!std::isfinite(desc.arrival.heading_tolerance_rad) ||
+ desc.arrival.heading_tolerance_rad <= 0.0) return false;
+ if (!std::isfinite(desc.arrival.confidence_probability) ||
+ desc.arrival.confidence_probability <= 0.0 ||
+ desc.arrival.confidence_probability >= 1.0) return false;
+ if (!std::isfinite(desc.arrival.maximum_position_sigma_m) ||
+ desc.arrival.maximum_position_sigma_m <= 0.0) return false;
+ if (!std::isfinite(desc.arrival.maximum_heading_sigma_rad) ||
+ desc.arrival.maximum_heading_sigma_rad <= 0.0) return false;
+ if (!std::isfinite(desc.arrival.maximum_forward_speed_mps) ||
+ desc.arrival.maximum_forward_speed_mps < 0.0) return false;
+ if (!std::isfinite(desc.arrival.maximum_yaw_rate_radps) ||
+ desc.arrival.maximum_yaw_rate_radps < 0.0) return false;
+ if (desc.arrival.settle_cycles <= 0) return false;
  if (!std::isfinite(desc.motion.acceleration_mps2) ||
  desc.motion.acceleration_mps2 <= 0.0) return false;
  if (!std::isfinite(desc.motion.brake_deceleration_mps2) ||
@@ -73,6 +89,14 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
   mix(std::to_string(desc.plant.total_mass_kg));
  mix(std::to_string(desc.navigation.clearance_margin_m));
  mix(std::to_string(desc.navigation.soft_inflation_radius_m));
+ mix(std::to_string(desc.arrival.position_tolerance_m));
+ mix(std::to_string(desc.arrival.heading_tolerance_rad));
+ mix(std::to_string(desc.arrival.confidence_probability));
+ mix(std::to_string(desc.arrival.maximum_position_sigma_m));
+ mix(std::to_string(desc.arrival.maximum_heading_sigma_rad));
+ mix(std::to_string(desc.arrival.maximum_forward_speed_mps));
+ mix(std::to_string(desc.arrival.maximum_yaw_rate_radps));
+ mix(std::to_string(desc.arrival.settle_cycles));
  mix(std::to_string(desc.motion.acceleration_mps2));
  mix(std::to_string(desc.motion.brake_deceleration_mps2));
  mix(std::to_string(desc.motion.lateral_acceleration_mps2));

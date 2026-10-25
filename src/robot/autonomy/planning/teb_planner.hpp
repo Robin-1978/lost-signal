@@ -18,6 +18,7 @@ struct TebPlannerConfig {
  double horizon_s = 2.5;
  double control_dt_s = 0.1;
  double terminal_position_tolerance_m = 0.25;
+ double terminal_confidence_probability = 0.95;
  double min_band_dt_s = 0.08;
  double max_band_dt_s = 0.40;
  double spatial_step_cap_m = 0.08;

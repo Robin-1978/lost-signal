@@ -14,6 +14,10 @@ namespace lost_signal::robot::autonomy {
 struct GoalArrivalConfig {
  double position_tolerance_m = 0.25;
  double heading_tolerance_rad = 0.20;
+ // Probability that the true pose must lie inside the remaining arrival
+ // envelope. This is converted to Gaussian quantiles; it is not a tuned
+ // fixed sigma multiplier.
+ double confidence_probability = 0.95;
  double maximum_forward_speed_mps = 0.08;
  double maximum_yaw_rate_radps = 0.08;
  // Completion is a pose claim, so the estimate uncertainty must fit inside
@@ -29,6 +33,8 @@ struct GoalArrivalDecision {
  bool arrived = false;
  double position_error_m = 0.0;
  double heading_error_rad = 0.0;
+ double position_confidence_radius_m = 0.0;
+ double heading_confidence_radius_rad = 0.0;
  std::string reason = "inactive";
 };
 

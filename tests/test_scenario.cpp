@@ -174,7 +174,20 @@ int main() {
       dyn_clear.push_back(
           session.episode().steps().back().judge.dynamic_clearance_m);
     }
-    assert(session.objectives_done());
+ if (!session.objectives_done()) {
+ const auto& stalled = session.episode().steps().back();
+ std::fprintf(stderr,
+ "scenario stalled: truth=(%.3f,%.3f) est=(%.3f,%.3f) sigma=%.3f "
+ "goal=%d/%s decision=%s/%s\n",
+ stalled.truth_after.body_x_m, stalled.truth_after.body_y_m,
+ stalled.diag.estimate.x_m, stalled.diag.estimate.y_m,
+ stalled.diag.estimate.position_sigma_m,
+ static_cast<int>(stalled.diag.goal.state),
+ stalled.diag.goal.detail.c_str(),
+ stalled.diag.evidence.constraint_code.c_str(),
+ stalled.diag.evidence.reason_code.c_str());
+ }
+ assert(session.objectives_done());
  assert(session.objectives_passed());
     // Score: completion with a score, zero collision steps.
  const auto score = sim::eval::score_episode(session.episode());
@@ -284,10 +297,26 @@ int main() {
   {
     sim::scenario::ScenarioSession session;
     session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+ session.setup_world().set_static_boxes({
+ {1.0, 1.0, 2.0, 2.0, 1.0}});
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
     session.set_objectives({"nope", "dock"}, 1.0);
-    for (int i = 0; i < 400 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 800 && !session.objectives_done(); ++i) {
       session.step_once();
     }
+ if (!session.objectives_done()) {
+ const auto& stalled = session.episode().steps().back();
+ std::fprintf(stderr,
+ "unknown-place continuation stalled: truth=(%.3f,%.3f) "
+ "est=(%.3f,%.3f) sigma=%.3f goal=%d/%s decision=%s/%s\n",
+ stalled.truth_after.body_x_m, stalled.truth_after.body_y_m,
+ stalled.diag.estimate.x_m, stalled.diag.estimate.y_m,
+ stalled.diag.estimate.position_sigma_m,
+ static_cast<int>(stalled.diag.goal.state),
+ stalled.diag.goal.detail.c_str(),
+ stalled.diag.evidence.constraint_code.c_str(),
+ stalled.diag.evidence.reason_code.c_str());
+ }
     assert(session.objectives_done());
  assert(!session.objectives_passed());
     const auto& results = session.objectives().results();
@@ -305,8 +334,11 @@ int main() {
  {
  sim::scenario::ScenarioSession session;
  session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+ session.setup_world().set_static_boxes({
+ {1.0, 1.0, 2.0, 2.0, 1.0}});
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.set_objectives({"dock"}, 0.01);
- for (int i = 0; i < 500 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 800 && !session.objectives_done(); ++i) {
  session.step_once();
  }
  assert(session.objectives_done());
@@ -326,11 +358,14 @@ int main() {
     sim::scenario::ScenarioSession session;
     session.setup_world().add_place({"far", 40.0, 0.0, 0.0});
     session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+ session.setup_world().set_static_boxes({
+ {1.0, 1.0, 2.0, 2.0, 1.0}});
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
     session.set_objectives({"far", "dock"}, 1.0);
-    // Budget between dock's natural completion (~300 steps) and far's
+ // Budget between dock's natural completion and far's
     // reach (~1500+): far abandons, dock completes normally.
-    session.set_objective_step_budget(400);
-    for (int i = 0; i < 1500 && !session.objectives_done(); ++i) {
+ session.set_objective_step_budget(700);
+ for (int i = 0; i < 2000 && !session.objectives_done(); ++i) {
       session.step_once();
     }
     assert(session.objectives_done());

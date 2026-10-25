@@ -25,6 +25,9 @@ int main() {
     assert(cfg.limits.max_forward_mps == 2.0);
  assert(cfg.navigation.clearance_margin_m == 0.1);
  assert(cfg.navigation.soft_inflation_radius_m == 0.2);
+ assert(cfg.arrival.position_tolerance_m == 0.25);
+ assert(cfg.arrival.heading_tolerance_rad == 0.2);
+ assert(cfg.arrival.confidence_probability == 0.95);
  assert(cfg.motion.acceleration_mps2 == 2.0);
  assert(cfg.motion.brake_deceleration_mps2 == 2.0);
  assert(cfg.motion.yaw_acceleration_radps2 == 8.0);
@@ -36,6 +39,7 @@ int main() {
     assert(desc.limits.max_forward_mps == 2.0);
  assert(desc.navigation.clearance_margin_m == 0.1);
  assert(desc.navigation.soft_inflation_radius_m == 0.2);
+ assert(desc.arrival.confidence_probability == 0.95);
  assert(desc.motion.acceleration_mps2 == cfg.motion.acceleration_mps2);
  assert(desc.motion.brake_deceleration_mps2 ==
  cfg.motion.brake_deceleration_mps2);
@@ -186,6 +190,21 @@ int main() {
  assert(cfg.navigation.soft_inflation_radius_m == 0.31);
  write(R"({"kind": "differential", "navigation": {
  "clearance_margin_m": -0.1}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "arrival": {
+ "position_tolerance_m": 0.12, "heading_tolerance_rad": 0.1,
+ "confidence_probability": 0.99, "maximum_position_sigma_m": 0.08,
+ "maximum_heading_sigma_rad": 0.05, "maximum_forward_speed_mps": 0.03,
+ "maximum_yaw_rate_radps": 0.04, "settle_cycles": 5}})");
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.arrival.position_tolerance_m == 0.12);
+ assert(cfg.arrival.confidence_probability == 0.99);
+ assert(cfg.arrival.settle_cycles == 5);
+ assert(robot::platform::description_from_config(cfg).arrival.settle_cycles == 5);
+ write(R"({"kind": "differential", "arrival": {
+ "confidence_probability": 1.0}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "arrival": {"settle_cycles": 0}})");
  assert(!robot::platform::load_robot_config(tmp, cfg, &err));
  write(R"({"kind": "differential", "motion": {
  "acceleration_mps2": 1.25, "brake_deceleration_mps2": 1.5,

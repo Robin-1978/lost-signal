@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include "robot/autonomy/decision/arrival_confidence.hpp"
 #include "robot/autonomy/planning/prediction.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -376,9 +377,13 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  forward, est.forward_mps, config_.accel_mps2,
  config_.decel_mps2, config_.control_dt_s);
  const auto& terminal = route.points.back();
+ const double terminal_position_tolerance_m = confidence_bounded_tolerance(
+ config_.terminal_position_tolerance_m,
+ position_confidence_radius(est.position_sigma_m,
+ config_.terminal_confidence_probability));
  const bool at_terminal_position = std::hypot(
  terminal.x_m - est.x_m, terminal.y_m - est.y_m) <=
- std::max(0.0, config_.terminal_position_tolerance_m);
+ terminal_position_tolerance_m;
  const double heading_target = at_terminal_position &&
  std::isfinite(terminal.yaw_rad)
  ? terminal.yaw_rad

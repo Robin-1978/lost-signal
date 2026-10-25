@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "robot/autonomy/decision/arrival_confidence.hpp"
 #include "robot/core/geometry.hpp"
 
 namespace lost_signal::robot::autonomy {
@@ -31,9 +32,30 @@ GoalArrivalDecision GoalArrivalPolicy::evaluate(
  std::hypot(estimate.x_m - goal.x_m, estimate.y_m - goal.y_m);
  out.heading_error_rad =
  std::abs(core::wrap_angle(estimate.yaw_rad - goal.yaw_rad));
+ out.position_confidence_radius_m = position_confidence_radius(
+ estimate.position_sigma_m, config_.confidence_probability);
+ out.heading_confidence_radius_rad = heading_confidence_radius(
+ estimate.heading_sigma_rad, config_.confidence_probability);
+ const double position_tolerance =
+ std::max(0.0, config_.position_tolerance_m);
+ const double heading_tolerance =
+ std::max(0.0, config_.heading_tolerance_rad);
+ const bool confidence_fits =
+ out.position_confidence_radius_m <= position_tolerance &&
+ out.heading_confidence_radius_rad <= heading_tolerance;
+ if (!confidence_fits) {
+ reset();
+ out.hold = !observation_motion_requested &&
+ out.position_error_m <= position_tolerance &&
+ out.heading_error_rad <= heading_tolerance;
+ out.reason = "localization-uncertain";
+ return out;
+ }
  const bool pose_reached =
- out.position_error_m <= std::max(0.0, config_.position_tolerance_m) &&
- out.heading_error_rad <= std::max(0.0, config_.heading_tolerance_rad);
+ out.position_error_m + out.position_confidence_radius_m <=
+ position_tolerance &&
+ out.heading_error_rad + out.heading_confidence_radius_rad <=
+ heading_tolerance;
  if (!pose_reached) {
  reset();
  out.reason = "approaching";

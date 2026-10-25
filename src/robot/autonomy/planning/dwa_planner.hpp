@@ -69,6 +69,7 @@ struct DwaPlannerConfig {
  // only then may terminal yaw replace the bearing-to-goal target.
  double terminal_position_tolerance_m = 0.25;
  double terminal_heading_tolerance_rad = 0.20;
+ double terminal_confidence_probability = 0.95;
  double terminal_maximum_position_sigma_m = 0.25;
  double terminal_maximum_heading_sigma_rad = 0.15;
  // A stopped terminal mismatch must persist for the same kind of

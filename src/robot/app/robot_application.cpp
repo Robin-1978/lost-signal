@@ -33,6 +33,23 @@ platform::ChassisLimits autonomy_limits_from_description(
  return limits;
 }
 
+autonomy::GoalArrivalConfig arrival_config_from_description(
+ const platform::RobotDescription& desc) {
+ autonomy::GoalArrivalConfig config;
+ config.position_tolerance_m = desc.arrival.position_tolerance_m;
+ config.heading_tolerance_rad = desc.arrival.heading_tolerance_rad;
+ config.confidence_probability = desc.arrival.confidence_probability;
+ config.maximum_position_sigma_m =
+ desc.arrival.maximum_position_sigma_m;
+ config.maximum_heading_sigma_rad =
+ desc.arrival.maximum_heading_sigma_rad;
+ config.maximum_forward_speed_mps =
+ desc.arrival.maximum_forward_speed_mps;
+ config.maximum_yaw_rate_radps = desc.arrival.maximum_yaw_rate_radps;
+ config.settle_cycles = desc.arrival.settle_cycles;
+ return config;
+}
+
 class NullMapProvider : public iface::IMapProvider {
  public:
  const iface::MapSnapshot& active_snapshot() const override {
@@ -67,7 +84,8 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
       desc_(std::move(desc)),
       chassis_(platform::make_chassis(desc_)),
  coordinator_(autonomy_limits_from_description(desc_), 100'000'000,
- perception_config_from(desc_), {}, desc_.plant.wheel_base_m, {},
+ perception_config_from(desc_), {}, desc_.plant.wheel_base_m,
+ arrival_config_from_description(desc_),
  desc_.local_planner_kind, desc_.navigation, desc_.motion) {
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
