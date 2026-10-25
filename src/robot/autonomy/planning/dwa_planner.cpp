@@ -327,6 +327,13 @@ std::vector<core::Vec2> local_route_reference(
 DwaPlanner::DwaPlanner(DwaPlannerConfig config) : config_(config) {}
 
 void DwaPlanner::reset() {
+ reset_tracking();
+ terminal_position_latched_ = false;
+ terminal_identity_valid_ = false;
+ terminal_identity_ = RoutePoint{};
+}
+
+void DwaPlanner::reset_tracking() {
  previous_w_ = 0.0;
  previous_lateral_ = 0.0;
  route_data_ = nullptr;
@@ -494,6 +501,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const bool route_tracking_valid = route_projection.distance_m <=
  route_tracking_tube_m;
  const auto& terminal = route.points.back();
+ const bool terminal_changed = !terminal_identity_valid_ ||
+ terminal.x_m != terminal_identity_.x_m ||
+ terminal.y_m != terminal_identity_.y_m ||
+ terminal.yaw_rad != terminal_identity_.yaw_rad ||
+ terminal.gear != terminal_identity_.gear;
+ if (terminal_changed) {
+ terminal_identity_valid_ = true;
+ terminal_identity_ = terminal;
+ terminal_position_latched_ = false;
+ }
  const double terminal_distance_m = std::hypot(
  terminal.x_m - est.x_m, terminal.y_m - est.y_m);
  const double terminal_heading_error_rad = std::abs(core::wrap_angle(
@@ -506,8 +523,16 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  config_.terminal_heading_tolerance_rad,
  heading_confidence_radius(est.heading_sigma_rad,
  config_.terminal_confidence_probability));
- const bool terminal_position_reached =
- terminal_distance_m <= terminal_position_tolerance_m;
+ const double terminal_position_reset_tolerance_m =
+ std::max(0.0, config_.terminal_position_tolerance_m);
+ if (terminal_position_latched_) {
+ if (terminal_distance_m > terminal_position_reset_tolerance_m) {
+ terminal_position_latched_ = false;
+ }
+ } else if (terminal_distance_m <= terminal_position_tolerance_m) {
+ terminal_position_latched_ = true;
+ }
+ const bool terminal_position_reached = terminal_position_latched_;
  const auto& tracked_a = route.points[route_segment_];
  const auto& tracked_b = route.points[route_segment_ + 1];
  const double tracked_remaining_m = (1.0 - route_fraction_) * std::hypot(
@@ -551,7 +576,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  const double heading_target = car_like
  ? car_like_tracking_heading
- : goal_distance > terminal_position_tolerance_m
+ : !terminal_position_reached
  ? goal_bearing
  : std::isfinite(target.yaw_rad)
  ? target.yaw_rad
@@ -845,7 +870,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
       const auto end_projection = project_to_path({x, y}, reference);
  const double path_heading_target = car_like
  ? heading_target
- : goal_distance <= terminal_position_tolerance_m
+ : terminal_position_reached
  ? heading_target
  : end_projection.tangent_rad;
       const double path_score =
@@ -885,7 +910,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
   }
  if (proposals.empty()) return out;
  const bool route_motion_required =
- goal_distance > terminal_position_tolerance_m ||
+ !terminal_position_reached ||
  terminal_heading_error_rad >
  terminal_heading_tolerance_rad;
  // Safety feasibility is already a hard generation constraint and every

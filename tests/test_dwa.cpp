@@ -744,6 +744,58 @@ int main() {
  assert(plan.best.forward_mps > 0.0);
  }
 
+ // Stateful terminal capture prevents a differential base from orbiting a
+ // goal while it settles yaw. Entry is confidence-bounded; a later estimate
+ // may move outside that smaller entry circle without re-enabling
+ // translation, but leaving the declared position tolerance releases it.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 1.90;
+ est.y_m = 0.0;
+ est.yaw_rad = 0.8;
+ est.position_sigma_m = 0.05;
+ est.heading_sigma_rad = 0.01;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.0, 0.0, 1},
+ {2.0, 0.0, 0.0, 1}};
+ DwaPlanner planner;
+ const LocalPlan captured = planner.plan(est, perc, m, route, limits);
+ assert(captured.has_plan);
+ assert(std::abs(captured.best.forward_mps) < 1e-9);
+ assert(captured.best.yaw_rate_radps < 0.0);
+
+ est.x_m = 1.80; // outside confidence entry, inside raw tolerance
+ const LocalPlan latched = planner.plan(est, perc, m, route, limits);
+ assert(latched.has_plan);
+ assert(std::abs(latched.best.forward_mps) < 1e-9);
+
+ planner.reset_tracking(); // same goal was replanned after a map correction
+ const LocalPlan replanned = planner.plan(est, perc, m, route, limits);
+ assert(replanned.has_plan);
+ assert(std::abs(replanned.best.forward_mps) < 1e-9);
+
+ planner.reset(); // a new task must not inherit the previous goal capture
+ const LocalPlan new_task = planner.plan(est, perc, m, route, limits);
+ assert(new_task.has_plan);
+ assert(new_task.best.forward_mps > 0.0);
+
+ est.x_m = 1.90;
+ const LocalPlan recaptured = planner.plan(est, perc, m, route, limits);
+ assert(recaptured.has_plan);
+ assert(std::abs(recaptured.best.forward_mps) < 1e-9);
+
+ est.x_m = 1.70; // outside the declared terminal region: reacquire
+ const LocalPlan released = planner.plan(est, perc, m, route, limits);
+ assert(released.has_plan);
+ assert(released.best.forward_mps > 0.0);
+ }
+
  std::printf("dwa ok\n");
  return 0;
 }

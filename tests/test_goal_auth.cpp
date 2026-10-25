@@ -137,6 +137,11 @@ int main() {
  {
  app::RobotApplication near(std::make_unique<PlacesMap>(1.0));
  assert(near.configure().ok && near.activate().ok);
+ // Arrival authority needs an observable pose. This fixture has no map
+ // geometry (all laser returns are max range), so seed the documented known
+ // dock pose and exercise the final 0.25 m approach without manufacturing
+ // confidence from an unobservable scan.
+ near.set_initial_pose(0.75, 0.0, 0.0, 0.02, 0.01);
  near.register_provider({"t.lidar", iface::EndpointRole::kLidar,
  iface::ProviderBackend::kNative, "lidar_link"});
  near.register_provider({"t.encoder", iface::EndpointRole::kEncoder,
@@ -181,6 +186,17 @@ int main() {
  }
  }
  assert(settling_stop_seen);
+ if (!arrived) {
+ const auto diag = near.diagnostics();
+ std::fprintf(stderr,
+ "arrival final: est=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f) "
+ "sigma=(%.3f,%.3f) cmd_reason=%s constraint=%s goal=%d/%s\n",
+ diag.estimate.x_m, diag.estimate.y_m, diag.estimate.yaw_rad,
+ diag.estimate.forward_mps, diag.estimate.yaw_rate_radps,
+ diag.estimate.position_sigma_m, diag.estimate.heading_sigma_rad,
+ diag.evidence.reason_code.c_str(), diag.evidence.constraint_code.c_str(),
+ static_cast<int>(diag.goal.state), diag.goal.detail.c_str());
+ }
  assert(arrived);
  assert(near.current_goal().state == iface::GoalState::kDone);
  }

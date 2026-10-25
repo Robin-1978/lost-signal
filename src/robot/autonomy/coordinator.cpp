@@ -243,6 +243,7 @@ void AutonomyCoordinator::set_static_frames(
 }
 
 void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
+ local_planner_->reset();
  goal_arrival_.reset();
  goal_arrival_decision_ = GoalArrivalDecision{};
   goal_ = goal;
@@ -252,6 +253,7 @@ void AutonomyCoordinator::set_goal(const RoutePoint& goal) {
 }
 
 void AutonomyCoordinator::clear_goal() {
+ local_planner_->reset();
  goal_arrival_.reset();
  goal_arrival_decision_ = GoalArrivalDecision{};
   goal_ = RoutePoint{};

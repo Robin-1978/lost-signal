@@ -86,6 +86,7 @@ class DwaPlanner : public ILocalPlanner {
   explicit DwaPlanner(DwaPlannerConfig config = {});
 
   void reset() override;
+ void reset_tracking() override;
   LocalPlan plan(const EstimatedState& est,
  const PerceptionResult& perception,
  const PredictionBatch& prediction,
@@ -126,6 +127,13 @@ class DwaPlanner : public ILocalPlanner {
  bool cusp_braking_armed_ = false;
  std::size_t cusp_segment_ = 0;
  int terminal_mismatch_settle_count_ = 0;
+ // Stateful XY goal capture. Entry uses the confidence-bounded tolerance;
+ // once captured, the mean pose may move inside the remaining covariance
+ // envelope while the base turns in place. Leaving the declared (raw)
+ // position tolerance releases the latch and restores position tracking.
+ bool terminal_position_latched_ = false;
+ bool terminal_identity_valid_ = false;
+ RoutePoint terminal_identity_;
 };
 
 }  // namespace lost_signal::robot::autonomy

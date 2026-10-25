@@ -64,7 +64,14 @@ struct LocalPlan {
 class ILocalPlanner {
  public:
   virtual ~ILocalPlanner() = default;
+ // Full reset for a new task/lifecycle. Clears every stateful decision,
+ // including terminal capture tied to the previous goal.
   virtual void reset() = 0;
+ // Route geometry and rollout history become stale after a map correction
+ // or replan, while the task-level terminal goal may remain identical.
+ // Stateful planners can preserve goal-scoped state across this narrower
+ // reset; stateless planners retain the safe full-reset default.
+ virtual void reset_tracking() { reset(); }
   virtual LocalPlan plan(const EstimatedState& est,
                          const PerceptionResult& perception,
  const PredictionBatch& prediction,

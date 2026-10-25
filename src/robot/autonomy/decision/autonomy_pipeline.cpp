@@ -21,12 +21,12 @@ MotionDecisionResult DecisionCyclePipeline::run(
  bool observation_motion_requested) {
  const bool replan = force_route_refresh || local_replan_requested_;
  local_replan_requested_ = false;
- if (reset_local_plan) local_planner.reset();
+ if (reset_local_plan) local_planner.reset_tracking();
  const bool route_state_changed = route_.advance(
  global_planner, estimate, goal, has_goal,
  map, replan, active_route,
  2.0 * std::max(0.0, limits.footprint_radius_m));
- if (route_state_changed) local_planner.reset();
+ if (route_state_changed) local_planner.reset_tracking();
  MotionDecisionResult result = motion_.run(
  estimate, perception, local_map, active_route, limits, behavior_limits,
  observation, survey, now_ns, behavior, local_planner, validator,
