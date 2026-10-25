@@ -470,6 +470,7 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
     track_submap_id_ = anchor.id;
   }
   ScanMatcherConfig match_cfg;
+ match_cfg.expected_range_validation = false;
   match_cfg.search_translation_m = config_.track_window_m;
   match_cfg.search_heading_rad = config_.track_heading_rad;
   match_cfg.translation_step_m = config_.track_step_m;
@@ -525,6 +526,11 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  match.x_m - est.x_m, match.y_m - est.y_m);
  const double correction_rad = std::abs(
  core::wrap_angle(match.yaw_rad - est.yaw_rad));
+ out.score = match.score;
+ out.overlap = std::min(match.overlap, rev.overlap);
+ out.score_margin = match.score_margin;
+ out.correction_m = correction_m;
+ out.correction_rad = correction_rad;
  if (!std::isfinite(correction_m) || !std::isfinite(correction_rad) ||
  correction_m > config_.track_max_correction_m ||
  correction_rad > config_.track_max_correction_rad ||
@@ -540,11 +546,6 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   out.yaw_rad = match.yaw_rad;
   out.position_sigma_m = match.position_sigma_m;
   out.heading_sigma_rad = match.heading_sigma_rad;
-  out.score = match.score;
-  out.overlap = std::min(match.overlap, rev.overlap);
-  out.score_margin = match.score_margin;
- out.correction_m = correction_m;
- out.correction_rad = correction_rad;
   out.diagnostic = "track corrected";
   ++track_corrections_;
   last_track_ = out;
@@ -570,6 +571,7 @@ SlamLoopResult SlamSession::try_close_loops(
  pending_loop_valid_ = false;
  }
   ScanMatcherConfig match_cfg;
+ match_cfg.expected_range_validation = false;
   match_cfg.search_translation_m = config_.match_search_translation_m;
   match_cfg.translation_step_m = config_.match_translation_step_m;
   match_cfg.search_heading_rad = config_.match_search_heading_rad;
@@ -588,6 +590,7 @@ SlamLoopResult SlamSession::try_close_loops(
  config_.keyframe_heading_rad,
  2.0 * config_.match_heading_step_rad);
  ScanMatcherConfig refine_cfg;
+ refine_cfg.expected_range_validation = false;
  refine_cfg.search_translation_m = config_.match_refine_translation_m;
  refine_cfg.translation_step_m = config_.match_refine_translation_step_m;
  refine_cfg.search_heading_rad = config_.match_refine_heading_rad;

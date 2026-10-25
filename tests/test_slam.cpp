@@ -258,6 +258,13 @@ int main() {
     obs.stamp_ns = prior.stamp_ns;
     SlamTrackResult tr = session.track(prior, obs);
     assert(tr.attempted);
+ if (!tr.accepted) {
+ std::fprintf(stderr,
+ "track failed: %s score=%.3f overlap=%.3f margin=%.3f "
+ "correction=%.3f/%.3f\n",
+ tr.diagnostic.c_str(), tr.score, tr.overlap, tr.score_margin,
+ tr.correction_m, tr.correction_rad);
+ }
     assert(tr.accepted);
     assert(std::hypot(tr.x_m - bx, tr.y_m - by) < 0.1);
     assert(std::abs(core::wrap_angle(tr.yaw_rad - byaw)) < 0.1);

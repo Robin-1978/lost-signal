@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "robot/core/transform.hpp"
@@ -31,7 +32,7 @@ double endpoint_score(const GridProjector& projector, double wx, double wy) {
   if (!projector.project(wx, wy, gx, gy)) return -0.25;  // outside: evidence against
   const int value = projector.at(gx, gy);
   if (value < 0) return 0.0;  // unknown must not become false certainty
-  return value >= 50 ? 1.0 : -0.20;
+ return value >= 50 ? 1.0 : -0.20;
 }
 
 double free_ray_score_cs(const GridProjector& projector, double sx,
@@ -70,12 +71,93 @@ double free_ray_score(const GridProjector& projector, double sx, double sy,
 
 }  // namespace
 
+namespace {
+
+struct ExpectedRangeEvidence {
+ double score = -std::numeric_limits<double>::infinity();
+ double overlap = 0.0;
+ bool valid = false;
+};
+
+std::optional<double> expected_range_cs(const iface::MapSnapshot& map,
+ double sx, double sy, double dx, double dy, double max_range) {
+ const double step = std::max(0.05, map.resolution_m * 0.5);
+ for (double distance = step; distance < max_range; distance += step) {
+ const int gx = static_cast<int>(std::floor(
+ (sx + distance * dx - map.origin_x_m) / map.resolution_m));
+ const int gy = static_cast<int>(std::floor(
+ (sy + distance * dy - map.origin_y_m) / map.resolution_m));
+ if (gx < 0 || gy < 0 || gx >= static_cast<int>(map.width) ||
+ gy >= static_cast<int>(map.height)) {
+ return std::nullopt;
+ }
+ if (map.occupancy[static_cast<std::size_t>(gy) * map.width + gx] >= 50) {
+ return distance;
+ }
+ }
+ return max_range;
+}
+
+ExpectedRangeEvidence expected_range_evidence(
+ const iface::MapSnapshot& map, const std::vector<ScanBeam>& beams,
+ double base_x_m, double base_y_m, double yaw_rad, double body_roll_rad,
+ double body_pitch_rad, const core::RigidTransform& base_from_lidar,
+ double max_range_m) {
+ ExpectedRangeEvidence out;
+ const core::Quaternion body_q =
+ core::quaternion_from_rpy(body_roll_rad, body_pitch_rad, yaw_rad);
+ const core::Quaternion sensor_q =
+ core::quaternion_multiply(body_q, base_from_lidar.rotation);
+ const core::Vec3 mount_off =
+ core::rotate_vector(body_q, base_from_lidar.translation_m);
+ const double sx = base_x_m + mount_off.x;
+ const double sy = base_y_m + mount_off.y;
+ double score = 0.0;
+ double total_weight = 0.0;
+ std::size_t hit_returns = 0;
+ std::size_t hit_matches = 0;
+ for (const auto& beam : beams) {
+ const core::Vec3 direction = core::rotate_vector(
+ sensor_q, {std::cos(beam.angle), std::sin(beam.angle), 0.0});
+ const double azimuth = std::atan2(direction.y, direction.x);
+ const auto expected = expected_range_cs(
+ map, sx, sy, std::cos(azimuth), std::sin(azimuth), max_range_m);
+ if (!expected.has_value()) {
+ // A cropped or partially authored survey says nothing beyond its boundary.
+ // Do not let the rectangular map extent manufacture a localization peak.
+ continue;
+ }
+ const double error = std::abs(*expected - beam.range);
+ const double quantum = std::max(0.05, map.resolution_m);
+ const double quantized_error = std::round(error / quantum) * quantum;
+ const double likelihood = std::exp(
+ -quantized_error / std::max(0.05, 2.0 * map.resolution_m));
+ const double weight = beam.hit ? 1.0 : 0.15;
+ score += weight * likelihood;
+ total_weight += weight;
+ if (beam.hit) {
+ ++hit_returns;
+ if (*expected < max_range_m &&
+ error <= std::max(0.12, 2.0 * map.resolution_m)) {
+ ++hit_matches;
+ }
+ }
+ }
+ if (hit_returns == 0 || !(total_weight > 0.0)) return out;
+ out.valid = true;
+ out.score = score / total_weight;
+ out.overlap = static_cast<double>(hit_matches) / hit_returns;
+ return out;
+}
+
+} // namespace
+
 ScanMatcher::ScanMatcher(ScanMatcherConfig config) : config_(config) {}
 
 ScanMatcher::Batch::Batch(const ScanMatcher& matcher,
                            const std::vector<ScanBeam>& beams,
                            double body_roll_rad, double body_pitch_rad)
-    : mount_(&matcher.base_from_lidar_),
+ : mount_(&matcher.base_from_lidar_),
       roll_rad_(body_roll_rad),
       pitch_rad_(body_pitch_rad) {
   beams_.reserve(beams.size());
@@ -139,7 +221,7 @@ PoseScore ScanMatcher::Batch::score(std::size_t slot, double x_m, double y_m,
     const double wx = sx + beam.range * r.dx[i];
     const double wy = sy + beam.range * r.dy[i];
     const double value =
-        beam.hit ? endpoint_score(projector, wx, wy)
+ beam.hit ? endpoint_score(projector, wx, wy)
                  : free_ray_score_cs(projector, sx, sy, r.free_c[i],
                                      r.free_s[i], beam.range);
     const double weight = beam.hit ? 1.0 : 0.15;
@@ -249,8 +331,14 @@ ScanMatchResult ScanMatcher::localize(
     double score = -std::numeric_limits<double>::infinity();
     double overlap = 0.0;
   };
+ // Endpoint scores are cell-quantized. Candidates within roughly one and a
+ // half cells lie on the same physical raster peak even when a configured
+ // metric radius was chosen for a finer map. Treating the exact boundary as
+ // a second place creates a zero-margin false ambiguity on coarse surveys.
+ const double ambiguity_distance_m = std::max(
+ config_.ambiguity_distance_m, 1.5 * map.resolution_m);
   const auto same_hypothesis = [&](const Hypothesis& a, const Hypothesis& b) {
-    return std::hypot(a.x - b.x, a.y - b.y) < config_.ambiguity_distance_m &&
+ return std::hypot(a.x - b.x, a.y - b.y) <= ambiguity_distance_m &&
            std::abs(core::wrap_angle(a.heading - b.heading)) <
                config_.ambiguity_heading_rad;
   };
@@ -301,13 +389,33 @@ ScanMatchResult ScanMatcher::localize(
     result.rejection_reason = "map overlap below acceptance gate";
     return result;
   }
-  std::sort(hypotheses.begin(), hypotheses.end(),
-            [](const Hypothesis& a, const Hypothesis& b) {
-              if (a.score != b.score) return a.score > b.score;
-              if (a.x != b.x) return a.x < b.x;
-              if (a.y != b.y) return a.y < b.y;
-              return a.heading < b.heading;
-            });
+ const auto rank_hypotheses = [](const Hypothesis& a,
+ const Hypothesis& b) {
+ if (a.score != b.score) return a.score > b.score;
+ if (a.x != b.x) return a.x < b.x;
+ if (a.y != b.y) return a.y < b.y;
+ return a.heading < b.heading;
+ };
+ std::sort(hypotheses.begin(), hypotheses.end(), rank_hypotheses);
+ if (config_.expected_range_validation) {
+ // Endpoint occupancy is a cheap shortlist, but a thick survey cell creates
+ // plateaus: several poses can place every return somewhere inside the same
+ // occupied cells. Re-rank only the bounded survivor set by expected ranges
+ // so penetration depth and free distance select the physical scan pose.
+ for (auto& hypothesis : hypotheses) {
+ const ExpectedRangeEvidence evidence = expected_range_evidence(
+ map, beams, hypothesis.x, hypothesis.y, hypothesis.heading,
+ body_roll_rad, body_pitch_rad, base_from_lidar_, config_.max_range_m);
+ if (evidence.valid) {
+ hypothesis.score = evidence.score;
+ hypothesis.overlap = evidence.overlap;
+ } else {
+ hypothesis.score = -std::numeric_limits<double>::infinity();
+ hypothesis.overlap = 0.0;
+ }
+ }
+ }
+ std::sort(hypotheses.begin(), hypotheses.end(), rank_hypotheses);
   const Hypothesis& best = hypotheses.front();
   const double second_score =
       hypotheses.size() > 1

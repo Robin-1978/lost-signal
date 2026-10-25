@@ -28,6 +28,10 @@ struct ScanMatcherConfig {
   double minimum_score_margin = 0.05;
   std::size_t minimum_returns = 4;
   std::size_t maximum_returns = 96;
+ // Survey rasters support expected-range verification. Synthetic one-scan
+ // SLAM submaps contain splatted endpoints rather than complete surfaces and
+ // disable this stage explicitly.
+ bool expected_range_validation = true;
   // Two candidates closer than this are one physical hypothesis.
   double ambiguity_distance_m = 0.25;
   double ambiguity_heading_rad = 0.15;
