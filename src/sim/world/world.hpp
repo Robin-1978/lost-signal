@@ -66,7 +66,11 @@ struct Actor {
   double x = 0.0, y = 0.0, vx_mps = 0.0, vy_mps = 0.0, radius_m = 0.4;
   double height_m = 1.5;  // vertical extent for sensor raycast (upright
                           // cylinder z in [0, height]); physics stays planar
-                          // (actors are kinematic, no engine bodies).
+ // (actors are kinematic, no engine bodies).
+ // SIM-side authoring/presentation metadata. Neither field is included in
+ // sensor observations or any ROBOT interface.
+ std::string id;
+ std::string visual_kind = "vehicle";
   // Motion policy, evaluated every step before integration. Default flies
   // the authored velocity (yesterday's straight lines, unchanged).
   ActorBehavior behavior;

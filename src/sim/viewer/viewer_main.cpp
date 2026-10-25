@@ -1430,8 +1430,13 @@ int main(int argc, char** argv) {
     session->set_objectives(std::move(ids));
     // Survey covers the authored map (far-field goals need a route).
     session->fit_map_window_to_world();
-    // Converted master maps ship patrols beside the world file.
-    lost_signal::sim::scenario::load_actors_sidecar(map_path, *session);
+ // Converted master maps ship patrols beside the world file.
+ std::string actor_error;
+ if (lost_signal::sim::scenario::load_actors_sidecar(
+ map_path, *session, {}, &actor_error) < 0) {
+ std::fprintf(stderr, "bad actors sidecar: %s\n", actor_error.c_str());
+ return 1;
+ }
   } else {
     setup_demo(*session);
   }

@@ -122,6 +122,7 @@ int main() {
     sim::world::Actor walker;
     walker.x = 1.0;
     walker.height_m = 1.8;
+ walker.visual_kind = "pedestrian";
     w.add_actor(walker);
     sim::eval::EvalStep s;
     s.truth_after = w.truth();

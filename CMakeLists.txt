@@ -402,6 +402,9 @@ add_test(NAME perception COMMAND test_perception)
 add_executable(test_sim_actor
   tests/test_sim_actor.cpp
 )
+target_compile_definitions(test_sim_actor PRIVATE
+ TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
 target_link_libraries(test_sim_actor PRIVATE lost_signal_sim_scenario)
 add_test(NAME sim_actor COMMAND test_sim_actor)
 

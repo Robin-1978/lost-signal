@@ -188,9 +188,7 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  if (std::hypot(a.vx_mps, a.vy_mps) > 1e-6)
  fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
     fa.height_m = a.height_m;
-    // No kind field on the SIM actor: the map converter writes 1.8 m for
-    // pedestrians, 1.5 m for vehicles — the split reads that convention.
-    fa.pedestrian = a.height_m > 1.6;
+ fa.pedestrian = a.visual_kind == "pedestrian";
     f.actors.push_back(fa);
   }
   for (const auto& z : world.material_zones()) {

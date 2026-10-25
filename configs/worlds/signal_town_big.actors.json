@@ -25,7 +25,7 @@
   },
   {
    "id": "big_cart_b",
-   "x": 44.5,
+ "x": 45.0,
    "y": 4.0,
    "radius_m": 0.45,
    "height_m": 1.5,
@@ -33,11 +33,11 @@
    "behavior": "waypoints",
    "waypoints": [
     {
-     "x": 44.5,
+ "x": 45.0,
      "y": 4.0
     },
     {
-     "x": 44.5,
+ "x": 45.0,
      "y": 19.0
     }
    ],
@@ -53,9 +53,26 @@
    "radius_m": 0.25,
    "height_m": 1.8,
    "speed_mps": 0.5,
-   "behavior": "wander",
-   "waypoints": [],
-   "loop": false,
+ "behavior": "waypoints",
+ "waypoints": [
+ {
+ "x": 7.5,
+ "y": 11.0
+ },
+ {
+ "x": 11.0,
+ "y": 11.0
+ },
+ {
+ "x": 11.0,
+ "y": 18.5
+ },
+ {
+ "x": 7.5,
+ "y": 18.5
+ }
+ ],
+ "loop": true,
    "waits": [],
    "seed": 4159727041,
    "visual_kind": "pedestrian"
@@ -74,11 +91,11 @@
      "y": 2.0
     },
     {
-     "x": 28.0,
+ "x": 32.0,
      "y": 2.0
     },
     {
-     "x": 28.0,
+ "x": 32.0,
      "y": 11.0
     },
     {
@@ -103,9 +120,26 @@
    "radius_m": 0.25,
    "height_m": 1.8,
    "speed_mps": 0.5,
-   "behavior": "wander",
-   "waypoints": [],
-   "loop": false,
+ "behavior": "waypoints",
+ "waypoints": [
+ {
+ "x": 29.5,
+ "y": 20.5
+ },
+ {
+ "x": 31.4,
+ "y": 20.5
+ },
+ {
+ "x": 31.4,
+ "y": 31.4
+ },
+ {
+ "x": 29.5,
+ "y": 31.4
+ }
+ ],
+ "loop": true,
    "waits": [],
    "seed": 3119908054,
    "visual_kind": "pedestrian"

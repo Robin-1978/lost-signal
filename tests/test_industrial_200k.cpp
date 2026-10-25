@@ -107,55 +107,6 @@ std::vector<float> scan_from_survey(
  return ranges;
 }
 
-bool segment_intersects_expanded_box(double x0, double y0,
- double x1, double y1, const lost_signal::sim::world::StaticBox& box,
- double radius_m) {
- if (!(box.height_m > 0.0)) return false;
- const double minimum_x = std::min(box.x0, box.x1) - radius_m;
- const double maximum_x = std::max(box.x0, box.x1) + radius_m;
- const double minimum_y = std::min(box.y0, box.y1) - radius_m;
- const double maximum_y = std::max(box.y0, box.y1) + radius_m;
- const double dx = x1 - x0;
- const double dy = y1 - y0;
- double enter = 0.0;
- double leave = 1.0;
- const auto clip = [&](double origin, double delta,
- double minimum, double maximum) {
- if (std::abs(delta) < 1e-12) {
- return origin >= minimum && origin <= maximum;
- }
- double a = (minimum - origin) / delta;
- double b = (maximum - origin) / delta;
- if (a > b) std::swap(a, b);
- enter = std::max(enter, a);
- leave = std::min(leave, b);
- return enter <= leave;
- };
- return clip(x0, dx, minimum_x, maximum_x) &&
- clip(y0, dy, minimum_y, maximum_y);
-}
-
-void assert_actor_routes_clear(const lost_signal::sim::world::World& world) {
- for (const auto& actor : world.actors()) {
- const auto& waypoints = actor.behavior.waypoints;
- if (waypoints.empty()) continue;
- std::vector<lost_signal::sim::world::ActorWaypoint> path;
- path.push_back({actor.x, actor.y});
- path.insert(path.end(), waypoints.begin(), waypoints.end());
- if (actor.behavior.loop && waypoints.size() > 1) {
- path.push_back(waypoints.front());
- }
- for (std::size_t point = 1; point < path.size(); ++point) {
- for (const auto& box : world.static_boxes()) {
- assert(!segment_intersects_expanded_box(
- path[point - 1].x_m, path[point - 1].y_m,
- path[point].x_m, path[point].y_m, box,
- std::max(0.0, actor.radius_m)));
- }
- }
- }
-}
-
 } // namespace
 
 int main() {
@@ -188,7 +139,8 @@ int main() {
  assert(sim::scenario::load_actors_sidecar(
  map_path, session, {}, &error) == 4);
  assert(session.setup_world().actors().size() == 4);
- assert_actor_routes_clear(session.setup_world());
+ assert(sim::scenario::validate_actor_routes(
+ session.setup_world().actors(), session.setup_world().static_boxes()));
 
  const robot::iface::MapSnapshot map = session.active_map();
  assert(map.has_raster());

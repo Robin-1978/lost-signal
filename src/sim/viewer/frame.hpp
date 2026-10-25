@@ -86,7 +86,7 @@ struct FrameActor {
   double vx_mps = 0.0, vy_mps = 0.0;
  double heading_rad = 0.0;
   double height_m = 1.5;  // sensor cylinder height (vehicle 1.5, pedestrian 1.8)
-  bool pedestrian = false;  // height > 1.6: drawn blue, else forklift orange
+  bool pedestrian = false;  // explicit SIM visual kind, never inferred by size
 };
 
 // Ground-material zone overlay (SIM truth paint, never ROBOT input): the

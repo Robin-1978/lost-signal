@@ -2,7 +2,7 @@
  "actors": [
   {
    "id": "service_cart_alpha",
-   "x": 22.2,
+ "x": 23.0,
    "y": 2.0,
    "radius_m": 0.4,
    "height_m": 1.5,
@@ -10,11 +10,11 @@
    "behavior": "waypoints",
    "waypoints": [
     {
-     "x": 22.2,
+ "x": 23.0,
      "y": 2.0
     },
     {
-     "x": 22.2,
+ "x": 23.0,
      "y": 7.2
     }
    ],

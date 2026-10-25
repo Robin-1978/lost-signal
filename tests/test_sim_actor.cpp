@@ -1,9 +1,11 @@
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <vector>
 
 #include "robot/iface/task.hpp"
+#include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/robot/sim_robot.hpp"
@@ -46,7 +48,8 @@ int main() {
  // Headless sidecar: the same loader used by lost_signal_sim.
  {
  std::ofstream out("/tmp/test_actors_sidecar.json");
- out << R"({"actors":[{"x":1.5,"y":2.0,"radius_m":0.3,
+ out << R"({"actors":[{"id":"walker","visual_kind":"pedestrian",
+ "x":1.5,"y":2.0,"radius_m":0.3,
  "behavior":"wander","speed_mps":0.7,"seed":4}]})";
  out.close();
  sim::scenario::ScenarioSession session;
@@ -57,7 +60,58 @@ int main() {
  assert(session.setup_world().actors().size() == 1);
  assert(session.setup_world().actors()[0].radius_m == 0.3);
  assert(session.setup_world().actors()[0].behavior.speed_mps == 0.7);
+ assert(session.setup_world().actors()[0].id == "walker");
+ assert(session.setup_world().actors()[0].visual_kind == "pedestrian");
  std::remove("/tmp/test_actors_sidecar.json");
+ }
+
+ // Invalid authored motion is rejected transactionally. Expanding the wall
+ // by the actor radius catches a path that misses the raw rectangle but
+ // would still collide physically.
+ {
+ std::ofstream out("/tmp/test_invalid_actors_sidecar.json");
+ out << R"({"actors":[{"id":"wall-crosser","x":0.0,"y":0.0,
+ "radius_m":0.3,"behavior":"waypoints","speed_mps":0.7,
+ "waypoints":[{"x":2.0,"y":0.0}]}]})";
+ out.close();
+ sim::scenario::ScenarioSession session;
+ session.setup_world().set_static_boxes({{0.9, 0.29, 1.1, 1.0, 1.0}});
+ std::string err;
+ assert(sim::scenario::load_actors_sidecar(
+ "/tmp/test_map.json", session,
+ "/tmp/test_invalid_actors_sidecar.json", &err) == -1);
+ assert(err.find("wall-crosser") != std::string::npos);
+ assert(err.find("static box 0") != std::string::npos);
+ assert(session.setup_world().actors().empty());
+ std::remove("/tmp/test_invalid_actors_sidecar.json");
+ }
+
+ // Every checked-in sidecar must be physically valid against its matching
+ // world. This turns path-through-wall mistakes into an authoring error at
+ // review time instead of a surprise actor appearing through a wall.
+ {
+ const std::filesystem::path worlds =
+ std::filesystem::path(TEST_CONFIG_DIR) / "worlds";
+ std::size_t checked = 0;
+ for (const auto& entry : std::filesystem::directory_iterator(worlds)) {
+ const std::string filename = entry.path().filename().string();
+ constexpr const char* kSuffix = ".actors.json";
+ if (!filename.ends_with(kSuffix)) continue;
+ const std::string map_name =
+ filename.substr(0, filename.size() - std::char_traits<char>::length(
+ kSuffix)) + ".json";
+ const std::filesystem::path map_path = worlds / map_name;
+ assert(std::filesystem::is_regular_file(map_path));
+ sim::eval::WorldFileContent content;
+ std::string err;
+ assert(sim::eval::load_world_file(map_path.string(), content, &err));
+ sim::scenario::ScenarioSession session;
+ sim::eval::apply_world_content(session.setup_world(), content);
+ assert(sim::scenario::load_actors_sidecar(
+ map_path.string(), session, entry.path().string(), &err) >= 0);
+ ++checked;
+ }
+ assert(checked >= 5);
  }
 
   std::printf("sim_actor ok: x8=%.2f x60=%.2f x_end=%.2f\n", xs[8], xs[60],
