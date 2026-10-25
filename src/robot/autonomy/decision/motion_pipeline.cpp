@@ -75,6 +75,15 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const LocalPlan plan = local_planner.plan(
  est, perception, prediction, local_map, route, effective);
  out.route_replan_requested = plan.route_replan_requested;
+ out.route_point_count = route.points.size();
+ out.route_segment = plan.route_segment;
+ out.moving_candidate_count = plan.moving_candidate_count;
+ out.requested_gear = plan.requested_gear;
+ out.route_error_m = plan.route_error_m;
+ out.gear_change_pending = plan.gear_change_pending;
+ out.gear_change_braking_armed = plan.gear_change_braking_armed;
+ out.gear_change_endpoint_distance_m =
+ plan.gear_change_endpoint_distance_m;
 
  struct ValidatedCandidate {
  LocalCandidate candidate;

@@ -232,6 +232,15 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  std::numeric_limits<double>::infinity();
  double last_validated_dynamic_clearance_m_ =
  std::numeric_limits<double>::infinity();
+ std::size_t last_route_point_count_ = 0;
+ std::size_t last_route_segment_ = 0;
+ std::size_t last_moving_candidate_count_ = 0;
+ int last_requested_gear_ = 0;
+ double last_route_error_m_ = std::numeric_limits<double>::infinity();
+ bool last_gear_change_pending_ = false;
+ bool last_gear_change_braking_armed_ = false;
+ double last_gear_change_endpoint_distance_m_ =
+ std::numeric_limits<double>::infinity();
   // Controlled-stop latch: withholds motion until measured tread settles.
   // Prevents a braking decision on a grade from chattering into a
   // brake/accelerate limit cycle. Independent of planner yaw intent.

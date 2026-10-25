@@ -100,6 +100,7 @@ int main(int argc, char** argv) {
  "track=(%.3f,%.3f,%s) cmd=(%.3f,%.3f)->(%.3f,%.3f) "
  "clear=(validator=%.3f,dynamic=%.3f,safety=%.3f/%.3f/%.3f) "
  "dynamic-gate=(%.3f/%.3f) tracks=%zu "
+ "route=(%zu/%zu g=%d err=%.3f move=%zu cusp=%s/%s/%.3f) "
  "decision=%s/%s/%s\n",
  steps, session.objectives().active_place().c_str(),
  sample->truth_after.body_x_m, sample->truth_after.body_y_m,
@@ -121,6 +122,12 @@ int main(int argc, char** argv) {
  evidence.safety_dynamic_hold_clearance_m,
  evidence.safety_dynamic_command_clearance_m,
  sample->diag.dynamic_tracks.size(),
+ evidence.route_segment, evidence.route_point_count,
+ evidence.requested_gear, evidence.route_error_m,
+ evidence.moving_candidate_count,
+ evidence.gear_change_pending ? "pending" : "none",
+ evidence.gear_change_braking_armed ? "armed" : "approach",
+ evidence.gear_change_endpoint_distance_m,
  evidence.constraint_code.c_str(), evidence.reason_code.c_str(),
  evidence.action_code.c_str());
  for (const auto& track : sample->diag.dynamic_tracks) {

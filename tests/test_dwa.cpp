@@ -501,6 +501,35 @@ int main() {
  assert(terminal.best.yaw_rate_radps < 0.0);
  }
 
+ // A low-speed Ackermann window is much narrower than the generic yaw-rate
+ // sample spacing. Both steering signs must still be sampled from the
+ // speed-dependent curvature interval; filtering a full yaw lattice after
+ // sampling used to leave this reachable negative turn absent.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.yaw_rad = 0.35;
+ est.forward_mps = 0.04;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.35, 1}, {1.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.0;
+ DwaPlanner planner;
+ const LocalPlan plan = planner.plan(est, perc, m, route, ack);
+ assert(plan.has_plan);
+ const bool current_speed_right_turn = std::any_of(
+ plan.candidates.begin(), plan.candidates.end(), [](const auto& candidate) {
+ return std::abs(candidate.forward_mps - 0.04) < 1e-9 &&
+ candidate.yaw_rate_radps < -1e-9;
+ });
+ assert(current_speed_right_turn);
+ }
+
  // A car-like dynamic window can quantize to hold near the edge of its route
  // tracking tube. Since waiting cannot reduce stationary cross-track error,
  // it must request a new kinematic route instead of holding forever.

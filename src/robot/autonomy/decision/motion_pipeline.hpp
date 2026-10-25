@@ -29,6 +29,15 @@ struct MotionDecisionResult {
  std::numeric_limits<double>::infinity();
  TrajectoryVerdict trajectory_verdict = TrajectoryVerdict::kInvalidStructure;
  bool route_replan_requested = false;
+ std::size_t route_point_count = 0;
+ std::size_t route_segment = 0;
+ std::size_t moving_candidate_count = 0;
+ int requested_gear = 0;
+ double route_error_m = std::numeric_limits<double>::infinity();
+ bool gear_change_pending = false;
+ bool gear_change_braking_armed = false;
+ double gear_change_endpoint_distance_m =
+ std::numeric_limits<double>::infinity();
 };
 
 class MotionDecisionPipeline {

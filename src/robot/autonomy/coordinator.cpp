@@ -141,6 +141,15 @@ core::Status AutonomyCoordinator::configure() {
  std::numeric_limits<double>::infinity();
  last_validated_dynamic_clearance_m_ =
  std::numeric_limits<double>::infinity();
+ last_route_point_count_ = 0;
+ last_route_segment_ = 0;
+ last_moving_candidate_count_ = 0;
+ last_requested_gear_ = 0;
+ last_route_error_m_ = std::numeric_limits<double>::infinity();
+ last_gear_change_pending_ = false;
+ last_gear_change_braking_armed_ = false;
+ last_gear_change_endpoint_distance_m_ =
+ std::numeric_limits<double>::infinity();
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
@@ -192,6 +201,15 @@ core::Status AutonomyCoordinator::cleanup() {
  last_validated_static_clearance_m_ =
  std::numeric_limits<double>::infinity();
  last_validated_dynamic_clearance_m_ =
+ std::numeric_limits<double>::infinity();
+ last_route_point_count_ = 0;
+ last_route_segment_ = 0;
+ last_moving_candidate_count_ = 0;
+ last_requested_gear_ = 0;
+ last_route_error_m_ = std::numeric_limits<double>::infinity();
+ last_gear_change_pending_ = false;
+ last_gear_change_braking_armed_ = false;
+ last_gear_change_endpoint_distance_m_ =
  std::numeric_limits<double>::infinity();
   latch_.reset();
   last_published_stop_ = false;
@@ -399,6 +417,15 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  last_reason_ = reason;
  last_validated_static_clearance_m_ = motion.validated_static_clearance_m;
  last_validated_dynamic_clearance_m_ = motion.validated_dynamic_clearance_m;
+ last_route_point_count_ = motion.route_point_count;
+ last_route_segment_ = motion.route_segment;
+ last_moving_candidate_count_ = motion.moving_candidate_count;
+ last_requested_gear_ = motion.requested_gear;
+ last_route_error_m_ = motion.route_error_m;
+ last_gear_change_pending_ = motion.gear_change_pending;
+ last_gear_change_braking_armed_ = motion.gear_change_braking_armed;
+ last_gear_change_endpoint_distance_m_ =
+ motion.gear_change_endpoint_distance_m;
  }
  // Goal completion is an autonomy policy, not coordinator arithmetic. The
  // coordinator supplies the latest estimated state and active route, then
@@ -467,6 +494,15 @@ has_goal_, map, force_route_refresh, reset_local_plan,
   evidence.target_yaw_rate_radps = final_cmd.yaw_rate_radps;
  evidence.proposed_speed_mps = gated.forward_mps;
  evidence.proposed_yaw_rate_radps = gated.yaw_rate_radps;
+ evidence.route_point_count = last_route_point_count_;
+ evidence.route_segment = last_route_segment_;
+ evidence.moving_candidate_count = last_moving_candidate_count_;
+ evidence.requested_gear = last_requested_gear_;
+ evidence.route_error_m = last_route_error_m_;
+ evidence.gear_change_pending = last_gear_change_pending_;
+ evidence.gear_change_braking_armed = last_gear_change_braking_armed_;
+ evidence.gear_change_endpoint_distance_m =
+ last_gear_change_endpoint_distance_m_;
  evidence.validator_static_clearance_m =
  last_validated_static_clearance_m_;
  evidence.predicted_separation_m = last_validated_dynamic_clearance_m_;

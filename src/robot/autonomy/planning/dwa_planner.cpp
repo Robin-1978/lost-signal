@@ -692,8 +692,23 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  if (target.gear < 0 && velocity > 1e-9) continue;
  if (target.gear > 0 && velocity < -1e-9) continue;
-    const auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
-                                            config_.yaw_accel_radps2 * dt);
+ auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
+ config_.yaw_accel_radps2 * dt);
+ // For a car-like base, yaw rate is not an independent command axis:
+ // w = v * curvature. Intersect the reachable yaw window with that exact
+ // speed-dependent interval before sampling it. Sampling the full body-yaw
+ // range and rejecting afterwards can leave only zero (or only one steering
+ // sign) when |v|*kappa is narrower than the yaw lattice. That stranded slow
+ // terminal manoeuvres even though both steering directions were physically
+ // reachable. Differential bases use their wheel-space check below.
+ if (car_like) {
+ const double curvature_yaw_limit =
+ std::abs(velocity) * limits.max_curvature_inv_m;
+ angular_window.minimum = std::max(
+ angular_window.minimum, -curvature_yaw_limit);
+ angular_window.maximum = std::min(
+ angular_window.maximum, curvature_yaw_limit);
+ }
  const auto angular_samples = command_samples(
  angular_window, std::max(1e-3, config_.yaw_rate_sample_step_radps),
  {est.yaw_rate_radps, 0.0, goal_directed_yaw_rate});
@@ -725,13 +740,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  continue;
  }
  }
- // Ackermann candidates are bounded by steering curvature and cannot turn
- // in place. Differential and holonomic bases leave this envelope at zero.
- if (limits.max_curvature_inv_m > 0.0) {
- const double max_angular = std::abs(velocity) *
- limits.max_curvature_inv_m;
- if (std::abs(angular) > max_angular + 1e-9) continue;
- }
+ // The car-like interval was intersected before sampling above; retain this
+ // check as a numerical guard around the closed interval endpoints.
+ if (car_like && std::abs(angular) >
+ std::abs(velocity) * limits.max_curvature_inv_m + 1e-9) continue;
       for (double lateral : lateral_samples) {
       double x = est.x_m, y = est.y_m, heading = est.yaw_rad;
       double rollout_v = est.forward_mps, rollout_w = est.yaw_rate_radps;
