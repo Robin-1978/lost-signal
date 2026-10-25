@@ -5,6 +5,7 @@
 
 #include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/coordinator.hpp"
+#include "robot/autonomy/decision/goal_arrival.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 
@@ -29,6 +30,29 @@ lost_signal::robot::iface::ObservationFrame make_odom(
 int main() {
   using namespace lost_signal::robot;
   using namespace lost_signal::robot::autonomy;
+
+ // A dead-reckoned pose inside the goal region cannot complete a task while
+ // its covariance is wider than the arrival contract. It holds so a later
+ // ROBOT-side localization correction can resolve the claim.
+ {
+ GoalArrivalPolicy arrival;
+ EstimatedState estimate;
+ estimate.valid = true;
+ estimate.x_m = 1.0;
+ estimate.y_m = 2.0;
+ estimate.position_sigma_m = 0.8;
+ estimate.heading_sigma_rad = 0.02;
+ const RoutePoint goal{1.0, 2.0, 0.0};
+ GoalArrivalDecision decision = arrival.evaluate(estimate, goal, true);
+ assert(decision.hold);
+ assert(!decision.arrived);
+ assert(decision.reason == "localization-uncertain");
+ estimate.position_sigma_m = 0.05;
+ for (int cycle = 0; cycle < 3; ++cycle) {
+ decision = arrival.evaluate(estimate, goal, true);
+ }
+ assert(decision.arrived);
+ }
 
   // Estimator: integrates measured twist, fuses gyro yaw, grows covariance.
   {

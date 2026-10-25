@@ -40,6 +40,20 @@ GoalArrivalDecision GoalArrivalPolicy::evaluate(
  return out;
  }
 
+ const bool localization_resolved =
+ std::isfinite(estimate.position_sigma_m) &&
+ std::isfinite(estimate.heading_sigma_rad) &&
+ estimate.position_sigma_m <=
+ std::max(0.0, config_.maximum_position_sigma_m) &&
+ estimate.heading_sigma_rad <=
+ std::max(0.0, config_.maximum_heading_sigma_rad);
+ if (!localization_resolved) {
+ reset();
+ out.hold = true;
+ out.reason = "localization-uncertain";
+ return out;
+ }
+
  // Crossing the goal region at speed is not an arrival. Command a hold and
  // require consecutive settled measurements before reporting completion.
  out.hold = true;
