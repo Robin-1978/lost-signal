@@ -29,14 +29,33 @@ int main() {
  // Whole-map localization is cooperatively sliced across control ticks.
  // Allow the mission to finish its ordinary arrival-settling interval after
  // that bounded startup work instead of pinning completion to one trajectory.
- for (int i = 0; i < 700; ++i) {
+ for (int i = 0; i < 800; ++i) {
     sim.tick(static_cast<robot::core::MonotonicNs>(i * 20'000'000));
     xs.push_back(sim.world().truth().body_x_m);
     if (sim.current_goal().state == robot::iface::GoalState::kDone) break;
   }
   assert(xs.back() > 7.0);  // reached beyond the wall through the gap
   // Arrival completes the goal asynchronously: arrived inside 0.5 m of far.
-  assert(sim.current_goal().state == robot::iface::GoalState::kDone);
+ const auto nav_goal = sim.current_goal();
+ const auto nav_evidence = sim.last_evidence();
+ const auto nav_diag = sim.diagnostics();
+ if (nav_goal.state != robot::iface::GoalState::kDone) {
+ std::fprintf(stderr,
+ "sim_nav final: steps=%zu truth=(%.3f,%.3f,%.3f) "
+ "est=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f) sigma=%.3f "
+ "loc=%s state=%d detail=%s "
+ "constraint=%s reason=%s cmd=(%.3f,%.3f)\n",
+ xs.size(), sim.world().truth().body_x_m, sim.world().truth().body_y_m,
+ sim.world().truth().body_yaw_rad, nav_diag.estimate.x_m,
+ nav_diag.estimate.y_m, nav_diag.estimate.yaw_rad,
+ nav_diag.estimate.forward_mps, nav_diag.estimate.yaw_rate_radps,
+ nav_diag.estimate.position_sigma_m, nav_diag.localization_action.c_str(),
+ static_cast<int>(nav_goal.state),
+ nav_goal.detail.c_str(), nav_evidence.constraint_code.c_str(),
+ nav_evidence.reason_code.c_str(), nav_evidence.target_speed_mps,
+ nav_evidence.target_yaw_rate_radps);
+ }
+ assert(sim.current_goal().state == robot::iface::GoalState::kDone);
   assert(sim.current_goal().detail == "arrived");
 
   // Preempt + cancel: a new request cancels the running goal; canceling an

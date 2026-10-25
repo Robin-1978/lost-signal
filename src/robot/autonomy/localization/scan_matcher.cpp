@@ -335,10 +335,15 @@ ScanMatchResult ScanMatcher::localize(
  // half cells lie on the same physical raster peak even when a configured
  // metric radius was chosen for a finer map. Treating the exact boundary as
  // a second place creates a zero-margin false ambiguity on coarse surveys.
- const double ambiguity_distance_m = std::max(
- config_.ambiguity_distance_m, 1.5 * map.resolution_m);
+ const double ambiguity_distance_m = config_.expected_range_validation
+ ? std::max(config_.ambiguity_distance_m, 1.5 * map.resolution_m)
+ : config_.ambiguity_distance_m;
   const auto same_hypothesis = [&](const Hypothesis& a, const Hypothesis& b) {
- return std::hypot(a.x - b.x, a.y - b.y) <= ambiguity_distance_m &&
+ const double distance_m = std::hypot(a.x - b.x, a.y - b.y);
+ const bool same_position = config_.expected_range_validation
+ ? distance_m <= ambiguity_distance_m
+ : distance_m < ambiguity_distance_m;
+ return same_position &&
            std::abs(core::wrap_angle(a.heading - b.heading)) <
                config_.ambiguity_heading_rad;
   };
@@ -396,7 +401,6 @@ ScanMatchResult ScanMatcher::localize(
  if (a.y != b.y) return a.y < b.y;
  return a.heading < b.heading;
  };
- std::sort(hypotheses.begin(), hypotheses.end(), rank_hypotheses);
  if (config_.expected_range_validation) {
  // Endpoint occupancy is a cheap shortlist, but a thick survey cell creates
  // plateaus: several poses can place every return somewhere inside the same

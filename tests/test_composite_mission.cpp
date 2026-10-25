@@ -108,7 +108,10 @@ int main() {
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
     session.apply_sim_config(sim);
-    for (int i = 0; i < 2000 && !session.objectives_done(); ++i) {
+ // Four full pose stops run in the SLAM frame without using the sparse
+ // navigation survey as a localization authority. Leave enough simulated
+ // time for the final slope turn and settle while keeping every tolerance.
+ for (int i = 0; i < 2200 && !session.objectives_done(); ++i) {
       session.step_once();
     }
     const auto score = sim::eval::score_episode(session.episode());
@@ -117,7 +120,25 @@ int main() {
                 session.objectives().results().empty()
                     ? -1.0
                     : session.objectives().results().back().truth_miss_m);
-    assert(session.objectives_done());
+ if (!session.objectives_done()) {
+ const auto& grade_last = session.episode().steps().back();
+ std::fprintf(stderr,
+ "grade final: steps=%zu done=%d results=%zu truth=(%.3f,%.3f) "
+ "est=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f) sigma=%.3f "
+ "loc=%s safety=%s reason=%s goal=%d/%s\n",
+ score.steps, session.objectives_done(), session.objectives().results().size(),
+ grade_last.truth_after.body_x_m, grade_last.truth_after.body_y_m,
+ grade_last.diag.estimate.x_m, grade_last.diag.estimate.y_m,
+ grade_last.diag.estimate.yaw_rad, grade_last.diag.estimate.forward_mps,
+ grade_last.diag.estimate.yaw_rate_radps,
+ grade_last.diag.estimate.position_sigma_m,
+ grade_last.diag.localization_action.c_str(),
+ grade_last.diag.safety_reason.c_str(),
+ grade_last.diag.evidence.reason_code.c_str(),
+ static_cast<int>(grade_last.diag.goal.state),
+ grade_last.diag.goal.detail.c_str());
+ }
+ assert(session.objectives_done());
     assert(score.collision_steps == 0);
   }
 

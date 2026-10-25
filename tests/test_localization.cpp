@@ -677,6 +677,16 @@ int main() {
  assert(coord.last_localization_action() == "slam-only");
  assert(std::abs(coord.estimate().x_m) < 1e-12);
  assert(coord.slam_keyframes() >= 1);
+
+ // Once the frame exists, the mode remains SLAM-only: a surveyed scan and
+ // a due correction cadence must not silently reactivate scan-to-survey
+ // localization or let an incidental obstacle claim absolute certainty.
+ o.sequence = 2;
+ o.stamp_ns = 400'000'000;
+ o.ranges_m = scan_from(1.0, 0.0, 0.0, map);
+ coord.ingest_observation(o);
+ coord.update(map, iface::ChannelHealth{}, o.stamp_ns);
+ assert(coord.last_localization_action() == "slam-only");
  }
 
   std::printf("localization ok\n");

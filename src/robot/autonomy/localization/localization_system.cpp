@@ -217,6 +217,15 @@ bool LocalizationSystem::run_localization(
  supervisor_.record_global(true, ScanMatchResult{});
  return false;
  }
+ // SLAM-only means the ROBOT's keyframe graph owns the navigation frame.
+ // A sparse or incidental survey may still be present for place resolution
+ // and planning, but it is not an absolute localization source in this mode.
+ // Bypass both local scan-to-survey correction and global recovery after the
+ // odometry/SLAM origin has been established.
+ if (supervisor_.startup_mode() == StartupMode::kSlamOnly) {
+ action = "slam-only";
+ return false;
+ }
   // Deferred startup disambiguation: an ambiguous whole-map search seeds
   // hypotheses instead of guessing; later scans promote or drop them.
  // Deferred hypotheses own their unlocalized scans; ordinary local SLAM

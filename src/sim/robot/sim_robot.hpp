@@ -63,6 +63,13 @@ class SimRobot : public ::lost_signal::robot::app::IRobot {
   ::lost_signal::robot::iface::ChannelHealth channel_health() const override;
 
   const world::World& world() const { return world_; }
+ // Read-only ROBOT telemetry for simulation tests and offline evaluation.
+ // It contains the estimate and decisions only; physical truth remains in
+ // world() and must never be fed back into the application.
+ ::lost_signal::robot::app::RobotApplication::Diagnostics diagnostics()
+ const {
+ return app_.diagnostics();
+ }
   // Test/scenario setup only: configure geometry and actors before the
   // run. Never called by ROBOT code; never during a live tick.
   world::World& setup_world() { return world_; }

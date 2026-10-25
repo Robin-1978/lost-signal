@@ -177,7 +177,21 @@ int main() {
     assert(session.objectives_done());
  assert(session.objectives_passed());
     // Score: completion with a score, zero collision steps.
-    const auto score = sim::eval::score_episode(session.episode());
+ const auto score = sim::eval::score_episode(session.episode());
+ const auto& scenario_last = session.episode().steps().back();
+ if (score.max_pos_err_m >= 0.5) {
+ std::fprintf(stderr,
+ "scenario final: steps=%zu done=%d pos_err=%.3f truth=(%.3f,%.3f) "
+ "est=(%.3f,%.3f) sigma=%.3f loc=%s safety=%s goal=%d/%s\n",
+ score.steps, session.objectives_done(), score.max_pos_err_m,
+ scenario_last.truth_after.body_x_m, scenario_last.truth_after.body_y_m,
+ scenario_last.diag.estimate.x_m, scenario_last.diag.estimate.y_m,
+ scenario_last.diag.estimate.position_sigma_m,
+ scenario_last.diag.localization_action.c_str(),
+ scenario_last.diag.safety_reason.c_str(),
+ static_cast<int>(scenario_last.diag.goal.state),
+ scenario_last.diag.goal.detail.c_str());
+ }
     // Estimator health over the mission (offline truth-vs-estimate): the
     // stack drifts decimeters on a 6 m mapless run; the driver tolerance
     // below budgets exactly this.
