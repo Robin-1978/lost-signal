@@ -50,9 +50,31 @@ struct DwaPlannerConfig {
  double yaw_rate_sample_step_radps = 0.3;
  double lateral_sample_step_mps = 0.25;
   double lookahead_m = 2.0;
+ // Stateful route pruning may advance only this far per decision. It keeps
+ // a self-overlapping path or an Ackermann reverse cusp from being skipped
+ // by a geometrically closer point later in the route.
+ double route_progress_search_m = 0.75;
+ // Route progress cannot advance faster than measured chassis displacement
+ // times this allowance for curved arc length. This prevents a stationary
+ // robot from walking the cursor through a nearby return leg over time.
+ double route_progress_distance_scale = 2.0;
+ // Maximum cross-track distance at which stateful route progress may advance.
+ // This belongs to the controller contract and can be tuned with the global
+ // route resolution; crossing it requests a route from the current estimate.
+ double route_progress_max_distance_m = 0.75;
+ // If localization moves farther than this from the bounded route window,
+ // reacquire globally once instead of following stale progress forever.
+ double route_reacquire_distance_m = 2.0;
  // Preserve position authority until the final point is actually reached;
  // only then may terminal yaw replace the bearing-to-goal target.
  double terminal_position_tolerance_m = 0.25;
+ double terminal_heading_tolerance_rad = 0.20;
+ double terminal_maximum_position_sigma_m = 0.25;
+ double terminal_maximum_heading_sigma_rad = 0.15;
+ // A stopped terminal mismatch must persist for the same kind of
+ // consecutive-evidence window used by arrival before requesting a new
+ // global pose maneuver.
+ int terminal_replan_settle_cycles = 3;
  // Holonomic lateral command slew limit. Lateral velocity is a command
  // state even when the estimator has no independent lateral sensor.
  double lateral_accel_mps2 = 2.0;
@@ -88,6 +110,21 @@ class DwaPlanner : public ILocalPlanner {
   TerrainGate gate_;
   double previous_w_ = 0.0;
  double previous_lateral_ = 0.0;
+ const RoutePoint* route_data_ = nullptr;
+ std::size_t route_size_ = 0;
+ std::size_t route_segment_ = 0;
+ double route_fraction_ = 0.0;
+ bool route_pose_valid_ = false;
+ double route_pose_x_m_ = 0.0;
+ double route_pose_y_m_ = 0.0;
+ // A direction change is a physical stop-and-shift operation. Entering the
+ // cusp capture region arms braking; a later decision may shift only after
+ // measured longitudinal speed has settled. Keeping this state separate
+ // from geometric route progress prevents an idle car from skipping onto a
+ // nearby reverse leg on the first projection into the capture region.
+ bool cusp_braking_armed_ = false;
+ std::size_t cusp_segment_ = 0;
+ int terminal_mismatch_settle_count_ = 0;
 };
 
 }  // namespace lost_signal::robot::autonomy

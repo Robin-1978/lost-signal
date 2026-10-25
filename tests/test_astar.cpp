@@ -193,6 +193,27 @@ int main() {
  }
  }
 
+ // A route is tied to the estimated start from which it was validated. A
+ // chassis-sized cross-track departure triggers one event-driven replan;
+ // ordinary motion inside the route tube does not create a planning storm.
+ {
+ CountingPlanner counting;
+ RoutePlanningPipeline pipeline;
+ Route active;
+ const auto map = iface::MapSnapshot{};
+ const RoutePoint goal{2.0, 0.0, 0.0};
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), goal, true, map, false, active, 0.5));
+ assert(counting.calls == 1 && active.valid);
+ assert(!pipeline.advance(
+ counting, at(0.2, 0.2), goal, true, map, false, active, 0.5));
+ assert(counting.calls == 1);
+ assert(pipeline.advance(
+ counting, at(0.2, 0.8), goal, true, map, false, active, 0.5));
+ assert(counting.calls == 2 && active.valid);
+ assert(active.points.front().y_m == 0.8);
+ }
+
  // The route pipeline retains one in-flight request across decision cycles,
  // atomically publishes success, and cancels it when the goal changes.
  {
@@ -204,6 +225,7 @@ int main() {
  assert(pipeline.advance(
  counting, at(0.0, 0.0), first_goal, true, map, true, active));
  assert(counting.begin_calls == 1 && counting.continue_calls == 1);
+ assert(pipeline.pending() && !pipeline.failed());
  assert(!active.valid);
  assert(pipeline.advance(
  counting, at(0.0, 0.0), first_goal, true, map, false, active));
@@ -219,6 +241,7 @@ int main() {
  assert(pipeline.advance(
  counting, at(0.0, 0.0), second_goal, true, map, false, active));
  assert(active.valid && active.points.back().x_m == second_goal.x_m);
+ assert(!pipeline.pending() && !pipeline.failed());
  }
 
  // A failed request is latched instead of creating a planning storm. Moving
@@ -234,6 +257,7 @@ int main() {
  assert(pipeline.advance(
  counting, at(0.0, 0.0), goal, true, map, false, active));
  assert(counting.begin_calls == 1 && !active.valid);
+ assert(!pipeline.pending() && pipeline.failed());
  assert(!pipeline.advance(
  counting, at(0.1, 0.1), goal, true, map, false, active));
  assert(counting.begin_calls == 1);

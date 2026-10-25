@@ -14,7 +14,7 @@ void GoalArrivalPolicy::reset() { settled_cycles_ = 0; }
 
 GoalArrivalDecision GoalArrivalPolicy::evaluate(
  const EstimatedState& estimate, const RoutePoint& goal,
- bool route_active) {
+ bool route_active, bool observation_motion_requested) {
  GoalArrivalDecision out;
  if (!route_active || !estimate.valid ||
  !std::isfinite(estimate.x_m) || !std::isfinite(estimate.y_m) ||
@@ -49,7 +49,11 @@ GoalArrivalDecision GoalArrivalPolicy::evaluate(
  std::max(0.0, config_.maximum_heading_sigma_rad);
  if (!localization_resolved) {
  reset();
- out.hold = true;
+ // A covariance threshold is not motion authority. Hold the geometrically
+ // reached pose unless localization has explicitly requested a supervised
+ // observation manoeuvre; this prevents a local planner from wandering in
+ // a featureless scene merely because confidence is low.
+ out.hold = !observation_motion_requested;
  out.reason = "localization-uncertain";
  return out;
  }

@@ -69,7 +69,12 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
  global_planner_(make_global_planner(limits, wheel_base_m,
  navigation_policy)),
  local_planner_(make_local_planner(local_planner_kind,
- navigation_policy, motion_policy)),
+ navigation_policy, motion_policy,
+ arrival_config.position_tolerance_m,
+ arrival_config.heading_tolerance_rad,
+ arrival_config.maximum_position_sigma_m,
+ arrival_config.maximum_heading_sigma_rad,
+ arrival_config.settle_cycles)),
       validator_(std::make_unique<ClearanceValidator>(
  validator_config_for(limits, navigation_policy, motion_policy))),
       controller_(std::make_unique<DirectController>()),
@@ -125,11 +130,16 @@ core::Status AutonomyCoordinator::configure() {
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
+ local_plan_reset_requested_ = false;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
  last_prediction_horizon_s_ = 0.0;
  last_prediction_hypotheses_ = 0;
+ last_validated_static_clearance_m_ =
+ std::numeric_limits<double>::infinity();
+ last_validated_dynamic_clearance_m_ =
+ std::numeric_limits<double>::infinity();
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
@@ -172,11 +182,16 @@ core::Status AutonomyCoordinator::cleanup() {
   last_decision_ns_ = core::kInvalidTime;
   last_map_revision_ = 0;
   replan_requested_ = false;
+ local_plan_reset_requested_ = false;
   last_cmd_ = iface::MotionCommand::SafeStop(0);
   last_constraint_ = "none";
   last_reason_ = "init";
  last_prediction_horizon_s_ = 0.0;
  last_prediction_hypotheses_ = 0;
+ last_validated_static_clearance_m_ =
+ std::numeric_limits<double>::infinity();
+ last_validated_dynamic_clearance_m_ =
+ std::numeric_limits<double>::infinity();
   latch_.reset();
   last_published_stop_ = false;
   grip_.reset();
@@ -242,6 +257,7 @@ void AutonomyCoordinator::clear_goal() {
   has_goal_ = false;
   active_route_ = Route{};
   replan_requested_ = false;
+ local_plan_reset_requested_ = false;
 }
 
 void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad,
@@ -286,6 +302,7 @@ iface::MotionCommand AutonomyCoordinator::update(
  map, now_ns, *estimator_, *perception_module_, *mapper_, grip_, traversal_);
  const LocalizationSystem::TickResult& loc = observation_tick.localization;
   if (loc.replan_requested) replan_requested_ = true;
+ if (loc.local_plan_reset_requested) local_plan_reset_requested_ = true;
  // TF publisher follows REP-105. The estimator owns a continuous odom pose
  // that localization never rewrites; absolute corrections update only the
  // map pose. map->odom is their persistent SE(2) relationship, so a map
@@ -334,13 +351,15 @@ iface::MotionCommand AutonomyCoordinator::update(
   survey_ctx.sensor_height_m = lidar_mount_z_m_;
   survey_ctx.ride_height_m = ride_height_m_;
  survey_ctx.footprint_radius_m = limits_.footprint_radius_m;
-  if (due || replan_requested_ || map_changed) {
+if (due || replan_requested_ || local_plan_reset_requested_ || map_changed) {
     // The decision branch ran: stamp it first so cadence, map tracking, and
     // event flags stay consistent even when a stage below yields no plan.
     last_decision_ns_ = now_ns;
     last_map_revision_ = map.revision;
  const bool force_route_refresh = replan_requested_ || map_changed;
  replan_requested_ = false;
+ const bool reset_local_plan = local_plan_reset_requested_;
+ local_plan_reset_requested_ = false;
     // Survey revision: rebind the traversal belief and push the prior to
     // the mapper (ground classification for occupancy painting).
     if (map_changed) {
@@ -358,10 +377,11 @@ iface::MotionCommand AutonomyCoordinator::update(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
  estimator_->estimate(), observations_.perception(), robot_local_map,
  active_route_, goal_,
- has_goal_, map, force_route_refresh,
+has_goal_, map, force_route_refresh, reset_local_plan,
  grip_.effective_limits(limits_, limits_.max_forward_mps), limits_,
  latest_observation,
- survey_ctx, now_ns, forward_blocked);
+ survey_ctx, now_ns, forward_blocked,
+ loc.observation_motion_requested);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
  std::string reason = motion.reason;
@@ -374,13 +394,16 @@ iface::MotionCommand AutonomyCoordinator::update(
  last_cmd_ = decided;
  last_constraint_ = constraint;
  last_reason_ = reason;
+ last_validated_static_clearance_m_ = motion.validated_static_clearance_m;
+ last_validated_dynamic_clearance_m_ = motion.validated_dynamic_clearance_m;
  }
  // Goal completion is an autonomy policy, not coordinator arithmetic. The
  // coordinator supplies the latest estimated state and active route, then
  // applies the policy's hold while the measured chassis settles.
  goal_arrival_decision_ = goal_arrival_.evaluate(
  estimator_->estimate(), goal_,
- has_goal_ && active_route_.valid && !active_route_.points.empty());
+ has_goal_ && active_route_.valid && !active_route_.points.empty(),
+ loc.observation_motion_requested);
  if (goal_arrival_decision_.hold) {
  last_cmd_ = iface::MotionCommand::SafeStop(now_ns);
  last_constraint_ = "goal_hold";
@@ -439,6 +462,21 @@ iface::MotionCommand AutonomyCoordinator::update(
   }
   evidence.target_speed_mps = final_cmd.forward_mps;
   evidence.target_yaw_rate_radps = final_cmd.yaw_rate_radps;
+ evidence.proposed_speed_mps = gated.forward_mps;
+ evidence.proposed_yaw_rate_radps = gated.yaw_rate_radps;
+ evidence.validator_static_clearance_m =
+ last_validated_static_clearance_m_;
+ evidence.predicted_separation_m = last_validated_dynamic_clearance_m_;
+ evidence.safety_hold_clearance_m = verdict.static_hold_clearance_m;
+ evidence.measured_separation_m = verdict.static_hold_clearance_m;
+ evidence.safety_command_clearance_m =
+ verdict.static_command_min_clearance_m;
+ evidence.safety_terminal_clearance_m =
+ verdict.static_command_terminal_clearance_m;
+ evidence.safety_dynamic_hold_clearance_m =
+ verdict.dynamic_hold_clearance_m;
+ evidence.safety_dynamic_command_clearance_m =
+ verdict.dynamic_command_clearance_m;
   evidence.action_code = final_cmd.is_safe_stop() ? "stop" : "drive";
   evidence_.publish(std::move(evidence), now_ns * 1e-9);
  trajectory_tracking_.accept(

@@ -8,6 +8,7 @@
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/localization/global_search.hpp"
 #include "robot/autonomy/localization/scan_matcher.hpp"
+#include "robot/autonomy/planning/ackermann_planner.hpp"
 #include "robot/autonomy/planning/astar_planner.hpp"
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
@@ -53,6 +54,30 @@ void assert_route_clear(
  }
 }
 
+std::size_t soft_band_reentries(
+ const lost_signal::robot::autonomy::Route& route,
+ const lost_signal::robot::autonomy::LocalCostmap& costmap) {
+ std::size_t reentries = 0;
+ bool in_soft_band = costmap.cost_at(
+ route.points.front().x_m, route.points.front().y_m) > 0.0f;
+ for (std::size_t point = 1; point < route.points.size(); ++point) {
+ const auto& from = route.points[point - 1];
+ const auto& to = route.points[point];
+ const double length = std::hypot(to.x_m - from.x_m, to.y_m - from.y_m);
+ const int samples = std::max(
+ 1, static_cast<int>(std::ceil(length / (0.25 * costmap.lethal.resolution_m))));
+ for (int sample = 0; sample <= samples; ++sample) {
+ const double blend = static_cast<double>(sample) / samples;
+ const bool sample_in_soft_band = costmap.cost_at(
+ from.x_m + (to.x_m - from.x_m) * blend,
+ from.y_m + (to.y_m - from.y_m) * blend) > 0.0f;
+ if (sample_in_soft_band && !in_soft_band) ++reentries;
+ in_soft_band = sample_in_soft_band;
+ }
+ }
+ return reentries;
+}
+
 std::vector<float> scan_from_survey(
  const lost_signal::robot::iface::MapSnapshot& map,
  double x_m, double y_m, double yaw_rad) {
@@ -80,6 +105,55 @@ std::vector<float> scan_from_survey(
  }
  }
  return ranges;
+}
+
+bool segment_intersects_expanded_box(double x0, double y0,
+ double x1, double y1, const lost_signal::sim::world::StaticBox& box,
+ double radius_m) {
+ if (!(box.height_m > 0.0)) return false;
+ const double minimum_x = std::min(box.x0, box.x1) - radius_m;
+ const double maximum_x = std::max(box.x0, box.x1) + radius_m;
+ const double minimum_y = std::min(box.y0, box.y1) - radius_m;
+ const double maximum_y = std::max(box.y0, box.y1) + radius_m;
+ const double dx = x1 - x0;
+ const double dy = y1 - y0;
+ double enter = 0.0;
+ double leave = 1.0;
+ const auto clip = [&](double origin, double delta,
+ double minimum, double maximum) {
+ if (std::abs(delta) < 1e-12) {
+ return origin >= minimum && origin <= maximum;
+ }
+ double a = (minimum - origin) / delta;
+ double b = (maximum - origin) / delta;
+ if (a > b) std::swap(a, b);
+ enter = std::max(enter, a);
+ leave = std::min(leave, b);
+ return enter <= leave;
+ };
+ return clip(x0, dx, minimum_x, maximum_x) &&
+ clip(y0, dy, minimum_y, maximum_y);
+}
+
+void assert_actor_routes_clear(const lost_signal::sim::world::World& world) {
+ for (const auto& actor : world.actors()) {
+ const auto& waypoints = actor.behavior.waypoints;
+ if (waypoints.empty()) continue;
+ std::vector<lost_signal::sim::world::ActorWaypoint> path;
+ path.push_back({actor.x, actor.y});
+ path.insert(path.end(), waypoints.begin(), waypoints.end());
+ if (actor.behavior.loop && waypoints.size() > 1) {
+ path.push_back(waypoints.front());
+ }
+ for (std::size_t point = 1; point < path.size(); ++point) {
+ for (const auto& box : world.static_boxes()) {
+ assert(!segment_intersects_expanded_box(
+ path[point - 1].x_m, path[point - 1].y_m,
+ path[point].x_m, path[point].y_m, box,
+ std::max(0.0, actor.radius_m)));
+ }
+ }
+ }
 }
 
 } // namespace
@@ -114,6 +188,7 @@ int main() {
  assert(sim::scenario::load_actors_sidecar(
  map_path, session, {}, &error) == 4);
  assert(session.setup_world().actors().size() == 4);
+ assert_actor_routes_clear(session.setup_world());
 
  const robot::iface::MapSnapshot map = session.active_map();
  assert(map.has_raster());
@@ -188,11 +263,54 @@ int main() {
  current.yaw_rad = goal.yaw_rad;
  }
 
+ // Car-like planning first finds the same map-derived 2D guide and then
+ // refines it with sparse, corridor-bounded Hybrid-A* states. The raster is
+ // deliberately too large for cells x headings x gears dense allocation.
+ robot::autonomy::AckermannPlanner ackermann;
+ auto ackermann_current = at(0.0, 0.0);
+ std::size_t ackermann_route_points = 0;
+ for (const auto& place_id : mission) {
+ const auto& goal = place(map, place_id);
+ const auto route = ackermann.plan(
+ ackermann_current, {goal.x_m, goal.y_m, goal.yaw_rad}, map);
+ assert_route_clear(route, costmap.lethal);
+ ackermann_route_points += route.points.size();
+ ackermann_current = at(goal.x_m, goal.y_m);
+ ackermann_current.yaw_rad = goal.yaw_rad;
+ }
+
+ // Replanning must work from actual mid-mission poses, not only authored
+ // endpoints. These two poses previously exhausted a whole-route Hybrid-A*
+ // budget and a local refinement deadline respectively.
+ const auto& north_depot = place(map, "north_depot");
+ robot::autonomy::AckermannPlanner::Config recovery_config;
+ recovery_config.wheel_base_m = 0.62;
+ for (const auto& start_pose : std::vector<robot::autonomy::EstimatedState>{
+ [] { auto p = at(46.59, -118.57); p.yaw_rad = 3.13; return p; }(),
+ [] { auto p = at(42.045, -119.736); p.yaw_rad = -1.762; return p; }(),
+ [] { auto p = at(27.35, -70.05); p.yaw_rad = -1.02; return p; }()}) {
+ robot::autonomy::AckermannPlanner recovery(recovery_config);
+ const auto route = recovery.plan(
+ start_pose, start_pose.x_m < 30.0
+ ? robot::autonomy::RoutePoint{42.0, -120.0, -M_PI_2}
+ : robot::autonomy::RoutePoint{
+ north_depot.x_m, north_depot.y_m, north_depot.yaw_rad}, map);
+ assert_route_clear(route, costmap.lethal);
+ if (start_pose.x_m < 30.0) {
+ // A car may enter the soft band once while backing out and changing
+ // curvature. It must then leave instead of repeatedly weaving through the
+ // same clearance cost beside a long wall.
+ assert(soft_band_reentries(route, costmap) <= 1);
+ }
+ }
+
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
- "route_points=%zu startup=(%.3f,%.3f,%.3f)\n",
+ "route_points=%zu ackermann_route_points=%zu "
+ "startup=(%.3f,%.3f,%.3f)\n",
  max_x - min_x, max_y - min_y, map.width, map.height,
  session.setup_world().actors().size(), route_points,
+ ackermann_route_points,
  startup.x_m, startup.y_m, startup.yaw_rad);
  return 0;
 }

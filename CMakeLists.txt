@@ -415,6 +415,20 @@ target_compile_definitions(test_industrial_200k PRIVATE
 target_link_libraries(test_industrial_200k PRIVATE lost_signal_sim_scenario)
 add_test(NAME industrial_200k COMMAND test_industrial_200k)
 
+add_executable(test_industrial_200k_mission
+ tests/test_industrial_200k_mission.cpp
+)
+target_compile_definitions(test_industrial_200k_mission PRIVATE
+ TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_industrial_200k_mission PRIVATE
+ lost_signal_sim_scenario)
+add_test(NAME industrial_200k_mission COMMAND test_industrial_200k_mission)
+set_tests_properties(industrial_200k_mission PROPERTIES
+ LABELS "long;physics"
+ RUN_SERIAL TRUE
+ TIMEOUT 1200)
+
 add_executable(test_ackermann_planner
  tests/test_ackermann_planner.cpp
 )

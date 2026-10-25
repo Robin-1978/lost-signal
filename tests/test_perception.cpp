@@ -174,6 +174,40 @@ int main() {
  assert(perc.update(nearer, origin()).tracks.size() == 1);
  }
 
+ // A displaced pose with matching covariance must not turn a surveyed wall
+ // into a map-relative moving actor. The foreground gate is expanded from the
+ // reported position and heading uncertainty; raw scan collision evidence is
+ // still available to planning and safety while classification is unresolved.
+ {
+ LidarPerception perc;
+ lost_signal::robot::iface::MapSnapshot map;
+ map.map_id = "uncertain-prior";
+ map.revision = 1;
+ map.width = 200;
+ map.height = 200;
+ map.resolution_m = 0.1;
+ map.origin_x_m = -10.0;
+ map.origin_y_m = -10.0;
+ map.occupancy.assign(map.width * map.height, 0);
+ for (int gy = 85; gy <= 115; ++gy) {
+ map.occupancy[static_cast<std::size_t>(gy) * map.width + 130] = 100;
+ }
+ perc.set_static_map(map);
+ EstimatedState uncertain = origin();
+ uncertain.x_m = -2.0;
+ uncertain.position_sigma_m = 2.0;
+ uncertain.heading_sigma_rad = 0.1;
+ for (int frame = 0; frame < 5; ++frame) {
+ auto wall = make_scan(
+ (frame + 1) * 100'000'000LL, 10.0f, 34, 38, 3.0f);
+ wall.scan_static_valid = false;
+ wall.static_ranges_m.clear();
+ const PerceptionResult result = perc.update(wall, uncertain);
+ assert(result.scan_ok);
+ assert(result.tracks.empty());
+ }
+ }
+
  // Mapless/SLAM startup: static compact returns remain unpublished, while a
  // repeatedly moving cluster becomes an anonymous dynamic track using only
  // scan history in the estimated map frame.

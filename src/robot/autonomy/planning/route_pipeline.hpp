@@ -1,5 +1,7 @@
 #pragma once
 
+#include <limits>
+
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/planning/global_planner.hpp"
 #include "robot/iface/map.hpp"
@@ -16,10 +18,14 @@ class RoutePlanningPipeline {
  failed_ = false;
  has_request_ = false;
  }
+ bool pending() const { return pending_; }
+ bool failed() const { return failed_; }
  bool advance(IGlobalPlanner& planner, const EstimatedState& start,
  const RoutePoint& goal, bool has_goal,
  const iface::MapSnapshot& map, bool force_replan,
- Route& active_route);
+ Route& active_route,
+ double maximum_route_deviation_m =
+ std::numeric_limits<double>::infinity());
   static bool refresh(IGlobalPlanner& planner, const EstimatedState& start,
                       const RoutePoint& goal, bool has_goal,
                       const iface::MapSnapshot& map, bool force_replan,

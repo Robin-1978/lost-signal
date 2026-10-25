@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <optional>
 
 #include "robot/core/deskew.hpp"
@@ -133,6 +134,15 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
   out.scan_ok = true;
   const double now_s = obs.stamp_ns * 1e-9;
 
+ double map_reference_quantile = std::numeric_limits<double>::infinity();
+ if (config_.foreground_false_positive_probability > 0.0 &&
+ config_.foreground_false_positive_probability < 1.0) {
+ // Radial quantile of an isotropic two-dimensional Gaussian:
+ // P(radius > q*sigma) = exp(-q^2/2).
+ map_reference_quantile = std::sqrt(
+ -2.0 * std::log(config_.foreground_false_positive_probability));
+ }
+
   const std::size_t n = obs.ranges_m.size();
  const bool has_provider_ref =
       obs.scan_static_valid && obs.static_ranges_m.size() == n;
@@ -195,6 +205,22 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  }
  reference_backed = true;
  } else {
+ const double mount_radius_m = std::hypot(
+ base_from_lidar_.translation_m.x, base_from_lidar_.translation_m.y);
+ const double position_sigma_m =
+ std::isfinite(est.position_sigma_m) && est.position_sigma_m >= 0.0
+ ? est.position_sigma_m
+ : std::numeric_limits<double>::infinity();
+ const double heading_sigma_rad =
+ std::isfinite(est.heading_sigma_rad) && est.heading_sigma_rad >= 0.0
+ ? est.heading_sigma_rad
+ : std::numeric_limits<double>::infinity();
+ const double pose_projection_sigma_m = std::hypot(
+ position_sigma_m,
+ (range + mount_radius_m) * heading_sigma_rad);
+ const double map_foreground_threshold_m =
+ config_.foreground_threshold_m +
+ map_reference_quantile * pose_projection_sigma_m;
  const auto expected = static_map_has_known_occupancy_
  ? raycast_static_map(
  *static_map_, sensor_p,
@@ -204,11 +230,11 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  if (expected) {
  // Only a return measurably in front of the ROBOT map is foreground.
  // A farther return is clearing evidence or map mismatch, never an actor.
- if (!(range + config_.foreground_threshold_m < *expected)) continue;
+ if (!(range + map_foreground_threshold_m < *expected)) continue;
  reference_backed = true;
  } else if (static_map_has_known_occupancy_ && endpoint_matches_static_map(
  *static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
- config_.foreground_threshold_m + static_map_->resolution_m)) {
+ map_foreground_threshold_m + static_map_->resolution_m)) {
  // Sparse priors legitimately keep free space unknown. Matching a measured
  // endpoint to known occupied geometry does not require assuming the unknown
  // cells before it are free, and prevents wall fragments from becoming

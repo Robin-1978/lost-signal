@@ -29,7 +29,7 @@ int main() {
  // Whole-map localization is cooperatively sliced across control ticks.
  // Allow the mission to finish its ordinary arrival-settling interval after
  // that bounded startup work instead of pinning completion to one trajectory.
- for (int i = 0; i < 800; ++i) {
+ for (int i = 0; i < 1000; ++i) {
  sim.tick(static_cast<robot::core::MonotonicNs>(i) * 20'000'000LL);
     xs.push_back(sim.world().truth().body_x_m);
     if (sim.current_goal().state == robot::iface::GoalState::kDone) break;

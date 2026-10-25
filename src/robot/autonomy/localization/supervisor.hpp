@@ -52,11 +52,13 @@ struct LocalizationSupervisorConfig {
  double local_innovation_sigma_factor = 4.0;
  double local_innovation_floor_m = 0.35;
  double local_innovation_floor_rad = 0.20;
- // A localized trajectory may accept a wider global jump only after its
- // covariance has crossed the loss threshold. Below that threshold this is
- // the maximum trusted jump allowed from a whole-map candidate.
- double trusted_global_jump_m = 0.75;
- double trusted_global_jump_sigma_factor = 3.0;
+ // A localized trajectory may search and accept a wider global correction
+ // only after covariance crosses the loss threshold. This probability is
+ // converted to the radial quantile of an isotropic 2-D Gaussian instead of
+ // embedding an unexplained "N sigma" multiplier in the orchestration.
+ double minimum_global_recovery_radius_m = 0.75;
+ double minimum_global_recovery_heading_rad = 0.35;
+ double global_recovery_probability = 0.9995;
  // Diagnostic threshold retained for telemetry compatibility. Rejections
  // never trigger global recovery by themselves; fused covariance must cross
  // the loss threshold first.
@@ -99,6 +101,11 @@ class LocalizationSupervisor {
     return consecutive_local_failures_;
   }
   MapWindow2D local_window(double odom_x_m, double odom_y_m) const;
+ double global_recovery_radius_m(double position_sigma_m) const;
+ double global_recovery_heading_radius_rad(double heading_sigma_rad) const;
+ bool accept_global_innovation(double position_innovation_m,
+ double heading_innovation_rad, double position_sigma_m,
+ double heading_sigma_rad) const;
   const LocalizationSupervisorConfig& config() const { return config_; }
 
  private:

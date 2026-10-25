@@ -1,7 +1,9 @@
 {
   "format": "lost-signal-robot/1",
   "chassis_kind": "ackermann",
-  "drive": {},
+ "drive": {
+ "steer_stall_torque_Nm": 80.0
+ },
   "chassis": {
     "body_half_height_m": 0.05,
     "body_half_width_m": 0.12,

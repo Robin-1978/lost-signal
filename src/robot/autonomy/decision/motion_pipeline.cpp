@@ -23,7 +23,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const SurveyContext& survey, core::MonotonicNs now_ns,
  IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
- IController& controller, bool forward_blocked) {
+ IController& controller, bool forward_blocked,
+ bool observation_motion_requested) {
  MotionDecisionResult out;
  out.command = iface::MotionCommand::SafeStop(now_ns);
  const PredictionBatch prediction = predict_perception(
@@ -59,7 +60,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  if (out.behavior.must_hold && hold_verdict.accepted && !escape_active_) {
- out.reason = hold_verdict.reason;
+ out.reason = out.behavior.reason.empty()
+ ? hold_verdict.reason
+ : out.behavior.reason;
  out.command = controller.track(hold, est, now_ns);
  return out;
  }
@@ -71,6 +74,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
  const LocalPlan plan = local_planner.plan(
  est, perception, prediction, local_map, route, effective);
+ out.route_replan_requested = plan.route_replan_requested;
 
  struct ValidatedCandidate {
  LocalCandidate candidate;
@@ -115,9 +119,19 @@ MotionDecisionResult MotionDecisionPipeline::run(
  hold_dynamically_unsafe ||
  out.behavior.reason == "route-conflict-no-safe-hold";
  const bool planner_requested = route.valid && !route.points.empty();
+ const bool planner_motion_available = std::any_of(
+ planner_valid.begin(), planner_valid.end(),
+ [](const ValidatedCandidate& candidate) {
+ return std::abs(candidate.candidate.forward_mps) > 1e-9 ||
+ std::abs(candidate.candidate.yaw_rate_radps) > 1e-9 ||
+ std::abs(candidate.candidate.lateral_mps) > 1e-9;
+ });
+ const bool observation_recovery_required =
+ observation_motion_requested && !planner_motion_available;
  const bool recovery_required =
  (planner_requested && planner_valid.empty()) || forward_blocked ||
- dynamic_escape_required || out.behavior.must_hold;
+ dynamic_escape_required || out.behavior.must_hold ||
+ observation_recovery_required;
  if (!planner_requested && !recovery_required) {
  out.constraint = "hold";
  out.reason = hold_verdict.accepted ? hold_verdict.reason : "no-route-hold";
@@ -127,8 +141,35 @@ MotionDecisionResult MotionDecisionPipeline::run(
  return out;
  }
  if (!recovery_required && !planner_valid.empty()) {
- const auto& selected = planner_valid.front();
+ auto selected_it = planner_valid.begin();
+ if (observation_motion_requested) {
+ const auto moving = std::find_if(
+ planner_valid.begin(), planner_valid.end(),
+ [](const ValidatedCandidate& candidate) {
+ return std::abs(candidate.candidate.forward_mps) > 1e-9 ||
+ std::abs(candidate.candidate.yaw_rate_radps) > 1e-9 ||
+ std::abs(candidate.candidate.lateral_mps) > 1e-9;
+ });
+ if (moving != planner_valid.end()) selected_it = moving;
+ }
+ const auto& selected = *selected_it;
+ out.validated_static_clearance_m = selected.verdict.min_clearance_m;
+ out.validated_dynamic_clearance_m = selected.verdict.min_dynamic_clearance_m;
+ out.trajectory_verdict = selected.verdict.verdict;
  out.reason = selected.verdict.reason;
+ if (selected.candidate.forward_mps == 0.0 &&
+ selected.candidate.yaw_rate_radps == 0.0 &&
+ selected.candidate.lateral_mps == 0.0 && route.valid) {
+ out.reason = "planner-hold:moving=" +
+ std::to_string(plan.moving_candidate_count) +
+ ";gear=" + std::to_string(plan.requested_gear) +
+ ";route-error=" + std::to_string(plan.route_error_m) +
+ ";segment=" + std::to_string(plan.route_segment) +
+ ";cusp=" + (plan.gear_change_pending ? "pending" : "none") +
+ "/" + (plan.gear_change_braking_armed ? "armed" : "approach") +
+ ";cusp-distance=" +
+ std::to_string(plan.gear_change_endpoint_distance_m);
+ }
  out.command = controller.track(selected.candidate, est, now_ns);
  if (!iface::valid_motion_command(out.command, now_ns)) {
  out.command = iface::MotionCommand::SafeStop(now_ns);
@@ -143,6 +184,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const double turn = std::min(
  std::max(0.0, config_.recovery_yaw_rate_radps),
  std::max(0.0, effective.max_yaw_rate_radps));
+ const double recovery_turn = effective.max_curvature_inv_m > 0.0
+ ? std::min(turn, crawl * effective.max_curvature_inv_m)
+ : turn;
  std::size_t recovery_count = 0;
  auto add_recovery = [&](double forward, double yaw, double lateral) {
  if (recovery_count >= recovery.size()) return;
@@ -161,10 +205,10 @@ MotionDecisionResult MotionDecisionPipeline::run(
  add_recovery(0.0, turn, 0.0);
  add_recovery(0.0, -turn, 0.0);
  }
- add_recovery(crawl, turn, 0.0);
- add_recovery(crawl, -turn, 0.0);
- add_recovery(-crawl, turn, 0.0);
- add_recovery(-crawl, -turn, 0.0);
+ add_recovery(crawl, recovery_turn, 0.0);
+ add_recovery(crawl, -recovery_turn, 0.0);
+ add_recovery(-crawl, recovery_turn, 0.0);
+ add_recovery(-crawl, -recovery_turn, 0.0);
  if (effective.max_lateral_mps > 0.0) {
  const double slide = std::min(crawl, effective.max_lateral_mps);
  add_recovery(0.0, 0.0, slide);
@@ -278,11 +322,19 @@ MotionDecisionResult MotionDecisionPipeline::run(
  if (starting_escape) escape_release_count_ = 0;
  escape_command_ = best_recovery.candidate;
  out.constraint = "dynamic_escape";
+ } else if (observation_recovery_required) {
+ out.constraint = "localization_observe";
  }
  out.command = controller.track(best_recovery.candidate, est, now_ns);
+ out.validated_static_clearance_m = best_recovery.verdict.min_clearance_m;
+ out.validated_dynamic_clearance_m =
+ best_recovery.verdict.min_dynamic_clearance_m;
+ out.trajectory_verdict = best_recovery.verdict.verdict;
  out.reason = "recovery:" + best_recovery.verdict.reason;
  if (planner_candidates.empty()) {
- out.reason += "; planner=no-candidate";
+ out.reason += "; planner=no-candidate; gear=" +
+ std::to_string(plan.requested_gear) +
+ ";route-error=" + std::to_string(plan.route_error_m);
  } else if (have_rejection) {
  out.reason += "; planner=" + first_rejection.reason;
  }
@@ -290,6 +342,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
  !dynamic_escape_required) {
  const auto& selected = planner_valid.front();
  out.command = controller.track(selected.candidate, est, now_ns);
+ out.validated_static_clearance_m = selected.verdict.min_clearance_m;
+ out.validated_dynamic_clearance_m = selected.verdict.min_dynamic_clearance_m;
+ out.trajectory_verdict = selected.verdict.verdict;
  out.reason = selected.verdict.reason;
  } else if (have_rejection) {
  out.reason = "planner candidates rejected: " + first_rejection.reason;

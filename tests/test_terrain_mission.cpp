@@ -60,6 +60,11 @@ int main() {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
  session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ session.setup_world().set_static_boxes({
+ {-1.0, 3.0, 0.0, 4.0, 1.5},
+ {4.0, -4.0, 5.0, -3.0, 1.5},
+ {9.0, 3.0, 10.0, 4.0, 1.5},
+ });
     session.setup_world().add_place({"mid", 4.0, 0.0, 0.0});
     session.setup_world().add_place({"past", 9.0, 0.0, 0.0});
     session.setup_world().set_terrain_patches(
@@ -103,6 +108,11 @@ int main() {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
  session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ session.setup_world().set_static_boxes({
+ {-1.0, 3.0, 0.0, 4.0, 1.5},
+ {4.0, -4.0, 5.0, -3.0, 1.5},
+ {9.0, 3.0, 10.0, 4.0, 1.5},
+ });
     session.setup_world().add_place({"past", 9.0, 0.0, 0.0});
     session.setup_world().set_terrain_patches(
         {{"up", 2.0, -3.0, 6.0, 3.0, 0.0, 0.1, 0.0, 0.0, 0.0},

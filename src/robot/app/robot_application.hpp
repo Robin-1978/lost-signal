@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "robot/app/robot.hpp"
 #include "robot/autonomy/coordinator.hpp"
@@ -136,6 +137,9 @@ class RobotApplication : public IRobot {
  // Continuous REP-105 odom-frame state. `estimate` is the map-frame pose
  // used for navigation and may jump when localization is corrected.
  autonomy::EstimatedState odometry_estimate;
+ // Anonymous ROBOT-side dynamic tracks for diagnostics and visualization.
+ // These are perception estimates, never SIM actor identities or truth.
+ std::vector<autonomy::DynamicTrack> dynamic_tracks;
     autonomy::SafetyState safety = autonomy::SafetyState::kStopped;
     std::string safety_reason = "init";
     autonomy::diagnostics::DecisionEvidence evidence;

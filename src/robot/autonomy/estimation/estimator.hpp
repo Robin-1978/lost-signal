@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "robot/autonomy/estimation/slip_observer.hpp"
 #include "robot/core/time.hpp"
 #include "robot/iface/observation.hpp"
@@ -43,6 +45,13 @@ class IEstimator {
                             double /*yaw_rad*/, double /*pos_sigma_m*/,
                             double /*yaw_sigma_rad*/,
                             core::MonotonicNs /*stamp_ns*/) {}
+ virtual void correct_pose_information(
+ double x_m, double y_m, double yaw_rad,
+ const std::array<double, 9>& /*pose_information*/,
+ double pos_sigma_m, double yaw_sigma_rad,
+ core::MonotonicNs stamp_ns) {
+ correct_pose(x_m, y_m, yaw_rad, pos_sigma_m, yaw_sigma_rad, stamp_ns);
+ }
  // Relative scan/submap tracking can correct incremental pose error, but it
  // does not observe the absolute map frame. Implementations must therefore
  // preserve map-frame covariance while applying the bounded pose update.
@@ -102,13 +111,15 @@ class FusedOdometryEstimator : public IEstimator {
     double gravity_mps2 = 9.80665;
     double accel_trust_band_mps2 = 1.96133; // 0.2 g
     double max_accel_tilt_correction_radps = 0.7;
-    // Covariance growth per meter traveled / per second elapsed.
-    double pos_growth_per_m = 0.01;
- // Wheel-odometry position uncertainty is distance-dominated. Keep a small
- // time random walk for unmodelled bias without making a stationary robot
- // lose metres of confidence during a long safety hold.
- double pos_growth_per_s = 0.001;
-    double yaw_growth_per_s = 0.002;
+ // Planar process-noise densities used by the 3x3 [x,y,yaw] covariance.
+ // Variances, rather than standard deviations, add over independent motion
+ // increments. Position is distance-dominated; the tiny time walk avoids a
+ // stationary robot manufacturing metres of uncertainty. Heading includes
+ // gyro/steering bias random walk and couples into cross-track position via
+ // the kinematic Jacobian.
+ double position_process_variance_per_m = 0.0025;
+ double position_process_variance_per_s = 1.0e-6;
+ double heading_process_variance_per_s = 1.0e-4;
     double pos_sigma_min_m = 0.005;
     double pos_sigma_max_m = 100.0;
     double yaw_sigma_min_rad = 0.002;
@@ -133,6 +144,11 @@ class FusedOdometryEstimator : public IEstimator {
   void correct_pose(double x_m, double y_m, double yaw_rad,
                     double pos_sigma_m, double yaw_sigma_rad,
                     core::MonotonicNs stamp_ns) override;
+ void correct_pose_information(
+ double x_m, double y_m, double yaw_rad,
+ const std::array<double, 9>& pose_information,
+ double pos_sigma_m, double yaw_sigma_rad,
+ core::MonotonicNs stamp_ns) override;
  void correct_relative_pose(double x_m, double y_m, double yaw_rad,
  double pos_sigma_m, double yaw_sigma_rad,
  core::MonotonicNs stamp_ns) override;
@@ -168,6 +184,11 @@ class FusedOdometryEstimator : public IEstimator {
   double slip_heading_extra_rad_ = 0.0;
  double odom_slip_heading_extra_rad_ = 0.0;
  double motion_scale_ = 1.0;
+ // Row-major covariance of [x, y, yaw] in each REP-105 frame. Public API
+ // remains compact; EstimatedState derives radial position sigma from the
+ // largest XY eigenvalue and heading sigma from P(yaw,yaw).
+ std::array<double, 9> estimate_covariance_{};
+ std::array<double, 9> odom_covariance_{};
 };
 
 }  // namespace lost_signal::robot::autonomy

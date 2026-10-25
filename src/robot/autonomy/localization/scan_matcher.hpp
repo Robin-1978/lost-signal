@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -46,6 +47,12 @@ struct ScanMatchResult {
   double yaw_rad = 0.0;
   double position_sigma_m = 0.05;
   double heading_sigma_rad = 0.02;
+ // Observed pose information in map-frame [x,y,yaw] coordinates. Local
+ // scan matching can be rank-deficient (for example, motion along a straight
+ // corridor); zero eigenvalues deliberately leave those prior covariance
+ // directions unchanged. Global/startup results may use the scalar fallback.
+ std::array<double, 9> pose_information{};
+ bool pose_information_valid = false;
   double score = 0.0;
   double overlap = 0.0;
   double score_margin = 0.0;

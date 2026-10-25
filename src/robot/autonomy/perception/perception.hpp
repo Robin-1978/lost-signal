@@ -90,6 +90,12 @@ struct LidarPerceptionConfig {
   // out via set_lidar_mount(). No second copy here.
   // Foreground test: |measured - expected| beyond this is not static world.
   double foreground_threshold_m = 0.30;
+ // Maximum probability that propagated pose uncertainty alone is mistaken
+ // for map-relative foreground. The corresponding 2-D Gaussian radial
+ // quantile expands the map comparison gate; when localization is uncertain,
+ // raw scan safety remains active but the tracker does not invent moving
+ // actors from displaced static walls.
+ double foreground_false_positive_probability = 0.01;
   // Clustering: adjacent foreground beams split past this range gap.
   double cluster_range_gap_m = 0.5;
   int min_beams_per_cluster = 2;

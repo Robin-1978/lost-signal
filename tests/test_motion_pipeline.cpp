@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 
 #include "robot/autonomy/control/controller.hpp"
@@ -34,6 +35,16 @@ class OneShotConflictBehavior final : public IBehaviorPolicy {
  int calls_ = 0;
 };
 
+class HoldBehavior final : public IBehaviorPolicy {
+ public:
+ void reset() override {}
+ BehaviorDecision decide(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const Route&,
+ const platform::ChassisLimits&) override {
+ return {true, 0.0, "track-conflict-hold"};
+ }
+};
+
 class RankedPlanner final : public ILocalPlanner {
  public:
  void reset() override {}
@@ -60,6 +71,20 @@ class EmptyPlanner final : public ILocalPlanner {
  const PredictionBatch&, const LocalMap&, const Route&,
  const platform::ChassisLimits&) override {
  return {};
+ }
+};
+
+class HoldPlanner final : public ILocalPlanner {
+ public:
+ void reset() override {}
+ LocalPlan plan(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const LocalMap&, const Route&,
+ const platform::ChassisLimits&) override {
+ LocalPlan result;
+ result.has_plan = true;
+ result.best.feasible = true;
+ result.candidates.push_back(result.best);
+ return result;
  }
 };
 
@@ -152,12 +177,40 @@ int main() {
  assert(!uncertain_recovery.command.is_safe_stop());
  assert(uncertain_recovery.reason.find("recovery:") == 0);
 
+ // A supervised localization search requests observation motion only when
+ // the normal planner has no accepted moving candidate. The fallback crawl
+ // remains validator-approved and respects Ackermann curvature.
+ pipeline.reset();
+ HoldPlanner hold_planner;
+ platform::ChassisLimits ackermann_limits = limits;
+ ackermann_limits.max_curvature_inv_m = 1.2;
+ const MotionDecisionResult observation_motion = pipeline.run(
+ globally_uncertain, perception, map, route, ackermann_limits,
+ ackermann_limits, observation, survey, estimate.stamp_ns, behavior,
+ hold_planner, validator, controller, false, true);
+ assert(!observation_motion.command.is_safe_stop());
+ assert(observation_motion.constraint == "localization_observe");
+ assert(std::abs(observation_motion.command.yaw_rate_radps) <=
+ std::abs(observation_motion.command.forward_mps) *
+ ackermann_limits.max_curvature_inv_m + 1e-9);
+
  Route no_route;
  pipeline.reset();
  const MotionDecisionResult held = pipeline.run(
  estimate, perception, map, no_route, limits, limits, observation, survey,
  estimate.stamp_ns, behavior, empty, validator, controller);
  assert(held.command.is_safe_stop());
+
+ // Diagnostics must retain the behavior cause. Reporting only the hold
+ // candidate's validator result hides whether contact, an immature track or
+ // a predicted route conflict requested the stop.
+ pipeline.reset();
+ HoldBehavior hold_behavior;
+ const MotionDecisionResult behavior_hold = pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns, hold_behavior, ranked, validator, controller);
+ assert(behavior_hold.command.is_safe_stop());
+ assert(behavior_hold.reason == "track-conflict-hold");
 
  // Escape release is stateful but live: after the one-cycle threat clears,
  // consecutive safe-hold decisions release recovery. Continuing recovery

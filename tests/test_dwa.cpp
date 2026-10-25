@@ -237,6 +237,299 @@ int main() {
  assert(std::abs(p.best.yaw_rate_radps) < 1e-9);
  }
 
+ // Stateful pruning must preserve an Ackermann cusp when the return leg
+    // passes through a position already visited by the forward leg. A global
+    // nearest-point query would jump directly to the reverse segment.
+    {
+        LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+        EstimatedState est;
+        est.valid = true;
+        est.stamp_ns = 1'000'000;
+        PerceptionResult perc;
+        perc.scan_ok = true;
+        Route route;
+        route.valid = true;
+        route.points = {
+                {0.0, 0.0, 0.0, 1}, {0.6, 0.0, 0.0, 1},
+                {1.2, 0.0, 0.0, 1}, {1.8, 0.0, 0.0, 1},
+                {2.4, 0.0, 0.0, 1}, {1.8, 0.0, 0.0, -1},
+                {1.6, 0.0, 0.0, -1}};
+        platform::ChassisLimits ack = limits;
+        ack.max_curvature_inv_m = 1.0;
+        DwaPlanner planner;
+ for (double x : {0.0, 0.6, 1.2, 1.6, 2.2}) {
+            est.x_m = x;
+            const LocalPlan plan = planner.plan(est, perc, m, route, ack);
+            assert(plan.has_plan && plan.best.forward_mps > 0.0);
+        }
+        est.x_m = 2.4;
+        const LocalPlan reverse = planner.plan(est, perc, m, route, ack);
+        assert(reverse.has_plan && reverse.best.forward_mps < 0.0);
+    }
+
+ // Hybrid-A* may select reverse on its very first edge. The start point's
+ // legacy gear annotation must not override the arriving point's explicit
+ // reverse gear or turn a feasible departure into a hold.
+ {
+ LocalMap m = make_map(160, 160, 0.1, 38.0, -124.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 41.87;
+ est.y_m = -119.93;
+ est.yaw_rad = -1.75;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {41.870, -119.930, -1.750, 1},
+ {41.980, -119.546, -1.952, -1},
+ {42.204, -119.218, -2.389, -1},
+ {42.546, -119.017, -2.827, -1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan departure = planner.plan(est, perc, m, route, ack);
+ assert(departure.has_plan && departure.best.forward_mps < 0.0);
+ }
+
+ // A car-like terminal maneuver can require reverse travel that initially
+ // increases Euclidean distance to its lookahead point. Route progress and
+ // heading must beat holding; otherwise a feasible Hybrid-A* cusp deadlocks.
+ {
+ LocalMap m = make_map(160, 160, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.0;
+ est.y_m = 0.0;
+ est.yaw_rad = -1.10;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {-0.20, -0.10, -1.10, 1}, {0.0, 0.0, -1.10, 1},
+ {0.10, -0.35, -1.35, 1}, {0.05, -0.70, -1.55, 1},
+ {0.10, -0.35, -1.55, -1}, {0.30, 0.20, -1.35, -1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ for (const auto& pose : std::vector<EstimatedState>{
+ est,
+ [&] { auto p = est; p.x_m = 0.10; p.y_m = -0.35;
+ p.yaw_rad = -1.35; return p; }(),
+ [&] { auto p = est; p.x_m = 0.05; p.y_m = -0.70;
+ p.yaw_rad = -1.55; return p; }()}) {
+ const LocalPlan plan = planner.plan(pose, perc, m, route, ack);
+ assert(plan.has_plan);
+ if (pose.y_m > -0.69) assert(plan.best.forward_mps > 0.0);
+ }
+ EstimatedState reverse_pose = est;
+ reverse_pose.x_m = 0.04;
+ reverse_pose.y_m = -0.58;
+ reverse_pose.yaw_rad = -1.30;
+ const LocalPlan plan = planner.plan(reverse_pose, perc, m, route, ack);
+ assert(plan.has_plan && plan.best.forward_mps < 0.0);
+
+ // A real chassis settles inside a footprint-sized capture region rather
+ // than on the exact Hybrid-A* lattice point. Once speed has settled, a
+ // 0.30 m tracking residual on this 0.40 m base must still arm the next gear.
+ DwaPlanner physical_cusp_planner;
+ for (const auto& pose : std::vector<EstimatedState>{
+ est,
+ [&] { auto p = est; p.x_m = 0.10; p.y_m = -0.35;
+ p.yaw_rad = -1.35; return p; }()}) {
+ const LocalPlan approach = physical_cusp_planner.plan(
+ pose, perc, m, route, ack);
+ assert(approach.has_plan && approach.best.forward_mps > 0.0);
+ }
+ EstimatedState settled_near_cusp = est;
+ settled_near_cusp.x_m = 0.05;
+ settled_near_cusp.y_m = -0.40;
+ settled_near_cusp.yaw_rad = -1.40;
+ settled_near_cusp.forward_mps = 0.0;
+ const LocalPlan captured = physical_cusp_planner.plan(
+ settled_near_cusp, perc, m, route, ack);
+ assert(captured.has_plan && captured.best.forward_mps < 0.0);
+ }
+
+ // A consumed car-like route cannot correct a residual terminal heading by
+ // rotating in place. Request a fresh pose route from global Hybrid-A*
+ // rather than holding indefinitely at the final coordinate.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.0, 0.0, 1},
+ {2.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ for (double x : {0.0, 0.5, 1.0, 1.5}) {
+ est.x_m = x;
+ const LocalPlan approach = planner.plan(est, perc, m, route, ack);
+ assert(!approach.route_replan_requested);
+ }
+ est.x_m = 2.0;
+ est.yaw_rad = 0.5;
+ const LocalPlan exhausted = planner.plan(est, perc, m, route, ack);
+ assert(exhausted.route_replan_requested);
+ }
+
+ // Once global planning supplies a real same-position pose maneuver, being
+ // physically close to its final point must not retrigger replanning from
+ // the route start. The active lookahead is still away from the robot.
+ {
+ LocalMap m = make_map(160, 160, 0.1, 38.0, -124.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 42.04;
+ est.y_m = -119.96;
+ est.yaw_rad = -1.95;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {42.040, -119.960, -1.950, 1},
+ {41.930, -120.344, -1.748, 1},
+ {41.860, -120.738, -1.748, 1},
+ {41.750, -121.122, -1.950, 1},
+ {41.898, -120.750, -1.950, -1},
+ {42.008, -120.366, -1.748, -1},
+ {42.000, -120.000, -1.571, -1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ for (int cycle = 0; cycle < 5; ++cycle) {
+ const LocalPlan maneuver = planner.plan(est, perc, m, route, ack);
+ assert(!maneuver.route_replan_requested);
+ assert(maneuver.has_plan && maneuver.best.forward_mps > 0.0);
+ }
+ }
+
+ // Geometric arrival with unresolved ROBOT covariance is not completion,
+ // but covariance alone is not motion authority. DWA retains safe moving
+ // candidates; the motion pipeline selects one only when localization has
+ // explicitly requested a multi-frame observation baseline.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 2.0;
+ est.y_m = 0.0;
+ est.yaw_rad = 0.0;
+ est.position_sigma_m = 1.0;
+ est.heading_sigma_rad = 0.05;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.0, 0.0, 1},
+ {2.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan observe = planner.plan(est, perc, m, route, ack);
+ assert(observe.has_plan && observe.moving_candidate_count > 0);
+ assert(std::abs(observe.best.forward_mps) < 1e-9);
+ }
+
+ // Pure-pursuit heading for a car-like base must correct cross-track error.
+ // The planned body heading plus bounded cross-track feedback must drive the
+ // error down without the near-goal bearing singularity.
+ {
+ LocalMap m = make_map(160, 160, 0.1, -4.0, -8.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.35;
+ est.y_m = 0.0;
+ est.yaw_rad = -M_PI_2;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {0.0, 0.0, -M_PI_2, 1},
+ {0.0, -1.0, -M_PI_2, 1},
+ {0.0, -2.0, -M_PI_2, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan correction = planner.plan(est, perc, m, route, ack);
+ assert(correction.has_plan && correction.best.forward_mps > 0.0);
+ assert(correction.best.yaw_rate_radps < 0.0);
+ }
+
+ // Near an Ackermann goal, centimetres of lateral error must not replace the
+ // planned terminal pose with a sideways bearing to the final coordinate.
+ // The steering command keeps converging toward the route's south-facing
+ // body heading while correcting the small west-side offset.
+ {
+ LocalMap m = make_map(160, 160, 0.1, 38.0, -124.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 41.83;
+ est.y_m = -119.98;
+ est.yaw_rad = -1.04;
+ est.forward_mps = 0.2;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {40.6, -117.5, -0.18, 1},
+ {41.65, -118.08, -0.79, 1},
+ {42.04, -118.76, -1.43, 1},
+ {42.00, -120.00, -M_PI_2, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner planner;
+ const LocalPlan terminal = planner.plan(est, perc, m, route, ack);
+ assert(terminal.has_plan && terminal.best.forward_mps > 0.0);
+ assert(terminal.best.yaw_rate_radps < 0.0);
+ }
+
+ // A car-like dynamic window can quantize to hold near the edge of its route
+ // tracking tube. Since waiting cannot reduce stationary cross-track error,
+ // it must request a new kinematic route instead of holding forever.
+ {
+ LocalMap m = make_map(160, 160, 0.1, -4.0, -8.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.749;
+ est.y_m = 0.0;
+ est.yaw_rad = -M_PI_2;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {0.0, 0.0, -M_PI_2, 1},
+ {0.0, -1.0, -M_PI_2, 1},
+ {0.0, -2.0, -M_PI_2, 1}};
+ platform::ChassisLimits ack = limits;
+ ack.max_curvature_inv_m = 1.2;
+ DwaPlanner near_edge;
+ const LocalPlan replan = near_edge.plan(est, perc, m, route, ack);
+ assert(replan.route_replan_requested);
+ assert(replan.has_plan && replan.best.feasible);
+ assert(replan.best.forward_mps == 0.0);
+ assert(replan.best.yaw_rate_radps == 0.0);
+ }
+
  // Differential reachability is enforced in tread space. A simultaneous
  // body-v/body-w corner that would exceed either tread's one-cycle motor
  // delta is absent from every generated proposal.
@@ -429,6 +722,28 @@ int main() {
     assert(a.has_plan && a.best.forward_mps > 0.0);
   }
 
-  std::printf("dwa ok\n");
-  return 0;
+ // Route progress is lexicographic inside the statically feasible family.
+ // Even deliberately neutral critics must not make zero velocity a local
+ // optimum while an active route has reachable motion; the independent
+ // validator can still reject every moving proposal and fall back to hold.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {3.0, 0.0, 0.0, 1}};
+ DwaPlannerConfig neutral;
+ neutral.weights = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+ DwaPlanner planner(neutral);
+ const LocalPlan plan = planner.plan(est, perc, m, route, limits);
+ assert(plan.has_plan && plan.moving_candidate_count > 0);
+ assert(plan.best.forward_mps > 0.0);
+ }
+
+ std::printf("dwa ok\n");
+ return 0;
 }

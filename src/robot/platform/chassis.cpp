@@ -17,8 +17,13 @@ constexpr double kSteerSpeedFloorMps = 0.5;
 
 double steer_for_twist(double yaw_rate, double forward, double wheel_base_m,
                        double max_steer_rad) {
-  const double raw = std::atan2(yaw_rate * wheel_base_m,
-                                std::max(std::abs(forward), kSteerSpeedFloorMps));
+ // Bicycle kinematics are omega = v * tan(delta) / wheelbase. The signed
+ // velocity is part of that contract: while reversing, the same body yaw
+ // rate requires the opposite steering angle. Using |v| here made reverse
+ // commands turn in the opposite direction and leave a valid planned route.
+ const double signed_speed = std::copysign(
+ std::max(std::abs(forward), kSteerSpeedFloorMps), forward);
+ const double raw = std::atan(yaw_rate * wheel_base_m / signed_speed);
   return std::clamp(raw, -max_steer_rad, max_steer_rad);
 }
 

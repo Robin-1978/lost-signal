@@ -102,6 +102,10 @@ struct GlobalSearchConfig {
 
 struct GlobalSearchResult {
   bool accepted = false;
+ // Acquisition time of the frozen scan. A caller that advances the pose by
+ // intervening odometry must replace this with the propagated state's time
+ // before publishing the correction.
+ core::MonotonicNs stamp_ns = core::kInvalidTime;
   double x_m = 0.0;
   double y_m = 0.0;
   double yaw_rad = 0.0;
@@ -175,7 +179,8 @@ class GlobalSearcher {
  void begin_near(const std::vector<float>& ranges, double angle_min_rad,
  double angle_increment_rad, const iface::MapSnapshot& map,
  core::MonotonicNs stamp_ns, double center_x_m, double center_y_m,
- double radius_m, double body_roll_rad = 0.0,
+ double radius_m, double center_heading_rad, double heading_radius_rad,
+ double body_roll_rad = 0.0,
  double body_pitch_rad = 0.0, double body_z_m = 0.0);
  std::optional<GlobalSearchResult> advance(
  std::size_t work_budget = 8192);

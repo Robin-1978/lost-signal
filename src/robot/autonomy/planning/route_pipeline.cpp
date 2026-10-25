@@ -1,8 +1,42 @@
 #include "robot/autonomy/planning/route_pipeline.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace lost_signal::robot::autonomy {
+
+namespace {
+
+double distance_to_route(const EstimatedState& start, const Route& route) {
+ if (!start.valid || !std::isfinite(start.x_m) ||
+ !std::isfinite(start.y_m) || !route.valid || route.points.empty()) {
+ return std::numeric_limits<double>::infinity();
+ }
+ double best = std::numeric_limits<double>::infinity();
+ if (route.points.size() == 1) {
+ return std::hypot(
+ start.x_m - route.points.front().x_m,
+ start.y_m - route.points.front().y_m);
+ }
+ for (std::size_t index = 0; index + 1 < route.points.size(); ++index) {
+ const auto& a = route.points[index];
+ const auto& b = route.points[index + 1];
+ const double dx = b.x_m - a.x_m;
+ const double dy = b.y_m - a.y_m;
+ const double length2 = dx * dx + dy * dy;
+ const double fraction = length2 > 1e-12
+ ? std::clamp(((start.x_m - a.x_m) * dx +
+ (start.y_m - a.y_m) * dy) / length2, 0.0, 1.0)
+ : 0.0;
+ best = std::min(best, std::hypot(
+ start.x_m - (a.x_m + fraction * dx),
+ start.y_m - (a.y_m + fraction * dy)));
+ }
+ return best;
+}
+
+} // namespace
 
 bool RoutePlanningPipeline::same_request(
  const RoutePoint& goal, const iface::MapSnapshot& map) const {
@@ -35,7 +69,8 @@ bool RoutePlanningPipeline::failed_start_changed(
 bool RoutePlanningPipeline::advance(
  IGlobalPlanner& planner, const EstimatedState& start,
  const RoutePoint& goal, bool has_goal, const iface::MapSnapshot& map,
- bool force_replan, Route& active_route) {
+ bool force_replan, Route& active_route,
+ double maximum_route_deviation_m) {
  if (!has_goal) {
  if (pending_) planner.cancel_plan();
  const bool changed = pending_ || failed_ || active_route.valid;
@@ -44,6 +79,16 @@ bool RoutePlanningPipeline::advance(
  return changed;
  }
 
+ // The active route was validated from an earlier estimated start. Once the
+ // current ROBOT estimate leaves a complete chassis-derived route tube, its
+ // kinematic prefix is no longer a valid recovery instruction. Replan from
+ // the estimate instead of asking a local planner to chase a point behind a
+ // nonholonomic base. Infinity keeps the compatibility API opt-out explicit.
+ const bool route_deviated = active_route.valid &&
+ std::isfinite(maximum_route_deviation_m) &&
+ maximum_route_deviation_m >= 0.0 &&
+ distance_to_route(start, active_route) > maximum_route_deviation_m;
+ force_replan = force_replan || route_deviated;
  const bool request_changed = !same_request(goal, map);
  if (pending_ && (request_changed || force_replan)) {
  planner.cancel_plan();

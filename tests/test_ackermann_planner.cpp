@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -85,6 +86,8 @@ int main() {
  assert(std::hypot(route.points.back().x_m - 5.0,
  route.points.back().y_m - 2.0) <= 1e-9);
  assert(std::abs(route.points.back().yaw_rad) <= 1e-9);
+ int steering_reversals = 0;
+ int previous_steering_sign = 0;
  for (std::size_t i = 1; i < route.points.size(); ++i) {
  if (route.points[i].gear != route.points[i - 1].gear) continue;
  const double ds = std::hypot(route.points[i].x_m - route.points[i - 1].x_m,
@@ -93,13 +96,76 @@ int main() {
  const double dyaw = std::abs(lost_signal::robot::core::wrap_angle(
  route.points[i].yaw_rad - route.points[i - 1].yaw_rad));
  assert(dyaw <= 0.55 + 1e-6);
+ const double signed_dyaw = lost_signal::robot::core::wrap_angle(
+ route.points[i].yaw_rad - route.points[i - 1].yaw_rad);
+ const int steering_sign = signed_dyaw > 1e-6
+ ? 1 : signed_dyaw < -1e-6 ? -1 : 0;
+ if (steering_sign != 0 && previous_steering_sign != 0 &&
+ steering_sign != previous_steering_sign) {
+ ++steering_reversals;
+ }
+ if (steering_sign != 0) previous_steering_sign = steering_sign;
  }
  }
+ // In an obstacle-free field, a short pose-to-pose route has no reason to
+ // alternate steering repeatedly. This catches the lattice zigzag that a
+ // distance-only Hybrid-A* cost used to emit.
+ assert(steering_reversals <= 4);
  Route smoothed;
  smoothed.valid = true;
  smoothed.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.2, 0.1, 1},
  {2.0, 0.5, 0.2, 1}};
  assert(smooth_ackermann_route(smoothed, {0.56, 0.55, 0.55, 2.0}));
+
+ // The same request can run cooperatively: map preparation, guide search,
+ // and sparse Hybrid-A* refinement remain pending until their bounded work
+ // slices complete, then produce a valid car-like route.
+ {
+ AckermannPlanner incremental(config);
+ assert(incremental.supports_incremental_plan());
+ incremental.begin_plan(pose(0.0, 0.0, 0.0), {5.0, 2.0, 0.0}, map);
+ GlobalPlanProgress progress = incremental.continue_plan(1);
+ assert(progress.status == GlobalPlanStatus::kPending);
+ for (int cycle = 0;
+ cycle < 20'000 && progress.status == GlobalPlanStatus::kPending;
+ ++cycle) {
+ progress = incremental.continue_plan(32);
+ }
+ assert(progress.status == GlobalPlanStatus::kSucceeded);
+ assert(progress.route.valid && progress.route.points.size() >= 2);
+ }
+
+ // A car already at the requested position may still need a bounded
+ // multi-point maneuver to attain the requested heading. Grid A* has a
+ // zero-cell route here; Hybrid-A* must retain pose planning instead of
+ // declaring the route invalid or asking the chassis to rotate in place.
+ {
+ const Route pose_change = planner.plan(
+ pose(0.0, 0.0, 0.0), {0.0, 0.0, 0.6}, map);
+ assert(pose_change.valid && pose_change.points.size() >= 3);
+ assert(std::hypot(pose_change.points.back().x_m,
+ pose_change.points.back().y_m) <= 1e-9);
+ assert(std::abs(lost_signal::robot::core::wrap_angle(
+ pose_change.points.back().yaw_rad - 0.6)) <= 1e-9);
+ }
+
+ // A corridor narrower than the turning diameter requires a real reverse
+ // gear; a forward-only planner fails closed instead of inserting a pivot.
+ {
+ MapSnapshot corridor = open_map(80, 32, 0.25, -10.0, -4.0);
+ fill_box(corridor, -10.0, -4.0, 10.0, -0.75);
+ fill_box(corridor, -10.0, 0.75, 10.0, 4.0);
+ const Route reverse = planner.plan(
+ pose(0.0, 0.0, 0.0), {-3.0, 0.0, 0.0}, corridor);
+ assert(reverse.valid);
+ assert(std::any_of(reverse.points.begin(), reverse.points.end(),
+ [](const RoutePoint& point) { return point.gear < 0; }));
+ AckermannPlanner::Config forward_config = config;
+ forward_config.allow_reverse = false;
+ AckermannPlanner forward_only(forward_config);
+ assert(!forward_only.plan(
+ pose(0.0, 0.0, 0.0), {-3.0, 0.0, 0.0}, corridor).valid);
+ }
 
  // Hybrid A* searches the complete footprint-plus-reserve costmap. The
  // center point fits through this opening, but the configured chassis does

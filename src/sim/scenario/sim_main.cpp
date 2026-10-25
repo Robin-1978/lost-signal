@@ -502,17 +502,20 @@ int main(int argc, char** argv) {
  ? robot::app::RobotApplication::Diagnostics{}
  : recorded->diag;
  std::fprintf(stderr,
- "step=%ld objective=%s goal=%s reason=%s action=%s v=%.2f w=%.2f "
- "truth=(%.2f,%.2f) est=(%.2f,%.2f) clr=%.2f safety=%s loc=%s "
+ "step=%ld objective=%s goal=%s constraint=%s reason=%s action=%s "
+ "v=%.2f w=%.2f "
+ "truth=(%.2f,%.2f,%.2f) est=(%.2f,%.2f,%.2f) "
+ "clr=%.2f safety=%s loc=%s "
  "collision=%s/%s/%s dyn_clr=%.2f localized=%s "
  "loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
  "track_corr=%.3f/%.3f grip=%.2f slip=%s\n",
  ran, session->objectives().active_place().c_str(),
  session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
- ev.reason_code.c_str(), ev.action_code.c_str(),
+ ev.constraint_code.c_str(), ev.reason_code.c_str(), ev.action_code.c_str(),
  ev.target_speed_mps, ev.target_yaw_rate_radps, truth.body_x_m,
- truth.body_y_m, diag.estimate.x_m, diag.estimate.y_m,
+ truth.body_y_m, truth.body_yaw_rad, diag.estimate.x_m,
+ diag.estimate.y_m, diag.estimate.yaw_rad,
  recorded == nullptr ? 999.0 : recorded->judge.static_clearance_m,
  diag.safety_reason.c_str(), diag.localization_action.c_str(),
  recorded == nullptr || !recorded->judge.static_collision ? "no" : "static",

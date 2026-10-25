@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <string>
 
 #include "robot/autonomy/behavior/behavior.hpp"
@@ -22,6 +23,12 @@ struct MotionDecisionResult {
  std::string reason = "no-plan";
  double prediction_horizon_s = 0.0;
  std::size_t prediction_hypotheses = 0;
+ double validated_static_clearance_m =
+ std::numeric_limits<double>::infinity();
+ double validated_dynamic_clearance_m =
+ std::numeric_limits<double>::infinity();
+ TrajectoryVerdict trajectory_verdict = TrajectoryVerdict::kInvalidStructure;
+ bool route_replan_requested = false;
 };
 
 class MotionDecisionPipeline {
@@ -48,7 +55,8 @@ class MotionDecisionPipeline {
  const SurveyContext& survey, core::MonotonicNs now_ns,
  IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
- IController& controller, bool forward_blocked = false);
+ IController& controller, bool forward_blocked = false,
+ bool observation_motion_requested = false);
 
  private:
  Config config_;

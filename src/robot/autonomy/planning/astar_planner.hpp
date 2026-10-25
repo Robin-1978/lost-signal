@@ -73,6 +73,12 @@ class AStarPlanner : public IGlobalPlanner {
   void set_traversal(const TraversalModel* model) override {
     traversal_ = model;
   }
+ // Read-only handoff for planners that refine the completed 2D guide route.
+ // The cache belongs to this planner and is valid only for the matching map
+ // revision. This avoids rebuilding a multi-million-cell inflated raster in
+ // the same planning request.
+ const LocalCostmap* prepared_costmap(
+ const iface::MapSnapshot& map) const;
 
  private:
  struct SearchState;
@@ -89,6 +95,7 @@ class AStarPlanner : public IGlobalPlanner {
  LocalCostmap cached_costmap_;
  std::string cached_map_id_;
  std::uint64_t cached_map_revision_ = 0;
+ std::uint64_t cached_anonymous_fingerprint_ = 0;
  bool costmap_cached_ = false;
  bool cached_has_known_free_ = false;
 };

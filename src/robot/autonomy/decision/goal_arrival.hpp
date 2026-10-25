@@ -17,8 +17,8 @@ struct GoalArrivalConfig {
  double maximum_forward_speed_mps = 0.08;
  double maximum_yaw_rate_radps = 0.08;
  // Completion is a pose claim, so the estimate uncertainty must fit inside
- // the same contract. A geometrically reached but uncertain robot holds for
- // localization instead of advancing the task on dead reckoning alone.
+ // the same contract. A geometrically reached but uncertain robot remains
+ // under local planning so it can collect a safe observation baseline.
  double maximum_position_sigma_m = 0.25;
  double maximum_heading_sigma_rad = 0.15;
  int settle_cycles = 3;
@@ -38,7 +38,8 @@ class GoalArrivalPolicy {
 
  void reset();
  GoalArrivalDecision evaluate(const EstimatedState& estimate,
- const RoutePoint& goal, bool route_active);
+ const RoutePoint& goal, bool route_active,
+ bool observation_motion_requested = false);
 
  private:
  GoalArrivalConfig config_;

@@ -112,7 +112,10 @@ last word. Unknown planner names fail configuration.
   traversable with penalty, occupied impassable, no corner cutting) and
   degrades to a straight line when the map has no raster; a walled-in goal
  yields an invalid route (fail closed upstream). `RoutePlanningPipeline`
- refreshes the active route on goal/map change or an explicit replan event;
+ refreshes the active route on goal/map change, an explicit replan event, or
+ when the ROBOT-estimated base leaves a route tube one chassis diameter wide;
+ the last case starts a new kinematic route from the current estimate instead
+ of making a nonholonomic local planner chase a stale prefix;
  `DecisionCyclePipeline` then hands that route to local planning, validation,
  and control. The coordinator only wires the event and module inputs. The local planner
  only ever consumes that route, never a raw goal. The static map itself arrives as
@@ -127,12 +130,18 @@ last word. Unknown planner names fail configuration.
  inflation. The raster boundary is treated as an exact wall rather than an
  extra occupied cell.
  For an Ackermann envelope, `AckermannPlanner` replaces grid A* with a
- bounded Hybrid-A* search over heading bins and forward/reverse bicycle
- primitives. Every primitive is swept through the ROBOT occupancy raster;
- reverse and gear-change costs are explicit, and the planner fails closed
- when its kinematic configuration or state budget is invalid. It never
- falls back to a holonomic path. A vector-only map receives a straight-line
- seed and still requires local-map and validator admission.
+ two-stage, incrementally budgeted search. Grid A* first supplies a
+ map-derived guide, then sparse Hybrid-A* states refine only its bounded
+ corridor over heading, gear and curvature. The inflated global costmap is
+ cached by map identity/revision and reused by both stages; anonymous test
+ maps use a content fingerprint. Memory therefore grows with visited sparse
+ states rather than `cells × headings × gears`. Every bicycle primitive is
+ swept through the ROBOT occupancy raster; reverse, gear-change, normalized
+ steering magnitude and steering-change costs are explicit. The latter two
+ prevent equal-length full-lock zigzags. Invalid kinematic configuration or
+ an exhausted state/expansion budget fails closed. It never falls back to a
+ holonomic path. A vector-only map receives a straight-line seed and still
+ requires local-map and validator admission.
  Goal admission also checks whether the remaining heading error is reachable
  over the remaining distance at the declared maximum curvature. An accepted
  path receives an occupancy-checked connector to the exact goal pose before
@@ -162,9 +171,16 @@ last word. Unknown planner names fail configuration.
   runs unconditionally.
  Both planners treat terminal position and yaw as separate constraints.
  Differential and holonomic bases track the final route yaw inside the
- terminal position tolerance. Ackermann follows the route heading and cannot
- rotate in place because its curvature bound is applied after heading
- selection.
+ terminal position tolerance. Ackermann cannot rotate in place. DWA keeps a
+ stateful route cursor, stops lookahead at a forward/reverse cusp, and changes
+ gear only after the estimated base physically reaches that cusp. Its
+ car-like heading uses the forward (or reverse) bearing to the route
+ lookahead, so cross-track error is corrected instead of driving forever
+ parallel to the stored route yaw. Candidate speed is bounded by declared
+ lateral acceleration and by the remaining route-tube stopping distance,
+ including actuator response delay; a vehicle already above the bound
+ receives the maximum reachable one-cycle braking command rather than an
+ impossible instantaneous clamp.
  DWA and TEB build the same two-stage `LocalCostmap` from the ROBOT-owned
  rolling map. The lethal layer expands measured occupancy by footprint plus
  the configured hard margin; the outer linear band is a preference that keeps
@@ -241,17 +257,23 @@ route, pre-activation hold).
   requests — unknown place, inactive executive, empty request id — arm
   nothing and the coordinator never plans), `goal_status` polls
   (`active/done/failed/canceled`), successful `cancel_goal` withdraws the
-  coordinator's route (failed cancels leave it untouched), a new request
- preempts the running goal, and arrival inside a footprint-derived stop band
- (at least 0.5 m) completes it. SIM submits the same typed intents as an
- operator.
+ coordinator's route (failed cancels leave it untouched), a new request
+ preempts the running goal, and arrival requires the configured position and
+ heading tolerances, covariance bounds, and consecutive stopped estimates.
+ Low covariance confidence cannot authorize motion by itself: the goal policy
+ holds unless localization explicitly requests a supervised observation
+ manoeuvre. SIM submits the same typed intents as an operator.
 - `BehaviorPolicy` turns tracks + estimate + shared prediction into one
  constraint; the selected `DWA` or `TEB` planner produces a candidate
  (forward/yaw always, lateral only when the chassis
   envelope carries `max_lateral_mps > 0`); the controller emits `kHolonomic`
   iff the winning candidate strafes, else `kYawRate` (ackermann converts
-  yaw to steer in the chassis via the bicycle model; `kSteerAngle` stays
-  the explicit operator/native space). The validator and the independent
+ yaw to steer with the signed bicycle relation
+ `steer = atan(yaw_rate * wheelbase / forward_speed)`, so reverse preserves
+ the requested body yaw-rate sign; `kSteerAngle` stays the explicit
+ operator/native space). Route replacement explicitly resets local-planner
+ progress and oscillation state instead of inferring lifecycle from route
+ storage addresses. The validator and the independent
   safety monitor keep their vetoes.
 
 ## Localization (scan-matched, supervisor-gated)
@@ -263,12 +285,19 @@ route, pre-activation hold).
   to a corridor twin. `score_pose` exposes the same scoring per pose so the
   global search and the SLAM submaps cannot diverge from it.
 - `LocalizationSupervisor` schedules corrections (cadence + motion/idle
-  triggers, sigma/confidence/age gates) and rate-limits global recovery;
-  a rejected match is evidence, never an implicit correction.
-- `FusedOdometryEstimator::correct_pose` blends accepted corrections by
-  Kalman-lite variance weighting and validates the estimate; `seed_pose`
-  implements the deliberate deployment/operator initial pose (known dock).
-  Both reject non-finite input.
+ triggers) and rate-limits global recovery. Local-match rejection is
+ diagnostic evidence; only invalid state or fused pose covariance crossing
+ the declared loss threshold starts global recovery. Recovery search and
+ admission share one probability-derived joint position/heading ellipsoid,
+ rather than separate map-size limits or tuned jump multipliers.
+- `FusedOdometryEstimator` maintains full planar `[x,y,yaw]` covariance in
+ both REP-105 map and continuous odom estimates. The motion Jacobian projects
+ heading uncertainty into cross-track position; independent process-noise
+ variances add per distance and time. Accepted scan matches expose a 3x3
+ information matrix, so a corridor can reduce observed cross-corridor/yaw
+ uncertainty without falsely collapsing its unobservable along-corridor
+ direction. `seed_pose` remains the deliberate deployment/operator initial
+ pose (known dock). All correction entry points reject malformed input.
 - `observe_slip` reports wheel-vs-body residual + confidence with honesty
   states (Invalid / UnobservableLowSpeed / StaleEstimator / Observable);
   the estimator's gyro-trust gate ORs the fast sensor-level disagreement
@@ -284,8 +313,11 @@ route, pre-activation hold).
   score margin plus an equivalent-support gate (runner-up overlap within
   0.10 means unobservable, e.g. map-edge gradients along a uniform wall).
   The evaluation budget rejects explicitly instead of truncating the map
-  silently. First fix after an unknown start snaps (no trustworthy prior
-  to blend toward); later fixes blend.
+ silently. First fix after an unknown start snaps (no trustworthy prior
+ to blend toward). A localized recovery candidate is propagated from its
+ frozen scan acquisition time by ROBOT odometry, then must survive later
+ scans and measured motion before it can change `map->odom`; replaying a
+ stationary scan cannot confirm a repetitive-map alias.
 
 ## SLAM (pose-graph sessions with loop closure)
 

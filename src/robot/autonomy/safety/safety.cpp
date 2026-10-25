@@ -361,6 +361,9 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  config_.brake_decel_mps2, envelope, config_.static_check_dt_s);
  const double hold_clearance = point_set_clearance(
  raw_scan_points_, 0.0, 0.0, envelope);
+ last_.static_hold_clearance_m = hold_clearance;
+ last_.static_command_min_clearance_m = projected.minimum_m;
+ last_.static_command_terminal_clearance_m = projected.terminal_m;
  const double speed = std::hypot(cmd.forward_mps, cmd.lateral_mps);
  const bool nominally_clear = projected.minimum_m >= 0.0;
  const double comparison_tolerance =
@@ -376,7 +379,9 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  projected.terminal_m > hold_clearance + comparison_tolerance;
  static_command_admissible = nominally_clear || minimum_risk;
  if (!static_command_admissible) {
- last_ = {false, SafetyState::kDegraded, "static-swept-proximity"};
+ last_.allow_motion = false;
+ last_.state = SafetyState::kDegraded;
+ last_.reason = "static-swept-proximity";
  return iface::MotionCommand::SafeStop(now_ns);
  }
  }
@@ -425,6 +430,8 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  dynamic_estimate_, dynamic_tracks_, cmd,
  config_.dynamic_lookahead_s, dynamic_envelope,
  config_.dynamic_check_dt_s);
+ last_.dynamic_hold_clearance_m = hold_clearance;
+ last_.dynamic_command_clearance_m = command_clearance;
  const double speed = std::hypot(cmd.forward_mps, cmd.lateral_mps);
  const bool nominally_clear = command_clearance >= 0.0;
  const bool minimum_risk =

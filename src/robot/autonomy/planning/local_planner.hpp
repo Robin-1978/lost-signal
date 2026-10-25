@@ -37,6 +37,20 @@ struct LocalCandidate {
 
 struct LocalPlan {
   bool has_plan = false;
+ // The tracked route can remain collision-free yet become kinematically
+ // exhausted, for example when a car reaches its final position with too
+ // much heading error to rotate in place. This requests a new global route
+ // from the current ROBOT estimate; it never authorizes motion by itself.
+ bool route_replan_requested = false;
+ // Generation-side evidence for diagnostics. The independent validator may
+ // still reject these candidates before control.
+ std::size_t moving_candidate_count = 0;
+ int requested_gear = 0;
+ double route_error_m = 0.0;
+ std::size_t route_segment = 0;
+ bool gear_change_pending = false;
+ bool gear_change_braking_armed = false;
+ double gear_change_endpoint_distance_m = 0.0;
   LocalCandidate best;
  // Planner-ranked proposals. Safety selection happens after generation:
  // one high-scoring proposal failing the independent validator must not
@@ -66,6 +80,11 @@ class ILocalPlanner {
 std::unique_ptr<ILocalPlanner> make_local_planner(
  const std::string& planner_kind,
  const platform::NavigationSafetyPolicy& navigation = {},
- const platform::MotionDynamicsPolicy& motion = {});
+ const platform::MotionDynamicsPolicy& motion = {},
+ double terminal_position_tolerance_m = 0.25,
+ double terminal_heading_tolerance_rad = 0.20,
+ double terminal_maximum_position_sigma_m = 0.25,
+ double terminal_maximum_heading_sigma_rad = 0.15,
+ int terminal_replan_settle_cycles = 3);
 
 }  // namespace lost_signal::robot::autonomy

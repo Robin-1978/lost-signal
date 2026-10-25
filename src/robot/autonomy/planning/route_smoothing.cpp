@@ -57,7 +57,11 @@ bool smooth_ackermann_route(Route& route, const RouteSmoothingConfig& config) {
  if (!(dist > 1e-6)) return false;
  if (a.gear != 0 && b.gear != 0 && a.gear != b.gear) continue;
  const double heading_step = std::abs(core::wrap_angle(b.yaw_rad - a.yaw_rad));
- const double curvature = heading_step / dist;
+ // For a circular primitive `dist` is the chord, not the travelled arc.
+ // Recover curvature from chord length so a command exactly at max steer
+ // is not rejected merely because angle/chord is slightly larger than
+ // angle/arc.
+ const double curvature = 2.0 * std::sin(0.5 * heading_step) / dist;
  if (heading_step > config.max_heading_step_rad + 1e-9 ||
  curvature > max_curvature + 1e-6) return false;
  if (i > 0 && route.points[i - 1].gear == a.gear && a.gear == b.gear) {
@@ -65,8 +69,10 @@ bool smooth_ackermann_route(Route& route, const RouteSmoothingConfig& config) {
  const double before_dist = std::hypot(a.x_m - before.x_m,
  a.y_m - before.y_m);
  if (before_dist > 1e-6) {
+ const double before_heading_step =
+ std::abs(core::wrap_angle(a.yaw_rad - before.yaw_rad));
  const double before_curvature =
- std::abs(core::wrap_angle(a.yaw_rad - before.yaw_rad)) / before_dist;
+ 2.0 * std::sin(0.5 * before_heading_step) / before_dist;
  if (std::abs(curvature - before_curvature) /
  dist > config.max_curvature_delta_per_m + 1e-6) return false;
  }

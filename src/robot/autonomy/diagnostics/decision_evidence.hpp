@@ -25,6 +25,19 @@ struct DecisionEvidence {
  std::string action_code{"idle"};
  double target_speed_mps{0.0};
  double target_yaw_rate_radps{0.0};
+ double proposed_speed_mps{0.0};
+ double proposed_yaw_rate_radps{0.0};
+ double validator_static_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ double safety_hold_clearance_m{std::numeric_limits<double>::infinity()};
+ double safety_command_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ double safety_terminal_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ double safety_dynamic_hold_clearance_m{
+ std::numeric_limits<double>::infinity()};
+ double safety_dynamic_command_clearance_m{
+ std::numeric_limits<double>::infinity()};
  std::string outcome_code{"active"};
  std::uint64_t superseded_by{0};
 };

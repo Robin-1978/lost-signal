@@ -29,7 +29,11 @@ struct AckermannControllerConfig {
   double ki = 2.0;
   double kd = 0.0;
   // Steering cascade: position error -> rate demand -> duty.
-  double steer_kp = 2.5;  // rate demand per rad of angle error
+ // Position error to rate demand. The full physical steering range must
+ // be able to request the full motor rate; a weak cascade leaves a
+ // permanent angle error under tire scrub and the chassis cannot realize
+ // planner curvature. The motor torque-speed curve supplies inner damping.
+ double steer_kp = 10.0;
   FeedforwardParams ff{};
 };
 

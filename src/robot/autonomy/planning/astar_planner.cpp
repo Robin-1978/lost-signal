@@ -14,6 +14,26 @@ namespace {
 
 constexpr double kDiagonalCost = 1.4142135623730951;
 
+std::uint64_t anonymous_map_fingerprint(const iface::MapSnapshot& map) {
+ // Anonymous maps are common in unit tests and local mapping seams. Pointer
+ // identity is insufficient because successive snapshots may reuse the same
+ // stack/vector storage. Named deployment maps use the O(1) id+revision key.
+ std::uint64_t hash = 1469598103934665603ULL;
+ const auto add = [&](std::uint64_t value) {
+ hash ^= value;
+ hash *= 1099511628211ULL;
+ };
+ add(map.width);
+ add(map.height);
+ add(static_cast<std::uint64_t>(std::llround(map.resolution_m * 1e9)));
+ add(static_cast<std::uint64_t>(std::llround(map.origin_x_m * 1e6)));
+ add(static_cast<std::uint64_t>(std::llround(map.origin_y_m * 1e6)));
+ for (const int8_t cell : map.occupancy) {
+ add(static_cast<std::uint8_t>(cell));
+ }
+ return hash;
+}
+
 bool valid_config(const AStarPlanner::Config& config) {
  return config.expansions_per_cycle > 0 &&
  config.preparation_cells_per_cycle > 0 &&
@@ -103,6 +123,7 @@ AStarPlanner::AStarPlanner(AStarPlanner&& other) noexcept
  cached_costmap_(std::move(other.cached_costmap_)),
  cached_map_id_(std::move(other.cached_map_id_)),
  cached_map_revision_(other.cached_map_revision_),
+ cached_anonymous_fingerprint_(other.cached_anonymous_fingerprint_),
  costmap_cached_(other.costmap_cached_),
  cached_has_known_free_(other.cached_has_known_free_) {
  other.cancel_plan();
@@ -117,6 +138,7 @@ AStarPlanner& AStarPlanner::operator=(AStarPlanner&& other) noexcept {
  cached_costmap_ = std::move(other.cached_costmap_);
  cached_map_id_ = std::move(other.cached_map_id_);
  cached_map_revision_ = other.cached_map_revision_;
+ cached_anonymous_fingerprint_ = other.cached_anonymous_fingerprint_;
  costmap_cached_ = other.costmap_cached_;
  cached_has_known_free_ = other.cached_has_known_free_;
  other.cancel_plan();
@@ -125,6 +147,17 @@ AStarPlanner& AStarPlanner::operator=(AStarPlanner&& other) noexcept {
 
 AStarPlanner::AStarPlanner(double unknown_cost_per_m) : config_() {
  config_.unknown_cost_per_m = unknown_cost_per_m;
+}
+
+const LocalCostmap* AStarPlanner::prepared_costmap(
+ const iface::MapSnapshot& map) const {
+ const bool same_identity = !map.map_id.empty()
+ ? cached_map_id_ == map.map_id && cached_map_revision_ == map.revision
+ : cached_anonymous_fingerprint_ == anonymous_map_fingerprint(map);
+ if (!costmap_cached_ || !same_identity || !cached_costmap_.valid()) {
+ return nullptr;
+ }
+ return &cached_costmap_;
 }
 
 void AStarPlanner::cancel_plan() {
@@ -198,8 +231,10 @@ void AStarPlanner::begin_plan(const EstimatedState& start,
  complete(GlobalPlanStatus::kFailed);
  return;
  }
- const bool reuse_costmap = costmap_cached_ &&
- cached_map_id_ == map.map_id && cached_map_revision_ == map.revision;
+ const bool same_identity = !map.map_id.empty()
+ ? cached_map_id_ == map.map_id && cached_map_revision_ == map.revision
+ : cached_anonymous_fingerprint_ == anonymous_map_fingerprint(map);
+ const bool reuse_costmap = costmap_cached_ && same_identity;
  if (reuse_costmap) {
  state->has_known_free = cached_has_known_free_;
  state->phase = SearchState::Phase::kValidateEndpoints;
@@ -485,6 +520,9 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  if (state.cursor == cell_count) {
  cached_map_id_ = map.map_id;
  cached_map_revision_ = map.revision;
+ cached_anonymous_fingerprint_ = map.map_id.empty()
+ ? anonymous_map_fingerprint(map)
+ : 0;
  cached_has_known_free_ = state.has_known_free;
  costmap_cached_ = true;
  state.phase = SearchState::Phase::kValidateEndpoints;

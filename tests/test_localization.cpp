@@ -125,6 +125,10 @@ int main() {
     assert(std::abs(r.y_m - 0.0) < 0.3);
     assert(std::abs(r.yaw_rad) < 0.15);
     assert(r.overlap > 0.3);
+ assert(r.pose_information_valid);
+ assert(r.pose_information[0] >= 0.0);
+ assert(r.pose_information[4] >= 0.0);
+ assert(r.pose_information[8] >= 0.0);
   }
 
   // 2. Empty map: no geometric returns -> rejected, never a fake fix.
@@ -205,6 +209,25 @@ int main() {
  map_odom_offset) < 1e-9);
   }
 
+ // 3a. A rank-deficient scan update reduces only observed directions. A
+ // strong x/yaw measurement with zero y information must not collapse the
+ // public radial sigma while the corridor axis remains uncertain.
+ {
+ FusedOdometryEstimator est;
+ est.reset();
+ est.seed_pose(0.0, 0.0, 0.0, 1.0, 0.5, 1);
+ const std::array<double, 9> information{
+ 400.0, 0.0, 0.0,
+ 0.0, 0.0, 0.0,
+ 0.0, 0.0, 400.0};
+ est.correct_pose_information(
+ 1.0, 2.0, 0.1, information, 0.05, 0.05, 2);
+ assert(est.estimate().x_m > 0.9);
+ assert(std::abs(est.estimate().y_m) < 1e-12);
+ assert(est.estimate().yaw_rad > 0.09);
+ assert(est.estimate().position_sigma_m > 0.99);
+ }
+
  // 3b. A scan-to-submap fix is relative to a drifted keyframe chain. It may
  // correct incremental pose error, but it must not manufacture absolute
  // map-frame confidence or postpone global recovery indefinitely.
@@ -223,6 +246,30 @@ int main() {
  assert(est.odometry_estimate().x_m == 0.0);
  assert(est.odometry_estimate().y_m == 0.0);
  assert(est.odometry_estimate().yaw_rad == 0.0);
+ }
+
+ // 3c. Heading uncertainty projects into cross-track position uncertainty as
+ // the robot moves. A scalar position sigma that ignored this Jacobian could
+ // remain centimetric while a small yaw bias accumulated metres of drift.
+ {
+ FusedOdometryEstimator::Config config;
+ config.position_process_variance_per_m = 0.0;
+ config.position_process_variance_per_s = 0.0;
+ config.heading_process_variance_per_s = 0.0;
+ FusedOdometryEstimator est(config);
+ est.reset();
+ est.seed_pose(0.0, 0.0, 0.0, 0.05, 0.20, 1);
+ iface::ObservationFrame motion;
+ motion.sequence = 1;
+ motion.stamp_ns = 500'000'001;
+ motion.source = "t.heading-coupling";
+ motion.frame = core::Frame::kBaseLink;
+ motion.odometry_valid = true;
+ motion.forward_mps = 2.0;
+ est.predict(motion);
+ assert(std::abs(est.estimate().x_m - 1.0) < 1e-9);
+ assert(est.estimate().position_sigma_m > 0.20);
+ assert(est.estimate().position_sigma_m < 0.21);
  }
 
   // 4. Supervisor: unknown start -> global attempt; accept -> localized;
@@ -321,7 +368,7 @@ int main() {
  // compete with the prior. It must retain the same true local solution with
  // fewer coarse evaluations.
  searcher.begin_near(ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 1,
- 1.0, 0.0, 2.0);
+ 1.0, 0.0, 2.0, 0.0, 0.5);
  std::optional<GlobalSearchResult> regional;
  while (!regional.has_value()) regional = searcher.advance(256);
  assert(regional->accepted);
@@ -427,6 +474,30 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
+ // Recovery is a stated probability gate over the joint (x, y, yaw) pose.
+ // Search and acceptance use the same chi-square-derived ellipsoid instead
+ // of separate tuned sigma multipliers, including the circular yaw error.
+ {
+ LocalizationSupervisorConfig config;
+ config.minimum_global_recovery_radius_m = 0.75;
+ config.minimum_global_recovery_heading_rad = 0.35;
+ config.global_recovery_probability = 0.9995;
+ LocalizationSupervisor supervisor(config);
+ const double radius = supervisor.global_recovery_radius_m(1.0);
+ const double heading_radius =
+ supervisor.global_recovery_heading_radius_rad(1.0);
+ assert(radius > 4.0 && radius < 5.0);
+ assert(heading_radius == M_PI);
+ assert(supervisor.accept_global_innovation(0.5 * radius, 0.0, 1.0, 1.0));
+ assert(!supervisor.accept_global_innovation(
+ std::nextafter(radius, std::numeric_limits<double>::infinity()),
+ 0.0, 1.0, 1.0));
+ assert(!supervisor.accept_global_innovation(
+ 0.0, 0.36, 0.01, 0.01));
+ assert(supervisor.global_recovery_radius_m(0.01) == 0.75);
+ assert(supervisor.global_recovery_heading_radius_rad(0.01) == 0.35);
+ }
+
  // An established map frame never searches beyond the region supported by
  // its covariance. A geometrically strong scan from a distant place must
  // complete as a rejection without teleporting the trusted prior.
@@ -439,11 +510,22 @@ int main() {
  estimator.reset();
  estimator.seed_pose(-8.0, -8.0, 0.0, 0.50, 0.10, 1);
  RayClearingMapper mapper;
+ // An asynchronous control tick without a new lidar frame must not consume
+ // the global-retry opportunity. The next fresh scan starts recovery
+ // immediately instead of observing an artificial backoff.
+ iface::ObservationFrame no_scan;
+ no_scan.sequence = 1;
+ no_scan.stamp_ns = 20'000'000;
+ no_scan.odometry_valid = true;
+ const auto no_scan_result = localization.update(
+ map, no_scan, no_scan.stamp_ns, true, estimator, mapper);
+ assert(no_scan_result.action == "defer");
+
  bool bounded_recovery_completed = false;
  for (int i = 0; i < 1000 && !bounded_recovery_completed; ++i) {
  iface::ObservationFrame o;
- o.sequence = static_cast<std::uint64_t>(i + 1);
-    o.stamp_ns = static_cast<core::MonotonicNs>(i + 1) * 20'000'000LL;
+o.sequence = static_cast<std::uint64_t>(i + 2);
+o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  o.source = "t.recovery-lidar";
  o.frame = core::Frame::kLidarLink;
  o.odometry_valid = true;
@@ -453,6 +535,9 @@ int main() {
  o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
  const auto result = localization.update(
  map, o, o.stamp_ns, true, estimator, mapper);
+ if (i == 0) {
+ assert(result.action == "global_relocalization:search pending");
+ }
  bounded_recovery_completed =
  result.action.rfind("global_relocalization:", 0) == 0 &&
  result.action != "global_relocalization:search pending";
@@ -572,6 +657,32 @@ int main() {
       tracker.seed(solo);
       assert(tracker.empty());
     }
+ // A global-recovery winner is not allowed to promote by replaying the same
+ // stationary scan. Measured motion creates the temporal baseline; the next
+ // scan must remain consistent with the propagated hypothesis.
+ {
+ StartupTrackerConfig config;
+ config.promotion_translation_m = 0.01;
+ StartupHypotheses tracker(config);
+ GlobalSearchResult recovery;
+ recovery.x_m = 1.0;
+ recovery.position_sigma_m = 0.12;
+ recovery.heading_sigma_rad = 0.04;
+ tracker.seed(recovery, 0, /*require_motion=*/true);
+ const double increment = 2.0 * M_PI / ranges.size();
+ const auto stationary_1 = tracker.update(
+ ranges, -M_PI, increment, map, 20'000'000, 0.0, 0.0, true);
+ const auto stationary_2 = tracker.update(
+ ranges, -M_PI, increment, map, 40'000'000, 0.0, 0.0, true);
+ assert(stationary_1.status == StartupTrackStatus::kTracking);
+ assert(stationary_2.status == StartupTrackStatus::kTracking);
+ const auto moved_ranges = scan_from(1.02, 0.0, 0.0, map);
+ const auto promoted = tracker.update(
+ moved_ranges, -M_PI, increment, map, 60'000'000, 1.0, 0.0, true);
+ assert(promoted.status == StartupTrackStatus::kPromoted);
+ assert(promoted.position_sigma_m > 0.0);
+ assert(promoted.heading_sigma_rad > 0.0);
+ }
   }
 
   // 10. Coordinator deferred startup: on a uniform wall the whole-map

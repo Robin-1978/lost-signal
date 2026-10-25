@@ -222,11 +222,16 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   core::MonotonicNs last_decision_ns_ = core::kInvalidTime;
   std::uint64_t last_map_revision_ = 0;
   bool replan_requested_ = false;
+ bool local_plan_reset_requested_ = false;
   iface::MotionCommand last_cmd_ = iface::MotionCommand::SafeStop(0);
   std::string last_constraint_ = "none";
   std::string last_reason_ = "init";
  double last_prediction_horizon_s_ = 0.0;
  std::size_t last_prediction_hypotheses_ = 0;
+ double last_validated_static_clearance_m_ =
+ std::numeric_limits<double>::infinity();
+ double last_validated_dynamic_clearance_m_ =
+ std::numeric_limits<double>::infinity();
   // Controlled-stop latch: withholds motion until measured tread settles.
   // Prevents a braking decision on a grade from chattering into a
   // brake/accelerate limit cycle. Independent of planner yaw intent.

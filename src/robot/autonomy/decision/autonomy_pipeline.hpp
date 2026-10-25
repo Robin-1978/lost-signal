@@ -21,6 +21,7 @@ class DecisionCyclePipeline {
  void reset() {
  motion_.reset();
  route_.reset();
+ local_replan_requested_ = false;
  }
  MotionDecisionResult run(
  IGlobalPlanner& global_planner, ILocalPlanner& local_planner,
@@ -28,14 +29,17 @@ class DecisionCyclePipeline {
  const EstimatedState& estimate, const PerceptionResult& perception,
  const LocalMap& local_map, Route& active_route, const RoutePoint& goal,
  bool has_goal, const iface::MapSnapshot& map, bool force_route_refresh,
+ bool reset_local_plan,
  const platform::ChassisLimits& limits,
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation, const SurveyContext& survey,
- core::MonotonicNs now_ns, bool forward_blocked = false);
+ core::MonotonicNs now_ns, bool forward_blocked = false,
+ bool observation_motion_requested = false);
 
  private:
  RoutePlanningPipeline route_;
  MotionDecisionPipeline motion_;
+ bool local_replan_requested_ = false;
 };
 
 } // namespace lost_signal::robot::autonomy

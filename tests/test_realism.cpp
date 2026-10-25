@@ -169,6 +169,12 @@ int main() {
   {
     auto run = []() {
       sim::scenario::ScenarioSession session;
+ session.setup_world().set_static_boxes({
+ {-1.0, 2.5, 0.0, 3.5, 1.5},
+ {2.0, -3.5, 3.0, -2.5, 1.5},
+ {5.5, 2.5, 6.5, 3.5, 1.5},
+ });
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.05, 0.02);
       session.setup_world().add_place({"dock", 5.0, 0.0, 0.0});
       session.set_sensor_realism(delivery(11, 2, 0.05),
                                  imu(13, 0.01, 0.005, 0.02));
@@ -191,6 +197,12 @@ int main() {
     }
     // Score the run: arrived, no judge hits, observations mostly accepted.
     sim::scenario::ScenarioSession scored;
+ scored.setup_world().set_static_boxes({
+ {-1.0, 2.5, 0.0, 3.5, 1.5},
+ {2.0, -3.5, 3.0, -2.5, 1.5},
+ {5.5, 2.5, 6.5, 3.5, 1.5},
+ });
+ scored.set_initial_pose(0.0, 0.0, 0.0, 0.05, 0.02);
     scored.setup_world().add_place({"dock", 5.0, 0.0, 0.0});
     scored.set_sensor_realism(delivery(11, 2, 0.05), imu(13, 0.01, 0.005, 0.02));
     scored.set_objectives({"dock"}, 1.0);

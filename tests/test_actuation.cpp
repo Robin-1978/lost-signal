@@ -9,6 +9,7 @@
 #include "robot/control/holonomic_controller.hpp"
 #include "robot/control/pid.hpp"
 #include "robot/control/wheel_controller.hpp"
+#include "robot/platform/ackermann_kinematics.hpp"
 #include "robot/platform/chassis.hpp"
 #include "sim/world/world.hpp"
 
@@ -159,6 +160,14 @@ int main() {
     auto act2 = chassis.to_actuator(yaw, fb, 100);
     assert(iface::valid_actuator_command(act2, 100));
     assert(act2.steer[0] > 0.0);
+ // Reverse preserves body yaw-rate semantics. Since omega = v*tan(delta)/L,
+ // negative v and negative omega require positive steer.
+ yaw.forward_mps = -1.0;
+ yaw.yaw_rate_radps = -0.5;
+ auto reverse = chassis.to_actuator(yaw, fb, 120);
+ assert(iface::valid_actuator_command(reverse, 120));
+ assert(reverse.drive[0] < 0.0 && reverse.drive[1] < 0.0);
+ assert(reverse.steer[0] > 0.0 && reverse.steer[1] > 0.0);
     // Wrong space fails closed to mode-correct zero.
     iface::MotionCommand holo;
     holo.space = iface::CommandSpace::kHolonomic;
@@ -272,6 +281,7 @@ int main() {
     ::lost_signal::sim::world::MotorParams mp;
     mp.wheel_base_m = 0.62;
     mp.track_width_m = 0.58;
+ mp.steer_stall_torque_Nm = 80.0;
     w.set_motor_params(mp);
     platform::AckermannChassis chassis(
         0.1, 0.62, 0.58,
@@ -298,8 +308,46 @@ int main() {
       w.apply(act);
     }
     assert(w.truth().body_x_m > 1.0);
-    assert(w.truth().body_yaw_rad > 0.1);  // left arc, closed loop
-    // Swerve closed loop drives forward on a yaw-rate command.
+    const auto expected_steer = platform::ackermann_steering_angles(
+        std::atan2(0.4 * 0.62, 1.0), 0.62, 0.58);
+    assert(std::abs(w.truth().steer_rad[0] - expected_steer.left_rad) < 0.10);
+    assert(std::abs(w.truth().steer_rad[1] - expected_steer.right_rad) < 0.10);
+    assert(w.truth().yaw_rate_radps > 0.25);
+    assert(w.truth().body_yaw_rad > 1.0);  // sustained left arc
+ // Reverse yaw-rate commands use the same body-frame sign convention.
+ // This closes the physical contract required by reverse Hybrid-A* edges.
+ ::lost_signal::sim::world::World reverse_world;
+ reverse_world.set_motor_params(mp);
+ platform::AckermannChassis reverse_chassis(
+ 0.1, 0.62, 0.58,
+ {.max_forward_mps = 2.0,
+ .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4,
+ .max_steer_rad = 0.5});
+ iface::MotionCommand reverse_yaw;
+ reverse_yaw.space = iface::CommandSpace::kYawRate;
+ reverse_yaw.forward_mps = -1.0;
+ reverse_yaw.yaw_rate_radps = -0.4;
+ iface::MotionFeedback reverse_fb;
+ for (int i = 0; i < 300; ++i) {
+ reverse_world.step(0.02);
+ reverse_fb.drive_count = reverse_world.truth().drive_count;
+ reverse_fb.steer_count = reverse_world.truth().steer_count;
+ reverse_fb.drive_radps = reverse_world.truth().drive_radps;
+ reverse_fb.steer_rad = reverse_world.truth().steer_rad;
+ reverse_fb.steer_vel_radps = reverse_world.truth().steer_vel_radps;
+ reverse_yaw.stamp_ns =
+ static_cast<core::MonotonicNs>(i) * 20'000'000LL;
+ reverse_yaw.expiry_ns = reverse_yaw.stamp_ns + 200'000'000;
+ const auto reverse_act = reverse_chassis.to_actuator(
+ reverse_chassis.clamp_command(reverse_yaw, reverse_yaw.stamp_ns),
+ reverse_fb, reverse_yaw.stamp_ns);
+ reverse_world.apply(reverse_act);
+ }
+ assert(reverse_world.truth().body_x_m < -1.0);
+ assert(reverse_world.truth().yaw_rate_radps < -0.25);
+ assert(reverse_world.truth().body_yaw_rad < -1.0);
+ // Swerve closed loop drives forward on a yaw-rate command.
     ::lost_signal::sim::world::World s;
     platform::HolonomicChassis swerve(
         0.1, 0.56, 0.56,

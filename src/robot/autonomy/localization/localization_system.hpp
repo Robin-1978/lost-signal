@@ -41,11 +41,21 @@ class LocalizationSystem {
   void mark_localized() {
     supervisor_.reset(true);
     startup_hyps_.reset();
+ recovery_hyps_.reset();
   }
 
   struct TickResult {
     std::string action = "init";
     bool replan_requested = false;
+ // A map-frame correction invalidates local planner cursors and rollout
+ // history. The global route remains expressed in `map`; route deviation,
+ // owned by the route pipeline, decides whether that route must be replaced.
+ bool local_plan_reset_requested = false;
+ // A supervised global-recovery belief needs a measured baseline before it
+ // may alter map->odom. The decision layer uses this only when ordinary
+ // planning has no safe moving candidate; every observation maneuver still
+ // passes the local validator and final safety monitor.
+ bool observation_motion_requested = false;
  // Navigation in a surveyed map requires an established map frame. Mapless
  // startup authorizes motion as soon as it seeds its odometry/SLAM frame.
  bool motion_authorized = false;
@@ -74,6 +84,9 @@ class LocalizationSystem {
                         const iface::ObservationFrame& obs,
                         core::MonotonicNs now_ns, IEstimator& estimator,
  std::string& action, bool& local_match_attempted);
+ bool try_local_correction(const iface::MapSnapshot& map,
+ const iface::ObservationFrame& obs, core::MonotonicNs now_ns,
+ IEstimator& estimator, std::string& action);
   // Bounded scan-to-submap tracking ahead of supervised corrections.
   void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
                     IEstimator& estimator);
@@ -86,6 +99,10 @@ class LocalizationSystem {
   LocalizationSupervisor supervisor_;
   GlobalSearcher global_search_;
   StartupHypotheses startup_hyps_;
+ // Global recovery is also a temporal belief, not a one-scan teleport.
+ // It reuses the deterministic multi-hypothesis tracker with the existing
+ // map frame kept active until a candidate survives measured motion.
+ StartupHypotheses recovery_hyps_;
   SlamSession slam_;
   bool slam_origin_seeded_ = false;
  bool global_origin_valid_ = false;
@@ -98,6 +115,7 @@ class LocalizationSystem {
  std::string cached_map_id_;
  std::uint64_t cached_map_revision_ = 0;
  bool cached_map_has_known_occupancy_ = false;
+ core::MonotonicNs last_recovery_local_scan_ns_ = core::kInvalidTime;
  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0},
  {0.0, 0.0, 0.0, 1.0}};
 };

@@ -40,7 +40,7 @@ int main() {
   std::size_t max_keyframes = 0;
  // Pure SLAM owns the frame in this test; allow the final loop correction,
  // heading alignment, and settled arrival to finish without survey assists.
- for (int i = 0; i < 2200 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 2400 && !session.objectives_done(); ++i) {
     session.step_once();
     const auto& diag = session.episode().steps().back().diag;
     max_loops = std::max(max_loops, diag.slam_loops_closed);

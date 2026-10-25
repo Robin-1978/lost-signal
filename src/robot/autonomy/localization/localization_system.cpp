@@ -9,6 +9,7 @@ void LocalizationSystem::reset() {
   supervisor_.reset(false);
  global_search_.cancel();
   startup_hyps_.reset();
+ recovery_hyps_.reset();
   slam_.reset();
   slam_origin_seeded_ = false;
  global_origin_valid_ = false;
@@ -16,6 +17,7 @@ void LocalizationSystem::reset() {
  cached_map_id_.clear();
  cached_map_revision_ = 0;
  cached_map_has_known_occupancy_ = false;
+ last_recovery_local_scan_ns_ = core::kInvalidTime;
 }
 
 void LocalizationSystem::set_lidar_mount(
@@ -23,6 +25,7 @@ void LocalizationSystem::set_lidar_mount(
  base_from_lidar_ = base_from_lidar;
   global_search_.set_lidar_mount(base_from_lidar);
   startup_hyps_.set_lidar_mount(base_from_lidar);
+ recovery_hyps_.set_lidar_mount(base_from_lidar);
   slam_.set_lidar_mount(base_from_lidar);
 }
 
@@ -64,7 +67,7 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  // estimator back toward the obsolete frame on the next tick.
  slam_.reset();
  mapper.reset();
- out.replan_requested = true;
+out.local_plan_reset_requested = true;
  }
  // Absolute survey matching and two-sided scan-to-submap tracking are both
  // heavy scan searches. Never stack them in one 20 ms control tick: the
@@ -77,8 +80,11 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  run_slam(map, cached_map_has_known_occupancy_, obs, has_observation,
  estimator, mapper)) {
     out.replan_requested = true;
+out.local_plan_reset_requested = true;
   }
  out.motion_authorized = supervisor_.localized();
+ out.observation_motion_requested = supervisor_.localized() &&
+ (global_search_.active() || !recovery_hyps_.empty());
   return out;
 }
 
@@ -199,9 +205,8 @@ bool LocalizationSystem::run_localization(
   health.confidence = est.confidence;
   health.age_s = est.valid ? now_s - est.stamp_ns * 1e-9 : 1e9;
   std::string reason;
-  LocalizationAction act = supervisor_.next(
-      now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
-  action = localization_action_name(act);
+ LocalizationAction act = LocalizationAction::kDefer;
+ action = localization_action_name(act);
  // An explicit SLAM-only deployment trusts the current odometry origin even
  // when a sparse navigation prior exists. Waiting for a global-search action
  // here deadlocks because the supervisor deliberately suppresses that action
@@ -226,20 +231,97 @@ bool LocalizationSystem::run_localization(
  action = "slam-only";
  return false;
  }
+ const bool fresh_scan = obs.scan_valid && !obs.ranges_m.empty();
+ const core::MonotonicNs scan_stamp_ns = iface::scan_stamp_ns(obs);
+ const core::MonotonicNs local_interval_ns = static_cast<core::MonotonicNs>(
+ std::max(0.0, supervisor_.config().correction_interval_s) * 1e9);
+ const bool new_recovery_scan = scan_stamp_ns != core::kInvalidTime &&
+ (last_recovery_local_scan_ns_ == core::kInvalidTime ||
+ scan_stamp_ns > last_recovery_local_scan_ns_);
+ const bool recovery_local_due = new_recovery_scan &&
+ (last_recovery_local_scan_ns_ == core::kInvalidTime ||
+ scan_stamp_ns - last_recovery_local_scan_ns_ >= local_interval_ns);
+ if (global_search_.active() && supervisor_.localized() && fresh_scan &&
+ recovery_local_due) {
+ last_recovery_local_scan_ns_ = scan_stamp_ns;
+ local_match_attempted = true;
+ const bool corrected = try_local_correction(
+ map, obs, now_ns, estimator, action);
+ const EstimatedState& corrected_estimate = estimator.estimate();
+ const auto& config = supervisor_.config();
+ const bool covariance_resolved = corrected &&
+ std::isfinite(corrected_estimate.position_sigma_m) &&
+ std::isfinite(corrected_estimate.heading_sigma_rad) &&
+ corrected_estimate.position_sigma_m < config.lost_position_sigma_m &&
+ corrected_estimate.heading_sigma_rad < config.lost_heading_sigma_rad;
+ if (covariance_resolved) {
+ global_search_.cancel();
+ recovery_hyps_.reset();
+ action = "local_correction:global recovery resolved";
+ }
+ return false;
+ }
+ // A new supervisor action consumes a measurement opportunity. Never spend
+ // local/global cadence or retry backoff on an empty asynchronous tick. An
+ // already active cooperative search is different: it owns a frozen scan
+ // and must keep advancing even when this tick carries no new lidar frame.
+ if (!global_search_.active()) {
+ if (!fresh_scan) return false;
+ if (!recovery_hyps_.empty()) {
+ action = "recovery-tracking";
+ } else {
+ act = supervisor_.next(
+ now_s, est.x_m, est.y_m, est.yaw_rad, health, &reason);
+ action = localization_action_name(act);
+ }
+ }
   // Deferred startup disambiguation: an ambiguous whole-map search seeds
   // hypotheses instead of guessing; later scans promote or drop them.
  // Deferred hypotheses own their unlocalized scans; ordinary local SLAM
  // remains gated until one hypothesis establishes the map frame.
   if (supervisor_.localized()) startup_hyps_.reset();
-  if (!supervisor_.localized() && !startup_hyps_.empty() &&
-      obs.scan_valid && !obs.ranges_m.empty()) {
+ if (supervisor_.localized() && !recovery_hyps_.empty() && fresh_scan) {
+ StartupTrackResult tracked = recovery_hyps_.update(
+ obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
+ map, now_ns, obs.forward_mps, obs.yaw_rate_radps,
+ obs.odometry_valid);
+ if (tracked.status == StartupTrackStatus::kPromoted) {
+ const double position_innovation_m = std::hypot(
+ tracked.x_m - est.x_m, tracked.y_m - est.y_m);
+ const double heading_innovation_rad = std::abs(
+ core::wrap_angle(tracked.yaw_rad - est.yaw_rad));
+ if (supervisor_.accept_global_innovation(
+ position_innovation_m, heading_innovation_rad,
+ est.position_sigma_m, est.heading_sigma_rad)) {
+ estimator.correct_pose(
+ tracked.x_m, tracked.y_m, tracked.yaw_rad,
+ tracked.position_sigma_m, tracked.heading_sigma_rad, obs.stamp_ns);
+ supervisor_.record_global(true, ScanMatchResult{});
+ action = std::string("recovery-promoted score=") +
+ std::to_string(tracked.score) +
+ " hypotheses=" + std::to_string(tracked.hypotheses);
+ return true;
+ }
+ recovery_hyps_.reset();
+ action = "recovery-promotion rejected by pose covariance";
+ return false;
+ }
+ if (tracked.status == StartupTrackStatus::kTracking) {
+ action = std::string("recovery-tracking hypotheses=") +
+ std::to_string(tracked.hypotheses);
+ return false;
+ }
+ action = "recovery-tracking lost";
+ return false;
+ }
+if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
     StartupTrackResult tracked = startup_hyps_.update(
         obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, obs.forward_mps, obs.yaw_rate_radps,
  obs.odometry_valid);
     if (tracked.status == StartupTrackStatus::kPromoted) {
-      estimator.seed_pose(tracked.x_m, tracked.y_m, tracked.yaw_rad, 0.05,
-                          0.02, obs.stamp_ns);
+ estimator.seed_pose(tracked.x_m, tracked.y_m, tracked.yaw_rad,
+ tracked.position_sigma_m, tracked.heading_sigma_rad, obs.stamp_ns);
       supervisor_.record_global(true, ScanMatchResult{});
       action = "startup-promoted";
  return true;
@@ -287,13 +369,19 @@ bool LocalizationSystem::run_localization(
  const double prior_sigma_m = std::isfinite(est.position_sigma_m)
  ? std::max(0.0, est.position_sigma_m)
  : supervisor_.config().lost_position_sigma_m;
- const double recovery_radius_m = std::max(
- supervisor_.config().trusted_global_jump_m,
- supervisor_.config().trusted_global_jump_sigma_factor *
- prior_sigma_m);
+ const double recovery_radius_m =
+ supervisor_.global_recovery_radius_m(prior_sigma_m);
+ const double prior_heading_sigma_rad =
+ std::isfinite(est.heading_sigma_rad)
+ ? std::max(0.0, est.heading_sigma_rad)
+ : supervisor_.config().lost_heading_sigma_rad;
+ const double recovery_heading_radius_rad =
+ supervisor_.global_recovery_heading_radius_rad(
+ prior_heading_sigma_rad);
  global_search_.begin_near(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
  map, now_ns, est.x_m, est.y_m, recovery_radius_m,
+ est.yaw_rad, recovery_heading_radius_rad,
  est.roll_rad, est.pitch_rad, est.z_m);
  } else {
  global_search_.begin(
@@ -307,6 +395,7 @@ bool LocalizationSystem::run_localization(
  return false;
  }
  GlobalSearchResult global = *update;
+ core::MonotonicNs correction_stamp_ns = global.stamp_ns;
  // The cooperative search scores a frozen scan over many control ticks.
  // Its winning pose belongs to that scan's acquisition pose, not to the
  // robot's current pose. Carry every hypothesis forward by the ROBOT-only
@@ -332,6 +421,7 @@ bool LocalizationSystem::run_localization(
  for (auto& runner_up : global.runner_ups) {
  advance_pose(runner_up.x_m, runner_up.y_m, runner_up.yaw_rad);
  }
+ correction_stamp_ns = est.stamp_ns;
  }
  global_origin_valid_ = false;
  bool accept_global = global.accepted;
@@ -339,9 +429,8 @@ bool LocalizationSystem::run_localization(
  if (global.accepted && !supervisor_.localized()) {
  const double jump_m = std::hypot(global.x_m - est.x_m,
  global.y_m - est.y_m);
- const double direct_startup_limit_m = std::max(
- supervisor_.config().trusted_global_jump_m,
- supervisor_.config().trusted_global_jump_sigma_factor *
+ const double direct_startup_limit_m =
+ supervisor_.global_recovery_radius_m(
  supervisor_.config().lost_position_sigma_m);
  if (jump_m > direct_startup_limit_m) {
  accept_global = false;
@@ -358,17 +447,37 @@ bool LocalizationSystem::run_localization(
  // only when ROBOT uncertainty has grown to support it.
  const double jump_m = std::hypot(global.x_m - est.x_m,
  global.y_m - est.y_m);
+ const double heading_jump_rad = std::abs(
+ core::wrap_angle(global.yaw_rad - est.yaw_rad));
  const double prior_sigma_m = std::isfinite(est.position_sigma_m)
  ? std::max(0.0, est.position_sigma_m)
  : supervisor_.config().lost_position_sigma_m;
- const double trusted_jump_limit_m = std::max(
- supervisor_.config().trusted_global_jump_m,
- supervisor_.config().trusted_global_jump_sigma_factor *
- prior_sigma_m);
- if (!std::isfinite(jump_m) || jump_m > trusted_jump_limit_m) {
+ const double prior_heading_sigma_rad =
+ std::isfinite(est.heading_sigma_rad)
+ ? std::max(0.0, est.heading_sigma_rad)
+ : supervisor_.config().lost_heading_sigma_rad;
+ if (!supervisor_.accept_global_innovation(
+ jump_m, heading_jump_rad, prior_sigma_m,
+ prior_heading_sigma_rad)) {
  accept_global = false;
- global.rejection_reason = "global correction exceeds trusted covariance";
+ global.rejection_reason =
+ "global pose correction exceeds trusted covariance";
  }
+ }
+ if (accept_global && supervisor_.localized()) {
+ // AMCL-style recovery keeps a belief across measurements. A one-scan
+ // global winner is only a candidate: propagate it with measured odometry
+ // and require later scans plus useful motion to confirm it before changing
+ // map->odom. This prevents repetitive aisles from teleporting a still
+ // coherent local estimate to a geometrically similar pose.
+ recovery_hyps_.seed(global, correction_stamp_ns,
+ /*require_motion=*/true);
+ action = std::string("global_relocalization:confirming score=") +
+ std::to_string(global.score) +
+ " overlap=" + std::to_string(global.overlap) +
+ " margin=" + std::to_string(global.score_margin) +
+ " returns=" + std::to_string(global.usable_returns);
+ return false;
  }
  if (accept_global) {
  if (!supervisor_.localized()) {
@@ -377,14 +486,21 @@ bool LocalizationSystem::run_localization(
         // confident-but-wrong dead-reckoned origin.
         estimator.seed_pose(global.x_m, global.y_m, global.yaw_rad,
                             global.position_sigma_m,
-                            global.heading_sigma_rad, obs.stamp_ns);
+global.heading_sigma_rad, correction_stamp_ns);
       } else {
         estimator.correct_pose(global.x_m, global.y_m, global.yaw_rad,
                                global.position_sigma_m,
-                               global.heading_sigma_rad, obs.stamp_ns);
+global.heading_sigma_rad, correction_stamp_ns);
       }
     }
  supervisor_.record_global(accept_global, ScanMatchResult{});
+ if (accept_global) {
+ action = std::string("global_relocalization:accepted score=") +
+ std::to_string(global.score) +
+ " overlap=" + std::to_string(global.overlap) +
+ " margin=" + std::to_string(global.score_margin) +
+ " returns=" + std::to_string(global.usable_returns);
+ }
  if (!accept_global && !global.rejection_reason.empty()) {
  action = std::string("global_relocalization:") + global.rejection_reason +
  " score=" + std::to_string(global.score) +
@@ -396,7 +512,7 @@ bool LocalizationSystem::run_localization(
  }
  if (!accept_global && !supervisor_.localized() &&
  (!global.runner_ups.empty() || require_temporal_confirmation)) {
- startup_hyps_.seed(global, obs.stamp_ns,
+startup_hyps_.seed(global, correction_stamp_ns,
  require_temporal_confirmation);
  action = require_temporal_confirmation ? "startup-confirming"
  : "startup-seeded";
@@ -407,6 +523,15 @@ bool LocalizationSystem::run_localization(
  // covariance this removes hypotheses outside the innovation gate; near the
  // loss threshold the window expands up to the matcher's normal cap. The
  // gate and search therefore share one uncertainty doctrine.
+ local_match_attempted = true;
+ try_local_correction(map, obs, now_ns, estimator, action);
+ return false;
+}
+
+bool LocalizationSystem::try_local_correction(
+ const iface::MapSnapshot& map, const iface::ObservationFrame& obs,
+ core::MonotonicNs now_ns, IEstimator& estimator, std::string& action) {
+ const EstimatedState& est = estimator.estimate();
  ScanMatcherConfig local_config;
  const auto& supervisor_config = supervisor_.config();
  const double translation_cap = local_config.search_translation_m;
@@ -430,7 +555,6 @@ bool LocalizationSystem::run_localization(
  local_config.maximum_returns = 64;
  ScanMatcher local_matcher(local_config);
  local_matcher.set_lidar_mount(base_from_lidar_);
- local_match_attempted = true;
  ScanMatchResult match = local_matcher.localize(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
       est.x_m, est.y_m, est.yaw_rad, map, now_ns, est.roll_rad,
@@ -457,12 +581,20 @@ bool LocalizationSystem::run_localization(
  action = "local_correction:innovation rejected";
  return false;
  }
-    estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
-                           match.position_sigma_m, match.heading_sigma_rad,
-                           obs.stamp_ns);
+ if (match.pose_information_valid) {
+ estimator.correct_pose_information(
+ match.x_m, match.y_m, match.yaw_rad, match.pose_information,
+ match.position_sigma_m, match.heading_sigma_rad, obs.stamp_ns);
+ } else {
+ estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
+ match.position_sigma_m, match.heading_sigma_rad, obs.stamp_ns);
+ }
   }
   supervisor_.record_local(match.accepted, match);
- return false;
+ if (!match.accepted) {
+ action = std::string("local_correction:") + match.rejection_reason;
+ }
+ return match.accepted;
 }
 
 }  // namespace lost_signal::robot::autonomy

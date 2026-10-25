@@ -64,6 +64,8 @@ struct StartupTrackResult {
   double x_m = 0.0;
   double y_m = 0.0;
   double yaw_rad = 0.0;
+ double position_sigma_m = 0.05;
+ double heading_sigma_rad = 0.02;
   double score = 0.0;
   std::size_t hypotheses = 0;
 };
@@ -95,10 +97,13 @@ class StartupHypotheses {
  bool require_motion = false) {
     reset();
     hyps_.push_back(
-        Hyp{ambiguous.x_m, ambiguous.y_m, ambiguous.yaw_rad,
-            ambiguous.score, 0, 0});
+ Hyp{ambiguous.x_m, ambiguous.y_m, ambiguous.yaw_rad,
+ ambiguous.position_sigma_m, ambiguous.heading_sigma_rad,
+ ambiguous.score, 0, 0});
     for (const auto& ru : ambiguous.runner_ups) {
-      hyps_.push_back(Hyp{ru.x_m, ru.y_m, ru.yaw_rad, ru.score, 0, 0});
+ hyps_.push_back(Hyp{ru.x_m, ru.y_m, ru.yaw_rad,
+ ambiguous.position_sigma_m, ambiguous.heading_sigma_rad,
+ ru.score, 0, 0});
     }
  require_motion_ = require_motion;
  last_stamp_ns_ = stamp_ns;
@@ -151,6 +156,8 @@ class StartupHypotheses {
         h.x = m.x_m;
         h.y = m.y_m;
         h.yaw = m.yaw_rad;
+ h.position_sigma_m = m.position_sigma_m;
+ h.heading_sigma_rad = m.heading_sigma_rad;
         h.score = m.score;
         ++h.confirms;
         h.rejects = 0;
@@ -232,7 +239,9 @@ class StartupHypotheses {
  return matcher;
  }
   struct Hyp {
-    double x = 0.0, y = 0.0, yaw = 0.0, score = 0.0;
+ double x = 0.0, y = 0.0, yaw = 0.0;
+ double position_sigma_m = 0.05, heading_sigma_rad = 0.02;
+ double score = 0.0;
     int confirms = 0, rejects = 0, age = 0;
   };
   StartupTrackResult promoted(const Hyp& best) {
@@ -241,6 +250,8 @@ class StartupHypotheses {
     out.x_m = best.x;
     out.y_m = best.y;
     out.yaw_rad = best.yaw;
+ out.position_sigma_m = best.position_sigma_m;
+ out.heading_sigma_rad = best.heading_sigma_rad;
     out.score = best.score;
     out.hypotheses = hyps_.size();
     reset();

@@ -139,10 +139,12 @@ struct GlobalSearcher::WorkState {
  double angle_increment, const iface::MapSnapshot& map_value,
  core::MonotonicNs stamp, double roll, double pitch, double z,
  bool bound_position, double bound_x_m, double bound_y_m,
- double bound_radius_m)
+ double bound_radius_m, bool bound_heading,
+ double bound_heading_rad, double bound_heading_radius_rad)
  : config(cfg), mount(mount_value), ranges(range_values), map(map_value),
  angle_min_rad(angle_min), angle_increment_rad(angle_increment),
  stamp_ns(stamp), body_roll_rad(roll), body_pitch_rad(pitch), body_z_m(z) {
+ result.stamp_ns = stamp;
  if (ranges.empty() || !(angle_increment_rad > 0.0)) {
  finish("invalid scan");
  return;
@@ -263,6 +265,17 @@ struct GlobalSearcher::WorkState {
  coarse_gx = coarse_min_gx;
  coarse_gy = coarse_min_gy;
  }
+ if (bound_heading) {
+ if (!std::isfinite(bound_heading_rad) ||
+ !(bound_heading_radius_rad > 0.0) ||
+ !std::isfinite(bound_heading_radius_rad)) {
+ finish("invalid bounded heading region");
+ return;
+ }
+ heading_bounded = true;
+ bound_heading_rad_ = core::wrap_angle(bound_heading_rad);
+ bound_heading_radius_rad_ = std::min(core::kPi, bound_heading_radius_rad);
+ }
  const std::size_t prefix_width =
  static_cast<std::size_t>(map.width) + 1;
  const std::size_t prefix_height =
@@ -306,6 +319,12 @@ struct GlobalSearcher::WorkState {
  void finish(const char* reason) {
  result.rejection_reason = reason;
  phase = Phase::kDone;
+ }
+
+ bool heading_allowed(double heading_rad) const {
+ return !heading_bounded ||
+ std::abs(core::wrap_angle(heading_rad - bound_heading_rad_)) <=
+ bound_heading_radius_rad_;
  }
 
  void consider_coarse(const Coarse& candidate) {
@@ -635,8 +654,11 @@ struct GlobalSearcher::WorkState {
  int coarse_min_gx = 0, coarse_min_gy = 0;
  int coarse_max_gx = 0, coarse_max_gy = 0;
  bool position_bounded = false;
+ bool heading_bounded = false;
  double bound_center_x_m = 0.0, bound_center_y_m = 0.0;
  double bound_radius_m_ = 0.0;
+ double bound_heading_rad_ = 0.0;
+ double bound_heading_radius_rad_ = 0.0;
  std::size_t evaluations = 0;
  std::vector<Coarse> survivors;
  std::size_t refine_index = 0;
@@ -667,19 +689,21 @@ void GlobalSearcher::begin(const std::vector<float>& ranges,
  work_ = std::make_unique<WorkState>(
  config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
- false, 0.0, 0.0, 0.0);
+ false, 0.0, 0.0, 0.0, false, 0.0, 0.0);
 }
 
 void GlobalSearcher::begin_near(
  const std::vector<float>& ranges, double angle_min_rad,
  double angle_increment_rad, const iface::MapSnapshot& map,
  core::MonotonicNs stamp_ns, double center_x_m, double center_y_m,
- double radius_m, double body_roll_rad, double body_pitch_rad,
+ double radius_m, double center_heading_rad, double heading_radius_rad,
+ double body_roll_rad, double body_pitch_rad,
  double body_z_m) {
  work_ = std::make_unique<WorkState>(
  config_, base_from_lidar_, ranges, angle_min_rad, angle_increment_rad, map,
  stamp_ns, body_roll_rad, body_pitch_rad, body_z_m,
- true, center_x_m, center_y_m, radius_m);
+ true, center_x_m, center_y_m, radius_m,
+ true, center_heading_rad, heading_radius_rad);
 }
 
 bool GlobalSearcher::active() const { return work_ != nullptr; }
@@ -831,13 +855,22 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  continue;
  }
  if (w.coarse_ih == 0) ++w.result.coarse_positions_considered;
+ const double heading = core::wrap_angle(
+ -core::kPi + w.coarse_ih * w.config.coarse_heading_step_rad);
+ if (!w.heading_allowed(heading)) {
+ ++w.coarse_ih;
+ if (w.coarse_ih >= w.n_headings) {
+ w.coarse_ih = 0;
+ w.coarse_gx += w.cell_stride;
+ }
+ spend(1);
+ continue;
+ }
  if (++w.evaluations > w.config.maximum_evaluations) {
  w.result.coarse_evaluations = w.evaluations;
  w.finish("evaluation budget exceeded");
  continue;
  }
- const double heading = core::wrap_angle(
- -core::kPi + w.coarse_ih * w.config.coarse_heading_step_rad);
  const double score = w.score_coarse(w.coarse_ih, cx, cy);
  w.consider_coarse({cx, cy, heading, score, 0.0});
  ++w.coarse_ih;
@@ -860,10 +893,12 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.refine_iy * w.config.refine_translation_step_m;
  const double heading = core::wrap_angle(
  seed.heading + w.refine_ih * w.config.refine_heading_step_rad);
+ if (w.heading_allowed(heading)) {
  const PoseScore pose = w.refine_batch->score(
  static_cast<std::size_t>(w.refine_ih + w.refine_heading_steps),
  cx, cy, heading, w.map, w.body_z_m);
  if (pose.has_evidence) w.consider_refine(cx, cy, heading, pose);
+ }
  ++w.refine_ih;
  if (w.refine_ih > w.refine_heading_steps) {
  w.refine_ih = -w.refine_heading_steps;
@@ -888,6 +923,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.final_iy * w.config.final_translation_step_m;
  const double heading = core::wrap_angle(
  seed.yaw_rad + w.final_ih * w.config.final_heading_step_rad);
+ if (w.heading_allowed(heading)) {
  const RaycastEvidence ev = raycast_evidence(
  w.map, w.final_beams, cx, cy, heading, w.body_roll_rad,
  w.body_pitch_rad, w.mount, w.config.max_range_m);
@@ -900,6 +936,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.final_best.overlap = ev.overlap;
  w.final_best.position_sigma_m = seed.position_sigma_m;
  w.final_best.heading_sigma_rad = seed.heading_sigma_rad;
+ }
  }
  ++w.final_ih;
  if (w.final_ih > w.final_heading_steps) {

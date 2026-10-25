@@ -6,6 +6,126 @@
 #include "robot/core/geometry.hpp"
 
 namespace lost_signal::robot::autonomy {
+namespace {
+
+using PlanarCovariance = std::array<double, 9>;
+
+PlanarCovariance diagonal_covariance(
+ double position_sigma_m, double heading_sigma_rad) {
+ const double position_variance = position_sigma_m * position_sigma_m;
+ return {position_variance, 0.0, 0.0,
+ 0.0, position_variance, 0.0,
+ 0.0, 0.0, heading_sigma_rad * heading_sigma_rad};
+}
+
+double position_sigma(const PlanarCovariance& covariance) {
+ const double trace = covariance[0] + covariance[4];
+ const double discriminant = std::sqrt(std::max(
+ 0.0, (covariance[0] - covariance[4]) *
+ (covariance[0] - covariance[4]) +
+ 4.0 * covariance[1] * covariance[1]));
+ return std::sqrt(std::max(0.0, 0.5 * (trace + discriminant)));
+}
+
+void propagate_planar_covariance(PlanarCovariance& covariance,
+ double distance_m, double yaw_mid_rad,
+ double position_process_variance) {
+ // F for x += ds*cos(yaw), y += ds*sin(yaw), yaw += d_yaw.
+ const double fx_yaw = -distance_m * std::sin(yaw_mid_rad);
+ const double fy_yaw = distance_m * std::cos(yaw_mid_rad);
+ const PlanarCovariance f{
+ 1.0, 0.0, fx_yaw,
+ 0.0, 1.0, fy_yaw,
+ 0.0, 0.0, 1.0};
+ PlanarCovariance fp{};
+ PlanarCovariance propagated{};
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ for (int inner = 0; inner < 3; ++inner) {
+ fp[static_cast<std::size_t>(row * 3 + column)] +=
+ f[static_cast<std::size_t>(row * 3 + inner)] *
+ covariance[static_cast<std::size_t>(inner * 3 + column)];
+ }
+ }
+ }
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ for (int inner = 0; inner < 3; ++inner) {
+ propagated[static_cast<std::size_t>(row * 3 + column)] +=
+ fp[static_cast<std::size_t>(row * 3 + inner)] *
+ f[static_cast<std::size_t>(column * 3 + inner)];
+ }
+ }
+ }
+ propagated[0] += position_process_variance;
+ propagated[4] += position_process_variance;
+ covariance = propagated;
+}
+
+void set_heading_sigma(PlanarCovariance& covariance, double sigma_rad) {
+ const double old_sigma = std::sqrt(std::max(0.0, covariance[8]));
+ const double ratio = old_sigma > 1e-12 ? sigma_rad / old_sigma : 0.0;
+ covariance[2] *= ratio;
+ covariance[6] = covariance[2];
+ covariance[5] *= ratio;
+ covariance[7] = covariance[5];
+ covariance[8] = sigma_rad * sigma_rad;
+}
+
+void publish_covariance(const PlanarCovariance& covariance,
+ const FusedOdometryEstimator::Config& config, EstimatedState& state) {
+ state.position_sigma_m = std::clamp(
+ position_sigma(covariance), config.pos_sigma_min_m,
+ config.pos_sigma_max_m);
+ state.heading_sigma_rad = std::clamp(
+ std::sqrt(std::max(0.0, covariance[8])),
+ config.yaw_sigma_min_rad, config.yaw_sigma_max_rad);
+ state.confidence =
+ 1.0 / (1.0 + state.position_sigma_m + state.heading_sigma_rad);
+}
+
+bool invert_3x3(const PlanarCovariance& matrix, PlanarCovariance& inverse) {
+ const double a = matrix[0], b = matrix[1], c = matrix[2];
+ const double d = matrix[3], e = matrix[4], f = matrix[5];
+ const double g = matrix[6], h = matrix[7], i = matrix[8];
+ const double determinant =
+ a * (e * i - f * h) - b * (d * i - f * g) +
+ c * (d * h - e * g);
+ if (!std::isfinite(determinant) || std::abs(determinant) < 1e-24) {
+ return false;
+ }
+ const double scale = 1.0 / determinant;
+ inverse = {
+ (e * i - f * h) * scale,
+ (c * h - b * i) * scale,
+ (b * f - c * e) * scale,
+ (f * g - d * i) * scale,
+ (a * i - c * g) * scale,
+ (c * d - a * f) * scale,
+ (d * h - e * g) * scale,
+ (b * g - a * h) * scale,
+ (a * e - b * d) * scale};
+ return std::all_of(inverse.begin(), inverse.end(), [](double value) {
+ return std::isfinite(value);
+ });
+}
+
+PlanarCovariance multiply_3x3(const PlanarCovariance& left,
+ const PlanarCovariance& right) {
+ PlanarCovariance product{};
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ for (int inner = 0; inner < 3; ++inner) {
+ product[static_cast<std::size_t>(row * 3 + column)] +=
+ left[static_cast<std::size_t>(row * 3 + inner)] *
+ right[static_cast<std::size_t>(inner * 3 + column)];
+ }
+ }
+ }
+ return product;
+}
+
+} // namespace
 
 FusedOdometryEstimator::FusedOdometryEstimator(Config config)
     : config_(config) {}
@@ -41,6 +161,9 @@ void FusedOdometryEstimator::reset() {
   estimate_.heading_sigma_rad = 0.01;
   estimate_.confidence = 1.0;
  odom_estimate_ = estimate_;
+ estimate_covariance_ = diagonal_covariance(
+ estimate_.position_sigma_m, estimate_.heading_sigma_rad);
+ odom_covariance_ = estimate_covariance_;
   attitude_ = Quaternion{};
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
@@ -59,6 +182,8 @@ void FusedOdometryEstimator::ensure_odom_origin(
  odom_estimate_.position_sigma_m = 0.05;
  odom_estimate_.heading_sigma_rad = 0.01;
  odom_estimate_.confidence = 1.0;
+ odom_covariance_ = diagonal_covariance(
+ odom_estimate_.position_sigma_m, odom_estimate_.heading_sigma_rad);
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
@@ -145,9 +270,10 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  state.forward_mps = forward;
  state.yaw_rate_radps = yaw_rate;
  state.stamp_ns = obs.stamp_ns;
+ return yaw_mid;
  };
- integrate(estimate_);
- integrate(odom_estimate_);
+ const double estimate_yaw_mid = integrate(estimate_);
+ const double odom_yaw_mid = integrate(odom_estimate_);
 
   // Attitude: integrate gyro rotation, correct roll/pitch toward the
   // gravity tilt implied by specific force. Mount assumed aligned in v1;
@@ -218,16 +344,26 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  odom_estimate_.attitude_valid = true;
   }
 
- // Covariance grows independently in each frame. Absolute localization may
- // reduce map uncertainty, while odometry retains its continuous history.
- auto grow_uncertainty = [&](EstimatedState& state, double& slip_extra) {
- state.position_sigma_m = std::clamp(
- state.position_sigma_m +
- config_.pos_growth_per_m * std::abs(step_m) +
- config_.pos_growth_per_s * dt_s,
- config_.pos_sigma_min_m, config_.pos_sigma_max_m);
- double heading_base = state.heading_sigma_rad - slip_extra;
- heading_base += config_.yaw_growth_per_s * dt_s;
+ // Covariance grows independently in each REP-105 frame. The full planar
+ // Jacobian carries yaw uncertainty into cross-track position and preserves
+ // x/y/yaw correlations; process-noise variances add once per increment.
+ const double position_process_variance =
+ config_.position_process_variance_per_m * std::abs(step_m) +
+ config_.position_process_variance_per_s * dt_s;
+ const double heading_process_variance =
+ config_.heading_process_variance_per_s * dt_s;
+ auto grow_uncertainty = [&](EstimatedState& state,
+ PlanarCovariance& covariance, double yaw_mid,
+ double& slip_extra) {
+ propagate_planar_covariance(
+ covariance, step_m, yaw_mid,
+ std::max(0.0, position_process_variance));
+ const double old_heading_sigma =
+ std::sqrt(std::max(0.0, covariance[8]));
+ const double heading_base = std::sqrt(
+ std::max(0.0, old_heading_sigma - slip_extra) *
+ std::max(0.0, old_heading_sigma - slip_extra) +
+ std::max(0.0, heading_process_variance));
  if (slipped) {
  slip_extra = std::min(
  slip_extra + config_.slip_heading_inflation_rad,
@@ -236,14 +372,15 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  slip_extra *= std::exp(-dt_s / config_.slip_heading_relax_s);
  if (!(slip_extra > 1e-12)) slip_extra = 0.0;
  }
- state.heading_sigma_rad = std::clamp(
+ set_heading_sigma(covariance, std::clamp(
  heading_base + slip_extra, config_.yaw_sigma_min_rad,
- config_.yaw_sigma_max_rad);
- state.confidence =
- 1.0 / (1.0 + state.position_sigma_m + state.heading_sigma_rad);
+ config_.yaw_sigma_max_rad));
+ publish_covariance(covariance, config_, state);
  };
- grow_uncertainty(estimate_, slip_heading_extra_rad_);
- grow_uncertainty(odom_estimate_, odom_slip_heading_extra_rad_);
+ grow_uncertainty(estimate_, estimate_covariance_, estimate_yaw_mid,
+ slip_heading_extra_rad_);
+ grow_uncertainty(odom_estimate_, odom_covariance_, odom_yaw_mid,
+ odom_slip_heading_extra_rad_);
   prior_ = obs;
 }
 
@@ -267,32 +404,138 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
       !(yaw_sigma_rad > 0.0)) {
     return;  // fail closed on malformed corrections
   }
-  const double ev = std::max(1e-9, estimate_.position_sigma_m);
  ensure_odom_origin(stamp_ns);
-  const double cv = std::max(1e-9, pos_sigma_m);
-  const double k = ev / (ev + cv);
+ const double correction_position_sigma = std::max(1e-9, pos_sigma_m);
+ const double correction_position_variance =
+ correction_position_sigma * correction_position_sigma;
+ const double prior_x_variance = std::max(1e-18, estimate_covariance_[0]);
+ const double prior_y_variance = std::max(1e-18, estimate_covariance_[4]);
+ const double x_gain = prior_x_variance /
+ (prior_x_variance + correction_position_variance);
+ const double y_gain = prior_y_variance /
+ (prior_y_variance + correction_position_variance);
   // A validated map correction establishes the estimate: kidnapped or cold
   // starts have no trustworthy prior, so the blend target (not the prior)
   // is what makes this valid. Rejected matches never reach here.
   estimate_.valid = true;
-  estimate_.x_m += k * (x_m - estimate_.x_m);
-  estimate_.y_m += k * (y_m - estimate_.y_m);
+ estimate_.x_m += x_gain * (x_m - estimate_.x_m);
+ estimate_.y_m += y_gain * (y_m - estimate_.y_m);
+ const double correction_heading_sigma = std::max(1e-9, yaw_sigma_rad);
+ const double prior_heading_variance =
+ std::max(1e-18, estimate_covariance_[8]);
+ const double correction_heading_variance =
+ correction_heading_sigma * correction_heading_sigma;
+ const double heading_gain = prior_heading_variance /
+ (prior_heading_variance + correction_heading_variance);
   estimate_.yaw_rad = core::wrap_angle(
-      estimate_.yaw_rad + k * core::wrap_angle(yaw_rad - estimate_.yaw_rad));
-  estimate_.position_sigma_m =
-      std::clamp(1.0 / (1.0 / ev + 1.0 / cv), config_.pos_sigma_min_m,
-                 config_.pos_sigma_max_m);
-  const double ey = std::max(1e-9, estimate_.heading_sigma_rad);
-  const double cy = std::max(1e-9, yaw_sigma_rad);
-  estimate_.heading_sigma_rad = std::clamp(
-      1.0 / (1.0 / ey + 1.0 / cy), config_.yaw_sigma_min_rad,
-      config_.yaw_sigma_max_rad);
+ estimate_.yaw_rad + heading_gain *
+ core::wrap_angle(yaw_rad - estimate_.yaw_rad));
+ const double minimum_position_variance =
+ config_.pos_sigma_min_m * config_.pos_sigma_min_m;
+ const double minimum_heading_variance =
+ config_.yaw_sigma_min_rad * config_.yaw_sigma_min_rad;
+ estimate_covariance_ = {
+ std::max(minimum_position_variance,
+ 1.0 / (1.0 / prior_x_variance +
+ 1.0 / correction_position_variance)), 0.0, 0.0,
+ 0.0, std::max(minimum_position_variance,
+ 1.0 / (1.0 / prior_y_variance +
+ 1.0 / correction_position_variance)), 0.0,
+ 0.0, 0.0, std::max(minimum_heading_variance,
+ 1.0 / (1.0 / prior_heading_variance +
+ 1.0 / correction_heading_variance))};
   estimate_.stamp_ns = stamp_ns;
-  estimate_.confidence =
-      1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+ publish_covariance(estimate_covariance_, config_, estimate_);
   // A validated correction resolves slip doubt: clear the extra so the
   // next ticks grow from the motion baseline instead of re-adding doubt.
   slip_heading_extra_rad_ = 0.0;
+}
+
+void FusedOdometryEstimator::correct_pose_information(
+ double x_m, double y_m, double yaw_rad,
+ const std::array<double, 9>& pose_information,
+ double pos_sigma_m, double yaw_sigma_rad,
+ core::MonotonicNs stamp_ns) {
+ if (!std::isfinite(x_m) || !std::isfinite(y_m) ||
+ !std::isfinite(yaw_rad)) {
+ return;
+ }
+ PlanarCovariance information = pose_information;
+ for (double value : information) {
+ if (!std::isfinite(value)) return;
+ }
+ // Measurement information must be symmetric positive semidefinite. The
+ // matcher constructs it that way; symmetrize defensively at the interface
+ // and fail closed if a diagonal is negative.
+ information[1] = information[3] = 0.5 *
+ (information[1] + information[3]);
+ information[2] = information[6] = 0.5 *
+ (information[2] + information[6]);
+ information[5] = information[7] = 0.5 *
+ (information[5] + information[7]);
+ if (information[0] < 0.0 || information[4] < 0.0 ||
+ information[8] < 0.0) {
+ return;
+ }
+ const double information_load = information[0] + information[4] +
+ information[8];
+ if (!(information_load > 1e-12)) return;
+ ensure_odom_origin(stamp_ns);
+ PlanarCovariance prior_information{};
+ if (!invert_3x3(estimate_covariance_, prior_information)) {
+ correct_pose(x_m, y_m, yaw_rad, pos_sigma_m, yaw_sigma_rad, stamp_ns);
+ return;
+ }
+ PlanarCovariance posterior_information = prior_information;
+ for (std::size_t index = 0; index < posterior_information.size(); ++index) {
+ posterior_information[index] += information[index];
+ }
+ PlanarCovariance posterior_covariance{};
+ if (!invert_3x3(posterior_information, posterior_covariance)) return;
+ // K = (P^-1 + I)^-1 I. A zero information eigenvalue produces exactly
+ // zero gain in that direction, so corridor-axis uncertainty is preserved.
+ const PlanarCovariance gain = multiply_3x3(
+ posterior_covariance, information);
+ const std::array<double, 3> innovation{
+ x_m - estimate_.x_m,
+ y_m - estimate_.y_m,
+ core::wrap_angle(yaw_rad - estimate_.yaw_rad)};
+ std::array<double, 3> correction{};
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ correction[static_cast<std::size_t>(row)] +=
+ gain[static_cast<std::size_t>(row * 3 + column)] *
+ innovation[static_cast<std::size_t>(column)];
+ }
+ }
+ estimate_.valid = true;
+ estimate_.x_m += correction[0];
+ estimate_.y_m += correction[1];
+ estimate_.yaw_rad = core::wrap_angle(estimate_.yaw_rad + correction[2]);
+ // Numerical inversion can leave tiny asymmetry. Restore symmetry before
+ // publishing and retain the estimator's declared variance floors.
+ for (int row = 0; row < 3; ++row) {
+ for (int column = row + 1; column < 3; ++column) {
+ const double value = 0.5 * (
+ posterior_covariance[static_cast<std::size_t>(row * 3 + column)] +
+ posterior_covariance[static_cast<std::size_t>(column * 3 + row)]);
+ posterior_covariance[static_cast<std::size_t>(row * 3 + column)] = value;
+ posterior_covariance[static_cast<std::size_t>(column * 3 + row)] = value;
+ }
+ }
+ posterior_covariance[0] = std::max(
+ posterior_covariance[0],
+ config_.pos_sigma_min_m * config_.pos_sigma_min_m);
+ posterior_covariance[4] = std::max(
+ posterior_covariance[4],
+ config_.pos_sigma_min_m * config_.pos_sigma_min_m);
+ posterior_covariance[8] = std::max(
+ posterior_covariance[8],
+ config_.yaw_sigma_min_rad * config_.yaw_sigma_min_rad);
+ estimate_covariance_ = posterior_covariance;
+ estimate_.stamp_ns = stamp_ns;
+ publish_covariance(estimate_covariance_, config_, estimate_);
+ if (information[8] > 1e-12) slip_heading_extra_rad_ = 0.0;
 }
 
 void FusedOdometryEstimator::correct_relative_pose(
@@ -306,10 +549,14 @@ void FusedOdometryEstimator::correct_relative_pose(
  const double position_sigma = estimate_.position_sigma_m;
  ensure_odom_origin(stamp_ns);
  const double heading_sigma = estimate_.heading_sigma_rad;
- const double position_gain = position_sigma /
- (position_sigma + std::max(1e-9, pos_sigma_m));
- const double heading_gain = heading_sigma /
- (heading_sigma + std::max(1e-9, yaw_sigma_rad));
+ const double correction_position_sigma = std::max(1e-9, pos_sigma_m);
+ const double correction_heading_sigma = std::max(1e-9, yaw_sigma_rad);
+ const double position_gain = position_sigma * position_sigma /
+ (position_sigma * position_sigma +
+ correction_position_sigma * correction_position_sigma);
+ const double heading_gain = heading_sigma * heading_sigma /
+ (heading_sigma * heading_sigma +
+ correction_heading_sigma * correction_heading_sigma);
  estimate_.valid = true;
  estimate_.x_m += position_gain * (x_m - estimate_.x_m);
  estimate_.y_m += position_gain * (y_m - estimate_.y_m);
@@ -352,6 +599,8 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
                  config_.pos_sigma_max_m);
   estimate_.heading_sigma_rad = std::clamp(
       yaw_sigma_rad, config_.yaw_sigma_min_rad, config_.yaw_sigma_max_rad);
+ estimate_covariance_ = diagonal_covariance(
+ estimate_.position_sigma_m, estimate_.heading_sigma_rad);
   estimate_.stamp_ns = stamp_ns;
   estimate_.confidence =
       1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);

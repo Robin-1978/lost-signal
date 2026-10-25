@@ -32,8 +32,9 @@ int main() {
   using namespace lost_signal::robot::autonomy;
 
  // A dead-reckoned pose inside the goal region cannot complete a task while
- // its covariance is wider than the arrival contract. It holds so a later
- // ROBOT-side localization correction can resolve the claim.
+ // its covariance is wider than the arrival contract. It holds unless the
+ // localization subsystem explicitly requests a supervised observation
+ // manoeuvre.
  {
  GoalArrivalPolicy arrival;
  EstimatedState estimate;
@@ -47,6 +48,9 @@ int main() {
  assert(decision.hold);
  assert(!decision.arrived);
  assert(decision.reason == "localization-uncertain");
+ decision = arrival.evaluate(estimate, goal, true, true);
+ assert(!decision.hold);
+ assert(!decision.arrived);
  estimate.position_sigma_m = 0.05;
  for (int cycle = 0; cycle < 3; ++cycle) {
  decision = arrival.evaluate(estimate, goal, true);

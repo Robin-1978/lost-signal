@@ -443,8 +443,108 @@ ScanMatchResult ScanMatcher::localize(
   result.x_m = best.x;
   result.y_m = best.y;
   result.yaw_rad = best.heading;
-  result.position_sigma_m = std::max(0.02, map.resolution_m * 0.75);
-  result.heading_sigma_rad = std::max(0.01, config_.heading_step_rad * 1.5);
+ // Approximate the local negative-log-likelihood Hessian around the winner.
+ // Its rank is the measurement's actual observability: a corridor may
+ // constrain lateral position and yaw while contributing zero information
+ // along its axis. Passing information, rather than an isotropic guessed
+ // sigma, prevents one accepted scan from erasing uncertainty in an
+ // unobserved direction.
+ const double translation_probe_m = std::max(
+ config_.translation_step_m, map.resolution_m);
+ const double heading_probe_rad = std::max(
+ config_.heading_step_rad,
+ std::atan2(map.resolution_m, std::max(map.resolution_m,
+ config_.max_range_m)));
+ const auto likelihood_score = [&](double x, double y, double heading) {
+ if (config_.expected_range_validation) {
+ const ExpectedRangeEvidence evidence = expected_range_evidence(
+ map, beams, x, y, heading, body_roll_rad, body_pitch_rad,
+ base_from_lidar_, config_.max_range_m);
+ return evidence.valid ? evidence.score
+ : -std::numeric_limits<double>::infinity();
+ }
+ const PoseScore pose = batch.score(0, x, y, heading, map, body_z_m);
+ return pose.has_evidence ? pose.score
+ : -std::numeric_limits<double>::infinity();
+ };
+ const auto cost = [](double score) {
+ return std::isfinite(score)
+ ? -std::log(std::max(1e-6, score))
+ : std::numeric_limits<double>::infinity();
+ };
+ const double c0 = cost(likelihood_score(best.x, best.y, best.heading));
+ const double cxp = cost(likelihood_score(
+ best.x + translation_probe_m, best.y, best.heading));
+ const double cxm = cost(likelihood_score(
+ best.x - translation_probe_m, best.y, best.heading));
+ const double cyp = cost(likelihood_score(
+ best.x, best.y + translation_probe_m, best.heading));
+ const double cym = cost(likelihood_score(
+ best.x, best.y - translation_probe_m, best.heading));
+ const double cpp = cost(likelihood_score(
+ best.x + translation_probe_m, best.y + translation_probe_m,
+ best.heading));
+ const double cpm = cost(likelihood_score(
+ best.x + translation_probe_m, best.y - translation_probe_m,
+ best.heading));
+ const double cmp = cost(likelihood_score(
+ best.x - translation_probe_m, best.y + translation_probe_m,
+ best.heading));
+ const double cmm = cost(likelihood_score(
+ best.x - translation_probe_m, best.y - translation_probe_m,
+ best.heading));
+ const double chp = cost(likelihood_score(
+ best.x, best.y, core::wrap_angle(best.heading + heading_probe_rad)));
+ const double chm = cost(likelihood_score(
+ best.x, best.y, core::wrap_angle(best.heading - heading_probe_rad)));
+ const bool finite_neighborhood = std::isfinite(c0) &&
+ std::isfinite(cxp) && std::isfinite(cxm) &&
+ std::isfinite(cyp) && std::isfinite(cym) &&
+ std::isfinite(cpp) && std::isfinite(cpm) &&
+ std::isfinite(cmp) && std::isfinite(cmm) &&
+ std::isfinite(chp) && std::isfinite(chm);
+ if (finite_neighborhood) {
+ const double translation_step2 =
+ translation_probe_m * translation_probe_m;
+ const double heading_step2 = heading_probe_rad * heading_probe_rad;
+ const double evidence_scale =
+ static_cast<double>(std::max<std::size_t>(1, hit_returns));
+ double ixx = evidence_scale * std::max(
+ 0.0, (cxp - 2.0 * c0 + cxm) / translation_step2);
+ double iyy = evidence_scale * std::max(
+ 0.0, (cyp - 2.0 * c0 + cym) / translation_step2);
+ double ixy = evidence_scale *
+ (cpp - cpm - cmp + cmm) / (4.0 * translation_step2);
+ const double cross_limit = std::sqrt(std::max(0.0, ixx * iyy));
+ ixy = std::clamp(ixy, -cross_limit, cross_limit);
+ const double ihh = evidence_scale * std::max(
+ 0.0, (chp - 2.0 * c0 + chm) / heading_step2);
+ result.pose_information = {
+ ixx, ixy, 0.0,
+ ixy, iyy, 0.0,
+ 0.0, 0.0, ihh};
+ result.pose_information_valid =
+ ixx > 1e-9 || iyy > 1e-9 || ihh > 1e-9;
+ const double trace = ixx + iyy;
+ const double discriminant = std::sqrt(std::max(
+ 0.0, (ixx - iyy) * (ixx - iyy) + 4.0 * ixy * ixy));
+ const double weakest_position_information =
+ std::max(0.0, 0.5 * (trace - discriminant));
+ result.position_sigma_m = weakest_position_information > 1e-9
+ ? 1.0 / std::sqrt(weakest_position_information)
+ : std::max(map.resolution_m, config_.search_translation_m);
+ result.heading_sigma_rad = ihh > 1e-9
+ ? 1.0 / std::sqrt(ihh)
+ : std::max(config_.heading_step_rad, config_.search_heading_rad);
+ }
+ if (!result.pose_information_valid) {
+ result.position_sigma_m = std::max(
+ map.resolution_m, config_.search_translation_m);
+ result.heading_sigma_rad = std::max(
+ config_.heading_step_rad, config_.search_heading_rad);
+ }
+ result.position_sigma_m = std::max(0.02, result.position_sigma_m);
+ result.heading_sigma_rad = std::max(0.01, result.heading_sigma_rad);
   result.score = best.score;
   result.overlap = best.overlap;
   result.score_margin = std::isfinite(second_score) ? best.score - second_score

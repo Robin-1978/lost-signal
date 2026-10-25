@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -29,6 +30,20 @@ enum class SafetyState {
 };
 
 struct SafetyVerdict {
+ SafetyVerdict() = default;
+ SafetyVerdict(bool allow, SafetyState safety_state, std::string code)
+ : allow_motion(allow), state(safety_state), reason(std::move(code)) {}
+ // ROBOT-side clearance diagnostics from the independent raw-scan gate.
+ // Values remain +inf until a nonzero command is projected. They expose
+ // measured geometry only; no map or simulator truth enters these fields.
+ double static_hold_clearance_m = std::numeric_limits<double>::infinity();
+ double static_command_min_clearance_m =
+ std::numeric_limits<double>::infinity();
+ double static_command_terminal_clearance_m =
+ std::numeric_limits<double>::infinity();
+ double dynamic_hold_clearance_m = std::numeric_limits<double>::infinity();
+ double dynamic_command_clearance_m =
+ std::numeric_limits<double>::infinity();
   bool allow_motion = false;
   SafetyState state = SafetyState::kStopped;
   std::string reason;  // stable code for logs/tests

@@ -26,6 +26,15 @@ RunResult run_kind(const std::string& kind) {
  robot::platform::description_from_config(cfg),
  sim::eval::motor_from_config(cfg));
  const bool holonomic = kind == "mecanum" || kind == "swerve";
+ // A pose-covariance-aware robot cannot manufacture absolute confidence in
+ // an empty plane. Off-lane landmarks make the navigation experiment
+ // observable without constraining any chassis-specific path.
+ session.setup_world().set_static_boxes({
+ {-1.5, 2.5, -0.5, 3.5, 1.5},
+ {2.5, -3.5, 3.5, -2.5, 1.5},
+ {6.5, 2.5, 7.5, 3.5, 1.5},
+ });
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.05, 0.02);
  session.setup_world().add_place({"goal", 6.0, 0.0, 0.0});
  session.set_objectives({"goal"}, 1.0);
  RunResult out;
@@ -41,6 +50,19 @@ RunResult run_kind(const std::string& kind) {
  }
  out.done = session.objectives_done();
  assert(!session.episode().steps().empty());
+ if (!out.done) {
+ const auto& step = session.episode().steps().back();
+ std::fprintf(stderr,
+ "%s final truth=(%.3f,%.3f,%.3f) est=(%.3f,%.3f,%.3f) "
+ "vel=(%.3f,%.3f) sigma=(%.3f,%.3f) loc=%s reason=%s\n",
+ kind.c_str(), step.truth_after.body_x_m, step.truth_after.body_y_m,
+ step.truth_after.body_yaw_rad, step.diag.estimate.x_m,
+ step.diag.estimate.y_m, step.diag.estimate.yaw_rad,
+ step.diag.estimate.forward_mps, step.diag.estimate.yaw_rate_radps,
+ step.diag.estimate.position_sigma_m, step.diag.estimate.heading_sigma_rad,
+ step.diag.localization_action.c_str(),
+ step.diag.evidence.reason_code.c_str());
+ }
  return out;
 }
 
