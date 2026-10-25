@@ -28,7 +28,7 @@ int main() {
 
   // Nominal: fresh evidence, clear scan -> motion allowed through the gate.
   {
-    SafetyMonitor mon;
+ SafetyMonitor mon;
     mon.reset();
     PerceptionResult perc;
     perc.scan_ok = true;
@@ -83,6 +83,76 @@ int main() {
     assert(v.state == SafetyState::kStopped);
   }
 
+ // Contact is measured against the configured body footprint in base_link,
+ // not against raw range from an offset lidar. A rear return 0.6 m from a
+ // lidar mounted 0.25 m forward is only 0.35 m from the body center and must
+ // latch for the default 0.4 m footprint.
+ {
+ SafetyMonitor mon;
+ mon.reset();
+ mon.set_lidar_mount({{0.25, 0.0, 0.0},
+ core::quaternion_from_rpy(0.0, 0.0, 0.0)});
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 0.6f);
+ o.ranges_m = {0.6f};
+ o.scan_angle_min_rad = core::kPi;
+ o.scan_angle_increment_rad = 1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ const SafetyVerdict v = mon.evaluate(
+ EstimatedState{}, perc, o, ch, 1'000'000);
+ assert(v.state == SafetyState::kStopped);
+ assert(v.reason == "contact");
+ }
+
+ // Even when the current pose is clear, the independent final gate checks
+ // the complete reaction + braking sweep against raw base-frame endpoints.
+ {
+ SafetyMonitor mon;
+ mon.reset();
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 0.9f);
+ o.ranges_m = {0.9f};
+ o.scan_angle_min_rad = 0.0;
+ o.scan_angle_increment_rad = 1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ const SafetyVerdict v = mon.evaluate(
+ EstimatedState{}, perc, o, ch, 1'000'000);
+ assert(v.state == SafetyState::kNominal);
+ iface::MotionCommand cmd;
+ cmd.space = iface::CommandSpace::kYawRate;
+ cmd.stamp_ns = 1'000'000;
+ cmd.expiry_ns = 201'000'000;
+ cmd.forward_mps = 1.0;
+ assert(mon.gate(cmd, v, 1'000'000).is_safe_stop());
+ assert(mon.last_verdict().reason == "static-swept-proximity");
+ }
+
+ // Proximity is transient: a bounded command that increases raw footprint
+ // clearance is admitted without consulting a map pose or simulator truth.
+ {
+ SafetyMonitor mon;
+ mon.reset();
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 0.45f);
+ o.ranges_m = {0.45f};
+ o.scan_angle_min_rad = 0.8;
+ o.scan_angle_increment_rad = 1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ const SafetyVerdict v = mon.evaluate(
+ EstimatedState{}, perc, o, ch, 1'000'000);
+ assert(v.state == SafetyState::kDegraded);
+ assert(v.reason == "static-proximity");
+ iface::MotionCommand escape;
+ escape.space = iface::CommandSpace::kYawRate;
+ escape.stamp_ns = 1'000'000;
+ escape.expiry_ns = 201'000'000;
+ escape.forward_mps = -0.25;
+ assert(mon.gate(escape, v, 1'000'000).forward_mps < 0.0);
+ }
+
   // Channel drops -> transient DEGRADED (blocks motion), auto-recovers.
   {
     SafetyMonitor mon;
@@ -105,14 +175,16 @@ int main() {
  // rotation. With a 90-degree pitch, a beam near sensor-forward projects
  // vertically/sideways and must not be mistaken for a base-forward obstacle.
  {
- SafetyMonitor mon;
+ SafetyConfig config;
+ config.footprint_radius_m = 0.05;
+ config.static_margin_m = 0.0;
+ SafetyMonitor mon(config);
  mon.reset();
  mon.set_lidar_mount({{0.0, 0.0, 0.0},
  core::quaternion_from_rpy(0.0, M_PI * 0.5, 0.0)});
- iface::ObservationFrame o = fresh_obs(1, 1'000'000, 5.0f);
- o.ranges_m.assign(16, 5.0f);
- o.ranges_m[1] = 0.2f; // angle = pi/8, within old yaw-only sector
- o.scan_angle_min_rad = 0.0;
+ iface::ObservationFrame o = fresh_obs(1, 1'000'000, 0.2f);
+ o.ranges_m = {0.2f}; // angle = pi/8, within old yaw-only sector
+ o.scan_angle_min_rad = M_PI / 8.0;
  o.scan_angle_increment_rad = M_PI / 8.0;
  PerceptionResult perc;
  perc.scan_ok = true;

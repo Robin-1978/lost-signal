@@ -17,7 +17,7 @@ MotionDecisionResult DecisionCyclePipeline::run(
  core::MonotonicNs now_ns, bool forward_blocked) {
  RoutePlanningPipeline::refresh(global_planner, estimate, goal, has_goal,
  map, force_route_refresh, active_route);
- return MotionDecisionPipeline::run(
+ return motion_.run(
  estimate, perception, local_map, active_route, limits, behavior_limits,
  observation, survey, now_ns, behavior, local_planner, validator,
  controller, forward_blocked);

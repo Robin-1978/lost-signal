@@ -32,7 +32,24 @@
 - 终点约束：DWA/TEB 均先到达目标位置，再在位置容差内跟踪最终 yaw；
  Ackermann 继续服从曲率约束，不能伪造原地转向。
 - Ackermann 精确目标：Hybrid-A* 的终止姿态增加剩余距离可实现曲率约束，
- 并在平滑前追加逐点占用检查的精确目标连接段。
+ 并追加精确目标连接段；全部 bicycle primitive、连接段和平滑后返回路线都
+ 在完整 footprint 膨胀图上重新检查。窄缝只允许中心点通过时会 fail closed。
+- 全局/局部两层 costmap：mapping 模块统一生成
+ `footprint + clearance_margin` lethal layer 和外侧线性衰减 soft layer；
+ 栅格 A*、Hybrid-A*、DWA、TEB 共用同一几何语义。占据单元按完整方形计算
+ 膨胀距离，修复角点漏掉半格的问题。
+- 安全策略收口：机器人 JSON 的 `navigation.clearance_margin_m` 与
+ `soft_inflation_radius_m` 由组合根分发给全局规划、局部规划、Behavior、
+ Validator 和最终 Collision Monitor，不再由多个模块各自维护 0.1/0.2
+ 的独立默认值。
+- 三层局部安全职责明确：滚动动态 costmap 是局部规划主要地图；Validator
+ 对选中轨迹用原始 ROBOT 证据复核完整停车扫掠；SafetyMonitor 直接消费原始
+ 扫描作为最终停车门。仿真碰撞/actor/地形真值只进入离线 judge 和 score。
+- 最小风险脱困要求从第一段起净空不下降且停车终点严格改善；动态威胁消失
+ 后连续安全周期可释放 recovery，不会在第三目标后永久停留在避让状态。
+- Dynamic A* 核对结论：本地 `main` 和当前分支都没有 D* Lite/LPA*；现有
+ 机制是 map revision/显式事件触发 A*/Hybrid-A* 重算。实时动态障碍由局部
+ costmap 与统一预测处理，不能用增量全局搜索替代。
 - 定位/SLAM：显式 SLAM-only 用当前 ROBOT 估计建立里程计原点；回环粗搜索
  将一个关键帧间距内的相邻候选视作同一峰，保留具体匹配拒绝原因。
 - IMU/姿态：修正相对四元数方向、最短弧角速度、REP-103 重力投影和高度
@@ -43,16 +60,22 @@
 - P2 地图语义：导航 world 仍只发布公开几何/高程先验；转换器额外输出
   `.semantics.json` SIM-only sidecar，保留 conflict zones、非 box collision
   和 dormant actor，不把游戏 authority 穿透给 ROBOT。
-- 当前验证基线：`ctest --test-dir build --output-on-failure` 为 52/52
+- 当前验证基线：`ctest --test-dir build --output-on-failure -j4` 为 56/56
  （包含 DWA/TEB 对比、artifact、地图语义转换回归），
  `tests/check_boundary.py` 通过。当前机器 100 次同输入对比约为 DWA
- 0.11 s、TEB 0.87 s，故默认仍为 DWA。
+ 0.045 s、TEB 0.059 s；DWA 的任务级行为更快且停顿更少，故默认仍为 DWA。
 
 `signal_town` 的同一 `energy_hub` 任务（保留两个动态 actor）也完成了端到端
 对比：DWA 在 1160 步 / 23.2 s 完成，0 碰撞，真值终点误差 0.110 m；TEB
 在 2478 步 / 49.56 s 完成，0 碰撞，真值终点误差 0.241 m。TEB 从静止启动
 时按下一周期可达速度确定 band 长度，避免把尚未观测的远处局部图当成启动
 前提；其滚动图策略仍明显更保守，因此配置默认保持 DWA。
+
+五目标验收也已完成：
+`energy_hub,freight_yard,housing_door,market_gate,town_gate` 在 6751 步内
+完成 5/5，`collision_steps=0`，真值路径长 107.69 m，最大离线定位误差
+0.430 m。评分中的平面障碍净空与 terrain/belly 净空已拆开；原先约 0.05 m
+的 `mean_clearance` 是额定离地间隙长期占据 `min()` 的指标混义，不是墙距。
 
 本轮又补齐：独立 Ackermann path smoothing（仍由 planning 模块负责）、
 episode artifact/replay round-trip、地图语义 sidecar round-trip，以及

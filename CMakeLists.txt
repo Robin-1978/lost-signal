@@ -427,6 +427,30 @@ add_executable(test_local_planner_compare
 target_link_libraries(test_local_planner_compare PRIVATE lost_signal_robot_autonomy)
 add_test(NAME local_planner_compare COMMAND test_local_planner_compare)
 
+add_executable(test_teb
+ tests/test_teb.cpp
+)
+target_link_libraries(test_teb PRIVATE lost_signal_robot_autonomy)
+add_test(NAME teb COMMAND test_teb)
+
+add_executable(test_dynamic_escape
+ tests/test_dynamic_escape.cpp
+)
+target_link_libraries(test_dynamic_escape PRIVATE lost_signal_robot_autonomy)
+add_test(NAME dynamic_escape COMMAND test_dynamic_escape)
+
+add_executable(test_motion_pipeline
+ tests/test_motion_pipeline.cpp
+)
+target_link_libraries(test_motion_pipeline PRIVATE lost_signal_robot_autonomy)
+add_test(NAME motion_pipeline COMMAND test_motion_pipeline)
+
+add_executable(test_prediction
+ tests/test_prediction.cpp
+)
+target_link_libraries(test_prediction PRIVATE lost_signal_robot_autonomy)
+add_test(NAME prediction COMMAND test_prediction)
+
 add_executable(test_safety
   tests/test_safety.cpp
 )

@@ -83,6 +83,13 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  holonomic bases settle the requested final yaw inside the position tolerance;
  Ackermann follows the route heading and remains bounded by
  `|yaw_rate| <= |speed| * curvature`.
+- Global A*, Hybrid-A*, DWA, and TEB share a two-stage costmap. The hard layer
+ expands known obstacles by the declared footprint plus the robot JSON
+ `navigation.clearance_margin_m`; the outer
+ `soft_inflation_radius_m` band adds a linear preference for usable wall
+ clearance. Hybrid-A* sweeps its bicycle primitives through the full envelope.
+ Map revisions trigger a fresh global search; dynamic actors are handled by
+ the rolling local map and predictor rather than a D* Lite implementation.
 - Behavior time-parameterizes the active route against the same anonymous
  dynamic hypotheses, then derives a hold or speed cap from braking distance.
  A hold is emitted only when staying still is also forecast safe; otherwise
@@ -98,7 +105,8 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
   observation stamps stay at acquisition, so latency can trip freshness.
 - Scoring is offline only and includes displacement, path length, stops,
  dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
- time, clearance, objective completion ratio, and a duty/speed energy proxy.
+time, planar obstacle clearance, separate terrain/belly clearance, objective
+completion ratio, and a duty/speed energy proxy.
  Coordinator remains a sequencing seam; route refresh, motion decisions, and
  conflict prediction live in autonomy modules. The old authored conflict-zone
  authority stays SIM-only; its deployable equivalent is the route/prediction

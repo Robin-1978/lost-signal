@@ -22,11 +22,16 @@ class AStarPlanner : public IGlobalPlanner {
     double grade_cost_per_m = 2.0;
     // Steps steeper than this rise/run ratio are impassable.
     double max_grade = 0.5;
-    // Clearance preference: extra cost per meter scaled by nearby occupancy
-    // (0 in the open, up to 1x beside a wall). Keeps routes centered in
-    // corridors so the follower keeps clearance; the validator still owns
-    // the hard veto.
+ // Clearance preference: extra cost per meter scaled by nearby occupancy
+ // (0 in the open, up to 1x at the lethal inflation boundary).
     double clearance_cost_per_m = 1.0;
+ // Global costmap geometry. Occupied cells receive the complete declared
+ // footprint and hard reserve; cost then decays linearly outside it.
+ double footprint_radius_m = 0.4;
+ double hard_clearance_margin_m =
+ platform::kDefaultNavigationClearanceMarginM;
+ double soft_inflation_radius_m =
+ platform::kDefaultNavigationSoftInflationRadiusM;
     // Believed-roughness price per meter of roughness amplitude (the
     // ROBOT's own IMU observer via the traversal model, never the author's
     // amplitude). Zero model (unbound) pays nothing.

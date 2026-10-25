@@ -17,7 +17,8 @@ namespace lost_signal::robot::autonomy {
 // this pipeline.
 class DecisionCyclePipeline {
  public:
- static MotionDecisionResult run(
+ void reset() { motion_.reset(); }
+ MotionDecisionResult run(
  IGlobalPlanner& global_planner, ILocalPlanner& local_planner,
  IBehaviorPolicy& behavior, IValidator& validator, IController& controller,
  const EstimatedState& estimate, const PerceptionResult& perception,
@@ -27,6 +28,9 @@ class DecisionCyclePipeline {
  const platform::ChassisLimits& behavior_limits,
  const iface::ObservationFrame& observation, const SurveyContext& survey,
  core::MonotonicNs now_ns, bool forward_blocked = false);
+
+ private:
+ MotionDecisionPipeline motion_;
 };
 
 } // namespace lost_signal::robot::autonomy

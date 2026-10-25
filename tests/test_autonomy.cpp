@@ -499,6 +499,27 @@ int main() {
     fast.forward_mps = 1.0;
     ValidationResult noesc = v.validate(fast, est, ok, behind);
     assert(!noesc.accepted);
+
+ // An escape must improve risk from the first swept segment. A tight arc
+ // that first passes closer to a side obstacle and only ends farther away
+ // is not minimum risk, even though its terminal clearance gains distance.
+ ClearanceValidatorConfig arc_cfg;
+ arc_cfg.footprint_radius_m = 0.05;
+ arc_cfg.extra_margin_m = 0.10;
+ arc_cfg.escape_gain_floor_m = 0.01;
+ ClearanceValidator arc_validator(arc_cfg);
+ iface::ObservationFrame beside = make_odom(4, 4, 0.0);
+ beside.ranges_m = {10.0f, 0.12f};
+ beside.scan_angle_min_rad = 0.0;
+ beside.scan_angle_increment_rad = 0.8;
+ LocalCandidate risky_arc;
+ risky_arc.feasible = true;
+ risky_arc.forward_mps = 0.2;
+ risky_arc.yaw_rate_radps = 2.5;
+ const ValidationResult arc =
+ arc_validator.validate(risky_arc, est, ok, beside);
+ assert(!arc.accepted &&
+ arc.verdict == TrajectoryVerdict::kStaticCollision);
   }
 
   // Terrain-aware validation (surveyed elevation prior, never SIM truth):

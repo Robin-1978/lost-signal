@@ -63,6 +63,12 @@ struct ValidationResult {
   double escape_clearance_gain_m = 0.0;
   // Closest approach of the swept footprint to any observed endpoint.
   double min_clearance_m = std::numeric_limits<double>::infinity();
+ // Dynamic clearance stays separate from static/raw-scan clearance so the
+ // selector can compare motion with the risk of holding the current pose.
+ double min_dynamic_clearance_m = std::numeric_limits<double>::infinity();
+ double terminal_dynamic_clearance_m =
+ std::numeric_limits<double>::infinity();
+ double hold_dynamic_clearance_m = std::numeric_limits<double>::infinity();
   std::string reason;
 };
 
@@ -74,7 +80,7 @@ struct ValidationResult {
 // independent safety monitor owns the all-around contact latch.
 struct ClearanceValidatorConfig {
   double footprint_radius_m = 0.4;
-  double extra_margin_m = 0.1;
+ double extra_margin_m = platform::kDefaultNavigationClearanceMarginM;
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
  // Sensor mount lives in the TF tree; set via set_lidar_mount().
@@ -89,6 +95,9 @@ struct ClearanceValidatorConfig {
  // envelope, requiring a full margin gain deadlocks the robot at corners.
  // The speed cap and monotonic gain remain hard gates.
  double escape_gain_floor_m = 0.05;
+ // Numerical allowance for the swept minimum at the starting pose. An
+ // escape may touch the same clearance, but must never first move closer.
+ double escape_clearance_tolerance_m = 1e-4;
  // A beam this far from its static reference is a foreground return.
  // Perception predicts and tracks it; the static rollout must not also
  // treat the same endpoint as fixed geometry.
@@ -356,26 +365,14 @@ class ClearanceValidator : public IValidator {
       if (range < sector_min) sector_min = range;
     }
     if (!std::isfinite(sector_min)) {
-      if (hold) {
-        out.accepted = true;
-        out.verdict = TrajectoryVerdict::kAccepted;
-        out.reason = "hold";
-        return out;
-      }
-      if (survey != nullptr && forward_ground > 0 &&
+ if (!hold && survey != nullptr && forward_ground > 0 &&
           forward_beams == forward_ground) {
         // Every forward return is surveyed ground: open sector, infinite
         // clearance. Falls through (the braking-need check below passes).
-      } else {
+ } else if (!hold) {
         out.reason = "no forward returns";
         return out;
       }
-    }
-    if (hold) {
-      out.accepted = true;
-      out.verdict = TrajectoryVerdict::kAccepted;
-      out.reason = "hold";
-      return out;
     }
     const double speed = std::abs(candidate.forward_mps);
     // Footprint plus margin plus braking distance: the distance needed to
@@ -440,11 +437,19 @@ class ClearanceValidator : public IValidator {
       endpoints.push_back({ex, ey});
     }
     // Rollout the exact candidate twist; sample the swept footprint.
-    const int steps = std::max(
-        1, static_cast<int>(std::ceil(config_.rollout_horizon_s / config_.rollout_dt_s)));
+ const double dynamic_horizon_s = prediction.future_times_s.empty()
+ ? config_.rollout_horizon_s
+ : std::max(config_.rollout_horizon_s,
+ prediction.future_times_s.back());
+ const int steps = std::max(
+ 1, static_cast<int>(std::ceil(
+ dynamic_horizon_s / config_.rollout_dt_s)));
     double min_clear = std::numeric_limits<double>::infinity();
     double end_clear = std::numeric_limits<double>::infinity();
     bool touches = false;
+ bool dynamic_collision = false;
+ double min_dynamic_clear = std::numeric_limits<double>::infinity();
+ double terminal_dynamic_clear = std::numeric_limits<double>::infinity();
         // Keep the previous center: the footprint sweeps the segment between
         // rollout samples, so a thin obstacle cannot disappear between them.
         double prev_x = est.x_m;
@@ -504,11 +509,11 @@ class ClearanceValidator : public IValidator {
  prediction, {prev_x, prev_y}, {ax, ay},
  (s - 1) * config_.rollout_dt_s, t,
  config_.footprint_radius_m);
+ min_dynamic_clear = std::min(
+ min_dynamic_clear, dynamic_clearance.clearance_m);
+ if (s == steps) terminal_dynamic_clear = dynamic_clearance.clearance_m;
  if (dynamic_clearance.clearance_m < 0.0) {
-          out.verdict = TrajectoryVerdict::kDynamicCollision;
-          out.min_clearance_m = min_clear;
-          out.reason = "dynamic collision on rollout";
-          return out;
+ dynamic_collision = true;
  }
  prev_x = ax;
  prev_y = ay;
@@ -524,6 +529,8 @@ class ClearanceValidator : public IValidator {
         if (std::abs(along) > survey->max_grade) {
           out.verdict = TrajectoryVerdict::kTerrainInfeasible;
           out.min_clearance_m = min_clear;
+ out.min_dynamic_clearance_m = min_dynamic_clear;
+ out.terminal_dynamic_clearance_m = terminal_dynamic_clear;
           out.reason = "grade exceeds capability";
           return out;
         }
@@ -552,26 +559,29 @@ class ClearanceValidator : public IValidator {
           return out;
         }
       }
-      if (touches) break;
     }
     out.min_clearance_m = min_clear;
+ out.min_dynamic_clearance_m = min_dynamic_clear;
+ out.terminal_dynamic_clearance_m = terminal_dynamic_clear;
+ bool static_minimum_risk_escape = false;
     if (touches) {
       // Inside the footprint already? Then holding strands the base;
       // a slow rollout that gains clearance is the minimum-risk escape.
       const double now_clear = current_clearance(endpoints, est);
+ const double comparison_tolerance =
+ std::max(0.0, config_.escape_clearance_tolerance_m);
       if (now_clear < need_m && speed <= config_.escape_speed_cap_mps &&
+ min_clear + comparison_tolerance >= now_clear &&
           end_clear > now_clear + config_.escape_gain_floor_m) {
-        out.accepted = true;
-        out.verdict = TrajectoryVerdict::kMinimumRiskEscape;
+ static_minimum_risk_escape = true;
         out.escape_clearance_gain_m = end_clear - now_clear;
-        out.reason = "minimum-risk escape gains clearance";
-        return out;
-      }
-      out.verdict = TrajectoryVerdict::kStaticCollision;
-      out.reason = "static collision on rollout";
-      return out;
+ } else {
+ out.verdict = TrajectoryVerdict::kStaticCollision;
+ out.reason = "static collision on rollout";
+ return out;
+ }
     }
-    if (sector_min < need_m) {
+ if (!hold && sector_min < need_m) {
       // Path ahead is clear on the rollout but the braking tail doesn't
       // fit in the observed opening: stopping from this speed needs more
       // room than the sector shows.
@@ -579,9 +589,48 @@ class ClearanceValidator : public IValidator {
       out.reason = "insufficient clearance";
       return out;
     }
+ // A stop is an occupied future pose, not an automatically safe fallback.
+ // Compare an overlapping rollout with stationary risk only after static
+ // geometry, terrain, stability, and braking checks have passed.
+ if (dynamic_collision) {
+ double hold_min = std::numeric_limits<double>::infinity();
+ double hold_terminal = std::numeric_limits<double>::infinity();
+ for (int s = 1; s <= steps; ++s) {
+ const double t0 = (s - 1) * config_.rollout_dt_s;
+ const double t1 = s * config_.rollout_dt_s;
+ const PredictedClearance clearance = minimum_predicted_clearance(
+ prediction, {est.x_m, est.y_m}, {est.x_m, est.y_m},
+ t0, t1, config_.footprint_radius_m);
+ hold_min = std::min(hold_min, clearance.clearance_m);
+ if (s == steps) hold_terminal = clearance.clearance_m;
+ }
+ out.hold_dynamic_clearance_m = hold_min;
+ const double command_speed = std::hypot(
+ candidate.forward_mps, candidate.lateral_mps);
+ const double gain_floor = std::max(0.0, config_.escape_gain_floor_m);
+ const double minimum_gain = min_dynamic_clear - hold_min;
+ const double exit_gain = terminal_dynamic_clear - hold_terminal;
+ if (!hold && command_speed <= config_.escape_speed_cap_mps + 1e-9 &&
+ minimum_gain > gain_floor && exit_gain > gain_floor) {
+ out.accepted = true;
+ out.verdict = TrajectoryVerdict::kMinimumRiskEscape;
+ out.escape_clearance_gain_m = std::min(minimum_gain, exit_gain);
+ out.reason = "minimum-risk dynamic escape gains clearance";
+ return out;
+ }
+ out.verdict = TrajectoryVerdict::kDynamicCollision;
+ out.reason = hold
+ ? "dynamic collision on hold"
+ : "dynamic collision on rollout";
+ return out;
+ }
     out.accepted = true;
-    out.verdict = TrajectoryVerdict::kAccepted;
-    out.reason = "clear";
+ out.verdict = static_minimum_risk_escape
+ ? TrajectoryVerdict::kMinimumRiskEscape
+ : TrajectoryVerdict::kAccepted;
+ out.reason = static_minimum_risk_escape
+ ? "minimum-risk escape gains clearance"
+ : (hold ? "hold" : "clear");
     return out;
   }
 

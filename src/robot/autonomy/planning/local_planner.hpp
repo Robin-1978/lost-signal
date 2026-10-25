@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
@@ -37,6 +38,11 @@ struct LocalCandidate {
 struct LocalPlan {
   bool has_plan = false;
   LocalCandidate best;
+ // Planner-ranked proposals. Safety selection happens after generation:
+ // one high-scoring proposal failing the independent validator must not
+ // turn a non-empty dynamic window into a one-cycle "no plan". `best`
+ // remains the first proposal for compatibility with existing callers.
+ std::vector<LocalCandidate> candidates;
 };
 
 // ILocalPlanner: estimate + perception + map + route + limits -> one
@@ -58,6 +64,7 @@ class ILocalPlanner {
 // Planner construction belongs to the planning module. Unknown names fail
 // closed with nullptr; the coordinator only owns and sequences the result.
 std::unique_ptr<ILocalPlanner> make_local_planner(
- const std::string& planner_kind);
+ const std::string& planner_kind,
+ const platform::NavigationSafetyPolicy& navigation = {});
 
 }  // namespace lost_signal::robot::autonomy

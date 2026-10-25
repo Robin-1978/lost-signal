@@ -51,6 +51,7 @@ class StraightLinePlanner : public IGlobalPlanner {
 };
 
 std::unique_ptr<IGlobalPlanner> make_global_planner(
- const platform::ChassisLimits& limits, double wheel_base_m);
+ const platform::ChassisLimits& limits, double wheel_base_m,
+ const platform::NavigationSafetyPolicy& navigation = {});
 
 }  // namespace lost_signal::robot::autonomy

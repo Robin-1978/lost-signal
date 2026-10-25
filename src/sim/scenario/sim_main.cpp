@@ -223,6 +223,10 @@ bool write_summary(const std::string& path, const std::string& map_path,
  s.emplace_back("max_yaw_err_rad", Json::Num(score.max_yaw_err_rad));
  s.emplace_back("min_clearance_m", Json::Num(score.min_clearance_m));
  s.emplace_back("mean_clearance_m", Json::Num(score.mean_clearance_m));
+ s.emplace_back("min_terrain_clearance_m",
+ Json::Num(score.min_terrain_clearance_m));
+ s.emplace_back("mean_terrain_clearance_m",
+ Json::Num(score.mean_terrain_clearance_m));
  s.emplace_back("energy_proxy", Json::Num(score.energy_proxy));
  root.emplace_back("score", Json::Obj(std::move(s)));
  Json::Array results;
@@ -367,9 +371,13 @@ long ran = 0;
  }
  }
  }
- if (opt.verbose && ran % 100 == 0) {
- const auto ev = session->last_evidence();
  const auto& recorded = session->episode().steps();
+ const bool collision_now = !recorded.empty() &&
+ (recorded.back().judge.static_collision ||
+ recorded.back().judge.dynamic_collision ||
+ recorded.back().judge.terrain_collision);
+ if (opt.verbose && (ran % 100 == 0 || collision_now)) {
+ const auto ev = session->last_evidence();
  const auto& truth = recorded.empty()
  ? sim::world::WorldTruth{}
  : recorded.back().truth_after;
@@ -377,17 +385,23 @@ long ran = 0;
  ? robot::app::RobotApplication::Diagnostics{}
  : recorded.back().diag;
  std::fprintf(stderr,
- "step=%ld goal=%s reason=%s action=%s v=%.2f w=%.2f "
+ "step=%ld objective=%s goal=%s reason=%s action=%s v=%.2f w=%.2f "
  "truth=(%.2f,%.2f) est=(%.2f,%.2f) clr=%.2f safety=%s loc=%s "
- "localized=%s loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
+ "collision=%s/%s/%s dyn_clr=%.2f localized=%s "
+ "loops=%zu loop_corr=%.3f/%.3f tracks=%zu "
  "track_corr=%.3f/%.3f grip=%.2f slip=%s\n",
- ran, session->current_goal().state ==
+ ran, session->objectives().active_place().c_str(),
+ session->current_goal().state ==
  robot::iface::GoalState::kActive ? "active" : "idle",
  ev.reason_code.c_str(), ev.action_code.c_str(),
  ev.target_speed_mps, ev.target_yaw_rate_radps, truth.body_x_m,
  truth.body_y_m, diag.estimate.x_m, diag.estimate.y_m,
  recorded.empty() ? 999.0 : recorded.back().judge.static_clearance_m,
  diag.safety_reason.c_str(), diag.localization_action.c_str(),
+ recorded.empty() || !recorded.back().judge.static_collision ? "no" : "static",
+ recorded.empty() || !recorded.back().judge.dynamic_collision ? "no" : "dynamic",
+ recorded.empty() || !recorded.back().judge.terrain_collision ? "no" : "terrain",
+ recorded.empty() ? 999.0 : recorded.back().judge.dynamic_clearance_m,
  diag.localized ? "yes" : "no", diag.slam_loops_closed,
  diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
  diag.slam_tracks, diag.track_correction_m,

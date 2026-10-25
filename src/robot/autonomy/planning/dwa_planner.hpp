@@ -40,8 +40,15 @@ struct DwaPlannerConfig {
   double dt_s = 0.1;
   // Extra margin added to the chassis footprint for rollout collision.
   // The footprint itself comes from ChassisLimits at plan() time.
-  double safety_margin_m = 0.0;
-  double response_delay_s = 0.0;
+ double safety_margin_m = platform::kDefaultNavigationClearanceMarginM;
+ // Outside the footprint-plus-margin lethal layer, cost falls linearly to
+ // zero over this distance. This is a preference, not another hard wall.
+ double soft_inflation_radius_m =
+ platform::kDefaultNavigationSoftInflationRadiusM;
+ double response_delay_s = 0.1;
+ double velocity_sample_step_mps = 0.25;
+ double yaw_rate_sample_step_radps = 0.3;
+ double lateral_sample_step_mps = 0.25;
   double lookahead_m = 2.0;
  // Preserve position authority until the final point is actually reached;
  // only then may terminal yaw replace the bearing-to-goal target.

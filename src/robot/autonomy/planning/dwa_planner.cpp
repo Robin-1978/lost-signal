@@ -170,7 +170,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const CommandWindow lateral_window = next_window(
  previous_lateral_, -limits.max_lateral_mps, limits.max_lateral_mps,
  lateral_delta);
- lateral_samples = command_samples(lateral_window, 0.25,
+ lateral_samples = command_samples(
+ lateral_window, std::max(1e-3, config_.lateral_sample_step_mps),
  {previous_lateral_, 0.0, limits.max_lateral_mps,
  -limits.max_lateral_mps});
   }
@@ -183,7 +184,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const auto velocity_window = next_velocity_window(
  est.forward_mps, -v_max, v_max, accel * dt, decel * dt);
  const auto velocity_samples = command_samples(
- velocity_window, 0.25, {est.forward_mps, 0.0, v_max, -v_max});
+ velocity_window, std::max(1e-3, config_.velocity_sample_step_mps),
+ {est.forward_mps, 0.0, v_max, -v_max});
 
  const RouteTarget target =
  route_goal(route, est.x_m, est.y_m, config_.lookahead_m);
@@ -208,20 +210,18 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
 
   const double ego_radius =
       limits.footprint_radius_m + config_.safety_margin_m;
-
- auto dynamic_hit = [&](double x0, double y0, double x1, double y1,
- double t0, double t1) {
- return minimum_predicted_clearance(
- prediction, {x0, y0}, {x1, y1}, t0, t1, ego_radius).clearance_m < 0.0;
-  };
+ // Two-stage local costmap: occupied observations first receive the full
+ // chassis envelope as lethal inflation; clearance outside that boundary
+ // supplies the graded cost used below.
+ const LocalCostmap costmap = make_local_costmap(
+ map, std::max(0.0, ego_radius),
+ std::max(0.0, config_.soft_inflation_radius_m));
 
   std::vector<core::Vec2> reference;
   reference.reserve(route.points.size());
   for (const auto& p : route.points) reference.push_back({p.x_m, p.y_m});
 
-  LocalCandidate best;
-  best.feasible = false;
-  double best_score = -1e18;
+ std::vector<LocalCandidate> proposals;
 
   for (double velocity : velocity_samples) {
  if (target.gear < 0 && velocity > 1e-9) continue;
@@ -229,9 +229,36 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
     const auto angular_window = next_window(est.yaw_rate_radps, -w_max, w_max,
                                             config_.yaw_accel_radps2 * dt);
     const auto angular_samples = command_samples(
-        angular_window, 0.3,
+ angular_window, std::max(1e-3, config_.yaw_rate_sample_step_radps),
         {est.yaw_rate_radps, 0.0, goal_directed_yaw_rate});
     for (double angular : angular_samples) {
+ // Differential commands are reachable in wheel space, not merely in two
+ // independent body-twist intervals. Simultaneous linear and yaw changes
+ // can satisfy both scalar windows while asking one tread to jump beyond
+ // its motor acceleration or speed envelope.
+ if (limits.differential_track_m > 0.0 &&
+ limits.max_lateral_mps <= 0.0 &&
+ limits.max_curvature_inv_m <= 0.0) {
+ const double half_track = 0.5 * limits.differential_track_m;
+ const double measured_left =
+ est.forward_mps - est.yaw_rate_radps * half_track;
+ const double measured_right =
+ est.forward_mps + est.yaw_rate_radps * half_track;
+ const double desired_left = velocity - angular * half_track;
+ const double desired_right = velocity + angular * half_track;
+ const double wheel_accel =
+ accel + config_.yaw_accel_radps2 * half_track;
+ const double wheel_delta = wheel_accel * dt;
+ if (std::abs(desired_left - measured_left) > wheel_delta + 1e-9 ||
+ std::abs(desired_right - measured_right) > wheel_delta + 1e-9) {
+ continue;
+ }
+ if (limits.max_wheel_speed_mps > 0.0 &&
+ (std::abs(desired_left) > limits.max_wheel_speed_mps + 1e-9 ||
+ std::abs(desired_right) > limits.max_wheel_speed_mps + 1e-9)) {
+ continue;
+ }
+ }
  // Ackermann candidates are bounded by steering curvature and cannot turn
  // in place. Differential and holonomic bases leave this envelope at zero.
  if (limits.max_curvature_inv_m > 0.0) {
@@ -243,8 +270,10 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
       double x = est.x_m, y = est.y_m, heading = est.yaw_rad;
       double rollout_v = est.forward_mps, rollout_w = est.yaw_rate_radps;
       std::vector<core::Vec2> samples{{x, y}};
-      double free_time = predict_T;
-      bool collision = false;
+ double dynamic_free_time = predict_T;
+ bool static_collision = false;
+ bool dynamic_overlap = false;
+ double worst_static_cost = costmap.cost_at(x, y);
       for (double time = 0.0; time < predict_T; time += dt) {
         const double step_dt = std::min(dt, predict_T - time);
         const double previous_x = x;
@@ -268,28 +297,93 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
         heading += rollout_w * step_dt;
         const double sample_time = time + step_dt;
         samples.push_back({x, y});
-        if (!map.segment_is_traversable(previous_x, previous_y, x, y) ||
- dynamic_hit(previous_x, previous_y, x, y, time, sample_time) ||
-            (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
-          collision = true;
-          free_time = time;
+ if (!costmap.lethal.segment_is_traversable(
+ previous_x, previous_y, x, y) ||
+ (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
+ static_collision = true;
           break;
         }
+ worst_static_cost = std::max(
+ worst_static_cost, static_cast<double>(costmap.cost_at(x, y)));
+ // Dynamic hypotheses are deliberately a score here, not an early
+ // generation veto. The validator must see every statically executable
+ // proposal so it can compare a moving escape with the independently
+ // predicted risk of braking and holding. Erasing all overlapping
+ // rollouts here is what produced a false one-cycle "no plan" in open
+ // space while an actor approached a stopped robot.
+ if (minimum_predicted_clearance(
+ prediction, {previous_x, previous_y}, {x, y}, time,
+ sample_time, ego_radius).clearance_m < 0.0) {
+ dynamic_overlap = true;
+ dynamic_free_time = std::min(dynamic_free_time, time);
+ }
       }
+ // Classical DWA admissibility: a collision-free finite rollout is not
+ // executable unless its complete braking tail also fits. Continue from the
+ // terminal actuator state, decelerating every commanded degree of freedom
+ // to zero under the same limits. This is a cheap generator-side hard
+ // constraint; the raw-evidence validator still performs its independent
+ // check after candidate generation.
+ double stop_v = rollout_v;
+ double stop_w = rollout_w;
+ double stop_lateral = lateral;
+ double stop_time = predict_T;
+ for (int stop_step = 0; !static_collision && stop_step < 1000 &&
+ (std::abs(stop_v) > 1e-6 || std::abs(stop_w) > 1e-6 ||
+ std::abs(stop_lateral) > 1e-6); ++stop_step) {
+ const double next_v = velocity_step_toward(
+ stop_v, 0.0, decel, decel, dt);
+ const double next_w = velocity_step_toward(
+ stop_w, 0.0, config_.yaw_accel_radps2,
+ config_.yaw_accel_radps2, dt);
+ const double next_lateral = velocity_step_toward(
+ stop_lateral, 0.0, config_.lateral_accel_mps2,
+ config_.lateral_accel_mps2, dt);
+ const double average_v = 0.5 * (stop_v + next_v);
+ const double average_w = 0.5 * (stop_w + next_w);
+ const double average_lateral = 0.5 * (stop_lateral + next_lateral);
+ const double middle_heading = heading + 0.5 * average_w * dt;
+ const double previous_x = x;
+ const double previous_y = y;
+ x += (average_v * std::cos(middle_heading) -
+ average_lateral * std::sin(middle_heading)) * dt;
+ y += (average_v * std::sin(middle_heading) +
+ average_lateral * std::cos(middle_heading)) * dt;
+ heading += average_w * dt;
+ const double next_time = stop_time + dt;
+ samples.push_back({x, y});
+ if (!costmap.lethal.segment_is_traversable(
+ previous_x, previous_y, x, y) ||
+ (gate_ && !gate_(previous_x, previous_y, x, y, heading))) {
+ static_collision = true;
+ break;
+ }
+ worst_static_cost = std::max(
+ worst_static_cost, static_cast<double>(costmap.cost_at(x, y)));
+ if (minimum_predicted_clearance(
+ prediction, {previous_x, previous_y}, {x, y}, stop_time,
+ next_time, ego_radius).clearance_m < 0.0) {
+ dynamic_overlap = true;
+ dynamic_free_time = std::min(dynamic_free_time, stop_time);
+ }
+ stop_v = next_v;
+ stop_w = next_w;
+ stop_lateral = next_lateral;
+ stop_time = next_time;
+ }
       const double goal_score =
           -std::hypot(goal.x - x, goal.y - y);
       const double heading_score =
           std::cos(core::wrap_angle(heading_target - heading));
-      // Clearance is a bounded preference among collision-free rollouts,
-      // normalized by one cell and capped so open space never outweighs
-      // route progress. The hard veto stays with the validator.
+ // Clearance is a bounded preference across the complete rollout and its
+ // braking tail. Looking only at the endpoint lets a long lookahead chord
+ // cut through a corner's soft band and finish in open space with no cost.
+ // The hard veto stays with the inflated costmap and independent validator.
       const double normalized_clearance =
-          std::clamp(map.clearance(x, y) / std::max(1e-9, map.resolution_m),
-                     0.0, 1.0);
-      constexpr double kClearanceRangeS = 0.15;
+ 1.0 - worst_static_cost;
       const double clearance_score =
-          collision ? free_time
-                    : predict_T + 1.0 + kClearanceRangeS * normalized_clearance;
+ dynamic_overlap ? dynamic_free_time
+ : predict_T + 1.0 + normalized_clearance;
       double distance_sum_m = 0.0;
       for (const auto& s : samples)
         distance_sum_m += project_to_path(s, reference).distance_m;
@@ -315,22 +409,28 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
           config_.weights.w_speed * velocity -
           config_.weights.w_oscillation * oscillation_penalty -
           angular_effort_penalty;
-      if (!collision && score > best_score) {
-        best_score = score;
-        best.forward_mps = velocity;
-        best.yaw_rate_radps = angular;
-        best.lateral_mps = lateral;
-        best.cost = -score;
-        best.feasible = true;
+ if (!static_collision) {
+ LocalCandidate candidate;
+ candidate.forward_mps = velocity;
+ candidate.yaw_rate_radps = angular;
+ candidate.lateral_mps = lateral;
+ candidate.cost = -score;
+ candidate.feasible = true;
+ proposals.push_back(candidate);
       }
       }  // lateral
     }
   }
-  if (!best.feasible) return out;
-  previous_w_ = best.yaw_rate_radps;
- previous_lateral_ = best.lateral_mps;
+ if (proposals.empty()) return out;
+ std::stable_sort(proposals.begin(), proposals.end(),
+ [](const LocalCandidate& a, const LocalCandidate& b) {
+ return a.cost < b.cost;
+ });
+ previous_w_ = proposals.front().yaw_rate_radps;
+ previous_lateral_ = proposals.front().lateral_mps;
   out.has_plan = true;
-  out.best = best;
+ out.best = proposals.front();
+ out.candidates = std::move(proposals);
   return out;
 }
 

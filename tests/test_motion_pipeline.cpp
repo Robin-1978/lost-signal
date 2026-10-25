@@ -1,0 +1,165 @@
+#include <cassert>
+#include <cstdio>
+
+#include "robot/autonomy/control/controller.hpp"
+#include "robot/autonomy/decision/motion_pipeline.hpp"
+
+namespace {
+
+using namespace lost_signal::robot;
+using namespace lost_signal::robot::autonomy;
+
+class ClearBehavior final : public IBehaviorPolicy {
+ public:
+ void reset() override {}
+ BehaviorDecision decide(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const Route&,
+ const platform::ChassisLimits& limits) override {
+ return {false, limits.max_forward_mps, "clear"};
+ }
+};
+
+class OneShotConflictBehavior final : public IBehaviorPolicy {
+ public:
+ void reset() override { calls_ = 0; }
+ BehaviorDecision decide(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const Route&,
+ const platform::ChassisLimits& limits) override {
+ ++calls_;
+ return {false, limits.max_forward_mps,
+ calls_ == 1 ? "route-conflict-no-safe-hold" : "clear"};
+ }
+
+ private:
+ int calls_ = 0;
+};
+
+class RankedPlanner final : public ILocalPlanner {
+ public:
+ void reset() override {}
+ LocalPlan plan(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const LocalMap&, const Route&,
+ const platform::ChassisLimits&) override {
+ LocalPlan result;
+ result.has_plan = true;
+ LocalCandidate fast;
+ fast.feasible = true;
+ fast.forward_mps = 1.0;
+ LocalCandidate safe = fast;
+ safe.forward_mps = 0.2;
+ result.best = fast;
+ result.candidates = {fast, safe};
+ return result;
+ }
+};
+
+class EmptyPlanner final : public ILocalPlanner {
+ public:
+ void reset() override {}
+ LocalPlan plan(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const LocalMap&, const Route&,
+ const platform::ChassisLimits&) override {
+ return {};
+ }
+};
+
+class SpeedValidator final : public IValidator {
+ public:
+ ValidationResult validate(const LocalCandidate& candidate,
+ const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const iface::ObservationFrame&) override {
+ ValidationResult result;
+ if (!candidate.feasible) {
+ result.reason = "infeasible";
+ return result;
+ }
+ if (candidate.forward_mps > 0.5) {
+ result.verdict = TrajectoryVerdict::kUnsafeEmergencyStop;
+ result.reason = "braking tail rejected";
+ return result;
+ }
+ result.accepted = true;
+ result.verdict = TrajectoryVerdict::kAccepted;
+ result.min_dynamic_clearance_m = 1.0;
+ result.reason = "clear";
+ return result;
+ }
+};
+
+} // namespace
+
+int main() {
+ using namespace lost_signal::robot;
+ using namespace lost_signal::robot::autonomy;
+
+ EstimatedState estimate;
+ estimate.valid = true;
+ estimate.stamp_ns = 1'000'000'000;
+ PerceptionResult perception;
+ perception.scan_ok = true;
+ perception.stamp_ns = estimate.stamp_ns;
+ LocalMap map;
+ map.valid = true;
+ map.provenance = LocalMapProvenance::kSensorRays;
+ Route route;
+ route.valid = true;
+ route.points = {{0.0, 0.0, 0.0, 1}, {2.0, 0.0, 0.0, 1}};
+ platform::ChassisLimits limits{.max_forward_mps = 2.0,
+ .max_yaw_rate_radps = 1.5,
+ .footprint_radius_m = 0.4};
+ iface::ObservationFrame observation;
+ observation.scan_valid = true;
+ observation.ranges_m.assign(16, 10.0f);
+ SurveyContext survey;
+ ClearBehavior behavior;
+ SpeedValidator validator;
+ DirectController controller;
+
+ // A rejected highest-scoring proposal must fall through to the next
+ // planner-ranked candidate without producing a stop or recovery pulse.
+ MotionDecisionPipeline pipeline;
+ RankedPlanner ranked;
+ const MotionDecisionResult selected = pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns, behavior, ranked, validator, controller);
+ assert(!selected.command.is_safe_stop());
+ assert(selected.command.forward_mps == 0.2);
+ assert(selected.reason == "clear");
+
+ // A true empty proposal set on a valid route invokes bounded recovery.
+ // This is distinct from the no-goal case, which remains a hold.
+ pipeline.reset();
+ EmptyPlanner empty;
+ const MotionDecisionResult recovered = pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns, behavior, empty, validator, controller);
+ assert(!recovered.command.is_safe_stop());
+ assert(recovered.reason.find("recovery:") == 0);
+
+ Route no_route;
+ pipeline.reset();
+ const MotionDecisionResult held = pipeline.run(
+ estimate, perception, map, no_route, limits, limits, observation, survey,
+ estimate.stamp_ns, behavior, empty, validator, controller);
+ assert(held.command.is_safe_stop());
+
+ // Escape release is stateful but live: after the one-cycle threat clears,
+ // consecutive safe-hold decisions release recovery. Continuing recovery
+ // must not reset that counter.
+ MotionDecisionPipeline escape_pipeline;
+ OneShotConflictBehavior one_shot;
+ for (int cycle = 0; cycle < 3; ++cycle) {
+ const MotionDecisionResult escaping = escape_pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns + cycle, one_shot, ranked, validator, controller);
+ assert(escaping.reason.find("recovery:") == 0);
+ }
+ const MotionDecisionResult released = escape_pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns + 3, one_shot, ranked, validator, controller);
+ assert(released.reason == "clear");
+ assert(released.command.forward_mps == 0.2);
+
+ std::printf("motion pipeline ok\n");
+ return 0;
+}

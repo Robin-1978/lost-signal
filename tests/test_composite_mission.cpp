@@ -80,7 +80,7 @@ int main() {
       session.step_once();
     }
     const auto score = sim::eval::score_episode(session.episode());
-    std::printf("plate composite collisions=%d done=%d\n",
+ std::printf("plate composite collisions=%zu done=%d\n",
                 score.collision_steps, session.objectives_done());
     assert(score.collision_steps == 0);
     assert(!session.objectives_done());  // wall spans the corridor: hold
@@ -109,7 +109,7 @@ int main() {
       session.step_once();
     }
     const auto score = sim::eval::score_episode(session.episode());
-    std::printf("grade loop done=%d collisions=%d miss=%.2f\n",
+ std::printf("grade loop done=%d collisions=%zu miss=%.2f\n",
                 session.objectives_done(), score.collision_steps,
                 session.objectives().results().empty()
                     ? -1.0

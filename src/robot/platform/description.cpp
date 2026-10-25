@@ -1,5 +1,7 @@
 #include "robot/platform/description.hpp"
 
+#include <cmath>
+
 namespace lost_signal::robot::platform {
 
 bool valid_robot_description(const RobotDescription& desc) {
@@ -11,6 +13,10 @@ bool valid_robot_description(const RobotDescription& desc) {
   if (desc.limits.max_forward_mps <= 0.0) return false;
   if (desc.limits.max_yaw_rate_radps <= 0.0) return false;
   if (desc.limits.footprint_radius_m <= 0.0) return false;
+ if (!std::isfinite(desc.navigation.clearance_margin_m) ||
+ desc.navigation.clearance_margin_m < 0.0) return false;
+ if (!std::isfinite(desc.navigation.soft_inflation_radius_m) ||
+ desc.navigation.soft_inflation_radius_m < 0.0) return false;
   if (desc.plant.track_width_m <= 0.0) return false;
   if (desc.plant.wheel_radius_m <= 0.0) return false;
   if (desc.plant.com_height_m <= 0.0) return false;
@@ -44,6 +50,8 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
   mix(std::to_string(desc.plant.wheel_radius_m));
   mix(std::to_string(desc.plant.com_height_m));
   mix(std::to_string(desc.plant.total_mass_kg));
+ mix(std::to_string(desc.navigation.clearance_margin_m));
+ mix(std::to_string(desc.navigation.soft_inflation_radius_m));
   return h;
 }
 

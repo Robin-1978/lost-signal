@@ -6,6 +6,8 @@
 #include <queue>
 #include <vector>
 
+#include "robot/autonomy/mapping/mapper.hpp"
+
 namespace lost_signal::robot::autonomy {
 
 AStarPlanner::AStarPlanner(Config config) : config_(config) {}
@@ -19,20 +21,59 @@ AStarPlanner::AStarPlanner(double unknown_cost_per_m)
 
 Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
                          const iface::MapSnapshot& map) {
-  if (!start.valid) return Route{};
+ if (!start.valid || !std::isfinite(start.x_m) ||
+ !std::isfinite(start.y_m) || !std::isfinite(goal.x_m) ||
+ !std::isfinite(goal.y_m) || !std::isfinite(goal.yaw_rad)) {
+ return Route{};
+ }
+ if (!(config_.unknown_cost_per_m >= 0.0) ||
+ !(config_.grade_cost_per_m >= 0.0) || !(config_.max_grade >= 0.0) ||
+ !(config_.clearance_cost_per_m >= 0.0) ||
+ !(config_.footprint_radius_m > 0.0) ||
+ !(config_.hard_clearance_margin_m >= 0.0) ||
+ !(config_.soft_inflation_radius_m >= 0.0) ||
+ !(config_.roughness_cost_per_m >= 0.0) ||
+ !(config_.slip_cost_per_m >= 0.0) ||
+ !std::isfinite(config_.unknown_cost_per_m) ||
+ !std::isfinite(config_.grade_cost_per_m) ||
+ !std::isfinite(config_.max_grade) ||
+ !std::isfinite(config_.clearance_cost_per_m) ||
+ !std::isfinite(config_.footprint_radius_m) ||
+ !std::isfinite(config_.hard_clearance_margin_m) ||
+ !std::isfinite(config_.soft_inflation_radius_m) ||
+ !std::isfinite(config_.roughness_cost_per_m) ||
+ !std::isfinite(config_.slip_cost_per_m)) {
+ return Route{};
+ }
   // Degraded mode: no raster to search.
   if (!map.has_raster()) return fallback_.plan(start, goal, map);
+
+ if (map.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+ map.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+ return Route{};
+ }
 
   const int w = static_cast<int>(map.width);
   const int h = static_cast<int>(map.height);
   const double res = map.resolution_m;
+ const double hard_radius =
+ std::max(0.0, config_.footprint_radius_m) +
+ std::max(0.0, config_.hard_clearance_margin_m);
+ const double soft_radius =
+ std::max(0.0, config_.soft_inflation_radius_m);
+ // Unknown space is intentionally traversable at a configured penalty. It
+ // never seeds footprint inflation; newly observed occupied cells will
+ // trigger a new map revision and route refresh.
+ const LocalCostmap planning_map = make_global_costmap(
+ map, hard_radius, soft_radius, true);
+ if (!planning_map.valid()) return Route{};
   auto to_grid = [&](double wx, double wy, int& gx, int& gy) {
     gx = static_cast<int>(std::floor((wx - map.origin_x_m) / res));
     gy = static_cast<int>(std::floor((wy - map.origin_y_m) / res));
   };
   auto cell_value = [&](int gx, int gy) -> int {
     if (gx < 0 || gy < 0 || gx >= w || gy >= h) return 100;  // outside: wall
-    return map.occupancy[gy * w + gx];
+ return planning_map.lethal.occupancy[gy * w + gx];
   };
   auto cell_elevation = [&](int x, int y) -> float {
     if (!map.has_elevation()) return std::numeric_limits<float>::quiet_NaN();
@@ -94,19 +135,13 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
       }
       const double step = ((dir % 2 == 0) ? 1.0 : 1.4142135623730951) * res;
       double cost = step;
-      if (v < 0) cost += config_.unknown_cost_per_m * step;  // unknown
-      // Clearance preference: count occupied 8-neighbors (walls, not the
-      // target cell itself) so routes drift to corridor centers. This is a
-      // preference only; impassability stays binary above.
-      int occupied_neighbors = 0;
-      for (int ay = -1; ay <= 1; ++ay) {
-        for (int ax = -1; ax <= 1; ++ax) {
-          if (ax == 0 && ay == 0) continue;
-          if (cell_value(nx + ax, ny + ay) >= 50) ++occupied_neighbors;
-        }
+      if (map.occupancy[ny * w + nx] < 0) {
+        cost += config_.unknown_cost_per_m * step;
       }
-      cost += config_.clearance_cost_per_m * step * occupied_neighbors / 8.0;
-      // Grade: penalize |dh|/step; reject cliffs beyond max_grade.
+      const double wx = map.origin_x_m + (nx + 0.5) * res;
+      const double wy = map.origin_y_m + (ny + 0.5) * res;
+      cost += config_.clearance_cost_per_m * step *
+              planning_map.cost_at(wx, wy);
       // Grade: penalize |dh|/step, reject cliffs beyond max_grade. Unknown
       // elevation pays no grade cost (surveyed prior may be sparse).
       const float h0 = cell_elevation(cx, cy);
@@ -123,8 +158,6 @@ Route AStarPlanner::plan(const EstimatedState& start, const RoutePoint& goal,
       // Traction memory prices slipped-on cells the same way (measured
       // slip, never the author's friction): routes prefer gripped ground.
       if (traversal_ != nullptr && step > 1e-9) {
-        const double wx = map.origin_x_m + (nx + 0.5) * res;
-        const double wy = map.origin_y_m + (ny + 0.5) * res;
         cost += config_.roughness_cost_per_m * traversal_->roughness_at(wx,
                                                                         wy) *
                 step;

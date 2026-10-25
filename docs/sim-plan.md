@@ -406,12 +406,31 @@ frames. Behavior evaluates a timed suffix of the active route and derives its
 hold/speed cap from braking distance; it refuses to hold when a forecast target
 would collide with a stationary robot, leaving escape selection to the local
 planner and validator. Robot JSON selects `dwa` or `teb`; DWA remains the
-default because a 100-call deterministic comparison measured about 0.11 s for
-DWA and 0.87 s for TEB on the audit machine (TEB about 8 times slower).
+default because a 100-call deterministic comparison measured about 0.045 s
+for DWA and 0.059 s for TEB on the audit machine, and the mission comparison
+shows fewer conservative stop cycles with DWA.
 Both planners enforce the declared differential/holonomic/Ackermann
 envelope and receive terrain feasibility through the same planning interface.
 No predictor input comes from actor identity, MuJoCo state, contact truth, or
 scenario future waypoints.
+
+Costmap and safety parity (landed): global grid A*, Ackermann Hybrid-A*, DWA,
+and TEB now share the same mapping-owned two-stage geometry. Occupancy is
+expanded by the complete declared footprint plus the configured hard margin;
+a second band adds a linear clearance cost. Hybrid-A* sweeps every bicycle
+primitive through this map and rechecks its final route after smoothing. The
+rolling local costmap remains the planner's primary reference, while the
+validator and final collision monitor independently recheck raw ROBOT sensor
+evidence and the full braking tail. A low-speed escape is allowed only when
+clearance never decreases and its stop point strictly improves it. These
+layers consume scans, estimates, map revisions, and robot configuration only;
+truth-side collision and terrain outcomes remain offline SIM records.
+
+The hard margin and soft band are declared once in each robot JSON under
+`navigation`, then distributed by `RobotApplication`. Map changes trigger a
+fresh A*/Hybrid-A* search. D* Lite/LPA* is not present in `main` or this
+branch; it is a possible large-map compute optimization and is not used for
+dynamic-actor avoidance.
 
 The same `signal_town` `energy_hub` mission with both authored actors provides
 an end-to-end comparison. DWA completed in 1160 steps / 23.2 s with 0
@@ -421,6 +440,11 @@ conservative rolling-map band produces more stop cycles, while DWA remains the
 faster default. From standstill, TEB sizes the initial band from the next
 acceleration-reachable command instead of requiring a top-speed multi-metre
 corridor before it can move.
+The five-objective `signal_town` acceptance run completes all 5 objectives in
+6751 steps with zero collision steps, 107.69 m truth path length, and 0.430 m
+maximum offline pose error. Clearance scoring reports planar obstacle
+clearance separately from terrain/belly clearance; the nominal chassis ride
+gap no longer makes every obstacle metric appear to be about 5 cm.
 Next slices:
 ROI-first search (local window, whole-map fallback) + matcher hot-loop
 restructure — only if real-time deployment demands it; sim-time needs

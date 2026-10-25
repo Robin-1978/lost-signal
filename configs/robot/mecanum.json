@@ -18,6 +18,10 @@
     "max_steer_rad": 0.55,
  "max_lateral_mps": 1.0
   },
+ "navigation": {
+ "clearance_margin_m": 0.1,
+ "soft_inflation_radius_m": 0.2
+ },
   "links": [
     {
       "link": "base_link",

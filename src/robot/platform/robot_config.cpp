@@ -380,6 +380,32 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
  out.limits.max_lateral_mps = out.limits.max_forward_mps;
  }
   }
+ const Json* navigation = obj.find("navigation");
+ if (navigation != nullptr) {
+ if (!navigation->is_object()) {
+ err = "'navigation' must be an object";
+ return false;
+ }
+ double value = 0.0;
+ bool present = false;
+ struct NavigationSlot {
+ const char* key;
+ double* slot;
+ };
+ NavigationSlot slots[] = {
+ {"clearance_margin_m", &out.navigation.clearance_margin_m},
+ {"soft_inflation_radius_m", &out.navigation.soft_inflation_radius_m}};
+ for (const auto& slot : slots) {
+ if (!take_num(*navigation, slot.key, value, present, err)) return false;
+ if (!present) continue;
+ if (!std::isfinite(value) || value < 0.0) {
+ err = std::string("navigation.'") + slot.key +
+ "' must be finite non-negative";
+ return false;
+ }
+ *slot.slot = value;
+ }
+ }
   const Json* sens = obj.find("sensors");
   if (sens == nullptr) {
     out.sensors = default_sensor_mounts();  // bare file keeps the mast
@@ -512,6 +538,7 @@ RobotDescription description_from_config(const RobotConfig& config) {
   desc.links = config.links;
   desc.sensors = config.sensors;
   desc.limits = config.limits;
+ desc.navigation = config.navigation;
  desc.chassis_kind = config.profile.chassis_kind;
  desc.local_planner_kind = config.local_planner_kind;
   // Declared plant loadout for autonomy envelopes (description, never

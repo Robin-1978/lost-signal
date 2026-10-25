@@ -67,6 +67,15 @@ int main() {
 
   AStarPlanner planner;
 
+ // Invalid policy cannot silently collapse footprint inflation.
+ {
+ AStarPlanner::Config invalid;
+ invalid.footprint_radius_m = 0.0;
+ AStarPlanner invalid_planner(invalid);
+ auto map = make_map(20, 20, 0.5, -5.0, -5.0);
+ assert(!invalid_planner.plan(at(0.0, 0.0), {2.0, 0.0, 0.0}, map).valid);
+ }
+
   // No raster: degraded straight-line route.
   {
     Route r = planner.plan(at(0.0, 0.0), {2.0, 0.0, 0.0}, iface::MapSnapshot{});
@@ -116,6 +125,17 @@ int main() {
     Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
     assert(!r.valid);
   }
+
+ // A center point fits through this raster opening, but the declared
+ // footprint plus hard reserve does not. Global planning must reject the
+ // route before local control reaches the bottleneck.
+ {
+ auto map = make_map(80, 80, 0.25, -10.0, -10.0);
+ fill_box(map, 4.0, -10.0, 5.0, -0.25);
+ fill_box(map, 4.0, 0.25, 5.0, 10.0);
+ Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
+ assert(!r.valid);
+ }
 
   // Grade: a hill between start and goal is skirted, not climbed.
   {

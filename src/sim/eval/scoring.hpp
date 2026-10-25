@@ -35,8 +35,13 @@ struct EpisodeScore {
   double max_pos_err_m = 0.0;
   double mean_yaw_err_rad = 0.0;
   double max_yaw_err_rad = 0.0;
+ // Planar robot-envelope clearance to static or dynamic obstacles. Terrain
+ // clearance is reported separately because its nominal belly gap is a
+ // different physical quantity and otherwise dominates every sample.
  double min_clearance_m = 999.0;
  double mean_clearance_m = 999.0;
+ double min_terrain_clearance_m = 999.0;
+ double mean_terrain_clearance_m = 999.0;
  double energy_proxy = 0.0; // offline duty x measured wheel speed integral
 };
 

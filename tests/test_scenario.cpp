@@ -27,6 +27,23 @@ double min_over(const std::vector<double>& v) {
 int main() {
   using sim::scenario::DeterministicScheduler;
 
+ // Planar obstacle clearance and terrain/belly clearance are different
+ // physical metrics. A nominal 5 cm belly gap must not make every obstacle
+ // clearance score read as 5 cm.
+ {
+ sim::eval::EpisodeRecorder episode;
+ sim::eval::EvalStep step;
+ step.judge.static_clearance_m = 0.4;
+ step.judge.dynamic_clearance_m = 0.8;
+ step.judge.terrain_clearance_m = 0.05;
+ episode.record(step);
+ const auto score = sim::eval::score_episode(episode);
+ assert(std::abs(score.min_clearance_m - 0.4) < 1e-12);
+ assert(std::abs(score.mean_clearance_m - 0.4) < 1e-12);
+ assert(std::abs(score.min_terrain_clearance_m - 0.05) < 1e-12);
+ assert(std::abs(score.mean_terrain_clearance_m - 0.05) < 1e-12);
+ }
+
   // Scheduler: sim-time deadlines, never wall clock.
   {
     DeterministicScheduler sched;

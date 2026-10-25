@@ -28,6 +28,19 @@ MapSnapshot open_map(int width, int height, double resolution,
  return map;
 }
 
+void fill_box(MapSnapshot& map, double x0, double y0,
+ double x1, double y1) {
+ for (std::uint32_t y = 0; y < map.height; ++y) {
+ for (std::uint32_t x = 0; x < map.width; ++x) {
+ const double wx = map.origin_x_m + (x + 0.5) * map.resolution_m;
+ const double wy = map.origin_y_m + (y + 0.5) * map.resolution_m;
+ if (wx >= x0 && wx < x1 && wy >= y0 && wy < y1) {
+ map.occupancy[static_cast<std::size_t>(y) * map.width + x] = 100;
+ }
+ }
+ }
+}
+
 EstimatedState pose(double x, double y, double yaw) {
  EstimatedState out;
  out.valid = true;
@@ -87,6 +100,30 @@ int main() {
  smoothed.points = {{0.0, 0.0, 0.0, 1}, {1.0, 0.2, 0.1, 1},
  {2.0, 0.5, 0.2, 1}};
  assert(smooth_ackermann_route(smoothed, {0.56, 0.55, 0.55, 2.0}));
+
+ // Hybrid A* searches the complete footprint-plus-reserve costmap. The
+ // center point fits through this opening, but the configured chassis does
+ // not, so no motion primitive or final connector may pass it.
+ {
+ MapSnapshot narrow = open_map(80, 80, 0.25, -10.0, -10.0);
+ fill_box(narrow, 2.0, -10.0, 3.0, -0.25);
+ fill_box(narrow, 2.0, 0.25, 3.0, 10.0);
+ const Route blocked = planner.plan(
+ pose(0.0, 0.0, 0.0), {5.0, 0.0, 0.0}, narrow);
+ assert(!blocked.valid);
+ }
+
+ // A wider opening remains usable and every returned segment stays outside
+ // the same inflated map, including the exact-goal connector after heading
+ // smoothing.
+ {
+ MapSnapshot wide = open_map(80, 80, 0.25, -10.0, -10.0);
+ fill_box(wide, 2.0, -10.0, 3.0, -1.0);
+ fill_box(wide, 2.0, 1.0, 3.0, 10.0);
+ const Route through = planner.plan(
+ pose(0.0, 0.0, 0.0), {5.0, 0.0, 0.0}, wide);
+ assert(through.valid);
+ }
 
  // Invalid kinematic configuration fails closed on a raster instead of
  // returning a generic A* route that the chassis cannot realize.

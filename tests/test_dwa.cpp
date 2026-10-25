@@ -55,6 +55,19 @@ int main() {
     assert(m.is_blocked(4.5, 0.0));
     assert(!m.segment_is_traversable(0.0, 0.0, 8.0, 0.0));
     assert(m.clearance(0.0, 0.0) > 3.0);
+
+ // Lethal inflation uses distance to the occupied cell square, so a circular
+ // footprint cannot clip a raster corner even when radius < one cell.
+ LocalMap fine = make_map(20, 20, 0.1, -1.0, -1.0, 0);
+ fill_box(fine, 0.0, 0.0, 0.1, 0.1);
+ const LocalMap inflated = fine.inflated(0.06);
+ assert(inflated.is_blocked(-0.05, 0.05));
+ assert(inflated.is_free(-0.15, 0.05));
+ const LocalCostmap costmap = make_local_costmap(fine, 0.06, 0.20);
+ assert(costmap.cost_at(-0.05, 0.05) == 1.0f);
+ assert(costmap.cost_at(-0.15, 0.05) >
+ costmap.cost_at(-0.35, 0.05));
+ assert(costmap.cost_at(-0.35, 0.05) == 0.0f);
   }
 
   // DWA on an open map drives toward the route goal, deterministically.
@@ -169,7 +182,87 @@ int main() {
  assert(std::abs(p.best.yaw_rate_radps) < 1e-9);
  }
 
- // DWA with a track sitting on the ego pose: every rollout collides.
+ // Differential reachability is enforced in tread space. A simultaneous
+ // body-v/body-w corner that would exceed either tread's one-cycle motor
+ // delta is absent from every generated proposal.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.forward_mps = 0.8;
+ est.yaw_rate_radps = 0.4;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ StraightLinePlanner global;
+ Route route = global.plan(est, {4.0, 1.0, 0.0}, iface::MapSnapshot{});
+ platform::ChassisLimits diff = limits;
+ diff.differential_track_m = 0.5;
+ diff.max_wheel_speed_mps = 2.5;
+ DwaPlanner planner;
+ const LocalPlan plan = planner.plan(est, perc, m, route, diff);
+ assert(plan.has_plan && !plan.candidates.empty());
+ const double half_track = 0.25;
+ const double measured_left =
+ est.forward_mps - est.yaw_rate_radps * half_track;
+ const double measured_right =
+ est.forward_mps + est.yaw_rate_radps * half_track;
+ const double max_tread_delta = (2.0 + 8.0 * half_track) * 0.1;
+ for (const auto& candidate : plan.candidates) {
+ const double left = candidate.forward_mps -
+ candidate.yaw_rate_radps * half_track;
+ const double right = candidate.forward_mps +
+ candidate.yaw_rate_radps * half_track;
+ assert(std::abs(left - measured_left) <= max_tread_delta + 1e-9);
+ assert(std::abs(right - measured_right) <= max_tread_delta + 1e-9);
+ }
+ }
+
+ // A rollout that is clear during the nominal horizon but whose braking
+ // tail reaches a wall is inadmissible at generation time.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ fill_box(m, 1.5, -1.0, 1.7, 1.0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.forward_mps = 2.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ StraightLinePlanner global;
+ Route route = global.plan(est, {4.0, 0.0, 0.0}, iface::MapSnapshot{});
+ DwaPlannerConfig config;
+ config.predict_time_s = 0.5;
+ DwaPlanner planner(config);
+ const LocalPlan plan = planner.plan(est, perc, m, route, limits);
+ assert(!plan.has_plan);
+ }
+
+ // Static generation uses footprint-plus-margin inflation. The center line
+ // is free, but a wall inside the 0.5 m body envelope rejects commands whose
+ // rollout and braking tail would enter it before the validator intervenes.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ fill_box(m, 0.65, -5.0, 0.75, 5.0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ StraightLinePlanner global;
+ Route route = global.plan(est, {4.0, 0.0, 0.0}, iface::MapSnapshot{});
+ DwaPlanner planner;
+ platform::ChassisLimits wall_limits = limits;
+ wall_limits.max_yaw_rate_radps = 0.001;
+ const LocalPlan plan = planner.plan(est, perc, m, route, wall_limits);
+ for (const auto& candidate : plan.candidates) {
+ assert(candidate.forward_mps <= 0.05 + 1e-9);
+ }
+ }
+
+    // Preserve statically executable proposals even when every rollout
+    // overlaps a dynamic forecast. The validator needs the full set to
+    // compare motion with the risk of stopping in the actor's path.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
     EstimatedState est;
@@ -188,7 +281,8 @@ int main() {
     Route route = global.plan(est, {8.0, 1.0, 0.0}, iface::MapSnapshot{});
     DwaPlanner planner;
     LocalPlan p = planner.plan(est, perc, m, route, limits);
-    assert(!p.has_plan);  // no collision-free rollout: hold upstream
+    assert(p.has_plan);
+    assert(!p.candidates.empty());
   }
 
   // Predictor on new types: CV track extrapolates along velocity.

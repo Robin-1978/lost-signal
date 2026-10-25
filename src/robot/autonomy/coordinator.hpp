@@ -8,6 +8,7 @@
 #include "robot/autonomy/control/grip_adapter.hpp"
 #include "robot/autonomy/control/stop_latch.hpp"
 #include "robot/autonomy/decision/goal_arrival.hpp"
+#include "robot/autonomy/decision/autonomy_pipeline.hpp"
 #include "robot/autonomy/diagnostics/decision_evidence.hpp"
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/safety/safety.hpp"
@@ -54,7 +55,8 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  GripAdapterConfig grip_config = {},
  double wheel_base_m = 0.56,
  GoalArrivalConfig arrival_config = {},
- std::string local_planner_kind = "dwa");
+ std::string local_planner_kind = "dwa",
+ platform::NavigationSafetyPolicy navigation_policy = {});
 
   const char* name() const override { return "autonomy"; }
   core::Status configure() override;
@@ -182,6 +184,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // the action name + replan flag out. No matcher/supervisor/tracker
   // state lives here.
   LocalizationSystem localization_;
+ DecisionCyclePipeline decision_pipeline_;
   std::unique_ptr<IEstimator> estimator_;
   std::unique_ptr<IPerception> perception_module_;
   std::unique_ptr<IMapper> mapper_;

@@ -26,7 +26,20 @@ struct MotionDecisionResult {
 
 class MotionDecisionPipeline {
  public:
- static MotionDecisionResult run(
+ struct Config {
+ double recovery_speed_mps = 0.25;
+ double recovery_yaw_rate_radps = 0.6;
+ double recovery_projection_horizon_s = 1.0;
+ // Dynamic escape is released only after a stationary rollout retains this
+ // extra predicted separation for several consecutive decisions.
+ double escape_release_clearance_m = 0.20;
+ std::size_t escape_release_cycles = 3;
+ };
+
+ MotionDecisionPipeline() = default;
+ explicit MotionDecisionPipeline(Config config) : config_(config) {}
+ void reset();
+ MotionDecisionResult run(
  const EstimatedState& est, const PerceptionResult& perception,
  const LocalMap& local_map, const Route& route,
  const platform::ChassisLimits& limits,
@@ -36,6 +49,12 @@ class MotionDecisionPipeline {
  IBehaviorPolicy& behavior,
  ILocalPlanner& local_planner, IValidator& validator,
  IController& controller, bool forward_blocked = false);
+
+ private:
+ Config config_;
+ bool escape_active_ = false;
+ LocalCandidate escape_command_{};
+ std::size_t escape_release_count_ = 0;
 };
 
 } // namespace lost_signal::robot::autonomy

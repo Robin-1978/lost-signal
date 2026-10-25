@@ -119,6 +119,13 @@ last word. Unknown planner names fail configuration.
   an immutable revision from a provider (`StaticMapProvider` rasterizes
   authored geometry; SLAM/file/remote providers implement the same seam),
  so replans track content revisions, never live sensor frames.
+ Both grid A* and Hybrid-A* consume one mapping-owned global costmap:
+ known occupied cells are expanded by the declared chassis footprint plus
+ `navigation.clearance_margin_m`, then
+ `navigation.soft_inflation_radius_m` adds a linearly decaying route cost.
+ Unknown cells remain traversable at their configured penalty and never seed
+ inflation. The raster boundary is treated as an exact wall rather than an
+ extra occupied cell.
  For an Ackermann envelope, `AckermannPlanner` replaces grid A* with a
  bounded Hybrid-A* search over heading bins and forward/reverse bicycle
  primitives. Every primitive is swept through the ROBOT occupancy raster;
@@ -130,6 +137,13 @@ last word. Unknown planner names fail configuration.
  over the remaining distance at the declared maximum curvature. An accepted
  path receives an occupancy-checked connector to the exact goal pose before
  smoothing, so a tolerance hit cannot end beside the requested point.
+ Every Hybrid-A* bicycle primitive and exact-goal connector is checked against
+ the expanded map, and the returned segments are rechecked after heading
+ smoothing. A point center fitting through a gap is insufficient when the
+ complete chassis envelope does not fit. Map revisions and explicit recovery
+ events run a fresh A*/Hybrid-A* search. The stack does not implement D* Lite
+ or LPA*: dynamic actors belong to the rolling local map and prediction path;
+ incremental global search would change recomputation cost, not safety.
   The static provider publishes surveyed elevation alongside occupancy
   (ramps, decks; NaN where unsurveyed). A* adds a grade cost per meter of
   elevation change and rejects steps steeper than `max_grade` outright, so
@@ -151,6 +165,13 @@ last word. Unknown planner names fail configuration.
  terminal position tolerance. Ackermann follows the route heading and cannot
  rotate in place because its curvature bound is applied after heading
  selection.
+ DWA and TEB build the same two-stage `LocalCostmap` from the ROBOT-owned
+ rolling map. The lethal layer expands measured occupancy by footprint plus
+ the configured hard margin; the outer linear band is a preference that keeps
+ otherwise equivalent trajectories away from walls. Both planners evaluate
+ the complete braking tail. The policy comes once from the robot `navigation`
+ block and is fanned out to global planning, both local planners, behavior,
+ validation, and the collision monitor.
 - Validation is independent: it re-checks the exact candidate against raw
  scan evidence and the shared dynamic hypotheses. Relative ego/object motion
  is minimized continuously on every prediction interval, so a fast crossing
@@ -158,6 +179,12 @@ last word. Unknown planner names fail configuration.
   needs footprint plus braking distance (`v^2/2a`) of clearance. Admission
   never waives clearance, and a rejection is always a safe stop, never a
   re-planned command.
+ The three geometric layers have separate jobs: the rolling local costmap is
+ the local planner's main world model; the validator independently checks the
+ selected trajectory and stopping tail against raw ROBOT evidence; the final
+ `SafetyMonitor` consumes the current raw scan directly and may only stop or
+ admit a bounded minimum-risk escape. Global localization covariance never
+ enlarges or moves these body-relative sensor checks.
 - Control emits the validated candidate verbatim with a 200 ms watchdog.
   Zero motion is always canonical `kStop`, never zero-valued `kYawRate`.
   Chassis clamping lives one layer out (`DifferentialRobot` + `IChassis`).

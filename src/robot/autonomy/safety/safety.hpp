@@ -3,14 +3,17 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
 #include "robot/autonomy/perception/perception.hpp"
+#include "robot/core/geometry.hpp"
 #include "robot/core/time.hpp"
 #include "robot/core/transform.hpp"
 #include "robot/iface/channel.hpp"
 #include "robot/iface/command.hpp"
 #include "robot/iface/observation.hpp"
+#include "robot/platform/description.hpp"
 
 namespace lost_signal::robot::autonomy {
 
@@ -53,19 +56,24 @@ class ISafetyMonitor {
 
 // v1 rules (all independent of planner/validator state):
 //   - stale observation (> timeout)                 -> STOPPED, latched
-//   - any return inside the contact radius          -> STOPPED, latched
-//   - forward-sector clearance below braking need   -> DEGRADED, transient
+//   - any raw return inside the configured footprint -> STOPPED, latched
+//   - forward-sector clearance below braking need    -> DEGRADED, transient
+//   - a command whose braking sweep hits the raw scan -> DEGRADED, transient
 //   - channel drops observed since last check       -> DEGRADED, transient
 //   - missing scan evidence                         -> DEGRADED, transient
 //   - otherwise                                     -> NOMINAL
-// A side wall in a corridor never latches: motion is gated on the drive
-// direction, contact on true proximity. (Swept-footprint validation for
-// in-place rotation near walls is future work; DWA point checks + this
-// contact latch bound the residual.)
+// The raw-scan sweep is deliberately independent of the rolling costmap and
+// planner. It uses base-frame geometry, so global localization error cannot
+// move an obstacle relative to the body.
 struct SafetyConfig {
   core::MonotonicNs stale_timeout_ns = 500'000'000;
   float near_field_m = 0.3f;       // braking margin ahead of motion
-  float contact_radius_m = 0.15f;  // omnidirectional last-resort latch
+  // Declared chassis envelope. The coordinator replaces this default from
+  // RobotDescription; SIM truth is never consulted.
+  double footprint_radius_m = 0.4;
+  // Padding for lidar angular/range resolution and tracking error. This is
+  // local sensor geometry, not a global-localization covariance term.
+ double static_margin_m = platform::kDefaultNavigationClearanceMarginM;
   double brake_decel_mps2 = 2.0;
   double forward_half_angle_rad = 0.5;
  // Once a front veto has stopped the base, keep the reverse escape active
@@ -80,6 +88,24 @@ struct SafetyConfig {
  // ray. No SIM actor identity or truth state enters this gate.
  double dynamic_lookahead_s = 1.0;
  double dynamic_speed_gate_mps = 0.1;
+ // The independent gate may pass a slow minimum-risk command only when its
+ // own constant-twist check improves predicted clearance over stopping.
+ double dynamic_escape_gain_m = 0.03;
+ double dynamic_escape_speed_cap_mps = 0.3;
+ double dynamic_check_dt_s = 0.05;
+ // Independent raw-scan collision monitor. A command is projected through
+ // the controller/watchdog reaction interval, then to rest under the same
+ // declared braking capability used by validation.
+ double command_reaction_time_s = 0.2;
+ double static_check_dt_s = 0.05;
+ double static_escape_speed_cap_mps = 0.3;
+ // Numerical allowance for comparing two projections of the same starting
+ // clearance. This is not a physical safety margin; static_margin_m is.
+ double static_escape_clearance_tolerance_m = 1e-4;
+ // Transient proximity releases only after the padded footprint remains
+ // clear for several live scan evaluations.
+ double static_release_margin_m = 0.15;
+ std::size_t static_release_cycles = 3;
  // Lidar extrinsics live in the TF tree; the full rotation is used when
  // classifying beam directions. The yaw setter remains for old callers.
 };
@@ -114,6 +140,15 @@ class SafetyMonitor : public ISafetyMonitor {
  {0.0, 0.0, 0.0, 1.0}};
   bool latched_ = false;
  bool reverse_recovery_ = false;
+ bool static_proximity_ = false;
+ std::size_t static_release_count_ = 0;
+ bool dynamic_escape_required_ = false;
+ EstimatedState dynamic_estimate_{};
+ std::vector<DynamicTrack> dynamic_tracks_;
+ // Raw scan endpoints in the current base frame after mount transform and
+ // rolling-shutter deskew. No map pose, costmap, or simulator label enters
+ // this independent last gate.
+ std::vector<core::Vec2> raw_scan_points_;
   std::string latch_reason_;
   std::uint64_t last_drops_ = 0;
  // Directional minima from the last raw scan. The final gate uses the rear

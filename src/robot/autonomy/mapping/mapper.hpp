@@ -80,8 +80,35 @@ struct LocalMap {
   // Inflate occupied cells by radius into a binary costmap. Transient
   // observation layers ignore the boundary (the base map owns that policy;
   // an empty sensor layer must contribute no obstacles).
-  LocalMap inflated(double radius_m) const;
+ LocalMap inflated(double radius_m) const;
 };
+
+// Planner-ready two-stage view of a ROBOT-owned local map. `lethal` expands
+// observed occupied cells by the full chassis envelope. `linear_cost` then
+// falls from 1 at that boundary to 0 at `soft_radius_m`; unknown and outside
+// remain lethal. Both local planners consume this same representation.
+struct LocalCostmap {
+ LocalMap lethal;
+ std::vector<float> linear_cost;
+ double soft_radius_m = 0.0;
+
+ bool valid() const {
+ return lethal.valid &&
+ linear_cost.size() == lethal.width * lethal.height;
+ }
+ float cost_at(double wx, double wy) const;
+};
+
+LocalCostmap make_local_costmap(const LocalMap& source,
+ double lethal_radius_m, double soft_radius_m);
+
+// Converts an immutable ROBOT map snapshot into the same two-stage costmap
+// used by local planning. Only known occupied cells seed inflation. Unknown
+// cells retain the caller's traversal policy, while the raster boundary is
+// treated analytically as occupied space without adding a false full cell.
+LocalCostmap make_global_costmap(const iface::MapSnapshot& source,
+ double lethal_radius_m, double soft_radius_m,
+ bool unknown_traversable);
 
 // IMapper: observations -> rolling local map around the estimate.
 class IMapper {

@@ -22,6 +22,15 @@ class AckermannPlanner : public IGlobalPlanner {
  double goal_position_tolerance_m = 0.45;
  double goal_heading_tolerance_rad = 0.8;
  int max_expansions = 120000;
+ // Shared global-costmap policy. Unknown remains traversable at a penalty;
+ // only measured/map-authored occupied cells seed footprint inflation.
+ double unknown_cost_per_m = 0.5;
+ double clearance_cost_per_m = 1.0;
+ double footprint_radius_m = 0.4;
+ double hard_clearance_margin_m =
+ platform::kDefaultNavigationClearanceMarginM;
+ double soft_inflation_radius_m =
+ platform::kDefaultNavigationSoftInflationRadiusM;
  // Bound memory on large survey rasters. The planner reduces heading
  // resolution to fit this budget and fails closed if even the minimum
  // heading discretization cannot fit.

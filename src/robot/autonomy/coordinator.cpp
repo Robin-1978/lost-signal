@@ -10,13 +10,46 @@
 
 namespace lost_signal::robot::autonomy {
 
+namespace {
+
+SafetyConfig safety_config_for(
+ const platform::ChassisLimits& limits,
+ const platform::NavigationSafetyPolicy& navigation) {
+ SafetyConfig config;
+ if (std::isfinite(limits.footprint_radius_m) &&
+ limits.footprint_radius_m > 0.0) {
+ config.footprint_radius_m = limits.footprint_radius_m;
+ }
+ config.static_margin_m = navigation.clearance_margin_m;
+ return config;
+}
+
+ClearanceValidatorConfig validator_config_for(
+ const platform::ChassisLimits& limits,
+ const platform::NavigationSafetyPolicy& navigation) {
+ ClearanceValidatorConfig config;
+ config.footprint_radius_m = limits.footprint_radius_m;
+ config.extra_margin_m = navigation.clearance_margin_m;
+ return config;
+}
+
+RouteConflictBehaviorConfig behavior_config_for(
+ const platform::NavigationSafetyPolicy& navigation) {
+ RouteConflictBehaviorConfig config;
+ config.extra_clearance_m = navigation.clearance_margin_m;
+ return config;
+}
+
+} // namespace
+
 AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
                                          core::MonotonicNs decision_period_ns,
                                          LidarPerceptionConfig perception_config,
  GripAdapterConfig grip_config,
  double wheel_base_m,
  GoalArrivalConfig arrival_config,
- std::string local_planner_kind)
+ std::string local_planner_kind,
+ platform::NavigationSafetyPolicy navigation_policy)
     : limits_(limits),
       grip_(grip_config),
  goal_arrival_(arrival_config),
@@ -24,13 +57,17 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
       estimator_(std::make_unique<FusedOdometryEstimator>()),
       perception_module_(std::make_unique<LidarPerception>(perception_config)),
       mapper_(std::make_unique<RayClearingMapper>()),
-      behavior_(std::make_unique<WaitOnIntrusionBehavior>()),
- global_planner_(make_global_planner(limits, wheel_base_m)),
-      local_planner_(make_local_planner(local_planner_kind)),
+ behavior_(std::make_unique<WaitOnIntrusionBehavior>(
+ behavior_config_for(navigation_policy))),
+ global_planner_(make_global_planner(limits, wheel_base_m,
+ navigation_policy)),
+ local_planner_(make_local_planner(local_planner_kind,
+ navigation_policy)),
       validator_(std::make_unique<ClearanceValidator>(
-          ClearanceValidatorConfig{limits.footprint_radius_m})),
+ validator_config_for(limits, navigation_policy))),
       controller_(std::make_unique<DirectController>()),
-      safety_(std::make_unique<SafetyMonitor>()) {
+ safety_(std::make_unique<SafetyMonitor>(
+ safety_config_for(limits, navigation_policy))) {
   // The traversal belief prices roughness for route choice for the life of
   // the coordinator (the model object is a member: rebinds never dangle).
   global_planner_->set_traversal(&traversal_);
@@ -61,6 +98,7 @@ core::Status AutonomyCoordinator::configure() {
   local_planner_->reset();
   controller_->reset();
   safety_->reset();
+ decision_pipeline_.reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
@@ -112,6 +150,7 @@ core::Status AutonomyCoordinator::cleanup() {
   local_planner_->reset();
   controller_->reset();
   safety_->reset();
+ decision_pipeline_.reset();
   has_observation_ = false;
   last_obs_ = iface::ObservationFrame{};
   perception_ = PerceptionResult{};
@@ -148,7 +187,7 @@ void AutonomyCoordinator::set_plant_geometry(
   if (validator_ != nullptr) {
     validator_->set_plant_geometry(plant.track_width_m, plant.com_height_m);
   }
-  if (plant.wheel_radius_m > 0.0) ride_height_m_ = plant.wheel_radius_m;
+ if (plant.wheel_radius_m > 0.0) ride_height_m_ = plant.wheel_radius_m;
 }
 
 void AutonomyCoordinator::set_static_frames(
@@ -343,10 +382,13 @@ iface::MotionCommand AutonomyCoordinator::update(
       if (mapper_ != nullptr) mapper_->set_survey(map);
     }
  const LocalMap robot_local_map = mapper_->local_map();
+ const std::string& safety_reason = safety_->last_verdict().reason;
  const bool forward_blocked =
- safety_->last_verdict().reason == "forward-proximity" ||
- safety_->last_verdict().reason == "forward-recovery";
- MotionDecisionResult motion = DecisionCyclePipeline::run(
+ safety_reason == "forward-proximity" ||
+ safety_reason == "forward-recovery" ||
+ safety_reason == "static-proximity" ||
+ safety_reason == "static-swept-proximity";
+ MotionDecisionResult motion = decision_pipeline_.run(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
  estimator_->estimate(), perception_, robot_local_map, active_route_, goal_,
  has_goal_, map, force_route_refresh,
@@ -391,6 +433,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   SafetyVerdict verdict = safety_->evaluate(estimator_->estimate(), perception_,
                                             last_obs_, channel, now_ns);
   iface::MotionCommand final_cmd = safety_->gate(gated, verdict, now_ns);
+ verdict = safety_->last_verdict();
   last_published_stop_ = final_cmd.is_safe_stop();
   // One evidence record per distinct decision; repeats update in place.
   diagnostics::DecisionEvidence evidence;

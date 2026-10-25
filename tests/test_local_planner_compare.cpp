@@ -72,6 +72,11 @@ int main() {
  assert(teb_open.best.forward_mps > 0.0);
  assert(teb_open.best.forward_mps <= 0.2 + 1e-9);
  assert(teb.last_band().size() >= 3);
+ assert(teb_open.candidates.size() >= 2);
+ const auto first_band = teb.last_band();
+ const LocalPlan teb_warm = teb.plan(
+ est, perception, empty_prediction, map, route, limits);
+ assert(teb_warm.has_plan && teb.last_band().size() == first_band.size());
 
  // At startup the rolling map may have only a short sensor-cleared corridor.
  // TEB must size its band from the next reachable command rather than demand
@@ -116,7 +121,7 @@ int main() {
  est, crossing, crossing_prediction, map, route, limits);
  const LocalPlan teb_dynamic = teb_crossing.plan(
  est, crossing, crossing_prediction, map, route, limits);
- assert(!dwa_dynamic.has_plan || dwa_dynamic.best.forward_mps <= 0.0);
+  assert(dwa_dynamic.has_plan && !dwa_dynamic.candidates.empty());
  assert(!teb_dynamic.has_plan || teb_dynamic.best.forward_mps <= 0.2);
 
  // Ackermann feasibility is identical at the planner boundary: TEB cannot

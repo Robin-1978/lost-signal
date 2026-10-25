@@ -12,6 +12,14 @@ namespace {
 platform::ChassisLimits autonomy_limits_from_description(
  const platform::RobotDescription& desc) {
  platform::ChassisLimits limits = desc.limits;
+ if (desc.chassis_kind == "differential" &&
+ desc.plant.track_width_m > 0.0 &&
+ std::isfinite(desc.plant.track_width_m)) {
+ limits.differential_track_m = desc.plant.track_width_m;
+ limits.max_wheel_speed_mps =
+ desc.limits.max_forward_mps +
+ 0.5 * desc.plant.track_width_m * desc.limits.max_yaw_rate_radps;
+ }
  if (desc.chassis_kind == "ackermann" &&
  desc.plant.wheel_base_m > 0.0 &&
  std::isfinite(desc.plant.wheel_base_m) &&
@@ -58,7 +66,7 @@ RobotApplication::RobotApplication(std::unique_ptr<iface::IMapProvider> maps,
       chassis_(platform::make_chassis(desc_)),
  coordinator_(autonomy_limits_from_description(desc_), 100'000'000,
  perception_config_from(desc_), {}, desc_.plant.wheel_base_m, {},
- desc_.local_planner_kind) {
+ desc_.local_planner_kind, desc_.navigation) {
   // Declared plant loadout fans into the autonomy envelopes once, with
   // the machine file (validator rollover support/COM + survey ride).
   coordinator_.set_plant_geometry(desc_.plant);

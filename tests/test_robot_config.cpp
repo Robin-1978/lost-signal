@@ -23,12 +23,16 @@ int main() {
     assert(cfg.profile.chassis_kind == kind);
     assert(cfg.profile.wheel_radius_m == 0.1);
     assert(cfg.limits.max_forward_mps == 2.0);
+ assert(cfg.navigation.clearance_margin_m == 0.1);
+ assert(cfg.navigation.soft_inflation_radius_m == 0.2);
     assert(!cfg.sensors.empty() && !cfg.links.empty());
     assert(cfg.robot_id == "ro1");
     // Both sides from one config.
     const auto desc = robot::platform::description_from_config(cfg);
     assert(desc.chassis_kind == kind);
     assert(desc.limits.max_forward_mps == 2.0);
+ assert(desc.navigation.clearance_margin_m == 0.1);
+ assert(desc.navigation.soft_inflation_radius_m == 0.2);
     assert(desc.sensors.size() == cfg.sensors.size());
     const auto motor = sim::eval::motor_from_config(cfg);
     assert(motor.wheel_radius_m == 0.1);
@@ -159,6 +163,14 @@ int main() {
  assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "limits": {"max_forward_mps": -1}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+ write(R"({"kind": "differential", "navigation": {
+ "clearance_margin_m": 0.17, "soft_inflation_radius_m": 0.31}})");
+ assert(robot::platform::load_robot_config(tmp, cfg, &err));
+ assert(cfg.navigation.clearance_margin_m == 0.17);
+ assert(cfg.navigation.soft_inflation_radius_m == 0.31);
+ write(R"({"kind": "differential", "navigation": {
+ "clearance_margin_m": -0.1}})");
+ assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "sensors": [{"sensor_id": "x"}]})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));  // no link/pose
     // Chassis fail-closed: bad kind, bad deck (belly at/below floor),

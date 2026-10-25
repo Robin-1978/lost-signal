@@ -40,6 +40,8 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   double yaw_sum = 0.0;
  double clearance_sum = 0.0;
  std::size_t clearance_samples = 0;
+ double terrain_clearance_sum = 0.0;
+ std::size_t terrain_clearance_samples = 0;
   for (const auto& st : steps) {
  s.path_length_m += std::hypot(
  st.truth_after.body_x_m - st.truth_before.body_x_m,
@@ -54,12 +56,19 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
  st.judge.dynamic_clearance_m < 1.0) {
  s.dynamic_hold_steps += 1;
  }
- const double clearance = std::min({st.judge.static_clearance_m,
- st.judge.dynamic_clearance_m, st.judge.terrain_clearance_m});
- if (std::isfinite(clearance)) {
+ const double clearance = std::min(st.judge.static_clearance_m,
+ st.judge.dynamic_clearance_m);
+ if (std::isfinite(clearance) && clearance < 999.0) {
  s.min_clearance_m = std::min(s.min_clearance_m, clearance);
  clearance_sum += clearance;
  ++clearance_samples;
+ }
+ const double terrain_clearance = st.judge.terrain_clearance_m;
+ if (std::isfinite(terrain_clearance) && terrain_clearance < 999.0) {
+ s.min_terrain_clearance_m = std::min(
+ s.min_terrain_clearance_m, terrain_clearance);
+ terrain_clearance_sum += terrain_clearance;
+ ++terrain_clearance_samples;
  }
  double wheel_power = 0.0;
  for (std::size_t i = 0; i < st.truth_after.drive_count; ++i) {
@@ -87,6 +96,8 @@ EpisodeScore score_episode(const EpisodeRecorder& episode) {
   }
  if (clearance_samples > 0) s.mean_clearance_m =
  clearance_sum / static_cast<double>(clearance_samples);
+ if (terrain_clearance_samples > 0) s.mean_terrain_clearance_m =
+ terrain_clearance_sum / static_cast<double>(terrain_clearance_samples);
   return s;
 }
 

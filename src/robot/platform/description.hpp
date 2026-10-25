@@ -35,6 +35,22 @@ struct ChassisLimits {
  // Optional Ackermann curvature envelope (1/m). Zero leaves the
  // differential/holonomic yaw-rate window unchanged.
  double max_curvature_inv_m = 0.0;
+ // Differential wheel-space envelope from the declared machine geometry.
+ // Zero leaves body-twist sampling for compatibility with direct tests.
+ double differential_track_m = 0.0;
+ double max_wheel_speed_mps = 0.0;
+};
+
+// ROBOT navigation policy shared by global planning, local planning,
+// validation, behavior, and the independent collision monitor. The hard
+// margin covers tracking and sensing uncertainty outside the declared chassis
+// footprint. The soft band only biases routes toward usable clearance.
+inline constexpr double kDefaultNavigationClearanceMarginM = 0.10;
+inline constexpr double kDefaultNavigationSoftInflationRadiusM = 0.20;
+
+struct NavigationSafetyPolicy {
+ double clearance_margin_m = kDefaultNavigationClearanceMarginM;
+ double soft_inflation_radius_m = kDefaultNavigationSoftInflationRadiusM;
 };
 
 // Declared plant loadout for autonomy envelopes (rollover support/COM,
@@ -59,7 +75,8 @@ struct RobotDescription {
   std::uint64_t version = 1;  // bump on any mount/limit change
   std::vector<LinkMount> links;
   std::vector<SensorMount> sensors;
-  ChassisLimits limits;
+ ChassisLimits limits;
+ NavigationSafetyPolicy navigation;
   PlantGeometry plant;  // declared loadout for autonomy envelopes (COM,
                         // ride, support, mass) — description, never truth
 };

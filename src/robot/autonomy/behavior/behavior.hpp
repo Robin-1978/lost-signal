@@ -35,7 +35,7 @@ struct RouteConflictBehaviorConfig {
  double near_route_hold_m = 2.0;
  double prediction_horizon_s = 2.5;
  double brake_deceleration_mps2 = 2.0;
- double extra_clearance_m = 0.10;
+ double extra_clearance_m = platform::kDefaultNavigationClearanceMarginM;
 };
 
 // Hold or cap only for an anonymous track whose measured/predicted footprint

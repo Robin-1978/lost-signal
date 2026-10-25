@@ -7,8 +7,9 @@
 #include <queue>
 #include <vector>
 
-#include "robot/core/geometry.hpp"
+#include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/planning/route_smoothing.hpp"
+#include "robot/core/geometry.hpp"
 
 namespace lost_signal::robot::autonomy {
 namespace {
@@ -61,7 +62,17 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  !std::isfinite(config_.reverse_cost) ||
  !std::isfinite(config_.gear_change_cost) ||
  !std::isfinite(config_.goal_position_tolerance_m) ||
- !std::isfinite(config_.goal_heading_tolerance_rad)) {
+ !std::isfinite(config_.goal_heading_tolerance_rad) ||
+ !(config_.unknown_cost_per_m >= 0.0) ||
+ !(config_.clearance_cost_per_m >= 0.0) ||
+ !(config_.footprint_radius_m > 0.0) ||
+ !(config_.hard_clearance_margin_m >= 0.0) ||
+ !(config_.soft_inflation_radius_m >= 0.0) ||
+ !std::isfinite(config_.unknown_cost_per_m) ||
+ !std::isfinite(config_.clearance_cost_per_m) ||
+ !std::isfinite(config_.footprint_radius_m) ||
+ !std::isfinite(config_.hard_clearance_margin_m) ||
+ !std::isfinite(config_.soft_inflation_radius_m)) {
  return Route{};
  }
  if (!map.has_raster()) {
@@ -80,6 +91,11 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  !std::isfinite(map.origin_x_m) || !std::isfinite(map.origin_y_m)) {
  return Route{};
  }
+ const double hard_radius = config_.footprint_radius_m +
+ config_.hard_clearance_margin_m;
+ const LocalCostmap planning_map = make_global_costmap(
+ map, hard_radius, config_.soft_inflation_radius_m, true);
+ if (!planning_map.valid()) return Route{};
  const std::size_t cells = static_cast<std::size_t>(w) *
  static_cast<std::size_t>(h);
  if (cells == 0 || cells > config_.max_states /
@@ -98,6 +114,25 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  auto inside = [&](int gx, int gy) {
  return gx >= 0 && gy >= 0 && gx < w && gy < h;
  };
+ auto blocked = [&](double x, double y) {
+ return planning_map.lethal.is_blocked(x, y);
+ };
+ auto original_unknown = [&](double x, double y) {
+ int cell_x = 0, cell_y = 0;
+ grid(x, y, cell_x, cell_y);
+ return inside(cell_x, cell_y) &&
+ map.occupancy[static_cast<std::size_t>(cell_y) * map.width + cell_x] < 0;
+ };
+ auto segment_is_free = [&](double x0, double y0, double x1, double y1) {
+ const double length = std::hypot(x1 - x0, y1 - y0);
+ const int samples = std::max(1, static_cast<int>(std::ceil(
+ length / std::max(0.05, 0.45 * res))));
+ for (int sample = 0; sample <= samples; ++sample) {
+ const double u = static_cast<double>(sample) / samples;
+ if (blocked(x0 + u * (x1 - x0), y0 + u * (y1 - y0))) return false;
+ }
+ return true;
+ };
  auto key = [&](double x, double y, double yaw, int gear) {
  int gx = 0, gy = 0;
  grid(x, y, gx, gy);
@@ -108,8 +143,8 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  int sx = 0, sy = 0, gx = 0, gy = 0;
  grid(start.x_m, start.y_m, sx, sy);
  grid(goal.x_m, goal.y_m, gx, gy);
- if (!inside(sx, sy) || !inside(gx, gy) || map.blocked(start.x_m, start.y_m) ||
- map.blocked(goal.x_m, goal.y_m)) {
+ if (!inside(sx, sy) || !inside(gx, gy) || blocked(start.x_m, start.y_m) ||
+ blocked(goal.x_m, goal.y_m)) {
  return Route{};
  }
  const double initial_distance =
@@ -121,6 +156,11 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  out.points = {{start.x_m, start.y_m, core::wrap_angle(start.yaw_rad), 1},
  {goal.x_m, goal.y_m, core::wrap_angle(goal.yaw_rad), 1}};
  out.valid = true;
+ if (!segment_is_free(start.x_m, start.y_m, goal.x_m, goal.y_m) ||
+ !smooth_ackermann_route(out, {config_.wheel_base_m,
+ config_.max_steer_rad, 0.55, 2.0})) {
+ return Route{};
+ }
  return out;
  }
  const std::size_t state_count = cells * static_cast<std::size_t>(bins) *
@@ -175,16 +215,20 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  double x = current.x, y = current.y, yaw = current.yaw;
  bool feasible = true;
  double previous_x = x, previous_y = y;
+ double accumulated_clearance_cost = 0.0;
+ double accumulated_unknown = 0.0;
  for (int sample = 0; sample < samples; ++sample) {
  const double ds = gear * config_.primitive_length_m / samples;
  const double mid = yaw + 0.5 * ds * curvature;
  x += ds * std::cos(mid);
  y += ds * std::sin(mid);
  yaw = core::wrap_angle(yaw + ds * curvature);
- if (map.blocked(x, y)) {
+ if (blocked(x, y)) {
  feasible = false;
  break;
  }
+ accumulated_clearance_cost += planning_map.cost_at(x, y);
+ if (original_unknown(x, y)) accumulated_unknown += 1.0;
  // Keep the swept primitive conservative even when a cell corner is
  // crossed between integration samples.
  int ax = 0, ay = 0, bx = 0, by = 0;
@@ -203,6 +247,9 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  double edge = config_.primitive_length_m;
  if (gear < 0) edge *= config_.reverse_cost;
  if (gear != current.gear) edge += config_.gear_change_cost;
+ edge += config_.primitive_length_m *
+ (config_.clearance_cost_per_m * accumulated_clearance_cost / samples +
+ config_.unknown_cost_per_m * accumulated_unknown / samples);
  // Traversal is a ROBOT-side belief. It can bias the route but never
  // substitutes for map collision checks.
  if (traversal_ != nullptr) {
@@ -242,7 +289,7 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  connector_distance / std::max(0.05, 0.45 * res))));
  for (int sample = 1; sample <= samples; ++sample) {
  const double u = static_cast<double>(sample) / samples;
- if (map.blocked(last.x_m + u * (goal.x_m - last.x_m),
+ if (blocked(last.x_m + u * (goal.x_m - last.x_m),
  last.y_m + u * (goal.y_m - last.y_m))) {
  return Route{};
  }
@@ -257,6 +304,13 @@ Route AckermannPlanner::plan(const EstimatedState& start,
  if (!smooth_ackermann_route(out, {config_.wheel_base_m,
  config_.max_steer_rad, 0.55, 2.0})) {
  return Route{};
+ }
+ for (std::size_t index = 1; index < out.points.size(); ++index) {
+ const auto& from = out.points[index - 1];
+ const auto& to = out.points[index];
+ if (!segment_is_free(from.x_m, from.y_m, to.x_m, to.y_m)) {
+ return Route{};
+ }
  }
  return out;
 }

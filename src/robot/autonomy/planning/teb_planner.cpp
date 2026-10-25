@@ -95,6 +95,34 @@ double clamp_reachable(double target, double current, double positive_rate,
  return std::clamp(target, lo, hi);
 }
 
+Route offset_route(const Route& route, double lateral_offset_m,
+ double transition_m) {
+ if (std::abs(lateral_offset_m) < 1e-12 || route.points.size() < 2)
+ return route;
+ Route shifted = route;
+ double progress_m = 0.0;
+ for (std::size_t i = 0; i < shifted.points.size(); ++i) {
+ if (i > 0) {
+ progress_m += std::hypot(
+ route.points[i].x_m - route.points[i - 1].x_m,
+ route.points[i].y_m - route.points[i - 1].y_m);
+ }
+ const std::size_t before = i > 0 ? i - 1 : i;
+ const std::size_t after = i + 1 < route.points.size() ? i + 1 : i;
+ const double tangent = std::atan2(
+ route.points[after].y_m - route.points[before].y_m,
+ route.points[after].x_m - route.points[before].x_m);
+ const double ramp = transition_m > 1e-9
+ ? std::clamp(progress_m / transition_m, 0.0, 1.0)
+ : 1.0;
+ shifted.points[i].x_m +=
+ -std::sin(tangent) * lateral_offset_m * ramp;
+ shifted.points[i].y_m +=
+ std::cos(tangent) * lateral_offset_m * ramp;
+ }
+ return shifted;
+}
+
 } // namespace
 
 TebPlanner::TebPlanner(TebPlannerConfig config) : config_(config) {}
@@ -108,7 +136,58 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  const PerceptionResult& perception, const PredictionBatch& prediction,
  const LocalMap& map, const Route& route,
  const platform::ChassisLimits& limits) {
+ if (config_.topology_enabled && route.valid && route.points.size() >= 2) {
+ LocalPlan combined;
+ std::vector<TebBandVertex> selected_band;
+ double selected_cost = std::numeric_limits<double>::infinity();
+ const double lateral_offset =
+ std::max(0.0, config_.topology_lateral_clearance_scale) *
+ (std::max(0.0, limits.footprint_radius_m) +
+ std::max(0.0, config_.extra_clearance_m));
+ const std::array<double, 3> offsets{0.0, lateral_offset, -lateral_offset};
+ for (const double offset : offsets) {
+ TebPlannerConfig branch_config = config_;
+ branch_config.topology_enabled = false;
+ TebPlanner branch(branch_config);
+ branch.previous_lateral_mps_ = previous_lateral_mps_;
+ if (std::abs(offset) < 1e-12) branch.last_band_ = last_band_;
+ branch.gate_ = gate_;
+ const Route seeded_route = offset_route(
+ route, offset, std::max(0.0, config_.topology_transition_m));
+ LocalPlan proposal = branch.plan(
+ est, perception, prediction, map, seeded_route, limits);
+ if (!proposal.has_plan) continue;
+ for (auto candidate : proposal.candidates) {
+ const bool duplicate = std::any_of(
+ combined.candidates.begin(), combined.candidates.end(),
+ [&](const LocalCandidate& existing) {
+ return std::abs(existing.forward_mps - candidate.forward_mps) < 1e-9 &&
+ std::abs(existing.yaw_rate_radps - candidate.yaw_rate_radps) < 1e-9 &&
+ std::abs(existing.lateral_mps - candidate.lateral_mps) < 1e-9;
+ });
+ if (!duplicate) combined.candidates.push_back(candidate);
+ }
+ if (proposal.best.cost < selected_cost) {
+ selected_cost = proposal.best.cost;
+ selected_band = branch.last_band_;
+ }
+ }
+ if (combined.candidates.empty()) {
+ last_band_.clear();
+ return combined;
+ }
+ std::stable_sort(combined.candidates.begin(), combined.candidates.end(),
+ [](const LocalCandidate& a, const LocalCandidate& b) {
+ return a.cost < b.cost;
+ });
+ combined.has_plan = true;
+ combined.best = combined.candidates.front();
+ last_band_ = std::move(selected_band);
+ previous_lateral_mps_ = combined.best.lateral_mps;
+ return combined;
+ }
  LocalPlan out;
+ const std::vector<TebBandVertex> warm_band = last_band_;
  last_band_.clear();
  if (!est.valid || !perception.scan_ok || !map.valid ||
  !route.valid || route.points.empty() ||
@@ -156,6 +235,26 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  const double required_clearance =
  std::max(0.0, limits.footprint_radius_m) +
  std::max(0.0, config_.extra_clearance_m);
+ const LocalCostmap costmap = make_local_costmap(
+ map, required_clearance,
+ std::max(map.resolution_m, config_.soft_inflation_radius_m));
+ if (warm_band.size() == last_band_.size() && !warm_band.empty() &&
+ std::hypot(warm_band.front().position.x - est.x_m,
+ warm_band.front().position.y - est.y_m) <=
+ std::max(0.0, config_.warm_start_max_error_m)) {
+ const double blend = std::clamp(config_.warm_start_blend, 0.0, 1.0);
+ for (int i = 1; i + 1 < count; ++i) {
+ const std::size_t index = static_cast<std::size_t>(i);
+ const core::Vec2 seeded{
+ last_band_[index].position.x * (1.0 - blend) +
+ warm_band[index].position.x * blend,
+ last_band_[index].position.y * (1.0 - blend) +
+ warm_band[index].position.y * blend};
+ if (costmap.lethal.is_free(seeded.x, seeded.y)) {
+ last_band_[index].position = seeded;
+ }
+ }
+ }
  const double epsilon = std::max(0.02, map.resolution_m);
  for (int iteration = 0; iteration < std::max(0, config_.iterations);
  ++iteration) {
@@ -172,19 +271,20 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  core::Vec2 delta{
  config_.smooth_weight * smooth.x + config_.route_weight * anchor.x,
  config_.smooth_weight * smooth.y + config_.route_weight * anchor.y};
- const double static_clearance = map.clearance(
+ const double static_cost = costmap.cost_at(
  vertex.position.x, vertex.position.y);
- if (static_clearance < required_clearance) {
- const double gx = map.clearance(vertex.position.x + epsilon,
+ if (static_cost > 0.0) {
+ // Negative cost gradient points away from the lethal boundary.
+ const double gx = costmap.cost_at(vertex.position.x - epsilon,
  vertex.position.y) -
- map.clearance(vertex.position.x - epsilon, vertex.position.y);
- const double gy = map.clearance(vertex.position.x,
- vertex.position.y + epsilon) -
- map.clearance(vertex.position.x, vertex.position.y - epsilon);
+ costmap.cost_at(vertex.position.x + epsilon, vertex.position.y);
+ const double gy = costmap.cost_at(vertex.position.x,
+ vertex.position.y - epsilon) -
+ costmap.cost_at(vertex.position.x, vertex.position.y + epsilon);
  const double gradient = std::hypot(gx, gy);
  if (gradient > 1e-9) {
  const double gain = config_.static_weight *
- (required_clearance - static_clearance) / gradient;
+ static_cost / gradient;
  delta.x += gain * gx;
  delta.y += gain * gy;
  }
@@ -220,27 +320,32 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  }
  const core::Vec2 proposed{
  vertex.position.x + delta.x, vertex.position.y + delta.y};
- if (map.is_free(proposed.x, proposed.y)) vertex.position = proposed;
+ if (costmap.lethal.is_free(proposed.x, proposed.y)) {
+ vertex.position = proposed;
  }
  }
- // Every optimized segment must remain continuously admissible. The dynamic
- // query minimizes relative motion over the whole time interval.
+ }
+ // Static geometry and terrain are generation-time hard constraints. Keep
+ // dynamic overlap as a planner cost so the common validator can compare the
+ // complete command family with stopping in place.
+ double band_dynamic_clearance = std::numeric_limits<double>::infinity();
  for (std::size_t i = 1; i < last_band_.size(); ++i) {
  const auto& a = last_band_[i - 1];
  const auto& b = last_band_[i];
  const double heading = std::atan2(
  b.position.y - a.position.y, b.position.x - a.position.x);
- if (!map.segment_is_traversable(
+ if (!costmap.lethal.segment_is_traversable(
  a.position.x, a.position.y, b.position.x, b.position.y) ||
- map.clearance(b.position.x, b.position.y) < required_clearance ||
  (gate_ && !gate_(a.position.x, a.position.y,
- b.position.x, b.position.y, heading)) ||
- minimum_predicted_clearance(
- prediction, a.position, b.position, a.time_s, b.time_s,
- limits.footprint_radius_m + config_.extra_clearance_m).clearance_m < 0.0) {
+ b.position.x, b.position.y, heading))) {
  last_band_.clear();
  return out;
  }
+ band_dynamic_clearance = std::min(
+ band_dynamic_clearance,
+ minimum_predicted_clearance(
+ prediction, a.position, b.position, a.time_s, b.time_s,
+ limits.footprint_radius_m + config_.extra_clearance_m).clearance_m);
  }
  if (last_band_.size() < 2) return out;
  const auto& first = last_band_[1];
@@ -301,11 +406,39 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  candidate.forward_mps = forward;
  candidate.lateral_mps = lateral;
  candidate.yaw_rate_radps = yaw;
- candidate.cost = 0.0;
+ candidate.cost = -band_dynamic_clearance;
  candidate.feasible = true;
- previous_lateral_mps_ = lateral;
  out.has_plan = true;
  out.best = candidate;
+ const auto append_unique = [&](LocalCandidate proposal) {
+ const bool duplicate = std::any_of(
+ out.candidates.begin(), out.candidates.end(),
+ [&](const LocalCandidate& existing) {
+ return std::abs(existing.forward_mps - proposal.forward_mps) < 1e-9 &&
+ std::abs(existing.yaw_rate_radps - proposal.yaw_rate_radps) < 1e-9 &&
+ std::abs(existing.lateral_mps - proposal.lateral_mps) < 1e-9;
+ });
+ if (!duplicate) out.candidates.push_back(proposal);
+ };
+ for (const double raw_scale : config_.candidate_speed_scales) {
+ const double scale = std::clamp(raw_scale, 0.0, 1.0);
+ LocalCandidate proposal = candidate;
+ proposal.forward_mps = clamp_reachable(
+ candidate.forward_mps * scale, est.forward_mps,
+ config_.accel_mps2, config_.decel_mps2, config_.control_dt_s);
+ proposal.yaw_rate_radps = clamp_reachable(
+ candidate.yaw_rate_radps * scale, est.yaw_rate_radps,
+ config_.yaw_accel_radps2, config_.yaw_accel_radps2,
+ config_.control_dt_s);
+ proposal.lateral_mps = clamp_reachable(
+ candidate.lateral_mps * scale, previous_lateral_mps_,
+ config_.lateral_accel_mps2, config_.lateral_accel_mps2,
+ config_.control_dt_s);
+ proposal.cost = candidate.cost + (1.0 - scale);
+ append_unique(proposal);
+ }
+ if (!out.candidates.empty()) out.best = out.candidates.front();
+ previous_lateral_mps_ = out.best.lateral_mps;
  return out;
 }
 
