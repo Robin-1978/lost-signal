@@ -92,6 +92,20 @@ experience selects ordinary robot, sim,
 map, scene, and named-goal files before startup; runtime autonomy receives the
 same sensor and actuator interfaces used without the game presentation.
 
+Run the same field lab as a controlled scan-cadence A/B experiment:
+
+```sh
+./build/sim_ab_experiment \
+ --experience configs/experiences/first_contact.json \
+ --scan-period 0.10 --steps 1200 --out /tmp/first_contact_ab.json
+```
+
+The runner reloads both variants from the same experience and verifies equal
+delivery, IMU, and actor seed digests before writing task, collision,
+clearance, localization, path, energy, and command-digest results. The only
+override is `lidar.scan_period_s`; each ROBOT run receives its own ordinary
+timestamped observation stream.
+
 ## Capability notes
 
 - Differential and tracked bases run the full mission path. Ackermann now uses

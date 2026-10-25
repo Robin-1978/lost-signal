@@ -309,6 +309,18 @@ target_link_libraries(lost_signal_sim_viewer PUBLIC
   lost_signal_sim_world
 )
 
+add_library(lost_signal_sim_experiment STATIC
+ src/sim/experiment/ab_experiment.cpp
+)
+target_include_directories(lost_signal_sim_experiment PUBLIC src)
+target_link_libraries(lost_signal_sim_experiment PUBLIC
+ lost_signal_sim_scenario lost_signal_sim_viewer)
+
+add_executable(sim_ab_experiment
+ src/sim/experiment/ab_experiment_main.cpp
+)
+target_link_libraries(sim_ab_experiment PRIVATE lost_signal_sim_experiment)
+
 # Tests
 enable_testing()
 
@@ -665,6 +677,15 @@ add_executable(test_keyframe_review
 )
 target_link_libraries(test_keyframe_review PRIVATE lost_signal_sim_viewer)
 add_test(NAME keyframe_review COMMAND test_keyframe_review)
+
+add_executable(test_ab_experiment
+ tests/test_ab_experiment.cpp
+)
+target_compile_definitions(test_ab_experiment PRIVATE
+ TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_ab_experiment PRIVATE lost_signal_sim_experiment)
+add_test(NAME ab_experiment COMMAND test_ab_experiment)
 
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp
