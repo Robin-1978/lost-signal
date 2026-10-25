@@ -773,10 +773,11 @@ int main() {
  assert(plan.best.forward_mps > 0.0);
  }
 
- // Stateful terminal capture prevents a differential base from orbiting a
- // goal while it settles yaw. Entry is confidence-bounded; a later estimate
- // may move outside that smaller entry circle without re-enabling
- // translation, but leaving the declared position tolerance releases it.
+ // Stateful terminal-heading capture prevents a differential base from
+ // orbiting a goal while it settles yaw. Translation still follows the live
+ // confidence-bounded position check: if estimate evidence moves outside the
+ // entry circle, the base must reacquire instead of waiting forever for an
+ // arrival policy that correctly refuses completion.
  {
  LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
  EstimatedState est;
@@ -802,12 +803,12 @@ int main() {
  est.x_m = 1.80; // outside confidence entry, inside raw tolerance
  const LocalPlan latched = planner.plan(est, perc, m, route, limits);
  assert(latched.has_plan);
- assert(std::abs(latched.best.forward_mps) < 1e-9);
+ assert(latched.best.forward_mps > 0.0);
 
  planner.reset_tracking(); // same goal was replanned after a map correction
  const LocalPlan replanned = planner.plan(est, perc, m, route, limits);
  assert(replanned.has_plan);
- assert(std::abs(replanned.best.forward_mps) < 1e-9);
+ assert(replanned.best.forward_mps > 0.0);
 
  planner.reset(); // a new task must not inherit the previous goal capture
  const LocalPlan new_task = planner.plan(est, perc, m, route, limits);

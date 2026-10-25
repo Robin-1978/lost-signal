@@ -532,7 +532,14 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  } else if (terminal_distance_m <= terminal_position_tolerance_m) {
  terminal_position_latched_ = true;
  }
- const bool terminal_position_reached = terminal_position_latched_;
+ // The latch selects terminal-heading control through small estimate motion,
+ // but it must never suppress translation after the current confidence
+ // region leaves the arrival envelope. GoalArrivalPolicy evaluates that same
+ // confidence-bounded position contract; keeping motion gated by the stale
+ // latch can otherwise deadlock just outside a provable arrival.
+ const bool terminal_heading_mode = terminal_position_latched_;
+ const bool terminal_position_reached =
+ terminal_distance_m <= terminal_position_tolerance_m;
  const auto& tracked_a = route.points[route_segment_];
  const auto& tracked_b = route.points[route_segment_ + 1];
  const double tracked_remaining_m = (1.0 - route_fraction_) * std::hypot(
@@ -576,7 +583,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  }
  const double heading_target = car_like
  ? car_like_tracking_heading
- : !terminal_position_reached
+ : !terminal_heading_mode
  ? goal_bearing
  : std::isfinite(target.yaw_rad)
  ? target.yaw_rad
@@ -882,7 +889,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
       const auto end_projection = project_to_path({x, y}, reference);
  const double path_heading_target = car_like
  ? heading_target
- : terminal_position_reached
+ : terminal_heading_mode
  ? heading_target
  : end_projection.tangent_rad;
       const double path_score =
