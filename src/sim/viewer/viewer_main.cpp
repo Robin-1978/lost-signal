@@ -30,6 +30,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/asset_manifest.hpp"
+#include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/playback_controller.hpp"
@@ -45,6 +46,7 @@ using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::SceneInstance;
 using lost_signal::sim::viewer::SceneManifest;
 
@@ -687,6 +689,160 @@ void draw_motion_particles_3d(const Frame& f, const Camera3D& camera,
  }
  }
  EndBlendMode();
+}
+
+enum class ExperiencePhase { kBriefing, kPrediction, kRunning, kDebrief };
+
+float draw_wrapped_text(const std::string& text, float x, float y,
+ float width, float font_size, float line_gap, Color color) {
+ const Font font = GetFontDefault();
+ std::istringstream input(text);
+ std::string word;
+ std::string line;
+ const float spacing = 1.0f;
+ while (input >> word) {
+ const std::string candidate = line.empty() ? word : line + " " + word;
+ if (!line.empty() &&
+ MeasureTextEx(font, candidate.c_str(), font_size, spacing).x > width) {
+ DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+ y += font_size + line_gap;
+ line = word;
+ } else {
+ line = candidate;
+ }
+ }
+ if (!line.empty()) {
+ DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+ y += font_size + line_gap;
+ }
+ return y;
+}
+
+void draw_experience_overlay(const ExperienceManifest& experience,
+ ExperiencePhase phase, int selected_choice, bool objectives_done,
+ bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score) {
+ constexpr Color kPanel{13, 21, 22, 242};
+ constexpr Color kPanelSoft{24, 37, 38, 238};
+ constexpr Color kText{226, 235, 230, 255};
+ constexpr Color kMuted{157, 177, 169, 255};
+ constexpr Color kCyan{55, 218, 202, 255};
+ constexpr Color kAmber{246, 169, 61, 255};
+ constexpr Color kRed{236, 82, 72, 255};
+ if (phase == ExperiencePhase::kRunning) {
+ const float width = 335.0f;
+ const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
+ DrawRectangleRounded({x, 58.0f, width, 184.0f}, 0.06f, 8, kPanelSoft);
+ DrawText("ROBOT KNOWLEDGE / LIVE", static_cast<int>(x + 18), 74, 14,
+ kCyan);
+ float y = draw_wrapped_text(experience.running_prompt, x + 18, 101,
+ width - 36, 15, 4, kText);
+ y += 5.0f;
+ DrawText("ROBOT INPUT", static_cast<int>(x + 18), static_cast<int>(y),
+ 13, kCyan);
+ DrawText("LiDAR + IMU + wheel encoders", static_cast<int>(x + 126),
+ static_cast<int>(y), 13, kText);
+ y += 22.0f;
+ DrawText("SIM ONLY", static_cast<int>(x + 18), static_cast<int>(y),
+ 13, kAmber);
+ DrawText("truth + contacts + score", static_cast<int>(x + 102),
+ static_cast<int>(y), 13, kText);
+ return;
+ }
+
+ const float panel_width = std::min(720.0f,
+ static_cast<float>(GetScreenWidth()) - 100.0f);
+ const float panel_height = phase == ExperiencePhase::kPrediction
+ ? 610.0f : 585.0f;
+ const float x = (static_cast<float>(GetScreenWidth()) - panel_width) * 0.5f;
+ const float y0 = (static_cast<float>(GetScreenHeight()) - panel_height) * 0.5f;
+ DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+ {5, 10, 12, 150});
+ DrawRectangleRounded({x, y0, panel_width, panel_height}, 0.035f, 10,
+ kPanel);
+ DrawRectangleRoundedLinesEx({x, y0, panel_width, panel_height}, 0.035f, 10,
+ 2.0f, phase == ExperiencePhase::kDebrief ? kAmber : kCyan);
+ DrawText("LOST SIGNAL / FIELD LAB", static_cast<int>(x + 34),
+ static_cast<int>(y0 + 28), 15, kCyan);
+ DrawText(experience.title.c_str(), static_cast<int>(x + 34),
+ static_cast<int>(y0 + 58), 25, kText);
+ float y = draw_wrapped_text(experience.subtitle, x + 34, y0 + 95,
+ panel_width - 68, 16, 5, kMuted);
+ y += 14.0f;
+
+ if (phase == ExperiencePhase::kBriefing) {
+ DrawText("MISSION BRIEF / COMPONENT WALKAROUND",
+ static_cast<int>(x + 34), static_cast<int>(y), 15, kAmber);
+ y += 32.0f;
+ for (const auto& line : experience.briefing) {
+ DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 8), 4.0f,
+ kCyan);
+ y = draw_wrapped_text(line, x + 58, y, panel_width - 102, 16, 6,
+ kText) + 7.0f;
+ }
+ DrawText("ENTER  COMMIT A PREDICTION BEFORE THE RUN",
+ static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 46),
+ 15, kAmber);
+ return;
+ }
+
+ if (phase == ExperiencePhase::kPrediction) {
+ DrawText("PREDICT FIRST", static_cast<int>(x + 34),
+ static_cast<int>(y), 15, kAmber);
+ y = draw_wrapped_text(experience.prediction_question, x + 34, y + 28,
+ panel_width - 68, 19, 6, kText) + 10.0f;
+ for (std::size_t i = 0; i < experience.choices.size(); ++i) {
+ const float card_y = y;
+ DrawRectangleRounded({x + 32, card_y, panel_width - 64, 78},
+ 0.08f, 8, {29, 48, 48, 255});
+ const char key[2]{static_cast<char>('1' + i), '\0'};
+ DrawCircle(static_cast<int>(x + 58), static_cast<int>(card_y + 39),
+ 15.0f, kCyan);
+ DrawText(key, static_cast<int>(x + 53), static_cast<int>(card_y + 29),
+ 19, Color{7, 18, 18, 255});
+ draw_wrapped_text(experience.choices[i].label, x + 84, card_y + 17,
+ panel_width - 132, 16, 4, kText);
+ y += 91.0f;
+ }
+ DrawText("PRESS 1-3 TO LOCK THE PREDICTION AND START",
+ static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 40),
+ 15, kAmber);
+ return;
+ }
+
+ const bool safe = objectives_done && objectives_passed &&
+ score.collision_steps == 0;
+ DrawText((safe ? experience.success_title : experience.failure_title).c_str(),
+ static_cast<int>(x + 34), static_cast<int>(y), 20,
+ safe ? kCyan : kRed);
+ y += 38.0f;
+ char metrics[256];
+ std::snprintf(metrics, sizeof(metrics),
+ "SIM OFFLINE EVAL   collisions=%zu   min clearance=%.2f m   mean estimate error=%.2f m",
+ score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
+ y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
+ safe ? kText : kRed) + 12.0f;
+ if (selected_choice >= 0 &&
+ selected_choice < static_cast<int>(experience.choices.size())) {
+ const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
+ DrawText(choice.correct ? "YOUR PREDICTION: SUPPORTED"
+ : "YOUR PREDICTION: REVISE",
+ static_cast<int>(x + 34), static_cast<int>(y), 15,
+ choice.correct ? kCyan : kAmber);
+ y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
+ panel_width - 68, 16, 5, kText) + 13.0f;
+ }
+ DrawText("WHAT THE RUN ESTABLISHED", static_cast<int>(x + 34),
+ static_cast<int>(y), 15, kAmber);
+ y += 28.0f;
+ for (const auto& lesson : experience.lessons) {
+ DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 7), 3.5f,
+ kCyan);
+ y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
+ kText) + 6.0f;
+ }
+ DrawText("ROBOT never received SIM truth. Truth was used only above for evaluation.",
+ static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 42),
+ 14, kAmber);
 }
 
 // Map extents over every authored layer (auto-fit on --map load).
@@ -1642,7 +1798,8 @@ int main(int argc, char** argv) {
  // numbers), --map <world file> replaces the demo geometry. `--assets`
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
- std::string robot_path, sim_path, map_path, assets_path, scene_path;
+ std::string robot_path, sim_path, map_path, assets_path, scene_path,
+ experience_path;
  double initial_playback_rate = 1.0;
  bool initial_turbo = false;
   for (int i = 1; i < argc; ++i) {
@@ -1652,6 +1809,7 @@ int main(int argc, char** argv) {
     if (a == "--map" && i + 1 < argc) map_path = argv[++i];
  if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
  if (a == "--scene" && i + 1 < argc) scene_path = argv[++i];
+ if (a == "--experience" && i + 1 < argc) experience_path = argv[++i];
  if (a == "--turbo") initial_turbo = true;
  if (a == "--rate" && i + 1 < argc) {
  char* end = nullptr;
@@ -1664,6 +1822,23 @@ int main(int argc, char** argv) {
  initial_playback_rate = parsed;
  }
   }
+ ExperienceManifest experience;
+ bool experience_loaded = false;
+ if (!experience_path.empty()) {
+ std::string experience_error;
+ if (!lost_signal::sim::viewer::load_experience_manifest(
+ experience_path, experience, &experience_error)) {
+ std::fprintf(stderr, "bad experience file: %s\n",
+ experience_error.c_str());
+ return 1;
+ }
+ experience_loaded = true;
+ if (robot_path.empty()) robot_path = experience.robot_path;
+ if (sim_path.empty()) sim_path = experience.sim_path;
+ if (map_path.empty()) map_path = experience.map_path;
+ if (scene_path.empty()) scene_path = experience.scene_path;
+ std::fprintf(stderr, "experience: %s\n", experience.experience_id.c_str());
+ }
   std::string used_config, config_err;
   auto robot_config = robot::platform::load_default_robot_config(
       robot_path, &used_config, &config_err);
@@ -1704,8 +1879,23 @@ int main(int argc, char** argv) {
       return 1;
     }
     session->setup_world().set_static_boxes(std::move(content.boxes));
-    std::vector<std::string> ids;
-    for (const auto& p : content.places) ids.push_back(p.place_id);
+ std::vector<std::string> ids;
+ if (experience_loaded) {
+ for (const auto& requested : experience.objectives) {
+ const bool found = std::any_of(content.places.begin(), content.places.end(),
+ [&](const sim::world::NamedPlace& place) {
+ return place.place_id == requested;
+ });
+ if (!found) {
+ std::fprintf(stderr, "experience objective missing from map: %s\n",
+ requested.c_str());
+ return 1;
+ }
+ ids.push_back(requested);
+ }
+ } else {
+ for (const auto& p : content.places) ids.push_back(p.place_id);
+ }
     session->setup_world().set_places(std::move(content.places));
     session->setup_world().set_materials(std::move(content.materials));
     session->setup_world().set_material_zones(std::move(content.zones));
@@ -1767,7 +1957,9 @@ int main(int argc, char** argv) {
   sim::viewer::ViewTransform view(50.0f, 2.0, 1.0, kScreenW, kScreenH);
   view.fit(-4.0, -4.0, 8.0, 7.0);
   std::deque<std::pair<double, double>> trail;
-  bool paused = false;
+ bool paused = experience_loaded;
+ ExperiencePhase experience_phase = ExperiencePhase::kBriefing;
+ int selected_experience_choice = -1;
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
@@ -1790,7 +1982,7 @@ int main(int argc, char** argv) {
   bool edit_mode = false;
   std::string edit_msg;
   // 3D orbit camera over the same frame (V toggles 2D/3D, --3d starts in 3D).
-  bool view3d = false;
+ bool view3d = experience_loaded;
   // --shot N path: render N frames, screenshot, exit (visual smoke check).
   int shot_frames = -1;
   std::string shot_path;
@@ -1877,8 +2069,28 @@ int main(int argc, char** argv) {
     } else {
       on_map = view.screen_to_world(mpos.x, mpos.y, pick_x, pick_y);
     }
-    // Edit-mode toggle + keys (window thread only).
-    if (IsKeyPressed(KEY_M)) {
+ if (experience_loaded) {
+ if (experience_phase == ExperiencePhase::kBriefing &&
+ IsKeyPressed(KEY_ENTER)) {
+ experience_phase = ExperiencePhase::kPrediction;
+ } else if (experience_phase == ExperiencePhase::kPrediction) {
+ for (std::size_t i = 0; i < experience.choices.size(); ++i) {
+ const int key = KEY_ONE + static_cast<int>(i);
+ if (IsKeyPressed(key)) {
+ selected_experience_choice = static_cast<int>(i);
+ experience_phase = ExperiencePhase::kRunning;
+ paused = false;
+ break;
+ }
+ }
+ } else if (experience_phase == ExperiencePhase::kRunning &&
+ session->objectives_done()) {
+ experience_phase = ExperiencePhase::kDebrief;
+ paused = true;
+ }
+ }
+ // Edit-mode toggle + keys (window thread only).
+ if (!experience_loaded && IsKeyPressed(KEY_M)) {
       edit_mode = !edit_mode;
       if (edit_mode) {
         editor.load_from(session->setup_world());
@@ -1909,8 +2121,12 @@ int main(int argc, char** argv) {
       if (editor.dirty()) editor.apply(session->setup_world());
     }
     // Input (window thread only; sim stays deterministic).
-    if (IsKeyPressed(KEY_SPACE)) paused = !paused;
- if (IsKeyPressed(KEY_N) && paused) {
+ if (IsKeyPressed(KEY_SPACE) &&
+ (!experience_loaded || experience_phase == ExperiencePhase::kRunning)) {
+ paused = !paused;
+ }
+ if (IsKeyPressed(KEY_N) && paused &&
+ (!experience_loaded || experience_phase == ExperiencePhase::kRunning)) {
  session->step_once();
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
@@ -2000,7 +2216,19 @@ int main(int argc, char** argv) {
     }
  playback.end_frame();
     const auto& steps = session->episode().steps();
-    if (steps.empty()) continue;
+ if (steps.empty()) {
+ if (!experience_loaded) continue;
+ BeginDrawing();
+ ClearBackground({18, 31, 34, 255});
+ draw_experience_overlay(experience, experience_phase,
+ selected_experience_choice, false, false, {});
+ EndDrawing();
+ if (shot_frames > 0 && --shot_frames == 0) {
+ TakeScreenshot(shot_path.c_str());
+ break;
+ }
+ continue;
+ }
     const sim::eval::EvalStep& last = steps.back();
     trail.emplace_back(last.truth_after.body_x_m, last.truth_after.body_y_m);
     while (trail.size() > 600) trail.pop_front();
@@ -2079,6 +2307,11 @@ int main(int argc, char** argv) {
              10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
+ if (experience_loaded) {
+ draw_experience_overlay(experience, experience_phase,
+ selected_experience_choice, session->objectives_done(),
+ session->objectives_passed(), session->score());
+ }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {
       TakeScreenshot(shot_path.c_str());

@@ -1,0 +1,37 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "first_contact",
+ "title": "FIRST CONTACT: STOP BEFORE THE GLASS",
+ "subtitle": "A three-minute experiment about sensing, estimation, and safe stopping.",
+ "files": {
+ "map": "../worlds/research_base.json",
+ "scene": "../worlds/research_base.scene.json",
+ "robot": "../robot/differential.json",
+ "sim": "../sim/default.json"
+ },
+ "objectives": ["glass_door"],
+ "briefing": [
+ "Drive wheels create traction; passive casters carry load and swivel freely.",
+ "The LiDAR reports timed ranges from its mounted sensor frame. It does not report world truth.",
+ "The emergency safety layer uses fresh observations and the robot's own braking model.",
+ "Reach the marked stop pose before the glass door and remain stable."
+ ],
+ "prediction": {
+ "question": "What evidence may independently command the final safety stop?",
+ "choices": [
+ {"choice_id":"truth_route","label":"The actor's hidden scripted route and exact world pose","explanation":"Those are SIM-only truth. They may appear in replay or scoring, but never enter the deployable robot.","correct":false},
+ {"choice_id":"raw_safety","label":"Fresh LiDAR ranges, measured speed, and the robot's braking model","explanation":"Correct. The final safety monitor can stop from local observations even when global localization is uncertain.","correct":true},
+ {"choice_id":"global_only","label":"The global map and goal estimate alone","explanation":"A global map cannot represent every new obstacle or sensor timeout. It is insufficient as the final safety authority.","correct":false}
+ ]
+ },
+ "running_prompt": "Observe the physical robot first. Press L for ROBOT LiDAR, E for truth-vs-estimate, and T for deterministic Turbo.",
+ "debrief": {
+ "success_title": "SAFE ARRIVAL CONFIRMED",
+ "failure_title": "SAFETY GATE FAILED",
+ "lessons": [
+ "Sensors provide measurements; perception and localization build estimates from them.",
+ "ROBOT completion and SIM truth arrival are checked separately.",
+ "Collision is a hard failure. Speed, smoothness, or energy cannot compensate for it."
+ ]
+ }
+}

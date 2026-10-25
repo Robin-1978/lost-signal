@@ -43,8 +43,8 @@ ctest --test-dir build -V
 
 `tests/check_boundary.py` fails the build if any file under `src/robot/`
 includes a `sim/` header or if a `lost_signal_robot_*` target links a
-`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 56
-tests.
+`lost_signal_sim_*` library. `ctest --test-dir build` runs the complete
+algorithm, physics, content, boundary, and mission suite.
 
 ## Headless run
 
@@ -71,6 +71,19 @@ tick, actuation, recording, and the complete step. This timing remains in the
 SIM runner and is never published into the ROBOT decision path.
 Without `--steps` or `--duration`, an explicit objective list gets a 4000
 step budget and a single implicit goal keeps the legacy 5 step smoke run.
+
+## First playable field lab
+
+```sh
+./build/sim_viewer --experience configs/experiences/first_contact.json
+```
+
+The field lab pauses before simulation time advances. Read the component
+brief, press `Enter`, commit prediction `1`–`3`, and then observe the run.
+The debrief separates ROBOT evidence from SIM-only truth evaluation and uses
+collision as a hard safety gate. The experience selects ordinary robot, sim,
+map, scene, and named-goal files before startup; runtime autonomy receives the
+same sensor and actuator interfaces used without the game presentation.
 
 ## Capability notes
 
