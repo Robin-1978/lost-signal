@@ -297,6 +297,7 @@ add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/asset_manifest.cpp
  src/sim/viewer/experience_manifest.cpp
   src/sim/viewer/frame_builder.cpp
+ src/sim/viewer/keyframe_review.cpp
   src/sim/viewer/map_editor.cpp
  src/sim/viewer/particle_system.cpp
  src/sim/viewer/playback_controller.cpp
@@ -658,6 +659,12 @@ target_compile_definitions(test_experience_mission PRIVATE
 target_link_libraries(test_experience_mission PRIVATE
  lost_signal_sim_viewer lost_signal_sim_scenario)
 add_test(NAME experience_mission COMMAND test_experience_mission)
+
+add_executable(test_keyframe_review
+ tests/test_keyframe_review.cpp
+)
+target_link_libraries(test_keyframe_review PRIVATE lost_signal_sim_viewer)
+add_test(NAME keyframe_review COMMAND test_keyframe_review)
 
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp

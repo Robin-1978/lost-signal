@@ -10,6 +10,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/experience_manifest.hpp"
+#include "sim/viewer/keyframe_review.hpp"
 
 int main() {
  using namespace lost_signal;
@@ -60,5 +61,18 @@ int main() {
  robot_config.navigation.clearance_margin_m);
  assert(session.objectives().results().size() == 1);
  assert(session.objectives().results().front().truth_miss_m < 0.30);
+ sim::viewer::KeyframeReviewConfig review_config;
+ review_config.maximum_forward_speed_mps =
+ robot_config.arrival.maximum_forward_speed_mps;
+ review_config.maximum_yaw_rate_radps =
+ robot_config.arrival.maximum_yaw_rate_radps;
+ review_config.settle_samples = robot_config.arrival.settle_cycles;
+ const auto keyframes = sim::viewer::extract_review_keyframes(
+ session.episode(), review_config);
+ assert(keyframes.size() == 3);
+ assert(keyframes.front().kind ==
+ sim::viewer::ReviewKeyframeKind::kFirstObservation);
+ assert(keyframes.back().kind ==
+ sim::viewer::ReviewKeyframeKind::kStableStop);
  return 0;
 }

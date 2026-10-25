@@ -85,7 +85,10 @@ score. Use `Left`/`Right` to inspect drive-wheel, caster, LiDAR, and chassis
 cards; each camera target comes from the prepared physical link or sensor
 pose. Press `Enter`, commit prediction `1`–`3`, and then observe the run.
 The debrief separates ROBOT evidence from SIM-only truth evaluation and uses
-collision as a hard safety gate. The experience selects ordinary robot, sim,
+collision as a hard safety gate. `Left`/`Right` then browse the recorded first
+valid observation, braking command, and stable-stop evidence. Their speed and
+settle rules come from the selected robot's versioned arrival policy. The
+experience selects ordinary robot, sim,
 map, scene, and named-goal files before startup; runtime autonomy receives the
 same sensor and actuator interfaces used without the game presentation.
 

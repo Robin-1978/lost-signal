@@ -32,6 +32,7 @@
 #include "sim/viewer/asset_manifest.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
+#include "sim/viewer/keyframe_review.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/particle_system.hpp"
 #include "sim/viewer/playback_controller.hpp"
@@ -50,6 +51,7 @@ using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
+using lost_signal::sim::viewer::ReviewKeyframe;
 using lost_signal::sim::viewer::SceneInstance;
 using lost_signal::sim::viewer::SceneManifest;
 
@@ -625,6 +627,8 @@ float draw_wrapped_text(const std::string& text, float x, float y,
 
 void draw_experience_overlay(const ExperienceManifest& experience,
  ExperiencePhase phase, int selected_choice, int walkaround_stop,
+ const std::vector<ReviewKeyframe>& review_keyframes,
+ int selected_review_keyframe,
  bool objectives_done,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score) {
  constexpr Color kPanel{13, 21, 22, 242};
@@ -663,7 +667,9 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  : std::min(720.0f, screen_width - 100.0f);
  const float panel_height = briefing
  ? std::min(700.0f, screen_height - 48.0f)
- : phase == ExperiencePhase::kPrediction ? 610.0f : 585.0f;
+ : phase == ExperiencePhase::kPrediction
+ ? 610.0f
+ : std::min(700.0f, screen_height - 48.0f);
  const float x = briefing ? 24.0f : (screen_width - panel_width) * 0.5f;
  const float y0 = (static_cast<float>(GetScreenHeight()) - panel_height) * 0.5f;
  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
@@ -753,6 +759,27 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
  y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
  safe ? kText : kRed) + 12.0f;
+ if (!review_keyframes.empty()) {
+ const int count = static_cast<int>(review_keyframes.size());
+ const int index = std::clamp(selected_review_keyframe, 0, count - 1);
+ const auto& keyframe =
+ review_keyframes[static_cast<std::size_t>(index)];
+ char event_header[160];
+ const double time_s = keyframe.stamp_ns ==
+ lost_signal::robot::core::kInvalidTime
+ ? 0.0 : static_cast<double>(keyframe.stamp_ns) * 1e-9;
+ std::snprintf(event_header, sizeof(event_header),
+ "KEYFRAME %02d/%02d  t=%.2fs  record=%llu",
+ index + 1, count, time_s,
+ static_cast<unsigned long long>(keyframe.step));
+ DrawText(event_header, static_cast<int>(x + 34), static_cast<int>(y),
+ 13, kAmber);
+ y += 24.0f;
+ DrawText(keyframe.title.c_str(), static_cast<int>(x + 34),
+ static_cast<int>(y), 17, kCyan);
+ y = draw_wrapped_text(keyframe.evidence, x + 34, y + 24,
+ panel_width - 68, 14, 4, kText) + 10.0f;
+ }
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
  const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
@@ -772,7 +799,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
  kText) + 6.0f;
  }
- DrawText("ROBOT never received SIM truth. Truth was used only above for evaluation.",
+ DrawText("LEFT/RIGHT KEYFRAMES / ROBOT never received SIM truth.",
  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 42),
  14, kAmber);
 }
@@ -1964,6 +1991,8 @@ int main(int argc, char** argv) {
  ExperiencePhase experience_phase = ExperiencePhase::kBriefing;
  int selected_experience_choice = -1;
  int walkaround_stop = 0;
+ std::vector<ReviewKeyframe> review_keyframes;
+ int selected_review_keyframe = 0;
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
@@ -2104,6 +2133,27 @@ int main(int argc, char** argv) {
  session->objectives_done()) {
  experience_phase = ExperiencePhase::kDebrief;
  paused = true;
+ sim::viewer::KeyframeReviewConfig review_config;
+ if (robot_config.has_value()) {
+ review_config.maximum_forward_speed_mps =
+ robot_config->arrival.maximum_forward_speed_mps;
+ review_config.maximum_yaw_rate_radps =
+ robot_config->arrival.maximum_yaw_rate_radps;
+ review_config.settle_samples = robot_config->arrival.settle_cycles;
+ }
+ review_keyframes = sim::viewer::extract_review_keyframes(
+ session->episode(), review_config);
+ selected_review_keyframe = 0;
+ } else if (experience_phase == ExperiencePhase::kDebrief &&
+ !review_keyframes.empty()) {
+ const int count = static_cast<int>(review_keyframes.size());
+ if (IsKeyPressed(KEY_RIGHT)) {
+ selected_review_keyframe = (selected_review_keyframe + 1) % count;
+ }
+ if (IsKeyPressed(KEY_LEFT)) {
+ selected_review_keyframe =
+ (selected_review_keyframe + count - 1) % count;
+ }
  }
  }
  // Edit-mode toggle + keys (window thread only).
@@ -2271,7 +2321,8 @@ int main(int argc, char** argv) {
  draw_frame_2d(preview, view, false, false);
  }
  draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, walkaround_stop, false, false, {});
+ selected_experience_choice, walkaround_stop, review_keyframes,
+ selected_review_keyframe, false, false, {});
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
  TakeScreenshot(shot_path.c_str());
@@ -2361,7 +2412,8 @@ int main(int argc, char** argv) {
  12, DARKGRAY);
  if (experience_loaded) {
  draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, walkaround_stop, session->objectives_done(),
+ selected_experience_choice, walkaround_stop, review_keyframes,
+ selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score());
  }
     EndDrawing();
