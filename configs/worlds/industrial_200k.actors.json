@@ -1,0 +1,8 @@
+{
+ "actors": [
+ {"id": "crossing_forklift_west", "x": 65.0, "y": -18.0, "radius_m": 0.65, "height_m": 2.2, "speed_mps": 1.0, "behavior": "waypoints", "waypoints": [{"x": 65.0, "y": -18.0}, {"x": 65.0, "y": 18.0}], "loop": true, "waits": [1.0, 1.0], "seed": 200001, "visual_kind": "forklift"},
+ {"id": "crossing_worker_central", "x": 246.0, "y": -25.0, "radius_m": 0.32, "height_m": 1.75, "speed_mps": 1.25, "behavior": "waypoints", "waypoints": [{"x": 246.0, "y": -25.0}, {"x": 246.0, "y": 25.0}], "loop": true, "waits": [0.5, 0.5], "seed": 200002, "visual_kind": "pedestrian"},
+ {"id": "east_shuttle", "x": 350.0, "y": 52.0, "radius_m": 0.7, "height_m": 2.0, "speed_mps": 1.4, "behavior": "waypoints", "waypoints": [{"x": 310.0, "y": 52.0}, {"x": 455.0, "y": 52.0}], "loop": true, "waits": [0.0, 1.5], "seed": 200003, "visual_kind": "vehicle"},
+ {"id": "south_forklift", "x": 410.0, "y": -135.0, "radius_m": 0.65, "height_m": 2.2, "speed_mps": 0.9, "behavior": "waypoints", "waypoints": [{"x": 410.0, "y": -135.0}, {"x": 465.0, "y": -135.0}], "loop": true, "waits": [1.0, 1.0], "seed": 200004, "visual_kind": "forklift"}
+ ]
+}
