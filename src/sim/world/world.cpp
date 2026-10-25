@@ -34,6 +34,34 @@ void World::apply(const robot::iface::ActuatorCommand& cmd) {
   }
 }
 
+void World::read_engine_truth() {
+ truth_.body_x_m = mujoco_.body_x();
+ truth_.body_y_m = mujoco_.body_y();
+ truth_.body_yaw_rad = mujoco_.body_yaw();
+ truth_.forward_mps = mujoco_.forward_mps();
+ truth_.lateral_mps = mujoco_.lateral_mps();
+ truth_.yaw_rate_radps = mujoco_.yaw_rate();
+ truth_.body_z_m = mujoco_.body_z();
+ truth_.body_roll_rad = mujoco_.body_roll();
+ truth_.body_pitch_rad = mujoco_.body_pitch();
+ for (int i = 0; i < truth_.drive_count && i < 4; ++i) {
+ truth_.drive_angle_rad[i] = mujoco_.drive_angle(i);
+ truth_.drive_radps[i] = mujoco_.drive_radps(i);
+ truth_.drive_slipping[i] = mujoco_.drive_slipping(i);
+ }
+ for (int i = 0; i < truth_.steer_count && i < 4; ++i) {
+ truth_.steer_rad[i] = mujoco_.steer_angle(i);
+ truth_.steer_vel_radps[i] = mujoco_.steer_vel(i);
+ }
+}
+
+void World::prepare() {
+ mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
+ terrain_patches_, support_slabs_, geometry_version_,
+ truth_.drive_count, truth_.steer_count);
+ if (mujoco_.valid()) read_engine_truth();
+}
+
 void World::step_engine(double dt_s) {
   mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
                terrain_patches_, support_slabs_, geometry_version_,
@@ -42,24 +70,7 @@ void World::step_engine(double dt_s) {
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
                brake_request_, incline_grade_, material_zones_, materials_,
                environment_, sim_time_s_);
-  truth_.body_x_m = mujoco_.body_x();
-  truth_.body_y_m = mujoco_.body_y();
-  truth_.body_yaw_rad = mujoco_.body_yaw();
-  truth_.forward_mps = mujoco_.forward_mps();
-  truth_.lateral_mps = mujoco_.lateral_mps();
-  truth_.yaw_rate_radps = mujoco_.yaw_rate();
-  truth_.body_z_m = mujoco_.body_z();
-  truth_.body_roll_rad = mujoco_.body_roll();
-  truth_.body_pitch_rad = mujoco_.body_pitch();
-  for (int i = 0; i < truth_.drive_count && i < 4; ++i) {
-    truth_.drive_angle_rad[i] = mujoco_.drive_angle(i);
-    truth_.drive_radps[i] = mujoco_.drive_radps(i);
-    truth_.drive_slipping[i] = mujoco_.drive_slipping(i);
-  }
-  for (int i = 0; i < truth_.steer_count && i < 4; ++i) {
-    truth_.steer_rad[i] = mujoco_.steer_angle(i);
-    truth_.steer_vel_radps[i] = mujoco_.steer_vel(i);
-  }
+ read_engine_truth();
 }
 
 void World::step(double dt_s) {

@@ -237,6 +237,11 @@ struct MotorParams {
 class World {
  public:
   World();
+ // Compile and read back the current zero-time plant state without
+ // integrating physics, actors, or the simulation clock. Presentation may
+ // use this for a truthful pre-run walkaround after applying a safe-zero
+ // actuator mode. No sensor or ROBOT input is produced here.
+ void prepare();
   void step(double dt_s);
   double sim_time_s() const { return sim_time_s_; }
  robot::core::MonotonicNs sim_time_ns() const {
@@ -348,7 +353,8 @@ class World {
   // Unsupported mode, broken model, or MuJoCo disabled at configure time
   // leaves truth frozen; dt <= 0 holds state. Actors stay kinematic
   // (no engine bodies for them); the judge reads the same truth.
-  void step_engine(double dt_s);
+ void read_engine_truth();
+ void step_engine(double dt_s);
   std::array<double, 4> brake_request_ = {};
   double incline_grade_ = 0.0;  // longitudinal rise/run, SIM-side only
   std::vector<StaticBox> static_boxes_;

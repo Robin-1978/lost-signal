@@ -57,6 +57,9 @@ class ScenarioSession {
  }
   bool cancel_goal(robot::iface::GoalHandle h);
   void step_once();
+ // Build the safe-zero plant and expose its initial SIM pose for a pre-run
+ // viewer without advancing physics time or publishing observations.
+ void prepare_world();
  // SIM-side wall-clock diagnostics only. These values are never published to
  // RobotApplication and therefore cannot influence estimation or decisions.
  const StepTiming& last_step_timing() const { return last_step_timing_; }
@@ -162,6 +165,8 @@ class ScenarioSession {
  private:
   world::World world_;
   providers::SimSensorSuite suite_;
+ robot::iface::ActuatorMode idle_actuator_mode_ =
+ robot::iface::ActuatorMode::kDiffDuty;
   // Declared BEFORE app_: the ctors capture the provider address in
   // app_'s initializer, and members init in declaration order — after
   // app_ the default nullptr would overwrite the captured address.

@@ -653,23 +653,28 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  return;
  }
 
- const float panel_width = std::min(720.0f,
- static_cast<float>(GetScreenWidth()) - 100.0f);
- const float panel_height = phase == ExperiencePhase::kPrediction
- ? 610.0f : 585.0f;
- const float x = (static_cast<float>(GetScreenWidth()) - panel_width) * 0.5f;
+ const bool briefing = phase == ExperiencePhase::kBriefing;
+ const float screen_width = static_cast<float>(GetScreenWidth());
+ const float screen_height = static_cast<float>(GetScreenHeight());
+ const float panel_width = briefing
+ ? std::min(430.0f, screen_width - 48.0f)
+ : std::min(720.0f, screen_width - 100.0f);
+ const float panel_height = briefing
+ ? std::min(700.0f, screen_height - 48.0f)
+ : phase == ExperiencePhase::kPrediction ? 610.0f : 585.0f;
+ const float x = briefing ? 24.0f : (screen_width - panel_width) * 0.5f;
  const float y0 = (static_cast<float>(GetScreenHeight()) - panel_height) * 0.5f;
  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
- {5, 10, 12, 150});
+ briefing ? Color{5, 10, 12, 38} : Color{5, 10, 12, 150});
  DrawRectangleRounded({x, y0, panel_width, panel_height}, 0.035f, 10,
  kPanel);
  DrawRectangleRoundedLinesEx({x, y0, panel_width, panel_height}, 0.035f, 10,
  2.0f, phase == ExperiencePhase::kDebrief ? kAmber : kCyan);
  DrawText("LOST SIGNAL / FIELD LAB", static_cast<int>(x + 34),
  static_cast<int>(y0 + 28), 15, kCyan);
- DrawText(experience.title.c_str(), static_cast<int>(x + 34),
- static_cast<int>(y0 + 58), 25, kText);
- float y = draw_wrapped_text(experience.subtitle, x + 34, y0 + 95,
+ float y = draw_wrapped_text(experience.title, x + 34, y0 + 58,
+ panel_width - 68, briefing ? 22.0f : 25.0f, 4.0f, kText);
+ y = draw_wrapped_text(experience.subtitle, x + 34, y + 7,
  panel_width - 68, 16, 5, kMuted);
  y += 14.0f;
 
@@ -1032,7 +1037,7 @@ void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
  const Camera3D& camera, const ParticleSystem& particles,
  bool show_lidar, bool show_estimate,
- bool show_actor_routes,
+ bool show_actor_routes, bool show_places,
  const VisualAssets* assets = nullptr,
  const SceneManifest* scene = nullptr,
  const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr) {
@@ -1188,7 +1193,7 @@ void draw_frame_3d(const Frame& f,
     }
   }
   // Places as beacon poles with a ground ring (green = objective done).
-  for (const auto& p : f.places) {
+ if (show_places) for (const auto& p : f.places) {
     const Color col = p.reached ? GREEN : ORANGE;
  const double place_ground = world_ns::sample_terrain(
  world.terrain_patches(), world.support_slabs(), p.x_m, p.y_m).height_m;
@@ -1827,6 +1832,10 @@ int main(int argc, char** argv) {
   } else {
     setup_demo(*session);
   }
+ // Compile the safe-zero plant for the pre-run walkaround. This reads the
+ // same MuJoCo links used during the mission without advancing SIM time,
+ // actors, sensors, ROBOT cadence, or score.
+ session->prepare_world();
 
  InitWindow(kScreenW, kScreenH, "robot_simu viewer (SIM truth, 2D)");
  if (assets_path.empty() && std::filesystem::is_directory("assets"))
@@ -1953,6 +1962,9 @@ int main(int argc, char** argv) {
  cam_st.target_x = camera_target_x;
  cam_st.target_y = camera_target_y;
  follow = false;
+ } else if (experience_loaded) {
+ cam_st.target_x = session->setup_world().truth().body_x_m;
+ cam_st.target_y = session->setup_world().truth().body_y_m;
  }
  ParticleSystem motion_particles;
 
@@ -2124,8 +2136,32 @@ int main(int argc, char** argv) {
     const auto& steps = session->episode().steps();
  if (steps.empty()) {
  if (!experience_loaded) continue;
+ sim::eval::EvalStep preview_step;
+ preview_step.truth_after = session->setup_world().truth();
+ const sim::viewer::Frame preview = sim::viewer::build_frame(
+ session->setup_world(), preview_step, {}, {}, {}, session_lidar_mount);
  BeginDrawing();
- ClearBackground({18, 31, 34, 255});
+ ClearBackground(view3d ? Color{168, 204, 228, 255}
+ : Color{18, 31, 34, 255});
+ if (view3d) {
+ CameraState preview_camera_state = cam_st;
+ preview_camera_state.dist_m = std::min(preview_camera_state.dist_m, 2.2f);
+ preview_camera_state.target_z = 0.16;
+ // Reserve the left side for the briefing panel while keeping the physical
+ // assembly large enough to inspect. Offset the optical target along the
+ // camera's screen-left ground axis; the robot then composes on the right.
+ const double preview_yaw_rad = preview_camera_state.yaw_deg * DEG2RAD;
+ preview_camera_state.target_x += 0.55 * std::sin(preview_yaw_rad);
+ preview_camera_state.target_y -= 0.55 * std::cos(preview_yaw_rad);
+ const Camera3D cam = camera_from_state(preview_camera_state);
+ BeginMode3D(cam);
+ draw_frame_3d(preview, session->setup_world(), cam, motion_particles,
+ false, false, false, false, &visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
+ EndMode3D();
+ } else {
+ draw_frame_2d(preview, view, false, false);
+ }
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, false, false, {});
  EndDrawing();
@@ -2170,7 +2206,7 @@ int main(int argc, char** argv) {
       BeginMode3D(cam);
  draw_frame_3d(frame, session->setup_world(), cam, motion_particles,
  show_lidar,
- show_estimate, show_actor_routes, &visual_assets,
+ show_estimate, show_actor_routes, true, &visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
       EndMode3D();
     } else {

@@ -6,6 +6,17 @@
 #include <cstdint>
 
 namespace lost_signal::sim::scenario {
+namespace {
+
+robot::iface::ActuatorMode actuator_mode_for(const std::string& kind) {
+ if (kind == "ackermann") return robot::iface::ActuatorMode::kAckermannDuty;
+ if (kind == "swerve") return robot::iface::ActuatorMode::kSwerveDuty;
+ if (kind == "mecanum") return robot::iface::ActuatorMode::kMecanumDuty;
+ // Differential and tracked chassis both expose two differential duties.
+ return robot::iface::ActuatorMode::kDiffDuty;
+}
+
+} // namespace
 
 ScenarioSession::ScenarioSession()
     : world_(),
@@ -35,6 +46,7 @@ ScenarioSession::ScenarioSession(
     robot::platform::RobotDescription desc, world::MotorParams motor)
     : world_(),
       suite_(&world_),
+ idle_actuator_mode_(actuator_mode_for(desc.chassis_kind)),
       app_([this, &desc]() {
         auto maps = std::make_unique<providers::StaticMapProvider>(
             &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
@@ -47,6 +59,12 @@ ScenarioSession::ScenarioSession(
   (void)app_.activate();
  scheduler_.reset_after(0.0, 0.02, 0.02, 0.02, 0.02, 0.02);
   suite_.set_mounts(app_.description().sensors);
+}
+
+void ScenarioSession::prepare_world() {
+ world_.apply(robot::iface::ActuatorCommand::SafeZero(
+ world_.sim_time_ns(), idle_actuator_mode_));
+ world_.prepare();
 }
 
 void ScenarioSession::set_cadence(double scan_period_s,

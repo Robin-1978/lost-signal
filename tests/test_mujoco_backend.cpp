@@ -31,6 +31,30 @@ void set_diff_duty(sim::world::World& w, double duty) {
 
 int main() {
 #ifdef LOST_SIGNAL_WITH_MUJOCO
+ // Preparing the plant exposes the authored zero-time assembly without
+ // consuming a physics step. A briefing may inspect this SIM state, but it
+ // must not advance actors, publish observations, or create score history.
+ {
+ sim::world::World w = make_mujoco_diff();
+ set_diff_duty(w, 0.0);
+ w.prepare();
+ assert(w.sim_time_s() == 0.0);
+ assert(w.truth().step == 0);
+ assert(std::abs(w.truth().body_z_m - w.motor_params().wheel_radius_m) <
+ 1e-12);
+ sim::world::WheelViz wheels[6];
+ assert(w.wheels(wheels, 6) == 2);
+ assert(wheels[0].pose.valid);
+ assert(wheels[1].pose.valid);
+
+ sim::scenario::ScenarioSession session;
+ session.prepare_world();
+ assert(session.setup_world().sim_time_s() == 0.0);
+ assert(session.setup_world().truth().step == 0);
+ assert(session.episode().steps().empty());
+ assert(session.score().steps == 0);
+ }
+
  // The compiled multibody has the declared mass and COM. Collision-shell
  // dimensions never move when inertia is tuned.
  {
