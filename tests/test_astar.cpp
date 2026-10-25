@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -35,6 +36,13 @@ void fill_box(lost_signal::robot::iface::MapSnapshot& m, double x0, double y0,
       if (cx >= x0 && cx < x1 && cy >= y0 && cy < y1)
         m.occupancy[gy * w + gx] = 100;
     }
+}
+
+double distance_to_box(double x, double y, double x0, double y0,
+ double x1, double y1) {
+ const double dx = std::max({x0 - x, 0.0, x - x1});
+ const double dy = std::max({y0 - y, 0.0, y - y1});
+ return std::hypot(dx, dy);
 }
 
 lost_signal::robot::autonomy::EstimatedState at(double x, double y) {
@@ -135,6 +143,34 @@ int main() {
  fill_box(map, 4.0, 0.25, 5.0, 10.0);
  Route r = planner.plan(at(1.0, 0.0), {8.0, 0.0, 0.0}, map);
  assert(!r.valid);
+ }
+
+ // A diagonal route around one occupied cell must follow the circular
+ // footprint envelope at its corner. Sample complete route segments rather
+ // than only grid vertices so a diagonal chord cannot cut through the hard
+ // clearance radius between two nominally free cells.
+ {
+ auto map = make_map(100, 100, 0.1, -5.0, -5.0);
+ for (auto& cell : map.occupancy) cell = 0;
+ fill_box(map, 0.0, 0.0, 0.1, 0.1);
+ Route r = planner.plan(at(-2.0, -2.0), {2.0, 2.0, 0.0}, map);
+ assert(r.valid);
+ constexpr double kHardRadiusM = 0.5; // default 0.4 m body + 0.1 m reserve
+ for (std::size_t i = 1; i < r.points.size(); ++i) {
+ const double length = std::hypot(
+ r.points[i].x_m - r.points[i - 1].x_m,
+ r.points[i].y_m - r.points[i - 1].y_m);
+ const int samples = std::max(1, static_cast<int>(std::ceil(length / 0.01)));
+ for (int sample = 0; sample <= samples; ++sample) {
+ const double blend = static_cast<double>(sample) / samples;
+ const double x = r.points[i - 1].x_m +
+ (r.points[i].x_m - r.points[i - 1].x_m) * blend;
+ const double y = r.points[i - 1].y_m +
+ (r.points[i].y_m - r.points[i - 1].y_m) * blend;
+ assert(distance_to_box(x, y, 0.0, 0.0, 0.1, 0.1) + 1e-9 >=
+ kHardRadiusM);
+ }
+ }
  }
 
   // Grade: a hill between start and goal is skirted, not climbed.

@@ -63,11 +63,25 @@ int main() {
  const LocalMap inflated = fine.inflated(0.06);
  assert(inflated.is_blocked(-0.05, 0.05));
  assert(inflated.is_free(-0.15, 0.05));
+ // The envelope is Euclidean around the full cell square: axial and near
+ // diagonal cells inside the radius are lethal, while a farther diagonal
+ // cell outside the circular corner remains free (no square dilation).
+ const LocalMap corner = fine.inflated(0.16);
+ assert(corner.is_blocked(-0.15, 0.05));
+ assert(corner.is_blocked(-0.05, -0.05));
+ assert(corner.is_free(-0.15, -0.15));
  const LocalCostmap costmap = make_local_costmap(fine, 0.06, 0.20);
  assert(costmap.cost_at(-0.05, 0.05) == 1.0f);
  assert(costmap.cost_at(-0.15, 0.05) >
  costmap.cost_at(-0.35, 0.05));
  assert(costmap.cost_at(-0.35, 0.05) == 0.0f);
+ // Soft cost follows the same radial geometry around a corner and decays
+ // monotonically outside the hard envelope.
+ const LocalCostmap corner_cost = make_local_costmap(fine, 0.10, 0.30);
+ assert(corner_cost.cost_at(-0.15, -0.05) >
+ corner_cost.cost_at(-0.25, -0.15));
+ assert(corner_cost.cost_at(-0.25, -0.15) >
+ corner_cost.cost_at(-0.45, -0.45));
   }
 
   // DWA on an open map drives toward the route goal, deterministically.
