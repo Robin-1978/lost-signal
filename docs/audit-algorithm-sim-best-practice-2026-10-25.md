@@ -16,10 +16,11 @@
 ## 2. 已验证的优势
 
 - ROBOT/SIM 编译边界成立，SIM 真值只用于物理、显示、记录和离线评分。
-- 地形物理使用连续 canonical height，survey 与引擎几何一致；ROBOT 只有在部署地图明确发布 elevation/survey prior 时才能读取该先验。
+- 地形物理使用连续 canonical height，survey 与引擎几何一致；连续坡面接缝不再暴露有限碰撞 slab 的侧壁；ROBOT 只有在部署地图明确发布 elevation/survey prior 时才能读取该先验。
 - LiDAR 使用 3D raycast，并已支持安装位姿、rolling shutter、actor 命中、强度和噪声模型；IMU 已有安装位姿、bias、bias walk 和 white noise；encoder 已有量化；传输已支持 latency/dropout。
 - 全局恢复搜索已跨 tick 分片；局部匹配拒绝不会直接触发全局搜索，只有估计有效性或协方差达到策略阈值才进入恢复。
-- mapless SLAM、scan-to-submap、loop closure 和 robust pose graph 已进入新框架，决策过程中不读取真值。
+- mapless SLAM、scan-to-submap、loop closure 和 robust pose graph 已进入新框架，决策过程中不读取真值。反向于轮速先验的 scan-to-submap 修正现在按模式处理：有先验地图时相对子图证据不能改变绝对权威，反向修正只允许由正式 scan-to-map 定位链提交；无先验地图时必须在同一 submap anchor 上由第二个独立运动视角确认。单帧反向修正仍拒绝。所有缺少独立绝对地图确认的回环，无论单次 correction 大小，都必须经过跨视角的刚体变换一致性确认，避免多个“小修正”累计拖走 `map`。
+- SIM 的逐轮打滑标签读取 MuJoCo 已求解的接触法向载荷、切向力和当前 friction cone，并以该接触的 `solref` 响应时间过滤单个子步的边界触碰；split-μ、载荷转移和短暂离地不再被平均轴载荷掩盖。连续纵/横滑移、法向载荷和摩擦利用率只进入 SIM viewer/离线诊断。
 - 全局和局部 costmap 已统一为占据硬膨胀加连续衰减 soft layer；DWA、TEB-style、Validator 和 Safety 形成分层检查。
 - Collision Monitor 直接读取 ROBOT 原始扫描，独立于全局定位和 costmap，符合最终安全层的职责方向。
 - 动态预测支持常速、静止、走廊反射、备选意图和增长的不确定性，并用连续时间最小净空避免离散时刻漏检。
@@ -172,6 +173,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 - [Autoware Obstacle Collision Checker](https://autowarefoundation.github.io/autoware_universe/main/planning/planning_validator/autoware_obstacle_collision_checker/)：结合预测轨迹、点云、延迟、footprint margin 和最大减速度检查碰撞；对应动态预测与制动契约。
 - [REP-105](https://www.ros.org/reps/rep-0105.html)：`odom` 连续但允许漂移，`map` 长期稳定但允许离散跳变；对应 P1-4 的双层状态。
 - [robot_localization](https://docs.ros.org/en/rolling/p/robot_localization/)：支持多源、逐传感器配置、15 维状态和连续预测；当前估计器明显更简化。
+- [SLAM Toolbox](https://docs.ros.org/en/ros2_packages/jazzy/api/slam_toolbox/) 及其官方 `mapper_params_online_async.yaml`：明确区分 mapping/localization/lifelong 模式，使用 odometry prior、scan matching、recent-scan buffer 与 pose graph；默认配置用 `minimum_travel_distance/heading` 控制节点采样，并以 `loop_match_minimum_chain_size`、coarse/fine response、variance 和最大回环距离共同约束回环。当前实现据此保持 `map/odom` 权限分层，并采用多视角确认；不会照搬参数，也不会把 tracking 搜索窗错误扩成“最高速度 × 周期”。搜索窗围绕 odometry prior 覆盖预期估计误差，运动包络由里程计传播、协方差和速度安全层分别负责。
 - [MuJoCo Modeling](https://mujoco.readthedocs.io/en/stable/modeling.html) 与 [Computation](https://mujoco.readthedocs.io/en/stable/computation/index.html)：接触 `solref` time constant 应相对 timestep 足够大；打滑问题可评估 elliptic friction cone、较大 `impratio`、Newton solver、小 tolerance，必要时使用 NoSlip 后处理。当前 1 ms substep 与默认 20 ms contact time constant 满足基本比例，但仍缺参数敏感性矩阵。
 - [Gazebo Sensors](https://gazebosim.org/docs/harmonic/sensors/) 与 [SDFormat Sensor Spec](https://sdformat.org/spec?ver=1.12&elem=sensor)：传感器 update rate、射线数量、角/距离分辨率、量程和噪声应是明确设备属性；对应 P0-1 和 P1-7。
 

@@ -317,6 +317,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 ### G1：可读、可控、可复现
 
 - 已完成固定步 1×/倍率/Turbo、实际 RTF、step/s、tick p99 和限流显示。
+- 加速验收使用同一 seed 和配置分别运行 1×、8×、64×、Turbo 与 headless；逐项比较最终 truth、每个 ROBOT command、goal 状态、碰撞和 score hash。性能报告同时给出 physics、sensor、ROBOT、actuation、record 分项，视觉 LOD 可以降低，但 1 ms 物理子步、传感器采集时刻和算法 cadence 不得改变。
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。
 - 补齐暂停时间轴、单步、关键事件、真值/认知 overlay 开关和 replay seek。
 - 验收：同 seed 的 1×、8×、Turbo、headless 最终 truth、command、score 一致；UI 连续响应。
@@ -343,7 +344,9 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 
 ### G4：探索战役垂直切片
 
-- 完成第 0–2 章、五个短任务、简报、预测题、复盘和一键 A/B。
+- 首个 3–5 分钟章节固定为“研究基地维修间 → 玻璃门停靠位”：8–12 秒近景镜头介绍驱动轮、caster、LiDAR、急停和计算单元；玩家先预测松开动力后的制动结果；ROBOT 自主运行并因遮挡/动态侵入安全停车；复盘自动跳到首次观测、开始制动、稳定停车三个关键帧；最后只改变扫描周期或制动能力中的一个真实参数，以相同 seed 重跑。
+- 首章只教授三个结论：传感器实际收到什么、机器人估计自己在哪里、为什么这次停车安全。安全失败直接判失败，时间、平滑与能耗不能补偿碰撞。
+- 随后完成第 0–2 章、五个短任务、简报、预测题、复盘和一键 A/B。内容可迁移 `main` 的 campaign/chapter/presentation/locale/scene 配置，但任务层不得控制 ROBOT 决策，也不得暴露 actor id、未来 waypoint 或真值位姿。
 - 验收：新用户十分钟内完成首局并能正确回答“真值是否给了机器人”“odom 与 map 为何不同”。
 
 ### G5：实验室与 Benchmark Pro

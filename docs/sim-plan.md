@@ -20,8 +20,9 @@ loop (effort math stays as the tested spec in contact/motor unit tests).
   truth read back for the unchanged providers. Parity gate:
   `test_mujoco_backend` (behaviors + crossing HIL + determinism). The
   switch itself was deleted in M2 — engine-only since.
-- M2 (done): all chassis on the engine, traction/slip flags in WorldTruth
-  (SIM-side labels only), viscous drag via native joint damping, slope P1
+- M2 (done): all chassis on the engine, per-wheel traction/slip flags in
+ WorldTruth from resolved normal/tangential contact force and the active
+ MuJoCo friction cone (SIM-side labels only), viscous drag via native joint damping, slope P1
   regression on the engine, analytic integration deleted (tests re-pinned
   to engine semantics as the witness).
 - M3: raylib viewer reading truth (SIM-side only). Done, in three cuts:
@@ -284,8 +285,8 @@ no friction, contact, or live wetness).
 - T1b (landed): engine per-zone friction/rolling/contact (pair takes the
   max: tire carries min(global, local) x environment grip per wheel,
   ground carries the zone value), oriented ramp/slab contact slabs with
-  tops coinciding with the surveyed plane, 2-step slip hysteresis with
-  zone-aware thresholds, survey elevation rasterization, grip factor in
+ tops coinciding with the surveyed plane, contact-response-time plus 2-step
+ slip hysteresis over resolved per-wheel friction-cone utilization, survey elevation rasterization, grip factor in
   `Diagnostics` (ROBOT's own belief, offline only). `test_terrain` pins
   math/engine/survey/refusals. Roughness + bilinear cross-slope refuse
   the build fail-closed until mesh support (T2).
@@ -307,7 +308,8 @@ no friction, contact, or live wetness).
  fixed-world heightfield tiles with shared boundary vertices, 10 cm cells
  on authored terrain and four-corner flat tiles; map extent no longer
  dilutes local contact resolution, and every tile samples the same function
- the survey rasterizes), tracked chassis
+ the survey rasterizes; continuous planar ridge/valley seams cover slab side
+ faces so construction geometry cannot create invisible retaining walls), tracked chassis
   (T2b: skid-steer on the (2,0) path with yaw-scrub torque, own config +
   registry entry), engine-contact judge (T2c: belly/high-center clearance
   vs the authored surface, truth-side only, gated on a live plant),
