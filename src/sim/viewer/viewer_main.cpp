@@ -9,6 +9,7 @@
 #include <rlgl.h>
 
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1429,7 +1430,14 @@ int main(int argc, char** argv) {
   bool show_lidar = true;
   bool show_estimate = true;
   bool follow = true;
-  int steps_per_frame = 4;
+ // Drive deterministic 20 ms simulation time from elapsed wall time. The
+ // old fixed four-steps-per-frame loop demanded 4.8x real time at 60 FPS and
+ // stacked periodic localization/planning work into the window thread.
+ double playback_rate = 1.0;
+ double sim_debt_s = 0.0;
+ double previous_wall_s = GetTime();
+ double last_step_ms = 0.0;
+ double peak_step_ms = 0.0;
   Vector2 last_mouse{0, 0};
  bool dragging = false;
  bool middle_dragging = false;
@@ -1501,6 +1509,10 @@ int main(int argc, char** argv) {
  }
 
  while (!WindowShouldClose()) {
+ const double wall_now_s = GetTime();
+ const double wall_dt_s = std::clamp(
+ wall_now_s - previous_wall_s, 0.0, 0.25);
+ previous_wall_s = wall_now_s;
     view.set_screen(GetScreenWidth(), GetScreenHeight());
     if (IsKeyPressed(KEY_V)) view3d = !view3d;
     // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
@@ -1548,7 +1560,13 @@ int main(int argc, char** argv) {
     }
     // Input (window thread only; sim stays deterministic).
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
-    if (IsKeyPressed(KEY_N) && paused) session->step_once();
+ if (IsKeyPressed(KEY_N) && paused) {
+ const auto begin = std::chrono::steady_clock::now();
+ session->step_once();
+ last_step_ms = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - begin).count();
+ peak_step_ms = std::max(peak_step_ms, last_step_ms);
+ }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
     if (IsKeyPressed(KEY_F)) follow = !follow;
@@ -1558,8 +1576,8 @@ int main(int argc, char** argv) {
  cam_st.dist_m = 12.0f;
  follow = false;
  }
-    if (IsKeyPressed(KEY_EQUAL) && steps_per_frame < 40) steps_per_frame *= 2;
-    if (IsKeyPressed(KEY_MINUS) && steps_per_frame > 1) steps_per_frame /= 2;
+ if (IsKeyPressed(KEY_EQUAL) && playback_rate < 8.0) playback_rate *= 2.0;
+ if (IsKeyPressed(KEY_MINUS) && playback_rate > 0.25) playback_rate *= 0.5;
     if (IsKeyPressed(KEY_ZERO)) view.fit(-4.0, -4.0, 8.0, 7.0);
     const float wheel = GetMouseWheelMove();
     if (view3d) {
@@ -1607,10 +1625,32 @@ int main(int argc, char** argv) {
  }
 
     if (!paused && !session->objectives_done()) {
-      for (int i = 0; i < steps_per_frame; ++i) {
+ constexpr double kSimStepS = 0.02;
+ constexpr int kMaxStepsPerFrame = 4;
+ constexpr double kFrameWorkBudgetMs = 10.0;
+ // Keep bounded debt so a debugger stop or dragged window cannot trigger a
+ // catch-up spiral. Remaining debt carries across frames; the deterministic
+ // simulation clock never depends on rendering time.
+ sim_debt_s = std::min(0.5, sim_debt_s + wall_dt_s * playback_rate);
+ const auto frame_work_begin = std::chrono::steady_clock::now();
+ int steps_this_frame = 0;
+ while (sim_debt_s + 1e-12 >= kSimStepS &&
+ steps_this_frame < kMaxStepsPerFrame) {
+ const auto step_begin = std::chrono::steady_clock::now();
         session->step_once();
+ last_step_ms = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - step_begin).count();
+ peak_step_ms = std::max(peak_step_ms, last_step_ms);
+ sim_debt_s -= kSimStepS;
+ ++steps_this_frame;
         if (session->objectives_done()) break;
+ const double work_ms = std::chrono::duration<double, std::milli>(
+ std::chrono::steady_clock::now() - frame_work_begin).count();
+ if (work_ms >= kFrameWorkBudgetMs) break;
       }
+ } else {
+ // Paused wall time is not simulation debt.
+ sim_debt_s = 0.0;
     }
     const auto& steps = session->episode().steps();
     if (steps.empty()) continue;
@@ -1653,14 +1693,14 @@ int main(int argc, char** argv) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       draw_frame_2d(frame, view, show_lidar, show_estimate);
     }
-    char hud[256];
+    char hud[384];
     std::snprintf(hud, sizeof(hud),
-                  "step %llu  x=%.2f y=%.2f yaw=%.2f  clr=%.2f  obj %d/%zu  %dx%d cam=%s %s",
+ "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %.2fx %dfps tick=%.1f/%.1fms cam=%s %s",
                   static_cast<unsigned long long>(frame.step), frame.body.x_m,
                   frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
                   static_cast<int>(reached.size()), session->objectives().total(),
- steps_per_frame,
- GetFPS(), follow ? "FOLLOW" : "FREE",
+ playback_rate, GetFPS(), last_step_ms, peak_step_ms,
+ follow ? "FOLLOW" : "FREE",
  paused ? "PAUSED"
  : session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")

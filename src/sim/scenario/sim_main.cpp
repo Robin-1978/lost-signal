@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <array>
 #include <cstdio>
@@ -34,6 +35,7 @@ struct Options {
  double duration_s = -1.0;
  bool no_actors = false;
  bool verbose = false;
+ bool profile = false;
  bool help = false;
 };
 
@@ -109,7 +111,7 @@ void usage() {
  "usage: lost_signal_sim [--robot FILE] [--sim FILE] [--map FILE]\n"
  " [--objectives a,b,...] [--steps N | --duration S]\n"
  " [--actors FILE] [--no-actors] [--out FILE.json]\n"
- " [--episode FILE.jsonl]\n");
+ " [--episode FILE.jsonl] [--profile]\n");
 }
 
 std::vector<std::string> split_csv(const std::string& text) {
@@ -151,6 +153,8 @@ bool parse_args(int argc, char** argv, Options& opt) {
  opt.no_actors = true;
  } else if (a == "--verbose") {
  opt.verbose = true;
+ } else if (a == "--profile") {
+ opt.profile = true;
  } else if (a == "--objectives") {
  std::string list;
  if (!value(list)) return false;
@@ -263,6 +267,40 @@ bool write_summary(const std::string& path, const std::string& map_path,
  return out.good();
 }
 
+void print_timing_profile(
+ const std::vector<sim::scenario::ScenarioSession::StepTiming>& samples) {
+ using Timing = sim::scenario::ScenarioSession::StepTiming;
+ if (samples.empty()) return;
+ struct Stage {
+ const char* name;
+ double Timing::*member;
+ };
+ const Stage stages[] = {
+ {"physics", &Timing::physics_ms},
+ {"sensors", &Timing::sensors_ms},
+ {"robot_tick", &Timing::robot_tick_ms},
+ {"actuation", &Timing::actuation_ms},
+ {"record", &Timing::record_ms},
+ {"total", &Timing::total_ms},
+ };
+ std::fprintf(stderr, "timing_ms stage p50 p95 p99 max\n");
+ for (const Stage& stage : stages) {
+ std::vector<double> values;
+ values.reserve(samples.size());
+ for (const Timing& sample : samples) values.push_back(sample.*stage.member);
+ std::sort(values.begin(), values.end());
+ const auto percentile = [&](double fraction) {
+ const std::size_t rank = static_cast<std::size_t>(
+ std::ceil(fraction * static_cast<double>(values.size())));
+ return values[std::min(values.size() - 1,
+ rank > 0 ? rank - 1 : std::size_t{0})];
+ };
+ std::fprintf(stderr, "timing_ms %-10s %.3f %.3f %.3f %.3f\n",
+ stage.name, percentile(0.50), percentile(0.95), percentile(0.99),
+ values.back());
+ }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -345,10 +383,13 @@ int main(int argc, char** argv) {
  } else {
  budget = opt.objectives.empty() ? 5 : 4000;
  }
-long ran = 0;
+ long ran = 0;
+ std::vector<sim::scenario::ScenarioSession::StepTiming> timing_samples;
+ if (opt.profile) timing_samples.reserve(static_cast<std::size_t>(budget));
  std::size_t verbose_loop_count = 0;
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
+ if (opt.profile) timing_samples.push_back(session->last_step_timing());
  if (opt.verbose) {
  const auto& recorded = session->episode().steps();
  if (!recorded.empty()) {
@@ -419,6 +460,7 @@ long ran = 0;
  ran, session->objectives_done() ? "yes" : "no",
  session->objectives_passed() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
+ if (opt.profile) print_timing_profile(timing_samples);
  if (!opt.out_path.empty() &&
  !write_summary(opt.out_path, opt.map_path, *session,
  have_semantics ? &semantics : nullptr)) {

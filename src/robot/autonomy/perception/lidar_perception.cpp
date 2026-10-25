@@ -24,7 +24,7 @@ core::Vec2 limited_velocity(core::Vec2 velocity, double maximum_mps) {
 std::optional<double> raycast_static_map(
  const iface::MapSnapshot& map, core::Vec3 origin,
  core::Vec3 direction, double max_range_m) {
- if (!map.has_known_occupancy() || !(max_range_m > 0.0) ||
+ if (!map.has_raster() || !(max_range_m > 0.0) ||
  !std::isfinite(max_range_m)) {
  return std::nullopt;
  }
@@ -55,7 +55,7 @@ std::optional<double> raycast_static_map(
 bool endpoint_matches_static_map(
  const iface::MapSnapshot& map, double wx, double wy,
  double tolerance_m) {
- if (!map.has_known_occupancy() || !(tolerance_m >= 0.0)) return false;
+ if (!map.has_raster() || !(tolerance_m >= 0.0)) return false;
  const int center_x = static_cast<int>(
  std::floor((wx - map.origin_x_m) / map.resolution_m));
  const int center_y = static_cast<int>(
@@ -122,6 +122,8 @@ void LidarPerception::reset() {
   tracks_.clear();
   next_id_ = 1;
  static_map_ = iface::MapSnapshot{};
+ static_map_has_known_occupancy_ = false;
+ static_map_revision_valid_ = false;
 }
 
 PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
@@ -194,16 +196,18 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  }
  reference_backed = true;
  } else {
- const auto expected = raycast_static_map(
+ const auto expected = static_map_has_known_occupancy_
+ ? raycast_static_map(
  static_map_, sensor_p,
  {off.x / range, off.y / range, off.z / range},
- inferred_no_return_m);
+ inferred_no_return_m)
+ : std::optional<double>{};
  if (expected) {
  // Only a return measurably in front of the ROBOT map is foreground.
  // A farther return is clearing evidence or map mismatch, never an actor.
  if (!(range + config_.foreground_threshold_m < *expected)) continue;
  reference_backed = true;
- } else if (endpoint_matches_static_map(
+ } else if (static_map_has_known_occupancy_ && endpoint_matches_static_map(
  static_map_, sensor_p.x + off.x, sensor_p.y + off.y,
  config_.foreground_threshold_m + static_map_.resolution_m)) {
  // Sparse priors legitimately keep free space unknown. Matching a measured

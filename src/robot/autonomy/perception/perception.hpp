@@ -139,7 +139,13 @@ class LidarPerception : public IPerception {
     base_from_lidar_ = base_from_lidar;
   }
  void set_static_map(const iface::MapSnapshot& map) override {
+ if (static_map_revision_valid_ && static_map_.map_id == map.map_id &&
+ static_map_.revision == map.revision) {
+ return;
+ }
+ static_map_has_known_occupancy_ = map.has_known_occupancy();
  static_map_ = map;
+ static_map_revision_valid_ = true;
  }
 
  private:
@@ -172,6 +178,8 @@ class LidarPerception : public IPerception {
   // Full mount from the TF tree (set by the coordinator, default identity).
   core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
  iface::MapSnapshot static_map_;
+ bool static_map_has_known_occupancy_ = false;
+ bool static_map_revision_valid_ = false;
   std::unordered_map<std::uint32_t, TrackState> tracks_;
   std::uint32_t next_id_ = 1;
 };

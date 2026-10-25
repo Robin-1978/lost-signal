@@ -35,7 +35,9 @@ platform::ChassisLimits autonomy_limits_from_description(
 
 class NullMapProvider : public iface::IMapProvider {
  public:
-  iface::MapSnapshot active_snapshot() const override { return snapshot_; }
+ const iface::MapSnapshot& active_snapshot() const override {
+ return snapshot_;
+ }
   bool select_map(const std::string& map_id) override {
     if (map_id.empty()) return false;
     snapshot_.map_id = map_id;
@@ -103,7 +105,7 @@ iface::GoalHandle RobotApplication::request_goal(
     // becomes an estimated-frame goal for the coordinator. Unknown ids
     // fail closed with an invalid handle; raw coordinates never cross
     // this boundary.
-    const iface::MapSnapshot snap = maps_->active_snapshot();
+ const iface::MapSnapshot& snap = maps_->active_snapshot();
     const iface::Place* found = nullptr;
     for (const auto& p : snap.places) {
       if (p.place_id == req.place_id) {

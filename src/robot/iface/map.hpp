@@ -92,7 +92,10 @@ struct MapView {
 class IMapProvider {
  public:
   virtual ~IMapProvider() = default;
-  virtual MapSnapshot active_snapshot() const = 0;
+ // Published revisions are immutable and owned by the provider. Returning a
+ // view avoids copying every raster/elevation layer on each control tick;
+ // callers that need to retain a revision can still copy it explicitly.
+ virtual const MapSnapshot& active_snapshot() const = 0;
   virtual bool select_map(const std::string& map_id) = 0;
 };
 

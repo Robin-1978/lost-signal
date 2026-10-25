@@ -67,6 +67,7 @@ class LocalizationSystem {
 
  private:
  bool run_localization(const iface::MapSnapshot& map,
+ bool map_has_known_occupancy,
                         const iface::ObservationFrame& obs,
                         core::MonotonicNs now_ns, IEstimator& estimator,
                         std::string& action);
@@ -75,6 +76,7 @@ class LocalizationSystem {
                     IEstimator& estimator);
   // Returns true when a loop closure rebuilt the map (caller replans).
  bool run_slam(const iface::MapSnapshot& map,
+ bool map_has_known_occupancy,
  const iface::ObservationFrame& obs, bool has_observation,
  IEstimator& estimator, IMapper& mapper);
 
@@ -88,6 +90,12 @@ class LocalizationSystem {
  double global_origin_x_m_ = 0.0;
  double global_origin_y_m_ = 0.0;
  double global_origin_yaw_rad_ = 0.0;
+ // MapSnapshot revisions are immutable. Cache the O(cells) evidence query
+ // once per revision instead of rescanning the survey on every control tick.
+ bool map_evidence_cached_ = false;
+ std::string cached_map_id_;
+ std::uint64_t cached_map_revision_ = 0;
+ bool cached_map_has_known_occupancy_ = false;
 };
 
 }  // namespace lost_signal::robot::autonomy

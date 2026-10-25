@@ -13,7 +13,7 @@ class PlacesMap : public lost_signal::robot::iface::IMapProvider {
     snap_.frame_id = "map";
     snap_.places.push_back({"dock", 5.0, 0.0, 0.0});
   }
-  lost_signal::robot::iface::MapSnapshot active_snapshot() const override {
+ const lost_signal::robot::iface::MapSnapshot& active_snapshot() const override {
     return snap_;
   }
   bool select_map(const std::string& id) override {

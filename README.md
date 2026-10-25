@@ -43,7 +43,7 @@ ctest --test-dir build -V
 
 `tests/check_boundary.py` fails the build if any file under `src/robot/`
 includes a `sim/` header or if a `lost_signal_robot_*` target links a
-`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 52
+`lost_signal_sim_*` library. `ctest --test-dir build` currently runs 56
 tests.
 
 ## Headless run
@@ -55,6 +55,8 @@ tests.
   --objectives place_a,place_b --duration 60 --out /tmp/run.json
 ./build/lost_signal_sim --map configs/worlds/signal_town.json \
  --steps 600 --out /tmp/run.json --episode /tmp/run.jsonl
+./build/lost_signal_sim --map configs/worlds/signal_town.json \
+ --steps 1000 --profile
 ```
 
 `--robot` and `--sim` select the declared hardware contract and the SIM
@@ -64,6 +66,9 @@ prints steps, objective completion, collisions, distance, and estimate
 error; `--out` writes the same data plus per-objective results as JSON.
 `--episode` writes the deterministic observation stream accepted by
 `ReplayProvider` for closed-loop offline replay.
+`--profile` reports p50/p95/p99/max wall time for physics, sensors, the ROBOT
+tick, actuation, recording, and the complete step. This timing remains in the
+SIM runner and is never published into the ROBOT decision path.
 Without `--steps` or `--duration`, an explicit objective list gets a 4000
 step budget and a single implicit goal keeps the legacy 5 step smoke run.
 
@@ -118,3 +123,6 @@ completion ratio, and a duty/speed energy proxy.
   enter ROBOT observations.
 Press `F` to toggle the camera's robot-follow mode; right-drag or middle-drag
  releases follow for free orbit/pan, and `R` restores the default orbit.
+The viewer advances from a real-time accumulator at 1x by default; `+`/`-`
+changes playback rate. Per-frame step and work budgets prevent catch-up bursts,
+and the HUD reports current/peak tick time for diagnosing stalls.

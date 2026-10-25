@@ -290,7 +290,7 @@ void AutonomyCoordinator::ingest_observation(
 }
 
 iface::MotionCommand AutonomyCoordinator::update(
-    iface::MapSnapshot map, const iface::ChannelHealth& channel,
+ const iface::MapSnapshot& map, const iface::ChannelHealth& channel,
     core::MonotonicNs now_ns) {
   // Missing observation is unknown evidence -> safe stop, never free space.
   if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
@@ -347,12 +347,13 @@ iface::MotionCommand AutonomyCoordinator::update(
  // made mapless goals permanently lag behind the physical chassis. The
  // estimator owns covariance/slip inflation and scan corrections; it only
  // consumes the measured encoder twist here.
-  // Surveyed-elevation context for the terrain-aware layers (prior, never
+ // Surveyed-elevation context for the terrain-aware layers (prior, never
   // live physics): validator ground-classification + grade gates. The map
-  // outlives the decision branch (by-value parameter), so the pointer is
-  // valid for both validate() calls below. The live overlay rides from the
-  // mapper's published layer (measurement heights where confident):
-  // refreshed here, owned by the member copy, valid for both calls below.
+ // is an immutable provider-owned revision and outlives this update, so the
+ // pointer is valid for both validate() calls below. The live overlay rides from the
+ // mapper's published layer (measurement heights where confident):
+ // the provider owns the immutable map revision for the whole update;
+ // the live layer is refreshed here and owned by the coordinator.
   live_map_ = mapper_ != nullptr ? mapper_->local_map() : LocalMap{};
   SurveyContext survey_ctx;
   survey_ctx.map = &map;

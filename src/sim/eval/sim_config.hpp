@@ -21,7 +21,10 @@ struct SimConfig {
  double scan_period_s = 0.02;
  double motion_period_s = 0.02; // encoder/twist sample cadence
  double imu_period_s = 0.02; // IMU sample cadence
- double decision_period_s = 0.02;  // ROBOT decision cadence in simulation time
+ // Control/safety tick cadence. The coordinator's expensive planning branch
+ // has its own cadence below, so raw-evidence safety can remain at 50 Hz.
+ double decision_period_s = 0.02;
+ double planning_period_s = 0.02;
   double record_period_s = 0.02;
   double judge_radius_m = 0.4;
   providers::DeliveryConfig delivery;      // all zeros = passthrough

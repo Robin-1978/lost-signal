@@ -124,7 +124,7 @@ void StaticMapProvider::set_window(double min_x_m, double min_y_m,
   has_built_ = false;  // retire the cache; the next poll rebuilds
 }
 
-robot::iface::MapSnapshot StaticMapProvider::active_snapshot() const {
+const robot::iface::MapSnapshot& StaticMapProvider::active_snapshot() const {
   const std::uint64_t v = world_ != nullptr ? world_->geometry_version() : 0;
   if (!has_built_ || v != built_version_) rebuild();
   return snapshot_;

@@ -24,6 +24,14 @@ namespace lost_signal::sim::scenario {
 // tick, or any ROBOT input.
 class ScenarioSession {
  public:
+ struct StepTiming {
+ double physics_ms = 0.0;
+ double sensors_ms = 0.0;
+ double robot_tick_ms = 0.0;
+ double actuation_ms = 0.0;
+ double record_ms = 0.0;
+ double total_ms = 0.0;
+ };
   ScenarioSession();
   // Config-driven bring-up: the ROBOT side runs the given description, the
   // SIM side the given motor numbers (both from one RobotConfig file).
@@ -39,6 +47,9 @@ class ScenarioSession {
  }
   bool cancel_goal(robot::iface::GoalHandle h);
   void step_once();
+ // SIM-side wall-clock diagnostics only. These values are never published to
+ // RobotApplication and therefore cannot influence estimation or decisions.
+ const StepTiming& last_step_timing() const { return last_step_timing_; }
 
   const eval::EpisodeRecorder& episode() const { return episode_; }
   void clear_episode() { episode_.clear(); }
@@ -98,6 +109,10 @@ class ScenarioSession {
   void apply_sim_config(const eval::SimConfig& sim) {
  set_sensor_cadence(sim.scan_period_s, sim.motion_period_s,
  sim.imu_period_s, sim.decision_period_s, sim.record_period_s);
+ if (sim.planning_period_s > 0.0) {
+ app_.set_decision_period(static_cast<robot::core::MonotonicNs>(
+ sim.planning_period_s * 1e9));
+ }
     set_judge_radius_m(sim.judge_radius_m);
     set_sensor_realism(sim.delivery, sim.imu_realism);
     suite_.lidar().set_beams(sim.lidar_beams);
@@ -137,6 +152,7 @@ class ScenarioSession {
  robot::iface::MotionCommand::SafeStop(0);
   double judge_radius_m_ = 0.4;
   double terrain_clearance_m_ = 0.05;
+ StepTiming last_step_timing_;
 };
 
 }  // namespace lost_signal::sim::scenario

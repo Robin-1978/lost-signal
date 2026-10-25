@@ -11,6 +11,10 @@ void LocalizationSystem::reset() {
   slam_.reset();
   slam_origin_seeded_ = false;
  global_origin_valid_ = false;
+ map_evidence_cached_ = false;
+ cached_map_id_.clear();
+ cached_map_revision_ = 0;
+ cached_map_has_known_occupancy_ = false;
 }
 
 void LocalizationSystem::set_lidar_mount(
@@ -42,9 +46,17 @@ LocalizationSystem::TickResult LocalizationSystem::update(
     core::MonotonicNs now_ns, bool has_observation, IEstimator& estimator,
     IMapper& mapper) {
   TickResult out;
+ if (!map_evidence_cached_ || cached_map_id_ != map.map_id ||
+ cached_map_revision_ != map.revision) {
+ cached_map_id_ = map.map_id;
+ cached_map_revision_ = map.revision;
+ cached_map_has_known_occupancy_ = map.has_known_occupancy();
+ map_evidence_cached_ = true;
+ }
   run_tracking(obs, has_observation, estimator);
  const bool frame_reanchored =
- run_localization(map, obs, now_ns, estimator, out.action);
+ run_localization(map, cached_map_has_known_occupancy_, obs, now_ns,
+ estimator, out.action);
  if (frame_reanchored) {
  // Keyframes and the rolling raster were authored in the old map frame.
  // Keeping either after an absolute global fix lets local SLAM pull the
@@ -54,7 +66,8 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  out.replan_requested = true;
  }
  if (supervisor_.localized() &&
- run_slam(map, obs, has_observation, estimator, mapper)) {
+ run_slam(map, cached_map_has_known_occupancy_, obs, has_observation,
+ estimator, mapper)) {
     out.replan_requested = true;
   }
   return out;
@@ -97,13 +110,14 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
 }
 
 bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
+ bool map_has_known_occupancy,
  const iface::ObservationFrame& obs,
  bool has_observation, IEstimator& estimator,
                                   IMapper& mapper) {
   if (!has_observation || !obs.scan_valid) return false;
   slam_.ingest(estimator.estimate(), obs);
  const iface::MapSnapshot* absolute_map =
- supervisor_.localized() && map.has_known_occupancy() ? &map : nullptr;
+ supervisor_.localized() && map_has_known_occupancy ? &map : nullptr;
  SlamLoopResult loop = slam_.try_close_loops(
  estimator.estimate(), obs, absolute_map);
   if (!loop.closed) return false;
@@ -141,7 +155,8 @@ bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
 }
 
 bool LocalizationSystem::run_localization(
-    const iface::MapSnapshot& map, const iface::ObservationFrame& obs,
+ const iface::MapSnapshot& map, bool map_has_known_occupancy,
+ const iface::ObservationFrame& obs,
     core::MonotonicNs now_ns, IEstimator& estimator, std::string& action) {
   const double now_s = now_ns * 1e-9;
   const EstimatedState& est = estimator.estimate();
@@ -204,7 +219,7 @@ bool LocalizationSystem::run_localization(
   // the whole-map search can constrain the pose. Seed the odometry origin
   // once (no teleport: the current estimate IS the origin) and let the SLAM
   // session own the drift it can observe. Latched for the session.
- if (requested_global && !map.has_known_occupancy() &&
+ if (requested_global && !map_has_known_occupancy &&
  !slam_origin_seeded_) {
     const StartupDecision startup =
         select_startup_mode(false, /*has_prior_pose=*/false);

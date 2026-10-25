@@ -90,6 +90,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  planner_candidates[i], est, perception, prediction, observation, survey);
  if (verdict.accepted) {
  planner_valid.push_back({planner_candidates[i], verdict, i});
+ // Candidates arrive in planner rank order and a normal acceptance outranks
+ // every minimum-risk escape. Once the first fully accepted trajectory is
+ // found, no later proposal can change the selection; validating the rest
+ // only repeats raw-scan rollouts inside the control tick.
+ if (verdict.verdict == TrajectoryVerdict::kAccepted) break;
  } else if (!have_rejection) {
  first_rejection = verdict;
  have_rejection = true;

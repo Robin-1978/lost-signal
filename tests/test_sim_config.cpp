@@ -18,7 +18,8 @@ int main() {
     std::string err;
     assert(sim::eval::load_sim_config(dir + "/sim/default.json", cfg, &err));
  assert(cfg.scan_period_s == 0.02 && cfg.motion_period_s == 0.02 &&
- cfg.imu_period_s == 0.02 && cfg.record_period_s == 0.02);
+ cfg.imu_period_s == 0.02 && cfg.decision_period_s == 0.02 &&
+ cfg.planning_period_s == 0.02 && cfg.record_period_s == 0.02);
     assert(cfg.judge_radius_m == 0.4);
     assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
     assert(cfg.lidar_rings == 16);
@@ -66,6 +67,8 @@ int main() {
  write(R"({"cadence": {"motion_s": 0.05, "imu_s": 0.01}})");
  assert(sim::eval::load_sim_config(tmp, cfg, &err));
  assert(cfg.motion_period_s == 0.05 && cfg.imu_period_s == 0.01);
+ write(R"({"cadence": {"planning_s": -0.1}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"delivery": {"drop_probability": 1.5}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"lidar": {"beams": 0}})");

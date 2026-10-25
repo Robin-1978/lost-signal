@@ -20,7 +20,7 @@ class StaticMapProvider : public robot::iface::IMapProvider {
                     double width_m, double height_m, double resolution_m);
   explicit StaticMapProvider(const eval::MapPackage& package);
 
-  robot::iface::MapSnapshot active_snapshot() const override;
+ const robot::iface::MapSnapshot& active_snapshot() const override;
   bool select_map(const std::string& map_id) override;
   // SIM-side orchestration only (scenario fits the survey to authored
   // geometry after a --map load): re-windows the raster and retires the

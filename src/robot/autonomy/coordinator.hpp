@@ -66,7 +66,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   lifecycle::ModuleState state() const override { return state_; }
 
   void ingest_observation(const iface::ObservationFrame& obs);
-  iface::MotionCommand update(iface::MapSnapshot map,
+ iface::MotionCommand update(const iface::MapSnapshot& map,
                               const iface::ChannelHealth& channel,
                               core::MonotonicNs now_ns);
   // TF publisher (REP-105 semantics). Static edges come from the

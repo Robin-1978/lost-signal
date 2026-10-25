@@ -1,6 +1,7 @@
 #include "sim/scenario/scenario_session.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 
@@ -96,6 +97,11 @@ bool ScenarioSession::cancel_goal(robot::iface::GoalHandle h) {
 }
 
 void ScenarioSession::step_once() {
+ using Clock = std::chrono::steady_clock;
+ const auto total_begin = Clock::now();
+ const auto elapsed_ms = [](Clock::time_point begin, Clock::time_point end) {
+ return std::chrono::duration<double, std::milli>(end - begin).count();
+ };
   constexpr double kDtS = 0.02;  // plant base rate; deadlines read sim time
   sim_time_s_ += kDtS;
   // Truth snapshot BEFORE the step: recorded offline only.
@@ -125,6 +131,7 @@ void ScenarioSession::step_once() {
     rec.judge.terrain_collision = terrain.terrain_collision;
     rec.judge.terrain_clearance_m = terrain.terrain_clearance_m;
   }
+ const auto physics_end = Clock::now();
 
  const bool decision_due = scheduler_.decision_due(sim_time_s_);
  const bool motion_due = scheduler_.motion_due(sim_time_s_);
@@ -138,6 +145,7 @@ void ScenarioSession::step_once() {
   }
   rec.obs = obs;
   rec.obs_accepted = have_obs;
+ const auto sensors_end = Clock::now();
  robot::iface::MotionCommand cmd = last_cmd_;
  if (decision_due) {
  // A decision tick is allowed to run without a newly acquired scan. The
@@ -146,15 +154,24 @@ void ScenarioSession::step_once() {
  cmd = app_.tick(sim_stamp_ns);
  last_cmd_ = cmd;
  }
+ const auto robot_end = Clock::now();
   robot::iface::ActuatorCommand act = app_.take_actuator(sim_stamp_ns);
   suite_.consume(act);
   driver_.update(app_, world_);
+ const auto actuation_end = Clock::now();
 
  rec.cmd = cmd;
   rec.diag = app_.diagnostics();
   rec.truth_after = world_.truth();
   rec.step = episode_.size();
   if (scheduler_.record_due(sim_time_s_)) episode_.record(rec);
+ const auto record_end = Clock::now();
+ last_step_timing_.physics_ms = elapsed_ms(total_begin, physics_end);
+ last_step_timing_.sensors_ms = elapsed_ms(physics_end, sensors_end);
+ last_step_timing_.robot_tick_ms = elapsed_ms(sensors_end, robot_end);
+ last_step_timing_.actuation_ms = elapsed_ms(robot_end, actuation_end);
+ last_step_timing_.record_ms = elapsed_ms(actuation_end, record_end);
+ last_step_timing_.total_ms = elapsed_ms(total_begin, record_end);
 }
 
 void ScenarioSession::fit_map_window_to_world(double margin_m) {

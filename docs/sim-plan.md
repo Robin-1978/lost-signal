@@ -227,7 +227,9 @@ reproduces the same decision sequence.
 Port the orchestration that makes scenarios more than a world step:
 - `deterministic_scheduler` (multi-rate sim-time deadlines: scan /
  motion/IMU/decision/record taps from sim time, never wall clock; the
- decision tap gates the ROBOT branch at the configured cadence).
+ decision tap gates the 50 Hz ROBOT control/safety tick; `planning_s` keeps the
+ expensive planning branch independently configurable without weakening the
+ final raw-evidence safety gate).
 - Scenario goal driver (objective list -> place goals through the same
  `request_goal` seam an operator uses). ROBOT reports Done from its own
  estimate; SIM independently accepts the objective only when the physical

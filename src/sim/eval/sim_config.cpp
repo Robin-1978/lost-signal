@@ -80,6 +80,7 @@ bool load_sim_config(const std::string& path, SimConfig& config,
  {"motion_s", &out.motion_period_s},
  {"imu_s", &out.imu_period_s},
  {"decision_s", &out.decision_period_s},
+ {"planning_s", &out.planning_period_s},
                     {"record_s", &out.record_period_s}};
     for (const auto& s : slots) {
       if (!take_num(*cad, s.key, v, present, err)) return false;
