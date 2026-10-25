@@ -34,6 +34,10 @@ namespace lost_signal::robot::autonomy {
 // explicit rejection, never a partial search reported as a match. Unknown
 // cells never become false certainty (they score 0, as in the local path).
 struct GlobalSearchConfig {
+ // Deterministic raster cells prepared per localization tick. The
+ // observability index excludes poses too far from mapped geometry before
+ // the expensive heading/beam scoring pass.
+ std::size_t preparation_cells_per_cycle = 262144;
   double coarse_position_step_m = 1.0;
   double coarse_heading_step_rad = 0.35;
   std::size_t coarse_beams = 24;       // downsampled subset per coarse pose
@@ -119,6 +123,11 @@ struct GlobalSearchResult {
   std::vector<RunnerUp> runner_ups;
   std::size_t usable_returns = 0;
   std::size_t coarse_evaluations = 0;
+ // Coarse position diagnostics count raster seeds once, before headings.
+ // They make exact observability pruning measurable without feeding it back
+ // into localization policy.
+ std::size_t coarse_positions_considered = 0;
+ std::size_t coarse_positions_skipped_unobservable = 0;
   // Refine calls actually executed (post-dedupe survivors). Observability
   // only: bounded by coarse_hypotheses, never a decision input.
   std::size_t refined_poses = 0;
@@ -151,7 +160,9 @@ class GlobalSearcher {
                             double body_z_m = 0.0) const;
 
  // Cooperative whole-map search for real-time callers. begin() freezes one
- // scan and map revision; advance() evaluates a deterministic bounded slice
+ // scan and retains a non-owning view of one immutable, provider-owned map
+ // revision; the caller must keep that revision alive until completion or
+ // cancel(). advance() evaluates a deterministic bounded slice
  // and returns a result only when every coarse/refine/final candidate has
  // been considered. Splitting work changes latency, never ranking or gates.
  void begin(const std::vector<float>& ranges, double angle_min_rad,

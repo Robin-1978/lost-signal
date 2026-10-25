@@ -121,7 +121,7 @@ RaycastEvidence raycast_evidence(
 }  // namespace
 
 struct GlobalSearcher::WorkState {
- enum class Phase { kCoarse, kRefine, kFinal, kDone };
+ enum class Phase { kPrepare, kCoarse, kRefine, kFinal, kDone };
  struct Coarse {
  double x = 0.0, y = 0.0, heading = 0.0, score = 0.0, overlap = 0.0;
  };
@@ -142,7 +142,8 @@ struct GlobalSearcher::WorkState {
  finish("map snapshot has no raster");
  return;
  }
- if (!(config.coarse_position_step_m > 0.0) ||
+ if (config.preparation_cells_per_cycle == 0 ||
+ !(config.coarse_position_step_m > 0.0) ||
  !(config.coarse_heading_step_rad > 0.0) || config.coarse_beams == 0 ||
  config.coarse_hypotheses == 0 ||
  !(config.refine_translation_m >= 0.0) ||
@@ -179,6 +180,25 @@ struct GlobalSearcher::WorkState {
  2.0 * core::kPi / config.coarse_heading_step_rad)));
  cell_stride = std::max(1, static_cast<int>(std::round(
  config.coarse_position_step_m / map.resolution_m)));
+ const std::size_t prefix_width =
+ static_cast<std::size_t>(map.width) + 1;
+ const std::size_t prefix_height =
+ static_cast<std::size_t>(map.height) + 1;
+ if (prefix_width > std::numeric_limits<std::size_t>::max() /
+ prefix_height) {
+ finish("map dimensions overflow observability index");
+ return;
+ }
+ occupied_prefix.assign(prefix_width * prefix_height, 0);
+ // Candidate poses are base poses while scan endpoints originate at the
+ // lidar. Include the horizontal mount offset so pruning remains exact for
+ // non-central sensors: a return cannot touch occupied geometry outside
+ // this bound.
+ const double mount_radius_m =
+ std::hypot(mount.translation_m.x, mount.translation_m.y);
+ observable_radius_cells = std::max(
+ 1, static_cast<int>(std::ceil(
+ config.max_range_m + mount_radius_m) / map.resolution_m));
  survivors.reserve(config.coarse_hypotheses);
  }
 
@@ -207,6 +227,27 @@ struct GlobalSearcher::WorkState {
  survivors.begin(), survivors.end(),
  [](const Coarse& a, const Coarse& b) { return a.score < b.score; });
  if (candidate.score > weakest->score) *weakest = candidate;
+ }
+
+ bool occupied_near(int x, int y) const {
+ const int x0 = std::max(0, x - observable_radius_cells);
+ const int y0 = std::max(0, y - observable_radius_cells);
+ const int x1 = std::min(
+ static_cast<int>(map.width) - 1, x + observable_radius_cells);
+ const int y1 = std::min(
+ static_cast<int>(map.height) - 1, y + observable_radius_cells);
+ const std::size_t stride =
+ static_cast<std::size_t>(map.width) + 1;
+ const std::size_t left = static_cast<std::size_t>(x0);
+ const std::size_t top = static_cast<std::size_t>(y0);
+ const std::size_t right = static_cast<std::size_t>(x1) + 1;
+ const std::size_t bottom = static_cast<std::size_t>(y1) + 1;
+ const std::uint32_t count =
+ occupied_prefix[bottom * stride + right] -
+ occupied_prefix[top * stride + right] -
+ occupied_prefix[bottom * stride + left] +
+ occupied_prefix[top * stride + left];
+ return count > 0;
  }
 
  void begin_refine() {
@@ -441,13 +482,16 @@ struct GlobalSearcher::WorkState {
  GlobalSearchConfig config;
  core::RigidTransform mount;
  std::vector<float> ranges;
- iface::MapSnapshot map;
+ const iface::MapSnapshot& map;
  double angle_min_rad = 0.0;
  double angle_increment_rad = 0.0;
  core::MonotonicNs stamp_ns = 0;
  double body_roll_rad = 0.0, body_pitch_rad = 0.0, body_z_m = 0.0;
  GlobalSearchResult result;
- Phase phase = Phase::kCoarse;
+ Phase phase = Phase::kPrepare;
+ std::vector<std::uint32_t> occupied_prefix;
+ std::size_t prepare_cursor = 0;
+ int observable_radius_cells = 1;
  ScanMatcher coarse_matcher;
  ScanMatcher refiner;
  std::vector<ScanBeam> beams;
@@ -499,6 +543,29 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  budget = budget > cost ? budget - cost : 0;
  };
  while (budget > 0 && w.phase != WorkState::Phase::kDone) {
+ if (w.phase == WorkState::Phase::kPrepare) {
+ const std::size_t cell_count =
+ static_cast<std::size_t>(w.map.width) * w.map.height;
+ const std::size_t end = w.prepare_cursor + std::min(
+ w.config.preparation_cells_per_cycle,
+ cell_count - w.prepare_cursor);
+ const std::size_t prefix_width =
+ static_cast<std::size_t>(w.map.width) + 1;
+ for (; w.prepare_cursor < end; ++w.prepare_cursor) {
+ const std::size_t x = w.prepare_cursor % w.map.width;
+ const std::size_t y = w.prepare_cursor / w.map.width;
+ const std::size_t prefix = (y + 1) * prefix_width + (x + 1);
+ const std::uint32_t occupied =
+ w.map.occupancy[w.prepare_cursor] >= 50 ? 1U : 0U;
+ w.occupied_prefix[prefix] = occupied +
+ w.occupied_prefix[prefix - 1] +
+ w.occupied_prefix[prefix - prefix_width] -
+ w.occupied_prefix[prefix - prefix_width - 1];
+ }
+ if (w.prepare_cursor < cell_count) return std::nullopt;
+ w.phase = WorkState::Phase::kCoarse;
+ continue;
+ }
  if (w.phase == WorkState::Phase::kCoarse) {
  if (w.coarse_gy >= static_cast<int>(w.map.height)) {
  w.begin_refine();
@@ -515,8 +582,17 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  if (w.map.occupancy[cell_index] >= 50) {
  w.coarse_gx += w.cell_stride;
  w.coarse_ih = 0;
+ spend(1);
  continue;
  }
+ if (!w.occupied_near(w.coarse_gx, w.coarse_gy)) {
+ ++w.result.coarse_positions_skipped_unobservable;
+ w.coarse_gx += w.cell_stride;
+ w.coarse_ih = 0;
+ spend(1);
+ continue;
+ }
+ if (w.coarse_ih == 0) ++w.result.coarse_positions_considered;
  if (++w.evaluations > w.config.maximum_evaluations) {
  w.result.coarse_evaluations = w.evaluations;
  w.finish("evaluation budget exceeded");

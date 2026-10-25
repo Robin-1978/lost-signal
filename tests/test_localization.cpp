@@ -277,6 +277,10 @@ int main() {
  assert(incremental->yaw_rad == r.yaw_rad);
  assert(incremental->score == r.score);
  assert(incremental->coarse_evaluations == r.coarse_evaluations);
+ assert(incremental->coarse_positions_considered ==
+ r.coarse_positions_considered);
+ assert(incremental->coarse_positions_skipped_unobservable ==
+ r.coarse_positions_skipped_unobservable);
 
  // A sparse prior may contain occupied returns but no surveyed free cells.
  // Unknown cells remain eligible seeds; they are neutral until the measured
@@ -305,6 +309,45 @@ int main() {
     GlobalSearchResult u = searcher.search(
         uranges, -M_PI, 2.0 * M_PI / uranges.size(), uniform, 1);
     assert(!u.accepted);
+
+ // Exact observability pruning keeps a mostly empty large raster out of the
+ // expensive heading/beam pass. Only base positions within lidar reach of
+ // the single mapped obstacle can explain a hit; all others are counted as
+ // skipped diagnostics, never scored as partial search results.
+ iface::MapSnapshot empty_extent;
+ empty_extent.map_id = "large-empty-extent";
+ empty_extent.revision = 1;
+ empty_extent.width = 100;
+ empty_extent.height = 100;
+ empty_extent.resolution_m = 1.0;
+ empty_extent.origin_x_m = 0.0;
+ empty_extent.origin_y_m = 0.0;
+ empty_extent.occupancy.assign(100 * 100, -1);
+ empty_extent.occupancy[50 * 100 + 50] = 100;
+ GlobalSearchConfig bounded_config;
+ bounded_config.max_range_m = 2.0;
+ bounded_config.coarse_position_step_m = 1.0;
+ bounded_config.coarse_heading_step_rad = M_PI_2;
+ bounded_config.refine_translation_m = 0.0;
+ bounded_config.refine_heading_rad = 0.0;
+ bounded_config.final_translation_m = 0.0;
+ bounded_config.final_heading_rad = 0.0;
+ GlobalSearcher bounded_searcher(bounded_config);
+ std::vector<float> short_hits(72, 1.0F);
+ GlobalSearchResult bounded = bounded_searcher.search(
+ short_hits, -M_PI, 2.0 * M_PI / short_hits.size(), empty_extent, 1);
+ assert(bounded.coarse_positions_considered == 24);
+ assert(bounded.coarse_positions_skipped_unobservable == 9975);
+ assert(bounded.coarse_evaluations ==
+ bounded.coarse_positions_considered * 4);
+
+ // Sparse scans fail before allocating or preparing a map-sized index.
+ std::vector<float> no_hits(72, 2.0F);
+ GlobalSearchResult insufficient = bounded_searcher.search(
+ no_hits, -M_PI, 2.0 * M_PI / no_hits.size(), empty_extent, 1);
+ assert(!insufficient.accepted);
+ assert(insufficient.rejection_reason == "insufficient geometric returns");
+ assert(insufficient.coarse_evaluations == 0);
   }
 
   // 7. Coordinator kidnap path: unlocalized start takes the global branch
