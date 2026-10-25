@@ -42,6 +42,15 @@ struct StartupTrackerConfig {
   // Give up after this many scans without promotion (genuinely
   // unobservable: twins that never separate). Supervisor retries after.
   int max_scans = 20;
+ // The whole-map pass already snapped every retained hypothesis. Per-scan
+ // tracking only needs to absorb residual odometry error around the
+ // propagated pose; a global-sized local window would repeat millions of
+ // scores for each runner-up in one control tick.
+ double match_translation_m = 0.30;
+ double match_translation_step_m = 0.05;
+ double match_heading_rad = 0.20;
+ double match_heading_step_rad = 0.05;
+ std::size_t match_max_returns = 64;
 };
 
 enum class StartupTrackStatus {
@@ -62,7 +71,7 @@ struct StartupTrackResult {
 class StartupHypotheses {
  public:
   explicit StartupHypotheses(StartupTrackerConfig config = {})
-      : config_(config) {}
+ : config_(config), matcher_(matcher_config(config)) {}
 
  void reset() {
  hyps_.clear();
@@ -212,6 +221,16 @@ class StartupHypotheses {
   }
 
  private:
+ static ScanMatcherConfig matcher_config(
+ const StartupTrackerConfig& config) {
+ ScanMatcherConfig matcher;
+ matcher.search_translation_m = config.match_translation_m;
+ matcher.translation_step_m = config.match_translation_step_m;
+ matcher.search_heading_rad = config.match_heading_rad;
+ matcher.heading_step_rad = config.match_heading_step_rad;
+ matcher.maximum_returns = config.match_max_returns;
+ return matcher;
+ }
   struct Hyp {
     double x = 0.0, y = 0.0, yaw = 0.0, score = 0.0;
     int confirms = 0, rejects = 0, age = 0;

@@ -67,38 +67,25 @@ Residual residual(const Pose2& from, const Pose2& to,
  const PoseGraphConstraint& constraint) {
  Residual output;
  output.error = residual_error(from, to, constraint);
- // Numerical derivatives keep the SE(2) convention in one place and avoid
- // a subtle sign error at heading wrap boundaries. The graph is sparse and
- // keyframes are deliberately bounded, so this small fixed stencil is cheap.
- constexpr double epsilon = 1e-6;
- for (int column = 0; column < 3; ++column) {
- Pose2 from_plus = from;
- Pose2 from_minus = from;
- Pose2 to_plus = to;
- Pose2 to_minus = to;
- if (column == 0) {
- from_plus.position.x += epsilon;
- from_minus.position.x -= epsilon;
- to_plus.position.x += epsilon;
- to_minus.position.x -= epsilon;
- } else if (column == 1) {
- from_plus.position.y += epsilon;
- from_minus.position.y -= epsilon;
- to_plus.position.y += epsilon;
- to_minus.position.y -= epsilon;
- } else {
- from_plus.heading_rad += epsilon;
- from_minus.heading_rad -= epsilon;
- to_plus.heading_rad += epsilon;
- to_minus.heading_rad -= epsilon;
- }
- output.jacobian_from.col(column) =
- (residual_error(from_plus, to, constraint) -
- residual_error(from_minus, to, constraint)) / (2.0 * epsilon);
- output.jacobian_to.col(column) =
- (residual_error(from, to_plus, constraint) -
- residual_error(from, to_minus, constraint)) / (2.0 * epsilon);
- }
+ // Closed-form SE(2) Jacobians. The old central-difference stencil called
+ // residual_error twelve extra times per factor and iteration, creating a
+ // visible control-tick spike as the keyframe graph grew. Derive first in
+ // world-coordinate translations, then rotate those columns into the same
+ // right/local perturbation basis used by the optimizer update below.
+ const double dx = to.position.x - from.position.x;
+ const double dy = to.position.y - from.position.y;
+ const double ci = std::cos(from.heading_rad);
+ const double si = std::sin(from.heading_rad);
+ const double predicted_x = ci * dx + si * dy;
+ const double predicted_y = -si * dx + ci * dy;
+ output.jacobian_from <<
+ -ci, -si, predicted_y,
+ si, -ci, -predicted_x,
+ 0.0, 0.0, -1.0;
+ output.jacobian_to <<
+ ci, si, 0.0,
+ -si, ci, 0.0,
+ 0.0, 0.0, 1.0;
  // The optimizer increment is a right/local SE(2) perturbation. The finite
  // difference above is easiest to express in world coordinates, so rotate
  // each pose's translational columns into its local tangent basis before

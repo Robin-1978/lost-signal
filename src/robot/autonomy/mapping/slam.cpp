@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <optional>
 
 #include "robot/core/geometry.hpp"
 #include "robot/core/transform.hpp"
@@ -19,9 +21,200 @@ double normalized_scan_increment(double increment, std::size_t n) {
 }
 } // namespace
 
+struct SlamSession::LoopSearchWork {
+ struct Hypothesis {
+ double x = 0.0;
+ double y = 0.0;
+ double heading = 0.0;
+ double score = -std::numeric_limits<double>::infinity();
+ double overlap = 0.0;
+ };
+
+ struct Lattice {
+ void start(const ScanMatcherConfig& matcher_config,
+ const core::RigidTransform& mount,
+ const std::vector<float>& ranges, double angle_min_rad,
+ double angle_increment_rad, double prior_x_m, double prior_y_m,
+ double prior_heading_rad, iface::MapSnapshot search_map,
+ double body_roll_rad, double body_pitch_rad, double body_z_m) {
+ config = matcher_config;
+ matcher = ScanMatcher(config);
+ matcher.set_lidar_mount(mount);
+ map = std::move(search_map);
+ prior_x = prior_x_m;
+ prior_y = prior_y_m;
+ prior_heading = prior_heading_rad;
+ z_m = body_z_m;
+ beams = matcher.prepare_beams(ranges, angle_min_rad,
+ angle_increment_rad, config.maximum_returns);
+ std::size_t hits = 0;
+ for (const auto& beam : beams) {
+ if (beam.hit) ++hits;
+ }
+ result = ScanMatchResult{};
+ result.usable_returns = hits;
+ hypotheses.clear();
+ complete = false;
+ if (!map.has_raster()) {
+ result.rejection_reason = "map snapshot has no raster";
+ complete = true;
+ return;
+ }
+ if (hits < config.minimum_returns) {
+ result.rejection_reason = "insufficient geometric returns";
+ complete = true;
+ return;
+ }
+ batch = std::make_unique<ScanMatcher::Batch>(
+ matcher, beams, body_roll_rad, body_pitch_rad);
+ translation_steps = static_cast<int>(std::ceil(
+ config.search_translation_m / config.translation_step_m));
+ heading_steps = static_cast<int>(std::ceil(
+ config.search_heading_rad / config.heading_step_rad));
+ ix = -translation_steps;
+ iy = -translation_steps;
+ ih = -heading_steps;
+ }
+
+ bool advance(std::size_t budget) {
+ if (complete) return true;
+ while (budget-- > 0 && !complete) {
+ const double x = prior_x + ix * config.translation_step_m;
+ const double y = prior_y + iy * config.translation_step_m;
+ const double heading = core::wrap_angle(
+ prior_heading + ih * config.heading_step_rad);
+ const PoseScore pose = batch->score(
+ static_cast<std::size_t>(ih + heading_steps), x, y, heading,
+ map, z_m);
+ if (pose.has_evidence) consider(x, y, heading, pose);
+ ++ih;
+ if (ih > heading_steps) {
+ ih = -heading_steps;
+ ++ix;
+ if (ix > translation_steps) {
+ ix = -translation_steps;
+ ++iy;
+ if (iy > translation_steps) finish();
+ }
+ }
+ }
+ return complete;
+ }
+
+ void consider(double x, double y, double heading,
+ const PoseScore& pose) {
+ Hypothesis candidate{x, y, heading, pose.score, pose.overlap};
+ const auto same = [&](const Hypothesis& value) {
+ return std::hypot(value.x - x, value.y - y) <
+ config.ambiguity_distance_m &&
+ std::abs(core::wrap_angle(value.heading - heading)) <
+ config.ambiguity_heading_rad;
+ };
+ const auto existing = std::find_if(
+ hypotheses.begin(), hypotheses.end(), same);
+ if (existing != hypotheses.end()) {
+ if (candidate.score > existing->score) *existing = candidate;
+ return;
+ }
+ constexpr std::size_t kMaxHypotheses = 24;
+ if (hypotheses.size() < kMaxHypotheses) {
+ hypotheses.push_back(candidate);
+ return;
+ }
+ const auto weakest = std::min_element(
+ hypotheses.begin(), hypotheses.end(),
+ [](const Hypothesis& a, const Hypothesis& b) {
+ return a.score < b.score;
+ });
+ if (candidate.score > weakest->score) *weakest = candidate;
+ }
+
+ void finish() {
+ complete = true;
+ if (hypotheses.empty()) {
+ result.rejection_reason = "map overlap below acceptance gate";
+ return;
+ }
+ std::sort(hypotheses.begin(), hypotheses.end(),
+ [](const Hypothesis& a, const Hypothesis& b) {
+ if (a.score != b.score) return a.score > b.score;
+ if (a.x != b.x) return a.x < b.x;
+ if (a.y != b.y) return a.y < b.y;
+ return a.heading < b.heading;
+ });
+ const Hypothesis& best = hypotheses.front();
+ const double second_score = hypotheses.size() > 1
+ ? hypotheses[1].score
+ : -std::numeric_limits<double>::infinity();
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = std::isfinite(second_score)
+ ? best.score - second_score : 1.0;
+ if (!std::isfinite(best.score) ||
+ best.overlap < config.minimum_overlap) {
+ result.rejection_reason = "map overlap below acceptance gate";
+ return;
+ }
+ if (std::isfinite(second_score) &&
+ result.score_margin < config.minimum_score_margin) {
+ result.rejection_reason = "map match is geometrically ambiguous";
+ return;
+ }
+ result.accepted = true;
+ result.x_m = best.x;
+ result.y_m = best.y;
+ result.yaw_rad = best.heading;
+ result.position_sigma_m = std::max(0.02, map.resolution_m * 0.75);
+ result.heading_sigma_rad = std::max(
+ 0.01, config.heading_step_rad * 1.5);
+ result.rejection_reason = "accepted";
+ }
+
+ ScanMatcherConfig config;
+ ScanMatcher matcher;
+ iface::MapSnapshot map;
+ std::vector<ScanBeam> beams;
+ std::unique_ptr<ScanMatcher::Batch> batch;
+ std::vector<Hypothesis> hypotheses;
+ ScanMatchResult result;
+ double prior_x = 0.0;
+ double prior_y = 0.0;
+ double prior_heading = 0.0;
+ double z_m = 0.0;
+ int translation_steps = 0;
+ int heading_steps = 0;
+ int ix = 0;
+ int iy = 0;
+ int ih = 0;
+ bool complete = true;
+ };
+
+ struct Candidate {
+ std::uint64_t id = 0;
+ double distance = 0.0;
+ };
+ enum class Phase { kPrepare, kCoarse, kForward, kReverse };
+
+ EstimatedState match_est;
+ iface::ObservationFrame match_obs;
+ std::uint64_t to_id = 0;
+ std::vector<Candidate> candidates;
+ std::size_t candidate_index = 0;
+ std::uint64_t old_id = 0;
+ Phase phase = Phase::kPrepare;
+ Lattice lattice;
+ ScanMatchResult coarse;
+ ScanMatchResult forward;
+ ScanMatchResult reverse;
+ std::string last_rejection = "no candidate reached the matcher";
+};
+
 SlamSession::SlamSession(SlamConfig config) : config_(config) {}
 
+SlamSession::~SlamSession() = default;
+
 void SlamSession::reset() {
+ loop_search_.reset();
   graph_.clear();
   keyframes_.clear();
   next_id_ = 1;
@@ -285,8 +478,8 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
   match_cfg.minimum_score_margin = config_.track_min_margin;
   match_cfg.minimum_returns = 4;
   match_cfg.maximum_returns = config_.track_max_beams;
-  ScanMatcher matcher(match_cfg);
-  matcher.set_lidar_mount(base_from_lidar_);
+ ScanMatcher matcher(match_cfg);
+ matcher.set_lidar_mount(base_from_lidar_);
   ScanMatchResult match = matcher.localize(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
       est.x_m, est.y_m, est.yaw_rad, track_submap_, obs.stamp_ns,
@@ -376,49 +569,6 @@ SlamLoopResult SlamSession::try_close_loops(
  now_s - pending_loop_s_ > pending_timeout_s) {
  pending_loop_valid_ = false;
  }
-  if (now_s - last_attempt_s_ < config_.loop_attempt_interval_s ||
-      keyframes_.size() == keyframes_at_last_attempt_) {
-    out.diagnostic = "attempt rate limited";
-    last_result_ = out;
-    return out;
-  }
-  last_attempt_s_ = now_s;
-  keyframes_at_last_attempt_ = keyframes_.size();
-
-  // Candidates: temporally separated, spatially near the current estimate.
-  // Nearest-first keeps the attempt bounded; the gate owns acceptance.
-  struct Candidate {
-    std::size_t index = 0;
-    double distance = 0.0;
-  };
-  std::vector<Candidate> candidates;
-  for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
-    const SlamKeyframe& kf = keyframes_[i];
- const std::size_t index_separation = keyframes_.size() - 1 - i;
- if (index_separation < config_.minimum_loop_keyframe_separation) {
- continue;
- }
-    if (now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
-      continue;
-    }
-    const double d = std::hypot(est.x_m - kf.pose.position.x,
-                                est.y_m - kf.pose.position.y);
-    if (d > config_.gate.maximum_candidate_distance_m) continue;
-    candidates.push_back({i, d});
-  }
-  std::sort(candidates.begin(), candidates.end(),
-            [](const Candidate& a, const Candidate& b) {
-              return a.distance < b.distance;
-            });
-  if (candidates.size() > config_.max_candidates_per_attempt) {
-    candidates.resize(config_.max_candidates_per_attempt);
-  }
-  if (candidates.empty()) {
-    out.diagnostic = "no eligible candidates";
-    last_result_ = out;
-    return out;
-  }
-
   ScanMatcherConfig match_cfg;
   match_cfg.search_translation_m = config_.match_search_translation_m;
   match_cfg.translation_step_m = config_.match_translation_step_m;
@@ -437,63 +587,192 @@ SlamLoopResult SlamSession::try_close_loops(
  match_cfg.ambiguity_heading_rad = std::max(
  config_.keyframe_heading_rad,
  2.0 * config_.match_heading_step_rad);
-  ScanMatcher matcher(match_cfg);
-  matcher.set_lidar_mount(base_from_lidar_);
-  const LoopClosureGate gate(config_.gate);
- std::string last_rejection = "no candidate reached the matcher";
+ ScanMatcherConfig refine_cfg;
+ refine_cfg.search_translation_m = config_.match_refine_translation_m;
+ refine_cfg.translation_step_m = config_.match_refine_translation_step_m;
+ refine_cfg.search_heading_rad = config_.match_refine_heading_rad;
+ refine_cfg.heading_step_rad = config_.match_refine_heading_step_rad;
+ refine_cfg.maximum_returns = config_.match_refine_max_beams;
+ refine_cfg.minimum_overlap = config_.match_minimum_overlap;
+ // The dense pass resolves one mode selected by the wide pass. Adjacent
+ // raster cells belong to that mode and must not manufacture ambiguity.
+ refine_cfg.ambiguity_distance_m = std::max(
+ 0.25, 2.0 * config_.match_refine_translation_step_m);
+ refine_cfg.ambiguity_heading_rad = std::max(
+ 0.15, 2.0 * config_.match_refine_heading_step_rad);
+ if (!loop_search_) {
+ if (now_s - last_attempt_s_ < config_.loop_attempt_interval_s ||
+ keyframes_.size() == keyframes_at_last_attempt_) {
+ out.diagnostic = "attempt rate limited";
+ last_result_ = out;
+ return out;
+ }
+ last_attempt_s_ = now_s;
+ keyframes_at_last_attempt_ = keyframes_.size();
+ loop_search_ = std::make_unique<LoopSearchWork>();
+ loop_search_->match_est = est;
+ loop_search_->match_obs = obs;
+ loop_search_->to_id = keyframes_.back().id;
+ // Candidates: temporally separated and spatially near the scan pose.
+ // Store stable ids because keyframe ingestion continues while matching is
+ // sliced across ticks.
+ for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
+ const SlamKeyframe& kf = keyframes_[i];
+ const std::size_t separation = keyframes_.size() - 1 - i;
+ if (separation < config_.minimum_loop_keyframe_separation ||
+ now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
+ continue;
+ }
+ const double distance = std::hypot(
+ est.x_m - kf.pose.position.x, est.y_m - kf.pose.position.y);
+ if (distance <= config_.gate.maximum_candidate_distance_m) {
+ loop_search_->candidates.push_back({kf.id, distance});
+ }
+ }
+ std::sort(loop_search_->candidates.begin(),
+ loop_search_->candidates.end(),
+ [](const LoopSearchWork::Candidate& a,
+ const LoopSearchWork::Candidate& b) {
+ return a.distance < b.distance;
+ });
+ if (loop_search_->candidates.size() >
+ config_.max_candidates_per_attempt) {
+ loop_search_->candidates.resize(config_.max_candidates_per_attempt);
+ }
+ if (loop_search_->candidates.empty()) {
+ loop_search_.reset();
+ out.diagnostic = "no eligible candidates";
+ last_result_ = out;
+ return out;
+ }
+ }
 
-  for (const auto& cand : candidates) {
-    const SlamKeyframe& old = keyframes_[cand.index];
+ auto find_keyframe = [&](std::uint64_t id) -> SlamKeyframe* {
+ const auto found = std::find_if(
+ keyframes_.begin(), keyframes_.end(),
+ [id](const SlamKeyframe& kf) { return kf.id == id; });
+ return found == keyframes_.end() ? nullptr : &*found;
+ };
+ auto defer = [&](const std::string& diagnostic) {
+ out.diagnostic = diagnostic;
+ last_result_ = out;
+ return out;
+ };
+ auto reject_candidate = [&](const std::string& diagnostic) {
+ LoopSearchWork& work = *loop_search_;
+ work.last_rejection = diagnostic;
+ ++work.candidate_index;
+ work.phase = LoopSearchWork::Phase::kPrepare;
+ if (work.candidate_index >= work.candidates.size()) {
+ const std::string final_diagnostic =
+ "no candidate verified: " + work.last_rejection;
+ loop_search_.reset();
+ return defer(final_diagnostic);
+ }
+ return defer("loop search pending: " + diagnostic);
+ };
+
+ LoopSearchWork& work = *loop_search_;
+ if (work.phase == LoopSearchWork::Phase::kPrepare) {
+ SlamKeyframe* old = find_keyframe(
+ work.candidates[work.candidate_index].id);
+ if (old == nullptr || find_keyframe(work.to_id) == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ work.old_id = old->id;
+ work.lattice.start(match_cfg, base_from_lidar_,
+ work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
+ work.match_obs.scan_angle_increment_rad, work.match_est.x_m,
+ work.match_est.y_m, work.match_est.yaw_rad, submap_for(*old),
+ work.match_est.roll_rad, work.match_est.pitch_rad,
+ work.match_est.z_m);
+ work.phase = LoopSearchWork::Phase::kCoarse;
+ }
+ if (work.phase == LoopSearchWork::Phase::kCoarse) {
+ if (!work.lattice.advance(config_.match_work_budget)) {
+ return defer("loop coarse search pending");
+ }
+ work.coarse = work.lattice.result;
+ if (!work.coarse.accepted) {
+ return reject_candidate(
+ "coarse match rejected: " + work.coarse.rejection_reason);
+ }
+ iface::MapSnapshot sub = std::move(work.lattice.map);
+ work.lattice.start(refine_cfg, base_from_lidar_,
+ work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
+ work.match_obs.scan_angle_increment_rad, work.coarse.x_m,
+ work.coarse.y_m, work.coarse.yaw_rad, std::move(sub),
+ work.match_est.roll_rad, work.match_est.pitch_rad,
+ work.match_est.z_m);
+ work.phase = LoopSearchWork::Phase::kForward;
+ return defer("loop forward refinement pending");
+ }
+ if (work.phase == LoopSearchWork::Phase::kForward) {
+ if (!work.lattice.advance(config_.match_work_budget)) {
+ return defer("loop forward refinement pending");
+ }
+ work.forward = work.lattice.result;
+ if (!work.forward.accepted) {
+ return reject_candidate(
+ "forward refinement rejected: " + work.forward.rejection_reason);
+ }
+ SlamKeyframe now_kf;
+ now_kf.id = 0;
+ now_kf.stamp_s = work.match_obs.stamp_ns * 1e-9;
+ now_kf.pose.position.x = work.forward.x_m;
+ now_kf.pose.position.y = work.forward.y_m;
+ now_kf.pose.heading_rad = work.forward.yaw_rad;
+ now_kf.roll_rad = work.match_est.roll_rad;
+ now_kf.pitch_rad = work.match_est.pitch_rad;
+ now_kf.z_m = work.match_est.z_m;
+ now_kf.ranges_m = work.match_obs.ranges_m;
+ now_kf.angle_min_rad = work.match_obs.scan_angle_min_rad;
+ now_kf.angle_increment_rad = normalized_scan_increment(
+ work.match_obs.scan_angle_increment_rad,
+ work.match_obs.ranges_m.size());
+ SlamKeyframe* old = find_keyframe(work.old_id);
+ if (old == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ work.lattice.start(refine_cfg, base_from_lidar_, old->ranges_m,
+ old->angle_min_rad, old->angle_increment_rad,
+ old->pose.position.x, old->pose.position.y, old->pose.heading_rad,
+ submap_for(now_kf), old->roll_rad, old->pitch_rad, old->z_m);
+ work.phase = LoopSearchWork::Phase::kReverse;
+ return defer("loop reverse verification pending");
+ }
+ if (!work.lattice.advance(config_.match_work_budget)) {
+ return defer("loop reverse verification pending");
+ }
+ work.reverse = work.lattice.result;
+ if (!work.reverse.accepted) {
+ return reject_candidate(
+ "reverse match rejected: " + work.reverse.rejection_reason);
+ }
+ if (work.reverse.overlap < config_.gate.minimum_overlap) {
+ return reject_candidate("reverse overlap below loop gate");
+ }
+
+ SlamKeyframe* old_ptr = find_keyframe(work.old_id);
+ SlamKeyframe* to_ptr = find_keyframe(work.to_id);
+ if (old_ptr == nullptr || to_ptr == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ const SlamKeyframe& old = *old_ptr;
+ const ScanMatchResult fwd = work.forward;
+ const ScanMatchResult rev = work.reverse;
     PoseGraphKeyframe from;
     from.id = old.id;
     from.stamp_s = old.stamp_s;
     from.initial_pose = old.pose;
     PoseGraphKeyframe to;
-    to.id = keyframes_.back().id;
-    to.stamp_s = keyframes_.back().stamp_s;
-    to.initial_pose = keyframes_.back().pose;
-
-    // Forward: current scan against the old keyframe's submap.
-    const iface::MapSnapshot sub = submap_for(old);
-    ScanMatchResult fwd = matcher.localize(
-        obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
-        est.x_m, est.y_m, est.yaw_rad, sub, obs.stamp_ns, est.roll_rad,
-        est.pitch_rad, est.z_m);
- if (!fwd.accepted) {
- last_rejection = "forward match rejected: " + fwd.rejection_reason;
- continue;
- }
-    // Reverse (two-way support): old scan against a submap from the
-    // current scan placed at the FORWARD solution. A one-sided alignment
-    // against unrelated geometry must not become a constraint; rendering
-    // at the drifted estimate instead would offset the submap by the
-    // very drift being measured and break the check.
-    SlamKeyframe now_kf;
-    now_kf.id = 0;
-    now_kf.stamp_s = now_s;
-    now_kf.pose.position.x = fwd.x_m;
-    now_kf.pose.position.y = fwd.y_m;
-    now_kf.pose.heading_rad = fwd.yaw_rad;
-    now_kf.roll_rad = est.roll_rad;
-    now_kf.pitch_rad = est.pitch_rad;
-    now_kf.z_m = est.z_m;
-    now_kf.ranges_m = obs.ranges_m;
-    now_kf.angle_min_rad = obs.scan_angle_min_rad;
-    now_kf.angle_increment_rad = normalized_scan_increment(
- obs.scan_angle_increment_rad, obs.ranges_m.size());
-    const iface::MapSnapshot rsub = submap_for(now_kf);
-    ScanMatchResult rev = matcher.localize(
-        old.ranges_m, old.angle_min_rad, old.angle_increment_rad,
-        old.pose.position.x, old.pose.position.y, old.pose.heading_rad, rsub,
-        obs.stamp_ns, old.roll_rad, old.pitch_rad, old.z_m);
- if (!rev.accepted) {
- last_rejection = "reverse match rejected: " + rev.rejection_reason;
- continue;
- }
- if (rev.overlap < config_.gate.minimum_overlap) {
- last_rejection = "reverse overlap below loop gate";
- continue;
- }
+ to.id = to_ptr->id;
+ to.stamp_s = to_ptr->stamp_s;
+ to.initial_pose = to_ptr->pose;
+ const LoopClosureGate gate(config_.gate);
     LoopClosureEvidence evidence;
     evidence.match_score = fwd.score;
     evidence.overlap = std::min(fwd.overlap, rev.overlap);
@@ -504,8 +783,42 @@ SlamLoopResult SlamSession::try_close_loops(
                                                   fwd.heading_sigma_rad);
     const LoopClosureDecision decision = gate.validate(from, to, evidence);
  if (!decision.accepted) {
- last_rejection = decision.diagnostic;
- continue;
+ return reject_candidate(decision.diagnostic);
+ }
+
+ // In a surveyed region, reject a keyframe association before graph
+ // optimization when its directly matched pose conflicts with the absolute
+ // map. The later post-optimization check remains authoritative because it
+ // evaluates the correction the graph would actually publish. This early
+ // independent gate avoids solving a growing graph for a candidate that can
+ // already be disproved by ROBOT-side map and scan evidence.
+ if (absolute_map != nullptr && absolute_map->has_raster()) {
+ ScanMatcher evidence_matcher(refine_cfg);
+ evidence_matcher.set_lidar_mount(base_from_lidar_);
+ const auto beams = evidence_matcher.prepare_beams(
+ work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
+ work.match_obs.scan_angle_increment_rad,
+ config_.match_refine_max_beams);
+ const PoseScore prior_score = evidence_matcher.score_pose(
+ work.match_est.x_m, work.match_est.y_m, work.match_est.yaw_rad,
+ beams, *absolute_map, work.match_est.roll_rad,
+ work.match_est.pitch_rad, work.match_est.z_m);
+ const PoseScore candidate_score = evidence_matcher.score_pose(
+ fwd.x_m, fwd.y_m, fwd.yaw_rad, beams, *absolute_map,
+ work.match_est.roll_rad, work.match_est.pitch_rad,
+ work.match_est.z_m);
+ if (prior_score.has_evidence || candidate_score.has_evidence) {
+ const bool supported = candidate_score.has_evidence &&
+ candidate_score.overlap >= config_.match_minimum_overlap &&
+ candidate_score.score >= config_.track_min_score;
+ const bool improves = !prior_score.has_evidence ||
+ candidate_score.score - prior_score.score >=
+ config_.gate.minimum_score_margin;
+ if (!supported || !improves) {
+ return reject_candidate(
+ "loop rejected early: conflicts with surveyed-map evidence");
+ }
+ }
  }
 
  // Optimize a candidate graph transactionally. Association gates below use
@@ -521,11 +834,11 @@ SlamLoopResult SlamSession::try_close_loops(
  PoseGraphBackend candidate_graph = graph_;
  std::string reason;
  if (!candidate_graph.add_constraint(loop, &reason)) {
- last_rejection = "constraint rejected: " + reason;
- continue;
+ return reject_candidate("constraint rejected: " + reason);
  }
  const PoseGraphOptimizationResult opt = candidate_graph.optimize();
  if (!opt.success) {
+ loop_search_.reset();
  out.diagnostic = "optimization failed: " + opt.diagnostic;
  last_result_ = out;
  return out;
@@ -533,6 +846,7 @@ SlamLoopResult SlamSession::try_close_loops(
  const PoseGraphKeyframe* candidate_newest =
  candidate_graph.find_keyframe(keyframes_.back().id);
  if (candidate_newest == nullptr) {
+ loop_search_.reset();
  out.diagnostic = "optimized newest node missing";
  last_result_ = out;
  return out;
@@ -561,13 +875,15 @@ SlamLoopResult SlamSession::try_close_loops(
  enum class AbsoluteEvidence { kInconclusive, kConfirms, kConflicts };
  AbsoluteEvidence absolute = AbsoluteEvidence::kInconclusive;
  if (absolute_map != nullptr && absolute_map->has_raster()) {
- const auto beams = matcher.prepare_beams(
+ ScanMatcher evidence_matcher(refine_cfg);
+ evidence_matcher.set_lidar_mount(base_from_lidar_);
+ const auto beams = evidence_matcher.prepare_beams(
  obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
- config_.match_max_beams);
- const PoseScore current_score = matcher.score_pose(
+ config_.match_refine_max_beams);
+ const PoseScore current_score = evidence_matcher.score_pose(
  est.x_m, est.y_m, est.yaw_rad, beams, *absolute_map,
  est.roll_rad, est.pitch_rad, est.z_m);
- const PoseScore matched_score = matcher.score_pose(
+ const PoseScore matched_score = evidence_matcher.score_pose(
  corrected_here.position.x, corrected_here.position.y,
  corrected_here.heading_rad, beams, *absolute_map,
  est.roll_rad, est.pitch_rad, est.z_m);
@@ -588,9 +904,8 @@ SlamLoopResult SlamSession::try_close_loops(
  // than the local tracking window. Otherwise several plausible-looking
  // small loops can cumulatively walk the robot away from the map.
  if (absolute == AbsoluteEvidence::kConflicts) {
- out.diagnostic = "loop rejected: conflicts with surveyed-map evidence";
- last_result_ = out;
- continue;
+ return reject_candidate(
+ "loop rejected: conflicts with surveyed-map evidence");
  }
  if (large_correction) {
  // Rigid transform C with matched_pose = C * current_pose. Comparing C,
@@ -643,8 +958,9 @@ SlamLoopResult SlamSession::try_close_loops(
  pending_loop_observer_pose_ = current_pose;
  }
  out.diagnostic = "loop candidate pending temporal confirmation";
+ loop_search_.reset();
  last_result_ = out;
- continue;
+ return out;
  }
  pending_loop_valid_ = false;
  }
@@ -680,12 +996,9 @@ SlamLoopResult SlamSession::try_close_loops(
       out.corrected_pose = corrected_here;
     out.diagnostic = "loop closed";
     ++loop_closures_;
+ loop_search_.reset();
     last_result_ = out;
     return out;
-  }
- out.diagnostic = "no candidate verified: " + last_rejection;
-  last_result_ = out;
-  return out;
 }
 
 }  // namespace lost_signal::robot::autonomy

@@ -229,13 +229,97 @@ struct GlobalSearcher::WorkState {
  refine_cfg.heading_step_rad = config.refine_heading_step_rad;
  refine_cfg.minimum_overlap = config.minimum_overlap;
  refine_cfg.minimum_score_margin = config.refine_score_margin;
+ refine_cfg.ambiguity_distance_m = config.refine_ambiguity_distance_m;
+ refine_cfg.ambiguity_heading_rad = config.refine_ambiguity_heading_rad;
  refine_cfg.max_range_m = config.max_range_m;
  refine_cfg.minimum_returns = config.minimum_returns;
  refine_cfg.maximum_returns =
  std::max(config.refine_max_returns, config.minimum_returns);
  refiner = ScanMatcher(refine_cfg);
  refiner.set_lidar_mount(mount);
+ refine_beams = refiner.prepare_beams(
+ ranges, angle_min_rad, angle_increment_rad,
+ refine_cfg.maximum_returns);
+ refine_batch = std::make_unique<ScanMatcher::Batch>(
+ refiner, refine_beams, body_roll_rad, body_pitch_rad);
+ refine_steps = static_cast<int>(std::ceil(
+ config.refine_translation_m / config.refine_translation_step_m));
+ refine_heading_steps = static_cast<int>(std::ceil(
+ config.refine_heading_rad / config.refine_heading_step_rad));
+ reset_refine_seed();
  phase = Phase::kRefine;
+ }
+
+ void reset_refine_seed() {
+ refine_iy = -refine_steps;
+ refine_ix = -refine_steps;
+ refine_ih = -refine_heading_steps;
+ refine_hypotheses.clear();
+ }
+
+ void consider_refine(double x, double y, double heading,
+ const PoseScore& pose) {
+ ScanMatchResult candidate;
+ candidate.x_m = x;
+ candidate.y_m = y;
+ candidate.yaw_rad = heading;
+ candidate.score = pose.score;
+ candidate.overlap = pose.overlap;
+ const auto same = [&](const ScanMatchResult& value) {
+ return std::hypot(value.x_m - candidate.x_m,
+ value.y_m - candidate.y_m) < config.refine_ambiguity_distance_m &&
+ std::abs(core::wrap_angle(value.yaw_rad - candidate.yaw_rad)) <
+ config.refine_ambiguity_heading_rad;
+ };
+ const auto existing = std::find_if(
+ refine_hypotheses.begin(), refine_hypotheses.end(), same);
+ if (existing != refine_hypotheses.end()) {
+ if (candidate.score > existing->score) *existing = candidate;
+ return;
+ }
+ constexpr std::size_t kMaxHypotheses = 24;
+ if (refine_hypotheses.size() < kMaxHypotheses) {
+ refine_hypotheses.push_back(candidate);
+ return;
+ }
+ const auto weakest = std::min_element(
+ refine_hypotheses.begin(), refine_hypotheses.end(),
+ [](const ScanMatchResult& a, const ScanMatchResult& b) {
+ return a.score < b.score;
+ });
+ if (candidate.score > weakest->score) *weakest = candidate;
+ }
+
+ void complete_refine_seed() {
+ ++result.refined_poses;
+ if (!refine_hypotheses.empty()) {
+ std::sort(refine_hypotheses.begin(), refine_hypotheses.end(),
+ [](const ScanMatchResult& a, const ScanMatchResult& b) {
+ if (a.score != b.score) return a.score > b.score;
+ if (a.x_m != b.x_m) return a.x_m < b.x_m;
+ if (a.y_m != b.y_m) return a.y_m < b.y_m;
+ return a.yaw_rad < b.yaw_rad;
+ });
+ ScanMatchResult candidate = refine_hypotheses.front();
+ const double second_score = refine_hypotheses.size() > 1
+ ? refine_hypotheses[1].score
+ : -std::numeric_limits<double>::infinity();
+ if (std::isfinite(candidate.score) &&
+ candidate.overlap >= config.minimum_overlap &&
+ (!std::isfinite(second_score) ||
+ candidate.score - second_score >= config.refine_score_margin)) {
+ candidate.accepted = true;
+ candidate.position_sigma_m = std::max(0.02, map.resolution_m * 0.75);
+ candidate.heading_sigma_rad = std::max(
+ 0.01, config.refine_heading_step_rad * 1.5);
+ candidate.score_margin = std::isfinite(second_score)
+ ? candidate.score - second_score : 1.0;
+ candidate.usable_returns = refine_batch->usable_returns();
+ retain_refined(candidate);
+ }
+ }
+ ++refine_index;
+ reset_refine_seed();
  }
 
  void retain_refined(const ScanMatchResult& candidate) {
@@ -373,6 +457,11 @@ struct GlobalSearcher::WorkState {
  std::size_t evaluations = 0;
  std::vector<Coarse> survivors;
  std::size_t refine_index = 0;
+ std::vector<ScanBeam> refine_beams;
+ std::unique_ptr<ScanMatcher::Batch> refine_batch;
+ int refine_steps = 0, refine_heading_steps = 0;
+ int refine_iy = 0, refine_ix = 0, refine_ih = 0;
+ std::vector<ScanMatchResult> refine_hypotheses;
  std::vector<ScanMatchResult> refined;
  std::vector<ScanBeam> final_beams;
  int final_steps = 0, final_heading_steps = 0;
@@ -458,14 +547,28 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.begin_final();
  continue;
  }
- const WorkState::Coarse& seed = w.survivors[w.refine_index++];
- ++w.result.refined_poses;
- const ScanMatchResult refined = w.refiner.localize(
- w.ranges, w.angle_min_rad, w.angle_increment_rad, seed.x, seed.y,
- seed.heading, w.map, w.stamp_ns, w.body_roll_rad, w.body_pitch_rad,
- w.body_z_m);
- if (refined.accepted) w.retain_refined(refined);
- spend(512);
+ const WorkState::Coarse& seed = w.survivors[w.refine_index];
+ const double cx = seed.x +
+ w.refine_ix * w.config.refine_translation_step_m;
+ const double cy = seed.y +
+ w.refine_iy * w.config.refine_translation_step_m;
+ const double heading = core::wrap_angle(
+ seed.heading + w.refine_ih * w.config.refine_heading_step_rad);
+ const PoseScore pose = w.refine_batch->score(
+ static_cast<std::size_t>(w.refine_ih + w.refine_heading_steps),
+ cx, cy, heading, w.map, w.body_z_m);
+ if (pose.has_evidence) w.consider_refine(cx, cy, heading, pose);
+ ++w.refine_ih;
+ if (w.refine_ih > w.refine_heading_steps) {
+ w.refine_ih = -w.refine_heading_steps;
+ ++w.refine_ix;
+ if (w.refine_ix > w.refine_steps) {
+ w.refine_ix = -w.refine_steps;
+ ++w.refine_iy;
+ if (w.refine_iy > w.refine_steps) w.complete_refine_seed();
+ }
+ }
+ spend(1);
  continue;
  }
  if (w.final_index >= w.refined.size()) {
@@ -512,7 +615,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  // A raycast candidate costs roughly an order of magnitude more than a
  // coarse endpoint score. Weighted accounting keeps each 20 ms ROBOT tick
  // bounded without changing which candidates are evaluated.
- spend(8);
+ spend(32);
  }
  if (w.phase != WorkState::Phase::kDone) return std::nullopt;
  GlobalSearchResult result = std::move(w.result);

@@ -77,7 +77,7 @@ struct GlobalSearchConfig {
   // is to snap to the local optimum, not to recount every return — coarse
   // already ranked with a subset. 24 keeps the ambiguity gates green at a
   // third of the default cost (measured, not tuned).
-  std::size_t refine_max_returns = 96;
+ std::size_t refine_max_returns = 96;
   // Final raycast validation window around each refined survivor (master's
   // third pass). Endpoint scoring degrades gracefully on unknown cells
   // (unknown = 0, neutral), so a wrong aisle can outscore the true pose on
@@ -159,7 +159,7 @@ class GlobalSearcher {
  core::MonotonicNs stamp_ns, double body_roll_rad = 0.0,
  double body_pitch_rad = 0.0, double body_z_m = 0.0);
  std::optional<GlobalSearchResult> advance(
- std::size_t work_budget = 512);
+ std::size_t work_budget = 2048);
  bool active() const;
  void cancel();
 

@@ -268,7 +268,8 @@ bool write_summary(const std::string& path, const std::string& map_path,
 }
 
 void print_timing_profile(
- const std::vector<sim::scenario::ScenarioSession::StepTiming>& samples) {
+ const std::vector<sim::scenario::ScenarioSession::StepTiming>& samples,
+ const sim::scenario::ScenarioSession& session) {
  using Timing = sim::scenario::ScenarioSession::StepTiming;
  if (samples.empty()) return;
  struct Stage {
@@ -298,6 +299,33 @@ void print_timing_profile(
  std::fprintf(stderr, "timing_ms %-10s %.3f %.3f %.3f %.3f\n",
  stage.name, percentile(0.50), percentile(0.95), percentile(0.99),
  values.back());
+ }
+ std::vector<std::size_t> slowest(samples.size());
+ for (std::size_t i = 0; i < slowest.size(); ++i) slowest[i] = i;
+ std::stable_sort(slowest.begin(), slowest.end(),
+ [&](std::size_t a, std::size_t b) {
+ return samples[a].robot_tick_ms > samples[b].robot_tick_ms;
+ });
+ const std::size_t count = std::min<std::size_t>(5, slowest.size());
+ for (std::size_t rank = 0; rank < count; ++rank) {
+ const std::size_t index = slowest[rank];
+ const auto& recorded = session.episode().steps();
+ const char* localization = index < recorded.size()
+ ? recorded[index].diag.localization_action.c_str() : "unrecorded";
+ const char* reason = index < recorded.size()
+ ? recorded[index].diag.evidence.reason_code.c_str() : "unrecorded";
+ const double position_sigma = index < recorded.size()
+ ? recorded[index].diag.estimate.position_sigma_m : -1.0;
+ const char* track = index < recorded.size()
+ ? recorded[index].diag.track_diagnostic.c_str() : "unrecorded";
+ const char* slam = index < recorded.size()
+ ? recorded[index].diag.slam_loop_diagnostic.c_str() : "unrecorded";
+ std::fprintf(stderr,
+ "timing_slowest rank=%zu step=%zu robot_tick_ms=%.3f total_ms=%.3f "
+ "localization=%s sigma=%.3f track=%s slam=%s reason=%s\n",
+ rank + 1, index, samples[index].robot_tick_ms,
+ samples[index].total_ms, localization, position_sigma, track, slam,
+ reason);
  }
 }
 
@@ -460,7 +488,7 @@ int main(int argc, char** argv) {
  ran, session->objectives_done() ? "yes" : "no",
  session->objectives_passed() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
- if (opt.profile) print_timing_profile(timing_samples);
+ if (opt.profile) print_timing_profile(timing_samples, *session);
  if (!opt.out_path.empty() &&
  !write_summary(opt.out_path, opt.map_path, *session,
  have_semantics ? &semantics : nullptr)) {

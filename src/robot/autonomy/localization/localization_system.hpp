@@ -70,7 +70,7 @@ class LocalizationSystem {
  bool map_has_known_occupancy,
                         const iface::ObservationFrame& obs,
                         core::MonotonicNs now_ns, IEstimator& estimator,
-                        std::string& action);
+ std::string& action, bool& local_match_attempted);
   // Bounded scan-to-submap tracking ahead of supervised corrections.
   void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
                     IEstimator& estimator);
@@ -81,7 +81,6 @@ class LocalizationSystem {
  IEstimator& estimator, IMapper& mapper);
 
   LocalizationSupervisor supervisor_;
-  ScanMatcher scan_matcher_;
   GlobalSearcher global_search_;
   StartupHypotheses startup_hyps_;
   SlamSession slam_;
@@ -96,6 +95,8 @@ class LocalizationSystem {
  std::string cached_map_id_;
  std::uint64_t cached_map_revision_ = 0;
  bool cached_map_has_known_occupancy_ = false;
+ core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0},
+ {0.0, 0.0, 0.0, 1.0}};
 };
 
 }  // namespace lost_signal::robot::autonomy

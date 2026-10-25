@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -37,11 +38,24 @@ struct SlamConfig {
   // Widened match window: loops close after drift the local tracker could
   // never span. Cost is bounded by beam downsampling + attempt rate.
   double match_search_translation_m = 2.0;
-  double match_translation_step_m = 0.15;
+ double match_translation_step_m = 0.25;
   double match_search_heading_rad = 0.5;
-  double match_heading_step_rad = 0.10;
-  std::size_t match_max_beams = 48;
+ double match_heading_step_rad = 0.10;
+ std::size_t match_max_beams = 24;
   double match_minimum_overlap = 0.30;
+ // A wide, downsampled pass associates a historical keyframe. The accepted
+ // mode is then snapped and reverse-verified in this small dense window.
+ // Running the full ±2 m lattice twice per candidate caused periodic
+ // hundreds-of-milliseconds control stalls without adding evidence.
+ double match_refine_translation_m = 0.30;
+ double match_refine_translation_step_m = 0.05;
+ double match_refine_heading_rad = 0.15;
+ double match_refine_heading_step_rad = 0.05;
+ std::size_t match_refine_max_beams = 48;
+ // Maximum scan-pose scores spent by loop closure in one control tick.
+ // Search state survives across ticks, so this bounds latency without
+ // reducing the search window, candidates, or verification evidence.
+ std::size_t match_work_budget = 384;
   LoopClosureGateConfig gate;
   // Incremental scan-to-submap tracking (the workhorse between loop
   // events): match the live scan against the most recent keyframe's
@@ -129,6 +143,7 @@ struct SlamTrackResult {
 class SlamSession {
  public:
   explicit SlamSession(SlamConfig config = SlamConfig{});
+ ~SlamSession();
 
   // Full lidar mount from the TF tree (coordinator fans out).
   void set_lidar_mount(const core::RigidTransform& base_from_lidar) {
@@ -166,6 +181,7 @@ class SlamSession {
   const SlamTrackResult& last_track_result() const { return last_track_; }
 
  private:
+ struct LoopSearchWork;
   // Render one keyframe's scan into a small occupancy raster in the map
   // frame (endpoints occupied, ray interiors free) for scan-to-submap match.
   iface::MapSnapshot submap_for(const SlamKeyframe& kf) const;
@@ -204,6 +220,7 @@ class SlamSession {
  double pending_loop_s_ = 0.0;
  Pose2 pending_loop_transform_;
  Pose2 pending_loop_observer_pose_;
+ std::unique_ptr<LoopSearchWork> loop_search_;
 };
 
 }  // namespace lost_signal::robot::autonomy

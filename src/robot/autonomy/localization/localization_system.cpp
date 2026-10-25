@@ -1,5 +1,6 @@
 #include "robot/autonomy/localization/localization_system.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace lost_signal::robot::autonomy {
@@ -19,7 +20,7 @@ void LocalizationSystem::reset() {
 
 void LocalizationSystem::set_lidar_mount(
     const core::RigidTransform& base_from_lidar) {
-  scan_matcher_.set_lidar_mount(base_from_lidar);
+ base_from_lidar_ = base_from_lidar;
   global_search_.set_lidar_mount(base_from_lidar);
   startup_hyps_.set_lidar_mount(base_from_lidar);
   slam_.set_lidar_mount(base_from_lidar);
@@ -53,10 +54,10 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  cached_map_has_known_occupancy_ = map.has_known_occupancy();
  map_evidence_cached_ = true;
  }
-  run_tracking(obs, has_observation, estimator);
+ bool local_match_attempted = false;
  const bool frame_reanchored =
  run_localization(map, cached_map_has_known_occupancy_, obs, now_ns,
- estimator, out.action);
+ estimator, out.action, local_match_attempted);
  if (frame_reanchored) {
  // Keyframes and the rolling raster were authored in the old map frame.
  // Keeping either after an absolute global fix lets local SLAM pull the
@@ -64,6 +65,13 @@ LocalizationSystem::TickResult LocalizationSystem::update(
  slam_.reset();
  mapper.reset();
  out.replan_requested = true;
+ }
+ // Absolute survey matching and two-sided scan-to-submap tracking are both
+ // heavy scan searches. Never stack them in one 20 ms control tick: the
+ // absolute correction owns its due tick, and SLAM tracking uses intervening
+ // scans. This preserves both constraints while bounding latency spikes.
+ if (!frame_reanchored && !local_match_attempted) {
+ run_tracking(obs, has_observation, estimator);
  }
  if (supervisor_.localized() &&
  run_slam(map, cached_map_has_known_occupancy_, obs, has_observation,
@@ -116,8 +124,20 @@ bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
                                   IMapper& mapper) {
   if (!has_observation || !obs.scan_valid) return false;
   slam_.ingest(estimator.estimate(), obs);
+ // A surveyed map and mapless pose graph are alternative owners of the
+ // global frame. In mapped localization, supervised scan-to-map corrections
+ // already provide the absolute constraint; committing a second pose-graph
+ // frame correction duplicates work and can make the two estimators fight.
+ // Keep keyframing and local scan-to-submap tracking in both modes, but run
+ // loop closure only when SLAM actually owns the global frame.
+ const bool slam_owns_global_frame =
+ supervisor_.startup_mode() == StartupMode::kSlamOnly ||
+ !map_has_known_occupancy;
+ if (!slam_owns_global_frame) return false;
  const iface::MapSnapshot* absolute_map =
- supervisor_.localized() && map_has_known_occupancy ? &map : nullptr;
+ supervisor_.localized() && map_has_known_occupancy &&
+ supervisor_.startup_mode() != StartupMode::kSlamOnly
+ ? &map : nullptr;
  SlamLoopResult loop = slam_.try_close_loops(
  estimator.estimate(), obs, absolute_map);
   if (!loop.closed) return false;
@@ -157,7 +177,9 @@ bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
 bool LocalizationSystem::run_localization(
  const iface::MapSnapshot& map, bool map_has_known_occupancy,
  const iface::ObservationFrame& obs,
-    core::MonotonicNs now_ns, IEstimator& estimator, std::string& action) {
+ core::MonotonicNs now_ns, IEstimator& estimator, std::string& action,
+ bool& local_match_attempted) {
+ local_match_attempted = false;
   const double now_s = now_ns * 1e-9;
   const EstimatedState& est = estimator.estimate();
   LocalizationHealth health;
@@ -339,7 +361,35 @@ bool LocalizationSystem::run_localization(
     }
  return accept_global;
   }
-  ScanMatchResult match = scan_matcher_.localize(
+ // Search only the correction the supervisor could actually accept. At low
+ // covariance this removes hypotheses outside the innovation gate; near the
+ // loss threshold the window expands up to the matcher's normal cap. The
+ // gate and search therefore share one uncertainty doctrine.
+ ScanMatcherConfig local_config;
+ const auto& supervisor_config = supervisor_.config();
+ const double translation_cap = local_config.search_translation_m;
+ const double heading_cap = local_config.search_heading_rad;
+ local_config.search_translation_m = std::clamp(
+ supervisor_config.local_innovation_sigma_factor *
+ est.position_sigma_m,
+ std::min(supervisor_config.local_innovation_floor_m, translation_cap),
+ translation_cap);
+ local_config.search_heading_rad = std::clamp(
+ supervisor_config.local_innovation_sigma_factor *
+ est.heading_sigma_rad,
+ std::min(supervisor_config.local_innovation_floor_rad, heading_cap),
+ heading_cap);
+ // Searching finer than half a survey cell repeats identical raster evidence
+ // under slightly different floating-point coordinates. Tie the lattice to
+ // map resolution and keep a bounded beam subset; covariance still controls
+ // the window and the independent innovation gate still owns acceptance.
+ local_config.translation_step_m = std::max(
+ local_config.translation_step_m, 0.5 * map.resolution_m);
+ local_config.maximum_returns = 64;
+ ScanMatcher local_matcher(local_config);
+ local_matcher.set_lidar_mount(base_from_lidar_);
+ local_match_attempted = true;
+ ScanMatchResult match = local_matcher.localize(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
       est.x_m, est.y_m, est.yaw_rad, map, now_ns, est.roll_rad,
       est.pitch_rad, est.z_m);
