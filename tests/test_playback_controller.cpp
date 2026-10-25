@@ -44,6 +44,17 @@ Result run_with_schedule(double rate, bool turbo) {
           session.episode().steps().size()};
 }
 
+Result run_headless() {
+ ScenarioSession session;
+ session.set_startup_mode(lost_signal::robot::autonomy::StartupMode::kSlamOnly);
+ session.setup_world().add_place({"goal", 100.0, 0.0, 0.0});
+ session.set_objectives({"goal"}, 0.5);
+ constexpr std::size_t kSteps = 120;
+ for (std::size_t step = 0; step < kSteps; ++step) session.step_once();
+ return {session.episode().steps().back().truth_after, session.score(),
+ session.episode().steps().size()};
+}
+
 void assert_same_result(const Result& a, const Result& b) {
   assert(a.steps == b.steps);
   assert(a.truth.step == b.truth.step);
@@ -94,9 +105,13 @@ int main() {
   // physics, sensor stamps, ROBOT decisions, truth, and score stay identical.
   const Result one_x = run_with_schedule(1.0, false);
   const Result eight_x = run_with_schedule(8.0, false);
+ const Result sixty_four_x = run_with_schedule(64.0, false);
   const Result turbo = run_with_schedule(1.0, true);
+ const Result headless = run_headless();
   assert_same_result(one_x, eight_x);
+ assert_same_result(one_x, sixty_four_x);
   assert_same_result(one_x, turbo);
+ assert_same_result(one_x, headless);
 
   std::puts("test_playback_controller: ok");
   return 0;
