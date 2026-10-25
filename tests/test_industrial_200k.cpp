@@ -256,6 +256,20 @@ int main() {
  }
  }
 
+ // A long mission can replan just after leaving the cluttered startup bay.
+ // The local Hybrid-A* refinement must reconnect this measured pose to the
+ // map-derived long-distance guide instead of exhausting its first segment.
+ {
+  auto replanning_pose = at(3.948585579, -1.266295216);
+  replanning_pose.yaw_rad = -0.559507758;
+  const auto& central_gate = place(map, "central_gate");
+  robot::autonomy::AckermannPlanner replanner(recovery_config);
+  const auto route = replanner.plan(
+   replanning_pose,
+   {central_gate.x_m, central_gate.y_m, central_gate.yaw_rad}, map);
+  assert_route_clear(route, costmap.lethal);
+ }
+
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
  "route_points=%zu ackermann_route_points=%zu "

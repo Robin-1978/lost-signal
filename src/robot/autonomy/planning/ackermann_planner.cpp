@@ -527,6 +527,14 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  previous_x = x;
  previous_y = y;
  }
+ // The published route is a polyline between primitive endpoints. A
+ // collision-free bicycle arc is insufficient when its chord clips an
+ // inflated corner, because the local planner will consume that chord.
+ // Reject the state here so search can choose a route that is safe under
+ // the same representation delivered downstream.
+ if (feasible && !segment_is_free(current.x, current.y, x, y)) {
+ feasible = false;
+ }
  if (feasible && !corridor_match(
  x, y, corridor_index, corridor_index, distance_to_guide)) {
  feasible = false;
