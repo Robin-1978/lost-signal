@@ -70,12 +70,20 @@ their typed messages into ONE envelope through the canonical robot-owned
 helpers (`iface/envelope.hpp`: `make_envelope/set_scan/set_imu`) — no
 hand-packing in harnesses. The old whole-observation `IPlatformProvider` is
 gone: sensors are messages, motion is a twist, the envelope is packed once.
+The envelope header orders transport only. Every populated scan, motion and
+IMU section retains the typed message's own sequence, acquisition timestamp,
+source and frame. ROBOT caches the latest accepted section independently;
+slower LiDAR evidence therefore remains usable between faster encoder/IMU
+updates until its own freshness deadline expires. A headerless legacy frame
+is restricted to one populated endpoint section, so a registered LiDAR source
+cannot carry unowned motion or IMU data.
 
 ## Provider conformance — one gate for every backend
 
 `src/robot/iface/conformance.hpp`. Structural checks live in
 `valid_observation_frame()`; `ProviderConformanceMonitor` adds what only a
-stream exhibits: identity, ordering, freshness, rate, silence. Sim, replay,
+stream exhibits: identity, ordering, freshness, rate, silence. Aggregate
+frames are expanded and checked per section endpoint. Sim, replay,
 and native adapters run the same monitor before frames reach ROBOT, so a
 vendor driver cannot pass bring-up with data that only looks valid one
 frame at a time. Durations are `MonotonicNs`; the nominal rate is passed
@@ -102,7 +110,10 @@ service-brake math, contacts resolve in the engine (viscous drag as native
 joint damping), truth is read back from engine state. Stops are
 closed-loop holds at zero through the wheel loops when joints are known
 (open loop coasts down on joint damping over tens of seconds); blind stops
-stay SafeZero.
+stay SafeZero. `RobotApplication` accepts joint feedback for actuator
+closed-loop use only while its motion acquisition time is within the robot
+description's `safety_reaction_time_s`; missing, future-dated or stale joint
+feedback clears the joint counts and the chassis returns SafeZero.
 
 `src/robot/platform/chassis_registry.hpp`. `ChassisRegistry::global()` maps
 kind names to factories; builtins self-register via static

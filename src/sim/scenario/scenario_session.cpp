@@ -25,7 +25,7 @@ ScenarioSession::ScenarioSession()
  // Default cadence runs all taps at the 20 ms plant step. The scheduler
  // still keeps scan, decision, and record deadlines independent so slower
  // sensor streams exercise the same stale-data path as deployment.
-  scheduler_.reset(0.02, 0.02, 0.02);
+ scheduler_.reset_after(0.0, 0.02, 0.02, 0.02, 0.02, 0.02);
   // Mounts from the same description the app runs: SIM generation and the
   // ROBOT-side TF rotate by identical extrinsics (never double/single).
   suite_.set_mounts(app_.description().sensors);
@@ -45,7 +45,7 @@ ScenarioSession::ScenarioSession(
   suite_.register_all(app_);
   (void)app_.configure();
   (void)app_.activate();
-  scheduler_.reset(0.02, 0.02, 0.02);
+ scheduler_.reset_after(0.0, 0.02, 0.02, 0.02, 0.02, 0.02);
   suite_.set_mounts(app_.description().sensors);
 }
 
@@ -67,8 +67,23 @@ void ScenarioSession::set_sensor_cadence(double scan_period_s,
       !valid(record_period_s)) {
     return;  // fail closed: keep the previous cadence, never half-apply
   }
- scheduler_.reset(scan_period_s, motion_period_s, imu_period_s,
- decision_period_s, record_period_s);
+ // Recording is the public transition cadence. It cannot run faster than
+ // the 20 ms ScenarioSession step; sensors and decisions use exact sub-step
+ // deadlines and may run faster.
+ constexpr double kOuterStepS = 0.02;
+ if (record_period_s > 0.0 && record_period_s + 1e-12 < kOuterStepS) {
+ return;
+ }
+ if (record_period_s > 0.0) {
+ const double outer_steps = record_period_s / kOuterStepS;
+ if (std::abs(outer_steps - std::round(outer_steps)) > 1e-9) return;
+ }
+ scheduler_.reset_after(sim_time_s_, scan_period_s, motion_period_s,
+ imu_period_s, decision_period_s, record_period_s);
+ suite_.lidar().set_scan_period(scan_period_s);
+ if (scan_period_s > 0.0) {
+ suite_.lidar3d().set_scan_period(static_cast<float>(scan_period_s));
+ }
  // Make the configured decision cadence real: the coordinator gates its
  // planning branch on this period. Zero keeps the deployment default.
  if (decision_period_s > 0.0) {
@@ -102,67 +117,87 @@ void ScenarioSession::step_once() {
  const auto elapsed_ms = [](Clock::time_point begin, Clock::time_point end) {
  return std::chrono::duration<double, std::milli>(end - begin).count();
  };
-  constexpr double kDtS = 0.02;  // plant base rate; deadlines read sim time
-  sim_time_s_ += kDtS;
-  // Truth snapshot BEFORE the step: recorded offline only.
-  eval::EvalStep rec;
-  rec.truth_before = world_.truth();
+ constexpr double kDtS = 0.02;
+ const double outer_end_s = sim_time_s_ + kDtS;
+ eval::EvalStep rec;
+ rec.truth_before = world_.truth();
+ double physics_ms = 0.0;
+ double sensors_ms = 0.0;
+ double robot_ms = 0.0;
+ double actuation_ms = 0.0;
+ bool accepted_observation = false;
+ robot::iface::ObservationFrame last_observation;
+ robot::iface::MotionCommand cmd = last_cmd_;
 
-  world_.step(kDtS);
- // Decision time follows the plant clock exactly (no accumulated-double
- // jitter): the observation keeps its acquisition stamp, so latency is
- // visible as a stamp older than now, while a fresh scan ticks at now.
- const auto sim_stamp_ns = static_cast<robot::core::MonotonicNs>(
- static_cast<std::int64_t>(world_.truth().step) * 20'000'000);
-  // Truth-side judge AFTER the plant steps: mission failure, scoring, and
-  // replay diagnostics. Never a ROBOT input (see collision_judge.hpp).
-  rec.judge = assess_collision(world_.truth().body_x_m,
-                               world_.truth().body_y_m, judge_radius_m_,
-                               world_.static_boxes(), world_.actors());
-  // Belly / high-center contact against the authored surface (same
-  // truth-side discipline; the ROBOT never sees this outcome). Needs a live
-  // engine height: an uncommanded plant (drive_count == 0) reports frozen
-  // zero truth, and z = 0 is "no data", never "body at ground level".
-  if (world_.truth().drive_count > 0) {
-    eval::CollisionOutcome terrain = assess_terrain_contact(
-        world_.truth().body_x_m, world_.truth().body_y_m,
-        world_.truth().body_z_m, judge_radius_m_, world_.terrain_patches(),
-        world_.support_slabs(), terrain_clearance_m_);
-    rec.judge.terrain_collision = terrain.terrain_collision;
-    rec.judge.terrain_clearance_m = terrain.terrain_clearance_m;
-  }
- const auto physics_end = Clock::now();
+ // Step the plant to every sensor/control deadline. For example, a 100 Hz
+ // IMU samples at 10 ms and 20 ms within this public 20 ms transition.
+ // Every acquisition keeps its own timestamp and reaches the ROBOT queue.
+ while (sim_time_s_ + 1e-12 < outer_end_s) {
+ const double event_s = std::min(
+ outer_end_s, scheduler_.next_runtime_event_s());
+ const double dt_s = event_s - sim_time_s_;
+ const auto physics_begin = Clock::now();
+ if (dt_s > 1e-12) world_.step(dt_s);
+ sim_time_s_ = event_s;
+ physics_ms += elapsed_ms(physics_begin, Clock::now());
 
- const bool decision_due = scheduler_.decision_due(sim_time_s_);
+ const bool scan_due = scheduler_.scan_due(sim_time_s_);
  const bool motion_due = scheduler_.motion_due(sim_time_s_);
  const bool imu_due = scheduler_.imu_due(sim_time_s_);
- bool have_obs = false;
-  robot::iface::ObservationFrame obs;
- const bool scan_due = scheduler_.scan_due(sim_time_s_);
  if (scan_due || motion_due || imu_due) {
- have_obs = suite_.poll_envelope(scan_due, motion_due, imu_due, obs) &&
- app_.publish_observation(obs);
-  }
-  rec.obs = obs;
-  rec.obs_accepted = have_obs;
- const auto sensors_end = Clock::now();
- robot::iface::MotionCommand cmd = last_cmd_;
- if (decision_due) {
- // A decision tick is allowed to run without a newly acquired scan. The
- // channel retains the latest accepted frame and the ROBOT freshness gate
- // decides whether it is still safe to use; no-data remains fail-closed.
+ const auto sensors_begin = Clock::now();
+ robot::iface::ObservationFrame observation;
+ const bool accepted =
+ suite_.poll_envelope(scan_due, motion_due, imu_due, observation) &&
+ app_.publish_observation(observation);
+ sensors_ms += elapsed_ms(sensors_begin, Clock::now());
+ if (!observation.empty()) last_observation = std::move(observation);
+ accepted_observation = accepted_observation || accepted;
+ }
+
+ if (scheduler_.decision_due(sim_time_s_)) {
+ const robot::core::MonotonicNs sim_stamp_ns = world_.sim_time_ns();
+ const auto robot_begin = Clock::now();
  cmd = app_.tick(sim_stamp_ns);
  last_cmd_ = cmd;
+ robot_ms += elapsed_ms(robot_begin, Clock::now());
+ const auto actuation_begin = Clock::now();
+ suite_.consume(app_.take_actuator(sim_stamp_ns));
+ actuation_ms += elapsed_ms(actuation_begin, Clock::now());
  }
- const auto robot_end = Clock::now();
-  robot::iface::ActuatorCommand act = app_.take_actuator(sim_stamp_ns);
-  suite_.consume(act);
-  driver_.update(app_, world_);
- const auto actuation_end = Clock::now();
+ }
+ // The World clock is canonical for sensor stamps; copy it back to avoid
+ // accumulated floating-point drift in the orchestration deadline loop.
+ sim_time_s_ = world_.sim_time_s();
+ rec.obs = std::move(last_observation);
+ rec.obs_accepted = accepted_observation;
 
+ // Truth-side judge AFTER the plant steps: mission failure, scoring, and
+ // replay diagnostics. Never a ROBOT input (see collision_judge.hpp).
+ rec.judge = assess_collision(world_.truth().body_x_m,
+ world_.truth().body_y_m, judge_radius_m_,
+ world_.static_boxes(), world_.actors());
+ // Belly / high-center contact against the authored surface (same
+ // truth-side discipline; the ROBOT never sees this outcome). Needs a live
+ // engine height: an uncommanded plant (drive_count == 0) reports frozen
+ // zero truth, and z = 0 is "no data", never "body at ground level".
+ if (world_.truth().drive_count > 0 &&
+ world_.truth().body_z_m > 0.0 &&
+ std::isfinite(world_.truth().body_z_m)) {
+ eval::CollisionOutcome terrain = assess_terrain_contact(
+ world_.truth().body_x_m, world_.truth().body_y_m,
+ world_.truth().body_z_m, judge_radius_m_, world_.terrain_patches(),
+ world_.support_slabs(), terrain_clearance_m_);
+ rec.judge.terrain_collision = terrain.terrain_collision;
+ rec.judge.terrain_clearance_m = terrain.terrain_clearance_m;
+ }
+
+ const auto actuation_begin = Clock::now();
+ driver_.update(app_, world_);
+ actuation_ms += elapsed_ms(actuation_begin, Clock::now());
  rec.cmd = cmd;
-  rec.diag = app_.diagnostics();
-  rec.truth_after = world_.truth();
+ rec.diag = app_.diagnostics();
+ rec.truth_after = world_.truth();
  if (scheduler_.record_due(sim_time_s_)) {
  rec.step = score_accumulator_.score().steps;
  score_accumulator_.record(rec);
@@ -170,11 +205,13 @@ void ScenarioSession::step_once() {
  if (retain_episode_history_) episode_.record(std::move(rec));
  }
  const auto record_end = Clock::now();
- last_step_timing_.physics_ms = elapsed_ms(total_begin, physics_end);
- last_step_timing_.sensors_ms = elapsed_ms(physics_end, sensors_end);
- last_step_timing_.robot_tick_ms = elapsed_ms(sensors_end, robot_end);
- last_step_timing_.actuation_ms = elapsed_ms(robot_end, actuation_end);
- last_step_timing_.record_ms = elapsed_ms(actuation_end, record_end);
+ last_step_timing_.physics_ms = physics_ms;
+ last_step_timing_.sensors_ms = sensors_ms;
+ last_step_timing_.robot_tick_ms = robot_ms;
+ last_step_timing_.actuation_ms = actuation_ms;
+ last_step_timing_.record_ms = std::max(
+ 0.0, elapsed_ms(total_begin, record_end) - physics_ms - sensors_ms -
+ robot_ms - actuation_ms);
  last_step_timing_.total_ms = elapsed_ms(total_begin, record_end);
 }
 

@@ -252,7 +252,35 @@ int main() {
     }
   }
 
-  // Unknown place fails closed through the seam: recorded miss, mission  // continues to the next objective instead of wedging.
+ // Real asynchronous rates: a 10 Hz scan remains valid evidence between
+ // 50 Hz decisions while 50 Hz motion and 100 Hz IMU continue updating the
+ // estimator. The old envelope replacement bug stopped on four of every
+ // five decisions and barely moved in this open mission.
+ {
+ sim::scenario::ScenarioSession session;
+ session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ session.setup_world().add_place({"dock", 8.0, 0.0, 0.0});
+ session.set_sensor_cadence(0.10, 0.02, 0.01, 0.02, 0.02);
+ session.set_objectives({"dock"}, 1.0);
+ for (int i = 0; i < 300; ++i) session.step_once();
+ const auto score = sim::eval::score_episode(session.episode());
+ if (!(score.distance_m > 3.0)) {
+ std::fprintf(stderr, "async cadence distance=%.3f m steps=%zu\n",
+ score.distance_m, score.steps);
+ }
+ assert(score.distance_m > 3.0);
+ const auto& steps = session.episode().steps();
+ assert(!steps.empty());
+ // Two distinct IMU acquisitions per 20 ms transition prove the configured
+ // 100 Hz stream is sampled rather than silently aliased to 50 Hz.
+ assert(steps.back().obs.imu_header.sequence == 600);
+ for (std::size_t i = 5; i < steps.size(); ++i) {
+ assert(steps[i].diag.safety_reason != "no-scan-evidence");
+ }
+ }
+
+ // Unknown place fails closed through the seam: recorded miss; mission
+ // continues to the next objective instead of wedging.
   {
     sim::scenario::ScenarioSession session;
     session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});

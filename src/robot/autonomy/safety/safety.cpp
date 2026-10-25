@@ -158,7 +158,9 @@ SafetyVerdict SafetyMonitor::evaluate(
     last_ = {false, SafetyState::kStopped, latch_reason_};
     return last_;
   }
-  if (now_ns - obs.stamp_ns > config_.stale_timeout_ns) {
+ const core::MonotonicNs latest_scan_ns = iface::scan_stamp_ns(obs);
+ if (latest_scan_ns == core::kInvalidTime || latest_scan_ns > now_ns ||
+ now_ns - latest_scan_ns > config_.stale_timeout_ns) {
     latched_ = true;
     latch_reason_ = "obs-stale";
     last_ = {false, SafetyState::kStopped, latch_reason_};

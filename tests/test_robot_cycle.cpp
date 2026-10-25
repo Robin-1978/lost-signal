@@ -56,6 +56,24 @@ int main() {
   assert(cmd2.is_safe_stop());
   assert(iface::valid_motion_command(cmd2, 3'000'000));
 
+ // An aggregate envelope cannot smuggle a section owned by an unregistered
+ // endpoint through a registered transport identity.
+ iface::ObservationFrame spoofed = good;
+ spoofed.sequence = 2;
+ spoofed.stamp_ns = 3'500'000;
+ spoofed.imu_valid = true;
+ spoofed.imu_header = {
+ 1, 3'500'000, "rogue.imu", core::Frame::kImuLink};
+ assert(!app.publish_observation(spoofed));
+
+ // Legacy frames may represent one endpoint only. A headerless aggregate
+ // cannot borrow one registered identity for unrelated sensor roles.
+ iface::ObservationFrame legacy_aggregate = good;
+ legacy_aggregate.sequence = 2;
+ legacy_aggregate.stamp_ns = 3'600'000;
+ legacy_aggregate.imu_valid = true;
+ assert(!app.publish_observation(legacy_aggregate));
+
   // Stale sequence must be rejected (state stays at seq 1).
   iface::ObservationFrame stale = good;
   stale.sequence = 1;
@@ -85,7 +103,35 @@ int main() {
   bogus.id = 999;
   assert(app.goal_status(bogus).state == iface::GoalState::kFailed);
   assert(!app.cancel_goal(bogus));
-  assert(!app.cancel_goal(h));  // terminal hold: nothing to withdraw
+  assert(!app.cancel_goal(h)); // terminal hold: nothing to withdraw
+
+ // Joint feedback older than the configured safety reaction window cannot
+ // close a wheel loop. Fresh moving wheels demand braking duty; after the
+ // feedback expires the actuator path fails closed to safe zero.
+ {
+ app::RobotApplication wheel_app(nullptr);
+ assert(wheel_app.register_provider(
+ {"test.encoder", iface::EndpointRole::kEncoder,
+ iface::ProviderBackend::kNative, "base_link"}));
+ assert(wheel_app.configure().ok && wheel_app.activate().ok);
+ iface::ObservationFrame joints;
+ joints.sequence = 1;
+ joints.stamp_ns = 1'000'000;
+ joints.source = "test.encoder";
+ joints.frame = core::Frame::kBaseLink;
+ joints.odometry_valid = true;
+ joints.drive_count = 2;
+ joints.drive_radps[0] = 10.0;
+ joints.drive_radps[1] = 10.0;
+ assert(wheel_app.publish_observation(joints));
+ wheel_app.tick(1'000'000);
+ const iface::ActuatorCommand fresh = wheel_app.take_actuator(1'000'000);
+ assert(fresh.drive[0] < 0.0 && fresh.drive[1] < 0.0);
+ wheel_app.tick(300'000'000);
+ const iface::ActuatorCommand expired =
+ wheel_app.take_actuator(300'000'000);
+ assert(expired.is_safe_zero());
+ }
 
   // Shutdown returns modules to Unconfigured; tick holds again.
   app.shutdown();

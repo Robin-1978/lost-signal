@@ -26,8 +26,6 @@ r::lifecycle::ModuleState SimRobot::bringup_state() const {
   return app_.bringup_state();
 }
 
-
-
 r::core::Status SimRobot::request_map(const std::string& map_id) {
   return app_.request_map(map_id);
 }
@@ -49,7 +47,7 @@ r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
  // its acquisition stamp so delivery latency remains visible.
  world_.step(0.02);
  const r::core::MonotonicNs plant_ns =
- static_cast<r::core::MonotonicNs>(world_.truth().step * 20'000'000);
+ world_.sim_time_ns();
  // The world just stepped, so the decision clock is the plant clock. A
  // caller clock ahead of the plant is honored; a lagging one is not
  // allowed to make a fresh scan look like it came from the future.
@@ -58,8 +56,7 @@ r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
  : plant_ns;
   r::iface::ObservationFrame obs;
   if (!suite_.poll_envelope(obs)) {
-    return r::iface::MotionCommand::SafeStop(
-        static_cast<r::core::MonotonicNs>(world_.truth().step * 20'000'000));
+ return r::iface::MotionCommand::SafeStop(world_.sim_time_ns());
   }
   if (!app_.publish_observation(obs)) {
     return r::iface::MotionCommand::SafeStop(decision_ns);
@@ -69,8 +66,6 @@ r::iface::MotionCommand SimRobot::tick(r::core::MonotonicNs now_ns) {
   suite_.consume(act);
   return cmd;
 }
-
-
 
 r::iface::MapSnapshot SimRobot::active_map() const {
   return app_.active_map();

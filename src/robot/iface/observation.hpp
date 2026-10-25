@@ -12,6 +12,27 @@
 
 namespace lost_signal::robot::iface {
 
+// Identity of one acquired measurement section. ObservationFrame is a
+// transport envelope and may carry measurements sampled at different rates;
+// every populated section therefore keeps the producer's own identity and
+// acquisition time. The envelope header remains transport metadata.
+struct MeasurementHeader {
+    std::uint64_t sequence = 0;
+    core::MonotonicNs stamp_ns = core::kInvalidTime;
+    std::string source;
+    core::Frame frame = core::Frame::kUnknown;
+
+ bool empty() const {
+ return sequence == 0 && stamp_ns == core::kInvalidTime &&
+ source.empty() && frame == core::Frame::kUnknown;
+ }
+
+    bool valid() const {
+        return sequence > 0 && stamp_ns != core::kInvalidTime &&
+               stamp_ns >= 0 && !source.empty();
+    }
+};
+
 // One provider-neutral sensor snapshot. A provider fills only the fields its
 // endpoint owns; ROBOT treats missing/stale required data as fail-closed.
 struct ObservationFrame {
@@ -20,7 +41,8 @@ struct ObservationFrame {
   std::string source;                               // stable endpoint id
   core::Frame frame = core::Frame::kUnknown;
 
-  // Minimal planar scan. Empty + scan_valid=false means unknown, never free.
+    // Minimal planar scan. Empty + scan_valid=false means unknown, never free.
+    MeasurementHeader scan_header;
   std::vector<float> ranges_m;
   bool scan_valid = false;
   // Scan layout: angle_min + i * increment covers the full rotation.
@@ -44,12 +66,14 @@ struct ObservationFrame {
   std::vector<float> static_ranges_m;
   bool scan_static_valid = false;
 
-  // Body-frame planar odometry twist (measured, SI).
+    // Body-frame planar odometry twist (measured, SI).
+    MeasurementHeader motion_header;
   bool odometry_valid = false;
   double forward_mps = 0.0;
   double yaw_rate_radps = 0.0;
 
-  // IMU (measured, SI, full 6-axis in imu_link).
+    // IMU (measured, SI, full 6-axis in imu_link).
+    MeasurementHeader imu_header;
   bool imu_valid = false;
   double imu_gyro_x_radps = 0.0;
   double imu_gyro_y_radps = 0.0;
@@ -75,6 +99,41 @@ struct ObservationFrame {
     return !scan_valid && !odometry_valid && !imu_valid && drive_count == 0;
   }
 };
+
+inline MeasurementHeader envelope_header(const ObservationFrame& obs) {
+    return {obs.sequence, obs.stamp_ns, obs.source, obs.frame};
+}
+
+// A single-section native frame may use its envelope header. Aggregate
+// providers populate explicit section headers so acquisition times and
+// endpoint ownership cannot be confused.
+inline MeasurementHeader scan_measurement_header(
+    const ObservationFrame& obs) {
+ return obs.scan_header.empty() ? envelope_header(obs) : obs.scan_header;
+}
+
+inline MeasurementHeader motion_measurement_header(
+    const ObservationFrame& obs) {
+ return obs.motion_header.empty() ? envelope_header(obs)
+ : obs.motion_header;
+}
+
+inline MeasurementHeader imu_measurement_header(
+    const ObservationFrame& obs) {
+ return obs.imu_header.empty() ? envelope_header(obs) : obs.imu_header;
+}
+
+inline core::MonotonicNs scan_stamp_ns(const ObservationFrame& obs) {
+    return scan_measurement_header(obs).stamp_ns;
+}
+
+inline core::MonotonicNs motion_stamp_ns(const ObservationFrame& obs) {
+    return motion_measurement_header(obs).stamp_ns;
+}
+
+inline core::MonotonicNs imu_stamp_ns(const ObservationFrame& obs) {
+    return imu_measurement_header(obs).stamp_ns;
+}
 
 // Angle of beam i in the sensor frame. An unset increment (0) keeps the
 // legacy full-rotation layout for providers that predate explicit layout;

@@ -84,8 +84,7 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   if (world_ == nullptr) return false;
   seq_ += 1;
   out.seq = seq_;
-  out.stamp = static_cast<robot::core::MonotonicNs>(world_->truth().step *
-                                                    20'000'000);
+ out.stamp = world_->sim_time_ns();
   out.src = desc_.endpoint_id;
   out.frm = robot::core::Frame::kImuLink;
   // Yaw rate is truth here. It must be truthful, not zero: the estimator's
@@ -102,8 +101,7 @@ bool SimImuProvider::poll(robot::iface::ImuMessage& out) {
   // orientation. Bias (exact trim + drawn + walk) and white noise ride on
   // the gyro when enabled. The longitudinal traction observer closes on the
   // linear terms — without them straight-line wheelspin is unobservable.
-  const double stamp_s =
-      static_cast<double>(world_->truth().step) * 0.02;
+ const double stamp_s = world_->sim_time_s();
   const double w = world_->truth().yaw_rate_radps;
   const double fwd = world_->truth().forward_mps;
   const double lat = world_->truth().lateral_mps;

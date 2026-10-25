@@ -111,7 +111,7 @@ int main() {
  // Four full pose stops run in the SLAM frame without using the sparse
  // navigation survey as a localization authority. Leave enough simulated
  // time for the final slope turn and settle while keeping every tolerance.
- for (int i = 0; i < 2200 && !session.objectives_done(); ++i) {
+ for (int i = 0; i < 3000 && !session.objectives_done(); ++i) {
       session.step_once();
     }
     const auto score = sim::eval::score_episode(session.episode());

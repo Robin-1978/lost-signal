@@ -26,6 +26,11 @@ int main() {
   robot::iface::ObservationFrame obs;
   assert(suite.poll_envelope(obs));
  assert(obs.odometry_valid && obs.scan_valid && obs.imu_valid);
+ assert(obs.motion_header.valid() && obs.motion_header.source == "sim.motion");
+ assert(obs.scan_header.valid() && obs.scan_header.source == "sim.lidar2d");
+ assert(obs.imu_header.valid() && obs.imu_header.source == "sim.imu");
+ assert(obs.motion_header.stamp_ns == obs.scan_header.stamp_ns);
+ assert(obs.scan_header.stamp_ns == obs.imu_header.stamp_ns);
  // SIM publishes the same raw sensor contract as a real lidar. It cannot
  // attach an actor-free reference rendering to a ROBOT observation.
  assert(!obs.scan_static_valid && obs.static_ranges_m.empty());
@@ -83,8 +88,9 @@ int main() {
  assert(suite.poll_envelope(true, false, false, scan_only));
  assert(scan_only.sequence > seq0 && scan_only.stamp_ns >= stamp0);
  assert(scan_only.scan_valid && scan_only.intensity_valid);
+ assert(scan_only.scan_header.source == "sim.lidar2d");
  assert(!scan_only.odometry_valid && !scan_only.imu_valid);
- assert(scan_only.drive_count == obs2.drive_count);
+ assert(scan_only.drive_count == 0 && scan_only.motion_header.empty());
 
  robot::iface::ObservationFrame motion_only;
  world.step(0.02);
@@ -92,6 +98,7 @@ int main() {
  assert(motion_only.sequence > scan_only.sequence);
  assert(!motion_only.scan_valid && !motion_only.intensity_valid);
  assert(motion_only.odometry_valid && !motion_only.imu_valid);
+ assert(motion_only.motion_header.source == "sim.motion");
  assert(motion_only.stamp_ns >= scan_only.stamp_ns);
 
  robot::iface::ObservationFrame imu_only;
@@ -100,6 +107,7 @@ int main() {
  assert(imu_only.sequence > motion_only.sequence);
  assert(!imu_only.scan_valid && !imu_only.odometry_valid);
  assert(imu_only.imu_valid);
+ assert(imu_only.imu_header.source == "sim.imu");
  assert(imu_only.stamp_ns >= motion_only.stamp_ns);
   // Traction flags stay SIM-side (WorldTruth, offline labels only — the
   // ROBOT side only ever sees what its own estimators can compute).

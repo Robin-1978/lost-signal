@@ -56,7 +56,7 @@ bool Sim2DLidarProvider::poll(robot::iface::Lidar2DScan& out,
   const world::WorldTruth& t = world_->truth();
   seq_ += 1;
   out.seq = seq_;
-  out.stamp = static_cast<robot::core::MonotonicNs>(t.step * 20'000'000);
+ out.stamp = world_->sim_time_ns();
   out.src = desc_.endpoint_id;
   out.frm = robot::core::Frame::kLidarLink;
   out.ranges_m.assign(static_cast<std::size_t>(beam_count_), max_range_m_);

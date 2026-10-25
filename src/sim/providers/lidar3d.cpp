@@ -78,7 +78,7 @@ bool Sim3DLidarProvider::poll(robot::iface::Lidar3DCloud& out,
   const world::WorldTruth& t = world_->truth();
   seq_ += 1;
   out.seq = seq_;
-  out.stamp = static_cast<robot::core::MonotonicNs>(t.step * 20'000'000);
+ out.stamp = world_->sim_time_ns();
   out.src = desc_.endpoint_id;
   out.frm = robot::core::Frame::kLidarLink;
   out.ring_count = static_cast<std::uint16_t>(ring_count_);

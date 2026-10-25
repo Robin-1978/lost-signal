@@ -14,6 +14,7 @@
 #include "robot/autonomy/mapping/traversal.hpp"
 #include "robot/autonomy/safety/safety.hpp"
 #include "robot/autonomy/estimation/estimator.hpp"
+#include "robot/autonomy/estimation/measurement_synchronizer.hpp"
 #include "robot/autonomy/localization/localization_system.hpp"
 #include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/autonomy/perception/perception.hpp"
@@ -137,8 +138,10 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   // assumed), lower is slip-tightened. Read-only probe for tests/logs.
   double grip_factor() const { return grip_.factor(); }
   core::FrameTransformTree tf_;
-  bool has_observation() const { return has_observation_; }
-  const iface::ObservationFrame& last_observation() const { return last_obs_; }
+ bool has_observation() const { return measurements_.has_observation(); }
+ const iface::ObservationFrame& last_observation() const {
+ return measurements_.latest();
+ }
   const EstimatedState& estimate() const;
   SlipObservation last_slip() const { return estimator_->last_slip(); }
   const PerceptionResult& perception() const { return perception_; }
@@ -206,8 +209,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
   std::unique_ptr<IValidator> validator_;
   std::unique_ptr<IController> controller_;
   std::unique_ptr<ISafetyMonitor> safety_;
-  bool has_observation_ = false;
-  iface::ObservationFrame last_obs_{};
+ MeasurementSynchronizer measurements_;
   PerceptionResult perception_{};
   BehaviorDecision decision_{};
   RoutePoint goal_{};

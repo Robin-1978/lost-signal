@@ -34,7 +34,11 @@ void feed_obs(lost_signal::robot::app::RobotApplication& app,
   obs.frame = core::Frame::kLidarLink;
   obs.scan_valid = true;
   obs.ranges_m.assign(72, 10.0f);
-  obs.odometry_valid = true;
+ obs.scan_header = {obs.sequence, stamp_ns, "t.lidar",
+ core::Frame::kLidarLink};
+ obs.odometry_valid = true;
+ obs.motion_header = {obs.sequence, stamp_ns, "t.encoder",
+ core::Frame::kBaseLink};
   assert(app.publish_observation(obs));
 }
 
@@ -63,6 +67,8 @@ int main() {
   assert(app.configure().ok && app.activate().ok);
   app.register_provider({"t.lidar", iface::EndpointRole::kLidar,
                          iface::ProviderBackend::kNative, "lidar_link"});
+ app.register_provider({"t.encoder", iface::EndpointRole::kEncoder,
+ iface::ProviderBackend::kNative, "base_link"});
 
   // --- Pin 1: a task the Executive rejects never enters planning. ---
   // Valid place, but empty request id: the executive fails closed with an
@@ -133,6 +139,8 @@ int main() {
  assert(near.configure().ok && near.activate().ok);
  near.register_provider({"t.lidar", iface::EndpointRole::kLidar,
  iface::ProviderBackend::kNative, "lidar_link"});
+ near.register_provider({"t.encoder", iface::EndpointRole::kEncoder,
+ iface::ProviderBackend::kNative, "base_link"});
  iface::TaskRequest task;
  task.request_id = "arrive";
  task.place_id = "dock";
@@ -150,8 +158,12 @@ int main() {
  obs.frame = core::Frame::kLidarLink;
  obs.scan_valid = true;
  obs.ranges_m.assign(72, 10.0f);
+ obs.scan_header = {obs.sequence, obs.stamp_ns, "t.lidar",
+ core::Frame::kLidarLink};
  obs.odometry_valid = true;
  obs.forward_mps = measured_speed_mps;
+ obs.motion_header = {obs.sequence, obs.stamp_ns, "t.encoder",
+ core::Frame::kBaseLink};
  assert(near.publish_observation(obs));
  const auto cmd = near.tick(nf.t_ns);
  nf.t_ns += 100'000'000;

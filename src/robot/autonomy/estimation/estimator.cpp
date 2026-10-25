@@ -66,7 +66,10 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   }
   const double dt_s =
       static_cast<double>(obs.stamp_ns - prior_.stamp_ns) * 1e-9;
-  if (!(dt_s > 0.0) || dt_s >= 1.0) {
+ if (!(dt_s > 0.0)) {
+ return; // duplicate/late measurement: never rewind the integration clock
+ }
+ if (dt_s >= 1.0) {
     prior_ = obs;
     return;
   }

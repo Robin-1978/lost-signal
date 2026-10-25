@@ -93,7 +93,32 @@ int main() {
     assert(saw_silence);
   }
 
-  // 3. Sim suite stream passes the same gate (one monitor for all
+  // A future-dated acquisition is a freshness fault even when its sequence
+ // and frame identity are otherwise valid.
+ {
+ iface::ProviderConformanceMonitor monitor;
+ monitor.expect({"future.imu", iface::EndpointRole::kImu,
+ iface::ProviderBackend::kNative, "imu_link"});
+ iface::ObservationFrame observation;
+ observation.sequence = 1;
+ observation.stamp_ns = 100'000'000;
+ observation.source = "future.imu";
+ observation.frame = core::Frame::kImuLink;
+ observation.imu_valid = true;
+ monitor.observe(observation, 1'000'000);
+ const iface::ProviderConformanceReport report = monitor.report(1'000'000);
+ assert(!report.passed);
+ bool saw_future = false;
+ for (const auto& failure : report.failures) {
+ if (failure.rule == "freshness" &&
+ failure.detail.find("future") != std::string::npos) {
+ saw_future = true;
+ }
+ }
+ assert(saw_future);
+ }
+
+ // 3. Sim suite stream passes the same gate (one monitor for all
   // backends: sim, replay, native).
   {
     ::lost_signal::sim::world::World world;
@@ -102,6 +127,12 @@ int main() {
     monitor.expect({"sim.motion", iface::EndpointRole::kEncoder,
                     iface::ProviderBackend::kSim, "base_link"},
                    50.0);
+ monitor.expect({"sim.lidar2d", iface::EndpointRole::kLidar,
+ iface::ProviderBackend::kSim, "lidar_link"},
+ 50.0);
+ monitor.expect({"sim.imu", iface::EndpointRole::kImu,
+ iface::ProviderBackend::kSim, "imu_link"},
+ 50.0);
     for (int i = 0; i < 12; ++i) {
       world.step(0.02);
       iface::ObservationFrame obs;
@@ -112,6 +143,10 @@ int main() {
     monitor.check_liveness(12 * 20'000'000LL);
     iface::ProviderConformanceReport rep = monitor.report(12 * 20'000'000LL);
     assert(rep.passed);
+ assert(rep.frames == 12 && rep.measurements == 36);
+ assert(rep.observed_rate_hz.count("sim.motion") == 1);
+ assert(rep.observed_rate_hz.count("sim.lidar2d") == 1);
+ assert(rep.observed_rate_hz.count("sim.imu") == 1);
   }
 
   std::printf("conformance ok\n");

@@ -32,6 +32,8 @@ int main() {
   assert(app.configure().ok && app.activate().ok);
   app.register_provider({"t.lidar", iface::EndpointRole::kLidar,
                          iface::ProviderBackend::kNative, "lidar_link"});
+ app.register_provider({"t.encoder", iface::EndpointRole::kEncoder,
+ iface::ProviderBackend::kNative, "base_link"});
 
   // Unknown place fails closed and arms nothing.
   iface::TaskRequest bad;
@@ -57,7 +59,10 @@ int main() {
   obs.frame = core::Frame::kLidarLink;
   obs.scan_valid = true;
   obs.ranges_m.assign(72, 10.0f);
-  obs.odometry_valid = true;
+ obs.scan_header = {1, obs.stamp_ns, "t.lidar", core::Frame::kLidarLink};
+ obs.odometry_valid = true;
+ obs.motion_header = {
+ 1, obs.stamp_ns, "t.encoder", core::Frame::kBaseLink};
   assert(app.publish_observation(obs));
   // Settling takes a few decision cycles (controlled-stop latch).
   iface::MotionCommand cmd = app.tick(1'000'000);

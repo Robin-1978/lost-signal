@@ -166,11 +166,21 @@ they must not be copied into ROBOT configuration or used as hidden truth.
 - `DriveProfile`: robot-side contract struct + sim-side JSON merge.
 
 The scenario scheduler keeps independent scan, encoder/motion, IMU, decision,
-and record deadlines. A single transport envelope may contain only sections
+and record deadlines. `World::sim_time_ns()` is the canonical acquisition
+clock. `ScenarioSession` advances the engine to each deadline inside a public
+20 ms transition, so a configured 100 Hz IMU produces two separate samples
+instead of silently aliasing to 50 Hz. A single transport envelope may contain only sections
 acquired on that tap; stale scan/IMU/twist sections are invalid and are never
-reintegrated by ROBOT. `lost_signal_sim --episode` exports the observation
-stream as deterministic JSONL v2, while `--out` writes an offline mission
+reintegrated by ROBOT. Each populated section keeps its own acquisition
+header, while ROBOT caches the latest accepted value for decision-time use.
+`lost_signal_sim --episode` exports the observation stream as deterministic
+JSONL v3 (v2 remains readable), while `--out` writes an offline mission
 summary with elapsed time, clearance, and energy proxy metrics.
+
+The cadence regression runs 300 public 20 ms transitions and requires exactly
+600 independently timestamped IMU measurements. Recording periods below 20 ms
+or not divisible by 20 ms retain their configured deadlines rather than being
+rounded to the public transition rate.
 
 The current MuJoCo brake uses hinge `frictionloss`: a bounded passive
 constraint that can hold zero speed without an explicit torque overshooting

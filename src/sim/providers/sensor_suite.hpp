@@ -42,9 +42,9 @@ class SimSensorSuite {
   void register_all(robot::app::IRobot& app);
   bool poll_envelope(robot::iface::ObservationFrame& out);
  // Sample only the providers whose deadlines fired. The returned envelope
- // keeps one monotonic transport sequence while validity flags identify the
- // sections acquired on this tap; stale sections remain available only as
- // actuator feedback and are never reintegrated as fresh measurements.
+ // keeps one monotonic transport sequence while validity/header presence
+ // identifies sections acquired on this tap. ROBOT caches each accepted
+ // section; the suite never republishes stale values as new measurements.
  bool poll_envelope(bool sample_scan, bool sample_motion, bool sample_imu,
  robot::iface::ObservationFrame& out);
   void consume(const robot::iface::ActuatorCommand& cmd);

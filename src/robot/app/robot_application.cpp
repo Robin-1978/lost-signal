@@ -151,7 +151,33 @@ bool RobotApplication::publish_observation(const iface::ObservationFrame& obs) {
       !registry_.owns(obs.source, iface::EndpointRole::kEncoder)) {
     return false;  // unregistered source: never enters the decision path
   }
-  return channel_.publish_observation(obs);
+ const bool explicit_sections = !obs.scan_header.empty() ||
+ !obs.motion_header.empty() || !obs.imu_header.empty();
+ const int populated_sections = static_cast<int>(obs.scan_valid) +
+ static_cast<int>(obs.odometry_valid || obs.has_joints()) +
+ static_cast<int>(obs.imu_valid);
+ if (!explicit_sections && populated_sections != 1) {
+ return false; // a legacy source may own exactly one endpoint role
+ }
+ // Aggregate envelopes retain typed endpoint ownership per section. Legacy
+ // single-source frames have no explicit section header and keep the v1
+ // registration rule above; an explicit header is never allowed to borrow
+ // the envelope's identity.
+ if (obs.scan_valid && obs.scan_header.valid() &&
+ !registry_.owns(obs.scan_header.source, iface::EndpointRole::kLidar)) {
+ return false;
+ }
+ if ((obs.odometry_valid || obs.has_joints()) &&
+ obs.motion_header.valid() &&
+ !registry_.owns(obs.motion_header.source,
+ iface::EndpointRole::kEncoder)) {
+ return false;
+ }
+ if (obs.imu_valid && obs.imu_header.valid() &&
+ !registry_.owns(obs.imu_header.source, iface::EndpointRole::kImu)) {
+ return false;
+ }
+ return channel_.publish_observation(obs);
 }
 
 iface::MotionCommand RobotApplication::take_command(core::MonotonicNs now_ns) {
@@ -194,15 +220,23 @@ iface::MotionCommand RobotApplication::tick(core::MonotonicNs now_ns) {
   // joints.
   const iface::ObservationFrame& last = coordinator_.last_observation();
   iface::MotionFeedback fb;
-  fb.drive_count = last.drive_count;
-  fb.steer_count = last.steer_count;
-  fb.drive_radps = last.drive_radps;
-  fb.steer_rad = last.steer_rad;
-  fb.steer_vel_radps = last.steer_vel_radps;
-  fb.source = "app.joints";
-  fb.frame = core::Frame::kBaseLink;
-  fb.stamp_ns = last.stamp_ns;
-  iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);
+ fb.source = "app.joints";
+ fb.frame = core::Frame::kBaseLink;
+ fb.stamp_ns = iface::motion_stamp_ns(last);
+ const core::MonotonicNs feedback_timeout_ns =
+ static_cast<core::MonotonicNs>(
+ std::llround(desc_.motion.safety_reaction_time_s * 1e9));
+ const bool feedback_fresh = fb.stamp_ns != core::kInvalidTime &&
+ now_ns >= fb.stamp_ns &&
+ now_ns - fb.stamp_ns <= feedback_timeout_ns;
+ if (feedback_fresh) {
+ fb.drive_count = last.drive_count;
+ fb.steer_count = last.steer_count;
+ fb.drive_radps = last.drive_radps;
+ fb.steer_rad = last.steer_rad;
+ fb.steer_vel_radps = last.steer_vel_radps;
+ }
+ iface::ActuatorCommand act = chassis_->to_actuator(body, fb, now_ns);
   channel_.publish_command(body);
   channel_.publish_actuator(act);
   // Passive braking instrumentation: command vs realized motion.

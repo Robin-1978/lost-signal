@@ -118,8 +118,7 @@ core::Status AutonomyCoordinator::configure() {
   controller_->reset();
   safety_->reset();
  decision_pipeline_.reset();
-  has_observation_ = false;
-  last_obs_ = iface::ObservationFrame{};
+ measurements_.reset();
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
@@ -172,8 +171,7 @@ core::Status AutonomyCoordinator::cleanup() {
   controller_->reset();
   safety_->reset();
  decision_pipeline_.reset();
-  has_observation_ = false;
-  last_obs_ = iface::ObservationFrame{};
+ measurements_.reset();
   perception_ = PerceptionResult{};
   decision_ = BehaviorDecision{};
   active_route_ = Route{};
@@ -264,7 +262,8 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad,
  return;
  }
   const core::MonotonicNs stamp =
-      has_observation_ ? last_obs_.stamp_ns : estimate().stamp_ns;
+ measurements_.has_observation() ? measurements_.latest().stamp_ns
+ : estimate().stamp_ns;
  estimator_->seed_pose(x_m, y_m, yaw_rad, position_sigma_m,
  heading_sigma_rad, stamp);
   localization_.mark_localized();
@@ -273,60 +272,30 @@ void AutonomyCoordinator::seed_pose(double x_m, double y_m, double yaw_rad,
 void AutonomyCoordinator::ingest_observation(
     const iface::ObservationFrame& obs) {
   if (state_ != lifecycle::ModuleState::kActive) return;
-  if (!iface::valid_observation_frame(obs)) return;
-  // Fail-closed: stale or repeated input never advances state.
-  if (has_observation_ && obs.sequence <= last_obs_.sequence) return;
-  if (has_observation_ && obs.stamp_ns <= last_obs_.stamp_ns) return;
-  // IMU arrives in its device frame (imu_link by message contract): rotate
-  // into base_link through the static TF before the estimator integrates
-  // it as body rates. Unknown mount = identity, i.e. aligned behavior.
-  iface::ObservationFrame shaped = obs;
- if (shaped.scan_valid) {
- // Normalize the legacy zero-increment form once at the ROBOT boundary so
- // scan matching/SLAM and direct beam consumers share one layout contract.
- shaped.scan_angle_increment_rad =
- iface::scan_angle_increment_rad(shaped);
+ MeasurementBatch batch = measurements_.ingest(obs, tf_);
+ if (!batch.accepted) return;
+ for (const iface::ObservationFrame& event : batch.estimator_events) {
+ estimator_->predict(event);
+ estimator_->correct(event);
  }
-  if (shaped.imu_valid) {
-    if (const auto base_from_imu = tf_.lookup("base_link", "imu_link")) {
-      const core::Vec3 gyro =
-          core::rotate_vector(base_from_imu->rotation,
-                              {shaped.imu_gyro_x_radps, shaped.imu_gyro_y_radps,
-                               shaped.imu_gyro_z_radps});
-      const core::Vec3 accel =
-          core::rotate_vector(base_from_imu->rotation,
-                              {shaped.imu_ax_mps2, shaped.imu_ay_mps2,
-                               shaped.imu_az_mps2});
-      shaped.imu_gyro_x_radps = gyro.x;
-      shaped.imu_gyro_y_radps = gyro.y;
-      shaped.imu_gyro_z_radps = gyro.z;
-      shaped.imu_ax_mps2 = accel.x;
-      shaped.imu_ay_mps2 = accel.y;
-      shaped.imu_az_mps2 = accel.z;
-    }
-  }
-  // Estimator runs on every observation (prediction rate = sensor rate).
-  estimator_->predict(shaped);
-  estimator_->correct(shaped);
   // Perception + mapping run at scan rate, not on every odometry frame.
-  // They see the shaped frame (base-frame IMU); scans pass through
-  // untouched.
-  if (shaped.scan_valid) {
-    perception_ = perception_module_->update(shaped, estimator_->estimate());
+ if (batch.scan_event.has_value()) {
+ perception_ = perception_module_->update(*batch.scan_event,
+ estimator_->estimate());
  mapper_->set_dynamic_tracks(perception_.tracks);
-    mapper_->update(shaped, estimator_->estimate());
-  }
-  last_obs_ = shaped;
-  has_observation_ = true;
+ mapper_->update(*batch.scan_event, estimator_->estimate());
+ }
 }
 
 iface::MotionCommand AutonomyCoordinator::update(
  const iface::MapSnapshot& map, const iface::ChannelHealth& channel,
     core::MonotonicNs now_ns) {
   // Missing observation is unknown evidence -> safe stop, never free space.
-  if (state_ != lifecycle::ModuleState::kActive || !has_observation_) {
+ if (state_ != lifecycle::ModuleState::kActive ||
+ !measurements_.has_observation()) {
     return iface::MotionCommand::SafeStop(now_ns);
   }
+ const iface::ObservationFrame& latest_observation = measurements_.latest();
  // Publish the latest ROBOT map prior to perception for the next scan. The
  // perception module raycasts only known occupancy; unknown cells remain a
  // scan-history problem. This is map/SLAM evidence, never simulator truth.
@@ -345,8 +314,11 @@ iface::MotionCommand AutonomyCoordinator::update(
   // estimator/mapper/observations in, action name + replan flag out.
   // Corrections feed the estimator only when accepted, so a hard scan
   // never drags the pose.
-  LocalizationSystem::TickResult loc = localization_.update(
-      map, last_obs_, now_ns, has_observation_, *estimator_, *mapper_);
+ iface::ObservationFrame localization_obs =
+ measurements_.take_localization_observation();
+ LocalizationSystem::TickResult loc = localization_.update(
+ map, localization_obs, now_ns, measurements_.has_observation(),
+ *estimator_, *mapper_);
   last_localization_action_ = loc.action;
   if (loc.replan_requested) replan_requested_ = true;
   // TF publisher: odom->base is the continuous pre-correction prediction
@@ -367,9 +339,12 @@ iface::MotionCommand AutonomyCoordinator::update(
                                                odom.yaw_rad, post.x_m,
                                                post.y_m, post.yaw_rad));
   }
+ if (const auto adaptation =
+ measurements_.take_adaptation_observation()) {
  TerrainAdaptationPipeline::update(
- now_ns, last_obs_, map, estimator_->estimate(), estimator_->last_slip(),
- last_traverse_ns_, grip_, traversal_);
+ now_ns, *adaptation, map, estimator_->estimate(),
+ estimator_->last_slip(), last_traverse_ns_, grip_, traversal_);
+ }
  // Feed the measured-only traction envelope back into odometry prediction
  // for the next observation. This bounds wheel-spin integration without
  // exposing plant truth to ROBOT; nominal grip leaves odometry unchanged.
@@ -424,7 +399,8 @@ iface::MotionCommand AutonomyCoordinator::update(
  *global_planner_, *local_planner_, *behavior_, *validator_, *controller_,
  estimator_->estimate(), perception_, robot_local_map, active_route_, goal_,
  has_goal_, map, force_route_refresh,
- grip_.effective_limits(limits_, limits_.max_forward_mps), limits_, last_obs_,
+ grip_.effective_limits(limits_, limits_.max_forward_mps), limits_,
+ latest_observation,
  survey_ctx, now_ns, forward_blocked);
  decision_ = motion.behavior;
  iface::MotionCommand decided = motion.command;
@@ -471,15 +447,28 @@ iface::MotionCommand AutonomyCoordinator::update(
   // (freshness, near-field scan, channel health) and can only downgrade to
   // safe stop. Critical faults latch until deliberate recovery.
   SafetyVerdict verdict = safety_->evaluate(estimator_->estimate(), perception_,
-                                            last_obs_, channel, now_ns);
+ latest_observation, channel, now_ns);
   iface::MotionCommand final_cmd = safety_->gate(gated, verdict, now_ns);
  verdict = safety_->last_verdict();
   last_published_stop_ = final_cmd.is_safe_stop();
   // One evidence record per distinct decision; repeats update in place.
   diagnostics::DecisionEvidence evidence;
-  evidence.observation_time_s = last_obs_.stamp_ns * 1e-9;
-  evidence.observation_refs = {last_obs_.source + "#" +
-                               std::to_string(last_obs_.sequence)};
+ evidence.observation_time_s = latest_observation.stamp_ns * 1e-9;
+ auto add_observation_ref = [&](const iface::MeasurementHeader& header) {
+ if (header.valid()) {
+ evidence.observation_refs.push_back(
+ header.source + "#" + std::to_string(header.sequence));
+ }
+ };
+ if (measurements_.has_scan()) {
+ add_observation_ref(latest_observation.scan_header);
+ }
+ if (measurements_.has_motion()) {
+ add_observation_ref(latest_observation.motion_header);
+ }
+ if (measurements_.has_imu()) {
+ add_observation_ref(latest_observation.imu_header);
+ }
  evidence.prediction_horizon_s = last_prediction_horizon_s_;
     evidence.prediction_hypotheses = last_prediction_hypotheses_;
   evidence.constraint_code = last_constraint_;

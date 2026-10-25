@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "robot/iface/motion.hpp"
 #include "robot/iface/observation.hpp"
@@ -24,6 +25,9 @@ class ReplayProvider {
   bool empty() const { return steps_.empty(); }
   std::size_t size() const { return steps_.size(); }
   std::size_t cursor() const { return cursor_; }
+ const std::vector<robot::iface::EndpointDescriptor>& descriptors() const {
+ return descriptors_;
+ }
 
   // Next recorded observation, converted back to a live-equivalent frame.
   // Returns false at end of recording.
@@ -35,6 +39,7 @@ class ReplayProvider {
   std::string map_id_;
   std::uint64_t map_revision_ = 0;
   std::vector<eval::RecordedStep> steps_;
+ std::vector<robot::iface::EndpointDescriptor> descriptors_;
   std::size_t cursor_ = 0;
 };
 

@@ -67,6 +67,7 @@ add_library(lost_signal_robot_autonomy STATIC
  src/robot/autonomy/decision/terrain_pipeline.cpp
   src/robot/autonomy/behavior/behavior.cpp
   src/robot/autonomy/estimation/estimator.cpp
+ src/robot/autonomy/estimation/measurement_synchronizer.cpp
   src/robot/autonomy/estimation/slip_observer.cpp
   src/robot/autonomy/localization/scan_matcher.cpp
   src/robot/autonomy/localization/global_search.cpp
@@ -329,6 +330,14 @@ add_executable(test_autonomy
 )
 target_link_libraries(test_autonomy PRIVATE lost_signal_robot_autonomy)
 add_test(NAME autonomy COMMAND test_autonomy)
+
+add_executable(test_measurement_synchronizer
+ tests/test_measurement_synchronizer.cpp
+)
+target_link_libraries(test_measurement_synchronizer PRIVATE
+ lost_signal_robot_autonomy
+)
+add_test(NAME measurement_synchronizer COMMAND test_measurement_synchronizer)
 
 add_executable(test_replay
   tests/test_replay.cpp

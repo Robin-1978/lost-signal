@@ -11,6 +11,23 @@ bool valid_observation_frame(const ObservationFrame& frame) {
   if (frame.stamp_ns == core::kInvalidTime) return false;
   if (frame.sequence == 0) return false;
   if (frame.empty()) return false;
+ const bool explicit_sections = !frame.scan_header.empty() ||
+ !frame.motion_header.empty() || !frame.imu_header.empty();
+ if (frame.scan_valid &&
+ !(explicit_sections ? frame.scan_header.valid()
+ : scan_measurement_header(frame).valid())) {
+ return false;
+ }
+ if ((frame.odometry_valid || frame.has_joints()) &&
+ !(explicit_sections ? frame.motion_header.valid()
+ : motion_measurement_header(frame).valid())) {
+ return false;
+ }
+ if (frame.imu_valid &&
+ !(explicit_sections ? frame.imu_header.valid()
+ : imu_measurement_header(frame).valid())) {
+ return false;
+ }
   return true;
 }
 

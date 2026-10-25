@@ -5,7 +5,9 @@
 // each task owns an independent simulation-time deadline. Adapted naming:
 // the third deadline is the episode RECORD cadence (replay is a provider
 // in this framework, not a scheduled task).
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace lost_signal::sim::scenario {
@@ -30,6 +32,7 @@ class PeriodicDeadline {
   }
 
   double next_s() const { return next_s_; }
+ bool enabled() const { return period_s_ > 0.0; }
 
  private:
   double period_s_ = 0.0;
@@ -53,6 +56,22 @@ class DeterministicScheduler {
     record_.reset(record_period_s);
   }
 
+ // Runtime form: the first event occurs after one complete period. The
+ // zero-origin reset above remains available to callers that explicitly
+ // need an immediate event.
+ void reset_after(double now_s, double scan_period_s,
+ double motion_period_s, double imu_period_s,
+ double decision_period_s, double record_period_s) {
+ auto next = [now_s](double period_s) {
+ return period_s > 0.0 ? now_s + period_s : now_s;
+ };
+ scan_.reset(scan_period_s, next(scan_period_s));
+ motion_.reset(motion_period_s, next(motion_period_s));
+ imu_.reset(imu_period_s, next(imu_period_s));
+ decision_.reset(decision_period_s, next(decision_period_s));
+ record_.reset(record_period_s, next(record_period_s));
+ }
+
   bool scan_due(double now_s) { return scan_.due(now_s); }
  bool motion_due(double now_s) { return motion_.due(now_s); }
  bool imu_due(double now_s) { return imu_.due(now_s); }
@@ -64,6 +83,20 @@ class DeterministicScheduler {
  const PeriodicDeadline& imu() const { return imu_; }
   const PeriodicDeadline& decision() const { return decision_; }
   const PeriodicDeadline& record() const { return record_; }
+
+ // Recording remains an outer-loop concern so one public session step
+ // produces at most one replay transition.
+ double next_runtime_event_s() const {
+ double next = std::numeric_limits<double>::infinity();
+ auto include = [&next](const PeriodicDeadline& deadline) {
+ if (deadline.enabled()) next = std::min(next, deadline.next_s());
+ };
+ include(scan_);
+ include(motion_);
+ include(imu_);
+ include(decision_);
+ return next;
+ }
 
  private:
   PeriodicDeadline scan_;

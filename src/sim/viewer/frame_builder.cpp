@@ -136,7 +136,7 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  ? support.radius_m : 0.03;
  caster.yaw_rad = speed > 1e-6
  ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
- caster.spin_rad = speed * static_cast<double>(t.step) * 0.02 /
+ caster.spin_rad = speed * world.sim_time_s() /
  std::max(1e-3, caster.radius_m);
  }
  f.body.casters.push_back(caster);

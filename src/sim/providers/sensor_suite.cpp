@@ -69,8 +69,7 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
     scan.frm = robot::core::Frame::kLidarLink;
     scan.seq = ++composite_seq_;
     if (scan.seq == 0) scan.seq = ++composite_seq_;  // never zero
-    scan.stamp = static_cast<robot::core::MonotonicNs>(world_->truth().step *
-                                                       20'000'000);
+ scan.stamp = world_->sim_time_ns();
     scan.ranges_m = std::move(ranges);
     scan.intensities = std::move(intensities);
     scan.time_offsets_s = std::move(offsets);
@@ -86,15 +85,15 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
  }
  if (!fresh_motion && !fresh_imu && !fresh_scan) return false;
 
- // One envelope remains the transport unit, but each validity bit denotes a
- // newly acquired section. Stale encoder values are retained only as joint
- // feedback for the actuator loop; stale twist/IMU/scan data are invalid and
- // cannot be reintegrated by ROBOT.
+ // One envelope remains the transport unit, but each populated section is a
+ // newly acquired typed measurement. ROBOT owns the last-value caches used by
+ // decisions and actuator feedback; the provider never republishes a stale
+ // section under a fresh transport sequence.
  robot::iface::MotionFeedback fb = motion_cache_;
  if (!have_motion_) {
  fb.source = motion_.descriptor().endpoint_id;
  fb.frame = robot::core::Frame::kBaseLink;
- fb.stamp_ns = world_->truth().step * 20'000'000;
+ fb.stamp_ns = world_->sim_time_ns();
  }
  out = robot::iface::make_envelope(fb);
  out.sequence = ++envelope_seq_;
@@ -106,6 +105,14 @@ bool SimSensorSuite::poll_envelope(bool sample_scan, bool sample_motion,
  if (fresh_scan && have_scan_)
  out.stamp_ns = std::max(out.stamp_ns, scan_cache_.stamp);
  out.odometry_valid = fresh_motion && motion_cache_.odometry_valid;
+ if (!fresh_motion) {
+ out.motion_header = {};
+ out.drive_count = 0;
+ out.steer_count = 0;
+ out.drive_radps = {};
+ out.steer_rad = {};
+ out.steer_vel_radps = {};
+ }
  if (fresh_scan && !robot::iface::set_scan(out, scan_cache_)) return false;
  if (!fresh_scan) {
  out.ranges_m.clear();

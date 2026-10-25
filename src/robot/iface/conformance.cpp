@@ -88,25 +88,42 @@ void ProviderConformanceMonitor::observe(const ObservationFrame& frame,
   }
   ++frames_;
 
-  if (!valid_observation_frame(frame))
+ if (!valid_observation_frame(frame)) {
     fail(now_ns, frame.source.empty() ? "frame" : frame.source, "structure",
          structure_detail(frame));
+ return;
+ }
+
+ const bool explicit_sections = !frame.scan_header.empty() ||
+ !frame.motion_header.empty() || !frame.imu_header.empty();
+ if (!explicit_sections) {
+ observe_measurement(envelope_header(frame), now_ns);
+ return;
+ }
+ if (frame.scan_valid) observe_measurement(frame.scan_header, now_ns);
+ if (frame.odometry_valid || frame.has_joints()) {
+ observe_measurement(frame.motion_header, now_ns);
+ }
+ if (frame.imu_valid) observe_measurement(frame.imu_header, now_ns);
+}
+
+void ProviderConformanceMonitor::observe_measurement(
+ const MeasurementHeader& header, core::MonotonicNs now_ns) {
+ ++measurements_;
 
   // Native frames have no absolute-pose slot; a map-frame stamp is the
   // equivalent localization-contract crossing.
-  if (frame.frame == core::Frame::kMap && !config_.allow_absolute_pose) {
-    fail(now_ns, frame.source, "absolute_pose",
+ if (header.frame == core::Frame::kMap && !config_.allow_absolute_pose) {
+ fail(now_ns, header.source, "absolute_pose",
          "provider published a map-frame pose without declaring that "
          "capability");
   }
 
-  // Native frames carry exactly one measurement each, keyed by source id.
-  // An unknown source creates an unregistered entry: it is tracked for
-  // ordering/freshness, but rate/silence rules need an expect() nominal rate.
-  SourceState& state = sources_[frame.source];
+ // Every typed section is keyed by its producing endpoint. An unknown source
+ // is still tracked for ordering/freshness; rate and silence need expect().
+ SourceState& state = sources_[header.source];
   state.silence_reported = false;
-  if (!state.seen) state.observed_source = frame.source;
-  ++measurements_;
+ if (!state.seen) state.observed_source = header.source;
 
   const std::string& source =
       state.has_expected ? state.expected.endpoint_id : state.observed_source;
@@ -115,14 +132,14 @@ void ProviderConformanceMonitor::observe(const ObservationFrame& frame,
   // already keyed by source id, so the checkable half is the frame half.
   // frame_name() maps the Frame enum to its REP-105 string for the compare.
   if (state.has_expected && !state.expected.frame_id.empty() &&
-      std::string(frame_name(frame.frame)) != state.expected.frame_id) {
+ std::string(frame_name(header.frame)) != state.expected.frame_id) {
     fail(now_ns, source, "identity",
-         "measured frame '" + std::string(frame_name(frame.frame)) +
+ "measured frame '" + std::string(frame_name(header.frame)) +
              "' does not match the registered endpoint '" +
              state.expected.frame_id + "'");
   }
 
-  if (frame.stamp_ns == core::kInvalidTime || frame.stamp_ns < 0) {
+ if (header.stamp_ns == core::kInvalidTime || header.stamp_ns < 0) {
     fail(now_ns, source, "timestamp",
          "sample stamp is not a representable time");
     return;
@@ -131,21 +148,21 @@ void ProviderConformanceMonitor::observe(const ObservationFrame& frame,
     state.seen = true;
     state.first_receive_ns = now_ns;
   } else {
-    if (frame.stamp_ns < state.last_sample_time_ns) {
+ if (header.stamp_ns < state.last_sample_time_ns) {
       fail(now_ns, source, "ordering",
            "sample time moved backwards by " +
-               std::to_string((state.last_sample_time_ns - frame.stamp_ns) /
+ std::to_string((state.last_sample_time_ns - header.stamp_ns) /
                               kNsPerS) +
                " s");
     }
-    if (frame.sequence <= state.last_sequence) {
+ if (header.sequence <= state.last_sequence) {
       fail(now_ns, source, "sequence",
-           "sequence " + std::to_string(frame.sequence) +
+ "sequence " + std::to_string(header.sequence) +
                " did not increase beyond " +
                std::to_string(state.last_sequence));
     }
   }
-  const core::MonotonicNs age_ns = now_ns - frame.stamp_ns;
+ const core::MonotonicNs age_ns = now_ns - header.stamp_ns;
   if (age_ns > config_.maximum_sample_age_ns) {
     fail(now_ns, source, "freshness",
          "sample is " + std::to_string(age_ns / kNsPerS) + " s old");
@@ -154,8 +171,8 @@ void ProviderConformanceMonitor::observe(const ObservationFrame& frame,
          "sample is " + std::to_string(-age_ns / kNsPerS) +
              " s in the future");
   }
-  state.last_sample_time_ns = frame.stamp_ns;
-  state.last_sequence = frame.sequence;
+ state.last_sample_time_ns = header.stamp_ns;
+ state.last_sequence = header.sequence;
   state.last_receive_ns = now_ns;
   ++state.samples;
   if (state.has_expected && state.nominal_rate_hz > 0.0 &&

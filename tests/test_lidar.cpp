@@ -220,7 +220,7 @@ int main() {
  sim::providers::SimImuProvider attitude(&attitude_world);
  robot::iface::ImuMessage am;
  assert(attitude.poll(am));
- mutable_truth(attitude_world).step += 1;
+ attitude_world.step(0.02);
  mutable_truth(attitude_world).body_pitch_rad = 0.02;
  assert(attitude.poll(am));
  assert(std::abs(am.gyro_x_radps) < 1e-9);
@@ -234,15 +234,15 @@ int main() {
  sim::providers::SimImuProvider vertical(&vertical_world);
  robot::iface::ImuMessage vm;
  assert(vertical.poll(vm));
- mutable_truth(vertical_world).step += 1;
+ vertical_world.step(0.02);
  mutable_truth(vertical_world).body_z_m = 0.02;
  assert(vertical.poll(vm));
  assert(std::abs(vm.accel_z_mps2 - 9.81) < 1e-9);
- mutable_truth(vertical_world).step += 1;
+ vertical_world.step(0.02);
  mutable_truth(vertical_world).body_z_m = 0.04;
  assert(vertical.poll(vm));
  assert(std::abs(vm.accel_z_mps2 - 9.81) < 1e-9);
- mutable_truth(vertical_world).step += 1;
+ vertical_world.step(0.02);
  mutable_truth(vertical_world).body_z_m = 0.08;
  assert(vertical.poll(vm));
  assert(std::abs(vm.accel_z_mps2 - 59.81) < 1e-9);

@@ -70,7 +70,26 @@ int main() {
     assert(ok.state == SafetyState::kNominal);
   }
 
-  // Near-field contact -> latched STOPPED even with fresh stamps.
+ // A fresh motion envelope cannot make an older cached LiDAR scan fresh.
+ // Safety uses the scan section's acquisition time, not the aggregate time.
+ {
+ SafetyMonitor mon;
+ mon.reset();
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ iface::ChannelHealth ch{};
+ iface::ObservationFrame mixed = fresh_obs(9, 700'000'000, 5.0f);
+ mixed.scan_header = {
+ 1, 1'000'000, "t.lidar", core::Frame::kLidarLink};
+ mixed.motion_header = {
+ 9, 700'000'000, "t.odom", core::Frame::kBaseLink};
+ const SafetyVerdict stale = mon.evaluate(
+ EstimatedState{}, perc, mixed, ch, 700'000'000);
+ assert(stale.state == SafetyState::kStopped);
+ assert(stale.reason == "obs-stale");
+ }
+
+ // Near-field contact -> latched STOPPED even with fresh stamps.
   {
     SafetyMonitor mon;
     mon.reset();
@@ -205,6 +224,30 @@ int main() {
     assert(coord.last_safety().state == SafetyState::kNominal);
   }
 
-  std::printf("safety ok\n");
+ // A newer motion-only envelope updates odometry/joints without erasing the
+ // latest scan used by planning and the independent safety monitor.
+ {
+ AutonomyCoordinator coord;
+ assert(coord.configure().ok && coord.activate().ok);
+ iface::ObservationFrame scan = fresh_obs(1, 20'000'000, 5.0f);
+ coord.ingest_observation(scan);
+ iface::ObservationFrame motion;
+ motion.sequence = 2;
+ motion.stamp_ns = 40'000'000;
+ motion.source = "t.odom";
+ motion.frame = core::Frame::kBaseLink;
+ motion.odometry_valid = true;
+ motion.forward_mps = 0.1;
+ coord.ingest_observation(motion);
+ const iface::ObservationFrame& cached = coord.last_observation();
+ assert(cached.scan_valid && cached.ranges_m == scan.ranges_m);
+ assert(iface::scan_stamp_ns(cached) == 20'000'000);
+ assert(iface::motion_stamp_ns(cached) == 40'000'000);
+ iface::ChannelHealth ch{};
+ (void)coord.update(iface::MapSnapshot{}, ch, 40'000'000);
+ assert(coord.last_safety().state == SafetyState::kNominal);
+ }
+
+ std::printf("safety ok\n");
   return 0;
 }

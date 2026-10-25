@@ -375,10 +375,9 @@ int main() {
         &map_world, -10.0, -10.0, 20.0, 20.0, 0.25);
     robot::app::RobotApplication app(std::move(maps));
     assert(app.configure().ok && app.activate().ok);
-    assert(app.register_provider({"sim.motion",
-                                  robot::iface::EndpointRole::kEncoder,
-                                  robot::iface::ProviderBackend::kSim,
-                                  "base_link"}));
+ for (const auto& descriptor : replay.descriptors()) {
+ assert(app.register_provider(descriptor));
+ }
     robot::iface::TaskRequest replay_req;
     replay_req.request_id = "crossing";
     replay_req.place_id = "dock";

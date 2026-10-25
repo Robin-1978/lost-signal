@@ -71,14 +71,60 @@ bool req_bool(const Json& obj, const char* key, bool& out,
   return true;
 }
 
+Json measurement_header_to_json(
+    const robot::iface::MeasurementHeader& header) {
+  if (header.empty()) return Json::Null();
+  Json::Object out;
+  out.emplace_back("seq", Json::Num(static_cast<double>(header.sequence)));
+  out.emplace_back("t", Json::Num(static_cast<double>(header.stamp_ns)));
+  out.emplace_back("src", Json::Str(header.source));
+  out.emplace_back("frame", Json::Num(static_cast<int>(header.frame)));
+  return Json::Obj(std::move(out));
+}
+
+bool measurement_header_from_json(const Json& obj, const char* key,
+                                  robot::iface::MeasurementHeader& header,
+                                  std::string& error) {
+  const Json* node = obj.find(key);
+  if (node == nullptr || node->is_null()) {
+    header = {};
+    return true;
+  }
+  if (!node->is_object()) {
+    error = std::string("key '") + key + "' not a header object";
+    return false;
+  }
+  double seq = 0.0, stamp = 0.0, frame = 0.0;
+  if (!req_num(*node, "seq", seq, error) || seq <= 0.0 ||
+      !req_num(*node, "t", stamp, error) || stamp < 0.0 ||
+      !req_num(*node, "frame", frame, error) || frame < 0.0 || frame > 5.0) {
+    return false;
+  }
+  const Json* source = req(*node, "src", error);
+  if (source == nullptr || !source->is_str() || source->as_str().empty()) {
+    if (source != nullptr) {
+      error = "measurement source is empty or not a string";
+    }
+    return false;
+  }
+  header.sequence = static_cast<std::uint64_t>(seq);
+  header.stamp_ns = static_cast<robot::core::MonotonicNs>(stamp);
+  header.source = source->as_str();
+  header.frame = static_cast<robot::core::Frame>(static_cast<int>(frame));
+  return header.valid();
+}
+
 }  // namespace
 
 std::string step_to_json_line(const RecordedStep& step) {
   Json::Object o;
-  o.emplace_back("v", Json::Num(2));
+ o.emplace_back("v", Json::Num(3));
   o.emplace_back("seq", Json::Num(static_cast<double>(step.sequence)));
   o.emplace_back("t", Json::Num(static_cast<double>(step.stamp_ns)));
   o.emplace_back("src", Json::Str(step.source));
+ o.emplace_back("scan_h", measurement_header_to_json(step.scan_header));
+ o.emplace_back("motion_h", measurement_header_to_json(step.motion_header));
+ o.emplace_back("imu_h", measurement_header_to_json(step.imu_header));
   o.emplace_back("ranges", Json::Arr(floats_to_json(step.ranges_m)));
  if (step.intensity_valid) {
  o.emplace_back("intensity_ref", Json::Arr(floats_to_json(step.intensities)));
@@ -142,7 +188,7 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   }
   const Json& obj = *root;
   double v = 0, seq = 0, stamp = 0;
-  if (!req_num(obj, "v", v, err) || v != 2.0) {
+ if (!req_num(obj, "v", v, err) || (v != 2.0 && v != 3.0)) {
     if (err.empty()) err = "unsupported schema version";
     return false;
   }
@@ -158,6 +204,13 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
     return false;
   }
   step.source = src->as_str();
+ if (v >= 3.0 &&
+ (!measurement_header_from_json(obj, "scan_h", step.scan_header, err) ||
+ !measurement_header_from_json(
+ obj, "motion_h", step.motion_header, err) ||
+ !measurement_header_from_json(obj, "imu_h", step.imu_header, err))) {
+ return false;
+ }
   const Json* ranges = req(obj, "ranges", err);
   if (!floats_from_json(ranges, step.ranges_m, err)) return false;
  step.intensity_valid = false;
@@ -263,6 +316,21 @@ bool step_from_json_line(const std::string& line, RecordedStep& step,
   };
   if (!num_array(spos, "pos", step.steers_rad)) return false;
   if (!num_array(svel, "vel", step.steers_vel_radps)) return false;
+ if (v >= 3.0) {
+ if (step.scan_valid && !step.scan_header.valid()) {
+ err = "v3 scan is missing a valid section header";
+ return false;
+ }
+ if ((step.odom_valid || !step.drives_radps.empty()) &&
+ !step.motion_header.valid()) {
+ err = "v3 motion is missing a valid section header";
+ return false;
+ }
+ if (step.imu_valid && !step.imu_header.valid()) {
+ err = "v3 imu is missing a valid section header";
+ return false;
+ }
+ }
   return true;
 }
 
@@ -271,6 +339,9 @@ RecordedStep record_step(const robot::iface::ObservationFrame& obs) {
   s.sequence = obs.sequence;
   s.stamp_ns = obs.stamp_ns;
   s.source = obs.source;
+ s.scan_header = obs.scan_header;
+ s.motion_header = obs.motion_header;
+ s.imu_header = obs.imu_header;
   s.ranges_m = obs.ranges_m;
  s.intensities = obs.intensities;
  s.intensity_valid = obs.intensity_valid;
@@ -306,6 +377,9 @@ robot::iface::ObservationFrame step_to_observation(const RecordedStep& step) {
   o.stamp_ns = step.stamp_ns;
   o.source = step.source;
   o.frame = robot::core::Frame::kUnknown;
+ o.scan_header = step.scan_header;
+ o.motion_header = step.motion_header;
+ o.imu_header = step.imu_header;
   o.ranges_m = step.ranges_m;
   o.scan_valid = step.scan_valid;
  o.intensities = step.intensities;

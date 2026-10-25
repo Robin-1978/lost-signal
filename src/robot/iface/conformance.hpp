@@ -100,6 +100,8 @@ class ProviderConformanceMonitor {
 
   void fail(core::MonotonicNs now_ns, const std::string& source,
             const std::string& rule, const std::string& detail);
+ void observe_measurement(const MeasurementHeader& header,
+ core::MonotonicNs now_ns);
 
   ProviderConformanceConfig config_;
   std::map<std::string, SourceState> sources_;  // keyed by endpoint id

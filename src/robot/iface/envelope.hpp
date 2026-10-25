@@ -10,16 +10,16 @@ namespace lost_signal::robot::iface {
 // ROBOT-owned pure functions, so every suite packs identically and the rule
 // is unit-tested once instead of hand-rolled per harness.
 //
-// v1 provenance note: the envelope carries ONE transport identity (the motion
-// endpoint's). Section ownership is enforced at suite composition: a suite
-// only packs messages from providers it owns. Per-section provenance is
-// future work, not a second envelope.
+// The envelope has one transport identity, while every populated section
+// retains the typed provider's acquisition header. Algorithms use section
+// time; the transport header is only for queue ordering.
 inline ObservationFrame make_envelope(const MotionFeedback& fb) {
   ObservationFrame o;
   o.sequence = fb.sequence;
   o.stamp_ns = fb.stamp_ns;
   o.source = fb.source;
   o.frame = fb.frame;
+ o.motion_header = {fb.sequence, fb.stamp_ns, fb.source, fb.frame};
   o.odometry_valid = fb.odometry_valid;
   o.forward_mps = fb.forward_mps;
   o.yaw_rate_radps = fb.yaw_rate_radps;
@@ -33,6 +33,7 @@ inline ObservationFrame make_envelope(const MotionFeedback& fb) {
 
 inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
   if (!scan.valid()) return false;
+ o.scan_header = {scan.seq, scan.stamp, scan.src, scan.frm};
   o.ranges_m = scan.ranges_m;
   o.scan_valid = true;
   o.scan_angle_min_rad = scan.angle_min_rad;
@@ -62,6 +63,7 @@ inline bool set_scan(ObservationFrame& o, const Lidar2DScan& scan) {
 
 inline bool set_imu(ObservationFrame& o, const ImuMessage& imu) {
   if (!imu.valid()) return false;
+ o.imu_header = {imu.seq, imu.stamp, imu.src, imu.frm};
   o.imu_valid = true;
   o.imu_gyro_x_radps = imu.gyro_x_radps;
   o.imu_gyro_y_radps = imu.gyro_y_radps;
@@ -74,6 +76,7 @@ inline bool set_imu(ObservationFrame& o, const ImuMessage& imu) {
 
 inline bool set_joints(ObservationFrame& o, const MotionFeedback& fb) {
   if (!fb.has_joints()) return false;
+ o.motion_header = {fb.sequence, fb.stamp_ns, fb.source, fb.frame};
   o.drive_count = fb.drive_count;
   o.steer_count = fb.steer_count;
   o.drive_radps = fb.drive_radps;

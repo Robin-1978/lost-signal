@@ -26,6 +26,12 @@ lost_signal::robot::iface::ObservationFrame make_obs() {
   o.stamp_ns = 123456789;
   o.source = "sim.motion";
   o.frame = lost_signal::robot::core::Frame::kBaseLink;
+ o.scan_header = {3, 100'000'000, "sim.lidar2d",
+ lost_signal::robot::core::Frame::kLidarLink};
+ o.motion_header = {7, 123'456'789, "sim.motion",
+ lost_signal::robot::core::Frame::kBaseLink};
+ o.imu_header = {11, 120'000'000, "sim.imu",
+ lost_signal::robot::core::Frame::kImuLink};
   o.scan_valid = true;
   o.ranges_m = {1.0f, 2.5f, 10.0f};
  o.intensity_valid = true;
@@ -102,6 +108,11 @@ int main() {
     assert(obs2.sequence == obs.sequence);
     assert(obs2.stamp_ns == obs.stamp_ns);
     assert(obs2.source == obs.source);
+ assert(obs2.scan_header.sequence == obs.scan_header.sequence);
+ assert(obs2.scan_header.stamp_ns == obs.scan_header.stamp_ns);
+ assert(obs2.scan_header.source == obs.scan_header.source);
+ assert(obs2.motion_header.source == obs.motion_header.source);
+ assert(obs2.imu_header.source == obs.imu_header.source);
     assert(obs2.ranges_m == obs.ranges_m);
  assert(obs2.intensity_valid == obs.intensity_valid);
  assert(obs2.intensities == obs.intensities);
@@ -142,10 +153,9 @@ int main() {
         &map_world, -10.0, -10.0, 20.0, 20.0, 0.25);
     robot::app::RobotApplication app(std::move(maps));
     assert(app.configure().ok && app.activate().ok);
-    assert(app.register_provider({"sim.motion",
-                                  robot::iface::EndpointRole::kEncoder,
-                                  robot::iface::ProviderBackend::kSim,
-                                  "base_link"}));
+ for (const auto& descriptor : replay.descriptors()) {
+ assert(app.register_provider(descriptor));
+ }
     robot::iface::TaskRequest replay_req;
     replay_req.request_id = "replay";
     replay_req.place_id = "dock";

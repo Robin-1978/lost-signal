@@ -58,21 +58,27 @@ Versions: `kApiVersion = 1`, `kMessageSchemaVersion = 1`
 
 ### ObservationFrame (`iface/observation.hpp`)
 
-Provider -> ROBOT. One acquisition-time snapshot per endpoint.
+Provider -> ROBOT. The outer header orders transport envelopes. Each
+populated scan/motion/IMU section carries its own `MeasurementHeader`, so one
+envelope may safely combine endpoint samples acquired at different rates.
 
 | Field | Meaning |
 |---|---|
-| `sequence` | strictly increasing per `source`, `> 0` |
-| `stamp_ns` | acquisition time, monotonic ns; delivery may lag, never rewrites stamp |
-| `source` | stable endpoint id, must be registered |
-| `frame` | `map / odom / base_link / lidar_link / imu_link` |
+| envelope `sequence/stamp_ns/source/frame` | bounded-channel ordering only |
+| `scan_header` | scan acquisition sequence/time/source/frame |
+| `motion_header` | encoder/joint acquisition sequence/time/source/frame |
+| `imu_header` | IMU acquisition sequence/time/source/frame |
 | `ranges_m + scan_valid` | planar scan; invalid = unknown, never free |
 | `odometry_valid + forward_mps + yaw_rate_radps` | body twist, SI |
 | `imu_valid + yaw_rate + ax` | measured, SI |
 
-Validation (`valid_observation_frame`): non-empty source, valid stamp,
-`sequence > 0`, at least one valid section. Channel additionally rejects
-stale/repeated sequence or timestamp per source.
+Validation (`valid_observation_frame`): non-empty transport source, valid
+transport stamp, `sequence > 0`, at least one valid section, and a complete
+header for every populated section in an aggregate envelope. A headerless
+legacy frame may contain exactly one endpoint section. Channel rejects
+stale/repeated transport sequence or timestamp per source;
+`MeasurementSynchronizer` rejects stale/repeated sections independently,
+orders estimator events by acquisition time and never rewinds estimator time.
 
 ### MotionCommand (`iface/command.hpp`)
 
@@ -114,14 +120,18 @@ serializes the same typed structs at the App edge.
 - Ordering: per-source strictly increasing `(sequence, stamp_ns)`. Arrival
   time never replaces acquisition time.
 
-Typical step (SIM, same for native):
+One public SIM transition is 20 ms by default, but it is not a sensor clock.
+`ScenarioSession` advances the canonical `World` clock to every sensor and
+control deadline inside that transition. A 100 Hz IMU therefore publishes two
+distinct measurements during one 50 Hz public transition:
 
 ```text
-world.step(20ms)
-  -> SimSensorSuite.poll_envelope()    # typed messages -> envelope
-  -> app.publish_observation(obs)             # registry + channel gate
-  -> app.tick(now)                            # drain -> coordinator -> cmd
-  -> app.take_actuator(now) -> suite.consume(act)  # validated joints -> plant
+advance world to next scan/motion/IMU/control deadline
+  -> poll only endpoints due at that acquisition time
+  -> publish one typed envelope per deadline
+  -> at decision deadline: app.tick(now) drains all queued measurements
+  -> app.take_actuator(now) -> suite.consume(act) # fresh joints -> plant
+repeat until the 20 ms public transition is complete
 ```
 
 Replay uses the same path: recorded frames are republished through

@@ -66,8 +66,8 @@ flowchart LR
   subgraph Live["Live loop (same-cycle, in-process)"]
     direction LR
     W["WorldTruth"] -->|"truth → measurement"| P["Providers<br/>SimSensorSuite / SimMotion / Sim2DLidar / SimImu"]
-    P -->|"ObservationFrame<br/>typed, validated"| Ch(["RuntimeChannel<br/>bounded queue"])
-    Ch -->|"drain"| A["RobotApplication::tick()<br/>Coordinator → safe command"]
+ P -->|"ObservationFrame<br/>per-section acquisition headers"| Ch(["RuntimeChannel<br/>bounded queue"])
+ Ch -->|"drain"| A["RobotApplication::tick()<br/>Synchronizer → modules → safe command"]
     A -->|"MotionCommand<br/>expiry enforced"| Ch2(["RuntimeChannel<br/>cmd queue"])
     Ch2 -->|"take_command"| P
     P -->|"apply"| W
@@ -102,11 +102,12 @@ sequenceDiagram
   L->>R: scan ranges packed into ObservationFrame
   P->>C: publish_observation (registry + seq/stamp gate)
   C->>R: drain_observations in tick()
-  R->>R: coordinator.ingest_observation
+ R->>R: coordinator sequences MeasurementSynchronizer and modules
 ```
 
 - 注册门：`register_provider` 先占位，未注册 source 直接拒收。
-- 顺序门：每 source `sequence + stamp` 严格递增，迟到/重复计数 `obs_rejected`。
+- 顺序门：transport 以及 scan/motion/IMU section 各自按 source 的
+ `sequence + stamp` 检查；迟到或重复 measurement 不会倒退估计时钟。
 - 容量门：obs 64 满时丢最老，记 `obs_dropped`（degraded 可见）。
 
 ## 4. Live 指令流（robot → provider → plant）
@@ -127,10 +128,11 @@ sequenceDiagram
   P->>W: apply to plant
 ```
 
-`AutonomyCoordinator` is the ROBOT composition and sequencing seam. It wires
-the full pipeline (estimator → perception → mapper/SLAM → behavior → local
-planner → validator → controller → safety gate) and holds module state;
-policy lives in those modules and in `RoutePlanningPipeline`. Safe stop comes out of the gates (no
+`AutonomyCoordinator` is the ROBOT sequencing seam. Measurement ordering,
+deduplication, caching, IMU frame conversion and one-shot consumption live in
+`MeasurementSynchronizer`; planning policy lives in the planning and decision
+modules. The coordinator only passes module outputs to the next module and
+holds lifecycle state. Safe stop comes out of the gates (no
 observation, invalid command, safety trip, controlled-stop latch), never
 from a skeleton stub. 包络、过期、空队列全部 fail-closed。
 
@@ -180,13 +182,15 @@ flowchart TB
 
 ## 6b. 回放流（record → JSONL → deterministic replay）
 
-- `export_episode` 把 `EpisodeRecorder` 落盘为 JSONL v2：一行 header
-  `{"v":2,"kind":"episode","map":"<id>","rev":<n>}`，之后每步一行
+- `export_episode` 把 `EpisodeRecorder` 落盘为 JSONL v3：一行 header
+ `{"v":3,"kind":"episode","map":"<id>","rev":<n>}`，之后每步一行
  `step_to_json_line(record_step(obs))`（float `%.9g` / double `%.17g`，
  joints 按 `drives:[...]` + `steers:{pos,vel}` 变长记录各底盘布局，
- 并保留可选的 intensity/time-offset 扫描字段；导入后保持
+ 保留 scan/motion/IMU 各自的采集 header 以及可选的
+ intensity/time-offset 扫描字段；导入后保持
  bit-identical round-trip）。
-- `ReplayProvider::load` 读回 header + steps（坏行 fail-closed，不抛异常）；
+- `ReplayProvider::load` 兼容 v2/v3，读回 header + steps（坏行
+ fail-closed，不抛异常），并公开回放文件实际包含的 endpoint 描述；
   `poll` 逐个吐出 live-equivalent `ObservationFrame`，播完返回 false。
 - 闭环回放：新鲜 `RobotApplication` + 新鲜 plant，吃回放 obs，`take_actuator`
   驱动新 plant；确定性 stack 的指令序列应与录制 bit 一致，任何分歧都是

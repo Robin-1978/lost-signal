@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -225,6 +226,10 @@ class World {
   World();
   void step(double dt_s);
   double sim_time_s() const { return sim_time_s_; }
+ robot::core::MonotonicNs sim_time_ns() const {
+ return static_cast<robot::core::MonotonicNs>(
+ std::llround(sim_time_s_ * 1e9));
+ }
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /

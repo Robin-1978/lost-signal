@@ -9,7 +9,7 @@
 
 当前分支已经建立正确的新框架边界：MuJoCo 是 SIM 物理真值源，ROBOT 只消费 provider 发布的传感器观测、公开地图和自身估计；碰撞、actor 脚本、材质、接触、真值位姿和评分不会进入 ROBOT 决策。`tests/check_boundary.py` 对 include、link 和 truth 类型执行静态门禁。20 万平方米差速底盘长测也证明现有 A*、定位和流式评分可以在大图上运行。
 
-但当前版本仍不满足全底盘、异步传感器和真实制动条件下的发布要求。本轮确认四项 P0：异步传感器时间语义失效、Ackermann 大图规划必然失败、机械制动执行契约没有接入闭环、native robot 仍是一次 tick 后退出的 bringup stub。另有 polygon footprint、低抓地制动、执行跟踪故障闭环、传感器默认真实性和动态 actor 动力学等 P1 缺口。
+当前版本仍不满足全底盘和真实制动条件下的发布要求。本轮最初确认四项 P0；其中异步传感器时间语义已经按本审计方案修复并完成回归，剩余三项是 Ackermann 大图规划失败、机械制动执行契约没有接入闭环、native robot 仍是一次 tick 后退出的 bringup stub。另有 polygon footprint、低抓地制动、执行跟踪故障闭环、传感器默认真实性和动态 actor 动力学等 P1 缺口。
 
 优先级定义：P0 阻止对应产品路径发布；P1 会在合理环境或故障条件下造成安全性、鲁棒性或真实性缺口；P2 是能力完整性和进一步逼真度提升。
 
@@ -23,13 +23,13 @@
 - 全局和局部 costmap 已统一为占据硬膨胀加连续衰减 soft layer；DWA、TEB-style、Validator 和 Safety 形成分层检查。
 - Collision Monitor 直接读取 ROBOT 原始扫描，独立于全局定位和 costmap，符合最终安全层的职责方向。
 - 动态预测支持常速、静止、走廊反射、备选意图和增长的不确定性，并用连续时间最小净空避免离散时刻漏检。
-- 20 万平方米差速底盘五目标 Release 长测完成 5/5、0 碰撞；ROBOT tick p50/p95/p99/max 为 1.165/3.192/4.359/13.560 ms，Release CTest 58/58。
+- 20 万平方米差速底盘五目标 Release 长测完成 5/5、0 碰撞；ROBOT tick p50/p95/p99/max 为 1.165/3.192/4.359/13.560 ms，Release CTest 59/59。
 
 ## 3. P0 发布阻断项
 
 ### P0-1 异步多传感器在统一 envelope 中丢失时间与来源
 
-**源码证据。** `src/robot/iface/observation.hpp` 的 `ObservationFrame` 只有一组 `sequence/stamp_ns/source/frame`，却同时装载 scan、odometry/joints 和 IMU。`src/robot/iface/envelope.hpp` 明确写着 v1 只有一个 transport identity。`SimSensorSuite::poll_envelope()` 按各自 cadence 决定本周期填哪些 section，而 Coordinator 在收到新 envelope 时整体覆盖 `last_obs_`。
+**原始源码证据。** 修复前 `ObservationFrame` 只有一组 `sequence/stamp_ns/source/frame`，却同时装载 scan、odometry/joints 和 IMU；`SimSensorSuite::poll_envelope()` 按各自 cadence 决定 section，而 Coordinator 收到 envelope 后整体覆盖 `last_obs_`。该实现已由下述修复替换。
 
 **影响。** 100 Hz IMU 或 50 Hz motion 会覆盖 10 Hz LiDAR 帧，使下一次 50 Hz 决策看到 `scan_valid=false`，Safety/Validator 因缺扫描证据停车。若将旧 scan 与新 motion 合并，又会把 scan 错误标成 envelope 的新时间，破坏 freshness、deskew、scan matching 和乱序检查。单一 source 也无法证明每个 section 来自哪个 endpoint。
 
@@ -38,6 +38,10 @@
 **修复。** 每种 typed measurement 必须保留独立 acquisition timestamp、sequence、frame 和 source；ROBOT 为各类测量保存独立缓存和 freshness，按采集时间有序送入估计器。决策使用仍在有效期内的最新扫描，而不是要求本决策周期恰好收到新扫描。Safety 单独检查 LiDAR 年龄并在超时后 fail-safe。不得由 Coordinator 推测或改写采集时间。
 
 **验收。** 增加 10 Hz LiDAR、50 Hz motion、100 Hz IMU、50 Hz decision 的异步相位测试，并覆盖乱序、延迟、重复 sequence、future skew 和 LiDAR 超时。正常新鲜扫描下不得周期性 stop-go；过期扫描必须确定性停车；每个样本只积分一次。
+
+**修复状态：已完成。** `ObservationFrame` 现在为 scan、motion/joints、IMU 保存独立 `MeasurementHeader`；应用入口逐 section 验证 endpoint ownership，headerless legacy frame 只允许一个 endpoint section。排序、去重、缓存、IMU 外参变换和一次性消费全部下沉到 `MeasurementSynchronizer`；Coordinator 只串联其输出与 estimator、perception、mapper、localization、adaptation 和 safety。估计器只处理本次新到的 motion/IMU，迟到样本不会倒退积分时钟；感知、建图、定位只处理新 scan；Validator/Safety 使用缓存的最新 scan，Safety 按 scan 自身采集时间 fail-safe。执行器闭环只接受 `safety_reaction_time_s` 内的新鲜 joint feedback，超时、未来时间或缺失反馈都返回 SafeZero。SIM 不再在新 envelope 中重复携带旧 joint 值。JSONL 升级为保留 section header 的 v3，并兼容读取 v2。
+
+`World::sim_time_ns()` 现在是 SIM 唯一采集时钟，20 ms public transition 会推进到内部各传感器 deadline；300 个 transition 明确产生 600 个 100 Hz IMU measurement。`signal_town` 异步复测在 984 步完成目标，移动 20.68 m、0 碰撞，ROBOT tick p99/max 为 12.725/13.876 ms，不再出现 `no-scan-evidence` 周期误停；修复前 1000 步只移动 0.67 m。新增模块回归覆盖独立来源与时间、旧 scan 缓存、scan 超时、迟到 measurement、future skew、endpoint 冒充、异步场景和 replay header round-trip。
 
 ### P0-2 Ackermann Hybrid-A* 在 20 万平方米地图上必然返回 invalid
 
@@ -131,7 +135,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 
 | `main` 中有价值的能力 | 当前分支状态 | 新框架迁移要求 |
 |---|---|---|
-| 每类 measurement 自带 header | 缺失，统一 envelope header | 作为 P0-1 恢复 typed timestamp/source/frame，不恢复旧 composition root |
+| 每类 measurement 自带 header | 已按新 envelope 接口恢复 | scan/motion/IMU 独立排序、缓存、freshness 和 replay，不恢复旧 composition root |
 | 多目标 Executive、pause/resume/cancel/fail、dwell、arrival speed、abandon | 当前只有单 active goal，TaskOrderingRegistry 未接入 | 下沉目标生命周期与排序模块，Coordinator 只调度 |
 | native channel/runtime/replay | 只有部分接口和 LiDAR seam | 复用新 RobotApplication 契约补齐 provider 与 watchdog |
 | localization supervisor/error handling | 已有部分 innovation gate 和分片恢复 | 补完整 covariance、map/odom 分层与持续故障状态 |
@@ -153,7 +157,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 - [Nav2 Inflation Layer](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/costmap_plugins/inflation/)：障碍周围使用指数衰减代价，inscribed radius 内为 lethal；当前两阶段 costmap 方向一致。
 - [Nav2 Collision Monitor](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/collision_monitor/configuring_collision_monitor_node/)：独立安全层绕过 costmap/规划器直接处理新鲜传感器，支持 stop/slowdown/limit/approach 和随速度变化的 polygon；当前 raw-scan Safety 方向正确，但需独立 section freshness 与动态 footprint。
 - [Nav2 Velocity Smoother](https://docs.nav2.org/rolling/configuration_and_development/configuring_velocity_smoother/)：速度、加速度、减速度、死区和高频插值应显式限制；闭环模式依赖高频低延迟 odometry。当前需把低 grip 与真实制动能力纳入限制。
-- [Nav2 Smac Hybrid-A*](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/smac_planner/configuring-smac-hybrid.html)：支持 costmap downsampling、最大规划时间、障碍启发式缓存、解析扩展、代价感知和平滑；同目标 heuristic 缓存可显著加速重规划。对应 P0-2 的 ROI/coarse-to-fine/cache/time budget。
+- [Nav2 Smac Hybrid-A*](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/planners_plugins/smac/smac_hybrid/configuring_smac_hybrid/)：支持 costmap downsampling、最大规划迭代、障碍启发式缓存、解析扩展、代价感知和平滑；同目标 heuristic 缓存可显著加速重规划。该现行 URL 已在 2026-10-25 通过官方迁移表定位并验证为 HTTP 200。对应 P0-2 的 ROI/coarse-to-fine/cache/time budget。
 - [Autoware Localization Error Monitor](https://autowarefoundation.github.io/autoware_universe/main/sensing/autoware_localization_error_monitor/)：用 covariance confidence ellipse 监控定位误差，横向误差尤其关键；对应 P1-4。
 - [Autoware Pose Instability Detector](https://autowarefoundation.github.io/autoware_universe/main/localization/autoware_pose_instability_detector/)：把估计位姿变化与车辆运动学可达范围比较；对应持续定位异常检测。
 - [Autoware Planning Validator](https://autowarefoundation.github.io/autoware_universe/main/planning/planning_validator/autoware_planning_validator/)：控制前独立检查轨迹延迟、形状和碰撞，并通过连续异常计数、最后有效轨迹或软停车处理故障；对应 P1-3。
@@ -167,7 +171,7 @@ Mecanum 当前使用 body wrench 简化，没有显式滚子刚体与逐滚子�
 
 ## 8. 分阶段完成路线
 
-1. 修复独立 measurement header、ROBOT 分类型缓存和 freshness；用真实异步 cadence 回归。
+1. 已完成：独立 measurement header、ROBOT 分类型缓存和 freshness；真实异步 cadence 回归通过。
 2. 增加 grip-aware braking，再把 service/emergency brake 纳入 actuator contract，并用 MuJoCo 实测停止距离校准。
 3. 将持续 tracking/localization 异常接入独立故障状态与最小风险停车。
 4. 重构 Ackermann 为 ROI/coarse-to-fine、可缓存、受预算约束的 Hybrid-A*，完成 20 万平方米 Ackermann 长测。

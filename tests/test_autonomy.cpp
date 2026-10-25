@@ -66,7 +66,23 @@ int main() {
     assert(est.estimate().confidence < 1.0);
   }
 
-  // Slip gate: wheels and gyro disagree -> trust gyro, inflate yaw sigma.
+ // A delayed sample from another asynchronous endpoint cannot rewind the
+ // integration clock or be integrated again on the next in-order sample.
+ {
+ FusedOdometryEstimator est;
+ est.reset();
+ est.predict(make_odom(1, 0, 1.0));
+ est.predict(make_odom(2, 20'000'000, 1.0));
+ const double before_late = est.estimate().x_m;
+ const auto stamp_before_late = est.estimate().stamp_ns;
+ est.predict(make_odom(3, 10'000'000, 9.0));
+ assert(est.estimate().x_m == before_late);
+ assert(est.estimate().stamp_ns == stamp_before_late);
+ est.predict(make_odom(4, 40'000'000, 1.0));
+ assert(std::abs(est.estimate().x_m - 0.04) < 1e-9);
+ }
+
+ // Slip gate: wheels and gyro disagree -> trust gyro, inflate yaw sigma.
   {
     FusedOdometryEstimator est;
     est.reset();

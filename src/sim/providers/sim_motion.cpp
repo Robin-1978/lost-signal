@@ -34,8 +34,7 @@ bool SimMotionEndpoint::poll_feedback(
   if (world_ == nullptr) return false;
   seq_ += 1;
   out.sequence = seq_;
-  out.stamp_ns = static_cast<robot::core::MonotonicNs>(world_->truth().step *
-                                                       20'000'000);
+ out.stamp_ns = world_->sim_time_ns();
   out.source = desc_.endpoint_id;
   out.frame = robot::core::Frame::kBaseLink;
   out.odometry_valid = true;

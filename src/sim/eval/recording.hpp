@@ -17,6 +17,9 @@ struct RecordedStep {
   std::uint64_t sequence = 0;
   std::int64_t stamp_ns = 0;
   std::string source;
+ robot::iface::MeasurementHeader scan_header;
+ robot::iface::MeasurementHeader motion_header;
+ robot::iface::MeasurementHeader imu_header;
   std::vector<float> ranges_m;
  std::vector<float> intensities;
  std::vector<float> time_offsets_s;
@@ -38,9 +41,12 @@ struct RecordedStep {
   std::vector<double> steers_vel_radps;
 };
 
-// JSONL v2: one header line then one step object per line.
-// schema: {"v":2,"kind":"episode","map":"<id>","rev":<n>}
-// steps carry "drives":[...], "steers":{"pos":[...],"vel":[...]}.
+// JSONL v3: one header line then one step object per line. v2 remains
+// readable; it has no per-section headers and is treated as a legacy
+// single-source envelope.
+// schema: {"v":3,"kind":"episode","map":"<id>","rev":<n>}
+// steps carry measurement headers, "drives":[...], and
+// "steers":{"pos":[...],"vel":[...]}.
 struct RecordedEpisode {
   std::string map_id;
   std::uint64_t map_revision = 0;
