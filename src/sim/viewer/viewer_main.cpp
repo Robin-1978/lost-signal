@@ -74,6 +74,8 @@ struct VisualAssets {
  RenderTexture2D scene_target{};
  RenderTexture2D bloom_target_a{};
  RenderTexture2D bloom_target_b{};
+ RenderTexture2D shadow_map{};
+ int shadow_map_resolution = 0;
  int target_width = 0;
  int target_height = 0;
  int bloom_threshold_loc = -1;
@@ -83,6 +85,10 @@ struct VisualAssets {
  int composite_exposure_loc = -1;
  int composite_bloom_strength_loc = -1;
  int composite_vignette_strength_loc = -1;
+ int light_view_projection_loc = -1;
+ int shadow_map_loc = -1;
+ int shadow_strength_loc = -1;
+ int shadow_resolution_loc = -1;
  AssetManifest manifest;
  Model chassis{};
  const AssetDefinition* chassis_definition = nullptr;
@@ -105,6 +111,49 @@ struct VisualAssets {
 };
 
 bool model_ready(const Model& model) { return model.meshCount > 0; }
+
+RenderTexture2D load_shadow_map(int width, int height) {
+ RenderTexture2D target{};
+ target.id = rlLoadFramebuffer();
+ target.texture.width = width;
+ target.texture.height = height;
+ if (target.id == 0) return target;
+ rlEnableFramebuffer(target.id);
+ target.depth.id = rlLoadTextureDepth(width, height, false);
+ target.depth.width = width;
+ target.depth.height = height;
+ target.depth.format = 19;
+ target.depth.mipmaps = 1;
+ rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH,
+ RL_ATTACHMENT_TEXTURE2D, 0);
+ if (!rlFramebufferComplete(target.id)) {
+ rlUnloadFramebuffer(target.id);
+ rlUnloadTexture(target.depth.id);
+ return {};
+ }
+ return target;
+}
+
+void release_shadow_map(VisualAssets& assets) {
+ if (assets.shadow_map.id > 0) rlUnloadFramebuffer(assets.shadow_map.id);
+ if (assets.shadow_map.depth.id > 0)
+ rlUnloadTexture(assets.shadow_map.depth.id);
+ assets.shadow_map = {};
+ assets.shadow_map_resolution = 0;
+}
+
+bool ensure_shadow_map(VisualAssets& assets, int resolution) {
+ if (resolution == assets.shadow_map_resolution &&
+ (resolution == 0 || assets.shadow_map.id > 0)) {
+ return resolution > 0;
+ }
+ release_shadow_map(assets);
+ if (resolution <= 0) return false;
+ assets.shadow_map = load_shadow_map(resolution, resolution);
+ if (assets.shadow_map.id == 0) return false;
+ assets.shadow_map_resolution = resolution;
+ return true;
+}
 
 RenderTexture2D load_hdr_target(int width, int height) {
  RenderTexture2D target{};
@@ -399,6 +448,13 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.composite, "vignetteStrength");
  }
  if (IsShaderValid(assets.lighting)) {
+ assets.light_view_projection_loc = GetShaderLocation(
+ assets.lighting, "lightVP");
+ assets.shadow_map_loc = GetShaderLocation(assets.lighting, "shadowMap");
+ assets.shadow_strength_loc = GetShaderLocation(
+ assets.lighting, "shadowStrength");
+ assets.shadow_resolution_loc = GetShaderLocation(
+ assets.lighting, "shadowMapResolution");
  const Vector3 light_dir{-0.48f, -1.0f, -0.32f};
  const Vector3 light_color{1.08f, 0.98f, 0.82f};
  const Vector3 ambient{0.24f, 0.29f, 0.28f};
@@ -467,6 +523,7 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
 }
 
 void unload_visual_assets(VisualAssets& assets) {
+ release_shadow_map(assets);
  release_post_targets(assets);
  if (assets.dust.id > 0) UnloadTexture(assets.dust);
  if (model_ready(assets.chassis)) UnloadModel(assets.chassis);
@@ -603,6 +660,9 @@ void configure_scene_lighting(VisualAssets& assets,
  const Vector3 fog = shader_rgb(lighting.fog_rgba, 1.0);
  const float fog_start = static_cast<float>(lighting.fog_start_m);
  const float fog_end = static_cast<float>(lighting.fog_end_m);
+ const float shadow_strength = assets.shadow_map.id > 0
+ ? static_cast<float>(lighting.shadow_strength) : 0.0f;
+ const int shadow_resolution = std::max(1, assets.shadow_map_resolution);
  const Vector3 robot_light{
  static_cast<float>(frame.body.x_m),
  static_cast<float>(frame.body.z_m + 0.72),
@@ -637,6 +697,10 @@ void configure_scene_lighting(VisualAssets& assets,
  SetShaderValue(assets.lighting,
  GetShaderLocation(assets.lighting, "fogEnd"), &fog_end,
  SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting, assets.shadow_strength_loc,
+ &shadow_strength, SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting, assets.shadow_resolution_loc,
+ &shadow_resolution, SHADER_UNIFORM_INT);
  SetShaderValue(assets.lighting,
  GetShaderLocation(assets.lighting, "pointLight0Position"), &robot_light,
  SHADER_UNIFORM_VEC3);
@@ -1427,7 +1491,8 @@ void draw_frame_3d(const Frame& f,
  bool show_actor_routes, bool show_places,
  const VisualAssets* assets = nullptr,
  const SceneManifest* scene = nullptr,
- const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr) {
+ const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr,
+ bool presentation_effects = true) {
   namespace world_ns = lost_signal::sim::world;
   // Ground base sized to the authored map (concrete apron under everything).
   double gx0, gy0, gx1, gy1;
@@ -1442,9 +1507,9 @@ void draw_frame_3d(const Frame& f,
  static_cast<unsigned char>(rgba[1]), static_cast<unsigned char>(rgba[2]),
  static_cast<unsigned char>(rgba[3])});
   }
- if (scene == nullptr) {
+ if (presentation_effects && scene == nullptr) {
  DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);
- } else {
+ } else if (presentation_effects) {
  const auto& rgba = scene->floor.grid_rgba;
  const Color grid{static_cast<unsigned char>(rgba[0]),
  static_cast<unsigned char>(rgba[1]), static_cast<unsigned char>(rgba[2]),
@@ -1463,7 +1528,7 @@ void draw_frame_3d(const Frame& f,
  }
   // Material zones as translucent paint quads (slick water reads blue,
   // sand/gravel warm — same table as the 2D overlay).
-  for (const auto& z : f.zones) {
+ if (presentation_effects) for (const auto& z : f.zones) {
     const Vector3 center = to_raylib((z.x0_m + z.x1_m) * 0.5,
                                      (z.y0_m + z.y1_m) * 0.5, 0.005);
     const Vector3 size{static_cast<float>(std::abs(z.x1_m - z.x0_m)), 0.006f,
@@ -1557,17 +1622,20 @@ void draw_frame_3d(const Frame& f,
  world.terrain_patches(), world.support_slabs(),
  scene_visual->position_m[0], scene_visual->position_m[1]).height_m;
  draw_scene_instance(*scene_visual, *assets, ground_z);
+ if (presentation_effects)
  box_shadow_3d(b.x0_m, b.y0_m, b.x1_m, b.y1_m, ground_z);
  continue;
  }
     DrawCubeV(center, size, wall);
-    DrawCubeWiresV(center, size, BLACK);
+ if (presentation_effects) DrawCubeWiresV(center, size, BLACK);
     // Sun-lit cap: thin slab on top, warm white.
-    DrawCubeV(to_raylib((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5,
+ if (presentation_effects) DrawCubeV(
+ to_raylib((b.x0_m + b.x1_m) * 0.5, (b.y0_m + b.y1_m) * 0.5,
                         h + 0.008),
               {size.x, 0.016f, size.z},
               b.selected ? Color{255, 240, 160, 255}
                          : Color{168, 175, 184, 255});
+ if (presentation_effects)
  box_shadow_3d(b.x0_m, b.y0_m, b.x1_m, b.y1_m);
     if (b.selected) {
       const double cx[4] = {b.x0_m, b.x1_m, b.x1_m, b.x0_m};
@@ -1602,6 +1670,7 @@ void draw_frame_3d(const Frame& f,
     const float h = static_cast<float>(a.height_m > 0.1 ? a.height_m : 0.5);
  const double ground_z = world_ns::sample_terrain(
  world.terrain_patches(), world.support_slabs(), a.x_m, a.y_m).height_m;
+ if (presentation_effects)
  blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3, ground_z);
  const Model* actor_model = nullptr;
  const AssetDefinition* actor_definition = nullptr;
@@ -1699,7 +1768,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
         0.0f, 0.0f, 0.0f, 1.0f};
  const double robot_ground_z = world_ns::sample_terrain(
  world.terrain_patches(), world.support_slabs(), f.body.x_m, f.body.y_m).height_m;
- blob_shadow_3d(f.body.x_m, f.body.y_m,
+ if (presentation_effects) blob_shadow_3d(f.body.x_m, f.body.y_m,
  std::max(f.body.half_length_m, f.body.half_width_m) * 1.4,
  robot_ground_z);
     rlPushMatrix();
@@ -2084,7 +2153,58 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them
   // twice.
+ if (presentation_effects)
  draw_motion_particles_3d(particles, camera, assets);
+}
+
+bool render_shadow_map(const Frame& frame,
+ const lost_signal::sim::world::World& world, VisualAssets& assets,
+ const SceneManifest* scene,
+ const lost_signal::sim::viewer::LidarMount* lidar_mount) {
+ const lost_signal::sim::viewer::SceneLighting defaults;
+ const auto& lighting = scene != nullptr ? scene->lighting : defaults;
+ if (!ensure_shadow_map(assets, lighting.shadow_map_resolution)) {
+ return false;
+ }
+ Vector3 light_direction{
+ static_cast<float>(lighting.direction_xyz[0]),
+ static_cast<float>(lighting.direction_xyz[2]),
+ static_cast<float>(-lighting.direction_xyz[1])};
+ if (Vector3Length(light_direction) <= 1e-6f) return false;
+ light_direction = Vector3Normalize(light_direction);
+ const Vector3 center{static_cast<float>(frame.body.x_m), 0.4f,
+ static_cast<float>(-frame.body.y_m)};
+ Camera3D light_camera{};
+ light_camera.target = center;
+ light_camera.position = Vector3Subtract(
+ center, Vector3Scale(light_direction,
+ static_cast<float>(lighting.shadow_extent_m)));
+ light_camera.up = std::abs(Vector3DotProduct(
+ light_direction, {0.0f, 1.0f, 0.0f})) > 0.96f
+ ? Vector3{0.0f, 0.0f, -1.0f} : Vector3{0.0f, 1.0f, 0.0f};
+ light_camera.fovy = static_cast<float>(lighting.shadow_extent_m);
+ light_camera.projection = CAMERA_ORTHOGRAPHIC;
+
+ rlActiveTextureSlot(10);
+ rlDisableTexture();
+ rlActiveTextureSlot(0);
+ BeginTextureMode(assets.shadow_map);
+ ClearBackground(WHITE);
+ BeginMode3D(light_camera);
+ const Matrix light_view = rlGetMatrixModelview();
+ const Matrix light_projection = rlGetMatrixProjection();
+ BeginShaderMode(assets.lighting);
+ ParticleSystem no_particles;
+ draw_frame_3d(frame, world, light_camera, no_particles,
+ false, false, false, false, &assets, scene, lidar_mount, false);
+ EndShaderMode();
+ EndMode3D();
+ EndTextureMode();
+ const Matrix light_view_projection = MatrixMultiply(
+ light_view, light_projection);
+ SetShaderValueMatrix(assets.lighting, assets.light_view_projection_loc,
+ light_view_projection);
+ return true;
 }
 
 bool draw_frame_3d_postprocessed(const Frame& frame,
@@ -2102,6 +2222,17 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  }
  const lost_signal::sim::viewer::SceneLighting defaults;
  const auto& lighting = scene != nullptr ? scene->lighting : defaults;
+ const bool shadows_ready = render_shadow_map(
+ frame, world, assets, scene, lidar_mount);
+ configure_scene_lighting(assets, scene, frame, camera);
+ if (shadows_ready) {
+ const int shadow_texture_slot = 10;
+ rlActiveTextureSlot(shadow_texture_slot);
+ rlEnableTexture(assets.shadow_map.depth.id);
+ rlSetUniform(assets.shadow_map_loc, &shadow_texture_slot,
+ SHADER_UNIFORM_INT, 1);
+ rlActiveTextureSlot(0);
+ }
  BeginTextureMode(assets.scene_target);
  ClearBackground(scene_background(scene));
  BeginMode3D(camera);
@@ -2111,6 +2242,11 @@ bool draw_frame_3d_postprocessed(const Frame& frame,
  EndShaderMode();
  EndMode3D();
  EndTextureMode();
+ if (shadows_ready) {
+ rlActiveTextureSlot(10);
+ rlDisableTexture();
+ rlActiveTextureSlot(0);
+ }
 
  const float bloom_strength = static_cast<float>(lighting.bloom_strength);
  if (bloom_strength > 0.001f) {

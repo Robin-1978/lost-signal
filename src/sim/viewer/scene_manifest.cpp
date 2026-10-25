@@ -100,6 +100,19 @@ bool take_optional_number(const Json& object, const char* key, double& value,
  return true;
 }
 
+bool take_optional_int(const Json& object, const char* key, int& value,
+ std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr) return true;
+ if (!node->is_num() || !std::isfinite(node->as_num()) ||
+ node->as_num() != std::floor(node->as_num())) {
+ error = std::string("scene '") + key + "' must be an integer";
+ return false;
+ }
+ value = static_cast<int>(node->as_num());
+ return true;
+}
+
 const world::StaticBox* find_box(
  const std::vector<world::StaticBox>& boxes, const std::string& id) {
  for (const auto& box : boxes) {
@@ -266,7 +279,13 @@ bool load_scene_manifest(const std::string& path,
  !take_optional_number(*lighting, "bloom_strength",
  parsed.lighting.bloom_strength, out_error) ||
  !take_optional_number(*lighting, "vignette_strength",
- parsed.lighting.vignette_strength, out_error))) {
+ parsed.lighting.vignette_strength, out_error) ||
+ !take_optional_int(*lighting, "shadow_map_resolution",
+ parsed.lighting.shadow_map_resolution, out_error) ||
+ !take_optional_number(*lighting, "shadow_extent_m",
+ parsed.lighting.shadow_extent_m, out_error) ||
+ !take_optional_number(*lighting, "shadow_strength",
+ parsed.lighting.shadow_strength, out_error))) {
  return false;
  }
  if (parsed.camera.distance_m < 0.6 || parsed.camera.distance_m > 100.0 ||
@@ -292,6 +311,14 @@ bool load_scene_manifest(const std::string& path,
  parsed.lighting.bloom_strength > 1.0 ||
  parsed.lighting.vignette_strength < 0.0 ||
  parsed.lighting.vignette_strength > 1.0 ||
+ (parsed.lighting.shadow_map_resolution != 0 &&
+ parsed.lighting.shadow_map_resolution != 1024 &&
+ parsed.lighting.shadow_map_resolution != 2048 &&
+ parsed.lighting.shadow_map_resolution != 4096) ||
+ parsed.lighting.shadow_extent_m <= 0.0 ||
+ parsed.lighting.shadow_extent_m > 200.0 ||
+ parsed.lighting.shadow_strength < 0.0 ||
+ parsed.lighting.shadow_strength > 1.0 ||
  !(parsed.floor.grid_spacing_m > 0.0) ||
  parsed.floor.grid_spacing_m > 20.0) {
  out_error = "scene camera or floor values are outside supported bounds";

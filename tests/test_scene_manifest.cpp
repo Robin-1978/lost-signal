@@ -39,6 +39,8 @@ int main() {
  assert(scene.lighting.direction_xyz[2] == -1.0);
  assert(scene.lighting.exposure == 0.92);
  assert(scene.lighting.bloom_strength == 0.20);
+ assert(scene.lighting.shadow_map_resolution == 2048);
+ assert(scene.lighting.shadow_strength == 0.62);
  assert(scene.instances.size() == 35);
  assert(scene.visual_for_box("north_wall_01") != nullptr);
  assert(scene.visual_for_box("west_shelf") != nullptr);

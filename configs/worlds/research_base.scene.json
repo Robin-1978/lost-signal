@@ -24,7 +24,10 @@
  "exposure": 0.92,
  "bloom_threshold": 0.78,
  "bloom_strength": 0.20,
- "vignette_strength": 0.14
+ "vignette_strength": 0.14,
+ "shadow_map_resolution": 2048,
+ "shadow_extent_m": 27.0,
+ "shadow_strength": 0.62
  },
  "floor": {
  "base_rgba": [43, 49, 48, 255],

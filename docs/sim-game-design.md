@@ -321,6 +321,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。
 - 已将跟随镜头的平滑时间、前视时间、速度拉远增益和距离范围放入 scene manifest；相机按墙钟平滑而不改变仿真状态，倒车沿真实运动方向前视，玩家缩放会成为新的跟随基准距离。场景光方向、环境光、雾和局部任务灯也由 manifest 控制；shader 每帧读取真实相机位置，机器人灯跟随 MuJoCo body，目标灯只消费 Viewer 的任务表现数据。
 - 已迁移 `main` 的 HDR 后处理骨架并适配当前 Viewer：3D 场景先进入半浮点渲染目标，再做亮区提取、半分辨率双向高斯模糊、ACES tone mapping、曝光与暗角；所有表现参数归 scene manifest 管理，窗口尺寸变化时安全重建目标，无 shader 时保持直接渲染回退。后处理发生在 HUD 之前，也不参与仿真步进、传感器或 ROBOT 状态。
+- 已接入 3×3 PCF directional shadow map；分辨率、强度和正交覆盖范围由 scene manifest 声明。阴影相机以 MuJoCo 机器人 body 为局部中心，因此地图扩大到 20 万平方米时不会把固定纹理浪费在全图；阴影 pass 排除假接触阴影、网格、诊断线和粒子，只渲染可见实体几何。
 - 补齐暂停时间轴、单步、关键事件、真值/认知 overlay 开关和 replay seek。
 - 验收：同 seed 的 1×、8×、Turbo、headless 最终 truth、command、score 一致；UI 连续响应。
 

@@ -35,6 +35,9 @@ struct SceneLighting {
  double bloom_threshold = 0.78;
  double bloom_strength = 0.20;
  double vignette_strength = 0.14;
+ int shadow_map_resolution = 2048;
+ double shadow_extent_m = 27.0;
+ double shadow_strength = 0.62;
 };
 
 struct SceneFloor {
