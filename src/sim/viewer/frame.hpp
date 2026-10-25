@@ -7,10 +7,81 @@
 // share this model.
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace lost_signal::sim::viewer {
+
+// Every diagnostic field belongs to one explicit authority. Keeping these
+// records separate makes the UI provenance visible and prevents a truth
+// value from being mistaken for a deployable ROBOT signal.
+enum class FrameAuthority {
+ kPhysicsTruth,
+ kRobotObservation,
+ kRobotEstimate,
+ kRobotDecision,
+ kGameEvaluation,
+};
+
+struct FrameTruthTelemetry {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kPhysicsTruth;
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
+ double forward_mps = 0.0, yaw_rate_radps = 0.0;
+ std::size_t wheel_contacts = 0;
+};
+
+struct FrameObservationTelemetry {
+ static constexpr FrameAuthority kAuthority =
+ FrameAuthority::kRobotObservation;
+ bool accepted = false;
+ bool scan_valid = false;
+ bool odometry_valid = false;
+ bool imu_valid = false;
+ std::uint64_t sequence = 0;
+ double stamp_s = -1.0;
+ std::size_t lidar_beams = 0;
+ std::size_t lidar_returns = 0;
+ std::string scan_source;
+};
+
+struct FrameEstimateTelemetry {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kRobotEstimate;
+ bool valid = false;
+ bool localized = false;
+ double stamp_s = -1.0;
+ double map_x_m = 0.0, map_y_m = 0.0, map_yaw_rad = 0.0;
+ double odom_x_m = 0.0, odom_y_m = 0.0, odom_yaw_rad = 0.0;
+ double position_sigma_m = 0.0, heading_sigma_rad = 0.0;
+ std::string localization_action;
+};
+
+struct FrameDecisionTelemetry {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kRobotDecision;
+ bool valid = false;
+ std::uint64_t sequence = 0;
+ double stamp_s = -1.0;
+ std::string action_code;
+ std::string reason_code;
+ std::string constraint_code;
+ std::string safety_state;
+ std::string safety_reason;
+ double command_forward_mps = 0.0;
+ double command_yaw_rate_radps = 0.0;
+ std::size_t route_point_count = 0;
+ std::size_t moving_candidate_count = 0;
+};
+
+struct FrameEvaluationTelemetry {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kGameEvaluation;
+ bool static_collision = false;
+ bool dynamic_collision = false;
+ bool terrain_collision = false;
+ double static_clearance_m = 999.0;
+ double dynamic_clearance_m = 999.0;
+ double estimate_error_m = 0.0;
+};
 
 struct FrameLinkPose {
  bool valid = false;
@@ -137,6 +208,11 @@ struct FrameImpact {
 };
 
 struct Frame {
+ FrameTruthTelemetry truth;
+ FrameObservationTelemetry observation;
+ FrameEstimateTelemetry estimate;
+ FrameDecisionTelemetry decision;
+ FrameEvaluationTelemetry evaluation;
   FrameBody body;
   std::vector<std::pair<double, double>> trail;  // past truth (x, y), oldest first
   std::vector<FrameBox> boxes;

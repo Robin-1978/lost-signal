@@ -158,6 +158,8 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 每个 overlay 标注数据来源和时间戳。真值层使用琥珀色边框，机器人认知使用青色边框；两层重叠时仍能通过线型区分。任何新增 overlay 先声明属于哪一侧，并由边界测试保证真值类型不能进入 `src/robot`。
 
+实现状态：Viewer 的帧模型已将实时遥测分成 `PHYSICS TRUTH`、`ROBOT OBSERVATION`、`ROBOT ESTIMATE`、`ROBOT DECISION` 和 `GAME/EVAL` 五个有类型的 authority 记录。探索战役运行阶段只展开 ROBOT 三层，真值与离线裁判保持隐藏，到复盘阶段才允许对照；这些记录只由已完成的 episode step 构建，不能发布回 `RobotApplication`。
+
 ## 6. 失败解释与评分
 
 失败必须由结构化原因产生，不能只显示 `FAILED`：

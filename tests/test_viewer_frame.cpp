@@ -71,6 +71,23 @@ int main() {
     step.diag.estimate.x_m = 1.1;
     step.diag.estimate.y_m = 1.9;
     step.diag.estimate.yaw_rad = 0.4;
+ step.diag.estimate.valid = true;
+ step.diag.estimate.stamp_ns = 7'000'000'000;
+ step.diag.estimate.position_sigma_m = 0.12;
+ step.diag.odometry_estimate = step.diag.estimate;
+ step.diag.localized = true;
+ step.diag.localization_action = "local-correct";
+ step.diag.evidence.sequence = 4;
+ step.diag.evidence.decision_time_s = 7.0;
+ step.diag.evidence.action_code = "follow-route";
+ step.diag.evidence.reason_code = "trajectory-accepted";
+ step.diag.evidence.route_point_count = 8;
+ step.diag.safety = robot::autonomy::SafetyState::kNominal;
+ step.diag.safety_reason = "nominal";
+ step.cmd.forward_mps = 0.25;
+ step.obs_accepted = true;
+ step.obs.sequence = 12;
+ step.obs.stamp_ns = 7'000'000'000;
     const std::vector<std::pair<double, double>> trail{{0.0, 0.0},
                                                        {0.5, 1.0}};
     sim::viewer::EditorSelection sel;
@@ -84,6 +101,22 @@ int main() {
     assert(f.body.half_length_m > 0.0 && f.body.half_width_m > 0.0);
     assert(f.body.estimate_valid);
     assert(std::abs(f.body.est_x_m - 1.1) < 1e-12);
+ assert(f.truth.kAuthority == sim::viewer::FrameAuthority::kPhysicsTruth);
+ assert(f.truth.valid && std::abs(f.truth.x_m - 1.0) < 1e-12);
+ assert(f.observation.kAuthority ==
+ sim::viewer::FrameAuthority::kRobotObservation);
+ assert(f.observation.accepted && f.observation.lidar_beams == 5);
+ assert(f.observation.lidar_returns == 5);
+ assert(f.estimate.kAuthority == sim::viewer::FrameAuthority::kRobotEstimate);
+ assert(f.estimate.valid && f.estimate.localized);
+ assert(std::abs(f.estimate.position_sigma_m - 0.12) < 1e-12);
+ assert(f.decision.kAuthority == sim::viewer::FrameAuthority::kRobotDecision);
+ assert(f.decision.valid && f.decision.action_code == "follow-route");
+ assert(f.decision.safety_state == "NOMINAL");
+ assert(std::abs(f.decision.command_forward_mps - 0.25) < 1e-12);
+ assert(f.evaluation.kAuthority ==
+ sim::viewer::FrameAuthority::kGameEvaluation);
+ assert(std::abs(f.evaluation.estimate_error_m - std::sqrt(0.02)) < 1e-12);
     assert(f.trail.size() == 2);
     assert(f.boxes.size() == 1);
     assert(f.boxes[0].selected && f.boxes[0].selected_corner == 2);

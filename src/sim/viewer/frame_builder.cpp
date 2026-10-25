@@ -7,6 +7,23 @@
 #include "sim/world/terrain.hpp"
 
 namespace lost_signal::sim::viewer {
+namespace {
+
+const char* safety_state_name(robot::autonomy::SafetyState state) {
+ switch (state) {
+ case robot::autonomy::SafetyState::kNominal: return "NOMINAL";
+ case robot::autonomy::SafetyState::kDegraded: return "DEGRADED";
+ case robot::autonomy::SafetyState::kStopped: return "STOPPED";
+ }
+ return "UNKNOWN";
+}
+
+double seconds(robot::core::MonotonicNs stamp_ns) {
+ return stamp_ns == robot::core::kInvalidTime
+ ? -1.0 : static_cast<double>(stamp_ns) * 1e-9;
+}
+
+} // namespace
 
 std::vector<std::pair<double, double>> lidar_endpoints(
     double body_x_m, double body_y_m, double body_yaw_rad,
@@ -49,6 +66,12 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.body.z_m = t.body_z_m;
   f.body.roll_rad = t.body_roll_rad;
   f.body.pitch_rad = t.body_pitch_rad;
+ f.truth.valid = true;
+ f.truth.x_m = t.body_x_m;
+ f.truth.y_m = t.body_y_m;
+ f.truth.yaw_rad = t.body_yaw_rad;
+ f.truth.forward_mps = t.forward_mps;
+ f.truth.yaw_rate_radps = t.yaw_rate_radps;
   // Wheels from the backend wheel table (layout + live joints + slip
   // flags — the same sources physics and the encoder provider read).
   // Layouts: (2,0)+scrub = skid-steer slabs, (2,0) diff, (2,2) ackermann
@@ -123,6 +146,7 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
         table[i].pose.qw, table[i].pose.qx, table[i].pose.qy,
         table[i].pose.qz};
       f.body.wheels.push_back(w);
+ if (w.contact_valid) ++f.truth.wheel_contacts;
     }
   }
  // Render the unpowered supports from the passive caster joints. The
@@ -206,6 +230,57 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     f.body.est_y_m = step.diag.estimate.y_m;
     f.body.est_yaw_rad = step.diag.estimate.yaw_rad;
   }
+ f.observation.accepted = step.obs_accepted;
+ f.observation.scan_valid = step.obs.scan_valid;
+ f.observation.odometry_valid = step.obs.odometry_valid ||
+ step.obs.has_joints();
+ f.observation.imu_valid = step.obs.imu_valid;
+ f.observation.sequence = step.obs.sequence;
+ f.observation.stamp_s = seconds(step.obs.stamp_ns);
+ f.observation.lidar_beams = step.obs.ranges_m.size();
+ f.observation.lidar_returns = static_cast<std::size_t>(std::count_if(
+ step.obs.ranges_m.begin(), step.obs.ranges_m.end(),
+ [](float range_m) { return std::isfinite(range_m) && range_m > 0.0f; }));
+ const auto scan_header = robot::iface::scan_measurement_header(step.obs);
+ f.observation.scan_source = scan_header.source;
+
+ f.estimate.valid = step.diag.estimate.valid;
+ f.estimate.localized = step.diag.localized;
+ f.estimate.stamp_s = seconds(step.diag.estimate.stamp_ns);
+ f.estimate.map_x_m = step.diag.estimate.x_m;
+ f.estimate.map_y_m = step.diag.estimate.y_m;
+ f.estimate.map_yaw_rad = step.diag.estimate.yaw_rad;
+ f.estimate.odom_x_m = step.diag.odometry_estimate.x_m;
+ f.estimate.odom_y_m = step.diag.odometry_estimate.y_m;
+ f.estimate.odom_yaw_rad = step.diag.odometry_estimate.yaw_rad;
+ f.estimate.position_sigma_m = step.diag.estimate.position_sigma_m;
+ f.estimate.heading_sigma_rad = step.diag.estimate.heading_sigma_rad;
+ f.estimate.localization_action = step.diag.localization_action;
+
+ const auto& evidence = step.diag.evidence;
+ f.decision.valid = evidence.sequence > 0;
+ f.decision.sequence = evidence.sequence;
+ f.decision.stamp_s = evidence.decision_time_s;
+ f.decision.action_code = evidence.action_code;
+ f.decision.reason_code = evidence.reason_code;
+ f.decision.constraint_code = evidence.constraint_code;
+ f.decision.safety_state = safety_state_name(step.diag.safety);
+ f.decision.safety_reason = step.diag.safety_reason;
+ f.decision.command_forward_mps = step.cmd.forward_mps;
+ f.decision.command_yaw_rate_radps = step.cmd.yaw_rate_radps;
+ f.decision.route_point_count = evidence.route_point_count;
+ f.decision.moving_candidate_count = evidence.moving_candidate_count;
+
+ f.evaluation.static_collision = step.judge.static_collision;
+ f.evaluation.dynamic_collision = step.judge.dynamic_collision;
+ f.evaluation.terrain_collision = step.judge.terrain_collision;
+ f.evaluation.static_clearance_m = step.judge.static_clearance_m;
+ f.evaluation.dynamic_clearance_m = step.judge.dynamic_clearance_m;
+ if (step.diag.estimate.valid) {
+ f.evaluation.estimate_error_m = std::hypot(
+ step.diag.estimate.x_m - t.body_x_m,
+ step.diag.estimate.y_m - t.body_y_m);
+ }
   f.trail = trail;
   const auto& boxes = world.static_boxes();
   f.boxes.reserve(boxes.size());

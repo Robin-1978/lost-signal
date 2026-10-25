@@ -957,6 +957,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  int selected_review_keyframe,
  bool objectives_done,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
+ const Frame* frame,
  const ExperimentUiState* experiment_ui) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
@@ -966,23 +967,66 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  constexpr Color kAmber{246, 169, 61, 255};
  constexpr Color kRed{236, 82, 72, 255};
  if (phase == ExperiencePhase::kRunning) {
- const float width = 335.0f;
+ const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
- DrawRectangleRounded({x, 58.0f, width, 184.0f}, 0.06f, 8, kPanelSoft);
- DrawText("ROBOT KNOWLEDGE / LIVE", static_cast<int>(x + 18), 74, 14,
+ DrawRectangleRounded({x, 58.0f, width, 318.0f}, 0.04f, 8, kPanelSoft);
+ DrawText("LIVE EVIDENCE / AUTHORITY", static_cast<int>(x + 18), 74, 14,
  kCyan);
- float y = draw_wrapped_text(experience.running_prompt, x + 18, 101,
- width - 36, 15, 4, kText);
- y += 5.0f;
- DrawText("ROBOT INPUT", static_cast<int>(x + 18), static_cast<int>(y),
- 13, kCyan);
- DrawText("LiDAR + IMU + wheel encoders", static_cast<int>(x + 126),
- static_cast<int>(y), 13, kText);
- y += 22.0f;
- DrawText("SIM ONLY", static_cast<int>(x + 18), static_cast<int>(y),
- 13, kAmber);
- DrawText("truth + contacts + score", static_cast<int>(x + 102),
- static_cast<int>(y), 13, kText);
+ float y = 101.0f;
+ if (frame != nullptr) {
+ char line[320];
+ const auto& observation = frame->observation;
+ DrawText("ROBOT / OBSERVATION", static_cast<int>(x + 18),
+ static_cast<int>(y), 13, kCyan);
+ std::snprintf(line, sizeof(line),
+ "scan %s  beams %zu/%zu  odom %s  IMU %s",
+ observation.accepted && observation.scan_valid ? "ACCEPTED" : "WAIT",
+ observation.lidar_returns, observation.lidar_beams,
+ observation.odometry_valid ? "OK" : "--",
+ observation.imu_valid ? "OK" : "--");
+ DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ kText);
+ y += 47.0f;
+
+ const auto& estimate = frame->estimate;
+ DrawText("ROBOT / ESTIMATE", static_cast<int>(x + 18),
+ static_cast<int>(y), 13, kCyan);
+ if (estimate.valid) {
+ std::snprintf(line, sizeof(line),
+ "map (%.2f, %.2f)  sigma %.2f m  %s",
+ estimate.map_x_m, estimate.map_y_m, estimate.position_sigma_m,
+ estimate.localized ? "LOCALIZED" : "TRACKING");
+ } else {
+ std::snprintf(line, sizeof(line), "waiting for a valid state estimate");
+ }
+ DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ kText);
+ y += 47.0f;
+
+ const auto& decision = frame->decision;
+ DrawText("ROBOT / DECISION", static_cast<int>(x + 18),
+ static_cast<int>(y), 13, Color{180, 132, 255, 255});
+ std::snprintf(line, sizeof(line), "%s / %s",
+ decision.action_code.empty() ? "idle" : decision.action_code.c_str(),
+ decision.safety_state.empty() ? "UNKNOWN" : decision.safety_state.c_str());
+ DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ kText);
+ std::snprintf(line, sizeof(line), "cmd %.2f m/s  %.2f rad/s  candidates %zu",
+ decision.command_forward_mps, decision.command_yaw_rate_radps,
+ decision.moving_candidate_count);
+ DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 13,
+ kMuted);
+ y += 66.0f;
+ }
+ DrawText("SIM / PHYSICS TRUTH", static_cast<int>(x + 18),
+ static_cast<int>(y), 13, kAmber);
+ DrawText("HIDDEN DURING RUN / REVEALED IN DEBRIEF",
+ static_cast<int>(x + 18), static_cast<int>(y + 19), 13, kMuted);
+ y += 47.0f;
+ DrawText("GAME / OFFLINE EVAL", static_cast<int>(x + 18),
+ static_cast<int>(y), 13, kAmber);
+ DrawText("does not publish evidence back to ROBOT",
+ static_cast<int>(x + 18), static_cast<int>(y + 19), 13, kMuted);
  return;
  }
 
@@ -2962,7 +3006,7 @@ int main(int argc, char** argv) {
  }
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, walkaround_stop, review_keyframes,
- selected_review_keyframe, false, false, {}, &experiment_ui);
+ selected_review_keyframe, false, false, {}, &preview, &experiment_ui);
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
  TakeScreenshot(shot_path.c_str());
@@ -3089,7 +3133,7 @@ int main(int argc, char** argv) {
  draw_experience_overlay(experience, experience_phase,
  selected_experience_choice, walkaround_stop, review_keyframes,
  selected_review_keyframe, session->objectives_done(),
- session->objectives_passed(), session->score(), &experiment_ui);
+ session->objectives_passed(), session->score(), &frame, &experiment_ui);
  }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {
