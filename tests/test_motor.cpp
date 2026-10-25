@@ -218,7 +218,7 @@ int main() {
       std::ofstream out(path, std::ios::binary | std::ios::trunc);
       out << "{\"kind\":\"differential\",\"stall_force_N\":108.0,"
              "\"chassis\":{\"drive_axle_x_m\":0.05,"
-             "\"supports\":[{\"kind\":\"ball\",\"x_m\":-0.2}]}}";
+      "\"supports\":[{\"kind\":\"caster\",\"x_m\":-0.2}]}}";
     }
     assert(eval::load_drive_profile(path, tuned, &err));
     assert(tuned.drive_axle_x_m == 0.05);

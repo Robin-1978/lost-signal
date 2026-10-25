@@ -265,6 +265,7 @@ class MujocoBackend {
  int support_shoulder_geom_[4][2] = {{-1, -1}, {-1, -1}, {-1, -1},
  {-1, -1}};
  double support_mu_base_[4] = {0.05, 0.05, 0.05, 0.05};
+  double support_rolling_base_m_[4] = {0.0005, 0.0005, 0.0005, 0.0005};
  int support_count_ = 0;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};

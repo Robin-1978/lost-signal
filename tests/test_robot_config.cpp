@@ -78,9 +78,14 @@ int main() {
     assert(diff.profile.payload_height_m == 0.0);
     assert(diff.profile.idler_trail_m == 0.02);
     assert(diff.profile.supports.size() == 2);
-    assert(diff.profile.supports[0].kind == "ball");
+  assert(diff.profile.supports[0].kind == "caster");
     assert(std::abs(diff.profile.supports[0].x_m - 0.252) < 1e-12);
     assert(std::abs(diff.profile.supports[1].x_m + 0.252) < 1e-12);
+  assert(diff.profile.supports[0].y_m == 0.0);
+  assert(diff.profile.supports[0].trail_m == 0.02);
+  assert(diff.profile.supports[0].swivel_damping_Nms == 0.005);
+  assert(diff.profile.supports[0].swivel_friction_Nm == 0.0);
+  assert(diff.profile.supports[0].rolling_friction_m == 0.0005);
     const auto md = sim::eval::motor_from_config(diff);
     assert(md.body_half_height_m == 0.05);
  assert(md.body_half_length_m == 0.28);
@@ -216,13 +221,13 @@ int main() {
               "chassis": {"supports": [{"kind": "nope", "x_m": 0.2}]}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential",
-              "chassis": {"supports": [{"kind": "ball", "radius_m": -1}]}})");
+    "chassis": {"supports": [{"kind": "caster", "radius_m": -1}]}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential",
               "chassis": {"body_half_height_m": 0.5}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential",
-              "chassis": {"supports": {"kind": "ball"}}})");
+    "chassis": {"supports": {"kind": "caster"}}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential", "chassis": "ball"})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
@@ -230,7 +235,10 @@ int main() {
               "chassis": {"wheel_mass_kg": -1}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
     write(R"({"kind": "differential",
-              "chassis": {"supports": [{"kind": "ball", "mass_kg": 0}]}})");
+    "chassis": {"supports": [{"kind": "caster", "mass_kg": 0}]}})");
+  assert(!robot::platform::load_robot_config(tmp, cfg, &err));
+  write(R"({"kind": "differential",
+    "chassis": {"supports": [{"kind": "caster", "trail_m": -0.1}]}})");
     assert(!robot::platform::load_robot_config(tmp, cfg, &err));
  // COM/payload/trail fail-closed: negative COM, laden
     // without placement defaults refused... (payload height 0 = chassis

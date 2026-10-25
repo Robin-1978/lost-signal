@@ -236,8 +236,10 @@ void MujocoBackend::sync(const MotorParams& motor,
   for (int i = 0; i < motor.support_count && i < MotorParams::kMaxSupports;
        ++i) {
     const auto& s = motor.supports[i];
-    sig << s.kind << "," << s.x_m << "," << s.radius_m << "," << s.mass_kg
-        << "," << s.friction_mu << "," << s.torsional << "," << s.rolling
+    sig << s.kind << "," << s.x_m << "," << s.y_m << "," << s.trail_m
+        << "," << s.radius_m << "," << s.mass_kg << "," << s.friction_mu
+        << "," << s.swivel_damping_Nms << "," << s.swivel_friction_Nm
+        << "," << s.rolling_friction_m
         << ";";
   }
   sig << "|" << drive_count << "|" << steer_count << "|" << boxes.size()
@@ -388,9 +390,8 @@ void MujocoBackend::sync(const MotorParams& motor,
  // Unpowered supports resolved up front (pure data, no model calls):
  // support_count == 0 = legacy fore/aft pair — the conversion fills it;
  // a negative count is an explicit no-support tracked chassis. The
- // authored kind remains "ball" for config compatibility, while the plant
- // uses a low-friction fork swivel + passive wheel roll so the visual caster
- // state is genuine engine state rather than a viewer animation.
+ // Every authored support is an explicit caster assembly. Its fork swivel,
+ // trail and wheel roll are engine state rather than viewer animation.
   MotorParams::SupportParams legs[MotorParams::kMaxSupports];
   int leg_count = 0;
   if (motor.support_count < 0) {
@@ -400,13 +401,15 @@ void MujocoBackend::sync(const MotorParams& motor,
  } else if (motor.support_count == 0) {
     const double dx = base_len / 2 * 0.9;
     for (int i = 0; i < 2; ++i) {
-      legs[leg_count].kind = "ball";
+      legs[leg_count].kind = "caster";
       legs[leg_count].x_m = (i == 0 ? dx : -dx);
       legs[leg_count].radius_m = 0.03;
       legs[leg_count].mass_kg = 0.1;
       legs[leg_count].friction_mu = 0.05;
-      legs[leg_count].torsional = 0.005;
-      legs[leg_count].rolling = 0.0005;
+      legs[leg_count].trail_m = 0.02;
+      legs[leg_count].swivel_damping_Nms = 0.005;
+      legs[leg_count].swivel_friction_Nm = 0.0;
+      legs[leg_count].rolling_friction_m = 0.0005;
       ++leg_count;
     }
   } else {
@@ -494,7 +497,7 @@ void MujocoBackend::sync(const MotorParams& motor,
  h = std::max(h, sample_terrain(patches, slabs, wx, wy).height_m);
  };
  for (const auto& mod : modules) sample_at(mod.x, mod.y);
- for (int i = 0; i < leg_count; ++i) sample_at(legs[i].x_m, 0.0);
+    for (int i = 0; i < leg_count; ++i) sample_at(legs[i].x_m, legs[i].y_m);
  return h;
  };
  // Drive joint i follows module i for the first drive_count modules;
@@ -649,43 +652,44 @@ void MujocoBackend::sync(const MotorParams& motor,
  // engine joints. Their authored low friction carries normal load without
  // becoming a hidden drive channel.
   //
- // The authored kind remains "ball" for config compatibility; a
- // trailed wheel still uses the configured support friction and damping, so
- // the result remains a physical passive support rather than a kinematic
- // viewer animation.
+ // Each caster owns its trail, contact friction, rolling friction, swivel
+ // damping and swivel friction. These quantities have separate units and
+ // are never silently capped or reused for a different mechanism.
   // Build loop over the legs resolved up front (validation first — a bad
   // support refuses before any body exists).
   for (int i = 0; i < leg_count; ++i) {
     const auto& leg = legs[i];
-    if (leg.kind != "ball") {
-      refuse_chassis("support kind must be 'ball'");
+    if (leg.kind != "caster") {
+      refuse_chassis("support kind must be 'caster'");
       mj_deleteSpec(spec);
       return;
     }
     if (!(leg.radius_m > 0.0) || !(leg.radius_m <= r) ||
         !(leg.mass_kg > 0.0) || !(leg.friction_mu >= 0.0) ||
-        !(leg.torsional >= 0.0) || !(leg.rolling >= 0.0)) {
+        !(leg.trail_m >= 0.0) || !(leg.swivel_damping_Nms >= 0.0) ||
+        !(leg.swivel_friction_Nm >= 0.0) || !(leg.rolling_friction_m >= 0.0)) {
       refuse_chassis("support needs radius in (0, r], mass > 0");
       mj_deleteSpec(spec);
       return;
     }
     const double cz = -(r - leg.radius_m);  // feet level with tire feet
- const double trail = std::max(0.0, motor.idler_trail_m);
+    const double trail = leg.trail_m;
  support_anchor_x_[i] = leg.x_m;
- support_anchor_y_[i] = 0.0;
+    support_anchor_y_[i] = leg.y_m;
  support_radius_[i] = leg.radius_m;
  support_trail_[i] = trail;
  // Passive casters should carry normal load without becoming a second
  // powered axle. Their lateral slip is deliberately low; the wheel-roll
  // hinge and trail provide the physical caster response while keeping the
  // legacy drive force budget independent of support tire authoring.
- support_mu_base_[i] = std::min(leg.friction_mu, 0.01);
+    support_mu_base_[i] = leg.friction_mu;
+    support_rolling_base_m_[i] = leg.rolling_friction_m;
  mjsBody* fork = add_body(base, "caster" + std::to_string(i), leg.x_m,
- 0.0, cz);
+        leg.y_m, cz);
  mjsJoint* swivel = add_hinge(fork, "casterswivel" + std::to_string(i),
  0.0, 0.0, 1.0);
- swivel->damping[0] = std::max(0.0, leg.torsional);
- swivel->frictionloss = std::max(0.0, leg.torsional);
+    swivel->damping[0] = leg.swivel_damping_Nms;
+    swivel->frictionloss = leg.swivel_friction_Nm;
  mjsGeom* bearing = add_geom(fork,
  "casterbearing" + std::to_string(i), mjGEOM_SPHERE,
  std::max(0.008, leg.radius_m * 0.35), 0.0, 0.0, 1);
@@ -723,12 +727,11 @@ void MujocoBackend::sync(const MotorParams& motor,
  // coefficient wins against the high-grip floor while still carrying the
  // normal load. Drive tires remain on the regular floor priority.
  geom->priority = 2;
- geom->friction[0] = std::min(leg.friction_mu, 0.01);
- // The roll hinge and the contact tangent resolve rolling. Explicit
- // torsional/rolling losses here would double-count resistance and make the
- // passive support steal drive force from the powered axle.
+      geom->friction[0] = leg.friction_mu;
+      // Swivel bearing losses live on the swivel joint. Contact rolling loss
+      // uses its separately authored MuJoCo length; torsional contact stays zero.
  geom->friction[1] = 0.0;
- geom->friction[2] = 0.0;
+      geom->friction[2] = leg.rolling_friction_m;
  };
  mjsGeom* tire = add_geom(wheel, "castertire" + std::to_string(i),
  mjGEOM_CYLINDER, leg.radius_m, crown_halfwidth, 0.0, 1);

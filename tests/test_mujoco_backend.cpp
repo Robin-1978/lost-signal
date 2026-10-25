@@ -362,18 +362,27 @@ int main() {
     sim::world::World t = make_mujoco_diff();
     sim::world::MotorParams mt;
     mt.support_count = 1;
-    mt.supports[0].kind = "ball";
+    mt.supports[0].kind = "caster";
     mt.supports[0].x_m = -0.2;
+    mt.supports[0].y_m = 0.04;
+    mt.supports[0].trail_m = 0.03;
     mt.supports[0].radius_m = 0.03;
     mt.supports[0].mass_kg = 0.1;
     mt.supports[0].friction_mu = 0.05;
-    mt.supports[0].torsional = 0.005;
-    mt.supports[0].rolling = 0.0005;
+    mt.supports[0].swivel_damping_Nms = 0.005;
+    mt.supports[0].swivel_friction_Nm = 0.001;
+    mt.supports[0].rolling_friction_m = 0.0005;
     t.set_motor_params(mt);
     set_diff_duty(t, 0.6);
     for (int i = 0; i < 50; ++i) t.step(0.02);
     assert(t.truth().body_z_m > 0.05);  // stands, never tips through
     assert(std::abs(t.truth().body_pitch_rad) < 0.1);
+    sim::world::CasterViz configured_caster[1];
+    assert(t.casters(configured_caster, 1) == 1);
+    assert(std::abs(configured_caster[0].pivot_y_m - 0.04) < 1e-12);
+    assert(std::abs(std::hypot(
+      configured_caster[0].pivot_x_m - configured_caster[0].x_m,
+      configured_caster[0].pivot_y_m - configured_caster[0].y_m) - 0.03) < 1e-9);
     assert(t.truth().body_x_m > 0.1);  // drives, not beached
     // Bad deck (belly at/below the floor): refused, truth frozen.
     sim::world::World bad = make_mujoco_diff();

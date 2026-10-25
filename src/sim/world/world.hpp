@@ -205,16 +205,19 @@ struct MotorParams {
   double payload_height_m = 0.0;  // 0 = chassis COM (pure ballast)
   // Ackermann idler trail (wheel center behind the kingpin).
   double idler_trail_m = 0.02;
-  // Unpowered supports (base frame, explicit). Empty = legacy fore/aft
-  // ball pair, resolved at conversion from wheel_base_m.
+  // Unpowered casters (base frame, explicit). Empty profiles are resolved
+  // to a fore/aft caster pair at conversion from wheel_base_m.
   struct SupportParams {
-    std::string kind = "ball";
+    std::string kind = "caster";
     double x_m = 0.0;
+    double y_m = 0.0;
+    double trail_m = 0.02;
     double radius_m = 0.03;
     double mass_kg = 0.1;
     double friction_mu = 0.05;
-    double torsional = 0.005;
-    double rolling = 0.0005;
+    double swivel_damping_Nms = 0.005;
+    double swivel_friction_Nm = 0.0;
+    double rolling_friction_m = 0.0005; // MuJoCo rolling-friction length
   };
   static constexpr int kMaxSupports = 4;
   SupportParams supports[kMaxSupports];

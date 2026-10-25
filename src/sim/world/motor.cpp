@@ -43,8 +43,7 @@ MotorParams motor_params_from_profile(
   out.yaw_scrub_coulomb_Nm = profile.yaw_scrub_coulomb_Nm;
   out.yaw_scrub_viscous_Nm_per_radps = profile.yaw_scrub_viscous_Nm_per_radps;
   // Chassis hard geometry: verbatim copy, plus the legacy support default
-  // (empty profile list = fore/aft ball pair at +-0.9*wheel_base/2 — the
-  // real differential base doctrine, previously hardcoded in the build).
+  // (empty profile list = fore/aft caster pair at +-0.9*wheel_base/2).
   out.body_half_height_m = profile.body_half_height_m;
   out.body_half_length_m = profile.body_half_length_m;
   out.body_half_width_m = profile.body_half_width_m;
@@ -66,12 +65,14 @@ MotorParams motor_params_from_profile(
  } else if (profile.supports.empty()) {
     const double sx = 0.9 * profile.wheel_base_m / 2;
     MotorParams::SupportParams b;
-    b.kind = "ball";
+    b.kind = "caster";
     b.mass_kg = 0.1;
     b.radius_m = 0.03;
     b.friction_mu = 0.05;
-    b.torsional = 0.005;
-    b.rolling = 0.0005;
+    b.trail_m = 0.02;
+    b.swivel_damping_Nms = 0.005;
+    b.swivel_friction_Nm = 0.0;
+    b.rolling_friction_m = 0.0005;
     b.x_m = sx;
     out.supports[out.support_count++] = b;
     b.x_m = -sx;
@@ -82,11 +83,14 @@ MotorParams motor_params_from_profile(
       MotorParams::SupportParams b;
       b.kind = s.kind;
       b.x_m = s.x_m;
+      b.y_m = s.y_m;
+      b.trail_m = s.trail_m;
       b.radius_m = s.radius_m;
       b.mass_kg = s.mass_kg;
       b.friction_mu = s.friction_mu;
-      b.torsional = s.torsional;
-      b.rolling = s.rolling;
+      b.swivel_damping_Nms = s.swivel_damping_Nms;
+      b.swivel_friction_Nm = s.swivel_friction_Nm;
+      b.rolling_friction_m = s.rolling_friction_m;
       out.supports[out.support_count++] = b;
     }
   }

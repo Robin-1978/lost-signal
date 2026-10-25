@@ -215,7 +215,7 @@ bool merge_chassis_keys(const Json& obj, DriveProfile& merged,
   // tire width positive. Axle offset is bounded at build against base_len.
   if (!validate_chassis_geometry(merged, err)) return false;
   const Json* sup = obj.find("supports");
-  if (sup == nullptr) return true;  // absent = legacy ball pair at convert
+  if (sup == nullptr) return true;  // absent = default caster pair at convert
   if (!sup->is_array()) {
     err = "'chassis.supports' must be an array";
     return false;
@@ -231,16 +231,18 @@ bool merge_chassis_keys(const Json& obj, DriveProfile& merged,
     bool has_kind = false;
     if (!take_str(e, "kind", kind, has_kind, err)) return false;
     if (has_kind) s.kind = kind;
-    if (s.kind != "ball") {
+    if (s.kind != "caster") {
       err = std::string("support kind '") + s.kind +
-            "' unsupported (only 'ball')";
+ "' unsupported (only 'caster')";
       return false;
     }
-    const char* skeys[] = {"x_m", "radius_m", "mass_kg", "friction_mu",
-                           "torsional", "rolling"};
-    double* sslots[] = {&s.x_m, &s.radius_m, &s.mass_kg, &s.friction_mu,
-                        &s.torsional, &s.rolling};
-    for (int i = 0; i < 6; ++i) {
+    const char* skeys[] = {"x_m", "y_m", "trail_m", "radius_m", "mass_kg",
+ "friction_mu", "swivel_damping_Nms", "swivel_friction_Nm",
+      "rolling_friction_m"};
+    double* sslots[] = {&s.x_m, &s.y_m, &s.trail_m, &s.radius_m, &s.mass_kg,
+ &s.friction_mu, &s.swivel_damping_Nms, &s.swivel_friction_Nm,
+      &s.rolling_friction_m};
+    for (int i = 0; i < 9; ++i) {
       if (!take_num(e, skeys[i], v, present, err)) return false;
       if (present) {
         if (!std::isfinite(v)) {
@@ -250,9 +252,10 @@ bool merge_chassis_keys(const Json& obj, DriveProfile& merged,
         *sslots[i] = v;
       }
     }
-    if (!(s.radius_m > 0.0) || !(s.mass_kg > 0.0) || !(s.friction_mu >= 0.0) ||
-        !(s.torsional >= 0.0) || !(s.rolling >= 0.0)) {
-      err = "support needs radius_m/mass_kg > 0, frictions >= 0";
+    if (!(s.trail_m >= 0.0) || !(s.radius_m > 0.0) || !(s.mass_kg > 0.0) ||
+        !(s.friction_mu >= 0.0) || !(s.swivel_damping_Nms >= 0.0) ||
+        !(s.swivel_friction_Nm >= 0.0) || !(s.rolling_friction_m >= 0.0)) {
+      err = "caster needs trail/frictions >= 0 and radius_m/mass_kg > 0";
       return false;
     }
     parsed.push_back(s);

@@ -138,6 +138,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  caster.x_m = table[i].x_m;
  caster.y_m = table[i].y_m;
  caster.radius_m = table[i].radius_m;
+      caster.trail_m = std::hypot(
+        table[i].pivot_x_m - table[i].x_m,
+        table[i].pivot_y_m - table[i].y_m);
  caster.yaw_rad = table[i].swivel_rad;
  caster.spin_rad = table[i].roll_rad;
  caster.fork_pose = {table[i].fork_pose.valid,
@@ -154,13 +157,16 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  caster.pivot_x_m = world.motor_params().support_count > 0
  ? support.x_m : (i == 0 ? 0.9 * world.motor_params().wheel_base_m * 0.5
  : -0.9 * world.motor_params().wheel_base_m * 0.5);
- caster.pivot_y_m = 0.0;
- caster.x_m = caster.pivot_x_m;
- caster.y_m = caster.pivot_y_m;
+      caster.pivot_y_m = world.motor_params().support_count > 0
+        ? support.y_m : 0.0;
+      caster.trail_m = world.motor_params().support_count > 0
+        ? support.trail_m : 0.02;
  caster.radius_m = world.motor_params().support_count > 0
  ? support.radius_m : 0.03;
  caster.yaw_rad = speed > 1e-6
  ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
+      caster.x_m = caster.pivot_x_m - caster.trail_m * std::cos(caster.yaw_rad);
+      caster.y_m = caster.pivot_y_m - caster.trail_m * std::sin(caster.yaw_rad);
  caster.spin_rad = speed * world.sim_time_s() /
  std::max(1e-3, caster.radius_m);
  }

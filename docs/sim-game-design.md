@@ -326,6 +326,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 已移除 Viewer 中叉车、行人、驱动轮和 caster 的匿名参考半径，统一读取 manifest；所有轮模型通过同一个资产边界映射到 `X 前/Y 左/Z 上` link frame，再叠加 MuJoCo link pose。
 - 已统一 robot JSON、MuJoCo collision shell、Viewer 车体和规划 footprint 的长宽高语义；轮、转向节、support、payload 和内部 ballast 严格守恒声明质量，并从编译后的 MuJoCo 模型反查整车质量和质心。质心调整只移动无接触 ballast，不再移动腹底和碰撞壳。
 - 已移除轮胎 density 与轮质量双重定义，并从等效轮惯量中扣除实体轮自身转动惯量。Ackermann 使用与 0.2 kg 真实轮质量匹配的转向电机扭矩；编码器、IMU 和关节姿态的闭环任务门禁会捕获限位摆振。
+- 已将被动支撑改为明确的 caster 配置：每个 caster 独立声明 pivot、trail、半径、质量、接触摩擦、滚动摩擦长度、swivel damping 和 swivel friction。MuJoCo 直接输出 fork swivel 与 wheel roll；Ackermann idler trail 不再被复用于 caster，也不再静默把 caster 摩擦截断到 0.01。
 - 后续建立 legacy 批量规范化导出器，所有新模型使用 glTF 右手系 `+Y up/+Z front`，由 manifest 明确变换到机器人 link frame。
 - 重做机器人家族、叉车、worker 和第一套环境 kit。
 - 增加 joint axis、collision、COM、contact overlay 与 grounding 测试。

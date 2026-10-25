@@ -33,22 +33,28 @@
     "idler_trail_m": 0.02,
     "supports": [
       {
-        "kind": "ball",
+        "kind": "caster",
         "x_m": 0.252,
+        "y_m": 0.0,
+        "trail_m": 0.02,
         "radius_m": 0.03,
         "mass_kg": 0.1,
         "friction_mu": 0.05,
-        "torsional": 0.005,
-        "rolling": 0.0005
+        "swivel_damping_Nms": 0.005,
+        "swivel_friction_Nm": 0.0,
+        "rolling_friction_m": 0.0005
       },
       {
-        "kind": "ball",
+        "kind": "caster",
         "x_m": -0.252,
+        "y_m": 0.0,
+        "trail_m": 0.02,
         "radius_m": 0.03,
         "mass_kg": 0.1,
         "friction_mu": 0.05,
-        "torsional": 0.005,
-        "rolling": 0.0005
+        "swivel_damping_Nms": 0.005,
+        "swivel_friction_Nm": 0.0,
+        "rolling_friction_m": 0.0005
       }
     ]
   },

@@ -24,7 +24,7 @@ namespace lost_signal::robot::platform {
 // and the fail-closed guards (a bad machine file refuses with frozen
 // truth instead of building a different plant). Rules of thumb:
 //  - omit a chassis block (or any key) = documented default, never zero;
-//  - "supports": [...] fully explicit wins; omitted = legacy ball pair;
+//  - "supports": [...] fully explicit wins; omitted = default caster pair;
 //  - com_height_m/payload_height_m 0 = follow-axle / chassis-COM;
 //  - belly line = com - half_h must stay > 0 (loader AND build enforce);
 //  - deck conserves the vehicle total: deck = vehicle - wheels - supports.
@@ -59,7 +59,7 @@ struct DriveProfile {
   // Chassis hard geometry (SIM plant assembly reads every field; nothing
   // is hardcoded per layout anymore). Defaults reproduce the legacy plant
   // with a 0.05 m shell half-height, centered axle and 0.04 m tire half-width,
-  // fore/aft ball pair resolved at conversion time from wheel_base_m).
+  // fore/aft caster pair resolved at conversion time from wheel_base_m).
   double body_half_height_m = 0.05;  // collision shell, centered at axle
   double body_half_length_m = 0.28;  // collision/visual shell, X forward
   double body_half_width_m = 0.25;   // collision/visual shell, Y left
@@ -91,16 +91,19 @@ struct DriveProfile {
   // mass of every drive or idler wheel, never a separate density estimate.
   double wheel_mass_kg = 0.2;
   double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
-  // Unpowered supports, base frame, explicit (empty = legacy fore/aft ball
-  // pair at +-0.9*wheel_base/2 — the real differential base doctrine).
+  // Unpowered casters, base frame, explicit (empty = default fore/aft pair
+  // at +-0.9*wheel_base/2).
   struct SupportSpec {
-    std::string kind = "ball";  // only "ball" (fail closed otherwise)
+    std::string kind = "caster";  // only physical caster assemblies
     double x_m = 0.0;
+    double y_m = 0.0;
+    double trail_m = 0.02;
     double radius_m = 0.03;
     double mass_kg = 0.1;
-    double friction_mu = 0.05;  // near-zero tangential by authoring: normal
-    double torsional = 0.005;   // load only, deliberately ungripped
-    double rolling = 0.0005;
+    double friction_mu = 0.05;
+    double swivel_damping_Nms = 0.005;
+    double swivel_friction_Nm = 0.0;
+    double rolling_friction_m = 0.0005; // MuJoCo rolling-friction length
   };
   std::vector<SupportSpec> supports;
 

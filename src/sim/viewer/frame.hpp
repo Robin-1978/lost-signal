@@ -49,6 +49,7 @@ struct FrameCaster {
  double pivot_x_m = 0.0, pivot_y_m = 0.0;
  double x_m = 0.0, y_m = 0.0;
  double radius_m = 0.03;
+  double trail_m = 0.02;
  double yaw_rad = 0.0; // MuJoCo swivel joint angle
  double spin_rad = 0.0; // MuJoCo passive wheel roll angle
  FrameLinkPose fork_pose;

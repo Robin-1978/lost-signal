@@ -115,6 +115,11 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
   footprint does not enclose the shell or the declared vehicle mass cannot
   cover its wheels, knuckles, and supports. Tests read back total compiled
   mass and whole-system COM from MuJoCo.
+- Passive supports are explicit `caster` assemblies with their own base-frame
+ pivot, trail, radius, mass, contact friction, rolling-friction length,
+ swivel damping, and swivel friction. MuJoCo owns fork swivel and wheel roll;
+ the Viewer reads those joint poses. Ackermann idler trail is a separate
+ parameter and can no longer alter caster geometry.
 - Scoring is offline only and includes displacement, path length, stops,
  dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
 time, planar obstacle clearance, separate terrain/belly clearance, objective

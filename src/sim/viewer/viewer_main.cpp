@@ -1340,7 +1340,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  }
  if (assets != nullptr && model_ready(assets->caster_wheel)) {
  rlPushMatrix();
- rlTranslatef(static_cast<float>(-world.motor_params().idler_trail_m),
+      rlTranslatef(static_cast<float>(-caster.trail_m),
  0.0f, 0.0f);
  rlRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
  rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
@@ -1350,7 +1350,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  {caster_scale, caster_scale, caster_scale}, WHITE);
  rlPopMatrix();
  } else {
- rlTranslatef(static_cast<float>(-world.motor_params().idler_trail_m),
+      rlTranslatef(static_cast<float>(-caster.trail_m),
  0.0f, 0.0f);
  rlRotatef(static_cast<float>(caster.spin_rad * RAD2DEG), 0.0f, 0.0f,
  1.0f);

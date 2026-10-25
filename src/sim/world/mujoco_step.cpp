@@ -133,7 +133,7 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  const double wx = body_x_ + bx * cy - by * sy;
  const double wy = body_y_ + bx * sy + by * cy;
  const auto contact = resolve_wheel_contact(
- support_mu_base_[i], 0.0, zones, materials, environment,
+    support_mu_base_[i], support_rolling_base_m_[i], zones, materials, environment,
  sim_time_s, wx, wy);
  apply_contact_material(support_geom_[i], contact);
  for (int shoulder = 0; shoulder < 2; ++shoulder) {
