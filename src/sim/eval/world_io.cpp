@@ -70,11 +70,14 @@ bool rect_fields(const Json& j, double& x0, double& y0, double& x1,
 }
 
 Json box_to_json(const world::StaticBox& b) {
-  return Json::Obj({{"x0", Json::Num(b.x0)},
-                    {"y0", Json::Num(b.y0)},
-                    {"x1", Json::Num(b.x1)},
-                    {"y1", Json::Num(b.y1)},
-                    {"height_m", Json::Num(b.height_m)}});
+ Json::Object object;
+ if (!b.box_id.empty()) object.emplace_back("box_id", Json::Str(b.box_id));
+ object.emplace_back("x0", Json::Num(b.x0));
+ object.emplace_back("y0", Json::Num(b.y0));
+ object.emplace_back("x1", Json::Num(b.x1));
+ object.emplace_back("y1", Json::Num(b.y1));
+ object.emplace_back("height_m", Json::Num(b.height_m));
+ return Json::Obj(std::move(object));
 }
 
 bool box_from_json(const Json& j, world::StaticBox& b, std::string& err) {
@@ -82,6 +85,14 @@ bool box_from_json(const Json& j, world::StaticBox& b, std::string& err) {
     err = "box not an object";
     return false;
   }
+ const Json* id = j.find("box_id");
+ if (id != nullptr) {
+ if (!id->is_str() || id->as_str().empty()) {
+ err = "box_id must be a non-empty string";
+ return false;
+ }
+ b.box_id = id->as_str();
+ }
   return num_field(j, "x0", b.x0, err) && num_field(j, "y0", b.y0, err) &&
          num_field(j, "x1", b.x1, err) && num_field(j, "y1", b.y1, err) &&
          num_field(j, "height_m", b.height_m, err);
@@ -362,6 +373,14 @@ bool load_world_file(const std::string& path, WorldFileContent& content,
   for (const auto& e : bj->as_array()) {
     world::StaticBox b;
     if (!box_from_json(e, b, err)) return false;
+ if (!b.box_id.empty()) {
+ for (const auto& previous : out.boxes) {
+ if (previous.box_id == b.box_id) {
+ err = "duplicate box_id '" + b.box_id + "'";
+ return false;
+ }
+ }
+ }
     out.boxes.push_back(b);
   }
   for (const auto& e : pj->as_array()) {

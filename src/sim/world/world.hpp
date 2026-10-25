@@ -60,7 +60,11 @@ struct StaticBox {
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
   double height_m = 0.0;  // prism top above ground; <= 0 = flat paint
                           // (floor marking, no volume: no contact, no ray
-                          // hit, no map occupancy, no judge collision).
+ // hit, no map occupancy, no judge collision).
+ // Stable SIM authoring identity. Presentation sidecars may bind a visual
+ // mesh to this collision proxy without depending on array order. ROBOT map
+ // and sensor messages contain only the resulting geometry/ranges.
+ std::string box_id;
 };
 
 struct Actor {

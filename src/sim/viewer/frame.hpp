@@ -88,6 +88,7 @@ struct FrameBody {
 };
 
 struct FrameBox {
+ std::string box_id;
   double x0_m = 0.0, y0_m = 0.0, x1_m = 0.0, y1_m = 0.0;
   double height_m = 0.0;
   bool selected = false;

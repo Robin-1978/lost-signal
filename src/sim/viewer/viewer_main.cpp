@@ -33,6 +33,7 @@
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/playback_controller.hpp"
+#include "sim/viewer/scene_manifest.hpp"
 #include "sim/viewer/view_transform.hpp"
 #include "sim/world/actor_behavior.hpp"
 #include "sim/world/terrain.hpp"
@@ -44,11 +45,18 @@ using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::SceneInstance;
+using lost_signal::sim::viewer::SceneManifest;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
 
 struct VisualAssets {
+ struct EnvironmentModel {
+ std::string asset_id;
+ Model model{};
+ const AssetDefinition* definition = nullptr;
+ };
  Texture2D dust{};
  Shader lighting{};
  AssetManifest manifest;
@@ -68,6 +76,7 @@ struct VisualAssets {
  const AssetDefinition* forklift_definition = nullptr;
  Model worker{};
  const AssetDefinition* worker_definition = nullptr;
+ std::vector<EnvironmentModel> environment;
  bool loaded = false;
 };
 
@@ -167,6 +176,14 @@ Model load_manifest_model(const std::filesystem::path& models_root,
  return model;
 }
 
+const VisualAssets::EnvironmentModel* find_environment_model(
+ const VisualAssets& assets, const std::string& asset_id) {
+ for (const auto& environment : assets.environment) {
+ if (environment.asset_id == asset_id) return &environment;
+ }
+ return nullptr;
+}
+
 void load_visual_assets(VisualAssets& assets, const std::string& root,
  const std::string& robot_id) {
  if (root.empty()) return;
@@ -219,6 +236,16 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  "actors.forklift", assets.forklift_definition);
  assets.worker = load_manifest_model(models_root, assets.manifest,
  "actors.worker", assets.worker_definition);
+ for (const auto& definition : assets.manifest.assets()) {
+ if (definition.kind != "environment") continue;
+ const AssetDefinition* loaded_definition = nullptr;
+ Model model = load_manifest_model(models_root, assets.manifest,
+ definition.asset_id, loaded_definition);
+ if (model_ready(model) && loaded_definition != nullptr) {
+ assets.environment.push_back(
+ {definition.asset_id, model, loaded_definition});
+ }
+ }
  const auto texture_dir = base / "textures" / "environment";
  if (std::filesystem::is_regular_file(texture_dir / "dust_puff.png")) {
  assets.dust = LoadTexture((texture_dir / "dust_puff.png").string().c_str());
@@ -298,12 +325,15 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  bind_lighting(assets.track, assets.lighting);
  bind_lighting(assets.forklift, assets.lighting);
  bind_lighting(assets.worker, assets.lighting);
+ for (auto& environment : assets.environment) {
+ bind_lighting(environment.model, assets.lighting);
+ }
  }
  assets.loaded = model_ready(assets.chassis) || model_ready(assets.wheel) ||
  model_ready(assets.lidar) || model_ready(assets.caster_fork) ||
  model_ready(assets.caster_wheel) ||
  model_ready(assets.track) || model_ready(assets.forklift) ||
- model_ready(assets.worker);
+ model_ready(assets.worker) || !assets.environment.empty();
 }
 
 void unload_visual_assets(VisualAssets& assets) {
@@ -316,6 +346,9 @@ void unload_visual_assets(VisualAssets& assets) {
  if (model_ready(assets.track)) UnloadModel(assets.track);
  if (model_ready(assets.forklift)) UnloadModel(assets.forklift);
  if (model_ready(assets.worker)) UnloadModel(assets.worker);
+ for (auto& environment : assets.environment) {
+ if (model_ready(environment.model)) UnloadModel(environment.model);
+ }
  if (IsShaderValid(assets.lighting)) UnloadShader(assets.lighting);
  assets = {};
 }
@@ -367,6 +400,26 @@ void draw_actor_model_grounded(const Model& model, double x_m, double y_m,
  DrawModelEx(model, position, {0.0f, 1.0f, 0.0f},
  static_cast<float>(-heading_rad * RAD2DEG),
  {scale, scale, scale}, WHITE);
+}
+
+void draw_scene_instance(const SceneInstance& instance,
+ const VisualAssets& assets, double ground_z_m) {
+ const auto* loaded = find_environment_model(assets, instance.asset_id);
+ if (loaded == nullptr || !model_ready(loaded->model)) return;
+ // Scene scale is authored in canonical X-forward/Y-left/Z-up. Convert it
+ // once at the asset boundary to raylib X-forward/Y-up/Z-right.
+ const Vector3 scale{
+ static_cast<float>(instance.scale[0]),
+ static_cast<float>(instance.scale[2]),
+ static_cast<float>(instance.scale[1])};
+ const BoundingBox bounds = raylib_asset_bounds(loaded->model, true);
+ const Vector3 position{
+ static_cast<float>(instance.position_m[0]),
+ static_cast<float>(ground_z_m + instance.position_m[2] -
+ bounds.min.y * scale.y),
+ static_cast<float>(-instance.position_m[1])};
+ DrawModelEx(loaded->model, position, {0.0f, 1.0f, 0.0f},
+ static_cast<float>(-instance.yaw_deg), scale, WHITE);
 }
 
 // Ground-material paint (master's drive_effect colors, SIM-side display
@@ -920,6 +973,7 @@ void draw_frame_3d(const Frame& f,
  const Camera3D& camera, bool show_lidar, bool show_estimate,
  bool show_actor_routes,
  const VisualAssets* assets = nullptr,
+ const SceneManifest* scene = nullptr,
  const lost_signal::sim::viewer::LidarMount* lidar_mount = nullptr) {
   namespace world_ns = lost_signal::sim::world;
   // Ground base sized to the authored map (concrete apron under everything).
@@ -928,10 +982,32 @@ void draw_frame_3d(const Frame& f,
   {
     const float w = static_cast<float>(gx1 - gx0 + 8.0);
     const float h = static_cast<float>(gy1 - gy0 + 8.0);
+ const auto& rgba = scene != nullptr ? scene->floor.base_rgba
+ : std::array<int, 4>{198, 203, 196, 255};
  DrawPlane(to_raylib((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5, -0.001),
-              {w, h}, {198, 203, 196, 255});
+ {w, h}, {static_cast<unsigned char>(rgba[0]),
+ static_cast<unsigned char>(rgba[1]), static_cast<unsigned char>(rgba[2]),
+ static_cast<unsigned char>(rgba[3])});
   }
-  DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);
+ if (scene == nullptr) {
+ DrawGrid(static_cast<int>(std::max(gx1 - gx0, gy1 - gy0) + 8.0), 1.0f);
+ } else {
+ const auto& rgba = scene->floor.grid_rgba;
+ const Color grid{static_cast<unsigned char>(rgba[0]),
+ static_cast<unsigned char>(rgba[1]), static_cast<unsigned char>(rgba[2]),
+ static_cast<unsigned char>(rgba[3])};
+ const double spacing = scene->floor.grid_spacing_m;
+ const double first_x = std::floor((gx0 - 4.0) / spacing) * spacing;
+ const double first_y = std::floor((gy0 - 4.0) / spacing) * spacing;
+ for (double x = first_x; x <= gx1 + 4.0; x += spacing) {
+ DrawLine3D(to_raylib(x, gy0 - 4.0, 0.002),
+ to_raylib(x, gy1 + 4.0, 0.002), grid);
+ }
+ for (double y = first_y; y <= gy1 + 4.0; y += spacing) {
+ DrawLine3D(to_raylib(gx0 - 4.0, y, 0.002),
+ to_raylib(gx1 + 4.0, y, 0.002), grid);
+ }
+ }
   // Material zones as translucent paint quads (slick water reads blue,
   // sand/gravel warm — same table as the 2D overlay).
   for (const auto& z : f.zones) {
@@ -941,6 +1017,17 @@ void draw_frame_3d(const Frame& f,
                        static_cast<float>(std::abs(z.y1_m - z.y0_m))};
     DrawCubeV(center, size, material_color(z.material_id, 150));
   }
+ // Surface-only props are explicit paint/decal authority. Solid props are
+ // drawn in the collision-box pass below, replacing only their own proxy.
+ if (scene != nullptr && assets != nullptr) {
+ for (const auto& instance : scene->instances) {
+ if (!instance.surface_only) continue;
+ const double ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), instance.position_m[0],
+ instance.position_m[1]).height_m;
+ draw_scene_instance(instance, *assets, ground_z);
+ }
+ }
   // Terrain patches as a height-tinted mesh sampling the SAME canonical
   // function the engine builds and the survey rasterizes — the slope you
   // see is the slope the robot climbs.
@@ -1008,6 +1095,18 @@ void draw_frame_3d(const Frame& f,
         b.selected ? YELLOW
                    : (f.static_collision ? RED
                                          : Color{110, 118, 128, 255});
+ const SceneInstance* scene_visual =
+ scene != nullptr
+ ? scene->visual_for_box(b.box_id)
+ : nullptr;
+ if (scene_visual != nullptr && assets != nullptr && !b.selected) {
+ const double ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(),
+ scene_visual->position_m[0], scene_visual->position_m[1]).height_m;
+ draw_scene_instance(*scene_visual, *assets, ground_z);
+ box_shadow_3d(b.x0_m, b.y0_m, b.x1_m, b.y1_m, ground_z);
+ continue;
+ }
     DrawCubeV(center, size, wall);
     DrawCubeWiresV(center, size, BLACK);
     // Sun-lit cap: thin slab on top, warm white.
@@ -1543,7 +1642,7 @@ int main(int argc, char** argv) {
  // numbers), --map <world file> replaces the demo geometry. `--assets`
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
- std::string robot_path, sim_path, map_path, assets_path;
+ std::string robot_path, sim_path, map_path, assets_path, scene_path;
  double initial_playback_rate = 1.0;
  bool initial_turbo = false;
   for (int i = 1; i < argc; ++i) {
@@ -1552,6 +1651,7 @@ int main(int argc, char** argv) {
     if (a == "--sim" && i + 1 < argc) sim_path = argv[++i];
     if (a == "--map" && i + 1 < argc) map_path = argv[++i];
  if (a == "--assets" && i + 1 < argc) assets_path = argv[++i];
+ if (a == "--scene" && i + 1 < argc) scene_path = argv[++i];
  if (a == "--turbo") initial_turbo = true;
  if (a == "--rate" && i + 1 < argc) {
  char* end = nullptr;
@@ -1639,6 +1739,29 @@ int main(int argc, char** argv) {
  VisualAssets visual_assets;
  load_visual_assets(visual_assets, assets_path,
  robot_config.has_value() ? robot_config->robot_id : "ro1");
+ SceneManifest visual_scene;
+ bool scene_loaded = false;
+ if (scene_path.empty() && !map_path.empty()) {
+ std::filesystem::path candidate(map_path);
+ candidate.replace_extension(".scene.json");
+ if (std::filesystem::is_regular_file(candidate)) {
+ scene_path = candidate.string();
+ }
+ }
+ if (!scene_path.empty()) {
+ std::string scene_error;
+ if (!lost_signal::sim::viewer::load_scene_manifest(
+ scene_path, visual_assets.manifest,
+ session->setup_world().static_boxes(), visual_scene, &scene_error)) {
+ std::fprintf(stderr, "bad scene file: %s\n", scene_error.c_str());
+ unload_visual_assets(visual_assets);
+ CloseWindow();
+ return 1;
+ }
+ scene_loaded = true;
+ std::fprintf(stderr, "scene: %s (%zu instances)\n", scene_path.c_str(),
+ visual_scene.instances.size());
+ }
   SetTargetFPS(60);
 
   sim::viewer::ViewTransform view(50.0f, 2.0, 1.0, kScreenW, kScreenH);
@@ -1717,6 +1840,12 @@ int main(int argc, char** argv) {
  cam_st.dist_m = 5.0f;
  cam_st.pitch_deg = 35.0f;
  cam_st.target_z = 0.20;
+ }
+ if (scene_loaded) {
+ cam_st.dist_m = static_cast<float>(visual_scene.camera.distance_m);
+ cam_st.yaw_deg = static_cast<float>(visual_scene.camera.yaw_deg);
+ cam_st.pitch_deg = static_cast<float>(visual_scene.camera.pitch_deg);
+ cam_st.target_z = visual_scene.camera.target_height_m;
  }
  if (camera_dist > 0.0f) cam_st.dist_m = camera_dist;
  if (camera_angle_set) {
@@ -1905,7 +2034,8 @@ int main(int argc, char** argv) {
       const Camera3D cam = camera_from_state(cam_st);
       BeginMode3D(cam);
  draw_frame_3d(frame, session->setup_world(), cam, show_lidar,
- show_estimate, show_actor_routes, &visual_assets, &session_lidar_mount);
+ show_estimate, show_actor_routes, &visual_assets,
+ scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
       EndMode3D();
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());

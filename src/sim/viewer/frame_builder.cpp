@@ -206,6 +206,7 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.boxes.reserve(boxes.size());
   for (std::size_t i = 0; i < boxes.size(); ++i) {
     FrameBox b;
+ b.box_id = boxes[i].box_id;
     b.x0_m = std::min(boxes[i].x0, boxes[i].x1);
     b.y0_m = std::min(boxes[i].y0, boxes[i].y1);
     b.x1_m = std::max(boxes[i].x0, boxes[i].x1);

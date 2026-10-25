@@ -298,6 +298,7 @@ add_library(lost_signal_sim_viewer STATIC
   src/sim/viewer/frame_builder.cpp
   src/sim/viewer/map_editor.cpp
  src/sim/viewer/playback_controller.cpp
+ src/sim/viewer/scene_manifest.cpp
 )
 target_include_directories(lost_signal_sim_viewer PUBLIC src)
 target_link_libraries(lost_signal_sim_viewer PUBLIC
@@ -627,6 +628,15 @@ target_compile_definitions(test_asset_manifest PRIVATE
 )
 target_link_libraries(test_asset_manifest PRIVATE lost_signal_sim_viewer)
 add_test(NAME asset_manifest COMMAND test_asset_manifest)
+
+add_executable(test_scene_manifest
+ tests/test_scene_manifest.cpp
+)
+target_compile_definitions(test_scene_manifest PRIVATE
+ TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_scene_manifest PRIVATE lost_signal_sim_viewer)
+add_test(NAME scene_manifest COMMAND test_scene_manifest)
 
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp

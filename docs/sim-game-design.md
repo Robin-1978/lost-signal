@@ -325,6 +325,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 ### G2：资产契约和物理可视化
 
 - 已建立版本化 manifest 和 Blender 全量导入门禁，覆盖当前 41 个 GLB/GLTF；Viewer 按资产 ID、单位、轴向、装配变换、参考尺寸和 bounds 加载，拒绝重复、缺失、越界或发生尺寸漂移的资产。
+- 已建立 SIM-only scene manifest；实体环境模型必须绑定 world 中稳定且唯一的 `box_id`，地表标线必须明确声明 `surface_only`。`research_base` 已接入墙板、瓦砾、植被、服务灯、控制台、线缆盘、维护箱和叉车通道标线，Viewer 自动用 GLB 替换对应碰撞 proxy 的方块表现；缺失碰撞体、中心不一致、重复绑定或非环境资产会拒绝加载。
 - 已移除 Viewer 中叉车、行人、驱动轮和 caster 的匿名参考半径，统一读取 manifest；所有轮模型通过同一个资产边界映射到 `X 前/Y 左/Z 上` link frame，再叠加 MuJoCo link pose。
 - 已统一 robot JSON、MuJoCo collision shell、Viewer 车体和规划 footprint 的长宽高语义；轮、转向节、support、payload 和内部 ballast 严格守恒声明质量，并从编译后的 MuJoCo 模型反查整车质量和质心。质心调整只移动无接触 ballast，不再移动腹底和碰撞壳。
 - 已移除轮胎 density 与轮质量双重定义，并从等效轮惯量中扣除实体轮自身转动惯量。Ackermann 使用与 0.2 kg 真实轮质量匹配的转向电机扭矩；编码器、IMU 和关节姿态的闭环任务门禁会捕获限位摆振。

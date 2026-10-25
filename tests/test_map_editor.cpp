@@ -104,7 +104,7 @@ int main() {
     sim::eval::WorldFileContent content;
  content.initial_pose = sim::world::InitialPosePrior{
  1.0, -2.0, 0.25, 0.12, 0.06};
-    content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5}};
+ content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5, "fixture_box"}};
     content.places = {{"dock", 2.0, 0.0, 0.0}};
     content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
                          {"gravel", 0.7, 0.015, 0.01, 1.15, 0.28}};
@@ -125,6 +125,7 @@ int main() {
  assert(rc.initial_pose.has_value());
  assert(rc.initial_pose->x_m == 1.0 && rc.initial_pose->y_m == -2.0);
  assert(rc.initial_pose->position_sigma_m == 0.12);
+ assert(rc.boxes[0].box_id == "fixture_box");
     assert(rc.materials[0].material_id == "ice");
     assert(std::abs(rc.materials[0].friction_mu - 0.25) < 1e-12);
     assert(rc.zones[0].material_id == "ice");

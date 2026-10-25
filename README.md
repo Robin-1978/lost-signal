@@ -161,6 +161,11 @@ follow for free orbit/pan, and `R` restores the default orbit. `L` shows a
 sparse LiDAR diagnostic, `E` shows truth/estimate history, and `K` reveals
 SIM-only actor script routes. Script routes are hidden by default because they
 are not information available to ROBOT.
+When `<map>.scene.json` exists, the viewer loads it automatically (or accepts
+`--scene FILE`). Solid environment GLBs must bind to a stable `box_id` in the
+world file, while floor paint must declare `surface_only`; invalid, missing,
+or multiply bound collision proxies fail closed. This scene data remains on
+the SIM presentation side and cannot enter ROBOT observations.
 The viewer advances in deterministic 20 ms simulation steps at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
 as fast as the per-frame work budget allows. Playback never changes physics,
