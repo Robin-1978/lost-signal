@@ -88,8 +88,8 @@ class LocalizationSystem {
  const iface::ObservationFrame& obs, core::MonotonicNs now_ns,
  IEstimator& estimator, std::string& action);
   // Bounded scan-to-submap tracking ahead of supervised corrections.
-  void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
-                    IEstimator& estimator);
+ void run_tracking(const iface::ObservationFrame& obs, bool has_observation,
+ IEstimator& estimator);
   // Returns true when a loop closure rebuilt the map (caller replans).
  bool run_slam(const iface::MapSnapshot& map,
  bool map_has_known_occupancy,

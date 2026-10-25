@@ -104,22 +104,15 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  // advance an incremental global-search result. Start tracking once the
  // supervisor has established the frame; mapless startup does so immediately.
  if (!supervisor_.localized() || !has_observation || !obs.scan_valid) return;
-  SlamTrackResult tr = slam_.track(estimator.estimate(), obs);
+ // In localization mode the surveyed map owns global correction authority;
+ // an opposing scan-to-submap update stays rejected and the independent
+ // scan-to-map chain resolves it. In mapless SLAM there is no absolute map,
+ // so the tracker may accept that sign only after its own multi-view gate.
+ const bool mapless_slam =
+ supervisor_.startup_mode() == StartupMode::kSlamOnly;
+ SlamTrackResult tr = slam_.track(
+ estimator.estimate(), obs, mapless_slam);
   if (!tr.accepted) return;
- // A moving foreground return can produce a locally convincing but wrong
- // scan match. Keep tracking corrections compatible with the measured body
- // motion: while driving forward, a correction that moves the pose backward
- // (and vice versa) is rejected. This uses only ROBOT odometry and the scan
- // matcher result; it never consults simulator truth.
- if (obs.odometry_valid && std::isfinite(obs.forward_mps) &&
- std::abs(obs.forward_mps) > 0.2) {
- const double dx = tr.x_m - estimator.estimate().x_m;
- const double dy = tr.y_m - estimator.estimate().y_m;
- const double along = dx * std::cos(estimator.estimate().yaw_rad) +
- dy * std::sin(estimator.estimate().yaw_rad);
- constexpr double kOpposingCorrectionM = 0.01;
- if (along * obs.forward_mps < -kOpposingCorrectionM) return;
- }
  if (supervisor_.startup_mode() == StartupMode::kSlamOnly) {
  // In mapless operation the keyframe/SLAM frame is the navigation frame,
  // so a verified two-sided track directly observes the pose used by goals.

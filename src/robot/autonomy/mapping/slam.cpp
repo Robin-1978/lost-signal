@@ -228,6 +228,10 @@ void SlamSession::reset() {
   last_track_ = SlamTrackResult{};
   track_submap_ = iface::MapSnapshot{};
   track_submap_id_ = 0;
+ pending_opposing_track_valid_ = false;
+ pending_opposing_track_sign_ = 0.0;
+ pending_opposing_track_anchor_id_ = 0;
+ pending_opposing_track_observer_pose_ = Pose2{};
  pending_loop_valid_ = false;
  pending_loop_s_ = 0.0;
  pending_loop_transform_ = Pose2{};
@@ -429,7 +433,8 @@ iface::MapSnapshot SlamSession::submap(std::uint64_t keyframe_id) const {
 }
 
 SlamTrackResult SlamSession::track(const EstimatedState& est,
-                                    const iface::ObservationFrame& obs) {
+ const iface::ObservationFrame& obs,
+ bool allow_temporally_confirmed_opposing) {
   SlamTrackResult out;
   if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
       keyframes_.empty()) {
@@ -539,6 +544,66 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  out.diagnostic = "track rejected: weak or oversized correction";
  last_track_ = out;
  return out;
+ }
+ // Wheel odometry is a prior, not a veto. During longitudinal slip the
+ // geometrically correct scan update points opposite the encoder direction.
+ // Accepting that sign from one scan is also unsafe around moving foreground
+ // returns, so require the sign to recur after an independently moved view.
+ // The observability speed is exactly the configured minimum tracking motion
+ // divided by its cadence; the opposing deadband is one matcher lattice step.
+ const double speed_for_independent_view_mps = config_.track_interval_s > 0.0
+ ? config_.track_min_translation_m / config_.track_interval_s
+ : std::numeric_limits<double>::infinity();
+ const double correction_x = match.x_m - est.x_m;
+ const double correction_y = match.y_m - est.y_m;
+ const double along_m = correction_x * std::cos(est.yaw_rad) +
+ correction_y * std::sin(est.yaw_rad);
+ const bool motion_direction_observable = obs.odometry_valid &&
+ std::isfinite(obs.forward_mps) &&
+ std::abs(obs.forward_mps) >= speed_for_independent_view_mps;
+ const double odom_sign = obs.forward_mps >= 0.0 ? 1.0 : -1.0;
+ const bool opposing = motion_direction_observable &&
+ along_m * odom_sign < -std::max(0.0, config_.track_step_m);
+ if (opposing) {
+ if (!allow_temporally_confirmed_opposing) {
+ pending_opposing_track_valid_ = false;
+ out.diagnostic = "track rejected: correction opposes odometry prior";
+ last_track_ = out;
+ return out;
+ }
+ const Pose2 observer{{est.x_m, est.y_m}, est.yaw_rad};
+ const double observed_motion_m = pending_opposing_track_valid_
+ ? std::hypot(observer.position.x -
+ pending_opposing_track_observer_pose_.position.x,
+ observer.position.y -
+ pending_opposing_track_observer_pose_.position.y)
+ : 0.0;
+ const double observed_motion_rad = pending_opposing_track_valid_
+ ? std::abs(core::wrap_angle(observer.heading_rad -
+ pending_opposing_track_observer_pose_.heading_rad))
+ : 0.0;
+ const bool independent_view =
+ observed_motion_m >= config_.track_min_translation_m ||
+ observed_motion_rad >= config_.track_min_heading_rad;
+ const bool same_direction = pending_opposing_track_valid_ &&
+ pending_opposing_track_sign_ == odom_sign &&
+ pending_opposing_track_anchor_id_ == anchor.id;
+ // The cached anchor is the bounded lifetime: once a new keyframe becomes
+ // the tracking reference, an old foreground hypothesis cannot confirm a
+ // correction in unrelated geometry. This avoids a separately tuned timeout
+ // and tolerates skipped scan-search ticks under CPU load.
+ if (!same_direction || !independent_view) {
+ pending_opposing_track_valid_ = true;
+ pending_opposing_track_sign_ = odom_sign;
+ pending_opposing_track_anchor_id_ = anchor.id;
+ pending_opposing_track_observer_pose_ = observer;
+ out.diagnostic = "track pending: opposing odometry needs another view";
+ last_track_ = out;
+ return out;
+ }
+ pending_opposing_track_valid_ = false;
+ } else {
+ pending_opposing_track_valid_ = false;
  }
   out.accepted = true;
   out.x_m = match.x_m;
@@ -872,9 +937,6 @@ SlamLoopResult SlamSession::try_close_loops(
  // correction to recur after the robot has moved. This prevents one sparse,
  // repetitive view from becoming an irreversible pose-graph constraint.
  const Pose2 matched_pose = corrected_here;
- const bool large_correction =
- prospective_m > config_.track_window_m ||
- prospective_rad > config_.track_heading_rad;
  enum class AbsoluteEvidence { kInconclusive, kConfirms, kConflicts };
  AbsoluteEvidence absolute = AbsoluteEvidence::kInconclusive;
  if (absolute_map != nullptr && absolute_map->has_raster()) {
@@ -910,7 +972,13 @@ SlamLoopResult SlamSession::try_close_loops(
  return reject_candidate(
  "loop rejected: conflicts with surveyed-map evidence");
  }
- if (large_correction) {
+ // Without an independent surveyed-map confirmation, every map-frame loop
+ // constraint needs a second view. A sequence of individually small false
+ // loops can walk the pose graph just as far as one large false loop; using
+ // the local tracking window as an exemption therefore gives no global
+ // safety bound. This mirrors the multi-scan chain doctrine used by mature
+ // graph SLAM frontends while keeping unknown survey cells inconclusive.
+ if (absolute != AbsoluteEvidence::kConfirms) {
  // Rigid transform C with matched_pose = C * current_pose. Comparing C,
  // rather than raw pose deltas, remains valid after the robot translates or
  // rotates between confirmation scans.

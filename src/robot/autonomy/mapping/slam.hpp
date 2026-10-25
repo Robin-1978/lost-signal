@@ -165,7 +165,8 @@ class SlamSession {
   // the supervisor trust state is untouched (tracking bounds drift, loop
   // closures establish the frame).
   SlamTrackResult track(const EstimatedState& est,
-                        const iface::ObservationFrame& obs);
+ const iface::ObservationFrame& obs,
+ bool allow_temporally_confirmed_opposing = false);
 
   bool empty() const { return keyframes_.empty(); }
   std::size_t keyframe_count() const { return keyframes_.size(); }
@@ -213,6 +214,15 @@ class SlamSession {
   SlamTrackResult last_track_;
   mutable iface::MapSnapshot track_submap_;
   mutable std::uint64_t track_submap_id_ = 0;
+ // A scan correction can legitimately oppose wheel odometry during slip,
+ // but one moving return can produce the same sign once. The opposing
+ // hypothesis must recur from an independently moved observation before it
+ // may correct the ROBOT estimate. Thresholds come from the tracking lattice
+ // and cadence above; no simulator slip label enters this state.
+ bool pending_opposing_track_valid_ = false;
+ double pending_opposing_track_sign_ = 0.0;
+ std::uint64_t pending_opposing_track_anchor_id_ = 0;
+ Pose2 pending_opposing_track_observer_pose_;
  // A correction larger than the local tracking window is never committed
  // from one scan in an unmapped region. The pending rigid transform must
  // recur after independently observed motion before it may enter the graph.

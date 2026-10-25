@@ -281,6 +281,79 @@ int main() {
     assert(!tr2.accepted);
   }
 
+ // An opposing scan correction is the expected signature when wheel
+ // odometry overstates travel during longitudinal slip. One such scan stays
+ // pending; a geometrically verified correction with the same sign from an
+ // independently moved view is accepted. This uses encoder and LiDAR only.
+ {
+ std::vector<Box> boxes{{-2.0, -2.0, 3.0, -1.8},
+ {-2.0, -2.0, -1.8, 3.0},
+ {2.6, -1.0, 3.0, 2.0},
+ {0.5, 0.5, 0.9, 0.9}};
+ SlamSession session;
+ EstimatedState anchor;
+ anchor.valid = true;
+ anchor.stamp_ns = 1'000'000'000LL;
+ iface::ObservationFrame anchor_obs;
+ anchor_obs.scan_valid = true;
+ anchor_obs.ranges_m = scan_from(0.0, 0.0, 0.0, boxes);
+ anchor_obs.scan_angle_min_rad = -M_PI;
+ anchor_obs.scan_angle_increment_rad = 2.0 * M_PI / 72;
+ anchor_obs.stamp_ns = anchor.stamp_ns;
+ session.ingest(anchor, anchor_obs);
+
+ EstimatedState first_prior;
+ first_prior.valid = true;
+ first_prior.x_m = 0.35; // true x=0.25: wheel odometry is 0.10 m ahead
+ first_prior.y_m = -0.01; // true y=0.05
+ first_prior.yaw_rad = 0.05; // true yaw=0.02
+ first_prior.stamp_ns = 1'200'000'000LL;
+ iface::ObservationFrame first;
+ first.scan_valid = true;
+ first.odometry_valid = true;
+ first.forward_mps = 1.0;
+ first.ranges_m = scan_from(0.25, 0.05, 0.02, boxes);
+ first.scan_angle_min_rad = -M_PI;
+ first.scan_angle_increment_rad = 2.0 * M_PI / 72;
+ first.stamp_ns = first_prior.stamp_ns;
+ const SlamTrackResult surveyed = session.track(first_prior, first);
+ assert(surveyed.attempted);
+ assert(!surveyed.accepted);
+ assert(surveyed.diagnostic.find("opposes odometry") != std::string::npos);
+
+ // Mapless mode has no scan-to-map authority, so restart the same evidence
+ // and enable the explicit multi-view fallback.
+ session.reset();
+ session.ingest(anchor, anchor_obs);
+ const SlamTrackResult pending = session.track(
+ first_prior, first, true);
+ assert(pending.attempted);
+ assert(!pending.accepted);
+ if (pending.diagnostic.find("opposing odometry") == std::string::npos) {
+ std::fprintf(stderr,
+ "opposing track first view: %s correction=%.3f/%.3f score=%.3f "
+ "overlap=%.3f margin=%.3f\n",
+ pending.diagnostic.c_str(), pending.correction_m,
+ pending.correction_rad, pending.score, pending.overlap,
+ pending.score_margin);
+ }
+ assert(pending.diagnostic.find("opposing odometry") != std::string::npos);
+ assert(session.track_corrections() == 0);
+
+ EstimatedState second_prior = first_prior;
+ second_prior.x_m = 0.47; // true x=0.35: slip error persists
+ second_prior.stamp_ns = 1'500'000'000LL;
+ iface::ObservationFrame second = first;
+ second.ranges_m = scan_from(0.35, 0.05, 0.02, boxes);
+ second.stamp_ns = second_prior.stamp_ns;
+ const SlamTrackResult confirmed = session.track(
+ second_prior, second, true);
+ assert(confirmed.attempted);
+ assert(confirmed.accepted);
+ assert(confirmed.x_m < second_prior.x_m);
+ assert(session.track_corrections() == 1);
+ }
+
   // Dynamic actor returns must not enter the static submap. A static wall
  // behind the robot stays occupied; an actor 1 m ahead does not.
  {
