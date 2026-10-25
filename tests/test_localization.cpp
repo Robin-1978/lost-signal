@@ -397,6 +397,41 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
+ // An established map frame never loses its innovation gate abruptly when
+ // covariance crosses the global-recovery threshold. Repetitive maps can
+ // yield a strong but distant one-scan peak; reject that peak until ROBOT
+ // uncertainty is large enough to support the displacement.
+ {
+ auto map = make_wall_map();
+ auto ranges = scan_from(1.0, 0.0, 0.0, map);
+ LocalizationSystem localization;
+ localization.mark_localized();
+ FusedOdometryEstimator estimator;
+ estimator.reset();
+ estimator.seed_pose(-8.0, -8.0, 0.0, 0.50, 0.10, 1);
+ RayClearingMapper mapper;
+ bool rejected_distant_peak = false;
+ for (int i = 0; i < 1000 && !rejected_distant_peak; ++i) {
+ iface::ObservationFrame o;
+ o.sequence = static_cast<std::uint64_t>(i + 1);
+ o.stamp_ns = static_cast<core::MonotonicNs>((i + 1) * 20'000'000);
+ o.source = "t.recovery-lidar";
+ o.frame = core::Frame::kLidarLink;
+ o.odometry_valid = true;
+ o.scan_valid = true;
+ o.ranges_m = ranges;
+ o.scan_angle_min_rad = -M_PI;
+ o.scan_angle_increment_rad = 2.0 * M_PI / o.ranges_m.size();
+ const auto result = localization.update(
+ map, o, o.stamp_ns, true, estimator, mapper);
+ rejected_distant_peak = result.action.find(
+ "global correction exceeds trusted covariance") != std::string::npos;
+ }
+ assert(rejected_distant_peak);
+ assert(estimator.estimate().x_m == -8.0);
+ assert(estimator.estimate().y_m == -8.0);
+ }
+
  // A cooperative whole-map search freezes its first scan while odometry
  // continues. The accepted pose must be advanced by the intervening ROBOT
  // motion; applying the old scan pose at completion would jump backwards.

@@ -328,18 +328,21 @@ bool LocalizationSystem::run_localization(
  }
  }
  if (global.accepted && supervisor_.localized()) {
- // A global candidate may recover a genuinely lost estimate, but it must
- // not teleport a trusted trajectory to a weak repetitive-map hypothesis.
- // This gate uses only estimator covariance and supervisor policy; SIM
- // truth never participates.
+ // A global candidate may recover accumulated drift, but covariance must
+ // widen the admissible innovation continuously. Crossing the supervisor's
+ // recovery threshold is not permission for an unbounded one-scan jump in
+ // repetitive geometry. A genuine large displacement becomes admissible
+ // only when ROBOT uncertainty has grown to support it.
  const double jump_m = std::hypot(global.x_m - est.x_m,
  global.y_m - est.y_m);
+ const double prior_sigma_m = std::isfinite(est.position_sigma_m)
+ ? std::max(0.0, est.position_sigma_m)
+ : supervisor_.config().lost_position_sigma_m;
  const double trusted_jump_limit_m = std::max(
  supervisor_.config().trusted_global_jump_m,
  supervisor_.config().trusted_global_jump_sigma_factor *
- supervisor_.config().lost_position_sigma_m);
- if (est.position_sigma_m < supervisor_.config().lost_position_sigma_m &&
- jump_m > trusted_jump_limit_m) {
+ prior_sigma_m);
+ if (!std::isfinite(jump_m) || jump_m > trusted_jump_limit_m) {
  accept_global = false;
  global.rejection_reason = "global correction exceeds trusted covariance";
  }
