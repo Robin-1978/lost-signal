@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -7,6 +8,7 @@
 #include "robot/app/robot_application.hpp"
 #include "sim/eval/drive_profile_io.hpp"
 #include "sim/providers/sensor_suite.hpp"
+#include "sim/providers/static_map.hpp"
 #include "sim/world/motor.hpp"
 #include "sim/world/world.hpp"
 
@@ -123,6 +125,39 @@ int main() {
   wslip.step(0.02);
   assert(wslip.truth().drive_slipping[0] &&
          wslip.truth().drive_slipping[1]);
+
+ // A 500 m x 400 m survey at 0.25 m resolution is 3.2 million cells.
+ // Sparse obstacle rasterization must preserve exact geometry and cache the
+ // immutable revision instead of rebuilding or copying it on every poll.
+ {
+ sim::world::World large_world;
+ large_world.set_static_boxes({
+ {10.0, 20.0, 20.0, 30.0, 1.5},
+ {300.0, 100.0, 301.0, 350.0, 2.0},
+ });
+ sim::providers::StaticMapProvider provider(
+ &large_world, 0.0, 0.0, 500.0, 400.0, 0.25);
+ const auto& map = provider.active_snapshot();
+ assert(map.width == 2000 && map.height == 1600);
+ assert(map.occupancy.size() == 3'200'000);
+ assert(map.elevation_m.size() == map.occupancy.size());
+ assert(map.blocked(15.0, 25.0));
+ const auto cell_at = [&](double x, double y) {
+ const int gx = static_cast<int>(
+ std::floor((x - map.origin_x_m) / map.resolution_m));
+ const int gy = static_cast<int>(
+ std::floor((y - map.origin_y_m) / map.resolution_m));
+ return map.occupancy[static_cast<std::size_t>(gy) * map.width + gx];
+ };
+ assert(cell_at(100.0, 100.0) < 0);
+ assert(map.elevation_at(15.0, 25.0) == 1.5f);
+ assert(map.elevation_at(100.0, 100.0) == 0.0f);
+ const auto* occupancy_data = map.occupancy.data();
+ const std::uint64_t revision = map.revision;
+ const auto& cached = provider.active_snapshot();
+ assert(cached.revision == revision);
+ assert(cached.occupancy.data() == occupancy_data);
+ }
 
   // Drive profile file: overrides merge over factory defaults; malformed
   // files and unknown kinds fail closed without touching the output.
