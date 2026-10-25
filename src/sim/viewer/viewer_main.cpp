@@ -249,8 +249,24 @@ void log_model_bounds(const char* label, const Model& model) {
 
 void bind_lighting(Model& model, Shader shader) {
  if (!model_ready(model) || !IsShaderValid(shader)) return;
- for (int i = 0; i < model.materialCount; ++i)
- model.materials[i].shader = shader;
+ for (int i = 0; i < model.materialCount; ++i) {
+ auto& material = model.materials[i];
+ const float metallic = std::clamp(
+ material.maps[MATERIAL_MAP_METALNESS].value, 0.0f, 1.0f);
+ const float roughness = std::clamp(
+ material.maps[MATERIAL_MAP_ROUGHNESS].value, 0.04f, 1.0f);
+ const Color emission = material.maps[MATERIAL_MAP_EMISSION].color;
+ const float emissive = static_cast<float>(
+ std::max({emission.r, emission.g, emission.b})) / 255.0f;
+ // raylib uploads MATERIAL_MAP_METALNESS.color through colSpecular. The
+ // project shader uses those otherwise unused channels as compact PBR
+ // material metadata; texture/color content remains authored in the GLB.
+ material.maps[MATERIAL_MAP_METALNESS].color = {
+ static_cast<unsigned char>(std::round(metallic * 255.0f)),
+ static_cast<unsigned char>(std::round(roughness * 255.0f)),
+ static_cast<unsigned char>(std::round(emissive * 255.0f)), 255};
+ material.shader = shader;
+ }
 }
 
 BoundingBox raylib_asset_bounds(const Model& model, bool zup_converted) {
@@ -454,6 +470,12 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.composite, "vignetteStrength");
  }
  if (IsShaderValid(assets.lighting)) {
+ assets.lighting.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(
+ assets.lighting, "viewPos");
+ assets.lighting.locs[SHADER_LOC_MATRIX_NORMAL] = GetShaderLocation(
+ assets.lighting, "matNormal");
+ assets.lighting.locs[SHADER_LOC_COLOR_SPECULAR] = GetShaderLocation(
+ assets.lighting, "colSpecular");
  assets.light_view_projection_loc = GetShaderLocation(
  assets.lighting, "lightVP");
  assets.shadow_map_loc = GetShaderLocation(assets.lighting, "shadowMap");
@@ -1446,9 +1468,9 @@ WalkaroundView walkaround_view(const Frame& frame,
  focus_x = p.x;
  focus_y = -p.z;
  focus_z = p.y;
- state.dist_m = 0.95f;
- state.pitch_deg = 18.0f;
- state.yaw_deg = 100.0f;
+ state.dist_m = 1.35f;
+ state.pitch_deg = 20.0f;
+ state.yaw_deg = -100.0f;
  } else if (component_id == "caster" && !frame.body.casters.empty() &&
  frame.body.casters.front().wheel_pose.valid) {
  const Vector3 p = body_local_to_world(
