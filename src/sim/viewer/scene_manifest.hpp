@@ -14,6 +14,23 @@ struct SceneCamera {
  double yaw_deg = 35.0;
  double pitch_deg = 32.0;
  double target_height_m = 0.20;
+ double follow_smoothing_s = 0.35;
+ double lookahead_s = 0.65;
+ double speed_distance_gain_s = 0.70;
+ double minimum_distance_m = 2.2;
+ double maximum_distance_m = 9.0;
+};
+
+struct SceneLighting {
+ // Direction in SIM world coordinates (x-forward, y-left, z-up).
+ std::array<double, 3> direction_xyz{-0.48, 0.32, -1.0};
+ std::array<int, 4> directional_rgba{255, 234, 205, 255};
+ std::array<int, 4> ambient_rgba{70, 82, 78, 255};
+ std::array<int, 4> fog_rgba{18, 31, 34, 255};
+ double directional_intensity = 1.08;
+ double ambient_intensity = 0.90;
+ double fog_start_m = 12.0;
+ double fog_end_m = 31.0;
 };
 
 struct SceneFloor {
@@ -38,6 +55,7 @@ struct SceneInstance {
 struct SceneManifest {
  std::string scene_id;
  SceneCamera camera;
+ SceneLighting lighting;
  SceneFloor floor;
  std::vector<SceneInstance> instances;
 

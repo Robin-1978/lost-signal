@@ -5,7 +5,22 @@
  "distance_m": 4.6,
  "yaw_deg": 38.0,
  "pitch_deg": 29.0,
- "target_height_m": 0.24
+ "target_height_m": 0.24,
+ "follow_smoothing_s": 0.38,
+ "lookahead_s": 0.65,
+ "speed_distance_gain_s": 0.72,
+ "minimum_distance_m": 2.4,
+ "maximum_distance_m": 8.0
+ },
+ "lighting": {
+ "direction_xyz": [-0.48, 0.32, -1.0],
+ "directional_rgba": [255, 234, 205, 255],
+ "ambient_rgba": [70, 82, 78, 255],
+ "fog_rgba": [18, 31, 34, 255],
+ "directional_intensity": 1.08,
+ "ambient_intensity": 0.90,
+ "fog_start_m": 12.0,
+ "fog_end_m": 31.0
  },
  "floor": {
  "base_rgba": [43, 49, 48, 255],

@@ -446,6 +446,86 @@ Color material_color(const std::string& id, unsigned char alpha = 255) {
   return {0x52, 0x64, 0x6A, alpha};  // weathered_asphalt fallback
 }
 
+Vector3 shader_rgb(const std::array<int, 4>& rgba, double intensity) {
+ const float scale = static_cast<float>(intensity / 255.0);
+ return {rgba[0] * scale, rgba[1] * scale, rgba[2] * scale};
+}
+
+Color scene_background(const SceneManifest* scene) {
+ if (scene == nullptr) return Color{18, 31, 34, 255};
+ const auto& color = scene->lighting.fog_rgba;
+ return {static_cast<unsigned char>(color[0]),
+ static_cast<unsigned char>(color[1]),
+ static_cast<unsigned char>(color[2]), 255};
+}
+
+void configure_scene_lighting(VisualAssets& assets,
+ const SceneManifest* scene, const Frame& frame, const Camera3D& camera) {
+ if (!IsShaderValid(assets.lighting)) return;
+ const lost_signal::sim::viewer::SceneLighting defaults;
+ const auto& lighting = scene != nullptr ? scene->lighting : defaults;
+ Vector3 light_direction{
+ static_cast<float>(lighting.direction_xyz[0]),
+ static_cast<float>(lighting.direction_xyz[2]),
+ static_cast<float>(-lighting.direction_xyz[1])};
+ if (Vector3Length(light_direction) > 1e-6f) {
+ light_direction = Vector3Normalize(light_direction);
+ }
+ const Vector3 directional = shader_rgb(
+ lighting.directional_rgba, lighting.directional_intensity);
+ const Vector3 ambient = shader_rgb(
+ lighting.ambient_rgba, lighting.ambient_intensity);
+ const Vector3 fog = shader_rgb(lighting.fog_rgba, 1.0);
+ const float fog_start = static_cast<float>(lighting.fog_start_m);
+ const float fog_end = static_cast<float>(lighting.fog_end_m);
+ const Vector3 robot_light{
+ static_cast<float>(frame.body.x_m),
+ static_cast<float>(frame.body.z_m + 0.72),
+ static_cast<float>(-frame.body.y_m)};
+ Vector3 goal_light = robot_light;
+ for (const auto& place : frame.places) {
+ if (place.reached) continue;
+ goal_light = {static_cast<float>(place.x_m), 1.15f,
+ static_cast<float>(-place.y_m)};
+ break;
+ }
+ const Vector3 robot_color{0.22f, 0.86f, 0.79f};
+ const Vector3 goal_color{1.05f, 0.58f, 0.17f};
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "viewPos"), &camera.position,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "lightDirection"), &light_direction,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "lightColor"), &directional,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "ambient"), &ambient,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogColor"), &fog,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogStart"), &fog_start,
+ SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "fogEnd"), &fog_end,
+ SHADER_UNIFORM_FLOAT);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight0Position"), &robot_light,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight0Color"), &robot_color,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight1Position"), &goal_light,
+ SHADER_UNIFORM_VEC3);
+ SetShaderValue(assets.lighting,
+ GetShaderLocation(assets.lighting, "pointLight1Color"), &goal_color,
+ SHADER_UNIFORM_VEC3);
+}
+
 // Terrain height tint (low grass -> dry earth -> rock).
 Color height_color(double h, double hmax) {
   const double t = hmax > 1e-6 ? std::min(1.0, std::max(0.0, h / hmax)) : 0.0;
@@ -2153,6 +2233,7 @@ int main(int argc, char** argv) {
  cam_st.target_x = session->setup_world().truth().body_x_m;
  cam_st.target_y = session->setup_world().truth().body_y_m;
  }
+ float follow_base_distance_m = cam_st.dist_m;
  ParticleSystem motion_particles;
 
  while (!WindowShouldClose()) {
@@ -2321,6 +2402,7 @@ int main(int argc, char** argv) {
         cam_st.dist_m *= wheel > 0.0f ? 1.0f / 1.15f : 1.15f;
  if (cam_st.dist_m < 0.6f) cam_st.dist_m = 0.6f;
         if (cam_st.dist_m > 60.0f) cam_st.dist_m = 60.0f;
+ follow_base_distance_m = cam_st.dist_m;
       }
     } else if (wheel != 0.0f) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
@@ -2387,7 +2469,8 @@ int main(int argc, char** argv) {
  const sim::viewer::Frame preview = sim::viewer::build_frame(
  session->setup_world(), preview_step, {}, {}, {}, session_lidar_mount);
  BeginDrawing();
- ClearBackground(view3d ? Color{168, 204, 228, 255}
+ ClearBackground(view3d ? scene_background(
+ scene_loaded ? &visual_scene : nullptr)
  : Color{18, 31, 34, 255});
  if (view3d) {
  std::string component_id = "chassis";
@@ -2399,6 +2482,8 @@ int main(int argc, char** argv) {
  }
  const WalkaroundView walkaround = walkaround_view(
  preview, component_id, cam_st);
+ configure_scene_lighting(visual_assets,
+ scene_loaded ? &visual_scene : nullptr, preview, walkaround.camera);
  BeginMode3D(walkaround.camera);
  draw_frame_3d(preview, session->setup_world(), walkaround.camera,
  motion_particles,
@@ -2451,14 +2536,37 @@ int main(int argc, char** argv) {
                                last.truth_after.body_y_m);
       view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
                   GetScreenHeight() * 0.5f - cur.y_px);
-      cam_st.target_x = last.truth_after.body_x_m;
-      cam_st.target_y = last.truth_after.body_y_m;
+ const auto& camera_config = scene_loaded
+ ? visual_scene.camera : lost_signal::sim::viewer::SceneCamera{};
+ const double speed_mps = std::hypot(
+ last.truth_after.forward_mps, last.truth_after.lateral_mps);
+ const double lookahead_m =
+ std::abs(last.truth_after.forward_mps) * camera_config.lookahead_s;
+ const double direction = last.truth_after.forward_mps < 0.0 ? -1.0 : 1.0;
+ const double desired_x = last.truth_after.body_x_m + direction * lookahead_m *
+ std::cos(last.truth_after.body_yaw_rad);
+ const double desired_y = last.truth_after.body_y_m + direction * lookahead_m *
+ std::sin(last.truth_after.body_yaw_rad);
+ const double blend = camera_config.follow_smoothing_s > 0.0
+ ? 1.0 - std::exp(-wall_dt_s / camera_config.follow_smoothing_s)
+ : 1.0;
+ cam_st.target_x += (desired_x - cam_st.target_x) * blend;
+ cam_st.target_y += (desired_y - cam_st.target_y) * blend;
+ const double desired_distance = std::clamp(
+ static_cast<double>(follow_base_distance_m) +
+ speed_mps * camera_config.speed_distance_gain_s,
+ camera_config.minimum_distance_m, camera_config.maximum_distance_m);
+ cam_st.dist_m += static_cast<float>(
+ (desired_distance - cam_st.dist_m) * blend);
     }
 
     BeginDrawing();
-    ClearBackground(view3d ? Color{168, 204, 228, 255} : RAYWHITE);
+ ClearBackground(view3d ? scene_background(
+ scene_loaded ? &visual_scene : nullptr) : RAYWHITE);
     if (view3d) {
       const Camera3D cam = camera_from_state(cam_st);
+ configure_scene_lighting(visual_assets,
+ scene_loaded ? &visual_scene : nullptr, frame, cam);
       BeginMode3D(cam);
  draw_frame_3d(frame, session->setup_world(), cam, motion_particles,
  show_lidar,

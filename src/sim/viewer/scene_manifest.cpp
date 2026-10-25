@@ -88,6 +88,18 @@ bool take_rgba(const Json& object, const char* key,
  return true;
 }
 
+bool take_optional_number(const Json& object, const char* key, double& value,
+ std::string& error) {
+ const Json* node = object.find(key);
+ if (node == nullptr) return true;
+ if (!node->is_num() || !std::isfinite(node->as_num())) {
+ error = std::string("scene '") + key + "' must be a finite number";
+ return false;
+ }
+ value = node->as_num();
+ return true;
+}
+
 const world::StaticBox* find_box(
  const std::vector<world::StaticBox>& boxes, const std::string& id) {
  for (const auto& box : boxes) {
@@ -191,11 +203,13 @@ bool load_scene_manifest(const std::string& path,
  }
  const Json* format = root->find("format");
  const Json* camera = root->find("camera");
+ const Json* lighting = root->find("lighting");
  const Json* floor = root->find("floor");
  const Json* instances = root->find("instances");
  if (format == nullptr || !format->is_str() ||
  format->as_str() != "lost-signal-scene/1" ||
  camera == nullptr || !camera->is_object() ||
+ (lighting != nullptr && !lighting->is_object()) ||
  floor == nullptr || !floor->is_object() ||
  instances == nullptr || !instances->is_array()) {
  out_error = "scene needs format, camera, floor, and instances";
@@ -210,6 +224,16 @@ bool load_scene_manifest(const std::string& path,
  out_error) ||
  !take_number(*camera, "target_height_m",
  parsed.camera.target_height_m, out_error) ||
+ !take_optional_number(*camera, "follow_smoothing_s",
+ parsed.camera.follow_smoothing_s, out_error) ||
+ !take_optional_number(*camera, "lookahead_s",
+ parsed.camera.lookahead_s, out_error) ||
+ !take_optional_number(*camera, "speed_distance_gain_s",
+ parsed.camera.speed_distance_gain_s, out_error) ||
+ !take_optional_number(*camera, "minimum_distance_m",
+ parsed.camera.minimum_distance_m, out_error) ||
+ !take_optional_number(*camera, "maximum_distance_m",
+ parsed.camera.maximum_distance_m, out_error) ||
  !take_rgba(*floor, "base_rgba", parsed.floor.base_rgba,
  out_error) ||
  !take_rgba(*floor, "grid_rgba", parsed.floor.grid_rgba,
@@ -218,8 +242,41 @@ bool load_scene_manifest(const std::string& path,
  out_error)) {
  return false;
  }
+ if (lighting != nullptr &&
+ (!take_vec3(*lighting, "direction_xyz",
+ parsed.lighting.direction_xyz, out_error) ||
+ !take_rgba(*lighting, "directional_rgba",
+ parsed.lighting.directional_rgba, out_error) ||
+ !take_rgba(*lighting, "ambient_rgba",
+ parsed.lighting.ambient_rgba, out_error) ||
+ !take_rgba(*lighting, "fog_rgba", parsed.lighting.fog_rgba,
+ out_error) ||
+ !take_number(*lighting, "directional_intensity",
+ parsed.lighting.directional_intensity, out_error) ||
+ !take_number(*lighting, "ambient_intensity",
+ parsed.lighting.ambient_intensity, out_error) ||
+ !take_number(*lighting, "fog_start_m", parsed.lighting.fog_start_m,
+ out_error) ||
+ !take_number(*lighting, "fog_end_m", parsed.lighting.fog_end_m,
+ out_error))) {
+ return false;
+ }
  if (parsed.camera.distance_m < 0.6 || parsed.camera.distance_m > 100.0 ||
  parsed.camera.pitch_deg < 5.0 || parsed.camera.pitch_deg > 85.0 ||
+ parsed.camera.follow_smoothing_s < 0.0 ||
+ parsed.camera.follow_smoothing_s > 5.0 ||
+ parsed.camera.lookahead_s < 0.0 || parsed.camera.lookahead_s > 5.0 ||
+ parsed.camera.speed_distance_gain_s < 0.0 ||
+ parsed.camera.speed_distance_gain_s > 5.0 ||
+ parsed.camera.minimum_distance_m < 0.6 ||
+ parsed.camera.maximum_distance_m < parsed.camera.minimum_distance_m ||
+ parsed.camera.maximum_distance_m > 100.0 ||
+ !(parsed.lighting.directional_intensity >= 0.0) ||
+ parsed.lighting.directional_intensity > 4.0 ||
+ !(parsed.lighting.ambient_intensity >= 0.0) ||
+ parsed.lighting.ambient_intensity > 4.0 ||
+ !(parsed.lighting.fog_start_m >= 0.0) ||
+ !(parsed.lighting.fog_end_m > parsed.lighting.fog_start_m) ||
  !(parsed.floor.grid_spacing_m > 0.0) ||
  parsed.floor.grid_spacing_m > 20.0) {
  out_error = "scene camera or floor values are outside supported bounds";
