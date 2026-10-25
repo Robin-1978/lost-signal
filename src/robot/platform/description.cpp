@@ -31,6 +31,12 @@ bool valid_robot_description(const RobotDescription& desc) {
  desc.motion.safety_reaction_time_s < 0.0) return false;
   if (desc.plant.track_width_m <= 0.0) return false;
   if (desc.plant.wheel_radius_m <= 0.0) return false;
+ if (desc.plant.body_half_length_m <= 0.0 ||
+  desc.plant.body_half_width_m <= 0.0 ||
+  desc.plant.body_half_height_m <= 0.0) return false;
+ if (desc.limits.footprint_radius_m + 1e-12 <
+  std::hypot(desc.plant.body_half_length_m,
+  desc.plant.body_half_width_m)) return false;
   if (desc.plant.com_height_m <= 0.0) return false;
   if (desc.plant.total_mass_kg <= 0.0) return false;
   return true;
@@ -60,6 +66,9 @@ std::uint64_t hash_robot_description(const RobotDescription& desc) {
   // version bump still hashes differently (never a stale envelope).
   mix(std::to_string(desc.plant.track_width_m));
   mix(std::to_string(desc.plant.wheel_radius_m));
+ mix(std::to_string(desc.plant.body_half_length_m));
+ mix(std::to_string(desc.plant.body_half_width_m));
+ mix(std::to_string(desc.plant.body_half_height_m));
   mix(std::to_string(desc.plant.com_height_m));
   mix(std::to_string(desc.plant.total_mass_kg));
  mix(std::to_string(desc.navigation.clearance_margin_m));

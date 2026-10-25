@@ -108,6 +108,13 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
  rays or SLAM observations clear them.
 - Sensor delivery realism is opt-in. Decision time is the plant clock;
   observation stamps stay at acquisition, so latency can trip freshness.
+- The robot JSON is the shared geometry and inertia contract for the physical
+  shell, Viewer body, planner footprint, wheel mass, payload, and centre of
+  mass. MuJoCo compiles a fixed collision shell plus a contactless internal
+  ballast; changing COM never moves the belly. Builds fail closed when the
+  footprint does not enclose the shell or the declared vehicle mass cannot
+  cover its wheels, knuckles, and supports. Tests read back total compiled
+  mass and whole-system COM from MuJoCo.
 - Scoring is offline only and includes displacement, path length, stops,
  dynamic holds, terrain/static/dynamic collisions, estimate error, elapsed
 time, planar obstacle clearance, separate terrain/belly clearance, objective

@@ -60,8 +60,8 @@ struct FrameBody {
  double lateral_mps = 0.0;
  double yaw_rate_radps = 0.0;
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
-  double half_length_m = 0.3;  // body-forward extent (wheel_base/2 floor)
-  double half_width_m = 0.25;  // body-left extent (track/2 floor)
+  double half_length_m = 0.28;  // configured collision/visual shell
+  double half_width_m = 0.25;
   double z_m = 0.0;            // engine height (3D frontend only)
   double roll_rad = 0.0;       // live body attitude (ramps tilt the viz)
   double pitch_rad = 0.0;

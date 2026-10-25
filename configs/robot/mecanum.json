@@ -4,12 +4,12 @@
   "drive": {},
   "chassis": {
     "body_half_height_m": 0.05,
-    "body_half_width_m": 0.12,
+ "body_half_length_m": 0.28,
+ "body_half_width_m": 0.25,
     "drive_axle_x_m": 0.0,
     "tire_half_width_m": 0.04,
     "wheel_mass_kg": 0.2,
-    "knuckle_mass_kg": 0.1,
-    "tire_density_kgpm3": 400.0
+ "knuckle_mass_kg": 0.1
   },
   "limits": {
     "max_forward_mps": 2.0,

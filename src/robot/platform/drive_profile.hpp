@@ -58,11 +58,11 @@ struct DriveProfile {
 
   // Chassis hard geometry (SIM plant assembly reads every field; nothing
   // is hardcoded per layout anymore). Defaults reproduce the legacy plant
-  // bit-identically (deck 0.05/0.12, centered axle, 0.04 tire half width,
+  // with a 0.05 m shell half-height, centered axle and 0.04 m tire half-width,
   // fore/aft ball pair resolved at conversion time from wheel_base_m).
-  double body_half_height_m = 0.05;  // deck ballast half height; belly line
-                                     // rides at com_height - this
-  double body_half_width_m = 0.12;   // deck ballast half extent (square tub)
+  double body_half_height_m = 0.05;  // collision shell, centered at axle
+  double body_half_length_m = 0.28;  // collision/visual shell, X forward
+  double body_half_width_m = 0.25;   // collision/visual shell, Y left
   double drive_axle_x_m = 0.0;       // drive axle line offset in base frame
                                      // (diff pair + ackermann rears shift;
                                      // 4-wheel layouts ignore it)
@@ -85,12 +85,12 @@ struct DriveProfile {
   // is neutrally stable and solver noise walks it into a wedge; trail
   // makes straight-ahead the stable equilibrium).
   double idler_trail_m = 0.02;
-  // Static mass budget (deck conserves the total: deck = vehicle_mass -
-  // drives*wheel_mass - supports; floor 0.5). Tire density sizes the
-  // rubber geom mass; knuckle mass is the ackermann/swerve kingpin.
-  double wheel_mass_kg = 0.2;        // per-drive-wheel static budget
+  // Static mass budget. The contact shell is massless; an internal ballast
+  // is positioned so the complete vehicle (all wheels, knuckles and supports)
+  // has exactly vehicle_mass_kg and com_height_m. wheel_mass_kg is the exact
+  // mass of every drive or idler wheel, never a separate density estimate.
+  double wheel_mass_kg = 0.2;
   double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
-  double tire_density_kgpm3 = 400.0;  // tire rubber density
   // Unpowered supports, base frame, explicit (empty = legacy fore/aft ball
   // pair at +-0.9*wheel_base/2 — the real differential base doctrine).
   struct SupportSpec {

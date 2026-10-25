@@ -179,10 +179,10 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     f.body.sens_y_m = t.body_y_m + off.y;
     f.body.sens_z_m = t.body_z_m + off.z;
   }
-  const double base = world.motor_params().wheel_base_m;
-  const double track = world.motor_params().track_width_m;
-  if (base > 0.0) f.body.half_length_m = base * 0.5;
-  if (track > 0.0) f.body.half_width_m = track * 0.5;
+ const double half_length = world.motor_params().body_half_length_m;
+ const double half_width = world.motor_params().body_half_width_m;
+ if (half_length > 0.0) f.body.half_length_m = half_length;
+ if (half_width > 0.0) f.body.half_width_m = half_width;
   if (step.diag.has_observation) {
     f.body.estimate_valid = true;
     f.body.est_x_m = step.diag.estimate.x_m;

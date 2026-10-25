@@ -142,12 +142,13 @@ bool validate_chassis_geometry(const DriveProfile& merged, std::string& err) {
     err = "chassis.'body_half_height_m' must be in (0, wheel_radius_m)";
     return false;
   }
-  if (!(com_h > merged.body_half_height_m)) {
-    err = "chassis COM must clear the deck (belly = com - half_h > 0)";
+ if (!(com_h > 0.0) || !std::isfinite(com_h)) {
+ err = "chassis COM height must be finite positive";
     return false;
   }
-  if (!(merged.body_half_width_m > 0.0)) {
-    err = "chassis.'body_half_width_m' must be positive";
+ if (!(merged.body_half_length_m > 0.0) ||
+ !(merged.body_half_width_m > 0.0)) {
+ err = "chassis body half-length and half-width must be positive";
     return false;
   }
   if (!(merged.tire_half_width_m > 0.0)) {
@@ -160,10 +161,6 @@ bool validate_chassis_geometry(const DriveProfile& merged, std::string& err) {
   }
   if (!(merged.knuckle_mass_kg > 0.0)) {
     err = "chassis.'knuckle_mass_kg' must be positive";
-    return false;
-  }
-  if (!(merged.tire_density_kgpm3 > 0.0)) {
-    err = "chassis.'tire_density_kgpm3' must be positive";
     return false;
   }
   if (!(merged.payload_mass_kg >= 0.0) ||
@@ -188,16 +185,18 @@ bool merge_chassis_keys(const Json& obj, DriveProfile& merged,
                         std::string& err) {
   double v = 0.0;
   bool present = false;
-  const char* keys[] = {"body_half_height_m", "body_half_width_m",
+ const char* keys[] = {"body_half_height_m", "body_half_length_m",
+ "body_half_width_m",
                         "drive_axle_x_m", "tire_half_width_m",
                         "wheel_mass_kg", "knuckle_mass_kg",
-                        "tire_density_kgpm3", "com_height_m",
+ "com_height_m",
                         "payload_mass_kg", "payload_height_m",
                         "idler_trail_m"};
-  double* slots[] = {&merged.body_half_height_m, &merged.body_half_width_m,
+ double* slots[] = {&merged.body_half_height_m, &merged.body_half_length_m,
+ &merged.body_half_width_m,
                      &merged.drive_axle_x_m, &merged.tire_half_width_m,
                      &merged.wheel_mass_kg, &merged.knuckle_mass_kg,
-                     &merged.tire_density_kgpm3, &merged.com_height_m,
+ &merged.com_height_m,
                      &merged.payload_mass_kg, &merged.payload_height_m,
                      &merged.idler_trail_m};
   for (int i = 0; i < 11; ++i) {
@@ -380,6 +379,12 @@ bool load_robot_config(const std::string& path, RobotConfig& config,
  out.limits.max_lateral_mps = out.limits.max_forward_mps;
  }
   }
+ const double body_corner_radius = std::hypot(
+ out.profile.body_half_length_m, out.profile.body_half_width_m);
+ if (out.limits.footprint_radius_m + 1e-12 < body_corner_radius) {
+ err = "limits.'footprint_radius_m' must enclose the chassis body";
+ return false;
+ }
  const Json* navigation = obj.find("navigation");
  if (navigation != nullptr) {
  if (!navigation->is_object()) {
@@ -617,6 +622,9 @@ RobotDescription description_from_config(const RobotConfig& config) {
     desc.plant.wheel_radius_m = p.wheel_radius_m;
     desc.plant.track_width_m = p.track_width_m;
     desc.plant.wheel_base_m = p.wheel_base_m;
+ desc.plant.body_half_length_m = p.body_half_length_m;
+ desc.plant.body_half_width_m = p.body_half_width_m;
+ desc.plant.body_half_height_m = p.body_half_height_m;
     desc.plant.total_mass_kg = p.vehicle_mass_kg + p.payload_mass_kg;
     desc.plant.com_height_m =
         (p.vehicle_mass_kg * com_eff + p.payload_mass_kg * pcom) /

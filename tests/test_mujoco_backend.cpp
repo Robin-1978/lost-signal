@@ -31,6 +31,31 @@ void set_diff_duty(sim::world::World& w, double duty) {
 
 int main() {
 #ifdef LOST_SIGNAL_WITH_MUJOCO
+ // The compiled multibody has the declared mass and COM. Collision-shell
+ // dimensions never move when inertia is tuned.
+ {
+ sim::world::World bare = make_mujoco_diff();
+ set_diff_duty(bare, 0.0);
+ bare.step(0.0);
+ assert(std::abs(bare.compiled_mass_kg() - 24.0) < 1e-9);
+ assert(std::abs(bare.system_com_z_m() - 0.1) < 1e-9);
+
+ sim::world::MotorParams low_com = bare.motor_params();
+ low_com.com_height_m = 0.07;
+ bare.set_motor_params(low_com);
+ bare.step(0.0);
+ assert(std::abs(bare.compiled_mass_kg() - 24.0) < 1e-9);
+ assert(std::abs(bare.system_com_z_m() - 0.07) < 1e-9);
+
+ sim::world::MotorParams loaded = low_com;
+ loaded.com_height_m = 0.1;
+ loaded.payload_mass_kg = 5.0;
+ loaded.payload_height_m = 0.3;
+ bare.set_motor_params(loaded);
+ bare.step(0.0);
+ assert(std::abs(bare.compiled_mass_kg() - 29.0) < 1e-9);
+ assert(std::abs(bare.system_com_z_m() - 3.9 / 29.0) < 1e-9);
+ }
   // Spin-up: moves, settles below free speed, level attitude.
   {
     sim::world::World w = make_mujoco_diff();
@@ -401,14 +426,6 @@ int main() {
     for (int i = 0; i < 100; ++i) bare.step(0.02);
     assert(laden.truth().body_x_m < bare.truth().body_x_m);
     assert(bare.truth().body_x_m > 0.5);  // control actually drove
-    // COM below the deck (belly breach): refused, truth frozen.
-    sim::world::World bad3 = make_mujoco_diff();
-    sim::world::MotorParams mb3;
-    mb3.com_height_m = 0.04;
-    bad3.set_motor_params(mb3);
-    set_diff_duty(bad3, 0.6);
-    for (int i = 0; i < 10; ++i) bad3.step(0.02);
-    assert(bad3.truth().forward_mps == 0.0);
   }
 #else
   // MuJoCo disabled: backend exists but reports invalid, never steps.

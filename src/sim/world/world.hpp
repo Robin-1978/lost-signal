@@ -190,14 +190,14 @@ struct MotorParams {
   // Chassis hard geometry (from the DriveProfile chassis contract; the
   // engine build reads these, never hardcoded per-layout constants).
   // Defaults reproduce the legacy plant bit-identically.
-  double body_half_height_m = 0.05;  // deck ballast half height
-  double body_half_width_m = 0.12;   // deck ballast half extent
+  double body_half_height_m = 0.05;  // collision shell half height
+  double body_half_length_m = 0.28;  // collision/visual shell X extent
+  double body_half_width_m = 0.25;   // collision/visual shell Y extent
   double drive_axle_x_m = 0.0;       // drive axle line offset (base frame)
   double tire_half_width_m = 0.04;   // cylinder tread half width
   // Static mass budget (deck conserves the total, floor 0.5).
   double wheel_mass_kg = 0.2;        // per-drive-wheel static budget
   double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
-  double tire_density_kgpm3 = 400.0;  // tire rubber density
   // Effective COM height above ground (0 = follow the axle at convert).
   double com_height_m = 0.0;
   // Static payload (declared loadout; folded master-style at the build).
@@ -236,6 +236,8 @@ class World {
  }
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
+ double compiled_mass_kg() const { return mujoco_.total_mass_kg(); }
+ double system_com_z_m() const { return mujoco_.system_com_z_m(); }
   // SIM-side scenario/test hook (not a ROBOT channel): normalized parking /
   // e-stop style brake request per drive wheel, clamped to [0, 1].
   // Out-of-range wheels are ignored. Reconfiguring the motor params resets

@@ -77,6 +77,10 @@ void MujocoBackend::read_back() {
   lateral_mps_ = -vx * std::sin(body_yaw_) + vy * std::cos(body_yaw_);
   yaw_rate_ = data->qvel[5];
  const int base_body = mj_name2id(model, mjOBJ_BODY, "base");
+ total_mass_kg_ = mj_getTotalmass(model);
+ system_com_z_m_ = base_body >= 0
+ ? static_cast<double>(data->subtree_com[3 * base_body + 2])
+ : 0.0;
  const auto read_relative_body_pose = [&](int body_id, LinkPoseViz& out) {
  out = LinkPoseViz{};
  if (base_body < 0 || body_id < 0 || body_id >= model->nbody) return;

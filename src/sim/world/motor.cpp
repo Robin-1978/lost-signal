@@ -46,12 +46,12 @@ MotorParams motor_params_from_profile(
   // (empty profile list = fore/aft ball pair at +-0.9*wheel_base/2 — the
   // real differential base doctrine, previously hardcoded in the build).
   out.body_half_height_m = profile.body_half_height_m;
+  out.body_half_length_m = profile.body_half_length_m;
   out.body_half_width_m = profile.body_half_width_m;
   out.drive_axle_x_m = profile.drive_axle_x_m;
   out.tire_half_width_m = profile.tire_half_width_m;
   out.wheel_mass_kg = profile.wheel_mass_kg;
   out.knuckle_mass_kg = profile.knuckle_mass_kg;
-  out.tire_density_kgpm3 = profile.tire_density_kgpm3;
   // Effective COM: 0 = follow the axle (single rule, same as the loader).
   out.com_height_m = profile.com_height_m > 0.0
                          ? profile.com_height_m

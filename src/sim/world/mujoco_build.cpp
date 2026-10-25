@@ -72,6 +72,14 @@ mjsGeom* add_geom(mjsBody* parent, const std::string& name, mjtGeom type,
   set_name(geom->element, name);
   geom->type = type;
   geom->group = group;
+ if (group == 1) {
+ // Robot links collide with world geoms (default contype 1), while links
+ // inside the same articulated robot never collide with each other. This
+ // permits a faithful outer body shell with wheel cut-throughs represented
+ // by the articulated tires instead of shrinking the chassis to a tiny tub.
+ geom->contype = 2;
+ geom->conaffinity = 1;
+ }
   geom->size[0] = sx;
   geom->size[1] = sy;
   geom->size[2] = sz;
@@ -125,6 +133,7 @@ std::vector<PlacedModule> layout_modules(int drive_count, int steer_count,
                                          double track, double base_len,
                                          double axle_x) {
   std::vector<PlacedModule> modules;
+ modules.reserve(4);
   if (drive_count == 2 && steer_count == 0) {
     modules.push_back({axle_x, track / 2});
     modules.push_back({axle_x, -track / 2});
@@ -217,10 +226,11 @@ void MujocoBackend::sync(const MotorParams& motor,
       // Chassis hard geometry: every build input participates, or a
       // config switch keeps the stale model (found live: axle/support
       // changes rebuilt nothing). Supports itemized per entry.
-      << "|" << motor.body_half_height_m << "|" << motor.body_half_width_m
+ << "|" << motor.body_half_height_m << "|" << motor.body_half_length_m
+ << "|" << motor.body_half_width_m
       << "|" << motor.drive_axle_x_m << "|" << motor.tire_half_width_m
-      << "|" << motor.wheel_mass_kg << "|" << motor.knuckle_mass_kg
-      << "|" << motor.tire_density_kgpm3 << "|" << motor.com_height_m
+ << "|" << motor.wheel_mass_kg << "|" << motor.knuckle_mass_kg
+ << "|" << motor.com_height_m
       << "|" << motor.payload_mass_kg << "|" << motor.payload_height_m
       << "|" << motor.idler_trail_m << "|" << motor.support_count << "|";
   for (int i = 0; i < motor.support_count && i < MotorParams::kMaxSupports;
@@ -316,7 +326,8 @@ void MujocoBackend::sync(const MotorParams& motor,
   // below refuses the build fail-closed (frozen truth, loud once) — a bad
   // chassis must never silently build a different plant.
   const double deck_half_h = motor.body_half_height_m;
-  const double tub_half_xy = motor.body_half_width_m;
+ const double body_half_length = motor.body_half_length_m;
+ const double body_half_width = motor.body_half_width_m;
   const double tire_hw = motor.tire_half_width_m;
   const double axle_x = motor.drive_axle_x_m;
   auto refuse_chassis = [&](const char* what) {
@@ -333,14 +344,8 @@ void MujocoBackend::sync(const MotorParams& motor,
     refuse_chassis("'body_half_height_m' must clear the floor (0, r)");
     return;
   }
-  // Tub stays clear of every wheel swept volume (same constraint the
-  // legacy 0.12 tub satisfied: |y| >= track/2 - width, |x| >= base/2 - r).
-  // A full-deck overlap resolved explosively and masked as a steering
-  // instability — never again.
-  const double tub_limit =
-      std::min(track / 2 - tire_hw, base_len / 2 - r);
-  if (!(tub_half_xy > 0.0) || !(tub_half_xy < tub_limit)) {
-    refuse_chassis("'body_half_width_m' must clear the wheel swept volume");
+ if (!(body_half_length > 0.0) || !(body_half_width > 0.0)) {
+ refuse_chassis("body half-length and half-width must be positive");
     return;
   }
   if (!(tire_hw > 0.0) || !(tire_hw < r)) {
@@ -360,15 +365,11 @@ void MujocoBackend::sync(const MotorParams& motor,
     refuse_chassis("'knuckle_mass_kg' must be positive");
     return;
   }
-  if (!(motor.tire_density_kgpm3 > 0.0)) {
-    refuse_chassis("'tire_density_kgpm3' must be positive");
-    return;
-  }
   // Effective COM (0 = follow the axle — same single rule as the loader).
   const double com_eff =
       motor.com_height_m > 0.0 ? motor.com_height_m : r;
-  if (!std::isfinite(com_eff) || com_eff - deck_half_h <= 0.0) {
-    refuse_chassis("COM must clear the deck (belly = com - half_h > 0)");
+ if (!std::isfinite(com_eff) || !(com_eff > 0.0)) {
+ refuse_chassis("COM height must be finite positive");
     return;
   }
   if (!(motor.idler_trail_m >= 0.0) ||
@@ -416,16 +417,34 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   double support_mass = 0.0;
   for (int i = 0; i < leg_count; ++i) support_mass += legs[i].mass_kg;
-  // Deck conserves the vehicle total (wheels + supports itemized, floor
-  // guards a degenerate all-wheel plant). Previously the 0.2/wheel split
-  // was hardcoded and supports were never subtracted.
-  const double base_mass = std::max(
-      0.5, motor.vehicle_mass_kg - motor.wheel_mass_kg * drive_count -
-               support_mass);
-  // Central mass tub (ballast only; rendering shells belong to M3).
-  // Size comes from config; the swept-volume guard above is what keeps a
-  // full-deck overlap (initial penetration resolving explosively, masking
-  // as steering instability) from ever rebuilding.
+ const std::vector<PlacedModule> modules =
+ layout_modules(drive_count, steer_count, track, base_len, axle_x);
+ int wheel_count = 0;
+ int knuckle_count = 0;
+ for (const auto& module : modules) {
+ if (module.is_drive || module.idle) ++wheel_count;
+ if (module.is_steer) ++knuckle_count;
+ }
+ const double component_mass =
+ motor.wheel_mass_kg * wheel_count +
+ motor.knuckle_mass_kg * knuckle_count + support_mass;
+ const double base_mass = motor.vehicle_mass_kg - component_mass;
+ if (!(base_mass > 0.1) || !std::isfinite(base_mass)) {
+ refuse_chassis("vehicle mass must exceed wheel, knuckle and support mass");
+ return;
+ }
+ double component_moment_kgm =
+ (motor.wheel_mass_kg * wheel_count +
+ motor.knuckle_mass_kg * knuckle_count) * r;
+ for (int i = 0; i < leg_count; ++i) {
+ component_moment_kgm += legs[i].mass_kg * legs[i].radius_m;
+ }
+ const double ballast_height =
+ (motor.vehicle_mass_kg * com_eff - component_moment_kgm) / base_mass;
+ if (!(ballast_height > 0.0) || !std::isfinite(ballast_height)) {
+ refuse_chassis("declared COM is below the component mass floor");
+ return;
+ }
   const double mu = std::max(0.05, motor.tire_friction_mu);
   // Mecanum rollers slide freely sideways in reality; the smooth-cylinder
   // stand-in would otherwise grip laterally and pin the body against the
@@ -442,10 +461,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   zone_geom_.clear();
 
-  // Wheel modules per layout: one shared table for the build (bodies)
-  // and the step (wheel world positions for the zone lookup).
-  const std::vector<PlacedModule> modules =
-      layout_modules(drive_count, steer_count, track, base_len, axle_x);
+ // Wheel modules use the same table for build and per-step zone lookup.
   idler_count_ = 0;
   for (const auto& mod : modules) {
     if (mod.is_drive && mod.drive_idx >= 0 && mod.drive_idx < 4) {
@@ -529,12 +545,20 @@ void MujocoBackend::sync(const MotorParams& motor,
  }
   mjsBody* base = add_body(world, "base", 0.0, 0.0, r);
   mjs_addFreeJoint(base);
-  mjsGeom* deck =
-      add_geom(base, "deck", mjGEOM_BOX, tub_half_xy, tub_half_xy, deck_half_h, 1);
-  deck->mass = base_mass;
-  // Ballast center rides the effective COM (body frame: base origin sits
-  // at axle height r, so the offset is com - r; 0 by default, legacy-exact).
-  deck->pos[2] = com_eff - r;
+ // Collision geometry and inertia are separate. COM tuning therefore moves
+ // only the contactless ballast, never the visible/physical belly shell.
+ mjsGeom* shell = add_geom(base, "body_shell", mjGEOM_BOX,
+ body_half_length, body_half_width, deck_half_h, 1);
+ shell->mass = 0.0;
+ shell->density = 0.0;
+ mjsGeom* ballast = add_geom(base, "ballast", mjGEOM_BOX,
+ std::max(0.01, body_half_length * 0.45),
+ std::max(0.01, body_half_width * 0.45),
+ std::max(0.01, deck_half_h * 0.45), 1);
+ ballast->mass = base_mass;
+ ballast->pos[2] = ballast_height - r;
+ ballast->contype = 0;
+ ballast->conaffinity = 0;
   // Declared payload, master-style fold: a contactless point-mass sphere
   // at the payload height (group 1 like all robot geoms: no ray hit, no
   // contact). Exact for total mass and COM height; intrinsic inertia of
@@ -579,7 +603,9 @@ void MujocoBackend::sync(const MotorParams& motor,
           add_body(parent, "wheel" + std::to_string(drive_idx), px, py, 0.0);
       mjsJoint* drive = add_hinge(wheel, "drive" + std::to_string(drive_idx),
                                   0.0, 1.0, 0.0,
-                                  std::max(1e-6, motor.wheel_equiv_mass_kg * r * r));
+ std::max(1e-6,
+ std::max(0.0, motor.wheel_equiv_mass_kg -
+ 0.5 * motor.wheel_mass_kg) * r * r));
       // S2 viscous drag, native mechanism: patch force c*v becomes joint
       // damping torque c*r^2*w. Coulomb/rolling stay in the contact pair.
       drive->damping[0] =
@@ -590,7 +616,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       tire->quat[1] = kQuatX90[1];
       tire->quat[2] = kQuatX90[2];
       tire->quat[3] = kQuatX90[3];
-      tire->density = motor.tire_density_kgpm3;
+ tire->mass = motor.wheel_mass_kg;
  tire->priority = 2;
       tire->friction[0] = mu_tire;
       tire->friction[1] = kWheelTorsionalFriction;
@@ -611,7 +637,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       itire->quat[1] = kQuatX90[1];
       itire->quat[2] = kQuatX90[2];
       itire->quat[3] = kQuatX90[3];
-      itire->density = motor.tire_density_kgpm3;
+ itire->mass = motor.wheel_mass_kg;
  itire->priority = 2;
       itire->friction[0] = mu;
       itire->friction[1] = kWheelTorsionalFriction;

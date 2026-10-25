@@ -201,6 +201,8 @@ class MujocoBackend {
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
+ double total_mass_kg() const { return total_mass_kg_; }
+ double system_com_z_m() const { return system_com_z_m_; }
   // True 3D raycast against the compiled static scene (floor + boxes),
   // for sensor simulation. Robot geoms live in group 1 and are excluded,
   // so a sensor mounted on the body never self-hits; actors have no engine
@@ -290,6 +292,7 @@ class MujocoBackend {
   double body_x_ = 0.0, body_y_ = 0.0, body_yaw_ = 0.0;
   double forward_mps_ = 0.0, lateral_mps_ = 0.0, yaw_rate_ = 0.0;
   double body_z_ = 0.0, body_roll_ = 0.0, body_pitch_ = 0.0;
+ double total_mass_kg_ = 0.0, system_com_z_m_ = 0.0;
   std::array<double, 4> drive_angle_ = {};
   std::array<double, 4> drive_radps_ = {};
   std::array<bool, 4> drive_slipping_ = {};
@@ -338,6 +341,8 @@ class MujocoBackend {
   double body_z() const { return 0.0; }
   double body_roll() const { return 0.0; }
   double body_pitch() const { return 0.0; }
+ double total_mass_kg() const { return 0.0; }
+ double system_com_z_m() const { return 0.0; }
  int casters(CasterViz*, int) const { return 0; }
 };
 
