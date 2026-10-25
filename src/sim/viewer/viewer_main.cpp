@@ -8,6 +8,8 @@
 #include <raymath.h>
 #include <rlgl.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <chrono>
 #include <cstdint>
@@ -27,6 +29,7 @@
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
+#include "sim/viewer/asset_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/map_editor.hpp"
 #include "sim/viewer/playback_controller.hpp"
@@ -39,6 +42,8 @@ using lost_signal::sim::viewer::Frame;
 using lost_signal::sim::viewer::FrameBody;
 using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
+using lost_signal::sim::viewer::AssetDefinition;
+using lost_signal::sim::viewer::AssetManifest;
 
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
@@ -46,14 +51,23 @@ constexpr int kScreenH = 750;
 struct VisualAssets {
  Texture2D dust{};
  Shader lighting{};
+ AssetManifest manifest;
  Model chassis{};
+ const AssetDefinition* chassis_definition = nullptr;
  Model wheel{};
+ const AssetDefinition* wheel_definition = nullptr;
  Model lidar{};
+ const AssetDefinition* lidar_definition = nullptr;
  Model caster_fork{};
+ const AssetDefinition* caster_fork_definition = nullptr;
  Model caster_wheel{};
+ const AssetDefinition* caster_wheel_definition = nullptr;
  Model track{};
+ const AssetDefinition* track_definition = nullptr;
  Model forklift{};
+ const AssetDefinition* forklift_definition = nullptr;
  Model worker{};
+ const AssetDefinition* worker_definition = nullptr;
  bool loaded = false;
 };
 
@@ -92,15 +106,64 @@ BoundingBox raylib_asset_bounds(const Model& model, bool zup_converted) {
  return {{x0, y0, z0}, {x1, y1, z1}};
 }
 
-Model load_optional_model(const std::filesystem::path& path,
- bool convert_zup = true) {
- if (!std::filesystem::is_regular_file(path)) return {};
+bool model_bounds_match_manifest(const Model& model,
+ const AssetDefinition& definition) {
+ const BoundingBox bounds = GetModelBoundingBox(model);
+ std::array<double, 3> actual{
+ std::abs(bounds.max.x - bounds.min.x),
+ std::abs(bounds.max.y - bounds.min.y),
+ std::abs(bounds.max.z - bounds.min.z)};
+ std::array<double, 3> expected{
+ definition.expected_bounds_m.maximum_m[0] -
+ definition.expected_bounds_m.minimum_m[0],
+ definition.expected_bounds_m.maximum_m[1] -
+ definition.expected_bounds_m.minimum_m[1],
+ definition.expected_bounds_m.maximum_m[2] -
+ definition.expected_bounds_m.minimum_m[2]};
+ std::sort(actual.begin(), actual.end());
+ std::sort(expected.begin(), expected.end());
+ for (std::size_t i = 0; i < actual.size(); ++i) {
+ const double tolerance = std::max(0.002, expected[i] * 0.02);
+ if (std::abs(actual[i] * definition.meters_per_unit - expected[i]) >
+ tolerance) {
+ return false;
+ }
+ }
+ return true;
+}
+
+Model load_manifest_model(const std::filesystem::path& models_root,
+ const AssetManifest& manifest, const std::string& asset_id,
+ const AssetDefinition*& definition_out) {
+ definition_out = manifest.find(asset_id);
+ if (definition_out == nullptr) {
+ std::fprintf(stderr, "[viewer] asset id missing from manifest: %s\n",
+ asset_id.c_str());
+ return {};
+ }
+ const std::filesystem::path path =
+ models_root / definition_out->relative_path;
  Model model = LoadModel(path.string().c_str());
  if (!model_ready(model)) return {};
- // Content GLBs use Z-up; the SIM viewer uses raylib's Y-up convention.
- // Keep this conversion at the asset boundary so every component shares
- // the same upright frame.
- if (convert_zup) model.transform = MatrixRotateX(-PI / 2.0f);
+ if (!model_bounds_match_manifest(model, *definition_out)) {
+ std::fprintf(stderr,
+ "[viewer] asset bounds differ from manifest, using fallback: %s\n",
+ asset_id.c_str());
+ UnloadModel(model);
+ definition_out = nullptr;
+ return {};
+ }
+ const auto& rpy = definition_out->asset_to_link_rpy_rad;
+ const Matrix units = MatrixScale(
+ static_cast<float>(definition_out->meters_per_unit),
+ static_cast<float>(definition_out->meters_per_unit),
+ static_cast<float>(definition_out->meters_per_unit));
+ const Matrix asset_to_link = MatrixRotateXYZ({
+ static_cast<float>(rpy[0]), static_cast<float>(rpy[1]),
+ static_cast<float>(rpy[2])});
+ const Matrix link_to_raylib = MatrixRotateX(-PI / 2.0f);
+ model.transform = MatrixMultiply(
+ MatrixMultiply(units, asset_to_link), link_to_raylib);
  return model;
 }
 
@@ -108,43 +171,54 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  const std::string& robot_id) {
  if (root.empty()) return;
  const std::filesystem::path base(root);
- std::filesystem::path robot_dir = base / "models" / "robots" / robot_id;
+ const std::filesystem::path models_root = base / "models";
+ std::string manifest_error;
+ if (!lost_signal::sim::viewer::load_asset_manifest(
+ (models_root / "manifest.json").string(), assets.manifest,
+ &manifest_error)) {
+ std::fprintf(stderr, "[viewer] asset manifest rejected: %s\n",
+ manifest_error.c_str());
+ return;
+ }
+ std::string family = robot_id;
  // Legacy robot configs use descriptive ids (ro1-tracked, ro1-mecanum,
  // ...), while the content tree keys models by the master asset family.
  // Resolve that alias at the SIM asset boundary so every chassis gets its
  // authored GLB without changing the hardware contract or leaking content
  // ids into ROBOT.
- if (!std::filesystem::is_directory(robot_dir)) {
+ if (assets.manifest.find("robots." + family + ".chassis") == nullptr &&
+ assets.manifest.find("robots." + family + ".hull") == nullptr) {
  const auto has = [&](const char* token) {
  return robot_id.find(token) != std::string::npos;
  };
- const char* family = has("tracked") ? "ro3"
+ family = has("tracked") ? "ro3"
  : has("mecanum") ? "ro5"
  : has("swerve") ? "ro4"
  : has("ackermann") ? "ro2"
  : "ro1";
- robot_dir = base / "models" / "robots" / family;
  }
- const auto actor_dir = base / "models" / "actors";
- assets.chassis = load_optional_model(robot_dir / "chassis.glb");
- if (!model_ready(assets.chassis))
- assets.chassis = load_optional_model(robot_dir / "hull.glb");
- // Wheel links are authored in their physical joint frame (+Z axle). Keep
- // their transform explicit in the joint renderer; do not hide it in the
- // global asset conversion used by chassis/actors.
- assets.wheel = load_optional_model(robot_dir / "wheel_standard.glb", false);
- if (!model_ready(assets.wheel))
- assets.wheel = load_optional_model(robot_dir / "swerve_module.glb", false);
- if (!model_ready(assets.wheel))
- assets.wheel = load_optional_model(robot_dir / "roller_left.glb", false);
- assets.lidar = load_optional_model(robot_dir / "lidar_standard.glb");
- if (!model_ready(assets.lidar))
- assets.lidar = load_optional_model(robot_dir / "lidar_long.glb");
- assets.caster_fork = load_optional_model(robot_dir / "caster_fork.glb");
- assets.caster_wheel = load_optional_model(robot_dir / "caster_wheel.glb", false);
- assets.track = load_optional_model(robot_dir / "track.glb");
- assets.forklift = load_optional_model(actor_dir / "forklift.glb");
- assets.worker = load_optional_model(actor_dir / "worker.glb");
+ const std::string chassis_id = family == "ro3"
+ ? "robots.ro3.hull"
+ : "robots." + family + ".chassis";
+ assets.chassis = load_manifest_model(models_root, assets.manifest,
+ chassis_id, assets.chassis_definition);
+ std::string wheel_id = "robots.ro1.wheel_standard";
+ if (family == "ro4") wheel_id = "robots.ro4.swerve_module";
+ if (family == "ro5") wheel_id = "robots.ro5.roller_left";
+ assets.wheel = load_manifest_model(models_root, assets.manifest,
+ wheel_id, assets.wheel_definition);
+ assets.lidar = load_manifest_model(models_root, assets.manifest,
+ "robots.ro1.lidar_standard", assets.lidar_definition);
+ assets.caster_fork = load_manifest_model(models_root, assets.manifest,
+ "robots.ro1.caster_fork", assets.caster_fork_definition);
+ assets.caster_wheel = load_manifest_model(models_root, assets.manifest,
+ "robots.ro1.caster_wheel", assets.caster_wheel_definition);
+ assets.track = load_manifest_model(models_root, assets.manifest,
+ "robots.ro3.track", assets.track_definition);
+ assets.forklift = load_manifest_model(models_root, assets.manifest,
+ "actors.forklift", assets.forklift_definition);
+ assets.worker = load_manifest_model(models_root, assets.manifest,
+ "actors.worker", assets.worker_definition);
  const auto texture_dir = base / "textures" / "environment";
  if (std::filesystem::is_regular_file(texture_dir / "dust_puff.png")) {
  assets.dust = LoadTexture((texture_dir / "dust_puff.png").string().c_str());
@@ -273,9 +347,12 @@ void draw_fitted_model(const Model& model, Vector3 position, float radius,
 // kinematic pose; this helper only converts the asset's z-up coordinates to
 // raylib's y-up frame and guarantees that its lowest vertex touches terrain.
 void draw_actor_model_grounded(const Model& model, double x_m, double y_m,
- double ground_z_m, double radius_m, bool pedestrian, double heading_rad) {
+ const AssetDefinition& definition, double ground_z_m, double radius_m,
+ double heading_rad) {
  if (!model_ready(model)) return;
- const float reference_radius = pedestrian ? 0.25f : 0.45f;
+ const float reference_radius = static_cast<float>(
+ definition.reference_radius_m);
+ if (!(reference_radius > 0.0f)) return;
  const float scale = static_cast<float>(radius_m) /
  std::max(1e-3f, reference_radius);
  const BoundingBox bounds = raylib_asset_bounds(model, true);
@@ -412,19 +489,19 @@ Quaternion link_rotation(const FrameLinkPose& pose, bool converted_asset) {
 // and the caster a 55 mm radius). Fit the radial and axle dimensions to the
 // live plant configuration independently; a future profile therefore cannot
 // put a decorative blackwall below the physical contact patch.
-Vector3 wheel_asset_scale(const Model& model, double radius_m,
+Vector3 wheel_asset_scale(const AssetDefinition* definition, double radius_m,
  double half_width_m) {
- const BoundingBox b = raylib_asset_bounds(model, false);
- const float ex = std::max(1e-4f, b.max.x - b.min.x);
- const float ey = std::max(1e-4f, b.max.y - b.min.y);
- const float ez = std::max(1e-4f, b.max.z - b.min.z);
- // Blender authors the joint in robot coordinates (X forward, Y axle,
- // Z up); glTF's Y-up export maps that axle to runtime +Z. Keep this one
- // asset-boundary convention for every wheel GLB: radial X/Y, axle Z.
- const float radial = std::max(ex, ey) * 0.5f;
- return {static_cast<float>(radius_m / radial),
- static_cast<float>(radius_m / radial),
- static_cast<float>((2.0 * half_width_m) / ez)};
+ if (definition == nullptr || !(definition->reference_radius_m > 0.0) ||
+ !(definition->reference_half_width_m > 0.0)) {
+ return {1.0f, 1.0f, 1.0f};
+ }
+ const float radial = static_cast<float>(
+ radius_m / definition->reference_radius_m);
+ const float axial = static_cast<float>(
+ half_width_m / definition->reference_half_width_m);
+ // Manifest wheels use X forward, Y axle, Z up. The asset boundary maps
+ // them to raylib X forward, Z axle, Y up, so the axial scale is Z.
+ return {radial, radial, axial};
 }
 
 // Presentation companion to the MuJoCo caster tire: a full-radius centre rib
@@ -975,11 +1052,17 @@ void draw_frame_3d(const Frame& f,
  world.terrain_patches(), world.support_slabs(), a.x_m, a.y_m).height_m;
  blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3, ground_z);
  const Model* actor_model = nullptr;
+ const AssetDefinition* actor_definition = nullptr;
  if (assets != nullptr) actor_model = a.pedestrian ? &assets->worker
  : &assets->forklift;
- if (actor_model != nullptr && model_ready(*actor_model)) {
- draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, ground_z,
- a.radius_m, a.pedestrian, a.heading_rad);
+ if (assets != nullptr) {
+ actor_definition = a.pedestrian ? assets->worker_definition
+ : assets->forklift_definition;
+ }
+ if (actor_model != nullptr && model_ready(*actor_model) &&
+ actor_definition != nullptr) {
+draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
+ ground_z, a.radius_m, a.heading_rad);
  } else {
  // raylib's DrawCylinder position is the base center (not the geometric
  // center). Passing ground+h/2 made the procedural pedestrian float by half
@@ -1150,7 +1233,12 @@ void draw_frame_3d(const Frame& f,
  const double caster_half_width = std::min(
  static_cast<double>(world.motor_params().tire_half_width_m),
  caster.radius_m * 0.75);
- const float caster_scale = static_cast<float>(caster.radius_m / 0.055);
+ const float caster_scale = assets != nullptr &&
+ assets->caster_wheel_definition != nullptr &&
+ assets->caster_wheel_definition->reference_radius_m > 0.0
+ ? static_cast<float>(caster.radius_m /
+ assets->caster_wheel_definition->reference_radius_m)
+ : 1.0f;
  if (assets != nullptr && model_ready(assets->caster_fork)) {
  draw_model_quaternion(assets->caster_fork,
  link_position(caster.fork_pose),
@@ -1161,7 +1249,7 @@ void draw_frame_3d(const Frame& f,
  draw_model_quaternion(assets->caster_wheel,
  link_position(caster.wheel_pose),
  link_rotation(caster.wheel_pose, true),
- wheel_asset_scale(assets->caster_wheel, caster.radius_m,
+ wheel_asset_scale(assets->caster_wheel_definition, caster.radius_m,
  caster_half_width), WHITE);
  } else {
  const Quaternion rotation = QuaternionMultiply(
@@ -1189,14 +1277,19 @@ void draw_frame_3d(const Frame& f,
  const double caster_half_width = std::min(
  static_cast<double>(world.motor_params().tire_half_width_m),
  caster.radius_m * 0.75);
- Vector3 caster_wheel_scale{static_cast<float>(caster.radius_m / 0.055),
- static_cast<float>(caster.radius_m / 0.055),
- static_cast<float>(caster.radius_m / 0.055)};
+ Vector3 caster_wheel_scale = wheel_asset_scale(
+ assets != nullptr ? assets->caster_wheel_definition : nullptr,
+ caster.radius_m, caster_half_width);
  if (assets != nullptr && model_ready(assets->caster_wheel)) {
- caster_wheel_scale = wheel_asset_scale(assets->caster_wheel,
+ caster_wheel_scale = wheel_asset_scale(assets->caster_wheel_definition,
  caster.radius_m, caster_half_width);
  }
- const float caster_scale = static_cast<float>(caster.radius_m / 0.055);
+ const float caster_scale = assets != nullptr &&
+ assets->caster_wheel_definition != nullptr &&
+ assets->caster_wheel_definition->reference_radius_m > 0.0
+ ? static_cast<float>(caster.radius_m /
+ assets->caster_wheel_definition->reference_radius_m)
+ : 1.0f;
  if (assets != nullptr && model_ready(assets->caster_wheel)) {
  const Quaternion swivel = QuaternionFromAxisAngle(
  {0.0f, 1.0f, 0.0f}, static_cast<float>(caster.yaw_rad));
@@ -1323,7 +1416,7 @@ void draw_frame_3d(const Frame& f,
  Quaternion rotation = link_rotation(w.pose, true);
  if (assets != nullptr && model_ready(assets->wheel)) {
  draw_model_quaternion(assets->wheel, position, rotation,
- wheel_asset_scale(assets->wheel, w.radius_m,
+ wheel_asset_scale(assets->wheel_definition, w.radius_m,
  world.motor_params().tire_half_width_m),
  w.slipping ? Color{210, 60, 48, 255} : WHITE);
  } else {
@@ -1369,7 +1462,8 @@ void draw_frame_3d(const Frame& f,
  const Quaternion rotation = QuaternionMultiply(
  steer, QuaternionMultiply(mount, spin));
  const Vector3 wheel_scale = wheel_asset_scale(
- assets->wheel, w.radius_m, world.motor_params().tire_half_width_m);
+ assets->wheel_definition, w.radius_m,
+ world.motor_params().tire_half_width_m);
  draw_model_quaternion(assets->wheel,
  {static_cast<float>(w.x_m), axle + wheel_lift, static_cast<float>(-w.y_m)},
  rotation, wheel_scale,

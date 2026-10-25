@@ -322,7 +322,9 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 
 ### G2：资产契约和物理可视化
 
-- 建立 manifest、legacy 迁移器、Blender 源/导出/校验流程。
+- 已建立版本化 manifest 和 Blender 全量导入门禁，覆盖当前 41 个 GLB/GLTF；Viewer 按资产 ID、单位、轴向、装配变换、参考尺寸和 bounds 加载，拒绝重复、缺失、越界或发生尺寸漂移的资产。
+- 已移除 Viewer 中叉车、行人、驱动轮和 caster 的匿名参考半径，统一读取 manifest；所有轮模型通过同一个资产边界映射到 `X 前/Y 左/Z 上` link frame，再叠加 MuJoCo link pose。
+- 后续建立 legacy 批量规范化导出器，所有新模型使用 glTF 右手系 `+Y up/+Z front`，由 manifest 明确变换到机器人 link frame。
 - 重做机器人家族、叉车、worker 和第一套环境 kit。
 - 增加 joint axis、collision、COM、contact overlay 与 grounding 测试。
 - 验收：所有部件在初始、运动、暂停、坡面和 rebuild 后姿态正确；没有 draw-time 猜轴或落地补偿。

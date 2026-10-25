@@ -117,8 +117,12 @@ completion ratio, and a duty/speed energy proxy.
  authority stays SIM-only; its deployable equivalent is the route/prediction
  entry constraint above. Hybrid A* path smoothing remains in planning.
 - The SIM viewer is presentation-only. It loads optional GLB assets from
-  `assets/models` automatically (or `--assets DIR`), with deterministic
-  procedural fallbacks. Chassis parts use live MuJoCo joint angles/velocities;
+ `assets/models` automatically (or `--assets DIR`) through the versioned
+ `assets/models/manifest.json` contract. Every model declares its units,
+ axes, pivot, link transform, reference dimensions, expected bounds, and
+ source. Missing metadata or changed bounds fail visibly and use deterministic
+ procedural geometry instead of guessed rotations or sizes. Blender headless
+ validation covers the complete model inventory. Chassis parts use live MuJoCo joint angles/velocities;
   wheel effects use MuJoCo contact-point slip, normal force, and the SIM-only
   ground material. Dry paving stays clean during ordinary rolling; sand,
   gravel, mud, water, and tire slip render distinct deterministic effects.

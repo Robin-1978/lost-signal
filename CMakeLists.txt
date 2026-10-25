@@ -294,6 +294,7 @@ target_link_libraries(lost_signal_sim PRIVATE lost_signal_sim_scenario)
 # no raylib dependency (headless unit-tested). The raylib frontend links
 # this plus raylib; only the frontend opens a window.
 add_library(lost_signal_sim_viewer STATIC
+  src/sim/viewer/asset_manifest.cpp
   src/sim/viewer/frame_builder.cpp
   src/sim/viewer/map_editor.cpp
  src/sim/viewer/playback_controller.cpp
@@ -611,6 +612,15 @@ add_executable(test_viewer_frame
 )
 target_link_libraries(test_viewer_frame PRIVATE lost_signal_sim_viewer)
 add_test(NAME viewer_frame COMMAND test_viewer_frame)
+
+add_executable(test_asset_manifest
+  tests/test_asset_manifest.cpp
+)
+target_compile_definitions(test_asset_manifest PRIVATE
+  TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_asset_manifest PRIVATE lost_signal_sim_viewer)
+add_test(NAME asset_manifest COMMAND test_asset_manifest)
 
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp
