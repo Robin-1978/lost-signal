@@ -395,6 +395,15 @@ add_executable(test_astar
 target_link_libraries(test_astar PRIVATE lost_signal_robot_autonomy)
 add_test(NAME astar COMMAND test_astar)
 
+add_executable(test_industrial_200k
+ tests/test_industrial_200k.cpp
+)
+target_compile_definitions(test_industrial_200k PRIVATE
+ TEST_CONFIG_DIR="${CMAKE_SOURCE_DIR}/configs"
+)
+target_link_libraries(test_industrial_200k PRIVATE lost_signal_sim_scenario)
+add_test(NAME industrial_200k COMMAND test_industrial_200k)
+
 add_executable(test_ackermann_planner
  tests/test_ackermann_planner.cpp
 )
