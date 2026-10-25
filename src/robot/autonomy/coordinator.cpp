@@ -309,7 +309,6 @@ iface::MotionCommand AutonomyCoordinator::update(
   // Localization runs on every tick; the supervisor cadence-gates the
   // matcher. Corrections feed the estimator only when accepted, so a hard
   // scan never drags the pose.
-  const EstimatedState pre = estimator_->estimate();
   // Localization subsystem (supervisor-sequenced corrections + SLAM):
   // estimator/mapper/observations in, action name + replan flag out.
   // Corrections feed the estimator only when accepted, so a hard scan
@@ -321,14 +320,14 @@ iface::MotionCommand AutonomyCoordinator::update(
  *estimator_, *mapper_);
   last_localization_action_ = loc.action;
   if (loc.replan_requested) replan_requested_ = true;
-  // TF publisher: odom->base is the continuous pre-correction prediction
-  // in full 3D (x/y/z + roll/pitch/yaw — slopes ride here); map->odom is
-  // the per-tick SE(2) correction delta (identity when nothing corrected).
-  // Skipped until the estimate is valid.
+ // TF publisher follows REP-105. The estimator owns a continuous odom pose
+ // that localization never rewrites; absolute corrections update only the
+ // map pose. map->odom is their persistent SE(2) relationship, so a map
+ // jump cannot become a controller-visible odom jump on the next tick.
   const EstimatedState post = estimator_->estimate();
- trajectory_tracking_report_ = trajectory_tracking_.observe(post);
-  if (post.valid) {
-    const EstimatedState& odom = pre.valid ? pre : post;
+ const EstimatedState odom = estimator_->odometry_estimate();
+ trajectory_tracking_report_ = trajectory_tracking_.observe(odom);
+ if (post.valid && odom.valid) {
     tf_.set_transform(
         "odom", "base_link",
         {{odom.x_m, odom.y_m, odom.z_m},
@@ -481,7 +480,7 @@ iface::MotionCommand AutonomyCoordinator::update(
   evidence.action_code = final_cmd.is_safe_stop() ? "stop" : "drive";
   evidence_.publish(std::move(evidence), now_ns * 1e-9);
  trajectory_tracking_.accept(
- final_cmd, estimator_->estimate(), trajectory_tracking_limits_);
+ final_cmd, estimator_->odometry_estimate(), trajectory_tracking_limits_);
   return final_cmd;
 }
 

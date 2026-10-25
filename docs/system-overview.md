@@ -173,8 +173,9 @@ flowchart TB
   RW --> Train["Train RL out-of-process"]
 ```
 
-- `AutonomyCoordinator::estimate`（fused odometry：gyro-led yaw +
-  scan-match/SLAM corrections）随 `diagnostics()` 只读带出。
+- `diagnostics().odometry_estimate` 是连续、可漂移的 `odom -> base_link`
+ 状态；`diagnostics().estimate` 是允许由 scan-match/SLAM 校正跳变的 map
+ 状态。`map -> odom` 吸收二者差值，符合 REP-105，两个状态都只读带出。
 - 对比公式：`pos_err = hypot(est.x - truth.x, est.y - truth.y)`，
   `yaw_err = |wrap_pi(est.yaw - truth.yaw)|`（`sim/eval/scoring.cpp`）。
 - 测试 `test_truth_isolation` 断言：估计存在、误差有限、reward 纯离线、

@@ -265,6 +265,7 @@ RobotApplication::Diagnostics RobotApplication::diagnostics() const {
     d.last_obs_stamp_ns = coordinator_.last_observation().stamp_ns;
     d.last_obs_seq = coordinator_.last_observation().sequence;
     d.estimate = coordinator_.estimate();
+ d.odometry_estimate = coordinator_.odometry_estimate();
   }
   d.bringup = bringup_.state();
   d.localized = coordinator_.localized();

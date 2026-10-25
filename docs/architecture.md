@@ -163,7 +163,8 @@ app.take_command(now);         // provider pulls, expiry enforced
 configuration, not physics:
 
 - `robot_id + version`: bump on any mount/limit change; hash-pinned to logs.
-- `links[]`: `{link, parent, xyz_m, rpy_rad}` rooted at `world -> base_link`.
+- `links[]`: `{link, parent, xyz_m, rpy_rad}`; `world -> base_link` is a
+ description root marker and is not inserted into ROBOT static TF.
 - `sensors[]`: `{sensor_id, link, xyz_m, rpy_rad}` matching
   `EndpointDescriptor.endpoint_id`.
 - `limits`: `{max_forward_mps, max_yaw_rate_radps, footprint_radius_m}`.
@@ -184,6 +185,15 @@ diagnostic/presentation state and are never placed in `ObservationFrame`,
 effect can therefore improve visual fidelity without becoming a hidden
 truth channel for autonomy.
 - ROBOT consumes only frames, mounts, and limits.
+
+Runtime pose frames follow REP-105. The estimator publishes two ROBOT-owned
+states from the same wheel/IMU prediction: `odom -> base_link` is continuous
+and may drift, while the navigation estimate is in `map` and may jump after a
+validated localization or loop-closure correction. Localization never writes
+the odom state. `map -> odom` is recomputed from those two persistent states;
+it absorbs map corrections instead of resetting to identity on the next tick.
+The TF graph therefore contains no static `world -> base_link` edge or other
+cycle that could anchor the moving robot.
 
 Changing calibration creates a new `version` and invalidates dependent
 estimates; it is never silently mixed into a running session.

@@ -133,6 +133,9 @@ class RobotApplication : public IRobot {
     core::MonotonicNs last_obs_stamp_ns = core::kInvalidTime;
     std::uint64_t last_obs_seq = 0;
     autonomy::EstimatedState estimate;
+ // Continuous REP-105 odom-frame state. `estimate` is the map-frame pose
+ // used for navigation and may jump when localization is corrected.
+ autonomy::EstimatedState odometry_estimate;
     autonomy::SafetyState safety = autonomy::SafetyState::kStopped;
     std::string safety_reason = "init";
     autonomy::diagnostics::DecisionEvidence evidence;

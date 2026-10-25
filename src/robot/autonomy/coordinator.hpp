@@ -143,6 +143,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  return measurements_.latest();
  }
   const EstimatedState& estimate() const;
+ const EstimatedState& odometry_estimate() const {
+ return estimator_->odometry_estimate();
+ }
   SlipObservation last_slip() const { return estimator_->last_slip(); }
   const PerceptionResult& perception() const { return perception_; }
   const BehaviorDecision& last_decision() const { return decision_; }

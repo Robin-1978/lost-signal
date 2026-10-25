@@ -248,12 +248,16 @@ int main() {
  est.predict(impact);
  assert(est.estimate().attitude_valid);
  assert(std::abs(est.estimate().pitch_rad - pitch_before_impact) < 1e-9);
- // A deliberate planar seed resets the hidden quaternion as well as the
- // published attitude. The next level sample must restart from level rather
- // than revive the old tilt.
+ // A planar map seed must not reset the continuous roll/pitch state. REP-105
+ // relocalization changes map->odom; body attitude and odom remain continuous.
+ const double roll_before_seed = est.estimate().roll_rad;
+ const double pitch_before_seed = est.estimate().pitch_rad;
  est.seed_pose(2.0, 3.0, 0.4, 0.1, 0.05, 2'000'000'000);
- assert(!est.estimate().attitude_valid);
- assert(est.estimate().roll_rad == 0.0 && est.estimate().pitch_rad == 0.0);
+ assert(est.estimate().attitude_valid);
+ assert(est.estimate().roll_rad == roll_before_seed);
+ assert(est.estimate().pitch_rad == pitch_before_seed);
+ assert(est.odometry_estimate().roll_rad == roll_before_seed);
+ assert(est.odometry_estimate().pitch_rad == pitch_before_seed);
  iface::ObservationFrame level;
  level.stamp_ns = 2'020'000'000;
  level.odometry_valid = true;
@@ -261,8 +265,10 @@ int main() {
  level.imu_az_mps2 = 9.80665;
  est.predict(level);
  assert(est.estimate().attitude_valid);
- assert(std::abs(est.estimate().roll_rad) < 1e-9);
- assert(std::abs(est.estimate().pitch_rad) < 1e-9);
+ assert(std::abs(est.estimate().roll_rad) <=
+ std::abs(roll_before_seed) + 1e-12);
+ assert(std::abs(est.estimate().pitch_rad) <=
+ std::abs(pitch_before_seed) + 1e-12);
   }
 
   // Coordinator pipeline: configure -> activate -> ingest -> update.

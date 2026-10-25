@@ -10,6 +10,11 @@ core::FrameTransformTree static_transform_tree(const RobotDescription& desc) {
     if (link.link.empty() || link.parent.empty() || link.link == link.parent) {
       continue;
     }
+ // `world -> base_link` is a description root marker, not a calibrated
+ // static transform. Runtime localization publishes map->odom and the
+ // estimator publishes odom->base_link; inserting the root marker would
+ // create a conflicting cycle and silently anchor a moving robot to world.
+ if (link.link == "base_link" && link.parent == "world") continue;
     bool finite = true;
     for (int i = 0; i < 3; ++i) {
       finite = finite && std::isfinite(link.xyz_m[i]) &&

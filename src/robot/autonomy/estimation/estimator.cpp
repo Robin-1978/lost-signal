@@ -40,12 +40,25 @@ void FusedOdometryEstimator::reset() {
   estimate_.position_sigma_m = 0.05;
   estimate_.heading_sigma_rad = 0.01;
   estimate_.confidence = 1.0;
+ odom_estimate_ = estimate_;
   attitude_ = Quaternion{};
   has_prior_ = false;
   prior_ = iface::ObservationFrame{};
   last_slip_ = SlipObservation{};
   slip_heading_extra_rad_ = 0.0;
+ odom_slip_heading_extra_rad_ = 0.0;
  motion_scale_ = 1.0;
+}
+
+void FusedOdometryEstimator::ensure_odom_origin(
+ core::MonotonicNs stamp_ns) {
+ if (odom_estimate_.valid) return;
+ odom_estimate_ = EstimatedState{};
+ odom_estimate_.valid = true;
+ odom_estimate_.stamp_ns = stamp_ns;
+ odom_estimate_.position_sigma_m = 0.05;
+ odom_estimate_.heading_sigma_rad = 0.01;
+ odom_estimate_.confidence = 1.0;
 }
 
 void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
@@ -53,14 +66,19 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
   if (!has_prior_) {
     estimate_.valid = true;
     estimate_.stamp_ns = obs.stamp_ns;
+ odom_estimate_.valid = true;
+ odom_estimate_.stamp_ns = obs.stamp_ns;
     has_prior_ = true;
     prior_ = obs;
     if (obs.odometry_valid) {
       estimate_.forward_mps = obs.forward_mps;
       estimate_.yaw_rate_radps = obs.yaw_rate_radps;
+ odom_estimate_.forward_mps = obs.forward_mps;
+ odom_estimate_.yaw_rate_radps = obs.yaw_rate_radps;
     }
     if (obs.imu_valid) {
       estimate_.yaw_rate_radps = obs.imu_gyro_z_radps;
+ odom_estimate_.yaw_rate_radps = obs.imu_gyro_z_radps;
     }
     return;
   }
@@ -115,17 +133,21 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  // observer above still consumes the raw twist; only translation is scaled.
  const double forward =
  obs.odometry_valid ? obs.forward_mps * motion_scale_ : estimate_.forward_mps;
-  const double yaw_mid = estimate_.yaw_rad + 0.5 * yaw_rate * dt_s;
   const double step_m = forward * dt_s;
-  estimate_.x_m += step_m * std::cos(yaw_mid);
-  estimate_.y_m += step_m * std::sin(yaw_mid);
-  // Slope z: dead-reckoned climb from the current pitch (gravity-filtered
-  // attitude below). No map correction observes z — the raster is 2D.
-  estimate_.z_m += step_m * std::sin(estimate_.pitch_rad);
-  estimate_.yaw_rad = core::wrap_angle(estimate_.yaw_rad + yaw_rate * dt_s);
-  estimate_.forward_mps = forward;
-  estimate_.yaw_rate_radps = yaw_rate;
-  estimate_.stamp_ns = obs.stamp_ns;
+ auto integrate = [&](EstimatedState& state) {
+ const double yaw_mid = state.yaw_rad + 0.5 * yaw_rate * dt_s;
+ state.x_m += step_m * std::cos(yaw_mid);
+ state.y_m += step_m * std::sin(yaw_mid);
+ // Slope z is continuous odometry in both frames. A 2D map correction
+ // changes map_T_odom in SE(2) and never resets height or tilt.
+ state.z_m += step_m * std::sin(state.pitch_rad);
+ state.yaw_rad = core::wrap_angle(state.yaw_rad + yaw_rate * dt_s);
+ state.forward_mps = forward;
+ state.yaw_rate_radps = yaw_rate;
+ state.stamp_ns = obs.stamp_ns;
+ };
+ integrate(estimate_);
+ integrate(odom_estimate_);
 
   // Attitude: integrate gyro rotation, correct roll/pitch toward the
   // gravity tilt implied by specific force. Mount assumed aligned in v1;
@@ -191,34 +213,37 @@ void FusedOdometryEstimator::predict(const iface::ObservationFrame& obs) {
  estimate_.roll_rad = roll;
  estimate_.pitch_rad = pitch;
  estimate_.attitude_valid = true;
+ odom_estimate_.roll_rad = roll;
+ odom_estimate_.pitch_rad = pitch;
+ odom_estimate_.attitude_valid = true;
   }
 
-  // Covariance grows with motion and time; slip inflates heading now.
-  estimate_.position_sigma_m = std::clamp(
-      estimate_.position_sigma_m + config_.pos_growth_per_m * std::abs(step_m) +
-          config_.pos_growth_per_s * dt_s,
-      config_.pos_sigma_min_m, config_.pos_sigma_max_m);
-  // Recover the motion-grown baseline, grow it, then re-apply the live
-  // slip extra (bounded; relaxed on clean ticks). A validated correction
-  // or seed clears the extra outright (see correct_pose/seed_pose/reset),
-  // so uncertainty relaxes instead of latching once slip stops.
-  double heading_base =
-      estimate_.heading_sigma_rad - slip_heading_extra_rad_;
-  heading_base += config_.yaw_growth_per_s * dt_s;
-  if (slipped) {
-    slip_heading_extra_rad_ =
-        std::min(slip_heading_extra_rad_ + config_.slip_heading_inflation_rad,
-                 std::max(0.0, config_.slip_heading_inflation_cap_rad));
-  } else if (config_.slip_heading_relax_s > 0.0) {
-    slip_heading_extra_rad_ *=
-        std::exp(-dt_s / config_.slip_heading_relax_s);
-    if (!(slip_heading_extra_rad_ > 1e-12)) slip_heading_extra_rad_ = 0.0;
-  }
-  estimate_.heading_sigma_rad = std::clamp(
-      heading_base + slip_heading_extra_rad_, config_.yaw_sigma_min_rad,
-      config_.yaw_sigma_max_rad);
-  estimate_.confidence =
-      1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+ // Covariance grows independently in each frame. Absolute localization may
+ // reduce map uncertainty, while odometry retains its continuous history.
+ auto grow_uncertainty = [&](EstimatedState& state, double& slip_extra) {
+ state.position_sigma_m = std::clamp(
+ state.position_sigma_m +
+ config_.pos_growth_per_m * std::abs(step_m) +
+ config_.pos_growth_per_s * dt_s,
+ config_.pos_sigma_min_m, config_.pos_sigma_max_m);
+ double heading_base = state.heading_sigma_rad - slip_extra;
+ heading_base += config_.yaw_growth_per_s * dt_s;
+ if (slipped) {
+ slip_extra = std::min(
+ slip_extra + config_.slip_heading_inflation_rad,
+ std::max(0.0, config_.slip_heading_inflation_cap_rad));
+ } else if (config_.slip_heading_relax_s > 0.0) {
+ slip_extra *= std::exp(-dt_s / config_.slip_heading_relax_s);
+ if (!(slip_extra > 1e-12)) slip_extra = 0.0;
+ }
+ state.heading_sigma_rad = std::clamp(
+ heading_base + slip_extra, config_.yaw_sigma_min_rad,
+ config_.yaw_sigma_max_rad);
+ state.confidence =
+ 1.0 / (1.0 + state.position_sigma_m + state.heading_sigma_rad);
+ };
+ grow_uncertainty(estimate_, slip_heading_extra_rad_);
+ grow_uncertainty(odom_estimate_, odom_slip_heading_extra_rad_);
   prior_ = obs;
 }
 
@@ -243,6 +268,7 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
     return;  // fail closed on malformed corrections
   }
   const double ev = std::max(1e-9, estimate_.position_sigma_m);
+ ensure_odom_origin(stamp_ns);
   const double cv = std::max(1e-9, pos_sigma_m);
   const double k = ev / (ev + cv);
   // A validated map correction establishes the estimate: kidnapped or cold
@@ -278,6 +304,7 @@ void FusedOdometryEstimator::correct_relative_pose(
  return;
  }
  const double position_sigma = estimate_.position_sigma_m;
+ ensure_odom_origin(stamp_ns);
  const double heading_sigma = estimate_.heading_sigma_rad;
  const double position_gain = position_sigma /
  (position_sigma + std::max(1e-9, pos_sigma_m));
@@ -307,16 +334,19 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
       !(yaw_sigma_rad > 0.0)) {
     return;  // fail closed on malformed seeds
   }
-  estimate_.valid = true;
-  estimate_.x_m = x_m;
+ // A seed defines map_T_base. The odom origin remains where continuous
+ // wheel/IMU integration placed it; on cold start it begins at identity.
+ ensure_odom_origin(stamp_ns);
+ estimate_.valid = true;
+ estimate_.x_m = x_m;
   estimate_.y_m = y_m;
-  estimate_.z_m = 0.0;  // dock/operator seed is ground truth in plane only
+  estimate_.z_m = odom_estimate_.z_m;
   estimate_.yaw_rad = core::wrap_angle(yaw_rad);
-  estimate_.forward_mps = 0.0;
-  estimate_.yaw_rate_radps = 0.0;
-  estimate_.roll_rad = 0.0;
-  estimate_.pitch_rad = 0.0;
-  estimate_.attitude_valid = false;
+  estimate_.forward_mps = odom_estimate_.forward_mps;
+  estimate_.yaw_rate_radps = odom_estimate_.yaw_rate_radps;
+  estimate_.roll_rad = odom_estimate_.roll_rad;
+  estimate_.pitch_rad = odom_estimate_.pitch_rad;
+  estimate_.attitude_valid = odom_estimate_.attitude_valid;
   estimate_.position_sigma_m =
       std::clamp(pos_sigma_m, config_.pos_sigma_min_m,
                  config_.pos_sigma_max_m);
@@ -328,7 +358,8 @@ void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
   has_prior_ = true;
   prior_ = iface::ObservationFrame{};
  prior_.stamp_ns = stamp_ns;
-  attitude_ = quaternion_from_euler(0.0, 0.0, estimate_.yaw_rad);
+  attitude_ = quaternion_from_euler(
+  estimate_.roll_rad, estimate_.pitch_rad, estimate_.yaw_rad);
   slip_heading_extra_rad_ = 0.0;
 }
 

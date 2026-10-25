@@ -113,9 +113,9 @@ int main() {
     const core::Vec3 o =
         core::transform_point(*base_from_lidar, {0.0, 0.0, 0.0});
     assert(near(o.x, 0.3) && near(o.y, 0.0) && near(o.z, 0.5));
-    // World -> lidar chains through base.
-    const auto world_from_lidar = tree.lookup("world", "lidar_link");
-    assert(world_from_lidar.has_value());
+ // The description's world->base root marker is deliberately absent from
+ // ROBOT static TF. Runtime map->odom->base owns the moving root.
+ assert(!tree.lookup("world", "lidar_link").has_value());
   }
 
   std::printf("transform_tree ok\n");

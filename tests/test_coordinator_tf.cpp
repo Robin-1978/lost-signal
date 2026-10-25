@@ -39,6 +39,20 @@ lost_signal::robot::iface::ObservationFrame make_imu_obs(
   obs.imu_gyro_y_radps = gyro_y;
   return obs;
 }
+
+lost_signal::robot::iface::ObservationFrame make_motion_obs(
+ int seq, lost_signal::robot::core::MonotonicNs stamp_ns,
+ double forward_mps) {
+ using namespace lost_signal::robot;
+ iface::ObservationFrame obs;
+ obs.sequence = static_cast<std::uint64_t>(seq);
+ obs.stamp_ns = stamp_ns;
+ obs.source = "t.encoder";
+ obs.frame = core::Frame::kBaseLink;
+ obs.odometry_valid = true;
+ obs.forward_mps = forward_mps;
+ return obs;
+}
 }  // namespace
 
 int main() {
@@ -95,8 +109,40 @@ int main() {
     assert(odom_base.has_value());
     const core::Vec3 b =
         core::transform_point(*odom_base, {0.0, 0.0, 0.0});
-    assert(std::abs(b.x - coord.estimate().x_m) < 1e-9 &&
-           std::abs(b.y - coord.estimate().y_m) < 1e-9);
+ assert(std::abs(b.x - coord.odometry_estimate().x_m) < 1e-9 &&
+ std::abs(b.y - coord.odometry_estimate().y_m) < 1e-9);
+ }
+
+ // REP-105: an operator/relocalization map jump changes map->odom while
+ // odom->base remains continuous. Their composition still equals map->base.
+ {
+ autonomy::AutonomyCoordinator coord;
+ assert(coord.configure().ok && coord.activate().ok);
+ coord.seed_pose(5.0, -2.0, 0.3);
+ coord.ingest_observation(make_motion_obs(1, 1'000'000, 1.0));
+ coord.ingest_observation(make_motion_obs(2, 101'000'000, 1.0));
+ coord.update(iface::MapSnapshot{}, iface::ChannelHealth{}, 101'000'000);
+ const auto odom_before = coord.tf().lookup("odom", "base_link");
+ const auto map_odom_before = coord.tf().lookup("map", "odom");
+ assert(odom_before.has_value() && map_odom_before.has_value());
+
+ coord.seed_pose(-4.0, 3.0, -0.5);
+ coord.update(iface::MapSnapshot{}, iface::ChannelHealth{}, 101'000'000);
+ const auto odom_after = coord.tf().lookup("odom", "base_link");
+ const auto map_odom_after = coord.tf().lookup("map", "odom");
+ const auto map_base = coord.tf().lookup("map", "base_link");
+ assert(odom_after.has_value() && map_odom_after.has_value() &&
+ map_base.has_value());
+ assert(std::abs(odom_after->translation_m.x -
+ odom_before->translation_m.x) < 1e-12);
+ assert(std::abs(odom_after->translation_m.y -
+ odom_before->translation_m.y) < 1e-12);
+ assert(std::abs(map_odom_after->translation_m.x -
+ map_odom_before->translation_m.x) > 1.0);
+ const core::Vec3 map_origin =
+ core::transform_point(*map_base, {0.0, 0.0, 0.0});
+ assert(std::abs(map_origin.x - coord.estimate().x_m) < 1e-9);
+ assert(std::abs(map_origin.y - coord.estimate().y_m) < 1e-9);
   }
 
   std::printf("coordinator_tf ok\n");

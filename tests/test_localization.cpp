@@ -176,10 +176,14 @@ int main() {
     }
     const double drifted_x = est.estimate().x_m;
     assert(std::abs(drifted_x - 0.1) < 1e-9);
+ const double continuous_x = est.odometry_estimate().x_m;
+ const double continuous_sigma = est.odometry_estimate().position_sigma_m;
     const double before = est.estimate().position_sigma_m;
     assert(before > 0.05);
     est.correct_pose(0.02, 0.0, 0.0, 0.02, 0.01, 2'000'000);
     assert(est.estimate().position_sigma_m < before);
+ assert(est.odometry_estimate().x_m == continuous_x);
+ assert(est.odometry_estimate().position_sigma_m == continuous_sigma);
     // Blended, not snapped: the estimate moves toward the correction
     // proportionally to relative certainty, never jumps to it.
     assert(est.estimate().x_m > 0.025 && est.estimate().x_m < 0.09);
@@ -188,6 +192,17 @@ int main() {
     est.correct_pose(std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0, 0.02,
                      0.01, 3'000'000);
     assert(est.estimate().x_m == x0);
+
+ // Prediction continues in both frames without erasing the persistent map
+ // correction. Odom remains continuous while map_T_odom carries the offset.
+ const double map_odom_offset =
+ est.estimate().x_m - est.odometry_estimate().x_m;
+ o.sequence = 7;
+ o.stamp_ns = 120'000'000;
+ est.predict(o);
+ assert(std::abs(est.odometry_estimate().x_m - 0.12) < 1e-9);
+ assert(std::abs((est.estimate().x_m - est.odometry_estimate().x_m) -
+ map_odom_offset) < 1e-9);
   }
 
  // 3b. A scan-to-submap fix is relative to a drifted keyframe chain. It may
@@ -205,6 +220,9 @@ int main() {
  assert(est.estimate().yaw_rad < 0.2);
  assert(est.estimate().position_sigma_m == position_sigma);
  assert(est.estimate().heading_sigma_rad == heading_sigma);
+ assert(est.odometry_estimate().x_m == 0.0);
+ assert(est.odometry_estimate().y_m == 0.0);
+ assert(est.odometry_estimate().yaw_rad == 0.0);
  }
 
   // 4. Supervisor: unknown start -> global attempt; accept -> localized;

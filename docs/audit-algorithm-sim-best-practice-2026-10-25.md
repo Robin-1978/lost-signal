@@ -89,11 +89,15 @@
 
 应将持续时间、超差趋势和可达包络判断下沉为独立执行监控模块；瞬时超差只诊断，连续不可达或反向运动进入故障状态，发布软停车或紧急停车，并要求明确恢复条件。Coordinator 只串联结果。
 
-### P1-4 定位状态与协方差模型过于简化
+### P1-4 协方差模型仍过于简化；REP-105 状态分层已修复
 
-当前 `FusedOdometryEstimator` 只有标量 position sigma 与 heading sigma，没有完整状态 covariance、IMU bias、innovation covariance、NIS/NEES，也没有 REP-105 的连续 `odom→base` 与可跳变 `map→odom` 分层。地图匹配 correction 直接作用导航 estimate，重定位跳变可能传到局部控制语义。
+`FusedOdometryEstimator` 仍只有标量 position sigma 与 heading sigma，没有完整状态 covariance、IMU bias、innovation covariance、NIS/NEES。
 
-建议建立连续 odom 状态与全局 map correction 两层输出；至少估计陀螺 bias 和二维相关 covariance，对每种 measurement 做 timestamp、frame、innovation/NIS gate。增加长走廊、重复纹理、稀疏特征、玻璃/缺测和异步传感器测试，并验证 covariance consistency，而不只看离线真值最大误差。
+**REP-105 修复状态：已完成。** estimator 现在分别持有连续 odom 状态与允许绝对定位校正的 map 状态；wheel/IMU prediction 同时推进二者，`correct_pose`、relative SLAM correction 和 operator seed 只改变 map 状态。Coordinator 只发布 `odom→base_link` 以及由两状态计算的持久 `map→odom`，不再用单 tick 的“校正前/后”临时差值。RobotDescription 中的 `world→base_link` 只作为根标记，不进入静态 TF，避免与动态链形成冲突环。回归覆盖 map jump 前后 odom 连续、`map→odom` 跳变和组合后的 map pose 一致。
+
+执行跟踪也只观察连续 odom 状态，避免定位修正被误判为底盘失控。2026-10-25 验证结果：Debug 与 Release 均 59/59 通过，ROBOT/SIM 边界检查通过；异步 `signal_town` 在 984 步完成，行驶 20.68 m、0 碰撞、最大定位误差 0.285 m，robot tick p99/max 为 12.353/13.382 ms。
+
+剩余修复是至少估计陀螺 bias 和二维相关 covariance，对每种 measurement 做 timestamp、frame、innovation/NIS gate。增加长走廊、重复纹理、稀疏特征、玻璃/缺测和异步传感器测试，并验证 covariance consistency，而不只看离线真值最大误差。
 
 ### P1-5 动态障碍在 raw scan 与预测层中重复表示
 
