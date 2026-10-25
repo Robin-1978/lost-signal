@@ -267,7 +267,7 @@ int main() {
  searcher.begin(ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 1);
  std::optional<GlobalSearchResult> incremental;
  int slices = 0;
- while (!incremental.has_value() && slices < 2000) {
+ while (!incremental.has_value() && slices < 4000) {
  incremental = searcher.advance(256);
  ++slices;
  }

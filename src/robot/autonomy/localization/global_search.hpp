@@ -13,22 +13,13 @@
 
 namespace lost_signal::robot::autonomy {
 
-// Deterministic coarse-to-fine whole-map search: kidnap recovery and cold
-// start. The cold-start contract is bounded work over the complete map with
-// no silent truncation:
-//
-//   1. coarse pass: every non-occupied raster cell on a coarse grid x
-//      headings, scored with a downsampled beam subset (same scoring as the
-//      local matcher, via ScanMatcher::score_pose). Unknown cells seed too:
-//      live surveys mark everything outside authored boxes unknown (never
-//      free), so free-only seeding would be vacuous there. Occupied cells
-//      are the only excluded prior; unknown scores 0, never certainty.
-//   2. refine: the top-K coarse survivors each get a bounded local match
-//      around their pose;
-//   3. validate: each refined survivor is re-checked in a tight window with
-//      expected-range raycast scoring (would the map produce this scan
-//      from this pose?), then the best validated hypothesis is accepted
-//      only with overlap and a margin over the next accepted one.
+// Deterministic coarse-to-fine whole-map search for cold start and kidnap
+// recovery. Every observable coarse position and heading is ranked with a
+// likelihood field and a downsampled hit subset. The field tolerates coarse
+// sampling error; bounded exact refinement and full expected-range raycasts
+// validate the survivors before publication. Unknown cells remain eligible
+// base-pose seeds because a sparse survey marks unauthored space unknown;
+// only occupied base cells are excluded.
 //
 // If the evaluation budget cannot cover the coarse pass, the result is an
 // explicit rejection, never a partial search reported as a match. Unknown
@@ -39,10 +30,17 @@ struct GlobalSearchConfig {
  // the expensive heading/beam scoring pass.
  std::size_t preparation_cells_per_cycle = 262144;
   double coarse_position_step_m = 1.0;
-  double coarse_heading_step_rad = 0.35;
+ double coarse_heading_step_rad = 0.35;
+ // Likelihood-field endpoint score used only to rank whole-map seeds. The
+ // exact endpoint and raycast gates still validate the refined result.
+ double coarse_score_sigma_m = 0.45;
   std::size_t coarse_beams = 24;       // downsampled subset per coarse pose
   std::size_t coarse_hypotheses = 16;  // survivors sent to refinement
-  // Upper bound on coarse pose evaluations. Exists to bound a pathological
+ // Non-maximum suppression keeps the bounded survivor set distributed over
+ // distinct places instead of filling it with adjacent samples of one peak.
+ double coarse_hypothesis_distance_m = 1.5;
+ double coarse_hypothesis_heading_rad = 0.45;
+ // Upper bound on coarse pose evaluations. Exists to bound a pathological
   // map, not to make ordinary large maps unusable; exceeding it rejects
   // explicitly instead of reporting a partial search as a match.
   std::size_t maximum_evaluations = 8000000;
@@ -56,7 +54,8 @@ struct GlobalSearchConfig {
   // Calibrated: edge artifacts move <7% of explained returns; the
   // T-junction's stub/pillar/clutter move >14%. The 0.10 line sits between.
   double equivalent_support_overlap_tolerance = 0.10;
-  // Mount lives in the TF tree; set via set_lidar_mount(). No copy here.
+ double equivalent_support_score_margin = 0.05;
+ // Mount lives in the TF tree; set via set_lidar_mount(). No copy here.
   double max_range_m = 10.0;
   // Sparse-scan guard (master: 12). A handful of hits can match an
   // unrelated aisle by chance and refine alone; below this count the
@@ -69,18 +68,19 @@ struct GlobalSearchConfig {
   double refine_translation_step_m = 0.10;
   double refine_heading_rad = 0.35;
   double refine_heading_step_rad = 0.05;
-  // Loose snap margin inside one refine window: the window's job is to snap
-  // to the local optimum, not to prove uniqueness. Twin protection lives one
-  // level up, in the cross-survivor comparison with minimum_score_margin:
-  // survivors that refine to the same physical pose are merged, survivors
-  // that refine to distinct poses must clear the strict margin.
-  double refine_score_margin = 0.01;
+ // Refinement clusters adjacent samples of the same local peak. This stage
+ // only snaps each coarse seed; separated-place ambiguity is decided after
+ // full raycast validation.
   double refine_ambiguity_distance_m = 0.25;
   double refine_ambiguity_heading_rad = 0.15;
-  // Refine beam budget (bounded local match per survivor): the window's job
+ // Final candidates inside these bounds represent the same physical pose.
+ // Ambiguity is measured only between separated place hypotheses.
+ double global_ambiguity_distance_m = 0.75;
+ double global_ambiguity_heading_rad = 0.70;
+ // Refine beam budget (bounded local match per survivor): the window's job
   // is to snap to the local optimum, not to recount every return — coarse
-  // already ranked with a subset. 24 keeps the ambiguity gates green at a
-  // third of the default cost (measured, not tuned).
+ // already ranked with a subset. The default uses up to 96 returns so the
+ // local peak is stable on sparse and asymmetric geometry.
  std::size_t refine_max_returns = 96;
   // Final raycast validation window around each refined survivor (master's
   // third pass). Endpoint scoring degrades gracefully on unknown cells
@@ -170,7 +170,7 @@ class GlobalSearcher {
  core::MonotonicNs stamp_ns, double body_roll_rad = 0.0,
  double body_pitch_rad = 0.0, double body_z_m = 0.0);
  std::optional<GlobalSearchResult> advance(
- std::size_t work_budget = 2048);
+ std::size_t work_budget = 8192);
  bool active() const;
  void cancel();
 

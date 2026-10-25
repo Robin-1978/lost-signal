@@ -121,7 +121,14 @@ RaycastEvidence raycast_evidence(
 }  // namespace
 
 struct GlobalSearcher::WorkState {
- enum class Phase { kPrepare, kCoarse, kRefine, kFinal, kDone };
+ enum class Phase {
+ kPrepareForward,
+ kPrepareBackward,
+ kCoarse,
+ kRefine,
+ kFinal,
+ kDone
+ };
  struct Coarse {
  double x = 0.0, y = 0.0, heading = 0.0, score = 0.0, overlap = 0.0;
  };
@@ -144,12 +151,18 @@ struct GlobalSearcher::WorkState {
  }
  if (config.preparation_cells_per_cycle == 0 ||
  !(config.coarse_position_step_m > 0.0) ||
- !(config.coarse_heading_step_rad > 0.0) || config.coarse_beams == 0 ||
+ !(config.coarse_heading_step_rad > 0.0) ||
+ !(config.coarse_score_sigma_m > 0.0) || config.coarse_beams == 0 ||
  config.coarse_hypotheses == 0 ||
+ !(config.coarse_hypothesis_distance_m > 0.0) ||
+ !(config.coarse_hypothesis_heading_rad > 0.0) ||
  !(config.refine_translation_m >= 0.0) ||
  !(config.refine_translation_step_m > 0.0) ||
  !(config.refine_heading_rad >= 0.0) ||
  !(config.refine_heading_step_rad > 0.0) ||
+ !(config.global_ambiguity_distance_m > 0.0) ||
+ !(config.global_ambiguity_heading_rad > 0.0) ||
+ !(config.equivalent_support_score_margin >= 0.0) ||
  !(config.final_translation_m >= 0.0) ||
  !(config.final_translation_step_m > 0.0) ||
  !(config.final_heading_rad >= 0.0) ||
@@ -163,8 +176,6 @@ struct GlobalSearcher::WorkState {
  coarse_cfg.minimum_returns = config.minimum_returns;
  coarse_matcher = ScanMatcher(coarse_cfg);
  coarse_matcher.set_lidar_mount(mount);
- beams = coarse_matcher.prepare_beams(
- ranges, angle_min_rad, angle_increment_rad, config.coarse_beams);
  const std::vector<ScanBeam> full = coarse_matcher.prepare_beams(
  ranges, angle_min_rad, angle_increment_rad, ranges.size());
  for (const auto& beam : full) {
@@ -174,10 +185,43 @@ struct GlobalSearcher::WorkState {
  finish("insufficient geometric returns");
  return;
  }
- batch = std::make_unique<ScanMatcher::Batch>(
- coarse_matcher, beams, body_roll_rad, body_pitch_rad);
+ const std::size_t coarse_stride = std::max<std::size_t>(
+ 1, (result.usable_returns + config.coarse_beams - 1) /
+ config.coarse_beams);
+ std::size_t seen_hits = 0;
+ for (const auto& beam : full) {
+ if (!beam.hit) continue;
+ if (seen_hits++ % coarse_stride != 0) continue;
+ beams.push_back(beam);
+ if (beams.size() >= config.coarse_beams) break;
+ }
  n_headings = std::max(1, static_cast<int>(std::ceil(
  2.0 * core::kPi / config.coarse_heading_step_rad)));
+ coarse_dx.resize(static_cast<std::size_t>(n_headings) * beams.size());
+ coarse_dy.resize(static_cast<std::size_t>(n_headings) * beams.size());
+ coarse_mount_x.resize(static_cast<std::size_t>(n_headings));
+ coarse_mount_y.resize(static_cast<std::size_t>(n_headings));
+ for (int ih = 0; ih < n_headings; ++ih) {
+ const double heading = core::wrap_angle(
+ -core::kPi + ih * config.coarse_heading_step_rad);
+ const core::Quaternion body_q =
+ core::quaternion_from_rpy(body_roll_rad, body_pitch_rad, heading);
+ const core::Quaternion sensor_q =
+ core::quaternion_multiply(body_q, mount.rotation);
+ const core::Vec3 mount_off =
+ core::rotate_vector(body_q, mount.translation_m);
+ coarse_mount_x[static_cast<std::size_t>(ih)] = mount_off.x;
+ coarse_mount_y[static_cast<std::size_t>(ih)] = mount_off.y;
+ for (std::size_t beam_index = 0; beam_index < beams.size(); ++beam_index) {
+ const ScanBeam& beam = beams[beam_index];
+ const core::Vec3 direction = core::rotate_vector(
+ sensor_q, {std::cos(beam.angle), std::sin(beam.angle), 0.0});
+ const std::size_t index =
+ static_cast<std::size_t>(ih) * beams.size() + beam_index;
+ coarse_dx[index] = static_cast<float>(direction.x);
+ coarse_dy[index] = static_cast<float>(direction.y);
+ }
+ }
  cell_stride = std::max(1, static_cast<int>(std::round(
  config.coarse_position_step_m / map.resolution_m)));
  const std::size_t prefix_width =
@@ -190,6 +234,24 @@ struct GlobalSearcher::WorkState {
  return;
  }
  occupied_prefix.assign(prefix_width * prefix_height, 0);
+ distance_cm.assign(static_cast<std::size_t>(map.width) * map.height,
+ std::numeric_limits<std::uint16_t>::max());
+ const auto bounded_centimetres = [](double value_m) {
+ return static_cast<std::uint16_t>(std::clamp(
+ std::lround(value_m * 100.0), 1L,
+ static_cast<long>(std::numeric_limits<std::uint16_t>::max())));
+ };
+ distance_orthogonal_cm = bounded_centimetres(map.resolution_m);
+ distance_diagonal_cm = std::max(
+ distance_orthogonal_cm,
+ bounded_centimetres(map.resolution_m * std::sqrt(2.0)));
+ coarse_lookup.resize(256);
+ for (std::size_t i = 0; i < coarse_lookup.size(); ++i) {
+ const double distance_m = 0.02 * static_cast<double>(i);
+ const double ratio = distance_m / config.coarse_score_sigma_m;
+ coarse_lookup[i] = static_cast<float>(std::exp(-ratio * ratio));
+ }
+ coarse_lookup.back() = -0.05F;
  // Candidate poses are base poses while scan endpoints originate at the
  // lidar. Include the horizontal mount offset so pruning remains exact for
  // non-central sensors: a return cannot touch occupied geometry outside
@@ -210,9 +272,9 @@ struct GlobalSearcher::WorkState {
  void consider_coarse(const Coarse& candidate) {
  const auto same = [&](const Coarse& value) {
  return std::hypot(value.x - candidate.x, value.y - candidate.y) <
- 0.5 * config.coarse_position_step_m &&
+ config.coarse_hypothesis_distance_m &&
  std::abs(core::wrap_angle(value.heading - candidate.heading)) <
- 0.5 * config.coarse_heading_step_rad;
+ config.coarse_hypothesis_heading_rad;
  };
  const auto existing = std::find_if(survivors.begin(), survivors.end(), same);
  if (existing != survivors.end()) {
@@ -250,6 +312,35 @@ struct GlobalSearcher::WorkState {
  return count > 0;
  }
 
+ double score_coarse(int heading_index, double base_x, double base_y) const {
+ const std::size_t heading = static_cast<std::size_t>(heading_index);
+ const double sensor_x = base_x + coarse_mount_x[heading];
+ const double sensor_y = base_y + coarse_mount_y[heading];
+ double score = 0.0;
+ for (std::size_t beam_index = 0; beam_index < beams.size(); ++beam_index) {
+ const std::size_t direction = heading * beams.size() + beam_index;
+ const double wx = sensor_x +
+ beams[beam_index].range * coarse_dx[direction];
+ const double wy = sensor_y +
+ beams[beam_index].range * coarse_dy[direction];
+ const int gx = static_cast<int>(
+ std::floor((wx - map.origin_x_m) / map.resolution_m));
+ const int gy = static_cast<int>(
+ std::floor((wy - map.origin_y_m) / map.resolution_m));
+ if (gx < 0 || gy < 0 || gx >= static_cast<int>(map.width) ||
+ gy >= static_cast<int>(map.height)) {
+ score -= 0.25;
+ continue;
+ }
+ const std::uint16_t distance = distance_cm[
+ static_cast<std::size_t>(gy) * map.width + static_cast<std::size_t>(gx)];
+ const std::size_t bucket = std::min<std::size_t>(
+ distance / 2, coarse_lookup.size() - 1);
+ score += coarse_lookup[bucket];
+ }
+ return score / static_cast<double>(beams.size());
+ }
+
  void begin_refine() {
  result.coarse_evaluations = evaluations;
  if (survivors.empty()) {
@@ -269,7 +360,6 @@ struct GlobalSearcher::WorkState {
  refine_cfg.translation_step_m = config.refine_translation_step_m;
  refine_cfg.heading_step_rad = config.refine_heading_step_rad;
  refine_cfg.minimum_overlap = config.minimum_overlap;
- refine_cfg.minimum_score_margin = config.refine_score_margin;
  refine_cfg.ambiguity_distance_m = config.refine_ambiguity_distance_m;
  refine_cfg.ambiguity_heading_rad = config.refine_ambiguity_heading_rad;
  refine_cfg.max_range_m = config.max_range_m;
@@ -346,9 +436,7 @@ struct GlobalSearcher::WorkState {
  ? refine_hypotheses[1].score
  : -std::numeric_limits<double>::infinity();
  if (std::isfinite(candidate.score) &&
- candidate.overlap >= config.minimum_overlap &&
- (!std::isfinite(second_score) ||
- candidate.score - second_score >= config.refine_score_margin)) {
+ candidate.overlap >= config.minimum_overlap) {
  candidate.accepted = true;
  candidate.position_sigma_m = std::max(0.02, map.resolution_m * 0.75);
  candidate.heading_sigma_rad = std::max(
@@ -366,9 +454,9 @@ struct GlobalSearcher::WorkState {
  void retain_refined(const ScanMatchResult& candidate) {
  const auto same = [&](const ScanMatchResult& value) {
  return std::hypot(value.x_m - candidate.x_m,
- value.y_m - candidate.y_m) < config.refine_ambiguity_distance_m &&
+ value.y_m - candidate.y_m) < config.global_ambiguity_distance_m &&
  std::abs(core::wrap_angle(value.yaw_rad - candidate.yaw_rad)) <
- config.refine_ambiguity_heading_rad;
+ config.global_ambiguity_heading_rad;
  };
  const auto existing = std::find_if(refined.begin(), refined.end(), same);
  if (existing != refined.end()) {
@@ -419,9 +507,9 @@ struct GlobalSearcher::WorkState {
  if (!final_best.accepted) return;
  const auto same = [&](const ScanMatchResult& value) {
  return std::hypot(value.x_m - final_best.x_m,
- value.y_m - final_best.y_m) < config.refine_ambiguity_distance_m &&
+ value.y_m - final_best.y_m) < config.global_ambiguity_distance_m &&
  std::abs(core::wrap_angle(value.yaw_rad - final_best.yaw_rad)) <
- config.refine_ambiguity_heading_rad;
+ config.global_ambiguity_heading_rad;
  };
  const auto existing = std::find_if(checked.begin(), checked.end(), same);
  if (existing != checked.end()) {
@@ -465,7 +553,8 @@ struct GlobalSearcher::WorkState {
  return;
  }
  if (best.overlap - second_overlap <
- config.equivalent_support_overlap_tolerance) {
+ config.equivalent_support_overlap_tolerance &&
+ best.score - second_score < config.equivalent_support_score_margin) {
  result.score_margin = best.score - second_score;
  fill_runner_ups(result, checked);
  finish("global match has equivalent support");
@@ -473,6 +562,7 @@ struct GlobalSearcher::WorkState {
  }
  }
  result.accepted = true;
+ result.rejection_reason = "accepted";
  result.score_margin =
  checked.size() > 1 ? best.score - checked[1].score : 1.0;
  fill_runner_ups(result, checked);
@@ -488,14 +578,19 @@ struct GlobalSearcher::WorkState {
  core::MonotonicNs stamp_ns = 0;
  double body_roll_rad = 0.0, body_pitch_rad = 0.0, body_z_m = 0.0;
  GlobalSearchResult result;
- Phase phase = Phase::kPrepare;
+ Phase phase = Phase::kPrepareForward;
  std::vector<std::uint32_t> occupied_prefix;
+ std::vector<std::uint16_t> distance_cm;
+ std::uint16_t distance_orthogonal_cm = 1;
+ std::uint16_t distance_diagonal_cm = 1;
+ std::vector<float> coarse_lookup;
  std::size_t prepare_cursor = 0;
  int observable_radius_cells = 1;
  ScanMatcher coarse_matcher;
  ScanMatcher refiner;
  std::vector<ScanBeam> beams;
- std::unique_ptr<ScanMatcher::Batch> batch;
+ std::vector<float> coarse_dx, coarse_dy;
+ std::vector<double> coarse_mount_x, coarse_mount_y;
  int n_headings = 1, cell_stride = 1;
  int coarse_gx = 0, coarse_gy = 0, coarse_ih = 0;
  std::size_t evaluations = 0;
@@ -543,7 +638,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  budget = budget > cost ? budget - cost : 0;
  };
  while (budget > 0 && w.phase != WorkState::Phase::kDone) {
- if (w.phase == WorkState::Phase::kPrepare) {
+ if (w.phase == WorkState::Phase::kPrepareForward) {
  const std::size_t cell_count =
  static_cast<std::size_t>(w.map.width) * w.map.height;
  const std::size_t end = w.prepare_cursor + std::min(
@@ -561,8 +656,82 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  w.occupied_prefix[prefix - 1] +
  w.occupied_prefix[prefix - prefix_width] -
  w.occupied_prefix[prefix - prefix_width - 1];
+ const auto add_distance = [](std::uint16_t value, std::uint16_t step) {
+ const std::uint16_t infinity =
+ std::numeric_limits<std::uint16_t>::max();
+ return value > static_cast<std::uint16_t>(infinity - step)
+ ? infinity
+ : static_cast<std::uint16_t>(value + step);
+ };
+ std::uint16_t distance = occupied != 0
+ ? 0
+ : std::numeric_limits<std::uint16_t>::max();
+ if (occupied == 0) {
+ if (x > 0) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor - 1], w.distance_orthogonal_cm));
+ }
+ if (y > 0) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor - w.map.width],
+ w.distance_orthogonal_cm));
+ if (x > 0) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor - w.map.width - 1],
+ w.distance_diagonal_cm));
+ }
+ if (x + 1 < w.map.width) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor - w.map.width + 1],
+ w.distance_diagonal_cm));
+ }
+ }
+ }
+ w.distance_cm[w.prepare_cursor] = distance;
  }
  if (w.prepare_cursor < cell_count) return std::nullopt;
+ w.phase = WorkState::Phase::kPrepareBackward;
+ continue;
+ }
+ if (w.phase == WorkState::Phase::kPrepareBackward) {
+ const std::size_t cell_count =
+ static_cast<std::size_t>(w.map.width) * w.map.height;
+ if (w.prepare_cursor > cell_count) w.prepare_cursor = cell_count;
+ const std::size_t begin = w.prepare_cursor - std::min(
+ w.config.preparation_cells_per_cycle, w.prepare_cursor);
+ const auto add_distance = [](std::uint16_t value, std::uint16_t step) {
+ const std::uint16_t infinity =
+ std::numeric_limits<std::uint16_t>::max();
+ return value > static_cast<std::uint16_t>(infinity - step)
+ ? infinity
+ : static_cast<std::uint16_t>(value + step);
+ };
+ while (w.prepare_cursor > begin) {
+ --w.prepare_cursor;
+ const std::size_t x = w.prepare_cursor % w.map.width;
+ const std::size_t y = w.prepare_cursor / w.map.width;
+ std::uint16_t& distance = w.distance_cm[w.prepare_cursor];
+ if (x + 1 < w.map.width) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor + 1], w.distance_orthogonal_cm));
+ }
+ if (y + 1 < w.map.height) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor + w.map.width],
+ w.distance_orthogonal_cm));
+ if (x > 0) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor + w.map.width - 1],
+ w.distance_diagonal_cm));
+ }
+ if (x + 1 < w.map.width) {
+ distance = std::min(distance, add_distance(
+ w.distance_cm[w.prepare_cursor + w.map.width + 1],
+ w.distance_diagonal_cm));
+ }
+ }
+ }
+ if (w.prepare_cursor > 0) return std::nullopt;
  w.phase = WorkState::Phase::kCoarse;
  continue;
  }
@@ -604,12 +773,8 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  (w.coarse_gy + 0.5) * w.map.resolution_m;
  const double heading = core::wrap_angle(
  -core::kPi + w.coarse_ih * w.config.coarse_heading_step_rad);
- const PoseScore pose = w.batch->score(
- static_cast<std::size_t>(w.coarse_ih), cx, cy, heading, w.map,
- w.body_z_m);
- if (pose.has_evidence) {
- w.consider_coarse({cx, cy, heading, pose.score, pose.overlap});
- }
+ const double score = w.score_coarse(w.coarse_ih, cx, cy);
+ w.consider_coarse({cx, cy, heading, score, 0.0});
  ++w.coarse_ih;
  if (w.coarse_ih >= w.n_headings) {
  w.coarse_ih = 0;
