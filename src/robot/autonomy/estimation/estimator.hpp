@@ -43,6 +43,13 @@ class IEstimator {
                             double /*yaw_rad*/, double /*pos_sigma_m*/,
                             double /*yaw_sigma_rad*/,
                             core::MonotonicNs /*stamp_ns*/) {}
+ // Relative scan/submap tracking can correct incremental pose error, but it
+ // does not observe the absolute map frame. Implementations must therefore
+ // preserve map-frame covariance while applying the bounded pose update.
+ virtual void correct_relative_pose(double /*x_m*/, double /*y_m*/,
+ double /*yaw_rad*/, double /*pos_sigma_m*/,
+ double /*yaw_sigma_rad*/,
+ core::MonotonicNs /*stamp_ns*/) {}
   // Deliberate deployment seeding (known dock, operator initialpose).
   // Default ignores; only estimators with a seed path override it.
   virtual void seed_pose(double /*x_m*/, double /*y_m*/, double /*yaw_rad*/,
@@ -118,6 +125,9 @@ class FusedOdometryEstimator : public IEstimator {
   void correct_pose(double x_m, double y_m, double yaw_rad,
                     double pos_sigma_m, double yaw_sigma_rad,
                     core::MonotonicNs stamp_ns) override;
+ void correct_relative_pose(double x_m, double y_m, double yaw_rad,
+ double pos_sigma_m, double yaw_sigma_rad,
+ core::MonotonicNs stamp_ns) override;
   const EstimatedState& estimate() const override { return estimate_; }
   // Latest slip observation (wheel twist vs estimator body twist). Updated
   // on every predict; consumers read quality/confidence, never thresholds.

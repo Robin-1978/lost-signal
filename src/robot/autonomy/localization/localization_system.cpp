@@ -114,8 +114,17 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  constexpr double kOpposingCorrectionM = 0.01;
  if (along * obs.forward_mps < -kOpposingCorrectionM) return;
  }
-  estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad, tr.position_sigma_m,
-                         tr.heading_sigma_rad, obs.stamp_ns);
+ if (supervisor_.startup_mode() == StartupMode::kSlamOnly) {
+ // In mapless operation the keyframe/SLAM frame is the navigation frame,
+ // so a verified two-sided track directly observes the pose used by goals.
+ estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad,
+ tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ } else {
+ // On a surveyed map the keyframe chain can drift relative to map. Tracking
+ // improves local consistency but cannot claim new absolute-map certainty.
+ estimator.correct_relative_pose(tr.x_m, tr.y_m, tr.yaw_rad,
+ tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ }
 }
 
 bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,

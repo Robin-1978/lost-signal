@@ -266,6 +266,36 @@ void FusedOdometryEstimator::correct_pose(double x_m, double y_m,
   slip_heading_extra_rad_ = 0.0;
 }
 
+void FusedOdometryEstimator::correct_relative_pose(
+ double x_m, double y_m, double yaw_rad, double pos_sigma_m,
+ double yaw_sigma_rad, core::MonotonicNs stamp_ns) {
+ if (!std::isfinite(x_m) || !std::isfinite(y_m) ||
+ !std::isfinite(yaw_rad) || !(pos_sigma_m > 0.0) ||
+ !(yaw_sigma_rad > 0.0)) {
+ return;
+ }
+ const double position_sigma = estimate_.position_sigma_m;
+ const double heading_sigma = estimate_.heading_sigma_rad;
+ const double position_gain = position_sigma /
+ (position_sigma + std::max(1e-9, pos_sigma_m));
+ const double heading_gain = heading_sigma /
+ (heading_sigma + std::max(1e-9, yaw_sigma_rad));
+ estimate_.valid = true;
+ estimate_.x_m += position_gain * (x_m - estimate_.x_m);
+ estimate_.y_m += position_gain * (y_m - estimate_.y_m);
+ estimate_.yaw_rad = core::wrap_angle(
+ estimate_.yaw_rad +
+ heading_gain * core::wrap_angle(yaw_rad - estimate_.yaw_rad));
+ // The measurement shares the drifted SLAM/keyframe frame with the prior.
+ // It improves local consistency but supplies no independent map-frame
+ // information, so absolute covariance and slip doubt remain unchanged.
+ estimate_.position_sigma_m = position_sigma;
+ estimate_.heading_sigma_rad = heading_sigma;
+ estimate_.stamp_ns = stamp_ns;
+ estimate_.confidence =
+ 1.0 / (1.0 + estimate_.position_sigma_m + estimate_.heading_sigma_rad);
+}
+
 void FusedOdometryEstimator::seed_pose(double x_m, double y_m, double yaw_rad,
                                        double pos_sigma_m, double yaw_sigma_rad,
                                        core::MonotonicNs stamp_ns) {

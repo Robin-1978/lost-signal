@@ -190,6 +190,23 @@ int main() {
     assert(est.estimate().x_m == x0);
   }
 
+ // 3b. A scan-to-submap fix is relative to a drifted keyframe chain. It may
+ // correct incremental pose error, but it must not manufacture absolute
+ // map-frame confidence or postpone global recovery indefinitely.
+ {
+ FusedOdometryEstimator est;
+ est.reset();
+ est.seed_pose(1.0, 2.0, 0.2, 0.40, 0.20, 1);
+ const double position_sigma = est.estimate().position_sigma_m;
+ const double heading_sigma = est.estimate().heading_sigma_rad;
+ est.correct_relative_pose(0.8, 2.1, 0.1, 0.05, 0.02, 2);
+ assert(est.estimate().x_m < 1.0);
+ assert(est.estimate().y_m > 2.0);
+ assert(est.estimate().yaw_rad < 0.2);
+ assert(est.estimate().position_sigma_m == position_sigma);
+ assert(est.estimate().heading_sigma_rad == heading_sigma);
+ }
+
   // 4. Supervisor: unknown start -> global attempt; accept -> localized;
  // cadence gates local corrections; rejected local matches alone do not
  // trigger a whole-map search while fused covariance remains bounded.
