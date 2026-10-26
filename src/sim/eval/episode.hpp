@@ -6,6 +6,7 @@
 
 #include "robot/app/robot_application.hpp"
 #include "robot/iface/command.hpp"
+#include "robot/iface/motion.hpp"
 #include "robot/iface/observation.hpp"
 #include "sim/world/world.hpp"
 
@@ -53,6 +54,10 @@ struct EvalStep {
   robot::iface::ObservationFrame obs{};
   bool obs_accepted = false;
   robot::iface::MotionCommand cmd{};
+ // Exact deployable actuator output consumed by the plant. Keeping it next
+ // to the body command makes watchdog stops, closed-loop duty and physical
+ // brake effects auditable without exposing SIM truth to ROBOT.
+ robot::iface::ActuatorCommand actuator{};
   robot::app::RobotApplication::Diagnostics diag{};
   // Truth-side judge outcome (SIM orchestration fills it; scoring reads it).
   CollisionOutcome judge{};

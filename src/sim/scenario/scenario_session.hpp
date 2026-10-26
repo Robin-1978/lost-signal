@@ -190,8 +190,11 @@ class ScenarioSession {
   DeterministicScheduler scheduler_;
   ObjectiveDriver driver_;
  SimTimeNs sim_time_ns_ = 0;
+ bool world_prepared_ = false;
  robot::iface::MotionCommand last_cmd_ =
  robot::iface::MotionCommand::SafeStop(0);
+ robot::iface::ActuatorCommand last_actuator_ =
+ robot::iface::ActuatorCommand::SafeZero(0);
   double judge_radius_m_ = 0.4;
   double terrain_clearance_m_ = 0.05;
  StepTiming last_step_timing_;

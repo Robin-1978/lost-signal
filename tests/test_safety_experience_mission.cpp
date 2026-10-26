@@ -55,10 +55,17 @@ int main() {
  session.fit_map_window_to_world();
 
  bool robot_observed_constraint = false;
+ bool first_step_has_joint_feedback = false;
  double minimum_robot_clearance = std::numeric_limits<double>::infinity();
  for (std::uint64_t step = 0;
  step < experience.time_limit_steps && !session.objectives_done(); ++step) {
  session.step_once();
+ const auto* recorded = session.last_eval_step();
+ if (step == 0 && recorded != nullptr) {
+ first_step_has_joint_feedback = recorded->obs.motion_header.valid() &&
+ recorded->obs.has_joints() && recorded->obs.drive_count == 2 &&
+ recorded->actuator.mode == robot::iface::ActuatorMode::kDiffDuty;
+ }
  const auto evidence = session.last_evidence();
  if (std::isfinite(evidence.validator_static_clearance_m)) {
  minimum_robot_clearance = std::min(
@@ -110,6 +117,9 @@ int main() {
  assert(session.objectives_done());
  assert(session.objectives_passed());
  assert(score.collision_steps == 0);
+ // ScenarioSession owns plant preparation: a direct test harness must see
+ // the configured joints on the first acquisition, just like Viewer/CLI.
+ assert(first_step_has_joint_feedback);
  assert(robot_observed_constraint || minimum_robot_clearance < 1.0);
  assert(score.min_clearance_m >=
  robot_config.navigation.clearance_margin_m);

@@ -83,9 +83,11 @@ ScenarioSession::ScenarioSession(
 }
 
 void ScenarioSession::prepare_world() {
- world_.apply(robot::iface::ActuatorCommand::SafeZero(
- world_.sim_time_ns(), idle_actuator_mode_));
+ last_actuator_ = robot::iface::ActuatorCommand::SafeZero(
+ world_.sim_time_ns(), idle_actuator_mode_);
+ world_.apply(last_actuator_);
  world_.prepare();
+ world_prepared_ = true;
 }
 
 void ScenarioSession::set_cadence(double scan_period_s,
@@ -155,6 +157,11 @@ bool ScenarioSession::cancel_goal(robot::iface::GoalHandle h) {
 
 void ScenarioSession::step_once() {
  using Clock = std::chrono::steady_clock;
+ // Every harness must expose a configured drive/steer joint layout before
+ // the first sensor acquisition. Leaving this to Viewer or CLI call sites
+ // makes a direct ScenarioSession publish a zero-joint frame, which correctly
+ // trips the deployable actuator fail-safe and changes the physical launch.
+ if (!world_prepared_) prepare_world();
  const auto total_begin = Clock::now();
  const auto elapsed_ms = [](Clock::time_point begin, Clock::time_point end) {
  return std::chrono::duration<double, std::milli>(end - begin).count();
@@ -169,6 +176,7 @@ void ScenarioSession::step_once() {
  bool accepted_observation = false;
  robot::iface::ObservationFrame last_observation;
  robot::iface::MotionCommand cmd = last_cmd_;
+ robot::iface::ActuatorCommand actuator = last_actuator_;
 
  // The plant always advances on the canonical 1 ms grid. Sensor/control
  // cadence changes which completed ticks are sampled; it never repartitions
@@ -202,7 +210,9 @@ void ScenarioSession::step_once() {
  last_cmd_ = cmd;
  robot_ms += elapsed_ms(robot_begin, Clock::now());
  const auto actuation_begin = Clock::now();
- suite_.consume(app_.take_actuator(sim_stamp_ns));
+ actuator = app_.take_actuator(sim_stamp_ns);
+ suite_.consume(actuator);
+ last_actuator_ = actuator;
  actuation_ms += elapsed_ms(actuation_begin, Clock::now());
  }
  }
@@ -237,6 +247,7 @@ void ScenarioSession::step_once() {
  driver_.update(app_, world_);
  actuation_ms += elapsed_ms(actuation_begin, Clock::now());
  rec.cmd = cmd;
+ rec.actuator = actuator;
  rec.diag = app_.diagnostics();
  rec.truth_after = world_.truth();
  if (scheduler_.record_due_ns(sim_time_ns_)) {
