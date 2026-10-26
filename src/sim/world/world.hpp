@@ -272,8 +272,9 @@ class World {
   // through the contact patch: the engine holds gentle grades bounded,
   // steep grades break away. Default 0 (flat).
   void set_incline(double forward_grade);
-  // Actuator-level plant input: normalized duties per the command mode.
-  // Resolved in the engine at 1 ms substeps; the body follows from contact.
+ // Actuator-level plant input: normalized duties per the command mode.
+ // World::step resolves all plant and actor state on canonical 1 ms quanta;
+ // every positive duration must be an exact multiple of that quantum.
   void apply(const robot::iface::ActuatorCommand& cmd);
   const WorldTruth& truth() const { return truth_; }
   // Full wheel table for presentation (backend layout + live joints, same

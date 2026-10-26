@@ -10,13 +10,14 @@
 #include <limits>
 #include <stdexcept>
 
+#include "sim/fixed_time.hpp"
+
 namespace lost_signal::sim::scenario {
 
 using SimTimeNs = std::int64_t;
 
-inline constexpr SimTimeNs kNsPerSecond = 1'000'000'000;
-inline constexpr SimTimeNs kPhysicsQuantumNs = 1'000'000; // 1 ms
-inline constexpr SimTimeNs kOuterStepNs = 20'000'000; // 20 ms
+inline constexpr SimTimeNs kNsPerSecond = kNanosecondsPerSecond;
+inline constexpr SimTimeNs kOuterStepNs = kScenarioTransitionNs;
 
 inline SimTimeNs seconds_to_sim_ns(double seconds) {
  if (!std::isfinite(seconds) || seconds < 0.0 ||

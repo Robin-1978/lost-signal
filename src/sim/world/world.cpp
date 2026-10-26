@@ -2,8 +2,30 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+
+#include "sim/fixed_time.hpp"
 
 namespace lost_signal::sim::world {
+namespace {
+
+void accumulate_impact(ImpactViz& aggregate, const ImpactViz& sample) {
+ if (!sample.valid || !(sample.normal_impulse_Ns > 0.0)) return;
+ const double previous = aggregate.normal_impulse_Ns;
+ const double total = previous + sample.normal_impulse_Ns;
+ aggregate.x_m =
+ (aggregate.x_m * previous + sample.x_m * sample.normal_impulse_Ns) / total;
+ aggregate.y_m =
+ (aggregate.y_m * previous + sample.y_m * sample.normal_impulse_Ns) / total;
+ aggregate.z_m =
+ (aggregate.z_m * previous + sample.z_m * sample.normal_impulse_Ns) / total;
+ aggregate.normal_impulse_Ns = total;
+ aggregate.relative_speed_mps =
+ std::max(aggregate.relative_speed_mps, sample.relative_speed_mps);
+ aggregate.valid = true;
+}
+
+} // namespace
 
 World::World() = default;
 
@@ -89,55 +111,48 @@ void World::step(double dt_s) {
  presented_impact_ = mujoco_.impact();
  return;
  }
- constexpr double kNsPerSecond = 1e9;
- constexpr robot::core::MonotonicNs kPublicStepNs = 20'000'000;
  const auto dt_ns = static_cast<robot::core::MonotonicNs>(
- std::llround(dt_s * kNsPerSecond));
+ std::llround(dt_s * static_cast<double>(kNanosecondsPerSecond)));
  if (dt_ns <= 0) return;
- const double effective_dt_s = static_cast<double>(dt_ns) / kNsPerSecond;
- sim_time_ns_ += dt_ns;
+ if (dt_ns % kPhysicsQuantumNs != 0) {
+ throw std::invalid_argument(
+ "world step duration must be an integer multiple of 1 ms");
+ }
+
+ if (!aggregating_impact_) presented_impact_ = {};
+ constexpr double kQuantumS =
+ static_cast<double>(kPhysicsQuantumNs) /
+ static_cast<double>(kNanosecondsPerSecond);
+ const auto quanta = dt_ns / kPhysicsQuantumNs;
+ for (robot::core::MonotonicNs quantum = 0; quantum < quanta; ++quantum) {
+ sim_time_ns_ += kPhysicsQuantumNs;
  // WorldTruth.step is the public 20 ms scenario transition count, not the
  // number of internal physics/sensor partitions.
- truth_.step = static_cast<std::uint64_t>(sim_time_ns_ / kPublicStepNs);
- step_engine(effective_dt_s);
- const ImpactViz& impact = mujoco_.impact();
- if (!aggregating_impact_) {
- presented_impact_ = impact;
- } else if (impact.valid && impact.normal_impulse_Ns > 0.0) {
- const double previous = presented_impact_.normal_impulse_Ns;
- const double total = previous + impact.normal_impulse_Ns;
- presented_impact_.x_m =
- (presented_impact_.x_m * previous +
- impact.x_m * impact.normal_impulse_Ns) / total;
- presented_impact_.y_m =
- (presented_impact_.y_m * previous +
- impact.y_m * impact.normal_impulse_Ns) / total;
- presented_impact_.z_m =
- (presented_impact_.z_m * previous +
- impact.z_m * impact.normal_impulse_Ns) / total;
- presented_impact_.normal_impulse_Ns = total;
- presented_impact_.relative_speed_mps = std::max(
- presented_impact_.relative_speed_mps, impact.relative_speed_mps);
- presented_impact_.valid = true;
- }
- // Actors stay kinematic (no engine bodies for them); the judge reads
- // the same truth. An explicitly yielding actor runs its own continuous
- // collision predictor against the physical robot state before integration;
- // this changes the simulated environment, never a ROBOT decision input.
+ truth_.step = static_cast<std::uint64_t>(
+ sim_time_ns_ / kScenarioTransitionNs);
+ step_engine(kQuantumS);
+ accumulate_impact(presented_impact_, mujoco_.impact());
+
+ // Actors stay kinematic until they become engine bodies, but their policy,
+ // yielding state, and integration share the exact physics quantum. Thus a
+ // 20 ms harness call and twenty 1 ms viewer calls have identical semantics.
  const double c = std::cos(truth_.body_yaw_rad);
  const double s = std::sin(truth_.body_yaw_rad);
- const double robot_vx = truth_.forward_mps * c - truth_.lateral_mps * s;
- const double robot_vy = truth_.forward_mps * s + truth_.lateral_mps * c;
+ const double robot_vx =
+ truth_.forward_mps * c - truth_.lateral_mps * s;
+ const double robot_vy =
+ truth_.forward_mps * s + truth_.lateral_mps * c;
  const double robot_radius = std::hypot(
  std::max(0.0, motor_.body_half_length_m),
  std::max(0.0, motor_.body_half_width_m));
-  for (auto& a : actors_) {
- step_actor(a, a.behavior, effective_dt_s);
- apply_actor_robot_yield(a, a.behavior,
+ for (auto& actor : actors_) {
+ step_actor(actor, actor.behavior, kQuantumS);
+ apply_actor_robot_yield(actor, actor.behavior,
  truth_.body_x_m, truth_.body_y_m, robot_vx, robot_vy,
- robot_radius, effective_dt_s);
- a.x += a.vx_mps * effective_dt_s;
- a.y += a.vy_mps * effective_dt_s;
+ robot_radius, kQuantumS);
+ actor.x += actor.vx_mps * kQuantumS;
+ actor.y += actor.vy_mps * kQuantumS;
+ }
   }
 }
 

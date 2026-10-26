@@ -159,8 +159,9 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
   const double n_sub = std::round(dt_s / 0.001);
   const int n = std::max(1, std::min(static_cast<int>(n_sub), 1000));
   const double step_dt = dt_s / n;
-  // Brake lag state advances at the outer 20 ms cadence (same as main's
-  // per-tick plant step); capacity resolves per substep below.
+ // World calls the backend on the canonical 1 ms grid, so brake lag,
+ // contact-material changes, controls, and the constraint solve all observe
+ // the same partition regardless of which public harness drives the world.
   double brake_capacity_Nm[4] = {0.0, 0.0, 0.0, 0.0};
   for (int i = 0; i < drive_count_; ++i) {
     brake_capacity_Nm[i] =

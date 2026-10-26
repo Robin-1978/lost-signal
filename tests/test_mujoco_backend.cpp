@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include "robot/iface/task.hpp"
@@ -31,6 +32,73 @@ void set_diff_duty(sim::world::World& w, double duty) {
 
 int main() {
 #ifdef LOST_SIGNAL_WITH_MUJOCO
+ // Every public entry point resolves a duration into the same 1 ms plant
+ // quanta. A 20 ms harness call must therefore match the Viewer/Session
+ // form that executes twenty ticks inside one presentation transition.
+ {
+ sim::world::World chunked;
+ sim::world::World split;
+ auto configure = [](sim::world::World& world) {
+ sim::world::MotorParams motor = world.motor_params();
+ motor.brake_max_torque_Nm = 2.0;
+ world.set_motor_params(motor);
+ world.set_materials({{"wet", 0.35, 0.006, 0.008, 1.0, 0.2}});
+ world.set_material_zones({{"wet_lane", -5.0, -2.0, 8.0, 2.0, "wet"}});
+ world.set_environment({{0.0, {{"wet", 1.0}}},
+ {2.0, {{"wet", 0.6}}}});
+ sim::world::Actor actor;
+ actor.x = 2.0;
+ actor.y = -1.0;
+ actor.radius_m = 0.35;
+ assert(sim::world::ActorBehaviorRegistry::global().create(
+ "wander", actor.behavior));
+ actor.behavior.seed = 97;
+ actor.behavior.speed_mps = 0.7;
+ actor.behavior.turn_rate_radps = 0.4;
+ world.add_actor(actor);
+ set_diff_duty(world, 0.65);
+ world.set_brake_request(0, 0.4);
+ world.set_brake_request(1, 0.4);
+ };
+ configure(chunked);
+ configure(split);
+ for (int transition = 0; transition < 100; ++transition) {
+ chunked.step(0.02);
+ split.begin_fixed_transition();
+ for (int quantum = 0; quantum < 20; ++quantum) split.step(0.001);
+ split.end_fixed_transition();
+ const auto& a = chunked.truth();
+ const auto& b = split.truth();
+ assert(chunked.sim_time_ns() == split.sim_time_ns());
+ assert(a.step == b.step);
+ assert(a.body_x_m == b.body_x_m);
+ assert(a.body_y_m == b.body_y_m);
+ assert(a.body_z_m == b.body_z_m);
+ assert(a.body_yaw_rad == b.body_yaw_rad);
+ assert(a.forward_mps == b.forward_mps);
+ assert(a.lateral_mps == b.lateral_mps);
+ assert(a.yaw_rate_radps == b.yaw_rate_radps);
+ assert(a.drive_angle_rad == b.drive_angle_rad);
+ assert(a.drive_radps == b.drive_radps);
+ assert(a.drive_slipping == b.drive_slipping);
+ assert(chunked.actors().front().x == split.actors().front().x);
+ assert(chunked.actors().front().y == split.actors().front().y);
+ assert(chunked.actors().front().vx_mps == split.actors().front().vx_mps);
+ assert(chunked.actors().front().vy_mps == split.actors().front().vy_mps);
+ assert(chunked.impact().valid == split.impact().valid);
+ assert(chunked.impact().normal_impulse_Ns ==
+ split.impact().normal_impulse_Ns);
+ }
+
+ bool rejected_off_grid = false;
+ try {
+ chunked.step(0.0015);
+ } catch (const std::invalid_argument&) {
+ rejected_off_grid = true;
+ }
+ assert(rejected_off_grid);
+ }
+
  // Preparing the plant exposes the authored zero-time assembly without
  // consuming a physics step. A briefing may inspect this SIM state, but it
  // must not advance actors, publish observations, or create score history.
@@ -523,7 +591,7 @@ int main() {
     ms.supports[0].y_m = 0.04;
     ms.supports[0].trail_m = 0.03;
     w.set_motor_params(ms);
-    w.step(1e-6);
+ w.prepare();
     assert(std::abs(w.truth().body_x_m - x_before_topology) < 1e-3);
     assert(std::abs(w.truth().forward_mps - v_before_topology) < 0.05);
     assert(std::abs(w.truth().drive_angle_rad[0] - drive_before_topology) < 0.01);
