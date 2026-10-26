@@ -246,6 +246,12 @@ struct VisualAssets {
  const AssetDefinition* chassis_definition = nullptr;
  Model wheel{};
  const AssetDefinition* wheel_definition = nullptr;
+ Model wheel_right{};
+ const AssetDefinition* wheel_right_definition = nullptr;
+ Model knuckle_left{};
+ const AssetDefinition* knuckle_left_definition = nullptr;
+ Model knuckle_right{};
+ const AssetDefinition* knuckle_right_definition = nullptr;
  Model lidar{};
  const AssetDefinition* lidar_definition = nullptr;
  Model caster_fork{};
@@ -540,7 +546,7 @@ const VisualAssets::EnvironmentModel* find_environment_model(
 }
 
 void load_visual_assets(VisualAssets& assets, const std::string& root,
- const std::string& robot_id) {
+ const std::string& robot_id, const std::string& chassis_kind) {
  if (root.empty()) return;
  const std::filesystem::path base(root);
  const std::filesystem::path models_root = base / "models";
@@ -552,33 +558,20 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  manifest_error.c_str());
  return;
  }
- std::string family = robot_id;
- // Legacy robot configs use descriptive ids (ro1-tracked, ro1-mecanum,
- // ...), while the content tree keys models by the master asset family.
- // Resolve that alias at the SIM asset boundary so every chassis gets its
- // authored GLB without changing the hardware contract or leaking content
- // ids into ROBOT.
- if (assets.manifest.find("robots." + family + ".chassis") == nullptr &&
- assets.manifest.find("robots." + family + ".hull") == nullptr) {
- const auto has = [&](const char* token) {
- return robot_id.find(token) != std::string::npos;
- };
- family = has("tracked") ? "ro3"
- : has("mecanum") ? "ro5"
- : has("swerve") ? "ro4"
- : has("ackermann") ? "ro2"
- : "ro1";
- }
- const std::string chassis_id = family == "ro3"
- ? "robots.ro3.hull"
- : "robots." + family + ".chassis";
+ const auto selection = lost_signal::sim::viewer::asset_selection_for_robot(
+ robot_id, chassis_kind);
  assets.chassis = load_manifest_model(models_root, assets.manifest,
- chassis_id, assets.chassis_definition);
- std::string wheel_id = "robots.ro1.wheel_standard";
- if (family == "ro4") wheel_id = "robots.ro4.swerve_module";
- if (family == "ro5") wheel_id = "robots.ro5.roller_left";
+ selection.chassis, assets.chassis_definition);
  assets.wheel = load_manifest_model(models_root, assets.manifest,
- wheel_id, assets.wheel_definition);
+ selection.wheel, assets.wheel_definition);
+ assets.wheel_right = load_manifest_model(models_root, assets.manifest,
+ selection.wheel_right, assets.wheel_right_definition);
+ if (!selection.steering_knuckle_left.empty()) {
+ assets.knuckle_left = load_manifest_model(models_root, assets.manifest,
+ selection.steering_knuckle_left, assets.knuckle_left_definition);
+ assets.knuckle_right = load_manifest_model(models_root, assets.manifest,
+ selection.steering_knuckle_right, assets.knuckle_right_definition);
+ }
  assets.lidar = load_manifest_model(models_root, assets.manifest,
  "robots.ro1.lidar_standard", assets.lidar_definition);
  assets.caster_fork = load_manifest_model(models_root, assets.manifest,
@@ -719,6 +712,9 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  GetShaderLocation(assets.lighting, "lightVP"), light_vp);
  bind_lighting(assets.chassis, assets.lighting);
  bind_lighting(assets.wheel, assets.lighting);
+ bind_lighting(assets.wheel_right, assets.lighting);
+ bind_lighting(assets.knuckle_left, assets.lighting);
+ bind_lighting(assets.knuckle_right, assets.lighting);
  bind_lighting(assets.lidar, assets.lighting);
  bind_lighting(assets.caster_fork, assets.lighting);
  bind_lighting(assets.caster_wheel, assets.lighting);
@@ -730,6 +726,8 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  }
  }
  assets.loaded = model_ready(assets.chassis) || model_ready(assets.wheel) ||
+ model_ready(assets.wheel_right) || model_ready(assets.knuckle_left) ||
+ model_ready(assets.knuckle_right) ||
  model_ready(assets.lidar) || model_ready(assets.caster_fork) ||
  model_ready(assets.caster_wheel) ||
  model_ready(assets.track) || model_ready(assets.forklift) ||
@@ -742,6 +740,9 @@ void unload_visual_assets(VisualAssets& assets) {
  if (assets.dust.id > 0) UnloadTexture(assets.dust);
  if (model_ready(assets.chassis)) UnloadModel(assets.chassis);
  if (model_ready(assets.wheel)) UnloadModel(assets.wheel);
+ if (model_ready(assets.wheel_right)) UnloadModel(assets.wheel_right);
+ if (model_ready(assets.knuckle_left)) UnloadModel(assets.knuckle_left);
+ if (model_ready(assets.knuckle_right)) UnloadModel(assets.knuckle_right);
  if (model_ready(assets.lidar)) UnloadModel(assets.lidar);
  if (model_ready(assets.caster_fork)) UnloadModel(assets.caster_fork);
  if (model_ready(assets.caster_wheel)) UnloadModel(assets.caster_wheel);
@@ -3504,12 +3505,46 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  // live joints; slip-red is restricted to SIM truth debug. Mecanum stripes
       // frame (rollers are passive analytic state — static decoration).
       for (const auto& w : f.body.wheels) {
+ // Ackermann steering knuckles are independent MuJoCo links. Bind the GLB
+ // to the recorded knuckle pose so the kingpin axis and front wheel remain
+ // coincident on ramps and during steering; never rebuild this from a
+ // guessed steer angle in the renderer.
+ if (w.steering_pose.valid && assets != nullptr &&
+ (model_ready(assets->knuckle_left) || model_ready(assets->knuckle_right))) {
+ const bool right = w.y_m < 0.0;
+ const Model& knuckle = right ? assets->knuckle_right : assets->knuckle_left;
+ const AssetDefinition* definition = right
+ ? assets->knuckle_right_definition : assets->knuckle_left_definition;
+ if (model_ready(knuckle)) {
+ const BoundingBox bounds = raylib_asset_bounds(knuckle);
+ const float sx = std::max(1e-3f, bounds.max.x - bounds.min.x);
+ const float sy = std::max(1e-3f, bounds.max.y - bounds.min.y);
+ const float sz = std::max(1e-3f, bounds.max.z - bounds.min.z);
+ const float authored = definition != nullptr &&
+ definition->reference_radius_m > 0.0
+ ? static_cast<float>(definition->reference_radius_m) : 0.10f;
+ const float scale = std::max(0.01f, std::min({authored / sx,
+ authored / sy, authored / sz}));
+ draw_model_quaternion(knuckle, link_position(w.steering_pose),
+ link_rotation(w.steering_pose, true), {scale, scale, scale}, WHITE);
+ }
+ }
  if (w.pose.valid) {
  const Vector3 position = link_position(w.pose);
  Quaternion rotation = link_rotation(w.pose, true);
- if (assets != nullptr && model_ready(assets->wheel)) {
- draw_model_quaternion(assets->wheel, position, rotation,
- wheel_asset_scale(assets->wheel_definition, w.radius_m,
+  const Model* wheel_model = assets != nullptr ? &assets->wheel : nullptr;
+  const AssetDefinition* wheel_definition = assets != nullptr
+  ? assets->wheel_definition : nullptr;
+  // Mecanum roller geometry is handed: the right-side asset is selected by
+  // the physical module lateral coordinate, never by draw-list index.
+  if (w.mecanum_rollers && w.y_m < 0.0 && assets != nullptr &&
+  model_ready(assets->wheel_right)) {
+  wheel_model = &assets->wheel_right;
+  wheel_definition = assets->wheel_right_definition;
+  }
+  if (wheel_model != nullptr && model_ready(*wheel_model)) {
+  draw_model_quaternion(*wheel_model, position, rotation,
+  wheel_asset_scale(wheel_definition, w.radius_m,
  world.motor_params().tire_half_width_m),
  show_actor_routes && w.slipping ? Color{210, 60, 48, 255} : WHITE);
  } else {
@@ -3618,6 +3653,29 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
     }
     rlPopMatrix();
   }
+ // Engineering view: COM and joint axes are drawn from recorded MuJoCo
+ // state in the base frame. This is intentionally behind the SIM truth
+ // debug toggle; no display-only pose is fed back into the plant.
+ if (show_actor_routes) {
+ FrameLinkPose com_pose;
+ com_pose.valid = true;
+ com_pose.x_m = f.body.com_x_m;
+ com_pose.y_m = f.body.com_y_m;
+ com_pose.z_m = f.body.com_z_m;
+ const Vector3 com_world = body_local_to_world(f.body, com_pose);
+ DrawSphere(com_world, 0.035f, MAGENTA);
+ for (const auto& joint : f.body.joint_axes) {
+ if (!joint.valid) continue;
+ const Vector3 origin = body_local_to_world(f.body, joint.link_pose);
+ FrameLinkPose endpoint = joint.link_pose;
+ endpoint.x_m += joint.axis_x * 0.16;
+ endpoint.y_m += joint.axis_y * 0.16;
+ endpoint.z_m += joint.axis_z * 0.16;
+ const Vector3 end = body_local_to_world(f.body, endpoint);
+ DrawLine3D(origin, end, GOLD);
+ DrawSphereWires(origin, 0.018f, 6, 6, GOLD);
+ }
+ }
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them
   // twice.
@@ -4071,7 +4129,9 @@ int main(int argc, char** argv) {
  sim::viewer::ViewerAudio viewer_audio(assets_path, !mute_audio);
  VisualAssets visual_assets;
  load_visual_assets(visual_assets, assets_path,
- robot_config.has_value() ? robot_config->robot_id : "ro1");
+ robot_config.has_value() ? robot_config->robot_id : "ro1",
+ robot_config.has_value() ? robot_config->profile.chassis_kind
+ : "differential");
  SceneManifest visual_scene;
  bool scene_loaded = false;
  if (scene_path.empty() && !map_path.empty()) {
@@ -4417,7 +4477,9 @@ bool show_estimate = initial_show_robot_evidence;
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
  unload_visual_assets(visual_assets);
  load_visual_assets(visual_assets, assets_path,
- robot_config.has_value() ? robot_config->robot_id : "ro1");
+ robot_config.has_value() ? robot_config->robot_id : "ro1",
+ robot_config.has_value() ? robot_config->profile.chassis_kind
+ : "differential");
  load_ui_font(&experience);
  experience_action_error.clear();
  reset_experience_presentation();

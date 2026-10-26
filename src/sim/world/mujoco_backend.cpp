@@ -82,9 +82,39 @@ void MujocoBackend::read_back() {
   yaw_rate_ = data->qvel[base_dof_ + 5];
  const int base_body = mj_name2id(model, mjOBJ_BODY, "base");
  total_mass_kg_ = mj_getTotalmass(model);
+ system_com_x_m_ = base_body >= 0
+ ? static_cast<double>(data->subtree_com[3 * base_body + 0]) : 0.0;
+ system_com_y_m_ = base_body >= 0
+ ? static_cast<double>(data->subtree_com[3 * base_body + 1]) : 0.0;
  system_com_z_m_ = base_body >= 0
- ? static_cast<double>(data->subtree_com[3 * base_body + 2])
- : 0.0;
+ ? static_cast<double>(data->subtree_com[3 * base_body + 2]) : 0.0;
+ const mjtNum* base_position = base_body >= 0
+ ? data->xpos + 3 * base_body : nullptr;
+ const mjtNum* base_quaternion = base_body >= 0
+ ? data->xquat + 4 * base_body : nullptr;
+ const auto rotate_world_to_base = [&](double wx, double wy, double wz,
+ double& bx, double& by, double& bz) {
+ if (base_position == nullptr || base_quaternion == nullptr) {
+ bx = by = bz = 0.0;
+ return;
+ }
+ const double vx = wx - base_position[0];
+ const double vy = wy - base_position[1];
+ const double vz = wz - base_position[2];
+ const double iw = base_quaternion[0];
+ const double ix = -base_quaternion[1];
+ const double iy = -base_quaternion[2];
+ const double iz = -base_quaternion[3];
+ const double tx = 2.0 * (iy * vz - iz * vy);
+ const double ty = 2.0 * (iz * vx - ix * vz);
+ const double tz = 2.0 * (ix * vy - iy * vx);
+ bx = vx + iw * tx + (iy * tz - iz * ty);
+ by = vy + iw * ty + (iz * tx - ix * tz);
+ bz = vz + iw * tz + (ix * ty - iy * tx);
+ };
+ rotate_world_to_base(system_com_x_m_, system_com_y_m_, system_com_z_m_,
+ system_com_relative_x_m_, system_com_relative_y_m_,
+ system_com_relative_z_m_);
  const auto read_relative_body_pose = [&](int body_id, LinkPoseViz& out) {
  out = LinkPoseViz{};
  if (base_body < 0 || body_id < 0 || body_id >= model->nbody) return;
@@ -122,6 +152,40 @@ void MujocoBackend::read_back() {
  out.qz /= qn;
  out.valid = true;
  };
+ const auto read_joint_axis = [&](int joint_id, int dof, JointAxisViz& out) {
+ out = JointAxisViz{};
+ if (joint_id < 0 || joint_id >= model->njnt || dof < 0 ||
+ dof >= model->nv || base_position == nullptr || base_quaternion == nullptr) {
+ return;
+ }
+ const int body_id = model->jnt_bodyid[joint_id];
+ if (body_id < 0 || body_id >= model->nbody) return;
+ read_relative_body_pose(body_id, out.link_pose);
+ if (!out.link_pose.valid) return;
+ const mjtNum* anchor = data->xanchor + 3 * joint_id;
+ rotate_world_to_base(anchor[0], anchor[1], anchor[2], out.link_pose.x_m,
+ out.link_pose.y_m, out.link_pose.z_m);
+ const mjtNum* axis = data->xaxis + 3 * joint_id;
+ rotate_world_to_base(base_position[0] + axis[0],
+ base_position[1] + axis[1], base_position[2] + axis[2],
+ out.axis_x, out.axis_y, out.axis_z);
+ // rotate_world_to_base() subtracts the base origin, so the endpoint above
+ // is a vector rotation when the base origin is added back first.
+ const double norm = std::sqrt(out.axis_x * out.axis_x +
+ out.axis_y * out.axis_y + out.axis_z * out.axis_z);
+ if (!(norm > 1e-12) || !std::isfinite(norm)) {
+ out = JointAxisViz{};
+ return;
+ }
+ out.axis_x /= norm;
+ out.axis_y /= norm;
+ out.axis_z /= norm;
+ const int qadr = model->jnt_qposadr[joint_id];
+ const int vadr = model->jnt_dofadr[joint_id];
+ if (qadr >= 0 && qadr < model->nq) out.angle_rad = data->qpos[qadr];
+ if (vadr >= 0 && vadr < model->nv) out.rate_radps = data->qvel[vadr];
+ out.valid = true;
+ };
   for (int d = 0; d < drive_count_; ++d) {
     const int dof = drive_dof_[d];
     if (dof < 0) continue;
@@ -135,6 +199,7 @@ void MujocoBackend::read_back() {
     if (qadr >= 0) drive_angle_[d] = data->qpos[qadr];
     drive_radps_[d] = data->qvel[dof];
  read_relative_body_pose(drive_body_[d], drive_pose_[d]);
+ read_joint_axis(jid, dof, drive_joint_[d]);
   }
   for (int t = 0; t < steer_count_; ++t) {
     const int dof = steer_dof_[t];
@@ -147,6 +212,7 @@ void MujocoBackend::read_back() {
     const int qadr = (jid >= 0) ? model->jnt_qposadr[jid] : -1;
     if (qadr >= 0) steer_angle_[t] = data->qpos[qadr];
     steer_vel_[t] = data->qvel[dof];
+ read_joint_axis(jid, dof, steer_joint_[t]);
   }
   // Ackermann idler spin (free-spinning fronts): same hinge read-back
   // pattern as the drives (DOF address == qpos address here).
@@ -159,6 +225,7 @@ void MujocoBackend::read_back() {
     if (qadr >= 0) idler_angle_[j] = data->qpos[qadr];
  idler_radps_[j] = data->qvel[dof];
  read_relative_body_pose(idler_body_[j], idler_pose_[j]);
+ read_joint_axis(jid, dof, idler_joint_[j]);
   }
  for (int i = 0; i < support_count_ && i < 4; ++i) {
  const int sdof = support_swivel_dof_[i];
@@ -166,12 +233,14 @@ void MujocoBackend::read_back() {
  const int sjid = model->dof_jntid[sdof];
  const int sqadr = sjid >= 0 ? model->jnt_qposadr[sjid] : -1;
  if (sqadr >= 0) support_swivel_[i] = data->qpos[sqadr];
+ read_joint_axis(sjid, sdof, support_swivel_joint_[i]);
  }
  const int rdof = support_roll_dof_[i];
  if (rdof >= 0) {
  const int rjid = model->dof_jntid[rdof];
  const int rqadr = rjid >= 0 ? model->jnt_qposadr[rjid] : -1;
  if (rqadr >= 0) support_roll_[i] = data->qpos[rqadr];
+ read_joint_axis(rjid, rdof, support_roll_joint_[i]);
  }
  read_relative_body_pose(support_fork_body_[i], support_fork_pose_[i]);
  read_relative_body_pose(support_wheel_body_[i], support_wheel_pose_[i]);

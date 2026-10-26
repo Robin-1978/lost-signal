@@ -13,6 +13,7 @@ namespace fs = std::filesystem;
 using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::asset_point_to_render;
 using lost_signal::sim::viewer::asset_frame_transform;
+using lost_signal::sim::viewer::asset_selection_for_robot;
 using lost_signal::sim::viewer::load_asset_manifest;
 using lost_signal::sim::viewer::transform_asset_point;
 
@@ -44,6 +45,18 @@ bool rejected(const fs::path& manifest_path, const std::string& json) {
 }  // namespace
 
 int main() {
+ const auto ackermann = asset_selection_for_robot("ro1", "ackermann");
+ assert(ackermann.chassis == "robots.ro2.chassis");
+ assert(ackermann.steering_knuckle_left ==
+ "robots.ro2.front_left_knuckle");
+ const auto mecanum = asset_selection_for_robot("ro1", "mecanum");
+ assert(mecanum.chassis == "robots.ro5.chassis");
+ assert(mecanum.wheel == "robots.ro5.roller_left");
+ assert(mecanum.wheel_right == "robots.ro5.roller_right");
+ const auto tracked = asset_selection_for_robot("ro1", "tracked");
+ assert(tracked.chassis == "robots.ro3.hull");
+ assert(tracked.track == "robots.ro3.track");
+
   const fs::path source_root = TEST_SOURCE_DIR;
   const fs::path models_root = source_root / "assets" / "models";
   const fs::path real_manifest = models_root / "manifest.json";

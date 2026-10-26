@@ -52,6 +52,21 @@ struct AssetDefinition {
  double reference_half_width_m = 0.0;
 };
 
+// SIM-only asset selection. The hardware chassis kind is the source of
+// truth for component family; robot_id remains an identity label and must not
+// make an Ackermann/Mecanum/Swerve robot render as the differential model.
+struct AssetSelection {
+ std::string chassis;
+ std::string wheel;
+ std::string wheel_right;
+ std::string steering_knuckle_left;
+ std::string steering_knuckle_right;
+ std::string lidar;
+ std::string caster_fork;
+ std::string caster_wheel;
+ std::string track;
+};
+
 // Rigid transform from the asset's authored coordinates to the component
 // link frame. Rotation is row-major and translation is expressed in metres.
 // Axis declarations establish the coarse frame; asset_to_link RPY is the
@@ -62,6 +77,8 @@ struct AssetFrameTransform {
 };
 
 AssetFrameTransform asset_frame_transform(const AssetDefinition& asset);
+AssetSelection asset_selection_for_robot(const std::string& robot_id,
+ const std::string& chassis_kind);
 std::array<double, 3> transform_asset_point(
  const AssetFrameTransform& transform,
  const std::array<double, 3>& point_m);

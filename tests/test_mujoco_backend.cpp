@@ -116,6 +116,16 @@ int main() {
  assert(w.wheels(wheels, 6) == 2);
  assert(wheels[0].pose.valid);
  assert(wheels[1].pose.valid);
+ assert(wheels[0].drive_joint.valid);
+ assert(std::abs(wheels[0].drive_joint.axis_x) < 1e-9);
+ assert(std::abs(wheels[0].drive_joint.axis_y - 1.0) < 1e-9);
+ assert(std::abs(wheels[0].drive_joint.axis_z) < 1e-9);
+ sim::world::JointAxisViz axes[20];
+ const int axis_count = w.joint_axes(axes, 20);
+ assert(axis_count >= 2);
+ assert(std::isfinite(w.system_com_relative_x_m()));
+ assert(std::isfinite(w.system_com_relative_y_m()));
+ assert(std::isfinite(w.system_com_relative_z_m()));
 
  sim::scenario::ScenarioSession session;
  session.prepare_world();

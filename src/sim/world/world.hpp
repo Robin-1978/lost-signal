@@ -279,7 +279,18 @@ class World {
   void set_motor_params(const MotorParams& params);
   const MotorParams& motor_params() const { return motor_; }
  double compiled_mass_kg() const { return mujoco_.total_mass_kg(); }
+ double system_com_x_m() const { return mujoco_.system_com_x_m(); }
+ double system_com_y_m() const { return mujoco_.system_com_y_m(); }
  double system_com_z_m() const { return mujoco_.system_com_z_m(); }
+ double system_com_relative_x_m() const {
+ return mujoco_.system_com_relative_x_m();
+ }
+ double system_com_relative_y_m() const {
+ return mujoco_.system_com_relative_y_m();
+ }
+ double system_com_relative_z_m() const {
+ return mujoco_.system_com_relative_z_m();
+ }
  // SIM-only build diagnostics used to enforce the O(1) sync contract.
   const MujocoBuildStats& mujoco_build_stats() const {
     return mujoco_.build_stats();
@@ -308,6 +319,9 @@ class World {
  // observation or actuator path.
  int casters(CasterViz* out, int cap) const {
  return mujoco_.casters(out, cap);
+ }
+ int joint_axes(JointAxisViz* out, int cap) const {
+ return mujoco_.joint_axes(out, cap);
  }
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT

@@ -25,6 +25,13 @@ void capture_presentation(const world::World& world,
  const int caster_count = world.casters(
  casters, world::MotorParams::kMaxSupports);
  snapshot.casters.assign(casters, casters + std::max(0, caster_count));
+ world::JointAxisViz joint_axes[20];
+ const int joint_axis_count = world.joint_axes(joint_axes, 20);
+ snapshot.joint_axes.assign(joint_axes,
+ joint_axes + std::max(0, joint_axis_count));
+ snapshot.com_x_m = world.system_com_relative_x_m();
+ snapshot.com_y_m = world.system_com_relative_y_m();
+ snapshot.com_z_m = world.system_com_relative_z_m();
  snapshot.actors.reserve(world.actors().size());
  for (const auto& actor : world.actors()) {
  snapshot.actors.push_back({actor.x, actor.y, actor.vx_mps, actor.vy_mps,

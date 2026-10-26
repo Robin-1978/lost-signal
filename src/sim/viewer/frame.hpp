@@ -177,6 +177,10 @@ struct FrameWheel {
  // Exact MuJoCo wheel-body pose in the base frame. The joint angles above
  // remain useful diagnostics; 3D rendering uses this pose when valid.
  FrameLinkPose pose;
+ // For steering modules this is the live knuckle link pose. The viewer
+ // binds the steering GLB to it instead of reconstructing a yaw from
+ // steer_rad; empty for fixed wheels.
+ FrameLinkPose steering_pose;
 };
 
 struct FrameCaster {
@@ -188,6 +192,13 @@ struct FrameCaster {
  double spin_rad = 0.0; // MuJoCo passive wheel roll angle
  FrameLinkPose fork_pose;
  FrameLinkPose wheel_pose;
+};
+
+struct FrameJointAxis {
+ bool valid = false;
+ FrameLinkPose link_pose;
+ double axis_x = 0.0, axis_y = 0.0, axis_z = 1.0;
+ double angle_rad = 0.0, rate_radps = 0.0;
 };
 
 struct FrameBody {
@@ -204,6 +215,9 @@ struct FrameBody {
   double z_m = 0.0;            // engine height (3D frontend only)
   double roll_rad = 0.0;       // live body attitude (ramps tilt the viz)
   double pitch_rad = 0.0;
+ // COM in the MuJoCo base-link frame. This is SIM presentation evidence;
+ // it never crosses the ROBOT observation boundary.
+ double com_x_m = 0.0, com_y_m = 0.0, com_z_m = 0.0;
   // True sensor origin in world (body pose composed with the mount — the
   // ray fan starts here, never at the body center).
   double sens_x_m = 0.0, sens_y_m = 0.0, sens_z_m = 0.0;
@@ -213,6 +227,7 @@ struct FrameBody {
  // Unpowered physical caster supports. They are SIM-only presentation state,
  // never drive channels, traction evidence, or ROBOT observations.
  std::vector<FrameCaster> casters;
+ std::vector<FrameJointAxis> joint_axes;
  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
  // chassis params. Traction flags are visible only in SIM truth debug.
   bool tracked = false;

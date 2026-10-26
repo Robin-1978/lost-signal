@@ -269,6 +269,9 @@ void MujocoBackend::sync(const MotorParams& motor,
     drive_count_ = 0;
     steer_count_ = 0;
     ready_ = false;
+ system_com_x_m_ = system_com_y_m_ = system_com_z_m_ = 0.0;
+ system_com_relative_x_m_ = system_com_relative_y_m_ =
+ system_com_relative_z_m_ = 0.0;
     return;
   }
   // Mesh patches (roughness > 0 or bilinear cross-slope) build as tile
@@ -371,8 +374,11 @@ void MujocoBackend::sync(const MotorParams& motor,
   base_dof_ = -1;
  for (int i = 0; i < 4; ++i) {
  drive_dof_[i] = steer_dof_[i] = -1;
+ steer_body_[i] = -1;
  drive_body_[i] = -1;
  drive_pose_[i] = LinkPoseViz{};
+ drive_joint_[i] = JointAxisViz{};
+ steer_joint_[i] = JointAxisViz{};
  }
   for (int i = 0; i < 4; ++i) drive_steer_[i] = -1;
   for (int i = 0; i < 2; ++i) {
@@ -380,6 +386,7 @@ void MujocoBackend::sync(const MotorParams& motor,
  idler_body_[i] = -1;
     idler_angle_[i] = 0.0;
  idler_pose_[i] = LinkPoseViz{};
+ idler_joint_[i] = JointAxisViz{};
   }
   idler_count_ = 0;
  support_count_ = 0;
@@ -390,6 +397,8 @@ void MujocoBackend::sync(const MotorParams& motor,
  support_wheel_body_[i] = -1;
  support_fork_pose_[i] = LinkPoseViz{};
  support_wheel_pose_[i] = LinkPoseViz{};
+ support_swivel_joint_[i] = JointAxisViz{};
+ support_roll_joint_[i] = JointAxisViz{};
  support_geom_[i] = -1;
  support_shoulder_geom_[i][0] = -1;
  support_shoulder_geom_[i][1] = -1;
@@ -1162,6 +1171,7 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
     std::snprintf(name, sizeof(name), "steer%d", i);
     const int sid = mj_name2id(model, mjOBJ_JOINT, name);
     steer_dof_[i] = (sid >= 0) ? model->jnt_dofadr[sid] : -1;
+ steer_body_[i] = (sid >= 0) ? model->jnt_bodyid[sid] : -1;
     if (steer_dof_[i] >= 0) ++found_steers;
     std::snprintf(name, sizeof(name), "tire%d", i);
     tire_geom_[i] = mj_name2id(model, mjOBJ_GEOM, name);

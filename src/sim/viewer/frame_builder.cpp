@@ -149,6 +149,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.body.z_m = t.body_z_m;
   f.body.roll_rad = t.body_roll_rad;
   f.body.pitch_rad = t.body_pitch_rad;
+ f.body.com_x_m = world.system_com_relative_x_m();
+ f.body.com_y_m = world.system_com_relative_y_m();
+ f.body.com_z_m = world.system_com_relative_z_m();
  f.truth.valid = true;
  f.truth.x_m = t.body_x_m;
  f.truth.y_m = t.body_y_m;
@@ -242,6 +245,11 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  physical.pose.x_m, physical.pose.y_m, physical.pose.z_m,
  physical.pose.qw, physical.pose.qx, physical.pose.qy,
  physical.pose.qz};
+ w.steering_pose = {physical.steer_joint.link_pose.valid,
+ physical.steer_joint.link_pose.x_m, physical.steer_joint.link_pose.y_m,
+ physical.steer_joint.link_pose.z_m, physical.steer_joint.link_pose.qw,
+ physical.steer_joint.link_pose.qx, physical.steer_joint.link_pose.qy,
+ physical.steer_joint.link_pose.qz};
       f.body.wheels.push_back(w);
  if (w.contact_valid) ++f.truth.wheel_contacts;
     }
@@ -311,6 +319,38 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  caster.spin_rad = 0.0;
  }
  f.body.casters.push_back(caster);
+ }
+ }
+ // Engineering overlays consume the same joint frames as the physics
+ // read-back. They are kept in FrameBody, alongside link poses, and are
+ // absent from every ROBOT-side telemetry record.
+ {
+ std::vector<world::JointAxisViz> live_axes;
+ if (!step.presentation.captured) {
+ world::JointAxisViz table[20];
+ const int count = world.joint_axes(table, 20);
+ live_axes.assign(table, table + std::max(0, count));
+ }
+ const auto& axes = step.presentation.captured
+ ? step.presentation.joint_axes : live_axes;
+ for (const auto& physical : axes) {
+ FrameJointAxis axis;
+ axis.valid = physical.valid;
+ axis.link_pose = {physical.link_pose.valid,
+ physical.link_pose.x_m, physical.link_pose.y_m, physical.link_pose.z_m,
+ physical.link_pose.qw, physical.link_pose.qx, physical.link_pose.qy,
+ physical.link_pose.qz};
+ axis.axis_x = physical.axis_x;
+ axis.axis_y = physical.axis_y;
+ axis.axis_z = physical.axis_z;
+ axis.angle_rad = physical.angle_rad;
+ axis.rate_radps = physical.rate_radps;
+ f.body.joint_axes.push_back(axis);
+ }
+ if (step.presentation.captured) {
+ f.body.com_x_m = step.presentation.com_x_m;
+ f.body.com_y_m = step.presentation.com_y_m;
+ f.body.com_z_m = step.presentation.com_z_m;
  }
  }
   // True 3D sensor origin (body + attitude composed with the mount — the

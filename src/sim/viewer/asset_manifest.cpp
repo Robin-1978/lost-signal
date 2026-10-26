@@ -444,6 +444,41 @@ std::array<double, 3> asset_point_to_render(
  return {link[0], link[2], -link[1]};
 }
 
+AssetSelection asset_selection_for_robot(const std::string& robot_id,
+ const std::string& chassis_kind) {
+ // chassis_kind is authoritative because configuration files intentionally
+ // reuse robot identities across hardware variants. Keep the identity only
+ // for selecting optional sensor/appearance variants within that family.
+ std::string family;
+ if (chassis_kind == "ackermann") family = "ro2";
+ else if (chassis_kind == "swerve") family = "ro4";
+ else if (chassis_kind == "mecanum") family = "ro5";
+ else if (chassis_kind == "tracked") family = "ro3";
+ else if (chassis_kind == "differential") family = "ro1";
+ else if (robot_id == "ro2" || robot_id == "ro3" ||
+ robot_id == "ro4" || robot_id == "ro5") family = robot_id;
+ else family = "ro1";
+
+ AssetSelection selection;
+ selection.chassis = family == "ro3"
+ ? "robots.ro3.hull" : "robots." + family + ".chassis";
+ selection.wheel = family == "ro4"
+ ? "robots.ro4.swerve_module"
+ : family == "ro5" ? "robots.ro5.roller_left"
+ : "robots.ro1.wheel_standard";
+ selection.wheel_right = family == "ro5"
+ ? "robots.ro5.roller_right" : selection.wheel;
+ selection.steering_knuckle_left = family == "ro2"
+ ? "robots.ro2.front_left_knuckle" : "";
+ selection.steering_knuckle_right = family == "ro2"
+ ? "robots.ro2.front_right_knuckle" : "";
+ selection.lidar = "robots.ro1.lidar_standard";
+ selection.caster_fork = "robots.ro1.caster_fork";
+ selection.caster_wheel = "robots.ro1.caster_wheel";
+ selection.track = "robots.ro3.track";
+ return selection;
+}
+
 const AssetDefinition* AssetManifest::find(
  const std::string& asset_id) const {
  for (const auto& asset : assets_) {

@@ -74,6 +74,15 @@ struct LinkPoseViz {
  double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
 };
 
+// Articulated joint frame read directly from MuJoCo. Origin and axis are
+// expressed in the base-link frame for an exact engineering overlay.
+struct JointAxisViz {
+ bool valid = false;
+ LinkPoseViz link_pose;
+ double axis_x = 0.0, axis_y = 0.0, axis_z = 1.0;
+ double angle_rad = 0.0, rate_radps = 0.0;
+};
+
 // One wheel module for presentation (base frame): position from the shared
 // layout table, spin/steer from live joint read-back. Idlers (ackermann
 // fronts) report driven=false. Rollers are not state (mecanum is an
@@ -103,6 +112,8 @@ struct WheelViz {
  // capacity. One means the contact is saturated. SIM truth only.
  double contact_friction_utilization = 0.0;
  LinkPoseViz pose;
+ JointAxisViz steer_joint;
+ JointAxisViz drive_joint;
 };
 
 // One passive caster assembly for presentation.  The pivot and wheel
@@ -116,6 +127,8 @@ struct CasterViz {
  double swivel_rad = 0.0, roll_rad = 0.0;
  LinkPoseViz fork_pose;
  LinkPoseViz wheel_pose;
+ JointAxisViz swivel_joint;
+ JointAxisViz roll_joint;
 };
 
 // Aggregate non-ground impact over one public plant step. MuJoCo contact
@@ -236,6 +249,8 @@ class MujocoBackend {
  w.contact_normal_force_N = drive_contact_normal_N_[d];
  w.contact_friction_utilization = drive_contact_friction_utilization_[d];
  w.pose = drive_pose_[d];
+ w.drive_joint = drive_joint_[d];
+ if (s >= 0 && s < 4) w.steer_joint = steer_joint_[s];
       out[n++] = w;
     }
     for (int j = 0; j < idler_count_ && j < 2 && n < cap; ++j) {
@@ -262,6 +277,8 @@ class MujocoBackend {
  w.contact_normal_force_N = idler_contact_normal_N_[j];
  w.contact_friction_utilization = idler_contact_friction_utilization_[j];
  w.pose = idler_pose_[j];
+ if (j < 4) w.steer_joint = steer_joint_[j];
+ w.drive_joint = idler_joint_[j];
       out[n++] = w;
     }
     return n;
@@ -282,7 +299,25 @@ class MujocoBackend {
  c.y_m = c.pivot_y_m - support_trail_[i] * st;
  c.fork_pose = support_fork_pose_[i];
  c.wheel_pose = support_wheel_pose_[i];
+ c.swivel_joint = support_swivel_joint_[i];
+ c.roll_joint = support_roll_joint_[i];
  out[n++] = c;
+ }
+ return n;
+ }
+ int joint_axes(JointAxisViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ int n = 0;
+ const auto append = [&](const JointAxisViz& axis) {
+ if (n >= cap || !axis.valid) return;
+ out[n++] = axis;
+ };
+ for (int i = 0; i < drive_count_ && i < 4; ++i) append(drive_joint_[i]);
+ for (int i = 0; i < steer_count_ && i < 4; ++i) append(steer_joint_[i]);
+ for (int i = 0; i < idler_count_ && i < 2; ++i) append(idler_joint_[i]);
+ for (int i = 0; i < support_count_ && i < 4; ++i) {
+ append(support_swivel_joint_[i]);
+ append(support_roll_joint_[i]);
  }
  return n;
  }
@@ -291,7 +326,16 @@ class MujocoBackend {
   double body_roll() const { return body_roll_; }
   double body_pitch() const { return body_pitch_; }
  double total_mass_kg() const { return total_mass_kg_; }
+ double system_com_x_m() const { return system_com_x_m_; }
+ double system_com_y_m() const { return system_com_y_m_; }
  double system_com_z_m() const { return system_com_z_m_; }
+ // COM expressed in the live base-link frame. The legacy system_com_*()
+ // values remain world-frame telemetry for compatibility; presentation uses
+ // this frame-local triplet so a tilted/rotating chassis keeps the marker
+ // attached to the physical mass centre.
+ double system_com_relative_x_m() const { return system_com_relative_x_m_; }
+ double system_com_relative_y_m() const { return system_com_relative_y_m_; }
+ double system_com_relative_z_m() const { return system_com_relative_z_m_; }
   const MujocoBuildStats& build_stats() const { return build_stats_; }
   // True 3D raycast against the compiled static scene (floor + boxes),
   // for sensor simulation. Robot geoms live in group 1 and are excluded,
@@ -354,6 +398,7 @@ class MujocoBackend {
   int idler_dof_[2] = {-1, -1};
  int idler_body_[2] = {-1, -1};
  LinkPoseViz idler_pose_[2];
+ JointAxisViz idler_joint_[2];
   int idler_count_ = 0;
  // Passive caster assemblies.  The fork swivel and wheel roll are real
  // MuJoCo hinges; these values are read back for SIM presentation only.
@@ -369,6 +414,8 @@ class MujocoBackend {
  int support_wheel_body_[4] = {-1, -1, -1, -1};
  LinkPoseViz support_fork_pose_[4];
  LinkPoseViz support_wheel_pose_[4];
+ JointAxisViz support_swivel_joint_[4];
+ JointAxisViz support_roll_joint_[4];
  int support_geom_[4] = {-1, -1, -1, -1};
  int support_shoulder_geom_[4][2] = {{-1, -1}, {-1, -1}, {-1, -1},
  {-1, -1}};
@@ -404,16 +451,23 @@ class MujocoBackend {
   int drive_dof_[4] = {-1, -1, -1, -1};
  int drive_body_[4] = {-1, -1, -1, -1};
  LinkPoseViz drive_pose_[4];
+ JointAxisViz drive_joint_[4];
+ JointAxisViz steer_joint_[4];
   int drive_count_ = 0;
   // Steer joint DOF addresses (swerve/ackermann knuckles, M2).
   int steer_dof_[4] = {-1, -1, -1, -1};
+ int steer_body_[4] = {-1, -1, -1, -1};
   int steer_count_ = 0;
   bool ready_ = false;
   // Latest read-back.
   double body_x_ = 0.0, body_y_ = 0.0, body_yaw_ = 0.0;
   double forward_mps_ = 0.0, lateral_mps_ = 0.0, yaw_rate_ = 0.0;
   double body_z_ = 0.0, body_roll_ = 0.0, body_pitch_ = 0.0;
- double total_mass_kg_ = 0.0, system_com_z_m_ = 0.0;
+ double total_mass_kg_ = 0.0;
+ double system_com_x_m_ = 0.0, system_com_y_m_ = 0.0;
+ double system_com_z_m_ = 0.0;
+ double system_com_relative_x_m_ = 0.0, system_com_relative_y_m_ = 0.0;
+ double system_com_relative_z_m_ = 0.0;
   std::array<double, 4> drive_angle_ = {};
   std::array<double, 4> drive_radps_ = {};
   std::array<bool, 4> drive_slipping_ = {};
@@ -473,9 +527,15 @@ class MujocoBackend {
   double body_roll() const { return 0.0; }
   double body_pitch() const { return 0.0; }
  double total_mass_kg() const { return 0.0; }
+ double system_com_x_m() const { return 0.0; }
+ double system_com_y_m() const { return 0.0; }
  double system_com_z_m() const { return 0.0; }
+ double system_com_relative_x_m() const { return 0.0; }
+ double system_com_relative_y_m() const { return 0.0; }
+ double system_com_relative_z_m() const { return 0.0; }
   const MujocoBuildStats& build_stats() const { return build_stats_; }
  int casters(CasterViz*, int) const { return 0; }
+ int joint_axes(JointAxisViz*, int) const { return 0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:
