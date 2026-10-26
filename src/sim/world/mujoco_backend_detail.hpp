@@ -8,6 +8,7 @@
 #ifdef LOST_SIGNAL_WITH_MUJOCO
 
 #include <array>
+#include <vector>
 
 #include <mujoco/mujoco.h>
 
@@ -20,6 +21,15 @@ struct MujocoBackend::Impl {
   mjModel* model = nullptr;
   mjData* data = nullptr;
   std::array<ServiceBrakePlant, 4> brakes;
+ // Reused 1 kHz Mecanum constraint workspace. World invokes the backend
+ // once per fixed quantum, so allocating these vectors inside step() would
+ // put six heap operations on every accelerated physics tick.
+ std::vector<mjtNum> mecanum_g;
+ std::vector<mjtNum> mecanum_minv_g;
+ std::vector<mjtNum> mecanum_motor_rhs;
+ std::vector<mjtNum> mecanum_motor_dv;
+ std::vector<mjtNum> mecanum_jacp;
+ std::vector<mjtNum> mecanum_jacr;
   ~Impl() {
     if (data != nullptr) mj_deleteData(data);
     if (model != nullptr) mj_deleteModel(model);

@@ -248,7 +248,9 @@ struct MotorParams {
   };
   static constexpr int kMaxSupports = 4;
   SupportParams supports[kMaxSupports];
-  int support_count = 0;  // 0 = legacy default pair (conversion fills it)
+  // 0 = layout default: legacy pair for differential, none for a four-wheel
+  // layout. A negative value explicitly disables support on two-drive tracks.
+  int support_count = 0;
   // Encoder resolution for the joint measurement model (counts per
   // revolution). The provider quantizes angles and differentiates; the
   // ROBOT loop closes on the quantized joints, like native hardware.

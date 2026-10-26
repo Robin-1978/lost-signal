@@ -464,8 +464,9 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   // (traction load uses chassis + payload at step time — see load_N.)
  // Unpowered supports resolved up front (pure data, no model calls):
- // support_count == 0 = legacy fore/aft pair — the conversion fills it;
- // a negative count is an explicit no-support tracked chassis. The
+ // support_count == 0 selects the layout default (legacy fore/aft pair for
+ // differential, none for four-wheel layouts); a negative count is an
+ // explicit no-support tracked chassis.
  // Every authored support is an explicit caster assembly. Its fork swivel,
  // trail and wheel roll are engine state rather than viewer animation.
   MotorParams::SupportParams legs[MotorParams::kMaxSupports];
@@ -474,7 +475,8 @@ void MujocoBackend::sync(const MotorParams& motor,
  // Tracked chassis carry their load on the two drive tracks; no caster
  // assembly is present unless the machine config explicitly declares one.
  leg_count = 0;
- } else if (motor.support_count == 0) {
+ } else if (motor.support_count == 0 && drive_count == 2 &&
+ steer_count == 0) {
     const double dx = base_len / 2 * 0.9;
     for (int i = 0; i < 2; ++i) {
       legs[leg_count].kind = "caster";
@@ -488,6 +490,11 @@ void MujocoBackend::sync(const MotorParams& motor,
       legs[leg_count].rolling_friction_m = 0.0005;
       ++leg_count;
     }
+ } else if (motor.support_count == 0) {
+ // Ackermann, swerve and Mecanum already have four load-bearing wheels.
+ // Adding the differential chassis' legacy caster pair creates a rigid
+ // six-point support and makes the contact solve physically overconstrained.
+ leg_count = 0;
   } else {
     for (int i = 0; i < motor.support_count && i < MotorParams::kMaxSupports;
          ++i) {
@@ -525,16 +532,19 @@ void MujocoBackend::sync(const MotorParams& motor,
  return;
  }
   const double mu = std::max(0.05, motor.tire_friction_mu);
-  // Mecanum rollers slide freely sideways in reality; the smooth-cylinder
-  // stand-in would otherwise grip laterally and pin the body against the
-  // virtual-work wrench. Keep drive grip via the wrench, drop the scrub.
-  const double mu_tire =
-      (drive_count == 4 && steer_count == 0) ? 0.05 : mu;
+ const bool is_mecanum_layout = (drive_count == 4 && steer_count == 0);
+ // Smooth Mecanum support cylinders carry normal load only. A coupled
+ // pre-solve roller constraint owns tangential traction, bounded by the
+ // separately retained authored tire/material coefficient.
+ const double mu_tire = is_mecanum_layout ? 0.0 : mu;
   mu_tire_base_ = mu_tire;
+ mecanum_traction_mu_base_ = mu;
   for (int i = 0; i < 4; ++i) {
     slip_saturated_time_s_[i] = 0.0;  // fresh model: never inherit traction
     slip_confirmation_time_s_[i] = 0.0;
     slip_unobserved_time_s_[i] = 0.0;
+    mecanum_traction_mu_[i] = mu;
+    mecanum_normal_load_N_[i] = 0.0;
     tire_geom_[i] = -1;
   }
   for (int i = 0; i < 2; ++i) {
@@ -594,7 +604,6 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   spec->option.timestep = 0.001;
   mjsBody* world = mjs_findBody(spec, "world");
-  const bool is_mecanum_layout = (drive_count == 4 && steer_count == 0);
  const bool use_heightfield = std::any_of(
  patches.begin(), patches.end(), [](const TerrainPatch& p) {
  if (p.roughness > 0.0 || std::abs(p.grade_xy_per_m) > 1e-12) {
@@ -623,7 +632,7 @@ void MujocoBackend::sync(const MotorParams& motor,
  // slide as freely as the roller stand-ins or the pair friction pins the
  // body against the wrench. Other layouts keep full grip.
  floor->friction[0] =
- is_mecanum_layout ? mu_tire : kFloorSlidingFriction;
+ is_mecanum_layout ? 0.0 : kFloorSlidingFriction;
  floor->friction[1] = 0.01;
  floor->friction[2] = 0.001;
  }
@@ -703,9 +712,10 @@ void MujocoBackend::sync(const MotorParams& motor,
       tire->quat[3] = kQuatX90[3];
  tire->mass = motor.wheel_mass_kg;
  tire->priority = 2;
+tire->condim = is_mecanum_layout ? 1 : 3;
       tire->friction[0] = mu_tire;
-      tire->friction[1] = kWheelTorsionalFriction;
-      tire->friction[2] = kWheelRollingFriction;
+tire->friction[1] = is_mecanum_layout ? 0.0 : kWheelTorsionalFriction;
+tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
     } else if (modules[m].idle) {
       // Ackermann front idlers: free-spinning wheels inside the steering
       // knuckles (no torque — the two drive duties are the rear axle).

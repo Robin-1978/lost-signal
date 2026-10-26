@@ -24,7 +24,8 @@ namespace lost_signal::robot::platform {
 // and the fail-closed guards (a bad machine file refuses with frozen
 // truth instead of building a different plant). Rules of thumb:
 //  - omit a chassis block (or any key) = documented default, never zero;
-//  - "supports": [...] fully explicit wins; omitted = default caster pair;
+//  - "supports": [...] fully explicit wins; omitted = caster pair for a
+// differential chassis and no auxiliary support for four-wheel chassis;
 //  - com_height_m/payload_height_m 0 = follow-axle / chassis-COM;
 //  - belly line = com - half_h must stay > 0 (loader AND build enforce);
 //  - deck conserves the vehicle total: deck = vehicle - wheels - supports.
@@ -59,7 +60,8 @@ struct DriveProfile {
   // Chassis hard geometry (SIM plant assembly reads every field; nothing
   // is hardcoded per layout anymore). Defaults reproduce the legacy plant
   // with a 0.05 m shell half-height, centered axle and 0.04 m tire half-width,
-  // fore/aft caster pair resolved at conversion time from wheel_base_m).
+// fore/aft caster pair on differential chassis, resolved at conversion
+// time from wheel_base_m).
   double body_half_height_m = 0.05;  // collision shell, centered at axle
   double body_half_length_m = 0.28;  // collision/visual shell, X forward
   double body_half_width_m = 0.25;   // collision/visual shell, Y left
@@ -91,8 +93,8 @@ struct DriveProfile {
   // mass of every drive or idler wheel, never a separate density estimate.
   double wheel_mass_kg = 0.2;
   double knuckle_mass_kg = 0.1;      // steering kingpin (steered layouts)
-  // Unpowered casters, base frame, explicit (empty = default fore/aft pair
-  // at +-0.9*wheel_base/2).
+// Unpowered casters, base frame, explicit (empty = default fore/aft pair
+// at +-0.9*wheel_base/2 for differential; none for four-wheel layouts).
   struct SupportSpec {
     std::string kind = "caster";  // only physical caster assemblies
     double x_m = 0.0;

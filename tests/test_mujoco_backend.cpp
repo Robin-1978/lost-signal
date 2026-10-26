@@ -425,6 +425,45 @@ int main() {
  assert(feedback.lateral_mps == encoder_lateral);
  assert(feedback.yaw_rate_radps == encoder_yaw);
  assert(feedback.lateral_mps > 0.3);
+ // Four-wheel layouts carry themselves: a legacy differential caster pair
+ // would make a rigid six-point support. Normal-only support contacts must
+ // also remain at rest without a hidden zero-friction singularity.
+ sim::world::World mecanum_idle;
+ robot::iface::ActuatorCommand idle_mc;
+ idle_mc.mode = robot::iface::ActuatorMode::kMecanumDuty;
+ idle_mc.expiry_ns = 1'000'000'000;
+ mecanum_idle.apply(idle_mc);
+ for (int i = 0; i < 100; ++i) mecanum_idle.step(0.02);
+ sim::world::CasterViz unexpected_casters[2];
+ assert(mecanum_idle.casters(unexpected_casters, 2) == 0);
+ assert(std::hypot(mecanum_idle.truth().body_x_m,
+ mecanum_idle.truth().body_y_m) < 1e-6);
+ assert(std::abs(mecanum_idle.truth().body_roll_rad) < 1e-6);
+ assert(std::abs(mecanum_idle.truth().body_pitch_rad) < 1e-6);
+ sim::world::WheelViz resting_wheels[4];
+ assert(mecanum_idle.wheels(resting_wheels, 4) == 4);
+ for (const auto& wheel : resting_wheels) {
+ assert(wheel.contact_valid);
+ assert(wheel.contact_normal_force_N > 0.0);
+ }
+ // A symmetric pure-yaw drive stays centered and cannot exceed the wheel
+ // free-speed kinematic bound. This catches unclosed body-wrench models
+ // that amplify yaw independently of wheel speed.
+ sim::world::World mecanum_yaw;
+ robot::iface::ActuatorCommand yaw_mc = idle_mc;
+ yaw_mc.drive = {-0.35, 0.35, -0.35, 0.35};
+ mecanum_yaw.apply(yaw_mc);
+ for (int i = 0; i < 100; ++i) mecanum_yaw.step(0.02);
+ const double mecanum_arm = 0.5 *
+ (mecanum_yaw.motor_params().wheel_base_m +
+ mecanum_yaw.motor_params().track_width_m);
+ const double yaw_free_speed_bound =
+ mecanum_yaw.motor_params().free_speed_mps / mecanum_arm;
+ assert(mecanum_yaw.truth().yaw_rate_radps > 0.2);
+ assert(mecanum_yaw.truth().yaw_rate_radps <=
+ yaw_free_speed_bound * (1.0 + 1e-6));
+ assert(std::abs(mecanum_yaw.truth().forward_mps) < 0.1);
+ assert(std::abs(mecanum_yaw.truth().lateral_mps) < 0.1);
     // Swerve drives straight with centered modules.
     sim::world::World s;
     robot::iface::ActuatorCommand sc;

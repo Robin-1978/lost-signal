@@ -49,6 +49,7 @@ int main() {
     assert(desc.sensors.size() == cfg.sensors.size());
     const auto motor = sim::eval::motor_from_config(cfg);
     assert(motor.wheel_radius_m == 0.1);
+ if (!differential) assert(motor.support_count <= 0);
   }
   // Geometry follows kind: ackermann is longer/wider than diff.
   {

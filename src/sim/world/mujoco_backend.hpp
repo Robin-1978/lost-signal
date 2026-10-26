@@ -319,7 +319,7 @@ class MujocoBackend {
   std::string built_signature_;
   bool ever_built_ = false;
   MujocoBuildStats build_stats_{};
-  // Geometry needed by the per-step roller wrench.
+  // Geometry needed by the coupled Mecanum roller constraint.
   int base_qpos_ = -1;
   int base_dof_ = -1;
   double track_m_ = 0.5;
@@ -386,6 +386,13 @@ class MujocoBackend {
  std::vector<ImpactMaterial> static_impact_material_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).
   double mu_tire_base_ = 0.7;
+ // Mecanum support cylinders resolve normal load only. The authored tire
+ // coefficient separately bounds the coupled 45-degree roller impulses.
+  double mecanum_traction_mu_base_ = 0.7;
+  double mecanum_traction_mu_[4] = {0.7, 0.7, 0.7, 0.7};
+ // Current pre-solve support load used to bound roller impulses. The
+ // acceleration-only contact prepass refreshes it every fixed quantum.
+  double mecanum_normal_load_N_[4] = {0.0, 0.0, 0.0, 0.0};
  // Slip confirmation is a physical duration, independent of how callers
  // group canonical engine ticks around sensor deadlines.
  double slip_saturated_time_s_[4] = {0.0, 0.0, 0.0, 0.0};

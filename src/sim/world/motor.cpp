@@ -42,8 +42,9 @@ MotorParams motor_params_from_profile(
   out.tire_friction_mu = profile.tire_friction_mu;
   out.yaw_scrub_coulomb_Nm = profile.yaw_scrub_coulomb_Nm;
   out.yaw_scrub_viscous_Nm_per_radps = profile.yaw_scrub_viscous_Nm_per_radps;
-  // Chassis hard geometry: verbatim copy, plus the legacy support default
-  // (empty profile list = fore/aft caster pair at +-0.9*wheel_base/2).
+ // Chassis hard geometry: verbatim copy. An empty differential support list
+ // gets its fore/aft caster pair at +-0.9*wheel_base/2; four-wheel layouts
+ // already carry the chassis on their wheel modules.
   out.body_half_height_m = profile.body_half_height_m;
   out.body_half_length_m = profile.body_half_length_m;
   out.body_half_width_m = profile.body_half_width_m;
@@ -62,7 +63,8 @@ MotorParams motor_params_from_profile(
  // Tracks are the support surface; adding a free caster pair would inject
  // an unmodelled yaw scrub torque into skid-steer pivot tests.
  out.support_count = -1;
- } else if (profile.supports.empty()) {
+ } else if (profile.supports.empty() &&
+ profile.chassis_kind == "differential") {
     const double sx = 0.9 * profile.wheel_base_m / 2;
     MotorParams::SupportParams b;
     b.kind = "caster";
@@ -77,6 +79,10 @@ MotorParams motor_params_from_profile(
     out.supports[out.support_count++] = b;
     b.x_m = -sx;
     out.supports[out.support_count++] = b;
+ } else if (profile.supports.empty()) {
+ // Ackermann, swerve and Mecanum carry the chassis on their four wheel
+ // modules. An omitted support list means no auxiliary caster for them.
+ out.support_count = 0;
   } else {
     for (const auto& s : profile.supports) {
       if (out.support_count >= MotorParams::kMaxSupports) break;
