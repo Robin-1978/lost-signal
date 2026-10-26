@@ -38,6 +38,7 @@ struct Options {
  bool no_actors = false;
  bool verbose = false;
  bool profile = false;
+ bool require_pass = false;
  bool help = false;
 };
 
@@ -117,7 +118,7 @@ void usage() {
  "usage: lost_signal_sim [--robot FILE] [--sim FILE] [--map FILE]\n"
  " [--objectives a,b,...] [--steps N | --duration S]\n"
  " [--actors FILE] [--no-actors] [--out FILE.json]\n"
- " [--episode FILE.jsonl] [--profile]\n");
+ " [--episode FILE.jsonl] [--profile] [--require-pass]\n");
 }
 
 std::vector<std::string> split_csv(const std::string& text) {
@@ -161,6 +162,8 @@ bool parse_args(int argc, char** argv, Options& opt) {
  opt.verbose = true;
  } else if (a == "--profile") {
  opt.profile = true;
+ } else if (a == "--require-pass") {
+ opt.require_pass = true;
  } else if (a == "--objectives") {
  std::string list;
  if (!value(list)) return false;
@@ -465,7 +468,7 @@ int main(int argc, char** argv) {
  const auto& places = session->setup_world().places();
  objectives.push_back(places.empty() ? "dock" : places.front().place_id);
  }
- session->set_objectives(objectives, 0.5);
+ session->set_objectives(objectives);
 
  long budget = 0;
  if (opt.steps >= 0) {
@@ -617,5 +620,5 @@ int main(int argc, char** argv) {
  return 1;
  }
  }
- return 0;
+ return opt.require_pass && !session->objectives_passed() ? 2 : 0;
 }

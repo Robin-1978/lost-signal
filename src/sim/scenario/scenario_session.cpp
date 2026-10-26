@@ -42,7 +42,7 @@ ScenarioSession::ScenarioSession()
       suite_(&world_),
       app_([this]() {
         auto maps = std::make_unique<providers::StaticMapProvider>(
-            &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
+ &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
         map_provider_ = maps.get();
         return robot::app::RobotApplication(std::move(maps));
       }()) {
@@ -69,7 +69,7 @@ ScenarioSession::ScenarioSession(
  idle_actuator_mode_(actuator_mode_for(desc.chassis_kind)),
       app_([this, &desc]() {
         auto maps = std::make_unique<providers::StaticMapProvider>(
-            &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
+ &world_, -10.0, -10.0, 20.0, 20.0, 0.25);
         map_provider_ = maps.get();
         return robot::app::RobotApplication(std::move(maps), std::move(desc));
       }()) {
@@ -270,6 +270,7 @@ void ScenarioSession::step_once() {
 
 void ScenarioSession::fit_map_window_to_world(double margin_m) {
   if (map_provider_ == nullptr) return;
+ map_provider_->set_resolution(world_.survey_resolution_m());
   const double m = (std::isfinite(margin_m) && margin_m > 0.0) ? margin_m : 4.0;
   double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;  // robot starts at origin
   auto eat = [&](double x, double y) {

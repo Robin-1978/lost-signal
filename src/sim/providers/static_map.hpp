@@ -29,6 +29,7 @@ class StaticMapProvider : public robot::iface::IMapProvider {
   // Never called by ROBOT code; never during a live tick.
   void set_window(double min_x_m, double min_y_m, double width_m,
                   double height_m);
+ void set_resolution(double resolution_m);
 
  private:
   void rebuild() const;

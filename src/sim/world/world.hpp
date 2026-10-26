@@ -390,6 +390,15 @@ class World {
  const std::optional<InitialPosePrior>& initial_pose_prior() const {
  return initial_pose_prior_;
  }
+ // Authored prior-map sampling resolution. This controls only the surveyed
+ // raster exposed through IMapProvider; it does not alter physical geometry
+ // or sensor truth.
+ void set_survey_resolution_m(double resolution_m) {
+ if (std::isfinite(resolution_m) && resolution_m > 0.0) {
+ survey_resolution_m_ = resolution_m;
+ }
+ }
+ double survey_resolution_m() const { return survey_resolution_m_; }
 
  private:
   WorldTruth truth_{};
@@ -418,6 +427,7 @@ class World {
   std::vector<Actor> actors_;
   std::vector<NamedPlace> places_;
  std::optional<InitialPosePrior> initial_pose_prior_;
+ double survey_resolution_m_ = 0.25;
   std::uint64_t geometry_version_ = 0;
   MujocoModelRevision mujoco_model_revision_{};
 };

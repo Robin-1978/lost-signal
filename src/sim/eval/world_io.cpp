@@ -371,6 +371,11 @@ bool save_world_file(const std::string& path, const WorldFileContent& content,
                       std::string* error) {
   std::string err_local;
   std::string& err = error ? *error : err_local;
+ if (!std::isfinite(content.survey_resolution_m) ||
+ !(content.survey_resolution_m > 0.0)) {
+ err = "survey.resolution_m must be a finite positive number";
+ return false;
+ }
   Json::Array box_arr, place_arr, mat_arr, zone_arr, patch_arr, slab_arr,
       env_arr;
   for (const auto& b : content.boxes) box_arr.push_back(box_to_json(b));
@@ -385,6 +390,8 @@ bool save_world_file(const std::string& path, const WorldFileContent& content,
     env_arr.push_back(environment_to_json(k));
  Json::Object root;
  root.emplace_back("format", Json::Str(kWorldFileFormat));
+ root.emplace_back("survey", Json::Obj({
+ {"resolution_m", Json::Num(content.survey_resolution_m)}}));
  if (content.initial_pose.has_value()) {
  root.emplace_back(
  "initial_pose", initial_pose_to_json(*content.initial_pose));
@@ -439,6 +446,14 @@ bool load_world_file(const std::string& path, WorldFileContent& content,
     return false;
   }
   WorldFileContent out;
+ if (const Json* survey = root->find("survey")) {
+ if (!survey->is_object() ||
+ !num_field(*survey, "resolution_m", out.survey_resolution_m, err) ||
+ !(out.survey_resolution_m > 0.0)) {
+ err = "survey.resolution_m must be a finite positive number";
+ return false;
+ }
+ }
  if (const Json* initial = root->find("initial_pose")) {
  world::InitialPosePrior prior;
  if (!initial_pose_from_json(*initial, prior, err)) return false;

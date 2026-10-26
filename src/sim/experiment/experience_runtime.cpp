@@ -71,6 +71,7 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  }
 
  auto& world = built.session->setup_world();
+ world.set_survey_resolution_m(content.survey_resolution_m);
  world.set_static_boxes(std::move(content.boxes));
  world.set_places(std::move(content.places));
  world.set_materials(std::move(content.materials));

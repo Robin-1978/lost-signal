@@ -21,6 +21,7 @@ inline constexpr char kWorldFileFormat[] = "lost-signal-world/2";
 // Whole-file content aggregate: one canonical representation from disk to
 // World to engine/survey, so authored facts cannot diverge per consumer.
 struct WorldFileContent {
+ double survey_resolution_m = 0.25;
  std::optional<world::InitialPosePrior> initial_pose;
   std::vector<world::StaticBox> boxes;
   std::vector<world::NamedPlace> places;
@@ -45,6 +46,7 @@ inline bool save_world_file(const std::string& path, const world::World& world,
   content.slabs = world.support_slabs();
   content.environment = world.environment();
  content.initial_pose = world.initial_pose_prior();
+ content.survey_resolution_m = world.survey_resolution_m();
   return save_world_file(path, content, error);
 }
 // Load into the output content; content untouched on failure. After a
@@ -55,6 +57,7 @@ bool load_world_file(const std::string& path, WorldFileContent& content,
 // version, rebuilding engine + survey once the batch lands).
 inline void apply_world_content(world::World& world,
                                 const WorldFileContent& content) {
+ world.set_survey_resolution_m(content.survey_resolution_m);
   world.set_static_boxes(content.boxes);
   world.set_places(content.places);
   world.set_materials(content.materials);

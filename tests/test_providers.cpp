@@ -254,6 +254,11 @@ int main() {
  const auto& cached = provider.active_snapshot();
  assert(cached.revision == revision);
  assert(cached.occupancy.data() == occupancy_data);
+ provider.set_resolution(0.5);
+ const auto& resampled = provider.active_snapshot();
+ assert(resampled.resolution_m == 0.5);
+ assert(resampled.width == 1000 && resampled.height == 800);
+ assert(resampled.revision != revision);
  }
 
   // Drive profile file: overrides merge over factory defaults; malformed

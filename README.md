@@ -57,6 +57,9 @@ algorithm, physics, content, boundary, and mission suite.
  --steps 600 --out /tmp/run.json --episode /tmp/run.jsonl
 ./build/lost_signal_sim --map configs/worlds/signal_town.json \
  --steps 1000 --profile
+./build/lost_signal_sim --map configs/worlds/signal_town.json \
+ --objectives energy_hub,freight_yard,housing_door,market_gate,town_gate \
+ --steps 8000 --require-pass
 ```
 
 `--robot` and `--sim` select the declared hardware contract and the SIM
@@ -73,6 +76,9 @@ the aggregate throughput is also written under `performance`. This timing
 remains in the SIM runner and is never published into the ROBOT decision
 path. Use a Release build for throughput measurements; Debug is intended for
 diagnostics.
+`--require-pass` returns a nonzero process status when any requested objective
+is incomplete or fails the independent SIM acceptance contract, which makes a
+headless benchmark suitable for CI without parsing presentation text.
 Without `--steps` or `--duration`, an explicit objective list gets a 4000
 step budget and a single implicit goal keeps the legacy 5 step smoke run.
 

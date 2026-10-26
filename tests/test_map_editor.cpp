@@ -102,6 +102,7 @@ int main() {
         (std::filesystem::temp_directory_path() / "test_world_v2.json")
             .string();
     sim::eval::WorldFileContent content;
+ content.survey_resolution_m = 0.08;
  content.initial_pose = sim::world::InitialPosePrior{
  1.0, -2.0, 0.25, 0.12, 0.06};
  content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5, "fixture_box"}};
@@ -121,6 +122,7 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
     assert(sim::eval::save_world_file(path, content, &err));
     sim::eval::WorldFileContent rc;
     assert(sim::eval::load_world_file(path, rc, &err));
+ assert(rc.survey_resolution_m == 0.08);
     assert(rc.materials.size() == 2 && rc.zones.size() == 1 &&
            rc.patches.size() == 1 && rc.slabs.size() == 1 &&
            rc.environment.size() == 2);
@@ -155,6 +157,7 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
     // Editor carries v2 sections through untouched.
     sim::world::World w2;
     sim::eval::apply_world_content(w2, rc);
+ assert(w2.survey_resolution_m() == 0.08);
     sim::viewer::MapEditor ed;
     ed.load_from(w2);
     ed.add_box(20.0, 20.0);
@@ -163,6 +166,7 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
     assert(sim::eval::load_world_file(path2, rc2, &err));
     assert(rc2.boxes.size() == 2 && rc2.materials.size() == 2 &&
            rc2.zones.size() == 1 && rc2.patches.size() == 1);
+ assert(rc2.survey_resolution_m == 0.08);
  assert(rc2.initial_pose.has_value() &&
  rc2.initial_pose->heading_sigma_rad == 0.06);
     // v1 tag fails closed (no silent partial load across versions).

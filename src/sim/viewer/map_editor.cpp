@@ -20,6 +20,7 @@ void MapEditor::normalize_rect(double& x0, double& y0, double& x1,
 }
 
 void MapEditor::load_from(const world::World& world) {
+ content_.survey_resolution_m = world.survey_resolution_m();
   content_.boxes = world.static_boxes();
   content_.places = world.places();
   content_.materials = world.materials();
@@ -49,6 +50,7 @@ void MapEditor::load_from(const world::World& world) {
 }
 
 void MapEditor::apply(world::World& world) {
+ world.set_survey_resolution_m(content_.survey_resolution_m);
   world.set_static_boxes(content_.boxes);
   world.set_places(content_.places);
   world.set_materials(content_.materials);
@@ -331,6 +333,7 @@ bool MapEditor::save(const std::string& path) {
     return false;
   }
   if (rc.boxes.size() != content_.boxes.size() ||
+ rc.survey_resolution_m != content_.survey_resolution_m ||
       rc.places.size() != content_.places.size() ||
       rc.materials.size() != content_.materials.size() ||
       rc.zones.size() != content_.zones.size() ||

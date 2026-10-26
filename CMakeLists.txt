@@ -586,6 +586,18 @@ add_executable(test_scenario
 target_link_libraries(test_scenario PRIVATE lost_signal_sim_scenario)
 add_test(NAME scenario COMMAND test_scenario)
 
+add_test(NAME signal_town_mission
+ COMMAND lost_signal_sim
+ --robot ${CMAKE_SOURCE_DIR}/configs/robot/differential.json
+ --sim ${CMAKE_SOURCE_DIR}/configs/sim/default.json
+ --map ${CMAKE_SOURCE_DIR}/configs/worlds/signal_town.json
+ --objectives energy_hub,freight_yard,housing_door,market_gate,town_gate
+ --steps 8000 --require-pass)
+set_tests_properties(signal_town_mission PROPERTIES
+ LABELS "long;physics"
+ RUN_SERIAL TRUE
+ TIMEOUT 300)
+
 add_executable(test_loop_closure
   tests/test_loop_closure.cpp
 )

@@ -1,5 +1,8 @@
 {
  "format": "lost-signal-world/2",
+ "survey": {
+ "resolution_m": 0.1
+ },
  "initial_pose": {
  "x_m": 0.0,
  "y_m": 0.0,
@@ -163,11 +166,20 @@
    "height_m": 0.864
   },
   {
-   "x0": 0.5599999999999999,
-   "y0": 2.86,
-   "x1": 0.84,
-   "y1": 3.14,
-   "height_m": 0.72
+ "box_id": "town_gate_left",
+ "x0": 0.5,
+ "y0": 2.8,
+ "x1": 0.85,
+ "y1": 4.5,
+ "height_m": 1.2
+ },
+ {
+ "box_id": "town_gate_right",
+ "x0": 2.15,
+ "y0": 2.8,
+ "x1": 2.5,
+ "y1": 4.5,
+ "height_m": 1.2
   },
   {
    "x0": 12.86,

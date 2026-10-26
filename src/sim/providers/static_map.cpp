@@ -140,6 +140,16 @@ void StaticMapProvider::set_window(double min_x_m, double min_y_m,
   has_built_ = false;  // retire the cache; the next poll rebuilds
 }
 
+void StaticMapProvider::set_resolution(double resolution_m) {
+ if (from_package_ || !std::isfinite(resolution_m) ||
+ !(resolution_m > 0.0) || resolution_m_ == resolution_m) {
+ return;
+ }
+ resolution_m_ = resolution_m;
+ ++window_epoch_;
+ has_built_ = false;
+}
+
 const robot::iface::MapSnapshot& StaticMapProvider::active_snapshot() const {
   const std::uint64_t v = world_ != nullptr ? world_->geometry_version() : 0;
   if (!has_built_ || v != built_version_) rebuild();

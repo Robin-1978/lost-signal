@@ -163,6 +163,10 @@ last word. Unknown planner names fail configuration.
   `base<-lidar` before projecting endpoints to the 2D raster. Rolling local
   grade response (DWA descent braking, rollover limits) builds on this;
   the pose graph itself stays SE(2).
+ Authored worlds declare survey raster resolution independently of physics
+ geometry. Precision docking scenes can publish the map resolution their task
+ tolerance needs, while large sites can use a coarser survey without changing
+ LiDAR truth or giving SIM state to ROBOT.
 - Local planning is selected per robot as DWA or timed elastic band at
  decision rate and returns one feasible
  `LocalCandidate{forward, lateral, yaw_rate, cost}`. DWA score and TEB band
