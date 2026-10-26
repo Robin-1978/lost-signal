@@ -201,6 +201,13 @@ struct FrameJointAxis {
  double angle_rad = 0.0, rate_radps = 0.0;
 };
 
+struct FrameContact {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double normal_x = 0.0, normal_y = 0.0, normal_z = 1.0;
+ double normal_force_N = 0.0;
+};
+
 struct FrameBody {
  double forward_mps = 0.0;
  double lateral_mps = 0.0;
@@ -228,6 +235,7 @@ struct FrameBody {
  // never drive channels, traction evidence, or ROBOT observations.
  std::vector<FrameCaster> casters;
  std::vector<FrameJointAxis> joint_axes;
+ std::vector<FrameContact> contacts;
  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
  // chassis params. Traction flags are visible only in SIM truth debug.
   bool tracked = false;

@@ -9,6 +9,7 @@
 // Determinism contract: fixed 1 ms substeps, single-threaded, no noise.
 // Same duties + same steps = bit-identical truth, verified by the M1
 // parity tests. Anything nondeterministic fails the backend, not the test.
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -148,6 +149,16 @@ struct ImpactViz {
  double spark_relative_speed_mps = 0.0;
  ImpactMaterial spark_robot_material = ImpactMaterial::kUnknown;
  ImpactMaterial spark_static_material = ImpactMaterial::kUnknown;
+};
+
+// Every active MuJoCo contact for the current plant state. World-space data
+// is presentation evidence only; the ROBOT boundary receives ordinary sensor
+// observations and never this truth-side record.
+struct ContactViz {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double normal_x = 0.0, normal_y = 0.0, normal_z = 1.0;
+ double normal_force_N = 0.0;
 };
 
 #ifdef LOST_SIGNAL_WITH_MUJOCO
@@ -321,6 +332,12 @@ class MujocoBackend {
  }
  return n;
  }
+ int contacts(ContactViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ const int n = std::min(cap, contact_viz_count_);
+ for (int i = 0; i < n; ++i) out[i] = contact_viz_[i];
+ return n;
+ }
  const ImpactViz& impact() const { return impact_; }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
@@ -489,6 +506,8 @@ class MujocoBackend {
   std::array<double, 4> steer_angle_ = {};
   std::array<double, 4> steer_vel_ = {};
  ImpactViz impact_;
+ std::array<ContactViz, 64> contact_viz_{};
+ int contact_viz_count_ = 0;
 };
 
 #else  // !LOST_SIGNAL_WITH_MUJOCO
@@ -536,6 +555,7 @@ class MujocoBackend {
   const MujocoBuildStats& build_stats() const { return build_stats_; }
  int casters(CasterViz*, int) const { return 0; }
  int joint_axes(JointAxisViz*, int) const { return 0; }
+ int contacts(ContactViz*, int) const { return 0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:

@@ -3675,6 +3675,16 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
  DrawLine3D(origin, end, GOLD);
  DrawSphereWires(origin, 0.018f, 6, 6, GOLD);
  }
+ for (const auto& contact : f.body.contacts) {
+ if (!contact.valid) continue;
+ const Vector3 point = to_raylib(contact.x_m, contact.y_m, contact.z_m);
+ const Vector3 normal = {
+ static_cast<float>(contact.normal_x),
+ static_cast<float>(contact.normal_z),
+ static_cast<float>(-contact.normal_y)};
+ DrawSphere(point, 0.018f, LIME);
+ DrawLine3D(point, Vector3Add(point, Vector3Scale(normal, 0.08f)), LIME);
+ }
  }
   // Particle positions are already in world coordinates. Draw only after
   // leaving the robot transform so moving/turning cannot transform them

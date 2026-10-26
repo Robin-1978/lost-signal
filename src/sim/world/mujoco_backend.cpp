@@ -252,6 +252,23 @@ void MujocoBackend::read_contacts() {
  if (!valid()) return;
  mjModel* model = impl_->model;
  mjData* data = impl_->data;
+ contact_viz_count_ = 0;
+ for (int ci = 0; ci < data->ncon && contact_viz_count_ <
+ static_cast<int>(contact_viz_.size()); ++ci) {
+ const mjContact& contact = data->contact[ci];
+ mjtNum force[6] = {};
+ mj_contactForce(model, data, ci, force);
+ ContactViz evidence;
+ evidence.valid = true;
+ evidence.x_m = contact.pos[0];
+ evidence.y_m = contact.pos[1];
+ evidence.z_m = contact.pos[2];
+ evidence.normal_x = contact.frame[0];
+ evidence.normal_y = contact.frame[1];
+ evidence.normal_z = contact.frame[2];
+ evidence.normal_force_N = std::max(0.0, static_cast<double>(force[0]));
+ contact_viz_[contact_viz_count_++] = evidence;
+ }
  const auto point_velocity = [&](int body_id, const mjtNum* point,
  double* velocity) {
  velocity[0] = velocity[1] = velocity[2] = 0.0;

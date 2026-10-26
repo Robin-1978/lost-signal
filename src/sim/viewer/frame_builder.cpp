@@ -353,6 +353,28 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.body.com_z_m = step.presentation.com_z_m;
  }
  }
+ {
+ std::vector<world::ContactViz> live_contacts;
+ if (!step.presentation.captured) {
+ world::ContactViz table[64];
+ const int count = world.contacts(table, 64);
+ live_contacts.assign(table, table + std::max(0, count));
+ }
+ const auto& contacts = step.presentation.captured
+ ? step.presentation.contacts : live_contacts;
+ for (const auto& physical : contacts) {
+ FrameContact contact;
+ contact.valid = physical.valid;
+ contact.x_m = physical.x_m;
+ contact.y_m = physical.y_m;
+ contact.z_m = physical.z_m;
+ contact.normal_x = physical.normal_x;
+ contact.normal_y = physical.normal_y;
+ contact.normal_z = physical.normal_z;
+ contact.normal_force_N = physical.normal_force_N;
+ f.body.contacts.push_back(contact);
+ }
+ }
   // True 3D sensor origin (body + attitude composed with the mount — the
   // same composition generation runs, so the viz fan starts where the
   // beams do).

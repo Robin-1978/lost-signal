@@ -323,6 +323,9 @@ class World {
  int joint_axes(JointAxisViz* out, int cap) const {
  return mujoco_.joint_axes(out, cap);
  }
+ int contacts(ContactViz* out, int cap) const {
+ return mujoco_.contacts(out, cap);
+ }
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT
  // observation, estimate, planner, controller, or safety decision.

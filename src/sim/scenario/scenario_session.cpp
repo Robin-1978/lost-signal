@@ -29,6 +29,10 @@ void capture_presentation(const world::World& world,
  const int joint_axis_count = world.joint_axes(joint_axes, 20);
  snapshot.joint_axes.assign(joint_axes,
  joint_axes + std::max(0, joint_axis_count));
+ world::ContactViz contacts[64];
+ const int contact_count = world.contacts(contacts, 64);
+ snapshot.contacts.assign(contacts,
+ contacts + std::max(0, contact_count));
  snapshot.com_x_m = world.system_com_relative_x_m();
  snapshot.com_y_m = world.system_com_relative_y_m();
  snapshot.com_z_m = world.system_com_relative_z_m();

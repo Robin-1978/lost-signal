@@ -132,7 +132,7 @@
 
 - 现有机器人 drive wheel、steer knuckle 与 caster 已读取真实 MuJoCo link pose；wheel/knuckle GLB 绑定消费这些 pose，渲染端不再重建 steering/spin 姿态。Mecanum 左右 roller 由物理模块的 `y_m` 选择，不能由绘制序号猜测。
 - `asset_selection_for_robot()` 现在以 `chassis_kind` 为权威来源，覆盖 differential、Ackermann、tracked、swerve、mecanum；多个底盘共用 `robot_id = ro1` 时仍会加载正确的资产族。
-- 阶段 7 的首个子阶段已完成：backend 导出 drive/steer/idler/caster 的真实 joint axis、anchor、angle、rate 和 base-link 相对 COM；这些字段通过 SIM-only `PresentationSnapshot` 进入 `FrameBody`，ROBOT observation/decision/actuation 没有新增真值入口。工程视图可显示 COM 与 joint axis。
+- 阶段 7 的首个子阶段已完成：backend 导出 drive/steer/idler/caster 的真实 joint axis、anchor、angle、rate、全部活动 contact 点/法向/normal load 和 base-link 相对 COM；这些字段通过 SIM-only `PresentationSnapshot` 进入 `FrameBody`，ROBOT observation/decision/actuation 没有新增真值入口。工程视图可显示 COM、joint axis 与 contact evidence。
 - manifest 已声明但尚未完整绑定 RO-6 turret/upper_arm/forearm/tool；forklift 与 pedestrian 仍是 SIM kinematic actor，不是 MuJoCo body/joint。下一子阶段迁入 actor/机械臂 body/joint，并补 collision geometry、contact normal/load overlay。
 - forklift 与 pedestrian 仍是 SIM kinematic actor，不是 MuJoCo body/joint；forklift/worker GLB 虽含命名部件或骨架，目前仍整体绘制。机械臂也必须逐关节读取物理状态。
 - 阶段 7 依次完成：按底盘能力加载模型和左右部件；建立统一 `link_binding`；加入显式 SIM debug 的 joint axis/collision geom/COM/contact force；把 forklift、pedestrian、机械臂根和关节迁入 MuJoCo；最后扩展 Blender 环境资产并保持碰撞代理诚实。

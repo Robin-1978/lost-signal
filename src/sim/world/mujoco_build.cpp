@@ -269,6 +269,7 @@ void MujocoBackend::sync(const MotorParams& motor,
     drive_count_ = 0;
     steer_count_ = 0;
     ready_ = false;
+ contact_viz_count_ = 0;
  system_com_x_m_ = system_com_y_m_ = system_com_z_m_ = 0.0;
  system_com_relative_x_m_ = system_com_relative_y_m_ =
  system_com_relative_z_m_ = 0.0;
