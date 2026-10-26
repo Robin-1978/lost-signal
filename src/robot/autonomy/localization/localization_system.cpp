@@ -98,9 +98,11 @@ out.local_plan_reset_requested = true;
 
 // Incremental scan-to-submap tracking, ahead of the supervisor-sequenced
 // corrections. Bounded window (±track_window_m) so it can never kidnap;
-// applied through the correlated relative-correction path — the supervisor
-// trust state and absolute covariance are untouched (tracking bounds local
-// drift, independent global/loop constraints establish the frame).
+// applied according to the frame owner below. In mapless mode the evolving
+// SLAM submap is the navigation frame, so a verified track is a local pose
+// observation and may reduce navigation covariance. With a surveyed map the
+// same keyframe chain is only a correlated relative constraint and cannot
+// claim new absolute-map information.
 // Runs after the supervisor establishes a map frame. A known-map cold start
 // must not feed arbitrary odometry-frame SLAM corrections into a concurrent
 // global search; mapless startup establishes its odometry origin immediately.
@@ -122,13 +124,21 @@ void LocalizationSystem::run_tracking(const iface::ObservationFrame& obs,
  SlamTrackResult tr = slam_.track(
  estimator.estimate(), obs, mapless_slam);
   if (!tr.accepted) return;
- // Scan-to-submap samples share the same keyframe chain as the prediction.
- // This correlation remains in mapless mode even though that chain names the
- // navigation frame: tracking improves local consistency but cannot repeatedly
- // manufacture independent absolute information. Only an accepted global map
- // match or pose-graph loop constraint may reduce map-frame uncertainty.
+ if (mapless_slam) {
+ // There is no independent surveyed `map` frame here. The SLAM submap is
+ // the frame used by local planning and arrival, and scan matching is the
+ // measurement that bounds wheel/IMU drift inside it. Withholding its
+ // covariance update makes uncertainty grow until a healthy robot stops.
+ estimator.correct_pose(tr.x_m, tr.y_m, tr.yaw_rad,
+ tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ } else {
+ // A surveyed map owns absolute authority. Scan-to-submap shares the
+ // estimator's keyframe history, so it may improve local consistency but
+ // must preserve absolute map covariance. Global scan matching supplies
+ // independent map information.
  estimator.correct_relative_pose(tr.x_m, tr.y_m, tr.yaw_rad,
  tr.position_sigma_m, tr.heading_sigma_rad, obs.stamp_ns);
+ }
 }
 
 bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,

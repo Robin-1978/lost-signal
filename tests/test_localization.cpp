@@ -937,9 +937,10 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  assert(coord.last_localization_action() == "slam-only");
  }
 
- // 10. Mapless scan-to-submap tracking is correlated with the keyframe chain.
- // It may correct local drift, but an accepted track must not reduce absolute
- // map-frame covariance as if the same submap were a fresh surveyed landmark.
+ // 10. Mapless scan-to-submap tracking owns the local navigation frame. An
+ // accepted track must bound the covariance used by planning; otherwise
+ // wheel/IMU process noise eventually stops a healthy mapless mission. This
+ // is local SLAM confidence, not surveyed-map or simulator truth certainty.
  {
  LocalizationSystem localization;
  localization.set_startup_mode(StartupMode::kSlamOnly);
@@ -972,7 +973,7 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
  no_survey, observation, observation.stamp_ns, true, estimator, mapper);
  accepted_tracks = localization.slam_tracks();
  if (accepted_tracks > tracks_before) {
- assert(estimator.estimate().position_sigma_m == sigma_before);
+ assert(estimator.estimate().position_sigma_m < sigma_before);
  }
  true_x_m += 0.25;
  }
