@@ -25,6 +25,22 @@
       "id": "collision",
       "file": "audio/collision.wav"
     },
+ {
+ "id": "physical-motor-drive",
+ "file": "audio/motor_drive.wav"
+ },
+ {
+ "id": "physical-wheel-roll",
+ "file": "audio/wheel_roll.wav"
+ },
+ {
+ "id": "physical-tire-slip",
+ "file": "audio/tire_slip.wav"
+ },
+ {
+ "id": "physical-service-brake",
+ "file": "audio/service_brake.wav"
+ },
     {
       "id": "payload-collected",
       "file": "audio/harvest_pickup.wav"

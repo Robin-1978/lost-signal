@@ -141,6 +141,11 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.body.forward_mps = t.forward_mps;
  f.body.lateral_mps = t.lateral_mps;
  f.body.yaw_rate_radps = t.yaw_rate_radps;
+ f.body.drive_free_speed_mps = std::max(
+  0.0, world.motor_params().free_speed_mps);
+ f.body.nominal_normal_load_N = std::max(
+  0.0, (world.motor_params().vehicle_mass_kg +
+         world.motor_params().payload_mass_kg) * 9.81);
   f.body.z_m = t.body_z_m;
   f.body.roll_rad = t.body_roll_rad;
   f.body.pitch_rad = t.body_pitch_rad;
@@ -387,6 +392,11 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.decision.safety_reason = step.diag.safety_reason;
  f.decision.command_forward_mps = step.cmd.forward_mps;
  f.decision.command_yaw_rate_radps = step.cmd.yaw_rate_radps;
+ f.actuation.drive_count = robot::iface::actuator_drive_count(
+  step.actuator.mode);
+ f.actuation.drive_duty = step.actuator.drive;
+ f.actuation.service_brake = std::clamp(
+  step.actuator.service_brake, 0.0, 1.0);
  f.decision.route_point_count = evidence.route_point_count;
  f.decision.moving_candidate_count = evidence.moving_candidate_count;
  if (evidence.local_costmap.valid()) {

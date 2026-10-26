@@ -261,6 +261,8 @@ tracks and velocity, while purple ribbons and uncertainty rings show the same
 multi-hypothesis prediction consumed by behavior, DWA/TEB, validation, and
 safety. Campaign runs keep `K` SIM truth diagnostics locked until debrief;
 the overlay never reads actor identities, future waypoints, or truth poses.
+Use `--lidar --robot-evidence --shot N FILE` for a reproducible visual audit;
+the same flags work in 2D and with `--3d` and never enable SIM truth input.
 For unattended parameter sweeps and CI, use `lost_signal_sim` directly so no
 graphics work competes with the fixed-step simulation.
 Open sandbox runs keep a deque-backed recent replay window (120 simulated
@@ -268,8 +270,10 @@ seconds by default) while full-run score and the latest diagnostic continue to
 accumulate. Use `--history-seconds N` to choose that local window or `0` for a
 complete in-memory history. Authored campaign runs always keep the complete
 episode required for debrief and controlled A/B comparison.
-The Viewer plays presentation-only cues for physical collision, ROBOT safety
-hold/recovery, and independently accepted task completion; `--mute` disables
-them. Turbo suppresses compressed cue bursts while still synchronizing audio
-state. Sound consumes completed evidence and has no path into physics,
-sensors, ROBOT, or scoring.
+The Viewer plays presentation-only cues for ROBOT safety hold/recovery and
+independently accepted task completion. Separate motor/gear, rolling, tire
+slip, mechanical brake, and impact layers read recorded wheel speed, MuJoCo
+contact load/slip, the exact service-brake actuator request, and physical
+impact impulse/relative speed. `--mute` disables playback while the evidence
+state still advances. Pause, rewind, and Turbo cannot replay compressed
+history. Sound has no path into physics, sensors, ROBOT, or scoring.

@@ -1089,8 +1089,17 @@ void draw_motion_particles_3d(const ParticleSystem& particles,
  static_cast<float>(-particle.position_m[1])};
  if (!water && assets != nullptr && assets->dust.id > 0) {
  DrawBillboard(camera, assets->dust, position, size * 2.0f, tint);
+ } else if (water) {
+ // A droplet's short streak follows its recorded world velocity. This makes
+ // shallow splashes readable without inventing a wheel-relative spray axis.
+ const Vector3 tail{
+ position.x - static_cast<float>(particle.velocity_mps[0]) * 0.035f,
+ position.y - static_cast<float>(particle.velocity_mps[2]) * 0.035f,
+ position.z + static_cast<float>(particle.velocity_mps[1]) * 0.035f};
+ DrawLine3D(tail, position, Color{185, 239, 252, alpha});
+ DrawSphere(position, size * 0.60f, tint);
  } else {
- DrawSphere(position, size * (water ? 0.45f : 0.65f), tint);
+ DrawSphere(position, size * 0.65f, tint);
  }
  }
  EndBlendMode();
@@ -2261,17 +2270,23 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
  f.decision.validator_swept_envelope_radius_m * view.scale());
  Vector2 previous{};
  bool have_previous = false;
+ Vector2 first{};
  for (const auto& center : f.decision.validator_swept_centerline) {
  const auto projected = view.world_to_screen(center.first, center.second);
  const Vector2 point{projected.x_px, projected.y_px};
+ if (!have_previous) first = point;
  if (have_previous) {
  DrawLineEx(previous, point, std::max(1.0f, 2.0f * radius_px), fill);
  DrawLineEx(previous, point, 1.5f, edge);
  }
- DrawCircleV(point, radius_px, fill);
- DrawCircleLinesV(point, radius_px, edge);
  previous = point;
  have_previous = true;
+ }
+ if (have_previous) {
+ DrawCircleV(first, radius_px, fill);
+ DrawCircleLinesV(first, radius_px, edge);
+ DrawCircleV(previous, radius_px, fill);
+ DrawCircleLinesV(previous, radius_px, edge);
  }
  }
  // ROBOT scan projected by the recorded ROBOT estimate. Truth projection is
@@ -2288,17 +2303,23 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
  f.decision.safety_static_envelope_radius_m * view.scale());
  Vector2 previous{};
  bool have_previous = false;
+ Vector2 first{};
  for (const auto& center : f.decision.safety_static_sweep) {
  const auto projected = view.world_to_screen(center.first, center.second);
  const Vector2 point{projected.x_px, projected.y_px};
+ if (!have_previous) first = point;
  if (have_previous) {
  DrawLineEx(previous, point, std::max(1.0f, 2.0f * radius_px), fill);
  DrawLineEx(previous, point, 1.5f, edge);
  }
- DrawCircleV(point, radius_px, fill);
- DrawCircleLinesV(point, radius_px, edge);
  previous = point;
  have_previous = true;
+ }
+ if (have_previous) {
+ DrawCircleV(first, radius_px, fill);
+ DrawCircleLinesV(first, radius_px, edge);
+ DrawCircleV(previous, radius_px, fill);
+ DrawCircleLinesV(previous, radius_px, edge);
  }
  }
   if (show_lidar && f.lidar_valid) {
@@ -3043,14 +3064,16 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  1, f.decision.validator_swept_centerline.size() / 20);
  Vector3 previous{};
  bool have_previous = false;
+ Vector3 first{};
  for (std::size_t i = 0;
  i < f.decision.validator_swept_centerline.size(); i += stride) {
  const auto& center = f.decision.validator_swept_centerline[i];
  const Vector3 point = to_raylib(center.first, center.second, 0.021);
- if (have_previous) DrawLine3D(previous, point, edge);
- DrawCylinderEx(point, {point.x, point.y + 0.006f, point.z},
- radius, radius, 32, fill);
- DrawCircle3D(point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ if (!have_previous) first = point;
+if (have_previous && (previous.x != point.x || previous.z != point.z)) {
+ DrawCylinderEx(previous, point, radius, radius, 16, fill);
+ DrawLine3D(previous, point, edge);
+ }
  previous = point;
  have_previous = true;
  }
@@ -3059,8 +3082,14 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  terminal.first, terminal.second, 0.021);
  if (have_previous && (previous.x != terminal_point.x ||
  previous.z != terminal_point.z)) {
+ DrawCylinderEx(previous, terminal_point, radius, radius, 16, fill);
  DrawLine3D(previous, terminal_point, edge);
- DrawCircle3D(terminal_point, radius,
+ previous = terminal_point;
+ }
+ if (have_previous) {
+ DrawCircle3D(first, radius,
+ {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ DrawCircle3D(previous, radius,
  {1.0f, 0.0f, 0.0f}, 90.0f, edge);
  }
  }
@@ -3080,14 +3109,16 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  1, f.decision.safety_static_sweep.size() / 16);
  Vector3 previous{};
  bool have_previous = false;
+ Vector3 first{};
  for (std::size_t i = 0;
  i < f.decision.safety_static_sweep.size(); i += stride) {
  const auto& center = f.decision.safety_static_sweep[i];
  const Vector3 point = to_raylib(center.first, center.second, 0.018);
- if (have_previous) DrawLine3D(previous, point, edge);
- DrawCylinderEx(point, {point.x, point.y + 0.008f, point.z},
- radius, radius, 32, fill);
- DrawCircle3D(point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ if (!have_previous) first = point;
+if (have_previous && (previous.x != point.x || previous.z != point.z)) {
+ DrawCylinderEx(previous, point, radius, radius, 16, fill);
+ DrawLine3D(previous, point, edge);
+ }
  previous = point;
  have_previous = true;
  }
@@ -3096,8 +3127,15 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  terminal.first, terminal.second, 0.018);
  if (have_previous && (previous.x != terminal_point.x ||
  previous.z != terminal_point.z)) {
+ DrawCylinderEx(previous, terminal_point, radius, radius, 16, fill);
  DrawLine3D(previous, terminal_point, edge);
- DrawCircle3D(terminal_point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ previous = terminal_point;
+ }
+ if (have_previous) {
+ DrawCircle3D(first, radius,
+ {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ DrawCircle3D(previous, radius,
+ {1.0f, 0.0f, 0.0f}, 90.0f, edge);
  }
  }
   if (show_lidar && f.lidar_valid) {
@@ -3815,6 +3853,8 @@ int main(int argc, char** argv) {
  bool play_requested = false;
  bool source_requested = false;
  bool mute_audio = false;
+ bool initial_show_lidar = false;
+ bool initial_show_robot_evidence = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
  if (a == "--help" || a == "-h") {
@@ -3822,6 +3862,7 @@ int main(int argc, char** argv) {
  "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
+ " [--lidar] [--robot-evidence] [--shot N FILE]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
  " [--experiment-out REPORT.json]\n"
  "\n"
@@ -3833,6 +3874,8 @@ int main(int argc, char** argv) {
  if (a == "--play") play_requested = true;
  if (a == "--sandbox") sandbox_requested = true;
  if (a == "--mute") mute_audio = true;
+ if (a == "--lidar") initial_show_lidar = true;
+ if (a == "--robot-evidence") initial_show_robot_evidence = true;
  if (a == "--robot" && i + 1 < argc) {
  robot_path = argv[++i];
  source_requested = true;
@@ -4069,8 +4112,8 @@ int main(int argc, char** argv) {
  std::vector<ReviewKeyframe> review_keyframes;
  int selected_review_keyframe = 0;
  ExperimentUiState experiment_ui;
-  bool show_lidar = false;
-  bool show_estimate = false;
+bool show_lidar = initial_show_lidar;
+bool show_estimate = initial_show_robot_evidence;
   bool show_actor_routes = false;
  ExperienceViewLayer view_layer = experience_loaded
  ? ExperienceViewLayer::kPlayer : ExperienceViewLayer::kEngineering;
@@ -5013,7 +5056,7 @@ int main(int argc, char** argv) {
  viewer_audio.update(frame, session->objectives_done(),
  session->objectives_done() && session->objectives_passed() &&
  audio_score.collision_steps == 0,
- playback.turbo() || !live_audio);
+playback.turbo() || paused || !live_audio);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
@@ -5126,15 +5169,26 @@ int main(int argc, char** argv) {
  : "RUN");
  if (engineering_chrome) DrawText(hud, 10, 10, 14, BLACK);
  if (engineering_chrome && render_robot_evidence) {
- DrawText("ROBOT AI amber=planner cost red=lethal lime=validated cyan=safety purple=prediction",
+ DrawText("ROBOT OBS/AI  lidar=aqua costmap=amber/red/gray validator=lime safety=cyan/red",
  10, 32, 13, Color{78, 54, 132, 255});
+ DrawText("ROBOT ESTIMATE  map<-odom correction=amber->cyan dynamic forecast=purple",
+ 10, 48, 13, Color{78, 54, 132, 255});
+ const auto& physical_audio = viewer_audio.physical_sample();
+ char physical_evidence[256];
+ std::snprintf(physical_evidence, sizeof(physical_evidence),
+ "SIM PHYSICS/AUDIO  motor %.2f roll %.2f slip %.2f brake %.2f impact %.2f",
+ physical_audio.motor_intensity, physical_audio.rolling_intensity,
+ physical_audio.slip_intensity, physical_audio.brake_intensity,
+ physical_audio.impact_intensity);
+ DrawText(physical_evidence, 10, 64, 13, Color{24, 116, 105, 255});
  }
     if (edit_mode) {
       char ebuf[256];
       std::snprintf(ebuf, sizeof(ebuf),
                     "EDIT  click/drag move  B box  P place  Del remove  S save viewer_map.json  M exit  %s",
                     edit_msg.c_str());
-      DrawText(ebuf, 10, 32, 14, RED);
+ DrawText(ebuf, 10,
+ engineering_chrome && render_robot_evidence ? 82 : 32, 14, RED);
     }
  const char* control_help = experience_loaded &&
  view_layer == ExperienceViewLayer::kPlayer

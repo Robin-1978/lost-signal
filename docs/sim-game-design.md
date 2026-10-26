@@ -228,7 +228,7 @@ pose graph 与回环；serialized pose graph 保存/加载、已有地图 locali
 
 电机音高读取 wheel angular velocity，负载层读取 duty/estimated torque，打滑读取接触相对速度，碰撞读取冲量。LiDAR、电机、继电器、机械制动和环境声使用独立总线；教学讲解可以关闭。声音和粒子只消费已完成 SIM step 的状态。
 
-当前已迁入第一组状态音效：碰撞由 SIM collision edge 触发，等待与恢复由 ROBOT `STOPPED` 状态及版本化稳定时间触发，任务完成由 GAME 的独立安全终态触发。Viewer Retry/Next 会清空音频边沿状态；Turbo 只同步、不播放压缩事件，`--mute` 可完全关闭。后续电机、接触和环境循环声必须继续读取物理量，不允许按关卡脚本播放。
+当前音频分成两类明确证据。教学提示音仍由 ROBOT `STOPPED` 状态变化和 GAME 独立终态触发；机械声由纯 `PhysicalAudioEvidence` 状态机读取已完成 step 的 wheel angular velocity、实际逐轮 normal load/contact motion/slip、ROBOT service-brake actuator request，以及 MuJoCo impact impulse/relative speed。电机/传动、轮胎滚动、轮胎打滑和机械制动使用四条独立循环音源；碰撞增益直接由冲量与相对速度相对当前底盘配置归一化，不再从关卡 collision boolean 猜声音。静音或无音频设备时状态机仍推进；暂停、回退与 Turbo 有单测，Turbo 只抑制播放并同步状态，恢复正常倍率不会补播历史冲击。
 
 制动已成为正式 actuator contract：ROBOT 的正常停车、feedback 丢失和 watchdog 过期都会发布显式 service-brake 请求，SIM 使用配置中的力矩与 apply/release lag 驱动被动 MuJoCo 制动器。后续机械制动声直接读取这一命令及执行反馈，不能仅根据“机器人停住”播放。
 
@@ -386,7 +386,8 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 已将 LiDAR 表现改为与 ROBOT mapping/validator 相同的 measured-twist deskew：端点按 observation 中每束真实 acquisition offset 重投影，青色明暗和点大小从旧束到 scan-end 束连续变化；无 offset 的冻结式设备保持同一时刻显示，miss 不生成端点。真值辅助扇仍只允许在显式 SIM 调试视图使用琥珀色。
 - 已把独立 Collision Monitor 实际使用的 reaction+braking sweep 下沉为 ROBOT `DecisionEvidence`：记录声明的 footprint+margin 半径和逐时刻 base-frame centerline，再只用 ROBOT estimate 转到 map frame。教学/工程视图据此绘制青色安全扫掠体；veto 时转红。Viewer 不从 SIM body、真值障碍或另一份制动参数猜测安全区，原始证据也可随 Episode 复盘。
 - 已加入 REP-105 定位修正复盘：相邻记录分别求出旧、新 `map_T_odom`，把同一个连续 `odom_T_base` 通过两套变换投到 map，显示琥珀色 odom prediction 到青色 map correction 的跳变。Viewer 从不把 odom 数值直接当 map 坐标，也不借用 SIM truth 解释修正。
-- 后续加入 local costmap 的 hard/linear inflation 和 planner footprint swept volume；它们必须与独立 Safety sweep 分层显示，避免把规划代价误讲成最后安全锁。
+- 已直接显示 ROBOT 实际导出的 local costmap：0 为 free、1–253 为 soft/linear inflation、254 为 lethal、255 为 unknown；Viewer 不重建 inflation。Validator 实际接受候选的 centerline 与 envelope radius 形成绿色 swept volume，独立 Collision Monitor 的 reaction+braking sweep 保持青色/红色。2D 使用连续 capsule，3D 使用沿真实 centerline 连接的半透明 swept tube，避免采样圆环遮挡机器人。
+- 工程视图按 authority 分行标明 `ROBOT OBS/AI`、`ROBOT ESTIMATE` 与 `SIM PHYSICS/AUDIO`，并实时显示物理音频五类归一化强度。`--lidar`、`--robot-evidence` 与 `--shot N FILE` 可复现 2D/3D 视觉验收，无需人工按键改变截图条件。
 - 验收：单轮低摩擦只在该轮产生滑移效果；干地无水花；关闭渲染不改变 episode。
 
 ### G4：探索战役垂直切片

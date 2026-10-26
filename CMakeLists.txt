@@ -219,6 +219,12 @@ if(LOST_SIGNAL_WITH_VIEWER)
   )
   target_link_libraries(sim_viewer PRIVATE lost_signal_sim_viewer
     lost_signal_sim_scenario raylib)
+
+ add_executable(test_viewer_audio
+ tests/test_viewer_audio.cpp
+ src/sim/viewer/viewer_audio.cpp
+ )
+ target_link_libraries(test_viewer_audio PRIVATE lost_signal_sim_viewer raylib)
 endif()
 
 add_library(lost_signal_sim_world STATIC
@@ -308,6 +314,7 @@ add_library(lost_signal_sim_viewer STATIC
  src/sim/viewer/keyframe_review.cpp
   src/sim/viewer/map_editor.cpp
  src/sim/viewer/particle_system.cpp
+ src/sim/viewer/physical_audio.cpp
  src/sim/viewer/playback_controller.cpp
  src/sim/viewer/scene_manifest.cpp
 )
@@ -349,6 +356,10 @@ target_link_libraries(sim_ab_experiment PRIVATE lost_signal_sim_experiment)
 
 # Tests
 enable_testing()
+
+if(TARGET test_viewer_audio)
+ add_test(NAME viewer_audio COMMAND test_viewer_audio)
+endif()
 
 add_executable(test_robot_cycle
   tests/test_robot_cycle.cpp
@@ -792,6 +803,12 @@ add_executable(test_particle_system
 )
 target_link_libraries(test_particle_system PRIVATE lost_signal_sim_viewer)
 add_test(NAME particle_system COMMAND test_particle_system)
+
+add_executable(test_physical_audio
+ tests/test_physical_audio.cpp
+)
+target_link_libraries(test_physical_audio PRIVATE lost_signal_sim_viewer)
+add_test(NAME physical_audio COMMAND test_physical_audio)
 
 add_executable(test_map_editor
   tests/test_map_editor.cpp

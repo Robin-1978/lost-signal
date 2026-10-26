@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,7 @@ enum class FrameAuthority {
  kRobotObservation,
  kRobotEstimate,
  kRobotDecision,
+ kRobotActuation,
  kGameEvaluation,
 };
 
@@ -120,6 +122,16 @@ struct FrameEvaluationTelemetry {
  double estimate_error_m = 0.0;
 };
 
+// Exact ROBOT actuator output recorded before the plant consumed it. This is
+// separate from both the high-level decision and SIM response: presentation
+// may explain a brake request without treating the request as achieved force.
+struct FrameActuationTelemetry {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kRobotActuation;
+ std::array<double, 4> drive_duty = {};
+ std::size_t drive_count = 0;
+ double service_brake = 0.0;
+};
+
 struct FrameLinkPose {
  bool valid = false;
  double x_m = 0.0, y_m = 0.0, z_m = 0.0;
@@ -185,6 +197,10 @@ struct FrameBody {
   double x_m = 0.0, y_m = 0.0, yaw_rad = 0.0;
   double half_length_m = 0.28;  // configured collision/visual shell
   double half_width_m = 0.25;
+ // Plant reference values used to normalize presentation evidence across
+ // chassis without a level-specific sound threshold.
+ double drive_free_speed_mps = 0.0;
+ double nominal_normal_load_N = 0.0;
   double z_m = 0.0;            // engine height (3D frontend only)
   double roll_rad = 0.0;       // live body attitude (ramps tilt the viz)
   double pitch_rad = 0.0;
@@ -289,6 +305,7 @@ struct Frame {
  FrameObservationTelemetry observation;
  FrameEstimateTelemetry estimate;
  FrameDecisionTelemetry decision;
+ FrameActuationTelemetry actuation;
  FrameEvaluationTelemetry evaluation;
   FrameBody body;
   std::vector<std::pair<double, double>> trail;  // past truth (x, y), oldest first

@@ -23,6 +23,9 @@ lost_signal::sim::eval::EvalStep make_step() {
   s.obs.scan_angle_increment_rad = 0.5;
   s.obs.ranges_m = {2.0f, 2.0f, 2.0f, 2.0f, 2.0f};
   s.judge.static_clearance_m = 0.3;
+ s.actuator.mode = robot::iface::ActuatorMode::kMecanumDuty;
+ s.actuator.drive = {0.1, -0.2, 0.3, -0.4};
+ s.actuator.service_brake = 0.6;
   return s;
 }
 }  // namespace
@@ -145,6 +148,14 @@ int main() {
  assert(std::abs(f.decision.safety_static_sweep[2].first - sweep_x) < 1e-12);
  assert(std::abs(f.decision.safety_static_sweep[2].second - sweep_y) < 1e-12);
  assert(std::abs(f.decision.command_forward_mps - 0.25) < 1e-12);
+ assert(f.actuation.kAuthority ==
+ sim::viewer::FrameAuthority::kRobotActuation);
+ assert(f.actuation.drive_count == 4);
+ assert(std::abs(f.actuation.drive_duty[3] + 0.4) < 1e-12);
+ assert(std::abs(f.actuation.service_brake - 0.6) < 1e-12);
+ assert(std::abs(f.body.drive_free_speed_mps -
+ w.motor_params().free_speed_mps) < 1e-12);
+ assert(f.body.nominal_normal_load_N > 0.0);
  assert(f.evaluation.kAuthority ==
  sim::viewer::FrameAuthority::kGameEvaluation);
  assert(std::abs(f.evaluation.estimate_error_m - std::sqrt(0.02)) < 1e-12);
