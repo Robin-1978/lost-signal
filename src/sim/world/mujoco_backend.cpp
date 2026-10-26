@@ -57,6 +57,27 @@ bool MujocoBackend::raycast(double ox, double oy, double oz, double dx,
   return true;
 }
 
+void MujocoBackend::set_actor_poses(
+ const std::vector<std::array<double, 4>>& poses) {
+ if (!valid() || impl_->model == nullptr || impl_->data == nullptr) return;
+ const std::size_t count = std::min(
+ {poses.size(), actor_mocap_.size(), actor_body_.size()});
+ for (std::size_t i = 0; i < count; ++i) {
+ const int mocap = actor_mocap_[i];
+ if (mocap < 0 || mocap >= impl_->model->nmocap) continue;
+ const auto& pose = poses[i];
+ impl_->data->mocap_pos[3 * mocap + 0] = pose[0];
+ impl_->data->mocap_pos[3 * mocap + 1] = pose[1];
+ impl_->data->mocap_pos[3 * mocap + 2] = pose[2];
+ impl_->data->mocap_quat[4 * mocap + 0] = std::cos(pose[3] * 0.5);
+ impl_->data->mocap_quat[4 * mocap + 1] = 0.0;
+ impl_->data->mocap_quat[4 * mocap + 2] = 0.0;
+ impl_->data->mocap_quat[4 * mocap + 3] = std::sin(pose[3] * 0.5);
+ }
+ mj_forward(impl_->model, impl_->data);
+ read_actor_poses();
+}
+
 void MujocoBackend::read_back() {
   if (!valid()) return;
   mjModel* model = impl_->model;
@@ -246,6 +267,31 @@ void MujocoBackend::read_back() {
  read_relative_body_pose(support_wheel_body_[i], support_wheel_pose_[i]);
  }
  read_contacts();
+ read_actor_poses();
+}
+
+void MujocoBackend::read_actor_poses() {
+ if (!valid()) return;
+ const mjModel* model = impl_->model;
+ const mjData* data = impl_->data;
+ actor_pose_count_ = 0;
+ for (std::size_t i = 0; i < actor_body_.size() &&
+ actor_pose_count_ < static_cast<int>(actor_pose_.size()); ++i) {
+ const int body_id = actor_body_[i];
+ if (body_id < 0 || body_id >= model->nbody) continue;
+ const mjtNum* p = data->xpos + 3 * body_id;
+ const mjtNum* q = data->xquat + 4 * body_id;
+ ActorPoseViz pose;
+ pose.valid = true;
+ pose.x_m = p[0];
+ pose.y_m = p[1];
+ pose.z_m = p[2];
+ pose.qw = q[0];
+ pose.qx = q[1];
+ pose.qy = q[2];
+ pose.qz = q[3];
+ actor_pose_[actor_pose_count_++] = pose;
+ }
 }
 
 void MujocoBackend::read_contacts() {

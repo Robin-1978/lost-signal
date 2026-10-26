@@ -570,9 +570,19 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
     fa.height_m = a.height_m;
  fa.pedestrian = a.pedestrian;
+ fa.world_pose = {a.pose.valid, a.pose.x_m, a.pose.y_m, a.pose.z_m,
+ a.pose.qw, a.pose.qx, a.pose.qy, a.pose.qz};
+ if (a.pose.valid) {
+ fa.heading_rad = std::atan2(2.0 * (a.pose.qw * a.pose.qz +
+ a.pose.qx * a.pose.qy), 1.0 - 2.0 * (a.pose.qy * a.pose.qy +
+ a.pose.qz * a.pose.qz));
+ }
     f.actors.push_back(fa);
   }
  } else {
+ world::ActorPoseViz actor_poses[64];
+ const int actor_pose_count = world.actor_poses(actor_poses, 64);
+ std::size_t actor_index = 0;
  for (const auto& a : world.actors()) {
  FrameActor fa;
  fa.x_m = a.x;
@@ -584,7 +594,18 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
  fa.height_m = a.height_m;
  fa.pedestrian = a.visual_kind == "pedestrian";
+ if (actor_index < static_cast<std::size_t>(std::max(0, actor_pose_count))) {
+ const auto& pose = actor_poses[actor_index];
+ fa.world_pose = {pose.valid, pose.x_m, pose.y_m, pose.z_m,
+ pose.qw, pose.qx, pose.qy, pose.qz};
+ if (pose.valid) {
+ fa.heading_rad = std::atan2(2.0 * (pose.qw * pose.qz +
+ pose.qx * pose.qy), 1.0 - 2.0 * (pose.qy * pose.qy +
+ pose.qz * pose.qz));
+ }
+ }
  f.actors.push_back(fa);
+ ++actor_index;
  }
  }
   for (const auto& z : world.material_zones()) {

@@ -33,14 +33,20 @@ void capture_presentation(const world::World& world,
  const int contact_count = world.contacts(contacts, 64);
  snapshot.contacts.assign(contacts,
  contacts + std::max(0, contact_count));
+ world::ActorPoseViz actor_poses[64];
+ const int actor_pose_count = world.actor_poses(actor_poses, 64);
  snapshot.com_x_m = world.system_com_relative_x_m();
  snapshot.com_y_m = world.system_com_relative_y_m();
  snapshot.com_z_m = world.system_com_relative_z_m();
  snapshot.actors.reserve(world.actors().size());
+ std::size_t actor_index = 0;
  for (const auto& actor : world.actors()) {
  snapshot.actors.push_back({actor.x, actor.y, actor.vx_mps, actor.vy_mps,
  actor.radius_m, actor.height_m,
- actor.visual_kind == "pedestrian"});
+ actor.visual_kind == "pedestrian",
+ actor_index < static_cast<std::size_t>(std::max(0, actor_pose_count))
+ ? actor_poses[actor_index] : world::ActorPoseViz{}});
+ ++actor_index;
  }
  snapshot.impact = world.impact();
  snapshot.captured = true;

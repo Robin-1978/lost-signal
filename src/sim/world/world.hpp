@@ -326,6 +326,9 @@ class World {
  int contacts(ContactViz* out, int cap) const {
  return mujoco_.contacts(out, cap);
  }
+ int actor_poses(ActorPoseViz* out, int cap) const {
+ return mujoco_.actor_poses(out, cap);
+ }
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT
  // observation, estimate, planner, controller, or safety decision.
@@ -390,7 +393,10 @@ class World {
   const std::vector<EnvironmentKeyframe>& environment() const {
     return environment_;
   }
-  void add_actor(const Actor& actor) { actors_.push_back(actor); }
+ void add_actor(const Actor& actor) {
+ actors_.push_back(actor);
+ ++mujoco_model_revision_.value;
+ }
   const std::vector<Actor>& actors() const { return actors_; }
   void add_place(const NamedPlace& place) {
     places_.push_back(place);

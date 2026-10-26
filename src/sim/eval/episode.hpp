@@ -39,6 +39,7 @@ struct ActorPresentationState {
  double radius_m = 0.4;
  double height_m = 1.5;
  bool pedestrian = false;
+ world::ActorPoseViz pose;
 };
 
 struct PresentationSnapshot {

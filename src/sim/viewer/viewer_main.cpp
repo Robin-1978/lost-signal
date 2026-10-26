@@ -996,6 +996,22 @@ Quaternion link_rotation(const FrameLinkPose& pose, bool converted_asset) {
  QuaternionMultiply(q_link, QuaternionInvert(q_basis)));
 }
 
+void draw_actor_model_physical(const Model& model,
+ const AssetDefinition& definition, const FrameLinkPose& world_pose,
+ double radius_m) {
+ if (!model_ready(model) || !world_pose.valid ||
+ !(definition.reference_radius_m > 0.0)) return;
+ const float scale = static_cast<float>(radius_m /
+ std::max(1e-3, definition.reference_radius_m));
+ const BoundingBox bounds = raylib_asset_bounds(model);
+ const Vector3 position{
+ static_cast<float>(world_pose.x_m),
+ static_cast<float>(world_pose.z_m - bounds.min.y * scale),
+ static_cast<float>(-world_pose.y_m)};
+ draw_model_quaternion(model, position, link_rotation(world_pose, true),
+ {scale, scale, scale}, WHITE);
+}
+
 // Wheel GLBs are authored at a reference size (RO-1 uses a 100 mm radius
 // and the caster a 55 mm radius). Fit the radial and axle dimensions to the
 // live plant configuration independently; a future profile therefore cannot
@@ -2908,10 +2924,14 @@ void draw_frame_3d(const Frame& f,
     const Color body =
         a.pedestrian ? Color{70, 130, 220, 255} : Color{235, 130, 40, 255};
     const float h = static_cast<float>(a.height_m > 0.1 ? a.height_m : 0.5);
- const double ground_z = world_ns::sample_terrain(
- world.terrain_patches(), world.support_slabs(), a.x_m, a.y_m).height_m;
+ const bool physical_pose = a.world_pose.valid;
+ const double visual_x = physical_pose ? a.world_pose.x_m : a.x_m;
+ const double visual_y = physical_pose ? a.world_pose.y_m : a.y_m;
+ const double ground_z = physical_pose ? a.world_pose.z_m
+ : world_ns::sample_terrain(world.terrain_patches(),
+ world.support_slabs(), a.x_m, a.y_m).height_m;
  if (presentation_effects)
- blob_shadow_3d(a.x_m, a.y_m, a.radius_m * 1.3, ground_z);
+ blob_shadow_3d(visual_x, visual_y, a.radius_m * 1.3, ground_z);
  const Model* actor_model = nullptr;
  const AssetDefinition* actor_definition = nullptr;
  if (assets != nullptr) actor_model = a.pedestrian ? &assets->worker
@@ -2922,20 +2942,25 @@ void draw_frame_3d(const Frame& f,
  }
  if (actor_model != nullptr && model_ready(*actor_model) &&
  actor_definition != nullptr) {
-draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
+ if (a.world_pose.valid) {
+ draw_actor_model_physical(*actor_model, *actor_definition,
+ a.world_pose, a.radius_m);
+ } else {
+ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  ground_z, a.radius_m, a.heading_rad);
+ }
  } else {
  // raylib's DrawCylinder position is the base center (not the geometric
  // center). Passing ground+h/2 made the procedural pedestrian float by half
  // its height; the SIM terrain sample is the sole contact anchor.
- DrawCylinder(to_raylib(a.x_m, a.y_m, ground_z),
+ DrawCylinder(to_raylib(visual_x, visual_y, ground_z),
  static_cast<float>(a.radius_m), static_cast<float>(a.radius_m),
  static_cast<float>(h), 16, body);
  }
- DrawCylinder(to_raylib(a.x_m, a.y_m, ground_z + h + 0.03), 0.06f, 0.06f, 0.12f, 8,
+ DrawCylinder(to_raylib(visual_x, visual_y, ground_z + h + 0.03), 0.06f, 0.06f, 0.12f, 8,
                  DARKGRAY);  // roof beacon
- DrawLine3D(to_raylib(a.x_m, a.y_m, ground_z + h * 0.5),
- to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps,
+ DrawLine3D(to_raylib(visual_x, visual_y, ground_z + h * 0.5),
+ to_raylib(visual_x + a.vx_mps, visual_y + a.vy_mps,
  ground_z + h * 0.5), BLACK);
   }
  // Deployable ROBOT perception overlay. The current anonymous footprint is

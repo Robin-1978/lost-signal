@@ -84,6 +84,12 @@ struct JointAxisViz {
  double angle_rad = 0.0, rate_radps = 0.0;
 };
 
+struct ActorPoseViz {
+ bool valid = false;
+ double x_m = 0.0, y_m = 0.0, z_m = 0.0;
+ double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
+};
+
 // One wheel module for presentation (base frame): position from the shared
 // layout table, spin/steer from live joint read-back. Idlers (ackermann
 // fronts) report driven=false. Rollers are not state (mecanum is an
@@ -189,8 +195,10 @@ class MujocoBackend {
             const std::vector<MaterialZone>& zones,
             const std::vector<TerrainPatch>& patches,
             const std::vector<SupportSlab>& slabs,
+ const std::vector<Actor>& actors,
             MujocoModelRevision model_revision, int drive_count,
             int steer_count);
+ void set_actor_poses(const std::vector<std::array<double, 4>>& poses);
   // One plant tick: efforts from duties (duty-implied motor force + brake
   // capacity against shaft velocity, dissipative only), gravity tilted by
   // the longitudinal grade around the current heading, 1 ms substeps.
@@ -338,6 +346,12 @@ class MujocoBackend {
  for (int i = 0; i < n; ++i) out[i] = contact_viz_[i];
  return n;
  }
+ int actor_poses(ActorPoseViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ const int n = std::min(cap, actor_pose_count_);
+ for (int i = 0; i < n; ++i) out[i] = actor_pose_[i];
+ return n;
+ }
  const ImpactViz& impact() const { return impact_; }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
@@ -355,10 +369,10 @@ class MujocoBackend {
  double system_com_relative_z_m() const { return system_com_relative_z_m_; }
   const MujocoBuildStats& build_stats() const { return build_stats_; }
   // True 3D raycast against the compiled static scene (floor + boxes),
-  // for sensor simulation. Robot geoms live in group 1 and are excluded,
-  // so a sensor mounted on the body never self-hits; actors have no engine
-  // bodies and are supplemented analytically by the caller (same split as
-  // main's game lidar). False when the model is invalid or nothing is hit
+ // for sensor simulation. Robot geoms live in group 1 and actors in group 2,
+ // both excluded, so a sensor mounted on the body never self-hits and actor
+ // returns remain on the provider's anonymous observation path. False when
+ // the model is invalid or nothing is hit
   // within max_m (caller falls back to max range). Deterministic for the
   // same compiled state; call between steps like everything else.
   bool raycast(double ox, double oy, double oz, double dx, double dy,
@@ -367,6 +381,7 @@ class MujocoBackend {
  private:
   void read_back();
  void read_contacts();
+ void read_actor_poses();
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
@@ -439,6 +454,8 @@ class MujocoBackend {
  double support_mu_base_[4] = {0.05, 0.05, 0.05, 0.05};
   double support_rolling_base_m_[4] = {0.0005, 0.0005, 0.0005, 0.0005};
  int support_count_ = 0;
+ std::vector<int> actor_body_;
+ std::vector<int> actor_mocap_;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
   int tire_geom_[4] = {-1, -1, -1, -1};
   // Idler tire geom ids (per-step zone follow, same doctrine as drives —
@@ -508,6 +525,8 @@ class MujocoBackend {
  ImpactViz impact_;
  std::array<ContactViz, 64> contact_viz_{};
  int contact_viz_count_ = 0;
+ std::array<ActorPoseViz, 64> actor_pose_{};
+ int actor_pose_count_ = 0;
 };
 
 #else  // !LOST_SIGNAL_WITH_MUJOCO
@@ -521,7 +540,9 @@ class MujocoBackend {
   void sync(const MotorParams&, const std::vector<StaticBox>&,
             const std::vector<MaterialEntry>&, const std::vector<MaterialZone>&,
             const std::vector<TerrainPatch>&, const std::vector<SupportSlab>&,
+ const std::vector<Actor>&,
             MujocoModelRevision, int, int) {}
+ void set_actor_poses(const std::vector<std::array<double, 4>>&) {}
   void step(double, const MotorParams&, const std::array<double, 4>&,
             const std::array<double, 4>&, const std::array<double, 4>&, double,
             const std::vector<MaterialZone>&, const std::vector<MaterialEntry>&,
@@ -556,6 +577,7 @@ class MujocoBackend {
  int casters(CasterViz*, int) const { return 0; }
  int joint_axes(JointAxisViz*, int) const { return 0; }
  int contacts(ContactViz*, int) const { return 0; }
+ int actor_poses(ActorPoseViz*, int) const { return 0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:

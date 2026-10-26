@@ -244,6 +244,7 @@ void MujocoBackend::sync(const MotorParams& motor,
                           const std::vector<MaterialZone>& zones,
                           const std::vector<TerrainPatch>& patches,
                           const std::vector<SupportSlab>& slabs,
+ const std::vector<Actor>& actors,
  MujocoModelRevision model_revision, int drive_count,
                           int steer_count) {
  ++build_stats_.sync_requests;
@@ -355,7 +356,12 @@ void MujocoBackend::sync(const MotorParams& motor,
         << s.half_length_m << "," << s.half_width_m << "," << s.yaw_rad << ","
         << s.center_height_m << "," << s.grade_along_local_x << ";";
   }
-  const std::string signature = sig.str();
+ sig << "A|";
+ for (const auto& actor : actors) {
+ sig << actor.id << "," << actor.radius_m << "," << actor.height_m
+ << "," << actor.visual_kind << ";";
+ }
+ const std::string signature = sig.str();
  if (ever_built_ && signature == built_signature_ && valid()) {
     return;
   }
@@ -369,6 +375,9 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   impl_.reset(new Impl());
   ready_ = false;
+ actor_body_.clear();
+ actor_mocap_.clear();
+ actor_pose_count_ = 0;
   drive_count_ = 0;
   steer_count_ = 0;
   base_qpos_ = -1;
@@ -1119,6 +1128,28 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
     sg->friction[1] = 0.01;
     sg->friction[2] = 0.001;
   }
+ // Dynamic actors are kinematic MuJoCo bodies. Their geometry participates
+ // in contact resolution, while World owns the deterministic behaviour and
+ // updates the mocap poses between fixed quanta.
+ for (std::size_t ai = 0; ai < actors.size(); ++ai) {
+ const Actor& actor = actors[ai];
+ mjsBody* body = add_body(world, "actor" + std::to_string(ai), 0.0, 0.0,
+ 0.0);
+ body->mocap = 1;
+ mjsGeom* geom = add_geom(body, "actorgeom" + std::to_string(ai),
+ mjGEOM_CYLINDER, std::max(0.01, actor.radius_m),
+ std::max(0.05, actor.height_m * 0.5), 2);
+ geom->pos[2] = std::max(0.05, actor.height_m * 0.5);
+ geom->mass = 0.0;
+ geom->density = 0.0;
+ // Robot links use contype=2/conaffinity=1; actor geoms are the reciprocal
+ // kinematic side. They do not collide with static world geoms or sensors.
+ geom->contype = 1;
+ geom->conaffinity = 2;
+ geom->friction[0] = kFloorSlidingFriction;
+ geom->friction[1] = 0.01;
+ geom->friction[2] = 0.001;
+ }
 
   mjModel* model = mj_compile(spec, nullptr);
   if (model == nullptr) {
@@ -1142,6 +1173,15 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  const int base_qpos = model->jnt_qposadr[base_joint];
   impl_->model = model;
   impl_->data = data;
+ actor_body_.reserve(actors.size());
+ actor_mocap_.reserve(actors.size());
+ for (std::size_t ai = 0; ai < actors.size(); ++ai) {
+ const std::string body_name = "actor" + std::to_string(ai);
+ const int body_id = mj_name2id(model, mjOBJ_BODY, body_name.c_str());
+ if (body_id < 0) continue;
+ actor_body_.push_back(body_id);
+ actor_mocap_.push_back(model->body_mocapid[body_id]);
+ }
  // A free joint defaults to the world origin, which puts the axle and every
  // tire below the floor until the first solver step lifts the chassis.  That
  // transient is observable in the viewer (and can leave a wheel apparently
@@ -1272,6 +1312,7 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  mj_forward(model, data);
   read_back();
 }
+
 
 }  // namespace lost_signal::sim::world
 

@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "sim/fixed_time.hpp"
+#include "sim/world/terrain.hpp"
 
 namespace lost_signal::sim::world {
 namespace {
@@ -102,8 +103,18 @@ void World::read_engine_truth() {
 
 void World::prepare() {
  mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
- terrain_patches_, support_slabs_, mujoco_model_revision_,
+ terrain_patches_, support_slabs_, actors_, mujoco_model_revision_,
  truth_.drive_count, truth_.steer_count);
+ std::vector<std::array<double, 4>> actor_poses;
+ actor_poses.reserve(actors_.size());
+ for (const auto& actor : actors_) {
+ const auto surface = sample_terrain(terrain_patches_, support_slabs_,
+ actor.x, actor.y);
+ const double yaw = std::hypot(actor.vx_mps, actor.vy_mps) > 1e-9
+ ? std::atan2(actor.vy_mps, actor.vx_mps) : 0.0;
+ actor_poses.push_back({actor.x, actor.y, surface.height_m, yaw});
+ }
+ mujoco_.set_actor_poses(actor_poses);
  if (mujoco_.valid()) read_engine_truth();
 }
 
@@ -116,8 +127,18 @@ void World::end_fixed_transition() { aggregating_impact_ = false; }
 
 void World::step_engine(double dt_s) {
   mujoco_.sync(motor_, static_boxes_, materials_, material_zones_,
- terrain_patches_, support_slabs_, mujoco_model_revision_,
+ terrain_patches_, support_slabs_, actors_, mujoco_model_revision_,
                truth_.drive_count, truth_.steer_count);
+ std::vector<std::array<double, 4>> actor_poses;
+ actor_poses.reserve(actors_.size());
+ for (const auto& actor : actors_) {
+ const auto surface = sample_terrain(terrain_patches_, support_slabs_,
+ actor.x, actor.y);
+ const double yaw = std::hypot(actor.vx_mps, actor.vy_mps) > 1e-9
+ ? std::atan2(actor.vy_mps, actor.vx_mps) : 0.0;
+ actor_poses.push_back({actor.x, actor.y, surface.height_m, yaw});
+ }
+ mujoco_.set_actor_poses(actor_poses);
   if (!mujoco_.valid() || !(dt_s > 0.0)) return;
   mujoco_.step(dt_s, motor_, truth_.drive_duty, truth_.steer_duty,
                brake_request_, incline_grade_, material_zones_, materials_,
@@ -153,12 +174,9 @@ void World::step(double dt_s) {
  // number of internal physics/sensor partitions.
  truth_.step = static_cast<std::uint64_t>(
  sim_time_ns_ / kScenarioTransitionNs);
- step_engine(kQuantumS);
- accumulate_impact(presented_impact_, mujoco_.impact());
-
- // Actors stay kinematic until they become engine bodies, but their policy,
- // yielding state, and integration share the exact physics quantum. Thus a
- // 20 ms harness call and twenty 1 ms viewer calls have identical semantics.
+ // Actor policy and integration share the exact physics quantum with the
+ // engine. Their updated mocap pose is supplied by step_engine() before the
+ // robot contacts are solved, so contact and rendering observe one state.
  const double c = std::cos(truth_.body_yaw_rad);
  const double s = std::sin(truth_.body_yaw_rad);
  const double robot_vx =
@@ -176,6 +194,8 @@ void World::step(double dt_s) {
  actor.x += actor.vx_mps * kQuantumS;
  actor.y += actor.vy_mps * kQuantumS;
  }
+ step_engine(kQuantumS);
+ accumulate_impact(presented_impact_, mujoco_.impact());
   }
 }
 

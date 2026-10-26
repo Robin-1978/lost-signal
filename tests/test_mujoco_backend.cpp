@@ -135,6 +135,28 @@ int main() {
  assert(session.score().steps == 0);
  }
 
+ // Dynamic actors are mocap bodies in the same MuJoCo scene. Their visual
+ // pose and contact geometry are available to SIM presentation without
+ // entering the ROBOT observation path.
+ {
+ sim::world::World w = make_mujoco_diff();
+ sim::world::Actor actor;
+ actor.x = 0.8;
+ actor.y = -0.4;
+ actor.radius_m = 0.25;
+ actor.height_m = 1.8;
+ actor.visual_kind = "pedestrian";
+ w.add_actor(actor);
+ set_diff_duty(w, 0.0);
+ w.prepare();
+ sim::world::ActorPoseViz poses[4];
+ assert(w.actor_poses(poses, 4) == 1);
+ assert(poses[0].valid);
+ assert(std::abs(poses[0].x_m - 0.8) < 1e-9);
+ assert(std::abs(poses[0].y_m + 0.4) < 1e-9);
+ assert(std::abs(poses[0].z_m) < 1e-9);
+ }
+
  // The compiled multibody has the declared mass and COM. Collision-shell
  // dimensions never move when inertia is tuned.
  {
