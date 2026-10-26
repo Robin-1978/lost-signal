@@ -98,14 +98,22 @@ for another authored mission. The field lab pauses before simulation time
 advances. Its briefing camera
 shows the assembled robot from MuJoCo's zero-time body and joint transforms;
 this preparation publishes no sensor sample, ROBOT tick, episode step, or
-score. Use `Left`/`Right` or the on-screen buttons to inspect drive-wheel,
-caster, LiDAR, and chassis cards; each camera target comes from the prepared
-physical link or sensor pose. Click `START EXPERIMENT`, then click a prediction
-card or press its number to begin the run.
+score. Use the on-screen component tabs to inspect the drive wheel and LiDAR
+before starting; caster and chassis remain optional detail cards. Each camera
+target comes from the prepared physical link or sensor pose. Click
+`START EXPERIMENT`, then predict how changing the LiDAR period from 20 ms to
+100 ms will affect completion time, physical clearance, and safety.
 The debrief separates ROBOT evidence from SIM-only truth evaluation and uses
 collision as a hard safety gate. `Left`/`Right` then browse the recorded first
 valid observation, braking command, and stable-stop evidence. Their speed and
 settle rules come from the selected robot's versioned arrival policy. The
+baseline debrief offers `RUN VISIBLE VARIANT`. It rebuilds the authored world,
+robot, initial state, and seeds, changes only `lidar.scan_period_s`, and runs
+the second condition in the same visible Viewer. The chapter compares both
+recorded outcomes and unlocks the next chapter only after both runs pass their
+independent safety gates. Its authored comparison tolerances classify the
+player's prediction for teaching only; they do not tune ROBOT or SIM
+acceptance. The
 experience selects ordinary robot, sim,
 map, scene, and named-goal files before startup; runtime autonomy receives the
 same sensor and actuator interfaces used without the game presentation.

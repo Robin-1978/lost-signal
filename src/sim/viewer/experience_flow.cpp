@@ -18,6 +18,21 @@ bool choice_supported(const ExperienceChoice& choice,
  return evidence.terminal && !evidence.all_robot_done;
  case ExperienceEvidenceRule::kStaticAnswer:
  return choice.correct;
+ case ExperienceEvidenceRule::kComparisonTradeoff:
+ return evidence.comparison_complete && evidence.baseline_safe &&
+ evidence.variant_safe &&
+ evidence.elapsed_delta_s >= evidence.minimum_elapsed_increase_s &&
+ evidence.clearance_delta_m <= -evidence.minimum_clearance_loss_m;
+ case ExperienceEvidenceRule::kComparisonEquivalent:
+ return evidence.comparison_complete && evidence.baseline_safe &&
+ evidence.variant_safe &&
+ std::abs(evidence.elapsed_delta_s) <=
+ evidence.equivalent_elapsed_tolerance_s &&
+ std::abs(evidence.clearance_delta_m) <=
+ evidence.equivalent_clearance_tolerance_m;
+ case ExperienceEvidenceRule::kComparisonUnsafe:
+ return evidence.comparison_complete && evidence.baseline_safe &&
+ !evidence.variant_safe;
  }
  return false;
 }
@@ -142,7 +157,11 @@ bool ExperienceFlow::update(std::uint64_t episode_steps,
  }
  const std::uint64_t elapsed = episode_steps >= running_start_step_
  ? episode_steps - running_start_step_ : 0;
- if (config_.time_limit_steps > 0 && elapsed >= config_.time_limit_steps) {
+ const std::uint64_t active_time_limit_steps =
+ run_kind_ == ExperienceRunKind::kVariant &&
+ config_.variant_time_limit_steps > 0
+ ? config_.variant_time_limit_steps : config_.time_limit_steps;
+ if (active_time_limit_steps > 0 && elapsed >= active_time_limit_steps) {
  phase_ = ExperiencePhase::kDebrief;
  end_reason_ = ExperienceEndReason::kTimeLimit;
  if (run_kind_ == ExperienceRunKind::kBaseline) baseline_complete_ = true;

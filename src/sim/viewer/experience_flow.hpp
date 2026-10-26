@@ -23,6 +23,15 @@ struct ExperienceEvidence {
  bool all_robot_done = false;
  bool all_sim_accepted = false;
  bool collision_free = false;
+ bool comparison_complete = false;
+ bool baseline_safe = false;
+ bool variant_safe = false;
+ double elapsed_delta_s = 0.0;
+ double clearance_delta_m = 0.0;
+ double minimum_elapsed_increase_s = 0.0;
+ double minimum_clearance_loss_m = 0.0;
+ double equivalent_elapsed_tolerance_s = 0.0;
+ double equivalent_clearance_tolerance_m = 0.0;
 };
 
 // Evaluates the player's authored hypothesis from this run's structured
@@ -44,6 +53,9 @@ class ExperienceFlow {
  // flag per stop lets an experience keep optional detail cards without
  // turning the opening into a forced manual.
  std::vector<bool> required_walkaround;
+ // A controlled variant may declare its own observation budget. Zero falls
+ // back to the chapter budget so older manifests keep their behavior.
+ std::uint64_t variant_time_limit_steps = 0;
  };
 
  explicit ExperienceFlow(Config config);

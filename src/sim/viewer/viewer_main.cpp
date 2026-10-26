@@ -17,7 +17,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
-#include <future>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -25,7 +24,6 @@
 #include <vector>
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
-#include "sim/experiment/ab_experiment.hpp"
 #include "sim/experiment/experience_runtime.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
@@ -56,6 +54,7 @@ using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::ExperienceFlow;
 using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::ExperiencePhase;
+using lost_signal::sim::viewer::ExperienceRunKind;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
 using lost_signal::sim::viewer::SurfaceTraceKind;
@@ -1097,18 +1096,23 @@ void draw_surface_traces_3d(const SurfaceTraceSystem& traces) {
  EndBlendMode();
 }
 
-enum class ExperimentRunState { kIdle, kRunning, kComplete, kFailed };
+struct VisibleRunSummary {
+ bool recorded = false;
+ bool timed_out = false;
+ bool objectives_done = false;
+ bool objectives_passed = false;
+ double scan_period_s = 0.0;
+ lost_signal::sim::eval::EpisodeScore score;
 
-struct ExperimentUiState {
- ExperimentRunState state = ExperimentRunState::kIdle;
- lost_signal::sim::experiment::ScanPeriodComparison comparison;
- std::string error;
+ bool safe() const {
+ return recorded && !timed_out && objectives_done && objectives_passed &&
+ score.collision_steps == 0;
+ }
 };
 
-struct ExperimentAsyncResult {
- bool ok = false;
- lost_signal::sim::experiment::ScanPeriodComparison comparison;
- std::string error;
+struct ExperimentUiState {
+ VisibleRunSummary baseline;
+ VisibleRunSummary variant;
 };
 
 struct ExperienceHitRegions {
@@ -1117,6 +1121,7 @@ struct ExperienceHitRegions {
  Rectangle primary{};
  Rectangle retry{};
  Rectangle next_chapter{};
+ std::vector<Rectangle> walkaround;
  std::vector<Rectangle> choices;
 
  void clear() {
@@ -1125,6 +1130,7 @@ struct ExperienceHitRegions {
  primary = {};
  retry = {};
  next_chapter = {};
+ walkaround.clear();
  choices.clear();
  }
 };
@@ -1151,7 +1157,8 @@ void draw_panel_button(Rectangle bounds, const char* label, bool primary,
 
 lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
  const lost_signal::sim::scenario::ScenarioSession& session,
- bool timed_out) {
+ bool timed_out, const ExperienceManifest& experience,
+ const ExperimentUiState& experiment_ui) {
  lost_signal::sim::viewer::ExperienceEvidence evidence;
  evidence.terminal = session.objectives_done() || timed_out;
  const auto& results = session.objectives().results();
@@ -1164,6 +1171,28 @@ lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
  return result.successful();
  });
  evidence.collision_free = session.score().collision_steps == 0;
+ if (!experience.experiments.empty()) {
+ const auto& definition = experience.experiments.front();
+ evidence.comparison_complete =
+ experiment_ui.baseline.recorded && experiment_ui.variant.recorded;
+ evidence.baseline_safe = experiment_ui.baseline.safe();
+ evidence.variant_safe = experiment_ui.variant.safe();
+ if (evidence.comparison_complete) {
+ evidence.elapsed_delta_s = experiment_ui.variant.score.elapsed_s -
+ experiment_ui.baseline.score.elapsed_s;
+ evidence.clearance_delta_m =
+ experiment_ui.variant.score.min_clearance_m -
+ experiment_ui.baseline.score.min_clearance_m;
+ }
+ evidence.minimum_elapsed_increase_s =
+ definition.minimum_elapsed_increase_s;
+ evidence.minimum_clearance_loss_m =
+ definition.minimum_clearance_loss_m;
+ evidence.equivalent_elapsed_tolerance_s =
+ definition.equivalent_elapsed_tolerance_s;
+ evidence.equivalent_clearance_tolerance_m =
+ definition.equivalent_clearance_tolerance_m;
+ }
  return evidence;
 }
 
@@ -1222,8 +1251,12 @@ float draw_wrapped_text(const std::string& text, float x, float y,
 }
 
 void draw_experience_overlay(const ExperienceManifest& experience,
- ExperiencePhase phase, int selected_choice, int walkaround_stop,
- std::size_t walkaround_visited_count, bool walkaround_complete,
+ ExperiencePhase phase, ExperienceRunKind run_kind,
+ bool comparison_complete, double active_scan_period_s,
+ int selected_choice, int walkaround_stop,
+ std::size_t walkaround_visited_count,
+ std::size_t required_walkaround_visited_count,
+ std::size_t required_walkaround_count, bool walkaround_complete,
  const std::vector<ReviewKeyframe>& review_keyframes,
  int selected_review_keyframe,
  bool objectives_done,
@@ -1244,10 +1277,20 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (phase == ExperiencePhase::kRunning) {
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
-  DrawRectangleRounded({x, 58.0f, width, 382.0f}, 0.04f, 8, kPanelSoft);
+ DrawRectangleRounded({x, 58.0f, width, 410.0f}, 0.04f, 8, kPanelSoft);
  draw_ui_text(tr("LIVE EVIDENCE / AUTHORITY", "实时证据 / 数据权限"),
  static_cast<int>(x + 18), 74, 14, kCyan);
  float y = 101.0f;
+ char condition[160];
+ std::snprintf(condition, sizeof(condition),
+ g_zh_cn ? "%s条件　LiDAR %.0f ms"
+ : "%s CONDITION  /  LiDAR %.0f ms",
+ run_kind == ExperienceRunKind::kVariant
+ ? tr("VARIANT", "慢扫描") : tr("BASELINE", "基线"),
+ active_scan_period_s * 1000.0);
+ draw_ui_text(condition, static_cast<int>(x + 18), static_cast<int>(y),
+ 14, kAmber);
+ y += 27.0f;
  if (frame != nullptr) {
  char line[320];
  const auto& observation = frame->observation;
@@ -1385,6 +1428,10 @@ std::snprintf(progress, sizeof(progress),
  g_zh_cn ? "物理部件 %02d / %02d　已检查 %02zu / %02d"
  : "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
     index + 1, count, walkaround_visited_count, count);
+ std::snprintf(progress, sizeof(progress),
+ g_zh_cn ? "必看部件 %02zu / %02zu"
+ : "REQUIRED COMPONENTS %02zu / %02zu",
+ required_walkaround_visited_count, required_walkaround_count);
  draw_ui_text(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
  kMuted);
    y += 23.0f;
@@ -1399,13 +1446,36 @@ std::snprintf(progress, sizeof(progress),
  const std::string source = stop.component_id + tr(" / MuJoCo body + joint", " / MuJoCo 刚体与关节");
  draw_wrapped_text(source, x + 34, y, panel_width - 68, 14, 5, kMuted);
  }
+ const int tab_count = static_cast<int>(experience.walkaround.size());
+ const int selected_tab = std::clamp(walkaround_stop, 0,
+ std::max(0, tab_count - 1));
+ const float tab_y = y0 + panel_height - 108.0f;
+ const float tab_gap = 6.0f;
+ const float tab_width = (panel_width - 68.0f -
+ tab_gap * static_cast<float>(std::max(0, tab_count - 1))) /
+ static_cast<float>(std::max(1, tab_count));
+ for (int tab = 0; tab < tab_count; ++tab) {
+ const auto& tab_stop =
+ experience.walkaround[static_cast<std::size_t>(tab)];
+ const char* label = tab_stop.component_id == "drive_wheel"
+ ? tr("WHEEL", "DRIVE")
+ : tab_stop.component_id == "caster"
+ ? tr("CASTER", "CASTER")
+ : tab_stop.component_id == "lidar"
+ ? "LiDAR"
+ : tr("BODY", "BODY");
+ const Rectangle tab_bounds{
+ x + 34.0f + static_cast<float>(tab) * (tab_width + tab_gap),
+ tab_y, tab_width, 32.0f};
+ draw_panel_button(tab_bounds, label, tab == selected_tab,
+ tab_stop.required ? kCyan : Color{93, 126, 119, 255}, kText);
+ if (hit_regions != nullptr) {
+ hit_regions->walkaround.push_back(tab_bounds);
+ }
+ }
  const float button_y = y0 + panel_height - 64.0f;
- const Rectangle previous{x + 34.0f, button_y, 42.0f, 36.0f};
- const Rectangle next{x + 84.0f, button_y, 42.0f, 36.0f};
- const Rectangle primary{x + panel_width - 188.0f, button_y,
- 154.0f, 36.0f};
- draw_panel_button(previous, "<", false, kCyan, kText);
- draw_panel_button(next, ">", false, kCyan, kText);
+ const Rectangle primary{x + 34.0f, button_y,
+ panel_width - 68.0f, 36.0f};
   char primary_label[64];
   if (walkaround_complete) {
  std::snprintf(primary_label, sizeof(primary_label), "%s",
@@ -1415,11 +1485,13 @@ std::snprintf(progress, sizeof(progress),
  g_zh_cn ? "完成部件检查 %zu/%zu" : "INSPECT ALL %zu/%zu",
     walkaround_visited_count, experience.walkaround.size());
   }
+ if (!walkaround_complete) {
+ std::snprintf(primary_label, sizeof(primary_label), "%s",
+ tr("VIEW WHEEL + LiDAR", "查看驱动轮与 LiDAR"));
+ }
   draw_panel_button(primary, primary_label, true, kCyan, kText,
    walkaround_complete);
  if (hit_regions != nullptr) {
- hit_regions->previous = previous;
- hit_regions->next = next;
    if (walkaround_complete) hit_regions->primary = primary;
  }
  return;
@@ -1482,59 +1554,60 @@ action_error,
  }
  y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
  safe ? kText : kRed) + 12.0f;
- if (!experience.experiments.empty() && experiment_ui != nullptr) {
+ const bool has_comparison = !experience.experiments.empty() &&
+ experiment_ui != nullptr && experiment_ui->baseline.recorded;
+ if (has_comparison) {
+ const auto& baseline = experiment_ui->baseline;
  const auto& experiment = experience.experiments.front();
- draw_ui_text(tr("CONTROLLED RE-RUN / PRESS A", "受控重新运行 / 按 A"),
- static_cast<int>(x + 34),
- static_cast<int>(y), 14, kAmber);
+ draw_ui_text(comparison_complete
+ ? tr("VISIBLE CONTROLLED COMPARISON", "可视化受控对照完成")
+ : tr("BASELINE RECORDED / VARIANT NEXT", "基线已记录 / 下一步运行变体"),
+ static_cast<int>(x + 34), static_cast<int>(y), 14, kAmber);
  y += 22.0f;
- if (experiment_ui->state == ExperimentRunState::kRunning) {
- y = draw_wrapped_text(
- tr("Running baseline and variant headless with identical authored files and seeds...",
- "正在用完全相同的场景文件与随机种子运行基线和单变量版本……"),
- x + 34, y, panel_width - 68, 14, 4, kMuted) + 8.0f;
- } else if (experiment_ui->state == ExperimentRunState::kComplete) {
- const auto& baseline = experiment_ui->comparison.baseline;
- const auto& variant = experiment_ui->comparison.variant;
- char comparison[320];
- std::snprintf(comparison, sizeof(comparison),
- "LiDAR %.0f ms -> %.0f ms | pass %s/%s | time %.2f/%.2f s | collisions %zu/%zu | clearance %.2f/%.2f m",
- baseline.scan_period_s * 1000.0, variant.scan_period_s * 1000.0,
- baseline.objectives_passed ? "YES" : "NO",
- variant.objectives_passed ? "YES" : "NO",
- baseline.score.elapsed_s, variant.score.elapsed_s,
- baseline.score.collision_steps, variant.score.collision_steps,
- baseline.score.min_clearance_m, variant.score.min_clearance_m);
- y = draw_wrapped_text(comparison, x + 34, y, panel_width - 68, 14, 4,
- kText) + 8.0f;
- char events[320];
- std::snprintf(events, sizeof(events),
- "events scan %.2f/%.2f s | brake %.2f/%.2f s | stable %.2f/%.2f s",
- baseline.first_scan.stamp_s, variant.first_scan.stamp_s,
- baseline.first_brake.stamp_s, variant.first_brake.stamp_s,
- baseline.stable_stop.stamp_s, variant.stable_stop.stamp_s);
- y = draw_wrapped_text(events, x + 34, y, panel_width - 68, 14, 4,
- kText) + 6.0f;
- char digests[320];
- std::snprintf(digests, sizeof(digests),
- "config %08llx/%08llx command %08llx/%08llx",
- static_cast<unsigned long long>(baseline.config_digest & 0xffffffffULL),
- static_cast<unsigned long long>(variant.config_digest & 0xffffffffULL),
- static_cast<unsigned long long>(baseline.command_digest & 0xffffffffULL),
- static_cast<unsigned long long>(variant.command_digest & 0xffffffffULL));
- y = draw_wrapped_text(digests, x + 34, y, panel_width - 68, 13, 4,
- kMuted) + 8.0f;
- } else if (experiment_ui->state == ExperimentRunState::kFailed) {
- y = draw_wrapped_text("Experiment failed: " + experiment_ui->error,
- x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
- } else {
- char invitation[256];
+ if (!comparison_complete || !experiment_ui->variant.recorded) {
+ char baseline_line[320];
+ std::snprintf(baseline_line, sizeof(baseline_line),
+ g_zh_cn
+ ? "基线 LiDAR %.0f ms　时间 %.2f s　碰撞 %zu　最小净空 %.3f m"
+ : "Baseline LiDAR %.0f ms | time %.2f s | collisions %zu | clearance %.3f m",
+ baseline.scan_period_s * 1000.0, baseline.score.elapsed_s,
+ baseline.score.collision_steps, baseline.score.min_clearance_m);
+ y = draw_wrapped_text(baseline_line, x + 34, y,
+ panel_width - 68, 14, 4, kText) + 7.0f;
+ char invitation[320];
  std::snprintf(invitation, sizeof(invitation),
- "%s Change only %s to %.3f s; all seeds stay fixed.",
- experiment.title.c_str(), experiment.controlled_variable.c_str(),
- experiment.variant_value);
- y = draw_wrapped_text(invitation, x + 34, y, panel_width - 68, 14, 4,
- kMuted) + 8.0f;
+ g_zh_cn
+ ? "下一次运行只把 %s 改为 %.0f ms；场景、机器人、初始状态和随机种子全部重建为相同值。"
+ : "The next visible run changes only %s to %.0f ms. World, robot, initial state, and seeds are rebuilt identically.",
+ experiment.controlled_variable.c_str(),
+ experiment.variant_value * 1000.0);
+ y = draw_wrapped_text(invitation, x + 34, y,
+ panel_width - 68, 14, 4, kMuted) + 8.0f;
+ } else {
+ const auto& variant = experiment_ui->variant;
+ const double elapsed_delta_s =
+ variant.score.elapsed_s - baseline.score.elapsed_s;
+ const double clearance_delta_m =
+ variant.score.min_clearance_m - baseline.score.min_clearance_m;
+ char comparison[384];
+ std::snprintf(comparison, sizeof(comparison),
+ g_zh_cn
+ ? "基线 %.0f ms：%.2f s / 净空 %.3f m / 碰撞 %zu\n变体 %.0f ms：%.2f s / 净空 %.3f m / 碰撞 %zu"
+ : "Baseline %.0f ms: %.2f s / %.3f m clearance / %zu collisions\nVariant %.0f ms: %.2f s / %.3f m clearance / %zu collisions",
+ baseline.scan_period_s * 1000.0, baseline.score.elapsed_s,
+ baseline.score.min_clearance_m, baseline.score.collision_steps,
+ variant.scan_period_s * 1000.0, variant.score.elapsed_s,
+ variant.score.min_clearance_m, variant.score.collision_steps);
+ y = draw_wrapped_text(comparison, x + 34, y,
+ panel_width - 68, 14, 4, kText) + 7.0f;
+ char delta[256];
+ std::snprintf(delta, sizeof(delta),
+ g_zh_cn ? "实际差值　时间 %+.2f s　最小净空 %+.3f m"
+ : "Measured delta | time %+.2f s | minimum clearance %+.3f m",
+ elapsed_delta_s, clearance_delta_m);
+ y = draw_wrapped_text(delta, x + 34, y,
+ panel_width - 68, 15, 4,
+ baseline.safe() && variant.safe() ? kCyan : kRed) + 8.0f;
  }
  }
  if (!review_keyframes.empty()) {
@@ -1570,11 +1643,17 @@ action_error,
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
  const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
- draw_ui_text(prediction_supported
- ? tr("YOUR PREDICTION: SUPPORTED BY THIS RUN", "你的预测：得到本局证据支持")
+ const bool prediction_waits_for_variant =
+ !experience.experiments.empty() && !comparison_complete;
+ draw_ui_text(prediction_waits_for_variant
+ ? tr("YOUR PREDICTION IS LOCKED UNTIL BOTH RUNS FINISH",
+ "你的预测已锁定，完成两次运行后验证")
+ : prediction_supported
+ ? tr("YOUR PREDICTION: SUPPORTED BY BOTH RUNS",
+ "你的预测：得到两次运行的证据支持")
  : tr("YOUR PREDICTION: REVISE", "你的预测：需要修正"),
  static_cast<int>(x + 34), static_cast<int>(y), 15,
- prediction_supported ? kCyan : kAmber);
+ !prediction_waits_for_variant && prediction_supported ? kCyan : kAmber);
  y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
  panel_width - 68, 16, 5, kText) + 13.0f;
  }
@@ -1588,15 +1667,14 @@ action_error,
  y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
  kText) + 6.0f;
  }
- if (!experience.experiments.empty() && experiment_ui != nullptr) {
+ if (!experience.experiments.empty() && experiment_ui != nullptr &&
+ experiment_ui->baseline.recorded && !comparison_complete) {
  const Rectangle experiment_button{x + 136.0f, y0 + panel_height - 72.0f,
    158.0f, 34.0f};
  const bool can_run = actions_enabled &&
- experiment_ui->state != ExperimentRunState::kRunning;
+ run_kind == ExperienceRunKind::kBaseline;
   draw_panel_button(experiment_button,
-   experiment_ui->state == ExperimentRunState::kRunning
- ? tr("RUNNING A/B...", "正在运行 A/B……")
- : tr("RUN CONTROLLED A/B", "开始受控 A/B"),
+ tr("RUN VISIBLE VARIANT", "可视运行慢扫描"),
    true, kAmber, kText, can_run);
   if (hit_regions != nullptr && can_run) {
    hit_regions->primary = experiment_button;
@@ -1613,7 +1691,11 @@ action_error,
  if (!experience.next_experience_path.empty()) {
  const Rectangle next_chapter_button{
  x + 434.0f, y0 + panel_height - 72.0f, 252.0f, 34.0f};
- const bool can_advance = actions_enabled && safe;
+ const bool comparison_required = !experience.experiments.empty();
+ const bool comparison_safe = experiment_ui != nullptr &&
+ experiment_ui->baseline.safe() && experiment_ui->variant.safe();
+ const bool can_advance = actions_enabled && safe &&
+ (!comparison_required || (comparison_complete && comparison_safe));
  draw_panel_button(next_chapter_button,
  can_advance ? tr("NEXT CHAPTER", "下一章")
  : tr("NEXT: PASS SAFETY GATE", "下一章：通过安全验收后解锁"),
@@ -2924,6 +3006,10 @@ static lost_signal::sim::viewer::ExperienceFlow::Config experience_flow_config(
  for (const auto& stop : experience.walkaround) {
  config.required_walkaround.push_back(stop.required);
  }
+ if (!experience.experiments.empty()) {
+ config.variant_time_limit_steps = static_cast<std::uint64_t>(
+ experience.experiments.front().step_budget);
+ }
  return config;
 }
 
@@ -3138,7 +3224,6 @@ int main(int argc, char** argv) {
  std::vector<ReviewKeyframe> review_keyframes;
  int selected_review_keyframe = 0;
  ExperimentUiState experiment_ui;
- std::future<ExperimentAsyncResult> experiment_future;
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
@@ -3236,12 +3321,14 @@ int main(int argc, char** argv) {
  SurfaceTraceSystem surface_traces;
  std::optional<std::size_t> effects_episode_cursor;
  std::string experience_action_error;
- const auto reset_experience_presentation = [&]() {
+ const auto reset_experience_presentation = [&](bool reset_progress = true) {
+ if (reset_progress) {
  experience_flow = std::make_unique<ExperienceFlow>(
  experience_flow_config(experience));
+ experiment_ui = ExperimentUiState{};
+ }
  review_keyframes.clear();
  selected_review_keyframe = 0;
- experiment_ui = ExperimentUiState{};
  experience_hit_regions.clear();
  motion_particles.clear();
  surface_traces.clear();
@@ -3296,7 +3383,7 @@ int main(int argc, char** argv) {
  };
  const auto retry_experience = [&]() {
  if (!experience_loaded || runtime_config.map_path.empty() ||
- experiment_ui.state == ExperimentRunState::kRunning) {
+ experience_flow->phase() != ExperiencePhase::kDebrief) {
  return false;
  }
  sim::experiment::ExperienceRuntime rebuilt;
@@ -3313,14 +3400,54 @@ int main(int argc, char** argv) {
  sim_config = std::move(rebuilt.sim_config);
  session->lidar_mount(
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
+ if (!experience_flow->retry_current(0)) return false;
+ if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
+ experiment_ui.baseline = {};
+ } else {
+ experiment_ui.variant = {};
+ }
  experience_action_error.clear();
- reset_experience_presentation();
+ reset_experience_presentation(false);
+ paused = false;
+ return true;
+ };
+
+ const auto start_visible_variant = [&]() {
+ if (!experience_loaded || experience.experiments.empty() ||
+ experience_flow->phase() != ExperiencePhase::kDebrief ||
+ experience_flow->run_kind() != ExperienceRunKind::kBaseline ||
+ !experiment_ui.baseline.recorded) {
+ return false;
+ }
+ const auto& definition = experience.experiments.front();
+ auto variant_config = runtime_config;
+ variant_config.scan_period_s_override = definition.variant_value;
+ sim::experiment::ExperienceRuntime rebuilt;
+ std::string runtime_error;
+ if (!sim::experiment::build_experience_runtime(
+ variant_config, rebuilt, &runtime_error)) {
+ experience_action_error = runtime_error;
+ return false;
+ }
+ session = std::move(rebuilt.session);
+ robot_config = std::move(rebuilt.robot_config);
+ sim_config = std::move(rebuilt.sim_config);
+ runtime_config = std::move(variant_config);
+ session->lidar_mount(
+ session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
+ if (!experience_flow->start_variant(0)) return false;
+ experiment_ui.variant = {};
+ experience_action_error.clear();
+ reset_experience_presentation(false);
+ paused = false;
  return true;
  };
 
  const auto advance_experience = [&]() {
  if (!experience_loaded || experience.next_experience_path.empty() ||
- experiment_ui.state == ExperimentRunState::kRunning ||
+ (!experience.experiments.empty() &&
+ (!experience_flow->comparison_complete() ||
+ !experiment_ui.baseline.safe() || !experiment_ui.variant.safe())) ||
  !session->objectives_done() || !session->objectives_passed() ||
  session->score().collision_steps != 0) {
  return false;
@@ -3391,20 +3518,6 @@ int main(int argc, char** argv) {
  const double presentation_wall_dt_s = std::min(
  playback_wall_dt_s, 0.25);
  previous_wall_s = wall_now_s;
- if (experiment_future.valid() &&
- experiment_future.wait_for(std::chrono::seconds(0)) ==
- std::future_status::ready) {
- try {
- const ExperimentAsyncResult result = experiment_future.get();
- experiment_ui.comparison = result.comparison;
- experiment_ui.error = result.error;
- experiment_ui.state = result.ok ? ExperimentRunState::kComplete
- : ExperimentRunState::kFailed;
- } catch (const std::exception& exception) {
- experiment_ui.state = ExperimentRunState::kFailed;
- experiment_ui.error = exception.what();
- }
- }
     view.set_screen(GetScreenWidth(), GetScreenHeight());
     if (IsKeyPressed(KEY_V)) view3d = !view3d;
     // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
@@ -3428,6 +3541,16 @@ int main(int argc, char** argv) {
  pointer, experience_hit_regions.primary))) {
  experience_flow->continue_to_prediction();
  } else {
+ if (clicked) {
+ for (std::size_t index = 0;
+ index < experience_hit_regions.walkaround.size(); ++index) {
+ if (CheckCollisionPointRec(
+ pointer, experience_hit_regions.walkaround[index])) {
+ experience_flow->inspect(index);
+ break;
+ }
+ }
+ }
  if (IsKeyPressed(KEY_RIGHT) ||
  (clicked && CheckCollisionPointRec(
  pointer, experience_hit_regions.next))) {
@@ -3479,20 +3602,8 @@ int main(int argc, char** argv) {
  const bool requested_experiment = IsKeyPressed(KEY_A) ||
  (clicked && CheckCollisionPointRec(
  pointer, experience_hit_regions.primary));
- if (requested_experiment && !experience.experiments.empty() &&
- experiment_ui.state != ExperimentRunState::kRunning) {
- const auto definition = experience.experiments.front();
- const std::string manifest_path = experience_path;
- experiment_ui = ExperimentUiState{};
- experiment_ui.state = ExperimentRunState::kRunning;
- experiment_future = std::async(std::launch::async,
- [manifest_path, definition]() {
- ExperimentAsyncResult result;
- result.ok = lost_signal::sim::experiment::run_scan_period_comparison(
- manifest_path, definition.variant_value, definition.step_budget,
- result.comparison, &result.error);
- return result;
- });
+ if (requested_experiment && start_visible_variant()) {
+ continue;
  }
  }
  }
@@ -3619,6 +3730,24 @@ int main(int argc, char** argv) {
  if (!playback.step_due(work_ms)) break;
  const auto step_begin = std::chrono::steady_clock::now();
         session->step_once();
+ // Advance SIM-owned presentation effects before closing this transition's
+ // work sample. Turbo may execute many transitions between draws; consuming
+ // each completed record here preserves impacts and single-wheel slip while
+ // keeping particle, trace, and audio work inside the same bounded UI budget.
+ const auto& live_steps = session->episode().steps();
+ if (!live_steps.empty()) {
+ const std::size_t live_index = live_steps.size() - 1;
+ const sim::viewer::Frame effect_frame = sim::viewer::build_frame(
+ session->setup_world(), live_steps.back(), {}, {}, {},
+ session_lidar_mount);
+ motion_particles.advance(effect_frame);
+ surface_traces.advance(effect_frame);
+ const bool live_audio = !experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning;
+ viewer_audio.update(effect_frame, false, false,
+ playback.turbo() || !live_audio);
+ effects_episode_cursor = live_index;
+ }
  const double step_ms = std::chrono::duration<double, std::milli>(
  std::chrono::steady_clock::now() - step_begin).count();
  playback.on_step(step_ms);
@@ -3665,6 +3794,26 @@ int main(int argc, char** argv) {
  review_keyframes = sim::viewer::extract_review_keyframes(
  session->episode(), review_config, std::move(review_outcome));
  selected_review_keyframe = 0;
+ for (std::size_t index = 0; index < review_keyframes.size(); ++index) {
+ if (review_keyframes[index].kind ==
+ sim::viewer::ReviewKeyframeKind::kRobotDone) {
+ selected_review_keyframe = static_cast<int>(index);
+ break;
+ }
+ }
+ VisibleRunSummary run_summary;
+ run_summary.recorded = true;
+ run_summary.timed_out = experience_flow->timed_out();
+ run_summary.objectives_done = session->objectives_done();
+ run_summary.objectives_passed = session->objectives_passed();
+ run_summary.scan_period_s = sim_config.has_value()
+ ? sim_config->scan_period_s : 0.0;
+ run_summary.score = terminal_score;
+ if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
+ experiment_ui.baseline = run_summary;
+ } else {
+ experiment_ui.variant = run_summary;
+ }
  if (!session->episode().steps().empty()) {
  const auto terminal_frame = sim::viewer::build_frame(
  session->setup_world(), session->episode().steps().back(), {}, {}, {},
@@ -3727,13 +3876,17 @@ int main(int argc, char** argv) {
  draw_frame_2d(preview, view, false, false, false);
  }
  draw_experience_overlay(experience, experience_flow->phase(),
+ experience_flow->run_kind(), experience_flow->comparison_complete(),
+ sim_config.has_value() ? sim_config->scan_period_s : 0.0,
  experience_flow->selected_choice(),
  static_cast<int>(experience_flow->walkaround_index()),
  experience_flow->walkaround_visited_count(),
+ experience_flow->required_walkaround_visited_count(),
+ experience_flow->required_walkaround_count(),
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
  false, false, experience_action_error,
- experiment_ui.state != ExperimentRunState::kRunning,
+ true,
  &experience_hit_regions);
 
  EndDrawing();
@@ -3915,18 +4068,23 @@ int main(int argc, char** argv) {
  selected_choice < static_cast<int>(experience.choices.size())) {
  prediction_supported = lost_signal::sim::viewer::choice_supported(
  experience.choices[static_cast<std::size_t>(selected_choice)],
- experience_evidence(*session, experience_flow->timed_out()));
+ experience_evidence(*session, experience_flow->timed_out(), experience,
+ experiment_ui));
  }
  draw_experience_overlay(experience, experience_flow->phase(),
+ experience_flow->run_kind(), experience_flow->comparison_complete(),
+ sim_config.has_value() ? sim_config->scan_period_s : 0.0,
  selected_choice,
  static_cast<int>(experience_flow->walkaround_index()),
  experience_flow->walkaround_visited_count(),
+ experience_flow->required_walkaround_visited_count(),
+ experience_flow->required_walkaround_count(),
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
  experience_flow->timed_out(), prediction_supported,
  experience_action_error,
- experiment_ui.state != ExperimentRunState::kRunning,
+ true,
  &experience_hit_regions);
  }
     EndDrawing();

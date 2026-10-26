@@ -96,10 +96,29 @@ bool parse_evidence_rule(const std::string& text,
  rule = ExperienceEvidenceRule::kSimRejected;
  } else if (text == "incomplete") {
  rule = ExperienceEvidenceRule::kIncomplete;
+  } else if (text == "comparison_tradeoff") {
+    rule = ExperienceEvidenceRule::kComparisonTradeoff;
+  } else if (text == "comparison_equivalent") {
+    rule = ExperienceEvidenceRule::kComparisonEquivalent;
+  } else if (text == "comparison_unsafe") {
+    rule = ExperienceEvidenceRule::kComparisonUnsafe;
  } else {
  return false;
  }
  return true;
+}
+
+bool take_non_negative_number(const Json& object, const char* key,
+                              double& value, std::string& error) {
+  const Json* node = object.find(key);
+  if (node == nullptr || !node->is_num() ||
+      !std::isfinite(node->as_num()) || node->as_num() < 0.0) {
+    error = std::string("experience '") + key +
+            "' must be a finite non-negative number";
+    return false;
+  }
+  value = node->as_num();
+  return true;
 }
 
 } // namespace
@@ -273,6 +292,20 @@ bool load_experience_manifest(const std::string& path,
  }
  experiment.variant_value = variant->as_num();
  experiment.step_budget = static_cast<long>(budget->as_num());
+    if (!take_non_negative_number(
+            node, "minimum_elapsed_increase_s",
+            experiment.minimum_elapsed_increase_s, out_error) ||
+        !take_non_negative_number(
+            node, "minimum_clearance_loss_m",
+            experiment.minimum_clearance_loss_m, out_error) ||
+        !take_non_negative_number(
+            node, "equivalent_elapsed_tolerance_s",
+            experiment.equivalent_elapsed_tolerance_s, out_error) ||
+        !take_non_negative_number(
+            node, "equivalent_clearance_tolerance_m",
+            experiment.equivalent_clearance_tolerance_m, out_error)) {
+      return false;
+    }
  parsed.experiments.push_back(std::move(experiment));
  }
  }

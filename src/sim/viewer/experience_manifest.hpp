@@ -11,6 +11,9 @@ enum class ExperienceEvidenceRule {
  kIndependentAcceptance,
  kSimRejected,
  kIncomplete,
+ kComparisonTradeoff,
+ kComparisonEquivalent,
+ kComparisonUnsafe,
 };
 
 struct ExperienceChoice {
@@ -36,6 +39,13 @@ struct ExperienceExperiment {
  std::string controlled_variable;
  double variant_value = 0.0;
  long step_budget = 0;
+ // Presentation-only evidence classifier. These authored tolerances decide
+ // whether two completed runs demonstrate a meaningful educational effect;
+ // they never tune ROBOT or SIM acceptance.
+ double minimum_elapsed_increase_s = 0.0;
+ double minimum_clearance_loss_m = 0.0;
+ double equivalent_elapsed_tolerance_s = 0.0;
+ double equivalent_clearance_tolerance_m = 0.0;
 };
 
 struct ExperienceManifest {

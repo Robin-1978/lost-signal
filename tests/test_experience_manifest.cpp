@@ -32,7 +32,7 @@ int main() {
  assert(experience.time_limit_steps == 1200);
  assert(experience.choices.size() == 3);
  assert(experience.choices.front().evidence_rule ==
- lost_signal::sim::viewer::ExperienceEvidenceRule::kIndependentAcceptance);
+ lost_signal::sim::viewer::ExperienceEvidenceRule::kComparisonTradeoff);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
  assert(experience.walkaround.front().required);
@@ -43,6 +43,11 @@ int main() {
  "lidar.scan_period_s");
  assert(experience.experiments.front().variant_value == 0.10);
  assert(experience.experiments.front().step_budget == 1200);
+ assert(experience.experiments.front().minimum_elapsed_increase_s == 1.0);
+ assert(experience.experiments.front().minimum_clearance_loss_m == 0.05);
+ assert(experience.experiments.front().equivalent_elapsed_tolerance_s == 0.5);
+ assert(experience.experiments.front().equivalent_clearance_tolerance_m ==
+ 0.02);
  int correct = 0;
  for (const auto& choice : experience.choices) {
  if (choice.correct) ++correct;

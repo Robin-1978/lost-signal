@@ -30,15 +30,19 @@
  "title": "WHAT CHANGES WHEN LIDAR UPDATES FIVE TIMES SLOWER?",
  "controlled_variable": "lidar.scan_period_s",
  "variant_value": 0.10,
- "step_budget": 1200
+ "step_budget": 1200,
+ "minimum_elapsed_increase_s": 1.0,
+ "minimum_clearance_loss_m": 0.05,
+ "equivalent_elapsed_tolerance_s": 0.5,
+ "equivalent_clearance_tolerance_m": 0.02
  }
  ],
  "prediction": {
- "question": "What must agree before this precise docking experiment is accepted?",
+ "question": "What will change when LiDAR updates every 100 ms instead of every 20 ms?",
  "choices": [
- {"choice_id":"independent_agreement","label":"ROBOT reports arrival, and SIM independently accepts physical pose and rest","explanation":"The deployable robot decides from measurements and estimates; the simulator separately checks the physical outcome.","correct":true,"evidence_rule":"independent_acceptance"},
- {"choice_id":"sim_rejects","label":"ROBOT reports arrival, but SIM rejects the physical pose or stable stop","explanation":"This can happen when estimate-side completion and the physical outcome disagree. The run evidence decides whether it happened.","correct":false,"evidence_rule":"sim_rejected"},
- {"choice_id":"incomplete","label":"The experiment time limit expires before ROBOT reports arrival","explanation":"A timeout is a real incomplete result. The game pauses and explains the recorded evidence instead of forcing success.","correct":false,"evidence_rule":"incomplete"}
+ {"choice_id":"safe_tradeoff","label":"Both runs stay safe, but slower scans take longer and leave less clearance","explanation":"The two visible runs hold the world, robot, initial state, and random seeds fixed. Their recorded time and physical clearance decide whether this tradeoff occurred.","correct":true,"evidence_rule":"comparison_tradeoff"},
+ {"choice_id":"equivalent","label":"The two runs finish with effectively the same time and clearance","explanation":"Equivalent means both measured differences remain inside the experiment's declared tolerances.","correct":false,"evidence_rule":"comparison_equivalent"},
+ {"choice_id":"unsafe_variant","label":"The slower scan run collides or fails the safety gate","explanation":"Collision, timeout, incomplete objectives, or rejected physical arrival makes the slower run unsafe.","correct":false,"evidence_rule":"comparison_unsafe"}
  ]
  },
  "running_prompt": "Watch measurement, estimate, and decision as separate ROBOT evidence. Press L for estimated LiDAR projection, E for estimate, and T for deterministic Turbo.",
