@@ -3477,6 +3477,9 @@ int main(int argc, char** argv) {
  if (scene_path.empty()) scene_path = experience.scene_path;
  std::fprintf(stderr, "experience: %s\n", experience.experience_id.c_str());
  }
+ if (assets_path.empty() && std::filesystem::is_directory("assets")) {
+ assets_path = "assets";
+ }
  std::optional<robot::platform::RobotConfig> robot_config;
  std::optional<sim::eval::SimConfig> sim_config;
   std::unique_ptr<sim::scenario::ScenarioSession> session;
@@ -3485,6 +3488,11 @@ int main(int argc, char** argv) {
  runtime_config.robot_path = robot_path;
  runtime_config.sim_path = sim_path;
  runtime_config.map_path = map_path;
+ runtime_config.scene_path = scene_path;
+ if (!assets_path.empty()) {
+ runtime_config.asset_manifest_path =
+ (std::filesystem::path(assets_path) / "models/manifest.json").string();
+ }
  if (experience_loaded) runtime_config.objectives = experience.objectives;
   if (!map_path.empty()) {
  sim::experiment::ExperienceRuntime runtime;
@@ -3562,8 +3570,6 @@ int main(int argc, char** argv) {
  ? tr("Robot Simu - First Contact", "Robot Simu - 初次接触")
  : tr("Robot Simu - Simulation Lab", "Robot Simu - 仿真实验室"));
  load_ui_font(experience_loaded ? &experience : nullptr);
- if (assets_path.empty() && std::filesystem::is_directory("assets"))
- assets_path = "assets";
  sim::viewer::ViewerAudio viewer_audio(assets_path, !mute_audio);
  VisualAssets visual_assets;
  load_visual_assets(visual_assets, assets_path,
@@ -3873,6 +3879,8 @@ int main(int argc, char** argv) {
  candidate_config.robot_path = candidate_experience.robot_path;
  candidate_config.sim_path = candidate_experience.sim_path;
  candidate_config.map_path = candidate_experience.map_path;
+ candidate_config.scene_path = candidate_experience.scene_path;
+ candidate_config.asset_manifest_path = runtime_config.asset_manifest_path;
  candidate_config.objectives = candidate_experience.objectives;
  sim::experiment::ExperienceRuntime candidate_runtime;
  if (!sim::experiment::build_experience_runtime(

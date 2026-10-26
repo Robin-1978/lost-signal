@@ -317,7 +317,19 @@ add_library(lost_signal_sim_experiment STATIC
  src/sim/experiment/episode_pair.cpp
  src/sim/experiment/experience_runtime.cpp
 )
-target_include_directories(lost_signal_sim_experiment PUBLIC src)
+set(LOST_SIGNAL_BUILD_REVISION_HEADER
+ ${CMAKE_CURRENT_BINARY_DIR}/generated/lost_signal/build_revision.hpp)
+add_custom_target(lost_signal_build_revision
+ COMMAND ${CMAKE_COMMAND}
+ -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+ -DOUTPUT_FILE=${LOST_SIGNAL_BUILD_REVISION_HEADER}
+ -P ${CMAKE_SOURCE_DIR}/cmake/write_build_revision.cmake
+ BYPRODUCTS ${LOST_SIGNAL_BUILD_REVISION_HEADER}
+ VERBATIM)
+add_dependencies(lost_signal_sim_experiment lost_signal_build_revision)
+target_include_directories(lost_signal_sim_experiment
+ PUBLIC src
+ PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(lost_signal_sim_experiment PUBLIC
  lost_signal_sim_scenario lost_signal_sim_viewer)
 

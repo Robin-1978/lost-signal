@@ -485,7 +485,7 @@ A/B 同时是玩法核心和严肃实验能力：
 - 随机实验运行 seed matrix，报告成功率、分位数与置信区间；单 seed 只证明确定性复现，不能证明普遍优势。
 - planner 对比优先复用完全相同的 observation replay；传感器或物理参数对比必须重新运行 physics，并在报告中明确证据类型不同。
 
-当前实现已在启动下一次 runtime 前深拷贝完整 baseline/variant Episode、score、任务状态、受控变量和值，并用 Episode 完整性校验生成 SIM validity；安全、任务和实验裁决已分离。每次完整重建还会对实际读取的 robot、SIM、world、可选 actor sidecar 和有序目标计算同一执行输入 digest；唯一 typed override 不进入该 digest，而是单独记录变量和值。两次 digest 不一致时 Experiment verdict 直接失败。Debrief 已支持按 acquisition/simulation time 的最近记录同步；选择关键帧时优先对齐两局的同类因果事件，包括首次有效观测、制动、稳定停车、ROBOT Done 和 SIM Accepted/Rejected，再以明确标注的 `BASELINE SIM / SAME EVENT` 真值影子叠加。运行阶段不显示该影子。A/B 导出与 scene/asset/code revision 的补充 digest 仍属于下一步，不能把当前能力称作完整专业实验包。
+当前实现已在启动下一次 runtime 前深拷贝完整 baseline/variant Episode、score、任务状态、受控变量和值，并用 Episode 完整性校验生成 SIM validity；安全、任务和实验裁决已分离。每次完整重建还会对实际读取的 robot、SIM、world、可选 actor sidecar、scene、资产 manifest、有序目标和实际编译代码 revision 计算同一执行输入 digest；唯一 typed override 不进入该 digest，而是单独记录变量和值。两次 digest 不一致时 Experiment verdict 直接失败，构建 revision 会标记 dirty 源码。Debrief 已支持按 acquisition/simulation time 的最近记录同步；选择关键帧时优先对齐两局的同类因果事件，包括首次有效观测、制动、稳定停车、ROBOT Done 和 SIM Accepted/Rejected，再以明确标注的 `BASELINE SIM / SAME EVENT` 真值影子叠加。运行阶段不显示该影子。A/B 实验包导出仍属于下一步，完成前不能把当前能力称作完整专业实验包。
 
 暂停冻结 sim time，相机仍可操作。事件跳转必须继续执行完整仿真并从有上限的 pre-roll 回放，不能先读取未来 actor 脚本。1× 用于第一次观察，2×–8× 用于重复实验，Turbo/headless 用于长任务与 benchmark；倍率只能改变墙钟调度和表现层 LOD。
 

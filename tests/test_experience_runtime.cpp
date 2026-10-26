@@ -1,4 +1,6 @@
 #include <cassert>
+#include <cstdio>
+#include <fstream>
 #include <string>
 
 #include "sim/experiment/experience_runtime.hpp"
@@ -17,6 +19,9 @@ int main() {
  config.robot_path = experience.robot_path;
  config.sim_path = experience.sim_path;
  config.map_path = experience.map_path;
+ config.scene_path = experience.scene_path;
+ config.asset_manifest_path =
+ std::string(TEST_SOURCE_DIR) + "/assets/models/manifest.json";
  config.objectives = experience.objectives;
  sim::experiment::ExperienceRuntime first;
  sim::experiment::ExperienceRuntime retry;
@@ -30,6 +35,23 @@ int main() {
  assert(retry.session->setup_world().truth().step == 0);
  assert(first.invariant_digest != 0);
  assert(first.invariant_digest == retry.invariant_digest);
+ assert(!first.code_revision.empty());
+ assert(first.code_revision == retry.code_revision);
+
+ const std::string changed_scene_path =
+ "/tmp/lost_signal_experience_changed_scene.json";
+ {
+ std::ofstream changed_scene(changed_scene_path,
+ std::ios::binary | std::ios::trunc);
+ changed_scene << "{\"scene_id\":\"changed-for-digest-test\"}\n";
+ }
+ auto changed_scene_config = config;
+ changed_scene_config.scene_path = changed_scene_path;
+ sim::experiment::ExperienceRuntime changed_scene;
+ assert(sim::experiment::build_experience_runtime(
+ changed_scene_config, changed_scene, &error));
+ assert(changed_scene.invariant_digest != first.invariant_digest);
+ std::remove(changed_scene_path.c_str());
 
  for (std::uint64_t transition = 0;
  transition < experience.time_limit_steps &&

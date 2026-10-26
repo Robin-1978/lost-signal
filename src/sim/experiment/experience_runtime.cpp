@@ -6,6 +6,7 @@
 #include <fstream>
 #include <utility>
 
+#include "lost_signal/build_revision.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/world_io.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
@@ -68,14 +69,19 @@ bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
  const ExperienceRuntime& runtime, std::uint64_t& digest,
  std::string& error) {
  digest = kFnvOffset;
- hash_string(digest, "lost-signal-experiment-invariant/1");
+ hash_string(digest, "lost-signal-experiment-invariant/2");
  if (!hash_file(digest, "robot", runtime.used_robot_path, false, error) ||
  !hash_file(digest, "sim", runtime.used_sim_path, false, error) ||
  !hash_file(digest, "world", config.map_path, false, error) ||
  !hash_file(digest, "actors", actor_sidecar_path(config.map_path), true,
+ error) ||
+ !hash_file(digest, "scene", config.scene_path, true, error) ||
+ !hash_file(digest, "asset_manifest", config.asset_manifest_path, true,
  error)) {
  return false;
  }
+ hash_string(digest, "code_revision");
+ hash_string(digest, runtime.code_revision);
  hash_string(digest, "objectives");
  for (const auto& objective : config.objectives) {
  hash_string(digest, objective);
@@ -101,6 +107,7 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  out_error.clear();
 
  ExperienceRuntime built;
+ built.code_revision = LOST_SIGNAL_BUILD_REVISION;
  std::string config_error;
  built.robot_config = robot::platform::load_default_robot_config(
  config.robot_path, &built.used_robot_path, &config_error);
