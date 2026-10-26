@@ -266,6 +266,34 @@ int main() {
  assert(counting.begin_calls == 2);
  }
 
+ // A same-goal refresh publishes atomically. If the replacement fails from
+ // a temporarily inflated start cell, keep the last validated route so the
+ // local planner and independent safety layers can execute a safe escape;
+ // repeated force requests do not restart the same failed search until the
+ // measured start changes cells.
+ {
+ IncrementalCountingPlanner counting;
+ counting.advances_to_finish = 1;
+ RoutePlanningPipeline pipeline;
+ Route active;
+ auto map = make_map(20, 20, 0.5, -5.0, -5.0);
+ const RoutePoint goal{2.0, 0.0, 0.0};
+ assert(pipeline.advance(
+ counting, at(0.0, 0.0), goal, true, map, false, active));
+ assert(active.valid && counting.begin_calls == 1);
+
+ counting.fail = true;
+ assert(!pipeline.advance(
+ counting, at(0.1, 0.0), goal, true, map, true, active));
+ assert(active.valid && pipeline.failed() && counting.begin_calls == 2);
+ assert(!pipeline.advance(
+ counting, at(0.1, 0.0), goal, true, map, true, active));
+ assert(active.valid && counting.begin_calls == 2);
+ assert(!pipeline.advance(
+ counting, at(0.6, 0.0), goal, true, map, true, active));
+ assert(active.valid && counting.begin_calls == 3);
+ }
+
   // Wall with a gap: route threads the gap, never through occupied cells.
   {
     auto map = make_map(40, 40, 0.5, -10.0, -10.0);

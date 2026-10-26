@@ -270,6 +270,17 @@ int main() {
     assert(std::hypot(tr.x_m - bx, tr.y_m - by) < 0.1);
     assert(std::abs(core::wrap_angle(tr.yaw_rad - byaw)) < 0.1);
     assert(session.track_corrections() == 1);
+ // The same nonzero correction has no surveyed-frame authority in mapless
+ // mode. One view remains pending even though its scan score is acceptable;
+ // an independent, transform-consistent view is required before fusion.
+ SlamSession mapless(cfg);
+ mapless.ingest(kf, kobs);
+ const SlamTrackResult one_mapless_view = mapless.track(prior, obs, true);
+ assert(one_mapless_view.attempted);
+ assert(!one_mapless_view.accepted);
+ assert(one_mapless_view.diagnostic.find("needs another view") !=
+ std::string::npos);
+ assert(mapless.track_corrections() == 0);
     // Empty scan: no geometric returns, must reject, never snap.
     iface::ObservationFrame blank = obs;
     blank.ranges_m.assign(72, 10.0f);

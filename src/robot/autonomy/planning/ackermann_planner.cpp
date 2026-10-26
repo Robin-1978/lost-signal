@@ -233,6 +233,11 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  if (expansion_budget == 0) return {GlobalPlanStatus::kPending, {}};
 
  SearchState& state = *search_;
+ const auto fail = [&](std::string diagnostic) {
+ search_.reset();
+ return GlobalPlanProgress{
+ GlobalPlanStatus::kFailed, {}, std::move(diagnostic)};
+ };
  const iface::MapSnapshot& map = *state.map;
  const auto grid = [&](double x, double y, int& gx, int& gy) {
  gx = static_cast<int>(std::floor((x - map.origin_x_m) /
@@ -366,13 +371,13 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.goal};
  } else if (guide.status != GlobalPlanStatus::kSucceeded ||
  !guide.route.valid || guide.route.points.size() < 2) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail(guide.diagnostic.empty()
+ ? "2D guide search failed"
+ : "2D guide search failed: " + guide.diagnostic);
  }
  state.planning_map = guide_planner_.prepared_costmap(map);
  if (state.planning_map == nullptr) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("2D guide has no prepared costmap");
  }
  state.guide = std::move(guide.route);
  state.guide_remaining_m.assign(state.guide.points.size(), 0.0);
@@ -391,8 +396,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  if (!inside(sx, sy) || !inside(gx, gy) ||
  state.planning_map->lethal.is_blocked(state.start.x_m, state.start.y_m) ||
  state.planning_map->lethal.is_blocked(state.goal.x_m, state.goal.y_m)) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("start or goal is inside the inflated lethal map");
  }
 
  // Hybrid A* uses analytic expansions for simple pose connections before
@@ -427,8 +431,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.assembled.points = {{state.start.x_m, state.start.y_m,
  core::wrap_angle(state.start.yaw_rad), 1}};
  if (!begin_hybrid_segment()) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("cannot initialize first Hybrid-A* segment");
  }
  // Guide preparation and Hybrid-A* expansion have separate deterministic
  // budgets. Start fine refinement on the next decision cycle.
@@ -633,8 +636,14 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  return {GlobalPlanStatus::kPending, {}};
  }
  if (goal_node < 0) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ if (state.open.empty()) {
+ return fail("Hybrid-A* segment exhausted its reachable sparse states");
+ }
+ if (config_.max_expansions >= 0 &&
+ state.segment_expanded >= config_.max_expansions) {
+ return fail("Hybrid-A* segment reached its diagnostic expansion limit");
+ }
+ return fail("Hybrid-A* segment reached its diagnostic compute limit");
  }
 
  std::vector<SearchState::Node> path;
@@ -644,8 +653,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  }
  std::reverse(path.begin(), path.end());
  if (path.size() < 2) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("Hybrid-A* segment produced no motion primitive");
  }
  for (std::size_t index = 1; index < path.size(); ++index) {
  const auto& node = path[index];
@@ -660,8 +668,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  if (connector_distance > 1e-6) {
  if (!segment_is_free(last.x_m, last.y_m,
  state.segment_goal.x_m, state.segment_goal.y_m)) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("Hybrid-A* terminal connector intersects inflated geometry");
  }
  const double heading_delta = core::wrap_angle(
  state.segment_goal.yaw_rad - last.yaw_rad);
@@ -685,8 +692,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  const RoutePoint& from = state.assembled.points[index - 1];
  const RoutePoint& to = state.assembled.points[index];
  if (!segment_is_free(from.x_m, from.y_m, to.x_m, to.y_m)) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("assembled Hybrid-A* chord intersects inflated geometry");
  }
  }
 
@@ -695,8 +701,7 @@ GlobalPlanProgress AckermannPlanner::continue_plan(
  state.segment_start_gear = last.gear;
  state.segment_start_curvature = terminal_curvature;
  if (!begin_hybrid_segment()) {
- search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return fail("cannot initialize next Hybrid-A* segment");
  }
  return {GlobalPlanStatus::kPending, {}};
  }

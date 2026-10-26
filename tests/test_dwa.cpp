@@ -185,6 +185,30 @@ int main() {
  assert(p.best.yaw_rate_radps > 0.05);
  }
 
+ // Terminal pose authority is independent of the stateful route cursor.
+ // A slope or loop correction can put the base inside the final position
+ // envelope while progress still references an earlier segment whose yaw
+ // differs from the requested terminal yaw.
+ {
+ LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.05;
+ est.yaw_rad = -1.0;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {
+ {0.0, 0.0, -1.0, 0}, {2.0, 0.0, -1.0, 0},
+ {2.0, 2.0, -1.0, 0}, {0.0, 0.0, 0.0, 0}};
+ DwaPlanner planner;
+ const LocalPlan p = planner.plan(est, perc, m, route, limits);
+ assert(p.has_plan);
+ assert(p.best.yaw_rate_radps > 0.05);
+ }
+
  // DWA threads a gap: wall with a 2 m opening, goal straight through.
   {
     LocalMap m = make_map(100, 100, 0.1, -5.0, -5.0, 0);
@@ -853,10 +877,9 @@ int main() {
  }
 
  // Stateful terminal-heading capture prevents a differential base from
- // orbiting a goal while it settles yaw. Translation still follows the live
- // confidence-bounded position check: if estimate evidence moves outside the
- // entry circle, the base must reacquire instead of waiting forever for an
- // arrival policy that correctly refuses completion.
+ // orbiting a goal while it settles yaw. A small position drift does not
+ // interrupt an unfinished rotation; after yaw settles, a live position
+ // miss resumes translation. Leaving the raw envelope releases immediately.
  {
  LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
  EstimatedState est;
@@ -882,7 +905,14 @@ int main() {
  est.x_m = 1.80; // outside confidence entry, inside raw tolerance
  const LocalPlan latched = planner.plan(est, perc, m, route, limits);
  assert(latched.has_plan);
- assert(latched.best.forward_mps > 0.0);
+ assert(std::abs(latched.best.forward_mps) < 1e-9);
+ assert(latched.best.yaw_rate_radps < 0.0);
+
+ est.yaw_rad = 0.0; // final yaw settled, position still needs reacquisition
+ const LocalPlan position_reacquire = planner.plan(
+ est, perc, m, route, limits);
+ assert(position_reacquire.has_plan);
+ assert(position_reacquire.best.forward_mps > 0.0);
 
  planner.reset_tracking(); // same goal was replanned after a map correction
  const LocalPlan replanned = planner.plan(est, perc, m, route, limits);
@@ -963,6 +993,7 @@ int main() {
  route.points.back().y_m - est.y_m,
  route.points.back().x_m - est.x_m) - est.yaw_rad);
  assert(capture.has_plan && capture.moving_candidate_count > 0);
+ assert(std::abs(capture.best.forward_mps) < 1e-9);
  assert(capture.best.yaw_rate_radps > 0.0);
  assert(capture.best.route_heading_error_rad < initial_bearing_error);
  }

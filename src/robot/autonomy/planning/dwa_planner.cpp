@@ -329,6 +329,7 @@ DwaPlanner::DwaPlanner(DwaPlannerConfig config) : config_(config) {}
 void DwaPlanner::reset() {
  reset_tracking();
  terminal_position_latched_ = false;
+ terminal_heading_settled_ = false;
  terminal_identity_valid_ = false;
  terminal_identity_ = RoutePoint{};
 }
@@ -510,6 +511,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  terminal_identity_valid_ = true;
  terminal_identity_ = terminal;
  terminal_position_latched_ = false;
+ terminal_heading_settled_ = false;
  }
  const double terminal_distance_m = std::hypot(
  terminal.x_m - est.x_m, terminal.y_m - est.y_m);
@@ -530,20 +532,25 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  if (terminal_position_latched_) {
  if (terminal_distance_m > terminal_position_reset_tolerance_m) {
  terminal_position_latched_ = false;
+ terminal_heading_settled_ = false;
  }
  } else if (terminal_distance_m <= terminal_position_tolerance_m) {
  terminal_position_latched_ = true;
+ terminal_heading_settled_ = false;
  }
  const bool terminal_position_reached =
  terminal_distance_m <= terminal_position_tolerance_m;
- // The latch stabilizes terminal capture, but live confidence-bounded
- // position evidence still owns heading-mode authority. A loop closure can
- // move the map estimate outside that evidence region while remaining inside
- // the wider reset envelope; following terminal yaw there strands a
- // differential base beside the goal. Resume position control immediately,
- // without discarding the latch's hysteresis state.
- const bool terminal_heading_mode =
- terminal_position_latched_ && terminal_position_reached;
+ if (terminal_position_latched_ &&
+ terminal_heading_error_rad <= terminal_heading_tolerance_rad) {
+ terminal_heading_settled_ = true;
+ }
+ // Once terminal yaw capture starts, finish that rotation before reacting to
+ // a small position drift inside the raw hysteresis envelope. After yaw has
+ // settled, a later XY miss owns control until the position bound is reached
+ // again; retaining that phase prevents bearing/final-yaw chatter on a grade.
+ // Leaving the raw envelope releases both states above.
+ const bool terminal_heading_mode = terminal_position_latched_ &&
+ (terminal_position_reached || !terminal_heading_settled_);
  // Inside the declared terminal pose envelope, a nonholonomic base that can
  // rotate in place but cannot translate laterally may need to turn toward
  // the remaining position error before translation can reduce it. This is a
@@ -625,8 +632,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  ? terminal_bearing_capture
  ? std::atan2(terminal_dy_m, terminal_dx_m)
  : goal_bearing
- : std::isfinite(target.yaw_rad)
- ? target.yaw_rad
+ : std::isfinite(terminal.yaw_rad)
+ ? terminal.yaw_rad
  : goal_bearing;
   const double goal_directed_yaw_rate = core::clamp(
       core::wrap_angle(heading_target - est.yaw_rad) /
@@ -773,7 +780,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // forward/reverse pose manoeuvre instead.
  const double terminal_braking_floor_mps = std::max(
  0.0, std::abs(est.forward_mps) - decel * dt);
- if (!car_like && terminal_position_reached &&
+ if (!car_like &&
+ (terminal_heading_mode || terminal_bearing_capture) &&
  std::abs(velocity) > terminal_braking_floor_mps + 1e-9) {
  continue;
  }

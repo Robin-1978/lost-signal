@@ -169,9 +169,11 @@ void AStarPlanner::cancel_plan() {
 void AStarPlanner::begin_plan(const EstimatedState& start,
  const RoutePoint& goal, const iface::MapSnapshot& map) {
  cancel_plan();
- auto complete = [&](GlobalPlanStatus status, Route route = {}) {
+ auto complete = [&](GlobalPlanStatus status, Route route = {},
+ std::string diagnostic = {}) {
  completed_.status = status;
  completed_.route = std::move(route);
+ completed_.diagnostic = std::move(diagnostic);
  completed_ready_ = true;
  };
 
@@ -179,7 +181,7 @@ void AStarPlanner::begin_plan(const EstimatedState& start,
  !std::isfinite(start.y_m) || !std::isfinite(goal.x_m) ||
  !std::isfinite(goal.y_m) || !std::isfinite(goal.yaw_rad) ||
  !valid_config(config_)) {
- complete(GlobalPlanStatus::kFailed);
+ complete(GlobalPlanStatus::kFailed, {}, "invalid A* request or config");
  return;
  }
  if (!map.has_raster()) {
@@ -191,21 +193,21 @@ void AStarPlanner::begin_plan(const EstimatedState& start,
  }
  if (!std::isfinite(map.origin_x_m) ||
  !std::isfinite(map.origin_y_m)) {
- complete(GlobalPlanStatus::kFailed);
+ complete(GlobalPlanStatus::kFailed, {}, "map origin is invalid");
  return;
  }
  if (map.width > static_cast<std::uint32_t>(
  std::numeric_limits<int>::max()) ||
  map.height > static_cast<std::uint32_t>(
  std::numeric_limits<int>::max())) {
- complete(GlobalPlanStatus::kFailed);
+ complete(GlobalPlanStatus::kFailed, {}, "map dimensions exceed index range");
  return;
  }
  const std::size_t cell_count =
  static_cast<std::size_t>(map.width) * map.height;
  if (cell_count > static_cast<std::size_t>(
  std::numeric_limits<int>::max())) {
- complete(GlobalPlanStatus::kFailed);
+ complete(GlobalPlanStatus::kFailed, {}, "map cell count exceeds index range");
  return;
  }
 
@@ -228,7 +230,7 @@ void AStarPlanner::begin_plan(const EstimatedState& start,
  };
  if (!inside(state->start_x, state->start_y) ||
  !inside(state->goal_x, state->goal_y)) {
- complete(GlobalPlanStatus::kFailed);
+ complete(GlobalPlanStatus::kFailed, {}, "start or goal is outside the map");
  return;
  }
  const bool same_identity = !map.map_id.empty()
@@ -264,7 +266,9 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  completed_ready_ = false;
  return std::move(completed_);
  }
- if (search_ == nullptr) return {GlobalPlanStatus::kFailed, {}};
+ if (search_ == nullptr) {
+ return {GlobalPlanStatus::kFailed, {}, "no active A* request"};
+ }
  if (expansion_budget == 0) return {GlobalPlanStatus::kPending, {}};
 
  SearchState& state = *search_;
@@ -533,13 +537,22 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  }
  }
  if (state.phase == SearchState::Phase::kValidateEndpoints) {
- if (!cached_costmap_.valid() ||
- cached_costmap_.lethal.occupancy[
- index(state.start_x, state.start_y)] >= 50 ||
- cached_costmap_.lethal.occupancy[
+ if (!cached_costmap_.valid()) {
+ search_.reset();
+ return {GlobalPlanStatus::kFailed, {},
+ "inflated global costmap is unavailable"};
+ }
+ if (cached_costmap_.lethal.occupancy[
+ index(state.start_x, state.start_y)] >= 50) {
+ search_.reset();
+ return {GlobalPlanStatus::kFailed, {},
+ "start is inside the inflated lethal map"};
+ }
+ if (cached_costmap_.lethal.occupancy[
  index(state.goal_x, state.goal_y)] >= 50) {
  search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return {GlobalPlanStatus::kFailed, {},
+ "goal is inside the inflated lethal map"};
  }
  state.phase = SearchState::Phase::kAllocateScores;
  }
@@ -661,7 +674,8 @@ GlobalPlanProgress AStarPlanner::continue_plan(
  }
  if (found < 0) {
  search_.reset();
- return {GlobalPlanStatus::kFailed, {}};
+ return {GlobalPlanStatus::kFailed, {},
+ "A* exhausted all reachable free cells"};
  }
 
  Route route;

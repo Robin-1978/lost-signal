@@ -59,10 +59,10 @@ int main() {
   {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
- session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
- // Isolate terrain/traction from mapless-arrival uncertainty. This authored
- // operator prior crosses the normal ROBOT initial-pose seam; no runtime
- // truth is read or fed back.
+ session.set_startup_mode(robot::autonomy::StartupMode::kSeedAndTrack);
+ // Isolate terrain/traction from mapless observability. The surveyed static
+ // geometry and this authored operator prior cross normal ROBOT deployment
+ // seams; no runtime truth is read or fed back.
  session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.setup_world().set_static_boxes({
  {-1.0, 3.0, 0.0, 4.0, 1.5},
@@ -88,7 +88,7 @@ int main() {
     sim::eval::SimConfig sim;
     sim.lidar_composite = true;
     session.apply_sim_config(sim);
-    drive_until_done(session, 2500);
+ drive_until_done(session, 2500);
     const auto score = sim::eval::score_episode(session.episode());
     double min_grip = 1.0, max_z = 0.0;
     bool slip_seen = false;
@@ -104,15 +104,27 @@ int main() {
  if (!session.objectives_done() && !session.episode().steps().empty()) {
  const auto& last = session.episode().steps().back();
  std::fprintf(stderr,
- "icy climb stalled: active=%s completed=%zu truth=(%.3f,%.3f) "
- "estimate=(%.3f,%.3f) sigma=%.3f safety=%s localization=%s tracks=%zu "
- "track=%s score=%.3f reverse=%.3f overlap=%.3f\n",
+ "icy climb stalled: active=%s completed=%zu truth=(%.3f,%.3f,%.3f) "
+ "estimate=(%.3f,%.3f,%.3f) sigma=%.3f safety=%s localization=%s "
+ "cmd=(%.3f,%.3f) goal=%d/%s decision=%s/%s route=%zu/%zu "
+ "err=%.3f candidates=%zu grip=%.3f tracks=%zu track=%s "
+ "score=%.3f reverse=%.3f overlap=%.3f\n",
  session.objectives().active_place().c_str(),
  session.objectives().completed(), last.truth_after.body_x_m,
- last.truth_after.body_y_m, last.diag.estimate.x_m,
- last.diag.estimate.y_m, last.diag.estimate.position_sigma_m,
+ last.truth_after.body_y_m, last.truth_after.body_yaw_rad,
+ last.diag.estimate.x_m, last.diag.estimate.y_m,
+ last.diag.estimate.yaw_rad, last.diag.estimate.position_sigma_m,
  last.diag.safety_reason.c_str(),
- last.diag.localization_action.c_str(), last.diag.slam_tracks,
+ last.diag.localization_action.c_str(), last.cmd.forward_mps,
+ last.cmd.yaw_rate_radps, static_cast<int>(last.diag.goal.state),
+ last.diag.goal.detail.c_str(),
+ last.diag.evidence.constraint_code.c_str(),
+ last.diag.evidence.reason_code.c_str(),
+ last.diag.evidence.route_segment,
+ last.diag.evidence.route_point_count,
+ last.diag.evidence.route_error_m,
+ last.diag.evidence.moving_candidate_count,
+ last.diag.grip_factor, last.diag.slam_tracks,
  last.diag.track_diagnostic.c_str(), last.diag.slam_loop_forward_score,
  last.diag.slam_loop_reverse_score, last.diag.slam_loop_overlap);
  }
@@ -132,8 +144,8 @@ int main() {
   {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
- session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
- // Same declared deployment prior as the icy run above.
+ session.set_startup_mode(robot::autonomy::StartupMode::kSeedAndTrack);
+ // Same surveyed-map startup and declared deployment prior as the icy run.
  session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.setup_world().set_static_boxes({
  {-1.0, 3.0, 0.0, 4.0, 1.5},

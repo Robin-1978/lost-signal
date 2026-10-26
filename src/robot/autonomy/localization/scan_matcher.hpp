@@ -125,6 +125,16 @@ class ScanMatcher {
                        double body_roll_rad = 0.0,
                        double body_pitch_rad = 0.0,
                        double body_z_m = 0.0) const;
+ // Range-consistency score for a bounded endpoint shortlist. Survey maps
+ // and accumulated SLAM submaps can distinguish two poses whose endpoints
+ // land in the same thick occupied band by comparing the first expected hit
+ // distance along each measured ray.
+ PoseScore score_expected_ranges(
+ double x_m, double y_m, double yaw_rad,
+ const std::vector<ScanBeam>& beams,
+ const iface::MapSnapshot& map,
+ double body_roll_rad = 0.0,
+ double body_pitch_rad = 0.0) const;
 
   // Batched scorer: same math as score_pose, pose-invariant work hoisted
   // (beam trig per batch, rotations per heading slot). Scores are

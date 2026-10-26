@@ -101,11 +101,32 @@ int main() {
  last != nullptr ? last->diag.track_diagnostic.c_str() : "--",
  last != nullptr ? last->diag.slam_loop_diagnostic.c_str() : "--");
  for (const auto& result : runtime.session->objective_results()) {
+ const auto completed = std::find_if(
+ runtime.session->episode().steps().begin(),
+ runtime.session->episode().steps().end(),
+ [&](const auto& step) { return step.step == result.completed_step; });
+ const auto place = std::find_if(
+ runtime.session->setup_world().places().begin(),
+ runtime.session->setup_world().places().end(),
+ [&](const auto& candidate) {
+ return candidate.place_id == result.place_id;
+ });
+ const double estimate_miss =
+ completed == runtime.session->episode().steps().end() ||
+ place == runtime.session->setup_world().places().end()
+ ? -1.0
+ : std::hypot(completed->diag.estimate.x_m - place->x_m,
+ completed->diag.estimate.y_m - place->y_m);
  std::fprintf(stderr,
- " objective %s robot=%d truth=%d miss=%.3f yaw=%.3f "
- "speed=%.3f/%.3f stable=%u failures=",
+ " objective %s robot=%d truth=%d step=%llu miss=%.3f "
+ "estimate_miss=%.3f sigma=%.3f yaw=%.3f speed=%.3f/%.3f "
+ "stable=%u failures=",
  result.place_id.c_str(), result.robot_done, result.truth_arrived,
- result.truth_miss_m, result.truth_yaw_error_rad,
+ static_cast<unsigned long long>(result.completed_step),
+ result.truth_miss_m, estimate_miss,
+ completed == runtime.session->episode().steps().end()
+ ? -1.0 : completed->diag.estimate.position_sigma_m,
+ result.truth_yaw_error_rad,
  result.truth_linear_speed_mps, result.truth_yaw_rate_radps,
  result.truth_stable_steps);
  for (const auto& failure : result.failure_reasons) {
@@ -116,26 +137,31 @@ int main() {
  std::size_t seen_loops = 0;
  std::size_t seen_tracks = 0;
  double minimum_grip = 1.0;
+ double maximum_track_position_error_m = 0.0;
+ double maximum_track_heading_error_rad = 0.0;
+ double maximum_odom_position_error_m = 0.0;
+ double maximum_odom_heading_error_rad = 0.0;
  for (const auto& step : runtime.session->episode().steps()) {
  minimum_grip = std::min(minimum_grip, step.diag.grip_factor);
  if (step.diag.slam_tracks > seen_tracks) {
  seen_tracks = step.diag.slam_tracks;
- if (seen_tracks % 10 == 0) {
- std::fprintf(stderr,
- " track %zu step=%llu correction=%.3f/%.3f error=%.3f/%.3f "
- "odom=%.3f/%.3f\n",
- seen_tracks, static_cast<unsigned long long>(step.step),
- step.diag.track_correction_m, step.diag.track_correction_rad,
+ maximum_track_position_error_m = std::max(
+ maximum_track_position_error_m,
  std::hypot(step.truth_after.body_x_m - step.diag.estimate.x_m,
- step.truth_after.body_y_m - step.diag.estimate.y_m),
+ step.truth_after.body_y_m - step.diag.estimate.y_m));
+ maximum_track_heading_error_rad = std::max(
+ maximum_track_heading_error_rad,
  std::abs(std::remainder(step.truth_after.body_yaw_rad -
- step.diag.estimate.yaw_rad, 2.0 * 3.14159265358979323846)),
+ step.diag.estimate.yaw_rad, 2.0 * 3.14159265358979323846)));
+ maximum_odom_position_error_m = std::max(
+ maximum_odom_position_error_m,
  std::hypot(step.truth_after.body_x_m - step.diag.odometry_estimate.x_m,
- step.truth_after.body_y_m - step.diag.odometry_estimate.y_m),
+ step.truth_after.body_y_m - step.diag.odometry_estimate.y_m));
+ maximum_odom_heading_error_rad = std::max(
+ maximum_odom_heading_error_rad,
  std::abs(std::remainder(step.truth_after.body_yaw_rad -
  step.diag.odometry_estimate.yaw_rad,
  2.0 * 3.14159265358979323846)));
- }
  }
  if (step.diag.slam_loops_closed <= seen_loops) continue;
  seen_loops = step.diag.slam_loops_closed;
@@ -156,10 +182,15 @@ int main() {
  step.diag.slam_loop_forward_margin,
  step.diag.slam_loop_reverse_margin);
  }
- std::fprintf(stderr, " minimum grip %.3f\n", minimum_grip);
+ std::fprintf(stderr,
+ " track summary count=%zu estimate_error=%.3f/%.3f "
+ "odom_error=%.3f/%.3f minimum_grip=%.3f\n",
+ seen_tracks, maximum_track_position_error_m,
+ maximum_track_heading_error_rad, maximum_odom_position_error_m,
+ maximum_odom_heading_error_rad, minimum_grip);
  const std::size_t tail_begin = score.steps > 250 ? score.steps - 250 : 0;
  for (std::size_t i = tail_begin;
- i < runtime.session->episode().steps().size(); i += 5) {
+ i < runtime.session->episode().steps().size(); i += 10) {
  const auto& step = runtime.session->episode().steps()[i];
  std::fprintf(stderr,
  " tail step=%llu est=(%.3f,%.3f,%.3f) vel=%.3f/%.3f "

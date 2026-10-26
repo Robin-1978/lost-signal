@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "robot/autonomy/estimation/estimator.hpp"
@@ -36,6 +37,7 @@ enum class GlobalPlanStatus {
 struct GlobalPlanProgress {
  GlobalPlanStatus status = GlobalPlanStatus::kFailed;
  Route route;
+ std::string diagnostic;
 };
 
 // IGlobalPlanner: estimate + semantic goal + map snapshot -> route.

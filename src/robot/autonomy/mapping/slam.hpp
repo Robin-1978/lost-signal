@@ -178,7 +178,7 @@ class SlamSession {
   // closures establish the frame).
   SlamTrackResult track(const EstimatedState& est,
  const iface::ObservationFrame& obs,
- bool allow_temporally_confirmed_opposing = false);
+ bool require_temporally_confirmed_correction = false);
 
   bool empty() const { return keyframes_.empty(); }
   std::size_t keyframe_count() const { return keyframes_.size(); }
@@ -197,9 +197,20 @@ class SlamSession {
  struct LoopSearchWork;
   // Render one keyframe's scan into a small occupancy raster in the map
   // frame (endpoints occupied, ray interiors free) for scan-to-submap match.
-  iface::MapSnapshot submap_for(const SlamKeyframe& kf) const;
+ iface::MapSnapshot submap_for(
+ const SlamKeyframe& kf, bool pad_endpoints = true) const;
+ iface::MapSnapshot merge_submap_window(
+ std::size_t begin, std::size_t end, const char* map_id,
+ std::uint64_t revision, bool pad_endpoints) const;
   // Causal window: future scans are excluded so a loop cannot verify itself.
-  iface::MapSnapshot submap_ending_at(std::size_t index) const;
+ iface::MapSnapshot submap_ending_at(
+ std::size_t index, bool pad_endpoints = true) const;
+ // Historical loop window centred on an old anchor. All scans are already
+ // in history, and the loop candidate separation keeps this complete window
+ // disjoint from the recent window. Filling both sides avoids treating the
+ // first sparse keyframes as a distinctive place on their own.
+ iface::MapSnapshot historical_submap_around(
+ std::size_t index, bool pad_endpoints = true) const;
   bool keyframe_due(const EstimatedState& est) const;
   // Rebuild the backend from retained keyframes (ring drop). Chain links
   // are re-derived from keyframe poses; loop constraints do not survive a
@@ -213,6 +224,10 @@ class SlamSession {
   std::vector<SlamKeyframe> keyframes_;
   std::uint64_t next_id_ = 1;
   std::size_t loop_closures_ = 0;
+ // One historical submap contributes at most one loop edge. Reusing the
+ // same stored scans for several nearby recent keyframes would count
+ // correlated evidence as independent constraints.
+ std::vector<std::uint64_t> closed_historical_keyframes_;
   double last_attempt_s_ = -1.0e9;
   std::size_t keyframes_at_last_attempt_ = 0;
   SlamLoopResult last_result_;
@@ -232,15 +247,15 @@ class SlamSession {
   SlamTrackResult last_track_;
   mutable iface::MapSnapshot track_submap_;
   mutable std::uint64_t track_submap_id_ = 0;
- // A scan correction can legitimately oppose wheel odometry during slip,
- // but one moving return can produce the same sign once. The opposing
- // hypothesis must recur from an independently moved observation before it
- // may correct the ROBOT estimate. Thresholds come from the tracking lattice
- // and cadence above; no simulator slip label enters this state.
- bool pending_opposing_track_valid_ = false;
- double pending_opposing_track_sign_ = 0.0;
- std::uint64_t pending_opposing_track_anchor_id_ = 0;
- Pose2 pending_opposing_track_observer_pose_;
+ // In mapless mode no surveyed frame can arbitrate a substantial scan
+ // correction. Its SE(2) transform must therefore recur from an
+ // independently moved observation of the same causal submap. Resolution
+ // and independence come from the tracking lattice and keyframe motion
+ // contract above; no simulator label or scenario threshold enters here.
+ bool pending_track_correction_valid_ = false;
+ std::uint64_t pending_track_correction_anchor_id_ = 0;
+ Pose2 pending_track_correction_;
+ Pose2 pending_track_correction_observer_pose_;
  // A correction larger than the local tracking window is never committed
  // from one scan in an unmapped region. The pending rigid transform must
  // recur after independently observed motion before it may enter the graph.

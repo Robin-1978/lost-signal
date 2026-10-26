@@ -124,7 +124,8 @@ int main() {
  const auto& grade_last = session.episode().steps().back();
  std::fprintf(stderr,
  "grade final: steps=%zu done=%d results=%zu truth=(%.3f,%.3f) "
- "est=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f) sigma=%.3f "
+ "est=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f) sigma=%.3f/%.3f "
+ "cmd=%.3f/%.3f route=%zu/%zu err=%.3f constraint=%s "
  "loc=%s safety=%s reason=%s goal=%d/%s\n",
  score.steps, session.objectives_done(), session.objectives().results().size(),
  grade_last.truth_after.body_x_m, grade_last.truth_after.body_y_m,
@@ -132,6 +133,12 @@ int main() {
  grade_last.diag.estimate.yaw_rad, grade_last.diag.estimate.forward_mps,
  grade_last.diag.estimate.yaw_rate_radps,
  grade_last.diag.estimate.position_sigma_m,
+ grade_last.diag.estimate.heading_sigma_rad,
+ grade_last.cmd.forward_mps, grade_last.cmd.yaw_rate_radps,
+ grade_last.diag.evidence.route_segment,
+ grade_last.diag.evidence.route_point_count,
+ grade_last.diag.evidence.route_error_m,
+ grade_last.diag.evidence.constraint_code.c_str(),
  grade_last.diag.localization_action.c_str(),
  grade_last.diag.safety_reason.c_str(),
  grade_last.diag.evidence.reason_code.c_str(),

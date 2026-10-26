@@ -43,7 +43,11 @@ int main() {
  double first_loop_truth_distance_m = -1.0;
  // Pure SLAM owns the frame in this test; allow the final loop correction,
  // heading alignment, and settled arrival to finish without survey assists.
- for (int i = 0; i < 2400 && !session.objectives_done(); ++i) {
+ // The 16 m route must include four physical corner alignments, a second
+ // independent loop view, pose-graph correction, and the final settled
+ // heading. The acceptance gates below stay unchanged; this bound only
+ // avoids declaring failure while the measured chassis is still converging.
+ for (int i = 0; i < 3000 && !session.objectives_done(); ++i) {
     session.step_once();
  const auto& diag = session.episode().steps().back().diag;
  if (max_loops == 0 && diag.slam_loops_closed > 0) {
@@ -51,6 +55,16 @@ int main() {
  const auto& truth = session.episode().steps().back().truth_after;
  first_loop_truth_distance_m = std::hypot(
  truth.body_x_m, truth.body_y_m);
+ std::fprintf(stderr,
+ " first loop step=%zu edge=%llu->%llu correction=%.3f/%.3f "
+ "score=%.3f/%.3f overlap=%.3f margin=%.3f/%.3f\n",
+ session.episode().size(),
+ static_cast<unsigned long long>(diag.slam_loop_from_id),
+ static_cast<unsigned long long>(diag.slam_loop_to_id),
+ diag.slam_loop_correction_m, diag.slam_loop_correction_rad,
+ diag.slam_loop_forward_score, diag.slam_loop_reverse_score,
+ diag.slam_loop_overlap, diag.slam_loop_forward_margin,
+ diag.slam_loop_reverse_margin);
  }
  max_loops = std::max(max_loops, diag.slam_loops_closed);
     max_keyframes = std::max(max_keyframes, diag.slam_keyframes);

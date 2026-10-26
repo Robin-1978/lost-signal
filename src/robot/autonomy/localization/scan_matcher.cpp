@@ -281,6 +281,25 @@ PoseScore ScanMatcher::score_pose(double x_m, double y_m, double yaw_rad,
   return batch.score(0, x_m, y_m, yaw_rad, map, body_z_m);
 }
 
+PoseScore ScanMatcher::score_expected_ranges(
+ double x_m, double y_m, double yaw_rad,
+ const std::vector<ScanBeam>& beams,
+ const iface::MapSnapshot& map,
+ double body_roll_rad, double body_pitch_rad) const {
+ const ExpectedRangeEvidence evidence = expected_range_evidence(
+ map, beams, x_m, y_m, yaw_rad, body_roll_rad, body_pitch_rad,
+ base_from_lidar_, config_.max_range_m);
+ PoseScore out;
+ out.score = evidence.score;
+ out.overlap = evidence.overlap;
+ out.usable_returns = static_cast<std::size_t>(std::count_if(
+ beams.begin(), beams.end(), [](const ScanBeam& beam) {
+ return beam.hit;
+ }));
+ out.has_evidence = evidence.valid;
+ return out;
+}
+
 ScanMatchResult ScanMatcher::localize(
     const std::vector<float>& ranges, double angle_min_rad,
     double angle_increment_rad, double odom_x_m, double odom_y_m,

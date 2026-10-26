@@ -132,6 +132,11 @@ class DwaPlanner : public ILocalPlanner {
  // owns translational authority, so stale capture cannot claim arrival or
  // strand the base when localization moves outside the evidence envelope.
  bool terminal_position_latched_ = false;
+ // Becomes true after a captured terminal position has completed its first
+ // final-yaw settle. If XY then drifts, position reacquisition keeps
+ // authority until the position bound is reached again instead of
+ // alternating between goal bearing and final yaw every tick.
+ bool terminal_heading_settled_ = false;
  bool terminal_identity_valid_ = false;
  RoutePoint terminal_identity_;
 };

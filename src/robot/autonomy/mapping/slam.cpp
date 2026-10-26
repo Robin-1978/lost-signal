@@ -36,7 +36,8 @@ struct SlamSession::LoopSearchWork {
  const std::vector<float>& ranges, double angle_min_rad,
  double angle_increment_rad, double prior_x_m, double prior_y_m,
  double prior_heading_rad, iface::MapSnapshot search_map,
- double body_roll_rad, double body_pitch_rad, double body_z_m) {
+ double body_roll_rad, double body_pitch_rad, double body_z_m,
+ std::optional<Pose2> motion_prior = std::nullopt) {
  config = matcher_config;
  matcher = ScanMatcher(config);
  matcher.set_lidar_mount(mount);
@@ -44,7 +45,11 @@ struct SlamSession::LoopSearchWork {
  prior_x = prior_x_m;
  prior_y = prior_y_m;
  prior_heading = prior_heading_rad;
+ evidence_prior = motion_prior.value_or(
+ Pose2{{prior_x_m, prior_y_m}, prior_heading_rad});
  z_m = body_z_m;
+ roll_rad = body_roll_rad;
+ pitch_rad = body_pitch_rad;
  beams = matcher.prepare_beams(ranges, angle_min_rad,
  angle_increment_rad, config.maximum_returns);
  std::size_t hits = 0;
@@ -105,10 +110,14 @@ struct SlamSession::LoopSearchWork {
  const PoseScore& pose) {
  Hypothesis candidate{x, y, heading, pose.score, pose.overlap};
  const auto same = [&](const Hypothesis& value) {
- return std::hypot(value.x - x, value.y - y) <
- config.ambiguity_distance_m &&
- std::abs(core::wrap_angle(value.heading - heading)) <
- config.ambiguity_heading_rad;
+ const double distance = std::hypot(value.x - x, value.y - y);
+ const double heading_error = std::abs(
+ core::wrap_angle(value.heading - heading));
+ return config.expected_range_validation
+ ? distance <= config.ambiguity_distance_m &&
+ heading_error <= config.ambiguity_heading_rad
+ : distance < config.ambiguity_distance_m &&
+ heading_error < config.ambiguity_heading_rad;
  };
  const auto existing = std::find_if(
  hypotheses.begin(), hypotheses.end(), same);
@@ -135,6 +144,20 @@ struct SlamSession::LoopSearchWork {
  result.rejection_reason = "map overlap below acceptance gate";
  return;
  }
+ if (config.expected_range_validation) {
+ for (auto& hypothesis : hypotheses) {
+ const PoseScore evidence = matcher.score_expected_ranges(
+ hypothesis.x, hypothesis.y, hypothesis.heading, beams, map,
+ roll_rad, pitch_rad);
+ if (evidence.has_evidence) {
+ hypothesis.score = evidence.score;
+ hypothesis.overlap = evidence.overlap;
+ } else {
+ hypothesis.score = -std::numeric_limits<double>::infinity();
+ hypothesis.overlap = 0.0;
+ }
+ }
+ }
  std::sort(hypotheses.begin(), hypotheses.end(),
  [](const Hypothesis& a, const Hypothesis& b) {
  if (a.score != b.score) return a.score > b.score;
@@ -154,6 +177,57 @@ struct SlamSession::LoopSearchWork {
  best.overlap < config.minimum_overlap) {
  result.rejection_reason = "map overlap below acceptance gate";
  return;
+ }
+ // Dense loop refinement searches around the coarse endpoint winner, but
+ // its motion prior remains the graph prediction. Endpoint rasterization
+ // can move the coarse centre within one occupied band; expected ranges may
+ // refine away from the graph only when they improve likelihood by the
+ // matcher-declared separated-mode margin. This is the same contract as the
+ // one-shot ScanMatcher, implemented here because this lattice is sliced
+ // across control ticks.
+ const auto evidence_at = [&](double x, double y, double heading) {
+ PoseScore evidence;
+ if (config.expected_range_validation) {
+ evidence = matcher.score_expected_ranges(
+ x, y, heading, beams, map, roll_rad, pitch_rad);
+ } else {
+ evidence = batch->score(0, x, y, heading, map, z_m);
+ }
+ return evidence;
+ };
+ const bool shifted_from_prior =
+ std::hypot(best.x - evidence_prior.position.x,
+ best.y - evidence_prior.position.y) > 1e-9 ||
+ std::abs(core::wrap_angle(
+ best.heading - evidence_prior.heading_rad)) > 1e-9;
+ if (config.require_prior_improvement && shifted_from_prior) {
+ const PoseScore prior_evidence = evidence_at(
+ evidence_prior.position.x, evidence_prior.position.y,
+ evidence_prior.heading_rad);
+ if (prior_evidence.has_evidence &&
+ best.score - prior_evidence.score < config.minimum_score_margin) {
+ if (prior_evidence.overlap < config.minimum_overlap) {
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = best.score - prior_evidence.score;
+ result.rejection_reason =
+ "map match does not improve motion prior";
+ return;
+ }
+ result.accepted = true;
+ result.x_m = evidence_prior.position.x;
+ result.y_m = evidence_prior.position.y;
+ result.yaw_rad = evidence_prior.heading_rad;
+ result.score = prior_evidence.score;
+ result.overlap = prior_evidence.overlap;
+ result.score_margin = std::isfinite(second_score)
+ ? best.score - second_score : 1.0;
+ result.position_sigma_m = std::max(0.02, map.resolution_m * 0.75);
+ result.heading_sigma_rad = std::max(
+ 0.01, config.heading_step_rad * 1.5);
+ result.rejection_reason = "accepted at motion prior";
+ return;
+ }
  }
  if (std::isfinite(second_score) &&
  result.score_margin < config.minimum_score_margin) {
@@ -180,7 +254,10 @@ struct SlamSession::LoopSearchWork {
  double prior_x = 0.0;
  double prior_y = 0.0;
  double prior_heading = 0.0;
+ Pose2 evidence_prior;
  double z_m = 0.0;
+ double roll_rad = 0.0;
+ double pitch_rad = 0.0;
  int translation_steps = 0;
  int heading_steps = 0;
  int ix = 0;
@@ -227,6 +304,7 @@ void SlamSession::reset() {
   keyframes_.clear();
   next_id_ = 1;
   loop_closures_ = 0;
+ closed_historical_keyframes_.clear();
   last_attempt_s_ = -1.0e9;
   keyframes_at_last_attempt_ = 0;
   last_result_ = SlamLoopResult{};
@@ -237,10 +315,10 @@ void SlamSession::reset() {
   last_track_ = SlamTrackResult{};
   track_submap_ = iface::MapSnapshot{};
   track_submap_id_ = 0;
- pending_opposing_track_valid_ = false;
- pending_opposing_track_sign_ = 0.0;
- pending_opposing_track_anchor_id_ = 0;
- pending_opposing_track_observer_pose_ = Pose2{};
+ pending_track_correction_valid_ = false;
+ pending_track_correction_anchor_id_ = 0;
+ pending_track_correction_ = Pose2{};
+ pending_track_correction_observer_pose_ = Pose2{};
  pending_loop_valid_ = false;
  pending_loop_s_ = 0.0;
  pending_loop_anchor_id_ = 0;
@@ -331,7 +409,8 @@ void SlamSession::rebuild_graph() {
   }
 }
 
-iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
+iface::MapSnapshot SlamSession::submap_for(
+ const SlamKeyframe& kf, bool pad_endpoints) const {
   iface::MapSnapshot sub;
  // Dynamic returns are evidence for tracking, not static-map geometry.
  // With a static reference, retain only returns consistent with it;
@@ -422,8 +501,9 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
         std::floor((wx - sub.origin_x_m) / sub.resolution_m));
     const int cy = static_cast<int>(
         std::floor((wy - sub.origin_y_m) / sub.resolution_m));
-    for (int ay = -1; ay <= 1; ++ay) {
-      for (int ax = -1; ax <= 1; ++ax) {
+ const int endpoint_padding = pad_endpoints ? 1 : 0;
+ for (int ay = -endpoint_padding; ay <= endpoint_padding; ++ay) {
+ for (int ax = -endpoint_padding; ax <= endpoint_padding; ++ax) {
         const int gx = cx + ax, gy = cy + ay;
         if (gx >= 0 && gy >= 0 && gx < static_cast<int>(sub.width) &&
             gy < static_cast<int>(sub.height)) {
@@ -435,21 +515,21 @@ iface::MapSnapshot SlamSession::submap_for(const SlamKeyframe& kf) const {
   return sub;
 }
 
-iface::MapSnapshot SlamSession::submap_ending_at(std::size_t index) const {
- if (keyframes_.empty() || index >= keyframes_.size()) return {};
- const std::size_t count = std::max<std::size_t>(
- 1, config_.local_submap_keyframes);
- const std::size_t begin = index + 1 > count ? index + 1 - count : 0;
- if (begin == index) return submap_for(keyframes_[index]);
-
+iface::MapSnapshot SlamSession::merge_submap_window(
+ std::size_t begin, std::size_t end, const char* map_id,
+ std::uint64_t revision, bool pad_endpoints) const {
+ if (keyframes_.empty() || begin > end || end >= keyframes_.size()) {
+ return {};
+ }
+ if (begin == end) return submap_for(keyframes_[begin], pad_endpoints);
  std::vector<iface::MapSnapshot> scans;
- scans.reserve(index - begin + 1);
+ scans.reserve(end - begin + 1);
  double min_x = std::numeric_limits<double>::infinity();
  double min_y = std::numeric_limits<double>::infinity();
  double max_x = -std::numeric_limits<double>::infinity();
  double max_y = -std::numeric_limits<double>::infinity();
- for (std::size_t i = begin; i <= index; ++i) {
- iface::MapSnapshot scan = submap_for(keyframes_[i]);
+ for (std::size_t i = begin; i <= end; ++i) {
+ iface::MapSnapshot scan = submap_for(keyframes_[i], pad_endpoints);
  if (!scan.has_raster()) continue;
  min_x = std::min(min_x, scan.origin_x_m);
  min_y = std::min(min_y, scan.origin_y_m);
@@ -462,8 +542,8 @@ iface::MapSnapshot SlamSession::submap_ending_at(std::size_t index) const {
  if (scans.empty()) return {};
 
  iface::MapSnapshot merged;
- merged.map_id = "slam-local-submap";
- merged.revision = keyframes_[index].id;
+ merged.map_id = map_id;
+ merged.revision = revision;
  merged.frame_id = "map";
  merged.resolution_m = 0.1;
  merged.origin_x_m = min_x;
@@ -507,6 +587,32 @@ iface::MapSnapshot SlamSession::submap_ending_at(std::size_t index) const {
  return merged;
 }
 
+iface::MapSnapshot SlamSession::submap_ending_at(
+ std::size_t index, bool pad_endpoints) const {
+ if (keyframes_.empty() || index >= keyframes_.size()) return {};
+ const std::size_t count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t begin = index + 1 > count ? index + 1 - count : 0;
+ return merge_submap_window(
+ begin, index, "slam-local-submap", keyframes_[index].id,
+ pad_endpoints);
+}
+
+iface::MapSnapshot SlamSession::historical_submap_around(
+ std::size_t index, bool pad_endpoints) const {
+ if (keyframes_.empty() || index >= keyframes_.size()) return {};
+ const std::size_t count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t half = count / 2;
+ std::size_t begin = index > half ? index - half : 0;
+ const std::size_t end = std::min(
+ keyframes_.size() - 1, begin + count - 1);
+ begin = end + 1 > count ? end + 1 - count : 0;
+ return merge_submap_window(
+ begin, end, "slam-historical-submap", keyframes_[index].id,
+ pad_endpoints);
+}
+
 iface::MapSnapshot SlamSession::submap(std::uint64_t keyframe_id) const {
  for (const auto& kf : keyframes_) {
  if (kf.id == keyframe_id) return submap_for(kf);
@@ -516,7 +622,7 @@ iface::MapSnapshot SlamSession::submap(std::uint64_t keyframe_id) const {
 
 SlamTrackResult SlamSession::track(const EstimatedState& est,
  const iface::ObservationFrame& obs,
- bool allow_temporally_confirmed_opposing) {
+ bool require_temporally_confirmed_correction) {
   SlamTrackResult out;
   if (!est.valid || !obs.scan_valid || obs.ranges_m.empty() ||
       keyframes_.empty()) {
@@ -642,11 +748,14 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  return out;
  }
  // Wheel odometry is a prior, not a veto. During longitudinal slip the
- // geometrically correct scan update points opposite the encoder direction.
- // Accepting that sign from one scan is also unsafe around moving foreground
- // returns, so require the sign to recur after an independently moved view.
- // The observability speed is exactly the configured minimum tracking motion
- // divided by its cadence; the opposing deadband is one matcher lattice step.
+ // geometrically correct scan update can oppose the encoder direction, but a
+ // single such view is unsafe when no surveyed frame exists. The same is true
+ // of a lateral or angular jump: actor returns and locally aliased geometry
+ // do not become trustworthy merely because they are orthogonal to travel.
+ // Mapless tracking therefore confirms every substantial rigid correction
+ // across independent views of the same causal submap. Matcher lattice steps
+ // define "substantial" and transform agreement; the existing keyframe
+ // motion contract defines view independence.
  const double speed_for_independent_view_mps = config_.track_interval_s > 0.0
  ? config_.track_min_translation_m / config_.track_interval_s
  : std::numeric_limits<double>::infinity();
@@ -660,46 +769,57 @@ SlamTrackResult SlamSession::track(const EstimatedState& est,
  const double odom_sign = obs.forward_mps >= 0.0 ? 1.0 : -1.0;
  const bool opposing = motion_direction_observable &&
  along_m * odom_sign < -std::max(0.0, config_.track_step_m);
- if (opposing) {
- if (!allow_temporally_confirmed_opposing) {
- pending_opposing_track_valid_ = false;
+ if (opposing && !require_temporally_confirmed_correction) {
+ pending_track_correction_valid_ = false;
  out.diagnostic = "track rejected: correction opposes odometry prior";
  last_track_ = out;
  return out;
  }
  const Pose2 observer{{est.x_m, est.y_m}, est.yaw_rad};
- const double observed_motion_m = pending_opposing_track_valid_
+ const Pose2 correction = compose_pose(
+ Pose2{{match.x_m, match.y_m}, match.yaw_rad}, inverse_pose(observer));
+ const bool substantial_correction =
+ correction_m > std::max(0.0, config_.track_step_m) ||
+ correction_rad > std::max(0.0, config_.track_heading_step_rad);
+ if (require_temporally_confirmed_correction && substantial_correction) {
+ const double observed_motion_m = pending_track_correction_valid_
  ? std::hypot(observer.position.x -
- pending_opposing_track_observer_pose_.position.x,
+ pending_track_correction_observer_pose_.position.x,
  observer.position.y -
- pending_opposing_track_observer_pose_.position.y)
+ pending_track_correction_observer_pose_.position.y)
  : 0.0;
- const double observed_motion_rad = pending_opposing_track_valid_
+ const double observed_motion_rad = pending_track_correction_valid_
  ? std::abs(core::wrap_angle(observer.heading_rad -
- pending_opposing_track_observer_pose_.heading_rad))
+ pending_track_correction_observer_pose_.heading_rad))
  : 0.0;
  const bool independent_view =
  observed_motion_m >= config_.track_min_translation_m ||
  observed_motion_rad >= config_.track_min_heading_rad;
- const bool same_direction = pending_opposing_track_valid_ &&
- pending_opposing_track_sign_ == odom_sign &&
- pending_opposing_track_anchor_id_ == anchor.id;
+ const bool consistent_transform = pending_track_correction_valid_ &&
+ pending_track_correction_anchor_id_ == anchor.id &&
+ pose_translation_error(pending_track_correction_, correction) <=
+ std::max(0.0, config_.track_step_m) &&
+ std::abs(core::wrap_angle(
+ pending_track_correction_.heading_rad - correction.heading_rad)) <=
+ std::max(0.0, config_.track_heading_step_rad);
  // The cached anchor is the bounded lifetime: once a new keyframe becomes
  // the tracking reference, an old foreground hypothesis cannot confirm a
  // correction in unrelated geometry. This avoids a separately tuned timeout
  // and tolerates skipped scan-search ticks under CPU load.
- if (!same_direction || !independent_view) {
- pending_opposing_track_valid_ = true;
- pending_opposing_track_sign_ = odom_sign;
- pending_opposing_track_anchor_id_ = anchor.id;
- pending_opposing_track_observer_pose_ = observer;
- out.diagnostic = "track pending: opposing odometry needs another view";
+ if (!consistent_transform || !independent_view) {
+ pending_track_correction_valid_ = true;
+ pending_track_correction_anchor_id_ = anchor.id;
+ pending_track_correction_ = correction;
+ pending_track_correction_observer_pose_ = observer;
+ out.diagnostic = opposing
+ ? "track pending: opposing odometry needs another view"
+ : "track pending: mapless correction needs another view";
  last_track_ = out;
  return out;
  }
- pending_opposing_track_valid_ = false;
+ pending_track_correction_valid_ = false;
  } else {
- pending_opposing_track_valid_ = false;
+ pending_track_correction_valid_ = false;
  }
   out.accepted = true;
   out.x_m = match.x_m;
@@ -736,6 +856,10 @@ SlamLoopResult SlamSession::try_close_loops(
  pending_loop_anchor_id_ = 0;
  }
   ScanMatcherConfig match_cfg;
+ // Coarse retrieval uses endpoint occupancy: expected-range marching on a
+ // sparse historical submap can terminate in unknown space before it has
+ // shortlisted the correct basin. The dense pass below applies range
+ // consistency to the bounded survivors.
  match_cfg.expected_range_validation = false;
   match_cfg.search_translation_m = config_.match_search_translation_m;
   match_cfg.translation_step_m = config_.match_translation_step_m;
@@ -756,7 +880,12 @@ SlamLoopResult SlamSession::try_close_loops(
  config_.keyframe_heading_rad,
  2.0 * config_.match_heading_step_rad);
  ScanMatcherConfig refine_cfg;
- refine_cfg.expected_range_validation = false;
+ refine_cfg.expected_range_validation = true;
+ // The graph prediction is the local prior. A refined loop may move away
+ // from it only when the historical geometry improves likelihood by the
+ // same declared margin that separates competing modes; raster
+ // quantization must not manufacture a map-frame rotation.
+ refine_cfg.require_prior_improvement = true;
  refine_cfg.search_translation_m = config_.match_refine_translation_m;
  refine_cfg.translation_step_m = config_.match_refine_translation_step_m;
  refine_cfg.search_heading_rad = config_.match_refine_heading_rad;
@@ -767,9 +896,11 @@ SlamLoopResult SlamSession::try_close_loops(
  // The dense pass resolves one mode selected by the wide pass. Adjacent
  // raster cells belong to that mode and must not manufacture ambiguity.
  refine_cfg.ambiguity_distance_m = std::max(
- 0.25, 2.0 * config_.match_refine_translation_step_m);
+ config_.keyframe_translation_m,
+ 2.0 * config_.match_refine_translation_step_m);
  refine_cfg.ambiguity_heading_rad = std::max(
- 0.15, 2.0 * config_.match_refine_heading_step_rad);
+ config_.keyframe_heading_rad,
+ 2.0 * config_.match_refine_heading_step_rad);
  if (!loop_search_) {
  if (now_s - last_attempt_s_ < config_.loop_attempt_interval_s ||
  keyframes_.size() == keyframes_at_last_attempt_) {
@@ -782,11 +913,21 @@ SlamLoopResult SlamSession::try_close_loops(
  loop_search_->match_est = est;
  loop_search_->match_obs = obs;
  loop_search_->to_id = keyframes_.back().id;
+ std::vector<double> path_length_to_latest(keyframes_.size(), 0.0);
+ for (std::size_t i = keyframes_.size() - 1; i > 0; --i) {
+ path_length_to_latest[i - 1] = path_length_to_latest[i] +
+ pose_translation_error(keyframes_[i - 1].pose, keyframes_[i].pose);
+ }
  // Candidates: temporally separated and spatially near the scan pose.
  // Store stable ids because keyframe ingestion continues while matching is
  // sliced across ticks.
  for (std::size_t i = 0; i + 1 < keyframes_.size(); ++i) {
  const SlamKeyframe& kf = keyframes_[i];
+ if (std::find(closed_historical_keyframes_.begin(),
+ closed_historical_keyframes_.end(), kf.id) !=
+ closed_historical_keyframes_.end()) {
+ continue;
+ }
  const std::size_t separation = keyframes_.size() - 1 - i;
  // The two causal submaps must not share keyframes. Shared scans make the
  // forward/reverse checks correlated and can turn an ordinary local chain
@@ -795,7 +936,15 @@ SlamLoopResult SlamSession::try_close_loops(
  const std::size_t independent_submap_separation = std::max(
  config_.minimum_loop_keyframe_separation,
  2 * std::max<std::size_t>(1, config_.local_submap_keyframes));
+ // Heading-only keyframes at a dock do not create nonlocal topology. The
+ // chain between two disjoint submap windows must also contain the
+ // translation those windows nominally cover; derive it from the existing
+ // keyframe spacing instead of adding a scenario distance threshold.
+ const double independent_path_length_m =
+ static_cast<double>(independent_submap_separation) *
+ config_.keyframe_translation_m;
  if (separation < independent_submap_separation ||
+ path_length_to_latest[i] < independent_path_length_m ||
  now_s - kf.stamp_s < config_.gate.minimum_temporal_separation_s) {
  continue;
  }
@@ -911,7 +1060,8 @@ SlamLoopResult SlamSession::try_close_loops(
  work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
  work.match_obs.scan_angle_increment_rad, work.match_est.x_m,
  work.match_est.y_m, work.match_est.yaw_rad,
- submap_ending_at(static_cast<std::size_t>(old - keyframes_.data())),
+ historical_submap_around(
+ static_cast<std::size_t>(old - keyframes_.data())),
  work.match_est.roll_rad, work.match_est.pitch_rad,
  work.match_est.z_m);
  work.phase = LoopSearchWork::Phase::kCoarse;
@@ -925,13 +1075,21 @@ SlamLoopResult SlamSession::try_close_loops(
  return reject_candidate(
  "coarse match rejected: " + work.coarse.rejection_reason);
  }
- iface::MapSnapshot sub = std::move(work.lattice.map);
+ SlamKeyframe* old = find_keyframe(work.old_id);
+ if (old == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ iface::MapSnapshot sub = historical_submap_around(
+ static_cast<std::size_t>(old - keyframes_.data()), false);
  work.lattice.start(refine_cfg, base_from_lidar_,
  work.match_obs.ranges_m, work.match_obs.scan_angle_min_rad,
  work.match_obs.scan_angle_increment_rad, work.coarse.x_m,
  work.coarse.y_m, work.coarse.yaw_rad, std::move(sub),
  work.match_est.roll_rad, work.match_est.pitch_rad,
- work.match_est.z_m);
+ work.match_est.z_m,
+ Pose2{{work.match_est.x_m, work.match_est.y_m},
+ work.match_est.yaw_rad});
  work.phase = LoopSearchWork::Phase::kForward;
  return defer("loop forward refinement pending");
  }
@@ -944,29 +1102,40 @@ SlamLoopResult SlamSession::try_close_loops(
  return reject_candidate(
  "forward refinement rejected: " + work.forward.rejection_reason);
  }
- SlamKeyframe now_kf;
- now_kf.id = 0;
- now_kf.stamp_s = work.match_obs.stamp_ns * 1e-9;
- now_kf.pose.position.x = work.forward.x_m;
- now_kf.pose.position.y = work.forward.y_m;
- now_kf.pose.heading_rad = work.forward.yaw_rad;
- now_kf.roll_rad = work.match_est.roll_rad;
- now_kf.pitch_rad = work.match_est.pitch_rad;
- now_kf.z_m = work.match_est.z_m;
- now_kf.ranges_m = work.match_obs.ranges_m;
- now_kf.angle_min_rad = work.match_obs.scan_angle_min_rad;
- now_kf.angle_increment_rad = normalized_scan_increment(
- work.match_obs.scan_angle_increment_rad,
- work.match_obs.ranges_m.size());
+ // The coarse pass separates physical association modes. Dense refinement
+ // only estimates a pose inside that chosen mode, so retain the coarse
+ // separated-mode margin for the loop gate. Cross-candidate comparison
+ // below can still reduce it when another historical place competes.
+ work.forward.score_margin = work.coarse.score_margin;
  SlamKeyframe* old = find_keyframe(work.old_id);
- if (old == nullptr) {
+ SlamKeyframe* recent = find_keyframe(work.to_id);
+ if (old == nullptr || recent == nullptr) {
  loop_search_.reset();
  return defer("loop search invalidated by keyframe retention");
  }
+ const std::size_t recent_index =
+ static_cast<std::size_t>(recent - keyframes_.data());
+ const Pose2 current_pose{
+ {work.match_est.x_m, work.match_est.y_m},
+ work.match_est.yaw_rad};
+ const Pose2 matched_current{
+ {work.forward.x_m, work.forward.y_m},
+ work.forward.yaw_rad};
+ // Forward maps the recent odometry frame into the historical submap.
+ // Reverse verification must test its inverse; an unrelated scan optimum
+ // in the recent submap is not independent support for the same closure.
+ const Pose2 forward_correction = compose_pose(
+ matched_current, inverse_pose(current_pose));
+ const Pose2 expected_old_in_recent = compose_pose(
+ inverse_pose(forward_correction), old->pose);
  work.lattice.start(refine_cfg, base_from_lidar_, old->ranges_m,
  old->angle_min_rad, old->angle_increment_rad,
- old->pose.position.x, old->pose.position.y, old->pose.heading_rad,
- submap_for(now_kf), old->roll_rad, old->pitch_rad, old->z_m);
+ expected_old_in_recent.position.x,
+ expected_old_in_recent.position.y,
+ expected_old_in_recent.heading_rad,
+ submap_ending_at(recent_index, false),
+ old->roll_rad, old->pitch_rad,
+ old->z_m, expected_old_in_recent);
  work.phase = LoopSearchWork::Phase::kReverse;
  return defer("loop reverse verification pending");
  }
@@ -983,6 +1152,166 @@ SlamLoopResult SlamSession::try_close_loops(
  if (work.reverse.overlap < config_.gate.minimum_overlap) {
  return reject_candidate("reverse overlap below loop gate");
  }
+ SlamKeyframe* old = find_keyframe(work.old_id);
+ if (old == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ const Pose2 current_pose{
+ {work.match_est.x_m, work.match_est.y_m},
+ work.match_est.yaw_rad};
+ const Pose2 matched_current{
+ {work.forward.x_m, work.forward.y_m},
+ work.forward.yaw_rad};
+ const Pose2 forward_correction = compose_pose(
+ matched_current, inverse_pose(current_pose));
+ const Pose2 matched_old{
+ {work.reverse.x_m, work.reverse.y_m},
+ work.reverse.yaw_rad};
+ const Pose2 reverse_correction = compose_pose(
+ matched_old, inverse_pose(old->pose));
+ const Pose2 reverse_as_forward = inverse_pose(reverse_correction);
+
+ // A single scan can slide inside a thick endpoint band in both directions.
+ // Resolve that ambiguity at submap level: score the complete disjoint
+ // recent and historical keyframe windows under each transform proposed by
+ // forward matching, reverse matching, and the graph prediction. This is
+ // still ROBOT-only evidence (stored scans and estimated keyframe poses).
+ struct WindowEvidence {
+ double score = -std::numeric_limits<double>::infinity();
+ double overlap = 0.0;
+ std::size_t returns = 0;
+ bool valid = false;
+ };
+ const auto causal_bounds = [&](std::size_t end) {
+ const std::size_t count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t begin = end + 1 > count ? end + 1 - count : 0;
+ return std::pair<std::size_t, std::size_t>{begin, end};
+ };
+ const auto centered_bounds = [&](std::size_t center) {
+ const std::size_t count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t half = count / 2;
+ std::size_t begin = center > half ? center - half : 0;
+ const std::size_t end = std::min(
+ keyframes_.size() - 1, begin + count - 1);
+ begin = end + 1 > count ? end + 1 - count : 0;
+ return std::pair<std::size_t, std::size_t>{begin, end};
+ };
+ ScanMatcher window_matcher(refine_cfg);
+ window_matcher.set_lidar_mount(base_from_lidar_);
+ const auto score_window = [&] (
+ std::pair<std::size_t, std::size_t> bounds,
+ const iface::MapSnapshot& map, const Pose2& transform) {
+ WindowEvidence aggregate;
+ double weighted_score = 0.0;
+ double weighted_overlap = 0.0;
+ for (std::size_t index = bounds.first; index <= bounds.second; ++index) {
+ const SlamKeyframe& keyframe = keyframes_[index];
+ const auto beams = window_matcher.prepare_beams(
+ keyframe.ranges_m, keyframe.angle_min_rad,
+ keyframe.angle_increment_rad, config_.match_refine_max_beams);
+ const Pose2 transformed = compose_pose(transform, keyframe.pose);
+ const PoseScore evidence = window_matcher.score_expected_ranges(
+ transformed.position.x, transformed.position.y,
+ transformed.heading_rad, beams, map,
+ keyframe.roll_rad, keyframe.pitch_rad);
+ if (!evidence.has_evidence || evidence.usable_returns == 0) continue;
+ const double weight = static_cast<double>(evidence.usable_returns);
+ weighted_score += weight * evidence.score;
+ weighted_overlap += weight * evidence.overlap;
+ aggregate.returns += evidence.usable_returns;
+ }
+ if (aggregate.returns < refine_cfg.minimum_returns) return aggregate;
+ const double normalization = static_cast<double>(aggregate.returns);
+ aggregate.score = weighted_score / normalization;
+ aggregate.overlap = weighted_overlap / normalization;
+ aggregate.valid = std::isfinite(aggregate.score);
+ return aggregate;
+ };
+ const std::size_t old_index = static_cast<std::size_t>(
+ old - keyframes_.data());
+ SlamKeyframe* recent = find_keyframe(work.to_id);
+ if (recent == nullptr) {
+ loop_search_.reset();
+ return defer("loop search invalidated by keyframe retention");
+ }
+ const std::size_t recent_index = static_cast<std::size_t>(
+ recent - keyframes_.data());
+ const auto historical_bounds = centered_bounds(old_index);
+ const auto recent_bounds = causal_bounds(recent_index);
+ const iface::MapSnapshot historical_map =
+ historical_submap_around(old_index, false);
+ const iface::MapSnapshot recent_map =
+ submap_ending_at(recent_index, false);
+ struct AlignmentHypothesis {
+ Pose2 correction;
+ WindowEvidence forward;
+ WindowEvidence reverse;
+ double rank = -std::numeric_limits<double>::infinity();
+ };
+ std::vector<AlignmentHypothesis> alignments;
+ const auto same_alignment = [&](const Pose2& a, const Pose2& b) {
+ return pose_translation_error(a, b) <=
+ 2.0 * config_.match_refine_translation_step_m &&
+ std::abs(core::wrap_angle(a.heading_rad - b.heading_rad)) <=
+ 2.0 * config_.match_refine_heading_step_rad;
+ };
+ const auto evaluate_alignment = [&](const Pose2& correction) {
+ const bool duplicate = std::any_of(
+ alignments.begin(), alignments.end(),
+ [&](const AlignmentHypothesis& existing) {
+ return same_alignment(existing.correction, correction);
+ });
+ if (duplicate) return;
+ const WindowEvidence forward = score_window(
+ recent_bounds, historical_map, correction);
+ const WindowEvidence reverse = score_window(
+ historical_bounds, recent_map, inverse_pose(correction));
+ if (!forward.valid || !reverse.valid ||
+ forward.overlap < config_.gate.minimum_overlap ||
+ reverse.overlap < config_.gate.minimum_overlap) {
+ return;
+ }
+ const double rank = 0.5 *
+ (forward.score * forward.overlap + reverse.score * reverse.overlap);
+ alignments.push_back({correction, forward, reverse, rank});
+ };
+ evaluate_alignment(forward_correction);
+ evaluate_alignment(reverse_as_forward);
+ evaluate_alignment(Pose2{});
+ if (alignments.empty()) {
+ return reject_candidate("submap alignment has insufficient overlap");
+ }
+ std::sort(alignments.begin(), alignments.end(),
+ [](const AlignmentHypothesis& a, const AlignmentHypothesis& b) {
+ return a.rank > b.rank;
+ });
+ const double alignment_margin = alignments.size() > 1
+ ? alignments[0].rank - alignments[1].rank : 1.0;
+ if (alignments.size() > 1 &&
+ alignment_margin < config_.gate.minimum_score_margin) {
+ return reject_candidate("submap alignment is geometrically ambiguous");
+ }
+ const AlignmentHypothesis& alignment = alignments.front();
+ const Pose2 aligned_current = compose_pose(
+ alignment.correction, current_pose);
+ const Pose2 aligned_old = compose_pose(
+ inverse_pose(alignment.correction), old->pose);
+ work.forward.x_m = aligned_current.position.x;
+ work.forward.y_m = aligned_current.position.y;
+ work.forward.yaw_rad = aligned_current.heading_rad;
+ work.forward.score = alignment.forward.score;
+ work.forward.overlap = alignment.forward.overlap;
+ work.forward.score_margin = std::min(
+ work.forward.score_margin, alignment_margin);
+ work.reverse.x_m = aligned_old.position.x;
+ work.reverse.y_m = aligned_old.position.y;
+ work.reverse.yaw_rad = aligned_old.heading_rad;
+ work.reverse.score = alignment.reverse.score;
+ work.reverse.overlap = alignment.reverse.overlap;
+ work.reverse.score_margin = alignment_margin;
  // Compare the bidirectional fraction of explained returns. Both match
  // quality and overlap contribute evidence; a high score over a small
  // accidental fragment must not outrank a broadly supported revisit.
@@ -1326,6 +1655,23 @@ SlamLoopResult SlamSession::try_close_loops(
     out.closed = true;
     out.from_id = from.id;
     out.to_id = to.id;
+ // Mark every keyframe that formed the accepted historical submap. A later
+ // visit can still close against another submap, while this exact evidence
+ // window cannot be reused to manufacture additional confidence.
+ const std::size_t closed_center = static_cast<std::size_t>(
+ old_ptr - keyframes_.data());
+ const std::size_t closed_count = std::max<std::size_t>(
+ 1, config_.local_submap_keyframes);
+ const std::size_t closed_half = closed_count / 2;
+ std::size_t closed_begin =
+ closed_center > closed_half ? closed_center - closed_half : 0;
+ const std::size_t closed_end = std::min(
+ keyframes_.size() - 1, closed_begin + closed_count - 1);
+ closed_begin = closed_end + 1 > closed_count
+ ? closed_end + 1 - closed_count : 0;
+ for (std::size_t i = closed_begin; i <= closed_end; ++i) {
+ closed_historical_keyframes_.push_back(keyframes_[i].id);
+ }
     out.correction_delta =
  relative_pose(prior_newest, optimized_newest);
       // Rigid correction: same motion that moved the newest keyframe,

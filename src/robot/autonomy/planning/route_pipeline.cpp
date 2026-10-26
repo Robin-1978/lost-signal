@@ -90,59 +90,70 @@ bool RoutePlanningPipeline::advance(
  distance_to_route(start, active_route) > maximum_route_deviation_m;
  force_replan = force_replan || route_deviated;
  const bool request_changed = !same_request(goal, map);
- if (pending_ && (request_changed || force_replan)) {
+ if (pending_ && request_changed) {
  planner.cancel_plan();
  pending_ = false;
  }
 
  const bool retry_failed = failed_ &&
- (request_changed || force_replan || failed_start_changed(start, map));
+ (request_changed || route_deviated || failed_start_changed(start, map));
  const bool begin = !pending_ &&
- (request_changed || force_replan || (!active_route.valid && !failed_) ||
- retry_failed);
+ (request_changed || route_deviated ||
+ (force_replan && !failed_) ||
+ (!active_route.valid && !failed_) || retry_failed);
+ bool route_state_changed = request_changed || route_deviated;
  if (begin) {
  requested_goal_ = goal;
  requested_map_id_ = map.map_id;
  requested_map_revision_ = map.revision;
  has_request_ = true;
  failed_ = false;
- active_route = Route{};
+ // A changed goal/map or a complete route-tube departure invalidates the
+ // old route immediately. A same-request local replan keeps the last
+ // validated route until a replacement succeeds: global planning is an
+ // atomic refresh, and Validator/Safety still gate every fallback command.
+ if (request_changed || route_deviated) active_route = Route{};
 
  if (!planner.supports_incremental_plan()) {
- active_route = planner.plan(start, goal, map);
- if (!active_route.valid) {
+ Route replacement = planner.plan(start, goal, map);
+ if (!replacement.valid) {
  failed_ = true;
  failed_start_valid_ = start.valid && std::isfinite(start.x_m) &&
  std::isfinite(start.y_m);
  failed_start_x_m_ = start.x_m;
  failed_start_y_m_ = start.y_m;
+ } else {
+ active_route = std::move(replacement);
+ route_state_changed = true;
  }
- return true;
+ return route_state_changed || !active_route.valid;
  }
  planner.begin_plan(start, goal, map);
  pending_ = true;
  }
 
- if (!pending_) return begin;
+ if (!pending_) return route_state_changed;
  GlobalPlanProgress progress =
  planner.continue_plan(planner.incremental_plan_budget());
- if (progress.status == GlobalPlanStatus::kPending) return true;
+ if (progress.status == GlobalPlanStatus::kPending) {
+ return route_state_changed || !active_route.valid;
+ }
 
  pending_ = false;
  if (progress.status == GlobalPlanStatus::kSucceeded &&
  progress.route.valid) {
  active_route = std::move(progress.route);
  failed_ = false;
+ route_state_changed = true;
  return true;
  }
 
- active_route = Route{};
  failed_ = true;
  failed_start_valid_ = start.valid && std::isfinite(start.x_m) &&
  std::isfinite(start.y_m);
  failed_start_x_m_ = start.x_m;
  failed_start_y_m_ = start.y_m;
- return true;
+ return route_state_changed || !active_route.valid;
 }
 
 bool RoutePlanningPipeline::refresh(IGlobalPlanner& planner,

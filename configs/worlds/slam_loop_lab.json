@@ -12,9 +12,9 @@
  {"box_id":"south_landmark","impact_material":"wood","prior_map_visible":false,"x0":0.5,"y0":-2.5,"x1":1.3,"y1":-1.7,"height_m":1.0}
   ],
   "places": [
- {"place_id":"loop_east","x_m":2.5,"y_m":0.0,"yaw_rad":0.0},
- {"place_id":"loop_north","x_m":2.5,"y_m":2.5,"yaw_rad":0.0},
- {"place_id":"loop_west","x_m":0.0,"y_m":2.5,"yaw_rad":0.0},
+ {"place_id":"loop_east","x_m":2.5,"y_m":0.0,"yaw_rad":1.5707963267948966},
+ {"place_id":"loop_north","x_m":2.5,"y_m":2.5,"yaw_rad":3.141592653589793},
+ {"place_id":"loop_west","x_m":0.0,"y_m":2.5,"yaw_rad":-1.5707963267948966},
     {"place_id":"loop_home","x_m":0.0,"y_m":0.0,"yaw_rad":0.0}
   ],
   "materials": [],
