@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "robot/autonomy/planning/prediction.hpp"
 #include "robot/core/deskew.hpp"
@@ -36,6 +37,48 @@ const char* impact_material_name(world::ImpactMaterial material) {
  case world::ImpactMaterial::kUnknown: return "unknown";
  }
  return "unknown";
+}
+
+struct PlanarMapFromOdom {
+ bool valid = false;
+ double x_m = 0.0;
+ double y_m = 0.0;
+ double yaw_rad = 0.0;
+};
+
+PlanarMapFromOdom map_from_odom_for(const eval::EvalStep& step) {
+ const auto& map_base = step.diag.estimate;
+ const auto& odom_base = step.diag.odometry_estimate;
+ if (!map_base.valid || !odom_base.valid) return {};
+ const auto transform = robot::core::map_from_odom_delta(
+ odom_base.x_m, odom_base.y_m, odom_base.yaw_rad,
+ map_base.x_m, map_base.y_m, map_base.yaw_rad);
+ return {true, transform.translation_m.x, transform.translation_m.y,
+ 2.0 * std::atan2(transform.rotation.z, transform.rotation.w)};
+}
+
+bool materially_different(const PlanarMapFromOdom& before,
+ const PlanarMapFromOdom& after) {
+ if (!before.valid || !after.valid) return false;
+ const double scale = std::max({1.0, std::abs(before.x_m),
+ std::abs(before.y_m), std::abs(after.x_m), std::abs(after.y_m)});
+ const double numeric_tolerance =
+ 64.0 * std::numeric_limits<double>::epsilon() * scale;
+ return std::hypot(after.x_m - before.x_m, after.y_m - before.y_m) >
+ numeric_tolerance ||
+ std::abs(robot::core::wrap_angle(
+ after.yaw_rad - before.yaw_rad)) > numeric_tolerance;
+}
+
+void transform_odom_pose(const PlanarMapFromOdom& map_from_odom,
+ const robot::autonomy::EstimatedState& odom_base,
+ double& x_m, double& y_m, double& yaw_rad) {
+ const double c = std::cos(map_from_odom.yaw_rad);
+ const double s = std::sin(map_from_odom.yaw_rad);
+ x_m = map_from_odom.x_m + c * odom_base.x_m - s * odom_base.y_m;
+ y_m = map_from_odom.y_m + s * odom_base.x_m + c * odom_base.y_m;
+ yaw_rad = robot::core::wrap_angle(
+ map_from_odom.yaw_rad + odom_base.yaw_rad);
 }
 
 } // namespace
@@ -542,8 +585,27 @@ std::optional<Frame> build_episode_frame(
  trail.emplace_back(steps[i].truth_after.body_x_m,
  steps[i].truth_after.body_y_m);
  }
- return build_frame(world, steps[episode_index], reached_ids, trail, sel,
- mount);
+ Frame frame = build_frame(
+ world, steps[episode_index], reached_ids, trail, sel, mount);
+ if (episode_index > 0) {
+ const auto before = map_from_odom_for(steps[episode_index - 1]);
+ const auto after = map_from_odom_for(steps[episode_index]);
+ const auto& odom_base = steps[episode_index].diag.odometry_estimate;
+ if (odom_base.valid && materially_different(before, after)) {
+ frame.estimate.correction_transition_valid = true;
+ transform_odom_pose(
+ before, odom_base,
+ frame.estimate.before_correction_x_m,
+ frame.estimate.before_correction_y_m,
+ frame.estimate.before_correction_yaw_rad);
+ transform_odom_pose(
+ after, odom_base,
+ frame.estimate.after_correction_x_m,
+ frame.estimate.after_correction_y_m,
+ frame.estimate.after_correction_yaw_rad);
+ }
+ }
+ return frame;
 }
 
 }  // namespace lost_signal::sim::viewer

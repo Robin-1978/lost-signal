@@ -2081,6 +2081,24 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
         s.y_px - 14.0f * std::sin(static_cast<float>(f.body.est_yaw_rad));
     DrawLineV({s.x_px, s.y_px}, {hx, hy}, DARKGREEN);
   }
+ if (show_estimate && f.estimate.correction_transition_valid) {
+ const auto before = view.world_to_screen(
+ f.estimate.before_correction_x_m,
+ f.estimate.before_correction_y_m);
+ const auto after = view.world_to_screen(
+ f.estimate.after_correction_x_m,
+ f.estimate.after_correction_y_m);
+ const Color prior{246, 169, 61, 230};
+ const Color corrected{55, 218, 202, 240};
+ DrawCircleLinesV({before.x_px, before.y_px}, 11.0f, prior);
+ DrawLineEx({before.x_px, before.y_px}, {after.x_px, after.y_px},
+ 2.5f, corrected);
+ DrawCircleLinesV({after.x_px, after.y_px}, 13.0f, corrected);
+ DrawText("ODOM PREDICTION", static_cast<int>(before.x_px + 14.0f),
+ static_cast<int>(before.y_px - 18.0f), 11, prior);
+ DrawText("MAP CORRECTION", static_cast<int>(after.x_px + 14.0f),
+ static_cast<int>(after.y_px + 5.0f), 11, corrected);
+ }
   // Body (truth rect + heading).
   {
     const auto s = view.world_to_screen(f.body.x_m, f.body.y_m);
@@ -2744,6 +2762,21 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
          static_cast<float>(f.body.half_width_m * 2.0)},
         DARKGREEN);
   }
+ if (show_estimate && f.estimate.correction_transition_valid) {
+ const Vector3 before = to_raylib(
+ f.estimate.before_correction_x_m,
+ f.estimate.before_correction_y_m, 0.26);
+ const Vector3 after = to_raylib(
+ f.estimate.after_correction_x_m,
+ f.estimate.after_correction_y_m, 0.26);
+ const Color prior{246, 169, 61, 230};
+ const Color corrected{55, 218, 202, 240};
+ DrawCubeWiresV(before,
+ {static_cast<float>(f.body.half_length_m * 2.0), 0.5f,
+ static_cast<float>(f.body.half_width_m * 2.0)}, prior);
+ DrawLine3D(before, after, corrected);
+ DrawSphereWires(after, 0.08f, 8, 8, corrected);
+ }
   // Body: box at engine pose with live attitude. Exact world->raylib
   // rotation M = Q*R*Q' for R = Rz(yaw)*Ry(pitch)*Rx(roll) — no Euler
   // folklore, slopes tilt the viz exactly as the engine holds them. (This

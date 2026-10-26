@@ -160,5 +160,34 @@ int main() {
  assert(historical->trail.back().first == 11.0);
  assert(!sim::viewer::build_episode_frame(
  world, history, 3, {}).has_value());
+
+ // A localization jump is visualized by applying the previous and current
+ // map_T_odom transforms to the same continuous odom pose. Raw odom numbers
+ // are never mistaken for map coordinates.
+ sim::eval::EpisodeRecorder correction_history;
+ sim::eval::EvalStep before_correction;
+ before_correction.diag.estimate.valid = true;
+ before_correction.diag.estimate.x_m = 1.0;
+ before_correction.diag.odometry_estimate.valid = true;
+ before_correction.diag.odometry_estimate.x_m = 1.0;
+ correction_history.record(before_correction);
+ sim::eval::EvalStep after_correction;
+ after_correction.diag.estimate.valid = true;
+ after_correction.diag.estimate.x_m = 5.0;
+ after_correction.diag.estimate.y_m = 2.0;
+ after_correction.diag.odometry_estimate.valid = true;
+ after_correction.diag.odometry_estimate.x_m = 1.2;
+ correction_history.record(after_correction);
+ const auto correction_frame = sim::viewer::build_episode_frame(
+ world, correction_history, 1, {});
+ assert(correction_frame.has_value());
+ assert(correction_frame->estimate.correction_transition_valid);
+ assert(std::abs(correction_frame->estimate.before_correction_x_m - 1.2) <
+ 1e-12);
+ assert(std::abs(correction_frame->estimate.before_correction_y_m) < 1e-12);
+ assert(std::abs(correction_frame->estimate.after_correction_x_m - 5.0) <
+ 1e-12);
+ assert(std::abs(correction_frame->estimate.after_correction_y_m - 2.0) <
+ 1e-12);
  return 0;
 }
