@@ -212,6 +212,8 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 电机音高读取 wheel angular velocity，负载层读取 duty/estimated torque，打滑读取接触相对速度，碰撞读取冲量。LiDAR、电机、继电器、机械制动和环境声使用独立总线；教学讲解可以关闭。声音和粒子只消费已完成 SIM step 的状态。
 
+当前已迁入第一组状态音效：碰撞由 SIM collision edge 触发，等待与恢复由 ROBOT `STOPPED` 状态及版本化稳定时间触发，任务完成由 GAME 的独立安全终态触发。Viewer Retry/Next 会清空音频边沿状态；Turbo 只同步、不播放压缩事件，`--mute` 可完全关闭。后续电机、接触和环境循环声必须继续读取物理量，不允许按关卡脚本播放。
+
 ## 9. GLB 与 Blender 资产契约
 
 以后 GLB 数量会持续增加，不能继续在 Viewer 中按模型猜轴向、缩放和落地偏移。每套资产包含源 `.blend` 或可重复生成脚本、导出 GLB、manifest 和验证结果。

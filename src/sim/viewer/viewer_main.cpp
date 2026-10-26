@@ -42,6 +42,7 @@
 #include "sim/viewer/playback_controller.hpp"
 #include "sim/viewer/scene_manifest.hpp"
 #include "sim/viewer/view_transform.hpp"
+#include "sim/viewer/viewer_audio.hpp"
 #include "sim/world/actor_behavior.hpp"
 #include "sim/world/terrain.hpp"
 
@@ -2929,6 +2930,7 @@ int main(int argc, char** argv) {
  bool sandbox_requested = false;
  bool play_requested = false;
  bool source_requested = false;
+ bool mute_audio = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
  if (a == "--help" || a == "-h") {
@@ -2936,7 +2938,7 @@ int main(int argc, char** argv) {
  "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
- " [--locale auto|en|zh-CN]\n"
+ " [--locale auto|en|zh-CN] [--mute]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -2945,6 +2947,7 @@ int main(int argc, char** argv) {
  }
  if (a == "--play") play_requested = true;
  if (a == "--sandbox") sandbox_requested = true;
+ if (a == "--mute") mute_audio = true;
  if (a == "--robot" && i + 1 < argc) {
  robot_path = argv[++i];
  source_requested = true;
@@ -3080,6 +3083,7 @@ int main(int argc, char** argv) {
  load_ui_font(experience_loaded ? &experience : nullptr);
  if (assets_path.empty() && std::filesystem::is_directory("assets"))
  assets_path = "assets";
+ sim::viewer::ViewerAudio viewer_audio(assets_path, !mute_audio);
  VisualAssets visual_assets;
  load_visual_assets(visual_assets, assets_path,
  robot_config.has_value() ? robot_config->robot_id : "ro1");
@@ -3231,6 +3235,7 @@ int main(int argc, char** argv) {
  motion_particles.clear();
  surface_traces.clear();
  effects_episode_cursor.reset();
+ viewer_audio.reset();
  const double requested_rate = playback.requested_rate();
  const bool turbo = playback.turbo();
  auto reset_playback_config = playback_config;
@@ -3641,6 +3646,15 @@ int main(int argc, char** argv) {
  review_keyframes = sim::viewer::extract_review_keyframes(
  session->episode(), review_config, std::move(review_outcome));
  selected_review_keyframe = 0;
+ if (!session->episode().steps().empty()) {
+ const auto terminal_frame = sim::viewer::build_frame(
+ session->setup_world(), session->episode().steps().back(), {}, {}, {},
+ session_lidar_mount);
+ viewer_audio.update(terminal_frame, true,
+ session->objectives_done() && session->objectives_passed() &&
+ terminal_score.collision_steps == 0,
+ playback.turbo());
+ }
  }
     const auto& steps = session->episode().steps();
  if (steps.empty()) {
@@ -3755,6 +3769,10 @@ int main(int argc, char** argv) {
  session->setup_world(), steps[index], {}, {}, {}, session_lidar_mount);
  motion_particles.advance(event_frame);
  surface_traces.advance(event_frame);
+ const bool live_audio = !experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning;
+ viewer_audio.update(event_frame, false, false,
+ playback.turbo() || !live_audio);
  }
  if (!effects_episode_cursor.has_value() ||
  presented_index > *effects_episode_cursor) {
@@ -3762,6 +3780,13 @@ int main(int argc, char** argv) {
  surface_traces.advance(frame);
  effects_episode_cursor = presented_index;
  }
+ const bool live_audio = !experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning;
+ const auto audio_score = session->score();
+ viewer_audio.update(frame, session->objectives_done(),
+ session->objectives_done() && session->objectives_passed() &&
+ audio_score.collision_steps == 0,
+ playback.turbo() || !live_audio);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.

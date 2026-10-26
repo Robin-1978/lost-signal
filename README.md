@@ -243,3 +243,8 @@ rate, measured real-time factor, steps/s, sliding-window tick p99, active
 quality, and `LIMIT` when the rendering budget throttles simulation work.
 For unattended parameter sweeps and CI, use `lost_signal_sim` directly so no
 graphics work competes with the fixed-step simulation.
+The Viewer plays presentation-only cues for physical collision, ROBOT safety
+hold/recovery, and independently accepted task completion; `--mute` disables
+them. Turbo suppresses compressed cue bursts while still synchronizing audio
+state. Sound consumes completed evidence and has no path into physics,
+sensors, ROBOT, or scoring.

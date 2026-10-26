@@ -214,6 +214,7 @@ endif()
 if(LOST_SIGNAL_WITH_VIEWER)
   add_executable(sim_viewer
     src/sim/viewer/viewer_main.cpp
+ src/sim/viewer/viewer_audio.cpp
   )
   target_link_libraries(sim_viewer PRIVATE lost_signal_sim_viewer
     lost_signal_sim_scenario raylib)
