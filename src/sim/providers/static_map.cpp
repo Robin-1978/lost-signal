@@ -69,6 +69,7 @@ void StaticMapProvider::rebuild() const {
  // Rasterize by obstacle bounds: sparse worlds are O(cells + painted cells),
  // rather than testing every authored box at every map cell.
  for (const auto& b : world_->static_boxes()) {
+ if (!b.prior_map_visible) continue;
  if (!(b.height_m > 0.0)) continue; // flat paint: free space
  const int begin_x = std::max(0, static_cast<int>(std::floor(
  (b.x0 - min_x_m_) / resolution_m_)) - 1);

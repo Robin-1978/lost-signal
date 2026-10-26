@@ -68,6 +68,9 @@ struct StaticBox {
  // Visual impact class only. It controls effects such as sparks and never
  // changes collision, raycast, scoring, mapping, or ROBOT observations.
  ImpactMaterial impact_material = ImpactMaterial::kConcrete;
+ // A stale survey may omit a real obstacle. Physics, raycast, collision,
+ // and SIM evaluation still include it; only the ROBOT map prior omits it.
+ bool prior_map_visible = true;
 };
 
 struct Actor {

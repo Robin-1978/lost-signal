@@ -9,6 +9,7 @@
 #include "sim/providers/lidar3d.hpp"
 #include "sim/providers/reflectivity.hpp"
 #include "sim/providers/sim_imu.hpp"
+#include "sim/providers/static_map.hpp"
 #include "sim/world/world.hpp"
 
 using namespace lost_signal;
@@ -42,8 +43,12 @@ int main() {
   w.apply(enable);
   w.step(0.02);
   sim::world::StaticBox box{2.0, -0.5, 3.0, 0.5, 1.0};  // dead ahead, 2 m out
+  box.prior_map_visible = false;
   w.set_static_boxes({box});
   w.step(0.02);  // rebuild with the new geometry
+  sim::providers::StaticMapProvider stale_prior(
+      &w, -2.0, -2.0, 8.0, 4.0, 0.25);
+  assert(!stale_prior.active_snapshot().blocked(2.5, 0.0));
   sim::providers::Sim2DLidarProvider sim2d(&w, "sim.lidar2d", 72, 10.0f);
   assert(sim2d.descriptor().backend == robot::iface::ProviderBackend::kSim);
   robot::iface::Lidar2DScan scan;

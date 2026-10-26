@@ -106,6 +106,7 @@ int main() {
  1.0, -2.0, 0.25, 0.12, 0.06};
  content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5, "fixture_box"}};
  content.boxes[0].impact_material = sim::world::ImpactMaterial::kMetal;
+ content.boxes[0].prior_map_visible = false;
     content.places = {{"dock", 2.0, 0.0, 0.0}};
 content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
  {"gravel", 0.7, 0.015, 0.01, 1.15, 0.28, "dust", 0.0}};
@@ -128,6 +129,7 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
  assert(rc.initial_pose->position_sigma_m == 0.12);
  assert(rc.boxes[0].box_id == "fixture_box");
  assert(rc.boxes[0].impact_material == sim::world::ImpactMaterial::kMetal);
+ assert(!rc.boxes[0].prior_map_visible);
     assert(rc.materials[0].material_id == "ice");
     assert(std::abs(rc.materials[0].friction_mu - 0.25) < 1e-12);
  assert(rc.materials[1].surface_effect == "dust");

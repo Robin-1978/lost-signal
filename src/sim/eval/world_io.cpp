@@ -104,6 +104,7 @@ Json box_to_json(const world::StaticBox& b) {
  object.emplace_back("height_m", Json::Num(b.height_m));
  object.emplace_back("impact_material",
  Json::Str(impact_material_name(b.impact_material)));
+ object.emplace_back("prior_map_visible", Json::Bool(b.prior_map_visible));
  return Json::Obj(std::move(object));
 }
 
@@ -128,6 +129,14 @@ bool box_from_json(const Json& j, world::StaticBox& b, std::string& err) {
  "or rubber";
  return false;
  }
+ }
+ const Json* prior_map_visible = j.find("prior_map_visible");
+ if (prior_map_visible != nullptr) {
+ if (!prior_map_visible->is_bool()) {
+ err = "prior_map_visible must be boolean";
+ return false;
+ }
+ b.prior_map_visible = prior_map_visible->as_bool();
  }
  return num_field(j, "x0", b.x0, err) && num_field(j, "y0", b.y0, err) &&
          num_field(j, "x1", b.x1, err) && num_field(j, "y1", b.y1, err) &&
