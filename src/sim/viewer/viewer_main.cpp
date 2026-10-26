@@ -1135,6 +1135,28 @@ struct ExperienceHitRegions {
  }
 };
 
+struct PlaybackHitRegions {
+ std::array<Rectangle, 4> rates{};
+ Rectangle turbo{};
+};
+
+PlaybackHitRegions playback_hit_regions() {
+ PlaybackHitRegions regions;
+ constexpr float kYFromBottom = 62.0f;
+ constexpr float kX = 12.0f;
+ constexpr float kWidth = 46.0f;
+ constexpr float kGap = 6.0f;
+ const float y = static_cast<float>(GetScreenHeight()) - kYFromBottom;
+ for (std::size_t index = 0; index < regions.rates.size(); ++index) {
+ regions.rates[index] = {
+ kX + static_cast<float>(index) * (kWidth + kGap), y, kWidth, 30.0f};
+ }
+ regions.turbo = {
+ kX + static_cast<float>(regions.rates.size()) * (kWidth + kGap),
+ y, 76.0f, 30.0f};
+ return regions;
+}
+
 void draw_panel_button(Rectangle bounds, const char* label, bool primary,
  Color accent, Color text, bool enabled = true) {
  const bool hovered = enabled &&
@@ -1153,6 +1175,22 @@ void draw_panel_button(Rectangle bounds, const char* label, bool primary,
  static_cast<int>(bounds.x + (bounds.width - width) * 0.5f),
  static_cast<int>(bounds.y + (bounds.height - 14.0f) * 0.5f), 14,
  primary ? Color{7, 18, 18, 255} : text);
+}
+
+void draw_playback_controls(const PlaybackHitRegions& regions,
+ const lost_signal::sim::viewer::PlaybackController& playback) {
+ constexpr std::array<double, 4> kRates{1.0, 2.0, 4.0, 8.0};
+ constexpr std::array<const char*, 4> kLabels{"1x", "2x", "4x", "8x"};
+ constexpr Color kCyan{55, 218, 202, 255};
+ constexpr Color kText{226, 235, 230, 255};
+ for (std::size_t index = 0; index < kRates.size(); ++index) {
+ const bool selected = !playback.turbo() &&
+ std::abs(playback.requested_rate() - kRates[index]) < 1e-9;
+ draw_panel_button(regions.rates[index], kLabels[index], selected,
+ kCyan, kText);
+ }
+ draw_panel_button(regions.turbo, "TURBO", playback.turbo(),
+ Color{246, 169, 61, 255}, kText);
 }
 
 lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
@@ -3664,6 +3702,23 @@ int main(int argc, char** argv) {
  follow = false;
  }
  if (IsKeyPressed(KEY_T)) playback.set_turbo(!playback.turbo());
+ const bool playback_controls_visible = !experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning;
+ if (playback_controls_visible &&
+ IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+ const PlaybackHitRegions controls = playback_hit_regions();
+ const Vector2 pointer = GetMousePosition();
+ constexpr std::array<double, 4> kRates{1.0, 2.0, 4.0, 8.0};
+ for (std::size_t index = 0; index < controls.rates.size(); ++index) {
+ if (!CheckCollisionPointRec(pointer, controls.rates[index])) continue;
+ playback.set_turbo(false);
+ playback.set_requested_rate(kRates[index]);
+ break;
+ }
+ if (CheckCollisionPointRec(pointer, controls.turbo)) {
+ playback.set_turbo(true);
+ }
+ }
  if (IsKeyPressed(KEY_EQUAL) && playback.requested_rate() < 64.0) {
  playback.set_turbo(false);
  playback.set_requested_rate(
@@ -4086,6 +4141,9 @@ int main(int argc, char** argv) {
  experience_action_error,
  true,
  &experience_hit_regions);
+ }
+ if (playback_controls_visible) {
+ draw_playback_controls(playback_hit_regions(), playback);
  }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {

@@ -247,8 +247,9 @@ refresh never changes authored frames, grounding, budgets, bindings, or
 provenance.
 The viewer advances 20 ms scenario transitions composed of deterministic
 1 ms physics quanta at 1x by default.
-Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
-as fast as the bounded Turbo work budget allows. Use `--quality high|fast` or
+Use the visible `1x`/`2x`/`4x`/`8x`/`TURBO` controls during a run, `--rate N`
+or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run as fast as the
+bounded Turbo work budget allows. Use `--quality high|fast` or
 `Q` to choose the Viewer pipeline; Turbo selects Fast while active, then
 restores the chosen quality. Fast skips shadow/HDR passes but keeps physical
 link poses and simulation events. Playback never changes physics, sensor
