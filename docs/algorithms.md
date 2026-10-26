@@ -181,6 +181,15 @@ last word. Unknown planner names fail configuration.
  including actuator response delay; a vehicle already above the bound
  receives the maximum reachable one-cycle braking command rather than an
  impossible instantaneous clamp.
+ When the ordinary local window has no usable motion, the decision pipeline
+ samples a bounded recovery manoeuvre. Recovery uses the same declared
+ longitudinal, lateral, yaw and differential wheel acceleration envelopes as
+ normal planning, then passes every candidate through the independent
+ validator. A still-valid recovery direction is retained until the ordinary
+ planner has remained usable for one configured safety-reaction interval;
+ single-frame costmap changes therefore cannot alternate full left/right
+ commands. Any recovery candidate that becomes unsafe is discarded
+ immediately, so continuity never overrides the live safety class.
  DWA and TEB build the same two-stage `LocalCostmap` from the ROBOT-owned
  rolling map. The lethal layer expands measured occupancy by footprint plus
  the configured hard margin; the outer linear band is a preference that keeps

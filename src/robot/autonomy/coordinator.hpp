@@ -100,6 +100,7 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  if (period_ns <= 0) return;
  decision_period_ns_ = period_ns;
  const double period_s = static_cast<double>(period_ns) * 1e-9;
+ decision_pipeline_.set_decision_period(period_s);
  trajectory_tracking_limits_.forward_speed_mps =
  trajectory_tracking_limits_.position_m / period_s;
  trajectory_tracking_limits_.yaw_rate_radps =

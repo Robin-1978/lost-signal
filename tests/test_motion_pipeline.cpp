@@ -88,6 +88,42 @@ class HoldPlanner final : public ILocalPlanner {
  }
 };
 
+class SwitchablePlanner final : public ILocalPlanner {
+ public:
+ void reset() override {}
+ LocalPlan plan(const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const LocalMap&, const Route&,
+ const platform::ChassisLimits&) override {
+ if (!available) return {};
+ LocalPlan result;
+ result.has_plan = true;
+ result.best.feasible = true;
+ result.best.yaw_rate_radps = -0.2;
+ result.candidates.push_back(result.best);
+ return result;
+ }
+ bool available = false;
+};
+
+class TurnOnlyValidator final : public IValidator {
+ public:
+ ValidationResult validate(const LocalCandidate& candidate,
+ const EstimatedState&, const PerceptionResult&,
+ const PredictionBatch&, const iface::ObservationFrame&) override {
+ ValidationResult result;
+ if (!candidate.feasible || std::abs(candidate.yaw_rate_radps) < 0.01) {
+ result.reason = "turn required";
+ return result;
+ }
+ result.accepted = true;
+ result.verdict = TrajectoryVerdict::kAccepted;
+ result.min_clearance_m = 1.0;
+ result.min_dynamic_clearance_m = 1.0;
+ result.reason = "clear";
+ return result;
+ }
+};
+
 class SpeedValidator final : public IValidator {
  public:
  ValidationResult validate(const LocalCandidate& candidate,
@@ -250,6 +286,38 @@ int main() {
  estimate.stamp_ns + 3, one_shot, ranked, validator, controller);
  assert(released.reason == "clear");
  assert(released.command.forward_mps == 0.2);
+
+ // Recovery samples use the declared motion envelope, and an ordinary plan
+ // must remain available for one safety-reaction interval before it replaces
+ // a still-valid manoeuvre. A one-frame planner/recovery alternation therefore
+ // cannot publish opposite full-rate turns.
+ MotionDecisionPipeline::Config continuity_config;
+ continuity_config.decision_period_s = 0.02;
+ continuity_config.motion.yaw_acceleration_radps2 = 8.0;
+ continuity_config.motion.safety_reaction_time_s = 0.2;
+ MotionDecisionPipeline continuity_pipeline(continuity_config);
+ SwitchablePlanner switchable;
+ TurnOnlyValidator turn_only;
+ const MotionDecisionResult first_turn = continuity_pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns, behavior, switchable, turn_only, controller);
+ assert(first_turn.reason.find("recovery:") == 0);
+ assert(first_turn.command.yaw_rate_radps > 0.0);
+ assert(first_turn.command.yaw_rate_radps <=
+ continuity_config.motion.yaw_acceleration_radps2 *
+ continuity_config.decision_period_s + 1e-9);
+ switchable.available = true;
+ const MotionDecisionResult one_frame_plan = continuity_pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns + 1, behavior, switchable, turn_only, controller);
+ assert(one_frame_plan.reason.find("recovery:") == 0);
+ assert(one_frame_plan.command.yaw_rate_radps > 0.0);
+ switchable.available = false;
+ const MotionDecisionResult dropout = continuity_pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns + 2, behavior, switchable, turn_only, controller);
+ assert(dropout.reason.find("recovery:") == 0);
+ assert(dropout.command.yaw_rate_radps > 0.0);
 
  std::printf("motion pipeline ok\n");
  return 0;

@@ -46,6 +46,8 @@ class MotionDecisionPipeline {
  double recovery_speed_mps = 0.25;
  double recovery_yaw_rate_radps = 0.6;
  double recovery_projection_horizon_s = 1.0;
+ platform::MotionDynamicsPolicy motion;
+ double decision_period_s = 0.1;
  // Dynamic escape is released only after a stationary rollout retains this
  // extra predicted separation for several consecutive decisions.
  double escape_release_clearance_m = 0.20;
@@ -54,6 +56,9 @@ class MotionDecisionPipeline {
 
  MotionDecisionPipeline() = default;
  explicit MotionDecisionPipeline(Config config) : config_(config) {}
+ void set_decision_period(double period_s) {
+ if (period_s > 0.0) config_.decision_period_s = period_s;
+ }
  void reset();
  MotionDecisionResult run(
  const EstimatedState& est, const PerceptionResult& perception,
@@ -72,6 +77,12 @@ class MotionDecisionPipeline {
  bool escape_active_ = false;
  LocalCandidate escape_command_{};
  std::size_t escape_release_count_ = 0;
+ // Recovery is a closed-loop manoeuvre, not an independent one-tick sample.
+ // Retain its direction as a tie-break while every higher-priority safety
+ // metric remains equal, preventing left/right chatter near symmetric walls.
+ bool recovery_active_ = false;
+ LocalCandidate recovery_command_{};
+ std::size_t recovery_release_count_ = 0;
 };
 
 } // namespace lost_signal::robot::autonomy

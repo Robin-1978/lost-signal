@@ -18,6 +18,12 @@ namespace lost_signal::robot::autonomy {
 // this pipeline.
 class DecisionCyclePipeline {
  public:
+ DecisionCyclePipeline() = default;
+ explicit DecisionCyclePipeline(MotionDecisionPipeline::Config config)
+ : motion_(config) {}
+ void set_decision_period(double period_s) {
+ motion_.set_decision_period(period_s);
+ }
  void reset() {
  motion_.reset();
  route_.reset();

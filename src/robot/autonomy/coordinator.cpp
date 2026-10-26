@@ -60,6 +60,10 @@ AutonomyCoordinator::AutonomyCoordinator(platform::ChassisLimits limits,
     : limits_(limits),
       grip_(grip_config),
  goal_arrival_(arrival_config),
+ decision_pipeline_(MotionDecisionPipeline::Config{
+ .motion = motion_policy,
+ .decision_period_s = std::max(
+ 1e-9, static_cast<double>(decision_period_ns) * 1e-9)}),
       decision_period_ns_(decision_period_ns),
       estimator_(std::make_unique<FusedOdometryEstimator>()),
       perception_module_(std::make_unique<LidarPerception>(perception_config)),

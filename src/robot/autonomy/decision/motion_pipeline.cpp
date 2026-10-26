@@ -8,10 +8,35 @@
 
 namespace lost_signal::robot::autonomy {
 
+namespace {
+
+double clamp_next_velocity(double desired, double current,
+ double maximum_acceleration, double maximum_deceleration,
+ double period_s) {
+ const double accel_delta = std::max(0.0, maximum_acceleration) * period_s;
+ const double decel_delta = std::max(0.0, maximum_deceleration) * period_s;
+ const double minimum = current >= 0.0
+ ? current - decel_delta : current - accel_delta;
+ const double maximum = current >= 0.0
+ ? current + accel_delta : current + decel_delta;
+ return std::clamp(desired, minimum, maximum);
+}
+
+double clamp_next_symmetric(double desired, double current,
+ double maximum_acceleration, double period_s) {
+ const double delta = std::max(0.0, maximum_acceleration) * period_s;
+ return std::clamp(desired, current - delta, current + delta);
+}
+
+} // namespace
+
 void MotionDecisionPipeline::reset() {
  escape_active_ = false;
  escape_command_ = LocalCandidate{};
  escape_release_count_ = 0;
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
 }
 
 MotionDecisionResult MotionDecisionPipeline::run(
@@ -56,10 +81,16 @@ MotionDecisionResult MotionDecisionPipeline::run(
  escape_active_ = false;
  escape_release_count_ = 0;
  escape_command_ = LocalCandidate{};
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
  }
  }
 
  if (out.behavior.must_hold && hold_verdict.accepted && !escape_active_) {
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
  out.reason = out.behavior.reason.empty()
  ? hold_verdict.reason
  : out.behavior.reason;
@@ -156,12 +187,35 @@ MotionDecisionResult MotionDecisionPipeline::run(
  !planner_motion_available && !plan.gear_change_pending;
  const bool observation_recovery_required =
  observation_motion_requested && !planner_motion_available;
- const bool recovery_required =
+ bool recovery_required =
  (planner_requested && (planner_valid.empty() || stalled_before_terminal)) ||
  forward_blocked ||
  dynamic_escape_required || out.behavior.must_hold ||
  observation_recovery_required;
+ // A recovery manoeuvre is released only after the ordinary planner has
+ // remained usable for one declared safety-reaction interval. This filters
+ // single-frame local-map changes without hiding an unsafe recovery: every
+ // retained command is rebuilt below and must pass the live validator again.
+ if (recovery_active_ && !recovery_required && planner_motion_available) {
+ ++recovery_release_count_;
+ const double period_s = std::max(1e-9, config_.decision_period_s);
+ const std::size_t release_cycles = std::max<std::size_t>(
+ 1, static_cast<std::size_t>(std::ceil(
+ std::max(0.0, config_.motion.safety_reaction_time_s) / period_s)));
+ if (recovery_release_count_ < release_cycles) {
+ recovery_required = true;
+ } else {
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
+ }
+ } else if (recovery_required || !planner_motion_available) {
+ recovery_release_count_ = 0;
+ }
  if (!planner_requested && !recovery_required) {
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
  out.constraint = "hold";
  out.reason = hold_verdict.accepted ? hold_verdict.reason : "no-route-hold";
  if (hold_verdict.accepted) {
@@ -170,6 +224,9 @@ MotionDecisionResult MotionDecisionPipeline::run(
  return out;
  }
  if (!recovery_required && !planner_valid.empty()) {
+ recovery_active_ = false;
+ recovery_command_ = LocalCandidate{};
+ recovery_release_count_ = 0;
  auto selected_it = planner_valid.begin();
  if (observation_motion_requested) {
  const auto moving = std::find_if(
@@ -216,11 +273,61 @@ MotionDecisionResult MotionDecisionPipeline::run(
  const double recovery_turn = effective.max_curvature_inv_m > 0.0
  ? std::min(turn, crawl * effective.max_curvature_inv_m)
  : turn;
+ const double period_s = std::max(1e-9, config_.decision_period_s);
  std::size_t recovery_count = 0;
  auto add_recovery = [&](double forward, double yaw, double lateral) {
  if (recovery_count >= recovery.size()) return;
+ forward = clamp_next_velocity(
+ forward, est.forward_mps, config_.motion.acceleration_mps2,
+ config_.motion.brake_deceleration_mps2, period_s);
+ yaw = clamp_next_symmetric(
+ yaw, est.yaw_rate_radps, config_.motion.yaw_acceleration_radps2,
+ period_s);
+ lateral = clamp_next_symmetric(
+ lateral, est.lateral_mps, config_.motion.lateral_acceleration_mps2,
+ period_s);
+ if (effective.max_curvature_inv_m > 0.0) {
+ const double yaw_limit =
+ std::abs(forward) * effective.max_curvature_inv_m;
+ yaw = std::clamp(yaw, -yaw_limit, yaw_limit);
+ }
+ if (effective.differential_track_m > 0.0 &&
+ effective.max_lateral_mps <= 0.0 &&
+ effective.max_curvature_inv_m <= 0.0) {
+ const double half_track = 0.5 * effective.differential_track_m;
+ const double measured_left =
+ est.forward_mps - est.yaw_rate_radps * half_track;
+ const double measured_right =
+ est.forward_mps + est.yaw_rate_radps * half_track;
+ const double wheel_acceleration =
+ config_.motion.acceleration_mps2 +
+ config_.motion.yaw_acceleration_radps2 * half_track;
+ const double wheel_delta = std::max(0.0, wheel_acceleration) * period_s;
+ double desired_left = std::clamp(
+ forward - yaw * half_track,
+ measured_left - wheel_delta, measured_left + wheel_delta);
+ double desired_right = std::clamp(
+ forward + yaw * half_track,
+ measured_right - wheel_delta, measured_right + wheel_delta);
+ if (effective.max_wheel_speed_mps > 0.0) {
+ desired_left = std::clamp(
+ desired_left, -effective.max_wheel_speed_mps,
+ effective.max_wheel_speed_mps);
+ desired_right = std::clamp(
+ desired_right, -effective.max_wheel_speed_mps,
+ effective.max_wheel_speed_mps);
+ }
+ forward = 0.5 * (desired_left + desired_right);
+ yaw = (desired_right - desired_left) /
+ effective.differential_track_m;
+ }
  if (std::abs(forward) < 1e-9 && std::abs(yaw) < 1e-9 &&
  std::abs(lateral) < 1e-9) return;
+ for (std::size_t i = 0; i < recovery_count; ++i) {
+ if (std::abs(recovery[i].forward_mps - forward) < 1e-9 &&
+ std::abs(recovery[i].yaw_rate_radps - yaw) < 1e-9 &&
+ std::abs(recovery[i].lateral_mps - lateral) < 1e-9) return;
+ }
  LocalCandidate candidate;
  candidate.forward_mps = forward;
  candidate.yaw_rate_radps = yaw;
@@ -311,17 +418,17 @@ MotionDecisionResult MotionDecisionPipeline::run(
  quality.dynamic_clearance_m = verdict.min_dynamic_clearance_m;
  quality.escape_gain_m = verdict.escape_clearance_gain_m;
  quality.static_clearance_m = verdict.min_clearance_m;
- if (escape_active_) {
+ if (recovery_active_) {
  const auto same_direction = [](double current, double committed) {
  if (std::abs(committed) < 1e-9) return std::abs(current) < 1e-9;
  return current * committed > 0.0;
  };
  quality.continuity_axes += same_direction(
- recovery[i].forward_mps, escape_command_.forward_mps);
+ recovery[i].forward_mps, recovery_command_.forward_mps);
  quality.continuity_axes += same_direction(
- recovery[i].yaw_rate_radps, escape_command_.yaw_rate_radps);
+ recovery[i].yaw_rate_radps, recovery_command_.yaw_rate_radps);
  quality.continuity_axes += same_direction(
- recovery[i].lateral_mps, escape_command_.lateral_mps);
+ recovery[i].lateral_mps, recovery_command_.lateral_mps);
  }
  if (route.valid && !route.points.empty()) {
  const double horizon_s = std::max(
@@ -345,6 +452,8 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
 
  if (have_recovery) {
+ recovery_active_ = true;
+ recovery_command_ = best_recovery.candidate;
  if (dynamic_escape_required) {
  const bool starting_escape = !escape_active_;
  escape_active_ = true;

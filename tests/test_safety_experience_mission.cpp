@@ -56,6 +56,16 @@ int main() {
 
  bool robot_observed_constraint = false;
  bool first_step_has_joint_feedback = false;
+ std::uint64_t mechanical_brake_steps = 0;
+ std::uint64_t brake_transitions = 0;
+ bool previous_brake = false;
+ std::uint64_t forward_command_steps = 0;
+ std::uint64_t rotation_command_steps = 0;
+ std::uint64_t yaw_direction_changes = 0;
+ int previous_yaw_sign = 0;
+ bool previous_recovery = false;
+ std::uint64_t recovery_steps = 0;
+ std::uint64_t recovery_yaw_flips = 0;
  double minimum_robot_clearance = std::numeric_limits<double>::infinity();
  for (std::uint64_t step = 0;
  step < experience.time_limit_steps && !session.objectives_done(); ++step) {
@@ -66,7 +76,33 @@ int main() {
  recorded->obs.has_joints() && recorded->obs.drive_count == 2 &&
  recorded->actuator.mode == robot::iface::ActuatorMode::kDiffDuty;
  }
+ int yaw_sign = 0;
+ const int prior_yaw_sign = previous_yaw_sign;
+ if (recorded != nullptr) {
+ const bool braking = recorded->actuator.service_brake > 0.0;
+ mechanical_brake_steps += braking ? 1 : 0;
+ brake_transitions += braking != previous_brake ? 1 : 0;
+ previous_brake = braking;
+ forward_command_steps += std::abs(recorded->cmd.forward_mps) > 0.05 ? 1 : 0;
+ rotation_command_steps +=
+ std::abs(recorded->cmd.forward_mps) <= 0.05 &&
+ std::abs(recorded->cmd.yaw_rate_radps) > 0.05 ? 1 : 0;
+ yaw_sign = recorded->cmd.yaw_rate_radps > 0.05
+ ? 1 : recorded->cmd.yaw_rate_radps < -0.05 ? -1 : 0;
+ if (yaw_sign != 0 && previous_yaw_sign != 0 &&
+ yaw_sign != previous_yaw_sign) {
+ ++yaw_direction_changes;
+ }
+ if (yaw_sign != 0) previous_yaw_sign = yaw_sign;
+ }
  const auto evidence = session.last_evidence();
+ const bool recovery = evidence.reason_code.find("recovery:") == 0;
+ recovery_steps += recovery ? 1 : 0;
+ if (recovery && previous_recovery && yaw_sign != 0 &&
+ prior_yaw_sign != 0 && yaw_sign != prior_yaw_sign) {
+ ++recovery_yaw_flips;
+ }
+ previous_recovery = recovery;
  if (std::isfinite(evidence.validator_static_clearance_m)) {
  minimum_robot_clearance = std::min(
  minimum_robot_clearance, evidence.validator_static_clearance_m);
@@ -90,7 +126,9 @@ int main() {
  "target=(%.3f,%.3f) candidates=%zu brake=%d/%.3f "
  "est_vel=(%.3f,%.3f) "
  "truth_vel=(%.3f,%.3f) slip=%d/%d "
- "clear=%.3f collisions=%llu steps=%zu/%llu\n",
+ "act=(%.3f,%.3f,brake=%.3f) clear=%.3f collisions=%llu "
+ "mech_steps=%llu transitions=%llu forward=%llu rotate=%llu "
+ "yaw_flips=%llu recovery=%llu recovery_flips=%llu steps=%zu/%llu\n",
  session.objectives_done(), session.objectives_passed(),
  last->truth_after.body_x_m, last->truth_after.body_y_m,
  last->truth_after.body_yaw_rad, last->diag.estimate.x_m,
@@ -109,8 +147,17 @@ int main() {
  last->diag.estimate.yaw_rate_radps, last->truth_after.forward_mps,
  last->truth_after.yaw_rate_radps,
  last->truth_after.drive_slipping[0],
- last->truth_after.drive_slipping[1], score.min_clearance_m,
+ last->truth_after.drive_slipping[1], last->actuator.drive[0],
+ last->actuator.drive[1], last->actuator.service_brake,
+ score.min_clearance_m,
  static_cast<unsigned long long>(score.collision_steps),
+ static_cast<unsigned long long>(mechanical_brake_steps),
+ static_cast<unsigned long long>(brake_transitions),
+ static_cast<unsigned long long>(forward_command_steps),
+ static_cast<unsigned long long>(rotation_command_steps),
+ static_cast<unsigned long long>(yaw_direction_changes),
+ static_cast<unsigned long long>(recovery_steps),
+ static_cast<unsigned long long>(recovery_yaw_flips),
  session.episode().steps().size(),
  static_cast<unsigned long long>(experience.time_limit_steps));
  }
