@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "first_contact",
+ "next_experience": "safety_unknown_obstacle.json",
  "title": "FIRST CONTACT: PRECISE DOCKING",
  "subtitle": "Measure the world, estimate the pose, and stop accurately at the glass calibration gate.",
  "files": {

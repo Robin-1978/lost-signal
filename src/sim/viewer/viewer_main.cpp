@@ -19,12 +19,14 @@
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
 #include "sim/experiment/ab_experiment.hpp"
+#include "sim/experiment/experience_runtime.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
@@ -968,12 +970,16 @@ struct ExperienceHitRegions {
  Rectangle previous{};
  Rectangle next{};
  Rectangle primary{};
+ Rectangle retry{};
+ Rectangle next_chapter{};
  std::vector<Rectangle> choices;
 
  void clear() {
  previous = {};
  next = {};
  primary = {};
+ retry = {};
+ next_chapter = {};
  choices.clear();
  }
 };
@@ -1050,6 +1056,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const Frame* frame,
  const ExperimentUiState* experiment_ui, bool timed_out,
  bool prediction_supported,
+ const std::string& action_error, bool actions_enabled,
  ExperienceHitRegions* hit_regions) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
@@ -1268,6 +1275,10 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  "TIME LIMIT REACHED: the robot did not produce a terminal mission result within the authored experiment budget.",
  x + 34, y, panel_width - 68, 15, 5, kRed) + 10.0f;
  }
+ if (!action_error.empty()) {
+ y = draw_wrapped_text("ACTION FAILED: " + action_error,
+ x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
+ }
  char metrics[256];
  std::snprintf(metrics, sizeof(metrics),
  "SIM OFFLINE EVAL   collisions=%zu   min clearance=%.2f m   mean estimate error=%.2f m",
@@ -1377,9 +1388,10 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  kText) + 6.0f;
  }
  if (!experience.experiments.empty() && experiment_ui != nullptr) {
-  const Rectangle experiment_button{x + 150.0f, y0 + panel_height - 72.0f,
+ const Rectangle experiment_button{x + 136.0f, y0 + panel_height - 72.0f,
    158.0f, 34.0f};
-  const bool can_run = experiment_ui->state != ExperimentRunState::kRunning;
+ const bool can_run = actions_enabled &&
+ experiment_ui->state != ExperimentRunState::kRunning;
   draw_panel_button(experiment_button,
    experiment_ui->state == ExperimentRunState::kRunning
    ? "RUNNING A/B..." : "RUN CONTROLLED A/B",
@@ -1387,6 +1399,24 @@ void draw_experience_overlay(const ExperienceManifest& experience,
   if (hit_regions != nullptr && can_run) {
    hit_regions->primary = experiment_button;
   }
+ }
+ const Rectangle retry_button{x + 306.0f, y0 + panel_height - 72.0f,
+ 116.0f, 34.0f};
+ draw_panel_button(retry_button, "RETRY RUN", false, kCyan, kText,
+ actions_enabled);
+ if (hit_regions != nullptr && actions_enabled) {
+ hit_regions->retry = retry_button;
+ }
+ if (!experience.next_experience_path.empty()) {
+ const Rectangle next_chapter_button{
+ x + 434.0f, y0 + panel_height - 72.0f, 252.0f, 34.0f};
+ const bool can_advance = actions_enabled && safe;
+ draw_panel_button(next_chapter_button,
+ can_advance ? "NEXT CHAPTER" : "NEXT: PASS SAFETY GATE",
+ true, kCyan, kText, can_advance);
+ if (hit_regions != nullptr && can_advance) {
+ hit_regions->next_chapter = next_chapter_button;
+ }
  }
  DrawText("KEYFRAMES / CONTROLLED A/B / ROBOT never received SIM truth.",
   static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 27),
@@ -2708,93 +2738,63 @@ int main(int argc, char** argv) {
  if (scene_path.empty()) scene_path = experience.scene_path;
  std::fprintf(stderr, "experience: %s\n", experience.experience_id.c_str());
  }
-  std::string used_config, config_err;
-  auto robot_config = robot::platform::load_default_robot_config(
-      robot_path, &used_config, &config_err);
-  if (!robot_path.empty() && !robot_config.has_value()) {
-    std::fprintf(stderr, "bad --robot file: %s\n", config_err.c_str());
-    return 1;
-  }
+ std::optional<robot::platform::RobotConfig> robot_config;
+ std::optional<sim::eval::SimConfig> sim_config;
   std::unique_ptr<sim::scenario::ScenarioSession> session;
-  if (robot_config.has_value()) {
-    std::fprintf(stderr, "robot config: %s\n", used_config.c_str());
-    session = std::make_unique<sim::scenario::ScenarioSession>(
-        robot::platform::description_from_config(*robot_config),
-        sim::eval::motor_from_config(*robot_config));
-  } else {
-    session = std::make_unique<sim::scenario::ScenarioSession>();
-  }
-  // Applied lidar mount for the viz ray fan: read back from the session
-  // (the exact extrinsics generation runs — never a separately authored
-  // copy, so a misconfigured mount shows up instead of hiding).
-  sim::viewer::LidarMount session_lidar_mount;
-  session->lidar_mount(session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
-  std::string used_sim, sim_err;
-  auto sim_config = sim::eval::load_default_sim_config(sim_path, &used_sim,
-                                                       &sim_err);
-  if (!sim_path.empty() && !sim_config.has_value()) {
-    std::fprintf(stderr, "bad --sim file: %s\n", sim_err.c_str());
-    return 1;
-  }
-  if (sim_config.has_value()) {
-    std::fprintf(stderr, "sim config: %s\n", used_sim.c_str());
-    session->apply_sim_config(*sim_config);
-  }
+ sim::experiment::ExperienceRuntimeConfig runtime_config;
+ runtime_config.robot_path = robot_path;
+ runtime_config.sim_path = sim_path;
+ runtime_config.map_path = map_path;
+ if (experience_loaded) runtime_config.objectives = experience.objectives;
   if (!map_path.empty()) {
-    sim::eval::WorldFileContent content;
-    std::string err;
-    if (!sim::eval::load_world_file(map_path, content, &err)) {
-      std::fprintf(stderr, "bad --map file: %s\n", err.c_str());
+ sim::experiment::ExperienceRuntime runtime;
+ std::string runtime_error;
+ if (!sim::experiment::build_experience_runtime(
+ runtime_config, runtime, &runtime_error)) {
+ std::fprintf(stderr, "cannot build simulation: %s\n",
+ runtime_error.c_str());
       return 1;
     }
-    session->setup_world().set_static_boxes(std::move(content.boxes));
- std::vector<std::string> ids;
- if (experience_loaded) {
- for (const auto& requested : experience.objectives) {
- const bool found = std::any_of(content.places.begin(), content.places.end(),
- [&](const sim::world::NamedPlace& place) {
- return place.place_id == requested;
- });
- if (!found) {
- std::fprintf(stderr, "experience objective missing from map: %s\n",
- requested.c_str());
- return 1;
+ robot_config = std::move(runtime.robot_config);
+ sim_config = std::move(runtime.sim_config);
+ if (!runtime.used_robot_path.empty()) {
+ std::fprintf(stderr, "robot config: %s\n",
+ runtime.used_robot_path.c_str());
  }
- ids.push_back(requested);
+ if (!runtime.used_sim_path.empty()) {
+ std::fprintf(stderr, "sim config: %s\n", runtime.used_sim_path.c_str());
  }
- } else {
- for (const auto& p : content.places) ids.push_back(p.place_id);
- }
-    session->setup_world().set_places(std::move(content.places));
-    session->setup_world().set_materials(std::move(content.materials));
-    session->setup_world().set_material_zones(std::move(content.zones));
-    session->setup_world().set_terrain_patches(std::move(content.patches));
-    session->setup_world().set_support_slabs(std::move(content.slabs));
-    session->setup_world().set_environment(std::move(content.environment));
- session->setup_world().set_initial_pose_prior(content.initial_pose);
- if (content.initial_pose.has_value()) {
- const auto& prior = *content.initial_pose;
- session->set_initial_pose(
- prior.x_m, prior.y_m, prior.yaw_rad, prior.position_sigma_m,
- prior.heading_sigma_rad);
- }
-    session->set_objectives(std::move(ids));
-    // Survey covers the authored map (far-field goals need a route).
-    session->fit_map_window_to_world();
- // Converted master maps ship patrols beside the world file.
- std::string actor_error;
- if (lost_signal::sim::scenario::load_actors_sidecar(
- map_path, *session, {}, &actor_error) < 0) {
- std::fprintf(stderr, "bad actors sidecar: %s\n", actor_error.c_str());
- return 1;
- }
+ session = std::move(runtime.session);
   } else {
+ std::string used_config, config_error;
+ robot_config = robot::platform::load_default_robot_config(
+ robot_path, &used_config, &config_error);
+ if (!robot_path.empty() && !robot_config.has_value()) {
+ std::fprintf(stderr, "bad --robot file: %s\n", config_error.c_str());
+ return 1;
+ }
+ if (robot_config.has_value()) {
+ session = std::make_unique<sim::scenario::ScenarioSession>(
+ robot::platform::description_from_config(*robot_config),
+ sim::eval::motor_from_config(*robot_config));
+ } else {
+ session = std::make_unique<sim::scenario::ScenarioSession>();
+ }
+ sim_config = sim::eval::load_default_sim_config(
+ sim_path, nullptr, &config_error);
+ if (!sim_path.empty() && !sim_config.has_value()) {
+ std::fprintf(stderr, "bad --sim file: %s\n", config_error.c_str());
+ return 1;
+ }
+ if (sim_config.has_value()) session->apply_sim_config(*sim_config);
     setup_demo(*session);
-  }
- // Compile the safe-zero plant for the pre-run walkaround. This reads the
- // same MuJoCo links used during the mission without advancing SIM time,
- // actors, sensors, ROBOT cadence, or score.
  session->prepare_world();
+  }
+ // Applied lidar mount for the viz ray fan: read back from the session
+ // (the exact extrinsics generation runs — never a separately authored
+ // copy, so a misconfigured mount shows up instead of hiding).
+ sim::viewer::LidarMount session_lidar_mount;
+ session->lidar_mount(session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
 
  InitWindow(kScreenW, kScreenH, experience_loaded
  ? "Robot Simu - First Contact" : "Robot Simu - Simulation Lab");
@@ -2936,6 +2936,145 @@ int main(int argc, char** argv) {
  }
  float follow_base_distance_m = cam_st.dist_m;
  ParticleSystem motion_particles;
+ std::string experience_action_error;
+ const auto reset_experience_presentation = [&]() {
+ experience_flow = std::make_unique<ExperienceFlow>(
+ ExperienceFlow::Config{experience.walkaround.size(),
+ experience.choices.size(), experience.time_limit_steps});
+ review_keyframes.clear();
+ selected_review_keyframe = 0;
+ experiment_ui = ExperimentUiState{};
+ experience_hit_regions.clear();
+ motion_particles.clear();
+ const double requested_rate = playback.requested_rate();
+ const bool turbo = playback.turbo();
+ auto reset_playback_config = playback_config;
+ reset_playback_config.requested_rate = requested_rate;
+ playback = sim::viewer::PlaybackController(reset_playback_config);
+ playback.set_turbo(turbo);
+ previous_wall_s = GetTime();
+ paused = true;
+ show_lidar = false;
+ show_estimate = false;
+ show_actor_routes = false;
+ dragging = false;
+ middle_dragging = false;
+ follow = view3d;
+
+ cam_st = CameraState{};
+ double bx0, by0, bx1, by1;
+ map_bounds(session->setup_world(), bx0, by0, bx1, by1);
+ view.fit(bx0 - 2.0, by0 - 2.0, bx1 + 2.0, by1 + 2.0);
+ cam_st.target_x = (bx0 + bx1) * 0.5;
+ cam_st.target_y = (by0 + by1) * 0.5;
+ cam_st.dist_m = view3d ? 4.2f : static_cast<float>(
+ std::min(60.0, std::max(10.0,
+ std::max(bx1 - bx0, by1 - by0) * 0.9)));
+ cam_st.pitch_deg = view3d ? 34.0f : cam_st.pitch_deg;
+ cam_st.target_z = view3d ? 0.18 : 0.0;
+ if (scene_loaded) {
+ cam_st.dist_m = static_cast<float>(visual_scene.camera.distance_m);
+ cam_st.yaw_deg = static_cast<float>(visual_scene.camera.yaw_deg);
+ cam_st.pitch_deg = static_cast<float>(visual_scene.camera.pitch_deg);
+ cam_st.target_z = visual_scene.camera.target_height_m;
+ }
+ if (camera_dist > 0.0f) cam_st.dist_m = camera_dist;
+ if (camera_angle_set) {
+ if (camera_yaw != 0.0f) cam_st.yaw_deg = camera_yaw;
+ if (camera_pitch != 0.0f) cam_st.pitch_deg = camera_pitch;
+ }
+ if (camera_target_set) {
+ cam_st.target_x = camera_target_x;
+ cam_st.target_y = camera_target_y;
+ follow = false;
+ } else {
+ cam_st.target_x = session->setup_world().truth().body_x_m;
+ cam_st.target_y = session->setup_world().truth().body_y_m;
+ }
+ follow_base_distance_m = cam_st.dist_m;
+ };
+ const auto retry_experience = [&]() {
+ if (!experience_loaded || runtime_config.map_path.empty() ||
+ experiment_ui.state == ExperimentRunState::kRunning) {
+ return false;
+ }
+ sim::experiment::ExperienceRuntime rebuilt;
+ std::string runtime_error;
+ if (!sim::experiment::build_experience_runtime(
+ runtime_config, rebuilt, &runtime_error)) {
+ experience_action_error = runtime_error;
+ std::fprintf(stderr, "cannot retry experience: %s\n",
+ runtime_error.c_str());
+ return false;
+ }
+ session = std::move(rebuilt.session);
+ robot_config = std::move(rebuilt.robot_config);
+ sim_config = std::move(rebuilt.sim_config);
+ session->lidar_mount(
+ session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
+ experience_action_error.clear();
+ reset_experience_presentation();
+ return true;
+ };
+
+ const auto advance_experience = [&]() {
+ if (!experience_loaded || experience.next_experience_path.empty() ||
+ experiment_ui.state == ExperimentRunState::kRunning ||
+ !session->objectives_done() || !session->objectives_passed() ||
+ session->score().collision_steps != 0) {
+ return false;
+ }
+ ExperienceManifest candidate_experience;
+ std::string candidate_error;
+ const std::string candidate_path = experience.next_experience_path;
+ if (!lost_signal::sim::viewer::load_experience_manifest(
+ candidate_path, candidate_experience, &candidate_error)) {
+ experience_action_error = candidate_error;
+ return false;
+ }
+ sim::experiment::ExperienceRuntimeConfig candidate_config;
+ candidate_config.robot_path = candidate_experience.robot_path;
+ candidate_config.sim_path = candidate_experience.sim_path;
+ candidate_config.map_path = candidate_experience.map_path;
+ candidate_config.objectives = candidate_experience.objectives;
+ sim::experiment::ExperienceRuntime candidate_runtime;
+ if (!sim::experiment::build_experience_runtime(
+ candidate_config, candidate_runtime, &candidate_error)) {
+ experience_action_error = candidate_error;
+ return false;
+ }
+ SceneManifest candidate_scene;
+ if (!lost_signal::sim::viewer::load_scene_manifest(
+ candidate_experience.scene_path, visual_assets.manifest,
+ candidate_runtime.session->setup_world().static_boxes(),
+ candidate_scene, &candidate_error)) {
+ experience_action_error = candidate_error;
+ return false;
+ }
+
+ experience = std::move(candidate_experience);
+ experience_path = candidate_path;
+ runtime_config = std::move(candidate_config);
+ robot_path = runtime_config.robot_path;
+ sim_path = runtime_config.sim_path;
+ map_path = runtime_config.map_path;
+ scene_path = experience.scene_path;
+ session = std::move(candidate_runtime.session);
+ robot_config = std::move(candidate_runtime.robot_config);
+ sim_config = std::move(candidate_runtime.sim_config);
+ visual_scene = std::move(candidate_scene);
+ scene_loaded = true;
+ session->lidar_mount(
+ session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
+ unload_visual_assets(visual_assets);
+ load_visual_assets(visual_assets, assets_path,
+ robot_config.has_value() ? robot_config->robot_id : "ro1");
+ experience_action_error.clear();
+ reset_experience_presentation();
+ SetWindowTitle(("Robot Simu - " + experience.title).c_str());
+ std::fprintf(stderr, "experience: %s\n", experience.experience_id.c_str());
+ return true;
+ };
 
  while (!WindowShouldClose()) {
  const double wall_now_s = GetTime();
@@ -3003,6 +3142,16 @@ int main(int argc, char** argv) {
  }
  }
  } else if (experience_flow->phase() == ExperiencePhase::kDebrief) {
+ const bool requested_retry = clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.retry);
+ if (requested_retry && retry_experience()) {
+ continue;
+ }
+ const bool requested_next = clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.next_chapter);
+ if (requested_next && advance_experience()) {
+ continue;
+ }
  if (!review_keyframes.empty()) {
  const int count = static_cast<int>(review_keyframes.size());
  if (IsKeyPressed(KEY_RIGHT) ||
@@ -3264,7 +3413,9 @@ int main(int argc, char** argv) {
  experience_flow->walkaround_visited_count(),
  experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
- false, false, &experience_hit_regions);
+ false, false, experience_action_error,
+ experiment_ui.state != ExperimentRunState::kRunning,
+ &experience_hit_regions);
 
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
@@ -3418,6 +3569,8 @@ int main(int argc, char** argv) {
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
  experience_flow->timed_out(), prediction_supported,
+ experience_action_error,
+ experiment_ui.state != ExperimentRunState::kRunning,
  &experience_hit_regions);
  }
     EndDrawing();

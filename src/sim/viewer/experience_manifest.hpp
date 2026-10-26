@@ -39,6 +39,10 @@ struct ExperienceExperiment {
 
 struct ExperienceManifest {
  std::string experience_id;
+ // Optional campaign edge, resolved relative to this manifest and
+ // canonicalized at load. Presentation uses it only after the current
+ // run passes its independent safety acceptance.
+ std::string next_experience_path;
  std::string title;
  std::string subtitle;
  std::string map_path;

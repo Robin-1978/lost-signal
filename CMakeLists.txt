@@ -312,6 +312,7 @@ target_link_libraries(lost_signal_sim_viewer PUBLIC
 
 add_library(lost_signal_sim_experiment STATIC
  src/sim/experiment/ab_experiment.cpp
+ src/sim/experiment/experience_runtime.cpp
 )
 target_include_directories(lost_signal_sim_experiment PUBLIC src)
 target_link_libraries(lost_signal_sim_experiment PUBLIC
@@ -707,6 +708,16 @@ target_compile_definitions(test_ab_experiment PRIVATE
 )
 target_link_libraries(test_ab_experiment PRIVATE lost_signal_sim_experiment)
 add_test(NAME ab_experiment COMMAND test_ab_experiment)
+
+add_executable(test_experience_runtime
+ tests/test_experience_runtime.cpp
+)
+target_compile_definitions(test_experience_runtime PRIVATE
+ TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(test_experience_runtime PRIVATE
+ lost_signal_sim_experiment)
+add_test(NAME experience_runtime COMMAND test_experience_runtime)
 
 add_executable(test_playback_controller
  tests/test_playback_controller.cpp

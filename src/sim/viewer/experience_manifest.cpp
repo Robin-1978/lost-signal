@@ -72,6 +72,22 @@ bool resolve_file(const std::filesystem::path& root,
  return true;
 }
 
+bool resolve_relative_file(const std::filesystem::path& root,
+ const std::string& authored, const char* field,
+ std::string& resolved, std::string& error) {
+ const std::filesystem::path relative(authored);
+ if (authored.empty() || relative.is_absolute()) {
+ error = std::string("experience '") + field +
+ "' must be a non-empty relative file path";
+ return false;
+ }
+ if (!resolve_file(root, authored, resolved, error)) {
+ error = std::string("experience '") + field + "': " + error;
+ return false;
+ }
+ return true;
+}
+
 bool parse_evidence_rule(const std::string& text,
  ExperienceEvidenceRule& rule) {
  if (text == "independent_acceptance") {
@@ -263,6 +279,17 @@ bool load_experience_manifest(const std::string& path,
  !resolve_file(manifest_root, authored_sim, parsed.sim_path,
  out_error)) {
  return false;
+ }
+ const Json* next_experience = root->find("next_experience");
+ if (next_experience != nullptr) {
+ if (!next_experience->is_str() ||
+ !resolve_relative_file(manifest_root, next_experience->as_str(),
+ "next_experience", parsed.next_experience_path, out_error)) {
+ if (out_error.empty()) {
+ out_error = "experience 'next_experience' must be a relative file path";
+ }
+ return false;
+ }
  }
  experience = std::move(parsed);
  out_error.clear();
