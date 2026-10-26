@@ -324,6 +324,7 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 ### G1：可读、可控、可复现
 
 - 已完成固定步 1×/倍率/Turbo、实际 RTF、step/s、tick p99 和限流显示。
+- 已完成版本化 SIM-only 目标验收：ROBOT 仍只凭自身估计、协方差和测量运动报告完成；SIM 在目标终态独立检查真值位置、航向、线速度、角速度与连续稳定样本，并输出结构化失败码。两套结论只在任务评分汇合，SIM 验收结果没有返回 ROBOT 的数据路径。
 - 加速验收使用同一 seed 和配置分别运行 1×、8×、64×、Turbo 与 headless；逐项比较最终 truth、每个 ROBOT command、goal 状态、碰撞和 score hash。性能报告同时给出 physics、sensor、ROBOT、actuation、record 分项，视觉 LOD 可以降低，但 1 ms 物理子步、传感器采集时刻和算法 cadence 不得改变。
 - 已完成 3D 近景跟随默认构图、自由轨道/平移/缩放、稀疏 LiDAR 诊断和默认隐藏的 SIM actor 路线。默认画面不再展示未来脚本或全量红色射线。
 - 已将跟随镜头的平滑时间、前视时间、速度拉远增益和距离范围放入 scene manifest；相机按墙钟平滑而不改变仿真状态，倒车沿真实运动方向前视，玩家缩放会成为新的跟随基准距离。场景光方向、环境光、雾和局部任务灯也由 manifest 控制；shader 每帧读取真实相机位置，机器人灯跟随 MuJoCo body，目标灯只消费 Viewer 的任务表现数据。

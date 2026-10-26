@@ -48,6 +48,31 @@ flowchart LR
   yaw error; `reward_step()` is the RL label. Training loaders read exported
   episodes; the live tick never sees truth, error, or reward.
 
+## Objective completion and SIM acceptance
+
+ROBOT and SIM answer different questions. `RobotApplication` reports goal
+completion only from the ROBOT estimate, covariance, measured motion, map goal
+and its versioned arrival policy. `ObjectiveDriver` observes that public goal
+state, then independently evaluates the recorded physical outcome. A scenario
+passes only when both verdicts pass, but the SIM verdict and its measurements
+have no return edge into `RobotApplication`.
+
+`configs/sim/default.json` owns the versioned SIM-only acceptance contract:
+position error, yaw error, true linear speed, true yaw rate and consecutive
+post-physics samples. The default requires two consecutive samples so a
+one-frame crossing cannot count as arrival while remaining compatible with the
+ROBOT controller's final braking transition. Scenario-specific position
+tolerances may override the position field explicitly; the motion and heading
+requirements remain active.
+
+Every failed objective exports stable reason codes such as
+`truth_position_outside_tolerance`, `truth_heading_outside_tolerance`,
+`truth_linear_speed_above_limit`, `truth_yaw_rate_above_limit` and
+`truth_stability_window_incomplete`. These codes belong to evaluation reports
+and replay UI. ROBOT diagnostics never consume them. Invalid JSON and invalid
+programmatic acceptance configurations fail before a run instead of silently
+keeping an earlier contract.
+
 ## ROBOT estimate vs SIM truth (optimizer reference)
 
 - ROBOT estimate: `AutonomyCoordinator::estimate()` (fused odometry:
