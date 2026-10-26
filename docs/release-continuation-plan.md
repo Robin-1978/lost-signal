@@ -41,7 +41,7 @@
    - 完成玩家、教学、工程三层视图和基于不可变 Episode 证据的复盘。
 
 6. **物理证据可视化与效果**
-   - 完成 LiDAR 时序扫描、Safety polygon、local costmap/inflation、planner swept volume 和定位修正 ghost。
+ - 完成 LiDAR 时序扫描、Safety swept envelope、local costmap/inflation、planner swept volume 和定位修正 ghost；显示形状必须忠实于 Safety Monitor 实际使用的 footprint 合同。
    - 粒子与声音只由真实 contact、slip、normal load、service brake 和 impact 驱动，并随 sim time 确定性复现。
 
 7. **模型与场景升级**
@@ -51,9 +51,9 @@
 
 ## 当前恢复点
 
-- 已完成基线：`a66d644 fix: reject ambiguous mapless loop closures`。
-- `signal_town` 最近基线：5 个目标、0 碰撞、最大定位误差 0.278 m、ROBOT tick p99 6.624 ms、最大 tick 14.306 ms、普通构建 RTF 6.13x。
-- 当前阶段：第 5 项。
+- 已完成基线：`f22acc9 feat: make simulation experiments evidence driven`。
+- `signal_town` Release 基线：5 个目标、0 碰撞、RTF 6.34x、ROBOT tick p99 6.432 ms、最大 tick 14.146 ms。
+- 当前阶段：第 6 项；第 1–5 项均已独立提交，不得重新实现或回退已经验收的边界。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。
@@ -114,13 +114,25 @@
 - manifest 到 runtime 的字段复制已收敛到 `experience_runtime_config()`；初始章节与 campaign 跳转共用同一路径，`slam_loop` 的 `slam_only` 不会再丢失。重复 `snprintf` 已清理。
 - 定向构建通过；Experience/asset/scene/keyframe/A-B/runtime 共 10 项回归 10/10 通过，包含 v2 bundle 和两份 v4 replay round-trip、三层视图策略、首个决定预算及 startup mode。
 
+### 阶段 6 当前检查点（2026-10-27）
+
+- 已完成现有实现审查，但阶段 6 尚未改码或提交。已有能力不得重复造一套视觉近似：
+  - LiDAR 已保存每束真实 acquisition offset，使用 ROBOT measured twist deskew；2D/3D 按真实扫描相位着色，truth fan 只在显式 SIM debug/debrief 中显示。
+  - Viewer 直接消费 ROBOT `LocalCostmapDiagnostic`（free/soft/lethal/unknown），不重建 inflation；planner swept volume 来自 Validator 实际接受候选的 centerline 与 envelope radius。
+  - Safety swept envelope 来自独立 Safety Monitor 对 raw scan 的真实 reaction/braking sweep；当前算法合同是圆形 footprint，不得为视觉效果虚构 polygon。
+  - 定位修正 ghost 由相邻帧 `map_T_odom` 对同一 `odom_T_base` 的变化生成，表达 REP-105 修正；动态预测只读匿名 ROBOT tracks 和共享 predictor。
+  - 粒子与地表痕迹已由真实 contact position、normal force、slip/motion vector、material、fluid depth 和 impact impulse 驱动，并按 sim step 确定性复现；金属火花只来自真实 metal-metal impact。
+- 最大剩余缺口是物理音频。当前 `ViewerAudio` 仅消费 collision、Safety STOPPED 状态变化和 mission complete，尚未直接消费 wheel angular velocity、contact load/slip、service brake、impact impulse/relative speed。
+- 下一步实现独立、无音频设备依赖、可单测的 `PhysicalAudioEvidence` 状态机，再由 raylib 播放层消费。它使用 sim step 和物理证据生成 motor/rolling/slip/brake/impact 强度；Turbo 只抑制或聚合播放，仍同步状态，恢复普通倍率时不得补播历史。
+- 阶段 6 验收必须覆盖 wheel speed、单轮打滑、normal load、service brake、impact、暂停、回放回退和 Turbo；并分别截图核对 2D/3D 的 LiDAR、costmap、Validator sweep、Safety sweep、correction ghost 与真实粒子来源。
+
 恢复后按以下顺序继续：
 
-1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认阶段 4 已提交。
-2. 确认阶段 5 已单独提交，然后进入第 6 阶段；不得回退 immutable Episode 和四类 verdict 的边界。
-3. 逐项审查现有 LiDAR 时序扫描、Safety polygon、local costmap/inflation、planner swept volume、定位修正 ghost、粒子和声音，先记录“已有/缺口/证据来源”，避免重复实现。
-4. 所有新增表现只读取已记录的 observation、decision、MuJoCo contact/joint state 和 sim time；不得把视觉层状态反向输入 ROBOT 或 physics。
-5. 完成第 6 阶段相关测试、截图与确定性验收，更新本表并单独提交；随后立即进入第 7 阶段。
+1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认 HEAD 至少包含阶段 5 提交 `f22acc9`。
+2. 直接从“阶段 6 当前检查点”的物理音频缺口继续；不得回退 immutable Episode、四类 verdict、ROBOT/SIM 边界或已有物理证据可视化。
+3. 所有新增表现只读取已记录的 observation、decision、MuJoCo contact/joint state、actuator feedback 和 sim time；不得把视觉/音频层状态反向输入 ROBOT 或 physics。
+4. 完成阶段 6 的单元测试、确定性检查和 2D/3D 截图验收，更新本表并单独提交。
+5. 提交阶段 6 后立即进入第 7 阶段：先验证 MuJoCo body/joint 到 GLB link binding，再增加 joint axis、collision geometry、COM/contact overlay，最后扩展 Blender 环境资产；禁止 draw-time 落地偏移、猜轴或墙钟动画。
 
 ## 阶段完成记录
 
@@ -132,6 +144,6 @@
 | 2. SLAM 教学体验与文档 | 已完成 | `4711d91` | 4/4 目标、零碰撞；任务连续三次通过；14 项相关回归通过；文档明确 SLAM Toolbox/REP-105 能力边界 |
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
 | 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
-| 5. SIM 游戏体验 | 已完成 | 本阶段提交 | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
-| 6. 物理证据可视化与效果 | 待开始 | - | 下一步先审查现有实现与物理证据来源 |
+| 5. SIM 游戏体验 | 已完成 | `f22acc9` | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
+| 6. 物理证据可视化与效果 | 进行中 | - | 现有证据链已审查；下一步补物理音频状态机、确定性测试与 2D/3D 截图验收 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |
