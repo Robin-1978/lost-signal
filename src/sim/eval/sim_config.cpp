@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 
@@ -109,6 +110,54 @@ bool load_sim_config(const std::string& path, SimConfig& config,
     if (!finite_non_negative(v, "'judge_radius_m'", err)) return false;
     out.judge_radius_m = v;
   }
+ // SIM-only objective acceptance. This never changes ROBOT arrival policy;
+ // it independently verifies the physical pose and motion at completion.
+ const Json* acceptance = obj.find("objective_acceptance");
+ if (acceptance != nullptr) {
+ if (!acceptance->is_object()) {
+ err = "'objective_acceptance' must be an object";
+ return false;
+ }
+ const Json* version = acceptance->find("version");
+ if (version == nullptr || !version->is_num() ||
+ version->as_num() != 1.0) {
+ err = "objective_acceptance.'version' must be 1";
+ return false;
+ }
+ struct AcceptanceSlot {
+ const char* key;
+ double* slot;
+ };
+ AcceptanceSlot slots[] = {
+ {"position_tolerance_m",
+ &out.objective_acceptance.position_tolerance_m},
+ {"heading_tolerance_rad",
+ &out.objective_acceptance.heading_tolerance_rad},
+ {"maximum_linear_speed_mps",
+ &out.objective_acceptance.maximum_linear_speed_mps},
+ {"maximum_yaw_rate_radps",
+ &out.objective_acceptance.maximum_yaw_rate_radps}};
+ for (const auto& slot : slots) {
+ if (!take_num(*acceptance, slot.key, v, present, err) || !present ||
+ !std::isfinite(v) || !(v > 0.0)) {
+ err = std::string("objective_acceptance.'") + slot.key +
+ "' must be finite positive";
+ return false;
+ }
+ *slot.slot = v;
+ }
+ const Json* stable = acceptance->find("stable_steps");
+ if (stable == nullptr || !stable->is_num() ||
+ !std::isfinite(stable->as_num()) || stable->as_num() < 1.0 ||
+ stable->as_num() != std::floor(stable->as_num()) ||
+ stable->as_num() >
+ static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+ err = "objective_acceptance.'stable_steps' must be a positive integer";
+ return false;
+ }
+ out.objective_acceptance.stable_steps =
+ static_cast<std::uint32_t>(stable->as_num());
+ }
   // Delivery shaping.
   const Json* del = obj.find("delivery");
   if (del != nullptr) {

@@ -116,7 +116,7 @@ void ScenarioSession::set_sensor_cadence(double scan_period_s,
 }
 
 void ScenarioSession::set_objectives(std::vector<std::string> place_ids,
-                                     double arrive_tol_m) {
+ std::optional<double> arrive_tol_m) {
   driver_.set_objectives(std::move(place_ids), arrive_tol_m);
 }
 

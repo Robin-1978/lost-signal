@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +21,12 @@ double min_over(const std::vector<double>& v) {
   double m = 1e9;
   for (double x : v) m = std::min(m, x);
   return m;
+}
+
+bool has_reason(const sim::scenario::ObjectiveResult& result,
+ const std::string& reason) {
+ return std::find(result.failure_reasons.begin(),
+ result.failure_reasons.end(), reason) != result.failure_reasons.end();
 }
 
 }  // namespace
@@ -350,6 +357,20 @@ int main() {
     const auto& results = session.objectives().results();
     assert(results.size() == 2);
     assert(!results[0].robot_done && !results[0].truth_arrived);
+ assert(has_reason(results[0], "robot_goal_rejected"));
+ assert(has_reason(results[0], "truth_place_missing"));
+ if (!(results[1].robot_done && results[1].truth_arrived)) {
+ std::fprintf(stderr,
+ "unknown-place follow-up: robot_done=%d truth_arrived=%d "
+ "miss=%.3f yaw=%.3f speed=%.3f yaw_rate=%.3f stable=%u\n",
+ results[1].robot_done, results[1].truth_arrived,
+ results[1].truth_miss_m, results[1].truth_yaw_error_rad,
+ results[1].truth_linear_speed_mps, results[1].truth_yaw_rate_radps,
+ results[1].truth_stable_steps);
+ for (const auto& reason : results[1].failure_reasons) {
+ std::fprintf(stderr, " failure=%s\n", reason.c_str());
+ }
+ }
     assert(results[1].robot_done && results[1].truth_arrived);
  assert(session.objectives().successful() == 1);
  assert(session.objectives().completion_ratio() == 0.5);
@@ -375,7 +396,38 @@ int main() {
  assert(result.robot_done);
  assert(!result.truth_arrived);
  assert(!result.successful());
+ assert(has_reason(result, "truth_position_outside_tolerance"));
  assert(session.objectives().completion_ratio() == 0.0);
+ }
+
+ // SIM acceptance requires a continuous truth-side stability window. The
+ // ROBOT can correctly finish from its own estimate while the independent
+ // evaluator rejects an incomplete window; the verdict never re-enters the
+ // ROBOT goal state or diagnostics.
+ {
+ sim::scenario::ScenarioSession session;
+ session.setup_world().add_place({"dock", 3.0, 0.0, 0.0});
+ session.setup_world().set_static_boxes({
+ {1.0, 1.0, 2.0, 2.0, 1.0}});
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
+ sim::eval::ObjectiveAcceptanceConfig acceptance;
+ acceptance.position_tolerance_m = 1.0;
+ acceptance.heading_tolerance_rad = 1.0;
+ acceptance.maximum_linear_speed_mps = 1.0;
+ acceptance.maximum_yaw_rate_radps = 1.0;
+ acceptance.stable_steps = 100'000;
+ assert(session.set_objective_acceptance(acceptance));
+ session.set_objectives({"dock"});
+ for (int i = 0; i < 800 && !session.objectives_done(); ++i) {
+ session.step_once();
+ }
+ assert(session.objectives_done());
+ const auto& result = session.objectives().results().front();
+ assert(result.robot_done);
+ assert(!result.truth_arrived);
+ assert(result.truth_stable_steps > 0);
+ assert(has_reason(result, "truth_stability_window_incomplete"));
+ assert(session.current_goal().state == robot::iface::GoalState::kDone);
  }
 
   // Step budget abandons a stuck objective: unreachable-in-time "far" is

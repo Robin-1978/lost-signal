@@ -1,7 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "robot/app/robot_application.hpp"
@@ -101,7 +103,10 @@ class ScenarioSession {
  // the operator seam. ROBOT completion uses its estimate; SIM acceptance
  // independently requires the physical body to arrive.
   void set_objectives(std::vector<std::string> place_ids,
-                      double arrive_tol_m = 0.5);
+  std::optional<double> arrive_tol_m = std::nullopt);
+ bool set_objective_acceptance(eval::ObjectiveAcceptanceConfig acceptance) {
+ return driver_.set_acceptance(std::move(acceptance));
+ }
   // Startup mode passthrough (SIM orchestration, pre-run): mapless
   // missions skip the global-retry cadence; SLAM still establishes the
   // frame through loop closures.
@@ -143,6 +148,9 @@ class ScenarioSession {
  sim.planning_period_s * 1e9));
  }
     set_judge_radius_m(sim.judge_radius_m);
+ if (!driver_.set_acceptance(sim.objective_acceptance)) {
+ throw std::invalid_argument("invalid SIM objective acceptance contract");
+ }
     set_sensor_realism(sim.delivery, sim.imu_realism);
     suite_.lidar().set_beams(sim.lidar_beams);
     suite_.lidar().set_max_range(sim.lidar_max_range_m);

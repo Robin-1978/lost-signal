@@ -17,6 +17,18 @@ namespace lost_signal::sim::eval {
 
 inline constexpr char kSimConfigFormat[] = "lost-signal-sim/1";
 
+struct ObjectiveAcceptanceConfig {
+ int version = 1;
+ double position_tolerance_m = 0.25;
+ double heading_tolerance_rad = 0.2;
+ double maximum_linear_speed_mps = 0.08;
+ double maximum_yaw_rate_radps = 0.08;
+ // Two consecutive post-physics samples reject a one-frame crossing while
+ // fitting the ROBOT arrival policy's final braking/settling transition.
+ // This is SIM evidence only; it never changes ROBOT completion.
+ std::uint32_t stable_steps = 2;
+};
+
 struct SimConfig {
  double scan_period_s = 0.02;
  double motion_period_s = 0.02; // encoder/twist sample cadence
@@ -27,6 +39,7 @@ struct SimConfig {
  double planning_period_s = 0.02;
   double record_period_s = 0.02;
   double judge_radius_m = 0.4;
+ ObjectiveAcceptanceConfig objective_acceptance;
   providers::DeliveryConfig delivery;      // all zeros = passthrough
   providers::ImuRealismConfig imu_realism;  // all zeros = exact truth
   int lidar_beams = 72;

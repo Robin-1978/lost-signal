@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 
 #include "sim/eval/sim_config.hpp"
@@ -21,6 +22,12 @@ int main() {
  cfg.imu_period_s == 0.02 && cfg.decision_period_s == 0.02 &&
  cfg.planning_period_s == 0.02 && cfg.record_period_s == 0.02);
     assert(cfg.judge_radius_m == 0.4);
+ assert(cfg.objective_acceptance.version == 1);
+ assert(cfg.objective_acceptance.position_tolerance_m == 0.25);
+ assert(cfg.objective_acceptance.heading_tolerance_rad == 0.2);
+ assert(cfg.objective_acceptance.maximum_linear_speed_mps == 0.08);
+ assert(cfg.objective_acceptance.maximum_yaw_rate_radps == 0.08);
+ assert(cfg.objective_acceptance.stable_steps == 2);
     assert(cfg.lidar_beams == 72 && cfg.lidar_max_range_m == 10.0f);
     assert(cfg.lidar_rings == 16);
     assert(!cfg.lidar_composite);  // opt-in front end, default off
@@ -46,7 +53,21 @@ int main() {
     for (int i = 0; i < 10; ++i) session.step_once();
     assert(session.episode().steps().empty());  // nothing recorded
   }
-  // Fail-closed cases.
+ // Programmatic configs fail closed too; bypassing the JSON loader cannot
+ // silently retain an earlier SIM acceptance contract.
+ {
+ sim::eval::SimConfig cfg;
+ cfg.objective_acceptance.stable_steps = 0;
+ sim::scenario::ScenarioSession session;
+ bool threw = false;
+ try {
+ session.apply_sim_config(cfg);
+ } catch (const std::invalid_argument&) {
+ threw = true;
+ }
+ assert(threw);
+ }
+ // Fail-closed cases.
   {
     const std::string tmp =
         (std::filesystem::temp_directory_path() / "test_sim_cfg.json")
@@ -74,6 +95,13 @@ int main() {
  assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"delivery": {"drop_probability": 1.5}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ write(R"({"objective_acceptance": {"version": 2}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
+ write(R"({"objective_acceptance": {"version": 1,
+ "position_tolerance_m": 0.2, "heading_tolerance_rad": 0.2,
+ "maximum_linear_speed_mps": 0.1, "maximum_yaw_rate_radps": 0.1,
+ "stable_steps": 0}})");
+ assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"lidar": {"beams": 0}})");
     assert(!sim::eval::load_sim_config(tmp, cfg, &err));
     write(R"({"lidar": {"rings": 0}})");

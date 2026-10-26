@@ -238,7 +238,19 @@ bool write_summary(const std::string& path, const std::string& map_path,
  o.emplace_back("truth_arrived", Json::Bool(r.truth_arrived));
  o.emplace_back("successful", Json::Bool(r.successful()));
  o.emplace_back("truth_miss_m", Json::Num(r.truth_miss_m));
+ o.emplace_back("truth_yaw_error_rad", Json::Num(r.truth_yaw_error_rad));
+ o.emplace_back("truth_linear_speed_mps",
+ Json::Num(r.truth_linear_speed_mps));
+ o.emplace_back("truth_yaw_rate_radps",
+ Json::Num(r.truth_yaw_rate_radps));
+ o.emplace_back("truth_stable_steps",
+ Json::Num(static_cast<double>(r.truth_stable_steps)));
  o.emplace_back("abandoned", Json::Bool(r.abandoned));
+ Json::Array failure_reasons;
+ for (const auto& reason : r.failure_reasons) {
+ failure_reasons.push_back(Json::Str(reason));
+ }
+ o.emplace_back("failure_reasons", Json::Arr(std::move(failure_reasons)));
  results.push_back(Json::Obj(std::move(o)));
  }
  root.emplace_back("objectives", Json::Arr(std::move(results)));
