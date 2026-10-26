@@ -522,6 +522,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   for (int i = 0; i < 4; ++i) {
     slip_saturated_time_s_[i] = 0.0;  // fresh model: never inherit traction
     slip_confirmation_time_s_[i] = 0.0;
+    slip_unobserved_time_s_[i] = 0.0;
     tire_geom_[i] = -1;
   }
   for (int i = 0; i < 2; ++i) {

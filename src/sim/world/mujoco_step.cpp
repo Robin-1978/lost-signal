@@ -404,12 +404,14 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  response_time_s = std::max(response_time_s, contact_response_s);
  }
  }
+ }
  if (saturated_this_substep) {
  ContactWindow& out = contact_window[d];
+ // A tire can resolve through several contact points in one quantum. Count
+ // physical time once per wheel, never once per point.
  out.saturated_time_s += step_dt;
  out.confirmation_time_s = std::max(
  out.confirmation_time_s, response_time_s);
- }
  }
  }
   }
@@ -425,22 +427,49 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  // seconds instead of outer-call counts keeps the label invariant when a
  // sensor cadence changes how completed physics ticks are sampled.
  for (int d = 0; d < drive_count_ && d < 4; ++d) {
- const bool saturated = contact_window[d].valid &&
- contact_window[d].peak_normal > 0.0 &&
- contact_window[d].peak_utilization >= utilization_threshold;
- if (saturated) {
- slip_saturated_time_s_[d] += contact_window[d].saturated_time_s;
+ const double saturated_time_s = std::clamp(
+ contact_window[d].saturated_time_s, 0.0, dt_s);
+ if (saturated_time_s > 0.0) {
  slip_confirmation_time_s_[d] = std::max(
  slip_confirmation_time_s_[d], contact_window[d].confirmation_time_s);
+ }
+ const double horizon_s = slip_confirmation_time_s_[d];
+ if (horizon_s > 0.0) {
+ // Contact points naturally appear and disappear while a tire rolls. A
+ // gap shorter than the contact response carries no evidence that traction
+ // recovered, while a resolved unsaturated contact does. A wheel that stays
+ // airborne longer than the same physical horizon also drains the label.
+ double quiet_time_s = 0.0;
+ if (saturated_time_s > 0.0) {
+ slip_unobserved_time_s_[d] = 0.0;
+ } else if (contact_window[d].valid) {
+ slip_unobserved_time_s_[d] = 0.0;
+ quiet_time_s = dt_s;
  } else {
+ slip_unobserved_time_s_[d] += dt_s;
+ if (slip_unobserved_time_s_[d] >= horizon_s) quiet_time_s = dt_s;
+ }
+ slip_saturated_time_s_[d] = std::clamp(
+ slip_saturated_time_s_[d] + saturated_time_s - quiet_time_s,
+ 0.0, horizon_s);
+ const double tolerance =
+ std::numeric_limits<double>::epsilon() * dt_s;
+ if (!drive_slipping_[static_cast<std::size_t>(d)] &&
+ slip_saturated_time_s_[d] + tolerance >= horizon_s) {
+ drive_slipping_[static_cast<std::size_t>(d)] = true;
+ } else if (drive_slipping_[static_cast<std::size_t>(d)] &&
+ slip_saturated_time_s_[d] <= tolerance) {
+ drive_slipping_[static_cast<std::size_t>(d)] = false;
+ }
+ if (slip_saturated_time_s_[d] <= tolerance) {
  slip_saturated_time_s_[d] = 0.0;
  slip_confirmation_time_s_[d] = 0.0;
+ slip_unobserved_time_s_[d] = 0.0;
  }
- drive_slipping_[static_cast<std::size_t>(d)] =
- slip_confirmation_time_s_[d] > 0.0 &&
- slip_saturated_time_s_[d] +
- std::numeric_limits<double>::epsilon() * dt_s >=
- slip_confirmation_time_s_[d];
+ } else {
+ drive_slipping_[static_cast<std::size_t>(d)] = false;
+ slip_unobserved_time_s_[d] = 0.0;
+ }
  }
 }
 

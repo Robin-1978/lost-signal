@@ -360,6 +360,7 @@ class MujocoBackend {
  // group canonical engine ticks around sensor deadlines.
  double slip_saturated_time_s_[4] = {0.0, 0.0, 0.0, 0.0};
  double slip_confirmation_time_s_[4] = {0.0, 0.0, 0.0, 0.0};
+ double slip_unobserved_time_s_[4] = {0.0, 0.0, 0.0, 0.0};
   // Fail-closed refuse reporting: loud once per bad authoring, quiet after.
   bool refuse_reported_ = false;
   // Drive joint DOF addresses (drive_count <= 4 in M2).

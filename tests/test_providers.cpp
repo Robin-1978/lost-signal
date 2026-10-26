@@ -136,6 +136,13 @@ int main() {
  wslip.truth().drive_slipping[1];
  }
  assert(low_mu_slip_seen);
+ // Once drive effort is withdrawn, the same contact-response accumulator
+ // must drain again; a historical slip event is not a permanent state.
+ wslip.apply(robot::iface::ActuatorCommand::SafeZero(
+ wslip.sim_time_ns(), robot::iface::ActuatorMode::kDiffDuty));
+ for (int i = 0; i < 100; ++i) wslip.step(0.02);
+ assert(!wslip.truth().drive_slipping[0] &&
+ !wslip.truth().drive_slipping[1]);
 
  // A 500 m x 400 m survey at 0.25 m resolution is 3.2 million cells.
  // Sparse obstacle rasterization must preserve exact geometry and cache the
