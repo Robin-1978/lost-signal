@@ -2990,6 +2990,7 @@ int main(int argc, char** argv) {
  float follow_base_distance_m = cam_st.dist_m;
  ParticleSystem motion_particles;
  SurfaceTraceSystem surface_traces;
+ std::optional<std::size_t> effects_episode_cursor;
  std::string experience_action_error;
  const auto reset_experience_presentation = [&]() {
  experience_flow = std::make_unique<ExperienceFlow>(
@@ -3001,6 +3002,7 @@ int main(int argc, char** argv) {
  experience_hit_regions.clear();
  motion_particles.clear();
  surface_traces.clear();
+ effects_episode_cursor.reset();
  const double requested_rate = playback.requested_rate();
  const bool turbo = playback.turbo();
  auto reset_playback_config = playback_config;
@@ -3505,8 +3507,32 @@ int main(int argc, char** argv) {
         session_lidar_mount);
  if (!historical_frame.has_value()) continue;
  const sim::viewer::Frame& frame = *historical_frame;
+ // Presentation consumes every completed physics frame even when Turbo
+ // executes several scenario transitions between two draws. Rendering may
+ // sample sparsely; physical events (contact traces, spray, dust and impact
+ // sparks) must remain deterministic and replayable. A backward review seek
+ // rebuilds the bounded pools from episode history instead of carrying
+ // effects from the future.
+ if (effects_episode_cursor.has_value() &&
+ presented_index < *effects_episode_cursor) {
+ motion_particles.clear();
+ surface_traces.clear();
+ effects_episode_cursor.reset();
+ }
+ const std::size_t effects_begin = effects_episode_cursor.has_value()
+ ? *effects_episode_cursor + 1 : 0;
+ for (std::size_t index = effects_begin; index < presented_index; ++index) {
+ const sim::viewer::Frame event_frame = sim::viewer::build_frame(
+ session->setup_world(), steps[index], {}, {}, {}, session_lidar_mount);
+ motion_particles.advance(event_frame);
+ surface_traces.advance(event_frame);
+ }
+ if (!effects_episode_cursor.has_value() ||
+ presented_index > *effects_episode_cursor) {
  motion_particles.advance(frame);
  surface_traces.advance(frame);
+ effects_episode_cursor = presented_index;
+ }
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.

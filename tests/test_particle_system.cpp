@@ -196,6 +196,25 @@ int main() {
  }
  }
 
+ // A renderer may draw only the first and last frames while Turbo advances
+ // several completed SIM transitions. The presentation timeline must feed
+ // the skipped physical frames to the effect pool or a real impact vanishes.
+ Frame quiet_before;
+ quiet_before.step = 300;
+ Frame skipped_impact = impact;
+ skipped_impact.step = 301;
+ Frame quiet_after;
+ quiet_after.step = 302;
+ ParticleSystem complete_timeline(config);
+ complete_timeline.advance(quiet_before);
+ complete_timeline.advance(skipped_impact);
+ complete_timeline.advance(quiet_after);
+ assert(complete_timeline.active_count() > 0);
+ ParticleSystem draw_sampled_only(config);
+ draw_sampled_only.advance(quiet_before);
+ draw_sampled_only.advance(quiet_after);
+ assert(draw_sampled_only.active_count() == 0);
+
  // Persistent surface traces use consecutive physical contact points. Dry
  // rolling leaves no mark; loose material and confirmed paved slip do.
  SurfaceTracePresentationConfig trace_config;
