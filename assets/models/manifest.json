@@ -6,7 +6,7 @@
       "version": 1,
       "kind": "actor",
       "path": "actors/forklift.glb",
-      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "source": "original modular actor authored by tools/modeling/build_actor_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -34,9 +34,9 @@
         ]
       },
       "reference_radius_m": 0.45,
-      "content_hash": "fnv1a64:3caf40cf8d29fe4e",
-      "license": "NOASSERTION",
-      "source_artifact": "legacy-main:actors/forklift.glb;tools/modeling/refine_assets.py",
+      "content_hash": "fnv1a64:c0a983dcdc853336",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_forklift",
       "pivot_semantic": "actor_root",
       "asset_to_link_translation_m": [
         0,
@@ -64,7 +64,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 600,
+      "triangle_budget": 5000,
       "material_budget": 14,
       "animation_clips": []
     },
@@ -73,7 +73,7 @@
       "version": 1,
       "kind": "actor",
       "path": "actors/worker.glb",
-      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
+      "source": "original rigged actor authored by tools/modeling/build_actor_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Z",
       "forward_axis": "+X",
@@ -91,19 +91,19 @@
       "expected_bounds_m": {
         "min": [
           -0.16,
-          -0.215,
+          -0.225831,
           0
         ],
         "max": [
-          0.16,
-          0.215,
+          0.165319,
+          0.225831,
           1.285
         ]
       },
       "reference_radius_m": 0.25,
-      "content_hash": "fnv1a64:ac6b2a4d8bd97b3d",
-      "license": "NOASSERTION",
-      "source_artifact": "legacy-main:actors/worker.glb;tools/modeling/refine_assets.py",
+      "content_hash": "fnv1a64:0378d57727c1f042",
+      "license": "CC0-1.0",
+      "source_artifact": "tools/modeling/build_actor_assets.py:build_worker",
       "pivot_semantic": "actor_root",
       "asset_to_link_translation_m": [
         0,
@@ -130,9 +130,12 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 200,
+      "triangle_budget": 3000,
       "material_budget": 9,
-      "animation_clips": []
+      "skeleton_root": "worker_rig",
+      "animation_clips": [
+        "WorkerWalk"
+      ]
     },
     {
       "asset_id": "environment.research_base.cable_reel",

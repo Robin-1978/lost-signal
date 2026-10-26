@@ -216,28 +216,9 @@ def refine_lidar():
     cylinder("lidar_status_ring", (0.0, -0.071, 0.0), 0.073, 0.007, "Y", mint, 40)
     export_glb(path)
 
-def refine_actors():
-    path = MODELS / "actors" / "forklift.glb"
-    import_glb(path)
-    orange = mat("actor_forklift_orange", (0.92, 0.43, 0.10), 0.0, 0.34)
-    dark = mat("actor_forklift_dark", (0.06, 0.10, 0.10), 0.05, 0.38)
-    yellow = mat("actor_forklift_yellow", (0.98, 0.75, 0.22), 0.0, 0.30)
-    for n in ("body",): assign(n, orange)
-    for n in ("cab", "cab_roof", "chassis"): assign(n, dark)
-    assign("stripe", yellow)
-    export_glb(path)
-    path = MODELS / "actors" / "worker.glb"
-    import_glb(path)
-    blue = mat("actor_worker_blue", (0.22, 0.39, 0.48), 0.0, 0.42)
-    skin = mat("actor_worker_skin", (0.68, 0.51, 0.39), 0.0, 0.48)
-    cap = mat("actor_worker_cap", (0.96, 0.72, 0.20), 0.0, 0.34)
-    for n in ("torso", "arm_left", "arm_right", "leg_left", "leg_right"): assign(n, blue)
-    assign("head", skin); assign("cap", cap)
-    export_glb(path)
-
 def main():
  refine_drive_wheel(); refine_chassis(); refine_caster(); refine_lidar()
- refine_actors(); clear()
+ clear()
  print("model assets refined")
 
 if __name__ == "__main__":

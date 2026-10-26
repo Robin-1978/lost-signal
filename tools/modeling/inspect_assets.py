@@ -44,6 +44,13 @@ def model_bounds(path):
  for obj in bpy.context.scene.objects:
   if obj.type != "MESH":
    continue
+  # Blender's glTF importer creates one non-exported Icosphere and assigns
+  # it as the display shape for every imported bone. It is editor chrome,
+  # absent from the GLB mesh inventory, and must not pollute model bounds or
+  # triangle budgets for skinned assets.
+  if any(collection.name == "glTF_not_exported"
+   for collection in obj.users_collection):
+   continue
   mesh_count += 1
   obj.data.calc_loop_triangles()
   triangle_count += len(obj.data.loop_triangles)
