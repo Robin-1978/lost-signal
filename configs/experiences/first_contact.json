@@ -1,8 +1,8 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "first_contact",
- "title": "FIRST CONTACT: STOP BEFORE THE GLASS",
- "subtitle": "A three-minute experiment about sensing, estimation, and safe stopping.",
+ "title": "FIRST CONTACT: PRECISE DOCKING",
+ "subtitle": "Measure the world, estimate the pose, and stop accurately at the glass calibration gate.",
  "files": {
  "map": "../worlds/research_base.json",
  "scene": "../worlds/research_base.scene.json",
@@ -10,17 +10,18 @@
  "sim": "../sim/default.json"
  },
  "objectives": ["glass_door"],
+ "time_limit_steps": 1200,
  "briefing": [
  "Drive wheels create traction; passive casters carry load and swivel freely.",
  "The LiDAR reports timed ranges from its mounted sensor frame. It does not report world truth.",
- "The emergency safety layer uses fresh observations and the robot's own braking model.",
- "Reach the marked stop pose before the glass door and remain stable."
+ "The robot decides arrival from its own estimate; it never receives the physical truth pose.",
+ "Reach the marked stop pose at the glass calibration gate and remain stable while SIM verifies the physical result independently."
  ],
  "walkaround": [
  {"component_id":"drive_wheel","title":"DRIVE WHEELS / TRACTION","lesson":"Each drive wheel has one rolling joint. Differential steering comes from left-right wheel speed, so these wheels never swivel like steering wheels."},
  {"component_id":"caster","title":"PASSIVE CASTER / SUPPORT","lesson":"The caster carries load through two passive joints: a vertical swivel and a horizontal wheel roll. Neither joint is a drive command."},
  {"component_id":"lidar","title":"LIDAR / TIMED RANGES","lesson":"The blue scanner reports ranges from this configured sensor frame. It measures surfaces; it does not reveal actor identities, scripts, or world truth."},
- {"component_id":"chassis","title":"COMPUTE, SAFETY, AND CHASSIS","lesson":"The onboard robot turns timestamped measurements into estimates and commands. A separate fresh-observation safety layer may stop motion before higher-level planning reacts."}
+ {"component_id":"chassis","title":"COMPUTE, CONTROL, AND CHASSIS","lesson":"The onboard robot turns timestamped measurements into estimates and commands. It reports arrival from its own estimate; the simulator judges the physical result separately."}
  ],
  "experiments": [
  {
@@ -32,14 +33,14 @@
  }
  ],
  "prediction": {
- "question": "What evidence may independently command the final safety stop?",
+ "question": "What must agree before this precise docking experiment is accepted?",
  "choices": [
- {"choice_id":"truth_route","label":"The actor's hidden scripted route and exact world pose","explanation":"Those are SIM-only truth. They may appear in replay or scoring, but never enter the deployable robot.","correct":false},
- {"choice_id":"raw_safety","label":"Fresh LiDAR ranges, measured speed, and the robot's braking model","explanation":"Correct. The final safety monitor can stop from local observations even when global localization is uncertain.","correct":true},
- {"choice_id":"global_only","label":"The global map and goal estimate alone","explanation":"A global map cannot represent every new obstacle or sensor timeout. It is insufficient as the final safety authority.","correct":false}
+ {"choice_id":"truth_to_robot","label":"SIM sends the exact physical pose to the robot before it stops","explanation":"That would invalidate deployment. SIM truth is recorded for replay and evaluation but never enters the robot.","correct":false},
+ {"choice_id":"independent_agreement","label":"ROBOT reports arrival from its estimate, then SIM independently verifies pose and rest","explanation":"Correct. The deployable robot decides from measurements and estimates; the simulator separately checks the physical outcome.","correct":true},
+ {"choice_id":"estimate_only","label":"The robot estimate enters the goal radius, even if the physical body is still moving outside it","explanation":"That is not enough for a credible simulation result. Physical position, heading, speed, and a stable time window are checked independently.","correct":false}
  ]
  },
- "running_prompt": "Observe the physical robot first. Press L for ROBOT LiDAR, E for truth-vs-estimate, and T for deterministic Turbo.",
+ "running_prompt": "Watch measurement, estimate, and decision as separate ROBOT evidence. Press L for estimated LiDAR projection, E for estimate, and T for deterministic Turbo.",
  "debrief": {
  "success_title": "SAFE ARRIVAL CONFIRMED",
  "failure_title": "SAFETY GATE FAILED",

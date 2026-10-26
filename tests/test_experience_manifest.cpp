@@ -26,6 +26,7 @@ int main() {
  assert(experience.experience_id == "first_contact");
  assert(experience.objectives.size() == 1);
  assert(experience.objectives.front() == "glass_door");
+ assert(experience.time_limit_steps == 1200);
  assert(experience.choices.size() == 3);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
@@ -56,6 +57,16 @@ int main() {
  assert(!lost_signal::sim::viewer::load_experience_manifest(
  bad.string(), experience, &error));
  assert(error == "experience walkaround component ids must be unique");
+
+ {
+ std::ofstream out(bad);
+ out <<
+ R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","time_limit_steps":0,"files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":false}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})";
+ }
+ assert(!lost_signal::sim::viewer::load_experience_manifest(
+ bad.string(), experience, &error));
+ assert(error ==
+ "experience 'time_limit_steps' must be a positive integer");
 
  write_text(bad,
  R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"experiments":[{"experiment_id":"bad","title":"bad","controlled_variable":"sim.truth_pose","variant_value":1.0,"step_budget":10}],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":false}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");

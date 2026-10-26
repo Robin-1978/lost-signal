@@ -31,6 +31,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/asset_manifest.hpp"
+#include "sim/viewer/experience_flow.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 #include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/keyframe_review.hpp"
@@ -49,7 +50,9 @@ using lost_signal::sim::viewer::FrameLinkPose;
 using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::ExperienceFlow;
 using lost_signal::sim::viewer::ExperienceManifest;
+using lost_signal::sim::viewer::ExperiencePhase;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
 using lost_signal::sim::viewer::ReviewKeyframe;
@@ -947,8 +950,6 @@ void draw_motion_particles_3d(const ParticleSystem& particles,
  EndBlendMode();
 }
 
-enum class ExperiencePhase { kBriefing, kPrediction, kRunning, kDebrief };
-
 enum class ExperimentRunState { kIdle, kRunning, kComplete, kFailed };
 
 struct ExperimentUiState {
@@ -962,6 +963,34 @@ struct ExperimentAsyncResult {
  lost_signal::sim::experiment::ScanPeriodComparison comparison;
  std::string error;
 };
+
+struct ExperienceHitRegions {
+ Rectangle previous{};
+ Rectangle next{};
+ Rectangle primary{};
+ std::vector<Rectangle> choices;
+
+ void clear() {
+ previous = {};
+ next = {};
+ primary = {};
+ choices.clear();
+ }
+};
+
+void draw_panel_button(Rectangle bounds, const char* label, bool primary,
+ Color accent, Color text) {
+ const bool hovered = CheckCollisionPointRec(GetMousePosition(), bounds);
+ const Color fill = primary
+ ? (hovered ? Color{67, 235, 216, 255} : accent)
+ : (hovered ? Color{49, 72, 71, 255} : Color{29, 48, 48, 255});
+ DrawRectangleRounded(bounds, 0.16f, 8, fill);
+ if (!primary) DrawRectangleRoundedLinesEx(bounds, 0.16f, 8, 1.0f, accent);
+ const int width = MeasureText(label, 14);
+ DrawText(label, static_cast<int>(bounds.x + (bounds.width - width) * 0.5f),
+ static_cast<int>(bounds.y + (bounds.height - 14.0f) * 0.5f), 14,
+ primary ? Color{7, 18, 18, 255} : text);
+}
 
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
@@ -995,7 +1024,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  bool objectives_done,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
  const Frame* frame,
- const ExperimentUiState* experiment_ui) {
+ const ExperimentUiState* experiment_ui, bool timed_out,
+ ExperienceHitRegions* hit_regions) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
  constexpr Color kText{226, 235, 230, 255};
@@ -1003,6 +1033,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  constexpr Color kCyan{55, 218, 202, 255};
  constexpr Color kAmber{246, 169, 61, 255};
  constexpr Color kRed{236, 82, 72, 255};
+ if (hit_regions != nullptr) hit_regions->clear();
  if (phase == ExperiencePhase::kRunning) {
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
@@ -1132,9 +1163,19 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  kText) + 7.0f;
  }
  }
- DrawText("LEFT/RIGHT INSPECT ENTER CONTINUE",
- static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 46),
- 15, kAmber);
+ const float button_y = y0 + panel_height - 64.0f;
+ const Rectangle previous{x + 34.0f, button_y, 42.0f, 36.0f};
+ const Rectangle next{x + 84.0f, button_y, 42.0f, 36.0f};
+ const Rectangle primary{x + panel_width - 188.0f, button_y,
+ 154.0f, 36.0f};
+ draw_panel_button(previous, "<", false, kCyan, kText);
+ draw_panel_button(next, ">", false, kCyan, kText);
+ draw_panel_button(primary, "START EXPERIMENT", true, kCyan, kText);
+ if (hit_regions != nullptr) {
+ hit_regions->previous = previous;
+ hit_regions->next = next;
+ hit_regions->primary = primary;
+ }
  return;
  }
 
@@ -1145,8 +1186,12 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  panel_width - 68, 19, 6, kText) + 10.0f;
  for (std::size_t i = 0; i < experience.choices.size(); ++i) {
  const float card_y = y;
- DrawRectangleRounded({x + 32, card_y, panel_width - 64, 78},
- 0.08f, 8, {29, 48, 48, 255});
+ const Rectangle card{x + 32, card_y, panel_width - 64, 78};
+ const bool hovered = CheckCollisionPointRec(GetMousePosition(), card);
+ DrawRectangleRounded(card, 0.08f, 8,
+ hovered ? Color{42, 67, 66, 255} : Color{29, 48, 48, 255});
+ if (hovered) DrawRectangleRoundedLinesEx(card, 0.08f, 8, 1.0f, kCyan);
+ if (hit_regions != nullptr) hit_regions->choices.push_back(card);
  const char key[2]{static_cast<char>('1' + i), '\0'};
  DrawCircle(static_cast<int>(x + 58), static_cast<int>(card_y + 39),
  15.0f, kCyan);
@@ -1156,18 +1201,23 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  panel_width - 132, 16, 4, kText);
  y += 91.0f;
  }
- DrawText("PRESS 1-3 TO LOCK THE PREDICTION AND START",
+ DrawText("CLICK A CHOICE OR PRESS ITS NUMBER TO START",
  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 40),
  15, kAmber);
  return;
  }
 
- const bool safe = objectives_done && objectives_passed &&
+ const bool safe = !timed_out && objectives_done && objectives_passed &&
  score.collision_steps == 0;
  DrawText((safe ? experience.success_title : experience.failure_title).c_str(),
  static_cast<int>(x + 34), static_cast<int>(y), 20,
  safe ? kCyan : kRed);
  y += 38.0f;
+ if (timed_out) {
+ y = draw_wrapped_text(
+ "TIME LIMIT REACHED: the robot did not produce a terminal mission result within the authored experiment budget.",
+ x + 34, y, panel_width - 68, 15, 5, kRed) + 10.0f;
+ }
  char metrics[256];
  std::snprintf(metrics, sizeof(metrics),
  "SIM OFFLINE EVAL   collisions=%zu   min clearance=%.2f m   mean estimate error=%.2f m",
@@ -2693,9 +2743,13 @@ int main(int argc, char** argv) {
   sim::viewer::ViewTransform view(50.0f, 2.0, 1.0, kScreenW, kScreenH);
   view.fit(-4.0, -4.0, 8.0, 7.0);
  bool paused = experience_loaded;
- ExperiencePhase experience_phase = ExperiencePhase::kBriefing;
- int selected_experience_choice = -1;
- int walkaround_stop = 0;
+ std::unique_ptr<ExperienceFlow> experience_flow;
+ if (experience_loaded) {
+ experience_flow = std::make_unique<ExperienceFlow>(
+ ExperienceFlow::Config{experience.walkaround.size(),
+ experience.choices.size(), experience.time_limit_steps});
+ }
+ ExperienceHitRegions experience_hit_regions;
  std::vector<ReviewKeyframe> review_keyframes;
  int selected_review_keyframe = 0;
  ExperimentUiState experiment_ui;
@@ -2829,44 +2883,38 @@ int main(int argc, char** argv) {
       on_map = view.screen_to_world(mpos.x, mpos.y, pick_x, pick_y);
     }
  if (experience_loaded) {
- if (experience_phase == ExperiencePhase::kBriefing &&
- IsKeyPressed(KEY_ENTER)) {
- experience_phase = ExperiencePhase::kPrediction;
- } else if (experience_phase == ExperiencePhase::kBriefing &&
- !experience.walkaround.empty()) {
- const int count = static_cast<int>(experience.walkaround.size());
- if (IsKeyPressed(KEY_RIGHT)) {
- walkaround_stop = (walkaround_stop + 1) % count;
+ const bool clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+ const Vector2 pointer = GetMousePosition();
+ if (experience_flow->phase() == ExperiencePhase::kBriefing) {
+ if (IsKeyPressed(KEY_ENTER) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.primary))) {
+ experience_flow->continue_to_prediction();
+ } else {
+ if (IsKeyPressed(KEY_RIGHT) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.next))) {
+ experience_flow->inspect_next();
  }
- if (IsKeyPressed(KEY_LEFT)) {
- walkaround_stop = (walkaround_stop + count - 1) % count;
+ if (IsKeyPressed(KEY_LEFT) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.previous))) {
+ experience_flow->inspect_previous();
  }
- } else if (experience_phase == ExperiencePhase::kPrediction) {
+ }
+ } else if (experience_flow->phase() == ExperiencePhase::kPrediction) {
  for (std::size_t i = 0; i < experience.choices.size(); ++i) {
  const int key = KEY_ONE + static_cast<int>(i);
- if (IsKeyPressed(key)) {
- selected_experience_choice = static_cast<int>(i);
- experience_phase = ExperiencePhase::kRunning;
+ const bool clicked_choice = clicked &&
+ i < experience_hit_regions.choices.size() &&
+ CheckCollisionPointRec(pointer, experience_hit_regions.choices[i]);
+ if (IsKeyPressed(key) || clicked_choice) {
+ experience_flow->select_choice(i, session->episode().steps().size());
  paused = false;
  break;
  }
  }
- } else if (experience_phase == ExperiencePhase::kRunning &&
- session->objectives_done()) {
- experience_phase = ExperiencePhase::kDebrief;
- paused = true;
- sim::viewer::KeyframeReviewConfig review_config;
- if (robot_config.has_value()) {
- review_config.maximum_forward_speed_mps =
- robot_config->arrival.maximum_forward_speed_mps;
- review_config.maximum_yaw_rate_radps =
- robot_config->arrival.maximum_yaw_rate_radps;
- review_config.settle_samples = robot_config->arrival.settle_cycles;
- }
- review_keyframes = sim::viewer::extract_review_keyframes(
- session->episode(), review_config);
- selected_review_keyframe = 0;
- } else if (experience_phase == ExperiencePhase::kDebrief &&
+ } else if (experience_flow->phase() == ExperiencePhase::kDebrief &&
  !review_keyframes.empty()) {
  const int count = static_cast<int>(review_keyframes.size());
  if (IsKeyPressed(KEY_RIGHT)) {
@@ -2926,11 +2974,13 @@ int main(int argc, char** argv) {
     }
     // Input (window thread only; sim stays deterministic).
  if (IsKeyPressed(KEY_SPACE) &&
- (!experience_loaded || experience_phase == ExperiencePhase::kRunning)) {
+ (!experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning)) {
  paused = !paused;
  }
  if (IsKeyPressed(KEY_N) && paused &&
- (!experience_loaded || experience_phase == ExperiencePhase::kRunning)) {
+ (!experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kRunning)) {
  session->step_once();
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
@@ -3024,6 +3074,22 @@ int main(int argc, char** argv) {
  playback.discard_debt();
     }
  playback.end_frame();
+ if (experience_loaded &&
+ experience_flow->update(session->episode().steps().size(),
+ session->objectives_done())) {
+ paused = true;
+ sim::viewer::KeyframeReviewConfig review_config;
+ if (robot_config.has_value()) {
+ review_config.maximum_forward_speed_mps =
+ robot_config->arrival.maximum_forward_speed_mps;
+ review_config.maximum_yaw_rate_radps =
+ robot_config->arrival.maximum_yaw_rate_radps;
+ review_config.settle_samples = robot_config->arrival.settle_cycles;
+ }
+ review_keyframes = sim::viewer::extract_review_keyframes(
+ session->episode(), review_config);
+ selected_review_keyframe = 0;
+ }
     const auto& steps = session->episode().steps();
  if (steps.empty()) {
  if (!experience_loaded) continue;
@@ -3038,7 +3104,8 @@ int main(int argc, char** argv) {
  if (view3d) {
  std::string component_id = "chassis";
  if (!experience.walkaround.empty()) {
- const int index = std::clamp(walkaround_stop, 0,
+ const int index = std::clamp(
+ static_cast<int>(experience_flow->walkaround_index()), 0,
  static_cast<int>(experience.walkaround.size()) - 1);
  component_id = experience.walkaround[static_cast<std::size_t>(index)]
  .component_id;
@@ -3074,9 +3141,12 @@ int main(int argc, char** argv) {
  } else {
  draw_frame_2d(preview, view, false, false, false);
  }
- draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, walkaround_stop, review_keyframes,
- selected_review_keyframe, false, false, {}, &preview, &experiment_ui);
+ draw_experience_overlay(experience, experience_flow->phase(),
+ experience_flow->selected_choice(),
+ static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
+ selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
+ false, &experience_hit_regions);
+
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
  TakeScreenshot(shot_path.c_str());
@@ -3085,7 +3155,8 @@ int main(int argc, char** argv) {
  continue;
  }
  std::size_t presented_index = steps.size() - 1;
- if (experience_loaded && experience_phase == ExperiencePhase::kDebrief &&
+ if (experience_loaded &&
+ experience_flow->phase() == ExperiencePhase::kDebrief &&
  !review_keyframes.empty()) {
  const int selected = std::clamp(selected_review_keyframe, 0,
  static_cast<int>(review_keyframes.size()) - 1);
@@ -3212,10 +3283,12 @@ int main(int argc, char** argv) {
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
  if (experience_loaded) {
- draw_experience_overlay(experience, experience_phase,
- selected_experience_choice, walkaround_stop, review_keyframes,
+ draw_experience_overlay(experience, experience_flow->phase(),
+ experience_flow->selected_choice(),
+ static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
- session->objectives_passed(), session->score(), &frame, &experiment_ui);
+ session->objectives_passed(), session->score(), &frame, &experiment_ui,
+ experience_flow->timed_out(), &experience_hit_regions);
  }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {

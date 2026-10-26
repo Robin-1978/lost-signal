@@ -122,6 +122,17 @@ bool load_experience_manifest(const std::string& path,
  !take_strings(*debrief, "lessons", parsed.lessons, out_error)) {
  return false;
  }
+ const Json* time_limit = root->find("time_limit_steps");
+ if (time_limit != nullptr) {
+ if (!time_limit->is_num() || !std::isfinite(time_limit->as_num()) ||
+ time_limit->as_num() < 1.0 ||
+ std::floor(time_limit->as_num()) != time_limit->as_num()) {
+ out_error = "experience 'time_limit_steps' must be a positive integer";
+ return false;
+ }
+ parsed.time_limit_steps =
+ static_cast<std::uint64_t>(time_limit->as_num());
+ }
  const Json* choices = prediction->find("choices");
  if (choices == nullptr || !choices->is_array() ||
  choices->as_array().size() < 2 || choices->as_array().size() > 4) {

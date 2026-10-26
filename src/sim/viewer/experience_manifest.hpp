@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,9 @@ struct ExperienceManifest {
  std::string robot_path;
  std::string sim_path;
  std::vector<std::string> objectives;
+ // Presentation run budget. Reaching it pauses the field lab and opens a
+ // failed debrief; it never changes ROBOT limits or scenario acceptance.
+ std::uint64_t time_limit_steps = 0;
  std::vector<std::string> briefing;
  std::vector<ExperienceWalkaroundStop> walkaround;
  std::vector<ExperienceExperiment> experiments;
