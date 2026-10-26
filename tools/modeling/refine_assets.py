@@ -22,7 +22,11 @@ def import_glb(path):
 def export_glb(path):
     bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB",
                               use_selection=False, export_apply=False,
-                              export_yup=False)
+    # This tool imports an existing glTF first. Re-enable Blender's glTF Y-up
+    # conversion on export so repeated refinement preserves the file frame.
+    # Generators that start from a fresh canonical Z-up Blender scene use
+    # export_yup=False instead.
+        export_yup=True)
 
 def mat(name, color, metallic=0.0, rough=0.45, emission=None):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
@@ -54,6 +58,9 @@ def bevel(name, width):
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
 def cylinder(name, loc, radius, depth, axis, material, vertices=32):
+    existing = bpy.data.objects.get(name)
+    if existing is not None:
+        bpy.data.objects.remove(existing, do_unlink=True)
     bpy.ops.mesh.primitive_cylinder_add(vertices=vertices, radius=radius,
                                         depth=depth, location=loc)
     o = bpy.context.object
@@ -66,6 +73,9 @@ def cylinder(name, loc, radius, depth, axis, material, vertices=32):
     return o
 
 def cube(name, loc, scale, material, bevel_width=0.004):
+    existing = bpy.data.objects.get(name)
+    if existing is not None:
+        bpy.data.objects.remove(existing, do_unlink=True)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
     o = bpy.context.object
     o.name, o.scale = name, scale
@@ -121,7 +131,7 @@ def refine_lidar():
     glass = mat("ro1_lidar_glass", (0.025, 0.10, 0.12), 0.25, 0.08)
     mint = mat("ro1_lidar_mint", (0.26, 0.90, 0.73), 0.0, 0.20, (0.10, 0.55, 0.38))
     assign("base", graphite); assign("scanner", glass); assign("scan_bar", mint)
-    cylinder("lidar_status_ring", (0.0, 0.0, 0.071), 0.073, 0.007, "Z", mint, 40)
+    cylinder("lidar_status_ring", (0.0, -0.071, 0.0), 0.073, 0.007, "Y", mint, 40)
     export_glb(path)
 
 def refine_actors():

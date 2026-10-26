@@ -44,7 +44,12 @@ def model_bounds(path):
    continue
   mesh_count += 1
   for corner in obj.bound_box:
-   point = obj.matrix_world @ Vector(corner)
+   # Blender's glTF importer converts the file's Y-up convention into
+   # Blender coordinates. The runtime manifest describes the coordinates
+   # actually stored in the GLB/GLTF, so undo that importer basis change
+   # before validating axis-specific bounds: blender=(x,-z,y).
+   blender_point = obj.matrix_world @ Vector(corner)
+   point = (blender_point.x, blender_point.z, -blender_point.y)
    for axis in range(3):
     lower[axis] = min(lower[axis], point[axis])
     upper[axis] = max(upper[axis], point[axis])
@@ -82,12 +87,21 @@ def validate(entry, measured):
    raise RuntimeError(f"pivot below bounds for {entry['path']}")
   if pivot[axis] > measured["max"][axis] + TOLERANCE_M:
    raise RuntimeError(f"pivot above bounds for {entry['path']}")
- if entry["kind"] != "wheel":
+ if (entry.get("kind") == "wheel_module" or
+ not entry.get("reference_radius_m") or
+ not entry.get("reference_half_width_m") or
+ not entry.get("axle_axis")):
   return
+ def axis_index(axis):
+  return {"X": 0, "Y": 1, "Z": 2}[axis[-1]]
+ forward_axis = axis_index(entry["forward_axis"])
+ up_axis = axis_index(entry["up_axis"])
+ axle_axis = axis_index(entry["axle_axis"])
  radius = max(
-  measured["max"][0] - measured["min"][0],
-  measured["max"][2] - measured["min"][2]) * 0.5
- half_width = (measured["max"][1] - measured["min"][1]) * 0.5
+ measured["max"][forward_axis] - measured["min"][forward_axis],
+ measured["max"][up_axis] - measured["min"][up_axis]) * 0.5
+ half_width = (
+ measured["max"][axle_axis] - measured["min"][axle_axis]) * 0.5
  if abs(radius - entry["reference_radius_m"]) > TOLERANCE_M:
   raise RuntimeError(f"wheel radius changed for {entry['path']}")
  if abs(half_width - entry["reference_half_width_m"]) > TOLERANCE_M:

@@ -28,6 +28,26 @@ struct AssetDefinition {
  double reference_half_width_m = 0.0;
 };
 
+// Rigid transform from the asset's authored coordinates to the component
+// link frame. Rotation is row-major and translation is expressed in metres.
+// Axis declarations establish the coarse frame; asset_to_link_rpy_rad is the
+// explicit residual correction and pivot_m becomes the link origin.
+struct AssetFrameTransform {
+ std::array<double, 9> rotation{};
+ std::array<double, 3> translation_m{};
+};
+
+AssetFrameTransform asset_frame_transform(const AssetDefinition& asset);
+std::array<double, 3> transform_asset_point(
+ const AssetFrameTransform& transform,
+ const std::array<double, 3>& point_m);
+// Converts one point from the coordinates stored in the GLB/GLTF into the
+// raylib render basis (X forward, Y up, Z right). Units, the declared pivot,
+// and the complete asset-to-link rotation are applied exactly once.
+std::array<double, 3> asset_point_to_render(
+ const AssetDefinition& asset,
+ const std::array<double, 3>& point_asset_units);
+
 class AssetManifest {
  public:
  const AssetDefinition* find(const std::string& asset_id) const;

@@ -67,6 +67,27 @@ char axis_dimension(const std::string& axis) {
  return axis.size() == 2 ? axis[1] : '?';
 }
 
+std::array<double, 3> axis_vector(const std::string& axis) {
+ std::array<double, 3> vector{};
+ const double sign = axis[0] == '-' ? -1.0 : 1.0;
+ const std::size_t dimension = axis[1] == 'X' ? 0U
+ : axis[1] == 'Y' ? 1U : 2U;
+ vector[dimension] = sign;
+ return vector;
+}
+
+std::array<double, 3> cross(const std::array<double, 3>& a,
+ const std::array<double, 3>& b) {
+ return {a[1] * b[2] - a[2] * b[1],
+ a[2] * b[0] - a[0] * b[2],
+ a[0] * b[1] - a[1] * b[0]};
+}
+
+bool equal_axis(const std::array<double, 3>& a,
+ const std::array<double, 3>& b) {
+ return a == b;
+}
+
 bool safe_relative_model_path(const std::string& path) {
  const std::filesystem::path candidate(path);
  if (candidate.empty() || candidate.is_absolute()) return false;
@@ -134,6 +155,14 @@ bool parse_asset(const Json& node, AssetDefinition& asset,
  error = "asset up, forward, and axle axes must use distinct dimensions";
  return false;
  }
+ const auto forward = axis_vector(asset.forward_axis);
+ const auto up = axis_vector(asset.up_axis);
+ const auto left = asset.axle_axis.empty()
+ ? cross(up, forward) : axis_vector(asset.axle_axis);
+ if (!equal_axis(cross(forward, left), up)) {
+ error = "asset forward, axle/left, and up axes must form a right-handed frame";
+ return false;
+ }
  if (!safe_relative_model_path(asset.relative_path)) {
  error = "asset path must be a relative .glb or .gltf path without '..'";
  return false;
@@ -173,6 +202,75 @@ bool parse_asset(const Json& node, AssetDefinition& asset,
 }
 
 } // namespace
+
+AssetFrameTransform asset_frame_transform(const AssetDefinition& asset) {
+ const auto forward = axis_vector(asset.forward_axis);
+ const auto up = axis_vector(asset.up_axis);
+ const auto left = asset.axle_axis.empty()
+ ? cross(up, forward) : axis_vector(asset.axle_axis);
+
+ // Rows map authored components onto canonical link X-forward, Y-left,
+ // Z-up. RPY is a conventional Rz(yaw)*Ry(pitch)*Rx(roll) residual.
+ const std::array<double, 9> axes{
+ forward[0], forward[1], forward[2],
+ left[0], left[1], left[2],
+ up[0], up[1], up[2]};
+ const double roll = asset.asset_to_link_rpy_rad[0];
+ const double pitch = asset.asset_to_link_rpy_rad[1];
+ const double yaw = asset.asset_to_link_rpy_rad[2];
+ const double cx = std::cos(roll);
+ const double sx = std::sin(roll);
+ const double cy = std::cos(pitch);
+ const double sy = std::sin(pitch);
+ const double cz = std::cos(yaw);
+ const double sz = std::sin(yaw);
+ const std::array<double, 9> rpy{
+ cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx,
+ sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx,
+ -sy, cy * sx, cy * cx};
+
+ AssetFrameTransform transform;
+ for (std::size_t row = 0; row < 3; ++row) {
+ for (std::size_t column = 0; column < 3; ++column) {
+ for (std::size_t inner = 0; inner < 3; ++inner) {
+ transform.rotation[row * 3 + column] +=
+ rpy[row * 3 + inner] * axes[inner * 3 + column];
+ }
+ }
+ }
+ for (std::size_t row = 0; row < 3; ++row) {
+ for (std::size_t column = 0; column < 3; ++column) {
+ transform.translation_m[row] -=
+ transform.rotation[row * 3 + column] * asset.pivot_m[column];
+ }
+ }
+ return transform;
+}
+
+std::array<double, 3> transform_asset_point(
+ const AssetFrameTransform& transform,
+ const std::array<double, 3>& point_m) {
+ std::array<double, 3> result = transform.translation_m;
+ for (std::size_t row = 0; row < 3; ++row) {
+ for (std::size_t column = 0; column < 3; ++column) {
+ result[row] += transform.rotation[row * 3 + column] * point_m[column];
+ }
+ }
+ return result;
+}
+
+std::array<double, 3> asset_point_to_render(
+ const AssetDefinition& asset,
+ const std::array<double, 3>& point_asset_units) {
+ std::array<double, 3> point_m{};
+ for (std::size_t axis = 0; axis < point_m.size(); ++axis) {
+ point_m[axis] = point_asset_units[axis] * asset.meters_per_unit;
+ }
+ const auto link = transform_asset_point(asset_frame_transform(asset), point_m);
+ // Link and MuJoCo use X-forward/Y-left/Z-up. raylib uses X-forward/Y-up
+ // and Z-right, so this is the one link-to-render basis change.
+ return {link[0], link[2], -link[1]};
+}
 
 const AssetDefinition* AssetManifest::find(
  const std::string& asset_id) const {

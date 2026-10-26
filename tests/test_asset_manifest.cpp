@@ -10,7 +10,10 @@ namespace {
 
 namespace fs = std::filesystem;
 using lost_signal::sim::viewer::AssetManifest;
+using lost_signal::sim::viewer::asset_point_to_render;
+using lost_signal::sim::viewer::asset_frame_transform;
 using lost_signal::sim::viewer::load_asset_manifest;
+using lost_signal::sim::viewer::transform_asset_point;
 
 void write_text(const fs::path& path, const std::string& text) {
   std::ofstream output(path, std::ios::binary);
@@ -71,6 +74,37 @@ int main() {
   AssetManifest valid;
   assert(load_asset_manifest(test_manifest.string(), valid, &error));
   assert(valid.assets().size() == 1);
+ const auto canonical = asset_frame_transform(valid.assets().front());
+ assert(transform_asset_point(canonical, {1.0, 2.0, 3.0}) ==
+ (std::array<double, 3>{1.0, 2.0, 3.0}));
+ assert(asset_point_to_render(valid.assets().front(), {1.0, 2.0, 3.0}) ==
+ (std::array<double, 3>{1.0, 3.0, -2.0}));
+
+ write_text(test_manifest, one_asset(
+ R"("asset_id":"rotated","version":1,"kind":"wheel","path":"part.glb","source":"unit test","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+Z","axle_axis":"+X","pivot_m":[1,2,3],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})"));
+ AssetManifest rotated_manifest;
+ assert(load_asset_manifest(test_manifest.string(), rotated_manifest, &error));
+ const auto rotated = asset_frame_transform(rotated_manifest.assets().front());
+ // Authored +Z/+X/+Y become link +X/+Y/+Z and the declared pivot is zero.
+ assert(transform_asset_point(rotated, {1.0, 2.0, 3.0}) ==
+ (std::array<double, 3>{0.0, 0.0, 0.0}));
+ assert(transform_asset_point(rotated, {1.0, 2.0, 4.0}) ==
+ (std::array<double, 3>{1.0, 0.0, 0.0}));
+ assert(asset_point_to_render(
+ rotated_manifest.assets().front(), {1.0, 2.0, 3.0}) ==
+ (std::array<double, 3>{0.0, 0.0, 0.0}));
+
+ write_text(test_manifest, one_asset(
+ R"("asset_id":"legacy.wheel","version":1,"kind":"wheel","path":"part.glb","source":"unit test","meters_per_unit":1,"up_axis":"+Y","forward_axis":"+X","axle_axis":"-Z","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})"));
+ AssetManifest wheel_manifest;
+ assert(load_asset_manifest(test_manifest.string(), wheel_manifest, &error));
+ const auto& wheel = wheel_manifest.assets().front();
+ // The legacy file stores its radial up direction in +Y and its +left
+ // axle in -Z. Both become the expected raylib axes without a draw hack.
+ assert(asset_point_to_render(wheel, {0.0, 1.0, 0.0}) ==
+ (std::array<double, 3>{0.0, 1.0, 0.0}));
+ assert(asset_point_to_render(wheel, {0.0, 0.0, -1.0}) ==
+ (std::array<double, 3>{0.0, 0.0, -1.0}));
 
   assert(rejected(test_manifest,
                   R"({"format":"lost-signal-assets/1","assets":[{"asset_id":"same","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]}},{"asset_id":"same","version":1,"kind":"wheel","path":"other.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]}}]})"));
@@ -78,6 +112,8 @@ int main() {
  R"({"format":"lost-signal-assets/1","assets":[{"asset_id":"first","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]}},{"asset_id":"second","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]}}]})"));
   assert(rejected(test_manifest,
                   one_asset(R"("asset_id":"bad.axis","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"-Z","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})")));
+ assert(rejected(test_manifest,
+ one_asset(R"("asset_id":"left.handed","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"-Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[-1,-1,-1],"max":[1,1,1]})")));
   assert(rejected(test_manifest,
                   one_asset(R"("asset_id":"bad.bounds","version":1,"kind":"wheel","path":"part.glb","source":"test","meters_per_unit":1,"up_axis":"+Z","forward_axis":"+X","axle_axis":"+Y","pivot_m":[0,0,0],"asset_to_link_rpy_rad":[0,0,0],"expected_bounds_m":{"min":[0,-1,-1],"max":[0,1,1]})")));
   assert(rejected(test_manifest,

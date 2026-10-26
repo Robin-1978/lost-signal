@@ -269,45 +269,95 @@ void bind_lighting(Model& model, Shader shader) {
  }
 }
 
-BoundingBox raylib_asset_bounds(const Model& model, bool zup_converted) {
- (void)zup_converted;
- const BoundingBox b = GetModelBoundingBox(model);
- const float x0 = std::min(b.min.x, b.max.x);
- const float x1 = std::max(b.min.x, b.max.x);
- const float y0 = std::min(b.min.y, b.max.y);
- const float y1 = std::max(b.min.y, b.max.y);
- const float z0 = std::min(b.min.z, b.max.z);
- const float z1 = std::max(b.min.z, b.max.z);
- // raylib's GetModelBoundingBox already applies Model::transform. Keep the
- // normalized bounds in raylib coordinates; manually applying the GLB axis
- // permutation here would convert the same asset twice.
- return {{x0, y0, z0}, {x1, y1, z1}};
+BoundingBox raylib_asset_bounds(const Model& model) {
+ // raylib transforms only the minimum and maximum corners, which is invalid
+ // for a rotated model. Transform all eight raw corners so axis-corrected
+ // legacy assets retain exact fitted and grounding bounds.
+ Model raw = model;
+ raw.transform = MatrixIdentity();
+ const BoundingBox b = GetModelBoundingBox(raw);
+ BoundingBox result{{INFINITY, INFINITY, INFINITY},
+ {-INFINITY, -INFINITY, -INFINITY}};
+ for (int x = 0; x < 2; ++x) {
+ for (int y = 0; y < 2; ++y) {
+ for (int z = 0; z < 2; ++z) {
+ const Vector3 corner{x == 0 ? b.min.x : b.max.x,
+ y == 0 ? b.min.y : b.max.y,
+ z == 0 ? b.min.z : b.max.z};
+ const Vector3 point = Vector3Transform(corner, model.transform);
+ result.min.x = std::min(result.min.x, point.x);
+ result.min.y = std::min(result.min.y, point.y);
+ result.min.z = std::min(result.min.z, point.z);
+ result.max.x = std::max(result.max.x, point.x);
+ result.max.y = std::max(result.max.y, point.y);
+ result.max.z = std::max(result.max.z, point.z);
+ }
+ }
+ }
+ return result;
 }
 
 bool model_bounds_match_manifest(const Model& model,
  const AssetDefinition& definition) {
- const BoundingBox bounds = GetModelBoundingBox(model);
- std::array<double, 3> actual{
- std::abs(bounds.max.x - bounds.min.x),
- std::abs(bounds.max.y - bounds.min.y),
- std::abs(bounds.max.z - bounds.min.z)};
- std::array<double, 3> expected{
- definition.expected_bounds_m.maximum_m[0] -
- definition.expected_bounds_m.minimum_m[0],
- definition.expected_bounds_m.maximum_m[1] -
- definition.expected_bounds_m.minimum_m[1],
- definition.expected_bounds_m.maximum_m[2] -
- definition.expected_bounds_m.minimum_m[2]};
- std::sort(actual.begin(), actual.end());
- std::sort(expected.begin(), expected.end());
- for (std::size_t i = 0; i < actual.size(); ++i) {
- const double tolerance = std::max(0.002, expected[i] * 0.02);
- if (std::abs(actual[i] * definition.meters_per_unit - expected[i]) >
- tolerance) {
+ Model raw = model;
+ raw.transform = MatrixIdentity();
+ const BoundingBox bounds = GetModelBoundingBox(raw);
+ // The manifest records the coordinates stored in the file. Compare each
+ // axis directly; sorting extents used to let a side-lying model pass.
+ const std::array<double, 3> actual_min{
+ bounds.min.x * definition.meters_per_unit,
+ bounds.min.y * definition.meters_per_unit,
+ bounds.min.z * definition.meters_per_unit};
+ const std::array<double, 3> actual_max{
+ bounds.max.x * definition.meters_per_unit,
+ bounds.max.y * definition.meters_per_unit,
+ bounds.max.z * definition.meters_per_unit};
+ for (std::size_t axis = 0; axis < 3; ++axis) {
+ const double expected_extent =
+ definition.expected_bounds_m.maximum_m[axis] -
+ definition.expected_bounds_m.minimum_m[axis];
+ const double tolerance = std::max(0.002, expected_extent * 0.02);
+ if (std::abs(actual_min[axis] -
+ definition.expected_bounds_m.minimum_m[axis]) > tolerance ||
+ std::abs(actual_max[axis] -
+ definition.expected_bounds_m.maximum_m[axis]) > tolerance) {
  return false;
  }
  }
  return true;
+}
+
+Vector3 manifest_point_to_raylib(const AssetDefinition& definition,
+ Vector3 asset_point) {
+ const auto render = lost_signal::sim::viewer::asset_point_to_render(
+ definition, {asset_point.x, asset_point.y, asset_point.z});
+ return {static_cast<float>(render[0]), static_cast<float>(render[1]),
+ static_cast<float>(render[2])};
+}
+
+Matrix manifest_model_transform(const AssetDefinition& definition) {
+ const Vector3 origin = manifest_point_to_raylib(
+ definition, {0.0f, 0.0f, 0.0f});
+ const Vector3 x = manifest_point_to_raylib(
+ definition, {1.0f, 0.0f, 0.0f});
+ const Vector3 y = manifest_point_to_raylib(
+ definition, {0.0f, 1.0f, 0.0f});
+ const Vector3 z = manifest_point_to_raylib(
+ definition, {0.0f, 0.0f, 1.0f});
+ Matrix matrix = MatrixIdentity();
+ matrix.m0 = x.x - origin.x;
+ matrix.m1 = x.y - origin.y;
+ matrix.m2 = x.z - origin.z;
+ matrix.m4 = y.x - origin.x;
+ matrix.m5 = y.y - origin.y;
+ matrix.m6 = y.z - origin.z;
+ matrix.m8 = z.x - origin.x;
+ matrix.m9 = z.y - origin.y;
+ matrix.m10 = z.z - origin.z;
+ matrix.m12 = origin.x;
+ matrix.m13 = origin.y;
+ matrix.m14 = origin.z;
+ return matrix;
 }
 
 Model load_manifest_model(const std::filesystem::path& models_root,
@@ -331,17 +381,7 @@ Model load_manifest_model(const std::filesystem::path& models_root,
  definition_out = nullptr;
  return {};
  }
- const auto& rpy = definition_out->asset_to_link_rpy_rad;
- const Matrix units = MatrixScale(
- static_cast<float>(definition_out->meters_per_unit),
- static_cast<float>(definition_out->meters_per_unit),
- static_cast<float>(definition_out->meters_per_unit));
- const Matrix asset_to_link = MatrixRotateXYZ({
- static_cast<float>(rpy[0]), static_cast<float>(rpy[1]),
- static_cast<float>(rpy[2])});
- const Matrix link_to_raylib = MatrixRotateX(-PI / 2.0f);
- model.transform = MatrixMultiply(
- MatrixMultiply(units, asset_to_link), link_to_raylib);
+ model.transform = manifest_model_transform(*definition_out);
  return model;
 }
 
@@ -575,7 +615,7 @@ void unload_visual_assets(VisualAssets& assets) {
 void draw_fitted_model(const Model& model, Vector3 position, float radius,
  float height, Color tint, float rotation_deg = 0.0f) {
  if (!model_ready(model)) return;
- const BoundingBox bounds = raylib_asset_bounds(model, true);
+ const BoundingBox bounds = raylib_asset_bounds(model);
  const Vector3 lo{bounds.min.x, bounds.min.y, bounds.min.z};
  const Vector3 hi{bounds.max.x, bounds.max.y, bounds.max.z};
  const float sx = std::max(1e-3f, hi.x - lo.x);
@@ -607,7 +647,7 @@ void draw_actor_model_grounded(const Model& model, double x_m, double y_m,
  if (!(reference_radius > 0.0f)) return;
  const float scale = static_cast<float>(radius_m) /
  std::max(1e-3f, reference_radius);
- const BoundingBox bounds = raylib_asset_bounds(model, true);
+ const BoundingBox bounds = raylib_asset_bounds(model);
  const float min_y = bounds.min.y;
  // Model origins in the asset pack are ground anchors.  The min-y correction
  // keeps that invariant true even when a future asset has a small negative
@@ -631,7 +671,7 @@ void draw_scene_instance(const SceneInstance& instance,
  static_cast<float>(instance.scale[0]),
  static_cast<float>(instance.scale[2]),
  static_cast<float>(instance.scale[1])};
- const BoundingBox bounds = raylib_asset_bounds(loaded->model, true);
+ const BoundingBox bounds = raylib_asset_bounds(loaded->model);
  const Vector3 position{
  static_cast<float>(instance.position_m[0]),
  static_cast<float>(ground_z_m + instance.position_m[2] -
@@ -795,11 +835,9 @@ Vector3 link_position(const FrameLinkPose& pose) {
  static_cast<float>(-pose.y_m)};
 }
 
-// MuJoCo links use x-forward/y-left/z-up. Inside the already transformed
-// base frame, raylib consumes x-forward/y-up/z-right. Raw joint assets are
-// authored in the MuJoCo link frame, so their draw rotation is Q*R_link.
-// Globally converted Z-up assets already carry Q in Model::transform and
-// therefore need the conjugated Q*R_link*Q^-1 rotation instead.
+// MuJoCo links use x-forward/y-left/z-up. Model::transform converts each
+// declared file frame into raylib's x-forward/y-up/z-right basis. Live link
+// rotations therefore use Q*R_link*Q^-1 after that fixed conversion.
 Quaternion link_rotation(const FrameLinkPose& pose, bool converted_asset) {
  const Quaternion q_link{static_cast<float>(pose.qx),
  static_cast<float>(pose.qy), static_cast<float>(pose.qz),
@@ -825,8 +863,8 @@ Vector3 wheel_asset_scale(const AssetDefinition* definition, double radius_m,
  radius_m / definition->reference_radius_m);
  const float axial = static_cast<float>(
  half_width_m / definition->reference_half_width_m);
- // Manifest wheels use X forward, Y axle, Z up. The asset boundary maps
- // them to raylib X forward, Z axle, Y up, so the axial scale is Z.
+ // Manifest wheels use X forward, Y axle, Z up. glTF/raylib maps them to
+ // X forward, -Z axle, Y up, so the axial scale is Z.
  return {radial, radial, axial};
 }
 
@@ -1862,7 +1900,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
                              ? RED
                              : Color{238, 241, 244, 255};
  if (assets != nullptr && model_ready(assets->chassis)) {
- const BoundingBox cb = raylib_asset_bounds(assets->chassis, true);
+ const BoundingBox cb = raylib_asset_bounds(assets->chassis);
  const float csx = std::max(1e-3f, cb.max.x - cb.min.x);
  const float csy = std::max(1e-3f, cb.max.y - cb.min.y);
  const float csz = std::max(1e-3f, cb.max.z - cb.min.z);
@@ -1988,13 +2026,10 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  if (assets != nullptr && model_ready(assets->caster_wheel)) {
  const Quaternion swivel = QuaternionFromAxisAngle(
  {0.0f, 1.0f, 0.0f}, static_cast<float>(caster.yaw_rad));
- // Wheel assets stay in their authored joint frame (+Z axle). Rx(180) is
- // the complete fixed installation into raylib and lays that axle on
- // horizontal raylib Z; swivel and roll remain separate live joints.
- const Quaternion mount = QuaternionFromAxisAngle(
- {1.0f, 0.0f, 0.0f}, PI);
+ // The normalized wheel link uses raylib -Z as its axle. Swivel and roll
+ // remain separate live joints; no anonymous fixed mount is required.
  const Quaternion spin = QuaternionFromAxisAngle(
- {0.0f, 0.0f, 1.0f}, static_cast<float>(caster.spin_rad));
+ {0.0f, 0.0f, -1.0f}, static_cast<float>(caster.spin_rad));
  const Quaternion swivel_asset = asset_frame_rotation(swivel);
  if (assets != nullptr && model_ready(assets->caster_fork)) {
  draw_model_quaternion(assets->caster_fork,
@@ -2005,7 +2040,7 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  draw_model_quaternion(assets->caster_wheel,
  {static_cast<float>(caster.x_m), axle + caster_lift,
  static_cast<float>(-caster.y_m)},
- QuaternionMultiply(swivel, QuaternionMultiply(mount, spin)),
+ QuaternionMultiply(swivel, spin),
  caster_wheel_scale, WHITE);
  // Keep the authored GLB detail and add the physical crowned centre rib so
  // the visible tire profile matches the compound contact geometry.
@@ -2143,19 +2178,13 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  const float axle = 0.0f;
  const float wheel_lift = 0.0f;
  if (!w.mecanum_rollers && assets != nullptr && model_ready(assets->wheel)) {
- // The wheel asset stays in its authored joint frame (+Z axle). Rx(180)
- // lays it on horizontal raylib Z. A differential module has steer_rad=0;
- // only a true steering module adds the live Y-axis yaw.
+ // The normalized wheel link already has a horizontal raylib -Z axle. A
+ // differential module has steer_rad=0; only a steering module adds yaw.
  const Quaternion steer = QuaternionFromAxisAngle(
  {0.0f, 1.0f, 0.0f}, static_cast<float>(w.steer_rad));
- // Ackermann/swerve modules add their measured Y steering before the same
- // horizontal axle roll; differential modules keep this yaw at zero.
- const Quaternion mount = QuaternionFromAxisAngle(
- {1.0f, 0.0f, 0.0f}, PI);
  const Quaternion spin = QuaternionFromAxisAngle(
- {0.0f, 0.0f, 1.0f}, static_cast<float>(w.spin_rad));
- const Quaternion rotation = QuaternionMultiply(
- steer, QuaternionMultiply(mount, spin));
+ {0.0f, 0.0f, -1.0f}, static_cast<float>(w.spin_rad));
+ const Quaternion rotation = QuaternionMultiply(steer, spin);
  const Vector3 wheel_scale = wheel_asset_scale(
  assets->wheel_definition, w.radius_m,
  world.motor_params().tire_half_width_m);

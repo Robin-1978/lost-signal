@@ -228,6 +228,8 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 现有以其他轮轴导出的资产作为 legacy，通过 manifest 中一次性 `asset_to_link` 变换迁移；新资产禁止在 draw call 中新增匿名 `90°/180°` 修正。
 
+运行时契约以 GLB/GLTF 文件中实际存储的坐标为准。manifest 的 `up_axis`、`forward_axis`、`axle_axis`、pivot 和 bounds 必须描述该文件坐标；加载器先把它变到 link 的 `X 前 / Y 左 / Z 上`，随后只做一次 link-to-raylib 变换。MuJoCo 输出的每个 wheel、steer、caster 和未来 arm link pose 再作为 live joint transform 组合，Viewer 不从车速积分动画，也不按文件名猜轴。当前旧轮资产的文件轮轴是 `-Z`，已在 manifest 显式声明；车体、LiDAR、actor 和环境资产为 `+Z` up。资产审计逐轴检查 bounds，禁止通过排序三条边掩盖侧躺模型。
+
 ### Manifest
 
 每个部件 manifest 至少声明：
