@@ -51,12 +51,28 @@
 
 ## 当前恢复点
 
-- 基线提交：`6ccc30a fix: stabilize SLAM tracking and terminal planning`。
+- 已完成基线：`a66d644 fix: reject ambiguous mapless loop closures`。
 - `signal_town` 最近基线：5 个目标、0 碰撞、最大定位误差 0.278 m、ROBOT tick p99 6.624 ms、最大 tick 14.306 ms、普通构建 RTF 6.13x。
 - 当前阶段：第 2 项。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项从 2.5 m 教学路线的最终稳定到达开始。当前 52 s 预算内已经完成前三个目标并在真实重访阶段闭环，但最终目标附近存在前后速度振荡；必须修控制/终端规划原因，不能放宽到达阈值或单纯延长时间掩盖。
+
+### 工作区检查点（2026-10-26）
+
+- 已新增 `slam_loop` 中英文 Experience、无先验地图 world/scene 和端到端 mission test；Experience manifest/runtime 显式传递 `slam_only`，避免由关卡外部偷偷切换 ROBOT 模式。
+- 已把回环 matcher 输出的方向性位置/航向不确定度传给 estimator，删除回环后固定 `0.05 m / 0.02 rad` covariance。
+- 正在修复最终目标附近差速底盘的终端捕获：位置证据离开到达包络时立即恢复位置控制；目标位于横向时先原地对准，避免前后小速度振荡。到达判定仍由统一 `GoalArrivalPolicy` 的置信包络和稳定停车条件负责。
+- 同一工作区还有 safety Experience 的独立 verdict/evidence 字段改动；提交第 2 阶段前必须按 diff 审核归属，不能把无关半成品混入 SLAM 教学提交。
+- 物理审查发现的 post-step velocity projection 方案已判定会破坏 MuJoCo 法向接触求解；该实验不在当前 diff 中。后续轮胎/roller 真实性只能用 solver 内广义力或显式 roller bodies 实现。
+
+恢复后按以下顺序继续：
+
+1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认 HEAD 与上述检查点一致。
+2. 构建当前工作区，先运行 `slam_experience_mission`、`dwa`、`slam`、`loop_closure`、`experience_manifest`、`experience_runtime`、`scene_manifest` 和 `viewer_frame`。
+3. 若 `slam_experience_mission` 仍未完成，只依据失败轨迹定位终端控制或估计原因；不得放宽到达条件、延长时间或读取 SIM 真值。
+4. 端到端任务通过后连续重复三次，再更新 SLAM Toolbox/REP-105 文档，审查并拆分无关 diff，完成第 2 阶段提交。
+5. 立即进入第 3 阶段，不等待新的会话提醒；后续每阶段把提交号和验收数据写回本文件。
 
 ## 阶段完成记录
 
@@ -64,7 +80,7 @@
 
 | 阶段 | 状态 | 提交 | 验收证据 |
 |---|---|---|---|
-| 1. 无图 SLAM 回环可信度 | 已完成 | 本阶段提交 | 首次回环前已完成 3 个目标；SLAM/回环重复回归与 truth isolation 通过 |
+| 1. 无图 SLAM 回环可信度 | 已完成 | `a66d644` | 首次回环前已完成 3 个目标；SLAM/回环重复回归与 truth isolation 通过 |
 | 2. SLAM 教学体验与文档 | 进行中 | - | 待完成 |
 | 3. 算法与系统回归 | 待开始 | - | 待完成 |
 | 4. Release 性能与一致性 | 待开始 | - | 待完成 |
