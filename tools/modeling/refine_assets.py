@@ -85,6 +85,88 @@ def cube(name, loc, scale, material, bevel_width=0.004):
         bevel(name, bevel_width)
     return o
 
+def join_meshes(names, output_name):
+ objects = [bpy.data.objects.get(name) for name in names]
+ objects = [obj for obj in objects if obj is not None and obj.type == "MESH"]
+ if not objects:
+  return None
+ bpy.ops.object.select_all(action="DESELECT")
+ for obj in objects:
+  obj.select_set(True)
+ bpy.context.view_layer.objects.active = objects[0]
+ bpy.ops.object.join()
+ objects[0].name = output_name
+ return objects[0]
+
+def refine_drive_wheel():
+    """Add readable traction and rotation cues without changing the link frame.
+
+    The visual radius remains inside the configured 0.10 m contact radius. The
+    bright witnesses make true MuJoCo roll obvious in a still frame; tread blocks
+    describe grip but never become a second collision model.
+    """
+    path = MODELS / "robots" / "ro1" / "wheel_standard.glb"
+    clear()
+    rubber = mat("ro1_tire_rubber", (0.025, 0.032, 0.034), 0.0, 0.64)
+    tread = mat("ro1_tire_tread", (0.055, 0.066, 0.066), 0.0, 0.56)
+    alloy = mat("ro1_wheel_alloy", (0.38, 0.49, 0.48), 0.72, 0.22)
+    graphite = mat("ro1_wheel_graphite", (0.055, 0.075, 0.074), 0.28, 0.34)
+    mint = mat("ro1_wheel_mint", (0.23, 0.90, 0.72), 0.18, 0.20,
+    (0.05, 0.50, 0.31))
+    cylinder("tire", (0.0, 0.0, 0.0), 0.1, 0.1, "Y", rubber, 32)
+    cylinder("rim", (0.0, 0.0, 0.0), 0.066, 0.106, "Y", alloy, 32)
+    cylinder("hub", (0.0, 0.0, 0.0), 0.031, 0.112, "Y", graphite, 32)
+    cube("rotation_witness_right", (0.058, 0.056, 0.0),
+        (0.028, 0.010, 0.040), mint, 0.0)
+    cube("rotation_witness_left", (0.058, -0.056, 0.0),
+        (0.028, 0.010, 0.040), mint, 0.0)
+
+    # Eighteen low-profile tread blocks stay below the declared contact radius.
+    # They form one draw mesh after authoring and provide a clear rolling cadence.
+    blocks = []
+    for index in range(18):
+        angle = 2.0 * math.pi * index / 18.0
+        name = f"traction_block_{index:02d}"
+        radius = 0.0955
+        block = cube(
+            name, (radius * math.cos(angle), 0.0, radius * math.sin(angle)),
+            (0.0060, 0.086, 0.018), tread, 0.0)
+        block.rotation_euler[1] = -angle
+        blocks.append(name)
+    join_meshes(blocks, "traction_blocks")
+
+    # Sidewall ribs and six fasteners give scale at close range. They sit inside
+    # the existing rotation witnesses, so the authored bounds remain unchanged.
+    rings = []
+    for side in (-1.0, 1.0):
+        name = f"sidewall_ring_{'left' if side > 0 else 'right'}"
+        bpy.ops.mesh.primitive_torus_add(
+            major_radius=0.076, minor_radius=0.0032,
+            major_segments=24, minor_segments=4,
+            location=(0.0, side * 0.0515, 0.0),
+            rotation=(math.pi / 2.0, 0.0, 0.0))
+        bpy.context.object.name = name
+        bpy.ops.object.transform_apply(
+            location=False, rotation=True, scale=True)
+        assign(name, graphite)
+        rings.append(name)
+    join_meshes(rings, "sidewall_rings")
+
+    bolts = []
+    for side in (-1.0, 1.0):
+        for index in range(3):
+            angle = (2.0 * math.pi * index / 3.0 +
+                (math.pi / 3.0 if side < 0 else 0.0))
+            name = f"hub_bolt_{'left' if side > 0 else 'right'}_{index}"
+            cylinder(
+                name,
+                (0.021 * math.cos(angle), side * 0.058,
+                0.021 * math.sin(angle)),
+                0.0042, 0.004, "Y", alloy, 12)
+            bolts.append(name)
+    join_meshes(bolts, "hub_fasteners")
+    export_glb(path)
+
 def refine_chassis():
     path = MODELS / "robots" / "ro1" / "chassis.glb"
     import_glb(path)
@@ -154,8 +236,9 @@ def refine_actors():
     export_glb(path)
 
 def main():
-    refine_chassis(); refine_caster(); refine_lidar(); refine_actors(); clear()
-    print("model assets refined")
+ refine_drive_wheel(); refine_chassis(); refine_caster(); refine_lidar()
+ refine_actors(); clear()
+ print("model assets refined")
 
 if __name__ == "__main__":
     main()

@@ -1478,10 +1478,10 @@
     },
     {
       "asset_id": "robots.ro1.wheel_standard",
-      "version": 1,
+      "version": 2,
       "kind": "wheel",
       "path": "robots/ro1/wheel_standard.glb",
-      "source": "legacy main asset",
+      "source": "legacy main asset; refined by tools/modeling/refine_assets.py",
       "meters_per_unit": 1,
       "up_axis": "+Y",
       "forward_axis": "+X",
@@ -1510,9 +1510,9 @@
       },
       "reference_radius_m": 0.1,
       "reference_half_width_m": 0.061,
-      "content_hash": "fnv1a64:3a9589c63a909499",
+      "content_hash": "fnv1a64:4a13e125db9a9d70",
       "license": "NOASSERTION",
-      "source_artifact": "legacy-main:robots/ro1/wheel_standard.glb",
+      "source_artifact": "legacy-main:robots/ro1/wheel_standard.glb;tools/modeling/refine_assets.py",
       "pivot_semantic": "wheel_roll_joint",
       "asset_to_link_translation_m": [
         0,
@@ -1529,6 +1529,7 @@
       ],
       "material_roles": [
         "rubber",
+        "tread",
         "metal",
         "rotation_witness"
       ],
@@ -1539,7 +1540,7 @@
           "maximum_distance_m": 0
         }
       ],
-      "triangle_budget": 400,
+      "triangle_budget": 1400,
       "material_budget": 6,
       "animation_clips": []
     },
