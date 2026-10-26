@@ -55,6 +55,7 @@ int main() {
  session.fit_map_window_to_world();
 
  bool robot_observed_constraint = false;
+ bool raw_scan_received_without_truth_reference = false;
  bool first_step_has_joint_feedback = false;
  std::uint64_t mechanical_brake_steps = 0;
  std::uint64_t brake_transitions = 0;
@@ -79,6 +80,13 @@ int main() {
  int yaw_sign = 0;
  const int prior_yaw_sign = previous_yaw_sign;
  if (recorded != nullptr) {
+ if (recorded->obs.scan_valid) {
+ // A real lidar has no actor-free or physics-labelled companion scan.
+ // The stale obstacle reaches ROBOT only as ordinary range returns.
+ assert(!recorded->obs.scan_static_valid);
+ assert(recorded->obs.static_ranges_m.empty());
+ raw_scan_received_without_truth_reference = true;
+ }
  const bool braking = recorded->actuator.service_brake > 0.0;
  mechanical_brake_steps += braking ? 1 : 0;
  brake_transitions += braking != previous_brake ? 1 : 0;
@@ -114,6 +122,18 @@ int main() {
  }
 
  const auto score = session.score();
+ const auto prior_map = session.active_map();
+ assert(prior_map.has_raster());
+ const int stale_gx = static_cast<int>(std::floor(
+ (3.3 - prior_map.origin_x_m) / prior_map.resolution_m));
+ const int stale_gy = static_cast<int>(std::floor(
+ (0.475 - prior_map.origin_y_m) / prior_map.resolution_m));
+ assert(stale_gx >= 0 && stale_gy >= 0 &&
+ stale_gx < static_cast<int>(prior_map.width) &&
+ stale_gy < static_cast<int>(prior_map.height));
+ const std::size_t stale_cell =
+ static_cast<std::size_t>(stale_gy) * prior_map.width + stale_gx;
+ assert(prior_map.occupancy[stale_cell] < 50);
  const auto* last = session.last_eval_step();
  if (last != nullptr &&
  (!session.objectives_done() || !session.objectives_passed() ||
@@ -167,6 +187,7 @@ int main() {
  // ScenarioSession owns plant preparation: a direct test harness must see
  // the configured joints on the first acquisition, just like Viewer/CLI.
  assert(first_step_has_joint_feedback);
+ assert(raw_scan_received_without_truth_reference);
  assert(robot_observed_constraint || minimum_robot_clearance < 1.0);
  assert(score.min_clearance_m >=
  robot_config.navigation.clearance_margin_m);
