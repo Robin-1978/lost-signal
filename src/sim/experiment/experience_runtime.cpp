@@ -93,6 +93,20 @@ bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
 
 } // namespace
 
+ExperienceRuntimeConfig experience_runtime_config(
+ const viewer::ExperienceManifest& experience,
+ const std::string& asset_manifest_path) {
+ ExperienceRuntimeConfig config;
+ config.robot_path = experience.robot_path;
+ config.sim_path = experience.sim_path;
+ config.map_path = experience.map_path;
+ config.scene_path = experience.scene_path;
+ config.asset_manifest_path = asset_manifest_path;
+ config.objectives = experience.objectives;
+ config.startup_mode = experience.startup_mode;
+ return config;
+}
+
 const char* experience_startup_mode_id(
  viewer::ExperienceStartupMode mode) {
  switch (mode) {

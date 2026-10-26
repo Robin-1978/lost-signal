@@ -25,6 +25,20 @@ int main() {
  std::string(TEST_SOURCE_DIR) + "/assets/models/manifest.json";
  config.objectives = experience.objectives;
  config.startup_mode = experience.startup_mode;
+ const auto manifest_config = sim::experiment::experience_runtime_config(
+ experience, config.asset_manifest_path);
+ assert(manifest_config.robot_path == experience.robot_path);
+ assert(manifest_config.objectives == experience.objectives);
+ assert(manifest_config.startup_mode == experience.startup_mode);
+ sim::viewer::ExperienceManifest slam_experience;
+ assert(sim::viewer::load_experience_manifest(
+ std::string(TEST_SOURCE_DIR) + "/configs/experiences/slam_loop.json",
+ slam_experience, &error));
+ const auto slam_config = sim::experiment::experience_runtime_config(
+ slam_experience, config.asset_manifest_path);
+ assert(slam_config.startup_mode ==
+ sim::viewer::ExperienceStartupMode::kSlamOnly);
+ assert(slam_config.objectives == slam_experience.objectives);
  sim::experiment::ExperienceRuntime first;
  sim::experiment::ExperienceRuntime retry;
  assert(sim::experiment::build_experience_runtime(config, first, &error));
@@ -185,17 +199,24 @@ int main() {
  "baseline", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
  first.sim_config->scan_period_s, first.invariant_digest,
- first.code_revision, review_config, false, *first.session);
+ first.code_revision, review_config, experience.time_limit_steps,
+ false, *first.session);
  assert(baseline_artifact.simulation_valid);
+ assert(baseline_artifact.robot_verdict_passed);
  assert(baseline_artifact.safety_passed());
  assert(baseline_artifact.mission_passed());
  assert(baseline_artifact.episode.size() == first_score.steps);
  sim::experiment::EpisodePair pair;
+ pair.spec = sim::experiment::make_experiment_spec(
+ experience, first.sim_config->scan_period_s, first.invariant_digest,
+ first.code_revision, &error);
+ assert(pair.spec.has_value());
  pair.baseline = baseline_artifact;
  auto waiting = sim::experiment::evaluate_experience_gate(
  experience.progression, *pair.baseline, pair);
- assert(waiting.simulation_valid);
- assert(waiting.safety_passed);
+ assert(waiting.evidence_valid);
+ assert(waiting.robot_passed);
+ assert(waiting.sim_safety_passed);
  assert(waiting.mission_passed);
  assert(!waiting.experiment_passed);
  assert(!waiting.can_advance);
@@ -203,11 +224,15 @@ int main() {
  "variant", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
  variant.sim_config->scan_period_s, variant.invariant_digest,
- variant.code_revision, review_config, false, *first.session);
+ variant.code_revision, review_config,
+ static_cast<std::uint64_t>(experience.experiments.front().step_budget),
+ false, *first.session);
  auto complete = sim::experiment::evaluate_experience_gate(
  experience.progression, *pair.variant, pair);
- assert(complete.simulation_valid);
- assert(complete.safety_passed);
+ assert(pair.experiment_valid());
+ assert(complete.evidence_valid);
+ assert(complete.robot_passed);
+ assert(complete.sim_safety_passed);
  assert(complete.mission_passed);
  assert(complete.experiment_passed);
  assert(complete.can_advance);
@@ -222,7 +247,11 @@ int main() {
  const std::string report_text(
  (std::istreambuf_iterator<char>(report_input)),
  std::istreambuf_iterator<char>());
- assert(report_text.find("lost-signal-episode-pair/1") !=
+ assert(report_text.find("lost-signal-episode-pair/2") !=
+ std::string::npos);
+ assert(report_text.find("\"experiment_spec\"") != std::string::npos);
+ assert(report_text.find("\"robot_passed\":true") != std::string::npos);
+ assert(report_text.find("\"sim_safety_passed\":true") !=
  std::string::npos);
  assert(report_text.find(first.code_revision) != std::string::npos);
  sim::providers::ReplayProvider baseline_replay;
@@ -275,15 +304,36 @@ int main() {
  assert(nearest_variant->baseline_index == 2);
  assert(nearest_variant->variant_index == 2);
 
+ const auto immutable_evidence = sim::experiment::episode_evidence(
+ *pair.variant, pair);
+ assert(immutable_evidence.terminal);
+ assert(immutable_evidence.comparison_complete);
+ assert(immutable_evidence.comparison_valid);
+ assert(immutable_evidence.all_robot_done);
+ assert(immutable_evidence.all_sim_accepted);
+
  auto mismatched_pair = pair;
  ++mismatched_pair.variant->invariant_digest;
  const auto mismatched = sim::experiment::evaluate_experience_gate(
  experience.progression, *mismatched_pair.variant, mismatched_pair);
- assert(mismatched.simulation_valid);
- assert(mismatched.safety_passed);
+ assert(mismatched.evidence_valid);
+ assert(mismatched.robot_passed);
+ assert(mismatched.sim_safety_passed);
  assert(mismatched.mission_passed);
  assert(!mismatched.experiment_passed);
  assert(!mismatched.can_advance);
+ auto wrong_budget_pair = pair;
+ ++wrong_budget_pair.variant->step_budget;
+ assert(!wrong_budget_pair.experiment_valid());
+ auto wrong_condition_pair = pair;
+ wrong_condition_pair.variant->condition_id = "baseline";
+ assert(!wrong_condition_pair.experiment_valid());
+ auto missing_spec_pair = pair;
+ missing_spec_pair.spec.reset();
+ assert(!missing_spec_pair.experiment_valid());
+ assert(!sim::experiment::write_episode_pair_bundle(
+ report_path, missing_spec_pair, &error));
+ assert(error == "episode pair has no experiment spec");
 
  auto safe_stop_lesson = baseline_artifact;
  safe_stop_lesson.timed_out = true;
@@ -294,8 +344,9 @@ int main() {
  safety_policy.require_experiment = false;
  const auto safety_gate = sim::experiment::evaluate_experience_gate(
  safety_policy, safe_stop_lesson, {});
- assert(safety_gate.simulation_valid);
- assert(safety_gate.safety_passed);
+ assert(safety_gate.evidence_valid);
+ assert(safety_gate.robot_passed);
+ assert(safety_gate.sim_safety_passed);
  assert(!safety_gate.mission_passed);
  assert(safety_gate.can_advance);
  return 0;

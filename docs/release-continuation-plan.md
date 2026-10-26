@@ -102,14 +102,25 @@
 - 20 万平方米 Viewer 软件渲染实测：1× 为 1.00×/50 steps/s，8× 为 5.47×/273 steps/s，64× 为 5.38×/269 steps/s，Turbo 为 6.35×/317 steps/s。超过本机能力时保留固定步并显示实际 RTF/LIMIT。
 - 同场景 headless 1200 步为 6.40×/320.2 steps/s，ROBOT tick p99/max 9.249/18.929 ms。发布配置 `signal_town` 在 5901 步完成 5/5、0 碰撞，RTF 6.34×，ROBOT tick p99/max 6.432/14.146 ms。
 - 详细方法、环境与复现命令见 `docs/release-performance-2026-10-27.md`。
+- 阶段 4 已提交为 `fba2d87 test: verify accelerated simulation consistency`；当前 HEAD 为 `fba2d87`，分支相对远端领先 5 个提交。
+
+### 阶段 5 完成检查点（2026-10-27）
+
+- typed `ExperimentSpec` 已绑定 experience/experiment ID、变量/单位、baseline/variant 值、两局预算、证据容差、输入 digest 和代码 revision。`EpisodePair::experiment_valid()` 会逐项核对两份 artifact 的 condition、变量值、预算、map revision、digest 和 revision。
+- `EpisodeArtifact` 已分开记录 ROBOT 与 Mission verdict：ROBOT 只读取 goal Done/abandoned；Mission 只读取 SIM 的 truth arrival 合同；SIM safety 只读取碰撞结果；Episode 完整性保留为内部 evidence gate。
+- Viewer 与 v2 bundle 对外固定输出 `ROBOT / SIM SAFETY / MISSION / EXPERIMENT`。bundle 同时保存完整 spec、每局 replay、score、keyframe、输入 digest 和 revision；不匹配的 digest、预算或 condition 会使 Experiment verdict 失败。
+- 预测证据已搬入 `episode_evidence()`，只读取 captured artifact/pair，不再读取 live `ScenarioSession`。无效但完整的 A/B 证据返回 `InsufficientEvidence`，不会误判预测或永久显示 pending。
+- 玩家首屏从约 700 px 缩为 430 px，First Contact 的部件卡改为可选教学；6 秒 hero 后可立即进入预测，完整知识仍可在教学层查看。实机 Xvfb/llvmpipe 1100×750 截图已验收无遮挡。
+- manifest 到 runtime 的字段复制已收敛到 `experience_runtime_config()`；初始章节与 campaign 跳转共用同一路径，`slam_loop` 的 `slam_only` 不会再丢失。重复 `snprintf` 已清理。
+- 定向构建通过；Experience/asset/scene/keyframe/A-B/runtime 共 10 项回归 10/10 通过，包含 v2 bundle 和两份 v4 replay round-trip、三层视图策略、首个决定预算及 startup mode。
 
 恢复后按以下顺序继续：
 
 1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认阶段 4 已提交。
-2. 对照 `docs/sim-game-design.md` 审查现有 Experience：首个主动决定必须在十秒内出现；一次运行必须形成不可变 Episode artifact。
-3. 完成统一 `ExperimentSpec` 与完整 `EpisodePair`，使 baseline/variant 的输入 digest、受控变量、终态和证据可追溯。
-4. 将 ROBOT、SIM safety、Mission、Experiment verdict 独立呈现，并用 recorded evidence 驱动 prediction 判定；补齐玩家、教学、工程三层视图的端到端测试。
-5. 阶段 5 验收后更新本表并单独提交；随后不等待提醒进入第 6 阶段。
+2. 确认阶段 5 已单独提交，然后进入第 6 阶段；不得回退 immutable Episode 和四类 verdict 的边界。
+3. 逐项审查现有 LiDAR 时序扫描、Safety polygon、local costmap/inflation、planner swept volume、定位修正 ghost、粒子和声音，先记录“已有/缺口/证据来源”，避免重复实现。
+4. 所有新增表现只读取已记录的 observation、decision、MuJoCo contact/joint state 和 sim time；不得把视觉层状态反向输入 ROBOT 或 physics。
+5. 完成第 6 阶段相关测试、截图与确定性验收，更新本表并单独提交；随后立即进入第 7 阶段。
 
 ## 阶段完成记录
 
@@ -120,7 +131,7 @@
 | 1. 无图 SLAM 回环可信度 | 已完成 | `a66d644` | 首次回环前已完成 3 个目标；SLAM/回环重复回归与 truth isolation 通过 |
 | 2. SLAM 教学体验与文档 | 已完成 | `4711d91` | 4/4 目标、零碰撞；任务连续三次通过；14 项相关回归通过；文档明确 SLAM Toolbox/REP-105 能力边界 |
 | 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
-| 4. Release 性能与一致性 | 已完成，待提交 | - | 1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
-| 5. SIM 游戏体验 | 待开始 | - | 待完成 |
-| 6. 物理证据可视化与效果 | 待开始 | - | 待完成 |
+| 4. Release 性能与一致性 | 已完成 | `fba2d87` | Release 75/75；1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
+| 5. SIM 游戏体验 | 已完成 | 本阶段提交 | typed ExperimentSpec；immutable EpisodePair；四类 verdict；10 秒内首次预测；Experience 回归 10/10；Viewer 截图通过 |
+| 6. 物理证据可视化与效果 | 待开始 | - | 下一步先审查现有实现与物理证据来源 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |

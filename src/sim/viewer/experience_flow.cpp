@@ -105,19 +105,22 @@ bool choice_supported(const ExperienceChoice& choice,
  case ExperienceEvidenceRule::kStaticAnswer:
  return choice.correct;
  case ExperienceEvidenceRule::kComparisonTradeoff:
- return evidence.comparison_complete && evidence.baseline_safe &&
+ return evidence.comparison_complete && evidence.comparison_valid &&
+ evidence.baseline_safe &&
  evidence.variant_safe &&
  evidence.elapsed_delta_s >= evidence.minimum_elapsed_increase_s &&
  evidence.clearance_delta_m <= -evidence.minimum_clearance_loss_m;
  case ExperienceEvidenceRule::kComparisonEquivalent:
- return evidence.comparison_complete && evidence.baseline_safe &&
+ return evidence.comparison_complete && evidence.comparison_valid &&
+ evidence.baseline_safe &&
  evidence.variant_safe &&
  std::abs(evidence.elapsed_delta_s) <=
  evidence.equivalent_elapsed_tolerance_s &&
  std::abs(evidence.clearance_delta_m) <=
  evidence.equivalent_clearance_tolerance_m;
  case ExperienceEvidenceRule::kComparisonUnsafe:
- return evidence.comparison_complete && evidence.baseline_safe &&
+ return evidence.comparison_complete && evidence.comparison_valid &&
+ evidence.baseline_safe &&
  !evidence.variant_safe;
  }
  return false;
@@ -139,6 +142,9 @@ PredictionAssessment assess_prediction(
  selected.evidence_rule != ExperienceEvidenceRule::kStaticAnswer &&
  !evidence.terminal)) {
  return PredictionAssessment::kPending;
+ }
+ if (comparison && !evidence.comparison_valid) {
+ return PredictionAssessment::kInsufficientEvidence;
  }
  if (choice_supported(selected, evidence)) {
  return PredictionAssessment::kSupported;

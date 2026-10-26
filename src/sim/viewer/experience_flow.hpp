@@ -36,6 +36,7 @@ struct ExperienceEvidence {
  bool all_sim_accepted = false;
  bool collision_free = false;
  bool comparison_complete = false;
+ bool comparison_valid = false;
  bool baseline_safe = false;
  bool variant_safe = false;
  double elapsed_delta_s = 0.0;

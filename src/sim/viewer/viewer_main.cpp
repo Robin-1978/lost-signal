@@ -1241,47 +1241,6 @@ void draw_playback_controls(const PlaybackHitRegions& regions,
  Color{246, 169, 61, 255}, kText);
 }
 
-lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
- const lost_signal::sim::scenario::ScenarioSession& session,
- bool timed_out, const ExperienceManifest& experience,
- const ExperimentUiState& experiment_ui) {
- lost_signal::sim::viewer::ExperienceEvidence evidence;
- evidence.terminal = session.objectives_done() || timed_out;
- const auto& results = session.objectives().results();
- evidence.all_robot_done = !results.empty() && std::all_of(
- results.begin(), results.end(), [](const auto& result) {
- return result.robot_done;
- });
- evidence.all_sim_accepted = !results.empty() && std::all_of(
- results.begin(), results.end(), [](const auto& result) {
- return result.successful();
- });
- evidence.collision_free = session.score().collision_steps == 0;
- if (!experience.experiments.empty()) {
- const auto& definition = experience.experiments.front();
- evidence.comparison_complete =
- experiment_ui.baseline.recorded && experiment_ui.variant.recorded;
- evidence.baseline_safe = experiment_ui.baseline.safe();
- evidence.variant_safe = experiment_ui.variant.safe();
- if (evidence.comparison_complete) {
- evidence.elapsed_delta_s = experiment_ui.variant.score.elapsed_s -
- experiment_ui.baseline.score.elapsed_s;
- evidence.clearance_delta_m =
- experiment_ui.variant.score.min_clearance_m -
- experiment_ui.baseline.score.min_clearance_m;
- }
- evidence.minimum_elapsed_increase_s =
- definition.minimum_elapsed_increase_s;
- evidence.minimum_clearance_loss_m =
- definition.minimum_clearance_loss_m;
- evidence.equivalent_elapsed_tolerance_s =
- definition.equivalent_elapsed_tolerance_s;
- evidence.equivalent_clearance_tolerance_m =
- definition.equivalent_clearance_tolerance_m;
- }
- return evidence;
-}
-
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
  const Font font = ui_font();
@@ -1466,8 +1425,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  bool pending;
  };
  const std::array<VerdictChip, 4> verdicts{{
- {tr("SIM", "仿真"), gate_verdict->simulation_valid, false},
- {tr("SAFETY", "安全"), gate_verdict->safety_passed, false},
+ {tr("ROBOT", "机器人"), gate_verdict->robot_passed, false},
+ {tr("SIM SAFETY", "仿真安全"), gate_verdict->sim_safety_passed, false},
  {tr("MISSION", "任务"), gate_verdict->mission_passed, false},
  {tr("EXPERIMENT", "实验"), gate_verdict->experiment_passed,
  !comparison_complete},
@@ -1622,6 +1581,9 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  ? tr("PREDICTION SUPPORTED", "预测得到支持")
  : prediction_assessment == PredictionAssessment::kRefuted
  ? tr("PREDICTION REFUTED", "预测被证据反驳")
+ : prediction_assessment == PredictionAssessment::kInsufficientEvidence
+ ? tr("EVIDENCE DOES NOT SUPPORT A DECLARED OUTCOME",
+ "证据不足以支持任一声明结果")
  : tr("PREDICTION LOCKED UNTIL BOTH RUNS FINISH",
  "预测将在两次运行完成后验证");
  draw_ui_text(prediction, static_cast<int>(x + 22),
@@ -1902,13 +1864,16 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  }
 
  const bool briefing = phase == ExperiencePhase::kBriefing;
+ const bool compact_briefing = briefing &&
+ view_layer == ExperienceViewLayer::kPlayer;
  const float screen_width = static_cast<float>(GetScreenWidth());
  const float screen_height = static_cast<float>(GetScreenHeight());
  const float panel_width = briefing
  ? std::min(400.0f, screen_width - 48.0f)
  : std::min(720.0f, screen_width - 100.0f);
  const float panel_height = briefing
- ? std::min(700.0f, screen_height - 48.0f)
+ ? std::min(compact_briefing ? 430.0f : 700.0f,
+ screen_height - 48.0f)
  : phase == ExperiencePhase::kPrediction
  ? 610.0f
  : std::min(700.0f, screen_height - 48.0f);
@@ -1930,30 +1895,33 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  y += 14.0f;
 
  if (phase == ExperiencePhase::kBriefing) {
- draw_ui_text(tr("MISSION BRIEF / COMPONENT WALKAROUND",
+ draw_ui_text(compact_briefing
+ ? tr("PREDICT FIRST / INSPECT WHEN CURIOUS", "先做预测 / 按需探索")
+ : tr("MISSION BRIEF / COMPONENT WALKAROUND",
  "任务简报 / 物理部件检查"),
  static_cast<int>(x + 34), static_cast<int>(y), 15, kAmber);
   y += 27.0f;
-  for (const auto& line : experience.briefing) {
+ const std::size_t briefing_lines = compact_briefing
+ ? std::min<std::size_t>(1, experience.briefing.size())
+ : experience.briefing.size();
+ for (std::size_t line_index = 0;
+ line_index < briefing_lines; ++line_index) {
+ const auto& line = experience.briefing[line_index];
    DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 6), 3.0f,
     kCyan);
    y = draw_wrapped_text(line, x + 54, y, panel_width - 92, 13, 4,
     kText) + 4.0f;
   }
   y += 5.0f;
- if (!experience.walkaround.empty()) {
+ if (!experience.walkaround.empty() && !compact_briefing) {
  const int count = static_cast<int>(experience.walkaround.size());
  const int index = std::clamp(walkaround_stop, 0, count - 1);
  const auto& stop = experience.walkaround[static_cast<std::size_t>(index)];
-   char progress[96];
-std::snprintf(progress, sizeof(progress),
+ char progress[96];
+ std::snprintf(progress, sizeof(progress),
  g_zh_cn ? "物理部件 %02d / %02d　已检查 %02zu / %02d"
  : "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
     index + 1, count, walkaround_visited_count, count);
- std::snprintf(progress, sizeof(progress),
- g_zh_cn ? "必看部件 %02zu / %02zu"
- : "REQUIRED COMPONENTS %02zu / %02zu",
- required_walkaround_visited_count, required_walkaround_count);
  draw_ui_text(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
  kMuted);
    y += 23.0f;
@@ -1967,6 +1935,12 @@ std::snprintf(progress, sizeof(progress),
  y += 22.0f;
  const std::string source = stop.component_id + tr(" / MuJoCo body + joint", " / MuJoCo 刚体与关节");
  draw_wrapped_text(source, x + 34, y, panel_width - 68, 14, 5, kMuted);
+ }
+ if (compact_briefing && !experience.walkaround.empty()) {
+ draw_wrapped_text(
+ tr("Component cards are optional. Press U for the teaching layer, or predict now.",
+ "部件卡片为可选教学内容。按 U 进入教学层，或现在直接预测。"),
+ x + 34, y, panel_width - 68, 13, 4, kMuted);
  }
  const int tab_count = static_cast<int>(experience.walkaround.size());
  const int selected_tab = std::clamp(walkaround_stop, 0,
@@ -2001,15 +1975,11 @@ std::snprintf(progress, sizeof(progress),
   char primary_label[64];
   if (walkaround_complete) {
  std::snprintf(primary_label, sizeof(primary_label), "%s",
- tr("START EXPERIMENT", "开始实验"));
+ tr("MAKE PREDICTION", "开始预测"));
   } else {
  std::snprintf(primary_label, sizeof(primary_label),
- g_zh_cn ? "完成部件检查 %zu/%zu" : "INSPECT ALL %zu/%zu",
-    walkaround_visited_count, experience.walkaround.size());
-  }
- if (!walkaround_complete) {
- std::snprintf(primary_label, sizeof(primary_label), "%s",
- tr("VIEW WHEEL + LiDAR", "查看驱动轮与 LiDAR"));
+ g_zh_cn ? "检查必看部件 %zu/%zu" : "INSPECT REQUIRED %zu/%zu",
+ required_walkaround_visited_count, required_walkaround_count);
  }
   draw_panel_button(primary, primary_label, true, kCyan, kText,
    walkaround_complete);
@@ -3957,6 +3927,18 @@ int main(int argc, char** argv) {
  std::uint64_t runtime_invariant_digest = 0;
  std::string runtime_code_revision;
  sim::experiment::ExperienceRuntimeConfig runtime_config;
+ if (experience_loaded) {
+ runtime_config = sim::experiment::experience_runtime_config(
+ experience, !assets_path.empty()
+ ? (std::filesystem::path(assets_path) / "models/manifest.json").string()
+ : std::string{});
+ // Explicit CLI paths, when supplied, already replaced the corresponding
+ // manifest defaults above. Preserve those visible user selections.
+ runtime_config.robot_path = robot_path;
+ runtime_config.sim_path = sim_path;
+ runtime_config.map_path = map_path;
+ runtime_config.scene_path = scene_path;
+ } else {
  runtime_config.robot_path = robot_path;
  runtime_config.sim_path = sim_path;
  runtime_config.map_path = map_path;
@@ -3965,9 +3947,6 @@ int main(int argc, char** argv) {
  runtime_config.asset_manifest_path =
  (std::filesystem::path(assets_path) / "models/manifest.json").string();
  }
- if (experience_loaded) {
- runtime_config.objectives = experience.objectives;
- runtime_config.startup_mode = experience.startup_mode;
  }
   if (!map_path.empty()) {
  sim::experiment::ExperienceRuntime runtime;
@@ -4359,13 +4338,9 @@ int main(int argc, char** argv) {
  experience_action_error = candidate_error;
  return false;
  }
- sim::experiment::ExperienceRuntimeConfig candidate_config;
- candidate_config.robot_path = candidate_experience.robot_path;
- candidate_config.sim_path = candidate_experience.sim_path;
- candidate_config.map_path = candidate_experience.map_path;
- candidate_config.scene_path = candidate_experience.scene_path;
- candidate_config.asset_manifest_path = runtime_config.asset_manifest_path;
- candidate_config.objectives = candidate_experience.objectives;
+ sim::experiment::ExperienceRuntimeConfig candidate_config =
+ sim::experiment::experience_runtime_config(
+ candidate_experience, runtime_config.asset_manifest_path);
  sim::experiment::ExperienceRuntime candidate_runtime;
  if (!sim::experiment::build_experience_runtime(
  candidate_config, candidate_runtime, &candidate_error)) {
@@ -4776,7 +4751,13 @@ int main(int argc, char** argv) {
  experience_flow->run_kind() == ExperienceRunKind::kBaseline
  ? "baseline" : "variant",
  variable, controlled_value, runtime_invariant_digest,
- runtime_code_revision, review_config, experience_flow->timed_out(),
+ runtime_code_revision, review_config,
+ experience_flow->run_kind() == ExperienceRunKind::kVariant &&
+ !experience.experiments.empty()
+ ? static_cast<std::uint64_t>(
+ experience.experiments.front().step_budget)
+ : experience.time_limit_steps,
+ experience_flow->timed_out(),
  *session);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
@@ -4784,6 +4765,13 @@ int main(int argc, char** argv) {
  if (experience.experiments.empty()) {
  experiment_ui.standalone = std::move(artifact);
  } else {
+ std::string spec_error;
+ experiment_ui.episodes.spec = sim::experiment::make_experiment_spec(
+ experience, controlled_value, runtime_invariant_digest,
+ runtime_code_revision, &spec_error);
+ if (!experiment_ui.episodes.spec.has_value()) {
+ experience_action_error = spec_error;
+ }
  experiment_ui.episodes.baseline = std::move(artifact);
  }
  } else {
@@ -5160,17 +5148,6 @@ int main(int argc, char** argv) {
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
  if (experience_loaded) {
- PredictionAssessment prediction_assessment =
- PredictionAssessment::kPending;
- const int selected_choice = experience_flow->selected_choice();
- if (selected_choice >= 0 &&
- selected_choice < static_cast<int>(experience.choices.size())) {
- prediction_assessment = lost_signal::sim::viewer::assess_prediction(
- static_cast<std::size_t>(selected_choice), experience.choices,
- experience_evidence(*session, experience_flow->timed_out(), experience,
- experiment_ui));
- }
- std::optional<sim::experiment::ExperienceGateVerdict> gate_verdict;
  const sim::experiment::EpisodeArtifact* active_artifact = nullptr;
  if (experience.progression.require_experiment) {
  if (experiment_ui.episodes.variant.has_value()) {
@@ -5181,6 +5158,19 @@ int main(int argc, char** argv) {
  } else if (experiment_ui.standalone.has_value()) {
  active_artifact = &*experiment_ui.standalone;
  }
+ PredictionAssessment prediction_assessment =
+ PredictionAssessment::kPending;
+ const int selected_choice = experience_flow->selected_choice();
+ if (selected_choice >= 0 &&
+ selected_choice < static_cast<int>(experience.choices.size())) {
+ if (active_artifact != nullptr) {
+ prediction_assessment = lost_signal::sim::viewer::assess_prediction(
+ static_cast<std::size_t>(selected_choice), experience.choices,
+ sim::experiment::episode_evidence(
+ *active_artifact, experiment_ui.episodes));
+ }
+ }
+ std::optional<sim::experiment::ExperienceGateVerdict> gate_verdict;
  if (active_artifact != nullptr) {
  gate_verdict = sim::experiment::evaluate_experience_gate(
  experience.progression, *active_artifact, experiment_ui.episodes);

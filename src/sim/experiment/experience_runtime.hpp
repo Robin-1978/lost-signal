@@ -49,6 +49,13 @@ struct ExperienceRuntime {
  std::uint64_t invariant_digest = 0;
 };
 
+// Copies every authored execution input from one validated manifest. Viewer
+// startup and campaign transitions use the same bridge so localization mode
+// and ordered objectives cannot be dropped by field-by-field wiring.
+ExperienceRuntimeConfig experience_runtime_config(
+ const viewer::ExperienceManifest& experience,
+ const std::string& asset_manifest_path = {});
+
 // Canonical bridge from the authored experience mode to the ROBOT startup
 // contract. The same representation is used by normal runs, retries and A/B
 // runs so they cannot silently initialize localization differently.

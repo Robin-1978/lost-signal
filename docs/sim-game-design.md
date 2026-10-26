@@ -502,9 +502,11 @@ A/B 同时是玩法核心和严肃实验能力：
 - 随机实验运行 seed matrix，报告成功率、分位数与置信区间；单 seed 只证明确定性复现，不能证明普遍优势。
 - planner 对比优先复用完全相同的 observation replay；传感器或物理参数对比必须重新运行 physics，并在报告中明确证据类型不同。
 
-当前实现已在启动下一次 runtime 前深拷贝完整 baseline/variant Episode、score、任务状态、受控变量和值，并用 Episode 完整性校验生成 SIM validity；安全、任务和实验裁决已分离。每次完整重建还会对实际读取的 robot、SIM、world、可选 actor sidecar、scene、资产 manifest、有序目标和实际编译代码 revision 计算同一执行输入 digest；唯一 typed override 不进入该 digest，而是单独记录变量和值。两次 digest 不一致时 Experiment verdict 直接失败，构建 revision 会标记 dirty 源码。Debrief 已支持按 acquisition/simulation time 的最近记录同步；选择关键帧时优先对齐两局的同类因果事件，包括首次有效观测、制动、稳定停车、ROBOT Done 和 SIM Accepted/Rejected，再以明确标注的 `BASELINE SIM / SAME EVENT` 真值影子叠加。运行阶段不显示该影子。`sim_viewer --experiment-out report.json` 会在两局完成后导出带 typed variable、digest、代码 revision、四类状态、score 和因果关键帧的比较报告，并为两局各写一份可经普通 ROBOT provider 重放的 v4 observation JSONL。完整物理表现快照的跨版本文件格式仍需在格式稳定后另行版本化。
+当前实现会在 baseline 完成时从已验证 manifest 和实际 baseline SIM 配置冻结 typed `ExperimentSpec`。Spec 绑定 experience/experiment ID、变量与单位、baseline/variant 声明值、两局预算、证据容差、输入 digest 和代码 revision；`EpisodePair` 只有在两份 artifact 的 condition、变量值、预算、map revision、digest 和 revision 全部与 spec 一致时，Experiment verdict 才能通过。每个 artifact 独立保存 ROBOT Done 结果、SIM safety、物理 Mission、Episode 完整性和 score：ROBOT verdict 只读取 ROBOT goal 状态与 abandoned 标记，Mission 只读取 SIM 物理到达合同，二者不再互相冒充。
 
-First Contact 已加入 manifest 驱动的 6 秒可跳过英雄镜头：低机位依次检查驱动轮、caster、LiDAR 安装坐标系与任务全景，镜头段末使用平滑插值。标题明确说明姿态来自真实 MuJoCo body/joint；整个序列只消费准备完成后的物理姿态并按墙钟推进，不推进 sim time、传感器、ROBOT、episode 或 score。按 Enter、Space 或点击会立即结束序列，重试和 A/B variant 不重复播放，进入下一章时才按下一份 manifest 重新开始。
+每次完整重建会对实际读取的 robot、SIM、world、可选 actor sidecar、scene、资产 manifest、有序目标、startup mode 和实际编译代码 revision 计算同一执行输入 digest；唯一 typed override 不进入该 digest，而是单独记录变量和值。两次 digest 不一致时 Experiment verdict 直接失败，构建 revision 会标记 dirty 源码。Debrief 按 acquisition/simulation time 同步记录，并优先对齐首次有效观测、制动、稳定停车、ROBOT Done 和 SIM Accepted/Rejected。运行阶段不显示 SIM 真值影子。预测判定只消费已捕获的 immutable artifact/pair，不再读取 live `ScenarioSession`。`sim_viewer --experiment-out report.json` 导出 `lost-signal-episode-pair/2`：包含完整 spec、内部 evidence validity、ROBOT/SIM safety/Mission/Experiment 四类 verdict、score、因果关键帧和两份可经普通 ROBOT provider 重放的 v4 observation JSONL。完整物理表现快照的跨版本格式仍需在格式稳定后另行版本化。
+
+First Contact 使用 manifest 驱动的 6 秒可跳过英雄镜头：低机位依次检查驱动轮、caster、LiDAR 安装坐标系与任务全景，镜头段末使用平滑插值。标题明确说明姿态来自真实 MuJoCo body/joint；整个序列只消费准备完成后的物理姿态并按墙钟推进，不推进 sim time、传感器、ROBOT、episode 或 score。按 Enter、Space 或点击会立即结束序列，重试和 A/B variant 不重复播放，进入下一章时才按下一份 manifest 重新开始。玩家首屏已缩为 430 px 任务卡，只显示一个任务句和可选部件入口；镜头结束后可以立即进入预测，完整部件说明保留在教学层，不再阻塞首次主动决定。
 
 暂停冻结 sim time，相机仍可操作。事件跳转必须继续执行完整仿真并从有上限的 pre-roll 回放，不能先读取未来 actor 脚本。1× 用于第一次观察，2×–8× 用于重复实验，Turbo/headless 用于长任务与 benchmark；倍率只能改变墙钟调度和表现层 LOD。
 
@@ -525,8 +527,8 @@ First Contact 已加入 manifest 驱动的 6 秒可跳过英雄镜头：低机�
 ## 20. 下一轮交付次序
 
 1. 完成所有物理和算法回归，尤其 Mecanum 能量闭合、连续地形任务和真机 runtime；保持 truth isolation 门禁。
-2. 在已完成完整 `EpisodePair` 捕获和四项裁决的基础上，补同步双回放、invariant hash、导出与三层 ViewModel。
-3. 在已完成 6 秒英雄镜头与真实 3D hotspot 的基础上，继续收紧任务型 Running HUD，并把 Debrief 大面板改为因果抽屉。
+2. 已完成统一 `ExperimentSpec`、完整 `EpisodePair`、同步双回放、输入 digest、v2 bundle、四项裁决和三层视图策略；后续实验变量必须继续进入 typed registry。
+3. 已完成 6 秒英雄镜头、可选 3D hotspot、十秒内首次预测、任务型 Running HUD 和因果复盘抽屉；后续章节复用同一流程，不得重新加入强制说明墙。
 4. 把 `safety_unknown_obstacle` 编成第 1 章第二任务，证明未知障碍、原始扫描 Safety 与预期安全停车。
 5. 扩展已落地的 typed experiment-variable registry，按第 2–9 章逐章接入定位、SLAM、规划、动态避障、Safety、底盘、地形与部署验证。
 6. 用 Blender 改进机器人家族、叉车、行人和环境 kit，再以真实 physics replay 驱动材质、粒子、声音和教学 overlay。

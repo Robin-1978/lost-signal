@@ -3,7 +3,9 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
+#include "sim/viewer/experience_flow.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 
 namespace {
@@ -42,9 +44,20 @@ int main() {
  lost_signal::sim::viewer::ExperienceEvidenceRule::kComparisonTradeoff);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
- assert(experience.walkaround.front().required);
+ assert(!experience.walkaround.front().required);
  assert(!experience.walkaround[1].required);
- assert(experience.walkaround[2].required);
+ assert(!experience.walkaround[2].required);
+ std::vector<bool> required_walkaround;
+ for (const auto& stop : experience.walkaround) {
+ required_walkaround.push_back(stop.required);
+ }
+ lost_signal::sim::viewer::ExperienceFlow first_decision({
+ experience.walkaround.size(), experience.choices.size(),
+ experience.time_limit_steps, required_walkaround,
+ static_cast<std::uint64_t>(experience.experiments.front().step_budget)});
+ assert(first_decision.walkaround_complete());
+ assert(first_decision.continue_to_prediction());
+ assert(intro_duration_s < 10.0);
  const std::size_t english_briefing_count = experience.briefing.size();
  const std::size_t english_intro_count = experience.intro.size();
  const std::size_t english_walkaround_count = experience.walkaround.size();

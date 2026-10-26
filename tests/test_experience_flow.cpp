@@ -14,12 +14,24 @@ int main() {
  ExperienceViewLayer::kEngineering);
  assert(next_view_layer(ExperienceViewLayer::kEngineering) ==
  ExperienceViewLayer::kPlayer);
- assert(!experience_view_policy(
- ExperienceViewLayer::kPlayer).show_robot_evidence);
- assert(experience_view_policy(
- ExperienceViewLayer::kLearning).show_lidar);
- assert(experience_view_policy(
- ExperienceViewLayer::kEngineering).show_engineering_hud);
+ const auto player_policy = experience_view_policy(
+ ExperienceViewLayer::kPlayer);
+ assert(!player_policy.show_lidar);
+ assert(!player_policy.show_robot_evidence);
+ assert(!player_policy.show_learning_hud);
+ assert(!player_policy.show_engineering_hud);
+ const auto learning_policy = experience_view_policy(
+ ExperienceViewLayer::kLearning);
+ assert(learning_policy.show_lidar);
+ assert(learning_policy.show_robot_evidence);
+ assert(learning_policy.show_learning_hud);
+ assert(!learning_policy.show_engineering_hud);
+ const auto engineering_policy = experience_view_policy(
+ ExperienceViewLayer::kEngineering);
+ assert(engineering_policy.show_lidar);
+ assert(engineering_policy.show_robot_evidence);
+ assert(!engineering_policy.show_learning_hud);
+ assert(engineering_policy.show_engineering_hud);
 
  HeroSequence hero({1.0, 2.0, 3.0});
  assert(hero.active());
@@ -71,6 +83,7 @@ int main() {
  unsafe.evidence_rule = ExperienceEvidenceRule::kComparisonUnsafe;
  evidence = {};
  evidence.comparison_complete = true;
+ evidence.comparison_valid = true;
  evidence.baseline_safe = true;
  evidence.variant_safe = true;
  evidence.minimum_elapsed_increase_s = 1.0;
@@ -101,6 +114,11 @@ int main() {
  PredictionAssessment::kPending);
  evidence.comparison_complete = true;
  evidence.baseline_safe = false;
+ assert(assess_prediction(2, outcomes, evidence) ==
+ PredictionAssessment::kInsufficientEvidence);
+ evidence.baseline_safe = true;
+ evidence.comparison_valid = false;
+ assert(!choice_supported(unsafe, evidence));
  assert(assess_prediction(2, outcomes, evidence) ==
  PredictionAssessment::kInsufficientEvidence);
 
