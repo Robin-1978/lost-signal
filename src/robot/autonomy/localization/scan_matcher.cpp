@@ -437,75 +437,16 @@ ScanMatchResult ScanMatcher::localize(
  return pose.has_evidence ? pose.score
  : -std::numeric_limits<double>::infinity();
  };
-  if (!std::isfinite(best.score) || best.overlap < config_.minimum_overlap) {
-    result.rejection_reason = "map overlap below acceptance gate";
-    return result;
-  }
-  // Nearly tied best hypotheses = degeneracy (repetitive corridor), not
-  // confidence. Reject rather than drag the estimate to a wrong aisle.
-  if (std::isfinite(second_score) &&
-      best.score - second_score < config_.minimum_score_margin) {
-    result.score = best.score;
-    result.overlap = best.overlap;
-    result.score_margin = best.score - second_score;
-    result.rejection_reason = "map match is geometrically ambiguous";
-    return result;
-  }
- // A winner on the edge of the bounded search is not necessarily a local
- // optimum. Probe one lattice step farther in every clipped direction. If
- // the score stays within the same ambiguity margin (or improves), the peak
- // lies outside the trusted local window and this scan must not be applied as
- // a sequence of small map-frame corrections. The supervisor's covariance
- // policy can start the wider, temporally confirmed recovery path instead.
- const double searched_translation_m = t_steps * config_.translation_step_m;
- const double searched_heading_rad = h_steps * config_.heading_step_rad;
- const double dx = best.x - odom_x_m;
- const double dy = best.y - odom_y_m;
- const double dh = core::wrap_angle(best.heading - odom_heading_rad);
- bool clipped_peak = false;
- const auto unresolved_outside = [&](double x, double y, double heading) {
- const double outside_score = likelihood_score(x, y, heading);
- return std::isfinite(outside_score) &&
- best.score - outside_score < config_.minimum_score_margin;
- };
- if (t_steps > 0 &&
- std::abs(dx) + 1e-9 >= searched_translation_m) {
- clipped_peak = unresolved_outside(
- best.x + std::copysign(config_.translation_step_m, dx),
- best.y, best.heading);
- }
- if (!clipped_peak && t_steps > 0 &&
- std::abs(dy) + 1e-9 >= searched_translation_m) {
- clipped_peak = unresolved_outside(
- best.x,
- best.y + std::copysign(config_.translation_step_m, dy),
- best.heading);
- }
- if (!clipped_peak && h_steps > 0 &&
- std::abs(dh) + 1e-9 >= searched_heading_rad) {
- clipped_peak = unresolved_outside(
- best.x, best.y,
- core::wrap_angle(best.heading +
- std::copysign(config_.heading_step_rad, dh)));
- }
- if (clipped_peak) {
- result.score = best.score;
- result.overlap = best.overlap;
- result.score_margin = std::isfinite(second_score)
- ? best.score - second_score : 1.0;
- result.rejection_reason = "map optimum reaches search boundary";
- return result;
- }
-  result.accepted = true;
-  result.x_m = best.x;
-  result.y_m = best.y;
-  result.yaw_rad = best.heading;
+ const auto populate_pose_information = [&](const Hypothesis& pose) {
+ result.x_m = pose.x;
+ result.y_m = pose.y;
+ result.yaw_rad = pose.heading;
  // Approximate the local negative-log-likelihood Hessian around the winner.
  // Its rank is the measurement's actual observability: a corridor may
  // constrain lateral position and yaw while contributing zero information
  // along its axis. Passing information, rather than an isotropic guessed
- // sigma, prevents one accepted scan from erasing uncertainty in an
- // unobserved direction.
+ // sigma, prevents one scan from erasing uncertainty in an unobserved
+ // direction.
  const double translation_probe_m = std::max(
  config_.translation_step_m, map.resolution_m);
  const double heading_probe_rad = std::max(
@@ -517,31 +458,31 @@ ScanMatchResult ScanMatcher::localize(
  ? -std::log(std::max(1e-6, score))
  : std::numeric_limits<double>::infinity();
  };
- const double c0 = cost(likelihood_score(best.x, best.y, best.heading));
+ const double c0 = cost(likelihood_score(pose.x, pose.y, pose.heading));
  const double cxp = cost(likelihood_score(
- best.x + translation_probe_m, best.y, best.heading));
+ pose.x + translation_probe_m, pose.y, pose.heading));
  const double cxm = cost(likelihood_score(
- best.x - translation_probe_m, best.y, best.heading));
+ pose.x - translation_probe_m, pose.y, pose.heading));
  const double cyp = cost(likelihood_score(
- best.x, best.y + translation_probe_m, best.heading));
+ pose.x, pose.y + translation_probe_m, pose.heading));
  const double cym = cost(likelihood_score(
- best.x, best.y - translation_probe_m, best.heading));
+ pose.x, pose.y - translation_probe_m, pose.heading));
  const double cpp = cost(likelihood_score(
- best.x + translation_probe_m, best.y + translation_probe_m,
- best.heading));
+ pose.x + translation_probe_m, pose.y + translation_probe_m,
+ pose.heading));
  const double cpm = cost(likelihood_score(
- best.x + translation_probe_m, best.y - translation_probe_m,
- best.heading));
+ pose.x + translation_probe_m, pose.y - translation_probe_m,
+ pose.heading));
  const double cmp = cost(likelihood_score(
- best.x - translation_probe_m, best.y + translation_probe_m,
- best.heading));
+ pose.x - translation_probe_m, pose.y + translation_probe_m,
+ pose.heading));
  const double cmm = cost(likelihood_score(
- best.x - translation_probe_m, best.y - translation_probe_m,
- best.heading));
+ pose.x - translation_probe_m, pose.y - translation_probe_m,
+ pose.heading));
  const double chp = cost(likelihood_score(
- best.x, best.y, core::wrap_angle(best.heading + heading_probe_rad)));
+ pose.x, pose.y, core::wrap_angle(pose.heading + heading_probe_rad)));
  const double chm = cost(likelihood_score(
- best.x, best.y, core::wrap_angle(best.heading - heading_probe_rad)));
+ pose.x, pose.y, core::wrap_angle(pose.heading - heading_probe_rad)));
  const bool finite_neighborhood = std::isfinite(c0) &&
  std::isfinite(cxp) && std::isfinite(cxm) &&
  std::isfinite(cyp) && std::isfinite(cym) &&
@@ -590,10 +531,130 @@ ScanMatchResult ScanMatcher::localize(
  }
  result.position_sigma_m = std::max(0.02, result.position_sigma_m);
  result.heading_sigma_rad = std::max(0.01, result.heading_sigma_rad);
+ };
+  if (!std::isfinite(best.score) || best.overlap < config_.minimum_overlap) {
+    result.rejection_reason = "map overlap below acceptance gate";
+    return result;
+  }
+ populate_pose_information(best);
+  // Nearly tied best hypotheses = degeneracy (repetitive corridor), not
+ // a complete pose observation. Keep only information shared by the tied
+ // modes; the estimate cannot move along their unobservable separation.
+  if (std::isfinite(second_score) &&
+      best.score - second_score < config_.minimum_score_margin) {
+    result.score = best.score;
+    result.overlap = best.overlap;
+    result.score_margin = best.score - second_score;
+    result.rejection_reason = "map match is geometrically ambiguous";
+ const Hypothesis& second = hypotheses[1];
+ const double delta[3] = {
+ second.x - best.x,
+ second.y - best.y,
+ core::wrap_angle(second.heading - best.heading)};
+ double shared_information_disagreement = 0.0;
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ shared_information_disagreement += delta[row] *
+ result.pose_information[static_cast<std::size_t>(row * 3 + column)] *
+ delta[column];
+ }
+ }
+ // One standard-error squared is a statistical agreement test, not a tuned
+ // distance: tied modes may share only directions in which their measured
+ // information agrees. Distinct corners/headings remain a hard rejection.
+ constexpr double kOneStandardErrorSquared = 1.0;
+ result.partial_observation_valid = result.pose_information_valid &&
+ std::isfinite(shared_information_disagreement) &&
+ shared_information_disagreement <= kOneStandardErrorSquared;
+    return result;
+  }
+ // A winner on the edge of the bounded search is not necessarily a local
+ // optimum. Probe one lattice step farther in every clipped direction. If
+ // the score stays within the same ambiguity margin (or improves), the peak
+ // lies outside the trusted local window and this scan must not be applied as
+ // a sequence of small map-frame corrections. The supervisor's covariance
+ // policy can start the wider, temporally confirmed recovery path instead.
+ const double searched_translation_m = t_steps * config_.translation_step_m;
+ const double searched_heading_rad = h_steps * config_.heading_step_rad;
+ const double dx = best.x - odom_x_m;
+ const double dy = best.y - odom_y_m;
+ const double dh = core::wrap_angle(best.heading - odom_heading_rad);
+ bool clipped_peak = false;
+ std::array<double, 3> clipped_direction{};
+ const auto unresolved_outside = [&](double x, double y, double heading) {
+ const double outside_score = likelihood_score(x, y, heading);
+ return std::isfinite(outside_score) &&
+ best.score - outside_score < config_.minimum_score_margin;
+ };
+ if (t_steps > 0 &&
+ std::abs(dx) + 1e-9 >= searched_translation_m) {
+ const double step = std::copysign(config_.translation_step_m, dx);
+ if (unresolved_outside(best.x + step, best.y, best.heading)) {
+ clipped_peak = true;
+ clipped_direction[0] = step;
+ }
+ }
+ if (t_steps > 0 &&
+ std::abs(dy) + 1e-9 >= searched_translation_m) {
+ const double step = std::copysign(config_.translation_step_m, dy);
+ if (unresolved_outside(best.x, best.y + step, best.heading)) {
+ clipped_peak = true;
+ clipped_direction[1] = step;
+ }
+ }
+ if (h_steps > 0 &&
+ std::abs(dh) + 1e-9 >= searched_heading_rad) {
+ const double step = std::copysign(config_.heading_step_rad, dh);
+ if (unresolved_outside(
+ best.x, best.y, core::wrap_angle(best.heading + step))) {
+ clipped_peak = true;
+ clipped_direction[2] = step;
+ }
+ }
+ if (clipped_peak) {
+ result.score = best.score;
+ result.overlap = best.overlap;
+ result.score_margin = std::isfinite(second_score)
+ ? best.score - second_score : 1.0;
+ // A bounded search can reach its edge because the likelihood is flat in a
+ // truly unobservable direction (for example, translation along a uniform
+ // wall). Rejecting that as a contradictory scan makes temporal recovery
+ // repeatedly discard an otherwise supported global hypothesis. Accept only
+ // the information shared across the ridge when the outward direction lies
+ // in the numerical nullspace of the measured Hessian; an observed boundary
+ // direction remains a hard rejection and must widen through the supervisor.
+ double information_energy = 0.0;
+ double cancellation_scale = 0.0;
+ for (int row = 0; row < 3; ++row) {
+ for (int column = 0; column < 3; ++column) {
+ const double term = clipped_direction[static_cast<std::size_t>(row)] *
+ result.pose_information[static_cast<std::size_t>(row * 3 + column)] *
+ clipped_direction[static_cast<std::size_t>(column)];
+ information_energy += term;
+ cancellation_scale += std::abs(term);
+ }
+ }
+ const double numerical_rank_tolerance =
+ std::sqrt(std::numeric_limits<double>::epsilon());
+ const bool boundary_unobservable = result.pose_information_valid &&
+ std::isfinite(information_energy) &&
+ (cancellation_scale <= std::numeric_limits<double>::epsilon() ||
+ std::abs(information_energy) <=
+ numerical_rank_tolerance * cancellation_scale);
+ if (boundary_unobservable) {
+ result.partial_observation_valid = true;
+ result.rejection_reason = "map match is geometrically ambiguous";
+ return result;
+ }
+ result.rejection_reason = "map optimum reaches search boundary";
+ return result;
+ }
+  result.accepted = true;
   result.score = best.score;
   result.overlap = best.overlap;
   result.score_margin = std::isfinite(second_score) ? best.score - second_score
                                                    : 1.0;
+ result.rejection_reason = "accepted";
   return result;
 }
 

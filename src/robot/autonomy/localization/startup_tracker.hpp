@@ -8,10 +8,10 @@
 // a bounded local match per scan (the window absorbs inter-scan motion,
 // poses follow accepted matches), losers drop on repeated rejects,
 // convergences merge (same doctrine as the refine post-merge), and a
-// winner promotes only on a sustained margin — or as the sole survivor.
-// Timeout returns lost; the supervisor's retry cadence backstops (it
-// re-runs the whole-map search). Deterministic: fixed rules, sorted
-// order, no sampling.
+// candidate promotes only as the sole repeatedly supported survivor after
+// useful measured motion. Persistent aliases remain a bounded belief instead
+// of being collapsed by uncalibrated score margins or repeatedly re-searched.
+// Deterministic: fixed rules, sorted order, no sampling.
 
 #include <algorithm>
 #include <cmath>
@@ -27,21 +27,25 @@
 namespace lost_signal::robot::autonomy {
 
 struct StartupTrackerConfig {
-  // Promotion needs this margin (best minus second, matched scores) held
-  // for this many consecutive scans (mirrors the matcher twin doctrine).
-  double promotion_margin = 0.05;
+ // A sole surviving hypothesis must remain supported across this many scans.
+ // Multiple separated hypotheses are never collapsed from their uncalibrated
+ // local response scores; useful motion must make the alternatives contradict
+ // later measurements or converge to the same physical pose.
   int promotion_confirms = 2;
  // A distant single-scan winner remains a hypothesis until measured wheel
  // motion supplies a useful temporal baseline. Repeated stationary copies
- // of one sparse scan add no observability.
- double promotion_translation_m = 0.30;
- double promotion_rotation_rad = 0.20;
+ // of one sparse scan add no observability. Zero derives the baseline from
+ // the local match window below, so one spatial doctrine owns both values.
+ double promotion_translation_m = 0.0;
+ double promotion_rotation_rad = 0.0;
   // A hypothesis failing the local match this often in a row is dropped
-  // (one transient miss is tolerated, never two).
-  int drop_after_rejects = 2;
-  // Give up after this many scans without promotion (genuinely
-  // unobservable: twins that never separate). Supervisor retries after.
-  int max_scans = 20;
+ // (short transient misses are tolerated before evidence is retired).
+ int drop_after_rejects = 3;
+ // A supported multi-modal belief should survive repetitive geometry rather
+ // than restart the same global search. A positive value is an explicit
+ // deployment/test deadline; zero keeps the bounded belief until evidence
+ // resolves it, all modes contradict, the map changes, or the session resets.
+ int max_scans = 0;
  // The whole-map pass already snapped every retained hypothesis. Per-scan
  // tracking only needs to absorb residual odometry error around the
  // propagated pose; a global-sized local window would repeat millions of
@@ -152,10 +156,17 @@ class StartupHypotheses {
       ScanMatchResult m = matcher_.localize(
           ranges, angle_min_rad, angle_increment_rad, h.x, h.y, h.yaw, map,
           stamp_ns);
-      if (m.accepted) {
+ const bool partial_observation =
+ !m.accepted && m.partial_observation_valid &&
+ m.rejection_reason == "map match is geometrically ambiguous";
+ if (m.accepted || partial_observation) {
+ if (partial_observation) {
+ apply_partial_observation(h, m);
+ } else {
         h.x = m.x_m;
         h.y = m.y_m;
         h.yaw = m.yaw_rad;
+ }
  h.position_sigma_m = m.position_sigma_m;
  h.heading_sigma_rad = m.heading_sigma_rad;
         h.score = m.score;
@@ -189,7 +200,8 @@ class StartupHypotheses {
       }
       hyps_.swap(kept);
     }
-    // Stale hypotheses drop (repeated rejects only — one miss tolerated).
+ // Stale hypotheses drop only after the configured run of contradictions;
+ // the default tolerates two transient misses.
     hyps_.erase(std::remove_if(hyps_.begin(), hyps_.end(),
                                [&](const Hyp& h) {
                                  return h.rejects >= config_.drop_after_rejects;
@@ -200,25 +212,27 @@ class StartupHypotheses {
       out.status = StartupTrackStatus::kLost;
       return out;
     }
-    // Promotion: sole survivor with confirmations, or a sustained margin
-    // over a live runner-up (stale seconds don't count: the runner-up
-    // must have matched this round... tracked via confirms > 0).
+ // Promotion requires one sole, repeatedly supported survivor. Local score
+ // margins are deliberately excluded because they are not calibrated
+ // probabilities and cannot collapse a still-supported repeated-map mode.
     const Hyp& best = hyps_.front();
+ const double required_translation_m =
+ config_.promotion_translation_m > 0.0
+ ? config_.promotion_translation_m
+ : std::max(0.0, config_.match_translation_m);
+ const double required_rotation_rad =
+ config_.promotion_rotation_rad > 0.0
+ ? config_.promotion_rotation_rad
+ : std::max(0.0, config_.match_heading_rad);
  const bool motion_confirmed =
  !require_motion_ ||
- accumulated_translation_m_ >= config_.promotion_translation_m ||
- accumulated_rotation_rad_ >= config_.promotion_rotation_rad;
- if (best.confirms >= config_.promotion_confirms && motion_confirmed) {
-      if (hyps_.size() == 1) {
-        return promoted(best);
-      }
-      const Hyp& second = hyps_[1];
-      if (second.confirms > 0 &&
-          best.score - second.score >= config_.promotion_margin) {
-        return promoted(best);
-      }
+ accumulated_translation_m_ >= required_translation_m ||
+ accumulated_rotation_rad_ >= required_rotation_rad;
+ if (hyps_.size() == 1 &&
+ best.confirms >= config_.promotion_confirms && motion_confirmed) {
+ return promoted(best);
     }
-    if (best.age >= config_.max_scans) {
+ if (config_.max_scans > 0 && best.age >= config_.max_scans) {
       out.status = StartupTrackStatus::kLost;
       reset();
       return out;
@@ -244,6 +258,34 @@ class StartupHypotheses {
  double score = 0.0;
     int confirms = 0, rejects = 0, age = 0;
   };
+ static void apply_partial_observation(Hyp& hypothesis,
+ const ScanMatchResult& match) {
+ // Project the innovation onto the observed translation subspace. For a
+ // straight wall the 2x2 information block has rank one, so this moves the
+ // hypothesis toward the wall normal while leaving its along-wall coordinate
+ // exactly under odometry propagation. Dividing by the largest eigenvalue
+ // produces the orthogonal projector for that rank-one case; a weak second
+ // direction remains proportionally weighted instead of becoming a complete
+ // pose correction.
+ const double ixx = std::max(0.0, match.pose_information[0]);
+ const double ixy = 0.5 * (
+ match.pose_information[1] + match.pose_information[3]);
+ const double iyy = std::max(0.0, match.pose_information[4]);
+ const double trace = ixx + iyy;
+ const double discriminant = std::sqrt(std::max(
+ 0.0, (ixx - iyy) * (ixx - iyy) + 4.0 * ixy * ixy));
+ const double maximum_information = 0.5 * (trace + discriminant);
+ const double dx = match.x_m - hypothesis.x;
+ const double dy = match.y_m - hypothesis.y;
+ if (maximum_information > 1e-12 && std::isfinite(maximum_information)) {
+ hypothesis.x += (ixx * dx + ixy * dy) / maximum_information;
+ hypothesis.y += (ixy * dx + iyy * dy) / maximum_information;
+ }
+ if (match.pose_information[8] > 1e-12) {
+ hypothesis.yaw = core::wrap_angle(
+ hypothesis.yaw + core::wrap_angle(match.yaw_rad - hypothesis.yaw));
+ }
+ }
   StartupTrackResult promoted(const Hyp& best) {
     StartupTrackResult out;
     out.status = StartupTrackStatus::kPromoted;

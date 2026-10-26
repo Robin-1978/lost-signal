@@ -106,9 +106,9 @@ class LocalizationSystem {
   SlamSession slam_;
   bool slam_origin_seeded_ = false;
  bool global_origin_valid_ = false;
- double global_origin_x_m_ = 0.0;
- double global_origin_y_m_ = 0.0;
- double global_origin_yaw_rad_ = 0.0;
+ double global_origin_odom_x_m_ = 0.0;
+ double global_origin_odom_y_m_ = 0.0;
+ double global_origin_odom_yaw_rad_ = 0.0;
  // MapSnapshot revisions are immutable. Cache the O(cells) evidence query
  // once per revision instead of rescanning the survey on every control tick.
  bool map_evidence_cached_ = false;

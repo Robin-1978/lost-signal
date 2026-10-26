@@ -160,6 +160,83 @@ int main() {
     ScanMatchResult r =
         matcher.localize(ranges, -M_PI, 2.0 * M_PI / 72, 1.1, 0.1, 0.0, map, 1);
     assert(!r.accepted);
+ assert(r.rejection_reason == "map match is geometrically ambiguous");
+ assert(r.partial_observation_valid);
+ assert(r.pose_information_valid);
+ assert(r.pose_information[0] > 0.0);
+ // The vertical wall observes wall-normal x and heading, but supplies no
+ // position information along y. Information-form fusion may use x without
+ // selecting one of the tied y poses.
+ assert(r.pose_information[4] < 1e-9);
+ FusedOdometryEstimator corridor_estimate;
+ corridor_estimate.reset();
+ corridor_estimate.seed_pose(1.1, 0.4, 0.0, 0.5, 0.2, 1);
+ corridor_estimate.correct_pose_information(
+ r.x_m, r.y_m, r.yaw_rad, r.pose_information,
+ r.position_sigma_m, r.heading_sigma_rad, 2);
+ assert(std::abs(corridor_estimate.estimate().x_m - 1.0) < 0.1);
+ assert(std::abs(corridor_estimate.estimate().y_m - 0.4) < 1e-9);
+
+ // The localization owner must consume the same partial observation without
+ // relabelling it as a complete pose fix or selecting a corridor twin.
+ LocalizationSystem localization;
+ localization.mark_localized();
+ FusedOdometryEstimator estimator;
+ estimator.reset();
+ estimator.seed_pose(1.3, 0.4, 0.0, 0.2, 0.1, 1);
+ RayClearingMapper mapper;
+ iface::ObservationFrame observation;
+ observation.sequence = 1;
+ observation.stamp_ns = 20'000'000;
+ observation.source = "t.corridor-lidar";
+ observation.frame = core::Frame::kLidarLink;
+ observation.odometry_valid = true;
+ observation.scan_valid = true;
+ observation.ranges_m = ranges;
+ observation.scan_angle_min_rad = -M_PI;
+ observation.scan_angle_increment_rad = 2.0 * M_PI / ranges.size();
+ const auto partial = localization.update(
+ map, observation, observation.stamp_ns, true, estimator, mapper);
+ assert(partial.action == "local_correction:partial observable ridge");
+ assert(std::abs(estimator.estimate().x_m - 1.0) < 0.3);
+ assert(std::abs(estimator.estimate().y_m - 0.4) < 1e-9);
+
+ // A decisive global candidate entering temporal recovery must survive the
+ // same wall ridge. Later scans validate the observable wall normal and yaw;
+ // measured odometry owns motion along the unobservable corridor axis.
+ StartupTrackerConfig recovery_config;
+ recovery_config.promotion_translation_m = 0.01;
+ StartupHypotheses recovery(recovery_config);
+ GlobalSearchResult candidate;
+ candidate.x_m = 1.1;
+ candidate.y_m = 0.4;
+ candidate.position_sigma_m = 0.12;
+ candidate.heading_sigma_rad = 0.04;
+ candidate.score = 0.8;
+ recovery.seed(candidate, 0, /*require_motion=*/true);
+ const double increment = 2.0 * M_PI / ranges.size();
+ const auto first_support = recovery.update(
+ ranges, -M_PI, increment, map, 20'000'000, 0.0, 0.0, true);
+ assert(first_support.status == StartupTrackStatus::kTracking);
+ const auto moved_ranges = scan_from(1.02, 0.0, 0.0, map);
+ ScanMatcherConfig tracker_match_config;
+ tracker_match_config.search_translation_m = recovery_config.match_translation_m;
+ tracker_match_config.translation_step_m = recovery_config.match_translation_step_m;
+ tracker_match_config.search_heading_rad = recovery_config.match_heading_rad;
+ tracker_match_config.heading_step_rad = recovery_config.match_heading_step_rad;
+ tracker_match_config.maximum_returns = recovery_config.match_max_returns;
+ ScanMatcher tracker_matcher(tracker_match_config);
+ const auto direct_match = tracker_matcher.localize(
+ moved_ranges, -M_PI, increment, 1.02, 0.4, 0.0, map, 40'000'000);
+ assert(!direct_match.accepted);
+ assert(direct_match.partial_observation_valid);
+ assert(direct_match.rejection_reason ==
+ "map match is geometrically ambiguous");
+ const auto confirmed = recovery.update(
+ moved_ranges, -M_PI, increment, map, 40'000'000, 1.0, 0.0, true);
+ assert(confirmed.status == StartupTrackStatus::kPromoted);
+ assert(std::abs(confirmed.x_m - 1.02) < 0.15);
+ assert(std::abs(confirmed.y_m - 0.4) < 1e-9);
   }
 
  // 2c. A local search whose best score still improves beyond its bounded
@@ -593,6 +670,44 @@ int main() {
     assert(std::abs(coord.estimate().y_m - 0.0) < 0.6);
   }
 
+ // A cooperative global search owns a frozen scan pose. Carrying its result
+ // to completion must use continuous REP-105 odometry, because an unrelated
+ // map-frame correction may move estimate() while the search is in flight.
+ // Reusing that map jump as physical motion would apply the correction twice.
+ {
+ auto map = make_wall_map();
+ LocalizationSystem localization;
+ FusedOdometryEstimator estimator;
+ estimator.reset();
+ estimator.seed_pose(0.0, 0.0, 0.0, 0.20, 0.10, 1);
+ RayClearingMapper mapper;
+ iface::ObservationFrame scan;
+ scan.sequence = 1;
+ scan.stamp_ns = 20'000'000;
+ scan.source = "t.frozen-search-lidar";
+ scan.frame = core::Frame::kLidarLink;
+ scan.scan_valid = true;
+ scan.ranges_m = scan_from(1.0, 0.0, 0.0, map);
+ scan.scan_angle_min_rad = -M_PI;
+ scan.scan_angle_increment_rad = 2.0 * M_PI / scan.ranges_m.size();
+ const auto started = localization.update(
+ map, scan, scan.stamp_ns, true, estimator, mapper);
+ assert(started.action == "global_relocalization:search pending");
+ const EstimatedState odom_before = estimator.odometry_estimate();
+ estimator.correct_pose(1.0, 0.0, 0.0, 0.01, 0.01, scan.stamp_ns);
+ assert(estimator.estimate().x_m > 0.9);
+ assert(std::abs(estimator.odometry_estimate().x_m - odom_before.x_m) < 1e-12);
+ for (int i = 0; i < 1000 && !localization.localized(); ++i) {
+ iface::ObservationFrame no_scan;
+ no_scan.sequence = static_cast<std::uint64_t>(i + 2);
+ no_scan.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
+ localization.update(
+ map, no_scan, no_scan.stamp_ns, true, estimator, mapper);
+ }
+ assert(localization.localized());
+ assert(std::abs(estimator.estimate().x_m - 1.0) < 0.6);
+ }
+
  // Recovery is a stated probability gate over the joint (x, y, yaw) pose.
  // Search and acceptance use the same chi-square-derived ellipsoid instead
  // of separate tuned sigma multipliers, including the circular yaw error.
@@ -723,10 +838,14 @@ o.stamp_ns = static_cast<core::MonotonicNs>(i + 2) * 20'000'000LL;
 
       auto r2 = tracker.update(ranges, -M_PI, 2.0 * M_PI / ranges.size(),
                                map, 2);
-      // Decoy rejected twice -> dropped; true pose confirmed twice.
-      assert(r2.status == StartupTrackStatus::kPromoted);
-      assert(std::abs(r2.x_m - 1.0) < 0.6);
-      assert(std::abs(r2.y_m - 0.0) < 0.6);
+ assert(r2.status == StartupTrackStatus::kTracking);
+ const auto r3 = tracker.update(
+ ranges, -M_PI, 2.0 * M_PI / ranges.size(), map, 3);
+ // The decoy survives short transient misses, then three contradictions drop
+ // it; the repeatedly supported true pose is now the sole survivor.
+ assert(r3.status == StartupTrackStatus::kPromoted);
+ assert(std::abs(r3.x_m - 1.0) < 0.6);
+ assert(std::abs(r3.y_m - 0.0) < 0.6);
       assert(tracker.empty());  // consumed on promotion
     }
     // Merge: near twins converge to one hypothesis and promote.

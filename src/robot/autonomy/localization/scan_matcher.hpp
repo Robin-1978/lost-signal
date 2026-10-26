@@ -53,6 +53,11 @@ struct ScanMatchResult {
  // directions unchanged. Global/startup results may use the scalar fallback.
  std::array<double, 9> pose_information{};
  bool pose_information_valid = false;
+ // A locally ambiguous likelihood ridge can still constrain the directions
+ // shared by all tied hypotheses (for example wall-normal position and yaw
+ // in a long corridor). `accepted` remains false so callers cannot treat it
+ // as a full pose fix; this flag authorizes information-form fusion only.
+ bool partial_observation_valid = false;
   double score = 0.0;
   double overlap = 0.0;
   double score_margin = 0.0;

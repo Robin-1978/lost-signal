@@ -369,10 +369,11 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
     // AMBIGUOUS rejection with runner-ups seeds deferred tracking (the
     // next scans disambiguate) instead of guessing now.
  if (!global_search_.active()) {
- global_origin_valid_ = est.valid;
- global_origin_x_m_ = est.x_m;
- global_origin_y_m_ = est.y_m;
- global_origin_yaw_rad_ = est.yaw_rad;
+ const EstimatedState& odom_origin = estimator.odometry_estimate();
+ global_origin_valid_ = odom_origin.valid;
+ global_origin_odom_x_m_ = odom_origin.x_m;
+ global_origin_odom_y_m_ = odom_origin.y_m;
+ global_origin_odom_yaw_rad_ = odom_origin.yaw_rad;
  if (supervisor_.localized()) {
  const double prior_sigma_m = std::isfinite(est.position_sigma_m)
  ? std::max(0.0, est.position_sigma_m)
@@ -410,14 +411,16 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  // relative motion accumulated while the search was running. Applying the
  // stale pose directly made a moving robot jump backwards after an otherwise
  // correct search and poisoned the following SLAM graph.
- if (global_origin_valid_ && est.valid) {
- const double c0 = std::cos(global_origin_yaw_rad_);
- const double s0 = std::sin(global_origin_yaw_rad_);
- const double wx = est.x_m - global_origin_x_m_;
- const double wy = est.y_m - global_origin_y_m_;
+ const EstimatedState& current_odom = estimator.odometry_estimate();
+ if (global_origin_valid_ && current_odom.valid) {
+ const double c0 = std::cos(global_origin_odom_yaw_rad_);
+ const double s0 = std::sin(global_origin_odom_yaw_rad_);
+ const double wx = current_odom.x_m - global_origin_odom_x_m_;
+ const double wy = current_odom.y_m - global_origin_odom_y_m_;
  const double dx = c0 * wx + s0 * wy;
  const double dy = -s0 * wx + c0 * wy;
- const double dyaw = core::wrap_angle(est.yaw_rad - global_origin_yaw_rad_);
+ const double dyaw = core::wrap_angle(
+ current_odom.yaw_rad - global_origin_odom_yaw_rad_);
  const auto advance_pose = [&](double& x, double& y, double& yaw) {
  const double c = std::cos(yaw);
  const double s = std::sin(yaw);
@@ -429,7 +432,7 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  for (auto& runner_up : global.runner_ups) {
  advance_pose(runner_up.x_m, runner_up.y_m, runner_up.yaw_rad);
  }
- correction_stamp_ns = est.stamp_ns;
+ correction_stamp_ns = current_odom.stamp_ns;
  }
  global_origin_valid_ = false;
  bool accept_global = global.accepted;
@@ -485,6 +488,28 @@ if (!supervisor_.localized() && !startup_hyps_.empty() && fresh_scan) {
  " overlap=" + std::to_string(global.overlap) +
  " margin=" + std::to_string(global.score_margin) +
  " returns=" + std::to_string(global.usable_returns);
+ return false;
+ }
+ const bool trackable_ambiguity =
+ !global.accepted && supervisor_.localized() &&
+ !global.runner_ups.empty() &&
+ (global.rejection_reason == "global match is geometrically ambiguous" ||
+ global.rejection_reason == "global match has equivalent support");
+ if (trackable_ambiguity) {
+ // A repeated aisle or wall is not a reason to discard every globally
+ // consistent pose and restart the same one-scan search two seconds later.
+ // Keep the separated candidates as an AMCL-style temporal belief, advance
+ // all of them with measured odometry, and let later scans plus useful
+ // motion remove the aliases. Promotion still passes the joint covariance
+ // innovation gate below, so ambiguity can never become a one-scan jump.
+ supervisor_.record_global(false, ScanMatchResult{});
+ recovery_hyps_.seed(global, correction_stamp_ns,
+ /*require_motion=*/true);
+ action = std::string("global_relocalization:tracking ambiguity score=") +
+ std::to_string(global.score) +
+ " overlap=" + std::to_string(global.overlap) +
+ " margin=" + std::to_string(global.score_margin) +
+ " hypotheses=" + std::to_string(recovery_hyps_.size());
  return false;
  }
  if (accept_global) {
@@ -567,7 +592,10 @@ bool LocalizationSystem::try_local_correction(
       obs.ranges_m, obs.scan_angle_min_rad, obs.scan_angle_increment_rad,
       est.x_m, est.y_m, est.yaw_rad, map, now_ns, est.roll_rad,
       est.pitch_rad, est.z_m);
- if (match.accepted) {
+ const bool partial_observation =
+ !match.accepted && match.partial_observation_valid &&
+ match.rejection_reason == "map match is geometrically ambiguous";
+ if (match.accepted || partial_observation) {
  const double innovation_m = std::hypot(
  match.x_m - est.x_m, match.y_m - est.y_m);
  const double innovation_rad = std::abs(
@@ -583,8 +611,9 @@ bool LocalizationSystem::try_local_correction(
  const double heading_limit = std::max(
  cfg.local_innovation_floor_rad,
  cfg.local_innovation_sigma_factor * heading_sigma);
- if (!std::isfinite(innovation_m) || !std::isfinite(innovation_rad) ||
- innovation_m > position_limit || innovation_rad > heading_limit) {
+ if (!partial_observation &&
+ (!std::isfinite(innovation_m) || !std::isfinite(innovation_rad) ||
+ innovation_m > position_limit || innovation_rad > heading_limit)) {
  supervisor_.record_local(false, match);
  action = "local_correction:innovation rejected";
  return false;
@@ -596,6 +625,11 @@ bool LocalizationSystem::try_local_correction(
  } else {
  estimator.correct_pose(match.x_m, match.y_m, match.yaw_rad,
  match.position_sigma_m, match.heading_sigma_rad, obs.stamp_ns);
+ }
+ if (partial_observation) {
+ supervisor_.record_local(true, match);
+ action = "local_correction:partial observable ridge";
+ return true;
  }
   }
   supervisor_.record_local(match.accepted, match);
