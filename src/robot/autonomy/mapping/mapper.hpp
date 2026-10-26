@@ -102,6 +102,13 @@ struct LocalCostmap {
 LocalCostmap make_local_costmap(const LocalMap& source,
  double lethal_radius_m, double soft_radius_m);
 
+// Resolves duplicate classification between the temporal tracker and the
+// persistent sensor map. A track whose physical envelope already overlaps
+// known occupied evidence is represented by occupancy; unknown cells never
+// suppress a track. Raw scans remain available to validator and safety.
+PerceptionResult reconcile_tracks_with_local_occupancy(
+ PerceptionResult perception, const LocalMap& local_map);
+
 // Converts an immutable ROBOT map snapshot into the same two-stage costmap
 // used by local planning. Only known occupied cells seed inflation. Unknown
 // cells retain the caller's traversal policy, while the raster boundary is

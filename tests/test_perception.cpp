@@ -303,6 +303,32 @@ int main() {
  assert(cell(3.0, 0.0) != 100);
  }
 
+ // Once persistent local occupancy represents a stopped/novel obstacle,
+ // the temporal track cannot charge the same object a second time. Unknown
+ // cells do not suppress dynamic evidence.
+ {
+ LocalMap occupied;
+ occupied.valid = true;
+ occupied.resolution_m = 0.1;
+ occupied.width = 20;
+ occupied.height = 20;
+ occupied.origin_x_m = -1.0;
+ occupied.origin_y_m = -1.0;
+ occupied.occupancy.assign(occupied.width * occupied.height, 0);
+ occupied.occupancy[10 * occupied.width + 10] = 100;
+ PerceptionResult perception;
+ DynamicTrack track;
+ track.x_m = 0.05;
+ track.y_m = 0.05;
+ track.radius_m = 0.2;
+ perception.tracks.push_back(track);
+ assert(reconcile_tracks_with_local_occupancy(perception, occupied)
+ .tracks.empty());
+ occupied.occupancy.assign(occupied.width * occupied.height, -1);
+ assert(reconcile_tracks_with_local_occupancy(perception, occupied)
+ .tracks.size() == 1);
+ }
+
   // Mapper: background paints occupied, foreground clears but never paints.
   {
     RayClearingMapper mapper;

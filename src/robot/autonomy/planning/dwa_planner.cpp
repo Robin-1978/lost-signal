@@ -676,6 +676,18 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  project_to_path({est.x_m, est.y_m}, reference);
 
  std::vector<LocalCandidate> proposals;
+ const auto commands_resolvable_motion = [&](double forward,
+ double angular, double lateral) {
+ const double horizon_s = std::max(0.0, predict_T);
+ const double spatial_resolution_m = std::max(1e-6, map.resolution_m);
+ const double translation_m =
+ std::hypot(forward, lateral) * horizon_s;
+ const double rotation_sweep_m = std::abs(angular) * horizon_s *
+ std::max(spatial_resolution_m,
+ std::max(0.0, limits.footprint_radius_m));
+ return translation_m >= spatial_resolution_m ||
+ rotation_sweep_m >= spatial_resolution_m;
+ };
 
   for (double velocity : velocity_samples) {
  // Once a base that can rotate in place enters the terminal position
@@ -918,9 +930,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  candidate.cost = -score;
  candidate.feasible = true;
  proposals.push_back(candidate);
- if (std::abs(candidate.forward_mps) > 1e-9 ||
- std::abs(candidate.yaw_rate_radps) > 1e-9 ||
- std::abs(candidate.lateral_mps) > 1e-9) {
+ if (commands_resolvable_motion(candidate.forward_mps,
+ candidate.yaw_rate_radps, candidate.lateral_mps)) {
  ++out.moving_candidate_count;
  }
       }
@@ -964,15 +975,13 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  out.route_replan_requested = true;
  }
  std::stable_sort(proposals.begin(), proposals.end(),
- [prioritize_route_motion](const LocalCandidate& a,
+ [prioritize_route_motion, &commands_resolvable_motion](const LocalCandidate& a,
  const LocalCandidate& b) {
  if (prioritize_route_motion) {
- const bool a_moves = std::abs(a.forward_mps) > 1e-9 ||
- std::abs(a.yaw_rate_radps) > 1e-9 ||
- std::abs(a.lateral_mps) > 1e-9;
- const bool b_moves = std::abs(b.forward_mps) > 1e-9 ||
- std::abs(b.yaw_rate_radps) > 1e-9 ||
- std::abs(b.lateral_mps) > 1e-9;
+ const bool a_moves = commands_resolvable_motion(
+ a.forward_mps, a.yaw_rate_radps, a.lateral_mps);
+ const bool b_moves = commands_resolvable_motion(
+ b.forward_mps, b.yaw_rate_radps, b.lateral_mps);
  if (a_moves != b_moves) return a_moves;
  }
  return a.cost < b.cost;

@@ -232,6 +232,25 @@ LocalCostmap make_local_costmap(const LocalMap& source,
  return out;
 }
 
+PerceptionResult reconcile_tracks_with_local_occupancy(
+ PerceptionResult perception, const LocalMap& local_map) {
+ if (!local_map.valid || local_map.occupancy.size() !=
+ local_map.width * local_map.height || !(local_map.resolution_m > 0.0)) {
+ return perception;
+ }
+ perception.tracks.erase(std::remove_if(
+ perception.tracks.begin(), perception.tracks.end(),
+ [&](const DynamicTrack& track) {
+ int gx, gy;
+ world_to_grid(local_map, track.x_m, track.y_m, gx, gy);
+ if (!local_map.inside(gx, gy)) return false;
+ const double physical_radius_m = std::max(0.0, track.radius_m);
+ return local_map.clearance(track.x_m, track.y_m) <=
+ physical_radius_m + local_map.resolution_m;
+ }), perception.tracks.end());
+ return perception;
+}
+
 LocalCostmap make_global_costmap(const iface::MapSnapshot& source,
  double lethal_radius_m, double soft_radius_m,
  bool unknown_traversable) {

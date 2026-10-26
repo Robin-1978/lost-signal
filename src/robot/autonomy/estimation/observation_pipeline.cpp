@@ -27,6 +27,8 @@ bool ObservationPipeline::ingest(
  perception_ = perception.update(*batch.scan_event, estimator.estimate());
  mapper.set_dynamic_tracks(perception_.tracks);
  mapper.update(*batch.scan_event, estimator.estimate());
+ perception_ = reconcile_tracks_with_local_occupancy(
+ std::move(perception_), mapper.local_map());
  }
  return true;
 }

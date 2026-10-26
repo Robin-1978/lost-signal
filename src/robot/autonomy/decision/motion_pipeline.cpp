@@ -128,17 +128,37 @@ MotionDecisionResult MotionDecisionPipeline::run(
  hold_dynamically_unsafe ||
  out.behavior.reason == "route-conflict-no-safe-hold";
  const bool planner_requested = route.valid && !route.points.empty();
+ const auto commands_resolvable_motion = [&](const LocalCandidate& candidate) {
+ const double horizon_s = std::max(
+ 0.0, config_.recovery_projection_horizon_s);
+ const double spatial_resolution_m = std::max(
+ 1e-6, local_map.resolution_m);
+ const double translation_m = std::hypot(
+ candidate.forward_mps, candidate.lateral_mps) * horizon_s;
+ const double rotation_sweep_m = std::abs(candidate.yaw_rate_radps) *
+ horizon_s * std::max(spatial_resolution_m,
+ std::max(0.0, limits.footprint_radius_m));
+ return translation_m >= spatial_resolution_m ||
+ rotation_sweep_m >= spatial_resolution_m;
+ };
  const bool planner_motion_available = std::any_of(
  planner_valid.begin(), planner_valid.end(),
- [](const ValidatedCandidate& candidate) {
- return std::abs(candidate.candidate.forward_mps) > 1e-9 ||
- std::abs(candidate.candidate.yaw_rate_radps) > 1e-9 ||
- std::abs(candidate.candidate.lateral_mps) > 1e-9;
+ [&](const ValidatedCandidate& candidate) {
+ return commands_resolvable_motion(candidate.candidate);
  });
+ const double route_translation_remaining_m = planner_requested
+ ? std::hypot(route.points.back().x_m - est.x_m,
+ route.points.back().y_m - est.y_m)
+ : 0.0;
+ const bool stalled_before_terminal = planner_requested &&
+ route_translation_remaining_m >
+ std::max(0.0, limits.footprint_radius_m) &&
+ !planner_motion_available && !plan.gear_change_pending;
  const bool observation_recovery_required =
  observation_motion_requested && !planner_motion_available;
  const bool recovery_required =
- (planner_requested && planner_valid.empty()) || forward_blocked ||
+ (planner_requested && (planner_valid.empty() || stalled_before_terminal)) ||
+ forward_blocked ||
  dynamic_escape_required || out.behavior.must_hold ||
  observation_recovery_required;
  if (!planner_requested && !recovery_required) {

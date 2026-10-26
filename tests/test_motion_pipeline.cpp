@@ -161,6 +161,28 @@ int main() {
  assert(!recovered.command.is_safe_stop());
  assert(recovered.reason.find("recovery:") == 0);
 
+ // A planner hold is also a stalled proposal when a translational goal is
+ // still farther away than the declared footprint. Treating an accepted
+ // zero command as progress created a permanent local minimum in front of
+ // newly mapped obstacles. Recovery candidates remain validator-gated.
+ pipeline.reset();
+ HoldPlanner stalled_hold;
+ const MotionDecisionResult escaped_hold = pipeline.run(
+ estimate, perception, map, route, limits, limits, observation, survey,
+ estimate.stamp_ns, behavior, stalled_hold, validator, controller);
+ assert(!escaped_hold.command.is_safe_stop());
+ assert(escaped_hold.reason.find("recovery:") == 0);
+
+ // Inside the physical terminal envelope, a hold may be the correct next
+ // command while arrival settles; recovery must not disturb it.
+ Route near_terminal = route;
+ near_terminal.points.back().x_m = 0.2;
+ pipeline.reset();
+ const MotionDecisionResult terminal_hold = pipeline.run(
+ estimate, perception, map, near_terminal, limits, limits, observation,
+ survey, estimate.stamp_ns, behavior, stalled_hold, validator, controller);
+ assert(terminal_hold.command.is_safe_stop());
+
  // Global map uncertainty must not disable a recovery that is validated
  // entirely from current local sensor evidence. A robot waiting for global
  // relocalization can otherwise deadlock: it cannot move to reveal geometry,
