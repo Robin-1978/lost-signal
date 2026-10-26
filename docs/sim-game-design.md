@@ -393,3 +393,117 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 验收：碰撞有双向反作用；机械臂 FK、tool frame、重力、墙接触和失力下落与 MuJoCo 一致，ROBOT 仍只读取传感器和反馈。
 
 任何阶段只有同时通过架构边界、物理/算法模块测试、确定性回归、场景作者校验和视觉截图验收，才算完成。视觉更漂亮不能代替物理正确，单一关卡成功也不能代替算法单元与性质测试。
+
+## 14. 战役的统一玩法语法
+
+玩家是公共机器人现场工程师。自主任务里，玩家不替算法开车；玩家负责定义任务、选择可部署配置、提出预测、安排受控实验、检查证据并批准或拒绝部署。手动驾驶只存在于明确标识的 Teleop 沙盒，通过独立输入 provider 接入，成绩不与自主任务混合。
+
+每个任务必须形成同一条 60–90 秒闭环：
+
+1. **看见任务：** 五秒内用场景、目标灯和一句委托说明目的地与要保护的对象。
+2. **主动决定：** 选择目标、设备 profile、算法 profile 或一个故障注入，并在运行前锁定预测。单局只改变一个可审查变量。
+3. **观察运行：** ROBOT 只读取可部署 observation；玩家可以换镜头、切 overlay、暂停和加速，不能把 truth 或 actor 脚本送入 ROBOT。
+4. **解释结果：** 自动定位到第一个关键因果点，用“观测 → 估计 → 决策 → 命令 → 物理结果”解释成功或失败。
+5. **控制变量再试：** 完整重建相同 world、robot、physics、seed 和 actor timeline，只应用 manifest 声明的一项 patch。
+6. **形成能力：** 保存成对 replay、实验报告和知识卡。预测错误是学习证据，不扣安全成绩；碰撞、危险命令和失效安全动作仍是硬失败。
+
+任务完成、实验有效和安全验收分别报告。传感器超时后正确停车可以是 `Mission Failed / Safety Passed / Experiment Passed`，界面不能把三者压成一个红叉。
+
+每个 Experience manifest 后续统一声明：
+
+- `player_decision`：本局由玩家做出的可观察决定。
+- `controlled_variable`、`allowed_values`、`unit`：唯一实验变量、范围与单位。
+- `baseline`、`variant`、`invariants`：两次运行的 patch 与必须相同的内容。
+- `metrics`、`evidence_rules`、`review_keyframe`：从 Episode 计算的指标、证据链与默认复盘位置。
+
+变量 patch 在完整 runtime rebuild 之前应用；Coordinator 不保存关卡、实验或教学策略。
+
+## 15. 玩家层、教学层与工程层
+
+三层读取同一份不可变 Episode，只改变表达密度。切层不重算算法、不改变 SIM，也不向 ROBOT 发布消息。
+
+| 层 | Running 默认展示 | Debrief 展示 | 不应出现 |
+|---|---|---|---|
+| 玩家层 | 目标、阶段、距离、任务时间、实验条件、三枚安全门槛、镜头与倍率 | 结果、关键因果句、A/B 差值、下一动作 | 原始 reason code、actor route、未来脚本、未解释的 covariance/hash |
+| 教学层 | 带来源与时间戳的 LiDAR/IMU/encoder、estimate、costmap、route、匿名动态预测与 Safety 区域 | 同时刻的 ROBOT 认知与 SIM 真值双视图、概念卡、因果链 | 把 SIM actor id、接触或真值姿态表述成 ROBOT 输入 |
+| 工程层 | sequence、stamp、frame、covariance、候选轨迹、validator、命令、tick 性能 | 完整 timeline、contact、truth error、配置/资产/seed/hash 与导出 | 隐藏阈值、无单位数值、无法跳回 record 的结论 |
+
+界面由一张主画布和渐进抽屉组成：左上任务卡只回答“目标和阶段”，右侧因果栈默认只显示“观测、估计、规划、制动、稳定”，底部统一承载时间轴与倍率。青色表示 ROBOT observation/estimate，紫色表示 ROBOT plan，红色表示 Safety veto，琥珀色表示 SIM-only/eval，绿色表示独立验收通过。Running 默认隐藏真值；工程沙盒若显式开启，整个 truth overlay 使用琥珀边框与 `SIM-ONLY` 水印。
+
+每条教学结论必须链接到具体 Episode record、stamp、authority 和 source。没有记录证据的旁白不构成知识点。
+
+## 16. 玩家主动决策的边界
+
+允许的决定：
+
+- 选择任务目标、目标姿态与约束。
+- 选择版本化 robot、sensor、planner 或 safety profile。
+- 在白名单内修改一个有单位、有范围的参数。
+- 安排 SIM-only 遮挡、超时、摩擦或 actor 事件；事件写入实验清单，ROBOT 仍只能从传感器发现后果。
+- 选择镜头、认知 overlay、复盘位置与 1×/2×/4×/8×/Turbo。
+- 根据证据选择重试、改变一个变量或拒绝部署。
+
+禁止的决定：
+
+- 点击 actor 后把身份、路线、未来位置或 truth pose 送给 ROBOT。
+- 为通过关卡切换隐藏算法、降低碰撞门槛或放宽到达条件。
+- 在一次 A/B 同时改变地图、seed、设备与算法。
+- 用手动 steering 的成绩替代自主算法验收。
+
+首章下一轮交互改造必须把必看的驱动轮和 LiDAR 变成真实 3D hotspot。自动镜头经过部件、文字 tab 被打开或模型恰好处于屏幕内，都不能自动计为玩家完成检查。
+
+## 17. 四类裁决与可解释失败
+
+每局输出四个独立 verdict：
+
+1. **ROBOT verdict：** ROBOT 是否凭自己的 estimate 与 measurement 报告 Done、Failed 或 Held。
+2. **SIM safety verdict：** 是否零碰撞，并满足净空、制动、姿态和稳定条件。
+3. **Mission verdict：** 是否在合同时间内到达目标位置与姿态。
+4. **Experiment verdict：** 是否只改变声明变量，证据是否足以支持或反驳预测。
+
+统一失败链为：
+
+`触发观测 → ROBOT 状态/估计 → planner 或 Safety 决策 → actuator command → SIM 物理结果 → verdict`
+
+每个节点包含 authority、record index、stamp、source、code、数值和单位。任务层显示一句话，教学层解释概念，工程层保留原始字段。未知 code 显示为“未翻译工程事件”并保留值，不能静默归入“避障中”。
+
+场景路径穿墙、地形断层、模型悬空、碰撞 mesh 与视觉 mesh 错位、资产轴或关节错误属于 `SIM_INVALID`。这种 episode 不计为玩家或算法失败，只允许进入场景缺陷复盘。
+
+## 18. EpisodePair 与专业 A/B
+
+A/B 同时是玩法核心和严肃实验能力：
+
+- baseline 与 variant 各保存完整 `EpisodeArtifact`，组合成 `EpisodePair`；不再只保留一份 episode 和另一份汇总。
+- 每次运行完整重建 world、robot、physics、providers、clock、actors 和随机流，再应用唯一变量 patch。
+- 保存 world、robot、初态、actor timeline、随机流、资产和代码 revision 的 invariant hash；额外差异使 Experiment verdict 直接 invalid。
+- 支持按仿真时间同步和按事件对齐两种双回放。事件对齐覆盖首次有效观测、首次制动、ROBOT Done、稳定停车和 SIM verdict。
+- 教学层显示两条轨迹与 delta；工程层显示 observation/command digest、配置 diff、性能分位数和 rejection reason。
+- 随机实验运行 seed matrix，报告成功率、分位数与置信区间；单 seed 只证明确定性复现，不能证明普遍优势。
+- planner 对比优先复用完全相同的 observation replay；传感器或物理参数对比必须重新运行 physics，并在报告中明确证据类型不同。
+
+暂停冻结 sim time，相机仍可操作。事件跳转必须继续执行完整仿真并从有上限的 pre-roll 回放，不能先读取未来 actor 脚本。1× 用于第一次观察，2×–8× 用于重复实验，Turbo/headless 用于长任务与 benchmark；倍率只能改变墙钟调度和表现层 LOD。
+
+## 19. 视觉、模型与效果的“惊艳”标准
+
+第一眼吸引力来自可理解的真实机械因果，而不是同时堆满发光效果：
+
+- 首次进入使用 5–7 秒可跳过镜头：维护灯依次亮起，低机位掠过真实落地的轮胎与 caster，LiDAR 按 acquisition stamp 扫过玻璃门，最后落到“开始检查”。镜头与灯可编排，部件姿态只能读取 MuJoCo body/joint pose。
+- 每章只有一个英雄画面：接地点和 joint axis、玻璃门扫描、回环收束、连续距离场、叉车预测 ribbon、速度相关安全区、底盘 joint skeleton、泥水接触或部署签署。
+- 机器人形成统一产品家族：石墨灰承力结构、暖白检修面、青色运行灯、琥珀注意、红色安全；急停、保险杠、充电触点、紧固件、线束与传感器安装关系必须可读。
+- 环境建立研究基地、物流仓、公共大厅、连续地形场和部署机房五套模块化 kit，每套有地表材质、功能标线、照明与声音身份。
+- 粒子只从已记录的 contact、normal load、tangential slip、material 与 impulse 发射。暂停按 sim time 冻结，同一 Episode 的粒子事件 digest 可复现。
+- 声音读取 wheel angular velocity、接触载荷、service brake、slip 与 impact。Turbo 只聚合或静音表现，不压缩声音事件来伪造时间。
+- 定位修正只移动认知 ghost；任何表现效果都不能移动真值车体或反向影响 physics/ROBOT。
+
+资产继续遵守真实单位、轴、pivot、bounds、contact point、LOD、PBR、来源与预算门禁。所有可动 link、轮、caster 与未来机械臂关节均从物理 body/joint pose 渲染；禁止通过 draw-time 偏移、猜轴或补落地高度掩盖建模问题。
+
+## 20. 下一轮交付次序
+
+1. 完成所有物理和算法回归，尤其 Mecanum 能量闭合、连续地形任务和真机 runtime；保持 truth isolation 门禁。
+2. 实现 `EpisodePair`、同步双回放与三层 ViewModel，作为后续所有章节的共同底座。
+3. 重排 First Contact：五秒任务钩子、真实 3D hotspot、任务型 Running HUD、因果型 Debrief。
+4. 把 `safety_unknown_obstacle` 编成第 1 章第二任务，证明未知障碍、原始扫描 Safety 与预期安全停车。
+5. 扩展通用 `ExperimentSpec`，按第 2–9 章逐章接入定位、SLAM、规划、动态避障、Safety、底盘、地形与部署验证。
+6. 用 Blender 改进机器人家族、叉车、行人和环境 kit，再以真实 physics replay 驱动材质、粒子、声音和教学 overlay。
+
+发布验收至少满足：启动五秒内出现视觉钩子、十秒内完成第一次主动决定、九十秒内完成 First Contact A/B 与因果复盘；baseline/variant 均保留完整 Episode；720p、1080p 和超宽屏无关键遮挡；同配置同 seed 在全部倍率和 headless 下逐 step 的 observation、command、collision、终态与 score 一致；所有可动部件和粒子事件能追溯到物理记录；native artifact 中不出现 SIM truth、actor id、score 或渲染类型。
