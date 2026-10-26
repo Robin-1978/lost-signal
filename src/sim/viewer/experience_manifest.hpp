@@ -57,6 +57,16 @@ struct ExperienceWalkaroundStop {
  bool required = true;
 };
 
+// Presentation-only opening shot. `component_id` selects a real MuJoCo
+// body/joint or configured sensor frame; "mission" is the authored route
+// composition. Camera choreography never supplies state to ROBOT.
+struct ExperienceHeroShot {
+ std::string component_id;
+ std::string title;
+ std::string caption;
+ double duration_s = 0.0;
+};
+
 struct ExperienceExperiment {
  std::string experiment_id;
  std::string title;
@@ -99,6 +109,7 @@ struct ExperienceManifest {
  // failed debrief; it never changes ROBOT limits or scenario acceptance.
  std::uint64_t time_limit_steps = 0;
  std::vector<std::string> briefing;
+ std::vector<ExperienceHeroShot> intro;
  std::vector<ExperienceWalkaroundStop> walkaround;
  std::vector<ExperienceExperiment> experiments;
  ExperienceProgressionPolicy progression;

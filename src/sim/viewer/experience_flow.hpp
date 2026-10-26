@@ -54,6 +54,32 @@ PredictionAssessment assess_prediction(
  std::size_t selected_choice, const std::vector<ExperienceChoice>& choices,
  const ExperienceEvidence& evidence);
 
+// Wall-clock presentation timeline for the skippable opening. It never owns
+// or advances simulation time, so a slow render or skipped cinematic cannot
+// change physics, sensor cadence, ROBOT commands, episode records, or score.
+class HeroSequence {
+ public:
+ HeroSequence() = default;
+ explicit HeroSequence(std::vector<double> shot_durations_s);
+
+ void update(double wall_dt_s);
+ void skip();
+ void reset();
+ bool active() const { return !complete_; }
+ bool complete() const { return complete_; }
+ std::size_t shot_index() const { return shot_index_; }
+ double shot_progress() const;
+ double total_progress() const;
+
+ private:
+ std::vector<double> shot_durations_s_;
+ std::size_t shot_index_ = 0;
+ double shot_elapsed_s_ = 0.0;
+ double total_elapsed_s_ = 0.0;
+ double total_duration_s_ = 0.0;
+ bool complete_ = true;
+};
+
 // Presentation-only state machine. It owns no World, RobotApplication, or
 // truth state; callers report only terminal status and recorded step count.
 // Keyboard, mouse, and future gamepad inputs therefore share identical

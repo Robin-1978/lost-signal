@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 
@@ -6,6 +7,23 @@
 
 int main() {
  using namespace lost_signal::sim::viewer;
+
+ HeroSequence hero({1.0, 2.0, 3.0});
+ assert(hero.active());
+ assert(hero.shot_index() == 0);
+ hero.update(0.5);
+ assert(std::abs(hero.shot_progress() - 0.5) < 1e-12);
+ hero.update(1.0);
+ assert(hero.shot_index() == 1);
+ assert(std::abs(hero.shot_progress() - 0.25) < 1e-12);
+ assert(std::abs(hero.total_progress() - 0.25) < 1e-12);
+ hero.skip();
+ assert(hero.complete());
+ assert(hero.total_progress() == 1.0);
+ hero.reset();
+ hero.update(6.5);
+ assert(hero.complete());
+ assert(hero.shot_index() == 2);
 
  bool rejected = false;
  try {

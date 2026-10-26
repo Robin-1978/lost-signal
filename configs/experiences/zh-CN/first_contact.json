@@ -17,6 +17,14 @@
  "检查：点击真实的 3D 驱动轮和激光雷达。驱动轮只滚动、不转向；激光雷达输出带时间戳的表面距离。",
  "证明：机器人凭自己的估计宣布到达；仿真独立核验真实物理停车结果。"
  ],
+ "intro": {
+ "shots": [
+ {"component_id":"drive_wheel","title":"牵引力始于轮胎接触面","caption":"驱动轮只绕一根水平轴滚动。差速转向来自左右轮速差，不存在隐藏的转向轴。","duration_s":1.6},
+ {"component_id":"caster","title":"被动支撑同样遵循物理","caption":"万向轮在真实载荷下回转和滚动；姿态来自 MuJoCo 关节，而不是绘制动画。","duration_s":1.3},
+ {"component_id":"lidar","title":"机器人测量的是表面","caption":"激光雷达从配置的光学坐标系开始测距；只有按下运行后，距离和采集时间戳才成为机器人观测。","duration_s":1.4},
+ {"component_id":"mission","title":"你的证明：停在玻璃门前","caption":"机器人必须依靠自己的估计决策；仿真真值始终留在机器人之外，只独立验收物理停车。","duration_s":1.7}
+ ]
+ },
  "walkaround": [
  {"component_id":"drive_wheel","title":"驱动轮 / 牵引力","lesson":"每个驱动轮只有一个滚动关节。差速转向来自左右轮速差，驱动轮不会像转向轮那样绕竖直轴转动。","required":true},
  {"component_id":"caster","title":"被动万向轮 / 支撑","lesson":"万向轮用两个被动关节承载车体：竖直回转和水平滚动。两个关节都不接收驱动命令。","required":false},

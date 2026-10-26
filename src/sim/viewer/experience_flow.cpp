@@ -1,9 +1,67 @@
 #include "sim/viewer/experience_flow.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <numeric>
 #include <stdexcept>
+#include <utility>
 
 namespace lost_signal::sim::viewer {
+
+HeroSequence::HeroSequence(std::vector<double> shot_durations_s)
+ : shot_durations_s_(std::move(shot_durations_s)) {
+ total_duration_s_ = std::accumulate(
+ shot_durations_s_.begin(), shot_durations_s_.end(), 0.0);
+ complete_ = shot_durations_s_.empty() || !(total_duration_s_ > 0.0);
+}
+
+void HeroSequence::update(double wall_dt_s) {
+ if (complete_ || !std::isfinite(wall_dt_s) || wall_dt_s <= 0.0) return;
+ double remaining_s = wall_dt_s;
+ while (!complete_ && remaining_s > 0.0) {
+ const double duration_s = shot_durations_s_[shot_index_];
+ const double advance_s = std::min(
+ remaining_s, std::max(0.0, duration_s - shot_elapsed_s_));
+ shot_elapsed_s_ += advance_s;
+ total_elapsed_s_ += advance_s;
+ remaining_s -= advance_s;
+ if (shot_elapsed_s_ + 1e-12 < duration_s) break;
+ ++shot_index_;
+ shot_elapsed_s_ = 0.0;
+ if (shot_index_ >= shot_durations_s_.size()) {
+ shot_index_ = shot_durations_s_.size() - 1;
+ complete_ = true;
+ total_elapsed_s_ = total_duration_s_;
+ }
+ }
+}
+
+void HeroSequence::skip() {
+ if (shot_durations_s_.empty()) return;
+ shot_index_ = shot_durations_s_.size() - 1;
+ shot_elapsed_s_ = shot_durations_s_.back();
+ total_elapsed_s_ = total_duration_s_;
+ complete_ = true;
+}
+
+void HeroSequence::reset() {
+ shot_index_ = 0;
+ shot_elapsed_s_ = 0.0;
+ total_elapsed_s_ = 0.0;
+ complete_ = shot_durations_s_.empty() || !(total_duration_s_ > 0.0);
+}
+
+double HeroSequence::shot_progress() const {
+ if (shot_durations_s_.empty()) return 1.0;
+ if (complete_) return 1.0;
+ return std::clamp(
+ shot_elapsed_s_ / shot_durations_s_[shot_index_], 0.0, 1.0);
+}
+
+double HeroSequence::total_progress() const {
+ if (!(total_duration_s_ > 0.0)) return 1.0;
+ return std::clamp(total_elapsed_s_ / total_duration_s_, 0.0, 1.0);
+}
 
 bool choice_supported(const ExperienceChoice& choice,
  const ExperienceEvidence& evidence) {

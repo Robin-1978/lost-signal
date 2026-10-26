@@ -56,6 +56,8 @@ using lost_signal::sim::viewer::ViewTransform;
 using lost_signal::sim::viewer::AssetDefinition;
 using lost_signal::sim::viewer::AssetManifest;
 using lost_signal::sim::viewer::ExperienceFlow;
+using lost_signal::sim::viewer::HeroSequence;
+using lost_signal::sim::viewer::ExperienceHeroShot;
 using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::experience_variable_spec;
 using lost_signal::sim::viewer::ExperiencePhase;
@@ -136,6 +138,11 @@ void load_ui_font(const ExperienceManifest* experience) {
  append(experience->failure_title);
  for (const auto& value : experience->briefing) append(value);
  for (const auto& value : experience->lessons) append(value);
+ for (const auto& shot : experience->intro) {
+ append(shot.component_id);
+ append(shot.title);
+ append(shot.caption);
+ }
  for (const auto& stop : experience->walkaround) {
  append(stop.component_id);
  append(stop.title);
@@ -1303,6 +1310,65 @@ float draw_wrapped_text(const std::string& text, float x, float y,
  return y;
 }
 
+void draw_hero_overlay(const ExperienceManifest& experience,
+ const ExperienceHeroShot& shot, const HeroSequence& sequence) {
+ constexpr Color kText{236, 244, 240, 255};
+ constexpr Color kMuted{166, 186, 178, 255};
+ constexpr Color kCyan{55, 218, 202, 255};
+ const float screen_width = static_cast<float>(GetScreenWidth());
+ const float screen_height = static_cast<float>(GetScreenHeight());
+ const float bar_height = std::clamp(screen_height * 0.075f, 42.0f, 72.0f);
+ DrawRectangle(0, 0, GetScreenWidth(), static_cast<int>(bar_height),
+ Color{3, 8, 9, 238});
+ DrawRectangle(0, static_cast<int>(screen_height - bar_height),
+ GetScreenWidth(), static_cast<int>(bar_height), Color{3, 8, 9, 238});
+
+ draw_ui_text(tr("LOST SIGNAL / FIRST CONTACT",
+ "失落信号 / 初次接触"), 28, 20, 14, kCyan);
+ draw_ui_text(tr("REAL PHYSICS / BODY + JOINT POSE",
+ "真实物理 / 刚体与关节姿态"), 28,
+ static_cast<int>(screen_height - bar_height + 18.0f), 13, kCyan);
+ draw_ui_text(tr("ENTER / SPACE / CLICK  SKIP",
+ "回车 / 空格 / 点击  跳过"),
+ static_cast<int>(screen_width - 220.0f), 20, 12, kMuted);
+
+ const float card_width = std::min(660.0f, screen_width - 56.0f);
+ const float card_y = screen_height - bar_height - 155.0f;
+ DrawRectangleRounded({28.0f, card_y, card_width, 126.0f},
+ 0.035f, 10, Color{5, 13, 14, 210});
+ draw_ui_text(shot.title.c_str(), 48, static_cast<int>(card_y + 20.0f),
+ 23, kText);
+ draw_wrapped_text(shot.caption, 48.0f, card_y + 54.0f,
+ card_width - 40.0f, 14.0f, 4.0f, kMuted);
+
+ const std::size_t shot_count = experience.intro.size();
+ const float gap = 7.0f;
+ const float segment_width = (card_width -
+ gap * static_cast<float>(shot_count > 0 ? shot_count - 1 : 0)) /
+ static_cast<float>(std::max<std::size_t>(1, shot_count));
+ for (std::size_t index = 0; index < shot_count; ++index) {
+ const float progress = index < sequence.shot_index()
+ ? 1.0f
+ : index == sequence.shot_index()
+ ? static_cast<float>(sequence.shot_progress()) : 0.0f;
+ const Rectangle track{28.0f + index * (segment_width + gap),
+ bar_height - 7.0f, segment_width, 3.0f};
+ DrawRectangleRec(track, Color{75, 96, 89, 180});
+ DrawRectangleRec({track.x, track.y, track.width * progress, track.height},
+ kCyan);
+ }
+
+ const double progress = sequence.total_progress();
+ const double fade = progress < 0.08
+ ? 1.0 - progress / 0.08
+ : progress > 0.96 ? (progress - 0.96) / 0.04 : 0.0;
+ if (fade > 0.0) {
+ DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+ Color{0, 0, 0, static_cast<unsigned char>(
+ std::clamp(fade, 0.0, 1.0) * 255.0)});
+ }
+}
+
 void draw_experience_overlay(const ExperienceManifest& experience,
  ExperiencePhase phase, ExperienceRunKind run_kind,
  bool comparison_complete, double active_scan_period_s,
@@ -2368,6 +2434,25 @@ WalkaroundView walkaround_view(const Frame& frame,
  state.dist_m = 0.82f;
  state.pitch_deg = 8.0f;
  state.yaw_deg = 35.0f;
+ } else if (component_id == "mission") {
+ const FramePlace* target = nullptr;
+ for (const auto& place : frame.places) {
+ if (!place.reached) {
+ target = &place;
+ break;
+ }
+ }
+ if (target != nullptr) {
+ const double route_span_m = std::hypot(
+ target->x_m - frame.body.x_m, target->y_m - frame.body.y_m);
+ focus_x = frame.body.x_m + 0.42 * (target->x_m - frame.body.x_m);
+ focus_y = frame.body.y_m + 0.42 * (target->y_m - frame.body.y_m);
+ focus_z = 0.18;
+ state.dist_m = static_cast<float>(std::clamp(
+ 3.5 + 0.55 * route_span_m, 4.8, 8.5));
+ state.pitch_deg = 31.0f;
+ state.yaw_deg = 38.0f;
+ }
  }
  state.target_x = focus_x;
  state.target_y = focus_y;
@@ -2378,6 +2463,28 @@ WalkaroundView walkaround_view(const Frame& frame,
  state.target_x += optical_offset_m * std::sin(yaw_rad);
  state.target_y -= optical_offset_m * std::cos(yaw_rad);
  return {camera_from_state(state), to_raylib(focus_x, focus_y, focus_z)};
+}
+
+Camera3D blend_camera(Camera3D from, Camera3D to, float amount) {
+ const float t = std::clamp(amount, 0.0f, 1.0f);
+ const float smooth = t * t * (3.0f - 2.0f * t);
+ const auto blend = [smooth](float a, float b) {
+ return a + (b - a) * smooth;
+ };
+ from.position = {
+ blend(from.position.x, to.position.x),
+ blend(from.position.y, to.position.y),
+ blend(from.position.z, to.position.z)};
+ from.target = {
+ blend(from.target.x, to.target.x),
+ blend(from.target.y, to.target.y),
+ blend(from.target.z, to.target.z)};
+ from.up = {
+ blend(from.up.x, to.up.x),
+ blend(from.up.y, to.up.y),
+ blend(from.up.z, to.up.z)};
+ from.fovy = blend(from.fovy, to.fovy);
+ return from;
 }
 
 // Ground-plane pick for 3D edit mode: intersect the mouse ray with z_up=0.
@@ -3535,6 +3642,15 @@ static lost_signal::sim::viewer::ExperienceFlow::Config experience_flow_config(
  return config;
 }
 
+static HeroSequence hero_sequence_for(const ExperienceManifest& experience) {
+ std::vector<double> durations;
+ durations.reserve(experience.intro.size());
+ for (const auto& shot : experience.intro) {
+ durations.push_back(shot.duration_s);
+ }
+ return HeroSequence(std::move(durations));
+}
+
 int main(int argc, char** argv) {
   using namespace lost_signal;
  // Optional single-source configuration: --robot <config> builds the
@@ -3785,9 +3901,11 @@ int main(int argc, char** argv) {
   view.fit(-4.0, -4.0, 8.0, 7.0);
  bool paused = experience_loaded;
  std::unique_ptr<ExperienceFlow> experience_flow;
+ HeroSequence hero_sequence;
  if (experience_loaded) {
  experience_flow = std::make_unique<ExperienceFlow>(
  experience_flow_config(experience));
+ hero_sequence = hero_sequence_for(experience);
  }
  ExperienceHitRegions experience_hit_regions;
  std::vector<ReviewKeyframe> review_keyframes;
@@ -3897,6 +4015,7 @@ int main(int argc, char** argv) {
  if (reset_progress) {
  experience_flow = std::make_unique<ExperienceFlow>(
  experience_flow_config(experience));
+ hero_sequence = hero_sequence_for(experience);
  experiment_ui = ExperimentUiState{};
  }
  review_keyframes.clear();
@@ -4121,7 +4240,9 @@ int main(int argc, char** argv) {
  playback_wall_dt_s, 0.25);
  previous_wall_s = wall_now_s;
     view.set_screen(GetScreenWidth(), GetScreenHeight());
-    if (IsKeyPressed(KEY_V)) view3d = !view3d;
+ if (experience_loaded) hero_sequence.update(playback_wall_dt_s);
+ if ((!experience_loaded || !hero_sequence.active()) &&
+ IsKeyPressed(KEY_V)) view3d = !view3d;
     // Edit-mode picking: 2D uses the view transform, 3D the ground ray.
     const Vector2 mpos = GetMousePosition();
     double pick_x = 0.0, pick_y = 0.0;
@@ -4134,10 +4255,15 @@ int main(int argc, char** argv) {
     } else {
       on_map = view.screen_to_world(mpos.x, mpos.y, pick_x, pick_y);
     }
+ bool hero_skip_consumed = false;
  if (experience_loaded) {
  const bool clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
  const Vector2 pointer = GetMousePosition();
- if (experience_flow->phase() == ExperiencePhase::kBriefing) {
+ if (hero_sequence.active()) {
+ hero_skip_consumed = clicked || IsKeyPressed(KEY_ENTER) ||
+ IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ESCAPE);
+ if (hero_skip_consumed) hero_sequence.skip();
+ } else if (experience_flow->phase() == ExperiencePhase::kBriefing) {
  const bool hotspot_clicked = clicked && CheckCollisionPointRec(
  pointer, experience_hit_regions.world_hotspot);
  if (hotspot_clicked) {
@@ -4251,6 +4377,7 @@ int main(int argc, char** argv) {
     }
     // Input (window thread only; sim stays deterministic).
  if (IsKeyPressed(KEY_SPACE) &&
+ !hero_skip_consumed &&
  (!experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kRunning)) {
  paused = !paused;
@@ -4502,8 +4629,11 @@ int main(int argc, char** argv) {
  : Color{18, 31, 34, 255});
  Rectangle projected_world_hotspot{};
  if (view3d) {
+ const bool hero_active = hero_sequence.active() && !experience.intro.empty();
  std::string component_id = "chassis";
- if (!experience.walkaround.empty()) {
+ if (hero_active) {
+ component_id = experience.intro[hero_sequence.shot_index()].component_id;
+ } else if (!experience.walkaround.empty()) {
  const int index = std::clamp(
  static_cast<int>(experience_flow->walkaround_index()), 0,
  static_cast<int>(experience.walkaround.size()) - 1);
@@ -4512,43 +4642,67 @@ int main(int argc, char** argv) {
  }
  const WalkaroundView walkaround = walkaround_view(
  preview, component_id, cam_st);
+ Camera3D presentation_camera = walkaround.camera;
+ if (hero_active &&
+ hero_sequence.shot_index() + 1 < experience.intro.size()) {
+ const double transition = std::clamp(
+ (hero_sequence.shot_progress() - 0.68) / 0.32, 0.0, 1.0);
+ const WalkaroundView next = walkaround_view(
+ preview,
+ experience.intro[hero_sequence.shot_index() + 1].component_id,
+ cam_st);
+ presentation_camera = blend_camera(
+ walkaround.camera, next.camera, static_cast<float>(transition));
+ }
  const RenderQuality active_quality = playback.turbo()
  ? RenderQuality::kFast : render_quality;
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
- preview, session->setup_world(), walkaround.camera,
+ preview, session->setup_world(), presentation_camera,
  motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
- preview, session->setup_world(), walkaround.camera,
+ preview, session->setup_world(), presentation_camera,
  motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
- preview, session->setup_world(), walkaround.camera,
+ preview, session->setup_world(), presentation_camera,
  motion_particles, surface_traces, false, false, false, false, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  const Vector2 marker = GetWorldToScreen(
- walkaround.focus, walkaround.camera);
+ walkaround.focus, presentation_camera);
  if (marker.x >= 0.0f && marker.x < GetScreenWidth() &&
  marker.y >= 0.0f && marker.y < GetScreenHeight()) {
+ if (!hero_active) {
  const Rectangle hotspot{marker.x - 28.0f, marker.y - 28.0f,
  56.0f, 56.0f};
  projected_world_hotspot = hotspot;
+ }
+ const float pulse = hero_active
+ ? 4.0f * static_cast<float>(
+ 0.5 + 0.5 * std::sin(hero_sequence.total_progress() * 38.0))
+ : 0.0f;
  DrawCircle(static_cast<int>(marker.x), static_cast<int>(marker.y),
  12.0f, Color{55, 218, 202, 45});
  DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
- 19.0f, Color{55, 218, 202, 230});
+ 19.0f + pulse, Color{55, 218, 202, 230});
  DrawCircleLines(static_cast<int>(marker.x), static_cast<int>(marker.y),
- 25.0f, Color{55, 218, 202, 110});
+ 25.0f + 2.0f * pulse, Color{55, 218, 202, 110});
+ if (!hero_active) {
  draw_ui_text(tr("CLICK PART", "点击部件"),
  static_cast<int>(marker.x + 31.0f),
  static_cast<int>(marker.y - 8.0f), 12, Color{55, 218, 202, 255});
  }
+ }
  } else {
  draw_frame_2d(preview, view, false, false, false);
  }
+ if (hero_sequence.active() && !experience.intro.empty()) {
+ draw_hero_overlay(
+ experience, experience.intro[hero_sequence.shot_index()], hero_sequence);
+ } else {
  draw_experience_overlay(experience, experience_flow->phase(),
  experience_flow->run_kind(), experience_flow->comparison_complete(),
  sim_config.has_value() ? sim_config->scan_period_s : 0.0,
@@ -4562,6 +4716,8 @@ int main(int argc, char** argv) {
  false, PredictionAssessment::kPending, nullptr, experience_action_error,
  true,
  &experience_hit_regions);
+
+ }
 
  // draw_experience_overlay clears and rebuilds the panel hit regions. Restore
  // the projected 3D hotspot after it so the next input frame can click the

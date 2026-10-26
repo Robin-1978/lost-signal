@@ -17,6 +17,14 @@
  "INSPECT: click the real 3D drive wheel and LiDAR. The wheel rolls without steering; LiDAR measures timed surface ranges.",
  "PROVE: ROBOT declares arrival from its estimate; SIM independently verifies the physical stop."
  ],
+ "intro": {
+ "shots": [
+ {"component_id":"drive_wheel","title":"TRACTION STARTS AT THE CONTACT PATCH","caption":"A powered wheel rolls about one horizontal joint. Differential steering comes from left-right speed, never a hidden steering axis.","duration_s":1.6},
+ {"component_id":"caster","title":"PASSIVE SUPPORT STILL HAS PHYSICS","caption":"The caster swivels and rolls under measured load. Its pose comes from MuJoCo joints, not a draw-time animation.","duration_s":1.3},
+ {"component_id":"lidar","title":"THE ROBOT MEASURES SURFACES","caption":"LiDAR begins at this configured optical frame. Ranges and acquisition timestamps become ROBOT observations only after RUN.","duration_s":1.4},
+ {"component_id":"mission","title":"YOUR PROOF: STOP AT THE GLASS GATE","caption":"ROBOT must decide from its own estimate. SIM truth remains outside the robot and independently judges the physical stop.","duration_s":1.7}
+ ]
+ },
  "walkaround": [
  {"component_id":"drive_wheel","title":"DRIVE WHEELS / TRACTION","lesson":"Each drive wheel has one rolling joint. Differential steering comes from left-right wheel speed, so these wheels never swivel like steering wheels.","required":true},
  {"component_id":"caster","title":"PASSIVE CASTER / SUPPORT","lesson":"The caster carries load through two passive joints: a vertical swivel and a horizontal wheel roll. Neither joint is a drive command.","required":false},

@@ -1,5 +1,6 @@
 #include "sim/viewer/experience_manifest.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <cmath>
@@ -347,6 +348,56 @@ bool load_experience_manifest(const std::string& path,
  stop.required = required->as_bool();
  }
  parsed.walkaround.push_back(std::move(stop));
+ }
+ }
+ const Json* intro = root->find("intro");
+ if (intro != nullptr) {
+ if (!intro->is_object()) {
+ out_error = "experience intro must be an object";
+ return false;
+ }
+ const Json* shots = intro->find("shots");
+ if (shots == nullptr || !shots->is_array() ||
+ shots->as_array().size() < 2 || shots->as_array().size() > 6) {
+ out_error = "experience intro must contain two to six shots";
+ return false;
+ }
+ double total_duration_s = 0.0;
+ for (const Json& node : shots->as_array()) {
+ if (!node.is_object()) {
+ out_error = "experience intro shot must be an object";
+ return false;
+ }
+ ExperienceHeroShot shot;
+ if (!take_string(node, "component_id", shot.component_id, out_error) ||
+ !take_string(node, "title", shot.title, out_error) ||
+ !take_string(node, "caption", shot.caption, out_error)) {
+ return false;
+ }
+ const Json* duration = node.find("duration_s");
+ if (duration == nullptr || !duration->is_num() ||
+ !std::isfinite(duration->as_num()) || duration->as_num() < 0.5 ||
+ duration->as_num() > 4.0) {
+ out_error =
+ "experience intro shot duration_s must be between 0.5 and 4 seconds";
+ return false;
+ }
+ shot.duration_s = duration->as_num();
+ total_duration_s += shot.duration_s;
+ const bool known_component = shot.component_id == "mission" ||
+ std::any_of(parsed.walkaround.begin(), parsed.walkaround.end(),
+ [&](const ExperienceWalkaroundStop& stop) {
+ return stop.component_id == shot.component_id;
+ });
+ if (!known_component) {
+ out_error = "experience intro shot must reference a walkaround component";
+ return false;
+ }
+ parsed.intro.push_back(std::move(shot));
+ }
+ if (total_duration_s < 5.0 || total_duration_s > 7.0) {
+ out_error = "experience intro must last between 5 and 7 seconds";
+ return false;
  }
  }
  const Json* experiments = root->find("experiments");

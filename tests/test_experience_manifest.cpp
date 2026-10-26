@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -30,6 +31,12 @@ int main() {
  assert(experience.objectives.size() == 1);
  assert(experience.objectives.front() == "glass_door");
  assert(experience.time_limit_steps == 1200);
+ assert(experience.intro.size() == 4);
+ double intro_duration_s = 0.0;
+ for (const auto& shot : experience.intro) intro_duration_s += shot.duration_s;
+ assert(std::abs(intro_duration_s - 6.0) < 1e-12);
+ assert(experience.intro.front().component_id == "drive_wheel");
+ assert(experience.intro.back().component_id == "mission");
  assert(experience.choices.size() == 3);
  assert(experience.choices.front().evidence_rule ==
  lost_signal::sim::viewer::ExperienceEvidenceRule::kComparisonTradeoff);
@@ -39,6 +46,7 @@ int main() {
  assert(!experience.walkaround[1].required);
  assert(experience.walkaround[2].required);
  const std::size_t english_briefing_count = experience.briefing.size();
+ const std::size_t english_intro_count = experience.intro.size();
  const std::size_t english_walkaround_count = experience.walkaround.size();
  const std::size_t english_experiment_count = experience.experiments.size();
  assert(experience.experiments.size() == 1);
@@ -68,6 +76,7 @@ int main() {
  assert(experience.title == "初次接触：精确停靠");
  assert(experience.walkaround.front().title == "驱动轮 / 牵引力");
  assert(experience.briefing.size() == english_briefing_count);
+ assert(experience.intro.size() == english_intro_count);
  assert(experience.walkaround.size() == english_walkaround_count);
  assert(experience.experiments.size() == english_experiment_count);
  assert(std::filesystem::path(experience.next_experience_path).filename() ==
