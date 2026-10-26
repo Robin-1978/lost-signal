@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,7 @@
 #include "sim/eval/scoring.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
+#include "sim/fixed_time.hpp"
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/providers/replay.hpp"
@@ -46,6 +48,13 @@ struct SemanticsStats {
  std::size_t conflict_zone_steps = 0;
  std::size_t conflict_zone_entries = 0;
  std::vector<std::array<double, 4>> conflict_boxes;
+};
+
+struct RunPerformance {
+ double wall_s = 0.0;
+ double simulated_s = 0.0;
+ double real_time_factor = 0.0;
+ double steps_per_s = 0.0;
 };
 
 bool load_semantics_sidecar(const std::string& map_path,
@@ -182,7 +191,7 @@ bool parse_args(int argc, char** argv, Options& opt) {
 
 bool write_summary(const std::string& path, const std::string& map_path,
  const sim::scenario::ScenarioSession& session,
- const SemanticsStats* semantics) {
+ const SemanticsStats* semantics, const RunPerformance* performance) {
  using robot::core::Json;
  const sim::eval::EpisodeScore score = session.score();
  Json::Object root;
@@ -269,6 +278,16 @@ bool write_summary(const std::string& path, const std::string& map_path,
  semantic.emplace_back("dormant_actors",
  Json::Num(static_cast<double>(semantics->dormant_actors)));
  root.emplace_back("sim_semantics", Json::Obj(std::move(semantic)));
+ }
+ if (performance != nullptr) {
+ Json::Object timing;
+ timing.emplace_back("wall_s", Json::Num(performance->wall_s));
+ timing.emplace_back("simulated_s", Json::Num(performance->simulated_s));
+ timing.emplace_back("real_time_factor",
+ Json::Num(performance->real_time_factor));
+ timing.emplace_back("steps_per_s",
+ Json::Num(performance->steps_per_s));
+ root.emplace_back("performance", Json::Obj(std::move(timing)));
  }
  const std::string text = robot::core::json_dump(Json::Obj(std::move(root)));
  std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -445,7 +464,10 @@ int main(int argc, char** argv) {
  if (opt.steps >= 0) {
  budget = opt.steps;
  } else if (opt.duration_s >= 0.0) {
- budget = static_cast<long>(std::ceil(opt.duration_s / 0.02));
+ constexpr double kTransitionS =
+ static_cast<double>(sim::kScenarioTransitionNs) /
+ static_cast<double>(sim::kNanosecondsPerSecond);
+ budget = static_cast<long>(std::ceil(opt.duration_s / kTransitionS));
  } else {
  budget = opt.objectives.empty() ? 5 : 4000;
  }
@@ -459,6 +481,7 @@ int main(int argc, char** argv) {
  std::size_t semantic_steps = 0;
  std::size_t verbose_loop_count = 0;
  std::string verbose_localization_event;
+ const auto run_begin = std::chrono::steady_clock::now();
  for (; ran < budget && !session->objectives_done(); ++ran) {
  session->step_once();
  const sim::eval::EvalStep* recorded = session->last_eval_step();
@@ -543,6 +566,18 @@ int main(int argc, char** argv) {
  if (localization_event) verbose_localization_event = localization_action;
  }
  }
+ const double run_wall_s = std::chrono::duration<double>(
+ std::chrono::steady_clock::now() - run_begin).count();
+ constexpr double kTransitionS =
+ static_cast<double>(sim::kScenarioTransitionNs) /
+ static_cast<double>(sim::kNanosecondsPerSecond);
+ RunPerformance performance;
+ performance.wall_s = run_wall_s;
+ performance.simulated_s = static_cast<double>(ran) * kTransitionS;
+ if (run_wall_s > 0.0) {
+ performance.real_time_factor = performance.simulated_s / run_wall_s;
+ performance.steps_per_s = static_cast<double>(ran) / run_wall_s;
+ }
  const sim::eval::EpisodeScore score = session->score();
  std::printf(
  "sim ran %ld steps; done=%s passed=%s collisions=%zu distance=%.2f m "
@@ -550,10 +585,17 @@ int main(int argc, char** argv) {
  ran, session->objectives_done() ? "yes" : "no",
  session->objectives_passed() ? "yes" : "no", score.collision_steps,
  score.distance_m, score.max_pos_err_m);
- if (opt.profile) print_timing_profile(timing_samples, slowest_timing);
+ if (opt.profile) {
+ print_timing_profile(timing_samples, slowest_timing);
+ std::fprintf(stderr,
+ "throughput wall_s=%.3f simulated_s=%.3f rtf=%.2fx steps_per_s=%.1f\n",
+ performance.wall_s, performance.simulated_s,
+ performance.real_time_factor, performance.steps_per_s);
+ }
  if (!opt.out_path.empty() &&
  !write_summary(opt.out_path, opt.map_path, *session,
- have_semantics ? &semantics : nullptr)) {
+ have_semantics ? &semantics : nullptr,
+ opt.profile ? &performance : nullptr)) {
  std::fprintf(stderr, "cannot write --out file: %s\n",
  opt.out_path.c_str());
  return 1;

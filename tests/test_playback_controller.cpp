@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "sim/scenario/scenario_session.hpp"
@@ -12,10 +13,52 @@ using lost_signal::sim::scenario::ScenarioSession;
 using lost_signal::sim::viewer::PlaybackController;
 
 struct Result {
+ struct StepTrace {
+ std::uint64_t step = 0;
+ std::uint64_t observation_sequence = 0;
+ lost_signal::robot::core::MonotonicNs observation_stamp_ns =
+ lost_signal::robot::core::kInvalidTime;
+ lost_signal::robot::core::MonotonicNs scan_stamp_ns =
+ lost_signal::robot::core::kInvalidTime;
+ lost_signal::robot::core::MonotonicNs motion_stamp_ns =
+ lost_signal::robot::core::kInvalidTime;
+ lost_signal::robot::core::MonotonicNs imu_stamp_ns =
+ lost_signal::robot::core::kInvalidTime;
+ lost_signal::robot::iface::MotionCommand command;
+ bool observation_accepted = false;
+ bool static_collision = false;
+ bool dynamic_collision = false;
+ };
+
   lost_signal::sim::world::WorldTruth truth;
   lost_signal::sim::eval::EpisodeScore score;
   std::size_t steps = 0;
+ std::vector<StepTrace> trace;
 };
+
+Result result_from(const ScenarioSession& session) {
+ Result out;
+ out.truth = session.episode().steps().back().truth_after;
+ out.score = session.score();
+ out.steps = session.episode().steps().size();
+ out.trace.reserve(out.steps);
+ for (const auto& step : session.episode().steps()) {
+ Result::StepTrace trace;
+ trace.step = step.step;
+ trace.observation_sequence = step.obs.sequence;
+ trace.observation_stamp_ns = step.obs.stamp_ns;
+ trace.scan_stamp_ns = lost_signal::robot::iface::scan_stamp_ns(step.obs);
+ trace.motion_stamp_ns =
+ lost_signal::robot::iface::motion_stamp_ns(step.obs);
+ trace.imu_stamp_ns = lost_signal::robot::iface::imu_stamp_ns(step.obs);
+ trace.command = step.cmd;
+ trace.observation_accepted = step.obs_accepted;
+ trace.static_collision = step.judge.static_collision;
+ trace.dynamic_collision = step.judge.dynamic_collision;
+ out.trace.push_back(std::move(trace));
+ }
+ return out;
+}
 
 Result run_with_schedule(double rate, bool turbo) {
   ScenarioSession session;
@@ -40,8 +83,7 @@ Result run_with_schedule(double rate, bool turbo) {
     }
     playback.end_frame();
   }
-  return {session.episode().steps().back().truth_after, session.score(),
-          session.episode().steps().size()};
+ return result_from(session);
 }
 
 Result run_headless() {
@@ -51,8 +93,7 @@ Result run_headless() {
  session.set_objectives({"goal"}, 0.5);
  constexpr std::size_t kSteps = 120;
  for (std::size_t step = 0; step < kSteps; ++step) session.step_once();
- return {session.episode().steps().back().truth_after, session.score(),
- session.episode().steps().size()};
+ return result_from(session);
 }
 
 void assert_same_result(const Result& a, const Result& b) {
@@ -64,6 +105,27 @@ void assert_same_result(const Result& a, const Result& b) {
  assert(std::abs(a.score.path_length_m - b.score.path_length_m) < 1e-12);
  assert(std::abs(a.score.mean_pos_err_m - b.score.mean_pos_err_m) < 1e-12);
   assert(a.score.collision_steps == b.score.collision_steps);
+ assert(a.trace.size() == b.trace.size());
+ for (std::size_t i = 0; i < a.trace.size(); ++i) {
+ const auto& lhs = a.trace[i];
+ const auto& rhs = b.trace[i];
+ assert(lhs.step == rhs.step);
+ assert(lhs.observation_sequence == rhs.observation_sequence);
+ assert(lhs.observation_stamp_ns == rhs.observation_stamp_ns);
+ assert(lhs.scan_stamp_ns == rhs.scan_stamp_ns);
+ assert(lhs.motion_stamp_ns == rhs.motion_stamp_ns);
+ assert(lhs.imu_stamp_ns == rhs.imu_stamp_ns);
+ assert(lhs.observation_accepted == rhs.observation_accepted);
+ assert(lhs.static_collision == rhs.static_collision);
+ assert(lhs.dynamic_collision == rhs.dynamic_collision);
+ assert(lhs.command.space == rhs.command.space);
+ assert(lhs.command.stamp_ns == rhs.command.stamp_ns);
+ assert(lhs.command.expiry_ns == rhs.command.expiry_ns);
+ assert(lhs.command.forward_mps == rhs.command.forward_mps);
+ assert(lhs.command.lateral_mps == rhs.command.lateral_mps);
+ assert(lhs.command.yaw_rate_radps == rhs.command.yaw_rate_radps);
+ assert(lhs.command.steer_angle_rad == rhs.command.steer_angle_rad);
+ }
 }
 
 } // namespace

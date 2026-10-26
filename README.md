@@ -67,8 +67,12 @@ error; `--out` writes the same data plus per-objective results as JSON.
 `--episode` writes the deterministic observation stream accepted by
 `ReplayProvider` for closed-loop offline replay.
 `--profile` reports p50/p95/p99/max wall time for physics, sensors, the ROBOT
-tick, actuation, recording, and the complete step. This timing remains in the
-SIM runner and is never published into the ROBOT decision path.
+tick, actuation, recording, and the complete step, followed by total wall
+time, simulated time, measured real-time factor, and steps/s. With `--out`,
+the aggregate throughput is also written under `performance`. This timing
+remains in the SIM runner and is never published into the ROBOT decision
+path. Use a Release build for throughput measurements; Debug is intended for
+diagnostics.
 Without `--steps` or `--duration`, an explicit objective list gets a 4000
 step budget and a single implicit goal keeps the legacy 5 step smoke run.
 
@@ -86,9 +90,10 @@ for another authored mission. The field lab pauses before simulation time
 advances. Its briefing camera
 shows the assembled robot from MuJoCo's zero-time body and joint transforms;
 this preparation publishes no sensor sample, ROBOT tick, episode step, or
-score. Use `Left`/`Right` to inspect drive-wheel, caster, LiDAR, and chassis
-cards; each camera target comes from the prepared physical link or sensor
-pose. Press `Enter`, commit prediction `1`–`3`, and then observe the run.
+score. Use `Left`/`Right` or the on-screen buttons to inspect drive-wheel,
+caster, LiDAR, and chassis cards; each camera target comes from the prepared
+physical link or sensor pose. Click `START EXPERIMENT`, then click a prediction
+card or press its number to begin the run.
 The debrief separates ROBOT evidence from SIM-only truth evaluation and uses
 collision as a hard safety gate. `Left`/`Right` then browse the recorded first
 valid observation, braking command, and stable-stop evidence. Their speed and
@@ -199,9 +204,10 @@ completion ratio, and a duty/speed energy proxy.
 In 3D map mode the viewer starts with a close robot-follow camera and a clean
 world view. Press `F` to toggle follow; right-drag or middle-drag releases
 follow for free orbit/pan, and `R` restores the default orbit. `L` shows a
-sparse LiDAR diagnostic, `E` shows truth/estimate history, and `K` reveals
-SIM-only actor script routes. Script routes are hidden by default because they
-are not information available to ROBOT.
+sparse LiDAR diagnostic projected with the ROBOT estimate, `E` shows the
+estimate, and `K` reveals the labeled SIM truth debug layer. Truth-assisted
+scan projection, actor script routes, and physical slip state are hidden by
+default because they are not information available to ROBOT.
 When `<map>.scene.json` exists, the viewer loads it automatically (or accepts
 `--scene FILE`). Solid environment GLBs must bind to a stable `box_id` in the
 world file, while floor paint must declare `surface_only`; invalid, missing,
@@ -212,7 +218,8 @@ glass safety gate plus a surface-only charging pad. Regenerate those assets
 with Blender 5.2 using `tools/modeling/build_research_base_kit.py`, then run
 `tools/modeling/inspect_assets.py` to verify the complete inventory and exact
 bounds before committing generated GLBs.
-The viewer advances in deterministic 20 ms simulation steps at 1x by default.
+The viewer advances 20 ms scenario transitions composed of deterministic
+1 ms physics quanta at 1x by default.
 Use `--rate N` or `+`/`-` for 0.05x–64x playback, and `--turbo` or `T` to run
 as fast as the bounded Turbo work budget allows. Use `--quality high|fast` or
 `Q` to choose the Viewer pipeline; Turbo selects Fast while active, then
