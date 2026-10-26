@@ -3369,8 +3369,16 @@ int main(int argc, char** argv) {
 
  while (!WindowShouldClose()) {
  const double wall_now_s = GetTime();
- const double wall_dt_s = std::clamp(
- wall_now_s - previous_wall_s, 0.0, 0.25);
+ // Playback must see the complete wall interval. If the window stalls for
+ // longer than one input frame, PlaybackController deliberately drops the
+ // excess simulation demand and reports LIMIT/actual RTF against that real
+ // interval. Clamping here used to hide long stalls and overstate throughput.
+ const double playback_wall_dt_s = std::max(
+ 0.0, wall_now_s - previous_wall_s);
+ // Presentation smoothing is independent of simulation scheduling. Bound it
+ // so a debugger pause or window drag cannot snap the follow camera.
+ const double presentation_wall_dt_s = std::min(
+ playback_wall_dt_s, 0.25);
  previous_wall_s = wall_now_s;
  if (experiment_future.valid() &&
  experiment_future.wait_for(std::chrono::seconds(0)) ==
@@ -3591,7 +3599,7 @@ int main(int argc, char** argv) {
  middle_dragging = false;
  }
 
- playback.begin_frame(wall_dt_s);
+ playback.begin_frame(playback_wall_dt_s);
  if (!paused && !session->objectives_done()) {
  const auto frame_work_begin = std::chrono::steady_clock::now();
  while (true) {
@@ -3808,7 +3816,8 @@ int main(int argc, char** argv) {
  const double desired_y = presented.truth_after.body_y_m +
  direction * lookahead_m * std::sin(presented.truth_after.body_yaw_rad);
  const double blend = camera_config.follow_smoothing_s > 0.0
- ? 1.0 - std::exp(-wall_dt_s / camera_config.follow_smoothing_s)
+ ? 1.0 - std::exp(
+ presentation_wall_dt_s / -camera_config.follow_smoothing_s)
  : 1.0;
  cam_st.target_x += (desired_x - cam_st.target_x) * blend;
  cam_st.target_y += (desired_y - cam_st.target_y) * blend;
