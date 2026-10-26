@@ -60,6 +60,10 @@ int main() {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
  session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ // Isolate terrain/traction from mapless-arrival uncertainty. This authored
+ // operator prior crosses the normal ROBOT initial-pose seam; no runtime
+ // truth is read or fed back.
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.setup_world().set_static_boxes({
  {-1.0, 3.0, 0.0, 4.0, 1.5},
  {4.0, -4.0, 5.0, -3.0, 1.5},
@@ -123,6 +127,8 @@ int main() {
     sim::scenario::ScenarioSession session(seed_diff_desc(),
                                            seed_diff_motor());
  session.set_startup_mode(robot::autonomy::StartupMode::kSlamOnly);
+ // Same declared deployment prior as the icy run above.
+ session.set_initial_pose(0.0, 0.0, 0.0, 0.02, 0.01);
  session.setup_world().set_static_boxes({
  {-1.0, 3.0, 0.0, 4.0, 1.5},
  {4.0, -4.0, 5.0, -3.0, 1.5},
@@ -146,6 +152,23 @@ int main() {
  std::printf("ridge done=%d collisions=%zu max_z=%.2f min_grip=%.2f\n",
                 session.objectives_done(), score.collision_steps, max_z,
                 min_grip);
+ if (!session.objectives_done() && !session.episode().steps().empty()) {
+ const auto& last = session.episode().steps().back();
+ std::fprintf(stderr,
+ "ridge stalled: active=%s completed=%zu truth=(%.3f,%.3f,%.3f) "
+ "estimate=(%.3f,%.3f,%.3f) sigma=%.3f goal=%d/%s "
+ "safety=%s decision=%s/%s cmd=(%.3f,%.3f) grip=%.3f\n",
+ session.objectives().active_place().c_str(),
+ session.objectives().completed(), last.truth_after.body_x_m,
+ last.truth_after.body_y_m, last.truth_after.body_yaw_rad,
+ last.diag.estimate.x_m, last.diag.estimate.y_m,
+ last.diag.estimate.yaw_rad, last.diag.estimate.position_sigma_m,
+ static_cast<int>(last.diag.goal.state), last.diag.goal.detail.c_str(),
+ last.diag.safety_reason.c_str(),
+ last.diag.evidence.constraint_code.c_str(),
+ last.diag.evidence.reason_code.c_str(), last.cmd.forward_mps,
+ last.cmd.yaw_rate_radps, last.diag.grip_factor);
+ }
     assert(session.objectives_done());
     assert(score.collision_steps == 0);
     assert(max_z > 0.25);  // physically climbed (offline truth)

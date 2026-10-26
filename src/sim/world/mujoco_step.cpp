@@ -141,11 +141,11 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  }
   // Grade as gravity tilt around the current heading (main-stack
   // body-forward semantics: uphill forward pulls backward).
-  const double g = 9.81;
   const double grade = std::isfinite(incline_grade) ? incline_grade : 0.0;
-  model->opt.gravity[0] = -g * grade * std::cos(body_yaw_);
-  model->opt.gravity[1] = -g * grade * std::sin(body_yaw_);
-  model->opt.gravity[2] = -g;
+ const InclineGravity gravity = incline_gravity(grade, body_yaw_);
+ model->opt.gravity[0] = gravity.x_mps2;
+ model->opt.gravity[1] = gravity.y_mps2;
+ model->opt.gravity[2] = gravity.z_mps2;
   // Main-stack duty path, verbatim: duty-implied motor force only (the
   // resistance/traction-limit subtraction lives on main's PID path, not
   // the duty our actuator commands take). Rolling losses come from the

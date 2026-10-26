@@ -11,6 +11,7 @@
 #include "sim/world/contact.hpp"
 #include "sim/world/motor.hpp"
 #include "sim/world/world.hpp"
+#include "sim/world/terrain.hpp"
 
 using namespace lost_signal;
 
@@ -39,6 +40,20 @@ void set_diff_duty(sim::world::World& w, double duty) {
 }  // namespace
 
 int main() {
+ // A rise/run grade rotates gravity; it must never create extra gravity.
+ // The horizontal component follows body heading and points downhill.
+ for (double grade : {0.0, 0.3, 1.0, 10.0}) {
+ const auto gravity = sim::world::incline_gravity(grade, 0.7);
+ assert(std::abs(std::sqrt(gravity.x_mps2 * gravity.x_mps2 +
+ gravity.y_mps2 * gravity.y_mps2 +
+ gravity.z_mps2 * gravity.z_mps2) - 9.81) < 1e-12);
+ assert(gravity.z_mps2 < 0.0);
+ if (grade > 0.0) {
+ assert(gravity.x_mps2 * std::cos(0.7) +
+ gravity.y_mps2 * std::sin(0.7) < 0.0);
+ }
+ }
+
   using sim::world::contact_resistance_N;
   using sim::world::contact_static_capacity_N;
   using sim::world::WheelContactParams;

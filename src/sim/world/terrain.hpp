@@ -26,6 +26,24 @@ struct TerrainSample {
   double grade_y = 0.0;
 };
 
+struct InclineGravity {
+ double x_mps2 = 0.0;
+ double y_mps2 = 0.0;
+ double z_mps2 = -9.81;
+};
+
+// Gravity expressed over a flat contact plane to reproduce a rise/run grade
+// along the current body heading. Both tangent and normal components derive
+// from the slope angle, so changing grade never changes |g|.
+inline InclineGravity incline_gravity(double grade, double yaw_rad) {
+ if (!std::isfinite(grade)) grade = 0.0;
+ constexpr double kGravityMps2 = 9.81;
+ const double normalization = std::hypot(1.0, grade);
+ const double tangent = -kGravityMps2 * grade / normalization;
+ return {tangent * std::cos(yaw_rad), tangent * std::sin(yaw_rad),
+ -kGravityMps2 / normalization};
+}
+
 inline bool sample_support_slab(const SupportSlab& slab, double x, double y,
                                 TerrainSample& out) {
   const double dx = x - slab.center_x_m;
