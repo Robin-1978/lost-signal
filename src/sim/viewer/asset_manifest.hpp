@@ -65,6 +65,10 @@ struct AssetSelection {
  std::string caster_fork;
  std::string caster_wheel;
  std::string track;
+ std::string arm_turret;
+ std::string arm_upper;
+ std::string arm_forearm;
+ std::string arm_tool;
 };
 
 // Rigid transform from the asset's authored coordinates to the component

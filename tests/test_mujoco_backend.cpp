@@ -157,6 +157,32 @@ int main() {
  assert(std::abs(poses[0].z_m) < 1e-9);
  }
 
+ // A configured arm is a real MuJoCo articulated chain. The presentation
+ // table exposes each link body and joint axis without adding arm truth to
+ // the robot-facing chassis contract.
+ {
+ sim::world::World w = make_mujoco_diff();
+ auto params = w.motor_params();
+ params.arm.enabled = true;
+ params.arm.base_z_m = 0.12;
+ for (int i = 0; i < 4; ++i) {
+ params.arm.link_length_m[i] = 0.18;
+ params.arm.link_mass_kg[i] = 0.3;
+ params.arm.link_radius_m[i] = 0.025;
+ params.arm.joint_axis[i] = {0.0, 0.0, 1.0};
+ params.arm.initial_angle_rad[i] = 0.05 * i;
+ }
+ w.set_motor_params(params);
+ set_diff_duty(w, 0.0);
+ w.prepare();
+ sim::world::ArmLinkViz links[4];
+ assert(w.arm_links(links, 4) == 4);
+ for (const auto& link : links) {
+ assert(link.valid && link.pose.valid && link.joint.valid);
+ assert(std::abs(link.joint.axis_z - 1.0) < 1e-9);
+ }
+ }
+
  // The compiled multibody has the declared mass and COM. Collision-shell
  // dimensions never move when inertia is tuned.
  {

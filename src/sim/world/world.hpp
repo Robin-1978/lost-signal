@@ -231,6 +231,19 @@ struct MotorParams {
   double payload_height_m = 0.0;  // 0 = chassis COM (pure ballast)
   // Ackermann idler trail (wheel center behind the kingpin).
   double idler_trail_m = 0.02;
+ // Optional articulated manipulator. Disabled by default; when enabled all
+ // link geometry, joint axes and initial angles are authored here and the
+ // MuJoCo model becomes the sole pose authority for SIM rendering.
+ struct ArmParams {
+ bool enabled = false;
+ double base_x_m = 0.0, base_y_m = 0.0, base_z_m = 0.0;
+ std::array<double, 4> link_length_m = {};
+ std::array<double, 4> link_mass_kg = {};
+ std::array<double, 4> link_radius_m = {};
+ std::array<std::array<double, 3>, 4> joint_axis = {};
+ std::array<double, 4> initial_angle_rad = {};
+ friend bool operator==(const ArmParams&, const ArmParams&) = default;
+ } arm;
   // Unpowered casters (base frame, explicit). Empty profiles are resolved
   // to a fore/aft caster pair at conversion from wheel_base_m.
   struct SupportParams {
@@ -328,6 +341,9 @@ class World {
  }
  int actor_poses(ActorPoseViz* out, int cap) const {
  return mujoco_.actor_poses(out, cap);
+ }
+ int arm_links(ArmLinkViz* out, int cap) const {
+ return mujoco_.arm_links(out, cap);
  }
  // Aggregated non-ground contact impulse from the last completed physics
  // step. This is SIM-only presentation evidence and never enters a ROBOT

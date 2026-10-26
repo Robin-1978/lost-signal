@@ -327,6 +327,15 @@ void MujocoBackend::sync(const MotorParams& motor,
         << "," << s.rolling_friction_m
         << ";";
   }
+ sig << "ARM|" << motor.arm.enabled << "," << motor.arm.base_x_m
+ << "," << motor.arm.base_y_m << "," << motor.arm.base_z_m << ";";
+ for (int i = 0; i < 4; ++i) {
+ const auto& axis = motor.arm.joint_axis[i];
+ sig << motor.arm.link_length_m[i] << "," << motor.arm.link_mass_kg[i]
+ << "," << motor.arm.link_radius_m[i] << ","
+ << axis[0] << "," << axis[1] << "," << axis[2] << ","
+ << motor.arm.initial_angle_rad[i] << ";";
+ }
   sig << "|" << drive_count << "|" << steer_count << "|" << boxes.size()
       << "|";
   for (const auto& b : boxes) {
@@ -378,6 +387,12 @@ void MujocoBackend::sync(const MotorParams& motor,
  actor_body_.clear();
  actor_mocap_.clear();
  actor_pose_count_ = 0;
+ arm_link_count_ = 0;
+ for (int i = 0; i < 4; ++i) {
+ arm_link_body_[i] = -1;
+ arm_joint_dof_[i] = -1;
+ arm_link_[i] = ArmLinkViz{};
+ }
   drive_count_ = 0;
   steer_count_ = 0;
   base_qpos_ = -1;
@@ -707,6 +722,40 @@ void MujocoBackend::sync(const MotorParams& motor,
     cargo->contype = 0;
     cargo->conaffinity = 0;
   }
+ if (motor.arm.enabled) {
+ mjsBody* parent = add_body(base, "arm_base_link", motor.arm.base_x_m,
+ motor.arm.base_y_m, motor.arm.base_z_m);
+ for (int i = 0; i < 4; ++i) {
+ const double length = motor.arm.link_length_m[i];
+ const double mass = motor.arm.link_mass_kg[i];
+ const double radius = motor.arm.link_radius_m[i];
+ const auto& axis = motor.arm.joint_axis[i];
+ const double axis_norm = std::sqrt(axis[0] * axis[0] +
+ axis[1] * axis[1] + axis[2] * axis[2]);
+ if (!(length > 0.0) || !(mass > 0.0) || !(radius > 0.0) ||
+ !(axis_norm > 1e-12) || !std::isfinite(axis_norm)) {
+ refuse_chassis("arm links need positive geometry/mass and a unit axis");
+ mj_deleteSpec(spec);
+ return;
+ }
+ const double parent_offset = i == 0 ? 0.0
+ : motor.arm.link_length_m[i - 1];
+ mjsBody* link = add_body(parent, "arm_link" + std::to_string(i),
+ parent_offset, 0.0, 0.0);
+ mjsJoint* joint = add_hinge(link, "arm_joint" + std::to_string(i),
+ axis[0] / axis_norm, axis[1] / axis_norm, axis[2] / axis_norm,
+ std::max(1e-7, mass * length * length / 12.0));
+ joint->ref = motor.arm.initial_angle_rad[i];
+ joint->damping[0] = 0.02;
+ mjsGeom* link_geom = add_geom(link,
+ "arm_geom" + std::to_string(i), mjGEOM_CAPSULE, radius, length * 0.5,
+ 0.0, 1);
+ link_geom->pos[0] = length * 0.5;
+ link_geom->mass = mass;
+ link_geom->density = 0.0;
+ parent = link;
+ }
+ }
   int idle_idx = 0;
   for (std::size_t m = 0; m < modules.size(); ++m) {
     const bool is_drive = modules[m].is_drive;
@@ -1181,6 +1230,21 @@ tire->friction[2] = is_mecanum_layout ? 0.0 : kWheelRollingFriction;
  if (body_id < 0) continue;
  actor_body_.push_back(body_id);
  actor_mocap_.push_back(model->body_mocapid[body_id]);
+ }
+ if (motor.arm.enabled) {
+ arm_link_count_ = 4;
+ for (int i = 0; i < arm_link_count_; ++i) {
+ const std::string link_name = "arm_link" + std::to_string(i);
+ const std::string joint_name = "arm_joint" + std::to_string(i);
+ const int body_id = mj_name2id(model, mjOBJ_BODY, link_name.c_str());
+ const int joint_id = mj_name2id(model, mjOBJ_JOINT, joint_name.c_str());
+ arm_link_body_[i] = body_id;
+ arm_joint_dof_[i] = joint_id >= 0 ? model->jnt_dofadr[joint_id] : -1;
+ if (joint_id >= 0) {
+ const int qadr = model->jnt_qposadr[joint_id];
+ data->qpos[qadr] = motor.arm.initial_angle_rad[i];
+ }
+ }
  }
  // A free joint defaults to the world origin, which puts the axle and every
  // tire below the floor until the first solver step lifts the chassis.  That

@@ -133,7 +133,7 @@
 - 现有机器人 drive wheel、steer knuckle 与 caster 已读取真实 MuJoCo link pose；wheel/knuckle GLB 绑定消费这些 pose，渲染端不再重建 steering/spin 姿态。Mecanum 左右 roller 由物理模块的 `y_m` 选择，不能由绘制序号猜测。
 - `asset_selection_for_robot()` 现在以 `chassis_kind` 为权威来源，覆盖 differential、Ackermann、tracked、swerve、mecanum；多个底盘共用 `robot_id = ro1` 时仍会加载正确的资产族。
 - 阶段 7 的首个子阶段已完成：backend 导出 drive/steer/idler/caster 的真实 joint axis、anchor、angle、rate、全部活动 contact 点/法向/normal load 和 base-link 相对 COM；这些字段通过 SIM-only `PresentationSnapshot` 进入 `FrameBody`，ROBOT observation/decision/actuation 没有新增真值入口。工程视图可显示 COM、joint axis 与 contact evidence。
-- forklift 与 pedestrian 已迁入 MuJoCo mocap body：碰撞几何参与引擎接触，pose/heading/ground height 由 engine read-back 驱动历史与实时 GLB；LiDAR 仍通过匿名 actor 观测路径消费，不把 actor identity 或真值穿透给 ROBOT。manifest 仍声明但尚未完整绑定 RO-6 turret/upper_arm/forearm/tool；机械臂还必须逐关节读取物理状态。
+- forklift 与 pedestrian 已迁入 MuJoCo mocap body：碰撞几何参与引擎接触，pose/heading/ground height 由 engine read-back 驱动历史与实时 GLB；LiDAR 仍通过匿名 actor 观测路径消费，不把 actor identity 或真值穿透给 ROBOT。新增配置驱动的四关节 ArmParams、MuJoCo link/joint chain 和 SIM-only `ArmLinkViz`，RO-6 turret/upper_arm/forearm/tool 按 link pose 绑定；下一步继续补机械臂控制/接触验收和 Blender 场景资产。
 - 阶段 7 依次完成：按底盘能力加载模型和左右部件；建立统一 `link_binding`；加入显式 SIM debug 的 joint axis/collision geom/COM/contact force；把 forklift、pedestrian、机械臂根和关节迁入 MuJoCo；最后扩展 Blender 环境资产并保持碰撞代理诚实。
 - Blender 路径为 `/disk/blender-5.2.2-linux-x64/blender`。旧代码分支实际为 `main`，仓库没有 `master` 分支。
 

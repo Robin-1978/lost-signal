@@ -476,6 +476,12 @@ AssetSelection asset_selection_for_robot(const std::string& robot_id,
  selection.caster_fork = "robots.ro1.caster_fork";
  selection.caster_wheel = "robots.ro1.caster_wheel";
  selection.track = "robots.ro3.track";
+ if (robot_id == "ro6") {
+ selection.arm_turret = "robots.ro6.turret";
+ selection.arm_upper = "robots.ro6.upper_arm";
+ selection.arm_forearm = "robots.ro6.forearm";
+ selection.arm_tool = "robots.ro6.tool";
+ }
  return selection;
 }
 

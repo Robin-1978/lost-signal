@@ -266,6 +266,16 @@ void MujocoBackend::read_back() {
  read_relative_body_pose(support_fork_body_[i], support_fork_pose_[i]);
  read_relative_body_pose(support_wheel_body_[i], support_wheel_pose_[i]);
  }
+ for (int i = 0; i < arm_link_count_ && i < 4; ++i) {
+ arm_link_[i] = ArmLinkViz{};
+ if (arm_link_body_[i] < 0 || arm_joint_dof_[i] < 0) continue;
+ read_relative_body_pose(arm_link_body_[i], arm_link_[i].pose);
+ const std::string joint_name = "arm_joint" + std::to_string(i);
+ const int joint_id = mj_name2id(model, mjOBJ_JOINT, joint_name.c_str());
+ read_joint_axis(joint_id, arm_joint_dof_[i], arm_link_[i].joint);
+ arm_link_[i].valid = arm_link_[i].pose.valid &&
+ arm_link_[i].joint.valid;
+ }
  read_contacts();
  read_actor_poses();
 }

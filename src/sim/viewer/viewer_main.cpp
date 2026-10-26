@@ -252,6 +252,14 @@ struct VisualAssets {
  const AssetDefinition* knuckle_left_definition = nullptr;
  Model knuckle_right{};
  const AssetDefinition* knuckle_right_definition = nullptr;
+ Model arm_turret{};
+ const AssetDefinition* arm_turret_definition = nullptr;
+ Model arm_upper{};
+ const AssetDefinition* arm_upper_definition = nullptr;
+ Model arm_forearm{};
+ const AssetDefinition* arm_forearm_definition = nullptr;
+ Model arm_tool{};
+ const AssetDefinition* arm_tool_definition = nullptr;
  Model lidar{};
  const AssetDefinition* lidar_definition = nullptr;
  Model caster_fork{};
@@ -572,6 +580,16 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.knuckle_right = load_manifest_model(models_root, assets.manifest,
  selection.steering_knuckle_right, assets.knuckle_right_definition);
  }
+ if (!selection.arm_turret.empty()) {
+ assets.arm_turret = load_manifest_model(models_root, assets.manifest,
+ selection.arm_turret, assets.arm_turret_definition);
+ assets.arm_upper = load_manifest_model(models_root, assets.manifest,
+ selection.arm_upper, assets.arm_upper_definition);
+ assets.arm_forearm = load_manifest_model(models_root, assets.manifest,
+ selection.arm_forearm, assets.arm_forearm_definition);
+ assets.arm_tool = load_manifest_model(models_root, assets.manifest,
+ selection.arm_tool, assets.arm_tool_definition);
+ }
  assets.lidar = load_manifest_model(models_root, assets.manifest,
  "robots.ro1.lidar_standard", assets.lidar_definition);
  assets.caster_fork = load_manifest_model(models_root, assets.manifest,
@@ -715,6 +733,10 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  bind_lighting(assets.wheel_right, assets.lighting);
  bind_lighting(assets.knuckle_left, assets.lighting);
  bind_lighting(assets.knuckle_right, assets.lighting);
+ bind_lighting(assets.arm_turret, assets.lighting);
+ bind_lighting(assets.arm_upper, assets.lighting);
+ bind_lighting(assets.arm_forearm, assets.lighting);
+ bind_lighting(assets.arm_tool, assets.lighting);
  bind_lighting(assets.lidar, assets.lighting);
  bind_lighting(assets.caster_fork, assets.lighting);
  bind_lighting(assets.caster_wheel, assets.lighting);
@@ -728,6 +750,8 @@ void load_visual_assets(VisualAssets& assets, const std::string& root,
  assets.loaded = model_ready(assets.chassis) || model_ready(assets.wheel) ||
  model_ready(assets.wheel_right) || model_ready(assets.knuckle_left) ||
  model_ready(assets.knuckle_right) ||
+ model_ready(assets.arm_turret) || model_ready(assets.arm_upper) ||
+ model_ready(assets.arm_forearm) || model_ready(assets.arm_tool) ||
  model_ready(assets.lidar) || model_ready(assets.caster_fork) ||
  model_ready(assets.caster_wheel) ||
  model_ready(assets.track) || model_ready(assets.forklift) ||
@@ -743,6 +767,10 @@ void unload_visual_assets(VisualAssets& assets) {
  if (model_ready(assets.wheel_right)) UnloadModel(assets.wheel_right);
  if (model_ready(assets.knuckle_left)) UnloadModel(assets.knuckle_left);
  if (model_ready(assets.knuckle_right)) UnloadModel(assets.knuckle_right);
+ if (model_ready(assets.arm_turret)) UnloadModel(assets.arm_turret);
+ if (model_ready(assets.arm_upper)) UnloadModel(assets.arm_upper);
+ if (model_ready(assets.arm_forearm)) UnloadModel(assets.arm_forearm);
+ if (model_ready(assets.arm_tool)) UnloadModel(assets.arm_tool);
  if (model_ready(assets.lidar)) UnloadModel(assets.lidar);
  if (model_ready(assets.caster_fork)) UnloadModel(assets.caster_fork);
  if (model_ready(assets.caster_wheel)) UnloadModel(assets.caster_wheel);
@@ -3678,6 +3706,27 @@ if (have_previous && (previous.x != point.x || previous.z != point.z)) {
     }
     rlPopMatrix();
   }
+ // Optional articulated manipulator. Each asset is a link component whose
+ // pivot is declared in the manifest; its transform is the corresponding
+ // MuJoCo body pose, so gravity and joint motion remain visible in replay.
+ if (!f.body.arm_links.empty() && assets != nullptr) {
+ const Model* arm_models[4] = {&assets->arm_turret, &assets->arm_upper,
+ &assets->arm_forearm, &assets->arm_tool};
+ const AssetDefinition* arm_defs[4] = {assets->arm_turret_definition,
+ assets->arm_upper_definition, assets->arm_forearm_definition,
+ assets->arm_tool_definition};
+ for (std::size_t i = 0; i < f.body.arm_links.size() && i < 4; ++i) {
+ const auto& link = f.body.arm_links[i];
+ if (!link.valid || !link.pose.valid || !model_ready(*arm_models[i])) {
+ continue;
+ }
+ const float scale = arm_defs[i] != nullptr &&
+ arm_defs[i]->meters_per_unit > 0.0
+ ? static_cast<float>(1.0 / arm_defs[i]->meters_per_unit) : 1.0f;
+ draw_model_quaternion(*arm_models[i], link_position(link.pose),
+ link_rotation(link.pose, true), {scale, scale, scale}, WHITE);
+ }
+ }
  // Engineering view: COM and joint axes are drawn from recorded MuJoCo
  // state in the base frame. This is intentionally behind the SIM truth
  // debug toggle; no display-only pose is fed back into the plant.

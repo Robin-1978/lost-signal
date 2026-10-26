@@ -90,6 +90,12 @@ struct ActorPoseViz {
  double qw = 1.0, qx = 0.0, qy = 0.0, qz = 0.0;
 };
 
+struct ArmLinkViz {
+ bool valid = false;
+ LinkPoseViz pose;
+ JointAxisViz joint;
+};
+
 // One wheel module for presentation (base frame): position from the shared
 // layout table, spin/steer from live joint read-back. Idlers (ackermann
 // fronts) report driven=false. Rollers are not state (mecanum is an
@@ -352,6 +358,12 @@ class MujocoBackend {
  for (int i = 0; i < n; ++i) out[i] = actor_pose_[i];
  return n;
  }
+ int arm_links(ArmLinkViz* out, int cap) const {
+ if (out == nullptr || cap <= 0) return 0;
+ const int n = std::min(cap, arm_link_count_);
+ for (int i = 0; i < n; ++i) out[i] = arm_link_[i];
+ return n;
+ }
  const ImpactViz& impact() const { return impact_; }
   double body_z() const { return body_z_; }
   double body_roll() const { return body_roll_; }
@@ -454,6 +466,10 @@ class MujocoBackend {
  double support_mu_base_[4] = {0.05, 0.05, 0.05, 0.05};
   double support_rolling_base_m_[4] = {0.0005, 0.0005, 0.0005, 0.0005};
  int support_count_ = 0;
+ std::array<int, 4> arm_link_body_ = {-1, -1, -1, -1};
+ std::array<int, 4> arm_joint_dof_ = {-1, -1, -1, -1};
+ std::array<ArmLinkViz, 4> arm_link_{};
+ int arm_link_count_ = 0;
  std::vector<int> actor_body_;
  std::vector<int> actor_mocap_;
   // Tire geom ids per drive wheel (per-step friction writes, -1 unset).
@@ -578,6 +594,7 @@ class MujocoBackend {
  int joint_axes(JointAxisViz*, int) const { return 0; }
  int contacts(ContactViz*, int) const { return 0; }
  int actor_poses(ActorPoseViz*, int) const { return 0; }
+ int arm_links(ArmLinkViz*, int) const { return 0; }
  const ImpactViz& impact() const { return impact_; }
 
  private:

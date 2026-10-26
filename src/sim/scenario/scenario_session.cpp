@@ -33,6 +33,10 @@ void capture_presentation(const world::World& world,
  const int contact_count = world.contacts(contacts, 64);
  snapshot.contacts.assign(contacts,
  contacts + std::max(0, contact_count));
+ world::ArmLinkViz arm_links[4];
+ const int arm_link_count = world.arm_links(arm_links, 4);
+ snapshot.arm_links.assign(arm_links,
+ arm_links + std::max(0, arm_link_count));
  world::ActorPoseViz actor_poses[64];
  const int actor_pose_count = world.actor_poses(actor_poses, 64);
  snapshot.com_x_m = world.system_com_relative_x_m();

@@ -375,6 +375,35 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.body.contacts.push_back(contact);
  }
  }
+ {
+ std::vector<world::ArmLinkViz> live_arm_links;
+ if (!step.presentation.captured) {
+ world::ArmLinkViz table[4];
+ const int count = world.arm_links(table, 4);
+ live_arm_links.assign(table, table + std::max(0, count));
+ }
+ const auto& arm_links = step.presentation.captured
+ ? step.presentation.arm_links : live_arm_links;
+ for (const auto& physical : arm_links) {
+ FrameArmLink link;
+ link.valid = physical.valid;
+ link.pose = {physical.pose.valid, physical.pose.x_m, physical.pose.y_m,
+ physical.pose.z_m, physical.pose.qw, physical.pose.qx,
+ physical.pose.qy, physical.pose.qz};
+ link.joint.valid = physical.joint.valid;
+ link.joint.link_pose = {physical.joint.link_pose.valid,
+ physical.joint.link_pose.x_m, physical.joint.link_pose.y_m,
+ physical.joint.link_pose.z_m, physical.joint.link_pose.qw,
+ physical.joint.link_pose.qx, physical.joint.link_pose.qy,
+ physical.joint.link_pose.qz};
+ link.joint.axis_x = physical.joint.axis_x;
+ link.joint.axis_y = physical.joint.axis_y;
+ link.joint.axis_z = physical.joint.axis_z;
+ link.joint.angle_rad = physical.joint.angle_rad;
+ link.joint.rate_radps = physical.joint.rate_radps;
+ f.body.arm_links.push_back(link);
+ }
+ }
   // True 3D sensor origin (body + attitude composed with the mount — the
   // same composition generation runs, so the viz fan starts where the
   // beams do).

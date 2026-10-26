@@ -208,6 +208,12 @@ struct FrameContact {
  double normal_force_N = 0.0;
 };
 
+struct FrameArmLink {
+ bool valid = false;
+ FrameLinkPose pose;
+ FrameJointAxis joint;
+};
+
 struct FrameBody {
  double forward_mps = 0.0;
  double lateral_mps = 0.0;
@@ -236,6 +242,7 @@ struct FrameBody {
  std::vector<FrameCaster> casters;
  std::vector<FrameJointAxis> joint_axes;
  std::vector<FrameContact> contacts;
+ std::vector<FrameArmLink> arm_links;
  // Skid-steer tracks (no rolling wheels to draw): slabs sized from the
  // chassis params. Traction flags are visible only in SIM truth debug.
   bool tracked = false;
