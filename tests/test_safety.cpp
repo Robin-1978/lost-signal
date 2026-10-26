@@ -145,7 +145,14 @@ int main() {
  cmd.expiry_ns = 201'000'000;
  cmd.forward_mps = 1.0;
  assert(mon.gate(cmd, v, 1'000'000).is_safe_stop());
- assert(mon.last_verdict().reason == "static-swept-proximity");
+ const auto swept = mon.last_verdict();
+ assert(swept.reason == "static-swept-proximity");
+ assert(std::abs(swept.static_command_envelope_radius_m - 0.5) < 1e-12);
+ assert(swept.static_command_sweep.size() > 2);
+ assert(swept.static_command_sweep.front().x == 0.0);
+ assert(swept.static_command_sweep.front().y == 0.0);
+ assert(swept.static_command_sweep.back().x > 0.0);
+ assert(std::abs(swept.static_command_sweep.back().y) < 1e-12);
  }
 
  // Proximity is transient: a bounded command that increases raw footprint

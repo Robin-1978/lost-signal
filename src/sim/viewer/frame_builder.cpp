@@ -344,6 +344,19 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.decision.command_yaw_rate_radps = step.cmd.yaw_rate_radps;
  f.decision.route_point_count = evidence.route_point_count;
  f.decision.moving_candidate_count = evidence.moving_candidate_count;
+ f.decision.safety_static_envelope_radius_m =
+ std::max(0.0, evidence.safety_static_envelope_radius_m);
+ if (step.diag.estimate.valid) {
+ const double c = std::cos(step.diag.estimate.yaw_rad);
+ const double s = std::sin(step.diag.estimate.yaw_rad);
+ f.decision.safety_static_sweep.reserve(
+ evidence.safety_static_sweep.size());
+ for (const auto& point : evidence.safety_static_sweep) {
+ f.decision.safety_static_sweep.emplace_back(
+ step.diag.estimate.x_m + c * point.x - s * point.y,
+ step.diag.estimate.y_m + s * point.x + c * point.y);
+ }
+ }
 
  // Rebuild the deployable predictor output from recorded ROBOT diagnostics.
  // This intentionally has no access to world.actors(): the overlay must show

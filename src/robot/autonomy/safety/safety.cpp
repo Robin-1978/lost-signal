@@ -14,6 +14,7 @@ namespace {
 struct StaticClearance {
  double minimum_m = std::numeric_limits<double>::infinity();
  double terminal_m = std::numeric_limits<double>::infinity();
+ std::vector<core::Vec2> sweep{{0.0, 0.0}};
 };
 
 double point_set_clearance(const std::vector<core::Vec2>& points,
@@ -68,6 +69,7 @@ StaticClearance static_clearance_for_command(
  y += (forward * std::sin(middle_heading) +
  lateral * std::cos(middle_heading)) * dt;
  heading += yaw_rate * dt;
+ out.sweep.push_back({x, y});
 
  const double vx = x - previous_x;
  const double vy = y - previous_y;
@@ -131,6 +133,16 @@ double dynamic_clearance_for_command(
 
 } // namespace
 
+SafetyVerdict SafetyMonitor::diagnostic_verdict(
+ bool allow, SafetyState state, std::string reason) const {
+ SafetyVerdict verdict{allow, state, std::move(reason)};
+ verdict.static_command_envelope_radius_m =
+ std::max(0.0, config_.footprint_radius_m) +
+ std::max(0.0, config_.static_margin_m);
+ verdict.static_command_sweep.push_back({0.0, 0.0});
+ return verdict;
+}
+
 SafetyMonitor::SafetyMonitor(SafetyConfig config) : config_(config) {}
 
 void SafetyMonitor::reset() {
@@ -147,7 +159,7 @@ void SafetyMonitor::reset() {
  rear_min_m_ = std::numeric_limits<float>::infinity();
  front_min_m_ = std::numeric_limits<float>::infinity();
  omni_min_m_ = std::numeric_limits<float>::infinity();
-  last_ = {false, SafetyState::kStopped, "init"};
+ last_ = diagnostic_verdict(false, SafetyState::kStopped, "init");
 }
 
 SafetyVerdict SafetyMonitor::evaluate(
@@ -155,7 +167,7 @@ SafetyVerdict SafetyMonitor::evaluate(
     const iface::ObservationFrame& obs, const iface::ChannelHealth& channel,
     core::MonotonicNs now_ns) {
   if (latched_) {
-    last_ = {false, SafetyState::kStopped, latch_reason_};
+ last_ = diagnostic_verdict(false, SafetyState::kStopped, latch_reason_);
     return last_;
   }
  const core::MonotonicNs latest_scan_ns = iface::scan_stamp_ns(obs);
@@ -163,7 +175,7 @@ SafetyVerdict SafetyMonitor::evaluate(
  now_ns - latest_scan_ns > config_.stale_timeout_ns) {
     latched_ = true;
     latch_reason_ = "obs-stale";
-    last_ = {false, SafetyState::kStopped, latch_reason_};
+ last_ = diagnostic_verdict(false, SafetyState::kStopped, latch_reason_);
     return last_;
   }
  dynamic_escape_required_ = false;
@@ -275,7 +287,7 @@ SafetyVerdict SafetyMonitor::evaluate(
  if (physical_clearance < 0.0) {
       latched_ = true;
       latch_reason_ = "contact";
-      last_ = {false, SafetyState::kStopped, latch_reason_};
+ last_ = diagnostic_verdict(false, SafetyState::kStopped, latch_reason_);
       return last_;
     }
  const double padded_clearance =
@@ -305,7 +317,8 @@ SafetyVerdict SafetyMonitor::evaluate(
           (speed * speed) / (2.0 * config_.brake_decel_mps2);
       if (fwd_min < need_m) {
    reverse_recovery_ = true;
-        last_ = {false, SafetyState::kDegraded, "forward-proximity"};
+ last_ = diagnostic_verdict(
+ false, SafetyState::kDegraded, "forward-proximity");
         return last_;
       }
     }
@@ -317,28 +330,32 @@ SafetyVerdict SafetyMonitor::evaluate(
  std::isfinite(omni_min) && omni_min >= release_m) {
    reverse_recovery_ = false;
   } else {
-   last_ = {false, SafetyState::kDegraded, "forward-recovery"};
+ last_ = diagnostic_verdict(
+ false, SafetyState::kDegraded, "forward-recovery");
    return last_;
   }
  }
  if (static_proximity_) {
- last_ = {false, SafetyState::kDegraded, "static-proximity"};
+ last_ = diagnostic_verdict(
+ false, SafetyState::kDegraded, "static-proximity");
  return last_;
  }
   } else {
-    last_ = {false, SafetyState::kDegraded, "no-scan-evidence"};
+ last_ = diagnostic_verdict(
+ false, SafetyState::kDegraded, "no-scan-evidence");
     return last_;
   }
   if (channel.obs_dropped != last_drops_) {
     last_drops_ = channel.obs_dropped;
-    last_ = {false, SafetyState::kDegraded, "channel-drops"};
+ last_ = diagnostic_verdict(false, SafetyState::kDegraded, "channel-drops");
     return last_;
   }
  if (dynamic_escape_required_) {
- last_ = {false, SafetyState::kDegraded, "dynamic-proximity"};
+ last_ = diagnostic_verdict(
+ false, SafetyState::kDegraded, "dynamic-proximity");
  return last_;
  }
-  last_ = {true, SafetyState::kNominal, "nominal"};
+ last_ = diagnostic_verdict(true, SafetyState::kNominal, "nominal");
   return last_;
 }
 
@@ -364,6 +381,8 @@ iface::MotionCommand SafetyMonitor::gate(const iface::MotionCommand& cmd,
  last_.static_hold_clearance_m = hold_clearance;
  last_.static_command_min_clearance_m = projected.minimum_m;
  last_.static_command_terminal_clearance_m = projected.terminal_m;
+ last_.static_command_envelope_radius_m = envelope;
+ last_.static_command_sweep = projected.sweep;
  const double speed = std::hypot(cmd.forward_mps, cmd.lateral_mps);
  const bool nominally_clear = projected.minimum_m >= 0.0;
  const double comparison_tolerance =

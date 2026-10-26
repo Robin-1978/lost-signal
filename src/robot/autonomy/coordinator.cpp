@@ -520,6 +520,9 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  verdict.dynamic_hold_clearance_m;
  evidence.safety_dynamic_command_clearance_m =
  verdict.dynamic_command_clearance_m;
+ evidence.safety_static_envelope_radius_m =
+ verdict.static_command_envelope_radius_m;
+ evidence.safety_static_sweep = verdict.static_command_sweep;
   evidence.action_code = final_cmd.is_safe_stop() ? "stop" : "drive";
   evidence_.publish(std::move(evidence), now_ns * 1e-9);
  trajectory_tracking_.accept(

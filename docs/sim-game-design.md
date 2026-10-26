@@ -368,7 +368,8 @@ Coordinator 只串联定位、感知、规划、控制、安全和执行结果�
 - 任务目标使用独立的 GAME 表现信标：接地圆环、方向箭头、悬浮光点和脉冲只消费 `FramePlace` 的目标位姿、完成状态与固定 SIM step。箭头明确教授终态航向约束，绿色只表示任务层已完成；信标不参与传感器、定位、规划、碰撞或评分，并且暂停时不会继续动画。
 - 已把 ROBOT 匿名动态轨迹接入 2D/3D 工程视图：青色显示当前感知 footprint 和速度，紫色显示与 Behavior、DWA/TEB、Validator、Safety 共用的多假设预测，圆环显示随时间增长的显式不确定性包络；未成熟轨迹弱化并画成断续线。Frame 只从记录的 `Diagnostics::dynamic_tracks` 重建，测试用空间上不同的 SIM actor 证明 overlay 不读取 actor truth。战役运行态禁止开启 SIM actor 未来路线和真值雷达，只有复盘或开放沙盒允许显式真值诊断。
 - 已将 LiDAR 表现改为与 ROBOT mapping/validator 相同的 measured-twist deskew：端点按 observation 中每束真实 acquisition offset 重投影，青色明暗和点大小从旧束到 scan-end 束连续变化；无 offset 的冻结式设备保持同一时刻显示，miss 不生成端点。真值辅助扇仍只允许在显式 SIM 调试视图使用琥珀色。
-- 后续加入 costmap、footprint swept volume 和 Safety 区域。
+- 已把独立 Collision Monitor 实际使用的 reaction+braking sweep 下沉为 ROBOT `DecisionEvidence`：记录声明的 footprint+margin 半径和逐时刻 base-frame centerline，再只用 ROBOT estimate 转到 map frame。教学/工程视图据此绘制青色安全扫掠体；veto 时转红。Viewer 不从 SIM body、真值障碍或另一份制动参数猜测安全区，原始证据也可随 Episode 复盘。
+- 后续加入 local costmap 的 hard/linear inflation 和 planner footprint swept volume；它们必须与独立 Safety sweep 分层显示，避免把规划代价误讲成最后安全锁。
 - 验收：单轮低摩擦只在该轮产生滑移效果；干地无水花；关闭渲染不改变 episode。
 
 ### G4：探索战役垂直切片

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "robot/core/geometry.hpp"
+
 namespace lost_signal::robot::autonomy::diagnostics {
 
 // Presentation-neutral decision evidence owned by ROBOT. SIM and UI only
@@ -47,6 +49,8 @@ struct DecisionEvidence {
  std::numeric_limits<double>::infinity()};
  double safety_dynamic_command_clearance_m{
  std::numeric_limits<double>::infinity()};
+ double safety_static_envelope_radius_m{0.0};
+ std::vector<core::Vec2> safety_static_sweep;
  std::string outcome_code{"active"};
  std::uint64_t superseded_by{0};
 };

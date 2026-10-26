@@ -2002,6 +2002,31 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
   }
  // ROBOT scan projected by the recorded ROBOT estimate. Truth projection is
  // deliberately absent from the live overlay.
+ if (show_estimate &&
+ f.decision.safety_static_envelope_radius_m > 0.0 &&
+ !f.decision.safety_static_sweep.empty()) {
+ const bool veto = f.decision.safety_state != "NOMINAL";
+ const Color fill = veto ? Color{236, 82, 72, 42}
+ : Color{55, 218, 202, 32};
+ const Color edge = veto ? Color{236, 82, 72, 205}
+ : Color{55, 218, 202, 180};
+ const float radius_px = static_cast<float>(
+ f.decision.safety_static_envelope_radius_m * view.scale());
+ Vector2 previous{};
+ bool have_previous = false;
+ for (const auto& center : f.decision.safety_static_sweep) {
+ const auto projected = view.world_to_screen(center.first, center.second);
+ const Vector2 point{projected.x_px, projected.y_px};
+ if (have_previous) {
+ DrawLineEx(previous, point, std::max(1.0f, 2.0f * radius_px), fill);
+ DrawLineEx(previous, point, 1.5f, edge);
+ }
+ DrawCircleV(point, radius_px, fill);
+ DrawCircleLinesV(point, radius_px, edge);
+ previous = point;
+ have_previous = true;
+ }
+ }
   if (show_lidar && f.lidar_valid) {
  const auto o = view.world_to_screen(
  f.observation.projected_sensor_x_m,
@@ -2585,6 +2610,40 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
   }
  // ROBOT scan projected from the recorded ROBOT estimate. The truth-assisted
  // fan is held separately for an explicitly labeled evaluation view.
+ if (show_estimate &&
+ f.decision.safety_static_envelope_radius_m > 0.0 &&
+ !f.decision.safety_static_sweep.empty()) {
+ const bool veto = f.decision.safety_state != "NOMINAL";
+ const Color fill = veto ? Color{236, 82, 72, 36}
+ : Color{55, 218, 202, 28};
+ const Color edge = veto ? Color{236, 82, 72, 210}
+ : Color{55, 218, 202, 185};
+ const float radius = static_cast<float>(
+ f.decision.safety_static_envelope_radius_m);
+ const std::size_t stride = std::max<std::size_t>(
+ 1, f.decision.safety_static_sweep.size() / 16);
+ Vector3 previous{};
+ bool have_previous = false;
+ for (std::size_t i = 0;
+ i < f.decision.safety_static_sweep.size(); i += stride) {
+ const auto& center = f.decision.safety_static_sweep[i];
+ const Vector3 point = to_raylib(center.first, center.second, 0.018);
+ if (have_previous) DrawLine3D(previous, point, edge);
+ DrawCylinderEx(point, {point.x, point.y + 0.008f, point.z},
+ radius, radius, 32, fill);
+ DrawCircle3D(point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ previous = point;
+ have_previous = true;
+ }
+ const auto& terminal = f.decision.safety_static_sweep.back();
+ const Vector3 terminal_point = to_raylib(
+ terminal.first, terminal.second, 0.018);
+ if (have_previous && (previous.x != terminal_point.x ||
+ previous.z != terminal_point.z)) {
+ DrawLine3D(previous, terminal_point, edge);
+ DrawCircle3D(terminal_point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ }
+ }
   if (show_lidar && f.lidar_valid) {
  const Vector3 o = to_raylib(
  f.observation.projected_sensor_x_m,
@@ -4421,7 +4480,7 @@ int main(int argc, char** argv) {
  : "RUN");
  DrawText(hud, 10, 10, 14, BLACK);
  if (show_estimate) {
- DrawText("ROBOT AI cyan=perception purple=prediction rings=uncertainty",
+ DrawText("ROBOT AI cyan=perception/safety sweep purple=prediction rings=uncertainty",
  10, 32, 13, Color{78, 54, 132, 255});
  }
     if (edit_mode) {

@@ -44,6 +44,12 @@ struct SafetyVerdict {
  double dynamic_hold_clearance_m = std::numeric_limits<double>::infinity();
  double dynamic_command_clearance_m =
  std::numeric_limits<double>::infinity();
+ // Exact ROBOT-side collision-monitor envelope and base-frame centerline used
+ // to validate the proposed command through reaction + braking. Diagnostics
+ // and teaching overlays may render this evidence; it contains no map or SIM
+ // truth and never feeds back into planning.
+ double static_command_envelope_radius_m = 0.0;
+ std::vector<core::Vec2> static_command_sweep;
   bool allow_motion = false;
   SafetyState state = SafetyState::kStopped;
   std::string reason;  // stable code for logs/tests
@@ -150,6 +156,8 @@ class SafetyMonitor : public ISafetyMonitor {
   SafetyVerdict last_verdict() const override { return last_; }
 
  private:
+ SafetyVerdict diagnostic_verdict(bool allow, SafetyState state,
+ std::string reason) const;
   SafetyConfig config_;
  core::RigidTransform base_from_lidar_{{0.0, 0.0, 0.0},
  {0.0, 0.0, 0.0, 1.0}};

@@ -83,6 +83,9 @@ int main() {
  step.diag.evidence.reason_code = "trajectory-accepted";
  step.diag.evidence.route_point_count = 8;
  step.diag.evidence.prediction_horizon_s = 2.5;
+ step.diag.evidence.safety_static_envelope_radius_m = 0.5;
+ step.diag.evidence.safety_static_sweep = {
+ {0.0, 0.0}, {0.5, 0.0}, {1.0, 0.2}};
  robot::autonomy::DynamicTrack dynamic;
  dynamic.id = 17;
  dynamic.x_m = 8.0;
@@ -128,6 +131,14 @@ int main() {
  assert(f.decision.kAuthority == sim::viewer::FrameAuthority::kRobotDecision);
  assert(f.decision.valid && f.decision.action_code == "follow-route");
  assert(f.decision.safety_state == "NOMINAL");
+ assert(f.decision.safety_static_envelope_radius_m == 0.5);
+ assert(f.decision.safety_static_sweep.size() == 3);
+ assert(std::abs(f.decision.safety_static_sweep[0].first - 1.1) < 1e-12);
+ assert(std::abs(f.decision.safety_static_sweep[0].second - 1.9) < 1e-12);
+ const double sweep_x = 1.1 + std::cos(0.4) - 0.2 * std::sin(0.4);
+ const double sweep_y = 1.9 + std::sin(0.4) + 0.2 * std::cos(0.4);
+ assert(std::abs(f.decision.safety_static_sweep[2].first - sweep_x) < 1e-12);
+ assert(std::abs(f.decision.safety_static_sweep[2].second - sweep_y) < 1e-12);
  assert(std::abs(f.decision.command_forward_mps - 0.25) < 1e-12);
  assert(f.evaluation.kAuthority ==
  sim::viewer::FrameAuthority::kGameEvaluation);

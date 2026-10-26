@@ -80,6 +80,10 @@ struct FrameDecisionTelemetry {
  double command_yaw_rate_radps = 0.0;
  std::size_t route_point_count = 0;
  std::size_t moving_candidate_count = 0;
+ double safety_static_envelope_radius_m = 0.0;
+ // Map-frame centerline of the exact raw-scan collision-monitor sweep. It is
+ // transformed from ROBOT decision evidence with the ROBOT estimate only.
+ std::vector<std::pair<double, double>> safety_static_sweep;
 };
 
 struct FrameEvaluationTelemetry {
