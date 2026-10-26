@@ -59,7 +59,23 @@ int main() {
  assert(flow.update(15, false));
  assert(flow.phase() == ExperiencePhase::kDebrief);
  assert(flow.timed_out());
+ assert(flow.baseline_complete());
+ assert(!flow.comparison_complete());
+ assert(flow.run_kind() == ExperienceRunKind::kBaseline);
  assert(!flow.update(16, true));
+ assert(flow.start_variant(0));
+ assert(flow.phase() == ExperiencePhase::kRunning);
+ assert(flow.run_kind() == ExperienceRunKind::kVariant);
+ assert(flow.selected_choice() == 2);
+ assert(flow.update(3, true));
+ assert(flow.comparison_complete());
+ assert(!flow.start_variant(0));
+ assert(flow.retry_current(0));
+ assert(flow.phase() == ExperiencePhase::kRunning);
+ assert(flow.baseline_complete());
+ assert(!flow.comparison_complete());
+ assert(flow.update(4, true));
+ assert(flow.comparison_complete());
 
  flow.reset();
  assert(flow.phase() == ExperiencePhase::kBriefing);
@@ -67,6 +83,26 @@ int main() {
  assert(!flow.timed_out());
  assert(flow.walkaround_visited_count() == 1);
  assert(!flow.continue_to_prediction());
+
+ // Optional detail cards stay inspectable without blocking the experiment.
+ ExperienceFlow focused({4, 3, 10, {true, false, true, false}});
+ assert(focused.required_walkaround_count() == 2);
+ assert(focused.required_walkaround_visited_count() == 1);
+ assert(!focused.walkaround_complete());
+ focused.inspect(2);
+ assert(focused.walkaround_index() == 2);
+ assert(focused.walkaround_visited(2));
+ assert(focused.required_walkaround_visited_count() == 2);
+ assert(focused.walkaround_complete());
+ assert(focused.continue_to_prediction());
+
+ rejected = false;
+ try {
+ (void)ExperienceFlow({4, 3, 10, {true, false}});
+ } catch (const std::invalid_argument&) {
+ rejected = true;
+ }
+ assert(rejected);
 
  ExperienceFlow direct({0, 3, 10});
  assert(direct.walkaround_complete());

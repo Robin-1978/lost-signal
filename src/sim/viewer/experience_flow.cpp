@@ -26,7 +26,15 @@ ExperienceFlow::ExperienceFlow(Config config) : config_(config) {
  if (config_.choice_count < 2 || config_.choice_count > 4) {
  throw std::invalid_argument("experience flow needs two to four choices");
  }
+ if (!config_.required_walkaround.empty() &&
+ config_.required_walkaround.size() != config_.walkaround_count) {
+ throw std::invalid_argument(
+ "experience flow needs one required flag per walkaround stop");
+ }
  walkaround_visited_.assign(config_.walkaround_count, false);
+ walkaround_required_ = config_.required_walkaround.empty()
+ ? std::vector<bool>(config_.walkaround_count, true)
+ : config_.required_walkaround;
  if (!walkaround_visited_.empty()) walkaround_visited_.front() = true;
 }
 
@@ -36,7 +44,27 @@ std::size_t ExperienceFlow::walkaround_visited_count() const {
 }
 
 bool ExperienceFlow::walkaround_complete() const {
- return walkaround_visited_count() == walkaround_visited_.size();
+ for (std::size_t index = 0; index < walkaround_visited_.size(); ++index) {
+ if (walkaround_required_[index] && !walkaround_visited_[index]) return false;
+ }
+ return true;
+}
+
+std::size_t ExperienceFlow::required_walkaround_count() const {
+ return static_cast<std::size_t>(std::count(
+ walkaround_required_.begin(), walkaround_required_.end(), true));
+}
+
+std::size_t ExperienceFlow::required_walkaround_visited_count() const {
+ std::size_t count = 0;
+ for (std::size_t index = 0; index < walkaround_visited_.size(); ++index) {
+ if (walkaround_required_[index] && walkaround_visited_[index]) ++count;
+ }
+ return count;
+}
+
+bool ExperienceFlow::walkaround_visited(std::size_t index) const {
+ return index < walkaround_visited_.size() && walkaround_visited_[index];
 }
 
 void ExperienceFlow::inspect_previous() {
@@ -52,6 +80,13 @@ void ExperienceFlow::inspect_next() {
  config_.walkaround_count == 0) return;
  walkaround_index_ = (walkaround_index_ + 1) % config_.walkaround_count;
  walkaround_visited_[walkaround_index_] = true;
+}
+
+void ExperienceFlow::inspect(std::size_t index) {
+ if (phase_ != ExperiencePhase::kBriefing ||
+ index >= walkaround_visited_.size()) return;
+ walkaround_index_ = index;
+ walkaround_visited_[index] = true;
 }
 
 bool ExperienceFlow::continue_to_prediction() {
@@ -71,12 +106,38 @@ bool ExperienceFlow::select_choice(std::size_t choice_index,
  return true;
 }
 
+bool ExperienceFlow::start_variant(std::uint64_t episode_steps) {
+ if (phase_ != ExperiencePhase::kDebrief || !baseline_complete_ ||
+ run_kind_ != ExperienceRunKind::kBaseline) return false;
+ run_kind_ = ExperienceRunKind::kVariant;
+ comparison_complete_ = false;
+ end_reason_ = ExperienceEndReason::kNone;
+ running_start_step_ = episode_steps;
+ phase_ = ExperiencePhase::kRunning;
+ return true;
+}
+
+bool ExperienceFlow::retry_current(std::uint64_t episode_steps) {
+ if (phase_ != ExperiencePhase::kDebrief) return false;
+ if (run_kind_ == ExperienceRunKind::kBaseline) {
+ baseline_complete_ = false;
+ } else {
+ comparison_complete_ = false;
+ }
+ end_reason_ = ExperienceEndReason::kNone;
+ running_start_step_ = episode_steps;
+ phase_ = ExperiencePhase::kRunning;
+ return true;
+}
+
 bool ExperienceFlow::update(std::uint64_t episode_steps,
  bool scenario_finished) {
  if (phase_ != ExperiencePhase::kRunning) return false;
  if (scenario_finished) {
  phase_ = ExperiencePhase::kDebrief;
  end_reason_ = ExperienceEndReason::kScenarioFinished;
+ if (run_kind_ == ExperienceRunKind::kBaseline) baseline_complete_ = true;
+ else comparison_complete_ = true;
  return true;
  }
  const std::uint64_t elapsed = episode_steps >= running_start_step_
@@ -84,6 +145,8 @@ bool ExperienceFlow::update(std::uint64_t episode_steps,
  if (config_.time_limit_steps > 0 && elapsed >= config_.time_limit_steps) {
  phase_ = ExperiencePhase::kDebrief;
  end_reason_ = ExperienceEndReason::kTimeLimit;
+ if (run_kind_ == ExperienceRunKind::kBaseline) baseline_complete_ = true;
+ else comparison_complete_ = true;
  return true;
  }
  return false;
@@ -97,6 +160,9 @@ void ExperienceFlow::reset() {
  if (!walkaround_visited_.empty()) walkaround_visited_.front() = true;
  selected_choice_ = -1;
  running_start_step_ = 0;
+ run_kind_ = ExperienceRunKind::kBaseline;
+ baseline_complete_ = false;
+ comparison_complete_ = false;
 }
 
 } // namespace lost_signal::sim::viewer
