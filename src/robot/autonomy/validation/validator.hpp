@@ -69,6 +69,11 @@ struct ValidationResult {
  double terminal_dynamic_clearance_m =
  std::numeric_limits<double>::infinity();
  double hold_dynamic_clearance_m = std::numeric_limits<double>::infinity();
+ // Map-frame centerline and envelope used by the validator for this exact
+ // candidate. These are copied only for the finally selected verdict; they
+ // never feed the controller or planner.
+ double swept_envelope_radius_m = 0.0;
+ std::vector<core::Vec2> swept_centerline;
   std::string reason;
 };
 
@@ -393,7 +398,10 @@ class ClearanceValidator : public IValidator {
       out.reason = "clear";
       return out;
     }
-    // Full trajectory validation from a valid estimate.
+ // Full trajectory validation from a valid estimate.
+ out.swept_envelope_radius_m = std::max(
+ 0.0, config_.footprint_radius_m + config_.extra_margin_m);
+ out.swept_centerline.push_back({est.x_m, est.y_m});
     // Endpoints in the map frame: raw evidence, independent of the mapper.
     // Surveyed ground returns are excluded (same classifier as the sector
     // above, so the two cannot disagree on what counts as ground).
@@ -473,6 +481,7 @@ class ClearanceValidator : public IValidator {
         ay = est.y_m + (candidate.forward_mps * std::sin(est.yaw_rad) +
                         lat * std::cos(est.yaw_rad)) * t;
       }
+ out.swept_centerline.push_back({ax, ay});
       double sample_min = std::numeric_limits<double>::infinity();
       const double vx = ax - prev_x;
                 const double vy = ay - prev_y;

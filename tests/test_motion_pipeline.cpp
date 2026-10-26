@@ -53,6 +53,10 @@ class RankedPlanner final : public ILocalPlanner {
  const platform::ChassisLimits&) override {
  LocalPlan result;
  result.has_plan = true;
+ result.local_costmap.resolution_m = 0.1;
+ result.local_costmap.width = 1;
+ result.local_costmap.height = 1;
+ result.local_costmap.cells = {0};
  LocalCandidate fast;
  fast.feasible = true;
  fast.forward_mps = 1.0;
@@ -142,6 +146,8 @@ class SpeedValidator final : public IValidator {
  result.accepted = true;
  result.verdict = TrajectoryVerdict::kAccepted;
  result.min_dynamic_clearance_m = 1.0;
+ result.swept_envelope_radius_m = 0.5;
+ result.swept_centerline = {{0.0, 0.0}, {candidate.forward_mps, 0.0}};
  result.reason = "clear";
  return result;
  }
@@ -204,6 +210,10 @@ int main() {
  assert(!selected.command.is_safe_stop());
  assert(selected.command.forward_mps == 0.2);
  assert(selected.reason == "clear");
+ assert(selected.local_costmap.valid());
+ assert(selected.validated_swept_envelope_radius_m == 0.5);
+ assert(selected.validated_swept_centerline.size() == 2);
+ assert(selected.validated_swept_centerline.back().x == 0.2);
 
  // A true empty proposal set on a valid route invokes bounded recovery.
  // This is distinct from the no-goal case, which remains a hold.

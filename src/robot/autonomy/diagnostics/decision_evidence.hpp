@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "robot/autonomy/mapping/mapper.hpp"
 #include "robot/core/geometry.hpp"
 
 namespace lost_signal::robot::autonomy::diagnostics {
@@ -40,6 +41,9 @@ struct DecisionEvidence {
  std::numeric_limits<double>::infinity()};
  double validator_static_clearance_m{
  std::numeric_limits<double>::infinity()};
+ LocalCostmapDiagnostic local_costmap;
+ double validator_swept_envelope_radius_m{0.0};
+ std::vector<core::Vec2> validator_swept_centerline;
  double safety_hold_clearance_m{std::numeric_limits<double>::infinity()};
  double safety_command_clearance_m{
  std::numeric_limits<double>::infinity()};

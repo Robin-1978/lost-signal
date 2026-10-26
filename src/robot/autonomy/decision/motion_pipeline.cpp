@@ -65,6 +65,11 @@ MotionDecisionResult MotionDecisionPipeline::run(
  hold.feasible = true;
  const ValidationResult hold_verdict = validator.validate(
  hold, est, perception, prediction, observation, survey);
+ const auto record_validation = [&](const ValidationResult& verdict) {
+ out.validated_swept_envelope_radius_m =
+ verdict.swept_envelope_radius_m;
+ out.validated_swept_centerline = verdict.swept_centerline;
+ };
  const bool hold_dynamically_unsafe =
  hold_verdict.verdict == TrajectoryVerdict::kDynamicCollision;
 
@@ -95,6 +100,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  ? hold_verdict.reason
  : out.behavior.reason;
  out.command = controller.track(hold, est, now_ns);
+ record_validation(hold_verdict);
  return out;
  }
 
@@ -105,6 +111,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  }
  const LocalPlan plan = local_planner.plan(
  est, perception, prediction, local_map, route, effective);
+ out.local_costmap = plan.local_costmap;
  out.route_replan_requested = plan.route_replan_requested;
  out.route_point_count = route.points.size();
  out.route_segment = plan.route_segment;
@@ -246,6 +253,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.reason = hold_verdict.accepted ? hold_verdict.reason : "no-route-hold";
  if (hold_verdict.accepted) {
  out.command = controller.track(hold, est, now_ns);
+ record_validation(hold_verdict);
  }
  return out;
  }
@@ -268,6 +276,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.validated_static_clearance_m = selected.verdict.min_clearance_m;
  out.validated_dynamic_clearance_m = selected.verdict.min_dynamic_clearance_m;
  out.trajectory_verdict = selected.verdict.verdict;
+ record_validation(selected.verdict);
  out.reason = selected.verdict.reason;
  if (selected.candidate.forward_mps == 0.0 &&
  selected.candidate.yaw_rate_radps == 0.0 &&
@@ -496,6 +505,7 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.validated_dynamic_clearance_m =
  best_recovery.verdict.min_dynamic_clearance_m;
  out.trajectory_verdict = best_recovery.verdict.verdict;
+ record_validation(best_recovery.verdict);
  out.reason = "recovery:" + best_recovery.verdict.reason;
  if (planner_candidates.empty()) {
  out.reason += "; planner=no-candidate; gear=" +
@@ -511,11 +521,17 @@ MotionDecisionResult MotionDecisionPipeline::run(
  out.validated_static_clearance_m = selected.verdict.min_clearance_m;
  out.validated_dynamic_clearance_m = selected.verdict.min_dynamic_clearance_m;
  out.trajectory_verdict = selected.verdict.verdict;
+ record_validation(selected.verdict);
  out.reason = selected.verdict.reason;
  } else if (have_rejection) {
  out.reason = "planner candidates rejected: " + first_rejection.reason;
  } else {
  out.reason = "no-plan; recovery rejected";
+ }
+
+ if (out.validated_swept_centerline.empty() && hold_verdict.accepted &&
+ out.command.is_safe_stop()) {
+ record_validation(hold_verdict);
  }
 
  if (!iface::valid_motion_command(out.command, now_ns)) {

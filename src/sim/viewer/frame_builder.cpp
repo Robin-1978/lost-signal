@@ -387,6 +387,22 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.decision.command_yaw_rate_radps = step.cmd.yaw_rate_radps;
  f.decision.route_point_count = evidence.route_point_count;
  f.decision.moving_candidate_count = evidence.moving_candidate_count;
+ if (evidence.local_costmap.valid()) {
+ f.decision.local_costmap_resolution_m =
+ evidence.local_costmap.resolution_m;
+ f.decision.local_costmap_width = evidence.local_costmap.width;
+ f.decision.local_costmap_height = evidence.local_costmap.height;
+ f.decision.local_costmap_origin_x_m = evidence.local_costmap.origin_x_m;
+ f.decision.local_costmap_origin_y_m = evidence.local_costmap.origin_y_m;
+ f.decision.local_costmap_cells = evidence.local_costmap.cells;
+ }
+ f.decision.validator_swept_envelope_radius_m =
+ std::max(0.0, evidence.validator_swept_envelope_radius_m);
+ f.decision.validator_swept_centerline.reserve(
+ evidence.validator_swept_centerline.size());
+ for (const auto& point : evidence.validator_swept_centerline) {
+ f.decision.validator_swept_centerline.emplace_back(point.x, point.y);
+ }
  f.decision.safety_static_envelope_radius_m =
  std::max(0.0, evidence.safety_static_envelope_radius_m);
  if (step.diag.estimate.valid) {

@@ -57,6 +57,9 @@ struct LocalPlan {
  bool gear_change_pending = false;
  bool gear_change_braking_armed = false;
  double gear_change_endpoint_distance_m = 0.0;
+ // Exact planner cost representation, quantized only after planning for
+ // bounded diagnostics. It is not an input to planning or validation.
+ LocalCostmapDiagnostic local_costmap;
   LocalCandidate best;
  // Planner-ranked proposals. Safety selection happens after generation:
  // one high-scoring proposal failing the independent validator must not

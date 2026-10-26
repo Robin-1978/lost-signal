@@ -157,6 +157,9 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  route, offset, std::max(0.0, config_.topology_transition_m));
  LocalPlan proposal = branch.plan(
  est, perception, prediction, map, seeded_route, limits);
+ if (!combined.local_costmap.valid() && proposal.local_costmap.valid()) {
+ combined.local_costmap = proposal.local_costmap;
+ }
  if (!proposal.has_plan) continue;
  for (auto candidate : proposal.candidates) {
  const bool duplicate = std::any_of(
@@ -239,6 +242,7 @@ LocalPlan TebPlanner::plan(const EstimatedState& est,
  const LocalCostmap costmap = make_local_costmap(
  map, required_clearance,
  std::max(map.resolution_m, config_.soft_inflation_radius_m));
+ out.local_costmap = make_local_costmap_diagnostic(costmap);
  if (warm_band.size() == last_band_.size() && !warm_band.empty() &&
  std::hypot(warm_band.front().position.x - est.x_m,
  warm_band.front().position.y - est.y_m) <=

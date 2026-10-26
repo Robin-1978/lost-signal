@@ -145,6 +145,9 @@ core::Status AutonomyCoordinator::configure() {
  std::numeric_limits<double>::infinity();
  last_validated_dynamic_clearance_m_ =
  std::numeric_limits<double>::infinity();
+ last_local_costmap_ = {};
+ last_validated_swept_envelope_radius_m_ = 0.0;
+ last_validated_swept_centerline_.clear();
  last_route_point_count_ = 0;
  last_route_segment_ = 0;
  last_moving_candidate_count_ = 0;
@@ -206,6 +209,9 @@ core::Status AutonomyCoordinator::cleanup() {
  std::numeric_limits<double>::infinity();
  last_validated_dynamic_clearance_m_ =
  std::numeric_limits<double>::infinity();
+ last_local_costmap_ = {};
+ last_validated_swept_envelope_radius_m_ = 0.0;
+ last_validated_swept_centerline_.clear();
  last_route_point_count_ = 0;
  last_route_segment_ = 0;
  last_moving_candidate_count_ = 0;
@@ -421,6 +427,11 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  last_reason_ = reason;
  last_validated_static_clearance_m_ = motion.validated_static_clearance_m;
  last_validated_dynamic_clearance_m_ = motion.validated_dynamic_clearance_m;
+ last_local_costmap_ = std::move(motion.local_costmap);
+ last_validated_swept_envelope_radius_m_ =
+ motion.validated_swept_envelope_radius_m;
+ last_validated_swept_centerline_ =
+ std::move(motion.validated_swept_centerline);
  last_route_point_count_ = motion.route_point_count;
  last_route_segment_ = motion.route_segment;
  last_moving_candidate_count_ = motion.moving_candidate_count;
@@ -509,6 +520,11 @@ has_goal_, map, force_route_refresh, reset_local_plan,
  last_gear_change_endpoint_distance_m_;
  evidence.validator_static_clearance_m =
  last_validated_static_clearance_m_;
+ evidence.local_costmap = last_local_costmap_;
+ evidence.validator_swept_envelope_radius_m =
+ last_validated_swept_envelope_radius_m_;
+ evidence.validator_swept_centerline =
+ last_validated_swept_centerline_;
  evidence.predicted_separation_m = last_validated_dynamic_clearance_m_;
  evidence.safety_hold_clearance_m = verdict.static_hold_clearance_m;
  evidence.measured_separation_m = verdict.static_hold_clearance_m;

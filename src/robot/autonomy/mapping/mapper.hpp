@@ -99,6 +99,38 @@ struct LocalCostmap {
  float cost_at(double wx, double wy) const;
 };
 
+// Bounded, presentation-neutral record of the exact costmap consumed by a
+// local planner. One byte per output cell keeps decision history bounded:
+// 0 is observed free, 1..253 is the linear soft cost, 254 is lethal
+// inflation, and 255 is unknown. Downsampling is conservative over each
+// source block (lethal first, then unknown, then maximum soft cost), so the
+// diagnostic can never visually erase a planner veto.
+struct LocalCostmapDiagnostic {
+ static constexpr std::uint8_t kLethal = 254;
+ static constexpr std::uint8_t kUnknown = 255;
+
+ double resolution_m = 0.0;
+ std::uint32_t width = 0;
+ std::uint32_t height = 0;
+ double origin_x_m = 0.0;
+ double origin_y_m = 0.0;
+ std::vector<std::uint8_t> cells;
+
+ bool valid() const {
+ return resolution_m > 0.0 && width > 0 && height > 0 &&
+ cells.size() == static_cast<std::size_t>(width) * height;
+ }
+};
+
+// A 64x64 byte slice is detailed enough for a rolling local planning window
+// while bounding each retained decision record to four KiB. The budget is a
+// diagnostics transport policy; it never changes planner resolution or cost.
+inline constexpr std::size_t kLocalCostmapDiagnosticMaximumCells = 64 * 64;
+
+LocalCostmapDiagnostic make_local_costmap_diagnostic(
+ const LocalCostmap& costmap,
+ std::size_t maximum_cells = kLocalCostmapDiagnosticMaximumCells);
+
 LocalCostmap make_local_costmap(const LocalMap& source,
  double lethal_radius_m, double soft_radius_m);
 

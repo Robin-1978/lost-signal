@@ -664,6 +664,7 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const LocalCostmap costmap = make_local_costmap(
  map, std::max(0.0, ego_radius),
  std::max(0.0, config_.soft_inflation_radius_m));
+ out.local_costmap = make_local_costmap_diagnostic(costmap);
 
  // Only the current route neighborhood can affect a finite rollout. Find
  // progress once on the complete route, then score every candidate against

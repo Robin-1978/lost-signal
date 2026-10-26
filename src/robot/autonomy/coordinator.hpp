@@ -233,6 +233,9 @@ class AutonomyCoordinator : public lifecycle::ILifecycleModule {
  std::numeric_limits<double>::infinity();
  double last_validated_dynamic_clearance_m_ =
  std::numeric_limits<double>::infinity();
+ LocalCostmapDiagnostic last_local_costmap_;
+ double last_validated_swept_envelope_radius_m_ = 0.0;
+ std::vector<core::Vec2> last_validated_swept_centerline_;
  std::size_t last_route_point_count_ = 0;
  std::size_t last_route_segment_ = 0;
  std::size_t last_moving_candidate_count_ = 0;

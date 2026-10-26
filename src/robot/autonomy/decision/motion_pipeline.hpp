@@ -38,6 +38,9 @@ struct MotionDecisionResult {
  bool gear_change_braking_armed = false;
  double gear_change_endpoint_distance_m =
  std::numeric_limits<double>::infinity();
+ LocalCostmapDiagnostic local_costmap;
+ double validated_swept_envelope_radius_m = 0.0;
+ std::vector<core::Vec2> validated_swept_centerline;
 };
 
 class MotionDecisionPipeline {

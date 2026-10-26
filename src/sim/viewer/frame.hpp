@@ -90,6 +90,18 @@ struct FrameDecisionTelemetry {
  double command_yaw_rate_radps = 0.0;
  std::size_t route_point_count = 0;
  std::size_t moving_candidate_count = 0;
+ double local_costmap_resolution_m = 0.0;
+ std::uint32_t local_costmap_width = 0;
+ std::uint32_t local_costmap_height = 0;
+ double local_costmap_origin_x_m = 0.0;
+ double local_costmap_origin_y_m = 0.0;
+ // Same encoding as ROBOT LocalCostmapDiagnostic: 0 free, 1..253 soft,
+ // 254 lethal inflation, 255 unknown.
+ std::vector<std::uint8_t> local_costmap_cells;
+ double validator_swept_envelope_radius_m = 0.0;
+ // Map-frame centerline of the final candidate actually accepted by the
+ // independent trajectory validator.
+ std::vector<std::pair<double, double>> validator_swept_centerline;
  double safety_static_envelope_radius_m = 0.0;
  // Map-frame centerline of the exact raw-scan collision-monitor sweep. It is
  // transformed from ROBOT decision evidence with the ROBOT estimate only.

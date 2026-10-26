@@ -82,6 +82,20 @@ int main() {
  corner_cost.cost_at(-0.25, -0.15));
  assert(corner_cost.cost_at(-0.25, -0.15) >
  corner_cost.cost_at(-0.45, -0.45));
+
+ // Diagnostic downsampling is conservative and bounded. A lethal source
+ // cell wins its output block; otherwise unknown wins over a soft/free mix.
+ LocalMap diagnostic_source = make_map(4, 4, 0.1, 0.0, 0.0, 0);
+ diagnostic_source.occupancy[0] = 100;
+ diagnostic_source.occupancy[15] = -1;
+ const LocalCostmap diagnostic_costmap = make_local_costmap(
+ diagnostic_source, 0.0, 0.15);
+ const LocalCostmapDiagnostic diagnostic =
+ make_local_costmap_diagnostic(diagnostic_costmap, 4);
+ assert(diagnostic.valid());
+ assert(diagnostic.cells.size() <= 4);
+ assert(diagnostic.cells.front() == LocalCostmapDiagnostic::kLethal);
+ assert(diagnostic.cells.back() == LocalCostmapDiagnostic::kUnknown);
   }
 
   // DWA on an open map drives toward the route goal, deterministically.
@@ -100,7 +114,10 @@ int main() {
     DwaPlanner planner;
     LocalPlan a = planner.plan(est, perc, m, route, limits);
     LocalPlan b = planner.plan(est, perc, m, route, limits);
-    assert(a.has_plan && a.best.feasible);
+ assert(a.has_plan && a.best.feasible);
+ assert(a.local_costmap.valid());
+ assert(a.local_costmap.cells.size() <=
+ kLocalCostmapDiagnosticMaximumCells);
     assert(a.best.forward_mps > 0.0);  // moves, not a hold
     assert(a.best.forward_mps == b.best.forward_mps &&
            a.best.yaw_rate_radps == b.best.yaw_rate_radps);

@@ -567,6 +567,13 @@ int main() {
  ValidationResult swept = sweep.validate(skim, est, ok, thin);
  assert(!swept.accepted &&
  swept.verdict == TrajectoryVerdict::kStaticCollision);
+ assert(std::abs(swept.swept_envelope_radius_m - 0.1) < 1e-12);
+ assert(swept.swept_centerline.size() >= 4);
+ assert(std::abs(swept.swept_centerline.front().x) < 1e-12);
+ for (std::size_t i = 0; i < swept.swept_centerline.size(); ++i) {
+ assert(std::abs(swept.swept_centerline[i].x - 0.2 * i) < 1e-12);
+ assert(std::abs(swept.swept_centerline[i].y) < 1e-12);
+ }
  }
 
     // Minimum-risk escape: obstacle inside the margin behind the base

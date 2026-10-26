@@ -2002,6 +2002,66 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     const auto s = view.world_to_screen(p.x_m, p.y_m);
     DrawCircleLines(s.x_px, s.y_px, 12.0f, RED);
   }
+ // Exact local-planner costmap exported by ROBOT. The viewer does not
+ // reconstruct inflation policy: it only colors the bounded quantized cells
+ // that DWA/TEB actually consumed.
+ if (show_estimate && f.decision.local_costmap_resolution_m > 0.0 &&
+ f.decision.local_costmap_width > 0 &&
+ f.decision.local_costmap_height > 0 &&
+ f.decision.local_costmap_cells.size() ==
+ static_cast<std::size_t>(f.decision.local_costmap_width) *
+ f.decision.local_costmap_height) {
+ const double resolution = f.decision.local_costmap_resolution_m;
+ for (std::uint32_t gy = 0; gy < f.decision.local_costmap_height; ++gy) {
+ for (std::uint32_t gx = 0; gx < f.decision.local_costmap_width; ++gx) {
+ const std::uint8_t cell = f.decision.local_costmap_cells[
+ static_cast<std::size_t>(gy) * f.decision.local_costmap_width + gx];
+ if (cell == 0) continue;
+ Color color{};
+ if (cell == 255) {
+ color = {100, 116, 139, 18};
+ } else if (cell == 254) {
+ color = {239, 68, 68, 58};
+ } else {
+ color = {245, 158, 11,
+ static_cast<unsigned char>(14 + 54 * cell / 253)};
+ }
+ const double x0 = f.decision.local_costmap_origin_x_m + gx * resolution;
+ const double y0 = f.decision.local_costmap_origin_y_m + gy * resolution;
+ const auto a = view.world_to_screen(x0, y0);
+ const auto b = view.world_to_screen(x0 + resolution, y0 + resolution);
+ DrawRectangleRec(
+ {std::min(a.x_px, b.x_px), std::min(a.y_px, b.y_px),
+ std::abs(b.x_px - a.x_px) + 0.5f,
+ std::abs(b.y_px - a.y_px) + 0.5f},
+ color);
+ }
+ }
+ }
+ // Lime is the exact final candidate accepted by the validator. It stays
+ // distinct from the independent cyan/red reaction-and-braking safety sweep.
+ if (show_estimate &&
+ f.decision.validator_swept_envelope_radius_m > 0.0 &&
+ !f.decision.validator_swept_centerline.empty()) {
+ const Color fill{132, 204, 22, 32};
+ const Color edge{163, 230, 53, 205};
+ const float radius_px = static_cast<float>(
+ f.decision.validator_swept_envelope_radius_m * view.scale());
+ Vector2 previous{};
+ bool have_previous = false;
+ for (const auto& center : f.decision.validator_swept_centerline) {
+ const auto projected = view.world_to_screen(center.first, center.second);
+ const Vector2 point{projected.x_px, projected.y_px};
+ if (have_previous) {
+ DrawLineEx(previous, point, std::max(1.0f, 2.0f * radius_px), fill);
+ DrawLineEx(previous, point, 1.5f, edge);
+ }
+ DrawCircleV(point, radius_px, fill);
+ DrawCircleLinesV(point, radius_px, edge);
+ previous = point;
+ have_previous = true;
+ }
+ }
  // ROBOT scan projected by the recorded ROBOT estimate. Truth projection is
  // deliberately absent from the live overlay.
  if (show_estimate &&
@@ -2669,6 +2729,88 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
                  {150, 100, 220, 180});
     }
   }
+ // Costmap evidence stays on the rendered ground for legibility. Terrain
+ // sampling happens only in SIM presentation and never returns to ROBOT.
+ if (show_estimate && f.decision.local_costmap_resolution_m > 0.0 &&
+ f.decision.local_costmap_width > 0 &&
+ f.decision.local_costmap_height > 0 &&
+ f.decision.local_costmap_cells.size() ==
+ static_cast<std::size_t>(f.decision.local_costmap_width) *
+ f.decision.local_costmap_height) {
+ const double resolution = f.decision.local_costmap_resolution_m;
+ const auto is_unknown_frontier = [&](std::uint32_t x, std::uint32_t y) {
+ const std::uint32_t width = f.decision.local_costmap_width;
+ const std::uint32_t height = f.decision.local_costmap_height;
+ const int dx[4] = {-1, 1, 0, 0};
+ const int dy[4] = {0, 0, -1, 1};
+ for (int n = 0; n < 4; ++n) {
+ const int nx = static_cast<int>(x) + dx[n];
+ const int ny = static_cast<int>(y) + dy[n];
+ if (nx < 0 || ny < 0 || nx >= static_cast<int>(width) ||
+ ny >= static_cast<int>(height)) continue;
+ if (f.decision.local_costmap_cells[
+ static_cast<std::size_t>(ny) * width + nx] != 255) return true;
+ }
+ return false;
+ };
+ for (std::uint32_t gy = 0; gy < f.decision.local_costmap_height; ++gy) {
+ for (std::uint32_t gx = 0; gx < f.decision.local_costmap_width; ++gx) {
+ const std::uint8_t cell = f.decision.local_costmap_cells[
+ static_cast<std::size_t>(gy) * f.decision.local_costmap_width + gx];
+ if (cell == 0 || (cell == 255 && !is_unknown_frontier(gx, gy))) continue;
+ Color color{};
+ if (cell == 255) {
+ color = {100, 116, 139, 42};
+ } else if (cell == 254) {
+ color = {239, 68, 68, 78};
+ } else {
+ color = {245, 158, 11,
+ static_cast<unsigned char>(20 + 65 * cell / 253)};
+ }
+ const double cx = f.decision.local_costmap_origin_x_m +
+ (gx + 0.5) * resolution;
+ const double cy = f.decision.local_costmap_origin_y_m +
+ (gy + 0.5) * resolution;
+ const double ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(), cx, cy).height_m + 0.012;
+ DrawCubeV(to_raylib(cx, cy, ground_z),
+ {static_cast<float>(resolution), 0.006f,
+ static_cast<float>(resolution)}, color);
+ }
+ }
+ }
+ if (show_estimate &&
+ f.decision.validator_swept_envelope_radius_m > 0.0 &&
+ !f.decision.validator_swept_centerline.empty()) {
+ const float radius = static_cast<float>(
+ f.decision.validator_swept_envelope_radius_m);
+ const Color fill{132, 204, 22, 34};
+ const Color edge{163, 230, 53, 210};
+ const std::size_t stride = std::max<std::size_t>(
+ 1, f.decision.validator_swept_centerline.size() / 20);
+ Vector3 previous{};
+ bool have_previous = false;
+ for (std::size_t i = 0;
+ i < f.decision.validator_swept_centerline.size(); i += stride) {
+ const auto& center = f.decision.validator_swept_centerline[i];
+ const Vector3 point = to_raylib(center.first, center.second, 0.021);
+ if (have_previous) DrawLine3D(previous, point, edge);
+ DrawCylinderEx(point, {point.x, point.y + 0.006f, point.z},
+ radius, radius, 32, fill);
+ DrawCircle3D(point, radius, {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ previous = point;
+ have_previous = true;
+ }
+ const auto& terminal = f.decision.validator_swept_centerline.back();
+ const Vector3 terminal_point = to_raylib(
+ terminal.first, terminal.second, 0.021);
+ if (have_previous && (previous.x != terminal_point.x ||
+ previous.z != terminal_point.z)) {
+ DrawLine3D(previous, terminal_point, edge);
+ DrawCircle3D(terminal_point, radius,
+ {1.0f, 0.0f, 0.0f}, 90.0f, edge);
+ }
+ }
  // ROBOT scan projected from the recorded ROBOT estimate. The truth-assisted
  // fan is held separately for an explicitly labeled evaluation view.
  if (show_estimate &&
@@ -4632,7 +4774,7 @@ int main(int argc, char** argv) {
  : "RUN");
  DrawText(hud, 10, 10, 14, BLACK);
  if (show_estimate) {
- DrawText("ROBOT AI cyan=perception/safety sweep purple=prediction rings=uncertainty",
+ DrawText("ROBOT AI amber=planner cost red=lethal lime=validated cyan=safety purple=prediction",
  10, 32, 13, Color{78, 54, 132, 255});
  }
     if (edit_mode) {

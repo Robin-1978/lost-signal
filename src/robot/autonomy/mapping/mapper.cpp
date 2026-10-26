@@ -232,6 +232,63 @@ LocalCostmap make_local_costmap(const LocalMap& source,
  return out;
 }
 
+LocalCostmapDiagnostic make_local_costmap_diagnostic(
+ const LocalCostmap& costmap, std::size_t maximum_cells) {
+ LocalCostmapDiagnostic out;
+ if (!costmap.valid() || maximum_cells == 0) return out;
+
+ std::size_t stride = 1;
+ while ((static_cast<std::size_t>(costmap.lethal.width) + stride - 1) /
+ stride * ((static_cast<std::size_t>(costmap.lethal.height) + stride - 1) /
+ stride) > maximum_cells) {
+ ++stride;
+ }
+ out.resolution_m = costmap.lethal.resolution_m * stride;
+ out.width = static_cast<std::uint32_t>(
+ (static_cast<std::size_t>(costmap.lethal.width) + stride - 1) / stride);
+ out.height = static_cast<std::uint32_t>(
+ (static_cast<std::size_t>(costmap.lethal.height) + stride - 1) / stride);
+ out.origin_x_m = costmap.lethal.origin_x_m;
+ out.origin_y_m = costmap.lethal.origin_y_m;
+ out.cells.assign(static_cast<std::size_t>(out.width) * out.height, 0);
+
+ for (std::uint32_t oy = 0; oy < out.height; ++oy) {
+ for (std::uint32_t ox = 0; ox < out.width; ++ox) {
+ bool lethal = false;
+ bool unknown = false;
+ float maximum_cost = 0.0f;
+ const std::size_t begin_x = static_cast<std::size_t>(ox) * stride;
+ const std::size_t begin_y = static_cast<std::size_t>(oy) * stride;
+ const std::size_t end_x = std::min(
+ begin_x + stride, static_cast<std::size_t>(costmap.lethal.width));
+ const std::size_t end_y = std::min(
+ begin_y + stride, static_cast<std::size_t>(costmap.lethal.height));
+ for (std::size_t sy = begin_y; sy < end_y; ++sy) {
+ for (std::size_t sx = begin_x; sx < end_x; ++sx) {
+ const std::size_t source_index =
+ sy * costmap.lethal.width + sx;
+ const int occupancy = costmap.lethal.occupancy[source_index];
+ lethal = lethal || occupancy >= 50;
+ unknown = unknown || occupancy < 0;
+ maximum_cost = std::max(
+ maximum_cost, costmap.linear_cost[source_index]);
+ }
+ }
+ std::uint8_t value = 0;
+ if (lethal) {
+ value = LocalCostmapDiagnostic::kLethal;
+ } else if (unknown) {
+ value = LocalCostmapDiagnostic::kUnknown;
+ } else if (maximum_cost > 0.0f) {
+ value = static_cast<std::uint8_t>(std::clamp(
+ std::lround(maximum_cost * 253.0f), 1l, 253l));
+ }
+ out.cells[static_cast<std::size_t>(oy) * out.width + ox] = value;
+ }
+ }
+ return out;
+}
+
 PerceptionResult reconcile_tracks_with_local_occupancy(
  PerceptionResult perception, const LocalMap& local_map) {
  if (!local_map.valid || local_map.occupancy.size() !=
