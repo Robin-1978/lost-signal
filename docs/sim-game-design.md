@@ -82,6 +82,18 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 挑战：重复纹理、稀疏特征、移动人群和被遮挡闭环。评分分别报告地图一致性、轨迹误差、错误回环和算力，不把真值用于在线建图。
 
+当前教学实现提供 2.5 m 方形 `slam_loop`：Experience 显式请求 ROBOT 的
+`slam_only` 启动模式，四个任务点只定义任务意图，不提供位姿真值。首次回环
+必须在 east、north、west 三个目标完成后的真实重访阶段出现；界面显示关键帧、
+回环数和 localization action，SIM truth 只在复盘侧评估误差与碰撞。局部
+scan-to-submap 每个 causal anchor 最多融合一次，并只沿 matcher information
+可观方向降低 covariance；回环保持 `odom` 连续并更新 `map→odom`。
+
+与 SLAM Toolbox 的能力边界必须明确展示：当前已经覆盖在线 mapping、局部跟踪、
+pose graph 与回环；serialized pose graph 保存/加载、已有地图 localization mode
+的 recent-scan buffer，以及 lifelong mapping 生命周期仍是后续功能，不能在课程中
+伪装为已经完成。
+
 ### 第 4 章：全局路线与车体几何
 
 任务：在仓库货架、窄门和死胡同中完成多目标配送。

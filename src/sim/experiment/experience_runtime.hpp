@@ -26,6 +26,8 @@ struct ExperienceRuntimeConfig {
  std::string scene_path;
  std::string asset_manifest_path;
  std::vector<std::string> objectives;
+ viewer::ExperienceStartupMode startup_mode =
+ viewer::ExperienceStartupMode::kAutomatic;
  // Optional controlled experiment input. It is applied before the fresh
  // session publishes its first observation; every other authored value and
  // random seed remains unchanged.
@@ -46,6 +48,15 @@ struct ExperienceRuntime {
  // excluded; it is recorded separately as the one controlled variable.
  std::uint64_t invariant_digest = 0;
 };
+
+// Canonical bridge from the authored experience mode to the ROBOT startup
+// contract. The same representation is used by normal runs, retries and A/B
+// runs so they cannot silently initialize localization differently.
+const char* experience_startup_mode_id(
+ viewer::ExperienceStartupMode mode);
+void apply_experience_startup_mode(
+ viewer::ExperienceStartupMode mode,
+ scenario::ScenarioSession& session);
 
 // Creates one complete, fresh run from authored inputs. Retry calls this
 // factory again instead of clearing a recorder: physics, sensors, ROBOT

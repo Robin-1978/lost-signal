@@ -47,6 +47,18 @@ int main() {
  assert(scene.visual_for_box("east_shelf") != nullptr);
  assert(scene.visual_for_box("glass_door") != nullptr);
 
+ lost_signal::sim::eval::WorldFileContent slam_world;
+ assert(lost_signal::sim::eval::load_world_file(
+ (root / "configs/worlds/slam_loop_lab.json").string(), slam_world,
+ &error));
+ assert(lost_signal::sim::viewer::load_scene_manifest(
+ (root / "configs/worlds/slam_loop_lab.scene.json").string(), assets,
+ slam_world.boxes, scene, &error));
+ assert(scene.scene_id == "slam_loop_lab");
+ assert(scene.instances.size() == 12);
+ assert(scene.visual_for_box("east_landmark") != nullptr);
+ assert(scene.visual_for_box("lab_south_wall") != nullptr);
+
  const auto legacy = std::filesystem::temp_directory_path() /
  "lost_signal_legacy_scene.json";
  write_text(legacy,

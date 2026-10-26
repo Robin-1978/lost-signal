@@ -120,6 +120,10 @@ struct SlamLoopResult {
  double overlap = 0.0;
  double forward_margin = 0.0;
  double reverse_margin = 0.0;
+ // Conservative uncertainty carried by the accepted bidirectional scan
+ // evidence. Loop application must not invent a fixed covariance.
+ double position_sigma_m = 0.0;
+ double heading_sigma_rad = 0.0;
   std::string diagnostic = "no attempt";
 };
 

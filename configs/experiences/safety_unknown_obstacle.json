@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "safety_unknown_obstacle",
+  "next_experience": "slam_loop.json",
  "title": "OUTDATED MAP: LIVE SAFETY",
  "subtitle": "A crate delivery changed the aisle after the survey. Reach the exit using only live robot observations.",
  "files": {

@@ -176,7 +176,8 @@ bool LocalizationSystem::run_slam(const iface::MapSnapshot& map,
   // them. The decision branch refreshes on the corrected estimate.
   estimator.seed_pose(loop.corrected_pose.position.x,
                      loop.corrected_pose.position.y,
-                     loop.corrected_pose.heading_rad, 0.05, 0.02,
+ loop.corrected_pose.heading_rad, loop.position_sigma_m,
+ loop.heading_sigma_rad,
                      obs.stamp_ns);
   mapper.reset();
   for (const auto& kf : slam_.keyframes()) {

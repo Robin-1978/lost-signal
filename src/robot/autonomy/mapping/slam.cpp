@@ -1308,6 +1308,10 @@ SlamLoopResult SlamSession::try_close_loops(
  out.overlap = std::min(fwd.overlap, rev.overlap);
  out.forward_margin = fwd.score_margin;
  out.reverse_margin = rev.score_margin;
+ out.position_sigma_m = std::max(
+ fwd.position_sigma_m, rev.position_sigma_m);
+ out.heading_sigma_rad = std::max(
+ fwd.heading_sigma_rad, rev.heading_sigma_rad);
 
  graph_ = std::move(candidate_graph);
     // Sync session keyframe poses with the optimized graph. The loop's

@@ -1,6 +1,7 @@
 {
  "format": "lost-signal-experience/1",
  "experience_id": "safety_unknown_obstacle",
+  "next_experience": "slam_loop.json",
  "title": "过期地图：实时安全",
  "subtitle": "一次货物搬运改变了勘测后的通道。只依靠机器人实时观测抵达出口。",
  "files": {

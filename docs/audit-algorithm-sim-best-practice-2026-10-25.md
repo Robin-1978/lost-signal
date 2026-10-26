@@ -114,12 +114,20 @@ innovation covariance / NIS / NEES 一致性统计。
 
 **REP-105 修复状态：已完成。** estimator 现在分别持有连续 odom 状态与允许绝对定位校正的 map 状态；wheel/IMU prediction 同时推进二者，`correct_pose`、relative SLAM correction 和 operator seed 只改变 map 状态。Coordinator 只发布 `odom→base_link` 以及由两状态计算的持久 `map→odom`，不再用单 tick 的“校正前/后”临时差值。RobotDescription 中的 `world→base_link` 只作为根标记，不进入静态 TF，避免与动态链形成冲突环。回归覆盖 map jump 前后 odom 连续、`map→odom` 跳变和组合后的 map pose 一致。
 
-**相关观测修复状态：已完成。** SLAM-only 的 scan-to-submap tracking
-来自当前 keyframe chain，与里程计 prior 相关；它现在只通过 relative
-correction 改善局部一致性，不再把每帧 tracking 当作独立绝对地图观测而
-重复压小全局协方差。只有经过 supervisor 接受的 surveyed-map/global match
-或 pose-graph loop constraint 才能增加独立全局信息。模块回归实际触发一次
-mapless tracking correction，并断言位姿可修正而绝对 position sigma 不下降。
+**相关观测修复状态：已完成。** 已区分两种证据权限。加载 surveyed map 时，
+scan-to-submap 来自与里程计相关的 keyframe chain，只通过 relative correction
+改善局部一致性并保持绝对 map covariance；独立的 scan-to-map/global match
+拥有绝对地图校正权。无先验地图时，正在建立的 causal submap 就是当前 map
+证据，允许用 matcher 的 3x3 information 更新真正可观方向，但每个 submap
+anchor 最多融合一次，不能把同一批墙面逐帧重复计作独立观测。information 的
+零特征方向保持原 covariance。反向于轮速的修正还必须在同一个 anchor 上由
+独立运动视角确认。
+
+Pose-graph 回环只有在跨历史候选统一比较、双向匹配和同一历史 anchor 的时序
+确认全部成立后才提交。提交时使用正反 matcher 中更保守的位置/航向不确定度，
+不再把固定 `0.05 m / 0.02 rad` 当成回环置信度。2.5 m 方形无图任务已证明首次
+回环发生在 east、north、west 三个目标完成后的真实重访阶段；`odom` 全程连续，
+回环只改变 ROBOT 自己估计的 `map→odom`，SIM truth 只进入失败诊断与离线评分。
 
 执行跟踪也只观察连续 odom 状态，避免定位修正被误判为底盘失控。全局搜索
 仍只由 covariance 越过丢失门限触发；搜索进行时沿现有局部路线以声明的观测

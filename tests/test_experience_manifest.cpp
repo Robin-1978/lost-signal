@@ -69,6 +69,8 @@ int main() {
  assert(correct == 0); // evidence decides the outcome after both runs
  assert(std::filesystem::is_regular_file(experience.map_path));
  assert(std::filesystem::is_regular_file(experience.robot_path));
+ assert(experience.startup_mode ==
+ lost_signal::sim::viewer::ExperienceStartupMode::kAutomatic);
 
  assert(lost_signal::sim::viewer::load_experience_manifest(
  (root / "configs/experiences/zh-CN/first_contact.json").string(),
@@ -81,6 +83,26 @@ int main() {
  assert(experience.experiments.size() == english_experiment_count);
  assert(std::filesystem::path(experience.next_experience_path).filename() ==
  "safety_unknown_obstacle.json");
+
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ (root / "configs/experiences/safety_unknown_obstacle.json").string(),
+ experience, &error));
+ assert(std::filesystem::path(experience.next_experience_path).filename() ==
+ "slam_loop.json");
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ (root / "configs/experiences/slam_loop.json").string(), experience,
+ &error));
+ assert(experience.experience_id == "slam_loop");
+ assert(experience.startup_mode ==
+ lost_signal::sim::viewer::ExperienceStartupMode::kSlamOnly);
+ assert(experience.objectives.size() == 4);
+ assert(experience.objectives.back() == "loop_home");
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ (root / "configs/experiences/zh-CN/slam_loop.json").string(),
+ experience, &error));
+ assert(experience.title == "无先验地图闭环：建图、跟踪、校正");
+ assert(experience.startup_mode ==
+ lost_signal::sim::viewer::ExperienceStartupMode::kSlamOnly);
 
  const auto bad = root / "configs/experiences/bad_test_experience.json";
  write_text(bad,
@@ -112,6 +134,12 @@ int main() {
  assert(!lost_signal::sim::viewer::load_experience_manifest(
  bad.string(), experience, &error));
  assert(error.find("supported variable") != std::string::npos);
+
+ write_text(bad,
+ R"({"format":"lost-signal-experience/1","experience_id":"bad","startup_mode":"truth_pose","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":false}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");
+ assert(!lost_signal::sim::viewer::load_experience_manifest(
+ bad.string(), experience, &error));
+ assert(error.find("startup_mode") != std::string::npos);
 
  // Campaign edges must be authored relative to the current manifest. They
  // are canonical regular files, so a typo or an absolute machine-local path

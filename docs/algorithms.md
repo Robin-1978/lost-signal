@@ -323,8 +323,11 @@ route, pre-activation hold).
  variances add per distance and time. Accepted scan matches expose a 3x3
  information matrix, so a corridor can reduce observed cross-corridor/yaw
  uncertainty without falsely collapsing its unobservable along-corridor
- direction. `seed_pose` remains the deliberate deployment/operator initial
- pose (known dock). All correction entry points reject malformed input.
+ direction. `seed_pose` is the explicit map-frame reset path for an accepted
+ authority event (known dock/operator seed, verified global fix, or verified
+ pose-graph loop); it never changes the continuous odom state. Ordinary local
+ tracking uses bounded information or relative corrections instead. All
+ correction entry points reject malformed input.
 - `observe_slip` reports wheel-vs-body residual + confidence with honesty
   states (Invalid / UnobservableLowSpeed / StaleEstimator / Observable);
   the estimator's gyro-trust gate ORs the fast sensor-level disagreement
@@ -368,14 +371,37 @@ route, pre-activation hold).
  diagnostics.
 - `LoopClosureGate` enforces temporal separation, candidate distance, and
   two-way overlap/margin before any constraint reaches the graph.
+- Loop search first allocates its bounded per-tick work across distinct
+ historical modes, then finishes coarse/refine/reverse checks for every
+ selected mode before comparing them. A correction without an independent
+ surveyed-map reference must recur from an independently moved viewpoint and
+ identify the same historical anchor; evidence from one plausible place
+ cannot confirm another look-alike place.
+- Scan-to-current-submap tracking has explicit authority semantics. With a
+ surveyed map it is correlated relative evidence and preserves absolute map
+ covariance. In mapless SLAM the causal submap is the current map evidence,
+ so one accepted match per submap anchor may fuse the matcher's 3x3
+ information. Unobservable eigen-directions retain their prior covariance;
+ repeated scans of the same anchor cannot repeatedly collapse confidence.
 - An accepted closure snaps the live estimate (rigid delta compose, so a
   robot that moved past the newest keyframe still corrects exactly) and
   rebuilds the rolling map from keyframes at their optimized poses; the
-  decision branch refreshes on the corrected estimate.
+ decision branch refreshes on the corrected estimate. The reset covariance
+ comes from the more conservative forward/reverse matcher uncertainty rather
+ than a fixed confidence constant. Only `map -> odom` jumps; `odom ->
+ base_link` remains continuous as required by REP-105.
 - Mapless loop missions close the loop in the headless scenario
-  (`tests/test_loop_closure.cpp`): a 4x4 m square past landmark boxes,
-  keyframed, closures counted in the offline diagnostics; the body returns
-  to the start dock with bounded truth miss and zero judge-fired steps.
+ (`tests/test_loop_closure.cpp` and
+ `tests/test_slam_experience_mission.cpp`): a 2.5 m-sided square past landmark
+ boxes, keyframed, with the first closure forbidden until east, north, and
+ west mission events prove a real revisit. The body returns to the start dock
+ with bounded offline truth error and zero collisions; no truth field enters
+ scan matching, planning, arrival, or loop acceptance.
+- The current lifecycle is an online mapless mapping session with a bounded
+ keyframe ring. Unlike SLAM Toolbox localization mode, it does not yet load a
+ serialized pose graph, prune to a recent-scan rolling buffer, or offer a
+ lifelong mapping lifecycle. Those are explicit future storage/runtime
+ contracts; the teaching experience does not claim them as implemented.
 - SIM sensor honesty: the suite reports the true yaw rate (the estimator's
   slip gate trusts gyro over odometry, so a hard-zero gyro would freeze the
   heading through every turn); S7 adds seeded delivery shaping (whole-tick

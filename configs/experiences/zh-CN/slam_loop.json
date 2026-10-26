@@ -1,0 +1,43 @@
+{
+  "format": "lost-signal-experience/1",
+  "experience_id": "slam_loop",
+  "title": "无先验地图闭环：建图、跟踪、校正",
+  "subtitle": "不加载测绘栅格，从实时观测建立子图，再回到起点验证回环闭合。",
+  "startup_mode": "slam_only",
+  "files": {
+    "map": "../../worlds/slam_loop_lab.json",
+    "scene": "../../worlds/slam_loop_lab.scene.json",
+    "robot": "../../robot/differential.json",
+    "sim": "../../sim/default.json"
+  },
+  "objectives": ["loop_east", "loop_north", "loop_west", "loop_home"],
+ "time_limit_steps": 2600,
+  "briefing": [
+    "现场没有测绘占据栅格。机器人以当前里程计原点建立坐标系，只使用带时间戳的观测生成子图。",
+    "odom 必须保持局部连续。可信回环应更新 map 到 odom 的关系，不能瞬移 odom 到 base。",
+    "沿方形路线回到起点。机器人独立决策，仿真真值只在运行后评估漂移与碰撞。"
+  ],
+  "walkaround": [
+    {"component_id":"lidar","title":"扫描匹配 / 局部证据","lesson":"激光扫描围绕里程计先验与近期子图配准。局部匹配可以改善跟踪，但单帧不能制造全局确定性。","required":true},
+    {"component_id":"drive_wheel","title":"里程计 / 连续坐标系","lesson":"轮速与 IMU 连续推进 odom。打滑和噪声会累积，因此 odom 适合局部控制，但不保证全局固定。","required":true},
+    {"component_id":"chassis","title":"位姿图 / 回环闭合","lesson":"关键帧约束组成位姿图。重访地点需要跨视角一致证据，才允许校正 map 到 odom。","required":false}
+  ],
+  "prediction": {
+    "question": "机器人再次识别起点时，正确的回环闭合应该改变什么？",
+    "choices": [
+      {"choice_id":"map_to_odom_correction","label":"保持 odom 连续，用多视角证据校正 map 到 odom","explanation":"这样既保持局部控制连续，也允许位姿图更新全局地图关系。","evidence_rule":"independent_acceptance"},
+      {"choice_id":"teleport_odometry","label":"把 odom 到 base 瞬移到仿真真值","explanation":"机器人不会收到仿真真值，而且里程计承担局部连续坐标系。","evidence_rule":"sim_rejected"},
+      {"choice_id":"single_scan_global_truth","label":"一次高分扫描就永久代表全局真值","explanation":"重复结构可能产生歧义；单次局部匹配不足以建立可靠的全局回环。","evidence_rule":"incomplete"}
+    ]
+  },
+  "running_prompt": "教学视图显示实测扫描；工程视图显示定位动作、SLAM 关键帧、回环次数与 map 到 odom 的校正证据。",
+  "debrief": {
+    "success_title": "保持 ODOM 连续并完成回环",
+    "failure_title": "无先验地图返航尚未验证",
+    "lessons": [
+      "建图从观测生成地图；定位估计地图中的位姿；持续建图必须明确何时允许修改已有几何。",
+      "扫描匹配负责局部跟踪，位姿图连接多次访问，可靠回环需要跨视角一致证据。",
+      "所有估计都由可部署机器人链路产生；仿真真值只出现在离线对照中。"
+    ]
+  }
+}

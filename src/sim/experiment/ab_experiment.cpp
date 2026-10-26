@@ -7,6 +7,7 @@
 
 #include "robot/core/json.hpp"
 #include "robot/platform/robot_config.hpp"
+#include "sim/experiment/experience_runtime.hpp"
 #include "sim/eval/robot_config.hpp"
 #include "sim/eval/sim_config.hpp"
 #include "sim/eval/world_io.hpp"
@@ -89,6 +90,7 @@ bool run_variant(const viewer::ExperienceManifest& experience,
  prior.position_sigma_m, prior.heading_sigma_rad);
  }
  session.set_objectives(experience.objectives);
+ apply_experience_startup_mode(experience.startup_mode, session);
  session.fit_map_window_to_world();
  if (scenario::load_actors_sidecar(
  experience.map_path, session, {}, &error) < 0) return false;
@@ -111,6 +113,9 @@ bool run_variant(const viewer::ExperienceManifest& experience,
  for (const auto& objective : experience.objectives) {
  hash_bytes(config_digest, objective.data(), objective.size());
  }
+ const char* startup_mode = experience_startup_mode_id(
+ experience.startup_mode);
+ hash_bytes(config_digest, startup_mode, std::strlen(startup_mode));
  hash_bytes(config_digest, &scan_period_s, sizeof(scan_period_s));
  ExperimentEvent first_scan;
  ExperimentEvent first_brake;

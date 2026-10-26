@@ -534,14 +534,39 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  } else if (terminal_distance_m <= terminal_position_tolerance_m) {
  terminal_position_latched_ = true;
  }
- // The latch selects terminal-heading control through small estimate motion,
- // but it must never suppress translation after the current confidence
- // region leaves the arrival envelope. GoalArrivalPolicy evaluates that same
- // confidence-bounded position contract; keeping motion gated by the stale
- // latch can otherwise deadlock just outside a provable arrival.
- const bool terminal_heading_mode = terminal_position_latched_;
  const bool terminal_position_reached =
  terminal_distance_m <= terminal_position_tolerance_m;
+ // The latch stabilizes terminal capture, but live confidence-bounded
+ // position evidence still owns heading-mode authority. A loop closure can
+ // move the map estimate outside that evidence region while remaining inside
+ // the wider reset envelope; following terminal yaw there strands a
+ // differential base beside the goal. Resume position control immediately,
+ // without discarding the latch's hysteresis state.
+ const bool terminal_heading_mode =
+ terminal_position_latched_ && terminal_position_reached;
+ // Inside the declared terminal pose envelope, a nonholonomic base that can
+ // rotate in place but cannot translate laterally may need to turn toward
+ // the remaining position error before translation can reduce it. This is a
+ // manoeuvre region, not arrival:
+ // GoalArrivalPolicy still requires the confidence-bounded pose and settled
+ // measured motion. Reuse the configured position tolerance instead of a
+ // second rotate-to-goal distance.
+ const double terminal_dx_m = terminal.x_m - est.x_m;
+ const double terminal_dy_m = terminal.y_m - est.y_m;
+ const double terminal_longitudinal_error_m =
+ terminal_dx_m * std::cos(est.yaw_rad) +
+ terminal_dy_m * std::sin(est.yaw_rad);
+ const double terminal_lateral_error_m =
+ -terminal_dx_m * std::sin(est.yaw_rad) +
+ terminal_dy_m * std::cos(est.yaw_rad);
+ const bool rotates_in_place_without_lateral_translation =
+ !car_like && limits.max_lateral_mps <= 0.0;
+ const bool terminal_bearing_capture =
+ rotates_in_place_without_lateral_translation &&
+ !terminal_position_reached &&
+ terminal_distance_m <= terminal_position_reset_tolerance_m &&
+ std::abs(terminal_lateral_error_m) >
+ std::abs(terminal_longitudinal_error_m);
  const auto& tracked_a = route.points[route_segment_];
  const auto& tracked_b = route.points[route_segment_ + 1];
  const double tracked_remaining_m = (1.0 - route_fraction_) * std::hypot(
@@ -597,7 +622,9 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  const double heading_target = car_like
  ? car_like_tracking_heading
  : !terminal_heading_mode
- ? goal_bearing
+ ? terminal_bearing_capture
+ ? std::atan2(terminal_dy_m, terminal_dx_m)
+ : goal_bearing
  : std::isfinite(target.yaw_rad)
  ? target.yaw_rad
  : goal_bearing;
@@ -725,7 +752,8 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  // because both are nonzero. Once XY is reached, translation is suppressed
  // below and in-place rotation becomes the required terminal progress.
  if (!terminal_position_reached) {
- return std::hypot(forward, lateral) > 1e-9;
+ return std::hypot(forward, lateral) > 1e-9 ||
+ (terminal_bearing_capture && std::abs(angular) > 1e-9);
  }
  const double horizon_s = std::max(0.0, predict_T);
  const double spatial_resolution_m = std::max(1e-6, map.resolution_m);
@@ -1065,12 +1093,24 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  out.route_replan_requested = true;
  }
  std::stable_sort(proposals.begin(), proposals.end(),
- [prioritize_route_motion, car_like, &commands_resolvable_motion,
+ [prioritize_route_motion, terminal_bearing_capture, car_like,
+ &commands_resolvable_motion,
  route_error_m = route_projection.distance_m,
  route_resolution_m = std::max(1e-6, map.resolution_m),
  current_heading_error_rad = std::abs(
  core::wrap_angle(heading_target - est.yaw_rad))](
  const LocalCandidate& a, const LocalCandidate& b) {
+ if (terminal_bearing_capture) {
+ // Heading is the missing controllable state in this region. Prefer the
+ // rollout that leaves the smaller bearing error; once aligned, the normal
+ // DWA cost selects translation toward the point. This prevents a sequence
+ // of tiny forward/reverse commands from oscillating across the terminal
+ // tangent while lateral error remains unchanged.
+ if (std::abs(a.route_heading_error_rad -
+ b.route_heading_error_rad) > 1e-9) {
+ return a.route_heading_error_rad < b.route_heading_error_rad;
+ }
+ }
  if (prioritize_route_motion) {
  const bool a_moves = commands_resolvable_motion(
  a.forward_mps, a.yaw_rate_radps, a.lateral_mps);

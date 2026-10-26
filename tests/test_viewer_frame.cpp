@@ -77,6 +77,8 @@ int main() {
  step.diag.odometry_estimate = step.diag.estimate;
  step.diag.localized = true;
  step.diag.localization_action = "local-correct";
+ step.diag.slam_keyframes = 12;
+ step.diag.slam_loops_closed = 2;
  step.diag.evidence.sequence = 4;
  step.diag.evidence.decision_time_s = 7.0;
  step.diag.evidence.action_code = "follow-route";
@@ -128,6 +130,9 @@ int main() {
  assert(f.estimate.kAuthority == sim::viewer::FrameAuthority::kRobotEstimate);
  assert(f.estimate.valid && f.estimate.localized);
  assert(std::abs(f.estimate.position_sigma_m - 0.12) < 1e-12);
+ assert(f.estimate.localization_action == "local-correct");
+ assert(f.estimate.slam_keyframes == 12);
+ assert(f.estimate.slam_loops_closed == 2);
  assert(f.decision.kAuthority == sim::viewer::FrameAuthority::kRobotDecision);
  assert(f.decision.valid && f.decision.action_code == "follow-route");
  assert(f.decision.safety_state == "NOMINAL");

@@ -24,6 +24,17 @@ enum class ExperienceVariable {
  kLidarScanPeriodS,
 };
 
+// Declares who establishes the map frame before an experience starts. This
+// is orchestration input, not a gameplay hint: the runtime applies it before
+// the first observation and the ROBOT localization stack owns all subsequent
+// estimation. `kAutomatic` preserves the normal map/prior based selector.
+enum class ExperienceStartupMode {
+ kAutomatic,
+ kSeedAndTrack,
+ kGlobalSearch,
+ kSlamOnly,
+};
+
 struct ExperienceVariableSpec {
  ExperienceVariable variable = ExperienceVariable::kLidarScanPeriodS;
  const char* id = "lidar.scan_period_s";
@@ -104,6 +115,7 @@ struct ExperienceManifest {
  std::string scene_path;
  std::string robot_path;
  std::string sim_path;
+ ExperienceStartupMode startup_mode = ExperienceStartupMode::kAutomatic;
  std::vector<std::string> objectives;
  // Presentation run budget. Reaching it pauses the field lab and opens a
  // failed debrief; it never changes ROBOT limits or scenario acceptance.

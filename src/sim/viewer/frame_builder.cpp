@@ -358,6 +358,8 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.estimate.position_sigma_m = step.diag.estimate.position_sigma_m;
  f.estimate.heading_sigma_rad = step.diag.estimate.heading_sigma_rad;
  f.estimate.localization_action = step.diag.localization_action;
+ f.estimate.slam_keyframes = step.diag.slam_keyframes;
+ f.estimate.slam_loops_closed = step.diag.slam_loops_closed;
  if (step.diag.estimate.valid && step.obs.scan_valid) {
  const double estimate_yaw = step.diag.estimate.yaw_rad;
  const double cy = std::cos(estimate_yaw);

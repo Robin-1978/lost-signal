@@ -86,10 +86,42 @@ bool compute_invariant_digest(const ExperienceRuntimeConfig& config,
  for (const auto& objective : config.objectives) {
  hash_string(digest, objective);
  }
+ hash_string(digest, "startup_mode");
+ hash_string(digest, experience_startup_mode_id(config.startup_mode));
  return digest != 0;
 }
 
 } // namespace
+
+const char* experience_startup_mode_id(
+ viewer::ExperienceStartupMode mode) {
+ switch (mode) {
+ case viewer::ExperienceStartupMode::kAutomatic: return "auto";
+ case viewer::ExperienceStartupMode::kSeedAndTrack: return "seed_and_track";
+ case viewer::ExperienceStartupMode::kGlobalSearch: return "global_search";
+ case viewer::ExperienceStartupMode::kSlamOnly: return "slam_only";
+ }
+ return "invalid";
+}
+
+void apply_experience_startup_mode(
+ viewer::ExperienceStartupMode mode,
+ scenario::ScenarioSession& session) {
+ using robot::autonomy::StartupMode;
+ switch (mode) {
+ case viewer::ExperienceStartupMode::kAutomatic:
+ return;
+ case viewer::ExperienceStartupMode::kSeedAndTrack:
+ session.set_startup_mode(StartupMode::kSeedAndTrack);
+ return;
+ case viewer::ExperienceStartupMode::kGlobalSearch:
+ session.set_startup_mode(StartupMode::kGlobalSearch);
+ return;
+ case viewer::ExperienceStartupMode::kSlamOnly:
+ session.set_startup_mode(StartupMode::kSlamOnly);
+ return;
+ }
+}
 
 double experience_variable_value(viewer::ExperienceVariable variable,
  const eval::SimConfig& config) {
@@ -197,6 +229,7 @@ bool build_experience_runtime(const ExperienceRuntimeConfig& config,
  prior.heading_sigma_rad);
  }
  built.session->set_objectives(std::move(objective_ids));
+ apply_experience_startup_mode(config.startup_mode, *built.session);
  built.session->fit_map_window_to_world();
  if (scenario::load_actors_sidecar(
  config.map_path, *built.session, {}, &config_error) < 0) {

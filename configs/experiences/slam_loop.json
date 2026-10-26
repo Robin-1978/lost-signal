@@ -1,0 +1,43 @@
+{
+  "format": "lost-signal-experience/1",
+  "experience_id": "slam_loop",
+  "title": "MAPLESS LOOP: BUILD, TRACK, CORRECT",
+  "subtitle": "Start without a surveyed raster, build local submaps, and revisit the start to test loop closure.",
+  "startup_mode": "slam_only",
+  "files": {
+    "map": "../worlds/slam_loop_lab.json",
+    "scene": "../worlds/slam_loop_lab.scene.json",
+    "robot": "../robot/differential.json",
+    "sim": "../sim/default.json"
+  },
+  "objectives": ["loop_east", "loop_north", "loop_west", "loop_home"],
+ "time_limit_steps": 2600,
+  "briefing": [
+    "No surveyed occupancy raster is available. ROBOT establishes the current odometry origin and builds submaps only from timestamped measurements.",
+    "Odometry must stay locally continuous. A trusted loop closure changes map-to-odom instead of teleporting odom-to-base.",
+    "Complete the square and return home. SIM truth scores drift and contact only after ROBOT makes its own decisions."
+  ],
+  "walkaround": [
+    {"component_id":"lidar","title":"SCAN MATCHING / LOCAL EVIDENCE","lesson":"Timed LiDAR scans align against recent submaps around the odometry prior. A local match can improve tracking, but one frame cannot invent global certainty.","required":true},
+    {"component_id":"drive_wheel","title":"ODOMETRY / CONTINUOUS FRAME","lesson":"Wheel and IMU prediction advance odom continuously. Slip and noise accumulate, so odom is useful locally without being globally fixed.","required":true},
+    {"component_id":"chassis","title":"POSE GRAPH / LOOP CLOSURE","lesson":"Keyframe constraints form a pose graph. A revisited place needs consistent evidence across views before map-to-odom may correct.","required":false}
+  ],
+  "prediction": {
+    "question": "What should a valid loop closure change when the robot recognizes the starting area again?",
+    "choices": [
+      {"choice_id":"map_to_odom_correction","label":"Keep odom continuous and correct map-to-odom from multi-view evidence","explanation":"This preserves local control continuity while the pose graph updates the global map relation.","evidence_rule":"independent_acceptance"},
+      {"choice_id":"teleport_odometry","label":"Teleport odom-to-base to simulator truth","explanation":"ROBOT never receives simulator truth, and odometry is the locally continuous frame.","evidence_rule":"sim_rejected"},
+      {"choice_id":"single_scan_global_truth","label":"Treat one good scan as permanent global certainty","explanation":"Ambiguous geometry needs corroboration; a single local match cannot establish a robust global loop closure.","evidence_rule":"incomplete"}
+    ]
+  },
+  "running_prompt": "Use Learning view for measured scans and Engineering view for localization action, SLAM keyframes, loop closures, and map-to-odom correction evidence.",
+  "debrief": {
+    "success_title": "LOOP CLOSED WITHOUT BREAKING ODOM",
+    "failure_title": "MAPLESS RETURN NOT VERIFIED",
+    "lessons": [
+      "Mapping creates a map from observations; localization estimates pose in a map; lifelong mapping must define when stored geometry may change.",
+      "Scan matching tracks locally, pose-graph constraints connect visits, and robust loop closure needs consistent evidence across viewpoints.",
+      "The deployable ROBOT stack owns every estimate. SIM truth appears only in the offline comparison."
+    ]
+  }
+}

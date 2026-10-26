@@ -1,0 +1,51 @@
+{
+  "format": "lost-signal-scene/1",
+  "scene_id": "slam_loop_lab",
+  "camera": {
+    "distance_m": 5.6,
+    "yaw_deg": 42.0,
+    "pitch_deg": 34.0,
+    "target_height_m": 0.25,
+    "follow_smoothing_s": 0.32,
+    "lookahead_s": 0.72,
+    "speed_distance_gain_s": 0.55,
+    "minimum_distance_m": 2.8,
+    "maximum_distance_m": 8.0
+  },
+  "lighting": {
+    "direction_xyz": [-0.5, 0.3, -1.0],
+    "directional_rgba": [216, 240, 255, 255],
+    "ambient_rgba": [45, 62, 72, 255],
+    "fog_rgba": [10, 21, 29, 255],
+    "directional_intensity": 1.15,
+    "ambient_intensity": 0.86,
+    "fog_start_m": 13.0,
+    "fog_end_m": 30.0,
+    "exposure": 1.0,
+    "bloom_threshold": 0.72,
+    "bloom_strength": 0.28,
+    "vignette_strength": 0.13,
+    "shadow_map_resolution": 2048,
+    "shadow_extent_m": 18.0,
+    "shadow_strength": 0.66
+  },
+  "floor": {
+    "base_rgba": [31, 39, 43, 255],
+    "grid_rgba": [67, 91, 101, 110],
+    "grid_spacing_m": 1.0
+  },
+  "instances": [
+ {"instance_id":"lab_south_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"lab_south_wall","position_m":[1.5,-2.9,0.0],"scale":[2.61,0.57,1.03],"yaw_deg":0.0},
+ {"instance_id":"lab_north_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"lab_north_wall","position_m":[1.5,5.9,0.0],"scale":[2.61,0.57,1.03],"yaw_deg":180.0},
+ {"instance_id":"lab_west_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"lab_west_wall","position_m":[-2.9,1.5,0.0],"scale":[2.49,0.57,1.03],"yaw_deg":90.0},
+ {"instance_id":"lab_east_wall_visual","asset_id":"environment.research_base.wall_panel","collision_box_id":"lab_east_wall","position_m":[5.9,1.5,0.0],"scale":[2.49,0.57,1.03],"yaw_deg":270.0},
+ {"instance_id":"east_landmark_visual","asset_id":"environment.research_base.maintenance_crates","collision_box_id":"east_landmark","position_m":[4.6,0.9,0.0],"scale":[0.68,1.25,1.10],"yaw_deg":90.0},
+ {"instance_id":"north_landmark_visual","asset_id":"environment.research_base.control_console","collision_box_id":"north_landmark","position_m":[1.6,4.6,0.0],"scale":[0.90,1.20,0.90],"yaw_deg":180.0},
+ {"instance_id":"west_landmark_visual","asset_id":"environment.research_base.cable_reel","collision_box_id":"west_landmark","position_m":[-2.1,1.6,0.0],"scale":[0.84,1.30,1.20],"yaw_deg":20.0},
+ {"instance_id":"south_landmark_visual","asset_id":"environment.research_base.service_light","collision_box_id":"south_landmark","position_m":[0.9,-2.1,0.0],"scale":[2.8,2.8,1.4],"yaw_deg":0.0},
+    {"instance_id":"home_pad","asset_id":"environment.research_base.robot_charging_pad","surface_only":true,"position_m":[0.0,0.0,0.004],"scale":[1.0,1.0,1.0],"yaw_deg":0.0},
+ {"instance_id":"east_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[2.5,0.0,0.004],"scale":[0.45,0.55,1.0],"yaw_deg":90.0},
+ {"instance_id":"north_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[2.5,2.5,0.004],"scale":[0.45,0.55,1.0],"yaw_deg":180.0},
+ {"instance_id":"west_marker","asset_id":"environment.research_base.warning_strip","surface_only":true,"position_m":[0.0,2.5,0.004],"scale":[0.45,0.55,1.0],"yaw_deg":270.0}
+  ]
+}

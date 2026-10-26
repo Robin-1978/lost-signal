@@ -133,6 +133,22 @@ bool parse_evidence_rule(const std::string& text,
  return true;
 }
 
+bool parse_startup_mode(const std::string& text,
+ ExperienceStartupMode& mode) {
+ if (text == "auto") {
+ mode = ExperienceStartupMode::kAutomatic;
+ } else if (text == "seed_and_track") {
+ mode = ExperienceStartupMode::kSeedAndTrack;
+ } else if (text == "global_search") {
+ mode = ExperienceStartupMode::kGlobalSearch;
+ } else if (text == "slam_only") {
+ mode = ExperienceStartupMode::kSlamOnly;
+ } else {
+ return false;
+ }
+ return true;
+}
+
 bool take_non_negative_number(const Json& object, const char* key,
                               double& value, std::string& error) {
   const Json* node = object.find(key);
@@ -206,6 +222,14 @@ bool load_experience_manifest(const std::string& path,
  !take_string(*debrief, "failure_title", parsed.failure_title,
  out_error) ||
  !take_strings(*debrief, "lessons", parsed.lessons, out_error)) {
+ return false;
+ }
+ const Json* startup_mode = root->find("startup_mode");
+ if (startup_mode != nullptr &&
+ (!startup_mode->is_str() ||
+ !parse_startup_mode(startup_mode->as_str(), parsed.startup_mode))) {
+ out_error = "experience 'startup_mode' must be auto, seed_and_track, "
+ "global_search, or slam_only";
  return false;
  }
  const Json* time_limit = root->find("time_limit_steps");

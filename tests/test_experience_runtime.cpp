@@ -24,6 +24,7 @@ int main() {
  config.asset_manifest_path =
  std::string(TEST_SOURCE_DIR) + "/assets/models/manifest.json";
  config.objectives = experience.objectives;
+ config.startup_mode = experience.startup_mode;
  sim::experiment::ExperienceRuntime first;
  sim::experiment::ExperienceRuntime retry;
  assert(sim::experiment::build_experience_runtime(config, first, &error));
@@ -38,6 +39,14 @@ int main() {
  assert(first.invariant_digest == retry.invariant_digest);
  assert(!first.code_revision.empty());
  assert(first.code_revision == retry.code_revision);
+
+ auto changed_startup_config = config;
+ changed_startup_config.startup_mode =
+ sim::viewer::ExperienceStartupMode::kSlamOnly;
+ sim::experiment::ExperienceRuntime changed_startup;
+ assert(sim::experiment::build_experience_runtime(
+ changed_startup_config, changed_startup, &error));
+ assert(changed_startup.invariant_digest != first.invariant_digest);
 
  const std::string changed_scene_path =
  "/tmp/lost_signal_experience_changed_scene.json";

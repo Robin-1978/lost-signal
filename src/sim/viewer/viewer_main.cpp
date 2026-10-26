@@ -1858,7 +1858,13 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  }
  draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
  kText);
- y += 47.0f;
+ std::snprintf(line, sizeof(line), "localization %s / SLAM keyframes %zu loops %zu",
+ estimate.localization_action.empty() ? "--"
+ : estimate.localization_action.c_str(),
+ estimate.slam_keyframes, estimate.slam_loops_closed);
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 12,
+ kMuted);
+ y += 62.0f;
 
  draw_ui_text(tr("ROBOT / DECISION", "机器人 / 规划决策"),
  static_cast<int>(x + 18),
@@ -3959,7 +3965,10 @@ int main(int argc, char** argv) {
  runtime_config.asset_manifest_path =
  (std::filesystem::path(assets_path) / "models/manifest.json").string();
  }
- if (experience_loaded) runtime_config.objectives = experience.objectives;
+ if (experience_loaded) {
+ runtime_config.objectives = experience.objectives;
+ runtime_config.startup_mode = experience.startup_mode;
+ }
   if (!map_path.empty()) {
  sim::experiment::ExperienceRuntime runtime;
  std::string runtime_error;

@@ -934,6 +934,39 @@ int main() {
  assert(approach.best.forward_mps > 0.0);
  }
 
+ // Near a terminal point, a lateral residual cannot be removed by
+ // alternating forward and reverse motion along the route tangent. Inside
+ // the declared terminal capture envelope, a differential base first makes
+ // measurable progress on the bearing error, then translation can converge
+ // into the tighter confidence-bounded arrival region.
+ {
+ LocalMap m = make_map(120, 120, 0.1, -4.0, -4.0, 0);
+ EstimatedState est;
+ est.valid = true;
+ est.stamp_ns = 1'000'000;
+ est.x_m = 0.02;
+ est.y_m = -0.145;
+ est.yaw_rad = 0.0;
+ est.position_sigma_m = 0.043;
+ est.heading_sigma_rad = 0.025;
+ PerceptionResult perc;
+ perc.scan_ok = true;
+ Route route;
+ route.valid = true;
+ route.points = {{0.20, -0.15, 0.0, 0},
+ {0.10, -0.15, 0.0, 0}, {0.0, 0.0, 0.0, 0}};
+ DwaPlannerConfig config;
+ config.terminal_position_tolerance_m = 0.20;
+ DwaPlanner planner(config);
+ const LocalPlan capture = planner.plan(est, perc, m, route, limits);
+ const double initial_bearing_error = std::abs(std::atan2(
+ route.points.back().y_m - est.y_m,
+ route.points.back().x_m - est.x_m) - est.yaw_rad);
+ assert(capture.has_plan && capture.moving_candidate_count > 0);
+ assert(capture.best.yaw_rate_radps > 0.0);
+ assert(capture.best.route_heading_error_rad < initial_bearing_error);
+ }
+
  std::printf("dwa ok\n");
  return 0;
 }

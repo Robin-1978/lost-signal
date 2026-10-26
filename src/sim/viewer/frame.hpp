@@ -64,6 +64,8 @@ struct FrameEstimateTelemetry {
  double odom_x_m = 0.0, odom_y_m = 0.0, odom_yaw_rad = 0.0;
  double position_sigma_m = 0.0, heading_sigma_rad = 0.0;
  std::string localization_action;
+ std::size_t slam_keyframes = 0;
+ std::size_t slam_loops_closed = 0;
  // Debrief-only REP-105 correction transition. Both poses express the same
  // recorded odom_T_base through consecutive map_T_odom transforms. Raw odom
  // coordinates are never drawn directly in map coordinates.
