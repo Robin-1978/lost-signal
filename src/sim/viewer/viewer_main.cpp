@@ -1986,6 +1986,65 @@ inline bool screen_to_ground_3d(const Camera3D& cam, Vector2 mouse,
   return true;
 }
 
+void draw_goal_beacon_3d(
+ const lost_signal::sim::viewer::FramePlace& place, double ground_z_m,
+ std::uint64_t step) {
+ const double time_s = static_cast<double>(step) * 0.02;
+ const float wave = 0.5f + 0.5f * static_cast<float>(
+ std::sin(time_s * 2.8 + place.x_m * 0.37 + place.y_m * 0.19));
+ const Color signal = place.reached
+ ? Color{66, 224, 132, 255} : Color{255, 174, 62, 255};
+ const Vector3 base = to_raylib(place.x_m, place.y_m, ground_z_m + 0.012);
+
+ BeginBlendMode(BLEND_ALPHA);
+ DrawCylinderEx(
+ to_raylib(place.x_m, place.y_m, ground_z_m + 0.008),
+ to_raylib(place.x_m, place.y_m, ground_z_m + 0.022),
+ 0.46f, 0.46f, 40, Color{18, 26, 27, 210});
+ DrawCylinderEx(
+ to_raylib(place.x_m, place.y_m, ground_z_m + 0.023),
+ to_raylib(place.x_m, place.y_m, ground_z_m + 0.030),
+ 0.38f, 0.38f, 40, {signal.r, signal.g, signal.b, 82});
+ DrawCircle3D(base, 0.46f, {1.0f, 0.0f, 0.0f}, 90.0f,
+ {signal.r, signal.g, signal.b, 150});
+ DrawCircle3D(base, 0.58f + wave * 0.10f, {1.0f, 0.0f, 0.0f}, 90.0f,
+ {signal.r, signal.g, signal.b,
+ static_cast<unsigned char>(90.0f * (1.0f - 0.45f * wave))});
+ DrawCylinderEx(
+ to_raylib(place.x_m, place.y_m, ground_z_m + 0.03),
+ to_raylib(place.x_m, place.y_m,
+ ground_z_m + (place.reached ? 0.72 : 1.28)),
+ 0.028f, 0.012f, 12,
+ {signal.r, signal.g, signal.b,
+ static_cast<unsigned char>(place.reached ? 52 : 78)});
+
+ const double forward_x = std::cos(place.yaw_rad);
+ const double forward_y = std::sin(place.yaw_rad);
+ const double side_x = -forward_y;
+ const double side_y = forward_x;
+ const double arrow_z = ground_z_m + 0.026;
+ const Vector3 tip = to_raylib(
+ place.x_m + 0.57 * forward_x,
+ place.y_m + 0.57 * forward_y, arrow_z);
+ const Vector3 left = to_raylib(
+ place.x_m - 0.10 * forward_x + 0.18 * side_x,
+ place.y_m - 0.10 * forward_y + 0.18 * side_y, arrow_z);
+ const Vector3 right = to_raylib(
+ place.x_m - 0.10 * forward_x - 0.18 * side_x,
+ place.y_m - 0.10 * forward_y - 0.18 * side_y, arrow_z);
+ DrawTriangle3D(tip, right, left,
+ {signal.r, signal.g, signal.b, 175});
+
+ const float orb_z = static_cast<float>(
+ ground_z_m + (place.reached ? 0.72 : 0.88) + wave * 0.08);
+ DrawSphere({base.x, orb_z, base.z}, place.reached ? 0.09f : 0.12f,
+ {signal.r, signal.g, signal.b, 225});
+ DrawSphereWires({base.x, orb_z, base.z},
+ 0.16f + wave * 0.035f, 8, 12,
+ {signal.r, signal.g, signal.b, 150});
+ EndBlendMode();
+}
+
 void draw_frame_3d(const Frame& f,
                    const lost_signal::sim::world::World& world,
  const Camera3D& camera, const ParticleSystem& particles,
@@ -2152,18 +2211,13 @@ void draw_frame_3d(const Frame& f,
       }
     }
   }
-  // Places as beacon poles with a ground ring (green = objective done).
+ // Objective markers are GAME presentation: the arrow teaches the authored
+ // terminal yaw, while color and pulse show progress. They never enter any
+ // observation, estimate, command, collision, or score calculation.
  if (show_places) for (const auto& p : f.places) {
-    const Color col = p.reached ? GREEN : ORANGE;
  const double place_ground = world_ns::sample_terrain(
  world.terrain_patches(), world.support_slabs(), p.x_m, p.y_m).height_m;
- // DrawCylinder is base-anchored; keep the objective marker on the same
- // authored ground as the robot and actors.
- DrawCylinder(to_raylib(p.x_m, p.y_m, place_ground), 0.05f, 0.05f, 0.6f, 10,
-                 DARKGRAY);
- DrawSphere(to_raylib(p.x_m, p.y_m, place_ground + 0.68), 0.13f, col);
- DrawCircle3D(to_raylib(p.x_m, p.y_m, place_ground + 0.02), 0.45f, {1, 0, 0}, 90.0f,
-                 p.reached ? Color{40, 180, 80, 200} : Color{230, 140, 40, 200});
+ draw_goal_beacon_3d(p, place_ground, f.step);
  if (p.selected) DrawSphereWires(to_raylib(p.x_m, p.y_m, place_ground + 0.68), 0.25f, 8,
                                     8, RED);
   }
