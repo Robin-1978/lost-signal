@@ -28,6 +28,7 @@ struct ObjectiveResult {
  double truth_linear_speed_mps = 999.0;
  double truth_yaw_rate_radps = 999.0;
  std::uint32_t truth_stable_steps = 0;
+ std::uint64_t completed_step = 0;
  bool abandoned = false; // step budget expired before any report
  std::vector<std::string> failure_reasons;
  bool successful() const {

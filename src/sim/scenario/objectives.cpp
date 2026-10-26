@@ -153,6 +153,7 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
   if (!handle.valid()) {
    ObjectiveResult result;
    result.place_id = objectives_[next_];
+ result.completed_step = world.truth().step;
    const auto* place = find_place(world, result.place_id);
    measure_truth(result, place, world, acceptance_, 0);
    result.failure_reasons.push_back("robot_goal_rejected");
@@ -171,6 +172,7 @@ void ObjectiveDriver::update(robot::app::RobotApplication& app,
  const auto* place = find_place(world, objectives_[next_]);
  ObjectiveResult sampled;
  sampled.place_id = objectives_[next_];
+ sampled.completed_step = world.truth().step;
  const bool acceptable_now = measure_truth(
   sampled, place, world, acceptance_, truth_stable_steps_);
  if (acceptable_now) {

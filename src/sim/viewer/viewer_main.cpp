@@ -15,7 +15,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <deque>
 #include <fstream>
 #include <filesystem>
 #include <future>
@@ -2650,7 +2649,6 @@ int main(int argc, char** argv) {
 
   sim::viewer::ViewTransform view(50.0f, 2.0, 1.0, kScreenW, kScreenH);
   view.fit(-4.0, -4.0, 8.0, 7.0);
-  std::deque<std::pair<double, double>> trail;
  bool paused = experience_loaded;
  ExperiencePhase experience_phase = ExperiencePhase::kBriefing;
  int selected_experience_choice = -1;
@@ -3043,41 +3041,52 @@ int main(int argc, char** argv) {
  }
  continue;
  }
-    const sim::eval::EvalStep& last = steps.back();
-    trail.emplace_back(last.truth_after.body_x_m, last.truth_after.body_y_m);
-    while (trail.size() > 600) trail.pop_front();
+ std::size_t presented_index = steps.size() - 1;
+ if (experience_loaded && experience_phase == ExperiencePhase::kDebrief &&
+ !review_keyframes.empty()) {
+ const int selected = std::clamp(selected_review_keyframe, 0,
+ static_cast<int>(review_keyframes.size()) - 1);
+ const std::size_t requested =
+ review_keyframes[static_cast<std::size_t>(selected)].episode_index;
+ if (requested < steps.size()) presented_index = requested;
+ }
+ const sim::eval::EvalStep& presented = steps[presented_index];
     std::vector<std::string> reached;
     for (const auto& r : session->objectives().results()) {
-      if (r.successful()) reached.push_back(r.place_id);
+ if (r.successful() && r.completed_step <= presented.truth_after.step) {
+ reached.push_back(r.place_id);
+ }
     }
-    const sim::viewer::Frame frame = sim::viewer::build_frame(
-        session->setup_world(), last, reached,
-        {trail.begin(), trail.end()},
+ const auto historical_frame = sim::viewer::build_episode_frame(
+ session->setup_world(), session->episode(), presented_index, reached,
         edit_mode ? sim::viewer::EditorSelection{editor.selected_box(),
                                                  editor.selected_corner(),
                                                  editor.selected_place()}
                   : sim::viewer::EditorSelection{},
         session_lidar_mount);
+ if (!historical_frame.has_value()) continue;
+ const sim::viewer::Frame& frame = *historical_frame;
  motion_particles.advance(frame);
     if (follow) {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
       // Re-center without touching zoom: pan by the screen-space error.
       const auto cur =
-          view.world_to_screen(last.truth_after.body_x_m,
-                               last.truth_after.body_y_m);
+ view.world_to_screen(presented.truth_after.body_x_m,
+ presented.truth_after.body_y_m);
       view.pan_px(GetScreenWidth() * 0.5f - cur.x_px,
                   GetScreenHeight() * 0.5f - cur.y_px);
  const auto& camera_config = scene_loaded
  ? visual_scene.camera : lost_signal::sim::viewer::SceneCamera{};
  const double speed_mps = std::hypot(
- last.truth_after.forward_mps, last.truth_after.lateral_mps);
+ presented.truth_after.forward_mps, presented.truth_after.lateral_mps);
  const double lookahead_m =
- std::abs(last.truth_after.forward_mps) * camera_config.lookahead_s;
- const double direction = last.truth_after.forward_mps < 0.0 ? -1.0 : 1.0;
- const double desired_x = last.truth_after.body_x_m + direction * lookahead_m *
- std::cos(last.truth_after.body_yaw_rad);
- const double desired_y = last.truth_after.body_y_m + direction * lookahead_m *
- std::sin(last.truth_after.body_yaw_rad);
+ std::abs(presented.truth_after.forward_mps) * camera_config.lookahead_s;
+ const double direction =
+ presented.truth_after.forward_mps < 0.0 ? -1.0 : 1.0;
+ const double desired_x = presented.truth_after.body_x_m +
+ direction * lookahead_m * std::cos(presented.truth_after.body_yaw_rad);
+ const double desired_y = presented.truth_after.body_y_m +
+ direction * lookahead_m * std::sin(presented.truth_after.body_yaw_rad);
  const double blend = camera_config.follow_smoothing_s > 0.0
  ? 1.0 - std::exp(-wall_dt_s / camera_config.follow_smoothing_s)
  : 1.0;

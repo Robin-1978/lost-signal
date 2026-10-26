@@ -5,6 +5,7 @@
 // output and the truth-side judge). No raylib, no window, no ROBOT input:
 // the frame is presentation of recorded state, same as an offline replay.
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,16 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
                   const std::vector<std::pair<double, double>>& trail,
                   const EditorSelection& sel = EditorSelection{},
                   const LidarMount& mount = LidarMount{});
+
+// Rebuild one coherent historical frame from a recorded episode index. The
+// truth trail ends at that index and every dynamic field comes from the same
+// EvalStep snapshot. Returns nullopt for an invalid index.
+std::optional<Frame> build_episode_frame(
+ const world::World& world, const eval::EpisodeRecorder& episode,
+ std::size_t episode_index, const std::vector<std::string>& reached_ids,
+ const EditorSelection& sel = EditorSelection{},
+ const LidarMount& mount = LidarMount{},
+ std::size_t maximum_trail_points = 600);
 
 // World-space lidar endpoints from the TRUE sensor pose (body pose
 // composed with the mount, same math as generation) + recorded scan.

@@ -10,6 +10,7 @@
 #include "sim/scenario/actor_sidecar.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/experience_manifest.hpp"
+#include "sim/viewer/frame_builder.hpp"
 #include "sim/viewer/keyframe_review.hpp"
 
 int main() {
@@ -74,5 +75,22 @@ int main() {
  sim::viewer::ReviewKeyframeKind::kFirstObservation);
  assert(keyframes.back().kind ==
  sim::viewer::ReviewKeyframeKind::kStableStop);
+ assert(!session.episode().steps().empty());
+ assert(session.episode().steps().front().presentation.captured);
+ assert(session.episode().steps().back().presentation.captured);
+ const auto review_frame = sim::viewer::build_episode_frame(
+ session.setup_world(), session.episode(), keyframes.front().episode_index,
+ {});
+ assert(review_frame.has_value());
+ const auto& review_step =
+ session.episode().steps()[keyframes.front().episode_index];
+ assert(review_frame->step == keyframes.front().step);
+ assert(review_frame->body.x_m == review_step.truth_after.body_x_m);
+ assert(review_frame->estimate.stamp_s ==
+ static_cast<double>(keyframes.front().stamp_ns) * 1e-9);
+ assert(review_frame->trail.back().first ==
+ review_step.truth_after.body_x_m);
+ assert(review_frame->trail.back().second ==
+ review_step.truth_after.body_y_m);
  return 0;
 }

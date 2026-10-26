@@ -245,6 +245,8 @@ bool write_summary(const std::string& path, const std::string& map_path,
  Json::Num(r.truth_yaw_rate_radps));
  o.emplace_back("truth_stable_steps",
  Json::Num(static_cast<double>(r.truth_stable_steps)));
+ o.emplace_back("completed_step",
+ Json::Num(static_cast<double>(r.completed_step)));
  o.emplace_back("abandoned", Json::Bool(r.abandoned));
  Json::Array failure_reasons;
  for (const auto& reason : r.failure_reasons) {

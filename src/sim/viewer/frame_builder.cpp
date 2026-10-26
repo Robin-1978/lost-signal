@@ -84,20 +84,27 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     const double scrub = world.motor_params().yaw_scrub_coulomb_Nm;
     f.body.tracked = (nd == 2 && ns == 0 && scrub > 0.0);
     const bool mecanum = (nd == 4 && ns == 0);
-    world::WheelViz table[6];
-    const int nw = world.wheels(table, 6);
-    for (int i = 0; i < nw; ++i) {
+ std::vector<world::WheelViz> live_wheels;
+ if (!step.presentation.captured) {
+ world::WheelViz table[6];
+ const int count = world.wheels(table, 6);
+ live_wheels.assign(table, table + std::max(0, count));
+ }
+ const auto& wheels = step.presentation.captured
+ ? step.presentation.wheels : live_wheels;
+ for (std::size_t i = 0; i < wheels.size(); ++i) {
+ const auto& physical = wheels[i];
       FrameWheel w;
-      w.x_m = table[i].x_m;
-      w.y_m = table[i].y_m;
-      w.steer_rad = table[i].steer_rad;
-      w.spin_rad = table[i].spin_rad;
-      w.spin_rate_radps = table[i].spin_rate_radps;
+ w.x_m = physical.x_m;
+ w.y_m = physical.y_m;
+ w.steer_rad = physical.steer_rad;
+ w.spin_rad = physical.spin_rad;
+ w.spin_rate_radps = physical.spin_rate_radps;
       w.radius_m = world.motor_params().wheel_radius_m;
-      w.slipping = table[i].slipping;
-      w.driven = table[i].driven;
-      w.duty = i < nd ? t.drive_duty[static_cast<std::size_t>(i)] : 0.0;
-      w.steer_rate_radps = table[i].steer_rate_radps;
+ w.slipping = physical.slipping;
+ w.driven = physical.driven;
+ w.duty = i < static_cast<std::size_t>(nd) ? t.drive_duty[i] : 0.0;
+ w.steer_rate_radps = physical.steer_rate_radps;
       w.mecanum_rollers = mecanum;
 
       const double module_vx = t.forward_mps - t.yaw_rate_radps * w.y_m;
@@ -113,19 +120,19 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
       // intended velocity as tire slip would make the visual effect lie.
       const double kinematic_slip = mecanum ? std::abs(longitudinal_slip)
         : std::hypot(longitudinal_slip, lateral_slip);
-      w.contact_valid = table[i].contact_valid;
-      w.contact_x_m = table[i].contact_x_m;
-      w.contact_y_m = table[i].contact_y_m;
-      w.contact_z_m = table[i].contact_z_m;
-      w.contact_normal_force_N = table[i].contact_normal_force_N;
-      w.slip_speed_mps = table[i].contact_valid
-        ? table[i].contact_slip_speed_mps : kinematic_slip;
- w.longitudinal_slip_mps = table[i].contact_valid
- ? table[i].contact_longitudinal_slip_mps : longitudinal_slip;
- w.lateral_slip_mps = table[i].contact_valid
- ? table[i].contact_lateral_slip_mps : lateral_slip;
- w.friction_utilization = table[i].contact_valid
- ? table[i].contact_friction_utilization : 0.0;
+ w.contact_valid = physical.contact_valid;
+ w.contact_x_m = physical.contact_x_m;
+ w.contact_y_m = physical.contact_y_m;
+ w.contact_z_m = physical.contact_z_m;
+ w.contact_normal_force_N = physical.contact_normal_force_N;
+ w.slip_speed_mps = physical.contact_valid
+ ? physical.contact_slip_speed_mps : kinematic_slip;
+ w.longitudinal_slip_mps = physical.contact_valid
+ ? physical.contact_longitudinal_slip_mps : longitudinal_slip;
+ w.lateral_slip_mps = physical.contact_valid
+ ? physical.contact_lateral_slip_mps : lateral_slip;
+ w.friction_utilization = physical.contact_valid
+ ? physical.contact_friction_utilization : 0.0;
       const double body_c = std::cos(t.body_yaw_rad);
       const double body_s = std::sin(t.body_yaw_rad);
       const double contact_x = w.contact_valid ? w.contact_x_m
@@ -141,10 +148,10 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  w.contact_fluid_depth_m = material->fluid_depth_m;
  }
       }
-      w.pose = {table[i].pose.valid,
-        table[i].pose.x_m, table[i].pose.y_m, table[i].pose.z_m,
-        table[i].pose.qw, table[i].pose.qx, table[i].pose.qy,
-        table[i].pose.qz};
+ w.pose = {physical.pose.valid,
+ physical.pose.x_m, physical.pose.y_m, physical.pose.z_m,
+ physical.pose.qw, physical.pose.qx, physical.pose.qy,
+ physical.pose.qz};
       f.body.wheels.push_back(w);
  if (w.contact_valid) ++f.truth.wheel_contacts;
     }
@@ -154,9 +161,15 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  // encoder or actuator channels. The fallback is used only when the plant is
  // unavailable (for example a frame assembled in a disabled-MuJoCo build).
  {
- world::CasterViz table[lost_signal::sim::world::MotorParams::kMaxSupports];
- const int physical_count = world.casters(
- table, lost_signal::sim::world::MotorParams::kMaxSupports);
+ std::vector<world::CasterViz> live_casters;
+ if (!step.presentation.captured) {
+ world::CasterViz table[world::MotorParams::kMaxSupports];
+ const int count = world.casters(table, world::MotorParams::kMaxSupports);
+ live_casters.assign(table, table + std::max(0, count));
+ }
+ const auto& casters = step.presentation.captured
+ ? step.presentation.casters : live_casters;
+ const int physical_count = static_cast<int>(casters.size());
  const double speed = std::hypot(t.forward_mps, t.lateral_mps);
  const int count = physical_count > 0 ? physical_count
  : (world.motor_params().support_count > 0
@@ -168,26 +181,27 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  : world::MotorParams::SupportParams{};
  FrameCaster caster;
  if (physical_count > 0) {
- caster.pivot_x_m = table[i].pivot_x_m;
- caster.pivot_y_m = table[i].pivot_y_m;
- caster.x_m = table[i].x_m;
- caster.y_m = table[i].y_m;
- caster.radius_m = table[i].radius_m;
+ const auto& physical = casters[static_cast<std::size_t>(i)];
+ caster.pivot_x_m = physical.pivot_x_m;
+ caster.pivot_y_m = physical.pivot_y_m;
+ caster.x_m = physical.x_m;
+ caster.y_m = physical.y_m;
+ caster.radius_m = physical.radius_m;
       caster.trail_m = std::hypot(
-        table[i].pivot_x_m - table[i].x_m,
-        table[i].pivot_y_m - table[i].y_m);
- caster.yaw_rad = table[i].swivel_rad;
- caster.spin_rad = table[i].roll_rad;
- caster.fork_pose = {table[i].fork_pose.valid,
- table[i].fork_pose.x_m, table[i].fork_pose.y_m,
- table[i].fork_pose.z_m, table[i].fork_pose.qw,
- table[i].fork_pose.qx, table[i].fork_pose.qy,
- table[i].fork_pose.qz};
- caster.wheel_pose = {table[i].wheel_pose.valid,
- table[i].wheel_pose.x_m, table[i].wheel_pose.y_m,
- table[i].wheel_pose.z_m, table[i].wheel_pose.qw,
- table[i].wheel_pose.qx, table[i].wheel_pose.qy,
- table[i].wheel_pose.qz};
+ physical.pivot_x_m - physical.x_m,
+ physical.pivot_y_m - physical.y_m);
+ caster.yaw_rad = physical.swivel_rad;
+ caster.spin_rad = physical.roll_rad;
+ caster.fork_pose = {physical.fork_pose.valid,
+ physical.fork_pose.x_m, physical.fork_pose.y_m,
+ physical.fork_pose.z_m, physical.fork_pose.qw,
+ physical.fork_pose.qx, physical.fork_pose.qy,
+ physical.fork_pose.qz};
+ caster.wheel_pose = {physical.wheel_pose.valid,
+ physical.wheel_pose.x_m, physical.wheel_pose.y_m,
+ physical.wheel_pose.z_m, physical.wheel_pose.qw,
+ physical.wheel_pose.qx, physical.wheel_pose.qy,
+ physical.wheel_pose.qz};
  } else {
  caster.pivot_x_m = world.motor_params().support_count > 0
  ? support.x_m : (i == 0 ? 0.9 * world.motor_params().wheel_base_m * 0.5
@@ -202,8 +216,9 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  ? std::atan2(t.lateral_mps, t.forward_mps) : 0.0;
       caster.x_m = caster.pivot_x_m - caster.trail_m * std::cos(caster.yaw_rad);
       caster.y_m = caster.pivot_y_m - caster.trail_m * std::sin(caster.yaw_rad);
- caster.spin_rad = speed * world.sim_time_s() /
- std::max(1e-3, caster.radius_m);
+ // No physical caster joint was recorded. Keep the wheel at its declared
+ // zero pose instead of fabricating a historical angle from current time.
+ caster.spin_rad = 0.0;
  }
  f.body.casters.push_back(caster);
  }
@@ -296,19 +311,35 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
     b.selected_corner = b.selected ? sel.box_corner : -1;
     f.boxes.push_back(b);
   }
-  for (const auto& a : world.actors()) {
+ if (step.presentation.captured) {
+ for (const auto& a : step.presentation.actors) {
     FrameActor fa;
-    fa.x_m = a.x;
-    fa.y_m = a.y;
+ fa.x_m = a.x_m;
+ fa.y_m = a.y_m;
     fa.radius_m = a.radius_m;
     fa.vx_mps = a.vx_mps;
     fa.vy_mps = a.vy_mps;
  if (std::hypot(a.vx_mps, a.vy_mps) > 1e-6)
  fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
     fa.height_m = a.height_m;
- fa.pedestrian = a.visual_kind == "pedestrian";
+ fa.pedestrian = a.pedestrian;
     f.actors.push_back(fa);
   }
+ } else {
+ for (const auto& a : world.actors()) {
+ FrameActor fa;
+ fa.x_m = a.x;
+ fa.y_m = a.y;
+ fa.radius_m = a.radius_m;
+ fa.vx_mps = a.vx_mps;
+ fa.vy_mps = a.vy_mps;
+ if (std::hypot(a.vx_mps, a.vy_mps) > 1e-6)
+ fa.heading_rad = std::atan2(a.vy_mps, a.vx_mps);
+ fa.height_m = a.height_m;
+ fa.pedestrian = a.visual_kind == "pedestrian";
+ f.actors.push_back(fa);
+ }
+ }
   for (const auto& z : world.material_zones()) {
     FrameZone fz;
     fz.x0_m = std::min(z.x0, z.x1);
@@ -350,10 +381,31 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.static_collision = step.judge.static_collision;
   f.dynamic_collision = step.judge.dynamic_collision;
   f.static_clearance_m = step.judge.static_clearance_m;
- const world::ImpactViz& impact = world.impact();
+ const world::ImpactViz& impact = step.presentation.captured
+ ? step.presentation.impact : world.impact();
  f.impact = {impact.valid, impact.x_m, impact.y_m, impact.z_m,
  impact.normal_impulse_Ns, impact.relative_speed_mps};
   return f;
+}
+
+std::optional<Frame> build_episode_frame(
+ const world::World& world, const eval::EpisodeRecorder& episode,
+ std::size_t episode_index, const std::vector<std::string>& reached_ids,
+ const EditorSelection& sel, const LidarMount& mount,
+ std::size_t maximum_trail_points) {
+ const auto& steps = episode.steps();
+ if (episode_index >= steps.size()) return std::nullopt;
+ const std::size_t count = maximum_trail_points == 0
+ ? 0 : std::min(maximum_trail_points, episode_index + 1);
+ const std::size_t begin = episode_index + 1 - count;
+ std::vector<std::pair<double, double>> trail;
+ trail.reserve(count);
+ for (std::size_t i = begin; i <= episode_index && count > 0; ++i) {
+ trail.emplace_back(steps[i].truth_after.body_x_m,
+ steps[i].truth_after.body_y_m);
+ }
+ return build_frame(world, steps[episode_index], reached_ids, trail, sel,
+ mount);
 }
 
 }  // namespace lost_signal::sim::viewer

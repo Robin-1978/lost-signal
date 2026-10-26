@@ -16,6 +16,25 @@ robot::iface::ActuatorMode actuator_mode_for(const std::string& kind) {
  return robot::iface::ActuatorMode::kDiffDuty;
 }
 
+void capture_presentation(const world::World& world,
+ eval::PresentationSnapshot& snapshot) {
+ world::WheelViz wheels[6];
+ const int wheel_count = world.wheels(wheels, 6);
+ snapshot.wheels.assign(wheels, wheels + std::max(0, wheel_count));
+ world::CasterViz casters[world::MotorParams::kMaxSupports];
+ const int caster_count = world.casters(
+ casters, world::MotorParams::kMaxSupports);
+ snapshot.casters.assign(casters, casters + std::max(0, caster_count));
+ snapshot.actors.reserve(world.actors().size());
+ for (const auto& actor : world.actors()) {
+ snapshot.actors.push_back({actor.x, actor.y, actor.vx_mps, actor.vy_mps,
+ actor.radius_m, actor.height_m,
+ actor.visual_kind == "pedestrian"});
+ }
+ snapshot.impact = world.impact();
+ snapshot.captured = true;
+}
+
 } // namespace
 
 ScenarioSession::ScenarioSession()
@@ -221,6 +240,7 @@ void ScenarioSession::step_once() {
  rec.diag = app_.diagnostics();
  rec.truth_after = world_.truth();
  if (scheduler_.record_due_ns(sim_time_ns_)) {
+ if (retain_episode_history_) capture_presentation(world_, rec.presentation);
  rec.step = score_accumulator_.score().steps;
  score_accumulator_.record(rec);
  last_eval_step_ = rec;

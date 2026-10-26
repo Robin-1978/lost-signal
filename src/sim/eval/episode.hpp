@@ -25,6 +25,27 @@ struct CollisionOutcome {
   double terrain_clearance_m = 999.0;  // body_z minus surface minus clearance
 };
 
+// Lightweight SIM-only state needed to reproduce a historical presentation
+// frame. Static geometry remains in World; only dynamic engine/actor state is
+// copied. This record is never published to RobotApplication.
+struct ActorPresentationState {
+ double x_m = 0.0;
+ double y_m = 0.0;
+ double vx_mps = 0.0;
+ double vy_mps = 0.0;
+ double radius_m = 0.4;
+ double height_m = 1.5;
+ bool pedestrian = false;
+};
+
+struct PresentationSnapshot {
+ bool captured = false;
+ std::vector<world::WheelViz> wheels;
+ std::vector<world::CasterViz> casters;
+ std::vector<ActorPresentationState> actors;
+ world::ImpactViz impact;
+};
+
 struct EvalStep {
   std::uint64_t step = 0;
   world::WorldTruth truth_before{};
@@ -35,6 +56,8 @@ struct EvalStep {
   robot::app::RobotApplication::Diagnostics diag{};
   // Truth-side judge outcome (SIM orchestration fills it; scoring reads it).
   CollisionOutcome judge{};
+ // Historical rendering evidence from this same completed physics step.
+ PresentationSnapshot presentation{};
 };
 
 // Append-only episode log, SIM-owned. Export is an offline artifact
