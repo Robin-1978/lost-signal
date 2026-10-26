@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "sim/viewer/experience_manifest.hpp"
 
@@ -44,6 +45,8 @@ class ExperienceFlow {
  ExperiencePhase phase() const { return phase_; }
  ExperienceEndReason end_reason() const { return end_reason_; }
  std::size_t walkaround_index() const { return walkaround_index_; }
+ std::size_t walkaround_visited_count() const;
+ bool walkaround_complete() const;
  int selected_choice() const { return selected_choice_; }
  bool timed_out() const { return end_reason_ == ExperienceEndReason::kTimeLimit; }
 
@@ -62,6 +65,7 @@ class ExperienceFlow {
  ExperiencePhase phase_ = ExperiencePhase::kBriefing;
  ExperienceEndReason end_reason_ = ExperienceEndReason::kNone;
  std::size_t walkaround_index_ = 0;
+ std::vector<bool> walkaround_visited_;
  int selected_choice_ = -1;
  std::uint64_t running_start_step_ = 0;
 };

@@ -979,8 +979,13 @@ struct ExperienceHitRegions {
 };
 
 void draw_panel_button(Rectangle bounds, const char* label, bool primary,
- Color accent, Color text) {
- const bool hovered = CheckCollisionPointRec(GetMousePosition(), bounds);
+ Color accent, Color text, bool enabled = true) {
+ const bool hovered = enabled &&
+ CheckCollisionPointRec(GetMousePosition(), bounds);
+ if (!enabled) {
+ accent = Color{70, 88, 84, 255};
+ text = Color{112, 127, 121, 255};
+ }
  const Color fill = primary
  ? (hovered ? Color{67, 235, 216, 255} : accent)
  : (hovered ? Color{49, 72, 71, 255} : Color{29, 48, 48, 255});
@@ -1037,6 +1042,7 @@ float draw_wrapped_text(const std::string& text, float x, float y,
 
 void draw_experience_overlay(const ExperienceManifest& experience,
  ExperiencePhase phase, int selected_choice, int walkaround_stop,
+ std::size_t walkaround_visited_count, bool walkaround_complete,
  const std::vector<ReviewKeyframe>& review_keyframes,
  int selected_review_keyframe,
  bool objectives_done,
@@ -1056,13 +1062,27 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (phase == ExperiencePhase::kRunning) {
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
- DrawRectangleRounded({x, 58.0f, width, 318.0f}, 0.04f, 8, kPanelSoft);
+  DrawRectangleRounded({x, 58.0f, width, 382.0f}, 0.04f, 8, kPanelSoft);
  DrawText("LIVE EVIDENCE / AUTHORITY", static_cast<int>(x + 18), 74, 14,
  kCyan);
  float y = 101.0f;
  if (frame != nullptr) {
  char line[320];
  const auto& observation = frame->observation;
+   const auto& estimate = frame->estimate;
+   const auto& decision = frame->decision;
+   const char* stage = "OBSERVE";
+   if (observation.accepted && observation.scan_valid) {
+    stage = !estimate.valid ? "ESTIMATE"
+    : !decision.valid || decision.action_code.empty() ? "PLAN"
+    : std::abs(decision.command_forward_mps) <= 0.03 &&
+      std::abs(decision.command_yaw_rate_radps) <= 0.03
+    ? "BRAKE / SETTLE"
+    : "PLAN / MOVE";
+   }
+   DrawText(stage, static_cast<int>(x + 18), static_cast<int>(y), 20,
+    kAmber);
+   y += 31.0f;
  DrawText("ROBOT / OBSERVATION", static_cast<int>(x + 18),
  static_cast<int>(y), 13, kCyan);
  std::snprintf(line, sizeof(line),
@@ -1082,7 +1102,6 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  kMuted);
  y += 62.0f;
 
- const auto& estimate = frame->estimate;
  DrawText("ROBOT / ESTIMATE", static_cast<int>(x + 18),
  static_cast<int>(y), 13, kCyan);
  if (estimate.valid) {
@@ -1097,7 +1116,6 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  kText);
  y += 47.0f;
 
- const auto& decision = frame->decision;
  DrawText("ROBOT / DECISION", static_cast<int>(x + 18),
  static_cast<int>(y), 13, Color{180, 132, 255, 255});
  std::snprintf(line, sizeof(line), "%s / %s",
@@ -1121,6 +1139,10 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  static_cast<int>(y), 13, kAmber);
  DrawText("does not publish evidence back to ROBOT",
  static_cast<int>(x + 18), static_cast<int>(y + 19), 13, kMuted);
+  if (!experience.running_prompt.empty()) {
+   draw_wrapped_text(experience.running_prompt, x + 18, y + 48,
+    width - 36, 12, 3, kText);
+  }
  return;
  }
 
@@ -1154,33 +1176,34 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (phase == ExperiencePhase::kBriefing) {
  DrawText("MISSION BRIEF / COMPONENT WALKAROUND",
  static_cast<int>(x + 34), static_cast<int>(y), 15, kAmber);
- y += 32.0f;
+  y += 27.0f;
+  for (const auto& line : experience.briefing) {
+   DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 6), 3.0f,
+    kCyan);
+   y = draw_wrapped_text(line, x + 54, y, panel_width - 92, 13, 4,
+    kText) + 4.0f;
+  }
+  y += 5.0f;
  if (!experience.walkaround.empty()) {
  const int count = static_cast<int>(experience.walkaround.size());
  const int index = std::clamp(walkaround_stop, 0, count - 1);
  const auto& stop = experience.walkaround[static_cast<std::size_t>(index)];
- char progress[64];
- std::snprintf(progress, sizeof(progress), "PHYSICAL COMPONENT %02d / %02d",
- index + 1, count);
+   char progress[96];
+   std::snprintf(progress, sizeof(progress),
+    "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
+    index + 1, count, walkaround_visited_count, count);
  DrawText(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
  kMuted);
- y += 28.0f;
- y = draw_wrapped_text(stop.title, x + 34, y, panel_width - 68, 20, 5,
- kCyan) + 16.0f;
- y = draw_wrapped_text(stop.lesson, x + 34, y, panel_width - 68, 17, 7,
- kText) + 20.0f;
+   y += 23.0f;
+   y = draw_wrapped_text(stop.title, x + 34, y, panel_width - 68, 18, 4,
+    kCyan) + 9.0f;
+   y = draw_wrapped_text(stop.lesson, x + 34, y, panel_width - 68, 14, 5,
+    kText) + 10.0f;
  DrawText("POSE SOURCE", static_cast<int>(x + 34), static_cast<int>(y),
  13, kAmber);
  y += 22.0f;
  const std::string source = stop.component_id + " / MuJoCo body + joint";
  draw_wrapped_text(source, x + 34, y, panel_width - 68, 14, 5, kMuted);
- } else {
- for (const auto& line : experience.briefing) {
- DrawCircle(static_cast<int>(x + 42), static_cast<int>(y + 8), 4.0f,
- kCyan);
- y = draw_wrapped_text(line, x + 58, y, panel_width - 102, 16, 6,
- kText) + 7.0f;
- }
  }
  const float button_y = y0 + panel_height - 64.0f;
  const Rectangle previous{x + 34.0f, button_y, 42.0f, 36.0f};
@@ -1189,11 +1212,19 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  154.0f, 36.0f};
  draw_panel_button(previous, "<", false, kCyan, kText);
  draw_panel_button(next, ">", false, kCyan, kText);
- draw_panel_button(primary, "START EXPERIMENT", true, kCyan, kText);
+  char primary_label[64];
+  if (walkaround_complete) {
+   std::snprintf(primary_label, sizeof(primary_label), "START EXPERIMENT");
+  } else {
+   std::snprintf(primary_label, sizeof(primary_label), "INSPECT ALL %zu/%zu",
+    walkaround_visited_count, experience.walkaround.size());
+  }
+  draw_panel_button(primary, primary_label, true, kCyan, kText,
+   walkaround_complete);
  if (hit_regions != nullptr) {
  hit_regions->previous = previous;
  hit_regions->next = next;
- hit_regions->primary = primary;
+   if (walkaround_complete) hit_regions->primary = primary;
  }
  return;
  }
@@ -1316,6 +1347,15 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  static_cast<int>(y), 17, kCyan);
  y = draw_wrapped_text(keyframe.evidence, x + 34, y + 24,
  panel_width - 68, 14, 4, kText) + 10.0f;
+  const float controls_y = y0 + panel_height - 72.0f;
+  const Rectangle previous{x + 34.0f, controls_y, 46.0f, 34.0f};
+  const Rectangle next{x + 88.0f, controls_y, 46.0f, 34.0f};
+  draw_panel_button(previous, "<", false, kCyan, kText);
+  draw_panel_button(next, ">", false, kCyan, kText);
+  if (hit_regions != nullptr) {
+   hit_regions->previous = previous;
+   hit_regions->next = next;
+  }
  }
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
@@ -1336,9 +1376,21 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  y = draw_wrapped_text(lesson, x + 56, y, panel_width - 100, 15, 5,
  kText) + 6.0f;
  }
- DrawText("LEFT/RIGHT KEYFRAMES / A RE-RUN / ROBOT never received SIM truth.",
- static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 42),
- 14, kAmber);
+ if (!experience.experiments.empty() && experiment_ui != nullptr) {
+  const Rectangle experiment_button{x + 150.0f, y0 + panel_height - 72.0f,
+   158.0f, 34.0f};
+  const bool can_run = experiment_ui->state != ExperimentRunState::kRunning;
+  draw_panel_button(experiment_button,
+   experiment_ui->state == ExperimentRunState::kRunning
+   ? "RUNNING A/B..." : "RUN CONTROLLED A/B",
+   true, kAmber, kText, can_run);
+  if (hit_regions != nullptr && can_run) {
+   hit_regions->primary = experiment_button;
+  }
+ }
+ DrawText("KEYFRAMES / CONTROLLED A/B / ROBOT never received SIM truth.",
+  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 27),
+  13, kAmber);
 }
 
 // Map extents over every authored layer (auto-fit on --map load).
@@ -2950,17 +3002,25 @@ int main(int argc, char** argv) {
  break;
  }
  }
- } else if (experience_flow->phase() == ExperiencePhase::kDebrief &&
- !review_keyframes.empty()) {
+ } else if (experience_flow->phase() == ExperiencePhase::kDebrief) {
+ if (!review_keyframes.empty()) {
  const int count = static_cast<int>(review_keyframes.size());
- if (IsKeyPressed(KEY_RIGHT)) {
+ if (IsKeyPressed(KEY_RIGHT) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.next))) {
  selected_review_keyframe = (selected_review_keyframe + 1) % count;
  }
- if (IsKeyPressed(KEY_LEFT)) {
+ if (IsKeyPressed(KEY_LEFT) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.previous))) {
  selected_review_keyframe =
  (selected_review_keyframe + count - 1) % count;
  }
- if (IsKeyPressed(KEY_A) && !experience.experiments.empty() &&
+ }
+ const bool requested_experiment = IsKeyPressed(KEY_A) ||
+ (clicked && CheckCollisionPointRec(
+ pointer, experience_hit_regions.primary));
+ if (requested_experiment && !experience.experiments.empty() &&
  experiment_ui.state != ExperimentRunState::kRunning) {
  const auto definition = experience.experiments.front();
  const std::string manifest_path = experience_path;
@@ -3179,7 +3239,9 @@ int main(int argc, char** argv) {
  }
  draw_experience_overlay(experience, experience_flow->phase(),
  experience_flow->selected_choice(),
- static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
+ static_cast<int>(experience_flow->walkaround_index()),
+ experience_flow->walkaround_visited_count(),
+ experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
  false, false, &experience_hit_regions);
 
@@ -3329,7 +3391,9 @@ int main(int argc, char** argv) {
  }
  draw_experience_overlay(experience, experience_flow->phase(),
  selected_choice,
- static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
+ static_cast<int>(experience_flow->walkaround_index()),
+ experience_flow->walkaround_visited_count(),
+ experience_flow->walkaround_complete(), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
  experience_flow->timed_out(), prediction_supported,

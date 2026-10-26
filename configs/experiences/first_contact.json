@@ -12,7 +12,7 @@
  "objectives": ["glass_door"],
  "time_limit_steps": 1200,
  "briefing": [
- "Drive wheels create traction; passive casters carry load and swivel freely.",
+ "Drive wheels create traction; passive casters carry load and swivel in response to motion, friction, trail, and bearing damping.",
  "The LiDAR reports timed ranges from its mounted sensor frame. It does not report world truth.",
  "The robot decides arrival from its own estimate; it never receives the physical truth pose.",
  "Reach the marked stop pose at the glass calibration gate and remain stable while SIM verifies the physical result independently."

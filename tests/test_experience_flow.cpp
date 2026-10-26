@@ -35,11 +35,19 @@ int main() {
  ExperienceFlow flow({4, 3, 10});
  assert(flow.phase() == ExperiencePhase::kBriefing);
  assert(flow.walkaround_index() == 0);
+ assert(flow.walkaround_visited_count() == 1);
+ assert(!flow.walkaround_complete());
  flow.inspect_previous();
  assert(flow.walkaround_index() == 3);
+ assert(flow.walkaround_visited_count() == 2);
  flow.inspect_next();
  flow.inspect_next();
  assert(flow.walkaround_index() == 1);
+ assert(flow.walkaround_visited_count() == 3);
+ assert(!flow.continue_to_prediction());
+ flow.inspect_next();
+ assert(flow.walkaround_index() == 2);
+ assert(flow.walkaround_complete());
  assert(flow.continue_to_prediction());
  assert(!flow.continue_to_prediction());
  assert(flow.phase() == ExperiencePhase::kPrediction);
@@ -57,10 +65,15 @@ int main() {
  assert(flow.phase() == ExperiencePhase::kBriefing);
  assert(flow.selected_choice() == -1);
  assert(!flow.timed_out());
- assert(flow.continue_to_prediction());
- assert(flow.select_choice(0, 30));
- assert(flow.update(31, true));
- assert(flow.end_reason() == ExperienceEndReason::kScenarioFinished);
+ assert(flow.walkaround_visited_count() == 1);
+ assert(!flow.continue_to_prediction());
+
+ ExperienceFlow direct({0, 3, 10});
+ assert(direct.walkaround_complete());
+ assert(direct.continue_to_prediction());
+ assert(direct.select_choice(0, 30));
+ assert(direct.update(31, true));
+ assert(direct.end_reason() == ExperienceEndReason::kScenarioFinished);
 
  std::puts("test_experience_flow: ok");
  return 0;
