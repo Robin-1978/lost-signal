@@ -28,6 +28,8 @@ int main() {
  assert(experience.objectives.front() == "glass_door");
  assert(experience.time_limit_steps == 1200);
  assert(experience.choices.size() == 3);
+ assert(experience.choices.front().evidence_rule ==
+ lost_signal::sim::viewer::ExperienceEvidenceRule::kIndependentAcceptance);
  assert(experience.walkaround.size() == 4);
  assert(experience.walkaround.front().component_id == "drive_wheel");
  assert(experience.experiments.size() == 1);

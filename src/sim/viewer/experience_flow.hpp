@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "sim/viewer/experience_manifest.hpp"
+
 namespace lost_signal::sim::viewer {
 
 enum class ExperiencePhase { kBriefing, kPrediction, kRunning, kDebrief };
@@ -12,6 +14,18 @@ enum class ExperienceEndReason {
  kScenarioFinished,
  kTimeLimit,
 };
+
+struct ExperienceEvidence {
+ bool terminal = false;
+ bool all_robot_done = false;
+ bool all_sim_accepted = false;
+ bool collision_free = false;
+};
+
+// Evaluates the player's authored hypothesis from this run's structured
+// outcome. Static-answer fallback keeps older manifests loadable.
+bool choice_supported(const ExperienceChoice& choice,
+ const ExperienceEvidence& evidence);
 
 // Presentation-only state machine. It owns no World, RobotApplication, or
 // truth state; callers report only terminal status and recorded step count.

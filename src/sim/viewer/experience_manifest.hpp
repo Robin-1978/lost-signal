@@ -6,11 +6,19 @@
 
 namespace lost_signal::sim::viewer {
 
+enum class ExperienceEvidenceRule {
+ kStaticAnswer,
+ kIndependentAcceptance,
+ kSimRejected,
+ kIncomplete,
+};
+
 struct ExperienceChoice {
  std::string choice_id;
  std::string label;
  std::string explanation;
  bool correct = false;
+ ExperienceEvidenceRule evidence_rule = ExperienceEvidenceRule::kStaticAnswer;
 };
 
 struct ExperienceWalkaroundStop {

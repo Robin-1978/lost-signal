@@ -8,12 +8,22 @@
 
 namespace lost_signal::sim::experiment {
 
+struct ExperimentEvent {
+ bool observed = false;
+ std::uint64_t step = 0;
+ double stamp_s = -1.0;
+};
+
 struct VariantResult {
  double scan_period_s = 0.0;
  std::uint64_t delivery_seed = 0;
  std::uint64_t imu_seed = 0;
  std::uint64_t actor_seed_digest = 0;
+ std::uint64_t config_digest = 0;
  std::uint64_t command_digest = 0;
+ ExperimentEvent first_scan;
+ ExperimentEvent first_brake;
+ ExperimentEvent stable_stop;
  bool objectives_done = false;
  bool objectives_passed = false;
  eval::EpisodeScore score;

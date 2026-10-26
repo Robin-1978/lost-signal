@@ -72,6 +72,20 @@ bool resolve_file(const std::filesystem::path& root,
  return true;
 }
 
+bool parse_evidence_rule(const std::string& text,
+ ExperienceEvidenceRule& rule) {
+ if (text == "independent_acceptance") {
+ rule = ExperienceEvidenceRule::kIndependentAcceptance;
+ } else if (text == "sim_rejected") {
+ rule = ExperienceEvidenceRule::kSimRejected;
+ } else if (text == "incomplete") {
+ rule = ExperienceEvidenceRule::kIncomplete;
+ } else {
+ return false;
+ }
+ return true;
+}
+
 } // namespace
 
 bool load_experience_manifest(const std::string& path,
@@ -159,6 +173,13 @@ bool load_experience_manifest(const std::string& path,
  return false;
  }
  choice.correct = correct->as_bool();
+ const Json* evidence_rule = node.find("evidence_rule");
+ if (evidence_rule != nullptr &&
+ (!evidence_rule->is_str() ||
+ !parse_evidence_rule(evidence_rule->as_str(), choice.evidence_rule))) {
+ out_error = "experience choice has unsupported evidence_rule";
+ return false;
+ }
  if (choice.correct) ++correct_choices;
  parsed.choices.push_back(std::move(choice));
  }

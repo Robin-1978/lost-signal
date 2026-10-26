@@ -15,6 +15,23 @@ int main() {
  }
  assert(rejected);
 
+ ExperienceChoice accepted;
+ accepted.evidence_rule = ExperienceEvidenceRule::kIndependentAcceptance;
+ ExperienceChoice sim_rejected;
+ sim_rejected.evidence_rule = ExperienceEvidenceRule::kSimRejected;
+ ExperienceChoice incomplete;
+ incomplete.evidence_rule = ExperienceEvidenceRule::kIncomplete;
+ ExperienceEvidence evidence{true, true, true, true};
+ assert(choice_supported(accepted, evidence));
+ assert(!choice_supported(sim_rejected, evidence));
+ assert(!choice_supported(incomplete, evidence));
+ evidence.all_sim_accepted = false;
+ assert(!choice_supported(accepted, evidence));
+ assert(choice_supported(sim_rejected, evidence));
+ evidence.all_robot_done = false;
+ assert(!choice_supported(sim_rejected, evidence));
+ assert(choice_supported(incomplete, evidence));
+
  ExperienceFlow flow({4, 3, 10});
  assert(flow.phase() == ExperiencePhase::kBriefing);
  assert(flow.walkaround_index() == 0);

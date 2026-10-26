@@ -4,6 +4,23 @@
 
 namespace lost_signal::sim::viewer {
 
+bool choice_supported(const ExperienceChoice& choice,
+ const ExperienceEvidence& evidence) {
+ switch (choice.evidence_rule) {
+ case ExperienceEvidenceRule::kIndependentAcceptance:
+ return evidence.terminal && evidence.all_robot_done &&
+ evidence.all_sim_accepted && evidence.collision_free;
+ case ExperienceEvidenceRule::kSimRejected:
+ return evidence.terminal && evidence.all_robot_done &&
+ (!evidence.all_sim_accepted || !evidence.collision_free);
+ case ExperienceEvidenceRule::kIncomplete:
+ return evidence.terminal && !evidence.all_robot_done;
+ case ExperienceEvidenceRule::kStaticAnswer:
+ return choice.correct;
+ }
+ return false;
+}
+
 ExperienceFlow::ExperienceFlow(Config config) : config_(config) {
  if (config_.choice_count < 2 || config_.choice_count > 4) {
  throw std::invalid_argument("experience flow needs two to four choices");

@@ -35,9 +35,9 @@
  "prediction": {
  "question": "What must agree before this precise docking experiment is accepted?",
  "choices": [
- {"choice_id":"truth_to_robot","label":"SIM sends the exact physical pose to the robot before it stops","explanation":"That would invalidate deployment. SIM truth is recorded for replay and evaluation but never enters the robot.","correct":false},
- {"choice_id":"independent_agreement","label":"ROBOT reports arrival from its estimate, then SIM independently verifies pose and rest","explanation":"Correct. The deployable robot decides from measurements and estimates; the simulator separately checks the physical outcome.","correct":true},
- {"choice_id":"estimate_only","label":"The robot estimate enters the goal radius, even if the physical body is still moving outside it","explanation":"That is not enough for a credible simulation result. Physical position, heading, speed, and a stable time window are checked independently.","correct":false}
+ {"choice_id":"independent_agreement","label":"ROBOT reports arrival, and SIM independently accepts physical pose and rest","explanation":"The deployable robot decides from measurements and estimates; the simulator separately checks the physical outcome.","correct":true,"evidence_rule":"independent_acceptance"},
+ {"choice_id":"sim_rejects","label":"ROBOT reports arrival, but SIM rejects the physical pose or stable stop","explanation":"This can happen when estimate-side completion and the physical outcome disagree. The run evidence decides whether it happened.","correct":false,"evidence_rule":"sim_rejected"},
+ {"choice_id":"incomplete","label":"The experiment time limit expires before ROBOT reports arrival","explanation":"A timeout is a real incomplete result. The game pauses and explains the recorded evidence instead of forcing success.","correct":false,"evidence_rule":"incomplete"}
  ]
  },
  "running_prompt": "Watch measurement, estimate, and decision as separate ROBOT evidence. Press L for estimated LiDAR projection, E for estimate, and T for deterministic Turbo.",

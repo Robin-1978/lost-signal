@@ -112,9 +112,10 @@ Run the same field lab as a controlled scan-cadence A/B experiment:
 
 The runner reloads both variants from the same experience and verifies equal
 delivery, IMU, and actor seed digests before writing task, collision,
-clearance, localization, path, energy, and command-digest results. The only
-override is `lidar.scan_period_s`; each ROBOT run receives its own ordinary
-timestamped observation stream.
+clearance, localization, path, energy, first-scan, first-brake, stable-stop,
+effective-config-digest, and command-digest results. The only override is
+`lidar.scan_period_s`; each ROBOT run receives its own ordinary timestamped
+observation stream.
 
 ## Capability notes
 

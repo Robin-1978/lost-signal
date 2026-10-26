@@ -992,6 +992,24 @@ void draw_panel_button(Rectangle bounds, const char* label, bool primary,
  primary ? Color{7, 18, 18, 255} : text);
 }
 
+lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
+ const lost_signal::sim::scenario::ScenarioSession& session,
+ bool timed_out) {
+ lost_signal::sim::viewer::ExperienceEvidence evidence;
+ evidence.terminal = session.objectives_done() || timed_out;
+ const auto& results = session.objectives().results();
+ evidence.all_robot_done = !results.empty() && std::all_of(
+ results.begin(), results.end(), [](const auto& result) {
+ return result.robot_done;
+ });
+ evidence.all_sim_accepted = !results.empty() && std::all_of(
+ results.begin(), results.end(), [](const auto& result) {
+ return result.successful();
+ });
+ evidence.collision_free = session.score().collision_steps == 0;
+ return evidence;
+}
+
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
  const Font font = GetFontDefault();
@@ -1025,6 +1043,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  bool objectives_passed, const lost_signal::sim::eval::EpisodeScore& score,
  const Frame* frame,
  const ExperimentUiState* experiment_ui, bool timed_out,
+ bool prediction_supported,
  ExperienceHitRegions* hit_regions) {
  constexpr Color kPanel{13, 21, 22, 242};
  constexpr Color kPanelSoft{24, 37, 38, 238};
@@ -1247,6 +1266,23 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  baseline.score.min_clearance_m, variant.score.min_clearance_m);
  y = draw_wrapped_text(comparison, x + 34, y, panel_width - 68, 14, 4,
  kText) + 8.0f;
+ char events[320];
+ std::snprintf(events, sizeof(events),
+ "events scan %.2f/%.2f s | brake %.2f/%.2f s | stable %.2f/%.2f s",
+ baseline.first_scan.stamp_s, variant.first_scan.stamp_s,
+ baseline.first_brake.stamp_s, variant.first_brake.stamp_s,
+ baseline.stable_stop.stamp_s, variant.stable_stop.stamp_s);
+ y = draw_wrapped_text(events, x + 34, y, panel_width - 68, 14, 4,
+ kText) + 6.0f;
+ char digests[320];
+ std::snprintf(digests, sizeof(digests),
+ "config %08llx/%08llx command %08llx/%08llx",
+ static_cast<unsigned long long>(baseline.config_digest & 0xffffffffULL),
+ static_cast<unsigned long long>(variant.config_digest & 0xffffffffULL),
+ static_cast<unsigned long long>(baseline.command_digest & 0xffffffffULL),
+ static_cast<unsigned long long>(variant.command_digest & 0xffffffffULL));
+ y = draw_wrapped_text(digests, x + 34, y, panel_width - 68, 13, 4,
+ kMuted) + 8.0f;
  } else if (experiment_ui->state == ExperimentRunState::kFailed) {
  y = draw_wrapped_text("Experiment failed: " + experiment_ui->error,
  x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
@@ -1284,10 +1320,10 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
  const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
- DrawText(choice.correct ? "YOUR PREDICTION: SUPPORTED"
+ DrawText(prediction_supported ? "YOUR PREDICTION: SUPPORTED BY THIS RUN"
  : "YOUR PREDICTION: REVISE",
  static_cast<int>(x + 34), static_cast<int>(y), 15,
- choice.correct ? kCyan : kAmber);
+ prediction_supported ? kCyan : kAmber);
  y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
  panel_width - 68, 16, 5, kText) + 13.0f;
  }
@@ -3145,7 +3181,7 @@ int main(int argc, char** argv) {
  experience_flow->selected_choice(),
  static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
  selected_review_keyframe, false, false, {}, &preview, &experiment_ui,
- false, &experience_hit_regions);
+ false, false, &experience_hit_regions);
 
  EndDrawing();
  if (shot_frames > 0 && --shot_frames == 0) {
@@ -3283,12 +3319,21 @@ int main(int argc, char** argv) {
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
  if (experience_loaded) {
+ bool prediction_supported = false;
+ const int selected_choice = experience_flow->selected_choice();
+ if (selected_choice >= 0 &&
+ selected_choice < static_cast<int>(experience.choices.size())) {
+ prediction_supported = lost_signal::sim::viewer::choice_supported(
+ experience.choices[static_cast<std::size_t>(selected_choice)],
+ experience_evidence(*session, experience_flow->timed_out()));
+ }
  draw_experience_overlay(experience, experience_flow->phase(),
- experience_flow->selected_choice(),
+ selected_choice,
  static_cast<int>(experience_flow->walkaround_index()), review_keyframes,
  selected_review_keyframe, session->objectives_done(),
  session->objectives_passed(), session->score(), &frame, &experiment_ui,
- experience_flow->timed_out(), &experience_hit_regions);
+ experience_flow->timed_out(), prediction_supported,
+ &experience_hit_regions);
  }
     EndDrawing();
     if (shot_frames > 0 && --shot_frames == 0) {

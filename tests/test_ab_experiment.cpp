@@ -20,6 +20,19 @@ int main() {
  assert(comparison.variant.score.steps > 0);
  assert(comparison.baseline.command_digest != 0);
  assert(comparison.variant.command_digest != 0);
+ assert(comparison.baseline.config_digest != 0);
+ assert(comparison.variant.config_digest != 0);
+ assert(comparison.baseline.config_digest != comparison.variant.config_digest);
+ assert(comparison.baseline.first_scan.observed);
+ assert(comparison.variant.first_scan.observed);
+ assert(comparison.baseline.first_brake.observed);
+ assert(comparison.variant.first_brake.observed);
+ assert(comparison.baseline.stable_stop.observed);
+ assert(comparison.variant.stable_stop.observed);
+ assert(comparison.baseline.first_scan.step <
+ comparison.baseline.first_brake.step);
+ assert(comparison.baseline.first_brake.step <=
+ comparison.baseline.stable_stop.step);
  assert(!lost_signal::sim::experiment::run_scan_period_comparison(
  std::string(TEST_SOURCE_DIR) + "/configs/experiences/first_contact.json",
  0.0, 1200, comparison, &error));

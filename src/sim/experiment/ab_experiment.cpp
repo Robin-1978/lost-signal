@@ -38,6 +38,31 @@ void hash_command(std::uint64_t& hash,
  sizeof(command.steer_angle_rad));
 }
 
+bool hash_file(std::uint64_t& hash, const std::string& path) {
+ std::ifstream input(path, std::ios::binary);
+ if (!input.is_open()) return false;
+ char chunk[4096];
+ while (input.good()) {
+ input.read(chunk, sizeof(chunk));
+ const std::streamsize count = input.gcount();
+ if (count > 0) hash_bytes(hash, chunk, static_cast<std::size_t>(count));
+ }
+ return input.eof();
+}
+
+double seconds(robot::core::MonotonicNs stamp_ns) {
+ return stamp_ns == robot::core::kInvalidTime
+ ? -1.0 : static_cast<double>(stamp_ns) * 1e-9;
+}
+
+void capture_event(ExperimentEvent& event, const eval::EvalStep& step,
+ robot::core::MonotonicNs stamp_ns) {
+ if (event.observed) return;
+ event.observed = true;
+ event.step = step.step;
+ event.stamp_s = seconds(stamp_ns);
+}
+
 bool run_variant(const viewer::ExperienceManifest& experience,
  double scan_period_s, long step_budget, VariantResult& result,
  std::string& error) {
@@ -76,10 +101,46 @@ bool run_variant(const viewer::ExperienceManifest& experience,
  }
 
  std::uint64_t command_digest = 1469598103934665603ULL;
+ std::uint64_t config_digest = 1469598103934665603ULL;
+ if (!hash_file(config_digest, experience.robot_path) ||
+ !hash_file(config_digest, experience.sim_path) ||
+ !hash_file(config_digest, experience.map_path)) {
+ error = "cannot hash experiment configuration";
+ return false;
+ }
+ for (const auto& objective : experience.objectives) {
+ hash_bytes(config_digest, objective.data(), objective.size());
+ }
+ hash_bytes(config_digest, &scan_period_s, sizeof(scan_period_s));
+ ExperimentEvent first_scan;
+ ExperimentEvent first_brake;
+ ExperimentEvent stable_stop;
+ bool have_motion_command = false;
+ int stable_samples = 0;
  for (long step = 0; step < step_budget && !session.objectives_done(); ++step) {
  session.step_once();
  const eval::EvalStep* recorded = session.last_eval_step();
- if (recorded != nullptr) hash_command(command_digest, recorded->cmd);
+ if (recorded == nullptr) continue;
+ hash_command(command_digest, recorded->cmd);
+ if (!first_scan.observed && recorded->obs.scan_valid) {
+ const auto header = robot::iface::scan_measurement_header(recorded->obs);
+ if (header.valid()) capture_event(first_scan, *recorded, header.stamp_ns);
+ }
+ if (!recorded->cmd.is_safe_stop()) have_motion_command = true;
+ if (have_motion_command && recorded->cmd.is_safe_stop()) {
+ capture_event(first_brake, *recorded, recorded->cmd.stamp_ns);
+ }
+ const bool settled = first_brake.observed &&
+ recorded->diag.has_observation &&
+ std::abs(recorded->diag.estimate.forward_mps) <=
+ robot_config.arrival.maximum_forward_speed_mps &&
+ std::abs(recorded->diag.estimate.yaw_rate_radps) <=
+ robot_config.arrival.maximum_yaw_rate_radps;
+ stable_samples = settled ? stable_samples + 1 : 0;
+ if (stable_samples >= robot_config.arrival.settle_cycles) {
+ capture_event(stable_stop, *recorded,
+ recorded->diag.estimate.stamp_ns);
+ }
  }
  const eval::EvalStep* final_step = session.last_eval_step();
  if (final_step == nullptr) {
@@ -90,7 +151,11 @@ bool run_variant(const viewer::ExperienceManifest& experience,
  result.delivery_seed = sim_config.delivery.seed;
  result.imu_seed = sim_config.imu_realism.seed;
  result.actor_seed_digest = actor_seed_digest;
+ result.config_digest = config_digest;
  result.command_digest = command_digest;
+ result.first_scan = first_scan;
+ result.first_brake = first_brake;
+ result.stable_stop = stable_stop;
  result.objectives_done = session.objectives_done();
  result.objectives_passed = session.objectives_passed();
  result.score = session.score();
@@ -111,14 +176,26 @@ robot::core::Json variant_json(const VariantResult& result) {
  score.emplace_back("max_pos_err_m", Json::Num(result.score.max_pos_err_m));
  score.emplace_back("energy_proxy", Json::Num(result.score.energy_proxy));
  Json::Object out;
+ const auto event_json = [](const ExperimentEvent& event) {
+ Json::Object object;
+ object.emplace_back("observed", Json::Bool(event.observed));
+ object.emplace_back("step", Json::Num(static_cast<double>(event.step)));
+ object.emplace_back("stamp_s", Json::Num(event.stamp_s));
+ return Json::Obj(std::move(object));
+ };
  out.emplace_back("scan_period_s", Json::Num(result.scan_period_s));
  out.emplace_back("delivery_seed",
  Json::Num(static_cast<double>(result.delivery_seed)));
  out.emplace_back("imu_seed", Json::Num(static_cast<double>(result.imu_seed)));
  out.emplace_back("actor_seed_digest",
  Json::Str(std::to_string(result.actor_seed_digest)));
+ out.emplace_back("config_digest",
+ Json::Str(std::to_string(result.config_digest)));
  out.emplace_back("command_digest",
  Json::Str(std::to_string(result.command_digest)));
+ out.emplace_back("first_scan", event_json(result.first_scan));
+ out.emplace_back("first_brake", event_json(result.first_brake));
+ out.emplace_back("stable_stop", event_json(result.stable_stop));
  out.emplace_back("objectives_done", Json::Bool(result.objectives_done));
  out.emplace_back("objectives_passed", Json::Bool(result.objectives_passed));
  out.emplace_back("score", Json::Obj(std::move(score)));
