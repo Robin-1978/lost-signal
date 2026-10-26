@@ -138,6 +138,15 @@ int main(int argc, char** argv) {
  track.radius_m, track.position_uncertainty_m,
  track.prediction_ready ? "yes" : "no", track.age_s);
  }
+ // SIM truth is emitted only by this offline trace harness so a failed
+ // scenario can distinguish actor-policy deadlock from ROBOT perception.
+ // It never enters an observation, estimate, planner, or safety decision.
+ for (const auto& actor : session.setup_world().actors()) {
+ std::fprintf(stderr,
+ " sim_actor id=%s p=(%.3f,%.3f) v=(%.3f,%.3f) yield=%.3f\n",
+ actor.id.c_str(), actor.x, actor.y, actor.vx_mps, actor.vy_mps,
+ actor.behavior.yield_speed_mps_);
+ }
  }
  }
  if (trace) {
