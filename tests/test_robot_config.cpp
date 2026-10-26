@@ -25,8 +25,11 @@ int main() {
     assert(cfg.limits.max_forward_mps == 2.0);
  assert(cfg.navigation.clearance_margin_m == 0.1);
  assert(cfg.navigation.soft_inflation_radius_m == 0.2);
- assert(cfg.arrival.position_tolerance_m == 0.25);
- assert(cfg.arrival.heading_tolerance_rad == 0.2);
+ const bool differential = std::string(kind) == "differential";
+ assert(cfg.arrival.position_tolerance_m ==
+ (differential ? 0.2 : 0.25));
+ assert(cfg.arrival.heading_tolerance_rad ==
+ (differential ? 0.15 : 0.2));
  assert(cfg.arrival.confidence_probability == 0.95);
  assert(cfg.motion.acceleration_mps2 == 2.0);
  assert(cfg.motion.brake_deceleration_mps2 == 2.0);
