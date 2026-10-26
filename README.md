@@ -254,7 +254,7 @@ bounded Turbo work budget allows. Use `--quality high|fast` or
 restores the chosen quality. Fast skips shadow/HDR passes but keeps physical
 link poses and simulation events. Playback never changes physics, sensor
 stamps, or ROBOT control periods. The HUD and exit summary report requested
-rate, measured real-time factor, steps/s, sliding-window tick p99, active
+rate, measured real-time factor, steps/s, sliding-window tick p99/max, active
 quality, and `LIMIT` when the rendering budget throttles simulation work.
 Press `E` for the deployable ROBOT AI overlay: cyan shows anonymous perception
 tracks and velocity, while purple ribbons and uncertainty rings show the same

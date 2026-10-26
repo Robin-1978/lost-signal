@@ -33,6 +33,11 @@ struct Result {
   lost_signal::sim::world::WorldTruth truth;
   lost_signal::sim::eval::EpisodeScore score;
   std::size_t steps = 0;
+ bool objectives_done = false;
+ bool objectives_passed = false;
+ std::size_t objectives_completed = 0;
+ std::size_t objectives_successful = 0;
+ std::size_t truth_arrivals = 0;
  std::vector<StepTrace> trace;
 };
 
@@ -41,6 +46,11 @@ Result result_from(const ScenarioSession& session) {
  out.truth = session.episode().steps().back().truth_after;
  out.score = session.score();
  out.steps = session.episode().steps().size();
+ out.objectives_done = session.objectives_done();
+ out.objectives_passed = session.objectives_passed();
+ out.objectives_completed = session.objectives().completed();
+ out.objectives_successful = session.objectives().successful();
+ out.truth_arrivals = session.objectives().truth_arrivals();
  out.trace.reserve(out.steps);
  for (const auto& step : session.episode().steps()) {
  Result::StepTrace trace;
@@ -60,10 +70,10 @@ Result result_from(const ScenarioSession& session) {
  return out;
 }
 
-Result run_with_schedule(double rate, bool turbo) {
+Result run_with_schedule(double rate, bool turbo, double goal_x_m = 100.0) {
   ScenarioSession session;
   session.set_startup_mode(lost_signal::robot::autonomy::StartupMode::kSlamOnly);
-  session.setup_world().add_place({"goal", 100.0, 0.0, 0.0});
+ session.setup_world().add_place({"goal", goal_x_m, 0.0, 0.0});
   session.set_objectives({"goal"}, 0.5);
 
   PlaybackController::Config config;
@@ -86,10 +96,10 @@ Result run_with_schedule(double rate, bool turbo) {
  return result_from(session);
 }
 
-Result run_headless() {
+Result run_headless(double goal_x_m = 100.0) {
  ScenarioSession session;
  session.set_startup_mode(lost_signal::robot::autonomy::StartupMode::kSlamOnly);
- session.setup_world().add_place({"goal", 100.0, 0.0, 0.0});
+ session.setup_world().add_place({"goal", goal_x_m, 0.0, 0.0});
  session.set_objectives({"goal"}, 0.5);
  constexpr std::size_t kSteps = 120;
  for (std::size_t step = 0; step < kSteps; ++step) session.step_once();
@@ -98,13 +108,41 @@ Result run_headless() {
 
 void assert_same_result(const Result& a, const Result& b) {
   assert(a.steps == b.steps);
+ assert(a.objectives_done == b.objectives_done);
+ assert(a.objectives_passed == b.objectives_passed);
+ assert(a.objectives_completed == b.objectives_completed);
+ assert(a.objectives_successful == b.objectives_successful);
+ assert(a.truth_arrivals == b.truth_arrivals);
   assert(a.truth.step == b.truth.step);
   assert(std::abs(a.truth.body_x_m - b.truth.body_x_m) < 1e-12);
   assert(std::abs(a.truth.body_y_m - b.truth.body_y_m) < 1e-12);
+ assert(std::abs(a.truth.body_z_m - b.truth.body_z_m) < 1e-12);
+ assert(std::abs(a.truth.body_roll_rad - b.truth.body_roll_rad) < 1e-12);
+ assert(std::abs(a.truth.body_pitch_rad - b.truth.body_pitch_rad) < 1e-12);
   assert(std::abs(a.truth.body_yaw_rad - b.truth.body_yaw_rad) < 1e-12);
- assert(std::abs(a.score.path_length_m - b.score.path_length_m) < 1e-12);
- assert(std::abs(a.score.mean_pos_err_m - b.score.mean_pos_err_m) < 1e-12);
+ assert(std::abs(a.truth.forward_mps - b.truth.forward_mps) < 1e-12);
+ assert(std::abs(a.truth.lateral_mps - b.truth.lateral_mps) < 1e-12);
+ assert(std::abs(a.truth.yaw_rate_radps - b.truth.yaw_rate_radps) < 1e-12);
+ assert(a.score.steps == b.score.steps);
+ assert(a.score.elapsed_s == b.score.elapsed_s);
+ assert(a.score.safe_stop_steps == b.score.safe_stop_steps);
+ assert(a.score.obs_accepted == b.score.obs_accepted);
+ assert(a.score.obs_rejected == b.score.obs_rejected);
   assert(a.score.collision_steps == b.score.collision_steps);
+ assert(a.score.distance_m == b.score.distance_m);
+ assert(a.score.path_length_m == b.score.path_length_m);
+ assert(a.score.dynamic_hold_steps == b.score.dynamic_hold_steps);
+ assert(a.score.terrain_collision_steps == b.score.terrain_collision_steps);
+ assert(a.score.estimate_samples == b.score.estimate_samples);
+ assert(a.score.mean_pos_err_m == b.score.mean_pos_err_m);
+ assert(a.score.max_pos_err_m == b.score.max_pos_err_m);
+ assert(a.score.mean_yaw_err_rad == b.score.mean_yaw_err_rad);
+ assert(a.score.max_yaw_err_rad == b.score.max_yaw_err_rad);
+ assert(a.score.min_clearance_m == b.score.min_clearance_m);
+ assert(a.score.mean_clearance_m == b.score.mean_clearance_m);
+ assert(a.score.min_terrain_clearance_m == b.score.min_terrain_clearance_m);
+ assert(a.score.mean_terrain_clearance_m == b.score.mean_terrain_clearance_m);
+ assert(a.score.energy_proxy == b.score.energy_proxy);
  assert(a.trace.size() == b.trace.size());
  for (std::size_t i = 0; i < a.trace.size(); ++i) {
  const auto& lhs = a.trace[i];
@@ -147,6 +185,7 @@ int main() {
   assert(std::abs(stats.actual_rtf - 1.0) < 1e-9);
   assert(std::abs(stats.steps_per_s - 50.0) < 1e-9);
   assert(stats.tick_p99_ms > 1.45 && stats.tick_p99_ms < 1.50);
+ assert(std::abs(stats.tick_max_ms - 1.49) < 1e-9);
   assert(!stats.throttled);
 
  // High requested rates keep the full current-frame demand. Backlog limits
@@ -235,6 +274,26 @@ int main() {
  assert_same_result(one_x, sixty_four_x);
   assert_same_result(one_x, turbo);
  assert_same_result(one_x, headless);
+
+ // Repeat with an objective at the initial pose so the comparison also
+ // covers the settled ROBOT-done + independent SIM-arrival terminal verdict.
+ // The fixed number of subsequent transitions proves that completed mission
+ // state and the full accumulated score remain schedule-independent too.
+ const Result completed_one_x = run_with_schedule(1.0, false, 0.0);
+ const Result completed_eight_x = run_with_schedule(8.0, false, 0.0);
+ const Result completed_sixty_four_x =
+ run_with_schedule(64.0, false, 0.0);
+ const Result completed_turbo = run_with_schedule(1.0, true, 0.0);
+ const Result completed_headless = run_headless(0.0);
+ assert(completed_one_x.objectives_done);
+ assert(completed_one_x.objectives_passed);
+ assert(completed_one_x.objectives_completed == 1);
+ assert(completed_one_x.objectives_successful == 1);
+ assert(completed_one_x.truth_arrivals == 1);
+ assert_same_result(completed_one_x, completed_eight_x);
+ assert_same_result(completed_one_x, completed_sixty_four_x);
+ assert_same_result(completed_one_x, completed_turbo);
+ assert_same_result(completed_one_x, completed_headless);
 
   std::puts("test_playback_controller: ok");
   return 0;

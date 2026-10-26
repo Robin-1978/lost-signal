@@ -31,6 +31,7 @@ class PlaybackController {
     double actual_rtf = 0.0;
     double steps_per_s = 0.0;
     double tick_p99_ms = 0.0;
+ double tick_max_ms = 0.0;
     bool turbo = false;
     bool throttled = false;
   };

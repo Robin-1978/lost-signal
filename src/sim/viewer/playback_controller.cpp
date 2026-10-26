@@ -128,6 +128,7 @@ PlaybackController::Statistics PlaybackController::statistics() const {
     const std::size_t index = static_cast<std::size_t>(
         std::ceil(0.99 * static_cast<double>(sorted.size())) - 1.0);
     out.tick_p99_ms = sorted[std::min(index, sorted.size() - 1)];
+ out.tick_max_ms = sorted.back();
   }
   return out;
 }

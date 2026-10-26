@@ -5109,18 +5109,19 @@ int main(int argc, char** argv) {
  const auto playback_stats = playback.statistics();
  const RenderQuality active_quality = playback_stats.turbo
  ? RenderQuality::kFast : render_quality;
- char speed[160];
+ char speed[192];
  if (playback_stats.turbo) {
  std::snprintf(speed, sizeof(speed),
- "req=TURBO actual=%.2fx %.0fstep/s p99=%.1fms%s",
+ "req=TURBO actual=%.2fx %.0fstep/s p99/max=%.1f/%.1fms%s",
  playback_stats.actual_rtf, playback_stats.steps_per_s,
- playback_stats.tick_p99_ms,
+ playback_stats.tick_p99_ms, playback_stats.tick_max_ms,
  playback_stats.throttled ? " LIMIT" : "");
  } else {
  std::snprintf(speed, sizeof(speed),
- "req=%.2fx actual=%.2fx %.0fstep/s p99=%.1fms%s",
+ "req=%.2fx actual=%.2fx %.0fstep/s p99/max=%.1f/%.1fms%s",
  playback_stats.requested_rate, playback_stats.actual_rtf,
  playback_stats.steps_per_s, playback_stats.tick_p99_ms,
+ playback_stats.tick_max_ms,
  playback_stats.throttled ? " LIMIT" : "");
  }
  char hud[512];
@@ -5213,10 +5214,11 @@ int main(int argc, char** argv) {
   }
  const auto final_playback_stats = playback.statistics();
  std::fprintf(stderr,
- "viewer performance: requested=%s actual=%.2fx steps=%.0f/s tick_p99=%.2fms quality=%s\n",
+ "viewer performance: requested=%s actual=%.2fx steps=%.0f/s "
+ "tick_p99=%.2fms tick_max=%.2fms quality=%s\n",
  final_playback_stats.turbo ? "turbo" : "rate",
  final_playback_stats.actual_rtf, final_playback_stats.steps_per_s,
- final_playback_stats.tick_p99_ms,
+ final_playback_stats.tick_p99_ms, final_playback_stats.tick_max_ms,
  render_quality_name(final_playback_stats.turbo
  ? RenderQuality::kFast : render_quality));
  unload_visual_assets(visual_assets);

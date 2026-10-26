@@ -53,7 +53,7 @@
 
 - 已完成基线：`a66d644 fix: reject ambiguous mapless loop closures`。
 - `signal_town` 最近基线：5 个目标、0 碰撞、最大定位误差 0.278 m、ROBOT tick p99 6.624 ms、最大 tick 14.306 ms、普通构建 RTF 6.13x。
-- 当前阶段：第 4 项。
+- 当前阶段：第 5 项。
 - 第 1 项已经完成：候选预算先覆盖不同历史模式，入选候选全部完成 coarse/refine/reverse 验证后统一比较双向 score 与 overlap；相同 correction mode 内只有同一个历史锚点 ID 才能完成跨时序确认。
 - `test_loop_closure` 首次回环发生在完成 east、north、west 三个目标后；SIM 真值距起点 0.305 m 只写入失败诊断。`slam` 与 `loop_closure` 均连续通过 3 次，`truth_isolation` 与 `robot_boundary` 通过。
 - 第 2 项已经完成：2.5 m 教学路线完成 4/4 目标且零碰撞；终端捕获按底盘运动能力修复，没有放宽到达阈值或延长任务时间。`slam_experience_mission` 连续重复三次通过，相关 14 项定位、SLAM、Experience、truth-isolation 和 boundary 回归通过。
@@ -95,13 +95,21 @@
 - 完整构建通过；定向回归 14/14；全量 CTest 75/75。20 万平方米、`signal_town`、四底盘、terrain、A*/Hybrid-A*、DWA、TEB、truth isolation、ROBOT boundary、SLAM 与 Experience 均通过。
 - `git diff --check` 通过；ROBOT 改动未引用 SIM 类型或真值。新增决策尺度复用 matcher 栅格、关键帧间距、已有 score margin、置信包络与底盘能力，没有增加关卡专用常量。
 
+### 阶段 4 完成检查点（2026-10-27）
+
+- 阶段 3 已提交为 `2c13308 fix: harden SLAM and route recovery`。
+- Release 已用 `LOST_SIGNAL_WITH_VIEWER=ON` 完整配置；倍率一致性门禁逐步比较 1×/8×/64×/Turbo/headless 的 measurement stamps、observation acceptance、完整 command、碰撞、最终 truth、任务终态和完整 score，并覆盖已稳定完成的 ROBOT/SIM 双重 verdict。
+- 20 万平方米 Viewer 软件渲染实测：1× 为 1.00×/50 steps/s，8× 为 5.47×/273 steps/s，64× 为 5.38×/269 steps/s，Turbo 为 6.35×/317 steps/s。超过本机能力时保留固定步并显示实际 RTF/LIMIT。
+- 同场景 headless 1200 步为 6.40×/320.2 steps/s，ROBOT tick p99/max 9.249/18.929 ms。发布配置 `signal_town` 在 5901 步完成 5/5、0 碰撞，RTF 6.34×，ROBOT tick p99/max 6.432/14.146 ms。
+- 详细方法、环境与复现命令见 `docs/release-performance-2026-10-27.md`。
+
 恢复后按以下顺序继续：
 
-1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认阶段 3 已提交且工作区没有遗留的阶段 3 修改。
-2. 配置并完整构建 `build-release`，保留固定物理步长；倍率只改变墙钟调度，Turbo/headless 以最大吞吐运行。
-3. 为同一个可复现实验实测 1x、8x、64x、Turbo 和 headless，记录 RTF、steps/s、ROBOT tick p99/最大值及墙钟耗时。
-4. 比较 observation、command、collision、终态、objective verdict 和 score；任何倍率差异先定位时间源、调度或未使用 sim time 的模块，不通过放宽比较掩盖。
-5. 阶段 4 验收后更新本表并单独提交；随后不等待提醒，依次完成第 5 至第 7 阶段。
+1. 读取本文件，执行 `git status --short --branch` 和 `git log -5 --oneline`，确认阶段 4 已提交。
+2. 对照 `docs/sim-game-design.md` 审查现有 Experience：首个主动决定必须在十秒内出现；一次运行必须形成不可变 Episode artifact。
+3. 完成统一 `ExperimentSpec` 与完整 `EpisodePair`，使 baseline/variant 的输入 digest、受控变量、终态和证据可追溯。
+4. 将 ROBOT、SIM safety、Mission、Experiment verdict 独立呈现，并用 recorded evidence 驱动 prediction 判定；补齐玩家、教学、工程三层视图的端到端测试。
+5. 阶段 5 验收后更新本表并单独提交；随后不等待提醒进入第 6 阶段。
 
 ## 阶段完成记录
 
@@ -111,8 +119,8 @@
 |---|---|---|---|
 | 1. 无图 SLAM 回环可信度 | 已完成 | `a66d644` | 首次回环前已完成 3 个目标；SLAM/回环重复回归与 truth isolation 通过 |
 | 2. SLAM 教学体验与文档 | 已完成 | `4711d91` | 4/4 目标、零碰撞；任务连续三次通过；14 项相关回归通过；文档明确 SLAM Toolbox/REP-105 能力边界 |
-| 3. 算法与系统回归 | 已完成，待提交 | - | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
-| 4. Release 性能与一致性 | 待开始 | - | 待完成 |
+| 3. 算法与系统回归 | 已完成 | `2c13308` | 完整构建；定向 14/14；全量 75/75；20 万平方米、signal_town、四底盘、SLAM/回环、truth isolation 均通过 |
+| 4. Release 性能与一致性 | 已完成，待提交 | - | 1×/8×/64×/Turbo/headless 实测；逐步确定性门禁；发布 signal_town 5/5、0 碰撞 |
 | 5. SIM 游戏体验 | 待开始 | - | 待完成 |
 | 6. 物理证据可视化与效果 | 待开始 | - | 待完成 |
 | 7. 模型与场景升级 | 待开始 | - | 待完成 |
