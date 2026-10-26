@@ -1884,6 +1884,45 @@ void draw_frame_2d(const Frame& f, const ViewTransform& view, bool show_lidar,
     DrawCircleLines(s.x_px, s.y_px,
                     static_cast<float>(a.radius_m * view.scale()), BLACK);
   }
+ // ROBOT engineering view: cyan is the current anonymous perception track;
+ // purple is the same multi-hypothesis forecast used by planning and safety.
+ // Ring radius includes the track's explicit uncertainty envelope.
+ if (show_estimate) for (const auto& track : f.dynamic_tracks) {
+ const Color current = track.prediction_ready
+ ? Color{55, 218, 202, 225} : Color{55, 218, 202, 105};
+ const Color predicted = track.prediction_ready
+ ? Color{168, 85, 247, 185} : Color{168, 85, 247, 75};
+ const auto center = view.world_to_screen(track.x_m, track.y_m);
+ const float physical_radius = static_cast<float>(
+ std::max(0.02, track.radius_m) * view.scale());
+ const float occupied_radius = static_cast<float>(
+ std::max(0.02, track.radius_m + track.uncertainty_m) * view.scale());
+ DrawCircleLines(center.x_px, center.y_px, physical_radius, current);
+ DrawCircleLines(center.x_px, center.y_px, occupied_radius,
+ Color{current.r, current.g, current.b,
+ static_cast<unsigned char>(current.a / 2)});
+ const auto velocity = view.world_to_screen(
+ track.x_m + track.vx_mps, track.y_m + track.vy_mps);
+ DrawLineEx({center.x_px, center.y_px},
+ {velocity.x_px, velocity.y_px}, 2.0f, current);
+ for (const auto& hypothesis : track.hypotheses) {
+ for (std::size_t index = 1; index < hypothesis.points.size(); ++index) {
+ if (!track.prediction_ready && index % 2 == 0) continue;
+ const auto& previous = hypothesis.points[index - 1];
+ const auto& point = hypothesis.points[index];
+ const auto a = view.world_to_screen(previous.x_m, previous.y_m);
+ const auto b = view.world_to_screen(point.x_m, point.y_m);
+ DrawLineEx({a.x_px, a.y_px}, {b.x_px, b.y_px}, 2.0f, predicted);
+ if (index % 5 == 0 || index + 1 == hypothesis.points.size()) {
+ const float envelope = static_cast<float>(
+ std::max(0.02, track.radius_m + point.uncertainty_m) * view.scale());
+ DrawCircleLines(b.x_px, b.y_px, envelope,
+ Color{predicted.r, predicted.g, predicted.b,
+ static_cast<unsigned char>(predicted.a / 2)});
+ }
+ }
+ }
+ }
   // Editor selection handles: box corners + selected place ring.
   for (const auto& b : f.boxes) {
     if (!b.selected) continue;
@@ -2378,6 +2417,54 @@ draw_actor_model_grounded(*actor_model, a.x_m, a.y_m, *actor_definition,
  to_raylib(a.x_m + a.vx_mps, a.y_m + a.vy_mps,
  ground_z + h * 0.5), BLACK);
   }
+ // Deployable ROBOT perception overlay. The current anonymous footprint is
+ // cyan; predictor hypotheses and their growing uncertainty are purple.
+ if (show_estimate) for (const auto& track : f.dynamic_tracks) {
+ const Color current = track.prediction_ready
+ ? Color{55, 218, 202, 230} : Color{55, 218, 202, 110};
+ const Color predicted = track.prediction_ready
+ ? Color{168, 85, 247, 190} : Color{168, 85, 247, 78};
+ const double ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(),
+ track.x_m, track.y_m).height_m + 0.035;
+ const Vector3 center = to_raylib(track.x_m, track.y_m, ground_z);
+ DrawCircle3D(center, static_cast<float>(std::max(0.02, track.radius_m)),
+ {1.0f, 0.0f, 0.0f}, 90.0f, current);
+ DrawCircle3D(center, static_cast<float>(std::max(
+ 0.02, track.radius_m + track.uncertainty_m)),
+ {1.0f, 0.0f, 0.0f}, 90.0f,
+ Color{current.r, current.g, current.b,
+ static_cast<unsigned char>(current.a / 2)});
+ const double velocity_ground_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(),
+ track.x_m + track.vx_mps, track.y_m + track.vy_mps).height_m + 0.035;
+ DrawLine3D(center, to_raylib(
+ track.x_m + track.vx_mps, track.y_m + track.vy_mps,
+ velocity_ground_z), current);
+ for (const auto& hypothesis : track.hypotheses) {
+ for (std::size_t index = 1; index < hypothesis.points.size(); ++index) {
+ if (!track.prediction_ready && index % 2 == 0) continue;
+ const auto& previous = hypothesis.points[index - 1];
+ const auto& point = hypothesis.points[index];
+ const double previous_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(),
+ previous.x_m, previous.y_m).height_m + 0.04;
+ const double point_z = world_ns::sample_terrain(
+ world.terrain_patches(), world.support_slabs(),
+ point.x_m, point.y_m).height_m + 0.04;
+ const Vector3 a = to_raylib(previous.x_m, previous.y_m, previous_z);
+ const Vector3 b = to_raylib(point.x_m, point.y_m, point_z);
+ DrawCylinderEx(a, b, 0.012f, 0.012f, 6, predicted);
+ if (index % 5 == 0 || index + 1 == hypothesis.points.size()) {
+ DrawCircle3D(b, static_cast<float>(std::max(
+ 0.02, track.radius_m + point.uncertainty_m)),
+ {1.0f, 0.0f, 0.0f}, 90.0f,
+ Color{predicted.r, predicted.g, predicted.b,
+ static_cast<unsigned char>(predicted.a / 2)});
+ }
+ }
+ }
+ }
  if (show_actor_routes) for (const auto& a : world.actors()) {
     if (a.behavior.kind !=
             lost_signal::sim::world::ActorBehaviorKind::kWaypoints ||
@@ -3689,7 +3776,12 @@ int main(int argc, char** argv) {
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
-    if (IsKeyPressed(KEY_K)) show_actor_routes = !show_actor_routes;
+ const bool sim_truth_debug_allowed = !experience_loaded ||
+ experience_flow->phase() == ExperiencePhase::kDebrief;
+ if (!sim_truth_debug_allowed) show_actor_routes = false;
+ if (IsKeyPressed(KEY_K) && sim_truth_debug_allowed) {
+ show_actor_routes = !show_actor_routes;
+ }
  if (IsKeyPressed(KEY_Q)) {
  render_quality = render_quality == RenderQuality::kHigh
  ? RenderQuality::kFast : RenderQuality::kHigh;
@@ -4104,7 +4196,11 @@ int main(int argc, char** argv) {
  : session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")
  : "RUN");
-    DrawText(hud, 10, 10, 14, BLACK);
+ DrawText(hud, 10, 10, 14, BLACK);
+ if (show_estimate) {
+ DrawText("ROBOT AI cyan=perception purple=prediction rings=uncertainty",
+ 10, 32, 13, Color{78, 54, 132, 255});
+ }
     if (edit_mode) {
       char ebuf[256];
       std::snprintf(ebuf, sizeof(ebuf),
@@ -4112,8 +4208,10 @@ int main(int argc, char** argv) {
                     edit_msg.c_str());
       DrawText(ebuf, 10, 32, 14, RED);
     }
-    DrawText("space pause  N step  L lidar  E estimate  K SIM truth debug  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom",
-             10, GetScreenHeight() - 24, 12, DARKGRAY);
+ const char* control_help = sim_truth_debug_allowed
+ ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
+ : "space pause  N step  L lidar  E ROBOT AI  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";
+ DrawText(control_help, 10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
  if (experience_loaded) {

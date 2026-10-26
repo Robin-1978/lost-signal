@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "robot/autonomy/planning/prediction.hpp"
 #include "robot/core/transform.hpp"
 #include "sim/world/terrain.hpp"
 
@@ -322,6 +323,48 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
  f.decision.command_yaw_rate_radps = step.cmd.yaw_rate_radps;
  f.decision.route_point_count = evidence.route_point_count;
  f.decision.moving_candidate_count = evidence.moving_candidate_count;
+
+ // Rebuild the deployable predictor output from recorded ROBOT diagnostics.
+ // This intentionally has no access to world.actors(): the overlay must show
+ // what the robot believed, including missed detections and uncertainty.
+ if (!step.diag.dynamic_tracks.empty() &&
+ std::isfinite(evidence.decision_time_s)) {
+ robot::autonomy::PerceptionResult perception;
+ perception.stamp_ns = step.diag.last_obs_stamp_ns;
+ perception.tracks = step.diag.dynamic_tracks;
+ robot::autonomy::DynamicPredictionConfig prediction_config;
+ prediction_config.horizon_s = std::max(0.0, evidence.prediction_horizon_s);
+ const auto prediction = robot::autonomy::predict_perception(
+ perception, evidence.decision_time_s, prediction_config);
+ f.dynamic_tracks.reserve(step.diag.dynamic_tracks.size());
+ for (const auto& source : step.diag.dynamic_tracks) {
+ FrameDynamicTrack track;
+ track.track_id = source.id;
+ track.x_m = source.x_m;
+ track.y_m = source.y_m;
+ track.vx_mps = source.vx_mps;
+ track.vy_mps = source.vy_mps;
+ track.radius_m = std::max(0.0, source.radius_m);
+ track.uncertainty_m = std::max(0.0, source.position_uncertainty_m);
+ track.prediction_ready = source.prediction_ready;
+ for (const auto& source_hypothesis : prediction.hypotheses) {
+ if (source_hypothesis.track_id != source.id) continue;
+ FrameDynamicHypothesis hypothesis;
+ hypothesis.hypothesis_id = source_hypothesis.hypothesis_id;
+ const std::size_t count = std::min(
+ prediction.future_times_s.size(), source_hypothesis.states.size());
+ hypothesis.points.reserve(count);
+ for (std::size_t index = 0; index < count; ++index) {
+ const auto& state = source_hypothesis.states[index];
+ hypothesis.points.push_back({
+ prediction.future_times_s[index], state.x_m, state.y_m,
+ std::max(0.0, state.position_uncertainty_m)});
+ }
+ track.hypotheses.push_back(std::move(hypothesis));
+ }
+ f.dynamic_tracks.push_back(std::move(track));
+ }
+ }
 
  f.evaluation.static_collision = step.judge.static_collision;
  f.evaluation.dynamic_collision = step.judge.dynamic_collision;

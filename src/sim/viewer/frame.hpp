@@ -194,6 +194,31 @@ struct FrameActor {
   bool pedestrian = false;  // explicit SIM visual kind, never inferred by size
 };
 
+// Anonymous ROBOT-side perception and prediction. These points are rebuilt
+// from the same DynamicTrack contract consumed by behavior, local planning,
+// validation, and safety. They never use FrameActor or any SIM actor state.
+struct FrameDynamicPredictionPoint {
+ double time_s = 0.0;
+ double x_m = 0.0, y_m = 0.0;
+ double uncertainty_m = 0.0;
+};
+
+struct FrameDynamicHypothesis {
+ std::size_t hypothesis_id = 0;
+ std::vector<FrameDynamicPredictionPoint> points;
+};
+
+struct FrameDynamicTrack {
+ static constexpr FrameAuthority kAuthority = FrameAuthority::kRobotEstimate;
+ std::uint32_t track_id = 0; // anonymous ROBOT tracker id, never a SIM actor id
+ double x_m = 0.0, y_m = 0.0;
+ double vx_mps = 0.0, vy_mps = 0.0;
+ double radius_m = 0.0;
+ double uncertainty_m = 0.0;
+ bool prediction_ready = false;
+ std::vector<FrameDynamicHypothesis> hypotheses;
+};
+
 // Ground-material zone overlay (SIM truth paint, never ROBOT input): the
 // frontend tints the ground per zone so slick/sand reads visually.
 struct FrameZone {
@@ -241,6 +266,8 @@ struct Frame {
   std::vector<std::pair<double, double>> trail;  // past truth (x, y), oldest first
   std::vector<FrameBox> boxes;
   std::vector<FrameActor> actors;
+ // ROBOT estimates are deliberately separate from SIM actor presentation.
+ std::vector<FrameDynamicTrack> dynamic_tracks;
   std::vector<FramePlace> places;
   std::vector<FrameZone> zones;
   std::vector<FramePatch> patches;

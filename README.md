@@ -256,6 +256,11 @@ link poses and simulation events. Playback never changes physics, sensor
 stamps, or ROBOT control periods. The HUD and exit summary report requested
 rate, measured real-time factor, steps/s, sliding-window tick p99, active
 quality, and `LIMIT` when the rendering budget throttles simulation work.
+Press `E` for the deployable ROBOT AI overlay: cyan shows anonymous perception
+tracks and velocity, while purple ribbons and uncertainty rings show the same
+multi-hypothesis prediction consumed by behavior, DWA/TEB, validation, and
+safety. Campaign runs keep `K` SIM truth diagnostics locked until debrief;
+the overlay never reads actor identities, future waypoints, or truth poses.
 For unattended parameter sweeps and CI, use `lost_signal_sim` directly so no
 graphics work competes with the fixed-step simulation.
 The Viewer plays presentation-only cues for physical collision, ROBOT safety

@@ -82,6 +82,21 @@ int main() {
  step.diag.evidence.action_code = "follow-route";
  step.diag.evidence.reason_code = "trajectory-accepted";
  step.diag.evidence.route_point_count = 8;
+ step.diag.evidence.prediction_horizon_s = 2.5;
+ robot::autonomy::DynamicTrack dynamic;
+ dynamic.id = 17;
+ dynamic.x_m = 8.0;
+ dynamic.y_m = 9.0;
+ dynamic.vx_mps = 1.0;
+ dynamic.vy_mps = -0.5;
+ dynamic.radius_m = 0.35;
+ dynamic.position_uncertainty_m = 0.10;
+ dynamic.position_uncertainty_growth_mps = 0.20;
+ dynamic.position_uncertainty_cap_m = 0.80;
+ dynamic.last_observed_ns = 7'000'000'000;
+ dynamic.prediction_ready = true;
+ step.diag.dynamic_tracks.push_back(dynamic);
+ step.diag.last_obs_stamp_ns = 7'000'000'000;
  step.diag.safety = robot::autonomy::SafetyState::kNominal;
  step.diag.safety_reason = "nominal";
  step.cmd.forward_mps = 0.25;
@@ -124,7 +139,23 @@ int main() {
     assert(f.actors.size() == 1);
     assert(!f.actors[0].pedestrian);  // default 1.5 m vehicle height
     assert(std::abs(f.actors[0].height_m - 1.5) < 1e-12);
-    assert(f.places.size() == 1 && f.places[0].reached);
+ assert(f.dynamic_tracks.size() == 1);
+ assert(f.dynamic_tracks[0].kAuthority ==
+ sim::viewer::FrameAuthority::kRobotEstimate);
+ assert(f.dynamic_tracks[0].track_id == 17);
+ assert(f.dynamic_tracks[0].prediction_ready);
+ // The overlay follows ROBOT diagnostics and its shared predictor, not the
+ // unrelated SIM actor at (2, -1.5).
+ assert(std::abs(f.dynamic_tracks[0].x_m - 8.0) < 1e-12);
+ assert(std::abs(f.dynamic_tracks[0].y_m - 9.0) < 1e-12);
+ assert(f.dynamic_tracks[0].hypotheses.size() == 1);
+ const auto& prediction = f.dynamic_tracks[0].hypotheses[0].points;
+ assert(prediction.size() == 26);
+ assert(std::abs(prediction.front().x_m - 8.0) < 1e-12);
+ assert(std::abs(prediction.back().x_m - 10.5) < 1e-9);
+ assert(std::abs(prediction.back().y_m - 7.75) < 1e-9);
+ assert(std::abs(prediction.back().uncertainty_m - 0.60) < 1e-9);
+ assert(f.places.size() == 1 && f.places[0].reached);
     assert(!f.places[0].selected);
  assert(f.lidar_valid && f.lidar_hits.size() == 5);
  assert(f.observation.projection_valid);
