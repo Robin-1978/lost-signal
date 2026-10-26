@@ -50,6 +50,14 @@ LocalizationSystem::TickResult LocalizationSystem::update(
     core::MonotonicNs now_ns, bool has_observation, IEstimator& estimator,
     IMapper& mapper) {
   TickResult out;
+ if (global_search_.active() && !global_search_.active_map_matches(map)) {
+ // WorkState intentionally holds a zero-copy view of an immutable map.
+ // Never continue it across a provider revision or a replaced anonymous
+ // snapshot; the supervisor may start a fresh bounded search below.
+ global_search_.cancel();
+ recovery_hyps_.reset();
+ global_origin_valid_ = false;
+ }
  if (!map_evidence_cached_ || cached_map_id_ != map.map_id ||
  cached_map_revision_ != map.revision) {
  cached_map_id_ = map.map_id;

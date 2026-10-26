@@ -802,6 +802,22 @@ void GlobalSearcher::begin_near(
 
 bool GlobalSearcher::active() const { return work_ != nullptr; }
 
+bool GlobalSearcher::active_map_matches(
+ const iface::MapSnapshot& map) const {
+ if (work_ == nullptr) return false;
+ // WorkState owns no raster copy: even an equivalent replacement object
+ // cannot extend the lifetime of the reference captured by begin().
+ if (&work_->map != &map || prepared_map_ == nullptr) return false;
+ if (!map.map_id.empty()) return prepared_map_->matches(map);
+ // Anonymous fixtures have no revision identity. They may be resumed only
+ // while the same immutable object and geometry remain alive.
+ return prepared_map_->width == map.width &&
+ prepared_map_->height == map.height &&
+ prepared_map_->resolution_m == map.resolution_m &&
+ prepared_map_->origin_x_m == map.origin_x_m &&
+ prepared_map_->origin_y_m == map.origin_y_m;
+}
+
 void GlobalSearcher::cancel() { work_.reset(); }
 
 std::optional<GlobalSearchResult> GlobalSearcher::advance(
@@ -973,11 +989,7 @@ std::optional<GlobalSearchResult> GlobalSearcher::advance(
  spend(1);
  continue;
  }
- if (++w.evaluations > w.config.maximum_evaluations) {
- w.result.coarse_evaluations = w.evaluations;
- w.finish("evaluation budget exceeded");
- continue;
- }
+ ++w.evaluations;
  const double score = w.score_coarse(w.coarse_ih, cx, cy);
  w.consider_coarse({cx, cy, heading, score, 0.0});
  ++w.coarse_ih;

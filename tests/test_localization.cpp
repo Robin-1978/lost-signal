@@ -457,6 +457,54 @@ int main() {
  short_hits, -M_PI, 2.0 * M_PI / short_hits.size(), empty_extent, 2);
  assert(bounded_reused.map_preparation_cells == 0);
 
+ // Lifetime work is not a correctness gate. This deliberately evaluates
+ // more than the removed legacy 8M ceiling, one bounded slice at a time.
+ // A large or high-resolution search may take more ticks, but it must finish
+ // the same deterministic candidate set instead of reporting a false
+ // localization failure.
+ iface::MapSnapshot long_search_map;
+ long_search_map.map_id = "cooperative-over-eight-million";
+ long_search_map.revision = 1;
+ long_search_map.width = 23;
+ long_search_map.height = 23;
+ long_search_map.resolution_m = 1.0;
+ long_search_map.occupancy.assign(23 * 23, 0);
+ for (std::uint32_t y = 0; y < long_search_map.height; ++y) {
+ for (std::uint32_t x = 0; x < long_search_map.width; ++x) {
+ if (x == 0 || y == 0 || x + 1 == long_search_map.width ||
+ y + 1 == long_search_map.height) {
+ long_search_map.occupancy[y * long_search_map.width + x] = 100;
+ }
+ }
+ }
+ GlobalSearchConfig long_config;
+ long_config.max_range_m = 100.0;
+ long_config.minimum_returns = 1;
+ long_config.coarse_beams = 1;
+ long_config.coarse_hypotheses = 1;
+ long_config.coarse_hypothesis_distance_m = 100.0;
+ long_config.coarse_hypothesis_heading_rad = 2.0 * M_PI;
+ long_config.coarse_heading_step_rad = 2.0 * M_PI / 18150.0;
+ long_config.refine_translation_m = 0.0;
+ long_config.refine_heading_rad = 0.0;
+ long_config.final_translation_m = 0.0;
+ long_config.final_heading_rad = 0.0;
+ long_config.final_max_returns = 1;
+ GlobalSearcher long_searcher(long_config);
+ const std::vector<float> one_return{1.0F};
+ long_searcher.begin(one_return, 0.0, 1.0, long_search_map, 4);
+ assert(long_searcher.active_map_matches(long_search_map));
+ iface::MapSnapshot replacement_map = long_search_map;
+ assert(!long_searcher.active_map_matches(replacement_map));
+ ++long_search_map.revision;
+ assert(!long_searcher.active_map_matches(long_search_map));
+ --long_search_map.revision;
+ assert(!long_searcher.advance(1).has_value());
+ std::optional<GlobalSearchResult> long_result;
+ while (!long_result.has_value()) long_result = long_searcher.advance(65536);
+ assert(long_result->coarse_evaluations > 8000000);
+ assert(long_result->rejection_reason != "evaluation budget exceeded");
+
  // Sparse scans fail before allocating or preparing a map-sized index.
  std::vector<float> no_hits(72, 2.0F);
  GlobalSearchResult insufficient = bounded_searcher.search(

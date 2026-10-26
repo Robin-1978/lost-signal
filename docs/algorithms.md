@@ -326,8 +326,12 @@ route, pre-activation hold).
   each refined by the bounded local matcher, then a strict twin check —
   score margin plus an equivalent-support gate (runner-up overlap within
   0.10 means unobservable, e.g. map-edge gradients along a uniform wall).
-  The evaluation budget rejects explicitly instead of truncating the map
- silently. First fix after an unknown start snaps (no trustworthy prior
+ The cooperative `advance()` budget limits work per ROBOT tick rather than
+ total search lifetime: a cold start covers every observable seed even on a
+ large map, while a localized recovery uses the covariance-supported position
+ and heading ROI. A map revision cancels the zero-copy in-flight job and starts
+ again on the new immutable snapshot. First fix after an unknown start snaps
+ (no trustworthy prior
  to blend toward). A localized recovery candidate is propagated from its
  frozen scan acquisition time by ROBOT odometry, then must survive later
  scans and measured motion before it can change `map->odom`; replaying a

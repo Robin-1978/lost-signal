@@ -21,9 +21,11 @@ namespace lost_signal::robot::autonomy {
 // base-pose seeds because a sparse survey marks unauthored space unknown;
 // only occupied base cells are excluded.
 //
-// If the evaluation budget cannot cover the coarse pass, the result is an
-// explicit rejection, never a partial search reported as a match. Unknown
-// cells never become false certainty (they score 0, as in the local path).
+// Total search work scales with the observable map. Real-time callers bound
+// work per tick through advance(); no fixed lifetime budget is allowed to
+// turn an otherwise observable large map into a localization failure.
+// Unknown cells never become false certainty (they score 0, as in the local
+// path).
 struct GlobalSearchConfig {
  // Deterministic raster cells prepared per localization tick. The
  // observability index excludes poses too far from mapped geometry before
@@ -40,10 +42,6 @@ struct GlobalSearchConfig {
  // distinct places instead of filling it with adjacent samples of one peak.
  double coarse_hypothesis_distance_m = 1.5;
  double coarse_hypothesis_heading_rad = 0.45;
- // Upper bound on coarse pose evaluations. Exists to bound a pathological
-  // map, not to make ordinary large maps unusable; exceeding it rejects
-  // explicitly instead of reporting a partial search as a match.
-  std::size_t maximum_evaluations = 8000000;
   double minimum_overlap = 0.30;
   double minimum_score_margin = 0.03;
   // Equivalent-support gate: a runner-up that explains essentially the same
@@ -191,6 +189,9 @@ class GlobalSearcher {
  std::optional<GlobalSearchResult> advance(
  std::size_t work_budget = 8192);
  bool active() const;
+ // Cooperative work keeps a non-owning view of one immutable map revision.
+ // A caller must cancel/restart when the provider publishes another map.
+ bool active_map_matches(const iface::MapSnapshot& map) const;
  void cancel();
 
  private:
