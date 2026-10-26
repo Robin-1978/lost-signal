@@ -313,6 +313,32 @@ int main() {
  assert_route_clear(route, costmap.lethal);
  }
 
+ // Terminal replanning must also stay bounded when translation and heading
+ // are both outstanding. This is the measured ROBOT pose reached by the
+ // direct central-gate mission before its old route was exhausted; a global
+ // planner that remains pending here leaves an otherwise localized robot
+ // stopped indefinitely.
+ {
+  auto replanning_pose = at(249.200, -3.136);
+  replanning_pose.yaw_rad = 1.181;
+  const auto& central_gate = place(map, "central_gate");
+  robot::autonomy::AckermannPlanner replanner(recovery_config);
+  replanner.begin_plan(
+   replanning_pose,
+   {central_gate.x_m, central_gate.y_m, central_gate.yaw_rad}, map);
+  robot::autonomy::GlobalPlanProgress progress;
+  std::size_t slices = 0;
+  constexpr std::size_t kMaximumTerminalReplanDecisionCycles = 64;
+  do {
+   progress = replanner.continue_plan(replanner.incremental_plan_budget());
+   ++slices;
+  } while (progress.status == robot::autonomy::GlobalPlanStatus::kPending &&
+           slices <= kMaximumTerminalReplanDecisionCycles);
+  assert(slices <= kMaximumTerminalReplanDecisionCycles);
+  assert(progress.status == robot::autonomy::GlobalPlanStatus::kSucceeded);
+  assert_route_clear(progress.route, costmap.lethal);
+ }
+
  std::printf(
  "industrial_200k ok: extent=%.0fx%.0f cells=%ux%u actors=%zu "
  "route_points=%zu ackermann_route_points=%zu "

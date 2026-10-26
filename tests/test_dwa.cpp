@@ -522,6 +522,8 @@ int main() {
  DwaPlanner planner;
  const LocalPlan plan = planner.plan(est, perc, m, route, ack);
  assert(plan.has_plan);
+ assert(plan.moving_candidate_count > 0);
+ assert(!plan.route_replan_requested);
  const bool current_speed_right_turn = std::any_of(
  plan.candidates.begin(), plan.candidates.end(), [](const auto& candidate) {
  return std::abs(candidate.forward_mps - 0.04) < 1e-9 &&

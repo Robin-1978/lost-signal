@@ -678,15 +678,15 @@ LocalPlan DwaPlanner::plan(const EstimatedState& est,
  std::vector<LocalCandidate> proposals;
  const auto commands_resolvable_motion = [&](double forward,
  double angular, double lateral) {
- const double horizon_s = std::max(0.0, predict_T);
- const double spatial_resolution_m = std::max(1e-6, map.resolution_m);
- const double translation_m =
- std::hypot(forward, lateral) * horizon_s;
- const double rotation_sweep_m = std::abs(angular) * horizon_s *
- std::max(spatial_resolution_m,
- std::max(0.0, limits.footprint_radius_m));
- return translation_m >= spatial_resolution_m ||
- rotation_sweep_m >= spatial_resolution_m;
+ // A command is motion when the chassis can execute a non-zero twist. Map
+ // resolution controls collision sampling; it is not an actuator deadband.
+ // Conflating the two labelled a slow Ackermann launch (for example
+ // 0.04 m/s on a 0.10 m grid) as stationary, so every first command caused
+ // another global replan before the base could accelerate. The platform
+ // layer owns any real actuator deadband and the controller/validator still
+ // check every selected command independently.
+ return std::abs(forward) > 1e-9 || std::abs(angular) > 1e-9 ||
+ std::abs(lateral) > 1e-9;
  };
 
   for (double velocity : velocity_samples) {
