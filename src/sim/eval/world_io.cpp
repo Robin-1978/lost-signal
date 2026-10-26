@@ -69,6 +69,31 @@ bool rect_fields(const Json& j, double& x0, double& y0, double& x1,
          num_field(j, "x1", x1, err) && num_field(j, "y1", y1, err);
 }
 
+const char* impact_material_name(world::ImpactMaterial material) {
+ switch (material) {
+ case world::ImpactMaterial::kMetal: return "metal";
+ case world::ImpactMaterial::kConcrete: return "concrete";
+ case world::ImpactMaterial::kGlass: return "glass";
+ case world::ImpactMaterial::kWood: return "wood";
+ case world::ImpactMaterial::kPolymer: return "polymer";
+ case world::ImpactMaterial::kRubber: return "rubber";
+ case world::ImpactMaterial::kUnknown: return "unknown";
+ }
+ return "unknown";
+}
+
+bool parse_static_impact_material(const std::string& name,
+ world::ImpactMaterial& material) {
+ if (name == "metal") material = world::ImpactMaterial::kMetal;
+ else if (name == "concrete") material = world::ImpactMaterial::kConcrete;
+ else if (name == "glass") material = world::ImpactMaterial::kGlass;
+ else if (name == "wood") material = world::ImpactMaterial::kWood;
+ else if (name == "polymer") material = world::ImpactMaterial::kPolymer;
+ else if (name == "rubber") material = world::ImpactMaterial::kRubber;
+ else return false;
+ return true;
+}
+
 Json box_to_json(const world::StaticBox& b) {
  Json::Object object;
  if (!b.box_id.empty()) object.emplace_back("box_id", Json::Str(b.box_id));
@@ -77,6 +102,8 @@ Json box_to_json(const world::StaticBox& b) {
  object.emplace_back("x1", Json::Num(b.x1));
  object.emplace_back("y1", Json::Num(b.y1));
  object.emplace_back("height_m", Json::Num(b.height_m));
+ object.emplace_back("impact_material",
+ Json::Str(impact_material_name(b.impact_material)));
  return Json::Obj(std::move(object));
 }
 
@@ -93,7 +120,16 @@ bool box_from_json(const Json& j, world::StaticBox& b, std::string& err) {
  }
  b.box_id = id->as_str();
  }
-  return num_field(j, "x0", b.x0, err) && num_field(j, "y0", b.y0, err) &&
+ const Json* impact_material = j.find("impact_material");
+ if (impact_material != nullptr) {
+ if (!impact_material->is_str() || !parse_static_impact_material(
+ impact_material->as_str(), b.impact_material)) {
+ err = "impact_material must be concrete, metal, glass, wood, polymer, "
+ "or rubber";
+ return false;
+ }
+ }
+ return num_field(j, "x0", b.x0, err) && num_field(j, "y0", b.y0, err) &&
          num_field(j, "x1", b.x1, err) && num_field(j, "y1", b.y1, err) &&
          num_field(j, "height_m", b.height_m, err);
 }

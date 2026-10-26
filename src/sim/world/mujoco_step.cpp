@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -277,16 +278,41 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  // terrain, material zones and support slabs are deliberately absent from
  // static_geom_, so normal wheel loading can never masquerade as a crash.
  // This is presentation truth only and has no route into ROBOT inputs.
+ const auto rubber_geom = [&](int geom_id) {
+ for (int d = 0; d < 4; ++d) {
+ if (tire_geom_[d] == geom_id) return true;
+ }
+ for (int j = 0; j < 2; ++j) {
+ if (idler_geom_[j] == geom_id) return true;
+ }
+ for (int i = 0; i < support_count_ && i < 4; ++i) {
+ if (support_geom_[i] == geom_id ||
+ support_shoulder_geom_[i][0] == geom_id ||
+ support_shoulder_geom_[i][1] == geom_id) {
+ return true;
+ }
+ }
+ return false;
+ };
  for (int ci = 0; ci < data->ncon; ++ci) {
  const mjContact& contact = data->contact[ci];
- const bool first_static = std::find(static_geom_.begin(), static_geom_.end(),
- contact.geom1) != static_geom_.end();
- const bool second_static = std::find(static_geom_.begin(), static_geom_.end(),
- contact.geom2) != static_geom_.end();
+ const auto first_it = std::find(
+ static_geom_.begin(), static_geom_.end(), contact.geom1);
+ const auto second_it = std::find(
+ static_geom_.begin(), static_geom_.end(), contact.geom2);
+ const bool first_static = first_it != static_geom_.end();
+ const bool second_static = second_it != static_geom_.end();
  if (first_static == second_static) continue;
  const int robot_geom = first_static ? contact.geom2 : contact.geom1;
  const int robot_body = model->geom_bodyid[robot_geom];
  if (robot_body <= 0) continue;
+ const std::size_t static_index = static_cast<std::size_t>(std::distance(
+ static_geom_.begin(), first_static ? first_it : second_it));
+ const ImpactMaterial static_material =
+ static_index < static_impact_material_.size()
+ ? static_impact_material_[static_index] : ImpactMaterial::kUnknown;
+ const ImpactMaterial robot_material = rubber_geom(robot_geom)
+ ? ImpactMaterial::kRubber : ImpactMaterial::kMetal;
  mjtNum force[6] = {};
  mj_contactForce(model, data, ci, force);
  const double normal_N = std::max(0.0, static_cast<double>(force[0]));
@@ -315,6 +341,26 @@ void MujocoBackend::step(double dt_s, const MotorParams& motor,
  impact_.relative_speed_mps =
  std::max(impact_.relative_speed_mps, relative_speed);
  impact_.valid = true;
+ if (robot_material == ImpactMaterial::kMetal &&
+ static_material == ImpactMaterial::kMetal) {
+ const double spark_accumulated = impact_.spark_normal_impulse_Ns;
+ const double spark_total = spark_accumulated + impulse_Ns;
+ impact_.spark_x_m =
+ (impact_.spark_x_m * spark_accumulated +
+ contact.pos[0] * impulse_Ns) / spark_total;
+ impact_.spark_y_m =
+ (impact_.spark_y_m * spark_accumulated +
+ contact.pos[1] * impulse_Ns) / spark_total;
+ impact_.spark_z_m =
+ (impact_.spark_z_m * spark_accumulated +
+ contact.pos[2] * impulse_Ns) / spark_total;
+ impact_.spark_normal_impulse_Ns = spark_total;
+ impact_.spark_relative_speed_mps = std::max(
+ impact_.spark_relative_speed_mps, relative_speed);
+ impact_.spark_robot_material = robot_material;
+ impact_.spark_static_material = static_material;
+ impact_.spark_eligible = true;
+ }
  }
  // Contacts can make and break inside the public 20 ms plant step. Inspect
  // every resolved 1 ms force solve so a sliding wheel is not relabelled

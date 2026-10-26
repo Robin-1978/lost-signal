@@ -10,6 +10,7 @@
  "boxes": [
   {
  "box_id": "west_shelf",
+ "impact_material": "metal",
    "x0": 8.0,
    "y0": 0.0,
    "x1": 9.0,
@@ -18,6 +19,7 @@
   },
   {
  "box_id": "east_shelf",
+ "impact_material": "metal",
    "x0": 12.0,
    "y0": 3.0,
    "x1": 13.0,
@@ -26,6 +28,7 @@
   },
   {
  "box_id": "glass_door",
+ "impact_material": "glass",
    "x0": 7.0,
    "y0": 3.5,
    "x1": 7.5,
@@ -34,6 +37,7 @@
   },
   {
  "box_id": "north_wall_01",
+ "impact_material": "concrete",
    "x0": 0.050000000000000044,
    "y0": 14.004999999999999,
    "x1": 3.55,
@@ -42,6 +46,7 @@
   },
   {
  "box_id": "north_wall_02",
+ "impact_material": "concrete",
    "x0": 4.05,
    "y0": 14.004999999999999,
    "x1": 7.55,
@@ -50,6 +55,7 @@
   },
   {
  "box_id": "north_wall_03",
+ "impact_material": "concrete",
    "x0": 8.05,
    "y0": 14.004999999999999,
    "x1": 11.55,
@@ -58,6 +64,7 @@
   },
   {
  "box_id": "north_wall_04",
+ "impact_material": "concrete",
    "x0": 12.05,
    "y0": 14.004999999999999,
    "x1": 15.55,
@@ -66,6 +73,7 @@
   },
   {
  "box_id": "north_wall_05",
+ "impact_material": "concrete",
    "x0": 16.05,
    "y0": 14.004999999999999,
    "x1": 19.55,
@@ -74,6 +82,7 @@
   },
   {
  "box_id": "east_wall_01",
+ "impact_material": "concrete",
    "x0": 20.005,
    "y0": 0.6499999999999999,
    "x1": 20.355,
@@ -82,6 +91,7 @@
   },
   {
  "box_id": "east_wall_02",
+ "impact_material": "concrete",
    "x0": 20.005,
    "y0": 4.65,
    "x1": 20.355,
@@ -90,6 +100,7 @@
   },
   {
  "box_id": "east_wall_03",
+ "impact_material": "concrete",
    "x0": 20.005,
    "y0": 8.65,
    "x1": 20.355,
@@ -98,6 +109,7 @@
   },
   {
  "box_id": "rubble_01",
+ "impact_material": "concrete",
    "x0": 12.10991779792312,
    "y0": 3.4036202277637013,
    "x1": 13.39008220207688,
@@ -106,6 +118,7 @@
   },
   {
  "box_id": "rubble_02",
+ "impact_material": "concrete",
    "x0": 12.330229520203643,
    "y0": 6.055431503357956,
    "x1": 13.169770479796357,
@@ -114,6 +127,7 @@
   },
   {
  "box_id": "rubble_03",
+ "impact_material": "concrete",
    "x0": 12.259023999631166,
    "y0": 8.471553049109097,
    "x1": 13.240976000368834,
@@ -122,6 +136,7 @@
   },
   {
  "box_id": "rubble_04",
+ "impact_material": "concrete",
    "x0": 12.090141369855086,
    "y0": 10.869282876692678,
    "x1": 13.409858630144914,
@@ -130,6 +145,7 @@
   },
   {
  "box_id": "plant_01",
+ "impact_material": "polymer",
    "x0": 7.9975000000000005,
    "y0": 0.6975,
    "x1": 8.602500000000001,
@@ -138,6 +154,7 @@
   },
   {
  "box_id": "plant_02",
+ "impact_material": "polymer",
    "x0": 8.0525,
    "y0": 2.2525,
    "x1": 8.547500000000001,
@@ -146,6 +163,7 @@
   },
   {
  "box_id": "plant_03",
+ "impact_material": "polymer",
    "x0": 8.08,
    "y0": 3.78,
    "x1": 8.520000000000001,
@@ -154,6 +172,7 @@
   },
   {
  "box_id": "plant_04",
+ "impact_material": "polymer",
    "x0": 7.983750000000001,
    "y0": 5.18375,
    "x1": 8.61625,
@@ -162,6 +181,7 @@
   },
   {
  "box_id": "plant_05",
+ "impact_material": "polymer",
    "x0": 8.03875,
    "y0": 6.73875,
    "x1": 8.561250000000001,
@@ -170,6 +190,7 @@
   },
   {
  "box_id": "plant_06",
+ "impact_material": "polymer",
    "x0": 7.956250000000001,
    "y0": 8.15625,
    "x1": 8.64375,
@@ -178,6 +199,7 @@
   },
   {
  "box_id": "plant_07",
+ "impact_material": "polymer",
    "x0": 8.1075,
    "y0": 9.8075,
    "x1": 8.492500000000001,
@@ -186,6 +208,7 @@
   },
   {
  "box_id": "service_light_01",
+ "impact_material": "metal",
    "x0": 12.559999999999999,
    "y0": 4.86,
    "x1": 12.84,
@@ -194,6 +217,7 @@
   },
   {
  "box_id": "service_light_02",
+ "impact_material": "metal",
    "x0": 12.559999999999999,
    "y0": 9.86,
    "x1": 12.84,
@@ -202,6 +226,7 @@
   },
   {
  "box_id": "console_01",
+ "impact_material": "metal",
    "x0": 11.850000000000001,
    "y0": 13.2,
    "x1": 12.75,
@@ -210,6 +235,7 @@
   },
   {
  "box_id": "console_02",
+ "impact_material": "metal",
    "x0": 12.295,
    "y0": 13.23,
    "x1": 13.104999999999999,
@@ -218,6 +244,7 @@
   },
   {
  "box_id": "cable_reel_01",
+ "impact_material": "metal",
    "x0": 7.989708304424923,
    "y0": 1.9502181849049753,
    "x1": 9.410291695575076,
@@ -226,6 +253,7 @@
   },
   {
  "box_id": "cable_reel_02",
+ "impact_material": "metal",
    "x0": 8.362903816264458,
    "y0": 8.957949408572183,
    "x1": 9.03709618373554,
@@ -234,6 +262,7 @@
   },
   {
  "box_id": "maintenance_crates_01",
+ "impact_material": "wood",
    "x0": 7.694671053011793,
    "y0": 10.149999543346244,
    "x1": 9.305328946988208,
@@ -242,6 +271,7 @@
   },
   {
  "box_id": "maintenance_crates_02",
+ "impact_material": "wood",
    "x0": 12.095,
    "y0": 11.575,
    "x1": 12.905,

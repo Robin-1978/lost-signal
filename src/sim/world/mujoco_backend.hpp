@@ -20,6 +20,19 @@
 
 namespace lost_signal::sim::world {
 
+// Contact materials are deliberately coarse: they describe visible impact
+// behavior, while friction and compliance remain separate physical fields.
+// The enum keeps the 1 kHz contact path allocation-free and typo-proof.
+enum class ImpactMaterial {
+ kUnknown,
+ kRubber,
+ kMetal,
+ kConcrete,
+ kGlass,
+ kWood,
+ kPolymer,
+};
+
 struct MotorParams;
 struct StaticBox;
 struct Actor;
@@ -92,6 +105,14 @@ struct ImpactViz {
  double x_m = 0.0, y_m = 0.0, z_m = 0.0;
  double normal_impulse_Ns = 0.0;
  double relative_speed_mps = 0.0;
+ // A separate aggregate prevents an ineligible rubber/concrete contact from
+ // borrowing the position or impulse of a simultaneous metal/metal contact.
+ bool spark_eligible = false;
+ double spark_x_m = 0.0, spark_y_m = 0.0, spark_z_m = 0.0;
+ double spark_normal_impulse_Ns = 0.0;
+ double spark_relative_speed_mps = 0.0;
+ ImpactMaterial spark_robot_material = ImpactMaterial::kUnknown;
+ ImpactMaterial spark_static_material = ImpactMaterial::kUnknown;
 };
 
 #ifdef LOST_SIGNAL_WITH_MUJOCO
@@ -332,6 +353,7 @@ class MujocoBackend {
   // Zone floor geom ids in zone order (per-step environment writes).
   std::vector<int> zone_geom_;
  std::vector<int> static_geom_;
+ std::vector<ImpactMaterial> static_impact_material_;
   // Tire-side sliding baseline (min(global, local) anchor for the step).
   double mu_tire_base_ = 0.7;
  // Slip confirmation is a physical duration, independent of how callers

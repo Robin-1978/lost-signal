@@ -167,9 +167,28 @@ int main() {
  assert(std::isfinite(impact.x_m));
  assert(std::isfinite(impact.y_m));
  assert(std::isfinite(impact.z_m));
+ assert(!impact.spark_eligible); // metal chassis against concrete
  saw_impact = true;
  }
  assert(saw_impact);
+
+ sim::world::World metal;
+ metal.set_static_boxes({{0.70, -1.0, 0.80, 1.0, 0.6,
+ "metal_fixture", sim::world::ImpactMaterial::kMetal}});
+ metal.prepare();
+ set_diff_duty(metal, 1.0);
+ bool saw_metal_spark = false;
+ for (int i = 0; i < 200 && !saw_metal_spark; ++i) {
+ metal.step(0.02);
+ const sim::world::ImpactViz& impact = metal.impact();
+ if (!impact.spark_eligible) continue;
+ assert(impact.spark_normal_impulse_Ns > 0.0);
+ assert(impact.spark_relative_speed_mps > 0.0);
+ assert(impact.spark_robot_material == sim::world::ImpactMaterial::kMetal);
+ assert(impact.spark_static_material == sim::world::ImpactMaterial::kMetal);
+ saw_metal_spark = true;
+ }
+ assert(saw_metal_spark);
  }
   // Spin-up: moves, settles below free speed, level attitude.
   {

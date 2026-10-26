@@ -143,11 +143,29 @@ int main() {
  impact.impact.z_m = 0.2;
  impact.impact.normal_impulse_Ns = 1.0;
  impact.impact.relative_speed_mps = 0.1;
+ impact.impact.spark_x_m = 2.0;
+ impact.impact.spark_y_m = -1.0;
+ impact.impact.spark_z_m = 0.2;
+ impact.impact.spark_normal_impulse_Ns = 1.0;
+ impact.impact.spark_relative_speed_mps = 0.1;
+ impact.impact.spark_robot_material = "metal";
+ impact.impact.spark_static_material = "concrete";
  ParticleSystem sparks(config);
  sparks.advance(impact);
  assert(sparks.active_count() == 0);
  impact.step = 101;
  impact.impact.relative_speed_mps = 1.0;
+ impact.impact.spark_relative_speed_mps = 1.0;
+ impact.impact.spark_eligible = true;
+ sparks.advance(impact);
+ assert(sparks.active_count() == 0); // metal/concrete never sparks
+ impact.step = 102;
+ impact.impact.spark_static_material = "metal";
+ impact.impact.spark_robot_material = "rubber";
+ sparks.advance(impact);
+ assert(sparks.active_count() == 0); // rubber/metal never sparks
+ impact.step = 103;
+ impact.impact.spark_robot_material = "metal";
  sparks.advance(impact);
  assert(sparks.active_count() > 0);
  bool found_spark = false;

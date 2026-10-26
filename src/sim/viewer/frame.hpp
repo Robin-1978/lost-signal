@@ -222,6 +222,12 @@ struct FrameImpact {
  double x_m = 0.0, y_m = 0.0, z_m = 0.0;
  double normal_impulse_Ns = 0.0;
  double relative_speed_mps = 0.0;
+ bool spark_eligible = false;
+ double spark_x_m = 0.0, spark_y_m = 0.0, spark_z_m = 0.0;
+ double spark_normal_impulse_Ns = 0.0;
+ double spark_relative_speed_mps = 0.0;
+ std::string spark_robot_material;
+ std::string spark_static_material;
 };
 
 struct Frame {

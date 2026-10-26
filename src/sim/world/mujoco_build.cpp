@@ -314,7 +314,7 @@ void MujocoBackend::sync(const MotorParams& motor,
       << "|";
   for (const auto& b : boxes) {
     sig << b.x0 << "," << b.y0 << "," << b.x1 << "," << b.y1 << "," << b.height_m
-        << ";";
+ << "," << static_cast<int>(b.impact_material) << ";";
   }
   sig << "M|";
   for (const auto& m : materials) {
@@ -529,6 +529,7 @@ void MujocoBackend::sync(const MotorParams& motor,
   }
   zone_geom_.clear();
  static_geom_.clear();
+ static_impact_material_.clear();
  impact_ = ImpactViz{};
 
  // Wheel modules use the same table for build and per-step zone lookup.
@@ -1157,10 +1158,16 @@ void MujocoBackend::sync(const MotorParams& motor,
     zone_geom_.push_back(mj_name2id(model, mjOBJ_GEOM, name.c_str()));
   }
  static_geom_.clear();
- for (int i = 0; i < bi; ++i) {
- const std::string name = "static" + std::to_string(i);
+ static_impact_material_.clear();
+ int compiled_box = 0;
+ for (const auto& box : boxes) {
+ if (!(box.height_m > 0.0)) continue;
+ const std::string name = "static" + std::to_string(compiled_box++);
  const int geom_id = mj_name2id(model, mjOBJ_GEOM, name.c_str());
- if (geom_id >= 0) static_geom_.push_back(geom_id);
+ if (geom_id >= 0) {
+ static_geom_.push_back(geom_id);
+ static_impact_material_.push_back(box.impact_material);
+ }
  }
   if (found_drives != drive_count || found_steers != steer_count) {
     // The compiled model is still local until the joint census succeeds.

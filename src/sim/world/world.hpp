@@ -65,6 +65,9 @@ struct StaticBox {
  // mesh to this collision proxy without depending on array order. ROBOT map
  // and sensor messages contain only the resulting geometry/ranges.
  std::string box_id;
+ // Visual impact class only. It controls effects such as sparks and never
+ // changes collision, raycast, scoring, mapping, or ROBOT observations.
+ ImpactMaterial impact_material = ImpactMaterial::kConcrete;
 };
 
 struct Actor {

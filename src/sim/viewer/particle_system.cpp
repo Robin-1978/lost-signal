@@ -104,13 +104,16 @@ void ParticleSystem::integrate(double elapsed_s) {
 
 void ParticleSystem::emit_impact(const Frame& frame) {
  const FrameImpact& impact = frame.impact;
- if (!impact.valid || !(impact.normal_impulse_Ns > 0.0) ||
- impact.relative_speed_mps < config_.impact_min_relative_speed_mps ||
+ if (!impact.spark_eligible ||
+ impact.spark_robot_material != "metal" ||
+ impact.spark_static_material != "metal" ||
+ !(impact.spark_normal_impulse_Ns > 0.0) ||
+ impact.spark_relative_speed_mps < config_.impact_min_relative_speed_mps ||
  !(config_.impact_particles_per_Ns > 0.0)) {
  return;
  }
  const double requested =
- impact.normal_impulse_Ns * config_.impact_particles_per_Ns;
+ impact.spark_normal_impulse_Ns * config_.impact_particles_per_Ns;
  const std::size_t count = std::min(
  config_.maximum_impact_particles_per_step,
  static_cast<std::size_t>(std::max(1.0, std::floor(requested))));
@@ -120,11 +123,12 @@ void ParticleSystem::emit_impact(const Frame& frame) {
  const double speed_scale = 0.35 + 0.65 *
  stable_unit(frame.step, 97U, index + 503U);
  const double speed = std::clamp(
- impact.relative_speed_mps * speed_scale, 0.25, 4.0);
+ impact.spark_relative_speed_mps * speed_scale, 0.25, 4.0);
  Particle particle;
  particle.kind = ParticleKind::kImpactSpark;
  particle.active = true;
- particle.position_m = {impact.x_m, impact.y_m, impact.z_m};
+ particle.position_m = {
+ impact.spark_x_m, impact.spark_y_m, impact.spark_z_m};
  particle.velocity_mps = {
  std::cos(azimuth) * speed,
  std::sin(azimuth) * speed,

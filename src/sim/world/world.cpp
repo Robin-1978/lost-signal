@@ -23,6 +23,26 @@ void accumulate_impact(ImpactViz& aggregate, const ImpactViz& sample) {
  aggregate.relative_speed_mps =
  std::max(aggregate.relative_speed_mps, sample.relative_speed_mps);
  aggregate.valid = true;
+ if (sample.spark_eligible && sample.spark_normal_impulse_Ns > 0.0) {
+ const double spark_previous = aggregate.spark_normal_impulse_Ns;
+ const double spark_total =
+ spark_previous + sample.spark_normal_impulse_Ns;
+ aggregate.spark_x_m =
+ (aggregate.spark_x_m * spark_previous +
+ sample.spark_x_m * sample.spark_normal_impulse_Ns) / spark_total;
+ aggregate.spark_y_m =
+ (aggregate.spark_y_m * spark_previous +
+ sample.spark_y_m * sample.spark_normal_impulse_Ns) / spark_total;
+ aggregate.spark_z_m =
+ (aggregate.spark_z_m * spark_previous +
+ sample.spark_z_m * sample.spark_normal_impulse_Ns) / spark_total;
+ aggregate.spark_normal_impulse_Ns = spark_total;
+ aggregate.spark_relative_speed_mps = std::max(
+ aggregate.spark_relative_speed_mps, sample.spark_relative_speed_mps);
+ aggregate.spark_robot_material = sample.spark_robot_material;
+ aggregate.spark_static_material = sample.spark_static_material;
+ aggregate.spark_eligible = true;
+ }
 }
 
 } // namespace

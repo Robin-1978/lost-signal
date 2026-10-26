@@ -23,6 +23,19 @@ double seconds(robot::core::MonotonicNs stamp_ns) {
  ? -1.0 : static_cast<double>(stamp_ns) * 1e-9;
 }
 
+const char* impact_material_name(world::ImpactMaterial material) {
+ switch (material) {
+ case world::ImpactMaterial::kRubber: return "rubber";
+ case world::ImpactMaterial::kMetal: return "metal";
+ case world::ImpactMaterial::kConcrete: return "concrete";
+ case world::ImpactMaterial::kGlass: return "glass";
+ case world::ImpactMaterial::kWood: return "wood";
+ case world::ImpactMaterial::kPolymer: return "polymer";
+ case world::ImpactMaterial::kUnknown: return "unknown";
+ }
+ return "unknown";
+}
+
 } // namespace
 
 std::vector<std::pair<double, double>> lidar_endpoints(
@@ -412,8 +425,22 @@ Frame build_frame(const world::World& world, const eval::EvalStep& step,
   f.static_clearance_m = step.judge.static_clearance_m;
  const world::ImpactViz& impact = step.presentation.captured
  ? step.presentation.impact : world.impact();
- f.impact = {impact.valid, impact.x_m, impact.y_m, impact.z_m,
- impact.normal_impulse_Ns, impact.relative_speed_mps};
+ f.impact.valid = impact.valid;
+ f.impact.x_m = impact.x_m;
+ f.impact.y_m = impact.y_m;
+ f.impact.z_m = impact.z_m;
+ f.impact.normal_impulse_Ns = impact.normal_impulse_Ns;
+ f.impact.relative_speed_mps = impact.relative_speed_mps;
+ f.impact.spark_eligible = impact.spark_eligible;
+ f.impact.spark_x_m = impact.spark_x_m;
+ f.impact.spark_y_m = impact.spark_y_m;
+ f.impact.spark_z_m = impact.spark_z_m;
+ f.impact.spark_normal_impulse_Ns = impact.spark_normal_impulse_Ns;
+ f.impact.spark_relative_speed_mps = impact.spark_relative_speed_mps;
+ f.impact.spark_robot_material =
+ impact_material_name(impact.spark_robot_material);
+ f.impact.spark_static_material =
+ impact_material_name(impact.spark_static_material);
   return f;
 }
 

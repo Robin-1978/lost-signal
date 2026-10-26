@@ -105,6 +105,7 @@ int main() {
  content.initial_pose = sim::world::InitialPosePrior{
  1.0, -2.0, 0.25, 0.12, 0.06};
  content.boxes = {{0.0, 0.0, 1.0, 1.0, 0.5, "fixture_box"}};
+ content.boxes[0].impact_material = sim::world::ImpactMaterial::kMetal;
     content.places = {{"dock", 2.0, 0.0, 0.0}};
 content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
  {"gravel", 0.7, 0.015, 0.01, 1.15, 0.28, "dust", 0.0}};
@@ -126,6 +127,7 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
  assert(rc.initial_pose->x_m == 1.0 && rc.initial_pose->y_m == -2.0);
  assert(rc.initial_pose->position_sigma_m == 0.12);
  assert(rc.boxes[0].box_id == "fixture_box");
+ assert(rc.boxes[0].impact_material == sim::world::ImpactMaterial::kMetal);
     assert(rc.materials[0].material_id == "ice");
     assert(std::abs(rc.materials[0].friction_mu - 0.25) < 1e-12);
  assert(rc.materials[1].surface_effect == "dust");
@@ -186,6 +188,10 @@ content.materials = {{"ice", 0.25, 0.005, 0.006, 1.0, 0.30},
  bad = content;
  bad.materials[0].surface_effect = "water";
  bad.materials[0].fluid_depth_m = 0.0;
+ assert(sim::eval::save_world_file(path2, bad, &err));
+ assert(!sim::eval::load_world_file(path2, tmp, &err));
+ bad = content;
+ bad.boxes[0].impact_material = sim::world::ImpactMaterial::kUnknown;
  assert(sim::eval::save_world_file(path2, bad, &err));
  assert(!sim::eval::load_world_file(path2, tmp, &err));
     }
