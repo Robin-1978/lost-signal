@@ -5,6 +5,7 @@
 
 #include "sim/experiment/experience_runtime.hpp"
 #include "sim/experiment/episode_pair.hpp"
+#include "sim/providers/replay.hpp"
 #include "sim/viewer/experience_manifest.hpp"
 
 int main() {
@@ -165,11 +166,17 @@ int main() {
  // A completed run is copied into an immutable review artifact before a
  // second runtime replaces the live session. The four progression verdicts
  // remain independent: SIM validity, safety, mission, and experiment.
+ sim::viewer::KeyframeReviewConfig review_config;
+ review_config.maximum_forward_speed_mps =
+ first.robot_config->arrival.maximum_forward_speed_mps;
+ review_config.maximum_yaw_rate_radps =
+ first.robot_config->arrival.maximum_yaw_rate_radps;
+ review_config.settle_samples = first.robot_config->arrival.settle_cycles;
  auto baseline_artifact = sim::experiment::capture_episode_artifact(
  "baseline", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
- first.sim_config->scan_period_s, first.invariant_digest, false,
- *first.session);
+ first.sim_config->scan_period_s, first.invariant_digest,
+ first.code_revision, review_config, false, *first.session);
  assert(baseline_artifact.simulation_valid);
  assert(baseline_artifact.safety_passed());
  assert(baseline_artifact.mission_passed());
@@ -183,8 +190,8 @@ int main() {
  pair.variant = sim::experiment::capture_episode_artifact(
  "variant", &sim::viewer::experience_variable_spec(
  sim::viewer::ExperienceVariable::kLidarScanPeriodS),
- variant.sim_config->scan_period_s, variant.invariant_digest, false,
- *first.session);
+ variant.sim_config->scan_period_s, variant.invariant_digest,
+ variant.code_revision, review_config, false, *first.session);
  auto complete = sim::experiment::evaluate_experience_gate(
  experience.progression, *pair.variant, pair);
  assert(complete.simulation_valid);
@@ -192,6 +199,29 @@ int main() {
  assert(complete.mission_passed);
  assert(complete.experiment_passed);
  assert(complete.can_advance);
+ const std::string report_path = "/tmp/lost_signal_episode_pair_test.json";
+ const std::string baseline_replay_path =
+ report_path + ".baseline.observations.jsonl";
+ const std::string variant_replay_path =
+ report_path + ".variant.observations.jsonl";
+ assert(sim::experiment::write_episode_pair_bundle(
+ report_path, pair, &error));
+ std::ifstream report_input(report_path, std::ios::binary);
+ const std::string report_text(
+ (std::istreambuf_iterator<char>(report_input)),
+ std::istreambuf_iterator<char>());
+ assert(report_text.find("lost-signal-episode-pair/1") !=
+ std::string::npos);
+ assert(report_text.find(first.code_revision) != std::string::npos);
+ sim::providers::ReplayProvider baseline_replay;
+ sim::providers::ReplayProvider variant_replay;
+ assert(baseline_replay.load(baseline_replay_path, &error));
+ assert(variant_replay.load(variant_replay_path, &error));
+ assert(baseline_replay.size() == pair.baseline->episode.size());
+ assert(variant_replay.size() == pair.variant->episode.size());
+ std::remove(report_path.c_str());
+ std::remove(baseline_replay_path.c_str());
+ std::remove(variant_replay_path.c_str());
  const auto synchronized =
  sim::experiment::synchronize_episode_pair_by_time(
  pair, /*reference_is_variant=*/true,

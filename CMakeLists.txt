@@ -271,6 +271,11 @@ target_link_libraries(lost_signal_sim_eval PUBLIC
   lost_signal_robot_stack
   lost_signal_sim_world
 )
+# Replay providers serialize through the eval recording schema. Declare that
+# real dependency so static-link order remains correct for every consumer.
+target_link_libraries(lost_signal_sim_providers PUBLIC
+ lost_signal_sim_eval
+)
 
 add_library(lost_signal_sim_scenario STATIC
   src/sim/scenario/scenario_session.cpp

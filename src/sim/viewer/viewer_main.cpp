@@ -3368,7 +3368,7 @@ int main(int argc, char** argv) {
  // enables optional SIM-only GLB presentation models from the old content
  // tree; procedural parts remain the deterministic fallback.
  std::string robot_path, sim_path, map_path, assets_path, scene_path,
- experience_path;
+ experience_path, experiment_output_path;
  std::string requested_locale = "auto";
  double initial_playback_rate = 1.0;
  double sandbox_history_seconds = kDefaultSandboxHistorySeconds;
@@ -3386,6 +3386,7 @@ int main(int argc, char** argv) {
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
  " [--locale auto|en|zh-CN] [--mute] [--history-seconds N]\n"
+ " [--experiment-out REPORT.json]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -3415,6 +3416,9 @@ int main(int argc, char** argv) {
  if (a == "--experience" && i + 1 < argc) {
  experience_path = argv[++i];
  source_requested = true;
+ }
+ if (a == "--experiment-out" && i + 1 < argc) {
+ experiment_output_path = argv[++i];
  }
  if (a == "--locale" && i + 1 < argc) requested_locale = argv[++i];
  if (a == "--history-seconds" && i + 1 < argc) {
@@ -3484,6 +3488,7 @@ int main(int argc, char** argv) {
  std::optional<sim::eval::SimConfig> sim_config;
   std::unique_ptr<sim::scenario::ScenarioSession> session;
  std::uint64_t runtime_invariant_digest = 0;
+ std::string runtime_code_revision;
  sim::experiment::ExperienceRuntimeConfig runtime_config;
  runtime_config.robot_path = robot_path;
  runtime_config.sim_path = sim_path;
@@ -3506,6 +3511,7 @@ int main(int argc, char** argv) {
  robot_config = std::move(runtime.robot_config);
  sim_config = std::move(runtime.sim_config);
  runtime_invariant_digest = runtime.invariant_digest;
+ runtime_code_revision = runtime.code_revision;
  if (!runtime.used_robot_path.empty()) {
  std::fprintf(stderr, "robot config: %s\n",
  runtime.used_robot_path.c_str());
@@ -3790,6 +3796,7 @@ int main(int argc, char** argv) {
  robot_config = std::move(rebuilt.robot_config);
  sim_config = std::move(rebuilt.sim_config);
  runtime_invariant_digest = rebuilt.invariant_digest;
+ runtime_code_revision = rebuilt.code_revision;
  session->lidar_mount(
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
  if (!experience_flow->retry_current(0)) return false;
@@ -3834,6 +3841,7 @@ int main(int argc, char** argv) {
  robot_config = std::move(rebuilt.robot_config);
  sim_config = std::move(rebuilt.sim_config);
  runtime_invariant_digest = rebuilt.invariant_digest;
+ runtime_code_revision = rebuilt.code_revision;
  runtime_config = std::move(variant_config);
  session->lidar_mount(
  session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
@@ -3908,6 +3916,7 @@ int main(int argc, char** argv) {
  robot_config = std::move(candidate_runtime.robot_config);
  sim_config = std::move(candidate_runtime.sim_config);
  runtime_invariant_digest = candidate_runtime.invariant_digest;
+ runtime_code_revision = candidate_runtime.code_revision;
  visual_scene = std::move(candidate_scene);
  scene_loaded = true;
  session->lidar_mount(
@@ -4270,7 +4279,8 @@ int main(int argc, char** argv) {
  experience_flow->run_kind() == ExperienceRunKind::kBaseline
  ? "baseline" : "variant",
  variable, controlled_value, runtime_invariant_digest,
- experience_flow->timed_out(), *session);
+ runtime_code_revision, review_config, experience_flow->timed_out(),
+ *session);
  if (experience_flow->run_kind() == ExperienceRunKind::kBaseline) {
  experiment_ui.baseline = run_summary;
  experiment_ui.baseline_keyframes = review_keyframes;
@@ -4283,6 +4293,16 @@ int main(int argc, char** argv) {
  experiment_ui.variant = run_summary;
  experiment_ui.variant_keyframes = review_keyframes;
  experiment_ui.episodes.variant = std::move(artifact);
+ if (!experiment_output_path.empty()) {
+ std::string export_error;
+ if (!sim::experiment::write_episode_pair_bundle(
+ experiment_output_path, experiment_ui.episodes, &export_error)) {
+ experience_action_error = export_error;
+ } else {
+ std::fprintf(stderr, "experiment bundle: %s\n",
+ experiment_output_path.c_str());
+ }
+ }
  }
  if (!session->episode().steps().empty()) {
  const auto terminal_frame = sim::viewer::build_frame(

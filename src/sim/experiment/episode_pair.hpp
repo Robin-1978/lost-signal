@@ -8,6 +8,7 @@
 #include "sim/eval/scoring.hpp"
 #include "sim/scenario/scenario_session.hpp"
 #include "sim/viewer/experience_manifest.hpp"
+#include "sim/viewer/keyframe_review.hpp"
 
 namespace lost_signal::sim::experiment {
 
@@ -17,8 +18,12 @@ namespace lost_signal::sim::experiment {
 struct EpisodeArtifact {
  std::string condition_id;
  std::string controlled_variable;
+ std::string code_revision;
+ std::string map_id;
+ std::uint64_t map_revision = 0;
  double controlled_value = 0.0;
  std::uint64_t invariant_digest = 0;
+ viewer::KeyframeReviewConfig review_config;
  eval::EpisodeRecorder episode;
  eval::EpisodeScore score;
  bool timed_out = false;
@@ -33,7 +38,9 @@ struct EpisodeArtifact {
 EpisodeArtifact capture_episode_artifact(
  const std::string& condition_id,
  const viewer::ExperienceVariableSpec* variable,
- double controlled_value, std::uint64_t invariant_digest, bool timed_out,
+ double controlled_value, std::uint64_t invariant_digest,
+ const std::string& code_revision,
+ viewer::KeyframeReviewConfig review_config, bool timed_out,
  const scenario::ScenarioSession& session);
 
 struct EpisodePair {
@@ -58,6 +65,13 @@ struct SynchronizedEpisodeStep {
 std::optional<SynchronizedEpisodeStep> synchronize_episode_pair_by_time(
  const EpisodePair& pair, bool reference_is_variant,
  std::size_t reference_index);
+
+// Writes a reproducible comparison report and one v4 observation replay for
+// each run. The JSON report keeps typed inputs, input/code identity, scores,
+// verdicts, and causal keyframes; the replay streams can be fed back through
+// the ordinary ROBOT provider boundary.
+bool write_episode_pair_bundle(const std::string& report_path,
+ const EpisodePair& pair, std::string* error = nullptr);
 
 struct ExperienceGateVerdict {
  bool simulation_valid = false;
