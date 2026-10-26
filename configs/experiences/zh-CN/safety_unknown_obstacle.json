@@ -1,0 +1,43 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "safety_unknown_obstacle",
+ "title": "过期地图：实时安全",
+ "subtitle": "一次货物搬运改变了勘测后的通道。只依靠机器人实时观测抵达出口。",
+ "files": {
+ "map": "../../worlds/safety_lab.json",
+ "scene": "../../worlds/safety_lab.scene.json",
+ "robot": "../../robot/differential.json",
+ "sim": "../../sim/default.json"
+ },
+ "objectives": ["safety_exit"],
+ "time_limit_steps": 1800,
+ "briefing": [
+ "先验地图描述了墙壁与出口，但勘测后通道已经发生变化。",
+ "新增障碍仍会产生雷达回波和物理碰撞，只是没有记录在先验地图中。",
+ "滚动局部地图、规划轨迹验证器和独立安全监控都读取机器人的实时观测。",
+ "在零接触条件下抵达出口；仿真真值只负责评分，绝不告诉机器人障碍在哪里。"
+ ],
+ "walkaround": [
+ {"component_id":"lidar","title":"实时观测","lesson":"带时间戳的距离回波可以揭示旧勘测中没有的几何。机器人只收到测距，不会收到仿真物体标签。"},
+ {"component_id":"chassis","title":"局部规划与轨迹验证","lesson":"局部规划器从滚动传感器地图提出运动方案，独立验证器再用当前观测检查每条轨迹。"},
+ {"component_id":"drive_wheel","title":"独立安全闸门","lesson":"命令到达车轮前，最终碰撞监控会检查新鲜的原始扫描几何。它能停止危险运动，却不能批准不安全命令。"}
+ ],
+ "prediction": {
+ "question": "实时雷达发现先验地图中没有的障碍时，机器人应该怎样做？",
+ "choices": [
+ {"choice_id":"observe_avoid_complete","label":"机器人观测障碍，安全改变运动，并在零接触下完成任务","explanation":"即使全局先验已经过期，实时局部几何和最终原始扫描安全闸门仍具有权威。","correct":true,"evidence_rule":"independent_acceptance"},
+ {"choice_id":"drive_through_prior","label":"机器人沿先验路线直接穿过障碍","explanation":"先验地图只是规划输入，不代表机器人可以忽略当前测距。","correct":false,"evidence_rule":"sim_rejected"},
+ {"choice_id":"cannot_finish","label":"先验不完美，所以机器人只能永远停车","explanation":"只要实时观测提供足够自由空间，安全的局部绕行仍然可以完成任务。","correct":false,"evidence_rule":"incomplete"}
+ ]
+ },
+ "running_prompt": "观察实测雷达、滚动估计、规划决策和最终安全裁决。未上报的箱体存在于物理世界，却不在先验地图中。",
+ "debrief": {
+ "success_title": "实时证据已纠正过期先验",
+ "failure_title": "未能验证安全通行",
+ "lessons": [
+ "静态地图是先验；避障仍以新鲜的局部传感器观测为准。",
+ "规划轨迹验证器和最终安全闸门只读取机器人观测，不读取仿真真值。",
+ "运行结束后，仿真才独立检查物理接触与真实到达结果。"
+ ]
+ }
+}

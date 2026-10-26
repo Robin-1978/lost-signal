@@ -48,6 +48,14 @@ int main() {
  assert(std::filesystem::is_regular_file(experience.map_path));
  assert(std::filesystem::is_regular_file(experience.robot_path));
 
+ assert(lost_signal::sim::viewer::load_experience_manifest(
+ (root / "configs/experiences/zh-CN/first_contact.json").string(),
+ experience, &error));
+ assert(experience.title == "初次接触：精确停靠");
+ assert(experience.walkaround.front().title == "驱动轮 / 牵引力");
+ assert(std::filesystem::path(experience.next_experience_path).filename() ==
+ "safety_unknown_obstacle.json");
+
  const auto bad = root / "configs/experiences/bad_test_experience.json";
  write_text(bad,
  R"({"format":"lost-signal-experience/1","experience_id":"bad","title":"bad","subtitle":"bad","files":{"map":"../worlds/research_base.json","scene":"../worlds/research_base.scene.json","robot":"../robot/differential.json","sim":"../sim/default.json"},"objectives":["glass_door"],"briefing":["brief"],"prediction":{"question":"q","choices":[{"choice_id":"a","label":"a","explanation":"a","correct":true},{"choice_id":"b","label":"b","explanation":"b","correct":true}]},"running_prompt":"run","debrief":{"success_title":"ok","failure_title":"no","lessons":["lesson"]}})");

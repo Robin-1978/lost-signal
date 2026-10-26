@@ -82,6 +82,8 @@ step budget and a single implicit goal keeps the legacy 5 step smoke run.
 ./build/sim_viewer
 # Equivalent explicit entry:
 ./build/sim_viewer --play
+# Force the Simplified Chinese field lab:
+./build/sim_viewer --play --locale zh-CN
 ```
 
 With no authored source arguments, the viewer opens the First Contact field
@@ -101,6 +103,10 @@ settle rules come from the selected robot's versioned arrival policy. The
 experience selects ordinary robot, sim,
 map, scene, and named-goal files before startup; runtime autonomy receives the
 same sensor and actuator interfaces used without the game presentation.
+`--locale auto` follows `LC_ALL`, `LC_MESSAGES`, or `LANG`; `--locale en` and
+`--locale zh-CN` select a language explicitly. Localized manifests change only
+presentation text. They resolve to the same robot, simulator, map, scene,
+objective ids, physics, and autonomous software.
 
 Run the same field lab as a controlled scan-cadence A/B experiment:
 

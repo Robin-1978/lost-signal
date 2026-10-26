@@ -66,6 +66,106 @@ using lost_signal::sim::viewer::SceneManifest;
 constexpr int kScreenW = 1100;
 constexpr int kScreenH = 750;
 
+Font g_ui_font{};
+bool g_owns_ui_font = false;
+bool g_zh_cn = false;
+
+bool use_zh_cn_locale(const std::string& requested) {
+ if (requested == "zh-CN") return true;
+ if (requested == "en") return false;
+ const char* locale = std::getenv("LC_ALL");
+ if (locale == nullptr || *locale == '\0') locale = std::getenv("LC_MESSAGES");
+ if (locale == nullptr || *locale == '\0') locale = std::getenv("LANG");
+ return locale != nullptr && std::string(locale).rfind("zh", 0) == 0;
+}
+
+const char* tr(const char* english, const char* simplified_chinese) {
+ return g_zh_cn ? simplified_chinese : english;
+}
+
+Font ui_font() {
+ return g_owns_ui_font ? g_ui_font : GetFontDefault();
+}
+
+void draw_ui_text(const char* text, int x, int y, int font_size,
+ Color color) {
+ DrawTextEx(ui_font(), text, {static_cast<float>(x), static_cast<float>(y)},
+ static_cast<float>(font_size), 0.5f, color);
+}
+
+float measure_ui_text(const char* text, float font_size) {
+ return MeasureTextEx(ui_font(), text, font_size, 0.5f).x;
+}
+
+void unload_ui_font();
+
+void load_ui_font(const ExperienceManifest* experience) {
+ unload_ui_font();
+ const std::filesystem::path path =
+ "assets/fonts/NotoSansCJKsc-Regular.otf";
+ if (!std::filesystem::is_regular_file(path)) return;
+ std::string glyph_text =
+ "机器人现场实验室任务简报部件检查开始实验检查全部先做预测点击选项"
+ "或按数字键开始实时证据数据权限观察估计规划移动制动稳定物理真值"
+ "运行中隐藏复盘时显示离线评估不会向机器人发布证据姿态来源"
+ "本次运行证明了什么关键帧受控对比重试下一章通过安全门后解锁"
+ "暂停单步激光估计真值调试跟随画质适配速度二维三维编辑轨道缩放"
+ "物理部件已检查时间用尽操作失败碰撞最小净空平均误差重新运行基线"
+ "变量种子预测得到本局支持需要修正开始对照实验重试通过安全验收后"
+ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+ "：，。；！？、（）《》【】 /.-+_%#=<>";
+ if (experience != nullptr) {
+ auto append = [&](const std::string& value) {
+ glyph_text.push_back('\n');
+ glyph_text += value;
+ };
+ append(experience->title);
+ append(experience->subtitle);
+ append(experience->prediction_question);
+ append(experience->running_prompt);
+ append(experience->success_title);
+ append(experience->failure_title);
+ for (const auto& value : experience->briefing) append(value);
+ for (const auto& value : experience->lessons) append(value);
+ for (const auto& stop : experience->walkaround) {
+ append(stop.component_id);
+ append(stop.title);
+ append(stop.lesson);
+ }
+ for (const auto& choice : experience->choices) {
+ append(choice.label);
+ append(choice.explanation);
+ }
+ for (const auto& experiment : experience->experiments) {
+ append(experiment.title);
+ append(experiment.controlled_variable);
+ }
+ }
+ int decoded_count = 0;
+ int* decoded = LoadCodepoints(glyph_text.c_str(), &decoded_count);
+ if (decoded == nullptr || decoded_count <= 0) {
+ UnloadCodepoints(decoded);
+ return;
+ }
+ std::vector<int> codepoints(decoded, decoded + decoded_count);
+ UnloadCodepoints(decoded);
+ std::sort(codepoints.begin(), codepoints.end());
+ codepoints.erase(std::unique(codepoints.begin(), codepoints.end()),
+ codepoints.end());
+ g_ui_font = LoadFontEx(path.string().c_str(), 48, codepoints.data(),
+ static_cast<int>(codepoints.size()));
+ g_owns_ui_font = g_ui_font.texture.id != 0;
+ if (g_owns_ui_font) {
+ SetTextureFilter(g_ui_font.texture, TEXTURE_FILTER_BILINEAR);
+ }
+}
+
+void unload_ui_font() {
+ if (g_owns_ui_font) UnloadFont(g_ui_font);
+ g_ui_font = {};
+ g_owns_ui_font = false;
+}
+
 enum class RenderQuality { kFast, kHigh };
 
 const char* render_quality_name(RenderQuality quality) {
@@ -1041,8 +1141,9 @@ void draw_panel_button(Rectangle bounds, const char* label, bool primary,
  : (hovered ? Color{49, 72, 71, 255} : Color{29, 48, 48, 255});
  DrawRectangleRounded(bounds, 0.16f, 8, fill);
  if (!primary) DrawRectangleRoundedLinesEx(bounds, 0.16f, 8, 1.0f, accent);
- const int width = MeasureText(label, 14);
- DrawText(label, static_cast<int>(bounds.x + (bounds.width - width) * 0.5f),
+ const float width = measure_ui_text(label, 14.0f);
+ draw_ui_text(label,
+ static_cast<int>(bounds.x + (bounds.width - width) * 0.5f),
  static_cast<int>(bounds.y + (bounds.height - 14.0f) * 0.5f), 14,
  primary ? Color{7, 18, 18, 255} : text);
 }
@@ -1067,7 +1168,36 @@ lost_signal::sim::viewer::ExperienceEvidence experience_evidence(
 
 float draw_wrapped_text(const std::string& text, float x, float y,
  float width, float font_size, float line_gap, Color color) {
- const Font font = GetFontDefault();
+ const Font font = ui_font();
+ if (std::any_of(text.begin(), text.end(), [](unsigned char value) {
+ return value >= 0x80;
+ })) {
+ const float spacing = 1.0f;
+ std::string line;
+ for (std::size_t offset = 0; offset < text.size();) {
+ int bytes = 0;
+ (void)GetCodepoint(text.c_str() + offset, &bytes);
+ if (bytes <= 0) bytes = 1;
+ const std::size_t glyph_bytes = std::min<std::size_t>(
+ static_cast<std::size_t>(bytes), text.size() - offset);
+ const std::string glyph = text.substr(offset, glyph_bytes);
+ offset += glyph_bytes;
+ const std::string candidate = line + glyph;
+ if (!line.empty() &&
+ MeasureTextEx(font, candidate.c_str(), font_size, spacing).x > width) {
+ DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+ y += font_size + line_gap;
+ line = glyph;
+ } else {
+ line = candidate;
+ }
+ }
+ if (!line.empty()) {
+ DrawTextEx(font, line.c_str(), {x, y}, font_size, spacing, color);
+ y += font_size + line_gap;
+ }
+ return y;
+ }
  std::istringstream input(text);
  std::string word;
  std::string line;
@@ -1114,27 +1244,29 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
   DrawRectangleRounded({x, 58.0f, width, 382.0f}, 0.04f, 8, kPanelSoft);
- DrawText("LIVE EVIDENCE / AUTHORITY", static_cast<int>(x + 18), 74, 14,
- kCyan);
+ draw_ui_text(tr("LIVE EVIDENCE / AUTHORITY", "实时证据 / 数据权限"),
+ static_cast<int>(x + 18), 74, 14, kCyan);
  float y = 101.0f;
  if (frame != nullptr) {
  char line[320];
  const auto& observation = frame->observation;
    const auto& estimate = frame->estimate;
    const auto& decision = frame->decision;
-   const char* stage = "OBSERVE";
+ const char* stage = tr("OBSERVE", "观察");
    if (observation.accepted && observation.scan_valid) {
-    stage = !estimate.valid ? "ESTIMATE"
-    : !decision.valid || decision.action_code.empty() ? "PLAN"
+ stage = !estimate.valid ? tr("ESTIMATE", "估计")
+ : !decision.valid || decision.action_code.empty()
+ ? tr("PLAN", "规划")
     : std::abs(decision.command_forward_mps) <= 0.03 &&
       std::abs(decision.command_yaw_rate_radps) <= 0.03
-    ? "BRAKE / SETTLE"
-    : "PLAN / MOVE";
+ ? tr("BRAKE / SETTLE", "制动 / 稳定")
+ : tr("PLAN / MOVE", "规划 / 移动");
    }
-   DrawText(stage, static_cast<int>(x + 18), static_cast<int>(y), 20,
+ draw_ui_text(stage, static_cast<int>(x + 18), static_cast<int>(y), 20,
     kAmber);
    y += 31.0f;
- DrawText("ROBOT / OBSERVATION", static_cast<int>(x + 18),
+ draw_ui_text(tr("ROBOT / OBSERVATION", "机器人 / 传感器观测"),
+ static_cast<int>(x + 18),
  static_cast<int>(y), 13, kCyan);
  std::snprintf(line, sizeof(line),
  "scan %s  beams %zu/%zu  odom %s  IMU %s",
@@ -1142,18 +1274,19 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  observation.lidar_returns, observation.lidar_beams,
  observation.odometry_valid ? "OK" : "--",
  observation.imu_valid ? "OK" : "--");
- DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
  kText);
  std::snprintf(line, sizeof(line), "%s seq %llu t=%.3fs",
  observation.scan_source.empty() ? "unknown source"
  : observation.scan_source.c_str(),
  static_cast<unsigned long long>(observation.scan_sequence),
  observation.scan_stamp_s);
- DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 12,
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 12,
  kMuted);
  y += 62.0f;
 
- DrawText("ROBOT / ESTIMATE", static_cast<int>(x + 18),
+ draw_ui_text(tr("ROBOT / ESTIMATE", "机器人 / 状态估计"),
+ static_cast<int>(x + 18),
  static_cast<int>(y), 13, kCyan);
  if (estimate.valid) {
  std::snprintf(line, sizeof(line),
@@ -1163,32 +1296,37 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  } else {
  std::snprintf(line, sizeof(line), "waiting for a valid state estimate");
  }
- DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
  kText);
  y += 47.0f;
 
- DrawText("ROBOT / DECISION", static_cast<int>(x + 18),
+ draw_ui_text(tr("ROBOT / DECISION", "机器人 / 规划决策"),
+ static_cast<int>(x + 18),
  static_cast<int>(y), 13, Color{180, 132, 255, 255});
  std::snprintf(line, sizeof(line), "%s / %s",
  decision.action_code.empty() ? "idle" : decision.action_code.c_str(),
  decision.safety_state.empty() ? "UNKNOWN" : decision.safety_state.c_str());
- DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 19), 13,
  kText);
  std::snprintf(line, sizeof(line), "cmd %.2f m/s  %.2f rad/s  candidates %zu",
  decision.command_forward_mps, decision.command_yaw_rate_radps,
  decision.moving_candidate_count);
- DrawText(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 13,
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y + 37), 13,
  kMuted);
  y += 66.0f;
  }
- DrawText("SIM / PHYSICS TRUTH", static_cast<int>(x + 18),
+ draw_ui_text(tr("SIM / PHYSICS TRUTH", "仿真 / 物理真值"),
+ static_cast<int>(x + 18),
  static_cast<int>(y), 13, kAmber);
- DrawText("HIDDEN DURING RUN / REVEALED IN DEBRIEF",
+ draw_ui_text(tr("HIDDEN DURING RUN / REVEALED IN DEBRIEF",
+ "运行时隐藏 / 复盘时显示"),
  static_cast<int>(x + 18), static_cast<int>(y + 19), 13, kMuted);
  y += 47.0f;
- DrawText("GAME / OFFLINE EVAL", static_cast<int>(x + 18),
+ draw_ui_text(tr("GAME / OFFLINE EVAL", "游戏 / 离线验收"),
+ static_cast<int>(x + 18),
  static_cast<int>(y), 13, kAmber);
- DrawText("does not publish evidence back to ROBOT",
+ draw_ui_text(tr("does not publish evidence back to ROBOT",
+ "这些证据不会发布回机器人"),
  static_cast<int>(x + 18), static_cast<int>(y + 19), 13, kMuted);
   if (!experience.running_prompt.empty()) {
    draw_wrapped_text(experience.running_prompt, x + 18, y + 48,
@@ -1216,7 +1354,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  kPanel);
  DrawRectangleRoundedLinesEx({x, y0, panel_width, panel_height}, 0.035f, 10,
  2.0f, phase == ExperiencePhase::kDebrief ? kAmber : kCyan);
- DrawText("LOST SIGNAL / FIELD LAB", static_cast<int>(x + 34),
+ draw_ui_text(tr("LOST SIGNAL / FIELD LAB", "失落信号 / 机器人现场实验室"),
+ static_cast<int>(x + 34),
  static_cast<int>(y0 + 28), 15, kCyan);
  float y = draw_wrapped_text(experience.title, x + 34, y0 + 58,
  panel_width - 68, briefing ? 22.0f : 25.0f, 4.0f, kText);
@@ -1225,7 +1364,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  y += 14.0f;
 
  if (phase == ExperiencePhase::kBriefing) {
- DrawText("MISSION BRIEF / COMPONENT WALKAROUND",
+ draw_ui_text(tr("MISSION BRIEF / COMPONENT WALKAROUND",
+ "任务简报 / 物理部件检查"),
  static_cast<int>(x + 34), static_cast<int>(y), 15, kAmber);
   y += 27.0f;
   for (const auto& line : experience.briefing) {
@@ -1240,20 +1380,22 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const int index = std::clamp(walkaround_stop, 0, count - 1);
  const auto& stop = experience.walkaround[static_cast<std::size_t>(index)];
    char progress[96];
-   std::snprintf(progress, sizeof(progress),
-    "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
+std::snprintf(progress, sizeof(progress),
+ g_zh_cn ? "物理部件 %02d / %02d　已检查 %02zu / %02d"
+ : "PHYSICAL COMPONENT %02d / %02d    INSPECTED %02zu / %02d",
     index + 1, count, walkaround_visited_count, count);
- DrawText(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
+ draw_ui_text(progress, static_cast<int>(x + 34), static_cast<int>(y), 13,
  kMuted);
    y += 23.0f;
    y = draw_wrapped_text(stop.title, x + 34, y, panel_width - 68, 18, 4,
     kCyan) + 9.0f;
    y = draw_wrapped_text(stop.lesson, x + 34, y, panel_width - 68, 14, 5,
     kText) + 10.0f;
- DrawText("POSE SOURCE", static_cast<int>(x + 34), static_cast<int>(y),
+ draw_ui_text(tr("POSE SOURCE", "姿态来源"), static_cast<int>(x + 34),
+ static_cast<int>(y),
  13, kAmber);
  y += 22.0f;
- const std::string source = stop.component_id + " / MuJoCo body + joint";
+ const std::string source = stop.component_id + tr(" / MuJoCo body + joint", " / MuJoCo 刚体与关节");
  draw_wrapped_text(source, x + 34, y, panel_width - 68, 14, 5, kMuted);
  }
  const float button_y = y0 + panel_height - 64.0f;
@@ -1265,9 +1407,11 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  draw_panel_button(next, ">", false, kCyan, kText);
   char primary_label[64];
   if (walkaround_complete) {
-   std::snprintf(primary_label, sizeof(primary_label), "START EXPERIMENT");
+ std::snprintf(primary_label, sizeof(primary_label), "%s",
+ tr("START EXPERIMENT", "开始实验"));
   } else {
-   std::snprintf(primary_label, sizeof(primary_label), "INSPECT ALL %zu/%zu",
+ std::snprintf(primary_label, sizeof(primary_label),
+ g_zh_cn ? "完成部件检查 %zu/%zu" : "INSPECT ALL %zu/%zu",
     walkaround_visited_count, experience.walkaround.size());
   }
   draw_panel_button(primary, primary_label, true, kCyan, kText,
@@ -1281,7 +1425,7 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  }
 
  if (phase == ExperiencePhase::kPrediction) {
- DrawText("PREDICT FIRST", static_cast<int>(x + 34),
+ draw_ui_text(tr("PREDICT FIRST", "先做预测"), static_cast<int>(x + 34),
  static_cast<int>(y), 15, kAmber);
  y = draw_wrapped_text(experience.prediction_question, x + 34, y + 28,
  panel_width - 68, 19, 6, kText) + 10.0f;
@@ -1296,13 +1440,14 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  const char key[2]{static_cast<char>('1' + i), '\0'};
  DrawCircle(static_cast<int>(x + 58), static_cast<int>(card_y + 39),
  15.0f, kCyan);
- DrawText(key, static_cast<int>(x + 53), static_cast<int>(card_y + 29),
+ draw_ui_text(key, static_cast<int>(x + 53), static_cast<int>(card_y + 29),
  19, Color{7, 18, 18, 255});
  draw_wrapped_text(experience.choices[i].label, x + 84, card_y + 17,
  panel_width - 132, 16, 4, kText);
  y += 91.0f;
  }
- DrawText("CLICK A CHOICE OR PRESS ITS NUMBER TO START",
+ draw_ui_text(tr("CLICK A CHOICE OR PRESS ITS NUMBER TO START",
+ "点击一个预测，或按数字键开始实验"),
  static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 40),
  15, kAmber);
  return;
@@ -1310,33 +1455,42 @@ void draw_experience_overlay(const ExperienceManifest& experience,
 
  const bool safe = !timed_out && objectives_done && objectives_passed &&
  score.collision_steps == 0;
- DrawText((safe ? experience.success_title : experience.failure_title).c_str(),
+draw_ui_text((safe ? experience.success_title : experience.failure_title).c_str(),
  static_cast<int>(x + 34), static_cast<int>(y), 20,
  safe ? kCyan : kRed);
  y += 38.0f;
  if (timed_out) {
  y = draw_wrapped_text(
- "TIME LIMIT REACHED: the robot did not produce a terminal mission result within the authored experiment budget.",
+tr("TIME LIMIT REACHED: the robot did not produce a terminal mission result within the authored experiment budget.",
+"时间用尽：机器人未能在本次实验的时间预算内给出终态任务结果。"),
  x + 34, y, panel_width - 68, 15, 5, kRed) + 10.0f;
  }
  if (!action_error.empty()) {
- y = draw_wrapped_text("ACTION FAILED: " + action_error,
+y = draw_wrapped_text(std::string(tr("ACTION FAILED: ", "操作失败：")) +
+action_error,
  x + 34, y, panel_width - 68, 14, 4, kRed) + 8.0f;
  }
  char metrics[256];
  std::snprintf(metrics, sizeof(metrics),
  "SIM OFFLINE EVAL   collisions=%zu   min clearance=%.2f m   mean estimate error=%.2f m",
  score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
+ if (g_zh_cn) {
+ std::snprintf(metrics, sizeof(metrics),
+ "仿真离线验收　碰撞=%zu　最小净空=%.2f m　平均估计误差=%.2f m",
+ score.collision_steps, score.min_clearance_m, score.mean_pos_err_m);
+ }
  y = draw_wrapped_text(metrics, x + 34, y, panel_width - 68, 15, 5,
  safe ? kText : kRed) + 12.0f;
  if (!experience.experiments.empty() && experiment_ui != nullptr) {
  const auto& experiment = experience.experiments.front();
- DrawText("CONTROLLED RE-RUN / PRESS A", static_cast<int>(x + 34),
+ draw_ui_text(tr("CONTROLLED RE-RUN / PRESS A", "受控重新运行 / 按 A"),
+ static_cast<int>(x + 34),
  static_cast<int>(y), 14, kAmber);
  y += 22.0f;
  if (experiment_ui->state == ExperimentRunState::kRunning) {
  y = draw_wrapped_text(
- "Running baseline and variant headless with identical authored files and seeds...",
+ tr("Running baseline and variant headless with identical authored files and seeds...",
+ "正在用完全相同的场景文件与随机种子运行基线和单变量版本……"),
  x + 34, y, panel_width - 68, 14, 4, kMuted) + 8.0f;
  } else if (experiment_ui->state == ExperimentRunState::kComplete) {
  const auto& baseline = experiment_ui->comparison.baseline;
@@ -1415,14 +1569,16 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  if (selected_choice >= 0 &&
  selected_choice < static_cast<int>(experience.choices.size())) {
  const auto& choice = experience.choices[static_cast<std::size_t>(selected_choice)];
- DrawText(prediction_supported ? "YOUR PREDICTION: SUPPORTED BY THIS RUN"
- : "YOUR PREDICTION: REVISE",
+ draw_ui_text(prediction_supported
+ ? tr("YOUR PREDICTION: SUPPORTED BY THIS RUN", "你的预测：得到本局证据支持")
+ : tr("YOUR PREDICTION: REVISE", "你的预测：需要修正"),
  static_cast<int>(x + 34), static_cast<int>(y), 15,
  prediction_supported ? kCyan : kAmber);
  y = draw_wrapped_text(choice.explanation, x + 34, y + 26,
  panel_width - 68, 16, 5, kText) + 13.0f;
  }
- DrawText("WHAT THE RUN ESTABLISHED", static_cast<int>(x + 34),
+ draw_ui_text(tr("WHAT THE RUN ESTABLISHED", "本次运行证明了什么"),
+ static_cast<int>(x + 34),
  static_cast<int>(y), 15, kAmber);
  y += 28.0f;
  for (const auto& lesson : experience.lessons) {
@@ -1438,7 +1594,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  experiment_ui->state != ExperimentRunState::kRunning;
   draw_panel_button(experiment_button,
    experiment_ui->state == ExperimentRunState::kRunning
-   ? "RUNNING A/B..." : "RUN CONTROLLED A/B",
+ ? tr("RUNNING A/B...", "正在运行 A/B……")
+ : tr("RUN CONTROLLED A/B", "开始受控 A/B"),
    true, kAmber, kText, can_run);
   if (hit_regions != nullptr && can_run) {
    hit_regions->primary = experiment_button;
@@ -1446,7 +1603,8 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  }
  const Rectangle retry_button{x + 306.0f, y0 + panel_height - 72.0f,
  116.0f, 34.0f};
- draw_panel_button(retry_button, "RETRY RUN", false, kCyan, kText,
+ draw_panel_button(retry_button, tr("RETRY RUN", "重试本局"),
+ false, kCyan, kText,
  actions_enabled);
  if (hit_regions != nullptr && actions_enabled) {
  hit_regions->retry = retry_button;
@@ -1456,13 +1614,15 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  x + 434.0f, y0 + panel_height - 72.0f, 252.0f, 34.0f};
  const bool can_advance = actions_enabled && safe;
  draw_panel_button(next_chapter_button,
- can_advance ? "NEXT CHAPTER" : "NEXT: PASS SAFETY GATE",
+ can_advance ? tr("NEXT CHAPTER", "下一章")
+ : tr("NEXT: PASS SAFETY GATE", "下一章：通过安全验收后解锁"),
  true, kCyan, kText, can_advance);
  if (hit_regions != nullptr && can_advance) {
  hit_regions->next_chapter = next_chapter_button;
  }
  }
- DrawText("KEYFRAMES / CONTROLLED A/B / ROBOT never received SIM truth.",
+ draw_ui_text(tr("KEYFRAMES / CONTROLLED A/B / ROBOT never received SIM truth.",
+ "关键帧 / 受控 A/B / 机器人从未收到仿真真值。"),
   static_cast<int>(x + 34), static_cast<int>(y0 + panel_height - 27),
   13, kAmber);
 }
@@ -2708,6 +2868,7 @@ int main(int argc, char** argv) {
  // tree; procedural parts remain the deterministic fallback.
  std::string robot_path, sim_path, map_path, assets_path, scene_path,
  experience_path;
+ std::string requested_locale = "auto";
  double initial_playback_rate = 1.0;
  bool initial_turbo = false;
  RenderQuality render_quality = RenderQuality::kHigh;
@@ -2721,6 +2882,7 @@ int main(int argc, char** argv) {
  "usage: sim_viewer [--play | --sandbox | --experience FILE]\n"
  " [--robot FILE] [--sim FILE] [--map FILE] [--scene FILE]\n"
  " [--rate 0.05..64 | --turbo] [--quality high|fast] [--3d]\n"
+ " [--locale auto|en|zh-CN]\n"
  "\n"
  "No arguments starts the First Contact field lab. --sandbox keeps the\n"
  "open engineering demo. During a run: Space pause, N step, F follow,\n"
@@ -2750,6 +2912,7 @@ int main(int argc, char** argv) {
  experience_path = argv[++i];
  source_requested = true;
  }
+ if (a == "--locale" && i + 1 < argc) requested_locale = argv[++i];
  if (a == "--turbo") initial_turbo = true;
  if (a == "--quality" && i + 1 < argc) {
  const std::string quality = argv[++i];
@@ -2771,8 +2934,16 @@ int main(int argc, char** argv) {
  initial_playback_rate = parsed;
  }
   }
+ if (requested_locale != "auto" && requested_locale != "en" &&
+ requested_locale != "zh-CN") {
+ std::fprintf(stderr, "bad --locale: expected auto, en, or zh-CN\n");
+ return 1;
+ }
+ g_zh_cn = use_zh_cn_locale(requested_locale);
  if (play_requested || (!source_requested && !sandbox_requested)) {
- experience_path = "configs/experiences/first_contact.json";
+ experience_path = g_zh_cn
+ ? "configs/experiences/zh-CN/first_contact.json"
+ : "configs/experiences/first_contact.json";
  }
  ExperienceManifest experience;
  bool experience_loaded = false;
@@ -2850,7 +3021,9 @@ int main(int argc, char** argv) {
  session->lidar_mount(session_lidar_mount.xyz_m, session_lidar_mount.rpy_rad);
 
  InitWindow(kScreenW, kScreenH, experience_loaded
- ? "Robot Simu - First Contact" : "Robot Simu - Simulation Lab");
+ ? tr("Robot Simu - First Contact", "Robot Simu - 初次接触")
+ : tr("Robot Simu - Simulation Lab", "Robot Simu - 仿真实验室"));
+ load_ui_font(experience_loaded ? &experience : nullptr);
  if (assets_path.empty() && std::filesystem::is_directory("assets"))
  assets_path = "assets";
  VisualAssets visual_assets;
@@ -2872,6 +3045,7 @@ int main(int argc, char** argv) {
  session->setup_world().static_boxes(), visual_scene, &scene_error)) {
  std::fprintf(stderr, "bad scene file: %s\n", scene_error.c_str());
  unload_visual_assets(visual_assets);
+ unload_ui_font();
  CloseWindow();
  return 1;
  }
@@ -3126,6 +3300,7 @@ int main(int argc, char** argv) {
  unload_visual_assets(visual_assets);
  load_visual_assets(visual_assets, assets_path,
  robot_config.has_value() ? robot_config->robot_id : "ro1");
+ load_ui_font(&experience);
  experience_action_error.clear();
  reset_experience_presentation();
  SetWindowTitle(("Robot Simu - " + experience.title).c_str());
@@ -3670,6 +3845,7 @@ int main(int argc, char** argv) {
  render_quality_name(final_playback_stats.turbo
  ? RenderQuality::kFast : render_quality));
  unload_visual_assets(visual_assets);
+ unload_ui_font();
  CloseWindow();
   return 0;
 }

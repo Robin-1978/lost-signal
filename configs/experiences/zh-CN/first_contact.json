@@ -1,0 +1,54 @@
+{
+ "format": "lost-signal-experience/1",
+ "experience_id": "first_contact",
+ "next_experience": "safety_unknown_obstacle.json",
+ "title": "初次接触：精确停靠",
+ "subtitle": "测量环境、估计位姿，并在玻璃标定门前准确停稳。",
+ "files": {
+ "map": "../../worlds/research_base.json",
+ "scene": "../../worlds/research_base.scene.json",
+ "robot": "../../robot/differential.json",
+ "sim": "../../sim/default.json"
+ },
+ "objectives": ["glass_door"],
+ "time_limit_steps": 1200,
+ "briefing": [
+ "驱动轮通过接触产生牵引力；被动万向轮承载车体，并由运动、摩擦、拖距和轴承阻尼自然转向。",
+ "激光雷达从配置的传感器坐标系发出带时间戳的距离测量，不会报告世界真值。",
+ "机器人只根据自己的估计判断到达，物理真值位姿永远不会进入机器人。",
+ "抵达标记的停车位并稳定停住，随后由仿真独立核验真实物理结果。"
+ ],
+ "walkaround": [
+ {"component_id":"drive_wheel","title":"驱动轮 / 牵引力","lesson":"每个驱动轮只有一个滚动关节。差速转向来自左右轮速差，驱动轮不会像转向轮那样绕竖直轴转动。"},
+ {"component_id":"caster","title":"被动万向轮 / 支撑","lesson":"万向轮用两个被动关节承载车体：竖直回转和水平滚动。两个关节都不接收驱动命令。"},
+ {"component_id":"lidar","title":"激光雷达 / 定时测距","lesson":"蓝色扫描器从配置的传感器坐标系测量表面距离。它不知道物体身份、关卡脚本或世界真值。"},
+ {"component_id":"chassis","title":"计算、控制与车体","lesson":"机器人把带时间戳的测量转成估计与命令，并凭自身估计报告到达；仿真只在事后独立检查物理结果。"}
+ ],
+ "experiments": [
+ {
+ "experiment_id": "scan_cadence",
+ "title": "激光雷达更新慢五倍会怎样？",
+ "controlled_variable": "lidar.scan_period_s",
+ "variant_value": 0.10,
+ "step_budget": 1200
+ }
+ ],
+ "prediction": {
+ "question": "精确停靠实验通过前，哪两项必须分别成立？",
+ "choices": [
+ {"choice_id":"independent_agreement","label":"机器人报告到达，并且仿真独立确认真实位姿和静止状态","explanation":"可部署的机器人只凭测量与估计决策；仿真另行检查物理结果。","correct":true,"evidence_rule":"independent_acceptance"},
+ {"choice_id":"sim_rejects","label":"机器人报告到达，但仿真拒绝真实位姿或稳定停车结果","explanation":"估计侧的完成结论可能与物理结果不一致，本局证据会判断是否发生。","correct":false,"evidence_rule":"sim_rejected"},
+ {"choice_id":"incomplete","label":"机器人尚未报告到达，实验时间已经用完","explanation":"超时是真实的未完成结果，游戏会暂停并解释记录到的证据。","correct":false,"evidence_rule":"incomplete"}
+ ]
+ },
+ "running_prompt": "观察测量、估计和决策三层机器人证据。按 L 查看基于机器人估计投影的雷达，按 E 查看估计，按 T 开启确定性极速模式。",
+ "debrief": {
+ "success_title": "已确认安全到达",
+ "failure_title": "未通过安全验收",
+ "lessons": [
+ "传感器产生测量，感知与定位从测量建立估计。",
+ "机器人到达结论与仿真物理验收彼此独立。",
+ "碰撞是硬失败；速度、平顺性和能耗不能抵消碰撞。"
+ ]
+ }
+}
