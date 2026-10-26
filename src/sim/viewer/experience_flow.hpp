@@ -12,6 +12,18 @@ enum class ExperiencePhase { kBriefing, kPrediction, kRunning, kDebrief };
 
 enum class ExperienceRunKind { kBaseline, kVariant };
 
+enum class ExperienceViewLayer { kPlayer, kLearning, kEngineering };
+
+struct ExperienceViewPolicy {
+ bool show_lidar = false;
+ bool show_robot_evidence = false;
+ bool show_learning_hud = false;
+ bool show_engineering_hud = false;
+};
+
+ExperienceViewLayer next_view_layer(ExperienceViewLayer layer);
+ExperienceViewPolicy experience_view_policy(ExperienceViewLayer layer);
+
 enum class ExperienceEndReason {
  kNone,
  kScenarioFinished,

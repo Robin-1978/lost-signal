@@ -8,6 +8,34 @@
 
 namespace lost_signal::sim::viewer {
 
+ExperienceViewLayer next_view_layer(ExperienceViewLayer layer) {
+ switch (layer) {
+ case ExperienceViewLayer::kPlayer:
+ return ExperienceViewLayer::kLearning;
+ case ExperienceViewLayer::kLearning:
+ return ExperienceViewLayer::kEngineering;
+ case ExperienceViewLayer::kEngineering:
+ return ExperienceViewLayer::kPlayer;
+ }
+ return ExperienceViewLayer::kPlayer;
+}
+
+ExperienceViewPolicy experience_view_policy(ExperienceViewLayer layer) {
+ switch (layer) {
+ case ExperienceViewLayer::kPlayer:
+ return {};
+ case ExperienceViewLayer::kLearning:
+ return {.show_lidar = true,
+ .show_robot_evidence = true,
+ .show_learning_hud = true};
+ case ExperienceViewLayer::kEngineering:
+ return {.show_lidar = true,
+ .show_robot_evidence = true,
+ .show_engineering_hud = true};
+ }
+ return {};
+}
+
 HeroSequence::HeroSequence(std::vector<double> shot_durations_s)
  : shot_durations_s_(std::move(shot_durations_s)) {
  total_duration_s_ = std::accumulate(

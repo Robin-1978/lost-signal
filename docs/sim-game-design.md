@@ -161,6 +161,8 @@ Robot Simu 是同一个机器人系统的三种入口：第一次接触机器人
 
 实现状态：Viewer 的帧模型已将实时遥测分成 `PHYSICS TRUTH`、`ROBOT OBSERVATION`、`ROBOT ESTIMATE`、`ROBOT DECISION` 和 `GAME/EVAL` 五个有类型的 authority 记录。探索战役运行阶段只展开 ROBOT 三层，真值与离线裁判保持隐藏，到复盘阶段才允许对照；这些记录只由已完成的 episode step 构建，不能发布回 `RobotApplication`。实时 LiDAR 扇面使用记录的 ROBOT estimate 投影并显示 measurement source、sequence、stamp；真值辅助投影单独保存，只在显式 `SIM truth debug` 中以琥珀色显示。机器人状态灯读取 ROBOT decision/safety，轮胎真值打滑着色也只存在于该调试层。
 
+运行界面现分成三层，并由同一帧证据生成。`Player` 默认只显示当前任务、目标距离和移动/制动状态，让第一次玩的用户看清机器人和环境；`Learning` 自动展示 LiDAR、局部代价、验证包络与 Safety 包络，并用“测量 → 估计 → 规划 → 验证 → 安全锁”解释因果；`Engineering` 展开 source、sequence、stamp、协方差、候选数、planner/validator verdict、性能和完整图例。`U` 在三层间循环，新章节从 Player 开始，重试和 A/B 变量运行保留用户选择。三层只改变展示，不改变 measurement、ROBOT tick、command 或物理结果；Player 和 Learning 的运行阶段都不开放 SIM 真值。
+
 ## 6. 失败解释与评分
 
 失败必须由结构化原因产生，不能只显示 `FAILED`：

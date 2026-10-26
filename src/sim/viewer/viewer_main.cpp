@@ -62,6 +62,8 @@ using lost_signal::sim::viewer::ExperienceManifest;
 using lost_signal::sim::viewer::experience_variable_spec;
 using lost_signal::sim::viewer::ExperiencePhase;
 using lost_signal::sim::viewer::ExperienceRunKind;
+using lost_signal::sim::viewer::ExperienceViewLayer;
+using lost_signal::sim::viewer::ExperienceViewPolicy;
 using lost_signal::sim::viewer::PredictionAssessment;
 using lost_signal::sim::viewer::ParticleKind;
 using lost_signal::sim::viewer::ParticleSystem;
@@ -186,6 +188,18 @@ enum class RenderQuality { kFast, kHigh };
 
 const char* render_quality_name(RenderQuality quality) {
  return quality == RenderQuality::kHigh ? "HIGH" : "FAST";
+}
+
+const char* view_layer_name(ExperienceViewLayer layer) {
+ switch (layer) {
+ case ExperienceViewLayer::kPlayer:
+ return "PLAYER";
+ case ExperienceViewLayer::kLearning:
+ return "LEARNING";
+ case ExperienceViewLayer::kEngineering:
+ return "ENGINEERING";
+ }
+ return "PLAYER";
 }
 
 struct VisualAssets {
@@ -1371,6 +1385,7 @@ void draw_hero_overlay(const ExperienceManifest& experience,
 
 void draw_experience_overlay(const ExperienceManifest& experience,
  ExperiencePhase phase, ExperienceRunKind run_kind,
+ ExperienceViewLayer view_layer,
  bool comparison_complete, double active_scan_period_s,
  int selected_choice, int walkaround_stop,
  std::size_t walkaround_visited_count,
@@ -1395,6 +1410,101 @@ void draw_experience_overlay(const ExperienceManifest& experience,
  constexpr Color kRed{236, 82, 72, 255};
  if (hit_regions != nullptr) hit_regions->clear();
  if (phase == ExperiencePhase::kRunning) {
+ if (view_layer != ExperienceViewLayer::kEngineering) {
+ const bool learning = view_layer == ExperienceViewLayer::kLearning;
+ const float width = learning ? 390.0f : 330.0f;
+ const float height = learning ? 350.0f : 178.0f;
+ const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
+ DrawRectangleRounded({x, 58.0f, width, height}, 0.04f, 8,
+ learning ? kPanelSoft : Color{13, 21, 22, 218});
+ draw_ui_text(learning
+ ? tr("LEARNING VIEW / CAUSAL CHAIN", "教学视图 / 因果链")
+ : tr("MISSION VIEW", "任务视图"),
+ static_cast<int>(x + 18), 74, 14, kCyan);
+ float y = 104.0f;
+ if (frame != nullptr) {
+ const auto& observation = frame->observation;
+ const auto& estimate = frame->estimate;
+ const auto& decision = frame->decision;
+ const FramePlace* active_place = nullptr;
+ for (const auto& place : frame->places) {
+ if (!place.reached) {
+ active_place = &place;
+ break;
+ }
+ }
+ const double distance_m = estimate.valid && active_place != nullptr
+ ? std::hypot(active_place->x_m - estimate.map_x_m,
+ active_place->y_m - estimate.map_y_m) : -1.0;
+ const bool holding = std::abs(decision.command_forward_mps) <= 0.03 &&
+ std::abs(decision.command_yaw_rate_radps) <= 0.03;
+ const char* stage = !observation.accepted
+ ? tr("WAITING FOR MEASUREMENT", "等待测量")
+ : !estimate.valid ? tr("BUILDING ESTIMATE", "建立估计")
+ : !decision.valid ? tr("PLANNING", "规划")
+ : holding ? tr("BRAKING / SETTLING", "制动 / 稳定")
+ : tr("MOVING UNDER VALIDATED COMMAND", "按已验证命令移动");
+ draw_ui_text(stage, static_cast<int>(x + 18), static_cast<int>(y),
+ learning ? 18 : 20, kAmber);
+ y += 34.0f;
+ char line[256];
+ if (active_place != nullptr && distance_m >= 0.0) {
+ std::snprintf(line, sizeof(line), "%s / %.2f m",
+ active_place->place_id.c_str(), distance_m);
+ } else {
+ std::snprintf(line, sizeof(line), "%s", tr("TASK COMPLETE", "任务完成"));
+ }
+ draw_ui_text(line, static_cast<int>(x + 18), static_cast<int>(y),
+ 15, kText);
+ y += 29.0f;
+ if (learning) {
+ draw_ui_text(tr("MEASURE  >  ESTIMATE  >  PLAN  >  VALIDATE  >  SAFETY",
+ "测量  >  估计  >  规划  >  验证  >  安全锁"),
+ static_cast<int>(x + 18), static_cast<int>(y), 12,
+ Color{180, 132, 255, 255});
+ y += 31.0f;
+ std::snprintf(line, sizeof(line),
+ g_zh_cn ? "测量：LiDAR %zu/%zu 返回，轮速 %s，IMU %s"
+ : "MEASURE: LiDAR %zu/%zu returns, wheels %s, IMU %s",
+ observation.lidar_returns, observation.lidar_beams,
+ observation.odometry_valid ? "OK" : "--",
+ observation.imu_valid ? "OK" : "--");
+ draw_wrapped_text(line, x + 18, y, width - 36, 13, 4, kText);
+ y += 35.0f;
+ if (estimate.valid) {
+ std::snprintf(line, sizeof(line),
+ g_zh_cn ? "估计：位置不确定度 %.2f m；%s"
+ : "ESTIMATE: position uncertainty %.2f m; %s",
+ estimate.position_sigma_m,
+ estimate.localized ? tr("localized", "已定位") : tr("tracking", "跟踪中"));
+ } else {
+ std::snprintf(line, sizeof(line), "%s",
+ tr("ESTIMATE: waiting for enough evidence",
+ "估计：等待足够的传感器证据"));
+ }
+ draw_wrapped_text(line, x + 18, y, width - 36, 13, 4, kText);
+ y += 35.0f;
+ std::snprintf(line, sizeof(line),
+ g_zh_cn ? "决策：%s；独立 Safety %s"
+ : "DECIDE: %s; independent Safety %s",
+ holding ? tr("hold and observe", "停车并观察")
+ : tr("track local trajectory", "跟踪局部轨迹"),
+ decision.safety_state.empty() ? "--" : decision.safety_state.c_str());
+ draw_wrapped_text(line, x + 18, y, width - 36, 13, 4, kText);
+ y += 40.0f;
+ draw_wrapped_text(
+ tr("SIM truth is hidden. Press U for engineering evidence.",
+ "运行时隐藏仿真真值。按 U 查看工程证据。"),
+ x + 18, y, width - 36, 12, 3, kMuted);
+ }
+ }
+ if (!learning) {
+ draw_ui_text(tr("U  EXPLAIN WHY", "U  解释原因"),
+ static_cast<int>(x + 18), static_cast<int>(58.0f + height - 31.0f),
+ 12, kMuted);
+ }
+ return;
+ }
  const float width = 370.0f;
  const float x = static_cast<float>(GetScreenWidth()) - width - 18.0f;
  DrawRectangleRounded({x, 58.0f, width, 450.0f}, 0.04f, 8, kPanelSoft);
@@ -3914,6 +4024,8 @@ int main(int argc, char** argv) {
   bool show_lidar = false;
   bool show_estimate = false;
   bool show_actor_routes = false;
+ ExperienceViewLayer view_layer = experience_loaded
+ ? ExperienceViewLayer::kPlayer : ExperienceViewLayer::kEngineering;
   bool follow = true;
  // Drive deterministic 20 ms simulation time from elapsed wall time. The
  // old fixed four-steps-per-frame loop demanded 4.8x real time at 60 FPS and
@@ -4016,6 +4128,7 @@ int main(int argc, char** argv) {
  experience_flow = std::make_unique<ExperienceFlow>(
  experience_flow_config(experience));
  hero_sequence = hero_sequence_for(experience);
+ view_layer = ExperienceViewLayer::kPlayer;
  experiment_ui = ExperimentUiState{};
  }
  review_keyframes.clear();
@@ -4389,6 +4502,10 @@ int main(int argc, char** argv) {
  }
     if (IsKeyPressed(KEY_L)) show_lidar = !show_lidar;
     if (IsKeyPressed(KEY_E)) show_estimate = !show_estimate;
+ if ((!experience_loaded || !hero_sequence.active()) &&
+ IsKeyPressed(KEY_U)) {
+ view_layer = lost_signal::sim::viewer::next_view_layer(view_layer);
+ }
  const bool sim_truth_debug_allowed = !experience_loaded ||
  experience_flow->phase() == ExperiencePhase::kDebrief;
  if (!sim_truth_debug_allowed) show_actor_routes = false;
@@ -4704,7 +4821,8 @@ int main(int argc, char** argv) {
  experience, experience.intro[hero_sequence.shot_index()], hero_sequence);
  } else {
  draw_experience_overlay(experience, experience_flow->phase(),
- experience_flow->run_kind(), experience_flow->comparison_complete(),
+ experience_flow->run_kind(), view_layer,
+ experience_flow->comparison_complete(),
  sim_config.has_value() ? sim_config->scan_period_s : 0.0,
  experience_flow->selected_choice(),
  static_cast<int>(experience_flow->walkaround_index()),
@@ -4864,6 +4982,17 @@ int main(int argc, char** argv) {
  (desired_distance - cam_st.dist_m) * blend);
     }
 
+ const ExperienceViewPolicy view_policy =
+ lost_signal::sim::viewer::experience_view_policy(view_layer);
+ const bool layered_running = experience_loaded &&
+ experience_flow->phase() == ExperiencePhase::kRunning;
+ const bool render_lidar = show_lidar ||
+ (layered_running && view_policy.show_lidar);
+ const bool render_robot_evidence = show_estimate ||
+ (layered_running && view_policy.show_robot_evidence);
+ const bool engineering_chrome = !experience_loaded ||
+ view_layer == ExperienceViewLayer::kEngineering;
+
     BeginDrawing();
  ClearBackground(view3d ? scene_background(
  scene_loaded ? &visual_scene : nullptr) : RAYWHITE);
@@ -4874,16 +5003,16 @@ int main(int argc, char** argv) {
  if (active_quality == RenderQuality::kHigh &&
  !draw_frame_3d_postprocessed(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- show_lidar, show_estimate, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount)) {
  draw_frame_3d_direct(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- show_lidar, show_estimate, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  } else if (active_quality == RenderQuality::kFast) {
  draw_frame_3d_direct(
  frame, session->setup_world(), cam, motion_particles, surface_traces,
- show_lidar, show_estimate, show_actor_routes, true, visual_assets,
+ render_lidar, render_robot_evidence, show_actor_routes, true, visual_assets,
  scene_loaded ? &visual_scene : nullptr, &session_lidar_mount);
  }
  if (baseline_comparison_frame.has_value()) {
@@ -4892,7 +5021,7 @@ int main(int argc, char** argv) {
  }
     } else {
       view.set_screen(GetScreenWidth(), GetScreenHeight());
- draw_frame_2d(frame, view, show_lidar, show_estimate,
+ draw_frame_2d(frame, view, render_lidar, render_robot_evidence,
  show_actor_routes);
  if (baseline_comparison_frame.has_value()) {
  draw_baseline_comparison_ghost_2d(
@@ -4918,18 +5047,18 @@ int main(int argc, char** argv) {
  }
  char hud[512];
  std::snprintf(hud, sizeof(hud),
- "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %s %dfps cam=%s quality=%s %s",
+ "step %llu x=%.2f y=%.2f yaw=%.2f clr=%.2f obj %d/%zu %s %dfps cam=%s quality=%s view=%s %s",
  static_cast<unsigned long long>(frame.step), frame.body.x_m,
  frame.body.y_m, frame.body.yaw_rad, frame.static_clearance_m,
  static_cast<int>(reached.size()), session->objectives().total(), speed,
  GetFPS(), follow ? "FOLLOW" : "FREE",
- render_quality_name(active_quality),
+ render_quality_name(active_quality), view_layer_name(view_layer),
  paused ? "PAUSED"
  : session->objectives_done()
  ? (session->objectives_passed() ? "PASSED" : "FAILED")
  : "RUN");
- DrawText(hud, 10, 10, 14, BLACK);
- if (show_estimate) {
+ if (engineering_chrome) DrawText(hud, 10, 10, 14, BLACK);
+ if (engineering_chrome && render_robot_evidence) {
  DrawText("ROBOT AI amber=planner cost red=lethal lime=validated cyan=safety purple=prediction",
  10, 32, 13, Color{78, 54, 132, 255});
  }
@@ -4940,9 +5069,14 @@ int main(int argc, char** argv) {
                     edit_msg.c_str());
       DrawText(ebuf, 10, 32, 14, RED);
     }
- const char* control_help = sim_truth_debug_allowed
- ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
- : "space pause  N step  L lidar  E ROBOT AI  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";
+ const char* control_help = experience_loaded &&
+ view_layer == ExperienceViewLayer::kPlayer
+ ? "U explain space pause F follow Q quality +/- speed V 2D/3D"
+ : experience_loaded && view_layer == ExperienceViewLayer::kLearning
+ ? "U engineering space pause F follow Q quality +/- speed V 2D/3D"
+ : sim_truth_debug_allowed
+ ? "space pause  N step  L lidar  E ROBOT AI  K SIM truth debug  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  M edit  right-drag pan/orbit  wheel zoom"
+ : "space pause  N step  L lidar  E ROBOT AI  U view  F follow  Q quality  0 fit  +/- speed  V 2D/3D  right-drag pan/orbit  wheel zoom";
  DrawText(control_help, 10, GetScreenHeight() - 24, 12, DARKGRAY);
  DrawText("T turbo", GetScreenWidth() - 64, GetScreenHeight() - 24,
  12, DARKGRAY);
@@ -4973,7 +5107,8 @@ int main(int argc, char** argv) {
  experience.progression, *active_artifact, experiment_ui.episodes);
  }
  draw_experience_overlay(experience, experience_flow->phase(),
- experience_flow->run_kind(), experience_flow->comparison_complete(),
+ experience_flow->run_kind(), view_layer,
+ experience_flow->comparison_complete(),
  sim_config.has_value() ? sim_config->scan_period_s : 0.0,
  selected_choice,
  static_cast<int>(experience_flow->walkaround_index()),

@@ -8,6 +8,19 @@
 int main() {
  using namespace lost_signal::sim::viewer;
 
+ assert(next_view_layer(ExperienceViewLayer::kPlayer) ==
+ ExperienceViewLayer::kLearning);
+ assert(next_view_layer(ExperienceViewLayer::kLearning) ==
+ ExperienceViewLayer::kEngineering);
+ assert(next_view_layer(ExperienceViewLayer::kEngineering) ==
+ ExperienceViewLayer::kPlayer);
+ assert(!experience_view_policy(
+ ExperienceViewLayer::kPlayer).show_robot_evidence);
+ assert(experience_view_policy(
+ ExperienceViewLayer::kLearning).show_lidar);
+ assert(experience_view_policy(
+ ExperienceViewLayer::kEngineering).show_engineering_hud);
+
  HeroSequence hero({1.0, 2.0, 3.0});
  assert(hero.active());
  assert(hero.shot_index() == 0);
