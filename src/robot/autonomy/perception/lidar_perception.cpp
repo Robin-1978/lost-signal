@@ -441,14 +441,24 @@ PerceptionResult LidarPerception::update(const iface::ObservationFrame& obs,
  motion_history_s >= std::max(0.0, config_.velocity_fit_window_s)) {
  st.mapless_dynamic_confirmed = true;
  }
+ const double motion_gate_for_handoff =
+ std::max(1e-6, config_.min_dynamic_speed_mps);
+ const double derived_handoff_time_s = std::max(
+ std::max(0.0, config_.velocity_fit_window_s),
+ std::max(0.0, config_.association_gate_m) /
+ motion_gate_for_handoff);
  const double static_reclassification_time_s =
- std::max(0.0, config_.static_reclassification_time_s);
+ config_.static_reclassification_time_s > 0.0
+ ? config_.static_reclassification_time_s
+ : derived_handoff_time_s;
  if (st.mapless_dynamic_confirmed &&
  st.stationary_evidence_s >= static_reclassification_time_s) {
- // Raw scan endpoints remain in the rolling occupancy layer. Releasing a
- // stopped forecast prevents one object from being charged indefinitely as
- // both static geometry and a dynamic prediction; coherent motion can
- // promote it again through the same time-based gate above.
+ // Raw scan endpoints remain available to the rolling occupancy layer.
+ // Releasing a stopped forecast prevents one object from being charged
+ // indefinitely as both static geometry and a dynamic prediction. The
+ // derived default retains identity for at least one complete velocity-fit
+ // window and one association-gate traversal, so a normal pause cannot erase
+ // the reliable velocity hypothesis and immediately recreate the track.
  st.mapless_dynamic_confirmed = false;
  st.moving_updates = 0;
  st.stationary_evidence_s = static_reclassification_time_s;

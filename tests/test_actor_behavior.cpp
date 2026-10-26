@@ -348,7 +348,16 @@ int main() {
  nearest = std::min(nearest, std::hypot(actor.x, actor.y));
  }
  assert(nearest >= 0.3 + 0.4 + 0.2 - 0.03);
+ assert(actor.behavior.yield_active_);
  const double stopped_y = actor.y;
+ // A single clear quantum cannot cancel an established right-of-way
+ // commitment and restart the actor into the crossing.
+ actor.vx_mps = 0.0;
+ actor.vy_mps = 1.0;
+ sim::world::apply_actor_robot_yield(
+ actor, actor.behavior, 10.0, 0.0, 0.0, 0.0, 0.4, 0.02);
+ assert(actor.vx_mps == 0.0 && actor.vy_mps == 0.0);
+ assert(actor.behavior.yield_active_);
  for (int step = 0; step < 100; ++step) {
  actor.vx_mps = 0.0;
  actor.vy_mps = 1.0;
@@ -357,6 +366,7 @@ int main() {
  actor.y += actor.vy_mps * 0.02;
  }
  assert(actor.y > stopped_y + 0.5);
+ assert(!actor.behavior.yield_active_);
  }
 
   // Scenario acceptance: waypoint crosser cuts the corridor; the chain

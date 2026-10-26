@@ -245,7 +245,14 @@ PerceptionResult reconcile_tracks_with_local_occupancy(
  world_to_grid(local_map, track.x_m, track.y_m, gx, gy);
  if (!local_map.inside(gx, gy)) return false;
  const double physical_radius_m = std::max(0.0, track.radius_m);
- return local_map.clearance(track.x_m, track.y_m) <=
+ // An immature/stationary candidate may be the same obstacle already owned
+ // by persistent occupancy. A motion-confirmed track wins over overlapping
+ // occupancy: the occupied cell may be the stopped object's handoff residue,
+ // and suppressing the reacquired track would create a prediction blackout
+ // until the object had moved outside its old footprint. Raw scan validation
+ // remains active in either representation.
+ return !track.prediction_ready &&
+ local_map.clearance(track.x_m, track.y_m) <=
  physical_radius_m + local_map.resolution_m;
  }), perception.tracks.end());
  return perception;

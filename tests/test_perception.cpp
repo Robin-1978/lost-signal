@@ -126,7 +126,9 @@ int main() {
  // layer after timestamped evidence, so its current geometry is not charged
  // forever by both occupancy and dynamic prediction.
  {
- LidarPerception perc;
+ LidarPerceptionConfig config;
+ config.static_reclassification_time_s = 0.50;
+ LidarPerception perc(config);
  PerceptionResult result;
  for (int k = 1; k <= 12; ++k) {
  auto obs = make_scan(
@@ -140,6 +142,42 @@ int main() {
  result = perc.update(obs, origin());
  }
  assert(result.tracks.empty());
+ }
+
+ // A confirmed mover keeps its anonymous identity through an ordinary stop.
+ // Its current hypothesis becomes stationary while the last reliable motion
+ // remains an alternate intent. Resuming does not pay a second one-second
+ // warm-up or change the track id.
+ {
+ LidarPerception perc;
+ PerceptionResult result;
+ for (int k = 1; k <= 12; ++k) {
+ auto obs = make_scan(
+ k * 100'000'000LL, 10.0f, 34, 38,
+ 3.0f + 0.10f * static_cast<float>(k));
+ result = perc.update(obs, origin());
+ }
+ assert(result.tracks.size() == 1);
+ const std::uint32_t id = result.tracks.front().id;
+ for (int k = 13; k <= 42; ++k) {
+ auto obs = make_scan(k * 100'000'000LL, 10.0f, 34, 38, 4.2f);
+ result = perc.update(obs, origin());
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().id == id);
+ assert(result.tracks.front().prediction_ready);
+ }
+ assert(std::hypot(result.tracks.front().vx_mps,
+ result.tracks.front().vy_mps) < 0.18);
+ assert(result.tracks.front().alternate_velocity_valid);
+ for (int k = 43; k <= 48; ++k) {
+ auto obs = make_scan(
+ k * 100'000'000LL, 10.0f, 34, 38,
+ 4.2f + 0.10f * static_cast<float>(k - 42));
+ result = perc.update(obs, origin());
+ assert(result.tracks.size() == 1);
+ assert(result.tracks.front().id == id);
+ assert(result.tracks.front().prediction_ready);
+ }
  }
 
   // Departed object: beams back to reference -> track ages out.
@@ -324,6 +362,12 @@ int main() {
  perception.tracks.push_back(track);
  assert(reconcile_tracks_with_local_occupancy(perception, occupied)
  .tracks.empty());
+ track.prediction_ready = true;
+ perception.tracks = {track};
+ assert(reconcile_tracks_with_local_occupancy(perception, occupied)
+ .tracks.size() == 1);
+ track.prediction_ready = false;
+ perception.tracks = {track};
  occupied.occupancy.assign(occupied.width * occupied.height, -1);
  assert(reconcile_tracks_with_local_occupancy(perception, occupied)
  .tracks.size() == 1);

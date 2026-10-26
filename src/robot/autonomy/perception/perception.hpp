@@ -116,10 +116,12 @@ struct LidarPerceptionConfig {
  double min_dynamic_speed_mps = 0.18;
  int min_motion_updates = 3;
  // Accumulated below-speed observation time required to return a stopped
- // track to the rolling occupancy layer. Time evidence decays while motion
- // resumes, so the result is independent of scan cadence and resists one
- // noisy centroid update.
- double static_reclassification_time_s = 0.50;
+ // track to the rolling occupancy layer. A positive value is an explicit
+ // sensor-profile override. Zero derives the hold from the velocity-fit
+ // window and the time needed for a minimum-speed target to leave the
+ // association gate. That keeps motion identity through ordinary stops
+ // without baking a scan cadence or scenario dwell into the tracker.
+ double static_reclassification_time_s = 0.0;
  double max_tracked_speed_mps = 4.0;
  // Alpha-beta correction and bounded uncertainty proxy. These describe the
  // sensor/tracker, never simulator actor properties.

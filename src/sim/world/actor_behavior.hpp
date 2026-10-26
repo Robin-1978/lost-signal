@@ -65,6 +65,12 @@ struct ActorBehavior {
  double clearance_m = 0.20;
  bool yield_initialized_ = false;
  double yield_speed_mps_ = 0.0;
+ // Reciprocal encounters need a commitment, otherwise two agents that both
+ // brake can make the instantaneous collision root disappear and accelerate
+ // again on the next physics quantum. Once active, yielding is released only
+ // after a physically derived clear envelope persists for the reaction time.
+ bool yield_active_ = false;
+ double yield_clear_time_s_ = 0.0;
 };
 
 // One deterministic step: sets the actor velocity from its behavior.

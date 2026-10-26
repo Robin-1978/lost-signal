@@ -205,6 +205,38 @@ void apply_actor_robot_yield(Actor& actor, ActorBehavior& behavior,
  behavior.yield_speed_mps_ / brake;
  conflict = conflict || first_contact_s <= stopping_horizon_s;
 
+ // Latch a yield until the robot is outside the actor's reaction and braking
+ // envelope. The release distance is derived from the nominal scripted speed
+ // and declared braking capability; it is independent of a scenario position
+ // or ROBOT-side plan. A sustained clear interval filters a one-quantum root
+ // change while still allowing a teleported/test robot that is already far
+ // away to release deterministically.
+ if (conflict) behavior.yield_active_ = true;
+ const double reaction_s = std::max(0.0, behavior.reaction_time_s);
+ const double release_distance_m = combined_radius +
+ desired_speed * reaction_s +
+ desired_speed * desired_speed / (2.0 * brake);
+ const double separation_m = std::hypot(px, py);
+ const double separation_rate_mps = separation_m > 1e-9
+ ? (px * robot_vx_mps + py * robot_vy_mps) / separation_m
+ : 0.0;
+ const bool release_evidence = !conflict &&
+ separation_m > release_distance_m &&
+ separation_rate_mps >= -1e-9;
+ if (behavior.yield_active_) {
+ behavior.yield_clear_time_s_ = release_evidence
+ ? behavior.yield_clear_time_s_ + dt : 0.0;
+ const double release_time_s = std::max(dt, reaction_s);
+ if (behavior.yield_clear_time_s_ + 1e-12 >= release_time_s) {
+ behavior.yield_active_ = false;
+ behavior.yield_clear_time_s_ = 0.0;
+ } else {
+ conflict = true;
+ }
+ } else {
+ behavior.yield_clear_time_s_ = 0.0;
+ }
+
  if (conflict) {
  behavior.yield_speed_mps_ = std::max(
  0.0, behavior.yield_speed_mps_ - brake * dt);
